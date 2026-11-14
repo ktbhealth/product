@@ -26,8 +26,13 @@ describe("secretary catalogs", () => {
 		for (const locale of SECRETARY_LOCALES) {
 			const { subject, body } = secretaryMessages(locale).inviteEmail;
 			expect(subject("Dra. Ana")).toContain("Dra. Ana");
-			expect(body("Dra. Ana", url)).toContain("Dra. Ana");
-			expect(body("Dra. Ana", url).split("\n")).toContain(url);
+			// Two variants: the sign-in link, and the accept link for an
+			// invitee who still has to create an account.
+			for (const accept of [false, true]) {
+				expect(body("Dra. Ana", url, accept)).toContain("Dra. Ana");
+				expect(body("Dra. Ana", url, accept).split("\n")).toContain(url);
+			}
+			expect(body("Dra. Ana", url, true)).not.toBe(body("Dra. Ana", url, false));
 			subjects.add(subject("Dra. Ana"));
 		}
 		// Each locale has its own copy.

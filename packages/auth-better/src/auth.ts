@@ -3,7 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
-import type { AuthShape, Session, SessionUser } from "@ktb/auth";
+import type { AccountsShape, AuthShape, Session, SessionUser } from "@ktb/auth";
 import { session as sessionTable, user as userTable } from "@ktb/db/schema";
 
 /** What the host needs to compose and deliver a verification email. */
@@ -93,5 +93,39 @@ export const makeAuthService = (auth: Auth, db: AuthDb): AuthShape => ({
 			// better-auth would otherwise keep refreshing.
 			await db.delete(sessionTable).where(eq(sessionTable.userId, userId));
 		}
+	},
+});
+
+/**
+ * Accounts port implementation: the same steps as better-auth's
+ * sign-up (normalized email, hashed password, credential account), but
+ * the user starts with a verified email and no verification message is
+ * sent. An address that already has an account is left untouched.
+ */
+export const makeAccountsService = (auth: Auth): AccountsShape => ({
+	createVerified: async ({ email, name, password }) => {
+		const ctx = await auth.$context;
+		const { minPasswordLength, maxPasswordLength } = ctx.password.config;
+		if (password.length < minPasswordLength || password.length > maxPasswordLength) {
+			return { ok: false, error: "invalid_password" };
+		}
+		const normalized = email.trim().toLowerCase();
+		if (await ctx.internalAdapter.findUserByEmail(normalized)) {
+			return { ok: false, error: "exists" };
+		}
+		// Hashed before the user row exists, like sign-up: a failing hash
+		// must not leave an account behind.
+		const hash = await ctx.password.hash(password);
+		const created = await ctx.internalAdapter.createUser(
+			{ email: normalized, name, emailVerified: true },
+			{ method: "email-password" },
+		);
+		await ctx.internalAdapter.linkAccount({
+			userId: created.id,
+			providerId: "credential",
+			accountId: created.id,
+			password: hash,
+		});
+		return { ok: true, userId: created.id };
 	},
 });

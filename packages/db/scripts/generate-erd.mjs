@@ -94,6 +94,13 @@ const DOMAINS = [
 		tables: ["patient_access"],
 	},
 	{
+		id: "invites",
+		title: "Invites",
+		owner: "`plugins/invites`",
+		description: "Single-use accept links sent in invite emails — only the token hash is stored.",
+		tables: ["invite_tokens"],
+	},
+	{
 		id: "auth",
 		title: "Auth",
 		owner: "`packages/db/src/auth.ts` (better-auth)",

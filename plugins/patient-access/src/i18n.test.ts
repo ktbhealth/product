@@ -55,7 +55,14 @@ describe("patient-access catalogs", () => {
 		for (const locale of PATIENT_ACCESS_LOCALES) {
 			const { subject, body } = patientAccessMessages(locale).inviteEmail;
 			expect(subject("Dra. Bia")).toContain("Dra. Bia");
-			const text = body("Dra. Bia", "Ana", url);
+			const text = body("Dra. Bia", "Ana", url, false);
+			// The accept variant — for an invitee who still has to create an
+			// account — carries the same facts around a different instruction.
+			const accept = body("Dra. Bia", "Ana", url, true);
+			expect(accept).not.toBe(text);
+			expect(accept).toContain("Dra. Bia");
+			expect(accept).toContain("Ana");
+			expect(accept.split("\n")).toContain(url);
 			expect(text).toContain("Dra. Bia");
 			expect(text).toContain("Ana");
 			// The link stands on a line of its own, so mail clients linkify it whole.

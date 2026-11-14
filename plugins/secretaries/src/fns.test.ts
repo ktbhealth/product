@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 
 import { Forbidden } from "@ktb/authz";
 import { Email } from "@ktb/email";
+import { Invites } from "@ktb/invites";
 
 const mocks = vi.hoisted(() => ({
 	getDoctorContext: vi.fn(),
@@ -15,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 	revoke: vi.fn(),
 	send: vi.fn(),
 	emailService: { current: "sender" as "sender" | "disabled" | "absent" },
+	issue: vi.fn(),
+	/** Whether the invites plugin is deployed (its service resolvable). */
+	inviteLinks: { current: false },
 }));
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
@@ -74,25 +78,37 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.getLocale.mockReturnValue("en");
 	mocks.emailService.current = "sender";
+	mocks.inviteLinks.current = false;
 	mocks.send.mockResolvedValue(undefined);
 	const service = { list: mocks.list, invite: mocks.invite, revoke: mocks.revoke };
 	mocks.runAs.mockImplementation(
 		(_user: unknown, effect: Effect.Effect<unknown, never, Secretaries>) =>
 			Effect.runPromise(effect.pipe(Effect.provideService(Secretaries, service))),
 	);
-	// `run` resolves the optional Email service like the app runtime would.
-	mocks.run.mockImplementation((effect: Effect.Effect<unknown, never, Email>) =>
-		Effect.runPromise(
+	// `run` resolves the optional Email and Invites services like the app
+	// runtime would.
+	mocks.run.mockImplementation((effect: Effect.Effect<unknown, never, Email | Invites>) => {
+		const withEmail =
 			mocks.emailService.current === "absent"
-				? (effect as Effect.Effect<unknown>)
+				? effect
 				: effect.pipe(
 						Effect.provideService(
 							Email,
 							mocks.emailService.current === "sender" ? { send: mocks.send } : null,
 						),
-					),
-		),
-	);
+					);
+		return Effect.runPromise(
+			(mocks.inviteLinks.current
+				? withEmail.pipe(
+						Effect.provideService(Invites, {
+							issue: mocks.issue,
+							preview: vi.fn(),
+							accept: vi.fn(),
+						}),
+					)
+				: withEmail) as Effect.Effect<unknown>,
+		);
+	});
 });
 
 describe("session and locale fns", () => {
@@ -154,6 +170,43 @@ describe("inviteSecretaryFn", () => {
 		expect(sent.to).toBe("sec@ktb.test");
 		expect(sent.subject).toBe("Dra. Ana convidou você para o KTB Health");
 		expect(sent.text).toContain("https://app.ktb.test/secretaries/login");
+	});
+
+	it("sends someone with no account a single-use accept link", async () => {
+		mocks.inviteLinks.current = true;
+		mocks.issue.mockReturnValue(Effect.succeed("tok-123"));
+		mocks.getDoctorContext.mockResolvedValue(context);
+		mocks.invite.mockReturnValue(Effect.succeed(row));
+		await invite();
+		expect(mocks.issue).toHaveBeenCalledWith({
+			email: "sec@ktb.test",
+			kind: "secretary",
+			inviterName: "Dra. Ana",
+		});
+		const { text } = mocks.send.mock.calls[0]![0] as { text: string };
+		expect(text.split("\n")).toContain("https://app.ktb.test/invite#tok-123");
+		expect(text).toContain("choose your password");
+		expect(text).not.toContain("/secretaries/login");
+	});
+
+	it("points an address that already has an account at the staff sign-in", async () => {
+		mocks.inviteLinks.current = true;
+		mocks.issue.mockReturnValue(Effect.succeed(null));
+		mocks.getDoctorContext.mockResolvedValue(context);
+		mocks.invite.mockReturnValue(Effect.succeed(row));
+		await invite();
+		const { text } = mocks.send.mock.calls[0]![0] as { text: string };
+		expect(text.split("\n")).toContain("https://app.ktb.test/secretaries/login");
+		expect(text).toContain("Sign in with this email address");
+	});
+
+	it("issues no accept link when no email can go out", async () => {
+		mocks.inviteLinks.current = true;
+		mocks.emailService.current = "disabled";
+		mocks.getDoctorContext.mockResolvedValue(context);
+		mocks.invite.mockReturnValue(Effect.succeed(row));
+		await invite();
+		expect(mocks.issue).not.toHaveBeenCalled();
 	});
 
 	it("names the doctor by email when they have no profile entry", async () => {

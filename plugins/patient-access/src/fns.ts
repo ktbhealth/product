@@ -8,6 +8,7 @@ import { and, eq } from "drizzle-orm";
 import { Db } from "@ktb/db";
 import { patients } from "@ktb/db/schema";
 import { Email } from "@ktb/email";
+import { inviteAcceptPath } from "@ktb/invites";
 import { getDoctorAccess, getDoctorUser, getLocale, run, runAs } from "@ktb/server-fns";
 
 import { patientAccessMessages } from "./i18n.ts";
@@ -68,9 +69,11 @@ export type InvitePatientResult =
 	| { readonly ok: false; readonly error: PatientInviteErrorCode | "failed" };
 
 /**
- * Tell the invitee by email, in the acting user's current locale. Best
- * effort: the link already exists, so a deployment without email or a
- * failed delivery never fails the invite — it only reports `false`.
+ * Tell the invitee by email, in the acting user's current locale.
+ * Someone with no account yet gets a single-use accept link that
+ * creates it; an existing account is pointed at the portal sign-in.
+ * Best effort: the grant already exists, so a deployment without email
+ * or a failed delivery never fails the invite — it only reports `false`.
  */
 const notifyInvitee = async (
 	to: string,
@@ -79,16 +82,19 @@ const notifyInvitee = async (
 ): Promise<boolean> => {
 	const { getRequestUrl } = await import("@tanstack/react-start/server");
 	const copy = patientAccessMessages(getLocale()).inviteEmail;
-	const url = new URL("/portal/login", getRequestUrl()).toString();
 	const sender = await run(
 		Effect.map(Effect.serviceOption(Email), (email) => Option.getOrNull(email)),
 	);
 	if (!sender) return false;
+	const acceptPath = await run(
+		inviteAcceptPath({ email: to, kind: "patient", inviterName: doctorName }),
+	);
+	const url = new URL(acceptPath ?? "/portal/login", getRequestUrl()).toString();
 	try {
 		await sender.send({
 			to,
 			subject: copy.subject(doctorName),
-			text: copy.body(doctorName, patientName, url),
+			text: copy.body(doctorName, patientName, url, acceptPath !== null),
 		});
 		return true;
 	} catch (error) {

@@ -30,6 +30,12 @@ export interface AuthShape {
 export class Auth extends Context.Service<Auth, AuthShape>()("@ktb/auth/Auth") {}
 
 export {
+	Accounts,
+	type AccountRejection,
+	type AccountsShape,
+	type CreateAccountResult,
+} from "./accounts.ts";
+export {
 	actingAs,
 	DOCTOR_PROFILE_COOKIE,
 	DoctorDelegations,

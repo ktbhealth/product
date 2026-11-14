@@ -310,7 +310,8 @@ export default defineConfig({
 				//   files had. __root.tsx / platform.tsx keep theirs, as do
 				//   portal-login.tsx / verify-email.tsx (still host routes).
 				//   The secretaries plugin's login view is the same case —
-				//   the staff sign-in screen the invite email points to.
+				//   the staff sign-in screen — as is the invites plugin's
+				//   accept page, which signs the new account in.
 				// - *.test.* may mock impl packages.
 				files: [
 					"apps/web/src/lib/platform.ts",
@@ -323,6 +324,7 @@ export default defineConfig({
 					"apps/web/src/routes/platform.tsx",
 					"apps/web/src/**/*.test.{ts,tsx}",
 					"plugins/auth/src/views/LoginPage.tsx",
+					"plugins/invites/src/views/AcceptInvitePage.tsx",
 					"plugins/secretaries/src/views/SecretaryLoginPage.tsx",
 					"plugins/consultations/src/routes/new.tsx",
 					"plugins/consultations/src/backend.ts",
