@@ -34,7 +34,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Clock from "effect/Clock";
 import { Binding, DbLive, makeDb, type SqlDatabase } from "@ktb/db";
-import { makeAuth, makeAuthService } from "@ktb/auth-better";
+import { makeAccountsService, makeAuth, makeAuthService } from "@ktb/auth-better";
 import { Email, nullEmailDriver, type EmailMessage } from "@ktb/email";
 import { cloudflareEmailDriver } from "@ktb/email-cloudflare";
 import { smtpEmailDriver } from "@ktb/email-smtp";
@@ -42,7 +42,7 @@ import { stubEmailDriver } from "@ktb/email-stub";
 import { Captcha, nullCaptchaDriver } from "@ktb/captcha";
 import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
-import { Auth } from "@ktb/auth";
+import { Accounts, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
@@ -316,6 +316,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Auth port backed by the same better-auth instance the routes use;
 	// makeAuthService adds the banned-user enforcement + revocation (T-034).
 	const AuthServiceLive = Layer.succeed(Auth, makeAuthService(auth, db));
+	// Account provisioning over the same instance — what invite acceptance
+	// creates accounts through.
+	const AccountsLive = Layer.succeed(Accounts, makeAccountsService(auth));
 	// LLM provider config is resolved here, once — impl packages never
 	// read env themselves.
 	const llmConfig: LlmConfig = {
@@ -357,6 +360,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		EmailLive,
 		DbLive,
 		AuthServiceLive,
+		AccountsLive,
 		AnamnesisEngineLive,
 		TelemetryLive,
 		PlatformAdminLive,

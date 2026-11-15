@@ -27,6 +27,7 @@ import { Route as ConsultationsIndexRouteImport } from './../../../plugins/consu
 import { Route as ConsultationsIdRouteImport } from './../../../plugins/consultations/src/routes/$id'
 import { Route as ConsultationsNewRouteImport } from './../../../plugins/consultations/src/routes/new'
 import { Route as DoctorsSelectRouteImport } from './../../../plugins/doctors/src/routes/select'
+import { Route as InviteIndexRouteImport } from './../../../plugins/invites/src/routes/index'
 import { Route as PatientAccessPatientIdRouteImport } from './../../../plugins/patient-access/src/routes/$patientId'
 import { Route as PatientsIndexRouteImport } from './../../../plugins/patients/src/routes/index'
 import { Route as PatientsNewRouteImport } from './../../../plugins/patients/src/routes/new'
@@ -135,6 +136,11 @@ const ConsultationsNewRoute = ConsultationsNewRouteImport.update({
 const DoctorsSelectRoute = DoctorsSelectRouteImport.update({
   id: '/doctors/select',
   path: '/doctors/select',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteIndexRoute = InviteIndexRouteImport.update({
+  id: '/invite/',
+  path: '/invite/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PatientAccessPatientIdRoute = PatientAccessPatientIdRouteImport.update({
@@ -256,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations/': typeof ConsultationsIndexRoute
+  '/invite/': typeof InviteIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/platform/': typeof IndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -293,6 +300,7 @@ export interface FileRoutesByTo {
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations': typeof ConsultationsIndexRoute
+  '/invite': typeof InviteIndexRoute
   '/patients': typeof PatientsIndexRoute
   '/platform': typeof IndexRoute
   '/portal': typeof PortalIndexRoute
@@ -332,6 +340,7 @@ export interface FileRoutesById {
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations/': typeof ConsultationsIndexRoute
+  '/invite/': typeof InviteIndexRoute
   '/patients/': typeof PatientsIndexRoute
   '/platform/': typeof IndexRoute
   '/portal/': typeof PortalIndexRoute
@@ -372,6 +381,7 @@ export interface FileRouteTypes {
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations/'
+    | '/invite/'
     | '/patients/'
     | '/platform/'
     | '/portal/'
@@ -409,6 +419,7 @@ export interface FileRouteTypes {
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations'
+    | '/invite'
     | '/patients'
     | '/platform'
     | '/portal'
@@ -447,6 +458,7 @@ export interface FileRouteTypes {
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations/'
+    | '/invite/'
     | '/patients/'
     | '/platform/'
     | '/portal/'
@@ -485,6 +497,7 @@ export interface RootRouteChildren {
   portalLoginRoute: typeof portalLoginRoute
   SecretariesLoginRoute: typeof SecretariesLoginRoute
   ConsultationsIndexRoute: typeof ConsultationsIndexRoute
+  InviteIndexRoute: typeof InviteIndexRoute
   PatientsIndexRoute: typeof PatientsIndexRoute
   PortalIndexRoute: typeof PortalIndexRoute
   SecretariesIndexRoute: typeof SecretariesIndexRoute
@@ -624,6 +637,13 @@ declare module '@tanstack/react-router' {
       path: '/doctors/select'
       fullPath: '/doctors/select'
       preLoaderRoute: typeof DoctorsSelectRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/': {
+      id: '/invite/'
+      path: '/invite'
+      fullPath: '/invite/'
+      preLoaderRoute: typeof InviteIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/patient-access/$patientId': {
@@ -804,6 +824,7 @@ const rootRouteChildren: RootRouteChildren = {
   portalLoginRoute: portalLoginRoute,
   SecretariesLoginRoute: SecretariesLoginRoute,
   ConsultationsIndexRoute: ConsultationsIndexRoute,
+  InviteIndexRoute: InviteIndexRoute,
   PatientsIndexRoute: PatientsIndexRoute,
   PortalIndexRoute: PortalIndexRoute,
   SecretariesIndexRoute: SecretariesIndexRoute,

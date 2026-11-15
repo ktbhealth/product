@@ -27,7 +27,9 @@ export interface SecretaryMessages {
 	/** Invite email — `doctor` is the inviting doctor's display name. */
 	readonly inviteEmail: {
 		readonly subject: (doctor: string) => string;
-		readonly body: (doctor: string, url: string) => string;
+		/** `accept` — the link is a single-use accept link that creates the
+		 * invitee's account, not the sign-in screen. */
+		readonly body: (doctor: string, url: string, accept: boolean) => string;
 	};
 	/** /secretaries/login — the staff sign-in screen. Unlike the doctor
 	 * screen, sign-up here never creates a doctor profile. */
@@ -74,12 +76,14 @@ const en: SecretaryMessages = {
 	},
 	inviteEmail: {
 		subject: (doctor) => `${doctor} invited you to KTB Health`,
-		body: (doctor, url) =>
+		body: (doctor, url, accept) =>
 			[
 				"Hello.",
 				"",
 				`${doctor} invited you to work on their behalf at KTB Health, as their secretary.`,
-				"Sign in — or create an account — with this email address to get access:",
+				accept
+					? "Accept the invitation and choose your password — the link works once and is valid for 7 days:"
+					: "Sign in with this email address to get access:",
 				url,
 				"",
 				"If you were not expecting this invitation, you can ignore this message.",
@@ -127,12 +131,14 @@ const ptBR: SecretaryMessages = {
 	},
 	inviteEmail: {
 		subject: (doctor) => `${doctor} convidou você para o KTB Health`,
-		body: (doctor, url) =>
+		body: (doctor, url, accept) =>
 			[
 				"Olá.",
 				"",
 				`${doctor} convidou você para trabalhar em nome dele(a) no KTB Health, como secretária.`,
-				"Entre — ou crie uma conta — com este endereço de e-mail para ter acesso:",
+				accept
+					? "Aceite o convite e escolha sua senha — o link funciona uma única vez e vale por 7 dias:"
+					: "Entre com este endereço de e-mail para ter acesso:",
 				url,
 				"",
 				"Se você não esperava este convite, pode ignorar esta mensagem.",
@@ -180,12 +186,14 @@ const es: SecretaryMessages = {
 	},
 	inviteEmail: {
 		subject: (doctor) => `${doctor} te invitó a KTB Health`,
-		body: (doctor, url) =>
+		body: (doctor, url, accept) =>
 			[
 				"Hola.",
 				"",
 				`${doctor} te invitó a trabajar en su nombre en KTB Health, como secretaria.`,
-				"Inicia sesión — o crea una cuenta — con esta dirección de correo para obtener acceso:",
+				accept
+					? "Acepta la invitación y elige tu contraseña — el enlace funciona una sola vez y es válido por 7 días:"
+					: "Inicia sesión con esta dirección de correo para obtener acceso:",
 				url,
 				"",
 				"Si no esperabas esta invitación, puedes ignorar este mensaje.",

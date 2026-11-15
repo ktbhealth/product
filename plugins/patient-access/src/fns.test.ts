@@ -33,6 +33,7 @@ import { Forbidden } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Email, type EmailSender } from "@ktb/email";
+import { Invites } from "@ktb/invites";
 
 import { PatientInviteRejected, PatientLinks } from "./index.ts";
 import {
@@ -72,6 +73,8 @@ const denied = Effect.fail(new Forbidden({ path: "patient-access.read" }));
 const sent: Array<{ to: string; subject: string; text: string }> = [];
 /** The deployment's Email service: a sender, or null when email is off. */
 let sender: EmailSender | null = null;
+/** The invites plugin's `issue`, or null when it is not deployed. */
+let issue: ReturnType<typeof vi.fn> | null = null;
 const delivering: EmailSender = {
 	send: async (message) => {
 		sent.push(message);
@@ -82,16 +85,27 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	sent.length = 0;
 	sender = delivering;
+	issue = null;
 	mocks.getLocale.mockReturnValue("en");
 	mocks.getDoctorUser.mockResolvedValue(acting);
-	const provide = (effect: Effect.Effect<unknown, unknown, unknown>) =>
-		Effect.runPromise(
-			(effect as Effect.Effect<unknown, unknown, PatientLinks | Db | Email>).pipe(
-				Effect.provideService(PatientLinks, links as never),
-				Effect.provideService(Db, db),
-				Effect.provideService(Email, sender),
-			),
+	const provide = (effect: Effect.Effect<unknown, unknown, unknown>) => {
+		const base = (effect as Effect.Effect<unknown, unknown, PatientLinks | Db | Email>).pipe(
+			Effect.provideService(PatientLinks, links as never),
+			Effect.provideService(Db, db),
+			Effect.provideService(Email, sender),
 		);
+		return Effect.runPromise(
+			issue === null
+				? base
+				: base.pipe(
+						Effect.provideService(Invites, {
+							issue: issue as never,
+							preview: vi.fn(),
+							accept: vi.fn(),
+						}),
+					),
+		);
+	};
 	mocks.runAs.mockImplementation((_user: unknown, effect: never) => provide(effect));
 	mocks.run.mockImplementation((effect: never) => provide(effect));
 	links.list.mockReturnValue(Effect.succeed([{ id: 7, email: "ana@ktb.test", status: "active" }]));
@@ -148,6 +162,33 @@ describe("invitePatientFn", () => {
 		expect(sent[0]!.subject).toContain("Dra. Bia");
 		expect(sent[0]!.text).toContain("Ana's consultations");
 		expect(sent[0]!.text).toContain("https://app.ktb.test/portal/login");
+	});
+
+	it("sends someone with no account a single-use accept link", async () => {
+		issue = vi.fn(() => Effect.succeed("tok-123"));
+		await invitePatientFn({ data: invite });
+		expect(issue).toHaveBeenCalledWith({
+			email: "ana@ktb.test",
+			kind: "patient",
+			inviterName: "Dra. Bia",
+		});
+		expect(sent[0]!.text.split("\n")).toContain("https://app.ktb.test/invite#tok-123");
+		expect(sent[0]!.text).toContain("choose your password");
+		expect(sent[0]!.text).not.toContain("/portal/login");
+	});
+
+	it("points an address that already has an account at the portal sign-in", async () => {
+		issue = vi.fn(() => Effect.succeed(null));
+		await invitePatientFn({ data: invite });
+		expect(sent[0]!.text.split("\n")).toContain("https://app.ktb.test/portal/login");
+		expect(sent[0]!.text).toContain("Sign in with this email address");
+	});
+
+	it("issues no accept link when no email can go out", async () => {
+		issue = vi.fn(() => Effect.succeed("tok-123"));
+		sender = null;
+		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({ emailed: false });
+		expect(issue).not.toHaveBeenCalled();
 	});
 
 	it("writes the email in the acting user's locale", async () => {

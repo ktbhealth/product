@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import { Schema } from "effect";
 
 import { Email } from "@ktb/email";
+import { inviteAcceptPath } from "@ktb/invites";
 import { getDoctorContext, getLocale, getSessionUser, run, runAs } from "@ktb/server-fns";
 
 import { secretaryMessages } from "./i18n.ts";
@@ -70,19 +71,28 @@ export type InviteSecretaryResult =
 
 /**
  * Tell the invitee by email, in the inviting doctor's current locale.
+ * Someone with no account yet gets a single-use accept link that
+ * creates it; an existing account is pointed at the staff sign-in.
  * Best effort: the delegation already exists, so a deployment without
  * email or a failed delivery never fails the invite.
  */
 const notifyInvitee = async (to: string, doctorName: string): Promise<void> => {
 	const { getRequestUrl } = await import("@tanstack/react-start/server");
 	const copy = secretaryMessages(getLocale()).inviteEmail;
-	const url = new URL("/secretaries/login", getRequestUrl()).toString();
 	const sender = await run(
 		Effect.map(Effect.serviceOption(Email), (email) => Option.getOrNull(email)),
 	);
 	if (!sender) return;
+	const acceptPath = await run(
+		inviteAcceptPath({ email: to, kind: "secretary", inviterName: doctorName }),
+	);
+	const url = new URL(acceptPath ?? "/secretaries/login", getRequestUrl()).toString();
 	try {
-		await sender.send({ to, subject: copy.subject(doctorName), text: copy.body(doctorName, url) });
+		await sender.send({
+			to,
+			subject: copy.subject(doctorName),
+			text: copy.body(doctorName, url, acceptPath !== null),
+		});
 	} catch (error) {
 		console.error("secretary invite email failed", error);
 	}
