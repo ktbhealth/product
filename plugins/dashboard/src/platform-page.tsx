@@ -2,12 +2,14 @@ import type { PanelPageContext } from "@ktb/kernel";
 import type { AdminConsultationRow } from "@ktb/consultations";
 import type { ConsoleNotification } from "@ktb/notifications/context";
 import type { AdminPatientRow } from "@ktb/patients";
+import type { PluginStateEntry } from "@ktb/platform/plugin-states";
 
 import { DashboardPage } from "./views/DashboardPage.tsx";
 
 interface DashboardData {
 	readonly patients: AdminPatientRow[];
 	readonly consultations: AdminConsultationRow[];
+	readonly pluginStates?: readonly PluginStateEntry[];
 	readonly notifications?: readonly ConsoleNotification[];
 	readonly unreadCount?: number;
 }
@@ -26,9 +28,11 @@ export function DashboardPlatformPage({ data, ctx }: { data: unknown; ctx: Panel
 			patients={d.patients}
 			consultations={d.consultations}
 			plugins={ctx.plugins}
+			pluginStates={d.pluginStates}
 			notifications={d.notifications}
 			unreadCount={d.unreadCount}
 			locale={ctx.locale}
+			user={ctx.user}
 		/>
 	);
 }

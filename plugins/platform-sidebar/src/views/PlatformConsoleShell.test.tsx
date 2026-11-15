@@ -66,7 +66,7 @@ describe("PlatformConsoleShell", () => {
 
 	it("uses 'overview' leaf on the console index", () => {
 		renderShell({ pathname: "/platform" });
-		expect(screen.getByText("overview")).toBeDefined();
+		expect(screen.getByText("Overview")).toBeDefined();
 	});
 
 	it("falls back to the last path segment for unmatched routes", () => {
@@ -76,7 +76,7 @@ describe("PlatformConsoleShell", () => {
 
 	it("falls back to 'overview' when the path has no segments and matches nothing", () => {
 		renderShell({ pathname: "/", items: [] });
-		expect(screen.getByText("overview")).toBeDefined();
+		expect(screen.getByText("Overview")).toBeDefined();
 	});
 
 	it("marks the active item and calls onSignOut", async () => {
