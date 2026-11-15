@@ -7,12 +7,7 @@
  */
 
 import { deriveThemeTokens, themeRadius, tokensToCss } from "./palette.ts";
-import type {
-	ResolvedTheme,
-	ThemeBrand,
-	ThemeFontConfig,
-	ThemeSeeds,
-} from "./types.ts";
+import type { ResolvedTheme, ThemeBrand, ThemeFontConfig, ThemeSeeds } from "./types.ts";
 
 /** Minimal row shape `presentTheme` reads — structurally compatible
  * with the drizzle `theme_definitions` select row. */
@@ -37,6 +32,11 @@ const parseJson = <T>(text: string | null, fallback: T): T => {
 		return fallback;
 	}
 };
+
+/** Config columns must be JSON objects — `[]`/`"x"`/`5` parse fine but
+ * are not valid seeds/fonts/brand payloads. */
+const asConfigObject = <T extends object>(value: T | null): T | null =>
+	typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
 
 const FONT_FALLBACKS = {
 	sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -139,9 +139,9 @@ export const presentTheme = (
 	row: ThemeDefinitionRow,
 	options?: { readonly preview?: boolean },
 ): ResolvedTheme => {
-	const seeds = parseJson<ThemeSeeds>(row.seeds, {});
-	const fonts = parseJson<ThemeFontConfig | null>(row.fonts, null);
-	const brand = parseJson<ThemeBrand | null>(row.brand, null);
+	const seeds = asConfigObject(parseJson<ThemeSeeds | null>(row.seeds, null)) ?? {};
+	const fonts = asConfigObject(parseJson<ThemeFontConfig | null>(row.fonts, null));
+	const brand = asConfigObject(parseJson<ThemeBrand | null>(row.brand, null));
 	// The stored `tokens` JSON is kept for inspection only — resolution
 	// re-derives from seeds so the palette engine stays authoritative
 	// (see themeStyleCss).

@@ -55,6 +55,10 @@ export interface PortalShellProps {
 	/** Optional banner strip above the header — the host uses it for
 	 * the theme-preview marker (P-082). */
 	readonly banner?: ReactNode;
+	/** Theme override CSS (`:root`/`.dark` custom properties, P-082):
+	 * the host route injects the resolved theme's block here so the
+	 * portal shell owns exactly one style emitter per page. */
+	readonly themeCss?: string | null;
 	/** Active UI locale — injected by the host route. */
 	readonly locale?: string;
 	readonly userEmail?: string;
@@ -87,6 +91,7 @@ export function PortalShell({
 	headerActions,
 	brand,
 	banner,
+	themeCss,
 	locale = "en",
 	userEmail,
 	portals,
@@ -117,6 +122,13 @@ export function PortalShell({
 			: (current?.label ?? pathname.split("/").filter(Boolean).at(-1) ?? t.overview);
 	return (
 		<SidebarProvider className="h-dvh min-h-0">
+			{/* Exactly one theme style block per portal page (P-082):
+			    :root + .dark overrides resolved server-side by the route
+			    loader. .dark stays user-preference driven — the block only
+			    redefines the custom properties inside it. */}
+			{themeCss !== undefined && themeCss !== null && themeCss !== "" ? (
+				<style dangerouslySetInnerHTML={{ __html: themeCss }} />
+			) : null}
 			<Sidebar collapsible="none" className="border-sidebar-border border-r">
 				<SidebarHeader>
 					<div className="flex items-center gap-2 px-2 pt-1">
@@ -125,9 +137,7 @@ export function PortalShell({
 						    image size — so a theme swap can't shift layout.
 						    The instance badge stays host-owned either way. */}
 						<div className="flex h-6 min-w-0 items-center overflow-hidden">
-							{brand ?? (
-								<span className="text-sm font-bold tracking-tight">KTB</span>
-							)}
+							{brand ?? <span className="text-sm font-bold tracking-tight">KTB</span>}
 						</div>
 						<span className="rounded border border-sidebar-border px-1 py-0.5 text-[10px] text-muted-foreground uppercase">
 							{instance.label}

@@ -28,12 +28,12 @@ import {
  * so non-admin requests can never steer branding.
  */
 
-const ScopeInput = Schema.Union(
+const ScopeInput = Schema.Union([
 	Schema.Struct({ scope: Schema.Literal("session") }),
 	Schema.Struct({ scope: Schema.Literal("tenant") }),
 	Schema.Struct({ scope: Schema.Literal("platform") }),
 	Schema.Struct({ scope: Schema.Literal("portal-instance"), id: Schema.String }),
-);
+]);
 const decodeScope = Schema.decodeUnknownSync(ScopeInput);
 
 /** Cookie read/write helpers — dynamically imported so this module
@@ -118,6 +118,24 @@ export const listThemesFn = createServerFn({ method: "GET" }).handler(
 	},
 );
 
+const GetInput = Schema.Struct({ id: Schema.Number });
+const decodeGet = Schema.decodeUnknownSync(GetInput);
+
+/** Full theme by id for the admin editor — seeds/fonts/brand +
+ * derived tokens. Non-admins get null (the service gate denies). */
+export const getThemeFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodeGet(input))
+	.handler(async ({ data }): Promise<ResolvedTheme | null> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const theme = yield* Theme;
+				return yield* theme.get(data.id);
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null as ResolvedTheme | null))),
+		);
+	});
+
 const PublishInput = Schema.Struct({
 	id: Schema.optional(Schema.Number),
 	scope: Schema.Literals(["platform", "tenant", "portal-instance"]),
@@ -161,7 +179,10 @@ export const setThemeEnabledFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeEnabled(input))
 	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
 		const user = await ensureSessionUser();
-		await runAs(user, Effect.flatMap(Theme, (t) => t.setEnabled(data.id, data.enabled)));
+		await runAs(
+			user,
+			Effect.flatMap(Theme, (t) => t.setEnabled(data.id, data.enabled)),
+		);
 		return { ok: true };
 	});
 

@@ -6,6 +6,7 @@
 		".": "./src/index.ts",
 		"./fns": "./src/fns.ts",
 		"./head": "./src/head.ts",
+		"./i18n": "./src/i18n.ts",
 		"./palette": "./src/palette.ts",
 		"./types": "./src/types.ts",
 		"./views": "./src/views/index.ts"

@@ -62,7 +62,10 @@ export async function getThemeById(db: DbClient, id: number): Promise<ThemeRow |
 
 /** All definitions for the admin list — enabled flag included. */
 export async function listThemes(db: DbClient): Promise<ThemeRow[]> {
-	return db.select().from(themeDefinitions).orderBy(asc(themeDefinitions.scope), asc(themeDefinitions.scopeId));
+	return db
+		.select()
+		.from(themeDefinitions)
+		.orderBy(asc(themeDefinitions.scope), asc(themeDefinitions.scopeId));
 }
 
 export interface ThemePublishInput {
@@ -125,21 +128,21 @@ export async function setThemeEnabled(db: DbClient, id: number, enabled: boolean
 
 // ---------- scope → candidate chain ----------
 
-interface Candidate {
+export interface ThemeCandidate {
 	readonly scope: string;
 	readonly scopeId: string;
 }
 
 /** Ordered fallback chain for a resolve request. The bound `Tenant`
  * contributes the tenant candidate when present (personal scope skips
- * it). */
-const candidatesFor = (
+ * it). Exported for tests — the chain is the contract. */
+export const themeCandidates = (
 	request: ThemeResolveRequest,
 	tenantId: number | null,
-): readonly Candidate[] => {
-	const tenantCandidate: Candidate[] =
+): readonly ThemeCandidate[] => {
+	const tenantCandidate: ThemeCandidate[] =
 		tenantId === null ? [] : [{ scope: "tenant", scopeId: String(tenantId) }];
-	const platform: Candidate = { scope: "platform", scopeId: "" };
+	const platform: ThemeCandidate = { scope: "platform", scopeId: "" };
 	switch (request.scope) {
 		case "platform":
 			return [platform];
@@ -147,11 +150,7 @@ const candidatesFor = (
 		case "session":
 			return [...tenantCandidate, platform];
 		case "portal-instance":
-			return [
-				{ scope: "portal-instance", scopeId: request.id },
-				...tenantCandidate,
-				platform,
-			];
+			return [{ scope: "portal-instance", scopeId: request.id }, ...tenantCandidate, platform];
 	}
 };
 
@@ -169,9 +168,7 @@ const candidatesFor = (
 export class Theme extends Context.Service<
 	Theme,
 	{
-		readonly resolve: (
-			request?: ThemeResolveRequest,
-		) => Effect.Effect<ResolvedTheme | null>;
+		readonly resolve: (request?: ThemeResolveRequest) => Effect.Effect<ResolvedTheme | null>;
 		readonly list: () => Effect.Effect<ThemeSummary[], Forbidden>;
 		/** Full presented theme by id — the admin editor loads seeds,
 		 * fonts and brand through this. Admin-gated. */
@@ -203,10 +200,12 @@ export const ThemeLive = Layer.effect(
 			request: ThemeResolveRequest = { scope: "session" },
 		) {
 			const tenant = yield* Tenant;
-			const candidates = candidatesFor(request, tenantScopeId(tenant));
+			const candidates = themeCandidates(request, tenantScopeId(tenant));
 			for (const candidate of candidates) {
-				const row = yield* findTheme(db, candidate.scope, candidate.scopeId).pipe(
-					Effect.catchAllCause((cause) =>
+				const row = yield* Effect.promise(() =>
+					findTheme(db, candidate.scope, candidate.scopeId),
+				).pipe(
+					Effect.catchCause((cause) =>
 						Effect.logWarning("theme resolve read failed", cause).pipe(
 							Effect.as(null as ThemeRow | null),
 						),
@@ -233,12 +232,8 @@ export const ThemeLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				// Existing row for this scope wins the update path — upsert
 				// by natural key, not by client-supplied id.
-				const existing = yield* Effect.promise(() =>
-					findThemeAny(db, input.scope, input.scopeId),
-				);
-				const row = yield* Effect.promise(() =>
-					upsertTheme(db, input, existing?.id),
-				);
+				const existing = yield* Effect.promise(() => findThemeAny(db, input.scope, input.scopeId));
+				const row = yield* Effect.promise(() => upsertTheme(db, input, existing?.id));
 				if (row === null) {
 					return yield* Effect.die(new Error("theme upsert returned no row"));
 				}

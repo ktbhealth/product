@@ -54,7 +54,10 @@ export const themeHead = (theme: ResolvedTheme): ThemeHead => {
 /** Convenience: links + styles only (routes that keep their own meta). */
 export const themeAssets = (
 	theme: ResolvedTheme | null | undefined,
-): { readonly links: readonly HeadTag[]; readonly styles: readonly { readonly children: string }[] } => {
+): {
+	readonly links: readonly HeadTag[];
+	readonly styles: readonly { readonly children: string }[];
+} => {
 	if (theme === null || theme === undefined) return { links: [], styles: [] };
 	const head = themeHead(theme);
 	return { links: head.links, styles: head.styles };

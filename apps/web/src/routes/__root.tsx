@@ -26,6 +26,10 @@ import {
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
 import { sessionFn, pluginStatesFn } from "#/lib/fns.ts";
+import { themeScopeFn } from "@ktb/theme/fns";
+import { themeHead, themeTitle } from "@ktb/theme/head";
+import { ThemePreviewBanner } from "@ktb/theme/views";
+import type { ResolvedTheme } from "@ktb/theme/types";
 import { plugins } from "#/plugins.ts";
 import type { ChromeContribution, ChromeProps } from "@ktb/kernel";
 import appCss from "../styles.css?url";
@@ -35,29 +39,63 @@ import appCss from "../styles.css?url";
 // of all shell regions so console.* contributions aren't false positives.
 if (import.meta.env.DEV) warnUnknownChromeRegions(plugins, KNOWN_CHROME_REGIONS);
 
+/** Console surfaces own the whole viewport and resolve their OWN theme
+ * (portal-instance → tenant → platform) in their route loaders — the
+ * app shell must not double-inject branding there (P-082). */
+const isConsolePathname = (pathname: string): boolean => {
+	if (pathname === "/platform" || pathname.startsWith("/platform/")) return true;
+	if (!pathname.startsWith("/portal/")) return false;
+	const segment = pathname.slice("/portal/".length).split("/")[0];
+	return (
+		segment !== undefined &&
+		segment !== "" &&
+		portalInstances.some((e) => e.instance.id === segment)
+	);
+};
+
 export const Route = createRootRoute({
 	// Session user + enabled plugin ids (P-058) — chrome/landing/panel
-	// contributions are filtered by the enabled set before render.
+	// contributions are filtered by the enabled set before render. The
+	// theme resolves session → tenant → platform (P-082); console paths
+	// ignore it (their shells resolve per-instance themes).
 	loader: async () => ({
 		user: await sessionFn(),
 		pluginStates: await pluginStatesFn(),
+		theme: await themeScopeFn({ data: { scope: "session" } }),
 	}),
-	head: () => ({
-		meta: [
-			{ charSet: "utf-8" },
-			{ name: "viewport", content: "width=device-width, initial-scale=1" },
-			{ title: m.meta_title() },
-			{ name: "description", content: m.meta_description() },
-			{ name: "robots", content: "index, follow" },
-			{ property: "og:type", content: "website" },
-			{ property: "og:title", content: m.meta_title() },
-			{ property: "og:description", content: m.meta_description() },
-			{ name: "twitter:card", content: "summary" },
-			{ name: "twitter:title", content: m.meta_title() },
-			{ name: "twitter:description", content: m.meta_description() },
-		],
-		links: [{ rel: "stylesheet", href: appCss }],
-	}),
+	head: (ctx) => {
+		const loaderData = ctx?.loaderData;
+		const pathname = ctx?.match?.pathname ?? "";
+		const theme =
+			loaderData?.theme !== null && loaderData?.theme !== undefined && !isConsolePathname(pathname)
+				? (loaderData.theme as ResolvedTheme)
+				: null;
+		const themed = theme === null ? null : themeHead(theme);
+		const title = theme === null ? null : themeTitle(theme);
+		return {
+			meta: [
+				{ charSet: "utf-8" },
+				{ name: "viewport", content: "width=device-width, initial-scale=1" },
+				{ title: title ?? m.meta_title() },
+				{ name: "description", content: m.meta_description() },
+				{ name: "robots", content: "index, follow" },
+				{ property: "og:type", content: "website" },
+				{ property: "og:title", content: title ?? m.meta_title() },
+				{ property: "og:description", content: m.meta_description() },
+				{ name: "twitter:card", content: "summary" },
+				{ name: "twitter:title", content: title ?? m.meta_title() },
+				{ name: "twitter:description", content: m.meta_description() },
+				// Theme og:image only (P-082) — the rest of the theme head
+				// (favicon/font links) rides `links` below.
+				...(themed?.meta ?? []),
+			],
+			links: [
+				{ rel: "stylesheet", href: appCss },
+				// Favicon + font-delivery links from the resolved theme.
+				...(themed?.links ?? []),
+			],
+		};
+	},
 	shellComponent: RootDocument,
 	errorComponent: RootError,
 	notFoundComponent: () => (
@@ -127,7 +165,7 @@ function TelemetryInit() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	const { user, pluginStates } = Route.useLoaderData();
+	const { user, pluginStates, theme } = Route.useLoaderData();
 	// A patient account (no doctor profile to act as) only ever sees the
 	// patient portal: no doctor navigation, nothing that creates or
 	// switches doctor profiles.
@@ -139,15 +177,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	// max-w-6xl column don't wrap them. /portal itself and the patient
 	// portal's physical routes keep the marketing chrome: their first
 	// segment is not a contributed instance id.
-	const portalSegment = pathname.startsWith("/portal/")
-		? pathname.slice("/portal/".length).split("/")[0]
-		: undefined;
-	const isPortalInstancePath =
-		portalSegment !== undefined &&
-		portalSegment !== "" &&
-		portalInstances.some((e) => e.instance.id === portalSegment);
-	const isConsole =
-		pathname === "/platform" || pathname.startsWith("/platform/") || isPortalInstancePath;
+	const isConsole = isConsolePathname(pathname);
+	// Theme style block (P-082): exactly one `<style>` per app-shell page,
+	// emitted only off-console — portal shells resolve and inject their
+	// own instance theme. `.dark` inside the block stays user-preference
+	// driven; the override only redefines custom properties.
+	const themeCss =
+		!isConsole && theme !== null && theme !== undefined
+			? `${theme.styleCss}\n${theme.fontFaceCss}`.trim()
+			: "";
 	// Enabled-state filter (P-058): disabled plugins contribute nothing
 	// to any chrome region.
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
@@ -229,10 +267,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			<body className="flex min-h-screen flex-col bg-background text-foreground antialiased">
 				<TooltipProvider>
 					<TelemetryInit />
+					{themeCss !== "" ? <style dangerouslySetInnerHTML={{ __html: themeCss }} /> : null}
 					{isConsole ? (
 						children
 					) : (
 						<>
+							{theme?.preview === true ? <ThemePreviewBanner locale={getLocale()} /> : null}
 							<header className="sticky top-0 z-40 border-b border-border bg-background">
 								<nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
 									{brand}

@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { PaletteIcon } from "lucide-react";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -21,15 +20,9 @@ import {
 } from "@ktbhealth/ui/components/table";
 import type { PanelPageContext, Plugin } from "@ktb/kernel";
 
-import {
-	getThemeFn,
-	listThemesFn,
-	publishThemeFn,
-	setThemeEnabledFn,
-	setThemePreviewFn,
-} from "../fns.ts";
+import { getThemeFn, publishThemeFn, setThemeEnabledFn, setThemePreviewFn } from "../fns.ts";
 import { themeMessages } from "../i18n.ts";
-import { contrastReport, deriveThemeTokens, parseColor, type ContrastPair } from "../palette.ts";
+import { contrastReport, deriveThemeTokens, type ContrastPair } from "../palette.ts";
 import type {
 	ResolvedTheme,
 	ThemeFontConfig,
@@ -94,9 +87,6 @@ const fieldsToSeeds = (f: SeedFields, dark: SeedFields): ThemeSeeds => {
 		...(hasDark ? { dark: darkSeeds } : {}),
 	};
 };
-
-const swatch = (css: string | undefined) =>
-	css !== undefined && parseColor(css) !== null;
 
 function SeedInputs({
 	fields,
@@ -165,12 +155,8 @@ function ContrastTable({
 					{report.map((p) => (
 						<TableRow key={p.name}>
 							<TableCell className="font-mono text-xs">{p.name}</TableCell>
-							<TableCell className="text-right font-mono text-xs">
-								{p.ratio}:1
-							</TableCell>
-							<TableCell className="text-right text-xs text-muted-foreground">
-								{p.min}:1
-							</TableCell>
+							<TableCell className="text-right font-mono text-xs">{p.ratio}:1</TableCell>
+							<TableCell className="text-right text-xs text-muted-foreground">{p.min}:1</TableCell>
 							<TableCell className="text-right">
 								<Badge variant={p.ok ? "default" : "destructive"}>
 									{p.ok ? passLabel : failLabel}
@@ -246,10 +232,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 		[ctx.plugins],
 	);
 
-	const currentSeeds = useMemo(
-		() => fieldsToSeeds(seeds, darkSeeds),
-		[seeds, darkSeeds],
-	);
+	const currentSeeds = useMemo(() => fieldsToSeeds(seeds, darkSeeds), [seeds, darkSeeds]);
 	const previewTokens = useMemo(() => deriveThemeTokens(currentSeeds), [currentSeeds]);
 	const lightReport = useMemo(() => contrastReport(previewTokens, "light"), [previewTokens]);
 	const darkReport = useMemo(() => contrastReport(previewTokens, "dark"), [previewTokens]);
@@ -297,9 +280,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 				mono: fontMono.trim() === "" ? null : fontMono.trim(),
 			};
 			const hasFamilies = Object.values(families).some((v) => v !== null);
-			const fonts: ThemeFontConfig | null = hasFamilies
-				? { delivery, families }
-				: null;
+			const fonts: ThemeFontConfig | null = hasFamilies ? { delivery, families } : null;
 			await publishThemeFn({
 				data: {
 					scope,
@@ -421,9 +402,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 				/>
 
 				<details className="rounded-md border border-border p-3">
-					<summary className="cursor-pointer text-sm font-medium">
-						{t.darkTitle}
-					</summary>
+					<summary className="cursor-pointer text-sm font-medium">{t.darkTitle}</summary>
 					<p className="mt-1 text-xs text-muted-foreground">{t.darkDescription}</p>
 					<div className="mt-3">
 						<SeedInputs
@@ -452,16 +431,10 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 							<NativeSelect
 								id="theme-font-delivery"
 								value={delivery}
-								onChange={(e) =>
-									setDelivery(e.target.value as "self-host" | "google-fonts")
-								}
+								onChange={(e) => setDelivery(e.target.value as "self-host" | "google-fonts")}
 							>
-								<NativeSelectOption value="self-host">
-									{t.fontsSelfHost}
-								</NativeSelectOption>
-								<NativeSelectOption value="google-fonts">
-									{t.fontsGoogle}
-								</NativeSelectOption>
+								<NativeSelectOption value="self-host">{t.fontsSelfHost}</NativeSelectOption>
+								<NativeSelectOption value="google-fonts">{t.fontsGoogle}</NativeSelectOption>
 							</NativeSelect>
 							{delivery === "google-fonts" ? (
 								<p className="text-xs text-amber-600">{t.fontsGoogleWarning}</p>
@@ -541,7 +514,6 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 						{busy === "publish" ? t.publishing : t.publish}
 					</Button>
 					{notice !== null ? <span className="text-sm text-muted-foreground">{notice}</span> : null}
-					{swatch(seeds.primary) ? null : null}
 				</div>
 			</section>
 
@@ -550,9 +522,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 					<h2 className="text-sm font-medium">{t.listTitle}</h2>
 				</header>
 				{themes.length === 0 ? (
-					<p className="px-3 py-6 text-center text-sm text-muted-foreground">
-						{t.emptyList}
-					</p>
+					<p className="px-3 py-6 text-center text-sm text-muted-foreground">{t.emptyList}</p>
 				) : (
 					<Table>
 						<TableHeader>
@@ -603,9 +573,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 												onClick={() => void preview(theme.id)}
 												disabled={busy !== null}
 											>
-												{busy === `preview-${theme.id}` ? (
-													<Spinner className="size-3.5" />
-												) : null}
+												{busy === `preview-${theme.id}` ? <Spinner className="size-3.5" /> : null}
 												{t.previewAction}
 											</Button>
 										</div>

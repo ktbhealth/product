@@ -17,6 +17,10 @@ import {
 	NotificationsDataContext,
 	type NotificationsActions,
 } from "@ktb/notifications/context";
+import { themeScopeFn } from "@ktb/theme/fns";
+import { themeHead, themeTitle } from "@ktb/theme/head";
+import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
+import type { ResolvedTheme } from "@ktb/theme/types";
 
 import {
 	adminListAudioJobsFn,
@@ -28,6 +32,7 @@ import {
 	portalAudiencesFn,
 } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
+import { portalChromeProps } from "#/lib/chrome-props.ts";
 import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
 import {
 	collectChrome,
@@ -89,8 +94,13 @@ export const Route = createFileRoute("/platform")({
 		// Enabled-state gate (P-058): skip feeds whose plugin package is
 		// fully disabled — the CQRS/service calls would fail or return
 		// data for a plugin the admin turned off. Audience rules (P-081)
-		// feed the shell's portal switcher.
-		const [pluginStates, audiences] = await Promise.all([pluginStatesFn(), portalAudiencesFn()]);
+		// feed the shell's portal switcher. The theme resolves
+		// portal-instance ("platform") → tenant → platform (P-082).
+		const [pluginStates, audiences, theme] = await Promise.all([
+			pluginStatesFn(),
+			portalAudiencesFn(),
+			themeScopeFn({ data: { scope: "portal-instance", id: "platform" } }),
+		]);
 		const enabled = enabledIdSet(pluginStates);
 		return {
 			audioJobs:
@@ -102,6 +112,22 @@ export const Route = createFileRoute("/platform")({
 					? await listMyNotificationsFn()
 					: [],
 			audiences,
+			theme,
+		};
+	},
+	// Theme head projection (P-082): favicon/OG/font links + title from
+	// the resolved instance theme. The `:root`/`.dark` style block is
+	// NOT emitted here — PortalShell owns the single style emitter via
+	// `themeCss`, so console pages never double-inject.
+	head: (ctx) => {
+		const theme = ((ctx?.loaderData as { theme?: ResolvedTheme | null } | undefined)?.theme ??
+			null) as ResolvedTheme | null;
+		if (theme === null) return {};
+		const head = themeHead(theme);
+		const title = themeTitle(theme);
+		return {
+			meta: [...(title !== null ? [{ title }] : []), ...head.meta],
+			links: [...head.links],
 		};
 	},
 	component: PlatformLayout,
@@ -112,7 +138,7 @@ const rootApi = getRouteApi("__root__");
 function PlatformLayout() {
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const { user, pluginStates } = rootApi.useLoaderData();
-	const { audioJobs, notifications, audiences } = Route.useLoaderData();
+	const { audioJobs, notifications, audiences, theme } = Route.useLoaderData();
 	const locale = getLocale();
 	// Enabled-state filter (P-058): disabled plugins contribute no
 	// sidebar items or header actions.
@@ -145,6 +171,35 @@ function PlatformLayout() {
 						: [],
 			)
 		: undefined;
+	// Brand slot (P-082): resolved theme's brand mark plus any
+	// `portal.brand` chrome components scoped to this instance. Absent
+	// both → PortalShell falls back to the host-owned "KTB" wordmark.
+	const chromeProps = portalChromeProps(user, locale, visiblePlugins, async () => {
+		await authClient.signOut();
+		window.location.assign("/");
+	});
+	const brandComponents = collectChrome(
+		visiblePlugins,
+		"portal.brand",
+		pathname,
+		"platform",
+	).flatMap((entry) =>
+		entry.content.kind === "component"
+			? [createElement(entry.content.component, { key: entry.id, ...chromeProps })]
+			: [],
+	);
+	const hasThemeBrand =
+		theme !== null && theme !== undefined && (theme.brand !== null || (theme.appName ?? "") !== "");
+	const brand =
+		hasThemeBrand || brandComponents.length > 0 ? (
+			<>
+				{hasThemeBrand ? <ThemeBrandMark theme={theme} /> : null}
+				{brandComponents}
+			</>
+		) : undefined;
+	// PortalShell owns the single theme style emitter (P-082).
+	const themeCss =
+		theme !== null && theme !== undefined ? `${theme.styleCss}\n${theme.fontFaceCss}`.trim() : null;
 	// Portal switcher (P-081): every instance whose audience rule the
 	// session satisfies — the shell hides the picker below two.
 	const switchablePortals = portalInstances
@@ -171,6 +226,9 @@ function PlatformLayout() {
 						locale={locale}
 						userEmail={user?.email}
 						headerActions={headerActions}
+						brand={brand}
+						banner={theme?.preview === true ? <ThemePreviewBanner locale={locale} /> : undefined}
+						themeCss={themeCss}
 						portals={switchablePortals}
 						onSignOut={async () => {
 							await authClient.signOut();

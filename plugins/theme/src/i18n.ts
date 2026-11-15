@@ -233,7 +233,8 @@ const es: ThemeMessages = {
 	seedDestructive: "Destructivo",
 	seedRadius: "Radio",
 	darkTitle: "Anulaciones del tema oscuro",
-	darkDescription: "Opcional — déjelo vacío para derivar el modo oscuro de los mismos colores base.",
+	darkDescription:
+		"Opcional — déjelo vacío para derivar el modo oscuro de los mismos colores base.",
 	fontsTitle: "Tipografía",
 	fontsDeliveryLabel: "Entrega de fuentes",
 	fontsSelfHost: "Autoalojada (recomendado)",
@@ -264,7 +265,8 @@ const es: ThemeMessages = {
 	colEnabled: "Activo",
 	colVersion: "v",
 	colActions: "Acciones",
-	emptyList: "Aún no hay temas definidos — los valores predeterminados de la ui aplican en todas partes.",
+	emptyList:
+		"Aún no hay temas definidos — los valores predeterminados de la ui aplican en todas partes.",
 	previewAction: "Vista previa",
 	previewing: "Vista previa…",
 	edit: "Editar",

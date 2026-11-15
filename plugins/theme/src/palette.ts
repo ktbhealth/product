@@ -29,11 +29,6 @@ const srgbToLinear = (v: number) => {
 	return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 };
 
-const linearToSrgb = (v: number) => {
-	const c = clamp01(v);
-	return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
-};
-
 /** OKLab → linear sRGB (clamped). */
 export const oklchToLinearRgb = ({ l, c, h }: Oklch): readonly [number, number, number] => {
 	const hr = (h * Math.PI) / 180;
@@ -169,9 +164,11 @@ export const parseColor = (input: string | null | undefined): Oklch | null => {
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
-/** Format an OKLCH color as a CSS `oklch(L C H)` string. */
+/** Format an OKLCH color as a CSS `oklch(L C H)` string. L keeps 3
+ * decimals — 2-decimal rounding can drop a just-passing foreground
+ * below its AA floor after serialization. */
 export const formatOklch = ({ l, c, h }: Oklch): string =>
-	`oklch(${r2(clamp01(l))} ${r3(Math.max(0, c))} ${r2(((h % 360) + 360) % 360)})`;
+	`oklch(${r3(clamp01(l))} ${r3(Math.max(0, c))} ${r2(((h % 360) + 360) % 360)})`;
 
 // ---------- contrast enforcement ----------
 
@@ -183,19 +180,33 @@ export const formatOklch = ({ l, c, h }: Oklch): string =>
  * extreme is returned.
  */
 export const ensureContrast = (fg: Oklch, bg: Oklch, min = 4.5): Oklch => {
-	if (contrastRatio(fg, bg) >= min) return fg;
-	// Darken when bg is light, lighten when bg is dark.
-	const towardDark = relativeLuminance(bg) > 0.35;
-	const step = towardDark ? -0.01 : 0.01;
-	let best = towardDark ? { ...fg, l: 0 } : { ...fg, l: 1 };
-	for (let l = fg.l + step; towardDark ? l >= 0 : l <= 1; l += step) {
-		const candidate = { ...fg, l };
-		if (contrastRatio(candidate, bg) >= min) {
-			best = candidate;
-			break;
+	// +0.1 headroom: the walk stops at the FIRST passing lightness, so
+	// the result sits exactly on the boundary — CSS serialization
+	// rounding must never push it back under `min`.
+	const target = min + 0.1;
+	if (contrastRatio(fg, bg) >= target) return fg;
+	// Walk toward whichever extreme (l=0 or l=1) contrasts better with
+	// bg — bg luminance alone misleads on saturated mid-lightness
+	// surfaces, so compare the two extremes directly. If even the
+	// extreme fails (saturated fg keeps chroma at the lightness floor),
+	// shed chroma progressively — contrast beats hue fidelity for
+	// text.
+	for (const chromaScale of [1, 0.5, 0]) {
+		const base = { ...fg, c: fg.c * chromaScale };
+		const darkExtreme = { ...base, l: 0 };
+		const lightExtreme = { ...base, l: 1 };
+		const towardDark = contrastRatio(darkExtreme, bg) >= contrastRatio(lightExtreme, bg);
+		const step = towardDark ? -0.01 : 0.01;
+		let best = towardDark ? darkExtreme : lightExtreme;
+		for (let l = base.l + step; towardDark ? l >= 0 : l <= 1; l += step) {
+			const candidate = { ...base, l };
+			if (contrastRatio(candidate, bg) >= target) return candidate;
 		}
+		// No passing lightness at this chroma — keep the best extreme
+		// and try shedding more chroma.
+		if (chromaScale === 0) return best;
 	}
-	return best;
+	return fg;
 };
 
 const WHITE: Oklch = { l: 1, c: 0, h: 0 };
@@ -208,17 +219,17 @@ const INK: Oklch = { l: 0.22, c: 0, h: 0 };
  * better side until the pair passes — the returned `bg` is the
  * auto-corrected fill and `fg` its compliant foreground.
  */
-export const ensurePair = (
-	bg: Oklch,
-	min = 4.5,
-): { readonly bg: Oklch; readonly fg: Oklch } => {
+export const ensurePair = (bg: Oklch, min = 4.5): { readonly bg: Oklch; readonly fg: Oklch } => {
+	// Same serialization headroom as ensureContrast — the emitted CSS
+	// rounds to 3 decimals and must stay >= min after rounding.
+	const target = min + 0.1;
 	let current = bg;
 	for (let i = 0; i < 100; i++) {
 		const whiteRatio = contrastRatio(WHITE, current);
 		const inkRatio = contrastRatio(INK, current);
 		const useWhite = whiteRatio >= inkRatio;
 		const ratio = useWhite ? whiteRatio : inkRatio;
-		if (ratio >= min) return { bg: current, fg: useWhite ? WHITE : INK };
+		if (ratio >= target) return { bg: current, fg: useWhite ? WHITE : INK };
 		// Move bg away from the chosen fg: darken for white text,
 		// lighten for ink.
 		const next = useWhite ? current.l - 0.01 : current.l + 0.01;
@@ -227,9 +238,7 @@ export const ensurePair = (
 	}
 	const whiteRatio = contrastRatio(WHITE, current);
 	const inkRatio = contrastRatio(INK, current);
-	return whiteRatio >= inkRatio
-		? { bg: current, fg: WHITE }
-		: { bg: current, fg: INK };
+	return whiteRatio >= inkRatio ? { bg: current, fg: WHITE } : { bg: current, fg: INK };
 };
 
 // ---------- seed → token derivation ----------
@@ -238,8 +247,7 @@ export const ensurePair = (
  * theme with no seeds reproduces the ui defaults exactly. */
 const FALLBACK: Oklch = { l: 0.5, c: 0.11, h: 259.02 };
 
-const seed = (value: string | undefined, fallback: Oklch): Oklch =>
-	parseColor(value) ?? fallback;
+const seed = (value: string | undefined, fallback: Oklch): Oklch => parseColor(value) ?? fallback;
 
 const NEUTRAL = (l: number, c: number, h: number): Oklch => ({ l, c, h });
 
@@ -329,11 +337,7 @@ const buildMode = (
 	const card = dark ? tint(anchors.card.l, 0.1) : background;
 	const cardForeground = ensureContrast(foreground, card, 7);
 	const secondary = seed(input.secondary, tint(anchors.secondary.l, 0.4));
-	const secondaryForeground = ensureContrast(
-		seed(undefined, anchors.secondaryFg),
-		secondary,
-		4.5,
-	);
+	const secondaryForeground = ensureContrast(seed(undefined, anchors.secondaryFg), secondary, 4.5);
 	const muted = tint(anchors.muted.l, 0.2);
 	const mutedForeground = ensureContrast(seed(undefined, anchors.mutedFg), muted, 4.5);
 	const accent = seed(input.accent, tint(anchors.accent.l, 0.6));
