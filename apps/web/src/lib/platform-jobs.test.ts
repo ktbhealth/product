@@ -30,10 +30,14 @@ describe("platform jobs enqueuer", () => {
 			});
 
 			expect(runtime.jobs).toBeDefined();
-			const envelope = (await runtime.jobs!.enqueue("test.kind", { v: 1 }, {
-				tenantId: 3,
-				payloadRef: "ref-1",
-			})) as JobEnvelope;
+			const envelope = (await runtime.jobs!.enqueue(
+				"test.kind",
+				{ v: 1 },
+				{
+					tenantId: 3,
+					payloadRef: "ref-1",
+				},
+			)) as JobEnvelope;
 			expect(envelope).toMatchObject({
 				kind: "test.kind",
 				payload: { v: 1 },

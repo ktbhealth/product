@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { makeDb } from "@ktb/db";
+import { makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 
 import {
@@ -95,7 +95,7 @@ describe("envelope + record schemas", () => {
 			updatedAt: 2,
 		};
 		expect(decodeRecord(row)).toEqual(row);
-		expect(() => decodeRecord({ ...row, status: "bogus" })).toThrow();
+		expect(() => decodeRecord({ ...row, status: "bogus" })).toThrow('Expected "queued"');
 	});
 });
 
@@ -157,9 +157,11 @@ describe("job_runs repo helpers", () => {
 		expect((await listJobRuns(db, { status: "failed" })).map((r) => r.id)).toEqual(["b"]);
 		expect((await listJobRuns(db, { tenantId: null })).map((r) => r.id)).toEqual(["c", "a"]);
 		expect((await listJobRuns(db, { tenantId: 7 })).map((r) => r.id)).toEqual(["b"]);
-		expect((await listJobRuns(db, { kind: "k1", status: "queued", tenantId: null, limit: 1 })).map(
-			(r) => r.id,
-		)).toEqual(["c"]);
+		expect(
+			(await listJobRuns(db, { kind: "k1", status: "queued", tenantId: null, limit: 1 })).map(
+				(r) => r.id,
+			),
+		).toEqual(["c"]);
 	});
 });
 
@@ -202,7 +204,7 @@ describe("makeJobs (enqueue port)", () => {
 	});
 
 	it("rejects empty kinds before touching transport or projection", async () => {
-		const send = vi.fn(async () => ({}));
+		const send = vi.fn<(envelope: JobEnvelope) => Promise<unknown>>(async () => ({}));
 		const { db } = makeTestDb();
 		const jobs = makeJobs({ send, db });
 		await expect(jobs.enqueue("", {})).rejects.toThrow("non-empty");
@@ -228,9 +230,9 @@ describe("makeJobs (enqueue port)", () => {
 	});
 
 	it("propagates projection insert failures before anything is sent", async () => {
-		const send = vi.fn(async () => ({}));
+		const send = vi.fn<(envelope: JobEnvelope) => Promise<unknown>>(async () => ({}));
 		const jobs = makeJobs({ send, db: {} as DbClient });
-		await expect(jobs.enqueue("k", {})).rejects.toThrow();
+		await expect(jobs.enqueue("k", {})).rejects.toThrow("db.insert");
 		expect(send).not.toHaveBeenCalled();
 	});
 
@@ -283,7 +285,9 @@ describe("makeJobConsumer", () => {
 
 	it("acks poison bodies without touching handlers or the projection", async () => {
 		const { db } = makeTestDb();
-		const handle = vi.fn(async () => {});
+		const handle = vi.fn<(payload: unknown, envelope: JobEnvelope) => Promise<void>>(
+			async () => {},
+		);
 		const consumer = makeJobConsumer({
 			handlers: { "test.ping": { handle } },
 			db,

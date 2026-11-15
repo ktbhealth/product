@@ -91,7 +91,11 @@ const runValues = (run: JobRunWrite, now: number) => ({
 });
 
 /** Insert a fresh projection row (enqueue path — ids are unique). */
-export const insertJobRun = async (db: DbClient, run: JobRunWrite, now = Date.now()): Promise<void> => {
+export const insertJobRun = async (
+	db: DbClient,
+	run: JobRunWrite,
+	now = Date.now(),
+): Promise<void> => {
 	await db.insert(jobRuns).values(runValues(run, now));
 };
 
@@ -100,7 +104,11 @@ export const insertJobRun = async (db: DbClient, run: JobRunWrite, now = Date.no
  * the mutable fields move — status, error, updatedAt — so identity
  * fields written at enqueue (payloadRef, tenantId, kind) are preserved.
  */
-export const upsertJobRun = async (db: DbClient, run: JobRunWrite, now = Date.now()): Promise<void> => {
+export const upsertJobRun = async (
+	db: DbClient,
+	run: JobRunWrite,
+	now = Date.now(),
+): Promise<void> => {
 	await db
 		.insert(jobRuns)
 		.values(runValues(run, now))
@@ -137,7 +145,10 @@ export interface JobRunFilter {
 }
 
 /** Console-feed read: newest first, optionally filtered. */
-export const listJobRuns = async (db: DbClient, filter: JobRunFilter = {}): Promise<JobRecord[]> => {
+export const listJobRuns = async (
+	db: DbClient,
+	filter: JobRunFilter = {},
+): Promise<JobRecord[]> => {
 	const conditions: SQL[] = [];
 	if (filter.kind !== undefined) conditions.push(eq(jobRuns.kind, filter.kind));
 	if (filter.status !== undefined) conditions.push(eq(jobRuns.status, filter.status));
