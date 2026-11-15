@@ -54,6 +54,13 @@ export class TtsPort extends Context.Service<
 			readonly script: string;
 			readonly voiceId: string;
 			readonly acoustic: AcousticProfile;
+			/** Multi-speaker render: per-turn texts + voice aliases
+			 * keyed by speaker. When present, adapters synthesize each
+			 * turn with `speakerVoices[turn.speaker]` (falling back to
+			 * `voiceId`) and concatenate into ONE audio. Absent =
+			 * single-voice render of `script`. */
+			readonly turns?: readonly { readonly speaker: string; readonly text: string }[];
+			readonly speakerVoices?: Readonly<Record<string, string>>;
 		}) => Effect.Effect<{ audio: AudioRef; record: RunRecord }, PortError>;
 	}
 >()("@ktb/eval-consultation/TtsPort") {}
@@ -159,3 +166,54 @@ export class DatasetStorePort extends Context.Service<
 		}) => Effect.Effect<readonly SampleResult[], PortError>;
 	}
 >()("@ktb/eval-consultation/DatasetStorePort") {}
+
+/** One sample an eval runner executes — the validator workflow's unit
+ * (persona + rendered script + derived voices) projected from wherever
+ * the caller persists them. */
+export interface EvalRunnerItem {
+	readonly id: number | string;
+	readonly script: string;
+	readonly turns?: readonly { readonly speaker: string; readonly text: string }[];
+	readonly voices?: Readonly<Record<string, string>>;
+}
+
+export interface EvalRunnerOutcome {
+	readonly status: "ok" | "failed";
+	readonly result?: unknown;
+	readonly error?: string;
+}
+
+/**
+ * Executes the transcription-eval pipeline over caller-owned items —
+ * the in-app validator workflow's run step (P-081). The caller keeps
+ * state (progress rows, verdicts); the port reports per-item outcomes
+ * through `onSample` so progress lands durably as each sample finishes
+ * rather than in one end-of-run blob. Implementations live in adapter
+ * packages (local edge-tts + faster-whisper dev driver first); when no
+ * driver is bound the caller leaves runs `queued`.
+ */
+export class EvalRunner extends Context.Service<
+	EvalRunner,
+	{
+		readonly run: (input: {
+			readonly runId: number | string;
+			readonly items: readonly EvalRunnerItem[];
+			readonly onSample: (id: number | string, outcome: EvalRunnerOutcome) => Effect.Effect<void>;
+		}) => Effect.Effect<void>;
+	}
+>()("@ktb/eval-consultation/EvalRunner") {}
+
+/**
+ * Read-side for run artifacts — the bytes behind a `file://` (or
+ * future `r2://`/`s3://`) AudioRef the runner produced. Kept separate
+ * from DatasetStorePort: the validator workflow stores URIs in app
+ * tables, not manifest blobs, so it needs "give me the audio for this
+ * URI" without the dataset machinery. Implementations scope reads to
+ * their artifact root — adapters MUST refuse URIs outside it.
+ */
+export class EvalArtifacts extends Context.Service<
+	EvalArtifacts,
+	{
+		readonly getAudio: (uri: string) => Effect.Effect<Uint8Array | null, PortError>;
+	}
+>()("@ktb/eval-consultation/EvalArtifacts") {}

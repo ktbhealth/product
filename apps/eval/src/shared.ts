@@ -200,6 +200,12 @@ export const workdirFlag = Effect.fnUntraced(function* (
 		path.resolve(os.tmpdir()),
 		fs.realpathSync(os.tmpdir()),
 		path.resolve(process.cwd(), "tmp"),
+		// Persistent roots declared by the operator — still an explicit
+		// allowlist, so a bad argv cannot write anywhere else.
+		...(process.env.EVAL_WORKDIR_ROOTS ?? "")
+			.split(path.delimiter)
+			.filter((r) => r !== "")
+			.map((r) => path.resolve(r)),
 	];
 	const isScratch = scratchRoots.some(
 		(r) => resolved === r || resolved.startsWith(`${r}${path.sep}`),

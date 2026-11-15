@@ -324,7 +324,10 @@ export const makeRunCommand = (ctx: CmdContext) =>
 								concurrency,
 								retry: Schedule.exponential("300 millis").pipe(Schedule.upTo({ times: 2 })),
 								retryWhile: isTransientBatchError,
-								timeoutMs: 120_000,
+								// Anamnesis audio is ~10min — whisper on CPU
+								// alone can take 10min+ per sample.
+								timeoutMs:
+									effDomain?.definition.params?.scriptVariant === "anamnesis" ? 1_800_000 : 120_000,
 							},
 							step,
 						});

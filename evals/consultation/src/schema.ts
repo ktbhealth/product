@@ -56,7 +56,26 @@ export const Persona = Schema.Struct({
 	ageBand: Schema.String,
 	register: Schema.String,
 	specialty: Schema.String,
+	/** m | f — drives voice selection and (for gendered specialties
+	 * like gynecology) is constrained at enrichment time. */
 	gender: Schema.optionalKey(Schema.String),
+	/** a|b|c|d|e — purchasing-power proxy; correlates with
+	 * register/education rather than replacing it. */
+	socialClass: Schema.optionalKey(Schema.String),
+	/** elementary | secondary | higher | postgraduate — the axis
+	 * that decides whether a patient can name "cefaleia" or says
+	 * "dor de cabeça". */
+	education: Schema.optionalKey(Schema.String),
+	/** Synthetic display tag for the patient — never a real name. */
+	name: Schema.optionalKey(Schema.String),
+	/** The doctor in the pair — derived deterministically from the
+	 * sample seed, not a matrix axis. */
+	doctor: Schema.optionalKey(
+		Schema.Struct({
+			gender: Schema.String,
+			register: Schema.String,
+		}),
+	),
 	cues: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type Persona = typeof Persona.Type;
@@ -69,6 +88,10 @@ export const AcousticProfile = Schema.Struct({
 	noise: NoiseProfile,
 	sampleRate: Schema.Number,
 	prosody: Schema.optionalKey(Schema.String),
+	/** Per-speaker voice aliases for multi-voice synthesis —
+	 * speaker key ("doctor"/"patient") → voice alias. Absent =
+	 * single-voice render through `voiceId`. */
+	speakerVoices: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 });
 export type AcousticProfile = typeof AcousticProfile.Type;
 
@@ -124,6 +147,16 @@ export const Sample = Schema.Struct({
 	script: Schema.String,
 	scriptHash: Schema.String,
 	persona: Persona,
+	/** Dialogue turns when the script is multi-speaker — kept for
+	 * audit/diarization eval; `script` remains the plain gold text. */
+	turns: Schema.optionalKey(
+		Schema.Array(
+			Schema.Struct({
+				speaker: Schema.String,
+				text: Schema.String,
+			}),
+		),
+	),
 	acoustic: Schema.optionalKey(AcousticProfile),
 	audio: Schema.optionalKey(AudioRef),
 	gold: Gold,
