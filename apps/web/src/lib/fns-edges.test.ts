@@ -101,7 +101,7 @@ vi.mock("#/lib/platform.ts", async (importOriginal) => {
 
 import * as Effect from "effect/Effect";
 import type { Page, PanelPage } from "@ktb/kernel";
-import { appPages, consolePages } from "./registry.ts";
+import { appPages, portalPages } from "./registry.ts";
 import {
 	localeFn as patientsLocaleFn,
 	sessionUserFn as patientsSessionUserFn,
@@ -112,7 +112,7 @@ import {
 	extractAnamnesisFn,
 	markAllMyNotificationsReadFn,
 	markMyNotificationsReadFn,
-	platformPageDataFn,
+	portalPageDataFn,
 	updatePatientFn,
 } from "./fns.ts";
 
@@ -161,20 +161,23 @@ describe("createPatientFn", () => {
 	});
 });
 
-describe("platformPageDataFn", () => {
+describe("portalPageDataFn", () => {
 	it("answers notfound for a path no plugin registered", async () => {
-		expect(await platformPageDataFn({ data: "/platform/nope" })).toEqual({ status: "notfound" });
+		expect(await portalPageDataFn({ data: "/platform/nope" })).toEqual({ status: "notfound" });
 	});
 
 	it("answers ok with null data for a page without a loader", async () => {
+		// The P-081 audience gate requires platform-admin membership for
+		// /platform/* paths — sign in as the allowlisted test admin.
+		hoisted.user = { id: "u1", email: "platform-admin@ktb.test", name: "Admin" };
 		const page = {
 			id: "test.noloader",
 			path: "/platform/test-noloader",
 		} as unknown as PanelPage;
-		const pages = consolePages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
+		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set(page.path, { page, pluginId: "platform.routes" });
 		try {
-			expect(await platformPageDataFn({ data: page.path })).toEqual({ status: "ok", data: null });
+			expect(await portalPageDataFn({ data: page.path })).toEqual({ status: "ok", data: null });
 		} finally {
 			pages.delete(page.path);
 		}

@@ -26,7 +26,7 @@ import { DashboardPlatformPage } from "./platform-page.tsx";
  * dashboard is a generic shell — missing patients/consultations/
  * notifications/plugin-state services degrade to empty sections
  * (feature absent ≠ error), and domain plugins extend the page through
- * the console.dashboard.* chrome regions rather than being required
+ * the portal.dashboard.* chrome regions rather than being required
  * by it.
  */
 const dashboardLoader = () =>
@@ -83,7 +83,7 @@ const dashboardLoader = () =>
 	});
 
 // Chrome contribution (P-060): the console sidebar entry lives in the
-// `console.sidebar` chrome region; the dep edge orders it after the
+// `portal.sidebar` chrome region; the dep edge orders it after the
 // platform shell like the retired panel entry.
 export const dashboardChromePlugin = definePlugin({
 	id: "dashboard.chrome",
@@ -91,7 +91,7 @@ export const dashboardChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "dashboard.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
@@ -111,7 +111,7 @@ export const dashboardChromePlugin = definePlugin({
 // a hard dep — every listing source (patients, consultations,
 // notifications, plugin states) is optional so the dashboard renders
 // as a generic shell and domain plugins extend it via the
-// console.dashboard.* chrome regions instead of being required by it.
+// portal.dashboard.* chrome regions instead of being required by it.
 export const dashboardPanelPlugin = definePlugin({
 	id: "dashboard.panel",
 	requiredDeps: [platformPanelPlugin.id],

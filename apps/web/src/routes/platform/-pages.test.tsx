@@ -4,7 +4,7 @@ import { createElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	platformPageDataFn: vi.fn(),
+	portalPageDataFn: vi.fn(),
 	pluginStatesFn: vi.fn(),
 	pages: new Map<
 		string,
@@ -16,12 +16,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("#/lib/fns.ts", () => ({
-	platformPageDataFn: mocks.platformPageDataFn,
+	portalPageDataFn: mocks.portalPageDataFn,
 	pluginStatesFn: mocks.pluginStatesFn,
 }));
 vi.mock("@ktb/app-host/client", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@ktb/app-host/client")>();
-	return { ...actual, consolePages: mocks.pages };
+	return { ...actual, portalPages: mocks.pages };
 });
 vi.mock("#/plugins.ts", () => ({ plugins: ["plugin-a"] }));
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -73,7 +73,7 @@ describe.each([
 ])("%s dispatcher", (_name, route, path, load) => {
 	it("throws notFound when no plugin owns the page", async () => {
 		await expect(load()).rejects.toMatchObject({ isNotFound: true });
-		expect(mocks.platformPageDataFn).not.toHaveBeenCalled();
+		expect(mocks.portalPageDataFn).not.toHaveBeenCalled();
 	});
 
 	it("throws notFound when the owning plugin is disabled (P-058)", async () => {
@@ -81,19 +81,19 @@ describe.each([
 		mocks.pluginStatesFn.mockResolvedValue({ enabled: [] });
 		await expect(load()).rejects.toMatchObject({ isNotFound: true });
 		// The client-side gate short-circuits before the server fn.
-		expect(mocks.platformPageDataFn).not.toHaveBeenCalled();
+		expect(mocks.portalPageDataFn).not.toHaveBeenCalled();
 	});
 
 	it("throws notFound when the page's guard denies", async () => {
 		entry(path);
-		mocks.platformPageDataFn.mockResolvedValue({ status: "notfound" });
+		mocks.portalPageDataFn.mockResolvedValue({ status: "notfound" });
 		await expect(load()).rejects.toMatchObject({ isNotFound: true });
-		expect(mocks.platformPageDataFn).toHaveBeenCalledWith({ data: path });
+		expect(mocks.portalPageDataFn).toHaveBeenCalledWith({ data: path });
 	});
 
 	it("returns the loader Effect's data", async () => {
 		entry(path);
-		mocks.platformPageDataFn.mockResolvedValue({ status: "ok", data: { rows: 2 } });
+		mocks.portalPageDataFn.mockResolvedValue({ status: "ok", data: { rows: 2 } });
 		await expect(load()).resolves.toEqual({ rows: 2 });
 	});
 
@@ -117,9 +117,9 @@ describe.each([
 describe("/platform/$ with an empty splat", () => {
 	it("resolves the bare /platform/ path in the loader and the component", async () => {
 		entry("/platform/");
-		mocks.platformPageDataFn.mockResolvedValue({ status: "ok", data: "d" });
+		mocks.portalPageDataFn.mockResolvedValue({ status: "ok", data: "d" });
 		await expect(opts(SplatRoute).loader({ params: {} })).resolves.toBe("d");
-		expect(mocks.platformPageDataFn).toHaveBeenCalledWith({ data: "/platform/" });
+		expect(mocks.portalPageDataFn).toHaveBeenCalledWith({ data: "/platform/" });
 		mocks.loaderData.current = "d";
 		render(createElement(opts(SplatRoute).component));
 		expect(screen.getByTestId("page").textContent).toContain('"d"|');

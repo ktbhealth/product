@@ -118,7 +118,7 @@ export const tenantServicesPlugin = definePlugin({
 });
 
 // Chrome contribution (P-060): the console sidebar entry lives in the
-// `console.sidebar` chrome region; the dep edge orders it after the
+// `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const tenantChromePlugin = definePlugin({
 	id: "tenant.chrome",
@@ -126,7 +126,7 @@ export const tenantChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "tenant.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/tenants", label: "Tenants", icon: Building2Icon, group: "Access" },

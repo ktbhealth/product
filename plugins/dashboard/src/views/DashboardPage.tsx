@@ -201,8 +201,8 @@ export function DashboardPage({
 	};
 	const enabledCount = plugins.filter((p) => pluginState(p.id) !== "disabled").length;
 	// Dashboard chrome slots: other plugins contribute `chrome` entries to
-	// "console.dashboard.stats" (extra cells in the stat grid — each must
-	// render a grid-cell-sized card) and "console.dashboard.sections"
+	// "portal.dashboard.stats" (extra cells in the stat grid — each must
+	// render a grid-cell-sized card) and "portal.dashboard.sections"
 	// (full-width sections appended at the bottom). Components receive the
 	// panel page ctx (`PageContext`), not the full `ChromeProps` — the
 	// dashboard page is the slot's shell. Disabled plugins' entries are
@@ -213,6 +213,7 @@ export function DashboardPage({
 			plugins.filter((p) => pluginState(p.id) !== "disabled"),
 			region,
 			"/platform",
+			"platform",
 		).flatMap((entry) => {
 			if (entry.content.kind !== "component") return [];
 			const C = entry.content.component as ComponentType<PageContext>;
@@ -243,7 +244,7 @@ export function DashboardPage({
 					label={t.stats.plugins}
 					value={`${enabledCount}/${plugins.length}`}
 				/>
-				{slotComponents("console.dashboard.stats")}
+				{slotComponents("portal.dashboard.stats")}
 			</div>
 
 			<div className="grid gap-4 lg:grid-cols-3">
@@ -403,7 +404,7 @@ export function DashboardPage({
 				) : null}
 			</div>
 
-			{slotComponents("console.dashboard.sections")}
+			{slotComponents("portal.dashboard.sections")}
 		</PageContainer>
 	);
 }

@@ -19,7 +19,9 @@ export type {
 	PluginRegistry,
 } from "./core.ts";
 export {
+	DEFAULT_PORTAL_ID,
 	KNOWN_CHROME_REGIONS,
+	chromePortal,
 	chromeWhenMatches,
 	collectChrome,
 	unknownChromeRegions,
@@ -31,6 +33,9 @@ export {
 	FIELD_CONTRIBUTION_KINDS,
 	GENERIC_CONTRIBUTION_SLOT,
 	pluginContributionKinds,
+	THEME_BRAND_KIND,
+	THEME_CONTRIBUTION_KINDS,
+	THEME_TOKENS_KIND,
 	type CollectedContribution,
 	type ContributionKindDescriptor,
 } from "./kinds.ts";
@@ -55,6 +60,8 @@ export type {
 	PageContext,
 	PagesPlugin,
 	Plugin,
+	PortalInstance,
+	PortalsPlugin,
 	RoutesPlugin,
 	ServicesPlugin,
 	TablesPlugin,

@@ -5,18 +5,22 @@ import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
 import {
 	appPages,
-	consolePages,
+	portalPages,
+	collectPortals,
 	defaultPageContext,
 	findPage,
+	portalInstanceIdForPath,
 	type PageShell,
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
+import { PortalAudience, PORTAL_AUDIENCE } from "@ktb/portal";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import type { Page, PanelPage } from "@ktb/kernel";
 import { Schema } from "effect";
 import { ensureDoctorUser, getDoctorUser, getSessionAccount, getSessionUser } from "#/lib/auth.ts";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 // Services enforce authorization and fail `Forbidden`; handlers translate
 // denial into the same "not visible" response as a missing entity
@@ -76,7 +80,7 @@ export const platformAdminFn = createServerFn({ method: "GET" }).handler(async (
 });
 
 /**
- * Result of the page data server fns (`platformPageDataFn`,
+ * Result of the page data server fns (`portalPageDataFn`,
  * `appPageDataFn`): a discriminated union so the route loader can tell
  * "page denied/missing" apart from a loader that legitimately returned
  * `null`/`undefined` data. Server-fn errors do not round-trip as
@@ -107,10 +111,54 @@ const serverPageMap = (): ReadonlyMap<string, Page | PanelPage> => {
 	return serverPages;
 };
 
+/** Server-registry portal instances (P-081), built lazily like
+ * `serverPageMap` — the audience gate resolves each path's instance
+ * descriptor (its `audience` rule) from the server registry. */
+let serverPortals: ReturnType<typeof collectPortals> | undefined;
+
+const serverPortalEntries = () => {
+	serverPortals ??= collectPortals(serverPlugins);
+	return serverPortals;
+};
+
+/** The registry entry for the portal instance `path` belongs to, or
+ * undefined for app paths / unregistered instances. */
+const portalEntryForPath = (path: string) => {
+	const instanceId = portalInstanceIdForPath(path);
+	if (instanceId === undefined) return undefined;
+	return serverPortalEntries().find((e) => e.instance.id === instanceId);
+};
+
 /**
- * Shared page dispatch (P-050/P-059): resolves the descriptor registered
- * for `path` in the given shell's client registry and runs its Effect
- * handlers. Console pages require a session (anonymous → notfound);
+ * Audience gate for portal pages (P-081): the path's instance
+ * (`portalInstanceIdForPath`) must exist in the server registry and
+ * the bound principal must satisfy its `audience` rule (absent rule =
+ * `member`). Anonymous principals satisfy nothing → notfound. When the
+ * portal services plugin is absent the check is skipped — page `guard`s
+ * and service authz still apply (test/dev compositions).
+ */
+const portalAudienceAllows = async (
+	path: string,
+	runEffect: <A, E>(effect: Effect.Effect<A, E, unknown>) => Promise<A>,
+): Promise<boolean> => {
+	const entry = portalEntryForPath(path);
+	if (entry === undefined) return false;
+	const rule = entry.instance.audience ?? PORTAL_AUDIENCE.member;
+	return runEffect(
+		Effect.gen(function* () {
+			const audience = yield* Effect.serviceOption(PortalAudience);
+			if (Option.isNone(audience)) return true;
+			const set = yield* audience.value.audiences();
+			return set.has(rule);
+		}),
+	).catch(() => false);
+};
+
+/**
+ * Shared page dispatch (P-050/P-059/P-081): resolves the descriptor
+ * registered for `path` in the given shell's client registry and runs
+ * its Effect handlers. Portal pages require a session AND membership
+ * in the path's portal instance audience (anonymous → notfound);
  * app pages may be public — effects then run without a bound Principal
  * (`run` instead of `runAs`), so loaders that need a user must guard
  * themselves. The enabled-state gate (`PluginStates.isEnabled`) applies
@@ -124,14 +172,23 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
 	// "/*" wildcard subtree — DB-backed pages (custom-pages plugin)
 	// register one wildcard descriptor that serves every path its
 	// guard/loader resolves.
-	const entry = findPage(shell === "console" ? consolePages : appPages, path);
+	const entry = findPage(shell === "portal" ? portalPages : appPages, path);
 	if (entry === undefined) return { status: "notfound" };
 	// Entries injected by tests may predate the `context` field — derive
 	// it from the path the same way collectPages does.
 	const context = entry.context ?? defaultPageContext(path);
 	if (context !== shell) return { status: "notfound" };
-	const user = await getSessionUser();
-	if (shell === "console" && user === null) return { status: "notfound" };
+	// Portal instances may declare `subject: "doctor"` (P-081): their
+	// pages are owner-scoped clinical surfaces, so loaders/guards run
+	// under the doctor-resolved acting user — `Principal.userId` is the
+	// acting doctor's id and `actorId` the signed-in account, exactly
+	// like the plugins' own server fns. No doctor profile to act as →
+	// notfound, same as anonymous.
+	const user =
+		shell === "portal" && portalEntryForPath(path)?.instance.subject === "doctor"
+			? await getDoctorUser()
+			: await getSessionUser();
+	if (shell === "portal" && user === null) return { status: "notfound" };
 	const runEffect = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
 		user === null ? run(effect) : runAs(user, effect);
 	// Enabled-state gate (P-058): checked before guard/loader.
@@ -142,6 +199,12 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
 		}),
 	);
 	if (!pluginOn) return { status: "notfound" };
+	// Portal audience gate (P-081): the instance's `audience` rule must
+	// be satisfied by the bound principal — the UX gate; hard authz
+	// stays inside the page's services.
+	if (shell === "portal" && !(await portalAudienceAllows(path, runEffect))) {
+		return { status: "notfound" };
+	}
 	// Page descriptors are split across the two registries: the client
 	// manifest carries id/path/component, while `guard`/`loader` stay
 	// server-side on the @ktb/app-host plugin objects and never reach
@@ -174,19 +237,40 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
  *
  * NOTE: each export must be a literal `createServerFn` chain — the
  * Start compiler only treats those as server fns; wrapping the chain
- * in a factory (`pageDataFn("console")`) ships the handler (and its
+ * in a factory (`pageDataFn("portal")`) ships the handler (and its
  * `platform.ts` imports) to the client bundle.
  */
-export const platformPageDataFn = createServerFn({ method: "GET" })
+export const portalPageDataFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
 	// Loader results are plugin-defined `unknown` at the kernel
 	// boundary; the wire type is whatever each page's loader returns
 	// (serializable rows — same shape the retired per-page fns sent).
-	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "console"));
+	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "portal"));
+
+/**
+ * Audience rule ids the session user satisfies (P-081) — feeds the
+ * portal shells' instance switcher and any chrome that varies by
+ * audience. Anonymous callers get an empty list. Sorted for stable
+ * wire output.
+ */
+export const portalAudiencesFn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<readonly string[]> => {
+		const user = await getSessionUser();
+		if (user === null) return [];
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const audience = yield* Effect.serviceOption(PortalAudience);
+				if (Option.isNone(audience)) return [] as string[];
+				return [...(yield* audience.value.audiences())].sort();
+			}),
+		);
+	},
+);
 
 /**
  * Loader data for app-shell pages contributed via `pages` (P-059):
- * same dispatch as `platformPageDataFn` but session-optional — public
+ * same dispatch as `portalPageDataFn` but session-optional — public
  * pages run their Effects without a bound Principal.
  */
 export const appPageDataFn = createServerFn({ method: "GET" })

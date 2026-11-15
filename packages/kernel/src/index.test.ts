@@ -42,12 +42,12 @@ describe("definePlugin", () => {
 					id: "x.console",
 					path: "/platform/custom",
 					component: Page,
-					context: "console",
+					context: "portal",
 				},
 			],
 		});
 		expect("pages" in pages && pages.pages[0]?.path).toBe("/about");
-		expect("pages" in pages && pages.pages[1]?.context).toBe("console");
+		expect("pages" in pages && pages.pages[1]?.context).toBe("portal");
 	});
 
 	it("carries landing page and chrome footer contributions", () => {

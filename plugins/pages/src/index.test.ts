@@ -42,7 +42,7 @@ describe("pages plugins", () => {
 		const chrome = pagesChromePlugin.chrome ?? [];
 		expect(chrome).toHaveLength(2);
 		const sidebar = chrome.find((c) => c.id === "pages.sidebar");
-		expect(sidebar?.region).toBe("console.sidebar");
+		expect(sidebar?.region).toBe("portal.sidebar");
 		expect(sidebar?.content.kind).toBe("sidebarItem");
 		const nav = chrome.find((c) => c.id === "pages.nav");
 		expect(nav?.region).toBe("app.header.nav");

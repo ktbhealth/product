@@ -6,7 +6,7 @@ import type * as Layer from "effect/Layer";
 
 import type { ForbiddenContributions, PluginBase } from "./core.ts";
 
-/** One entry in a plugin's system-console sidebar. `icon` is any
+/** One entry in a plugin's portal sidebar. `icon` is any
  * component accepting `className` (lucide icons qualify); the host
  * shell sizes it via `[&_svg]` rules. `exact` marks index-style items
  * that must not stay active on descendant routes. */
@@ -101,12 +101,12 @@ export interface PanelPage {
  * result or a failure makes the host treat the page as not found —
  * use it for feature flags / entitlement checks. Hard authorization
  * stays inside the loader/service layer.
- * `context` selects the shell: "console" pages dispatch under
- * /platform behind the admin gate (console chrome); "app" pages render
- * inside the marketing shell and may be public. Defaults to "console"
- * for /platform* paths and "app" otherwise — an app-context page
- * claiming a /platform* path is a contract violation (the host warns
- * and ignores it).
+ * `context` selects the shell: "portal" pages dispatch under a portal
+ * instance (/platform, /portal/<id>) behind the audience gate (portal
+ * chrome); "app" pages render inside the marketing shell and may be
+ * public. Defaults to "portal" for portal-instance paths and "app"
+ * otherwise — an app-context page claiming a portal path is a contract
+ * violation (the host warns and ignores it).
  * `path` may also end in "/*" to claim a whole path subtree (same
  * syntax as chrome `when` paths): exact-path descriptors always win;
  * among wildcard entries the LONGEST matching base wins, ties break by
@@ -122,7 +122,7 @@ export interface Page {
 	readonly component: ComponentType<{ data: unknown; ctx: PageContext }>;
 	readonly loader?: (path: string) => Effect.Effect<unknown, unknown, unknown>;
 	readonly guard?: (path: string) => Effect.Effect<boolean, unknown, unknown>;
-	readonly context?: "app" | "console";
+	readonly context?: "app" | "portal";
 }
 
 /** Dependency anchor only — no dedicated contribution field (generic
@@ -168,6 +168,36 @@ export interface LandingFooterBlock {
 export interface ChromeWhen {
 	readonly paths?: readonly string[];
 	readonly exceptPaths?: readonly string[];
+}
+
+/** A named portal instance (P-081): a sidebar-shell surface scoped to
+ * an audience — the platform admin console, a clinician portal, a
+ * translator portal, … `id` is the instance id chrome contributions
+ * and audience rules refer to; `basePath` is where the instance's
+ * pages live ("/platform", "/portal/clinician", …); `label` is the
+ * shell/switcher display string; `icon` an optional brand mark;
+ * `audience` names the audience RULE the portal gate checks (see
+ * `PortalAudience` in @ktb/portal) — absent means `PORTAL_AUDIENCE_MEMBER`
+ * (any signed-in user). `subject` selects which identity page loaders
+ * run under: absent/"session" binds the raw session account;
+ * "doctor" binds the doctor-resolved acting user (delegation-aware —
+ * `Principal.userId` is the acting doctor's id, `actorId` the signed-in
+ * account), which owner-scoped clinical services require. */
+export interface PortalInstance {
+	readonly id: string;
+	readonly basePath: string;
+	readonly label: string;
+	readonly icon?: ComponentType<{ readonly className?: string }>;
+	readonly audience?: string;
+	readonly subject?: "session" | "doctor";
+}
+
+/** Portal instance contributions: the portals a plugin ships. The
+ * host mounts a shell per instance — `/platform` for the platform
+ * instance, `/portal/<id>/*` for namespaced ones — and scopes
+ * `portal.*` chrome regions and page dispatch to it. */
+export interface PortalsPlugin extends PluginBase, ForbiddenContributions<"portals"> {
+	readonly portals: ReadonlyArray<PortalInstance>;
 }
 
 /** Session user shape handed to chrome components — structurally
@@ -219,22 +249,26 @@ export type ChromeContent =
 	| { readonly kind: "note"; readonly key: string; readonly fallback: string };
 
 /** One slot filled in a shell-owned region. `region` names the slot
- * (e.g. "app.header.nav", "console.sidebar") — the host declares the
+ * (e.g. "app.header.nav", "portal.sidebar") — the host declares the
  * valid set per shell; unknown regions are skipped with a dev warning.
  * `order` sorts within the region (ascending, `order ?? Infinity`),
  * ties break by plugin topo order then array index; `when` filters by
- * pathname at render time. */
+ * pathname at render time. `portal` scopes the contribution to ONE
+ * portal instance (P-081): only consulted for `portal.*` regions —
+ * absent means the default instance ("platform"), so pre-portal
+ * contributions keep rendering in the platform console only. */
 export interface ChromeContribution {
 	readonly id: string;
 	readonly region: string;
 	readonly order?: number;
 	readonly when?: ChromeWhen;
+	readonly portal?: string;
 	readonly content: ChromeContent;
 }
 
 /** Shell chrome slots: ordered, per-page-filtered contributions into
  * named regions owned by the host shells (app marketing chrome,
- * /platform console). Replaces the retired landingNav/landingFooter
+ * portal sidebars/headers). Replaces the retired landingNav/landingFooter
  * fields and the sidebar/headerActions halves of `panel`. */
 export interface ChromePlugin extends PluginBase, ForbiddenContributions<"chrome"> {
 	readonly chrome: ReadonlyArray<ChromeContribution>;
@@ -290,4 +324,5 @@ export type Plugin =
 	| LandingPlugin
 	| ChromePlugin
 	| PanelPlugin
-	| PagesPlugin;
+	| PagesPlugin
+	| PortalsPlugin;

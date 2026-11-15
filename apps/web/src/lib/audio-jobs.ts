@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { EventBus } from "@effect-server-utils/cqrs";
 import { ConsultationAudioUpdated } from "@ktb/consultations/api";
 import {
+	AUDIO_TRANSCRIPTION_JOB_KIND,
 	audioJobRecord,
 	beginAudioJob,
 	completeAudioJob,
@@ -12,10 +13,18 @@ import {
 	type AudioJobRecord,
 } from "@ktb/consultations";
 import type { DbClient } from "@ktb/db";
+import {
+	decodeJobEnvelope,
+	makeJobConsumer,
+	type JobMessageLike,
+	type JobRegistration,
+	type NormalizedJob,
+} from "@ktb/jobs-port";
 import type { AudioJobMessage } from "@ktb/server-fns";
 
 import { runAsTenantId } from "@ktb/tenant";
 
+import { jobHandlers } from "#/lib/jobs.ts";
 import {
 	ai,
 	audioBucket,
@@ -236,11 +245,59 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 	}
 }
 
-export interface QueueMessageLike {
-	readonly body: unknown;
-	ack(): void;
-	retry(): void;
-}
+export type QueueMessageLike = JobMessageLike;
+
+/**
+ * Kind → payload registration for `transcription.audio` (PL-007): the
+ * payload keeps the legacy AudioJobMessage shape; tenant scope for the
+ * run comes from the normalized envelope (which folds in the payload's
+ * tenantId for pre-envelope messages).
+ */
+export const audioJobRegistration = (deps: AudioJobDeps): JobRegistration => ({
+	decodePayload: (payload) => decodeAudioJob(payload),
+	handle: (payload, envelope) => {
+		const job = payload as AudioJobMessage;
+		// Envelope scope is authoritative; the normalizer already folded
+		// the legacy payload's tenantId into it.
+		const tenantId = envelope.tenantId ?? null;
+		return run(
+			// System path — `run` binds no Principal; the tenant scope is
+			// rebound explicitly from the job's tenant_id (P-053 phase D)
+			// so subscribers see the same fence a request would.
+			runAsTenantId(
+				tenantId,
+				Effect.promise(() => processAudioJob(job, deps)).pipe(
+					Effect.withSpan("queue.audio.transcribe", {
+						attributes: { "ktb.job.kind": envelope.kind },
+					}),
+				),
+			),
+		);
+	},
+});
+
+/**
+ * Wire normalizer for the shared jobs queue: canonical envelopes decode
+ * via @ktb/jobs-port; pre-PL-007 bodies were bare AudioJobMessage
+ * payloads and map onto `transcription.audio`. Anything else is poison.
+ */
+const normalizeAudioJobBody = (body: unknown): NormalizedJob | null => {
+	const envelope = decodeJobEnvelope(body);
+	if (envelope !== null) return envelope;
+	// A body that claims a `kind` but failed envelope decode is a
+	// malformed envelope — poison, not a legacy audio payload.
+	if (body !== null && typeof body === "object" && "kind" in body) return null;
+	try {
+		const payload = decodeAudioJob(body);
+		return {
+			kind: AUDIO_TRANSCRIPTION_JOB_KIND,
+			payload,
+			tenantId: payload.tenantId ?? null,
+		};
+	} catch {
+		return null;
+	}
+};
 
 const platformDeps = (): AudioJobDeps => ({
 	db,
@@ -274,41 +331,24 @@ const platformDeps = (): AudioJobDeps => ({
 
 /**
  * Queue batch handler — invoked from the worker's `queue` export in
- * src/server.ts. Malformed messages are acked (poison), valid jobs that
- * throw unexpectedly are retried by the queue.
+ * src/server.ts. The shared AUDIO_QUEUE is kind-dispatched (PL-007):
+ * `transcription.audio` is served by this module's registration, other
+ * kinds resolve through the `jobHandlers` registry (lib/jobs.ts).
+ * Malformed messages are acked (poison), valid jobs that throw
+ * unexpectedly are retried by the queue, and every delivery updates the
+ * `job_runs` projection when a DbClient is bound.
  */
 export async function handleAudioQueueBatch(
 	messages: readonly QueueMessageLike[],
 	deps: AudioJobDeps = platformDeps(),
 ): Promise<void> {
-	for (const message of messages) {
-		let job: AudioJobMessage;
-		try {
-			job = decodeAudioJob(message.body);
-		} catch {
-			message.ack();
-			continue;
-		}
-		try {
-			// Re-bind tenant scope from the message payload before running
-			// the job's domain effects (P-053 phase D) — ambient tenant is
-			// never inherited into the queue consumer. The audio repo
-			// helpers stay unfenced by primary key (system path); the
-			// scope matters for anything Effect-level the job triggers
-			// (event dispatch, future service calls).
-			await run(
-				runAsTenantId(
-					job.tenantId,
-					Effect.promise(() => processAudioJob(job, deps)).pipe(
-						Effect.withSpan("queue.audio.transcribe", {
-							attributes: { "ktb.job.kind": "audio.transcribe" },
-						}),
-					),
-				),
-			);
-			message.ack();
-		} catch {
-			message.retry();
-		}
-	}
+	const consumer = makeJobConsumer({
+		handlers: {
+			...jobHandlers,
+			[AUDIO_TRANSCRIPTION_JOB_KIND]: audioJobRegistration(deps),
+		},
+		db: deps.db,
+		normalize: normalizeAudioJobBody,
+	});
+	await consumer(messages);
 }

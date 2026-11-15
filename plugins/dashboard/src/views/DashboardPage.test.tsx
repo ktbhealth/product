@@ -59,7 +59,7 @@ const plugin = (id: string, sidebar = 0): Plugin =>
 				chrome: [
 					{
 						id: `${id}.sidebar`,
-						region: "console.sidebar",
+						region: "portal.sidebar",
 						content: { kind: "sidebarItem", item: { to: "/x", label: id } },
 					},
 				],
@@ -230,18 +230,18 @@ describe("DashboardPage", () => {
 			chrome: [
 				{
 					id: `${id}.stat`,
-					region: "console.dashboard.stats",
+					region: "portal.dashboard.stats",
 					content: { kind: "component", component: StatWidget },
 				},
 				{
 					id: `${id}.sec`,
-					region: "console.dashboard.sections",
+					region: "portal.dashboard.sections",
 					content: { kind: "component", component: SectionWidget },
 				},
 				// Non-component contents are ignored by the dashboard slots.
 				{
 					id: `${id}.lnk`,
-					region: "console.dashboard.stats",
+					region: "portal.dashboard.stats",
 					content: { kind: "link", to: "/x", label: "L" },
 				},
 			],

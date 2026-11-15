@@ -12,6 +12,7 @@ const listMyNotificationsFn = vi.fn(async () => [] as unknown[]);
 vi.mock("#/plugins.ts", () => ({ plugins: [] }));
 vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: vi.fn(async () => true),
+	portalAudiencesFn: vi.fn(async () => [] as string[]),
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
 	markMyNotificationsReadFn: vi.fn(),
@@ -79,12 +80,16 @@ const options = (
 
 describe("/platform without the optional header plugins", () => {
 	it("loader skips the jobs and notifications queries", async () => {
-		await expect(options.loader()).resolves.toEqual({ audioJobs: [], notifications: [] });
+		await expect(options.loader()).resolves.toEqual({
+			audioJobs: [],
+			notifications: [],
+			audiences: [],
+		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
 	});
 
-	it("renders the shell with no notification actions and the admin fallback label", () => {
+	it("renders the shell with no notification actions and the account fallback label", () => {
 		let actions: NotificationsActions | null | undefined;
 		outletChild = function Probe() {
 			actions = useContext(NotificationsActionsContext);
@@ -92,6 +97,6 @@ describe("/platform without the optional header plugins", () => {
 		};
 		render(createElement(options.component));
 		expect(actions).toBeNull();
-		expect(screen.getByText("admin")).toBeTruthy();
+		expect(screen.getByText("account")).toBeTruthy();
 	});
 });

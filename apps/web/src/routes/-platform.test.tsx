@@ -5,7 +5,7 @@ import { NotificationsActionsContext, type NotificationsActions } from "@ktb/not
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const platformAdminFn = vi.fn(async () => true);
-const platformPageDataFn = vi.fn(
+const portalPageDataFn = vi.fn(
 	async (_path: string): Promise<{ status: string; data?: unknown }> => ({
 		status: "ok",
 		data: null,
@@ -24,6 +24,7 @@ const getSessionUserFn = vi.fn(
 );
 const listMyNotificationsFn = vi.fn(async () => [] as unknown[]);
 const pluginStatesFn = vi.fn(async () => ({ enabled: [] as string[] }));
+const portalAudiencesFn = vi.fn(async () => [] as string[]);
 const signOut = vi.fn(async () => {});
 
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: () => signOut() } }));
@@ -45,7 +46,7 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 
 vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: () => platformAdminFn(),
-	platformPageDataFn: (arg: { data: string }) => platformPageDataFn(arg.data),
+	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
 	countMyUnreadNotificationsFn: () => countMyUnreadNotificationsFn(),
@@ -53,6 +54,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	markAllMyNotificationsReadFn: () => markAllMyNotificationsReadFn(),
 	getSessionUserFn: () => getSessionUserFn(),
 	pluginStatesFn: () => pluginStatesFn(),
+	portalAudiencesFn: () => portalAudiencesFn(),
 }));
 
 let loaderData: unknown = { patients: [], consultations: [] };
@@ -114,7 +116,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { Route as PlatformRoute } from "./platform.tsx";
 import { Route as PlatformIndexRoute } from "./platform/index.tsx";
 import { Route as PlatformPageRoute } from "./platform/$.tsx";
-import { consolePages } from "#/lib/registry.ts";
+import { portalPages } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 import type { PanelPage } from "@ktb/kernel";
 
@@ -138,7 +140,7 @@ afterEach(() => {
 	pathname = "/platform";
 	pageParam = "patients";
 	platformAdminFn.mockReset().mockResolvedValue(true);
-	platformPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
+	portalPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
 	adminListAudioJobsFn.mockReset().mockResolvedValue([]);
 	listMyNotificationsFn.mockReset().mockResolvedValue([]);
 	countMyUnreadNotificationsFn.mockReset().mockResolvedValue(0);
@@ -146,11 +148,13 @@ afterEach(() => {
 	markAllMyNotificationsReadFn.mockReset().mockResolvedValue(true);
 	getSessionUserFn.mockReset().mockResolvedValue({ id: "u1", email: "a@x.com", name: "A" });
 	pluginStatesFn.mockReset().mockResolvedValue({ enabled: plugins.map((p) => p.id) });
+	portalAudiencesFn.mockReset().mockResolvedValue([]);
 	loaderData = {
 		patients: [],
 		consultations: [],
 		notifications: undefined,
 		unreadCount: undefined,
+		audiences: [],
 	};
 });
 
@@ -159,7 +163,7 @@ describe("/platform layout", () => {
 	// { audioJobs, notifications } seeded into the jobs/notifications
 	// header-action contexts.
 	beforeEach(() => {
-		loaderData = { audioJobs: [], notifications: [] };
+		loaderData = { audioJobs: [], notifications: [], audiences: [] };
 	});
 
 	it("renders sidebar items aggregated from plugin panel contributions", () => {
@@ -196,6 +200,7 @@ describe("/platform layout", () => {
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
+			audiences: [],
 		});
 	});
 
@@ -208,6 +213,7 @@ describe("/platform layout", () => {
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({
 			audioJobs: [],
 			notifications: [],
+			audiences: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
@@ -254,12 +260,12 @@ describe("/platform layout", () => {
 		chromeExtra = [
 			{
 				id: "t.sidebar-note",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: { kind: "note", key: "k", fallback: "f" },
 			},
 			{
 				id: "t.header-link",
-				region: "console.header.actions",
+				region: "portal.header.actions",
 				content: { kind: "link", to: "/x", label: "X" },
 			},
 		];
@@ -292,7 +298,7 @@ describe("/platform index", () => {
 
 	it("loader dispatches the /platform page descriptor", async () => {
 		await loader(PlatformIndexRoute)!();
-		expect(platformPageDataFn).toHaveBeenCalledWith("/platform");
+		expect(portalPageDataFn).toHaveBeenCalledWith("/platform");
 	});
 });
 
@@ -379,13 +385,13 @@ describe("/platform/$ splat dispatcher", () => {
 
 	it("loader resolves the descriptor path and calls the data fn", async () => {
 		await loader(PlatformPageRoute)!({ params: { _splat: "patients" } });
-		expect(platformPageDataFn).toHaveBeenCalledWith("/platform/patients");
+		expect(portalPageDataFn).toHaveBeenCalledWith("/platform/patients");
 	});
 
 	it("loader resolves nested splat paths against the registry", async () => {
 		// No shipped plugin owns a nested path — register a throwaway
 		// descriptor so the splat lookup has something to find.
-		const pages = consolePages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
+		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set("/platform/foo/bar", {
 			page: {
 				id: "test.nested",
@@ -396,7 +402,7 @@ describe("/platform/$ splat dispatcher", () => {
 		});
 		try {
 			await loader(PlatformPageRoute)!({ params: { _splat: "foo/bar" } });
-			expect(platformPageDataFn).toHaveBeenCalledWith("/platform/foo/bar");
+			expect(portalPageDataFn).toHaveBeenCalledWith("/platform/foo/bar");
 		} finally {
 			pages.delete("/platform/foo/bar");
 		}
@@ -406,11 +412,11 @@ describe("/platform/$ splat dispatcher", () => {
 		await expect(loader(PlatformPageRoute)!({ params: { _splat: "nope" } })).rejects.toMatchObject({
 			isNotFound: true,
 		});
-		expect(platformPageDataFn).not.toHaveBeenCalled();
+		expect(portalPageDataFn).not.toHaveBeenCalled();
 	});
 
 	it("loader 404s when the data fn reports notfound (guard denial)", async () => {
-		platformPageDataFn.mockResolvedValue({ status: "notfound" });
+		portalPageDataFn.mockResolvedValue({ status: "notfound" });
 		await expect(
 			loader(PlatformPageRoute)!({ params: { _splat: "patients" } }),
 		).rejects.toMatchObject({ isNotFound: true });

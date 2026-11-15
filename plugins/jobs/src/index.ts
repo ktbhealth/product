@@ -26,7 +26,7 @@ export const jobsHeaderPlugin = definePlugin({
 	chrome: [
 		{
 			id: "jobs.header-action",
-			region: "console.header.actions",
+			region: "portal.header.actions",
 			content: { kind: "headerAction", id: "jobs", component: JobsHeaderAction },
 		},
 	],
@@ -62,7 +62,7 @@ export const opsServicesPlugin = definePlugin({
 });
 
 // Chrome contribution (P-060): the console sidebar entry lives in the
-// `console.sidebar` chrome region; the dep edge orders it after the
+// `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const opsChromePlugin = definePlugin({
 	id: "jobs.chrome",
@@ -70,7 +70,7 @@ export const opsChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "jobs.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/ops", label: "Ops", icon: ActivityIcon, group: "System" },

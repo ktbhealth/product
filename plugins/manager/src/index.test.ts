@@ -28,7 +28,7 @@ describe("manager plugins", () => {
 		expect(managerChromePlugin.system).toBe(true);
 		expect(managerChromePlugin.chrome).toHaveLength(1);
 		expect(managerChromePlugin.chrome[0]).toMatchObject({
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/plugins", label: "Plugins", group: "System" },

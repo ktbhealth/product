@@ -20,7 +20,7 @@ export const dashboardChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "dashboard.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {

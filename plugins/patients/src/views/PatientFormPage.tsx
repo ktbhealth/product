@@ -85,6 +85,7 @@ export function PatientFormPage({
 	api,
 	onSaved,
 	locale,
+	portalBase,
 }: {
 	/** Absent → registration; present → edit. */
 	patient?: Patient;
@@ -92,6 +93,8 @@ export function PatientFormPage({
 	onSaved: (id: number) => void;
 	/** Active UI locale, injected by the host. */
 	locale: string;
+	/** Portal instance base path — internal links stay under it (P-081). */
+	portalBase?: string;
 }) {
 	const t = patientMessages(locale);
 	const f = t.fields;
@@ -164,7 +167,8 @@ export function PatientFormPage({
 
 	const partialBirthDate = form.birthDate !== "" && !FULL_DATE.test(form.birthDate);
 	const isBrazil = form.country === "BR";
-	const cancelTo = patient ? `/patients/${patient.id}` : "/patients";
+	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
+	const cancelTo = patient ? portalPath(`/patients/${patient.id}`) : portalPath("/patients");
 
 	return (
 		<form onSubmit={submit} noValidate className="mx-auto max-w-3xl">

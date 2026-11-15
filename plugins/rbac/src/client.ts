@@ -9,7 +9,7 @@ import { RbacPlatformPage } from "./platform-page.tsx";
  * through `@ktb/app-host/client` (import.meta.glob on
  * `plugins/<name>/src/client.ts`). Every server entry keeps its id and dep
  * edges so topo order matches the server registry, but only
- * client-consumed contributions are carried: the console.sidebar chrome entry
+ * client-consumed contributions are carried: the portal.sidebar chrome entry
  * and page descriptor. `panel.pages` keep id/path/component only — the
  * loader Effect runs server-side and stays in ./index.ts.
  * tables/services degrade to markers. Dep ids are literals: importing
@@ -22,7 +22,7 @@ export const rbacChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "rbac.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/roles", label: "Roles", icon: ShieldCheckIcon, group: "Access" },

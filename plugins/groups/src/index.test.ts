@@ -604,7 +604,7 @@ describe("plugins", () => {
 		expect(groupsChromePlugin.chrome).toEqual([
 			{
 				id: "groups.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: { to: "/platform/groups", label: "Groups", icon: BoxesIcon, group: "Access" },

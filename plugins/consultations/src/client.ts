@@ -36,7 +36,7 @@ export const consultationsChromePlugin = definePlugin({
 		},
 		{
 			id: "consultations.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {

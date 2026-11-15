@@ -33,17 +33,33 @@ interface Ranked {
 	readonly entryIndex: number;
 }
 
+/** The portal instance chrome contributions belong to when they don't
+ * say otherwise (P-081): the platform console is the default portal. */
+export const DEFAULT_PORTAL_ID = "platform";
+
+/** The instance an entry renders in: its explicit `portal` tag, else
+ * the default instance. Only `portal.*` regions consult this. */
+export const chromePortal = (entry: ChromeContribution): string =>
+	entry.portal ?? DEFAULT_PORTAL_ID;
+
 /** Chrome contributions for `region` visible at `pathname`, in render
- * order. Plugins without `chrome` contribute nothing. */
+ * order. Plugins without `chrome` contribute nothing. `portal` (P-081)
+ * additionally keeps only entries scoped to that instance — pass it for
+ * `portal.*` regions; app.* regions ignore it. */
 export const collectChrome = (
 	plugins: readonly Plugin[],
 	region: string,
 	pathname: string,
+	portal?: string,
 ): ChromeContribution[] => {
 	const ranked: Ranked[] = [];
 	plugins.forEach((plugin, pluginIndex) => {
 		(plugin.chrome ?? []).forEach((entry, entryIndex) => {
-			if (entry.region === region && chromeWhenMatches(entry.when, pathname)) {
+			if (
+				entry.region === region &&
+				(portal === undefined || chromePortal(entry) === portal) &&
+				chromeWhenMatches(entry.when, pathname)
+			) {
 				ranked.push({ entry, pluginIndex, entryIndex });
 			}
 		});
@@ -73,7 +89,8 @@ export const unknownChromeRegions = (
 };
 
 /** Every region a first-party shell declares (app shell in
- * `routes/__root.tsx`, console shell in `routes/platform.tsx`). The dev
+ * `routes/__root.tsx`, portal shells in `routes/platform.tsx` and
+ * `routes/portal.$instance.$.tsx`). The dev
  * warning uses the union so a contribution aimed at the *other* shell's
  * region isn't a false positive. */
 export const KNOWN_CHROME_REGIONS: ReadonlySet<string> = new Set([
@@ -83,12 +100,16 @@ export const KNOWN_CHROME_REGIONS: ReadonlySet<string> = new Set([
 	"app.header.session",
 	"app.footer.blocks",
 	"app.footer.note",
-	"console.sidebar",
-	"console.header.actions",
-	// Dashboard page slots (plugins/dashboard) — the /platform view is the
-	// shell that declares and renders them.
-	"console.dashboard.stats",
-	"console.dashboard.sections",
+	"portal.sidebar",
+	// Fixed brand slot in PortalShell's SidebarHeader (P-082) —
+	// plugins contribute `component` entries; the instance badge stays
+	// host-owned.
+	"portal.brand",
+	"portal.header.actions",
+	// Dashboard page slots (plugins/dashboard) — the platform portal's
+	// landing view is the shell that declares and renders them.
+	"portal.dashboard.stats",
+	"portal.dashboard.sections",
 ]);
 
 /** Dev-only warning for chrome contributions aimed at undeclared

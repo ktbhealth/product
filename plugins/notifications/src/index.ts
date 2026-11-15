@@ -36,7 +36,7 @@ export const notificationsHeaderPlugin = definePlugin({
 	chrome: [
 		{
 			id: "notifications.header-action",
-			region: "console.header.actions",
+			region: "portal.header.actions",
 			content: { kind: "headerAction", id: "notifications", component: NotificationsHeaderAction },
 		},
 	],
