@@ -21,7 +21,7 @@ describe("dashboard plugins", () => {
 		expect(dashboardChromePlugin.chrome).toEqual([
 			{
 				id: "dashboard.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: {

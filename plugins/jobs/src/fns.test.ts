@@ -39,7 +39,11 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { PatientsCommandsLive, PatientsQueriesLive } from "@ktb/patients";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { resetServerRuntime, setServerRuntime, type AudioQueueSender } from "@ktb/server-fns";
+import {
+	resetServerRuntime,
+	setServerRuntime,
+	type JobsEnqueuer,
+} from "@ktb/server-fns";
 
 import { retryAudioJobFn } from "./fns.ts";
 
@@ -113,12 +117,12 @@ const runtime = ManagedRuntime.make(
 	) as Layer.Layer<unknown, never, never>,
 );
 
-const sent: unknown[] = [];
+const sent: { kind: string; payload: unknown; options?: unknown }[] = [];
 let queueFails = false;
-const audioQueue: AudioQueueSender = {
-	send: (message) => {
+const jobs: JobsEnqueuer = {
+	enqueue: (kind, payload, options) => {
 		if (queueFails) return Promise.reject(new Error("queue down"));
-		sent.push(message);
+		sent.push({ kind, payload, options });
 		return Promise.resolve({});
 	},
 };
@@ -132,7 +136,7 @@ beforeAll(() => {
 			),
 		getLocale: () => "en",
 		audioTranscribeModel: "test-model",
-		audioQueue,
+		jobs,
 	});
 });
 
@@ -200,10 +204,14 @@ describe("retryAudioJobFn", () => {
 		expect(res).toEqual({ ok: true });
 		expect(sent.length).toBe(before + 1);
 		expect(sent.at(-1)).toEqual({
-			consultationId: id,
-			audioKey: "k-retry",
-			userId: "u-ops",
-			tenantId: 7,
+			kind: "transcription.audio",
+			payload: {
+				consultationId: id,
+				audioKey: "k-retry",
+				userId: "u-ops",
+				tenantId: 7,
+			},
+			options: { tenantId: 7, payloadRef: `consultation:${id}` },
 		});
 		expect(await audioStatusOf(id)).toBe("queued");
 	});
@@ -214,7 +222,10 @@ describe("retryAudioJobFn", () => {
 		await attachAudioRecord(db, id, { audioKey: "k-stored", size: 5 });
 		const res = await retryAudioJobFn({ data: { consultationId: id } });
 		expect(res).toEqual({ ok: true });
-		expect(sent.at(-1)).toMatchObject({ consultationId: id, audioKey: "k-stored" });
+		expect(sent.at(-1)).toMatchObject({
+			kind: "transcription.audio",
+			payload: { consultationId: id, audioKey: "k-stored" },
+		});
 		expect(await audioStatusOf(id)).toBe("queued");
 	});
 
@@ -223,7 +234,7 @@ describe("retryAudioJobFn", () => {
 		const id = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
 		await attachAudioRecord(db, id, { audioKey: "k-noqueue", size: 1 });
 		await failAudioJob(db, id, "boom");
-		// Swap the registry entry for a runtime without audioQueue.
+		// Swap the registry entry for a runtime without the jobs port.
 		resetServerRuntime();
 		setServerRuntime({
 			run: (effect) => runtime.runPromise(effect),
@@ -249,7 +260,7 @@ describe("retryAudioJobFn", () => {
 					),
 				getLocale: () => "en",
 				audioTranscribeModel: "test-model",
-				audioQueue,
+				jobs,
 			});
 		}
 	});
@@ -271,7 +282,10 @@ describe("retryAudioJobFn", () => {
 		await failAudioJob(db, id, "boom");
 		const res = await retryAudioJobFn({ data: { consultationId: id } });
 		expect(res).toEqual({ ok: true });
-		expect(sent.at(-1)).toMatchObject({ consultationId: id, userId: "" });
+		expect(sent.at(-1)).toMatchObject({
+			kind: "transcription.audio",
+			payload: { consultationId: id, userId: "" },
+		});
 	});
 
 	it("still reports ok when the phase-2 admin re-check is denied", async () => {

@@ -23,7 +23,7 @@ vi.mock("@tanstack/react-start", () => ({
 import { env } from "cloudflare:workers";
 import * as Effect from "effect/Effect";
 import type { Page, PanelPage } from "@ktb/kernel";
-import { appPages, consolePages } from "./registry.ts";
+import { appPages, portalPages } from "./registry.ts";
 import { SAMPLE_TRANSCRIPT, type Anamnesis, type AnamnesisSection } from "@ktb/anamnesis";
 import { auth, db } from "./platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
@@ -54,7 +54,7 @@ import {
 	patientDeletionImpactFn,
 	patientHistoryFn,
 	platformAdminFn,
-	platformPageDataFn,
+	portalPageDataFn,
 	appPageDataFn,
 	recordConsentFn,
 	saveConsultationFn,
@@ -522,39 +522,32 @@ describe("server fns", () => {
 		// redirects/404s before any page loader runs).
 		headers.current = new Headers();
 		expect(await platformAdminFn()).toBe(false);
-		expect(await platformPageDataFn({ data: "/platform/patients" })).toEqual({
+		expect(await portalPageDataFn({ data: "/platform/patients" })).toEqual({
 			status: "notfound",
 		});
-		expect(await platformPageDataFn({ data: "/platform/consultations" })).toEqual({
+		expect(await portalPageDataFn({ data: "/platform/consultations" })).toEqual({
 			status: "notfound",
 		});
 		expect(await adminListAudioJobsFn()).toEqual([]);
-		expect(await platformPageDataFn({ data: "/platform/users" })).toEqual({ status: "notfound" });
-		expect(await platformPageDataFn({ data: "/platform/groups" })).toEqual({ status: "notfound" });
+		expect(await portalPageDataFn({ data: "/platform/users" })).toEqual({ status: "notfound" });
+		expect(await portalPageDataFn({ data: "/platform/groups" })).toEqual({ status: "notfound" });
 		// Unknown console paths have no descriptor → notfound.
-		expect(await platformPageDataFn({ data: "/platform/nope" })).toEqual({ status: "notfound" });
+		expect(await portalPageDataFn({ data: "/platform/nope" })).toEqual({ status: "notfound" });
 
-		// Signed-in non-admin → still not admin; page loaders collapse
-		// Forbidden to the same empty tables the old fns returned.
+		// Signed-in non-admin → still not admin. The P-081 audience gate
+		// hides every /platform page behind the platform-admin rule, so
+		// page data collapses to notfound before any loader runs.
 		headers.current = new Headers({ cookie });
 		expect(await platformAdminFn()).toBe(false);
-		expect(await platformPageDataFn({ data: "/platform/patients" })).toEqual({
-			status: "ok",
-			data: { patients: [], owners: [] },
+		expect(await portalPageDataFn({ data: "/platform/patients" })).toEqual({
+			status: "notfound",
 		});
-		expect(await platformPageDataFn({ data: "/platform/consultations" })).toEqual({
-			status: "ok",
-			data: { consultations: [], owners: [], patients: [] },
+		expect(await portalPageDataFn({ data: "/platform/consultations" })).toEqual({
+			status: "notfound",
 		});
 		expect(await adminListAudioJobsFn()).toEqual([]);
-		expect(await platformPageDataFn({ data: "/platform/users" })).toEqual({
-			status: "ok",
-			data: [],
-		});
-		expect(await platformPageDataFn({ data: "/platform/groups" })).toEqual({
-			status: "ok",
-			data: [],
-		});
+		expect(await portalPageDataFn({ data: "/platform/users" })).toEqual({ status: "notfound" });
+		expect(await portalPageDataFn({ data: "/platform/groups" })).toEqual({ status: "notfound" });
 
 		// Allowlisted admin (PLATFORM_ADMIN_EMAILS test double) → full
 		// cross-owner listing.
@@ -562,7 +555,7 @@ describe("server fns", () => {
 		headers.current = new Headers({ cookie: adminCookie });
 		expect(await platformAdminFn()).toBe(true);
 		const pageData = async (path: string) => {
-			const res = await platformPageDataFn({ data: path });
+			const res = await portalPageDataFn({ data: path });
 			if (res.status !== "ok") throw new Error(`expected ok, got ${res.status}`);
 			return res.data;
 		};
@@ -658,7 +651,10 @@ describe("server fns", () => {
 	});
 
 	it("platform page guard: false reports notfound and skips the loader", async () => {
-		headers.current = new Headers({ cookie });
+		// The audience gate runs before page guards — the session must
+		// satisfy the platform instance's platform-admin rule.
+		const adminCookie = await signIn("platform-admin@ktb.test");
+		headers.current = new Headers({ cookie: adminCookie });
 		let loaderRan = false;
 		const base = {
 			component: () => null,
@@ -683,13 +679,13 @@ describe("server fns", () => {
 		// No shipped plugin uses `guard` yet — register throwaway
 		// descriptors directly on the (mutable) registry map. The owner
 		// id must be a real enabled plugin for the P-058 gate.
-		const pages = consolePages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
+		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set(denied.path, { page: denied, pluginId: "platform.routes" });
 		pages.set(allowed.path, { page: allowed, pluginId: "platform.routes" });
 		try {
-			expect(await platformPageDataFn({ data: denied.path })).toEqual({ status: "notfound" });
+			expect(await portalPageDataFn({ data: denied.path })).toEqual({ status: "notfound" });
 			expect(loaderRan).toBe(false);
-			expect(await platformPageDataFn({ data: allowed.path })).toEqual({
+			expect(await portalPageDataFn({ data: allowed.path })).toEqual({
 				status: "ok",
 				data: "loaded",
 			});
@@ -700,6 +696,55 @@ describe("server fns", () => {
 		}
 	});
 
+	it("clinician portal pages serve doctor-scoped data (P-081)", async () => {
+		// Anonymous → the audience gate fails before any loader runs.
+		headers.current = new Headers();
+		expect(await portalPageDataFn({ data: "/portal/clinician" })).toEqual({
+			status: "notfound",
+		});
+		expect(await portalPageDataFn({ data: "/portal/clinician/patients" })).toEqual({
+			status: "notfound",
+		});
+
+		// fns@x.com signed up as a doctor — the clinician audience admits
+		// and `subject: "doctor"` binds the acting user, so the patients
+		// loader returns the owner's rows.
+		headers.current = new Headers({ cookie });
+		const home = await portalPageDataFn({ data: "/portal/clinician" });
+		expect(home).toEqual({ status: "ok", data: null });
+		const patients = await portalPageDataFn({ data: "/portal/clinician/patients" });
+		expect(patients.status).toBe("ok");
+		if (patients.status === "ok") expect(Array.isArray(patients.data)).toBe(true);
+		const consults = await portalPageDataFn({ data: "/portal/clinician/consultations" });
+		expect(consults.status).toBe("ok");
+		if (consults.status === "ok") expect(Array.isArray(consults.data)).toBe(true);
+		// Wildcard record pages: the `new` subpaths resolve to form views,
+		// malformed/unknown ids fail the guard → notfound.
+		const patientNew = await portalPageDataFn({ data: "/portal/clinician/patients/new" });
+		expect(patientNew).toEqual({ status: "ok", data: { view: "new" } });
+		const consultNew = await portalPageDataFn({
+			data: "/portal/clinician/consultations/new",
+		});
+		expect(consultNew.status).toBe("ok");
+		if (consultNew.status === "ok") {
+			expect((consultNew.data as { view: string }).view).toBe("new");
+		}
+		expect(await portalPageDataFn({ data: "/portal/clinician/patients/abc" })).toEqual({
+			status: "notfound",
+		});
+		expect(await portalPageDataFn({ data: "/portal/clinician/patients/999999" })).toEqual({
+			status: "notfound",
+		});
+		expect(await portalPageDataFn({ data: "/portal/clinician/consultations/999999" })).toEqual({
+			status: "notfound",
+		});
+		// Unknown instance ids and paths under them still 404.
+		expect(await portalPageDataFn({ data: "/portal/nope" })).toEqual({ status: "notfound" });
+		expect(await portalPageDataFn({ data: "/portal/clinician/nope" })).toEqual({
+			status: "notfound",
+		});
+	});
+
 	it("platform page data reports notfound for a disabled plugin (P-058)", async () => {
 		headers.current = new Headers({ cookie });
 		const page: PanelPage = {
@@ -708,7 +753,7 @@ describe("server fns", () => {
 			component: () => null,
 			loader: () => Effect.succeed("never"),
 		};
-		const pages = consolePages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
+		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		// platform.* plugins are system:true (P-062) — isEnabled ignores
 		// rows for them, so the disable probe needs a disableable owner.
 		pages.set(page.path, { page, pluginId: "consultations.services" });
@@ -718,7 +763,7 @@ describe("server fns", () => {
 			.insert(pluginState)
 			.values({ pluginId: "consultations.services", enabled: false, updatedAt: new Date() });
 		try {
-			expect(await platformPageDataFn({ data: page.path })).toEqual({ status: "notfound" });
+			expect(await portalPageDataFn({ data: page.path })).toEqual({ status: "notfound" });
 		} finally {
 			pages.delete(page.path);
 			await db.delete(pluginState).where(eq(pluginState.pluginId, "consultations.services"));
@@ -745,7 +790,7 @@ describe("server fns", () => {
 			});
 			// Shell isolation: the console fn never serves app paths and
 			// the app fn never serves console paths.
-			expect(await platformPageDataFn({ data: page.path })).toEqual({ status: "notfound" });
+			expect(await portalPageDataFn({ data: page.path })).toEqual({ status: "notfound" });
 			expect(await appPageDataFn({ data: "/platform/patients" })).toEqual({
 				status: "notfound",
 			});
@@ -762,7 +807,7 @@ describe("server fns", () => {
 			pages.set("/test-mismatch", {
 				page: { ...page, path: "/test-mismatch" },
 				pluginId: "platform.routes",
-				context: "console",
+				context: "portal",
 			});
 			expect(await appPageDataFn({ data: "/test-mismatch" })).toEqual({ status: "notfound" });
 			pages.delete("/test-mismatch");

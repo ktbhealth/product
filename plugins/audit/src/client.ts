@@ -20,7 +20,7 @@ export const auditChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "audit.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/audit", label: "Audit log", icon: ScrollTextIcon, group: "System" },

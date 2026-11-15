@@ -4,7 +4,7 @@
  * consumer filters through `enabledPlugins` before reading
  * chrome/landing/panel contributions so a disabled plugin renders
  * nothing. Server-side enforcement lives in the page data fns
- * (`platformPageDataFn`/`appPageDataFn` → notfound) and the CQRS
+ * (`portalPageDataFn`/`appPageDataFn` → notfound) and the CQRS
  * dispatch gate in @ktb/app-host.
  */
 

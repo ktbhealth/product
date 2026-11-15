@@ -209,7 +209,7 @@ describe("plugins", () => {
 		expect(usersChromePlugin.chrome).toEqual([
 			{
 				id: "users.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: { to: "/platform/users", label: "Users", icon: UserCogIcon, group: "Access" },

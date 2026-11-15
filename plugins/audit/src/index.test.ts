@@ -292,7 +292,7 @@ describe("plugins", () => {
 		expect(auditChromePlugin.id).toBe("audit.chrome");
 		expect(auditChromePlugin.requiredDeps).toEqual(["platform.panel"]);
 		expect(auditChromePlugin.chrome?.[0]).toMatchObject({
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/audit", label: "Audit log", group: "System" },

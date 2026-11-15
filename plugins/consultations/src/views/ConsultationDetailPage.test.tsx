@@ -74,7 +74,7 @@ describe("ConsultationDetailPage", () => {
 		render(<ConsultationDetailPage c={detail({})} history={null} />);
 		const link = screen.getByTitle("Open patient record");
 		expect(link.textContent).toBe("Maria");
-		expect(link.getAttribute("href")).toBe("/patients/$id");
+		expect(link.getAttribute("href")).toBe("/patients/1");
 	});
 
 	it("shows an unlinked patient name as plain text", () => {

@@ -26,7 +26,7 @@ export const managerChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "manager.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {

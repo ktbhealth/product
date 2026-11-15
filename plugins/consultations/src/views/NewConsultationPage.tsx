@@ -115,6 +115,7 @@ export function NewConsultationPage({
 	api,
 	backend,
 	locale = "en",
+	portalBase,
 }: {
 	initialPatients: Array<{ id: number; name: string }>;
 	/** Preselect a patient (e.g. "New consultation" from the patient record). */
@@ -123,8 +124,11 @@ export function NewConsultationPage({
 	backend: TranscriptionBackend;
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
+	/** Portal instance base path — internal links stay under it (P-081). */
+	portalBase?: string;
 }) {
 	const t = consultationMessages(locale);
+	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const nc = t.newConsultation;
 	const [recording, setRecording] = useState(false);
 	// `supported` probes browser APIs, so it differs between the SSR pass
@@ -707,8 +711,7 @@ export function NewConsultationPage({
 						) : null}
 						{quickCreatedId !== null && quickCreatedId === patientId ? (
 							<Link
-								to="/patients/$id/edit"
-								params={{ id: String(quickCreatedId) }}
+								to={portalPath(`/patients/${quickCreatedId}/edit`)}
 								className="text-xs font-medium underline"
 							>
 								{nc.completeRecord}
@@ -1112,8 +1115,7 @@ export function NewConsultationPage({
 								{t.common.downloadPdf}
 							</a>
 							<Link
-								to="/consultations/$id"
-								params={{ id: String(saveDialog.id) }}
+								to={portalPath(`/consultations/${saveDialog.id}`)}
 								className={buttonVariants({ variant: "outline", size: "sm" })}
 							>
 								{nc.viewConsultation}

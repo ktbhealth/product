@@ -172,7 +172,7 @@ describe("plugins", () => {
 		expect(tenantChromePlugin.id).toBe("tenant.chrome");
 		expect(tenantChromePlugin.requiredDeps).toEqual(["platform.panel"]);
 		expect(tenantChromePlugin.chrome?.[0]).toMatchObject({
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/tenants", label: "Tenants", icon: Building2Icon, group: "Access" },

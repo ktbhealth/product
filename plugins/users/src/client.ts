@@ -9,7 +9,7 @@ import { UsersPlatformPage } from "./platform-page.tsx";
  * through `@ktb/app-host/client` (import.meta.glob on
  * `plugins/<name>/src/client.ts`). The services entry degrades to a marker;
  * the panel entry keeps its page descriptor; the sidebar item
- * lives in the console.sidebar chrome contribution —
+ * lives in the portal.sidebar chrome contribution —
  * `panel.pages` keep id/path/component only, the loader Effect runs
  * server-side and stays in ./index.ts. Dep ids are literals: importing
  * ./index.ts would pull the server graph into the client bundle. Keep
@@ -21,7 +21,7 @@ export const usersChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "users.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/users", label: "Users", icon: UserCogIcon, group: "Access" },

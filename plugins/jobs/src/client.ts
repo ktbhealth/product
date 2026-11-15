@@ -22,7 +22,7 @@ export const jobsHeaderPlugin = definePlugin({
 	chrome: [
 		{
 			id: "jobs.header-action",
-			region: "console.header.actions",
+			region: "portal.header.actions",
 			content: { kind: "headerAction", id: "jobs", component: JobsHeaderAction },
 		},
 	],
@@ -40,7 +40,7 @@ export const opsServicesPlugin = definePlugin({
 
 /**
  * Client mirror of opsChromePlugin — the console sidebar entry lives in
- * the `console.sidebar` chrome region.
+ * the `portal.sidebar` chrome region.
  */
 export const opsChromePlugin = definePlugin({
 	id: "jobs.chrome",
@@ -48,7 +48,7 @@ export const opsChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "jobs.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/ops", label: "Ops", icon: ActivityIcon, group: "System" },

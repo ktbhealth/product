@@ -181,7 +181,7 @@ describe("NewConsultationPage", () => {
 			}),
 		);
 		await waitFor(() => expect(screen.getByLabelText("Patient").textContent).toContain("Ana"));
-		expect(screen.getByText("Complete the record").getAttribute("href")).toBe("/patients/$id/edit");
+		expect(screen.getByText("Complete the record").getAttribute("href")).toBe("/patients/7/edit");
 		expect((screen.getByLabelText("New patient age") as HTMLInputElement).value).toBe("");
 		// switching to another patient hides the shortcut
 		await choosePatient(user, "Maria");

@@ -22,6 +22,7 @@ import {
 	enabledIdSet,
 	enabledPlugins,
 	KNOWN_CHROME_REGIONS,
+	portalInstances,
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
 import { sessionFn, pluginStatesFn } from "#/lib/fns.ts";
@@ -132,10 +133,21 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	// switches doctor profiles.
 	const patientOnly = user?.patientOnly === true;
 	const pathname = useLocation({ select: (l) => l.pathname });
-	// /platform is a system console, not an app page — it owns the whole
-	// viewport (own chrome) so the marketing header/footer and the
-	// max-w-6xl column don't wrap it.
-	const isConsole = pathname === "/platform" || pathname.startsWith("/platform/");
+	// Portal surfaces are system chrome, not app pages — /platform* and
+	// /portal/<instanceId>/* (P-081) own the whole viewport (their route
+	// renders PortalShell) so the marketing header/footer and the
+	// max-w-6xl column don't wrap them. /portal itself and the patient
+	// portal's physical routes keep the marketing chrome: their first
+	// segment is not a contributed instance id.
+	const portalSegment = pathname.startsWith("/portal/")
+		? pathname.slice("/portal/".length).split("/")[0]
+		: undefined;
+	const isPortalInstancePath =
+		portalSegment !== undefined &&
+		portalSegment !== "" &&
+		portalInstances.some((e) => e.instance.id === portalSegment);
+	const isConsole =
+		pathname === "/platform" || pathname.startsWith("/platform/") || isPortalInstancePath;
 	// Enabled-state filter (P-058): disabled plugins contribute nothing
 	// to any chrome region.
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));

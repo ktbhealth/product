@@ -1,8 +1,8 @@
 import { createElement } from "react";
 import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 
-import { platformPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
-import { consolePages, enabledIdSet, findPage } from "#/lib/registry.ts";
+import { portalPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
+import { portalPages, enabledIdSet, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 import { getLocale } from "#/paraglide/runtime.js";
 
@@ -21,13 +21,13 @@ export const Route = createFileRoute("/platform/$")({
 		const path = `/platform/${params._splat ?? ""}`;
 		// findPage: exact descriptors win; "/*" wildcards (DB-backed
 		// pages) resolve by longest matching base.
-		const entry = findPage(consolePages, path);
+		const entry = findPage(portalPages, path);
 		if (entry === undefined) throw notFound();
 		// Client-side early gate: a disabled plugin's page 404s before the
-		// server fn round-trip (platformPageDataFn re-checks server-side).
+		// server fn round-trip (portalPageDataFn re-checks server-side).
 		const states = await pluginStatesFn();
 		if (!enabledIdSet(states).has(entry.pluginId)) throw notFound();
-		const result = await platformPageDataFn({ data: path });
+		const result = await portalPageDataFn({ data: path });
 		if (result.status === "notfound") throw notFound();
 		return result.data;
 	},
@@ -35,7 +35,7 @@ export const Route = createFileRoute("/platform/$")({
 		const { _splat } = Route.useParams();
 		const data = Route.useLoaderData();
 		const { user } = rootApi.useLoaderData();
-		const entry = findPage(consolePages, `/platform/${_splat ?? ""}`);
+		const entry = findPage(portalPages, `/platform/${_splat ?? ""}`);
 		if (entry === undefined) return null;
 		// ctx.plugins is the FULL discovered registry (P-058): the
 		// /platform/plugins manager needs disabled plugins too; enabled

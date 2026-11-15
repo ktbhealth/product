@@ -734,7 +734,7 @@ describe("plugins", () => {
 		expect(rbacChromePlugin.chrome).toEqual([
 			{
 				id: "rbac.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: { to: "/platform/roles", label: "Roles", icon: ShieldCheckIcon, group: "Access" },

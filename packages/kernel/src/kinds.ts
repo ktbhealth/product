@@ -78,6 +78,50 @@ export const FIELD_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[] = [
 	fieldKind("panel", ["app-host.server", "app-host.client", "plugin-manager"]),
 	// Generic pages at arbitrary paths (P-059) — same dual collection.
 	fieldKind("pages", ["app-host.server", "app-host.client", "app.routes"]),
+	// Portal instance descriptors (P-081) — collected client-side for
+	// shell/switcher rendering; the server fn re-derives the gate.
+	fieldKind("portals", ["app-host.server", "app-host.client", "plugin-manager"]),
+];
+
+/**
+ * Theme contribution kinds (P-082 / PL-006): generic-channel kinds a
+ * plugin may emit via `contributions[]` to ship white-label data
+ * alongside (or instead of) DB-backed theme rows.
+ *
+ * - `theme.tokens` — `meta` is a JSON object mapping the exact CSS
+ *   custom-property names `globals.css` consumes (`--primary`,
+ *   `--ring`, `--background`, `--sidebar`, …, plus `--ktb-*`
+ *   aliases) to `oklch(...)`/color strings, optionally split as
+ *   `{ light: {...}, dark: {...} }`. One override block re-skins every
+ *   `@ktbhealth/ui` component.
+ * - `theme.brand` — `meta` is `{ appName?, logoLight?, logoDark?,
+ *   wordmark?, favicon?, ogImage? }` where each asset value is a URL
+ *   or storage ref the consuming shell resolves.
+ *
+ * Consumers opt in via `collectKindContributions(plugins,
+ * THEME_TOKENS_KIND)` / `THEME_BRAND_KIND`; the theme plugin
+ * (@ktb/theme) resolves DB-backed themes per request scope and does
+ * not itself emit these entries.
+ */
+export const THEME_TOKENS_KIND: ContributionKindDescriptor = {
+	id: "theme.tokens",
+	slot: GENERIC_CONTRIBUTION_SLOT,
+	consumers: ["app-host.server", "app-host.client", "app.routes"],
+	ordering: "topo",
+};
+
+/** See {@link THEME_TOKENS_KIND} — brand asset refs + app name. */
+export const THEME_BRAND_KIND: ContributionKindDescriptor = {
+	id: "theme.brand",
+	slot: GENERIC_CONTRIBUTION_SLOT,
+	consumers: ["app-host.server", "app-host.client", "app.routes"],
+	ordering: "topo",
+};
+
+/** The theme kinds, for consumers that collect both at once. */
+export const THEME_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[] = [
+	THEME_TOKENS_KIND,
+	THEME_BRAND_KIND,
 ];
 
 /** One collected payload of a kind: which plugin carries it, where it

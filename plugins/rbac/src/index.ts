@@ -547,7 +547,7 @@ export const rbacTablesPlugin = definePlugin({
 });
 
 // Chrome contribution (P-060): the console sidebar entry lives in the
-// `console.sidebar` chrome region; the dep edge orders it after the
+// `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const rbacChromePlugin = definePlugin({
 	id: "rbac.chrome",
@@ -555,7 +555,7 @@ export const rbacChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "rbac.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/roles", label: "Roles", icon: ShieldCheckIcon, group: "Access" },

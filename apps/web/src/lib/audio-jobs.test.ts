@@ -3,9 +3,14 @@ import { eq } from "drizzle-orm";
 
 import { makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { consultations } from "@ktb/db/schema";
-import { attachAudioRecord, createConsultation } from "@ktb/consultations";
+import { consultations, jobRuns } from "@ktb/db/schema";
+import {
+	AUDIO_TRANSCRIPTION_JOB_KIND,
+	attachAudioRecord,
+	createConsultation,
+} from "@ktb/consultations";
 
+import { jobHandlers, registerJobHandler } from "#/lib/jobs.ts";
 import {
 	bytesToBase64,
 	extractWhisperText,
@@ -22,6 +27,7 @@ import {
 const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL DEFAULT 'browser', status TEXT NOT NULL DEFAULT 'done', bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
+CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 `;
 
 const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
@@ -59,6 +65,17 @@ const job = (consultationId: number, over: Partial<AudioJobMessage> = {}): Audio
 
 const row = async (db: DbClient, id: number) =>
 	(await db.select().from(consultations).where(eq(consultations.id, id)))[0];
+
+/** Canonical PL-007 wire envelope around an audio payload. */
+const envelope = (j: AudioJobMessage, id = "env-1"): unknown => ({
+	id,
+	kind: AUDIO_TRANSCRIPTION_JOB_KIND,
+	payload: j,
+	tenantId: j.tenantId ?? null,
+});
+
+const jobRun = async (db: DbClient, id: string) =>
+	(await db.select().from(jobRuns).where(eq(jobRuns.id, id)))[0];
 
 describe("audio-jobs pure helpers", () => {
 	it("bytesToBase64 round-trips", () => {
@@ -329,14 +346,19 @@ describe("handleAudioQueueBatch", () => {
 		const log: string[] = [];
 		await handleAudioQueueBatch(
 			[
-				msg(job(id), log),
+				msg(envelope(job(id), "env-ok"), log),
 				msg({ bogus: true }, log),
-				msg(job(99999), log), // missing consultation → marked failed, acked
+				msg(envelope(job(99999), "env-missing"), log), // missing consultation → marked failed, acked
 			],
 			deps,
 		);
 		expect(log).toEqual(["ack", "ack", "ack"]);
 		expect((await row(db, id))?.audioStatus).toBe("done");
+		// job_runs projection: delivered jobs land "done" (the domain row
+		// carries the audio-specific failure for the missing consultation).
+		expect((await jobRun(db, "env-ok"))?.status).toBe("done");
+		expect((await jobRun(db, "env-missing"))?.status).toBe("done");
+		expect(await jobRun(db, "bogus")).toBeUndefined();
 	});
 
 	it("accepts tenant_id on the message and still acks pre-tenancy payloads", async () => {
@@ -347,7 +369,7 @@ describe("handleAudioQueueBatch", () => {
 		await handleAudioQueueBatch(
 			[
 				// New shape: explicit tenant_id.
-				msg({ ...job(id), tenantId: 4 }, log),
+				msg(envelope({ ...job(id), tenantId: 4 }, "env-tenant"), log),
 				// Old shape: no tenant_id — decodes as personal scope.
 				msg(job(id), log),
 			],
@@ -355,6 +377,44 @@ describe("handleAudioQueueBatch", () => {
 		);
 		expect(log).toEqual(["ack", "ack"]);
 		expect((await row(db, id))?.audioStatus).toBe("done");
+		expect((await jobRun(db, "env-tenant"))?.tenantId).toBe(4);
+	});
+
+	it("acks malformed envelopes, non-object bodies and unknown kinds", async () => {
+		const { db, deps } = makeDeps();
+		const log: string[] = [];
+		await handleAudioQueueBatch(
+			[
+				msg({ kind: AUDIO_TRANSCRIPTION_JOB_KIND }, log), // envelope missing id → poison
+				msg("not json at all", log),
+				msg({ id: "u1", kind: "no.such.kind", payload: {} }, log),
+			],
+			deps,
+		);
+		expect(log).toEqual(["ack", "ack", "ack"]);
+		expect((await jobRun(db, "u1"))?.error).toBe("unknown job kind: no.such.kind");
+	});
+
+	it("dispatches registered kinds through the shared registry", async () => {
+		const { db, deps } = makeDeps();
+		const seen: unknown[] = [];
+		registerJobHandler("test.ping", {
+			handle: async (payload) => {
+				seen.push(payload);
+			},
+		});
+		try {
+			const log: string[] = [];
+			await handleAudioQueueBatch(
+				[msg({ id: "ping-1", kind: "test.ping", payload: { hi: 1 } }, log)],
+				deps,
+			);
+			expect(log).toEqual(["ack"]);
+			expect(seen).toEqual([{ hi: 1 }]);
+			expect((await jobRun(db, "ping-1"))?.status).toBe("done");
+		} finally {
+			delete jobHandlers["test.ping"];
+		}
 	});
 
 	it("retries when processing throws unexpectedly", async () => {

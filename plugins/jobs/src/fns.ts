@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { Consultations } from "@ktb/consultations";
+import { AUDIO_TRANSCRIPTION_JOB_KIND, Consultations } from "@ktb/consultations";
 import { ensureSessionUser, getServerRuntime, runAs } from "@ktb/server-fns";
 
 import { isAudioRetryable } from "./jobs.ts";
@@ -44,21 +44,25 @@ export const retryAudioJobFn = createServerFn({ method: "POST" })
 		if (!isAudioRetryable(record.audioStatus)) {
 			return { ok: false, reason: "not-retryable" };
 		}
-		const { audioQueue } = getServerRuntime();
-		if (audioQueue === undefined) {
+		const { jobs } = getServerRuntime();
+		if (jobs === undefined) {
 			return { ok: false, reason: "unavailable" };
 		}
 		try {
-			// Same message shape as the upload route — tenantId comes from
-			// the row (authoritative), userId falls back to "" for the
-			// nullable legacy column (the consumer skips the owner check
-			// when the row's userId is null anyway).
-			await audioQueue.send({
-				consultationId: data.consultationId,
-				audioKey: record.audioKey,
-				userId: record.userId ?? "",
-				tenantId: record.tenantId,
-			});
+			// Same enqueue path as the upload route (PL-007 jobs port) —
+			// tenantId comes from the row (authoritative), userId falls
+			// back to "" for the nullable legacy column (the consumer
+			// skips the owner check when the row's userId is null anyway).
+			await jobs.enqueue(
+				AUDIO_TRANSCRIPTION_JOB_KIND,
+				{
+					consultationId: data.consultationId,
+					audioKey: record.audioKey,
+					userId: record.userId ?? "",
+					tenantId: record.tenantId,
+				},
+				{ tenantId: record.tenantId, payloadRef: `consultation:${data.consultationId}` },
+			);
 		} catch {
 			// Nothing was enqueued — the row keeps its honest failed/stored
 			// status; no "queued" marker is written.

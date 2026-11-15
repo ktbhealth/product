@@ -322,6 +322,9 @@ export default defineConfig({
 					"apps/web/src/routes/verify-email.tsx",
 					"apps/web/src/routes/__root.tsx",
 					"apps/web/src/routes/platform.tsx",
+					// Namespaced portal shells sign out through the same
+					// auth client the platform layout uses (P-081).
+					"apps/web/src/routes/portal.$instance.$.tsx",
 					"apps/web/src/**/*.test.{ts,tsx}",
 					"plugins/auth/src/views/LoginPage.tsx",
 					"plugins/invites/src/views/AcceptInvitePage.tsx",

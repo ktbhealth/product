@@ -10,6 +10,7 @@
 		"./fns": "./src/fns.ts",
 		"./i18n": "./src/i18n.ts",
 		"./views": "./src/views/index.ts",
+		"./backend": "./src/backend.ts",
 		"./api-route-bots": "./src/api-routes/bots.ts",
 		"./api-route-bots-webhook": "./src/api-routes/bots.webhook.ts"
 	},

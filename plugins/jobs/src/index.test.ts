@@ -30,7 +30,7 @@ describe("jobs.header plugin", () => {
 		expect(jobsHeaderPlugin.optionalDeps).toEqual(["platform.header"]);
 		expect(jobsHeaderPlugin.chrome).toHaveLength(1);
 		expect(jobsHeaderPlugin.chrome?.[0]).toMatchObject({
-			region: "console.header.actions",
+			region: "portal.header.actions",
 			content: { kind: "headerAction", id: "jobs" },
 		});
 	});
@@ -46,7 +46,7 @@ describe("ops plugins", () => {
 		expect(opsChromePlugin.id).toBe("jobs.chrome");
 		expect(opsChromePlugin.requiredDeps).toEqual(["platform.panel"]);
 		expect(opsChromePlugin.chrome?.[0]).toMatchObject({
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/ops", label: "Ops", group: "System" },
