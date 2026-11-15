@@ -65,8 +65,22 @@ jobs:
       TBLS_VERSION: v1.96.1
     steps:
       - uses: actions/checkout@v4
+      # The ERD pages live in the docs repo, so a schema change needs a
+      # matching docs change. A docs branch with the same name as the pull
+      # request's branch carries those pages until both merge; without
+      # one — and on main — compare against the docs default branch.
       - name: Clone docs repo (sibling of this checkout)
-        run: git clone --depth 1 https://github.com/ktbhealth/docs.git "$GITHUB_WORKSPACE/../docs"
+        env:
+          DOCS_URL: https://github.com/ktbhealth/docs.git
+          DOCS_BRANCH: ${{ github.head_ref }}
+        run: |
+          if [ -n "$DOCS_BRANCH" ] && git ls-remote --exit-code --heads "$DOCS_URL" "refs/heads/$DOCS_BRANCH" >/dev/null 2>&1; then
+            echo "Using docs branch $DOCS_BRANCH"
+            git clone --depth 1 --branch "$DOCS_BRANCH" "$DOCS_URL" "$GITHUB_WORKSPACE/../docs"
+          else
+            echo "Using the docs default branch"
+            git clone --depth 1 "$DOCS_URL" "$GITHUB_WORKSPACE/../docs"
+          fi
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json

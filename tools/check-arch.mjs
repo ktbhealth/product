@@ -70,6 +70,8 @@ check(
 		"bot-recall",
 		"captcha-stub",
 		"captcha-turnstile",
+		"email-cloudflare",
+		"email-stub",
 		"anamnesis-llm",
 		"interop-fhir",
 		"interop-openehr",
