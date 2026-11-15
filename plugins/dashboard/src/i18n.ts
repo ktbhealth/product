@@ -16,18 +16,26 @@ export interface DashboardMessages {
 	readonly stats: {
 		readonly patients: string;
 		readonly consultations: string;
+		readonly live: string;
 		readonly plugins: string;
-		readonly sidebarItems: string;
 	};
+	readonly byStatus: string;
+	readonly bySource: string;
 	readonly recentConsultations: string;
 	readonly noConsultations: string;
+	readonly viewAll: string;
 	readonly registeredPlugins: string;
+	readonly managePlugins: string;
 	readonly colId: string;
 	readonly colStatus: string;
 	readonly colSource: string;
 	readonly colOwner: string;
 	readonly colCreated: string;
+	readonly colState: string;
 	readonly colContributions: string;
+	readonly stateEnabled: string;
+	readonly stateDisabled: string;
+	readonly stateSystem: string;
 	readonly consoleActivity: string;
 	readonly unreadNotifications: string;
 	readonly noNotifications: string;
@@ -39,18 +47,26 @@ const en: DashboardMessages = {
 	stats: {
 		patients: "Patients",
 		consultations: "Consultations",
+		live: "Live now",
 		plugins: "Plugins",
-		sidebarItems: "Sidebar items",
 	},
+	byStatus: "Consultations by status",
+	bySource: "By source",
 	recentConsultations: "Recent consultations",
 	noConsultations: "No consultations yet.",
+	viewAll: "View all",
 	registeredPlugins: "Registered plugins",
+	managePlugins: "Manage",
 	colId: "Id",
 	colStatus: "Status",
 	colSource: "Source",
 	colOwner: "Owner",
 	colCreated: "Created",
+	colState: "State",
 	colContributions: "Contributions",
+	stateEnabled: "Enabled",
+	stateDisabled: "Disabled",
+	stateSystem: "System",
 	consoleActivity: "Console activity",
 	unreadNotifications: "Unread notifications",
 	noNotifications: "No notifications yet.",
@@ -62,18 +78,26 @@ const ptBR: DashboardMessages = {
 	stats: {
 		patients: "Pacientes",
 		consultations: "Consultas",
+		live: "Ao vivo",
 		plugins: "Plugins",
-		sidebarItems: "Itens da barra lateral",
 	},
+	byStatus: "Consultas por status",
+	bySource: "Por origem",
 	recentConsultations: "Consultas recentes",
 	noConsultations: "Nenhuma consulta ainda.",
+	viewAll: "Ver tudo",
 	registeredPlugins: "Plugins registrados",
+	managePlugins: "Gerenciar",
 	colId: "Id",
 	colStatus: "Status",
 	colSource: "Origem",
 	colOwner: "Proprietário",
 	colCreated: "Criada em",
+	colState: "Estado",
 	colContributions: "Contribuições",
+	stateEnabled: "Ativo",
+	stateDisabled: "Inativo",
+	stateSystem: "Sistema",
 	consoleActivity: "Atividade do console",
 	unreadNotifications: "Notificações não lidas",
 	noNotifications: "Nenhuma notificação ainda.",
@@ -85,18 +109,26 @@ const es: DashboardMessages = {
 	stats: {
 		patients: "Pacientes",
 		consultations: "Consultas",
+		live: "En vivo",
 		plugins: "Plugins",
-		sidebarItems: "Elementos de la barra lateral",
 	},
+	byStatus: "Consultas por estado",
+	bySource: "Por origen",
 	recentConsultations: "Consultas recientes",
 	noConsultations: "Ninguna consulta aún.",
+	viewAll: "Ver todo",
 	registeredPlugins: "Plugins registrados",
+	managePlugins: "Gestionar",
 	colId: "Id",
 	colStatus: "Estado",
 	colSource: "Origen",
 	colOwner: "Propietario",
 	colCreated: "Creada",
+	colState: "Estado",
 	colContributions: "Contribuciones",
+	stateEnabled: "Activo",
+	stateDisabled: "Inactivo",
+	stateSystem: "Sistema",
 	consoleActivity: "Actividad de la consola",
 	unreadNotifications: "Notificaciones no leídas",
 	noNotifications: "Ninguna notificación aún.",

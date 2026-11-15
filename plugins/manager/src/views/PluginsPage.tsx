@@ -1,8 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
+import { EllipsisVerticalIcon } from "lucide-react";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@ktbhealth/ui/components/dialog";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@ktbhealth/ui/components/dropdown-menu";
 import { Input } from "@ktbhealth/ui/components/input";
 import {
 	Select,
@@ -11,8 +26,18 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
+import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import {
+	Pagination,
+	PaginationContent,
+	PaginationEllipsis,
+	PaginationItem,
+	PaginationLink,
+	PaginationNext,
+	PaginationPrevious,
+} from "@ktbhealth/ui/components/pagination";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Switch } from "@ktbhealth/ui/components/switch";
 import {
@@ -66,6 +91,10 @@ export interface PluginsPageProps {
 }
 
 type RowStatus = "enabled" | "disabled" | "blocked";
+type StatusFilter = "all" | RowStatus;
+
+const PAGE_SIZE = 15;
+const SEARCH_CLS = "w-56 sm:w-64";
 
 const statusOf = (enabled: boolean, missing: readonly string[]): RowStatus => {
 	// "Blocked" wins over both: required deps off means the plugin can
@@ -73,6 +102,10 @@ const statusOf = (enabled: boolean, missing: readonly string[]): RowStatus => {
 	if (missing.length > 0) return "blocked";
 	return enabled ? "enabled" : "disabled";
 };
+
+/** System plugins always count as enabled for filtering purposes. */
+const filterStatusOf = (plugin: Plugin, enabled: boolean, missing: readonly string[]): RowStatus =>
+	plugin.system === true ? "enabled" : statusOf(enabled, missing);
 
 const configObject = (config: unknown): Record<string, unknown> =>
 	typeof config === "object" && config !== null && !Array.isArray(config)
@@ -104,16 +137,37 @@ const enumValue = (values: Record<string, unknown>, key: string): string => {
 	return typeof v === "string" || typeof v === "number" ? String(v) : "";
 };
 
+/** Page-number window for the pagination bar: always first/last, a
+ * radius around the current page, ellipsis for the gaps. */
+const pageWindow = (page: number, total: number): readonly (number | "…")[] => {
+	if (total <= 7) return Array.from({ length: total }, (_, i) => i);
+	const pages = new Set<number>([0, total - 1, page - 1, page, page + 1]);
+	const sorted = [...pages].filter((p) => p >= 0 && p < total).sort((a, b) => a - b);
+	const out: (number | "…")[] = [];
+	let prev = -1;
+	for (const p of sorted) {
+		if (prev !== -1 && p - prev > 1) out.push("…");
+		out.push(p);
+		prev = p;
+	}
+	return out;
+};
+
 /**
  * /platform/plugins console view (P-058): every discovered plugin with
- * its contributions, dep status and runtime state. Toggles cascade
- * through an alertdialog (dependents are disabled together); enables
- * are refused while required deps are off; `meta.config` plugins get a
- * generated settings form.
+ * its contributions, dep status and runtime state. Toolbar filters by
+ * text/status with client-side pagination; toggles cascade through an
+ * alertdialog (dependents are disabled together); enables are refused
+ * while required deps are off; `meta.config` plugins get a generated
+ * settings form inside a dialog.
  */
 export function PluginsPage({ plugins, states, locale, cascadeConfirm = true }: PluginsPageProps) {
 	const t = managerMessages(locale);
 	const router = useRouter();
+	const [q, setQ] = useState("");
+	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+	const [page, setPage] = useState(0);
+	const [configFor, setConfigFor] = useState<Plugin | null>(null);
 	const [pendingDisable, setPendingDisable] = useState<readonly string[] | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [failed, setFailed] = useState(false);
@@ -130,13 +184,35 @@ export function PluginsPage({ plugins, states, locale, cascadeConfirm = true }: 
 	const rows = useMemo(
 		() =>
 			plugins.map((plugin) => {
-				const info = states.get(plugin.id);
 				const enabled = enabledSet.has(plugin.id);
 				const missing = missingRequiredDeps(plugins, enabledSet, plugin.id);
-				return { plugin, info, enabled, missing };
+				return { plugin, enabled, missing };
 			}),
-		[plugins, states, enabledSet],
+		[plugins, enabledSet],
 	);
+
+	const filtered = useMemo(() => {
+		const needle = q.trim().toLowerCase();
+		return rows.filter(({ plugin, enabled, missing }) => {
+			if (statusFilter !== "all" && filterStatusOf(plugin, enabled, missing) !== statusFilter) {
+				return false;
+			}
+			if (needle === "") return true;
+			return [
+				pluginDisplayName(plugin),
+				plugin.id,
+				plugin.meta?.description ?? "",
+				contributionKinds(plugin).join(" "),
+			]
+				.join(" ")
+				.toLowerCase()
+				.includes(needle);
+		});
+	}, [rows, q, statusFilter]);
+
+	const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+	const safePage = Math.min(page, totalPages - 1);
+	const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
 	const applyEnabled = async (ids: readonly string[], enabled: boolean) => {
 		setBusy(true);
@@ -173,6 +249,13 @@ export function PluginsPage({ plugins, states, locale, cascadeConfirm = true }: 
 	/* v8 ignore next -- the dialog action only renders while pendingDisable is set */
 	const confirmDisable = () => void applyEnabled(pendingDisable ?? [], false);
 
+	const statusLabel = (status: RowStatus) =>
+		status === "enabled"
+			? t.statusEnabled
+			: status === "disabled"
+				? t.statusDisabled
+				: t.statusBlocked;
+
 	return (
 		<PageContainer>
 			<PageHeader title={t.title} description={t.description} />
@@ -180,34 +263,148 @@ export function PluginsPage({ plugins, states, locale, cascadeConfirm = true }: 
 			{rows.length === 0 ? (
 				<p className="text-sm text-muted-foreground">{t.empty}</p>
 			) : (
-				<div className="overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colPlugin}</TableHead>
-								<TableHead>{t.colKind}</TableHead>
-								<TableHead>{t.colStatus}</TableHead>
-								<TableHead className="text-right">{t.colConfig}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{rows.map(({ plugin, info, enabled, missing }) => (
-								<PluginRow
-									key={plugin.id}
-									plugin={plugin}
-									enabled={enabled}
-									missing={missing}
-									config={info?.config}
-									locale={locale}
-									busy={busy}
-									t={t}
-									onToggle={(next) => onToggle(plugin, next)}
-								/>
-							))}
-						</TableBody>
-					</Table>
-				</div>
+				<>
+					<DataToolbar
+						search={
+							<Input
+								type="search"
+								value={q}
+								onChange={(e) => {
+									setQ(e.target.value);
+									setPage(0);
+								}}
+								placeholder={t.searchPlaceholder}
+								aria-label={t.searchLabel}
+								className={SEARCH_CLS}
+							/>
+						}
+						filters={
+							<Select
+								items={[
+									{ value: "all", label: t.filterAll },
+									{ value: "enabled", label: t.statusEnabled },
+									{ value: "disabled", label: t.statusDisabled },
+									{ value: "blocked", label: t.statusBlocked },
+								]}
+								value={statusFilter}
+								onValueChange={(v) => {
+									setStatusFilter(String(v) as StatusFilter);
+									setPage(0);
+								}}
+							>
+								<SelectTrigger size="sm" aria-label={t.statusFilterLabel} className="w-36">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="all">{t.filterAll}</SelectItem>
+									<SelectItem value="enabled">{t.statusEnabled}</SelectItem>
+									<SelectItem value="disabled">{t.statusDisabled}</SelectItem>
+									<SelectItem value="blocked">{t.statusBlocked}</SelectItem>
+								</SelectContent>
+							</Select>
+						}
+						resultCount={
+							q.trim() === "" && statusFilter === "all"
+								? undefined
+								: t.filteredCount(filtered.length, rows.length)
+						}
+					/>
+					<div className="overflow-hidden rounded-lg border border-border">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>{t.colPlugin}</TableHead>
+									<TableHead>{t.colKind}</TableHead>
+									<TableHead>{t.colStatus}</TableHead>
+									<TableHead className="w-12 text-right">{t.colActions}</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{paged.length === 0 ? (
+									<TableRow>
+										<TableCell colSpan={4} className="text-xs text-muted-foreground">
+											{t.noResults}
+										</TableCell>
+									</TableRow>
+								) : (
+									paged.map(({ plugin, enabled, missing }) => (
+										<PluginRow
+											key={plugin.id}
+											plugin={plugin}
+											enabled={enabled}
+											missing={missing}
+											busy={busy}
+											t={t}
+											statusLabel={statusLabel}
+											onToggle={(next) => onToggle(plugin, next)}
+											onConfigure={() => setConfigFor(plugin)}
+										/>
+									))
+								)}
+							</TableBody>
+						</Table>
+					</div>
+					{totalPages > 1 ? (
+						<Pagination className="justify-end">
+							<PaginationContent>
+								<PaginationItem>
+									<PaginationPrevious
+										text={t.paginationPrevious}
+										aria-disabled={safePage === 0}
+										className={safePage === 0 ? "pointer-events-none opacity-50" : undefined}
+										onClick={(e) => {
+											e.preventDefault();
+											if (safePage > 0) setPage(safePage - 1);
+										}}
+									/>
+								</PaginationItem>
+								{pageWindow(safePage, totalPages).map((p, i) =>
+									p === "…" ? (
+										<PaginationItem key={`gap-${i}`}>
+											<PaginationEllipsis />
+										</PaginationItem>
+									) : (
+										<PaginationItem key={p}>
+											<PaginationLink
+												isActive={p === safePage}
+												aria-label={t.paginationPage(p + 1)}
+												onClick={(e) => {
+													e.preventDefault();
+													setPage(p);
+												}}
+											>
+												{p + 1}
+											</PaginationLink>
+										</PaginationItem>
+									),
+								)}
+								<PaginationItem>
+									<PaginationNext
+										text={t.paginationNext}
+										aria-disabled={safePage >= totalPages - 1}
+										className={
+											safePage >= totalPages - 1 ? "pointer-events-none opacity-50" : undefined
+										}
+										onClick={(e) => {
+											e.preventDefault();
+											if (safePage < totalPages - 1) setPage(safePage + 1);
+										}}
+									/>
+								</PaginationItem>
+							</PaginationContent>
+						</Pagination>
+					) : null}
+				</>
 			)}
+
+			{configFor !== null && configFor.meta?.config !== undefined ? (
+				<ConfigDialog
+					plugin={configFor}
+					config={states.get(configFor.id)?.config}
+					t={t}
+					onClose={() => setConfigFor(null)}
+				/>
+			) : null}
 
 			<AlertDialog
 				open={pendingDisable !== null}
@@ -232,20 +429,20 @@ function PluginRow({
 	plugin,
 	enabled,
 	missing,
-	config,
-	locale,
 	busy,
 	t,
+	statusLabel,
 	onToggle,
+	onConfigure,
 }: {
 	plugin: Plugin;
 	enabled: boolean;
 	missing: readonly string[];
-	config: unknown;
-	locale?: string;
 	busy: boolean;
 	t: ReturnType<typeof managerMessages>;
+	statusLabel: (status: RowStatus) => string;
 	onToggle: (enabled: boolean) => void;
+	onConfigure: () => void;
 }) {
 	const status: RowStatus = statusOf(enabled, missing);
 	// `system: true` manifest plugins (P-062) can never be disabled —
@@ -254,75 +451,104 @@ function PluginRow({
 	const name = pluginDisplayName(plugin);
 	const kinds = contributionKinds(plugin).join(", ");
 	return (
-		<>
-			<TableRow>
-				<TableCell>
-					<div className="font-medium">{name}</div>
-					<div className="text-xs text-muted-foreground">
-						{plugin.id}
-						{plugin.meta?.description ? ` — ${plugin.meta.description}` : ""}
-					</div>
-				</TableCell>
-				<TableCell className="text-muted-foreground">{kinds === "" ? "—" : kinds}</TableCell>
-				<TableCell>
-					<div className="flex items-center gap-2">
-						<Switch
-							checked={enabled}
-							disabled={system || busy}
-							onCheckedChange={onToggle}
-							aria-label={name}
-						/>
-						{system ? (
-							<Badge variant="secondary">{t.statusSystem}</Badge>
-						) : (
-							<Badge variant={status === "enabled" ? "default" : "secondary"}>
-								{status === "enabled"
-									? t.statusEnabled
-									: status === "disabled"
-										? t.statusDisabled
-										: t.statusBlocked}
-							</Badge>
-						)}
-					</div>
-					{system ? <div className="mt-1 text-xs text-muted-foreground">{t.systemHint}</div> : null}
-					{missing.length > 0 ? (
-						<div className="mt-1 text-xs text-muted-foreground">
-							{t.blockedHint(missing.join(", "))}
-						</div>
-					) : null}
-				</TableCell>
-				<TableCell className="text-right">
-					{plugin.meta?.config ? (
-						<ConfigForm
-							pluginId={plugin.id}
-							schema={plugin.meta.config}
-							config={config}
-							locale={locale}
-							t={t}
-						/>
+		<TableRow>
+			<TableCell>
+				<div className="font-medium">{name}</div>
+				<div className="text-xs text-muted-foreground">
+					{plugin.id}
+					{plugin.meta?.description ? ` — ${plugin.meta.description}` : ""}
+				</div>
+			</TableCell>
+			<TableCell className="text-muted-foreground">{kinds === "" ? "—" : kinds}</TableCell>
+			<TableCell>
+				<div className="flex items-center gap-2">
+					<Switch
+						checked={enabled}
+						disabled={system || busy}
+						onCheckedChange={onToggle}
+						aria-label={name}
+					/>
+					{system ? (
+						<Badge variant="secondary">{t.statusSystem}</Badge>
 					) : (
-						<span className="text-xs text-muted-foreground">—</span>
+						<Badge variant={status === "enabled" ? "default" : "secondary"}>
+							{statusLabel(status)}
+						</Badge>
 					)}
-				</TableCell>
-			</TableRow>
-		</>
+				</div>
+				{system ? <div className="mt-1 text-xs text-muted-foreground">{t.systemHint}</div> : null}
+				{missing.length > 0 ? (
+					<div className="mt-1 text-xs text-muted-foreground">
+						{t.blockedHint(missing.join(", "))}
+					</div>
+				) : null}
+			</TableCell>
+			<TableCell className="text-right">
+				<DropdownMenu>
+					<DropdownMenuTrigger
+						render={<Button variant="ghost" size="icon" aria-label={t.rowActions(name)} />}
+					>
+						<EllipsisVerticalIcon />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end">
+						{plugin.meta?.config ? (
+							<DropdownMenuItem onClick={onConfigure}>{t.actionConfigure}</DropdownMenuItem>
+						) : null}
+						<DropdownMenuItem disabled={system || busy} onClick={() => onToggle(!enabled)}>
+							{enabled ? t.disable : t.enable}
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</TableCell>
+		</TableRow>
 	);
 }
 
-/** Generated settings form for `meta.config` plugins: one control per
- * field (string/number → Input, boolean → Switch, enum → Select),
- * saved through `setPluginConfigFn`. */
+/** `meta.config` editor inside a dialog: generated fields stacked
+ * vertically, save state in the footer. Mounted only while open, so
+ * field state always initializes from the freshest server config. */
+function ConfigDialog({
+	plugin,
+	config,
+	t,
+	onClose,
+}: {
+	plugin: Plugin;
+	config: unknown;
+	t: ReturnType<typeof managerMessages>;
+	onClose: () => void;
+}) {
+	const schema = plugin.meta?.config;
+	/* v8 ignore next -- the caller only mounts this dialog when meta.config exists */
+	if (schema === undefined) return null;
+	return (
+		<Dialog open onOpenChange={(open) => !open && onClose()}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>{t.configDialogTitle(pluginDisplayName(plugin))}</DialogTitle>
+					<DialogDescription>
+						{plugin.id}
+						{plugin.meta?.description ? ` — ${plugin.meta.description}` : ""}
+					</DialogDescription>
+				</DialogHeader>
+				<ConfigForm pluginId={plugin.id} schema={schema} config={config} t={t} />
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+/** Generated settings form for `meta.config` plugins: one labeled
+ * control per field (string/number → Input, boolean → Switch, enum →
+ * Select), saved through `setPluginConfigFn`. */
 function ConfigForm({
 	pluginId,
 	schema,
 	config,
-	locale,
 	t,
 }: {
 	pluginId: string;
 	schema: PluginConfigSchema;
 	config: unknown;
-	locale?: string;
 	t: ReturnType<typeof managerMessages>;
 }) {
 	const router = useRouter();
@@ -371,78 +597,79 @@ function ConfigForm({
 	};
 
 	return (
-		<div className="flex flex-col items-end gap-2">
-			{fields.map((field) => (
-				<label key={field.key} className="flex items-center gap-2 text-xs">
-					<span>
-						{field.label}
-						{field.required ? ` (${t.requiredMark})` : ""}
-					</span>
-					{field.type === "boolean" ? (
-						<Switch
-							checked={values[field.key] === true}
-							onCheckedChange={(v) => set(field.key, v)}
-						/>
-					) : field.type === "enum" ? (
-						<Select
-							items={enumOptions(field).map((opt) => ({ value: opt, label: opt }))}
-							value={enumValue(values, field.key)}
-							onValueChange={(v) => set(field.key, String(v))}
-						>
-							<SelectTrigger size="sm" aria-label={field.label} className="w-40">
-								<SelectValue />
-							</SelectTrigger>
-							<SelectContent>
-								{enumOptions(field).map((opt) => (
-									<SelectItem key={opt} value={opt}>
-										{opt}
-									</SelectItem>
-								))}
-							</SelectContent>
-						</Select>
-					) : (
-						<Input
-							type={field.type === "number" ? "number" : "text"}
-							value={
-								typeof values[field.key] === "string" || typeof values[field.key] === "number"
-									? String(values[field.key])
-									: ""
-							}
-							onChange={(e) => {
-								const raw = e.target.value;
-								if (field.type !== "number") {
-									set(field.key, raw);
-									return;
+		<>
+			<div className="space-y-4">
+				{fields.map((field) => (
+					<div key={field.key} className="space-y-1.5">
+						<label className="text-xs font-medium">
+							{field.label}
+							{field.required ? (
+								<span className="text-muted-foreground"> ({t.requiredMark})</span>
+							) : null}
+						</label>
+						{field.type === "boolean" ? (
+							<Switch
+								checked={values[field.key] === true}
+								onCheckedChange={(v) => set(field.key, v)}
+								aria-label={field.label}
+							/>
+						) : field.type === "enum" ? (
+							<Select
+								items={enumOptions(field).map((opt) => ({ value: opt, label: opt }))}
+								value={enumValue(values, field.key)}
+								onValueChange={(v) => set(field.key, String(v))}
+							>
+								<SelectTrigger size="sm" aria-label={field.label} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{enumOptions(field).map((opt) => (
+										<SelectItem key={opt} value={opt}>
+											{opt}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						) : (
+							<Input
+								type={field.type === "number" ? "number" : "text"}
+								aria-label={field.label}
+								value={
+									typeof values[field.key] === "string" || typeof values[field.key] === "number"
+										? String(values[field.key])
+										: ""
 								}
-								// Empty stays unset (never coerces to 0); a non-finite
-								// intermediate (e.g. "1e") keeps the previous value.
-								setValues((v) => {
-									if (raw === "") return { ...v, [field.key]: undefined };
-									const n = Number(raw);
-									return { ...v, [field.key]: Number.isFinite(n) ? n : v[field.key] };
-								});
-							}}
-							className="h-7 w-40"
-						/>
-					)}
-				</label>
-			))}
-			<div className="flex items-center gap-2">
+								onChange={(e) => {
+									const raw = e.target.value;
+									if (field.type !== "number") {
+										set(field.key, raw);
+										return;
+									}
+									// Empty stays unset (never coerces to 0); a non-finite
+									// intermediate (e.g. "1e") keeps the previous value.
+									setValues((v) => {
+										if (raw === "") return { ...v, [field.key]: undefined };
+										const n = Number(raw);
+										return { ...v, [field.key]: Number.isFinite(n) ? n : v[field.key] };
+									});
+								}}
+								className="h-8 w-full"
+							/>
+						)}
+					</div>
+				))}
+			</div>
+			<DialogFooter>
 				{state === "saved" ? (
 					<span className="text-xs text-muted-foreground">{t.configSaved}</span>
 				) : null}
 				{state === "failed" ? (
 					<span className="text-xs text-destructive">{t.configSaveFailed}</span>
 				) : null}
-				<Button
-					size="sm"
-					variant="outline"
-					disabled={state === "saving"}
-					onClick={() => void save()}
-				>
+				<Button size="sm" disabled={state === "saving"} onClick={() => void save()}>
 					{state === "saving" ? <Spinner className="size-3" /> : t.configSave}
 				</Button>
-			</div>
-		</div>
+			</DialogFooter>
+		</>
 	);
 }

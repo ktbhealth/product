@@ -19,6 +19,13 @@ export type {
 	PluginRegistry,
 } from "./core.ts";
 export {
+	KNOWN_CHROME_REGIONS,
+	chromeWhenMatches,
+	collectChrome,
+	unknownChromeRegions,
+	warnUnknownChromeRegions,
+} from "./chrome.ts";
+export {
 	collectContributions,
 	collectKindContributions,
 	FIELD_CONTRIBUTION_KINDS,

@@ -22,8 +22,8 @@ export interface ConsoleMessages {
 
 const en: ConsoleMessages = {
 	badge: "PLATFORM",
-	breadcrumbRoot: "platform",
-	overview: "overview",
+	breadcrumbRoot: "Platform",
+	overview: "Overview",
 	backToApp: "back to app",
 	signOut: "Sign out",
 	adminFallback: "admin",
@@ -31,8 +31,8 @@ const en: ConsoleMessages = {
 
 const ptBR: ConsoleMessages = {
 	badge: "PLATAFORMA",
-	breadcrumbRoot: "plataforma",
-	overview: "visão geral",
+	breadcrumbRoot: "Plataforma",
+	overview: "Visão geral",
 	backToApp: "voltar ao app",
 	signOut: "Sair",
 	adminFallback: "admin",
@@ -40,8 +40,8 @@ const ptBR: ConsoleMessages = {
 
 const es: ConsoleMessages = {
 	badge: "PLATAFORMA",
-	breadcrumbRoot: "plataforma",
-	overview: "visión general",
+	breadcrumbRoot: "Plataforma",
+	overview: "Visión general",
 	backToApp: "volver a la app",
 	signOut: "Cerrar sesión",
 	adminFallback: "admin",

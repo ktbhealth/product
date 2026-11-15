@@ -90,6 +90,12 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+/** Open the generated config dialog for the "Configurable" fixture row. */
+const openConfig = async (user: ReturnType<typeof userEvent.setup>) => {
+	await user.click(screen.getByRole("button", { name: "Actions for Configurable" }));
+	await user.click(await screen.findByRole("menuitem", { name: "Configure" }));
+};
+
 describe("PluginsPage", () => {
 	it("renders every plugin with name, kinds and enabled status", () => {
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
@@ -186,9 +192,12 @@ describe("PluginsPage", () => {
 		});
 	});
 
-	it("renders the generated config form and saves it", async () => {
+	it("renders the generated config form in a dialog and saves it", async () => {
 		const user = userEvent.setup();
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		// Fields stay hidden until the row action opens the dialog.
+		expect(screen.queryByRole("textbox", { name: /^Title/ })).toBeNull();
+		await openConfig(user);
 		expect(screen.getByText(/^Title/)).toBeTruthy();
 		expect(screen.getByText("Retries")).toBeTruthy();
 		expect(screen.getByText("Verbose")).toBeTruthy();
@@ -209,6 +218,7 @@ describe("PluginsPage", () => {
 		const { rerender } = render(
 			<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />,
 		);
+		await openConfig(user);
 		const title = screen.getByRole("textbox", { name: /^Title/ });
 		await user.clear(title);
 		await user.type(title, "edited");
@@ -230,6 +240,7 @@ describe("PluginsPage", () => {
 		const { rerender } = render(
 			<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />,
 		);
+		await openConfig(user);
 		const title = screen.getByRole("textbox", { name: /^Title/ });
 		await user.clear(title);
 		await user.type(title, "edited");
@@ -242,6 +253,7 @@ describe("PluginsPage", () => {
 	it("does not coerce a cleared number field to 0 — the key stays unset", async () => {
 		const user = userEvent.setup();
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await openConfig(user);
 		const retries = screen.getByRole("spinbutton", { name: /^Retries/ });
 		expect((retries as HTMLInputElement).value).toBe("3");
 		await user.clear(retries);
@@ -257,6 +269,7 @@ describe("PluginsPage", () => {
 	it("changes an enum config field through the Select and saves it", async () => {
 		const user = userEvent.setup();
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await openConfig(user);
 		// The enum field renders the styled Select: a button trigger that
 		// opens a listbox of options.
 		await user.click(screen.getByRole("combobox", { name: "Mode" }));
@@ -324,8 +337,9 @@ describe("PluginsPage", () => {
 	it("toggles a boolean config field through its Switch and saves it", async () => {
 		const user = userEvent.setup();
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await openConfig(user);
 		// The config form's boolean field is the last switch on the page
-		// (after the four row toggles).
+		// (after the four row toggles; the dialog portals to body end).
 		const switches = screen.getAllByRole("switch");
 		await user.click(switches[switches.length - 1]!);
 		await user.click(screen.getByText("Save"));
@@ -340,6 +354,7 @@ describe("PluginsPage", () => {
 	it("keeps the previous number on non-finite input and accepts digits", async () => {
 		const user = userEvent.setup();
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await openConfig(user);
 		const retries = screen.getByRole("spinbutton", { name: /^Retries/ });
 		// A plain digit change takes the finite path.
 		fireEvent.input(retries, { target: { value: "7" } });
@@ -363,10 +378,12 @@ describe("PluginsPage", () => {
 		});
 	});
 
-	it("falls back to defaults/empty when the stored config is missing or malformed", () => {
+	it("falls back to defaults/empty when the stored config is missing or malformed", async () => {
+		const user = userEvent.setup();
 		const states = allEnabled();
 		states.delete("v.config");
 		const { rerender } = render(<PluginsPage plugins={plugins} states={states} locale="en" />);
+		await openConfig(user);
 		const title = screen.getByRole("textbox", { name: /^Title/ }) as HTMLInputElement;
 		const retries = screen.getByRole("spinbutton", { name: /^Retries/ }) as HTMLInputElement;
 		// No stored config: optional keys take schema defaults, the
@@ -392,7 +409,10 @@ describe("PluginsPage", () => {
 
 	it("surfaces a failure message when the config save is refused or throws", async () => {
 		const user = userEvent.setup();
-		const save = () => user.click(screen.getByText("Save"));
+		const save = async () => {
+			await openConfig(user);
+			await user.click(screen.getByText("Save"));
+		};
 		// Refused write (ok === false) → failed span inside the form.
 		fns.setPluginConfigFn.mockResolvedValueOnce(false);
 		const first = render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
@@ -405,6 +425,45 @@ describe("PluginsPage", () => {
 		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
 		await save();
 		expect(await screen.findByText("Could not save the configuration.")).toBeTruthy();
+	});
+
+	it("filters rows by search text and reports the filtered count", async () => {
+		const user = userEvent.setup();
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await user.type(screen.getByLabelText("Filter plugins"), "v.other");
+		expect(screen.queryAllByText("v.base")).toHaveLength(0);
+		expect(screen.getAllByText("v.other").length).toBeGreaterThan(0);
+		expect(screen.getByText("Showing 1 of 4")).toBeTruthy();
+	});
+
+	it("filters rows by status through the toolbar select", async () => {
+		const user = userEvent.setup();
+		const states = allEnabled();
+		states.set("v.other", { pluginId: "v.other", enabled: false, config: null });
+		render(<PluginsPage plugins={plugins} states={states} locale="en" />);
+		await user.click(screen.getByRole("combobox", { name: "Filter by status" }));
+		await user.click(await screen.findByRole("option", { name: "Disabled" }));
+		expect(screen.queryAllByText("v.base")).toHaveLength(0);
+		expect(screen.getAllByText("v.other").length).toBeGreaterThan(0);
+		expect(screen.getByText("Showing 1 of 4")).toBeTruthy();
+	});
+
+	it("shows a no-results row when filters match nothing", async () => {
+		const user = userEvent.setup();
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await user.type(screen.getByLabelText("Filter plugins"), "zzz-no-match");
+		expect(screen.getByText("No plugins match the current filters.")).toBeTruthy();
+	});
+
+	it("paginates rows beyond the page size", async () => {
+		const user = userEvent.setup();
+		const many = Array.from({ length: 20 }, (_, i) => dep(`p.${i}`));
+		render(<PluginsPage plugins={many} states={new Map()} locale="en" />);
+		expect(screen.getAllByText("p.0").length).toBeGreaterThan(0);
+		expect(screen.queryAllByText("p.19")).toHaveLength(0);
+		await user.click(screen.getByText("Next"));
+		expect(screen.queryAllByText("p.0")).toHaveLength(0);
+		expect(screen.getAllByText("p.19").length).toBeGreaterThan(0);
 	});
 
 	it("lists multiple contribution kinds and dashes for plugins with none", () => {

@@ -11,6 +11,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { Notifications, notificationsServicesPlugin, rowToConsole } from "@ktb/notifications";
 import { Patients, patientsServicesPlugin, type AdminPatientRow } from "@ktb/patients";
 import { platformPanelPlugin } from "@ktb/platform";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { LayoutDashboardIcon } from "lucide-react";
 
 import { DashboardPlatformPage } from "./platform-page.tsx";
@@ -38,12 +39,20 @@ const dashboardLoader = () =>
 				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as AdminConsultationRow[]))),
 		]);
 
+		// Runtime enable-state per plugin (P-058) — optional like
+		// notifications: the dashboard still renders without it (every
+		// plugin then shows as enabled, matching the absence=enabled
+		// default).
+		const states = yield* Effect.serviceOption(PluginStates);
+		const pluginStates = Option.isSome(states) ? yield* states.value.entries() : undefined;
+
 		const notifications = yield* Effect.serviceOption(Notifications);
 		const principal = yield* Principal;
 		if (Option.isNone(notifications) || principal === null) {
 			return {
 				patients: patientRows,
 				consultations: consultationRows,
+				pluginStates,
 				notifications: undefined,
 				unreadCount: undefined,
 			};
@@ -57,6 +66,7 @@ const dashboardLoader = () =>
 		return {
 			patients: patientRows,
 			consultations: consultationRows,
+			pluginStates,
 			notifications: rows,
 			unreadCount,
 		};
