@@ -7,7 +7,7 @@ import { UsersIcon } from "lucide-react";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
 import { Db, type DbClient } from "@ktb/db";
-import { patients, user as users } from "@ktb/db/schema";
+import { patientDocuments, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
 import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
@@ -20,9 +20,77 @@ import {
 } from "@ktb/platform";
 import { Forbidden, requireCanAs, requirePrincipalUser } from "@ktb/authz";
 import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
-import type { PatientFields } from "./record.ts";
+import {
+	isPatientDocumentType,
+	PATIENT_DOCUMENT_KEYS,
+	PATIENT_DOCUMENT_TYPES,
+	type PatientDocumentType,
+	type PatientFields,
+	type PatientIdentifiers,
+} from "./record.ts";
 
-export type Patient = typeof patients.$inferSelect;
+type PatientRow = typeof patients.$inferSelect;
+
+/**
+ * A patient as the app reads it: the `patients` row plus its documents
+ * (`patient_documents`) flattened into one field per kind — `cpf`,
+ * `cns`, `passport` — null where the record has none. Storage is one
+ * row per document; this read model keeps every consumer (views, PDF,
+ * interop exports) on plain fields.
+ */
+export type Patient = PatientRow & PatientIdentifiers;
+
+const noIdentifiers = (): PatientIdentifiers =>
+	Object.fromEntries(PATIENT_DOCUMENT_KEYS.map((type) => [type, null])) as PatientIdentifiers;
+
+/**
+ * Attach each row's documents. One query for the whole set, joined on
+ * the same condition that selected the rows — never an id list, which
+ * would run into D1's bound-parameter limit on a large register.
+ */
+async function withIdentifiers<R extends { readonly id: number }>(
+	db: DbClient,
+	rows: readonly R[],
+	where?: SQL,
+): Promise<(R & PatientIdentifiers)[]> {
+	if (rows.length === 0) return [];
+	const documents = await db
+		.select({
+			patientId: patientDocuments.patientId,
+			type: patientDocuments.type,
+			number: patientDocuments.number,
+		})
+		.from(patientDocuments)
+		.innerJoin(patients, eq(patientDocuments.patientId, patients.id))
+		.where(where);
+	const byPatient = new Map<number, PatientIdentifiers>();
+	for (const document of documents) {
+		// A type this build does not know (written by a newer one) is not
+		// part of the read model.
+		if (!isPatientDocumentType(document.type)) continue;
+		const identifiers = byPatient.get(document.patientId) ?? noIdentifiers();
+		identifiers[document.type] = document.number;
+		byPatient.set(document.patientId, identifiers);
+	}
+	return rows.map((row) => ({ ...row, ...(byPatient.get(row.id) ?? noIdentifiers()) }));
+}
+
+/** Split validated record fields into the `patients` columns and the
+ * document rows — one per identifier the record actually has. */
+const splitFields = (fields: PatientFields) => {
+	const row: Partial<PatientFields> = { ...fields };
+	const identifiers = noIdentifiers();
+	const documents: { type: PatientDocumentType; country: string | null; number: string }[] = [];
+	for (const type of PATIENT_DOCUMENT_KEYS) {
+		const number = fields[type];
+		delete row[type];
+		identifiers[type] = number;
+		if (number !== null) {
+			documents.push({ type, country: PATIENT_DOCUMENT_TYPES[type].country, number });
+		}
+	}
+	return { row: row as Omit<PatientFields, PatientDocumentType>, identifiers, documents };
+};
 
 /** Admin-console row: patient plus the owning user's display fields. */
 export interface AdminPatientRow extends Patient {
@@ -46,17 +114,17 @@ export const patientScope = (ownerId: string) =>
 	);
 
 export async function listPatients(db: DbClient, ownerId: string, where?: SQL) {
-	return db
-		.select()
-		.from(patients)
-		.where(where ?? eq(patients.ownerId, ownerId))
-		.orderBy(asc(patients.name));
+	const scope = where ?? eq(patients.ownerId, ownerId);
+	const rows = await db.select().from(patients).where(scope).orderBy(asc(patients.name));
+	return withIdentifiers(db, rows, scope);
 }
 
 /** Fetches by id regardless of caller — authz happens in the service. */
 export async function getPatient(db: DbClient, id: number) {
-	const rows = await db.select().from(patients).where(eq(patients.id, id)).limit(1);
-	return rows[0] ?? null;
+	const scope = eq(patients.id, id);
+	const rows = await db.select().from(patients).where(scope).limit(1);
+	const [patient] = await withIdentifiers(db, rows, scope);
+	return patient ?? null;
 }
 
 /**
@@ -70,11 +138,10 @@ export async function listAllPatients(db: DbClient): Promise<AdminPatientRow[]> 
 		.from(patients)
 		.leftJoin(users, eq(patients.ownerId, users.id))
 		.orderBy(desc(patients.id));
-	return rows.map(({ patient, ownerEmail, ownerName }) => ({
-		...patient,
-		ownerEmail,
-		ownerName,
-	}));
+	return withIdentifiers(
+		db,
+		rows.map(({ patient, ownerEmail, ownerName }) => ({ ...patient, ownerEmail, ownerName })),
+	);
 }
 
 /** Owner-picker options for admin create forms — id + display label. */
@@ -108,9 +175,13 @@ export async function getPatientOwnerId(db: DbClient, id: number) {
 }
 
 /** Row delete behind the `patients.delete` command — authz happens in
- * the command handler, not here. */
+ * the command handler, not here. The documents go in the same batch
+ * rather than relying on the foreign key's cascade alone. */
 export async function deletePatientRow(db: DbClient, id: number) {
-	await db.delete(patients).where(eq(patients.id, id));
+	await db.batch([
+		db.delete(patientDocuments).where(eq(patientDocuments.patientId, id)),
+		db.delete(patients).where(eq(patients.id, id)),
+	]);
 }
 
 export async function createPatient(
@@ -119,20 +190,45 @@ export async function createPatient(
 	fields: PatientFields,
 	tenantId: number | null = null,
 ) {
-	const rows = await db
+	const { row, identifiers, documents } = splitFields(fields);
+	const [created] = await db
 		.insert(patients)
-		.values({ ...fields, ownerId, tenantId, createdAt: new Date() })
+		.values({ ...row, ownerId, tenantId, createdAt: new Date() })
 		.returning();
-	return rows[0] ?? null;
+	if (created === undefined) return null;
+	if (documents.length > 0) {
+		await db
+			.insert(patientDocuments)
+			.values(documents.map((document) => ({ ...document, patientId: created.id })));
+	}
+	return { ...created, ...identifiers };
 }
 
+/**
+ * Replace the record's fields and documents in one batch (a
+ * transaction on D1), so a failed write never leaves the row and its
+ * documents out of step. Callers resolve and authorize the row first —
+ * `id` is an existing patient.
+ */
 export async function updatePatient(db: DbClient, id: number, fields: PatientFields) {
-	const rows = await db
+	const { row, identifiers, documents } = splitFields(fields);
+	const clear = db.delete(patientDocuments).where(eq(patientDocuments.patientId, id));
+	const update = db
 		.update(patients)
-		.set({ ...fields, updatedAt: new Date() })
+		.set({ ...row, updatedAt: new Date() })
 		.where(eq(patients.id, id))
 		.returning();
-	return rows[0] ?? null;
+	const [, [updated]] =
+		documents.length === 0
+			? await db.batch([clear, update])
+			: await db.batch([
+					clear,
+					update,
+					db
+						.insert(patientDocuments)
+						.values(documents.map((document) => ({ ...document, patientId: id }))),
+				]);
+	return updated === undefined ? null : { ...updated, ...identifiers };
 }
 
 /**

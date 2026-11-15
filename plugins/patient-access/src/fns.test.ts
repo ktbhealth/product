@@ -145,6 +145,12 @@ describe("patientLinksFn", () => {
 		mocks.getDoctorUser.mockResolvedValue(null);
 		await expect(patientLinksFn({ data: 1 })).resolves.toBeNull();
 	});
+
+	it("is null when the record is gone by the time it is read", async () => {
+		// The service's ownership check passed on a mocked list; the
+		// patients row itself no longer exists (deleted mid-request).
+		await expect(patientLinksFn({ data: 99 })).resolves.toBeNull();
+	});
 });
 
 describe("invitePatientFn", () => {
@@ -227,6 +233,17 @@ describe("invitePatientFn", () => {
 		});
 		expect(logged).toHaveBeenCalledWith("patient invite email failed", expect.any(Error));
 		logged.mockRestore();
+	});
+
+	it("grants access without an email when the record is gone mid-invite", async () => {
+		await expect(
+			invitePatientFn({ data: { patientId: 99, email: "x@ktb.test", relation: "self" } }),
+		).resolves.toEqual({
+			ok: true,
+			link: { id: 9, email: "ana@ktb.test", status: "invited" },
+			emailed: false,
+		});
+		expect(sent).toHaveLength(0);
 	});
 
 	it("falls back to an empty address for a link that carries none", async () => {

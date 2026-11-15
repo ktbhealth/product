@@ -113,6 +113,27 @@
       "when": 1794696979549,
       "tag": "0015_invite_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794701052307,
+      "tag": "0016_patient_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1794701052725,
+      "tag": "0017_backfill_patient_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1794701053228,
+      "tag": "0018_drop_patient_identifier_columns",
+      "breakpoints": true
     }
   ]
 }
