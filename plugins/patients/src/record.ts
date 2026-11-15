@@ -138,6 +138,28 @@ export type ValidationResult =
 
 // ---------- identifiers ----------
 
+/**
+ * Kinds of state-issued document a record holds, stored one row each in
+ * `patient_documents`. The key is both the stored `type` and the record
+ * field the form, views and exports read; `country` is the issuing
+ * country when the kind belongs to one (ISO 3166-1 alpha-2) and null
+ * when it does not. Supporting another country's document starts with
+ * an entry here — the table needs no change.
+ */
+export const PATIENT_DOCUMENT_TYPES = {
+	cpf: { country: "BR" },
+	cns: { country: "BR" },
+	passport: { country: null },
+} as const satisfies Partial<Record<TextField, { readonly country: string | null }>>;
+export type PatientDocumentType = keyof typeof PATIENT_DOCUMENT_TYPES;
+export const PATIENT_DOCUMENT_KEYS = Object.keys(PATIENT_DOCUMENT_TYPES) as PatientDocumentType[];
+
+/** The record's documents as flat fields — null where it has none. */
+export type PatientIdentifiers = { [K in PatientDocumentType]: string | null };
+
+export const isPatientDocumentType = (type: string): type is PatientDocumentType =>
+	(PATIENT_DOCUMENT_KEYS as readonly string[]).includes(type);
+
 const digitsOf = (s: string) => s.replace(/\D/g, "");
 
 /** CPF (Cadastro de Pessoas Físicas) — 11 digits, two mod-11 check digits. */

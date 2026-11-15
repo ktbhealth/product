@@ -11,13 +11,34 @@ import {
 	formatCns,
 	formatCpf,
 	formatPostalCode,
+	isPatientDocumentType,
 	isValidCns,
 	isValidCpf,
 	parseFhirDate,
+	PATIENT_DOCUMENT_KEYS,
+	PATIENT_DOCUMENT_TYPES,
+	TEXT_FIELDS,
 	validatePatient,
 } from "./record.ts";
 
 const NOW = new Date(2026, 10, 8); // 8 Nov 2026, local time
+
+describe("document types", () => {
+	it("are record fields, each with its issuing country", () => {
+		expect(PATIENT_DOCUMENT_KEYS).toEqual(["cpf", "cns", "passport"]);
+		for (const type of PATIENT_DOCUMENT_KEYS) expect(TEXT_FIELDS).toContain(type);
+		expect(PATIENT_DOCUMENT_TYPES.cpf.country).toBe("BR");
+		expect(PATIENT_DOCUMENT_TYPES.cns.country).toBe("BR");
+		// A passport is not tied to one country.
+		expect(PATIENT_DOCUMENT_TYPES.passport.country).toBeNull();
+	});
+
+	it("tell a known type from an unknown one", () => {
+		expect(isPatientDocumentType("cpf")).toBe(true);
+		expect(isPatientDocumentType("dni")).toBe(false);
+		expect(isPatientDocumentType("name")).toBe(false);
+	});
+});
 
 describe("identifiers", () => {
 	it("validates CPF check digits", () => {

@@ -3,7 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { user as userTable } from "@ktb/db/schema";
+import { patientDocuments, user as userTable } from "@ktb/db/schema";
+import { eq } from "drizzle-orm";
 import { Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -11,6 +12,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Command, EventBus, type EventBusShape, makeEventBus } from "@effect-server-utils/cqrs";
 import {
 	createPatient,
+	deletePatientRow,
 	getPatient,
 	listAllPatients,
 	listPatients,
@@ -41,7 +43,8 @@ const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0, 0);
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, cpf TEXT, cns TEXT, passport TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
+CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
+CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 ${AUDIT_TEST_DDL}
 `;
 
@@ -95,6 +98,99 @@ describe("patients repo", () => {
 		expect(updated).toMatchObject({ name: "Eva Lima", active: false });
 		expect(updated?.updatedAt).toBeInstanceOf(Date);
 		expect(await updatePatient(db, 9999, fields("Nobody"))).toBeNull();
+	});
+
+	describe("documents", () => {
+		const documentsOf = async (patientId: number) =>
+			(
+				await db
+					.select({
+						type: patientDocuments.type,
+						country: patientDocuments.country,
+						number: patientDocuments.number,
+					})
+					.from(patientDocuments)
+					.where(eq(patientDocuments.patientId, patientId))
+			).sort((a, b) => a.type.localeCompare(b.type));
+
+		const full = { cpf: "529.982.247-25", cns: "100 0000 0000 0007", passport: "FX123456" };
+
+		it("stores each identifier as its own row, with the issuing country", async () => {
+			const p = await createPatient(db, "u1", fields("Doc Ana", full));
+			// The read model stays flat…
+			expect(p).toMatchObject({ cpf: "52998224725", cns: "100000000000007", passport: "FX123456" });
+			// …while storage is one row per document.
+			expect(await documentsOf(p!.id)).toEqual([
+				{ type: "cns", country: "BR", number: "100000000000007" },
+				{ type: "cpf", country: "BR", number: "52998224725" },
+				{ type: "passport", country: null, number: "FX123456" },
+			]);
+		});
+
+		it("stores nothing for a record without identifiers and reads them as null", async () => {
+			const p = await createPatient(db, "u1", fields("Doc Bia"));
+			expect(await documentsOf(p!.id)).toEqual([]);
+			expect(await getPatient(db, p!.id)).toMatchObject({ cpf: null, cns: null, passport: null });
+		});
+
+		it("replaces the documents on update: changed, removed and added", async () => {
+			const p = await createPatient(db, "u1", fields("Doc Cid", { cpf: full.cpf, cns: full.cns }));
+			const updated = await updatePatient(
+				db,
+				p!.id,
+				fields("Doc Cid", { cpf: "111.444.777-35", passport: "ZZ998877" }),
+			);
+			expect(updated).toMatchObject({ cpf: "11144477735", cns: null, passport: "ZZ998877" });
+			expect(await documentsOf(p!.id)).toEqual([
+				{ type: "cpf", country: "BR", number: "11144477735" },
+				{ type: "passport", country: null, number: "ZZ998877" },
+			]);
+			expect(await getPatient(db, p!.id)).toMatchObject({
+				cpf: "11144477735",
+				cns: null,
+				passport: "ZZ998877",
+			});
+
+			// Clearing every identifier leaves no rows behind.
+			await updatePatient(db, p!.id, fields("Doc Cid"));
+			expect(await documentsOf(p!.id)).toEqual([]);
+		});
+
+		it("keeps each patient's documents to itself when listing", async () => {
+			const withDocs = await createPatient(db, "u2", fields("Lista Ana", { cpf: full.cpf }));
+			const without = await createPatient(db, "u2", fields("Lista Bia"));
+			const other = await createPatient(db, "u2", fields("Lista Cid", { cns: full.cns }));
+			const rows = await listPatients(db, "u2");
+			expect(rows.map((r) => [r.id, r.cpf, r.cns, r.passport])).toEqual([
+				[withDocs!.id, "52998224725", null, null],
+				[without!.id, null, null, null],
+				[other!.id, null, "100000000000007", null],
+			]);
+			// Another owner's listing is unaffected, and so is the admin one.
+			expect(await listPatients(db, "u9")).toEqual([]);
+			const admin = await listAllPatients(db);
+			expect(admin.find((r) => r.id === withDocs!.id)).toMatchObject({ cpf: "52998224725" });
+			expect(admin.find((r) => r.id === without!.id)).toMatchObject({ cpf: null });
+		});
+
+		it("leaves a document type this build does not know out of the read model", async () => {
+			const p = await createPatient(db, "u1", fields("Doc Dora", { cpf: full.cpf }));
+			await db
+				.insert(patientDocuments)
+				.values({ patientId: p!.id, type: "dni", country: "AR", number: "30123456" });
+			const row = await getPatient(db, p!.id);
+			expect(row).toMatchObject({ cpf: "52998224725" });
+			expect(row).not.toHaveProperty("dni");
+		});
+
+		it("deletes the documents with the patient", async () => {
+			const p = await createPatient(db, "u1", fields("Doc Eva", full));
+			const kept = await createPatient(db, "u1", fields("Doc Fia", { cpf: "111.444.777-35" }));
+			await deletePatientRow(db, p!.id);
+			expect(await getPatient(db, p!.id)).toBeNull();
+			expect(await documentsOf(p!.id)).toEqual([]);
+			expect(await documentsOf(kept!.id)).toHaveLength(1);
+		});
 	});
 
 	it("listAllPatients returns cross-owner rows with owner fields", async () => {

@@ -53,7 +53,9 @@ export const patientLinksFn = createServerFn({ method: "GET" })
 						.from(patients)
 						.where(and(eq(patients.id, patientId), eq(patients.ownerId, user.id))),
 				);
-				return { patient: patient!, links };
+				// Deleted between the ownership check and this read.
+				if (patient === undefined) return null;
+				return { patient, links };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
 		);
 	});
@@ -121,7 +123,9 @@ export const invitePatientFn = createServerFn({ method: "POST" })
 				return {
 					ok: true as const,
 					link: { id: row.id, email: row.email ?? "", status: row.status },
-					patientName: patient!.name,
+					// Deleted between the ownership check and this read — the
+					// grant stands, there is just no name for the email.
+					patientName: patient?.name ?? null,
 				};
 			}).pipe(
 				Effect.catchTag("PatientInviteRejected", (e) =>
@@ -133,11 +137,14 @@ export const invitePatientFn = createServerFn({ method: "POST" })
 			),
 		);
 		if (!result.ok) return result;
-		const emailed = await notifyInvitee(
-			result.link.email,
-			user.doctor.name ?? user.doctor.email,
-			result.patientName,
-		);
+		const emailed =
+			result.patientName === null
+				? false
+				: await notifyInvitee(
+						result.link.email,
+						user.doctor.name ?? user.doctor.email,
+						result.patientName,
+					);
 		return { ok: true, link: result.link, emailed };
 	});
 

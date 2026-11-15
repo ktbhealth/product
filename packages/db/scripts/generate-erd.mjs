@@ -31,8 +31,9 @@ const DOMAINS = [
 		id: "patients",
 		title: "Patients",
 		owner: "`plugins/patients`",
-		description: "Patient register — the clinical-administrative record for each person cared for.",
-		tables: ["patients"],
+		description:
+			"Patient register — the clinical-administrative record for each person cared for, and their state-issued documents.",
+		tables: ["patient_documents", "patients"],
 	},
 	{
 		id: "consultations",
