@@ -46,16 +46,19 @@ Outbound email is a driver behind the `@ktb/email` port (see
 (default dev), Cloudflare `send_email` binding in prod, and
 `@ktb/email-smtp` when `SMTP_URL` + `EMAIL_FROM` are set — works in both
 `bun run dev` (workerd `cloudflare:sockets`) and `dev:node`. To capture
-real messages locally, run a Mailpit container:
+real messages locally, start the Mailpit service in the root
+`compose.yaml` and point the app at it:
 
 ```
-docker run -d --name ktb-mailpit -p 1026:1025 -p 8026:8025 axllent/mailpit
+docker compose up -d
 SMTP_URL=smtp://localhost:1026 EMAIL_FROM=noreply@ktb.local bun run dev
 ```
 
-Web UI at http://localhost:8026. Ports 1025/8025 are the defaults — this
-setup uses 1026/8026 to avoid clashing with other local mail catchers;
-adjust `SMTP_URL` accordingly.
+Web UI at http://localhost:8026; `docker compose down` stops it. Ports
+1025/8025 are Mailpit's defaults — this setup uses 1026/8026 to avoid
+clashing with other local mail catchers. If those are taken too, set
+`MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT` for `docker compose` and adjust
+`SMTP_URL` accordingly.
 
 ## Conventions
 
