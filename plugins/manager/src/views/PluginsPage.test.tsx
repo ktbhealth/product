@@ -28,11 +28,29 @@ declare module "@ktb/kernel" {
 		"v.config": true;
 		"v.rich": true;
 		"v.sys": true;
+		"v.confignodesc": true;
 	}
 }
 
 const dep = (id: string, deps: readonly string[] = []) =>
 	definePlugin({ id, requiredDeps: deps as unknown as readonly PluginId[] });
+
+const configSchemaDocument = Schema.toJsonSchemaDocument(
+	Schema.Struct({
+		title: Schema.String.annotate({ title: "Title" }),
+		retries: Schema.optionalKey(Schema.Finite).annotate({
+			title: "Retries",
+		}),
+		verbose: Schema.optionalKey(Schema.Boolean).annotate({
+			title: "Verbose",
+			default: false,
+		}),
+		mode: Schema.optionalKey(Schema.Literals(["a", "b"])).annotate({
+			title: "Mode",
+			default: "a",
+		}),
+	}),
+);
 
 const plugins: readonly Plugin[] = [
 	dep("v.base"),
@@ -43,24 +61,14 @@ const plugins: readonly Plugin[] = [
 		meta: {
 			name: "Configurable",
 			description: "Has a config schema",
-			config: {
-				schema: Schema.toJsonSchemaDocument(
-					Schema.Struct({
-						title: Schema.String.annotate({ title: "Title" }),
-						retries: Schema.optionalKey(Schema.Finite).annotate({
-							title: "Retries",
-						}),
-						verbose: Schema.optionalKey(Schema.Boolean).annotate({
-							title: "Verbose",
-							default: false,
-						}),
-						mode: Schema.optionalKey(Schema.Literals(["a", "b"])).annotate({
-							title: "Mode",
-							default: "a",
-						}),
-					}),
-				),
-			},
+			config: { schema: configSchemaDocument },
+		},
+	}),
+	definePlugin({
+		id: "v.confignodesc",
+		meta: {
+			name: "BareConfig",
+			config: { schema: configSchemaDocument },
 		},
 	}),
 ];
@@ -433,7 +441,7 @@ describe("PluginsPage", () => {
 		await user.type(screen.getByLabelText("Filter plugins"), "v.other");
 		expect(screen.queryAllByText("v.base")).toHaveLength(0);
 		expect(screen.getAllByText("v.other").length).toBeGreaterThan(0);
-		expect(screen.getByText("Showing 1 of 4")).toBeTruthy();
+		expect(screen.getByText("Showing 1 of 5")).toBeTruthy();
 	});
 
 	it("filters rows by status through the toolbar select", async () => {
@@ -445,7 +453,7 @@ describe("PluginsPage", () => {
 		await user.click(await screen.findByRole("option", { name: "Disabled" }));
 		expect(screen.queryAllByText("v.base")).toHaveLength(0);
 		expect(screen.getAllByText("v.other").length).toBeGreaterThan(0);
-		expect(screen.getByText("Showing 1 of 4")).toBeTruthy();
+		expect(screen.getByText("Showing 1 of 5")).toBeTruthy();
 	});
 
 	it("shows a no-results row when filters match nothing", async () => {
@@ -464,6 +472,77 @@ describe("PluginsPage", () => {
 		await user.click(screen.getByText("Next"));
 		expect(screen.queryAllByText("p.0")).toHaveLength(0);
 		expect(screen.getAllByText("p.19").length).toBeGreaterThan(0);
+	});
+
+	it("paginates with numbered pages and the previous/next links", async () => {
+		const user = userEvent.setup();
+		const many = Array.from({ length: 20 }, (_, i) => dep(`p.${i}`));
+		const { container } = render(<PluginsPage plugins={many} states={new Map()} locale="en" />);
+		// PaginationLink renders an <a> without href — no link role; its
+		// label text is split across the chevron and the label span.
+		const prevLink = () =>
+			container.querySelector('a[aria-label="Go to previous page"]') as HTMLElement;
+		const nextLink = () =>
+			container.querySelector('a[aria-label="Go to next page"]') as HTMLElement;
+		// Edge no-ops: previous on page 1, next on the last page.
+		await user.click(prevLink());
+		expect(screen.getAllByText("p.0").length).toBeGreaterThan(0);
+		await user.click(screen.getByText("2", { selector: "a" }));
+		expect(screen.queryAllByText("p.0")).toHaveLength(0);
+		expect(screen.getAllByText("p.19").length).toBeGreaterThan(0);
+		await user.click(nextLink());
+		expect(screen.getAllByText("p.19").length).toBeGreaterThan(0);
+		await user.click(prevLink());
+		expect(screen.getAllByText("p.0").length).toBeGreaterThan(0);
+	});
+
+	it("windows page numbers with ellipses on large catalogs", async () => {
+		const user = userEvent.setup();
+		const many = Array.from({ length: 160 }, (_, i) => dep(`p.${i}`));
+		render(<PluginsPage plugins={many} states={new Map()} locale="en" />);
+		// 11 pages → the window shows an ellipsis gap before the last page.
+		expect(screen.getByText("More pages")).toBeTruthy();
+		await user.click(screen.getByText("11", { selector: "a" }));
+		expect(screen.getAllByText("More pages").length).toBeGreaterThan(0);
+	});
+
+	it("toggles enablement from the row actions menu", async () => {
+		const user = userEvent.setup();
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Actions for v.other" }));
+		await user.click(await screen.findByRole("menuitem", { name: "Disable" }));
+		expect(fns.setPluginEnabledFn).toHaveBeenCalledWith({
+			data: { ids: ["v.other"], enabled: false },
+		});
+	});
+
+	it("counts system plugins as enabled under the status filter", async () => {
+		const user = userEvent.setup();
+		const sys = definePlugin({ id: "v.sys", system: true });
+		const states = statesOf({ "v.sys": { enabled: true } });
+		render(<PluginsPage plugins={[sys]} states={states} locale="en" />);
+		await user.click(screen.getByRole("combobox", { name: "Filter by status" }));
+		await user.click(await screen.findByRole("option", { name: "Enabled" }));
+		expect(screen.getAllByText("v.sys").length).toBeGreaterThan(0);
+	});
+
+	it("closes the config dialog via its close button", async () => {
+		const user = userEvent.setup();
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await openConfig(user);
+		expect(screen.getByText("Configure Configurable")).toBeTruthy();
+		await user.click(screen.getByRole("button", { name: "Close" }));
+		await waitFor(() => expect(screen.queryByText("Configure Configurable")).toBeNull());
+	});
+
+	it("opens the config dialog for a plugin without a description", async () => {
+		const user = userEvent.setup();
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Actions for BareConfig" }));
+		await user.click(await screen.findByRole("menuitem", { name: "Configure" }));
+		expect(screen.getByText("Configure BareConfig")).toBeTruthy();
+		// The id renders both in the row and in the dialog description.
+		expect(screen.getAllByText("v.confignodesc").length).toBeGreaterThan(1);
 	});
 
 	it("lists multiple contribution kinds and dashes for plugins with none", () => {

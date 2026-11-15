@@ -284,7 +284,7 @@ describe("/platform layout", () => {
 describe("/platform index", () => {
 	it("renders the dashboard with registered plugins", () => {
 		render(createElement(component(PlatformIndexRoute)));
-		expect(screen.getByText("dashboard")).toBeTruthy();
+		expect(screen.getByText("Dashboard")).toBeTruthy();
 		expect(screen.getByText("platform.routes")).toBeTruthy();
 		expect(screen.getByText("platform.panel")).toBeTruthy();
 		expect(screen.getByText("dashboard.panel")).toBeTruthy();

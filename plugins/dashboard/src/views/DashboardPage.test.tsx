@@ -73,7 +73,7 @@ afterEach(cleanup);
 describe("DashboardPage", () => {
 	it("renders stat cards and empty states", () => {
 		render(<DashboardPage patients={[]} consultations={[]} plugins={[plugin("a.b")]} />);
-		expect(screen.getByText("dashboard")).toBeTruthy();
+		expect(screen.getByText("Dashboard")).toBeTruthy();
 		expect(screen.getByText("Patients")).toBeTruthy();
 		expect(screen.getByText("Consultations")).toBeTruthy();
 		expect(screen.getByText("Live now")).toBeTruthy();
@@ -193,6 +193,7 @@ describe("DashboardPage", () => {
 					consultation({ id: 1, status: "live", source: "bot" }),
 					consultation({ id: 2, status: "done", source: "browser" }),
 					consultation({ id: 3, status: "done", source: "browser" }),
+					consultation({ id: 4, status: "archived", source: "browser" }),
 				]}
 				plugins={[plugin("a.b"), plugin("c.d")]}
 				pluginStates={[
@@ -236,6 +237,12 @@ describe("DashboardPage", () => {
 					id: `${id}.sec`,
 					region: "console.dashboard.sections",
 					content: { kind: "component", component: SectionWidget },
+				},
+				// Non-component contents are ignored by the dashboard slots.
+				{
+					id: `${id}.lnk`,
+					region: "console.dashboard.stats",
+					content: { kind: "link", to: "/x", label: "L" },
 				},
 			],
 		});

@@ -42,8 +42,8 @@ export interface DashboardMessages {
 }
 
 const en: DashboardMessages = {
-	title: "dashboard",
-	subtitle: "System overview — aggregated across plugins.",
+	title: "Dashboard",
+	subtitle: "System overview.",
 	stats: {
 		patients: "Patients",
 		consultations: "Consultations",
@@ -73,8 +73,8 @@ const en: DashboardMessages = {
 };
 
 const ptBR: DashboardMessages = {
-	title: "painel",
-	subtitle: "Visão geral do sistema — consolidada entre os plugins.",
+	title: "Painel",
+	subtitle: "Visão geral do sistema.",
 	stats: {
 		patients: "Pacientes",
 		consultations: "Consultas",
@@ -104,8 +104,8 @@ const ptBR: DashboardMessages = {
 };
 
 const es: DashboardMessages = {
-	title: "panel",
-	subtitle: "Resumen del sistema — consolidado entre los plugins.",
+	title: "Panel",
+	subtitle: "Resumen del sistema.",
 	stats: {
 		patients: "Pacientes",
 		consultations: "Consultas",

@@ -321,7 +321,7 @@ export function DashboardPage({
 					{recent.length === 0 ? (
 						<p className="mt-2 text-xs text-muted-foreground">{t.noConsultations}</p>
 					) : (
-						<div className="mt-2 overflow-hidden rounded-lg border border-border">
+						<ScrollArea className="mt-2 rounded-lg border border-border [&_[data-slot=table-container]]:overflow-visible">
 							<Table>
 								<TableHeader>
 									<TableRow>
@@ -345,9 +345,11 @@ export function DashboardPage({
 												</Badge>
 											</TableCell>
 											<TableCell className="text-muted-foreground">{c.source}</TableCell>
-											<TableCell>{c.ownerName ?? c.ownerEmail ?? "—"}</TableCell>
+											<TableCell className="max-w-0">
+												<span className="block truncate">{c.ownerName ?? c.ownerEmail ?? "—"}</span>
+											</TableCell>
 											<TableCell
-												className="text-right text-muted-foreground"
+												className="text-right whitespace-nowrap text-muted-foreground"
 												// SSR renders in the server's timezone, the client
 												// in the browser's — suppress the text mismatch.
 												suppressHydrationWarning
@@ -358,7 +360,7 @@ export function DashboardPage({
 									))}
 								</TableBody>
 							</Table>
-						</div>
+						</ScrollArea>
 					)}
 				</section>
 
