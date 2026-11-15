@@ -45,6 +45,7 @@ import { Route as PatientsIdEditRouteImport } from './../../../plugins/patients/
 import { Route as PortalConsultationsDotidRouteImport } from './../../../plugins/patient-portal/src/routes/consultations.$id'
 import { Route as ApiConsultationsDotidDotaudioRouteImport } from './../../../plugins/consultations/src/api-routes/consultations.$id.audio'
 import { Route as ApiConsultationsDotidDotpdfRouteImport } from './../../../plugins/consultations/src/api-routes/consultations.$id.pdf'
+import { Route as ApiEvalDotsampleIdDotaudioRouteImport } from './../../../plugins/eval-validator/src/api-routes/eval.$sampleId.audio'
 import { Route as ApiPatientsDotidDotexportRouteImport } from './../../../plugins/consultations/src/api-routes/patients.$id.export'
 
 const indexRoute = indexRouteImport.update({
@@ -231,6 +232,12 @@ const ApiConsultationsDotidDotpdfRoute =
     path: '/api/consultations/$id/pdf',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiEvalDotsampleIdDotaudioRoute =
+  ApiEvalDotsampleIdDotaudioRouteImport.update({
+    id: '/api/eval/$sampleId/audio',
+    path: '/api/eval/$sampleId/audio',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPatientsDotidDotexportRoute =
   ApiPatientsDotidDotexportRouteImport.update({
     id: '/api/patients/$id/export',
@@ -275,6 +282,7 @@ export interface FileRoutesByFullPath {
   '/patients/$id/': typeof PatientsIdIndexRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
   '/api/consultations/$id/pdf': typeof ApiConsultationsDotidDotpdfRoute
+  '/api/eval/$sampleId/audio': typeof ApiEvalDotsampleIdDotaudioRoute
   '/api/patients/$id/export': typeof ApiPatientsDotidDotexportRoute
 }
 export interface FileRoutesByTo {
@@ -313,6 +321,7 @@ export interface FileRoutesByTo {
   '/patients/$id': typeof PatientsIdIndexRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
   '/api/consultations/$id/pdf': typeof ApiConsultationsDotidDotpdfRoute
+  '/api/eval/$sampleId/audio': typeof ApiEvalDotsampleIdDotaudioRoute
   '/api/patients/$id/export': typeof ApiPatientsDotidDotexportRoute
 }
 export interface FileRoutesById {
@@ -353,6 +362,7 @@ export interface FileRoutesById {
   '/patients/$id/': typeof PatientsIdIndexRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
   '/api/consultations/$id/pdf': typeof ApiConsultationsDotidDotpdfRoute
+  '/api/eval/$sampleId/audio': typeof ApiEvalDotsampleIdDotaudioRoute
   '/api/patients/$id/export': typeof ApiPatientsDotidDotexportRoute
 }
 export interface FileRouteTypes {
@@ -394,6 +404,7 @@ export interface FileRouteTypes {
     | '/patients/$id/'
     | '/api/consultations/$id/audio'
     | '/api/consultations/$id/pdf'
+    | '/api/eval/$sampleId/audio'
     | '/api/patients/$id/export'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -432,6 +443,7 @@ export interface FileRouteTypes {
     | '/patients/$id'
     | '/api/consultations/$id/audio'
     | '/api/consultations/$id/pdf'
+    | '/api/eval/$sampleId/audio'
     | '/api/patients/$id/export'
   id:
     | '__root__'
@@ -471,6 +483,7 @@ export interface FileRouteTypes {
     | '/patients/$id/'
     | '/api/consultations/$id/audio'
     | '/api/consultations/$id/pdf'
+    | '/api/eval/$sampleId/audio'
     | '/api/patients/$id/export'
   fileRoutesById: FileRoutesById
 }
@@ -508,6 +521,7 @@ export interface RootRouteChildren {
   PatientsIdIndexRoute: typeof PatientsIdIndexRoute
   ApiConsultationsDotidDotaudioRoute: typeof ApiConsultationsDotidDotaudioRoute
   ApiConsultationsDotidDotpdfRoute: typeof ApiConsultationsDotidDotpdfRoute
+  ApiEvalDotsampleIdDotaudioRoute: typeof ApiEvalDotsampleIdDotaudioRoute
   ApiPatientsDotidDotexportRoute: typeof ApiPatientsDotidDotexportRoute
 }
 
@@ -765,6 +779,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiConsultationsDotidDotpdfRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/eval/$sampleId/audio': {
+      id: '/api/eval/$sampleId/audio'
+      path: '/api/eval/$sampleId/audio'
+      fullPath: '/api/eval/$sampleId/audio'
+      preLoaderRoute: typeof ApiEvalDotsampleIdDotaudioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/patients/$id/export': {
       id: '/api/patients/$id/export'
       path: '/api/patients/$id/export'
@@ -835,6 +856,7 @@ const rootRouteChildren: RootRouteChildren = {
   PatientsIdIndexRoute: PatientsIdIndexRoute,
   ApiConsultationsDotidDotaudioRoute: ApiConsultationsDotidDotaudioRoute,
   ApiConsultationsDotidDotpdfRoute: ApiConsultationsDotidDotpdfRoute,
+  ApiEvalDotsampleIdDotaudioRoute: ApiEvalDotsampleIdDotaudioRoute,
   ApiPatientsDotidDotexportRoute: ApiPatientsDotidDotexportRoute,
 }
 export const routeTree = rootRouteImport

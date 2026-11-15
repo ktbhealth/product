@@ -23,6 +23,8 @@ import { makeDb, type DbClient } from "@ktb/db";
 import { patientAccess, patients, user } from "@ktb/db/schema";
 import { makeAuth } from "@ktb/auth-better";
 import { ensureDoctorProfile } from "@ktb/doctors";
+import { assignSubject, createRole, setRolePermission } from "@ktb/rbac-plugin";
+import { roles } from "@ktb/rbac-plugin/schema";
 import { inviteSecretary } from "@ktb/secretaries";
 import type { PatientAccessRelation } from "@ktb/patient-access/schema";
 
@@ -33,6 +35,7 @@ const USERS = [
 	{ email: "secretary@ktb.test", name: "Secretary" },
 	{ email: "patient@ktb.test", name: "Patient" },
 	{ email: "guardian@ktb.test", name: "Guardian" },
+	{ email: "validator@ktb.test", name: "Validator" },
 ] as const;
 type SeedEmail = (typeof USERS)[number]["email"];
 
@@ -131,6 +134,33 @@ try {
 		relation: "guardian",
 		grantedBy: doctorId,
 	});
+
+	// Eval validator (P-081): the validator login is a regular user
+	// carrying the eval-validator role → the eval.validator grant. No
+	// bypass — the same RBAC path the admin UI uses.
+	const [existingRole] = await db
+		.select({ id: roles.id })
+		.from(roles)
+		.where(eq(roles.name, "eval-validator"));
+	const roleId =
+		existingRole?.id ??
+		(await createRole(db, {
+			name: "eval-validator",
+			description: "Reviews persona cohorts and runs evals (P-081)",
+		}))!.id;
+	await setRolePermission(db, {
+		roleId,
+		resource: "eval",
+		action: "validator",
+		effect: "allow",
+	});
+	await assignSubject(db, {
+		subjectKind: "user",
+		subjectId: ids["validator@ktb.test"],
+		roleId,
+		grantedBy: ids["admin@ktb.test"],
+	});
+	console.log("[seed] validator@ktb.test has the eval-validator role");
 
 	console.log(`[seed] password for all: ${PASSWORD}`);
 } finally {
