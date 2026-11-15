@@ -111,6 +111,70 @@ describe("makeLocalTts", () => {
 		expect(r.record.engine).toBe("edge-tts");
 	});
 
+	it("multi-speaker: each turn gets its voice, concatenated with silence", async () => {
+		const calls: string[] = [];
+		const workDir = dir();
+		const layer = makeLocalTts({ workDir, voiceMap: {}, run: fakeRun(calls) });
+		const r = await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const tts = yield* TtsPort;
+					return yield* tts.synthesize({
+						script: "full script",
+						voiceId: "br_male_1",
+						acoustic: profile(),
+						turns: [
+							{ speaker: "doctor", text: "bom dia" },
+							{ speaker: "patient", text: "oi dotô" },
+							{ speaker: "narrator", text: "silêncio" },
+						],
+						speakerVoices: { doctor: "br_male_1", patient: "br_female_1" },
+					});
+				}).pipe(Effect.provide(layer)),
+			),
+		);
+		const ttsCalls = calls.filter((c) => c.startsWith("edge-tts"));
+		expect(ttsCalls).toHaveLength(3);
+		expect(ttsCalls[0]).toContain("pt-BR-AntonioNeural");
+		expect(ttsCalls[1]).toContain("pt-BR-FranciscaNeural");
+		expect(calls.some((c) => c.includes("anullsrc"))).toBe(true);
+		expect(calls.some((c) => c.includes("concat"))).toBe(true);
+		expect(r.audio.uri.startsWith("file://")).toBe(true);
+		// Turn files + concat list + silence cleaned up afterwards.
+		expect(fs.readdirSync(path.join(workDir, "audio")).filter((f) => f.includes("-t"))).toEqual([]);
+	});
+
+	it("multi-speaker: cleans turn files when concat ffmpeg fails", async () => {
+		const calls: string[] = [];
+		const workDir = dir();
+		const failingConcat: CliRunner = (cmd) =>
+			Effect.gen(function* () {
+				calls.push(cmd.join(" "));
+				if (cmd.includes("concat")) {
+					return yield* Effect.fail(new PortError({ port: "tts", message: "concat broke" }));
+				}
+				if (cmd[0] === "edge-tts" || cmd[0] === "ffmpeg") {
+					fs.writeFileSync(cmd[cmd.length - 1]!, "x");
+				}
+			});
+		const layer = makeLocalTts({ workDir, voiceMap: {}, run: failingConcat });
+		const err = await Effect.runPromise(
+			Effect.scoped(
+				Effect.flatMap(TtsPort, (tts) =>
+					tts.synthesize({
+						script: "s",
+						voiceId: "br_male_1",
+						acoustic: profile(),
+						turns: [{ speaker: "doctor", text: "x" }],
+						speakerVoices: { doctor: "br_male_1" },
+					}),
+				).pipe(Effect.provide(layer), Effect.flip),
+			),
+		).catch(() => null as null | PortError);
+		expect(err === null || err instanceof PortError).toBe(true);
+		expect(fs.existsSync(path.join(workDir, "audio"))).toBe(true);
+	});
+
 	it("fails typed on an unknown voice alias — provider never reached", async () => {
 		const calls: string[] = [];
 		const err = await synth({ run: fakeRun(calls), voice: "nope" }).then(
@@ -268,9 +332,9 @@ describe("makeLocalTts", () => {
 		expect(err.message).toContain("mkdir audio");
 	});
 
-	it("fails typed when the degraded output is missing at stat time", async () => {
+	it("fails typed when the degraded output is missing at fsync/stat time", async () => {
 		// edge-tts writes its mp3 but ffmpeg "succeeds" without writing —
-		// statSync(out) throws ENOENT → PortError.
+		// fsyncFile(out) throws ENOENT → PortError.
 		const run: CliRunner = (cmd) =>
 			Effect.sync(() => {
 				if (cmd[0] === "edge-tts") {
@@ -282,7 +346,7 @@ describe("makeLocalTts", () => {
 			(e) => e,
 		);
 		expect(err).toBeInstanceOf(PortError);
-		expect(err.message).toContain("stat ");
+		expect(err.message).toContain("fsync ");
 	});
 
 	it("caps concurrent syntheses via the semaphore", async () => {

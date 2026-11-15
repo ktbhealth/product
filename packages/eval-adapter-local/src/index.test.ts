@@ -3,12 +3,27 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { EvalStorePort, PortError, ReportPort, type RunRecord } from "@ktb/eval-core";
-import { DatasetStorePort, type Sample } from "@ktb/eval-consultation";
+import {
+	AsrPort,
+	DatasetStorePort,
+	EvalArtifacts,
+	EvalRunner,
+	TtsPort,
+	type Sample,
+} from "@ktb/eval-consultation";
 
-import { makeLocalEvalStoreLayer, makeLocalReportLayer, makeLocalStoreLayer } from "./index.ts";
+import {
+	evalArtifactsLocalDriver,
+	evalRunnerLocalDriver,
+	makeEvalRunner,
+	makeLocalEvalStoreLayer,
+	makeLocalReportLayer,
+	makeLocalStoreLayer,
+} from "./index.ts";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "eval-local-"));
 const reportPath = path.join(root, "reports", "run.jsonl");
@@ -365,6 +380,96 @@ describe("branch coverage", () => {
 		);
 		expect(md).toContain("| - | s | e | - | - | - |");
 	});
+
+	it("render drops a torn trailing line (crash mid-append)", async () => {
+		const p = path.join(root, "reports", "torn.jsonl");
+		fs.mkdirSync(path.dirname(p), { recursive: true });
+		fs.writeFileSync(p, `${JSON.stringify({ ...record, runId: "torn-run" })}\n{"runId":"tor`);
+		const layer = makeLocalReportLayer(p);
+		const md = await Effect.runPromise(
+			Effect.provide(
+				Effect.gen(function* () {
+					const r = yield* ReportPort;
+					return yield* r.render("torn-run");
+				}),
+				layer,
+			),
+		);
+		expect(md).toContain("| asr | test | m1 | 42 | 0.001 |");
+	});
+
+	it("render on a whitespace-only file → empty report", async () => {
+		const p = path.join(root, "reports", "blank.jsonl");
+		fs.mkdirSync(path.dirname(p), { recursive: true });
+		fs.writeFileSync(p, "\n  \n");
+		const layer = makeLocalReportLayer(p);
+		const md = await Effect.runPromise(
+			Effect.provide(
+				Effect.gen(function* () {
+					const r = yield* ReportPort;
+					return yield* r.render("blank-run");
+				}),
+				layer,
+			),
+		);
+		expect(md).toContain("no records");
+	});
+
+	it("render still fails on a corrupt MIDDLE line", async () => {
+		const p = path.join(root, "reports", "corrupt.jsonl");
+		fs.mkdirSync(path.dirname(p), { recursive: true });
+		fs.writeFileSync(p, `{"bad\n${JSON.stringify({ ...record, runId: "corrupt-run" })}\n`);
+		const layer = makeLocalReportLayer(p);
+		const err = await Effect.runPromise(
+			Effect.provide(
+				Effect.gen(function* () {
+					const r = yield* ReportPort;
+					return yield* r.render("corrupt-run");
+				}),
+				layer,
+			),
+		).then(
+			() => null,
+			(e) => e,
+		);
+		expect(err).toBeInstanceOf(PortError);
+	});
+});
+
+describe("crash debris sweep", () => {
+	it("removes stale .tmp files, keeps fresh ones and real blobs", async () => {
+		const sweepRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eval-sweep-"));
+		const blobs = path.join(sweepRoot, "blobs");
+		fs.mkdirSync(blobs, { recursive: true });
+		const stale = path.join(blobs, "abc.tmp-1234");
+		const fresh = path.join(blobs, "def.tmp-5678");
+		const blob = path.join(blobs, "realblob");
+		fs.writeFileSync(stale, "x");
+		fs.writeFileSync(fresh, "x");
+		fs.writeFileSync(blob, "x");
+		// Backdate the stale one past the freshness window.
+		const old = new Date(Date.now() - 120_000);
+		fs.utimesSync(stale, old, old);
+		// A dangling symlink named like a tmp: statSync throws ENOENT
+		// → exercises the vanished-between-readdir-and-stat catch.
+		fs.symlinkSync(path.join(blobs, "does-not-exist"), path.join(blobs, "ghost.tmp-9"));
+
+		await Effect.runPromise(
+			Effect.scoped(
+				Effect.provide(
+					Effect.gen(function* () {
+						const s = yield* DatasetStorePort;
+						yield* s.putBlob("probe", new Uint8Array([1]));
+					}),
+					makeLocalStoreLayer(sweepRoot),
+				),
+			),
+		);
+		expect(fs.existsSync(stale)).toBe(false);
+		expect(fs.existsSync(fresh)).toBe(true);
+		expect(fs.existsSync(blob)).toBe(true);
+		fs.rmSync(sweepRoot, { recursive: true, force: true });
+	});
 });
 
 it("getSample returns null for unknown ids", async () => {
@@ -512,4 +617,179 @@ describe("local eval store (P-076)", () => {
 		);
 		expect(String(err3)).toContain("putCalibrationReport");
 	});
+});
+
+describe("evalRunnerLocalDriver", () => {
+	it("is eligible only with artifact dir + asr base url", () => {
+		expect(evalRunnerLocalDriver.when?.({}) ?? true).toBe(false);
+		expect(evalRunnerLocalDriver.when?.({ EVAL_RUNNER_DIR: "/x" }) ?? true).toBe(false);
+		expect(
+			evalRunnerLocalDriver.when?.({
+				EVAL_RUNNER_DIR: "/x",
+				EVAL_ASR_BASE_URL: "http://asr",
+			}) ?? false,
+		).toBe(true);
+	});
+
+	it("runs items through tts → asr → wer and reports ok outcomes", async () => {
+		const ports = Layer.mergeAll(
+			Layer.succeed(
+				TtsPort,
+				TtsPort.of({
+					synthesize: () =>
+						Effect.succeed({
+							audio: { uri: "file:///work/tts/audio/a.wav" },
+							record,
+						}),
+				}),
+			),
+			Layer.succeed(
+				AsrPort,
+				AsrPort.of({
+					transcribe: () => Effect.succeed({ asr: { text: "hello world", segments: [] }, record }),
+				}),
+			),
+		);
+		const layer = makeEvalRunner(ports);
+		const outcomes: { id: number | string; status: string; result?: unknown; error?: string }[] =
+			[];
+		await Effect.runPromise(
+			Effect.flatMap(EvalRunner, (r) =>
+				r.run({
+					runId: "r1",
+					items: [
+						{ id: 1, script: "hello world", voices: { patient: "br_female_1" } },
+						{ id: 2, script: "hello there", turns: [{ speaker: "p", text: "hi" }] },
+					],
+					onSample: (id, outcome) =>
+						Effect.sync(() => {
+							outcomes.push({
+								id,
+								status: outcome.status,
+								result: outcome.result,
+								error: outcome.error,
+							});
+						}),
+				}),
+			).pipe(Effect.provide(layer)),
+		);
+		expect(outcomes.map((o) => o.status)).toEqual(["ok", "ok"]);
+		const first = outcomes[0]!.result as { audioUri: string; asrText: string; wer: number };
+		expect(first.audioUri).toBe("file:///work/tts/audio/a.wav");
+		expect(first.asrText).toBe("hello world");
+		expect(first.wer).toBe(0);
+	});
+
+	it("reports a failed outcome when the pipeline errors", async () => {
+		const ports = Layer.mergeAll(
+			Layer.succeed(
+				TtsPort,
+				TtsPort.of({
+					synthesize: () => Effect.fail(new PortError({ port: "tts", message: "synth down" })),
+				}),
+			),
+			Layer.succeed(
+				AsrPort,
+				AsrPort.of({
+					transcribe: () => Effect.succeed({ asr: { text: "", segments: [] }, record }),
+				}),
+			),
+		);
+		const outcomes: { status: string; error?: string }[] = [];
+		await Effect.runPromise(
+			Effect.flatMap(EvalRunner, (r) =>
+				r.run({
+					runId: "r1",
+					items: [{ id: 1, script: "x" }],
+					onSample: (_id, outcome) =>
+						Effect.sync(() => {
+							outcomes.push({ status: outcome.status, error: outcome.error });
+						}),
+				}),
+			).pipe(Effect.provide(makeEvalRunner(ports))),
+		);
+		expect(outcomes[0]?.status).toBe("failed");
+		expect(outcomes[0]?.error).toContain("synth down");
+	});
+});
+
+describe("evalArtifactsLocalDriver", () => {
+	const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eval-artifacts-"));
+
+	it("is eligible only when EVAL_RUNNER_DIR is set", () => {
+		expect(evalArtifactsLocalDriver.when?.({}) ?? true).toBe(false);
+		expect(evalArtifactsLocalDriver.when?.({ EVAL_RUNNER_DIR: artifactRoot }) ?? false).toBe(true);
+	});
+
+	it("reads bytes inside the root, null when missing, refuses outside", async () => {
+		const filePath = path.join(artifactRoot, "a.wav");
+		fs.writeFileSync(filePath, Buffer.from([9, 8, 7]));
+		const layer = evalArtifactsLocalDriver.provides({
+			EVAL_RUNNER_DIR: artifactRoot,
+		}) as Layer.Layer<EvalArtifacts>;
+
+		const bytes = await Effect.runPromise(
+			Effect.flatMap(EvalArtifacts, (a) => a.getAudio(`file://${filePath}`)).pipe(
+				Effect.provide(layer),
+			),
+		);
+		expect(bytes ? [...bytes] : null).toEqual([9, 8, 7]);
+
+		const missing = await Effect.runPromise(
+			Effect.flatMap(EvalArtifacts, (a) => a.getAudio(`file://${artifactRoot}/gone.wav`)).pipe(
+				Effect.provide(layer),
+			),
+		);
+		expect(missing).toBeNull();
+
+		const outside = fs.mkdtempSync(path.join(os.tmpdir(), "eval-artifacts-out-"));
+		const outsideFile = path.join(outside, "b.wav");
+		fs.writeFileSync(outsideFile, "x");
+		const err = await Effect.runPromise(
+			Effect.flatMap(EvalArtifacts, (a) => a.getAudio(`file://${outsideFile}`)).pipe(
+				Effect.catchTag("PortError", (e) => Effect.succeed(e)),
+				Effect.provide(layer),
+			),
+		);
+		expect(String(err)).toContain("outside artifact root");
+	});
+});
+
+describe("driver wiring", () => {
+	it("evalRunnerLocalDriver.provides builds the runner layer", () => {
+		const layer = evalRunnerLocalDriver.provides({
+			EVAL_RUNNER_DIR: "/tmp/eval-run",
+			EVAL_ASR_BASE_URL: "http://asr",
+		});
+		expect(layer).toBeDefined();
+	});
+
+	it("artifacts read fails as PortError when the target is unreadable", async () => {
+		const artifactRoot2 = fs.mkdtempSync(path.join(os.tmpdir(), "eval-artifacts-dir-"));
+		const dirTarget = path.join(artifactRoot2, "subdir");
+		fs.mkdirSync(dirTarget);
+		const layer = evalArtifactsLocalDriver.provides({
+			EVAL_RUNNER_DIR: artifactRoot2,
+		}) as Layer.Layer<EvalArtifacts>;
+		const err = await Effect.runPromise(
+			Effect.flatMap(EvalArtifacts, (a) => a.getAudio(`file://${dirTarget}`)).pipe(
+				Effect.catchTag("PortError", (e) => Effect.succeed(e)),
+				Effect.provide(layer),
+			),
+		);
+		expect(err).toBeInstanceOf(PortError);
+	});
+});
+
+it("artifacts also accepts bare paths without the file:// scheme", async () => {
+	const artifactRoot3 = fs.mkdtempSync(path.join(os.tmpdir(), "eval-artifacts-bare-"));
+	const filePath = path.join(artifactRoot3, "b.wav");
+	fs.writeFileSync(filePath, Buffer.from([5]));
+	const layer = evalArtifactsLocalDriver.provides({
+		EVAL_RUNNER_DIR: artifactRoot3,
+	}) as Layer.Layer<EvalArtifacts>;
+	const bytes = await Effect.runPromise(
+		Effect.flatMap(EvalArtifacts, (a) => a.getAudio(filePath)).pipe(Effect.provide(layer)),
+	);
+	expect(bytes ? [...bytes] : null).toEqual([5]);
 });
