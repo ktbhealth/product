@@ -51,6 +51,8 @@ export const adminAudit = sqliteTable(
 		index("admin_audit_created_at_idx").on(table.createdAt),
 		index("admin_audit_action_idx").on(table.action),
 		index("admin_audit_actor_idx").on(table.actorUserId),
+		// Tenant-scoped activity feed (P-080): newest-first per tenant.
+		index("admin_audit_tenant_created_idx").on(table.tenantId, table.createdAt),
 	],
 );
 

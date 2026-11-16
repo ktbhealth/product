@@ -16,19 +16,26 @@ const fns = vi.hoisted(() => ({
 		data: { id: 9 },
 	})),
 	deletePersonaDefFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({ ok: true, data: null })),
-	listEndpointsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
-		ok: true,
-		data: [],
-	})),
 	generatePersonasFn: vi.fn<(a?: Arg) => Res<{ created: number }>>(async () => ({
 		ok: true,
 		data: { created: 5 },
 	})),
 }));
+const epFns = vi.hoisted(() => ({
+	listEndpointsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
+		ok: true,
+		data: [],
+	})),
+}));
 vi.mock("../fns.ts", () => fns);
-vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ invalidate: vi.fn() }) }));
+vi.mock("@ktb/ai-endpoints/fns", () => epFns);
+vi.mock("@tanstack/react-router", () => ({
+	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
+}));
 
-import type { EndpointCard, PersonaDefCard } from "../index.ts";
+import type { EndpointCard } from "@ktb/ai-endpoints";
+
+import type { PersonaDefCard } from "../index.ts";
 import { PersonasPage } from "./PersonasPage.tsx";
 
 const endpoint: EndpointCard = {
@@ -40,6 +47,10 @@ const endpoint: EndpointCard = {
 	sessionId: null,
 	secretRef: null,
 	transport: null,
+	agentCmd: null,
+	sshHost: null,
+	scope: "eval",
+	isDefault: false,
 	timeoutMs: 60_000,
 	enabled: true,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
@@ -285,11 +296,11 @@ describe("PersonasPage — branch completion", () => {
 describe("PersonasPage — generate dialog", () => {
 	it("fetches endpoints lazily, picks a count chip and generates", async () => {
 		const acp: EndpointCard = { ...endpoint, id: 8, name: "Claude", kind: "acp", model: null };
-		fns.listEndpointsFn.mockResolvedValue({ ok: true, data: [endpoint, acp] });
+		epFns.listEndpointsFn.mockResolvedValue({ ok: true, data: [endpoint, acp] });
 		const user = userEvent.setup();
 		render(<PersonasPage defs={[]} locale="en" />);
 		await user.click(screen.getByText("Generate personas"));
-		await waitFor(() => expect(fns.listEndpointsFn).toHaveBeenCalled());
+		await waitFor(() => expect(epFns.listEndpointsFn).toHaveBeenCalled());
 		expect(screen.getByText(/LLM endpoint drafts/)).toBeTruthy();
 		await user.click(screen.getByLabelText("Endpoint"));
 		// Model-less endpoints fall back to their kind in the option label.
@@ -326,11 +337,11 @@ describe("PersonasPage — generate dialog", () => {
 	});
 
 	it("keeps the template option when the endpoint fetch fails, and cancels out", async () => {
-		fns.listEndpointsFn.mockResolvedValueOnce({ ok: false });
+		epFns.listEndpointsFn.mockResolvedValueOnce({ ok: false });
 		const user = userEvent.setup();
 		render(<PersonasPage defs={[]} locale="en" />);
 		await user.click(screen.getByText("Generate personas"));
-		await waitFor(() => expect(fns.listEndpointsFn).toHaveBeenCalled());
+		await waitFor(() => expect(epFns.listEndpointsFn).toHaveBeenCalled());
 		await user.click(screen.getByLabelText("Endpoint"));
 		expect(await screen.findByRole("option", { name: /Template \(deterministic/ })).toBeTruthy();
 		await user.keyboard("{Escape}");

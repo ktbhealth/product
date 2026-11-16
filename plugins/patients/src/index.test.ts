@@ -423,6 +423,33 @@ describe("PatientsLive", () => {
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 
+	it("audits owner create/update with ids only (P-080)", async () => {
+		const created = await asUser(
+			"u1",
+			call((p) => p.create("u1", fields("Audited Pat"))),
+		);
+		let rows = await db.select().from(adminAudit);
+		const createEntry = rows.find(
+			(r) => r.action === "patients.create" && r.targetId === String(created!.id),
+		);
+		expect(createEntry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+		expect(createEntry?.detail).toContain('"ownerId":"u1"');
+		expect(createEntry?.detail).not.toContain("Audited Pat");
+
+		const updated = await asUser(
+			"u1",
+			call((p) => p.update("u1", created!.id, fields("Audited Pat 2"))),
+		);
+		expect(updated?.name).toBe("Audited Pat 2");
+		rows = await db.select().from(adminAudit);
+		const updateEntry = rows.find(
+			(r) => r.action === "patients.update" && r.targetId === String(created!.id),
+		);
+		expect(updateEntry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+		expect(updateEntry?.detail).toContain('"ownerId":"u1"');
+		expect(updateEntry?.detail).not.toContain("Audited Pat 2");
+	});
+
 	it("adminList returns cross-owner rows for an allowlisted principal", async () => {
 		const rows = await asUser(
 			"u1",
@@ -551,6 +578,14 @@ describe("PatientsLive", () => {
 			"admin@x.com",
 		);
 		expect(updated?.name).toBe("Foreign Edited");
+		// P-080: the audit row records the ROW's owner (u2), not the
+		// admin caller — ownerId is patient attribution, not the actor.
+		const auditRows = await db.select().from(adminAudit);
+		const updateEntry = auditRows.find(
+			(r) => r.action === "patients.update" && r.targetId === String(id),
+		);
+		expect(updateEntry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+		expect(updateEntry?.detail).toContain('"ownerId":"u2"');
 		// A non-admin still gets Forbidden on the same row.
 		await expect(
 			asUser(
@@ -707,6 +742,48 @@ describe("PatientsLive without a stored row", () => {
 			await runtime.dispose();
 		}
 	});
+
+	it("update returns null (and skips the audit write) when the update yields no row", async () => {
+		// getPatient sees the row but updatePatient's RETURNING is empty —
+		// the concurrent-delete shape the `updated !== null` guard covers.
+		const existing = { id: 7, ownerId: "u1", tenantId: null, name: "Ghost" };
+		const stub = {
+			select: () => ({
+				from: () => ({
+					// patients path ends in .limit(1); the patient_documents
+					// join in withIdentifiers awaits the where() result.
+					where: () => ({
+						limit: async () => [existing],
+						then: (resolve: (rows: unknown[]) => void) => resolve([]),
+					}),
+					innerJoin: () => ({ where: async () => [] }),
+				}),
+			}),
+			delete: () => ({ where: () => ({}) }),
+			update: () => ({
+				set: () => ({ where: () => ({ returning: async () => [] }) }),
+			}),
+			batch: async () => [[], []],
+		} as unknown as ReturnType<typeof makeDb>;
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, stub),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			makeEventBus(),
+		);
+		const runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provide(deps)));
+		try {
+			const row = await runtime.runPromise(
+				Effect.provideService(
+					Effect.flatMap(Patients, (p) => p.update("u1", 7, fields("Ghost Update"))),
+					Principal,
+					{ userId: "u1" },
+				),
+			);
+			expect(row).toBeNull();
+		} finally {
+			await runtime.dispose();
+		}
+	});
 });
 
 describe("PatientsCommandsLive", () => {
@@ -738,10 +815,11 @@ describe("PatientsCommandsLive", () => {
 		}
 	});
 
-	it("patients.delete removes the owner's patient and emits patient.deleted", async () => {
+	it("patients.delete removes the owner's patient, emits patient.deleted and audits (P-080)", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u1", fields("To Delete")))!;
-		const deps = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const deps = Layer.mergeAll(infra, AuditLive.pipe(Layer.provide(infra)));
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
 			await runtime.runPromise(
@@ -755,15 +833,23 @@ describe("PatientsCommandsLive", () => {
 				),
 			);
 			expect(await getPatient(db, row.id)).toBeNull();
+			// ids only — the audit row carries the row's owner, never fields.
+			const auditRows = await db.select().from(adminAudit);
+			const entry = auditRows.find(
+				(r) => r.action === "patients.delete" && r.targetId === String(row.id),
+			);
+			expect(entry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+			expect(entry?.detail).toContain('"ownerId":"u1"');
 		} finally {
 			await runtime.dispose();
 		}
 	});
 
-	it("patients.delete lets a platform admin remove another owner's patient", async () => {
+	it("patients.delete lets a platform admin remove another owner's patient and audits the row's owner", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u2", fields("Foreign")))!;
-		const deps = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const deps = Layer.mergeAll(infra, AuditLive.pipe(Layer.provide(infra)));
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
 			await runtime.runPromise(
@@ -777,6 +863,16 @@ describe("PatientsCommandsLive", () => {
 				),
 			);
 			expect(await getPatient(db, row.id)).toBeNull();
+			const auditRows = await db.select().from(adminAudit);
+			const entry = auditRows.find(
+				(r) => r.action === "patients.delete" && r.targetId === String(row.id),
+			);
+			expect(entry).toMatchObject({
+				actorUserId: "u1",
+				actorEmail: "admin@x.com",
+				targetType: "patient",
+			});
+			expect(entry?.detail).toContain('"ownerId":"u2"');
 		} finally {
 			await runtime.dispose();
 		}

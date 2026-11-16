@@ -208,15 +208,29 @@
     {
       "idx": 30,
       "version": "6",
-      "when": 1794834854574,
-      "tag": "0030_plain_karen_page",
+      "when": 1794836030552,
+      "tag": "0030_hesitant_mikhail_rasputin",
       "breakpoints": true
     },
     {
       "idx": 31,
       "version": "6",
-      "when": 1794847474364,
-      "tag": "0031_breezy_phil_sheldon",
+      "when": 1794843326336,
+      "tag": "0031_shocking_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794845189882,
+      "tag": "0032_legal_queen_noir",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794852963176,
+      "tag": "0033_wealthy_whistler",
       "breakpoints": true
     }
   ]

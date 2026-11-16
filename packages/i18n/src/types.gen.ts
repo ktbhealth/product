@@ -158,7 +158,9 @@ export type I18nKey =
 	| "app.notfound_title"
 	| "app.panel_group_access"
 	| "app.panel_group_domains"
+	| "app.panel_group_governance"
 	| "app.panel_group_system"
+	| "app.panel_nav_activity"
 	| "app.panel_nav_dashboard"
 	| "app.panel_nav_groups"
 	| "app.panel_nav_ops"
@@ -311,6 +313,7 @@ export type I18nKey =
 	| "audience.step3_title"
 	| "audience.step4_desc"
 	| "audience.step4_title"
+	| "audit.activityTitle"
 	| "audit.allActions"
 	| "audit.colAction"
 	| "audit.colActor"
@@ -594,7 +597,6 @@ export type I18nKey =
 	| "eval.credentials.save"
 	| "eval.credentials.secret"
 	| "eval.credentials.title"
-	| "eval.persona.acpHint"
 	| "eval.persona.actionFailed"
 	| "eval.persona.ageBand"
 	| "eval.persona.axes"
@@ -619,7 +621,6 @@ export type I18nKey =
 	| "eval.persona.axisLabels.south"
 	| "eval.persona.axisLabels.southeast"
 	| "eval.persona.axisLabels.technical"
-	| "eval.persona.baseUrl"
 	| "eval.persona.cancel"
 	| "eval.persona.confirmDelete"
 	| "eval.persona.count"
@@ -633,11 +634,8 @@ export type I18nKey =
 	| "eval.persona.edit"
 	| "eval.persona.education"
 	| "eval.persona.emptyDefs"
-	| "eval.persona.emptyEndpoints"
 	| "eval.persona.emptyInstances"
-	| "eval.persona.enabled"
 	| "eval.persona.endpoint"
-	| "eval.persona.endpointsTitle"
 	| "eval.persona.endpointTemplate"
 	| "eval.persona.female"
 	| "eval.persona.gender"
@@ -648,15 +646,12 @@ export type I18nKey =
 	| "eval.persona.instancesDesc"
 	| "eval.persona.instancesTitle"
 	| "eval.persona.items"
-	| "eval.persona.kind"
 	| "eval.persona.male"
 	| "eval.persona.minutes"
 	| "eval.persona.mode"
-	| "eval.persona.model"
 	| "eval.persona.modeRandom"
 	| "eval.persona.modeSelected"
 	| "eval.persona.name"
-	| "eval.persona.newEndpoint"
 	| "eval.persona.newInstance"
 	| "eval.persona.newPersona"
 	| "eval.persona.notes"
@@ -667,18 +662,12 @@ export type I18nKey =
 	| "eval.persona.personaPurpose"
 	| "eval.persona.personasDesc"
 	| "eval.persona.personasTitle"
-	| "eval.persona.progress"
 	| "eval.persona.randomize"
 	| "eval.persona.region"
 	| "eval.persona.register"
 	| "eval.persona.reviewHint"
 	| "eval.persona.save"
-	| "eval.persona.secretRef"
-	| "eval.persona.secretRefCustom"
-	| "eval.persona.secretRefHint"
-	| "eval.persona.secretRefNone"
 	| "eval.persona.seed"
-	| "eval.persona.sessionId"
 	| "eval.persona.socialClass"
 	| "eval.persona.spawnGenerators"
 	| "eval.persona.spawnHint"
@@ -691,12 +680,6 @@ export type I18nKey =
 	| "eval.persona.statusGenerating"
 	| "eval.persona.statusPending"
 	| "eval.persona.statusReady"
-	| "eval.persona.test"
-	| "eval.persona.testFailed"
-	| "eval.persona.testOk"
-	| "eval.persona.timeoutMs"
-	| "eval.persona.transport"
-	| "eval.persona.transportHint"
 	| "eval.validator.actionFailed"
 	| "eval.validator.approve"
 	| "eval.validator.approved"
@@ -1530,7 +1513,9 @@ export interface I18nTypedT {
 	(key: "app.notfound_title"): Effect.Effect<string>;
 	(key: "app.panel_group_access"): Effect.Effect<string>;
 	(key: "app.panel_group_domains"): Effect.Effect<string>;
+	(key: "app.panel_group_governance"): Effect.Effect<string>;
 	(key: "app.panel_group_system"): Effect.Effect<string>;
+	(key: "app.panel_nav_activity"): Effect.Effect<string>;
 	(key: "app.panel_nav_dashboard"): Effect.Effect<string>;
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
@@ -1693,6 +1678,7 @@ export interface I18nTypedT {
 	(key: "audience.step3_title"): Effect.Effect<string>;
 	(key: "audience.step4_desc"): Effect.Effect<string>;
 	(key: "audience.step4_title"): Effect.Effect<string>;
+	(key: "audit.activityTitle"): Effect.Effect<string>;
 	(key: "audit.allActions"): Effect.Effect<string>;
 	(key: "audit.colAction"): Effect.Effect<string>;
 	(key: "audit.colActor"): Effect.Effect<string>;
@@ -2114,7 +2100,6 @@ export interface I18nTypedT {
 	(key: "eval.credentials.save"): Effect.Effect<string>;
 	(key: "eval.credentials.secret"): Effect.Effect<string>;
 	(key: "eval.credentials.title"): Effect.Effect<string>;
-	(key: "eval.persona.acpHint"): Effect.Effect<string>;
 	(key: "eval.persona.actionFailed"): Effect.Effect<string>;
 	(key: "eval.persona.ageBand"): Effect.Effect<string>;
 	(key: "eval.persona.axes"): Effect.Effect<string>;
@@ -2139,7 +2124,6 @@ export interface I18nTypedT {
 	(key: "eval.persona.axisLabels.south"): Effect.Effect<string>;
 	(key: "eval.persona.axisLabels.southeast"): Effect.Effect<string>;
 	(key: "eval.persona.axisLabels.technical"): Effect.Effect<string>;
-	(key: "eval.persona.baseUrl"): Effect.Effect<string>;
 	(key: "eval.persona.cancel"): Effect.Effect<string>;
 	(key: "eval.persona.confirmDelete"): Effect.Effect<string>;
 	(key: "eval.persona.count"): Effect.Effect<string>;
@@ -2153,11 +2137,8 @@ export interface I18nTypedT {
 	(key: "eval.persona.edit"): Effect.Effect<string>;
 	(key: "eval.persona.education"): Effect.Effect<string>;
 	(key: "eval.persona.emptyDefs"): Effect.Effect<string>;
-	(key: "eval.persona.emptyEndpoints"): Effect.Effect<string>;
 	(key: "eval.persona.emptyInstances"): Effect.Effect<string>;
-	(key: "eval.persona.enabled"): Effect.Effect<string>;
 	(key: "eval.persona.endpoint"): Effect.Effect<string>;
-	(key: "eval.persona.endpointsTitle"): Effect.Effect<string>;
 	(key: "eval.persona.endpointTemplate"): Effect.Effect<string>;
 	(key: "eval.persona.female"): Effect.Effect<string>;
 	(key: "eval.persona.gender"): Effect.Effect<string>;
@@ -2168,15 +2149,12 @@ export interface I18nTypedT {
 	(key: "eval.persona.instancesDesc"): Effect.Effect<string>;
 	(key: "eval.persona.instancesTitle"): Effect.Effect<string>;
 	(key: "eval.persona.items"): Effect.Effect<string>;
-	(key: "eval.persona.kind"): Effect.Effect<string>;
 	(key: "eval.persona.male"): Effect.Effect<string>;
 	(key: "eval.persona.minutes"): Effect.Effect<string>;
 	(key: "eval.persona.mode"): Effect.Effect<string>;
-	(key: "eval.persona.model"): Effect.Effect<string>;
 	(key: "eval.persona.modeRandom"): Effect.Effect<string>;
 	(key: "eval.persona.modeSelected"): Effect.Effect<string>;
 	(key: "eval.persona.name"): Effect.Effect<string>;
-	(key: "eval.persona.newEndpoint"): Effect.Effect<string>;
 	(key: "eval.persona.newInstance"): Effect.Effect<string>;
 	(key: "eval.persona.newPersona"): Effect.Effect<string>;
 	(key: "eval.persona.notes"): Effect.Effect<string>;
@@ -2187,18 +2165,12 @@ export interface I18nTypedT {
 	(key: "eval.persona.personaPurpose"): Effect.Effect<string>;
 	(key: "eval.persona.personasDesc"): Effect.Effect<string>;
 	(key: "eval.persona.personasTitle"): Effect.Effect<string>;
-	(key: "eval.persona.progress"): Effect.Effect<string>;
 	(key: "eval.persona.randomize"): Effect.Effect<string>;
 	(key: "eval.persona.region"): Effect.Effect<string>;
 	(key: "eval.persona.register"): Effect.Effect<string>;
 	(key: "eval.persona.reviewHint"): Effect.Effect<string>;
 	(key: "eval.persona.save"): Effect.Effect<string>;
-	(key: "eval.persona.secretRef"): Effect.Effect<string>;
-	(key: "eval.persona.secretRefCustom"): Effect.Effect<string>;
-	(key: "eval.persona.secretRefHint"): Effect.Effect<string>;
-	(key: "eval.persona.secretRefNone"): Effect.Effect<string>;
 	(key: "eval.persona.seed"): Effect.Effect<string>;
-	(key: "eval.persona.sessionId"): Effect.Effect<string>;
 	(key: "eval.persona.socialClass"): Effect.Effect<string>;
 	(key: "eval.persona.spawnGenerators"): Effect.Effect<string>;
 	(key: "eval.persona.spawnHint"): Effect.Effect<string>;
@@ -2211,12 +2183,6 @@ export interface I18nTypedT {
 	(key: "eval.persona.statusGenerating"): Effect.Effect<string>;
 	(key: "eval.persona.statusPending"): Effect.Effect<string>;
 	(key: "eval.persona.statusReady"): Effect.Effect<string>;
-	(key: "eval.persona.test"): Effect.Effect<string>;
-	(key: "eval.persona.testFailed"): Effect.Effect<string>;
-	(key: "eval.persona.testOk"): Effect.Effect<string>;
-	(key: "eval.persona.timeoutMs"): Effect.Effect<string>;
-	(key: "eval.persona.transport"): Effect.Effect<string>;
-	(key: "eval.persona.transportHint"): Effect.Effect<string>;
 	(key: "eval.validator.actionFailed"): Effect.Effect<string>;
 	(key: "eval.validator.approve"): Effect.Effect<string>;
 	(key: "eval.validator.approved"): Effect.Effect<string>;

@@ -1,4 +1,4 @@
-export const EVAL_CRED_LOCALES = ["en", "pt-BR", "es"] as const;
+export const CRED_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4) — matches
  * the plugin-id domain (`eval.credentials.*` → `eval.credentials`). */
@@ -24,7 +24,7 @@ export interface CredMessages {
 
 const en: CredMessages = {
 	title: "Credentials",
-	desc: "Outbound secrets for eval providers — stored here, referenced by endpoints, never shown again.",
+	desc: "Outbound secrets for AI providers — stored here, referenced by endpoints, never shown again.",
 	newCred: "New credential",
 	name: "Name",
 	provider: "Provider",
@@ -40,7 +40,7 @@ const en: CredMessages = {
 const ptBR: CredMessages = {
 	...en,
 	title: "Credenciais",
-	desc: "Segredos de saída para provedores do eval — guardados aqui, referenciados pelos endpoints, nunca exibidos de novo.",
+	desc: "Segredos de saída para provedores de IA — guardados aqui, referenciados pelos endpoints, nunca exibidos de novo.",
 	newCred: "Nova credencial",
 	provider: "Provedor",
 	secret: "Segredo",
@@ -53,7 +53,7 @@ const ptBR: CredMessages = {
 const es: CredMessages = {
 	...ptBR,
 	...en,
-	desc: "Secretos de salida para proveedores del eval — guardados aquí, referenciados por endpoints, nunca mostrados de nuevo.",
+	desc: "Secretos de salida para proveedores de IA — guardados aquí, referenciados por endpoints, nunca mostrados de nuevo.",
 };
 
 export const credMessages = (locale: string): CredMessages =>

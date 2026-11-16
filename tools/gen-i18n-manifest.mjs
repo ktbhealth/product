@@ -186,6 +186,8 @@ writeFileSync(baselinePath, baselineBody);
 // Keep generated output formatter-clean so ci:i18n drift checks pass.
 spawnSync("bunx", ["vp", "fmt", outPath, baselinePath], { stdio: "inherit" });
 for (const w of warnings) console.warn(`warn: ${w}`);
+const manifestEntries = /** @type {Record<string, Record<string, unknown>>} */ (manifest);
+const keyCount = Object.values(manifestEntries).reduce((n, ns) => n + Object.keys(ns).length, 0);
 console.log(
-	`gen-i18n-manifest: ${Object.values(manifest).reduce((n, ns) => n + Object.keys(ns).length, 0)} keys across ${Object.keys(manifest).length} namespaces, ${locales.length} locales, ${baseline.length} baseline rows → ${outPath} + ${baselinePath}`,
+	`gen-i18n-manifest: ${keyCount} keys across ${Object.keys(manifest).length} namespaces, ${locales.length} locales, ${baseline.length} baseline rows → ${outPath} + ${baselinePath}`,
 );

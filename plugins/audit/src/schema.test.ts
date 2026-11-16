@@ -23,9 +23,10 @@ describe("admin_audit schema", () => {
 		]);
 	});
 
-	it("indexes created_at, action and actor_user_id and FKs tenant_id to groups", () => {
+	it("indexes created_at, action, actor_user_id and (tenant_id, created_at), FKs tenant_id to groups", () => {
 		const cfg = getTableConfig(adminAudit);
-		expect(cfg.indexes).toHaveLength(3);
+		expect(cfg.indexes).toHaveLength(4);
+		expect(cfg.indexes.map((i) => i.config.name)).toContain("admin_audit_tenant_created_idx");
 		for (const fk of cfg.foreignKeys) {
 			expect(fk.onDelete).toBe("set null");
 			// reference() evaluates the lazy `() => groups.id` callback.

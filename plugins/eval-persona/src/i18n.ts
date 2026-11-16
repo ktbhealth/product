@@ -13,10 +13,8 @@ export interface EvalLabMessages {
 	readonly personasDesc: string;
 	readonly instancesTitle: string;
 	readonly instancesDesc: string;
-	readonly endpointsTitle: string;
 	readonly newPersona: string;
 	readonly newInstance: string;
-	readonly newEndpoint: string;
 	readonly edit: string;
 	readonly delete: string;
 	readonly confirmDelete: string;
@@ -39,7 +37,6 @@ export interface EvalLabMessages {
 	readonly doctorRegister: string;
 	readonly emptyDefs: string;
 	readonly emptyInstances: string;
-	readonly emptyEndpoints: string;
 	readonly mode: string;
 	readonly modeSelected: string;
 	readonly modeRandom: string;
@@ -48,21 +45,9 @@ export interface EvalLabMessages {
 	readonly minutes: string;
 	readonly endpoint: string;
 	readonly endpointTemplate: string;
-	readonly kind: string;
-	readonly baseUrl: string;
-	readonly model: string;
-	readonly sessionId: string;
-	readonly secretRef: string;
-	readonly secretRefHint: string;
-	readonly timeoutMs: string;
-	readonly enabled: string;
 	readonly start: string;
-	readonly test: string;
-	readonly testOk: string;
-	readonly testFailed: string;
 	readonly openDetail: string;
 	readonly items: string;
-	readonly progress: string;
 	readonly distribution: string;
 	readonly reviewHint: string;
 	readonly actionFailed: string;
@@ -86,11 +71,6 @@ export interface EvalLabMessages {
 	readonly spawnHint: string;
 	readonly generators: string;
 	readonly perGenerator: string;
-	readonly transport: string;
-	readonly transportHint: string;
-	readonly acpHint: string;
-	readonly secretRefNone: string;
-	readonly secretRefCustom: string;
 	readonly axisLabels: Record<string, string>;
 }
 
@@ -99,10 +79,8 @@ const en: EvalLabMessages = {
 	personasDesc: "Curated persona definitions — the eval setup each instance can pick.",
 	instancesTitle: "Instances",
 	instancesDesc: "Generation runs: pick personas or sample randomly, then generate.",
-	endpointsTitle: "LLM endpoints",
 	newPersona: "New persona",
 	newInstance: "New instance",
-	newEndpoint: "New endpoint",
 	edit: "Edit",
 	delete: "Delete",
 	confirmDelete: "Confirm delete",
@@ -125,7 +103,6 @@ const en: EvalLabMessages = {
 	doctorRegister: "Doctor register",
 	emptyDefs: "No personas yet — create the eval setup first.",
 	emptyInstances: "No instances yet.",
-	emptyEndpoints: "No endpoints — generation falls back to the template renderer.",
 	mode: "Mode",
 	modeSelected: "Selected personas",
 	modeRandom: "Random sample",
@@ -134,21 +111,9 @@ const en: EvalLabMessages = {
 	minutes: "Interview length (min)",
 	endpoint: "Endpoint",
 	endpointTemplate: "Template (deterministic, no LLM)",
-	kind: "Kind",
-	baseUrl: "Base URL",
-	model: "Model",
-	sessionId: "Session id",
-	secretRef: "API key env var",
-	secretRefHint: "Name of the env var holding the key — never the key itself.",
-	timeoutMs: "Timeout (ms)",
-	enabled: "Enabled",
 	start: "Generate",
-	test: "Test",
-	testOk: "endpoint ok",
-	testFailed: "endpoint failed",
 	openDetail: "Open",
 	items: "items",
-	progress: "Progress",
 	distribution: "Cohort distribution",
 	reviewHint: "Generated personas await review in Eval validator.",
 	actionFailed: "Action failed — check permissions and try again.",
@@ -175,12 +140,6 @@ const en: EvalLabMessages = {
 		"Creates N draft instances named “generator #1..N”, each sampling personas on the chosen endpoint.",
 	generators: "Generators",
 	perGenerator: "Personas per generator",
-	transport: "Transport",
-	transportHint: "child/ssh need the Node runtime — this app only drives ws.",
-	acpHint:
-		"Connects a local agent over ACP (e.g. Claude Code). No API key needed — run `claude agent acp` and paste the session id.",
-	secretRefNone: "None",
-	secretRefCustom: "Custom env var",
 	axisLabels: {
 		child: "Child (0-12)",
 		adult: "Adult (18-64)",
@@ -212,10 +171,8 @@ const ptBR: EvalLabMessages = {
 	personasDesc: "Definições de personas — o setup que cada instância pode selecionar.",
 	instancesTitle: "Instâncias",
 	instancesDesc: "Execuções de geração: selecione personas ou sorteie, depois gere.",
-	endpointsTitle: "Endpoints LLM",
 	newPersona: "Nova persona",
 	newInstance: "Nova instância",
-	newEndpoint: "Novo endpoint",
 	edit: "Editar",
 	delete: "Excluir",
 	confirmDelete: "Confirmar exclusão",
@@ -238,7 +195,6 @@ const ptBR: EvalLabMessages = {
 	doctorRegister: "Registro do médico",
 	emptyDefs: "Nenhuma persona ainda — crie o setup primeiro.",
 	emptyInstances: "Nenhuma instância ainda.",
-	emptyEndpoints: "Sem endpoints — a geração usa o renderizador de template.",
 	mode: "Modo",
 	modeSelected: "Personas selecionadas",
 	modeRandom: "Amostra aleatória",
@@ -247,21 +203,9 @@ const ptBR: EvalLabMessages = {
 	minutes: "Duração da entrevista (min)",
 	endpoint: "Endpoint",
 	endpointTemplate: "Template (determinístico, sem LLM)",
-	kind: "Tipo",
-	baseUrl: "URL base",
-	model: "Modelo",
-	sessionId: "Id de sessão",
-	secretRef: "Env var da API key",
-	secretRefHint: "Nome da env var que guarda a chave — nunca a chave em si.",
-	timeoutMs: "Timeout (ms)",
-	enabled: "Ativo",
 	start: "Gerar",
-	test: "Testar",
-	testOk: "endpoint ok",
-	testFailed: "endpoint falhou",
 	openDetail: "Abrir",
 	items: "itens",
-	progress: "Progresso",
 	distribution: "Distribuição da coorte",
 	reviewHint: "Personas geradas aguardam revisão no Eval validator.",
 	actionFailed: "Ação falhou — verifique permissões e tente de novo.",
@@ -288,12 +232,6 @@ const ptBR: EvalLabMessages = {
 		"Cria N instâncias em rascunho “generator #1..N”, cada uma sorteando personas no endpoint escolhido.",
 	generators: "Instâncias",
 	perGenerator: "Personas por instância",
-	transport: "Transporte",
-	transportHint: "child/ssh precisam do runtime Node — este app só usa ws.",
-	acpHint:
-		"Conecta um agente local via ACP (ex.: Claude Code). Sem API key — rode `claude agent acp` e cole o id de sessão.",
-	secretRefNone: "Nenhuma",
-	secretRefCustom: "Env var personalizada",
 	axisLabels: {
 		child: "Criança (0-12)",
 		adult: "Adulto (18-64)",
@@ -336,12 +274,6 @@ const es: EvalLabMessages = {
 	spawnHint:
 		"Crea N instancias en borrador “generator #1..N”, cada una muestreando personas en el endpoint elegido.",
 	perGenerator: "Personas por instancia",
-	transport: "Transporte",
-	transportHint: "child/ssh necesitan el runtime Node — esta app solo usa ws.",
-	acpHint:
-		"Conecta un agente local vía ACP (p. ej. Claude Code). Sin API key — ejecuta `claude agent acp` y pega el id de sesión.",
-	secretRefNone: "Ninguna",
-	secretRefCustom: "Env var personalizada",
 	axisLabels: {
 		child: "Niño/a (0-12)",
 		adult: "Adulto (18-64)",
@@ -366,10 +298,8 @@ const es: EvalLabMessages = {
 		pediatrics: "Pediatría",
 	},
 	instancesTitle: "Instancias",
-	endpointsTitle: "Endpoints LLM",
 	newPersona: "Nueva persona",
 	newInstance: "Nueva instancia",
-	newEndpoint: "Nuevo endpoint",
 	edit: "Editar",
 	delete: "Eliminar",
 	confirmDelete: "Confirmar eliminación",
@@ -380,9 +310,7 @@ const es: EvalLabMessages = {
 	emptyDefs: "Sin personas todavía — crea la configuración primero.",
 	emptyInstances: "Sin instancias todavía.",
 	start: "Generar",
-	test: "Probar",
 	openDetail: "Abrir",
-	progress: "Progreso",
 	actionFailed: "La acción falló — revisa permisos e intenta de nuevo.",
 };
 

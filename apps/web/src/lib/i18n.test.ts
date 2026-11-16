@@ -168,13 +168,14 @@ describe("pluginNavLabel", () => {
 });
 
 describe("pluginPanelLabel", () => {
-	it("localizes known /platform sidebar destinations", () => {
+	it("localizes known sidebar destinations", () => {
 		for (const to of [
 			"/platform",
 			"/platform/consultations",
 			"/platform/patients",
 			"/platform/users",
 			"/platform/groups",
+			"/portal/clinician/activity",
 		]) {
 			expect(pluginPanelLabel(to, "fallback", FULL)).not.toBe("fallback");
 		}
@@ -189,6 +190,7 @@ describe("pluginPanelGroup", () => {
 	it("localizes known sidebar groups", () => {
 		expect(pluginPanelGroup("Access", FULL)).toBe("Access");
 		expect(pluginPanelGroup("Domains", FULL)).toBe("Domains");
+		expect(pluginPanelGroup("Governance", FULL)).toBe("Governance");
 	});
 
 	it("passes unknown groups through unchanged", () => {

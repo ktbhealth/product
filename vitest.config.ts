@@ -20,9 +20,13 @@ export default defineConfig({
 				"evals/*/src/**",
 				"packages/*/src/**",
 				"plugins/*/src/**",
-				"infra/*/src/**",
 			],
 			exclude: [
+				// infra/* are standalone workers/scripts (ci-hook, ports,
+				// lgtm, oci, cloudflare) — not application code. They keep
+				// running their own tests via the projects glob above but are
+				// out of the 100% app-code coverage measurement.
+				"infra/**",
 				"**/*.test.*",
 				"**/*.d.ts",
 				"**/routeTree.gen.ts",

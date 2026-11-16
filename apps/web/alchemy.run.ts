@@ -41,7 +41,9 @@ export default Alchemy.Stack(
 		// dedicated queue (decided over sharing ktb-transcription) so image
 		// derivatives and font downloads never contend with audio jobs.
 		const themeAssetsBucket = yield* Cloudflare.R2.Bucket("theme-assets");
-		const themeAssetsQueue = yield* Cloudflare.Queues.Queue("theme-assets");
+		// Logical id must differ from the "theme-assets" R2 bucket above —
+		// alchemy logical ids are unique per stack regardless of type.
+		const themeAssetsQueue = yield* Cloudflare.Queues.Queue("theme-assets-queue");
 
 		// Outbound email (Cloudflare Email Service): the `send_email`
 		// binding is restricted to the configured sender. EMAIL_FROM's

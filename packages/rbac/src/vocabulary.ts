@@ -20,6 +20,7 @@ export const PLATFORM_ACTIONS = [
 	"groups.manage",
 	"rbac.read",
 	"rbac.manage",
+	"audit.read",
 	"eval.validator",
 	"i18n.messages.read",
 	"i18n.messages.edit",

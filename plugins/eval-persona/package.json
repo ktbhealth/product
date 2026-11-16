@@ -8,11 +8,11 @@
 		"./fns": "./src/fns.ts"
 	},
 	"dependencies": {
+		"@ktb/ai-endpoints": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",
-		"@ktb/eval-credentials": "workspace:*",
 		"@ktb/eval-validator": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",

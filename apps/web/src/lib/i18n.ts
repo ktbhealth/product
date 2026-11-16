@@ -110,11 +110,13 @@ const PANEL_LABELS: Record<string, string> = {
 	"/platform/groups": "panel_nav_groups",
 	"/platform/ops": "panel_nav_ops",
 	"/platform/plugins": "panel_nav_plugins",
+	"/portal/clinician/activity": "panel_nav_activity",
 };
 
 const PANEL_GROUPS: Record<string, string> = {
 	Access: "panel_group_access",
 	Domains: "panel_group_domains",
+	Governance: "panel_group_governance",
 	System: "panel_group_system",
 };
 

@@ -479,7 +479,13 @@ export const I18N_MANIFEST = {
 		panel_group_domains: {
 			params: [],
 		},
+		panel_group_governance: {
+			params: [],
+		},
 		panel_group_system: {
+			params: [],
+		},
+		panel_nav_activity: {
 			params: [],
 		},
 		panel_nav_dashboard: {
@@ -1435,44 +1441,6 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
-	"eval.credentials": {
-		title: {
-			params: [],
-		},
-		desc: {
-			params: [],
-		},
-		newCred: {
-			params: [],
-		},
-		name: {
-			params: [],
-		},
-		provider: {
-			params: [],
-		},
-		secret: {
-			params: [],
-		},
-		save: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		delete: {
-			params: [],
-		},
-		confirmDelete: {
-			params: [],
-		},
-		empty: {
-			params: [],
-		},
-		actionFailed: {
-			params: [],
-		},
-	},
 	"eval.validator": {
 		title: {
 			params: [],
@@ -2346,6 +2314,9 @@ export const I18N_MANIFEST = {
 		title: {
 			params: [],
 		},
+		activityTitle: {
+			params: [],
+		},
 		searchPlaceholder: {
 			params: [],
 		},
@@ -2633,6 +2604,44 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		headerManage: {
+			params: [],
+		},
+	},
+	"eval.credentials": {
+		title: {
+			params: [],
+		},
+		desc: {
+			params: [],
+		},
+		newCred: {
+			params: [],
+		},
+		name: {
+			params: [],
+		},
+		provider: {
+			params: [],
+		},
+		secret: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		confirmDelete: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		actionFailed: {
 			params: [],
 		},
 	},
@@ -3394,16 +3403,10 @@ export const I18N_MANIFEST = {
 		instancesDesc: {
 			params: [],
 		},
-		endpointsTitle: {
-			params: [],
-		},
 		newPersona: {
 			params: [],
 		},
 		newInstance: {
-			params: [],
-		},
-		newEndpoint: {
 			params: [],
 		},
 		edit: {
@@ -3472,9 +3475,6 @@ export const I18N_MANIFEST = {
 		emptyInstances: {
 			params: [],
 		},
-		emptyEndpoints: {
-			params: [],
-		},
 		mode: {
 			params: [],
 		},
@@ -3499,49 +3499,13 @@ export const I18N_MANIFEST = {
 		endpointTemplate: {
 			params: [],
 		},
-		kind: {
-			params: [],
-		},
-		baseUrl: {
-			params: [],
-		},
-		model: {
-			params: [],
-		},
-		sessionId: {
-			params: [],
-		},
-		secretRef: {
-			params: [],
-		},
-		secretRefHint: {
-			params: [],
-		},
-		timeoutMs: {
-			params: [],
-		},
-		enabled: {
-			params: [],
-		},
 		start: {
-			params: [],
-		},
-		test: {
-			params: [],
-		},
-		testOk: {
-			params: [],
-		},
-		testFailed: {
 			params: [],
 		},
 		openDetail: {
 			params: [],
 		},
 		items: {
-			params: [],
-		},
-		progress: {
 			params: [],
 		},
 		distribution: {
@@ -3611,21 +3575,6 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		perGenerator: {
-			params: [],
-		},
-		transport: {
-			params: [],
-		},
-		transportHint: {
-			params: [],
-		},
-		acpHint: {
-			params: [],
-		},
-		secretRefNone: {
-			params: [],
-		},
-		secretRefCustom: {
 			params: [],
 		},
 		"axisLabels.child": {
@@ -4720,10 +4669,12 @@ export const I18N_BASE_CATALOG = {
 	capture_status_capturing: "capturing · track: {track} | {state}",
 	capture_level: "level: {level}%",
 	panel_nav_dashboard: "Dashboard",
+	panel_nav_activity: "Activity",
 	panel_nav_users: "Users",
 	panel_nav_groups: "Groups",
 	panel_group_access: "Access",
 	panel_group_domains: "Domains",
+	panel_group_governance: "Governance",
 	panel_nav_ops: "Ops",
 	panel_group_system: "System",
 	persona_label: "View as",

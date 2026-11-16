@@ -44,3 +44,8 @@ CREATE TABLE `i18n_namespaces` (
 	`default_locale` text DEFAULT 'en' NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
+--> statement-breakpoint
+CREATE TABLE `i18n_revision` (
+	`id` integer PRIMARY KEY NOT NULL,
+	`revision` integer DEFAULT 0 NOT NULL
+);

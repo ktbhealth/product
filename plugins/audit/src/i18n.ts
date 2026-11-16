@@ -20,6 +20,9 @@ export const BASE_LOCALE: AuditLocale = "en";
 
 export interface AuditMessages {
 	readonly title: string;
+	/** Staff-feed heading (P-080) — the portal page reuses this view
+	 * with its own title instead of the console's "Audit log". */
+	readonly activityTitle: string;
 	readonly description: (shown: number, total: number) => string;
 	readonly searchPlaceholder: string;
 	readonly searchLabel: string;
@@ -42,6 +45,7 @@ export interface AuditMessages {
 
 const en: AuditMessages = {
 	title: "Audit log",
+	activityTitle: "Activity",
 	description: (shown, total) =>
 		shown >= total
 			? `${total} admin ${total === 1 ? "action" : "actions"} recorded.`
@@ -67,6 +71,7 @@ const en: AuditMessages = {
 
 const ptBR: AuditMessages = {
 	title: "Log de auditoria",
+	activityTitle: "Atividade",
 	description: (shown, total) =>
 		shown >= total
 			? `${total} ${total === 1 ? "ação" : "ações"} de admin registradas.`
@@ -92,6 +97,7 @@ const ptBR: AuditMessages = {
 
 const es: AuditMessages = {
 	title: "Registro de auditoría",
+	activityTitle: "Actividad",
 	description: (shown, total) =>
 		shown >= total
 			? `${total} ${total === 1 ? "acción" : "acciones"} de admin registradas.`

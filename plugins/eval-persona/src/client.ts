@@ -17,13 +17,14 @@ export const plugins: readonly Plugin[] = [
 		// Mirrors evalPersonaTablesPlugin — drizzle schema never reaches
 		// the client bundle.
 		requiredDeps: ["eval.validator.tables"],
+		optionalDeps: ["ai.endpoints.tables"],
 	}),
 	definePlugin({
 		id: "eval.persona.services",
 		// Mirrors evalPersonaServicesPlugin.requiredDeps/optionalDeps —
 		// literal ids.
 		requiredDeps: ["eval.persona.tables"],
-		optionalDeps: ["eval.credentials.services"],
+		optionalDeps: ["ai.endpoints.services"],
 	}),
 	definePlugin({
 		id: "eval.persona.chrome",

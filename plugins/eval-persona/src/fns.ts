@@ -3,18 +3,14 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { ensureSessionUser, runAs } from "@ktb/server-fns";
-import type { LlmEndpointPreset } from "@ktb/eval-consultation";
 
 import {
-	EvalEndpoints,
 	EvalInstances,
 	EvalPersonas,
 	type CreateInstanceInput,
-	type EndpointInput,
 	type InstanceCard,
 	type InstanceDetail,
 	type PersonaDefCard,
-	type EndpointCard,
 } from "./index.ts";
 
 // Eval lab server fns: the /platform/eval/* surfaces mutate through
@@ -59,18 +55,6 @@ const PersonaDefInput = Schema.Struct({
 	notes: optStr,
 });
 const IdInput = Schema.Struct({ id: Schema.Number });
-const EndpointSaveInput = Schema.Struct({
-	id: optNum,
-	name: Schema.String,
-	kind: Schema.Literals(["acp", "openai"]),
-	baseUrl: Schema.String,
-	model: optStr,
-	sessionId: optStr,
-	secretRef: optStr,
-	transport: Schema.optional(Schema.Union([Schema.Literals(["ws", "child", "ssh"]), Schema.Null])),
-	timeoutMs: optNum,
-	enabled: Schema.optional(Schema.Union([Schema.Boolean, Schema.Null])),
-});
 const InstanceCreateInput = Schema.Struct({
 	name: Schema.String,
 	mode: Schema.Literals(["selected", "random"]),
@@ -95,7 +79,6 @@ const SpawnInput = Schema.Struct({
 
 const decodeDef = Schema.decodeUnknownSync(PersonaDefInput);
 const decodeId = Schema.decodeUnknownSync(IdInput);
-const decodeEndpoint = Schema.decodeUnknownSync(EndpointSaveInput);
 const decodeInstance = Schema.decodeUnknownSync(InstanceCreateInput);
 const decodeGenerate = Schema.decodeUnknownSync(GenerateInput);
 const decodeSpawn = Schema.decodeUnknownSync(SpawnInput);
@@ -117,18 +100,6 @@ const personaFrom = (d: Schema.Schema.Type<typeof PersonaDefInput>) => ({
 	register: d.register,
 	specialty: d.specialty,
 	doctor: { gender: d.doctorGender === "male" ? "m" : "f", register: d.doctorRegister },
-});
-
-const endpointFrom = (d: Schema.Schema.Type<typeof EndpointSaveInput>): EndpointInput => ({
-	name: d.name,
-	kind: d.kind,
-	baseUrl: d.baseUrl,
-	...(d.model != null ? { model: d.model } : {}),
-	...(d.sessionId != null ? { sessionId: d.sessionId } : {}),
-	...(d.secretRef != null ? { secretRef: d.secretRef } : {}),
-	...(d.transport != null ? { transport: d.transport } : {}),
-	...(d.timeoutMs != null ? { timeoutMs: d.timeoutMs } : {}),
-	...(d.enabled != null ? { enabled: d.enabled } : {}),
 });
 
 export const listPersonaDefsFn = createServerFn({ method: "GET" }).handler(
@@ -204,93 +175,6 @@ export const deletePersonaDefFn = createServerFn({ method: "POST" })
 				yield* s.remove(data.id);
 				return { ok: true as const, data: null };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
-
-export const listEndpointsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly EndpointCard[]>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalEndpoints;
-				const data = yield* s.list();
-				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	},
-);
-
-export const listEndpointPresetsFn = createServerFn({ method: "GET" }).handler(
-	async (): Promise<Result<readonly LlmEndpointPreset[]>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalEndpoints;
-				const data = yield* s.presets();
-				return { ok: true as const, data };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	},
-);
-
-export const saveEndpointFn = createServerFn({ method: "POST" })
-	.validator((input: unknown) => decodeEndpoint(input))
-	.handler(async ({ data }): Promise<Result<{ id: number }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalEndpoints;
-				const input = endpointFrom(data);
-				const r =
-					data.id != null
-						? yield* s.update({ id: data.id, ...input }).pipe(Effect.map(() => ({ id: data.id! })))
-						: yield* s.create(input);
-				return { ok: true as const, data: r };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
-
-export const deleteEndpointFn = createServerFn({ method: "POST" })
-	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalEndpoints;
-				yield* s.remove(data.id);
-				return { ok: true as const, data: null };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
-		);
-	});
-
-export const testEndpointFn = createServerFn({ method: "POST" })
-	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<{ message?: string }>> => {
-		const user = await ensureSessionUser();
-		return run(
-			user,
-			Effect.gen(function* () {
-				const s = yield* EvalEndpoints;
-				yield* s.test(data.id);
-				return { ok: true as const, data: {} };
-			}).pipe(
-				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
-				Effect.catch((e) =>
-					Effect.succeed({
-						ok: false as const,
-						data: {
-							message:
-								typeof e === "object" && e !== null && "message" in e
-									? String((e as { message: unknown }).message)
-									: String(e),
-						},
-					}),
-				),
-			),
 		);
 	});
 
