@@ -54,10 +54,12 @@ describe("makeApiKeysAdapter", () => {
 		expect(listed).toHaveLength(1);
 		expect(listed[0]?.name).toBe("prod key");
 		expect(listed[0]?.referenceId).toBe(userId);
-		expect(JSON.parse(listed[0]?.metadata ?? "")).toMatchObject({
-			provider: "openai",
-			secret: "sk-live-1234",
-		});
+		// `list` never carries the plaintext secret — other metadata
+		// keys survive; `getSecret` is the only read-back.
+		const meta = JSON.parse(listed[0]?.metadata ?? "") as Record<string, unknown>;
+		expect(meta).toEqual({ provider: "openai" });
+		expect(meta).not.toHaveProperty("secret");
+		expect(listed[0]?.metadata).not.toContain("sk-live-1234");
 
 		expect(await keys.getSecret(id, userId)).toBe("sk-live-1234");
 
@@ -88,6 +90,45 @@ describe("makeApiKeysAdapter", () => {
 		await keys.create({ name: "k", referenceId: a, metadata: { secret: "s1" } });
 		expect(await keys.list(b)).toHaveLength(0);
 		expect(await keys.list(a)).toHaveLength(1);
+	});
+
+	it("list strips secret from metadata but keeps other keys", async () => {
+		const { auth, keys } = setup();
+		const userId = await signUp(auth, "strip@x.com");
+		await keys.create({
+			name: "k",
+			referenceId: userId,
+			metadata: { kind: "credential", provider: "openai", secret: "sk-strip-me", note: "prod" },
+		});
+		const [row] = await keys.list(userId);
+		const meta = JSON.parse(row?.metadata ?? "") as Record<string, unknown>;
+		expect(meta).toEqual({ kind: "credential", provider: "openai", note: "prod" });
+	});
+
+	it("list survives unparseable or non-object metadata", async () => {
+		const { db, keys } = setup();
+		const insert = (id: string, metadata: string | null) =>
+			db.insert(apikeyTable).values({
+				id,
+				referenceId: "u1",
+				key: `key-${id}`,
+				metadata,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			});
+		await insert("l-null", null);
+		await insert("l-bad", "not-json");
+		await insert("l-num", "42");
+		await insert("l-arr", '["a","b"]');
+		await insert("l-secret", '{"secret":"s","keep":true}');
+		const rows = await keys.list("u1");
+		expect(rows).toHaveLength(5);
+		const byId = new Map(rows.map((r) => [r.id, r.metadata]));
+		expect(byId.get("l-null")).toBeNull();
+		expect(byId.get("l-bad")).toBe("{}");
+		expect(byId.get("l-num")).toBe("{}");
+		expect(byId.get("l-arr")).toBe("{}");
+		expect(JSON.parse(byId.get("l-secret") ?? "")).toEqual({ keep: true });
 	});
 
 	it("getSecret returns null for unknown, bare or malformed rows", async () => {
