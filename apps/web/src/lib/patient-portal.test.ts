@@ -27,19 +27,13 @@ import { patientAccess, user } from "@ktb/db/schema";
 import { doctorContextFn } from "@ktb/doctors/fns";
 import { approvePatientLinkFn, patientLinksFn, revokePatientLinkFn } from "@ktb/patient-access/fns";
 import { portalConsultationFn, portalFn } from "@ktb/patient-portal/fns";
+import { getConsultationFn, listConsultationsFn, saveConsultationFn } from "@ktb/consultations/fns";
+import { createPatientFn, listPatientsFn } from "@ktb/patients/fns";
 import { eq } from "drizzle-orm";
 
 import { signUpDoctor } from "#/test/doctor.ts";
 import { auth, db } from "./platform.ts";
-import {
-	createPatientFn,
-	emailEnabledFn,
-	getConsultationFn,
-	listConsultationsFn,
-	listPatientsFn,
-	saveConsultationFn,
-	sessionFn,
-} from "./fns.ts";
+import { emailEnabledFn, sessionFn } from "./fns.ts";
 
 // End to end: the doctor saves a consultation and sends the patient the
 // access email; the patient's account then sees that consultation —

@@ -12,6 +12,7 @@ import { platformHeaderPlugin } from "@ktb/platform-header";
 import { PortalShell } from "@ktb/portal/views";
 import { portalAdmits } from "@ktb/portal/rules";
 import { JobsDataContext, jobsFromAudioRows } from "@ktb/jobs";
+import { adminListAudioJobsFn } from "@ktb/consultations/fns";
 import {
 	NotificationsActionsContext,
 	NotificationsDataContext,
@@ -23,7 +24,6 @@ import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
 
 import {
-	adminListAudioJobsFn,
 	consoleDeniedFn,
 	listMyNotificationsFn,
 	markAllMyNotificationsReadFn,
