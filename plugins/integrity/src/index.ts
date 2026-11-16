@@ -5,7 +5,7 @@ import * as Option from "effect/Option";
 import { and, asc, desc, eq } from "drizzle-orm";
 
 import { Principal } from "@ktb/authz";
-import { contentHash, sha256Hex } from "@ktb/crypto/digest";
+import { contentHash, sha256Hex, verifyContentHash } from "@ktb/crypto/digest";
 import { Db, type DbClient } from "@ktb/db";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
@@ -66,6 +66,98 @@ export async function latestRecordVersion(
 	return rows[0] ?? null;
 }
 
+/** One failed check on a version row. `code` names the violation for
+ * UI/i18n mapping; `version` is the row's declared version number. */
+export interface IntegrityIssue {
+	readonly version: number;
+	readonly code:
+		| "version-gap"
+		| "chain-broken"
+		| "genesis-link"
+		| "blob-mismatch"
+		| "content-mismatch"
+		/** The entity row's materialized head pointer diverges from the
+		 * chain head — emitted by the DOMAIN verifier, not the generic
+		 * walk (it does not know about entity columns). */
+		| "head-diverged";
+}
+
+/** Outcome of walking an entity's version chain (T-139). */
+export interface IntegrityVerification {
+	/** "verified" = every check passed; "tampered" = at least one issue;
+	 * "unversioned" = the entity has no version rows. */
+	readonly status: "verified" | "tampered" | "unversioned";
+	readonly versions: number;
+	/** Rows whose payload is not canonical JSON — content_hash could not
+	 * be re-derived server-side (expected once payloads become AEAD
+	 * ciphertext under ZK tenants; blob_hash still covers corruption). */
+	readonly unverifiableContent: number;
+	/** Rows carrying a client signature (not yet VERIFIED — clinic
+	 * public keys land with the keyring, PL-007 F2). */
+	readonly signed: number;
+	readonly issues: readonly IntegrityIssue[];
+	/** The chain head (latest version) — the value an entity row's
+	 * materialized `*_version`/`*_hash` columns must point at. */
+	readonly head: { readonly version: number; readonly contentHash: string } | null;
+}
+
+/**
+ * Re-verify an entity's whole version chain (T-139): version sequence,
+ * the `prev_hash` links, `blob_hash` over each stored payload, and
+ * `content_hash` re-derived for canonical-JSON payloads (opaque
+ * payloads — ZK ciphertext — count toward `unverifiableContent`). A
+ * NULL `prev_hash` is legitimate only on version 1; tampering with any
+ * historical row breaks the links after it.
+ */
+export async function verifyRecordVersions(
+	db: DbClient,
+	entityType: string,
+	entityId: string | number,
+): Promise<IntegrityVerification> {
+	const rows = await listRecordVersions(db, entityType, entityId);
+	if (rows.length === 0) {
+		return {
+			status: "unversioned",
+			versions: 0,
+			unverifiableContent: 0,
+			signed: 0,
+			issues: [],
+			head: null,
+		};
+	}
+	const issues: IntegrityIssue[] = [];
+	let unverifiableContent = 0;
+	let signed = 0;
+	for (const [index, row] of rows.entries()) {
+		if (row.version !== index + 1) issues.push({ version: row.version, code: "version-gap" });
+		/* v8 ignore next -- index > 0 implies the previous row exists */
+		const expectedPrev = index === 0 ? null : (rows[index - 1]?.contentHash ?? null);
+		if (row.prevHash !== expectedPrev) {
+			issues.push({ version: row.version, code: index === 0 ? "genesis-link" : "chain-broken" });
+		}
+		if ((await sha256Hex(row.payload)) !== row.blobHash) {
+			issues.push({ version: row.version, code: "blob-mismatch" });
+		}
+		try {
+			if (!(await verifyContentHash(JSON.parse(row.payload), row.contentHash))) {
+				issues.push({ version: row.version, code: "content-mismatch" });
+			}
+		} catch {
+			unverifiableContent += 1;
+		}
+		if (row.signature !== null) signed += 1;
+	}
+	const latest = rows[rows.length - 1]!;
+	return {
+		status: issues.length === 0 ? "verified" : "tampered",
+		versions: rows.length,
+		unverifiableContent,
+		signed,
+		issues,
+		head: { version: latest.version, contentHash: latest.contentHash },
+	};
+}
+
 /** All version rows for an entity, oldest first — the chain walk. */
 export async function listRecordVersions(
 	db: DbClient,
@@ -123,8 +215,9 @@ export async function appendRecordVersion(
  * this service only appends facts.
  *
  * Consumers SHOULD go through `recordVersion()` below — the integrity
- * plugin may be absent and mutations must still succeed. `verify` for
- * readers lands with T-139.
+ * plugin may be absent and mutations must still succeed. `verify` is
+ * the read side (T-139): entity services expose it as
+ * `verifyIntegrity(entity, id)` behind their own read authz.
  */
 export class Integrity extends Context.Service<
 	Integrity,
@@ -134,6 +227,16 @@ export class Integrity extends Context.Service<
 			entityType: string,
 			entityId: string | number,
 		) => Effect.Effect<readonly RecordVersion[]>;
+		/**
+		 * Re-verify an entity's version chain (T-139). Read-only and
+		 * unauthenticated at this layer — callers gate it behind the
+		 * entity's own read authz (`verifyIntegrity(entity, id)` in each
+		 * domain service).
+		 */
+		readonly verify: (
+			entityType: string,
+			entityId: string | number,
+		) => Effect.Effect<IntegrityVerification>;
 	}
 >()("@ktb/integrity/Integrity") {}
 
@@ -153,6 +256,8 @@ export const IntegrityLive = Layer.effect(
 			}),
 			versions: (entityType, entityId) =>
 				Effect.promise(() => listRecordVersions(db, entityType, entityId)),
+			verify: (entityType, entityId) =>
+				Effect.promise(() => verifyRecordVersions(db, entityType, entityId)),
 		});
 	}),
 );

@@ -81,6 +81,7 @@
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/theme": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-devtools": "0.10.14",
         "@tanstack/react-router": "1.170.46",
@@ -199,6 +200,8 @@
         "@ktb/captcha": "workspace:*",
         "@ktb/captcha-stub": "workspace:*",
         "@ktb/captcha-turnstile": "workspace:*",
+        "@ktb/crypto": "workspace:*",
+        "@ktb/crypto-stub": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
         "@ktb/email": "workspace:*",
@@ -290,6 +293,17 @@
     },
     "packages/crypto": {
       "name": "@ktb/crypto",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
+    "packages/crypto-stub": {
+      "name": "@ktb/crypto-stub",
+      "dependencies": {
+        "@ktb/crypto": "workspace:*",
+        "@ktb/driver-framework": "workspace:*",
+        "effect": "4.1.2",
+      },
     },
     "packages/db": {
       "name": "@ktb/db",
@@ -577,6 +591,7 @@
       "name": "@ktb/audit",
       "dependencies": {
         "@ktb/authz": "workspace:*",
+        "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
@@ -609,6 +624,7 @@
         "@tanstack/react-start": "1.169.5",
         "@tanstack/virtual-file-routes": "1.162.0",
         "effect": "4.1.2",
+        "lucide-react": "0.544.0",
       },
       "devDependencies": {
         "@types/react": "^19.2.0",
@@ -648,10 +664,12 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/anamnesis": "workspace:*",
+        "@ktb/anamnesis-llm": "workspace:*",
         "@ktb/audit": "workspace:*",
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/bot": "workspace:*",
+        "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/export-pdf": "workspace:*",
         "@ktb/integrity": "workspace:*",
@@ -665,6 +683,7 @@
         "@ktb/transcription": "workspace:*",
         "@ktb/transcription-webspeech": "workspace:*",
         "@ktb/transcription-whisper": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -857,8 +876,19 @@
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
       },
     },
     "plugins/invites": {
@@ -960,6 +990,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/platform-header": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/virtual-file-routes": "1.162.0",
@@ -1010,11 +1041,14 @@
       "dependencies": {
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
+        "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/email": "workspace:*",
         "@ktb/invites": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/patients": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -1038,10 +1072,14 @@
       "dependencies": {
         "@ktb/anamnesis": "workspace:*",
         "@ktb/authz": "workspace:*",
+        "@ktb/consultations": "workspace:*",
+        "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/patient-access": "workspace:*",
+        "@ktb/patients": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -1066,11 +1104,13 @@
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/audit": "workspace:*",
         "@ktb/authz": "workspace:*",
+        "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
+        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -1294,6 +1334,33 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/vault": {
+      "name": "@ktb/vault",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/crypto": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1707,6 +1774,8 @@
 
     "@ktb/crypto": ["@ktb/crypto@workspace:packages/crypto"],
 
+    "@ktb/crypto-stub": ["@ktb/crypto-stub@workspace:packages/crypto-stub"],
+
     "@ktb/dashboard": ["@ktb/dashboard@workspace:plugins/dashboard"],
 
     "@ktb/db": ["@ktb/db@workspace:packages/db"],
@@ -1822,6 +1891,8 @@
     "@ktb/transcription-whisper": ["@ktb/transcription-whisper@workspace:packages/transcription-whisper"],
 
     "@ktb/users": ["@ktb/users@workspace:plugins/users"],
+
+    "@ktb/vault": ["@ktb/vault@workspace:plugins/vault"],
 
     "@ktb/web": ["@ktb/web@workspace:apps/web"],
 

@@ -23,6 +23,7 @@ import {
 import type { AudioJobMessage } from "@ktb/server-fns";
 
 import { runAsTenantId } from "@ktb/tenant";
+import { tenantIsZk } from "@ktb/vault";
 
 import { jobHandlers } from "#/lib/jobs.ts";
 import {
@@ -177,6 +178,19 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 		return;
 	}
 	if (row.audioStatus === "done") return; // idempotent skip
+	// T-147 fail-closed: a ZK tenant's audio is client-encrypted before
+	// upload, so a Whisper job should never exist for it. If one slips
+	// through anyway, refuse before the ciphertext reaches the provider
+	// and record the violation on the row.
+	if (tenantId !== null && (await tenantIsZk(deps.db, tenantId))) {
+		await fail(
+			deps,
+			job.consultationId,
+			"zero-knowledge audio — server transcription unavailable",
+			tenantId,
+		);
+		return;
+	}
 	const audioKey = row.audioKey ?? job.audioKey;
 	if (!audioKey) {
 		await fail(deps, job.consultationId, "no audio key recorded", tenantId);

@@ -11,6 +11,7 @@ import { Event, EventBus } from "@effect-server-utils/cqrs";
 import { getLocale } from "@ktb/server-fns";
 import { PatientCreated, PatientDeleted } from "@ktb/patients/api";
 import { ConsultationCreated } from "@ktb/consultations/api";
+import { tenantZkOrClosed } from "@ktb/vault";
 
 import type { ConsoleNotification } from "./context.ts";
 import { notificationMessages } from "./i18n.ts";
@@ -131,10 +132,16 @@ export class Notifications extends Context.Service<
 // ---------- event ingestion ----------
 
 /** One entry per consumed domain event — adding a future event is a
- * single map entry here (def + projection to a notification draft). */
+ * single map entry here (def + projection to a notification draft).
+ * The projection receives the tenant's resolved zk flag: under ZK the
+ * server cannot read record content, so drafts must be metadata-only
+ * (T-149) — no names, no record fields in title/body/payload. Rows are
+ * metadata-only BY CONSTRUCTION under ZK, not ciphered: there is no PHI
+ * left for an entity cipher to protect, and per-user notifications get
+ * no DEK-grant ceremony. */
 const mapEvent = <E extends Event.Any>(
 	def: E,
-	project: (event: Event.Type<E>) => NotificationDraft,
+	project: (event: Event.Type<E>, zk: boolean) => NotificationDraft,
 ) => ({ def, project }) as const;
 
 /** Titles are persisted in the actor's UI locale at ingest time; the
@@ -149,13 +156,15 @@ const ingestLocale = () => {
 };
 
 const NOTIFICATION_MAP = [
-	mapEvent(PatientCreated, (e) => {
+	mapEvent(PatientCreated, (e, zk) => {
 		const t = notificationMessages(ingestLocale());
 		return {
 			userId: e.ownerId,
 			kind: "patient.created",
 			title: t.titles.patientCreated,
-			body: e.name,
+			// Under ZK `e.name` is ciphertext the server cannot read —
+			// drop the body entirely rather than persist it.
+			body: zk ? undefined : e.name,
 		};
 	}),
 	mapEvent(PatientDeleted, (e) => {
@@ -166,13 +175,13 @@ const NOTIFICATION_MAP = [
 			title: t.titles.patientDeleted,
 		};
 	}),
-	mapEvent(ConsultationCreated, (e) => {
+	mapEvent(ConsultationCreated, (e, zk) => {
 		const t = notificationMessages(ingestLocale());
 		return {
 			userId: e.userId,
 			kind: "consultation.created",
 			title: t.titles.consultationCreated,
-			body: e.source,
+			body: zk ? undefined : e.source,
 		};
 	}),
 ];
@@ -206,13 +215,21 @@ export const NotificationsLive = Layer.effect(
 		// not roll back (or be rolled back by) the producing command.
 		for (const { def, project } of NOTIFICATION_MAP) {
 			yield* events.subscribeAfterCommit(def, (event) =>
-				ingest(
-					// The map is heterogeneous by design; each entry's projector
-					// was typed against its own event at the mapEvent call site.
-					(project as (e: Event.Type<typeof def>) => NotificationDraft)(
-						event as Event.Type<typeof def>,
-					),
-				),
+				Effect.gen(function* () {
+					// Every consumed event carries an optional tenantId; the
+					// gate fails closed — an unresolvable tenant projects
+					// metadata-only copy.
+					const tenantId = (event as { readonly tenantId?: number | null }).tenantId ?? null;
+					const zk = yield* Effect.promise(() => tenantZkOrClosed(db, tenantId));
+					yield* ingest(
+						// The map is heterogeneous by design; each entry's projector
+						// was typed against its own event at the mapEvent call site.
+						(project as (e: Event.Type<typeof def>, zk: boolean) => NotificationDraft)(
+							event as Event.Type<typeof def>,
+							zk,
+						),
+					);
+				}),
 			);
 		}
 

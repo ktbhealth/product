@@ -1,11 +1,12 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { count, desc } from "drizzle-orm";
+import { asc, count, desc } from "drizzle-orm";
 import { ScrollTextIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
 import { Forbidden, Principal } from "@ktb/authz";
+import { contentHash } from "@ktb/crypto/digest";
 import { Db, type DbClient } from "@ktb/db";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
@@ -43,6 +44,16 @@ export interface AuditListResult {
 	readonly limit: number;
 }
 
+/** Outcome of walking the tamper-evident audit chain (T-139). */
+export interface AuditVerifyResult {
+	/** "verified" = every link holds; "tampered" = a rewrite was detected;
+	 * "empty" = the log has no rows. */
+	readonly status: "verified" | "tampered" | "empty";
+	readonly entries: number;
+	/** Id of the first row whose chain link broke, when tampered. */
+	readonly brokenAt: number | null;
+}
+
 /** Detail payloads are ids/flags — cap the JSON so a caller cannot
  * smuggle an unbounded blob into the log. */
 const DETAIL_MAX = 4000;
@@ -63,10 +74,31 @@ const serializeDetail = (detail: AuditEntryInput["detail"]): string | null => {
 };
 
 /**
+ * Chain hash over a stored audit row (T-139): canonical SHA-256 of the
+ * row's content fields INCLUDING its own `prevHash`, so each hash
+ * commits to the whole history behind it. Timestamps hash as epoch ms
+ * (ISO strings would re-format differently across drivers).
+ */
+export const auditEntryHash = (row: AdminAudit): Promise<string> =>
+	contentHash({
+		actorUserId: row.actorUserId,
+		actorEmail: row.actorEmail,
+		action: row.action,
+		targetType: row.targetType,
+		targetId: row.targetId,
+		detail: row.detail,
+		tenantId: row.tenantId,
+		prevHash: row.prevHash,
+		createdAt: row.createdAt.getTime(),
+	});
+
+/**
  * Append one audit row. Actor identity comes from the bound `Principal`
  * (null in system contexts — the columns are nullable for that case).
- * Returns the inserted row, or null when the driver yields no RETURNING
- * row.
+ * `prevHash` chains the new row to the latest entry (`auditEntryHash`
+ * over it); concurrent inserts may interleave links — same accepted
+ * trade-off as record_versions. Returns the inserted row, or null when
+ * the driver yields no RETURNING row.
  */
 export async function insertAuditEntry(
 	db: DbClient,
@@ -75,6 +107,7 @@ export async function insertAuditEntry(
 		readonly actorEmail: string | null;
 	},
 ): Promise<AdminAudit | null> {
+	const prev = await db.select().from(adminAudit).orderBy(desc(adminAudit.id)).limit(1);
 	const rows = await db
 		.insert(adminAudit)
 		.values({
@@ -85,9 +118,38 @@ export async function insertAuditEntry(
 			targetId: entry.targetId == null ? null : String(entry.targetId),
 			detail: serializeDetail(entry.detail),
 			tenantId: normalizeTenantId(entry.tenantId),
+			prevHash: prev[0] ? await auditEntryHash(prev[0]) : null,
 		})
 		.returning();
 	return rows[0] ?? null;
+}
+
+/**
+ * Walk the whole log oldest→newest and re-derive every chain link:
+ * row n's `prev_hash` must equal `auditEntryHash(row n−1)`. Rows
+ * predating the column form an unchained legacy PREFIX — a NULL
+ * `prev_hash` is legitimate until the first chained row, after which
+ * every row must link. The first bad link short-circuits the walk and
+ * reports the tampered row's id.
+ */
+export async function verifyAuditChain(db: DbClient): Promise<AuditVerifyResult> {
+	const rows = await db.select().from(adminAudit).orderBy(asc(adminAudit.id));
+	if (rows.length === 0) return { status: "empty", entries: 0, brokenAt: null };
+	let previous: AdminAudit | null = null;
+	let chained = false;
+	for (const row of rows) {
+		if (row.prevHash === null) {
+			if (chained) return { status: "tampered", entries: rows.length, brokenAt: row.id };
+		} else {
+			const expected = previous === null ? null : await auditEntryHash(previous);
+			if (row.prevHash !== expected) {
+				return { status: "tampered", entries: rows.length, brokenAt: row.id };
+			}
+			chained = true;
+		}
+		previous = row;
+	}
+	return { status: "verified", entries: rows.length, brokenAt: null };
 }
 
 const MAX_LIMIT = 500;
@@ -132,6 +194,8 @@ export class Audit extends Context.Service<
 		readonly adminList: (options?: {
 			readonly limit?: number;
 		}) => Effect.Effect<AuditListResult, Forbidden>;
+		/** Tamper-evident chain walk over the whole log — platform admins only. */
+		readonly adminVerify: () => Effect.Effect<AuditVerifyResult, Forbidden>;
 	}
 >()("@ktb/audit/Audit") {}
 
@@ -162,6 +226,10 @@ export const AuditLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				return yield* Effect.promise(() => listAuditEntries(db, options));
 			}),
+			adminVerify: Effect.fn("Audit.adminVerify")(function* () {
+				yield* platformAdmin.requireAdmin();
+				return yield* Effect.promise(() => verifyAuditChain(db));
+			}),
 		});
 	}),
 );
@@ -181,7 +249,7 @@ export const audit = (entry: AuditEntryInput): Effect.Effect<void> =>
 // Re-exported for tests: a DDL snippet that creates admin_audit in the
 // in-memory better-sqlite3 test databases of instrumented plugins.
 export const AUDIT_TEST_DDL = `
-CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, actor_email TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, detail TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TEXT, actor_email TEXT, action TEXT NOT NULL, target_type TEXT, target_id TEXT, detail TEXT, tenant_id INTEGER, prev_hash TEXT, created_at INTEGER NOT NULL);
 CREATE INDEX admin_audit_created_at_idx ON admin_audit (created_at);
 CREATE INDEX admin_audit_action_idx ON admin_audit (action);
 CREATE INDEX admin_audit_actor_idx ON admin_audit (actor_user_id);

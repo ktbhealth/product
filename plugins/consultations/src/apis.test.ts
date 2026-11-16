@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	patientLinksFn: vi.fn(),
 	invitePatientFn: vi.fn(),
+	portalReadersFn: vi.fn(),
 }));
 
 vi.mock("@ktb/patient-access/fns", () => mocks);
@@ -14,9 +15,14 @@ vi.mock("./fns.ts", () => ({
 	getLiveConsultationFn: vi.fn(),
 	recordConsentFn: vi.fn(),
 	saveConsultationFn: vi.fn(),
+	verifyConsultationIntegrityFn: vi.fn(),
 }));
 
-import { newConsultationApi, validateNewConsultationSearch } from "./apis.ts";
+import {
+	consultationDetailApi,
+	newConsultationApi,
+	validateNewConsultationSearch,
+} from "./apis.ts";
 
 const patient = { id: 1, name: "Maria", email: "maria@ktb.test" };
 const link = (status: string) => ({ id: 7, email: "maria@ktb.test", status });
@@ -77,5 +83,38 @@ describe("validateNewConsultationSearch", () => {
 		expect(validateNewConsultationSearch({ patientId: "x" })).toEqual({});
 		expect(validateNewConsultationSearch({ patientId: 0 })).toEqual({});
 		expect(validateNewConsultationSearch({})).toEqual({});
+	});
+});
+
+describe("api delegates forward to the server fns", () => {
+	it("binds every view method to its fn", async () => {
+		const fns = await import("./fns.ts");
+		const patients = await import("@ktb/patients/fns");
+		await consultationDetailApi.getConsultation({ data: 1 });
+		expect(fns.getConsultationFn).toHaveBeenCalledWith({ data: 1 });
+		await consultationDetailApi.verifyIntegrity!({ data: 2 });
+		expect(fns.verifyConsultationIntegrityFn).toHaveBeenCalledWith({ data: 2 });
+		await newConsultationApi.getLiveConsultation({ data: 3 });
+		expect(fns.getLiveConsultationFn).toHaveBeenCalledWith({ data: 3 });
+		await newConsultationApi.extractAnamnesis({ data: { transcript: "t" } });
+		expect(fns.extractAnamnesisFn).toHaveBeenCalledWith({ data: { transcript: "t" } });
+		await newConsultationApi.attachAnamnesis({
+			data: { consultationId: 1, anamnesis: "v1.x", engine: "e" },
+		});
+		expect(fns.attachAnamnesisFn).toHaveBeenCalledWith({
+			data: { consultationId: 1, anamnesis: "v1.x", engine: "e" },
+		});
+		await newConsultationApi.saveConsultation({ data: { patientId: 1 } });
+		expect(fns.saveConsultationFn).toHaveBeenCalledWith({ data: { patientId: 1 } });
+		await newConsultationApi.recordConsent({ data: 4 });
+		expect(fns.recordConsentFn).toHaveBeenCalledWith({ data: 4 });
+		await newConsultationApi.createPatient({ data: { name: "n", birthDate: "2000-01-01" } });
+		expect(patients.createPatientFn).toHaveBeenCalledWith({
+			data: { name: "n", birthDate: "2000-01-01" },
+		});
+		await newConsultationApi.getConsultation!({ data: 5 });
+		expect(fns.getConsultationFn).toHaveBeenCalledWith({ data: 5 });
+		await newConsultationApi.portalReaders!({ data: 6 });
+		expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 6 });
 	});
 });

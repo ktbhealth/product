@@ -35,6 +35,9 @@ CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NUL
 INSERT INTO "user" VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0);
 INSERT INTO "user" VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0);
 CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES "user"(id), kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
+-- Tenant flag source (T-149): group 7 non-ZK, group 8 ZK.
+CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO groups (id, name, slug, kind, zk) VALUES (7, 'Clinic', 'clinic-7', 'clinic', 0), (8, 'ZK Clinic', 'clinic-8', 'clinic', 1);
 `;
 
 describe("notifications repo", () => {
@@ -125,6 +128,50 @@ describe("NotificationsLive", () => {
 		);
 		const hit = rows.find((r) => r.kind === "patient.created");
 		expect(hit).toMatchObject({ userId: "u1", title: "Patient created", body: "Ana" });
+	});
+
+	it("stores metadata-only rows for ZK tenants (T-149)", async () => {
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const bus = yield* EventBus;
+				yield* bus.dispatch([
+					PatientCreated.make({ id: 30, ownerId: "u1", name: "v1.ciphertext", tenantId: 8 }),
+					ConsultationCreated.make({ id: 31, userId: "u1", source: "browser", tenantId: 8 }),
+				]);
+			}),
+		);
+		const rows = await asUser(
+			"u1",
+			call((n) => n.list("u1")),
+		);
+		const patient = rows.find((r) => r.kind === "patient.created" && r.title === "Patient created");
+		const consult = rows.find((r) => r.kind === "consultation.created");
+		// Under ZK the server cannot read record content — no name, no
+		// source field, nothing derived from the record in the row.
+		expect(patient?.body).toBeNull();
+		expect(consult?.body).toBeNull();
+	});
+
+	it("keeps record-derived bodies for non-ZK tenants and fails closed for unknown ones", async () => {
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const bus = yield* EventBus;
+				yield* bus.dispatch([
+					PatientCreated.make({ id: 32, ownerId: "u1", name: "Cleo", tenantId: 7 }),
+					// A tenantId with no group row projects metadata-only copy.
+					PatientCreated.make({ id: 33, ownerId: "u1", name: "Ghost", tenantId: 999 }),
+				]);
+			}),
+		);
+		const rows = await asUser(
+			"u1",
+			call((n) => n.list("u1")),
+		);
+		const created = rows.filter((r) => r.kind === "patient.created");
+		expect(created.find((r) => r.body === "Cleo")).toBeDefined();
+		expect(created.find((r) => r.body === "Ghost")).toBeUndefined();
+		// Exactly the ZK row and the unknown-tenant row are metadata-only.
+		expect(created.filter((r) => r.body === null)).toHaveLength(2);
 	});
 
 	it("ingests PatientDeleted and ConsultationCreated", async () => {

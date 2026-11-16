@@ -19,6 +19,7 @@
 		"@ktb/platform": "workspace:*",
 		"@ktb/platform-header": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
+		"@ktb/vault": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
 		"@tanstack/react-router": "1.170.46",
 		"@tanstack/virtual-file-routes": "1.162.0",

@@ -1,8 +1,9 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
 
-import { anamnesisToText } from "@ktb/anamnesis";
+import { IntegrityBadge } from "@ktb/integrity/badge";
+import { anamnesisToText, factContent } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSectionKey, PatientHistory } from "@ktb/anamnesis";
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -15,8 +16,19 @@ import {
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
 
+import type { ConsultationIntegrityReport } from "../index.ts";
 import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, sourceLabel } from "../i18n.ts";
+import { decryptBlob } from "@ktb/crypto/stream";
+
+import {
+	consultationDek,
+	decryptConsultation,
+	decryptConsultations,
+	isEnvelope,
+	parseAnamnesis,
+	type ConsultationZk,
+} from "../zk.ts";
 import {
 	AudioTranscriptPanel,
 	useConsultationAudio,
@@ -53,6 +65,9 @@ export interface ConsultationDetail {
 	consentAt: Date | null;
 	createdAt: Date;
 	patientName: string | null;
+	/** Raw stored `anamnesis` column (T-145): a `v1.` envelope under ZK —
+	 * `anamnesis` stays null there until the client decrypts it. */
+	anamnesisRaw?: string | null;
 	/** Audio pipeline fields (P-015..P-017) — null/none on older rows. */
 	audioKey: string | null;
 	audioStatus: string;
@@ -62,31 +77,149 @@ export interface ConsultationDetail {
 	enhancementEngine: string | null;
 }
 
+/** Raw history rows for the client-side ZK history build (T-145). */
+export interface ConsultationHistoryRows {
+	readonly count: number;
+	readonly rows: readonly {
+		readonly id: number;
+		readonly createdAt: Date | string;
+		readonly anamnesis: string | null;
+	}[];
+}
+
 /** Optional live refetch — enables polling while the audio pipeline runs. */
 export interface ConsultationDetailApi {
 	getConsultation(input: { data: number }): Promise<ConsultationAudioInfo | null>;
+	/** Integrity re-verification for the anamnesis badge (T-139). */
+	verifyIntegrity?(input: { data: number }): Promise<ConsultationIntegrityReport | null>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
 
 export function ConsultationDetailPage({
 	c,
-	history,
+	history: historyProp,
+	historyRows,
 	api,
 	locale = "en",
 	portalBase,
+	zk,
 }: {
 	c: ConsultationDetail;
 	history: PatientHistory | null;
+	/** Raw history rows — the ZK path (T-145); the view decrypts each
+	 * row's `anamnesis` and derives the visit facts itself. */
+	historyRows?: ConsultationHistoryRows | null;
 	api?: ConsultationDetailApi;
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
+	/** ZK context (T-145): present only on ZK tenants — `c` arrives with
+	 * `v1.` envelopes and is decrypted in the browser; without a grant
+	 * the page renders the locked state. */
+	zk?: ConsultationZk;
 }) {
 	const t = consultationMessages(locale);
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [toast, setToast] = useState<ToastData | null>(null);
+
+	// Client-side decrypt under ZK (T-145): the stored envelopes become
+	// plaintext fields; a missing/failed grant renders the locked page.
+	const [dec, setDec] = useState<{
+		anamnesis: Anamnesis | null;
+		transcript: string;
+		patientName: string | null;
+		serverTranscript: string | null;
+		correctedTranscript: string | null;
+	} | null>(null);
+	const [locked, setLocked] = useState(false);
+	useEffect(() => {
+		if (!zk) return;
+		let live = true;
+		decryptConsultation(zk.keyring, zk.api, { ...c, anamnesis: c.anamnesisRaw ?? null })
+			.then((row) => {
+				if (!live) return;
+				if (row === null) {
+					setLocked(true);
+					return;
+				}
+				// Envelopes that failed to decrypt never render — they stay
+				// opaque instead of leaking `v1.` strings into the page.
+				const plain = (x: unknown): string | null =>
+					typeof x === "string" && isEnvelope(x) ? null : ((x as string | null) ?? null);
+				setDec({
+					anamnesis: parseAnamnesis(row.anamnesis) ?? c.anamnesis,
+					transcript: row.transcript,
+					patientName: row.patientName,
+					serverTranscript: plain(row.serverTranscript),
+					correctedTranscript: plain(row.correctedTranscript),
+				});
+			})
+			.catch(() => {
+				if (live) setLocked(true);
+			});
+		return () => {
+			live = false;
+		};
+	}, [zk, c]);
+
+	// Client-side history build under ZK (T-145): decrypt each prior
+	// consultation's anamnesis and derive the visit facts locally.
+	const [decHistory, setDecHistory] = useState<PatientHistory | null>(null);
+	useEffect(() => {
+		if (!zk || !historyRows) return;
+		let live = true;
+		decryptConsultations(zk.keyring, zk.api, historyRows.rows)
+			.then((rows) => {
+				if (!live) return;
+				setDecHistory({
+					count: historyRows.count,
+					visits: rows.map((r) => {
+						const parsed = parseAnamnesis(r.anamnesis);
+						return {
+							id: r.id,
+							date: new Date(r.createdAt).toISOString(),
+							chiefComplaint: factContent(parsed?.queixa_principal.content),
+							plan: factContent(parsed?.conduta.content),
+						};
+					}),
+				});
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	}, [zk, historyRows]);
+	const history = zk ? decHistory : historyProp;
+	// ZK audio playback (T-147): the stored object is framed ciphertext —
+	// fetch it, unwrap the consultation DEK, decrypt in the browser and
+	// hand the <audio> element an object URL. Locked/missing grant → no
+	// player, exactly like the rest of the record.
+	const [zkAudioUrl, setZkAudioUrl] = useState<string | null>(null);
+	useEffect(() => {
+		if (!zk || !c.audioKey) return;
+		let live = true;
+		let url: string | null = null;
+		void (async () => {
+			const dek = await consultationDek(zk.keyring, zk.api, c.id);
+			if (!dek) return;
+			const res = await fetch(`/api/consultations/${c.id}/audio`);
+			if (!res.ok) return;
+			const plain = await decryptBlob(dek, new Uint8Array(await res.arrayBuffer()));
+			url = URL.createObjectURL(
+				// The recorded/uploaded type is not part of the detail
+				// wire shape — browsers sniff the decrypted bytes anyway.
+				new Blob([plain as Uint8Array<ArrayBuffer>], { type: "audio/webm" }),
+			);
+			if (live) setZkAudioUrl(url);
+			else URL.revokeObjectURL(url);
+		})().catch(() => {});
+		return () => {
+			live = false;
+			if (url !== null) URL.revokeObjectURL(url);
+		};
+	}, [zk, c]);
 	// Poll only when the loader data says the pipeline may still be
 	// running (or the LLM cleanup is pending); the hook stops itself
 	// once the job reaches a terminal state.
@@ -94,7 +227,26 @@ export function ConsultationDetailPage({
 		PIPELINE_IN_FLIGHT.has(c.audioStatus) ||
 		(c.audioStatus === "done" && Boolean(c.serverTranscript) && !c.correctedTranscript);
 	const live = useConsultationAudio(api && pipelineActive ? api.getConsultation : undefined, c.id);
-	const v = live ?? c;
+	// `dec` overlays the client-decrypted fields under ZK; `live` the
+	// polled audio-pipeline state — never active under ZK (T-147).
+	const v = { ...c, ...(live ?? {}), ...(dec ?? {}) };
+	// Tamper-evidence badge (T-139): re-verify the anamnesis version
+	// chain once on mount — only meaningful when an anamnesis exists.
+	const [integrity, setIntegrity] = useState<ConsultationIntegrityReport | null>(null);
+	useEffect(() => {
+		if (!api?.verifyIntegrity || !v.anamnesis) return;
+		let alive = true;
+		void api
+			.verifyIntegrity({ data: c.id })
+			.then((report) => {
+				if (alive) setIntegrity(report);
+			})
+			// A failed verification must never break the record view.
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
+	}, [api, c.id, v.anamnesis]);
 	const when = new Date(c.createdAt).toLocaleString(locale, {
 		dateStyle: "long",
 		timeStyle: "short",
@@ -102,10 +254,37 @@ export function ConsultationDetailPage({
 
 	function copy() {
 		/* v8 ignore next -- copy button only renders when anamnesis exists */
-		if (!c.anamnesis) return;
+		if (!v.anamnesis) return;
 		void navigator.clipboard
-			.writeText(anamnesisToText(c.anamnesis))
+			.writeText(anamnesisToText(v.anamnesis))
 			.then(() => setToast({ id: Date.now(), text: t.detail.anamnesisCopied }));
+	}
+
+	// Locked record (T-145): the device holds no grant for this
+	// consultation's DEK — nothing clinical is rendered.
+	if (locked) {
+		return (
+			<div>
+				<Button
+					variant="ghost"
+					size="sm"
+					className="-ml-2"
+					render={<Link to={portalPath("/consultations")} />}
+				>
+					<ArrowLeftIcon />
+					{t.detail.back}
+				</Button>
+				<Empty className="mt-6 border bg-card px-6 py-16">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<LockIcon />
+						</EmptyMedia>
+						<EmptyTitle>{t.zk.lockedRecord}</EmptyTitle>
+						<EmptyDescription>{t.zk.lockedHint}</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			</div>
+		);
 	}
 
 	return (
@@ -124,16 +303,16 @@ export function ConsultationDetailPage({
 			<header className="mt-3 flex flex-wrap items-start justify-between gap-4">
 				<div>
 					<h1 className="text-3xl font-bold tracking-tight">
-						{c.patientId && c.patientName ? (
+						{v.patientId && v.patientName ? (
 							<Link
-								to={portalPath(`/patients/${c.patientId}`)}
+								to={portalPath(`/patients/${v.patientId}`)}
 								className="hover:underline"
 								title={t.detail.openPatientRecord}
 							>
-								{c.patientName}
+								{v.patientName}
 							</Link>
 						) : (
-							(c.patientName ?? t.common.consultationId(c.id))
+							(v.patientName ?? t.common.consultationId(c.id))
 						)}
 					</h1>
 					<p className="mt-1 text-sm text-muted-foreground">
@@ -150,20 +329,32 @@ export function ConsultationDetailPage({
 							<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
 						)}
 						{c.status === "live" ? <Chip tone="amber">{t.detail.inProgress}</Chip> : null}
+						{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
 						{history && history.count > 0 ? (
 							<Chip>{t.detail.previousConsultations(history.count)}</Chip>
 						) : null}
 					</div>
 				</div>
-				{c.anamnesis ? (
+				{v.anamnesis ? (
 					<div className="flex gap-2">
 						<Button type="button" variant="outline" onClick={copy}>
 							{t.common.copy}
 						</Button>
-						<a href={`/api/consultations/${c.id}/pdf`} download className={buttonVariants()}>
-							<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
-							{t.common.downloadPdf}
-						</a>
+						{/* T-146: the server-side PDF reads plaintext columns —
+						 * impossible under ZK. The export is gated (not hidden):
+						 * a disabled control states why instead of silently
+						 * dropping the affordance. */}
+						{!zk ? (
+							<a href={`/api/consultations/${c.id}/pdf`} download className={buttonVariants()}>
+								<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
+								{t.common.downloadPdf}
+							</a>
+						) : (
+							<Button type="button" variant="outline" disabled title={t.zk.exportLocked}>
+								<LockIcon className="mr-1.5 inline size-4 -translate-y-px" />
+								{t.zk.exportLocked}
+							</Button>
+						)}
 					</div>
 				) : null}
 			</header>
@@ -195,12 +386,12 @@ export function ConsultationDetailPage({
 					<h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
 						{t.common.anamnesis}
 					</h2>
-					{c.anamnesis ? (
+					{v.anamnesis ? (
 						<div className="grid gap-3 sm:grid-cols-2">
 							{(
 								Object.keys(t.sections).filter((k) => k !== "historico") as AnamnesisSectionKey[]
 							).map((key) => {
-								const sec = c.anamnesis?.[key];
+								const sec = v.anamnesis?.[key];
 								if (!sec) return null;
 								const pending = sec.content.startsWith("A preencher pelo médico");
 								return (
@@ -264,6 +455,7 @@ export function ConsultationDetailPage({
 							locale={locale}
 							consultationId={c.id}
 							audioStatus={v.audioStatus}
+							audioSrc={zkAudioUrl ?? undefined}
 							hasAudio={Boolean(v.audioKey)}
 							browserText={v.transcript}
 							serverText={v.serverTranscript}

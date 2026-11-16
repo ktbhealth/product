@@ -15,6 +15,7 @@ describe("groups schema", () => {
 			"meta",
 			"created_at",
 			"updated_at",
+			"zk",
 		]);
 	});
 

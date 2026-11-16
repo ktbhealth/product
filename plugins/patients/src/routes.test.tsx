@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
 	listPatientsFn: vi.fn(),
 	patientConsultationsFn: vi.fn(),
 	localeFn: vi.fn(async () => "pt-BR"),
+	vaultStateFn: vi.fn(async () => ({ tenantId: 7, role: "admin", zk: false })),
+	makeKeyring: vi.fn(() => ({ tag: "keyring" })),
 	invalidate: vi.fn(),
 	navigate: vi.fn(),
 	notFound: vi.fn(() => new Error("not-found")),
@@ -32,7 +34,10 @@ vi.mock("./apis.ts", () => ({
 	patientDeleteApi: { tag: "delete-api" },
 	newPatientApi: { tag: "new-api" },
 	editPatientApi: vi.fn((id: number) => ({ tag: `edit-api-${id}` })),
+	patientsZkApi: { tag: "zk-api" },
 }));
+vi.mock("@ktb/vault/fns", () => ({ vaultStateFn: mocks.vaultStateFn }));
+vi.mock("@ktb/crypto/keyring", () => ({ makeKeyring: mocks.makeKeyring }));
 vi.mock("./views/index.ts", () => {
 	const capture = (name: string) => (props: Record<string, unknown>) => {
 		mocks.props.current = props;
@@ -103,11 +108,22 @@ describe("patient routes", () => {
 	});
 
 	describe("/patients", () => {
-		it("loads the patient list and locale", async () => {
+		it("loads the patient list, locale and zk flag", async () => {
 			mocks.listPatientsFn.mockResolvedValue([{ id: 1 }]);
 			await expect(opts(IndexRoute).loader!()).resolves.toEqual({
 				patients: [{ id: 1 }],
 				locale: "pt-BR",
+				zk: false,
+			});
+		});
+
+		it("passes a keyring-backed zk context to the list when the tenant is ZK", () => {
+			mocks.loaderData.current = { patients: [], locale: "pt-BR", zk: true };
+			render(createElement(opts(IndexRoute).component));
+			expect(mocks.makeKeyring).toHaveBeenCalledOnce();
+			expect(props().zk).toEqual({
+				keyring: { tag: "keyring" },
+				api: { tag: "zk-api" },
 			});
 		});
 
@@ -123,13 +139,26 @@ describe("patient routes", () => {
 	});
 
 	describe("/patients/new", () => {
-		it("loads the active locale for the form", async () => {
-			await expect(opts(NewRoute).loader!()).resolves.toBe("pt-BR");
+		it("loads the active locale and zk flag for the form", async () => {
+			await expect(opts(NewRoute).loader!()).resolves.toEqual({
+				locale: "pt-BR",
+				zk: false,
+			});
 			expect(mocks.localeFn).toHaveBeenCalledOnce();
 		});
 
+		it("passes a keyring-backed zk context to the form under ZK", () => {
+			mocks.loaderData.current = { locale: "pt-BR", zk: true };
+			render(createElement(opts(NewRoute).component));
+			expect(mocks.makeKeyring).toHaveBeenCalledOnce();
+			expect(props().zk).toEqual({
+				keyring: { tag: "keyring" },
+				api: { tag: "zk-api" },
+			});
+		});
+
 		it("navigates to the created patient after saving", () => {
-			mocks.loaderData.current = "pt-BR";
+			mocks.loaderData.current = { locale: "pt-BR", zk: false };
 			render(createElement(opts(NewRoute).component));
 			expect(props().api).toEqual({ tag: "new-api" });
 			expect(props().locale).toBe("pt-BR");
@@ -153,6 +182,7 @@ describe("patient routes", () => {
 				patient: { id: 5 },
 				consultations: [{ id: 9 }],
 				locale: "pt-BR",
+				zk: false,
 			});
 			expect(mocks.getPatientFn).toHaveBeenCalledWith({ data: 5 });
 			expect(mocks.patientConsultationsFn).toHaveBeenCalledWith({ data: 5 });
@@ -172,6 +202,20 @@ describe("patient routes", () => {
 			expect(mocks.patientConsultationsFn).not.toHaveBeenCalled();
 		});
 
+		it("passes a keyring-backed zk context to the detail view under ZK", () => {
+			mocks.loaderData.current = {
+				patient: { id: 5 },
+				consultations: [],
+				locale: "pt-BR",
+				zk: true,
+			};
+			render(createElement(opts(DetailRoute).component));
+			expect(props().zk).toEqual({
+				keyring: { tag: "keyring" },
+				api: { tag: "zk-api" },
+			});
+		});
+
 		it("renders the detail page; deletion returns to the list", () => {
 			mocks.loaderData.current = {
 				patient: { id: 5 },
@@ -189,11 +233,12 @@ describe("patient routes", () => {
 	});
 
 	describe("/patients/$id/edit", () => {
-		it("loads the patient and locale", async () => {
+		it("loads the patient, locale and zk flag", async () => {
 			mocks.getPatientFn.mockResolvedValue({ id: 5 });
 			await expect(opts(EditRoute).loader!({ params: { id: "5" } })).resolves.toEqual({
 				patient: { id: 5 },
 				locale: "pt-BR",
+				zk: false,
 			});
 			expect(mocks.getPatientFn).toHaveBeenCalledWith({ data: 5 });
 		});
@@ -208,6 +253,15 @@ describe("patient routes", () => {
 				await expect(opts(EditRoute).loader!({ params: { id } })).rejects.toThrow("not-found");
 			}
 			expect(mocks.getPatientFn).not.toHaveBeenCalled();
+		});
+
+		it("passes a keyring-backed zk context to the form under ZK", () => {
+			mocks.loaderData.current = { patient: { id: 5 }, locale: "pt-BR", zk: true };
+			render(createElement(opts(EditRoute).component));
+			expect(props().zk).toEqual({
+				keyring: { tag: "keyring" },
+				api: { tag: "zk-api" },
+			});
 		});
 
 		it("renders the form for the loaded patient and navigates after saving", () => {

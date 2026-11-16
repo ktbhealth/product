@@ -2,16 +2,19 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
-import { Option } from "effect";
 import { physical } from "@tanstack/virtual-file-routes";
 
-import { decodeAnamnesisOption } from "@ktb/anamnesis/schema";
-import { SECTION_LABELS, type Anamnesis, type AnamnesisSectionKey } from "@ktb/anamnesis/types";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
-import { consultations, doctors, patientAccess, patients, user } from "@ktb/db/schema";
+import { consultations, doctors, entityDeks, patientAccess, patients, user } from "@ktb/db/schema";
 import { normalizeEmail } from "@ktb/patient-access";
+import { enrollPortalDevice, portalDeviceOf, type PortalKey } from "@ktb/vault";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+
+import { parseAnamnesis, portalSections, written, type PortalSection } from "./sections.ts";
+
+export type { PortalSection } from "./sections.ts";
+export { parseAnamnesis, portalSections } from "./sections.ts";
 
 /**
  * The patient record a portal profile opens: whose it is and who keeps
@@ -53,19 +56,23 @@ export async function getPortalProfile(
 	return row ?? null;
 }
 
+/** `v1.` AEAD envelope marker (same rule as `@ktb/patients/zk`'s
+ * `isEnvelope`): an envelope in a clinical column means the row is
+ * client-encrypted — the server ships it opaque and the portal
+ * decrypts in the browser (T-148). */
+const isEnvelope = (value: unknown): value is string =>
+	typeof value === "string" && value.startsWith("v1.");
+
 /** A consultation as the portal lists it. */
 export interface PortalConsultationSummary {
 	readonly id: number;
 	readonly createdAt: Date;
-	/** Chief complaint as the doctor recorded it, when there is one. */
+	/** Chief complaint as the doctor recorded it, when there is one.
+	 * Null under ZK — the client fills it after decrypting `anamnesis`. */
 	readonly chiefComplaint: string | null;
-}
-
-/** One section of the record the doctor saved. Drafting metadata —
- * confidence, the transcript sentences behind it — is not part of it. */
-export interface PortalSection {
-	readonly key: AnamnesisSectionKey;
-	readonly content: string;
+	/** The raw `anamnesis` column when it is a `v1.` envelope, else null —
+	 * the client decrypts and derives the complaint itself. */
+	readonly anamnesis: string | null;
 }
 
 /** A consultation as the portal shows it: the saved record, read-only.
@@ -74,41 +81,16 @@ export interface PortalConsultation {
 	readonly id: number;
 	readonly createdAt: Date;
 	readonly patientId: number;
+	/** Patient display name — a `v1.` envelope under ZK; the client
+	 * decrypts it with the patient-record DEK granted to its device. */
 	readonly patientName: string;
 	/** Display name of the doctor who recorded it, when known. */
 	readonly doctorName: string | null;
 	readonly sections: readonly PortalSection[];
+	/** The raw `anamnesis` column when it is a `v1.` envelope, else null —
+	 * under ZK `sections` is empty and the client decrypts this. */
+	readonly anamnesis: string | null;
 }
-
-/** Prefix of the placeholder a drafter leaves in a section the doctor
- * still has to write (see the heuristic extractor and the LLM prompt). */
-const UNFILLED = "A preencher pelo médico";
-
-const SECTION_KEYS = Object.keys(SECTION_LABELS) as AnamnesisSectionKey[];
-
-/** Stored anamnesis JSON → typed document, null on any drift. */
-const parseAnamnesis = (json: string | null): Anamnesis | null => {
-	try {
-		/* v8 ignore next -- both queries only select rows with a non-null anamnesis */
-		return Option.getOrNull(decodeAnamnesisOption(JSON.parse(json ?? "null")));
-	} catch {
-		return null;
-	}
-};
-
-/** What the doctor actually wrote in a section, or null when it is
- * empty or still the drafter's placeholder. */
-const written = (content: string): string | null => {
-	const text = content.trim();
-	return text === "" || text.startsWith(UNFILLED) ? null : text;
-};
-
-/** The sections of a record the doctor filled in, in document order. */
-export const portalSections = (anamnesis: Anamnesis): PortalSection[] =>
-	SECTION_KEYS.flatMap((key) => {
-		const content = written(anamnesis[key].content);
-		return content === null ? [] : [{ key, content }];
-	});
 
 /** Rows of `consultations` a holder of an *active* link may see: the
  * ones with a saved record. A consultation still being transcribed, or
@@ -139,10 +121,13 @@ export async function listPortalConsultations(
 		.innerJoin(patientAccess, eq(patientAccess.patientId, consultations.patientId))
 		.where(and(eq(consultations.patientId, patientId), visibleTo(userId)))
 		.orderBy(desc(consultations.createdAt), desc(consultations.id));
-	return rows.flatMap(({ anamnesis, ...row }) => {
+	return rows.flatMap(({ anamnesis, ...row }): PortalConsultationSummary[] => {
+		// T-148: a ZK row is opaque — list it with the raw envelope so the
+		// client can decrypt; the complaint derives after decrypting.
+		if (isEnvelope(anamnesis)) return [{ ...row, chiefComplaint: null, anamnesis }];
 		const parsed = parseAnamnesis(anamnesis);
 		if (parsed === null) return [];
-		return [{ ...row, chiefComplaint: written(parsed.queixa_principal.content) }];
+		return [{ ...row, chiefComplaint: written(parsed.queixa_principal.content), anamnesis: null }];
 	});
 }
 
@@ -171,9 +156,12 @@ export async function getPortalConsultation(
 		.where(and(eq(consultations.id, id), visibleTo(userId)));
 	if (row === undefined) return null;
 	const { anamnesis, ...consultation } = row;
+	// T-148: a ZK row ships its envelope untouched — the portal unwraps
+	// the record DEK for the caller's device and decrypts client-side.
+	if (isEnvelope(anamnesis)) return { ...consultation, sections: [], anamnesis };
 	const parsed = parseAnamnesis(anamnesis);
 	if (parsed === null) return null;
-	return { ...consultation, sections: portalSections(parsed) };
+	return { ...consultation, sections: portalSections(parsed), anamnesis: null };
 }
 
 /**
@@ -203,6 +191,80 @@ export async function countAwaitingInvites(db: DbClient, userId: string): Promis
 }
 
 /**
+ * The `entity_deks` envelope addressed to one of the caller's OWN
+ * portal devices for one record (T-148) — the portal-side counterpart
+ * of the member-scoped `vault.dekEnvelope`. Authorization is the
+ * portal rule, not tenant membership: the `wrapPublicKey` must be
+ * registered to the caller (`portal_keys`), the record must resolve to
+ * a patient the caller holds an *active* link to, and the tenant id is
+ * read off the record itself (a portal identity spans clinics). Any
+ * check failing yields null — indistinguishable from "no grant".
+ */
+export async function portalDekEnvelope(
+	db: DbClient,
+	userId: string,
+	input: {
+		readonly entityType: "patient" | "consultation";
+		readonly entityId: number | string;
+		readonly wrapPublicKey: string;
+	},
+): Promise<string | null> {
+	const entityId = Number(input.entityId);
+	if (!Number.isInteger(entityId)) return null;
+	const device = await portalDeviceOf(db, userId, input.wrapPublicKey);
+	if (device === null) return null;
+	let patientId: number;
+	let tenantId: number | null;
+	if (input.entityType === "consultation") {
+		const [row] = await db
+			.select({ patientId: consultations.patientId, tenantId: consultations.tenantId })
+			.from(consultations)
+			.where(eq(consultations.id, entityId))
+			.limit(1);
+		if (row === undefined || row.patientId === null) return null;
+		patientId = row.patientId;
+		tenantId = row.tenantId;
+	} else {
+		const [row] = await db
+			.select({ tenantId: patients.tenantId })
+			.from(patients)
+			.where(eq(patients.id, entityId))
+			.limit(1);
+		if (row === undefined) return null;
+		patientId = entityId;
+		tenantId = row.tenantId;
+	}
+	// entity_deks rows are tenant-owned — a personal (tenantless)
+	// record can never carry a grant.
+	if (tenantId === null) return null;
+	const [link] = await db
+		.select({ id: patientAccess.id })
+		.from(patientAccess)
+		.where(
+			and(
+				eq(patientAccess.patientId, patientId),
+				eq(patientAccess.userId, userId),
+				eq(patientAccess.status, "active"),
+			),
+		)
+		.limit(1);
+	if (link === undefined) return null;
+	const [dek] = await db
+		.select({ wrappedDek: entityDeks.wrappedDek })
+		.from(entityDeks)
+		.where(
+			and(
+				eq(entityDeks.tenantId, tenantId),
+				eq(entityDeks.entityType, input.entityType),
+				eq(entityDeks.entityId, String(entityId)),
+				eq(entityDeks.readerPubkey, input.wrapPublicKey),
+			),
+		)
+		.limit(1);
+	return dek?.wrappedDek ?? null;
+}
+
+/**
  * Patient portal port — the *patient* side: read-only on clinical data,
  * and everything is scoped to the signed-in user themself. Fails
  * `Forbidden` without a principal and under delegation (a secretary
@@ -224,6 +286,20 @@ export class PatientPortal extends Context.Service<
 		/** Invites addressed to the caller's email still waiting on email
 		 * verification — the count behind the "confirm your email" notice. */
 		readonly awaitingInvites: () => Effect.Effect<number, Forbidden>;
+		/** Register the caller's portal device pubkeys (T-148) — the
+		 * non-extractable browser keypair's public halves, published so a
+		 * clinic device can wrap record DEKs to them. Idempotent. */
+		readonly registerDevice: (input: {
+			readonly wrapPublicKey: string;
+			readonly signPublicKey: string;
+		}) => Effect.Effect<PortalKey, Forbidden>;
+		/** The caller's wrapped DEKs for a batch of records, keyed by
+		 * entityId — records without a grant are absent (T-148). */
+		readonly dekEnvelopes: (input: {
+			readonly entityType: "patient" | "consultation";
+			readonly entityIds: readonly (number | string)[];
+			readonly wrapPublicKey: string;
+		}) => Effect.Effect<Record<string, string>, Forbidden>;
 	}
 >()("@ktb/patient-portal/PatientPortal") {}
 
@@ -258,6 +334,25 @@ export const PatientPortalLive = Layer.effect(
 			awaitingInvites: Effect.fn("PatientPortal.awaitingInvites")(function* () {
 				const userId = yield* self("portal.read");
 				return yield* Effect.promise(() => countAwaitingInvites(db, userId));
+			}),
+			registerDevice: Effect.fn("PatientPortal.registerDevice")(function* (input) {
+				const userId = yield* self("portal.device");
+				return yield* Effect.promise(() => enrollPortalDevice(db, { userId, ...input }));
+			}),
+			dekEnvelopes: Effect.fn("PatientPortal.dekEnvelopes")(function* (input) {
+				const userId = yield* self("portal.read");
+				const out: Record<string, string> = {};
+				for (const entityId of input.entityIds) {
+					const envelope = yield* Effect.promise(() =>
+						portalDekEnvelope(db, userId, {
+							entityType: input.entityType,
+							entityId,
+							wrapPublicKey: input.wrapPublicKey,
+						}),
+					);
+					if (envelope !== null) out[String(entityId)] = envelope;
+				}
+				return out;
 			}),
 		});
 	}),

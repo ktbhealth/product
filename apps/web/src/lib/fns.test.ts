@@ -61,6 +61,7 @@ import {
 	saveConsultationFn,
 	sessionFn,
 	updatePatientFn,
+	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
 /** Registers a patient through the server fn, failing the test on validation errors. */
@@ -125,6 +126,7 @@ describe("server fns", () => {
 		expect(await listConsultationsFn()).toEqual([]);
 		expect(await getConsultationFn({ data: 1 })).toBeNull();
 		expect(await getLiveConsultationFn({ data: 1 })).toBeNull();
+		expect(await verifyConsultationIntegrityFn({ data: 1 })).toBeNull();
 		expect(await patientHistoryFn({ data: { patientId: 1 } })).toBeNull();
 		expect(
 			await attachAnamnesisFn({
@@ -165,7 +167,7 @@ describe("server fns", () => {
 				patientId: patient!.id,
 			},
 		});
-		expect(saved.id!).toBeGreaterThan(0);
+		expect(saved!.id).toBeGreaterThan(0);
 
 		const list = await listConsultationsFn();
 		expect(list).toHaveLength(1);
@@ -173,27 +175,37 @@ describe("server fns", () => {
 		expect(list[0]?.chiefComplaint).toBe("Dor de cabeça");
 		expect(list[0]?.patientName).toBe("Maria Silva");
 
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.anamnesis?.queixa_principal.content).toBe("Dor de cabeça");
 		expect(detail?.patientName).toBe("Maria Silva");
 
-		expect(await getLiveConsultationFn({ data: saved.id! })).toMatchObject({
+		expect(await getLiveConsultationFn({ data: saved!.id })).toMatchObject({
 			transcript: SAMPLE_TRANSCRIPT,
 		});
 		expect(await getLiveConsultationFn({ data: 999 })).toBeNull();
 
-		expect(await recordConsentFn({ data: saved.id! })).toEqual({ ok: true });
+		expect(await recordConsentFn({ data: saved!.id })).toEqual({ ok: true });
+
+		// verifyIntegrity: same read authz as getConsultationFn — the owner
+		// gets a chain report, a foreign user degrades to null.
+		const report = await verifyConsultationIntegrityFn({ data: saved!.id });
+		expect(report?.status).toBe("verified");
+		expect(report?.versions).toBeGreaterThan(0);
+		headers.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
+		expect(await verifyConsultationIntegrityFn({ data: saved!.id })).toBeNull();
+		headers.current = new Headers({ cookie });
+
 		expect(
 			await attachAnamnesisFn({
 				data: {
-					consultationId: saved.id!,
+					consultationId: saved!.id,
 					anamnesis: makeAnamnesis("Nova queixa"),
 					engine: "openai",
 				},
 			}),
 		).toEqual({ ok: true });
 
-		const after = await getConsultationFn({ data: saved.id! });
+		const after = await getConsultationFn({ data: saved!.id });
 		expect(after?.anamnesis?.queixa_principal.content).toBe("Nova queixa");
 		expect(after?.engine).toBe("openai");
 	});
@@ -203,7 +215,7 @@ describe("server fns", () => {
 		const saved = await saveConsultationFn({
 			data: { transcript: "t2", anamnesis: makeAnamnesis("Q2"), engine: "heuristic" },
 		});
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.anamnesis).not.toBeNull();
 		expect(detail?.patientName).toBeNull();
 
@@ -223,13 +235,13 @@ describe("server fns", () => {
 		});
 		await attachAnamnesisFn({
 			data: {
-				consultationId: saved.id!,
+				consultationId: saved!.id,
 				anamnesis: makeAnamnesis("Q3b"),
 				engine: "e2",
 				patientId: patient!.id,
 			},
 		});
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.patientName).toBe("João");
 	});
 
@@ -241,7 +253,7 @@ describe("server fns", () => {
 		});
 		await attachAnamnesisFn({
 			data: {
-				consultationId: saved.id!,
+				consultationId: saved!.id,
 				anamnesis: makeAnamnesis("Q4"),
 				engine: "e",
 				patientId: patient!.id,
@@ -251,14 +263,14 @@ describe("server fns", () => {
 		// not be dropped as "absent" by the normalizer.
 		const res = await attachAnamnesisFn({
 			data: {
-				consultationId: saved.id!,
+				consultationId: saved!.id,
 				anamnesis: makeAnamnesis("Q4b"),
 				engine: "e",
 				patientId: null,
 			},
 		});
 		expect(res).toEqual({ ok: true });
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.patientName).toBeNull();
 	});
 
@@ -293,9 +305,9 @@ describe("server fns", () => {
 	it("extract fn returns a structured result", async () => {
 		headers.current = new Headers({ cookie });
 		const extracted = await extractAnamnesisFn({ data: { transcript: SAMPLE_TRANSCRIPT } });
-		expect(extracted.anamnesis.queixa_principal.content).toBeTruthy();
-		expect(extracted.engine).toBeTruthy();
-		expect(extracted.anamnesis.historico).toBeUndefined();
+		expect(extracted!.anamnesis.queixa_principal.content).toBeTruthy();
+		expect(extracted!.engine).toBeTruthy();
+		expect(extracted!.anamnesis.historico).toBeUndefined();
 	});
 
 	it("patientHistoryFn summarizes prior consultations and feeds extraction", async () => {
@@ -319,7 +331,7 @@ describe("server fns", () => {
 		});
 		// viewing the second consultation → history holds only the first
 		const history = await patientHistoryFn({
-			data: { patientId: patient!.id, excludeId: second.id! },
+			data: { patientId: patient!.id, excludeId: second!.id },
 		});
 		expect(history?.count).toBe(1);
 		expect(history?.visits[0]?.chiefComplaint).toBe("Primeira queixa");
@@ -333,12 +345,12 @@ describe("server fns", () => {
 		const extracted = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: patient!.id },
 		});
-		expect(extracted.anamnesis.historico?.content).toContain("Consultas anteriores (2):");
+		expect(extracted!.anamnesis.historico?.content).toContain("Consultas anteriores (2):");
 		// patientId that resolves to no history → unchanged behavior
 		const noHistory = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: 99999 },
 		});
-		expect(noHistory.anamnesis.historico).toBeUndefined();
+		expect(noHistory!.anamnesis.historico).toBeUndefined();
 	});
 
 	it("tolerates non-number patientId on the wire (undefined/null/string)", async () => {
@@ -349,26 +361,26 @@ describe("server fns", () => {
 			const res = await extractAnamnesisFn({
 				data: { transcript: SAMPLE_TRANSCRIPT, patientId: patientId as never },
 			});
-			expect(res.anamnesis).toBeTruthy();
+			expect(res!.anamnesis).toBeTruthy();
 		}
 		// numeric string is coerced
 		const res = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: String(patient!.id) as never },
 		});
-		expect(res.engine).toBeTruthy();
+		expect(res!.engine).toBeTruthy();
 	});
 
 	it("deletes a patient with their consultations and recordings", async () => {
 		headers.current = new Headers({ cookie });
 		const patient = await newPatient("Para Excluir");
-		const { id: consultationId } = await saveConsultationFn({
+		const { id: consultationId } = (await saveConsultationFn({
 			data: {
 				transcript: "t",
 				anamnesis: makeAnamnesis("Excluir"),
 				engine: "e",
 				patientId: patient.id,
 			},
-		});
+		}))!;
 		const audioKey = `audio/delete-${consultationId}.webm`;
 		await env.AUDIO_BUCKET!.put(audioKey, new Uint8Array([1, 2, 3]));
 		await db.update(consultations).set({ audioKey }).where(eq(consultations.id, consultationId));
@@ -503,19 +515,19 @@ describe("server fns", () => {
 		const extracted = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: foreignPatient.id },
 		});
-		expect(extracted.anamnesis).toBeTruthy();
-		expect(await getConsultationFn({ data: saved.id! })).toBeNull();
-		expect(await getLiveConsultationFn({ data: saved.id! })).toBeNull();
-		expect(await recordConsentFn({ data: saved.id! })).toEqual({ ok: false });
+		expect(extracted!.anamnesis).toBeTruthy();
+		expect(await getConsultationFn({ data: saved!.id })).toBeNull();
+		expect(await getLiveConsultationFn({ data: saved!.id })).toBeNull();
+		expect(await recordConsentFn({ data: saved!.id })).toEqual({ ok: false });
 		expect(
 			await attachAnamnesisFn({
-				data: { consultationId: saved.id!, anamnesis: makeAnamnesis("x"), engine: "e" },
+				data: { consultationId: saved!.id, anamnesis: makeAnamnesis("x"), engine: "e" },
 			}),
 		).toEqual({ ok: false });
 
 		// Owner still reads fine afterwards.
 		headers.current = new Headers({ cookie });
-		expect(await getConsultationFn({ data: saved.id! })).not.toBeNull();
+		expect(await getConsultationFn({ data: saved!.id })).not.toBeNull();
 	});
 
 	it("platform admin gate: allowlist decides /platform access", async () => {
