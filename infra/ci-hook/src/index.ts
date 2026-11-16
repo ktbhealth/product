@@ -15,6 +15,16 @@ export interface Env {
 	NTFY_AUTH?: string;
 	/** ntfy access token — sent as `Authorization: Bearer <token>`. */
 	NTFY_AUTH_TOKEN?: string;
+	/** GitHub App (lasius-bot) credentials for POST /token. */
+	GITHUB_APP_ID?: string;
+	GITHUB_APP_INSTALLATION_ID?: string;
+	/** PEM private key (PKCS#8) for the app. */
+	GITHUB_APP_PRIVATE_KEY?: string;
+	/** Bearer secret guarding POST /token. */
+	TOKEN_MINT_SECRET?: string;
+	/** Comma-separated allowlist of "owner/repo" (or bare repo names)
+	 *  the broker will mint tokens for. Empty = installation default. */
+	TOKEN_ALLOWED_REPOS?: string;
 }
 
 const encoder = new TextEncoder();
@@ -64,6 +74,108 @@ async function notifyNtfy(
 	});
 }
 
+// --- POST /token: mint GitHub App installation tokens -----------------
+//
+// lasius-bot is installed on a narrow repo set; this route returns a
+// fresh ~1h token so CI never stores long-lived credentials. Callers
+// authenticate with TOKEN_MINT_SECRET and may narrow scope via
+// {"repositories": ["docs"]}.
+
+function base64url(data: ArrayBuffer | Uint8Array | string): string {
+	const bytes = typeof data === "string" ? encoder.encode(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
+	let bin = "";
+	for (const b of bytes) bin += String.fromCharCode(b);
+	return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function pemToDer(pem: string): Uint8Array {
+	const b64 = pem
+		.replace(/-----BEGIN [^-]+-----/g, "")
+		.replace(/-----END [^-]+-----/g, "")
+		.replace(/\s+/g, "");
+	const bin = atob(b64);
+	const out = new Uint8Array(bin.length);
+	for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+	return out;
+}
+
+async function appJwt(env: Env): Promise<string> {
+	const now = Math.floor(Date.now() / 1000);
+	const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+	const payload = base64url(JSON.stringify({ iat: now - 60, exp: now + 600, iss: env.GITHUB_APP_ID }));
+	const unsigned = `${header}.${payload}`;
+	const key = await crypto.subtle.importKey(
+		"pkcs8",
+		pemToDer(env.GITHUB_APP_PRIVATE_KEY ?? "") as BufferSource,
+		{ name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+		false,
+		["sign"],
+	);
+	const sig = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, encoder.encode(unsigned));
+	return `${unsigned}.${base64url(sig)}`;
+}
+
+function secretsEqual(a: string, b: string): boolean {
+	if (a.length !== b.length) return false;
+	let diff = 0;
+	for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+	return diff === 0;
+}
+
+async function handleTokenMint(request: Request, env: Env): Promise<Response> {
+	const auth = request.headers.get("Authorization") ?? "";
+	const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+	if (!env.TOKEN_MINT_SECRET || !secretsEqual(token, env.TOKEN_MINT_SECRET)) {
+		return new Response("unauthorized", { status: 401 });
+	}
+	if (!env.GITHUB_APP_ID || !env.GITHUB_APP_INSTALLATION_ID || !env.GITHUB_APP_PRIVATE_KEY) {
+		return Response.json({ error: "app not configured" }, { status: 503 });
+	}
+
+	let repositories: string[] | undefined;
+	try {
+		const body = (await request.json()) as { repositories?: string[] };
+		repositories = body.repositories;
+	} catch {
+		// empty body is fine — installation default scope
+	}
+
+	const allowlist = (env.TOKEN_ALLOWED_REPOS ?? "")
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
+	if (allowlist.length && repositories?.length) {
+		const denied = repositories.filter(
+			(r) => !allowlist.some((a) => a === r || a === r.split("/").pop()),
+		);
+		if (denied.length) {
+			return Response.json({ error: `repos not allowed: ${denied.join(", ")}` }, { status: 403 });
+		}
+	}
+
+	const jwt = await appJwt(env);
+	const res = await fetch(
+		`https://api.github.com/app/installations/${env.GITHUB_APP_INSTALLATION_ID}/access_tokens`,
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${jwt}`,
+				Accept: "application/vnd.github+json",
+				"User-Agent": "lasius-ci-hook",
+				"X-GitHub-Api-Version": "2022-11-28",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(repositories?.length ? { repositories } : {}),
+		},
+	);
+	if (!res.ok) {
+		const detail = await res.text();
+		return Response.json({ error: `github ${res.status}`, detail: detail.slice(0, 300) }, { status: 502 });
+	}
+	const data = (await res.json()) as { token?: string; expires_at?: string };
+	return Response.json({ token: data.token, expires_at: data.expires_at });
+}
+
 interface WorkflowRunPayload {
 	action?: string;
 	repository?: { full_name?: string };
@@ -100,6 +212,9 @@ export default {
 		const url = new URL(request.url);
 		if (request.method === "GET" && url.pathname === "/health") {
 			return Response.json({ ok: true, service: "ci-hook" });
+		}
+		if (request.method === "POST" && url.pathname === "/token") {
+			return handleTokenMint(request, env);
 		}
 		if (request.method !== "POST" || url.pathname !== "/") {
 			return new Response("not found", { status: 404 });
