@@ -664,6 +664,7 @@ async function countUnversionedAnamnesis(db: DbClient) {
 		.select({ n: count() })
 		.from(consultations)
 		.where(and(isNotNull(consultations.anamnesis), isNull(consultations.anamnesisVersion)));
+	/* v8 ignore next -- count() always yields a row */
 	return rows[0]?.n ?? 0;
 }
 
