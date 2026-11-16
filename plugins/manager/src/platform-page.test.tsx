@@ -14,6 +14,11 @@ vi.mock("./views/PluginsPage.tsx", () => ({
 		return null;
 	},
 }));
+// No router in this suite — the real adapter needs TanStack Router
+// context; passthrough keeps the test about prop derivation only.
+vi.mock("nuqs/adapters/tanstack-router", () => ({
+	NuqsAdapter: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 import { ManagerPage } from "./platform-page.tsx";
 

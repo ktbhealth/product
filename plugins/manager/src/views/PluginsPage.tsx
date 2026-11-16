@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { parseAsIndex, parseAsString, parseAsStringLiteral, useQueryState } from "nuqs";
 import { useRouter } from "@tanstack/react-router";
 import { EllipsisVerticalIcon } from "lucide-react";
 
@@ -43,6 +44,7 @@ import {
 } from "@ktbhealth/ui/components/pagination";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Switch } from "@ktbhealth/ui/components/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import {
 	Table,
 	TableBody,
@@ -73,6 +75,7 @@ import {
 } from "../logic.ts";
 import { managerMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { getPluginConfigFn, setPluginConfigFn, setPluginEnabledFn } from "../fns.ts";
+import { PluginsMapPage } from "./PluginsMapPage.tsx";
 
 /** Server-resolved state for one plugin (PluginStates.entries row). */
 export interface PluginStateInfo {
@@ -175,9 +178,21 @@ export function PluginsPage({
 }: PluginsPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, managerMessages(locale));
 	const router = useRouter();
-	const [q, setQ] = useState("");
-	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-	const [page, setPage] = useState(0);
+	// Screen state in the URL (nuqs): `tab` selects table/map, `q` and
+	// `status` are shared by both panes, `page` paginates the table.
+	const [tab, setTab] = useQueryState(
+		"tab",
+		parseAsStringLiteral(["table", "map"]).withDefault("table"),
+	);
+	const [q, setQ] = useQueryState("q", parseAsString.withDefault(""));
+	const [statusParam, setStatusParam] = useQueryState(
+		"status",
+		parseAsStringLiteral(["enabled", "disabled", "blocked", "system"]),
+	);
+	// The table has no "system" option — a map-set value reads as all.
+	const statusFilter: StatusFilter =
+		statusParam === null || statusParam === "system" ? "all" : statusParam;
+	const [page, setPage] = useQueryState("page", parseAsIndex.withDefault(0));
 	const [configFor, setConfigFor] = useState<Plugin | null>(null);
 	const [pendingDisable, setPendingDisable] = useState<readonly string[] | null>(null);
 	const [busy, setBusy] = useState(false);
@@ -202,6 +217,12 @@ export function PluginsPage({
 		[plugins, enabledSet],
 	);
 
+	// Shared with the map pane so table and graph agree on status.
+	const missingById = useMemo(
+		() => new Map(rows.map(({ plugin, missing }) => [plugin.id, missing] as const)),
+		[rows],
+	);
+
 	const filtered = useMemo(() => {
 		const needle = q.trim().toLowerCase();
 		return rows.filter(({ plugin, enabled, missing }) => {
@@ -213,6 +234,7 @@ export function PluginsPage({
 				pluginDisplayName(plugin),
 				plugin.id,
 				plugin.meta?.description ?? "",
+				(plugin.meta?.keywords ?? []).join(" "),
 				contributionKinds(plugin).join(" "),
 			]
 				.join(" ")
@@ -274,138 +296,158 @@ export function PluginsPage({
 			{rows.length === 0 ? (
 				<p className="text-sm text-muted-foreground">{t.empty}</p>
 			) : (
-				<>
-					<DataToolbar
-						search={
-							<Input
-								type="search"
-								value={q}
-								onChange={(e) => {
-									setQ(e.target.value);
-									setPage(0);
-								}}
-								placeholder={t.searchPlaceholder}
-								aria-label={t.searchLabel}
-								className={SEARCH_CLS}
-							/>
-						}
-						filters={
-							<Select
-								items={[
-									{ value: "all", label: t.filterAll },
-									{ value: "enabled", label: t.statusEnabled },
-									{ value: "disabled", label: t.statusDisabled },
-									{ value: "blocked", label: t.statusBlocked },
-								]}
-								value={statusFilter}
-								onValueChange={(v) => {
-									setStatusFilter(String(v) as StatusFilter);
-									setPage(0);
-								}}
-							>
-								<SelectTrigger size="sm" aria-label={t.statusFilterLabel} className="w-36">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">{t.filterAll}</SelectItem>
-									<SelectItem value="enabled">{t.statusEnabled}</SelectItem>
-									<SelectItem value="disabled">{t.statusDisabled}</SelectItem>
-									<SelectItem value="blocked">{t.statusBlocked}</SelectItem>
-								</SelectContent>
-							</Select>
-						}
-						resultCount={
-							q.trim() === "" && statusFilter === "all"
-								? undefined
-								: t.filteredCount(filtered.length, rows.length)
-						}
-					/>
-					<div className="overflow-hidden rounded-lg border border-border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>{t.colPlugin}</TableHead>
-									<TableHead>{t.colKind}</TableHead>
-									<TableHead>{t.colStatus}</TableHead>
-									<TableHead className="w-12 text-right">{t.colActions}</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{paged.length === 0 ? (
+				<Tabs value={tab} onValueChange={(v) => void setTab(v as typeof tab)}>
+					<TabsList>
+						<TabsTrigger value="table">{t.tabTable}</TabsTrigger>
+						<TabsTrigger value="map">{t.tabMap}</TabsTrigger>
+					</TabsList>
+					<TabsContent value="table" className="mt-4">
+						<DataToolbar
+							search={
+								<Input
+									type="search"
+									value={q}
+									onChange={(e) => {
+										void setQ(e.target.value);
+										void setPage(0);
+									}}
+									placeholder={t.searchPlaceholder}
+									aria-label={t.searchLabel}
+									className={SEARCH_CLS}
+								/>
+							}
+							filters={
+								<Select
+									items={[
+										{ value: "all", label: t.filterAll },
+										{ value: "enabled", label: t.statusEnabled },
+										{ value: "disabled", label: t.statusDisabled },
+										{ value: "blocked", label: t.statusBlocked },
+									]}
+									value={statusFilter}
+									onValueChange={(v) => {
+										const next = String(v) as StatusFilter;
+										void setStatusParam(next === "all" ? null : next);
+										void setPage(0);
+									}}
+								>
+									<SelectTrigger size="sm" aria-label={t.statusFilterLabel} className="w-36">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">{t.filterAll}</SelectItem>
+										<SelectItem value="enabled">{t.statusEnabled}</SelectItem>
+										<SelectItem value="disabled">{t.statusDisabled}</SelectItem>
+										<SelectItem value="blocked">{t.statusBlocked}</SelectItem>
+									</SelectContent>
+								</Select>
+							}
+							resultCount={
+								q.trim() === "" && statusFilter === "all"
+									? undefined
+									: t.filteredCount(filtered.length, rows.length)
+							}
+						/>
+						<div className="overflow-hidden rounded-lg border border-border">
+							<Table>
+								<TableHeader>
 									<TableRow>
-										<TableCell colSpan={4} className="text-xs text-muted-foreground">
-											{t.noResults}
-										</TableCell>
+										<TableHead>{t.colPlugin}</TableHead>
+										<TableHead>{t.colKind}</TableHead>
+										<TableHead>{t.colStatus}</TableHead>
+										<TableHead className="w-12 text-right">{t.colActions}</TableHead>
 									</TableRow>
-								) : (
-									paged.map(({ plugin, enabled, missing }) => (
-										<PluginRow
-											key={plugin.id}
-											plugin={plugin}
-											enabled={enabled}
-											missing={missing}
-											busy={busy}
-											t={t}
-											statusLabel={statusLabel}
-											onToggle={(next) => onToggle(plugin, next)}
-											onConfigure={() => setConfigFor(plugin)}
-										/>
-									))
-								)}
-							</TableBody>
-						</Table>
-					</div>
-					{totalPages > 1 ? (
-						<Pagination className="justify-end">
-							<PaginationContent>
-								<PaginationItem>
-									<PaginationPrevious
-										text={t.paginationPrevious}
-										aria-disabled={safePage === 0}
-										className={safePage === 0 ? "pointer-events-none opacity-50" : undefined}
-										onClick={(e) => {
-											e.preventDefault();
-											if (safePage > 0) setPage(safePage - 1);
-										}}
-									/>
-								</PaginationItem>
-								{pageWindow(safePage, totalPages).map((p, i) =>
-									p === "…" ? (
-										<PaginationItem key={`gap-${i}`}>
-											<PaginationEllipsis />
-										</PaginationItem>
+								</TableHeader>
+								<TableBody>
+									{paged.length === 0 ? (
+										<TableRow>
+											<TableCell colSpan={4} className="text-xs text-muted-foreground">
+												{t.noResults}
+											</TableCell>
+										</TableRow>
 									) : (
-										<PaginationItem key={p}>
-											<PaginationLink
-												isActive={p === safePage}
-												aria-label={t.paginationPage(p + 1)}
-												onClick={(e) => {
-													e.preventDefault();
-													setPage(p);
-												}}
-											>
-												{p + 1}
-											</PaginationLink>
-										</PaginationItem>
-									),
-								)}
-								<PaginationItem>
-									<PaginationNext
-										text={t.paginationNext}
-										aria-disabled={safePage >= totalPages - 1}
-										className={
-											safePage >= totalPages - 1 ? "pointer-events-none opacity-50" : undefined
-										}
-										onClick={(e) => {
-											e.preventDefault();
-											if (safePage < totalPages - 1) setPage(safePage + 1);
-										}}
-									/>
-								</PaginationItem>
-							</PaginationContent>
-						</Pagination>
-					) : null}
-				</>
+										paged.map(({ plugin, enabled, missing }) => (
+											<PluginRow
+												key={plugin.id}
+												plugin={plugin}
+												enabled={enabled}
+												missing={missing}
+												busy={busy}
+												t={t}
+												statusLabel={statusLabel}
+												onToggle={(next) => onToggle(plugin, next)}
+												onConfigure={() => setConfigFor(plugin)}
+											/>
+										))
+									)}
+								</TableBody>
+							</Table>
+						</div>
+						{totalPages > 1 ? (
+							<Pagination className="justify-end">
+								<PaginationContent>
+									<PaginationItem>
+										<PaginationPrevious
+											text={t.paginationPrevious}
+											aria-disabled={safePage === 0}
+											className={safePage === 0 ? "pointer-events-none opacity-50" : undefined}
+											onClick={(e) => {
+												e.preventDefault();
+												if (safePage > 0) void setPage(safePage - 1);
+											}}
+										/>
+									</PaginationItem>
+									{pageWindow(safePage, totalPages).map((p, i) =>
+										p === "…" ? (
+											<PaginationItem key={`gap-${i}`}>
+												<PaginationEllipsis />
+											</PaginationItem>
+										) : (
+											<PaginationItem key={p}>
+												<PaginationLink
+													isActive={p === safePage}
+													aria-label={t.paginationPage(p + 1)}
+													onClick={(e) => {
+														e.preventDefault();
+														void setPage(p);
+													}}
+												>
+													{p + 1}
+												</PaginationLink>
+											</PaginationItem>
+										),
+									)}
+									<PaginationItem>
+										<PaginationNext
+											text={t.paginationNext}
+											aria-disabled={safePage >= totalPages - 1}
+											className={
+												safePage >= totalPages - 1 ? "pointer-events-none opacity-50" : undefined
+											}
+											onClick={(e) => {
+												e.preventDefault();
+												if (safePage < totalPages - 1) void setPage(safePage + 1);
+											}}
+										/>
+									</PaginationItem>
+								</PaginationContent>
+							</Pagination>
+						) : null}
+					</TabsContent>
+					<TabsContent value="map" className="mt-4">
+						{/* The canvas mounts lazily — leaving the tab unmounts
+						 * React Flow entirely, so the table path stays light. */}
+						<PluginsMapPage
+							plugins={plugins}
+							enabledSet={enabledSet}
+							missingById={missingById}
+							busy={busy}
+							t={t}
+							onToggle={onToggle}
+							onConfigure={setConfigFor}
+						/>
+					</TabsContent>
+				</Tabs>
 			)}
 
 			{configFor !== null && configFor.meta?.config !== undefined ? (
