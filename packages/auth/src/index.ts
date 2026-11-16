@@ -29,6 +29,33 @@ export interface AuthShape {
 /** Auth port: request → session. Impl lives in @ktb/auth-better. */
 export class Auth extends Context.Service<Auth, AuthShape>()("@ktb/auth/Auth") {}
 
+/** Shape of the managed API-key store (better-auth apiKey plugin
+ * adapter): outbound credentials for eval providers. `metadata`
+ * carries `{provider, secret}`; rows are per-user (`referenceId`). */
+export interface ApiKeysShape {
+	create(input: {
+		readonly name: string;
+		readonly referenceId: string;
+		readonly metadata: Record<string, unknown>;
+	}): Promise<{ readonly id: string }>;
+	list(referenceId: string): Promise<readonly ApiKeyRow[]>;
+	remove(keyId: string): Promise<void>;
+	getSecret(keyId: string): Promise<string | null>;
+}
+
+export interface ApiKeyRow {
+	readonly id: string;
+	readonly referenceId: string;
+	readonly name: string | null;
+	readonly start: string | null;
+	readonly enabled: boolean | null;
+	readonly metadata: string | null;
+}
+
+/** Managed API-key store port — impl lives in @ktb/auth-better over
+ * the apiKey plugin's `apikey` table. */
+export class ApiKeys extends Context.Service<ApiKeys, ApiKeysShape>()("@ktb/auth/ApiKeys") {}
+
 export {
 	Accounts,
 	type AccountRejection,
