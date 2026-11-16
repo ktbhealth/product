@@ -123,6 +123,22 @@ const DOMAINS = [
 		description: "Kernel-owned state: per-plugin persisted configuration.",
 		tables: ["plugin_state"],
 	},
+	{
+		id: "jobs",
+		title: "Jobs",
+		owner: "`packages/db/src/job-runs.ts` + `packages/jobs-port` + `plugins/jobs`",
+		description:
+			"Generic jobs backbone status projection — one row per enqueued job (queued/processing/done/failed), read by the /platform jobs console.",
+		tables: ["job_runs"],
+	},
+	{
+		id: "theme",
+		title: "Theme",
+		owner: "`plugins/theme`",
+		description:
+			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline stub.",
+		tables: ["theme_assets", "theme_definitions"],
+	},
 ];
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));
