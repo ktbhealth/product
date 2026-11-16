@@ -38,6 +38,7 @@
 		"@ktb/doctors": "workspace:*",
 		"@ktb/email": "workspace:*",
 		"@ktb/email-smtp": "workspace:*",
+		"@ktb/eval-validator": "workspace:*",
 		"@ktb/infra-cloudflare": "workspace:*",
 		"@ktb/interop": "workspace:*",
 		"@ktb/interop-fhir": "workspace:*",
