@@ -286,15 +286,23 @@ export const portalAudiencesFn = createServerFn({ method: "GET" }).handler(
 export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(async () => {
 	const user = await getSessionUser();
 	if (user === null) return [] as string[];
-	const denied: string[] = [];
-	for (const entry of portalPages.values()) {
-		const path = entry.page.path;
-		const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
-		if (guard === undefined) continue;
-		const allowed = await runAs(user, guard(path)).catch(() => false);
-		if (!allowed) denied.push(path);
-	}
-	return denied;
+	// Guards run in parallel — each is its own runAs, and serial awaits
+	// would multiply sidebar-load latency by the page count. Promise.all
+	// preserves portalPages iteration order; failures count as denied,
+	// same contract as pageData.
+	const checks = await Promise.all(
+		[...portalPages.values()].flatMap((entry) => {
+			const path = entry.page.path;
+			const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
+			if (guard === undefined) return [];
+			return [
+				runAs(user, guard(path))
+					.catch(() => false)
+					.then((ok) => ({ path, ok })),
+			];
+		}),
+	);
+	return checks.filter((check) => !check.ok).map((check) => check.path);
 });
 
 /**

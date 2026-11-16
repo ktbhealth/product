@@ -713,6 +713,18 @@ describe("server fns", () => {
 
 	it("consoleDeniedFn lists only paths whose guard denies the session", async () => {
 		headers.current = new Headers({ cookie });
+		// Two slow guards track overlap: if consoleDeniedFn awaited guards
+		// serially, `active` could never exceed 1.
+		let active = 0;
+		let maxActive = 0;
+		const slowGuard = () =>
+			Effect.gen(function* () {
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				yield* Effect.sleep("10 millis");
+				active -= 1;
+				return true;
+			});
 		const denied: PanelPage = {
 			id: "test.denied",
 			path: "/platform/test-denied",
@@ -737,22 +749,44 @@ describe("server fns", () => {
 			component: () => null,
 			guard: () => Effect.fail("boom") as never,
 		};
+		const slowA: PanelPage = {
+			id: "test.slow-a",
+			path: "/platform/test-slow-a",
+			component: () => null,
+			guard: slowGuard,
+		};
+		const slowB: PanelPage = {
+			id: "test.slow-b",
+			path: "/platform/test-slow-b",
+			component: () => null,
+			guard: slowGuard,
+		};
 		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set(denied.path, { page: denied, pluginId: "platform.routes" });
 		pages.set(allowed.path, { page: allowed, pluginId: "platform.routes" });
 		pages.set(unguarded.path, { page: unguarded, pluginId: "platform.routes" });
 		pages.set(exploding.path, { page: exploding, pluginId: "platform.routes" });
+		pages.set(slowA.path, { page: slowA, pluginId: "platform.routes" });
+		pages.set(slowB.path, { page: slowB, pluginId: "platform.routes" });
 		try {
 			const deniedPaths = await consoleDeniedFn();
 			expect(deniedPaths).toContain(denied.path);
 			expect(deniedPaths).toContain(exploding.path);
 			expect(deniedPaths).not.toContain(allowed.path);
 			expect(deniedPaths).not.toContain(unguarded.path);
+			expect(deniedPaths).not.toContain(slowA.path);
+			expect(deniedPaths).not.toContain(slowB.path);
+			// Guards run concurrently and output stays in portalPages
+			// iteration order even though the slow guards finish last.
+			expect(maxActive).toBeGreaterThanOrEqual(2);
+			expect(deniedPaths.indexOf(denied.path)).toBeLessThan(deniedPaths.indexOf(exploding.path));
 		} finally {
 			pages.delete(denied.path);
 			pages.delete(allowed.path);
 			pages.delete(unguarded.path);
 			pages.delete(exploding.path);
+			pages.delete(slowA.path);
+			pages.delete(slowB.path);
 		}
 		// Anonymous → empty list (nothing to filter; the menu never
 		// renders for them anyway).
