@@ -712,9 +712,9 @@ describe("ConsultationsLive", () => {
 		expect(find("consultations.consent.record", saved.id)).toMatchObject({
 			targetType: "consultation",
 		});
-		expect(find("consultations.audio.attach", saved.id)?.detail).toContain(
-			'"contentType":"audio/webm"',
-		);
+		// P-087 D1 sanitizer drops `contentType` ("content" substring) by
+		// design — `size` survives as the remaining non-sensitive flag.
+		expect(find("consultations.audio.attach", saved.id)?.detail).toContain('"size":5');
 		expect(find("consultations.audio.status", saved.id)?.detail).toContain('"status":"queued"');
 		const finished = find("consultations.finish", saved.id);
 		expect(finished).toMatchObject({
@@ -722,6 +722,70 @@ describe("ConsultationsLive", () => {
 			targetType: "consultation",
 		});
 		expect(finished?.detail).toContain('"status":"done"');
+	});
+
+	it("get audits consultations.read with patientId and the row's tenant", async () => {
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Read Audit", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		// Tenant-owned row (group 9 exists in the fixture DDL).
+		const tenantId = await createConsultation(
+			testDb,
+			{ userId: "u1", patientId: p!.id, source: "browser" },
+			9,
+		);
+		// Personal (tenantless) row read by its owner.
+		const personalId = await createConsultation(testDb, {
+			userId: "u1",
+			patientId: p!.id,
+			source: "browser",
+		});
+		await asUser(
+			"u1",
+			call((c) => c.get(personalId!, "u1")),
+		);
+		// Cross-owner admin read of the tenant row — tenant_id is
+		// row-authoritative, not the ambient scope.
+		await asUser(
+			"u1",
+			call((c) => c.get(tenantId!, "u1")),
+			"admin@x.com",
+		);
+
+		const rows = await testDb.select().from(adminAudit);
+		const find = (targetId: number) =>
+			rows.find((r) => r.action === "consultations.read" && r.targetId === String(targetId));
+		const personal = find(personalId!);
+		expect(personal).toMatchObject({
+			actorUserId: "u1",
+			targetType: "consultation",
+			tenantId: null,
+		});
+		expect(personal?.detail).toContain(`"patientId":${p!.id}`);
+		expect(personal?.detail).toContain('"via":"detail"');
+		expect(personal?.detail).not.toContain("Read Audit");
+		expect(find(tenantId!)).toMatchObject({ targetType: "consultation", tenantId: 9 });
+
+		// Missing rows and denied reads write nothing; getLive is not audited.
+		const before = rows.length;
+		expect(
+			await asUser(
+				"u1",
+				call((c) => c.get(999999, "u1")),
+			),
+		).toBeNull();
+		await expect(
+			asUser(
+				"u2",
+				call((c) => c.get(personalId!, "u2")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await asUser(
+			"u1",
+			call((c) => c.getLive(personalId!, "u1")),
+		);
+		expect(await testDb.select().from(adminAudit)).toHaveLength(before);
 	});
 });
 
@@ -1536,6 +1600,53 @@ describe("Consultations.history", () => {
 		expect(h?.count).toBe(1);
 		expect(h?.visits[0]?.chiefComplaint).toBeNull();
 		expect(h?.visits[0]?.plan).toBeNull();
+	});
+
+	it("audits history reads on the patient target (P-086)", async () => {
+		// Two fresh patients: identical `.read` emissions coalesce inside
+		// Audit.record (P-087 D3), so each via gets its own target.
+		const [p4] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Audit Hist", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		const [p5] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Audit Rows", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		await addConsultation({ patientId: p4!.id, anamnesis: doc("QA", "CA") });
+		await addConsultation({ patientId: p5!.id, anamnesis: doc("QB", "CB") });
+		await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.history(p4!.id, "u1")),
+		);
+		await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.historyRows(p5!.id, "u1")),
+		);
+		// A patient the caller cannot see is not a sensitive read — no entry.
+		await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.history(99999, "u1")),
+		);
+
+		const rows = await testDb.select().from(adminAudit);
+		const historyEntry = rows.find(
+			(r) => r.action === "consultations.history.read" && r.targetId === String(p4!.id),
+		);
+		expect(historyEntry).toMatchObject({ targetType: "patient" });
+		expect(historyEntry?.detail).toContain('"via":"history"');
+		expect(historyEntry?.detail).toContain(`"patientId":${p4!.id}`);
+		const rowsEntry = rows.find(
+			(r) => r.action === "consultations.history.read" && r.targetId === String(p5!.id),
+		);
+		expect(rowsEntry).toMatchObject({ targetType: "patient" });
+		expect(rowsEntry?.detail).toContain('"via":"history-rows"');
+		expect(rowsEntry?.detail).toContain(`"patientId":${p5!.id}`);
+		expect(
+			(await testDb.select().from(adminAudit)).filter(
+				(r) => r.action === "consultations.history.read" && r.targetId === "99999",
+			),
+		).toHaveLength(0);
 	});
 });
 

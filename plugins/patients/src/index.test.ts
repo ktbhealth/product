@@ -565,6 +565,60 @@ describe("PatientsLive", () => {
 			_tag: "Forbidden",
 		});
 	});
+
+	it("get audits the sensitive read scoped to the row's tenant (P-086)", async () => {
+		// Tenant-owned row (group 7) read cross-owner by a platform admin —
+		// the audit entry must carry the ROW's tenant_id, not ambient scope.
+		const tenantRow = await createPatient(db, "u2", fields("Tenant Read"), 7);
+		await asUser(
+			"u1",
+			call((p) => p.get("u1", tenantRow!.id)),
+			"admin@x.com",
+		);
+		// Personal row → tenant_id NULL.
+		const personal = await asUser(
+			"u1",
+			call((p) => p.create("u1", fields("Personal Read"))),
+		);
+		await asUser(
+			"u1",
+			call((p) => p.get("u1", personal!.id)),
+		);
+
+		const rows = await db.select().from(adminAudit);
+		const tenantEntry = rows.find(
+			(r) => r.action === "patients.read" && r.targetId === String(tenantRow!.id),
+		);
+		expect(tenantEntry).toMatchObject({
+			actorUserId: "u1",
+			targetType: "patient",
+			tenantId: 7,
+		});
+		const personalEntry = rows.find(
+			(r) => r.action === "patients.read" && r.targetId === String(personal!.id),
+		);
+		expect(personalEntry).toMatchObject({ targetType: "patient", tenantId: null });
+
+		// Missing rows, denied reads and list() write nothing.
+		const before = rows.length;
+		expect(
+			await asUser(
+				"u1",
+				call((p) => p.get("u1", 99999)),
+			),
+		).toBeNull();
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.get("u2", personal!.id)),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await asUser(
+			"u1",
+			call((p) => p.list("u1")),
+		);
+		expect(await db.select().from(adminAudit)).toHaveLength(before);
+	});
 });
 
 describe("plugins", () => {

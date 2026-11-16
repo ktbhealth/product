@@ -3,6 +3,7 @@ import { ScrollTextIcon } from "lucide-react";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { AuditPlatformPage } from "./platform-page.tsx";
+import { auditConfig } from "./config.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -54,8 +55,16 @@ export const plugins: readonly Plugin[] = [
 		id: "audit.services",
 		// Mirrors auditServicesPlugin.requiredDeps (server index.ts) —
 		// literal id: importing @ktb/platform would pull the server graph
-		// into the client bundle.
+		// into the client bundle. `meta` must match the server manifest
+		// verbatim (parity test) — including the config document so the
+		// /platform/plugins form renders; `configSchema` stays server-only.
 		requiredDeps: ["platform.admin"],
+		meta: {
+			name: "Audit",
+			description: "Append-only admin audit log with hash-chained entries",
+			icon: ScrollTextIcon,
+			config: auditConfig,
+		},
 	}),
 	auditChromePlugin,
 	auditPanelPlugin,

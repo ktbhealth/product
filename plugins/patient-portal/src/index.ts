@@ -5,6 +5,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { Forbidden, Principal } from "@ktb/authz";
+import { audit, auditServicesPlugin } from "@ktb/audit";
 import { Db, type DbClient } from "@ktb/db";
 import { consultations, doctors, entityDeks, patientAccess, patients, user } from "@ktb/db/schema";
 import { normalizeEmail } from "@ktb/patient-access";
@@ -92,6 +93,14 @@ export interface PortalConsultation {
 	readonly anamnesis: string | null;
 }
 
+/** Internal read shape: `getPortalConsultation` also returns the row's
+ * `tenant_id` so the service can scope the sensitive-read audit entry —
+ * it is stripped before the value crosses the wire (portal clients get
+ * {@link PortalConsultation} only). */
+export type PortalConsultationRead = PortalConsultation & {
+	readonly tenantId: number | null;
+};
+
 /** Rows of `consultations` a holder of an *active* link may see: the
  * ones with a saved record. A consultation still being transcribed, or
  * saved without an anamnesis, is not shown. */
@@ -139,13 +148,14 @@ export async function getPortalConsultation(
 	db: DbClient,
 	userId: string,
 	id: number,
-): Promise<PortalConsultation | null> {
+): Promise<PortalConsultationRead | null> {
 	const [row] = await db
 		.select({
 			id: consultations.id,
 			createdAt: consultations.createdAt,
 			anamnesis: consultations.anamnesis,
 			patientId: patients.id,
+			tenantId: consultations.tenantId,
 			patientName: patients.name,
 			doctorName: doctors.displayName,
 		})
@@ -326,9 +336,20 @@ export const PatientPortalLive = Layer.effect(
 			}),
 			consultation: Effect.fn("PatientPortal.consultation")(function* (id: number) {
 				const userId = yield* self("portal.read");
-				const consultation = yield* Effect.promise(() => getPortalConsultation(db, userId, id));
-				if (consultation === null)
-					return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+				const found = yield* Effect.promise(() => getPortalConsultation(db, userId, id));
+				if (found === null) return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+				// Sensitive-read audit (P-086 feed): same `consultations.read`
+				// action the clinician detail read emits, `via: "portal"`
+				// marks the patient-facing path; tenant_id is row-authoritative.
+				// ids only — the record content never leaves the audit log.
+				yield* audit({
+					action: "consultations.read",
+					targetType: "consultation",
+					targetId: found.id,
+					tenantId: found.tenantId,
+					detail: { patientId: found.patientId, via: "portal" },
+				});
+				const { tenantId: _tenantId, ...consultation } = found;
 				return consultation;
 			}),
 			awaitingInvites: Effect.fn("PatientPortal.awaitingInvites")(function* () {
@@ -360,6 +381,9 @@ export const PatientPortalLive = Layer.effect(
 
 export const patientPortalServicesPlugin = definePlugin({
 	id: "patient-portal.services",
+	// Audit resolves via serviceOption per call — the dep edge is an
+	// ordering hint only; absence of the audit plugin is legal.
+	optionalDeps: [auditServicesPlugin.id],
 	services: PatientPortalLive,
 });
 

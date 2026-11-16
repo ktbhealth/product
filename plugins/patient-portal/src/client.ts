@@ -7,6 +7,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "patient-portal.services" }),
+	// Mirrors patientPortalServicesPlugin.optionalDeps (server index.ts).
+	definePlugin({ id: "patient-portal.services", optionalDeps: ["audit.services"] }),
 	definePlugin({ id: "patient-portal.routes" }),
 ];

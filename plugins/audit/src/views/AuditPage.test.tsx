@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminAuditRow } from "../index.ts";
 import { AuditPage } from "./AuditPage.tsx";
@@ -225,6 +225,79 @@ describe("AuditPage", () => {
 		expect(screen.getByText("login")).toBeTruthy();
 		expect(screen.getByText("user")).toBeTruthy();
 		expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("hides the verify action unless onVerify is provided", () => {
+		render(<AuditPage entries={TWO_ROWS} total={2} locale="en" />);
+		expect(screen.queryByText("Verify chain")).toBeNull();
+	});
+
+	it("runs onVerify and shows the verified result", async () => {
+		const user = userEvent.setup();
+		const onVerify = vi.fn(
+			async (): Promise<{
+				status: "verified";
+				entries: number;
+				brokenAt: null;
+			}> => ({
+				status: "verified",
+				entries: 2,
+				brokenAt: null,
+			}),
+		);
+		render(<AuditPage entries={TWO_ROWS} total={2} locale="en" onVerify={onVerify} />);
+		await user.click(screen.getByText("Verify chain"));
+		expect(onVerify).toHaveBeenCalledTimes(1);
+		expect(await screen.findByText("Chain verified — 2 entries intact.")).toBeTruthy();
+	});
+
+	it("shows the tampered result with the broken row id", async () => {
+		const user = userEvent.setup();
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={2}
+				locale="en"
+				onVerify={async () => ({ status: "tampered", entries: 9, brokenAt: 42 })}
+			/>,
+		);
+		await user.click(screen.getByText("Verify chain"));
+		expect(await screen.findByText(/first broken link at entry #42/)).toBeTruthy();
+	});
+
+	it("shows the empty-log result", async () => {
+		const user = userEvent.setup();
+		render(
+			<AuditPage
+				entries={[]}
+				total={0}
+				locale="en"
+				onVerify={async () => ({ status: "empty", entries: 0, brokenAt: null })}
+			/>,
+		);
+		await user.click(screen.getByText("Verify chain"));
+		expect(await screen.findByText(/nothing to verify/)).toBeTruthy();
+	});
+
+	it("shows the failure message when onVerify resolves null or rejects", async () => {
+		const user = userEvent.setup();
+		const { rerender } = render(
+			<AuditPage entries={TWO_ROWS} total={2} locale="en" onVerify={async () => null} />,
+		);
+		await user.click(screen.getByText("Verify chain"));
+		expect(await screen.findByText(/Verification failed/)).toBeTruthy();
+		rerender(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={2}
+				locale="en"
+				onVerify={async () => {
+					throw new Error("boom");
+				}}
+			/>,
+		);
+		await user.click(screen.getByText("Verify chain"));
+		expect(await screen.findByText(/Verification failed/)).toBeTruthy();
 	});
 
 	it("searches rows with null target ids", () => {

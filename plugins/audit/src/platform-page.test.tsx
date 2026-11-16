@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: async () => {} }),
 }));
+
+const fns = vi.hoisted(() => ({
+	auditVerifyFn: vi.fn<() => Promise<null>>(async () => null),
+}));
+vi.mock("./fns.ts", () => fns);
 
 import type { PanelPageContext } from "@ktb/kernel";
 
@@ -46,5 +52,18 @@ describe("AuditPlatformPage", () => {
 	it("falls back to an empty page on malformed loader data", () => {
 		render(<AuditPlatformPage data={{ entries: "nope", total: "x" }} ctx={ctx} />);
 		expect(screen.getByText("No audit entries")).toBeTruthy();
+	});
+
+	it("enables the on-demand chain verification on the platform surface", async () => {
+		const user = userEvent.setup();
+		fns.auditVerifyFn.mockResolvedValueOnce({
+			status: "verified",
+			entries: 3,
+			brokenAt: null,
+		} as never);
+		render(<AuditPlatformPage data={{ entries: [row({})], total: 1 }} ctx={ctx} />);
+		await user.click(screen.getByText("Verify chain"));
+		expect(fns.auditVerifyFn).toHaveBeenCalledTimes(1);
+		expect(await screen.findByText("Chain verified — 3 entries intact.")).toBeTruthy();
 	});
 });
