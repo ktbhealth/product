@@ -838,6 +838,60 @@ describe("anamnesis integrity versioning (T-138)", () => {
 		expect(cols.hash).toBeNull();
 		await withoutIntegrity.dispose();
 	});
+
+	it("attachAnamnesis on a legacy row still succeeds without integrity", async () => {
+		// Pre-versioning row: the seed path calls recordVersion, which
+		// degrades to null when the integrity plugin is absent.
+		const withoutIntegrity = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb, makeEventBus(), false))),
+		);
+		const id = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesis: JSON.stringify({ legacy: true }) })
+			.where(eq(consultationsTable.id, id!));
+		await withoutIntegrity.runPromise(
+			Effect.provideService(
+				call((c) =>
+					c.attachAnamnesis("u1", {
+						consultationId: id!,
+						anamnesis: {} as SaveConsultationInput["anamnesis"],
+						engine: "e",
+					}),
+				),
+				Principal,
+				{ userId: "u1" },
+			),
+		);
+		expect(await versionsOf(id!)).toHaveLength(0);
+		const cols = await integrityColumns(id!);
+		expect(cols.version).toBeNull();
+		await withoutIntegrity.dispose();
+	});
+
+	it("adminBackfillVersions is a no-op without integrity", async () => {
+		// Legacy rows are scanned but recordVersion degrades to null —
+		// nothing is materialized and remaining stays non-zero.
+		const withoutIntegrity = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb, makeEventBus(), false))),
+		);
+		const legacyId = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesis: JSON.stringify({ old: "doc" }) })
+			.where(eq(consultationsTable.id, legacyId!));
+		const result = await withoutIntegrity.runPromise(
+			Effect.provideService(
+				call((c) => c.adminBackfillVersions()),
+				Principal,
+				{ userId: "u1", email: "admin@x.com" },
+			),
+		);
+		expect(result.backfilled).toBe(0);
+		expect(result.remaining).toBeGreaterThanOrEqual(1);
+		expect(await versionsOf(legacyId!)).toHaveLength(0);
+		await withoutIntegrity.dispose();
+	});
 });
 
 describe("audio pipeline", () => {
