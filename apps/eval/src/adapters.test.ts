@@ -135,6 +135,24 @@ describe("capabilityLayer selection", () => {
 		expect(() => capabilityLayer(ctx(), "eval", "bogus")).toThrow(/no adapter implementation/);
 	});
 
+	test("noop llm adapter returns canned generate + empty cleanup", async () => {
+		const layer = capabilityLayer(ctx(), "llm", "noop") as Layer.Layer<LlmPort>;
+		const out = await Effect.runPromise(
+			Effect.gen(function* () {
+				const llm = yield* LlmPort;
+				const g = yield* llm.generate(envelope);
+				const c = yield* llm.correct({ ...envelope, outputSchema: "EditList" });
+				return { g, c };
+			}).pipe(Effect.provide(layer)),
+		);
+		expect(out.g.text).toBe(CANNED_SCRIPT);
+		expect(out.g.record.engine).toBe("noop-llm");
+		expect(out.g.record.stage).toBe("script_gen");
+		expect(out.c.edits).toEqual({ ops: [] });
+		expect(out.c.record.engine).toBe("noop-llm");
+		expect(out.c.record.stage).toBe("cleanup");
+	});
+
 	test("non-stub adapters require their env vars", () => {
 		expect(() => capabilityLayer(ctx({ profile: "local" }), "llm", "acp")).toThrow(/EVAL_ACP_URL/);
 		expect(() => capabilityLayer(ctx({ profile: "local" }), "eval", "jev")).toThrow(/EVAL_JEV_URL/);
@@ -246,6 +264,24 @@ describe("capabilityLayer selection", () => {
 		expect(() => capabilityLayer(ctx({ env: { EVAL_ACP_URL: "" } }), "llm", "acp")).toThrow(
 			/EVAL_ACP_URL/,
 		);
+	});
+
+	test("systemone honours a valid timeout override", () => {
+		expect(() =>
+			capabilityLayer(
+				ctx({ env: { EVAL_SYSTEMONE_URL: "http://s", EVAL_SYSTEMONE_TIMEOUT_MS: "5000" } }),
+				"eval",
+				"systemone",
+			),
+		).not.toThrow();
+		// Empty-string timeout counts as unset.
+		expect(() =>
+			capabilityLayer(
+				ctx({ env: { EVAL_SYSTEMONE_URL: "http://s", EVAL_SYSTEMONE_TIMEOUT_MS: "" } }),
+				"eval",
+				"systemone",
+			),
+		).not.toThrow();
 	});
 });
 

@@ -582,7 +582,6 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/patients": "workspace:*",
         "@ktb/portal": "workspace:*",
-        "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
         "@tanstack/react-router": "1.170.46",
         "effect": "4.1.2",
         "lucide-react": "0.544.0",
@@ -708,7 +707,6 @@
       },
       "devDependencies": {
         "@ktb/auth": "workspace:*",
-        "@tanstack/react-router": "1.170.46",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
