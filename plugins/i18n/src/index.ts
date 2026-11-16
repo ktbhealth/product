@@ -36,7 +36,7 @@ export type {
 	SaveDraftInput,
 } from "./contract.ts";
 export { I18nAdminLive } from "./admin.ts";
-export { I18nRuntime, I18nRuntimeLive, STAMP_TTL_MS } from "./runtime.ts";
+export { I18nRuntime, I18nRuntimeLive, MAX_CACHE_ENTRIES, STAMP_TTL_MS } from "./runtime.ts";
 export { requestI18n, i18nLayerFor } from "./service.ts";
 export { catalogSlice, stableSlice } from "./slice.ts";
 export { resolveRequestI18n, DEFAULT_LOCALE } from "./request.ts";

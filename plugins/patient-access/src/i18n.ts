@@ -5,6 +5,7 @@
  * A locale catalog must implement `PatientAccessMessages` in full — a
  * missing key is a type error, not an English fallback at runtime.
  */
+import { paramMessage } from "@ktb/i18n";
 import type { PatientInviteErrorCode } from "./index.ts";
 import type { PatientAccessRelation, PatientAccessStatus } from "./schema.ts";
 
@@ -53,7 +54,7 @@ export interface PatientAccessMessages {
 }
 
 const en: PatientAccessMessages = {
-	title: (patient) => `Portal access — ${patient}`,
+	title: paramMessage("en", "Portal access — {patient}", ["patient"]),
 	description:
 		"Who can open this record in the patient portal: the patient, or someone responsible for them.",
 	back: "Back to the patient",
@@ -79,7 +80,9 @@ const en: PatientAccessMessages = {
 	},
 	zk: { lockedRecord: "Encrypted record" },
 	inviteEmail: {
-		subject: (doctor) => `${doctor} gave you access to the KTB Health patient portal`,
+		subject: paramMessage("en", "{doctor} gave you access to the KTB Health patient portal", [
+			"doctor",
+		]),
 		body: (doctor, patient, url, accept) =>
 			[
 				"Hello.",
@@ -98,7 +101,7 @@ const en: PatientAccessMessages = {
 };
 
 const ptBR: PatientAccessMessages = {
-	title: (patient) => `Acesso ao portal — ${patient}`,
+	title: paramMessage("pt-BR", "Acesso ao portal — {patient}", ["patient"]),
 	description:
 		"Quem pode abrir esta ficha no portal do paciente: o próprio paciente ou um responsável por ele.",
 	back: "Voltar ao paciente",
@@ -124,7 +127,9 @@ const ptBR: PatientAccessMessages = {
 	},
 	zk: { lockedRecord: "Registro criptografado" },
 	inviteEmail: {
-		subject: (doctor) => `${doctor} liberou seu acesso ao portal do paciente KTB Health`,
+		subject: paramMessage("pt-BR", "{doctor} liberou seu acesso ao portal do paciente KTB Health", [
+			"doctor",
+		]),
 		body: (doctor, patient, url, accept) =>
 			[
 				"Olá.",
@@ -143,7 +148,7 @@ const ptBR: PatientAccessMessages = {
 };
 
 const es: PatientAccessMessages = {
-	title: (patient) => `Acceso al portal — ${patient}`,
+	title: paramMessage("es", "Acceso al portal — {patient}", ["patient"]),
 	description:
 		"Quién puede abrir esta ficha en el portal del paciente: el propio paciente o un responsable.",
 	back: "Volver al paciente",
@@ -169,7 +174,9 @@ const es: PatientAccessMessages = {
 	},
 	zk: { lockedRecord: "Registro cifrado" },
 	inviteEmail: {
-		subject: (doctor) => `${doctor} te dio acceso al portal del paciente de KTB Health`,
+		subject: paramMessage("es", "{doctor} te dio acceso al portal del paciente de KTB Health", [
+			"doctor",
+		]),
 		body: (doctor, patient, url, accept) =>
 			[
 				"Hola.",

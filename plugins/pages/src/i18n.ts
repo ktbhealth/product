@@ -6,6 +6,8 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const PAGES_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4). */
@@ -85,7 +87,7 @@ const en: PagesMessages = {
 	contentHint: "Supports headings, lists, bold, italic, code and links.",
 	pathHint: "Starts with / — e.g. /about. /platform paths are reserved.",
 	deleteTitle: "Delete page",
-	deleteBody: (path) => `Delete "${path}"? This cannot be undone.`,
+	deleteBody: paramMessage("en", 'Delete "{path}"? This cannot be undone.', ["path"]),
 	deleteConfirm: "Delete",
 	saveFailed: "Could not save the page. Check the path and try again.",
 };
@@ -122,7 +124,7 @@ const ptBR: PagesMessages = {
 	contentHint: "Suporta títulos, listas, negrito, itálico, código e links.",
 	pathHint: "Começa com / — ex.: /sobre. Caminhos /platform são reservados.",
 	deleteTitle: "Excluir página",
-	deleteBody: (path) => `Excluir "${path}"? Esta ação não pode ser desfeita.`,
+	deleteBody: paramMessage("pt-BR", 'Excluir "{path}"? Esta ação não pode ser desfeita.', ["path"]),
 	deleteConfirm: "Excluir",
 	saveFailed: "Não foi possível salvar a página. Verifique o caminho e tente novamente.",
 };
@@ -159,7 +161,7 @@ const es: PagesMessages = {
 	contentHint: "Admite encabezados, listas, negrita, cursiva, código y enlaces.",
 	pathHint: "Empieza con / — p. ej. /acerca. Las rutas /platform están reservadas.",
 	deleteTitle: "Eliminar página",
-	deleteBody: (path) => `¿Eliminar "${path}"? Esta acción no se puede deshacer.`,
+	deleteBody: paramMessage("es", '¿Eliminar "{path}"? Esta acción no se puede deshacer.', ["path"]),
 	deleteConfirm: "Eliminar",
 	saveFailed: "No se pudo guardar la página. Revisa la ruta e inténtalo de nuevo.",
 };

@@ -6,6 +6,8 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const AUDIT_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4). */
@@ -48,7 +50,7 @@ const en: AuditMessages = {
 	searchLabel: "Search audit entries",
 	allActions: "All actions",
 	noMatch: "No entries match the filters.",
-	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 	colTime: "Time",
 	colActor: "Actor",
 	colAction: "Action",
@@ -73,7 +75,7 @@ const ptBR: AuditMessages = {
 	searchLabel: "Buscar entradas de auditoria",
 	allActions: "Todas as ações",
 	noMatch: "Nenhuma entrada corresponde aos filtros.",
-	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 	colTime: "Hora",
 	colActor: "Ator",
 	colAction: "Ação",
@@ -98,7 +100,7 @@ const es: AuditMessages = {
 	searchLabel: "Buscar entradas de auditoría",
 	allActions: "Todas las acciones",
 	noMatch: "Ninguna entrada coincide con los filtros.",
-	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 	colTime: "Hora",
 	colActor: "Actor",
 	colAction: "Acción",

@@ -6,6 +6,7 @@ import { run, runAs, serverPlugins } from "#/lib/platform.ts";
 import { Db } from "@ktb/db";
 import {
 	GLOBAL_SCOPE,
+	PSEUDO_LOCALE,
 	portalInstanceScope,
 	portalScope,
 	resolveRequestLocales,
@@ -13,6 +14,7 @@ import {
 } from "@ktb/i18n";
 import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
 import { currentLocale } from "./locale-context.ts";
+import { localeFromSearch } from "./i18n.ts";
 import {
 	appPages,
 	portalPages,
@@ -35,6 +37,7 @@ import { PluginStates } from "@ktb/platform/plugin-states";
 import type { Page, PanelPage } from "@ktb/kernel";
 import { Schema } from "effect";
 import { ensureDoctorUser, getDoctorUser, getSessionAccount, getSessionUser } from "#/lib/auth.ts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -94,8 +97,8 @@ export const pluginStatesFn = createServerFn({ method: "GET" }).handler(
  * visible chrome, same rules as the dispatcher) plus the resolved
  * catalog slice for the request's locale chain. Loader data carries
  * this to the client; `t()` there is a pure lookup — no second
- * roundtrip. Scope chain is GLOBAL_SCOPE until tenant/portal request
- * context lands (Phase 6).
+ * roundtrip. The scope chain resolves portal instance → tenant →
+ * global from the request path + tenant headers (PL-008 Phase 6).
  */
 export interface I18nRouteResult {
 	readonly locale: string;
@@ -105,10 +108,41 @@ export interface I18nRouteResult {
 	readonly catalog: Record<string, string>;
 }
 
+/**
+ * Safe degradation for the root-loader i18n payload: EVERY route runs
+ * this fn, so any resolution failure (i18n migration not yet applied,
+ * D1 error, registry problem) must not 500 the page. The empty
+ * base-locale slice lets copy fall back to English baselines
+ * downstream; the failure is logged, not swallowed.
+ */
+const EMPTY_I18N_ROUTE: I18nRouteResult = {
+	locale: DEFAULT_LOCALE,
+	locales: [DEFAULT_LOCALE],
+	enabledLocales: [DEFAULT_LOCALE],
+	namespaces: [],
+	catalog: {},
+};
+
 export const i18nRouteFn = createServerFn({ method: "GET" })
-	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
-	.handler(async ({ data: pathname }): Promise<I18nRouteResult> =>
-		run(
+	.validator((input: unknown) =>
+		Schema.decodeUnknownSync(
+			Schema.Union([
+				Schema.String,
+				Schema.Struct({
+					pathname: Schema.String,
+					search: Schema.optionalKey(Schema.String),
+				}),
+			]),
+		)(input),
+	)
+	.handler(async ({ data: input }): Promise<I18nRouteResult> => {
+		// Callers may pass a bare pathname or { pathname, search } — the
+		// search carries the page's `?locale=` QA override, which the
+		// server-fn RPC request URL would otherwise lose on client-side
+		// navigation (the ALS locale only sees the RPC request's own URL).
+		const pathname = typeof input === "string" ? input : input.pathname;
+		const search = typeof input === "string" ? undefined : input.search;
+		return run(
 			Effect.gen(function* () {
 				const states = yield* PluginStates;
 				const enabled = yield* states.enabledIds();
@@ -116,20 +150,26 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				const visible = enabledPlugins(serverPlugins, enabledIdSet({ enabled: [...enabled] }));
 				const namespaces = namespacesForPath(visible, pathname);
 				const enabledLocales = yield* Effect.promise(() => listEnabledLocales(database));
+				const portalId = portalInstanceIdForPath(pathname);
+				const instanceId = portalId === "platform" ? undefined : portalId;
 				// Portal scope + pinned locale (PL-008 Phase 6): /portal/<id>
 				// paths resolve portal-scoped copy, and an instance that
 				// declares `locale` overrides the visitor's cookie locale.
 				// "/platform" is the console shell, not a portal instance.
-				const portalId = portalInstanceIdForPath(pathname);
-				const instanceId = portalId === "platform" ? undefined : portalId;
-				const pinned = instanceId
-					? findPortalInstance(portalInstances, instanceId)?.instance.locale
-					: undefined;
-				const locales = resolveRequestLocales(
-					pinned ?? currentLocale(),
-					enabledLocales,
-					DEFAULT_LOCALE,
-				);
+				// The instance must actually resolve in the registry —
+				// otherwise an arbitrary /portal/<seg> would let anonymous
+				// callers probe portal-scoped rows (scope gating, L2).
+				const instance =
+					instanceId === undefined ? undefined : findPortalInstance(portalInstances, instanceId);
+				const pinned = instance?.instance.locale;
+				// Page `?locale=` (passed by the loader) wins over the
+				// ALS/cookie locale on client-side navigations; portal
+				// pinned locale still wins over both.
+				const requested =
+					pinned ??
+					(search === undefined ? undefined : localeFromSearch(search)) ??
+					currentLocale();
+				const locales = resolveRequestLocales(requested, enabledLocales, DEFAULT_LOCALE);
 				// Tenant scope binding (PL-008 Phase 6): same selector +
 				// resolver pipeline runAs uses — tenant headers + session
 				// account → TenantResolver → scope chain. Anonymous/
@@ -155,10 +195,10 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 							});
 				const tenantId = tenant === null ? null : tenantScopeId(tenant);
 				const scopeChain =
-					instanceId !== undefined
+					instance !== undefined
 						? tenantId !== null
-							? portalScope(String(tenantId), instanceId)
-							: portalInstanceScope(instanceId)
+							? portalScope(String(tenantId), instance.instance.id)
+							: portalInstanceScope(instance.instance.id)
 						: tenantId !== null
 							? tenantScope(String(tenantId))
 							: GLOBAL_SCOPE;
@@ -170,13 +210,23 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				return {
 					locale: locales.locales[0] ?? DEFAULT_LOCALE,
 					locales: locales.locales,
-					enabledLocales: enabledLocales.map((l) => l.code),
+					enabledLocales: enabledLocales.filter((l) => l.code !== PSEUDO_LOCALE).map((l) => l.code),
 					namespaces: [...namespaces],
 					catalog: stableSlice(catalog),
 				};
-			}),
-		),
-	);
+			}).pipe(
+				// Failure isolation (H3): this fn feeds the root loader on
+				// every route — degrade to the empty base-locale slice on
+				// ANY failure (failures AND defects) instead of 500ing.
+				Effect.catchCause((cause) =>
+					Effect.logWarning("i18nRouteFn resolution failed; serving base-locale fallback", {
+						pathname,
+						cause: Cause.pretty(cause),
+					}).pipe(Effect.as(EMPTY_I18N_ROUTE)),
+				),
+			),
+		);
+	});
 
 /**
  * /platform console gate: true when the session user's email is in the

@@ -78,7 +78,7 @@ export default defineConfig({
 			// apps/web/messages + the generated manifest.
 			"ci:i18n": {
 				command:
-					"bun run gen:i18n-manifest && bun run gen:i18n-types && git add -N packages/i18n/src && git diff --exit-code -- packages/i18n/src/manifest.gen.ts packages/i18n/src/types.gen.ts",
+					"bun run gen:i18n-manifest && bun run gen:i18n-types && git add -N packages/i18n/src && git diff --exit-code -- packages/i18n/src/manifest.gen.ts packages/i18n/src/types.gen.ts packages/i18n/src/baseline.gen.ts",
 			},
 			// Regenerate apps/web/worker-configuration.d.ts (wrangler
 			// types) and fail on drift. No build needed — reads

@@ -321,6 +321,7 @@ export type I18nKey =
 	| "audit.detailTitle"
 	| "audit.emptyDescription"
 	| "audit.emptyTitle"
+	| "audit.filteredCount"
 	| "audit.noMatch"
 	| "audit.noTarget"
 	| "audit.noTenant"
@@ -357,13 +358,17 @@ export type I18nKey =
 	| "consultations.admin.colPatient"
 	| "consultations.admin.colSource"
 	| "consultations.admin.colStatus"
+	| "consultations.admin.count"
 	| "consultations.admin.createDescription"
 	| "consultations.admin.createFailed"
 	| "consultations.admin.createTitle"
 	| "consultations.admin.deleteConfirm"
+	| "consultations.admin.deleteDescription"
+	| "consultations.admin.deleteFor"
 	| "consultations.admin.deleteTitle"
 	| "consultations.admin.emptyDescription"
 	| "consultations.admin.emptyTitle"
+	| "consultations.admin.filteredCount"
 	| "consultations.admin.newConsultation"
 	| "consultations.admin.noMatch"
 	| "consultations.admin.none"
@@ -378,9 +383,11 @@ export type I18nKey =
 	| "consultations.admin.transcriptLabel"
 	| "consultations.admin.transcriptPlaceholder"
 	| "consultations.common.anamnesis"
+	| "consultations.common.consultationId"
 	| "consultations.common.consultations"
 	| "consultations.common.copy"
 	| "consultations.common.downloadPdf"
+	| "consultations.common.engine"
 	| "consultations.common.noTranscript"
 	| "consultations.common.transcript"
 	| "consultations.confidence.alta"
@@ -388,7 +395,10 @@ export type I18nKey =
 	| "consultations.confidence.media"
 	| "consultations.detail.anamnesisCopied"
 	| "consultations.detail.back"
+	| "consultations.detail.complaint"
 	| "consultations.detail.consentNotRecorded"
+	| "consultations.detail.consentRecorded"
+	| "consultations.detail.evidence"
 	| "consultations.detail.historyNote"
 	| "consultations.detail.inProgress"
 	| "consultations.detail.integrity.tampered"
@@ -398,7 +408,10 @@ export type I18nKey =
 	| "consultations.detail.noAnamnesisTitle"
 	| "consultations.detail.notReported"
 	| "consultations.detail.openPatientRecord"
+	| "consultations.detail.plan"
+	| "consultations.detail.previousConsultations"
 	| "consultations.list.consent"
+	| "consultations.list.count"
 	| "consultations.list.downloadPdfTitle"
 	| "consultations.list.emptyDescription"
 	| "consultations.list.emptyTitle"
@@ -423,12 +436,17 @@ export type I18nKey =
 	| "consultations.newConsultation.accessHint"
 	| "consultations.newConsultation.accessInvalidEmail"
 	| "consultations.newConsultation.accessNotNow"
+	| "consultations.newConsultation.accessQuestion"
 	| "consultations.newConsultation.accessSend"
+	| "consultations.newConsultation.accessSent"
+	| "consultations.newConsultation.accessUnsent"
 	| "consultations.newConsultation.addPatient"
 	| "consultations.newConsultation.agePlaceholder"
 	| "consultations.newConsultation.ageRequired"
 	| "consultations.newConsultation.anamnesisCopied"
+	| "consultations.newConsultation.audioUploadFailed"
 	| "consultations.newConsultation.botDescription"
+	| "consultations.newConsultation.botFailed"
 	| "consultations.newConsultation.botInCall"
 	| "consultations.newConsultation.callEnded"
 	| "consultations.newConsultation.captureTab"
@@ -439,19 +457,25 @@ export type I18nKey =
 	| "consultations.newConsultation.consentDeclaration"
 	| "consultations.newConsultation.consentRequiredDictation"
 	| "consultations.newConsultation.consentRequiredRecording"
+	| "consultations.newConsultation.consultationLive"
 	| "consultations.newConsultation.consultationText"
 	| "consultations.newConsultation.copyFailed"
 	| "consultations.newConsultation.dialogErrorTitle"
 	| "consultations.newConsultation.dialogSavedTitle"
 	| "consultations.newConsultation.dialogUpdatedTitle"
+	| "consultations.newConsultation.dictatingHint"
 	| "consultations.newConsultation.dictationDescription"
+	| "consultations.newConsultation.engineLabel"
 	| "consultations.newConsultation.generate"
+	| "consultations.newConsultation.generatedFrom"
 	| "consultations.newConsultation.generating"
 	| "consultations.newConsultation.gotIt"
 	| "consultations.newConsultation.lowConfidenceReprocessing"
+	| "consultations.newConsultation.micHint"
 	| "consultations.newConsultation.modeDictation"
 	| "consultations.newConsultation.modeLabel"
 	| "consultations.newConsultation.modeLive"
+	| "consultations.newConsultation.modelUnavailable"
 	| "consultations.newConsultation.newPatientAgeLabel"
 	| "consultations.newConsultation.newPatientNameLabel"
 	| "consultations.newConsultation.newPatientPlaceholder"
@@ -471,16 +495,19 @@ export type I18nKey =
 	| "consultations.newConsultation.steps.prepare"
 	| "consultations.newConsultation.steps.review"
 	| "consultations.newConsultation.steps.transcribe"
+	| "consultations.newConsultation.stopDictation"
 	| "consultations.newConsultation.stopMic"
 	| "consultations.newConsultation.stopTab"
 	| "consultations.newConsultation.subtitle"
 	| "consultations.newConsultation.tabBot"
+	| "consultations.newConsultation.tabHint"
 	| "consultations.newConsultation.tabRecord"
 	| "consultations.newConsultation.tabUpload"
 	| "consultations.newConsultation.teleconsultLinkLabel"
 	| "consultations.newConsultation.title"
 	| "consultations.newConsultation.transcribingLive"
 	| "consultations.newConsultation.transcriptionFailed"
+	| "consultations.newConsultation.transcriptionFailedStatus"
 	| "consultations.newConsultation.transcriptionRedone"
 	| "consultations.newConsultation.transcriptPlaceholder"
 	| "consultations.newConsultation.unlinked"
@@ -712,9 +739,11 @@ export type I18nKey =
 	| "groups.colRole"
 	| "groups.colSlug"
 	| "groups.confirmDelete"
+	| "groups.count"
 	| "groups.createSubmit"
 	| "groups.createTitle"
 	| "groups.deleteGroup"
+	| "groups.deleteGroupDescription"
 	| "groups.deleteGroupTitle"
 	| "groups.emptyDescription"
 	| "groups.emptyTitle"
@@ -722,6 +751,7 @@ export type I18nKey =
 	| "groups.fieldMeta"
 	| "groups.fieldName"
 	| "groups.fieldSlug"
+	| "groups.filteredCount"
 	| "groups.kindPlaceholder"
 	| "groups.memberIdPlaceholder"
 	| "groups.memberKindLabel"
@@ -734,6 +764,7 @@ export type I18nKey =
 	| "groups.noMatch"
 	| "groups.none"
 	| "groups.removeMember"
+	| "groups.removeMemberDescription"
 	| "groups.removeMemberTitle"
 	| "groups.rolePlaceholder"
 	| "groups.saveError"
@@ -752,7 +783,10 @@ export type I18nKey =
 	| "invites.errors.invalid"
 	| "invites.errors.invalid_name"
 	| "invites.errors.invalid_password"
+	| "invites.existsBody"
 	| "invites.existsTitle"
+	| "invites.heading.patient"
+	| "invites.heading.secretary"
 	| "invites.invalidBody"
 	| "invites.invalidTitle"
 	| "invites.metaTitle"
@@ -761,6 +795,7 @@ export type I18nKey =
 	| "invites.pending"
 	| "invites.signIn"
 	| "invites.submit"
+	| "jobs.activeCount"
 	| "jobs.cancel"
 	| "jobs.colActions"
 	| "jobs.colConsultation"
@@ -768,6 +803,8 @@ export type I18nKey =
 	| "jobs.colError"
 	| "jobs.colPatient"
 	| "jobs.colStatus"
+	| "jobs.consultationRef"
+	| "jobs.description"
 	| "jobs.emptyAllDescription"
 	| "jobs.emptyAllTitle"
 	| "jobs.emptyFilteredDescription"
@@ -789,6 +826,7 @@ export type I18nKey =
 	| "jobs.queueTitle"
 	| "jobs.retry"
 	| "jobs.retryConfirm"
+	| "jobs.retryDescription"
 	| "jobs.retryError"
 	| "jobs.retryTitle"
 	| "jobs.searchLabel"
@@ -799,6 +837,7 @@ export type I18nKey =
 	| "jobs.statusQueued"
 	| "jobs.statusStored"
 	| "jobs.storageDescription"
+	| "jobs.storageObjects"
 	| "jobs.storageTitle"
 	| "jobs.storageTruncated"
 	| "jobs.title"
@@ -808,25 +847,31 @@ export type I18nKey =
 	| "jobs.webhooksTitle"
 	| "jobs.webhooksUnavailable"
 	| "manager.actionConfigure"
+	| "manager.blockedHint"
 	| "manager.cancel"
 	| "manager.colActions"
 	| "manager.colKind"
 	| "manager.colPlugin"
 	| "manager.colStatus"
+	| "manager.configDialogTitle"
 	| "manager.configSave"
 	| "manager.configSaved"
 	| "manager.configSaveFailed"
 	| "manager.confirmDisableAction"
+	| "manager.confirmDisableBody"
 	| "manager.confirmDisableTitle"
 	| "manager.description"
 	| "manager.disable"
 	| "manager.empty"
 	| "manager.enable"
 	| "manager.filterAll"
+	| "manager.filteredCount"
 	| "manager.noResults"
 	| "manager.paginationNext"
+	| "manager.paginationPage"
 	| "manager.paginationPrevious"
 	| "manager.requiredMark"
+	| "manager.rowActions"
 	| "manager.searchLabel"
 	| "manager.searchPlaceholder"
 	| "manager.statusBlocked"
@@ -839,9 +884,11 @@ export type I18nKey =
 	| "notifications.empty"
 	| "notifications.label"
 	| "notifications.markAllRead"
+	| "notifications.markAsRead"
 	| "notifications.titles.consultationCreated"
 	| "notifications.titles.patientCreated"
 	| "notifications.titles.patientDeleted"
+	| "notifications.unreadCount"
 	| "pages.cancel"
 	| "pages.colActions"
 	| "pages.colNav"
@@ -852,6 +899,7 @@ export type I18nKey =
 	| "pages.contentHint"
 	| "pages.create"
 	| "pages.delete"
+	| "pages.deleteBody"
 	| "pages.deleteConfirm"
 	| "pages.deleteTitle"
 	| "pages.description"
@@ -886,6 +934,7 @@ export type I18nKey =
 	| "patient-access.errors.invalid_email"
 	| "patient-access.errors.invalid_relation"
 	| "patient-access.invite"
+	| "patient-access.inviteEmail.subject"
 	| "patient-access.pending"
 	| "patient-access.relation.guardian"
 	| "patient-access.relation.self"
@@ -894,6 +943,7 @@ export type I18nKey =
 	| "patient-access.status.active"
 	| "patient-access.status.invited"
 	| "patient-access.status.pending"
+	| "patient-access.title"
 	| "patient-access.zk.lockedRecord"
 	| "patient-portal.back"
 	| "patient-portal.chooseHint"
@@ -907,6 +957,7 @@ export type I18nKey =
 	| "patient-portal.emptyDescription"
 	| "patient-portal.emptyTitle"
 	| "patient-portal.errors.failed"
+	| "patient-portal.greeting"
 	| "patient-portal.open"
 	| "patient-portal.patient"
 	| "patient-portal.profilesTitle"
@@ -930,18 +981,23 @@ export type I18nKey =
 	| "patient-portal.zk.lockedHint"
 	| "patient-portal.zk.lockedRecord"
 	| "patients.actions.delete"
+	| "patients.actions.deleteFor"
 	| "patients.actions.edit"
+	| "patients.actions.editFor"
+	| "patients.actions.menu"
 	| "patients.admin.colActions"
 	| "patients.admin.colCreated"
 	| "patients.admin.colId"
 	| "patients.admin.colName"
 	| "patients.admin.colOwner"
 	| "patients.admin.colOwnerId"
+	| "patients.admin.count"
 	| "patients.admin.createDescription"
 	| "patients.admin.createFailed"
 	| "patients.admin.createTitle"
 	| "patients.admin.emptyDescription"
 	| "patients.admin.emptyTitle"
+	| "patients.admin.filteredCount"
 	| "patients.admin.newPatient"
 	| "patients.admin.noMatch"
 	| "patients.admin.none"
@@ -952,6 +1008,7 @@ export type I18nKey =
 	| "patients.admin.showSynthetic"
 	| "patients.admin.syntheticBadge"
 	| "patients.admin.title"
+	| "patients.age"
 	| "patients.common.inactive"
 	| "patients.common.newPatient"
 	| "patients.common.noDemographics"
@@ -983,6 +1040,7 @@ export type I18nKey =
 	| "patients.errors.invalid_phone"
 	| "patients.errors.invalid_state"
 	| "patients.errors.name_required"
+	| "patients.errors.too_long"
 	| "patients.fields.birthDate"
 	| "patients.fields.cep"
 	| "patients.fields.city"
@@ -1017,6 +1075,7 @@ export type I18nKey =
 	| "patients.form.activeRecord"
 	| "patients.form.ageLabel"
 	| "patients.form.agePlaceholder"
+	| "patients.form.approximate"
 	| "patients.form.cancel"
 	| "patients.form.editTitle"
 	| "patients.form.fixFields"
@@ -1036,6 +1095,7 @@ export type I18nKey =
 	| "patients.language.fr"
 	| "patients.language.it"
 	| "patients.language.pt-BR"
+	| "patients.list.count"
 	| "patients.list.emptyDescription"
 	| "patients.list.emptyTitle"
 	| "patients.list.incomplete"
@@ -1056,12 +1116,15 @@ export type I18nKey =
 	| "patients.raceColor.04"
 	| "patients.raceColor.05"
 	| "patients.raceColor.99"
+	| "patients.remove.acknowledge"
+	| "patients.remove.body"
 	| "patients.remove.cancel"
 	| "patients.remove.checking"
 	| "patients.remove.confirm"
 	| "patients.remove.failed"
 	| "patients.remove.noConsultations"
 	| "patients.remove.title"
+	| "patients.remove.withConsultations"
 	| "patients.sections.address"
 	| "patients.sections.contact"
 	| "patients.sections.emergency"
@@ -1091,6 +1154,7 @@ export type I18nKey =
 	| "rbac.colTenant"
 	| "rbac.createRole"
 	| "rbac.deleteRole"
+	| "rbac.deleteRoleDescription"
 	| "rbac.deleteRoleTitle"
 	| "rbac.editRole"
 	| "rbac.editRoleSubmit"
@@ -1118,6 +1182,7 @@ export type I18nKey =
 	| "rbac.tenantId"
 	| "rbac.title"
 	| "rbac.unassign"
+	| "rbac.unassignDescription"
 	| "rbac.unassignTitle"
 	| "secretaries.description"
 	| "secretaries.emailLabel"
@@ -1127,6 +1192,8 @@ export type I18nKey =
 	| "secretaries.errors.invalid_email"
 	| "secretaries.errors.self"
 	| "secretaries.invite"
+	| "secretaries.inviteEmail.body"
+	| "secretaries.inviteEmail.subject"
 	| "secretaries.login.confirmPassword"
 	| "secretaries.login.descIn"
 	| "secretaries.login.descUp"
@@ -1162,8 +1229,10 @@ export type I18nKey =
 	| "tenant.colName"
 	| "tenant.colRole"
 	| "tenant.colSlug"
+	| "tenant.count"
 	| "tenant.emptyDescription"
 	| "tenant.emptyTitle"
+	| "tenant.filteredCount"
 	| "tenant.memberIdPlaceholder"
 	| "tenant.membersEmpty"
 	| "tenant.membersLoading"
@@ -1171,6 +1240,7 @@ export type I18nKey =
 	| "tenant.noMatch"
 	| "tenant.none"
 	| "tenant.removeMember"
+	| "tenant.removeMemberDescription"
 	| "tenant.removeMemberTitle"
 	| "tenant.roleAdmin"
 	| "tenant.roleMember"
@@ -1266,8 +1336,10 @@ export type I18nKey =
 	| "users.colRole"
 	| "users.colStatus"
 	| "users.colVerified"
+	| "users.count"
 	| "users.emptyDescription"
 	| "users.emptyTitle"
+	| "users.filteredCount"
 	| "users.no"
 	| "users.noMatch"
 	| "users.none"
@@ -1281,6 +1353,7 @@ export type I18nKey =
 	| "users.statusSuspended"
 	| "users.suspend"
 	| "users.suspendConfirm"
+	| "users.suspendDescription"
 	| "users.suspendTitle"
 	| "users.title"
 	| "users.yes";
@@ -1630,6 +1703,13 @@ export interface I18nTypedT {
 	(key: "audit.detailTitle"): Effect.Effect<string>;
 	(key: "audit.emptyDescription"): Effect.Effect<string>;
 	(key: "audit.emptyTitle"): Effect.Effect<string>;
+	(
+		key: "audit.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "audit.noMatch"): Effect.Effect<string>;
 	(key: "audit.noTarget"): Effect.Effect<string>;
 	(key: "audit.noTenant"): Effect.Effect<string>;
@@ -1666,13 +1746,38 @@ export interface I18nTypedT {
 	(key: "consultations.admin.colPatient"): Effect.Effect<string>;
 	(key: "consultations.admin.colSource"): Effect.Effect<string>;
 	(key: "consultations.admin.colStatus"): Effect.Effect<string>;
+	(
+		key: "consultations.admin.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.admin.createDescription"): Effect.Effect<string>;
 	(key: "consultations.admin.createFailed"): Effect.Effect<string>;
 	(key: "consultations.admin.createTitle"): Effect.Effect<string>;
 	(key: "consultations.admin.deleteConfirm"): Effect.Effect<string>;
+	(
+		key: "consultations.admin.deleteDescription",
+		params: {
+			label: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.admin.deleteFor",
+		params: {
+			label: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.admin.deleteTitle"): Effect.Effect<string>;
 	(key: "consultations.admin.emptyDescription"): Effect.Effect<string>;
 	(key: "consultations.admin.emptyTitle"): Effect.Effect<string>;
+	(
+		key: "consultations.admin.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.admin.newConsultation"): Effect.Effect<string>;
 	(key: "consultations.admin.noMatch"): Effect.Effect<string>;
 	(key: "consultations.admin.none"): Effect.Effect<string>;
@@ -1687,9 +1792,21 @@ export interface I18nTypedT {
 	(key: "consultations.admin.transcriptLabel"): Effect.Effect<string>;
 	(key: "consultations.admin.transcriptPlaceholder"): Effect.Effect<string>;
 	(key: "consultations.common.anamnesis"): Effect.Effect<string>;
+	(
+		key: "consultations.common.consultationId",
+		params: {
+			id: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.common.consultations"): Effect.Effect<string>;
 	(key: "consultations.common.copy"): Effect.Effect<string>;
 	(key: "consultations.common.downloadPdf"): Effect.Effect<string>;
+	(
+		key: "consultations.common.engine",
+		params: {
+			engine: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.common.noTranscript"): Effect.Effect<string>;
 	(key: "consultations.common.transcript"): Effect.Effect<string>;
 	(key: "consultations.confidence.alta"): Effect.Effect<string>;
@@ -1697,7 +1814,25 @@ export interface I18nTypedT {
 	(key: "consultations.confidence.media"): Effect.Effect<string>;
 	(key: "consultations.detail.anamnesisCopied"): Effect.Effect<string>;
 	(key: "consultations.detail.back"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.complaint",
+		params: {
+			text: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.detail.consentNotRecorded"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.consentRecorded",
+		params: {
+			date: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.detail.evidence",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.detail.historyNote"): Effect.Effect<string>;
 	(key: "consultations.detail.inProgress"): Effect.Effect<string>;
 	(key: "consultations.detail.integrity.tampered"): Effect.Effect<string>;
@@ -1707,7 +1842,25 @@ export interface I18nTypedT {
 	(key: "consultations.detail.noAnamnesisTitle"): Effect.Effect<string>;
 	(key: "consultations.detail.notReported"): Effect.Effect<string>;
 	(key: "consultations.detail.openPatientRecord"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.plan",
+		params: {
+			text: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.detail.previousConsultations",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.list.consent"): Effect.Effect<string>;
+	(
+		key: "consultations.list.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.list.downloadPdfTitle"): Effect.Effect<string>;
 	(key: "consultations.list.emptyDescription"): Effect.Effect<string>;
 	(key: "consultations.list.emptyTitle"): Effect.Effect<string>;
@@ -1732,12 +1885,42 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.accessHint"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessInvalidEmail"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessNotNow"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessQuestion",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessSend"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessSent",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.accessUnsent",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.addPatient"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.agePlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.ageRequired"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.anamnesisCopied"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.audioUploadFailed",
+		params: {
+			message: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.botDescription"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.botFailed",
+		params: {
+			status: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.botInCall"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.callEnded"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.captureTab"): Effect.Effect<string>;
@@ -1748,19 +1931,56 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.consentDeclaration"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.consentRequiredDictation"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.consentRequiredRecording"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.consultationLive",
+		params: {
+			id: unknown;
+			status: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.consultationText"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.copyFailed"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dialogErrorTitle"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dialogSavedTitle"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dialogUpdatedTitle"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.dictatingHint",
+		params: {
+			elapsed: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.dictationDescription"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.engineLabel",
+		params: {
+			engine: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.generate"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.generatedFrom",
+		params: {
+			source: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.generating"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.gotIt"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.lowConfidenceReprocessing"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.micHint",
+		params: {
+			doctor: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.modeDictation"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.modeLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.modeLive"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.modelUnavailable",
+		params: {
+			message: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientAgeLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientNameLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.newPatientPlaceholder"): Effect.Effect<string>;
@@ -1780,16 +2000,34 @@ export interface I18nTypedT {
 	(key: "consultations.newConsultation.steps.prepare"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.steps.review"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.steps.transcribe"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.stopDictation",
+		params: {
+			elapsed: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.stopMic"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.stopTab"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.subtitle"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.tabBot"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.tabHint",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.tabRecord"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.tabUpload"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.teleconsultLinkLabel"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.title"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.transcribingLive"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.transcriptionFailed"): Effect.Effect<string>;
+	(
+		key: "consultations.newConsultation.transcriptionFailedStatus",
+		params: {
+			status: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.newConsultation.transcriptionRedone"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.transcriptPlaceholder"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.unlinked"): Effect.Effect<string>;
@@ -2021,9 +2259,21 @@ export interface I18nTypedT {
 	(key: "groups.colRole"): Effect.Effect<string>;
 	(key: "groups.colSlug"): Effect.Effect<string>;
 	(key: "groups.confirmDelete"): Effect.Effect<string>;
+	(
+		key: "groups.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "groups.createSubmit"): Effect.Effect<string>;
 	(key: "groups.createTitle"): Effect.Effect<string>;
 	(key: "groups.deleteGroup"): Effect.Effect<string>;
+	(
+		key: "groups.deleteGroupDescription",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "groups.deleteGroupTitle"): Effect.Effect<string>;
 	(key: "groups.emptyDescription"): Effect.Effect<string>;
 	(key: "groups.emptyTitle"): Effect.Effect<string>;
@@ -2031,6 +2281,13 @@ export interface I18nTypedT {
 	(key: "groups.fieldMeta"): Effect.Effect<string>;
 	(key: "groups.fieldName"): Effect.Effect<string>;
 	(key: "groups.fieldSlug"): Effect.Effect<string>;
+	(
+		key: "groups.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "groups.kindPlaceholder"): Effect.Effect<string>;
 	(key: "groups.memberIdPlaceholder"): Effect.Effect<string>;
 	(key: "groups.memberKindLabel"): Effect.Effect<string>;
@@ -2043,6 +2300,12 @@ export interface I18nTypedT {
 	(key: "groups.noMatch"): Effect.Effect<string>;
 	(key: "groups.none"): Effect.Effect<string>;
 	(key: "groups.removeMember"): Effect.Effect<string>;
+	(
+		key: "groups.removeMemberDescription",
+		params: {
+			memberId: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "groups.removeMemberTitle"): Effect.Effect<string>;
 	(key: "groups.rolePlaceholder"): Effect.Effect<string>;
 	(key: "groups.saveError"): Effect.Effect<string>;
@@ -2061,7 +2324,25 @@ export interface I18nTypedT {
 	(key: "invites.errors.invalid"): Effect.Effect<string>;
 	(key: "invites.errors.invalid_name"): Effect.Effect<string>;
 	(key: "invites.errors.invalid_password"): Effect.Effect<string>;
+	(
+		key: "invites.existsBody",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "invites.existsTitle"): Effect.Effect<string>;
+	(
+		key: "invites.heading.patient",
+		params: {
+			inviter: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "invites.heading.secretary",
+		params: {
+			inviter: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "invites.invalidBody"): Effect.Effect<string>;
 	(key: "invites.invalidTitle"): Effect.Effect<string>;
 	(key: "invites.metaTitle"): Effect.Effect<string>;
@@ -2070,6 +2351,12 @@ export interface I18nTypedT {
 	(key: "invites.pending"): Effect.Effect<string>;
 	(key: "invites.signIn"): Effect.Effect<string>;
 	(key: "invites.submit"): Effect.Effect<string>;
+	(
+		key: "jobs.activeCount",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "jobs.cancel"): Effect.Effect<string>;
 	(key: "jobs.colActions"): Effect.Effect<string>;
 	(key: "jobs.colConsultation"): Effect.Effect<string>;
@@ -2077,6 +2364,18 @@ export interface I18nTypedT {
 	(key: "jobs.colError"): Effect.Effect<string>;
 	(key: "jobs.colPatient"): Effect.Effect<string>;
 	(key: "jobs.colStatus"): Effect.Effect<string>;
+	(
+		key: "jobs.consultationRef",
+		params: {
+			id: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "jobs.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "jobs.emptyAllDescription"): Effect.Effect<string>;
 	(key: "jobs.emptyAllTitle"): Effect.Effect<string>;
 	(key: "jobs.emptyFilteredDescription"): Effect.Effect<string>;
@@ -2098,6 +2397,12 @@ export interface I18nTypedT {
 	(key: "jobs.queueTitle"): Effect.Effect<string>;
 	(key: "jobs.retry"): Effect.Effect<string>;
 	(key: "jobs.retryConfirm"): Effect.Effect<string>;
+	(
+		key: "jobs.retryDescription",
+		params: {
+			ref: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "jobs.retryError"): Effect.Effect<string>;
 	(key: "jobs.retryTitle"): Effect.Effect<string>;
 	(key: "jobs.searchLabel"): Effect.Effect<string>;
@@ -2108,6 +2413,12 @@ export interface I18nTypedT {
 	(key: "jobs.statusQueued"): Effect.Effect<string>;
 	(key: "jobs.statusStored"): Effect.Effect<string>;
 	(key: "jobs.storageDescription"): Effect.Effect<string>;
+	(
+		key: "jobs.storageObjects",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "jobs.storageTitle"): Effect.Effect<string>;
 	(key: "jobs.storageTruncated"): Effect.Effect<string>;
 	(key: "jobs.title"): Effect.Effect<string>;
@@ -2117,25 +2428,62 @@ export interface I18nTypedT {
 	(key: "jobs.webhooksTitle"): Effect.Effect<string>;
 	(key: "jobs.webhooksUnavailable"): Effect.Effect<string>;
 	(key: "manager.actionConfigure"): Effect.Effect<string>;
+	(
+		key: "manager.blockedHint",
+		params: {
+			deps: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "manager.cancel"): Effect.Effect<string>;
 	(key: "manager.colActions"): Effect.Effect<string>;
 	(key: "manager.colKind"): Effect.Effect<string>;
 	(key: "manager.colPlugin"): Effect.Effect<string>;
 	(key: "manager.colStatus"): Effect.Effect<string>;
+	(
+		key: "manager.configDialogTitle",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "manager.configSave"): Effect.Effect<string>;
 	(key: "manager.configSaved"): Effect.Effect<string>;
 	(key: "manager.configSaveFailed"): Effect.Effect<string>;
 	(key: "manager.confirmDisableAction"): Effect.Effect<string>;
+	(
+		key: "manager.confirmDisableBody",
+		params: {
+			names: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "manager.confirmDisableTitle"): Effect.Effect<string>;
 	(key: "manager.description"): Effect.Effect<string>;
 	(key: "manager.disable"): Effect.Effect<string>;
 	(key: "manager.empty"): Effect.Effect<string>;
 	(key: "manager.enable"): Effect.Effect<string>;
 	(key: "manager.filterAll"): Effect.Effect<string>;
+	(
+		key: "manager.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "manager.noResults"): Effect.Effect<string>;
 	(key: "manager.paginationNext"): Effect.Effect<string>;
+	(
+		key: "manager.paginationPage",
+		params: {
+			page: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "manager.paginationPrevious"): Effect.Effect<string>;
 	(key: "manager.requiredMark"): Effect.Effect<string>;
+	(
+		key: "manager.rowActions",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "manager.searchLabel"): Effect.Effect<string>;
 	(key: "manager.searchPlaceholder"): Effect.Effect<string>;
 	(key: "manager.statusBlocked"): Effect.Effect<string>;
@@ -2148,9 +2496,21 @@ export interface I18nTypedT {
 	(key: "notifications.empty"): Effect.Effect<string>;
 	(key: "notifications.label"): Effect.Effect<string>;
 	(key: "notifications.markAllRead"): Effect.Effect<string>;
+	(
+		key: "notifications.markAsRead",
+		params: {
+			title: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "notifications.titles.consultationCreated"): Effect.Effect<string>;
 	(key: "notifications.titles.patientCreated"): Effect.Effect<string>;
 	(key: "notifications.titles.patientDeleted"): Effect.Effect<string>;
+	(
+		key: "notifications.unreadCount",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "pages.cancel"): Effect.Effect<string>;
 	(key: "pages.colActions"): Effect.Effect<string>;
 	(key: "pages.colNav"): Effect.Effect<string>;
@@ -2161,6 +2521,12 @@ export interface I18nTypedT {
 	(key: "pages.contentHint"): Effect.Effect<string>;
 	(key: "pages.create"): Effect.Effect<string>;
 	(key: "pages.delete"): Effect.Effect<string>;
+	(
+		key: "pages.deleteBody",
+		params: {
+			path: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "pages.deleteConfirm"): Effect.Effect<string>;
 	(key: "pages.deleteTitle"): Effect.Effect<string>;
 	(key: "pages.description"): Effect.Effect<string>;
@@ -2195,6 +2561,12 @@ export interface I18nTypedT {
 	(key: "patient-access.errors.invalid_email"): Effect.Effect<string>;
 	(key: "patient-access.errors.invalid_relation"): Effect.Effect<string>;
 	(key: "patient-access.invite"): Effect.Effect<string>;
+	(
+		key: "patient-access.inviteEmail.subject",
+		params: {
+			doctor: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patient-access.pending"): Effect.Effect<string>;
 	(key: "patient-access.relation.guardian"): Effect.Effect<string>;
 	(key: "patient-access.relation.self"): Effect.Effect<string>;
@@ -2203,6 +2575,12 @@ export interface I18nTypedT {
 	(key: "patient-access.status.active"): Effect.Effect<string>;
 	(key: "patient-access.status.invited"): Effect.Effect<string>;
 	(key: "patient-access.status.pending"): Effect.Effect<string>;
+	(
+		key: "patient-access.title",
+		params: {
+			patient: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patient-access.zk.lockedRecord"): Effect.Effect<string>;
 	(key: "patient-portal.back"): Effect.Effect<string>;
 	(key: "patient-portal.chooseHint"): Effect.Effect<string>;
@@ -2216,6 +2594,12 @@ export interface I18nTypedT {
 	(key: "patient-portal.emptyDescription"): Effect.Effect<string>;
 	(key: "patient-portal.emptyTitle"): Effect.Effect<string>;
 	(key: "patient-portal.errors.failed"): Effect.Effect<string>;
+	(
+		key: "patient-portal.greeting",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patient-portal.open"): Effect.Effect<string>;
 	(key: "patient-portal.patient"): Effect.Effect<string>;
 	(key: "patient-portal.profilesTitle"): Effect.Effect<string>;
@@ -2239,18 +2623,49 @@ export interface I18nTypedT {
 	(key: "patient-portal.zk.lockedHint"): Effect.Effect<string>;
 	(key: "patient-portal.zk.lockedRecord"): Effect.Effect<string>;
 	(key: "patients.actions.delete"): Effect.Effect<string>;
+	(
+		key: "patients.actions.deleteFor",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.actions.edit"): Effect.Effect<string>;
+	(
+		key: "patients.actions.editFor",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "patients.actions.menu",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.admin.colActions"): Effect.Effect<string>;
 	(key: "patients.admin.colCreated"): Effect.Effect<string>;
 	(key: "patients.admin.colId"): Effect.Effect<string>;
 	(key: "patients.admin.colName"): Effect.Effect<string>;
 	(key: "patients.admin.colOwner"): Effect.Effect<string>;
 	(key: "patients.admin.colOwnerId"): Effect.Effect<string>;
+	(
+		key: "patients.admin.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.admin.createDescription"): Effect.Effect<string>;
 	(key: "patients.admin.createFailed"): Effect.Effect<string>;
 	(key: "patients.admin.createTitle"): Effect.Effect<string>;
 	(key: "patients.admin.emptyDescription"): Effect.Effect<string>;
 	(key: "patients.admin.emptyTitle"): Effect.Effect<string>;
+	(
+		key: "patients.admin.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.admin.newPatient"): Effect.Effect<string>;
 	(key: "patients.admin.noMatch"): Effect.Effect<string>;
 	(key: "patients.admin.none"): Effect.Effect<string>;
@@ -2261,6 +2676,13 @@ export interface I18nTypedT {
 	(key: "patients.admin.showSynthetic"): Effect.Effect<string>;
 	(key: "patients.admin.syntheticBadge"): Effect.Effect<string>;
 	(key: "patients.admin.title"): Effect.Effect<string>;
+	(
+		key: "patients.age",
+		params: {
+			approx: string;
+			years: number;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.common.inactive"): Effect.Effect<string>;
 	(key: "patients.common.newPatient"): Effect.Effect<string>;
 	(key: "patients.common.noDemographics"): Effect.Effect<string>;
@@ -2292,6 +2714,12 @@ export interface I18nTypedT {
 	(key: "patients.errors.invalid_phone"): Effect.Effect<string>;
 	(key: "patients.errors.invalid_state"): Effect.Effect<string>;
 	(key: "patients.errors.name_required"): Effect.Effect<string>;
+	(
+		key: "patients.errors.too_long",
+		params: {
+			max: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.fields.birthDate"): Effect.Effect<string>;
 	(key: "patients.fields.cep"): Effect.Effect<string>;
 	(key: "patients.fields.city"): Effect.Effect<string>;
@@ -2326,6 +2754,12 @@ export interface I18nTypedT {
 	(key: "patients.form.activeRecord"): Effect.Effect<string>;
 	(key: "patients.form.ageLabel"): Effect.Effect<string>;
 	(key: "patients.form.agePlaceholder"): Effect.Effect<string>;
+	(
+		key: "patients.form.approximate",
+		params: {
+			date: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.form.cancel"): Effect.Effect<string>;
 	(key: "patients.form.editTitle"): Effect.Effect<string>;
 	(key: "patients.form.fixFields"): Effect.Effect<string>;
@@ -2345,6 +2779,12 @@ export interface I18nTypedT {
 	(key: "patients.language.fr"): Effect.Effect<string>;
 	(key: "patients.language.it"): Effect.Effect<string>;
 	(key: "patients.language.pt-BR"): Effect.Effect<string>;
+	(
+		key: "patients.list.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.list.emptyDescription"): Effect.Effect<string>;
 	(key: "patients.list.emptyTitle"): Effect.Effect<string>;
 	(key: "patients.list.incomplete"): Effect.Effect<string>;
@@ -2365,12 +2805,30 @@ export interface I18nTypedT {
 	(key: "patients.raceColor.04"): Effect.Effect<string>;
 	(key: "patients.raceColor.05"): Effect.Effect<string>;
 	(key: "patients.raceColor.99"): Effect.Effect<string>;
+	(
+		key: "patients.remove.acknowledge",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "patients.remove.body",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.remove.cancel"): Effect.Effect<string>;
 	(key: "patients.remove.checking"): Effect.Effect<string>;
 	(key: "patients.remove.confirm"): Effect.Effect<string>;
 	(key: "patients.remove.failed"): Effect.Effect<string>;
 	(key: "patients.remove.noConsultations"): Effect.Effect<string>;
 	(key: "patients.remove.title"): Effect.Effect<string>;
+	(
+		key: "patients.remove.withConsultations",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "patients.sections.address"): Effect.Effect<string>;
 	(key: "patients.sections.contact"): Effect.Effect<string>;
 	(key: "patients.sections.emergency"): Effect.Effect<string>;
@@ -2400,6 +2858,12 @@ export interface I18nTypedT {
 	(key: "rbac.colTenant"): Effect.Effect<string>;
 	(key: "rbac.createRole"): Effect.Effect<string>;
 	(key: "rbac.deleteRole"): Effect.Effect<string>;
+	(
+		key: "rbac.deleteRoleDescription",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "rbac.deleteRoleTitle"): Effect.Effect<string>;
 	(key: "rbac.editRole"): Effect.Effect<string>;
 	(key: "rbac.editRoleSubmit"): Effect.Effect<string>;
@@ -2427,6 +2891,13 @@ export interface I18nTypedT {
 	(key: "rbac.tenantId"): Effect.Effect<string>;
 	(key: "rbac.title"): Effect.Effect<string>;
 	(key: "rbac.unassign"): Effect.Effect<string>;
+	(
+		key: "rbac.unassignDescription",
+		params: {
+			subjectId: unknown;
+			roleName: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "rbac.unassignTitle"): Effect.Effect<string>;
 	(key: "secretaries.description"): Effect.Effect<string>;
 	(key: "secretaries.emailLabel"): Effect.Effect<string>;
@@ -2436,6 +2907,20 @@ export interface I18nTypedT {
 	(key: "secretaries.errors.invalid_email"): Effect.Effect<string>;
 	(key: "secretaries.errors.self"): Effect.Effect<string>;
 	(key: "secretaries.invite"): Effect.Effect<string>;
+	(
+		key: "secretaries.inviteEmail.body",
+		params: {
+			doctor: unknown;
+			accept: string;
+			url: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "secretaries.inviteEmail.subject",
+		params: {
+			doctor: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "secretaries.login.confirmPassword"): Effect.Effect<string>;
 	(key: "secretaries.login.descIn"): Effect.Effect<string>;
 	(key: "secretaries.login.descUp"): Effect.Effect<string>;
@@ -2471,8 +2956,21 @@ export interface I18nTypedT {
 	(key: "tenant.colName"): Effect.Effect<string>;
 	(key: "tenant.colRole"): Effect.Effect<string>;
 	(key: "tenant.colSlug"): Effect.Effect<string>;
+	(
+		key: "tenant.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "tenant.emptyDescription"): Effect.Effect<string>;
 	(key: "tenant.emptyTitle"): Effect.Effect<string>;
+	(
+		key: "tenant.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "tenant.memberIdPlaceholder"): Effect.Effect<string>;
 	(key: "tenant.membersEmpty"): Effect.Effect<string>;
 	(key: "tenant.membersLoading"): Effect.Effect<string>;
@@ -2480,6 +2978,12 @@ export interface I18nTypedT {
 	(key: "tenant.noMatch"): Effect.Effect<string>;
 	(key: "tenant.none"): Effect.Effect<string>;
 	(key: "tenant.removeMember"): Effect.Effect<string>;
+	(
+		key: "tenant.removeMemberDescription",
+		params: {
+			memberId: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "tenant.removeMemberTitle"): Effect.Effect<string>;
 	(key: "tenant.roleAdmin"): Effect.Effect<string>;
 	(key: "tenant.roleMember"): Effect.Effect<string>;
@@ -2575,8 +3079,21 @@ export interface I18nTypedT {
 	(key: "users.colRole"): Effect.Effect<string>;
 	(key: "users.colStatus"): Effect.Effect<string>;
 	(key: "users.colVerified"): Effect.Effect<string>;
+	(
+		key: "users.count",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "users.emptyDescription"): Effect.Effect<string>;
 	(key: "users.emptyTitle"): Effect.Effect<string>;
+	(
+		key: "users.filteredCount",
+		params: {
+			shown: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "users.no"): Effect.Effect<string>;
 	(key: "users.noMatch"): Effect.Effect<string>;
 	(key: "users.none"): Effect.Effect<string>;
@@ -2590,6 +3107,12 @@ export interface I18nTypedT {
 	(key: "users.statusSuspended"): Effect.Effect<string>;
 	(key: "users.suspend"): Effect.Effect<string>;
 	(key: "users.suspendConfirm"): Effect.Effect<string>;
+	(
+		key: "users.suspendDescription",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "users.suspendTitle"): Effect.Effect<string>;
 	(key: "users.title"): Effect.Effect<string>;
 	(key: "users.yes"): Effect.Effect<string>;

@@ -46,6 +46,14 @@ export type ValidationIssue =
 
 const HINTS: ReadonlySet<string> = new Set(["number", "date", "datetime", "relative", "list"]);
 const MARKUP_RE = /<\/?[a-zA-Z][^>]*>/;
+/** Defense-in-depth for `rich` templates: active/embed markup and
+ * inline event handlers are refused at parse time. Admin-side
+ * sanitization (RichTextEditor contract) is the primary control. */
+const RICH_FORBIDDEN_RE = /<\s*(?:script|iframe|object|embed|style)\b|\bon\w+\s*=|javascript\s*:/i;
+/** Hard bounds so adversarial templates can't blow the stack or CPU:
+ * case bodies nest recursively in signature/render/pseudo passes. */
+const MAX_TEMPLATE_LENGTH = 10_000;
+const MAX_NESTING_DEPTH = 8;
 
 interface Token {
 	readonly kind: "text" | "param";
@@ -113,6 +121,9 @@ const PARAM_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Tokenize + parse a template into tokens; null on syntax error. */
 const tokenize = (template: string): Token[] | { error: string } => {
+	if (template.length > MAX_TEMPLATE_LENGTH) {
+		return { error: `template exceeds ${MAX_TEMPLATE_LENGTH} characters` };
+	}
 	const tokens: Token[] = [];
 	let i = 0;
 	let textStart = 0;
@@ -153,77 +164,125 @@ const tokenize = (template: string): Token[] | { error: string } => {
 	return tokens;
 };
 
+/**
+ * Collect the declared param signature, recursing into plural/select
+ * case bodies — MF1 allows nested params there (`{a,select,x{{b}}}`),
+ * and renderTokens resolves them at render time, so the signature must
+ * see them too. Deduped by name, first occurrence wins. Bodies that
+ * fail to tokenize are a syntax error; nesting past
+ * MAX_NESTING_DEPTH is rejected.
+ */
+const collectSignature = (tokens: readonly Token[]): MessageParam[] | { error: string } => {
+	const params: MessageParam[] = [];
+	const seen = new Set<string>();
+	const visit = (toks: readonly Token[], depth: number): string | null => {
+		for (const t of toks) {
+			if (t.kind !== "param" || t.name === undefined) continue;
+			if (!seen.has(t.name)) {
+				seen.add(t.name);
+				params.push({
+					name: t.name,
+					hint: t.hint,
+					cases: t.cases?.map((c) => c.key),
+					plural: t.plural === true ? true : undefined,
+				});
+			}
+			if (t.cases === undefined) continue;
+			if (depth + 1 > MAX_NESTING_DEPTH) {
+				return `nesting deeper than ${MAX_NESTING_DEPTH} levels`;
+			}
+			for (const c of t.cases) {
+				const inner = tokenize(c.body);
+				if (!Array.isArray(inner)) return inner.error;
+				const err = visit(inner, depth + 1);
+				if (err !== null) return err;
+			}
+		}
+		return null;
+	};
+	const error = visit(tokens, 0);
+	return error === null ? params : { error };
+};
+
 /** Parse a stored template + declared kind into a validated shape. */
 export const parseMessage = (kind: MessageKind, template: string): ParseResult => {
 	if (kind === "text" && MARKUP_RE.test(template)) {
 		return { ok: false, error: "markup is not allowed in text messages" };
 	}
+	if (kind === "rich" && RICH_FORBIDDEN_RE.test(template)) {
+		return { ok: false, error: "forbidden markup in rich message" };
+	}
 	const tokens = tokenize(template);
 	if (!Array.isArray(tokens)) return { ok: false, error: tokens.error };
-	const params: MessageParam[] = [];
-	const seen = new Set<string>();
-	for (const t of tokens) {
-		if (t.kind !== "param" || t.name === undefined || seen.has(t.name)) continue;
-		seen.add(t.name);
-		params.push({
-			name: t.name,
-			hint: t.hint,
-			cases: t.cases?.map((c) => c.key),
-			plural: t.plural === true ? true : undefined,
-		});
-	}
-	return { ok: true, message: { kind, template, params } };
+	const sig = collectSignature(tokens);
+	if (!Array.isArray(sig)) return { ok: false, error: sig.error };
+	return { ok: true, message: { kind, template, params: sig } };
 };
 
 /** Extract the declared param signature from a raw template (no kind check). */
 export const paramSignature = (template: string): MessageParam[] | { error: string } => {
 	const tokens = tokenize(template);
 	if (!Array.isArray(tokens)) return { error: tokens.error };
-	const params: MessageParam[] = [];
-	const seen = new Set<string>();
-	for (const t of tokens) {
-		if (t.kind !== "param" || t.name === undefined || seen.has(t.name)) continue;
-		seen.add(t.name);
-		params.push({
-			name: t.name,
-			hint: t.hint,
-			cases: t.cases?.map((c) => c.key),
-			plural: t.plural === true ? true : undefined,
-		});
-	}
-	return params;
+	return collectSignature(tokens);
 };
 
+/** String() itself can throw (hostile toString/Symbol.toPrimitive) —
+ * last-resort coercion that can never throw. */
+const safeString = (value: unknown): string => {
+	try {
+		return String(value);
+	} catch {
+		return "[unprintable]";
+	}
+};
+
+/**
+ * Format one param value. Never throws: JSON.stringify rejects
+ * circular refs and BigInt, Intl.* constructors reject exotic locales
+ * and values — a throw here would surface as a defect (HTTP 500) on
+ * every render, so failures degrade to a plain string.
+ */
 const formatParam = (value: unknown, hint: ParamHint | undefined, locale: string): string => {
 	if (value === null || value === undefined) return "";
-	switch (hint) {
-		case "number":
-			return typeof value === "number"
-				? new Intl.NumberFormat(locale).format(value)
-				: String(value);
-		case "date":
-			return value instanceof Date
-				? new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(value)
-				: String(value);
-		case "datetime":
-			return value instanceof Date
-				? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(value)
-				: String(value);
-		case "relative":
-			return value instanceof Date
-				? new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(
-						Math.round((value.getTime() - Date.now()) / 1000),
-						"second",
-					)
-				: String(value);
-		case "list":
-			return Array.isArray(value)
-				? new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(
-						value.map(String),
-					)
-				: String(value);
-		default:
-			return typeof value === "object" ? JSON.stringify(value) : String(value);
+	try {
+		switch (hint) {
+			case "number":
+				return typeof value === "number"
+					? new Intl.NumberFormat(locale).format(value)
+					: safeString(value);
+			case "date":
+				return value instanceof Date
+					? new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(value)
+					: safeString(value);
+			case "datetime":
+				return value instanceof Date
+					? new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(
+							value,
+						)
+					: safeString(value);
+			case "relative":
+				return value instanceof Date
+					? new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(
+							Math.round((value.getTime() - Date.now()) / 1000),
+							"second",
+						)
+					: safeString(value);
+			case "list":
+				return Array.isArray(value)
+					? new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(
+							value.map(safeString),
+						)
+					: safeString(value);
+			default: {
+				if (typeof value !== "object") return safeString(value);
+				// JSON.stringify can also return undefined (toJSON →
+				// undefined) despite the string return type.
+				const json: unknown = JSON.stringify(value);
+				return typeof json === "string" ? json : safeString(value);
+			}
+		}
+	} catch {
+		return safeString(value);
 	}
 };
 
@@ -232,6 +291,7 @@ const renderTokens = (
 	params: Readonly<Record<string, unknown>>,
 	locale: string,
 	pound?: string,
+	depth = 0,
 ): string => {
 	let out = "";
 	for (const t of tokens) {
@@ -248,22 +308,31 @@ const renderTokens = (
 			// Exact "=N" keys take precedence over categories.
 			let key: string | undefined;
 			if (t.plural && typeof value === "number") {
-				const exact = t.cases.find((c) => c.key === `=${value}`);
-				key = exact?.key ?? new Intl.PluralRules(locale).select(value) ?? undefined;
+				try {
+					const exact = t.cases.find((c) => c.key === `=${value}`);
+					key = exact?.key ?? new Intl.PluralRules(locale).select(value) ?? undefined;
+				} catch {
+					// Exotic locale — fall back to the select/other path.
+					key = undefined;
+				}
 			} else {
-				key = String(value ?? "");
+				key = safeString(value ?? "");
 			}
 			// `other` is the required ICU fallback when no case matches.
 			const body =
 				t.cases.find((c) => c.key === key)?.body ?? t.cases.find((c) => c.key === "other")?.body;
-			if (body !== undefined) {
+			if (body !== undefined && depth < MAX_NESTING_DEPTH) {
 				const inner = tokenize(body);
 				if (Array.isArray(inner)) {
-					const innerPound =
-						t.plural && typeof value === "number"
-							? new Intl.NumberFormat(locale).format(value)
-							: undefined;
-					out += renderTokens(inner, params, locale, innerPound);
+					let innerPound: string | undefined;
+					if (t.plural && typeof value === "number") {
+						try {
+							innerPound = new Intl.NumberFormat(locale).format(value);
+						} catch {
+							innerPound = undefined;
+						}
+					}
+					out += renderTokens(inner, params, locale, innerPound, depth + 1);
 				}
 			}
 			continue;
@@ -283,6 +352,52 @@ export const renderMessage = (
 	if (!Array.isArray(tokens)) return template;
 	return renderTokens(tokens, params, locale);
 };
+
+/**
+ * Positional catalog args → named MF1 params. Declared names map to
+ * args by position; missing args stay `undefined` (renderMessage
+ * renders them as ""), extra args are ignored.
+ */
+export const zipArgs = (
+	names: readonly string[],
+	args: readonly unknown[],
+): Record<string, unknown> => {
+	const params: Record<string, unknown> = {};
+	for (let i = 0; i < names.length; i++) params[names[i]!] = args[i];
+	return params;
+};
+
+/**
+ * A function-valued catalog leaf that renders an MF1 template — the
+ * DB-editable form of `(n) => \`${n} items\``. Carries the source
+ * template + positional param names as metadata so the manifest
+ * generator, baseline importer and sliceMessages can treat it as data;
+ * the call signature stays assignable to the catalog's declared
+ * `(…) => string` field types.
+ */
+export interface ParametrizedMessage {
+	readonly i18nTemplate: string;
+	readonly i18nParams: readonly string[];
+	(...args: readonly unknown[]): string;
+}
+
+/**
+ * Build a ParametrizedMessage: `paramMessage(locale, tpl, ["n"])`
+ * returns `(…args) => renderMessage(tpl, {n: args[0], …}, locale)`.
+ */
+export const paramMessage = (
+	locale: string,
+	template: string,
+	params: readonly string[],
+): ParametrizedMessage => {
+	const render = (...args: readonly unknown[]): string =>
+		renderMessage(template, zipArgs(params, args), locale);
+	return Object.assign(render, { i18nTemplate: template, i18nParams: params });
+};
+
+/** True for catalog leaves built by paramMessage (metadata on a function). */
+export const isParametrizedMessage = (value: unknown): value is ParametrizedMessage =>
+	typeof value === "function" && "i18nTemplate" in value;
 
 /**
  * Validate a template against a declared param signature. `expected`
@@ -351,7 +466,7 @@ const accentVowels = (text: string): string =>
  * untouched or the template stops parsing. Case BODIES are copy and
  * recurse through the same transform (nested params included).
  */
-const pseudoTokens = (tokens: readonly Token[]): string =>
+const pseudoTokens = (tokens: readonly Token[], depth = 0): string =>
 	tokens
 		.map((t) => {
 			if (t.kind === "text") return accentVowels(t.text!);
@@ -362,9 +477,14 @@ const pseudoTokens = (tokens: readonly Token[]): string =>
 				inner += t.cases
 					.map((c) => {
 						const bodyTokens = tokenize(c.body);
-						const body = Array.isArray(bodyTokens)
-							? pseudoTokens(bodyTokens)
-							: accentVowels(c.body);
+						// Past the depth cap emit the body verbatim —
+						// accenting raw text would corrupt nested `{param}`
+						// names and break the template.
+						const body = !Array.isArray(bodyTokens)
+							? accentVowels(c.body)
+							: depth < MAX_NESTING_DEPTH
+								? pseudoTokens(bodyTokens, depth + 1)
+								: c.body;
 						return `${c.key}{${body}}`;
 					})
 					.join(" ");

@@ -29,6 +29,8 @@ export const Route = createFileRoute("/portal/login")({
 	loader: async () => ({
 		emailEnabled: await emailEnabledFn(),
 		// Route-scoped i18n slice — head() reads it for the localized title.
+		// (Bare pathname: the root loader already forwards `?locale=`;
+		// this slice only feeds the head() title.)
 		i18n: await i18nRouteFn({ data: "/portal/login" }),
 	}),
 	component: PortalSignInPage,

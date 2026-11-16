@@ -3,6 +3,7 @@ import { connect as socketConnect } from "cloudflare:sockets";
 
 import {
 	audioStorageStats,
+	getSessionAccount,
 	getTenantSelector,
 	setServerRuntime,
 	type AudioObjectLister,
@@ -10,13 +11,18 @@ import {
 	type QueueDepth,
 } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
-import { makeTenantResolver } from "@ktb/tenant";
+import {
+	makeTenantResolver,
+	TenantResolver,
+	tenantSelectorFromHeaders,
+	tenantScopeId,
+} from "@ktb/tenant";
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { makeJobs } from "@ktb/jobs-port";
 import { currentLocale } from "./locale-context.ts";
-import { GLOBAL_SCOPE, resolveRequestLocales } from "@ktb/i18n";
+import { GLOBAL_SCOPE, resolveRequestLocales, tenantScope } from "@ktb/i18n";
 import {
 	catalogSlice,
 	DEFAULT_LOCALE,
@@ -197,6 +203,34 @@ const themeJobs =
 		? undefined
 		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
 
+/**
+ * Request scope chain for the i18n capability (PL-008): the same
+ * pipeline `i18nRouteFn` uses — tenant headers + session account →
+ * TenantResolver → tenantScope; anonymous/selector-less requests stay
+ * global. Portal scope is NOT derivable here: plugin server fns run on
+ * the RPC endpoint, not the page path, so callers needing portal-scoped
+ * copy pass `scopeChain` explicitly (same escape hatch as before).
+ */
+const requestScopeChain = () =>
+	Effect.gen(function* () {
+		const headers = yield* Effect.promise(() =>
+			import("@tanstack/react-start/server")
+				.then((m) => m.getRequestHeaders())
+				.catch(() => new Headers()),
+		);
+		const selector = tenantSelectorFromHeaders(headers);
+		// No tenant headers → personal scope; skip the session lookup so
+		// anonymous/app requests pay nothing extra.
+		if (selector === null) return GLOBAL_SCOPE;
+		const account = yield* Effect.promise(() => getSessionAccount(headers).catch(() => null));
+		const resolver = yield* TenantResolver;
+		const tenant = yield* resolver
+			.resolve(selector, account?.id ?? null)
+			.pipe(Effect.catch(() => Effect.succeed(null)));
+		const tenantId = tenant === null ? null : tenantScopeId(tenant);
+		return tenantId === null ? GLOBAL_SCOPE : tenantScope(String(tenantId));
+	});
+
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
 // without importing this module. Env reads stay here — the registry
@@ -220,15 +254,18 @@ setServerRuntime({
 	// PL-008: DB-canonical i18n capability — resolves enabled locales +
 	// scope chain inside the app runtime (I18nRuntime cache + Db) and
 	// returns the request-bound I18n shape. Locale defaults to the
-	// request-scoped UI locale (locale-context ALS).
+	// request-scoped UI locale (locale-context ALS); scope defaults to
+	// the request's tenant chain (portal scope stays caller-supplied —
+	// see requestScopeChain).
 	i18n: (input) =>
 		run(
 			Effect.gen(function* () {
 				const runtime = yield* I18nRuntime;
 				const database = yield* Db;
+				const scopeChain = input?.scopeChain ?? (yield* requestScopeChain());
 				const { i18n } = yield* resolveRequestI18n(runtime, database, {
 					requestedLocale: input?.locale ?? currentLocale(),
-					scopeChain: input?.scopeChain ?? GLOBAL_SCOPE,
+					scopeChain,
 				});
 				return i18n;
 			}),

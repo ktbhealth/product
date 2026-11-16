@@ -67,13 +67,16 @@ export const Route = createRootRoute({
 		// `ctx` is typed non-optional but bare unit tests invoke the
 		// loader without arguments — tolerate that.
 		const pathname = ctx?.location?.pathname ?? "/";
+		// searchStr carries `?locale=` through client-side navigations —
+		// the server-fn RPC request URL would not (PL-008).
+		const search = ctx?.location?.searchStr ?? "";
 		return {
 			user: await sessionFn(),
 			pluginStates: await pluginStatesFn(),
 			theme: await themeScopeFn({ data: { scope: "session" } }),
 			// DB-backed i18n slice for this path (PL-008): namespaces derived
 			// from the registry + resolved catalog for the request locale.
-			i18n: await i18nRouteFn({ data: pathname }),
+			i18n: await i18nRouteFn({ data: { pathname, search } }),
 		};
 	},
 	head: (ctx) => {

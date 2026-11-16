@@ -953,6 +953,14 @@ export const I18N_MANIFEST = {
 		label: {
 			params: [],
 		},
+		activeCount: {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} active",
+		},
 		emptyFilteredTitle: {
 			params: [],
 		},
@@ -971,8 +979,27 @@ export const I18N_MANIFEST = {
 		jobTitle: {
 			params: [],
 		},
+		consultationRef: {
+			params: [
+				{
+					name: "id",
+				},
+			],
+			template: "consultation #{id}",
+		},
 		title: {
 			params: [],
+		},
+		description: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{{n} audio pipeline job tracked.} other{{n} audio pipeline jobs tracked.}}",
 		},
 		jobsTitle: {
 			params: [],
@@ -1043,6 +1070,15 @@ export const I18N_MANIFEST = {
 		retryTitle: {
 			params: [],
 		},
+		retryDescription: {
+			params: [
+				{
+					name: "ref",
+				},
+			],
+			template:
+				"Re-enqueue the transcription job for {ref}. The stored recording is transcribed again.",
+		},
 		retryConfirm: {
 			params: [],
 		},
@@ -1075,6 +1111,16 @@ export const I18N_MANIFEST = {
 		},
 		storageDescription: {
 			params: [],
+		},
+		storageObjects: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} object} other{{n} objects}}",
 		},
 		storageTruncated: {
 			params: [],
@@ -1158,8 +1204,28 @@ export const I18N_MANIFEST = {
 		deleteRoleTitle: {
 			params: [],
 		},
+		deleteRoleDescription: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template:
+				"Delete “{name}”? This removes the role, its permission grants, and all of its assignments.",
+		},
 		unassignTitle: {
 			params: [],
+		},
+		unassignDescription: {
+			params: [
+				{
+					name: "subjectId",
+				},
+				{
+					name: "roleName",
+				},
+			],
+			template: "Remove {subjectId} from the “{roleName}” role?",
 		},
 		permissionsTitle: {
 			params: [],
@@ -1354,6 +1420,14 @@ export const I18N_MANIFEST = {
 		deleteTitle: {
 			params: [],
 		},
+		deleteBody: {
+			params: [
+				{
+					name: "path",
+				},
+			],
+			template: 'Delete "{path}"? This cannot be undone.',
+		},
 		deleteConfirm: {
 			params: [],
 		},
@@ -1498,6 +1572,16 @@ export const I18N_MANIFEST = {
 		none: {
 			params: [],
 		},
+		count: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} tenant} other{{n} tenants}} across the platform.",
+		},
 		emptyTitle: {
 			params: [],
 		},
@@ -1531,6 +1615,17 @@ export const I18N_MANIFEST = {
 		noMatch: {
 			params: [],
 		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
+		},
 		colActions: {
 			params: [],
 		},
@@ -1561,6 +1656,14 @@ export const I18N_MANIFEST = {
 		removeMemberTitle: {
 			params: [],
 		},
+		removeMemberDescription: {
+			params: [
+				{
+					name: "memberId",
+				},
+			],
+			template: "Remove {memberId} from this tenant?",
+		},
 		roleOwner: {
 			params: [],
 		},
@@ -1583,6 +1686,16 @@ export const I18N_MANIFEST = {
 		},
 		none: {
 			params: [],
+		},
+		count: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} user} other{{n} users}} across the platform.",
 		},
 		emptyTitle: {
 			params: [],
@@ -1647,6 +1760,14 @@ export const I18N_MANIFEST = {
 		suspendTitle: {
 			params: [],
 		},
+		suspendDescription: {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template: "Suspend {email}? They will be signed out and unable to sign in until reactivated.",
+		},
 		suspendConfirm: {
 			params: [],
 		},
@@ -1664,6 +1785,17 @@ export const I18N_MANIFEST = {
 		},
 		noMatch: {
 			params: [],
+		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
 		},
 	},
 	patients: {
@@ -1735,6 +1867,29 @@ export const I18N_MANIFEST = {
 		},
 		"language.de": {
 			params: [],
+		},
+		age: {
+			params: [
+				{
+					name: "approx",
+					cases: ["true", "other"],
+				},
+				{
+					name: "years",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{approx, select, true{~} other{}}{years, plural, =1{{years} year} other{{years} years}}",
+		},
+		"errors.too_long": {
+			params: [
+				{
+					name: "max",
+				},
+			],
+			template: "Must be at most {max} characters.",
 		},
 		"errors.name_required": {
 			params: [],
@@ -1901,6 +2056,16 @@ export const I18N_MANIFEST = {
 		"list.none": {
 			params: [],
 		},
+		"list.count": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} patient registered.} other{{n} patients registered.}}",
+		},
 		"list.searchPlaceholder": {
 			params: [],
 		},
@@ -1961,20 +2126,74 @@ export const I18N_MANIFEST = {
 		"detail.exportOpenEhr": {
 			params: [],
 		},
+		"actions.menu": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Actions for {name}",
+		},
 		"actions.edit": {
 			params: [],
 		},
 		"actions.delete": {
 			params: [],
 		},
+		"actions.editFor": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Edit {name}",
+		},
+		"actions.deleteFor": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Delete {name}",
+		},
 		"remove.title": {
 			params: [],
+		},
+		"remove.body": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "This permanently deletes the record of {name}.",
 		},
 		"remove.checking": {
 			params: [],
 		},
 		"remove.noConsultations": {
 			params: [],
+		},
+		"remove.withConsultations": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{1 consultation of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.} other{{n} consultations of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.}}",
+		},
+		"remove.acknowledge": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{I understand that 1 consultation will be deleted} other{I understand that {n} consultations will be deleted}}",
 		},
 		"remove.confirm": {
 			params: [],
@@ -1990,6 +2209,16 @@ export const I18N_MANIFEST = {
 		},
 		"admin.none": {
 			params: [],
+		},
+		"admin.count": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} patient} other{{n} patients}} across all owners.",
 		},
 		"admin.emptyTitle": {
 			params: [],
@@ -2020,6 +2249,17 @@ export const I18N_MANIFEST = {
 		},
 		"admin.noMatch": {
 			params: [],
+		},
+		"admin.filteredCount": {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
 		},
 		"admin.showSynthetic": {
 			params: [],
@@ -2062,6 +2302,14 @@ export const I18N_MANIFEST = {
 		},
 		"form.agePlaceholder": {
 			params: [],
+		},
+		"form.approximate": {
+			params: [
+				{
+					name: "date",
+				},
+			],
+			template: "Recorded as {date} (approximate). Enter the exact date if known.",
 		},
 		"form.pickDate": {
 			params: [],
@@ -2109,6 +2357,17 @@ export const I18N_MANIFEST = {
 		},
 		noMatch: {
 			params: [],
+		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
 		},
 		colTime: {
 			params: [],
@@ -2450,11 +2709,37 @@ export const I18N_MANIFEST = {
 		"common.downloadPdf": {
 			params: [],
 		},
+		"common.engine": {
+			params: [
+				{
+					name: "engine",
+				},
+			],
+			template: "engine: {engine}",
+		},
+		"common.consultationId": {
+			params: [
+				{
+					name: "id",
+				},
+			],
+			template: "Consultation #{id}",
+		},
 		"list.title": {
 			params: [],
 		},
 		"list.none": {
 			params: [],
+		},
+		"list.count": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} consultation recorded.} other{{n} consultations recorded.}}",
 		},
 		"list.newConsultation": {
 			params: [],
@@ -2516,20 +2801,62 @@ export const I18N_MANIFEST = {
 		"detail.openPatientRecord": {
 			params: [],
 		},
+		"detail.consentRecorded": {
+			params: [
+				{
+					name: "date",
+				},
+			],
+			template: "Consent ✓ {date}",
+		},
 		"detail.consentNotRecorded": {
 			params: [],
 		},
 		"detail.inProgress": {
 			params: [],
 		},
+		"detail.previousConsultations": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} previous consultation} other{{n} previous consultations}}",
+		},
 		"detail.anamnesisCopied": {
 			params: [],
+		},
+		"detail.complaint": {
+			params: [
+				{
+					name: "text",
+				},
+			],
+			template: "Complaint: {text}",
+		},
+		"detail.plan": {
+			params: [
+				{
+					name: "text",
+				},
+			],
+			template: "Plan: {text}",
 		},
 		"detail.historyNote": {
 			params: [],
 		},
 		"detail.notReported": {
 			params: [],
+		},
+		"detail.evidence": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "evidence ({n})",
 		},
 		"detail.noAnamnesisTitle": {
 			params: [],
@@ -2645,8 +2972,24 @@ export const I18N_MANIFEST = {
 		"newConsultation.dictationDescription": {
 			params: [],
 		},
+		"newConsultation.stopDictation": {
+			params: [
+				{
+					name: "elapsed",
+				},
+			],
+			template: "Stop dictation ({elapsed})",
+		},
 		"newConsultation.startDictation": {
 			params: [],
+		},
+		"newConsultation.dictatingHint": {
+			params: [
+				{
+					name: "elapsed",
+				},
+			],
+			template: "recording… {elapsed}. The transcript appears below in real time",
 		},
 		"newConsultation.consentRequiredDictation": {
 			params: [],
@@ -2672,11 +3015,27 @@ export const I18N_MANIFEST = {
 		"newConsultation.stopMic": {
 			params: [],
 		},
+		"newConsultation.micHint": {
+			params: [
+				{
+					name: "doctor",
+				},
+			],
+			template: "Your voice, shown as “{doctor}”",
+		},
 		"newConsultation.captureTab": {
 			params: [],
 		},
 		"newConsultation.stopTab": {
 			params: [],
+		},
+		"newConsultation.tabHint": {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template: "Call audio, shown as “{patient}”",
 		},
 		"newConsultation.recordingTip": {
 			params: [],
@@ -2695,6 +3054,17 @@ export const I18N_MANIFEST = {
 		},
 		"newConsultation.botInCall": {
 			params: [],
+		},
+		"newConsultation.consultationLive": {
+			params: [
+				{
+					name: "id",
+				},
+				{
+					name: "status",
+				},
+			],
+			template: "consultation #{id} · {status}",
 		},
 		"newConsultation.transcribingLive": {
 			params: [],
@@ -2726,11 +3096,35 @@ export const I18N_MANIFEST = {
 		"newConsultation.generate": {
 			params: [],
 		},
+		"newConsultation.generatedFrom": {
+			params: [
+				{
+					name: "source",
+				},
+			],
+			template: "anamnesis generated from the {source} transcript",
+		},
+		"newConsultation.modelUnavailable": {
+			params: [
+				{
+					name: "message",
+				},
+			],
+			template: "model unavailable: {message}",
+		},
 		"newConsultation.lowConfidenceReprocessing": {
 			params: [],
 		},
 		"newConsultation.transcriptionRedone": {
 			params: [],
+		},
+		"newConsultation.engineLabel": {
+			params: [
+				{
+					name: "engine",
+				},
+			],
+			template: "engine: {engine}",
 		},
 		"newConsultation.waitingTitle": {
 			params: [],
@@ -2765,6 +3159,14 @@ export const I18N_MANIFEST = {
 		"newConsultation.gotIt": {
 			params: [],
 		},
+		"newConsultation.accessQuestion": {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template: "Send {patient} the patient portal access email?",
+		},
 		"newConsultation.accessHint": {
 			params: [],
 		},
@@ -2776,6 +3178,23 @@ export const I18N_MANIFEST = {
 		},
 		"newConsultation.accessNotNow": {
 			params: [],
+		},
+		"newConsultation.accessSent": {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template: "Access email sent to {email}.",
+		},
+		"newConsultation.accessUnsent": {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template:
+				"Portal access granted to {email}, but the email could not be sent. Ask the patient to sign in to the patient portal with this address.",
 		},
 		"newConsultation.accessInvalidEmail": {
 			params: [],
@@ -2795,8 +3214,32 @@ export const I18N_MANIFEST = {
 		"newConsultation.copyFailed": {
 			params: [],
 		},
+		"newConsultation.audioUploadFailed": {
+			params: [
+				{
+					name: "message",
+				},
+			],
+			template: "Audio could not be uploaded ({message}). The consultation was saved without it.",
+		},
+		"newConsultation.transcriptionFailedStatus": {
+			params: [
+				{
+					name: "status",
+				},
+			],
+			template: "transcription failed ({status})",
+		},
 		"newConsultation.transcriptionFailed": {
 			params: [],
+		},
+		"newConsultation.botFailed": {
+			params: [
+				{
+					name: "status",
+				},
+			],
+			template: "bot failed: HTTP {status}",
 		},
 		"newConsultation.patientFallback": {
 			params: [],
@@ -2806,6 +3249,16 @@ export const I18N_MANIFEST = {
 		},
 		"admin.none": {
 			params: [],
+		},
+		"admin.count": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} consultation} other{{n} consultations}} across all owners.",
 		},
 		"admin.emptyTitle": {
 			params: [],
@@ -2843,6 +3296,17 @@ export const I18N_MANIFEST = {
 		"admin.noMatch": {
 			params: [],
 		},
+		"admin.filteredCount": {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
+		},
 		"admin.colActions": {
 			params: [],
 		},
@@ -2879,8 +3343,24 @@ export const I18N_MANIFEST = {
 		"admin.transcriptPlaceholder": {
 			params: [],
 		},
+		"admin.deleteFor": {
+			params: [
+				{
+					name: "label",
+				},
+			],
+			template: "Delete {label}",
+		},
 		"admin.deleteTitle": {
 			params: [],
+		},
+		"admin.deleteDescription": {
+			params: [
+				{
+					name: "label",
+				},
+			],
+			template: "This permanently deletes {label} and its recording.",
 		},
 		"admin.deleteConfirm": {
 			params: [],
@@ -3216,6 +3696,14 @@ export const I18N_MANIFEST = {
 		title: {
 			params: [],
 		},
+		greeting: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Hello, {name}.",
+		},
 		profilesTitle: {
 			params: [],
 		},
@@ -3347,17 +3835,52 @@ export const I18N_MANIFEST = {
 		filterAll: {
 			params: [],
 		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
+		},
 		noResults: {
 			params: [],
 		},
+		rowActions: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Actions for {name}",
+		},
 		actionConfigure: {
 			params: [],
+		},
+		configDialogTitle: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Configure {name}",
 		},
 		paginationPrevious: {
 			params: [],
 		},
 		paginationNext: {
 			params: [],
+		},
+		paginationPage: {
+			params: [
+				{
+					name: "page",
+				},
+			],
+			template: "Page {page}",
 		},
 		statusEnabled: {
 			params: [],
@@ -3374,6 +3897,14 @@ export const I18N_MANIFEST = {
 		systemHint: {
 			params: [],
 		},
+		blockedHint: {
+			params: [
+				{
+					name: "deps",
+				},
+			],
+			template: "Requires {deps} to be enabled first.",
+		},
 		enable: {
 			params: [],
 		},
@@ -3382,6 +3913,14 @@ export const I18N_MANIFEST = {
 		},
 		confirmDisableTitle: {
 			params: [],
+		},
+		confirmDisableBody: {
+			params: [
+				{
+					name: "names",
+				},
+			],
+			template: "This also disables {names}, which depend on it. Their data is retained.",
 		},
 		confirmDisableAction: {
 			params: [],
@@ -3409,11 +3948,27 @@ export const I18N_MANIFEST = {
 		label: {
 			params: [],
 		},
+		unreadCount: {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} unread",
+		},
 		markAllRead: {
 			params: [],
 		},
 		empty: {
 			params: [],
+		},
+		markAsRead: {
+			params: [
+				{
+					name: "title",
+				},
+			],
+			template: 'Mark "{title}" as read',
 		},
 		"titles.patientCreated": {
 			params: [],
@@ -3488,6 +4043,14 @@ export const I18N_MANIFEST = {
 		},
 	},
 	"patient-access": {
+		title: {
+			params: [
+				{
+					name: "patient",
+				},
+			],
+			template: "Portal access — {patient}",
+		},
 		description: {
 			params: [],
 		},
@@ -3548,6 +4111,14 @@ export const I18N_MANIFEST = {
 		"zk.lockedRecord": {
 			params: [],
 		},
+		"inviteEmail.subject": {
+			params: [
+				{
+					name: "doctor",
+				},
+			],
+			template: "{doctor} gave you access to the KTB Health patient portal",
+		},
 	},
 	secretaries: {
 		title: {
@@ -3588,6 +4159,30 @@ export const I18N_MANIFEST = {
 		},
 		"errors.failed": {
 			params: [],
+		},
+		"inviteEmail.subject": {
+			params: [
+				{
+					name: "doctor",
+				},
+			],
+			template: "{doctor} invited you to KTB Health",
+		},
+		"inviteEmail.body": {
+			params: [
+				{
+					name: "doctor",
+				},
+				{
+					name: "accept",
+					cases: ["true", "other"],
+				},
+				{
+					name: "url",
+				},
+			],
+			template:
+				"Hello.\n\n{doctor} invited you to work on their behalf at KTB Health, as their secretary.\n{accept, select, true{Accept the invitation and choose your password — the link works once and is valid for 7 days:} other{Sign in with this email address to get access:}}\n{url}\n\nIf you were not expecting this invitation, you can ignore this message.",
 		},
 		"login.metaTitle": {
 			params: [],
@@ -3654,6 +4249,16 @@ export const I18N_MANIFEST = {
 		none: {
 			params: [],
 		},
+		count: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} group} other{{n} groups}} across the platform.",
+		},
 		emptyTitle: {
 			params: [],
 		},
@@ -3686,6 +4291,17 @@ export const I18N_MANIFEST = {
 		},
 		noMatch: {
 			params: [],
+		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
 		},
 		colActions: {
 			params: [],
@@ -3762,11 +4378,27 @@ export const I18N_MANIFEST = {
 		removeMemberTitle: {
 			params: [],
 		},
+		removeMemberDescription: {
+			params: [
+				{
+					name: "memberId",
+				},
+			],
+			template: "Remove {memberId} from this group?",
+		},
 		deleteGroup: {
 			params: [],
 		},
 		deleteGroupTitle: {
 			params: [],
+		},
+		deleteGroupDescription: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Delete “{name}”? This removes the group and all of its memberships.",
 		},
 		confirmDelete: {
 			params: [],
@@ -3856,6 +4488,22 @@ export const I18N_MANIFEST = {
 		metaTitle: {
 			params: [],
 		},
+		"heading.secretary": {
+			params: [
+				{
+					name: "inviter",
+				},
+			],
+			template: "{inviter} invited you to work on their behalf",
+		},
+		"heading.patient": {
+			params: [
+				{
+					name: "inviter",
+				},
+			],
+			template: "{inviter} gave you access to the patient portal",
+		},
 		description: {
 			params: [],
 		},
@@ -3903,6 +4551,15 @@ export const I18N_MANIFEST = {
 		},
 		existsTitle: {
 			params: [],
+		},
+		existsBody: {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template:
+				"{email} already has a KTB Health account. Sign in with it to see what you were invited to.",
 		},
 		invalidTitle: {
 			params: [],

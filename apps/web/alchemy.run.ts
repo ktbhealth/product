@@ -161,8 +161,13 @@ export default Alchemy.Stack(
 						.map((k) => [k, process.env[k] as string]),
 				),
 			},
-			// No nodejs_compat: worker-runtime code reads secrets only via
-			// bindings (.dev.vars in dev, these bindings in prod).
+			// No explicit compatibility flags: Alchemy's default compat
+			// date (2026-08-31) is past the nodejs_compat default-on date
+			// (2026-08-04), so nodejs_compat_v2 — including
+			// node:async_hooks, which the locale ALS uses — is implied.
+			// Secrets still arrive only via bindings (.dev.vars in dev,
+			// these bindings in prod); worker code never reads
+			// process.env.
 		});
 
 		// Queue consumer → this worker's `queue` handler (src/server.ts).

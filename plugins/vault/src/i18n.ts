@@ -6,6 +6,8 @@
  * missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const VAULT_LOCALES = ["en", "pt-BR", "es"] as const;
 export type VaultLocale = (typeof VAULT_LOCALES)[number];
 export const BASE_LOCALE: VaultLocale = "en";
@@ -99,12 +101,18 @@ const en: VaultMessages = {
 	pendingApproval: "Waiting for a clinic admin to approve this device.",
 	approve: "Approve",
 	approveTitle: "Approve device",
-	approveDescription: (userId) =>
-		`Grant this device access to the clinic's encrypted records (member ${userId})?`,
+	approveDescription: paramMessage(
+		"en",
+		"Grant this device access to the clinic's encrypted records (member {userId})?",
+		["userId"],
+	),
 	revoke: "Revoke",
 	revokeTitle: "Revoke device",
-	revokeDescription: (userId) =>
-		`Remove this device's access to the clinic's encrypted records (member ${userId})? Existing records stay encrypted for the remaining devices.`,
+	revokeDescription: paramMessage(
+		"en",
+		"Remove this device's access to the clinic's encrypted records (member {userId})? Existing records stay encrypted for the remaining devices.",
+		["userId"],
+	),
 	restoreTitle: "Restore from recovery phrase",
 	restoreDescription: "Enter the clinic recovery phrase to activate the master key on this device.",
 	phrasePlaceholder: "xxxx-xxxx-xxxx-…",
@@ -156,12 +164,18 @@ const ptBR: VaultMessages = {
 	pendingApproval: "Aguardando a aprovação deste dispositivo por um administrador da clínica.",
 	approve: "Aprovar",
 	approveTitle: "Aprovar dispositivo",
-	approveDescription: (userId) =>
-		`Conceder a este dispositivo acesso aos registros criptografados da clínica (membro ${userId})?`,
+	approveDescription: paramMessage(
+		"pt-BR",
+		"Conceder a este dispositivo acesso aos registros criptografados da clínica (membro {userId})?",
+		["userId"],
+	),
 	revoke: "Revogar",
 	revokeTitle: "Revogar dispositivo",
-	revokeDescription: (userId) =>
-		`Remover o acesso deste dispositivo aos registros criptografados da clínica (membro ${userId})? Os registros existentes continuam criptografados para os demais dispositivos.`,
+	revokeDescription: paramMessage(
+		"pt-BR",
+		"Remover o acesso deste dispositivo aos registros criptografados da clínica (membro {userId})? Os registros existentes continuam criptografados para os demais dispositivos.",
+		["userId"],
+	),
 	restoreTitle: "Restaurar pela frase de recuperação",
 	restoreDescription:
 		"Digite a frase de recuperação da clínica para ativar a chave mestra neste dispositivo.",
@@ -215,12 +229,18 @@ const es: VaultMessages = {
 	pendingApproval: "Esperando que un administrador de la clínica apruebe este dispositivo.",
 	approve: "Aprobar",
 	approveTitle: "Aprobar dispositivo",
-	approveDescription: (userId) =>
-		`¿Conceder a este dispositivo acceso a los registros cifrados de la clínica (miembro ${userId})?`,
+	approveDescription: paramMessage(
+		"es",
+		"¿Conceder a este dispositivo acceso a los registros cifrados de la clínica (miembro {userId})?",
+		["userId"],
+	),
 	revoke: "Revocar",
 	revokeTitle: "Revocar dispositivo",
-	revokeDescription: (userId) =>
-		`¿Quitar el acceso de este dispositivo a los registros cifrados de la clínica (miembro ${userId})? Los registros existentes siguen cifrados para los demás dispositivos.`,
+	revokeDescription: paramMessage(
+		"es",
+		"¿Quitar el acceso de este dispositivo a los registros cifrados de la clínica (miembro {userId})? Los registros existentes siguen cifrados para los demás dispositivos.",
+		["userId"],
+	),
 	restoreTitle: "Restaurar con la frase de recuperación",
 	restoreDescription:
 		"Introduce la frase de recuperación de la clínica para activar la clave maestra en este dispositivo.",

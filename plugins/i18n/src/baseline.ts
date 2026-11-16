@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { parseMessage, paramSignature } from "@ktb/i18n";
 
+import { MAX_MESSAGE_VALUE_LENGTH, validateMessageId } from "./contract.ts";
 import { i18nMessages, i18nNamespaces } from "./schema.ts";
 
 /**
@@ -10,8 +11,14 @@ import { i18nMessages, i18nNamespaces } from "./schema.ts";
  * (`messages/*.json`, plugin `i18n.ts`) into `global`/`published` rows.
  * Idempotent — re-running with the same baseline is a no-op, and it
  * NEVER overwrites an existing row: the DB is canonical, so panel edits
- * survive re-imports. Re-importing changed baseline copy is a panel
- * operation (reset-to-baseline), not a sync side effect.
+ * survive re-imports. Re-importing changed baseline copy is a manual
+ * ops step — `tools/import-i18n-baseline.mjs` re-runs this sync against
+ * a target database; there is no in-panel reset-to-baseline op.
+ *
+ * Batched (not per-entry): validation is pure, existing keys come from
+ * ONE select, and inserts go out in chunks — the runtime auto-seed runs
+ * this on a cold isolate against a fresh D1 where ~8k sequential
+ * SELECT+INSERT round-trips would stall the first request.
  */
 
 export interface BaselineEntry {
@@ -28,25 +35,47 @@ export interface BaselineResult {
 	readonly invalid: ReadonlyArray<{ entry: BaselineEntry; error: string }>;
 }
 
-const logicalKey = (e: BaselineEntry) =>
-	and(
-		eq(i18nMessages.namespace, e.namespace),
-		eq(i18nMessages.key, e.key),
-		eq(i18nMessages.locale, e.locale),
-		eq(i18nMessages.scope, "global"),
-		eq(i18nMessages.scopeId, ""),
-	);
+/** Rows per INSERT statement. Each message row binds 10 columns and
+ * SQLite/D1 cap bound parameters near 999, so 64 rows (~640 params)
+ * stays safely under the ceiling while collapsing the seed into a
+ * handful of statements. */
+const INSERT_CHUNK_SIZE = 64;
+
+/** Injective tuple key for the logical message identity — same
+ * JSON-tuple trick as runtime.ts `cacheKey` (separator-joined keys
+ * collide when ids contain the separator). */
+const messageTuple = (namespace: string, key: string, locale: string): string =>
+	JSON.stringify([namespace, key, locale]);
 
 export const syncBaseline = async (
 	db: DbClient,
 	entries: readonly BaselineEntry[],
 ): Promise<BaselineResult> => {
-	let inserted = 0;
 	let skipped = 0;
 	const invalid: Array<{ entry: BaselineEntry; error: string }> = [];
 
+	// Validate + parse every entry up front — no DB round-trips in this
+	// loop. Entries are generated, but ids land in the composite PK so
+	// the same charset/scope rules as the admin write path apply, plus
+	// the shared value-length cap.
+	const candidates: Array<typeof i18nMessages.$inferInsert> = [];
+	const seen = new Set<string>();
 	for (const e of entries) {
 		const kind = e.kind ?? "text";
+		const idError = validateMessageId({
+			namespace: e.namespace,
+			key: e.key,
+			locale: e.locale,
+			scope: "global",
+			scopeId: "",
+		});
+		if (idError !== null || e.value.length > MAX_MESSAGE_VALUE_LENGTH) {
+			invalid.push({
+				entry: e,
+				error: idError ?? `value exceeds ${MAX_MESSAGE_VALUE_LENGTH} characters`,
+			});
+			continue;
+		}
 		const parsed = parseMessage(kind, e.value);
 		if (!parsed.ok) {
 			invalid.push({ entry: e, error: parsed.error });
@@ -55,16 +84,15 @@ export const syncBaseline = async (
 		const params = paramSignature(e.value);
 		const paramList = Array.isArray(params) ? params : [];
 
-		const existing = await db
-			.select({ key: i18nMessages.key })
-			.from(i18nMessages)
-			.where(logicalKey(e));
-		if (existing.length > 0) {
+		// First occurrence wins — a duplicated baseline key is skipped
+		// exactly like a pre-existing DB row (never overwrite).
+		const tuple = messageTuple(e.namespace, e.key, e.locale);
+		if (seen.has(tuple)) {
 			skipped++;
 			continue;
 		}
-
-		await db.insert(i18nMessages).values({
+		seen.add(tuple);
+		candidates.push({
 			namespace: e.namespace,
 			key: e.key,
 			locale: e.locale,
@@ -76,15 +104,56 @@ export const syncBaseline = async (
 			params: paramList,
 			version: 1,
 		});
-		inserted++;
 	}
 
-	// Register namespaces seen in the baseline (idempotent).
+	// One SELECT for every existing global baseline key, then chunked
+	// inserts. `onConflictDoNothing` still guards the select-then-insert
+	// race: two isolates auto-seeding the same empty DB concurrently
+	// would otherwise PK-conflict on the composite key.
+	let inserted = 0;
+	if (candidates.length > 0) {
+		const namespaces = [...new Set(candidates.map((r) => r.namespace))];
+		const existing = await db
+			.select({
+				namespace: i18nMessages.namespace,
+				key: i18nMessages.key,
+				locale: i18nMessages.locale,
+			})
+			.from(i18nMessages)
+			.where(
+				and(
+					eq(i18nMessages.scope, "global"),
+					eq(i18nMessages.scopeId, ""),
+					inArray(i18nMessages.namespace, namespaces),
+				),
+			);
+		const existingKeys = new Set(existing.map((r) => messageTuple(r.namespace, r.key, r.locale)));
+		const fresh = candidates.filter(
+			(r) => !existingKeys.has(messageTuple(r.namespace, r.key, r.locale)),
+		);
+		skipped += candidates.length - fresh.length;
+		for (let i = 0; i < fresh.length; i += INSERT_CHUNK_SIZE) {
+			await db
+				.insert(i18nMessages)
+				.values(fresh.slice(i, i + INSERT_CHUNK_SIZE))
+				.onConflictDoNothing();
+		}
+		inserted = fresh.length;
+	}
+
+	// Register namespaces seen in the baseline — one batched insert
+	// (idempotent).
 	const namespaces = [...new Set(entries.map((e) => e.namespace))];
-	for (const ns of namespaces) {
+	if (namespaces.length > 0) {
 		await db
 			.insert(i18nNamespaces)
-			.values({ namespace: ns, pluginId: "", defaultLocale: "en" })
+			.values(
+				namespaces.map((ns) => ({
+					namespace: ns,
+					pluginId: "",
+					defaultLocale: "en",
+				})),
+			)
 			.onConflictDoNothing();
 	}
 

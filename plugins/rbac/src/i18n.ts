@@ -6,6 +6,8 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const RBAC_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4). */
@@ -82,10 +84,16 @@ const en: RbacMessages = {
 	roleMeta: "Meta",
 	metaPlaceholder: "Optional JSON payload",
 	deleteRoleTitle: "Delete role",
-	deleteRoleDescription: (name) =>
-		`Delete “${name}”? This removes the role, its permission grants, and all of its assignments.`,
+	deleteRoleDescription: paramMessage(
+		"en",
+		"Delete “{name}”? This removes the role, its permission grants, and all of its assignments.",
+		["name"],
+	),
 	unassignTitle: "Remove assignment",
-	unassignDescription: (subjectId, roleName) => `Remove ${subjectId} from the “${roleName}” role?`,
+	unassignDescription: paramMessage("en", "Remove {subjectId} from the “{roleName}” role?", [
+		"subjectId",
+		"roleName",
+	]),
 	permissionsTitle: "Permission matrix",
 	matrixEmpty: "Select a role to edit its grants.",
 	colPermission: "Permission",
@@ -131,10 +139,16 @@ const ptBR: RbacMessages = {
 	roleMeta: "Metadados",
 	metaPlaceholder: "JSON opcional",
 	deleteRoleTitle: "Excluir função",
-	deleteRoleDescription: (name) =>
-		`Excluir “${name}”? Isso remove a função, suas concessões de permissão e todas as suas atribuições.`,
+	deleteRoleDescription: paramMessage(
+		"pt-BR",
+		"Excluir “{name}”? Isso remove a função, suas concessões de permissão e todas as suas atribuições.",
+		["name"],
+	),
 	unassignTitle: "Remover atribuição",
-	unassignDescription: (subjectId, roleName) => `Remover ${subjectId} da função “${roleName}”?`,
+	unassignDescription: paramMessage("pt-BR", "Remover {subjectId} da função “{roleName}”?", [
+		"subjectId",
+		"roleName",
+	]),
 	permissionsTitle: "Matriz de permissões",
 	matrixEmpty: "Selecione uma função para editar suas concessões.",
 	colPermission: "Permissão",
@@ -180,10 +194,16 @@ const es: RbacMessages = {
 	roleMeta: "Metadatos",
 	metaPlaceholder: "JSON opcional",
 	deleteRoleTitle: "Eliminar role",
-	deleteRoleDescription: (name) =>
-		`¿Eliminar “${name}”? Esto elimina el role, sus concesiones de permisos y todas sus asignaciones.`,
+	deleteRoleDescription: paramMessage(
+		"es",
+		"¿Eliminar “{name}”? Esto elimina el role, sus concesiones de permisos y todas sus asignaciones.",
+		["name"],
+	),
 	unassignTitle: "Quitar asignación",
-	unassignDescription: (subjectId, roleName) => `¿Quitar a ${subjectId} del role “${roleName}”?`,
+	unassignDescription: paramMessage("es", "¿Quitar a {subjectId} del role “{roleName}”?", [
+		"subjectId",
+		"roleName",
+	]),
 	permissionsTitle: "Matriz de permisos",
 	matrixEmpty: "Selecciona un role para editar sus concesiones.",
 	colPermission: "Permiso",

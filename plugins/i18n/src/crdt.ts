@@ -31,6 +31,17 @@ export const docFromUpdates = (updates: readonly Uint8Array[]): LoroDoc => {
 export const docValue = (doc: LoroDoc): string => doc.getText(FIELD).toString();
 
 /**
+ * Collapse an op log into ONE snapshot update. `docFromUpdates` imports
+ * snapshot bytes like any other update, so a compacted log replays
+ * identically — used to bound `i18n_crdt_updates` growth (see
+ * CRDT_LOG_LIMIT in admin.ts).
+ */
+export const snapshotUpdate = (updates: readonly Uint8Array[]): Uint8Array => {
+	const doc = updates.length === 0 ? newMessageDoc() : docFromUpdates(updates);
+	return doc.export({ mode: "snapshot" });
+};
+
+/**
  * Apply a remote/local update and return { doc, update } — the update is
  * what gets appended to `i18n_crdt_updates`; `docValue(doc)` is what gets
  * written to `i18n_messages.value`.

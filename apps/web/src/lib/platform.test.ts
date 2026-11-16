@@ -2,7 +2,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 
 import { groupMembers, groups } from "@ktb/db/schema";
+import { GLOBAL_SCOPE, tenantScope } from "@ktb/i18n";
 import { Tenant } from "@ktb/tenant";
+import { getI18n } from "@ktb/server-fns";
 
 import { ai, auth, BindingLive, db, flushTelemetry, runAs } from "./platform.ts";
 
@@ -82,5 +84,15 @@ describe("platform", () => {
 		await expect(runAs({ id: "u-none" }, readTenant())).resolves.toBeNull();
 		// Outside a request context selector extraction degrades to null.
 		await expect(runAs({ id: "u1" }, Effect.succeed("ok"))).resolves.toBe("ok");
+	});
+
+	it("i18n capability resolves a request-bound shape and honors caller scope", async () => {
+		// No tenant headers/session in tests → global scope chain.
+		const i18n = await getI18n();
+		expect(i18n.scopeChain).toEqual(GLOBAL_SCOPE);
+		expect(typeof i18n.t).toBe("function");
+		// An explicit scopeChain still wins (portal-scoped callers).
+		const scoped = await getI18n({ scopeChain: tenantScope("t1") });
+		expect(scoped.scopeChain).toEqual(tenantScope("t1"));
 	});
 });

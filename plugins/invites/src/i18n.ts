@@ -5,6 +5,7 @@
  * catalog must implement `InviteMessages` in full — a missing key is a
  * type error, not an English fallback at runtime.
  */
+import { paramMessage } from "@ktb/i18n";
 import type { InviteKind } from "./schema.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
@@ -53,8 +54,8 @@ export interface InviteMessages {
 const en: InviteMessages = {
 	metaTitle: "Accept invitation | KTB Health",
 	heading: {
-		secretary: (inviter) => `${inviter} invited you to work on their behalf`,
-		patient: (inviter) => `${inviter} gave you access to the patient portal`,
+		secretary: paramMessage("en", "{inviter} invited you to work on their behalf", ["inviter"]),
+		patient: paramMessage("en", "{inviter} gave you access to the patient portal", ["inviter"]),
 	},
 	description:
 		"Choose a password to create your account. This invitation already confirms your email address.",
@@ -75,8 +76,11 @@ const en: InviteMessages = {
 	createdTitle: "Account created",
 	createdSignIn: "Your account was created. Sign in to continue.",
 	existsTitle: "You already have an account",
-	existsBody: (email) =>
-		`${email} already has a KTB Health account. Sign in with it to see what you were invited to.`,
+	existsBody: paramMessage(
+		"en",
+		"{email} already has a KTB Health account. Sign in with it to see what you were invited to.",
+		["email"],
+	),
 	invalidTitle: "This invitation is no longer valid",
 	invalidBody:
 		"The link was already used or has expired. Ask whoever invited you to send a new invitation, or sign in if you already have an account.",
@@ -86,8 +90,12 @@ const en: InviteMessages = {
 const ptBR: InviteMessages = {
 	metaTitle: "Aceitar convite | KTB Health",
 	heading: {
-		secretary: (inviter) => `${inviter} convidou você para trabalhar em nome dele(a)`,
-		patient: (inviter) => `${inviter} liberou seu acesso ao portal do paciente`,
+		secretary: paramMessage("pt-BR", "{inviter} convidou você para trabalhar em nome dele(a)", [
+			"inviter",
+		]),
+		patient: paramMessage("pt-BR", "{inviter} liberou seu acesso ao portal do paciente", [
+			"inviter",
+		]),
 	},
 	description:
 		"Escolha uma senha para criar sua conta. Este convite já confirma seu endereço de e-mail.",
@@ -108,8 +116,11 @@ const ptBR: InviteMessages = {
 	createdTitle: "Conta criada",
 	createdSignIn: "Sua conta foi criada. Entre para continuar.",
 	existsTitle: "Você já tem uma conta",
-	existsBody: (email) =>
-		`${email} já tem uma conta no KTB Health. Entre com ela para ver o que foi liberado para você.`,
+	existsBody: paramMessage(
+		"pt-BR",
+		"{email} já tem uma conta no KTB Health. Entre com ela para ver o que foi liberado para você.",
+		["email"],
+	),
 	invalidTitle: "Este convite não é mais válido",
 	invalidBody:
 		"O link já foi usado ou expirou. Peça a quem convidou você que envie um novo convite, ou entre se já tiver uma conta.",
@@ -119,8 +130,8 @@ const ptBR: InviteMessages = {
 const es: InviteMessages = {
 	metaTitle: "Aceptar invitación | KTB Health",
 	heading: {
-		secretary: (inviter) => `${inviter} te invitó a trabajar en su nombre`,
-		patient: (inviter) => `${inviter} te dio acceso al portal del paciente`,
+		secretary: paramMessage("es", "{inviter} te invitó a trabajar en su nombre", ["inviter"]),
+		patient: paramMessage("es", "{inviter} te dio acceso al portal del paciente", ["inviter"]),
 	},
 	description:
 		"Elige una contraseña para crear tu cuenta. Esta invitación ya confirma tu dirección de correo.",
@@ -141,8 +152,11 @@ const es: InviteMessages = {
 	createdTitle: "Cuenta creada",
 	createdSignIn: "Tu cuenta fue creada. Inicia sesión para continuar.",
 	existsTitle: "Ya tienes una cuenta",
-	existsBody: (email) =>
-		`${email} ya tiene una cuenta en KTB Health. Inicia sesión con ella para ver a qué te invitaron.`,
+	existsBody: paramMessage(
+		"es",
+		"{email} ya tiene una cuenta en KTB Health. Inicia sesión con ella para ver a qué te invitaron.",
+		["email"],
+	),
 	invalidTitle: "Esta invitación ya no es válida",
 	invalidBody:
 		"El enlace ya fue usado o venció. Pide a quien te invitó que envíe una nueva invitación, o inicia sesión si ya tienes una cuenta.",

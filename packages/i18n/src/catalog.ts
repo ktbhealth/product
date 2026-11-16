@@ -1,4 +1,4 @@
-import { renderMessage } from "./message.ts";
+import { isParametrizedMessage, renderMessage, zipArgs } from "./message.ts";
 
 /**
  * Client-side `t()` over a resolved catalog slice (PL-008 Phase 2):
@@ -50,10 +50,12 @@ const PARAM_TOKEN_RE = /\{[A-Za-z_][^}]*\}/;
  * partially migrated catalogs degrade gracefully. When `slice` is
  * absent the fallback returns unchanged.
  *
- * Param-bearing templates are skipped because the sliced catalog is
- * pre-rendered — there is no call site to supply `{name}` values, so
- * overlaying one would blank the params. Function fields are the
- * migration path for parameterized copy.
+ * Param-bearing templates are skipped for STRING leaves because the
+ * sliced catalog is pre-rendered — there is no call site to supply
+ * `{name}` values, so overlaying one would blank the params.
+ * ParametrizedMessage function leaves are the migration path: the
+ * wrapper re-binds positional args to the (possibly DB-overridden)
+ * template at call time, so param-bearing DB templates apply to them.
  */
 export const sliceMessages = <M extends object>(
 	slice:
@@ -69,6 +71,18 @@ export const sliceMessages = <M extends object>(
 			const template = slice.catalog[full];
 			if (template === undefined || PARAM_TOKEN_RE.test(template)) return node;
 			return renderMessage(template, {}, slice.locale);
+		}
+		if (isParametrizedMessage(node)) {
+			// DB template wins; the code catalog's i18nTemplate is the
+			// fallback. Args zip against the CODE param names — the DB
+			// row stores the rendered params signature separately.
+			const template = slice.catalog[`${namespace}.${path}`] ?? node.i18nTemplate;
+			const params = node.i18nParams;
+			return Object.assign(
+				(...args: readonly unknown[]) =>
+					renderMessage(template, zipArgs(params, args), slice.locale),
+				{ i18nTemplate: template, i18nParams: params },
+			);
 		}
 		if (node !== null && typeof node === "object" && !Array.isArray(node)) {
 			const out: Record<string, unknown> = {};

@@ -2,6 +2,8 @@ import * as Effect from "effect/Effect";
 
 import {
 	I18N_MANIFEST,
+	PSEUDO_LOCALE,
+	pseudoLocalize,
 	resolveRow,
 	type I18nShape,
 	type LocaleChain,
@@ -11,6 +13,56 @@ import {
 import { renderMessage, resolveMessage } from "@ktb/i18n";
 
 import type { I18nRuntimeShape } from "./runtime.ts";
+
+/**
+ * Missing-key telemetry (P-M5): `ResolvedMessage.source.kind ===
+ * "missing"` used to be discarded. One log line per isolate per
+ * (namespace, key, locale) — a capped Set keeps hostile key floods
+ * from growing memory or spamming logs.
+ */
+const MISSING_LOG_LIMIT = 1024;
+/** Once the dedup Set is full, emit a throttled saturation counter
+ * every Nth suppressed miss instead of going silent. */
+const MISSING_SATURATION_EVERY = 256;
+const MISSING_FIELD_MAX = 120;
+const missingLogged = new Set<string>();
+let missingSuppressed = 0;
+
+/** Keys/namespaces are code-side but still attacker-influenceable via
+ * dynamic key construction — strip control chars and cap length before
+ * they reach the log pipeline. (Char-code filter instead of a regex:
+ * no-control-regex lint.) */
+const sanitizeTelemetryField = (value: string): string => {
+	let out = "";
+	for (const ch of value) {
+		const code = ch.codePointAt(0) ?? 0;
+		if (code > 0x1f && code !== 0x7f) out += ch;
+		if (out.length >= MISSING_FIELD_MAX) break;
+	}
+	return out.slice(0, MISSING_FIELD_MAX);
+};
+
+const logMissingKey = (namespace: string, key: string, locale: string): Effect.Effect<void> => {
+	const id = JSON.stringify([namespace, key, locale]);
+	if (missingLogged.has(id)) {
+		return Effect.void;
+	}
+	if (missingLogged.size >= MISSING_LOG_LIMIT) {
+		missingSuppressed += 1;
+		if (missingSuppressed % MISSING_SATURATION_EVERY === 1) {
+			return Effect.logWarning("i18n.missing.suppressed", {
+				suppressed: missingSuppressed,
+			});
+		}
+		return Effect.void;
+	}
+	missingLogged.add(id);
+	return Effect.logInfo("i18n.missing", {
+		namespace: sanitizeTelemetryField(namespace),
+		key: sanitizeTelemetryField(key),
+		locale: sanitizeTelemetryField(locale),
+	});
+};
 
 /**
  * Build the per-request `I18n` service value. The runtime owns the
@@ -63,8 +115,11 @@ export const requestI18n = (
 	return {
 		scopeChain,
 		locales,
+		// qps QA pseudo-locale: same transform catalogSlice applies —
+		// resolve the default-locale template, then accent/pad it.
 		t: (key, params) =>
-			Effect.map(catalog(), (index) => {
+			Effect.gen(function* () {
+				const index = yield* catalog();
 				const { namespace, key: k } = splitKey(key, namespacesIn(index));
 				const resolved = resolveMessage(index, {
 					namespace,
@@ -72,12 +127,24 @@ export const requestI18n = (
 					scopeChain,
 					locales,
 				});
-				return renderMessage(resolved.template, params ?? {}, locales.locales[0] ?? "en");
+				if (resolved.source.kind === "missing") {
+					yield* logMissingKey(namespace, k, locales.locales[0] ?? "en");
+				}
+				const template =
+					locales.locales[0] === PSEUDO_LOCALE
+						? pseudoLocalize(resolved.template)
+						: resolved.template;
+				return renderMessage(template, params ?? {}, locales.locales[0] ?? "en");
 			}),
 		resolve: (namespace, key) =>
-			Effect.map(catalog(), (index) =>
-				resolveMessage(index, { namespace, key, scopeChain, locales }),
-			),
+			Effect.gen(function* () {
+				const index = yield* catalog();
+				const resolved = resolveMessage(index, { namespace, key, scopeChain, locales });
+				if (resolved.source.kind === "missing") {
+					yield* logMissingKey(namespace, key, locales.locales[0] ?? "en");
+				}
+				return resolved;
+			}),
 		paramsFor: (namespace, key) =>
 			Effect.map(catalog(), (index) => {
 				const row = resolveRow(index, { namespace, key, scopeChain, locales });

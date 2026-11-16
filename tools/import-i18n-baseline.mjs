@@ -7,8 +7,10 @@
  * Sources: apps/web/messages/*.json → namespace `app` (baseline source), plus every
  * migrated plugin catalog — a plugin opts in by exporting
  * `I18N_NAMESPACE` + `i18nMessagesFor(locale)` from src/i18n.ts
- * (PL-008 Phase 4). Non-string catalog values (function messages)
- * are skipped with a warning; they migrate to MF1 templates per-key.
+ * (PL-008 Phase 4). String leaves import verbatim; paramMessage
+ * function leaves import their i18nTemplate (kind "text"); plain
+ * function messages are still skipped with a warning — they migrate
+ * to MF1 templates per-key.
  *
  * Usage:
  *   bun run i18n:import-baseline [--db <sqlite path>]
@@ -26,6 +28,8 @@ import { makeSqliteDatabase } from "@ktb/db-sqlite";
 import { syncBaseline } from "../plugins/i18n/src/baseline.ts";
 import { i18nLocales } from "../plugins/i18n/src/schema.ts";
 import { flattenCatalog } from "../packages/i18n/src/catalog.ts";
+import { LOCALE_META } from "../packages/i18n/src/locales.ts";
+import { isParametrizedMessage, PSEUDO_LOCALE } from "../packages/i18n/src/message.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -37,15 +41,6 @@ const dbPath =
 
 const messagesDir = join(root, "apps/web/messages");
 const migrationsDir = join(root, "packages/db/drizzle");
-
-const LOCALE_META = {
-	en: { endonym: "English", fallbacks: [] },
-	"pt-BR": { endonym: "Português (Brasil)", fallbacks: ["en"] },
-	es: { endonym: "Español", fallbacks: ["en"] },
-	// QA pseudo-locale (PL-008 Phase 6): renders default-locale copy
-	// accented/bracketed/padded — opt-in per environment.
-	qps: { endonym: "Pseudo (QA)", fallbacks: ["en"] },
-};
 
 const entries = [];
 for (const file of readdirSync(messagesDir).filter((f) => f.endsWith(".json"))) {
@@ -69,17 +64,29 @@ for (const dir of readdirSync(pluginsDir)) {
 	}
 	// qps is a pseudo-locale — catalogs render it from the default
 	// locale at slice time, so plugins don't need qps entries.
-	for (const locale of Object.keys(LOCALE_META).filter((l) => l !== "qps")) {
+	for (const locale of Object.keys(LOCALE_META).filter((l) => l !== PSEUDO_LOCALE)) {
 		const catalog = mod.i18nMessagesFor(locale);
 		// Catalogs are nested message objects — flatten to dot paths
 		// (`sections.identification`) so every string leaf imports; the
 		// same flattening sliceMessages applies at read time.
 		for (const { path: key, value } of flattenCatalog(catalog)) {
-			if (typeof value !== "string") {
-				pluginWarnings.push(`${mod.I18N_NAMESPACE}.${key} [${locale}]: non-string value skipped`);
+			if (typeof value === "string") {
+				entries.push({ namespace: mod.I18N_NAMESPACE, key, locale, value });
 				continue;
 			}
-			entries.push({ namespace: mod.I18N_NAMESPACE, key, locale, value });
+			if (isParametrizedMessage(value)) {
+				// paramMessage leaves are MF1 templates at heart — the
+				// template is the DB-editable baseline value.
+				entries.push({
+					namespace: mod.I18N_NAMESPACE,
+					key,
+					locale,
+					kind: "text",
+					value: value.i18nTemplate,
+				});
+				continue;
+			}
+			pluginWarnings.push(`${mod.I18N_NAMESPACE}.${key} [${locale}]: non-string value skipped`);
 		}
 	}
 }
@@ -93,7 +100,14 @@ const result = await syncBaseline(db, entries);
 for (const [code, meta] of Object.entries(LOCALE_META)) {
 	await db
 		.insert(i18nLocales)
-		.values({ code, endonym: meta.endonym, fallbacks: meta.fallbacks, enabled: true })
+		.values({
+			code,
+			endonym: meta.endonym,
+			fallbacks: meta.fallbacks,
+			// Pseudo-locales stay disabled on import — same rule as the
+			// runtime seed; admins opt in via /platform/i18n.
+			enabled: code !== PSEUDO_LOCALE,
+		})
 		.onConflictDoNothing();
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
+import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
 	Dialog,
 	DialogContent,
@@ -20,6 +21,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
+import { Switch } from "@ktbhealth/ui/components/switch";
 import { Input } from "@ktbhealth/ui/components/input";
 import {
 	Table,
@@ -31,7 +33,7 @@ import {
 } from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
-import { parseMessage, renderMessage } from "@ktb/i18n";
+import { PSEUDO_LOCALE, parseMessage, renderMessage } from "@ktb/i18n";
 
 import type { I18nMessage } from "../schema.ts";
 import type { LocaleInfo, NamespaceInfo } from "../contract.ts";
@@ -42,25 +44,28 @@ import {
 	i18nNamespaceMessagesFn,
 	i18nPublishFn,
 	i18nSaveDraftFn,
+	i18nSetLocaleFn,
 } from "../fns.ts";
+import {
+	buildCellIndex,
+	cellFor,
+	isDraftDirty,
+	summarizeImportPayload,
+	type Cell,
+	type ImportSummary,
+	type MessageScope,
+} from "./i18n-page-utils.ts";
 
 export interface I18nPageData {
 	readonly namespaces: readonly NamespaceInfo[];
 	readonly locales: readonly LocaleInfo[];
 }
 
-interface Cell {
-	readonly draft: string | null;
-	readonly live: string;
-	readonly status: "draft" | "published";
-	readonly kind: string;
-}
-
 interface Editing {
 	readonly namespace: string;
 	readonly key: string;
 	readonly locale: string;
-	readonly scope: "global" | "tenant" | "portal";
+	readonly scope: MessageScope;
 	readonly scopeId: string;
 	readonly cell: Cell | undefined;
 }
@@ -132,41 +137,20 @@ function MessagePreview({
 	);
 }
 
-const cellFor = (
-	messages: readonly I18nMessage[],
-	namespace: string,
-	key: string,
-	locale: string,
-	scope: "global" | "tenant" | "portal" = "global",
-	scopeId = "",
-): Cell | undefined => {
-	const row = messages.find(
-		(m) =>
-			m.namespace === namespace &&
-			m.key === key &&
-			m.locale === locale &&
-			m.scope === scope &&
-			m.scopeId === scopeId,
-	);
-	if (row === undefined) return undefined;
-	return {
-		draft: row.draftValue,
-		live: row.value,
-		status: row.status,
-		kind: row.kind,
-	};
-};
-
 /**
- * /platform/i18n matrix (PL-008 Phase 3 v1): rows = message keys of the
- * selected namespace, columns = enabled locales, global scope. A cell
- * edits through a dialog — save stages `draft_value`, publish moves it
- * live. Tenant/portal scopes and the Streamdown param-chip preview land
- * in the follow-up polish commit.
+ * /platform/i18n matrix (PL-008 Phase 3 v1 + Phase 6 scope editing):
+ * rows = message keys of the selected namespace, columns = enabled
+ * locales (qps excluded — it's derived at slice time, not stored).
+ * A scope selector picks which scope rows the matrix edits; tenant /
+ * portal need a scope id (exact match — an empty id would only match
+ * rows literally keyed "", so the fetch waits for input). A cell edits
+ * through a dialog — save stages `draft_value`, publish moves it live.
  */
 export function I18nPage({ data }: { data: I18nPageData }) {
 	const router = useRouter();
 	const [namespace, setNamespace] = useState(data.namespaces[0]?.namespace ?? "");
+	const [filterScope, setFilterScope] = useState<MessageScope>("global");
+	const [filterScopeId, setFilterScopeId] = useState("");
 	const [editing, setEditing] = useState<Editing | null>(null);
 	const [draft, setDraft] = useState("");
 	const [kind, setKind] = useState<"text" | "rich">("text");
@@ -174,26 +158,51 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	const [busy, setBusy] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [notice, setNotice] = useState<string | null>(null);
+	const [confirmDiscard, setConfirmDiscard] = useState(false);
+	const [pendingImport, setPendingImport] = useState<{
+		readonly payload: unknown;
+		readonly summary: ImportSummary;
+	} | null>(null);
+	const [localeBusy, setLocaleBusy] = useState<string | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
-	// Message rows are fetched per selected namespace — the loader only
-	// ships namespaces + locales so the whole table never hits the wire.
+	// Message rows are fetched per selected namespace + scope — the
+	// loader only ships namespaces + locales so the table never hits
+	// the wire wholesale.
 	const [fetched, setFetched] = useState<{
 		readonly ns: string;
+		readonly scope: MessageScope;
+		readonly scopeId: string;
 		readonly rows: readonly I18nMessage[];
-	}>({ ns: "", rows: [] });
+	}>({ ns: "", scope: "global", scopeId: "", rows: [] });
 
-	const refresh = () =>
-		i18nNamespaceMessagesFn({ data: namespace }).then((res) => {
-			if (Array.isArray(res)) setFetched({ ns: namespace, rows: res });
+	/** scopeId is an exact-match column: "" is meaningful only for
+	 * global, so tenant/portal fetches wait for a non-empty id. */
+	const scopeReady = filterScope === "global" || filterScopeId !== "";
+	const fetchScopeId = filterScope === "global" ? "" : filterScopeId;
+
+	const refresh = () => {
+		if (!scopeReady) return Promise.resolve();
+		return i18nNamespaceMessagesFn({
+			data: { namespace, scope: filterScope, scopeId: fetchScopeId },
+		}).then((res) => {
+			if (Array.isArray(res)) {
+				setFetched({ ns: namespace, scope: filterScope, scopeId: fetchScopeId, rows: res });
+			}
 		});
+	};
 
 	useEffect(() => {
-		if (namespace === "") return;
+		if (namespace === "" || !scopeReady) return;
 		let live = true;
 		setLoading(true);
-		i18nNamespaceMessagesFn({ data: namespace })
+		void i18nNamespaceMessagesFn({
+			data: { namespace, scope: filterScope, scopeId: fetchScopeId },
+		})
 			.then((res) => {
-				if (live && Array.isArray(res)) setFetched({ ns: namespace, rows: res });
+				if (live && Array.isArray(res)) {
+					setFetched({ ns: namespace, scope: filterScope, scopeId: fetchScopeId, rows: res });
+				}
 			})
 			.finally(() => {
 				if (live) setLoading(false);
@@ -201,32 +210,53 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		return () => {
 			live = false;
 		};
-	}, [namespace]);
+	}, [namespace, filterScope, fetchScopeId, scopeReady]);
 
-	const messages = fetched.ns === namespace ? fetched.rows : [];
+	const messages = useMemo(
+		() =>
+			fetched.ns === namespace && fetched.scope === filterScope && fetched.scopeId === fetchScopeId
+				? fetched.rows
+				: [],
+		[fetched, namespace, filterScope, fetchScopeId],
+	);
 
-	const locales = useMemo(() => data.locales.filter((l) => l.enabled), [data.locales]);
+	// qps is pseudo-localized at slice time — it has no stored rows, so
+	// it would render as an all-"missing" column. Keep it out of the
+	// editable matrix; enabled-locale filtering is otherwise unchanged.
+	const locales = useMemo(
+		() => data.locales.filter((l) => l.enabled && l.code !== PSEUDO_LOCALE),
+		[data.locales],
+	);
 	const nsMessages = useMemo(
-		() => messages.filter((m) => m.namespace === namespace && m.scope === "global"),
-		[messages, namespace],
+		() =>
+			messages.filter(
+				(m) => m.namespace === namespace && m.scope === filterScope && m.scopeId === fetchScopeId,
+			),
+		[messages, namespace, filterScope, fetchScopeId],
 	);
 	const keys = useMemo(() => [...new Set(nsMessages.map((m) => m.key))].sort(), [nsMessages]);
 
+	// O(1) cell lookups — the matrix maps keys × locales cells and
+	// re-renders on every keystroke in the editor dialog.
+	const cellIndex = useMemo(() => buildCellIndex(messages), [messages]);
+
 	const open = (key: string, locale: string) => {
-		const cell = cellFor(messages, namespace, key, locale);
-		setEditing({ namespace, key, locale, scope: "global", scopeId: "", cell });
+		const cell = cellFor(cellIndex, namespace, key, locale, filterScope, fetchScopeId);
+		setEditing({ namespace, key, locale, scope: filterScope, scopeId: fetchScopeId, cell });
 		setDraft(cell?.draft ?? cell?.live ?? "");
 		setKind(cell?.kind === "rich" ? "rich" : "text");
-		setScopeId("");
+		// The dialog's scope-id input mirrors the cell's scope id.
+		setScopeId(fetchScopeId);
 		setError(null);
 	};
 
 	/** Re-target the dialog at another scope's cell for the same
 	 * namespace/key/locale (PL-008 Phase 6 scope editing). */
-	const retarget = (scope: "global" | "tenant" | "portal", nextScopeId: string) => {
+	const retarget = (scope: MessageScope, nextScopeId: string) => {
+		/* v8 ignore next -- retarget is only reachable from the open dialog's controls */
 		if (editing === null) return;
 		const cell = cellFor(
-			messages,
+			cellIndex,
 			editing.namespace,
 			editing.key,
 			editing.locale,
@@ -255,6 +285,65 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 			setBusy(false);
 		}
 	};
+
+	/** Locale enable/disable toggle — the loader ships `locales`, so an
+	 * invalidate re-runs the panel loader and the matrix columns +
+	 * locales row refresh from props. */
+	const toggleLocale = async (code: string, enabled: boolean) => {
+		setError(null);
+		setNotice(null);
+		setLocaleBusy(code);
+		try {
+			const res = (await i18nSetLocaleFn({ data: { code, enabled } })) as {
+				ok?: boolean;
+				error?: string;
+			} | null;
+			if (res?.ok === false) {
+				setError(res.error ?? `denied toggling ${code}`);
+				return;
+			}
+			setNotice(`${code} ${enabled ? "enabled" : "disabled"}.`);
+			await router.invalidate();
+		} finally {
+			setLocaleBusy(null);
+		}
+	};
+
+	/** Confirmed import: the file was already parsed + summarized
+	 * client-side; a foreign namespace switches the selector so the
+	 * imported rows are visible (the fetch effect refetches on
+	 * namespace change — same-namespace imports refresh explicitly). */
+	const confirmImport = async () => {
+		const pending = pendingImport;
+		/* v8 ignore next -- the confirm dialog only fires onConfirm while open */
+		if (pending === null) return;
+		setBusy(true);
+		setError(null);
+		try {
+			const res = (await i18nImportFn({ data: pending.payload })) as {
+				ok?: boolean;
+				error?: string;
+				imported?: number;
+			} | null;
+			if (res?.ok === false) {
+				setError(res.error ?? "import denied");
+				return;
+			}
+			const target = pending.summary.namespace;
+			setNotice(`Imported ${res?.imported ?? pending.summary.entryCount} entries into ${target}.`);
+			setPendingImport(null);
+			await router.invalidate();
+			if (target === namespace) {
+				await refresh();
+			} else {
+				setNamespace(target);
+			}
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const dirty = editing !== null && isDraftDirty(draft, editing.cell);
 
 	const id = editing
 		? {
@@ -285,6 +374,32 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						))}
 					</SelectContent>
 				</Select>
+				<Select
+					value={filterScope}
+					onValueChange={(v) => {
+						setFilterScope(String(v) as MessageScope);
+						// Scope ids don't carry across scopes — a tenant id is
+						// meaningless as a portal instance id.
+						setFilterScopeId("");
+					}}
+				>
+					<SelectTrigger className="w-28">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="global">global</SelectItem>
+						<SelectItem value="tenant">tenant</SelectItem>
+						<SelectItem value="portal">portal</SelectItem>
+					</SelectContent>
+				</Select>
+				{filterScope !== "global" && (
+					<Input
+						value={filterScopeId}
+						onChange={(e) => setFilterScopeId(e.target.value)}
+						placeholder={filterScope === "portal" ? "portal instance id" : "tenant id"}
+						className="w-44"
+					/>
+				)}
 				<Button
 					variant="outline"
 					size="sm"
@@ -331,30 +446,48 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						const file = e.target.files?.[0];
 						e.target.value = "";
 						if (!file) return;
-						void file.text().then(async (text) => {
-							setBusy(true);
+						void file.text().then((text) => {
 							setError(null);
+							setNotice(null);
+							let payload: unknown;
 							try {
-								const payload = JSON.parse(text) as unknown;
-								const res = (await i18nImportFn({ data: payload })) as {
-									ok?: boolean;
-									error?: string;
-								} | null;
-								if (res?.ok === false) {
-									setError(res.error ?? "import denied");
-									return;
-								}
-								await router.invalidate();
-								await refresh();
+								payload = JSON.parse(text);
 							} catch {
 								setError("invalid JSON file");
-							} finally {
-								setBusy(false);
+								return;
 							}
+							// Preview before the wire call — the confirm dialog
+							// shows namespace + counts and may retarget the
+							// namespace selector on success.
+							const parsed = summarizeImportPayload(payload);
+							if (!parsed.ok) {
+								setError(parsed.error);
+								return;
+							}
+							setPendingImport({ payload, summary: parsed.summary });
 						});
 					}}
 				/>
 			</div>
+			<div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+				<span className="text-sm text-muted-foreground">Locales</span>
+				{data.locales.map((l) => (
+					<span key={l.code} className="flex items-center gap-2 text-sm">
+						<Switch
+							size="sm"
+							checked={l.enabled}
+							disabled={busy || localeBusy !== null}
+							onCheckedChange={(c) => void toggleLocale(l.code, c === true)}
+							aria-label={`Toggle locale ${l.code}`}
+						/>
+						{l.endonym}
+						<span className="font-mono text-xs text-muted-foreground">{l.code}</span>
+						{!l.enabled && <Badge variant="secondary">disabled</Badge>}
+					</span>
+				))}
+			</div>
+			{error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
+			{notice !== null && <p className="mb-3 text-sm text-muted-foreground">{notice}</p>}
 			<Table>
 				<TableHeader>
 					<TableRow>
@@ -369,7 +502,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						<TableRow key={key}>
 							<TableCell className="font-mono text-xs">{key}</TableCell>
 							{locales.map((l) => {
-								const cell = cellFor(messages, namespace, key, l.code);
+								const cell = cellFor(cellIndex, namespace, key, l.code, filterScope, fetchScopeId);
 								const shown = cell?.draft ?? cell?.live;
 								return (
 									<TableCell key={l.code}>
@@ -394,14 +527,28 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					{keys.length === 0 && (
 						<TableRow>
 							<TableCell colSpan={locales.length + 1} className="text-center text-muted-foreground">
-								{loading ? "Loading…" : "No messages in this namespace yet."}
+								{loading
+									? "Loading…"
+									: !scopeReady
+										? `Enter a ${filterScope} id to load scoped messages.`
+										: "No messages in this namespace yet."}
 							</TableCell>
 						</TableRow>
 					)}
 				</TableBody>
 			</Table>
 
-			<Dialog open={editing !== null} onOpenChange={(o) => !o && setEditing(null)}>
+			<Dialog
+				open={editing !== null}
+				onOpenChange={(o) => {
+					/* v8 ignore next -- open is controlled by `editing`; only close events fire */
+					if (o) return;
+					// Dirty drafts get a confirm before being discarded —
+					// Escape/overlay/X all funnel through here.
+					if (dirty) setConfirmDiscard(true);
+					else setEditing(null);
+				}}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>
@@ -417,7 +564,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						<Select
 							value={editing?.scope ?? "global"}
 							onValueChange={(v) => {
-								const scope = String(v) as "global" | "tenant" | "portal";
+								const scope = String(v) as MessageScope;
 								retarget(scope, scope === "global" ? "" : scopeId);
 							}}
 						>
@@ -452,6 +599,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					{kind === "rich" ? (
 						<RichTextEditor
 							value={draft}
+							/* v8 ignore next -- Plate's editor internals can't be driven in jsdom */
 							onChange={(html) => setDraft(html)}
 							aria-label="Message rich text"
 						/>
@@ -500,6 +648,35 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					</div>
 				</DialogContent>
 			</Dialog>
+
+			<ConfirmDialog
+				open={confirmDiscard}
+				onOpenChange={setConfirmDiscard}
+				title="Discard unsaved changes?"
+				description="The edits in this dialog haven't been saved as a draft."
+				confirmLabel="Discard"
+				cancelLabel="Keep editing"
+				variant="destructive"
+				onConfirm={() => setEditing(null)}
+			/>
+
+			<ConfirmDialog
+				open={pendingImport !== null}
+				onOpenChange={(o) => {
+					/* v8 ignore next -- mounted only while pendingImport; only close events fire */
+					if (!o) setPendingImport(null);
+				}}
+				title={`Import into "${pendingImport?.summary.namespace ?? ""}"?`}
+				description={
+					pendingImport === null
+						? undefined
+						: `${pendingImport.summary.localeCount} locales · ${pendingImport.summary.keyCount} keys · ${pendingImport.summary.entryCount} entries. Matching keys land as drafts — nothing goes live.`
+				}
+				confirmLabel="Import"
+				cancelLabel="Cancel"
+				loading={busy}
+				onConfirm={confirmImport}
+			/>
 		</PageContainer>
 	);
 }

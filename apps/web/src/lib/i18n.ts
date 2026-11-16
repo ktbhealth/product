@@ -27,9 +27,25 @@ export function localeFromCookieHeader(header: string | null): string | undefine
 	return value === undefined || value === "" ? undefined : value;
 }
 
-/** Locale for an incoming request: cookie first, then the base locale. */
+/** The `?locale=` QA override from a raw query string (`location.search`
+ * on the client). Returns undefined when absent/empty — callers decide
+ * precedence against the cookie/default. */
+export function localeFromSearch(search: string): string | undefined {
+	const param = new URLSearchParams(search).get("locale");
+	return param === null || param === "" ? undefined : param;
+}
+
+/** Locale for an incoming request: `?locale=` wins (the QA hook —
+ * e.g. `?locale=qps` for the pseudo-locale without touching cookie
+ * state), then the `ktb-locale` cookie, then the base locale.
+ * Enabled-locale validation happens downstream in
+ * `resolveRequestLocales`, so unknown values degrade to default. */
 export function requestLocale(request: Request): string {
-	return localeFromCookieHeader(request.headers.get("cookie")) ?? BASE_LOCALE;
+	return (
+		localeFromSearch(new URL(request.url).search) ??
+		localeFromCookieHeader(request.headers.get("cookie")) ??
+		BASE_LOCALE
+	);
 }
 
 /** Catalog lookup for an `app.*` message; the declared fallback wins
@@ -95,7 +111,7 @@ const FOOTER_NOTES: Record<string, string> = {
  * the client catalog stay in lockstep (hard-reload requirement). */
 export function changeLocale(locale: string): void {
 	if (typeof document === "undefined") return;
-	document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax`;
+	document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax; secure`;
 	if (typeof window !== "undefined") window.location.reload();
 }
 

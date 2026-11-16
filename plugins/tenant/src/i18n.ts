@@ -6,6 +6,8 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const TENANT_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4). */
@@ -53,7 +55,9 @@ export interface TenantMessages {
 const en: TenantMessages = {
 	title: "Tenants",
 	none: "No tenants registered.",
-	count: (n) => `${n} tenant${n === 1 ? "" : "s"} across the platform.`,
+	count: paramMessage("en", "{n, plural, =1{{n} tenant} other{{n} tenants}} across the platform.", [
+		"n",
+	]),
 	emptyTitle: "No tenants",
 	emptyDescription: "Tenants appear here once a group is flagged as one.",
 	colId: "Id",
@@ -65,7 +69,7 @@ const en: TenantMessages = {
 	searchPlaceholder: "Search by name or slug…",
 	searchLabel: "Search tenants",
 	noMatch: "No tenants match the search.",
-	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 	colActions: "Actions",
 	colMember: "Member",
 	colRole: "Role",
@@ -76,7 +80,7 @@ const en: TenantMessages = {
 	addMember: "Add member",
 	removeMember: "Remove",
 	removeMemberTitle: "Remove member",
-	removeMemberDescription: (memberId) => `Remove ${memberId} from this tenant?`,
+	removeMemberDescription: paramMessage("en", "Remove {memberId} from this tenant?", ["memberId"]),
 	roleOwner: "owner",
 	roleAdmin: "admin",
 	roleMember: "member",
@@ -87,7 +91,11 @@ const en: TenantMessages = {
 const ptBR: TenantMessages = {
 	title: "Tenants",
 	none: "Nenhum tenant cadastrado.",
-	count: (n) => `${n} tenant${n === 1 ? "" : "s"} em toda a plataforma.`,
+	count: paramMessage(
+		"pt-BR",
+		"{n, plural, =1{{n} tenant} other{{n} tenants}} em toda a plataforma.",
+		["n"],
+	),
 	emptyTitle: "Nenhum tenant",
 	emptyDescription: "Os tenants aparecem aqui quando um grupo é marcado como tal.",
 	colId: "Id",
@@ -99,7 +107,7 @@ const ptBR: TenantMessages = {
 	searchPlaceholder: "Buscar por nome ou slug…",
 	searchLabel: "Buscar tenants",
 	noMatch: "Nenhum tenant corresponde à busca.",
-	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 	colActions: "Ações",
 	colMember: "Membro",
 	colRole: "Função",
@@ -110,7 +118,7 @@ const ptBR: TenantMessages = {
 	addMember: "Adicionar membro",
 	removeMember: "Remover",
 	removeMemberTitle: "Remover membro",
-	removeMemberDescription: (memberId) => `Remover ${memberId} deste tenant?`,
+	removeMemberDescription: paramMessage("pt-BR", "Remover {memberId} deste tenant?", ["memberId"]),
 	roleOwner: "owner",
 	roleAdmin: "admin",
 	roleMember: "member",
@@ -121,7 +129,11 @@ const ptBR: TenantMessages = {
 const es: TenantMessages = {
 	title: "Tenants",
 	none: "Ningún tenant registrado.",
-	count: (n) => `${n} tenant${n === 1 ? "" : "s"} en toda la plataforma.`,
+	count: paramMessage(
+		"es",
+		"{n, plural, =1{{n} tenant} other{{n} tenants}} en toda la plataforma.",
+		["n"],
+	),
 	emptyTitle: "Ningún tenant",
 	emptyDescription: "Los tenants aparecen aquí cuando un grupo se marca como tal.",
 	colId: "Id",
@@ -133,7 +145,7 @@ const es: TenantMessages = {
 	searchPlaceholder: "Buscar por nombre o slug…",
 	searchLabel: "Buscar tenants",
 	noMatch: "Ningún tenant coincide con la búsqueda.",
-	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 	colActions: "Acciones",
 	colMember: "Miembro",
 	colRole: "Rol",
@@ -144,7 +156,7 @@ const es: TenantMessages = {
 	addMember: "Añadir miembro",
 	removeMember: "Eliminar",
 	removeMemberTitle: "Eliminar miembro",
-	removeMemberDescription: (memberId) => `¿Eliminar ${memberId} de este tenant?`,
+	removeMemberDescription: paramMessage("es", "¿Eliminar {memberId} de este tenant?", ["memberId"]),
 	roleOwner: "owner",
 	roleAdmin: "admin",
 	roleMember: "member",

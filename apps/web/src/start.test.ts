@@ -1,5 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 
+const hoisted = vi.hoisted(() => ({ failAls: false }));
+
+vi.mock("#/lib/locale-context.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#/lib/locale-context.ts")>();
+	return {
+		...actual,
+		localeStorage: () =>
+			hoisted.failAls
+				? Promise.reject(new Error("async_hooks unavailable"))
+				: actual.localeStorage(),
+	};
+});
+
 import { currentLocale } from "#/lib/locale-context.ts";
 import { setAccessLogSink } from "#/lib/access-log.ts";
 import { startInstance } from "./start.ts";
@@ -48,6 +61,26 @@ describe("locale request middleware", () => {
 	it("falls back to the base locale without a cookie", async () => {
 		const { localeInsideNext } = await runMiddleware();
 		expect(localeInsideNext).toBe("en");
+	});
+
+	it("serves the request without locale context when the ALS is unavailable", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		hoisted.failAls = true;
+		try {
+			const { localeInsideNext, response } = await runMiddleware("ktb-locale=pt-BR");
+			expect(response.status).toBe(200);
+			// Outside an ALS store currentLocale() degrades to base locale.
+			expect(localeInsideNext).toBe("en");
+			// The degradation is logged once (not silently) so a compat
+			// regression is visible in worker logs.
+			const alsWarnings = warn.mock.calls.filter((c) =>
+				String(c[0]).includes("AsyncLocalStorage unavailable"),
+			);
+			expect(alsWarnings.length).toBeGreaterThanOrEqual(1);
+		} finally {
+			hoisted.failAls = false;
+			warn.mockRestore();
+		}
 	});
 });
 

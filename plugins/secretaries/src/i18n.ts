@@ -5,6 +5,7 @@
  * catalog must implement `SecretaryMessages` in full — a missing key is
  * a type error, not an English fallback at runtime.
  */
+import { paramMessage } from "@ktb/i18n";
 import type { InviteErrorCode } from "./index.ts";
 import type { DoctorAccessStatus } from "./schema.ts";
 
@@ -81,19 +82,12 @@ const en: SecretaryMessages = {
 		failed: "Something went wrong. Please try again.",
 	},
 	inviteEmail: {
-		subject: (doctor) => `${doctor} invited you to KTB Health`,
-		body: (doctor, url, accept) =>
-			[
-				"Hello.",
-				"",
-				`${doctor} invited you to work on their behalf at KTB Health, as their secretary.`,
-				accept
-					? "Accept the invitation and choose your password — the link works once and is valid for 7 days:"
-					: "Sign in with this email address to get access:",
-				url,
-				"",
-				"If you were not expecting this invitation, you can ignore this message.",
-			].join("\n"),
+		subject: paramMessage("en", "{doctor} invited you to KTB Health", ["doctor"]),
+		body: paramMessage(
+			"en",
+			"Hello.\n\n{doctor} invited you to work on their behalf at KTB Health, as their secretary.\n{accept, select, true{Accept the invitation and choose your password — the link works once and is valid for 7 days:} other{Sign in with this email address to get access:}}\n{url}\n\nIf you were not expecting this invitation, you can ignore this message.",
+			["doctor", "url", "accept"],
+		),
 	},
 	login: {
 		metaTitle: "Secretary sign-in | KTB Health",
@@ -136,19 +130,12 @@ const ptBR: SecretaryMessages = {
 		failed: "Algo deu errado. Tente novamente.",
 	},
 	inviteEmail: {
-		subject: (doctor) => `${doctor} convidou você para o KTB Health`,
-		body: (doctor, url, accept) =>
-			[
-				"Olá.",
-				"",
-				`${doctor} convidou você para trabalhar em nome dele(a) no KTB Health, como secretária.`,
-				accept
-					? "Aceite o convite e escolha sua senha — o link funciona uma única vez e vale por 7 dias:"
-					: "Entre com este endereço de e-mail para ter acesso:",
-				url,
-				"",
-				"Se você não esperava este convite, pode ignorar esta mensagem.",
-			].join("\n"),
+		subject: paramMessage("pt-BR", "{doctor} convidou você para o KTB Health", ["doctor"]),
+		body: paramMessage(
+			"pt-BR",
+			"Olá.\n\n{doctor} convidou você para trabalhar em nome dele(a) no KTB Health, como secretária.\n{accept, select, true{Aceite o convite e escolha sua senha — o link funciona uma única vez e vale por 7 dias:} other{Entre com este endereço de e-mail para ter acesso:}}\n{url}\n\nSe você não esperava este convite, pode ignorar esta mensagem.",
+			["doctor", "url", "accept"],
+		),
 	},
 	login: {
 		metaTitle: "Secretária | KTB Health",
@@ -191,19 +178,12 @@ const es: SecretaryMessages = {
 		failed: "Algo salió mal. Inténtalo de nuevo.",
 	},
 	inviteEmail: {
-		subject: (doctor) => `${doctor} te invitó a KTB Health`,
-		body: (doctor, url, accept) =>
-			[
-				"Hola.",
-				"",
-				`${doctor} te invitó a trabajar en su nombre en KTB Health, como secretaria.`,
-				accept
-					? "Acepta la invitación y elige tu contraseña — el enlace funciona una sola vez y es válido por 7 días:"
-					: "Inicia sesión con esta dirección de correo para obtener acceso:",
-				url,
-				"",
-				"Si no esperabas esta invitación, puedes ignorar este mensaje.",
-			].join("\n"),
+		subject: paramMessage("es", "{doctor} te invitó a KTB Health", ["doctor"]),
+		body: paramMessage(
+			"es",
+			"Hola.\n\n{doctor} te invitó a trabajar en su nombre en KTB Health, como secretaria.\n{accept, select, true{Acepta la invitación y elige tu contraseña — el enlace funciona una sola vez y es válido por 7 días:} other{Inicia sesión con esta dirección de correo para obtener acceso:}}\n{url}\n\nSi no esperabas esta invitación, puedes ignorar este mensaje.",
+			["doctor", "url", "accept"],
+		),
 	},
 	login: {
 		metaTitle: "Secretaria | KTB Health",

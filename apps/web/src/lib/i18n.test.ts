@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PATIENT_LOCALES } from "@ktb/patients/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -7,6 +7,7 @@ import {
 	appMessage,
 	changeLocale,
 	localeFromCookieHeader,
+	localeFromSearch,
 	localeName,
 	pluginFooterNote,
 	pluginNavLabel,
@@ -71,6 +72,30 @@ describe("requestLocale", () => {
 	it("falls back to the base locale without a cookie", () => {
 		expect(requestLocale(new Request("http://localhost/"))).toBe("en");
 	});
+
+	it("prefers ?locale= over the cookie (QA pseudo-locale hook)", () => {
+		const req = new Request("http://localhost/?locale=qps", {
+			headers: { cookie: "ktb-locale=pt-BR" },
+		});
+		expect(requestLocale(req)).toBe("qps");
+	});
+
+	it("ignores an empty ?locale= param", () => {
+		expect(requestLocale(new Request("http://localhost/?locale="))).toBe("en");
+	});
+});
+
+describe("localeFromSearch", () => {
+	it("extracts ?locale= from a raw query string", () => {
+		expect(localeFromSearch("?locale=qps")).toBe("qps");
+		expect(localeFromSearch("locale=pt-BR&foo=1")).toBe("pt-BR");
+	});
+
+	it("returns undefined when absent or empty", () => {
+		expect(localeFromSearch("")).toBeUndefined();
+		expect(localeFromSearch("?foo=1")).toBeUndefined();
+		expect(localeFromSearch("?locale=")).toBeUndefined();
+	});
 });
 
 describe("appMessage", () => {
@@ -101,8 +126,31 @@ describe("localeName", () => {
 });
 
 describe("changeLocale", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it("writes the cookie and reloads without throwing", () => {
 		expect(() => changeLocale("pt-BR")).not.toThrow();
+	});
+
+	it("persists the cookie with Secure + SameSite=Lax", () => {
+		const jar: string[] = [];
+		vi.stubGlobal("document", {
+			set cookie(value: string) {
+				jar.push(value);
+			},
+			get cookie() {
+				return jar.at(-1) ?? "";
+			},
+		});
+		vi.stubGlobal("window", { location: { reload: () => {} } });
+		changeLocale("pt-BR");
+		expect(jar).toHaveLength(1);
+		expect(jar[0]).toContain("ktb-locale=pt-BR");
+		expect(jar[0]).toContain("path=/");
+		expect(jar[0]).toContain("samesite=lax");
+		expect(jar[0]).toContain("secure");
 	});
 });
 

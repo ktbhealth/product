@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyTextEdit, docFromUpdates, docValue, newMessageDoc } from "./crdt.ts";
+import { applyTextEdit, docFromUpdates, docValue, newMessageDoc, snapshotUpdate } from "./crdt.ts";
 
 describe("crdt helpers", () => {
 	it("creates a doc and materializes its value", () => {
@@ -31,5 +31,21 @@ describe("crdt helpers", () => {
 		expect(v).toContain("base ");
 		expect(v).toContain("A");
 		expect(v).toContain("B");
+	});
+
+	it("snapshotUpdate collapses a log into one replayable update", () => {
+		const doc = newMessageDoc("");
+		const r1 = applyTextEdit(doc, { insert: "Hello " });
+		const r2 = applyTextEdit(r1.doc, { insert: "world" });
+		const updates = [r1.update, r2.update];
+
+		const snapshot = snapshotUpdate(updates);
+		// One row replays to the same value as the full log…
+		expect(docValue(docFromUpdates([snapshot]))).toBe("Hello world");
+		// …and a snapshot can be followed by new deltas (compaction is
+		// not a one-way door).
+		const continued = docFromUpdates([snapshot]);
+		const r3 = applyTextEdit(continued, { insert: "!" });
+		expect(docValue(r3.doc)).toBe("Hello world!");
 	});
 });

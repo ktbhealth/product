@@ -49,6 +49,7 @@ export const listPublishedRows = async (
 	);
 	const conds = [
 		inArray(i18nMessages.locale, [...input.locales]),
+		eq(i18nMessages.status, "published"),
 		sql`(${sql.join(scopeConds, sql` OR `)})`,
 	];
 	if (input.namespaces !== undefined && input.namespaces.length > 0) {
@@ -62,20 +63,28 @@ export const listPublishedRows = async (
 };
 
 /**
- * Cache stamp: SUM(version) + COUNT(*) over published rows. Every write
- * bumps `version`, every insert adds to the count — monotonic, so the
- * ~15s TTL re-read detects any change.
+ * Cache stamp: COUNT(*) + SUM(version) + MAX(updated_at) over published
+ * rows. Every write bumps `version` and `updated_at`, every insert adds
+ * to the count — monotonic, so the ~15s TTL re-read detects any change.
+ * `max(updated_at)` covers deletes/resets that could otherwise leave
+ * count+versionSum frozen while the row set changed.
+ *
+ * Cost note: `status = 'published'` has no dedicated index (the table
+ * carries only the (namespace, locale) one), so this is a full scan of
+ * i18n_messages — fine at catalog scale (~4k rows) and re-read at most
+ * every STAMP_TTL_MS per isolate; revisit if the table grows past that.
  */
 export const catalogStamp = async (db: DbClient): Promise<string> => {
 	const rows = await db
 		.select({
 			count: sql<number>`count(*)`,
 			versionSum: sql<number>`coalesce(sum(${i18nMessages.version}), 0)`,
+			maxUpdated: sql<number>`coalesce(max(${i18nMessages.updatedAt}), 0)`,
 		})
 		.from(i18nMessages)
 		.where(eq(i18nMessages.status, "published"));
 	const r = rows[0];
-	return `${r?.count ?? 0}:${r?.versionSum ?? 0}`;
+	return `${r?.count ?? 0}:${r?.versionSum ?? 0}:${r?.maxUpdated ?? 0}`;
 };
 
 /** Enabled locales with their fallback chains, default first. */
@@ -158,7 +167,12 @@ export const getMessageRow = async (
 	return rows[0];
 };
 
-/** Loro op-log bytes for one message, oldest first. */
+/**
+ * Loro op-log bytes for one message, oldest first, plus `maxId` — the
+ * highest row id seen. Compaction deletes only `id <= maxId` so ops a
+ * concurrent save appended after this read survive and merge on replay
+ * (see appendCrdt in admin.ts).
+ */
 export const listCrdtUpdates = async (
 	db: DbClient,
 	id: {
@@ -168,9 +182,9 @@ export const listCrdtUpdates = async (
 		readonly scope: MessageScope;
 		readonly scopeId: string;
 	},
-): Promise<readonly Uint8Array[]> => {
+): Promise<{ readonly updates: readonly Uint8Array[]; readonly maxId: number }> => {
 	const rows = await db
-		.select({ update: i18nCrdtUpdates.update })
+		.select({ id: i18nCrdtUpdates.id, update: i18nCrdtUpdates.update })
 		.from(i18nCrdtUpdates)
 		.where(
 			and(
@@ -182,5 +196,9 @@ export const listCrdtUpdates = async (
 			),
 		)
 		.orderBy(i18nCrdtUpdates.id);
-	return rows.map((r) => r.update as Uint8Array);
+	return {
+		updates: rows.map((r) => r.update as Uint8Array),
+		// Rows are id-ordered, so the last row carries the max id (0 when empty).
+		maxId: rows[rows.length - 1]?.id ?? 0,
+	};
 };

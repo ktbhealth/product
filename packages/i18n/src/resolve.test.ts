@@ -164,6 +164,28 @@ describe("resolveMessage", () => {
 		expect(r.template).toBe("global pt");
 	});
 
+	it("row keys don't collide on whitespace inside fields", () => {
+		// "a b"+"c" vs "a"+"b c" produced identical space-joined keys.
+		const idx = indexMessages([
+			row({ namespace: "n", key: "a b", locale: "c", value: "V1" }),
+			row({ namespace: "n", key: "a", locale: "b c", value: "V2" }),
+		]);
+		const hit1 = resolveMessage(idx, {
+			namespace: "n",
+			key: "a b",
+			scopeChain: GLOBAL_SCOPE,
+			locales: localeChain(["c"], "c"),
+		});
+		expect(hit1.template).toBe("V1");
+		const hit2 = resolveMessage(idx, {
+			namespace: "n",
+			key: "a",
+			scopeChain: GLOBAL_SCOPE,
+			locales: localeChain(["b c"], "b c"),
+		});
+		expect(hit2.template).toBe("V2");
+	});
+
 	it("tenant scope without tenant row falls to global", () => {
 		const idx = indexMessages([row({ value: "global" })]);
 		const r = resolveMessage(idx, {

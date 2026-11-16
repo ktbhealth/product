@@ -6,6 +6,8 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const USER_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4). */
@@ -54,7 +56,9 @@ export interface UserMessages {
 const en: UserMessages = {
 	title: "Users",
 	none: "No users registered.",
-	count: (n) => `${n} user${n === 1 ? "" : "s"} across the platform.`,
+	count: paramMessage("en", "{n, plural, =1{{n} user} other{{n} users}} across the platform.", [
+		"n",
+	]),
 	emptyTitle: "No users",
 	emptyDescription: "Users appear here once they sign up.",
 	colId: "Id",
@@ -76,21 +80,28 @@ const en: UserMessages = {
 	suspend: "Suspend",
 	reactivate: "Reactivate",
 	suspendTitle: "Suspend user",
-	suspendDescription: (email) =>
-		`Suspend ${email}? They will be signed out and unable to sign in until reactivated.`,
+	suspendDescription: paramMessage(
+		"en",
+		"Suspend {email}? They will be signed out and unable to sign in until reactivated.",
+		["email"],
+	),
 	suspendConfirm: "Suspend",
 	cancel: "Cancel",
 	saveError: "Could not update the user. Try again.",
 	searchPlaceholder: "Search by name or email…",
 	searchLabel: "Search users",
 	noMatch: "No users match the search.",
-	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 };
 
 const ptBR: UserMessages = {
 	title: "Usuários",
 	none: "Nenhum usuário cadastrado.",
-	count: (n) => `${n} usuário${n === 1 ? "" : "s"} em toda a plataforma.`,
+	count: paramMessage(
+		"pt-BR",
+		"{n, plural, =1{{n} usuário} other{{n} usuários}} em toda a plataforma.",
+		["n"],
+	),
 	emptyTitle: "Nenhum usuário",
 	emptyDescription: "Os usuários aparecem aqui após se cadastrarem.",
 	colId: "Id",
@@ -112,21 +123,28 @@ const ptBR: UserMessages = {
 	suspend: "Suspender",
 	reactivate: "Reativar",
 	suspendTitle: "Suspender usuário",
-	suspendDescription: (email) =>
-		`Suspender ${email}? O usuário será desconectado e não poderá entrar até ser reativado.`,
+	suspendDescription: paramMessage(
+		"pt-BR",
+		"Suspender {email}? O usuário será desconectado e não poderá entrar até ser reativado.",
+		["email"],
+	),
 	suspendConfirm: "Suspender",
 	cancel: "Cancelar",
 	saveError: "Não foi possível atualizar o usuário. Tente novamente.",
 	searchPlaceholder: "Buscar por nome ou e-mail…",
 	searchLabel: "Buscar usuários",
 	noMatch: "Nenhum usuário corresponde à busca.",
-	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 };
 
 const es: UserMessages = {
 	title: "Usuarios",
 	none: "Ningún usuario registrado.",
-	count: (n) => `${n} usuario${n === 1 ? "" : "s"} en toda la plataforma.`,
+	count: paramMessage(
+		"es",
+		"{n, plural, =1{{n} usuario} other{{n} usuarios}} en toda la plataforma.",
+		["n"],
+	),
 	emptyTitle: "Ningún usuario",
 	emptyDescription: "Los usuarios aparecen aquí una vez que se registran.",
 	colId: "Id",
@@ -148,15 +166,18 @@ const es: UserMessages = {
 	suspend: "Suspender",
 	reactivate: "Reactivar",
 	suspendTitle: "Suspender usuario",
-	suspendDescription: (email) =>
-		`¿Suspender a ${email}? Se cerrará su sesión y no podrá iniciar sesión hasta que se reactive.`,
+	suspendDescription: paramMessage(
+		"es",
+		"¿Suspender a {email}? Se cerrará su sesión y no podrá iniciar sesión hasta que se reactive.",
+		["email"],
+	),
 	suspendConfirm: "Suspender",
 	cancel: "Cancelar",
 	saveError: "No se pudo actualizar el usuario. Inténtalo de nuevo.",
 	searchPlaceholder: "Buscar por nombre o correo…",
 	searchLabel: "Buscar usuarios",
 	noMatch: "Ningún usuario coincide con la búsqueda.",
-	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 };
 
 const CATALOGS: Record<UserLocale, UserMessages> = { en, "pt-BR": ptBR, es };

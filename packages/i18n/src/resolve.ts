@@ -100,9 +100,16 @@ export interface ResolvedMessage {
 		| { kind: "missing" };
 }
 
-// Space-separated: bare concatenation collides ("app"+"bc" == "appb"+"c").
-// Keys/locales/scope ids never contain spaces.
-const rowKey = (r: MessageRow) => `${r.namespace} ${r.key} ${r.locale} ${r.scope} ${r.scopeId}`;
+// JSON tuple: injective for ANY field content — whitespace, quotes and
+// separator-like substrings can't collide ("a b"+"c" vs "a"+"b c").
+// It's only a Map key, so readability doesn't matter.
+const rowKey = (r: {
+	readonly namespace: string;
+	readonly key: string;
+	readonly locale: string;
+	readonly scope: MessageScope;
+	readonly scopeId: string;
+}) => JSON.stringify([r.namespace, r.key, r.locale, r.scope, r.scopeId]);
 
 /** Index rows once; resolution is then O(chain × locales) map probes. */
 export const indexMessages = (rows: readonly MessageRow[]): ReadonlyMap<string, MessageRow> => {
@@ -132,7 +139,15 @@ export const resolveRow = (
 ): MessageRow | undefined => {
 	for (const { scope, scopeId } of input.scopeChain.scopes) {
 		for (const locale of input.locales.locales) {
-			const row = index.get(`${input.namespace} ${input.key} ${locale} ${scope} ${scopeId}`);
+			const row = index.get(
+				rowKey({
+					namespace: input.namespace,
+					key: input.key,
+					locale,
+					scope,
+					scopeId,
+				}),
+			);
 			if (row) return row;
 		}
 	}
@@ -141,7 +156,13 @@ export const resolveRow = (
 	if (!input.locales.locales.includes(input.locales.defaultLocale)) {
 		for (const { scope, scopeId } of input.scopeChain.scopes) {
 			const row = index.get(
-				`${input.namespace} ${input.key} ${input.locales.defaultLocale} ${scope} ${scopeId}`,
+				rowKey({
+					namespace: input.namespace,
+					key: input.key,
+					locale: input.locales.defaultLocale,
+					scope,
+					scopeId,
+				}),
 			);
 			if (row) return row;
 		}

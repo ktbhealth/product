@@ -7,6 +7,8 @@
  * not an English fallback at runtime.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const JOB_LOCALES = ["en", "pt-BR", "es"] as const;
 
 /** DB namespace this catalog imports into (PL-008 Phase 4). */
@@ -36,38 +38,38 @@ export interface JobMessages {
 
 const en: JobMessages = {
 	label: "Background jobs",
-	activeCount: (n) => `${n} active`,
+	activeCount: paramMessage("en", "{n} active", ["n"]),
 	emptyFilteredTitle: "No jobs in this state",
 	emptyFilteredDescription: "Nothing matches the selected filter.",
 	emptyAllTitle: "No background jobs",
 	emptyAllDescription: "Transcription, export and sync jobs will appear here.",
 	openConsultations: "Open consultations",
 	jobTitle: "Audio transcription",
-	consultationRef: (id) => `consultation #${id}`,
+	consultationRef: paramMessage("en", "consultation #{id}", ["id"]),
 };
 
 const ptBR: JobMessages = {
 	label: "Tarefas em segundo plano",
-	activeCount: (n) => `${n} ativas`,
+	activeCount: paramMessage("pt-BR", "{n} ativas", ["n"]),
 	emptyFilteredTitle: "Nenhuma tarefa neste estado",
 	emptyFilteredDescription: "Nada corresponde ao filtro selecionado.",
 	emptyAllTitle: "Nenhuma tarefa em segundo plano",
 	emptyAllDescription: "Tarefas de transcrição, exportação e sincronização aparecerão aqui.",
 	openConsultations: "Abrir consultas",
 	jobTitle: "Transcrição de áudio",
-	consultationRef: (id) => `consulta #${id}`,
+	consultationRef: paramMessage("pt-BR", "consulta #{id}", ["id"]),
 };
 
 const es: JobMessages = {
 	label: "Tareas en segundo plano",
-	activeCount: (n) => `${n} activas`,
+	activeCount: paramMessage("es", "{n} activas", ["n"]),
 	emptyFilteredTitle: "Ninguna tarea en este estado",
 	emptyFilteredDescription: "Nada coincide con el filtro seleccionado.",
 	emptyAllTitle: "Ninguna tarea en segundo plano",
 	emptyAllDescription: "Las tareas de transcripción, exportación y sincronización aparecerán aquí.",
 	openConsultations: "Abrir consultas",
 	jobTitle: "Transcripción de audio",
-	consultationRef: (id) => `consulta #${id}`,
+	consultationRef: paramMessage("es", "consulta #{id}", ["id"]),
 };
 
 const CATALOGS: Record<JobLocale, JobMessages> = { en, "pt-BR": ptBR, es };
@@ -130,7 +132,11 @@ export interface OpsMessages {
 
 const opsEn: OpsMessages = {
 	title: "Ops",
-	description: (n) => `${n} audio pipeline ${n === 1 ? "job" : "jobs"} tracked.`,
+	description: paramMessage(
+		"en",
+		"{n, plural, =1{{n} audio pipeline job tracked.} other{{n} audio pipeline jobs tracked.}}",
+		["n"],
+	),
 	jobsTitle: "Audio pipeline jobs",
 	jobsDescription: "Consultation transcription jobs across all owners.",
 	colConsultation: "Consultation",
@@ -154,8 +160,11 @@ const opsEn: OpsMessages = {
 	statusFailed: "Failed",
 	retry: "Retry",
 	retryTitle: "Retry transcription?",
-	retryDescription: (ref) =>
-		`Re-enqueue the transcription job for ${ref}. The stored recording is transcribed again.`,
+	retryDescription: paramMessage(
+		"en",
+		"Re-enqueue the transcription job for {ref}. The stored recording is transcribed again.",
+		["ref"],
+	),
 	retryConfirm: "Retry job",
 	cancel: "Cancel",
 	retryError: "Retry failed — the job could not be re-enqueued.",
@@ -167,7 +176,7 @@ const opsEn: OpsMessages = {
 	queueFailed: "Failed",
 	storageTitle: "Audio storage",
 	storageDescription: "Objects in the consultation audio bucket.",
-	storageObjects: (n) => `${n} ${n === 1 ? "object" : "objects"}`,
+	storageObjects: paramMessage("en", "{n, plural, =1{{n} object} other{{n} objects}}", ["n"]),
 	storageTruncated: "Listing capped — counts are a lower bound.",
 	webhooksTitle: "Bot webhooks",
 	webhooksDescription: "Recent transcript deliveries from the meeting bot.",
@@ -177,7 +186,11 @@ const opsEn: OpsMessages = {
 
 const opsPtBR: OpsMessages = {
 	title: "Operações",
-	description: (n) => `${n} ${n === 1 ? "tarefa" : "tarefas"} do pipeline de áudio monitoradas.`,
+	description: paramMessage(
+		"pt-BR",
+		"{n, plural, =1{{n} tarefa do pipeline de áudio monitoradas.} other{{n} tarefas do pipeline de áudio monitoradas.}}",
+		["n"],
+	),
 	jobsTitle: "Tarefas do pipeline de áudio",
 	jobsDescription: "Tarefas de transcrição de consultas de todos os proprietários.",
 	colConsultation: "Consulta",
@@ -201,8 +214,11 @@ const opsPtBR: OpsMessages = {
 	statusFailed: "Falhou",
 	retry: "Tentar novamente",
 	retryTitle: "Tentar transcrição novamente?",
-	retryDescription: (ref) =>
-		`Reenfileirar a tarefa de transcrição de ${ref}. A gravação armazenada será transcrita novamente.`,
+	retryDescription: paramMessage(
+		"pt-BR",
+		"Reenfileirar a tarefa de transcrição de {ref}. A gravação armazenada será transcrita novamente.",
+		["ref"],
+	),
 	retryConfirm: "Tentar tarefa",
 	cancel: "Cancelar",
 	retryError: "Falha ao tentar novamente — a tarefa não pôde ser reenfileirada.",
@@ -214,7 +230,7 @@ const opsPtBR: OpsMessages = {
 	queueFailed: "Falhas",
 	storageTitle: "Armazenamento de áudio",
 	storageDescription: "Objetos no bucket de áudio das consultas.",
-	storageObjects: (n) => `${n} ${n === 1 ? "objeto" : "objetos"}`,
+	storageObjects: paramMessage("pt-BR", "{n, plural, =1{{n} objeto} other{{n} objetos}}", ["n"]),
 	storageTruncated: "Listagem limitada — as contagens são um limite inferior.",
 	webhooksTitle: "Webhooks do bot",
 	webhooksDescription: "Entregas recentes de transcrição do bot de reunião.",
@@ -224,7 +240,11 @@ const opsPtBR: OpsMessages = {
 
 const opsEs: OpsMessages = {
 	title: "Operaciones",
-	description: (n) => `${n} ${n === 1 ? "tarea" : "tareas"} del pipeline de audio monitorizadas.`,
+	description: paramMessage(
+		"es",
+		"{n, plural, =1{{n} tarea del pipeline de audio monitorizadas.} other{{n} tareas del pipeline de audio monitorizadas.}}",
+		["n"],
+	),
 	jobsTitle: "Tareas del pipeline de audio",
 	jobsDescription: "Tareas de transcripción de consultas de todos los propietarios.",
 	colConsultation: "Consulta",
@@ -248,8 +268,11 @@ const opsEs: OpsMessages = {
 	statusFailed: "Falló",
 	retry: "Reintentar",
 	retryTitle: "¿Reintentar la transcripción?",
-	retryDescription: (ref) =>
-		`Volver a encolar la tarea de transcripción de ${ref}. La grabación almacenada se transcribirá de nuevo.`,
+	retryDescription: paramMessage(
+		"es",
+		"Volver a encolar la tarea de transcripción de {ref}. La grabación almacenada se transcribirá de nuevo.",
+		["ref"],
+	),
 	retryConfirm: "Reintentar tarea",
 	cancel: "Cancelar",
 	retryError: "Error al reintentar — la tarea no se pudo encolar de nuevo.",
@@ -261,7 +284,7 @@ const opsEs: OpsMessages = {
 	queueFailed: "Fallidas",
 	storageTitle: "Almacenamiento de audio",
 	storageDescription: "Objetos en el bucket de audio de las consultas.",
-	storageObjects: (n) => `${n} ${n === 1 ? "objeto" : "objetos"}`,
+	storageObjects: paramMessage("es", "{n, plural, =1{{n} objeto} other{{n} objetos}}", ["n"]),
 	storageTruncated: "Listado limitado — los recuentos son un límite inferior.",
 	webhooksTitle: "Webhooks del bot",
 	webhooksDescription: "Entregas recientes de transcripción del bot de reunión.",

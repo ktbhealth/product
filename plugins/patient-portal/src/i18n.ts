@@ -6,6 +6,7 @@
  * key is a type error, not an English fallback at runtime.
  */
 import type { AnamnesisSectionKey } from "@ktb/anamnesis/types";
+import { paramMessage } from "@ktb/i18n";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const PORTAL_LOCALES = ["en", "pt-BR", "es"] as const;
@@ -59,7 +60,7 @@ export interface PortalMessages {
 
 const en: PortalMessages = {
 	title: "Patient portal",
-	greeting: (name) => `Hello, ${name}.`,
+	greeting: paramMessage("en", "Hello, {name}.", ["name"]),
 	profilesTitle: "Profiles",
 	relation: { self: "Me", guardian: "In my care" },
 	current: "Open",
@@ -103,7 +104,7 @@ const en: PortalMessages = {
 
 const ptBR: PortalMessages = {
 	title: "Portal do paciente",
-	greeting: (name) => `Olá, ${name}.`,
+	greeting: paramMessage("pt-BR", "Olá, {name}.", ["name"]),
 	profilesTitle: "Perfis",
 	relation: { self: "Eu", guardian: "Sob meus cuidados" },
 	current: "Aberto",
@@ -148,7 +149,7 @@ const ptBR: PortalMessages = {
 
 const es: PortalMessages = {
 	title: "Portal del paciente",
-	greeting: (name) => `Hola, ${name}.`,
+	greeting: paramMessage("es", "Hola, {name}.", ["name"]),
 	profilesTitle: "Perfiles",
 	relation: { self: "Yo", guardian: "A mi cuidado" },
 	current: "Abierto",

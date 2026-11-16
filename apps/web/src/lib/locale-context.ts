@@ -21,10 +21,18 @@ let storagePromise: Promise<AsyncLocalStorage<{ locale: string }>> | undefined;
 
 /** Server-only: the shared ALS, created once on first request. */
 export const localeStorage = (): Promise<AsyncLocalStorage<{ locale: string }>> => {
-	storagePromise ??= import("node:async_hooks").then((m) => {
-		storage = new m.AsyncLocalStorage<{ locale: string }>();
-		return storage;
-	});
+	storagePromise ??= import("node:async_hooks")
+		.then((m) => {
+			storage = new m.AsyncLocalStorage<{ locale: string }>();
+			return storage;
+		})
+		.catch((error: unknown) => {
+			// A rejected import (runtime without node:async_hooks) must
+			// not poison the isolate — drop the cached promise so the
+			// next request retries instead of reusing the rejection.
+			storagePromise = undefined;
+			throw error;
+		});
 	return storagePromise;
 };
 

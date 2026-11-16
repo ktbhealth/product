@@ -25,6 +25,9 @@ beforeAll(async () => {
 		{ code: "en", endonym: "English", fallbacks: [], enabled: true },
 		{ code: "pt-BR", endonym: "Português", fallbacks: ["en"], enabled: true },
 		{ code: "es", endonym: "Español", fallbacks: ["en"], enabled: false },
+		// qps seeds DISABLED (QA opt-in) — enable it here the way an
+		// admin would via the panel before exercising the pseudo path.
+		{ code: "qps", endonym: "Pseudo (QA)", fallbacks: ["en"], enabled: true },
 	]);
 });
 
@@ -60,6 +63,26 @@ describe("resolveRequestI18n", () => {
 			}),
 		);
 		expect(locales.locales).toEqual(["en"]);
+	});
+
+	it("qps pseudo-locale resolves and pseudo-localizes t()", async () => {
+		// The test seeds the qps locale row enabled (admin opt-in); the
+		// runtime auto-seed leaves it untouched via onConflictDoNothing.
+		// Requesting it yields [qps, en] and t() renders the
+		// accented/bracketed copy.
+		const runtime = makeRuntime();
+		const { i18n, locales } = await runtime.runPromise(
+			Effect.gen(function* () {
+				const rt = yield* I18nRuntime;
+				return yield* resolveRequestI18n(rt, db, {
+					requestedLocale: "qps",
+					scopeChain: GLOBAL_SCOPE,
+				});
+			}),
+		);
+		expect(locales.locales[0]).toBe("qps");
+		const text = await runtime.runPromise(i18n.t("app.hi"));
+		expect(text.startsWith("⟦")).toBe(true);
 	});
 
 	it("scoped chain resolves tenant override", async () => {
