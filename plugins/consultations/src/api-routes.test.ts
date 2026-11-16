@@ -361,6 +361,44 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 		}
 	});
 
+	it("stores ciphertext but never enqueues Whisper under a ZK tenant (T-147)", async () => {
+		useSession("owner");
+		const zkRuntime = ManagedRuntime.make(
+			Layer.mergeAll(
+				services,
+				Layer.succeed(Tenant, { id: 9, kind: "clinic", slug: "zk", role: "admin" }),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		publishRuntime(zkRuntime);
+		try {
+			const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }, 9))!;
+			const before = jobsSent.length;
+			const res = await post(
+				id,
+				new Uint8Array([75, 84, 66, 49, 1, 2, 3]),
+				"application/octet-stream",
+			);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { audioStatus: string };
+			expect(body.audioStatus).toBe("zk");
+			expect(jobsSent.length).toBe(before); // ciphertext never reaches the queue
+			const row = await db.query.consultations.findFirst({
+				where: eq(consultationsTable.id, id),
+			});
+			expect(row?.audioStatus).toBe("zk");
+			expect(row?.audioKey).toMatch(/^audio\/u-owner\//);
+			// The stored object is opaque — GET streams the ciphertext back.
+			const got = await get(id);
+			expect(got.status).toBe(200);
+			expect(new Uint8Array(await got.arrayBuffer())).toEqual(
+				new Uint8Array([75, 84, 66, 49, 1, 2, 3]),
+			);
+		} finally {
+			publishRuntime(runtime);
+			await zkRuntime.dispose();
+		}
+	});
+
 	it("uploads raw audio to R2, links the row and enqueues the job", async () => {
 		useSession("owner");
 		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;

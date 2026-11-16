@@ -27,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { anamnesisToText } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSectionKey } from "@ktb/anamnesis";
 import { SAMPLE_TRANSCRIPT } from "@ktb/anamnesis";
+import { encryptToBlob } from "@ktb/crypto/stream";
 import { birthDateFromAge, errorMessage, type PatientErrors } from "@ktb/patients/record";
 import {
 	needsServerFallback,
@@ -463,10 +464,22 @@ export function NewConsultationPage({
 			const blob = tabBlob ?? micBlob ?? pendingUploadBlob.current;
 			if (!blob || blob.size === 0) return;
 			uploadedAudioFor.current.add(id);
+			// T-147: under ZK the recording is chunked-encrypted with the
+			// consultation DEK before upload — the server stores ciphertext
+			// and the Whisper queue never sees it. Fail closed: no grant,
+			// no upload.
+			let body: Uint8Array | Blob = blob;
+			let contentType = (blob.type || "audio/webm").split(";")[0]!;
+			if (zk) {
+				const dek = await consultationDek(zk.keyring, zk.api, id);
+				if (!dek) throw new Error("audio upload blocked — record is locked on this device");
+				body = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
+				contentType = "application/octet-stream";
+			}
 			const res = await fetch(`/api/consultations/${id}/audio`, {
 				method: "POST",
-				headers: { "content-type": (blob.type || "audio/webm").split(";")[0] },
-				body: blob,
+				headers: { "content-type": contentType },
+				body,
 			});
 			if (!res.ok) throw new Error(`audio upload failed (${res.status})`);
 			setAudioConsultId(id);

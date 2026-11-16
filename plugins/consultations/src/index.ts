@@ -226,8 +226,10 @@ export interface AudioJobFields {
 	readonly size?: number;
 }
 
-/** Status the owner-facing routes may set after enqueue; terminal states are consumer-only. */
-export const AUDIO_ROUTE_STATUSES = ["queued"] as const;
+/** Status the owner-facing routes may set after enqueue; terminal states are consumer-only.
+ * "zk" (T-147): ciphertext stored for approved-device retrieval — the server
+ * transcription pipeline never runs for it. */
+export const AUDIO_ROUTE_STATUSES = ["queued", "zk"] as const;
 export type AudioRouteStatus = (typeof AUDIO_ROUTE_STATUSES)[number];
 
 /**
@@ -257,9 +259,18 @@ export async function attachAudioRecord(
 
 /** stored → queued once the transcription job was enqueued. */
 export async function markAudioQueued(db: DbClient, consultationId: number) {
+	await markAudioRouteStatus(db, consultationId, "queued");
+}
+
+/** Route-set audio status ("queued" after enqueue, "zk" for ciphertext). */
+export async function markAudioRouteStatus(
+	db: DbClient,
+	consultationId: number,
+	status: AudioRouteStatus,
+) {
 	await db
 		.update(consultations)
-		.set({ audioStatus: "queued", audioError: null })
+		.set({ audioStatus: status, audioError: null })
 		.where(eq(consultations.id, consultationId));
 }
 
@@ -1540,11 +1551,11 @@ export const ConsultationsLive = Layer.effect(
 					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
 				}
 				yield* Effect.annotateCurrentSpan({ userId, consultationId, audioStatus: status });
-				yield* Effect.promise(() => markAudioQueued(db, consultationId));
+				yield* Effect.promise(() => markAudioRouteStatus(db, consultationId, status));
 				yield* events.dispatch([
 					ConsultationAudioUpdated.make({
 						consultationId,
-						audioStatus: "queued",
+						audioStatus: status,
 						audioError: null,
 						tenantId: owner?.tenantId ?? null,
 					}),
