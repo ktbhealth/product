@@ -71,7 +71,7 @@ INSERT INTO patient_access (patient_id, user_id, relation, status, source, creat
 INSERT INTO patient_access (patient_id, user_id, email, relation, status, source, created_at, updated_at) VALUES
   (5, NULL, 'ana@ktb.test', 'self', 'invited', 'invite', 0, 0),
   (5, NULL, 'nobody@ktb.test', 'self', 'invited', 'invite', 0, 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL);
 INSERT INTO consultations (id, user_id, patient_id, transcript, anamnesis, created_at) VALUES
   (10, 'doc', 1, 'fala da consulta', '${json(anamnesis())}', 1000),
   (11, 'doc', 1, 'fala da consulta', '${json(anamnesis({ queixa_principal: section("Retorno") }))}', 2000),

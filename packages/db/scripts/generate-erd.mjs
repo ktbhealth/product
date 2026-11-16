@@ -51,6 +51,14 @@ const DOMAINS = [
 		tables: ["group_members", "groups"],
 	},
 	{
+		id: "integrity",
+		title: "Integrity",
+		owner: "`plugins/integrity`",
+		description:
+			"Tamper-evident record versioning — a content-addressed version chain per entity, anchoring anamnesis and blob hashes.",
+		tables: ["record_versions"],
+	},
+	{
 		id: "notifications",
 		title: "Notifications",
 		owner: "`plugins/notifications`",
