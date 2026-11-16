@@ -28,13 +28,14 @@ export const Route = createFileRoute("/platform/")({
 	},
 	component: function PlatformIndexRoute() {
 		const data = Route.useLoaderData();
-		const { user } = rootApi.useLoaderData();
+		const { user, i18n } = rootApi.useLoaderData();
 		const entry = findPage(portalPages, PATH);
 		if (entry === undefined) return null;
 		// ctx.plugins is the FULL discovered registry — see platform/$.
+		// ctx.i18n is the root loader's route-scoped catalog slice.
 		return createElement(entry.page.component, {
 			data,
-			ctx: { plugins, locale: getLocale(), user },
+			ctx: { plugins, locale: getLocale(), user, i18n },
 		});
 	},
 });

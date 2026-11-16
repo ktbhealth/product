@@ -59,6 +59,15 @@ export interface PageContext {
 	readonly plugins: readonly Plugin[];
 	readonly locale: string;
 	readonly user?: ChromeUser | null;
+	/** Resolved DB-catalog slice for this route's namespaces (PL-008):
+	 * `namespace.key` → MF1 template for the active locale + scope
+	 * chain. Present when the host wired i18n into loader data;
+	 * absent on surfaces without it (views keep their code catalogs
+	 * as fallback). */
+	readonly i18n?: {
+		readonly locale: string;
+		readonly catalog: Readonly<Record<string, string>>;
+	};
 }
 
 /** Host-injected context handed to every panel page component — the

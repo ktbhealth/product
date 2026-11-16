@@ -38,7 +38,7 @@ export const Route = createFileRoute("/$")({
 	component: function AppPageRoute() {
 		const { _splat } = Route.useParams();
 		const { data, pluginStates } = Route.useLoaderData();
-		const { user } = rootApi.useLoaderData();
+		const { user, i18n } = rootApi.useLoaderData();
 		const entry = findPage(appPages, `/${_splat ?? ""}`);
 		if (entry === undefined) return null;
 		return createElement(entry.page.component, {
@@ -47,6 +47,7 @@ export const Route = createFileRoute("/$")({
 				plugins: enabledPlugins(plugins, enabledIdSet(pluginStates)),
 				locale: getLocale(),
 				user,
+				i18n,
 			},
 		});
 	},

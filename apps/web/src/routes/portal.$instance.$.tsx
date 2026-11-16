@@ -89,7 +89,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		const { instance: instanceId } = Route.useParams();
 		const { path, data, audiences, pluginStates, theme } = Route.useLoaderData();
 		const pathname = useLocation({ select: (l) => l.pathname });
-		const { user } = rootApi.useLoaderData();
+		const { user, i18n } = rootApi.useLoaderData();
 		const locale = getLocale();
 		const entry = findPortalInstance(portalInstances, instanceId);
 		const pageEntry = findPage(portalPages, path);
@@ -192,7 +192,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 			>
 				{createElement(pageEntry.page.component, {
 					data,
-					ctx: { plugins, locale, user },
+					ctx: { plugins, locale, user, i18n },
 				})}
 			</PortalShell>
 		);

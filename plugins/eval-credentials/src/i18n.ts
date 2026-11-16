@@ -1,5 +1,12 @@
 export const EVAL_CRED_LOCALES = ["en", "pt-BR", "es"] as const;
 
+/** DB namespace this catalog imports into (PL-008 Phase 4) — matches
+ * the plugin-id domain (`eval.credentials.*` → `eval.credentials`). */
+export const I18N_NAMESPACE = "eval.credentials";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): CredMessages => credMessages(locale);
+
 export interface CredMessages {
 	readonly title: string;
 	readonly desc: string;

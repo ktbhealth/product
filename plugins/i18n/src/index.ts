@@ -3,11 +3,11 @@ import { LanguagesIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
 import { I18nAdmin } from "./contract.ts";
-import { I18nAdminLive, i18nAdminServicesPlugin } from "./admin.ts";
+import { i18nAdminServicesPlugin } from "./admin.ts";
 import { I18nPlatformPage } from "./platform-page.tsx";
 import type { I18nPageData } from "./views/I18nPage.tsx";
 import { I18nRuntimeLive } from "./runtime.ts";

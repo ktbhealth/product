@@ -4,8 +4,11 @@
  * `global`/`published` rows (PL-008 Phase 1). Idempotent: existing rows
  * are never overwritten (the DB is canonical; panel edits win).
  *
- * Sources today: apps/web/messages/*.json → namespace `app`.
- * Plugin catalogs join per-plugin during Phase 4 migrations.
+ * Sources: apps/web/messages/*.json → namespace `app`, plus every
+ * migrated plugin catalog — a plugin opts in by exporting
+ * `I18N_NAMESPACE` + `i18nMessagesFor(locale)` from src/i18n.ts
+ * (PL-008 Phase 4). Non-string catalog values (function messages)
+ * are skipped with a warning; they migrate to MF1 templates per-key.
  *
  * Usage:
  *   bun run i18n:import-baseline [--db <sqlite path>]
@@ -13,9 +16,9 @@
  * Default DB: $DATABASE_URL or apps/web/data/app.db — the same file
  * `dev:node` uses. Migrations are applied first via @ktb/db-sqlite.
  */
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { makeDb } from "@ktb/db";
 import { makeSqliteDatabase } from "@ktb/db-sqlite";
@@ -49,6 +52,29 @@ for (const file of readdirSync(messagesDir).filter((f) => f.endsWith(".json"))) 
 	}
 }
 
+// Migrated plugin catalogs (Phase 4): src/i18n.ts must export
+// I18N_NAMESPACE + i18nMessagesFor(locale) → flat string record.
+const pluginsDir = join(root, "plugins");
+const pluginWarnings = [];
+for (const dir of readdirSync(pluginsDir)) {
+	const file = join(pluginsDir, dir, "src/i18n.ts");
+	if (!existsSync(file)) continue;
+	const mod = await import(pathToFileURL(file).href);
+	if (typeof mod.I18N_NAMESPACE !== "string" || typeof mod.i18nMessagesFor !== "function") {
+		continue;
+	}
+	for (const locale of Object.keys(LOCALE_META)) {
+		const catalog = mod.i18nMessagesFor(locale);
+		for (const [key, value] of Object.entries(catalog)) {
+			if (typeof value !== "string") {
+				pluginWarnings.push(`${mod.I18N_NAMESPACE}.${key} [${locale}]: non-string value skipped`);
+				continue;
+			}
+			entries.push({ namespace: mod.I18N_NAMESPACE, key, locale, value });
+		}
+	}
+}
+
 const sqlDb = makeSqliteDatabase({ filename: resolve(dbPath), migrate: migrationsDir });
 const db = makeDb(sqlDb);
 
@@ -69,6 +95,11 @@ console.log(
 		`  invalid: ${result.invalid.length}`,
 );
 for (const bad of result.invalid) {
-	console.warn(`  invalid app.${bad.entry.key} [${bad.entry.locale}]: ${bad.error}`);
+	console.warn(
+		`  invalid ${bad.entry.namespace}.${bad.entry.key} [${bad.entry.locale}]: ${bad.error}`,
+	);
+}
+for (const warn of pluginWarnings) {
+	console.warn(`  skipped ${warn}`);
 }
 if (result.invalid.length > 0) process.exitCode = 1;

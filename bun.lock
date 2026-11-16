@@ -5,6 +5,8 @@
     "": {
       "name": "ktb",
       "devDependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/db-sqlite": "workspace:*",
         "@testing-library/dom": "^10.4.2",
         "@testing-library/react": "^16.3.3",
         "@testing-library/user-event": "^14.6.8",
@@ -715,6 +717,7 @@
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/eval-validator": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -847,8 +850,13 @@
       },
       "devDependencies": {
         "@types/better-sqlite3": "^9.6.0",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
         "better-sqlite3": "^13.0.3",
         "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
       },
     },
     "plugins/integrity": {

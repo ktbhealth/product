@@ -7,15 +7,19 @@ import type { Plugin } from "@ktb/kernel";
  * wildcard rule as the dispatcher) plus every chrome contribution
  * whose `when` matches. Host chrome always needs the `app` namespace.
  *
- * Namespace = the plugin id's domain segment (`patients.services` →
- * `patients`); `app` is reserved for host copy. Disabled plugins are
- * filtered by the caller (enabledPlugins) before this runs.
+ * Namespace = the plugin id minus its trailing concern segment
+ * (`patients.services` → `patients`, `eval.credentials.panel` →
+ * `eval.credentials`); `app` is reserved for host copy. Disabled
+ * plugins are filtered by the caller (enabledPlugins) before this runs.
  */
 
 /** Host-owned namespaces always loaded on every shell. */
 export const HOST_NAMESPACES: readonly string[] = ["app"];
 
-const namespaceOf = (pluginId: string): string => pluginId.split(".")[0] ?? pluginId;
+const namespaceOf = (pluginId: string): string => {
+	const parts = pluginId.split(".");
+	return parts.length > 1 ? parts.slice(0, -1).join(".") : pluginId;
+};
 
 interface PageRef {
 	readonly pluginId: string;

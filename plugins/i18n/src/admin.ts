@@ -19,12 +19,9 @@ import {
 	I18N_LOCALES_ACTION,
 	I18N_READ_ACTION,
 	I18N_RESOURCE,
-	type I18nAdminShape,
 	type I18nExportPayload,
-	type LocaleInfo,
 	type MessageId,
 	type NamespaceInfo,
-	type SaveDraftInput,
 } from "./contract.ts";
 import { replaceDocValue } from "./crdt.ts";
 import { I18nRuntime } from "./runtime.ts";

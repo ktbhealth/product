@@ -34,15 +34,17 @@ export const Route = createFileRoute("/platform/$")({
 	component: function PlatformPageRoute() {
 		const { _splat } = Route.useParams();
 		const data = Route.useLoaderData();
-		const { user } = rootApi.useLoaderData();
+		const { user, i18n } = rootApi.useLoaderData();
 		const entry = findPage(portalPages, `/platform/${_splat ?? ""}`);
 		if (entry === undefined) return null;
 		// ctx.plugins is the FULL discovered registry (P-058): the
 		// /platform/plugins manager needs disabled plugins too; enabled
-		// filtering already happened in the loader gate above.
+		// filtering already happened in the loader gate above. ctx.i18n
+		// is the root loader's route-scoped catalog slice (PL-008) —
+		// panel pages render DB copy through it like app pages do.
 		return createElement(entry.page.component, {
 			data,
-			ctx: { plugins, locale: getLocale(), user },
+			ctx: { plugins, locale: getLocale(), user, i18n },
 		});
 	},
 });

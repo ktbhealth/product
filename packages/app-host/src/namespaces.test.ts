@@ -74,6 +74,18 @@ describe("namespacesForPath", () => {
 		});
 		expect(namespacesForPath([plugin], "/platform/users")).toEqual(["app", "users"]);
 	});
+
+	it("keeps sub-domain segments — concern suffix is stripped, not the domain", () => {
+		const plugins = [
+			pagePlugin("eval.credentials.panel", ["/platform/eval/credentials"]),
+			chromePlugin("eval.persona.chrome", { paths: ["/eval/*"] }),
+		];
+		expect(namespacesForPath(plugins, "/platform/eval/credentials")).toEqual([
+			"app",
+			"eval.credentials",
+		]);
+		expect(namespacesForPath(plugins, "/eval/x")).toEqual(["app", "eval.persona"]);
+	});
 });
 
 describe("allNamespaces", () => {
