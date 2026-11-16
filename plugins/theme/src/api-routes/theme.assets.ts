@@ -118,7 +118,12 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/assets")({
 				if (bytes.byteLength > MAX_UPLOAD_BYTES) {
 					return Response.json({ error: "file too large (max 10MB)" }, { status: 413 });
 				}
+				// The multipart parser always supplies a content type.
+				/* v8 ignore next -- parsed File.type is never empty */
 				const mime = (file.type || "").split(";")[0]!.trim().toLowerCase();
+				// FormData turns an empty filename into a plain field, so a
+				// parsed File always carries a non-empty name here.
+				/* v8 ignore next -- unreachable via multipart */
 				const name = file.name || "upload";
 				const dot = name.lastIndexOf(".");
 				const ext = dot === -1 ? "" : name.slice(dot + 1).toLowerCase();

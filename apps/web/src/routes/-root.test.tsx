@@ -86,7 +86,10 @@ state.theme = KTB_DEFAULT_THEME;
 type RootOpts = {
 	shellComponent: (p: { children: ReactNode }) => ReactElement;
 	loader: () => Promise<unknown>;
-	head: () => { meta: unknown[]; links: unknown[] };
+	head: (ctx?: { loaderData?: { theme?: unknown }; match?: { pathname?: string } }) => {
+		meta: unknown[];
+		links: unknown[];
+	};
 	errorComponent: (p: { error: Error; reset: () => void }) => ReactElement;
 	notFoundComponent: () => ReactElement;
 };
@@ -119,6 +122,26 @@ describe("root route", () => {
 		});
 		expect(head.meta).toContainEqual({ property: "og:type", content: "website" });
 		expect(renderToStaticMarkup(opts.notFoundComponent())).toContain("/consultations");
+	});
+
+	it("projects theme head tags on app paths and skips them on console paths", () => {
+		const themed = opts.head({
+			loaderData: { theme: KTB_DEFAULT_THEME },
+			match: { pathname: "/" },
+		});
+		expect(themed.meta).toContainEqual({ title: "KTB Health" });
+		expect(themed.links).toContainEqual({ rel: "icon", href: "/brand/logo-mark.png" });
+		// Console shells resolve their own instance theme — the app head
+		// emits only the stylesheet there.
+		const consoleHead = opts.head({
+			loaderData: { theme: KTB_DEFAULT_THEME },
+			match: { pathname: "/platform" },
+		});
+		expect(consoleHead.links).toEqual([{ rel: "stylesheet", href: "/styles.css" }]);
+		// Null/absent theme → same minimal head.
+		expect(opts.head({ loaderData: { theme: null }, match: { pathname: "/" } }).links).toEqual([
+			{ rel: "stylesheet", href: "/styles.css" },
+		]);
 	});
 
 	it("renders a friendly error page without the stack trace", () => {
@@ -275,6 +298,12 @@ describe("root document", () => {
 		expect(html).toContain("Resources");
 		expect(html).toContain("Docs");
 		expect(html).toContain("About");
+	});
+
+	it("shows the theme preview banner while a preview theme resolves", () => {
+		state.theme = { ...KTB_DEFAULT_THEME, preview: true };
+		const html = render();
+		expect(html).toContain("Theme preview active");
 	});
 
 	it("stays silent outside dev", async () => {

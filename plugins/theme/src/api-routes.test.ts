@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const headers = { current: new Headers() };
 
@@ -12,7 +12,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
-import { Db, makeDb } from "@ktb/db";
+import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { setServerRuntime } from "@ktb/server-fns";
@@ -83,9 +83,82 @@ const infra = Layer.mergeAll(
 
 const runtime = ManagedRuntime.make(infra as Layer.Layer<unknown, never, never>);
 
+// Edge-case runtimes: missing Db (repo reads reject), a dying admin
+// gate (isAdmin catch paths) and a Db whose inserts yield no rows.
+const runtimeNoDb = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+	) as Layer.Layer<unknown, never, never>,
+);
+
+const runtimeGateDown = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Db, db),
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, {
+			isAdmin: () => Effect.die(new Error("gate down")),
+			requireAdmin: () => Effect.die(new Error("gate down")),
+		} as never),
+	) as Layer.Layer<unknown, never, never>,
+);
+
+const fakeDb = {
+	select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 1 }] }) }) }),
+	insert: () => ({ values: () => ({ returning: async () => [] }) }),
+} as unknown as DbClient;
+
+const runtimeFakeDb = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Db, fakeDb),
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+	) as Layer.Layer<unknown, never, never>,
+);
+
+// Insert path rejects outright — exercises `.catch(() => null)` guards.
+const throwDb = {
+	select: fakeDb.select,
+	insert: () => ({
+		values: () => ({
+			returning: async () => {
+				throw new Error("insert boom");
+			},
+		}),
+	}),
+} as unknown as DbClient;
+
+const runtimeThrowDb = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Db, throwDb),
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+	) as Layer.Layer<unknown, never, never>,
+);
+
+const runAsOn =
+	(rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
+	(user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
+		rt.runPromise(
+			effect.pipe(
+				Effect.provideService(Principal, { userId: user.id, email: user.email }),
+			) as never,
+		);
+
+afterAll(async () => {
+	await Promise.all([
+		runtime.dispose(),
+		runtimeNoDb.dispose(),
+		runtimeGateDown.dispose(),
+		runtimeFakeDb.dispose(),
+		runtimeThrowDb.dispose(),
+	]);
+});
+
 // In-memory R2/queue doubles — same shapes as the apps/web test env.
 const bucketStore = new Map<string, { data: Uint8Array; contentType?: string }>();
 const jobsSent: { kind: string; payload: unknown; options?: unknown }[] = [];
+let enqueueFails = false;
 
 const fakeBucket = {
 	put: async (
@@ -121,25 +194,40 @@ const useSession = (key: string) => {
 	headers.current = new Headers({ cookie: `session=${key}` });
 };
 
-beforeAll(() => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
-			),
-		themeAssets: fakeBucket,
-		themeJobs: {
-			enqueue: async (kind: string, payload: unknown, options?: unknown) => {
-				jobsSent.push({ kind, payload, options });
-				return { id: "env-1" };
-			},
+const runtimeConfig = {
+	run: (effect: Effect.Effect<unknown, unknown, unknown>) => runtime.runPromise(effect as never),
+	runAs: (user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
+		runtime.runPromise(
+			effect.pipe(
+				Effect.provideService(Principal, { userId: user.id, email: user.email }),
+			) as never,
+		),
+	themeAssets: fakeBucket,
+	themeJobs: {
+		enqueue: async (kind: string, payload: unknown, options?: unknown) => {
+			if (enqueueFails) throw new Error("queue down");
+			jobsSent.push({ kind, payload, options });
+			return { id: "env-1" };
 		},
-		audioTranscribeModel: "test-model",
-		getLocale: () => "en",
-		pluginEnabled: async () => true,
-	});
+	},
+	audioTranscribeModel: "test-model",
+	getLocale: () => "en",
+	pluginEnabled: async () => true,
+};
+
+beforeAll(() => {
+	setServerRuntime(runtimeConfig as never);
 });
+
+/** Swap the published runtime for edge-case tests; restores base. */
+const withRuntime = async <T>(patch: Record<string, unknown>, fn: () => Promise<T>) => {
+	setServerRuntime({ ...runtimeConfig, ...patch } as never);
+	try {
+		return await fn();
+	} finally {
+		setServerRuntime(runtimeConfig as never);
+	}
+};
 
 const postAsset = (fields: Record<string, string>, file?: File) => {
 	const form = new FormData();
@@ -306,5 +394,165 @@ describe("POST /api/theme/fonts", () => {
 			kind: "theme.font",
 			payload: { source: "google", family: "Open Sans", slot: "heading", weights: [400, 700] },
 		});
+	});
+});
+
+describe("POST /api/theme/assets — edge branches", () => {
+	it("400s when content-type is absent entirely", async () => {
+		useSession("admin");
+		const res = await handlersOf(AssetsRoute).POST!({
+			request: new Request("http://x/api/theme/assets", { method: "POST" }),
+		} as never);
+		expect(res.status).toBe(400);
+	});
+
+	it("400s when the kind field is missing", async () => {
+		useSession("admin");
+		const form = new FormData();
+		form.set("file", png());
+		form.set("themeId", "1");
+		const res = await handlersOf(AssetsRoute).POST!({
+			request: new Request("http://x/api/theme/assets", { method: "POST", body: form }),
+		} as never);
+		expect(res.status).toBe(400);
+	});
+
+	it("415s on nameless/dotless files and non-font MIME on font uploads", async () => {
+		useSession("admin");
+		// Dotless name → empty extension → 415.
+		const dotless = new File([new Uint8Array([1])], "logo", { type: "image/png" });
+		expect((await postAsset({ themeId: "1", kind: "favicon" }, dotless)).status).toBe(415);
+		// Font kind with an image MIME → 415.
+		const wrongMime = new File([new Uint8Array([1, 2])], "x.woff2", { type: "image/png" });
+		expect((await postAsset({ themeId: "1", kind: "font", family: "F" }, wrongMime)).status).toBe(
+			415,
+		);
+		// Untyped/unknown-extension file skips the MIME cross-check and
+		// succeeds; an unrecognized extension still 415s after the MIME
+		// probe (covers the empty-type fallback).
+		const untyped = new File([new Uint8Array([1, 2])], "x.woff2");
+		const res = await postAsset(
+			{ themeId: "1", kind: "font", family: "F", slot: "bogus" },
+			untyped,
+		);
+		expect(res.status).toBe(200);
+		expect(jobsSent.at(-1)!.payload).toMatchObject({ slot: "sans" });
+		const unknownExt = new File([new Uint8Array([1])], "x.ktbext");
+		expect((await postAsset({ themeId: "1", kind: "font", family: "F" }, unknownExt)).status).toBe(
+			415,
+		);
+	});
+
+	it("502s when the enqueue fails", async () => {
+		useSession("admin");
+		enqueueFails = true;
+		try {
+			const res = await postAsset({ themeId: "1", kind: "favicon" }, png());
+			expect(res.status).toBe(502);
+		} finally {
+			enqueueFails = false;
+		}
+	});
+
+	it("503s when bucket/queue bindings are missing", async () => {
+		useSession("admin");
+		// Bucket present, queue missing → right side of the guard.
+		await withRuntime({ themeJobs: undefined }, async () => {
+			expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(503);
+		});
+		// Neither bound → left side.
+		await withRuntime({ themeAssets: undefined, themeJobs: undefined }, async () => {
+			expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(503);
+		});
+	});
+
+	it("500s when the asset row cannot be recorded", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeFakeDb) }, async () => {
+			expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(500);
+		});
+	});
+
+	it("404s the theme lookup when Db is unavailable and 403s when the gate dies", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeNoDb) }, async () => {
+			expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(404);
+		});
+		await withRuntime({ runAs: runAsOn(runtimeGateDown) }, async () => {
+			expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(403);
+		});
+	});
+});
+
+describe("GET /api/theme/assets — edge branches", () => {
+	const get = (query: string) =>
+		handlersOf(AssetsRoute).GET!({
+			request: new Request(`http://x/api/theme/assets?${query}`),
+		} as never);
+
+	it("503s when the bucket binding is missing", async () => {
+		await withRuntime({ themeAssets: undefined }, async () => {
+			expect((await get("key=theme-assets%2F1%2Fx.png")).status).toBe(503);
+		});
+	});
+
+	it("falls back to the key-derived content type", async () => {
+		bucketStore.set("theme-assets/1/font/x.woff2", { data: new Uint8Array([1]) });
+		const res = await get("key=theme-assets%2F1%2Ffont%2Fx.woff2");
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("font/woff2");
+	});
+});
+
+describe("POST /api/theme/fonts — edge branches", () => {
+	const post = (body: unknown) =>
+		handlersOf(FontsRoute).POST!({
+			request: new Request("http://x/api/theme/fonts", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			}),
+		} as never);
+
+	it("403s when the admin gate fails", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeGateDown) }, async () => {
+			expect((await post({ themeId: 1, family: "Inter" })).status).toBe(403);
+		});
+	});
+
+	it("404s when the theme lookup itself fails", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeNoDb) }, async () => {
+			expect((await post({ themeId: 1, family: "Inter" })).status).toBe(404);
+		});
+	});
+
+	it("503s when the job queue is not configured", async () => {
+		useSession("admin");
+		await withRuntime({ themeJobs: undefined }, async () => {
+			expect((await post({ themeId: 1, family: "Inter" })).status).toBe(503);
+		});
+	});
+
+	it("500s when the asset row cannot be recorded", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeFakeDb) }, async () => {
+			expect((await post({ themeId: 1, family: "Inter" })).status).toBe(500);
+		});
+		// Insert rejection → caught → same 500.
+		await withRuntime({ runAs: runAsOn(runtimeThrowDb) }, async () => {
+			expect((await post({ themeId: 1, family: "Inter" })).status).toBe(500);
+		});
+	});
+
+	it("502s when the enqueue fails", async () => {
+		useSession("admin");
+		enqueueFails = true;
+		try {
+			expect((await post({ themeId: 1, family: "Inter" })).status).toBe(502);
+		} finally {
+			enqueueFails = false;
+		}
 	});
 });

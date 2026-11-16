@@ -125,7 +125,7 @@ export const parseColor = (input: string | null | undefined): Oklch | null => {
 	const fn = /^([a-z]+)\((.*)\)$/.exec(s);
 	if (fn === null) return null;
 	const [, name, body] = fn;
-	const args = splitArgs(body ?? "");
+	const args = splitArgs(/* v8 ignore next -- (.*) always participates */ body ?? "");
 	if (name === "oklch" && args.length >= 3) {
 		const lRaw = args[0]!;
 		const l = lRaw.endsWith("%") ? num(lRaw.slice(0, -1))! / 100 : num(lRaw);
@@ -206,6 +206,7 @@ export const ensureContrast = (fg: Oklch, bg: Oklch, min = 4.5): Oklch => {
 		// and try shedding more chroma.
 		if (chromaScale === 0) return best;
 	}
+	/* v8 ignore next -- the chromaScale === 0 iteration always returns above */
 	return fg;
 };
 

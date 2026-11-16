@@ -192,4 +192,35 @@ describe("node-cloudflare-workers env", () => {
 		expect(await env.AUDIO_BUCKET.get("theme-assets/1/x.png")).toBeNull();
 		rmSync(themeDir, { recursive: true, force: true });
 	}, 30000);
+
+	it("THEME_ASSETS_QUEUE.send dispatches to the theme job consumer", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		vi.stubEnv("KTB_DEV_QUEUE_DB", ":memory:");
+		vi.stubEnv("KTB_DEV_THEME_QUEUE_DB", ":memory:");
+		audioDir = mkdtempSync(join(tmpdir(), "ktb-node-theme-q-"));
+		const themeDir = mkdtempSync(join(tmpdir(), "ktb-node-theme-assets-q-"));
+		process.env.AUDIO_BUCKET_DIR = audioDir;
+		process.env.THEME_ASSETS_BUCKET_DIR = themeDir;
+
+		const env = await loadEnv();
+		const info = vi.spyOn(console, "info").mockImplementation(() => {});
+		// Unknown kind → consumer acks without touching the asset pipeline;
+		// the lazy theme-jobs import resolves platform.ts against the
+		// test cloudflare:workers double (same as the audio queue above).
+		await env.THEME_ASSETS_QUEUE.send({
+			id: "theme-1",
+			kind: "bogus.kind",
+			payload: {},
+			tenantId: null,
+		});
+		await vi.waitFor(
+			() =>
+				expect(info).toHaveBeenCalledWith("[dev:node] queue batch processed", {
+					done: 1,
+					total: 1,
+				}),
+			{ timeout: 30000 },
+		);
+		rmSync(themeDir, { recursive: true, force: true });
+	}, 45000);
 });

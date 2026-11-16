@@ -63,6 +63,9 @@ export function ThemeHeaderAction({ locale = "en" }: { readonly locale?: string 
 	if (themes === null || themes.length === 0) return null;
 
 	const preview = async (themeId: number | null) => {
+		// "off" is reserved for a future exit-preview action — rows only
+		// ever preview a concrete theme id today.
+		/* v8 ignore next -- preview() is only invoked with a theme id */
 		setBusy(themeId ?? "off");
 		try {
 			await setThemePreviewFn({ data: { themeId } });

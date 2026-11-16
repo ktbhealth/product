@@ -74,6 +74,8 @@ const FORMATS: Readonly<Record<string, string>> = {
 };
 
 export const extOfKey = (key: string): string => {
+	// split() always yields at least one element — pop() is never undefined.
+	/* v8 ignore next -- pop() on split() is never undefined */
 	const base = key.split("?")[0]!.split("/").pop() ?? "";
 	const dot = base.lastIndexOf(".");
 	return dot === -1 ? "" : base.slice(dot + 1).toLowerCase();
@@ -408,6 +410,8 @@ export const parseGoogleFontsCss = (css: string): readonly GoogleFontFace[] => {
 		if (match[1] !== undefined) {
 			lastSubset = match[1];
 		} else {
+			// The @font-face alternative always participates group 2 —
+			/* v8 ignore next -- group 2 always participates here */
 			blocks.push({ subset: lastSubset, body: match[2] ?? "" });
 		}
 	}

@@ -105,6 +105,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 import { Route as PortalInstanceRoute } from "./portal.$instance.$.tsx";
+import { KTB_DEFAULT_THEME } from "@ktb/theme/default-theme";
 import { portalPages } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 import type { PanelPage } from "@ktb/kernel";
@@ -121,6 +122,17 @@ const loader = (route: unknown) =>
 			};
 		}
 	).options.loader;
+const head = (route: unknown) =>
+	(
+		route as {
+			options: {
+				head?: (ctx?: { loaderData?: { theme?: unknown } }) => {
+					meta: Record<string, unknown>[];
+					links: Record<string, unknown>[];
+				};
+			};
+		}
+	).options.head;
 
 const TEST_PAGE: PanelPage = {
 	id: "test.widget",
@@ -259,6 +271,27 @@ describe("/portal/$instance/$ loader", () => {
 			unregister();
 		}
 	});
+
+	it("head emits no theme tags without a resolved theme", () => {
+		const h = head(PortalInstanceRoute)!;
+		expect(h({ loaderData: { theme: null } })).toEqual({});
+		expect(h({ loaderData: {} })).toEqual({});
+		expect(h({})).toEqual({});
+	});
+
+	it("head projects title and favicon links from the resolved theme", () => {
+		const out = head(PortalInstanceRoute)!({ loaderData: { theme: KTB_DEFAULT_THEME } });
+		expect(out.meta).toContainEqual({ title: "KTB Health" });
+		expect(out.links).toContainEqual({ rel: "icon", href: "/brand/logo-mark.png" });
+	});
+
+	it("head omits the title tag when the theme names nothing", () => {
+		const theme = { ...KTB_DEFAULT_THEME, brand: null, appName: null };
+		expect(head(PortalInstanceRoute)!({ loaderData: { theme } })).toEqual({
+			meta: [],
+			links: [],
+		});
+	});
 });
 
 describe("/portal/$instance/$ component", () => {
@@ -387,6 +420,89 @@ describe("/portal/$instance/$ component", () => {
 		try {
 			render(createElement(component(PortalInstanceRoute)));
 			fireEvent.click(screen.getByTitle("Sign out"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+			expect(signOut).toHaveBeenCalledOnce();
+		} finally {
+			unregister();
+		}
+	});
+
+	const themedLoaderData = (theme: unknown) => ({
+		path: "/portal/clinician/test",
+		data: null,
+		audiences: [],
+		pluginStates: { enabled: plugins.map((p) => p.id) },
+		theme,
+	});
+
+	it("renders the theme brand mark, style block and preview banner", () => {
+		const unregister = registerPage();
+		loaderData = themedLoaderData({ ...KTB_DEFAULT_THEME, preview: true });
+		try {
+			const { container } = render(createElement(component(PortalInstanceRoute)));
+			expect(screen.getByText("Theme preview active")).toBeTruthy();
+			expect(container.querySelector("style")).not.toBeNull();
+			expect(container.querySelector('img[src="/brand/logo-horizontal.svg"]')).not.toBeNull();
+		} finally {
+			unregister();
+		}
+	});
+
+	it("falls back to the row appName for brand when brand json is empty", () => {
+		const unregister = registerPage();
+		loaderData = themedLoaderData({ ...KTB_DEFAULT_THEME, brand: null, appName: "Acme Health" });
+		try {
+			render(createElement(component(PortalInstanceRoute)));
+			expect(screen.getByText("Acme Health")).toBeTruthy();
+		} finally {
+			unregister();
+		}
+	});
+
+	it("renders no brand slot for a brand-less theme but still emits theme css", () => {
+		const unregister = registerPage();
+		loaderData = themedLoaderData({ ...KTB_DEFAULT_THEME, brand: null, appName: null });
+		try {
+			const { container } = render(createElement(component(PortalInstanceRoute)));
+			expect(container.querySelector("style")).not.toBeNull();
+			expect(container.querySelector('img[src^="/brand/"]')).toBeNull();
+			expect(screen.queryByText("Theme preview active")).toBeNull();
+		} finally {
+			unregister();
+		}
+	});
+
+	it("renders portal.brand chrome with host chrome props and wires sign-out", async () => {
+		const unregister = registerPage();
+		chromeExtra = [
+			{
+				id: "t.brand-btn",
+				region: "portal.brand",
+				content: {
+					kind: "component",
+					component: (props: { signOut?: () => Promise<void> }) =>
+						createElement(
+							"button",
+							{
+								"data-testid": "brand-signout",
+								onClick: () => void props.signOut?.(),
+							},
+							"BRAND-SIGNOUT",
+						),
+				},
+			},
+			// Non-component kinds in the brand region are dropped.
+			{
+				id: "t.brand-note",
+				region: "portal.brand",
+				content: { kind: "note", key: "k", fallback: "f" },
+			},
+		];
+		const assign = vi.fn();
+		vi.stubGlobal("location", { assign });
+		try {
+			render(createElement(component(PortalInstanceRoute)));
+			fireEvent.click(screen.getByTestId("brand-signout"));
 			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 			expect(signOut).toHaveBeenCalledOnce();
 		} finally {

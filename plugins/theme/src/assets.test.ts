@@ -244,6 +244,8 @@ describe("google fonts css", () => {
 @font-face { font-weight: 400; src: url(https://fonts.gstatic.com/lat.woff2) format('woff2'); }
 /* latin */
 @font-face { font-weight: 700; src: url(https://fonts.gstatic.com/bold.woff2) format('woff2'); }
+/* cyrillic-ext — non-latin arriving after the latin pick is ignored */
+@font-face { font-weight: 400; src: url(https://fonts.gstatic.com/ext.woff2) format('woff2'); }
 `;
 		const faces = parseGoogleFontsCss(css);
 		expect(faces).toEqual([
@@ -254,8 +256,17 @@ describe("google fonts css", () => {
 
 	it("returns empty for css without faces and keeps first non-latin when no latin exists", () => {
 		expect(parseGoogleFontsCss("body{}")).toEqual([]);
-		const css = `@font-face { font-weight: 400; src: url(a.woff) format('woff'); }`;
-		expect(parseGoogleFontsCss(css)).toEqual([{ url: "a.woff", weight: 400, format: "woff" }]);
+		// No format() hint → defaults to woff2; blocks without weight/src skip.
+		const css = `
+@font-face { font-weight: 400; src: url(a.woff) format('woff'); }
+@font-face { font-weight: 500; src: url(b.woff2); }
+@font-face { src: url(no-weight.woff2) format('woff2'); }
+@font-face { font-weight: 600; }
+`;
+		expect(parseGoogleFontsCss(css)).toEqual([
+			{ url: "a.woff", weight: 400, format: "woff" },
+			{ url: "b.woff2", weight: 500, format: "woff2" },
+		]);
 	});
 });
 
@@ -333,5 +344,85 @@ describe("theme_assets repo helpers", () => {
 				asset: { faces: [], fallback: null },
 			}),
 		).toBeNull();
+	});
+});
+
+describe("edge branches", () => {
+	it("planImageVariants handles keys without an extension", () => {
+		const variants = planImageVariants("favicon", 10, 10, "nodot");
+		expect(variants[0]!.key).toBe("nodot-favicon-16.png");
+	});
+
+	it("insertThemeAsset returns null when the insert yields no row", async () => {
+		const emptyInsert = {
+			insert: () => ({ values: () => ({ returning: async () => [] }) }),
+		} as unknown as DbClient;
+		expect(
+			await insertThemeAsset(emptyInsert, { themeId: 1, kind: "favicon", r2Key: "k" }),
+		).toBeNull();
+	});
+
+	it("getThemeAsset returns null for a missing id", async () => {
+		const { db } = makeTestDb();
+		expect(await getThemeAsset(db, 999)).toBeNull();
+	});
+
+	it("setThemeBrandRef merges into existing brand JSON and tolerates bad payloads", async () => {
+		const { db, d1 } = makeTestDb();
+		const themeId = await seedTheme({ db, d1 });
+		// Missing theme → no-op.
+		await setThemeBrandRef(db, 999, "favicon", "/x");
+		// Valid object brand merges.
+		await run(d1, `UPDATE theme_definitions SET brand = ? WHERE id = ?`, [
+			JSON.stringify({ appName: "Acme" }),
+			themeId,
+		]);
+		await setThemeBrandRef(db, themeId, "favicon", "/fav.ico");
+		let rows = await all<{ brand: string }>(
+			d1,
+			`SELECT brand FROM theme_definitions WHERE id = ?`,
+			[themeId],
+		);
+		expect(JSON.parse(rows[0]!.brand)).toEqual({ appName: "Acme", favicon: "/fav.ico" });
+		// Invalid JSON and non-object JSON both degrade to {}.
+		for (const bad of ["{oops", "[1,2,3]", "42"]) {
+			await run(d1, `UPDATE theme_definitions SET brand = ? WHERE id = ?`, [bad, themeId]);
+			await setThemeBrandRef(db, themeId, "wordmark", "/w.svg");
+			rows = await all<{ brand: string }>(d1, `SELECT brand FROM theme_definitions WHERE id = ?`, [
+				themeId,
+			]);
+			expect(JSON.parse(rows[0]!.brand)).toEqual({ wordmark: "/w.svg" });
+		}
+	});
+
+	it("upsertThemeFontAsset tolerates null/invalid/empty fonts columns", async () => {
+		const { db, d1 } = makeTestDb();
+		const themeId = await seedTheme({ db, d1 });
+		const asset: ThemeFontAsset = { faces: [{ url: "/f.woff2" }], fallback: null };
+		for (const fonts of [null, "{oops", "[1]", "{}", "42"]) {
+			await run(d1, `UPDATE theme_definitions SET fonts = ? WHERE id = ?`, [fonts, themeId]);
+			const next = await upsertThemeFontAsset(db, themeId, {
+				family: "Inter",
+				slot: "sans",
+				asset,
+			});
+			expect(next).not.toBeNull();
+			expect(next!.delivery).toBe("self-host");
+			expect(next!.families?.sans).toBe("Inter");
+			expect(next!.assets?.Inter).toEqual(asset);
+		}
+	});
+});
+
+describe("parseGoogleFontsCss edges", () => {
+	it("skips blocks without weight/src and defaults missing format to woff2", () => {
+		const css = `
+@font-face { font-weight: 400; src: url(a.woff2); }
+@font-face { color: red; }
+@font-face { font-weight: 700; }
+/* latin */
+@font-face { font-weight: 400; src: url(lat.woff2); }
+`;
+		expect(parseGoogleFontsCss(css)).toEqual([{ url: "lat.woff2", weight: 400, format: "woff2" }]);
 	});
 });

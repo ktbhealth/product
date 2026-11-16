@@ -151,4 +151,17 @@ describe("PortalShell", () => {
 		renderShell({ banner: <div data-testid="preview-banner">preview</div> });
 		expect(screen.getByTestId("preview-banner")).toBeDefined();
 	});
+
+	it("injects the theme css block only when it carries content (P-082)", () => {
+		const marker = ":root{--ktb-shell-marker:1}";
+		const { container, unmount } = renderShell({ themeCss: marker });
+		expect(container.innerHTML).toContain("--ktb-shell-marker");
+		unmount();
+		// null / "" / undefined all skip the single style emitter.
+		for (const themeCss of [null, "", undefined] as const) {
+			const r = renderShell({ themeCss });
+			expect(r.container.innerHTML).not.toContain("--ktb-shell-marker");
+			r.unmount();
+		}
+	});
 });

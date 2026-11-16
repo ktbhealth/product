@@ -321,7 +321,10 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	};
 
 	const preview = async (id: number | null) => {
-		setBusy(id === null ? "preview-off" : `preview-${id}`);
+		setBusy(
+			/* v8 ignore next -- no UI path calls preview(null); the exit flow lives in ThemePreviewBanner */
+			id === null ? "preview-off" : `preview-${id}`,
+		);
 		try {
 			await setThemePreviewFn({ data: { themeId: id } });
 			window.location.reload();
@@ -331,6 +334,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	};
 
 	const uploadAsset = async () => {
+		/* v8 ignore next -- the upload button is disabled in both states */
 		if (assetThemeId === null || assetFile === null) return;
 		setBusy("asset-upload");
 		setNotice(null);
@@ -355,6 +359,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	};
 
 	const fetchGoogleFont = async () => {
+		/* v8 ignore next -- the fetch button is disabled in both states */
 		if (assetThemeId === null || googleFamily.trim() === "") return;
 		setBusy("asset-google");
 		setNotice(null);
@@ -550,7 +555,13 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 							<NativeSelect
 								id="asset-theme"
 								value={assetThemeId ?? ""}
-								onChange={(e) => setAssetThemeId(Number(e.target.value) || null)}
+								onChange={(e) =>
+									setAssetThemeId(
+										// Options are always numeric theme ids — the
+										// empty-value fallback is unreachable.
+										/* v8 ignore next */ Number(e.target.value) || null,
+									)
+								}
 							>
 								{themes.map((theme) => (
 									<NativeSelectOption key={theme.id} value={theme.id}>

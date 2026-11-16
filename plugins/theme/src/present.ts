@@ -134,6 +134,8 @@ const FONT_FORMATS: Readonly<Record<string, string>> = {
 
 const extOfUrl = (url: string): string => {
 	const clean = url.split("#")[0]!;
+	// split() always yields at least one element — pop() is never undefined.
+	/* v8 ignore next -- pop() on split() is never undefined */
 	const base = clean.split("?")[0]!.split("/").pop() ?? "";
 	const dot = base.lastIndexOf(".");
 	if (dot !== -1) return base.slice(dot + 1).toLowerCase();

@@ -58,8 +58,37 @@ describe("parseColor", () => {
 		expect(parseColor(undefined)).toBeNull();
 		expect(parseColor("not-a-color")).toBeNull();
 		expect(parseColor("#12")).toBeNull();
+		expect(parseColor("#12345")).toBeNull();
+		expect(parseColor("#ggg")).toBeNull();
 		expect(parseColor("oklch(0.5)")).toBeNull();
 		expect(parseColor("hsl(120, 50%, 50%)")).toBeNull();
+	});
+
+	it("parses oklab including percent lightness", () => {
+		const lab = parseColor("oklab(0.5 0.1 -0.05)");
+		expect(lab).not.toBeNull();
+		expect(lab!.l).toBeGreaterThan(0);
+		expect(lab!.l).toBeLessThan(1);
+		expect(parseColor("oklab(50% 0.1 -0.05)")).not.toBeNull();
+	});
+
+	it("parses rgb with percent channels", () => {
+		expect(parseColor("rgb(100%, 0%, 0%)")).not.toBeNull();
+		// Unparseable percent channel falls back to 0 instead of null.
+		expect(parseColor("rgb(a%, 0%, 0%)")).not.toBeNull();
+	});
+
+	it("rejects malformed functional colors", () => {
+		// Enough args but non-numeric channels.
+		expect(parseColor("oklch(x 0.1 250)")).toBeNull();
+		expect(parseColor("oklch(0.5 x 250)")).toBeNull();
+		expect(parseColor("oklch(0.5 0.1 x)")).toBeNull();
+		expect(parseColor("oklch(NaN 0.1 250)")).toBeNull();
+		expect(parseColor("oklab(0.5)")).toBeNull();
+		expect(parseColor("oklab(x 0.1 0.2)")).toBeNull();
+		expect(parseColor("oklab(0.5 x 0.2)")).toBeNull();
+		expect(parseColor("rgb(a, b, c)")).toBeNull();
+		expect(parseColor("rgb(1, 2)")).toBeNull();
 	});
 });
 
@@ -88,6 +117,48 @@ describe("ensureContrast / ensurePair", () => {
 			const { bg, fg } = ensurePair({ l, c: 0.15, h: 250 }, 4.5);
 			expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
 		}
+	});
+
+	it("ensureContrast walks toward the darker extreme when it contrasts better", () => {
+		// Two light surfaces: only darkening the fg can reach AA.
+		const fixed = ensureContrast({ l: 0.9, c: 0, h: 0 }, { l: 0.85, c: 0, h: 0 }, 4.5);
+		expect(contrastRatio(fixed, { l: 0.85, c: 0, h: 0 })).toBeGreaterThanOrEqual(4.5);
+		expect(fixed.l).toBeLessThan(0.9);
+	});
+
+	it("ensurePair walks the fill away from the preferred fg in dead zones", () => {
+		// min=99 can never pass → each side walks to its bound and the
+		// loop breaks, returning the better extreme.
+		const dark = ensurePair({ l: 0.3, c: 0, h: 0 }, 99);
+		expect(dark.fg).toEqual(WHITE);
+		const light = ensurePair({ l: 0.8, c: 0, h: 0 }, 99);
+		// INK is the module-private { l: 0.22, c: 0, h: 0 } extreme.
+		expect(light.fg).toEqual({ l: 0.22, c: 0, h: 0 });
+	});
+
+	it("ensureContrast sheds chroma and returns the best extreme in the dead zone", () => {
+		// bg luminance ~0.178 sits in the narrow band where BOTH pure
+		// black and pure white fall just under the 4.6 target — no
+		// lightness passes even with chroma fully shed.
+		const bg = { l: 0.563, c: 0, h: 0 };
+		const fixed = ensureContrast({ l: 0.5, c: 0.2, h: 30 }, bg, 4.5);
+		expect(fixed.l === 0 || fixed.l === 1 || fixed.c === 0).toBe(true);
+	});
+
+	it("ensurePair moves the fill until an on-color passes", () => {
+		// Mid-gray fill: neither white nor ink reaches AA until the
+		// lightness is nudged toward the ink side.
+		const { bg, fg } = ensurePair({ l: 0.6, c: 0, h: 0 }, 4.5);
+		expect(bg.l).toBeGreaterThan(0.6);
+		expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
+	});
+
+	it("ensurePair falls back to the better on-color at the lightness bound", () => {
+		// Saturated near-white fill: even l=1 cannot reach AA, so the
+		// loop hits the upper bound and returns the better extreme.
+		const { bg, fg } = ensurePair({ l: 1, c: 0.5, h: 30 }, 4.5);
+		expect(bg.l).toBe(1);
+		expect(fg.l).toBe(0.22);
 	});
 });
 
@@ -193,6 +264,13 @@ describe("deriveThemeTokens", () => {
 		const tokens = deriveThemeTokens({});
 		expect(contrastReport(tokens, "light")).toHaveLength(CONTRAST_PAIRS.length);
 		expect(contrastReport(tokens, "dark")).toHaveLength(CONTRAST_PAIRS.length);
+	});
+
+	it("measurePair reports ratio 0 and failure for unparseable vars", () => {
+		const tokens = deriveThemeTokens({});
+		const pair = measurePair(tokens, "light", "missing", "--nope", "--background");
+		expect(pair.ratio).toBe(0);
+		expect(pair.ok).toBe(false);
 	});
 });
 

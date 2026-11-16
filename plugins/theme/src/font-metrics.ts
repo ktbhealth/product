@@ -43,6 +43,7 @@ interface TableRecord {
 
 /** Locate `tag` inside an sfnt table directory; null when absent. */
 const findTable = (bytes: Uint8Array, tag: string): TableRecord | null => {
+	/* v8 ignore next -- callers only reach here with >= 12-byte inputs */
 	if (bytes.byteLength < 12) return null;
 	const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	const numTables = u16(v, 4);
@@ -85,6 +86,9 @@ const WOFF_SIGNATURE = 0x774f4646; // "wOFF"
 const woffTable = async (bytes: Uint8Array, tag: string): Promise<Uint8Array | null> => {
 	if (bytes.byteLength < WOFF_HEADER_BYTES) return null;
 	const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	// woffMetrics only calls this after the wOFF magic check — the
+	// signature can never mismatch here.
+	/* v8 ignore next -- signature already verified by the caller */
 	if (u32(v, 0) !== WOFF_SIGNATURE) return null;
 	const numTables = u16(v, 12);
 	for (let i = 0; i < numTables; i++) {

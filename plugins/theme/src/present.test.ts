@@ -54,6 +54,12 @@ describe("presentTheme", () => {
 		const theme = presentTheme(row({ brand: JSON.stringify({ appName: "Acme Health" }) }));
 		expect(theme.appName).toBe("Acme Health");
 	});
+
+	it("appName stays null when neither column nor brand carries one", () => {
+		const theme = presentTheme(row({ brand: JSON.stringify({ logoLight: "/l.svg" }) }));
+		expect(theme.appName).toBeNull();
+		expect(theme.brand?.logoLight).toBe("/l.svg");
+	});
 });
 
 describe("fonts", () => {
@@ -85,6 +91,59 @@ describe("fonts", () => {
 
 	it("fontCssVars is empty without config", () => {
 		expect(fontCssVars(null)).toEqual({});
+	});
+
+	it("fontCssVars tolerates missing/blank families and non-object assets", () => {
+		// No families map at all → every slot keeps its fallback stack.
+		const vars = fontCssVars({ delivery: "self-host" });
+		expect(vars["--font-sans"]).toContain("ui-sans-serif");
+		// A quoted-empty family name strips to "" — no metric fallback.
+		// String assets and blank fallback names yield no local() face.
+		const edge = fontCssVars({
+			delivery: "self-host",
+			families: { sans: '""', heading: "Blank", mono: "Mono" },
+			assets: {
+				Blank: {
+					faces: [],
+					fallback: {
+						name: "  ",
+						local: "Arial",
+						metrics: {
+							sizeAdjust: 100,
+							ascentOverride: 80,
+							descentOverride: 20,
+							lineGapOverride: 0,
+						},
+					},
+				},
+				Mono: {
+					faces: [{ url: "/m.woff2" }],
+					fallback: {
+						name: "F",
+						local: "Arial",
+						metrics: {
+							sizeAdjust: 100,
+							ascentOverride: 80,
+							descentOverride: 20,
+							lineGapOverride: 0,
+						},
+					},
+				},
+			},
+		});
+		expect(edge["--font-sans"]).toContain("ui-sans-serif");
+		expect(edge["--font-heading"]).toContain('"Blank"');
+		expect(edge["--font-mono"]).toContain('"F"'); // metric fallback inserted
+	});
+
+	it("googleFontLinks tolerates missing families and filters bad weights", () => {
+		expect(googleFontLinks({ delivery: "google-fonts" })).toEqual([]);
+		const links = googleFontLinks({
+			delivery: "google-fonts",
+			families: { sans: "Inter" },
+			weights: [50, 1000, 400],
+		});
+		expect(links[0]).toContain("wght@400");
 	});
 
 	it("fontFaceCss emits @font-face only for self-host assets", () => {
@@ -166,6 +225,37 @@ describe("fonts", () => {
 		expect(css.match(/@font-face/g)).toHaveLength(2);
 	});
 
+	it("fontFaceCss infers format from ?key= serving URLs and skips malformed assets", () => {
+		const css = fontFaceCss({
+			delivery: "self-host",
+			assets: {
+				// Extension lives in the R2 key query param, not the path.
+				Keyed: "/api/theme/assets?key=theme-assets/1/font/x.woff2",
+				NoExt: "/api/theme/assets?key=theme-assets/1/font/x",
+				Empty: "   ",
+				Nil: null as never,
+				BadFaces: { faces: "nope" as never },
+				Unknown: { faces: [{ url: "/f.bin", weight: 400 }] },
+				// No path extension and no ?key= param → default format.
+				Bare: "/api/theme/assets?x=1",
+				// ?key= present but extensionless → default format.
+				KeyNoExt: "/api/theme/assets?key=abc",
+			},
+		});
+		const rules = css.split("\n");
+		expect(rules).toHaveLength(5);
+		expect(rules[0]).toContain('font-family:"Keyed"');
+		expect(rules[0]).toContain('format("woff2")');
+		expect(rules[1]).toContain('font-family:"NoExt"');
+		expect(rules[1]).toContain('format("woff2")'); // default when ext unknown
+		expect(rules[2]).toContain('font-family:"Unknown"');
+		expect(rules[2]).toContain('format("woff2")');
+		expect(rules[3]).toContain('font-family:"Bare"');
+		expect(rules[3]).toContain('format("woff2")');
+		expect(rules[4]).toContain('font-family:"KeyNoExt"');
+		expect(rules[4]).toContain('format("woff2")');
+	});
+
 	it("fontCssVars inserts the metric-matched fallback into the stack", () => {
 		const vars = fontCssVars({
 			delivery: "self-host",
@@ -228,6 +318,33 @@ describe("themeHead / themeAssets / themeTitle", () => {
 
 	it("themeAssets tolerates null theme", () => {
 		expect(themeAssets(null)).toEqual({ links: [], styles: [] });
+		expect(themeAssets(undefined)).toEqual({ links: [], styles: [] });
+	});
+
+	it("themeAssets projects links and styles for a real theme", () => {
+		const assets = themeAssets(themed);
+		expect(assets.links.length).toBeGreaterThan(0);
+		expect(assets.styles).toHaveLength(1);
+	});
+
+	it("themeHead skips blank/non-string brand fields and empty css", () => {
+		const bare = {
+			brand: { favicon: "   ", ogImage: 42 },
+			fontLinks: [],
+			styleCss: "",
+			fonts: null,
+		} as unknown as Parameters<typeof themeHead>[0];
+		const head = themeHead(bare);
+		expect(head.links).toEqual([]);
+		expect(head.meta).toEqual([]);
+		expect(head.styles).toEqual([]);
+		const nonString = {
+			brand: { favicon: 7 },
+			fontLinks: [],
+			styleCss: "",
+			fonts: null,
+		} as unknown as Parameters<typeof themeHead>[0];
+		expect(themeHead(nonString).links).toEqual([]);
 	});
 
 	it("themeTitle prefers brand appName then row appName", () => {

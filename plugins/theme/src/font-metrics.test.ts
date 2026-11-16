@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
 	FALLBACK_FONT_METRICS,
@@ -206,6 +206,101 @@ describe("parseFontMetrics", () => {
 		// …but accepted when the format hints sfnt.
 		expect((await parseFontMetrics(weird, "ttf"))?.unitsPerEm).toBe(1000);
 	});
+
+	it("returns null for truncated directories and missing metric tables", async () => {
+		// Directory claims more tables than the file holds.
+		const truncated = new Uint8Array([...tag("true"), ...u16(100), ...new Array(14).fill(0)]);
+		expect(await parseFontMetrics(truncated)).toBeNull();
+		// Valid directory without head/hhea tables.
+		const noMetrics = buildSfnt("true", [os2Table(500), table("cmap", [1, 2, 3])]);
+		expect(await parseFontMetrics(noMetrics)).toBeNull();
+		// head present but hhea absent.
+		const headOnly = buildSfnt("true", [headTable(1000)]);
+		expect(await parseFontMetrics(headOnly)).toBeNull();
+	});
+
+	it("returns null for short/corrupt WOFF containers", async () => {
+		// "wOFF" signature but shorter than the 44-byte header.
+		const tinyWoff = new Uint8Array(20);
+		tinyWoff.set(tag("wOFF"), 0);
+		expect(await parseFontMetrics(tinyWoff)).toBeNull();
+		// Single-table WOFF: hhea lookup walks off the record list.
+		const headOnlyWoff = woff([headTable(2048)]);
+		expect(await parseFontMetrics(headOnlyWoff)).toBeNull();
+		// head record points outside the file.
+		const badOffset = woff([headTable(2048), hheaTable(1, -1, 0)]);
+		badOffset.set(u32(0xfffffff0), 44 + 4);
+		expect(await parseFontMetrics(badOffset)).toBeNull();
+		// head table shorter than the 20 bytes unitsPerEm needs.
+		const shortHeadWoff = woff([table("head", [0, 0]), hheaTable(1, -1, 0)]);
+		expect(await parseFontMetrics(shortHeadWoff)).toBeNull();
+		// unitsPerEm = 0 inside WOFF.
+		const zeroEmWoff = woff([headTable(0), hheaTable(1, -1, 0)]);
+		expect(await parseFontMetrics(zeroEmWoff)).toBeNull();
+	});
+
+	it("returns null for WOFF containers that are short or truncated", async () => {
+		// Valid signature but shorter than the 44-byte header.
+		const short = new Uint8Array(20);
+		short.set([0x77, 0x4f, 0x46, 0x46], 0); // "wOFF"
+		expect(await parseFontMetrics(short)).toBeNull();
+		// Header-sized but the single table record is cut off.
+		const truncated = new Uint8Array(50);
+		truncated.set([0x77, 0x4f, 0x46, 0x46], 0);
+		new DataView(truncated.buffer).setUint16(12, 1); // numTables = 1
+		expect(await parseFontMetrics(truncated)).toBeNull();
+	});
+
+	it("returns null when a compressed WOFF table cannot be inflated", async () => {
+		// compLength < origLength with garbage payload → inflate throws.
+		const corrupt = woff([headTable(2048), hheaTable(1, -1, 0)]);
+		corrupt.set(u32(5), 44 + 8); // compLength
+		corrupt.set(u32(20), 44 + 12); // origLength
+		// Table 0's data offset is 44 + numTables*20 = 84 — garbage there
+		// cannot inflate.
+		corrupt.fill(0xff, 84, 89);
+		expect(await parseFontMetrics(corrupt)).toBeNull();
+	});
+
+	it("returns null when DecompressionStream is unavailable", async () => {
+		const compressed = woff([headTable(2048), hheaTable(1, -1, 0)]);
+		compressed.set(u32(5), 44 + 8);
+		compressed.set(u32(20), 44 + 12);
+		vi.stubGlobal("DecompressionStream", undefined);
+		try {
+			expect(await parseFontMetrics(compressed)).toBeNull();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("tolerates resizable-buffer views that shrink below the directory", async () => {
+		// ArrayBuffer resize options need es2024 lib typings — the runtime
+		// (Node ≥20) supports them, so cast the constructor for tsc.
+		const Rab = ArrayBuffer as unknown as new (
+			n: number,
+			options?: { maxByteLength?: number },
+		) => ArrayBuffer & { resize(newLen: number): void };
+		const rab = new Rab(64, { maxByteLength: 128 });
+		const view = new Uint8Array(rab, 0, 32);
+		view.set(tag("true"), 0);
+		rab.resize(8);
+		expect(await parseFontMetrics(view)).toBeNull();
+	});
+
+	it("returns null when the view claims more bytes than its buffer holds", async () => {
+		// A forged view: byteLength/byteOffset pass the early checks and
+		// head4 reads "OTTO", but the directory DataView overflows the
+		// real buffer — the defensive catch converts it to null.
+		const buffer = new ArrayBuffer(60);
+		new Uint8Array(buffer, 50, 4).set([0x4f, 0x54, 0x54, 0x4f]); // "OTTO"
+		const forged = {
+			byteLength: 100,
+			byteOffset: 50,
+			buffer,
+		} as unknown as Uint8Array;
+		expect(await parseFontMetrics(forged)).toBeNull();
+	});
 });
 
 describe("localFontForSlot + FALLBACK_FONT_METRICS", () => {
@@ -244,6 +339,20 @@ describe("computeMetricOverrides", () => {
 		const m = computeMetricOverrides(noWidth, FALLBACK_FONT_METRICS["noto sans"]!);
 		expect(m.sizeAdjust).toBe(100);
 		expect(m.ascentOverride).toBeCloseTo(80, 5);
+	});
+
+	it("falls back to sizeAdjust 100 when the fallback lacks a width", () => {
+		const noWidthFallback: FontMetrics = {
+			unitsPerEm: 1000,
+			ascent: 800,
+			descent: -200,
+			lineGap: 0,
+		};
+		const m = computeMetricOverrides(
+			{ unitsPerEm: 1000, ascent: 800, descent: -200, lineGap: 0, xAvgCharWidth: 500 },
+			noWidthFallback,
+		);
+		expect(m.sizeAdjust).toBe(100);
 	});
 
 	it("returns finite overrides when the fallback ratio is zero", () => {

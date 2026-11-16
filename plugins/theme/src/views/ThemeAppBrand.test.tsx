@@ -53,6 +53,14 @@ describe("ThemeAppBrand", () => {
 		expect(screen.getByText("Acme Care")).toBeTruthy();
 	});
 
+	it("omits the aria-label and falls back to brand.appName when appName is null", () => {
+		const theme = bareTheme({ brand: { appName: "Brand Only" } });
+		render(<ThemeAppBrand {...props(theme)} />);
+		const link = screen.getByRole("link");
+		expect(link.getAttribute("aria-label")).toBeNull();
+		expect(screen.getByText("Brand Only")).toBeTruthy();
+	});
+
 	it("renders nothing without a theme or without any brand data", () => {
 		const { container: empty } = render(<ThemeAppBrand {...props()} />);
 		expect(empty.innerHTML).toBe("");
