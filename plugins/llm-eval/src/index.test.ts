@@ -13,6 +13,7 @@ describe("llm.eval", () => {
 		expect(registry.get("eval.capability", "llm").meta?.port).toBe(LlmPort.key);
 		expect(registry.get("eval.capability", "llm").meta?.adapters).toEqual({
 			stub: "@ktb/eval-adapter-stub",
+			noop: "@ktb/eval-adapter-stub",
 			acp: "@ktb/eval-adapter-local",
 		});
 		expect(registry.get("eval.capability", "eval").meta?.port).toBe(EvalPort.key);

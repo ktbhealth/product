@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "21b625e8-45cc-469a-9a67-6b9453926f89",
-  "prevId": "98f2cce3-2f3c-43de-8353-ad8c3a544fc4",
+  "id": "290c6e60-e582-4aad-b64e-a8c5316b05d8",
+  "prevId": "88014bfc-15a3-4468-aa03-655fb586d89e",
   "tables": {
     "account": {
       "name": "account",
@@ -534,13 +534,6 @@
         "tenant_id": {
           "name": "tenant_id",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "prev_hash": {
-          "name": "prev_hash",
-          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
