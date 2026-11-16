@@ -118,10 +118,33 @@ export const buildScriptContext = (
  * Same seed discipline as buildScriptContext — every pick goes
  * through rng(seed). Falls back to undefined when the locale has
  * no `anamnesis` content, so callers degrade to the short form. */
+/** Roughly four turns per spoken minute — each beat renders one or
+ * two sentences, which read aloud at ~15s. */
+const TURNS_PER_MINUTE = 4;
+
+/** Scales the beat list to a target interview length. The opening
+ * and closing beats always survive; the middle (HDA/history/exam)
+ * is sampled evenly so a short consult still covers every section
+ * instead of being chopped mid-anamnesis. */
+const selectBeats = <T>(beats: readonly T[], minutes: number | undefined): readonly T[] => {
+	if (minutes === undefined) return beats;
+	const target = Math.max(4, Math.round(minutes * TURNS_PER_MINUTE));
+	if (target >= beats.length) return beats;
+	const head = beats.slice(0, 2);
+	const tail = beats.slice(-2);
+	const middle = beats.slice(2, -2);
+	const take = target - head.length - tail.length;
+	if (take <= 0) return [...head, ...tail];
+	const step = middle.length / take;
+	const mid = Array.from({ length: take }, (_, i) => middle[Math.floor(i * step)]!);
+	return [...head, ...mid, ...tail];
+};
+
 const buildAnamnesisContext = (
 	persona: Persona,
 	seed: number,
 	profile: LocaleProfile,
+	minutes?: number,
 ): { turns: ScriptTurn[]; entities: GoldEntity[]; text: string } | undefined => {
 	const a = profile.script.anamnesis;
 	if (a === undefined) return undefined;
@@ -172,7 +195,7 @@ const buildAnamnesisContext = (
 	};
 
 	const doctorRegister = persona.doctor?.register ?? "formal";
-	const turns: ScriptTurn[] = a.beats.map((beat) => ({
+	const turns: ScriptTurn[] = selectBeats(a.beats, minutes).map((beat) => ({
 		speaker: beat.speaker,
 		// Each speaker keeps their own register — a colloquial
 		// patient gets lay wording while the doctor stays formal.
@@ -215,10 +238,13 @@ export const renderScript = (input: {
 	 * ~60 turns) when the locale provides it; anything else renders
 	 * the template against the six-slot short context. */
 	readonly variant?: "short" | "anamnesis";
+	/** Target interview length in minutes — scales the beat list to
+	 * ~4 turns/minute; absent renders the full anamnesis. */
+	readonly minutes?: number;
 }): ScriptRender => {
 	const profile = input.profile ?? ptBR;
 	if (input.variant === "anamnesis") {
-		const long = buildAnamnesisContext(input.persona, input.seed, profile);
+		const long = buildAnamnesisContext(input.persona, input.seed, profile, input.minutes);
 		if (long !== undefined) {
 			return { script: long.text, turns: long.turns, entities: long.entities, seed: input.seed };
 		}

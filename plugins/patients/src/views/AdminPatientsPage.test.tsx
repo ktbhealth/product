@@ -124,6 +124,25 @@ describe("AdminPatientsPage", () => {
 		expect(screen.getByText("Showing 0 of 1")).toBeTruthy();
 	});
 
+	it("hides synthetic rows until the toggle is checked", async () => {
+		const user = userEvent.setup();
+		render(
+			<AdminPatientsPage
+				owners={OWNERS}
+				patients={[row({}), row({ id: 2, name: "Sim", synthetic: true })]}
+			/>,
+		);
+		// Synthetic eval rows stay out of the default view.
+		expect(screen.getByText("Ana")).toBeTruthy();
+		expect(screen.queryByText("Sim")).toBeNull();
+		await user.click(screen.getByRole("checkbox", { name: "Show synthetic" }));
+		expect(await screen.findByText("Sim")).toBeTruthy();
+		expect(screen.getByText("synthetic")).toBeTruthy();
+		// Toggling back hides them again.
+		await user.click(screen.getByRole("checkbox", { name: "Show synthetic" }));
+		expect(screen.queryByText("Sim")).toBeNull();
+	});
+
 	it("links each row to the edit form", () => {
 		render(<AdminPatientsPage owners={OWNERS} patients={[row({})]} />);
 		expect(screen.getByRole("link", { name: "Edit Ana" }).getAttribute("href")).toBe(

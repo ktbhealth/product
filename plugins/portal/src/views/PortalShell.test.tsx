@@ -131,6 +131,14 @@ describe("PortalShell", () => {
 		expect(onSignOut).toHaveBeenCalledTimes(1);
 	});
 
+	it("renders an empty brand slot when no brand is provided (PL-006)", () => {
+		// Brand lives in theme data — the shell has no hardcoded
+		// wordmark fallback; only the host-owned instance badge stays.
+		renderShell();
+		expect(screen.queryByText("KTB")).toBeNull();
+		expect(screen.getAllByText("Platform").length).toBeGreaterThan(0);
+	});
+
 	it("renders a custom brand in the fixed sidebar slot and keeps the badge", () => {
 		renderShell({ brand: <span data-testid="brand-mark">Acme Health</span> });
 		expect(screen.getByTestId("brand-mark")).toBeDefined();
@@ -142,5 +150,18 @@ describe("PortalShell", () => {
 	it("renders the banner strip above the header when provided", () => {
 		renderShell({ banner: <div data-testid="preview-banner">preview</div> });
 		expect(screen.getByTestId("preview-banner")).toBeDefined();
+	});
+
+	it("injects the theme css block only when it carries content (P-082)", () => {
+		const marker = ":root{--ktb-shell-marker:1}";
+		const { container, unmount } = renderShell({ themeCss: marker });
+		expect(container.innerHTML).toContain("--ktb-shell-marker");
+		unmount();
+		// null / "" / undefined all skip the single style emitter.
+		for (const themeCss of [null, "", undefined] as const) {
+			const r = renderShell({ themeCss });
+			expect(r.container.innerHTML).not.toContain("--ktb-shell-marker");
+			r.unmount();
+		}
 	});
 });

@@ -54,12 +54,14 @@ import {
 	patientDeletionImpactFn,
 	patientHistoryFn,
 	platformAdminFn,
+	consoleDeniedFn,
 	portalPageDataFn,
 	appPageDataFn,
 	recordConsentFn,
 	saveConsultationFn,
 	sessionFn,
 	updatePatientFn,
+	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
 /** Registers a patient through the server fn, failing the test on validation errors. */
@@ -124,6 +126,7 @@ describe("server fns", () => {
 		expect(await listConsultationsFn()).toEqual([]);
 		expect(await getConsultationFn({ data: 1 })).toBeNull();
 		expect(await getLiveConsultationFn({ data: 1 })).toBeNull();
+		expect(await verifyConsultationIntegrityFn({ data: 1 })).toBeNull();
 		expect(await patientHistoryFn({ data: { patientId: 1 } })).toBeNull();
 		expect(
 			await attachAnamnesisFn({
@@ -182,6 +185,16 @@ describe("server fns", () => {
 		expect(await getLiveConsultationFn({ data: 999 })).toBeNull();
 
 		expect(await recordConsentFn({ data: saved.id! })).toEqual({ ok: true });
+
+		// verifyIntegrity: same read authz as getConsultationFn — the owner
+		// gets a chain report, a foreign user degrades to null.
+		const report = await verifyConsultationIntegrityFn({ data: saved.id! });
+		expect(report?.status).toBe("verified");
+		expect(report?.versions).toBeGreaterThan(0);
+		headers.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
+		expect(await verifyConsultationIntegrityFn({ data: saved.id! })).toBeNull();
+		headers.current = new Headers({ cookie });
+
 		expect(
 			await attachAnamnesisFn({
 				data: {
@@ -539,6 +552,7 @@ describe("server fns", () => {
 		// page data collapses to notfound before any loader runs.
 		headers.current = new Headers({ cookie });
 		expect(await platformAdminFn()).toBe(false);
+		expect((await sessionFn())?.platformAdmin).toBe(false);
 		expect(await portalPageDataFn({ data: "/platform/patients" })).toEqual({
 			status: "notfound",
 		});
@@ -554,6 +568,7 @@ describe("server fns", () => {
 		const adminCookie = await signIn("platform-admin@ktb.test");
 		headers.current = new Headers({ cookie: adminCookie });
 		expect(await platformAdminFn()).toBe(true);
+		expect((await sessionFn())?.platformAdmin).toBe(true);
 		const pageData = async (path: string) => {
 			const res = await portalPageDataFn({ data: path });
 			if (res.status !== "ok") throw new Error(`expected ok, got ${res.status}`);
@@ -694,6 +709,55 @@ describe("server fns", () => {
 			pages.delete(denied.path);
 			pages.delete(allowed.path);
 		}
+	});
+
+	it("consoleDeniedFn lists only paths whose guard denies the session", async () => {
+		headers.current = new Headers({ cookie });
+		const denied: PanelPage = {
+			id: "test.denied",
+			path: "/platform/test-denied",
+			component: () => null,
+			guard: () => Effect.succeed(false),
+		};
+		const allowed: PanelPage = {
+			id: "test.allowed",
+			path: "/platform/test-allowed",
+			component: () => null,
+			guard: () => Effect.succeed(true),
+		};
+		const unguarded: PanelPage = {
+			id: "test.unguarded",
+			path: "/platform/test-unguarded",
+			component: () => null,
+		};
+		// A guard that throws counts as denied — same contract as pageData.
+		const exploding: PanelPage = {
+			id: "test.exploding",
+			path: "/platform/test-exploding",
+			component: () => null,
+			guard: () => Effect.fail("boom") as never,
+		};
+		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
+		pages.set(denied.path, { page: denied, pluginId: "platform.routes" });
+		pages.set(allowed.path, { page: allowed, pluginId: "platform.routes" });
+		pages.set(unguarded.path, { page: unguarded, pluginId: "platform.routes" });
+		pages.set(exploding.path, { page: exploding, pluginId: "platform.routes" });
+		try {
+			const deniedPaths = await consoleDeniedFn();
+			expect(deniedPaths).toContain(denied.path);
+			expect(deniedPaths).toContain(exploding.path);
+			expect(deniedPaths).not.toContain(allowed.path);
+			expect(deniedPaths).not.toContain(unguarded.path);
+		} finally {
+			pages.delete(denied.path);
+			pages.delete(allowed.path);
+			pages.delete(unguarded.path);
+			pages.delete(exploding.path);
+		}
+		// Anonymous → empty list (nothing to filter; the menu never
+		// renders for them anyway).
+		headers.current = new Headers();
+		expect(await consoleDeniedFn()).toEqual([]);
 	});
 
 	it("clinician portal pages serve doctor-scoped data (P-081)", async () => {
