@@ -178,11 +178,19 @@ export const makeApiKeysAdapter = (auth: Auth, db: AuthDb): ApiKeysShape => ({
 		readonly referenceId: string;
 		readonly metadata: Record<string, unknown>;
 	}) => {
+		// `secret` stays for getSecret/outbound reads; `secretLast4` is
+		// the only hint `list` may show. The >4 guard keeps a short
+		// secret from being revealed whole by its own "last 4".
+		const secret = input.metadata.secret;
+		const metadata =
+			typeof secret === "string" && secret.length > 4
+				? { ...input.metadata, secretLast4: secret.slice(-4) }
+				: input.metadata;
 		const r = await auth.api.createApiKey({
 			body: {
 				name: input.name,
 				userId: input.referenceId,
-				metadata: input.metadata,
+				metadata,
 				rateLimitEnabled: false,
 			},
 		});

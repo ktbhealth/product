@@ -55,9 +55,10 @@ describe("makeApiKeysAdapter", () => {
 		expect(listed[0]?.name).toBe("prod key");
 		expect(listed[0]?.referenceId).toBe(userId);
 		// `list` never carries the plaintext secret — other metadata
-		// keys survive; `getSecret` is the only read-back.
+		// keys survive, plus the non-sensitive `secretLast4` hint;
+		// `getSecret` is the only read-back.
 		const meta = JSON.parse(listed[0]?.metadata ?? "") as Record<string, unknown>;
-		expect(meta).toEqual({ provider: "openai" });
+		expect(meta).toEqual({ provider: "openai", secretLast4: "1234" });
 		expect(meta).not.toHaveProperty("secret");
 		expect(listed[0]?.metadata).not.toContain("sk-live-1234");
 
@@ -102,7 +103,33 @@ describe("makeApiKeysAdapter", () => {
 		});
 		const [row] = await keys.list(userId);
 		const meta = JSON.parse(row?.metadata ?? "") as Record<string, unknown>;
-		expect(meta).toEqual({ kind: "credential", provider: "openai", note: "prod" });
+		expect(meta).toEqual({
+			kind: "credential",
+			provider: "openai",
+			note: "prod",
+			secretLast4: "p-me",
+		});
+	});
+
+	it("create only hints secretLast4 for secrets longer than 4 chars", async () => {
+		const { auth, keys } = setup();
+		const userId = await signUp(auth, "hint@x.com");
+		await keys.create({
+			name: "short",
+			referenceId: userId,
+			metadata: { secret: "abc" },
+		});
+		await keys.create({
+			name: "non-string",
+			referenceId: userId,
+			metadata: { secret: 42 },
+		});
+		const byName = new Map((await keys.list(userId)).map((r) => [r.name, r.metadata]));
+		// A ≤4-char secret would be revealed whole by its own "last 4".
+		expect(JSON.parse(byName.get("short") ?? "{}")).toEqual({});
+		// `list` drops the `secret` key whatever its type; only the
+		// string-secret rows above could ever grow a `secretLast4`.
+		expect(JSON.parse(byName.get("non-string") ?? "{}")).toEqual({});
 	});
 
 	it("list survives unparseable or non-object metadata", async () => {

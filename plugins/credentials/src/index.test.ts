@@ -51,6 +51,28 @@ const row = (
 	metadata,
 });
 
+/** Mirrors the real adapter's `create`: a string secret longer than
+ * 4 chars also stores a non-sensitive `secretLast4` hint. */
+const withLast4Hint = (metadata: Record<string, unknown>) => {
+	const secret = metadata.secret;
+	return typeof secret === "string" && secret.length > 4
+		? { ...metadata, secretLast4: secret.slice(-4) }
+		: metadata;
+};
+
+/** Mirrors the real adapter's `list`: `secret` never leaves the port. */
+const stripSecret = (raw: string | null): string | null => {
+	if (raw === null) return null;
+	try {
+		const p: unknown = JSON.parse(raw);
+		if (typeof p !== "object" || p === null || Array.isArray(p)) return "{}";
+		const { secret: _secret, ...rest } = p as Record<string, unknown>;
+		return JSON.stringify(rest);
+	} catch {
+		return "{}";
+	}
+};
+
 /** In-memory ApiKeys port — mirrors the adapter contract: rows are
  * per-`referenceId`, `metadata` is a JSON string, `getSecret` reads
  * `metadata.secret` back. */
@@ -74,14 +96,16 @@ const makeApiKeys = (seed: readonly SeedRow[] = []) => {
 					name: input.name,
 					start: "sk",
 					enabled: true,
-					metadata: JSON.stringify(input.metadata),
+					metadata: JSON.stringify(withLast4Hint(input.metadata)),
 				},
 				referenceId: input.referenceId,
 			});
 			return { id };
 		},
 		list: async (referenceId: string) =>
-			[...store.values()].filter((s) => s.referenceId === referenceId).map((s) => s.row),
+			[...store.values()]
+				.filter((s) => s.referenceId === referenceId)
+				.map((s) => ({ ...s.row, metadata: stripSecret(s.row.metadata) })),
 		remove: async (keyId: string, referenceId: string) => {
 			if (store.get(keyId)?.referenceId === referenceId) store.delete(keyId);
 		},
@@ -183,7 +207,16 @@ describe("Credentials", () => {
 					referenceId: "u1",
 				},
 				{
-					row: row("c", '{"kind":"credential","provider":42,"secret":"sk-77777"}'),
+					row: row(
+						"c",
+						'{"kind":"credential","provider":42,"secret":"sk-77777","secretLast4":"7777"}',
+					),
+					referenceId: "u1",
+				},
+				// Legacy row: secret stored before `secretLast4` existed —
+				// `list` strips it, so only a bare mask survives.
+				{
+					row: row("h", '{"kind":"credential","provider":"x","secret":"sk-legacy"}'),
 					referenceId: "u1",
 				},
 				// Unmarked rows — even ones carrying provider/secret-shaped
@@ -201,6 +234,7 @@ describe("Credentials", () => {
 		expect(byId.get("b")?.name).toBe("credential");
 		expect(byId.get("c")?.provider).toBe("other");
 		expect(byId.get("c")?.masked).toBe("••••7777");
+		expect(byId.get("h")?.masked).toBe("••••");
 		// Rows without the kind marker are not managed credentials at all.
 		expect(byId.has("d")).toBe(false);
 		expect(byId.has("e")).toBe(false);
