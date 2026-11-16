@@ -1956,6 +1956,33 @@ describe("NewConsultationPage ZK portal grants", () => {
 		expect(payload.data.grants.some((g) => g.readerKind === "patient")).toBe(true);
 	});
 
+	it("still shares the record DEK when this device has no patient-DEK envelope", async () => {
+		const user = userEvent.setup();
+		const portalPub = (await portalDevice.deviceKeys()).wrapPublicKey;
+		// makeZk() defaults dekEnvelopes to {} — patientDek resolves null,
+		// so the patient-entity grant is skipped but the record grant
+		// still rides the create payload.
+		const zk = makeZk();
+		const api = makeApi({
+			portalReaders: vi.fn(async () => ({
+				readers: [{ readerId: "ana", wrapPublicKey: portalPub }],
+			})),
+		});
+		renderPage(api, PATIENTS, 1, zk);
+		await generateZk(user);
+		await user.click(screen.getByText("Save consultation"));
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		expect(zk.api.grant).not.toHaveBeenCalledWith(
+			expect.objectContaining({ entityType: "patient" }),
+		);
+		const payload = (api["saveConsultation"] as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+			data: { grants: { readerKind: string; readerPubkey: string }[] };
+		};
+		expect(
+			payload.data.grants.some((g) => g.readerKind === "patient" && g.readerPubkey === portalPub),
+		).toBe(true);
+	});
+
 	it("saves normally when the reader lookup fails or is absent", async () => {
 		const user = userEvent.setup();
 		const zk = makeZk();

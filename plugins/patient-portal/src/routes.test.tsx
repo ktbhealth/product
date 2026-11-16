@@ -138,6 +138,21 @@ describe("/portal", () => {
 		expect(props.consultations[0]!.anamnesis).toBe("v1.a.b");
 	});
 
+	it("keeps locked labels when the decrypt pass itself fails", async () => {
+		mocks.loaderData.current = {
+			...portal,
+			profiles: [{ patientId: 1, name: "v1.name.ct" }],
+			profile: null,
+			consultations: [],
+			locale: "en",
+		};
+		mocks.portalDekEnvelopesFn.mockRejectedValue(new Error("down"));
+		render(createElement(home.component));
+		await vi.waitFor(() => expect(mocks.portalDekEnvelopesFn).toHaveBeenCalled());
+		const props = mocks.props.current as { profiles: { name: string }[] };
+		expect(props.profiles[0]!.name).toBe("Encrypted record");
+	});
+
 	it("still runs the decrypt pass when no record is open", async () => {
 		mocks.loaderData.current = {
 			...portal,

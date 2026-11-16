@@ -248,6 +248,22 @@ describe("/patient-access/$patientId", () => {
 		await vi.waitFor(() => expect(mocks.vaultDekEnvelopesFn).toHaveBeenCalled());
 	});
 
+	it("on a ZK tenant fails closed when the grant pass itself rejects", async () => {
+		mocks.loaderData.current = {
+			patient: { id: 7, name: "v1.name.ct", email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		mocks.portalReadersFn.mockRejectedValue(new Error("down"));
+		render(createElement(options.component));
+		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 7 }));
+		// The page keeps the locked label — a failed pass never leaks.
+		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe(
+			"Encrypted record",
+		);
+	});
+
 	it("on a ZK tenant skips the pass when the patient has no portal plan", async () => {
 		mocks.loaderData.current = {
 			patient: { id: 7, name: "v1.name.ct", email: null },
