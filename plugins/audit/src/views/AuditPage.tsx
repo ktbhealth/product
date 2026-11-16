@@ -59,7 +59,8 @@ const targetLabel = (row: AdminAuditRow): string =>
 	[row.targetType, row.targetId].filter((v) => v !== null && v !== "").join(":") || "";
 
 /**
- * /platform/audit console view (T-037) — the platform admin action log.
+ * Shared audit listing — /platform/audit (T-037, platform admin log)
+ * and /portal/clinician/activity (P-080, tenant-scoped staff feed).
  * Rows arrive newest-first, already capped server-side; search and the
  * action-group filter run client-side over that window. Detail JSON is
  * shown in a dialog — ids and non-sensitive params only, by contract.
@@ -69,12 +70,16 @@ export function AuditPage({
 	entries,
 	total,
 	locale = "en",
+	title,
 }: {
 	entries: readonly AdminAuditRow[];
 	/** Total rows in the log (may exceed the capped page). */
 	total: number;
 	/** Active UI locale, injected by the host via the panel page ctx. */
 	locale?: string;
+	/** Page heading override — the staff activity feed (P-080) passes
+	 * its own title; defaults to the console's "Audit log" copy. */
+	title?: string;
 }) {
 	const t = auditMessages(locale);
 	const [q, setQ] = useState("");
@@ -103,7 +108,7 @@ export function AuditPage({
 
 	return (
 		<PageContainer>
-			<PageHeader title={t.title} description={t.description(entries.length, total)} />
+			<PageHeader title={title ?? t.title} description={t.description(entries.length, total)} />
 			{entries.length === 0 ? (
 				<Empty className="border">
 					<EmptyHeader>

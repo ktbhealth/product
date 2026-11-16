@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import * as Effect from "effect/Effect";
 
 import { EventBus } from "@effect-server-utils/cqrs";
+import { audit } from "@ktb/audit";
 import { ConsultationAudioUpdated } from "@ktb/consultations/api";
 import {
 	AUDIO_TRANSCRIPTION_JOB_KIND,
@@ -102,6 +103,16 @@ export interface AudioJobDeps {
 		 * `consultation.audioUpdated` event and the rebound tenant scope. */
 		readonly tenantId: number | null;
 	}) => Promise<void>;
+	/** Audit-trail hook (P-080): records transcription terminal events.
+	 * Optional — tests may omit it; a missing/rejected write never
+	 * fails the job (same contract as publishAudioUpdate). */
+	readonly recordAudit?: (entry: {
+		readonly action: string;
+		readonly targetType?: string | null;
+		readonly targetId?: string | number | null;
+		readonly detail?: Readonly<Record<string, unknown>> | null;
+		readonly tenantId?: string | number | null;
+	}) => Promise<void>;
 }
 
 /** btoa without stack overflow on large buffers (chunked fromCharCode). */
@@ -150,6 +161,33 @@ const notify = (
 ) =>
 	deps.publishAudioUpdate?.({ consultationId, audioStatus, audioError, tenantId }).catch(() => {});
 
+/** Reasons reaching the audit log are safe fixed strings except the
+ * provider-error suffix (`transcription failed: <raw error>`) — reduce
+ * that one to its bare label so no provider internals are stored. */
+const coarseReason = (reason: string): string =>
+	reason.startsWith("transcription failed") ? "transcription failed" : reason;
+
+/** Audit write is a side channel like publish — a missing/rejected
+ * hook never fails (or retries) the transcription job. Detail carries
+ * ids/flags only: the provider error embedded in `reason` is coerced
+ * to a coarse label before it reaches the log. */
+const recordAudit = (
+	deps: AudioJobDeps,
+	consultationId: number,
+	action: string,
+	reason: string | null,
+	tenantId: number | null,
+) =>
+	deps
+		.recordAudit?.({
+			action,
+			targetType: "consultation",
+			targetId: consultationId,
+			tenantId,
+			detail: reason === null ? null : { reason: coarseReason(reason) },
+		})
+		.catch(() => {});
+
 const fail = async (
 	deps: AudioJobDeps,
 	consultationId: number,
@@ -158,6 +196,7 @@ const fail = async (
 ) => {
 	await failAudioJob(deps.db, consultationId, reason);
 	await notify(deps, consultationId, "failed", reason, tenantId);
+	await recordAudit(deps, consultationId, "consultations.transcription.failed", reason, tenantId);
 };
 
 /**
@@ -238,6 +277,15 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 	}
 	await completeAudioJob(deps.db, job.consultationId, transcript);
 	await notify(deps, job.consultationId, "done", null, tenantId);
+	// P-080: transcription itself is complete — audit before the
+	// best-effort cleanup block below.
+	await recordAudit(
+		deps,
+		job.consultationId,
+		"consultations.transcription.completed",
+		null,
+		tenantId,
+	);
 
 	// P-017: LLM cleanup chained in the same job. Failure leaves
 	// correctedTranscript null; audioStatus stays "done".
@@ -338,6 +386,18 @@ const platformDeps = (): AudioJobDeps => ({
 							tenantId: update.tenantId,
 						}),
 					]);
+				}),
+			),
+		),
+	// P-080: audit-trail hook — same system-path wrapper as
+	// publishAudioUpdate (tenant scope rebound; audit() itself is a
+	// no-op when the audit plugin is absent).
+	recordAudit: (entry) =>
+		run(
+			runAsTenantId(
+				entry.tenantId ?? null,
+				Effect.gen(function* () {
+					yield* audit(entry);
 				}),
 			),
 		),

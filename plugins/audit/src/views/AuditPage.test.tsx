@@ -37,6 +37,12 @@ const TWO_ROWS = [
 afterEach(cleanup);
 
 describe("AuditPage", () => {
+	it("honors a title override (staff activity feed)", () => {
+		render(<AuditPage entries={[]} total={0} locale="en" title="Activity" />);
+		expect(screen.getByText("Activity")).toBeTruthy();
+		expect(screen.queryByText("Audit log")).toBeNull();
+	});
+
 	it("renders the empty state", () => {
 		render(<AuditPage entries={[]} total={0} locale="en" />);
 		expect(screen.getByText("Audit log")).toBeTruthy();

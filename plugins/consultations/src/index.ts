@@ -1151,6 +1151,15 @@ export const ConsultationsLive = Layer.effect(
 							tenantId,
 						}),
 					]);
+					// ids/source only — the transcript is PHI and stays out
+					// of the audit log (same rule as adminCreate).
+					yield* audit({
+						action: "consultations.create",
+						targetType: "consultation",
+						targetId: id,
+						tenantId,
+						detail: { source: fields.source },
+					});
 				}
 				return id;
 			}),
@@ -1168,7 +1177,18 @@ export const ConsultationsLive = Layer.effect(
 			finish: Effect.fn("Consultations.finish")(function* (consultationId: number) {
 				yield* Effect.annotateCurrentSpan({ consultationId });
 				yield* Effect.logInfo("consultation finish", { consultationId });
-				return yield* Effect.promise(() => finishConsultation(db, consultationId));
+				// System path (no principal → actor columns NULL by design):
+				// the row's tenant_id is the authoritative scope, read
+				// before the status flip like the other system audits.
+				const tenantId = yield* Effect.promise(() => consultationTenantId(db, consultationId));
+				yield* Effect.promise(() => finishConsultation(db, consultationId));
+				yield* audit({
+					action: "consultations.finish",
+					targetType: "consultation",
+					targetId: consultationId,
+					tenantId,
+					detail: { status: "done" },
+				});
 			}),
 			ownedByBot: Effect.fn("Consultations.ownedByBot")((consultationId: number, botId: string) =>
 				Effect.promise(() => ownsBot(db, consultationId, botId)),
@@ -1213,6 +1233,15 @@ export const ConsultationsLive = Layer.effect(
 				if (recorded !== null) {
 					yield* Effect.promise(() => setAnamnesisIntegrity(db, saved.id, recorded));
 				}
+				// ids/engine only — anamnesis content and transcript are
+				// PHI and stay out of the audit log.
+				yield* audit({
+					action: "consultations.save",
+					targetType: "consultation",
+					targetId: saved.id,
+					tenantId: tenantScopeId(tenant),
+					detail: { engine: input.engine, patientId: input.patientId ?? null },
+				});
 				return saved;
 			}),
 			list: Effect.fn("Consultations.list")(function* (userId: string, patientId?: number) {
@@ -1428,6 +1457,14 @@ export const ConsultationsLive = Layer.effect(
 					if (recorded !== null) {
 						yield* Effect.promise(() => setAnamnesisIntegrity(db, input.consultationId, recorded));
 					}
+					// ids/engine only — never the anamnesis payload.
+					yield* audit({
+						action: "consultations.anamnesis.attach",
+						targetType: "consultation",
+						targetId: input.consultationId,
+						tenantId: owner?.tenantId ?? null,
+						detail: { engine: input.engine, patientId: input.patientId ?? null },
+					});
 				}
 			}),
 			adminBackfillVersions: Effect.fn("Consultations.adminBackfillVersions")(function* () {
@@ -1509,7 +1546,14 @@ export const ConsultationsLive = Layer.effect(
 				const scope = yield* consultationScope(userId);
 				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
 				yield* Effect.logInfo("consultation consent recorded", { consultationId: id, userId });
-				return yield* Effect.promise(() => recordConsent(db, id, scope));
+				yield* Effect.promise(() => recordConsent(db, id, scope));
+				// ids only — the consent timestamp itself is metadata.
+				yield* audit({
+					action: "consultations.consent.record",
+					targetType: "consultation",
+					targetId: id,
+					tenantId: owner?.tenantId ?? null,
+				});
 			}),
 			attachAudio: Effect.fn("Consultations.attachAudio")(function* (
 				userId: string,
@@ -1540,6 +1584,15 @@ export const ConsultationsLive = Layer.effect(
 						tenantId: owner?.tenantId ?? null,
 					}),
 				]);
+				// Content metadata only — the audio key itself is an
+				// object-store path, not PHI, but ids suffice here.
+				yield* audit({
+					action: "consultations.audio.attach",
+					targetType: "consultation",
+					targetId: input.consultationId,
+					tenantId: owner?.tenantId ?? null,
+					detail: { contentType: input.contentType ?? null, size: input.size ?? null },
+				});
 			}),
 			updateAudioStatus: Effect.fn("Consultations.updateAudioStatus")(function* (
 				userId: string,
@@ -1561,6 +1614,13 @@ export const ConsultationsLive = Layer.effect(
 						tenantId: owner?.tenantId ?? null,
 					}),
 				]);
+				yield* audit({
+					action: "consultations.audio.status",
+					targetType: "consultation",
+					targetId: consultationId,
+					tenantId: owner?.tenantId ?? null,
+					detail: { status },
+				});
 			}),
 			history: Effect.fn("Consultations.history")(function* (
 				patientId: number,
@@ -1685,17 +1745,9 @@ export const PatientDeleteCascadeLive = Command.handlersOf(PatientCascadeCommand
 			const scope = admin ? undefined : yield* consultationScope(principal.userId);
 			yield* Effect.promise(() => deletePatientConsultations(db, patientId, scope));
 			yield* patientCommands["patients.delete"]({ id: patientId });
-			if (admin) {
-				// T-037: platform-admin patient delete (the owner path
-				// stays unaudited — this log is for admin actions).
-				yield* audit({
-					action: "patients.delete",
-					targetType: "patient",
-					targetId: patientId,
-					tenantId: owner.tenantId,
-					detail: { ownerId: owner.ownerId, consultations: rows.length },
-				});
-			}
+			// The `patients.delete` command handler records the audit row
+			// for EVERY patient delete (owner and admin alike — P-080);
+			// writing one here too would double-log admin deletes.
 			return {
 				consultations: rows.length,
 				audioKeys: rows.flatMap((r) => (r.audioKey ? [r.audioKey] : [])),
