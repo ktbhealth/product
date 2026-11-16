@@ -82,7 +82,12 @@ async function notifyNtfy(
 // {"repositories": ["docs"]}.
 
 function base64url(data: ArrayBuffer | Uint8Array | string): string {
-	const bytes = typeof data === "string" ? encoder.encode(data) : data instanceof Uint8Array ? data : new Uint8Array(data);
+	const bytes =
+		typeof data === "string"
+			? encoder.encode(data)
+			: data instanceof Uint8Array
+				? data
+				: new Uint8Array(data);
 	let bin = "";
 	for (const b of bytes) bin += String.fromCharCode(b);
 	return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
@@ -102,7 +107,9 @@ function pemToDer(pem: string): Uint8Array {
 async function appJwt(env: Env): Promise<string> {
 	const now = Math.floor(Date.now() / 1000);
 	const header = base64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-	const payload = base64url(JSON.stringify({ iat: now - 60, exp: now + 600, iss: env.GITHUB_APP_ID }));
+	const payload = base64url(
+		JSON.stringify({ iat: now - 60, exp: now + 600, iss: env.GITHUB_APP_ID }),
+	);
 	const unsigned = `${header}.${payload}`;
 	const key = await crypto.subtle.importKey(
 		"pkcs8",
@@ -170,7 +177,10 @@ async function handleTokenMint(request: Request, env: Env): Promise<Response> {
 	);
 	if (!res.ok) {
 		const detail = await res.text();
-		return Response.json({ error: `github ${res.status}`, detail: detail.slice(0, 300) }, { status: 502 });
+		return Response.json(
+			{ error: `github ${res.status}`, detail: detail.slice(0, 300) },
+			{ status: 502 },
+		);
 	}
 	const data = (await res.json()) as { token?: string; expires_at?: string };
 	return Response.json({ token: data.token, expires_at: data.expires_at });

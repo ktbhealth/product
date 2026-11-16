@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createElement } from "react";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
@@ -117,6 +117,11 @@ const renderShell = async (el: ReactElement) => {
 };
 
 describe("router integration", () => {
+	beforeEach(() => {
+		// Tests inherit jsdom's location from the previous navigation —
+		// href redirects can't complete there, so start each at "/".
+		window.history.replaceState(null, "", "/");
+	});
 	afterEach(() => {
 		shellRoot?.unmount();
 		shellRoot = null;
@@ -154,7 +159,7 @@ describe("router integration", () => {
 		expect(screen.getByText("Consultations")).toBeTruthy();
 
 		await act(async () => {
-			await router.navigate({ to: "/login" });
+			await router.navigate({ to: "/login/doctor" });
 		});
 		await waitFor(() => expect(screen.getByLabelText("Email")).toBeTruthy());
 		expect(screen.getByLabelText("Password")).toBeTruthy();
@@ -162,8 +167,8 @@ describe("router integration", () => {
 		await act(async () => {
 			await router.navigate({ to: "/consultations" });
 		});
-		// anonymous → route guard redirects to sign-in
-		await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
+		// anonymous → route guard funnels into the patient front door
+		await waitFor(() => expect(router.state.location.pathname).toBe("/login/patient"));
 	});
 
 	it("authenticated user sees name in nav and consultation detail", async () => {

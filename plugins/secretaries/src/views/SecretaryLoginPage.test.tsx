@@ -249,6 +249,8 @@ describe("secretary sign-in page", () => {
 		expect(
 			screen.getByRole("link", { name: "Didn't get the verification email?" }).getAttribute("href"),
 		).toBe("/verify-email");
-		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe("/login");
+		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe(
+			"/login/doctor",
+		);
 	});
 });

@@ -197,7 +197,7 @@ export function SecretaryLoginPage({
 						{t.verifyLink}
 					</Link>
 					<Link
-						to="/login"
+						to="/login/doctor"
 						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
 						{t.doctorLink}

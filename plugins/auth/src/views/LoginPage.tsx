@@ -181,13 +181,7 @@ export function LoginPage({
 						{t.verifyLink}
 					</Link>
 					<Link
-						to="/portal/login"
-						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
-					>
-						{t.patientLink}
-					</Link>
-					<Link
-						to="/secretaries/login"
+						to="/login/secretary"
 						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
 						{t.secretaryLink}

@@ -105,7 +105,7 @@ describe("invite links, end to end", () => {
 		const email = lastEmailTo("nova-sec@x.com");
 		const token = tokenIn(email)!;
 		expect(token).toMatch(/^[\w-]{43}$/);
-		expect(email).not.toContain("/secretaries/login");
+		expect(email).not.toContain("/login/secretary");
 		// Only the hash is stored: the token itself is nowhere in the table.
 		const stored = await db.select().from(inviteTokens);
 		expect(JSON.stringify(stored)).not.toContain(token);
@@ -154,7 +154,7 @@ describe("invite links, end to end", () => {
 		expect(invited).toMatchObject({ ok: true, emailed: true, link: { status: "invited" } });
 		const email = lastEmailTo("novo-paciente@x.com");
 		const token = tokenIn(email)!;
-		expect(email).not.toContain("/portal/login");
+		expect(email).not.toContain("/login/patient");
 
 		as(null);
 		expect(await invitePreviewFn({ data: token })).toMatchObject({
@@ -185,7 +185,7 @@ describe("invite links, end to end", () => {
 		await inviteSecretaryFn({ data: { email: "ja-tem-conta@x.com" } });
 		const email = lastEmailTo("ja-tem-conta@x.com");
 		expect(tokenIn(email)).toBeNull();
-		expect(email).toContain("http://localhost:3000/secretaries/login");
+		expect(email).toContain("http://localhost:3000/login/secretary");
 		expect(
 			await db.select().from(inviteTokens).where(eq(inviteTokens.email, "ja-tem-conta@x.com")),
 		).toEqual([]);

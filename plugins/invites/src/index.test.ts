@@ -446,8 +446,11 @@ describe("invite destinations", () => {
 	it("sends each kind to its own home and sign-in screen", () => {
 		expect(INVITE_KINDS).toEqual(["secretary", "patient"]);
 		expect(Object.keys(INVITE_DESTINATIONS)).toEqual([...INVITE_KINDS]);
-		expect(INVITE_DESTINATIONS.secretary).toEqual({ home: "/", login: "/secretaries/login" });
-		expect(INVITE_DESTINATIONS.patient).toEqual({ home: "/portal", login: "/portal/login" });
+		expect(INVITE_DESTINATIONS.secretary).toEqual({ home: "/", login: "/login/secretary" });
+		expect(INVITE_DESTINATIONS.patient).toEqual({
+			home: "/portal/patient",
+			login: "/login/patient",
+		});
 	});
 });
 

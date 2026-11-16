@@ -86,7 +86,7 @@ const notifyInvitee = async (to: string, doctorName: string): Promise<void> => {
 	const acceptPath = await run(
 		inviteAcceptPath({ email: to, kind: "secretary", inviterName: doctorName }),
 	);
-	const url = new URL(acceptPath ?? "/secretaries/login", getRequestUrl()).toString();
+	const url = new URL(acceptPath ?? "/login/secretary", getRequestUrl()).toString();
 	try {
 		await sender.send({
 			to,

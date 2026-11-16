@@ -5,7 +5,7 @@ import { authMessages } from "../i18n.ts";
 import { LoginPage } from "../views/LoginPage.tsx";
 
 /**
- * /login — public sign-in/create-account page (moved from
+ * /login/doctor — public sign-in/create-account page (moved from
  * apps/web/src/routes/login.tsx, P-062). The loader attaches the
  * active locale so the view resolves its own catalog (plugins cannot
  * import the host's Paraglide runtime) plus whether this deployment
@@ -14,7 +14,7 @@ import { LoginPage } from "../views/LoginPage.tsx";
  * on `auth.routes` enable state — a system plugin, so the gate
  * always passes.
  */
-export const Route = createPluginFileRoute("auth.routes")("/login")({
+export const Route = createPluginFileRoute("auth.routes")("/login/doctor")({
 	loader: async () => ({ locale: await localeFn(), emailEnabled: await emailEnabledFn() }),
 	head: ({ loaderData }) => ({
 		meta: [{ title: authMessages(loaderData?.locale ?? "en").metaTitle }],

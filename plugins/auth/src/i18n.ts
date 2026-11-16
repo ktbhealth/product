@@ -30,7 +30,6 @@ export interface AuthMessages {
 	readonly errorFallback: string;
 	readonly errorPasswordMismatch: string;
 	readonly verifyLink: string;
-	readonly patientLink: string;
 	readonly secretaryLink: string;
 }
 
@@ -53,7 +52,6 @@ const en: AuthMessages = {
 	errorFallback: "Could not sign in. Please try again.",
 	errorPasswordMismatch: "Passwords do not match.",
 	verifyLink: "Didn't get the verification email?",
-	patientLink: "I am a patient",
 	secretaryLink: "I am a secretary",
 };
 
@@ -76,7 +74,6 @@ const ptBR: AuthMessages = {
 	errorFallback: "Não foi possível entrar. Tente novamente.",
 	errorPasswordMismatch: "As senhas não coincidem.",
 	verifyLink: "Não recebeu o e-mail de verificação?",
-	patientLink: "Sou paciente",
 	secretaryLink: "Sou secretária",
 };
 
@@ -99,7 +96,6 @@ const es: AuthMessages = {
 	errorFallback: "No se pudo iniciar sesión. Inténtelo de nuevo.",
 	errorPasswordMismatch: "Las contraseñas no coinciden.",
 	verifyLink: "¿No recibiste el correo de verificación?",
-	patientLink: "Soy paciente",
 	secretaryLink: "Soy secretaria",
 };
 

@@ -9,6 +9,6 @@ export const INVITE_DESTINATIONS: Record<
 	InviteKind,
 	{ readonly home: string; readonly login: string }
 > = {
-	secretary: { home: "/", login: "/secretaries/login" },
-	patient: { home: "/portal", login: "/portal/login" },
+	secretary: { home: "/", login: "/login/secretary" },
+	patient: { home: "/portal/patient", login: "/login/patient" },
 };

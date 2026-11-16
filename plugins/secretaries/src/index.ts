@@ -9,7 +9,7 @@ import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { doctors, user } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { physical } from "@tanstack/virtual-file-routes";
+import { physical, route } from "@tanstack/virtual-file-routes";
 
 import { doctorAccess, type DoctorAccess } from "./schema.ts";
 
@@ -221,7 +221,14 @@ export const secretariesServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const secretariesRoutesPlugin = definePlugin({
 	id: "secretaries.routes",
-	routes: [physical("/secretaries", "../../../../plugins/secretaries/src/routes")],
+	routes: [
+		physical("/secretaries", "../../../../plugins/secretaries/src/routes"),
+		// /secretaries/login (above) stays as a redirect for invite
+		// emails already sent; the canonical page mounts flat at
+		// /login/secretary — physical("/login") would nest it under the
+		// host's /login redirect route.
+		route("login/secretary", "../../../../plugins/secretaries/src/routes-login/secretary.tsx"),
+	],
 });
 
 /** Single-concern plugins contributed by this module — the host

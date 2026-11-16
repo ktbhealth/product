@@ -45,8 +45,13 @@ const pagePath = (instanceId: string, splat: string | undefined): string =>
 // (/portal, /portal/consultations/$id, /portal/login) outrank this
 // splat, so they are unaffected.
 export const Route = createFileRoute("/portal/$instance/$")({
-	beforeLoad: async () => {
-		await requireSession();
+	beforeLoad: async ({ params }) => {
+		// Each portal's anonymous funnel lands on the matching sign-in —
+		// the three contributed instance ids mirror the login paths.
+		const loginPath = ["doctor", "secretary", "patient"].includes(params.instance)
+			? `/login/${params.instance}`
+			: "/login";
+		await requireSession(loginPath);
 	},
 	loader: async ({ params }) => {
 		const entry = findPortalInstance(portalInstances, params.instance);

@@ -52,7 +52,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
-import { Route } from "./portal-login.tsx";
+import { Route } from "./login-patient.tsx";
 
 const options = (
 	Route as unknown as {
@@ -140,7 +140,7 @@ describe("portal sign-in page", () => {
 	it("signs in with the credentials and lands on the portal", async () => {
 		render(createElement(Page));
 		await signIn();
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
 		expect(signInEmail).toHaveBeenCalledTimes(1);
 		expect(signInEmail).toHaveBeenCalledWith({
 			email: "ana@x.com",
@@ -185,7 +185,7 @@ describe("portal sign-in page", () => {
 	it("sends a new account straight to the portal when email is disabled", async () => {
 		render(createElement(Page));
 		await signUp();
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
 		expect(assign).toHaveBeenCalledTimes(1);
 	});
 
@@ -216,7 +216,7 @@ describe("portal sign-in page", () => {
 		await screen.findByText("Invalid credentials");
 		expect(assign).not.toHaveBeenCalled();
 		await press("Sign in");
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
 		expect(screen.queryByText("Invalid credentials")).toBeNull();
 	});
 
@@ -260,10 +260,5 @@ describe("portal sign-in page", () => {
 		expect(signInEmail).toHaveBeenCalledTimes(1);
 		await act(async () => release(okResult));
 		await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
-	});
-
-	it("points doctors to their own sign-in page", () => {
-		render(createElement(Page));
-		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe("/login");
 	});
 });

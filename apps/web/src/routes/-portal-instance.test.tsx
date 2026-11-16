@@ -113,7 +113,13 @@ import type { PanelPage } from "@ktb/kernel";
 const component = (route: unknown) =>
 	(route as { options: { component: () => ReactElement } }).options.component;
 const beforeLoad = (route: unknown) =>
-	(route as { options: { beforeLoad?: () => Promise<unknown> } }).options.beforeLoad;
+	(
+		route as {
+			options: {
+				beforeLoad?: (arg: { params: { instance: string; _splat?: string } }) => Promise<unknown>;
+			};
+		}
+	).options.beforeLoad;
 const loader = (route: unknown) =>
 	(
 		route as {
@@ -168,13 +174,23 @@ afterEach(() => {
 });
 
 describe("/portal/$instance/$ beforeLoad", () => {
-	it("redirects anonymous users to /login", async () => {
+	it.each([
+		["doctor", "/login/doctor"],
+		["secretary", "/login/secretary"],
+		["patient", "/login/patient"],
+		["ghost", "/login"],
+	] as const)("redirects anonymous /portal/%s visitors to %s", async (instance, login) => {
 		getSessionUserFn.mockResolvedValue(null);
-		await expect(beforeLoad(PortalInstanceRoute)!()).rejects.toMatchObject({ status: 307 });
+		const caught = await beforeLoad(PortalInstanceRoute)!({
+			params: { instance, _splat: "x" },
+		}).catch((e: unknown) => e);
+		expect(caught).toMatchObject({ status: 307, options: { href: login } });
 	});
 
 	it("passes for signed-in users", async () => {
-		await expect(beforeLoad(PortalInstanceRoute)!()).resolves.toBeUndefined();
+		await expect(
+			beforeLoad(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "x" } }),
+		).resolves.toBeUndefined();
 	});
 });
 

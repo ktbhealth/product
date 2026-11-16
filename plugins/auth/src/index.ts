@@ -7,7 +7,7 @@ import { SessionMenu } from "./chrome.tsx";
 /**
  * Auth plugin (P-062 pilot): owns the credential surface that used to
  * live in the host — the better-auth catch-all `/api/auth/*` (moved
- * from apps/web/src/routes/api/auth.$.ts) and the `/login` page. Both
+ * from apps/web/src/routes/api/auth.$.ts) and the `/login/doctor` page. Both
  * route modules live in THIS package and are mounted into the host's
  * virtual route tree here; the provider instance and the Captcha port
  * reach the api route through @ktb/server-fns (ServerRuntime
@@ -24,7 +24,7 @@ export const authRoutesPlugin = definePlugin({
 	routes: [
 		// Single-file page route: `route()` resolves the module path
 		// relative to the host's routes directory, same as physical().
-		route("login", "../../../../plugins/auth/src/routes/login.tsx"),
+		route("login/doctor", "../../../../plugins/auth/src/routes/login.tsx"),
 		// API subtree: every module in src/api-routes/ mounts under the
 		// shared "/api" prefix (auth.$.ts → /api/auth/$).
 		physical("/api", "../../../../plugins/auth/src/api-routes"),

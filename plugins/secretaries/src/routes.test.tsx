@@ -68,7 +68,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { isRedirect } from "@tanstack/react-router";
 
 import { Route } from "./routes/index.tsx";
-import { Route as LoginRoute } from "./routes/login.tsx";
+import { Route as LegacyLoginRoute } from "./routes/login.tsx";
+import { Route as LoginRoute } from "./routes-login/secretary.tsx";
 
 const options = (
 	Route as unknown as {
@@ -83,7 +84,7 @@ const options = (
 const redirectTarget = async (run: () => Promise<unknown>) => {
 	const caught = await run().catch((e: unknown) => e);
 	expect(isRedirect(caught)).toBe(true);
-	return (caught as Response & { options: { to: string } }).options.to;
+	return (caught as Response & { options: { to?: string; href?: string } }).options;
 };
 
 afterEach(cleanup);
@@ -93,7 +94,7 @@ describe("/secretaries", () => {
 		mocks.sessionUserFn.mockResolvedValue({ id: "u1" });
 		await expect(options.beforeLoad()).resolves.toBeUndefined();
 		mocks.sessionUserFn.mockResolvedValue(null);
-		expect(await redirectTarget(options.beforeLoad)).toBe("/login");
+		expect((await redirectTarget(options.beforeLoad)).to).toBe("/login");
 	});
 
 	it("loads the secretaries with the locale", async () => {
@@ -104,7 +105,7 @@ describe("/secretaries", () => {
 
 	it("sends accounts without their own doctor profile to the chooser", async () => {
 		mocks.listSecretariesFn.mockResolvedValue(null);
-		expect(await redirectTarget(options.loader)).toBe("/doctors/select");
+		expect((await redirectTarget(options.loader)).to).toBe("/doctors/select");
 	});
 
 	it("wires the view to the server fns and refreshes on change", async () => {
@@ -126,7 +127,19 @@ describe("/secretaries", () => {
 	});
 });
 
-describe("/secretaries/login", () => {
+describe("/secretaries/login redirect", () => {
+	const legacyOptions = (
+		LegacyLoginRoute as unknown as {
+			options: { beforeLoad: () => Promise<void> };
+		}
+	).options;
+
+	it("sends visitors to the canonical secretary sign-in", async () => {
+		expect((await redirectTarget(legacyOptions.beforeLoad)).href).toBe("/login/secretary");
+	});
+});
+
+describe("/login/secretary", () => {
 	const loginOptions = (
 		LoginRoute as unknown as {
 			options: {

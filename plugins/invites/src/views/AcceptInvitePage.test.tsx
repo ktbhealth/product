@@ -89,15 +89,15 @@ describe("accept invite page", () => {
 			const { container } = render(page(null));
 			expect(screen.getByText("This invitation is no longer valid")).toBeTruthy();
 			expect(screen.getByText(/The link was already used or has expired\./)).toBeTruthy();
-			expect(signInLink()).toBe("/login");
+			expect(signInLink()).toBe("/login/doctor");
 			expect(container.querySelector("form")).toBeNull();
 			expect(container.querySelector("input")).toBeNull();
 			expect(screen.queryByRole("button")).toBeNull();
 		});
 
 		it.each([
-			[secretary, "/secretaries/login"],
-			[patient, "/portal/login"],
+			[secretary, "/login/secretary"],
+			[patient, "/login/patient"],
 		] as const)(
 			"sends an address that already has an account to the $kind sign-in",
 			(invite, login) => {
@@ -156,7 +156,7 @@ describe("accept invite page", () => {
 
 		it.each([
 			[secretary, "/"],
-			[patient, "/portal"],
+			[patient, "/portal/patient"],
 		] as const)("creates the account, signs in and opens the $kind home", async (invite, home) => {
 			render(page(invite));
 			fill();
@@ -224,7 +224,7 @@ describe("accept invite page", () => {
 			// A retry that goes through replaces the error with the way in.
 			accept.mockResolvedValue({ ok: true });
 			await submit();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
 			expect(accept).toHaveBeenCalledTimes(2);
 			expect(screen.queryByText("Could not accept the invitation. Please try again.")).toBeNull();
 		});
@@ -237,10 +237,10 @@ describe("accept invite page", () => {
 			};
 
 			it.each([
-				["an error result", secretary, "/secretaries/login"],
-				["a rejected request", secretary, "/secretaries/login"],
-				["an error result", patient, "/portal/login"],
-				["a rejected request", patient, "/portal/login"],
+				["an error result", secretary, "/login/secretary"],
+				["a rejected request", secretary, "/login/secretary"],
+				["an error result", patient, "/login/patient"],
+				["a rejected request", patient, "/login/patient"],
 			] as const)(
 				"on %s points a $kind invitee to their sign-in",
 				async (failure, invite, login) => {
@@ -312,12 +312,14 @@ describe("accept invite page", () => {
 		it("renders the notices", () => {
 			render(page(null, "pt-BR"));
 			expect(screen.getByText("Este convite não é mais válido")).toBeTruthy();
-			expect(screen.getByRole("link", { name: "Entrar" }).getAttribute("href")).toBe("/login");
+			expect(screen.getByRole("link", { name: "Entrar" }).getAttribute("href")).toBe(
+				"/login/doctor",
+			);
 			cleanup();
 			render(page({ ...patient, accountExists: true }, "pt-BR"));
 			expect(screen.getByText("Você já tem uma conta")).toBeTruthy();
 			expect(screen.getByRole("link", { name: "Entrar" }).getAttribute("href")).toBe(
-				"/portal/login",
+				"/login/patient",
 			);
 		});
 	});

@@ -253,7 +253,7 @@ describe("secretaries plugins", () => {
 			secretariesRoutesPlugin,
 		]);
 		expect(secretariesRoutesPlugin.id).toBe("secretaries.routes");
-		expect(secretariesRoutesPlugin.routes).toHaveLength(1);
+		expect(secretariesRoutesPlugin.routes).toHaveLength(2);
 		expect(secretariesTablesPlugin.id).toBe("secretaries.tables");
 		expect(secretariesTablesPlugin.tables.doctorAccess).toBe(doctorAccess);
 		expect(secretariesServicesPlugin.id).toBe("secretaries.services");
