@@ -46,7 +46,7 @@ import {
 } from "./fns.ts";
 
 const DDL = `
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT);
 INSERT INTO patients (id, owner_id, name, email) VALUES
   (1, 'doc', 'Ana', 'ana@ktb.test'), (2, 'doc', 'Leo', NULL), (3, 'other', 'Rui', 'rui@ktb.test');
 `;

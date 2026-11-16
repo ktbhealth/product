@@ -6,12 +6,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { afterAll, describe, expect, it } from "vitest";
 
+import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import { EvalStorePort, PortError, ReportPort, type RunRecord } from "@ktb/eval-core";
 import {
 	AsrPort,
 	DatasetStorePort,
 	EvalArtifacts,
 	EvalRunner,
+	LlmPort,
 	TtsPort,
 	type Sample,
 } from "@ktb/eval-consultation";
@@ -680,6 +682,172 @@ describe("evalRunnerLocalDriver", () => {
 		expect(first.wer).toBe(0);
 	});
 
+	const ttsAsrPorts = (asrText = "hello wrld") =>
+		Layer.mergeAll(
+			Layer.succeed(
+				TtsPort,
+				TtsPort.of({
+					synthesize: () =>
+						Effect.succeed({
+							audio: { uri: "file:///work/tts/audio/a.wav" },
+							record,
+						}),
+				}),
+			),
+			Layer.succeed(
+				AsrPort,
+				AsrPort.of({
+					transcribe: () => Effect.succeed({ asr: { text: asrText, segments: [] }, record }),
+				}),
+			),
+		);
+
+	const runItems = (
+		items: readonly { id: number; script: string; patient?: { sex?: string; age?: number } }[],
+		ambient: Layer.Layer<never>,
+	) => {
+		const outcomes: { status: string; result?: unknown }[] = [];
+		return Effect.flatMap(EvalRunner, (r) =>
+			r.run({
+				runId: "r1",
+				items,
+				onSample: (_id, outcome) =>
+					Effect.sync(() => {
+						outcomes.push({ status: outcome.status, result: outcome.result });
+					}),
+			}),
+		)
+			.pipe(Effect.provide(makeEvalRunner(ttsAsrPorts())), Effect.provide(ambient))
+			.pipe(Effect.andThen(Effect.succeed(outcomes)));
+	};
+
+	it("runs cleanup + anamnesis when the ambient ports are bound", async () => {
+		const ambient = Layer.mergeAll(
+			Layer.succeed(
+				LlmPort,
+				LlmPort.of({
+					generate: () => Effect.succeed({ text: "", record }),
+					correct: () =>
+						Effect.succeed({
+							edits: { ops: [{ at: 6, remove: "wrld", insert: "world", kind: "fix" }] },
+							record,
+						}),
+				}),
+			),
+			Layer.succeed(
+				AnamnesisEngine,
+				AnamnesisEngine.of({
+					extract: () =>
+						Effect.succeed({
+							anamnesis: {
+								queixa_principal: { content: "dor", confidence: "alta", evidence: [] },
+								hda: { content: "", confidence: "baixa", evidence: [] },
+								antecedentes: { content: "", confidence: "baixa", evidence: [] },
+								alergias: { content: "", confidence: "baixa", evidence: [] },
+								medicamentos_em_uso: { content: "", confidence: "baixa", evidence: [] },
+								exame_fisico: { content: "", confidence: "baixa", evidence: [] },
+								hipoteses: { content: "", confidence: "baixa", evidence: [] },
+								conduta: { content: "", confidence: "baixa", evidence: [] },
+							},
+							engine: "stub",
+						}),
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 1, script: "hello world", patient: { sex: "female", age: 40 } }], ambient),
+		);
+		const r = outcomes[0]?.result as {
+			stages: string[];
+			cleanup: { edits: number; corrected: string; werAfter: number };
+			anamnesis: { engine: string; filled: number; sections: number; completeness: number };
+		};
+		expect(r.stages).toEqual(["asr", "cleanup", "anamnesis"]);
+		expect(r.cleanup.corrected).toBe("hello world");
+		expect(r.cleanup.edits).toBe(1);
+		expect(r.cleanup.werAfter).toBe(0);
+		expect(r.anamnesis.engine).toBe("stub");
+		expect(r.anamnesis.filled).toBe(1);
+		expect(r.anamnesis.completeness).toBe(0.125);
+	});
+
+	it("skips both stages when no ambient ports are bound", async () => {
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 1, script: "hello world" }], Layer.empty),
+		);
+		const r = outcomes[0]?.result as { stages: string[]; cleanup?: unknown; anamnesis?: unknown };
+		expect(r.stages).toEqual(["asr"]);
+		expect(r.cleanup).toBeUndefined();
+		expect(r.anamnesis).toBeUndefined();
+	});
+
+	it("records stage errors without failing the sample", async () => {
+		const ambient = Layer.mergeAll(
+			Layer.succeed(
+				LlmPort,
+				LlmPort.of({
+					generate: () => Effect.succeed({ text: "", record }),
+					correct: () => Effect.fail(new PortError({ port: "llm", message: "corrector down" })),
+				}),
+			),
+			Layer.succeed(
+				AnamnesisEngine,
+				AnamnesisEngine.of({
+					extract: () => Effect.fail(new Error("extract down") as never),
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(runItems([{ id: 1, script: "hello world" }], ambient));
+		expect(outcomes[0]?.status).toBe("ok");
+		const r = outcomes[0]?.result as {
+			cleanup: { error?: string };
+			anamnesis: { error?: string };
+		};
+		expect(r.cleanup.error).toContain("corrector down");
+		expect(r.anamnesis.error).toContain("extract down");
+	});
+
+	it("feeds the corrected transcript to the anamnesis stage", async () => {
+		let seenTranscript = "";
+		const ambient = Layer.mergeAll(
+			Layer.succeed(
+				LlmPort,
+				LlmPort.of({
+					generate: () => Effect.succeed({ text: "", record }),
+					correct: () =>
+						Effect.succeed({
+							edits: { ops: [{ at: 6, remove: "wrld", insert: "world", kind: "fix" }] },
+							record,
+						}),
+				}),
+			),
+			Layer.succeed(
+				AnamnesisEngine,
+				AnamnesisEngine.of({
+					extract: (input) =>
+						Effect.sync(() => {
+							seenTranscript = input.transcript;
+							return {
+								anamnesis: {
+									queixa_principal: { content: "", confidence: "baixa", evidence: [] },
+									hda: { content: "", confidence: "baixa", evidence: [] },
+									antecedentes: { content: "", confidence: "baixa", evidence: [] },
+									alergias: { content: "", confidence: "baixa", evidence: [] },
+									medicamentos_em_uso: { content: "", confidence: "baixa", evidence: [] },
+									exame_fisico: { content: "", confidence: "baixa", evidence: [] },
+									hipoteses: { content: "", confidence: "baixa", evidence: [] },
+									conduta: { content: "", confidence: "baixa", evidence: [] },
+								},
+								engine: "stub",
+							};
+						}),
+				}),
+			),
+		);
+		await Effect.runPromise(runItems([{ id: 1, script: "hello world" }], ambient));
+		expect(seenTranscript).toBe("hello world");
+	});
+
 	it("reports a failed outcome when the pipeline errors", async () => {
 		const ports = Layer.mergeAll(
 			Layer.succeed(
@@ -762,6 +930,15 @@ describe("driver wiring", () => {
 			EVAL_ASR_BASE_URL: "http://asr",
 		});
 		expect(layer).toBeDefined();
+		// Custom timeout exercises the finite branch; unset/invalid
+		// falls back to the 30min default.
+		expect(
+			evalRunnerLocalDriver.provides({
+				EVAL_RUNNER_DIR: "/tmp/eval-run",
+				EVAL_ASR_BASE_URL: "http://asr",
+				EVAL_ASR_TIMEOUT_MS: "60000",
+			}),
+		).toBeDefined();
 	});
 
 	it("evalRunnerLocalDriver.provides honors a finite EVAL_ASR_TIMEOUT_MS", () => {
