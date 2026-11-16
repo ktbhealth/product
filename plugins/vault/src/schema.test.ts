@@ -50,5 +50,8 @@ describe("vault schema", () => {
 			"entity_id",
 			"reader_pubkey",
 		]);
+		const fk = cfg.foreignKeys[0]!;
+		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
+		expect(fk.onDelete).toBe("cascade");
 	});
 });
