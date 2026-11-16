@@ -438,6 +438,7 @@ export {
 	patientHistoryFn,
 	recordConsentFn,
 	saveConsultationFn,
+	verifyConsultationIntegrityFn,
 } from "@ktb/consultations/fns";
 
 // ---------- plugin manager (P-058) ----------

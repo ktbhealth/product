@@ -10,6 +10,7 @@ import { patients } from "@ktb/db/schema";
 import { Email } from "@ktb/email";
 import { inviteAcceptPath } from "@ktb/invites";
 import { getDoctorAccess, getDoctorUser, getLocale, run, runAs } from "@ktb/server-fns";
+import { tenantZkOrClosed } from "@ktb/vault";
 
 import { patientAccessMessages } from "./i18n.ts";
 import { PatientLinks, type PatientInviteErrorCode, type PatientLink } from "./index.ts";
@@ -88,7 +89,7 @@ export type InvitePatientResult =
 const notifyInvitee = async (
 	to: string,
 	doctorName: string,
-	patientName: string,
+	patientName: string | null,
 ): Promise<boolean> => {
 	const { getRequestUrl } = await import("@tanstack/react-start/server");
 	const copy = patientAccessMessages(getLocale()).inviteEmail;
@@ -126,14 +127,26 @@ export const invitePatientFn = createServerFn({ method: "POST" })
 				const row = yield* service.invite(data);
 				const db = yield* Db;
 				const [patient] = yield* Effect.promise(() =>
-					db.select({ name: patients.name }).from(patients).where(eq(patients.id, data.patientId)),
+					db
+						.select({ name: patients.name, tenantId: patients.tenantId })
+						.from(patients)
+						.where(eq(patients.id, data.patientId)),
 				);
+				// T-149: under ZK the stored name is ciphertext the server
+				// cannot read — the invite email must be metadata-only (no
+				// patient name). The gate fails closed: an unresolvable
+				// tenant gets the generic copy rather than a leak.
+				const zk =
+					patient !== undefined &&
+					(yield* Effect.promise(() => tenantZkOrClosed(db, patient.tenantId)));
 				return {
 					ok: true as const,
 					link: { id: row.id, email: row.email ?? "", status: row.status },
 					// Deleted between the ownership check and this read — the
-					// grant stands, there is just no name for the email.
-					patientName: patient?.name ?? null,
+					// grant stands, there is just no name for the email. Under
+					// ZK the name is dropped the same way.
+					patientName: patient === undefined || zk ? null : patient.name,
+					patientExists: patient !== undefined,
 				};
 			}).pipe(
 				Effect.catchTag("PatientInviteRejected", (e) =>
@@ -145,14 +158,13 @@ export const invitePatientFn = createServerFn({ method: "POST" })
 			),
 		);
 		if (!result.ok) return result;
-		const emailed =
-			result.patientName === null
-				? false
-				: await notifyInvitee(
-						result.link.email,
-						user.doctor.name ?? user.doctor.email,
-						result.patientName,
-					);
+		const emailed = !result.patientExists
+			? false
+			: await notifyInvitee(
+					result.link.email,
+					user.doctor.name ?? user.doctor.email,
+					result.patientName,
+				);
 		return { ok: true, link: result.link, emailed };
 	});
 

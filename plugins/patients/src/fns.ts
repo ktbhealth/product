@@ -16,8 +16,20 @@ import {
 	runAs,
 } from "@ktb/server-fns";
 
-import { Patients } from "./index.ts";
-import { TEXT_FIELDS, validatePatient } from "./record.ts";
+import { Vault } from "@ktb/vault";
+import { Db } from "@ktb/db";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
+
+import { deletePatientRow, Patients } from "./index.ts";
+import { patientCipher } from "./cipher.ts";
+import {
+	TEXT_FIELDS,
+	validatePatient,
+	type PatientDraft,
+	type PatientErrors,
+	type PatientFields,
+	type TextField,
+} from "./record.ts";
 import { PatientCascadeCommands, PatientRecordConsultationsQueries } from "./api.ts";
 
 // Patients plugin server functions (P-033): the route modules under
@@ -33,16 +45,31 @@ const decodeNumber = Schema.decodeUnknownSync(Schema.Number);
 
 // Patient record: every FHIR text field optional/nullable on the wire;
 // semantic validation (codes, CPF/CNS, dates) is validatePatient's job.
+// `ciphered: true` marks a ZK payload (T-144): values arrive as `v1.`
+// AEAD envelopes — semantic validation cannot run on ciphertext, so the
+// wire asserts envelope shape instead and the service enforces the
+// tenant's zk flag.
 const draftFields = Object.fromEntries(
 	TEXT_FIELDS.map((k) => [k, Schema.optionalKey(Schema.NullishOr(Schema.String))]),
 );
+/** Wrapped-DEK grant the browser computed for a clinic device — the
+ * create fn persists it atomically with the row (T-144). */
+const GrantInput = Schema.Struct({
+	readerKind: Schema.Literals(["device", "patient"]),
+	readerPubkey: Schema.NonEmptyString,
+	readerId: Schema.optionalKey(Schema.NullishOr(Schema.String)),
+	wrappedDek: Schema.NonEmptyString,
+});
 const PatientDraftInput = Schema.Struct({
 	...draftFields,
 	active: Schema.optionalKey(Schema.Boolean),
+	ciphered: Schema.optionalKey(Schema.Literal(true)),
+	grants: Schema.optionalKey(Schema.Array(GrantInput)),
 });
 const PatientUpdateInput = Schema.Struct({
 	...draftFields,
 	active: Schema.optionalKey(Schema.Boolean),
+	ciphered: Schema.optionalKey(Schema.Literal(true)),
 	id: Schema.Number,
 });
 /** Admin create: the doctor-facing draft plus the target owner. */
@@ -54,6 +81,49 @@ const AdminPatientCreateInput = Schema.Struct({
 
 const decodePatientDraft = Schema.decodeUnknownSync(PatientDraftInput);
 const decodeAdminPatientCreate = Schema.decodeUnknownSync(AdminPatientCreateInput);
+
+const ENVELOPE = /^v1\./;
+
+/**
+ * Build `PatientFields` from a `ciphered` wire draft: every non-empty
+ * text value MUST be a `v1.` envelope — a plaintext value in a ciphered
+ * write would persist readable PII into a ZK tenant, so the write
+ * fails closed (returns null → `{ ok: false }`). `name`/`birthDate`
+ * stay required, mirroring plaintext validation; the semantic checks
+ * a server cannot run on ciphertext are the client's job (it ran
+ * `validatePatient` before encrypting).
+ */
+const cipheredFields = (data: Record<string, unknown>): PatientFields | null => {
+	const fields = {} as Record<TextField, string | null>;
+	for (const key of TEXT_FIELDS) {
+		const raw = data[key];
+		const value = typeof raw === "string" && raw !== "" ? raw : null;
+		if (value !== null && !ENVELOPE.test(value)) return null;
+		fields[key] = value;
+	}
+	if (fields.name === null || fields.birthDate === null) return null;
+	return {
+		...fields,
+		name: fields.name,
+		birthDate: fields.birthDate,
+		active: typeof data.active === "boolean" ? data.active : true,
+	};
+};
+
+/** Plaintext drafts go through `validatePatient`; `ciphered` payloads
+ * only assert envelope shape — the service still gates on the tenant's
+ * zk flag, so a ciphered write to a non-ZK tenant fails there. */
+const validateDraft = (
+	ciphered: true | undefined,
+	draft: PatientDraft,
+):
+	| { readonly ok: true; readonly fields: PatientFields }
+	| { readonly ok: false; readonly errors: PatientErrors } => {
+	if (!ciphered) return validatePatient(draft);
+	const fields = cipheredFields(draft);
+	return fields === null ? { ok: false, errors: {} } : { ok: true, fields };
+};
+
 /** `id` tolerates a numeric string, like `patientId` elsewhere. */
 const decodePatientUpdate = (input: unknown) => {
 	const o = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
@@ -162,16 +232,50 @@ export const getPatientFn = createServerFn({ method: "GET" })
 /** Field errors come back as data (`ok: false`) so the form can show them inline. */
 export const createPatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePatientDraft(input))
-	.handler(async ({ data }) => {
+	.handler(async ({ data: { ciphered, grants, ...draft } }) => {
 		const user = await ensureDoctorUser();
-		const result = validatePatient(data);
+		const result = validateDraft(ciphered, draft);
 		if (!result.ok) return { ok: false as const, errors: result.errors };
+		// T-144: a ciphered row without at least one wrapped DEK is
+		// unreadable forever — the create must carry its grants.
+		if (ciphered === true && (grants === undefined || grants.length === 0)) {
+			return { ok: false as const, errors: {} };
+		}
+		if (grants !== undefined && ciphered !== true) {
+			return { ok: false as const, errors: {} };
+		}
 		return runAs(
 			user,
 			Effect.gen(function* () {
 				const patients = yield* Patients;
 				const patient = yield* patients.create(user.id, result.fields);
-				return patient ? { ok: true as const, patient } : { ok: false as const, errors: {} };
+				if (patient === null) return { ok: false as const, errors: {} };
+				if (grants !== undefined) {
+					// Atomic-ish: the vault write failing orphans the record —
+					// no device could ever unwrap it — so the row is rolled back.
+					const db = yield* Db;
+					const tenant = yield* Tenant;
+					const tenantId = tenantScopeId(tenant);
+					const vault = yield* Effect.serviceOption(Vault);
+					const granted = yield* tenantId !== null && vault._tag === "Some"
+						? vault.value
+								.grantAccess({
+									tenantId,
+									entityType: patientCipher.entity,
+									entityId: patient.id,
+									grants,
+								})
+								.pipe(
+									Effect.map(() => true),
+									Effect.catch(() => Effect.succeed(false)),
+								)
+						: Effect.succeed(false);
+					if (!granted) {
+						yield* Effect.promise(() => deletePatientRow(db, patient.id));
+						return { ok: false as const, errors: {} };
+					}
+				}
+				return { ok: true as const, patient };
 			}),
 		);
 	});
@@ -201,9 +305,9 @@ export const adminCreatePatientFn = createServerFn({ method: "POST" })
 
 export const updatePatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodePatientUpdate(input))
-	.handler(async ({ data: { id, ...draft } }) => {
+	.handler(async ({ data: { id, ciphered, ...draft } }) => {
 		const user = await ensureDoctorUser();
-		const result = validatePatient(draft);
+		const result = validateDraft(ciphered, draft);
 		if (!result.ok) return { ok: false as const, errors: result.errors };
 		return runAs(
 			user,

@@ -179,6 +179,12 @@ export interface PatientMessages {
 		readonly cancel: string;
 		readonly saveChanges: string;
 	};
+	/** Zero-knowledge (T-144): locked/decrypt states for ciphered rows. */
+	readonly zk: {
+		readonly lockedRecord: string;
+		readonly lockedHint: string;
+		readonly decryptFailed: string;
+	};
 }
 
 const en: PatientMessages = {
@@ -364,6 +370,11 @@ const en: PatientMessages = {
 		cancel: "Cancel",
 		saveChanges: "Save changes",
 	},
+	zk: {
+		lockedRecord: "Encrypted record",
+		lockedHint: "Unlock it on an approved clinic device to view it.",
+		decryptFailed: "This record could not be decrypted on this device.",
+	},
 };
 
 const ptBR: PatientMessages = {
@@ -548,6 +559,11 @@ const ptBR: PatientMessages = {
 		saveFailedRetry: "Não foi possível salvar o paciente. Tente novamente.",
 		cancel: "Cancelar",
 		saveChanges: "Salvar alterações",
+	},
+	zk: {
+		lockedRecord: "Registro criptografado",
+		lockedHint: "Desbloqueie em um dispositivo aprovado da clínica para visualizar.",
+		decryptFailed: "Não foi possível descriptografar este registro neste dispositivo.",
 	},
 };
 
@@ -736,6 +752,11 @@ const es: PatientMessages = {
 		saveFailedRetry: "No se pudo guardar el paciente. Inténtelo de nuevo.",
 		cancel: "Cancelar",
 		saveChanges: "Guardar cambios",
+	},
+	zk: {
+		lockedRecord: "Registro cifrado",
+		lockedHint: "Desbloquéalo en un dispositivo aprobado de la clínica para verlo.",
+		decryptFailed: "No se pudo descifrar este registro en este dispositivo.",
 	},
 };
 

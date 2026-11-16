@@ -1,0 +1,1 @@
+ALTER TABLE `admin_audit` ADD `prev_hash` text;

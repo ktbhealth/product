@@ -1,5 +1,12 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState, type FormEvent, type HTMLAttributes, type ReactNode } from "react";
+import {
+	useEffect,
+	useMemo,
+	useState,
+	type FormEvent,
+	type HTMLAttributes,
+	type ReactNode,
+} from "react";
 import { AsteriskIcon, CalendarIcon } from "lucide-react";
 import type { Locale as CalendarLocale } from "react-day-picker";
 import { enUS, es, ptBR } from "react-day-picker/locale";
@@ -49,14 +56,27 @@ import {
 	type PatientErrors,
 	type TextField,
 } from "../record.ts";
+import {
+	decryptPatient,
+	encryptPatientDraft,
+	type GrantInput,
+	isCipheredPatient,
+	newPatientDek,
+	patientDek,
+	type PatientZk,
+} from "../zk.ts";
 
 export type SavePatientResult =
 	| { readonly ok: true; readonly patient: { readonly id: number } }
 	| { readonly ok: false; readonly errors: PatientErrors };
 
-/** Host-injected persistence (create or update, chosen by the route). */
+/** Host-injected persistence (create or update, chosen by the route).
+ * ZK creates attach the wrapped-DEK `grants` — the fn persists them in
+ * the same request so a record is never left without readers. */
 export interface PatientFormApi {
-	save(draft: PatientDraft): Promise<SavePatientResult>;
+	save(
+		draft: PatientDraft & { readonly grants?: readonly GrantInput[] },
+	): Promise<SavePatientResult>;
 }
 
 type FormState = Record<TextField, string> & { active: boolean };
@@ -83,14 +103,7 @@ const countryOptions = (locale: string) =>
 		a[1].localeCompare(b[1], locale),
 	);
 
-export function PatientFormPage({
-	patient,
-	api,
-	onSaved,
-	i18n,
-	locale,
-	portalBase,
-}: {
+interface PatientFormPageProps {
 	/** Absent → registration; present → edit. */
 	patient?: Patient;
 	api: PatientFormApi;
@@ -101,7 +114,70 @@ export function PatientFormPage({
 	locale: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
-}) {
+	/** ZK context (T-144): present on ZK tenants — saves encrypt the
+	 * draft client-side and grant the record DEK to clinic devices. */
+	zk?: PatientZk;
+}
+
+export function PatientFormPage(props: PatientFormPageProps) {
+	const { patient } = props;
+	// ZK edit path (T-144): a ciphered record must be decrypted in the
+	// browser BEFORE the form mounts — its state initializes from
+	// plaintext field values.
+	if (patient !== undefined && isCipheredPatient(patient)) {
+		return <CipheredPatientForm {...props} patient={patient} />;
+	}
+	return <PatientForm {...props} />;
+}
+
+/**
+ * Decrypts the record, then renders the form. A record this device
+ * cannot unlock (no grant — or no zk context at all) fails loud: the
+ * alternative would be overwriting ciphertext with a fresh draft.
+ */
+function CipheredPatientForm(props: PatientFormPageProps & { patient: Patient }) {
+	const { patient, zk, locale, i18n } = props;
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
+	const [resolved, setResolved] = useState<Patient | "failed" | null>(null);
+	useEffect(() => {
+		let live = true;
+		if (!zk) {
+			setResolved("failed");
+			return;
+		}
+		decryptPatient(zk.keyring, zk.api, patient)
+			.then((row) => {
+				if (live) setResolved(row ?? "failed");
+			})
+			.catch(() => {
+				if (live) setResolved("failed");
+			});
+		return () => {
+			live = false;
+		};
+	}, [zk, patient]);
+	if (resolved === "failed") {
+		return <Alert className="mx-auto max-w-3xl">{t.zk.decryptFailed}</Alert>;
+	}
+	if (resolved === null) {
+		return (
+			<div className="flex justify-center p-8">
+				<Spinner />
+			</div>
+		);
+	}
+	return <PatientForm {...props} patient={resolved} />;
+}
+
+function PatientForm({
+	patient,
+	api,
+	onSaved,
+	locale,
+	portalBase,
+	zk,
+	i18n,
+}: PatientFormPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const f = t.fields;
 	const countries = useMemo(() => countryOptions(locale), [locale]);
@@ -157,7 +233,30 @@ export function PatientFormPage({
 		setFormError(null);
 		setSaving(true);
 		try {
-			const res = await api.save(form);
+			// ZK write path (T-144): encrypt the validated fields with the
+			// record DEK before they leave the browser. Updates reuse the
+			// existing DEK (own grant); creates mint one and persist the
+			// wrapped envelopes for every approved clinic device AFTER the
+			// row exists (entityId is the grant target).
+			let dek: CryptoKey | null = null;
+			let grants: readonly GrantInput[] | undefined;
+			if (zk && patient !== undefined) {
+				dek = await patientDek(zk.keyring, zk.api, patient.id);
+				if (dek === null) {
+					setFormError(t.zk.decryptFailed);
+					return;
+				}
+			} else if (zk) {
+				const minted = await newPatientDek(zk.keyring, zk.api);
+				dek = minted.dek;
+				grants = minted.grants;
+			}
+			// Grants ride inside the same save request — the fn writes the
+			// row and the wrapped DEKs together (rollback on failure), so a
+			// record can never be left without a device able to unwrap it.
+			const res = await api.save(
+				dek ? { ...(await encryptPatientDraft(dek, local.fields)), grants } : form,
+			);
 			if (res.ok) {
 				onSaved(res.patient.id);
 				return;

@@ -21,7 +21,7 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
  * - `theme.panel` mounts /platform/theme — the admin editor with scope
  *   picker, seed editors, live preview, contrast report and publish.
  *   Guard 404s non-admins like every console page.
- * - `theme.header` contributes the portal.header.actions popover for
+ * - `theme.header` contributes the app.header.actions popover for
  *   admin theme preview/switching; `optionalDeps` on
  *   platform.header documents the graceful-degradation contract
  *   (same pattern as jobs.header).
@@ -79,12 +79,11 @@ export const themeHeaderPlugin = definePlugin({
 	chrome: [
 		{
 			id: "theme.header-action",
-			region: "portal.header.actions",
-			content: {
-				kind: "headerAction",
-				id: "theme",
-				component: ThemeHeaderAction,
-			},
+			region: "app.header.actions",
+			// App-shell actions render `component` entries (the
+			// `headerAction` kind is portal-shell chrome); the host
+			// injects ChromeProps, which supplies `locale`.
+			content: { kind: "component", component: ThemeHeaderAction },
 		},
 	],
 });
@@ -128,12 +127,7 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: {
-					to: "/platform/theme",
-					label: "Theme",
-					icon: PaletteIcon,
-					group: "System",
-				},
+				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "System" },
 			},
 		},
 	],

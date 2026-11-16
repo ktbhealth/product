@@ -28,6 +28,8 @@ export interface AuthMessages {
 	readonly email: string;
 	readonly password: string;
 	readonly confirmPassword: string;
+	readonly showPassword: string;
+	readonly hidePassword: string;
 	readonly submitIn: string;
 	readonly submitUp: string;
 	readonly pending: string;
@@ -49,6 +51,8 @@ const en: AuthMessages = {
 	email: "Email",
 	password: "Password",
 	confirmPassword: "Confirm password",
+	showPassword: "Show password",
+	hidePassword: "Hide password",
 	submitIn: "Sign in",
 	submitUp: "Create account",
 	pending: "Please wait…",
@@ -70,6 +74,8 @@ const ptBR: AuthMessages = {
 	email: "E-mail",
 	password: "Senha",
 	confirmPassword: "Confirmar senha",
+	showPassword: "Mostrar senha",
+	hidePassword: "Ocultar senha",
 	submitIn: "Entrar",
 	submitUp: "Criar conta",
 	pending: "Aguarde…",
@@ -91,6 +97,8 @@ const es: AuthMessages = {
 	email: "Correo electrónico",
 	password: "Contraseña",
 	confirmPassword: "Confirmar contraseña",
+	showPassword: "Mostrar contraseña",
+	hidePassword: "Ocultar contraseña",
 	submitIn: "Iniciar sesión",
 	submitUp: "Crear cuenta",
 	pending: "Espere…",

@@ -33,6 +33,7 @@
 		"gen:db-schema": "bun tools/gen-db-schema.mjs",
 		"gen:i18n-manifest": "bun tools/gen-i18n-manifest.mjs",
 		"gen:i18n-types": "bun tools/gen-i18n-types.mjs",
+		"gen:cipher-specs": "bun tools/gen-cipher-specs.mjs",
 		"check:arch": "bun tools/check-arch.mjs"
 	},
 	"devDependencies": {

@@ -57,7 +57,7 @@ jobs:
   # Informational only — never gates. Lines-of-code report via tokei,
   # provided by the shared cypera toolbox (9aia/cypera).
   metrics:
-    uses: 9aia/cypera/.github/workflows/loc-repo.yml@loc-v1
+    uses: 9aia/cypera/.github/workflows/loc-repo.yml@loc-v3
     with:
       repo_name: product
       tool_ref: loc-v1

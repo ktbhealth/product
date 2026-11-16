@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fns = vi.hoisted(() => ({
@@ -147,6 +148,12 @@ const renderPage = (data: unknown = { themes: THEMES }) =>
 
 const change = (el: Element, value: string) => fireEvent.change(el, { target: { value } });
 
+/** Picks an option from a design-system Select (trigger is aria-labelled). */
+const choose = async (user: ReturnType<typeof userEvent.setup>, label: string, option: string) => {
+	await user.click(screen.getByLabelText(label));
+	await user.click(await screen.findByRole("option", { name: option }));
+};
+
 const fileInput = () => document.getElementById("asset-file") as HTMLInputElement;
 const byId = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -213,7 +220,7 @@ describe("ThemePage — editing", () => {
 		const darkPrimary = document.querySelectorAll("#seed-primary")[1]!;
 		expect(darkPrimary).toHaveProperty("value", "#ddeeff");
 		// Fonts + delivery hydrate; google delivery shows its warning.
-		expect(byId("theme-font-delivery")).toHaveProperty("value", "google-fonts");
+		expect(screen.getByLabelText("Font delivery").textContent).toContain("Google Fonts link");
 		expect(screen.getByText(/sends visitor requests to Google/)).toBeTruthy();
 		expect(byId("theme-font-sans")).toHaveProperty("value", "Inter");
 		expect(byId("theme-font-heading")).toHaveProperty("value", "Inter Tight");
@@ -233,7 +240,9 @@ describe("ThemePage — editing", () => {
 		// Sparse theme → fallbacks everywhere (self-host, blank families).
 		fireEvent.click(edits[1]!);
 		await waitFor(() => expect(byId("theme-app-name")).toHaveProperty("value", "Direct Name"));
-		expect(byId("theme-font-delivery")).toHaveProperty("value", "self-host");
+		expect(screen.getByLabelText("Font delivery").textContent).toContain(
+			"Self-hosted (recommended)",
+		);
 		expect(byId("theme-font-sans")).toHaveProperty("value", "");
 		// Empty seeds → every seed field blank.
 		expect(byId("seed-primary")).toHaveProperty("value", "");
@@ -241,25 +250,27 @@ describe("ThemePage — editing", () => {
 		fireEvent.click(edits[3]!);
 		await waitFor(() => expect(fns.getThemeFn).toHaveBeenCalledWith({ data: { id: 4 } }));
 		expect(byId("theme-app-name")).toHaveProperty("value", "");
-		expect(byId("theme-font-delivery")).toHaveProperty("value", "self-host");
+		expect(screen.getByLabelText("Font delivery").textContent).toContain(
+			"Self-hosted (recommended)",
+		);
 	});
 });
 
 describe("ThemePage — scope picker", () => {
-	it("reveals the scope id input and portal datalist per scope", () => {
+	it("reveals the scope id input and portal datalist per scope", async () => {
+		const user = userEvent.setup();
 		renderPage();
-		const scope = byId("theme-scope") as HTMLSelectElement;
 		expect(document.getElementById("theme-scope-id")).toBeNull();
-		change(scope, "tenant");
+		await choose(user, "Scope", "Tenant");
 		expect(document.getElementById("theme-scope-id")).toBeTruthy();
 		expect(document.getElementById("theme-portal-ids")).toBeNull();
-		change(scope, "portal-instance");
+		await choose(user, "Scope", "Portal instance");
 		expect(document.getElementById("theme-portal-ids")).toBeTruthy();
 		// Portal instance ids come from the plugin registry.
 		const options = document.querySelectorAll("#theme-portal-ids option");
 		expect(options).toHaveLength(1);
 		expect(options[0]).toHaveProperty("value", "inst-1");
-		change(scope, "platform");
+		await choose(user, "Scope", "Platform default");
 		expect(document.getElementById("theme-scope-id")).toBeNull();
 	});
 });
@@ -291,8 +302,9 @@ describe("ThemePage — publish", () => {
 	});
 
 	it("publishes tenant scope with seeds, dark overrides, fonts and app name", async () => {
+		const user = userEvent.setup();
 		renderPage();
-		change(byId("theme-scope"), "tenant");
+		await choose(user, "Scope", "Tenant");
 		change(byId("theme-scope-id"), "  t-9  ");
 		change(byId("theme-app-name"), "  My Clinic  ");
 		change(byId("seed-primary"), "#123456");
@@ -323,19 +335,18 @@ describe("ThemePage — publish", () => {
 		});
 	});
 
-	it("wires the remaining editor controls", () => {
+	it("wires the remaining editor controls", async () => {
+		const user = userEvent.setup();
 		renderPage();
 		// Font delivery switch shows the Google Fonts warning.
-		change(byId("theme-font-delivery"), "google-fonts");
+		await choose(user, "Font delivery", "Google Fonts link");
 		expect(screen.getByText(/sends visitor requests to Google/)).toBeTruthy();
 		// Brand app name input shares the appName state.
 		change(byId("theme-brand-name"), "Brand Typed");
 		expect(byId("theme-app-name")).toHaveProperty("value", "Brand Typed");
-		// Asset target select retargets uploads (options are always
-		// numeric theme ids — jsdom coerces unmatched values away).
-		const assetTheme = byId("asset-theme") as HTMLSelectElement;
-		change(assetTheme, "2");
-		expect(assetTheme.value).toBe("2");
+		// Asset target select retargets uploads to the picked theme.
+		await choose(user, "Theme", "Tenant Wide");
+		expect(screen.getByLabelText("Theme").textContent).toContain("Tenant Wide");
 		// File input cleared/emptied → assetFile null.
 		const file = new File([new Uint8Array([1])], "a.png", {
 			type: "image/png",
@@ -416,11 +427,12 @@ describe("ThemePage — asset uploads", () => {
 	});
 
 	it("uploads a font with family fallback and slot", async () => {
+		const user = userEvent.setup();
 		const fetchMock = okFetch();
 		vi.stubGlobal("fetch", fetchMock);
 		renderPage();
-		change(byId("asset-kind"), "font");
-		change(byId("asset-font-slot"), "mono");
+		await choose(user, "Asset kind", "font");
+		await choose(user, "Font slot", "mono");
 		const file = new File([new Uint8Array([1, 2])], "My Font.woff2", {
 			type: "font/woff2",
 		});
@@ -434,10 +446,11 @@ describe("ThemePage — asset uploads", () => {
 	});
 
 	it("prefers an explicit font family over the file-name fallback", async () => {
+		const user = userEvent.setup();
 		const fetchMock = okFetch();
 		vi.stubGlobal("fetch", fetchMock);
 		renderPage();
-		change(byId("asset-kind"), "font");
+		await choose(user, "Asset kind", "font");
 		change(byId("asset-font-family"), "Custom Family");
 		const file = new File([new Uint8Array([1])], "x.woff2", {
 			type: "font/woff2",

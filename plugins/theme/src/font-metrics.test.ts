@@ -1,3 +1,5 @@
+import { brotliCompressSync } from "node:zlib";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,7 +19,7 @@ import {
 const u16 = (v: number) => [(v >> 8) & 0xff, v & 0xff];
 const i16 = (v: number) => u16(v & 0xffff);
 const u32 = (v: number) => [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
-const tag = (s: string) => [...s].map((c) => c.charCodeAt(0));
+const tag = (s: string) => Array.from(s, (c) => c.charCodeAt(0));
 
 const table = (name: string, data: number[]) => ({ name: tag(name), data });
 
@@ -104,6 +106,78 @@ const woff = (tables: { name: number[]; data: number[] }[]): Uint8Array => {
 	]);
 };
 
+/**
+ * WOFF2 fixture builder. Directory entries are sorted by tag (spec
+ * requirement); `stored` bytes are concatenated into the single Brotli
+ * stream. `transformVersion` sets flags bits 6-7 — non-zero marks the
+ * table transformed (except glyf/loca, where version 3 is the null
+ * transform), in which case a second UIntBase128 transformLength is
+ * written and only `stored` bytes land in the decompressed block.
+ */
+const WOFF2_KNOWN_TAG_INDEX: Record<string, number> = {
+	head: 1,
+	hhea: 2,
+	hmtx: 3,
+	"OS/2": 6,
+	glyf: 10,
+	loca: 11,
+};
+
+const base128 = (v: number): number[] => {
+	const digits: number[] = [];
+	let n = v;
+	do {
+		digits.unshift(n % 128);
+		n = Math.floor(n / 128);
+	} while (n > 0);
+	return digits.map((d, i) => (i < digits.length - 1 ? d | 0x80 : d));
+};
+
+interface Woff2Spec {
+	readonly name: string;
+	readonly stored: number[];
+	readonly origLength?: number;
+	readonly transformVersion?: number;
+}
+
+const woff2Transformed = (name: string, version: number) =>
+	name === "glyf" || name === "loca" ? version !== 3 : version !== 0;
+
+const woff2 = (tables: Woff2Spec[]): Uint8Array => {
+	const sorted = [...tables].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+	const dir: number[] = [];
+	const body: number[] = [];
+	for (const t of sorted) {
+		const known = WOFF2_KNOWN_TAG_INDEX[t.name];
+		const version = t.transformVersion ?? 0;
+		dir.push((version << 6) | (known ?? 0x3f));
+		if (known === undefined) dir.push(...tag(t.name)); // custom tag
+		dir.push(...base128(t.origLength ?? t.stored.length));
+		if (woff2Transformed(t.name, version)) dir.push(...base128(t.stored.length));
+		body.push(...t.stored);
+	}
+	const compressed = [...brotliCompressSync(new Uint8Array(body))];
+	const total = 48 + dir.length + compressed.length;
+	return new Uint8Array([
+		...tag("wOF2"),
+		...u32(0x00010000), // flavor
+		...u32(total), // length
+		...u16(sorted.length), // numTables
+		...u16(0), // reserved
+		...u32(body.length), // totalSfntSize (unused by the parser)
+		...u32(compressed.length), // totalCompressedSize
+		...u16(1), // majorVersion
+		...u16(0), // minorVersion
+		...u32(0),
+		...u32(0),
+		...u32(0), // meta
+		...u32(0),
+		...u32(0), // priv
+		...dir,
+		...compressed,
+	]);
+};
+
 describe("parseFontMetrics", () => {
 	it("parses TTF sfnt metrics", async () => {
 		const m = await parseFontMetrics(ttf(1000, 800, -200, 50, 500));
@@ -186,11 +260,187 @@ describe("parseFontMetrics", () => {
 		expect(m?.ascent).toBe(1000);
 	});
 
-	it("returns null for WOFF2 (brotli — documented TODO), junk and truncated input", async () => {
+	it("parses WOFF2 metrics, including transformed and custom-tag tables", async () => {
+		const m = await parseFontMetrics(
+			woff2([
+				{ name: "OS/2", stored: os2Table(650).data },
+				{ name: "head", stored: headTable(2048).data },
+				{ name: "hhea", stored: hheaTable(1500, -300, 10).data },
+				// hmtx transform (version 1): origLength differs from the
+				// transformLength bytes actually stored.
+				{
+					name: "hmtx",
+					stored: [1, 2, 3, 4],
+					origLength: 40,
+					transformVersion: 1,
+				},
+				// glyf with transform version 3 = null transform (stored raw).
+				{ name: "glyf", stored: [9, 9, 9], transformVersion: 3 },
+				// Unknown tag → flags 0x3F + literal 4-byte tag.
+				{ name: "ZZZ ", stored: [0] },
+			]),
+		);
+		expect(m).toEqual({
+			unitsPerEm: 2048,
+			ascent: 1500,
+			descent: -300,
+			lineGap: 10,
+			xAvgCharWidth: 650,
+		});
+	});
+
+	it("parses WOFF2 without an OS/2 table", async () => {
+		const m = await parseFontMetrics(
+			woff2([
+				{ name: "head", stored: headTable(1000).data },
+				{ name: "hhea", stored: hheaTable(800, -200, 50).data },
+			]),
+		);
+		expect(m).toEqual({
+			unitsPerEm: 1000,
+			ascent: 800,
+			descent: -200,
+			lineGap: 50,
+			xAvgCharWidth: undefined,
+		});
+	});
+
+	it("returns null for WOFF2 junk and truncated input", async () => {
 		expect(await parseFontMetrics(new Uint8Array([1, 2, 3]))).toBeNull();
 		expect(await parseFontMetrics(ttf().slice(0, 8))).toBeNull();
-		const woff2 = new Uint8Array([...tag("wOF2"), ...new Array(40).fill(0)]);
-		expect(await parseFontMetrics(woff2)).toBeNull();
+		// "wOF2" signature but shorter than the 48-byte header.
+		const short = new Uint8Array([...tag("wOF2"), ...new Array(40).fill(0)]);
+		expect(await parseFontMetrics(short)).toBeNull();
+	});
+
+	it("returns null for WOFF2 directories that overrun the file", async () => {
+		const valid = woff2([{ name: "head", stored: headTable(1000).data }]);
+		// numTables claims more entries than the directory holds.
+		const truncated = valid.slice(0, 50);
+		new DataView(truncated.buffer).setUint16(12, 5);
+		expect(await parseFontMetrics(truncated)).toBeNull();
+		// Entry flags 0x3F (custom tag) with fewer than 4 tag bytes left.
+		const customTrunc = woff2([{ name: "head", stored: headTable(1000).data }]).slice(0, 51);
+		customTrunc[48] = 0x3f;
+		expect(await parseFontMetrics(customTrunc)).toBeNull();
+	});
+
+	it("returns null for WOFF2 base128 fields that are invalid", async () => {
+		const base = woff2([{ name: "head", stored: headTable(1000).data }]);
+		// origLength starting with 0x80 (leading zeros are banned).
+		const leadingZero = base.slice();
+		leadingZero[49] = 0x80;
+		expect(await parseFontMetrics(leadingZero)).toBeNull();
+		// origLength continuation bit still set after 5 bytes.
+		const tooLong = base.slice();
+		tooLong.set([0x81, 0x82, 0x83, 0x84, 0x85, 0x06], 49);
+		expect(await parseFontMetrics(tooLong)).toBeNull();
+		// UIntBase128 value exceeding u32 — five 0x7f digits overflow.
+		const overflow = base.slice();
+		overflow.set([0xff, 0xff, 0xff, 0xff, 0x7f], 49);
+		expect(await parseFontMetrics(overflow)).toBeNull();
+		// Truncated right after the flags byte (no base128 digit).
+		const noDigits = base.slice(0, 49);
+		expect(await parseFontMetrics(noDigits)).toBeNull();
+		// Continuation bit set but the file ends before the next digit.
+		const midDigits = base.slice(0, 50);
+		midDigits[49] = 0x81;
+		expect(await parseFontMetrics(midDigits)).toBeNull();
+	});
+
+	it("returns null for WOFF2 with a truncated transformLength", async () => {
+		const w = woff2([
+			{ name: "head", stored: headTable(1000).data },
+			{ name: "hmtx", stored: [1, 2], origLength: 9, transformVersion: 1 },
+		]);
+		// Truncate mid-directory: head's entry is flags+origLength (2
+		// bytes, offset 48-49), hmtx's flags+origLength end at offset 52 —
+		// its transformLength digit is missing.
+		const cut = w.slice(0, 52);
+		expect(await parseFontMetrics(cut)).toBeNull();
+	});
+
+	it("returns null for WOFF2 whose compressed stream is bad", async () => {
+		const w = woff2([{ name: "head", stored: headTable(1000).data }]);
+		// Garbage brotli payload → decoder throws.
+		const bad = w.slice();
+		bad.fill(0xff, bad.length - 8);
+		expect(await parseFontMetrics(bad)).toBeNull();
+		// totalCompressedSize points past the end of the file.
+		const over = w.slice();
+		new DataView(over.buffer).setUint32(20, over.length);
+		expect(await parseFontMetrics(over)).toBeNull();
+	});
+
+	it("returns null for WOFF2 whose decompressed size mismatches", async () => {
+		// origLength claims more bytes than are actually stored → the
+		// directory's total no longer equals the brotli output size.
+		const w = woff2([
+			{ name: "head", stored: headTable(1000).data, origLength: 40 },
+			{ name: "hhea", stored: hheaTable(1, -1, 0).data },
+		]);
+		expect(await parseFontMetrics(w)).toBeNull();
+	});
+
+	it("returns null for WOFF2 missing or corrupt metric tables", async () => {
+		// No head/hhea at all.
+		expect(
+			await parseFontMetrics(woff2([{ name: "OS/2", stored: os2Table(500).data }])),
+		).toBeNull();
+		// head present but hhea absent.
+		expect(
+			await parseFontMetrics(woff2([{ name: "head", stored: headTable(1000).data }])),
+		).toBeNull();
+		// head shorter than the 20 bytes unitsPerEm needs.
+		expect(
+			await parseFontMetrics(
+				woff2([
+					{ name: "head", stored: [0, 0] },
+					{ name: "hhea", stored: hheaTable(1, -1, 0).data },
+				]),
+			),
+		).toBeNull();
+		// hhea shorter than 10 bytes.
+		expect(
+			await parseFontMetrics(
+				woff2([
+					{ name: "head", stored: headTable(1000).data },
+					{ name: "hhea", stored: [0, 0] },
+				]),
+			),
+		).toBeNull();
+		// unitsPerEm = 0.
+		expect(
+			await parseFontMetrics(
+				woff2([
+					{ name: "head", stored: headTable(0).data },
+					{ name: "hhea", stored: hheaTable(1, -1, 0).data },
+				]),
+			),
+		).toBeNull();
+		// OS/2 shorter than 4 bytes → xAvgCharWidth stays undefined.
+		const shortOs2 = await parseFontMetrics(
+			woff2([
+				{ name: "OS/2", stored: [0, 0] },
+				{ name: "head", stored: headTable(1000).data },
+				{ name: "hhea", stored: hheaTable(800, -200, 0).data },
+			]),
+		);
+		expect(shortOs2?.xAvgCharWidth).toBeUndefined();
+		// A transformed metric table is treated as absent → null.
+		expect(
+			await parseFontMetrics(
+				woff2([
+					{ name: "head", stored: headTable(1000).data, origLength: 30, transformVersion: 1 },
+					{ name: "hhea", stored: hheaTable(1, -1, 0).data },
+				]),
+			),
+		).toBeNull();
+	});
+
+	it("returns null for junk and truncated input", async () => {
+		expect(await parseFontMetrics(new Uint8Array([1, 2, 3]))).toBeNull();
+		expect(await parseFontMetrics(ttf().slice(0, 8))).toBeNull();
 	});
 
 	it("returns null when required tables are absent or corrupt", async () => {

@@ -40,3 +40,10 @@ VITE_TURNSTILE_SITE_KEY = "cuora://ktb/turnstile-site-key"
 # (endpoint, service name, sample rates, KTB_*) is plain env, not cuora.
 # OTEL_EXPORTER_OTLP_HEADERS = "cuora://ktb/otel-exporter-otlp-headers"
 METRICS_SCRAPE_TOKEN = "cuora://ktb/metrics-scrape-token"
+# GitHub org webhook receiver (infra/ci-hook → ci.ktbhealth.workers.dev).
+# Prod-only refs — kept commented so `cuora run` in dev/preview still
+# resolves; set worker secrets with `wrangler secret bulk` from prod.
+# GITHUB_WEBHOOK_SECRET = "cuora://ktb/github-webhook-secret"
+# NTFY_URL = "cuora://ktb/ntfy-url"
+# NTFY_TOPIC = "cuora://ktb/ntfy-topic"
+# NTFY_AUTH_TOKEN = "cuora://ktb/ntfy-auth-token"

@@ -1,4 +1,7 @@
+import { vaultDekEnvelopesFn, vaultDevicesFn, vaultGrantAccessFn } from "@ktb/vault/fns";
+
 import type { PatientDeleteApi, PatientFormApi } from "./views/index.ts";
+import type { PatientZkApi } from "./zk.ts";
 import {
 	createPatientFn,
 	deletePatientFn,
@@ -23,4 +26,15 @@ export const editPatientApi = (id: number): PatientFormApi => ({
 export const patientDeleteApi: PatientDeleteApi = {
 	impact: (id) => patientDeletionImpactFn({ data: id }),
 	remove: (id) => deletePatientFn({ data: id }),
+};
+
+/**
+ * ZK surface for the doctor views (T-144): device listing, own DEK
+ * envelopes and grant writes — all bound-tenant scoped inside the
+ * vault fns. Only ever receives pubkeys/`w1.` envelopes.
+ */
+export const patientsZkApi: PatientZkApi = {
+	devices: () => vaultDevicesFn(),
+	dekEnvelopes: (input) => vaultDekEnvelopesFn({ data: input }),
+	grant: async (input) => vaultGrantAccessFn({ data: input }),
 };

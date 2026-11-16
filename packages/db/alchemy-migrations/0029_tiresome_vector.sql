@@ -27,6 +27,7 @@ CREATE TABLE `i18n_messages` (
 	`scope_id` text DEFAULT '' NOT NULL,
 	`kind` text DEFAULT 'text' NOT NULL,
 	`value` text NOT NULL,
+	`draft_value` text,
 	`status` text DEFAULT 'draft' NOT NULL,
 	`params` text NOT NULL,
 	`version` integer DEFAULT 1 NOT NULL,

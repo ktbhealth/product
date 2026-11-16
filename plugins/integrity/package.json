@@ -4,6 +4,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./badge": "./src/badge.tsx",
 		"./schema": "./src/schema.ts"
 	},
 	"dependencies": {
@@ -11,7 +12,18 @@
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
 		"drizzle-orm": "^0.45.1",
-		"effect": "4.1.2"
+		"effect": "4.1.2",
+		"lucide-react": "0.544.0"
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.0",
+		"@types/react-dom": "^19.2.0",
+		"react": "^19.2.0",
+		"react-dom": "^19.2.0"
+	},
+	"peerDependencies": {
+		"react": "^19.2.0"
 	}
 }

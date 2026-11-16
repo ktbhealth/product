@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
 	ArrowLeftIcon,
 	ClipboardListIcon,
 	DownloadIcon,
 	KeyRoundIcon,
+	LockIcon,
 	PencilIcon,
 	PlusIcon,
 	Trash2Icon,
@@ -39,6 +40,7 @@ import {
 } from "../record.ts";
 import { ageLabel, demographics, displayName, initials } from "./-format.ts";
 import { exportLinks } from "./-export.ts";
+import { decryptPatient, isCipheredPatient, type PatientZk } from "../zk.ts";
 import { DeletePatientDialog, type PatientDeleteApi } from "./DeletePatientDialog.tsx";
 
 /** The slice of a consultation summary the record page lists. */
@@ -134,6 +136,7 @@ export function PatientDetailPage({
 	deleteApi,
 	onDeleted,
 	portalBase,
+	zk,
 }: {
 	patient: Patient;
 	consultations: readonly PatientConsultationItem[];
@@ -146,14 +149,38 @@ export function PatientDetailPage({
 	onDeleted: () => void;
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
+	/** ZK context (T-144): ciphered rows are decrypted in the browser;
+	 * a record without a grant renders a locked card. */
+	zk?: PatientZk;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [deleting, setDeleting] = useState(false);
+
+	// Client-side decrypt under ZK (T-144): `decrypted === null` while
+	// pending or when this device holds no grant → locked card.
+	const [decrypted, setDecrypted] = useState<Patient | null>(null);
+	useEffect(() => {
+		if (!zk || !isCipheredPatient(patient)) return;
+		let live = true;
+		decryptPatient(zk.keyring, zk.api, patient)
+			.then((row) => {
+				if (live) setDecrypted(row);
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	}, [zk, patient]);
+
+	const locked = isCipheredPatient(patient) && decrypted === null;
+	const record = decrypted ?? patient;
 	const id = String(patient.id);
-	const filled = sections(patient, t, locale, i18n)
-		.map(([title, rows]) => [title, rows.filter(([, v]) => v)] as const)
-		.filter(([, rows]) => rows.length > 0);
+	const filled = locked
+		? []
+		: sections(record, t, locale, i18n)
+				.map(([title, rows]) => [title, rows.filter(([, v]) => v)] as const)
+				.filter(([, rows]) => rows.length > 0);
 
 	return (
 		<div>
@@ -171,33 +198,48 @@ export function PatientDetailPage({
 			<div className="mt-3 flex flex-wrap items-start justify-between gap-4">
 				<div className="flex items-center gap-4">
 					<div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-primary/5 text-lg font-semibold text-primary">
-						{initials(displayName(patient))}
+						{locked ? (
+							<LockIcon className="size-6 text-muted-foreground" />
+						) : (
+							initials(displayName(record))
+						)}
 					</div>
 					<div>
-						<h1 className="text-3xl font-bold tracking-tight">{displayName(patient)}</h1>
+						<h1 className="text-3xl font-bold tracking-tight">
+							{locked ? t.zk.lockedRecord : displayName(record)}
+						</h1>
 						<p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-							{demographics(patient, locale, undefined, i18n) || t.common.noDemographics}
-							{!patient.active ? <Badge variant="outline">{t.common.inactive}</Badge> : null}
+							{locked
+								? t.zk.lockedHint
+								: demographics(record, locale, undefined, i18n) || t.common.noDemographics}
+							{!locked && !record.active ? (
+								<Badge variant="outline">{t.common.inactive}</Badge>
+							) : null}
 						</p>
 					</div>
 				</div>
 				<div className="flex flex-wrap gap-2">
-					<DropdownMenu>
-						<DropdownMenuTrigger render={<Button variant="outline" />}>
-							<DownloadIcon data-icon="inline-start" />
-							{t.detail.exportRecord}
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-56">
-							<DropdownMenuGroup>
-								<DropdownMenuLabel>{t.detail.exportHeading}</DropdownMenuLabel>
-								{exportLinks(t, patient.id).map(({ format, label, href }) => (
-									<DropdownMenuItem key={format} render={<a href={href} download />}>
-										{label}
-									</DropdownMenuItem>
-								))}
-							</DropdownMenuGroup>
-						</DropdownMenuContent>
-					</DropdownMenu>
+					{/* The export routes render server-side — under ZK that is
+					 * always ciphertext, decrypted or not. Client-side export
+					 * of the decrypted record is a later task (T-146). */}
+					{!isCipheredPatient(patient) ? (
+						<DropdownMenu>
+							<DropdownMenuTrigger render={<Button variant="outline" />}>
+								<DownloadIcon data-icon="inline-start" />
+								{t.detail.exportRecord}
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="w-56">
+								<DropdownMenuGroup>
+									<DropdownMenuLabel>{t.detail.exportHeading}</DropdownMenuLabel>
+									{exportLinks(t, patient.id).map(({ format, label, href }) => (
+										<DropdownMenuItem key={format} render={<a href={href} download />}>
+											{label}
+										</DropdownMenuItem>
+									))}
+								</DropdownMenuGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					) : null}
 					<Button
 						variant="outline"
 						nativeButton={false}
@@ -231,7 +273,7 @@ export function PatientDetailPage({
 				</div>
 			</div>
 
-			{!patient.birthDate ? (
+			{!locked && !record.birthDate ? (
 				<Alert className="mt-5 border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
 					{t.detail.incomplete}{" "}
 					<Link to={portalPath(`/patients/${id}/edit`)} className="font-medium underline">
@@ -241,7 +283,11 @@ export function PatientDetailPage({
 			) : null}
 
 			<DeletePatientDialog
-				patient={deleting ? { id: patient.id, name: displayName(patient) } : null}
+				patient={
+					deleting
+						? { id: patient.id, name: locked ? t.zk.lockedRecord : displayName(record) }
+						: null
+				}
 				api={deleteApi}
 				t={t}
 				onClose={() => setDeleting(false)}

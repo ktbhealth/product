@@ -25,6 +25,7 @@ import {
 import { patientDeleteApi } from "../apis.ts";
 import type { AdminPatientRow, OwnerOption } from "../index.ts";
 import { patientMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { isCipheredPatient } from "../zk.ts";
 import { AdminPatientCreateDialog } from "./AdminPatientCreateDialog.tsx";
 import { DeletePatientDialog } from "./DeletePatientDialog.tsx";
 
@@ -132,50 +133,64 @@ export function AdminPatientsPage({
 										</TableCell>
 									</TableRow>
 								) : (
-									shown.map((p) => (
-										<TableRow key={p.id}>
-											<TableCell className="text-xs text-muted-foreground">{p.id}</TableCell>
-											<TableCell className="font-medium">
-												<Link
-													to="/patients/$id"
-													params={{ id: String(p.id) }}
-													className="hover:underline"
-												>
-													{p.name}
-												</Link>
-												{p.synthetic === true && (
-													<Badge variant="outline" className="ml-2">
-														{t.admin.syntheticBadge}
-													</Badge>
-												)}
-											</TableCell>
-											<TableCell>{p.ownerName ?? p.ownerEmail ?? "—"}</TableCell>
-											<TableCell className="text-xs text-muted-foreground">{p.ownerId}</TableCell>
-											<TableCell className="text-right text-muted-foreground">
-												{fmtDate(p.createdAt)}
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex justify-end gap-1">
-													<Button
-														variant="ghost"
-														size="icon"
-														aria-label={t.actions.editFor(p.name)}
-														render={<Link to="/patients/$id/edit" params={{ id: String(p.id) }} />}
-													>
-														<PencilIcon />
-													</Button>
-													<Button
-														variant="ghost"
-														size="icon"
-														aria-label={t.actions.deleteFor(p.name)}
-														onClick={() => setToDelete({ id: p.id, name: p.name })}
-													>
-														<Trash2Icon />
-													</Button>
-												</div>
-											</TableCell>
-										</TableRow>
-									))
+									shown.map((p) => {
+										// ZK rows (T-144): the console holds no keys — every
+										// surface (name, aria labels, delete dialog) uses the
+										// opaque label, never the envelope.
+										const rowName = isCipheredPatient(p) ? t.zk.lockedRecord : p.name;
+										return (
+											<TableRow key={p.id}>
+												<TableCell className="text-xs text-muted-foreground">{p.id}</TableCell>
+												<TableCell className="font-medium">
+													{isCipheredPatient(p) ? (
+														// ZK row (T-144): the console has no keys —
+														// the envelope stays opaque.
+														<span className="text-muted-foreground">{t.zk.lockedRecord}</span>
+													) : (
+														<Link
+															to="/patients/$id"
+															params={{ id: String(p.id) }}
+															className="hover:underline"
+														>
+															{p.name}
+														</Link>
+													)}
+													{p.synthetic === true && (
+														<Badge variant="outline" className="ml-2">
+															{t.admin.syntheticBadge}
+														</Badge>
+													)}
+												</TableCell>
+												<TableCell>{p.ownerName ?? p.ownerEmail ?? "—"}</TableCell>
+												<TableCell className="text-xs text-muted-foreground">{p.ownerId}</TableCell>
+												<TableCell className="text-right text-muted-foreground">
+													{fmtDate(p.createdAt)}
+												</TableCell>
+												<TableCell className="text-right">
+													<div className="flex justify-end gap-1">
+														<Button
+															variant="ghost"
+															size="icon"
+															aria-label={t.actions.editFor(rowName)}
+															render={
+																<Link to="/patients/$id/edit" params={{ id: String(p.id) }} />
+															}
+														>
+															<PencilIcon />
+														</Button>
+														<Button
+															variant="ghost"
+															size="icon"
+															aria-label={t.actions.deleteFor(rowName)}
+															onClick={() => setToDelete({ id: p.id, name: rowName })}
+														>
+															<Trash2Icon />
+														</Button>
+													</div>
+												</TableCell>
+											</TableRow>
+										);
+									})
 								)}
 							</TableBody>
 						</Table>

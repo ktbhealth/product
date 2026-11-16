@@ -5,9 +5,12 @@
  * `parseFontMetrics` reads the sfnt tables every browser font needs
  * (head.unitsPerEm, hhea ascent/descent/lineGap, OS/2.xAvgCharWidth)
  * directly from TTF/OTF bytes, from inside a WOFF wrapper (per-table
- * zlib via DecompressionStream), and returns null for anything else —
- * WOFF2 needs brotli, which workerd's DecompressionStream does not
- * provide (TODO: wasm brotli decoder or a metrics sidecar).
+ * zlib via DecompressionStream), and from inside a WOFF2 wrapper
+ * (single Brotli stream decoded by a purpose-built zero-import WASM
+ * module — workerd has no Brotli in DecompressionStream, rejects
+ * runtime WASM compilation, and the deploy runs without
+ * nodejs_compat, so a bundled `.wasm` decoder is the portable path).
+ * It returns null for anything else — unrecognized or corrupt input.
  *
  * `computeMetricOverrides` implements the fontaine/capsize algorithm:
  * the fallback face is scaled (size-adjust) so its average glyph width
@@ -16,6 +19,7 @@
  * during `font-display: swap`.
  */
 
+import { brotliInflate } from "./brotli-dec.ts";
 import type { ThemeFontFallbackMetrics, ThemeFontSlot } from "./types.ts";
 
 /** Normalized metrics needed for override math (raw font units). */
@@ -119,9 +123,191 @@ const woffTable = async (bytes: Uint8Array, tag: string): Promise<Uint8Array | n
 const WOFF2_TAG = "wOF2";
 
 /**
+ * WOFF2 "Known Tags" table (WOFF2 spec, TableDirectoryEntry): the low
+ * six bits of each directory entry's flags byte index into this list;
+ * index 0x3F means a literal 4-byte tag follows instead.
+ */
+const WOFF2_KNOWN_TAGS = [
+	"cmap",
+	"head",
+	"hhea",
+	"hmtx",
+	"maxp",
+	"name",
+	"OS/2",
+	"post",
+	"cvt ",
+	"fpgm",
+	"glyf",
+	"loca",
+	"prep",
+	"CFF ",
+	"VORG",
+	"EBDT",
+	"EBLC",
+	"gasp",
+	"hdmx",
+	"kern",
+	"LTSH",
+	"PCLT",
+	"VDMX",
+	"vhea",
+	"vmtx",
+	"BASE",
+	"GDEF",
+	"GPOS",
+	"GSUB",
+	"EBSC",
+	"JSTF",
+	"MATH",
+	"CBDT",
+	"CBLC",
+	"COLR",
+	"CPAL",
+	"SVG ",
+	"sbix",
+	"acnt",
+	"avar",
+	"bdat",
+	"bloc",
+	"bsln",
+	"cvar",
+	"fdsc",
+	"feat",
+	"fmtx",
+	"fvar",
+	"gvar",
+	"hsty",
+	"just",
+	"lcar",
+	"mort",
+	"morx",
+	"opbd",
+	"prop",
+	"trak",
+	"Zapf",
+	"Silf",
+	"Glat",
+	"Gloc",
+	"Feat",
+	"Sill",
+] as const;
+
+/** WOFF2 fixed header is 48 bytes; the table directory follows it. */
+const WOFF2_HEADER_BYTES = 48;
+const WOFF2_CUSTOM_TAG = 0x3f;
+
+/**
+ * UIntBase128 (WOFF2 variable-length int): up to five bytes carrying
+ * seven bits each, most-significant group first, high bit = continue.
+ * Returns [value, nextOffset] or null on truncation/overflow.
+ */
+const readBase128 = (v: DataView, pos: number, end: number): readonly [number, number] | null => {
+	if (pos >= end || v.getUint8(pos) === 0x80) return null; // leading zeros banned
+	let result = 0;
+	for (let i = 0; i < 5; i++) {
+		if (pos >= end) return null;
+		const code = v.getUint8(pos++);
+		// result must stay < 2^25 before shifting or the u32 overflows.
+		if (result >= 0x2000000) return null;
+		result = result * 128 + (code & 0x7f);
+		if ((code & 0x80) === 0) return [result, pos];
+	}
+	return null;
+};
+
+/**
+ * Read head/hhea/OS/2 fields out of a WOFF2 container. The whole sfnt
+ * payload is a single Brotli stream; the directory only stores per-table
+ * lengths, so table offsets are accumulated in directory order. Only
+ * glyf/loca/hmtx have defined transforms — the metric tables are always
+ * stored verbatim, and a transformed metric table is treated as absent.
+ */
+const woff2Metrics = async (bytes: Uint8Array): Promise<FontMetrics | null> => {
+	if (bytes.byteLength < WOFF2_HEADER_BYTES) return null;
+	const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	const numTables = u16(v, 12);
+	const compressedSize = u32(v, 20);
+	const wanted = new Map<string, { offset: number; length: number }>();
+	let pos = WOFF2_HEADER_BYTES;
+	let dataLength = 0;
+	for (let i = 0; i < numTables; i++) {
+		if (pos >= bytes.byteLength) return null;
+		const flags = v.getUint8(pos++);
+		const tagIndex = flags & 0x3f;
+		let tag: string;
+		if (tagIndex === WOFF2_CUSTOM_TAG) {
+			if (pos + 4 > bytes.byteLength) return null;
+			tag = text(v, pos, 4);
+			pos += 4;
+		} else {
+			tag = WOFF2_KNOWN_TAGS[tagIndex]!;
+		}
+		const transformVersion = flags >> 6;
+		// glyf/loca use transform version 3 as the null transform; every
+		// other table uses version 0 (per the WOFF2 spec / fonttools).
+		const transformed =
+			tag === "glyf" || tag === "loca" ? transformVersion !== 3 : transformVersion !== 0;
+		const orig = readBase128(v, pos, bytes.byteLength);
+		if (orig === null) return null;
+		pos = orig[1];
+		let length = orig[0];
+		if (transformed) {
+			const transformLength = readBase128(v, pos, bytes.byteLength);
+			if (transformLength === null) return null;
+			pos = transformLength[1];
+			length = transformLength[0];
+		}
+		if (!transformed && (tag === "head" || tag === "hhea" || tag === "OS/2")) {
+			wanted.set(tag, { offset: dataLength, length });
+		}
+		dataLength += length;
+	}
+	if (pos + compressedSize > bytes.byteLength) return null;
+	const compressed = bytes.subarray(pos, pos + compressedSize);
+	let decompressed: Uint8Array;
+	try {
+		decompressed = brotliInflate(compressed, dataLength);
+	} catch {
+		return null;
+	}
+	// The decompressed block is exactly the concatenated (possibly
+	// transformed) table data — a size mismatch means a corrupt font.
+	if (decompressed.byteLength !== dataLength) return null;
+	// Offsets are cumulative sums of non-negative lengths, so every
+	// recorded table lies inside the verified decompressed block.
+	const slice = (tag: string): Uint8Array | null => {
+		const t = wanted.get(tag);
+		return t === undefined ? null : decompressed.subarray(t.offset, t.offset + t.length);
+	};
+	const head = slice("head");
+	const hhea = slice("hhea");
+	if (head === null || head.byteLength < 20 || hhea === null || hhea.byteLength < 10) {
+		return null;
+	}
+	const hv = new DataView(head.buffer, head.byteOffset, head.byteLength);
+	const unitsPerEm = u16(hv, 18);
+	if (unitsPerEm === 0) return null;
+	const vv = new DataView(hhea.buffer, hhea.byteOffset, hhea.byteLength);
+	let xAvgCharWidth: number | undefined;
+	const os2 = slice("OS/2");
+	if (os2 !== null && os2.byteLength >= 4) {
+		const ov = new DataView(os2.buffer, os2.byteOffset, os2.byteLength);
+		xAvgCharWidth = i16(ov, 2);
+	}
+	return {
+		unitsPerEm,
+		ascent: i16(vv, 4),
+		descent: i16(vv, 6),
+		lineGap: i16(vv, 8),
+		xAvgCharWidth,
+	};
+};
+
+/**
  * Parse font metrics from raw font bytes. Accepts TTF/OTF sfnt
- * containers and WOFF (zlib tables). Returns null for WOFF2 (brotli —
- * no workerd decoder; TODO) and for unrecognized/corrupt input.
+ * containers, WOFF (zlib tables) and WOFF2 (Brotli stream via WASM).
+ * Returns null for unrecognized/corrupt input.
  */
 export const parseFontMetrics = async (
 	bytes: Uint8Array,
@@ -134,7 +320,7 @@ export const parseFontMetrics = async (
 		4,
 	);
 	try {
-		if (head4 === WOFF2_TAG) return null; // brotli — TODO wasm decoder
+		if (head4 === WOFF2_TAG) return await woff2Metrics(bytes);
 		if (head4 === "wOFF") {
 			// WOFF stores each sfnt table separately (possibly zlibbed);
 			// pull just the three metric tables and parse them via a

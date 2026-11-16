@@ -37,8 +37,8 @@ describe("theme plugin declarations", () => {
 		expect(themeHeaderPlugin.id).toBe("theme.header");
 		expect(themeHeaderPlugin.optionalDeps).toEqual(["platform.header"]);
 		expect(themeHeaderPlugin.chrome?.[0]).toMatchObject({
-			region: "portal.header.actions",
-			content: { kind: "headerAction", id: "theme" },
+			region: "app.header.actions",
+			content: { kind: "component" },
 		});
 		expect(themeBrandPlugin.id).toBe("theme.brand");
 		expect(themeBrandPlugin.chrome?.[0]).toMatchObject({

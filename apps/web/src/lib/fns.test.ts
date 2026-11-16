@@ -61,6 +61,7 @@ import {
 	saveConsultationFn,
 	sessionFn,
 	updatePatientFn,
+	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
 /** Registers a patient through the server fn, failing the test on validation errors. */
@@ -125,6 +126,7 @@ describe("server fns", () => {
 		expect(await listConsultationsFn()).toEqual([]);
 		expect(await getConsultationFn({ data: 1 })).toBeNull();
 		expect(await getLiveConsultationFn({ data: 1 })).toBeNull();
+		expect(await verifyConsultationIntegrityFn({ data: 1 })).toBeNull();
 		expect(await patientHistoryFn({ data: { patientId: 1 } })).toBeNull();
 		expect(
 			await attachAnamnesisFn({
@@ -183,6 +185,16 @@ describe("server fns", () => {
 		expect(await getLiveConsultationFn({ data: 999 })).toBeNull();
 
 		expect(await recordConsentFn({ data: saved.id! })).toEqual({ ok: true });
+
+		// verifyIntegrity: same read authz as getConsultationFn — the owner
+		// gets a chain report, a foreign user degrades to null.
+		const report = await verifyConsultationIntegrityFn({ data: saved.id! });
+		expect(report?.status).toBe("verified");
+		expect(report?.versions).toBeGreaterThan(0);
+		headers.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
+		expect(await verifyConsultationIntegrityFn({ data: saved.id! })).toBeNull();
+		headers.current = new Headers({ cookie });
+
 		expect(
 			await attachAnamnesisFn({
 				data: {

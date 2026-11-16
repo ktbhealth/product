@@ -12,7 +12,7 @@ describe("@ktb/crypto index", () => {
 	});
 
 	it("exposes the primitive namespaces", () => {
-		for (const ns of ["aead", "wrap", "sign", "digest", "kdf", "stream"] as const) {
+		for (const ns of ["aead", "wrap", "sign", "digest", "kdf", "stream", "recovery"] as const) {
 			expect(ktbCrypto[ns], ns).toBeDefined();
 		}
 		expect(typeof ktbCrypto.aead.encrypt).toBe("function");
@@ -21,5 +21,6 @@ describe("@ktb/crypto index", () => {
 		expect(typeof ktbCrypto.digest.contentHash).toBe("function");
 		expect(typeof ktbCrypto.kdf.hkdfToAesKey).toBe("function");
 		expect(typeof ktbCrypto.stream.encryptToBlob).toBe("function");
+		expect(typeof ktbCrypto.recovery.generateMasterKey).toBe("function");
 	});
 });

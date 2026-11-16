@@ -30,7 +30,7 @@ const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
 };
 
 /**
- * Header action contributed via `portal.header.actions` chrome (P-082):
+ * Header action contributed via `app.header.actions` chrome (P-082):
  * a popover listing every defined theme with a Preview button that sets
  * the admin-only `ktb-theme-preview` cookie and reloads, plus a link to
  * the /platform/theme editor. Renders nothing until the (admin-gated)

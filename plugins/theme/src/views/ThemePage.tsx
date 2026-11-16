@@ -3,11 +3,22 @@ import { useRouter } from "@tanstack/react-router";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@ktbhealth/ui/components/collapsible";
 import { Input } from "@ktbhealth/ui/components/input";
 import { Label } from "@ktbhealth/ui/components/label";
-import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Switch } from "@ktbhealth/ui/components/switch";
 import {
@@ -89,6 +100,17 @@ const fieldsToSeeds = (f: SeedFields, dark: SeedFields): ThemeSeeds => {
 		...(hasDark ? { dark: darkSeeds } : {}),
 	};
 };
+
+const ASSET_KIND_ITEMS = [
+	"logo-light",
+	"logo-dark",
+	"wordmark",
+	"favicon",
+	"og-image",
+	"font",
+] as const satisfies readonly ThemeAssetKind[];
+
+const FONT_SLOT_ITEMS = ["sans", "heading", "mono"] as const satisfies readonly ThemeFontSlot[];
 
 function SeedInputs({
 	fields,
@@ -404,20 +426,25 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 
 				<div className="grid gap-3 md:grid-cols-3">
 					<div className="space-y-1">
-						<Label htmlFor="theme-scope" className="text-xs">
-							{t.scopeLabel}
-						</Label>
-						<NativeSelect
-							id="theme-scope"
+						<Label className="text-xs">{t.scopeLabel}</Label>
+						<Select
+							items={[
+								{ value: "platform", label: t.scopePlatform },
+								{ value: "tenant", label: t.scopeTenant },
+								{ value: "portal-instance", label: t.scopePortalInstance },
+							]}
 							value={scope}
-							onChange={(e) => setScope(e.target.value as ThemeScopeKind)}
+							onValueChange={(v) => setScope(v as ThemeScopeKind)}
 						>
-							<NativeSelectOption value="platform">{t.scopePlatform}</NativeSelectOption>
-							<NativeSelectOption value="tenant">{t.scopeTenant}</NativeSelectOption>
-							<NativeSelectOption value="portal-instance">
-								{t.scopePortalInstance}
-							</NativeSelectOption>
-						</NativeSelect>
+							<SelectTrigger aria-label={t.scopeLabel} className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="platform">{t.scopePlatform}</SelectItem>
+								<SelectItem value="tenant">{t.scopeTenant}</SelectItem>
+								<SelectItem value="portal-instance">{t.scopePortalInstance}</SelectItem>
+							</SelectContent>
+						</Select>
 					</div>
 					{scope !== "platform" ? (
 						<div className="space-y-1 md:col-span-2">
@@ -469,41 +496,53 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 					]}
 				/>
 
-				<details className="rounded-md border border-border p-3">
-					<summary className="cursor-pointer text-sm font-medium">{t.darkTitle}</summary>
-					<p className="mt-1 text-xs text-muted-foreground">{t.darkDescription}</p>
-					<div className="mt-3">
-						<SeedInputs
-							fields={darkSeeds}
-							onChange={setDarkSeeds}
-							labels={[
-								t.seedPrimary,
-								t.seedSecondary,
-								t.seedAccent,
-								t.seedBackground,
-								t.seedForeground,
-								"—",
-								"—",
-							]}
-						/>
-					</div>
-				</details>
+				<Collapsible className="rounded-md border border-border p-3">
+					<CollapsibleTrigger className="cursor-pointer text-sm font-medium">
+						{t.darkTitle}
+					</CollapsibleTrigger>
+					{/* keepMounted mirrors <details>: the controlled inputs stay
+					    in the DOM (hidden) so ids/queries remain stable. */}
+					<CollapsibleContent keepMounted>
+						<p className="mt-1 text-xs text-muted-foreground">{t.darkDescription}</p>
+						<div className="mt-3">
+							<SeedInputs
+								fields={darkSeeds}
+								onChange={setDarkSeeds}
+								labels={[
+									t.seedPrimary,
+									t.seedSecondary,
+									t.seedAccent,
+									t.seedBackground,
+									t.seedForeground,
+									"—",
+									"—",
+								]}
+							/>
+						</div>
+					</CollapsibleContent>
+				</Collapsible>
 
 				<div className="space-y-3 rounded-md border border-border p-3">
 					<h3 className="text-sm font-medium">{t.fontsTitle}</h3>
 					<div className="grid gap-3 md:grid-cols-2">
 						<div className="space-y-1">
-							<Label htmlFor="theme-font-delivery" className="text-xs">
-								{t.fontsDeliveryLabel}
-							</Label>
-							<NativeSelect
-								id="theme-font-delivery"
+							<Label className="text-xs">{t.fontsDeliveryLabel}</Label>
+							<Select
+								items={[
+									{ value: "self-host", label: t.fontsSelfHost },
+									{ value: "google-fonts", label: t.fontsGoogle },
+								]}
 								value={delivery}
-								onChange={(e) => setDelivery(e.target.value as "self-host" | "google-fonts")}
+								onValueChange={(v) => setDelivery(v as "self-host" | "google-fonts")}
 							>
-								<NativeSelectOption value="self-host">{t.fontsSelfHost}</NativeSelectOption>
-								<NativeSelectOption value="google-fonts">{t.fontsGoogle}</NativeSelectOption>
-							</NativeSelect>
+								<SelectTrigger aria-label={t.fontsDeliveryLabel} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="self-host">{t.fontsSelfHost}</SelectItem>
+									<SelectItem value="google-fonts">{t.fontsGoogle}</SelectItem>
+								</SelectContent>
+							</Select>
 							{delivery === "google-fonts" ? (
 								<p className="text-xs text-amber-600">{t.fontsGoogleWarning}</p>
 							) : null}
@@ -554,44 +593,52 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 					<h2 className="text-sm font-medium">{t.assetsTitle}</h2>
 					<div className="grid gap-3 md:grid-cols-4">
 						<div className="space-y-1">
-							<Label htmlFor="asset-theme" className="text-xs">
-								{t.assetThemeLabel}
-							</Label>
-							<NativeSelect
-								id="asset-theme"
-								value={assetThemeId ?? ""}
-								onChange={(e) =>
+							<Label className="text-xs">{t.assetThemeLabel}</Label>
+							<Select
+								items={themes.map((theme) => ({
+									value: String(theme.id),
+									label: theme.appName ?? `${theme.scope}#${theme.id}`,
+								}))}
+								value={assetThemeId === null ? null : String(assetThemeId)}
+								onValueChange={(v) =>
 									setAssetThemeId(
-										// Options are always numeric theme ids — the
-										// empty-value fallback is unreachable.
-										/* v8 ignore next */ Number(e.target.value) || null,
+										// Item values are always numeric theme ids — the
+										// NaN fallback is unreachable.
+										/* v8 ignore next */ Number(v) || null,
 									)
 								}
+								disabled={themes.length === 0}
 							>
-								{themes.map((theme) => (
-									<NativeSelectOption key={theme.id} value={theme.id}>
-										{theme.appName ?? `${theme.scope}#${theme.id}`}
-									</NativeSelectOption>
-								))}
-							</NativeSelect>
+								<SelectTrigger aria-label={t.assetThemeLabel} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{themes.map((theme) => (
+										<SelectItem key={theme.id} value={String(theme.id)}>
+											{theme.appName ?? `${theme.scope}#${theme.id}`}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</div>
 						<div className="space-y-1">
-							<Label htmlFor="asset-kind" className="text-xs">
-								{t.assetKindLabel}
-							</Label>
-							<NativeSelect
-								id="asset-kind"
+							<Label className="text-xs">{t.assetKindLabel}</Label>
+							<Select
+								items={ASSET_KIND_ITEMS.map((k) => ({ value: k, label: k }))}
 								value={assetKind}
-								onChange={(e) => setAssetKind(e.target.value as ThemeAssetKind)}
+								onValueChange={(v) => setAssetKind(v as ThemeAssetKind)}
 							>
-								{(
-									["logo-light", "logo-dark", "wordmark", "favicon", "og-image", "font"] as const
-								).map((k) => (
-									<NativeSelectOption key={k} value={k}>
-										{k}
-									</NativeSelectOption>
-								))}
-							</NativeSelect>
+								<SelectTrigger aria-label={t.assetKindLabel} className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{ASSET_KIND_ITEMS.map((k) => (
+										<SelectItem key={k} value={k}>
+											{k}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</div>
 						{assetKind === "font" ? (
 							<>
@@ -607,18 +654,23 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 									/>
 								</div>
 								<div className="space-y-1">
-									<Label htmlFor="asset-font-slot" className="text-xs">
-										{t.assetFontSlot}
-									</Label>
-									<NativeSelect
-										id="asset-font-slot"
+									<Label className="text-xs">{t.assetFontSlot}</Label>
+									<Select
+										items={FONT_SLOT_ITEMS.map((s) => ({ value: s, label: s }))}
 										value={assetFontSlot}
-										onChange={(e) => setAssetFontSlot(e.target.value as ThemeFontSlot)}
+										onValueChange={(v) => setAssetFontSlot(v as ThemeFontSlot)}
 									>
-										<NativeSelectOption value="sans">sans</NativeSelectOption>
-										<NativeSelectOption value="heading">heading</NativeSelectOption>
-										<NativeSelectOption value="mono">mono</NativeSelectOption>
-									</NativeSelect>
+										<SelectTrigger aria-label={t.assetFontSlot} className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{FONT_SLOT_ITEMS.map((s) => (
+												<SelectItem key={s} value={s}>
+													{s}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
 								</div>
 							</>
 						) : null}
