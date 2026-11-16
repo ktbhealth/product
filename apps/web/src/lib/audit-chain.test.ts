@@ -3,6 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuditVerifyResult } from "@ktb/audit";
 import type { DbClient } from "@ktb/db";
 
+// audit-chain.ts resolves its defaults from the composed platform db;
+// stub it so the no-deps path runs verifyAuditChain against an empty log.
+const platformDbStub = vi.hoisted(() => ({
+	select: () => ({
+		from: () => ({
+			orderBy: async () => [],
+		}),
+	}),
+}));
+
+vi.mock("#/lib/platform.ts", () => ({ db: platformDbStub }));
+
 import {
 	AUDIT_CHAIN_TAMPERED_ACTION,
 	recordAuditChainTamper,
@@ -87,6 +99,46 @@ describe("runScheduledAuditVerification", () => {
 		expect(console.warn).toHaveBeenCalledWith(
 			expect.stringContaining('"message":"audit.chain.tamper-marker.failed"'),
 		);
+	});
+
+	it("uses the platform db and real verifier when deps are omitted", async () => {
+		silence();
+		// No deps: platformDb stub yields an empty log → verifyAuditChain
+		// reports "empty" through the real implementation.
+		const out = await runScheduledAuditVerification();
+		expect(out).toEqual(result({ status: "empty" }));
+		expect(console.info).toHaveBeenCalledWith(
+			expect.stringContaining('"message":"audit.chain.verified"'),
+		);
+	});
+
+	it("defaults recordTamper to the real marker writer", async () => {
+		silence();
+		const inserted: unknown[] = [];
+		const fakeDb = {
+			select: () => ({
+				from: () => ({
+					orderBy: () => ({ limit: async () => [] }),
+				}),
+			}),
+			insert: () => ({
+				values: (v: unknown) => ({
+					returning: async () => {
+						inserted.push(v);
+						return [v];
+					},
+				}),
+			}),
+		} as unknown as DbClient;
+		const tampered = result({ status: "tampered", entries: 4, brokenAt: 11 });
+		const out = await runScheduledAuditVerification({
+			db: fakeDb,
+			verify: async () => tampered,
+		});
+		expect(out).toBe(tampered);
+		const row = inserted[0] as Record<string, unknown>;
+		expect(row.action).toBe(AUDIT_CHAIN_TAMPERED_ACTION);
+		expect(row.targetId).toBe("11");
 	});
 
 	it("logs and returns null when the verification itself throws", async () => {
