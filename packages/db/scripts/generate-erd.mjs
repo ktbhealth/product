@@ -140,6 +140,14 @@ const DOMAINS = [
 			"Persona generation and eval run tracking — generated patient+doctor pairs awaiting review, and per-sample run metrics.",
 		tables: ["eval_persona", "eval_persona_batch", "eval_run", "eval_run_sample"],
 	},
+	{
+		id: "theme",
+		title: "Theme",
+		owner: "`plugins/theme`",
+		description:
+			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline.",
+		tables: ["theme_assets", "theme_definitions"],
+	},
 ];
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));
