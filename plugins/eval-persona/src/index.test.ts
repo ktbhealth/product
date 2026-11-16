@@ -118,6 +118,24 @@ const factoryLayer = (
 		}),
 	);
 
+// An AiEndpoints stub whose calls fail typed — simulates the grant
+// flipping mid-request (or a plugin edge failure) so consumers'
+// `Effect.catch` fallbacks fire instead of a null row.
+const failingEndpointsLayer = Layer.succeed(
+	AiEndpoints,
+	AiEndpoints.of({
+		list: () => Effect.fail(new Forbidden({ path: "rbac.eval.validator" })),
+		get: () => Effect.succeed(null),
+		create: () => Effect.fail(new Forbidden({ path: "rbac.eval.validator" })),
+		update: () => Effect.fail(new Forbidden({ path: "rbac.eval.validator" })),
+		remove: () => Effect.fail(new Forbidden({ path: "rbac.eval.validator" })),
+		presets: () => Effect.succeed([]),
+		test: () => Effect.void,
+		resolve: () => Effect.fail(new Forbidden({ path: "rbac.eval.validator" })),
+		resolveDefault: () => Effect.succeed(null),
+	} as never),
+);
+
 const persona = {
 	name: "Maria Silva",
 	gender: "f",
@@ -135,7 +153,7 @@ const make = (
 		allow?: boolean;
 		factory?: FactoryKind | "none";
 		email?: boolean;
-		endpoints?: boolean;
+		endpoints?: boolean | "fail";
 		captured?: LlmEndpointDescriptor[];
 		presets?: readonly LlmEndpointPreset[];
 	} = {},
@@ -159,9 +177,12 @@ const make = (
 	// order via provideMerge, so eval-persona's build-time
 	// serviceOption sees the AiEndpoints output it soft-deps on.
 	// `endpoints: false` runs the plugin standalone — endpoint picks
-	// degrade to template mode.
+	// degrade to template mode. `endpoints: "fail"` binds a stub whose
+	// calls fail typed, exercising the consumers' catch fallbacks.
+	const endpointsLayer =
+		endpoints === "fail" ? [failingEndpointsLayer] : endpoints ? [AiEndpointsLive] : [];
 	const services = (
-		[...(endpoints ? [AiEndpointsLive] : []), EvalPersonasLive, EvalInstancesLive] as Layer.Layer<
+		[...endpointsLayer, EvalPersonasLive, EvalInstancesLive] as Layer.Layer<
 			unknown,
 			unknown,
 			unknown
@@ -307,6 +328,55 @@ describe("EvalInstances", () => {
 		}
 		const personas = await db.select().from(evalPersona);
 		expect(personas[0]?.scriptMode).toBe("template");
+		await rt.dispose();
+	});
+
+	it("falls back to template when the endpoints service errors typed", async () => {
+		const { rt, run, db, d1 } = make({ factory: "ok", endpoints: "fail" });
+		// A raw endpoint row satisfies the FK — the stub never reads it.
+		await d1.exec(
+			"INSERT INTO ai_endpoint (name, kind, base_url, scope, created_at) VALUES ('ep', 'openai', 'http://x', 'eval', 1)",
+		);
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) =>
+				s.create({ name: "tf", mode: "random", count: 1, endpointId: 1 }),
+			),
+		);
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
+		for (let i = 0; i < 50; i++) {
+			const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+			if (d?.status !== "generating") break;
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		const personas = await db.select().from(evalPersona);
+		expect(personas[0]?.scriptMode).toBe("template");
+		await rt.dispose();
+	});
+
+	it("runs standalone without the ai-endpoints plugin bound", async () => {
+		const { rt, run, d1 } = make({ endpoints: false });
+		// A raw endpoint row satisfies the FK — nothing resolves it
+		// without the plugin bound.
+		await d1.exec(
+			"INSERT INTO ai_endpoint (name, kind, base_url, scope, created_at) VALUES ('ep', 'openai', 'http://x', 'eval', 1)",
+		);
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) =>
+				s.create({ name: "sa", mode: "random", count: 1, endpointId: 1 }),
+			),
+		);
+		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		expect(d?.endpointName).toBeNull();
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
+		for (let i = 0; i < 50; i++) {
+			const dd = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+			if (dd?.status !== "generating") break;
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		const done = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		expect(done?.status).toBe("ready");
+		const rows = await run(Effect.flatMap(EvalInstances, (s) => s.list()));
+		expect(rows.find((r) => r.id === id)?.endpointName).toBeNull();
 		await rt.dispose();
 	});
 
@@ -645,6 +715,18 @@ describe("evalPersonaPanelPlugin", () => {
 		expect(empty).toEqual({ instances: [], defs: [], endpoints: [] });
 		await denied.rt.dispose();
 	});
+
+	it("instances loader lists no endpoints without the ai-endpoints plugin", async () => {
+		const { rt, run } = make({ endpoints: false });
+		const instancesPage = pages[1]!;
+		const data = (await run(instancesPage.loader!() as Effect.Effect<unknown, never, unknown>)) as {
+			instances: readonly unknown[];
+			defs: readonly unknown[];
+			endpoints: readonly unknown[];
+		};
+		expect(data.endpoints).toEqual([]);
+		await rt.dispose();
+	});
 });
 
 describe("EvalInstances — edge inputs", () => {
@@ -859,6 +941,17 @@ describe("EvalPersonas.generate", () => {
 			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 1, endpointId: ep2 })),
 		);
 		expect(noFactory.created).toBe(1);
+		await rt.dispose();
+	});
+
+	it("falls back to sampling when the endpoints service errors typed", async () => {
+		const { rt, run } = make({ factory: "ok", endpoints: "fail" });
+		const r = await run(
+			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 2, endpointId: 1 })),
+		);
+		expect(r.created).toBe(2);
+		const listed = await run(Effect.flatMap(EvalPersonas, (s) => s.list()));
+		expect(listed.every((d) => d.notes?.includes("sampled"))).toBe(true);
 		await rt.dispose();
 	});
 

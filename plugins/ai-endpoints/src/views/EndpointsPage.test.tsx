@@ -182,6 +182,21 @@ describe("EndpointsPage", () => {
 		});
 	});
 
+	it("renders the default badge and omits a cleared scope on save", async () => {
+		const user = userEvent.setup();
+		renderPage([{ ...endpoint, isDefault: true }]);
+		expect(screen.getByText("default")).toBeTruthy();
+		await user.click(screen.getByText("Edit"));
+		// Scope is the last textbox in the form — clearing it keeps the
+		// key off the wire entirely.
+		const boxes = screen.getAllByRole("textbox");
+		await user.clear(boxes[boxes.length - 1]!);
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
+		const wire = fns.saveEndpointFn.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+		expect("scope" in wire).toBe(false);
+	});
+
 	it("edits a model-less endpoint — empty optional fields stay off the wire", async () => {
 		const noModel: EndpointCard = { ...endpoint, model: null, sessionId: "s1", secretRef: "K" };
 		const user = userEvent.setup();
