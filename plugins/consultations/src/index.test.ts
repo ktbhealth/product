@@ -1265,7 +1265,7 @@ describe("plugins", () => {
 		expect(consultationsChromePlugin.chrome.map((c) => c.region)).toEqual([
 			"app.header.nav",
 			"app.header.actions",
-			"console.sidebar",
+			"portal.sidebar",
 		]);
 		expect(consultationsPanelPlugin.id).toBe("consultations.panel");
 		expect(consultationsPanelPlugin.requiredDeps).toEqual([platformPanelPlugin.id]);

@@ -53,7 +53,7 @@ describe("ConsultationsPage", () => {
 		);
 		const links = screen.getAllByText("Patient record");
 		expect(links).toHaveLength(1);
-		expect(links[0]!.getAttribute("href")).toBe("/patients/$id");
+		expect(links[0]!.getAttribute("href")).toBe("/patients/5");
 	});
 
 	it("renders singular/plural count and list", () => {

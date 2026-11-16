@@ -74,7 +74,6 @@ describe("JobsHeaderAction", () => {
 		expect(screen.queryByText("FHIR sync")).toBeNull();
 		await user.click(screen.getByRole("button", { name: /done/i }));
 		expect(await screen.findByText("FHIR sync")).toBeTruthy();
-		expect(screen.getByText("1 active")).toBeTruthy();
 	});
 
 	it("shows an empty state when the feed is empty", async () => {

@@ -2,7 +2,7 @@ import { discoverPlugins, orderPlugins } from "@ktb/driver-framework";
 import type { Plugin } from "@ktb/kernel";
 import { plugins as platformClientPlugins } from "@ktb/platform/client";
 
-import { collectPages } from "./pages.ts";
+import { collectPages, collectPortals } from "./pages.ts";
 
 /**
  * Client-safe plugin registry: every module under plugins/<name>/src/client.ts
@@ -35,4 +35,8 @@ export * from "./pages.ts";
 export * from "./plugin-state.ts";
 
 /** Every contributed page by path (first in topo order wins). */
-export const { pages, appPages, consolePages } = collectPages(plugins);
+export const { pages, appPages, portalPages } = collectPages(plugins);
+
+/** Every contributed portal instance (P-081), in topo order — the
+ * portal shells and the switcher resolve descriptors from this. */
+export const portalInstances = collectPortals(plugins);

@@ -20,7 +20,7 @@ export const dashboardChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "dashboard.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
@@ -36,8 +36,8 @@ export const dashboardChromePlugin = definePlugin({
 
 export const dashboardPanelPlugin = definePlugin({
 	id: "dashboard.panel",
-	requiredDeps: ["platform.panel", "patients.services", "consultations.services"],
-	optionalDeps: ["notifications.services"],
+	requiredDeps: ["platform.panel"],
+	optionalDeps: ["patients.services", "consultations.services", "notifications.services"],
 	panel: {
 		pages: [
 			{

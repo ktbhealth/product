@@ -8,6 +8,7 @@ import {
 	parsePlatformAdminEmails,
 	platformAdminPlugin,
 	platformPanelPlugin,
+	platformPortalPlugin,
 	platformRoutesPlugin,
 	plugins,
 } from "./index.ts";
@@ -77,11 +78,26 @@ describe("plugins", () => {
 		expect("panel" in platformPanelPlugin).toBe(false);
 	});
 
+	it("declares the platform portal instance — system, admin audience", () => {
+		expect(platformPortalPlugin.id).toBe("platform.portal");
+		expect(platformPortalPlugin.system).toBe(true);
+		expect(platformPortalPlugin.requiredDeps).toEqual(["platform.panel"]);
+		expect(platformPortalPlugin.portals).toEqual([
+			{
+				id: "platform",
+				basePath: "/platform",
+				label: "Platform",
+				audience: "platform-admin",
+			},
+		]);
+	});
+
 	it("exports the discovery plugins array", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"platform.admin",
 			"platform.routes",
 			"platform.panel",
+			"platform.portal",
 		]);
 	});
 });

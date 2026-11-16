@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
+import type { ComponentType, ReactNode } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeftIcon, LogOutIcon } from "lucide-react";
 
 import {
@@ -10,6 +10,7 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from "@ktbhealth/ui/components/breadcrumb";
+import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
 import {
 	Sidebar,
 	SidebarContent,
@@ -25,21 +26,46 @@ import {
 } from "@ktbhealth/ui/components/sidebar";
 import type { PanelSidebarItem } from "@ktb/kernel";
 
-import { consoleMessages } from "../i18n.ts";
+import { portalMessages } from "../i18n.ts";
 
-export interface PlatformConsoleShellProps {
-	/** Aggregated `console.sidebar` chrome items from every plugin, in topo order. */
+/** The portal instance this shell renders — a client-safe projection
+ * of the kernel `PortalInstance` (id/basePath/label/icon). */
+export interface PortalShellInstance {
+	readonly id: string;
+	readonly basePath: string;
+	readonly label: string;
+	readonly icon?: ComponentType<{ readonly className?: string }>;
+}
+
+export interface PortalShellProps {
+	/** The instance being rendered. */
+	readonly instance: PortalShellInstance;
+	/** Aggregated `portal.sidebar` chrome items scoped to this instance,
+	 * in topo order. */
 	readonly items: readonly PanelSidebarItem[];
 	readonly pathname: string;
-	readonly userEmail?: string;
-	/**
-	 * Optional right-side header widgets contributed by plugins via
-	 * `console.header.actions` chrome — rendered only when the host enables the
-	 * `platform.header` extension point.
-	 */
+	/** Optional right-side header widgets contributed via
+	 * `portal.header.actions` chrome. */
 	readonly headerActions?: ReactNode;
+	/** Optional brand slot rendered in the SidebarHeader fixed box
+	 * (P-082): `portal.brand` chrome components and/or the resolved
+	 * theme's brand mark. Absent → the host-owned "KTB" wordmark; the
+	 * instance badge below it is always host-rendered. */
+	readonly brand?: ReactNode;
+	/** Optional banner strip above the header — the host uses it for
+	 * the theme-preview marker (P-082). */
+	readonly banner?: ReactNode;
+	/** Theme override CSS (`:root`/`.dark` custom properties, P-082):
+	 * the host route injects the resolved theme's block here so the
+	 * portal shell owns exactly one style emitter per page. */
+	readonly themeCss?: string | null;
 	/** Active UI locale — injected by the host route. */
 	readonly locale?: string;
+	readonly userEmail?: string;
+	/** Every instance the user may enter (audience-filtered by the host),
+	 * current included — drives the footer switcher. Fewer than two
+	 * hides it. */
+	readonly portals?: readonly PortalShellInstance[];
 	/** Injected by the host — plugins cannot import the auth client. */
 	readonly onSignOut: () => void | Promise<void>;
 	readonly children?: ReactNode;
@@ -49,22 +75,31 @@ const isItemActive = (pathname: string, item: PanelSidebarItem) =>
 	item.exact ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`);
 
 /**
- * /platform console chrome: fixed sidebar aggregating every plugin's
- * `console.sidebar` chrome contribution in topo order (grouped by `group`,
- * ungrouped pinned first), dense breadcrumb top bar, sign-out footer.
- * Purely presentational — the host route owns the admin guard and
- * injects items/pathname/user/sign-out.
+ * Portal chrome (P-081): the generalized console shell — fixed sidebar
+ * aggregating the instance's `portal.sidebar` chrome items (grouped by
+ * `group`, ungrouped pinned first), dense breadcrumb top bar, footer
+ * with the portal switcher and sign-out. Purely presentational — the
+ * host route owns the audience gate and injects items/pathname/
+ * instance/switcher entries/sign-out. `/platform` renders it with the
+ * "platform" instance; namespaced portals (`/portal/<id>/*`) with
+ * theirs.
  */
-export function PlatformConsoleShell({
+export function PortalShell({
+	instance,
 	items,
 	pathname,
-	userEmail,
 	headerActions,
+	brand,
+	banner,
+	themeCss,
 	locale = "en",
+	userEmail,
+	portals,
 	onSignOut,
 	children,
-}: PlatformConsoleShellProps) {
-	const t = consoleMessages(locale);
+}: PortalShellProps) {
+	const t = portalMessages(locale);
+	const navigate = useNavigate();
 	// Group sidebar items by their `group` label, preserving the
 	// flattened topo order — groups order by first appearance, with the
 	// ungrouped section pinned to the top.
@@ -80,19 +115,32 @@ export function PlatformConsoleShell({
 	);
 	const current = items.find((i) => isItemActive(pathname, i));
 	// Breadcrumb leaf: the matched sidebar item's label (the plugin
-	// provides it via console.sidebar chrome), else the last path segment.
+	// provides it via portal.sidebar chrome), else the last path segment.
 	const leaf =
-		pathname === "/platform"
+		pathname === instance.basePath
 			? t.overview
 			: (current?.label ?? pathname.split("/").filter(Boolean).at(-1) ?? t.overview);
 	return (
 		<SidebarProvider className="h-dvh min-h-0">
+			{/* Exactly one theme style block per portal page (P-082):
+			    :root + .dark overrides resolved server-side by the route
+			    loader. .dark stays user-preference driven — the block only
+			    redefines the custom properties inside it. */}
+			{themeCss !== undefined && themeCss !== null && themeCss !== "" ? (
+				<style dangerouslySetInnerHTML={{ __html: themeCss }} />
+			) : null}
 			<Sidebar collapsible="none" className="border-sidebar-border border-r">
 				<SidebarHeader>
 					<div className="flex items-center gap-2 px-2 pt-1">
-						<span className="text-sm font-bold tracking-tight">KTB</span>
-						<span className="rounded border border-sidebar-border px-1 py-0.5 text-[10px] text-muted-foreground">
-							{t.badge}
+						{/* Fixed-height brand slot (P-082): brand content
+						    (logo/wordmark) must size itself — never intrinsic
+						    image size — so a theme swap can't shift layout.
+						    The instance badge stays host-owned either way. */}
+						<div className="flex h-6 min-w-0 items-center overflow-hidden">
+							{brand ?? <span className="text-sm font-bold tracking-tight">KTB</span>}
+						</div>
+						<span className="rounded border border-sidebar-border px-1 py-0.5 text-[10px] text-muted-foreground uppercase">
+							{instance.label}
 						</span>
 					</div>
 				</SidebarHeader>
@@ -125,7 +173,7 @@ export function PlatformConsoleShell({
 				<SidebarFooter>
 					<div className="flex items-center justify-between gap-2 px-2 pb-1">
 						<span className="truncate text-[11px] text-muted-foreground">
-							{userEmail ?? t.adminFallback}
+							{userEmail ?? t.userFallback}
 						</span>
 						<button
 							type="button"
@@ -136,14 +184,37 @@ export function PlatformConsoleShell({
 							<LogOutIcon className="size-3.5" />
 						</button>
 					</div>
+					{portals !== undefined && portals.length > 1 ? (
+						<div className="px-2 pb-2">
+							<NativeSelect
+								size="sm"
+								aria-label={t.switcherLabel}
+								className="w-full"
+								value={instance.id}
+								onChange={(e) => {
+									const target = portals.find((p) => p.id === e.target.value);
+									if (target !== undefined) void navigate({ to: target.basePath });
+								}}
+							>
+								{portals.map((p) => (
+									<NativeSelectOption key={p.id} value={p.id}>
+										{p.label}
+									</NativeSelectOption>
+								))}
+							</NativeSelect>
+						</div>
+					) : null}
 				</SidebarFooter>
 			</Sidebar>
 			<div className="flex min-w-0 flex-1 flex-col">
+				{banner}
 				<header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-4">
 					<Breadcrumb className="text-xs">
 						<BreadcrumbList>
 							<BreadcrumbItem>
-								<BreadcrumbLink render={<Link to="/platform" />}>{t.breadcrumbRoot}</BreadcrumbLink>
+								<BreadcrumbLink render={<Link to={instance.basePath} />}>
+									{instance.label}
+								</BreadcrumbLink>
 							</BreadcrumbItem>
 							<BreadcrumbSeparator />
 							<BreadcrumbItem>

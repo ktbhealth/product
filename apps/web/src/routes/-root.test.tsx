@@ -62,6 +62,10 @@ vi.mock("#/lib/fns.ts", () => ({
 	sessionFn: vi.fn(async () => null),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] })),
 }));
+// Theme resolution is a server fn — stub it so the loader stays pure.
+vi.mock("@ktb/theme/fns", () => ({
+	themeScopeFn: vi.fn(async () => null),
+}));
 vi.mock("../styles.css?url", () => ({ default: "/styles.css" }));
 
 import { plugins } from "#/plugins.ts";
@@ -96,6 +100,7 @@ describe("root route", () => {
 		await expect(opts.loader()).resolves.toEqual({
 			user: null,
 			pluginStates: { enabled: [] },
+			theme: null,
 		});
 		const head = opts.head();
 		expect(head.links).toEqual([{ rel: "stylesheet", href: "/styles.css" }]);

@@ -11,6 +11,9 @@
 //   (auth infrastructure, not a plugin concern).
 // - plugin-state.ts — platform-owned runtime plugin state (P-058);
 //   deliberately kept out of the plugin glob (see the file's comment).
+// - job-runs.ts — generic jobs backbone status projection (PL-007);
+//   written by @ktb/jobs-port, read by the /platform jobs console.
 export * from "./auth.ts";
+export * from "./job-runs.ts";
 export * from "./plugin-state.ts";
 export * from "./schema.gen.ts";

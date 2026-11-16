@@ -56,12 +56,16 @@ export interface ConsultationListItem {
 export function ConsultationsPage({
 	consultations,
 	locale = "en",
+	portalBase,
 }: {
 	consultations: ConsultationListItem[];
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
+	/** Portal instance base path — internal links stay under it (P-081). */
+	portalBase?: string;
 }) {
 	const t = consultationMessages(locale);
+	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const FILTERS = [
 		["all", t.list.filters.all],
 		["anamnesis", t.list.filters.anamnesis],
@@ -91,7 +95,7 @@ export function ConsultationsPage({
 						{consultations.length === 0 ? t.list.none : t.list.count(consultations.length)}
 					</p>
 				</div>
-				<Link to="/consultations/new" className={buttonVariants()}>
+				<Link to={portalPath("/consultations/new")} className={buttonVariants()}>
 					{t.list.newConsultation}
 				</Link>
 			</div>
@@ -133,8 +137,7 @@ export function ConsultationsPage({
 						<div className="min-w-0 flex-1">
 							<div className="flex flex-wrap items-baseline gap-x-2">
 								<Link
-									to="/consultations/$id"
-									params={{ id: String(c.id) }}
+									to={portalPath(`/consultations/${c.id}`)}
 									className="font-semibold after:absolute after:inset-0 after:content-['']"
 								>
 									{c.patientName ?? t.list.unlinkedPatient}
@@ -144,8 +147,7 @@ export function ConsultationsPage({
 								</span>
 								{c.patientId ? (
 									<Link
-										to="/patients/$id"
-										params={{ id: String(c.patientId) }}
+										to={portalPath(`/patients/${c.patientId}`)}
 										className="relative z-10 text-xs text-primary hover:underline"
 									>
 										{t.list.patientRecord}
@@ -170,8 +172,7 @@ export function ConsultationsPage({
 						</div>
 						<div className="relative z-10 flex shrink-0 items-center gap-1.5">
 							<Link
-								to="/consultations/$id"
-								params={{ id: String(c.id) }}
+								to={portalPath(`/consultations/${c.id}`)}
 								className={buttonVariants({ variant: "outline", size: "sm" })}
 							>
 								{t.list.open}
@@ -207,7 +208,7 @@ export function ConsultationsPage({
 							<EmptyDescription>{t.list.emptyDescription}</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent>
-							<Link to="/consultations/new" className={buttonVariants()}>
+							<Link to={portalPath("/consultations/new")} className={buttonVariants()}>
 								{t.list.startConsultation}
 							</Link>
 						</EmptyContent>

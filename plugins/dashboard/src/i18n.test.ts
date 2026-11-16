@@ -8,8 +8,8 @@ describe("dashboard catalogs", () => {
 		expect(isDashboardLocale("es")).toBe(true);
 		expect(isDashboardLocale("fr")).toBe(false);
 		expect(dashboardMessages("fr")).toBe(dashboardMessages(BASE_LOCALE));
-		expect(dashboardMessages("pt-BR").title).toBe("painel");
-		expect(dashboardMessages("es").title).toBe("panel");
+		expect(dashboardMessages("pt-BR").title).toBe("Painel");
+		expect(dashboardMessages("es").title).toBe("Panel");
 	});
 
 	it("has no blank copy in any locale", () => {

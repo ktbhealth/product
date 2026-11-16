@@ -58,7 +58,7 @@ describe("contributionKinds", () => {
 					chrome: [
 						{
 							id: "c",
-							region: "console.sidebar",
+							region: "portal.sidebar",
 							content: { kind: "link", to: "/x", label: "X" },
 						},
 					],

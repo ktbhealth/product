@@ -23,7 +23,7 @@ export const pagesChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "pages.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {

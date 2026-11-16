@@ -356,7 +356,7 @@ describe("plugins", () => {
 		expect(notificationsHeaderPlugin.optionalDeps).toEqual(["platform.header"]);
 		expect(notificationsHeaderPlugin.chrome).toHaveLength(1);
 		expect(notificationsHeaderPlugin.chrome?.[0]).toMatchObject({
-			region: "console.header.actions",
+			region: "portal.header.actions",
 			content: { kind: "headerAction", id: "notifications" },
 		});
 	});

@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@tanstack/react-router", async () => {
+	const React = await import("react");
+	return {
+		Link: ({ to, ...props }: Record<string, unknown>) =>
+			React.createElement("a", { ...props, href: String(to) }, props.children as never),
+	};
+});
 
 import type { Plugin } from "@ktb/kernel";
 import type { AdminConsultationRow } from "@ktb/consultations";
@@ -51,7 +59,7 @@ const plugin = (id: string, sidebar = 0): Plugin =>
 				chrome: [
 					{
 						id: `${id}.sidebar`,
-						region: "console.sidebar",
+						region: "portal.sidebar",
 						content: { kind: "sidebarItem", item: { to: "/x", label: id } },
 					},
 				],
@@ -65,12 +73,12 @@ afterEach(cleanup);
 describe("DashboardPage", () => {
 	it("renders stat cards and empty states", () => {
 		render(<DashboardPage patients={[]} consultations={[]} plugins={[plugin("a.b")]} />);
-		expect(screen.getByText("dashboard")).toBeTruthy();
+		expect(screen.getByText("Dashboard")).toBeTruthy();
 		expect(screen.getByText("Patients")).toBeTruthy();
 		expect(screen.getByText("Consultations")).toBeTruthy();
+		expect(screen.getByText("Live now")).toBeTruthy();
 		expect(screen.getByText("Plugins")).toBeTruthy();
-		expect(screen.getByText("Sidebar items")).toBeTruthy();
-		expect(screen.getByText("No consultations yet.")).toBeTruthy();
+		expect(screen.getAllByText("No consultations yet.").length).toBeGreaterThan(0);
 		expect(screen.getByText("a.b")).toBeTruthy();
 	});
 
@@ -85,10 +93,11 @@ describe("DashboardPage", () => {
 				plugins={[plugin("x.y", 2)]}
 			/>,
 		);
-		// Stat values (patients count and sidebar-item count are both 2).
+		// Stat values (patients count and consultations count are both 2).
 		expect(screen.getAllByText("2")).toHaveLength(2);
-		expect(screen.getByText("live")).toBeTruthy();
-		expect(screen.getByText("bot")).toBeTruthy();
+		// "live"/"bot" appear both in the breakdown cards and the table.
+		expect(screen.getAllByText("live").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("bot").length).toBeGreaterThan(0);
 		expect(screen.getByText("x.y")).toBeTruthy();
 		expect(screen.getByText("chrome")).toBeTruthy();
 	});
@@ -174,6 +183,79 @@ describe("DashboardPage", () => {
 		);
 		expect(screen.getByText("only@x.com")).toBeTruthy();
 		expect(screen.getByText("—")).toBeTruthy();
+	});
+
+	it("renders breakdowns and plugin enable-state badges", () => {
+		render(
+			<DashboardPage
+				patients={[]}
+				consultations={[
+					consultation({ id: 1, status: "live", source: "bot" }),
+					consultation({ id: 2, status: "done", source: "browser" }),
+					consultation({ id: 3, status: "done", source: "browser" }),
+					consultation({ id: 4, status: "archived", source: "browser" }),
+				]}
+				plugins={[plugin("a.b"), plugin("c.d")]}
+				pluginStates={[
+					{ pluginId: "a.b", enabled: true, system: false, config: null },
+					{ pluginId: "c.d", enabled: false, system: false, config: null },
+				]}
+			/>,
+		);
+		expect(screen.getByText("Consultations by status")).toBeTruthy();
+		expect(screen.getByText("By source")).toBeTruthy();
+		expect(screen.getByText("1/2")).toBeTruthy();
+		expect(screen.getByText("Enabled")).toBeTruthy();
+		expect(screen.getByText("Disabled")).toBeTruthy();
+	});
+
+	it("marks system plugins and defaults missing state entries to enabled", () => {
+		render(
+			<DashboardPage
+				patients={[]}
+				consultations={[]}
+				plugins={[plugin("sys.p"), plugin("plain.p")]}
+				pluginStates={[{ pluginId: "sys.p", enabled: true, system: true, config: null }]}
+			/>,
+		);
+		expect(screen.getByText("System")).toBeTruthy();
+		expect(screen.getByText("Enabled")).toBeTruthy();
+	});
+
+	it("renders plugin-contributed dashboard slots and hides disabled plugins' entries", () => {
+		const StatWidget = () => <div>custom stat</div>;
+		const SectionWidget = () => <div>custom section</div>;
+		const slotPlugin = (id: string): Plugin => ({
+			id,
+			chrome: [
+				{
+					id: `${id}.stat`,
+					region: "portal.dashboard.stats",
+					content: { kind: "component", component: StatWidget },
+				},
+				{
+					id: `${id}.sec`,
+					region: "portal.dashboard.sections",
+					content: { kind: "component", component: SectionWidget },
+				},
+				// Non-component contents are ignored by the dashboard slots.
+				{
+					id: `${id}.lnk`,
+					region: "portal.dashboard.stats",
+					content: { kind: "link", to: "/x", label: "L" },
+				},
+			],
+		});
+		render(
+			<DashboardPage
+				patients={[]}
+				consultations={[]}
+				plugins={[slotPlugin("w.one"), slotPlugin("w.two")]}
+				pluginStates={[{ pluginId: "w.two", enabled: false, system: false, config: null }]}
+			/>,
+		);
+		expect(screen.getAllByText("custom stat")).toHaveLength(1);
+		expect(screen.getAllByText("custom section")).toHaveLength(1);
 	});
 
 	it("lists routes, chrome, tables and services among a plugin's contributions", () => {

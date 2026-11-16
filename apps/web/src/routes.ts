@@ -40,6 +40,9 @@ export const routes = rootRoute("__root.tsx", [
 	...routePlugins.flatMap((p) => p.routes ?? []),
 	route("capture-test", "capture-test.tsx"),
 	route("portal/login", "portal-login.tsx"),
+	// Namespaced portal instances (P-081): /portal/<instanceId>/* —
+	// patient-portal's physical /portal routes outrank this splat.
+	route("portal/$instance/$", "portal.$instance.$.tsx"),
 	route("verify-email", "verify-email.tsx"),
 	physical("/api", "api"),
 	// Root splat (P-059): dispatches plugin-contributed `pages` at

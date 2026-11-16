@@ -74,14 +74,18 @@ export function ConsultationDetailPage({
 	history,
 	api,
 	locale = "en",
+	portalBase,
 }: {
 	c: ConsultationDetail;
 	history: PatientHistory | null;
 	api?: ConsultationDetailApi;
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
+	/** Portal instance base path — internal links stay under it (P-081). */
+	portalBase?: string;
 }) {
 	const t = consultationMessages(locale);
+	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [toast, setToast] = useState<ToastData | null>(null);
 	// Poll only when the loader data says the pipeline may still be
 	// running (or the LLM cleanup is pending); the hook stops itself
@@ -106,7 +110,12 @@ export function ConsultationDetailPage({
 
 	return (
 		<div>
-			<Button variant="ghost" size="sm" className="-ml-2" render={<Link to="/consultations" />}>
+			<Button
+				variant="ghost"
+				size="sm"
+				className="-ml-2"
+				render={<Link to={portalPath("/consultations")} />}
+			>
 				<ArrowLeftIcon />
 				{t.detail.back}
 			</Button>
@@ -117,8 +126,7 @@ export function ConsultationDetailPage({
 					<h1 className="text-3xl font-bold tracking-tight">
 						{c.patientId && c.patientName ? (
 							<Link
-								to="/patients/$id"
-								params={{ id: String(c.patientId) }}
+								to={portalPath(`/patients/${c.patientId}`)}
 								className="hover:underline"
 								title={t.detail.openPatientRecord}
 							>

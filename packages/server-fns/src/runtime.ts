@@ -45,6 +45,26 @@ export interface AudioQueueSender {
 	send(message: AudioJobMessage): Promise<unknown>;
 }
 
+/** Options accepted by the generic jobs enqueue port (PL-007). */
+export interface JobEnqueueOptions {
+	/** Owning tenant (`groups.id`) or null/absent for personal scope —
+	 * same convention as {@link AudioJobMessage.tenantId}. */
+	readonly tenantId?: number | null;
+	/** Optional pointer to where the payload lives (never PHI/blob inline). */
+	readonly payloadRef?: string | null;
+}
+
+/**
+ * Generic job enqueue capability (PL-007): plugins enqueue
+ * `{kind, payload}` jobs without touching the queue binding — the host
+ * adapter writes the `job_runs` projection and sends the envelope on the
+ * shared transport. Structural mirror of `@ktb/jobs-port`'s
+ * JobsEnqueuer; declared here so plugin code needs no new dependency.
+ */
+export interface JobsEnqueuer {
+	enqueue(kind: string, payload: unknown, options?: JobEnqueueOptions): Promise<unknown>;
+}
+
 /**
  * Row-count snapshot of the transcription queue, grouped by delivery
  * status. Only available when the bound queue exposes stats — the
@@ -147,6 +167,9 @@ export interface ServerRuntime {
 	readonly audio?: AudioStore;
 	/** Queue producer for async transcription jobs; undefined when unbound. */
 	readonly audioQueue?: AudioQueueSender;
+	/** Generic job enqueue port (PL-007) — kind-dispatched jobs on the
+	 * same queue transport as audioQueue. Undefined when unbound. */
+	readonly jobs?: JobsEnqueuer;
 	/** Queue depth probe — present only when the bound queue exposes
 	 * stats (the dev:node SQLite queue). Resolves null on probe failure;
 	 * undefined field means the queue is managed externally. */

@@ -532,7 +532,7 @@ describe("plugins", () => {
 		expect(patientsChromePlugin.id).toBe("patients.chrome");
 		expect(patientsChromePlugin.chrome.map((c) => c.region)).toEqual([
 			"app.header.nav",
-			"console.sidebar",
+			"portal.sidebar",
 		]);
 	});
 

@@ -7,6 +7,9 @@ import {
 	FIELD_CONTRIBUTION_KINDS,
 	GENERIC_CONTRIBUTION_SLOT,
 	pluginContributionKinds,
+	THEME_BRAND_KIND,
+	THEME_CONTRIBUTION_KINDS,
+	THEME_TOKENS_KIND,
 	type ContributionKindDescriptor,
 } from "./kinds.ts";
 
@@ -28,6 +31,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 			"chrome",
 			"panel",
 			"pages",
+			"portals",
 		]);
 		for (const kind of FIELD_CONTRIBUTION_KINDS) {
 			expect(kind.slot).toBe(kind.id);
@@ -95,6 +99,47 @@ describe("collectKindContributions", () => {
 	it("skips plugins without the slot and unknown generic kinds", () => {
 		const collected = collectKindContributions(plugins, evalStageKind);
 		expect(collected).toEqual([]);
+	});
+});
+
+describe("theme contribution kinds (P-082)", () => {
+	it("registers theme.tokens and theme.brand on the generic channel", () => {
+		expect(THEME_TOKENS_KIND.id).toBe("theme.tokens");
+		expect(THEME_BRAND_KIND.id).toBe("theme.brand");
+		for (const kind of [THEME_TOKENS_KIND, THEME_BRAND_KIND]) {
+			expect(kind.slot).toBe(GENERIC_CONTRIBUTION_SLOT);
+			expect(kind.ordering).toBe("topo");
+			expect(kind.consumers).toContain("app-host.server");
+		}
+		expect(THEME_CONTRIBUTION_KINDS).toEqual([THEME_TOKENS_KIND, THEME_BRAND_KIND]);
+	});
+
+	it("collects theme.* entries from plugin contributions", () => {
+		const registry: readonly Plugin[] = [
+			{
+				id: "theme.a",
+				contributions: [
+					{
+						kind: "theme.tokens",
+						id: "tokens",
+						meta: { light: { "--primary": "oklch(0.5 0.2 20)" } },
+					},
+					{ kind: "theme.brand", id: "brand", meta: { appName: "Clinic" } },
+				],
+			},
+		];
+		expect(
+			collectKindContributions(registry, THEME_TOKENS_KIND).map(
+				(c) => (c.payload as { id: string }).id,
+			),
+		).toEqual(["tokens"]);
+		expect(
+			collectKindContributions(registry, THEME_BRAND_KIND).map(
+				(c) => (c.payload as { id: string }).id,
+			),
+		).toEqual(["brand"]);
+		// collectContributions only sees them when the caller opts in.
+		expect(collectContributions(registry, THEME_CONTRIBUTION_KINDS)).toHaveLength(2);
 	});
 });
 

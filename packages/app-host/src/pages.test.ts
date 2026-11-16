@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Page, Plugin } from "@ktb/kernel";
 
-import { collectPages, defaultPageContext, findPage, isConsolePath } from "./pages.ts";
+import {
+	collectPages,
+	collectPortals,
+	defaultPageContext,
+	findPage,
+	findPortalInstance,
+	isPortalPath,
+	portalInstanceIdForPath,
+} from "./pages.ts";
 
 const Page = () => null;
 
@@ -11,14 +19,33 @@ const panelPlugin = (id: string, path: string): Plugin => ({
 	panel: { pages: [{ id: `${id}.page`, path, component: Page }] },
 });
 
-describe("isConsolePath / defaultPageContext", () => {
-	it("treats /platform and its descendants as console", () => {
-		expect(isConsolePath("/platform")).toBe(true);
-		expect(isConsolePath("/platform/patients")).toBe(true);
-		expect(isConsolePath("/platformx")).toBe(false);
-		expect(isConsolePath("/about")).toBe(false);
-		expect(defaultPageContext("/platform/x")).toBe("console");
+describe("isPortalPath / portalInstanceIdForPath / defaultPageContext", () => {
+	it("treats /platform and its descendants as portal", () => {
+		expect(isPortalPath("/platform")).toBe(true);
+		expect(isPortalPath("/platform/patients")).toBe(true);
+		expect(isPortalPath("/platformx")).toBe(false);
+		expect(isPortalPath("/about")).toBe(false);
+		expect(defaultPageContext("/platform/x")).toBe("portal");
 		expect(defaultPageContext("/about")).toBe("app");
+	});
+
+	it("treats /portal/<instance>/… as portal but leaves bare /portal to the app", () => {
+		expect(isPortalPath("/portal/clinician")).toBe(true);
+		expect(isPortalPath("/portal/clinician/patients")).toBe(true);
+		expect(isPortalPath("/portal")).toBe(false);
+		expect(isPortalPath("/portal/")).toBe(false);
+		expect(isPortalPath("/portalx/clinician")).toBe(false);
+		expect(defaultPageContext("/portal/clinician/x")).toBe("portal");
+	});
+
+	it("derives the instance id from the path", () => {
+		expect(portalInstanceIdForPath("/platform")).toBe("platform");
+		expect(portalInstanceIdForPath("/platform/patients")).toBe("platform");
+		expect(portalInstanceIdForPath("/portal/clinician")).toBe("clinician");
+		expect(portalInstanceIdForPath("/portal/clinician/patients")).toBe("clinician");
+		expect(portalInstanceIdForPath("/portal")).toBeUndefined();
+		expect(portalInstanceIdForPath("/portal/")).toBeUndefined();
+		expect(portalInstanceIdForPath("/about")).toBeUndefined();
 	});
 });
 
@@ -28,15 +55,15 @@ describe("collectPages", () => {
 			panelPlugin("a.panel", "/platform"),
 			pagePlugin("b.pages", [
 				{ id: "b.about", path: "/about", component: Page },
-				{ id: "b.console", path: "/platform/custom", component: Page, context: "console" },
+				{ id: "b.console", path: "/platform/custom", component: Page, context: "portal" },
 			]),
 		]);
 		expect(reg.pages.size).toBe(3);
-		expect(reg.consolePages.get("/platform")?.pluginId).toBe("a.panel");
-		expect(reg.consolePages.get("/platform/custom")?.context).toBe("console");
+		expect(reg.portalPages.get("/platform")?.pluginId).toBe("a.panel");
+		expect(reg.portalPages.get("/platform/custom")?.context).toBe("portal");
 		expect(reg.appPages.get("/about")?.pluginId).toBe("b.pages");
 		expect(reg.appPages.has("/platform/custom")).toBe(false);
-		expect(reg.consolePages.has("/about")).toBe(false);
+		expect(reg.portalPages.has("/about")).toBe(false);
 	});
 
 	it("derives context from the path when undeclared", () => {
@@ -46,7 +73,7 @@ describe("collectPages", () => {
 				{ id: "x.b", path: "/status", component: Page },
 			]),
 		]);
-		expect(reg.consolePages.has("/platform/deep")).toBe(true);
+		expect(reg.portalPages.has("/platform/deep")).toBe(true);
 		expect(reg.appPages.has("/status")).toBe(true);
 	});
 
@@ -102,10 +129,10 @@ describe("collectPages", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
 			const reg = collectPages([
-				pagePlugin("odd", [{ id: "odd", path: "/nowhere", component: Page, context: "console" }]),
+				pagePlugin("odd", [{ id: "odd", path: "/nowhere", component: Page, context: "portal" }]),
 			]);
 			expect(reg.pages.size).toBe(0);
-			expect(reg.consolePages.has("/nowhere")).toBe(false);
+			expect(reg.portalPages.has("/nowhere")).toBe(false);
 			expect(reg.appPages.has("/nowhere")).toBe(false);
 			expect(warn).toHaveBeenCalledOnce();
 		} finally {
@@ -154,5 +181,33 @@ describe("findPage", () => {
 		const exactOnly = new Map<string, string>([["/only", "v"]]);
 		expect(findPage(exactOnly, "/nope")).toBeUndefined();
 		expect(findPage(exactOnly, "/only")).toBe("v");
+	});
+});
+
+describe("collectPortals / findPortalInstance", () => {
+	const portalsPlugin = (id: string, instances: { id: string }[]): Plugin => ({
+		id,
+		portals: instances.map((i) => ({
+			id: i.id,
+			basePath: `/portal/${i.id}`,
+			label: i.id,
+		})),
+	});
+
+	it("collects instance descriptors with their owning plugin id", () => {
+		const entries = collectPortals([
+			{ id: "a.marker" },
+			portalsPlugin("b.portals", [{ id: "clinician" }, { id: "translator" }]),
+		]);
+		expect(entries.map((e) => [e.instance.id, e.pluginId])).toEqual([
+			["clinician", "b.portals"],
+			["translator", "b.portals"],
+		]);
+	});
+
+	it("finds instances by id and misses unknown ones", () => {
+		const entries = collectPortals([portalsPlugin("b.portals", [{ id: "clinician" }])]);
+		expect(findPortalInstance(entries, "clinician")?.pluginId).toBe("b.portals");
+		expect(findPortalInstance(entries, "nope")).toBeUndefined();
 	});
 });

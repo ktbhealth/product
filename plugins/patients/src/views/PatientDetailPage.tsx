@@ -128,6 +128,7 @@ export function PatientDetailPage({
 	locale,
 	deleteApi,
 	onDeleted,
+	portalBase,
 }: {
 	patient: Patient;
 	consultations: PatientConsultationItem[];
@@ -136,8 +137,11 @@ export function PatientDetailPage({
 	deleteApi: PatientDeleteApi;
 	/** Called once the patient (and their consultations) are gone. */
 	onDeleted: () => void;
+	/** Portal instance base path — internal links stay under it (P-081). */
+	portalBase?: string;
 }) {
 	const t = patientMessages(locale);
+	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [deleting, setDeleting] = useState(false);
 	const id = String(patient.id);
 	const filled = sections(patient, t, locale)
@@ -151,7 +155,7 @@ export function PatientDetailPage({
 				size="sm"
 				className="-ml-2"
 				nativeButton={false}
-				render={<Link to="/patients" />}
+				render={<Link to={portalPath("/patients")} />}
 			>
 				<ArrowLeftIcon />
 				{t.common.patients}
@@ -190,7 +194,7 @@ export function PatientDetailPage({
 					<Button
 						variant="outline"
 						nativeButton={false}
-						render={<Link to="/patients/$id/edit" params={{ id }} />}
+						render={<Link to={portalPath(`/patients/${id}/edit`)} />}
 					>
 						<PencilIcon data-icon="inline-start" />
 						{t.detail.editRecord}
@@ -206,7 +210,9 @@ export function PatientDetailPage({
 					</Button>
 					<Button
 						nativeButton={false}
-						render={<Link to="/consultations/new" search={{ patientId: patient.id }} />}
+						render={
+							<Link to={portalPath("/consultations/new")} search={{ patientId: patient.id }} />
+						}
 					>
 						<PlusIcon data-icon="inline-start" />
 						{t.detail.newConsultation}
@@ -221,7 +227,7 @@ export function PatientDetailPage({
 			{!patient.birthDate ? (
 				<Alert className="mt-5 border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
 					{t.detail.incomplete}{" "}
-					<Link to="/patients/$id/edit" params={{ id }} className="font-medium underline">
+					<Link to={portalPath(`/patients/${id}/edit`)} className="font-medium underline">
 						{t.detail.completeRecord}
 					</Link>
 				</Alert>
@@ -267,8 +273,7 @@ export function PatientDetailPage({
 							>
 								<div className="flex items-baseline justify-between gap-2">
 									<Link
-										to="/consultations/$id"
-										params={{ id: String(c.id) }}
+										to={portalPath(`/consultations/${c.id}`)}
 										className="text-sm font-medium after:absolute after:inset-0 after:content-['']"
 									>
 										{new Date(c.createdAt).toLocaleDateString(locale)}

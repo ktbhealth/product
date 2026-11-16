@@ -22,7 +22,7 @@ export const tenantChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "tenant.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/tenants", label: "Tenants", icon: Building2Icon, group: "Access" },
