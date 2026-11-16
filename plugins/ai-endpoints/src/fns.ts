@@ -116,6 +116,20 @@ export const deleteEndpointFn = createServerFn({ method: "POST" })
 		);
 	});
 
+export const setPlatformDefaultEndpointFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeId(input))
+	.handler(async ({ data }): Promise<Result<null>> => {
+		const user = await ensureSessionUser();
+		return run(
+			user,
+			Effect.gen(function* () {
+				const s = yield* AiEndpoints;
+				yield* s.setPlatformDefault(data.id);
+				return { ok: true as const, data: null };
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});
+
 export const testEndpointFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
 	.handler(async ({ data }): Promise<Result<{ message?: string }>> => {

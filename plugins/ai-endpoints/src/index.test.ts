@@ -8,6 +8,7 @@ import { makeD1 } from "@ktb/db/testing";
 import {
 	LlmFactory,
 	LlmPort,
+	PlatformLlm,
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
 } from "@ktb/eval-consultation";
@@ -22,6 +23,7 @@ import {
 	AiEndpoints,
 	AiEndpointsLive,
 	aiEndpointsPanelPlugin,
+	PlatformLlmLive,
 	type EndpointInput,
 } from "./index.ts";
 import { plugins as clientPlugins } from "./client.ts";
@@ -136,6 +138,7 @@ const make = (
 		Layer.merge(
 			Layer.mergeAll(
 				AiEndpointsLive,
+				PlatformLlmLive,
 				// Soft dep: `credentials: true` binds the credential store so
 				// `credential:<id>` refs resolve to raw keys.
 				...(credentials ? [CredentialsLive] : []),
@@ -264,6 +267,9 @@ describe("AiEndpoints", () => {
 		await expect(run(Effect.flatMap(AiEndpoints, (s) => s.resolveDefault()))).rejects.toMatchObject(
 			{ _tag: "Forbidden" },
 		);
+		await expect(
+			run(Effect.flatMap(AiEndpoints, (s) => s.setPlatformDefault(1))),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
 		await rt.dispose();
 	});
 });
@@ -489,5 +495,108 @@ describe("client plugin mirror", () => {
 		expect(chrome.map((c) => c.id)).toEqual(["ai-endpoints.sidebar"]);
 		const pages = clientPlugins.find((p) => p.id === "ai.endpoints.panel")?.panel?.pages ?? [];
 		expect(pages.map((p) => p.path)).toEqual(["/platform/ai/endpoints"]);
+	});
+});
+
+describe("PlatformLlm", () => {
+	const seed = async (
+		run: <A, E>(e: Effect.Effect<A, E, unknown>) => Promise<A>,
+		...inputs: readonly EndpointInput[]
+	) => {
+		const ids: number[] = [];
+		for (const input of inputs) {
+			const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(input)));
+			ids.push(id);
+		}
+		return ids;
+	};
+
+	it("resolves the enabled platform default into an LlmPort layer", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({ factory: "ok", captured });
+		await seed(run, { ...EP, scope: "platform", isDefault: true });
+		const layer = await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()));
+		expect(layer).not.toBeNull();
+		// The resolved layer actually binds a working port.
+		const out = await run(
+			Effect.flatMap(LlmPort, (llm) =>
+				llm.generate({ taskId: "t", role: "generator", input: "x", outputSchema: "Text" }),
+			).pipe(Effect.provide(layer!)),
+		);
+		expect(out.text).toBe("ok");
+		expect(captured[0]).toMatchObject({ kind: "openai", baseUrl: EP.baseUrl });
+		await rt.dispose();
+	});
+
+	it("answers null when no platform default exists — the env fallback path", async () => {
+		const { rt, run } = make({ factory: "ok" });
+		await seed(
+			run,
+			{ ...EP, name: "eval default", isDefault: true }, // eval scope ≠ platform
+			{ ...EP, name: "platform but not default", scope: "platform" },
+		);
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).toBeNull();
+		await rt.dispose();
+	});
+
+	it("answers null without a factory bound", async () => {
+		const { rt, run } = make();
+		await seed(run, { ...EP, scope: "platform", isDefault: true });
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).toBeNull();
+		await rt.dispose();
+	});
+
+	it("degrades to null when the factory rejects the descriptor", async () => {
+		const { rt, run } = make({ factory: "fail" });
+		await seed(run, { ...EP, scope: "platform", isDefault: true });
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).toBeNull();
+		await rt.dispose();
+	});
+
+	it("skips disabled defaults and setPlatformDefault swaps atomically", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({ factory: "ok", captured });
+		const [first, second] = await seed(
+			run,
+			{ ...EP, name: "first", scope: "platform", isDefault: true },
+			{ ...EP, name: "second" },
+		);
+		// Disabling the default skips it entirely.
+		await run(
+			Effect.flatMap(AiEndpoints, (s) =>
+				s.update({
+					...EP,
+					id: first,
+					name: "first",
+					scope: "platform",
+					isDefault: true,
+					enabled: false,
+				}),
+			),
+		);
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).toBeNull();
+
+		// Promoting the second endpoint flips scope + is_default in one
+		// batch — the disabled row keeps its stale flag cleared by the
+		// swap's WHERE clause? No: the swap clears platform defaults
+		// THEN flags the target, so exactly one platform default exists.
+		await run(Effect.flatMap(AiEndpoints, (s) => s.setPlatformDefault(second)));
+		const rows = await run(Effect.flatMap(AiEndpoints, (s) => s.list()));
+		const promoted = rows.find((r) => r.id === second);
+		expect(promoted?.scope).toBe("platform");
+		expect(promoted?.isDefault).toBe(true);
+		expect(rows.filter((r) => r.scope === "platform" && r.isDefault)).toHaveLength(1);
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).not.toBeNull();
+		expect(captured[0]?.baseUrl).toBe(EP.baseUrl);
+
+		// Re-promoting the first row (still disabled) clears the second —
+		// resolution then skips it for being disabled.
+		await run(Effect.flatMap(AiEndpoints, (s) => s.setPlatformDefault(first)));
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).toBeNull();
+		const after = await run(Effect.flatMap(AiEndpoints, (s) => s.list()));
+		expect(after.filter((r) => r.scope === "platform" && r.isDefault).map((r) => r.id)).toEqual([
+			first,
+		]);
+		await rt.dispose();
 	});
 });

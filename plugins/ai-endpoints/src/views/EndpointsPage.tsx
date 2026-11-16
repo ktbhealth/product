@@ -1,6 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { PencilIcon, PlusIcon, StarIcon, Trash2Icon } from "lucide-react";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -35,6 +35,7 @@ import {
 	listEndpointPresetsFn,
 	listEndpointsFn,
 	saveEndpointFn,
+	setPlatformDefaultEndpointFn,
 	testEndpointFn,
 } from "../fns.ts";
 import { aiEndpointMessages } from "../i18n.ts";
@@ -216,6 +217,19 @@ export function EndpointsPage({
 		void router.invalidate();
 	};
 
+	const setPlatformDefault = async (id: number) => {
+		setBusy(true);
+		setError(null);
+		const r = await setPlatformDefaultEndpointFn({ data: { id } });
+		setBusy(false);
+		if (r.ok) {
+			await refresh();
+			void router.invalidate();
+		} else {
+			setError(m.actionFailed);
+		}
+	};
+
 	const test = async (id: number) => {
 		setTestResult((prev) => ({ ...prev, [id]: "…" }));
 		const r = await testEndpointFn({ data: { id } });
@@ -268,6 +282,17 @@ export function EndpointsPage({
 									)}
 								</div>
 								<div className="flex shrink-0 gap-2">
+									{!(e.scope === "platform" && e.isDefault) && (
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={busy}
+											onClick={() => void setPlatformDefault(e.id)}
+										>
+											<StarIcon className="mr-1 size-3" />
+											{m.setPlatformDefault}
+										</Button>
+									)}
 									<Button variant="outline" size="sm" onClick={() => void test(e.id)}>
 										{m.test}
 									</Button>

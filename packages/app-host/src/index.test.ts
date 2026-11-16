@@ -5,6 +5,7 @@ import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { makeD1 } from "@ktb/db/testing";
 import { PluginStates } from "@ktb/platform/plugin-states";
+import { AI_ENDPOINTS_TEST_DDL } from "../../../plugins/ai-endpoints/src/index.ts";
 import {
 	NotificationsMarkAllRead,
 	NotificationsUnreadCount,
@@ -16,6 +17,7 @@ import { assertCaptchaConfigured, createApp, defaultVerificationEmail, plugins }
 const DDL = `
 CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE plugin_state (plugin_id TEXT PRIMARY KEY NOT NULL, enabled INTEGER DEFAULT true NOT NULL, config TEXT, updated_at INTEGER NOT NULL);
+${AI_ENDPOINTS_TEST_DDL}
 `;
 
 const env = {
@@ -304,6 +306,32 @@ describe("createApp", () => {
 				corrected: "Texto corrigido.",
 				engine: expect.stringContaining("workers-ai"),
 			});
+		});
+
+		it("prefers the platform-default endpoint over env providers (F2)", async () => {
+			// Seed a platform-scope default endpoint — the host binds
+			// LlmFactory via the always-eligible driver, so the row resolves
+			// to a chat layer; stub fetch so the chat completion succeeds.
+			await env.DB.prepare(
+				"INSERT INTO ai_endpoint (name, kind, base_url, model, scope, is_default, created_at) VALUES ('t', 'openai', 'https://llm.test', 'm', 'platform', 1, 0)",
+			).run();
+			vi.stubGlobal(
+				"fetch",
+				async () =>
+					new Response(
+						JSON.stringify({ choices: [{ message: { content: "  Texto corrigido.  " } }] }),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					),
+			);
+			try {
+				await expect(app.correctTranscript("texto cru")).resolves.toMatchObject({
+					corrected: "Texto corrigido.",
+					engine: expect.stringContaining("platform:"),
+				});
+			} finally {
+				vi.unstubAllGlobals();
+				await env.DB.prepare("DELETE FROM ai_endpoint").run();
+			}
 		});
 	});
 });

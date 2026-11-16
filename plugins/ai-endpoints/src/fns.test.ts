@@ -37,6 +37,7 @@ import {
 	listEndpointPresetsFn,
 	listEndpointsFn,
 	saveEndpointFn,
+	setPlatformDefaultEndpointFn,
 	testEndpointFn,
 } from "./fns.ts";
 
@@ -126,6 +127,9 @@ describe("ai-endpoints fns", () => {
 		await expect(listEndpointsFn({ data: undefined })).rejects.toThrow("unauthenticated");
 		await expect(listEndpointPresetsFn({ data: undefined })).rejects.toThrow("unauthenticated");
 		await expect(testEndpointFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
+		await expect(setPlatformDefaultEndpointFn({ data: { id: 1 } })).rejects.toThrow(
+			"unauthenticated",
+		);
 	});
 
 	it("returns { ok: false } when the grant is missing", async () => {
@@ -138,6 +142,7 @@ describe("ai-endpoints fns", () => {
 		});
 		expect(await deleteEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await testEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
+		expect(await setPlatformDefaultEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
 		allow = true;
 	});
 
@@ -179,6 +184,16 @@ describe("ai-endpoints fns", () => {
 		expect(
 			await saveEndpointFn({ data: { name: "bare-ep", kind: "openai", baseUrl: "u" } }),
 		).toMatchObject({ ok: true });
+
+		expect(await setPlatformDefaultEndpointFn({ data: { id } })).toEqual({
+			ok: true,
+			data: null,
+		});
+		const promoted = await listEndpointsFn({ data: undefined });
+		expect(promoted.ok && promoted.data.find((e) => e.id === id)).toMatchObject({
+			scope: "platform",
+			isDefault: true,
+		});
 
 		const okTest = await testEndpointFn({ data: { id } });
 		expect(okTest.ok).toBe(true);

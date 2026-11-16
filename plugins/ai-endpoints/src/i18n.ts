@@ -31,6 +31,7 @@ export interface AiEndpointMessages {
 	readonly acpHint: string;
 	readonly emptyEndpoints: string;
 	readonly actionFailed: string;
+	readonly setPlatformDefault: string;
 }
 
 const en: AiEndpointMessages = {
@@ -64,6 +65,7 @@ const en: AiEndpointMessages = {
 		"Connects a local agent over ACP (e.g. Claude Code). No API key needed — run `claude agent acp` and paste the session id.",
 	emptyEndpoints: "No endpoints — generation falls back to the template renderer.",
 	actionFailed: "Action failed — check permissions and try again.",
+	setPlatformDefault: "Set as platform default",
 };
 
 const ptBR: AiEndpointMessages = {
@@ -98,6 +100,7 @@ const ptBR: AiEndpointMessages = {
 		"Conecta um agente local via ACP (ex.: Claude Code). Sem API key — rode `claude agent acp` e cole o id de sessão.",
 	emptyEndpoints: "Sem endpoints — a geração usa o renderizador de template.",
 	actionFailed: "Ação falhou — verifique permissões e tente de novo.",
+	setPlatformDefault: "Definir como padrão da plataforma",
 };
 
 const es: AiEndpointMessages = {
@@ -121,6 +124,7 @@ const es: AiEndpointMessages = {
 	secretRefNone: "Ninguna",
 	secretRefCustom: "Env var personalizada",
 	actionFailed: "La acción falló — revisa permisos e intenta de nuevo.",
+	setPlatformDefault: "Establecer como predeterminado de la plataforma",
 };
 
 export const aiEndpointMessages = (locale: string): AiEndpointMessages =>
