@@ -16,7 +16,7 @@ type NewProps = ComponentProps<typeof NewConsultationPage>;
 /** Loader payload for /portal/clinician/consultations/* — the wildcard
  * page resolves `new` and `<id>` subpaths server-side and tags the
  * result so the component picks the right domain view. */
-export type ClinicianConsultationRecordData =
+type ClinicianConsultationRecordData =
 	| { readonly view: "new"; readonly patients: NewProps["initialPatients"] }
 	| {
 			readonly view: "detail";

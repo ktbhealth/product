@@ -23,10 +23,6 @@
 		"packages/db": {
 			"entry": ["scripts/**/*.mjs"]
 		},
-		"packages/app-host": {
-			// Ambient globals via /// <reference types> in src/env.d.ts.
-			"ignoreDependencies": ["@cloudflare/workers-types"]
-		},
 		"evals/*": {
 			// Suite manifests are loaded by file path at runtime
 			// (apps/eval/src/suites.ts scans evals/ recursively) — never
@@ -56,7 +52,7 @@
 			// from "@tanstack/react-router"`) and a
 			// vi.mock("@tanstack/react-start/server") factory — no static
 			// import for knip to count.
-			"ignoreDependencies": ["@tanstack/react-start", "@tanstack/react-router"]
+			"ignoreDependencies": []
 		}
 	}
 }
