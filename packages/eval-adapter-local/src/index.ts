@@ -445,12 +445,16 @@ export const makeLocalReportLayer = (filePath: string) =>
 				}),
 		}),
 	);
+// F3a split: the LLM adapter modules (chat.ts → ai-adapter-openai,
+// acp-transport.ts + llm.ts → ai-adapter-acp, spawned-agent ACP →
+// ai-adapter-node) live in dedicated packages now — re-exported here
+// so existing `@ktb/eval-adapter-local` consumers keep working.
+export * from "@ktb/ai-adapter-acp";
+export * from "@ktb/ai-adapter-node";
+export * from "@ktb/ai-adapter-openai";
 export * from "./tts.ts";
 export * from "./asr.ts";
-export * from "./acp-transport.ts";
-export * from "./chat.ts";
 export * from "./factory.ts";
-export * from "./llm.ts";
 export * from "./eval.ts";
 export * from "./systemone.ts";
 export * from "./runner.ts";

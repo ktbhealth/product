@@ -59,6 +59,8 @@ type EndpointForm = {
 	sessionId: string;
 	secretRef: string;
 	transport: string;
+	agentCmd: string;
+	sshHost: string;
 	scope: string;
 	isDefault: boolean;
 	timeoutMs: string;
@@ -106,6 +108,8 @@ const ENDPOINT_EMPTY: EndpointForm = {
 	sessionId: "",
 	secretRef: "",
 	transport: "ws",
+	agentCmd: "",
+	sshHost: "",
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: "60000",
@@ -121,6 +125,8 @@ const endpointFromCard = (e: EndpointCard): EndpointForm => ({
 	sessionId: e.sessionId ?? "",
 	secretRef: e.secretRef ?? "",
 	transport: e.transport ?? "ws",
+	agentCmd: e.agentCmd ?? "",
+	sshHost: e.sshHost ?? "",
 	scope: e.scope,
 	isDefault: e.isDefault,
 	timeoutMs: String(e.timeoutMs),
@@ -200,6 +206,12 @@ export function EndpointsPage({
 				...(epForm.secretRef !== "" ? { secretRef: epForm.secretRef } : {}),
 				...(epForm.kind === "acp" && epForm.transport !== ""
 					? { transport: epForm.transport as "ws" | "child" | "ssh" }
+					: {}),
+				...(epForm.kind === "acp" && epForm.transport !== "ws" && epForm.agentCmd !== ""
+					? { agentCmd: epForm.agentCmd }
+					: {}),
+				...(epForm.kind === "acp" && epForm.transport === "ssh" && epForm.sshHost !== ""
+					? { sshHost: epForm.sshHost }
 					: {}),
 				...(epForm.scope !== "" ? { scope: epForm.scope } : {}),
 				isDefault: epForm.isDefault,
@@ -383,6 +395,29 @@ export function EndpointsPage({
 										</Select>
 										<p className="mt-1 text-xs text-muted-foreground">{m.transportHint}</p>
 									</Field>
+									{epForm.transport !== "ws" && (
+										<div className="grid grid-cols-2 gap-3">
+											<Field>
+												<FieldLabel>{m.agentCmd}</FieldLabel>
+												<Input
+													value={epForm.agentCmd}
+													onChange={(e) => setEpForm({ ...epForm, agentCmd: e.target.value })}
+													placeholder="claude agent acp"
+												/>
+												<p className="mt-1 text-xs text-muted-foreground">{m.agentCmdHint}</p>
+											</Field>
+											{epForm.transport === "ssh" && (
+												<Field>
+													<FieldLabel>{m.sshHost}</FieldLabel>
+													<Input
+														value={epForm.sshHost}
+														onChange={(e) => setEpForm({ ...epForm, sshHost: e.target.value })}
+														placeholder="user@host"
+													/>
+												</Field>
+											)}
+										</div>
+									)}
 								</>
 							)}
 							<Field>

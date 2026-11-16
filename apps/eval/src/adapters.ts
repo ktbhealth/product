@@ -25,10 +25,9 @@ import * as Layer from "effect/Layer";
 
 import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
 import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
+import { makeAcpLlm, makeHttpAcpTransport, type AcpTransport } from "@ktb/ai-adapter-acp";
 import { makeWorkersAiAsr } from "@ktb/eval-adapter-cloud";
 import {
-	makeAcpLlm,
-	makeHttpAcpTransport,
 	makeJevEval,
 	makeLocalAsr,
 	makeLocalEvalStoreLayer,
@@ -36,11 +35,10 @@ import {
 	makeLocalStoreLayer,
 	makeLocalTts,
 	makeSystemOneEval,
-	type AcpTransport,
 } from "@ktb/eval-adapter-local";
 import { CANNED_ASR, CANNED_EDITS, CANNED_SCRIPT, stubAnswerOf } from "@ktb/eval-adapter-stub";
 
-export { makeHttpAcpTransport } from "@ktb/eval-adapter-local";
+export { makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
 
 // ---------- stub port layers (deterministic, zero I/O) ----------
 
@@ -188,7 +186,7 @@ export const makeReadAudioFile =
 				}),
 		});
 
-// The ACP HTTP transport lives in @ktb/eval-adapter-local — apps are
+// The ACP HTTP transport lives in @ktb/ai-adapter-acp — apps are
 // composition roots, not libraries: the same transport backs the
 // app-host `eval-llm-acp` driver.
 

@@ -60,6 +60,8 @@ const endpoint: EndpointCard = {
 	sessionId: null,
 	secretRef: null,
 	transport: null,
+	agentCmd: null,
+	sshHost: null,
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: 60_000,

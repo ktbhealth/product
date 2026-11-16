@@ -6,11 +6,18 @@
  * descriptor carries its own baseUrl/kind. `secretRef` names an env
  * var resolved HERE (the adapter edge, where process access is
  * allowed) — the plugin only ever sees the name, never the key.
+ *
+ * Dispatch (F3a): openai → @ktb/ai-adapter-openai, acp+ws →
+ * @ktb/ai-adapter-acp, acp+child/ssh → @ktb/ai-adapter-node (which
+ * fails typed under workerd — it can't spawn).
  */
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
+import { resolveNodeAcp } from "@ktb/ai-adapter-node";
+import { makeChatLlm } from "@ktb/ai-adapter-openai";
 import type { Driver } from "@ktb/driver-framework";
 
 import { PortError } from "@ktb/eval-core";
@@ -22,10 +29,6 @@ import {
 	type LlmEndpointPreset,
 } from "@ktb/eval-consultation";
 
-import { makeHttpAcpTransport } from "./acp-transport.ts";
-import { makeChatLlm } from "./chat.ts";
-import { makeAcpLlm } from "./llm.ts";
-
 const DEFAULT_TIMEOUT_MS = 60_000;
 const TEST_TIMEOUT_MS = 15_000;
 
@@ -35,16 +38,11 @@ const resolveDescriptor = (
 	const timeoutMs = d.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 	switch (d.kind) {
 		case "acp": {
-			// `ws` is the only transport this (workerd-compatible) adapter
-			// drives; child-process and ssh ACP need a Node runtime.
 			const transport = d.transport ?? "ws";
 			if (transport !== "ws") {
-				return Effect.fail(
-					new PortError({
-						port: "llm",
-						message: `transport ${transport} requires Node runtime — bind the node ACP driver`,
-					}),
-				);
+				// child/ssh spawn a local agent process — the Node-runtime
+				// adapter's job; it fails typed under workerd.
+				return resolveNodeAcp(d);
 			}
 			return Effect.succeed(
 				makeAcpLlm({
