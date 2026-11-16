@@ -103,13 +103,19 @@ const PATIENTS = [
 	{ id: 2, name: "João" },
 ];
 
-function renderPage(api = makeApi(), patients = PATIENTS, initialPatientId?: number) {
+function renderPage(
+	api = makeApi(),
+	patients = PATIENTS,
+	initialPatientId?: number,
+	portalBase?: string,
+) {
 	return render(
 		<NewConsultationPage
 			initialPatients={patients}
 			initialPatientId={initialPatientId}
 			api={api}
 			backend={backend}
+			portalBase={portalBase}
 		/>,
 	);
 }
@@ -186,6 +192,20 @@ describe("NewConsultationPage", () => {
 		// switching to another patient hides the shortcut
 		await choosePatient(user, "Maria");
 		expect(screen.queryByText("Complete the record")).toBeNull();
+	});
+
+	it("prefixes the complete-record link with portalBase", async () => {
+		const user = userEvent.setup();
+		const api = makeApi();
+		renderPage(api, PATIENTS, undefined, "/portal");
+		await user.type(screen.getByLabelText("New patient name"), "Ana");
+		await user.type(screen.getByLabelText("New patient age"), "40");
+		await user.click(screen.getByText("+ patient"));
+		await waitFor(() =>
+			expect(screen.getByText("Complete the record").getAttribute("href")).toBe(
+				"/portal/patients/7/edit",
+			),
+		);
 	});
 
 	it("requires an age for quick registration", async () => {
