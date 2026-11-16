@@ -18,7 +18,18 @@ vi.mock("@tanstack/react-router", async () => {
 	};
 });
 
+import type { KeyringService } from "@ktb/crypto/keyring";
+
+const mocks = vi.hoisted(() => ({ decryptPatients: vi.fn() }));
+// Real crypto needs WebCrypto (absent under jsdom) — the decrypt module
+// is unit-tested in ../zk.test.ts; here we stub its entry point.
+vi.mock("../zk.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../zk.ts")>();
+	return { ...actual, decryptPatients: mocks.decryptPatients };
+});
+
 import { PatientsPage, type PatientListItem } from "./PatientsPage.tsx";
+import type { PatientZkApi } from "../zk.ts";
 
 const BASE: PatientListItem = {
 	id: 1,
@@ -35,7 +46,10 @@ const item = (over: Partial<PatientListItem>): PatientListItem => ({ ...BASE, ..
 
 import type { PatientDeleteApi } from "./DeletePatientDialog.tsx";
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	mocks.decryptPatients.mockReset();
+});
 
 const actions = {
 	deleteApi: {
@@ -187,5 +201,82 @@ describe("PatientsPage", () => {
 
 		await user.clear(search);
 		expect(screen.getByText("Maria Silva")).toBeTruthy();
+	});
+
+	describe("PatientsPage under ZK (T-144)", () => {
+		const zkApi = (over: Partial<PatientZkApi> = {}): PatientZkApi => ({
+			devices: vi.fn(async () => []),
+			dekEnvelopes: vi.fn(async () => ({})),
+			grant: vi.fn(async () => ({ ok: true })),
+			...over,
+		});
+		const keyring = {} as unknown as KeyringService;
+
+		it("renders a locked, non-navigable card when the device has no grant", async () => {
+			const row = item({ name: "v1.YWFh.YmJi" });
+			mocks.decryptPatients.mockResolvedValue([row]);
+			render(
+				<PatientsPage locale="en" {...actions} zk={{ keyring, api: zkApi() }} patients={[row]} />,
+			);
+			expect(await screen.findByText("Encrypted record")).toBeTruthy();
+			expect(screen.getByText("Unlock it on an approved clinic device to view it.")).toBeTruthy();
+			// Opaque: no link into the record, no envelope text leaked.
+			expect(screen.queryByRole("link", { name: /v1\./ })).toBeNull();
+			expect(screen.queryByText("v1.YWFh.YmJi")).toBeNull();
+			expect(mocks.decryptPatients).toHaveBeenCalledWith(keyring, expect.anything(), [row]);
+		});
+
+		it("decrypts granted rows and re-sorts the decrypted names", async () => {
+			mocks.decryptPatients.mockImplementation(
+				async (_k: unknown, _a: unknown, rows: PatientListItem[]) =>
+					rows.map((r) =>
+						r.id === 1 ? { ...r, name: "Zelma Campos", birthDate: "1970-01-01" } : r,
+					),
+			);
+			render(
+				<PatientsPage
+					locale="en"
+					{...actions}
+					zk={{ keyring, api: zkApi() }}
+					patients={[item({ name: "v1.YWFh.YmJi" }), item({ id: 2, name: "Ana" })]}
+				/>,
+			);
+			expect(await screen.findByText("Zelma Campos")).toBeTruthy();
+			// Decrypted "Ana" sorts before "Zelma" despite wire order.
+			const names = screen.getAllByRole("link").map((a) => a.textContent);
+			expect(names.indexOf("Ana")).toBeLessThan(names.indexOf("Zelma Campos"));
+		});
+
+		it("keeps rows locked when the decrypt call fails", async () => {
+			mocks.decryptPatients.mockRejectedValue(new Error("offline"));
+			render(
+				<PatientsPage
+					locale="en"
+					{...actions}
+					zk={{ keyring, api: zkApi() }}
+					patients={[item({ name: "v1.YWFh.YmJi" })]}
+				/>,
+			);
+			expect(await screen.findByText("Encrypted record")).toBeTruthy();
+		});
+
+		it("ignores decrypt results arriving after unmount", async () => {
+			let resolve: ((rows: PatientListItem[]) => void) | undefined;
+			mocks.decryptPatients.mockImplementation(
+				() => new Promise<PatientListItem[]>((r) => (resolve = r)),
+			);
+			const { unmount } = render(
+				<PatientsPage
+					locale="en"
+					{...actions}
+					zk={{ keyring, api: zkApi() }}
+					patients={[item({ name: "v1.YWFh.YmJi" })]}
+				/>,
+			);
+			unmount();
+			resolve?.([item({ id: 1, name: "Late" })]);
+			await Promise.resolve();
+			expect(mocks.decryptPatients).toHaveBeenCalledOnce();
+		});
 	});
 });

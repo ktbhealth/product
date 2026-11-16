@@ -11,12 +11,37 @@ vi.mock("@tanstack/react-router", async () => {
 	};
 });
 
+import type { KeyringService } from "@ktb/crypto/keyring";
+
+const mocks = vi.hoisted(() => ({
+	decryptPatient: vi.fn(),
+	encryptPatientDraft: vi.fn(),
+	newPatientDek: vi.fn(),
+	patientDek: vi.fn(),
+}));
+// WebCrypto is absent under jsdom — stub the zk module's crypto entry
+// points (unit-tested in ../zk.test.ts) and keep real row detection.
+vi.mock("../zk.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../zk.ts")>();
+	return {
+		...actual,
+		decryptPatient: mocks.decryptPatient,
+		encryptPatientDraft: mocks.encryptPatientDraft,
+		newPatientDek: mocks.newPatientDek,
+		patientDek: mocks.patientDek,
+	};
+});
+
 import { makePatient } from "../testing.ts";
 import { PatientFormPage, type PatientFormApi } from "./PatientFormPage.tsx";
+import type { PatientZkApi } from "../zk.ts";
 
 type Save = PatientFormApi["save"];
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	vi.clearAllMocks();
+});
 
 const YEAR = new Date().getFullYear();
 
@@ -288,5 +313,212 @@ describe("PatientFormPage — pt-BR", () => {
 		expect(
 			await screen.findByText("Não foi possível salvar o paciente. Tente novamente."),
 		).toBeTruthy();
+	});
+});
+
+describe("PatientFormPage — ZK (T-144)", () => {
+	const zkApi: PatientZkApi = {
+		devices: vi.fn(async () => []),
+		dekEnvelopes: vi.fn(async () => ({})),
+		grant: vi.fn(async () => ({ ok: true })),
+	};
+	const keyring = {} as unknown as KeyringService;
+	const zk = { keyring, api: zkApi };
+	const dek = {} as CryptoKey;
+	const grant = { readerKind: "device" as const, readerPubkey: "pub-1", wrappedDek: "w1.x.y" };
+	const ciphered = makePatient({ id: 7, name: "v1.YWFh.YmJi", birthDate: "v1.Y2Jk" });
+
+	const fillRequired = async (user: User) => {
+		await user.type(input("Full name"), "Ana Souza");
+		await user.type(input("Age in years"), "40");
+	};
+
+	it("shows a spinner while the record decrypts, then mounts the form", async () => {
+		let resolve: ((p: typeof ciphered | null) => void) | undefined;
+		mocks.decryptPatient.mockImplementation(
+			() => new Promise<typeof ciphered | null>((r) => (resolve = r)),
+		);
+		render(
+			<PatientFormPage
+				patient={ciphered}
+				api={{ save: vi.fn<Save>() }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		expect(screen.getByRole("status")).toBeTruthy();
+		resolve?.(makePatient({ id: 7, name: "Decrypted Name", birthDate: "1984" }));
+		expect(await screen.findByDisplayValue("Decrypted Name")).toBeTruthy();
+	});
+
+	it("fails loud when the record cannot be decrypted", async () => {
+		mocks.decryptPatient.mockResolvedValue(null);
+		render(
+			<PatientFormPage
+				patient={ciphered}
+				api={{ save: vi.fn<Save>() }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		expect(
+			await screen.findByText("This record could not be decrypted on this device."),
+		).toBeTruthy();
+	});
+
+	it("fails loud when a ciphered record arrives without a zk context", async () => {
+		render(
+			<PatientFormPage
+				patient={ciphered}
+				api={{ save: vi.fn<Save>() }}
+				onSaved={vi.fn()}
+				locale="en"
+			/>,
+		);
+		expect(
+			await screen.findByText("This record could not be decrypted on this device."),
+		).toBeTruthy();
+		expect(mocks.decryptPatient).not.toHaveBeenCalled();
+	});
+
+	it("encrypts the draft and attaches grants on a ZK create", async () => {
+		mocks.newPatientDek.mockResolvedValue({ dek, grants: [grant] });
+		mocks.encryptPatientDraft.mockResolvedValue({
+			name: "v1.name",
+			birthDate: "v1.date",
+			ciphered: true,
+			active: true,
+		});
+		const save = vi.fn<Save>().mockResolvedValue({ ok: true, patient: { id: 9 } });
+		const onSaved = vi.fn();
+		const user = userEvent.setup();
+		render(<PatientFormPage api={{ save }} onSaved={onSaved} locale="en" zk={zk} />);
+		await fillRequired(user);
+		await user.click(screen.getByRole("button", { name: "Register patient" }));
+		await screen.findByDisplayValue("Ana Souza"); // settle
+		expect(mocks.newPatientDek).toHaveBeenCalledWith(keyring, zkApi);
+		expect(mocks.encryptPatientDraft).toHaveBeenCalledWith(
+			dek,
+			expect.objectContaining({ name: "Ana Souza" }),
+		);
+		expect(save).toHaveBeenCalledWith(
+			expect.objectContaining({ name: "v1.name", ciphered: true, grants: [grant] }),
+		);
+		expect(onSaved).toHaveBeenCalledWith(9);
+	});
+
+	it("reuses the record DEK on a ZK update", async () => {
+		mocks.patientDek.mockResolvedValue(dek);
+		mocks.encryptPatientDraft.mockResolvedValue({
+			name: "v1.new",
+			birthDate: "v1.date",
+			ciphered: true,
+			active: true,
+		});
+		const save = vi.fn<Save>().mockResolvedValue({ ok: true, patient: { id: 7 } });
+		const user = userEvent.setup();
+		render(
+			<PatientFormPage
+				patient={makePatient({ id: 7, birthDate: "1984" })}
+				api={{ save }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: "Save changes" }));
+		expect(mocks.patientDek).toHaveBeenCalledWith(keyring, zkApi, 7);
+		expect(mocks.newPatientDek).not.toHaveBeenCalled();
+		expect(save).toHaveBeenCalledWith(
+			expect.objectContaining({ name: "v1.new", grants: undefined }),
+		);
+	});
+
+	it("refuses to save when this device cannot unwrap the record DEK", async () => {
+		mocks.patientDek.mockResolvedValue(null);
+		const save = vi.fn<Save>();
+		const user = userEvent.setup();
+		render(
+			<PatientFormPage
+				patient={makePatient({ id: 7, birthDate: "1984" })}
+				api={{ save }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		await user.click(screen.getByRole("button", { name: "Save changes" }));
+		expect(
+			await screen.findByText("This record could not be decrypted on this device."),
+		).toBeTruthy();
+		expect(save).not.toHaveBeenCalled();
+	});
+});
+
+describe("PatientFormPage — ZK unmount branches", () => {
+	const zkApi: PatientZkApi = {
+		devices: vi.fn(async () => []),
+		dekEnvelopes: vi.fn(async () => ({})),
+		grant: vi.fn(async () => ({ ok: true })),
+	};
+	const zk = { keyring: {} as unknown as KeyringService, api: zkApi };
+	const ciphered = makePatient({ id: 7, name: "v1.YWFh.YmJi", birthDate: "v1.Y2Jk" });
+
+	it("shows the localized failure when decrypt rejects", async () => {
+		mocks.decryptPatient.mockRejectedValue(new Error("no key"));
+		render(
+			<PatientFormPage
+				patient={ciphered}
+				api={{ save: vi.fn<Save>() }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		expect(
+			await screen.findByText("This record could not be decrypted on this device."),
+		).toBeTruthy();
+	});
+
+	it("ignores a decrypt result arriving after unmount", async () => {
+		let resolve: ((p: typeof ciphered | null) => void) | undefined;
+		mocks.decryptPatient.mockImplementation(
+			() => new Promise<typeof ciphered | null>((r) => (resolve = r)),
+		);
+		const { unmount } = render(
+			<PatientFormPage
+				patient={ciphered}
+				api={{ save: vi.fn<Save>() }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		unmount();
+		resolve?.(ciphered);
+		await Promise.resolve();
+		expect(mocks.decryptPatient).toHaveBeenCalledOnce();
+	});
+
+	it("ignores a decrypt rejection arriving after unmount", async () => {
+		let reject: ((e: unknown) => void) | undefined;
+		mocks.decryptPatient.mockImplementation(
+			() => new Promise<typeof ciphered | null>((_r, j) => (reject = j)),
+		);
+		const { unmount } = render(
+			<PatientFormPage
+				patient={ciphered}
+				api={{ save: vi.fn<Save>() }}
+				onSaved={vi.fn()}
+				locale="en"
+				zk={zk}
+			/>,
+		);
+		unmount();
+		reject?.(new Error("gone"));
+		await Promise.resolve();
+		expect(mocks.decryptPatient).toHaveBeenCalledOnce();
 	});
 });

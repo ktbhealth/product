@@ -29,11 +29,32 @@ const ApproveInput = Schema.Struct({
 	clinicKeyId: Schema.Number,
 	wrappedMasterKey: Schema.NonEmptyString,
 });
+/** entityId rides the wire as number|string — the service stringifies. */
+const EntityId = Schema.Union([Schema.Number, Schema.NonEmptyString]);
+const GrantsInput = Schema.Struct({
+	entityType: Schema.NonEmptyString,
+	entityId: EntityId,
+	grants: Schema.Array(
+		Schema.Struct({
+			readerKind: Schema.Literals(["device", "patient"]),
+			readerPubkey: Schema.NonEmptyString,
+			readerId: Schema.optionalKey(Schema.NullishOr(Schema.String)),
+			wrappedDek: Schema.NonEmptyString,
+		}),
+	),
+});
+const DekEnvelopesInput = Schema.Struct({
+	entityType: Schema.NonEmptyString,
+	entityIds: Schema.Array(EntityId),
+	wrapPublicKey: Schema.NonEmptyString,
+});
 
 const decodePubkeys = Schema.decodeUnknownSync(PubkeysInput);
 const decodeEnrollment = Schema.decodeUnknownSync(EnrollmentInput);
 const decodeDeviceId = Schema.decodeUnknownSync(DeviceIdInput);
 const decodeApprove = Schema.decodeUnknownSync(ApproveInput);
+const decodeGrants = Schema.decodeUnknownSync(GrantsInput);
+const decodeDekEnvelopes = Schema.decodeUnknownSync(DekEnvelopesInput);
 
 type Result<T> = { readonly ok: true; readonly data: T } | { readonly ok: false };
 
@@ -166,6 +187,62 @@ export const vaultRevokeDeviceFn = createServerFn({ method: "POST" })
 					Effect.map((device) => ({ ok: true as const, data: device })),
 					denyToFalse({ ok: false as const }),
 				);
+			}),
+		);
+	});
+
+/**
+ * Record DEK grants (T-144): the client wraps a record's DEK to each
+ * authorized reader pubkey and POSTs only the `w1.` envelopes —
+ * `readerKind` is "device" (clinic members) or "patient" (portal).
+ */
+export const vaultGrantAccessFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeGrants(input))
+	.handler(async ({ data }) => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const tenantId = yield* boundTenantId;
+				if (tenantId === null) return { ok: false as const };
+				const vault = yield* Vault;
+				return yield* vault.grantAccess({ tenantId, ...data }).pipe(
+					Effect.map((rows) => ({ ok: true as const, data: rows })),
+					denyToFalse({ ok: false as const }),
+				);
+			}),
+		);
+	});
+
+/**
+ * The caller's wrapped DEK envelopes for a batch of records, keyed by
+ * entityId — one round-trip for a whole list page (T-144). Records the
+ * caller cannot read are simply absent from the map.
+ */
+export const vaultDekEnvelopesFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodeDekEnvelopes(input))
+	.handler(async ({ data }): Promise<Record<string, string>> => {
+		const user = await getSessionUser();
+		if (!user) return {};
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const tenantId = yield* boundTenantId;
+				if (tenantId === null) return {};
+				const vault = yield* Vault;
+				const out: Record<string, string> = {};
+				for (const entityId of data.entityIds) {
+					const envelope = yield* vault
+						.dekEnvelope({
+							tenantId,
+							entityType: data.entityType,
+							entityId,
+							readerPubkey: data.wrapPublicKey,
+						})
+						.pipe(denyToFalse(null));
+					if (envelope !== null) out[String(entityId)] = envelope;
+				}
+				return out;
 			}),
 		);
 	});
