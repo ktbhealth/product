@@ -5,7 +5,7 @@
  */
 export const EVAL_LOCALES = ["en", "pt-BR", "es"] as const;
 export type EvalLocale = (typeof EVAL_LOCALES)[number];
-export const BASE_LOCALE: EvalLocale = "en";
+const BASE_LOCALE: EvalLocale = "en";
 
 export interface EvalMessages {
 	readonly title: string;
