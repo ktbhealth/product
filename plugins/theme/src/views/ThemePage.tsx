@@ -25,7 +25,9 @@ import { themeMessages } from "../i18n.ts";
 import { contrastReport, deriveThemeTokens, type ContrastPair } from "../palette.ts";
 import type {
 	ResolvedTheme,
+	ThemeAssetKind,
 	ThemeFontConfig,
+	ThemeFontSlot,
 	ThemeScopeKind,
 	ThemeSeeds,
 	ThemeSummary,
@@ -222,6 +224,15 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	const [busy, setBusy] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 
+	// Phase 4 asset uploads — target an EXISTING theme row (uploads link
+	// to theme_assets.theme_id; publish first for a new scope).
+	const [assetThemeId, setAssetThemeId] = useState<number | null>(themes[0]?.id ?? null);
+	const [assetKind, setAssetKind] = useState<ThemeAssetKind>("logo-light");
+	const [assetFile, setAssetFile] = useState<File | null>(null);
+	const [assetFontFamily, setAssetFontFamily] = useState("");
+	const [assetFontSlot, setAssetFontSlot] = useState<ThemeFontSlot>("sans");
+	const [googleFamily, setGoogleFamily] = useState("");
+
 	// Portal instances offered as scope-id suggestions (from the
 	// registry handed to every panel page via ctx.plugins).
 	const portalOptions = useMemo(
@@ -314,6 +325,53 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 		try {
 			await setThemePreviewFn({ data: { themeId: id } });
 			window.location.reload();
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const uploadAsset = async () => {
+		if (assetThemeId === null || assetFile === null) return;
+		setBusy("asset-upload");
+		setNotice(null);
+		try {
+			const form = new FormData();
+			form.set("file", assetFile);
+			form.set("themeId", String(assetThemeId));
+			form.set("kind", assetKind);
+			if (assetKind === "font") {
+				form.set("family", assetFontFamily.trim() || assetFile.name.replace(/\.[^.]+$/, ""));
+				form.set("slot", assetFontSlot);
+			}
+			const res = await fetch("/api/theme/assets", { method: "POST", body: form });
+			if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+			setAssetFile(null);
+			setNotice(t.assetUploaded);
+		} catch {
+			setNotice(t.assetUploadError);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const fetchGoogleFont = async () => {
+		if (assetThemeId === null || googleFamily.trim() === "") return;
+		setBusy("asset-google");
+		setNotice(null);
+		try {
+			const res = await fetch("/api/theme/fonts", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					themeId: assetThemeId,
+					family: googleFamily.trim(),
+					slot: assetFontSlot,
+				}),
+			});
+			if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+			setNotice(t.assetUploaded);
+		} catch {
+			setNotice(t.assetGoogleError);
 		} finally {
 			setBusy(null);
 		}
@@ -479,11 +537,114 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 							placeholder={t.appNamePlaceholder}
 						/>
 					</div>
-					{/* TODO(Phase 4): logo/favicon/og-image uploads + derived
-					    variants land with the theme-assets pipeline — until
-					    then brand asset refs are managed as data. */}
 					<p className="text-xs text-muted-foreground">{t.assetTodo}</p>
 				</div>
+
+				<section className="space-y-3 rounded-lg border border-border p-4">
+					<h2 className="text-sm font-medium">{t.assetsTitle}</h2>
+					<div className="grid gap-3 md:grid-cols-4">
+						<div className="space-y-1">
+							<Label htmlFor="asset-theme" className="text-xs">
+								{t.assetThemeLabel}
+							</Label>
+							<NativeSelect
+								id="asset-theme"
+								value={assetThemeId ?? ""}
+								onChange={(e) => setAssetThemeId(Number(e.target.value) || null)}
+							>
+								{themes.map((theme) => (
+									<NativeSelectOption key={theme.id} value={theme.id}>
+										{theme.appName ?? `${theme.scope}#${theme.id}`}
+									</NativeSelectOption>
+								))}
+							</NativeSelect>
+						</div>
+						<div className="space-y-1">
+							<Label htmlFor="asset-kind" className="text-xs">
+								{t.assetKindLabel}
+							</Label>
+							<NativeSelect
+								id="asset-kind"
+								value={assetKind}
+								onChange={(e) => setAssetKind(e.target.value as ThemeAssetKind)}
+							>
+								{(
+									["logo-light", "logo-dark", "wordmark", "favicon", "og-image", "font"] as const
+								).map((k) => (
+									<NativeSelectOption key={k} value={k}>
+										{k}
+									</NativeSelectOption>
+								))}
+							</NativeSelect>
+						</div>
+						{assetKind === "font" ? (
+							<>
+								<div className="space-y-1">
+									<Label htmlFor="asset-font-family" className="text-xs">
+										{t.assetFontFamily}
+									</Label>
+									<Input
+										id="asset-font-family"
+										value={assetFontFamily}
+										onChange={(e) => setAssetFontFamily(e.target.value)}
+										placeholder="Inter"
+									/>
+								</div>
+								<div className="space-y-1">
+									<Label htmlFor="asset-font-slot" className="text-xs">
+										{t.assetFontSlot}
+									</Label>
+									<NativeSelect
+										id="asset-font-slot"
+										value={assetFontSlot}
+										onChange={(e) => setAssetFontSlot(e.target.value as ThemeFontSlot)}
+									>
+										<NativeSelectOption value="sans">sans</NativeSelectOption>
+										<NativeSelectOption value="heading">heading</NativeSelectOption>
+										<NativeSelectOption value="mono">mono</NativeSelectOption>
+									</NativeSelect>
+								</div>
+							</>
+						) : null}
+						<div className="space-y-1">
+							<Label htmlFor="asset-file" className="text-xs">
+								{t.assetFileLabel}
+							</Label>
+							<Input
+								id="asset-file"
+								type="file"
+								onChange={(e) => setAssetFile(e.target.files?.[0] ?? null)}
+							/>
+						</div>
+					</div>
+					<div className="flex flex-wrap items-center gap-2">
+						<Button
+							onClick={() => void uploadAsset()}
+							disabled={busy !== null || assetThemeId === null || assetFile === null}
+						>
+							{busy === "asset-upload" ? <Spinner className="size-4" /> : null}
+							{busy === "asset-upload" ? t.assetUploading : t.assetUpload}
+						</Button>
+						<span className="text-xs text-muted-foreground">{t.assetTodo}</span>
+					</div>
+					<div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+						<Input
+							value={googleFamily}
+							onChange={(e) => setGoogleFamily(e.target.value)}
+							placeholder="Inter"
+							className="w-48 text-xs"
+							aria-label={t.assetFontFamily}
+						/>
+						<Button
+							variant="outline"
+							onClick={() => void fetchGoogleFont()}
+							disabled={busy !== null || assetThemeId === null || googleFamily.trim() === ""}
+						>
+							{busy === "asset-google" ? <Spinner className="size-4" /> : null}
+							{busy === "asset-google" ? t.assetGoogleFetching : t.assetGoogleFetch}
+						</Button>
+					</div>
+				</section>
 
 				<div className="space-y-3">
 					<h3 className="text-sm font-medium">{t.previewTitle}</h3>

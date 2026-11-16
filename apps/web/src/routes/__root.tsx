@@ -212,6 +212,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			await authClient.signOut();
 			window.location.assign("/");
 		},
+		// Resolved theme for brand chrome (PL-006 phase 7) — the
+		// theme.brand contribution renders it; null only when the
+		// loader's theme resolution came back empty (console routes
+		// resolve their own instance theme instead).
+		theme,
 	};
 	const entries = (region: string) => collectChrome(visiblePlugins, region, pathname);
 	const renderEntry = (entry: ChromeContribution): ReactNode => {

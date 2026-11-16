@@ -114,6 +114,14 @@ describe("PortalShell", () => {
 		expect(onSignOut).toHaveBeenCalledTimes(1);
 	});
 
+	it("renders an empty brand slot when no brand is provided (PL-006)", () => {
+		// Brand lives in theme data — the shell has no hardcoded
+		// wordmark fallback; only the host-owned instance badge stays.
+		renderShell();
+		expect(screen.queryByText("KTB")).toBeNull();
+		expect(screen.getAllByText("Platform").length).toBeGreaterThan(0);
+	});
+
 	it("renders a custom brand in the fixed sidebar slot and keeps the badge", () => {
 		renderShell({ brand: <span data-testid="brand-mark">Acme Health</span> });
 		expect(screen.getByTestId("brand-mark")).toBeDefined();

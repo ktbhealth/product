@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
 	user: null as { name?: string; email?: string; patientOnly?: boolean } | null,
 	pluginStates: null as { enabled: string[] } | null,
 	enabledIds: [] as string[],
+	theme: null as unknown,
 	chromeExtra: [] as {
 		id: string;
 		region: string;
@@ -25,6 +26,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 			useLoaderData: () => ({
 				user: state.user,
 				pluginStates: state.pluginStates ?? { enabled: state.enabledIds },
+				theme: state.theme,
 			}),
 		}),
 		useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) => {
@@ -63,18 +65,23 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] })),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
-vi.mock("@ktb/theme/fns", () => ({
-	themeScopeFn: vi.fn(async () => null),
-}));
+// The built-in KTB default stands in for "a theme resolved" so the
+// theme.brand chrome contribution has brand data to render.
+vi.mock("@ktb/theme/fns", async () => {
+	const { KTB_DEFAULT_THEME } = await import("@ktb/theme/default-theme");
+	return { themeScopeFn: vi.fn(async () => KTB_DEFAULT_THEME) };
+});
 vi.mock("../styles.css?url", () => ({ default: "/styles.css" }));
 
 import { plugins } from "#/plugins.ts";
+import { KTB_DEFAULT_THEME } from "@ktb/theme/default-theme";
 import { Route } from "./__root.tsx";
 
 // Populated after the registry import resolves — the react-router mock
 // reads it lazily inside useLoaderData (importing #/plugins.ts inside
 // the mock factory would deadlock on the circular client manifests).
 state.enabledIds = plugins.map((p) => p.id);
+state.theme = KTB_DEFAULT_THEME;
 
 type RootOpts = {
 	shellComponent: (p: { children: ReactNode }) => ReactElement;
@@ -92,6 +99,7 @@ afterEach(() => {
 	state.pathname = "/";
 	state.user = null;
 	state.pluginStates = null;
+	state.theme = KTB_DEFAULT_THEME;
 	state.chromeExtra = [];
 });
 
@@ -100,7 +108,7 @@ describe("root route", () => {
 		await expect(opts.loader()).resolves.toEqual({
 			user: null,
 			pluginStates: { enabled: [] },
-			theme: null,
+			theme: KTB_DEFAULT_THEME,
 		});
 		const head = opts.head();
 		expect(head.links).toEqual([{ rel: "stylesheet", href: "/styles.css" }]);
@@ -134,7 +142,7 @@ describe("root document", () => {
 
 	it("renders the plugin-owned chrome regions from the real registry", () => {
 		const html = render();
-		// site.chrome → app.header.brand
+		// theme.brand → app.header.brand (PL-006: brand lives in theme data)
 		expect(html).toContain("KTB Health");
 		expect(html).toContain('href="/"');
 		// patients/consultations chrome → app.header.nav

@@ -171,13 +171,21 @@ function PlatformLayout() {
 						: [],
 			)
 		: undefined;
-	// Brand slot (P-082): resolved theme's brand mark plus any
-	// `portal.brand` chrome components scoped to this instance. Absent
-	// both → PortalShell falls back to the host-owned "KTB" wordmark.
-	const chromeProps = portalChromeProps(user, locale, visiblePlugins, async () => {
-		await authClient.signOut();
-		window.location.assign("/");
-	});
+	// Brand slot (P-082/PL-006): resolved theme's brand mark plus any
+	// `portal.brand` chrome components scoped to this instance. The
+	// theme resolves to the built-in KTB default when no row matches,
+	// so brand data is always present; PortalShell renders an empty
+	// slot only if a theme carries no brand at all.
+	const chromeProps = portalChromeProps(
+		user,
+		locale,
+		visiblePlugins,
+		async () => {
+			await authClient.signOut();
+			window.location.assign("/");
+		},
+		theme,
+	);
 	const brandComponents = collectChrome(
 		visiblePlugins,
 		"portal.brand",

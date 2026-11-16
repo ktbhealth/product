@@ -65,6 +65,19 @@ export interface ThemeMessages {
 	readonly enable: string;
 	readonly disable: string;
 	readonly assetTodo: string;
+	readonly assetsTitle: string;
+	readonly assetThemeLabel: string;
+	readonly assetKindLabel: string;
+	readonly assetFileLabel: string;
+	readonly assetUpload: string;
+	readonly assetUploading: string;
+	readonly assetUploaded: string;
+	readonly assetUploadError: string;
+	readonly assetFontFamily: string;
+	readonly assetFontSlot: string;
+	readonly assetGoogleFetch: string;
+	readonly assetGoogleFetching: string;
+	readonly assetGoogleError: string;
 	readonly bannerText: string;
 	readonly bannerExit: string;
 	readonly headerLabel: string;
@@ -134,6 +147,19 @@ const en: ThemeMessages = {
 	disable: "Disable",
 	assetTodo:
 		"Asset uploads (logo, favicon, fonts) arrive with the async pipeline — manage URLs in the brand fields for now.",
+	assetsTitle: "Asset uploads",
+	assetThemeLabel: "Theme",
+	assetKindLabel: "Asset kind",
+	assetFileLabel: "File",
+	assetUpload: "Upload",
+	assetUploading: "Uploading…",
+	assetUploaded: "Upload queued — variants are generated asynchronously.",
+	assetUploadError: "Upload failed",
+	assetFontFamily: "Font family",
+	assetFontSlot: "Font slot",
+	assetGoogleFetch: "Fetch from Google Fonts",
+	assetGoogleFetching: "Fetching…",
+	assetGoogleError: "Font fetch failed",
 	bannerText: "Theme preview active",
 	bannerExit: "Exit preview",
 	headerLabel: "Theme",
@@ -203,6 +229,19 @@ const ptBR: ThemeMessages = {
 	disable: "Desativar",
 	assetTodo:
 		"Uploads de assets (logo, favicon, fontes) chegam com o pipeline assíncrono — gerencie URLs nos campos de marca por enquanto.",
+	assetsTitle: "Uploads de assets",
+	assetThemeLabel: "Tema",
+	assetKindLabel: "Tipo de asset",
+	assetFileLabel: "Arquivo",
+	assetUpload: "Enviar",
+	assetUploading: "Enviando…",
+	assetUploaded: "Upload na fila — variantes são geradas de forma assíncrona.",
+	assetUploadError: "Falha no upload",
+	assetFontFamily: "Família da fonte",
+	assetFontSlot: "Slot da fonte",
+	assetGoogleFetch: "Buscar no Google Fonts",
+	assetGoogleFetching: "Buscando…",
+	assetGoogleError: "Falha ao buscar fonte",
 	bannerText: "Pré-visualização de tema ativa",
 	bannerExit: "Sair da pré-visualização",
 	headerLabel: "Tema",
@@ -274,6 +313,19 @@ const es: ThemeMessages = {
 	disable: "Desactivar",
 	assetTodo:
 		"Las subidas de assets (logo, favicon, fuentes) llegan con el pipeline asíncrono — gestione URLs en los campos de marca por ahora.",
+	assetsTitle: "Subidas de assets",
+	assetThemeLabel: "Tema",
+	assetKindLabel: "Tipo de asset",
+	assetFileLabel: "Archivo",
+	assetUpload: "Subir",
+	assetUploading: "Subiendo…",
+	assetUploaded: "Subida en cola — las variantes se generan de forma asíncrona.",
+	assetUploadError: "Error en la subida",
+	assetFontFamily: "Familia de la fuente",
+	assetFontSlot: "Espacio de la fuente",
+	assetGoogleFetch: "Obtener de Google Fonts",
+	assetGoogleFetching: "Obteniendo…",
+	assetGoogleError: "Error al obtener la fuente",
 	bannerText: "Vista previa de tema activa",
 	bannerExit: "Salir de la vista previa",
 	headerLabel: "Tema",

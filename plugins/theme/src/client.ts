@@ -3,6 +3,7 @@ import { PaletteIcon } from "lucide-react";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { ThemePlatformPage } from "./platform-page.tsx";
+import { ThemeAppBrand } from "./views/ThemeAppBrand.tsx";
 import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
 
 /**
@@ -17,6 +18,18 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
 export const themeServicesPlugin = definePlugin({
 	id: "theme.services",
 	requiredDeps: ["platform.admin"],
+});
+
+export const themeBrandPlugin = definePlugin({
+	id: "theme.brand",
+	requiredDeps: ["theme.services"],
+	chrome: [
+		{
+			id: "theme.app-brand",
+			region: "app.header.brand",
+			content: { kind: "component", component: ThemeAppBrand },
+		},
+	],
 });
 
 export const themePanelPlugin = definePlugin({
@@ -55,13 +68,22 @@ export const themeChromePlugin = definePlugin({
 	],
 });
 
+/** Server-only route plugin (Phase 4 asset pipeline) — mirrored as a
+ * stub like jobs.routes/consultations.routes so registry parity holds. */
+const themeRoutesPlugin = definePlugin({
+	id: "theme.routes",
+	requiredDeps: ["theme.services"],
+});
+
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	themeServicesPlugin,
+	themeBrandPlugin,
 	themePanelPlugin,
 	themeHeaderPlugin,
 	themeChromePlugin,
+	themeRoutesPlugin,
 ];
 
 // Client-safe re-exports — pure helpers and wire types only. i18n
@@ -107,4 +129,10 @@ export type {
 export { THEME_PREVIEW_COOKIE, THEME_PREVIEW_MAX_AGE } from "./types.ts";
 export { ThemePlatformPage } from "./platform-page.tsx";
 export type { ThemePageData } from "./platform-page.tsx";
-export { ThemeHeaderAction, ThemeBrandMark, ThemePreviewBanner, ThemePage } from "./views/index.ts";
+export {
+	ThemeHeaderAction,
+	ThemeAppBrand,
+	ThemeBrandMark,
+	ThemePreviewBanner,
+	ThemePage,
+} from "./views/index.ts";
