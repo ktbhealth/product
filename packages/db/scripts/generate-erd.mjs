@@ -59,6 +59,14 @@ const DOMAINS = [
 		tables: ["record_versions"],
 	},
 	{
+		id: "vault",
+		title: "Vault",
+		owner: "`plugins/vault`",
+		description:
+			"Zero-knowledge key custody — wrapped clinic keys and per-entity data encryption key grants.",
+		tables: ["clinic_keys", "entity_deks"],
+	},
+	{
 		id: "notifications",
 		title: "Notifications",
 		owner: "`plugins/notifications`",

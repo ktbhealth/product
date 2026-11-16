@@ -149,11 +149,11 @@ export function AdminPatientsPage({
 															{p.name}
 														</Link>
 													)}
-												{p.synthetic === true && (
-													<Badge variant="outline" className="ml-2">
-														{t.admin.syntheticBadge}
-													</Badge>
-												)}
+													{p.synthetic === true && (
+														<Badge variant="outline" className="ml-2">
+															{t.admin.syntheticBadge}
+														</Badge>
+													)}
 												</TableCell>
 												<TableCell>{p.ownerName ?? p.ownerEmail ?? "—"}</TableCell>
 												<TableCell className="text-xs text-muted-foreground">{p.ownerId}</TableCell>
