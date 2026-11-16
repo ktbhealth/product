@@ -58,15 +58,6 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 }));
-// Theme resolution is a server fn — stub it so the loader stays pure.
-vi.mock("@ktb/theme/fns", () => ({
-	themeScopeFn: vi.fn(async () => null),
-	listThemesFn: vi.fn(async () => []),
-	getThemeFn: vi.fn(async () => null),
-	publishThemeFn: vi.fn(async () => ({})),
-	setThemeEnabledFn: vi.fn(async () => ({ ok: true })),
-	setThemePreviewFn: vi.fn(async () => ({ ok: true })),
-}));
 
 let loaderData: unknown = { patients: [], consultations: [] };
 let pathname = "/platform";
@@ -212,7 +203,6 @@ describe("/platform layout", () => {
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
 			audiences: [],
-			theme: null,
 			deniedPaths: [],
 		});
 	});
@@ -227,7 +217,6 @@ describe("/platform layout", () => {
 			audioJobs: [],
 			notifications: [],
 			audiences: [],
-			theme: null,
 			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
@@ -287,6 +276,36 @@ describe("/platform layout", () => {
 		render(createElement(component(PlatformRoute)));
 		// Matching entries still render; mismatched kinds are dropped.
 		expect(screen.getByTestId("platform-outlet")).toBeTruthy();
+	});
+
+	it("lists every portal instance the session's audiences admit", () => {
+		// platform-admin admits the "platform" instance — the switcher
+		// list maps admitted entries to shell instances (P-081).
+		loaderData = { audioJobs: [], notifications: [], audiences: ["platform-admin"] };
+		render(createElement(component(PlatformRoute)));
+		expect(screen.getByTestId("platform-outlet")).toBeTruthy();
+	});
+
+	it("falls back to a barebones platform instance when none is registered", async () => {
+		// platformEntry?.instance ?? fallback — re-import the route with
+		// an empty portal instance registry to cover the fallback.
+		vi.resetModules();
+		vi.doMock("#/lib/registry.ts", async (importOriginal) => {
+			const actual = await importOriginal<typeof import("#/lib/registry.ts")>();
+			return { ...actual, portalInstances: [] };
+		});
+		try {
+			const { Route: R } = await import("./platform.tsx");
+			render(
+				createElement(
+					(R as unknown as { options: { component: () => ReactElement } }).options.component,
+				),
+			);
+			expect(screen.getByTestId("platform-outlet")).toBeTruthy();
+		} finally {
+			vi.doUnmock("#/lib/registry.ts");
+			vi.resetModules();
+		}
 	});
 
 	it("stays silent outside dev", async () => {

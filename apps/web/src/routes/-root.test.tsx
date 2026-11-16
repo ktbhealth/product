@@ -62,10 +62,6 @@ vi.mock("#/lib/fns.ts", () => ({
 	sessionFn: vi.fn(async () => null),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] })),
 }));
-// Theme resolution is a server fn — stub it so the loader stays pure.
-vi.mock("@ktb/theme/fns", () => ({
-	themeScopeFn: vi.fn(async () => null),
-}));
 vi.mock("../styles.css?url", () => ({ default: "/styles.css" }));
 
 import { plugins } from "#/plugins.ts";
@@ -100,7 +96,6 @@ describe("root route", () => {
 		await expect(opts.loader()).resolves.toEqual({
 			user: null,
 			pluginStates: { enabled: [] },
-			theme: null,
 		});
 		const head = opts.head();
 		expect(head.links).toEqual([{ rel: "stylesheet", href: "/styles.css" }]);
@@ -201,6 +196,25 @@ describe("root document", () => {
 			expect(html).toContain('<div id="child">page</div>');
 			expect(html).not.toContain("<header");
 			expect(html).not.toContain("<footer");
+		}
+	});
+
+	it("treats contributed portal instance paths as console surfaces", () => {
+		for (const pathname of ["/portal/clinician", "/portal/clinician/patients"]) {
+			state.pathname = pathname;
+			const html = render();
+			expect(html).toContain('<div id="child">page</div>');
+			expect(html).not.toContain("<header");
+			expect(html).not.toContain("<footer");
+		}
+	});
+
+	it("keeps marketing chrome on /portal paths that are not instances", () => {
+		for (const pathname of ["/portal", "/portal/", "/portal/not-an-instance"]) {
+			state.pathname = pathname;
+			const html = render();
+			expect(html).toContain("<header");
+			expect(html).toContain("<footer");
 		}
 	});
 

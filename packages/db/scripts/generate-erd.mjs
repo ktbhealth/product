@@ -106,8 +106,8 @@ const DOMAINS = [
 		title: "Auth",
 		owner: "`packages/db/src/auth.ts` (better-auth)",
 		description:
-			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (eval credentials).",
-		tables: ["account", "apikey", "session", "user", "verification"],
+			"better-auth core tables: users, sessions, OAuth accounts and verification tokens.",
+		tables: ["account", "session", "user", "verification"],
 	},
 	{
 		id: "rbac",
@@ -133,28 +133,12 @@ const DOMAINS = [
 		tables: ["job_runs"],
 	},
 	{
-		id: "theme",
-		title: "Theme",
-		owner: "`plugins/theme`",
-		description:
-			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline stub.",
-		tables: ["theme_assets", "theme_definitions"],
-	},
-	{
 		id: "eval-validator",
 		title: "Eval validator",
 		owner: "`plugins/eval-validator`",
 		description:
 			"Persona generation and eval run tracking — generated patient+doctor pairs awaiting review, and per-sample run metrics.",
 		tables: ["eval_persona", "eval_persona_batch", "eval_run", "eval_run_sample"],
-	},
-	{
-		id: "eval-persona",
-		title: "Eval persona",
-		owner: "`plugins/eval-persona`",
-		description:
-			"Eval lab surfaces — reusable persona definitions, LLM endpoints and persona instances with their items.",
-		tables: ["eval_instance", "eval_instance_item", "eval_llm_endpoint", "eval_persona_def"],
 	},
 ];
 
