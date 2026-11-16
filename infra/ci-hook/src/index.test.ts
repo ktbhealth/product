@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import worker, { type Env } from "./index.ts";
 
@@ -45,6 +45,15 @@ const workflowRun = (overrides: Record<string, unknown> = {}) =>
 		},
 		...overrides,
 	});
+
+function postToken(env: Env, body?: string, auth?: string | null): Promise<Response> {
+	const headers: Record<string, string> = {};
+	if (auth != null) headers.Authorization = auth;
+	return worker.fetch(
+		new Request("https://ci.example/token", { method: "POST", headers, body }),
+		env,
+	);
+}
 
 describe("ci-hook worker", () => {
 	afterEach(() => vi.unstubAllGlobals());
@@ -198,5 +207,154 @@ describe("ci-hook worker", () => {
 				headers: expect.objectContaining({ Title: "CI timed_out: ?" }),
 			}),
 		);
+	});
+});
+
+describe("token broker (POST /token)", () => {
+	let appKeyPem: string;
+
+	const tokenEnv = (overrides: Partial<Env> = {}): Env =>
+		makeEnv({
+			TOKEN_MINT_SECRET: "mint-secret",
+			GITHUB_APP_ID: "1234",
+			GITHUB_APP_INSTALLATION_ID: "5678",
+			...overrides,
+		});
+
+	beforeAll(async () => {
+		const { privateKey } = (await crypto.subtle.generateKey(
+			{
+				name: "RSASSA-PKCS1-v1_5",
+				modulusLength: 2048,
+				publicExponent: new Uint8Array([1, 0, 1]),
+				hash: "SHA-256",
+			},
+			true,
+			["sign"],
+		)) as CryptoKeyPair;
+		const der = (await crypto.subtle.exportKey("pkcs8", privateKey)) as ArrayBuffer;
+		const b64 = btoa(String.fromCharCode(...new Uint8Array(der)));
+		const lines = b64.match(/.{1,64}/g) ?? [b64];
+		appKeyPem = `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----`;
+	});
+
+	it("rejects missing, non-Bearer and wrong tokens with 401", async () => {
+		const env = tokenEnv({ GITHUB_APP_PRIVATE_KEY: appKeyPem });
+		expect((await postToken(env, "{}")).status).toBe(401);
+		expect((await postToken(env, "{}", "Basic abc")).status).toBe(401);
+		// Length mismatch short-circuits; same-length diff compares bytes.
+		expect((await postToken(env, "{}", "Bearer short")).status).toBe(401);
+		expect((await postToken(env, "{}", "Bearer mint-secreX")).status).toBe(401);
+	});
+
+	it("rejects everything when TOKEN_MINT_SECRET is unset", async () => {
+		const env = makeEnv({ GITHUB_APP_ID: "x" });
+		expect((await postToken(env, "{}", "Bearer mint-secret")).status).toBe(401);
+	});
+
+	it("503s when the GitHub App is not fully configured", async () => {
+		const env = { TOKEN_MINT_SECRET: "mint-secret" };
+		for (const e of [
+			makeEnv(env),
+			makeEnv({ ...env, GITHUB_APP_ID: "1" }),
+			makeEnv({ ...env, GITHUB_APP_ID: "1", GITHUB_APP_INSTALLATION_ID: "2" }),
+		]) {
+			const res = await postToken(e, "{}", "Bearer mint-secret");
+			expect(res.status).toBe(503);
+		}
+	});
+
+	it("mints a token for the installation default scope (no/invalid body)", async () => {
+		const fetchMock = vi.fn(async () =>
+			Response.json({ token: "ghs_x", expires_at: "2030-01-01T00:00:00Z" }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+		const env = tokenEnv({ GITHUB_APP_PRIVATE_KEY: appKeyPem });
+
+		for (const body of [undefined, "{not json"]) {
+			const res = await postToken(env, body, "Bearer mint-secret");
+			expect(res.status).toBe(200);
+			expect(await res.json()).toEqual({
+				token: "ghs_x",
+				expires_at: "2030-01-01T00:00:00Z",
+			});
+		}
+		expect(fetchMock).toHaveBeenCalledWith(
+			"https://api.github.com/app/installations/5678/access_tokens",
+			expect.objectContaining({
+				method: "POST",
+				headers: expect.objectContaining({
+					Accept: "application/vnd.github+json",
+					"User-Agent": "lasius-ci-hook",
+					Authorization: expect.stringMatching(/^Bearer eyJ/),
+				}),
+				body: "{}",
+			}),
+		);
+	});
+
+	it("narrows scope to allowlisted repositories — exact and basename match", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ token: "t", expires_at: "e" }));
+		vi.stubGlobal("fetch", fetchMock);
+		const env = tokenEnv({
+			GITHUB_APP_PRIVATE_KEY: appKeyPem,
+			TOKEN_ALLOWED_REPOS: "docs, website",
+		});
+
+		for (const repos of [["docs"], ["ktbhealth/website"]]) {
+			const res = await postToken(
+				env,
+				JSON.stringify({ repositories: repos }),
+				"Bearer mint-secret",
+			);
+			expect(res.status).toBe(200);
+		}
+		expect(fetchMock).toHaveBeenLastCalledWith(
+			expect.any(String),
+			expect.objectContaining({
+				body: JSON.stringify({ repositories: ["ktbhealth/website"] }),
+			}),
+		);
+	});
+
+	it("403s repositories outside the allowlist and skips checks without one", async () => {
+		const fetchMock = vi.fn(async () => Response.json({ token: "t", expires_at: "e" }));
+		vi.stubGlobal("fetch", fetchMock);
+		const env = tokenEnv({
+			GITHUB_APP_PRIVATE_KEY: appKeyPem,
+			TOKEN_ALLOWED_REPOS: "docs",
+		});
+		const denied = await postToken(
+			env,
+			JSON.stringify({ repositories: ["docs", "evil/repo"] }),
+			"Bearer mint-secret",
+		);
+		expect(denied.status).toBe(403);
+		expect(await denied.json()).toEqual({ error: "repos not allowed: evil/repo" });
+
+		// No allowlist configured → any repo set goes through unchecked.
+		const open = tokenEnv({ GITHUB_APP_PRIVATE_KEY: appKeyPem });
+		const res = await postToken(
+			open,
+			JSON.stringify({ repositories: ["anything"] }),
+			"Bearer mint-secret",
+		);
+		expect(res.status).toBe(200);
+	});
+
+	it("502s with the trimmed detail when GitHub rejects the mint", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("x".repeat(400), { status: 422 })),
+		);
+		const res = await postToken(
+			tokenEnv({ GITHUB_APP_PRIVATE_KEY: appKeyPem }),
+			JSON.stringify({ repositories: ["docs"] }),
+			"Bearer mint-secret",
+		);
+		expect(res.status).toBe(502);
+		const body = (await res.json()) as { error: string; detail: string };
+		expect(body.error).toBe("github 422");
+		expect(body.detail).toHaveLength(300);
 	});
 });
