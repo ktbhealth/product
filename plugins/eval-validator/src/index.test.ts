@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
+import { doctors, patients, user as userTable } from "@ktb/db/schema";
 import { Forbidden, Principal } from "@ktb/authz";
-import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
+import { EvalArtifacts, EvalRunner, LlmPort } from "@ktb/eval-consultation";
 import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -63,6 +64,20 @@ const artifactsLayer = (bytes: Uint8Array | null | "fail") =>
 		}),
 	);
 
+/** Stub generator: "fail" → PortError (exercises the template
+ * fallback); text → the LLM script path. */
+const llmLayer = (result: string | "fail") =>
+	Layer.succeed(
+		LlmPort,
+		LlmPort.of({
+			generate: () =>
+				result === "fail"
+					? (Effect.fail({ _tag: "PortError", port: "llm", message: "down" }) as never)
+					: Effect.succeed({ text: result, record: {} as never }),
+			correct: () => Effect.fail({ _tag: "PortError", port: "llm", message: "down" }) as never,
+		}),
+	);
+
 const make = (
 	opts: {
 		allow?: boolean;
@@ -70,6 +85,8 @@ const make = (
 		runner?: "none" | Parameters<typeof runnerLayer>[0];
 		/** Absent = no EvalArtifacts bound; value = driver returning it. */
 		artifacts?: Uint8Array | null | "fail";
+		/** Absent = no LlmPort bound (template path); value = stub. */
+		llm?: string | "fail";
 	} = {},
 ) => {
 	const { allow = true, runner } = opts;
@@ -79,6 +96,7 @@ const make = (
 		grantLayer(allow),
 		runner === "none" ? Layer.empty : runnerLayer(runner),
 		"artifacts" in opts ? artifactsLayer(opts.artifacts ?? null) : Layer.empty,
+		"llm" in opts ? llmLayer(opts.llm ?? "fail") : Layer.empty,
 	);
 	const rt = ManagedRuntime.make(
 		Layer.merge(EvalValidatorLive.pipe(Layer.provide(layers)), layers),
@@ -312,6 +330,85 @@ describe("EvalValidator", () => {
 		await rt.dispose();
 	});
 
+	it("generate with LlmPort bound renders llm scripts and links synthetic entities", async () => {
+		const llmScript = [
+			"doctor: Bom dia, como posso ajudar?",
+			"patient: Estou com dor de cabeça faz uns dias.",
+			"doctor: Onde exatamente dói?",
+			"patient: Na testa, uma pressão.",
+			"doctor: E usa algum remédio?",
+			"patient: Só dipirona quando aperta.",
+		].join("\n");
+		const { rt, run, db } = make({ runner: "none", llm: llmScript });
+		// count=3 samples three matrix cells — covers every ageBand
+		// (child/adult/elderly) through birthDateFor.
+		const { batchId } = await run(
+			Effect.flatMap(EvalValidator, (v) => v.generate({ count: 3, seed: 42 })),
+		);
+		const personas = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		expect(personas).toHaveLength(3);
+		for (const p of personas) {
+			expect(p.scriptMode).toBe("llm");
+			expect(p.turns[0]).toEqual({ speaker: "doctor", text: "Bom dia, como posso ajudar?" });
+			expect(p.script).toContain("dor de cabeça");
+			// Labels stay OUT of the gold script (template convention).
+			expect(p.script).not.toContain("doctor:");
+			expect(p.patientId).not.toBeNull();
+			expect(p.doctorId).not.toBeNull();
+		}
+		// Entities exist, flagged synthetic, owned by the synthetic user.
+		const pats = await db.select().from(patients);
+		expect(pats).toHaveLength(3);
+		expect(pats.every((r) => r.synthetic === true)).toBe(true);
+		const docs = await db.select().from(doctors);
+		expect(docs).toHaveLength(3);
+		expect(docs.every((r) => r.synthetic === true)).toBe(true);
+		const users = await db.select().from(userTable);
+		expect(users.every((u) => u.email.endsWith("@eval.ktb"))).toBe(true);
+		await rt.dispose();
+	});
+
+	it("a failing LlmPort falls back to the template renderer", async () => {
+		const { rt, run } = make({ runner: "none", llm: "fail" });
+		const { batchId } = await run(
+			Effect.flatMap(EvalValidator, (v) => v.generate({ count: 1, seed: 7 })),
+		);
+		const [p] = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		expect(p?.scriptMode).toBe("template");
+		expect(p?.turns.length).toBeGreaterThan(4);
+		await rt.dispose();
+	});
+
+	it("rejecting a persona deletes its synthetic entities, approving keeps them", async () => {
+		const { rt, run, db } = make({ runner: "none" });
+		const { batchId } = await run(
+			Effect.flatMap(EvalValidator, (v) => v.generate({ count: 2, seed: 9 })),
+		);
+		const personas = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		expect(personas[0]?.patientId).not.toBeNull();
+		await run(
+			Effect.flatMap(EvalValidator, (v) =>
+				v.review({ personaId: personas[0]!.id, decision: "approved" }),
+			),
+		);
+		await run(
+			Effect.flatMap(EvalValidator, (v) =>
+				v.review({ personaId: personas[1]!.id, decision: "rejected" }),
+			),
+		);
+		// Rejected: patient + backing doctor user gone (doctor row
+		// cascades from user). Approved: entities stay for the run.
+		expect(await db.select().from(patients)).toHaveLength(1);
+		expect(await db.select().from(userTable)).toHaveLength(1);
+		expect(await db.select().from(doctors)).toHaveLength(1);
+		const after = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		expect(after[1]?.state).toBe("rejected");
+		// FK set null released the links — the review row itself stays.
+		expect(after[1]?.patientId).toBeNull();
+		expect(after[1]?.doctorId).toBeNull();
+		await rt.dispose();
+	});
+
 	it("generate with an email-less principal stores createdBy null", async () => {
 		const { rt, db } = make({ runner: "none" });
 		await rt.runPromise(
@@ -475,5 +572,113 @@ describe("EvalValidator", () => {
 		);
 		expect(loaderFallback).toEqual([]);
 		await deny.rt.dispose();
+	});
+});
+
+describe("EvalValidator — pipeline stages + run CRUD", () => {
+	it("hands persona demographics to the runner as patient context", async () => {
+		const seen: { patient?: { sex?: string; age?: number } }[] = [];
+		const { rt, run } = make({
+			runner: ({ items, onSample }) =>
+				Effect.forEach(
+					items,
+					(item) => {
+						seen.push(item);
+						return onSample(item.id, { status: "ok", result: { wer: 0 } });
+					},
+					{ discard: true },
+				),
+		});
+		const { batchId } = await run(
+			Effect.flatMap(EvalValidator, (v) => v.generate({ count: 9, seed: 3 })),
+		);
+		const personas = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		for (const p of personas) {
+			await run(
+				Effect.flatMap(EvalValidator, (v) => v.review({ personaId: p.id, decision: "approved" })),
+			);
+		}
+		await run(Effect.flatMap(EvalValidator, (v) => v.startRun(batchId)));
+		await new Promise((r) => setTimeout(r, 300));
+		const ages = new Set(seen.map((i) => i.patient?.age));
+		expect(ages.size).toBe(3);
+		expect([...ages].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([8, 40, 70]);
+		for (const i of seen) {
+			expect(i.patient?.sex === "male" || i.patient?.sex === "female").toBe(true);
+		}
+		await rt.dispose();
+	});
+
+	it("run summary carries per-stage means when samples report them", async () => {
+		const { rt, run } = make({
+			runner: ({ items, onSample }) =>
+				Effect.forEach(
+					items,
+					(item) =>
+						onSample(item.id, {
+							status: "ok",
+							result: {
+								wer: 0.2,
+								cleanup: { edits: 3, corrected: "x", werAfter: 0.1, cerAfter: 0.05 },
+								anamnesis: { engine: "stub", sections: 8, filled: 6, completeness: 0.75 },
+							},
+						}),
+					{ discard: true },
+				),
+		});
+		const { batchId } = await run(
+			Effect.flatMap(EvalValidator, (v) => v.generate({ count: 1, seed: 5 })),
+		);
+		const personas = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		await run(
+			Effect.flatMap(EvalValidator, (v) =>
+				v.review({ personaId: personas[0]!.id, decision: "approved" }),
+			),
+		);
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun(batchId)));
+		let progress = null;
+		for (let i = 0; i < 50; i++) {
+			progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+			if (progress?.status === "done") break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		const s = progress?.summary as {
+			meanWer?: number;
+			meanWerAfter?: number;
+			meanCompleteness?: number;
+		} | null;
+		expect(s?.meanWer).toBe(0.2);
+		expect(s?.meanWerAfter).toBe(0.1);
+		expect(s?.meanCompleteness).toBe(0.75);
+		await rt.dispose();
+	});
+
+	it("deleteRun removes the run and cascades its samples", async () => {
+		const { rt, run, db } = make();
+		const { batchId } = await run(
+			Effect.flatMap(EvalValidator, (v) => v.generate({ count: 1, seed: 9 })),
+		);
+		const personas = await run(Effect.flatMap(EvalValidator, (v) => v.listPersonas(batchId)));
+		await run(
+			Effect.flatMap(EvalValidator, (v) =>
+				v.review({ personaId: personas[0]!.id, decision: "approved" }),
+			),
+		);
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun(batchId)));
+		await new Promise((r) => setTimeout(r, 200));
+		expect(await db.select().from(evalRunSample)).not.toHaveLength(0);
+		await run(Effect.flatMap(EvalValidator, (v) => v.deleteRun(runId)));
+		expect(await db.select().from(evalRun)).toHaveLength(0);
+		expect(await db.select().from(evalRunSample)).toHaveLength(0);
+		expect(await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)))).toBeNull();
+		await rt.dispose();
+	});
+
+	it("deleteRun is gated by the validator grant", async () => {
+		const { rt, run } = make({ allow: false });
+		await expect(run(Effect.flatMap(EvalValidator, (v) => v.deleteRun(1)))).rejects.toMatchObject({
+			_tag: "Forbidden",
+		});
+		await rt.dispose();
 	});
 });

@@ -19,6 +19,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	markAllMyNotificationsReadFn: vi.fn(),
 	getSessionUserFn: vi.fn(async () => ({ id: "u1", email: "a@x.com", name: "A" })),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] as string[] })),
+	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
 }));
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: vi.fn() } }));
 
@@ -84,6 +85,7 @@ describe("/platform without the optional header plugins", () => {
 			audioJobs: [],
 			notifications: [],
 			audiences: [],
+			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();

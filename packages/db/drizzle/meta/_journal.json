@@ -166,8 +166,15 @@
     {
       "idx": 24,
       "version": "6",
-      "when": 1794798612109,
-      "tag": "0024_lyrical_human_torch",
+      "when": 1794797511299,
+      "tag": "0024_great_leper_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794799768397,
+      "tag": "0025_purple_black_widow",
       "breakpoints": true
     }
   ]

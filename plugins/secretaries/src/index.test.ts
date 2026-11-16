@@ -36,7 +36,7 @@ INSERT INTO "user" VALUES
   ('doc-a', 'a@ktb.test', 1), ('doc-b', 'b@ktb.test', 1), ('doc-c', 'c@ktb.test', 1),
   ('doc-d', 'd@ktb.test', 1), ('both', 'both@ktb.test', 1), ('sec', 'sec@ktb.test', 1),
   ('newbie', 'newbie@ktb.test', 1), ('unverified', 'unverified@ktb.test', 0), ('plain', 'plain@ktb.test', 1);
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO doctors (id, user_id, display_name, created_at, updated_at) VALUES
   (1, 'doc-a', 'Zeca Lima', 0, 0),
   (2, 'doc-b', 'Ana Souza', 0, 0),

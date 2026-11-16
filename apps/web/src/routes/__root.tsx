@@ -168,6 +168,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			switchDoctor: m.nav_switch_doctor(),
 			secretaries: m.nav_secretaries(),
 			patientPortal: m.nav_patient_portal(),
+			platformConsole: m.nav_platform_console(),
 			myConsultations: m.nav_my_consultations(),
 		},
 		signOut: async () => {

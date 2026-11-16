@@ -25,6 +25,7 @@ const getSessionUserFn = vi.fn(
 const listMyNotificationsFn = vi.fn(async () => [] as unknown[]);
 const pluginStatesFn = vi.fn(async () => ({ enabled: [] as string[] }));
 const portalAudiencesFn = vi.fn(async () => [] as string[]);
+const consoleDeniedFn = vi.fn(async (): Promise<string[]> => []);
 const signOut = vi.fn(async () => {});
 
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: () => signOut() } }));
@@ -46,6 +47,7 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 
 vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: () => platformAdminFn(),
+	consoleDeniedFn: () => consoleDeniedFn(),
 	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
@@ -201,6 +203,7 @@ describe("/platform layout", () => {
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
 			audiences: [],
+			deniedPaths: [],
 		});
 	});
 
@@ -214,6 +217,7 @@ describe("/platform layout", () => {
 			audioJobs: [],
 			notifications: [],
 			audiences: [],
+			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
@@ -318,7 +322,7 @@ describe("/platform layout", () => {
 });
 
 describe("/platform index", () => {
-	it("renders the dashboard with registered plugins", () => {
+	it("renders the dashboard stats and empty consultations feed", () => {
 		render(createElement(component(PlatformIndexRoute)));
 		expect(screen.getByText("Dashboard")).toBeTruthy();
 		expect(screen.getByText("platform.routes")).toBeTruthy();
