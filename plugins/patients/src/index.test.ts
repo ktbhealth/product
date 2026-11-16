@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
+import { VAULT_TEST_DDL } from "@ktb/vault";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { patientDocuments, user as userTable } from "@ktb/db/schema";
@@ -36,7 +37,7 @@ import {
 	updatePatient,
 } from "./index.ts";
 import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
-import { validatePatient, type PatientFields } from "./record.ts";
+import { TEXT_FIELDS, validatePatient, type PatientFields } from "./record.ts";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant, type Tenant as TenantScope } from "@ktb/tenant";
 
@@ -54,6 +55,10 @@ INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, 
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 ${AUDIT_TEST_DDL}
+${VAULT_TEST_DDL}
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'Clínica A', 'clinica-a', 'clinic', 0, 0, 0);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (8, 'Clínica B', 'clinica-b', 'clinic', 0, 0, 0);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
 `;
 
 describe("patients repo", () => {
@@ -1008,5 +1013,146 @@ describe("PatientsLive tenant scope (P-053)", () => {
 			await rt.dispose();
 			await busRuntime.dispose();
 		}
+	});
+});
+
+describe("PatientsLive ZK gate (T-144)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Patients, never>;
+	let db: ReturnType<typeof makeDb>;
+
+	// Group 9 is `zk = 1` in the shared DDL; groups 7/8 stay plaintext.
+	const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
+
+	beforeAll(() => {
+		db = makeDb(makeD1(DDL));
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			makeEventBus(),
+		);
+		runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provideMerge(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const asTenant = <A, E>(
+		userId: string,
+		tenant: TenantScope,
+		effect: Effect.Effect<A, E, Patients>,
+		email?: string,
+	) =>
+		runtime.runPromise(
+			Effect.provideService(
+				Effect.provideService(effect, Principal, { userId, email }),
+				Tenant,
+				tenant,
+			),
+		);
+
+	const call = <A, E>(f: (p: Patients["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(Patients, f);
+
+	/** Envelope-shaped fields — what the browser sends for a ZK tenant. */
+	const ciphered = (extra: Partial<PatientFields> = {}): PatientFields => ({
+		...(Object.fromEntries(TEXT_FIELDS.map((k) => [k, null])) as Record<
+			(typeof TEXT_FIELDS)[number],
+			null
+		>),
+		name: "v1.aXYtLmN0",
+		birthDate: "v1.ZGF0YQ",
+		active: true,
+		...extra,
+	});
+
+	it("create rejects plaintext fields for a ZK tenant", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.create("u1", fields("Plain"))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("create rejects a ciphered payload carrying one plaintext value", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.create("u1", ciphered({ phone: "11999990000" }))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("create persists envelope fields for a ZK tenant", async () => {
+		const row = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((p) => p.create("u1", ciphered())),
+		);
+		expect(row?.tenantId).toBe(9);
+		expect(row?.name).toBe("v1.aXYtLmN0");
+		expect(row?.birthDate).toBe("v1.ZGF0YQ");
+	});
+
+	it("update gates on the row's tenant, not the caller's fields", async () => {
+		const row = (await createPatient(db, "u1", ciphered(), 9))!;
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.update("u1", row.id, fields("Plain Update"))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.update" });
+		const updated = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((p) => p.update("u1", row.id, ciphered({ name: "v1.bmV3TmFtZQ" }))),
+		);
+		expect(updated?.name).toBe("v1.bmV3TmFtZQ");
+	});
+
+	it("adminCreate rejects plaintext for a ZK tenant", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.adminCreate("u2", fields("Admin Plain"))),
+				"admin@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("plaintext still flows for non-ZK tenant writes", async () => {
+		const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
+		const row = await asTenant(
+			"u1",
+			TENANT_A,
+			call((p) => p.create("u1", fields("Plain Ok"))),
+		);
+		expect(row?.name).toBe("Plain Ok");
+	});
+
+	it("create rejects a ciphered payload on a non-ZK tenant", async () => {
+		const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_A,
+				call((p) => p.create("u1", ciphered())),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("update rejects a ciphered payload when the row lives in a non-ZK tenant", async () => {
+		const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
+		const row = (await createPatient(db, "u1", fields("Plain Row"), 7))!;
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_A,
+				call((p) => p.update("u1", row.id, ciphered())),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.update" });
 	});
 });

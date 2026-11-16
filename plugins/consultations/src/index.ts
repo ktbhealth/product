@@ -20,7 +20,12 @@ import {
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
-import { integrityServicesPlugin, recordVersion } from "@ktb/integrity";
+import {
+	Integrity,
+	integrityServicesPlugin,
+	recordVersion,
+	type IntegrityVerification,
+} from "@ktb/integrity";
 import { Db, type DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -35,6 +40,7 @@ import { ClipboardListIcon } from "lucide-react";
 import type { Anamnesis, PatientHistory, PriorVisit } from "@ktb/anamnesis";
 import { factContent } from "@ktb/anamnesis";
 import { decodeAnamnesisOption } from "@ktb/anamnesis/schema";
+import { tenantIsZk } from "@ktb/vault";
 import {
 	Patients,
 	patientsServicesPlugin,
@@ -64,19 +70,35 @@ export type ConsultationRow = typeof consultations.$inferSelect;
 /** `record_versions.entity_type` for the anamnesis document (PL-007 F1). */
 export const ANAMNESIS_ENTITY_TYPE = "consultation.anamnesis";
 
+/**
+ * Client-computed version entry for a ciphered write (T-145): the
+ * canonical-JSON content hash of the plaintext anamnesis plus the
+ * device ECDSA signature — the server cannot derive either under ZK,
+ * so the wire carries them into `record_versions`.
+ */
+export interface SignedVersion {
+	readonly contentHash?: string;
+	readonly signature?: string | null;
+}
+
 export interface SaveConsultationInput {
 	readonly transcript: string;
-	readonly anamnesis: Anamnesis;
+	/** Parsed document for plaintext tenants; the opaque `v1.` envelope
+	 * (canonical JSON ciphertext) for ZK tenants — stored as-is. */
+	readonly anamnesis: Anamnesis | string;
 	readonly engine: string;
 	readonly patientId?: number;
+	/** Client-signed version — required when `anamnesis` is an envelope. */
+	readonly version?: SignedVersion;
 }
 
 export interface AttachAnamnesisInput {
 	readonly consultationId: number;
-	readonly anamnesis: Anamnesis;
+	readonly anamnesis: Anamnesis | string;
 	readonly engine: string;
 	/** Tri-state: undefined keeps the link, null clears it, id re-links. */
 	readonly patientId?: number | null;
+	readonly version?: SignedVersion;
 }
 
 export interface ConsultationSummary {
@@ -89,6 +111,9 @@ export interface ConsultationSummary {
 	readonly consentAt: Date | null;
 	readonly patientId: number | null;
 	readonly patientName: string | null;
+	/** Raw stored `anamnesis` column — plaintext JSON for non-ZK rows, a
+	 * `v1.` envelope under ZK; clients decrypt before parsing. */
+	readonly anamnesis: string | null;
 	readonly hasAnamnesis: boolean;
 	readonly chiefComplaint: string | null;
 }
@@ -96,6 +121,8 @@ export interface ConsultationSummary {
 export type ConsultationDetail = Omit<ConsultationRow, "anamnesis" | "review"> & {
 	readonly patientName: string | null;
 	readonly anamnesis: Anamnesis | null;
+	/** Raw stored `anamnesis` column — a `v1.` envelope under ZK. */
+	readonly anamnesisRaw: string | null;
 };
 
 /** Stored JSON columns → typed domain objects, null on any drift. */
@@ -140,10 +167,11 @@ export async function createConsultation(
 }
 
 /**
- * Row delete behind `Consultations.adminDelete` — returns the stored
- * audio key so the caller can purge the recording from R2.
+ * Raw row delete — returns the stored audio key so callers can purge
+ * the recording from R2. Used by `Consultations.adminDelete` and by
+ * the save fn's rollback path when DEK-grant persistence fails (T-145).
  */
-async function deleteConsultationRow(db: DbClient, id: number) {
+export async function deleteConsultationRow(db: DbClient, id: number) {
 	const rows = await db
 		.select({ audioKey: consultations.audioKey })
 		.from(consultations)
@@ -156,8 +184,21 @@ async function deleteConsultationRow(db: DbClient, id: number) {
 	return rows[0]!.audioKey;
 }
 
-/** Append a transcript chunk (webhook sources — diarized or not). */
+/** The row's tenant is a ZK tenant — plaintext clinical content must
+ * never be written there (fail closed, T-145). */
+async function rowTenantIsZk(db: DbClient, consultationId: number): Promise<boolean> {
+	const tenantId = await consultationTenantId(db, consultationId);
+	return tenantId !== null && (await tenantIsZk(db, tenantId));
+}
+
+/**
+ * Append a transcript chunk (webhook sources — diarized or not).
+ * ZK tenants have no server transcript path (the pipeline never runs
+ * there — T-147): plaintext chunks would persist readable clinical
+ * content, so they are dropped instead of appended.
+ */
 export async function appendTranscript(db: DbClient, consultationId: number, text: string) {
+	if (await rowTenantIsZk(db, consultationId)) return;
 	const rows = await db
 		.select({ transcript: consultations.transcript })
 		.from(consultations)
@@ -185,8 +226,10 @@ export interface AudioJobFields {
 	readonly size?: number;
 }
 
-/** Status the owner-facing routes may set after enqueue; terminal states are consumer-only. */
-export const AUDIO_ROUTE_STATUSES = ["queued"] as const;
+/** Status the owner-facing routes may set after enqueue; terminal states are consumer-only.
+ * "zk" (T-147): ciphertext stored for approved-device retrieval — the server
+ * transcription pipeline never runs for it. */
+export const AUDIO_ROUTE_STATUSES = ["queued", "zk"] as const;
 export type AudioRouteStatus = (typeof AUDIO_ROUTE_STATUSES)[number];
 
 /**
@@ -216,9 +259,18 @@ export async function attachAudioRecord(
 
 /** stored → queued once the transcription job was enqueued. */
 export async function markAudioQueued(db: DbClient, consultationId: number) {
+	await markAudioRouteStatus(db, consultationId, "queued");
+}
+
+/** Route-set audio status ("queued" after enqueue, "zk" for ciphertext). */
+export async function markAudioRouteStatus(
+	db: DbClient,
+	consultationId: number,
+	status: AudioRouteStatus,
+) {
 	await db
 		.update(consultations)
-		.set({ audioStatus: "queued", audioError: null })
+		.set({ audioStatus: status, audioError: null })
 		.where(eq(consultations.id, consultationId));
 }
 
@@ -256,8 +308,11 @@ export async function beginAudioJob(db: DbClient, consultationId: number) {
 		.where(eq(consultations.id, consultationId));
 }
 
-/** Server transcript persisted — the raw ASR evidence. */
+/** Server transcript persisted — the raw ASR evidence. No-op under
+ * ZK: the Whisper pipeline never runs there (T-147), and a plaintext
+ * server transcript would defeat the cipher spec. */
 export async function completeAudioJob(db: DbClient, consultationId: number, transcript: string) {
+	if (await rowTenantIsZk(db, consultationId)) return;
 	await db
 		.update(consultations)
 		.set({ serverTranscript: transcript, audioStatus: "done", audioError: null })
@@ -313,6 +368,7 @@ export async function saveCorrectedTranscript(
 	corrected: string,
 	engine: string,
 ) {
+	if (await rowTenantIsZk(db, consultationId)) return;
 	await db
 		.update(consultations)
 		.set({ correctedTranscript: corrected, enhancementEngine: engine })
@@ -342,6 +398,12 @@ export async function ownsBot(db: DbClient, consultationId: number, botId: strin
 	return rows.length > 0;
 }
 
+/** The stored `anamnesis` column for a write: parsed documents are
+ * canonical-serialized plaintext; ZK payloads already ARE the stored
+ * value (an opaque `v1.` envelope) and pass through untouched. */
+export const serializeAnamnesis = (anamnesis: Anamnesis | string): string =>
+	typeof anamnesis === "string" ? anamnesis : JSON.stringify(anamnesis);
+
 async function saveConsultation(
 	db: DbClient,
 	userId: string,
@@ -355,7 +417,7 @@ async function saveConsultation(
 			patientId: data.patientId ?? null,
 			tenantId,
 			transcript: data.transcript,
-			anamnesis: JSON.stringify(data.anamnesis),
+			anamnesis: serializeAnamnesis(data.anamnesis),
 			engine: data.engine,
 			createdAt: new Date(),
 		})
@@ -419,11 +481,15 @@ async function listConsultations(
 		.leftJoin(patients, eq(consultations.patientId, patients.id))
 		.where(where)
 		.orderBy(desc(consultations.id));
-	return rows.map(({ anamnesis, ...c }) => {
-		const parsed = parseStored(anamnesis, decodeAnamnesisOption);
+	return rows.map((c) => {
+		const parsed = parseStored(c.anamnesis, decodeAnamnesisOption);
 		return {
 			...c,
-			hasAnamnesis: anamnesis !== null,
+			// `hasAnamnesis` derives from column presence only — under ZK
+			// the column is an opaque envelope the server cannot parse,
+			// so `chiefComplaint` stays null and clients re-derive it
+			// after decrypting `anamnesis` (T-145).
+			hasAnamnesis: c.anamnesis !== null,
 			chiefComplaint: parsed?.queixa_principal.content ?? null,
 		};
 	});
@@ -535,6 +601,7 @@ async function getConsultation(db: DbClient, id: number): Promise<ConsultationDe
 		...row.c,
 		patientName: row.patientName,
 		anamnesis: parseStored(row.c.anamnesis, decodeAnamnesisOption),
+		anamnesisRaw: row.c.anamnesis,
 	};
 }
 
@@ -597,7 +664,7 @@ async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, scope?:
 		status: string;
 		patientId?: number | null;
 	} = {
-		anamnesis: JSON.stringify(data.anamnesis),
+		anamnesis: serializeAnamnesis(data.anamnesis),
 		engine: data.engine,
 		status: "done",
 	};
@@ -611,6 +678,30 @@ async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, scope?:
 	// Only an applied write gets a version — a scope/missing-row no-op
 	// must not mint a record_versions entry.
 	return rows.length > 0;
+}
+
+/** Integrity columns + authz fields for the verifyIntegrity walk. */
+async function anamnesisIntegrityHead(db: DbClient, id: number) {
+	const rows = await db
+		.select({
+			userId: consultations.userId,
+			tenantId: consultations.tenantId,
+			anamnesisHash: consultations.anamnesisHash,
+			anamnesisVersion: consultations.anamnesisVersion,
+		})
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/** Domain verifyIntegrity report (T-139): the generic chain walk plus
+ * the consultation row's materialized head pointer (`storedVersion`). */
+export interface ConsultationIntegrityReport extends IntegrityVerification {
+	/** `consultations.anamnesis_version` — must equal the chain head's
+	 * version (a divergence means a version write was lost or the
+	 * columns were rewritten → status "tampered", "head-diverged"). */
+	readonly storedVersion: number | null;
 }
 
 /** Rows awaiting the v1 materialization (T-138 backfill): anamnesis
@@ -654,17 +745,35 @@ async function recordConsent(db: DbClient, id: number, scope?: SQL) {
 export const HISTORY_LIMIT = 3;
 
 /**
- * Factual history of a patient's consultations, scoped to the calling
- * doctor (consultations.userId) and to patients they own. Live sessions
- * and `excludeId` (the consultation being viewed) are skipped. Returns
- * null when the patient is not owned by `userId`.
+ * Raw history rows for the client-side history build (T-145): under ZK
+ * the `anamnesis` column is an opaque envelope, so `factContent`
+ * derivation must happen in the browser after decrypting. The server
+ * only ever returns the stored column — plaintext JSON for non-ZK
+ * rows, ciphertext for ZK ones.
  */
-async function patientHistory(
+export interface HistoryRow {
+	readonly id: number;
+	readonly createdAt: Date;
+	readonly anamnesis: string | null;
+}
+
+export interface PatientHistoryRows {
+	readonly count: number;
+	readonly rows: readonly HistoryRow[];
+}
+
+/**
+ * Factual history rows of a patient's consultations, scoped to the
+ * calling doctor (consultations.userId) and to patients they own.
+ * Live sessions and `excludeId` (the consultation being viewed) are
+ * skipped. Returns null when the patient is not owned by `userId`.
+ */
+async function patientHistoryRows(
 	db: DbClient,
 	patientId: number,
 	userId: string,
 	excludeId?: number,
-): Promise<PatientHistory | null> {
+): Promise<PatientHistoryRows | null> {
 	const owner = await db
 		.select({ id: patients.id })
 		.from(patients)
@@ -689,7 +798,25 @@ async function patientHistory(
 		.where(where)
 		.orderBy(desc(consultations.id))
 		.limit(HISTORY_LIMIT);
-	const visits: PriorVisit[] = rows.map((row) => {
+	return { count: countRows[0]!.n, rows };
+}
+
+/**
+ * Parsed visit summaries over `patientHistoryRows` — the server-side
+ * variant for plaintext flows (LLM context in `extractAnamnesisFn`).
+ * Under ZK the anamneses are envelopes: parsing yields null facts, so
+ * callers needing real content must go through `historyRows` and
+ * decrypt client-side.
+ */
+async function patientHistory(
+	db: DbClient,
+	patientId: number,
+	userId: string,
+	excludeId?: number,
+): Promise<PatientHistory | null> {
+	const result = await patientHistoryRows(db, patientId, userId, excludeId);
+	if (result === null) return null;
+	const visits: PriorVisit[] = result.rows.map((row) => {
 		const parsed = parseStored(row.anamnesis, decodeAnamnesisOption);
 		return {
 			id: row.id,
@@ -698,7 +825,7 @@ async function patientHistory(
 			plan: factContent(parsed?.conduta.content),
 		};
 	});
-	return { count: countRows[0]!.n, visits };
+	return { count: result.count, visits };
 }
 
 /**
@@ -770,6 +897,42 @@ const authorizeConsultationRow = (
 		}
 		yield* orPlatformAdmin(platformAdmin, requireCanAs(action, { userId: row.userId ?? "" }));
 	});
+
+const ENVELOPE = /^v1\./;
+
+/** Any populated clinical field already looks like ciphertext. */
+const hasCipheredField = (values: readonly (string | null | undefined)[]) =>
+	values.some((v) => typeof v === "string" && v !== "" && ENVELOPE.test(v));
+
+/** Under ZK every populated clinical field must be a `v1.` envelope —
+ * an absent/empty value is not content and stays allowed (a NOT NULL
+ * transcript starts as ""). */
+const allCiphered = (values: readonly (string | null | undefined)[]) =>
+	values.every(
+		(v) => v === null || v === undefined || v === "" || (typeof v === "string" && ENVELOPE.test(v)),
+	);
+
+/**
+ * ZK write gate (PL-007 F3, T-145) — same fail-closed-both-ways
+ * contract as `Patients.requireCipheredWhenZk`: under a ZK tenant
+ * every populated clinical field the write carries must already be a
+ * `v1.` AEAD envelope; outside ZK (non-ZK tenant or personal scope —
+ * no clinic keyring exists there) an envelope write is unreadable
+ * forever, so it is denied the same way. `values` arrive already
+ * serialized (`serializeAnamnesis` output) so envelopes are
+ * detectable. Reads need no gate: rows come back exactly as stored.
+ */
+const requireCipheredWhenZk = Effect.fn("Consultations.requireCipheredWhenZk")(function* (
+	db: DbClient,
+	tenantId: number | null,
+	values: readonly (string | null | undefined)[],
+	action: "consultation.create" | "consultation.update",
+) {
+	const zk = tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)));
+	if (zk ? !allCiphered(values) : hasCipheredField(values)) {
+		yield* Effect.fail(new Forbidden({ path: action }));
+	}
+});
 
 /**
  * Consultations domain port — Effect service, swappable in tests.
@@ -871,6 +1034,16 @@ export class Consultations extends Context.Service<
 			{ backfilled: number; remaining: number },
 			Forbidden
 		>;
+		/**
+		 * `verifyIntegrity(entity, id)` for anamneses (T-139): re-derives
+		 * the version chain and checks the row's integrity columns still
+		 * point at the chain head. Same read authz as `get`; null when
+		 * the consultation does not exist.
+		 */
+		readonly verifyIntegrity: (
+			id: number,
+			userId: string,
+		) => Effect.Effect<ConsultationIntegrityReport | null, Forbidden>;
 		readonly recordConsent: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
 		/** Link a stored R2 audio object to the consultation (status "stored"). */
 		readonly attachAudio: (
@@ -888,6 +1061,17 @@ export class Consultations extends Context.Service<
 			userId: string,
 			excludeId?: number,
 		) => Effect.Effect<PatientHistory | null, Forbidden>;
+		/**
+		 * Raw history rows for the client-side history build (T-145):
+		 * under ZK `anamnesis` is an opaque envelope — the client
+		 * decrypts and derives `factContent` itself. Same authz and
+		 * null-when-not-owned contract as `history`.
+		 */
+		readonly historyRows: (
+			patientId: number,
+			userId: string,
+			excludeId?: number,
+		) => Effect.Effect<PatientHistoryRows | null, Forbidden>;
 	}
 >()("@ktb/consultations/Consultations") {}
 
@@ -949,6 +1133,9 @@ export const ConsultationsLive = Layer.effect(
 				yield* requireCanAs("consultation.create");
 				const tenant = yield* Tenant;
 				const tenantId = tenantScopeId(tenant);
+				// T-145: bot/live creates carry an empty transcript ("" stays
+				// legal) — a populated transcript under ZK must be an envelope.
+				yield* requireCipheredWhenZk(db, tenantId, [fields.transcript], "consultation.create");
 				yield* Effect.annotateCurrentSpan({ userId: fields.userId, source: fields.source });
 				yield* Effect.logInfo("consultation create", {
 					userId: fields.userId,
@@ -996,18 +1183,30 @@ export const ConsultationsLive = Layer.effect(
 					yield* requireOwnedPatient(input.patientId, "patient.read");
 				}
 				const tenant = yield* Tenant;
+				// T-145: under ZK, transcript + anamnesis must already be
+				// envelopes; outside ZK neither may be.
+				yield* requireCipheredWhenZk(
+					db,
+					tenantScopeId(tenant),
+					[input.transcript, serializeAnamnesis(input.anamnesis)],
+					"consultation.create",
+				);
 				yield* Effect.annotateCurrentSpan({ userId, engine: input.engine });
 				yield* Effect.logInfo("consultation save", { userId, engine: input.engine });
 				const saved = yield* Effect.promise(() =>
 					saveConsultation(db, userId, input, tenantScopeId(tenant)),
 				);
 				// T-138 interim integrity: server-side content hash as
-				// version 1 (ZK tenants later sign the same hash client-side).
-				// A failed/absent integrity plugin never blocks the save.
+				// version 1 — for ZK writes the client supplied the signed
+				// hash of the plaintext document (T-145), which persists on
+				// the same columns. A failed/absent integrity plugin never
+				// blocks the save.
 				const recorded = yield* recordVersion({
 					entityType: ANAMNESIS_ENTITY_TYPE,
 					entityId: saved.id,
-					payload: JSON.stringify(input.anamnesis),
+					payload: serializeAnamnesis(input.anamnesis),
+					contentHash: input.version?.contentHash,
+					signature: input.version?.signature ?? null,
 					engine: input.engine,
 					actorUserId: userId,
 				});
@@ -1087,6 +1286,7 @@ export const ConsultationsLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				const tenant = yield* Tenant;
 				const tenantId = tenantScopeId(tenant);
+				yield* requireCipheredWhenZk(db, tenantId, [fields.transcript], "consultation.create");
 				if (fields.patientId !== undefined) {
 					const owner = yield* patientQueries["patients.ownerOf"]({
 						id: fields.patientId,
@@ -1174,6 +1374,15 @@ export const ConsultationsLive = Layer.effect(
 				// Missing row → the UPDATE below is a no-op; nothing to authorize.
 				if (owner !== null) {
 					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
+					// T-145: the ROW's tenant governs the cipher rule — the
+					// ambient scope may be personal while the row is
+					// tenant-owned.
+					yield* requireCipheredWhenZk(
+						db,
+						owner.tenantId,
+						[serializeAnamnesis(input.anamnesis)],
+						"consultation.update",
+					);
 				}
 				// Re-linking to a patient requires owning that patient;
 				// null (clear) and undefined (keep) skip the lookup.
@@ -1210,7 +1419,9 @@ export const ConsultationsLive = Layer.effect(
 					const recorded = yield* recordVersion({
 						entityType: ANAMNESIS_ENTITY_TYPE,
 						entityId: input.consultationId,
-						payload: JSON.stringify(input.anamnesis),
+						payload: serializeAnamnesis(input.anamnesis),
+						contentHash: input.version?.contentHash,
+						signature: input.version?.signature ?? null,
 						engine: input.engine,
 						actorUserId: userId,
 					});
@@ -1247,6 +1458,44 @@ export const ConsultationsLive = Layer.effect(
 					});
 				}
 				return { backfilled, remaining };
+			}),
+			verifyIntegrity: Effect.fn("Consultations.verifyIntegrity")(function* (
+				id: number,
+				userId: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.read");
+				const row = yield* Effect.promise(() => anamnesisIntegrityHead(db, id));
+				if (row === null) return null;
+				// Same read authz as `get` — the report leaks no content, but
+				// the chain's existence/shape is still record metadata.
+				yield* authorizeConsultationRow(platformAdmin, row, "consultation.read");
+				const option = yield* Effect.serviceOption(Integrity);
+				const base: IntegrityVerification = Option.isSome(option)
+					? yield* option.value.verify(ANAMNESIS_ENTITY_TYPE, id)
+					: {
+							status: "unversioned",
+							versions: 0,
+							unverifiableContent: 0,
+							signed: 0,
+							issues: [],
+							head: null,
+						};
+				// The row's materialized head must point at the chain head —
+				// a diverged column pair means a version write was swallowed
+				// or the columns were rewritten underneath the chain.
+				const headIssue =
+					base.head !== null &&
+					(row.anamnesisVersion !== base.head.version ||
+						row.anamnesisHash !== base.head.contentHash)
+						? [{ version: base.head.version, code: "head-diverged" as const }]
+						: [];
+				const issues = [...base.issues, ...headIssue];
+				return {
+					...base,
+					status: issues.length > 0 ? ("tampered" as const) : base.status,
+					issues,
+					storedVersion: row.anamnesisVersion,
+				};
 			}),
 			recordConsent: Effect.fn("Consultations.recordConsent")(function* (
 				id: number,
@@ -1303,11 +1552,11 @@ export const ConsultationsLive = Layer.effect(
 					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
 				}
 				yield* Effect.annotateCurrentSpan({ userId, consultationId, audioStatus: status });
-				yield* Effect.promise(() => markAudioQueued(db, consultationId));
+				yield* Effect.promise(() => markAudioRouteStatus(db, consultationId, status));
 				yield* events.dispatch([
 					ConsultationAudioUpdated.make({
 						consultationId,
-						audioStatus: "queued",
+						audioStatus: status,
 						audioError: null,
 						tenantId: owner?.tenantId ?? null,
 					}),
@@ -1320,6 +1569,14 @@ export const ConsultationsLive = Layer.effect(
 			) {
 				yield* requireCanAs("consultation.read", { userId });
 				return yield* Effect.promise(() => patientHistory(db, patientId, userId, excludeId));
+			}),
+			historyRows: Effect.fn("Consultations.historyRows")(function* (
+				patientId: number,
+				userId: string,
+				excludeId?: number,
+			) {
+				yield* requireCanAs("consultation.read", { userId });
+				return yield* Effect.promise(() => patientHistoryRows(db, patientId, userId, excludeId));
 			}),
 		});
 	}),

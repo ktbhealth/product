@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import { eq } from "drizzle-orm";
 
 import { Principal } from "@ktb/authz";
 import { contentHash, sha256Hex } from "@ktb/crypto/digest";
@@ -16,6 +17,7 @@ import {
 	listRecordVersions,
 	RECORD_VERSIONS_TEST_DDL,
 	recordVersion,
+	verifyRecordVersions,
 	plugins,
 	integrityTablesPlugin,
 	integrityServicesPlugin,
@@ -234,6 +236,15 @@ describe("recordVersion helper", () => {
 			Integrity.of({
 				record: () => Effect.die("db gone"),
 				versions: () => Effect.succeed([]),
+				verify: () =>
+					Effect.succeed({
+						status: "unversioned",
+						versions: 0,
+						unverifiableContent: 0,
+						signed: 0,
+						issues: [],
+						head: null,
+					}),
 			}),
 		);
 		const runtime = ManagedRuntime.make(failing);
@@ -245,6 +256,115 @@ describe("recordVersion helper", () => {
 			),
 		);
 		expect(row).toBeNull();
+	});
+});
+
+describe("verifyRecordVersions (T-139)", () => {
+	let db: ReturnType<typeof makeDb>;
+	const entity = "consultation.anamnesis";
+
+	beforeAll(() => {
+		db = makeDb(makeD1(DDL));
+	});
+
+	const seed = async (entityId: number, payloads: string[]) => {
+		for (const payload of payloads) {
+			await appendRecordVersion(db, { entityType: entity, entityId, payload, actorUserId: "u" });
+		}
+	};
+
+	it("reports unversioned for entities without rows", async () => {
+		const report = await verifyRecordVersions(db, entity, "never-seen");
+		expect(report).toEqual({
+			status: "unversioned",
+			versions: 0,
+			unverifiableContent: 0,
+			signed: 0,
+			issues: [],
+			head: null,
+		});
+	});
+
+	it("verifies a clean chain and exposes the head", async () => {
+		await seed(100, [JSON.stringify({ v: 1 }), JSON.stringify({ v: 2 })]);
+		const report = await verifyRecordVersions(db, entity, 100);
+		expect(report.status).toBe("verified");
+		expect(report.versions).toBe(2);
+		expect(report.issues).toEqual([]);
+		expect(report.unverifiableContent).toBe(0);
+		expect(report.head).not.toBeNull();
+		expect(report.head!.version).toBe(2);
+		expect(report.head!.contentHash).toBe(await contentHash({ v: 2 }));
+	});
+
+	it("flags a rewritten payload (blob + content + chain all break)", async () => {
+		await seed(101, [JSON.stringify({ a: 1 }), JSON.stringify({ a: 2 })]);
+		const rows = await listRecordVersions(db, entity, 101);
+		await db
+			.update(recordVersions)
+			.set({ payload: JSON.stringify({ a: 99 }) })
+			.where(eq(recordVersions.id, rows[1]!.id));
+		const report = await verifyRecordVersions(db, entity, 101);
+		expect(report.status).toBe("tampered");
+		expect(report.issues.map((i) => i.code)).toEqual(
+			expect.arrayContaining(["blob-mismatch", "content-mismatch"]),
+		);
+		expect(report.issues.every((i) => i.version === 2)).toBe(true);
+	});
+
+	it("flags a broken prev_hash link", async () => {
+		await seed(102, [JSON.stringify({ a: 1 }), JSON.stringify({ a: 2 })]);
+		const rows = await listRecordVersions(db, entity, 102);
+		await db
+			.update(recordVersions)
+			.set({ prevHash: "00".repeat(32) })
+			.where(eq(recordVersions.id, rows[1]!.id));
+		const report = await verifyRecordVersions(db, entity, 102);
+		expect(report.status).toBe("tampered");
+		expect(report.issues).toEqual([{ version: 2, code: "chain-broken" }]);
+	});
+
+	it("flags a non-null prev_hash on version 1", async () => {
+		await seed(103, [JSON.stringify({ a: 1 })]);
+		const rows = await listRecordVersions(db, entity, 103);
+		await db
+			.update(recordVersions)
+			.set({ prevHash: "11".repeat(32) })
+			.where(eq(recordVersions.id, rows[0]!.id));
+		const report = await verifyRecordVersions(db, entity, 103);
+		expect(report.status).toBe("tampered");
+		expect(report.issues).toEqual([{ version: 1, code: "genesis-link" }]);
+	});
+
+	it("flags a version sequence gap", async () => {
+		await seed(104, [JSON.stringify({ a: 1 }), JSON.stringify({ a: 2 })]);
+		const rows = await listRecordVersions(db, entity, 104);
+		await db.update(recordVersions).set({ version: 5 }).where(eq(recordVersions.id, rows[1]!.id));
+		const report = await verifyRecordVersions(db, entity, 104);
+		expect(report.status).toBe("tampered");
+		expect(report.issues).toEqual([{ version: 5, code: "version-gap" }]);
+		expect(report.head!.version).toBe(5);
+	});
+
+	it("counts opaque payloads as blob-verified but unverifiable content", async () => {
+		await appendRecordVersion(db, {
+			entityType: entity,
+			entityId: 105,
+			payload: "v1.envelope.ciphertext",
+			contentHash: "cc".repeat(32),
+			signature: "c2ln",
+			actorUserId: "u",
+		});
+		const report = await verifyRecordVersions(db, entity, 105);
+		expect(report.status).toBe("verified");
+		expect(report.unverifiableContent).toBe(1);
+		expect(report.signed).toBe(1);
+	});
+
+	it("is reachable through the Integrity service", async () => {
+		const runtime = makeRuntime(db);
+		const report = await run(runtime, Integrity.pipe(Effect.flatMap((i) => i.verify(entity, 100))));
+		expect(report.status).toBe("verified");
 	});
 });
 

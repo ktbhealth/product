@@ -73,6 +73,12 @@ export interface ConsultationMessages {
 		readonly evidence: (n: number) => string;
 		readonly noAnamnesisTitle: string;
 		readonly noAnamnesisDescription: string;
+		/** Tamper-evidence badge labels (T-139) — mirrors IntegrityBadgeLabels. */
+		readonly integrity: {
+			readonly verified: string;
+			readonly tampered: string;
+			readonly unversioned: string;
+		};
 	};
 	readonly transcriptPanel: {
 		readonly sourceServer: string;
@@ -223,6 +229,15 @@ export interface ConsultationMessages {
 		readonly deleteConfirm: string;
 		readonly cancel: string;
 	};
+	/** ZK locked-record copy (T-145) — rows this device cannot decrypt. */
+	readonly zk: {
+		readonly lockedRecord: string;
+		readonly lockedHint: string;
+		readonly decryptFailed: string;
+		/** Disabled-export reason (T-146): server PDF cannot render
+		 * ciphertext, no browser-safe renderer ships. */
+		readonly exportLocked: string;
+	};
 }
 
 const en: ConsultationMessages = {
@@ -291,6 +306,11 @@ const en: ConsultationMessages = {
 		evidence: (n) => `evidence (${n})`,
 		noAnamnesisTitle: "No anamnesis saved",
 		noAnamnesisDescription: "This consultation does not have a saved anamnesis yet.",
+		integrity: {
+			verified: "Integrity verified",
+			tampered: "Integrity check failed",
+			unversioned: "Integrity not recorded",
+		},
 	},
 	transcriptPanel: {
 		sourceServer: "server · whisper large-v3-turbo",
@@ -440,6 +460,12 @@ const en: ConsultationMessages = {
 		deleteConfirm: "Delete permanently",
 		cancel: "Cancel",
 	},
+	zk: {
+		lockedRecord: "Encrypted record",
+		lockedHint: "Unlock it on an approved clinic device to view it.",
+		decryptFailed: "This record could not be decrypted on this device.",
+		exportLocked: "PDF export unavailable for encrypted records",
+	},
 };
 
 const ptBR: ConsultationMessages = {
@@ -510,6 +536,11 @@ const ptBR: ConsultationMessages = {
 		evidence: (n) => `evidências (${n})`,
 		noAnamnesisTitle: "Nenhuma anamnese salva",
 		noAnamnesisDescription: "Esta consulta ainda não tem uma anamnese salva.",
+		integrity: {
+			verified: "Integridade verificada",
+			tampered: "Falha na verificação de integridade",
+			unversioned: "Integridade não registrada",
+		},
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",
@@ -658,6 +689,12 @@ const ptBR: ConsultationMessages = {
 		deleteConfirm: "Excluir permanentemente",
 		cancel: "Cancelar",
 	},
+	zk: {
+		lockedRecord: "Registro criptografado",
+		lockedHint: "Desbloqueie em um dispositivo aprovado da clínica para visualizar.",
+		decryptFailed: "Não foi possível descriptografar este registro neste dispositivo.",
+		exportLocked: "Exportação em PDF indisponível para registros criptografados",
+	},
 };
 
 const es: ConsultationMessages = {
@@ -728,6 +765,11 @@ const es: ConsultationMessages = {
 		evidence: (n) => `evidencias (${n})`,
 		noAnamnesisTitle: "Ninguna anamnesis guardada",
 		noAnamnesisDescription: "Esta consulta aún no tiene una anamnesis guardada.",
+		integrity: {
+			verified: "Integridad verificada",
+			tampered: "Falló la verificación de integridad",
+			unversioned: "Integridad no registrada",
+		},
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",
@@ -878,6 +920,12 @@ const es: ConsultationMessages = {
 		deleteDescription: (label) => `Esto elimina permanentemente ${label} y su grabación.`,
 		deleteConfirm: "Eliminar permanentemente",
 		cancel: "Cancelar",
+	},
+	zk: {
+		lockedRecord: "Registro cifrado",
+		lockedHint: "Desbloquéalo en un dispositivo aprobado de la clínica para verlo.",
+		decryptFailed: "No se pudo descifrar este registro en este dispositivo.",
+		exportLocked: "Exportación a PDF no disponible para registros cifrados",
 	},
 };
 

@@ -18,6 +18,7 @@ describe("admin_audit schema", () => {
 			"target_id",
 			"detail",
 			"tenant_id",
+			"prev_hash",
 			"created_at",
 		]);
 	});

@@ -507,6 +507,7 @@ describe("/platform/$ splat dispatcher", () => {
 				createdAt: new Date("2026-11-01T10:00:00Z"),
 				updatedAt: new Date("2026-11-01T10:00:00Z"),
 				memberCount: 4,
+				zk: false,
 			},
 		];
 		render(createElement(component(PlatformPageRoute)));
@@ -526,6 +527,7 @@ describe("/platform/$ splat dispatcher", () => {
 				createdAt: new Date("2026-11-01T10:00:00Z"),
 				updatedAt: new Date("2026-11-01T10:00:00Z"),
 				memberCount: 2,
+				zk: false,
 			},
 		];
 		render(createElement(component(PlatformPageRoute)));

@@ -100,7 +100,7 @@ async function signInRouterUser() {
 			engine: "heuristic",
 		},
 	});
-	consultationId = saved.id!;
+	consultationId = saved!.id;
 }
 
 // The root route renders the full document shell (<html>/<body>). Mounting it
@@ -230,7 +230,7 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await act(async () => {
-			await router.navigate({ to: "/consultations/$id", params: { id: String(second.id!) } });
+			await router.navigate({ to: "/consultations/$id", params: { id: String(second!.id) } });
 		});
 		await waitFor(() => expect(document.body.textContent).toContain("1 previous consultation"));
 		expect(document.body.textContent).toContain("Complaint: Primeira queixa");

@@ -57,6 +57,21 @@ describe("PortalConsultationPage", () => {
 		expect(screen.getByText("Voltar às minhas consultas")).toBeTruthy();
 	});
 
+	it("renders the locked card instead of sections when there is no grant", () => {
+		render(
+			<PortalConsultationPage
+				consultation={{ ...consultation, sections: [] }}
+				locked
+				locale="en"
+			/>,
+		);
+		expect(screen.getByText("Encrypted record")).toBeTruthy();
+		expect(
+			screen.getByText("It opens automatically once your clinic grants access to this device."),
+		).toBeTruthy();
+		expect(screen.queryByText("Dor de cabeça há três dias")).toBeNull();
+	});
+
 	it("omits the doctor line when unknown and says when nothing was written", () => {
 		render(
 			<PortalConsultationPage

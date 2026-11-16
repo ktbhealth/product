@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import {
+	ensureSessionUser,
 	getLocale,
 	getPatientContext,
 	getSessionUser,
@@ -19,6 +20,19 @@ import { PatientPortal, type PortalConsultation } from "./index.ts";
 // read-only here: the portal lists and opens consultations, nothing more.
 
 const decodeNumber = Schema.decodeUnknownSync(Schema.Number);
+const decodeDeviceKeys = Schema.decodeUnknownSync(
+	Schema.Struct({
+		wrapPublicKey: Schema.NonEmptyString,
+		signPublicKey: Schema.NonEmptyString,
+	}),
+);
+const decodeDekEnvelopes = Schema.decodeUnknownSync(
+	Schema.Struct({
+		entityType: Schema.Literals(["patient", "consultation"]),
+		entityIds: Schema.Array(Schema.Union([Schema.Number, Schema.NonEmptyString])),
+		wrapPublicKey: Schema.NonEmptyString,
+	}),
+);
 
 /** Active UI locale for the current request — route loaders attach it
  * to their data so plugin views never import the host's i18n runtime. */
@@ -92,4 +106,48 @@ export const selectPatientFn = createServerFn({ method: "POST" })
 		if (!context?.profiles.some((p) => p.patientId === patientId)) return { ok: false };
 		await setPatientSelection(patientId);
 		return { ok: true };
+	});
+
+/**
+ * Publish this device's public keys (T-148): the browser generates a
+ * non-extractable keypair on first portal use and registers its public
+ * halves here so an approved clinic device can wrap record DEKs to
+ * them. Self-service — the row is keyed by the session user's own id.
+ */
+export const portalRegisterDeviceFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeDeviceKeys(input))
+	.handler(async ({ data }) => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const portal = yield* PatientPortal;
+				return yield* portal.registerDevice(data).pipe(
+					Effect.map((device) => ({ ok: true as const, device })),
+					Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				);
+			}),
+		);
+	});
+
+/**
+ * The caller's wrapped DEK envelopes for a batch of records, keyed by
+ * entityId (T-148) — the portal mirror of `vaultDekEnvelopesFn`, which
+ * is member-scoped and unreachable for portal users (no tenant
+ * binding). Records the caller cannot read are simply absent.
+ */
+export const portalDekEnvelopesFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodeDekEnvelopes(input))
+	.handler(async ({ data }): Promise<Record<string, string>> => {
+		const user = await getSessionUser();
+		if (!user) return {};
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const portal = yield* PatientPortal;
+				return yield* portal
+					.dekEnvelopes(data)
+					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed({})));
+			}),
+		);
 	});
