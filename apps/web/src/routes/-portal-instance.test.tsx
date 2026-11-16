@@ -44,7 +44,12 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 let instance = "clinician";
 let splat: string | undefined = "test";
 let pathname = "/portal/clinician/test";
-let loaderData: unknown = { path: "/portal/clinician/test", data: null, audiences: [], pluginStates: { enabled: [] } };
+let loaderData: unknown = {
+	path: "/portal/clinician/test",
+	data: null,
+	audiences: [],
+	pluginStates: { enabled: [] },
+};
 let chromeExtra: { id: string; region: string; content: Record<string, unknown> }[] = [];
 
 beforeAll(() => {
@@ -338,10 +343,7 @@ describe("/portal/$instance/$ component", () => {
 				import("./portal.$instance.$.tsx"),
 				import("#/lib/registry.ts"),
 			]);
-			const pages = freshPages as unknown as Map<
-				string,
-				{ page: PanelPage; pluginId: string }
-			>;
+			const pages = freshPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 			pages.set(TEST_PAGE.path, { page: TEST_PAGE, pluginId: "clinician.pages" });
 			chromeExtra = [
 				{
