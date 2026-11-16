@@ -17,7 +17,8 @@ export { syncBaseline, type BaselineEntry, type BaselineResult } from "./baselin
 export { applyTextEdit, docFromUpdates, docValue, newMessageDoc } from "./crdt.ts";
 export { I18nRuntime, I18nRuntimeLive, STAMP_TTL_MS } from "./runtime.ts";
 export { requestI18n, i18nLayerFor } from "./service.ts";
-export { catalogStamp, listLocales, listPublishedRows } from "./store.ts";
+export { resolveRequestI18n, DEFAULT_LOCALE } from "./request.ts";
+export { catalogStamp, listEnabledLocales, listLocales, listPublishedRows } from "./store.ts";
 
 /** i18n tables citizen (P-083). */
 export const i18nTablesPlugin = definePlugin({

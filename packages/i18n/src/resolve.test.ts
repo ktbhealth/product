@@ -5,6 +5,7 @@ import {
 	localeChain,
 	portalScope,
 	resolveMessage,
+	resolveRequestLocales,
 	tenantScope,
 	type MessageRow,
 } from "./resolve.ts";
@@ -118,5 +119,29 @@ describe("resolveMessage", () => {
 			locales: localeChain(["en"], "en"),
 		});
 		expect(r.template).toBe("global");
+	});
+});
+
+describe("resolveRequestLocales", () => {
+	const enabled = [
+		{ code: "en", fallbacks: [] },
+		{ code: "pt-BR", fallbacks: ["en"] },
+		{ code: "es", fallbacks: ["en"] },
+	];
+
+	it("requested enabled locale wins with its fallback chain", () => {
+		const l = resolveRequestLocales("pt-BR", enabled, "en");
+		expect(l.locales).toEqual(["pt-BR", "en"]);
+		expect(l.defaultLocale).toBe("en");
+	});
+
+	it("unknown/disabled requested locale falls to default", () => {
+		expect(resolveRequestLocales("fr", enabled, "en").locales).toEqual(["en"]);
+		expect(resolveRequestLocales(undefined, enabled, "en").locales).toEqual(["en"]);
+	});
+
+	it("dedupes when fallback equals requested", () => {
+		const l = resolveRequestLocales("en", enabled, "en");
+		expect(l.locales).toEqual(["en"]);
 	});
 });

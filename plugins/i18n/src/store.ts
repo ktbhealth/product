@@ -83,4 +83,15 @@ export const listLocales = async (
 	}));
 };
 
+/** Enabled locale rows only — the set `resolveRequestLocales` may pick from. */
+export const listEnabledLocales = async (
+	db: DbClient,
+): Promise<ReadonlyArray<{ code: string; fallbacks: readonly string[] }>> => {
+	const rows = await db
+		.select({ code: i18nLocales.code, fallbacks: i18nLocales.fallbacks })
+		.from(i18nLocales)
+		.where(eq(i18nLocales.enabled, true));
+	return rows;
+};
+
 export { i18nLocales, i18nMessages, i18nNamespaces };

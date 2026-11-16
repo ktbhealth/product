@@ -103,6 +103,10 @@ export const plugins: readonly Plugin[] = orderPlugins(
 	}),
 );
 
+// Route → i18n namespace derivation (PL-008): pure registry helpers,
+// safe on both edges.
+export * from "./namespaces.ts";
+
 /**
  * CQRS groups are enumerated by convention, not by plugin objects: every
  * plugin api module (`plugins/<name>/src/api.ts`) may export query/command

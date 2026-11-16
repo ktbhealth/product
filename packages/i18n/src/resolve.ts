@@ -59,6 +59,28 @@ export const localeChain = (locales: readonly string[], defaultLocale: string): 
 	defaultLocale,
 });
 
+/** An enabled locale row as the resolver needs it. */
+export interface EnabledLocale {
+	readonly code: string;
+	readonly fallbacks: readonly string[];
+}
+
+/**
+ * Request locale resolution (PL-008 Phase 2): the requested locale
+ * (cookie/portal default) wins only when enabled; otherwise the
+ * default locale serves. The chain is `requested → its fallbacks →
+ * default`, deduped — e.g. pt-BR → ["pt-BR","en"].
+ */
+export const resolveRequestLocales = (
+	requested: string | undefined,
+	enabled: readonly EnabledLocale[],
+	defaultLocale: string,
+): LocaleChain => {
+	const row = requested === undefined ? undefined : enabled.find((l) => l.code === requested);
+	if (row === undefined) return localeChain([defaultLocale], defaultLocale);
+	return localeChain([row.code, ...row.fallbacks], defaultLocale);
+};
+
 export interface ResolvedMessage {
 	/** The template to render; sentinel `namespace.key` when missing. */
 	readonly template: string;
