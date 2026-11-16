@@ -1,7 +1,6 @@
 /** AI endpoints copy — one typed catalog per locale, resolved from
  * the panel page ctx (same contract as eval-validator's i18n). */
 export const AI_ENDPOINT_LOCALES = ["en", "pt-BR", "es"] as const;
-export type AiEndpointLocale = (typeof AI_ENDPOINT_LOCALES)[number];
 
 export interface AiEndpointMessages {
 	readonly endpointsTitle: string;
