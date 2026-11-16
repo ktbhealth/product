@@ -117,7 +117,7 @@ describe("idbStore", () => {
 				const { result, error, fail } = get();
 				r.result = result;
 				r.error = error;
-				(fail ? r.onerror : r.onsuccess)?.call(r);
+				((fail ? r.onerror : r.onsuccess) as (() => void) | undefined)?.call(r);
 			});
 			return r;
 		};
