@@ -1,2 +1,2 @@
-DROP TABLE `theme_assets`;--> statement-breakpoint
-DROP TABLE `theme_definitions`;
+DROP TABLE IF EXISTS `theme_assets`;--> statement-breakpoint
+DROP TABLE IF EXISTS `theme_definitions`;
