@@ -1,21 +1,17 @@
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { SiteBrand, SiteLocaleToggle } from "./chrome.tsx";
+import { SiteLocaleToggle } from "./chrome.tsx";
 
 /**
  * Site chrome plugin (P-060): the app-shell regions owned by @ktb/site —
- * brand block, locale toggle and the footer disclaimer note. Mirrors
- * ./client.ts (the client-discovery manifest); parity is asserted by
- * apps/web/src/plugins.test.ts.
+ * locale toggle and the footer disclaimer note. The brand block moved
+ * to the theme plugin in PL-006 phase 7 (brand lives in theme data).
+ * Mirrors ./client.ts (the client-discovery manifest); parity is
+ * asserted by apps/web/src/plugins.test.ts.
  */
 export const siteChromePlugin = definePlugin({
 	id: "site.chrome",
 	chrome: [
-		{
-			id: "site.brand",
-			region: "app.header.brand",
-			content: { kind: "component", component: SiteBrand },
-		},
 		{
 			id: "site.locale",
 			region: "app.header.actions",

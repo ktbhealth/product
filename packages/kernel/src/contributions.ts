@@ -233,6 +233,12 @@ export interface ChromeProps {
 	readonly setLocale: (locale: string) => void;
 	readonly labels: Readonly<Record<string, string>>;
 	readonly signOut: () => Promise<void>;
+	/** Host-injected resolved theme for the current shell (P-082/PL-006
+	 * phase 7): the shape is owned by the theme plugin (`@ktb/theme`
+	 * `ResolvedTheme`) — the kernel stays dependency-free, so brand
+	 * chrome narrows it. Absent/null when no theme resolved (the host
+	 * always injects the built-in default in practice). */
+	readonly theme?: unknown;
 }
 
 /** What a chrome contribution renders. `link` is a router link (nav

@@ -169,6 +169,13 @@
       "when": 1794797511299,
       "tag": "0024_great_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794799456900,
+      "tag": "0025_dapper_kree",
+      "breakpoints": true
     }
   ]
 }
