@@ -60,6 +60,8 @@ const endpoint: EndpointCard = {
 	sessionId: null,
 	secretRef: null,
 	transport: null,
+	agentCmd: null,
+	sshHost: null,
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: 60_000,
@@ -394,11 +396,15 @@ describe("EndpointsPage — acp transport", () => {
 		expect(screen.getByText(/child\/ssh need the Node runtime/)).toBeTruthy();
 		await user.click(screen.getByLabelText("Transport"));
 		await user.click(await screen.findByRole("option", { name: "ssh" }));
+		await user.type(screen.getByPlaceholderText("claude agent acp"), "claude agent acp --verbose");
+		await user.type(screen.getByPlaceholderText("user@host"), "me@gpu-box");
 		await user.click(screen.getByText("Save"));
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
 			kind: "acp",
 			transport: "ssh",
+			agentCmd: "claude agent acp --verbose",
+			sshHost: "me@gpu-box",
 		});
 	});
 

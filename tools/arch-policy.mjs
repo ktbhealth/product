@@ -106,6 +106,11 @@ const ADAPTER_PACKAGE_NAMES = [
 	"eval-adapter-stub",
 	"eval-adapter-local",
 	"eval-adapter-cloud",
+	// Generative-endpoint adapters (F3a): OpenAI-compat chat, the ACP
+	// ws/http transport, and the Node-runtime spawned-agent driver.
+	"ai-adapter-openai",
+	"ai-adapter-acp",
+	"ai-adapter-node",
 ];
 
 /**

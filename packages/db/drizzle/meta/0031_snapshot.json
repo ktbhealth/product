@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "22f9dc0f-8d87-48a9-960c-0b0ea8a7b39b",
+  "id": "d3ce3789-2a8e-4b56-8255-dcd365aa05b3",
   "prevId": "91253fcd-9f80-45b6-97a7-89e39bb63619",
   "tables": {
     "account": {
@@ -729,6 +729,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "agent_cmd": {
+          "name": "agent_cmd",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ssh_host": {
+          "name": "ssh_host",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "scope": {
           "name": "scope",
           "type": "text",
@@ -878,14 +892,6 @@
           "name": "admin_audit_actor_idx",
           "columns": [
             "actor_user_id"
-          ],
-          "isUnique": false
-        },
-        "admin_audit_tenant_created_idx": {
-          "name": "admin_audit_tenant_created_idx",
-          "columns": [
-            "tenant_id",
-            "created_at"
           ],
           "isUnique": false
         }

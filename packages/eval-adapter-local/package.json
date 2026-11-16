@@ -6,6 +6,9 @@
 		".": "./src/index.ts"
 	},
 	"dependencies": {
+		"@ktb/ai-adapter-acp": "workspace:*",
+		"@ktb/ai-adapter-node": "workspace:*",
+		"@ktb/ai-adapter-openai": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/driver-framework": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",

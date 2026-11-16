@@ -20,6 +20,7 @@
       "name": "@ktb/app-eval",
       "dependencies": {
         "@effect/platform-node": "4.1.2",
+        "@ktb/ai-adapter-acp": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
         "@ktb/eval-adapter-cloud": "workspace:*",
         "@ktb/eval-adapter-local": "workspace:*",
@@ -171,6 +172,43 @@
         "effect": "4.1.2",
       },
     },
+    "packages/ai-adapter-acp": {
+      "name": "@ktb/ai-adapter-acp",
+      "dependencies": {
+        "@ktb/driver-framework": "workspace:*",
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
+    "packages/ai-adapter-node": {
+      "name": "@ktb/ai-adapter-node",
+      "dependencies": {
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
+    "packages/ai-adapter-openai": {
+      "name": "@ktb/ai-adapter-openai",
+      "dependencies": {
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
     "packages/anamnesis": {
       "name": "@ktb/anamnesis",
       "dependencies": {
@@ -191,6 +229,7 @@
       "name": "@ktb/app-host",
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
+        "@ktb/ai-adapter-acp": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/anamnesis-llm": "workspace:*",
         "@ktb/auth": "workspace:*",
@@ -381,6 +420,9 @@
     "packages/eval-adapter-local": {
       "name": "@ktb/eval-adapter-local",
       "dependencies": {
+        "@ktb/ai-adapter-acp": "workspace:*",
+        "@ktb/ai-adapter-node": "workspace:*",
+        "@ktb/ai-adapter-openai": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
@@ -1736,6 +1778,12 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.6.0", "", {}, "sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@ktb/ai-adapter-acp": ["@ktb/ai-adapter-acp@workspace:packages/ai-adapter-acp"],
+
+    "@ktb/ai-adapter-node": ["@ktb/ai-adapter-node@workspace:packages/ai-adapter-node"],
+
+    "@ktb/ai-adapter-openai": ["@ktb/ai-adapter-openai@workspace:packages/ai-adapter-openai"],
 
     "@ktb/ai-endpoints": ["@ktb/ai-endpoints@workspace:plugins/ai-endpoints"],
 

@@ -28,6 +28,9 @@ export interface AiEndpointMessages {
 	readonly testFailed: string;
 	readonly transport: string;
 	readonly transportHint: string;
+	readonly agentCmd: string;
+	readonly agentCmdHint: string;
+	readonly sshHost: string;
 	readonly acpHint: string;
 	readonly emptyEndpoints: string;
 	readonly actionFailed: string;
@@ -61,6 +64,9 @@ const en: AiEndpointMessages = {
 	testFailed: "endpoint failed",
 	transport: "Transport",
 	transportHint: "child/ssh need the Node runtime — this app only drives ws.",
+	agentCmd: "Agent command",
+	agentCmdHint: "Command the Node runtime spawns — e.g. `claude agent acp` or `gemini --acp`.",
+	sshHost: "SSH host",
 	acpHint:
 		"Connects a local agent over ACP (e.g. Claude Code). No API key needed — run `claude agent acp` and paste the session id.",
 	emptyEndpoints: "No endpoints — generation falls back to the template renderer.",
@@ -96,6 +102,9 @@ const ptBR: AiEndpointMessages = {
 	testFailed: "endpoint falhou",
 	transport: "Transporte",
 	transportHint: "child/ssh precisam do runtime Node — este app só usa ws.",
+	agentCmd: "Comando do agente",
+	agentCmdHint: "Comando que o runtime Node executa — ex.: `claude agent acp` ou `gemini --acp`.",
+	sshHost: "Host SSH",
 	acpHint:
 		"Conecta um agente local via ACP (ex.: Claude Code). Sem API key — rode `claude agent acp` e cole o id de sessão.",
 	emptyEndpoints: "Sem endpoints — a geração usa o renderizador de template.",
@@ -119,6 +128,9 @@ const es: AiEndpointMessages = {
 	test: "Probar",
 	transport: "Transporte",
 	transportHint: "child/ssh necesitan el runtime Node — esta app solo usa ws.",
+	agentCmd: "Comando del agente",
+	agentCmdHint: "Comando que el runtime Node ejecuta — p. ej. `claude agent acp` o `gemini --acp`.",
+	sshHost: "Host SSH",
 	acpHint:
 		"Conecta un agente local vía ACP (p. ej. Claude Code). Sin API key — ejecuta `claude agent acp` y pega el id de sesión.",
 	secretRefNone: "Ninguna",

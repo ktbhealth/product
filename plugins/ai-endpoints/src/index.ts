@@ -35,6 +35,8 @@ export interface EndpointCard {
 	readonly sessionId: string | null;
 	readonly secretRef: string | null;
 	readonly transport: string | null;
+	readonly agentCmd: string | null;
+	readonly sshHost: string | null;
 	readonly scope: string;
 	readonly isDefault: boolean;
 	readonly timeoutMs: number;
@@ -51,6 +53,10 @@ export interface EndpointInput {
 	readonly secretRef?: string;
 	/** ACP transport — 'ws' | 'child' | 'ssh' (null/absent = 'ws'). */
 	readonly transport?: string;
+	/** Agent command for child/ssh transports (e.g. "claude agent acp"). */
+	readonly agentCmd?: string;
+	/** SSH target (user@host) for the ssh transport. */
+	readonly sshHost?: string;
 	/** Consuming surface the endpoint belongs to (default "eval"). */
 	readonly scope?: string;
 	readonly isDefault?: boolean;
@@ -67,6 +73,8 @@ const toEndpointCard = (row: AiEndpoint): EndpointCard => ({
 	sessionId: row.sessionId,
 	secretRef: row.secretRef,
 	transport: row.transport,
+	agentCmd: row.agentCmd,
+	sshHost: row.sshHost,
 	scope: row.scope,
 	isDefault: row.isDefault,
 	timeoutMs: row.timeoutMs,
@@ -93,6 +101,8 @@ const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, nev
 			...(row.kind === "acp" && (transport === "child" || transport === "ssh" || transport === "ws")
 				? { transport }
 				: {}),
+			...(row.kind === "acp" && row.agentCmd !== null ? { agentCmd: row.agentCmd } : {}),
+			...(row.kind === "acp" && row.sshHost !== null ? { sshHost: row.sshHost } : {}),
 			timeoutMs: row.timeoutMs,
 		};
 		const ref = row.secretRef;
@@ -173,6 +183,8 @@ export const AiEndpointsLive = Layer.effect(
 			sessionId: input.sessionId ?? null,
 			secretRef: input.secretRef ?? null,
 			transport: input.transport ?? null,
+			agentCmd: input.agentCmd ?? null,
+			sshHost: input.sshHost ?? null,
 			scope: input.scope ?? "eval",
 			isDefault: input.isDefault ?? false,
 			timeoutMs: input.timeoutMs ?? 60_000,
@@ -329,7 +341,7 @@ export const PlatformLlmLive = Layer.effect(
 /** DDL mirror of schema.ts for in-memory test databases (same
  * contract as EVAL_PERSONA_TEST_DDL). */
 export const AI_ENDPOINTS_TEST_DDL = `
-CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
 `;
 
 export const aiEndpointsTablesPlugin = definePlugin({

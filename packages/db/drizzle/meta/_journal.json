@@ -215,8 +215,15 @@
     {
       "idx": 31,
       "version": "6",
-      "when": 1794842270597,
-      "tag": "0031_real_amphibian",
+      "when": 1794843326336,
+      "tag": "0031_shocking_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794845189882,
+      "tag": "0032_legal_queen_noir",
       "breakpoints": true
     }
   ]
