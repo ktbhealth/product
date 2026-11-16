@@ -59,10 +59,26 @@ describe("makeApiKeysAdapter", () => {
 			secret: "sk-live-1234",
 		});
 
-		expect(await keys.getSecret(id)).toBe("sk-live-1234");
+		expect(await keys.getSecret(id, userId)).toBe("sk-live-1234");
 
-		await keys.remove(id);
+		await keys.remove(id, userId);
 		expect(await keys.list(userId)).toHaveLength(0);
+	});
+
+	it("getSecret and remove cannot reach another referenceId's key", async () => {
+		const { db, auth, keys } = setup();
+		const a = await signUp(auth, "owner@x.com");
+		const b = await signUp(auth, "other@x.com");
+		const { id } = await keys.create({
+			name: "k",
+			referenceId: a,
+			metadata: { secret: "sk-owner" },
+		});
+		// Another referenceId sees nothing and deletes nothing.
+		expect(await keys.getSecret(id, b)).toBeNull();
+		await keys.remove(id, b);
+		expect(await keys.getSecret(id, a)).toBe("sk-owner");
+		expect((await db.select().from(apikeyTable)).filter((r) => r.id === id)).toHaveLength(1);
 	});
 
 	it("scopes list to the referenceId", async () => {
@@ -76,7 +92,7 @@ describe("makeApiKeysAdapter", () => {
 
 	it("getSecret returns null for unknown, bare or malformed rows", async () => {
 		const { db, keys } = setup();
-		expect(await keys.getSecret("nope")).toBeNull();
+		expect(await keys.getSecret("nope", "u1")).toBeNull();
 		const insert = (id: string, metadata: string | null) =>
 			db.insert(apikeyTable).values({
 				id,
@@ -89,9 +105,9 @@ describe("makeApiKeysAdapter", () => {
 		await insert("m-null", null);
 		await insert("m-bad", "not-json");
 		await insert("m-odd", '{"secret":42}');
-		expect(await keys.getSecret("m-null")).toBeNull();
-		expect(await keys.getSecret("m-bad")).toBeNull();
-		expect(await keys.getSecret("m-odd")).toBeNull();
+		expect(await keys.getSecret("m-null", "u1")).toBeNull();
+		expect(await keys.getSecret("m-bad", "u1")).toBeNull();
+		expect(await keys.getSecret("m-odd", "u1")).toBeNull();
 	});
 
 	it("remove falls back to a direct delete when the endpoint rejects", async () => {
@@ -106,12 +122,22 @@ describe("makeApiKeysAdapter", () => {
 			createdAt: new Date(),
 			updatedAt: new Date(),
 		});
-		await keys.remove("k-x");
-		expect(await keys.getSecret("k-x")).toBeNull();
+		await keys.remove("k-x", "u1");
+		expect(await keys.getSecret("k-x", "u1")).toBeNull();
 	});
 
 	it("remove prefers the plugin endpoint when it accepts the call", async () => {
 		const { db } = setup();
+		// The ownership check hits the real table first — the endpoint
+		// is only reached for rows the caller actually owns.
+		await db.insert(apikeyTable).values({
+			id: "k-y",
+			referenceId: "u1",
+			key: "key-k-y",
+			metadata: '{"secret":"s"}',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
 		let seen = "";
 		const auth = {
 			api: {
@@ -122,7 +148,7 @@ describe("makeApiKeysAdapter", () => {
 			},
 		};
 		const keys = makeApiKeysAdapter(auth as never, db);
-		await keys.remove("k-y");
+		await keys.remove("k-y", "u1");
 		expect(seen).toBe("k-y");
 	});
 });

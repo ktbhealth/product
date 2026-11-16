@@ -39,8 +39,16 @@ export interface ApiKeysShape {
 		readonly metadata: Record<string, unknown>;
 	}): Promise<{ readonly id: string }>;
 	list(referenceId: string): Promise<readonly ApiKeyRow[]>;
-	remove(keyId: string): Promise<void>;
-	getSecret(keyId: string): Promise<string | null>;
+	/**
+	 * Owner-scoped delete: the row must belong to `referenceId` —
+	 * another user's key id is a silent no-op (IDOR guard).
+	 */
+	remove(keyId: string, referenceId: string): Promise<void>;
+	/**
+	 * Owner-scoped read-back: returns the secret only when the row
+	 * belongs to `referenceId`, null otherwise.
+	 */
+	getSecret(keyId: string, referenceId: string): Promise<string | null>;
 }
 
 export interface ApiKeyRow {

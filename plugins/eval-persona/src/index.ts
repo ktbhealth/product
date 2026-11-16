@@ -1,8 +1,9 @@
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { FlaskConicalIcon, Users2Icon } from "lucide-react";
 
 import { Principal, type Forbidden } from "@ktb/authz";
@@ -535,6 +536,20 @@ export interface CreateInstanceInput {
 	readonly minutes?: number;
 }
 
+/** Domain rejection for instance create/remove — surfaces through the
+ * server fns as `{ ok: false, data: { message } }`. */
+export class InstanceRejected extends Data.TaggedError("InstanceRejected")<{
+	readonly reason: string;
+}> {}
+
+/** A claimed item left `generating` longer than this was orphaned by
+ * a killed request — the next tick reclaims it to `pending`. */
+const STALE_CLAIM_MS = 60_000;
+
+/** `list` ticks at most this many generating instances per call — a
+ * long queue can't starve a single request. */
+const MAX_TICKS_PER_POLL = 5;
+
 export class EvalInstances extends Context.Service<
 	EvalInstances,
 	{
@@ -542,7 +557,7 @@ export class EvalInstances extends Context.Service<
 		readonly detail: (id: number) => Effect.Effect<InstanceDetail | null, Forbidden, unknown>;
 		readonly create: (
 			input: CreateInstanceInput,
-		) => Effect.Effect<{ readonly id: number }, Forbidden, unknown>;
+		) => Effect.Effect<{ readonly id: number }, Forbidden | InstanceRejected, unknown>;
 		/** Bulk-provision `count` random-mode instances ("generators") —
 		 * names `${name} #1..N`, seeds `seed+i`, each producing
 		 * `defCount` personas. */
@@ -553,7 +568,7 @@ export class EvalInstances extends Context.Service<
 			readonly seed?: number;
 			readonly name?: string;
 		}) => Effect.Effect<{ readonly created: number }, Forbidden, unknown>;
-		readonly remove: (id: number) => Effect.Effect<void, Forbidden, unknown>;
+		readonly remove: (id: number) => Effect.Effect<void, Forbidden | InstanceRejected, unknown>;
 		readonly start: (id: number) => Effect.Effect<void, Forbidden, unknown>;
 	}
 >()("@ktb/eval-persona/EvalInstances") {}
@@ -655,18 +670,39 @@ export const EvalInstancesLive = Layer.effect(
 
 		// Detached generation: the whole instance outlives the request.
 		/** Poll-driven generation: one pending item per call, claimed
-		 * atomically (`status='pending'` guard) so concurrent polls and
-		 * multiple tabs can't double-process. Work runs INSIDE live
-		 * requests — survives workerd request shutdown, dev reloads and
-		 * crashes; a killed item simply stays `pending` for the next
-		 * poll. Never throws into the caller — failures land on the
-		 * item row. */
+		 * atomically (`status='pending'` guard + `claimed_at` stamp) so
+		 * concurrent polls and multiple tabs can't double-process. Work
+		 * runs INSIDE live requests — survives workerd request shutdown,
+		 * dev reloads and crashes; a request killed mid-generation
+		 * leaves its item `generating`, so claims older than
+		 * STALE_CLAIM_MS are reclaimed to `pending` on the next tick —
+		 * the run can't deadlock. Never throws into the caller —
+		 * failures land on the item row. */
 		const tick = Effect.fn("EvalInstances.tick")(function* (instanceId: number) {
 			const [inst] = yield* Effect.promise(() =>
 				db.select().from(evalInstance).where(eq(evalInstance.id, instanceId)),
 			);
 			/* v8 ignore next -- ticks only run for generating instances that exist */
 			if (inst === undefined || inst.status !== "generating") return;
+			// Reclaim stale claims BEFORE the pending scan: without this,
+			// an item orphaned by a killed request stays `generating`
+			// forever and `finalize` never fires. Rows claimed before the
+			// `claimed_at` column existed (NULL) count as stale.
+			yield* Effect.promise(() =>
+				db
+					.update(evalInstanceItem)
+					.set({ status: "pending", claimedAt: null })
+					.where(
+						and(
+							eq(evalInstanceItem.instanceId, instanceId),
+							eq(evalInstanceItem.status, "generating"),
+							or(
+								isNull(evalInstanceItem.claimedAt),
+								lt(evalInstanceItem.claimedAt, new Date(Date.now() - STALE_CLAIM_MS)),
+							),
+						),
+					),
+			);
 			const params = parseJson<{ seed?: number; count?: number; minutes?: number }>(
 				inst.params,
 				{},
@@ -743,7 +779,7 @@ export const EvalInstancesLive = Layer.effect(
 			const claimed = yield* Effect.promise(() =>
 				db
 					.update(evalInstanceItem)
-					.set({ status: "generating" })
+					.set({ status: "generating", claimedAt: new Date() })
 					.where(and(eq(evalInstanceItem.id, pending.id), eq(evalInstanceItem.status, "pending")))
 					.returning({ id: evalInstanceItem.id }),
 			);
@@ -834,52 +870,78 @@ export const EvalInstancesLive = Layer.effect(
 			);
 
 		// Shared insert path — `create` is one run, `spawn` is the same
-		// insert fanned out for bulk "generator" provisioning.
-		const insertInstance = (input: CreateInstanceInput, createdBy: string | null) =>
-			Effect.gen(function* () {
+		// insert fanned out for bulk "generator" provisioning. Plain
+		// async over a caller-supplied client so `spawn` can run the
+		// whole fan-out inside ONE transaction (a drizzle D1
+		// `transaction` is `BEGIN`/`COMMIT` over the same client); the
+		// `ok:false` arm keeps domain rejections typed for `create`.
+		const insertInstance = async (
+			client: Pick<DbClient, "select" | "insert">,
+			input: CreateInstanceInput,
+			createdBy: string | null,
+		): Promise<
+			{ readonly ok: true; readonly id: number } | { readonly ok: false; readonly reason: string }
+		> => {
+			if (input.mode === "selected") {
 				const defIds = input.defIds ?? [];
-				const total = input.mode === "selected" ? defIds.length : (input.count ?? 0);
-				const [inst] = yield* Effect.promise(() =>
-					db
-						.insert(evalInstance)
-						.values({
-							name: input.name,
-							mode: input.mode,
-							endpointId: input.endpointId ?? null,
-							params: JSON.stringify({
-								...(input.seed !== undefined ? { seed: input.seed } : {}),
-								...(input.count !== undefined ? { count: input.count } : {}),
-								...(input.minutes !== undefined ? { minutes: input.minutes } : {}),
-							}),
-							total,
-							createdBy,
-						})
-						.returning(),
-				);
-				if (input.mode === "selected" && defIds.length > 0) {
-					const picked = yield* Effect.promise(async () => {
-						const all = await db.select().from(evalPersonaDef);
-						const byId = new Map(all.map((d) => [d.id, d] as const));
-						return defIds.map((id) => byId.get(id)).filter((d) => d !== undefined);
-					});
-					yield* Effect.promise(() =>
-						db.insert(evalInstanceItem).values(
-							picked.map((d) => ({
-								instanceId: inst!.id,
-								personaDefId: d.id,
-								persona: d.persona,
-							})),
-						),
-					);
-				} else if (total > 0) {
-					yield* Effect.promise(() =>
-						db
-							.insert(evalInstanceItem)
-							.values(Array.from({ length: total }, () => ({ instanceId: inst!.id }))),
-					);
+				const all = await client.select().from(evalPersonaDef);
+				const byId = new Map(all.map((d) => [d.id, d] as const));
+				const picked = defIds.map((id) => byId.get(id)).filter((d) => d !== undefined);
+				if (picked.length === 0) {
+					return {
+						ok: false,
+						reason: "selected mode needs at least one known persona def",
+					};
 				}
-				return { id: inst!.id };
-			});
+				const [inst] = await client
+					.insert(evalInstance)
+					.values({
+						name: input.name,
+						mode: input.mode,
+						endpointId: input.endpointId ?? null,
+						params: JSON.stringify({
+							...(input.seed !== undefined ? { seed: input.seed } : {}),
+							...(input.count !== undefined ? { count: input.count } : {}),
+							...(input.minutes !== undefined ? { minutes: input.minutes } : {}),
+						}),
+						// `total` counts the items actually inserted — unknown
+						// defIds are dropped, not promised.
+						total: picked.length,
+						createdBy,
+					})
+					.returning();
+				await client.insert(evalInstanceItem).values(
+					picked.map((d) => ({
+						instanceId: inst!.id,
+						personaDefId: d.id,
+						persona: d.persona,
+					})),
+				);
+				return { ok: true, id: inst!.id };
+			}
+			const total = input.count ?? 0;
+			const [inst] = await client
+				.insert(evalInstance)
+				.values({
+					name: input.name,
+					mode: input.mode,
+					endpointId: input.endpointId ?? null,
+					params: JSON.stringify({
+						...(input.seed !== undefined ? { seed: input.seed } : {}),
+						...(input.count !== undefined ? { count: input.count } : {}),
+						...(input.minutes !== undefined ? { minutes: input.minutes } : {}),
+					}),
+					total,
+					createdBy,
+				})
+				.returning();
+			if (total > 0) {
+				await client
+					.insert(evalInstanceItem)
+					.values(Array.from({ length: total }, () => ({ instanceId: inst!.id })));
+			}
+			return { ok: true, id: inst!.id };
+		};
 
 		return EvalInstances.of({
 			list: Effect.fn("EvalInstances.list")(function* () {
@@ -888,9 +950,16 @@ export const EvalInstancesLive = Layer.effect(
 					db
 						.select({ id: evalInstance.id })
 						.from(evalInstance)
-						.where(eq(evalInstance.status, "generating")),
+						.where(eq(evalInstance.status, "generating"))
+						.orderBy(evalInstance.id),
 				);
-				yield* Effect.forEach(generating, (g) => tickQuietly(g.id), { discard: true });
+				yield* Effect.forEach(
+					// Bounded fan-out: a long generating queue must not turn
+					// one poll into a sequential batch of every instance.
+					generating.slice(0, MAX_TICKS_PER_POLL),
+					(g) => tickQuietly(g.id),
+					{ discard: true },
+				);
 				const [rows, names] = yield* Effect.all([
 					Effect.promise(() => db.select().from(evalInstance).orderBy(desc(evalInstance.id))),
 					endpointNames,
@@ -933,7 +1002,9 @@ export const EvalInstancesLive = Layer.effect(
 			create: Effect.fn("EvalInstances.create")(function* (input) {
 				yield* requireGrant();
 				const principal = yield* Principal;
-				return yield* insertInstance(input, principal?.email ?? null);
+				const r = yield* Effect.promise(() => insertInstance(db, input, principal?.email ?? null));
+				if (!r.ok) return yield* new InstanceRejected({ reason: r.reason });
+				return { id: r.id };
 			}),
 			spawn: Effect.fn("EvalInstances.spawn")(function* (input) {
 				yield* requireGrant();
@@ -941,24 +1012,48 @@ export const EvalInstancesLive = Layer.effect(
 				const base = input.name ?? "generator";
 				const defCount = input.defCount ?? 3;
 				const seed = input.seed ?? 100;
-				let created = 0;
-				for (let i = 0; i < input.count; i++) {
-					yield* insertInstance(
-						{
-							name: `${base} #${i + 1}`,
-							mode: "random",
-							count: defCount,
-							seed: seed + i,
-							...(input.endpointId !== undefined ? { endpointId: input.endpointId } : {}),
-						},
-						principal?.email ?? null,
-					);
-					created += 1;
-				}
+				// All-or-nothing fan-out: one transaction wraps every
+				// insert so a mid-loop failure can't leave half-provisioned
+				// "generator" instances behind.
+				const created = yield* Effect.promise(() =>
+					db.transaction(async (tx) => {
+						let n = 0;
+						for (let i = 0; i < input.count; i++) {
+							const r = await insertInstance(
+								tx,
+								{
+									name: `${base} #${i + 1}`,
+									mode: "random",
+									count: defCount,
+									seed: seed + i,
+									...(input.endpointId !== undefined ? { endpointId: input.endpointId } : {}),
+								},
+								principal?.email ?? null,
+							);
+							/* v8 ignore next -- random mode never reports ok:false */
+							if (!r.ok) throw new Error(r.reason);
+							n += 1;
+						}
+						return n;
+					}),
+				);
 				return { created };
 			}),
 			remove: Effect.fn("EvalInstances.remove")(function* (id) {
 				yield* requireGrant();
+				// Refuse to orphan in-flight work: a `generating` instance
+				// has items claimed by live (or stale-reclaimable) ticks.
+				const [inst] = yield* Effect.promise(() =>
+					db
+						.select({ status: evalInstance.status })
+						.from(evalInstance)
+						.where(eq(evalInstance.id, id)),
+				);
+				if (inst?.status === "generating") {
+					return yield* new InstanceRejected({
+						reason: "instance is generating — wait for it to finish before removing",
+					});
+				}
 				yield* Effect.promise(() => db.delete(evalInstance).where(eq(evalInstance.id, id)));
 			}),
 			start: Effect.fn("EvalInstances.start")(function* (id) {
@@ -991,7 +1086,7 @@ export const EVAL_PERSONA_TEST_DDL = `
 CREATE TABLE eval_llm_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_def (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, persona TEXT NOT NULL, notes TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER);
 CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES eval_llm_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, batch_id INTEGER, created_by TEXT, created_at INTEGER NOT NULL);
-CREATE TABLE eval_instance_item (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL REFERENCES eval_instance(id) ON DELETE cascade, persona_def_id INTEGER REFERENCES eval_persona_def(id) ON DELETE set null, eval_persona_id INTEGER REFERENCES eval_persona(id) ON DELETE set null, persona TEXT, status TEXT NOT NULL DEFAULT 'pending', error TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE eval_instance_item (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL REFERENCES eval_instance(id) ON DELETE cascade, persona_def_id INTEGER REFERENCES eval_persona_def(id) ON DELETE set null, eval_persona_id INTEGER REFERENCES eval_persona(id) ON DELETE set null, persona TEXT, status TEXT NOT NULL DEFAULT 'pending', error TEXT, claimed_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_batch (id INTEGER PRIMARY KEY AUTOINCREMENT, params TEXT NOT NULL, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE REFERENCES user(id) ON DELETE cascade, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -1008,6 +1103,10 @@ export const evalPersonaTablesPlugin = definePlugin({
 export const evalPersonaServicesPlugin = definePlugin({
 	id: "eval.persona.services",
 	requiredDeps: [evalPersonaTablesPlugin.id],
+	// resolveDescriptor consumes EvalCredentials when present — order
+	// after it so `credential:` refs resolve; absence degrades to
+	// env-var refs only (serviceOption is the soft edge).
+	optionalDeps: ["eval.credentials.services"],
 	services: Layer.mergeAll(EvalPersonasLive, EvalEndpointsLive, EvalInstancesLive),
 });
 

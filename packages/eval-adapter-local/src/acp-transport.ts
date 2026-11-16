@@ -24,29 +24,40 @@ export const makeHttpAcpTransport = (
 ): AcpTransport => {
 	const url = baseUrl.replace(/\/+$/, "");
 	return (request) =>
-		Effect.tryPromise({
-			try: async () => {
-				const res = await fetchImpl(url, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					signal: AbortSignal.timeout(timeoutMs),
-					body: JSON.stringify(request),
-				});
-				if (!res.ok) {
-					throw new PortError({
+		Effect.gen(function* () {
+			const res = yield* Effect.tryPromise({
+				try: () =>
+					fetchImpl(url, {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						signal: AbortSignal.timeout(timeoutMs),
+						body: JSON.stringify(request),
+					}),
+				catch: (cause) =>
+					new PortError({
 						port: "llm",
-						message: `acp ${res.status}: ${(await res.text()).slice(0, 300)}`,
-					});
-				}
-				return (await res.json()) as unknown;
-			},
-			catch: (cause) =>
-				cause instanceof PortError
-					? cause
-					: new PortError({
-							port: "llm",
-							message: `acp transport: ${causeMessage(cause)}`,
-							cause,
-						}),
+						message: `acp transport: ${causeMessage(cause)}`,
+						cause,
+					}),
+			});
+			if (!res.ok) {
+				// Agent error bodies are remote-controlled content — keep
+				// them out of the wire-visible PortError message; they stay
+				// in server logs.
+				const body = yield* Effect.promise(() => res.text().catch(() => ""));
+				yield* Effect.logWarning(`acp endpoint ${res.status} response body`).pipe(
+					Effect.annotateLogs({ body: body.slice(0, 300) }),
+				);
+				return yield* new PortError({ port: "llm", message: `acp ${res.status}` });
+			}
+			return (yield* Effect.tryPromise({
+				try: () => res.json(),
+				catch: (cause) =>
+					new PortError({
+						port: "llm",
+						message: `acp response: ${causeMessage(cause)}`,
+						cause,
+					}),
+			})) as unknown;
 		});
 };

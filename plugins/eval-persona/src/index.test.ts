@@ -139,29 +139,40 @@ const persona = {
  * `{provider, secret}`; ids are the better-auth string keys). */
 const apiKeysLayer = () => {
 	let n = 0;
-	const rows = new Map<string, { name: string; metadata: Record<string, unknown> }>();
+	const rows = new Map<
+		string,
+		{ name: string; metadata: Record<string, unknown>; referenceId: string }
+	>();
 	return Layer.succeed(
 		ApiKeys,
 		ApiKeys.of({
 			create: async (input) => {
 				const id = `k${++n}`;
-				rows.set(id, { name: input.name, metadata: input.metadata });
+				rows.set(id, {
+					name: input.name,
+					metadata: input.metadata,
+					referenceId: input.referenceId,
+				});
 				return { id };
 			},
-			list: async () =>
-				[...rows.entries()].map(([id, r]) => ({
-					id,
-					referenceId: "u1",
-					name: r.name,
-					start: null,
-					enabled: true,
-					metadata: JSON.stringify(r.metadata),
-				})),
-			remove: async (id) => {
-				rows.delete(id);
+			list: async (referenceId) =>
+				[...rows.entries()]
+					.filter(([, r]) => r.referenceId === referenceId)
+					.map(([id, r]) => ({
+						id,
+						referenceId: r.referenceId,
+						name: r.name,
+						start: null,
+						enabled: true,
+						metadata: JSON.stringify(r.metadata),
+					})),
+			remove: async (id, referenceId) => {
+				if (rows.get(id)?.referenceId === referenceId) rows.delete(id);
 			},
-			getSecret: async (id) => {
-				const s = rows.get(id)?.metadata.secret;
+			getSecret: async (id, referenceId) => {
+				const r = rows.get(id);
+				if (r === undefined || r.referenceId !== referenceId) return null;
+				const s = r.metadata.secret;
 				return typeof s === "string" ? s : null;
 			},
 		}),
@@ -467,12 +478,12 @@ describe("EvalInstances", () => {
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "inf", mode: "random", count: 1 })),
 		);
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
-		// Simulate a concurrent tick's claim: no `pending` left but an
-		// item mid-flight — finalize must NOT mark the run ready.
+		// Simulate a concurrent tick's FRESH claim: no `pending` left
+		// but an item mid-flight — finalize must NOT mark the run ready.
 		const items = await db.select().from(evalInstanceItem);
 		await db
 			.update(evalInstanceItem)
-			.set({ status: "generating" })
+			.set({ status: "generating", claimedAt: new Date() })
 			.where(eq(evalInstanceItem.id, items[0]!.id));
 		// Tick 1 inits the batch; tick 2 sees the in-flight claim.
 		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
@@ -481,12 +492,33 @@ describe("EvalInstances", () => {
 		await rt.dispose();
 	});
 
-	it("finalizes ready when a selected instance has zero items", async () => {
+	it("reclaims a stale generating claim — the run reaches ready", async () => {
+		const { rt, run, db } = make();
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "stale", mode: "random", count: 1 })),
+		);
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
+		// A request killed mid-generation leaves its item claimed —
+		// simulate with a claim stamp older than the stale threshold.
+		await db
+			.update(evalInstanceItem)
+			.set({ status: "generating", claimedAt: new Date(Date.now() - 120_000) })
+			.where(eq(evalInstanceItem.instanceId, id));
+		// Tick 1 reclaims + inits the batch; tick 2 claims and generates;
+		// tick 3 finalizes.
+		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		expect(d?.status).toBe("ready");
+		expect(d?.items[0]?.status).toBe("done");
+		expect(d?.items[0]?.evalPersonaId).not.toBeNull();
+		await rt.dispose();
+	});
+
+	it("finalizes ready when an instance has zero items", async () => {
 		const { rt, run } = make();
 		const { id } = await run(
-			Effect.flatMap(EvalInstances, (s) =>
-				s.create({ name: "empty", mode: "selected", defIds: [] }),
-			),
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "empty", mode: "random" })),
 		);
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
 		// Tick 1 inits the batch; tick 2 finalizes the empty item set.
@@ -577,6 +609,24 @@ describe("EvalInstances", () => {
 		);
 		await run(Effect.flatMap(EvalInstances, (s) => s.remove(id)));
 		expect(await db.select().from(evalInstanceItem)).toHaveLength(0);
+		expect(await db.select().from(evalInstance)).toHaveLength(0);
+		await rt.dispose();
+	});
+
+	it("refuses to remove a generating instance but removes finished ones", async () => {
+		const { rt, run, db } = make();
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "busy", mode: "random", count: 1 })),
+		);
+		await db.update(evalInstance).set({ status: "generating" }).where(eq(evalInstance.id, id));
+		// Deleting mid-flight would orphan claimed items — refused.
+		await expect(run(Effect.flatMap(EvalInstances, (s) => s.remove(id)))).rejects.toMatchObject({
+			_tag: "InstanceRejected",
+		});
+		expect(await db.select().from(evalInstance)).toHaveLength(1);
+		// Finished runs delete normally.
+		await db.update(evalInstance).set({ status: "ready" }).where(eq(evalInstance.id, id));
+		await run(Effect.flatMap(EvalInstances, (s) => s.remove(id)));
 		expect(await db.select().from(evalInstance)).toHaveLength(0);
 		await rt.dispose();
 	});
@@ -699,7 +749,7 @@ describe("EvalInstances — edge inputs", () => {
 		await rt.dispose();
 	});
 
-	it("selected mode skips unknown defIds", async () => {
+	it("selected mode drops unknown defIds — total counts what was inserted", async () => {
 		const { rt, run } = make();
 		const { id: defId } = await run(
 			Effect.flatMap(EvalPersonas, (s) => s.create({ name: "d", persona })),
@@ -710,8 +760,29 @@ describe("EvalInstances — edge inputs", () => {
 			),
 		);
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
-		expect(d?.total).toBe(2);
+		expect(d?.total).toBe(1);
 		expect(d?.items).toHaveLength(1);
+		await rt.dispose();
+	});
+
+	it("selected mode fails the create when nothing was picked", async () => {
+		const { rt, run, db } = make();
+		await expect(
+			run(
+				Effect.flatMap(EvalInstances, (s) =>
+					s.create({ name: "all-bad", mode: "selected", defIds: [999, 998] }),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "InstanceRejected" });
+		await expect(
+			run(
+				Effect.flatMap(EvalInstances, (s) =>
+					s.create({ name: "none", mode: "selected", defIds: [] }),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "InstanceRejected" });
+		// No half-created instances left behind.
+		expect(await db.select().from(evalInstance)).toHaveLength(0);
 		await rt.dispose();
 	});
 
@@ -929,6 +1000,18 @@ describe("EvalInstances.spawn", () => {
 		expect(row?.name).toBe("generator #1");
 		expect(row?.endpointId).toBe(epId);
 		expect(JSON.parse(row!.params)).toEqual({ seed: 100, count: 3 });
+		await rt.dispose();
+	});
+
+	it("rolls the whole fan-out back when a mid-loop insert fails", async () => {
+		const { rt, run, db, d1 } = make();
+		// Breaking the items table makes every insertInstance fail inside
+		// the transaction — no half-provisioned "generator" rows survive.
+		await d1.exec("DROP TABLE eval_instance_item");
+		await expect(
+			run(Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 3, defCount: 2 }))),
+		).rejects.toThrow("no such table");
+		expect(await db.select().from(evalInstance)).toHaveLength(0);
 		await rt.dispose();
 	});
 

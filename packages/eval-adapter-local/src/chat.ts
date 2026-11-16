@@ -48,36 +48,53 @@ const postChat = (
 	timeoutMs: number,
 	fetchImpl: typeof fetch,
 ) =>
-	Effect.tryPromise({
-		try: async () => {
-			const res = await fetchImpl(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					...(opts.apiKey !== undefined ? { Authorization: `Bearer ${opts.apiKey}` } : {}),
-				},
-				signal: AbortSignal.timeout(timeoutMs),
-				body: JSON.stringify({
-					model: opts.model,
-					messages: [{ role: "user", content: envelope.input }],
-					// Generation benefits from variety; `seed` is forwarded
-					// when the backend honors it (Ollama/OpenAI do).
-					temperature: 0.8,
-					...(envelope.seed !== undefined ? { seed: envelope.seed } : {}),
+	Effect.gen(function* () {
+		const res = yield* Effect.tryPromise({
+			try: () =>
+				fetchImpl(url, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						...(opts.apiKey !== undefined ? { Authorization: `Bearer ${opts.apiKey}` } : {}),
+					},
+					signal: AbortSignal.timeout(timeoutMs),
+					body: JSON.stringify({
+						model: opts.model,
+						messages: [{ role: "user", content: envelope.input }],
+						// Generation benefits from variety; `seed` is forwarded
+						// when the backend honors it (Ollama/OpenAI do).
+						temperature: 0.8,
+						...(envelope.seed !== undefined ? { seed: envelope.seed } : {}),
+					}),
 				}),
-			});
-			if (!res.ok) {
-				throw new PortError({
+			catch: (cause) =>
+				new PortError({
 					port: "llm",
-					message: `chat ${res.status}: ${(await res.text()).slice(0, 300)}`,
-				});
-			}
-			return (await res.json()) as ChatCompletionBody;
-		},
-		catch: (cause) =>
-			cause instanceof PortError
-				? cause
-				: new PortError({ port: "llm", message: `chat transport: ${causeMessage(cause)}`, cause }),
+					message: `chat transport: ${causeMessage(cause)}`,
+					cause,
+				}),
+		});
+		if (!res.ok) {
+			// Provider error bodies are attacker-influenced — a hostile or
+			// broken endpoint can echo our Authorization header back into
+			// the message, and PortError text reaches the wire via the
+			// endpoint test/detail fns. Status code only on the wire; the
+			// body stays in server logs.
+			const body = yield* Effect.promise(() => res.text().catch(() => ""));
+			yield* Effect.logWarning(`chat endpoint ${res.status} response body`).pipe(
+				Effect.annotateLogs({ body: body.slice(0, 300) }),
+			);
+			return yield* new PortError({ port: "llm", message: `chat ${res.status}` });
+		}
+		return (yield* Effect.tryPromise({
+			try: () => res.json(),
+			catch: (cause) =>
+				new PortError({
+					port: "llm",
+					message: `chat response: ${causeMessage(cause)}`,
+					cause,
+				}),
+		})) as ChatCompletionBody;
 	});
 
 export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
