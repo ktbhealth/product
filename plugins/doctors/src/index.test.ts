@@ -25,7 +25,7 @@ import { doctors } from "./schema.ts";
 const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, email TEXT NOT NULL);
 INSERT INTO "user" VALUES ('u1', 'ana@ktb.test'), ('sec', 'sec@ktb.test');
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
 `;
 
 describe("doctors repo", () => {

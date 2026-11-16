@@ -53,6 +53,14 @@ jobs:
       - run: bunx vp run ci:knip
       - run: bunx vp run ci:arch
 
+  # Informational only — never gates. Lines-of-code report via tokei,
+  # provided by the shared cypera toolbox (9aia/cypera).
+  metrics:
+    uses: 9aia/cypera/.github/workflows/loc-repo.yml@loc-v3
+    with:
+      repo_name: product
+      tool_ref: loc-v1
+
   # ERD drift: regenerate the database docs (they live in the sibling public
   # docs repo) and fail if the committed output is stale. generate-erd.mjs
   # resolves the docs repo as ../../../docs relative to packages/db, i.e.

@@ -64,6 +64,31 @@ describe("plugin enable gate (createPluginApiRoute)", () => {
 	});
 });
 
+describe("/api/auth/api-key/* block", () => {
+	it("answers 404 on GET before the auth handler runs", async () => {
+		const h = handlersOf(Route);
+		for (const path of ["/api-key/list", "/api-key/get?id=k1", "/api-key/verify"]) {
+			const res = await h.GET!({
+				request: new Request(`http://x/api/auth${path}`),
+			} as never);
+			expect(res.status).toBe(404);
+		}
+		expect(authCalls).toHaveLength(0);
+	});
+
+	it("answers 404 on POST without consulting the captcha verifier", async () => {
+		const verify = vi.fn<() => Promise<boolean>>(async () => true);
+		captchaBox.current = { verify };
+		const h = handlersOf(Route);
+		const res = await h.POST!({
+			request: post("/api-key/create", { name: "x", metadata: { secret: "s" } }),
+		} as never);
+		expect(res.status).toBe(404);
+		expect(verify).not.toHaveBeenCalled();
+		expect(authCalls).toHaveLength(0);
+	});
+});
+
 describe("GET /api/auth/*", () => {
 	it("delegates to the authHandler capability", async () => {
 		const h = handlersOf(Route);

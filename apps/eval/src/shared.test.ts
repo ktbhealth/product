@@ -176,6 +176,28 @@ describe("workdirFlag", () => {
 		expect(err).toBeInstanceOf(UsageError);
 		expect(err.message).toMatch(/--workdir must live/);
 	});
+
+	test("EVAL_WORKDIR_ROOTS extends the scratch allowlist", async () => {
+		// A root outside tmpdir and <cwd>/tmp is only reachable via the
+		// operator-declared env allowlist.
+		const root = path.join(path.parse(os.tmpdir()).root, "ktb-eval-extra-root");
+		const inside = path.join(root, "nested", "wd");
+		const prev = process.env.EVAL_WORKDIR_ROOTS;
+		// Trailing delimiter exercises the empty-entry filter.
+		process.env.EVAL_WORKDIR_ROOTS = `${root}${path.delimiter}`;
+		try {
+			expect(await run(workdirFlag(Option.some(inside)))).toBe(path.resolve(inside));
+			// The default still resolves under tmpdir.
+			const def = await run(workdirFlag(Option.none()));
+			expect(def.startsWith(path.resolve(os.tmpdir()))).toBe(true);
+		} finally {
+			if (prev === undefined) {
+				delete process.env.EVAL_WORKDIR_ROOTS;
+			} else {
+				process.env.EVAL_WORKDIR_ROOTS = prev;
+			}
+		}
+	});
 });
 
 test("repoRoot resolves to the monorepo root", () => {

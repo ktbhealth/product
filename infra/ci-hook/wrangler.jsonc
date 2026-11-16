@@ -1,0 +1,12 @@
+{
+	"$schema": "../../apps/web/node_modules/wrangler/config-schema.json",
+	"name": "ci",
+	"account_id": "2c03574ae47e534415b762ab3c474815",
+	"main": "./src/index.ts",
+	"compatibility_date": "2026-11-06",
+	"workers_dev": true,
+	"observability": {
+		"enabled": true,
+		"traces": { "enabled": true },
+	},
+}

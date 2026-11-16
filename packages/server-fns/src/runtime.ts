@@ -167,6 +167,13 @@ export interface ServerRuntime {
 	readonly audio?: AudioStore;
 	/** Queue producer for async transcription jobs; undefined when unbound. */
 	readonly audioQueue?: AudioQueueSender;
+	/** Theme asset object storage (R2) for brand images/fonts — the
+	 * same store shape as `audio`; undefined when unbound (P-082). */
+	readonly themeAssets?: AudioStore;
+	/** Generic job enqueue port bound to the DEDICATED theme-assets
+	 * queue (PL-006 phase 4 — decided over sharing the transcription
+	 * transport). Undefined when unbound. */
+	readonly themeJobs?: JobsEnqueuer;
 	/** Generic job enqueue port (PL-007) — kind-dispatched jobs on the
 	 * same queue transport as audioQueue. Undefined when unbound. */
 	readonly jobs?: JobsEnqueuer;
