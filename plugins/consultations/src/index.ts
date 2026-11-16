@@ -1399,6 +1399,16 @@ export const ConsultationsLive = Layer.effect(
 				// owner-scoped and platform admins read cross-owner either
 				// way (admin detail page).
 				yield* authorizeConsultationRow(platformAdmin, detail, "consultation.read");
+				// Sensitive-read audit: detail.patientId joins the row to the
+				// patient-facing feed; tenant_id is row-authoritative so
+				// cross-owner admin reads scope correctly. ids only.
+				yield* audit({
+					action: "consultations.read",
+					targetType: "consultation",
+					targetId: detail.id,
+					tenantId: detail.tenantId,
+					detail: { patientId: detail.patientId, via: "detail" },
+				});
 				return detail;
 			}),
 			getLive: Effect.fn("Consultations.getLive")(function* (id: number, userId: string) {
@@ -1642,7 +1652,23 @@ export const ConsultationsLive = Layer.effect(
 				excludeId?: number,
 			) {
 				yield* requireCanAs("consultation.read", { userId });
-				return yield* Effect.promise(() => patientHistory(db, patientId, userId, excludeId));
+				const result = yield* Effect.promise(() =>
+					patientHistory(db, patientId, userId, excludeId),
+				);
+				// History rows carry no tenant — scope to the ambient tenant.
+				// Only a successful read is audited: a null result means the
+				// patient is not visible to the caller, so there is no
+				// sensitive read to record.
+				if (result !== null) {
+					yield* audit({
+						action: "consultations.history.read",
+						targetType: "patient",
+						targetId: patientId,
+						tenantId: tenantScopeId(yield* Tenant),
+						detail: { patientId, via: "history" },
+					});
+				}
+				return result;
 			}),
 			historyRows: Effect.fn("Consultations.historyRows")(function* (
 				patientId: number,
@@ -1650,7 +1676,19 @@ export const ConsultationsLive = Layer.effect(
 				excludeId?: number,
 			) {
 				yield* requireCanAs("consultation.read", { userId });
-				return yield* Effect.promise(() => patientHistoryRows(db, patientId, userId, excludeId));
+				const result = yield* Effect.promise(() =>
+					patientHistoryRows(db, patientId, userId, excludeId),
+				);
+				if (result !== null) {
+					yield* audit({
+						action: "consultations.history.read",
+						targetType: "patient",
+						targetId: patientId,
+						tenantId: tenantScopeId(yield* Tenant),
+						detail: { patientId, via: "history-rows" },
+					});
+				}
+				return result;
 			}),
 		});
 	}),

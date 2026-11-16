@@ -18,6 +18,10 @@
 	// the D1 id is a placeholder — a real deploy through wrangler would
 	// either fail on the bogus id or, worse, ship a stub-captcha worker.
 	"vars": { "CAPTCHA_STUB": "1", "EMAIL_STUB": "1" },
+	// Cron Triggers mirror alchemy.run.ts (`crons`) for local emulation —
+	// `scheduled()` still only fires via `wrangler dev --test-scheduled`,
+	// never in plain `bun run dev`.
+	"triggers": { "crons": ["17 3 * * *"] },
 	"ai": { "binding": "AI" },
 	"r2_buckets": [
 		{ "binding": "AUDIO_BUCKET", "bucket_name": "ktb-audio" },

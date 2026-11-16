@@ -6,6 +6,7 @@ import {
 import type { Register } from "@tanstack/react-router";
 import type { RequestHandler } from "@tanstack/react-start/server";
 
+import { runScheduledAuditVerification } from "#/lib/audit-chain.ts";
 import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
 import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
 import { flushTelemetry } from "#/lib/platform.ts";
@@ -55,6 +56,13 @@ export default {
 		} else {
 			await handleAudioQueueBatch(batch.messages);
 		}
+		ctx?.waitUntil?.(flushTelemetry());
+	},
+	// Daily cron (Alchemy `crons` trigger — see alchemy.run.ts): walks
+	// the tamper-evident audit chain and records a marker row on tamper.
+	// Never fires under `bun run dev`; failures are logged, not thrown.
+	scheduled: async (_controller: ScheduledController, _env: unknown, ctx: ExecutionContext) => {
+		await runScheduledAuditVerification();
 		ctx?.waitUntil?.(flushTelemetry());
 	},
 };

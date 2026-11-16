@@ -22,6 +22,12 @@ export interface WorkerSpec extends StaticSiteSpec {
 	readonly bundle?: boolean;
 	readonly bindings?: Record<string, unknown>;
 	readonly compatibilityFlags?: readonly string[];
+	/**
+	 * Cron expressions that trigger the worker's `scheduled` handler
+	 * (Cloudflare Cron Triggers). Deploy-time only — the entry module
+	 * must export `scheduled(controller, env, ctx)` itself.
+	 */
+	readonly crons?: readonly string[];
 }
 
 export interface SqlDatabaseSpec {

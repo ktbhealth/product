@@ -77,6 +77,12 @@ export default Alchemy.Stack(
 			outdir: "dist/client",
 			main: "dist/server/index.js",
 			bundle: false,
+			// Daily audit-chain verification (T-139 follow-up): fires the
+			// worker's `scheduled` handler (src/server.ts → lib/audit-chain.ts)
+			// at 03:17 UTC — off-peak, staggered off the hour. `scheduled()`
+			// never runs under `bun run dev`; use the /platform/audit
+			// "Verify chain" action there.
+			crons: ["17 3 * * *"],
 			bindings: {
 				DB: db,
 				AI: Cloudflare.Workers.AI(),

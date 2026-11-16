@@ -239,6 +239,13 @@
       "when": 1794847829879,
       "tag": "0034_tired_daredevil",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1794866059561,
+      "tag": "0035_yielding_black_tarantula",
+      "breakpoints": true
     }
   ]
 }

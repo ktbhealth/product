@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import type { Anamnesis, AnamnesisSection } from "@ktb/anamnesis/types";
+import { Audit, type AuditEntryInput } from "@ktb/audit";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
@@ -73,17 +74,17 @@ INSERT INTO patient_access (patient_id, user_id, relation, status, source, creat
 INSERT INTO patient_access (patient_id, user_id, email, relation, status, source, created_at, updated_at) VALUES
   (5, NULL, 'ana@ktb.test', 'self', 'invited', 'invite', 0, 0),
   (5, NULL, 'nobody@ktb.test', 'self', 'invited', 'invite', 0, 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL);
-INSERT INTO consultations (id, user_id, patient_id, transcript, anamnesis, created_at) VALUES
-  (10, 'doc', 1, 'fala da consulta', '${json(anamnesis())}', 1000),
-  (11, 'doc', 1, 'fala da consulta', '${json(anamnesis({ queixa_principal: section("Retorno") }))}', 2000),
-  (12, 'doc', 1, 'ainda transcrevendo', NULL, 3000),
-  (13, 'doc', 1, 'fala da consulta', '{"queixa_principal":1}', 4000),
-  (14, 'doc', 1, 'fala da consulta', '${json(anamnesis({ queixa_principal: section("") }))}', 500),
-  (15, 'doc', 1, 'fala da consulta', 'not json', 4500),
-  (20, 'other', 2, 'fala da consulta', '${json(anamnesis())}', 1000),
-  (30, 'doc', 3, 'fala da consulta', '${json(anamnesis())}', 1000),
-  (40, 'doc', 4, 'fala da consulta', '${json(anamnesis())}', 1000);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, tenant_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL);
+INSERT INTO consultations (id, user_id, patient_id, tenant_id, transcript, anamnesis, created_at) VALUES
+  (10, 'doc', 1, 7, 'fala da consulta', '${json(anamnesis())}', 1000),
+  (11, 'doc', 1, 7, 'fala da consulta', '${json(anamnesis({ queixa_principal: section("Retorno") }))}', 2000),
+  (12, 'doc', 1, 7, 'ainda transcrevendo', NULL, 3000),
+  (13, 'doc', 1, 7, 'fala da consulta', '{"queixa_principal":1}', 4000),
+  (14, 'doc', 1, 7, 'fala da consulta', '${json(anamnesis({ queixa_principal: section("") }))}', 500),
+  (15, 'doc', 1, 7, 'fala da consulta', 'not json', 4500),
+  (20, 'other', 2, NULL, 'fala da consulta', '${json(anamnesis())}', 1000),
+  (30, 'doc', 3, 7, 'fala da consulta', '${json(anamnesis())}', 1000),
+  (40, 'doc', 4, 7, 'fala da consulta', '${json(anamnesis())}', 1000);
 `;
 
 describe("portalSections", () => {
@@ -456,6 +457,68 @@ describe("PatientPortalLive ZK surface", () => {
 		]) {
 			expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Forbidden" } });
 		}
+	});
+});
+
+// Sensitive-read audit (P-086): the portal detail read emits the same
+// `consultations.read` action as the clinician path, marked via:"portal".
+// A recording Audit stub stands in for the plugin — `audit()` resolves
+// the service via serviceOption, so providing the layer is enough.
+describe("PatientPortal.consultation audit", () => {
+	const calls: AuditEntryInput[] = [];
+	const auditStub = Layer.succeed(Audit, {
+		record: (entry: AuditEntryInput) =>
+			Effect.sync(() => {
+				calls.push(entry);
+			}),
+		adminList: () => Effect.die("unused"),
+		adminVerify: () => Effect.die("unused"),
+		activityAccess: () => Effect.succeed(false),
+		activityList: () => Effect.die("unused"),
+		patientList: () => Effect.die("unused"),
+	} as never);
+	const runtime = ManagedRuntime.make(
+		PatientPortalLive.pipe(
+			Layer.provideMerge(Layer.mergeAll(Layer.succeed(Db, makeDb(makeD1(DDL))), auditStub)),
+		),
+	);
+	afterAll(() => runtime.dispose());
+
+	const as = <A, E>(
+		who: { userId: string } | null,
+		use: (p: PatientPortal["Service"]) => Effect.Effect<A, E>,
+	) =>
+		runtime.runPromise(
+			Effect.flatMap(PatientPortal, use).pipe(Effect.provideService(Principal, who), Effect.result),
+		);
+
+	it("emits consultations.read with via portal, row tenant and patientId", async () => {
+		calls.length = 0;
+		const result = await as({ userId: "ana" }, (p) => p.consultation(10));
+		expect(result).toMatchObject({ _tag: "Success", success: { id: 10, patientId: 1 } });
+		expect(calls).toEqual([
+			{
+				action: "consultations.read",
+				targetType: "consultation",
+				targetId: 10,
+				tenantId: 7,
+				detail: { patientId: 1, via: "portal" },
+			},
+		]);
+		// The wire value never carries the audit-only tenantId field.
+		expect(result._tag === "Success" && "tenantId" in result.success).toBe(false);
+	});
+
+	it("emits nothing for denied or missing consultations", async () => {
+		calls.length = 0;
+		for (const result of [
+			await as({ userId: "ana" }, (p) => p.consultation(30)), // pending link
+			await as({ userId: "eva" }, (p) => p.consultation(10)), // stranger
+			await as({ userId: "ana" }, (p) => p.consultation(999)), // missing
+		]) {
+			expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Forbidden" } });
+		}
+		expect(calls).toEqual([]);
 	});
 });
 

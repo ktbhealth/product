@@ -343,6 +343,12 @@ export {
 	verifyConsultationIntegrityFn,
 } from "@ktb/consultations/fns";
 
+// ---------- audit ----------
+// Audit server functions are owned by the audit plugin — its views
+// import them from "@ktb/audit/fns" directly; re-exported here so host
+// callers keep their import path.
+export { auditVerifyFn } from "@ktb/audit/fns";
+
 // ---------- plugin manager (P-058) ----------
 // Plugin-state server functions are owned by the manager plugin — its
 // /platform/plugins page imports them from @ktb/manager/fns directly.

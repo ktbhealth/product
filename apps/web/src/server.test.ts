@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 	handleAudioQueueBatch: vi.fn(),
 	handleThemeQueueBatch: vi.fn(),
 	flushTelemetry: vi.fn(),
+	runScheduledAuditVerification: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-start/server", () => ({
@@ -19,6 +20,9 @@ vi.mock("#/lib/audio-jobs.ts", () => ({
 vi.mock("#/lib/theme-jobs.ts", () => ({
 	handleThemeQueueBatch: mocks.handleThemeQueueBatch,
 }));
+vi.mock("#/lib/audit-chain.ts", () => ({
+	runScheduledAuditVerification: mocks.runScheduledAuditVerification,
+}));
 vi.mock("#/lib/platform.ts", () => ({
 	flushTelemetry: mocks.flushTelemetry,
 }));
@@ -29,6 +33,7 @@ describe("worker entry", () => {
 	it("exposes the start fetch pipeline next to the queue consumer", () => {
 		expect(typeof entry.fetch).toBe("function");
 		expect(typeof entry.queue).toBe("function");
+		expect(typeof entry.scheduled).toBe("function");
 	});
 
 	it("re-exports the typed createServerEntry binding", () => {
@@ -87,6 +92,21 @@ describe("worker entry", () => {
 		} as never);
 		expect(mocks.handleAudioQueueBatch).toHaveBeenCalledWith(messages);
 		expect(mocks.handleThemeQueueBatch).not.toHaveBeenCalled();
+	});
+
+	it("runs the scheduled audit-chain verification and flushes telemetry", async () => {
+		mocks.runScheduledAuditVerification.mockResolvedValue({
+			status: "verified",
+			entries: 3,
+			brokenAt: null,
+		});
+		const waitUntil = vi.fn();
+		const controller = { scheduledTime: 0, cron: "17 3 * * *", noRetry: vi.fn() };
+		await entry.scheduled(controller as never, {}, { waitUntil } as never);
+		expect(mocks.runScheduledAuditVerification).toHaveBeenCalledTimes(1);
+		expect(waitUntil).toHaveBeenCalledTimes(1);
+		await waitUntil.mock.calls[0]?.[0];
+		expect(mocks.flushTelemetry).toHaveBeenCalled();
 	});
 });
 

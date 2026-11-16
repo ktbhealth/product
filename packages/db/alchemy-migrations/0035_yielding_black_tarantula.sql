@@ -1,0 +1,1 @@
+CREATE INDEX `admin_audit_dedupe_idx` ON `admin_audit` (`actor_user_id`,`action`,`target_type`,`target_id`,`created_at`);
