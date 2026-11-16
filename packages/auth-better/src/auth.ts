@@ -1,10 +1,11 @@
 import { betterAuth } from "better-auth";
+import { apiKey } from "@better-auth/api-key";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
-import type { AccountsShape, AuthShape, Session, SessionUser } from "@ktb/auth";
-import { session as sessionTable, user as userTable } from "@ktb/db/schema";
+import type { AccountsShape, ApiKeysShape, AuthShape, Session, SessionUser } from "@ktb/auth";
+import { apikey as apikeyTable, session as sessionTable, user as userTable } from "@ktb/db/schema";
 
 /** What the host needs to compose and deliver a verification email. */
 export interface VerificationEmailInput {
@@ -41,6 +42,13 @@ export const makeAuth = (db: AuthDb, opts: AuthOptions = {}) =>
 		},
 		secret: opts.secret,
 		baseURL: opts.baseURL,
+		plugins: [
+			// Managed credential store (eval lab outbound providers):
+			// hashing disabled so `resolve` can read the secret back for
+			// outbound calls, metadata enabled because the secret rides
+			// inside `metadata` — keys live server-side, never on the wire.
+			apiKey({ disableKeyHashing: true, enableMetadata: true }),
+		],
 	});
 
 export type Auth = ReturnType<typeof makeAuth>;
@@ -127,5 +135,66 @@ export const makeAccountsService = (auth: Auth): AccountsShape => ({
 			password: hash,
 		});
 		return { ok: true, userId: created.id };
+	},
+});
+
+/**
+ * apiKey-plugin adapter for eval-lab outbound credentials. The plugin
+ * OWNS create/delete semantics (its `apikey` table is the store); raw
+ * secrets ride inside `metadata.secret` — `disableKeyHashing` keeps
+ * the row readable server-side for outbound calls while `list`/the
+ * wire only ever see masked metadata. `list`/`getSecret` read the
+ * table directly because the plugin's read endpoints are
+ * session-header-scoped (a service has no headers); writes go
+ * through `auth.api` so plugin hooks and bookkeeping stay canonical.
+ */
+export const makeApiKeysAdapter = (auth: Auth, db: AuthDb): ApiKeysShape => ({
+	create: async (input: {
+		readonly name: string;
+		readonly referenceId: string;
+		readonly metadata: Record<string, unknown>;
+	}) => {
+		const r = await auth.api.createApiKey({
+			body: {
+				name: input.name,
+				userId: input.referenceId,
+				metadata: input.metadata,
+				rateLimitEnabled: false,
+			},
+		});
+		return { id: r.id };
+	},
+	list: async (referenceId: string) =>
+		db.select().from(apikeyTable).where(eq(apikeyTable.referenceId, referenceId)),
+	remove: async (keyId: string, referenceId: string) => {
+		// Ownership check first — acting on `keyId` alone would let one
+		// user delete another's credential by guessing the id.
+		const owned = await db
+			.select({ id: apikeyTable.id })
+			.from(apikeyTable)
+			.where(and(eq(apikeyTable.id, keyId), eq(apikeyTable.referenceId, referenceId)))
+			.limit(1);
+		if (owned.length === 0) return;
+		try {
+			await auth.api.deleteApiKey({ body: { keyId } });
+		} catch {
+			await db
+				.delete(apikeyTable)
+				.where(and(eq(apikeyTable.id, keyId), eq(apikeyTable.referenceId, referenceId)));
+		}
+	},
+	getSecret: async (keyId: string, referenceId: string): Promise<string | null> => {
+		const rows = await db
+			.select({ metadata: apikeyTable.metadata })
+			.from(apikeyTable)
+			.where(and(eq(apikeyTable.id, keyId), eq(apikeyTable.referenceId, referenceId)));
+		const raw = rows[0]?.metadata;
+		if (raw === null || raw === undefined) return null;
+		try {
+			const parsed = JSON.parse(raw) as { secret?: unknown };
+			return typeof parsed.secret === "string" ? parsed.secret : null;
+		} catch {
+			return null;
+		}
 	},
 });

@@ -9,9 +9,14 @@ import { validateAudienceSearch } from "@ktb/audience";
 // contribution in topo order wins. The audience plugin (P-056) owns it —
 // the fallback only renders if no landing plugin is registered.
 function MissingLanding() {
+	// Brand comes from the resolved theme (PL-006 phase 7) — the
+	// built-in KTB default keeps `appName` populated with zero rows.
+	const { theme } = rootApi.useLoaderData();
 	return (
 		<section className="mx-auto flex max-w-2xl flex-col items-center px-6 pt-24 text-center">
-			<h1 className="text-3xl font-bold tracking-tight">KTB Health</h1>
+			{theme?.appName ? (
+				<h1 className="text-3xl font-bold tracking-tight">{theme.appName}</h1>
+			) : null}
 			<Link to="/consultations" className={buttonVariants() + " mt-8"}>
 				Consultations
 			</Link>

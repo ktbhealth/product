@@ -256,6 +256,36 @@ describe("audit chain (T-139)", () => {
 		});
 	});
 
+	it("detects an unchained row appearing after the chain started", async () => {
+		// A NULL prev_hash after the first chained row is tamper evidence
+		// in itself — verification stops at that row.
+		const tampered = makeDb(makeD1(DDL));
+		await insertAuditEntry(tampered, { action: "u.one", actorUserId: null, actorEmail: null });
+		await insertAuditEntry(tampered, { action: "u.two", actorUserId: null, actorEmail: null });
+		const third = (await insertAuditEntry(tampered, {
+			action: "u.three",
+			actorUserId: null,
+			actorEmail: null,
+		}))!;
+		await tampered.update(adminAudit).set({ prevHash: null }).where(eq(adminAudit.id, third.id));
+		expect(await verifyAuditChain(tampered)).toMatchObject({
+			status: "tampered",
+			brokenAt: third.id,
+		});
+	});
+
+	it("rejects a first row that is already chained", async () => {
+		// prev_hash on the genesis row has no predecessor to match.
+		const tampered = makeDb(makeD1(DDL));
+		await tampered
+			.insert(adminAudit)
+			.values({ action: "g.one", prevHash: "forged", createdAt: new Date(0) });
+		expect(await verifyAuditChain(tampered)).toMatchObject({
+			status: "tampered",
+			entries: 1,
+		});
+	});
+
 	it("adminVerify gates the walk behind the platform admin", async () => {
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),

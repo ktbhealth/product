@@ -65,6 +65,11 @@ export function SessionMenu({ user, labels, signOut }: ChromeProps) {
 							</DropdownMenuItem>
 						</>
 					)}
+					{user.platformAdmin === true ? (
+						<DropdownMenuItem onClick={() => window.location.assign("/platform")}>
+							{labels.platformConsole ?? "Platform console"}
+						</DropdownMenuItem>
+					) : null}
 					<DropdownMenuItem onClick={() => window.location.assign("/portal")}>
 						{patientOnly
 							? (labels.myConsultations ?? "My consultations")
