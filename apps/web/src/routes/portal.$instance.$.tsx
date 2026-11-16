@@ -104,23 +104,28 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		if (entry === undefined || pageEntry === undefined) return null;
 		const instance = entry.instance;
 		const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
-		const items = collectChrome(visiblePlugins, "portal.sidebar", pathname, instance.id).flatMap(
-			(chromeEntry) =>
-				chromeEntry.content.kind === "sidebarItem"
-					? [
-							{
-								...chromeEntry.content.item,
-								label: pluginPanelLabel(
-									chromeEntry.content.item.to,
-									chromeEntry.content.item.label,
-									i18n,
-								),
-								...(chromeEntry.content.item.group !== undefined
-									? { group: pluginPanelGroup(chromeEntry.content.item.group, i18n) }
-									: {}),
-							},
-						]
-					: [],
+		const items = collectChrome(
+			visiblePlugins,
+			"portal.sidebar",
+			pathname,
+			instance.id,
+			user,
+		).flatMap((chromeEntry) =>
+			chromeEntry.content.kind === "sidebarItem"
+				? [
+						{
+							...chromeEntry.content.item,
+							label: pluginPanelLabel(
+								chromeEntry.content.item.to,
+								chromeEntry.content.item.label,
+								i18n,
+							),
+							...(chromeEntry.content.item.group !== undefined
+								? { group: pluginPanelGroup(chromeEntry.content.item.group, i18n) }
+								: {}),
+						},
+					]
+				: [],
 		);
 		const headerActions = headerEnabled
 			? collectChrome(visiblePlugins, "portal.header.actions", pathname, instance.id).flatMap(

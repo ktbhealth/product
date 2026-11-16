@@ -123,9 +123,9 @@ export const actingAs = (user: SessionUser, profile: DoctorProfile | null): Acti
 
 /**
  * The doctor profile a request acts as: the selected one when the user
- * holds it, otherwise their own, otherwise the only one delegated to
- * them. Null when the user holds no doctor profile, or holds several
- * delegated ones and has not chosen yet.
+ * holds it, otherwise their own, otherwise the first delegated one —
+ * a secretary enters the first doctor and may switch afterwards.
+ * Null only when the user holds no doctor profile at all.
  */
 export const resolveDoctorProfile = (
 	profiles: readonly DoctorProfile[],
@@ -133,7 +133,8 @@ export const resolveDoctorProfile = (
 ): DoctorProfile | null =>
 	profiles.find((p) => p.doctorId === selectedId) ??
 	profiles.find((p) => p.role === "owner") ??
-	(profiles.length === 1 ? profiles[0]! : null);
+	profiles[0] ??
+	null;
 
 /**
  * The patient profile a portal request opens: the selected one when the

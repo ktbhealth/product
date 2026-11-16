@@ -53,14 +53,9 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 				pluginId: "test.pinned",
 			},
 		],
-		collectChrome: (
-			pluginList: Parameters<typeof actual.collectChrome>[0],
-			region: string,
-			path: string,
-			portal?: string,
-		) => [
-			...actual.collectChrome(pluginList, region, path, portal),
-			...chromeExtra.filter((entry) => entry.region === region),
+		collectChrome: (...args: Parameters<typeof actual.collectChrome>) => [
+			...actual.collectChrome(...args),
+			...chromeExtra.filter((entry) => entry.region === args[1]),
 		],
 	};
 });

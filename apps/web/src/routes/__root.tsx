@@ -254,7 +254,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		// resolve their own instance theme instead).
 		theme,
 	};
-	const entries = (region: string) => collectChrome(visiblePlugins, region, pathname);
+	const entries = (region: string) =>
+		collectChrome(visiblePlugins, region, pathname, undefined, user);
 	const renderEntry = (entry: ChromeContribution): ReactNode => {
 		const { content } = entry;
 		switch (content.kind) {

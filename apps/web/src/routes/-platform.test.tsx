@@ -34,13 +34,9 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("#/lib/registry.ts")>();
 	return {
 		...actual,
-		collectChrome: (
-			pluginList: Parameters<typeof actual.collectChrome>[0],
-			region: string,
-			path: string,
-		) => [
-			...actual.collectChrome(pluginList, region, path),
-			...chromeExtra.filter((entry) => entry.region === region),
+		collectChrome: (...args: Parameters<typeof actual.collectChrome>) => [
+			...actual.collectChrome(...args),
+			...chromeExtra.filter((entry) => entry.region === args[1]),
 		],
 	};
 });
@@ -276,9 +272,9 @@ describe("/platform layout", () => {
 		expect(signOut).toHaveBeenCalledOnce();
 	});
 
-	it("beforeLoad redirects anonymous users to /login", async () => {
+	it("beforeLoad redirects anonymous users to the doctor sign-in", async () => {
 		getSessionUserFn.mockResolvedValue(null);
-		// redirect({ to: "/login" }) surfaces as a 307 Response.
+		// redirect({ href: "/login/doctor" }) surfaces as a 307 Response.
 		await expect(beforeLoad(PlatformRoute)!()).rejects.toMatchObject({ status: 307 });
 	});
 

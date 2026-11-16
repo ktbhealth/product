@@ -237,7 +237,7 @@ describe("root document", () => {
 	});
 
 	it("treats contributed portal instance paths as console surfaces", () => {
-		for (const pathname of ["/portal/clinician", "/portal/clinician/patients"]) {
+		for (const pathname of ["/portal/doctor", "/portal/doctor/patients"]) {
 			state.pathname = pathname;
 			const html = render();
 			expect(html).toContain('<div id="child">page</div>');
