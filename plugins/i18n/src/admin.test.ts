@@ -110,6 +110,42 @@ describe("I18nAdmin", () => {
 		expect(err).toBeInstanceOf(Forbidden);
 	});
 
+	it("export/import round-trips as drafts, rejects bad payloads atomically", async () => {
+		const rt = makeRuntime();
+		const out = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				const exported = yield* admin.exportNamespace("app");
+				// Import into a different namespace.
+				const res = yield* admin.importNamespace({
+					...exported,
+					namespace: "imported",
+				});
+				return { exported, res };
+			}),
+		);
+		expect(out.res.imported).toBeGreaterThan(0);
+		const rows = await db.select().from(i18nMessages);
+		expect(rows.every((r) => r.namespace !== "imported" || r.status === "draft")).toBe(true);
+
+		// Bad payload: nothing applied.
+		const before = rows.length;
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin
+					.importNamespace({
+						version: 1,
+						namespace: "bad",
+						messages: { en: { k: "<b>markup</b>" } },
+					})
+					.pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(I18nValidationError);
+		expect(await db.select().from(i18nMessages)).toHaveLength(before);
+	});
+
 	it("namespaces + locales list for the panel", async () => {
 		const rt = makeRuntime();
 		const out = await rt.runPromise(

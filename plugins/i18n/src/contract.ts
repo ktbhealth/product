@@ -65,6 +65,21 @@ export interface I18nAdminShape {
 	readonly publish: (id: MessageId) => Effect.Effect<void, Forbidden>;
 	readonly discardDraft: (id: MessageId) => Effect.Effect<void, Forbidden>;
 	readonly setLocaleEnabled: (code: string, enabled: boolean) => Effect.Effect<void, Forbidden>;
+	/** Published+draft values for a namespace, grouped by locale —
+	 * the panel's export payload. */
+	readonly exportNamespace: (namespace: string) => Effect.Effect<I18nExportPayload, Forbidden>;
+	/** Validate-then-stage: every entry must parse or NOTHING is
+	 * applied. Imported copy lands as drafts, never live. */
+	readonly importNamespace: (
+		payload: unknown,
+	) => Effect.Effect<{ readonly imported: number }, Forbidden | I18nValidationError>;
+}
+
+/** Wire format for namespace JSON import/export (PL-008 Phase 3). */
+export interface I18nExportPayload {
+	readonly version: 1;
+	readonly namespace: string;
+	readonly messages: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 export class I18nAdmin extends Context.Service<I18nAdmin, I18nAdminShape>()(

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { useRouter } from "@tanstack/react-router";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -31,7 +31,13 @@ import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import type { I18nMessage } from "../schema.ts";
 import type { LocaleInfo, NamespaceInfo } from "../contract.ts";
-import { i18nDiscardDraftFn, i18nPublishFn, i18nSaveDraftFn } from "../fns.ts";
+import {
+	i18nDiscardDraftFn,
+	i18nExportFn,
+	i18nImportFn,
+	i18nPublishFn,
+	i18nSaveDraftFn,
+} from "../fns.ts";
 
 export interface I18nPageData {
 	readonly namespaces: readonly NamespaceInfo[];
@@ -90,6 +96,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	const [draft, setDraft] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const fileRef = useRef<HTMLInputElement>(null);
 
 	const locales = useMemo(() => data.locales.filter((l) => l.enabled), [data.locales]);
 	const nsMessages = useMemo(
@@ -150,6 +157,74 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						))}
 					</SelectContent>
 				</Select>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy || namespace === ""}
+					onClick={() =>
+						void (async () => {
+							setBusy(true);
+							try {
+								const payload = await i18nExportFn({ data: namespace });
+								if (payload === null || typeof payload !== "object" || !("namespace" in payload)) {
+									setError("export denied");
+									return;
+								}
+								const blob = new Blob([JSON.stringify(payload, null, 2)], {
+									type: "application/json",
+								});
+								const a = document.createElement("a");
+								a.href = URL.createObjectURL(blob);
+								a.download = `i18n-${namespace}.json`;
+								a.click();
+								URL.revokeObjectURL(a.href);
+							} finally {
+								setBusy(false);
+							}
+						})()
+					}
+				>
+					Export
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy}
+					onClick={() => fileRef.current?.click()}
+				>
+					Import
+				</Button>
+				<input
+					ref={fileRef}
+					type="file"
+					accept="application/json"
+					className="hidden"
+					onChange={(e) => {
+						const file = e.target.files?.[0];
+						e.target.value = "";
+						if (!file) return;
+						void file.text().then(async (text) => {
+							setBusy(true);
+							setError(null);
+							try {
+								const payload = JSON.parse(text) as unknown;
+								const res = (await i18nImportFn({ data: payload })) as {
+									ok?: boolean;
+									error?: string;
+								} | null;
+								if (res?.ok === false) {
+									setError(res.error ?? "import denied");
+									return;
+								}
+								await router.invalidate();
+							} catch {
+								setError("invalid JSON file");
+							} finally {
+								setBusy(false);
+							}
+						});
+					}}
+				/>
 			</div>
 			<Table>
 				<TableHeader>

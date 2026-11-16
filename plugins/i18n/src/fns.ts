@@ -129,6 +129,26 @@ export const i18nDiscardDraftFn = createServerFn({ method: "POST" })
 		),
 	);
 
+export const i18nExportFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
+	.handler(({ data: namespace }) => withAdmin((admin) => admin.exportNamespace(namespace)));
+
+export const i18nImportFn = createServerFn({ method: "POST" })
+	// Payload shape is validated inside I18nAdmin.importNamespace —
+	// nothing partially applies on bad input.
+	.validator((input: unknown) => input)
+	.handler(({ data }) =>
+		withAdmin((admin) =>
+			admin.importNamespace(data).pipe(
+				Effect.as({ ok: true as const }),
+				Effect.catchTag("I18nValidationError", (e) =>
+					Effect.succeed({ ok: false as const, error: e.error }),
+				),
+				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+			),
+		),
+	);
+
 export const i18nSetLocaleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) =>
 		Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String, enabled: Schema.Boolean }))(

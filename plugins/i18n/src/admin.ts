@@ -20,6 +20,7 @@ import {
 	I18N_READ_ACTION,
 	I18N_RESOURCE,
 	type I18nAdminShape,
+	type I18nExportPayload,
 	type LocaleInfo,
 	type MessageId,
 	type NamespaceInfo,
@@ -38,6 +39,7 @@ export {
 	I18N_READ_ACTION,
 	I18N_RESOURCE,
 	type I18nAdminShape,
+	type I18nExportPayload,
 	type LocaleInfo,
 	type MessageId,
 	type NamespaceInfo,
@@ -312,6 +314,111 @@ export const I18nAdminLive = Layer.effect(
 						db.update(i18nLocales).set({ enabled }).where(eq(i18nLocales.code, code)),
 					);
 					yield* runtime.invalidate();
+				}),
+
+			exportNamespace: (namespace) =>
+				Effect.gen(function* () {
+					yield* requirePermission(I18N_READ_ACTION, "i18n.messages.read");
+					const rows = yield* Effect.promise(() =>
+						listMessageRows(db, { namespace, scope: "global", scopeId: "" }),
+					);
+					const messages: Record<string, Record<string, string>> = {};
+					for (const r of rows) {
+						// Draft wins in the export — it's the newest intent.
+						const value = r.draftValue ?? r.value;
+						(messages[r.locale] ??= {})[r.key] = value;
+					}
+					return { version: 1 as const, namespace, messages };
+				}),
+
+			importNamespace: (payload) =>
+				Effect.gen(function* () {
+					yield* requirePermission(I18N_EDIT_ACTION, MSG_PATH);
+					const p = payload as Partial<I18nExportPayload> | null;
+					if (
+						p === null ||
+						typeof p !== "object" ||
+						p.version !== 1 ||
+						typeof p.namespace !== "string" ||
+						p.namespace === "" ||
+						p.messages === null ||
+						typeof p.messages !== "object"
+					) {
+						return yield* Effect.fail(new I18nValidationError({ error: "invalid export payload" }));
+					}
+					// Validate EVERYTHING before writing anything.
+					const entries: Array<{ locale: string; key: string; value: string }> = [];
+					const problems: string[] = [];
+					for (const [locale, kv] of Object.entries(p.messages)) {
+						if (kv === null || typeof kv !== "object") {
+							problems.push(`locale '${locale}': expected object`);
+							continue;
+						}
+						for (const [key, value] of Object.entries(kv)) {
+							if (typeof value !== "string") {
+								problems.push(`${locale}.${key}: value must be a string`);
+								continue;
+							}
+							const parsed = parseMessage("text", value);
+							if (!parsed.ok) {
+								problems.push(`${locale}.${key}: ${parsed.error}`);
+								continue;
+							}
+							entries.push({ locale, key, value });
+						}
+					}
+					if (problems.length > 0) {
+						return yield* Effect.fail(new I18nValidationError({ error: problems.join("; ") }));
+					}
+					for (const e of entries) {
+						const id: MessageId = {
+							namespace: p.namespace,
+							key: e.key,
+							locale: e.locale,
+							scope: "global",
+							scopeId: "",
+						};
+						yield* appendCrdt(id, e.value);
+						const existing = yield* Effect.promise(() => getMessageRow(db, id));
+						if (existing === undefined) {
+							yield* Effect.promise(() =>
+								db.insert(i18nMessages).values({
+									namespace: id.namespace,
+									key: id.key,
+									locale: id.locale,
+									scope: "global",
+									scopeId: "",
+									kind: "text",
+									value: "",
+									draftValue: e.value,
+									status: "draft",
+									params: [],
+									version: 1,
+								}),
+							);
+						} else {
+							yield* Effect.promise(() =>
+								db
+									.update(i18nMessages)
+									.set({ draftValue: e.value, updatedAt: new Date() })
+									.where(
+										and(
+											eq(i18nMessages.namespace, id.namespace),
+											eq(i18nMessages.key, id.key),
+											eq(i18nMessages.locale, id.locale),
+											eq(i18nMessages.scope, "global"),
+											eq(i18nMessages.scopeId, ""),
+										),
+									),
+							);
+						}
+					}
+					yield* audit({
+						action: "i18n.messages.import",
+						targetType: "i18n_namespace",
+						detail: { namespace: p.namespace, imported: entries.length },
+					});
+					return { imported: entries.length };
 				}),
 		});
 	}),

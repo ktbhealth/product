@@ -28,6 +28,7 @@ export { applyTextEdit, docFromUpdates, docValue, newMessageDoc } from "./crdt.t
 export { I18nAdmin, I18nValidationError } from "./contract.ts";
 export type {
 	I18nAdminShape,
+	I18nExportPayload,
 	LocaleInfo,
 	MessageId,
 	NamespaceInfo,
