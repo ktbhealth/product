@@ -106,16 +106,23 @@ export function AuditPage({
 		readonly result: AuditVerifyResult | null;
 	}>({ state: "idle", result: null });
 
-	const runVerify = async () => {
-		if (onVerify === undefined) return;
-		setVerify({ state: "running", result: null });
-		try {
-			const result = await onVerify();
-			setVerify(result === null ? { state: "failed", result: null } : { state: "done", result });
-		} catch {
-			setVerify({ state: "failed", result: null });
-		}
-	};
+	// The button (and this handler) exists only when the host passes
+	// onVerify — building the handler conditionally keeps the guard
+	// out of the click path entirely.
+	const runVerify =
+		onVerify === undefined
+			? undefined
+			: async () => {
+					setVerify({ state: "running", result: null });
+					try {
+						const result = await onVerify();
+						setVerify(
+							result === null ? { state: "failed", result: null } : { state: "done", result },
+						);
+					} catch {
+						setVerify({ state: "failed", result: null });
+					}
+				};
 
 	const verifyMessage = (): string => {
 		if (verify.state === "running") return t.verifyRunning;

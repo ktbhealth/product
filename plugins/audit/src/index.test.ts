@@ -971,6 +971,8 @@ describe("sanitizeAuditDetail (P-087 D1)", () => {
 			sym: Symbol("s"),
 			when: new Date(0),
 			circular,
+			// Array items that sanitize to the drop sentinel are skipped.
+			arr: [undefined, () => 1, Symbol("s"), "kept"],
 		});
 		expect(clean).toEqual({
 			big: "10",
@@ -978,6 +980,7 @@ describe("sanitizeAuditDetail (P-087 D1)", () => {
 			inf: null,
 			when: "1970-01-01T00:00:00.000Z",
 			circular: { ok: 1 },
+			arr: ["kept"],
 		});
 	});
 
@@ -986,6 +989,18 @@ describe("sanitizeAuditDetail (P-087 D1)", () => {
 		expect(sanitizeAuditDetail(undefined)).toBeNull();
 		expect(sanitizeAuditDetail({})).toBeNull();
 		expect(sanitizeAuditDetail({ patientName: "x", email: "y" })).toBeNull();
+	});
+
+	it("returns null when the sanitized value is not a plain record", () => {
+		// Top-level arrays/scalars (cast past the Record type) sanitize
+		// to non-records; toJSON can also collapse the payload to a
+		// scalar, null, an array or the drop sentinel — all record NULL.
+		expect(sanitizeAuditDetail([] as unknown as Record<string, unknown>)).toBeNull();
+		expect(sanitizeAuditDetail("raw" as unknown as Record<string, unknown>)).toBeNull();
+		expect(sanitizeAuditDetail(new Date(0) as unknown as Record<string, unknown>)).toBeNull();
+		expect(sanitizeAuditDetail({ toJSON: () => null })).toBeNull();
+		expect(sanitizeAuditDetail({ toJSON: () => ["a"] })).toBeNull();
+		expect(sanitizeAuditDetail({ toJSON: () => undefined })).toBeNull();
 	});
 
 	it("insertAuditEntry stores the sanitized detail JSON", async () => {
@@ -1102,6 +1117,25 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 		}
 	});
 
+	it("coalesces reads with absent target fields via the NULL-key probe", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			// No targetType/targetId → the dedupe probe compares NULL
+			// columns with IS NULL; identical reads still coalesce.
+			const read = { action: "feed.read" };
+			await record(runtime, read);
+			await record(runtime, read);
+			// Explicit nulls take the same path.
+			await record(runtime, { action: "feed.read", targetType: null, targetId: null });
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "feed.read"),
+			).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
 	it("inserts again once the coalescing window has expired", async () => {
 		const db = makeDb(makeD1(DDL));
 		// Seed a read older than the default 60s window directly.
@@ -1197,6 +1231,28 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 			const states = statesStub("not-an-object");
 			await record(runtime, read, undefined, states);
 			await record(runtime, read, undefined, states);
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "patients.read"),
+			).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("falls back to defaults when the PluginStates config read itself fails", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			// config() failing (typed error — Effect.catch only handles
+			// failures, not defects) must not break record(): the write
+			// proceeds under DEFAULT_AUDIT_CONFIG.
+			const states = {
+				config: () => Effect.fail(new Error("state store down")),
+			} as unknown as PluginStates["Service"];
+			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
+			await record(runtime, read, undefined, states);
+			await record(runtime, read, undefined, states);
+			// Defaults apply: readsEnabled + 60s coalescing window.
 			expect(
 				(await db.select().from(adminAudit)).filter((r) => r.action === "patients.read"),
 			).toHaveLength(1);
