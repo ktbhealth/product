@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -83,6 +83,11 @@ describe("PortalShell", () => {
 		expect(screen.getByText("unknown-thing")).toBeDefined();
 	});
 
+	it("falls back to 'overview' when the path has no segments", () => {
+		renderShell({ pathname: "/" });
+		expect(screen.getByText("Overview")).toBeDefined();
+	});
+
 	it("badges the header with the instance label and links the breadcrumb root to its basePath", () => {
 		const { container } = renderShell();
 		// Instance label renders in the sidebar badge and the breadcrumb root.
@@ -104,6 +109,18 @@ describe("PortalShell", () => {
 		expect(select.value).toBe("platform");
 		await user.selectOptions(select, "clinician");
 		expect(navigate).toHaveBeenCalledWith({ to: "/portal/clinician" });
+	});
+
+	it("ignores switcher values that match no portal", () => {
+		renderShell({ portals: [instance, clinician] });
+		const select = screen.getByLabelText("Switch portal") as HTMLSelectElement;
+		fireEvent.change(select, { target: { value: "ghost" } });
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("shows the generic account label without a user email", () => {
+		renderShell({ userEmail: undefined });
+		expect(screen.getByText("account")).toBeDefined();
 	});
 
 	it("calls onSignOut from the footer button", async () => {

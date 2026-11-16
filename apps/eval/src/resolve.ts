@@ -108,6 +108,28 @@ const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>
 		report: "jsonl",
 		registry: "sqlite-fs",
 	},
+	"local-asr": {
+		// Real local audio pipeline, stub judge — for measuring ASR
+		// quality on-box without ACP/Jev services running.
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "noop",
+		eval: "stub",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
+	"local-jev": {
+		// Real local audio pipeline + self-hosted System One judge,
+		// no ACP — cleanup is a passthrough (corrected = raw ASR).
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "noop",
+		eval: "systemone",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
 	"local-systemone": {
 		tts: "edge-tts",
 		asr: "faster-whisper",

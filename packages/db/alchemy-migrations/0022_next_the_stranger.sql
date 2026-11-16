@@ -1,0 +1,1 @@
+ALTER TABLE `eval_persona_batch` DROP COLUMN `state`;

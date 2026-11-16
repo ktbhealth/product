@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { buildScriptContext, renderScript } from "./scriptgen.ts";
+import { ptBR } from "./locales/pt-BR.ts";
 import type { Persona } from "./schema.ts";
 
 const persona = (over?: Partial<Persona>): Persona => ({
@@ -139,4 +140,119 @@ describe("renderScript", () => {
 		const lines = r.script.split("\n");
 		expect(lines.indexOf(r.turns[4]!.text)).toBeLessThan(lines.indexOf(r.turns[3]!.text));
 	});
+});
+
+describe("anamnesis variant (T-128/T-129)", () => {
+	it("renders a multi-turn dialogue with both speakers and entities", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona(),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(r.turns.length).toBeGreaterThan(40);
+		expect(new Set(r.turns.map((t) => t.speaker))).toEqual(new Set(["doctor", "patient"]));
+		expect(r.entities.map((e) => e.category)).toContain("medication");
+		expect(r.script).toBe(r.turns.map((t) => t.text).join("\n"));
+	});
+
+	it("doctor beats stay formal while a colloquial patient stays lay", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ register: "colloquial" }),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		const patient = r.turns.find((t) => t.speaker === "patient")!;
+		const doctor = r.turns.find((t) => t.speaker === "doctor")!;
+		// The lay patient says "dor de cabeça" — never the technical
+		// "cefaleia" a formal patient may produce.
+		expect(patient.text).toContain("dor de cabeça");
+		expect(doctor.text).toMatch(/senhor|Bom dia|vou/i);
+	});
+
+	it("uses the persona name as the patient tag when present", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ name: "Paciente Zed" }),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(r.script).toContain("Paciente Zed");
+	});
+
+	it("falls back to the short form when the locale has no anamnesis", () => {
+		const profile: typeof ptBR = {
+			...ptBR,
+			script: { ...ptBR.script, anamnesis: undefined },
+		};
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona(),
+			seed: 7,
+			profile,
+			variant: "anamnesis",
+		});
+		expect(r.turns).toHaveLength(6);
+	});
+});
+
+it("unknown specialty falls back to general_practice content", () => {
+	const r = renderScript({
+		template: TEMPLATE,
+		persona: persona({ specialty: "not_a_specialty" }),
+		seed: 7,
+		variant: "anamnesis",
+	});
+	expect(r.turns.length).toBeGreaterThan(40);
+});
+
+it("specialty with a complaint but no anamnesis tables falls back per-table", () => {
+	const profile: typeof ptBR = {
+		...ptBR,
+		script: {
+			...ptBR.script,
+			chiefComplaint: {
+				...ptBR.script.chiefComplaint,
+				weird_spec: { formal: ["Q formal"], colloquial: ["q colloquial"] },
+			},
+		},
+	};
+	const r = renderScript({
+		template: TEMPLATE,
+		persona: persona({ specialty: "weird_spec" }),
+		seed: 7,
+		profile,
+		variant: "anamnesis",
+	});
+	expect(r.turns.length).toBeGreaterThan(40);
+});
+
+it("exercises every beat variant in both registers across seeds", () => {
+	for (const register of ["formal", "colloquial"] as const) {
+		for (let seed = 0; seed < 40; seed++) {
+			const r = renderScript({
+				template: TEMPLATE,
+				persona: persona({ register }),
+				seed,
+				variant: "anamnesis",
+			});
+			expect(r.turns.length).toBeGreaterThan(40);
+		}
+	}
+});
+
+it("a colloquial doctor renders colloquial doctor beats", () => {
+	const seen = new Set<string>();
+	for (let seed = 0; seed < 40; seed++) {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ doctor: { gender: "m", register: "colloquial" } }),
+			seed,
+			variant: "anamnesis",
+		});
+		seen.add(r.turns[0]!.text);
+	}
+	// colloquial greeting variants show informal phrasing
+	expect([...seen].some((t) => t.includes("você") || t.includes("te "))).toBe(true);
 });

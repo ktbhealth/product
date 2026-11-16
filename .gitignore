@@ -33,3 +33,6 @@ coverage/
 # python bytecode (bench scripts)
 __pycache__/
 *.pyc
+
+# eval workdirs (CLI-confined scratch data)
+tmp/

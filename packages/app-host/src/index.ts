@@ -1,4 +1,10 @@
-import { discoverPlugins, orderPlugins, requireDriver, type Driver } from "@ktb/driver-framework";
+import {
+	discoverPlugins,
+	enabledDrivers,
+	orderPlugins,
+	requireDriver,
+	type Driver,
+} from "@ktb/driver-framework";
 import {
 	appInvocationDuration,
 	appInvocations,
@@ -28,6 +34,8 @@ import {
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
+import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
+import { evalArtifactsLocalDriver, evalRunnerLocalDriver } from "@ktb/eval-adapter-local";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -260,12 +268,26 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// the console driver is the always-eligible local/DX fallback.
 		otlpTelemetryDriver,
 		telemetryConsoleDriver,
+		// Eval validator runner (P-081): eligible only when the local
+		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
+		// otherwise no EvalRunner is bound and eval runs stay queued.
+		evalRunnerLocalDriver,
+		// Same env gate, read side: serves run audio to the validator UI.
+		evalArtifactsLocalDriver,
 	];
 	// Drivers are type-erased (Layer.Any); each port maps to exactly one
 	// service, so the concrete layer type is restored here — same shape
 	// the hand-written ternaries used to produce.
 	const layerFor = <S>(port: string, driverEnv: unknown): Layer.Layer<S, never, never> =>
 		requireDriver(drivers, port, driverEnv).provides(driverEnv) as Layer.Layer<S, never, never>;
+
+	// Optional ports — bound only when a driver is eligible for `env`
+	// (requireDriver would throw on the absent case). EvalRunner is the
+	// first: absent → the validator's run rows stay `queued`.
+	const optionalLayerFor = <S>(port: string, driverEnv: unknown): Layer.Layer<S, never, never> =>
+		(enabledDrivers(drivers, driverEnv)
+			.find((d) => d.port === port)
+			?.provides(driverEnv) ?? Layer.empty) as Layer.Layer<S, never, never>;
 
 	// Bot check on credential endpoints. CAPTCHA_STUB (local dev var, never
 	// set in the Alchemy stack) selects the stub; otherwise Turnstile when
@@ -334,6 +356,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// console JSON otherwise) — provides Logger/Tracer references, the
 	// Telemetry service, metric instrumentation and KTB_LOG_LEVEL.
 	const TelemetryLive = layerFor<Telemetry>(Telemetry.key, env);
+	// Eval validator runner — absent unless the local pipeline env is
+	// wired; the plugin then leaves run rows `queued` (P-081).
+	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
+	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
 	// Platform admin gate (P-026): env allowlist resolved once here; the
 	// gate fails closed (Forbidden) when the list is unset/empty.
 	const PlatformAdminLive = Layer.succeed(
@@ -363,6 +389,8 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		AccountsLive,
 		AnamnesisEngineLive,
 		TelemetryLive,
+		EvalRunnerLive,
+		EvalArtifactsLive,
 		PlatformAdminLive,
 		PluginStatesLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus

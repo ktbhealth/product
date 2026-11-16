@@ -44,6 +44,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 			port: LlmPort.key,
 			adapters: {
 				stub: "@ktb/eval-adapter-stub",
+				noop: "@ktb/eval-adapter-stub",
 				acp: "@ktb/eval-adapter-local",
 			},
 		},

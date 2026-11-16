@@ -33,6 +33,8 @@ import * as Semaphore from "effect/Semaphore";
 import { PortError } from "@ktb/eval-core";
 import { TtsPort, type AcousticProfile, type NoiseProfile } from "@ktb/eval-consultation";
 
+import { fsyncDir, fsyncFile } from "./fsx.ts";
+
 export type CliRunner = (cmd: readonly string[]) => Effect.Effect<void, PortError>;
 
 export interface LocalTtsOptions {
@@ -50,7 +52,11 @@ export interface LocalTtsOptions {
 
 const DEFAULT_VOICES: Record<string, string> = {
 	br_male_1: "pt-BR-AntonioNeural",
+	br_male_2: "pt-BR-FabioNeural",
+	br_male_3: "pt-BR-HumbertoNeural",
 	br_female_1: "pt-BR-FranciscaNeural",
+	br_female_2: "pt-BR-ThalitaNeural",
+	br_female_3: "pt-BR-GiovannaNeural",
 };
 
 /** Per-command exec timeouts — edge-tts is a network hop (120s),
@@ -175,20 +181,33 @@ export const makeLocalTts = (opts: LocalTtsOptions): Layer.Layer<TtsPort, PortEr
 				readonly script: string;
 				readonly voiceId: string;
 				readonly acoustic: AcousticProfile;
+				readonly turns?: readonly { readonly speaker: string; readonly text: string }[];
+				readonly speakerVoices?: Readonly<Record<string, string>>;
 			}) =>
 				sem.withPermits(1)(
 					Effect.gen(function* () {
 						const started = Date.now();
-						const voice = voices[input.voiceId];
-						if (voice === undefined) {
-							return yield* Effect.fail(
-								new PortError({ port: "tts", message: `unknown voice alias: ${input.voiceId}` }),
-							);
-						}
+						const resolveVoice = (alias: string) => {
+							const v = voices[alias];
+							return v === undefined
+								? Effect.fail(
+										new PortError({
+											port: "tts",
+											message: `unknown voice alias: ${alias}`,
+										}),
+									)
+								: Effect.succeed(v);
+						};
 						const key = crypto
 							.createHash("sha256")
 							.update(input.script)
-							.update(JSON.stringify({ voiceId: input.voiceId, acoustic: input.acoustic }))
+							.update(
+								JSON.stringify({
+									voiceId: input.voiceId,
+									speakerVoices: input.speakerVoices ?? null,
+									acoustic: input.acoustic,
+								}),
+							)
 							.digest("hex")
 							.slice(0, 24);
 						const tmp = path.join(opts.workDir, "audio", `${key}.mp3`);
@@ -197,20 +216,92 @@ export const makeLocalTts = (opts: LocalTtsOptions): Layer.Layer<TtsPort, PortEr
 						// edge-tts may leave a partial .mp3 when it fails —
 						// drop it on ANY non-success exit (typed failure,
 						// defect, interruption), not just when ffmpeg runs.
-						yield* run([
-							"edge-tts",
-							"--voice",
-							voice,
-							"--text",
-							input.script,
-							"--write-media",
-							tmp,
-						]).pipe(
-							Effect.retry({ schedule: retry as Schedule.Schedule<unknown, PortError> }),
-							Effect.onExit((exit) =>
-								Exit.isSuccess(exit) ? Effect.void : Effect.sync(() => removeFile(tmp)),
-							),
-						);
+						const synthOne = (text: string, engineVoice: string, target: string) =>
+							run([
+								"edge-tts",
+								"--voice",
+								engineVoice,
+								"--text",
+								text,
+								"--write-media",
+								target,
+							]).pipe(
+								Effect.retry({ schedule: retry as Schedule.Schedule<unknown, PortError> }),
+								Effect.onExit((exit) =>
+									Exit.isSuccess(exit) ? Effect.void : Effect.sync(() => removeFile(target)),
+								),
+							);
+
+						if (input.turns !== undefined && input.turns.length > 0) {
+							// Multi-speaker path: each turn gets its own voice
+							// (alias → engine voice via the same map; fallback
+							// to voiceId), synthesized to its own mp3 then
+							// concatenated with a 350ms silence between turns —
+							// adjacent same-speaker turns keep the gap too,
+							// it reads as a breath.
+							const turnFiles: string[] = [];
+							try {
+								// Turn synthesis is I/O-bound (hosted endpoint) —
+								// fan out with a small cap; an 80-turn anamnesis
+								// would otherwise run ~3min serial and starve
+								// the per-sample timeout.
+								const files = yield* Effect.forEach(
+									input.turns,
+									(turn, i) =>
+										Effect.gen(function* () {
+											const alias = input.speakerVoices?.[turn.speaker] ?? input.voiceId;
+											const engineVoice = yield* resolveVoice(alias);
+											const t = path.join(opts.workDir, "audio", `${key}-t${i}.mp3`);
+											yield* synthOne(turn.text, engineVoice, t);
+											return t;
+										}),
+									{ concurrency: 4 },
+								);
+								turnFiles.push(...files);
+								const listPath = path.join(opts.workDir, "audio", `${key}.concat.txt`);
+								const silence = path.join(opts.workDir, "audio", `${key}-sil.mp3`);
+								yield* run([
+									"ffmpeg",
+									"-f",
+									"lavfi",
+									"-i",
+									"anullsrc=r=24000:cl=mono",
+									"-t",
+									"0.35",
+									"-y",
+									silence,
+								]);
+								const esc = (f: string) => `file '${f.replace(/'/g, "'\\''")}'`;
+								const interleaved = turnFiles.flatMap((f, i) =>
+									i === turnFiles.length - 1 ? [esc(f)] : [esc(f), esc(silence)],
+								);
+								fs.writeFileSync(listPath, interleaved.join("\n"));
+								yield* run([
+									"ffmpeg",
+									"-f",
+									"concat",
+									"-safe",
+									"0",
+									"-i",
+									listPath,
+									"-y",
+									tmp,
+								]).pipe(
+									Effect.onExit((exit) =>
+										Effect.sync(() => {
+											if (Exit.isFailure(exit)) removeFile(tmp);
+										}),
+									),
+								);
+							} finally {
+								for (const f of turnFiles) removeFile(f);
+								removeFile(path.join(opts.workDir, "audio", `${key}.concat.txt`));
+								removeFile(path.join(opts.workDir, "audio", `${key}-sil.mp3`));
+							}
+						} else {
+							const engineVoice = yield* resolveVoice(input.voiceId);
+							yield* synthOne(input.script, engineVoice, tmp);
+						}
 
 						yield* run(["ffmpeg", ...ffmpegDegradeArgs(tmp, out, input.acoustic)]).pipe(
 							Effect.onExit((exit) =>
@@ -224,6 +315,16 @@ export const makeLocalTts = (opts: LocalTtsOptions): Layer.Layer<TtsPort, PortEr
 							),
 						);
 
+						// Durable before the AudioRef is returned — a
+						// crash after this point must not leave a sample
+						// pointing at bytes that never hit the disk.
+						yield* Effect.try({
+							try: () => {
+								fsyncFile(out);
+								fsyncDir(path.dirname(out));
+							},
+							catch: fsError(`fsync ${out}`),
+						});
 						const size = yield* Effect.try({
 							try: () => fs.statSync(out).size,
 							catch: fsError(`stat ${out}`),

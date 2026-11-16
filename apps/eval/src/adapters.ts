@@ -101,6 +101,27 @@ export const stubLlmLayer = Layer.succeed(
 	}),
 );
 
+/** Passthrough cleanup — corrected text = raw ASR output. Lets a real
+ * ASR run complete without an ACP/Jev service; the `corrected` stage
+ * then measures the unedited transcript, which is the honest signal
+ * when no cleanup model is wired. */
+const noopLlmLayer = Layer.succeed(
+	LlmPort,
+	LlmPort.of({
+		egress: false,
+		generate: (envelope: TaskEnvelope) =>
+			Effect.succeed({
+				text: CANNED_SCRIPT,
+				record: stubRecord("script_gen", envelope.taskId, "noop-llm"),
+			}),
+		correct: (envelope: TaskEnvelope) =>
+			Effect.succeed({
+				edits: { ops: [] },
+				record: stubRecord("cleanup", envelope.taskId, "noop-llm"),
+			}),
+	}),
+);
+
 export const stubEvalLayer = Layer.succeed(
 	EvalPort,
 	EvalPort.of({
@@ -259,6 +280,8 @@ const llmLayer = (ctx: WireContext, key: string) => {
 	switch (key) {
 		case "stub":
 			return stubLlmLayer;
+		case "noop":
+			return noopLlmLayer;
 		case "acp": {
 			const acpUrl = env(ctx, "EVAL_ACP_URL");
 			return makeAcpLlm({
@@ -287,9 +310,17 @@ const evalLayer = (ctx: WireContext, key: string) => {
 			// local-jev, …). MODEL is optional — servers treat it as
 			// opaque; only set it for endpoints that validate names.
 			const model = ctx.env.EVAL_SYSTEMONE_MODEL;
+			// CPU-hosted judges are slow — a multi-question state can
+			// take well past the 30s default. Operator-tunable.
+			const timeoutRaw = ctx.env.EVAL_SYSTEMONE_TIMEOUT_MS;
+			const timeoutMs =
+				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
 			return makeSystemOneEval({
 				baseUrl: env(ctx, "EVAL_SYSTEMONE_URL"),
 				...(model !== undefined && model !== "" ? { model } : {}),
+				...(timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
+					? { timeoutMs }
+					: {}),
 				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
 			});
 		}

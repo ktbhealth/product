@@ -20,6 +20,7 @@ export const PLATFORM_ACTIONS = [
 	"groups.manage",
 	"rbac.read",
 	"rbac.manage",
+	"eval.validator",
 ] as const;
 
 /** Entity actions mirrored from the permix `Def` in @ktb/authz. */

@@ -123,11 +123,8 @@ const serverPortalEntries = () => {
 
 /** The registry entry for the portal instance `path` belongs to, or
  * undefined for app paths / unregistered instances. */
-const portalEntryForPath = (path: string) => {
-	const instanceId = portalInstanceIdForPath(path);
-	if (instanceId === undefined) return undefined;
-	return serverPortalEntries().find((e) => e.instance.id === instanceId);
-};
+const portalEntryForPath = (path: string) =>
+	serverPortalEntries().find((e) => e.instance.id === portalInstanceIdForPath(path));
 
 /**
  * Audience gate for portal pages (P-081): the path's instance

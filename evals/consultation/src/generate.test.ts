@@ -260,3 +260,49 @@ describe("domainParams (P-079)", () => {
 		expect(a.stored.map((s) => s.id)).toEqual(c.stored.map((s) => s.id));
 	});
 });
+
+describe("persona-driven voices (T-128/T-130)", () => {
+	it("derives speakerVoices from enriched gender when the acoustic omits them", async () => {
+		const { layer, stored } = makeLayer();
+		const r = await Effect.runPromise(
+			Effect.provide(
+				generateDataset(input({ domainParams: { scriptVariant: "anamnesis" } })),
+				layer,
+			),
+		);
+		expect(r.ok.length).toBeGreaterThan(0);
+		for (const s of stored) {
+			expect(s.persona.gender).toBeDefined();
+			expect(s.persona.doctor?.gender).toBeDefined();
+			expect(s.persona.name).toMatch(/^Paciente /);
+			const sv = s.acoustic!.speakerVoices!;
+			expect(sv).toBeDefined();
+			expect(sv["patient"]).toMatch(s.persona.gender === "f" ? /^br_female_/ : /^br_male_/);
+			expect(sv["doctor"]).toMatch(s.persona.doctor!.gender === "f" ? /^br_female_/ : /^br_male_/);
+		}
+	});
+
+	it("explicit speakerVoices in the acoustic profile win over derivation", async () => {
+		const { layer, stored } = makeLayer();
+		await Effect.runPromise(
+			Effect.provide(
+				generateDataset(
+					input({
+						acoustic: (p, i) => ({
+							ttsModel: "edge",
+							voiceId: "br_male_1",
+							noise: "clean",
+							sampleRate: 16000,
+							speakerVoices: { doctor: "pinned_doc", patient: "pinned_pat" },
+						}),
+					}),
+				),
+				layer,
+			),
+		);
+		expect(stored[0]!.acoustic!.speakerVoices).toEqual({
+			doctor: "pinned_doc",
+			patient: "pinned_pat",
+		});
+	});
+});

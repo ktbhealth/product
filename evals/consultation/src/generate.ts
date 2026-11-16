@@ -14,9 +14,10 @@ import type { JsonObject } from "effect/Schema";
 import { runBatch, type BatchOptions, type BatchResult } from "@ktb/eval-core";
 
 import type { LocaleProfile } from "./locale.ts";
+import { enrichPersona, voiceFor } from "./personas.ts";
 import { DatasetStorePort, PortError, ReportPort, TtsPort } from "./ports.ts";
 import type { AcousticProfile, Persona, Sample } from "./schema.ts";
-import { renderScript } from "./scriptgen.ts";
+import { renderScript, rng } from "./scriptgen.ts";
 
 /** FNV-1a hex — dependency-free content hash for ids/scriptHash
  * (domain code cannot use node:crypto). */
@@ -37,7 +38,18 @@ export const fnvHex = (s: string): string => {
  * (M7). Field order is fixed here so object key order can't collide
  * either. */
 const personaKey = (p: Persona): string =>
-	JSON.stringify([p.region, p.ageBand, p.register, p.specialty, p.gender ?? null, p.cues ?? []]);
+	JSON.stringify([
+		p.region,
+		p.ageBand,
+		p.register,
+		p.specialty,
+		p.gender,
+		p.socialClass,
+		p.education,
+		p.name,
+		p.doctor,
+		p.cues ?? [],
+	]);
 
 export interface GenerateInput {
 	readonly datasetVersion: string;
@@ -93,6 +105,12 @@ export const generateDataset = (
 			options: input.batch,
 			step: (persona, index) =>
 				Effect.gen(function* () {
+					// Enrich the bare matrix cell BEFORE render — the
+					// persona's gender/class/education/name/doctor all
+					// come from the same rng(seed) stream as the script,
+					// so seed+index still replays the full sample.
+					const rand = rng(baseSeed + index);
+					const enriched = enrichPersona(persona, rand);
 					// Malformed templates and throwing acoustic callbacks
 					// are expected data failures — typed PortError so
 					// runBatch isolates them per item instead of
@@ -101,9 +119,10 @@ export const generateDataset = (
 						try: () =>
 							renderScript({
 								template: input.template,
-								persona,
+								persona: enriched,
 								seed: baseSeed + index,
 								profile: input.profile,
+								variant: input.domainParams?.scriptVariant === "anamnesis" ? "anamnesis" : "short",
 							}),
 						catch: (cause) =>
 							new PortError({
@@ -112,8 +131,8 @@ export const generateDataset = (
 								cause,
 							}),
 					});
-					const acoustic = yield* Effect.try({
-						try: () => input.acoustic(persona, index),
+					const acousticRaw = yield* Effect.try({
+						try: () => input.acoustic(enriched, index),
 						catch: (cause) =>
 							new PortError({
 								port: "generate",
@@ -121,6 +140,23 @@ export const generateDataset = (
 								cause,
 							}),
 					});
+					// Voice follows the persona: each speaker's gender
+					// picks an alias from the pool — derived voices
+					// apply to the multi-speaker (anamnesis) path;
+					// short scripts keep the single voiceId render.
+					// An explicit speakerVoices param still wins — it is
+					// the escape hatch for pinning a specific timbre.
+					const acoustic: AcousticProfile =
+						acousticRaw.speakerVoices === undefined &&
+						input.domainParams?.scriptVariant === "anamnesis"
+							? {
+									...acousticRaw,
+									speakerVoices: {
+										doctor: voiceFor(enriched.doctor?.gender, rand),
+										patient: voiceFor(enriched.gender, rand),
+									},
+								}
+							: acousticRaw;
 					// datasetVersion + template + voice + the FULL persona
 					// (personaKey covers optional gender/cues too) + seed
 					// are part of the id — regenerating under a new
@@ -129,12 +165,17 @@ export const generateDataset = (
 					// (P-079) additionally separates param variants.
 					const cohort = input.domainParams?.cohort;
 					const cohortTag = typeof cohort === "string" && cohort !== "" ? `:${cohort}` : "";
-					const id = `s-${fnvHex(`${input.datasetVersion}:${input.template}:${acoustic.voiceId}:${baseSeed + index}:${personaKey(persona)}${cohortTag}`)}`;
+					const id = `s-${fnvHex(`${input.datasetVersion}:${input.template}:${acoustic.voiceId}:${baseSeed + index}:${personaKey(enriched)}${cohortTag}`)}`;
 
 					const { audio, record } = yield* tts.synthesize({
 						script: render.script,
 						voiceId: acoustic.voiceId,
 						acoustic,
+						// Multi-speaker path — adapters render each turn
+						// with its own voice and concat into one audio.
+						...(acoustic.speakerVoices !== undefined
+							? { turns: render.turns, speakerVoices: acoustic.speakerVoices }
+							: {}),
 					});
 
 					// Provenance travels WITH the audio (M1): TTS returns
@@ -151,7 +192,8 @@ export const generateDataset = (
 						origin: "synthetic",
 						script: render.script,
 						scriptHash: fnvHex(render.script),
-						persona,
+						persona: enriched,
+						turns: [...render.turns],
 						acoustic,
 						audio,
 						gold: { validatedBy: "generator", entities: [...render.entities] },
