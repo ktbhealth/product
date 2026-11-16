@@ -64,7 +64,7 @@ const DOMAINS = [
 		owner: "`plugins/vault`",
 		description:
 			"Zero-knowledge key custody — wrapped clinic keys and per-entity data encryption key grants.",
-		tables: ["clinic_keys", "entity_deks"],
+		tables: ["clinic_keys", "entity_deks", "portal_keys"],
 	},
 	{
 		id: "notifications",
@@ -420,7 +420,15 @@ if (check) {
 			)
 				continue;
 			if (/^[^/]+\/index\.mdx$/.test(rel)) continue;
-			if (!expected.has(rel)) diffs.push(`stale (not generated): ${rel}`);
+			if (!expected.has(rel)) {
+				// Plugin dirs without a table domain are fully hand-written
+				// (e.g. i18n's developer guide) — only flag files that carry
+				// the generator's own do-not-edit marker.
+				const domainOwned = new Set(DOMAINS.map((d) => d.id)).has(rel.split("/")[0]);
+				const marked = readFileSync(join(checkBase, rel), "utf8").includes(GENERATED_BY);
+				if (!domainOwned && !marked) continue;
+				diffs.push(`stale (not generated): ${rel}`);
+			}
 		}
 		if (diffs.length) {
 			drift = true;

@@ -6,6 +6,7 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 // this module, so a package-specifier import would cycle. The FK
 // target is identical either way.
 import { groups } from "../../groups/src/schema.ts";
+import { user } from "../../../packages/db/src/auth.ts";
 
 /**
  * Clinic member-device key registrations (PL-007 F2, T-142): one row
@@ -115,3 +116,48 @@ export const entityDeks = sqliteTable(
 
 export type EntityDek = typeof entityDeks.$inferSelect;
 export type EntityDekReaderKind = "device" | "patient";
+
+/**
+ * Patient-portal device keys (PL-007 F3, T-148): the NON-MEMBER
+ * counterpart of `clinic_keys` — one row per (portal user, device).
+ * A portal user generates the same non-extractable browser keypair a
+ * clinic device does (`@ktb/crypto/keyring`) and publishes its public
+ * halves here so an approved clinic device can address `entity_deks`
+ * envelopes (`readerKind: "patient"`) to them.
+ *
+ * Not tenant-scoped on purpose: a portal identity belongs to the user,
+ * who may hold `patient_access` links to records kept by several
+ * clinics — the same device reads envelopes from every tenant that
+ * granted it. Registration is self-service and idempotent (re-register
+ * returns the existing row); revocation of a device's read access
+ * happens per record via `entity_deks` deletion.
+ */
+export const portalKeys = sqliteTable(
+	"portal_keys",
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		/** Portal account that owns the device — dies with the user. */
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		/** Device ECDH P-256 wrap pubkey (b64u raw) — envelopes address THIS. */
+		wrapPublicKey: text("wrap_public_key").notNull(),
+		/** Device ECDSA P-256 sign pubkey (b64u raw) — kept for parity with
+		 * clinic devices; nothing verifies portal signatures yet. */
+		signPublicKey: text("sign_public_key").notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull(),
+	},
+	(table) => [
+		// A device (wrap pubkey) enrolls once per user — re-registration
+		// returns the same row (idempotent enroll). The same physical
+		// device MAY serve two accounts (shared browser profile), so the
+		// pubkey alone is not unique.
+		uniqueIndex("portal_keys_user_wrap_idx").on(table.userId, table.wrapPublicKey),
+		// "Which account published this reader pubkey" — grant audits.
+		index("portal_keys_wrap_idx").on(table.wrapPublicKey),
+	],
+);
+
+export type PortalKey = typeof portalKeys.$inferSelect;

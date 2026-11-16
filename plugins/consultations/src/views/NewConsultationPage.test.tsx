@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Anamnesis } from "@ktb/anamnesis";
+import { makeKeyring, memoryStore } from "@ktb/crypto/keyring";
 import type {
 	SessionStats,
 	Transcriber,
@@ -13,6 +14,7 @@ import type {
 	TranscriptEvent,
 } from "@ktb/transcription";
 import type { NewConsultationApi } from "./NewConsultationPage.tsx";
+import type { ConsultationZk } from "../zk.ts";
 
 // ---------- controllable transcriber mocks ----------
 let micSupported = true;
@@ -85,11 +87,13 @@ const zkMocks = vi.hoisted(() => ({
 	encryptAnamnesis: vi.fn(async () => "v1.a2.e"),
 	signAnamnesis: vi.fn(async () => ({ contentHash: "h1", signature: "s1" })),
 	extractAnamnesisZk: vi.fn(),
+	originals: {} as Record<string, unknown>,
 }));
-vi.mock("../zk.ts", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../zk.ts")>()),
-	...zkMocks,
-}));
+vi.mock("../zk.ts", async (importOriginal) => {
+	const orig = await importOriginal<typeof import("../zk.ts")>();
+	zkMocks.originals.extractAnamnesisZk = orig.extractAnamnesisZk;
+	return { ...orig, ...zkMocks };
+});
 
 const streamMocks = vi.hoisted(() => ({
 	encryptToBlob: vi.fn(async () => new Uint8Array([9])),
@@ -131,6 +135,7 @@ function renderPage(
 	api = makeApi(),
 	patients = PATIENTS,
 	initialPatientId?: number,
+	zk?: ConsultationZk,
 	portalBase?: string,
 ) {
 	return render(
@@ -139,6 +144,7 @@ function renderPage(
 			initialPatientId={initialPatientId}
 			api={api}
 			backend={backend}
+			zk={zk}
 			portalBase={portalBase}
 		/>,
 	);
@@ -221,7 +227,7 @@ describe("NewConsultationPage", () => {
 	it("prefixes the complete-record link with portalBase", async () => {
 		const user = userEvent.setup();
 		const api = makeApi();
-		renderPage(api, PATIENTS, undefined, "/portal");
+		renderPage(api, PATIENTS, undefined, undefined, "/portal");
 		await user.type(screen.getByLabelText("New patient name"), "Ana");
 		await user.type(screen.getByLabelText("New patient age"), "40");
 		await user.click(screen.getByText("+ patient"));
@@ -1749,7 +1755,6 @@ describe("NewConsultationPage", () => {
 		});
 	});
 });
-
 describe("ZK encrypted audio upload (T-147)", () => {
 	const zk = { keyring: { tag: "k" }, api: { tag: "a" } } as never;
 	const audioBlob = new Blob(["audio"], { type: "audio/webm" });
@@ -1820,5 +1825,214 @@ describe("ZK encrypted audio upload (T-147)", () => {
 		await screen.findByText(/could not be uploaded/i);
 		expect(audioInit(fetchMock)).toBeUndefined();
 		expect(streamMocks.encryptToBlob).not.toHaveBeenCalled();
+	});
+});
+// T-148: ZK saves wrap the record DEK to the portal devices of the
+// linked patient's active links, on top of the clinic-device grants.
+describe("NewConsultationPage ZK portal grants", () => {
+	beforeEach(() => {
+		// The portal-grant tests exercise the real local extraction seam —
+		// the deterministic heuristic produces the "media" confidence
+		// labels these flows assert on.
+		zkMocks.extractAnamnesisZk.mockImplementation(zkMocks.originals.extractAnamnesisZk as never);
+		// The portal wrap path needs real CryptoKeys — the hoisted fake
+		// `{tag:"dek"}` placeholders would fail closed to zero grants.
+		const realDek = async () => {
+			const keyring = makeKeyring({ store: memoryStore() });
+			const { wrapPublicKey } = await keyring.deviceKeys();
+			const { dek } = await keyring.mintDek(wrapPublicKey);
+			return dek;
+		};
+		zkMocks.newConsultationDek.mockImplementation(async () => ({
+			dek: (await realDek()) as never,
+			grants: [{ readerKind: "device" as const, readerPubkey: "w", wrappedDek: "w1.g" }],
+		}));
+		zkMocks.consultationDek.mockImplementation(realDek);
+		// jsdom lacks dialog.showModal — the save-ok dialog mounts open.
+		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+			this.setAttribute("open", "");
+		});
+		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+			this.removeAttribute("open");
+		});
+	});
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+	});
+	const portalDevice = makeKeyring({ store: memoryStore() });
+	// Under ZK extraction is local (heuristic) — its confidence labels
+	// differ from the api.extractAnamnesis fixture.
+	const generateZk = async (user: ReturnType<typeof userEvent.setup>) => {
+		await fillTranscript();
+		await user.click(screen.getByText("Generate anamnesis →"));
+		await screen.findByText("medium confidence");
+	};
+	const makeZk = (envelopes: Record<string, string> = {}) => {
+		const keyring = makeKeyring({ store: memoryStore() });
+		return {
+			keyring,
+			api: {
+				devices: vi.fn(async () => []),
+				dekEnvelopes: vi.fn(
+					async (_input: {
+						entityType: string;
+						entityIds: readonly (number | string)[];
+						wrapPublicKey: string;
+					}): Promise<Record<string, string>> => envelopes,
+				),
+				grant: vi.fn(async () => ({ ok: true })),
+			},
+		};
+	};
+
+	it("grants the record + patient DEKs to registered portal readers", async () => {
+		const user = userEvent.setup();
+		const portalPub = (await portalDevice.deviceKeys()).wrapPublicKey;
+		const zk = makeZk();
+		// This device can unwrap the patient DEK — as if it were granted.
+		const { wrapPublicKey } = await zk.keyring.deviceKeys();
+		const { envelope } = await zk.keyring.mintDek(wrapPublicKey);
+		zk.api.dekEnvelopes = vi.fn(
+			async (input: { entityIds: readonly (number | string)[] }): Promise<Record<string, string>> =>
+				String(input.entityIds[0]) === "1" ? { "1": envelope } : {},
+		);
+		const api = makeApi({
+			portalReaders: vi.fn(async () => ({
+				readers: [{ readerId: "ana", wrapPublicKey: portalPub }],
+			})),
+		});
+		renderPage(api, PATIENTS, 1, zk);
+		await generateZk(user);
+		await user.click(screen.getByText("Save consultation"));
+		// The dialog string is statically mounted — wait on the call itself.
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		expect(api["portalReaders"]).toHaveBeenCalledWith({ data: 1 });
+		// The patient DEK went through grantAccess (readerKind patient),
+		// and the consultation grant rode the create payload.
+		expect(zk.api.grant).toHaveBeenCalledWith(
+			expect.objectContaining({ entityType: "patient", entityId: 1 }),
+		);
+		const payload = (api["saveConsultation"] as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+			data: { grants: { readerKind: string; readerPubkey: string }[] };
+		};
+		expect(
+			payload.data.grants.some((g) => g.readerKind === "patient" && g.readerPubkey === portalPub),
+		).toBe(true);
+	});
+
+	it("attaches portal grants on the update path too", async () => {
+		const user = userEvent.setup();
+		const portalPub = (await portalDevice.deviceKeys()).wrapPublicKey;
+		const zk = makeZk();
+		// This device can unwrap both the patient DEK (1) and the saved
+		// consultation's DEK (42) — the update path needs the latter.
+		const { wrapPublicKey } = await zk.keyring.deviceKeys();
+		const { envelope } = await zk.keyring.mintDek(wrapPublicKey);
+		zk.api.dekEnvelopes = vi.fn(
+			async (input: {
+				entityIds: readonly (number | string)[];
+			}): Promise<Record<string, string>> => ({
+				[String(input.entityIds[0])]: envelope,
+			}),
+		);
+		const api = makeApi({
+			portalReaders: vi.fn(async () => ({
+				readers: [{ readerId: "ana", wrapPublicKey: portalPub }],
+			})),
+		});
+		renderPage(api, PATIENTS, 1, zk);
+		await generateZk(user);
+		// The first save creates the record (savedId) — under ZK there is
+		// no bot path, so a second save is what exercises attachAnamnesis.
+		await user.click(screen.getByText("Save consultation"));
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		await user.click(await screen.findByText(/Not now|Confirm/));
+		await user.click(await screen.findByText("Update consultation"));
+		await waitFor(() => expect(api["attachAnamnesis"]).toHaveBeenCalled());
+		const payload = (api["attachAnamnesis"] as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+			data: { grants: { readerKind: string }[] };
+		};
+		expect(payload.data.grants.some((g) => g.readerKind === "patient")).toBe(true);
+	});
+
+	it("still shares the record DEK when this device has no patient-DEK envelope", async () => {
+		const user = userEvent.setup();
+		const portalPub = (await portalDevice.deviceKeys()).wrapPublicKey;
+		// makeZk() defaults dekEnvelopes to {} — patientDek resolves null,
+		// so the patient-entity grant is skipped but the record grant
+		// still rides the create payload.
+		const zk = makeZk();
+		const api = makeApi({
+			portalReaders: vi.fn(async () => ({
+				readers: [{ readerId: "ana", wrapPublicKey: portalPub }],
+			})),
+		});
+		renderPage(api, PATIENTS, 1, zk);
+		await generateZk(user);
+		await user.click(screen.getByText("Save consultation"));
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		expect(zk.api.grant).not.toHaveBeenCalledWith(
+			expect.objectContaining({ entityType: "patient" }),
+		);
+		const payload = (api["saveConsultation"] as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+			data: { grants: { readerKind: string; readerPubkey: string }[] };
+		};
+		expect(
+			payload.data.grants.some((g) => g.readerKind === "patient" && g.readerPubkey === portalPub),
+		).toBe(true);
+	});
+
+	it("saves normally when the reader lookup fails or is absent", async () => {
+		const user = userEvent.setup();
+		const zk = makeZk();
+		const api = makeApi({
+			portalReaders: vi.fn(async () => {
+				throw new Error("down");
+			}),
+		});
+		renderPage(api, PATIENTS, 1, zk);
+		await generateZk(user);
+		await user.click(screen.getByText("Save consultation"));
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		const payload = (api["saveConsultation"] as ReturnType<typeof vi.fn>).mock.calls[0]![0] as {
+			data: { grants: unknown[] };
+		};
+		expect(
+			payload.data.grants.every((g) => (g as { readerKind: string }).readerKind !== "patient"),
+		).toBe(true);
+	});
+
+	it("skips the portal pass when the api lacks it", async () => {
+		const user = userEvent.setup();
+		const api = makeApi(); // no portalReaders
+		renderPage(api, PATIENTS, 1, makeZk());
+		await generateZk(user);
+		await user.click(screen.getByText("Save consultation"));
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+	});
+
+	it("skips the portal pass when no patient is linked", async () => {
+		const user = userEvent.setup();
+		const api = makeApi({
+			portalReaders: vi.fn(async () => null),
+		});
+		renderPage(api, PATIENTS, undefined, makeZk());
+		await generateZk(user);
+		await user.click(screen.getByText("Save consultation"));
+		await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		expect(api["portalReaders"]).not.toHaveBeenCalled();
+	});
+
+	it("skips the portal pass for a null plan or one with no readers", async () => {
+		for (const plan of [null, { readers: [] }]) {
+			cleanup();
+			const user = userEvent.setup();
+			const api = makeApi({ portalReaders: vi.fn(async () => plan) });
+			renderPage(api, PATIENTS, 1, makeZk());
+			await generateZk(user);
+			await user.click(screen.getByText("Save consultation"));
+			await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
+		}
 	});
 });

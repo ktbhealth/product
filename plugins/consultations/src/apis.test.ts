@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	patientLinksFn: vi.fn(),
 	invitePatientFn: vi.fn(),
+	portalReadersFn: vi.fn(),
 }));
 
 vi.mock("@ktb/patient-access/fns", () => mocks);
@@ -113,5 +114,7 @@ describe("api delegates forward to the server fns", () => {
 		});
 		await newConsultationApi.getConsultation!({ data: 5 });
 		expect(fns.getConsultationFn).toHaveBeenCalledWith({ data: 5 });
+		await newConsultationApi.portalReaders!({ data: 6 });
+		expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 6 });
 	});
 });

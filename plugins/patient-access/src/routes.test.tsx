@@ -13,7 +13,24 @@ const mocks = vi.hoisted(() => ({
 	),
 	approvePatientLinkFn: vi.fn(async (_arg: { data: number }) => ({ ok: true })),
 	revokePatientLinkFn: vi.fn(async (_arg: { data: number }) => ({ ok: false })),
+	portalReadersFn: vi.fn(
+		async (): Promise<{
+			readonly readers: readonly { readerId: string; wrapPublicKey: string }[];
+			readonly cipheredConsultationIds: readonly number[];
+		} | null> => ({ readers: [], cipheredConsultationIds: [] }),
+	),
 	localeFn: vi.fn(async () => "pt-BR"),
+	vaultStateFn: vi.fn(async () => ({ zk: false })),
+	vaultDekEnvelopesFn: vi.fn(
+		async (_call: {
+			data: {
+				entityType: string;
+				entityIds: readonly (number | string)[];
+				wrapPublicKey: string;
+			};
+		}): Promise<Record<string, string>> => ({}),
+	),
+	vaultGrantAccessFn: vi.fn(async () => ({ ok: true })),
 	invalidate: vi.fn(),
 	loaderData: { current: undefined as unknown },
 	props: { current: undefined as Record<string, unknown> | undefined },
@@ -25,7 +42,13 @@ vi.mock("./fns.ts", () => ({
 	invitePatientFn: mocks.invitePatientFn,
 	approvePatientLinkFn: mocks.approvePatientLinkFn,
 	revokePatientLinkFn: mocks.revokePatientLinkFn,
+	portalReadersFn: mocks.portalReadersFn,
 	localeFn: mocks.localeFn,
+}));
+vi.mock("@ktb/vault/fns", () => ({
+	vaultStateFn: mocks.vaultStateFn,
+	vaultDekEnvelopesFn: mocks.vaultDekEnvelopesFn,
+	vaultGrantAccessFn: mocks.vaultGrantAccessFn,
 }));
 vi.mock("./views/index.ts", () => ({
 	PatientAccessPage: (props: Record<string, unknown>) => {
@@ -62,6 +85,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 import { isNotFound, isRedirect } from "@tanstack/react-router";
+import { encrypt, generateDek } from "@ktb/crypto/aead";
+import { makeKeyring, memoryStore } from "@ktb/crypto/keyring";
 
 import { Route } from "./routes/$patientId.tsx";
 
@@ -108,11 +133,18 @@ describe("/patient-access/$patientId", () => {
 		expect(await redirectTarget(options.beforeLoad)).toBe("/doctors/select");
 	});
 
-	it("loads the patient and its links with the locale", async () => {
+	it("loads the patient and its links with the locale and the vault flag", async () => {
 		mocks.patientLinksFn.mockResolvedValue({ patient, links });
-		await expect(load()).resolves.toEqual({ patient, links, locale: "pt-BR" });
+		await expect(load()).resolves.toEqual({
+			patient,
+			links,
+			locale: "pt-BR",
+			zk: false,
+		});
 		// The path param reaches the server fn as a number.
 		expect(mocks.patientLinksFn).toHaveBeenCalledWith({ data: 7 });
+		mocks.vaultStateFn.mockResolvedValue({ zk: true });
+		await expect(load()).resolves.toMatchObject({ zk: true });
 	});
 
 	it("is a 404 for a patient that is not the acting doctor's", async () => {
@@ -146,5 +178,102 @@ describe("/patient-access/$patientId", () => {
 		expect(mocks.invalidate).not.toHaveBeenCalled();
 		props.onChanged();
 		expect(mocks.invalidate).toHaveBeenCalledTimes(1);
+	});
+
+	it("on a ZK tenant masks the ciphered name and runs the grant pass", async () => {
+		mocks.loaderData.current = {
+			patient: { id: 7, name: "v1.name.ct", email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		mocks.portalReadersFn.mockResolvedValue({
+			readers: [{ readerId: "ana", wrapPublicKey: "pub" }],
+			cipheredConsultationIds: [10],
+		});
+		render(createElement(options.component));
+		// The raw envelope never reaches the view.
+		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe(
+			"Encrypted record",
+		);
+		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 7 }));
+		// No envelopes for this device → nothing gets granted, nothing throws.
+		await vi.waitFor(() => expect(mocks.vaultDekEnvelopesFn).toHaveBeenCalled());
+		expect(mocks.vaultGrantAccessFn).not.toHaveBeenCalled();
+	});
+
+	it("on a ZK tenant decrypts the record name this device can read", async () => {
+		// A "clinic device" fixture grants the component's keyring: the
+		// envelope is wrapped to whatever pubkey the effect sends.
+		const grantor = makeKeyring({ store: memoryStore() });
+		const dek = await generateDek();
+		mocks.vaultDekEnvelopesFn.mockImplementation(
+			async (call: {
+				data: {
+					entityType: string;
+					entityIds: readonly (number | string)[];
+					wrapPublicKey: string;
+				};
+			}): Promise<Record<string, string>> =>
+				String(call.data.entityIds[0]) === "7"
+					? { "7": await grantor.wrapKeyFor(dek, call.data.wrapPublicKey) }
+					: {},
+		);
+		mocks.loaderData.current = {
+			patient: { id: 7, name: await encrypt(dek, "Ana Real"), email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(options.component));
+		await vi.waitFor(() =>
+			expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe("Ana Real"),
+		);
+	});
+
+	it("on a ZK tenant keeps a plaintext name and still runs the grant pass", async () => {
+		mocks.loaderData.current = {
+			patient: { id: 7, name: "Ana Plain", email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		mocks.portalReadersFn.mockResolvedValue({
+			readers: [{ readerId: "ana", wrapPublicKey: "pub" }],
+			cipheredConsultationIds: [10],
+		});
+		render(createElement(options.component));
+		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe("Ana Plain");
+		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 7 }));
+		await vi.waitFor(() => expect(mocks.vaultDekEnvelopesFn).toHaveBeenCalled());
+	});
+
+	it("on a ZK tenant fails closed when the grant pass itself rejects", async () => {
+		mocks.loaderData.current = {
+			patient: { id: 7, name: "v1.name.ct", email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		mocks.portalReadersFn.mockRejectedValue(new Error("down"));
+		render(createElement(options.component));
+		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 7 }));
+		// The page keeps the locked label — a failed pass never leaks.
+		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe(
+			"Encrypted record",
+		);
+	});
+
+	it("on a ZK tenant skips the pass when the patient has no portal plan", async () => {
+		mocks.loaderData.current = {
+			patient: { id: 7, name: "v1.name.ct", email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		mocks.portalReadersFn.mockResolvedValue(null);
+		render(createElement(options.component));
+		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalled());
+		expect(mocks.vaultGrantAccessFn).not.toHaveBeenCalled();
 	});
 });
