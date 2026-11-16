@@ -1,7 +1,6 @@
 /** Eval lab copy — one typed catalog per locale, resolved from the
  * panel page ctx (same contract as eval-validator's i18n). */
 export const EVAL_LOCALES = ["en", "pt-BR", "es"] as const;
-export type EvalLocale = (typeof EVAL_LOCALES)[number];
 
 export interface EvalLabMessages {
 	readonly personasTitle: string;
