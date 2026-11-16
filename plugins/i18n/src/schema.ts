@@ -1,12 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-	blob,
-	index,
-	integer,
-	primaryKey,
-	sqliteTable,
-	text,
-} from "drizzle-orm/sqlite-core";
+import { blob, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 import type { MessageKind, MessageParam } from "@ktb/i18n";
 

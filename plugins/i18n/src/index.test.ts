@@ -122,7 +122,9 @@ describe("I18nRuntime cache", () => {
 			}),
 		);
 		// Longest-prefix namespace split: eval.credentials + sections.list.title.
-		const text = await runtime.runPromise(i18n.t("eval.credentials.sections.list.title", { count: 2 }));
+		const text = await runtime.runPromise(
+			i18n.t("eval.credentials.sections.list.title", { count: 2 }),
+		);
 		expect(text).toBe("Credentials 2");
 		const params = await runtime.runPromise(
 			i18n.paramsFor("eval.credentials", "sections.list.title"),

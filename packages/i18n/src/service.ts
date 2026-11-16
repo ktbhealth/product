@@ -41,8 +41,8 @@ export interface I18nShape {
 	readonly scopeChain: ScopeChain;
 	/** Current locale fallback chain. */
 	readonly locales: LocaleChain;
-	/** Declared params for a key from the manifest contract (may be empty). */
-	readonly paramsFor: (namespace: string, key: string) => readonly MessageParam[];
+	/** Declared params for a key: resolved DB row first, then the manifest contract (may be empty). */
+	readonly paramsFor: (namespace: string, key: string) => Effect.Effect<readonly MessageParam[]>;
 }
 
 export class I18n extends Context.Service<I18n, I18nShape>()("@ktb/i18n/I18n") {}

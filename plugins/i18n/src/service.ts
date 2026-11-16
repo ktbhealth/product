@@ -1,6 +1,13 @@
 import * as Effect from "effect/Effect";
 
-import { I18N_MANIFEST, resolveRow, type I18nShape, type LocaleChain, type MessageParam, type ScopeChain } from "@ktb/i18n";
+import {
+	I18N_MANIFEST,
+	resolveRow,
+	type I18nShape,
+	type LocaleChain,
+	type MessageParam,
+	type ScopeChain,
+} from "@ktb/i18n";
 import { renderMessage, resolveMessage } from "@ktb/i18n";
 
 import type { I18nRuntimeShape } from "./runtime.ts";

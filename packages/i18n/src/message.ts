@@ -239,8 +239,7 @@ const renderTokens = (
 			// Inside a plural case, `#` renders the plural arg (ICU) —
 			// except `#` immediately followed by a digit, which reads as
 			// an id reference ("Consultation #42") and stays literal.
-			out +=
-				pound === undefined ? t.text : t.text!.replace(/#(?!\d)/g, pound);
+			out += pound === undefined ? t.text : t.text!.replace(/#(?!\d)/g, pound);
 			continue;
 		}
 		const value = params[t.name!];

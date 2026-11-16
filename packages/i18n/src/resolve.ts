@@ -102,8 +102,7 @@ export interface ResolvedMessage {
 
 // Space-separated: bare concatenation collides ("app"+"bc" == "appb"+"c").
 // Keys/locales/scope ids never contain spaces.
-const rowKey = (r: MessageRow) =>
-	`${r.namespace} ${r.key} ${r.locale} ${r.scope} ${r.scopeId}`;
+const rowKey = (r: MessageRow) => `${r.namespace} ${r.key} ${r.locale} ${r.scope} ${r.scopeId}`;
 
 /** Index rows once; resolution is then O(chain × locales) map probes. */
 export const indexMessages = (rows: readonly MessageRow[]): ReadonlyMap<string, MessageRow> => {
@@ -133,9 +132,7 @@ export const resolveRow = (
 ): MessageRow | undefined => {
 	for (const { scope, scopeId } of input.scopeChain.scopes) {
 		for (const locale of input.locales.locales) {
-			const row = index.get(
-				`${input.namespace} ${input.key} ${locale} ${scope} ${scopeId}`,
-			);
+			const row = index.get(`${input.namespace} ${input.key} ${locale} ${scope} ${scopeId}`);
 			if (row) return row;
 		}
 	}

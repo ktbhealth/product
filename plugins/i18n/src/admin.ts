@@ -425,9 +425,9 @@ export const I18nAdminLive = Layer.effect(
 								db
 									.update(i18nMessages)
 									.set({
-									draftValue: e.value,
-									params: e.params,
-									updatedAt: new Date(),
+										draftValue: e.value,
+										params: e.params,
+										updatedAt: new Date(),
 									})
 									.where(
 										and(
