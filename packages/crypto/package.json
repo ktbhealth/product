@@ -11,6 +11,7 @@
 		"./digest": "./src/digest.ts",
 		"./kdf": "./src/kdf.ts",
 		"./keyring": "./src/keyring.ts",
+		"./recovery": "./src/recovery.ts",
 		"./stream": "./src/stream.ts"
 	},
 	"dependencies": {
