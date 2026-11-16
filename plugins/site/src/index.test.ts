@@ -6,6 +6,7 @@ describe("site chrome plugin", () => {
 	it("declares the app-shell chrome regions", () => {
 		expect(siteChromePlugin.id).toBe("site.chrome");
 		expect(siteChromePlugin.chrome.map((c) => c.region)).toEqual([
+			"app.header.brand",
 			"app.header.actions",
 			"app.footer.note",
 		]);

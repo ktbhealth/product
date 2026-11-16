@@ -62,51 +62,6 @@ const fakeQueue = {
 	},
 };
 
-/** Theme-assets doubles (PL-006 phase 4): separate store + sent log so
- * theme tests never mix with consultation audio fixtures. */
-export const themeAssetsStore = new Map<string, { data: Uint8Array; contentType?: string }>();
-export const themeAssetsQueueSent: unknown[] = [];
-
-const themeAssetsBucket = {
-	put: async (
-		key: string,
-		value: ArrayBuffer | Uint8Array | ReadableStream,
-		options?: { httpMetadata?: { contentType?: string } },
-	) => {
-		const data =
-			value instanceof Uint8Array
-				? value
-				: value instanceof ArrayBuffer
-					? new Uint8Array(value)
-					: new Uint8Array(await new Response(value).arrayBuffer());
-		themeAssetsStore.set(key, { data, contentType: options?.httpMetadata?.contentType });
-		return {};
-	},
-	get: async (key: string) => {
-		const object = themeAssetsStore.get(key);
-		if (!object) return null;
-		const { data, contentType } = object;
-		const bytes = data.slice();
-		return {
-			key,
-			size: bytes.byteLength,
-			httpMetadata: { contentType },
-			body: new Response(bytes).body,
-			arrayBuffer: async () => bytes.buffer,
-		};
-	},
-	delete: async (keys: string | string[]) => {
-		for (const key of Array.isArray(keys) ? keys : [keys]) themeAssetsStore.delete(key);
-	},
-};
-
-const themeAssetsQueue = {
-	send: async (body: unknown) => {
-		themeAssetsQueueSent.push(body);
-		return {};
-	},
-};
-
 /** Test double for the workerd `cloudflare:workers` module. Fresh per test file. */
 export const env = {
 	DB: makeD1(migrationSql),
@@ -115,8 +70,6 @@ export const env = {
 	},
 	AUDIO_BUCKET: fakeBucket,
 	AUDIO_QUEUE: fakeQueue,
-	THEME_ASSETS_BUCKET: themeAssetsBucket,
-	THEME_ASSETS_QUEUE: themeAssetsQueue,
 	// Worker-runtime config arrives as bindings only (mirrors .dev.vars in
 	// dev / Alchemy bindings in prod). Tests that need a non-default value
 	// assign it here BEFORE importing platform.ts — driver selection happens

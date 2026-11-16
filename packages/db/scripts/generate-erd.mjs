@@ -133,14 +133,6 @@ const DOMAINS = [
 		tables: ["job_runs"],
 	},
 	{
-		id: "theme",
-		title: "Theme",
-		owner: "`plugins/theme`",
-		description:
-			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline stub.",
-		tables: ["theme_assets", "theme_definitions"],
-	},
-	{
 		id: "eval-validator",
 		title: "Eval validator",
 		owner: "`plugins/eval-validator`",

@@ -120,26 +120,6 @@ env.AUDIO_QUEUE = makeLocalQueue({
 	},
 });
 
-// Theme asset storage + dedicated queue stand-ins (PL-006 phase 4):
-// same local-object-store and SQLite-queue shapes as audio, but separate
-// files so theme derivatives never mix with consultation recordings.
-// THEME_ASSETS_BUCKET_DIR / KTB_DEV_THEME_QUEUE_DB override the
-// locations, same convention as AUDIO_BUCKET_DIR / KTB_DEV_QUEUE_DB.
-const THEME_DIR =
-	process.env.THEME_ASSETS_BUCKET_DIR ??
-	resolve(dirname(fileURLToPath(import.meta.url)), "../../data/theme-assets");
-env.THEME_ASSETS_BUCKET = makeLocalAudioBucket(THEME_DIR);
-env.THEME_ASSETS_QUEUE = makeLocalQueue({
-	dbPath:
-		process.env.KTB_DEV_THEME_QUEUE_DB ??
-		resolve(dirname(fileURLToPath(import.meta.url)), "../../data/theme-queue.db"),
-	queue: "ktb-theme-assets",
-	loadHandler: async () => {
-		const { handleThemeQueueBatch } = await import("./theme-jobs.ts");
-		return handleThemeQueueBatch;
-	},
-});
-
 // AI: platform.ts runs resolveAi(env) itself (AI_STUB > AI_BASE_URL >
 // env.AI). Resolve the stand-in here too so env.AI carries it for any
 // raw-env reader; when nothing is configured env.AI stays undefined —

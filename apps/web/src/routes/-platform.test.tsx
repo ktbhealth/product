@@ -56,15 +56,6 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 }));
-// Theme resolution is a server fn — stub it so the loader stays pure.
-vi.mock("@ktb/theme/fns", () => ({
-	themeScopeFn: vi.fn(async () => null),
-	listThemesFn: vi.fn(async () => []),
-	getThemeFn: vi.fn(async () => null),
-	publishThemeFn: vi.fn(async () => ({})),
-	setThemeEnabledFn: vi.fn(async () => ({ ok: true })),
-	setThemePreviewFn: vi.fn(async () => ({ ok: true })),
-}));
 
 let loaderData: unknown = { patients: [], consultations: [] };
 let pathname = "/platform";
@@ -210,7 +201,6 @@ describe("/platform layout", () => {
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
 			audiences: [],
-			theme: null,
 		});
 	});
 
@@ -224,7 +214,6 @@ describe("/platform layout", () => {
 			audioJobs: [],
 			notifications: [],
 			audiences: [],
-			theme: null,
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();

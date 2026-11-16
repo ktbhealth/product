@@ -21,9 +21,6 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 		useNavigate: () => vi.fn(),
 		getRouteApi: () => ({
 			useLoaderData: () => ({
-				// Resolved theme for the MissingLanding brand (PL-006
-				// phase 7) — the built-in default supplies appName.
-				theme: { appName: "KTB Health" },
 				pluginStates: {
 					enabled: (state.plugins as { id: string }[])
 						.map((p) => p.id)

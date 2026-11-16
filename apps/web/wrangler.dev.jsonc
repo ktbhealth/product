@@ -25,16 +25,10 @@
 	//     (whisper.cpp / llama.cpp) exposing /audio/transcriptions and
 	//     /chat/completions
 	"vars": { "CAPTCHA_STUB": "1", "EMAIL_STUB": "1" },
-	"r2_buckets": [
-		{ "binding": "AUDIO_BUCKET", "bucket_name": "ktb-audio" },
-		{ "binding": "THEME_ASSETS_BUCKET", "bucket_name": "ktb-theme-assets" },
-	],
+	"r2_buckets": [{ "binding": "AUDIO_BUCKET", "bucket_name": "ktb-audio" }],
 	"queues": {
-		"producers": [
-			{ "binding": "AUDIO_QUEUE", "queue": "ktb-transcription" },
-			{ "binding": "THEME_ASSETS_QUEUE", "queue": "ktb-theme-assets" },
-		],
-		"consumers": [{ "queue": "ktb-transcription" }, { "queue": "ktb-theme-assets" }],
+		"producers": [{ "binding": "AUDIO_QUEUE", "queue": "ktb-transcription" }],
+		"consumers": [{ "queue": "ktb-transcription" }],
 	},
 	"d1_databases": [
 		{

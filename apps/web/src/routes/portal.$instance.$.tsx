@@ -5,14 +5,9 @@ import { authClient } from "@ktb/auth-better/client";
 import { platformHeaderPlugin } from "@ktb/platform-header";
 import { PortalShell } from "@ktb/portal/views";
 import { portalAdmits } from "@ktb/portal/rules";
-import { themeScopeFn } from "@ktb/theme/fns";
-import { themeHead, themeTitle } from "@ktb/theme/head";
-import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
-import type { ResolvedTheme } from "@ktb/theme/types";
 
 import { pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
-import { portalChromeProps } from "#/lib/chrome-props.ts";
 import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
 import {
 	collectChrome,
@@ -57,37 +52,21 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		// gate inside portalPageDataFn.
 		const pageEntry = findPage(portalPages, path);
 		if (pageEntry === undefined) throw notFound();
-		const [states, audiences, result, theme] = await Promise.all([
+		const [states, audiences, result] = await Promise.all([
 			pluginStatesFn(),
 			portalAudiencesFn(),
 			portalPageDataFn({ data: path }),
-			// Instance → tenant → platform fallback (P-082).
-			themeScopeFn({ data: { scope: "portal-instance", id: params.instance } }),
 		]);
 		const enabled = enabledIdSet(states);
 		if (!enabled.has(pageEntry.pluginId) || !enabled.has(entry.pluginId)) {
 			throw notFound();
 		}
 		if (result.status === "notfound") throw notFound();
-		return { path, data: result.data, audiences, pluginStates: states, theme };
-	},
-	// Theme head projection (P-082): favicon/OG/font links + title from
-	// the resolved instance theme; PortalShell emits the single style
-	// block via `themeCss`.
-	head: (ctx) => {
-		const theme = ((ctx?.loaderData as { theme?: ResolvedTheme | null } | undefined)?.theme ??
-			null) as ResolvedTheme | null;
-		if (theme === null) return {};
-		const head = themeHead(theme);
-		const title = themeTitle(theme);
-		return {
-			meta: [...(title !== null ? [{ title }] : []), ...head.meta],
-			links: [...head.links],
-		};
+		return { path, data: result.data, audiences, pluginStates: states };
 	},
 	component: function PortalInstanceRoute() {
 		const { instance: instanceId } = Route.useParams();
-		const { path, data, audiences, pluginStates, theme } = Route.useLoaderData();
+		const { path, data, audiences, pluginStates } = Route.useLoaderData();
 		const pathname = useLocation({ select: (l) => l.pathname });
 		const { user } = rootApi.useLoaderData();
 		const locale = getLocale();
@@ -129,50 +108,6 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		const switchablePortals = portalInstances
 			.filter((e) => portalAdmits(e.instance, audiences))
 			.map((e) => e.instance);
-		// Brand slot (P-082/PL-006): theme brand mark + `portal.brand`
-		// chrome components scoped to THIS instance. The built-in KTB
-		// default keeps brand data present with zero theme rows; an
-		// empty slot renders only for brand-less themes.
-		const chromeProps = portalChromeProps(
-			user,
-			locale,
-			visiblePlugins,
-			async () => {
-				await authClient.signOut();
-				window.location.assign("/");
-			},
-			theme,
-		);
-		const brandComponents = collectChrome(
-			visiblePlugins,
-			"portal.brand",
-			pathname,
-			instance.id,
-		).flatMap((chromeEntry) =>
-			chromeEntry.content.kind === "component"
-				? [
-						createElement(chromeEntry.content.component, {
-							key: chromeEntry.id,
-							...chromeProps,
-						}),
-					]
-				: [],
-		);
-		const hasThemeBrand =
-			theme !== null &&
-			theme !== undefined &&
-			(theme.brand !== null || (theme.appName ?? "") !== "");
-		const brand =
-			hasThemeBrand || brandComponents.length > 0 ? (
-				<>
-					{hasThemeBrand ? <ThemeBrandMark theme={theme} /> : null}
-					{brandComponents}
-				</>
-			) : undefined;
-		const themeCss =
-			theme !== null && theme !== undefined
-				? `${theme.styleCss}\n${theme.fontFaceCss}`.trim()
-				: null;
 		return (
 			<PortalShell
 				instance={instance}
@@ -181,9 +116,6 @@ export const Route = createFileRoute("/portal/$instance/$")({
 				locale={locale}
 				userEmail={user?.email}
 				headerActions={headerActions}
-				brand={brand}
-				banner={theme?.preview === true ? <ThemePreviewBanner locale={locale} /> : undefined}
-				themeCss={themeCss}
 				portals={switchablePortals}
 				onSignOut={async () => {
 					await authClient.signOut();
