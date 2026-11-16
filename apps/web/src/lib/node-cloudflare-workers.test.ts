@@ -18,6 +18,8 @@ const ENV_KEYS = [
 	"DATABASE_URL",
 	"AUDIO_BUCKET_DIR",
 	"KTB_DEV_QUEUE_DB",
+	"THEME_ASSETS_BUCKET_DIR",
+	"KTB_DEV_THEME_QUEUE_DB",
 	"AI_STUB",
 	"AI_BASE_URL",
 	"BETTER_AUTH_SECRET",
@@ -168,4 +170,26 @@ describe("node-cloudflare-workers env", () => {
 			{ timeout: 30000 },
 		);
 	}, 45000);
+
+	it("exposes separate THEME_ASSETS_BUCKET and THEME_ASSETS_QUEUE bindings", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		process.env.KTB_DEV_THEME_QUEUE_DB = ":memory:";
+		audioDir = mkdtempSync(join(tmpdir(), "ktb-node-theme-"));
+		const themeDir = mkdtempSync(join(tmpdir(), "ktb-node-theme-assets-"));
+		process.env.AUDIO_BUCKET_DIR = audioDir;
+		process.env.THEME_ASSETS_BUCKET_DIR = themeDir;
+
+		const env = await loadEnv();
+		expect(typeof env.THEME_ASSETS_BUCKET.put).toBe("function");
+		expect(typeof env.THEME_ASSETS_BUCKET.get).toBe("function");
+		expect(typeof env.THEME_ASSETS_QUEUE.send).toBe("function");
+
+		// Theme objects land under the theme dir; the audio bucket stays
+		// untouched (separate store per PL-006 phase 4).
+		await env.THEME_ASSETS_BUCKET.put("theme-assets/1/x.png", new Uint8Array([7]));
+		expect((await env.THEME_ASSETS_BUCKET.get("theme-assets/1/x.png")).size).toBe(1);
+		expect(await env.AUDIO_BUCKET.get("theme-assets/1/x.png")).toBeNull();
+		rmSync(themeDir, { recursive: true, force: true });
+	}, 30000);
 });

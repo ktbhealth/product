@@ -1,7 +1,9 @@
 /**
  * Theme domain port + repo (P-082): `theme_definitions` rows resolved
  * per request scope with the fallback chain
- * portal-instance → tenant → platform → null (ui defaults).
+ * portal-instance → tenant → platform → built-in KTB default (PL-006
+ * phase 7 — brand lives in theme data even with zero rows; the ui
+ * token defaults in globals.css remain the final CSS fallback).
  *
  * Reads are open — branding is public information and anonymous app
  * pages need it — while every write/list path requires the
@@ -19,6 +21,7 @@ import { themeDefinitions } from "@ktb/db/schema";
 import { PlatformAdmin } from "@ktb/platform";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 
+import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import { deriveThemeTokens } from "./palette.ts";
 import { presentTheme, type ThemeDefinitionRow } from "./present.ts";
 import type {
@@ -159,16 +162,18 @@ export const themeCandidates = (
 /**
  * Theme port — Effect service, swappable in tests.
  *
- * - `resolve` never fails on missing themes (null = ui defaults) and
- *   tolerates per-scope read failures by falling through the chain —
- *   branding must never take a page down.
+ * - `resolve` never fails on missing themes — an unmatched chain
+ *   returns the built-in KTB default (`KTB_DEFAULT_THEME`, id 0) so
+ *   every shell always has brand/tokens/fonts — and tolerates
+ *   per-scope read failures by falling through the chain: branding
+ *   must never take a page down.
  * - `list`/`get`/`publish`/`setEnabled` are PlatformAdmin-gated
  *   (defense in depth; the /platform/theme page guard 404s first).
  */
 export class Theme extends Context.Service<
 	Theme,
 	{
-		readonly resolve: (request?: ThemeResolveRequest) => Effect.Effect<ResolvedTheme | null>;
+		readonly resolve: (request?: ThemeResolveRequest) => Effect.Effect<ResolvedTheme>;
 		readonly list: () => Effect.Effect<ThemeSummary[], Forbidden>;
 		/** Full presented theme by id — the admin editor loads seeds,
 		 * fonts and brand through this. Admin-gated. */
@@ -213,7 +218,11 @@ export const ThemeLive = Layer.effect(
 				);
 				if (row !== null) return presentTheme(row as ThemeDefinitionRow);
 			}
-			return null;
+			// No row anywhere in the chain → the built-in KTB default.
+			// Returning a theme (never null) keeps brand/favicon/title
+			// theme-driven on fresh deploys and when the theme plugin is
+			// disabled (service layers always compose — P-058).
+			return KTB_DEFAULT_THEME;
 		});
 
 		return Theme.of({

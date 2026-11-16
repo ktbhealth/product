@@ -1,4 +1,5 @@
 import type { ChromeProps, Plugin } from "@ktb/kernel";
+import type { ResolvedTheme } from "@ktb/theme/types";
 
 import { changeLocale, localeName } from "#/lib/i18n.ts";
 import { locales } from "#/paraglide/runtime.js";
@@ -19,6 +20,7 @@ export const portalChromeProps = (
 	locale: string,
 	plugins: readonly Plugin[],
 	signOut: () => Promise<void>,
+	theme?: ResolvedTheme | null,
 ): ChromeProps => ({
 	user,
 	locale,
@@ -28,4 +30,7 @@ export const portalChromeProps = (
 	setLocale: changeLocale,
 	labels: {},
 	signOut,
+	// Resolved theme for brand chrome (PL-006 phase 7) — same injection
+	// the app shell gives `app.header.brand` components.
+	theme: theme ?? null,
 });

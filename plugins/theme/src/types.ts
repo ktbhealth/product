@@ -41,6 +41,59 @@ export interface ThemeSeeds {
 	};
 }
 
+/** Brand/upload asset kinds — mirrors `theme_assets.kind` and the
+ * brand JSON field each kind feeds when its job completes. */
+export type ThemeAssetKind =
+	| "logo-light"
+	| "logo-dark"
+	| "wordmark"
+	| "favicon"
+	| "og-image"
+	| "font";
+
+/** Font slot a self-hosted family fills. */
+export type ThemeFontSlot = "sans" | "heading" | "mono";
+
+/** One `@font-face` src entry inside a font asset. */
+export interface ThemeFontFace {
+	/** Serving URL (same-origin /api/theme/assets?key=…). */
+	readonly url: string;
+	/** CSS font-weight; absent = 400. */
+	readonly weight?: number;
+	/** Hint for the `format()` descriptor — "woff2" | "woff" | "truetype" | "opentype". */
+	readonly format?: string;
+}
+
+/** Metric-matched fallback descriptors (fontaine/capsize algorithm):
+ * percentages emitted as `size-adjust`/`ascent-override`/
+ * `descent-override`/`line-gap-override` on the fallback `@font-face`. */
+export interface ThemeFontFallbackMetrics {
+	readonly sizeAdjust: number;
+	readonly ascentOverride: number;
+	readonly descentOverride: number;
+	readonly lineGapOverride: number;
+}
+
+/**
+ * Self-hosted font asset written by the `theme.font` job: one or more
+ * `@font-face` sources plus an optional metric-matched local() fallback
+ * face that keeps layout stable during `font-display: swap`.
+ */
+export interface ThemeFontAsset {
+	readonly faces: readonly ThemeFontFace[];
+	readonly fallback?: {
+		/** Fallback family name — `${family} fallback` convention. */
+		readonly name: string;
+		/** System font the local() src resolves (e.g. "Arial"). */
+		readonly local: string;
+		readonly metrics: ThemeFontFallbackMetrics;
+	} | null;
+}
+
+/** `fonts.assets` values: a bare URL string (Phase-3 shape, still
+ * supported) or a full {@link ThemeFontAsset} written by the font job. */
+export type ThemeFontAssetValue = string | ThemeFontAsset;
+
 /** Font delivery config stored on `theme_definitions.fonts`. */
 export interface ThemeFontConfig {
 	readonly delivery: "self-host" | "google-fonts";
@@ -54,7 +107,7 @@ export interface ThemeFontConfig {
 	/** Self-hosted font files (Phase 4 asset pipeline): family → URL or
 	 * storage ref. Until files exist the shell skips `@font-face`
 	 * gracefully. */
-	readonly assets?: Readonly<Record<string, string>>;
+	readonly assets?: Readonly<Record<string, ThemeFontAssetValue>>;
 }
 
 /** Brand asset refs stored on `theme_definitions.brand`. Values are

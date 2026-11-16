@@ -129,13 +129,20 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		const switchablePortals = portalInstances
 			.filter((e) => portalAdmits(e.instance, audiences))
 			.map((e) => e.instance);
-		// Brand slot (P-082): theme brand mark + `portal.brand` chrome
-		// components scoped to THIS instance; absent both → the
-		// host-owned "KTB" wordmark stays.
-		const chromeProps = portalChromeProps(user, locale, visiblePlugins, async () => {
-			await authClient.signOut();
-			window.location.assign("/");
-		});
+		// Brand slot (P-082/PL-006): theme brand mark + `portal.brand`
+		// chrome components scoped to THIS instance. The built-in KTB
+		// default keeps brand data present with zero theme rows; an
+		// empty slot renders only for brand-less themes.
+		const chromeProps = portalChromeProps(
+			user,
+			locale,
+			visiblePlugins,
+			async () => {
+				await authClient.signOut();
+				window.location.assign("/");
+			},
+			theme,
+		);
 		const brandComponents = collectChrome(
 			visiblePlugins,
 			"portal.brand",

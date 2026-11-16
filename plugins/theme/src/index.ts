@@ -1,4 +1,5 @@
 import { PaletteIcon } from "lucide-react";
+import { physical } from "@tanstack/virtual-file-routes";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -7,6 +8,7 @@ import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/pl
 
 import { ThemePlatformPage } from "./platform-page.tsx";
 import { Theme, ThemeLive } from "./theme.ts";
+import { ThemeAppBrand } from "./views/ThemeAppBrand.tsx";
 import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
 
 /**
@@ -83,6 +85,35 @@ export const themeHeaderPlugin = definePlugin({
 	],
 });
 
+/** App-shell brand block (PL-006 phase 7): renders the resolved theme's
+ * brand mark in `app.header.brand` — the theme arrives via the
+ * host-injected `ChromeProps.theme`, so this replaces the retired
+ * hardcoded site brand. */
+export const themeBrandPlugin = definePlugin({
+	id: "theme.brand",
+	requiredDeps: [themeServicesPlugin.id],
+	chrome: [
+		{
+			id: "theme.app-brand",
+			region: "app.header.brand",
+			content: { kind: "component", component: ThemeAppBrand },
+		},
+	],
+});
+
+/**
+ * Asset pipeline routes (Phase 4): /api/theme/assets (upload + serve)
+ * and /api/theme/fonts (Google Fonts enqueue) live in this package's
+ * src/api-routes/ and mount under the shared "/api" prefix via a
+ * physical() scan — same convention as jobs.routes/consultations.
+ * The host's routes.ts must list this plugin for the subtree to mount.
+ */
+export const themeRoutesPlugin = definePlugin({
+	id: "theme.routes",
+	requiredDeps: [themeServicesPlugin.id],
+	routes: [physical("/api", "../../../../plugins/theme/src/api-routes")],
+});
+
 /** Sidebar entry under the System group (same mechanism as jobs.chrome). */
 export const themeChromePlugin = definePlugin({
 	id: "theme.chrome",
@@ -103,12 +134,15 @@ export const themeChromePlugin = definePlugin({
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	themeServicesPlugin,
+	themeBrandPlugin,
 	themePanelPlugin,
 	themeHeaderPlugin,
 	themeChromePlugin,
+	themeRoutesPlugin,
 ];
 
 export { Theme, ThemeLive } from "./theme.ts";
+export { KTB_DEFAULT_THEME } from "./default-theme.ts";
 export { findTheme, getThemeById, listThemes, upsertTheme, setThemeEnabled } from "./theme.ts";
 export type { ThemeRow, ThemePublishInput } from "./theme.ts";
 export {
@@ -173,8 +207,10 @@ export type { ThemePageData } from "./platform-page.tsx";
 declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"theme.services": true;
+		"theme.brand": true;
 		"theme.panel": true;
 		"theme.header": true;
 		"theme.chrome": true;
+		"theme.routes": true;
 	}
 }

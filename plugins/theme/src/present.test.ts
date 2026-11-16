@@ -99,6 +99,98 @@ describe("fonts", () => {
 		expect(fontFaceCss({ delivery: "self-host" })).toBe("");
 	});
 
+	it("fontFaceCss emits per-weight faces + metric-matched fallback for structured assets", () => {
+		const fonts = {
+			delivery: "self-host" as const,
+			assets: {
+				Inter: {
+					faces: [
+						{ url: "/api/theme/assets?key=a.woff2", weight: 400, format: "woff2" },
+						{ url: "/api/theme/assets?key=b.woff", weight: 700 },
+						{ url: "" }, // skipped
+					],
+					fallback: {
+						name: "Inter fallback",
+						local: "Arial",
+						metrics: {
+							sizeAdjust: 112.16,
+							ascentOverride: 75.4,
+							descentOverride: 18.9,
+							lineGapOverride: 0,
+						},
+					},
+				},
+				// Bare-string legacy asset still works; format inferred from ext.
+				Mono: "https://cdn.example.com/mono.ttf",
+				// Empty/malformed entries emit nothing.
+				Empty: { faces: [] },
+				Weird: 42 as never,
+			},
+		};
+		const css = fontFaceCss(fonts);
+		const rules = css.split("\n");
+		expect(rules).toHaveLength(4);
+		expect(rules[0]).toContain('font-family:"Inter"');
+		expect(rules[0]).toContain('format("woff2")');
+		expect(rules[0]).toContain("font-weight:400");
+		expect(rules[1]).toContain('format("woff")'); // explicit format wins over ext
+		expect(rules[1]).toContain("font-weight:700");
+		expect(rules[2]).toContain('font-family:"Inter fallback"');
+		expect(rules[2]).toContain('local("Arial")');
+		expect(rules[2]).toContain('local("Arial Regular")');
+		expect(rules[2]).toContain("size-adjust:112.16%");
+		expect(rules[2]).toContain("ascent-override:75.4%");
+		expect(rules[2]).toContain("descent-override:18.9%");
+		expect(rules[2]).toContain("line-gap-override:0%");
+		expect(rules[3]).toContain('font-family:"Mono"');
+		expect(rules[3]).toContain('format("truetype")'); // inferred from .ttf
+	});
+
+	it("fontFaceCss skips fallbacks without a usable local() name", () => {
+		const css = fontFaceCss({
+			delivery: "self-host",
+			assets: {
+				Inter: {
+					faces: [{ url: "/a.woff2", weight: 400.5 }], // non-integer weight omitted
+					fallback: {
+						name: "F",
+						local: "  ",
+						metrics: { sizeAdjust: 1, ascentOverride: 1, descentOverride: 1, lineGapOverride: 0 },
+					},
+				},
+				Other: { faces: [{ url: "/b.woff2" }], fallback: null },
+			},
+		});
+		expect(css).not.toContain("size-adjust");
+		expect(css).not.toContain("font-weight");
+		expect(css.match(/@font-face/g)).toHaveLength(2);
+	});
+
+	it("fontCssVars inserts the metric-matched fallback into the stack", () => {
+		const vars = fontCssVars({
+			delivery: "self-host",
+			families: { sans: "Inter" },
+			assets: {
+				Inter: {
+					faces: [],
+					fallback: {
+						name: "Inter fallback",
+						local: "Arial",
+						metrics: {
+							sizeAdjust: 100,
+							ascentOverride: 80,
+							descentOverride: 20,
+							lineGapOverride: 0,
+						},
+					},
+				},
+			},
+		});
+		expect(vars["--font-sans"]).toBe(
+			'"Inter", "Inter fallback", ui-sans-serif, system-ui, -apple-system, sans-serif',
+		);
+	});
+
 	it("themeStyleCss folds font vars into :root", () => {
 		const css = themeStyleCss({
 			seeds: { primary: "#2563eb" },
