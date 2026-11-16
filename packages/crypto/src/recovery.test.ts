@@ -33,7 +33,14 @@ describe("recovery phrase", () => {
 
 	it("rejects a corrupted phrase at the checksum", async () => {
 		const { phrase } = await generateMasterKey();
-		const bad = `${phrase[0] === "a" ? "b" : "a"}${phrase.slice(1)}`;
+		// Corrupt the stored checksum byte, not the key: the final base32
+		// char carries the checksum's low nibble plus a zero pad bit, so
+		// flipping its bit 1 changes the decoded checksum while leaving
+		// keyBytes — and the zero pad — intact. Corrupting the key instead
+		// is ~1/256 flaky: the 1-byte checksum can collide by chance.
+		const alphabet = "abcdefghijklmnopqrstuvwxyz234567";
+		const tail = alphabet.indexOf(phrase.at(-1)!);
+		const bad = phrase.slice(0, -1) + alphabet[tail ^ 2];
 		await expect(decodeRecoveryPhrase(bad)).rejects.toThrow(/checksum mismatch/);
 	});
 

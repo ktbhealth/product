@@ -28,7 +28,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { EvalCredentialsLive } from "./index.ts";
+import { CredentialsLive } from "./index.ts";
 import { createCredentialFn, listCredentialsFn, removeCredentialFn } from "./fns.ts";
 
 const sessionFor = (email: string | null) =>
@@ -40,7 +40,7 @@ const sessionFor = (email: string | null) =>
 				expiresAt: new Date(Date.now() + 3600_000),
 			};
 
-describe("eval-credentials fns", () => {
+describe("credentials fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
 	let allow = true;
@@ -97,7 +97,7 @@ describe("eval-credentials fns", () => {
 			),
 		);
 		runtime = ManagedRuntime.make(
-			Layer.merge(EvalCredentialsLive.pipe(Layer.provide(env)), env) as Layer.Layer<
+			Layer.merge(CredentialsLive.pipe(Layer.provide(env)), env) as Layer.Layer<
 				unknown,
 				never,
 				never
