@@ -594,9 +594,10 @@ export function NewConsultationPage({
 			if (!id) throw new Error(t.newConsultation.saveFailed);
 			if (consented) await api.recordConsent({ data: id });
 			setSavedId(id);
-			// T-145: no plaintext audio ever leaves a ZK device — T-147
-			// adds the client-encrypted upload path.
-			if (!zk) void uploadSessionAudio(id);
+			// T-145+T-147: the upload runs under ZK too — uploadSessionAudio
+			// encrypts with the record DEK first, so no plaintext audio ever
+			// leaves the device (fail-closed when the grant is missing).
+			void uploadSessionAudio(id);
 			// The consultation is saved either way: a failed lookup only
 			// means the access question is not asked.
 			const standing =
