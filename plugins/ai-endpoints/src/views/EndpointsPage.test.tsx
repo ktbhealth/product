@@ -543,7 +543,7 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		resolveA!({ ok: true, data: { command: "stale-7", expiresAt: new Date() } });
 		// Endpoint 9's own mint still lands.
 		resolveB!({ ok: true, data: { command: "fresh-9", expiresAt: new Date() } });
-		expect((await screen.findByDisplayValue("fresh-9"))).toBeTruthy();
+		expect(await screen.findByDisplayValue("fresh-9")).toBeTruthy();
 
 		// Mint resolving after the dialog closed → prev === null.
 		let resolveC: ((v: Mint) => void) | undefined;
@@ -592,9 +592,7 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		renderPage([bridgeEp]);
 		await user.click(screen.getByText("Connect via bridge"));
 		await waitFor(() => expect(fns.endpointBridgeStatusFn).toHaveBeenCalled());
-		const closeButton = screen
-			.getAllByText("Close")
-			.find((el) => el instanceof HTMLButtonElement)!;
+		const closeButton = screen.getAllByText("Close").find((el) => el instanceof HTMLButtonElement)!;
 		await user.click(closeButton);
 		resolveStatus!({ ok: true, data: { status: "connected", lastSeenAt: new Date() } });
 		// The stale tick short-circuits on `stopped` — no status lands.
