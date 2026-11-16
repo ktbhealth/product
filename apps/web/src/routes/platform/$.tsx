@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 
 import { portalPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
-import { portalPages, enabledIdSet, findPage } from "#/lib/registry.ts";
+import { portalPages, enabledIdSet, entryEnabled, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 import { getLocale } from "#/paraglide/runtime.js";
 
@@ -23,10 +23,11 @@ export const Route = createFileRoute("/platform/$")({
 		// pages) resolve by longest matching base.
 		const entry = findPage(portalPages, path);
 		if (entry === undefined) throw notFound();
-		// Client-side early gate: a disabled plugin's page 404s before the
-		// server fn round-trip (portalPageDataFn re-checks server-side).
+		// Client-side early gate: a disabled package's page 404s before
+		// the server fn round-trip (portalPageDataFn re-checks
+		// server-side with the same package-granular contract).
 		const states = await pluginStatesFn();
-		if (!enabledIdSet(states).has(entry.pluginId)) throw notFound();
+		if (!entryEnabled(plugins, enabledIdSet(states), entry)) throw notFound();
 		const result = await portalPageDataFn({ data: path });
 		if (result.status === "notfound") throw notFound();
 		return result.data;

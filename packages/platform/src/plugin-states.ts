@@ -26,6 +26,14 @@ import type { Plugin, PluginConfigSchema } from "@ktb/kernel";
  * rows for them entirely (a stale disabled row is dead data), and
  * `setEnabled(…, false)` fails with `PluginSystemLocked`. Config writes
  * stay allowed — config is not enablement.
+ *
+ * Granularity contract: this service stores state PER PLUGIN ID, but
+ * every enable-state SURFACE (page dispatch, plugin file/api routes,
+ * CQRS groups) gates at PACKAGE granularity — `plugins/<pkg>` is one
+ * deployable unit, live while ANY member id is enabled. Gates resolve
+ * membership through the `pkg` stamp discoverPlugins puts on each
+ * plugin (plugin ids are not reliably namespaced), never through an
+ * id-prefix guess.
  */
 
 /** Dispatch/UI reached for a plugin (or whole plugin package) that is

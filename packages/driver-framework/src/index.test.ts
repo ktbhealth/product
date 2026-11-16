@@ -35,6 +35,21 @@ describe("discoverPlugins", () => {
 		]);
 	});
 
+	it("stamps pkg from plugins/<pkg>/src/… module paths, leaves other keys unstamped", () => {
+		const plugins = discoverPlugins({
+			"../../../plugins/patients/src/index.ts": { plugins: [p("patients.services")] },
+			"../../../plugins/auth/src/client.ts": { plugins: [p("session.menu")] },
+			"@ktb/platform": { plugins: [p("platform.routes")] },
+			"./local.ts": { plugins: [p("local.plugin")] },
+		});
+		expect(plugins.map((x) => [x.id, x.pkg])).toEqual([
+			["patients.services", "patients"],
+			["session.menu", "auth"],
+			["platform.routes", undefined],
+			["local.plugin", undefined],
+		]);
+	});
+
 	it("throws when a module does not export a plugins array", () => {
 		expect(() => discoverPlugins({ "./broken.ts": { plugin: p("x") } })).toThrow(
 			'plugin module "./broken.ts" must export `plugins` as a Plugin array',

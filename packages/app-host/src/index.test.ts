@@ -305,9 +305,11 @@ describe("createApp", () => {
 					yield* states.setEnabled(ids, enabled);
 				}),
 			);
-		const notificationsIds = plugins
-			.filter((p) => p.id.startsWith("notifications."))
-			.map((p) => p.id);
+		// Package membership comes from the `pkg` stamp, not the id —
+		// the bare "notifications" marker id has no dot but is still a
+		// package member, so disabling "the package" means every stamped
+		// member, dotted ids included.
+		const notificationsIds = plugins.filter((p) => p.pkg === "notifications").map((p) => p.id);
 
 		it("blocks dispatch with PluginDisabled when every plugin of the package is off", async () => {
 			expect(notificationsIds.length).toBeGreaterThan(1);

@@ -4,8 +4,16 @@
  * consumer filters through `enabledPlugins` before reading
  * chrome/landing/panel contributions so a disabled plugin renders
  * nothing. Server-side enforcement lives in the page data fns
- * (`portalPageDataFn`/`appPageDataFn` → notfound) and the CQRS
+ * (`portalPageDataFn`/`appPageDataFn` → notfound), the plugin
+ * file/api-route gate (`pluginEnabled` capability) and the CQRS
  * dispatch gate in @ktb/app-host.
+ *
+ * Enable-state SURFACES are package-granular: `plugins/<pkg>` is one
+ * deployable unit, live while ANY of its member plugin ids is enabled
+ * (`packageLive`/`entryEnabled` — defined in @ktb/kernel so the pure
+ * predicates stay dependency-free, re-exported here for the app-host
+ * client surface). The `plugin_state` store itself stays per plugin
+ * id — the /platform/plugins manager toggles ids individually.
  */
 
 /** Wire shape of `pluginStatesFn`. */
@@ -22,12 +30,9 @@ export const enabledPlugins = <T extends { readonly id: string }>(
 	enabled: ReadonlySet<string>,
 ): T[] => plugins.filter((p) => enabled.has(p.id));
 
-/** Whether any plugin id of a package (`plugins/<pkg>/*` → `<pkg>.*`)
- * is enabled — mirrors the CQRS gate granularity in @ktb/app-host. */
-export const packageEnabled = (enabled: ReadonlySet<string>, pkg: string): boolean => {
-	const prefix = `${pkg}.`;
-	for (const id of enabled) {
-		if (id.startsWith(prefix)) return true;
-	}
-	return false;
-};
+// The package-granular predicates live in @ktb/kernel (pure, no deps)
+// so composition roots can use them without pulling the client
+// registry; re-exported here so @ktb/app-host/client consumers keep a
+// single import surface.
+export { entryEnabled, packageLive } from "@ktb/kernel";
+export type { PackagedPlugin, PluginEntryRef } from "@ktb/kernel";

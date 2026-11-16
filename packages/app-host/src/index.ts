@@ -32,6 +32,7 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
+import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
@@ -521,8 +522,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Enabled-state gate (P-058): services layers always compose
 	// (ManagedRuntime can't recompose per toggle), so dispatch is the
 	// fail-closed seam — a group's handlers are unreachable while EVERY
-	// plugin id of its package (`plugins/<pkg>/*`) is disabled. The gate
-	// reads PluginStates per dispatch so toggles apply without restart.
+	// plugin of its package (`plugins/<pkg>`) is disabled. Membership
+	// resolves through the `pkg` stamp on discovered plugins (plugin ids
+	// are not reliably namespaced — see packageLive), NOT an id-prefix
+	// guess; the page dispatchers apply the same package contract. The
+	// gate reads PluginStates per dispatch so toggles apply without
+	// restart.
 	//
 	// `Middleware` is typed `(payload) => Effect<A, E>` — R=never — but
 	// the bus executes inside the app runtime where core services are
@@ -537,8 +542,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 				Effect.gen(function* () {
 					const states = yield* PluginStates;
 					const enabled = yield* states.enabledIds();
-					const prefix = `${pkg}.`;
-					if (![...enabled].some((id) => id.startsWith(prefix))) {
+					if (!packageLive(plugins, enabled, pkg)) {
 						return yield* Effect.fail(new PluginDisabled({ pluginId: pkg }));
 					}
 					return yield* dispatch(payload);
