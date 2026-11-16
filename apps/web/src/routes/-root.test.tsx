@@ -63,6 +63,7 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 vi.mock("#/lib/fns.ts", () => ({
 	sessionFn: vi.fn(async () => null),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] })),
+	i18nRouteFn: vi.fn(async () => undefined),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 // The built-in KTB default stands in for "a theme resolved" so the

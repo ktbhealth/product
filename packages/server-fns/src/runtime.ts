@@ -195,7 +195,7 @@ export interface ServerRuntime {
 	/** Interop record exporters behind the @ktb/interop port — the host
 	 * wires the standard-specific adapters, plugins only see the port. */
 	readonly recordExporters?: Record<ExportFormat, RecordExporter>;
-	/** Active UI locale — the host's i18n runtime (paraglide) resolved per request. */
+	/** Active UI locale — the host's request-scoped UI locale (locale-context ALS). */
 	readonly getLocale: () => string;
 	/**
 	 * DB-canonical i18n (P-083/PL-008): resolves the request's scope chain

@@ -136,7 +136,7 @@ export function PatientDetailPage({
 	portalBase,
 }: {
 	patient: Patient;
-	consultations: PatientConsultationItem[];
+	consultations: readonly PatientConsultationItem[];
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host. */

@@ -4,7 +4,6 @@ import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 import { appPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
 import { appPages, enabledIdSet, enabledPlugins, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
-import { getLocale } from "#/paraglide/runtime.js";
 
 const rootApi = getRouteApi("__root__");
 
@@ -45,7 +44,7 @@ export const Route = createFileRoute("/$")({
 			data,
 			ctx: {
 				plugins: enabledPlugins(plugins, enabledIdSet(pluginStates)),
-				locale: getLocale(),
+				locale: i18n?.locale ?? "en",
 				user,
 				i18n,
 			},

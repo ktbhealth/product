@@ -24,7 +24,6 @@ import {
 	portalPages,
 } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
-import { getLocale } from "#/paraglide/runtime.js";
 
 const rootApi = getRouteApi("__root__");
 const headerEnabled = plugins.some((p) => p.id === platformHeaderPlugin.id);
@@ -90,7 +89,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		const { path, data, audiences, pluginStates, theme } = Route.useLoaderData();
 		const pathname = useLocation({ select: (l) => l.pathname });
 		const { user, i18n } = rootApi.useLoaderData();
-		const locale = getLocale();
+		const locale = i18n?.locale ?? "en";
 		const entry = findPortalInstance(portalInstances, instanceId);
 		const pageEntry = findPage(portalPages, path);
 		if (entry === undefined || pageEntry === undefined) return null;
@@ -105,9 +104,10 @@ export const Route = createFileRoute("/portal/$instance/$")({
 								label: pluginPanelLabel(
 									chromeEntry.content.item.to,
 									chromeEntry.content.item.label,
+									i18n,
 								),
 								...(chromeEntry.content.item.group !== undefined
-									? { group: pluginPanelGroup(chromeEntry.content.item.group) }
+									? { group: pluginPanelGroup(chromeEntry.content.item.group, i18n) }
 									: {}),
 							},
 						]

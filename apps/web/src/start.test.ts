@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getLocale } from "#/paraglide/runtime.js";
+import { currentLocale } from "#/lib/locale-context.ts";
 import { setAccessLogSink } from "#/lib/access-log.ts";
 import { startInstance } from "./start.ts";
 
@@ -26,7 +26,7 @@ async function runMiddleware(cookie?: string) {
 		context: {},
 		handlerType: "router",
 		next: () => {
-			localeInsideNext = getLocale();
+			localeInsideNext = currentLocale();
 			return {
 				request,
 				pathname: "/consultations",
@@ -39,7 +39,7 @@ async function runMiddleware(cookie?: string) {
 }
 
 describe("locale request middleware", () => {
-	it("resolves getLocale() from the ktb-locale cookie during the request", async () => {
+	it("resolves currentLocale() from the ktb-locale cookie during the request", async () => {
 		const { localeInsideNext, response } = await runMiddleware("ktb-locale=pt-BR");
 		expect(localeInsideNext).toBe("pt-BR");
 		expect(response.status).toBe(200);

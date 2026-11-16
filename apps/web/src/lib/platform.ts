@@ -15,12 +15,18 @@ import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { makeJobs } from "@ktb/jobs-port";
-import { getLocale } from "#/paraglide/runtime.js";
-import { GLOBAL_SCOPE } from "@ktb/i18n";
-import { I18nRuntime, resolveRequestI18n } from "@ktb/i18n-plugin";
+import { currentLocale } from "./locale-context.ts";
+import { GLOBAL_SCOPE, resolveRequestLocales } from "@ktb/i18n";
+import {
+	catalogSlice,
+	DEFAULT_LOCALE,
+	I18nRuntime,
+	listEnabledLocales,
+	resolveRequestI18n,
+} from "@ktb/i18n-plugin";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
-import { verificationEmail } from "./emails.ts";
+import { emailCatalogT, verificationEmail } from "./emails.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
 import { requestTelemetryContext } from "./telemetry.ts";
 import { makeFlushThrottler } from "./telemetry-flush.ts";
@@ -55,7 +61,31 @@ const tenantResolver = makeTenantResolver({
 	selectDefault: (memberships) => (memberships.length === 1 ? memberships[0] : undefined),
 });
 
-const app = createApp(appEnv as unknown as typeof env, { tenantResolver, verificationEmail });
+// Verification email resolves its copy from the DB `app` namespace at
+// send time (PL-008): request locale → enabled-locale chain → catalog
+// slice. `run` is defined below — the callback only fires per send,
+// long after module init. A resolution failure falls back to the
+// English literals inside verificationEmail (email must not break
+// sign-up).
+const app = createApp(appEnv as unknown as typeof env, {
+	tenantResolver,
+	verificationEmail: async ({ name, url }) => {
+		const t = await run(
+			Effect.gen(function* () {
+				const database = yield* Db;
+				const enabled = yield* Effect.promise(() => listEnabledLocales(database));
+				const chain = resolveRequestLocales(currentLocale(), enabled, DEFAULT_LOCALE);
+				const catalog = yield* catalogSlice(database, {
+					namespaces: ["app"],
+					scopeChain: GLOBAL_SCOPE,
+					locales: chain,
+				});
+				return emailCatalogT(catalog, chain.locales[0] ?? DEFAULT_LOCALE);
+			}),
+		).catch(() => undefined);
+		return verificationEmail({ name, url }, t);
+	},
+});
 
 // T-105: hand the request middleware (start.ts — outside the Effect
 // runtime, and client-safe so it can't import this module) a way to
@@ -186,18 +216,18 @@ setServerRuntime({
 	ai: aiBinding,
 	audioTranscribeModel,
 	recordExporters,
-	getLocale,
+	getLocale: currentLocale,
 	// PL-008: DB-canonical i18n capability — resolves enabled locales +
 	// scope chain inside the app runtime (I18nRuntime cache + Db) and
 	// returns the request-bound I18n shape. Locale defaults to the
-	// active UI locale (paraglide bridge during transition).
+	// request-scoped UI locale (locale-context ALS).
 	i18n: (input) =>
 		run(
 			Effect.gen(function* () {
 				const runtime = yield* I18nRuntime;
 				const database = yield* Db;
 				const { i18n } = yield* resolveRequestI18n(runtime, database, {
-					requestedLocale: input?.locale ?? getLocale(),
+					requestedLocale: input?.locale ?? currentLocale(),
 					scopeChain: input?.scopeChain ?? GLOBAL_SCOPE,
 				});
 				return i18n;

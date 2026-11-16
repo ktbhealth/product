@@ -1,4 +1,4 @@
-import { ActivityIcon, ListTodoIcon } from "lucide-react";
+import { ActivityIcon } from "lucide-react";
 import { physical } from "@tanstack/virtual-file-routes";
 import * as Effect from "effect/Effect";
 

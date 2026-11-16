@@ -6,7 +6,7 @@ import { run, runAs, serverPlugins } from "#/lib/platform.ts";
 import { Db } from "@ktb/db";
 import { GLOBAL_SCOPE, resolveRequestLocales } from "@ktb/i18n";
 import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
-import { getLocale } from "#/paraglide/runtime.js";
+import { currentLocale } from "./locale-context.ts";
 import {
 	appPages,
 	portalPages,
@@ -91,6 +91,7 @@ export const pluginStatesFn = createServerFn({ method: "GET" }).handler(
 export interface I18nRouteResult {
 	readonly locale: string;
 	readonly locales: readonly string[];
+	readonly enabledLocales: readonly string[];
 	readonly namespaces: readonly string[];
 	readonly catalog: Record<string, string>;
 }
@@ -106,7 +107,7 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				const visible = enabledPlugins(serverPlugins, enabledIdSet({ enabled: [...enabled] }));
 				const namespaces = namespacesForPath(visible, pathname);
 				const enabledLocales = yield* Effect.promise(() => listEnabledLocales(database));
-				const locales = resolveRequestLocales(getLocale(), enabledLocales, DEFAULT_LOCALE);
+				const locales = resolveRequestLocales(currentLocale(), enabledLocales, DEFAULT_LOCALE);
 				const catalog = yield* catalogSlice(database, {
 					namespaces,
 					scopeChain: GLOBAL_SCOPE,
@@ -115,6 +116,7 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				return {
 					locale: locales.locales[0] ?? DEFAULT_LOCALE,
 					locales: locales.locales,
+					enabledLocales: enabledLocales.map((l) => l.code),
 					namespaces: [...namespaces],
 					catalog: stableSlice(catalog),
 				};

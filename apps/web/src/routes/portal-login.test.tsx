@@ -22,7 +22,10 @@ vi.mock("@ktb/auth-better/client", () => ({
 		signUp: { email: (arg: unknown) => signUpEmail(arg) },
 	},
 }));
-vi.mock("#/lib/fns.ts", () => ({ emailEnabledFn: mocks.emailEnabledFn }));
+vi.mock("#/lib/fns.ts", () => ({
+	emailEnabledFn: mocks.emailEnabledFn,
+	i18nRouteFn: vi.fn(async () => undefined),
+}));
 // The widget needs a site key and Cloudflare's script; the stand-in
 // hands the page a token on demand.
 vi.mock("@ktbhealth/ui/components/turnstile", async () => {

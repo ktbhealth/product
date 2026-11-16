@@ -57,6 +57,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	getSessionUserFn: () => getSessionUserFn(),
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
+	i18nRouteFn: vi.fn(async () => undefined),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 vi.mock("@ktb/theme/fns", () => ({

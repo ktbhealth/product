@@ -4,7 +4,6 @@ import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 import { portalPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
 import { portalPages, enabledIdSet, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
-import { getLocale } from "#/paraglide/runtime.js";
 
 const PATH = "/platform";
 const rootApi = getRouteApi("__root__");
@@ -35,7 +34,7 @@ export const Route = createFileRoute("/platform/")({
 		// ctx.i18n is the root loader's route-scoped catalog slice.
 		return createElement(entry.page.component, {
 			data,
-			ctx: { plugins, locale: getLocale(), user, i18n },
+			ctx: { plugins, locale: i18n?.locale ?? "en", user, i18n },
 		});
 	},
 });

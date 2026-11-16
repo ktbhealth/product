@@ -4,7 +4,7 @@
  * `global`/`published` rows (PL-008 Phase 1). Idempotent: existing rows
  * are never overwritten (the DB is canonical; panel edits win).
  *
- * Sources: apps/web/messages/*.json → namespace `app`, plus every
+ * Sources: apps/web/messages/*.json → namespace `app` (baseline source), plus every
  * migrated plugin catalog — a plugin opts in by exporting
  * `I18N_NAMESPACE` + `i18nMessagesFor(locale)` from src/i18n.ts
  * (PL-008 Phase 4). Non-string catalog values (function messages)

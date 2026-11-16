@@ -64,6 +64,8 @@ export interface PanelHeaderAction {
 export interface PageI18nSlice {
 	readonly locale: string;
 	readonly catalog: Readonly<Record<string, string>>;
+	/** Enabled locale codes for the language picker (host payloads only). */
+	readonly enabledLocales?: readonly string[];
 }
 
 export interface PageContext {

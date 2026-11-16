@@ -1,6 +1,5 @@
 import { createFileRoute, getRouteApi, Link } from "@tanstack/react-router";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
-import { getLocale } from "#/paraglide/runtime.js";
 import { plugins } from "#/plugins.ts";
 import { enabledIdSet, enabledPlugins } from "#/lib/registry.ts";
 import { validateAudienceSearch } from "@ktb/audience";
@@ -35,7 +34,11 @@ function Landing() {
 	)?.landing?.page;
 	// `locale`/`i18n` are injected by the host — plugins cannot import
 	// the host's i18n runtime (see LandingPageProps in @ktb/kernel).
-	return Page === undefined ? <MissingLanding /> : <Page locale={getLocale()} i18n={i18n} />;
+	return Page === undefined ? (
+		<MissingLanding />
+	) : (
+		<Page locale={i18n?.locale ?? "en"} i18n={i18n} />
+	);
 }
 
 export const Route = createFileRoute("/")({

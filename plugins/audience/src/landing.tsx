@@ -1,6 +1,5 @@
 import { Link, useSearch } from "@tanstack/react-router";
 import { sliceMessages } from "@ktb/i18n";
-import type { PageI18nSlice } from "@ktb/kernel";
 
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import { Badge } from "@ktbhealth/ui/components/badge";

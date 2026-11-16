@@ -2,7 +2,6 @@ import type { ChromeProps, Plugin } from "@ktb/kernel";
 import type { ResolvedTheme } from "@ktb/theme/types";
 
 import { changeLocale, localeName } from "#/lib/i18n.ts";
-import { locales } from "#/paraglide/runtime.js";
 
 /**
  * ChromeProps factory for portal shells (P-082): `portal.brand`
@@ -14,6 +13,8 @@ import { locales } from "#/paraglide/runtime.js";
  * `labels` stays empty — chrome components fall back to their own
  * English literals per documented key. `signOut` is injected by the
  * route (it already owns the auth-client call for PortalShell).
+ * `locales`/`localeName` derive from the route's i18n slice (PL-008):
+ * enabled locale codes plus endonyms resolved from `app.locale_*`.
  */
 export const portalChromeProps = (
 	user: ChromeProps["user"],
@@ -22,13 +23,14 @@ export const portalChromeProps = (
 	signOut: () => Promise<void>,
 	theme?: ResolvedTheme | null,
 	i18n?: ChromeProps["i18n"],
+	locales?: readonly string[],
 ): ChromeProps => ({
 	user,
 	locale,
 	i18n,
 	plugins,
-	locales,
-	localeName,
+	locales: locales ?? i18n?.enabledLocales ?? ["en"],
+	localeName: (l: string) => localeName(l, i18n),
 	setLocale: changeLocale,
 	labels: {},
 	signOut,

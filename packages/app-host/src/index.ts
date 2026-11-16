@@ -236,8 +236,12 @@ export interface AppOptions {
 	 */
 	readonly tenantResolver?: TenantResolverShape;
 	/** Composes the sign-up verification email. Defaults to
-	 * {@link defaultVerificationEmail}. */
-	readonly verificationEmail?: typeof defaultVerificationEmail;
+	 * {@link defaultVerificationEmail}. May be async — apps resolve
+	 * localized copy from the DB i18n catalog at send time (PL-008). */
+	readonly verificationEmail?: (input: {
+		readonly name: string | null;
+		readonly url: string;
+	}) => EmailContent | Promise<EmailContent>;
 }
 
 /**
@@ -335,7 +339,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 					// account exists and the link can be requested again.
 					sendVerificationEmail: async ({ email, name, url }) => {
 						try {
-							await emailSender.send({ to: email, ...verificationEmail({ name, url }) });
+							await emailSender.send({
+								to: email,
+								...(await verificationEmail({ name, url })),
+							});
 						} catch (error) {
 							console.error("verification email failed", error);
 						}

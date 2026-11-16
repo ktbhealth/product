@@ -15,12 +15,22 @@ import { Label } from "@ktbhealth/ui/components/label";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
-import { emailEnabledFn } from "#/lib/fns.ts";
-import * as m from "#/paraglide/messages.js";
+import { emailEnabledFn, i18nRouteFn } from "#/lib/fns.ts";
+import type { PageI18nSlice } from "@ktb/kernel";
+
+import { appCatalogT, useRootI18nSlice } from "#/lib/i18n.ts";
 
 export const Route = createFileRoute("/portal/login")({
-	head: () => ({ meta: [{ title: m.portal_login_meta_title() }] }),
-	loader: async () => ({ emailEnabled: await emailEnabledFn() }),
+	head: (ctx) => {
+		const i18n = ctx?.loaderData?.i18n as PageI18nSlice | undefined;
+		const title = appCatalogT(i18n)("app.portal_login_meta_title");
+		return { meta: [{ title }] };
+	},
+	loader: async () => ({
+		emailEnabled: await emailEnabledFn(),
+		// Route-scoped i18n slice — head() reads it for the localized title.
+		i18n: await i18nRouteFn({ data: "/portal/login" }),
+	}),
 	component: PortalSignInPage,
 });
 
@@ -29,6 +39,13 @@ export const Route = createFileRoute("/portal/login")({
 // account has no doctor profile.
 function PortalSignInPage() {
 	const { emailEnabled } = Route.useLoaderData();
+	const slice = useRootI18nSlice();
+	const appT = appCatalogT(slice);
+	const t = (key: string, params: Record<string, unknown> = {}) => {
+		const full = `app.${key}`;
+		const resolved = appT(full, params);
+		return resolved === full ? key : resolved;
+	};
 	const [mode, setMode] = useState<"in" | "up">("in");
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
@@ -42,7 +59,7 @@ function PortalSignInPage() {
 		e.preventDefault();
 		if (!email.trim() || !password || pending) return;
 		if (mode === "up" && confirmPassword !== password) {
-			setError(m.login_error_password_mismatch());
+			setError(t("login_error_password_mismatch"));
 			return;
 		}
 		setPending(true);
@@ -61,7 +78,7 @@ function PortalSignInPage() {
 					);
 		if (res.error) {
 			setPending(false);
-			setError(res.error.message ?? m.login_error_fallback());
+			setError(res.error.message ?? t("login_error_fallback"));
 			return;
 		}
 		// Signed in: stay pending until the browser navigates away.
@@ -77,10 +94,10 @@ function PortalSignInPage() {
 			<Card className="w-full max-w-sm">
 				<CardHeader>
 					<CardTitle>
-						{mode === "in" ? m.portal_login_heading_in() : m.portal_login_heading_up()}
+						{mode === "in" ? t("portal_login_heading_in") : t("portal_login_heading_up")}
 					</CardTitle>
 					<CardDescription>
-						{mode === "in" ? m.portal_login_desc_in() : m.portal_login_desc_up()}
+						{mode === "in" ? t("portal_login_desc_in") : t("portal_login_desc_up")}
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
@@ -94,14 +111,14 @@ function PortalSignInPage() {
 						className="mb-4"
 					>
 						<TabsList className="w-full">
-							<TabsTrigger value="in">{m.login_tab_in()}</TabsTrigger>
-							<TabsTrigger value="up">{m.login_tab_up()}</TabsTrigger>
+							<TabsTrigger value="in">{t("login_tab_in")}</TabsTrigger>
+							<TabsTrigger value="up">{t("login_tab_up")}</TabsTrigger>
 						</TabsList>
 					</Tabs>
 					<form onSubmit={submit} className="flex flex-col gap-4">
 						{mode === "up" ? (
 							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="name">{m.portal_login_name()}</Label>
+								<Label htmlFor="name">{t("portal_login_name")}</Label>
 								<Input
 									id="name"
 									autoComplete="name"
@@ -112,7 +129,7 @@ function PortalSignInPage() {
 							</div>
 						) : null}
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="email">{m.login_email()}</Label>
+							<Label htmlFor="email">{t("login_email")}</Label>
 							<Input
 								id="email"
 								type="email"
@@ -123,7 +140,7 @@ function PortalSignInPage() {
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="password">{m.login_password()}</Label>
+							<Label htmlFor="password">{t("login_password")}</Label>
 							<Input
 								id="password"
 								type="password"
@@ -136,7 +153,7 @@ function PortalSignInPage() {
 						</div>
 						{mode === "up" ? (
 							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="confirm-password">{m.login_confirm_password()}</Label>
+								<Label htmlFor="confirm-password">{t("login_confirm_password")}</Label>
 								<Input
 									id="confirm-password"
 									type="password"
@@ -157,17 +174,17 @@ function PortalSignInPage() {
 						<Button type="submit" disabled={pending} className="w-full">
 							{pending ? <Spinner /> : null}
 							{pending
-								? m.login_pending()
+								? t("login_pending")
 								: mode === "in"
-									? m.login_submit_in()
-									: m.login_submit_up()}
+									? t("login_submit_in")
+									: t("login_submit_up")}
 						</Button>
 					</form>
 					<Link
 						to="/login"
 						className="mt-4 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
-						{m.portal_login_doctor_link()}
+						{t("portal_login_doctor_link")}
 					</Link>
 				</CardContent>
 			</Card>

@@ -4,7 +4,6 @@ import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 import { portalPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
 import { portalPages, enabledIdSet, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
-import { getLocale } from "#/paraglide/runtime.js";
 
 const rootApi = getRouteApi("__root__");
 
@@ -44,7 +43,7 @@ export const Route = createFileRoute("/platform/$")({
 		// panel pages render DB copy through it like app pages do.
 		return createElement(entry.page.component, {
 			data,
-			ctx: { plugins, locale: getLocale(), user, i18n },
+			ctx: { plugins, locale: i18n?.locale ?? "en", user, i18n },
 		});
 	},
 });

@@ -1,9 +1,6 @@
 import { createMiddleware, createStart } from "@tanstack/react-start";
-import {
-	getServerAsyncLocalStorage,
-	overwriteServerAsyncLocalStorage,
-} from "#/paraglide/runtime.js";
 import { requestLocale } from "#/lib/i18n.ts";
+import { setLocaleStorage } from "#/lib/locale-context.ts";
 import { accessLog } from "#/lib/access-log.ts";
 import {
 	isValidTraceparent,
@@ -15,19 +12,16 @@ import {
 	httpRequestDuration,
 } from "@ktb/observability";
 
-// Runs every request inside paraglide's AsyncLocalStorage so getLocale()
-// resolves the ktb-locale cookie during SSR — the cookie strategy cannot
-// read request headers without it (paraglideMiddleware equivalent for
-// TanStack Start's request-middleware pipeline).
+// Runs every request inside the locale AsyncLocalStorage so
+// currentLocale() resolves the ktb-locale cookie during SSR and in
+// server fns — deep server code (email copy, plugin services) reads the
+// active locale without threading it through every signature.
 const localeMiddleware = createMiddleware().server(async ({ request, next }) => {
 	const locale = requestLocale(request);
-	let als = getServerAsyncLocalStorage();
-	if (!als) {
-		const { AsyncLocalStorage } = await import("node:async_hooks");
-		als = new AsyncLocalStorage();
-		overwriteServerAsyncLocalStorage(als);
-	}
-	return als.run({ locale, origin: new URL(request.url).origin }, () => next());
+	const { AsyncLocalStorage } = await import("node:async_hooks");
+	const als = new AsyncLocalStorage<{ locale: string }>();
+	setLocaleStorage(als);
+	return als.run({ locale }, () => next());
 });
 
 /**
