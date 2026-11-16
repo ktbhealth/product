@@ -196,6 +196,14 @@ describe("openAcpSession", () => {
 		expect(proc.frames.some((f) => f.method === "session/cancel")).toBe(true);
 	});
 
+	it("fails typed on an empty argv without a spawnImpl override", async () => {
+		// No spawnImpl → the wrapper delegates to the real lazy
+		// node:child_process import; the empty-command guard trips
+		// before anything actually spawns.
+		const err = await scoped(Effect.flip(openAcpSession({ argv: [] })));
+		expect(err.message).toContain("empty spawn command");
+	});
+
 	it("times out a hanging prompt and cancels the turn", async () => {
 		// The agent never replies to session/prompt.
 		const { proc, spawnImpl } = agentProc(() => {});

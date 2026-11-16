@@ -136,6 +136,34 @@ describe("makeBridgeRpc", () => {
 		await expect(Effect.runPromise(broken.request("x"))).rejects.toMatchObject({
 			message: expect.stringContaining("stub dead"),
 		});
+		// A non-Error rejection stringifies instead of unwrapping.
+		const strung = makeBridgeRpc({
+			ns: {
+				idFromName: (n: string) => n,
+				get: () => ({ fetch: async () => Promise.reject("socket gone") }),
+			},
+			name: "e",
+		});
+		await expect(Effect.runPromise(strung.request("x"))).rejects.toMatchObject({
+			message: "acp bridge: socket gone",
+		});
+	});
+
+	it("tolerates missing notifications and skips frames with no method or sink", async () => {
+		// A body without a `notifications` key exercises the `?? []` arm.
+		const bare = fakeNs((wire) => ({
+			body: JSON.stringify({ response: { id: wire.id, result: "ok" } }),
+		}));
+		const rpc = makeBridgeRpc({ ns: bare.ns, name: "e" });
+		await expect(Effect.runPromise(rpc.request("x"))).resolves.toBe("ok");
+		// Notifications present but no sink, plus a methodless frame —
+		// both replay guards take their skip arm.
+		const noisy = fakeNs(() => ({
+			response: { result: "ok" },
+			notifications: [{ method: "session/update", params: {} }, { params: {} }],
+		}));
+		const rpc2 = makeBridgeRpc({ ns: noisy.ns, name: "e" });
+		await expect(Effect.runPromise(rpc2.request("x"))).resolves.toBe("ok");
 	});
 
 	it("replays notifications on session/new (agent hello during setup)", async () => {
@@ -168,6 +196,30 @@ describe("makeBridgeAcpLlm", () => {
 		expect(out.text).toBe("hello bridge");
 		expect(out.record.engine).toBe("acp-bridge");
 		expect(wires.map((w) => w.method)).toEqual(["initialize", "session/new", "session/prompt"]);
+	});
+
+	it("forwards sessionId/cwd/timeoutMs/egress into the session layer", async () => {
+		const { ns, wires } = fakeNs((wire) =>
+			wire.method === "session/new" ? ok({ sessionId: "s-b" }) : ok(),
+		);
+		const layer = makeBridgeAcpLlm({
+			ns,
+			endpointId: 9,
+			sessionId: "run-77",
+			cwd: "/work",
+			timeoutMs: 5_000,
+			egress: false,
+		});
+		const out = await Effect.runPromise(
+			Effect.flatMap(LlmPort, (l) => {
+				expect(l.egress).toBe(false);
+				return l.generate(env);
+			}).pipe(Effect.provide(layer)),
+		);
+		expect(out.record.runId).toBe("run-77");
+		expect(wires.find((w) => w.method === "session/new")).toMatchObject({
+			params: { cwd: "/work" },
+		});
 	});
 
 	it("surfaces bridge_offline when the DO has no attached socket", async () => {

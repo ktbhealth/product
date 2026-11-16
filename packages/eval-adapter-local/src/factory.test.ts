@@ -126,6 +126,19 @@ describe("evalLlmFactoryDriver", () => {
 			).pipe(Effect.provide(withBridge)),
 		);
 		expect(layer).toBeDefined();
+		// A caller-pinned session id flows through to the bridge layer.
+		const withSession = await Effect.runPromise(
+			Effect.flatMap(LlmFactory, (f) =>
+				f.resolve({
+					kind: "acp",
+					baseUrl: "",
+					transport: "ws",
+					endpointId: 5,
+					sessionId: "s-1",
+				}),
+			).pipe(Effect.provide(withBridge)),
+		);
+		expect(withSession).toBeDefined();
 	});
 
 	it("test() pings the endpoint and maps failures to PortError", async () => {
