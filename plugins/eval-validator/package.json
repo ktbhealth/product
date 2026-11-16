@@ -25,7 +25,6 @@
 	},
 	"devDependencies": {
 		"@ktb/auth": "workspace:*",
-		"@tanstack/react-router": "1.170.46",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
 		"react": "^19.2.0",

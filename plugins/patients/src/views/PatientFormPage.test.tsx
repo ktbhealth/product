@@ -49,10 +49,19 @@ const setup = (
 	api: PatientFormApi,
 	patient?: Parameters<typeof PatientFormPage>[0]["patient"],
 	locale = "en",
+	portalBase?: string,
 ) => {
 	const onSaved = vi.fn<(id: number) => void>();
 	const user = userEvent.setup();
-	render(<PatientFormPage patient={patient} api={api} onSaved={onSaved} locale={locale} />);
+	render(
+		<PatientFormPage
+			patient={patient}
+			api={api}
+			onSaved={onSaved}
+			locale={locale}
+			portalBase={portalBase}
+		/>,
+	);
 	return { user, onSaved };
 };
 
@@ -98,6 +107,11 @@ describe("PatientFormPage — registration", () => {
 		expect(screen.getByRole("combobox", { name: "State" })).toBeTruthy();
 		expect(screen.queryByText("Active record")).toBeNull();
 		expect(screen.getByText("Cancel").getAttribute("href")).toBe("/patients");
+	});
+
+	it("prefixes the cancel link with portalBase", () => {
+		setup({ save: vi.fn<Save>() }, undefined, "en", "/portal");
+		expect(screen.getByText("Cancel").getAttribute("href")).toBe("/portal/patients");
 	});
 
 	it("blocks submit with inline errors when name and birth date are missing", async () => {

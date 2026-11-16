@@ -764,6 +764,15 @@ describe("driver wiring", () => {
 		expect(layer).toBeDefined();
 	});
 
+	it("evalRunnerLocalDriver.provides honors a finite EVAL_ASR_TIMEOUT_MS", () => {
+		const layer = evalRunnerLocalDriver.provides({
+			EVAL_RUNNER_DIR: "/tmp/eval-run",
+			EVAL_ASR_BASE_URL: "http://asr",
+			EVAL_ASR_TIMEOUT_MS: "5000",
+		});
+		expect(layer).toBeDefined();
+	});
+
 	it("artifacts read fails as PortError when the target is unreadable", async () => {
 		const artifactRoot2 = fs.mkdtempSync(path.join(os.tmpdir(), "eval-artifacts-dir-"));
 		const dirTarget = path.join(artifactRoot2, "subdir");

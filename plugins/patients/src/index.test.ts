@@ -6,20 +6,28 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { patientDocuments, user as userTable } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import { Command, EventBus, type EventBusShape, makeEventBus } from "@effect-server-utils/cqrs";
+import {
+	Command,
+	EventBus,
+	type EventBusShape,
+	makeEventBus,
+	Query,
+} from "@effect-server-utils/cqrs";
 import {
 	createPatient,
 	deletePatientRow,
 	getPatient,
+	getPatientOwnerId,
 	listAllPatients,
 	listPatients,
 	Patients,
 	PatientsCommandsLive,
 	PatientsLive,
+	PatientsQueriesLive,
 	patientsChromePlugin,
 	patientsPanelPlugin,
 	patientsRoutesPlugin,
@@ -28,7 +36,7 @@ import {
 	plugins,
 	updatePatient,
 } from "./index.ts";
-import { PatientCreated, PatientDeleted, PatientsCommands } from "./api.ts";
+import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
 import { TEXT_FIELDS, validatePatient, type PatientFields } from "./record.ts";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant, type Tenant as TenantScope } from "@ktb/tenant";
@@ -565,6 +573,51 @@ describe("plugins", () => {
 			"patients.chrome",
 			"patients.panel",
 		]);
+	});
+
+	it("platform loader collapses Forbidden failures to empty tables", async () => {
+		const loader = patientsPanelPlugin.panel?.pages?.[0]?.loader;
+		expect(loader).toBeDefined();
+		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
+		const result = await Effect.runPromise(
+			loader!().pipe(
+				Effect.provideService(Patients, { adminList: forbidden, adminOwners: forbidden } as never),
+			),
+		);
+		expect(result).toEqual({ patients: [], owners: [] });
+	});
+});
+
+describe("patients.ownerOf", () => {
+	it("returns the owner row for a patient and null for unknown ids", async () => {
+		const db = makeDb(makeD1(DDL));
+		const p = await createPatient(db, "u1", fields("Owner Lookup"));
+		expect(p?.id).toBeTypeOf("number");
+		expect(await getPatientOwnerId(db, p!.id)).toMatchObject({ ownerId: "u1" });
+		expect(await getPatientOwnerId(db, 99999)).toBeNull();
+	});
+
+	it("resolves through the query dispatcher", async () => {
+		const db = makeDb(makeD1(DDL));
+		const p = await createPatient(db, "u1", fields("Dispatcher Lookup"));
+		const runtime = ManagedRuntime.make(
+			PatientsQueriesLive.pipe(Layer.provide(Layer.succeed(Db, db))),
+		);
+		try {
+			const lookup = (id: number) =>
+				runtime.runPromise(
+					Effect.scoped(
+						Effect.gen(function* () {
+							const queries = yield* Query.dispatcher(PatientsQueries);
+							return yield* queries["patients.ownerOf"]({ id });
+						}),
+					),
+				);
+			expect((await lookup(p!.id))?.ownerId).toBe("u1");
+			expect(await lookup(99999)).toBeNull();
+		} finally {
+			await runtime.dispose();
+		}
 	});
 });
 

@@ -77,6 +77,16 @@ describe("ConsultationDetailPage", () => {
 		expect(link.getAttribute("href")).toBe("/patients/1");
 	});
 
+	it("prefixes internal links with portalBase", () => {
+		const { container } = render(
+			<ConsultationDetailPage c={detail({})} history={null} portalBase="/portal" />,
+		);
+		expect(screen.getByTitle("Open patient record").getAttribute("href")).toBe(
+			"/portal/patients/1",
+		);
+		expect(container.querySelector('a[href="/portal/consultations"]')).not.toBeNull();
+	});
+
 	it("shows an unlinked patient name as plain text", () => {
 		render(<ConsultationDetailPage c={detail({ patientId: null })} history={null} />);
 		expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Maria");
