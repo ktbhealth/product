@@ -518,6 +518,10 @@ export type I18nKey =
 	| "consultations.transcriptPanel.sourceServer"
 	| "consultations.transcriptPanel.tabCorrected"
 	| "consultations.transcriptPanel.tabOriginal"
+	| "consultations.zk.decryptFailed"
+	| "consultations.zk.exportLocked"
+	| "consultations.zk.lockedHint"
+	| "consultations.zk.lockedRecord"
 	| "dashboard.bySource"
 	| "dashboard.byStatus"
 	| "dashboard.colContributions"
@@ -890,6 +894,7 @@ export type I18nKey =
 	| "patient-access.status.active"
 	| "patient-access.status.invited"
 	| "patient-access.status.pending"
+	| "patient-access.zk.lockedRecord"
 	| "patient-portal.back"
 	| "patient-portal.chooseHint"
 	| "patient-portal.consultationsEmptyDescription"
@@ -922,6 +927,8 @@ export type I18nKey =
 	| "patient-portal.verifyEmailDescription"
 	| "patient-portal.verifyEmailTitle"
 	| "patient-portal.viewConsultation"
+	| "patient-portal.zk.lockedHint"
+	| "patient-portal.zk.lockedRecord"
 	| "patients.actions.delete"
 	| "patients.actions.edit"
 	| "patients.admin.colActions"
@@ -1820,6 +1827,10 @@ export interface I18nTypedT {
 	(key: "consultations.transcriptPanel.sourceServer"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.tabCorrected"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.tabOriginal"): Effect.Effect<string>;
+	(key: "consultations.zk.decryptFailed"): Effect.Effect<string>;
+	(key: "consultations.zk.exportLocked"): Effect.Effect<string>;
+	(key: "consultations.zk.lockedHint"): Effect.Effect<string>;
+	(key: "consultations.zk.lockedRecord"): Effect.Effect<string>;
 	(key: "dashboard.bySource"): Effect.Effect<string>;
 	(key: "dashboard.byStatus"): Effect.Effect<string>;
 	(key: "dashboard.colContributions"): Effect.Effect<string>;
@@ -2192,6 +2203,7 @@ export interface I18nTypedT {
 	(key: "patient-access.status.active"): Effect.Effect<string>;
 	(key: "patient-access.status.invited"): Effect.Effect<string>;
 	(key: "patient-access.status.pending"): Effect.Effect<string>;
+	(key: "patient-access.zk.lockedRecord"): Effect.Effect<string>;
 	(key: "patient-portal.back"): Effect.Effect<string>;
 	(key: "patient-portal.chooseHint"): Effect.Effect<string>;
 	(key: "patient-portal.consultationsEmptyDescription"): Effect.Effect<string>;
@@ -2224,6 +2236,8 @@ export interface I18nTypedT {
 	(key: "patient-portal.verifyEmailDescription"): Effect.Effect<string>;
 	(key: "patient-portal.verifyEmailTitle"): Effect.Effect<string>;
 	(key: "patient-portal.viewConsultation"): Effect.Effect<string>;
+	(key: "patient-portal.zk.lockedHint"): Effect.Effect<string>;
+	(key: "patient-portal.zk.lockedRecord"): Effect.Effect<string>;
 	(key: "patients.actions.delete"): Effect.Effect<string>;
 	(key: "patients.actions.edit"): Effect.Effect<string>;
 	(key: "patients.admin.colActions"): Effect.Effect<string>;

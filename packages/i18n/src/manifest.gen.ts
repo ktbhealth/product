@@ -2888,6 +2888,18 @@ export const I18N_MANIFEST = {
 		"admin.cancel": {
 			params: [],
 		},
+		"zk.lockedRecord": {
+			params: [],
+		},
+		"zk.lockedHint": {
+			params: [],
+		},
+		"zk.decryptFailed": {
+			params: [],
+		},
+		"zk.exportLocked": {
+			params: [],
+		},
 	},
 	"eval.persona": {
 		personasTitle: {
@@ -3285,6 +3297,12 @@ export const I18N_MANIFEST = {
 		emptyDescription: {
 			params: [],
 		},
+		"zk.lockedRecord": {
+			params: [],
+		},
+		"zk.lockedHint": {
+			params: [],
+		},
 		verifyEmailTitle: {
 			params: [],
 		},
@@ -3525,6 +3543,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"errors.failed": {
+			params: [],
+		},
+		"zk.lockedRecord": {
 			params: [],
 		},
 	},
