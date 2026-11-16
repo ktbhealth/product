@@ -108,6 +108,17 @@ describe("PatientsPage", () => {
 		expect(screen.getByText("1 patient registered.")).toBeTruthy();
 	});
 
+	it("prefixes internal links with portalBase", () => {
+		const { container } = render(
+			<PatientsPage patients={[BASE]} locale="en" portalBase="/portal" {...actions} />,
+		);
+		expect(screen.getByRole("link", { name: "Edit Maria Silva" }).getAttribute("href")).toBe(
+			"/portal/patients/1/edit",
+		);
+		expect(container.querySelector('a[href="/portal/patients/new"]')).not.toBeNull();
+		expect(container.querySelector('a[href="/patients/new"]')).toBeNull();
+	});
+
 	it("offers edit, export and delete actions per patient", async () => {
 		const user = userEvent.setup();
 		const deleteApi = {
