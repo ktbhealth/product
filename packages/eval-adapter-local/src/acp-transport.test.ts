@@ -49,6 +49,28 @@ describe("makeHttpAcpTransport", () => {
 		expect((err as PortError).message).toBe("acp 502");
 	});
 
+	it("an unreadable error body still fails as PortError with the status only", async () => {
+		const fetchImpl = (async () => ({
+			ok: false,
+			status: 502,
+			text: async () => {
+				throw new Error("stream reset");
+			},
+		})) as unknown as typeof fetch;
+		const t = makeHttpAcpTransport("http://acp.local", fetchImpl);
+		const err = await Effect.runPromise(Effect.flip(t(REQUEST)));
+		expect(err).toBeInstanceOf(PortError);
+		expect((err as PortError).message).toBe("acp 502");
+	});
+
+	it("an undecodable response body wraps as PortError 'acp response'", async () => {
+		const fetchImpl = (async () => new Response("<<not json>>", { status: 200 })) as typeof fetch;
+		const t = makeHttpAcpTransport("http://acp.local", fetchImpl);
+		const err = await Effect.runPromise(Effect.flip(t(REQUEST)));
+		expect(err).toBeInstanceOf(PortError);
+		expect((err as PortError).message).toContain("acp response:");
+	});
+
 	it("a network/abort failure wraps as PortError 'acp transport'", async () => {
 		const fetchImpl = (async () => {
 			throw new Error("socket hangup");

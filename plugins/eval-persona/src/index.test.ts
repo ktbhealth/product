@@ -786,6 +786,27 @@ describe("EvalInstances — edge inputs", () => {
 		await rt.dispose();
 	});
 
+	it("selected mode without defIds rejects, and snapshots count into params", async () => {
+		const { rt, run, db } = make();
+		// `defIds` absent → the `?? []` arm picks nothing → rejected.
+		await expect(
+			run(Effect.flatMap(EvalInstances, (s) => s.create({ name: "no-defs", mode: "selected" }))),
+		).rejects.toMatchObject({ _tag: "InstanceRejected" });
+		// A defined `count` lands in the selected instance's params blob.
+		const { id: defId } = await run(
+			Effect.flatMap(EvalPersonas, (s) => s.create({ name: "d", persona })),
+		);
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) =>
+				s.create({ name: "sel-count", mode: "selected", defIds: [defId], count: 3 }),
+			),
+		);
+		const [row] = await db.select().from(evalInstance);
+		expect(row?.id).toBe(id);
+		expect(JSON.parse(row!.params)).toMatchObject({ count: 3 });
+		await rt.dispose();
+	});
+
 	it("endpoint without optional fields resolves to a bare descriptor", async () => {
 		const { rt, run } = make({ factory: "ok" });
 		const { id: epId } = await run(

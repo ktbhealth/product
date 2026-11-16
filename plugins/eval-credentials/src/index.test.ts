@@ -260,6 +260,31 @@ describe("EvalCredentials", () => {
 		await rt.dispose();
 	});
 
+	it("resolve and remove fall back to the empty referenceId without a principal", async () => {
+		const { rt, run, apiKeys } = make({
+			seed: [
+				{
+					row: row("orphan", '{"kind":"credential","provider":"x","secret":"sk-1"}'),
+					referenceId: "",
+				},
+			],
+		});
+		// No principal in scope → `?? ""` arm: rows owned by the empty
+		// referenceId are reachable, everyone else's are not.
+		expect(
+			await run(
+				Effect.flatMap(EvalCredentials, (s) => s.resolve("credential:orphan")),
+				null,
+			),
+		).toBe("sk-1");
+		await run(
+			Effect.flatMap(EvalCredentials, (s) => s.remove("orphan")),
+			null,
+		);
+		expect(apiKeys.store.has("orphan")).toBe(false);
+		await rt.dispose();
+	});
+
 	it("denies everything without the grant", async () => {
 		const { rt, run } = make({ allow: false });
 		await expect(run(Effect.flatMap(EvalCredentials, (s) => s.list()))).rejects.toMatchObject({

@@ -94,6 +94,47 @@ describe("makeChatLlm", () => {
 		).rejects.toMatchObject({ message: expect.stringContaining("conn refused") });
 	});
 
+	it("an unreadable error body still fails as PortError with the status only", async () => {
+		const bad = makeChatLlm({
+			baseUrl: "http://x/v1",
+			model: "m",
+			fetchImpl: stubFetch(async () => ({
+				ok: false,
+				status: 500,
+				text: async () => {
+					throw new Error("stream reset");
+				},
+			})),
+		});
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.generate({ taskId: "t", role: "generator", input: "i", outputSchema: "Text" }),
+				).pipe(Effect.provide(bad)),
+			),
+		).rejects.toMatchObject({ _tag: "PortError", message: "chat 500" });
+	});
+
+	it("wraps an undecodable response body in PortError 'chat response'", async () => {
+		const garbled = makeChatLlm({
+			baseUrl: "http://x/v1",
+			model: "m",
+			fetchImpl: stubFetch(async () => ({
+				ok: true,
+				json: async () => {
+					throw new Error("unexpected token");
+				},
+			})),
+		});
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.generate({ taskId: "t", role: "generator", input: "i", outputSchema: "Text" }),
+				).pipe(Effect.provide(garbled)),
+			),
+		).rejects.toMatchObject({ message: expect.stringContaining("chat response:") });
+	});
+
 	it("handles missing choices and non-string content", async () => {
 		const empty = makeChatLlm({
 			baseUrl: "http://x/v1",
