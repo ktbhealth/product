@@ -12,6 +12,7 @@ import {
 } from "@ktbhealth/ui/components/dialog";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import { RichTextEditor } from "@ktbhealth/ui/components/rich-text-editor";
 import {
 	Select,
 	SelectContent,
@@ -19,6 +20,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
+import { Input } from "@ktbhealth/ui/components/input";
 import {
 	Table,
 	TableBody,
@@ -28,6 +30,8 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
+
+import { parseMessage, renderMessage } from "@ktb/i18n";
 
 import type { I18nMessage } from "../schema.ts";
 import type { LocaleInfo, NamespaceInfo } from "../contract.ts";
@@ -56,7 +60,76 @@ interface Editing {
 	readonly namespace: string;
 	readonly key: string;
 	readonly locale: string;
+	readonly scope: "global" | "tenant" | "portal";
+	readonly scopeId: string;
 	readonly cell: Cell | undefined;
+}
+
+/** Sample value per param hint for the live preview (PL-008): real
+ * `Intl.*` formatting so number/date/list hints render as they will
+ * in the app. */
+const sampleParam = (param: {
+	readonly name: string;
+	readonly hint?: string;
+	readonly cases?: readonly string[];
+	readonly plural?: boolean;
+}): unknown => {
+	if (param.plural === true) return 3;
+	if (param.cases !== undefined) return param.cases.find((c) => c !== "other") ?? "other";
+	switch (param.hint) {
+		case "number":
+			return 1234.5;
+		case "date":
+		case "datetime":
+			return new Date(Date.now() + 86_400_000);
+		case "relative":
+			return new Date(Date.now() + 172_800_000);
+		case "list":
+			return ["Alpha", "Beta"];
+		default:
+			return "sample";
+	}
+};
+
+/** Live preview under the editor: text kinds render with sample params
+ * plus a chip per declared param; rich kinds round-trip through the
+ * editor's sanitizer read-only. */
+function MessagePreview({
+	template,
+	kind,
+	locale,
+}: {
+	readonly template: string;
+	readonly kind: "text" | "rich";
+	readonly locale: string;
+}) {
+	if (kind === "rich") {
+		return <RichTextEditor value={template} disabled aria-label="Rich text preview" />;
+	}
+	const parsed = parseMessage("text", template);
+	if (!parsed.ok) {
+		return <p className="text-sm text-destructive">{parsed.error}</p>;
+	}
+	const samples = Object.fromEntries(parsed.message.params.map((p) => [p.name, sampleParam(p)]));
+	return (
+		<div className="space-y-2">
+			<p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+				{renderMessage(template, samples, locale)}
+			</p>
+			{parsed.message.params.length > 0 && (
+				<div className="flex flex-wrap gap-1">
+					{parsed.message.params.map((p) => (
+						<Badge key={p.name} variant="outline" className="font-mono text-xs">
+							{`{${p.name}}`}
+							{p.hint !== undefined && ` · ${p.hint}`}
+							{p.plural === true && " · plural"}
+							{p.cases !== undefined && !p.plural && " · select"}
+						</Badge>
+					))}
+				</div>
+			)}
+		</div>
+	);
 }
 
 const cellFor = (
@@ -64,14 +137,16 @@ const cellFor = (
 	namespace: string,
 	key: string,
 	locale: string,
+	scope: "global" | "tenant" | "portal" = "global",
+	scopeId = "",
 ): Cell | undefined => {
 	const row = messages.find(
 		(m) =>
 			m.namespace === namespace &&
 			m.key === key &&
 			m.locale === locale &&
-			m.scope === "global" &&
-			m.scopeId === "",
+			m.scope === scope &&
+			m.scopeId === scopeId,
 	);
 	if (row === undefined) return undefined;
 	return {
@@ -94,6 +169,8 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	const [namespace, setNamespace] = useState(data.namespaces[0]?.namespace ?? "");
 	const [editing, setEditing] = useState<Editing | null>(null);
 	const [draft, setDraft] = useState("");
+	const [kind, setKind] = useState<"text" | "rich">("text");
+	const [scopeId, setScopeId] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
@@ -107,8 +184,28 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 
 	const open = (key: string, locale: string) => {
 		const cell = cellFor(data.messages, namespace, key, locale);
-		setEditing({ namespace, key, locale, cell });
+		setEditing({ namespace, key, locale, scope: "global", scopeId: "", cell });
 		setDraft(cell?.draft ?? cell?.live ?? "");
+		setKind(cell?.kind === "rich" ? "rich" : "text");
+		setScopeId("");
+		setError(null);
+	};
+
+	/** Re-target the dialog at another scope's cell for the same
+	 * namespace/key/locale (PL-008 Phase 6 scope editing). */
+	const retarget = (scope: "global" | "tenant" | "portal", nextScopeId: string) => {
+		if (editing === null) return;
+		const cell = cellFor(
+			data.messages,
+			editing.namespace,
+			editing.key,
+			editing.locale,
+			scope,
+			nextScopeId,
+		);
+		setEditing({ ...editing, scope, scopeId: nextScopeId, cell });
+		setDraft(cell?.draft ?? cell?.live ?? "");
+		setKind(cell?.kind === "rich" ? "rich" : "text");
 		setError(null);
 	};
 
@@ -133,8 +230,8 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 				namespace: editing.namespace,
 				key: editing.key,
 				locale: editing.locale,
-				scope: "global" as const,
-				scopeId: "",
+				scope: editing.scope,
+				scopeId: editing.scopeId,
 			}
 		: null;
 
@@ -279,16 +376,62 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 							{editing?.namespace}.{editing?.key}
 						</DialogTitle>
 						<DialogDescription>
-							{editing?.locale} · {editing?.cell?.kind ?? "text"}
+							{editing?.locale} · {editing?.scope}
+							{editing !== null && editing.scopeId !== "" && `:${editing.scopeId}`} · {kind}
 							{editing?.cell?.draft != null && editing.cell.draft !== "" && " · draft pending"}
 						</DialogDescription>
 					</DialogHeader>
-					<Textarea
-						value={draft}
-						onChange={(e) => setDraft(e.target.value)}
-						rows={6}
-						className="font-mono text-sm"
-					/>
+					<div className="flex items-center gap-2">
+						<Select
+							value={editing?.scope ?? "global"}
+							onValueChange={(v) => {
+								const scope = String(v) as "global" | "tenant" | "portal";
+								retarget(scope, scope === "global" ? "" : scopeId);
+							}}
+						>
+							<SelectTrigger className="w-32">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="global">global</SelectItem>
+								<SelectItem value="tenant">tenant</SelectItem>
+								<SelectItem value="portal">portal</SelectItem>
+							</SelectContent>
+						</Select>
+						{editing !== null && editing.scope !== "global" && (
+							<Input
+								value={scopeId}
+								onChange={(e) => setScopeId(e.target.value)}
+								onBlur={() => retarget(editing.scope, scopeId)}
+								placeholder={editing.scope === "portal" ? "portal instance id" : "tenant id"}
+								className="w-40"
+							/>
+						)}
+						<Select value={kind} onValueChange={(v) => setKind(String(v) as "text" | "rich")}>
+							<SelectTrigger className="w-28">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="text">text</SelectItem>
+								<SelectItem value="rich">rich</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+					{kind === "rich" ? (
+						<RichTextEditor
+							value={draft}
+							onChange={(html) => setDraft(html)}
+							aria-label="Message rich text"
+						/>
+					) : (
+						<Textarea
+							value={draft}
+							onChange={(e) => setDraft(e.target.value)}
+							rows={6}
+							className="font-mono text-sm"
+						/>
+					)}
+					<MessagePreview template={draft} kind={kind} locale={editing?.locale ?? "en"} />
 					{error !== null && <p className="text-sm text-destructive">{error}</p>}
 					<div className="flex justify-end gap-2">
 						{editing?.cell?.draft != null && editing.cell.draft !== "" && (
@@ -307,7 +450,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								id &&
 								void run(() =>
 									i18nSaveDraftFn({
-										data: { ...id, value: draft, kind: editing?.cell?.kind ?? "text" },
+										data: { ...id, value: draft, kind },
 									}),
 								)
 							}
