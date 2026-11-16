@@ -186,7 +186,13 @@ const DOMAINS = [
 		owner: "`plugins/i18n` + `packages/i18n`",
 		description:
 			"DB-canonical localization — registered namespaces and locales, scoped message rows (global/tenant/portal) with draft/publish lifecycle, a single-row revision stamp for catalog caching, and the Loro CRDT op log behind staged rich-text edits.",
-		tables: ["i18n_crdt_updates", "i18n_locales", "i18n_messages", "i18n_namespaces", "i18n_revision"],
+		tables: [
+			"i18n_crdt_updates",
+			"i18n_locales",
+			"i18n_messages",
+			"i18n_namespaces",
+			"i18n_revision",
+		],
 	},
 ];
 
