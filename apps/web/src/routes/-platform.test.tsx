@@ -58,6 +58,15 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 }));
+// Theme resolution is a server fn — stub it so the loader stays pure.
+vi.mock("@ktb/theme/fns", () => ({
+	themeScopeFn: vi.fn(async () => null),
+	listThemesFn: vi.fn(async () => []),
+	getThemeFn: vi.fn(async () => null),
+	publishThemeFn: vi.fn(async () => ({})),
+	setThemeEnabledFn: vi.fn(async () => ({ ok: true })),
+	setThemePreviewFn: vi.fn(async () => ({ ok: true })),
+}));
 
 let loaderData: unknown = { patients: [], consultations: [] };
 let pathname = "/platform";
@@ -118,6 +127,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { Route as PlatformRoute } from "./platform.tsx";
 import { Route as PlatformIndexRoute } from "./platform/index.tsx";
 import { Route as PlatformPageRoute } from "./platform/$.tsx";
+import { KTB_DEFAULT_THEME } from "@ktb/theme/default-theme";
 import { portalPages } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 import type { PanelPage } from "@ktb/kernel";
@@ -132,6 +142,17 @@ const loader = (route: unknown) =>
 			options: { loader: (arg?: { params?: { _splat: string } }) => Promise<unknown> };
 		}
 	).options.loader;
+const head = (route: unknown) =>
+	(
+		route as {
+			options: {
+				head?: (ctx?: { loaderData?: { theme?: unknown } }) => {
+					meta: Record<string, unknown>[];
+					links: Record<string, unknown>[];
+				};
+			};
+		}
+	).options.head;
 
 afterEach(() => {
 	cleanup();
@@ -203,6 +224,7 @@ describe("/platform layout", () => {
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
 			audiences: [],
+			theme: null,
 			deniedPaths: [],
 		});
 	});
@@ -217,6 +239,7 @@ describe("/platform layout", () => {
 			audioJobs: [],
 			notifications: [],
 			audiences: [],
+			theme: null,
 			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
@@ -318,6 +341,99 @@ describe("/platform layout", () => {
 		} finally {
 			vi.unstubAllEnvs();
 		}
+	});
+
+	it("head emits no theme tags without a resolved theme", () => {
+		const h = head(PlatformRoute)!;
+		expect(h({ loaderData: { theme: null } })).toEqual({});
+		expect(h({ loaderData: {} })).toEqual({});
+		expect(h({})).toEqual({});
+	});
+
+	it("head projects title, favicon and font links from the resolved theme", () => {
+		const out = head(PlatformRoute)!({ loaderData: { theme: KTB_DEFAULT_THEME } });
+		expect(out.meta).toContainEqual({ title: "KTB Health" });
+		expect(out.links).toContainEqual({ rel: "icon", href: "/brand/logo-mark.png" });
+		expect(out.links).toContainEqual({
+			rel: "apple-touch-icon",
+			href: "/brand/logo-mark.png",
+		});
+	});
+
+	it("head omits the title tag when the theme names nothing", () => {
+		const theme = { ...KTB_DEFAULT_THEME, brand: null, appName: null };
+		expect(head(PlatformRoute)!({ loaderData: { theme } })).toEqual({ meta: [], links: [] });
+	});
+
+	it("renders the theme brand mark, style block and preview banner", () => {
+		loaderData = {
+			audioJobs: [],
+			notifications: [],
+			audiences: [],
+			theme: { ...KTB_DEFAULT_THEME, preview: true },
+		};
+		const { container } = render(createElement(component(PlatformRoute)));
+		expect(screen.getByText("Theme preview active")).toBeTruthy();
+		// PortalShell owns the single theme style emitter.
+		expect(container.querySelector("style")).not.toBeNull();
+		expect(container.querySelector('img[src="/brand/logo-horizontal.svg"]')).not.toBeNull();
+	});
+
+	it("falls back to the row appName for brand when brand json is empty", () => {
+		loaderData = {
+			audioJobs: [],
+			notifications: [],
+			audiences: [],
+			theme: { ...KTB_DEFAULT_THEME, brand: null, appName: "Acme Health" },
+		};
+		render(createElement(component(PlatformRoute)));
+		expect(screen.getByText("Acme Health")).toBeTruthy();
+	});
+
+	it("renders no brand slot for a brand-less theme but still emits theme css", () => {
+		loaderData = {
+			audioJobs: [],
+			notifications: [],
+			audiences: [],
+			theme: { ...KTB_DEFAULT_THEME, brand: null, appName: null },
+		};
+		const { container } = render(createElement(component(PlatformRoute)));
+		expect(container.querySelector("style")).not.toBeNull();
+		expect(container.querySelector('img[src^="/brand/"]')).toBeNull();
+		expect(screen.queryByText("Theme preview active")).toBeNull();
+	});
+
+	it("renders portal.brand chrome with host chrome props and wires sign-out", async () => {
+		chromeExtra = [
+			{
+				id: "t.brand-btn",
+				region: "portal.brand",
+				content: {
+					kind: "component",
+					component: (props: { signOut?: () => Promise<void> }) =>
+						createElement(
+							"button",
+							{
+								"data-testid": "brand-signout",
+								onClick: () => void props.signOut?.(),
+							},
+							"BRAND-SIGNOUT",
+						),
+				},
+			},
+			// Non-component kinds in the brand region are dropped.
+			{
+				id: "t.brand-note",
+				region: "portal.brand",
+				content: { kind: "note", key: "k", fallback: "f" },
+			},
+		];
+		const assign = vi.fn();
+		vi.stubGlobal("location", { assign });
+		render(createElement(component(PlatformRoute)));
+		fireEvent.click(screen.getByTestId("brand-signout"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+		expect(signOut).toHaveBeenCalledOnce();
 	});
 });
 

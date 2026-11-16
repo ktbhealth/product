@@ -13,6 +13,7 @@ import { plugins as patientPortalPlugins } from "@ktb/patient-portal";
 import { plugins as patientsPlugins } from "@ktb/patients";
 import { plugins as platformPlugins } from "@ktb/platform";
 import { plugins as secretariesPlugins } from "@ktb/secretaries";
+import { plugins as themePlugins } from "@ktb/theme";
 import { index, physical, rootRoute, route } from "@tanstack/virtual-file-routes";
 
 // Route-tree composition runs under jiti during typegen, where
@@ -34,6 +35,7 @@ const routePlugins = [
 	...patientsPlugins,
 	...platformPlugins,
 	...secretariesPlugins,
+	...themePlugins,
 ];
 
 // Host-composed route tree: host-owned routes plus each plugin's declared

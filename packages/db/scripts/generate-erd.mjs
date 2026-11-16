@@ -51,6 +51,14 @@ const DOMAINS = [
 		tables: ["group_members", "groups"],
 	},
 	{
+		id: "integrity",
+		title: "Integrity",
+		owner: "`plugins/integrity`",
+		description:
+			"Tamper-evident record versioning — a content-addressed version chain per entity, anchoring anamnesis and blob hashes.",
+		tables: ["record_versions"],
+	},
+	{
 		id: "notifications",
 		title: "Notifications",
 		owner: "`plugins/notifications`",
@@ -155,6 +163,14 @@ const DOMAINS = [
 		description:
 			"Eval lab surfaces — reusable persona definitions and persona instances with their items (instances soft-link ai_endpoint).",
 		tables: ["eval_instance", "eval_instance_item", "eval_persona_def"],
+	},
+	{
+		id: "theme",
+		title: "Theme",
+		owner: "`plugins/theme`",
+		description:
+			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline.",
+		tables: ["theme_assets", "theme_definitions"],
 	},
 ];
 
