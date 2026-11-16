@@ -192,6 +192,68 @@ describe("Vault service", () => {
 		expect(devices.every((d) => d.tenantId === TENANT_ID)).toBe(true);
 	});
 
+	it("records empty actor ids when no principal is bound (system context)", async () => {
+		// run() always binds a Principal — bind null explicitly to cover
+		// the `?.userId ?? ""`/`?? null` fallbacks (jobs/system paths).
+		const runSystem = <A, E>(effect: Effect.Effect<A, E, Vault>) =>
+			runtime.runPromise(
+				effect.pipe(
+					Effect.provideService(Tenant, {
+						id: TENANT_ID,
+						kind: "clinic",
+						slug: "clinic-7",
+						role: "admin" as TenantRole,
+					}),
+					Effect.provideService(Principal, null),
+				),
+			);
+		const row = await runSystem(
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wSys", signPublicKey: "sSys" }),
+			),
+		);
+		expect(row.userId).toBe("");
+		const approved = await runSystem(
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: row.id, wrappedMasterKey: "w1.s" }),
+			),
+		);
+		expect(approved.approvedByUserId).toBe("");
+		await runSystem(
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "patient",
+					entityId: 1,
+					grants: [{ readerKind: "device" as const, readerPubkey: "wSys", wrappedDek: "w1.d" }],
+				}),
+			),
+		);
+		const readers = await runSystem(
+			Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "patient", 1)),
+		);
+		expect(readers[0]?.grantedByUserId).toBeNull();
+	});
+
+	it("fails device-not-found on unknown device ids", async () => {
+		const approveExit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: 9999, wrappedMasterKey: "w1.x" }),
+			).pipe(Effect.exit),
+			{ role: "admin" },
+		);
+		expect(approveExit._tag).toBe("Failure");
+		const revokeExit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.revokeDevice({ tenantId: TENANT_ID, clinicKeyId: 9999 })).pipe(
+				Effect.exit,
+			),
+			{ role: "member" },
+		);
+		expect(revokeExit._tag).toBe("Failure");
+	});
+
 	it("fails closed without a member role", async () => {
 		const exit = await run(
 			runtime,
