@@ -22,7 +22,7 @@ import { LlmPort } from "@ktb/eval-consultation/ports";
  * — this plugin only declares which adapters speak it.
  *
  * Adapter keys → packages: "stub" → @ktb/eval-adapter-stub,
- * "acp" → @ktb/eval-adapter-local `makeAcpLlm`,
+ * "acp" → @ktb/ai-adapter-acp `makeAcpLlm`,
  * "jev" → @ktb/eval-adapter-local `makeJevEval`,
  * "systemone" → @ktb/eval-adapter-local `makeSystemOneEval` — the
  * TypeSafe `/v1/systemone` wire shape, served locally by OpenJev
@@ -45,7 +45,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 			adapters: {
 				stub: "@ktb/eval-adapter-stub",
 				noop: "@ktb/eval-adapter-stub",
-				acp: "@ktb/eval-adapter-local",
+				acp: "@ktb/ai-adapter-acp",
 			},
 		},
 	},

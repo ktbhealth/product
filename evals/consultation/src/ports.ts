@@ -238,6 +238,13 @@ export interface LlmEndpointDescriptor {
 	 * runtime support; `child`/`ssh` require a Node-runtime driver and
 	 * resolve to a PortError under workerd. Absent = `ws`. */
 	readonly transport?: "ws" | "child" | "ssh";
+	/** Agent command for `child`/`ssh` ACP transports — e.g.
+	 * `claude agent acp` or `gemini --acp`. Spawned by
+	 * @ktb/ai-adapter-node; unused by `ws`/`openai`. */
+	readonly agentCmd?: string;
+	/** SSH target (`user@host`) for the `ssh` ACP transport — the
+	 * `agentCmd` runs on that host. Unused by `child`/`ws`. */
+	readonly sshHost?: string;
 	/** Raw API key resolved server-side (e.g. from the credentials
 	 * store) — never persisted on the endpoint row. */
 	readonly apiKey?: string;

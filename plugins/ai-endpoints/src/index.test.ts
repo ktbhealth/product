@@ -360,13 +360,26 @@ describe("endpoint transport", () => {
 		const { rt, run } = make({ factory: "ok", captured });
 		const { id: ssh } = await run(
 			Effect.flatMap(AiEndpoints, (s) =>
-				s.create({ name: "acp-ssh", kind: "acp", baseUrl: "ssh://h", transport: "ssh" }),
+				s.create({
+					name: "acp-ssh",
+					kind: "acp",
+					baseUrl: "ssh://h",
+					transport: "ssh",
+					agentCmd: "claude agent acp",
+					sshHost: "me@gpu-box",
+				}),
 			),
 		);
 		const listed = await run(Effect.flatMap(AiEndpoints, (s) => s.list()));
 		expect(listed[0]?.transport).toBe("ssh");
+		expect(listed[0]?.agentCmd).toBe("claude agent acp");
+		expect(listed[0]?.sshHost).toBe("me@gpu-box");
 		await run(Effect.flatMap(AiEndpoints, (s) => s.test(ssh)));
 		expect(captured.at(-1)?.transport).toBe("ssh");
+		expect(captured.at(-1)).toMatchObject({
+			agentCmd: "claude agent acp",
+			sshHost: "me@gpu-box",
+		});
 
 		const { id: ws } = await run(
 			Effect.flatMap(AiEndpoints, (s) =>

@@ -27,6 +27,12 @@ export const aiEndpoint = sqliteTable(
 		/** ACP transport: ws (HTTP, default) | child | ssh — non-ws
 		 * transports need a Node-runtime driver. */
 		transport: text(),
+		/** Agent command for child/ssh ACP transports — e.g.
+		 * "claude agent acp". Spawned by @ktb/ai-adapter-node. */
+		agentCmd: text("agent_cmd"),
+		/** SSH target (user@host) for the ssh transport — agentCmd runs
+		 * on that host. */
+		sshHost: text("ssh_host"),
 		/** Consuming surface — e.g. "eval" for the lab's pickers. */
 		scope: text().notNull().default("eval"),
 		/** Preferred endpoint for callers that don't name one. */

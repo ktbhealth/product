@@ -35,9 +35,9 @@ import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platfor
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import {
 	evalArtifactsLocalDriver,
-	evalLlmAcpDriver,
 	evalLlmFactoryDriver,
 	evalRunnerLocalDriver,
 } from "@ktb/eval-adapter-local";

@@ -211,6 +211,13 @@
       "when": 1794836030552,
       "tag": "0030_hesitant_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1794843326336,
+      "tag": "0031_shocking_rumiko_fujikawa",
+      "breakpoints": true
     }
   ]
 }

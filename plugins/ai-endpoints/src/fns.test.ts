@@ -168,7 +168,15 @@ describe("ai-endpoints fns", () => {
 
 		expect(
 			await saveEndpointFn({
-				data: { id, name: "O2", kind: "acp", baseUrl: "u2", transport: "ssh" },
+				data: {
+					id,
+					name: "O2",
+					kind: "acp",
+					baseUrl: "u2",
+					transport: "ssh",
+					agentCmd: "claude agent acp",
+					sshHost: "me@gpu-box",
+				},
 			}),
 		).toEqual({
 			ok: true,
@@ -176,6 +184,10 @@ describe("ai-endpoints fns", () => {
 		});
 		const listed = await listEndpointsFn({ data: undefined });
 		expect(listed.ok && listed.data[0]?.kind).toBe("acp");
+		expect(listed.ok && listed.data[0]).toMatchObject({
+			agentCmd: "claude agent acp",
+			sshHost: "me@gpu-box",
+		});
 
 		// The stub factory declares no presets — the fn degrades to [].
 		expect(await listEndpointPresetsFn({ data: undefined })).toEqual({ ok: true, data: [] });
