@@ -24,7 +24,7 @@ export const plugins: readonly Plugin[] = [
 		chrome: [
 			{
 				id: "credentials.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: {

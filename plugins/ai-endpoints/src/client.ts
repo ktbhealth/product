@@ -29,7 +29,7 @@ export const plugins: readonly Plugin[] = [
 		chrome: [
 			{
 				id: "ai-endpoints.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: {

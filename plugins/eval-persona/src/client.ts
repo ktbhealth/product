@@ -32,7 +32,7 @@ export const plugins: readonly Plugin[] = [
 		chrome: [
 			{
 				id: "eval-personas.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: {
@@ -45,7 +45,7 @@ export const plugins: readonly Plugin[] = [
 			},
 			{
 				id: "eval-instances.sidebar",
-				region: "console.sidebar",
+				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
 					item: {

@@ -285,7 +285,7 @@ export const aiEndpointsChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "ai-endpoints.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
