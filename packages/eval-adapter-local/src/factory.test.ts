@@ -94,6 +94,40 @@ describe("evalLlmFactoryDriver", () => {
 		).rejects.toMatchObject({ message: expect.stringContaining("require agentCmd") });
 	});
 
+	it("routes empty-baseUrl acp+ws endpoints through the ACP_BRIDGE DO binding", async () => {
+		// Without the binding (Node dev, tests) bridge endpoints fail typed.
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmFactory, (f) =>
+					f.resolve({ kind: "acp", baseUrl: "", transport: "ws", endpointId: 5 }),
+				).pipe(Effect.provide(factory)),
+			),
+		).rejects.toMatchObject({ message: expect.stringContaining("ACP_BRIDGE binding") });
+		// Without endpointId the DO has no name.
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmFactory, (f) =>
+					f.resolve({ kind: "acp", baseUrl: "", transport: "ws" }),
+				).pipe(Effect.provide(factory)),
+			),
+		).rejects.toMatchObject({ message: expect.stringContaining("endpointId") });
+		// With the binding the layer resolves — the DO stub is only
+		// touched when generate runs.
+		const bridge = {
+			idFromName: (n: string) => n,
+			get: () => ({ fetch: async () => new Response("{}") }),
+		};
+		const withBridge = evalLlmFactoryDriver.provides!({
+			ACP_BRIDGE: bridge,
+		} as never) as Layer.Layer<LlmFactory>;
+		const layer = await Effect.runPromise(
+			Effect.flatMap(LlmFactory, (f) =>
+				f.resolve({ kind: "acp", baseUrl: "", transport: "ws", endpointId: 5 }),
+			).pipe(Effect.provide(withBridge)),
+		);
+		expect(layer).toBeDefined();
+	});
+
 	it("test() pings the endpoint and maps failures to PortError", async () => {
 		await expect(
 			Effect.runPromise(

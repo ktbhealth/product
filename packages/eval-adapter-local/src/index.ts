@@ -449,7 +449,33 @@ export const makeLocalReportLayer = (filePath: string) =>
 // acp-transport.ts + llm.ts → ai-adapter-acp, spawned-agent ACP →
 // ai-adapter-node) live in dedicated packages now — re-exported here
 // so existing `@ktb/eval-adapter-local` consumers keep working.
-export * from "@ktb/ai-adapter-acp";
+// F3b: the acp package gained the shared session client (`openAcpSession`,
+// `AcpSessionOptions`) which collides with ai-adapter-node's spawn-
+// flavored compatibility names — the node's win here (its argv-shaped
+// API is what this package has always exported); the transport-agnostic
+// variants are reachable at `@ktb/ai-adapter-acp` directly.
+export {
+	decodeFrame,
+	evalLlmAcpDriver,
+	makeAcpLlm,
+	makeAcpSessionLlm,
+	makeBridgeAcpLlm,
+	makeBridgeRpc,
+	makeFrameExtractor,
+	makeHttpAcpTransport,
+} from "@ktb/ai-adapter-acp";
+export type {
+	AcpLlmOptions,
+	AcpRpc,
+	AcpSessionLlmOptions,
+	AcpTransport,
+	BridgeAcpLlmOptions,
+	BridgeNamespace,
+	BridgeRpcOptions,
+	BridgeStub,
+	EvalLlmEnv,
+	FrameExtractor,
+} from "@ktb/ai-adapter-acp";
 export * from "@ktb/ai-adapter-node";
 export * from "@ktb/ai-adapter-openai";
 export * from "./tts.ts";

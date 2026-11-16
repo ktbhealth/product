@@ -37,6 +37,7 @@ import { Route as PortalIndexRouteImport } from './../../../plugins/patient-port
 import { Route as portalLoginRouteImport } from './routes/portal-login'
 import { Route as SecretariesIndexRouteImport } from './../../../plugins/secretaries/src/routes/index'
 import { Route as SecretariesLoginRouteImport } from './../../../plugins/secretaries/src/routes/login'
+import { Route as ApiAiDotbridgeRouteImport } from './../../../plugins/ai-endpoints/src/api-routes/ai.bridge'
 import { Route as ApiAuthDotsplatRouteImport } from './../../../plugins/auth/src/api-routes/auth.$'
 import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consultations/src/api-routes/bots.webhook'
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'
@@ -192,6 +193,11 @@ const SecretariesLoginRoute = SecretariesLoginRouteImport.update({
   path: '/secretaries/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAiDotbridgeRoute = ApiAiDotbridgeRouteImport.update({
+  id: '/api/ai/bridge',
+  path: '/api/ai/bridge',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthDotsplatRoute = ApiAuthDotsplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -293,6 +299,7 @@ export interface FileRoutesByFullPath {
   '/platform/': typeof IndexRoute
   '/portal/': typeof PortalIndexRoute
   '/secretaries/': typeof SecretariesIndexRoute
+  '/api/ai/bridge': typeof ApiAiDotbridgeRoute
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
@@ -335,6 +342,7 @@ export interface FileRoutesByTo {
   '/platform': typeof IndexRoute
   '/portal': typeof PortalIndexRoute
   '/secretaries': typeof SecretariesIndexRoute
+  '/api/ai/bridge': typeof ApiAiDotbridgeRoute
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
@@ -379,6 +387,7 @@ export interface FileRoutesById {
   '/platform/': typeof IndexRoute
   '/portal/': typeof PortalIndexRoute
   '/secretaries/': typeof SecretariesIndexRoute
+  '/api/ai/bridge': typeof ApiAiDotbridgeRoute
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
@@ -424,6 +433,7 @@ export interface FileRouteTypes {
     | '/platform/'
     | '/portal/'
     | '/secretaries/'
+    | '/api/ai/bridge'
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
@@ -466,6 +476,7 @@ export interface FileRouteTypes {
     | '/platform'
     | '/portal'
     | '/secretaries'
+    | '/api/ai/bridge'
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
@@ -509,6 +520,7 @@ export interface FileRouteTypes {
     | '/platform/'
     | '/portal/'
     | '/secretaries/'
+    | '/api/ai/bridge'
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
@@ -551,6 +563,7 @@ export interface RootRouteChildren {
   PatientsIndexRoute: typeof PatientsIndexRoute
   PortalIndexRoute: typeof PortalIndexRoute
   SecretariesIndexRoute: typeof SecretariesIndexRoute
+  ApiAiDotbridgeRoute: typeof ApiAiDotbridgeRoute
   ApiAuthDotsplatRoute: typeof ApiAuthDotsplatRoute
   ApiCdnSplatRoute: typeof ApiCdnSplatRoute
   ApiThemeDotassetsRoute: typeof ApiThemeDotassetsRoute
@@ -763,6 +776,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SecretariesLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/ai/bridge': {
+      id: '/api/ai/bridge'
+      path: '/api/ai/bridge'
+      fullPath: '/api/ai/bridge'
+      preLoaderRoute: typeof ApiAiDotbridgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -910,6 +930,7 @@ const rootRouteChildren: RootRouteChildren = {
   PatientsIndexRoute: PatientsIndexRoute,
   PortalIndexRoute: PortalIndexRoute,
   SecretariesIndexRoute: SecretariesIndexRoute,
+  ApiAiDotbridgeRoute: ApiAiDotbridgeRoute,
   ApiAuthDotsplatRoute: ApiAuthDotsplatRoute,
   ApiCdnSplatRoute: ApiCdnSplatRoute,
   ApiThemeDotassetsRoute: ApiThemeDotassetsRoute,
@@ -926,13 +947,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

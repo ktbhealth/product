@@ -29,6 +29,7 @@
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@huggingface/transformers": "^4.3.2",
 		"@inlang/paraglide-js": "2.29.3",
+		"@ktb/ai-bridge": "workspace:*",
 		"@ktb/ai-endpoints": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/app-host": "workspace:*",

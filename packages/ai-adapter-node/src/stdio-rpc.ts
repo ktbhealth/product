@@ -17,6 +17,7 @@
 import * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 
+import { makeFrameExtractor, decodeFrame, type AcpRpc } from "@ktb/ai-adapter-acp";
 import { PortError } from "@ktb/eval-core";
 
 const causeMessage = (cause: unknown): string =>
@@ -65,12 +66,9 @@ export interface StdioRpcOptions {
 	readonly onNotification?: (method: string, params: unknown) => void;
 }
 
-export interface StdioRpc {
-	readonly request: (method: string, params?: unknown) => Effect.Effect<unknown, PortError>;
-	/** Notifications are best-effort — a closed stdin drops them
-	 * silently (the session is already dead). */
-	readonly notify: (method: string, params?: unknown) => void;
-}
+/** The transport-agnostic JSON-RPC surface (shared `AcpRpc` shape —
+ * kept under the stdio name so the spawn-side docs stay honest). */
+export interface StdioRpc extends AcpRpc {}
 
 interface WireMessage {
 	readonly id?: string | number;
@@ -120,61 +118,13 @@ export const makeStdioRpc = (
 			for (const resume of resumes) resume(Effect.fail(err));
 		};
 
-		// Raw-byte buffer: Content-Length counts BYTES, so decoding
-		// before framing would mis-slice multibyte payloads.
-		let buf = new Uint8Array(0);
-		const encoder = new TextEncoder();
-		const decoder = new TextDecoder();
-		const CRLF = encoder.encode("\r\n\r\n");
-		const LF_LF = encoder.encode("\n\n");
-		const CL_PREFIX = encoder.encode("Content-Length:");
-		const indexOfSeq = (seq: Uint8Array, from = 0) => {
-			outer: for (let i = from; i + seq.length <= buf.length; i++) {
-				for (let j = 0; j < seq.length; j++) if (buf[i + j] !== seq[j]) continue outer;
-				return i;
-			}
-			return -1;
-		};
-		/** Extract the next complete frame (raw JSON bytes) or null when
-		 * the buffer holds only a partial one. `null` on corrupt framing
-		 * is never legal mid-stream — the caller fails the session. */
-		const takeFrame = (): Uint8Array | null => {
-			if (indexOfSeq(CL_PREFIX) === 0) {
-				let sep = indexOfSeq(CRLF);
-				let headerEnd = sep + CRLF.length;
-				if (sep === -1) {
-					sep = indexOfSeq(LF_LF);
-					headerEnd = sep + LF_LF.length;
-				}
-				if (sep === -1) return null;
-				const len = Number(
-					/Content-Length:\s*(\d+)/i.exec(decoder.decode(buf.subarray(0, sep)))?.[1],
-				);
-				if (!Number.isFinite(len)) {
-					// Corrupt header — drop it and surface a non-JSON frame
-					// so the caller fails the session as malformed framing.
-					buf = buf.subarray(headerEnd);
-					return encoder.encode("<corrupt header>");
-				}
-				if (buf.length - headerEnd < len) return null;
-				const frame = buf.subarray(headerEnd, headerEnd + len);
-				buf = buf.subarray(headerEnd + len);
-				return frame;
-			}
-			const nl = buf.indexOf(0x0a);
-			if (nl === -1) return null;
-			const frame = buf.subarray(0, nl);
-			buf = buf.subarray(nl + 1);
-			return frame;
-		};
+		// Raw-byte framing lives in @ktb/ai-adapter-acp (shared with the
+		// ai-bridge CLI): line-delimited JSON or Content-Length frames.
+		const frames = makeFrameExtractor();
 		proc.stdout.on("data", (chunk) => {
-			const bytes = typeof chunk === "string" ? encoder.encode(chunk) : chunk;
-			const next = new Uint8Array(buf.length + bytes.length);
-			next.set(buf);
-			next.set(bytes, buf.length);
-			buf = next;
-			for (let frame = takeFrame(); frame !== null; frame = takeFrame()) {
-				const line = decoder.decode(frame);
+			frames.push(chunk);
+			for (let frame = frames.next(); frame !== null; frame = frames.next()) {
+				const line = decodeFrame(frame);
 				if (line.trim() === "") continue;
 				let msg: WireMessage;
 				try {

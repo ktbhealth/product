@@ -218,6 +218,20 @@
       "when": 1794843326336,
       "tag": "0031_shocking_rumiko_fujikawa",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1794846730908,
+      "tag": "0032_unusual_medusa",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1794846736495,
+      "tag": "0033_parched_catseye",
+      "breakpoints": true
     }
   ]
 }
