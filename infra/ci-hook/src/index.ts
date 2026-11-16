@@ -19,7 +19,11 @@ export interface Env {
 
 const encoder = new TextEncoder();
 
-async function verifySignature(secret: string, body: string, signature: string | null): Promise<boolean> {
+async function verifySignature(
+	secret: string,
+	body: string,
+	signature: string | null,
+): Promise<boolean> {
 	if (!signature?.startsWith("sha256=")) return false;
 	const key = await crypto.subtle.importKey(
 		"raw",
@@ -29,15 +33,22 @@ async function verifySignature(secret: string, body: string, signature: string |
 		["sign"],
 	);
 	const mac = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-	const expected = "sha256=" + [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+	const expected =
+		"sha256=" + [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
 	// Constant-time-ish compare: lengths equal + every byte compared.
 	if (expected.length !== signature.length) return false;
 	let diff = 0;
-	for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+	for (let i = 0; i < expected.length; i++)
+		diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
 	return diff === 0;
 }
 
-async function notifyNtfy(env: Env, title: string, body: string, priority: "low" | "default" | "high"): Promise<void> {
+async function notifyNtfy(
+	env: Env,
+	title: string,
+	body: string,
+	priority: "low" | "default" | "high",
+): Promise<void> {
 	if (!env.NTFY_URL || !env.NTFY_TOPIC) return;
 	const headers: Record<string, string> = {
 		"Content-Type": "application/json",
@@ -66,7 +77,13 @@ interface WorkflowRunPayload {
 
 async function handleWorkflowRun(env: Env, payload: WorkflowRunPayload): Promise<void> {
 	const run = payload.workflow_run;
-	if (payload.action !== "completed" || !run?.conclusion || run.conclusion === "success" || run.conclusion === "skipped" || run.conclusion === "neutral") {
+	if (
+		payload.action !== "completed" ||
+		!run?.conclusion ||
+		run.conclusion === "success" ||
+		run.conclusion === "skipped" ||
+		run.conclusion === "neutral"
+	) {
 		return;
 	}
 	const repo = payload.repository?.full_name ?? "?";
@@ -89,7 +106,11 @@ export default {
 		}
 
 		const body = await request.text();
-		const ok = await verifySignature(env.GITHUB_WEBHOOK_SECRET, body, request.headers.get("X-Hub-Signature-256"));
+		const ok = await verifySignature(
+			env.GITHUB_WEBHOOK_SECRET,
+			body,
+			request.headers.get("X-Hub-Signature-256"),
+		);
 		if (!ok) return new Response("bad signature", { status: 401 });
 
 		const event = request.headers.get("X-GitHub-Event") ?? "";
