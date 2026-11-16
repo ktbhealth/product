@@ -24,6 +24,8 @@ import { env } from "cloudflare:workers";
 import * as Effect from "effect/Effect";
 import type { Page, PanelPage } from "@ktb/kernel";
 import { appPages, portalPages } from "./registry.ts";
+import { plugins } from "#/plugins.ts";
+import { pluginEnabledFn } from "@ktb/server-fns";
 import { SAMPLE_TRANSCRIPT, type Anamnesis, type AnamnesisSection } from "@ktb/anamnesis";
 import { auth, db } from "./platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
@@ -942,6 +944,62 @@ describe("server fns", () => {
 			pages.delete(page.path);
 			await db.delete(pluginState).where(eq(pluginState.pluginId, "consultations.services"));
 		}
+	});
+
+	it("page data gates at package granularity: one disabled id keeps the package live (P-058)", async () => {
+		const adminCookie = await signIn("platform-admin@ktb.test");
+		headers.current = new Headers({ cookie: adminCookie });
+		// /platform is owned by dashboard.panel; the dashboard package's
+		// other member is dashboard.chrome. Disabling ONLY the owning id
+		// leaves the package live — the same contract the CQRS gate and
+		// the route early gates apply.
+		const dashboardIds = plugins.filter((p) => p.pkg === "dashboard").map((p) => p.id);
+		expect(dashboardIds).toContain("dashboard.panel");
+		const disable = (ids: readonly string[]) =>
+			db
+				.insert(pluginState)
+				.values(ids.map((pluginId) => ({ pluginId, enabled: false, updatedAt: new Date() })));
+		const restore = (ids: readonly string[]) =>
+			Promise.all(
+				ids.map((pluginId) => db.delete(pluginState).where(eq(pluginState.pluginId, pluginId))),
+			);
+		try {
+			await disable(["dashboard.panel"]);
+			expect((await portalPageDataFn({ data: "/platform" })).status).toBe("ok");
+			// Every member id off → the package's pages 404 like
+			// unregistered paths.
+			await disable(dashboardIds.filter((id) => id !== "dashboard.panel"));
+			expect(await portalPageDataFn({ data: "/platform" })).toEqual({ status: "notfound" });
+		} finally {
+			await restore(dashboardIds);
+		}
+		expect((await portalPageDataFn({ data: "/platform" })).status).toBe("ok");
+	});
+
+	it("pluginEnabledFn gates plugin file/api routes at package granularity (P-058)", async () => {
+		const patientIds = plugins.filter((p) => p.pkg === "patients").map((p) => p.id);
+		expect(patientIds).toContain("patients.routes");
+		const disable = (ids: readonly string[]) =>
+			db
+				.insert(pluginState)
+				.values(ids.map((pluginId) => ({ pluginId, enabled: false, updatedAt: new Date() })));
+		const restore = (ids: readonly string[]) =>
+			Promise.all(
+				ids.map((pluginId) => db.delete(pluginState).where(eq(pluginState.pluginId, pluginId))),
+			);
+		try {
+			expect(await pluginEnabledFn({ data: "patients.routes" })).toBe(true);
+			// Disabling the gate id itself keeps the route live while a
+			// package sibling stays enabled.
+			await disable(["patients.routes"]);
+			expect(await pluginEnabledFn({ data: "patients.routes" })).toBe(true);
+			await disable(patientIds.filter((id) => id !== "patients.routes"));
+			expect(await pluginEnabledFn({ data: "patients.routes" })).toBe(false);
+		} finally {
+			await restore(patientIds);
+		}
+		// Unknown ids keep the per-id check — unknown counts as enabled.
+		expect(await pluginEnabledFn({ data: "no.such.plugin" })).toBe(true);
 	});
 
 	it("notifications fns list, count and mark read for the session user", async () => {

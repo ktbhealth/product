@@ -41,7 +41,7 @@ import {
 	enabledPlugins,
 	findPortalInstance,
 	KNOWN_CHROME_REGIONS,
-	packageEnabled,
+	packageLive,
 	portalInstances,
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
@@ -104,12 +104,15 @@ export const Route = createFileRoute("/platform")({
 		]);
 		const enabled = enabledIdSet(pluginStates);
 		return {
+			// Package-granular gates (P-058): skip feeds whose plugin
+			// package is fully disabled — the same contract the CQRS
+			// dispatch gate applies to the fns below.
 			audioJobs:
-				hasJobsPlugin && packageEnabled(enabled, "consultations")
+				hasJobsPlugin && packageLive(plugins, enabled, "consultations")
 					? await adminListAudioJobsFn()
 					: [],
 			notifications:
-				hasNotificationsPlugin && packageEnabled(enabled, "notifications")
+				hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
 					? await listMyNotificationsFn()
 					: [],
 			audiences,

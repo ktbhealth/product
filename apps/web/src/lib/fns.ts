@@ -9,6 +9,7 @@ import {
 	collectPortals,
 	defaultPageContext,
 	findPage,
+	packageLive,
 	portalInstanceIdForPath,
 	type PageShell,
 	type PluginStatesResult,
@@ -168,8 +169,9 @@ const portalAudienceAllows = async (
  * in the path's portal instance audience (anonymous → notfound);
  * app pages may be public — effects then run without a bound Principal
  * (`run` instead of `runAs`), so loaders that need a user must guard
- * themselves. The enabled-state gate (`PluginStates.isEnabled`) applies
- * to both shells: a disabled plugin's pages 404 exactly like
+ * themselves. The enabled-state gate applies to both shells at PACKAGE
+ * granularity (same contract as the CQRS gate — `plugins/<pkg>` is one
+ * deployable unit): a fully disabled package's pages 404 exactly like
  * unregistered paths. Page `guard` runs before `loader`; `false` or a
  * failure hides the page. Pages without a loader get
  * `{ status: "ok", data: null }`.
@@ -199,10 +201,19 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
 	const runEffect = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
 		user === null ? run(effect) : runAs(user, effect);
 	// Enabled-state gate (P-058): checked before guard/loader.
+	// Package-granular — the same contract as the CQRS dispatch gate
+	// and the client-side early gates in the route loaders: a page's
+	// package (`plugins/<pkg>`, stamped on the plugin by
+	// discoverPlugins) stays live while ANY member plugin id is
+	// enabled, so disabling `patients.services` alone does not 404 the
+	// package's pages while `patients.routes` is still on. Entries
+	// without a `pkg` stamp (out-of-glob plugins like @ktb/platform,
+	// test-injected fixtures) keep the per-id check.
 	const pluginOn = await runEffect(
 		Effect.gen(function* () {
 			const states = yield* PluginStates;
-			return yield* states.isEnabled(entry.pluginId);
+			if (entry.pkg === undefined) return yield* states.isEnabled(entry.pluginId);
+			return packageLive(serverPlugins, yield* states.enabledIds(), entry.pkg);
 		}),
 	);
 	if (!pluginOn) return { status: "notfound" };

@@ -198,9 +198,11 @@ export interface ServerRuntime {
 	readonly getLocale: () => string;
 	/**
 	 * Plugin enable-state check (P-058) backing `pluginEnabledFn` and the
-	 * `createPluginFileRoute` gate. The composition root wires it to
-	 * `PluginStates.isEnabled`; absent (tests, non-app contexts) the gate
-	 * is inert — there is no plugin_state store to consult anyway.
+	 * `createPluginFileRoute`/`createPluginApiRoute` gates. The
+	 * composition root wires it PACKAGE-granular (live while any member
+	 * plugin id of the owning `plugins/<pkg>` is enabled); absent
+	 * (tests, non-app contexts) the gate is inert — there is no
+	 * plugin_state store to consult anyway.
 	 */
 	readonly pluginEnabled?: (pluginId: string) => Promise<boolean>;
 	/**

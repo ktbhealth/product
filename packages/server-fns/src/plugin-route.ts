@@ -11,9 +11,12 @@ import { peekServerRuntime } from "./runtime.ts";
  * no per-loader `PluginStates.isEnabled` opt-in.
  *
  * The gate id is the package's `*.routes` plugin id (e.g.
- * `"patients.routes"`): disabling it kills the pages while the package's
- * services/API contributions stay live. Pass the id explicitly at each
- * call site — there is no per-package constant to keep in sync.
+ * `"patients.routes"`): the check resolves it to its plugin PACKAGE
+ * (`plugins/<pkg>`, stamped on the registry plugin) and stays live
+ * while ANY member id is enabled — the same package-granular contract
+ * as page dispatch and the CQRS gate (P-058). Pass the id explicitly
+ * at each call site — there is no per-package constant to keep in
+ * sync.
  *
  * `pluginEnabledFn` is a server fn, so the check is isomorphic: during
  * SSR it runs inline; on client-side navigation it round-trips to the

@@ -25,6 +25,11 @@ export type PageShell = "app" | "portal";
 export interface PageEntry {
 	readonly page: Page;
 	readonly pluginId: string;
+	/** Deployable package (`plugins/<pkg>`) owning `pluginId`, stamped
+	 * by discoverPlugins — the enabled-state gate checks the whole
+	 * package, not just this id. Undefined for out-of-glob plugins
+	 * (e.g. @ktb/platform) and test-injected entries → per-id check. */
+	readonly pkg?: string;
 	readonly context?: PageShell;
 }
 
@@ -99,7 +104,12 @@ export const collectPages = (registry: readonly Plugin[]): PageRegistry => {
 			);
 			return;
 		}
-		const entry: PageEntry = { page, pluginId: plugin.id, context };
+		const entry: PageEntry = {
+			page,
+			pluginId: plugin.id,
+			...(plugin.pkg === undefined ? {} : { pkg: plugin.pkg }),
+			context,
+		};
 		pages.set(page.path, entry);
 		(context === "app" ? appPages : portalPages).set(page.path, entry);
 	};
@@ -158,12 +168,19 @@ export const findPage = <V>(map: ReadonlyMap<string, V>, path: string): V | unde
 export interface PortalInstanceEntry {
 	readonly instance: PortalInstance;
 	readonly pluginId: string;
+	/** Same package stamp as `PageEntry.pkg` — the instance's enable
+	 * gate is package-granular too. */
+	readonly pkg?: string;
 }
 
 /** Every portal instance contributed by `registry`, in topo order. */
 export const collectPortals = (registry: readonly Plugin[]): readonly PortalInstanceEntry[] =>
 	registry.flatMap((plugin) =>
-		(plugin.portals ?? []).map((instance) => ({ instance, pluginId: plugin.id })),
+		(plugin.portals ?? []).map((instance) => ({
+			instance,
+			pluginId: plugin.id,
+			...(plugin.pkg === undefined ? {} : { pkg: plugin.pkg }),
+		})),
 	);
 
 /** The instance entry for `id`, or undefined when no plugin declares
