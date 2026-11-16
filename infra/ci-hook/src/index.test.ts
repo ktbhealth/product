@@ -30,11 +30,7 @@ async function post(
 	const headers: Record<string, string> = { "X-GitHub-Event": event };
 	const sig = signature === undefined ? await sign(body) : signature;
 	if (sig !== null) headers["X-Hub-Signature-256"] = sig;
-	return worker.fetch(
-		new Request("https://ci.example/", { method: "POST", headers, body }),
-		env,
-		{} as ExecutionContext,
-	);
+	return worker.fetch(new Request("https://ci.example/", { method: "POST", headers, body }), env);
 }
 
 const workflowRun = (overrides: Record<string, unknown> = {}) =>
@@ -54,11 +50,7 @@ describe("ci-hook worker", () => {
 	afterEach(() => vi.unstubAllGlobals());
 
 	it("answers GET /health", async () => {
-		const res = await worker.fetch(
-			new Request("https://ci.example/health"),
-			makeEnv(),
-			{} as ExecutionContext,
-		);
+		const res = await worker.fetch(new Request("https://ci.example/health"), makeEnv());
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ ok: true, service: "ci-hook" });
 	});
@@ -67,7 +59,6 @@ describe("ci-hook worker", () => {
 		const res = await worker.fetch(
 			new Request("https://ci.example/nope", { method: "POST" }),
 			makeEnv(),
-			{} as ExecutionContext,
 		);
 		expect(res.status).toBe(404);
 	});
@@ -95,7 +86,6 @@ describe("ci-hook worker", () => {
 				body,
 			}),
 			makeEnv(),
-			{} as ExecutionContext,
 		);
 		expect(res.status).toBe(200);
 	});
