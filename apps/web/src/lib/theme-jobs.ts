@@ -72,7 +72,7 @@ export const MAX_THEME_ASSET_BYTES = 10 * 1024 * 1024;
 const MAX_FONT_FILE_BYTES = 5 * 1024 * 1024;
 
 /** Minimal R2 surface the consumer needs. */
-export interface ThemeAssetBucketLike {
+interface ThemeAssetBucketLike {
 	get(key: string): Promise<{
 		readonly size: number;
 		arrayBuffer(): Promise<ArrayBuffer>;
@@ -486,12 +486,12 @@ export async function processThemeFontJob(
 
 // ---------- consumer ----------
 
-export const themeAssetRegistration = (deps: ThemeJobDeps): JobRegistration => ({
+const themeAssetRegistration = (deps: ThemeJobDeps): JobRegistration => ({
 	decodePayload: (payload) => decodeThemeAssetJob(payload),
 	handle: (payload) => processThemeAssetJob(payload as ThemeAssetJobPayload, deps),
 });
 
-export const themeFontRegistration = (deps: ThemeJobDeps): JobRegistration => ({
+const themeFontRegistration = (deps: ThemeJobDeps): JobRegistration => ({
 	decodePayload: (payload) => decodeThemeFontJob(payload),
 	handle: (payload) => processThemeFontJob(payload as ThemeFontJobPayload, deps),
 });
