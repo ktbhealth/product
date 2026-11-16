@@ -718,19 +718,29 @@ describe("server fns", () => {
 			path: "/platform/test-unguarded",
 			component: () => null,
 		};
+		// A guard that throws counts as denied — same contract as pageData.
+		const exploding: PanelPage = {
+			id: "test.exploding",
+			path: "/platform/test-exploding",
+			component: () => null,
+			guard: () => Effect.fail("boom") as never,
+		};
 		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set(denied.path, { page: denied, pluginId: "platform.routes" });
 		pages.set(allowed.path, { page: allowed, pluginId: "platform.routes" });
 		pages.set(unguarded.path, { page: unguarded, pluginId: "platform.routes" });
+		pages.set(exploding.path, { page: exploding, pluginId: "platform.routes" });
 		try {
 			const deniedPaths = await consoleDeniedFn();
 			expect(deniedPaths).toContain(denied.path);
+			expect(deniedPaths).toContain(exploding.path);
 			expect(deniedPaths).not.toContain(allowed.path);
 			expect(deniedPaths).not.toContain(unguarded.path);
 		} finally {
 			pages.delete(denied.path);
 			pages.delete(allowed.path);
 			pages.delete(unguarded.path);
+			pages.delete(exploding.path);
 		}
 		// Anonymous → empty list (nothing to filter; the menu never
 		// renders for them anyway).
