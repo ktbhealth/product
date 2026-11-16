@@ -1,0 +1,1 @@
+ALTER TABLE `i18n_messages` ADD `draft_value` text;

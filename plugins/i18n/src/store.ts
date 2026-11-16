@@ -3,7 +3,13 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { DbClient } from "@ktb/db";
 import type { MessageRow, MessageScope } from "@ktb/i18n";
 
-import { i18nLocales, i18nMessages, i18nNamespaces } from "./schema.ts";
+import {
+	i18nCrdtUpdates,
+	i18nLocales,
+	i18nMessages,
+	i18nNamespaces,
+	type I18nMessage,
+} from "./schema.ts";
 
 /**
  * Drizzle access for the i18n tables. All reads here feed the per-isolate
@@ -99,3 +105,82 @@ export const listEnabledLocales = async (
 };
 
 export { i18nLocales, i18nMessages, i18nNamespaces };
+
+// ---------- panel/admin reads (all statuses, drafts included) ----------
+
+export interface MessageFilter {
+	readonly namespace?: string;
+	readonly locale?: string;
+	readonly scope?: MessageScope;
+	readonly scopeId?: string;
+	readonly status?: "draft" | "published";
+}
+
+/** Full rows (draft_value included) for the panel matrix/editor. */
+export const listMessageRows = async (
+	db: DbClient,
+	filter: MessageFilter = {},
+): Promise<readonly I18nMessage[]> => {
+	const conds = [];
+	if (filter.namespace !== undefined) conds.push(eq(i18nMessages.namespace, filter.namespace));
+	if (filter.locale !== undefined) conds.push(eq(i18nMessages.locale, filter.locale));
+	if (filter.scope !== undefined) conds.push(eq(i18nMessages.scope, filter.scope));
+	if (filter.scopeId !== undefined) conds.push(eq(i18nMessages.scopeId, filter.scopeId));
+	if (filter.status !== undefined) conds.push(eq(i18nMessages.status, filter.status));
+	return db
+		.select()
+		.from(i18nMessages)
+		.where(conds.length === 0 ? undefined : and(...conds));
+};
+
+export const getMessageRow = async (
+	db: DbClient,
+	id: {
+		readonly namespace: string;
+		readonly key: string;
+		readonly locale: string;
+		readonly scope: MessageScope;
+		readonly scopeId: string;
+	},
+): Promise<I18nMessage | undefined> => {
+	const rows = await db
+		.select()
+		.from(i18nMessages)
+		.where(
+			and(
+				eq(i18nMessages.namespace, id.namespace),
+				eq(i18nMessages.key, id.key),
+				eq(i18nMessages.locale, id.locale),
+				eq(i18nMessages.scope, id.scope),
+				eq(i18nMessages.scopeId, id.scopeId),
+			),
+		);
+	return rows[0];
+};
+
+/** Loro op-log bytes for one message, oldest first. */
+export const listCrdtUpdates = async (
+	db: DbClient,
+	id: {
+		readonly namespace: string;
+		readonly key: string;
+		readonly locale: string;
+		readonly scope: MessageScope;
+		readonly scopeId: string;
+	},
+): Promise<readonly Uint8Array[]> => {
+	const rows = await db
+		.select({ update: i18nCrdtUpdates.update })
+		.from(i18nCrdtUpdates)
+		.where(
+			and(
+				eq(i18nCrdtUpdates.namespace, id.namespace),
+				eq(i18nCrdtUpdates.key, id.key),
+				eq(i18nCrdtUpdates.locale, id.locale),
+				eq(i18nCrdtUpdates.scope, id.scope),
+				eq(i18nCrdtUpdates.scopeId, id.scopeId),
+			),
+		)
+		.orderBy(i18nCrdtUpdates.id);
+	return rows.map((r) => r.update as Uint8Array);
+};

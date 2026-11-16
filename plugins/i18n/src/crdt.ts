@@ -53,3 +53,21 @@ export const applyTextEdit = (
 	const update = doc.export({ mode: "update", from: before });
 	return { doc, update, value: docValue(doc) };
 };
+
+/**
+ * Whole-value replace (panel textarea saves): rebuild the doc from the
+ * message's op log, swap the entire text, export the delta. Concurrent
+ * remote edits still merge — Loro reconciles overlapping replaces.
+ */
+export const replaceDocValue = (
+	updates: readonly Uint8Array[],
+	value: string,
+): { readonly update: Uint8Array; readonly value: string } => {
+	const doc = updates.length === 0 ? newMessageDoc() : docFromUpdates(updates);
+	const before = doc.oplogVersion();
+	const text = doc.getText(FIELD);
+	if (text.length > 0) text.delete(0, text.length);
+	if (value !== "") text.insert(0, value);
+	const update = doc.export({ mode: "update", from: before });
+	return { update, value: docValue(doc) };
+};

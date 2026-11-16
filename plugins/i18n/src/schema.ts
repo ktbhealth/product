@@ -63,6 +63,9 @@ export const i18nMessages = sqliteTable(
 		scopeId: text("scope_id").notNull().default(""),
 		kind: text("kind").$type<MessageKind>().notNull().default("text"),
 		value: text("value").notNull(),
+		/** Staged edit awaiting publish; `value` stays live until then.
+		 * NULL = no pending draft. */
+		draftValue: text("draft_value"),
 		status: text("status").$type<"draft" | "published">().notNull().default("draft"),
 		/** Declared param signature (names + formatter hints). */
 		params: text("params", { mode: "json" }).$type<readonly MessageParam[]>().notNull(),
