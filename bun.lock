@@ -59,6 +59,7 @@
         "@ktb/eval-credentials": "workspace:*",
         "@ktb/eval-persona": "workspace:*",
         "@ktb/eval-validator": "workspace:*",
+        "@ktb/i18n-plugin": "workspace:*",
         "@ktb/infra-cloudflare": "workspace:*",
         "@ktb/interop": "workspace:*",
         "@ktb/interop-fhir": "workspace:*",
@@ -394,6 +395,15 @@
       },
       "devDependencies": {
         "@types/pdfkit": "^0.17.7",
+      },
+    },
+    "packages/i18n": {
+      "name": "@ktb/i18n",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "vitest": "5.1.0",
       },
     },
     "packages/interop": {
@@ -810,6 +820,22 @@
       },
       "peerDependencies": {
         "react": "^19.2.0",
+      },
+    },
+    "plugins/i18n": {
+      "name": "@ktb/i18n-plugin",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "loro-crdt": "1.17.1",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^9.6.0",
+        "better-sqlite3": "^13.0.3",
+        "vitest": "5.1.0",
       },
     },
     "plugins/integrity": {
@@ -1702,6 +1728,10 @@
     "@ktb/export-pdf": ["@ktb/export-pdf@workspace:packages/export-pdf"],
 
     "@ktb/groups": ["@ktb/groups@workspace:plugins/groups"],
+
+    "@ktb/i18n": ["@ktb/i18n@workspace:packages/i18n"],
+
+    "@ktb/i18n-plugin": ["@ktb/i18n-plugin@workspace:plugins/i18n"],
 
     "@ktb/infra-cloudflare": ["@ktb/infra-cloudflare@workspace:infra/cloudflare"],
 
@@ -3092,6 +3122,8 @@
     "long": ["long@5.3.2", "", {}, "sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA=="],
 
     "longest-streak": ["longest-streak@3.1.0", "", {}, "sha512-9Ri+o0JYgehTaVBBDoMqIl8GXtbWg711O3srftcHhZ0dqnETqLaoIK0x17fUw9rFSlK/0NlsKe0Ahhyl5pXE2g=="],
+
+    "loro-crdt": ["loro-crdt@1.17.1", "", {}, "sha512-83hWRYG6eMMpPezm+yXWlOqCuUsC0BYY1MVCPW9x2zlikgkHhL7GC7Q6JFH+Hjvauyn287Q1MiwTuRW0lUOUag=="],
 
     "lru-cache": ["lru-cache@11.5.3", "", {}, "sha512-U4N8FgzmWxc8k1VH8Kr6lQg18U7Fjvby6wXHVRX/ZZ7IwWbRMgrRbP0Wrb5q5NVinryp4SQampHKdvtecItxUg=="],
 
