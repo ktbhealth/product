@@ -275,6 +275,9 @@
         "effect": "4.1.2",
       },
     },
+    "packages/crypto": {
+      "name": "@ktb/crypto",
+    },
     "packages/db": {
       "name": "@ktb/db",
       "dependencies": {
@@ -608,6 +611,7 @@
         "@ktb/bot": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/export-pdf": "workspace:*",
+        "@ktb/integrity": "workspace:*",
         "@ktb/interop": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/patient-access": "workspace:*",
@@ -746,6 +750,17 @@
       },
       "peerDependencies": {
         "react": "^19.2.0",
+      },
+    },
+    "plugins/integrity": {
+      "name": "@ktb/integrity",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/crypto": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
       },
     },
     "plugins/invites": {
@@ -1555,6 +1570,8 @@
 
     "@ktb/consultations": ["@ktb/consultations@workspace:plugins/consultations"],
 
+    "@ktb/crypto": ["@ktb/crypto@workspace:packages/crypto"],
+
     "@ktb/dashboard": ["@ktb/dashboard@workspace:plugins/dashboard"],
 
     "@ktb/db": ["@ktb/db@workspace:packages/db"],
@@ -1596,6 +1613,8 @@
     "@ktb/infra-oci": ["@ktb/infra-oci@workspace:infra/oci"],
 
     "@ktb/infra-ports": ["@ktb/infra-ports@workspace:infra/ports"],
+
+    "@ktb/integrity": ["@ktb/integrity@workspace:plugins/integrity"],
 
     "@ktb/interop": ["@ktb/interop@workspace:packages/interop"],
 

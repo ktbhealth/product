@@ -4,10 +4,23 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { Option } from "effect";
-import { and, count, desc, eq, inArray, isNotNull, ne, or, type SQL } from "drizzle-orm";
+import {
+	and,
+	asc,
+	count,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	ne,
+	or,
+	type SQL,
+} from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
+import { integrityServicesPlugin, recordVersion } from "@ktb/integrity";
 import { Db, type DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -47,6 +60,9 @@ import { NewConsultationLink } from "./chrome.tsx";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
 
 export type ConsultationRow = typeof consultations.$inferSelect;
+
+/** `record_versions.entity_type` for the anamnesis document (PL-007 F1). */
+export const ANAMNESIS_ENTITY_TYPE = "consultation.anamnesis";
 
 export interface SaveConsultationInput {
 	readonly transcript: string;
@@ -536,6 +552,40 @@ async function getLiveConsultation(db: DbClient, id: number) {
 	return rows[0] ?? null;
 }
 
+/**
+ * Current integrity columns for a consultation — read BEFORE an
+ * attachAnamnesis write so a pre-versioning row can seed its stored
+ * anamnesis as version 1 (the write then chains as v2, preserving the
+ * history the backfill would otherwise lose).
+ */
+async function anamnesisIntegrityState(db: DbClient, id: number) {
+	const rows = await db
+		.select({
+			anamnesis: consultations.anamnesis,
+			anamnesisVersion: consultations.anamnesisVersion,
+		})
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/** Point the consultation's integrity columns at a recorded version. */
+async function setAnamnesisIntegrity(
+	db: DbClient,
+	id: number,
+	version: { readonly version: number; readonly contentHash: string; readonly blobHash: string },
+) {
+	await db
+		.update(consultations)
+		.set({
+			anamnesisHash: version.contentHash,
+			anamnesisVersion: version.version,
+			blobHash: version.blobHash,
+		})
+		.where(eq(consultations.id, id));
+}
+
 async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, scope?: SQL) {
 	// patientId is tri-state: undefined leaves the column untouched,
 	// null clears the link, a number re-links (ownership already checked
@@ -553,11 +603,44 @@ async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, scope?:
 	};
 	if (data.patientId === null) set.patientId = null;
 	else if (data.patientId !== undefined) set.patientId = data.patientId;
-	await db
+	const rows = await db
 		.update(consultations)
 		.set(set)
-		.where(and(eq(consultations.id, data.consultationId), scope));
+		.where(and(eq(consultations.id, data.consultationId), scope))
+		.returning({ id: consultations.id });
+	// Only an applied write gets a version — a scope/missing-row no-op
+	// must not mint a record_versions entry.
+	return rows.length > 0;
 }
+
+/** Rows awaiting the v1 materialization (T-138 backfill): anamnesis
+ * written before integrity columns existed. */
+async function unversionedAnamnesisRows(db: DbClient, limit: number) {
+	return db
+		.select({
+			id: consultations.id,
+			anamnesis: consultations.anamnesis,
+			engine: consultations.engine,
+			userId: consultations.userId,
+			createdAt: consultations.createdAt,
+		})
+		.from(consultations)
+		.where(and(isNotNull(consultations.anamnesis), isNull(consultations.anamnesisVersion)))
+		.orderBy(asc(consultations.id))
+		.limit(limit);
+}
+
+async function countUnversionedAnamnesis(db: DbClient) {
+	const rows = await db
+		.select({ n: count() })
+		.from(consultations)
+		.where(and(isNotNull(consultations.anamnesis), isNull(consultations.anamnesisVersion)));
+	return rows[0]?.n ?? 0;
+}
+
+/** Rows materialized per backfill pass — the admin console loader
+ * invokes it repeatedly until `remaining` reaches 0. */
+export const BACKFILL_BATCH = 200;
 
 async function recordConsent(db: DbClient, id: number, scope?: SQL) {
 	await db
@@ -777,6 +860,16 @@ export class Consultations extends Context.Service<
 			userId: string,
 			input: AttachAnamnesisInput,
 		) => Effect.Effect<void, Forbidden>;
+		/**
+		 * Materialize version-1 integrity rows for anamneses written
+		 * before record_versions existed (T-138 backfill) — idempotent,
+		 * batched by BACKFILL_BATCH, platform admins only. `remaining`
+		 * reports rows still unversioned after this pass.
+		 */
+		readonly adminBackfillVersions: () => Effect.Effect<
+			{ backfilled: number; remaining: number },
+			Forbidden
+		>;
 		readonly recordConsent: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
 		/** Link a stored R2 audio object to the consultation (status "stored"). */
 		readonly attachAudio: (
@@ -904,9 +997,23 @@ export const ConsultationsLive = Layer.effect(
 				const tenant = yield* Tenant;
 				yield* Effect.annotateCurrentSpan({ userId, engine: input.engine });
 				yield* Effect.logInfo("consultation save", { userId, engine: input.engine });
-				return yield* Effect.promise(() =>
+				const saved = yield* Effect.promise(() =>
 					saveConsultation(db, userId, input, tenantScopeId(tenant)),
 				);
+				// T-138 interim integrity: server-side content hash as
+				// version 1 (ZK tenants later sign the same hash client-side).
+				// A failed/absent integrity plugin never blocks the save.
+				const recorded = yield* recordVersion({
+					entityType: ANAMNESIS_ENTITY_TYPE,
+					entityId: saved.id,
+					payload: JSON.stringify(input.anamnesis),
+					engine: input.engine,
+					actorUserId: userId,
+				});
+				if (recorded !== null) {
+					yield* Effect.promise(() => setAnamnesisIntegrity(db, saved.id, recorded));
+				}
+				return saved;
 			}),
 			list: Effect.fn("Consultations.list")(function* (userId: string, patientId?: number) {
 				yield* requireCanAs("consultation.read", { userId });
@@ -1083,7 +1190,62 @@ export const ConsultationsLive = Layer.effect(
 					consultationId: input.consultationId,
 					engine: input.engine,
 				});
-				return yield* Effect.promise(() => attachAnamnesis(db, input, scope));
+				// Snapshot integrity state BEFORE the write — a pre-versioning
+				// anamnesis still stored on the row seeds version 1.
+				const prior = yield* Effect.promise(() =>
+					anamnesisIntegrityState(db, input.consultationId),
+				);
+				const applied = yield* Effect.promise(() => attachAnamnesis(db, input, scope));
+				if (applied) {
+					if (prior !== null && prior.anamnesis !== null && prior.anamnesisVersion === null) {
+						yield* recordVersion({
+							entityType: ANAMNESIS_ENTITY_TYPE,
+							entityId: input.consultationId,
+							payload: prior.anamnesis,
+							engine: null,
+							actorUserId: userId,
+						});
+					}
+					const recorded = yield* recordVersion({
+						entityType: ANAMNESIS_ENTITY_TYPE,
+						entityId: input.consultationId,
+						payload: JSON.stringify(input.anamnesis),
+						engine: input.engine,
+						actorUserId: userId,
+					});
+					if (recorded !== null) {
+						yield* Effect.promise(() => setAnamnesisIntegrity(db, input.consultationId, recorded));
+					}
+				}
+			}),
+			adminBackfillVersions: Effect.fn("Consultations.adminBackfillVersions")(function* () {
+				yield* platformAdmin.requireAdmin();
+				const rows = yield* Effect.promise(() => unversionedAnamnesisRows(db, BACKFILL_BATCH));
+				let backfilled = 0;
+				for (const row of rows) {
+					const recorded = yield* recordVersion({
+						entityType: ANAMNESIS_ENTITY_TYPE,
+						entityId: row.id,
+						// `as string` — the query filters IS NOT NULL.
+						payload: row.anamnesis as string,
+						engine: row.engine,
+						actorUserId: row.userId,
+						createdAt: row.createdAt,
+					});
+					if (recorded !== null) {
+						yield* Effect.promise(() => setAnamnesisIntegrity(db, row.id, recorded));
+						backfilled += 1;
+					}
+				}
+				const remaining = yield* Effect.promise(() => countUnversionedAnamnesis(db));
+				if (backfilled > 0) {
+					yield* audit({
+						action: "consultations.integrity.backfill",
+						targetType: "consultation",
+						detail: { backfilled, remaining },
+					});
+				}
+				return { backfilled, remaining };
 			}),
 			recordConsent: Effect.fn("Consultations.recordConsent")(function* (
 				id: number,
@@ -1286,9 +1448,9 @@ export const PatientDeleteCascadeLive = Command.handlersOf(PatientCascadeCommand
 export const consultationsServicesPlugin = definePlugin({
 	id: "consultations.services",
 	requiredDeps: [patientsServicesPlugin.id, platformAdminPlugin.id],
-	// Audit writes resolve the Audit service via serviceOption — the dep
-	// edge is an ordering hint only; absence is legal.
-	optionalDeps: [auditServicesPlugin.id],
+	// Audit + integrity writes resolve via serviceOption — the dep edges
+	// are ordering hints only; absence of either is legal.
+	optionalDeps: [auditServicesPlugin.id, integrityServicesPlugin.id],
 	services: Layer.mergeAll(
 		ConsultationsLive,
 		ConsultationsQueriesLive,
@@ -1377,6 +1539,12 @@ export const consultationsPanelPlugin = definePlugin({
 					Effect.gen(function* () {
 						const consultations = yield* Consultations;
 						const patientsSvc = yield* Patients;
+						// T-138 backfill: each admin console visit materializes a
+						// batch of version-1 hashes for pre-versioning anamneses —
+						// idempotent, self-draining, no runbook step.
+						yield* consultations
+							.adminBackfillVersions()
+							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
 						const [rows, owners, patientRows] = yield* Effect.all([
 							consultations
 								.adminList()

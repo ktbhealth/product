@@ -23,6 +23,7 @@
 		"@ktb/bot": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/export-pdf": "workspace:*",
+		"@ktb/integrity": "workspace:*",
 		"@ktb/interop": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/patient-access": "workspace:*",

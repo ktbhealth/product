@@ -9,6 +9,7 @@ export * from "../../../plugins/consultations/src/schema.ts";
 export * from "../../../plugins/doctors/src/schema.ts";
 export * from "../../../plugins/eval-validator/src/schema.ts";
 export * from "../../../plugins/groups/src/schema.ts";
+export * from "../../../plugins/integrity/src/schema.ts";
 export * from "../../../plugins/invites/src/schema.ts";
 export * from "../../../plugins/notifications/src/schema.ts";
 export * from "../../../plugins/pages/src/schema.ts";

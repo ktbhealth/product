@@ -63,6 +63,18 @@ export const consultations = sqliteTable(
 		correctedTranscript: text("corrected_transcript"),
 		/** Which engine produced correctedTranscript (e.g. "anthropic", "workers-ai:..."). */
 		enhancementEngine: text("enhancement_engine"),
+		/**
+		 * Integrity columns (PL-007 F1, T-138): `anamnesisHash` is the
+		 * SHA-256 content hash of the canonical anamnesis document and
+		 * `anamnesisVersion` the matching `record_versions` row — NULL on
+		 * rows that predate versioning (the backfill materializes them as
+		 * version 1). `blobHash` is SHA-256 over the stored `anamnesis`
+		 * bytes — a corruption check that stays meaningful once the column
+		 * holds AEAD ciphertext for ZK tenants.
+		 */
+		anamnesisHash: text("anamnesis_hash"),
+		anamnesisVersion: integer("anamnesis_version"),
+		blobHash: text("blob_hash"),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [index("consultations_tenant_id_idx").on(table.tenantId)],

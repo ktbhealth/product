@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
+import { Integrity, IntegrityLive, RECORD_VERSIONS_TEST_DDL, recordVersions } from "@ktb/integrity";
 import { Db, makeDb } from "@ktb/db";
 import {
 	consultations as consultationsTable,
@@ -9,7 +10,7 @@ import {
 	user as userTable,
 } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import {
 	Patients,
 	patientsServicesPlugin,
@@ -60,8 +61,9 @@ CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NUL
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
 ${AUDIT_TEST_DDL}
+${RECORD_VERSIONS_TEST_DDL}
 `;
 
 // ConsultationsLive requires PlatformAdmin (adminList) — every runtime
@@ -69,6 +71,7 @@ ${AUDIT_TEST_DDL}
 const liveDeps = (
 	db: ReturnType<typeof makeDb>,
 	eventBus: Layer.Layer<EventBus> = makeEventBus(),
+	withIntegrity = true,
 ) => {
 	const infra = Layer.mergeAll(
 		Layer.succeed(Db, db),
@@ -81,6 +84,9 @@ const liveDeps = (
 		// admin_audit rows (T-037); fake-db tests degrade to a no-op
 		// insert and the absent-service path stays covered elsewhere.
 		AuditLive.pipe(Layer.provide(infra)),
+		// Real integrity service: save/attach mint record_versions rows
+		// (T-138); a runtime without it exercises the absent-plugin path.
+		...(withIntegrity ? [IntegrityLive.pipe(Layer.provide(infra))] : []),
 		// ConsultationsLive dispatches `patients.ownerOf` / `patients.delete`
 		// — register the real handlers against the test db (same impls the
 		// patients plugin ships).
@@ -636,6 +642,201 @@ describe("ConsultationsLive", () => {
 			"u1",
 			call((c) => c.recordConsent(9999, "u1")),
 		);
+	});
+});
+
+describe("anamnesis integrity versioning (T-138)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Consultations | Integrity, never>;
+	let testDb: ReturnType<typeof makeDb>;
+
+	const asUser = <A, E>(
+		userId: string | null,
+		effect: Effect.Effect<A, E, Consultations | Integrity>,
+		email?: string,
+	) =>
+		runtime.runPromise(
+			Effect.provideService(effect, Principal, userId === null ? null : { userId, email }),
+		);
+
+	const call = <A, E>(f: (c: Consultations["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(Consultations, f);
+
+	const versionsOf = (consultationId: number) =>
+		runtime.runPromise(
+			Effect.flatMap(Integrity, (i) => i.versions("consultation.anamnesis", consultationId)),
+		);
+
+	const integrityColumns = async (consultationId: number) => {
+		const rows = await testDb
+			.select({
+				hash: consultationsTable.anamnesisHash,
+				version: consultationsTable.anamnesisVersion,
+				blob: consultationsTable.blobHash,
+			})
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, consultationId));
+		return rows[0]!;
+	};
+
+	beforeAll(() => {
+		testDb = makeDb(makeD1(DDL));
+		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const saveInput = (over: Partial<SaveConsultationInput> = {}): SaveConsultationInput => ({
+		transcript: "t",
+		anamnesis: { marker: Math.random() } as unknown as SaveConsultationInput["anamnesis"],
+		engine: "e",
+		...over,
+	});
+
+	it("save mints version 1 and stamps the integrity columns", async () => {
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		const versions = await versionsOf(saved.id);
+		expect(versions).toHaveLength(1);
+		expect(versions[0]!.version).toBe(1);
+		expect(versions[0]!.prevHash).toBeNull();
+		expect(versions[0]!.signature).toBeNull();
+		expect(versions[0]!.actorUserId).toBe("u1");
+		const cols = await integrityColumns(saved.id);
+		expect(cols.version).toBe(1);
+		expect(cols.hash).toBe(versions[0]!.contentHash);
+		expect(cols.blob).toBe(versions[0]!.blobHash);
+	});
+
+	it("attachAnamnesis appends a chained version per write", async () => {
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: saved.id,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e2",
+				}),
+			),
+		);
+		const versions = await versionsOf(saved.id);
+		expect(versions.map((v) => v.version)).toEqual([1, 2]);
+		expect(versions[1]!.prevHash).toBe(versions[0]!.contentHash);
+		expect(versions[1]!.engine).toBe("e2");
+		const cols = await integrityColumns(saved.id);
+		expect(cols.version).toBe(2);
+		expect(cols.hash).toBe(versions[1]!.contentHash);
+	});
+
+	it("attach on a pre-versioning row seeds the stored anamnesis as v1 first", async () => {
+		// Simulate a row written before integrity columns existed.
+		const id = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		const legacyPayload = JSON.stringify({ legacy: true });
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesis: legacyPayload })
+			.where(eq(consultationsTable.id, id!));
+
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: id!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+		const versions = await versionsOf(id!);
+		expect(versions.map((v) => v.version)).toEqual([1, 2]);
+		expect(versions[0]!.payload).toBe(legacyPayload);
+		expect(versions[0]!.prevHash).toBeNull();
+		expect(versions[1]!.prevHash).toBe(versions[0]!.contentHash);
+		const cols = await integrityColumns(id!);
+		expect(cols.version).toBe(2);
+	});
+
+	it("attach on a missing row mints no version", async () => {
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: 9999,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+		expect(await versionsOf(9999)).toHaveLength(0);
+	});
+
+	it("adminBackfillVersions materializes v1 for legacy anamneses (admin only)", async () => {
+		// Two legacy rows: one gets versioned by backfill, one already
+		// has a version column set and is skipped.
+		const legacyId = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesis: JSON.stringify({ old: "doc" }), engine: "old-engine" })
+			.where(eq(consultationsTable.id, legacyId!));
+		// A row with no anamnesis must never be backfilled.
+		const emptyId = await createConsultation(testDb, { userId: "u1", source: "browser" });
+
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.adminBackfillVersions()),
+			),
+		).rejects.toMatchObject({
+			_tag: "Forbidden",
+		});
+
+		const result = await asUser(
+			"u1",
+			call((c) => c.adminBackfillVersions()),
+			"admin@x.com",
+		);
+		expect(result.backfilled).toBeGreaterThanOrEqual(1);
+		const versions = await versionsOf(legacyId!);
+		expect(versions).toHaveLength(1);
+		expect(versions[0]!.engine).toBe("old-engine");
+		expect(versions[0]!.actorUserId).toBe("u1");
+		expect(await versionsOf(emptyId!)).toHaveLength(0);
+		const cols = await integrityColumns(legacyId!);
+		expect(cols.version).toBe(1);
+
+		// Second pass is a no-op — idempotent.
+		const again = await asUser(
+			"u1",
+			call((c) => c.adminBackfillVersions()),
+			"admin@x.com",
+		);
+		expect(again.backfilled).toBe(0);
+		expect(again.remaining).toBe(0);
+	});
+
+	it("save still works with the integrity plugin absent", async () => {
+		// The recordVersion helper resolves via serviceOption and must
+		// degrade to null — the save itself is never blocked.
+		const withoutIntegrity = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb, makeEventBus(), false))),
+		);
+		const saved = await withoutIntegrity.runPromise(
+			Effect.provideService(
+				call((c) => c.save("u1", saveInput())),
+				Principal,
+				{ userId: "u1" },
+			),
+		);
+		expect(saved.id).toBeGreaterThan(0);
+		const cols = await integrityColumns(saved.id);
+		expect(cols.version).toBeNull();
+		expect(cols.hash).toBeNull();
+		await withoutIntegrity.dispose();
 	});
 });
 
@@ -1288,6 +1489,7 @@ describe("plugins", () => {
 			loader!().pipe(
 				Effect.provideService(Consultations, {
 					adminList: () => Effect.succeed([]),
+					adminBackfillVersions: () => Effect.succeed({ backfilled: 0, remaining: 0 }),
 				} as never),
 				Effect.provideService(Patients, {
 					adminOwners: () => Effect.succeed([]),
@@ -1303,6 +1505,23 @@ describe("plugins", () => {
 			owners: [],
 			patients: [{ id: 1, name: "Pat", ownerId: "u9", ownerName: "" }],
 		});
+	});
+
+	it("platform loader collapses Forbidden services to empty lists", async () => {
+		const loader = consultationsPanelPlugin.panel?.pages?.[0]?.loader;
+		const result = await Effect.runPromise(
+			loader!().pipe(
+				Effect.provideService(Consultations, {
+					adminList: () => Effect.fail(new Forbidden({ path: "x" })),
+					adminBackfillVersions: () => Effect.fail(new Forbidden({ path: "x" })),
+				} as never),
+				Effect.provideService(Patients, {
+					adminOwners: () => Effect.fail(new Forbidden({ path: "x" })),
+					adminList: () => Effect.fail(new Forbidden({ path: "x" })),
+				} as never),
+			),
+		);
+		expect(result).toEqual({ consultations: [], owners: [], patients: [] });
 	});
 
 	it("exports the discovery plugins array", () => {
