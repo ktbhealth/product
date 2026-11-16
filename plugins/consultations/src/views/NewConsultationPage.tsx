@@ -43,6 +43,7 @@ import {
 	type ConsultationAudioInfo,
 	type TranscriptView,
 } from "./-transcript.tsx";
+import { patientDek, PATIENT_ENTITY_TYPE } from "@ktb/patients/zk";
 import {
 	consultationDek,
 	encryptAnamnesis,
@@ -51,6 +52,7 @@ import {
 	newConsultationDek,
 	signAnamnesis,
 	type ConsultationZk,
+	type GrantInput,
 } from "../zk.ts";
 
 function fmtElapsed(totalSec: number) {
@@ -125,6 +127,14 @@ export interface NewConsultationApi {
 	invitePatient?(input: {
 		data: { patientId: number; email: string };
 	}): Promise<{ ok: true; emailed: boolean } | { ok: false; error: string }>;
+	/**
+	 * Optional (ZK, T-148): registered portal-device pubkeys of users
+	 * holding an active link to `patientId` — save wraps the record DEK
+	 * to them so the portal can decrypt it at once.
+	 */
+	portalReaders?(input: { data: number }): Promise<{
+		readonly readers: readonly { readonly readerId: string; readonly wrapPublicKey: string }[];
+	} | null>;
 }
 
 export function NewConsultationPage({
@@ -468,12 +478,14 @@ export function NewConsultationPage({
 			// consultation DEK before upload — the server stores ciphertext
 			// and the Whisper queue never sees it. Fail closed: no grant,
 			// no upload.
-			let body: Uint8Array | Blob = blob;
+			let body: Blob = blob;
 			let contentType = (blob.type || "audio/webm").split(";")[0]!;
 			if (zk) {
 				const dek = await consultationDek(zk.keyring, zk.api, id);
 				if (!dek) throw new Error("audio upload blocked — record is locked on this device");
-				body = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
+				const encrypted = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
+				// `slice()` re-types ArrayBufferLike → ArrayBuffer for BlobPart.
+				body = new Blob([encrypted.slice()]);
 				contentType = "application/octet-stream";
 			}
 			const res = await fetch(`/api/consultations/${id}/audio`, {
@@ -523,6 +535,47 @@ export function NewConsultationPage({
 		setToast({ id: Date.now(), ...t });
 	}
 
+	/**
+	 * T-148: wrap `dek` to every registered portal device of the
+	 * patient's active links (readerKind "patient") and — so the portal
+	 * can render the record name — grant the patient-record DEK to the
+	 * same readers. Best-effort: a failure never blocks the save; the
+	 * portal-access page grant pass is the backstop.
+	 */
+	async function portalGrants(
+		zkCtx: ConsultationZk,
+		dek: CryptoKey,
+		forPatientId: number | null,
+	): Promise<GrantInput[]> {
+		if (!api.portalReaders || forPatientId === null) return [];
+		try {
+			const plan = await api.portalReaders({ data: forPatientId });
+			if (!plan || plan.readers.length === 0) return [];
+			const wrapAll = async (key: CryptoKey): Promise<GrantInput[]> =>
+				Promise.all(
+					plan.readers.map(async (reader) => ({
+						readerKind: "patient" as const,
+						readerPubkey: reader.wrapPublicKey,
+						readerId: reader.readerId,
+						wrappedDek: await zkCtx.keyring.wrapKeyFor(key, reader.wrapPublicKey),
+					})),
+				);
+			const pDek = await patientDek(zkCtx.keyring, zkCtx.api, forPatientId);
+			if (pDek !== null) {
+				await zkCtx.api.grant({
+					entityType: PATIENT_ENTITY_TYPE,
+					entityId: forPatientId,
+					grants: await wrapAll(pDek),
+				});
+			}
+			return wrapAll(dek);
+		} catch {
+			// Best-effort: the portal-access grant pass is the backstop —
+			// a failed reader lookup or unwrap must never block the save.
+			return [];
+		}
+	}
+
 	async function save() {
 		/* v8 ignore next -- save button only renders with anamnesis and is disabled while saving */
 		if (!anamnesis || saving) return;
@@ -546,6 +599,9 @@ export function NewConsultationPage({
 						engine: engine ?? "unknown",
 						patientId,
 						ciphered: true,
+						// T-148: attach may add readers — portal devices of the
+						// linked patient ride the same grant wire.
+						grants: await portalGrants(zk, dek, patientId),
 						version,
 					};
 				} else {
@@ -567,6 +623,9 @@ export function NewConsultationPage({
 					// clinic device, encrypt transcript + anamnesis and sign
 					// the version — grants travel with the create.
 					const { dek, grants } = await newConsultationDek(zk.keyring, zk.api);
+					// T-148: portal devices of the linked patient join the
+					// grant list at creation (readerKind "patient").
+					grants.push(...(await portalGrants(zk, dek, patientId)));
 					const encrypted = await encryptConsultationDraft(dek, { transcript, anamnesis });
 					const version = await signAnamnesis(zk.keyring, anamnesis);
 					payload = {

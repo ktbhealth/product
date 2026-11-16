@@ -176,6 +176,13 @@
       "when": 1794793820482,
       "tag": "0025_known_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1794803843681,
+      "tag": "0026_long_whistler",
+      "breakpoints": true
     }
   ]
 }

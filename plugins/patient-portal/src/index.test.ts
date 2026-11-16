@@ -13,11 +13,13 @@ import {
 	getPortalConsultation,
 	getPortalProfile,
 	listPortalConsultations,
+	parseAnamnesis,
 	PatientPortal,
 	PatientPortalLive,
 	patientPortalRoutesPlugin,
 	patientPortalServicesPlugin,
 	plugins,
+	portalDekEnvelope,
 	portalSections,
 } from "./index.ts";
 
@@ -131,9 +133,14 @@ describe("listPortalConsultations", () => {
 
 	it("lists the saved records of a linked patient, newest first", async () => {
 		expect(await listPortalConsultations(db, "ana", 1)).toEqual([
-			{ id: 11, createdAt: new Date(2_000_000), chiefComplaint: "Retorno" },
-			{ id: 10, createdAt: new Date(1_000_000), chiefComplaint: "Dor de cabeça há três dias" },
-			{ id: 14, createdAt: new Date(500_000), chiefComplaint: null },
+			{ id: 11, createdAt: new Date(2_000_000), chiefComplaint: "Retorno", anamnesis: null },
+			{
+				id: 10,
+				createdAt: new Date(1_000_000),
+				chiefComplaint: "Dor de cabeça há três dias",
+				anamnesis: null,
+			},
+			{ id: 14, createdAt: new Date(500_000), chiefComplaint: null, anamnesis: null },
 		]);
 	});
 
@@ -286,6 +293,168 @@ describe("PatientPortalLive", () => {
 			]) {
 				expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Forbidden" } });
 			}
+		}
+	});
+});
+
+// T-148: the portal envelope read — `portal_keys` registers the
+// caller's devices and `entity_deks` holds the wrapped record DEKs a
+// clinic device granted them. Patient 1 (tenant 7) has a grant for
+// consultation 10; 11 has no linked patient; 12 has none recorded;
+// patient 2 is tenantless; 3 belongs to a stranger.
+const ZK_DDL = `
+CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0, updated_at INTEGER);
+INSERT INTO user (id, name, email) VALUES ('ana', 'Ana', 'ana@ktb.test');
+CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, tenant_id INTEGER);
+INSERT INTO patients (id, owner_id, name, tenant_id) VALUES
+  (1, 'doc', 'Ana', 7), (2, 'doc', 'Livre', NULL), (3, 'other', 'Rui', 7);
+CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+INSERT INTO patient_access (patient_id, user_id, relation, status, source, created_at, updated_at) VALUES
+  (1, 'ana', 'self', 'active', 'invite', 0, 0), (3, 'ana', 'self', 'revoked', 'invite', 0, 0);
+CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, display_name TEXT NOT NULL);
+INSERT INTO doctors (user_id, display_name) VALUES ('doc', 'Dra. Bia');
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, tenant_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, created_at INTEGER NOT NULL);
+INSERT INTO consultations (id, user_id, patient_id, tenant_id, transcript, anamnesis, created_at) VALUES
+  (10, 'doc', 1, 7, 'fala', 'v1.ct', 0), (11, 'doc', NULL, 7, 'fala', 'v1.ct', 0),
+  (12, 'doc', 1, 7, 'fala', 'v1.sem-grant', 0);
+CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE cascade, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES ('ana', 'anaDev', 'anaSign');
+CREATE TABLE entity_deks (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL, reader_kind TEXT NOT NULL, reader_pubkey TEXT NOT NULL, reader_id TEXT, wrapped_dek TEXT NOT NULL, granted_by_user_id TEXT, created_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO entity_deks (tenant_id, entity_type, entity_id, reader_kind, reader_pubkey, wrapped_dek) VALUES
+  (7, 'patient', '1', 'patient', 'anaDev', 'w1.patient'),
+  (7, 'consultation', '10', 'patient', 'anaDev', 'w1.consult');
+`;
+const zkDb = makeDb(makeD1(ZK_DDL));
+
+describe("parseAnamnesis", () => {
+	it("decodes a stored document and reports null on any drift", () => {
+		expect(parseAnamnesis(JSON.stringify(anamnesis()))?.queixa_principal.content).toBe(
+			"Dor de cabeça há três dias",
+		);
+		expect(parseAnamnesis(null)).toBeNull();
+		expect(parseAnamnesis("not json")).toBeNull();
+	});
+});
+
+describe("portalDekEnvelope", () => {
+	const read = (input: {
+		entityType: "patient" | "consultation";
+		entityId: number | string;
+		wrapPublicKey: string;
+	}) => portalDekEnvelope(zkDb, "ana", input);
+
+	it("hands the caller's own wrapped DEK for a linked record", async () => {
+		await expect(
+			read({ entityType: "consultation", entityId: 10, wrapPublicKey: "anaDev" }),
+		).resolves.toBe("w1.consult");
+		await expect(
+			read({ entityType: "patient", entityId: 1, wrapPublicKey: "anaDev" }),
+		).resolves.toBe("w1.patient");
+	});
+
+	it("is null for a device the caller never registered", async () => {
+		await expect(
+			read({ entityType: "consultation", entityId: 10, wrapPublicKey: "otherDev" }),
+		).resolves.toBeNull();
+		// Even when the pubkey exists — under another user's row.
+		await expect(
+			portalDekEnvelope(zkDb, "eva", {
+				entityType: "consultation",
+				entityId: 10,
+				wrapPublicKey: "anaDev",
+			}),
+		).resolves.toBeNull();
+	});
+
+	it("is null for records without a grant or without an active link", async () => {
+		await expect(
+			read({ entityType: "consultation", entityId: 12, wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+		await expect(
+			read({ entityType: "patient", entityId: 3, wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+	});
+
+	it("is null for tenantless, patient-less or missing records", async () => {
+		await expect(
+			read({ entityType: "patient", entityId: 2, wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+		await expect(
+			read({ entityType: "consultation", entityId: 11, wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+		await expect(
+			read({ entityType: "consultation", entityId: 999, wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+		await expect(
+			read({ entityType: "patient", entityId: 999, wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+		await expect(
+			read({ entityType: "consultation", entityId: "nope", wrapPublicKey: "anaDev" }),
+		).resolves.toBeNull();
+	});
+});
+
+describe("ZK rows on the portal wire", () => {
+	it("lists a ciphered record opaque — raw envelope, no complaint", async () => {
+		expect(await listPortalConsultations(zkDb, "ana", 1)).toEqual([
+			{ id: 12, createdAt: new Date(0), chiefComplaint: null, anamnesis: "v1.sem-grant" },
+			{ id: 10, createdAt: new Date(0), chiefComplaint: null, anamnesis: "v1.ct" },
+		]);
+	});
+
+	it("opens a ciphered record with the raw envelope and no sections", async () => {
+		expect(await getPortalConsultation(zkDb, "ana", 10)).toMatchObject({
+			id: 10,
+			anamnesis: "v1.ct",
+			sections: [],
+		});
+	});
+});
+
+describe("PatientPortalLive ZK surface", () => {
+	const runtime = ManagedRuntime.make(
+		PatientPortalLive.pipe(Layer.provide(Layer.succeed(Db, zkDb))),
+	);
+	afterAll(() => runtime.dispose());
+	const as = <A, E>(
+		who: { userId: string } | null,
+		use: (p: PatientPortal["Service"]) => Effect.Effect<A, E>,
+	) =>
+		runtime.runPromise(
+			Effect.flatMap(PatientPortal, use).pipe(Effect.provideService(Principal, who), Effect.result),
+		);
+	const ana = { userId: "ana" };
+
+	it("registers the caller's device idempotently", async () => {
+		const input = { wrapPublicKey: "newDev", signPublicKey: "newSign" };
+		const first = await as(ana, (p) => p.registerDevice(input));
+		const second = await as(ana, (p) => p.registerDevice(input));
+		expect(first).toMatchObject({ _tag: "Success", success: { userId: "ana" } });
+		expect(second).toMatchObject({
+			_tag: "Success",
+			success: { id: first._tag === "Success" ? first.success.id : -1 },
+		});
+	});
+
+	it("returns the caller's envelopes for the batch, absent when unreadable", async () => {
+		const out = await as(ana, (p) =>
+			p.dekEnvelopes({
+				entityType: "consultation",
+				entityIds: [10, 12, "bad"],
+				wrapPublicKey: "anaDev",
+			}),
+		);
+		expect(out).toMatchObject({ _tag: "Success", success: { "10": "w1.consult" } });
+	});
+
+	it("refuses anonymous callers on the ZK surface", async () => {
+		for (const result of [
+			await as(null, (p) => p.registerDevice({ wrapPublicKey: "w", signPublicKey: "s" })),
+			await as(null, (p) =>
+				p.dekEnvelopes({ entityType: "patient", entityIds: [1], wrapPublicKey: "anaDev" }),
+			),
+		]) {
+			expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Forbidden" } });
 		}
 	});
 });

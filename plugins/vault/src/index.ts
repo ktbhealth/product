@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { KeyRoundIcon } from "lucide-react";
 
 import { Principal } from "@ktb/authz";
@@ -15,14 +15,22 @@ import { VaultClinicPage } from "./vault-page.tsx";
 import {
 	clinicKeys,
 	entityDeks,
+	portalKeys,
 	type ClinicKey,
 	type EntityDek,
 	type EntityDekReaderKind,
+	type PortalKey,
 } from "./schema.ts";
 import { groups } from "../../groups/src/schema.ts";
 
-export type { ClinicKey, ClinicKeyStatus, EntityDek, EntityDekReaderKind } from "./schema.ts";
-export { clinicKeys, entityDeks } from "./schema.ts";
+export type {
+	ClinicKey,
+	ClinicKeyStatus,
+	EntityDek,
+	EntityDekReaderKind,
+	PortalKey,
+} from "./schema.ts";
+export { clinicKeys, entityDeks, portalKeys } from "./schema.ts";
 
 /** Vault operation failures distinct from authz — missing rows,
  * wrong lifecycle state, duplicate grants. */
@@ -252,6 +260,71 @@ export async function revokeEntityDek(
 		);
 }
 
+// ── Portal device keys (T-148) ──────────────────────────────────
+// Portal users are NOT tenant members, so these repo functions take no
+// tenantId and no Vault-service authz: registration is self-service
+// (the caller's own user id) and reader discovery is exercised through
+// the doctor-side patient-access fn, which scopes the user list to
+// active links of a patient the acting doctor owns.
+
+/**
+ * Register a portal user's device pubkeys — idempotent on
+ * (userId, wrap pubkey); a device that re-registers (reload, retry,
+ * second account on the same browser profile) gets its existing row.
+ */
+export async function enrollPortalDevice(
+	db: DbClient,
+	input: {
+		readonly userId: string;
+		readonly wrapPublicKey: string;
+		readonly signPublicKey: string;
+	},
+): Promise<PortalKey> {
+	const existing = await db
+		.select()
+		.from(portalKeys)
+		.where(
+			and(eq(portalKeys.userId, input.userId), eq(portalKeys.wrapPublicKey, input.wrapPublicKey)),
+		)
+		.limit(1);
+	if (existing[0] !== undefined) return existing[0];
+	const rows = await db
+		.insert(portalKeys)
+		.values({
+			userId: input.userId,
+			wrapPublicKey: input.wrapPublicKey,
+			signPublicKey: input.signPublicKey,
+		})
+		.returning();
+	return rows[0]!;
+}
+
+/** Registered portal devices of the given users — the recipient list a
+ * clinic device wraps record DEKs to when it extends portal access. */
+export async function portalDevicesOf(
+	db: DbClient,
+	userIds: readonly string[],
+): Promise<PortalKey[]> {
+	if (userIds.length === 0) return [];
+	return db.select().from(portalKeys).where(inArray(portalKeys.userId, userIds));
+}
+
+/** The caller's own portal-device row — the read path asserts a
+ * `reader_pubkey` truly belongs to the session user before handing out
+ * the `entity_deks` envelope addressed to it. */
+export async function portalDeviceOf(
+	db: DbClient,
+	userId: string,
+	wrapPublicKey: string,
+): Promise<PortalKey | null> {
+	const rows = await db
+		.select()
+		.from(portalKeys)
+		.where(and(eq(portalKeys.userId, userId), eq(portalKeys.wrapPublicKey, wrapPublicKey)))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
 /** Plain read of the tenant's zk flag — `groups.zk` set by onboarding
  * or per-tenant rollout (T-143); absent group → non-ZK. */
 export async function tenantIsZk(db: DbClient, tenantId: number): Promise<boolean> {
@@ -449,8 +522,10 @@ export const VaultLive = Layer.effect(
 	}),
 );
 
-// Re-exported for tests: DDL that creates clinic_keys + entity_deks in
-// the in-memory better-sqlite3 test databases of instrumented plugins.
+// Re-exported for tests: DDL that creates clinic_keys + entity_deks +
+// portal_keys in the in-memory better-sqlite3 test databases of
+// instrumented plugins. `portal_keys` REFERENCES user(id) — consumers
+// create their own `user` stub, so none is declared here.
 export const VAULT_TEST_DDL = `
 CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE clinic_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE cascade, user_id TEXT NOT NULL, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, wrapped_master_key TEXT, status TEXT NOT NULL DEFAULT 'pending', approved_by_user_id TEXT, approved_at INTEGER, created_at INTEGER NOT NULL DEFAULT 0);
@@ -461,11 +536,14 @@ CREATE TABLE entity_deks (id INTEGER PRIMARY KEY AUTOINCREMENT, tenant_id INTEGE
 CREATE UNIQUE INDEX entity_deks_record_reader_idx ON entity_deks (entity_type, entity_id, reader_pubkey);
 CREATE INDEX entity_deks_tenant_record_idx ON entity_deks (tenant_id, entity_type, entity_id);
 CREATE INDEX entity_deks_reader_idx ON entity_deks (reader_pubkey);
+CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE cascade, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
+CREATE UNIQUE INDEX portal_keys_user_wrap_idx ON portal_keys (user_id, wrap_public_key);
+CREATE INDEX portal_keys_wrap_idx ON portal_keys (wrap_public_key);
 `;
 
 export const vaultTablesPlugin = definePlugin({
 	id: "vault.tables",
-	tables: { clinicKeys, entityDeks },
+	tables: { clinicKeys, entityDeks, portalKeys },
 });
 
 export const vaultServicesPlugin = definePlugin({

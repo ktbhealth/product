@@ -38,6 +38,12 @@ export interface PortalMessages {
 	readonly sections: Record<AnamnesisSectionKey, string>;
 	readonly emptyTitle: string;
 	readonly emptyDescription: string;
+	/** Zero-knowledge (T-148): a record this device cannot decrypt —
+	 * the clinic has not wrapped its DEK to this device (yet). */
+	readonly zk: {
+		readonly lockedRecord: string;
+		readonly lockedHint: string;
+	};
 	/** Notice shown while invites wait on email verification. */
 	readonly verifyEmailTitle: string;
 	readonly verifyEmailDescription: string;
@@ -76,6 +82,10 @@ const en: PortalMessages = {
 	},
 	emptyTitle: "No records linked yet",
 	emptyDescription: "When a doctor invites this email, your consultations appear here.",
+	zk: {
+		lockedRecord: "Encrypted record",
+		lockedHint: "It opens automatically once your clinic grants access to this device.",
+	},
 	verifyEmailTitle: "Confirm your email",
 	verifyEmailDescription:
 		"A doctor invited this address — the consultations shared with you unlock once your email is confirmed.",
@@ -117,6 +127,10 @@ const ptBR: PortalMessages = {
 	},
 	emptyTitle: "Nenhuma ficha vinculada ainda",
 	emptyDescription: "Quando um médico convidar este e-mail, suas consultas aparecem aqui.",
+	zk: {
+		lockedRecord: "Registro criptografado",
+		lockedHint: "Ele abre automaticamente quando sua clínica liberar o acesso neste dispositivo.",
+	},
 	verifyEmailTitle: "Confirme seu e-mail",
 	verifyEmailDescription:
 		"Um médico convidou este endereço — as consultas compartilhadas com você são liberadas assim que o e-mail for confirmado.",
@@ -158,6 +172,10 @@ const es: PortalMessages = {
 	},
 	emptyTitle: "Aún no hay fichas vinculadas",
 	emptyDescription: "Cuando un médico invite este correo, tus consultas aparecerán aquí.",
+	zk: {
+		lockedRecord: "Registro cifrado",
+		lockedHint: "Se abre automáticamente cuando tu clínica conceda acceso en este dispositivo.",
+	},
 	verifyEmailTitle: "Confirma tu correo",
 	verifyEmailDescription:
 		"Un médico invitó esta dirección — las consultas compartidas contigo se desbloquean cuando confirmes el correo.",

@@ -42,6 +42,7 @@ import {
 	invitePatientFn,
 	localeFn,
 	patientLinksFn,
+	portalReadersFn,
 	revokePatientLinkFn,
 } from "./fns.ts";
 
@@ -49,6 +50,19 @@ const DDL = `
 CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT);
 INSERT INTO patients (id, owner_id, name, email) VALUES
   (1, 'doc', 'Ana', 'ana@ktb.test'), (2, 'doc', 'Leo', NULL), (3, 'other', 'Rui', 'rui@ktb.test');
+CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+INSERT INTO patient_access (patient_id, user_id, relation, status, source, created_at, updated_at) VALUES
+  (1, 'ana', 'self', 'active', 'invite', 0, 0),
+  (1, 'eva', 'guardian', 'invited', 'invite', 0, 0);
+INSERT INTO patient_access (patient_id, user_id, email, relation, status, source, created_at, updated_at) VALUES
+  (1, NULL, 'nobody@ktb.test', 'self', 'invited', 'invite', 0, 0),
+  (2, NULL, 'leo@ktb.test', 'self', 'invited', 'invite', 0, 0);
+CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES
+  ('ana', 'anaDev1', 's1'), ('ana', 'anaDev2', 's2');
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT);
+INSERT INTO consultations (id, patient_id, transcript, anamnesis) VALUES
+  (10, 1, 'v1.ct', NULL), (11, 1, 'plain', '{}'), (12, 1, 'plain', 'v1.ct');
 `;
 const db = makeDb(makeD1(DDL));
 
@@ -291,5 +305,34 @@ describe("approvePatientLinkFn / revokePatientLinkFn", () => {
 		await expect(approvePatientLinkFn({ data: 7 })).resolves.toEqual({ ok: false });
 		mocks.getDoctorUser.mockResolvedValue(null);
 		await expect(revokePatientLinkFn({ data: 7 })).resolves.toEqual({ ok: false });
+	});
+});
+
+describe("portalReadersFn", () => {
+	it("returns the registered devices of active links + ciphered records", async () => {
+		await expect(portalReadersFn({ data: 1 })).resolves.toEqual({
+			readers: [
+				{ readerId: "ana", wrapPublicKey: "anaDev1" },
+				{ readerId: "ana", wrapPublicKey: "anaDev2" },
+			],
+			cipheredConsultationIds: [10, 12],
+		});
+		expect(mocks.runAs).toHaveBeenCalledWith(acting, expect.anything());
+		expect(links.list).toHaveBeenCalledWith(1);
+	});
+
+	it("returns an empty plan when nobody holds an active link", async () => {
+		await expect(portalReadersFn({ data: 2 })).resolves.toEqual({
+			readers: [],
+			cipheredConsultationIds: [],
+		});
+	});
+
+	it("is null for non-doctors and for foreign patients", async () => {
+		mocks.getDoctorUser.mockResolvedValue(null);
+		await expect(portalReadersFn({ data: 1 })).resolves.toBeNull();
+		mocks.getDoctorUser.mockResolvedValue(acting);
+		links.list.mockReturnValue(denied);
+		await expect(portalReadersFn({ data: 1 })).resolves.toBeNull();
 	});
 });

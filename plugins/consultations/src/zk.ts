@@ -9,6 +9,7 @@ import { HeuristicExtractor } from "@ktb/anamnesis";
 import { decodeAnamnesisOption } from "@ktb/anamnesis/schema";
 import {
 	isEnvelope,
+	type DekEnvelopesApi,
 	type GrantInput,
 	type PatientZkApi,
 	PATIENT_ENTITY_TYPE,
@@ -92,7 +93,7 @@ const specKeys = (row: Record<string, unknown>): Record<string, unknown> => {
  */
 export async function decryptConsultations<R extends { readonly id: number }>(
 	keyring: KeyringService,
-	api: ConsultationZkApi,
+	api: DekEnvelopesApi,
 	rows: readonly R[],
 ): Promise<R[]> {
 	const ciphered = rows.filter((r) =>
@@ -179,7 +180,7 @@ export async function decryptConsultations<R extends { readonly id: number }>(
 /** Decrypt one row — detail pages. null when locked or unreadable. */
 export async function decryptConsultation<R extends { readonly id: number }>(
 	keyring: KeyringService,
-	api: ConsultationZkApi,
+	api: DekEnvelopesApi,
 	row: R,
 ): Promise<R | null> {
 	if (!isCipheredConsultation(row as { readonly anamnesis?: string | null })) {

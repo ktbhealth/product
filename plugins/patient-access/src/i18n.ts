@@ -31,6 +31,9 @@ export interface PatientAccessMessages {
 	readonly relation: Record<PatientAccessRelation, string>;
 	readonly status: Record<Exclude<PatientAccessStatus, "revoked">, string>;
 	readonly errors: Record<PatientInviteErrorCode | "failed", string>;
+	/** Zero-knowledge (T-148): label for a patient name this device
+	 * cannot decrypt — the raw envelope never renders. */
+	readonly zk: { readonly lockedRecord: string };
 	/** Invite email — `doctor` is the doctor's display name. */
 	readonly inviteEmail: {
 		readonly subject: (doctor: string) => string;
@@ -61,6 +64,7 @@ const en: PatientAccessMessages = {
 		invalid_relation: "Choose who this person is to the patient.",
 		failed: "Something went wrong. Please try again.",
 	},
+	zk: { lockedRecord: "Encrypted record" },
 	inviteEmail: {
 		subject: (doctor) => `${doctor} gave you access to the KTB Health patient portal`,
 		body: (doctor, patient, url, accept) =>
@@ -99,6 +103,7 @@ const ptBR: PatientAccessMessages = {
 		invalid_relation: "Escolha quem esta pessoa é para o paciente.",
 		failed: "Algo deu errado. Tente novamente.",
 	},
+	zk: { lockedRecord: "Registro criptografado" },
 	inviteEmail: {
 		subject: (doctor) => `${doctor} liberou seu acesso ao portal do paciente KTB Health`,
 		body: (doctor, patient, url, accept) =>
@@ -137,6 +142,7 @@ const es: PatientAccessMessages = {
 		invalid_relation: "Elige quién es esta persona para el paciente.",
 		failed: "Algo salió mal. Inténtalo de nuevo.",
 	},
+	zk: { lockedRecord: "Registro cifrado" },
 	inviteEmail: {
 		subject: (doctor) => `${doctor} te dio acceso al portal del paciente de KTB Health`,
 		body: (doctor, patient, url, accept) =>
