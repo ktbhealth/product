@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
 	plugins: [] as unknown[],
 	audiencePlugins: [] as unknown[],
 	disabledIds: [] as string[],
+	theme: { appName: "KTB Health" } as unknown,
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -21,6 +22,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 		useNavigate: () => vi.fn(),
 		getRouteApi: () => ({
 			useLoaderData: () => ({
+				// Resolved theme for the MissingLanding brand (PL-006
+				// phase 7) — tests vary it to cover the no-theme path.
+				theme: state.theme,
 				pluginStates: {
 					enabled: (state.plugins as { id: string }[])
 						.map((p) => p.id)
@@ -74,6 +78,7 @@ afterEach(() => {
 	cleanup();
 	state.plugins = [];
 	state.disabledIds = [];
+	state.theme = { appName: "KTB Health" };
 });
 
 describe("landing route", () => {
@@ -102,6 +107,16 @@ describe("landing route", () => {
 		state.plugins = [];
 		render(createElement(Landing));
 		expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("KTB Health");
+		expect(screen.getByText("Consultations").closest("a")?.getAttribute("href")).toBe(
+			"/consultations",
+		);
+	});
+
+	it("renders no brand heading when the theme resolved empty", () => {
+		state.plugins = [];
+		state.theme = null;
+		const { container } = render(createElement(Landing));
+		expect(container.querySelector("h1")).toBeNull();
 		expect(screen.getByText("Consultations").closest("a")?.getAttribute("href")).toBe(
 			"/consultations",
 		);

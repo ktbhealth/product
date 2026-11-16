@@ -7,6 +7,7 @@
 export * from "../../../plugins/audit/src/schema.ts";
 export * from "../../../plugins/consultations/src/schema.ts";
 export * from "../../../plugins/doctors/src/schema.ts";
+export * from "../../../plugins/eval-persona/src/schema.ts";
 export * from "../../../plugins/eval-validator/src/schema.ts";
 export * from "../../../plugins/groups/src/schema.ts";
 export * from "../../../plugins/integrity/src/schema.ts";
@@ -17,4 +18,4 @@ export * from "../../../plugins/patient-access/src/schema.ts";
 export * from "../../../plugins/patients/src/schema.ts";
 export * from "../../../plugins/rbac/src/schema.ts";
 export * from "../../../plugins/secretaries/src/schema.ts";
-export * from "../../../plugins/vault/src/schema.ts";
+export * from "../../../plugins/theme/src/schema.ts";

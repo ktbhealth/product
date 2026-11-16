@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -83,6 +83,11 @@ describe("PortalShell", () => {
 		expect(screen.getByText("unknown-thing")).toBeDefined();
 	});
 
+	it("falls back to 'overview' when the path has no segments", () => {
+		renderShell({ pathname: "/" });
+		expect(screen.getByText("Overview")).toBeDefined();
+	});
+
 	it("badges the header with the instance label and links the breadcrumb root to its basePath", () => {
 		const { container } = renderShell();
 		// Instance label renders in the sidebar badge and the breadcrumb root.
@@ -106,12 +111,32 @@ describe("PortalShell", () => {
 		expect(navigate).toHaveBeenCalledWith({ to: "/portal/clinician" });
 	});
 
+	it("ignores switcher values that match no portal", () => {
+		renderShell({ portals: [instance, clinician] });
+		const select = screen.getByLabelText("Switch portal") as HTMLSelectElement;
+		fireEvent.change(select, { target: { value: "ghost" } });
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
+	it("shows the generic account label without a user email", () => {
+		renderShell({ userEmail: undefined });
+		expect(screen.getByText("account")).toBeDefined();
+	});
+
 	it("calls onSignOut from the footer button", async () => {
 		const user = userEvent.setup();
 		const onSignOut = vi.fn();
 		renderShell({ onSignOut });
 		await user.click(screen.getByTitle("Sign out"));
 		expect(onSignOut).toHaveBeenCalledTimes(1);
+	});
+
+	it("renders an empty brand slot when no brand is provided (PL-006)", () => {
+		// Brand lives in theme data — the shell has no hardcoded
+		// wordmark fallback; only the host-owned instance badge stays.
+		renderShell();
+		expect(screen.queryByText("KTB")).toBeNull();
+		expect(screen.getAllByText("Platform").length).toBeGreaterThan(0);
 	});
 
 	it("renders a custom brand in the fixed sidebar slot and keeps the badge", () => {
@@ -125,5 +150,18 @@ describe("PortalShell", () => {
 	it("renders the banner strip above the header when provided", () => {
 		renderShell({ banner: <div data-testid="preview-banner">preview</div> });
 		expect(screen.getByTestId("preview-banner")).toBeDefined();
+	});
+
+	it("injects the theme css block only when it carries content (P-082)", () => {
+		const marker = ":root{--ktb-shell-marker:1}";
+		const { container, unmount } = renderShell({ themeCss: marker });
+		expect(container.innerHTML).toContain("--ktb-shell-marker");
+		unmount();
+		// null / "" / undefined all skip the single style emitter.
+		for (const themeCss of [null, "", undefined] as const) {
+			const r = renderShell({ themeCss });
+			expect(r.container.innerHTML).not.toContain("--ktb-shell-marker");
+			r.unmount();
+		}
 	});
 });

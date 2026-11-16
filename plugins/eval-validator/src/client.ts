@@ -21,14 +21,14 @@ export const evalValidatorChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "eval-validator.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/eval",
 					label: "Eval validator",
 					icon: ClipboardCheckIcon,
-					group: "System",
+					group: "Eval",
 				},
 			},
 		},

@@ -84,6 +84,21 @@ const actions = {
 const dd = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
 
 describe("PatientDetailPage", () => {
+	it("prefixes internal links with portalBase", () => {
+		const { container } = render(
+			<PatientDetailPage
+				patient={FULL}
+				consultations={[]}
+				locale="en"
+				portalBase="/portal"
+				{...actions}
+			/>,
+		);
+		expect(container.querySelector('a[href="/portal/patients"]')).not.toBeNull();
+		expect(container.querySelector('a[href="/portal/patients/7/edit"]')).not.toBeNull();
+		expect(container.querySelector('a[href="/patients/7/edit"]')).toBeNull();
+	});
+
 	it("renders every recorded section with formatted values", () => {
 		render(<PatientDetailPage patient={FULL} consultations={[]} locale="en" {...actions} />);
 		expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Cida");

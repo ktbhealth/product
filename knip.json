@@ -20,12 +20,14 @@
 			// (SSR cold-start fix) — referenced by name, never imported here.
 			"ignoreDependencies": ["tailwindcss", "pdfkit"]
 		},
+		"packages/app-host": {
+			// Generated aggregated cipher-spec map (gen:cipher-specs) —
+			// exported ahead of its first consumer (the EntityCipher impls
+			// that resolve a row's spec at runtime, later ZK tasks).
+			"entry": ["src/cipher-specs.gen.ts"]
+		},
 		"packages/db": {
 			"entry": ["scripts/**/*.mjs"]
-		},
-		"packages/app-host": {
-			// Ambient globals via /// <reference types> in src/env.d.ts.
-			"ignoreDependencies": ["@cloudflare/workers-types"]
 		},
 		"evals/*": {
 			// Suite manifests are loaded by file path at runtime
@@ -56,7 +58,7 @@
 			// from "@tanstack/react-router"`) and a
 			// vi.mock("@tanstack/react-start/server") factory — no static
 			// import for knip to count.
-			"ignoreDependencies": ["@tanstack/react-start", "@tanstack/react-router"]
+			"ignoreDependencies": []
 		}
 	}
 }

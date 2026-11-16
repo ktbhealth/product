@@ -4,6 +4,7 @@ import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
+import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Progress } from "@ktbhealth/ui/components/progress";
@@ -12,6 +13,7 @@ import { Textarea } from "@ktbhealth/ui/components/textarea";
 import { wordDiff } from "@ktb/eval-consultation";
 
 import {
+	deleteRunFn,
 	generateBatchFn,
 	listBatchesFn,
 	listPersonasFn,
@@ -41,6 +43,8 @@ export function EvalValidatorPage({
 	const [run, setRun] = useState<RunProgress | null>(null);
 	const [feedback, setFeedback] = useState<Record<number, string>>({});
 	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [minutes, setMinutes] = useState(15);
 	const [activeRunId, setActiveRunId] = useState<number | null>(null);
 	const mounted = useRef(true);
 	useEffect(() => {
@@ -59,11 +63,14 @@ export function EvalValidatorPage({
 
 	const generate = async () => {
 		setBusy(true);
+		setError(null);
 		try {
-			const r = await generateBatchFn({ data: { count: 6 } });
+			const r = await generateBatchFn({ data: { count: 6, minutes } });
 			if (r.ok) {
 				setSelectedBatch(r.data.batchId);
 				await refresh(r.data.batchId);
+			} else {
+				setError(m.actionFailed);
 			}
 		} finally {
 			setBusy(false);
@@ -73,10 +80,40 @@ export function EvalValidatorPage({
 	// p.batchId (not selectedBatch) drives the refresh — the card knows
 	// its own batch, no null path to defend.
 	const review = async (card: PersonaCard, decision: "approved" | "rejected") => {
-		await reviewPersonaFn({
-			data: { personaId: card.id, decision, feedback: feedback[card.id] },
-		});
-		await refresh(card.batchId);
+		setBusy(true);
+		setError(null);
+		try {
+			const r = await reviewPersonaFn({
+				data: {
+					personaId: card.id,
+					decision,
+					feedback: feedback[card.id] || undefined,
+				},
+			});
+			if (!r.ok) {
+				setError(m.actionFailed);
+				return;
+			}
+			await refresh(card.batchId);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const [confirmDelete, setConfirmDelete] = useState(false);
+	const removeRun = async () => {
+		/* v8 ignore next 3 -- guard: the delete button only renders when a run is loaded */
+		if (run === null) return;
+		setBusy(true);
+		const r = await deleteRunFn({ data: { runId: run.id } });
+		setBusy(false);
+		if (!r.ok) {
+			setError(m.actionFailed);
+			return;
+		}
+		setRun(null);
+		setActiveRunId(null);
+		setConfirmDelete(false);
 	};
 
 	const startRun = async (batchId: number) => {
@@ -125,11 +162,26 @@ export function EvalValidatorPage({
 	return (
 		<PageContainer>
 			<PageHeader title={m.title} description={m.description} />
-			<div className="flex gap-2">
+			<div className="flex items-end gap-2">
+				<div className="grid gap-1">
+					<label htmlFor="eval-minutes" className="text-xs text-muted-foreground">
+						{m.minutesLabel}
+					</label>
+					<Input
+						id="eval-minutes"
+						type="number"
+						min={1}
+						max={60}
+						className="w-24"
+						value={minutes}
+						onChange={(e) => setMinutes(Math.max(1, Number(e.target.value) || 1))}
+					/>
+				</div>
 				<Button onClick={generate} disabled={busy}>
 					{m.generate}
 				</Button>
 			</div>
+			{error !== null && <p className="text-sm text-destructive">{error}</p>}
 
 			{batches.length === 0 && (
 				<Empty>
@@ -178,8 +230,29 @@ export function EvalValidatorPage({
 			{run !== null && (
 				<Card>
 					<CardHeader>
-						<CardTitle>
-							{m.run} #{run.id} — {run.status}
+						<CardTitle className="flex items-center justify-between gap-2">
+							<span>
+								{m.run} #{run.id} — {run.status}
+							</span>
+							{confirmDelete ? (
+								<Button
+									variant="destructive"
+									size="sm"
+									disabled={busy}
+									onClick={() => void removeRun()}
+								>
+									{m.confirmDelete}
+								</Button>
+							) : (
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={busy}
+									onClick={() => setConfirmDelete(true)}
+								>
+									{m.deleteRun}
+								</Button>
+							)}
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
@@ -187,6 +260,7 @@ export function EvalValidatorPage({
 						<p className="mt-2 text-sm text-muted-foreground">
 							{run.done}/{run.total} {m.samplesOf} — {run.pct}%
 						</p>
+						<SummaryLine summary={run.summary} />
 						{run.done > 0 && <Aggregates aggregates={run.aggregates} />}
 						{run.samples.map((s) => (
 							<div key={s.id} className="mt-1 text-xs">
@@ -222,24 +296,30 @@ export function EvalValidatorPage({
 							{p.persona.name} — {p.persona.gender} · {p.persona.socialClass} ·{" "}
 							{p.persona.education} · {p.persona.region} · {p.persona.specialty}
 						</CardTitle>
-						<Badge variant={stateVariant(p.state)}>{p.state}</Badge>
+						<div className="flex items-center gap-2">
+							{p.scriptMode !== null && <Badge variant="outline">{p.scriptMode}</Badge>}
+							<Badge variant={stateVariant(p.state)}>{p.state}</Badge>
+						</div>
 					</CardHeader>
 					<CardContent>
 						<p className="text-xs text-muted-foreground">
 							{m.doctor}: {p.persona.doctor?.gender}/{p.persona.doctor?.register} · {m.voices}:{" "}
 							{p.voices.doctor} / {p.voices.patient}
 						</p>
-						<div className="mt-2 max-h-48 overflow-auto rounded border p-2 text-sm">
-							{p.turns.slice(0, 12).map((t, i) => (
+						{(p.patientId !== null || p.doctorId !== null) && (
+							<p className="mt-1 text-xs text-muted-foreground">
+								<Badge variant="outline" className="mr-1">
+									{m.synthetic}
+								</Badge>
+								patient #{p.patientId ?? "—"} · doctor #{p.doctorId ?? "—"}
+							</p>
+						)}
+						<div className="mt-2 max-h-96 overflow-auto rounded border p-2 text-sm">
+							{p.turns.map((t, i) => (
 								<div key={i}>
 									<strong>{t.speaker}:</strong> {t.text}
 								</div>
 							))}
-							{p.turns.length > 12 ? (
-								<div>
-									…{p.turns.length - 12} {m.moreTurns}
-								</div>
-							) : null}
 						</div>
 						{p.feedback !== null && (
 							<p className="mt-2 text-xs italic">
@@ -266,21 +346,97 @@ export function EvalValidatorPage({
 	);
 }
 
-/** Parsed metrics block under a finished sample — WER/CER plus the
- * word-level diff (gold script vs ASR text) so the reviewer sees where
- * the engine erred, not just the score. Keeps raw JSON out of the UI. */
+interface CleanupResult {
+	readonly edits?: number;
+	readonly corrected?: string;
+	readonly werAfter?: number;
+	readonly cerAfter?: number;
+	readonly error?: string;
+}
+
+interface AnamnesisResult {
+	readonly engine?: string;
+	readonly sections?: number;
+	readonly filled?: number;
+	readonly completeness?: number;
+	readonly error?: string;
+}
+
+interface SampleResultJson {
+	readonly wer?: number;
+	readonly cer?: number;
+	readonly asrText?: string;
+	readonly stages?: readonly string[];
+	readonly cleanup?: CleanupResult;
+	readonly anamnesis?: AnamnesisResult;
+}
+
+/** Run-level mean chips — parsed from the run summary JSON the
+ * finish step persists ({meanWer, meanWerAfter, meanCompleteness}). */
+function SummaryLine({ summary }: { summary: unknown }) {
+	if (summary === null || typeof summary !== "object") return null;
+	const s = summary as {
+		readonly meanWer?: number;
+		readonly meanWerAfter?: number;
+		readonly meanCompleteness?: number;
+	};
+	return (
+		<div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+			{typeof s.meanWer === "number" && <span>mean WER {s.meanWer.toFixed(3)}</span>}
+			{typeof s.meanWerAfter === "number" && <span>after cleanup {s.meanWerAfter.toFixed(3)}</span>}
+			{typeof s.meanCompleteness === "number" && (
+				<span>anamnesis {(s.meanCompleteness * 100).toFixed(0)}%</span>
+			)}
+		</div>
+	);
+}
+
+/** Parsed metrics block under a finished sample — per-stage results:
+ * WER/CER + gold↔ASR diff, then the cleanup stage (edits, WER delta,
+ * corrected-vs-gold diff) and the anamnesis stage (engine +
+ * section completeness) when the run exercised them. */
 function SampleResult({ result, script }: { result: string; script: string }) {
-	let parsed: { wer?: number; cer?: number; asrText?: string };
+	let parsed: SampleResultJson;
 	try {
-		parsed = JSON.parse(result) as typeof parsed;
+		parsed = JSON.parse(result) as SampleResultJson;
 	} catch {
 		return null;
 	}
+	const c = parsed.cleanup;
+	const a = parsed.anamnesis;
 	return (
 		<div className="mt-1 rounded border p-2 text-xs">
 			{typeof parsed.wer === "number" && <span>WER {parsed.wer.toFixed(3)} </span>}
 			{typeof parsed.cer === "number" && <span>CER {parsed.cer.toFixed(3)}</span>}
 			{parsed.asrText !== undefined && <DiffBlock refText={script} hypText={parsed.asrText} />}
+			{c !== undefined && (
+				<div className="mt-2 border-t pt-1">
+					<Badge variant="outline">cleanup</Badge>{" "}
+					{c.error !== undefined ? (
+						<span className="text-destructive">{c.error}</span>
+					) : (
+						<>
+							<span>
+								{c.edits ?? 0} edits — WER→{c.werAfter?.toFixed(3) ?? "—"}
+							</span>
+							{c.corrected !== undefined && <DiffBlock refText={script} hypText={c.corrected} />}
+						</>
+					)}
+				</div>
+			)}
+			{a !== undefined && (
+				<div className="mt-2 border-t pt-1">
+					<Badge variant="outline">anamnesis</Badge>{" "}
+					{a.error !== undefined ? (
+						<span className="text-destructive">{a.error}</span>
+					) : (
+						<span>
+							{a.engine ?? "—"} — {a.filled ?? 0}/{a.sections ?? 8} sections (
+							{Math.round((a.completeness ?? 0) * 100)}%)
+						</span>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -290,16 +446,25 @@ function SampleResult({ result, script }: { result: string; script: string }) {
  * pops out. Slices with no ok samples render "—". */
 function Aggregates({ aggregates }: { aggregates: readonly AxisAggregate[] }) {
 	return (
-		<div className="mt-3 space-y-1 rounded border p-2 text-xs">
+		<div className="mt-3 space-y-2 rounded border p-2 text-xs">
 			{aggregates.map((a) => (
-				<div key={a.axis} className="flex flex-wrap items-baseline gap-1">
-					<span className="w-24 shrink-0 font-medium text-muted-foreground">{a.axis}</span>
+				<div key={a.axis}>
+					<span className="font-medium text-muted-foreground">{a.axis}</span>
 					{[...a.slices]
 						.sort((x, y) => (y.meanWer ?? -1) - (x.meanWer ?? -1))
 						.map((s) => (
-							<Badge key={s.key} variant="outline" className="font-normal">
-								{s.key}: {s.meanWer === null ? "—" : s.meanWer.toFixed(2)} ({s.ok}/{s.samples})
-							</Badge>
+							<div key={s.key} className="mt-1 flex items-center gap-2">
+								<span className="w-32 shrink-0 truncate">{s.key}</span>
+								<div className="h-2 flex-1 rounded bg-muted">
+									<div
+										className="h-2 rounded bg-destructive/70"
+										style={{ width: `${Math.min(1, s.meanWer ?? 0) * 100}%` }}
+									/>
+								</div>
+								<span className="w-20 shrink-0 text-right tabular-nums">
+									{s.meanWer === null ? "—" : s.meanWer.toFixed(2)} ({s.ok}/{s.samples})
+								</span>
+							</div>
 						))}
 				</div>
 			))}

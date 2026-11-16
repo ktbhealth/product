@@ -70,6 +70,24 @@ describe("sign-in page", () => {
 		signUpEmail.mockResolvedValue({ data: { user: {} }, error: null });
 	});
 
+	it("toggles password visibility", () => {
+		render(createElement(Page));
+		const pw = screen.getByLabelText("Password") as HTMLInputElement;
+		expect(pw.type).toBe("password");
+		fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+		expect(pw.type).toBe("text");
+		fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+		expect(pw.type).toBe("password");
+	});
+
+	it("toggles confirm-password visibility in sign-up mode", () => {
+		render(createElement(Page));
+		fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
+		const confirm = screen.getByLabelText("Confirm password") as HTMLInputElement;
+		fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+		expect(confirm.type).toBe("text");
+	});
+
 	it("signs in and redirects", async () => {
 		render(createElement(Page));
 		await fillAndSubmit();

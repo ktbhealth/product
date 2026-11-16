@@ -13,7 +13,6 @@ export {
 	enabledPlugins,
 	findPage,
 	findPortalInstance,
-	isPortalPath,
 	KNOWN_CHROME_REGIONS,
 	packageEnabled,
 	portalInstances,
@@ -21,4 +20,4 @@ export {
 	portalPages,
 	warnUnknownChromeRegions,
 } from "@ktb/app-host/client";
-export type { PageShell, PluginStatesResult, PortalInstanceEntry } from "@ktb/app-host/client";
+export type { PageShell, PluginStatesResult } from "@ktb/app-host/client";

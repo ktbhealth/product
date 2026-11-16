@@ -59,7 +59,7 @@ import * as Stream from "effect/Stream";
 const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
 ${AUDIT_TEST_DDL}
@@ -838,6 +838,60 @@ describe("anamnesis integrity versioning (T-138)", () => {
 		expect(cols.hash).toBeNull();
 		await withoutIntegrity.dispose();
 	});
+
+	it("attachAnamnesis on a legacy row still succeeds without integrity", async () => {
+		// Pre-versioning row: the seed path calls recordVersion, which
+		// degrades to null when the integrity plugin is absent.
+		const withoutIntegrity = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb, makeEventBus(), false))),
+		);
+		const id = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesis: JSON.stringify({ legacy: true }) })
+			.where(eq(consultationsTable.id, id!));
+		await withoutIntegrity.runPromise(
+			Effect.provideService(
+				call((c) =>
+					c.attachAnamnesis("u1", {
+						consultationId: id!,
+						anamnesis: {} as SaveConsultationInput["anamnesis"],
+						engine: "e",
+					}),
+				),
+				Principal,
+				{ userId: "u1" },
+			),
+		);
+		expect(await versionsOf(id!)).toHaveLength(0);
+		const cols = await integrityColumns(id!);
+		expect(cols.version).toBeNull();
+		await withoutIntegrity.dispose();
+	});
+
+	it("adminBackfillVersions is a no-op without integrity", async () => {
+		// Legacy rows are scanned but recordVersion degrades to null —
+		// nothing is materialized and remaining stays non-zero.
+		const withoutIntegrity = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb, makeEventBus(), false))),
+		);
+		const legacyId = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesis: JSON.stringify({ old: "doc" }) })
+			.where(eq(consultationsTable.id, legacyId!));
+		const result = await withoutIntegrity.runPromise(
+			Effect.provideService(
+				call((c) => c.adminBackfillVersions()),
+				Principal,
+				{ userId: "u1", email: "admin@x.com" },
+			),
+		);
+		expect(result.backfilled).toBe(0);
+		expect(result.remaining).toBeGreaterThanOrEqual(1);
+		expect(await versionsOf(legacyId!)).toHaveLength(0);
+		await withoutIntegrity.dispose();
+	});
 });
 
 describe("verifyIntegrity (T-139)", () => {
@@ -1388,6 +1442,21 @@ describe("Consultations.history", () => {
 		const pending = h?.visits.find((v) => v.chiefComplaint === "Q");
 		expect(pending?.plan).toBeNull();
 	});
+
+	it("treats malformed stored anamnesis JSON as absent", async () => {
+		const [p3] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "JSON quebrado", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		await addConsultation({ patientId: p3!.id, anamnesis: "{not-json" });
+		const h = await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.history(p3!.id, "u1")),
+		);
+		expect(h?.count).toBe(1);
+		expect(h?.visits[0]?.chiefComplaint).toBeNull();
+		expect(h?.visits[0]?.plan).toBeNull();
+	});
 });
 
 describe("patientId ownership on save/attach", () => {
@@ -1638,18 +1707,17 @@ describe("plugins", () => {
 		});
 	});
 
-	it("platform loader collapses Forbidden services to empty lists", async () => {
+	it("platform loader collapses Forbidden failures to empty tables", async () => {
 		const loader = consultationsPanelPlugin.panel?.pages?.[0]?.loader;
+		expect(loader).toBeDefined();
+		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
 		const result = await Effect.runPromise(
 			loader!().pipe(
 				Effect.provideService(Consultations, {
-					adminList: () => Effect.fail(new Forbidden({ path: "x" })),
-					adminBackfillVersions: () => Effect.fail(new Forbidden({ path: "x" })),
+					adminBackfillVersions: forbidden,
+					adminList: forbidden,
 				} as never),
-				Effect.provideService(Patients, {
-					adminOwners: () => Effect.fail(new Forbidden({ path: "x" })),
-					adminList: () => Effect.fail(new Forbidden({ path: "x" })),
-				} as never),
+				Effect.provideService(Patients, { adminOwners: forbidden, adminList: forbidden } as never),
 			),
 		);
 		expect(result).toEqual({ consultations: [], owners: [], patients: [] });
