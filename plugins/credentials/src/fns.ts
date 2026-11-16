@@ -4,7 +4,7 @@ import * as Schema from "effect/Schema";
 
 import { ensureSessionUser, runAs } from "@ktb/server-fns";
 
-import { EvalCredentials, type CredentialCard } from "./index.ts";
+import { Credentials, type CredentialCard } from "./index.ts";
 
 const CreateInput = Schema.Struct({
 	name: Schema.String,
@@ -29,7 +29,7 @@ export const listCredentialsFn = createServerFn({ method: "GET" }).handler(
 		return run(
 			user,
 			Effect.gen(function* () {
-				const s = yield* EvalCredentials;
+				const s = yield* Credentials;
 				const data = yield* s.list();
 				return { ok: true as const, data };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
@@ -44,7 +44,7 @@ export const createCredentialFn = createServerFn({ method: "POST" })
 		return run(
 			user,
 			Effect.gen(function* () {
-				const s = yield* EvalCredentials;
+				const s = yield* Credentials;
 				const r = yield* s.create(data);
 				return { ok: true as const, data: r };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
@@ -58,7 +58,7 @@ export const removeCredentialFn = createServerFn({ method: "POST" })
 		return run(
 			user,
 			Effect.gen(function* () {
-				const s = yield* EvalCredentials;
+				const s = yield* Credentials;
 				yield* s.remove(data.id);
 				return { ok: true as const, data: null };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),

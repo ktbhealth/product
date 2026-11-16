@@ -26,15 +26,17 @@ import {
 } from "@ktbhealth/ui/components/select";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
+import type { EndpointCard } from "@ktb/ai-endpoints";
+import { listEndpointsFn } from "@ktb/ai-endpoints/fns";
+
 import {
 	deletePersonaDefFn,
 	generatePersonasFn,
-	listEndpointsFn,
 	listPersonaDefsFn,
 	savePersonaDefFn,
 } from "../fns.ts";
 import { evalLabMessages } from "../i18n.ts";
-import type { EndpointCard, PersonaDefCard } from "../index.ts";
+import type { PersonaDefCard } from "../index.ts";
 
 const GEN_TEMPLATE = "__template__";
 const GEN_COUNTS = [5, 10, 20] as const;
@@ -465,7 +467,7 @@ export function PersonasPage({
 									<SelectContent>
 										<SelectItem value={GEN_TEMPLATE}>{m.endpointTemplate}</SelectItem>
 										{genEndpoints
-											.filter((e) => e.enabled)
+											.filter((e) => e.enabled && e.scope === "eval")
 											.map((e) => (
 												<SelectItem key={e.id} value={String(e.id)}>
 													{e.name} · {e.model ?? e.kind}

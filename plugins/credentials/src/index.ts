@@ -5,9 +5,9 @@ import { KeyRoundIcon } from "lucide-react";
 
 import { ApiKeys, type ApiKeyRow } from "@ktb/auth";
 import { Principal, type Forbidden } from "@ktb/authz";
+import { EVAL_ACTION, EVAL_RESOURCE } from "@ktb/eval-validator";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
-import { EVAL_ACTION, EVAL_RESOURCE } from "@ktb/eval-validator";
 import { Permissions } from "@ktb/rbac";
 
 import { CredentialsPanelPage } from "./platform-page.tsx";
@@ -41,7 +41,7 @@ const toCard = (row: ApiKeyRow): CredentialCard => {
 	};
 };
 
-const requireGrant = Effect.fn("EvalCredentials.gate")(function* () {
+const requireGrant = Effect.fn("Credentials.gate")(function* () {
 	const permissions = yield* Permissions;
 	yield* permissions.requirePermission(EVAL_RESOURCE, EVAL_ACTION);
 });
@@ -50,8 +50,8 @@ const requireGrant = Effect.fn("EvalCredentials.gate")(function* () {
  * plugin via the `ApiKeys` port. Secrets never reach the wire:
  * `list` returns masked metadata; `resolve` is the only read-back
  * and stays server-side (consumed by endpoint resolution). */
-export class EvalCredentials extends Context.Service<
-	EvalCredentials,
+export class Credentials extends Context.Service<
+	Credentials,
 	{
 		readonly list: () => Effect.Effect<readonly CredentialCard[], Forbidden, unknown>;
 		readonly create: (input: {
@@ -63,14 +63,14 @@ export class EvalCredentials extends Context.Service<
 		/** Server-side only: raw secret for a `credential:<id>` ref. */
 		readonly resolve: (ref: string) => Effect.Effect<string | null, Forbidden, unknown>;
 	}
->()("@ktb/eval-credentials/EvalCredentials") {}
+>()("@ktb/credentials/Credentials") {}
 
-export const EvalCredentialsLive = Layer.effect(
-	EvalCredentials,
+export const CredentialsLive = Layer.effect(
+	Credentials,
 	Effect.gen(function* () {
 		const apiKeys = yield* ApiKeys;
-		return EvalCredentials.of({
-			list: Effect.fn("EvalCredentials.list")(function* () {
+		return Credentials.of({
+			list: Effect.fn("Credentials.list")(function* () {
 				yield* requireGrant();
 				const principal = yield* Principal;
 				const refId = principal?.userId ?? "";
@@ -79,7 +79,7 @@ export const EvalCredentialsLive = Layer.effect(
 				// `provider` key) must not leak into the credential surface.
 				return rows.filter((r) => parseMeta(r.metadata).kind === "credential").map(toCard);
 			}),
-			create: Effect.fn("EvalCredentials.create")(function* (input) {
+			create: Effect.fn("Credentials.create")(function* (input) {
 				yield* requireGrant();
 				const principal = yield* Principal;
 				const refId = principal?.userId ?? "";
@@ -95,13 +95,13 @@ export const EvalCredentialsLive = Layer.effect(
 					}),
 				);
 			}),
-			remove: Effect.fn("EvalCredentials.remove")(function* (id) {
+			remove: Effect.fn("Credentials.remove")(function* (id) {
 				yield* requireGrant();
 				const principal = yield* Principal;
 				// Owner-scoped: another user's key id is a silent no-op.
 				yield* Effect.promise(() => apiKeys.remove(id, principal?.userId ?? ""));
 			}),
-			resolve: Effect.fn("EvalCredentials.resolve")(function* (ref) {
+			resolve: Effect.fn("Credentials.resolve")(function* (ref) {
 				yield* requireGrant();
 				// Only managed-credential refs read secrets back — bare
 				// ids or env-var names are not credential refs.
@@ -115,40 +115,40 @@ export const EvalCredentialsLive = Layer.effect(
 	}),
 );
 
-export const evalCredentialsServicesPlugin = definePlugin({
-	id: "eval.credentials.services",
+export const credentialsServicesPlugin = definePlugin({
+	id: "credentials.services",
 	requiredDeps: [],
-	services: EvalCredentialsLive,
+	services: CredentialsLive,
 });
 
-export const evalCredentialsChromePlugin = definePlugin({
-	id: "eval.credentials.chrome",
+export const credentialsChromePlugin = definePlugin({
+	id: "credentials.chrome",
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
-			id: "eval-credentials.sidebar",
+			id: "credentials.sidebar",
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
-					to: "/platform/eval/credentials",
+					to: "/platform/ai/credentials",
 					label: "Credentials",
 					icon: KeyRoundIcon,
-					group: "Eval",
+					group: "AI",
 				},
 			},
 		},
 	],
 });
 
-export const evalCredentialsPanelPlugin = definePlugin({
-	id: "eval.credentials.panel",
-	requiredDeps: [platformPanelPlugin.id, evalCredentialsServicesPlugin.id],
+export const credentialsPanelPlugin = definePlugin({
+	id: "credentials.panel",
+	requiredDeps: [platformPanelPlugin.id, credentialsServicesPlugin.id],
 	panel: {
 		pages: [
 			{
-				id: "eval.credentials",
-				path: "/platform/eval/credentials",
+				id: "credentials",
+				path: "/platform/ai/credentials",
 				component: CredentialsPanelPage,
 				guard: () =>
 					Effect.gen(function* () {
@@ -157,7 +157,7 @@ export const evalCredentialsPanelPlugin = definePlugin({
 					}),
 				loader: () =>
 					Effect.gen(function* () {
-						const creds = yield* EvalCredentials;
+						const creds = yield* Credentials;
 						return yield* creds
 							.list()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as CredentialCard[])));
@@ -168,15 +168,15 @@ export const evalCredentialsPanelPlugin = definePlugin({
 });
 
 export const plugins: readonly Plugin[] = [
-	evalCredentialsServicesPlugin,
-	evalCredentialsChromePlugin,
-	evalCredentialsPanelPlugin,
+	credentialsServicesPlugin,
+	credentialsChromePlugin,
+	credentialsPanelPlugin,
 ];
 
 declare module "@ktb/kernel" {
 	interface PluginRegistry {
-		"eval.credentials.services": true;
-		"eval.credentials.chrome": true;
-		"eval.credentials.panel": true;
+		"credentials.services": true;
+		"credentials.chrome": true;
+		"credentials.panel": true;
 	}
 }
