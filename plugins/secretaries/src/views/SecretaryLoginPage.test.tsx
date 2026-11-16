@@ -252,19 +252,17 @@ describe("secretary sign-in page", () => {
 			await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));
 		});
 
-		it("sends a sign-in with a single doctor profile straight home", async () => {
+		it("sends a sign-in with a doctor profile into the secretary portal", async () => {
 			render(createElement(Page));
 			await fillAndSubmit();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/secretary"));
 		});
 
-		it("sends a sign-in with several profiles to the chooser", async () => {
-			context.mockResolvedValueOnce({
-				profiles: [{ doctorId: 1 }, { doctorId: 2 }],
-			});
+		it("enters the first delegated doctor when several are held", async () => {
+			context.mockResolvedValueOnce({ profiles: [{ doctorId: 1 }, { doctorId: 2 }] });
 			render(createElement(Page));
 			await fillAndSubmit();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/secretary"));
 		});
 
 		it.each([

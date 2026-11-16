@@ -413,10 +413,16 @@ export const I18N_MANIFEST = {
 		nav_consultations: {
 			params: [],
 		},
+		nav_doctor_login: {
+			params: [],
+		},
+		nav_doctor_portal: {
+			params: [],
+		},
 		nav_my_consultations: {
 			params: [],
 		},
-		nav_new_consultation: {
+		nav_patient_login: {
 			params: [],
 		},
 		nav_patient_portal: {
@@ -431,7 +437,7 @@ export const I18N_MANIFEST = {
 		nav_secretaries: {
 			params: [],
 		},
-		nav_sign_in: {
+		nav_secretary_portal: {
 			params: [],
 		},
 		nav_sign_out: {
@@ -474,6 +480,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		panel_group_access: {
+			params: [],
+		},
+		panel_group_account: {
 			params: [],
 		},
 		panel_group_domains: {
@@ -522,9 +531,6 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		portal_login_desc_up: {
-			params: [],
-		},
-		portal_login_doctor_link: {
 			params: [],
 		},
 		portal_login_heading_in: {
@@ -1096,9 +1102,6 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		verifyLink: {
-			params: [],
-		},
-		patientLink: {
 			params: [],
 		},
 		secretaryLink: {
@@ -2908,6 +2911,48 @@ export const I18N_MANIFEST = {
 		requiredMark: {
 			params: [],
 		},
+		metricsTitle: {
+			params: [],
+		},
+		metricsSinceStart: {
+			params: [],
+		},
+		metricsError: {
+			params: [],
+		},
+		metricsEmpty: {
+			params: [],
+		},
+		metricsServerFns: {
+			params: [],
+		},
+		metricsSessionContexts: {
+			params: [],
+		},
+		colFn: {
+			params: [],
+		},
+		colRequests: {
+			params: [],
+		},
+		colErrors: {
+			params: [],
+		},
+		colAvgDuration: {
+			params: [],
+		},
+		colContext: {
+			params: [],
+		},
+		colLookups: {
+			params: [],
+		},
+		colLoads: {
+			params: [],
+		},
+		colAvgLoad: {
+			params: [],
+		},
 	},
 	notifications: {
 		label: {
@@ -4553,13 +4598,15 @@ export const I18N_BASE_CATALOG = {
 	meta_title: "KTB Health",
 	meta_description:
 		"KTB Health is a medicine documentation platform: an ambient scribe turns the consultation conversation into a structured anamnesis draft for physician review.",
-	nav_sign_in: "Sign in",
+	nav_doctor_login: "I am a doctor",
+	nav_patient_login: "I am a patient",
 	nav_sign_out: "Sign out",
 	nav_switch_doctor: "Switch doctor",
 	nav_secretaries: "Secretaries",
 	nav_patient_portal: "Patient portal",
+	nav_doctor_portal: "Doctor portal",
+	nav_secretary_portal: "Secretary portal",
 	nav_my_consultations: "My consultations",
-	nav_new_consultation: "+ New consultation",
 	nav_consultations: "Consultations",
 	nav_patients: "Patients",
 	lang_menu_label: "Language",
@@ -4592,7 +4639,6 @@ export const I18N_BASE_CATALOG = {
 	portal_login_desc_in: "Sign in to see your consultations.",
 	portal_login_desc_up: "Create an account to see the consultations your doctors recorded for you.",
 	portal_login_name: "Full name",
-	portal_login_doctor_link: "I am a doctor",
 	verify_meta_title: "Verify email | KTB Health",
 	verify_heading: "Verify your email",
 	verify_desc_signed: "We sent a verification link to {email}. Open it to confirm your address.",
@@ -4700,6 +4746,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_users: "Users",
 	panel_nav_groups: "Groups",
 	panel_group_access: "Access",
+	panel_group_account: "Account",
 	panel_group_domains: "Domains",
 	panel_group_governance: "Governance",
 	panel_nav_ops: "Ops",

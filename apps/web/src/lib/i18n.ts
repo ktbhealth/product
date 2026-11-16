@@ -101,7 +101,9 @@ const NAV_LABELS: Record<string, string> = {
 };
 
 // Same deal for /platform console chrome: sidebar item labels are keyed
-// by route path, group headers by their manifest group name.
+// by route path, group headers by their manifest group name. Portal
+// sidebars share the map — the clinical Account items point at the
+// in-portal pages under each instance's base path.
 const PANEL_LABELS: Record<string, string> = {
 	"/platform": "panel_nav_dashboard",
 	"/platform/consultations": "nav_consultations",
@@ -112,10 +114,14 @@ const PANEL_LABELS: Record<string, string> = {
 	"/platform/plugins": "panel_nav_plugins",
 	"/portal/doctor/activity": "panel_nav_activity",
 	"/portal/secretary/activity": "panel_nav_activity",
+	"/portal/doctor/switch-doctor": "nav_switch_doctor",
+	"/portal/secretary/switch-doctor": "nav_switch_doctor",
+	"/portal/doctor/secretaries": "nav_secretaries",
 };
 
 const PANEL_GROUPS: Record<string, string> = {
 	Access: "panel_group_access",
+	Account: "panel_group_account",
 	Domains: "panel_group_domains",
 	Governance: "panel_group_governance",
 	System: "panel_group_system",

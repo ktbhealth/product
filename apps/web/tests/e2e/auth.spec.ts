@@ -59,7 +59,7 @@ test.describe("auth flow", () => {
 		await page.getByRole("menuitem", { name: "Sign out" }).click();
 		await expect(page).toHaveURL("/");
 		await waitForHydration(page);
-		await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+		await expect(page.getByRole("link", { name: "I am a doctor" })).toBeVisible();
 
 		// Sign back in (the "Sign in" tab is the default).
 		await gotoLogin(page);

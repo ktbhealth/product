@@ -12,6 +12,8 @@ import {
 	DoctorProfilesLive,
 	Doctors,
 	DoctorsLive,
+	doctorsChromePlugin,
+	doctorsPagesPlugin,
 	doctorsRoutesPlugin,
 	doctorsServicesPlugin,
 	doctorsTablesPlugin,
@@ -105,6 +107,79 @@ describe("doctor profile directory", () => {
 	});
 });
 
+describe("switch-doctor portal loader", () => {
+	const db = makeDb(makeD1(DDL));
+	const own: DoctorProfile = {
+		doctorId: 1,
+		userId: "u1",
+		email: "ana@ktb.test",
+		displayName: "Dra. Ana",
+		role: "owner",
+	};
+	const delegated: DoctorProfile = {
+		doctorId: 7,
+		userId: "u7",
+		email: "caio@ktb.test",
+		displayName: "Dr. Caio",
+		role: "secretary",
+	};
+	const delegations = Layer.succeed(DoctorDelegations, {
+		listFor: (userId) => Effect.succeed(userId === "u1" || userId === "sec" ? [delegated] : []),
+		claimInvites: () => Effect.succeed(0),
+	});
+	const loader = doctorsPagesPlugin.pages?.[0]?.loader;
+
+	beforeAll(async () => {
+		await ensureDoctorProfile(db, "u1", "Dra. Ana");
+	});
+
+	const runLoader = (principal: { userId: string; actorId?: string } | null) =>
+		Effect.runPromise(
+			(loader ?? ((_path: string) => Effect.fail(new Error("missing loader"))))(
+				"/portal/doctor/switch-doctor",
+			).pipe(
+				Effect.provideService(Principal, principal),
+				Effect.provide(DoctorProfilesLive.pipe(Layer.provide(Layer.succeed(Db, db)))),
+				Effect.provide(delegations),
+			) as Effect.Effect<unknown>,
+		);
+
+	it("lists the account's profiles with the acting one active", async () => {
+		expect(await runLoader({ userId: "u1" })).toEqual({
+			profiles: [own, delegated].map(({ doctorId, displayName, role }) => ({
+				doctorId,
+				displayName,
+				role,
+			})),
+			activeDoctorId: own.doctorId,
+		});
+	});
+
+	it("marks the delegated profile active while acting as it", async () => {
+		expect(await runLoader({ userId: "u7", actorId: "sec" })).toEqual({
+			profiles: [
+				{
+					doctorId: delegated.doctorId,
+					displayName: delegated.displayName,
+					role: delegated.role,
+				},
+			],
+			activeDoctorId: delegated.doctorId,
+		});
+	});
+
+	it("is empty without a principal or a deployed directory", async () => {
+		expect(await runLoader(null)).toEqual({ profiles: [], activeDoctorId: null });
+		await expect(
+			Effect.runPromise(
+				(loader ?? ((_path: string) => Effect.fail(new Error("missing loader"))))("/portal/x").pipe(
+					Effect.provideService(Principal, { userId: "u1" }),
+				) as Effect.Effect<unknown>,
+			),
+		).resolves.toEqual({ profiles: [], activeDoctorId: null });
+	});
+});
+
 describe("DoctorsLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Doctors, never>;
 	const db = makeDb(makeD1(DDL));
@@ -139,12 +214,50 @@ describe("DoctorsLive", () => {
 
 describe("doctors plugins", () => {
 	it("contributes the doctors table and service", () => {
-		expect(plugins).toEqual([doctorsTablesPlugin, doctorsServicesPlugin, doctorsRoutesPlugin]);
+		expect(plugins).toEqual([
+			doctorsTablesPlugin,
+			doctorsServicesPlugin,
+			doctorsRoutesPlugin,
+			doctorsPagesPlugin,
+			doctorsChromePlugin,
+		]);
 		expect(doctorsRoutesPlugin.id).toBe("doctors.routes");
 		expect(doctorsRoutesPlugin.routes).toHaveLength(1);
 		expect(doctorsTablesPlugin.id).toBe("doctors.tables");
 		expect(doctorsTablesPlugin.tables.doctors).toBe(doctors);
 		expect(doctorsServicesPlugin.id).toBe("doctors.services");
 		expect(doctorsServicesPlugin.services).toBeDefined();
+	});
+
+	it("mounts the profile chooser inside both clinical portals", () => {
+		expect(doctorsPagesPlugin.requiredDeps).toEqual(["portal.shell"]);
+		expect(doctorsPagesPlugin.pages).toHaveLength(2);
+		expect((doctorsPagesPlugin.pages ?? []).map((p) => p.path)).toEqual([
+			"/portal/doctor/switch-doctor",
+			"/portal/secretary/switch-doctor",
+		]);
+		for (const page of doctorsPagesPlugin.pages ?? []) {
+			expect(page.component).toBeDefined();
+			expect(page.loader).toBeDefined();
+		}
+	});
+
+	it("links both clinical sidebars to the in-portal chooser", () => {
+		expect(doctorsChromePlugin.requiredDeps).toEqual(["portal.shell"]);
+		const entries = doctorsChromePlugin.chrome ?? [];
+		expect(entries.map((e) => e.portal)).toEqual(["doctor", "secretary"]);
+		for (const entry of entries) {
+			expect(entry.region).toBe("portal.sidebar");
+			// Hidden for single-profile accounts — nothing to switch to.
+			expect(entry.when).toEqual({ minDoctorProfiles: 2 });
+			expect(entry.content).toMatchObject({
+				kind: "sidebarItem",
+				item: {
+					to: `/portal/${entry.portal}/switch-doctor`,
+					label: "Switch doctor",
+					group: "Account",
+				},
+			});
+		}
 	});
 });

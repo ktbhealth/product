@@ -22,7 +22,11 @@ const props = (over: Partial<ChromeProps> = {}): ChromeProps => ({
 	locales: ["en"],
 	localeName: (l) => l,
 	setLocale: vi.fn(),
-	labels: { signIn: "Entrar", signOut: "Sair" },
+	labels: {
+		doctorLogin: "Sou doutor",
+		patientLogin: "Sou paciente",
+		signOut: "Sair",
+	},
 	signOut: vi.fn(async () => {}),
 	...over,
 });
@@ -33,15 +37,21 @@ afterEach(() => {
 });
 
 describe("SessionMenu", () => {
-	it("renders a localized sign-in link when anonymous", () => {
+	it("renders localized doctor and patient login entries when anonymous", () => {
 		render(<SessionMenu {...props()} />);
-		const link = screen.getByRole("link", { name: "Entrar" });
-		expect(link.getAttribute("href")).toBe("/login");
+		expect(screen.getByRole("link", { name: "Sou doutor" }).getAttribute("href")).toBe(
+			"/login/doctor",
+		);
+		// The patient login is the primary CTA.
+		expect(screen.getByRole("link", { name: "Sou paciente" }).getAttribute("href")).toBe(
+			"/login/patient",
+		);
 	});
 
 	it("falls back to English labels when the host fills none", () => {
 		render(<SessionMenu {...props({ labels: {} })} />);
-		expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+		expect(screen.getByRole("link", { name: "I am a doctor" })).toBeTruthy();
+		expect(screen.getByRole("link", { name: "I am a patient" })).toBeTruthy();
 	});
 
 	it("falls back to English labels and a placeholder avatar", async () => {
@@ -80,7 +90,7 @@ describe("SessionMenu", () => {
 		await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
 	});
 
-	it("offers a doctor account the profile shortcuts as full navigations", async () => {
+	it("offers a doctor account the portal links as full navigations", async () => {
 		const assign = vi.fn();
 		vi.stubGlobal("location", { assign });
 		render(
@@ -91,22 +101,24 @@ describe("SessionMenu", () => {
 						email: "bia@ktb.test",
 						name: "Bia",
 						patientOnly: false,
+						clinicalRole: "owner",
+						patientProfiles: 1,
 					},
 					labels: {
-						switchDoctor: "Trocar de médico",
-						secretaries: "Secretárias",
+						doctorPortal: "Portal do médico",
 						patientPortal: "Portal do paciente",
 					},
 				})}
 			/>,
 		);
 		fireEvent.click(screen.getByText("Bia"));
-		fireEvent.click(await screen.findByText("Trocar de médico"));
-		fireEvent.click(screen.getByText("Bia"));
-		fireEvent.click(await screen.findByText("Secretárias"));
+		// The profile actions moved into the clinical portal sidebars.
+		expect(screen.queryByText("Switch doctor")).toBeNull();
+		expect(screen.queryByText("Secretaries")).toBeNull();
+		fireEvent.click(await screen.findByText("Portal do médico"));
 		fireEvent.click(screen.getByText("Bia"));
 		fireEvent.click(await screen.findByText("Portal do paciente"));
-		expect(assign.mock.calls).toEqual([["/doctors/select"], ["/secretaries"], ["/portal"]]);
+		expect(assign.mock.calls).toEqual([["/portal/doctor"], ["/portal/patient"]]);
 	});
 
 	it("shows the console entry only when the account passes the platform gate", async () => {
@@ -135,19 +147,77 @@ describe("SessionMenu", () => {
 		expect(screen.queryByText("Platform console")).toBeNull();
 	});
 
-	it("falls back to English profile shortcuts when the host fills none", async () => {
+	it("labels and routes a secretary-only account to its own portal", async () => {
+		const assign = vi.fn();
+		vi.stubGlobal("location", { assign });
 		render(
 			<SessionMenu
 				{...props({
-					user: { id: "u1", email: "bia@ktb.test", name: "Bia" },
+					user: {
+						id: "s1",
+						email: "sec@ktb.test",
+						name: "Sec",
+						patientOnly: false,
+						clinicalRole: "secretary",
+					},
+					labels: { doctorPortal: "Portal do médico", secretaryPortal: "Portal da secretaria" },
+				})}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Sec"));
+		expect(screen.queryByText("Portal do médico")).toBeNull();
+		fireEvent.click(await screen.findByText("Portal da secretaria"));
+		expect(assign).toHaveBeenCalledWith("/portal/secretary");
+	});
+
+	it("falls back to English portal labels when the host fills none", async () => {
+		render(
+			<SessionMenu
+				{...props({
+					user: { id: "u1", email: "bia@ktb.test", name: "Bia", patientProfiles: 1 },
 					labels: {},
 				})}
 			/>,
 		);
 		fireEvent.click(screen.getByText("Bia"));
-		expect(await screen.findByText("Switch doctor")).toBeTruthy();
-		expect(screen.getByText("Secretaries")).toBeTruthy();
+		expect(await screen.findByText("Doctor portal")).toBeTruthy();
 		expect(screen.getByText("Patient portal")).toBeTruthy();
+	});
+
+	it("hides the patient portal when the account holds no patient record", async () => {
+		render(
+			<SessionMenu
+				{...props({
+					user: {
+						id: "u1",
+						email: "bia@ktb.test",
+						name: "Bia",
+						patientOnly: false,
+						clinicalRole: "owner",
+						patientProfiles: 0,
+					},
+					labels: {},
+				})}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Bia"));
+		expect(await screen.findByText("Doctor portal")).toBeTruthy();
+		expect(screen.queryByText("Patient portal")).toBeNull();
+		expect(screen.queryByText("My consultations")).toBeNull();
+	});
+
+	it("also hides the patient portal when the count is unresolved", async () => {
+		render(
+			<SessionMenu
+				{...props({
+					user: { id: "u1", email: "bia@ktb.test", name: "Bia", clinicalRole: "owner" },
+					labels: {},
+				})}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Bia"));
+		expect(await screen.findByText("Doctor portal")).toBeTruthy();
+		expect(screen.queryByText("Patient portal")).toBeNull();
 	});
 
 	it("narrows a patient account to its own consultations", async () => {
@@ -158,13 +228,14 @@ describe("SessionMenu", () => {
 			email: "ana@ktb.test",
 			name: "Ana",
 			patientOnly: true,
+			patientProfiles: 2,
 		};
 		const view = render(
 			<SessionMenu {...props({ user, labels: { myConsultations: "Minhas consultas" } })} />,
 		);
 		fireEvent.click(screen.getByText("Ana"));
 		fireEvent.click(await screen.findByText("Minhas consultas"));
-		expect(assign).toHaveBeenCalledWith("/portal");
+		expect(assign).toHaveBeenCalledWith("/portal/patient");
 		view.unmount();
 
 		// No host label → English fallback; never the doctor shortcuts.
@@ -173,6 +244,7 @@ describe("SessionMenu", () => {
 		expect(await screen.findByText("My consultations")).toBeTruthy();
 		expect(screen.queryByText("Switch doctor")).toBeNull();
 		expect(screen.queryByText("Secretaries")).toBeNull();
+		expect(screen.queryByText("Doctor portal")).toBeNull();
 		expect(screen.queryByText("Patient portal")).toBeNull();
 	});
 });

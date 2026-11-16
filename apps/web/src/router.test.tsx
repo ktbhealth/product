@@ -56,6 +56,22 @@ vi.mock("@ktb/auth-better/client", () => ({
 	},
 }));
 vi.mock("@tanstack/react-devtools", () => ({ TanStackDevtools: () => null }));
+// jsdom has no matchMedia; the ui sidebar's useIsMobile needs it once
+// navigation lands inside a portal shell.
+window.matchMedia =
+	window.matchMedia ??
+	((query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => false,
+		}) as MediaQueryList);
+
 vi.mock("@tanstack/react-router-devtools", () => ({
 	TanStackRouterDevtoolsPanel: () => null,
 }));
@@ -156,8 +172,10 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await waitFor(() => expect(document.body.textContent).toContain("The doctor decides."));
-		// sign-in link present (anonymous)
-		expect(screen.getByText("Sign in")).toBeTruthy();
+		// role sign-in links present (anonymous); clinical nav lives
+		// inside the portal instances, not the marketing header.
+		expect(screen.getByText("I am a doctor")).toBeTruthy();
+		expect(screen.getByText("I am a patient")).toBeTruthy();
 		// nav links from plugin manifests
 		expect(screen.getByText("Consultations")).toBeTruthy();
 
@@ -180,10 +198,11 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await waitFor(() => expect(document.body.textContent).toContain("Dra Router"));
-		// The user menu offers the doctor chooser, the secretaries page and
-		// sign-out; each closes the menu, so it is reopened per item.
+		// The user menu offers the clinical portal and sign-out — this
+		// account holds no patient record, so no patient-portal entry.
+		// Each item closes the menu, so it is reopened per item.
 		const trigger = screen.getAllByText("Dra Router")[0]!;
-		for (const item of ["Switch doctor", "Secretaries", "Patient portal", "Sign out"]) {
+		for (const item of ["Doctor portal", "Sign out"]) {
 			await act(async () => {
 				fireEvent.click(trigger);
 			});

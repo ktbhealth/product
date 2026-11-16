@@ -234,15 +234,16 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		localeName: (l: string) => localeName(l, slice),
 		setLocale: changeLocale,
 		labels: {
-			signIn: appMessage(slice, "nav_sign_in", "Sign in"),
+			doctorLogin: appMessage(slice, "nav_doctor_login", "I am a doctor"),
+			patientLogin: appMessage(slice, "nav_patient_login", "I am a patient"),
 			signOut: appMessage(slice, "nav_sign_out", "Sign out"),
-			newConsultation: appMessage(slice, "nav_new_consultation", "+ New consultation"),
 			langMenu: appMessage(slice, "lang_menu_label", "Language"),
-			switchDoctor: appMessage(slice, "nav_switch_doctor", "Switch doctor"),
-			secretaries: appMessage(slice, "nav_secretaries", "Secretaries"),
 			patientPortal: appMessage(slice, "nav_patient_portal", "Patient portal"),
+			doctorPortal: appMessage(slice, "nav_doctor_portal", "Doctor portal"),
+			secretaryPortal: appMessage(slice, "nav_secretary_portal", "Secretary portal"),
 			platformConsole: appMessage(slice, "nav_platform_console", "Platform"),
 			myConsultations: appMessage(slice, "nav_my_consultations", "My consultations"),
+			newConsultation: appMessage(slice, "nav_new_consultation", "+ New consultation"),
 		},
 		signOut: async () => {
 			await authClient.signOut();
@@ -280,16 +281,20 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	};
 	const brand = entries("app.header.brand").map(renderEntry);
 	const nav = patientOnly
-		? [
-				<Link
-					key="portal"
-					to="/portal"
-					className={NAV_LINK}
-					activeProps={{ className: `${NAV_LINK} ${NAV_ACTIVE}` }}
-				>
-					{appMessage(slice, "nav_my_consultations", "My consultations")}
-				</Link>,
-			]
+		? // Same gate as the account menu: the patient portal only exists
+			// when the account actually holds a patient record.
+			(user?.patientProfiles ?? 0) > 0
+			? [
+					<Link
+						key="portal"
+						to="/portal"
+						className={NAV_LINK}
+						activeProps={{ className: `${NAV_LINK} ${NAV_ACTIVE}` }}
+					>
+						{appMessage(slice, "nav_my_consultations", "My consultations")}
+					</Link>,
+				]
+			: []
 		: entries("app.header.nav").map(renderEntry);
 	const actions = entries("app.header.actions").map(renderEntry);
 	const session = entries("app.header.session").map(renderEntry);

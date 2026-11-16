@@ -81,7 +81,7 @@ describe("doctorContextFn", () => {
 		expect(mocks.getDoctorContext).toHaveBeenCalledWith(undefined, { claimInvites: true });
 	});
 
-	it("reports no active profile while a choice is pending", async () => {
+	it("reports no active profile for an account holding none", async () => {
 		mocks.getDoctorContext.mockResolvedValue({ profiles: [], active: null });
 		await expect(doctorContextFn()).resolves.toEqual({ profiles: [], activeDoctorId: null });
 	});

@@ -3,15 +3,18 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { and, asc, eq, ne } from "drizzle-orm";
+import { UserCogIcon } from "lucide-react";
 
 import { DoctorDelegations, type DoctorProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { doctors, user } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { portalShellPlugin } from "@ktb/portal";
 import { physical, route } from "@tanstack/virtual-file-routes";
 
 import { doctorAccess, type DoctorAccess } from "./schema.ts";
+import { SecretariesPortalPage } from "./views/SecretariesPortalPage.tsx";
 
 export type { DoctorAccess, DoctorAccessRole, DoctorAccessStatus } from "./schema.ts";
 
@@ -250,12 +253,76 @@ export const secretariesRoutesPlugin = definePlugin({
 	],
 });
 
+/**
+ * Portal page loader (P-081): the signed-in account's own
+ * secretaries. `subject: "doctor"` binds the ACTING doctor — which
+ * the service would deny as a delegated caller — so the list runs
+ * under the SESSION principal (`actorId`, never the acted profile),
+ * the same semantics the retired app route had.
+ */
+const secretariesPortalLoader = (_path: string) =>
+	Effect.gen(function* () {
+		const principal = yield* Principal;
+		if (principal === null) return null;
+		const secretaries = yield* Secretaries;
+		return yield* secretaries.list().pipe(
+			Effect.provideService(Principal, {
+				userId: principal.actorId ?? principal.userId,
+				email: principal.email,
+			}),
+			Effect.map((rows) => rows.map(({ id, email, status }) => ({ id, email, status }))),
+			Effect.catchTag("Forbidden", () => Effect.succeed(null)),
+		);
+	});
+
+// Portal page (P-081): management lives inside the doctor portal —
+// the service denies delegated principals, so the page is scoped to
+// the doctor portal alone. The app route /secretaries redirects here.
+export const secretariesPagesPlugin = definePlugin({
+	id: "secretaries.pages",
+	requiredDeps: [portalShellPlugin.id],
+	pages: [
+		{
+			id: "secretaries.manage",
+			path: "/portal/doctor/secretaries",
+			component: SecretariesPortalPage,
+			loader: secretariesPortalLoader,
+		},
+	],
+});
+
+// Chrome contribution (P-060): the sidebar entry points at the
+// in-portal page above. The dep edge orders it after the portal
+// shell anchor.
+export const secretariesChromePlugin = definePlugin({
+	id: "secretaries.chrome",
+	requiredDeps: [portalShellPlugin.id],
+	chrome: [
+		{
+			id: "secretaries.nav.manage",
+			region: "portal.sidebar",
+			portal: "doctor",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/portal/doctor/secretaries",
+					label: "Secretaries",
+					icon: UserCogIcon,
+					group: "Account",
+				},
+			},
+		},
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	secretariesTablesPlugin,
 	secretariesServicesPlugin,
 	secretariesRoutesPlugin,
+	secretariesPagesPlugin,
+	secretariesChromePlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -265,5 +332,7 @@ declare module "@ktb/kernel" {
 		"secretaries.tables": true;
 		"secretaries.services": true;
 		"secretaries.routes": true;
+		"secretaries.pages": true;
+		"secretaries.chrome": true;
 	}
 }

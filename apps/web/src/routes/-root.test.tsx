@@ -5,7 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
 	pathname: "/",
-	user: null as { name?: string; email?: string; patientOnly?: boolean } | null,
+	user: null as {
+		name?: string;
+		email?: string;
+		patientOnly?: boolean;
+		patientProfiles?: number;
+	} | null,
 	pluginStates: null as { enabled: string[] } | null,
 	enabledIds: [] as string[],
 	theme: null as unknown,
@@ -50,13 +55,9 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 		...actual,
 		// Test-only chrome injection: real plugin contributions plus any
 		// entries a test queues in state.chromeExtra for the region.
-		collectChrome: (
-			pluginList: Parameters<typeof actual.collectChrome>[0],
-			region: string,
-			pathname: string,
-		) => [
-			...actual.collectChrome(pluginList, region, pathname),
-			...state.chromeExtra.filter((entry) => entry.region === region),
+		collectChrome: (...args: Parameters<typeof actual.collectChrome>) => [
+			...actual.collectChrome(...args),
+			...state.chromeExtra.filter((entry) => entry.region === args[1]),
 		],
 	};
 });
@@ -175,9 +176,9 @@ describe("root document", () => {
 		// consultations.chrome → app.header.actions (host-injected label)
 		expect(html).toContain('href="/consultations/new"');
 		expect(html).toContain("New consultation");
-		// session.chrome → app.header.session (anonymous → sign-in link)
-		expect(html).toContain('href="/login"');
-		expect(html).toContain("Sign in");
+		// auth.chrome → app.header.session (anonymous → role logins)
+		expect(html).toContain('href="/login/doctor"');
+		expect(html).toContain('href="/login/patient"');
 	});
 
 	it("renders the plugin footer note through the i18n mapping", () => {
@@ -191,7 +192,7 @@ describe("root document", () => {
 		// The trigger renders the name; the email/sign-out live inside the
 		// portaled dropdown content (covered by plugins/session tests).
 		expect(html).toContain("Ada Lovelace");
-		expect(html).not.toContain('href="/login"');
+		expect(html).not.toContain('href="/login/doctor"');
 	});
 
 	it("offers a doctor the doctor navigation", () => {
@@ -207,13 +208,20 @@ describe("root document", () => {
 	});
 
 	it("narrows a patient account to the portal: no doctor navigation", () => {
-		state.user = { name: "Ana", email: "ana@ktb.test", patientOnly: true };
+		state.user = { name: "Ana", email: "ana@ktb.test", patientOnly: true, patientProfiles: 1 };
 		const html = render();
 		expect(html).toContain('href="/portal"');
 		expect(html).toContain("My consultations");
 		expect(html).not.toContain('href="/consultations"');
 		expect(html).not.toContain('href="/patients"');
 		expect(html).not.toContain('href="/consultations/new"');
+	});
+
+	it("offers a patient-only account with no linked record no portal link", () => {
+		state.user = { name: "Ana", email: "ana@ktb.test", patientOnly: true, patientProfiles: 0 };
+		const html = render();
+		expect(html).not.toContain('href="/portal"');
+		expect(html).not.toContain("My consultations");
 	});
 
 	it("hides a disabled plugin's chrome contributions (P-058)", () => {

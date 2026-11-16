@@ -197,6 +197,16 @@ describe("pluginPanelLabel", () => {
 		}
 	});
 
+	it("localizes the clinical Account sidebar destinations", () => {
+		for (const to of [
+			"/portal/doctor/switch-doctor",
+			"/portal/secretary/switch-doctor",
+			"/portal/doctor/secretaries",
+		]) {
+			expect(pluginPanelLabel(to, "fallback")).not.toBe("fallback");
+		}
+	});
+
 	it("falls back to the plugin-provided label for unknown paths", () => {
 		expect(pluginPanelLabel("/platform/unknown", "Custom", FULL)).toBe("Custom");
 	});
@@ -204,9 +214,9 @@ describe("pluginPanelLabel", () => {
 
 describe("pluginPanelGroup", () => {
 	it("localizes known sidebar groups", () => {
-		expect(pluginPanelGroup("Access", FULL)).toBe("Access");
-		expect(pluginPanelGroup("Domains", FULL)).toBe("Domains");
-		expect(pluginPanelGroup("Governance", FULL)).toBe("Governance");
+		for (const group of ["Access", "Account", "Domains", "Governance", "System"]) {
+			expect(pluginPanelGroup(group, FULL)).toBe(group);
+		}
 	});
 
 	it("passes unknown groups through unchanged", () => {

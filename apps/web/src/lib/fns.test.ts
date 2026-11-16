@@ -844,6 +844,24 @@ describe("server fns", () => {
 		expect(await portalPageDataFn({ data: "/portal/doctor/consultations/999999" })).toEqual({
 			status: "notfound",
 		});
+		// The account pages mount inside the portals too: the chooser
+		// lists the account's profiles under the acting doctor, and the
+		// doctor's own secretaries list comes back under the session
+		// principal (empty here — the fixture doctor has none).
+		const chooser = await portalPageDataFn({ data: "/portal/doctor/switch-doctor" });
+		expect(chooser.status).toBe("ok");
+		if (chooser.status === "ok") {
+			const d = chooser.data as {
+				profiles: readonly { doctorId: number; role: string }[];
+				activeDoctorId: number | null;
+			};
+			expect(d.profiles.map((p) => p.role)).toEqual(["owner"]);
+			expect(d.activeDoctorId).toBe(d.profiles[0]?.doctorId);
+		}
+		expect(await portalPageDataFn({ data: "/portal/doctor/secretaries" })).toEqual({
+			status: "ok",
+			data: [],
+		});
 		// A doctor-only account satisfies neither the secretary audience
 		// nor the hybrid patient rule (it has a doctor profile and no
 		// active patient link): the split holds on both sides.

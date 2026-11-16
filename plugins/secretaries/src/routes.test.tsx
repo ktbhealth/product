@@ -81,7 +81,6 @@ const options = (
 		options: {
 			beforeLoad: () => Promise<void>;
 			loader: () => Promise<unknown>;
-			component: () => ReactElement;
 		};
 	}
 ).options;
@@ -94,49 +93,22 @@ const redirectTarget = async (run: () => Promise<unknown>) => {
 
 afterEach(cleanup);
 
-describe("/secretaries", () => {
+describe("/secretaries redirect", () => {
 	it("requires a session", async () => {
 		mocks.sessionUserFn.mockResolvedValue({ id: "u1" });
 		await expect(options.beforeLoad()).resolves.toBeUndefined();
 		mocks.sessionUserFn.mockResolvedValue(null);
-		expect((await redirectTarget(options.beforeLoad)).to).toBe("/login");
+		expect((await redirectTarget(options.beforeLoad)).href).toBe("/login/doctor");
 	});
 
-	it("loads the secretaries with the locale", async () => {
-		const secretaries = [{ id: 1, email: "ana@ktb.test", status: "active" }];
-		mocks.listSecretariesFn.mockResolvedValue(secretaries);
-		await expect(options.loader()).resolves.toEqual({
-			secretaries,
-			locale: "pt-BR",
-		});
+	it("sends a doctor into the portal page", async () => {
+		mocks.listSecretariesFn.mockResolvedValue([]);
+		expect((await redirectTarget(options.loader)).href).toBe("/portal/doctor/secretaries");
 	});
 
 	it("sends accounts without their own doctor profile to the chooser", async () => {
 		mocks.listSecretariesFn.mockResolvedValue(null);
 		expect((await redirectTarget(options.loader)).to).toBe("/doctors/select");
-	});
-
-	it("wires the view to the server fns and refreshes on change", async () => {
-		mocks.loaderData.current = { secretaries: [], locale: "en" };
-		render(createElement(options.component));
-		const props = mocks.props.current as {
-			secretaries: unknown[];
-			locale: string;
-			api: {
-				invite(email: string): Promise<unknown>;
-				revoke(id: number): Promise<unknown>;
-			};
-			onChanged(): void;
-		};
-		expect(props).toMatchObject({ secretaries: [], locale: "en" });
-		await props.api.invite("new@ktb.test");
-		expect(mocks.inviteSecretaryFn).toHaveBeenCalledWith({
-			data: { email: "new@ktb.test" },
-		});
-		await props.api.revoke(5);
-		expect(mocks.revokeSecretaryFn).toHaveBeenCalledWith({ data: 5 });
-		props.onChanged();
-		expect(mocks.invalidate).toHaveBeenCalledTimes(1);
 	});
 });
 
