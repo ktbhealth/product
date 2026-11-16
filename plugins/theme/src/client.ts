@@ -47,8 +47,11 @@ export const themeHeaderPlugin = definePlugin({
 	chrome: [
 		{
 			id: "theme.header-action",
-			region: "portal.header.actions",
-			content: { kind: "headerAction", id: "theme", component: ThemeHeaderAction },
+			region: "app.header.actions",
+			// App-shell actions render `component` entries (the
+			// `headerAction` kind is portal-shell chrome); the host
+			// injects ChromeProps, which supplies `locale`.
+			content: { kind: "component", component: ThemeHeaderAction },
 		},
 	],
 });
