@@ -131,16 +131,17 @@ describe("processAudioJob", () => {
 	});
 
 	it("refuses to send zero-knowledge audio to Whisper (T-147)", async () => {
-		const { db, deps } = makeDeps();
+		let aiCalled = false;
+		const { db, deps } = makeDeps({
+			ai: {
+				run: async () => {
+					aiCalled = true;
+					return { text: "x" };
+				},
+			},
+		});
 		const id = (await createConsultation(db, { userId: "u1", source: "browser" }, 9))!;
 		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
-		let aiCalled = false;
-		deps.ai = {
-			run: async () => {
-				aiCalled = true;
-				return { text: "x" };
-			},
-		};
 		await processAudioJob(job(id, { tenantId: 9 }), deps);
 		const r = await row(db, id);
 		expect(aiCalled).toBe(false);

@@ -468,12 +468,15 @@ export function NewConsultationPage({
 			// consultation DEK before upload — the server stores ciphertext
 			// and the Whisper queue never sees it. Fail closed: no grant,
 			// no upload.
-			let body: Uint8Array | Blob = blob;
+			let body: Blob = blob;
 			let contentType = (blob.type || "audio/webm").split(";")[0]!;
 			if (zk) {
 				const dek = await consultationDek(zk.keyring, zk.api, id);
 				if (!dek) throw new Error("audio upload blocked — record is locked on this device");
-				body = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
+				const encrypted = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
+				// Fresh copy — the typed-array generic must resolve to
+				// ArrayBuffer (not ArrayBufferLike) for fetch's BodyInit.
+				body = new Blob([new Uint8Array(encrypted)]);
 				contentType = "application/octet-stream";
 			}
 			const res = await fetch(`/api/consultations/${id}/audio`, {
