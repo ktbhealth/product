@@ -1116,7 +1116,7 @@ export const evalPersonaChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "eval-personas.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
@@ -1129,7 +1129,7 @@ export const evalPersonaChromePlugin = definePlugin({
 		},
 		{
 			id: "eval-instances.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
