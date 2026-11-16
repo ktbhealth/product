@@ -1,4 +1,4 @@
-import { notFound } from "@tanstack/react-router";
+import { notFound, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -23,8 +23,15 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 	},
 	component: function ConsultationRoute() {
 		const { c, history, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		return (
-			<ConsultationDetailPage c={c} history={history} api={consultationDetailApi} locale={locale} />
+			<ConsultationDetailPage
+				c={c}
+				history={history}
+				api={consultationDetailApi}
+				i18n={i18n}
+				locale={locale}
+			/>
 		);
 	},
 });

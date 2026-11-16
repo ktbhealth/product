@@ -56,6 +56,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 			useLoaderData: () => mocks.loaderData.current,
 			useSearch: () => ({}),
 		}),
+		getRouteApi: () => ({ useLoaderData: () => ({ i18n: undefined }) }),
 	};
 });
 

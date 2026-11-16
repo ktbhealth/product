@@ -2,6 +2,9 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
@@ -20,7 +23,7 @@ import {
 
 import { adminDeleteConsultationFn } from "../fns.ts";
 import type { AdminConsultationRow } from "../index.ts";
-import { consultationMessages } from "../i18n.ts";
+import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { ConsultationPatientOption } from "../platform-page.tsx";
 import type { OwnerOption } from "@ktb/patients";
 import { AdminConsultationCreateDialog } from "./AdminConsultationCreateDialog.tsx";
@@ -40,6 +43,8 @@ export function AdminConsultationsPage({
 	consultations,
 	owners,
 	patients,
+	i18n,
+
 	locale = "en",
 }: {
 	consultations: AdminConsultationRow[];
@@ -47,10 +52,12 @@ export function AdminConsultationsPage({
 	owners: OwnerOption[];
 	/** Patients for the create form's patient picker. */
 	patients: ConsultationPatientOption[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host via the panel page ctx. */
 	locale?: string;
 }) {
-	const t = consultationMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const router = useRouter();
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");

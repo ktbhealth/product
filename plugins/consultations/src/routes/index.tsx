@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { useEffect } from "react";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
@@ -17,9 +18,10 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 	},
 	component: function ConsultationsRoute() {
 		const { consultations, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		useEffect(() => {
 			if (prefersWhisper) prefetchWhisperModel();
 		}, []);
-		return <ConsultationsPage consultations={consultations} locale={locale} />;
+		return <ConsultationsPage consultations={consultations} i18n={i18n} locale={locale} />;
 	},
 });

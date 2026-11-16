@@ -12,6 +12,13 @@ import type { AnamnesisSectionKey, Confidence } from "@ktb/anamnesis";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const CONSULTATION_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "consultations";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): ConsultationMessages =>
+	consultationMessages(locale);
 export type ConsultationLocale = (typeof CONSULTATION_LOCALES)[number];
 export const BASE_LOCALE: ConsultationLocale = "en";
 

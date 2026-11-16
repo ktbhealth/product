@@ -23,6 +23,7 @@
 		"@ktb/bot": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/export-pdf": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/integrity": "workspace:*",
 		"@ktb/interop": "workspace:*",
 		"@ktb/kernel": "workspace:*",

@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES, SPEAKER_STYLE } from "./-ui.ts";
-import { consultationMessages } from "../i18n.ts";
+import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /** "Doctor: text" lines become chat-style bubbles. */
 function Transcript({ text, emptyLabel }: { text: string; emptyLabel: string }) {
@@ -171,9 +174,13 @@ export function AudioTranscriptPanel({
 	serverText,
 	correctedText,
 	onActiveText,
+	i18n,
+
 	locale = "en",
 }: {
 	consultationId: number | null;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale — resolves the panel's copy and source captions. */
 	locale?: string;
 	audioStatus?: string | null;
@@ -185,7 +192,7 @@ export function AudioTranscriptPanel({
 	 *  generation) use exactly what the doctor is viewing. */
 	onActiveText?: (view: TranscriptView) => void;
 }) {
-	const t = consultationMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const [tab, setTab] = useState<"corrected" | "original">("corrected");
 	const status = audioStatus ?? "none";
 	const sourceLabels: TranscriptSourceLabels = {
