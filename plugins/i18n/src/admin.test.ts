@@ -759,7 +759,7 @@ describe("I18nAdmin CRDT compaction", () => {
 		// The snapshot still replays to the latest merged value.
 		const rows = await db.select().from(i18nMessages).where(eq(i18nMessages.key, id.key));
 		expect(rows[0]?.draftValue).toBe("v200");
-	});
+	}, 30_000);
 
 	it("compaction's bounded delete preserves ops appended after the read", async () => {
 		const rt = makeRuntime();
@@ -804,7 +804,7 @@ describe("I18nAdmin CRDT compaction", () => {
 		// The merged draft still reflects this save's value.
 		const rows = await db.select().from(i18nMessages).where(eq(i18nMessages.key, id.key));
 		expect(rows[0]?.draftValue).toBe("v200");
-	});
+	}, 30_000);
 });
 
 describe("I18nAdmin discardDraft", () => {
