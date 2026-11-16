@@ -271,6 +271,30 @@ export async function setTenantZk(db: DbClient, tenantId: number): Promise<void>
 }
 
 /**
+ * Fail-closed read of the tenant zk flag for server-composed text
+ * producers (T-149): notification bodies, emails and any other copy
+ * derived from record data must never embed content a ZK tenant made
+ * unreadable. Unlike {@link tenantIsZk} — where an absent group means
+ * "no clinic, non-ZK" — here an unresolvable tenantId (missing group
+ * row or a failed lookup) answers `true`: emit metadata-only copy
+ * rather than risk a PHI leak. Personal scope (null tenantId) has no
+ * clinic keyring, so it stays non-ZK.
+ */
+export async function tenantZkOrClosed(db: DbClient, tenantId: number | null): Promise<boolean> {
+	if (tenantId === null) return false;
+	try {
+		const rows = await db
+			.select({ zk: groups.zk })
+			.from(groups)
+			.where(eq(groups.id, tenantId))
+			.limit(1);
+		return rows[0]?.zk ?? true;
+	} catch {
+		return true;
+	}
+}
+
+/**
  * Clinic vault port (T-142, PL-007 F2): member-device enrollment +
  * approval, generic record-DEK grants, and the tenant ZK flag. The
  * service never sees key material — pubkeys and `w1.` envelopes only;
