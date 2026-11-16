@@ -53,5 +53,6 @@ describe("vault schema", () => {
 		const fk = cfg.foreignKeys[0]!;
 		expect(fk.reference().foreignTable).toBe(groups);
 		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
+		expect(fk.onDelete).toBe("cascade");
 	});
 });

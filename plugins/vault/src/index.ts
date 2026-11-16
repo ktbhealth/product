@@ -3,11 +3,14 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { and, eq } from "drizzle-orm";
+import { KeyRoundIcon } from "lucide-react";
 
 import { Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { requireTenantRole, Tenant, TenantForbidden } from "@ktb/tenant";
+import { requireTenantRole, Tenant, TenantForbidden, tenantScopeId } from "@ktb/tenant";
+
+import { VaultClinicPage } from "./vault-page.tsx";
 
 import {
 	clinicKeys,
@@ -260,6 +263,13 @@ export async function tenantIsZk(db: DbClient, tenantId: number): Promise<boolea
 	return rows[0]?.zk ?? false;
 }
 
+/** One-way enable of the tenant's zk flag (T-143): there is no disable
+ * path — once records exist as ciphertext the clinic cannot return to
+ * server-readable plaintext, so onboarding only ever sets the flag. */
+export async function setTenantZk(db: DbClient, tenantId: number): Promise<void> {
+	await db.update(groups).set({ zk: true }).where(eq(groups.id, tenantId));
+}
+
 /**
  * Clinic vault port (T-142, PL-007 F2): member-device enrollment +
  * approval, generic record-DEK grants, and the tenant ZK flag. The
@@ -337,6 +347,10 @@ export class Vault extends Context.Service<
 		/** The tenant's ZK flag — `false` when the tenant is inaccessible
 		 * or missing (safe default: non-ZK = today's plaintext flow). */
 		readonly isZk: (tenantId: number) => Effect.Effect<boolean, VaultError>;
+		/** One-way enable of the tenant's zk flag — admin+ only. No
+		 * disable path: ciphertext records cannot become server-readable
+		 * plaintext again, so the flag is a rollout one-way switch. */
+		readonly enableZk: (tenantId: number) => Effect.Effect<void, VaultError | TenantForbidden>;
 	}
 >()("@ktb/vault/Vault") {}
 
@@ -427,6 +441,10 @@ export const VaultLive = Layer.effect(
 				if (tenant === null || Number(tenant.id) !== tenantId) return false;
 				return yield* Effect.promise(() => tenantIsZk(db, tenantId));
 			}),
+			enableZk: Effect.fn("Vault.enableZk")(function* (tenantId) {
+				yield* requireBoundTenant(tenantId, "admin");
+				yield* Effect.promise(() => setTenantZk(db, tenantId));
+			}),
 		});
 	}),
 );
@@ -455,9 +473,72 @@ export const vaultServicesPlugin = definePlugin({
 	services: VaultLive,
 });
 
+/**
+ * Clinic vault page (T-143): /portal/clinician/vault — key onboarding
+ * (zk enable + recovery phrase) and the admin device-approval surface.
+ * Dispatched inside the clinician portal instance whenever it exists
+ * (audience + subject gates are the portal's); the loader only ever
+ * reads the bound tenant's vault rows.
+ */
+export const vaultPagesPlugin = definePlugin({
+	id: "vault.pages",
+	requiredDeps: ["vault.services"],
+	pages: [
+		{
+			id: "vault.clinic",
+			path: "/portal/clinician/vault",
+			component: VaultClinicPage,
+			loader: () =>
+				Effect.gen(function* () {
+					const tenant = yield* Tenant;
+					const tenantId = tenantScopeId(tenant);
+					if (tenant === null || tenantId === null) {
+						return { tenantId: null, role: null, zk: false, devices: [] as ClinicKey[] };
+					}
+					const vault = yield* Vault;
+					const zk = yield* vault.isZk(tenantId);
+					// Role denials degrade to an empty list — a cross-tenant
+					// VaultError cannot fire here (tenantId IS the bound id).
+					const devices = yield* vault
+						.devices(tenantId)
+						.pipe(Effect.catchTag("TenantForbidden", () => Effect.succeed([] as ClinicKey[])));
+					return { tenantId, role: tenant.role, zk, devices };
+				}),
+		},
+	],
+});
+
+/** Sidebar entry into the clinician portal — the contribution scopes
+ * itself to the "clinician" instance, so deployments without it simply
+ * never render the item (no dep edge needed). */
+export const vaultChromePlugin = definePlugin({
+	id: "vault.chrome",
+	chrome: [
+		{
+			id: "vault.nav",
+			region: "portal.sidebar",
+			portal: "clinician",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/portal/clinician/vault",
+					label: "Vault",
+					icon: KeyRoundIcon,
+					group: "Clinic",
+				},
+			},
+		},
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
-export const plugins: readonly Plugin[] = [vaultTablesPlugin, vaultServicesPlugin];
+export const plugins: readonly Plugin[] = [
+	vaultTablesPlugin,
+	vaultServicesPlugin,
+	vaultPagesPlugin,
+	vaultChromePlugin,
+];
 
 // Compile-time dep registry: ids declared here are referenceable in
 // requiredDeps/optionalDeps of any plugin that imports this module.
@@ -465,5 +546,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"vault.tables": true;
 		"vault.services": true;
+		"vault.pages": true;
+		"vault.chrome": true;
 	}
 }

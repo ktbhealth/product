@@ -19,9 +19,12 @@ import {
 	listEntityReaders,
 	plugins,
 	revokeClinicDevice,
+	setTenantZk,
 	tenantIsZk,
 	Vault,
+	vaultChromePlugin,
 	VaultLive,
+	vaultPagesPlugin,
 	vaultServicesPlugin,
 	vaultTablesPlugin,
 	VAULT_TEST_DDL,
@@ -156,6 +159,12 @@ describe("vault repo", () => {
 		expect(await tenantIsZk(db, TENANT_ID)).toBe(false);
 		expect(await tenantIsZk(db, 8)).toBe(true);
 		expect(await tenantIsZk(db, 999)).toBe(false); // missing → non-ZK
+	});
+
+	it("setTenantZk flips the flag one-way", async () => {
+		expect(await tenantIsZk(db, TENANT_ID)).toBe(false);
+		await setTenantZk(db, TENANT_ID);
+		expect(await tenantIsZk(db, TENANT_ID)).toBe(true);
 	});
 });
 
@@ -448,12 +457,56 @@ describe("Vault service", () => {
 			),
 		).toBeNull();
 	});
+
+	it("enableZk is admin-only and one-way", async () => {
+		const denied = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.enableZk(TENANT_ID)).pipe(Effect.exit),
+			{ role: "member" },
+		);
+		expect(denied._tag).toBe("Failure");
+		expect(await tenantIsZk(db, TENANT_ID)).toBe(false);
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.enableZk(TENANT_ID)),
+			{ role: "admin" },
+		);
+		expect(await tenantIsZk(db, TENANT_ID)).toBe(true);
+	});
+
+	it("exposes the vault page loader — bound-tenant scope only", async () => {
+		const loader = vaultPagesPlugin.pages[0]!.loader!;
+		// Personal scope (no bound tenant) → null fields, no rows.
+		const personal = await run(runtime, loader(), { role: null });
+		expect(personal).toEqual({ tenantId: null, role: null, zk: false, devices: [] });
+		// Bound tenant → id/role/zk plus the member-visible device list.
+		const scoped = (await run(runtime, loader(), {
+			role: "admin",
+		})) as { tenantId: number; role: string; zk: boolean; devices: unknown[] };
+		expect(scoped.tenantId).toBe(TENANT_ID);
+		expect(scoped.role).toBe("admin");
+		expect(Array.isArray(scoped.devices)).toBe(true);
+		// A role below member degrades the device list to [] (denial as data).
+		const denied = (await run(runtime, loader(), {
+			role: "viewer" as TenantRole,
+		})) as { devices: unknown[] };
+		expect(denied.devices).toEqual([]);
+	});
 });
 
 describe("vault plugins", () => {
-	it("exports the tables + services plugins for host discovery", () => {
-		expect(plugins).toEqual([vaultTablesPlugin, vaultServicesPlugin]);
+	it("exports the tables + services + pages + chrome plugins for host discovery", () => {
+		expect(plugins).toEqual([
+			vaultTablesPlugin,
+			vaultServicesPlugin,
+			vaultPagesPlugin,
+			vaultChromePlugin,
+		]);
 		expect(vaultTablesPlugin.id).toBe("vault.tables");
 		expect(vaultServicesPlugin.id).toBe("vault.services");
+		expect(vaultPagesPlugin.id).toBe("vault.pages");
+		expect(vaultPagesPlugin.pages[0]?.path).toBe("/portal/clinician/vault");
+		expect(vaultChromePlugin.id).toBe("vault.chrome");
+		expect(vaultChromePlugin.chrome[0]?.portal).toBe("clinician");
 	});
 });
