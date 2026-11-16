@@ -62,9 +62,13 @@ const indexRoute = indexRouteImport.update({
 const ApiThemeDotassetsRoute = ApiThemeDotassetsRouteImport.update({
   id: '/api/theme/assets',
   path: '/api/theme/assets',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiThemeDotfontsRoute = ApiThemeDotfontsRouteImport.update({
   id: '/api/theme/fonts',
   path: '/api/theme/fonts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const splatRoute = splatRouteImport.update({
   id: '/$',
   path: '/$',
@@ -617,11 +621,15 @@ declare module '@tanstack/react-router' {
       path: '/api/theme/assets'
       fullPath: '/api/theme/assets'
       preLoaderRoute: typeof ApiThemeDotassetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/theme/fonts': {
       id: '/api/theme/fonts'
       path: '/api/theme/fonts'
       fullPath: '/api/theme/fonts'
       preLoaderRoute: typeof ApiThemeDotfontsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/$': {
       id: '/$'
       path: '/$'
