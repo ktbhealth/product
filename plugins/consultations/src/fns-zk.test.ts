@@ -253,6 +253,22 @@ describe("attachAnamnesisFn — ciphered writes", () => {
 		expect(mocks.attachAnamnesis).not.toHaveBeenCalled();
 	});
 
+	it("skips the attach when no vault service is bound", async () => {
+		runEffects({ vault: false });
+		await expect(
+			attachAnamnesisFn({ data: cipheredAttach({ grants: [grant] }) } as never),
+		).resolves.toEqual({ ok: false });
+		expect(mocks.attachAnamnesis).not.toHaveBeenCalled();
+	});
+
+	it("skips the attach outside a tenant scope", async () => {
+		runEffects({ tenant: null });
+		await expect(
+			attachAnamnesisFn({ data: cipheredAttach({ grants: [grant] }) } as never),
+		).resolves.toEqual({ ok: false });
+		expect(mocks.attachAnamnesis).not.toHaveBeenCalled();
+	});
+
 	it("rejects plaintext anamnesis or a missing version on a ciphered attach", async () => {
 		const { version: _omit, ...noVersion } = cipheredAttach();
 		for (const data of [cipheredAttach({ anamnesis }), noVersion]) {
