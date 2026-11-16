@@ -173,6 +173,15 @@ describe("ConsultationsPage", () => {
 		expect(screen.getByText("custom-source")).toBeTruthy();
 	});
 
+	it("prefixes internal links with portalBase", () => {
+		const { container } = render(
+			<ConsultationsPage consultations={[item({ patientId: 5 })]} portalBase="/portal" />,
+		);
+		expect(container.querySelector('a[href="/portal/patients/5"]')).not.toBeNull();
+		expect(container.querySelector('a[href="/portal/consultations/1"]')).not.toBeNull();
+		expect(container.querySelector('a[href="/portal/consultations/new"]')).not.toBeNull();
+	});
+
 	it("hides search when list is empty", () => {
 		render(<ConsultationsPage consultations={[]} />);
 		expect(screen.queryByLabelText("Search consultations")).toBeNull();
