@@ -1,8 +1,9 @@
+import { plugins as aiEndpointsPlugins } from "@ktb/ai-endpoints";
 import { plugins as authPlugins } from "@ktb/auth-plugin";
 import { plugins as consultationsPlugins } from "@ktb/consultations";
+import { plugins as credentialsPlugins } from "@ktb/credentials";
 import { plugins as doctorsPlugins } from "@ktb/doctors";
 import { plugins as evalPersonaPlugins } from "@ktb/eval-persona";
-import { plugins as evalCredentialsPlugins } from "@ktb/eval-credentials";
 import { plugins as evalValidatorPlugins } from "@ktb/eval-validator";
 import { plugins as invitesPlugins } from "@ktb/invites";
 import { plugins as jobsPlugins } from "@ktb/jobs";
@@ -18,11 +19,12 @@ import { index, physical, rootRoute, route } from "@tanstack/virtual-file-routes
 // import.meta.glob (used by @ktb/app-host plugin discovery) is unavailable —
 // so plugin entries are imported statically here instead of via `plugins`.
 const routePlugins = [
+	...aiEndpointsPlugins,
 	...authPlugins,
 	...consultationsPlugins,
+	...credentialsPlugins,
 	...doctorsPlugins,
 	...evalPersonaPlugins,
-	...evalCredentialsPlugins,
 	...evalValidatorPlugins,
 	...invitesPlugins,
 	...jobsPlugins,

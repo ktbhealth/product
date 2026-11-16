@@ -3,26 +3,25 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./fns.ts", () => ({
-	listPersonaDefsFn: vi.fn(async () => ({ ok: true, data: [] })),
-	savePersonaDefFn: vi.fn(),
-	deletePersonaDefFn: vi.fn(),
-	generatePersonasFn: vi.fn(),
-	listEndpointsFn: vi.fn(),
-	listEndpointPresetsFn: vi.fn(async () => ({ ok: true, data: [] })),
-	saveEndpointFn: vi.fn(),
-	deleteEndpointFn: vi.fn(),
-	testEndpointFn: vi.fn(),
-	listInstancesFn: vi.fn(async () => ({ ok: true, data: [] })),
-	instanceDetailFn: vi.fn(async () => ({ ok: true, data: null })),
-	createInstanceFn: vi.fn(),
-	startInstanceFn: vi.fn(),
-	deleteInstanceFn: vi.fn(),
+	listPersonaDefsFn: vi.fn<() => Promise<unknown>>(async () => ({ ok: true, data: [] })),
+	savePersonaDefFn: vi.fn<() => Promise<unknown>>(),
+	deletePersonaDefFn: vi.fn<() => Promise<unknown>>(),
+	generatePersonasFn: vi.fn<() => Promise<unknown>>(),
+	listInstancesFn: vi.fn<() => Promise<unknown>>(async () => ({ ok: true, data: [] })),
+	instanceDetailFn: vi.fn<() => Promise<unknown>>(async () => ({ ok: true, data: null })),
+	createInstanceFn: vi.fn<() => Promise<unknown>>(),
+	startInstanceFn: vi.fn<() => Promise<unknown>>(),
+	deleteInstanceFn: vi.fn<() => Promise<unknown>>(),
+	spawnInstancesFn: vi.fn<() => Promise<unknown>>(async () => ({
+		ok: true,
+		data: { created: 0 },
+	})),
 }));
-vi.mock("@ktb/eval-credentials/fns", () => ({
-	listCredentialsFn: vi.fn(async () => ({ ok: true, data: [] })),
+vi.mock("@ktb/ai-endpoints/fns", () => ({
+	listEndpointsFn: vi.fn<() => Promise<unknown>>(async () => ({ ok: true, data: [] })),
 }));
 vi.mock("@tanstack/react-router", () => ({
-	useRouter: () => ({ invalidate: vi.fn() }),
+	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
 }));
 
 import type { PanelPageContext } from "@ktb/kernel";

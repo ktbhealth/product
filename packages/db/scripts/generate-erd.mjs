@@ -106,7 +106,7 @@ const DOMAINS = [
 		title: "Auth",
 		owner: "`packages/db/src/auth.ts` (better-auth)",
 		description:
-			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (eval credentials).",
+			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (AI credentials).",
 		tables: ["account", "apikey", "session", "user", "verification"],
 	},
 	{
@@ -141,12 +141,20 @@ const DOMAINS = [
 		tables: ["eval_persona", "eval_persona_batch", "eval_run", "eval_run_sample"],
 	},
 	{
+		id: "ai-endpoints",
+		title: "AI endpoints",
+		owner: "`plugins/ai-endpoints`",
+		description:
+			"Generative providers (acp/openai) any AI surface binds through AiEndpoints.resolve — scoped per consuming surface with an is_default pick.",
+		tables: ["ai_endpoint"],
+	},
+	{
 		id: "eval-persona",
 		title: "Eval persona",
 		owner: "`plugins/eval-persona`",
 		description:
-			"Eval lab surfaces — reusable persona definitions, LLM endpoints and persona instances with their items.",
-		tables: ["eval_instance", "eval_instance_item", "eval_llm_endpoint", "eval_persona_def"],
+			"Eval lab surfaces — reusable persona definitions and persona instances with their items (instances soft-link ai_endpoint).",
+		tables: ["eval_instance", "eval_instance_item", "eval_persona_def"],
 	},
 ];
 

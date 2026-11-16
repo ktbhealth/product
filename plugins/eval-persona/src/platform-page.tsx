@@ -1,6 +1,8 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
-import type { EndpointCard, InstanceCard, PersonaDefCard } from "./index.ts";
+import type { EndpointCard } from "@ktb/ai-endpoints";
+
+import type { InstanceCard, PersonaDefCard } from "./index.ts";
 import { InstancesPage } from "./views/InstancesPage.tsx";
 import { PersonasPage } from "./views/PersonasPage.tsx";
 

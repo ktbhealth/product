@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiKeys } from "@ktb/auth";
+import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-endpoints";
 import { Forbidden, Principal } from "@ktb/authz";
-import { Db, makeDb, type DbClient } from "@ktb/db";
+import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { doctors, patients, user as userTable } from "@ktb/db/schema";
 import {
@@ -11,7 +11,6 @@ import {
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
 } from "@ktb/eval-consultation";
-import { EvalCredentials, EvalCredentialsLive } from "@ktb/eval-credentials";
 import { evalPersona } from "@ktb/eval-validator";
 import { Permissions } from "@ktb/rbac";
 import { eq } from "drizzle-orm";
@@ -21,17 +20,14 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
 	EVAL_PERSONA_TEST_DDL,
-	EvalEndpoints,
-	EvalEndpointsLive,
 	EvalInstances,
 	EvalInstancesLive,
 	EvalPersonas,
 	EvalPersonasLive,
 	evalPersonaPanelPlugin,
-	type EndpointInput,
 } from "./index.ts";
 import { plugins as clientPlugins } from "./client.ts";
-import { evalInstance, evalInstanceItem, evalLlmEndpoint, evalPersonaDef } from "./schema.ts";
+import { evalInstance, evalInstanceItem, evalPersonaDef } from "./schema.ts";
 
 const grantLayer = (allow: boolean) =>
 	Layer.succeed(
@@ -134,79 +130,48 @@ const persona = {
 	doctor: { gender: "f", register: "neutral" },
 };
 
-/** In-memory ApiKeys fake for EvalCredentialsLive — mirrors
- * eval-credentials' own test double (metadata carries
- * `{provider, secret}`; ids are the better-auth string keys). */
-const apiKeysLayer = () => {
-	let n = 0;
-	const rows = new Map<
-		string,
-		{ name: string; metadata: Record<string, unknown>; referenceId: string }
-	>();
-	return Layer.succeed(
-		ApiKeys,
-		ApiKeys.of({
-			create: async (input) => {
-				const id = `k${++n}`;
-				rows.set(id, {
-					name: input.name,
-					metadata: input.metadata,
-					referenceId: input.referenceId,
-				});
-				return { id };
-			},
-			list: async (referenceId) =>
-				[...rows.entries()]
-					.filter(([, r]) => r.referenceId === referenceId)
-					.map(([id, r]) => ({
-						id,
-						referenceId: r.referenceId,
-						name: r.name,
-						start: null,
-						enabled: true,
-						metadata: JSON.stringify(r.metadata),
-					})),
-			remove: async (id, referenceId) => {
-				if (rows.get(id)?.referenceId === referenceId) rows.delete(id);
-			},
-			getSecret: async (id, referenceId) => {
-				const r = rows.get(id);
-				if (r === undefined || r.referenceId !== referenceId) return null;
-				const s = r.metadata.secret;
-				return typeof s === "string" ? s : null;
-			},
-		}),
-	);
-};
-
 const make = (
 	opts: {
 		allow?: boolean;
 		factory?: FactoryKind | "none";
 		email?: boolean;
+		endpoints?: boolean;
 		captured?: LlmEndpointDescriptor[];
 		presets?: readonly LlmEndpointPreset[];
 	} = {},
 ) => {
-	const { allow = true, factory = "none", email = true, captured, presets } = opts;
+	const {
+		allow = true,
+		factory = "none",
+		email = true,
+		endpoints = true,
+		captured,
+		presets,
+	} = opts;
 	const d1 = makeD1(EVAL_PERSONA_TEST_DDL);
 	const db = makeDb(d1);
 	const layers = Layer.mergeAll(
-		Layer.succeed(Db, db as unknown as DbClient),
+		Layer.succeed(Db, db as never),
 		grantLayer(allow),
-		apiKeysLayer(),
 		factory === "none" ? Layer.empty : factoryLayer(factory, captured, presets),
 	);
+	// Mirror app-host composition: plugin services compose in topo
+	// order via provideMerge, so eval-persona's build-time
+	// serviceOption sees the AiEndpoints output it soft-deps on.
+	// `endpoints: false` runs the plugin standalone — endpoint picks
+	// degrade to template mode.
+	const services = (
+		[...(endpoints ? [AiEndpointsLive] : []), EvalPersonasLive, EvalInstancesLive] as Layer.Layer<
+			unknown,
+			unknown,
+			unknown
+		>[]
+	).reduce<Layer.Layer<unknown, unknown, unknown>>(
+		(acc, svc) => Layer.merge(acc, svc.pipe(Layer.provideMerge(acc))),
+		Layer.empty as unknown as Layer.Layer<unknown, unknown, unknown>,
+	);
 	const rt = ManagedRuntime.make(
-		Layer.merge(
-			Layer.mergeAll(
-				EvalPersonasLive,
-				EvalEndpointsLive,
-				EvalInstancesLive,
-				EvalCredentialsLive,
-			).pipe(Layer.provide(layers)),
-			layers,
-		),
+		Layer.merge(services.pipe(Layer.provide(layers)), layers) as Layer.Layer<unknown, never, never>,
 	);
 	const run = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
 		rt.runPromise(
@@ -262,61 +227,6 @@ describe("EvalPersonas", () => {
 	});
 });
 
-describe("EvalEndpoints", () => {
-	it("cruds endpoints and tests through the factory", async () => {
-		const { rt, run } = make({ factory: "ok" });
-		const { id } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
-		const listed = await run(Effect.flatMap(EvalEndpoints, (s) => s.list()));
-		expect(listed[0]?.kind).toBe("openai");
-		expect(listed[0]?.model).toBe("qwen2.5:7b");
-
-		await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
-				s.update({ ...EP, id, name: "Ollama 2", enabled: false }),
-			),
-		);
-		const updated = await run(Effect.flatMap(EvalEndpoints, (s) => s.list()));
-		expect(updated[0]?.enabled).toBe(false);
-
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(id)));
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.remove(id)));
-		expect(await run(Effect.flatMap(EvalEndpoints, (s) => s.list()))).toHaveLength(0);
-		await rt.dispose();
-	});
-
-	it("test fails without a factory bound", async () => {
-		const { rt, run } = make();
-		const { id } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
-		await expect(run(Effect.flatMap(EvalEndpoints, (s) => s.test(id)))).rejects.toMatchObject({
-			_tag: "PortError",
-		});
-		await rt.dispose();
-	});
-
-	it("test is a no-op for unknown ids", async () => {
-		const { rt, run } = make({ factory: "ok" });
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(999)));
-		await rt.dispose();
-	});
-
-	it("presets mirror the bound factory's provider list", async () => {
-		const adapterPresets: readonly LlmEndpointPreset[] = [
-			{ label: "OpenAI", kind: "openai", baseUrl: "https://hosted.example/v1", model: "m" },
-		];
-		const { rt, run } = make({ factory: "ok", presets: adapterPresets });
-		expect(await run(Effect.flatMap(EvalEndpoints, (s) => s.presets()))).toEqual(adapterPresets);
-		await rt.dispose();
-
-		// Factory without presets → []; no factory → [].
-		const bare = make({ factory: "ok" });
-		expect(await bare.run(Effect.flatMap(EvalEndpoints, (s) => s.presets()))).toEqual([]);
-		await bare.rt.dispose();
-		const none = make();
-		expect(await none.run(Effect.flatMap(EvalEndpoints, (s) => s.presets()))).toEqual([]);
-		await none.rt.dispose();
-	});
-});
-
 describe("EvalInstances", () => {
 	it("creates a random instance and generates with template fallback", async () => {
 		const { rt, run, db } = make();
@@ -355,7 +265,7 @@ describe("EvalInstances", () => {
 
 	it("selected mode snapshots def personas and generates via the endpoint", async () => {
 		const { rt, run, db } = make({ factory: "ok" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id: defId } = await run(
 			Effect.flatMap(EvalPersonas, (s) => s.create({ name: "d1", persona })),
 		);
@@ -383,7 +293,7 @@ describe("EvalInstances", () => {
 
 	it("falls back to template when the endpoint resolve fails", async () => {
 		const { rt, run, db } = make({ factory: "fail" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "f", mode: "random", count: 1, endpointId: epId }),
@@ -402,7 +312,7 @@ describe("EvalInstances", () => {
 
 	it("falls back to template on unparseable llm output", async () => {
 		const { rt, run, db } = make({ factory: "bad" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "f2", mode: "random", count: 1, endpointId: epId }),
@@ -545,8 +455,8 @@ describe("EvalInstances", () => {
 
 	it("skips the llm layer for disabled endpoints — template generation", async () => {
 		const { rt, run, db } = make({ factory: "ok" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.update({ ...EP, id: epId, enabled: false })));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.update({ ...EP, id: epId, enabled: false })));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "dis", mode: "random", count: 1, endpointId: epId }),
@@ -565,7 +475,7 @@ describe("EvalInstances", () => {
 
 	it("falls back to template when the llm generate call itself fails", async () => {
 		const { rt, run, db } = make({ factory: "genfail" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "g", mode: "random", count: 1, endpointId: epId }),
@@ -584,7 +494,7 @@ describe("EvalInstances", () => {
 
 	it("detail survives corrupt persona JSON and deleted endpoints", async () => {
 		const { rt, run, db } = make();
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "corrupt", mode: "random", count: 1, endpointId: epId }),
@@ -594,7 +504,7 @@ describe("EvalInstances", () => {
 			.update(evalInstanceItem)
 			.set({ persona: "{not json" })
 			.where(eq(evalInstanceItem.instanceId, id));
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.remove(epId)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.remove(epId)));
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		expect(d?.items[0]?.persona).toEqual({});
 		expect(d?.endpointName).toBeNull();
@@ -656,7 +566,7 @@ describe("EvalInstances", () => {
 		await expect(run(Effect.flatMap(EvalInstances, (s) => s.list()))).rejects.toMatchObject({
 			_tag: "Forbidden",
 		});
-		await expect(run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)))).rejects.toMatchObject({
+		await expect(run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)))).rejects.toMatchObject({
 			_tag: "Forbidden",
 		});
 		await rt.dispose();
@@ -810,7 +720,7 @@ describe("EvalInstances — edge inputs", () => {
 	it("endpoint without optional fields resolves to a bare descriptor", async () => {
 		const { rt, run } = make({ factory: "ok" });
 		const { id: epId } = await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
+			Effect.flatMap(AiEndpoints, (s) =>
 				s.create({ name: "acp-agent", kind: "acp", baseUrl: "http://agent/rpc" }),
 			),
 		);
@@ -835,7 +745,7 @@ describe("EvalPersonas — principal and descriptor edges", () => {
 	it("records createdBy null when the principal has no email", async () => {
 		const { rt, run, db } = make({ email: false });
 		await run(Effect.flatMap(EvalPersonas, (s) => s.create({ name: "d", persona })));
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		await run(Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 1 })));
 		await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "i", mode: "random", count: 1 })),
@@ -850,7 +760,7 @@ describe("EvalPersonas — principal and descriptor edges", () => {
 		const captured: LlmEndpointDescriptor[] = [];
 		const { rt, run, db } = make({ factory: "ok", captured });
 		const { id: epId } = await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
+			Effect.flatMap(AiEndpoints, (s) =>
 				s.create({ ...EP, sessionId: "sess-1", secretRef: "MY_KEY" }),
 			),
 		);
@@ -902,7 +812,7 @@ describe("EvalPersonas.generate", () => {
 
 	it("creates defs from llm json output and tops up shortfalls", async () => {
 		const { rt, run } = make({ factory: "json" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const r = await run(
 			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 4, endpointId: epId, seed: 7 })),
 		);
@@ -917,7 +827,7 @@ describe("EvalPersonas.generate", () => {
 
 	it("respects the count when the llm returns more defs than asked", async () => {
 		const { rt, run } = make({ factory: "json" });
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const r = await run(
 			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 2, endpointId: epId })),
 		);
@@ -929,9 +839,9 @@ describe("EvalPersonas.generate", () => {
 		// Unknown + disabled rows need a bound factory to reach the row
 		// check; the factory-less arm early-returns on serviceOption.
 		const bound = make({ factory: "ok" });
-		const { id: epId } = await bound.run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await bound.run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		await bound.run(
-			Effect.flatMap(EvalEndpoints, (s) => s.update({ ...EP, id: epId, enabled: false })),
+			Effect.flatMap(AiEndpoints, (s) => s.update({ ...EP, id: epId, enabled: false })),
 		);
 		const disabled = await bound.run(
 			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 2, endpointId: epId })),
@@ -944,7 +854,7 @@ describe("EvalPersonas.generate", () => {
 		await bound.rt.dispose();
 
 		const { rt, run } = make();
-		const { id: ep2 } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: ep2 } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const noFactory = await run(
 			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 1, endpointId: ep2 })),
 		);
@@ -955,7 +865,7 @@ describe("EvalPersonas.generate", () => {
 	it("falls back to sampling when the llm resolve/generate/parse fails", async () => {
 		for (const factory of ["fail", "bad", "genfail", "broken"] as const) {
 			const { rt, run } = make({ factory });
-			const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+			const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 			const r = await run(
 				Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 1, endpointId: epId })),
 			);
@@ -969,23 +879,6 @@ describe("EvalPersonas.generate", () => {
 		await expect(
 			run(Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 1 }))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
-		await rt.dispose();
-	});
-
-	it("resolves credential:<id> refs into apiKey on the descriptor", async () => {
-		const captured: LlmEndpointDescriptor[] = [];
-		const { rt, run } = make({ factory: "ok", captured });
-		const { id: credId } = await run(
-			Effect.flatMap(EvalCredentials, (c) =>
-				c.create({ name: "prod key", provider: "openai", secret: "sk-live-9" }),
-			),
-		);
-		const { id: epId } = await run(
-			Effect.flatMap(EvalEndpoints, (s) => s.create({ ...EP, secretRef: `credential:${credId}` })),
-		);
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(epId)));
-		expect(captured.at(-1)?.apiKey).toBe("sk-live-9");
-		expect(captured.at(-1)?.secretRef).toBeUndefined();
 		await rt.dispose();
 	});
 });
@@ -1012,7 +905,7 @@ describe("EvalInstances.spawn", () => {
 
 	it("defaults name/defCount/seed and carries the endpoint", async () => {
 		const { rt, run, db } = make();
-		const { id: epId } = await run(Effect.flatMap(EvalEndpoints, (s) => s.create(EP)));
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const r = await run(
 			Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 1, endpointId: epId })),
 		);
@@ -1041,62 +934,6 @@ describe("EvalInstances.spawn", () => {
 		await expect(
 			run(Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 1 }))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
-		await rt.dispose();
-	});
-});
-
-describe("endpoint transport", () => {
-	it("stores transport on save and forwards it to the descriptor", async () => {
-		const captured: LlmEndpointDescriptor[] = [];
-		const { rt, run } = make({ factory: "ok", captured });
-		const { id: ssh } = await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
-				s.create({ name: "acp-ssh", kind: "acp", baseUrl: "ssh://h", transport: "ssh" }),
-			),
-		);
-		const listed = await run(Effect.flatMap(EvalEndpoints, (s) => s.list()));
-		expect(listed[0]?.transport).toBe("ssh");
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(ssh)));
-		expect(captured.at(-1)?.transport).toBe("ssh");
-
-		const { id: ws } = await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
-				s.create({ name: "acp-ws", kind: "acp", baseUrl: "ws://h", transport: "ws" }),
-			),
-		);
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(ws)));
-		expect(captured.at(-1)?.transport).toBe("ws");
-		await rt.dispose();
-	});
-
-	it("omits transport on the descriptor for null or unrecognized values", async () => {
-		const captured: LlmEndpointDescriptor[] = [];
-		const { rt, run, db } = make({ factory: "ok", captured });
-		const { id: bare } = await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
-				s.create({ name: "acp-bare", kind: "acp", baseUrl: "ws://h" }),
-			),
-		);
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(bare)));
-		expect(captured.at(-1)?.transport).toBeUndefined();
-		// Bogus value written straight to the row — the descriptor
-		// whitelist drops anything outside ws|child|ssh.
-		await db
-			.update(evalLlmEndpoint)
-			.set({ transport: "carrier-pigeon" })
-			.where(eq(evalLlmEndpoint.id, bare));
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(bare)));
-		expect(captured.at(-1)?.transport).toBeUndefined();
-		// Transport is acp-only — an openai row never forwards it even
-		// when a value is stored.
-		const { id: openai } = await run(
-			Effect.flatMap(EvalEndpoints, (s) =>
-				s.create({ name: "o", kind: "openai", baseUrl: "https://h/v1" }),
-			),
-		);
-		await db.update(evalLlmEndpoint).set({ transport: "ws" }).where(eq(evalLlmEndpoint.id, openai));
-		await run(Effect.flatMap(EvalEndpoints, (s) => s.test(openai)));
-		expect(captured.at(-1)?.transport).toBeUndefined();
 		await rt.dispose();
 	});
 });

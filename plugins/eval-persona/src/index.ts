@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { FlaskConicalIcon, Users2Icon } from "lucide-react";
 
+import { AiEndpoints, type EndpointCard } from "@ktb/ai-endpoints";
 import { Principal, type Forbidden } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import {
@@ -21,8 +22,6 @@ import {
 	sampleMatrix,
 	turnsToScript,
 	voiceFor,
-	type LlmEndpointDescriptor,
-	type LlmEndpointPreset,
 	type Persona,
 } from "@ktb/eval-consultation";
 import {
@@ -32,7 +31,6 @@ import {
 	evalPersonaBatch,
 	insertSyntheticEntities,
 } from "@ktb/eval-validator";
-import { EvalCredentials } from "@ktb/eval-credentials";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
@@ -41,11 +39,9 @@ import { InstancesPanelPage, PersonasPanelPage } from "./platform-page.tsx";
 import {
 	evalInstance,
 	evalInstanceItem,
-	evalLlmEndpoint,
 	evalPersonaDef,
 	type EvalInstance,
 	type EvalInstanceItem,
-	type EvalLlmEndpoint,
 	type EvalPersonaDef,
 } from "./schema.ts";
 
@@ -61,20 +57,6 @@ export interface PersonaDefCard {
 	readonly createdBy: string | null;
 	readonly createdAt: Date;
 	readonly updatedAt: Date | null;
-}
-
-export interface EndpointCard {
-	readonly id: number;
-	readonly name: string;
-	readonly kind: string;
-	readonly baseUrl: string;
-	readonly model: string | null;
-	readonly sessionId: string | null;
-	readonly secretRef: string | null;
-	readonly transport: string | null;
-	readonly timeoutMs: number;
-	readonly enabled: boolean;
-	readonly createdAt: Date;
 }
 
 export interface InstanceCard {
@@ -127,20 +109,6 @@ const toDefCard = (row: EvalPersonaDef): PersonaDefCard => ({
 	updatedAt: row.updatedAt,
 });
 
-const toEndpointCard = (row: EvalLlmEndpoint): EndpointCard => ({
-	id: row.id,
-	name: row.name,
-	kind: row.kind,
-	baseUrl: row.baseUrl,
-	model: row.model,
-	sessionId: row.sessionId,
-	secretRef: row.secretRef,
-	transport: row.transport,
-	timeoutMs: row.timeoutMs,
-	enabled: row.enabled,
-	createdAt: row.createdAt,
-});
-
 const toInstanceCard = (row: EvalInstance, endpointName: string | null): InstanceCard => ({
 	id: row.id,
 	name: row.name,
@@ -182,24 +150,23 @@ const sanitizeAxis = (axis: string, v: unknown): string | undefined =>
 
 /** Ask a bound endpoint for `count` persona definitions as JSON —
  * invalid/absent fields fall back to nothing (the caller tops up
- * with matrix samples). */
+ * with matrix samples). Endpoint resolution goes through the
+ * AiEndpoints service — unknown/disabled rows and a missing plugin
+ * both degrade to template sampling. */
 const generateDefsViaLlm = (
-	db: DbClient,
+	endpoints: AiEndpoints["Service"] | null,
+	factory: LlmFactory["Service"] | null,
 	endpointId: number,
 	count: number,
 	seed: number,
 ): Effect.Effect<{ name: string; persona: Persona; notes: string }[], never, unknown> =>
 	Effect.gen(function* () {
-		const factory = yield* Effect.serviceOption(LlmFactory);
-		if (Option.isNone(factory)) return [];
-		const row = (yield* Effect.promise(() =>
-			db.select().from(evalLlmEndpoint).where(eq(evalLlmEndpoint.id, endpointId)),
-		))[0];
-		if (row === undefined || !row.enabled) return [];
-		const descriptor = yield* resolveDescriptor(row);
-		const layer = yield* factory.value
-			.resolve(descriptor)
+		if (endpoints === null || factory === null) return [];
+		const descriptor = yield* endpoints
+			.resolve(endpointId)
 			.pipe(Effect.catch(() => Effect.succeed(null)));
+		if (descriptor === null) return [];
+		const layer = yield* factory.resolve(descriptor).pipe(Effect.catch(() => Effect.succeed(null)));
 		if (layer === null) return [];
 		const llm = yield* LlmPort.pipe(Effect.provide(layer));
 		const prompt = `Generate ${count} diverse synthetic medical consultation personas for pt-BR eval, as a JSON array. Each item: {"name": string, "patientName": string, "gender": "f"|"m", "ageBand": "child"|"adult"|"elderly", "socialClass": "low"|"middle"|"high", "education": "primary"|"secondary"|"higher", "region": "north"|"northeast"|"central"|"southeast"|"south", "register": "colloquial"|"neutral"|"technical", "specialty": "general_practice"|"cardiology"|"dermatology"|"pediatrics", "doctorGender": "f"|"m", "doctorRegister": "neutral"|"technical", "notes": string}. Respond with JSON only, no prose. Seed hint: ${seed}.`;
@@ -258,39 +225,6 @@ const generateDefsViaLlm = (
 		Effect.catchDefect(() => Effect.succeed([])),
 	);
 
-/** `secretRef` is either an env var NAME or `credential:<id>` — the
- * latter resolves through the eval-credentials store so raw secrets
- * are injected into the descriptor and never leave the server. */
-const resolveDescriptor = (
-	row: EvalLlmEndpoint,
-): Effect.Effect<LlmEndpointDescriptor, never, unknown> =>
-	Effect.gen(function* () {
-		const transport = row.transport;
-		const base: LlmEndpointDescriptor = {
-			kind: row.kind === "acp" ? "acp" : "openai",
-			baseUrl: row.baseUrl,
-			...(row.model !== null ? { model: row.model } : {}),
-			...(row.sessionId !== null ? { sessionId: row.sessionId } : {}),
-			...(row.kind === "acp" && (transport === "child" || transport === "ssh" || transport === "ws")
-				? { transport }
-				: {}),
-			timeoutMs: row.timeoutMs,
-		};
-		const ref = row.secretRef;
-		if (ref === null || !ref.startsWith("credential:"))
-			return { ...base, ...(ref !== null ? { secretRef: ref } : {}) };
-		const creds = yield* Effect.serviceOption(EvalCredentials);
-		/* v8 ignore next -- soft dep: credentials plugin absent */
-		if (Option.isNone(creds)) return base;
-		const secret = yield* creds.value.resolve(ref).pipe(
-			/* v8 ignore next -- callers gate first; a flipped grant is the only typed failure */
-			Effect.catch(() => Effect.succeed(null)),
-		);
-		/* v8 ignore next -- deleted credential leaves the endpoint without a key */
-		if (secret === null) return base;
-		return { ...base, apiKey: secret };
-	});
-
 const requireGrant = Effect.fn("EvalLab.gate")(function* () {
 	const permissions = yield* Permissions;
 	yield* permissions.requirePermission(EVAL_RESOURCE, EVAL_ACTION);
@@ -330,6 +264,8 @@ export const EvalPersonasLive = Layer.effect(
 	EvalPersonas,
 	Effect.gen(function* () {
 		const db = yield* Db;
+		const endpoints = yield* Effect.serviceOption(AiEndpoints);
+		const factory = yield* Effect.serviceOption(LlmFactory);
 		return EvalPersonas.of({
 			list: Effect.fn("EvalPersonas.list")(function* () {
 				yield* requireGrant();
@@ -380,7 +316,13 @@ export const EvalPersonasLive = Layer.effect(
 				const llmDefs = (
 					input.endpointId === undefined
 						? []
-						: yield* generateDefsViaLlm(db, input.endpointId, input.count, seed)
+						: yield* generateDefsViaLlm(
+								Option.getOrNull(endpoints),
+								Option.getOrNull(factory),
+								input.endpointId,
+								input.count,
+								seed,
+							)
 				).slice(0, input.count);
 				const sampled =
 					llmDefs.length >= input.count
@@ -408,114 +350,6 @@ export const EvalPersonasLive = Layer.effect(
 					);
 				}
 				return { created: defs.length };
-			}),
-		});
-	}),
-);
-
-// ---------------------------------------------------------------------------
-// EvalEndpoints — CRUD of generative providers + liveness test.
-// ---------------------------------------------------------------------------
-
-export interface EndpointInput {
-	readonly name: string;
-	readonly kind: string;
-	readonly baseUrl: string;
-	readonly model?: string;
-	readonly sessionId?: string;
-	readonly secretRef?: string;
-	/** ACP transport — 'ws' | 'child' | 'ssh' (null/absent = 'ws'). */
-	readonly transport?: string;
-	readonly timeoutMs?: number;
-	readonly enabled?: boolean;
-}
-
-export class EvalEndpoints extends Context.Service<
-	EvalEndpoints,
-	{
-		readonly list: () => Effect.Effect<readonly EndpointCard[], Forbidden, unknown>;
-		readonly create: (
-			input: EndpointInput,
-		) => Effect.Effect<{ readonly id: number }, Forbidden, unknown>;
-		readonly update: (
-			input: EndpointInput & { readonly id: number },
-		) => Effect.Effect<void, Forbidden, unknown>;
-		readonly remove: (id: number) => Effect.Effect<void, Forbidden, unknown>;
-		/** Provider starter endpoints for the form's preset chips —
-		 * declared by the bound LlmFactory (provider URLs live in the
-		 * adapter edge, never in this package). */
-		readonly presets: () => Effect.Effect<readonly LlmEndpointPreset[], Forbidden, unknown>;
-		/** Liveness ping through LlmFactory — fails PortError when the
-		 * endpoint can't produce a generation inside the test budget. */
-		readonly test: (
-			id: number,
-		) => Effect.Effect<
-			void,
-			Forbidden | { readonly _tag: string; readonly message: string },
-			unknown
-		>;
-	}
->()("@ktb/eval-persona/EvalEndpoints") {}
-
-export const EvalEndpointsLive = Layer.effect(
-	EvalEndpoints,
-	Effect.gen(function* () {
-		const db = yield* Db;
-		const factory = yield* Effect.serviceOption(LlmFactory);
-		const values = (input: EndpointInput) => ({
-			name: input.name,
-			kind: input.kind,
-			baseUrl: input.baseUrl,
-			model: input.model ?? null,
-			sessionId: input.sessionId ?? null,
-			secretRef: input.secretRef ?? null,
-			transport: input.transport ?? null,
-			timeoutMs: input.timeoutMs ?? 60_000,
-			...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
-		});
-		return EvalEndpoints.of({
-			list: Effect.fn("EvalEndpoints.list")(function* () {
-				yield* requireGrant();
-				const rows = yield* Effect.promise(() =>
-					db.select().from(evalLlmEndpoint).orderBy(desc(evalLlmEndpoint.id)),
-				);
-				return rows.map(toEndpointCard);
-			}),
-			create: Effect.fn("EvalEndpoints.create")(function* (input) {
-				yield* requireGrant();
-				const rows = yield* Effect.promise(() =>
-					db.insert(evalLlmEndpoint).values(values(input)).returning({ id: evalLlmEndpoint.id }),
-				);
-				return { id: rows[0]!.id };
-			}),
-			update: Effect.fn("EvalEndpoints.update")(function* (input) {
-				yield* requireGrant();
-				yield* Effect.promise(() =>
-					db.update(evalLlmEndpoint).set(values(input)).where(eq(evalLlmEndpoint.id, input.id)),
-				);
-			}),
-			remove: Effect.fn("EvalEndpoints.remove")(function* (id) {
-				yield* requireGrant();
-				yield* Effect.promise(() => db.delete(evalLlmEndpoint).where(eq(evalLlmEndpoint.id, id)));
-			}),
-			presets: Effect.fn("EvalEndpoints.presets")(function* () {
-				yield* requireGrant();
-				return Option.isNone(factory) ? [] : (factory.value.presets ?? []);
-			}),
-			test: Effect.fn("EvalEndpoints.test")(function* (id) {
-				yield* requireGrant();
-				const [row] = yield* Effect.promise(() =>
-					db.select().from(evalLlmEndpoint).where(eq(evalLlmEndpoint.id, id)),
-				);
-				if (row === undefined) return;
-				if (Option.isNone(factory)) {
-					return yield* Effect.fail({
-						_tag: "PortError",
-						message: "no LlmFactory bound — endpoints resolve to template mode",
-					} as const);
-				}
-				const descriptor = yield* resolveDescriptor(row);
-				return yield* factory.value.test(descriptor);
 			}),
 		});
 	}),
@@ -578,13 +412,18 @@ export const EvalInstancesLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const factory = yield* Effect.serviceOption(LlmFactory);
+		// Optional dep: without the ai-endpoints plugin every endpoint
+		// binding degrades to template mode and names render as the
+		// generic template label.
+		const endpoints = yield* Effect.serviceOption(AiEndpoints);
 
-		const endpointNames = Effect.promise(async () => {
-			const rows = await db
-				.select({ id: evalLlmEndpoint.id, name: evalLlmEndpoint.name })
-				.from(evalLlmEndpoint);
-			return new Map(rows.map((r) => [r.id, r.name] as const));
-		});
+		const endpointNames = Option.isNone(endpoints)
+			? Effect.succeed(new Map<number, string>())
+			: endpoints.value.list().pipe(
+					Effect.map((rows) => new Map(rows.map((r) => [r.id, r.name] as const))),
+					/* v8 ignore next -- callers gate first; a flipped grant yields empty names */
+					Effect.catch(() => Effect.succeed(new Map<number, string>())),
+				);
 
 		// One persona slot: entities + script + eval_persona row.
 		const generateItem = (
@@ -785,17 +624,17 @@ export const EvalInstancesLive = Layer.effect(
 			);
 			/* v8 ignore next -- second tick losing the claim is a no-op */
 			if (claimed.length === 0) return;
-			const endpointRow =
-				inst.endpointId === null
-					? undefined
-					: (yield* Effect.promise(() =>
-							db.select().from(evalLlmEndpoint).where(eq(evalLlmEndpoint.id, inst.endpointId!)),
-						))[0];
+			// AiEndpoints.resolve returns null for unknown/disabled rows —
+			// those degrade to template mode like a missing plugin.
+			const descriptor =
+				inst.endpointId === null || Option.isNone(endpoints)
+					? null
+					: yield* endpoints.value
+							.resolve(inst.endpointId)
+							.pipe(Effect.catch(() => Effect.succeed(null)));
 			const llmLayer =
-				Option.isSome(factory) && endpointRow !== undefined && endpointRow.enabled
-					? yield* Effect.flatMap(resolveDescriptor(endpointRow), (d) =>
-							factory.value.resolve(d),
-						).pipe(
+				Option.isSome(factory) && descriptor !== null
+					? yield* factory.value.resolve(descriptor).pipe(
 							// Endpoint broken → template generation; the item still
 							// completes and the mode column says so.
 							Effect.catch(() => Effect.succeed(null)),
@@ -1083,9 +922,9 @@ const buildPromptFor = (persona: Persona, minutes: number | undefined): string =
 /** DDL mirror of schema.ts for in-memory test databases (same
  * contract as EVAL_VALIDATOR_TEST_DDL). */
 export const EVAL_PERSONA_TEST_DDL = `
-CREATE TABLE eval_llm_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_def (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, persona TEXT NOT NULL, notes TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES eval_llm_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, batch_id INTEGER, created_by TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES ai_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, batch_id INTEGER, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE eval_instance_item (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL REFERENCES eval_instance(id) ON DELETE cascade, persona_def_id INTEGER REFERENCES eval_persona_def(id) ON DELETE set null, eval_persona_id INTEGER REFERENCES eval_persona(id) ON DELETE set null, persona TEXT, status TEXT NOT NULL DEFAULT 'pending', error TEXT, claimed_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_batch (id INTEGER PRIMARY KEY AUTOINCREMENT, params TEXT NOT NULL, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -1097,17 +936,19 @@ CREATE TABLE eval_persona (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGE
 export const evalPersonaTablesPlugin = definePlugin({
 	id: "eval.persona.tables",
 	requiredDeps: ["eval.validator.tables"],
-	tables: { evalLlmEndpoint, evalPersonaDef, evalInstance, evalInstanceItem },
+	// eval_instance.endpoint_id references ai_endpoint — ordering hint
+	// only; the plugin works standalone (tests supply the table).
+	optionalDeps: ["ai.endpoints.tables"],
+	tables: { evalPersonaDef, evalInstance, evalInstanceItem },
 });
 
 export const evalPersonaServicesPlugin = definePlugin({
 	id: "eval.persona.services",
 	requiredDeps: [evalPersonaTablesPlugin.id],
-	// resolveDescriptor consumes EvalCredentials when present — order
-	// after it so `credential:` refs resolve; absence degrades to
-	// env-var refs only (serviceOption is the soft edge).
-	optionalDeps: ["eval.credentials.services"],
-	services: Layer.mergeAll(EvalPersonasLive, EvalEndpointsLive, EvalInstancesLive),
+	// Endpoint binding/resolution is a soft dep — AiEndpoints absence
+	// degrades every endpoint pick to template mode.
+	optionalDeps: ["ai.endpoints.services"],
+	services: Layer.mergeAll(EvalPersonasLive, EvalInstancesLive),
 });
 
 export const evalPersonaChromePlugin = definePlugin({
@@ -1178,11 +1019,15 @@ export const evalPersonaPanelPlugin = definePlugin({
 					Effect.gen(function* () {
 						const instances = yield* EvalInstances;
 						const personas = yield* EvalPersonas;
-						const endpoints = yield* EvalEndpoints;
+						const endpoints = yield* Effect.serviceOption(AiEndpoints);
+						// Eval pickers only offer eval-scope endpoints; without the
+						// plugin the page still loads with an empty picker.
 						const [instanceRows, defRows, endpointRows] = yield* Effect.all([
 							instances.list(),
 							personas.list(),
-							endpoints.list(),
+							Option.isNone(endpoints)
+								? Effect.succeed([] as readonly EndpointCard[])
+								: endpoints.value.list("eval"),
 						]);
 						return { instances: instanceRows, defs: defRows, endpoints: endpointRows };
 					}).pipe(
