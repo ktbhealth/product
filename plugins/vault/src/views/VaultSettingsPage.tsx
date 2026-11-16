@@ -279,6 +279,7 @@ export function VaultSettingsPage({
 
 	const saveByok = useCallback(async () => {
 		const apiKey = byokApiKey.trim();
+		/* v8 ignore next -- the save button is disabled while the key is empty */
 		if (apiKey === "") return;
 		setError(false);
 		setBusy(true);

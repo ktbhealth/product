@@ -280,6 +280,17 @@ describe("idbStore", () => {
 		});
 	});
 
+	it("propagates secrets-store open failures", async () => {
+		await withFakeIdb(fakeIndexedDB(new Map(), "open"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").load("k")).rejects.toThrow("blocked");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "open-null"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").load("k")).rejects.toThrow("indexeddb open failed");
+		});
+	});
+
 	it("propagates secrets-store request failures", async () => {
 		await withFakeIdb(fakeIndexedDB(new Map(), "delete"), async () => {
 			const { idbSecretStore } = await import("./keyring.ts");

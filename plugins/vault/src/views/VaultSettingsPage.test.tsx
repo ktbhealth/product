@@ -542,6 +542,22 @@ describe("VaultSettingsPage", () => {
 		await screen.findByText("No provider key", { exact: false });
 	});
 
+	it("ignores a late BYOK config read resolving after unmount", async () => {
+		const k = keyring();
+		let resolve: (v: string | null) => void = () => {};
+		(k.getSecret as ReturnType<typeof vi.fn>).mockImplementation(
+			() =>
+				new Promise<string | null>((r) => {
+					resolve = r;
+				}),
+		);
+		const { unmount } = render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		unmount();
+		await act(async () => {
+			resolve(JSON.stringify({ apiKey: "sk", model: "m" }));
+		});
+	});
+
 	it("ignores a late failed BYOK config read after unmount", async () => {
 		const k = keyring();
 		let reject: (e: unknown) => void = () => {};
