@@ -104,6 +104,27 @@ describe("SessionMenu", () => {
 		expect(assign.mock.calls).toEqual([["/doctors/select"], ["/secretaries"], ["/portal"]]);
 	});
 
+	it("shows the console entry only when the account passes the platform gate", async () => {
+		const assign = vi.fn();
+		vi.stubGlobal("location", { assign });
+		const admin = {
+			id: "v1",
+			email: "val@ktb.test",
+			name: "Val",
+			patientOnly: false,
+			platformAdmin: true,
+		};
+		render(<SessionMenu {...props({ user: admin, labels: {} })} />);
+		fireEvent.click(screen.getByText("Val"));
+		fireEvent.click(await screen.findByText("Platform console"));
+		expect(assign).toHaveBeenCalledWith("/platform");
+
+		const plain = { id: "u1", email: "bia@ktb.test", name: "Bia", patientOnly: false };
+		render(<SessionMenu {...props({ user: plain, labels: {} })} />);
+		fireEvent.click(screen.getByText("Bia"));
+		expect(screen.queryByText("Platform console")).toBeNull();
+	});
+
 	it("falls back to English profile shortcuts when the host fills none", async () => {
 		render(
 			<SessionMenu

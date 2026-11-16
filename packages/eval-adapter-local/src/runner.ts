@@ -1,11 +1,15 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as path from "node:path";
 
+import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { Driver } from "@ktb/driver-framework";
 import {
 	AsrPort,
+	cleanupTranscript,
 	EvalRunner,
+	LlmPort,
 	TtsPort,
 	wer,
 	cer,
@@ -32,9 +36,30 @@ export interface EvalRunnerEnv {
 	readonly EVAL_ASR_TIMEOUT_MS?: string;
 }
 
+/** The eight clinical sections of the persisted anamnesis schema —
+ * completeness = how many came back non-empty. `historico` is context,
+ * never scored. */
+const ANAMNESIS_SECTIONS = [
+	"queixa_principal",
+	"hda",
+	"antecedentes",
+	"alergias",
+	"medicamentos_em_uso",
+	"exame_fisico",
+	"hipoteses",
+	"conduta",
+] as const;
+
 /** Build the `EvalRunner` impl over an injected TTS+ASR port layer —
  * separated from the local-adapter wiring so tests (and future
- * adapters reusing the same orchestration) can swap the ports. */
+ * adapters reusing the same orchestration) can swap the ports.
+ *
+ * Downstream stages run the REAL production chain when the ambient
+ * runtime binds their ports: `LlmPort` → surface cleanup (reversible
+ * edits, WER recomputed on the corrected text) and `AnamnesisEngine`
+ * → the same extractor the consultations plugin calls. Both are
+ * optional and failure-isolated — a missing/failed stage lands as an
+ * `error` field and never loses the ASR metrics. */
 export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 	const runOne = (item: EvalRunnerItem) =>
 		Effect.gen(function* () {
@@ -54,12 +79,60 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 			});
 			const { asr: asrResult } = yield* asr.transcribe(audio, { language: "pt" });
 			const asrText = asrResult.text;
+
+			const llm = yield* Effect.serviceOption(LlmPort);
+			const cleanup = Option.isNone(llm)
+				? undefined
+				: yield* cleanupTranscript({ taskId: `eval-${item.id}`, raw: asrText }).pipe(
+						Effect.provideService(LlmPort, llm.value),
+						Effect.map((r) => ({
+							edits: r.edits.ops.length,
+							corrected: r.corrected,
+							werAfter: wer(item.script, r.corrected),
+							cerAfter: cer(item.script, r.corrected),
+						})),
+						Effect.catch((error: unknown) => Effect.succeed({ error: String(error) })),
+					);
+			const corrected =
+				cleanup !== undefined && "corrected" in cleanup ? cleanup.corrected : undefined;
+
+			const engine = yield* Effect.serviceOption(AnamnesisEngine);
+			const anamnesis = Option.isNone(engine)
+				? undefined
+				: yield* engine.value
+						.extract({
+							transcript: corrected ?? asrText,
+							...(item.patient !== undefined ? { patient: item.patient } : {}),
+						})
+						.pipe(
+							Effect.map((r) => {
+								const filled = ANAMNESIS_SECTIONS.filter(
+									(k) => r.anamnesis[k].content.trim().length > 0,
+								).length;
+								return {
+									engine: r.engine,
+									sections: ANAMNESIS_SECTIONS.length,
+									filled,
+									completeness: filled / ANAMNESIS_SECTIONS.length,
+									json: r.anamnesis,
+								};
+							}),
+							Effect.catch((error: unknown) => Effect.succeed({ error: String(error) })),
+						);
+
 			return {
 				audioUri: audio.uri,
 				asrText,
 				wer: wer(item.script, asrText),
 				cer: cer(item.script, asrText),
 				confSegments: asrResult.segments,
+				stages: [
+					"asr",
+					...(cleanup !== undefined ? ["cleanup"] : []),
+					...(anamnesis !== undefined ? ["anamnesis"] : []),
+				],
+				...(cleanup !== undefined ? { cleanup } : {}),
+				...(anamnesis !== undefined ? { anamnesis } : {}),
 			};
 		});
 

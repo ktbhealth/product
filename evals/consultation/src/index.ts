@@ -30,6 +30,7 @@ export * from "./domain.ts";
 export * from "./acp.ts";
 export * from "./anonymize.ts";
 export * from "./generate.ts";
+export * from "./llmscript.ts";
 export * from "./locale.ts";
 export * from "./locales/pt-BR.ts";
 export * from "./metrics.ts";

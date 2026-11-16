@@ -17,6 +17,8 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
+import type { Driver } from "@ktb/driver-framework";
+
 import { PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
 import {
 	decodeTaskResult,
@@ -26,6 +28,8 @@ import {
 	type AcpRequest,
 	type EditList,
 } from "@ktb/eval-consultation";
+
+import { makeHttpAcpTransport } from "./acp-transport.ts";
 
 export type AcpTransport = (request: AcpRequest) => Effect.Effect<unknown, PortError>;
 
@@ -105,6 +109,35 @@ const call = (
 			},
 		})),
 	);
+};
+
+/**
+ * Driver providing `LlmPort` for the eval validator (P-081): eligible
+ * only when the workspace env wires an ACP endpoint —
+ * `EVAL_ACP_URL`. Absent → no LlmPort bound → generation falls back
+ * to the deterministic template renderer.
+ */
+export interface EvalLlmEnv {
+	readonly EVAL_ACP_URL?: string;
+	readonly EVAL_ACP_SESSION_ID?: string;
+	readonly EVAL_LLM_TIMEOUT_MS?: string;
+}
+
+export const evalLlmAcpDriver: Driver<EvalLlmEnv> = {
+	id: "eval-llm-acp",
+	port: LlmPort.key,
+	when: (env) => Boolean(env.EVAL_ACP_URL),
+	provides: (env) => {
+		const url = env.EVAL_ACP_URL!;
+		const parsedTimeout = Number(env.EVAL_LLM_TIMEOUT_MS);
+		const timeoutMs = Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 60_000;
+		return makeAcpLlm({
+			transport: makeHttpAcpTransport(url, fetch, timeoutMs),
+			sessionId: env.EVAL_ACP_SESSION_ID,
+			timeoutMs,
+			engineVersion: fnvHex(url),
+		});
+	},
 };
 
 export const makeAcpLlm = (opts: AcpLlmOptions): Layer.Layer<LlmPort> =>
