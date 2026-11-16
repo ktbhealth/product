@@ -9,7 +9,10 @@ const vaultMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity, so reusing one object
+	// would make every fn call look like the same request.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
