@@ -28,7 +28,17 @@ export const getSessionUserFn = createServerFn({ method: "GET" }).handler(() => 
 /** Root-layout session: the user plus whether the account is
  * patient-only (no doctor profile to act as), which narrows the
  * navigation to the patient portal. */
-export const sessionFn = createServerFn({ method: "GET" }).handler(() => getSessionAccount());
+export const sessionFn = createServerFn({ method: "GET" }).handler(async () => {
+	const account = await getSessionAccount();
+	if (account === null) return null;
+	// Mirrors the /platform route gate exactly — the session menu shows
+	// the console entry iff the gate would let the account through.
+	// When the gate becomes permission-driven this flag follows.
+	const platformAdmin = await run(
+		Effect.flatMap(PlatformAdmin, (admin) => admin.isAdmin(account.email)),
+	);
+	return { ...account, platformAdmin };
+});
 
 /**
  * True when this deployment can send email (an Email driver other than
@@ -183,6 +193,28 @@ export const platformPageDataFn = createServerFn({ method: "GET" })
 	// boundary; the wire type is whatever each page's loader returns
 	// (serializable rows — same shape the retired per-page fns sent).
 	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "console"));
+
+/**
+ * Console page paths whose `guard` DENIES the session user — the
+ * sidebar hides entries pointing at them instead of showing a menu of
+ * pages that all 404. Runs each console page's guard once per load
+ * (each guard is a permissions lookup — cheap); failures count as
+ * denied, same contract as `pageData`. Pages without a guard are
+ * never listed: nothing to hide.
+ */
+export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(async () => {
+	const user = await getSessionUser();
+	if (user === null) return [] as string[];
+	const denied: string[] = [];
+	for (const entry of consolePages.values()) {
+		const path = entry.page.path;
+		const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
+		if (guard === undefined) continue;
+		const allowed = await runAs(user, guard(path)).catch(() => false);
+		if (!allowed) denied.push(path);
+	}
+	return denied;
+});
 
 /**
  * Loader data for app-shell pages contributed via `pages` (P-059):

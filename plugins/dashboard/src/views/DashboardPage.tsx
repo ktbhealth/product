@@ -15,18 +15,6 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 
-const contributions = (p: Plugin) =>
-	[
-		p.routes?.length ? "routes" : null,
-		p.chrome?.length ? "chrome" : null,
-		p.landing ? "landing" : null,
-		p.panel?.pages?.length ? "panel" : null,
-		p.tables !== undefined ? "tables" : null,
-		p.services !== undefined ? "services" : null,
-	]
-		.filter(Boolean)
-		.join(", ") || "—";
-
 function Stat({ label, value }: { label: string; value: number }) {
 	return (
 		<div className="rounded-lg border border-border px-3 py-2.5">
@@ -114,30 +102,6 @@ export function DashboardPage({
 							</Table>
 						</div>
 					)}
-				</section>
-
-				<section>
-					<h2 className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
-						{t.registeredPlugins}
-					</h2>
-					<div className="mt-2 overflow-hidden rounded-lg border border-border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead>{t.colId}</TableHead>
-									<TableHead>{t.colContributions}</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{plugins.map((p) => (
-									<TableRow key={p.id}>
-										<TableCell className="text-xs">{p.id}</TableCell>
-										<TableCell className="text-muted-foreground">{contributions(p)}</TableCell>
-									</TableRow>
-								))}
-							</TableBody>
-						</Table>
-					</div>
 				</section>
 			</div>
 

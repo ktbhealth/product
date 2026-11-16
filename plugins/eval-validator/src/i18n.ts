@@ -28,6 +28,16 @@ export interface EvalMessages {
 	readonly emptyBatches: string;
 	readonly emptyPersonas: string;
 	readonly moreTurns: string;
+	readonly minutesLabel: string;
+	readonly actionFailed: string;
+	readonly synthetic: string;
+	readonly deleteRun: string;
+	readonly confirmDelete: string;
+	readonly stageCleanup: string;
+	readonly stageAnamnesis: string;
+	readonly stageError: string;
+	readonly completeness: string;
+	readonly edits: string;
 }
 
 const en: EvalMessages = {
@@ -51,6 +61,16 @@ const en: EvalMessages = {
 	emptyBatches: "No persona batches yet — generate one to start reviewing.",
 	emptyPersonas: "Select a batch to review its personas.",
 	moreTurns: "more turns",
+	minutesLabel: "Interview length (min)",
+	actionFailed: "Action failed — check your permissions and try again.",
+	synthetic: "synthetic",
+	deleteRun: "Delete run",
+	confirmDelete: "Confirm delete",
+	stageCleanup: "cleanup",
+	stageAnamnesis: "anamnesis",
+	stageError: "stage error",
+	completeness: "completeness",
+	edits: "edits",
 };
 
 const ptBR: EvalMessages = {
@@ -74,6 +94,16 @@ const ptBR: EvalMessages = {
 	emptyBatches: "Nenhuma coorte ainda — gere uma para começar a revisão.",
 	emptyPersonas: "Selecione uma coorte para revisar as personas.",
 	moreTurns: "turnos a mais",
+	minutesLabel: "Duração da entrevista (min)",
+	actionFailed: "Ação falhou — verifique suas permissões e tente novamente.",
+	synthetic: "sintético",
+	deleteRun: "Excluir run",
+	confirmDelete: "Confirmar exclusão",
+	stageCleanup: "limpeza",
+	stageAnamnesis: "anamnese",
+	stageError: "erro no estágio",
+	completeness: "completude",
+	edits: "edições",
 };
 
 const es: EvalMessages = { ...en };

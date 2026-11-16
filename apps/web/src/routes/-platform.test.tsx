@@ -24,6 +24,7 @@ const getSessionUserFn = vi.fn(
 );
 const listMyNotificationsFn = vi.fn(async () => [] as unknown[]);
 const pluginStatesFn = vi.fn(async () => ({ enabled: [] as string[] }));
+const consoleDeniedFn = vi.fn(async (): Promise<string[]> => []);
 const signOut = vi.fn(async () => {});
 
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: () => signOut() } }));
@@ -45,6 +46,7 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 
 vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: () => platformAdminFn(),
+	consoleDeniedFn: () => consoleDeniedFn(),
 	platformPageDataFn: (arg: { data: string }) => platformPageDataFn(arg.data),
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
@@ -196,6 +198,7 @@ describe("/platform layout", () => {
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
+			deniedPaths: [],
 		});
 	});
 
@@ -208,6 +211,7 @@ describe("/platform layout", () => {
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({
 			audioJobs: [],
 			notifications: [],
+			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
@@ -282,12 +286,13 @@ describe("/platform layout", () => {
 });
 
 describe("/platform index", () => {
-	it("renders the dashboard with registered plugins", () => {
+	it("renders the dashboard stats and empty consultations feed", () => {
 		render(createElement(component(PlatformIndexRoute)));
 		expect(screen.getByText("dashboard")).toBeTruthy();
-		expect(screen.getByText("platform.routes")).toBeTruthy();
-		expect(screen.getByText("platform.panel")).toBeTruthy();
-		expect(screen.getByText("dashboard.panel")).toBeTruthy();
+		// The dashboard is product-facing: stats + consultations — the
+		// raw registered-plugin table moved to plugin administration.
+		expect(screen.getByText("Plugins")).toBeTruthy();
+		expect(screen.getByText("No consultations yet.")).toBeTruthy();
 	});
 
 	it("loader dispatches the /platform page descriptor", async () => {

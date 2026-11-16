@@ -54,6 +54,7 @@ import {
 	patientDeletionImpactFn,
 	patientHistoryFn,
 	platformAdminFn,
+	consoleDeniedFn,
 	platformPageDataFn,
 	appPageDataFn,
 	recordConsentFn,
@@ -538,6 +539,7 @@ describe("server fns", () => {
 		// Forbidden to the same empty tables the old fns returned.
 		headers.current = new Headers({ cookie });
 		expect(await platformAdminFn()).toBe(false);
+		expect((await sessionFn())?.platformAdmin).toBe(false);
 		expect(await platformPageDataFn({ data: "/platform/patients" })).toEqual({
 			status: "ok",
 			data: { patients: [], owners: [] },
@@ -561,6 +563,7 @@ describe("server fns", () => {
 		const adminCookie = await signIn("platform-admin@ktb.test");
 		headers.current = new Headers({ cookie: adminCookie });
 		expect(await platformAdminFn()).toBe(true);
+		expect((await sessionFn())?.platformAdmin).toBe(true);
 		const pageData = async (path: string) => {
 			const res = await platformPageDataFn({ data: path });
 			if (res.status !== "ok") throw new Error(`expected ok, got ${res.status}`);
@@ -698,6 +701,45 @@ describe("server fns", () => {
 			pages.delete(denied.path);
 			pages.delete(allowed.path);
 		}
+	});
+
+	it("consoleDeniedFn lists only paths whose guard denies the session", async () => {
+		headers.current = new Headers({ cookie });
+		const denied: PanelPage = {
+			id: "test.denied",
+			path: "/platform/test-denied",
+			component: () => null,
+			guard: () => Effect.succeed(false),
+		};
+		const allowed: PanelPage = {
+			id: "test.allowed",
+			path: "/platform/test-allowed",
+			component: () => null,
+			guard: () => Effect.succeed(true),
+		};
+		const unguarded: PanelPage = {
+			id: "test.unguarded",
+			path: "/platform/test-unguarded",
+			component: () => null,
+		};
+		const pages = consolePages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
+		pages.set(denied.path, { page: denied, pluginId: "platform.routes" });
+		pages.set(allowed.path, { page: allowed, pluginId: "platform.routes" });
+		pages.set(unguarded.path, { page: unguarded, pluginId: "platform.routes" });
+		try {
+			const deniedPaths = await consoleDeniedFn();
+			expect(deniedPaths).toContain(denied.path);
+			expect(deniedPaths).not.toContain(allowed.path);
+			expect(deniedPaths).not.toContain(unguarded.path);
+		} finally {
+			pages.delete(denied.path);
+			pages.delete(allowed.path);
+			pages.delete(unguarded.path);
+		}
+		// Anonymous → empty list (nothing to filter; the menu never
+		// renders for them anyway).
+		headers.current = new Headers();
+		expect(await consoleDeniedFn()).toEqual([]);
 	});
 
 	it("platform page data reports notfound for a disabled plugin (P-058)", async () => {

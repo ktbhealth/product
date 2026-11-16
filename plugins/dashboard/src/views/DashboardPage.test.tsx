@@ -71,10 +71,9 @@ describe("DashboardPage", () => {
 		expect(screen.getByText("Plugins")).toBeTruthy();
 		expect(screen.getByText("Sidebar items")).toBeTruthy();
 		expect(screen.getByText("No consultations yet.")).toBeTruthy();
-		expect(screen.getByText("a.b")).toBeTruthy();
 	});
 
-	it("renders counts, recent consultations and plugin contributions", () => {
+	it("renders counts and recent consultations", () => {
 		render(
 			<DashboardPage
 				patients={[patient({}), patient({ id: 2, name: "Bia" })]}
@@ -89,8 +88,6 @@ describe("DashboardPage", () => {
 		expect(screen.getAllByText("2")).toHaveLength(2);
 		expect(screen.getByText("live")).toBeTruthy();
 		expect(screen.getByText("bot")).toBeTruthy();
-		expect(screen.getByText("x.y")).toBeTruthy();
-		expect(screen.getByText("chrome")).toBeTruthy();
 	});
 
 	it("hides the console-activity card when notifications are not provided", () => {
@@ -142,25 +139,6 @@ describe("DashboardPage", () => {
 		expect(screen.getByText("No notifications yet.")).toBeTruthy();
 	});
 
-	it("lists landing and panel pages among a plugin's contributions", () => {
-		const Page = () => null;
-		render(
-			<DashboardPage
-				patients={[]}
-				consultations={[]}
-				plugins={[
-					{ id: "site.landing", landing: { page: Landing } },
-					{
-						id: "site.panel",
-						panel: { pages: [{ id: "p", path: "/platform/x", component: Page }] },
-					},
-				]}
-			/>,
-		);
-		expect(screen.getByText("landing")).toBeTruthy();
-		expect(screen.getByText("panel")).toBeTruthy();
-	});
-
 	it("falls back from the owner name to the email and then to a dash", () => {
 		render(
 			<DashboardPage
@@ -174,23 +152,5 @@ describe("DashboardPage", () => {
 		);
 		expect(screen.getByText("only@x.com")).toBeTruthy();
 		expect(screen.getByText("—")).toBeTruthy();
-	});
-
-	it("lists routes, chrome, tables and services among a plugin's contributions", () => {
-		const everything = {
-			id: "full.stack",
-			routes: [{ path: "/x" }],
-			chrome: [
-				{
-					id: "c",
-					region: "app.header.nav",
-					content: { kind: "link", to: "/a", label: "A" },
-				},
-			],
-			tables: {},
-			services: {},
-		} as unknown as Plugin;
-		render(<DashboardPage patients={[]} consultations={[]} plugins={[everything]} />);
-		expect(screen.getByText("routes, chrome, tables, services")).toBeTruthy();
 	});
 });

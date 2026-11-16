@@ -38,6 +38,8 @@
 		"@ktb/doctors": "workspace:*",
 		"@ktb/email": "workspace:*",
 		"@ktb/email-smtp": "workspace:*",
+		"@ktb/eval-credentials": "workspace:*",
+		"@ktb/eval-persona": "workspace:*",
 		"@ktb/eval-validator": "workspace:*",
 		"@ktb/infra-cloudflare": "workspace:*",
 		"@ktb/interop": "workspace:*",

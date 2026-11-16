@@ -18,6 +18,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	markAllMyNotificationsReadFn: vi.fn(),
 	getSessionUserFn: vi.fn(async () => ({ id: "u1", email: "a@x.com", name: "A" })),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] as string[] })),
+	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
 }));
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: vi.fn() } }));
 
@@ -79,7 +80,11 @@ const options = (
 
 describe("/platform without the optional header plugins", () => {
 	it("loader skips the jobs and notifications queries", async () => {
-		await expect(options.loader()).resolves.toEqual({ audioJobs: [], notifications: [] });
+		await expect(options.loader()).resolves.toEqual({
+			audioJobs: [],
+			notifications: [],
+			deniedPaths: [],
+		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
 	});
