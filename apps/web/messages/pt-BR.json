@@ -186,5 +186,6 @@
 	"never_4": "Nunca substitui o julgamento clínico",
 	"never_quote_a": "O médico revisa, edita e aprova.",
 	"never_quote_b": "Nada entra no prontuário sem assinatura.",
-	"panel_nav_plugins": "Plugins"
+	"panel_nav_plugins": "Plugins",
+	"nav_platform_console": "Console da plataforma"
 }

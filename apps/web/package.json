@@ -16,6 +16,7 @@
 		"cf-typegen": "wrangler types --env-file /dev/null",
 		"db:migrate": "wrangler d1 migrations apply ktb --remote",
 		"db:migrate:local": "wrangler d1 migrations apply ktb --local",
+		"export:tenant": "node scripts/export-tenant.mjs",
 		"infra:dev": "alchemy dev",
 		"infra:deploy": "node ../../packages/db/scripts/sync-alchemy-migrations.mjs && cuora run --env prod --config ../../cuora.toml -- alchemy deploy --stage prod -y",
 		"infra:destroy": "alchemy destroy --stage prod",
@@ -24,6 +25,7 @@
 		"db:seed": "bun scripts/seed-users.ts"
 	},
 	"dependencies": {
+		"@cf-wasm/photon": "^0.4.0",
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@huggingface/transformers": "^4.3.2",
 		"@inlang/paraglide-js": "2.29.3",
@@ -38,6 +40,8 @@
 		"@ktb/doctors": "workspace:*",
 		"@ktb/email": "workspace:*",
 		"@ktb/email-smtp": "workspace:*",
+		"@ktb/eval-credentials": "workspace:*",
+		"@ktb/eval-persona": "workspace:*",
 		"@ktb/eval-validator": "workspace:*",
 		"@ktb/infra-cloudflare": "workspace:*",
 		"@ktb/interop": "workspace:*",
@@ -59,6 +63,7 @@
 		"@ktb/secretaries": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/tenant": "workspace:*",
+		"@ktb/theme": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
 		"@tanstack/react-devtools": "0.10.14",
 		"@tanstack/react-router": "1.170.46",
