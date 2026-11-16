@@ -59,9 +59,9 @@ CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL,
 INSERT INTO user (id, name, email, email_verified) VALUES
   ('ana', 'Ana', 'ana@ktb.test', 0),
   ('eva', 'Eva', 'eva@ktb.test', 1);
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, display_name TEXT NOT NULL);
+CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, display_name TEXT NOT NULL);
 INSERT INTO doctors (user_id, display_name) VALUES ('doc', 'Dra. Bia');
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
 INSERT INTO patients (id, owner_id, name) VALUES
   (1, 'doc', 'Ana'), (2, 'other', 'Leo'), (3, 'doc', 'Rui'), (4, 'doc', 'Ivo'), (5, 'doc', 'Sia');
 CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);

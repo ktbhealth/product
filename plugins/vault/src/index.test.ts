@@ -24,6 +24,7 @@ import {
 	revokeClinicDevice,
 	setTenantZk,
 	tenantIsZk,
+	tenantZkOrClosed,
 	Vault,
 	vaultChromePlugin,
 	VaultLive,
@@ -82,6 +83,7 @@ describe("vault repo", () => {
 		db = makeDb(makeD1(DDL));
 		await seedGroup(db, TENANT_ID);
 		await seedGroup(db, 8, true);
+		await seedGroup(db, 9); // stays non-ZK — setTenantZk flips TENANT_ID
 	});
 
 	it("enrolls a device as pending and is idempotent on the wrap pubkey", async () => {
@@ -204,6 +206,16 @@ describe("vault repo", () => {
 		expect(await portalDeviceOf(db, "ana", "nope")).toBeNull();
 		expect(await portalDeviceOf(db, "nobody", "pWrap")).toBeNull();
 	});
+
+	it("tenantZkOrClosed fails closed on anything unresolvable", async () => {
+		expect(await tenantZkOrClosed(db, null)).toBe(false); // personal scope — no clinic
+		expect(await tenantZkOrClosed(db, 9)).toBe(false);
+		expect(await tenantZkOrClosed(db, 8)).toBe(true);
+		expect(await tenantZkOrClosed(db, 999)).toBe(true); // missing group → metadata-only
+		// A lookup that throws (no groups table) fails closed too.
+		const broken = makeDb(makeD1(`CREATE TABLE "user" (id TEXT PRIMARY KEY);`));
+		expect(await tenantZkOrClosed(broken, TENANT_ID)).toBe(true);
+	});
 });
 
 describe("Vault service", () => {
@@ -227,6 +239,16 @@ describe("Vault service", () => {
 		);
 		expect(row.userId).toBe("u-member");
 		expect(row.status).toBe("pending");
+	});
+
+	it("lists the tenant's devices for the admin UI", async () => {
+		const devices = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.devices(TENANT_ID)),
+			{ role: "admin" },
+		);
+		expect(devices.length).toBeGreaterThan(0);
+		expect(devices.every((d) => d.tenantId === TENANT_ID)).toBe(true);
 	});
 
 	it("records empty actor ids when no principal is bound (system context)", async () => {
@@ -270,6 +292,25 @@ describe("Vault service", () => {
 			Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "patient", 1)),
 		);
 		expect(readers[0]?.grantedByUserId).toBeNull();
+	});
+
+	it("fails device-not-found on unknown device ids", async () => {
+		const approveExit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: 9999, wrappedMasterKey: "w1.x" }),
+			).pipe(Effect.exit),
+			{ role: "admin" },
+		);
+		expect(approveExit._tag).toBe("Failure");
+		const revokeExit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.revokeDevice({ tenantId: TENANT_ID, clinicKeyId: 9999 })).pipe(
+				Effect.exit,
+			),
+			{ role: "member" },
+		);
+		expect(revokeExit._tag).toBe("Failure");
 	});
 
 	it("fails closed without a member role", async () => {

@@ -2,7 +2,9 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
+import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
+import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
 import { Input } from "@ktbhealth/ui/components/input";
@@ -47,15 +49,19 @@ export function AdminPatientsPage({
 	const router = useRouter();
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
+	const [showSynthetic, setShowSynthetic] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const [toDelete, setToDelete] = useState<{ id: number; name: string } | null>(null);
 	const needle = q.trim().toLowerCase();
 	const shown = useMemo(() => {
-		if (needle === "") return patients;
-		return patients.filter((p) =>
+		// Synthetic rows (eval validator cohorts) stay hidden unless the
+		// admin asks for them — real records are the default view.
+		const pool = showSynthetic ? patients : patients.filter((p) => !p.synthetic);
+		if (needle === "") return pool;
+		return pool.filter((p) =>
 			[p.name, p.ownerName, p.ownerEmail].filter(Boolean).join(" ").toLowerCase().includes(needle),
 		);
-	}, [patients, needle]);
+	}, [patients, needle, showSynthetic]);
 	return (
 		<PageContainer>
 			<PageHeader
@@ -79,14 +85,23 @@ export function AdminPatientsPage({
 				<>
 					<DataToolbar
 						search={
-							<Input
-								type="search"
-								value={q}
-								onChange={(e) => setQ(e.target.value)}
-								placeholder={t.admin.searchPlaceholder}
-								aria-label={t.admin.searchLabel}
-								className={SEARCH_CLS}
-							/>
+							<div className="flex items-center gap-3">
+								<Input
+									type="search"
+									value={q}
+									onChange={(e) => setQ(e.target.value)}
+									placeholder={t.admin.searchPlaceholder}
+									aria-label={t.admin.searchLabel}
+									className={SEARCH_CLS}
+								/>
+								<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+									<Checkbox
+										checked={showSynthetic}
+										onCheckedChange={(v) => setShowSynthetic(v === true)}
+									/>
+									{t.admin.showSynthetic}
+								</label>
+							</div>
 						}
 						resultCount={
 							needle === "" ? undefined : t.admin.filteredCount(shown.length, patients.length)
@@ -133,6 +148,11 @@ export function AdminPatientsPage({
 														>
 															{p.name}
 														</Link>
+													)}
+													{p.synthetic === true && (
+														<Badge variant="outline" className="ml-2">
+															{t.admin.syntheticBadge}
+														</Badge>
 													)}
 												</TableCell>
 												<TableCell>{p.ownerName ?? p.ownerEmail ?? "—"}</TableCell>

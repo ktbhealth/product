@@ -6,20 +6,28 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { patientDocuments, user as userTable } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import { Command, EventBus, type EventBusShape, makeEventBus } from "@effect-server-utils/cqrs";
+import {
+	Command,
+	EventBus,
+	type EventBusShape,
+	makeEventBus,
+	Query,
+} from "@effect-server-utils/cqrs";
 import {
 	createPatient,
 	deletePatientRow,
 	getPatient,
+	getPatientOwnerId,
 	listAllPatients,
 	listPatients,
 	Patients,
 	PatientsCommandsLive,
 	PatientsLive,
+	PatientsQueriesLive,
 	patientsChromePlugin,
 	patientsPanelPlugin,
 	patientsRoutesPlugin,
@@ -28,7 +36,7 @@ import {
 	plugins,
 	updatePatient,
 } from "./index.ts";
-import { PatientCreated, PatientDeleted, PatientsCommands } from "./api.ts";
+import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
 import { TEXT_FIELDS, validatePatient, type PatientFields } from "./record.ts";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant, type Tenant as TenantScope } from "@ktb/tenant";
@@ -44,7 +52,7 @@ const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0, 0);
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 ${AUDIT_TEST_DDL}
 ${VAULT_TEST_DDL}
@@ -565,6 +573,51 @@ describe("plugins", () => {
 			"patients.chrome",
 			"patients.panel",
 		]);
+	});
+
+	it("platform loader collapses Forbidden failures to empty tables", async () => {
+		const loader = patientsPanelPlugin.panel?.pages?.[0]?.loader;
+		expect(loader).toBeDefined();
+		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
+		const result = await Effect.runPromise(
+			loader!().pipe(
+				Effect.provideService(Patients, { adminList: forbidden, adminOwners: forbidden } as never),
+			),
+		);
+		expect(result).toEqual({ patients: [], owners: [] });
+	});
+});
+
+describe("patients.ownerOf", () => {
+	it("returns the owner row for a patient and null for unknown ids", async () => {
+		const db = makeDb(makeD1(DDL));
+		const p = await createPatient(db, "u1", fields("Owner Lookup"));
+		expect(p?.id).toBeTypeOf("number");
+		expect(await getPatientOwnerId(db, p!.id)).toMatchObject({ ownerId: "u1" });
+		expect(await getPatientOwnerId(db, 99999)).toBeNull();
+	});
+
+	it("resolves through the query dispatcher", async () => {
+		const db = makeDb(makeD1(DDL));
+		const p = await createPatient(db, "u1", fields("Dispatcher Lookup"));
+		const runtime = ManagedRuntime.make(
+			PatientsQueriesLive.pipe(Layer.provide(Layer.succeed(Db, db))),
+		);
+		try {
+			const lookup = (id: number) =>
+				runtime.runPromise(
+					Effect.scoped(
+						Effect.gen(function* () {
+							const queries = yield* Query.dispatcher(PatientsQueries);
+							return yield* queries["patients.ownerOf"]({ id });
+						}),
+					),
+				);
+			expect((await lookup(p!.id))?.ownerId).toBe("u1");
+			expect(await lookup(99999)).toBeNull();
+		} finally {
+			await runtime.dispose();
+		}
 	});
 });
 

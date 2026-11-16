@@ -75,6 +75,21 @@ describe("patient-access catalogs", () => {
 		expect(bodies.size).toBe(PATIENT_ACCESS_LOCALES.length);
 	});
 
+	it("composes a metadata-only body when the patient name is withheld (ZK)", () => {
+		const url = "https://app.ktb.test/portal/login";
+		const bodies = new Set<string>();
+		for (const locale of PATIENT_ACCESS_LOCALES) {
+			const { body } = patientAccessMessages(locale).inviteEmail;
+			const text = body("Dra. Bia", null, url, false);
+			expect(text).toContain("Dra. Bia");
+			expect(text.split("\n")).toContain(url);
+			// No name slot is left dangling in the generic copy.
+			expect(text).not.toContain("null");
+			bodies.add(text);
+		}
+		expect(bodies.size).toBe(PATIENT_ACCESS_LOCALES.length);
+	});
+
 	it("translates instead of copying the base catalog", () => {
 		expect(patientAccessMessages("pt-BR").description).not.toBe(
 			patientAccessMessages("en").description,

@@ -37,9 +37,11 @@ export interface PatientAccessMessages {
 	/** Invite email — `doctor` is the doctor's display name. */
 	readonly inviteEmail: {
 		readonly subject: (doctor: string) => string;
-		/** `accept` — the link is a single-use accept link that creates the
-		 * invitee's account, not the sign-in screen. */
-		readonly body: (doctor: string, patient: string, url: string, accept: boolean) => string;
+		/** `patient` null = metadata-only copy (ZK tenants — the server
+		 * cannot read the record's name); `accept` — the link is a
+		 * single-use accept link that creates the invitee's account, not
+		 * the sign-in screen. */
+		readonly body: (doctor: string, patient: string | null, url: string, accept: boolean) => string;
 	};
 }
 
@@ -71,7 +73,9 @@ const en: PatientAccessMessages = {
 			[
 				"Hello.",
 				"",
-				`${doctor} gave you access to ${patient}'s consultations in the KTB Health patient portal.`,
+				patient === null
+					? `${doctor} gave you access to a patient record in the KTB Health patient portal.`
+					: `${doctor} gave you access to ${patient}'s consultations in the KTB Health patient portal.`,
 				accept
 					? "Accept the invitation and choose your password to see them — the link works once and is valid for 7 days:"
 					: "Sign in with this email address to see them:",
@@ -110,7 +114,9 @@ const ptBR: PatientAccessMessages = {
 			[
 				"Olá.",
 				"",
-				`${doctor} liberou seu acesso às consultas de ${patient} no portal do paciente KTB Health.`,
+				patient === null
+					? `${doctor} liberou seu acesso a um registro de paciente no portal do paciente KTB Health.`
+					: `${doctor} liberou seu acesso às consultas de ${patient} no portal do paciente KTB Health.`,
 				accept
 					? "Aceite o convite e escolha sua senha para vê-las — o link funciona uma única vez e vale por 7 dias:"
 					: "Entre com este endereço de e-mail para vê-las:",
@@ -149,7 +155,9 @@ const es: PatientAccessMessages = {
 			[
 				"Hola.",
 				"",
-				`${doctor} te dio acceso a las consultas de ${patient} en el portal del paciente de KTB Health.`,
+				patient === null
+					? `${doctor} te dio acceso a un registro de paciente en el portal del paciente de KTB Health.`
+					: `${doctor} te dio acceso a las consultas de ${patient} en el portal del paciente de KTB Health.`,
 				accept
 					? "Acepta la invitación y elige tu contraseña para verlas — el enlace funciona una sola vez y es válido por 7 días:"
 					: "Inicia sesión con esta dirección de correo para verlas:",

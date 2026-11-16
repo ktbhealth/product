@@ -52,10 +52,10 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/transcri
 					user,
 					Effect.gen(function* () {
 						const db = yield* Db;
-						// serviceOption: an unbound tenant is personal scope —
-						// never ZK (the clinic flag lives on groups).
-						const tenant = yield* Effect.serviceOption(Tenant);
-						const tenantId = tenantScopeId(tenant._tag === "Some" ? tenant.value : null);
+						// Tenant is a Context.Reference — always bound
+						// (null = personal scope, never ZK; the clinic flag
+						// lives on groups).
+						const tenantId = tenantScopeId(yield* Tenant);
 						return tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)));
 					}),
 				);

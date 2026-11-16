@@ -47,9 +47,12 @@ import {
 } from "./fns.ts";
 
 const DDL = `
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT);
+CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO groups (id, name, slug, kind, zk) VALUES (8, 'ZK Clinic', 'clinic-8', 'clinic', 1);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, tenant_id INTEGER);
 INSERT INTO patients (id, owner_id, name, email) VALUES
   (1, 'doc', 'Ana', 'ana@ktb.test'), (2, 'doc', 'Leo', NULL), (3, 'other', 'Rui', 'rui@ktb.test');
+<<<<<<< HEAD
 CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO patient_access (patient_id, user_id, relation, status, source, created_at, updated_at) VALUES
   (1, 'ana', 'self', 'active', 'invite', 0, 0),
@@ -63,6 +66,11 @@ INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT);
 INSERT INTO consultations (id, patient_id, transcript, anamnesis) VALUES
   (10, 1, 'v1.ct', NULL), (11, 1, 'plain', '{}'), (12, 1, 'plain', 'v1.ct');
+-- ZK tenant (group 8) and an unresolvable tenantId (999, fail-closed):
+-- both store ciphertext names the server cannot read (T-149).
+INSERT INTO patients (id, owner_id, name, email, tenant_id) VALUES
+  (4, 'doc', 'v1.aXYz.cipheredAna', 'zk@ktb.test', 8),
+  (5, 'doc', 'v1.bYZa.cipheredGhost', 'ghost@ktb.test', 999);
 `;
 const db = makeDb(makeD1(DDL));
 
@@ -224,6 +232,23 @@ describe("invitePatientFn", () => {
 		});
 		await invitePatientFn({ data: invite });
 		expect(sent[0]!.subject).toContain("bia@ktb.test");
+	});
+
+	it("sends metadata-only copy for a ZK tenant's patient (T-149)", async () => {
+		await expect(
+			invitePatientFn({ data: { patientId: 4, email: "zk@ktb.test", relation: "self" } }),
+		).resolves.toMatchObject({ ok: true, emailed: true });
+		expect(sent).toHaveLength(1);
+		// The stored name is ciphertext — it must never reach the wire.
+		expect(sent[0]!.text).not.toContain("v1.aXYz.cipheredAna");
+		expect(sent[0]!.text).toContain("a patient record");
+		expect(sent[0]!.subject).toContain("Dra. Bia");
+	});
+
+	it("fails closed to metadata-only copy for an unresolvable tenant", async () => {
+		await invitePatientFn({ data: { patientId: 5, email: "ghost@ktb.test", relation: "self" } });
+		expect(sent[0]!.text).not.toContain("v1.bYZa.cipheredGhost");
+		expect(sent[0]!.text).toContain("a patient record");
 	});
 
 	it("still grants access, but says so, when this deployment sends no email", async () => {

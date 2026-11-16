@@ -148,6 +148,9 @@ try {
 			name: "eval-validator",
 			description: "Reviews persona cohorts and runs evals (P-081)",
 		}))!.id;
+	// The login router sends 0-profile accounts to the patient portal —
+	// the validator needs a doctor profile to reach the console.
+	await ensureDoctorProfile(db, ids["validator@ktb.test"], "Validator");
 	await setRolePermission(db, {
 		roleId,
 		resource: "eval",
