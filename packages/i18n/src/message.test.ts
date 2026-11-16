@@ -129,6 +129,13 @@ describe("renderMessage", () => {
 		expect(out).toContain("b");
 	});
 
+	it("keeps #-prefixed ids literal inside plural cases", () => {
+		const tpl = "{n, plural, one {Issue #1 open} other {# issues open}}";
+		// "#1" reads as an id, not the count — only bare `#` becomes the number.
+		expect(renderMessage(tpl, { n: 3 }, "en")).toBe("3 issues open");
+		expect(renderMessage(tpl, { n: 1 }, "en")).toBe("Issue #1 open");
+	});
+
 	it("returns template on syntax error", () => {
 		expect(renderMessage("{oops", {}, "en")).toBe("{oops");
 	});
@@ -173,5 +180,23 @@ describe("pseudoLocalize", () => {
 		);
 		expect(out).toContain("{name}");
 		expect(out).toContain("{count, plural,");
+	});
+
+	it("accents copy inside plural/select case bodies", () => {
+		const out = pseudoLocalize("{n, plural, one {# item} other {# items}}");
+		// Case bodies are copy — they must be accented like any text.
+		expect(out).toContain("ítém");
+		// Case keys and the param header stay verbatim or the template
+		// would stop parsing.
+		expect(out).toContain("one{");
+		expect(out).toContain("other{");
+	});
+
+	it("keeps the template parseable after pseudo-localization", () => {
+		const tpl = "{count, plural, one {# item for {name}} other {# items}}";
+		const out = pseudoLocalize(tpl);
+		// Strip the ⟦⟧ wrap + pad, then the result must re-parse.
+		const inner = out.slice(1, out.indexOf("⟧"));
+		expect(parseMessage("text", inner).ok).toBe(true);
 	});
 });

@@ -1,6 +1,6 @@
 import { createMiddleware, createStart } from "@tanstack/react-start";
 import { requestLocale } from "#/lib/i18n.ts";
-import { setLocaleStorage } from "#/lib/locale-context.ts";
+import { localeStorage } from "#/lib/locale-context.ts";
 import { accessLog } from "#/lib/access-log.ts";
 import {
 	isValidTraceparent,
@@ -18,9 +18,9 @@ import {
 // active locale without threading it through every signature.
 const localeMiddleware = createMiddleware().server(async ({ request, next }) => {
 	const locale = requestLocale(request);
-	const { AsyncLocalStorage } = await import("node:async_hooks");
-	const als = new AsyncLocalStorage<{ locale: string }>();
-	setLocaleStorage(als);
+	// Singleton ALS (see locale-context.ts) — a per-request instance
+	// would race under concurrent requests on one isolate.
+	const als = await localeStorage();
 	return als.run({ locale }, () => next());
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useRouter } from "@tanstack/react-router";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -39,6 +39,7 @@ import {
 	i18nDiscardDraftFn,
 	i18nExportFn,
 	i18nImportFn,
+	i18nNamespaceMessagesFn,
 	i18nPublishFn,
 	i18nSaveDraftFn,
 } from "../fns.ts";
@@ -46,7 +47,6 @@ import {
 export interface I18nPageData {
 	readonly namespaces: readonly NamespaceInfo[];
 	readonly locales: readonly LocaleInfo[];
-	readonly messages: readonly I18nMessage[];
 }
 
 interface Cell {
@@ -172,18 +172,48 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	const [kind, setKind] = useState<"text" | "rich">("text");
 	const [scopeId, setScopeId] = useState("");
 	const [busy, setBusy] = useState(false);
+	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
+	// Message rows are fetched per selected namespace — the loader only
+	// ships namespaces + locales so the whole table never hits the wire.
+	const [fetched, setFetched] = useState<{
+		readonly ns: string;
+		readonly rows: readonly I18nMessage[];
+	}>({ ns: "", rows: [] });
+
+	const refresh = () =>
+		i18nNamespaceMessagesFn({ data: namespace }).then((res) => {
+			if (Array.isArray(res)) setFetched({ ns: namespace, rows: res });
+		});
+
+	useEffect(() => {
+		if (namespace === "") return;
+		let live = true;
+		setLoading(true);
+		i18nNamespaceMessagesFn({ data: namespace })
+			.then((res) => {
+				if (live && Array.isArray(res)) setFetched({ ns: namespace, rows: res });
+			})
+			.finally(() => {
+				if (live) setLoading(false);
+			});
+		return () => {
+			live = false;
+		};
+	}, [namespace]);
+
+	const messages = fetched.ns === namespace ? fetched.rows : [];
 
 	const locales = useMemo(() => data.locales.filter((l) => l.enabled), [data.locales]);
 	const nsMessages = useMemo(
-		() => data.messages.filter((m) => m.namespace === namespace && m.scope === "global"),
-		[data.messages, namespace],
+		() => messages.filter((m) => m.namespace === namespace && m.scope === "global"),
+		[messages, namespace],
 	);
 	const keys = useMemo(() => [...new Set(nsMessages.map((m) => m.key))].sort(), [nsMessages]);
 
 	const open = (key: string, locale: string) => {
-		const cell = cellFor(data.messages, namespace, key, locale);
+		const cell = cellFor(messages, namespace, key, locale);
 		setEditing({ namespace, key, locale, scope: "global", scopeId: "", cell });
 		setDraft(cell?.draft ?? cell?.live ?? "");
 		setKind(cell?.kind === "rich" ? "rich" : "text");
@@ -196,7 +226,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	const retarget = (scope: "global" | "tenant" | "portal", nextScopeId: string) => {
 		if (editing === null) return;
 		const cell = cellFor(
-			data.messages,
+			messages,
 			editing.namespace,
 			editing.key,
 			editing.locale,
@@ -220,6 +250,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 			}
 			setEditing(null);
 			await router.invalidate();
+			await refresh();
 		} finally {
 			setBusy(false);
 		}
@@ -314,6 +345,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 									return;
 								}
 								await router.invalidate();
+								await refresh();
 							} catch {
 								setError("invalid JSON file");
 							} finally {
@@ -337,7 +369,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						<TableRow key={key}>
 							<TableCell className="font-mono text-xs">{key}</TableCell>
 							{locales.map((l) => {
-								const cell = cellFor(data.messages, namespace, key, l.code);
+								const cell = cellFor(messages, namespace, key, l.code);
 								const shown = cell?.draft ?? cell?.live;
 								return (
 									<TableCell key={l.code}>
@@ -362,7 +394,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					{keys.length === 0 && (
 						<TableRow>
 							<TableCell colSpan={locales.length + 1} className="text-center text-muted-foreground">
-								No messages in this namespace yet.
+								{loading ? "Loading…" : "No messages in this namespace yet."}
 							</TableCell>
 						</TableRow>
 					)}

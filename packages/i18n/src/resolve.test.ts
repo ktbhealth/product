@@ -134,6 +134,36 @@ describe("resolveMessage", () => {
 		expect(r.template).toBe("app.title");
 	});
 
+	it("scope beats locale: tenant override wins over global translation", () => {
+		const idx = indexMessages([
+			row({ locale: "pt-BR", value: "global pt" }),
+			row({ locale: "en", scope: "tenant", scopeId: "t1", value: "tenant en" }),
+		]);
+		const r = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: tenantScope("t1"),
+			locales: localeChain(["pt-BR"], "en"),
+		});
+		// ADR-0003: scope → locale — the tenant's own copy beats the
+		// generic translation even in the request locale.
+		expect(r.template).toBe("tenant en");
+	});
+
+	it("locale chain still falls back inside a scope", () => {
+		const idx = indexMessages([
+			row({ locale: "en", scope: "tenant", scopeId: "t1", value: "tenant en" }),
+			row({ locale: "pt-BR", value: "global pt" }),
+		]);
+		const r = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: GLOBAL_SCOPE,
+			locales: localeChain(["pt-BR"], "en"),
+		});
+		expect(r.template).toBe("global pt");
+	});
+
 	it("tenant scope without tenant row falls to global", () => {
 		const idx = indexMessages([row({ value: "global" })]);
 		const r = resolveMessage(idx, {

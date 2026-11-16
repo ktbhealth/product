@@ -19,6 +19,7 @@ export {
 	portalInstanceScope,
 	portalScope,
 	resolveMessage,
+	resolveRow,
 	resolveRequestLocales,
 	tenantScope,
 	type EnabledLocale,
@@ -28,7 +29,7 @@ export {
 	type ResolvedMessage,
 	type ScopeChain,
 } from "./resolve.ts";
-export { createCatalogT, sliceMessages } from "./catalog.ts";
+export { createCatalogT, flattenCatalog, sliceMessages } from "./catalog.ts";
 export { I18n, bindNamespace, type I18nShape, type TParams } from "./service.ts";
 export { I18N_BASE_CATALOG, I18N_BASE_LOCALES, I18N_MANIFEST } from "./manifest.gen.ts";
 export type { I18nKey, I18nTypedT } from "./types.gen.ts";

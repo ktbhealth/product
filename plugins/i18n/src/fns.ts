@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { getSessionUser, runAs } from "@ktb/server-fns";
+import { Forbidden } from "@ktb/authz";
 
 import { I18nAdmin, type I18nAdminShape, type MessageId } from "./contract.ts";
 
@@ -58,8 +59,11 @@ const withAdmin = <A>(
 					return yield* fn(admin);
 				}),
 			);
-		} catch {
-			return { ok: false as const };
+		} catch (error) {
+			// Only authorization denials collapse to { ok: false } — DB and
+			// other failures must surface as real errors, not "denied".
+			if (error instanceof Forbidden) return { ok: false as const };
+			throw error;
 		}
 	});
 
@@ -82,6 +86,15 @@ export const i18nMessagesFn = createServerFn({ method: "GET" })
 			}),
 		),
 	);
+
+/**
+ * All rows (every locale, scope and status) for ONE namespace — the
+ * panel matrix fetches per selected namespace instead of dragging the
+ * whole table into loader data. Denied → { ok: false }.
+ */
+export const i18nNamespaceMessagesFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
+	.handler(({ data: namespace }) => withAdmin((admin) => admin.messages({ namespace })));
 
 export const i18nSaveDraftFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSaveDraft(input))

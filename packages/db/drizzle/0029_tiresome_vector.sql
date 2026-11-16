@@ -37,7 +37,6 @@ CREATE TABLE `i18n_messages` (
 );
 --> statement-breakpoint
 CREATE INDEX `i18n_messages_ns_locale_idx` ON `i18n_messages` (`namespace`,`locale`);--> statement-breakpoint
-CREATE UNIQUE INDEX `i18n_messages_key_idx` ON `i18n_messages` (`namespace`,`key`,`locale`,`scope`,`scope_id`);--> statement-breakpoint
 CREATE TABLE `i18n_namespaces` (
 	`namespace` text PRIMARY KEY NOT NULL,
 	`plugin_id` text DEFAULT '' NOT NULL,

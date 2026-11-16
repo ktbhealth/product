@@ -8,7 +8,7 @@ import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
 import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
-import { parseMessage } from "@ktb/i18n";
+import { parseMessage, type MessageParam } from "@ktb/i18n";
 
 import {
 	I18nAdmin,
@@ -265,7 +265,21 @@ export const I18nAdminLive = Layer.effect(
 					const row = yield* Effect.promise(() => getMessageRow(db, id));
 					if (row === undefined) return;
 					if (row.status === "draft") {
-						// Never-published draft: the row IS the draft — drop it.
+						// Never-published draft: the row IS the draft — drop it
+						// and its CRDT ops so the log doesn't orphan.
+						yield* Effect.promise(() =>
+							db
+								.delete(i18nCrdtUpdates)
+								.where(
+									and(
+										eq(i18nCrdtUpdates.namespace, id.namespace),
+										eq(i18nCrdtUpdates.key, id.key),
+										eq(i18nCrdtUpdates.locale, id.locale),
+										eq(i18nCrdtUpdates.scope, id.scope),
+										eq(i18nCrdtUpdates.scopeId, id.scopeId),
+									),
+								),
+						);
 						yield* Effect.promise(() =>
 							db
 								.delete(i18nMessages)
@@ -309,6 +323,11 @@ export const I18nAdminLive = Layer.effect(
 						db.update(i18nLocales).set({ enabled }).where(eq(i18nLocales.code, code)),
 					);
 					yield* runtime.invalidate();
+					yield* audit({
+						action: "i18n.locale.toggle",
+						targetType: "i18n_locale",
+						detail: { code, enabled },
+					});
 				}),
 
 			exportNamespace: (namespace) =>
@@ -342,7 +361,12 @@ export const I18nAdminLive = Layer.effect(
 						return yield* Effect.fail(new I18nValidationError({ error: "invalid export payload" }));
 					}
 					// Validate EVERYTHING before writing anything.
-					const entries: Array<{ locale: string; key: string; value: string }> = [];
+					const entries: Array<{
+						locale: string;
+						key: string;
+						value: string;
+						params: readonly MessageParam[];
+					}> = [];
 					const problems: string[] = [];
 					for (const [locale, kv] of Object.entries(p.messages)) {
 						if (kv === null || typeof kv !== "object") {
@@ -359,7 +383,12 @@ export const I18nAdminLive = Layer.effect(
 								problems.push(`${locale}.${key}: ${parsed.error}`);
 								continue;
 							}
-							entries.push({ locale, key, value });
+							entries.push({
+								locale,
+								key,
+								value,
+								params: parsed.message.params,
+							});
 						}
 					}
 					if (problems.length > 0) {
@@ -387,7 +416,7 @@ export const I18nAdminLive = Layer.effect(
 									value: "",
 									draftValue: e.value,
 									status: "draft",
-									params: [],
+									params: e.params,
 									version: 1,
 								}),
 							);
@@ -395,7 +424,11 @@ export const I18nAdminLive = Layer.effect(
 							yield* Effect.promise(() =>
 								db
 									.update(i18nMessages)
-									.set({ draftValue: e.value, updatedAt: new Date() })
+									.set({
+									draftValue: e.value,
+									params: e.params,
+									updatedAt: new Date(),
+									})
 									.where(
 										and(
 											eq(i18nMessages.namespace, id.namespace),

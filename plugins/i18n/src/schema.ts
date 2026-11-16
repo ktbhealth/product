@@ -6,7 +6,6 @@ import {
 	primaryKey,
 	sqliteTable,
 	text,
-	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
 import type { MessageKind, MessageParam } from "@ktb/i18n";
@@ -80,13 +79,6 @@ export const i18nMessages = sqliteTable(
 	(table) => [
 		primaryKey({ columns: [table.namespace, table.key, table.locale, table.scope, table.scopeId] }),
 		index("i18n_messages_ns_locale_idx").on(table.namespace, table.locale),
-		uniqueIndex("i18n_messages_key_idx").on(
-			table.namespace,
-			table.key,
-			table.locale,
-			table.scope,
-			table.scopeId,
-		),
 	],
 );
 

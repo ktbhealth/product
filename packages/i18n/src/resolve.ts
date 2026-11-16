@@ -100,7 +100,10 @@ export interface ResolvedMessage {
 		| { kind: "missing" };
 }
 
-const rowKey = (r: MessageRow) => `${r.namespace}${r.key}${r.locale}${r.scope}${r.scopeId}`;
+// Space-separated: bare concatenation collides ("app"+"bc" == "appb"+"c").
+// Keys/locales/scope ids never contain spaces.
+const rowKey = (r: MessageRow) =>
+	`${r.namespace} ${r.key} ${r.locale} ${r.scope} ${r.scopeId}`;
 
 /** Index rows once; resolution is then O(chain × locales) map probes. */
 export const indexMessages = (rows: readonly MessageRow[]): ReadonlyMap<string, MessageRow> => {
@@ -113,10 +116,44 @@ export const indexMessages = (rows: readonly MessageRow[]): ReadonlyMap<string, 
 };
 
 /**
- * Resolve `namespace.key` for a request. Scope is tried outermost, then
- * locale fallback, then default locale; a total miss returns the
- * `namespace.key` sentinel (never blank — telemetry counts these).
+ * Resolve `namespace.key` for a request down to the winning ROW.
+ * Scope is the OUTER dimension (ADR-0003: scope → locale → default →
+ * sentinel): every locale in the chain is tried at portal scope before
+ * tenant, then global — so a tenant's own override beats generic copy
+ * in another locale. Returns undefined on a total miss.
  */
+export const resolveRow = (
+	index: ReadonlyMap<string, MessageRow>,
+	input: {
+		readonly namespace: string;
+		readonly key: string;
+		readonly scopeChain: ScopeChain;
+		readonly locales: LocaleChain;
+	},
+): MessageRow | undefined => {
+	for (const { scope, scopeId } of input.scopeChain.scopes) {
+		for (const locale of input.locales.locales) {
+			const row = index.get(
+				`${input.namespace} ${input.key} ${locale} ${scope} ${scopeId}`,
+			);
+			if (row) return row;
+		}
+	}
+	// Hand-built chains may omit the default locale — probe it last
+	// across every scope so the documented fallback still holds.
+	if (!input.locales.locales.includes(input.locales.defaultLocale)) {
+		for (const { scope, scopeId } of input.scopeChain.scopes) {
+			const row = index.get(
+				`${input.namespace} ${input.key} ${input.locales.defaultLocale} ${scope} ${scopeId}`,
+			);
+			if (row) return row;
+		}
+	}
+	return undefined;
+};
+
+/** Resolve `namespace.key` for a request; a total miss returns the
+ * `namespace.key` sentinel (never blank — telemetry counts these). */
 export const resolveMessage = (
 	index: ReadonlyMap<string, MessageRow>,
 	input: {
@@ -126,24 +163,13 @@ export const resolveMessage = (
 		readonly locales: LocaleChain;
 	},
 ): ResolvedMessage => {
-	const probe = (locale: string) => {
-		for (const { scope, scopeId } of input.scopeChain.scopes) {
-			const row = index.get(`${input.namespace}${input.key}${locale}${scope}${scopeId}`);
-			if (row) {
-				return {
-					template: row.value,
-					source: { kind: "hit" as const, scope: row.scope, locale, version: row.version },
-				};
-			}
-		}
-		return null;
-	};
-	for (const locale of input.locales.locales) {
-		const hit = probe(locale);
-		if (hit) return hit;
+	const row = resolveRow(index, input);
+	if (row !== undefined) {
+		return {
+			template: row.value,
+			source: { kind: "hit", scope: row.scope, locale: row.locale, version: row.version },
+		};
 	}
-	const fallback = probe(input.locales.defaultLocale);
-	if (fallback) return fallback;
 	return {
 		template: `${input.namespace}.${input.key}`,
 		source: { kind: "missing" },

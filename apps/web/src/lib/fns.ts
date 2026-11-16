@@ -4,7 +4,13 @@ import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
 import { Db } from "@ktb/db";
-import { GLOBAL_SCOPE, portalInstanceScope, resolveRequestLocales, tenantScope } from "@ktb/i18n";
+import {
+	GLOBAL_SCOPE,
+	portalInstanceScope,
+	portalScope,
+	resolveRequestLocales,
+	tenantScope,
+} from "@ktb/i18n";
 import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
 import { currentLocale } from "./locale-context.ts";
 import {
@@ -126,9 +132,9 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				);
 				// Tenant scope binding (PL-008 Phase 6): same selector +
 				// resolver pipeline runAs uses — tenant headers + session
-				// account → TenantResolver → tenant→global chain.
-				// Anonymous/selector-less requests stay global; portal
-				// paths keep portal→global (patients carry no tenant).
+				// account → TenantResolver → scope chain. Anonymous/
+				// selector-less requests stay global; portal paths add the
+				// tenant slot between portal and global when one resolves.
 				const headers = yield* Effect.promise(() =>
 					import("@tanstack/react-start/server")
 						.then((m) => m.getRequestHeaders())
@@ -150,7 +156,9 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				const tenantId = tenant === null ? null : tenantScopeId(tenant);
 				const scopeChain =
 					instanceId !== undefined
-						? portalInstanceScope(instanceId)
+						? tenantId !== null
+							? portalScope(String(tenantId), instanceId)
+							: portalInstanceScope(instanceId)
 						: tenantId !== null
 							? tenantScope(String(tenantId))
 							: GLOBAL_SCOPE;

@@ -236,8 +236,11 @@ const renderTokens = (
 	let out = "";
 	for (const t of tokens) {
 		if (t.kind === "text") {
-			// Inside a plural case, `#` renders the plural arg (ICU).
-			out += pound === undefined ? t.text : t.text!.replaceAll("#", pound);
+			// Inside a plural case, `#` renders the plural arg (ICU) —
+			// except `#` immediately followed by a digit, which reads as
+			// an id reference ("Consultation #42") and stays literal.
+			out +=
+				pound === undefined ? t.text : t.text!.replace(/#(?!\d)/g, pound);
 			continue;
 		}
 		const value = params[t.name!];
@@ -340,13 +343,47 @@ const PSEUDO_ACCENTS: Readonly<Record<string, string>> = {
 	U: "Ú",
 };
 
-export const pseudoLocalize = (template: string): string => {
-	const parts = template.split(/(\{[^}]*\})/g);
-	const body = parts
-		.map((part, i) =>
-			i % 2 === 1 ? part : part.replace(/[aeiouAEIOU]/g, (c) => PSEUDO_ACCENTS[c] ?? c),
-		)
+const accentVowels = (text: string): string =>
+	text.replace(/[aeiouAEIOU]/g, (c) => PSEUDO_ACCENTS[c] ?? c);
+
+/**
+ * Re-emit tokens with copy accented but syntax verbatim: param names,
+ * formatter hints, plural/select keywords and case keys must survive
+ * untouched or the template stops parsing. Case BODIES are copy and
+ * recurse through the same transform (nested params included).
+ */
+const pseudoTokens = (tokens: readonly Token[]): string =>
+	tokens
+		.map((t) => {
+			if (t.kind === "text") return accentVowels(t.text!);
+			let inner = t.name!;
+			if (t.hint !== undefined) inner += `, ${t.hint}`;
+			if (t.cases !== undefined) {
+				inner += `, ${t.plural === true ? "plural" : "select"}, `;
+				inner += t.cases
+					.map((c) => {
+						const bodyTokens = tokenize(c.body);
+						const body = Array.isArray(bodyTokens)
+							? pseudoTokens(bodyTokens)
+							: accentVowels(c.body);
+						return `${c.key}{${body}}`;
+					})
+					.join(" ");
+			}
+			return `{${inner}}`;
+		})
 		.join("");
-	const pad = "·".repeat(Math.ceil(body.length * 0.3));
-	return `⟦${body}${pad}⟧`;
+
+export const pseudoLocalize = (template: string): string => {
+	const tokens = tokenize(template);
+	// Unparseable template: accent the raw text and leave every brace
+	// span verbatim — better an unpretty pseudo string than a broken one.
+	const accented = Array.isArray(tokens)
+		? pseudoTokens(tokens)
+		: template
+				.split(/(\{[^}]*\})/g)
+				.map((part, i) => (i % 2 === 1 ? part : accentVowels(part)))
+				.join("");
+	const pad = "·".repeat(Math.ceil(accented.length * 0.3));
+	return `⟦${accented}${pad}⟧`;
 };

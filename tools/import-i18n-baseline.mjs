@@ -25,6 +25,7 @@ import { makeSqliteDatabase } from "@ktb/db-sqlite";
 
 import { syncBaseline } from "../plugins/i18n/src/baseline.ts";
 import { i18nLocales } from "../plugins/i18n/src/schema.ts";
+import { flattenCatalog } from "../packages/i18n/src/catalog.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -70,7 +71,10 @@ for (const dir of readdirSync(pluginsDir)) {
 	// locale at slice time, so plugins don't need qps entries.
 	for (const locale of Object.keys(LOCALE_META).filter((l) => l !== "qps")) {
 		const catalog = mod.i18nMessagesFor(locale);
-		for (const [key, value] of Object.entries(catalog)) {
+		// Catalogs are nested message objects — flatten to dot paths
+		// (`sections.identification`) so every string leaf imports; the
+		// same flattening sliceMessages applies at read time.
+		for (const { path: key, value } of flattenCatalog(catalog)) {
 			if (typeof value !== "string") {
 				pluginWarnings.push(`${mod.I18N_NAMESPACE}.${key} [${locale}]: non-string value skipped`);
 				continue;

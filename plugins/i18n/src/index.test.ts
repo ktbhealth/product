@@ -101,6 +101,38 @@ describe("I18nRuntime cache", () => {
 		expect(text).toBe("app.does-not-exist");
 	});
 
+	it("t() resolves dotted namespaces and dot-pathed keys", async () => {
+		await db.insert(i18nMessages).values({
+			namespace: "eval.credentials",
+			key: "sections.list.title",
+			locale: "en",
+			scope: "global",
+			scopeId: "",
+			kind: "text",
+			value: "Credentials {count, number}",
+			status: "published",
+			params: [{ name: "count", hint: "number" }],
+			version: 1,
+		});
+		const runtime = makeRuntime();
+		const i18n = await runtime.runPromise(
+			Effect.gen(function* () {
+				const rt = yield* I18nRuntime;
+				return requestI18n(rt, GLOBAL_SCOPE, localeChain(["en"], "en"));
+			}),
+		);
+		// Longest-prefix namespace split: eval.credentials + sections.list.title.
+		const text = await runtime.runPromise(i18n.t("eval.credentials.sections.list.title", { count: 2 }));
+		expect(text).toBe("Credentials 2");
+		const params = await runtime.runPromise(
+			i18n.paramsFor("eval.credentials", "sections.list.title"),
+		);
+		expect(params).toEqual([{ name: "count", hint: "number" }]);
+		// Miss → manifest contract, then empty.
+		expect(await runtime.runPromise(i18n.paramsFor("eval.credentials", "missing"))).toEqual([]);
+		expect(await runtime.runPromise(i18n.paramsFor("no.such.ns", "k"))).toEqual([]);
+	});
+
 	it("invalidate forces reload after a write", async () => {
 		const runtime = makeRuntime();
 		const { i18n, rt } = await runtime.runPromise(

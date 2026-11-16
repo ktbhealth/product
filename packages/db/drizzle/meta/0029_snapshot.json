@@ -2307,17 +2307,6 @@
             "locale"
           ],
           "isUnique": false
-        },
-        "i18n_messages_key_idx": {
-          "name": "i18n_messages_key_idx",
-          "columns": [
-            "namespace",
-            "key",
-            "locale",
-            "scope",
-            "scope_id"
-          ],
-          "isUnique": true
         }
       },
       "foreignKeys": {},

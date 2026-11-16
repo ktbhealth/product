@@ -11,7 +11,6 @@ import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import { I18nAdmin } from "./contract.ts";
 import { I18nAdminLive } from "./admin.ts";
 import { I18nPlatformPage } from "./platform-page.tsx";
-import type { I18nPageData } from "./views/I18nPage.tsx";
 import { I18nRuntimeLive } from "./runtime.ts";
 import { i18nCrdtUpdates, i18nLocales, i18nMessages, i18nNamespaces } from "./schema.ts";
 
@@ -117,11 +116,13 @@ export const i18nPanelPlugin = definePlugin({
 				loader: () =>
 					Effect.gen(function* () {
 						const admin = yield* I18nAdmin;
-						const empty: I18nPageData = { namespaces: [], locales: [], messages: [] };
+						// Namespaces + locales only — message rows are fetched
+						// per selected namespace (i18nNamespaceMessagesFn) so
+						// the loader never ships the whole table.
+						const empty = { namespaces: [], locales: [] };
 						return yield* Effect.all({
 							namespaces: admin.namespaces(),
 							locales: admin.locales(),
-							messages: admin.messages(),
 						}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
 					}),
 			},
