@@ -106,4 +106,115 @@ describe("idbStore", () => {
 		const keyring = makeKeyring();
 		expect((await keyring.deviceKeys()).wrapPublicKey).toBeTruthy();
 	});
+
+	/** Minimal fake IndexedDB: one object store, microtask-fired request
+	 * callbacks (handlers are always assigned synchronously before the
+	 * promise executor settles, so microtasks order correctly). */
+	const fakeIndexedDB = (rows = new Map<string, unknown>(), failAt?: string) => {
+		const makeReq = <T>(get: () => { result: T; error: Error | null; fail?: boolean }) => {
+			const r: Record<string, unknown> = { result: undefined, error: null };
+			queueMicrotask(() => {
+				const { result, error, fail } = get();
+				r.result = result;
+				r.error = error;
+				(fail ? r.onerror : r.onsuccess)?.call(r);
+			});
+			return r;
+		};
+		const db = {
+			transaction: (_store: string, mode: string) => ({
+				objectStore: () => ({
+					get: (key: string) =>
+						makeReq(() =>
+							failAt === `get:${mode}`
+								? // error stays null — the request() helper must
+									// synthesize its fallback Error.
+									{ result: undefined, error: null, fail: true }
+								: { result: rows.get(key), error: null },
+						),
+					put: (value: unknown, key: string) =>
+						makeReq(() =>
+							failAt === "put"
+								? { result: undefined, error: new Error("quota"), fail: true }
+								: { result: (rows.set(key, value), undefined), error: null },
+						),
+				}),
+			}),
+			createObjectStore: () => ({}),
+			close: () => {},
+		};
+		return {
+			open: () => {
+				const r: Record<string, unknown> = { result: db, error: null };
+				queueMicrotask(() => {
+					if (failAt === "open" || failAt === "open-null") {
+						// "open-null" leaves error unset — the openDb helper must
+						// synthesize its own fallback Error.
+						r.error = failAt === "open" ? new Error("blocked") : null;
+						(r.onerror as (() => void) | null)?.();
+						return;
+					}
+					(r.onupgradeneeded as (() => void) | null)?.();
+					(r.onsuccess as (() => void) | null)?.();
+				});
+				return r;
+			},
+		};
+	};
+
+	const withFakeIdb = async <T>(idb: unknown, run: () => Promise<T>) => {
+		const global = globalThis as { indexedDB?: unknown };
+		const previous = global.indexedDB;
+		global.indexedDB = idb;
+		try {
+			return await run();
+		} finally {
+			if (previous === undefined) delete global.indexedDB;
+			else global.indexedDB = previous;
+		}
+	};
+
+	it("loads a persisted identity and saves over it", async () => {
+		const rows = new Map<string, unknown>();
+		const idb = fakeIndexedDB(rows);
+		await withFakeIdb(idb, async () => {
+			const { idbStore } = await import("./keyring.ts");
+			const store = idbStore();
+			expect(await store.load()).toBeNull();
+			const identity = { wrap: {}, sign: {} } as unknown as DeviceIdentity;
+			await store.save(identity);
+			expect(await store.load()).toBe(identity);
+		});
+	});
+
+	it("propagates request and open failures", async () => {
+		await withFakeIdb(fakeIndexedDB(new Map(), "open"), async () => {
+			const { idbStore } = await import("./keyring.ts");
+			await expect(idbStore().load()).rejects.toThrow("blocked");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "open-null"), async () => {
+			const { idbStore } = await import("./keyring.ts");
+			await expect(idbStore().load()).rejects.toThrow("indexeddb open failed");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "put"), async () => {
+			const { idbStore } = await import("./keyring.ts");
+			await expect(
+				idbStore().save({ wrap: {}, sign: {} } as unknown as DeviceIdentity),
+			).rejects.toThrow("quota");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "get:readonly"), async () => {
+			const { idbStore } = await import("./keyring.ts");
+			await expect(idbStore().load()).rejects.toThrow("indexeddb request failed");
+		});
+	});
+
+	it("picks idbStore when indexedDB is defined", async () => {
+		const rows = new Map<string, unknown>();
+		await withFakeIdb(fakeIndexedDB(rows), async () => {
+			const keyring = makeKeyring();
+			const keys = await keyring.deviceKeys();
+			expect(keys.wrapPublicKey).toBeTruthy();
+			expect(rows.has("identity")).toBe(true);
+		});
+	});
 });
