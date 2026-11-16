@@ -50,6 +50,8 @@ import { stubEmailDriver } from "@ktb/email-stub";
 import { Captcha, nullCaptchaDriver } from "@ktb/captcha";
 import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
+import { EntityCipher } from "@ktb/crypto/cipher";
+import { passthroughCipherDriver } from "@ktb/crypto-stub";
 import { Accounts, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
@@ -268,6 +270,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// the console driver is the always-eligible local/DX fallback.
 		otlpTelemetryDriver,
 		telemetryConsoleDriver,
+		// Entity cipher (PL-007 F2): the passthrough is the non-ZK
+		// default — always eligible, LAST in the list once real
+		// keyring-backed drivers arrive (first eligible wins).
+		passthroughCipherDriver,
 		// Eval validator runner (P-081): eligible only when the local
 		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
 		// otherwise no EvalRunner is bound and eval runs stay queued.
@@ -360,6 +366,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// wired; the plugin then leaves run rows `queued` (P-081).
 	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
 	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
+	// Entity cipher port (T-140): passthrough until ZK keyring drivers
+	// exist — plugins resolve it via serviceOption like other ports.
+	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
 	// Platform admin gate (P-026): env allowlist resolved once here; the
 	// gate fails closed (Forbidden) when the list is unset/empty.
 	const PlatformAdminLive = Layer.succeed(
@@ -391,6 +400,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TelemetryLive,
 		EvalRunnerLive,
 		EvalArtifactsLive,
+		EntityCipherLive,
 		PlatformAdminLive,
 		PluginStatesLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus

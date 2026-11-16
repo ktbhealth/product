@@ -5,10 +5,14 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./aead": "./src/aead.ts",
+		"./cipher": "./src/cipher.ts",
 		"./wrap": "./src/wrap.ts",
 		"./sign": "./src/sign.ts",
 		"./digest": "./src/digest.ts",
 		"./kdf": "./src/kdf.ts",
 		"./stream": "./src/stream.ts"
+	},
+	"dependencies": {
+		"effect": "4.1.2"
 	}
 }
