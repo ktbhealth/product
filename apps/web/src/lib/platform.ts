@@ -231,6 +231,16 @@ const requestScopeChain = () =>
 		return tenantId === null ? GLOBAL_SCOPE : tenantScope(String(tenantId));
 	});
 
+// F3b: the AcpBridge durable-object namespace (workerd binding —
+// declared in the Alchemy stack). Structural slice only; the plugin
+// route reaches it through ServerRuntime.acpBridge, never the env.
+const acpBridgeNs = env.ACP_BRIDGE as unknown as
+	| {
+			readonly idFromName: (name: string) => unknown;
+			readonly get: (id: unknown) => { fetch(request: Request): Promise<Response> };
+	  }
+	| undefined;
+
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
 // without importing this module. Env reads stay here — the registry
@@ -283,6 +293,20 @@ setServerRuntime({
 	// better-auth instance through this capability — plugins never
 	// import the adapter.
 	authHandler: (request) => auth.handler(request),
+	// F3b: the bridge route's handoff to the AcpBridge durable object
+	// (idFromName(endpointId)). The ?endpoint= rewrite lets the DO
+	// stamp ai_endpoint.last_seen_at on connect/heartbeat. Undefined
+	// when the binding is absent (Node dev).
+	acpBridge:
+		acpBridgeNs === undefined
+			? undefined
+			: (endpointId, request) => {
+					const url = new URL(request.url);
+					url.searchParams.set("endpoint", String(endpointId));
+					return acpBridgeNs
+						.get(acpBridgeNs.idFromName(String(endpointId)))
+						.fetch(new Request(url, request));
+				},
 });
 
 // Raw platform binding passthrough — not composed, just exposed.

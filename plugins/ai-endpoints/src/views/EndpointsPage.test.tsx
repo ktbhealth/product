@@ -20,6 +20,19 @@ const fns = vi.hoisted(() => ({
 		ok: true,
 		data: { id: 3 },
 	})),
+	createBridgeLinkFn: vi.fn<(a?: Arg) => Res<{ command: string; expiresAt: Date } | null>>(
+		async () => ({
+			ok: true,
+			data: {
+				command:
+					'bunx @ktb/ai-bridge connect https://app.test/api/ai/bridge?token=tok123 --cmd "claude agent acp"',
+				expiresAt: new Date("2026-11-01T10:15:00Z"),
+			},
+		}),
+	),
+	endpointBridgeStatusFn: vi.fn<
+		(a?: Arg) => Res<{ status: string; lastSeenAt: Date | null } | null>
+	>(async () => ({ ok: true, data: { status: "waiting", lastSeenAt: null } })),
 	setPlatformDefaultEndpointFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({
 		ok: true,
 		data: null,
@@ -66,6 +79,7 @@ const endpoint: EndpointCard = {
 	isDefault: false,
 	timeoutMs: 60_000,
 	enabled: true,
+	lastSeenAt: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 };
 
@@ -418,6 +432,204 @@ describe("EndpointsPage — acp transport", () => {
 		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
 			kind: "acp",
 			transport: "child",
+		});
+	});
+});
+
+describe("EndpointsPage — bridge (F3b)", () => {
+	const bridgeEp: EndpointCard = {
+		...endpoint,
+		id: 7,
+		name: "Local agent",
+		kind: "acp",
+		baseUrl: "",
+		transport: "ws",
+	};
+
+	it("flags bridge cards and offers Connect via bridge only for bridge endpoints", () => {
+		renderPage([endpoint, bridgeEp, { ...bridgeEp, id: 8, name: "Off agent", enabled: false }]);
+		// Each bridge row shows the badge in two places (badge + url
+		// cell); the openai row shows none.
+		expect(screen.getAllByText("bridge").length).toBeGreaterThanOrEqual(2);
+		// Disabled bridge endpoints get no connect action.
+		expect(screen.getAllByText("Connect via bridge")).toHaveLength(1);
+	});
+
+	it("mints the one-shot command, shows it once, polls status, and copies", async () => {
+		const user = userEvent.setup();
+		// userEvent installs its own clipboard stub on setup — spy on
+		// the instance it left behind rather than racing it.
+		const writeText = vi.spyOn(navigator.clipboard, "writeText");
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		await waitFor(() => expect(fns.createBridgeLinkFn).toHaveBeenCalledWith({ data: { id: 7 } }));
+		const commandInput = (await screen.findByDisplayValue(/token=tok123/)) as HTMLInputElement;
+		expect(commandInput.value).toContain("https://app.test/api/ai/bridge?token=tok123");
+		expect(commandInput.value).toContain('--cmd "claude agent acp"');
+		// Status poll ran once on open — waiting by default.
+		await waitFor(() =>
+			expect(fns.endpointBridgeStatusFn).toHaveBeenCalledWith({ data: { id: 7 } }),
+		);
+		expect(screen.getByText(/waiting for the CLI/)).toBeTruthy();
+		await user.click(screen.getByText("Copy command"));
+		expect(writeText).toHaveBeenCalledWith(expect.stringContaining("token=tok123"));
+		expect(await screen.findByText("Copied")).toBeTruthy();
+	});
+
+	it("flips to connected and offline statuses from the poll", async () => {
+		fns.endpointBridgeStatusFn.mockResolvedValueOnce({
+			ok: true,
+			data: { status: "connected", lastSeenAt: new Date() },
+		} as never);
+		const user = userEvent.setup();
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		expect(await screen.findByText("bridge connected")).toBeTruthy();
+
+		fns.endpointBridgeStatusFn.mockResolvedValueOnce({
+			ok: true,
+			data: { status: "offline", lastSeenAt: null },
+		} as never);
+		renderPage([{ ...bridgeEp, id: 9 }]);
+		await user.click(screen.getAllByText("Connect via bridge")[1]!);
+		expect(await screen.findByText("bridge offline")).toBeTruthy();
+	});
+
+	it("closes the bridge dialog via the Close button and via dismiss", async () => {
+		const user = userEvent.setup();
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		expect(await screen.findByText("Connect agent via bridge")).toBeTruthy();
+		// Footer Close button → setBridge(null). ("Close" also matches the
+		// dialog X's sr-only span — pick the actual button element.)
+		const closeButton = screen.getAllByText("Close").find((el) => el instanceof HTMLButtonElement);
+		expect(closeButton).toBeDefined();
+		await user.click(closeButton!);
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+
+		// Reopen, then dismiss through onOpenChange (Escape).
+		await user.click(screen.getByText("Connect via bridge"));
+		expect(await screen.findByText("Connect agent via bridge")).toBeTruthy();
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+	});
+
+	it("treats a null transport as the ws default for bridge detection", () => {
+		renderPage([{ ...bridgeEp, id: 11, name: "Null tx", transport: null }]);
+		expect(screen.getByText("bridge")).toBeTruthy();
+		expect(screen.getByText("Connect via bridge")).toBeTruthy();
+	});
+
+	it("drops mints that land after close or for a different endpoint", async () => {
+		const user = userEvent.setup();
+		type Mint = { ok: true; data: { command: string; expiresAt: Date } };
+		let resolveA: ((v: Mint) => void) | undefined;
+		let resolveB: ((v: Mint) => void) | undefined;
+		fns.createBridgeLinkFn
+			.mockImplementationOnce(() => new Promise<Mint>((res) => (resolveA = res)))
+			.mockImplementationOnce(() => new Promise<Mint>((res) => (resolveB = res)));
+		renderPage([bridgeEp, { ...bridgeEp, id: 9, name: "Other agent" }]);
+
+		await user.click(screen.getAllByText("Connect via bridge")[0]!);
+		await waitFor(() => expect(fns.createBridgeLinkFn).toHaveBeenCalledWith({ data: { id: 7 } }));
+		const closeButton = () =>
+			screen.getAllByText("Close").find((el) => el instanceof HTMLButtonElement)!;
+		await user.click(closeButton());
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+
+		// Stale mint for id 7 while endpoint 9's dialog is open → prev.id !== id.
+		await user.click(screen.getAllByText("Connect via bridge")[1]!);
+		await waitFor(() => expect(fns.createBridgeLinkFn).toHaveBeenCalledWith({ data: { id: 9 } }));
+		resolveA!({ ok: true, data: { command: "stale-7", expiresAt: new Date() } });
+		// Endpoint 9's own mint still lands.
+		resolveB!({ ok: true, data: { command: "fresh-9", expiresAt: new Date() } });
+		expect(await screen.findByDisplayValue("fresh-9")).toBeTruthy();
+
+		// Mint resolving after the dialog closed → prev === null.
+		let resolveC: ((v: Mint) => void) | undefined;
+		fns.createBridgeLinkFn.mockImplementationOnce(
+			() => new Promise<Mint>((res) => (resolveC = res)),
+		);
+		await user.click(closeButton());
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+		await user.click(screen.getAllByText("Connect via bridge")[0]!);
+		await user.click(closeButton());
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+		resolveC!({ ok: true, data: { command: "stale-7", expiresAt: new Date() } });
+		await waitFor(() => expect(screen.queryByDisplayValue("stale-7")).toBeNull());
+	});
+
+	it(
+		"keeps polling while open and tolerates failed or empty status reads",
+		{ timeout: 15_000 },
+		async () => {
+			fns.endpointBridgeStatusFn
+				.mockResolvedValueOnce({ ok: false } as never)
+				.mockResolvedValueOnce({ ok: true, data: null } as never);
+			const user = userEvent.setup();
+			renderPage([bridgeEp]);
+			await user.click(screen.getByText("Connect via bridge"));
+			// Failed + null reads leave the badge on the waiting copy.
+			expect(await screen.findByText(/waiting for the CLI/)).toBeTruthy();
+			// The 3s interval keeps ticking while the dialog stays open.
+			await waitFor(() => expect(fns.endpointBridgeStatusFn).toHaveBeenCalledTimes(3), {
+				timeout: 10_000,
+			});
+		},
+	);
+
+	it("drops the in-flight status tick once the dialog closes", async () => {
+		let resolveStatus:
+			| ((v: { ok: true; data: { status: string; lastSeenAt: Date | null } }) => void)
+			| undefined;
+		fns.endpointBridgeStatusFn.mockImplementationOnce(
+			() =>
+				new Promise<{ ok: true; data: { status: string; lastSeenAt: Date | null } }>(
+					(res) => (resolveStatus = res),
+				),
+		);
+		const user = userEvent.setup();
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		await waitFor(() => expect(fns.endpointBridgeStatusFn).toHaveBeenCalled());
+		const closeButton = screen.getAllByText("Close").find((el) => el instanceof HTMLButtonElement)!;
+		await user.click(closeButton);
+		resolveStatus!({ ok: true, data: { status: "connected", lastSeenAt: new Date() } });
+		// The stale tick short-circuits on `stopped` — no status lands.
+		await waitFor(() => expect(screen.queryByText("bridge connected")).toBeNull());
+	});
+
+	it("omits the command box when the link mint fails", async () => {
+		fns.createBridgeLinkFn.mockResolvedValueOnce({ ok: true, data: null } as never);
+		const user = userEvent.setup();
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		expect(await screen.findByText("Connect agent via bridge")).toBeTruthy();
+		expect(screen.queryByDisplayValue(/token=/)).toBeNull();
+		expect(screen.queryByText("Copy command")).toBeNull();
+	});
+
+	it("allows an empty baseUrl only for acp+ws — the bridge sentinel", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getByText("New endpoint"));
+		const boxes = screen.getAllByRole("textbox");
+		await user.type(boxes[0]!, "Bridge agent");
+		// openai + empty baseUrl → save stays disabled.
+		await user.clear(boxes[1]!);
+		expect(screen.getByText("Save")).toHaveProperty("disabled", true);
+		// acp+ws + empty baseUrl → the bridge hint shows and save unlocks.
+		await user.click(screen.getByLabelText("Kind"));
+		await user.click(await screen.findByRole("option", { name: "acp" }));
+		expect(screen.getByText(/Leave empty on acp\+ws/)).toBeTruthy();
+		expect(screen.getByText("Save")).toHaveProperty("disabled", false);
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
+		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
+			name: "Bridge agent",
+			kind: "acp",
+			baseUrl: "",
+			transport: "ws",
 		});
 	});
 });

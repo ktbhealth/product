@@ -36,6 +36,10 @@ export interface PortalMessages {
 	readonly viewConsultation: string;
 	readonly consultationsEmptyTitle: string;
 	readonly consultationsEmptyDescription: string;
+	/** Access log (P-086): heading of /portal/activity and the link to
+	 * it on the portal home — shown only while a record is open. */
+	readonly activityTitle: string;
+	readonly activityLink: string;
 	/** Consultation page. */
 	readonly consultationTitle: string;
 	readonly back: string;
@@ -73,6 +77,8 @@ const en: PortalMessages = {
 	viewConsultation: "View consultation",
 	consultationsEmptyTitle: "No consultations yet",
 	consultationsEmptyDescription: "A consultation appears here once your doctor saves its record.",
+	activityTitle: "Activity",
+	activityLink: "View activity",
 	consultationTitle: "Consultation",
 	back: "Back to my consultations",
 	readOnlyNote: "This is the record your doctor saved. Only your doctor can change it.",
@@ -118,6 +124,8 @@ const ptBR: PortalMessages = {
 	consultationsEmptyTitle: "Nenhuma consulta ainda",
 	consultationsEmptyDescription:
 		"Uma consulta aparece aqui assim que seu médico salvar o registro dela.",
+	activityTitle: "Atividade",
+	activityLink: "Ver atividade",
 	consultationTitle: "Consulta",
 	back: "Voltar às minhas consultas",
 	readOnlyNote: "Este é o registro que seu médico salvou. Somente seu médico pode alterá-lo.",
@@ -163,6 +171,8 @@ const es: PortalMessages = {
 	consultationsEmptyTitle: "Aún no hay consultas",
 	consultationsEmptyDescription:
 		"Una consulta aparece aquí en cuanto tu médico guarda su registro.",
+	activityTitle: "Actividad",
+	activityLink: "Ver actividad",
 	consultationTitle: "Consulta",
 	back: "Volver a mis consultas",
 	readOnlyNote: "Este es el registro que guardó tu médico. Solo tu médico puede cambiarlo.",

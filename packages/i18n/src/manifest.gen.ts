@@ -2326,6 +2326,15 @@ export const I18N_MANIFEST = {
 		allActions: {
 			params: [],
 		},
+		allActors: {
+			params: [],
+		},
+		allTargetTypes: {
+			params: [],
+		},
+		noTargetType: {
+			params: [],
+		},
 		noMatch: {
 			params: [],
 		},
@@ -3690,6 +3699,12 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		consultationsEmptyDescription: {
+			params: [],
+		},
+		activityTitle: {
+			params: [],
+		},
+		activityLink: {
 			params: [],
 		},
 		consultationTitle: {

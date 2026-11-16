@@ -199,6 +199,12 @@ export function PortalPage({
 							))}
 						</ul>
 					)}
+					<Link
+						to="/portal/activity"
+						className={buttonVariants({ variant: "outline", size: "sm" })}
+					>
+						{t.activityLink}
+					</Link>
 				</section>
 			) : null}
 		</div>

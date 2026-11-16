@@ -18,7 +18,10 @@ export const aiEndpoint = sqliteTable(
 		name: text().notNull(),
 		/** acp | openai */
 		kind: text().notNull(),
-		baseUrl: text("base_url").notNull(),
+		/** Nullable since F3b: acp+ws bridge endpoints connect through the
+		 * AcpBridge durable object instead of dialing a URL — the local
+		 * `ai-bridge` CLI owns the agent process. */
+		baseUrl: text("base_url"),
 		/** Chat model id (openai kind); unused for acp. */
 		model: text(),
 		sessionId: text("session_id"),
@@ -39,6 +42,10 @@ export const aiEndpoint = sqliteTable(
 		isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
 		timeoutMs: integer("timeout_ms").notNull().default(60_000),
 		enabled: integer({ mode: "boolean" }).notNull().default(true),
+		/** Last time a bridge CLI held a live socket for this endpoint
+		 * (connect + heartbeat) — drives the bridge status badge. Null when
+		 * no bridge has ever connected. */
+		lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
 		createdAt: integer("created_at", { mode: "timestamp_ms" })
 			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 			.notNull(),
@@ -46,3 +53,39 @@ export const aiEndpoint = sqliteTable(
 	(table) => [index("ai_endpoint_enabled_idx").on(table.enabled)],
 );
 export type AiEndpoint = typeof aiEndpoint.$inferSelect;
+
+/**
+ * `ai_agent_link` — one-shot connect links for the ACP bridge (F3b).
+ * `createBridgeLinkFn` mints a 128-bit token, stores only its SHA-256
+ * (raw token shown once, never persisted) and hands the admin the
+ * `ai-bridge connect` command. `GET /api/ai/bridge?token=` consumes the
+ * link (`used_at` set, ~15min expiry) and upgrades to the endpoint's
+ * AcpBridge durable object. The agent command itself is NEVER stored
+ * or sent by the server — it is a local `--cmd` flag on the CLI.
+ * `revoked_at` (F4) marks a link the admin pulled from the Agents
+ * page — the row stays for audit, the token dies for future upgrades.
+ */
+export const aiAgentLink = sqliteTable(
+	"ai_agent_link",
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		endpointId: integer("endpoint_id")
+			.notNull()
+			.references(() => aiEndpoint.id, { onDelete: "cascade" }),
+		/** SHA-256 hex of the raw token — lookup key; the token itself
+		 * is never stored. */
+		tokenHash: text("token_hash").notNull().unique(),
+		/** User id of the admin who minted the link. */
+		createdBy: text("created_by").notNull(),
+		expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+		usedAt: integer("used_at", { mode: "timestamp_ms" }),
+		/** Admin revocation (F4) — the bridge route refuses the token and
+		 * the Agents page shows `revoked`; nullable keeps the audit row. */
+		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+		createdAt: integer("created_at", { mode: "timestamp_ms" })
+			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+			.notNull(),
+	},
+	(table) => [index("ai_agent_link_endpoint_idx").on(table.endpointId)],
+);
+export type AiAgentLink = typeof aiAgentLink.$inferSelect;

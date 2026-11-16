@@ -2,7 +2,9 @@ import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
+import * as Option from "effect/Option";
 
+import { Audit, type AuditListResult } from "@ktb/audit";
 import {
 	ensureSessionUser,
 	getLocale,
@@ -33,6 +35,7 @@ const decodeDekEnvelopes = Schema.decodeUnknownSync(
 		wrapPublicKey: Schema.NonEmptyString,
 	}),
 );
+const decodePatientActivity = Schema.decodeUnknownSync(Schema.Struct({ patientId: Schema.Number }));
 
 /** Active UI locale for the current request — route loaders attach it
  * to their data so plugin views never import the host's i18n runtime. */
@@ -97,6 +100,40 @@ export const portalConsultationFn = createServerFn({ method: "GET" })
 					consultation: yield* portal.consultation(id),
 				};
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ status: "missing" as const }))),
+		);
+	});
+
+/** Page size the portal activity feed asks for (P-086). */
+const PATIENT_ACTIVITY_LIMIT = 100;
+
+const ACTIVITY_EMPTY: AuditListResult = {
+	entries: [],
+	total: 0,
+	limit: PATIENT_ACTIVITY_LIMIT,
+};
+
+/**
+ * The patient-facing access log (P-086): audit entries naming
+ * `patientId`'s own record. Authorization is the audit plugin's
+ * `PatientAuditAccess` port (an active `patient_access` link — the
+ * same grant the portal itself uses); anonymous callers, a missing
+ * audit plugin and a denied check all collapse to an empty page —
+ * the route never learns which case it was.
+ */
+export const patientActivityFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodePatientActivity(input))
+	.handler(async ({ data }): Promise<AuditListResult> => {
+		const user = await getSessionUser();
+		if (!user) return ACTIVITY_EMPTY;
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const audit = yield* Effect.serviceOption(Audit);
+				if (Option.isNone(audit)) return ACTIVITY_EMPTY;
+				return yield* audit.value
+					.patientList({ patientId: data.patientId, limit: PATIENT_ACTIVITY_LIMIT })
+					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(ACTIVITY_EMPTY)));
+			}),
 		);
 	});
 

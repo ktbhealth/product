@@ -19,7 +19,6 @@ import {
 	Audit,
 	AuditLive,
 	audit,
-	auditActivityPlugin,
 	auditChromePlugin,
 	auditEntryHash,
 	auditPanelPlugin,
@@ -27,7 +26,9 @@ import {
 	auditTablesPlugin,
 	insertAuditEntry,
 	listAuditEntries,
+	listPatientAuditEntries,
 	listTenantAuditEntries,
+	PatientAuditAccess,
 	plugins,
 	verifyAuditChain,
 	type AuditListResult,
@@ -42,6 +43,16 @@ INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES ('Cli
 `;
 
 const DDL = GROUPS_DDL + AUDIT_TEST_DDL;
+
+// Patient feed (P-086): the consultations join needs only id +
+// patient_id — the WHERE never touches the clinical columns. Rows are
+// seeded through the D1 shim's exec (the drizzle insert would demand
+// every notNull column of the real table).
+const CONSULTATIONS_DDL = `
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER);
+INSERT INTO consultations (id, patient_id) VALUES (10, 5), (11, 6), (12, NULL);
+`;
+const PATIENT_DDL = GROUPS_DDL + AUDIT_TEST_DDL + CONSULTATIONS_DDL;
 
 describe("audit repo", () => {
 	let db: ReturnType<typeof makeDb>;
@@ -413,6 +424,28 @@ describe("AuditLive", () => {
 		expect(row.tenantId).toBe(9);
 	});
 
+	it("record attributes delegated actions to the actor (actorId), not userId", async () => {
+		// Secretary acting on a doctor's behalf: authz follows userId but
+		// the audit row must name the signed-in account.
+		await runtime.runPromise(
+			Effect.flatMap(Audit, (p) => p.record({ action: "delegated.action" })).pipe(
+				Effect.provideService(Principal, {
+					userId: "doc-1",
+					actorId: "sec-1",
+					email: "sec@x.com",
+				}),
+			),
+		);
+		const result = await asUser(
+			"admin-1",
+			call((p) => p.adminList()),
+			"admin@x.com",
+		);
+		const row = result.entries.find((e) => e.action === "delegated.action")!;
+		expect(row.actorUserId).toBe("sec-1");
+		expect(row.actorEmail).toBe("sec@x.com");
+	});
+
 	it("record stamps null actors in system contexts (null principal)", async () => {
 		await asUser(
 			null,
@@ -609,6 +642,7 @@ describe("plugins", () => {
 		expect(auditServicesPlugin.services).toBeDefined();
 		expect(auditChromePlugin.id).toBe("audit.chrome");
 		expect(auditChromePlugin.requiredDeps).toEqual(["platform.panel"]);
+		expect(auditChromePlugin.chrome).toHaveLength(1);
 		expect(auditChromePlugin.chrome?.[0]).toMatchObject({
 			region: "portal.sidebar",
 			content: {
@@ -616,28 +650,8 @@ describe("plugins", () => {
 				item: { to: "/platform/audit", label: "Audit log", group: "Governance" },
 			},
 		});
-		expect(auditChromePlugin.chrome?.[1]).toMatchObject({
-			id: "audit.activity.sidebar",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/activity",
-					label: "Activity",
-					group: "Governance",
-				},
-			},
-		});
 		expect(auditPanelPlugin.id).toBe("audit.panel");
 		expect(auditPanelPlugin.requiredDeps).toEqual(["platform.panel", "audit.services"]);
-		expect(auditActivityPlugin.id).toBe("audit.activity");
-		expect(auditActivityPlugin.requiredDeps).toEqual(["audit.services"]);
-		expect(auditActivityPlugin.pages).toHaveLength(1);
-		expect(auditActivityPlugin.pages?.[0]).toMatchObject({
-			id: "audit.activity",
-			path: "/portal/clinician/activity",
-		});
 	});
 
 	describe("panel page guard", () => {
@@ -707,83 +721,12 @@ describe("plugins", () => {
 		});
 	});
 
-	describe("activity page guard", () => {
-		const guard = auditActivityPlugin.pages![0]!.guard as () => Effect.Effect<
-			boolean,
-			never,
-			Audit
-		>;
-		const stubAudit = (activityAccess: Audit["Service"]["activityAccess"]) =>
-			({ activityAccess }) as unknown as Audit["Service"];
-
-		it("delegates to Audit.activityAccess", async () => {
-			expect(
-				await Effect.runPromise(
-					guard().pipe(
-						Effect.provideService(
-							Audit,
-							stubAudit(() => Effect.succeed(true)),
-						),
-					),
-				),
-			).toBe(true);
-			expect(
-				await Effect.runPromise(
-					guard().pipe(
-						Effect.provideService(
-							Audit,
-							stubAudit(() => Effect.succeed(false)),
-						),
-					),
-				),
-			).toBe(false);
-		});
-	});
-
-	describe("activity page loader", () => {
-		const loader = auditActivityPlugin.pages![0]!.loader as () => Effect.Effect<
-			AuditListResult,
-			never,
-			Audit
-		>;
-		const stubAudit = (activityList: Audit["Service"]["activityList"]) =>
-			({ activityList }) as unknown as Audit["Service"];
-
-		it("returns the tenant feed", async () => {
-			const result: AuditListResult = { entries: [], total: 0, limit: 200 };
-			expect(
-				await Effect.runPromise(
-					loader().pipe(
-						Effect.provideService(
-							Audit,
-							stubAudit(() => Effect.succeed(result)),
-						),
-					),
-				),
-			).toEqual(result);
-		});
-
-		it("collapses Forbidden to an empty page", async () => {
-			expect(
-				await Effect.runPromise(
-					loader().pipe(
-						Effect.provideService(
-							Audit,
-							stubAudit(() => Effect.fail(new Forbidden({ path: "rbac.audit.read" }))),
-						),
-					),
-				),
-			).toEqual({ entries: [], total: 0, limit: 200 });
-		});
-	});
-
 	it("exports the discovery plugins array", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"audit.tables",
 			"audit.services",
 			"audit.chrome",
 			"audit.panel",
-			"audit.activity",
 		]);
 	});
 });
@@ -792,5 +735,158 @@ describe("adminAudit schema", () => {
 	it("is registered in the composed drizzle schema", async () => {
 		const { adminAudit: composed } = await import("@ktb/db/schema");
 		expect(composed).toBe(adminAudit);
+	});
+});
+
+describe("listPatientAuditEntries", () => {
+	/** Seed one row per feed branch; returns the fresh db. */
+	const seed = async () => {
+		const d1 = makeD1(PATIENT_DDL);
+		const fresh = makeDb(d1);
+		const write = (
+			action: string,
+			targetType: string | null,
+			targetId: string | number | null,
+			detail?: Record<string, unknown> | null,
+		) =>
+			insertAuditEntry(fresh, {
+				actorUserId: null,
+				actorEmail: null,
+				action,
+				targetType,
+				targetId,
+				detail,
+			});
+		await write("patients.create", "patient", 5);
+		await write("patients.update", "patient", "5");
+		await write("patients.delete", "patient", 6);
+		// Live consultation of patient 5 (consultations.id = 10).
+		await write("consultations.save", "consultation", 10);
+		// Live consultation of patient 6 — must not leak into patient 5.
+		await write("consultations.anamnesis.attach", "consultation", 11);
+		// Consultation already deleted: the join misses, detail.patientId catches.
+		await write("consultations.delete", "consultation", 99, { hadAudio: true, patientId: 5 });
+		await write("consultations.delete", "consultation", 98, { hadAudio: false });
+		// Malformed JSON detail — json_extract yields NULL, no match.
+		await fresh.insert(adminAudit).values({
+			action: "consultations.delete",
+			targetType: "consultation",
+			targetId: "97",
+			detail: "not-json{",
+			createdAt: new Date(),
+		});
+		// Same targetId digits under another target type stay out.
+		await write("users.suspend", "user", 5);
+		await write("groups.update", "group", 5);
+		return fresh;
+	};
+
+	it("returns patient-target rows plus the patient's consultation events only", async () => {
+		const fresh = await seed();
+		const result = await listPatientAuditEntries(fresh, 5);
+		expect(result.entries.map((e) => e.action).sort()).toEqual([
+			"consultations.delete",
+			"consultations.save",
+			"patients.create",
+			"patients.update",
+		]);
+		expect(result.total).toBe(4);
+		expect(result.limit).toBe(200);
+	});
+
+	it("matches nothing for a patient with no rows", async () => {
+		const fresh = await seed();
+		const result = await listPatientAuditEntries(fresh, 42);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+
+	it("clamps the page limit like the other listings", async () => {
+		const fresh = await seed();
+		expect((await listPatientAuditEntries(fresh, 5, { limit: 2 })).entries).toHaveLength(2);
+		expect((await listPatientAuditEntries(fresh, 5, { limit: 0 })).entries).toHaveLength(1);
+		expect((await listPatientAuditEntries(fresh, 5, { limit: 9999 })).limit).toBe(500);
+	});
+
+	it("reports a zero total when the count query yields no row", async () => {
+		// Same thenable stub as the tenant listing, plus the `or`/`and`
+		// scope both queries chain through.
+		const query = {
+			where: () => query,
+			orderBy: () => ({ limit: async () => [] }),
+			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+		};
+		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
+		const result = await listPatientAuditEntries(fakeDb, 5);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+});
+
+describe("Audit patientList (P-086)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(PATIENT_DDL));
+		await insertAuditEntry(db, {
+			actorUserId: null,
+			actorEmail: null,
+			action: "patients.update",
+			targetType: "patient",
+			targetId: 5,
+		});
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const call = <A, E>(f: (p: Audit["Service"]) => Effect.Effect<A, E>) => Effect.flatMap(Audit, f);
+
+	const access = (allowed: boolean, seen?: number[]) =>
+		({
+			canView: (patientId: number) => {
+				seen?.push(patientId);
+				return Effect.succeed(allowed);
+			},
+		}) as unknown as PatientAuditAccess["Service"];
+
+	const asPatient = <A, E>(
+		effect: Effect.Effect<A, E, Audit>,
+		port?: PatientAuditAccess["Service"],
+	) => {
+		let eff = effect.pipe(Effect.provideService(Principal, { userId: "pat-1", email: "p@x.com" }));
+		if (port !== undefined) eff = Effect.provideService(eff, PatientAuditAccess, port);
+		return runtime.runPromise(eff);
+	};
+
+	it("fails closed when the PatientAuditAccess port is absent", async () => {
+		await expect(asPatient(call((p) => p.patientList({ patientId: 5 })))).rejects.toMatchObject({
+			_tag: "Forbidden",
+			path: "audit.patient",
+		});
+	});
+
+	it("fails Forbidden when canView denies the record", async () => {
+		const seen: number[] = [];
+		await expect(
+			asPatient(
+				call((p) => p.patientList({ patientId: 5 })),
+				access(false, seen),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "audit.patient" });
+		expect(seen).toEqual([5]);
+	});
+
+	it("returns the patient-scoped feed when canView allows", async () => {
+		const seen: number[] = [];
+		const result = await asPatient(
+			call((p) => p.patientList({ patientId: 5, limit: 10 })),
+			access(true, seen),
+		);
+		expect(seen).toEqual([5]);
+		expect(result.entries.map((e) => e.action)).toEqual(["patients.update"]);
+		expect(result.limit).toBe(10);
 	});
 });

@@ -111,6 +111,9 @@ const ADAPTER_PACKAGE_NAMES = [
 	"ai-adapter-openai",
 	"ai-adapter-acp",
 	"ai-adapter-node",
+	// The ACP bridge (F3b): the Durable Object holding the agent's
+	// outbound WebSocket and the local byte-pipe CLI.
+	"ai-bridge",
 ];
 
 /**

@@ -5,7 +5,13 @@ import * as Schema from "effect/Schema";
 import { ensureSessionUser, runAs } from "@ktb/server-fns";
 import type { LlmEndpointPreset } from "@ktb/eval-consultation";
 
-import { AiEndpoints, type EndpointCard, type EndpointInput } from "./index.ts";
+import {
+	AiEndpoints,
+	type AgentLinkRow,
+	type BridgeStatus,
+	type EndpointCard,
+	type EndpointInput,
+} from "./index.ts";
 
 // AI endpoint server fns: the /platform/ai/endpoints surface mutates
 // through these. The service re-checks the eval.validator grant inside
@@ -130,6 +136,87 @@ export const setPlatformDefaultEndpointFn = createServerFn({ method: "POST" })
 				const s = yield* AiEndpoints;
 				yield* s.setPlatformDefault(data.id);
 				return { ok: true as const, data: null };
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});
+
+/**
+ * Mint a one-shot bridge link (F3b). Returns the FULL `ai-bridge
+ * connect` command ONCE — the raw token lives only inside it; the
+ * table stores SHA-256. SECURITY INVARIANT: the command's `--cmd`
+ * part is a suggestion for the local CLI flag, never something the
+ * server sends to the agent — the CLI only ever receives frames.
+ * `null` data for unknown/disabled/non-bridge endpoints or no grant.
+ */
+export const createBridgeLinkFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeId(input))
+	.handler(async ({ data }): Promise<Result<{ command: string; expiresAt: Date } | null>> => {
+		const user = await ensureSessionUser();
+		const { getRequestUrl } = await import("@tanstack/react-start/server");
+		const origin = new URL(getRequestUrl()).origin;
+		return run(
+			user,
+			Effect.gen(function* () {
+				const s = yield* AiEndpoints;
+				const link = yield* s.createBridgeLink(data.id, user.id);
+				if (link === null) return { ok: true as const, data: null };
+				const command =
+					`bunx @ktb/ai-bridge connect ` +
+					`${origin}/api/ai/bridge?token=${link.token} ` +
+					`--cmd "claude agent acp"`;
+				return { ok: true as const, data: { command, expiresAt: link.expiresAt } };
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});
+
+/** Bridge status poll for the connect dialog — `null` for
+ * unknown/disabled/non-bridge endpoints or no grant. */
+export const endpointBridgeStatusFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodeId(input))
+	.handler(
+		async ({ data }): Promise<Result<{ status: BridgeStatus; lastSeenAt: Date | null } | null>> => {
+			const user = await ensureSessionUser();
+			return run(
+				user,
+				Effect.gen(function* () {
+					const s = yield* AiEndpoints;
+					const status = yield* s.bridgeStatus(data.id);
+					return { ok: true as const, data: status };
+				}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			);
+		},
+	);
+
+/** Agents page list (F4): every bridge link joined to its endpoint —
+ * the wire never carries token_hash. `{ ok: false }` without the
+ * eval.validator grant. */
+export const listAgentLinksFn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<Result<readonly AgentLinkRow[]>> => {
+		const user = await ensureSessionUser();
+		return run(
+			user,
+			Effect.gen(function* () {
+				const s = yield* AiEndpoints;
+				const data = yield* s.listAgentLinks();
+				return { ok: true as const, data };
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	},
+);
+
+/** Revoke a bridge link (F4): stamps revoked_at — future token use is
+ * refused and the row flips to `revoked`. `data.revoked` is false for
+ * unknown or already-revoked ids. */
+export const revokeAgentLinkFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeId(input))
+	.handler(async ({ data }): Promise<Result<{ revoked: boolean }>> => {
+		const user = await ensureSessionUser();
+		return run(
+			user,
+			Effect.gen(function* () {
+				const s = yield* AiEndpoints;
+				const revoked = yield* s.revokeAgentLink(data.id);
+				return { ok: true as const, data: { revoked } };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
 		);
 	});

@@ -8,6 +8,7 @@
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
+		"@ktb/audit": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/consultations": "workspace:*",
 		"@ktb/kernel": "workspace:*",

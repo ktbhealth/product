@@ -12821,6 +12821,24 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "audit",
+		key: "allActors",
+		locale: "en",
+		value: "All actors",
+	},
+	{
+		namespace: "audit",
+		key: "allTargetTypes",
+		locale: "en",
+		value: "All target types",
+	},
+	{
+		namespace: "audit",
+		key: "noTargetType",
+		locale: "en",
+		value: "none",
+	},
+	{
+		namespace: "audit",
 		key: "noMatch",
 		locale: "en",
 		value: "No entries match the filters.",
@@ -12936,6 +12954,24 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "audit",
+		key: "allActors",
+		locale: "pt-BR",
+		value: "Todos os atores",
+	},
+	{
+		namespace: "audit",
+		key: "allTargetTypes",
+		locale: "pt-BR",
+		value: "Todos os tipos de alvo",
+	},
+	{
+		namespace: "audit",
+		key: "noTargetType",
+		locale: "pt-BR",
+		value: "nenhum",
+	},
+	{
+		namespace: "audit",
 		key: "noMatch",
 		locale: "pt-BR",
 		value: "Nenhuma entrada corresponde aos filtros.",
@@ -13048,6 +13084,24 @@ export const I18N_BASELINE = [
 		key: "allActions",
 		locale: "es",
 		value: "Todas las acciones",
+	},
+	{
+		namespace: "audit",
+		key: "allActors",
+		locale: "es",
+		value: "Todos los actores",
+	},
+	{
+		namespace: "audit",
+		key: "allTargetTypes",
+		locale: "es",
+		value: "Todos los tipos de destino",
+	},
+	{
+		namespace: "audit",
+		key: "noTargetType",
+		locale: "es",
+		value: "ninguno",
 	},
 	{
 		namespace: "audit",
@@ -20027,6 +20081,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "patient-portal",
+		key: "activityTitle",
+		locale: "en",
+		value: "Activity",
+	},
+	{
+		namespace: "patient-portal",
+		key: "activityLink",
+		locale: "en",
+		value: "View activity",
+	},
+	{
+		namespace: "patient-portal",
 		key: "consultationTitle",
 		locale: "en",
 		value: "Consultation",
@@ -20239,6 +20305,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "patient-portal",
+		key: "activityTitle",
+		locale: "pt-BR",
+		value: "Atividade",
+	},
+	{
+		namespace: "patient-portal",
+		key: "activityLink",
+		locale: "pt-BR",
+		value: "Ver atividade",
+	},
+	{
+		namespace: "patient-portal",
 		key: "consultationTitle",
 		locale: "pt-BR",
 		value: "Consulta",
@@ -20448,6 +20526,18 @@ export const I18N_BASELINE = [
 		key: "consultationsEmptyDescription",
 		locale: "es",
 		value: "Una consulta aparece aquí en cuanto tu médico guarda su registro.",
+	},
+	{
+		namespace: "patient-portal",
+		key: "activityTitle",
+		locale: "es",
+		value: "Actividad",
+	},
+	{
+		namespace: "patient-portal",
+		key: "activityLink",
+		locale: "es",
+		value: "Ver actividad",
 	},
 	{
 		namespace: "patient-portal",

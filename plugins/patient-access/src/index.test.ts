@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { PatientAuditAccess } from "@ktb/audit";
 import { PatientProfiles } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
@@ -18,6 +19,7 @@ import {
 	patientAccessRoutesPlugin,
 	patientAccessServicesPlugin,
 	patientAccessTablesPlugin,
+	PatientAuditAccessLive,
 	PatientLinks,
 	PatientLinksLive,
 	PatientProfilesLive,
@@ -434,5 +436,49 @@ describe("patient-access plugins", () => {
 		expect(patientAccessServicesPlugin.id).toBe("patient-access.services");
 		expect(patientAccessRoutesPlugin.id).toBe("patient-access.routes");
 		expect(patientAccessRoutesPlugin.routes).toHaveLength(1);
+	});
+});
+
+describe("PatientAuditAccessLive", () => {
+	const canView = async (db: TestDb, principal: { userId: string } | null, patientId: number) => {
+		const runtime = ManagedRuntime.make(
+			PatientAuditAccessLive.pipe(Layer.provide(Layer.succeed(Db, db))),
+		);
+		try {
+			return await runtime.runPromise(
+				Effect.flatMap(PatientAuditAccess, (access) => access.canView(patientId)).pipe(
+					Effect.provideService(Principal, principal),
+				),
+			);
+		} finally {
+			await runtime.dispose();
+		}
+	};
+
+	it("is true only for an active link the principal holds", async () => {
+		const db = linksDb();
+		// Before claiming, ana's rows are still invited/pending — nothing grants.
+		expect(await canView(db, { userId: "ana" }, 1)).toBe(false);
+		expect(await canView(db, { userId: "ana" }, 2)).toBe(false);
+		await claimPatientInvites(db, "ana");
+		expect(await canView(db, { userId: "ana" }, 1)).toBe(true);
+		expect(await canView(db, { userId: "ana" }, 2)).toBe(true);
+		// Someone else's record, an unverified invitee, no link at all.
+		expect(await canView(db, { userId: "ana" }, 3)).toBe(false);
+		expect(await canView(db, { userId: "leo" }, 3)).toBe(false);
+		expect(await canView(db, { userId: "doc" }, 1)).toBe(false);
+	});
+
+	it("revocations apply at once — the check reads per call", async () => {
+		const db = linksDb();
+		await claimPatientInvites(db, "ana");
+		expect(await canView(db, { userId: "ana" }, 1)).toBe(true);
+		await db.update(patientAccess).set({ status: "revoked" }).where(eq(patientAccess.patientId, 1));
+		expect(await canView(db, { userId: "ana" }, 1)).toBe(false);
+	});
+
+	it("is false without a principal", async () => {
+		const db = linksDb();
+		expect(await canView(db, null, 1)).toBe(false);
 	});
 });

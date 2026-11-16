@@ -34,9 +34,11 @@ import { Route as PatientsNewRouteImport } from './../../../plugins/patients/src
 import { Route as IndexRouteImport } from './routes/platform/index'
 import { Route as SplatRouteImport } from './routes/platform/$'
 import { Route as PortalIndexRouteImport } from './../../../plugins/patient-portal/src/routes/index'
+import { Route as PortalActivityRouteImport } from './../../../plugins/patient-portal/src/routes/activity'
 import { Route as portalLoginRouteImport } from './routes/portal-login'
 import { Route as SecretariesIndexRouteImport } from './../../../plugins/secretaries/src/routes/index'
 import { Route as SecretariesLoginRouteImport } from './../../../plugins/secretaries/src/routes/login'
+import { Route as ApiAiDotbridgeRouteImport } from './../../../plugins/ai-endpoints/src/api-routes/ai.bridge'
 import { Route as ApiAuthDotsplatRouteImport } from './../../../plugins/auth/src/api-routes/auth.$'
 import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consultations/src/api-routes/bots.webhook'
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'
@@ -177,6 +179,11 @@ const PortalIndexRoute = PortalIndexRouteImport.update({
   path: '/portal/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalActivityRoute = PortalActivityRouteImport.update({
+  id: '/portal/activity',
+  path: '/portal/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const portalLoginRoute = portalLoginRouteImport.update({
   id: '/portal/login',
   path: '/portal/login',
@@ -190,6 +197,11 @@ const SecretariesIndexRoute = SecretariesIndexRouteImport.update({
 const SecretariesLoginRoute = SecretariesLoginRouteImport.update({
   id: '/secretaries/login',
   path: '/secretaries/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAiDotbridgeRoute = ApiAiDotbridgeRouteImport.update({
+  id: '/api/ai/bridge',
+  path: '/api/ai/bridge',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthDotsplatRoute = ApiAuthDotsplatRouteImport.update({
@@ -285,6 +297,7 @@ export interface FileRoutesByFullPath {
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/platform/$': typeof SplatRoute
+  '/portal/activity': typeof PortalActivityRoute
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations/': typeof ConsultationsIndexRoute
@@ -293,6 +306,7 @@ export interface FileRoutesByFullPath {
   '/platform/': typeof IndexRoute
   '/portal/': typeof PortalIndexRoute
   '/secretaries/': typeof SecretariesIndexRoute
+  '/api/ai/bridge': typeof ApiAiDotbridgeRoute
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
@@ -327,6 +341,7 @@ export interface FileRoutesByTo {
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/platform/$': typeof SplatRoute
+  '/portal/activity': typeof PortalActivityRoute
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations': typeof ConsultationsIndexRoute
@@ -335,6 +350,7 @@ export interface FileRoutesByTo {
   '/platform': typeof IndexRoute
   '/portal': typeof PortalIndexRoute
   '/secretaries': typeof SecretariesIndexRoute
+  '/api/ai/bridge': typeof ApiAiDotbridgeRoute
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
@@ -371,6 +387,7 @@ export interface FileRoutesById {
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/platform/$': typeof SplatRoute
+  '/portal/activity': typeof PortalActivityRoute
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations/': typeof ConsultationsIndexRoute
@@ -379,6 +396,7 @@ export interface FileRoutesById {
   '/platform/': typeof IndexRoute
   '/portal/': typeof PortalIndexRoute
   '/secretaries/': typeof SecretariesIndexRoute
+  '/api/ai/bridge': typeof ApiAiDotbridgeRoute
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
@@ -416,6 +434,7 @@ export interface FileRouteTypes {
     | '/patient-access/$patientId'
     | '/patients/new'
     | '/platform/$'
+    | '/portal/activity'
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations/'
@@ -424,6 +443,7 @@ export interface FileRouteTypes {
     | '/platform/'
     | '/portal/'
     | '/secretaries/'
+    | '/api/ai/bridge'
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
@@ -458,6 +478,7 @@ export interface FileRouteTypes {
     | '/patient-access/$patientId'
     | '/patients/new'
     | '/platform/$'
+    | '/portal/activity'
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations'
@@ -466,6 +487,7 @@ export interface FileRouteTypes {
     | '/platform'
     | '/portal'
     | '/secretaries'
+    | '/api/ai/bridge'
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
@@ -501,6 +523,7 @@ export interface FileRouteTypes {
     | '/patient-access/$patientId'
     | '/patients/new'
     | '/platform/$'
+    | '/portal/activity'
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations/'
@@ -509,6 +532,7 @@ export interface FileRouteTypes {
     | '/platform/'
     | '/portal/'
     | '/secretaries/'
+    | '/api/ai/bridge'
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
@@ -544,6 +568,7 @@ export interface RootRouteChildren {
   DoctorsSelectRoute: typeof DoctorsSelectRoute
   PatientAccessPatientIdRoute: typeof PatientAccessPatientIdRoute
   PatientsNewRoute: typeof PatientsNewRoute
+  PortalActivityRoute: typeof PortalActivityRoute
   portalLoginRoute: typeof portalLoginRoute
   SecretariesLoginRoute: typeof SecretariesLoginRoute
   ConsultationsIndexRoute: typeof ConsultationsIndexRoute
@@ -551,6 +576,7 @@ export interface RootRouteChildren {
   PatientsIndexRoute: typeof PatientsIndexRoute
   PortalIndexRoute: typeof PortalIndexRoute
   SecretariesIndexRoute: typeof SecretariesIndexRoute
+  ApiAiDotbridgeRoute: typeof ApiAiDotbridgeRoute
   ApiAuthDotsplatRoute: typeof ApiAuthDotsplatRoute
   ApiCdnSplatRoute: typeof ApiCdnSplatRoute
   ApiThemeDotassetsRoute: typeof ApiThemeDotassetsRoute
@@ -742,6 +768,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal/activity': {
+      id: '/portal/activity'
+      path: '/portal/activity'
+      fullPath: '/portal/activity'
+      preLoaderRoute: typeof PortalActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal/login': {
       id: '/portal/login'
       path: '/portal/login'
@@ -761,6 +794,13 @@ declare module '@tanstack/react-router' {
       path: '/secretaries/login'
       fullPath: '/secretaries/login'
       preLoaderRoute: typeof SecretariesLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ai/bridge': {
+      id: '/api/ai/bridge'
+      path: '/api/ai/bridge'
+      fullPath: '/api/ai/bridge'
+      preLoaderRoute: typeof ApiAiDotbridgeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -903,6 +943,7 @@ const rootRouteChildren: RootRouteChildren = {
   DoctorsSelectRoute: DoctorsSelectRoute,
   PatientAccessPatientIdRoute: PatientAccessPatientIdRoute,
   PatientsNewRoute: PatientsNewRoute,
+  PortalActivityRoute: PortalActivityRoute,
   portalLoginRoute: portalLoginRoute,
   SecretariesLoginRoute: SecretariesLoginRoute,
   ConsultationsIndexRoute: ConsultationsIndexRoute,
@@ -910,6 +951,7 @@ const rootRouteChildren: RootRouteChildren = {
   PatientsIndexRoute: PatientsIndexRoute,
   PortalIndexRoute: PortalIndexRoute,
   SecretariesIndexRoute: SecretariesIndexRoute,
+  ApiAiDotbridgeRoute: ApiAiDotbridgeRoute,
   ApiAuthDotsplatRoute: ApiAuthDotsplatRoute,
   ApiCdnSplatRoute: ApiCdnSplatRoute,
   ApiThemeDotassetsRoute: ApiThemeDotassetsRoute,
@@ -926,13 +968,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

@@ -28,6 +28,7 @@
 		"@cf-wasm/photon": "^0.4.0",
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@huggingface/transformers": "^4.3.2",
+		"@ktb/ai-bridge": "workspace:*",
 		"@ktb/ai-endpoints": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/app-host": "workspace:*",

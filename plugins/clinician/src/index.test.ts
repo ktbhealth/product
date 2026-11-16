@@ -22,8 +22,9 @@ describe("clinician portal plugins", () => {
 		]);
 	});
 
-	it("declares portal pages for home, patients and consultations", () => {
+	it("declares portal pages for home, patients, consultations and activity", () => {
 		expect(clinicianPagesPlugin.id).toBe("clinician.pages");
+		expect(clinicianPagesPlugin.optionalDeps).toEqual(["audit.services"]);
 		const pages = clinicianPagesPlugin.pages ?? [];
 		expect(pages.map((p) => p.path)).toEqual([
 			"/portal/clinician",
@@ -31,6 +32,7 @@ describe("clinician portal plugins", () => {
 			"/portal/clinician/consultations",
 			"/portal/clinician/patients/*",
 			"/portal/clinician/consultations/*",
+			"/portal/clinician/activity",
 		]);
 		// List pages carry owner-scoped loaders; the home page does not.
 		expect("loader" in pages[0]!).toBe(false);
@@ -39,12 +41,16 @@ describe("clinician portal plugins", () => {
 		// Wildcard record pages guard + load by request path.
 		expect("guard" in pages[3]!).toBe(true);
 		expect("guard" in pages[4]!).toBe(true);
+		// The activity feed guards on the audit.read grant and loads the
+		// tenant-scoped feed.
+		expect("guard" in pages[5]!).toBe(true);
+		expect("loader" in pages[5]!).toBe(true);
 	});
 
 	it("scopes every sidebar item to the clinician instance", () => {
 		expect(clinicianChromePlugin.id).toBe("clinician.chrome");
 		const entries = clinicianChromePlugin.chrome ?? [];
-		expect(entries).toHaveLength(3);
+		expect(entries).toHaveLength(4);
 		for (const entry of entries) {
 			expect(entry.region).toBe("portal.sidebar");
 			expect(entry.portal).toBe("clinician");
@@ -67,6 +73,7 @@ describe("clinician portal plugins", () => {
 		expect(clientPages.map((p) => [p.id, p.path])).toEqual(
 			(clinicianPagesPlugin.pages ?? []).map((p) => [p.id, p.path]),
 		);
+		expect(clientPlugins[1]!.optionalDeps).toEqual(clinicianPagesPlugin.optionalDeps);
 		// Client page descriptors never carry server handlers.
 		for (const page of clientPages) {
 			expect("loader" in page).toBe(false);

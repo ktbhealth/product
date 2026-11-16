@@ -95,6 +95,82 @@ describe("AuditPage", () => {
 		expect(screen.getByText("groups.delete")).toBeTruthy();
 	});
 
+	it("filters by actor through the select and resets with all", async () => {
+		const user = userEvent.setup();
+		render(
+			<AuditPage
+				entries={[
+					...TWO_ROWS,
+					// Email-less actor falls back to actorUserId in the options.
+					row({
+						id: 3,
+						actorEmail: null,
+						actorUserId: "u9",
+						action: "audit.ping",
+						targetType: "audit",
+						targetId: null,
+						detail: null,
+					}),
+				]}
+				total={3}
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("All actors"));
+		await user.click(await screen.findByRole("option", { name: "system" }));
+		expect(screen.queryByText("users.suspend")).toBeNull();
+		expect(screen.getByText("groups.delete")).toBeTruthy();
+		// The "all" option restores the full page.
+		await user.click(screen.getByLabelText("All actors"));
+		await user.click(await screen.findByRole("option", { name: "All actors" }));
+		expect(screen.getByText("users.suspend")).toBeTruthy();
+		expect(screen.getByText("groups.delete")).toBeTruthy();
+		// actorUserId fallback key filters too.
+		await user.click(screen.getByLabelText("All actors"));
+		await user.click(await screen.findByRole("option", { name: "u9" }));
+		expect(screen.getByText("audit.ping")).toBeTruthy();
+		expect(screen.queryByText("users.suspend")).toBeNull();
+	});
+
+	it("filters by target type, labeling null as none", async () => {
+		const user = userEvent.setup();
+		render(
+			<AuditPage
+				entries={[
+					row({ id: 1, action: "a.one", targetType: "user", targetId: "u1" }),
+					row({
+						id: 2,
+						action: "a.two",
+						targetType: null,
+						targetId: null,
+						detail: null,
+					}),
+				]}
+				total={2}
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("All target types"));
+		await user.click(await screen.findByRole("option", { name: "none" }));
+		expect(screen.queryByText("a.one")).toBeNull();
+		expect(screen.getByText("a.two")).toBeTruthy();
+		await user.click(screen.getByLabelText("All target types"));
+		await user.click(await screen.findByRole("option", { name: "user" }));
+		expect(screen.getByText("a.one")).toBeTruthy();
+		expect(screen.queryByText("a.two")).toBeNull();
+	});
+
+	it("composes the actor filter with the search box", async () => {
+		const user = userEvent.setup();
+		render(<AuditPage entries={TWO_ROWS} total={2} locale="en" />);
+		fireEvent.change(screen.getByLabelText("Search audit entries"), {
+			target: { value: "groups" },
+		});
+		await user.click(screen.getByLabelText("All actors"));
+		await user.click(await screen.findByRole("option", { name: "admin@x.com" }));
+		expect(screen.getByText("No entries match the filters.")).toBeTruthy();
+	});
+
 	it("opens the detail dialog with parsed JSON and closes it", async () => {
 		const user = userEvent.setup();
 		render(<AuditPage entries={TWO_ROWS} total={2} locale="en" />);

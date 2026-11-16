@@ -19,15 +19,18 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
+	agentLinkStatus,
 	AI_ENDPOINTS_TEST_DDL,
 	AiEndpoints,
 	AiEndpointsLive,
 	aiEndpointsPanelPlugin,
+	isBridgeEndpoint,
 	PlatformLlmLive,
 	type EndpointInput,
 } from "./index.ts";
+import { sha256Hex } from "./bridge-token.ts";
 import { plugins as clientPlugins } from "./client.ts";
-import { aiEndpoint } from "./schema.ts";
+import { aiAgentLink, aiEndpoint } from "./schema.ts";
 
 const grantLayer = (allow: boolean) =>
 	Layer.succeed(
@@ -420,6 +423,271 @@ describe("endpoint transport", () => {
 	});
 });
 
+describe("bridge endpoints (F3b)", () => {
+	const BRIDGE_EP: EndpointInput = {
+		name: "Local agent",
+		kind: "acp",
+		baseUrl: "",
+		transport: "ws",
+	};
+
+	it("persists base_url NULL for bridge endpoints and resolves endpointId descriptors", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run, db } = make({ factory: "ok", captured });
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
+		const card = await run(Effect.flatMap(AiEndpoints, (s) => s.get(id)));
+		// The DTO keeps "" as the sentinel; the row stores NULL.
+		expect(card?.baseUrl).toBe("");
+		expect(card?.lastSeenAt).toBeNull();
+		const row = (await db.select().from(aiEndpoint))[0]!;
+		expect(row.baseUrl).toBeNull();
+		expect(isBridgeEndpoint(row)).toBe(true);
+		expect(isBridgeEndpoint({ kind: "openai", baseUrl: null, transport: null })).toBe(false);
+		// transport null defaults to ws — the bridge shape.
+		expect(isBridgeEndpoint({ kind: "acp", baseUrl: null, transport: null })).toBe(true);
+		expect(isBridgeEndpoint({ kind: "acp", baseUrl: "ws://h", transport: "ws" })).toBe(false);
+		expect(isBridgeEndpoint({ kind: "acp", baseUrl: null, transport: "child" })).toBe(false);
+		// The descriptor carries "" + endpointId — the factory routes it
+		// through the ACP_BRIDGE DO binding.
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(captured.at(-1)).toMatchObject({
+			kind: "acp",
+			baseUrl: "",
+			transport: "ws",
+			endpointId: id,
+		});
+		await rt.dispose();
+	});
+
+	it("createBridgeLink mints a one-shot link storing only the SHA-256", async () => {
+		const { rt, run, db } = make();
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
+		const link = await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1")));
+		expect(link).not.toBeNull();
+		expect(link!.token).toMatch(/^[A-Za-z0-9_-]{22}$/);
+		expect(link!.expiresAt.getTime()).toBeGreaterThan(Date.now());
+		const rows = await db.select().from(aiAgentLink);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]!.endpointId).toBe(id);
+		expect(rows[0]!.createdBy).toBe("u1");
+		expect(rows[0]!.usedAt).toBeNull();
+		// Only the hash touches the table — the raw token is never stored.
+		expect(rows[0]!.tokenHash).toBe(await sha256Hex(link!.token));
+		expect(rows[0]!.tokenHash).not.toContain(link!.token);
+		await rt.dispose();
+	});
+
+	it("createBridgeLink refuses non-bridge, disabled, unknown endpoints and missing grants", async () => {
+		const { rt, run } = make();
+		const { id: openai } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		const { id: acpUrl } = await run(
+			Effect.flatMap(AiEndpoints, (s) =>
+				s.create({ ...BRIDGE_EP, name: "remote", baseUrl: "ws://h" }),
+			),
+		);
+		const { id: acpChild } = await run(
+			Effect.flatMap(AiEndpoints, (s) =>
+				s.create({ ...BRIDGE_EP, name: "child", transport: "child", agentCmd: "cat" }),
+			),
+		);
+		const { id: disabled } = await run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...BRIDGE_EP, name: "off", enabled: false })),
+		);
+		for (const id of [openai, acpUrl, acpChild, disabled, 9999]) {
+			expect(
+				await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1"))),
+			).toBeNull();
+		}
+		await rt.dispose();
+
+		const denied = make({ allow: false });
+		await expect(
+			denied.run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(1, "u1"))),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await denied.rt.dispose();
+	});
+
+	it("bridgeStatus reports offline → waiting → connected from links and last_seen_at", async () => {
+		const { rt, run, db } = make();
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
+
+		// Fresh endpoint: never seen, no open link.
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id)))).toMatchObject({
+			status: "offline",
+			lastSeenAt: null,
+		});
+
+		// A minted-but-unconsumed link means somebody is about to connect.
+		await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1")));
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id))))?.status).toBe(
+			"waiting",
+		);
+
+		// A live socket inside the heartbeat window beats the link check.
+		await db.update(aiEndpoint).set({ lastSeenAt: new Date() }).where(eq(aiEndpoint.id, id));
+		const connected = await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id)));
+		expect(connected?.status).toBe("connected");
+		expect(connected?.lastSeenAt).not.toBeNull();
+
+		// Stale liveness falls back to the open link.
+		await db
+			.update(aiEndpoint)
+			.set({ lastSeenAt: new Date(Date.now() - 120_000) })
+			.where(eq(aiEndpoint.id, id));
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id))))?.status).toBe(
+			"waiting",
+		);
+
+		// Consume the link → back to offline.
+		await db.update(aiAgentLink).set({ usedAt: new Date() }).where(eq(aiAgentLink.endpointId, id));
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id))))?.status).toBe(
+			"offline",
+		);
+
+		// An expired link never counts as waiting.
+		await db.insert(aiAgentLink).values({
+			endpointId: id,
+			tokenHash: "deadbeef",
+			createdBy: "u1",
+			expiresAt: new Date(Date.now() - 1_000),
+		});
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id))))?.status).toBe(
+			"offline",
+		);
+		await rt.dispose();
+	});
+
+	it("bridgeStatus answers null for non-bridge, disabled, and unknown endpoints", async () => {
+		const { rt, run } = make();
+		const { id: openai } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		const { id: disabled } = await run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...BRIDGE_EP, enabled: false })),
+		);
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(openai)))).toBeNull();
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(disabled)))).toBeNull();
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(9999)))).toBeNull();
+		await rt.dispose();
+	});
+});
+
+describe("agent links (F4)", () => {
+	const BRIDGE_EP: EndpointInput = {
+		name: "Local agent",
+		kind: "acp",
+		baseUrl: "",
+		transport: "ws",
+	};
+
+	it("agentLinkStatus derives all five states", () => {
+		const now = Date.now();
+		const fresh = { usedAt: null, expiresAt: new Date(now + 60_000), revokedAt: null };
+		expect(agentLinkStatus(fresh, null, now)).toBe("waiting");
+		expect(agentLinkStatus({ ...fresh, expiresAt: new Date(now - 1) }, null, now)).toBe("expired");
+		expect(
+			agentLinkStatus({ ...fresh, usedAt: new Date(now - 5_000) }, new Date(now - 30_000), now),
+		).toBe("connected");
+		expect(
+			agentLinkStatus({ ...fresh, usedAt: new Date(now - 5_000) }, new Date(now - 120_000), now),
+		).toBe("offline");
+		// Used but never heartbeat-stamped reads offline.
+		expect(agentLinkStatus({ ...fresh, usedAt: new Date() }, null, now)).toBe("offline");
+		// Revoked beats every other state.
+		expect(agentLinkStatus({ ...fresh, revokedAt: new Date() }, null, now)).toBe("revoked");
+		expect(
+			agentLinkStatus({ ...fresh, usedAt: new Date(), revokedAt: new Date() }, new Date(), now),
+		).toBe("revoked");
+	});
+
+	it("listAgentLinks joins endpoint names and never emits the token hash", async () => {
+		const { rt, run } = make();
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
+		const minted = await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1")));
+		expect(minted).not.toBeNull();
+		const links = await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks()));
+		expect(links).toHaveLength(1);
+		expect(links[0]).toMatchObject({
+			endpointId: id,
+			endpointName: "Local agent",
+			status: "waiting",
+			usedAt: null,
+			lastSeenAt: null,
+		});
+		expect(links[0]?.createdAt).toBeInstanceOf(Date);
+		expect(links[0]?.expiresAt).toBeInstanceOf(Date);
+		// The wire shape carries no token material at all.
+		expect(links[0]).not.toHaveProperty("token");
+		expect(links[0]).not.toHaveProperty("tokenHash");
+		expect(JSON.stringify(links[0])).not.toContain(minted!.token);
+		await rt.dispose();
+	});
+
+	it("listAgentLinks reflects connected/expired/revoked states", async () => {
+		const { rt, run, db } = make();
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1")));
+		// consumed + live heartbeat → connected
+		const seen = new Date();
+		await db.update(aiAgentLink).set({ usedAt: seen }).where(eq(aiAgentLink.endpointId, id));
+		await db.update(aiEndpoint).set({ lastSeenAt: seen }).where(eq(aiEndpoint.id, id));
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks())))[0]?.status).toBe(
+			"connected",
+		);
+		// stale heartbeat → offline
+		await db
+			.update(aiEndpoint)
+			.set({ lastSeenAt: new Date(Date.now() - 120_000) })
+			.where(eq(aiEndpoint.id, id));
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks())))[0]?.status).toBe(
+			"offline",
+		);
+		// expired unused link → expired
+		await db.insert(aiAgentLink).values({
+			endpointId: id,
+			tokenHash: "expired-hash",
+			createdBy: "u1",
+			expiresAt: new Date(Date.now() - 1_000),
+		});
+		const links = await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks()));
+		expect(links).toHaveLength(2);
+		expect(links.map((l) => l.status).sort()).toEqual(["expired", "offline"]);
+		await rt.dispose();
+	});
+
+	it("revokeAgentLink stamps revoked_at once and drops the link from bridgeStatus", async () => {
+		const { rt, run, db } = make();
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1")));
+		const [link] = await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks()));
+		expect(link?.status).toBe("waiting");
+
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.revokeAgentLink(link!.id)))).toBe(true);
+		const row = (await db.select().from(aiAgentLink))[0]!;
+		expect(row.revokedAt).toBeInstanceOf(Date);
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks())))[0]?.status).toBe(
+			"revoked",
+		);
+		// A revoked link no longer counts as an open link for the badge.
+		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id))))?.status).toBe(
+			"offline",
+		);
+		// Idempotent-ish: unknown and already-revoked ids answer false.
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.revokeAgentLink(link!.id)))).toBe(false);
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.revokeAgentLink(9999)))).toBe(false);
+		await rt.dispose();
+	});
+
+	it("denies link listing and revocation without the grant", async () => {
+		const { rt, run } = make({ allow: false });
+		await expect(run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks()))).rejects.toMatchObject(
+			{ _tag: "Forbidden" },
+		);
+		await expect(
+			run(Effect.flatMap(AiEndpoints, (s) => s.revokeAgentLink(1))),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await rt.dispose();
+	});
+});
+
 describe("AiEndpoints.resolveDefault", () => {
 	it("returns null with no enabled endpoints", async () => {
 		const { rt, run } = make();
@@ -494,6 +762,33 @@ describe("aiEndpointsPanelPlugin", () => {
 		await allowed.rt.dispose();
 		await denied.rt.dispose();
 	});
+
+	it("declares the Agents page (F4) under the same grant with a combined loader", async () => {
+		const page = aiEndpointsPanelPlugin.panel?.pages[1];
+		expect(page?.id).toBe("ai.agents");
+		expect(page?.path).toBe("/platform/ai/agents");
+		expect(page?.component).toBeDefined();
+
+		const allowed = make({ allow: true });
+		await allowed.run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		expect(await allowed.run(page!.guard!() as Effect.Effect<boolean>)).toBe(true);
+		const data = (await allowed.run(page!.loader!() as Effect.Effect<unknown, never, unknown>)) as {
+			links: readonly unknown[];
+			endpoints: readonly unknown[];
+		};
+		expect(data.links).toEqual([]);
+		expect(data.endpoints).toHaveLength(1);
+
+		const denied = make({ allow: false });
+		expect(await denied.run(page!.guard!() as Effect.Effect<boolean>)).toBe(false);
+		const empty = (await denied.run(page!.loader!() as Effect.Effect<unknown, never, unknown>)) as {
+			links: readonly unknown[];
+			endpoints: readonly unknown[];
+		};
+		expect(empty).toEqual({ links: [], endpoints: [] });
+		await allowed.rt.dispose();
+		await denied.rt.dispose();
+	});
 });
 
 describe("client plugin mirror", () => {
@@ -501,13 +796,14 @@ describe("client plugin mirror", () => {
 		expect(clientPlugins.map((p) => p.id)).toEqual([
 			"ai.endpoints.tables",
 			"ai.endpoints.services",
+			"ai-endpoints.routes",
 			"ai.endpoints.chrome",
 			"ai.endpoints.panel",
 		]);
 		const chrome = clientPlugins.find((p) => p.id === "ai.endpoints.chrome")?.chrome ?? [];
-		expect(chrome.map((c) => c.id)).toEqual(["ai-endpoints.sidebar"]);
+		expect(chrome.map((c) => c.id)).toEqual(["ai-endpoints.sidebar", "ai-agents.sidebar"]);
 		const pages = clientPlugins.find((p) => p.id === "ai.endpoints.panel")?.panel?.pages ?? [];
-		expect(pages.map((p) => p.path)).toEqual(["/platform/ai/endpoints"]);
+		expect(pages.map((p) => p.path)).toEqual(["/platform/ai/endpoints", "/platform/ai/agents"]);
 	});
 });
 

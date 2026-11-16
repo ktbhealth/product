@@ -224,6 +224,14 @@ export interface ServerRuntime {
 	 * outside the composed app — the route answers 500.
 	 */
 	readonly authHandler?: (request: Request) => Promise<Response>;
+	/**
+	 * AcpBridge durable-object handoff (F3b): forwards a validated
+	 * WebSocket upgrade request for `endpointId` to the DO holding the
+	 * bridge's socket (`idFromName(endpointId)`). The composition root
+	 * owns the `ACP_BRIDGE` binding; the plugin route never touches
+	 * it. Undefined when unbound (Node dev) — the route answers 501.
+	 */
+	readonly acpBridge?: (endpointId: number, request: Request) => Promise<Response>;
 }
 
 let runtime: ServerRuntime | undefined;

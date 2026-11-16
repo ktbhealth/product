@@ -105,7 +105,19 @@ describe("PortalPage", () => {
 		setup({ consultations: [], profile: { ...record, doctorName: null } });
 		expect(screen.getByText("Consultations")).toBeTruthy();
 		expect(screen.getByText("No consultations yet")).toBeTruthy();
-		expect(screen.queryByRole("link")).toBeNull();
+		// No consultation links — only the activity-log link remains.
+		expect(screen.queryByRole("link", { name: "View consultation" })).toBeNull();
+	});
+
+	it("links to the open record's activity log", () => {
+		setup();
+		const link = screen.getByRole("link", { name: "View activity" });
+		expect(link.getAttribute("href")).toBe("/portal/activity");
+	});
+
+	it("hides the activity link while no record is open", () => {
+		setup({ profile: null, consultations: [] });
+		expect(screen.queryByRole("link", { name: "View activity" })).toBeNull();
 	});
 
 	it("greets by email when the account has no name", () => {

@@ -27,6 +27,10 @@ export interface AuditMessages {
 	readonly searchPlaceholder: string;
 	readonly searchLabel: string;
 	readonly allActions: string;
+	readonly allActors: string;
+	readonly allTargetTypes: string;
+	/** Filter-option label for rows with no target type (null column). */
+	readonly noTargetType: string;
 	readonly noMatch: string;
 	readonly filteredCount: (shown: number, total: number) => string;
 	readonly colTime: string;
@@ -53,6 +57,9 @@ const en: AuditMessages = {
 	searchPlaceholder: "Search actor, action or target…",
 	searchLabel: "Search audit entries",
 	allActions: "All actions",
+	allActors: "All actors",
+	allTargetTypes: "All target types",
+	noTargetType: "none",
 	noMatch: "No entries match the filters.",
 	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 	colTime: "Time",
@@ -79,6 +86,9 @@ const ptBR: AuditMessages = {
 	searchPlaceholder: "Buscar ator, ação ou alvo…",
 	searchLabel: "Buscar entradas de auditoria",
 	allActions: "Todas as ações",
+	allActors: "Todos os atores",
+	allTargetTypes: "Todos os tipos de alvo",
+	noTargetType: "nenhum",
 	noMatch: "Nenhuma entrada corresponde aos filtros.",
 	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 	colTime: "Hora",
@@ -105,6 +115,9 @@ const es: AuditMessages = {
 	searchPlaceholder: "Buscar actor, acción o destino…",
 	searchLabel: "Buscar entradas de auditoría",
 	allActions: "Todas las acciones",
+	allActors: "Todos los actores",
+	allTargetTypes: "Todos los tipos de destino",
+	noTargetType: "ninguno",
 	noMatch: "Ninguna entrada coincide con los filtros.",
 	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 	colTime: "Hora",

@@ -315,6 +315,8 @@ export type I18nKey =
 	| "audience.step4_title"
 	| "audit.activityTitle"
 	| "audit.allActions"
+	| "audit.allActors"
+	| "audit.allTargetTypes"
 	| "audit.colAction"
 	| "audit.colActor"
 	| "audit.colDetail"
@@ -327,6 +329,7 @@ export type I18nKey =
 	| "audit.filteredCount"
 	| "audit.noMatch"
 	| "audit.noTarget"
+	| "audit.noTargetType"
 	| "audit.noTenant"
 	| "audit.searchLabel"
 	| "audit.searchPlaceholder"
@@ -928,6 +931,8 @@ export type I18nKey =
 	| "patient-access.status.pending"
 	| "patient-access.title"
 	| "patient-access.zk.lockedRecord"
+	| "patient-portal.activityLink"
+	| "patient-portal.activityTitle"
 	| "patient-portal.back"
 	| "patient-portal.chooseHint"
 	| "patient-portal.consultationsEmptyDescription"
@@ -1680,6 +1685,8 @@ export interface I18nTypedT {
 	(key: "audience.step4_title"): Effect.Effect<string>;
 	(key: "audit.activityTitle"): Effect.Effect<string>;
 	(key: "audit.allActions"): Effect.Effect<string>;
+	(key: "audit.allActors"): Effect.Effect<string>;
+	(key: "audit.allTargetTypes"): Effect.Effect<string>;
 	(key: "audit.colAction"): Effect.Effect<string>;
 	(key: "audit.colActor"): Effect.Effect<string>;
 	(key: "audit.colDetail"): Effect.Effect<string>;
@@ -1698,6 +1705,7 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "audit.noMatch"): Effect.Effect<string>;
 	(key: "audit.noTarget"): Effect.Effect<string>;
+	(key: "audit.noTargetType"): Effect.Effect<string>;
 	(key: "audit.noTenant"): Effect.Effect<string>;
 	(key: "audit.searchLabel"): Effect.Effect<string>;
 	(key: "audit.searchPlaceholder"): Effect.Effect<string>;
@@ -2548,6 +2556,8 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "patient-access.zk.lockedRecord"): Effect.Effect<string>;
+	(key: "patient-portal.activityLink"): Effect.Effect<string>;
+	(key: "patient-portal.activityTitle"): Effect.Effect<string>;
 	(key: "patient-portal.back"): Effect.Effect<string>;
 	(key: "patient-portal.chooseHint"): Effect.Effect<string>;
 	(key: "patient-portal.consultationsEmptyDescription"): Effect.Effect<string>;

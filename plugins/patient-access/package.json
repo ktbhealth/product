@@ -11,6 +11,7 @@
 		"./zk": "./src/zk.ts"
 	},
 	"dependencies": {
+		"@ktb/audit": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/crypto": "workspace:*",
