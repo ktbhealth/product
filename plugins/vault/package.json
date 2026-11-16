@@ -1,0 +1,17 @@
+{
+	"name": "@ktb/vault",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./schema": "./src/schema.ts"
+	},
+	"dependencies": {
+		"@ktb/authz": "workspace:*",
+		"@ktb/db": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"@ktb/tenant": "workspace:*",
+		"drizzle-orm": "^0.45.1",
+		"effect": "4.1.2"
+	}
+}

@@ -31,6 +31,7 @@ const group = (over: Partial<AdminGroupRow>): AdminGroupRow => ({
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 	updatedAt: new Date("2026-11-01T10:00:00Z"),
 	memberCount: 3,
+	zk: false,
 	...over,
 });
 

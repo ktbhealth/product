@@ -8,7 +8,7 @@ import type { TenantSelector } from "@ktb/tenant";
 import { makeTenantDirectory } from "./tenant-directory.ts";
 
 const DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
 INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES
   ('Clinic A', 'clinic-a', 'clinic', '{"city":"sp"}', 1000, 1000),
   ('Org B', 'org-b', 'org', NULL, 2000, 2000),
