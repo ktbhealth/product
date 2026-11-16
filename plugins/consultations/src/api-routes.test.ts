@@ -399,6 +399,38 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 		}
 	});
 
+	it("enqueues Whisper normally for a non-ZK clinic tenant", async () => {
+		useSession("owner");
+		const plainRuntime = ManagedRuntime.make(
+			Layer.mergeAll(
+				services,
+				Layer.succeed(Tenant, { id: 10, kind: "clinic", slug: "plain", role: "admin" }),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		publishRuntime(plainRuntime);
+		try {
+			const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }, 10))!;
+			const before = jobsSent.length;
+			const res = await post(id, new Uint8Array([1, 2, 3]), "audio/webm");
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as { audioStatus: string }).audioStatus).toBe("queued");
+			expect(jobsSent.length).toBe(before + 1);
+		} finally {
+			publishRuntime(runtime);
+			await plainRuntime.dispose();
+		}
+	});
+
+	it("enqueues Whisper for a personal-scope row (tenant_id null short-circuits ZK)", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }))!;
+		const before = jobsSent.length;
+		const res = await post(id, new Uint8Array([1, 2, 3]), "audio/webm");
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as { audioStatus: string }).audioStatus).toBe("queued");
+		expect(jobsSent.length).toBe(before + 1);
+	});
+
 	it("uploads raw audio to R2, links the row and enqueues the job", async () => {
 		useSession("owner");
 		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;

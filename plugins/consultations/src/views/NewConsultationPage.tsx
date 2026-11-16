@@ -484,8 +484,9 @@ export function NewConsultationPage({
 				const dek = await consultationDek(zk.keyring, zk.api, id);
 				if (!dek) throw new Error("audio upload blocked — record is locked on this device");
 				const encrypted = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
-				// `slice()` re-types ArrayBufferLike → ArrayBuffer for BlobPart.
-				body = new Blob([encrypted.slice()]);
+				// Fresh copy — the typed-array generic must resolve to
+				// ArrayBuffer (not ArrayBufferLike) for fetch's BodyInit.
+				body = new Blob([new Uint8Array(encrypted)]);
 				contentType = "application/octet-stream";
 			}
 			const res = await fetch(`/api/consultations/${id}/audio`, {
@@ -652,9 +653,10 @@ export function NewConsultationPage({
 			if (!id) throw new Error(t.newConsultation.saveFailed);
 			if (consented) await api.recordConsent({ data: id });
 			setSavedId(id);
-			// T-145: no plaintext audio ever leaves a ZK device — T-147
-			// adds the client-encrypted upload path.
-			if (!zk) void uploadSessionAudio(id);
+			// T-145+T-147: the upload runs under ZK too — uploadSessionAudio
+			// encrypts with the record DEK first, so no plaintext audio ever
+			// leaves the device (fail-closed when the grant is missing).
+			void uploadSessionAudio(id);
 			// The consultation is saved either way: a failed lookup only
 			// means the access question is not asked.
 			const standing =

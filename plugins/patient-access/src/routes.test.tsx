@@ -231,6 +231,25 @@ describe("/patient-access/$patientId", () => {
 		);
 	});
 
+	it("on a ZK tenant keeps a plaintext name and still runs the grant pass", async () => {
+		mocks.loaderData.current = {
+			patient: { id: 7, name: "Ana Plain", email: null },
+			links,
+			locale: "en",
+			zk: true,
+		};
+		mocks.portalReadersFn.mockResolvedValue({
+			readers: [{ readerId: "ana", wrapPublicKey: "pub" }],
+			cipheredConsultationIds: [10],
+		});
+		render(createElement(options.component));
+		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe(
+			"Ana Plain",
+		);
+		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 7 }));
+		await vi.waitFor(() => expect(mocks.vaultDekEnvelopesFn).toHaveBeenCalled());
+	});
+
 	it("on a ZK tenant skips the pass when the patient has no portal plan", async () => {
 		mocks.loaderData.current = {
 			patient: { id: 7, name: "v1.name.ct", email: null },

@@ -95,6 +95,11 @@ vi.mock("../zk.ts", async (importOriginal) => {
 	return { ...orig, ...zkMocks };
 });
 
+const streamMocks = vi.hoisted(() => ({
+	encryptToBlob: vi.fn(async () => new Uint8Array([9])),
+}));
+vi.mock("@ktb/crypto/stream", () => streamMocks);
+
 import { NewConsultationPage } from "./NewConsultationPage.tsx";
 
 const SECTION = { content: "", confidence: "baixa" as const, evidence: [] as string[] };
@@ -1750,7 +1755,78 @@ describe("NewConsultationPage", () => {
 		});
 	});
 });
+describe("ZK encrypted audio upload (T-147)", () => {
+	const zk = { keyring: { tag: "k" }, api: { tag: "a" } } as never;
+	const audioBlob = new Blob(["audio"], { type: "audio/webm" });
 
+	beforeEach(() => {
+		micSupported = true;
+		micCb = null;
+		tabCb = null;
+		micStatsFn = null;
+		micRecFn = null;
+		tabStatsFn = null;
+		tabRecFn = null;
+		statusImpl = () => ({ state: "idle", device: null });
+		engineSubs.clear();
+		// jsdom lacks dialog.showModal
+		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+			this.setAttribute("open", "");
+		});
+		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+			this.removeAttribute("open");
+		});
+	});
+	afterEach(() => {
+		cleanup();
+		vi.unstubAllGlobals();
+	});
+
+	const audioInit = (fetchMock: ReturnType<typeof vi.fn>) =>
+		fetchMock.mock.calls.find((c) => String(c[0]).includes("/audio"))?.[1] as RequestInit;
+
+	it("uploads framed ciphertext, never the plaintext recording", async () => {
+		zkMocks.extractAnamnesisZk.mockResolvedValue({ anamnesis: ANAMNESIS, engine: "heuristic" });
+		const user = userEvent.setup();
+		tabRecFn = async () => audioBlob;
+		const api = makeApi();
+		const fetchMock = vi.fn(async () => ({
+			ok: true,
+			json: async () => ({ ok: true, audioStatus: "zk" }),
+		}));
+		vi.stubGlobal("fetch", fetchMock);
+		render(<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />);
+		await consent(user);
+		await generateAnamnesis(user);
+		await user.click(screen.getByText("Save consultation"));
+		await screen.findByText("Anamnesis saved successfully");
+		await waitFor(() => expect(audioInit(fetchMock)).toBeTruthy());
+		expect(zkMocks.consultationDek).toHaveBeenCalledWith({ tag: "k" }, { tag: "a" }, 42);
+		expect(streamMocks.encryptToBlob).toHaveBeenCalledWith({ tag: "dek" }, expect.any(Uint8Array));
+		const init = audioInit(fetchMock);
+		expect(init.headers).toEqual({ "content-type": "application/octet-stream" });
+		// The body is the framed ciphertext — the raw webm bytes never
+		// leave the device.
+		expect((init.body as Blob).size).toBe(1);
+	});
+
+	it("fails closed — locked record means no upload at all", async () => {
+		zkMocks.extractAnamnesisZk.mockResolvedValue({ anamnesis: ANAMNESIS, engine: "heuristic" });
+		const user = userEvent.setup();
+		tabRecFn = async () => audioBlob;
+		const api = makeApi();
+		const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ ok: true }) }));
+		vi.stubGlobal("fetch", fetchMock);
+		render(<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />);
+		await consent(user);
+		await generateAnamnesis(user);
+		zkMocks.consultationDek.mockResolvedValueOnce(null);
+		await user.click(screen.getByText("Save consultation"));
+		await screen.findByText(/could not be uploaded/i);
+		expect(audioInit(fetchMock)).toBeUndefined();
+		expect(streamMocks.encryptToBlob).not.toHaveBeenCalled();
+	});
+});
 // T-148: ZK saves wrap the record DEK to the portal devices of the
 // linked patient's active links, on top of the clinic-device grants.
 describe("NewConsultationPage ZK portal grants", () => {
