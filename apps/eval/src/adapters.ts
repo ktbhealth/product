@@ -108,7 +108,7 @@ export const stubLlmLayer = Layer.succeed(
  * ASR run complete without an ACP/Jev service; the `corrected` stage
  * then measures the unedited transcript, which is the honest signal
  * when no cleanup model is wired. */
-export const noopLlmLayer = Layer.succeed(
+const noopLlmLayer = Layer.succeed(
 	LlmPort,
 	LlmPort.of({
 		egress: false,

@@ -16,7 +16,7 @@ const BASE = "/portal/clinician";
 /** Loader payload for /portal/clinician/patients/* — the wildcard page
  * resolves `new`, `<id>` and `<id>/edit` subpaths server-side and tags
  * the result so the component picks the right domain view. */
-export type ClinicianPatientRecordData =
+type ClinicianPatientRecordData =
 	| { readonly view: "new" }
 	| { readonly view: "edit"; readonly patient: Patient }
 	| {

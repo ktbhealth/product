@@ -9,7 +9,7 @@ import {
 	user as userTable,
 } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import {
 	Patients,
 	patientsServicesPlugin,
@@ -1056,6 +1056,21 @@ describe("Consultations.history", () => {
 		const pending = h?.visits.find((v) => v.chiefComplaint === "Q");
 		expect(pending?.plan).toBeNull();
 	});
+
+	it("treats malformed stored anamnesis JSON as absent", async () => {
+		const [p3] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "JSON quebrado", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		await addConsultation({ patientId: p3!.id, anamnesis: "{not-json" });
+		const h = await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.history(p3!.id, "u1")),
+		);
+		expect(h?.count).toBe(1);
+		expect(h?.visits[0]?.chiefComplaint).toBeNull();
+		expect(h?.visits[0]?.plan).toBeNull();
+	});
 });
 
 describe("patientId ownership on save/attach", () => {
@@ -1303,6 +1318,19 @@ describe("plugins", () => {
 			owners: [],
 			patients: [{ id: 1, name: "Pat", ownerId: "u9", ownerName: "" }],
 		});
+	});
+
+	it("platform loader collapses Forbidden failures to empty tables", async () => {
+		const loader = consultationsPanelPlugin.panel?.pages?.[0]?.loader;
+		expect(loader).toBeDefined();
+		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
+		const result = await Effect.runPromise(
+			loader!().pipe(
+				Effect.provideService(Consultations, { adminList: forbidden } as never),
+				Effect.provideService(Patients, { adminOwners: forbidden, adminList: forbidden } as never),
+			),
+		);
+		expect(result).toEqual({ consultations: [], owners: [], patients: [] });
 	});
 
 	it("exports the discovery plugins array", () => {

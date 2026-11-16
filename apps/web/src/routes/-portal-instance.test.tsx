@@ -12,7 +12,12 @@ const getSessionUserFn = vi.fn(
 );
 const pluginStatesFn = vi.fn(async () => ({ enabled: [] as string[] }));
 const portalAudiencesFn = vi.fn(async () => [] as string[]);
-const portalPageDataFn = vi.fn(async (_path: string) => ({ status: "ok", data: null }));
+const portalPageDataFn = vi.fn(
+	async (_path: string): Promise<{ status: string; data?: unknown }> => ({
+		status: "ok",
+		data: null,
+	}),
+);
 const signOut = vi.fn(async () => {});
 const navigate = vi.fn();
 

@@ -1,3 +1,31 @@
+CREATE TABLE `apikey` (
+	`id` text PRIMARY KEY NOT NULL,
+	`config_id` text DEFAULT 'default' NOT NULL,
+	`name` text,
+	`start` text,
+	`reference_id` text NOT NULL,
+	`prefix` text,
+	`key` text NOT NULL,
+	`refill_interval` integer,
+	`refill_amount` integer,
+	`last_refill_at` integer,
+	`enabled` integer DEFAULT true,
+	`rate_limit_enabled` integer DEFAULT false,
+	`rate_limit_time_window` integer,
+	`rate_limit_max` integer,
+	`request_count` integer DEFAULT 0,
+	`remaining` integer,
+	`last_request` integer,
+	`expires_at` integer,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer NOT NULL,
+	`permissions` text,
+	`metadata` text
+);
+--> statement-breakpoint
+CREATE INDEX `apikey_configId_idx` ON `apikey` (`config_id`);--> statement-breakpoint
+CREATE INDEX `apikey_referenceId_idx` ON `apikey` (`reference_id`);--> statement-breakpoint
+CREATE INDEX `apikey_key_idx` ON `apikey` (`key`);--> statement-breakpoint
 CREATE TABLE `eval_instance` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`name` text NOT NULL,
@@ -23,6 +51,7 @@ CREATE TABLE `eval_instance_item` (
 	`persona` text,
 	`status` text DEFAULT 'pending' NOT NULL,
 	`error` text,
+	`claimed_at` integer,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	FOREIGN KEY (`instance_id`) REFERENCES `eval_instance`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`persona_def_id`) REFERENCES `eval_persona_def`(`id`) ON UPDATE no action ON DELETE set null,
@@ -38,6 +67,7 @@ CREATE TABLE `eval_llm_endpoint` (
 	`model` text,
 	`session_id` text,
 	`secret_ref` text,
+	`transport` text,
 	`timeout_ms` integer DEFAULT 60000 NOT NULL,
 	`enabled` integer DEFAULT true NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
@@ -53,3 +83,9 @@ CREATE TABLE `eval_persona_def` (
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	`updated_at` integer
 );
+--> statement-breakpoint
+ALTER TABLE `doctors` ADD `synthetic` integer DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `eval_persona` ADD `patient_id` integer REFERENCES patients(id);--> statement-breakpoint
+ALTER TABLE `eval_persona` ADD `doctor_id` integer REFERENCES doctors(id);--> statement-breakpoint
+ALTER TABLE `eval_persona` ADD `script_mode` text;--> statement-breakpoint
+ALTER TABLE `patients` ADD `synthetic` integer DEFAULT false NOT NULL;
