@@ -5,7 +5,9 @@ import { env } from "cloudflare:workers";
 const headers = vi.hoisted(() => ({ current: new Headers() }));
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 
 // RECALL_API_KEY must be bound before platform.ts composes the app runtime —

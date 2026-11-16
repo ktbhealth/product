@@ -3,7 +3,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 
 import * as Effect from "effect/Effect";
