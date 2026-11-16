@@ -25,6 +25,8 @@ export interface MessageParam {
 	readonly hint?: ParamHint;
 	/** plural/select case keys in declaration order (e.g. ["one","other"]). */
 	readonly cases?: readonly string[];
+	/** true for `plural`, false/undefined for `select`. */
+	readonly plural?: boolean;
 }
 
 export interface ParsedMessage {
@@ -167,6 +169,7 @@ export const parseMessage = (kind: MessageKind, template: string): ParseResult =
 			name: t.name,
 			hint: t.hint,
 			cases: t.cases?.map((c) => c.key),
+			plural: t.plural === true ? true : undefined,
 		});
 	}
 	return { ok: true, message: { kind, template, params } };
@@ -181,7 +184,12 @@ export const paramSignature = (template: string): MessageParam[] | { error: stri
 	for (const t of tokens) {
 		if (t.kind !== "param" || t.name === undefined || seen.has(t.name)) continue;
 		seen.add(t.name);
-		params.push({ name: t.name, hint: t.hint, cases: t.cases?.map((c) => c.key) });
+		params.push({
+			name: t.name,
+			hint: t.hint,
+			cases: t.cases?.map((c) => c.key),
+			plural: t.plural === true ? true : undefined,
+		});
 	}
 	return params;
 };

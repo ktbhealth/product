@@ -47,6 +47,7 @@ jobs:
       # aggregator, drizzle/alchemy migrations, wrangler worker types.
       - run: bunx vp run ci:db-schema
       - run: bunx vp run ci:db-migrations
+      - run: bunx vp run ci:i18n
       - run: bunx vp run ci:worker-types
       # No build needed: knip is static analysis, check:arch is a fast
       # smoke test proving the ktb-arch boundary rules still fire.

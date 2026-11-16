@@ -88,6 +88,13 @@ export default defineConfig({
 				command:
 					"bun run db:generate && git add -N packages/db && git diff --exit-code -- packages/db/drizzle packages/db/alchemy-migrations",
 			},
+			// Regenerate the i18n manifest + typed contracts and fail on
+			// drift. No build needed — pure filesystem reads of
+			// apps/web/messages + the generated manifest.
+			"ci:i18n": {
+				command:
+					"bun run gen:i18n-manifest && bun run gen:i18n-types && git add -N packages/i18n/src && git diff --exit-code -- packages/i18n/src/manifest.gen.ts packages/i18n/src/types.gen.ts",
+			},
 			// Regenerate apps/web/worker-configuration.d.ts (wrangler
 			// types) and fail on drift. No build needed — reads
 			// wrangler.jsonc offline.

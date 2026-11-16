@@ -27,9 +27,12 @@
 		"db:studio": "bun --cwd packages/db db:studio",
 		"db:erd": "bun packages/db/scripts/generate-erd.mjs",
 		"db:erd:check": "bun packages/db/scripts/generate-erd.mjs --check",
+		"i18n:import-baseline": "bun tools/import-i18n-baseline.mjs",
 		"knip": "knip",
 		"gen:route-types": "bun tools/gen-plugin-route-types.mjs",
 		"gen:db-schema": "bun tools/gen-db-schema.mjs",
+		"gen:i18n-manifest": "bun tools/gen-i18n-manifest.mjs",
+		"gen:i18n-types": "bun tools/gen-i18n-types.mjs",
 		"check:arch": "bun tools/check-arch.mjs"
 	},
 	"devDependencies": {
