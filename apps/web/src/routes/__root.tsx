@@ -25,7 +25,7 @@ import {
 	portalInstances,
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
-import { sessionFn, pluginStatesFn } from "#/lib/fns.ts";
+import { sessionFn, pluginStatesFn, i18nRouteFn } from "#/lib/fns.ts";
 import { themeScopeFn } from "@ktb/theme/fns";
 import { themeHead, themeTitle } from "@ktb/theme/head";
 import { ThemePreviewBanner } from "@ktb/theme/views";
@@ -58,10 +58,14 @@ export const Route = createRootRoute({
 	// contributions are filtered by the enabled set before render. The
 	// theme resolves session → tenant → platform (P-082); console paths
 	// ignore it (their shells resolve per-instance themes).
-	loader: async () => ({
+	loader: async ({ location }) => ({
 		user: await sessionFn(),
 		pluginStates: await pluginStatesFn(),
 		theme: await themeScopeFn({ data: { scope: "session" } }),
+		// DB-backed i18n slice for this path (PL-008): namespaces derived
+		// from the registry + resolved catalog for the request locale.
+		// Paraglide `m.*` still renders UI copy until Phase 5 migration.
+		i18n: await i18nRouteFn({ data: location.pathname }),
 	}),
 	head: (ctx) => {
 		const loaderData = ctx?.loaderData;

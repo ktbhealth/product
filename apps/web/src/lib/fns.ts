@@ -3,11 +3,18 @@ import { createServerFn } from "@tanstack/react-start";
 import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
+import { namespacesForPath } from "@ktb/app-host";
+import { Db } from "@ktb/db";
+import { GLOBAL_SCOPE, resolveRequestLocales } from "@ktb/i18n";
+import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
+import { getLocale } from "#/paraglide/runtime.js";
 import {
 	appPages,
 	portalPages,
 	collectPortals,
 	defaultPageContext,
+	enabledIdSet,
+	enabledPlugins,
 	findPage,
 	portalInstanceIdForPath,
 	type PageShell,
@@ -71,6 +78,49 @@ export const pluginStatesFn = createServerFn({ method: "GET" }).handler(
 		return { enabled: [...enabled] };
 	},
 );
+
+/**
+ * Route-scoped i18n payload (PL-008 Phase 2): which namespaces the
+ * pathname needs (derived from the server registry — page winner +
+ * visible chrome, same rules as the dispatcher) plus the resolved
+ * catalog slice for the request's locale chain. Loader data carries
+ * this to the client; `t()` there is a pure lookup — no second
+ * roundtrip. Scope chain is GLOBAL_SCOPE until tenant/portal request
+ * context lands (Phase 6).
+ */
+export interface I18nRouteResult {
+	readonly locale: string;
+	readonly locales: readonly string[];
+	readonly namespaces: readonly string[];
+	readonly catalog: Record<string, string>;
+}
+
+export const i18nRouteFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
+	.handler(async ({ data: pathname }): Promise<I18nRouteResult> =>
+		run(
+			Effect.gen(function* () {
+				const states = yield* PluginStates;
+				const enabled = yield* states.enabledIds();
+				const database = yield* Db;
+				const visible = enabledPlugins(serverPlugins, enabledIdSet({ enabled: [...enabled] }));
+				const namespaces = namespacesForPath(visible, pathname);
+				const enabledLocales = yield* Effect.promise(() => listEnabledLocales(database));
+				const locales = resolveRequestLocales(getLocale(), enabledLocales, DEFAULT_LOCALE);
+				const catalog = yield* catalogSlice(database, {
+					namespaces,
+					scopeChain: GLOBAL_SCOPE,
+					locales,
+				});
+				return {
+					locale: locales.locales[0] ?? DEFAULT_LOCALE,
+					locales: locales.locales,
+					namespaces: [...namespaces],
+					catalog: stableSlice(catalog),
+				};
+			}),
+		),
+	);
 
 /**
  * /platform console gate: true when the session user's email is in the

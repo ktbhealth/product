@@ -32,6 +32,8 @@ export const listPublishedRows = async (
 	input: {
 		readonly locales: readonly string[];
 		readonly scopes: ReadonlyArray<{ scope: MessageScope; scopeId: string }>;
+		/** Restrict to these namespaces (route slices); absent = all. */
+		readonly namespaces?: readonly string[];
 	},
 ): Promise<MessageRow[]> => {
 	const scopeConds = input.scopes.map(({ scope, scopeId }) =>
@@ -39,15 +41,17 @@ export const listPublishedRows = async (
 			? eq(i18nMessages.scope, "global")
 			: and(eq(i18nMessages.scope, scope), eq(i18nMessages.scopeId, scopeId)),
 	);
+	const conds = [
+		inArray(i18nMessages.locale, [...input.locales]),
+		sql`(${sql.join(scopeConds, sql` OR `)})`,
+	];
+	if (input.namespaces !== undefined && input.namespaces.length > 0) {
+		conds.push(inArray(i18nMessages.namespace, [...input.namespaces]));
+	}
 	const rows = await db
 		.select()
 		.from(i18nMessages)
-		.where(
-			and(
-				inArray(i18nMessages.locale, [...input.locales]),
-				sql`(${sql.join(scopeConds, sql` OR `)})`,
-			),
-		);
+		.where(and(...conds));
 	return rows.map(toRow);
 };
 
