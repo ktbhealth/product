@@ -105,8 +105,9 @@ const DOMAINS = [
 		id: "auth",
 		title: "Auth",
 		owner: "`packages/db/src/auth.ts` (better-auth)",
-		description: "better-auth core tables: users, sessions, OAuth accounts, verification tokens.",
-		tables: ["account", "session", "user", "verification"],
+		description:
+			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (eval credentials).",
+		tables: ["account", "apikey", "session", "user", "verification"],
 	},
 	{
 		id: "rbac",
@@ -122,6 +123,22 @@ const DOMAINS = [
 		owner: "`packages/db/src/plugin-state.ts`",
 		description: "Kernel-owned state: per-plugin persisted configuration.",
 		tables: ["plugin_state"],
+	},
+	{
+		id: "eval-validator",
+		title: "Eval validator",
+		owner: "`plugins/eval-validator`",
+		description:
+			"Persona generation and eval run tracking — generated patient+doctor pairs awaiting review, and per-sample run metrics.",
+		tables: ["eval_persona", "eval_persona_batch", "eval_run", "eval_run_sample"],
+	},
+	{
+		id: "eval-persona",
+		title: "Eval persona",
+		owner: "`plugins/eval-persona`",
+		description:
+			"Eval lab surfaces — reusable persona definitions, LLM endpoints and persona instances with their items.",
+		tables: ["eval_instance", "eval_instance_item", "eval_llm_endpoint", "eval_persona_def"],
 	},
 ];
 

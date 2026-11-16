@@ -53,13 +53,10 @@ describe("patient documents migration", () => {
 		insert.run(4, "Vazios", null, "", "", "");
 		insert.run(5, "So passaporte", null, null, null, "ZZ998877");
 
-		// The three new migrations, applied on top.
+		// The new migrations, applied on top — everything staged at or
+		// after FIRST_NEW, so later migrations don't go stale here.
 		stage((name) => name >= FIRST_NEW);
-		expect(applyMigrations(sqlite, dir)).toEqual([
-			"0016_patient_documents.sql",
-			"0017_backfill_patient_documents.sql",
-			"0018_drop_patient_identifier_columns.sql",
-		]);
+		expect(applyMigrations(sqlite, dir)).toEqual(files.filter((name) => name >= FIRST_NEW));
 
 		expect(
 			sqlite
