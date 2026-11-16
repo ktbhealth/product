@@ -34,6 +34,7 @@ import { Route as PatientsNewRouteImport } from './../../../plugins/patients/src
 import { Route as IndexRouteImport } from './routes/platform/index'
 import { Route as SplatRouteImport } from './routes/platform/$'
 import { Route as PortalIndexRouteImport } from './../../../plugins/patient-portal/src/routes/index'
+import { Route as PortalActivityRouteImport } from './../../../plugins/patient-portal/src/routes/activity'
 import { Route as portalLoginRouteImport } from './routes/portal-login'
 import { Route as SecretariesIndexRouteImport } from './../../../plugins/secretaries/src/routes/index'
 import { Route as SecretariesLoginRouteImport } from './../../../plugins/secretaries/src/routes/login'
@@ -177,6 +178,11 @@ const PortalIndexRoute = PortalIndexRouteImport.update({
   path: '/portal/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PortalActivityRoute = PortalActivityRouteImport.update({
+  id: '/portal/activity',
+  path: '/portal/activity',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const portalLoginRoute = portalLoginRouteImport.update({
   id: '/portal/login',
   path: '/portal/login',
@@ -285,6 +291,7 @@ export interface FileRoutesByFullPath {
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/platform/$': typeof SplatRoute
+  '/portal/activity': typeof PortalActivityRoute
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations/': typeof ConsultationsIndexRoute
@@ -327,6 +334,7 @@ export interface FileRoutesByTo {
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/platform/$': typeof SplatRoute
+  '/portal/activity': typeof PortalActivityRoute
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations': typeof ConsultationsIndexRoute
@@ -371,6 +379,7 @@ export interface FileRoutesById {
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
   '/platform/$': typeof SplatRoute
+  '/portal/activity': typeof PortalActivityRoute
   '/portal/login': typeof portalLoginRoute
   '/secretaries/login': typeof SecretariesLoginRoute
   '/consultations/': typeof ConsultationsIndexRoute
@@ -416,6 +425,7 @@ export interface FileRouteTypes {
     | '/patient-access/$patientId'
     | '/patients/new'
     | '/platform/$'
+    | '/portal/activity'
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations/'
@@ -458,6 +468,7 @@ export interface FileRouteTypes {
     | '/patient-access/$patientId'
     | '/patients/new'
     | '/platform/$'
+    | '/portal/activity'
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations'
@@ -501,6 +512,7 @@ export interface FileRouteTypes {
     | '/patient-access/$patientId'
     | '/patients/new'
     | '/platform/$'
+    | '/portal/activity'
     | '/portal/login'
     | '/secretaries/login'
     | '/consultations/'
@@ -544,6 +556,7 @@ export interface RootRouteChildren {
   DoctorsSelectRoute: typeof DoctorsSelectRoute
   PatientAccessPatientIdRoute: typeof PatientAccessPatientIdRoute
   PatientsNewRoute: typeof PatientsNewRoute
+  PortalActivityRoute: typeof PortalActivityRoute
   portalLoginRoute: typeof portalLoginRoute
   SecretariesLoginRoute: typeof SecretariesLoginRoute
   ConsultationsIndexRoute: typeof ConsultationsIndexRoute
@@ -742,6 +755,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal/activity': {
+      id: '/portal/activity'
+      path: '/portal/activity'
+      fullPath: '/portal/activity'
+      preLoaderRoute: typeof PortalActivityRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal/login': {
       id: '/portal/login'
       path: '/portal/login'
@@ -903,6 +923,7 @@ const rootRouteChildren: RootRouteChildren = {
   DoctorsSelectRoute: DoctorsSelectRoute,
   PatientAccessPatientIdRoute: PatientAccessPatientIdRoute,
   PatientsNewRoute: PatientsNewRoute,
+  PortalActivityRoute: PortalActivityRoute,
   portalLoginRoute: portalLoginRoute,
   SecretariesLoginRoute: SecretariesLoginRoute,
   ConsultationsIndexRoute: ConsultationsIndexRoute,

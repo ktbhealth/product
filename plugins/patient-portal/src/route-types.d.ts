@@ -22,6 +22,13 @@ declare module "@tanstack/react-router" {
 			preLoaderRoute: AnyRoute;
 			parentRoute: AnyRoute;
 		};
+		"/portal/activity": {
+			id: "/portal/activity";
+			path: "/portal/activity";
+			fullPath: "/portal/activity";
+			preLoaderRoute: AnyRoute;
+			parentRoute: AnyRoute;
+		};
 		"/portal/consultations/$id": {
 			id: "/portal/consultations/$id";
 			path: "/portal/consultations/$id";

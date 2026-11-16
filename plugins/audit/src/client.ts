@@ -1,8 +1,7 @@
-import { ActivityIcon, ScrollTextIcon } from "lucide-react";
+import { ScrollTextIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { AuditActivityPage } from "./activity-page.tsx";
 import { AuditPlatformPage } from "./platform-page.tsx";
 
 /**
@@ -32,20 +31,6 @@ export const auditChromePlugin = definePlugin({
 				},
 			},
 		},
-		{
-			id: "audit.activity.sidebar",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/activity",
-					label: "Activity",
-					icon: ActivityIcon,
-					group: "Governance",
-				},
-			},
-		},
 	],
 });
 
@@ -55,18 +40,6 @@ export const auditPanelPlugin = definePlugin({
 	panel: {
 		pages: [{ id: "audit.admin", path: "/platform/audit", component: AuditPlatformPage }],
 	},
-});
-
-export const auditActivityPlugin = definePlugin({
-	id: "audit.activity",
-	requiredDeps: ["audit.services"],
-	pages: [
-		{
-			id: "audit.activity",
-			path: "/portal/clinician/activity",
-			component: AuditActivityPage,
-		},
-	],
 });
 
 /** Single-concern plugins contributed by this module — the client
@@ -86,5 +59,4 @@ export const plugins: readonly Plugin[] = [
 	}),
 	auditChromePlugin,
 	auditPanelPlugin,
-	auditActivityPlugin,
 ];

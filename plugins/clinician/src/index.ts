@@ -1,7 +1,10 @@
-import { ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
+import { ActivityIcon, ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import { Query } from "@effect-server-utils/cqrs";
 
+import { Audit, auditServicesPlugin, type AuditListResult } from "@ktb/audit";
+import { AuditActivityPage } from "@ktb/audit/activity-page";
 import { Principal } from "@ktb/authz";
 import { Consultations } from "@ktb/consultations";
 import { consultationsServicesPlugin } from "@ktb/consultations";
@@ -60,6 +63,10 @@ export const clinicianPortalPlugin = definePlugin({
 export const clinicianPagesPlugin = definePlugin({
 	id: "clinician.pages",
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
+	// The activity feed resolves the Audit service via serviceOption —
+	// the dep edge orders it after audit.services when that plugin is
+	// present, but a deployment without it still works (guard denies).
+	optionalDeps: [auditServicesPlugin.id],
 	pages: [
 		{
 			id: "clinician.home",
@@ -188,6 +195,31 @@ export const clinicianPagesPlugin = definePlugin({
 					return { view: "detail", c, history };
 				}),
 		},
+		// Staff activity feed (P-085): moved here from the audit plugin
+		// so the clinician portal owns its mount. The guard asks the
+		// Audit service whether the bound tenant holds `audit.read` —
+		// absent service or grant both deny; the loader degrades a
+		// denial to an empty page, same contract as the other pages.
+		{
+			id: "clinician.activity",
+			path: "/portal/clinician/activity",
+			component: AuditActivityPage,
+			guard: () =>
+				Effect.gen(function* () {
+					const audit = yield* Effect.serviceOption(Audit);
+					if (Option.isNone(audit)) return false;
+					return yield* audit.value.activityAccess();
+				}),
+			loader: () =>
+				Effect.gen(function* () {
+					const audit = yield* Effect.serviceOption(Audit);
+					const empty: AuditListResult = { entries: [], total: 0, limit: 200 };
+					if (Option.isNone(audit)) return empty;
+					return yield* audit.value
+						.activityList()
+						.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
+				}),
+		},
 	],
 });
 
@@ -236,6 +268,20 @@ export const clinicianChromePlugin = definePlugin({
 					label: "Consultations",
 					icon: ClipboardListIcon,
 					group: "Care",
+				},
+			},
+		},
+		{
+			id: "clinician.activity.sidebar",
+			region: "portal.sidebar",
+			portal: "clinician",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/portal/clinician/activity",
+					label: "Activity",
+					icon: ActivityIcon,
+					group: "Governance",
 				},
 			},
 		},

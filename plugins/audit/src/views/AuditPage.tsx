@@ -58,12 +58,20 @@ const parseDetail = (raw: string | null): unknown => {
 const targetLabel = (row: AdminAuditRow): string =>
 	[row.targetType, row.targetId].filter((v) => v !== null && v !== "").join(":") || "";
 
+/** Actor filter key — mirrors the actor cell's fallback chain. */
+const actorKey = (row: AdminAuditRow): string => row.actorEmail ?? row.actorUserId ?? "system";
+
+/** Target-type filter key; null columns bucket under this sentinel. */
+const NO_TARGET_TYPE = "none";
+const targetTypeKey = (row: AdminAuditRow): string => row.targetType ?? NO_TARGET_TYPE;
+
 /**
  * Shared audit listing — /platform/audit (T-037, platform admin log)
  * and /portal/clinician/activity (P-080, tenant-scoped staff feed).
  * Rows arrive newest-first, already capped server-side; search and the
- * action-group filter run client-side over that window. Detail JSON is
- * shown in a dialog — ids and non-sensitive params only, by contract.
+ * action-group/actor/target-type filters run client-side over that
+ * window. Detail JSON is shown in a dialog — ids and non-sensitive
+ * params only, by contract.
  * Dense/utilitarian by design (system console).
  */
 export function AuditPage({
@@ -85,26 +93,32 @@ export function AuditPage({
 	const [q, setQ] = useState("");
 	// "all" sentinel — Base UI Select items reject empty-string values.
 	const [group, setGroup] = useState("all");
+	const [actor, setActor] = useState("all");
+	const [targetType, setTargetType] = useState("all");
 	const [detailFor, setDetailFor] = useState<AdminAuditRow | null>(null);
 
 	const groups = useMemo(
 		() => [...new Set(entries.map((e) => actionGroup(e.action)))].sort(),
 		[entries],
 	);
+	const actors = useMemo(() => [...new Set(entries.map(actorKey))].sort(), [entries]);
+	const targetTypes = useMemo(() => [...new Set(entries.map(targetTypeKey))].sort(), [entries]);
 	const needle = q.trim().toLowerCase();
 	const shown = useMemo(() => {
 		return entries.filter(
 			(e) => {
 				if (group !== "all" && actionGroup(e.action) !== group) return false;
+				if (actor !== "all" && actorKey(e) !== actor) return false;
+				if (targetType !== "all" && targetTypeKey(e) !== targetType) return false;
 				if (needle === "") return true;
 				return [e.actorEmail ?? "", e.actorUserId ?? "", e.action, e.targetId ?? "", e.detail ?? ""]
 					.join(" ")
 					.toLowerCase()
 					.includes(needle);
 			},
-			[entries, group, needle],
+			[entries, group, actor, targetType, needle],
 		);
-	}, [entries, group, needle]);
+	}, [entries, group, actor, targetType, needle]);
 
 	return (
 		<PageContainer>
@@ -130,22 +144,50 @@ export function AuditPage({
 							/>
 						}
 						filters={
-							<Select value={group} onValueChange={(v) => setGroup(String(v))}>
-								<SelectTrigger className="h-8 w-40 text-xs" aria-label={t.allActions}>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="all">{t.allActions}</SelectItem>
-									{groups.map((g) => (
-										<SelectItem key={g} value={g}>
-											{g}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
+							<>
+								<Select value={group} onValueChange={(v) => setGroup(String(v))}>
+									<SelectTrigger className="h-8 w-40 text-xs" aria-label={t.allActions}>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">{t.allActions}</SelectItem>
+										{groups.map((g) => (
+											<SelectItem key={g} value={g}>
+												{g}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<Select value={actor} onValueChange={(v) => setActor(String(v))}>
+									<SelectTrigger className="h-8 w-44 text-xs" aria-label={t.allActors}>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">{t.allActors}</SelectItem>
+										{actors.map((a) => (
+											<SelectItem key={a} value={a}>
+												{a === "system" ? t.systemActor : a}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<Select value={targetType} onValueChange={(v) => setTargetType(String(v))}>
+									<SelectTrigger className="h-8 w-40 text-xs" aria-label={t.allTargetTypes}>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="all">{t.allTargetTypes}</SelectItem>
+										{targetTypes.map((tt) => (
+											<SelectItem key={tt} value={tt}>
+												{tt === NO_TARGET_TYPE ? t.noTargetType : tt}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</>
 						}
 						resultCount={
-							needle === "" && group === "all"
+							needle === "" && group === "all" && actor === "all" && targetType === "all"
 								? undefined
 								: t.filteredCount(shown.length, entries.length)
 						}

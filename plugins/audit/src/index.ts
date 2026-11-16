@@ -1,8 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { asc, count, desc, eq } from "drizzle-orm";
-import { ActivityIcon, ScrollTextIcon } from "lucide-react";
+import { and, asc, count, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { ScrollTextIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
 import { Forbidden, Principal } from "@ktb/authz";
@@ -13,9 +13,14 @@ import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/pl
 import { Permissions } from "@ktb/rbac";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 
-import { AuditActivityPage } from "./activity-page.tsx";
 import { AuditPlatformPage } from "./platform-page.tsx";
 import { adminAudit, type AdminAudit } from "./schema.ts";
+// Relative import on purpose: `@ktb/consultations` depends on
+// `@ktb/audit` (the Audit service its mutations record through), so a
+// package-specifier import here would create a workspace cycle — same
+// rule as the groups import in ./schema.ts. The schema module is
+// dependency-free, so the cycle stays broken.
+import { consultations } from "../../consultations/src/schema.ts";
 
 export type { AdminAudit };
 export { adminAudit } from "./schema.ts";
@@ -97,7 +102,10 @@ export const auditEntryHash = (row: AdminAudit): Promise<string> =>
 
 /**
  * Append one audit row. Actor identity comes from the bound `Principal`
- * (null in system contexts — the columns are nullable for that case).
+ * (null in system contexts — the columns are nullable for that case):
+ * `actorUserId` records the signed-in actor (`actorId ?? userId`), so a
+ * secretary acting on a doctor's behalf is attributed to themselves;
+ * `actorEmail` is the session email, which `runAs` binds to the actor.
  * `prevHash` chains the new row to the latest entry (`auditEntryHash`
  * over it); concurrent inserts may interleave links — same accepted
  * trade-off as record_versions. Returns the inserted row, or null when
@@ -185,7 +193,8 @@ export async function listAuditEntries(
 
 /**
  * Newest-first audit listing scoped to ONE tenant (P-080) — the staff
- * activity feed behind /portal/clinician/activity. Same ordering and
+ * activity feed the clinician plugin mounts at
+ * /portal/clinician/activity. Same ordering and
  * limit clamp as {@link listAuditEntries} but fenced by
  * `tenant_id = tenantId`; platform-global rows (`tenant_id` NULL) are
  * excluded — they stay admin-only. Callers MUST have resolved tenant
@@ -211,6 +220,76 @@ export async function listTenantAuditEntries(
 }
 
 /**
+ * Newest-first audit listing scoped to ONE patient record (P-086) —
+ * the patient portal's access log. NOT tenant-scoped: a patient may
+ * have records in several clinics, so the fence is the record itself.
+ * A row matches when it names the patient directly
+ * (`target_type='patient'` + `target_id=<id>`), or names one of the
+ * patient's consultations — live ones join through
+ * `consultations.patient_id`, deleted ones through the `patientId`
+ * stamped into `detail` at delete time (`json_extract` on the TEXT
+ * column behind a `json_valid` guard — raw `json_extract` errors on
+ * malformed JSON; NULL detail simply never matches). Same
+ * ordering and limit clamp as {@link listTenantAuditEntries}. Callers
+ * MUST have passed the `PatientAuditAccess` check first — the repo
+ * function itself is unauthenticated, like the other `*Admin` helpers.
+ */
+export async function listPatientAuditEntries(
+	db: DbClient,
+	patientId: number,
+	options: { readonly limit?: number } = {},
+): Promise<AuditListResult> {
+	const limit = pageLimit(options.limit);
+	// `target_id` is TEXT while `consultations.id`/`detail.patientId`
+	// are integers — CAST keeps the comparison type-exact.
+	const scope = or(
+		and(eq(adminAudit.targetType, "patient"), eq(adminAudit.targetId, String(patientId))),
+		and(
+			eq(adminAudit.targetType, "consultation"),
+			inArray(
+				adminAudit.targetId,
+				db
+					.select({ id: sql<string>`CAST(${consultations.id} AS TEXT)` })
+					.from(consultations)
+					.where(eq(consultations.patientId, patientId)),
+			),
+		),
+		and(
+			eq(adminAudit.targetType, "consultation"),
+			// json_extract ERRORS on malformed JSON (unlike a NULL
+			// yield) — the CASE guards it; NULL detail → json_valid
+			// NULL → ELSE branch → no match.
+			sql`CASE WHEN json_valid(${adminAudit.detail}) THEN json_extract(${adminAudit.detail}, '$.patientId') END = ${patientId}`,
+		),
+	);
+	const [entries, totals] = await Promise.all([
+		db
+			.select()
+			.from(adminAudit)
+			.where(scope)
+			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
+			.limit(limit),
+		db.select({ n: count() }).from(adminAudit).where(scope),
+	]);
+	return { entries, total: totals[0]?.n ?? 0, limit };
+}
+
+/**
+ * OPTIONAL patient-side authorization for {@link Audit.patientList}
+ * (P-086) — consumer-defined like `Permissions`: the patient-access
+ * plugin provides the live layer, and implementations read the bound
+ * `Principal` themselves per call (the service is request-scoped).
+ * Absent ⇒ `patientList` fails closed.
+ */
+export class PatientAuditAccess extends Context.Service<
+	PatientAuditAccess,
+	{
+		/** Whether the bound principal may view `patientId`'s audit feed. */
+		readonly canView: (patientId: number) => Effect.Effect<boolean>;
+	}
+>()("@ktb/audit/PatientAuditAccess") {}
+
+/**
  * Audit domain port — the write side every admin mutation calls plus
  * the admin-gated read behind /platform/audit.
  *
@@ -228,6 +307,13 @@ export async function listTenantAuditEntries(
  * depends on audit transitively through groups, so a declared edge
  * would cycle). Absent tenant scope or absent Permissions both fail
  * closed, matching `can`'s null-principal behaviour.
+ *
+ * `patientList` is the patient-facing feed (P-086): NOT tenant-scoped
+ * — a patient may have records across clinics — so authorization is
+ * the OPTIONAL `PatientAuditAccess` port's per-record `canView`,
+ * resolved via `serviceOption` per call (same no-dep-edge rule: the
+ * patient-access plugin provides it). Absent port or a denied check
+ * fails closed with `Forbidden({ path: "audit.patient" })`.
  */
 export class Audit extends Context.Service<
 	Audit,
@@ -244,6 +330,14 @@ export class Audit extends Context.Service<
 		/** Tenant-scoped newest-first feed; `Forbidden` when
 		 * {@link activityAccess} would be false. */
 		readonly activityList: (options?: {
+			readonly limit?: number;
+		}) => Effect.Effect<AuditListResult, Forbidden>;
+		/** Patient-scoped newest-first feed (P-086): entries naming the
+		 * patient's own record across every tenant. `Forbidden` when the
+		 * optional {@link PatientAuditAccess} port is absent or denies —
+		 * fail closed, never tenant-scoped. */
+		readonly patientList: (options: {
+			readonly patientId: number;
 			readonly limit?: number;
 		}) => Effect.Effect<AuditListResult, Forbidden>;
 	}
@@ -272,7 +366,7 @@ export const AuditLive = Layer.effect(
 				yield* Effect.promise(() =>
 					insertAuditEntry(db, {
 						...entry,
-						actorUserId: principal?.userId ?? null,
+						actorUserId: principal === null ? null : (principal.actorId ?? principal.userId),
 						actorEmail: principal?.email ?? null,
 					}),
 				).pipe(
@@ -301,6 +395,22 @@ export const AuditLive = Layer.effect(
 					return yield* Effect.fail(new Forbidden({ path: "rbac.audit.read" }));
 				}
 				return yield* Effect.promise(() => listTenantAuditEntries(db, scopeId, options));
+			}),
+			patientList: Effect.fn("Audit.patientList")(function* (options: {
+				patientId: number;
+				limit?: number;
+			}) {
+				const access = yield* Effect.serviceOption(PatientAuditAccess);
+				if (Option.isNone(access)) {
+					return yield* Effect.fail(new Forbidden({ path: "audit.patient" }));
+				}
+				const allowed = yield* access.value.canView(options.patientId);
+				if (!allowed) {
+					return yield* Effect.fail(new Forbidden({ path: "audit.patient" }));
+				}
+				return yield* Effect.promise(() =>
+					listPatientAuditEntries(db, options.patientId, { limit: options.limit }),
+				);
 			}),
 		});
 	}),
@@ -361,22 +471,6 @@ export const auditChromePlugin = definePlugin({
 				},
 			},
 		},
-		// Staff activity feed (P-080): scoped to the "clinician" portal
-		// instance — deployments without it never render the item.
-		{
-			id: "audit.activity.sidebar",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/activity",
-					label: "Activity",
-					icon: ActivityIcon,
-					group: "Governance",
-				},
-			},
-		},
 	],
 });
 
@@ -416,36 +510,6 @@ export const auditPanelPlugin = definePlugin({
 	},
 });
 
-// Staff activity feed (P-080): /portal/clinician/activity dispatches
-// inside the clinician portal instance (audience + subject gates are
-// the portal's). The guard asks the Audit service whether the bound
-// tenant holds `audit.read`; the loader degrades a denial to an empty
-// page — same contract as the panel page above.
-export const auditActivityPlugin = definePlugin({
-	id: "audit.activity",
-	requiredDeps: [auditServicesPlugin.id],
-	pages: [
-		{
-			id: "audit.activity",
-			path: "/portal/clinician/activity",
-			component: AuditActivityPage,
-			guard: () =>
-				Effect.gen(function* () {
-					const audit = yield* Audit;
-					return yield* audit.activityAccess();
-				}),
-			loader: () =>
-				Effect.gen(function* () {
-					const audit = yield* Audit;
-					const empty: AuditListResult = { entries: [], total: 0, limit: 200 };
-					return yield* audit
-						.activityList()
-						.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
-				}),
-		},
-	],
-});
-
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
@@ -453,7 +517,6 @@ export const plugins: readonly Plugin[] = [
 	auditServicesPlugin,
 	auditChromePlugin,
 	auditPanelPlugin,
-	auditActivityPlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -464,6 +527,5 @@ declare module "@ktb/kernel" {
 		"audit.services": true;
 		"audit.chrome": true;
 		"audit.panel": true;
-		"audit.activity": true;
 	}
 }

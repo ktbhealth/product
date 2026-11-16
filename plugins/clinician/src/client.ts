@@ -1,5 +1,6 @@
-import { ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
+import { ActivityIcon, ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
 
+import { AuditActivityPage } from "@ktb/audit/activity-page";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { ClinicianConsultationRecordPage } from "./views/ClinicianConsultationRecordPage.tsx";
@@ -35,6 +36,8 @@ export const clinicianPortalPlugin = definePlugin({
 export const clinicianPagesPlugin = definePlugin({
 	id: "clinician.pages",
 	requiredDeps: ["patients.services", "consultations.services"],
+	// Mirrors clinicianPagesPlugin.optionalDeps (server index.ts).
+	optionalDeps: ["audit.services"],
 	pages: [
 		{ id: "clinician.home", path: "/portal/clinician", component: ClinicianHomePage },
 		{
@@ -56,6 +59,11 @@ export const clinicianPagesPlugin = definePlugin({
 			id: "clinician.consultations.record",
 			path: "/portal/clinician/consultations/*",
 			component: ClinicianConsultationRecordPage,
+		},
+		{
+			id: "clinician.activity",
+			path: "/portal/clinician/activity",
+			component: AuditActivityPage,
 		},
 	],
 });
@@ -103,6 +111,20 @@ export const clinicianChromePlugin = definePlugin({
 					label: "Consultations",
 					icon: ClipboardListIcon,
 					group: "Care",
+				},
+			},
+		},
+		{
+			id: "clinician.activity.sidebar",
+			region: "portal.sidebar",
+			portal: "clinician",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/portal/clinician/activity",
+					label: "Activity",
+					icon: ActivityIcon,
+					group: "Governance",
 				},
 			},
 		},
