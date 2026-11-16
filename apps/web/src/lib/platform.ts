@@ -11,11 +11,13 @@ import {
 } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
 import { makeTenantResolver } from "@ktb/tenant";
-import { makeDb, type SqlDatabase } from "@ktb/db";
+import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { makeJobs } from "@ktb/jobs-port";
 import { getLocale } from "#/paraglide/runtime.js";
+import { GLOBAL_SCOPE } from "@ktb/i18n";
+import { I18nRuntime, resolveRequestI18n } from "@ktb/i18n-plugin";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
 import { verificationEmail } from "./emails.ts";
@@ -185,6 +187,22 @@ setServerRuntime({
 	audioTranscribeModel,
 	recordExporters,
 	getLocale,
+	// PL-008: DB-canonical i18n capability — resolves enabled locales +
+	// scope chain inside the app runtime (I18nRuntime cache + Db) and
+	// returns the request-bound I18n shape. Locale defaults to the
+	// active UI locale (paraglide bridge during transition).
+	i18n: (input) =>
+		run(
+			Effect.gen(function* () {
+				const runtime = yield* I18nRuntime;
+				const database = yield* Db;
+				const { i18n } = yield* resolveRequestI18n(runtime, database, {
+					requestedLocale: input?.locale ?? getLocale(),
+					scopeChain: input?.scopeChain ?? GLOBAL_SCOPE,
+				});
+				return i18n;
+			}),
+		),
 	// P-058: backs `pluginEnabledFn` / `createPluginFileRoute` — plugin
 	// page routes 404 when their `*.routes` plugin is disabled.
 	pluginEnabled: (pluginId) =>

@@ -7,6 +7,7 @@
  *
  *   packages/i18n/src/types.gen.ts   (generated; never hand-edit)
  */
+import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -71,4 +72,6 @@ ${overloads}
 `;
 
 writeFileSync(outPath, body);
+// Keep generated output formatter-clean so ci:i18n drift checks pass.
+spawnSync("bunx", ["vp", "fmt", outPath], { stdio: "inherit" });
 console.log(`gen-i18n-types: ${entries.length} keys → ${outPath}`);

@@ -43,6 +43,7 @@
 		"@ktb/eval-credentials": "workspace:*",
 		"@ktb/eval-persona": "workspace:*",
 		"@ktb/eval-validator": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/i18n-plugin": "workspace:*",
 		"@ktb/infra-cloudflare": "workspace:*",
 		"@ktb/interop": "workspace:*",

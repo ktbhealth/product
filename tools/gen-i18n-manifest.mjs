@@ -12,6 +12,7 @@
  * baseline importer turns it into DB rows, the panel uses it for the
  * key tree.
  */
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -79,6 +80,8 @@ export const I18N_BASE_LOCALES = ${JSON.stringify(locales)} as const;
 `;
 
 writeFileSync(outPath, body);
+// Keep generated output formatter-clean so ci:i18n drift checks pass.
+spawnSync("bunx", ["vp", "fmt", outPath], { stdio: "inherit" });
 for (const w of warnings) console.warn(`warn: ${w}`);
 console.log(
 	`gen-i18n-manifest: ${Object.keys(manifest.app).length} keys, ${locales.length} locales → ${outPath}`,

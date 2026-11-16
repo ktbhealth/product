@@ -59,6 +59,7 @@
         "@ktb/eval-credentials": "workspace:*",
         "@ktb/eval-persona": "workspace:*",
         "@ktb/eval-validator": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/i18n-plugin": "workspace:*",
         "@ktb/infra-cloudflare": "workspace:*",
         "@ktb/interop": "workspace:*",
@@ -496,6 +497,7 @@
       "name": "@ktb/server-fns",
       "dependencies": {
         "@ktb/auth": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/interop": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@tanstack/react-router": "1.170.46",
