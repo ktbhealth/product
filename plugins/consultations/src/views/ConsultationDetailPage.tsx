@@ -19,7 +19,10 @@ import {
 import type { ConsultationIntegrityReport } from "../index.ts";
 import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, sourceLabel } from "../i18n.ts";
+import { decryptBlob } from "@ktb/crypto/stream";
+
 import {
+	consultationDek,
 	decryptConsultation,
 	decryptConsultations,
 	isEnvelope,
@@ -189,6 +192,34 @@ export function ConsultationDetailPage({
 		};
 	}, [zk, historyRows]);
 	const history = zk ? decHistory : historyProp;
+	// ZK audio playback (T-147): the stored object is framed ciphertext —
+	// fetch it, unwrap the consultation DEK, decrypt in the browser and
+	// hand the <audio> element an object URL. Locked/missing grant → no
+	// player, exactly like the rest of the record.
+	const [zkAudioUrl, setZkAudioUrl] = useState<string | null>(null);
+	useEffect(() => {
+		if (!zk || !c.audioKey) return;
+		let live = true;
+		let url: string | null = null;
+		void (async () => {
+			const dek = await consultationDek(zk.keyring, zk.api, c.id);
+			if (!dek) return;
+			const res = await fetch(`/api/consultations/${c.id}/audio`);
+			if (!res.ok) return;
+			const plain = await decryptBlob(dek, new Uint8Array(await res.arrayBuffer()));
+			url = URL.createObjectURL(
+				// The recorded/uploaded type is not part of the detail
+				// wire shape — browsers sniff the decrypted bytes anyway.
+				new Blob([plain as Uint8Array<ArrayBuffer>], { type: "audio/webm" }),
+			);
+			if (live) setZkAudioUrl(url);
+			else URL.revokeObjectURL(url);
+		})().catch(() => {});
+		return () => {
+			live = false;
+			if (url !== null) URL.revokeObjectURL(url);
+		};
+	}, [zk, c]);
 	// Poll only when the loader data says the pipeline may still be
 	// running (or the LLM cleanup is pending); the hook stops itself
 	// once the job reaches a terminal state.
@@ -424,6 +455,7 @@ export function ConsultationDetailPage({
 							locale={locale}
 							consultationId={c.id}
 							audioStatus={v.audioStatus}
+							audioSrc={zkAudioUrl ?? undefined}
 							hasAudio={Boolean(v.audioKey)}
 							browserText={v.transcript}
 							serverText={v.serverTranscript}

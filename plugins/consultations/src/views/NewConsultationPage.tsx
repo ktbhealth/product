@@ -27,6 +27,7 @@ import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { anamnesisToText } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSectionKey } from "@ktb/anamnesis";
 import { SAMPLE_TRANSCRIPT } from "@ktb/anamnesis";
+import { encryptToBlob } from "@ktb/crypto/stream";
 import { birthDateFromAge, errorMessage, type PatientErrors } from "@ktb/patients/record";
 import {
 	needsServerFallback,
@@ -463,10 +464,25 @@ export function NewConsultationPage({
 			const blob = tabBlob ?? micBlob ?? pendingUploadBlob.current;
 			if (!blob || blob.size === 0) return;
 			uploadedAudioFor.current.add(id);
+			// T-147: under ZK the recording is chunked-encrypted with the
+			// consultation DEK before upload — the server stores ciphertext
+			// and the Whisper queue never sees it. Fail closed: no grant,
+			// no upload.
+			let body: Blob = blob;
+			let contentType = (blob.type || "audio/webm").split(";")[0]!;
+			if (zk) {
+				const dek = await consultationDek(zk.keyring, zk.api, id);
+				if (!dek) throw new Error("audio upload blocked — record is locked on this device");
+				const encrypted = await encryptToBlob(dek, new Uint8Array(await blob.arrayBuffer()));
+				// Fresh copy — the typed-array generic must resolve to
+				// ArrayBuffer (not ArrayBufferLike) for fetch's BodyInit.
+				body = new Blob([new Uint8Array(encrypted)]);
+				contentType = "application/octet-stream";
+			}
 			const res = await fetch(`/api/consultations/${id}/audio`, {
 				method: "POST",
-				headers: { "content-type": (blob.type || "audio/webm").split(";")[0] },
-				body: blob,
+				headers: { "content-type": contentType },
+				body,
 			});
 			if (!res.ok) throw new Error(`audio upload failed (${res.status})`);
 			setAudioConsultId(id);
@@ -578,9 +594,10 @@ export function NewConsultationPage({
 			if (!id) throw new Error(t.newConsultation.saveFailed);
 			if (consented) await api.recordConsent({ data: id });
 			setSavedId(id);
-			// T-145: no plaintext audio ever leaves a ZK device — T-147
-			// adds the client-encrypted upload path.
-			if (!zk) void uploadSessionAudio(id);
+			// T-145+T-147: the upload runs under ZK too — uploadSessionAudio
+			// encrypts with the record DEK first, so no plaintext audio ever
+			// leaves the device (fail-closed when the grant is missing).
+			void uploadSessionAudio(id);
 			// The consultation is saved either way: a failed lookup only
 			// means the access question is not asked.
 			const standing =

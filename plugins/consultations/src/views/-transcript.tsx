@@ -171,6 +171,7 @@ export function AudioTranscriptPanel({
 	serverText,
 	correctedText,
 	onActiveText,
+	audioSrc,
 	locale = "en",
 }: {
 	consultationId: number | null;
@@ -184,6 +185,10 @@ export function AudioTranscriptPanel({
 	/** Reports the text currently on screen so callers (anamnesis
 	 *  generation) use exactly what the doctor is viewing. */
 	onActiveText?: (view: TranscriptView) => void;
+	/** Pre-resolved playback URL — the ZK path (T-147) fetches the
+	 * ciphertext, decrypts it in the browser and hands an object URL;
+	 * absent = the default authenticated endpoint. */
+	audioSrc?: string;
 }) {
 	const t = consultationMessages(locale);
 	const [tab, setTab] = useState<"corrected" | "original">("corrected");
@@ -225,7 +230,7 @@ export function AudioTranscriptPanel({
 
 	return (
 		<div className="space-y-3">
-			{status === "failed" || inFlight || correctedView ? (
+			{status === "failed" || inFlight || correctedView || audioSrc ? (
 				<div className="flex flex-wrap items-center gap-2">
 					{status === "failed" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.red}`}>
@@ -243,11 +248,11 @@ export function AudioTranscriptPanel({
 							{t.transcriptPanel.enhanced}
 						</Badge>
 					)}
-					{hasAudio && consultationId !== null ? (
+					{hasAudio && (consultationId !== null || audioSrc) ? (
 						<audio
 							controls
 							preload="none"
-							src={`/api/consultations/${consultationId}/audio`}
+							src={audioSrc ?? `/api/consultations/${consultationId}/audio`}
 							aria-label={t.transcriptPanel.audioLabel}
 							className="h-8 w-full max-w-xs"
 						/>

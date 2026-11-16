@@ -29,6 +29,7 @@ CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NUL
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL DEFAULT 'browser', status TEXT NOT NULL DEFAULT 'done', bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
 CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO groups (id, name, slug, kind, zk) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1);
 `;
 
 const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
@@ -127,6 +128,26 @@ describe("processAudioJob", () => {
 		expect(r?.correctedTranscript).toBe("transcrição servidor (corrigido)");
 		expect(r?.enhancementEngine).toBe("test-llm");
 		expect(calls.corrected).toEqual(["transcrição servidor"]);
+	});
+
+	it("refuses to send zero-knowledge audio to Whisper (T-147)", async () => {
+		let aiCalled = false;
+		const { db, deps } = makeDeps({
+			ai: {
+				run: async () => {
+					aiCalled = true;
+					return { text: "x" };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }, 9))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id, { tenantId: 9 }), deps);
+		const r = await row(db, id);
+		expect(aiCalled).toBe(false);
+		expect(r?.audioStatus).toBe("failed");
+		expect(r?.audioError).toContain("zero-knowledge");
+		expect(r?.serverTranscript).toBeNull();
 	});
 
 	it("is idempotent — done consultations are skipped", async () => {
