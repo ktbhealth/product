@@ -182,6 +182,16 @@ describe("Vault service", () => {
 		expect(row.status).toBe("pending");
 	});
 
+	it("lists the tenant's devices for the admin UI", async () => {
+		const devices = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.devices(TENANT_ID)),
+			{ role: "admin" },
+		);
+		expect(devices.length).toBeGreaterThan(0);
+		expect(devices.every((d) => d.tenantId === TENANT_ID)).toBe(true);
+	});
+
 	it("fails closed without a member role", async () => {
 		const exit = await run(
 			runtime,

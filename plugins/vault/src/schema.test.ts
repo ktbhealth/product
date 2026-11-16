@@ -1,7 +1,7 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
-import { clinicKeys, entityDeks } from "@ktb/db/schema";
+import { clinicKeys, entityDeks, groups } from "@ktb/db/schema";
 
 describe("vault schema", () => {
 	it("exposes clinic_keys columns and unique device index", () => {
@@ -50,5 +50,8 @@ describe("vault schema", () => {
 			"entity_id",
 			"reader_pubkey",
 		]);
+		const fk = cfg.foreignKeys[0]!;
+		expect(fk.reference().foreignTable).toBe(groups);
+		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
 	});
 });
