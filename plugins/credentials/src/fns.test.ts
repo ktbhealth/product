@@ -47,7 +47,9 @@ describe("credentials fns", () => {
 
 	beforeAll(() => {
 		// In-memory ApiKeys port — same contract as the adapter: rows
-		// per referenceId, metadata JSON carries {provider, secret}.
+		// per referenceId, metadata JSON carries {provider, secret} at
+		// rest; `create` adds the `secretLast4` hint and `list` strips
+		// `secret` before it leaves the port.
 		const store = new Map<
 			string,
 			{ name: string; metadata: Record<string, unknown>; referenceId: string }
@@ -57,9 +59,14 @@ describe("credentials fns", () => {
 			create: async (input) => {
 				n += 1;
 				const id = `k${n}`;
+				const secret = input.metadata.secret;
+				const metadata =
+					typeof secret === "string" && secret.length > 4
+						? { ...input.metadata, secretLast4: secret.slice(-4) }
+						: input.metadata;
 				store.set(id, {
 					name: input.name,
-					metadata: input.metadata,
+					metadata,
 					referenceId: input.referenceId,
 				});
 				return { id };
@@ -67,14 +74,17 @@ describe("credentials fns", () => {
 			list: async (referenceId) =>
 				[...store.entries()]
 					.filter(([, v]) => v.referenceId === referenceId)
-					.map(([id, v]) => ({
-						id,
-						referenceId: v.referenceId,
-						name: v.name,
-						start: "sk",
-						enabled: true,
-						metadata: JSON.stringify(v.metadata),
-					})),
+					.map(([id, v]) => {
+						const { secret: _secret, ...rest } = v.metadata;
+						return {
+							id,
+							referenceId: v.referenceId,
+							name: v.name,
+							start: "sk",
+							enabled: true,
+							metadata: JSON.stringify(rest),
+						};
+					}),
 			remove: async (keyId, referenceId) => {
 				if (store.get(keyId)?.referenceId === referenceId) store.delete(keyId);
 			},
