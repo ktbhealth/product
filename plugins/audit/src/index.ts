@@ -1,8 +1,8 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { asc, count, desc } from "drizzle-orm";
-import { ScrollTextIcon } from "lucide-react";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { ActivityIcon, ScrollTextIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
 import { Forbidden, Principal } from "@ktb/authz";
@@ -10,7 +10,10 @@ import { contentHash } from "@ktb/crypto/digest";
 import { Db, type DbClient } from "@ktb/db";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { Permissions } from "@ktb/rbac";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 
+import { AuditActivityPage } from "./activity-page.tsx";
 import { AuditPlatformPage } from "./platform-page.tsx";
 import { adminAudit, type AdminAudit } from "./schema.ts";
 
@@ -155,6 +158,10 @@ export async function verifyAuditChain(db: DbClient): Promise<AuditVerifyResult>
 const MAX_LIMIT = 500;
 const DEFAULT_LIMIT = 200;
 
+/** Shared page-size clamp for the admin and tenant listings. */
+const pageLimit = (limit: number | undefined): number =>
+	Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+
 /**
  * Newest-first audit listing for the /platform/audit console. Callers
  * MUST have passed the `PlatformAdmin` gate first — the repo function
@@ -164,7 +171,7 @@ export async function listAuditEntries(
 	db: DbClient,
 	options: { readonly limit?: number } = {},
 ): Promise<AuditListResult> {
-	const limit = Math.min(Math.max(options.limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
+	const limit = pageLimit(options.limit);
 	const [entries, totals] = await Promise.all([
 		db
 			.select()
@@ -172,6 +179,33 @@ export async function listAuditEntries(
 			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
 			.limit(limit),
 		db.select({ n: count() }).from(adminAudit),
+	]);
+	return { entries, total: totals[0]?.n ?? 0, limit };
+}
+
+/**
+ * Newest-first audit listing scoped to ONE tenant (P-080) — the staff
+ * activity feed behind /portal/clinician/activity. Same ordering and
+ * limit clamp as {@link listAuditEntries} but fenced by
+ * `tenant_id = tenantId`; platform-global rows (`tenant_id` NULL) are
+ * excluded — they stay admin-only. Callers MUST have resolved tenant
+ * scope and the `audit.read` grant first — the repo function itself is
+ * unauthenticated, like the other `*Admin` helpers.
+ */
+export async function listTenantAuditEntries(
+	db: DbClient,
+	tenantId: number,
+	options: { readonly limit?: number } = {},
+): Promise<AuditListResult> {
+	const limit = pageLimit(options.limit);
+	const [entries, totals] = await Promise.all([
+		db
+			.select()
+			.from(adminAudit)
+			.where(eq(adminAudit.tenantId, tenantId))
+			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
+			.limit(limit),
+		db.select({ n: count() }).from(adminAudit).where(eq(adminAudit.tenantId, tenantId)),
 	]);
 	return { entries, total: totals[0]?.n ?? 0, limit };
 }
@@ -185,7 +219,15 @@ export async function listAuditEntries(
  * (`Effect.catchCause`). Consumers resolve it via
  * `Effect.serviceOption(Audit)` — the audit plugin may be absent and
  * mutations must still work (same contract as `PermissionInvalidator`).
- * `adminList` re-checks the `PlatformAdmin` gate.
+ * `adminList`/`adminVerify` re-check the `PlatformAdmin` gate.
+ *
+ * `activityAccess`/`activityList` are the tenant-scoped staff feed
+ * (P-080): they resolve the bound `Tenant` to its `groups.id` scope and
+ * ask the OPTIONAL `Permissions` port for `audit.read` on that tenant —
+ * resolved via `serviceOption` per call (no dep edge: rbac already
+ * depends on audit transitively through groups, so a declared edge
+ * would cycle). Absent tenant scope or absent Permissions both fail
+ * closed, matching `can`'s null-principal behaviour.
  */
 export class Audit extends Context.Service<
 	Audit,
@@ -196,6 +238,14 @@ export class Audit extends Context.Service<
 		}) => Effect.Effect<AuditListResult, Forbidden>;
 		/** Tamper-evident chain walk over the whole log — platform admins only. */
 		readonly adminVerify: () => Effect.Effect<AuditVerifyResult, Forbidden>;
+		/** Whether the bound tenant may read its own activity feed —
+		 * false (fail closed) without tenant scope or Permissions. */
+		readonly activityAccess: () => Effect.Effect<boolean>;
+		/** Tenant-scoped newest-first feed; `Forbidden` when
+		 * {@link activityAccess} would be false. */
+		readonly activityList: (options?: {
+			readonly limit?: number;
+		}) => Effect.Effect<AuditListResult, Forbidden>;
 	}
 >()("@ktb/audit/Audit") {}
 
@@ -204,6 +254,18 @@ export const AuditLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
+		/** Shared scope resolution for the staff feed: the bound tenant's
+		 * `groups.id` when `audit.read` is granted on it, else null. Read
+		 * per call — `Tenant` is request-scoped and `Permissions` may be
+		 * absent entirely (rbac plugin disabled). */
+		const activityScope = Effect.gen(function* () {
+			const scopeId = tenantScopeId(yield* Tenant);
+			if (scopeId === null) return null;
+			const permissions = yield* Effect.serviceOption(Permissions);
+			if (Option.isNone(permissions)) return null;
+			const allowed = yield* permissions.value.can("audit", "read", { tenantId: scopeId });
+			return allowed ? scopeId : null;
+		});
 		return Audit.of({
 			record: Effect.fn("Audit.record")(function* (entry: AuditEntryInput) {
 				const principal = yield* Principal;
@@ -230,6 +292,16 @@ export const AuditLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				return yield* Effect.promise(() => verifyAuditChain(db));
 			}),
+			activityAccess: Effect.fn("Audit.activityAccess")(function* () {
+				return (yield* activityScope) !== null;
+			}),
+			activityList: Effect.fn("Audit.activityList")(function* (options?: { limit?: number }) {
+				const scopeId = yield* activityScope;
+				if (scopeId === null) {
+					return yield* Effect.fail(new Forbidden({ path: "rbac.audit.read" }));
+				}
+				return yield* Effect.promise(() => listTenantAuditEntries(db, scopeId, options));
+			}),
 		});
 	}),
 );
@@ -253,6 +325,7 @@ CREATE TABLE admin_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_user_id TE
 CREATE INDEX admin_audit_created_at_idx ON admin_audit (created_at);
 CREATE INDEX admin_audit_action_idx ON admin_audit (action);
 CREATE INDEX admin_audit_actor_idx ON admin_audit (actor_user_id);
+CREATE INDEX admin_audit_tenant_created_idx ON admin_audit (tenant_id, created_at);
 `;
 
 export const auditTablesPlugin = definePlugin({
@@ -280,7 +353,28 @@ export const auditChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/audit", label: "Audit log", icon: ScrollTextIcon, group: "System" },
+				item: {
+					to: "/platform/audit",
+					label: "Audit log",
+					icon: ScrollTextIcon,
+					group: "Governance",
+				},
+			},
+		},
+		// Staff activity feed (P-080): scoped to the "clinician" portal
+		// instance — deployments without it never render the item.
+		{
+			id: "audit.activity.sidebar",
+			region: "portal.sidebar",
+			portal: "clinician",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/portal/clinician/activity",
+					label: "Activity",
+					icon: ActivityIcon,
+					group: "Governance",
+				},
 			},
 		},
 	],
@@ -322,6 +416,36 @@ export const auditPanelPlugin = definePlugin({
 	},
 });
 
+// Staff activity feed (P-080): /portal/clinician/activity dispatches
+// inside the clinician portal instance (audience + subject gates are
+// the portal's). The guard asks the Audit service whether the bound
+// tenant holds `audit.read`; the loader degrades a denial to an empty
+// page — same contract as the panel page above.
+export const auditActivityPlugin = definePlugin({
+	id: "audit.activity",
+	requiredDeps: [auditServicesPlugin.id],
+	pages: [
+		{
+			id: "audit.activity",
+			path: "/portal/clinician/activity",
+			component: AuditActivityPage,
+			guard: () =>
+				Effect.gen(function* () {
+					const audit = yield* Audit;
+					return yield* audit.activityAccess();
+				}),
+			loader: () =>
+				Effect.gen(function* () {
+					const audit = yield* Audit;
+					const empty: AuditListResult = { entries: [], total: 0, limit: 200 };
+					return yield* audit
+						.activityList()
+						.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
+				}),
+		},
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
@@ -329,6 +453,7 @@ export const plugins: readonly Plugin[] = [
 	auditServicesPlugin,
 	auditChromePlugin,
 	auditPanelPlugin,
+	auditActivityPlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -339,5 +464,6 @@ declare module "@ktb/kernel" {
 		"audit.services": true;
 		"audit.chrome": true;
 		"audit.panel": true;
+		"audit.activity": true;
 	}
 }

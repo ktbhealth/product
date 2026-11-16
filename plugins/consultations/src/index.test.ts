@@ -647,6 +647,76 @@ describe("ConsultationsLive", () => {
 			call((c) => c.recordConsent(9999, "u1")),
 		);
 	});
+
+	it("audits owner mutations with ids/flags only (P-080)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "secret", source: "mic" })),
+		);
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: saved.id,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e2",
+				}),
+			),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.recordConsent(saved.id, "u1")),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAudio("u1", {
+					consultationId: saved.id,
+					audioKey: "k-audit",
+					contentType: "audio/webm",
+					size: 5,
+				}),
+			),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.updateAudioStatus("u1", saved.id, "queued")),
+		);
+		// finish is a system path — no principal bound, actor columns NULL.
+		await runtime.runPromise(Effect.flatMap(Consultations, (c) => c.finish(saved.id)));
+
+		const rows = await testDb.select().from(adminAudit);
+		const find = (action: string, targetId: number) =>
+			rows.find((r) => r.action === action && r.targetId === String(targetId));
+
+		const created = find("consultations.create", id!);
+		expect(created).toMatchObject({
+			actorUserId: "u1",
+			targetType: "consultation",
+		});
+		expect(created?.detail).toContain('"source":"mic"');
+		expect(created?.detail).not.toContain("secret");
+
+		expect(find("consultations.save", saved.id)?.detail).toContain('"engine":"e"');
+		expect(find("consultations.anamnesis.attach", saved.id)?.detail).toContain('"engine":"e2"');
+		expect(find("consultations.consent.record", saved.id)).toMatchObject({
+			targetType: "consultation",
+		});
+		expect(find("consultations.audio.attach", saved.id)?.detail).toContain(
+			'"contentType":"audio/webm"',
+		);
+		expect(find("consultations.audio.status", saved.id)?.detail).toContain('"status":"queued"');
+		const finished = find("consultations.finish", saved.id);
+		expect(finished).toMatchObject({
+			actorUserId: null,
+			targetType: "consultation",
+		});
+		expect(finished?.detail).toContain('"status":"done"');
+	});
 });
 
 describe("anamnesis integrity versioning (T-138)", () => {

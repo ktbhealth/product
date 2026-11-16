@@ -399,6 +399,15 @@ export const PatientsLive = Layer.effect(
 							tenantId: tenantScopeId(tenant),
 						}),
 					]);
+					// ids only — patient fields are PHI and stay out of the
+					// audit log (same rule as adminCreate).
+					yield* audit({
+						action: "patients.create",
+						targetType: "patient",
+						targetId: row.id,
+						tenantId: tenantScopeId(tenant),
+						detail: { ownerId },
+					});
 				}
 				return row;
 			}),
@@ -414,7 +423,19 @@ export const PatientsLive = Layer.effect(
 				yield* requireCipheredWhenZk(db, row.tenantId, fields, "patient.update");
 				yield* Effect.annotateCurrentSpan({ ownerId, patientId: id });
 				yield* Effect.logInfo("patient update", { ownerId, patientId: id });
-				return yield* Effect.promise(() => updatePatient(db, id, fields));
+				const updated = yield* Effect.promise(() => updatePatient(db, id, fields));
+				if (updated !== null) {
+					// ids only — the row's tenant_id and owner_id are
+					// authoritative (the caller may be a cross-owner admin).
+					yield* audit({
+						action: "patients.update",
+						targetType: "patient",
+						targetId: id,
+						tenantId: row.tenantId,
+						detail: { ownerId: row.ownerId },
+					});
+				}
+				return updated;
 			}),
 			adminList: Effect.fn("Patients.adminList")(function* () {
 				// Platform gate first — fails Forbidden for non-admins and
@@ -499,6 +520,16 @@ export const PatientsCommandsLive = Command.handlersOf(PatientsCommands, {
 				// differ from the deleted row's owner scope.
 				PatientDeleted.make({ id, ownerId: row.ownerId, tenantId: row.tenantId }),
 			]);
+			// P-080: every patient delete is audited here — owner and
+			// platform-admin paths alike (the consultations cascade no
+			// longer writes its own row). ids only, never record fields.
+			yield* audit({
+				action: "patients.delete",
+				targetType: "patient",
+				targetId: id,
+				tenantId: row.tenantId,
+				detail: { ownerId: row.ownerId },
+			});
 		}),
 });
 

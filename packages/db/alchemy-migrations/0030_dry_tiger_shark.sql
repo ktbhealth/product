@@ -1,0 +1,1 @@
+CREATE INDEX `admin_audit_tenant_created_idx` ON `admin_audit` (`tenant_id`,`created_at`);
