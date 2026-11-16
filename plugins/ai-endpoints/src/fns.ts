@@ -5,7 +5,13 @@ import * as Schema from "effect/Schema";
 import { ensureSessionUser, runAs } from "@ktb/server-fns";
 import type { LlmEndpointPreset } from "@ktb/eval-consultation";
 
-import { AiEndpoints, type BridgeStatus, type EndpointCard, type EndpointInput } from "./index.ts";
+import {
+	AiEndpoints,
+	type AgentLinkRow,
+	type BridgeStatus,
+	type EndpointCard,
+	type EndpointInput,
+} from "./index.ts";
 
 // AI endpoint server fns: the /platform/ai/endpoints surface mutates
 // through these. The service re-checks the eval.validator grant inside
@@ -180,6 +186,40 @@ export const endpointBridgeStatusFn = createServerFn({ method: "GET" })
 			);
 		},
 	);
+
+/** Agents page list (F4): every bridge link joined to its endpoint —
+ * the wire never carries token_hash. `{ ok: false }` without the
+ * eval.validator grant. */
+export const listAgentLinksFn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<Result<readonly AgentLinkRow[]>> => {
+		const user = await ensureSessionUser();
+		return run(
+			user,
+			Effect.gen(function* () {
+				const s = yield* AiEndpoints;
+				const data = yield* s.listAgentLinks();
+				return { ok: true as const, data };
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	},
+);
+
+/** Revoke a bridge link (F4): stamps revoked_at — future token use is
+ * refused and the row flips to `revoked`. `data.revoked` is false for
+ * unknown or already-revoked ids. */
+export const revokeAgentLinkFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeId(input))
+	.handler(async ({ data }): Promise<Result<{ revoked: boolean }>> => {
+		const user = await ensureSessionUser();
+		return run(
+			user,
+			Effect.gen(function* () {
+				const s = yield* AiEndpoints;
+				const revoked = yield* s.revokeAgentLink(data.id);
+				return { ok: true as const, data: { revoked } };
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});
 
 export const testEndpointFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))

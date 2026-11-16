@@ -37,8 +37,10 @@ import {
 	createBridgeLinkFn,
 	deleteEndpointFn,
 	endpointBridgeStatusFn,
+	listAgentLinksFn,
 	listEndpointPresetsFn,
 	listEndpointsFn,
+	revokeAgentLinkFn,
 	saveEndpointFn,
 	setPlatformDefaultEndpointFn,
 	testEndpointFn,
@@ -135,6 +137,8 @@ describe("ai-endpoints fns", () => {
 		);
 		await expect(createBridgeLinkFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 		await expect(endpointBridgeStatusFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
+		await expect(listAgentLinksFn({ data: undefined })).rejects.toThrow("unauthenticated");
+		await expect(revokeAgentLinkFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 	});
 
 	it("returns { ok: false } when the grant is missing", async () => {
@@ -150,6 +154,8 @@ describe("ai-endpoints fns", () => {
 		expect(await setPlatformDefaultEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await createBridgeLinkFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await endpointBridgeStatusFn({ data: { id: 1 } })).toEqual({ ok: false });
+		expect(await listAgentLinksFn({ data: undefined })).toEqual({ ok: false });
+		expect(await revokeAgentLinkFn({ data: { id: 1 } })).toEqual({ ok: false });
 		allow = true;
 	});
 
@@ -275,5 +281,54 @@ describe("ai-endpoints fns", () => {
 			ok: true,
 			data: null,
 		});
+	});
+
+	it("lists agent links without token material and revokes them through the fn surface", async () => {
+		currentEmail = "v@x.com";
+		allow = true;
+		const created = await saveEndpointFn({
+			data: { name: "agent-f4", kind: "acp", transport: "ws", baseUrl: "", enabled: true },
+		});
+		expect(created.ok).toBe(true);
+		if (!created.ok) return;
+		const endpointId = created.data.id;
+
+		const minted = await createBridgeLinkFn({ data: { id: endpointId } });
+		expect(minted.ok && minted.data !== null).toBe(true);
+		if (!minted.ok || minted.data === null) return;
+
+		const listed = await listAgentLinksFn({ data: undefined });
+		expect(listed.ok).toBe(true);
+		if (!listed.ok) return;
+		const link = listed.data.find((l) => l.endpointId === endpointId);
+		expect(link).toMatchObject({
+			endpointId,
+			endpointName: "agent-f4",
+			status: "waiting",
+			usedAt: null,
+			lastSeenAt: null,
+		});
+		// token_hash never crosses the wire; the raw token only ever
+		// existed inside the minted command.
+		expect(link).not.toHaveProperty("tokenHash");
+		expect(JSON.stringify(link)).not.toContain(
+			minted.data.command.split("token=")[1]!.split(" ")[0]!,
+		);
+
+		// Revoke → status flips; a second revoke reports revoked: false.
+		expect(await revokeAgentLinkFn({ data: { id: link!.id } })).toEqual({
+			ok: true,
+			data: { revoked: true },
+		});
+		expect(await revokeAgentLinkFn({ data: { id: link!.id } })).toEqual({
+			ok: true,
+			data: { revoked: false },
+		});
+		expect(await revokeAgentLinkFn({ data: { id: 9999 } })).toEqual({
+			ok: true,
+			data: { revoked: false },
+		});
+		const after = await listAgentLinksFn({ data: undefined });
+		expect(after.ok && after.data.find((l) => l.id === link!.id)?.status).toBe("revoked");
 	});
 });

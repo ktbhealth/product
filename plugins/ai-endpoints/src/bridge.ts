@@ -10,6 +10,8 @@
  *   no `Upgrade: websocket`        → 400 (the route only exists to
  *                                    hand off a socket)
  *   unknown token                  → 401
+ *   revoked token                  → 403 (F4: admin pulled the link —
+ *                                    the row stays for audit)
  *   already-used token             → 409
  *   expired token                  → 410
  *   endpoint missing/disabled      → 403
@@ -58,6 +60,7 @@ export const handleBridgeUpgrade = async (request: Request): Promise<Response> =
 	);
 	if (link === undefined) return json("invalid token", 401);
 	const now = new Date();
+	if (link.revokedAt !== null) return json("token revoked", 403);
 	if (link.usedAt !== null) return json("token already used", 409);
 	if (link.expiresAt.getTime() <= now.getTime()) return json("token expired", 410);
 
