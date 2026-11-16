@@ -9,6 +9,7 @@ import {
 	type EntityCipherService,
 } from "@ktb/crypto/cipher";
 import { CryptoFormatError } from "@ktb/crypto";
+import { Keyring, makeKeyring, memoryStore } from "@ktb/crypto/keyring";
 
 /**
  * Passthrough EntityCipher for non-ZK deployments (T-140): rows persist
@@ -46,5 +47,21 @@ export const passthroughCipherDriver: Driver<CipherDriverEnv> = {
 	id: "cipher-passthrough",
 	port: EntityCipher.key,
 	provides: () => EntityCipherStubLive,
+	when: () => true,
+};
+
+/**
+ * Stub keyring (T-141): real crypto over an EPHEMERAL memory store —
+ * non-ZK tenants never touch it, tests get working unwrap/sign paths
+ * without IndexedDB. A fresh device identity per layer build; nothing
+ * persists across restarts.
+ */
+export const KeyringStubLive = Layer.succeed(Keyring, makeKeyring({ store: memoryStore() }));
+
+/** Always-eligible driver — mirrors passthroughCipherDriver. */
+export const stubKeyringDriver: Driver<CipherDriverEnv> = {
+	id: "keyring-stub",
+	port: Keyring.key,
+	provides: () => KeyringStubLive,
 	when: () => true,
 };

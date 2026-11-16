@@ -10,6 +10,7 @@
 		"./sign": "./src/sign.ts",
 		"./digest": "./src/digest.ts",
 		"./kdf": "./src/kdf.ts",
+		"./keyring": "./src/keyring.ts",
 		"./stream": "./src/stream.ts"
 	},
 	"dependencies": {
