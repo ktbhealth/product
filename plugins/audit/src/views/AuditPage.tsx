@@ -29,8 +29,11 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import type { AdminAuditRow } from "../index.ts";
-import { auditMessages, type AuditMessages } from "../i18n.ts";
+import { auditMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 
@@ -68,15 +71,18 @@ const targetLabel = (row: AdminAuditRow): string =>
 export function AuditPage({
 	entries,
 	total,
+	i18n,
 	locale = "en",
 }: {
 	entries: readonly AdminAuditRow[];
 	/** Total rows in the log (may exceed the capped page). */
 	total: number;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host via the panel page ctx. */
 	locale?: string;
 }) {
-	const t = auditMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, auditMessages(locale));
 	const [q, setQ] = useState("");
 	// "all" sentinel — Base UI Select items reject empty-string values.
 	const [group, setGroup] = useState("all");

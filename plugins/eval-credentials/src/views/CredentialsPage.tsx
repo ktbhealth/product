@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { KeyRoundIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
-import { createCatalogT } from "@ktb/i18n";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent } from "@ktbhealth/ui/components/card";
@@ -17,7 +18,7 @@ import {
 } from "@ktbhealth/ui/components/select";
 
 import { createCredentialFn, removeCredentialFn } from "../fns.ts";
-import { credMessages, I18N_NAMESPACE, type CredMessages } from "../i18n.ts";
+import { credMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { CredentialCard } from "../index.ts";
 
 const PROVIDERS = ["openai", "anthropic", "gemini", "acp", "other"] as const;
@@ -28,33 +29,13 @@ export function CredentialsPage({
 	locale,
 }: {
 	creds: readonly CredentialCard[];
-	i18n?: { readonly locale: string; readonly catalog: Readonly<Record<string, string>> };
+	i18n?: PageI18nSlice;
 	locale: string;
 }) {
-	// PL-008 Phase 4: copy resolves from the DB catalog slice (ctx.i18n)
-	// when the host shipped one; the code catalog is the fallback until
-	// every environment has re-run i18n:import-baseline.
-	const t = i18n === undefined ? undefined : createCatalogT(i18n.catalog, i18n.locale);
-	const legacy = credMessages(locale);
-	const tt = (key: keyof CredMessages): string => {
-		const full = `${I18N_NAMESPACE}.${key}`;
-		const resolved = t?.(full);
-		return resolved === undefined || resolved === full ? legacy[key] : resolved;
-	};
-	const m: CredMessages = {
-		title: tt("title"),
-		desc: tt("desc"),
-		newCred: tt("newCred"),
-		name: tt("name"),
-		provider: tt("provider"),
-		secret: tt("secret"),
-		save: tt("save"),
-		cancel: tt("cancel"),
-		delete: tt("delete"),
-		confirmDelete: tt("confirmDelete"),
-		empty: tt("empty"),
-		actionFailed: tt("actionFailed"),
-	};
+	// PL-008 Phase 4: string copy resolves from the DB catalog slice
+	// (ctx.i18n); the code catalog is the fallback until every
+	// environment has re-run i18n:import-baseline.
+	const m = sliceMessages(i18n, I18N_NAMESPACE, credMessages(locale));
 	const [creds, setCreds] = useState(initial);
 	const [form, setForm] = useState<{ name: string; provider: string; secret: string } | null>(null);
 	const [confirmId, setConfirmId] = useState<string | null>(null);

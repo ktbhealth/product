@@ -25,5 +25,5 @@ export {
 	type ResolvedMessage,
 	type ScopeChain,
 } from "./resolve.ts";
-export { createCatalogT } from "./catalog.ts";
+export { createCatalogT, sliceMessages } from "./catalog.ts";
 export { I18n, bindNamespace, type I18nShape, type TParams } from "./service.ts";

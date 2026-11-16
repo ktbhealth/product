@@ -55,19 +55,21 @@ export interface PanelHeaderAction {
  * plugin-aware views without importing the app host, plus the active
  * UI locale so views resolve their own localized copy, plus the
  * session user when one exists (app pages may be public). */
+/** Resolved DB-catalog slice injected into page contexts (PL-008):
+ * `namespace.key` → MF1 template for the active locale + scope chain. */
+export interface PageI18nSlice {
+	readonly locale: string;
+	readonly catalog: Readonly<Record<string, string>>;
+}
+
 export interface PageContext {
 	readonly plugins: readonly Plugin[];
 	readonly locale: string;
 	readonly user?: ChromeUser | null;
-	/** Resolved DB-catalog slice for this route's namespaces (PL-008):
-	 * `namespace.key` → MF1 template for the active locale + scope
-	 * chain. Present when the host wired i18n into loader data;
-	 * absent on surfaces without it (views keep their code catalogs
-	 * as fallback). */
-	readonly i18n?: {
-		readonly locale: string;
-		readonly catalog: Readonly<Record<string, string>>;
-	};
+	/** Present when the host wired i18n into loader data; absent on
+	 * surfaces without it (views keep their code catalogs as
+	 * fallback). */
+	readonly i18n?: PageI18nSlice;
 }
 
 /** Host-injected context handed to every panel page component — the

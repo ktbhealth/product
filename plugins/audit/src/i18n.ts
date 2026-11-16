@@ -7,6 +7,12 @@
  */
 
 export const AUDIT_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "audit";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): AuditMessages => auditMessages(locale);
 export type AuditLocale = (typeof AUDIT_LOCALES)[number];
 export const BASE_LOCALE: AuditLocale = "en";
 

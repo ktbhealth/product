@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -11,7 +13,7 @@ import {
 	CardTitle,
 } from "@ktbhealth/ui/components/card";
 
-import { doctorMessages } from "../i18n.ts";
+import { doctorMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 export interface DoctorProfileItem {
 	readonly doctorId: number;
@@ -27,6 +29,7 @@ export interface DoctorSelectApi {
 export function DoctorSelectPage({
 	profiles,
 	activeDoctorId,
+	i18n,
 	locale,
 	api,
 	onDone,
@@ -38,11 +41,13 @@ export function DoctorSelectPage({
 	activeDoctorId: number | null;
 	/** Active UI locale, injected by the host. */
 	locale: string;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	api: DoctorSelectApi;
 	/** Called once a profile is in effect — the host leaves the chooser. */
 	onDone: () => void;
 }) {
-	const t = doctorMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, doctorMessages(locale));
 	const [pending, setPending] = useState(false);
 	const [failed, setFailed] = useState(false);
 
