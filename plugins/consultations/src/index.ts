@@ -388,6 +388,18 @@ export async function consultationTenantId(db: DbClient, id: number) {
 	return rows[0]?.tenantId ?? null;
 }
 
+/** Tenant scope + patient link for audit rows written as the record is
+ * deleted (P-086) — both are read while the row still exists; the
+ * patient feed joins deleted consultations on `detail.patientId`. */
+async function consultationAuditScope(db: DbClient, id: number) {
+	const rows = await db
+		.select({ tenantId: consultations.tenantId, patientId: consultations.patientId })
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	return rows[0] ?? { tenantId: null, patientId: null };
+}
+
 /** Bot-webhook ownership check: the botId binds consultation ↔ provider session. */
 export async function ownsBot(db: DbClient, consultationId: number, botId: string) {
 	const rows = await db
@@ -1361,9 +1373,11 @@ export const ConsultationsLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				yield* Effect.annotateCurrentSpan({ consultationId: id, adminDelete: true });
 				yield* Effect.logInfo("consultation admin delete", { consultationId: id });
-				// Read the tenant scope before the row is gone — the audit
-				// entry keeps it (same rule as adminRequeueAudio).
-				const tenantId = yield* Effect.promise(() => consultationTenantId(db, id));
+				// Read the tenant scope and patient link before the row is
+				// gone — the audit entry keeps them (same rule as
+				// adminRequeueAudio; the patientId lets the patient feed
+				// find this row after the consultation is deleted).
+				const scope = yield* Effect.promise(() => consultationAuditScope(db, id));
 				const audioKey = yield* Effect.promise(() => deleteConsultationRow(db, id));
 				// Missing row → nothing was deleted; report null so the
 				// caller can answer "not found" like the owner paths do.
@@ -1372,8 +1386,8 @@ export const ConsultationsLive = Layer.effect(
 					action: "consultations.delete",
 					targetType: "consultation",
 					targetId: id,
-					tenantId,
-					detail: { hadAudio: audioKey !== null },
+					tenantId: scope.tenantId,
+					detail: { hadAudio: audioKey !== null, patientId: scope.patientId },
 				});
 				return { audioKey };
 			}),

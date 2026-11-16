@@ -464,10 +464,14 @@ describe("ConsultationsLive", () => {
 	});
 
 	it("adminDelete removes the row and returns its audio key", async () => {
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Del Paciente", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
 		const id = await createConsultation(testDb, {
 			userId: "u1",
 			source: "mic",
-			patientId: undefined,
+			patientId: p!.id,
 		});
 		await testDb
 			.update(consultationsTable)
@@ -484,7 +488,8 @@ describe("ConsultationsLive", () => {
 			.from(consultationsTable)
 			.where(eq(consultationsTable.id, id!));
 		expect(rows).toEqual([]);
-		// T-037: delete is audited with hadAudio only — never the audio key.
+		// T-037/P-086: delete is audited with hadAudio + patientId —
+		// never the audio key or record fields.
 		const auditRows = await testDb.select().from(adminAudit);
 		const entry = auditRows.find(
 			(r) => r.action === "consultations.delete" && r.targetId === String(id),
@@ -495,6 +500,7 @@ describe("ConsultationsLive", () => {
 			targetType: "consultation",
 		});
 		expect(entry?.detail).toContain('"hadAudio":true');
+		expect(entry?.detail).toContain(`"patientId":${p!.id}`);
 		expect(entry?.detail).not.toContain("audios/x.webm");
 	});
 

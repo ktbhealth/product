@@ -6,6 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	portalFn: vi.fn(),
 	portalConsultationFn: vi.fn(),
+	patientActivityFn: vi.fn(async (): Promise<unknown> => ({
+		entries: [],
+		total: 0,
+		limit: 100,
+	})),
 	portalDekEnvelopesFn: vi.fn(async () => ({})),
 	portalRegisterDeviceFn: vi.fn(async () => ({ ok: true })),
 	selectPatientFn: vi.fn(async (_arg: { data: number }) => ({ ok: true })),
@@ -18,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./fns.ts", () => ({
 	portalFn: mocks.portalFn,
 	portalConsultationFn: mocks.portalConsultationFn,
+	patientActivityFn: mocks.patientActivityFn,
 	portalDekEnvelopesFn: mocks.portalDekEnvelopesFn,
 	portalRegisterDeviceFn: mocks.portalRegisterDeviceFn,
 	selectPatientFn: mocks.selectPatientFn,
@@ -28,7 +34,11 @@ vi.mock("./views/index.ts", () => {
 		mocks.props.current = props;
 		return createElement("div", { "data-testid": testId });
 	};
-	return { PortalPage: capture("portal"), PortalConsultationPage: capture("consultation") };
+	return {
+		PortalPage: capture("portal"),
+		PortalConsultationPage: capture("consultation"),
+		PortalActivityPage: capture("activity"),
+	};
 });
 // Server fns become plain async calls; with no runtime registered the
 // plugin route gate (createPluginFileRoute → pluginEnabledFn) is inert.
@@ -60,6 +70,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 
+import { Route as ActivityRoute } from "./routes/activity.tsx";
 import { Route as ConsultationRoute } from "./routes/consultations.$id.tsx";
 import { Route as HomeRoute } from "./routes/index.tsx";
 
@@ -68,6 +79,7 @@ type Options<LoaderArgs> = {
 	component: () => ReactElement;
 };
 const home = (HomeRoute as unknown as { options: Options<void> }).options;
+const activity = (ActivityRoute as unknown as { options: Options<void> }).options;
 const detail = (ConsultationRoute as unknown as { options: Options<{ params: { id: string } }> })
 	.options;
 
@@ -257,5 +269,45 @@ describe("/portal/consultations/$id", () => {
 		unmount();
 		resolve?.({});
 		await vi.waitFor(() => expect(mocks.portalDekEnvelopesFn).toHaveBeenCalled());
+	});
+});
+
+describe("/portal/activity", () => {
+	const portal = {
+		user: { name: "Ana", email: "ana@ktb.test" },
+		awaitingInvites: 0,
+		profiles: [{ patientId: 1 }],
+		profile: { patientId: 1 },
+		consultations: [],
+	};
+	const feed = { entries: [{ id: 7 }], total: 1, limit: 100 };
+
+	it("loads the open record's feed with the locale", async () => {
+		mocks.portalFn.mockResolvedValue(portal);
+		mocks.patientActivityFn.mockResolvedValue(feed);
+		await expect(activity.loader()).resolves.toEqual({ activity: feed, locale: "pt-BR" });
+		expect(mocks.patientActivityFn).toHaveBeenCalledWith({ data: { patientId: 1 } });
+	});
+
+	it("renders an empty page without calling the fn when no record is open", async () => {
+		mocks.portalFn.mockResolvedValue({ ...portal, profile: null });
+		await expect(activity.loader()).resolves.toEqual({
+			activity: { entries: [], total: 0, limit: 100 },
+			locale: "pt-BR",
+		});
+		expect(mocks.patientActivityFn).not.toHaveBeenCalled();
+	});
+
+	it("sends anonymous visitors to the patient sign-in page", async () => {
+		mocks.portalFn.mockResolvedValue(null);
+		const caught = await activity.loader().catch((e: unknown) => e);
+		expect(isRedirect(caught)).toBe(true);
+		expect(redirectTarget(caught)).toBe("/portal/login");
+	});
+
+	it("hands the feed and locale to the activity view", () => {
+		mocks.loaderData.current = { activity: feed, locale: "en" };
+		render(createElement(activity.component));
+		expect(mocks.props.current).toEqual({ data: feed, locale: "en" });
 	});
 });

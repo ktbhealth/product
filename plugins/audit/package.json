@@ -4,7 +4,9 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./schema": "./src/schema.ts"
+		"./activity-page": "./src/activity-page.tsx",
+		"./schema": "./src/schema.ts",
+		"./views/audit-page": "./src/views/AuditPage.tsx"
 	},
 	"dependencies": {
 		"@ktb/authz": "workspace:*",

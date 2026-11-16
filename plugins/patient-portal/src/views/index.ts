@@ -6,3 +6,4 @@ export {
 	type PortalRecord,
 } from "./PortalPage.tsx";
 export { PortalConsultationPage, type PortalConsultationView } from "./PortalConsultationPage.tsx";
+export { PortalActivityPage } from "./PortalActivityPage.tsx";
