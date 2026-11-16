@@ -161,6 +161,7 @@ describe("patient portal, end to end", () => {
 				id: consultationId,
 				createdAt: expect.any(Date),
 				chiefComplaint: "Dor de cabeça há três dias",
+				anamnesis: null,
 			},
 		]);
 	});

@@ -568,7 +568,9 @@ export function NewConsultationPage({
 					grants: await wrapAll(pDek),
 				});
 			}
-			return wrapAll(dek);
+			// `await` matters: an unawaited return would escape this try —
+			// a bad portal pubkey must fail closed, never block the save.
+			return await wrapAll(dek);
 		} catch {
 			// Best-effort: the portal-access grant pass is the backstop —
 			// a failed reader lookup or unwrap must never block the save.

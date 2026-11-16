@@ -87,11 +87,13 @@ const zkMocks = vi.hoisted(() => ({
 	encryptAnamnesis: vi.fn(async () => "v1.a2.e"),
 	signAnamnesis: vi.fn(async () => ({ contentHash: "h1", signature: "s1" })),
 	extractAnamnesisZk: vi.fn(),
+	originals: {} as Record<string, unknown>,
 }));
-vi.mock("../zk.ts", async (importOriginal) => ({
-	...(await importOriginal<typeof import("../zk.ts")>()),
-	...zkMocks,
-}));
+vi.mock("../zk.ts", async (importOriginal) => {
+	const orig = await importOriginal<typeof import("../zk.ts")>();
+	zkMocks.originals.extractAnamnesisZk = orig.extractAnamnesisZk;
+	return { ...orig, ...zkMocks };
+});
 
 import { NewConsultationPage } from "./NewConsultationPage.tsx";
 
@@ -1752,6 +1754,32 @@ describe("NewConsultationPage", () => {
 // T-148: ZK saves wrap the record DEK to the portal devices of the
 // linked patient's active links, on top of the clinic-device grants.
 describe("NewConsultationPage ZK portal grants", () => {
+	beforeEach(() => {
+		// The portal-grant tests exercise the real local extraction seam —
+		// the deterministic heuristic produces the "media" confidence
+		// labels these flows assert on.
+		zkMocks.extractAnamnesisZk.mockImplementation(zkMocks.originals.extractAnamnesisZk as never);
+		// The portal wrap path needs real CryptoKeys — the hoisted fake
+		// `{tag:"dek"}` placeholders would fail closed to zero grants.
+		const realDek = async () => {
+			const keyring = makeKeyring({ store: memoryStore() });
+			const { wrapPublicKey } = await keyring.deviceKeys();
+			const { dek } = await keyring.mintDek(wrapPublicKey);
+			return dek;
+		};
+		zkMocks.newConsultationDek.mockImplementation(async () => ({
+			dek: (await realDek()) as never,
+			grants: [{ readerKind: "device" as const, readerPubkey: "w", wrappedDek: "w1.g" }],
+		}));
+		zkMocks.consultationDek.mockImplementation(realDek);
+		// jsdom lacks dialog.showModal — the save-ok dialog mounts open.
+		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
+			this.setAttribute("open", "");
+		});
+		HTMLDialogElement.prototype.close = vi.fn(function (this: HTMLDialogElement) {
+			this.removeAttribute("open");
+		});
+	});
 	afterEach(() => {
 		cleanup();
 		vi.unstubAllGlobals();

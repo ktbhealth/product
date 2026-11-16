@@ -52,7 +52,6 @@ INSERT INTO groups (id, name, slug, kind, zk) VALUES (8, 'ZK Clinic', 'clinic-8'
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, email TEXT, tenant_id INTEGER);
 INSERT INTO patients (id, owner_id, name, email) VALUES
   (1, 'doc', 'Ana', 'ana@ktb.test'), (2, 'doc', 'Leo', NULL), (3, 'other', 'Rui', 'rui@ktb.test');
-<<<<<<< HEAD
 CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 INSERT INTO patient_access (patient_id, user_id, relation, status, source, created_at, updated_at) VALUES
   (1, 'ana', 'self', 'active', 'invite', 0, 0),
