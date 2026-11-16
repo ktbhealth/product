@@ -209,6 +209,9 @@ export interface ChromeUser {
 	/** True for an account with no doctor side (a patient account) — chrome
 	 * hides doctor-only entries for it. Absent means a regular account. */
 	readonly patientOnly?: boolean;
+	/** True when the session passes the console gate (same check the
+	 * /platform beforeLoad runs) — chrome shows the console entry. */
+	readonly platformAdmin?: boolean;
 }
 
 /** Everything the host injects into a chrome `component` contribution —
@@ -216,7 +219,8 @@ export interface ChromeUser {
  * the shell resolves locale, user, labels and sign-out and hands them
  * down. `labels` carries the host-localized strings plugins need
  * (documented keys: `signIn`, `signOut`, `newConsultation`, `langMenu`,
- * `switchDoctor`, `secretaries`, `patientPortal`, `myConsultations`);
+ * `switchDoctor`, `secretaries`, `patientPortal`, `myConsultations`,
+ * `platformConsole`);
  * plugins fall back to their own English literal per key. `signOut`
  * performs the host's sign-out flow (plugins may not import auth
  * adapters). */
@@ -229,6 +233,12 @@ export interface ChromeProps {
 	readonly setLocale: (locale: string) => void;
 	readonly labels: Readonly<Record<string, string>>;
 	readonly signOut: () => Promise<void>;
+	/** Host-injected resolved theme for the current shell (P-082/PL-006
+	 * phase 7): the shape is owned by the theme plugin (`@ktb/theme`
+	 * `ResolvedTheme`) — the kernel stays dependency-free, so brand
+	 * chrome narrows it. Absent/null when no theme resolved (the host
+	 * always injects the built-in default in practice). */
+	readonly theme?: unknown;
 }
 
 /** What a chrome contribution renders. `link` is a router link (nav

@@ -7,6 +7,7 @@ import type { Register } from "@tanstack/react-router";
 import type { RequestHandler } from "@tanstack/react-start/server";
 
 import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
+import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
 import { flushTelemetry } from "#/lib/platform.ts";
 
 const fetch = createStartHandler(defaultStreamHandler);
@@ -42,7 +43,14 @@ export default {
 		return response;
 	}) as RequestHandler<Register>,
 	queue: async (batch: MessageBatch, _env: unknown, ctx: ExecutionContext) => {
-		await handleAudioQueueBatch(batch.messages);
+		// Dedicated theme-assets queue (PL-006 phase 4) dispatches to its
+		// own kind registry; every other consumer binding is the shared
+		// transcription/jobs transport.
+		if (batch.queue === "ktb-theme-assets") {
+			await handleThemeQueueBatch(batch.messages);
+		} else {
+			await handleAudioQueueBatch(batch.messages);
+		}
 		ctx?.waitUntil?.(flushTelemetry());
 	},
 };

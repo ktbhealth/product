@@ -28,6 +28,7 @@ import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-
 import { makeWorkersAiAsr } from "@ktb/eval-adapter-cloud";
 import {
 	makeAcpLlm,
+	makeHttpAcpTransport,
 	makeJevEval,
 	makeLocalAsr,
 	makeLocalEvalStoreLayer,
@@ -38,6 +39,8 @@ import {
 	type AcpTransport,
 } from "@ktb/eval-adapter-local";
 import { CANNED_ASR, CANNED_EDITS, CANNED_SCRIPT, stubAnswerOf } from "@ktb/eval-adapter-stub";
+
+export { makeHttpAcpTransport } from "@ktb/eval-adapter-local";
 
 // ---------- stub port layers (deterministic, zero I/O) ----------
 
@@ -105,7 +108,7 @@ export const stubLlmLayer = Layer.succeed(
  * ASR run complete without an ACP/Jev service; the `corrected` stage
  * then measures the unedited transcript, which is the honest signal
  * when no cleanup model is wired. */
-export const noopLlmLayer = Layer.succeed(
+const noopLlmLayer = Layer.succeed(
 	LlmPort,
 	LlmPort.of({
 		egress: false,
@@ -185,44 +188,9 @@ export const makeReadAudioFile =
 				}),
 		});
 
-/** Minimal JSON-RPC transport for the ACP adapter: POST the encoded
- * AcpRequest to EVAL_ACP_URL, hand the decoded body back for
- * decodeTaskResult validation. */
-export const makeHttpAcpTransport = (
-	baseUrl: string,
-	fetchImpl: typeof fetch = fetch,
-	timeoutMs = 60_000,
-): AcpTransport => {
-	const url = baseUrl.replace(/\/+$/, "");
-	return (request) =>
-		Effect.tryPromise({
-			try: async () => {
-				const res = await fetchImpl(url, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					// Abort the socket at the same deadline as the caller's
-					// Effect.timeout — a hung agent must not leak the request.
-					signal: AbortSignal.timeout(timeoutMs),
-					body: JSON.stringify(request),
-				});
-				if (!res.ok) {
-					throw new PortError({
-						port: "llm",
-						message: `acp ${res.status}: ${(await res.text()).slice(0, 300)}`,
-					});
-				}
-				return (await res.json()) as unknown;
-			},
-			catch: (cause) =>
-				cause instanceof PortError
-					? cause
-					: new PortError({
-							port: "llm",
-							message: `acp transport: ${causeMessage(cause)}`,
-							cause,
-						}),
-		});
-};
+// The ACP HTTP transport lives in @ktb/eval-adapter-local — apps are
+// composition roots, not libraries: the same transport backs the
+// app-host `eval-llm-acp` driver.
 
 // ---------- selection ----------
 
