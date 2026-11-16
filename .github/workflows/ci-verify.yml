@@ -5,7 +5,7 @@ name: ci-verify
 # Removed before merge — never lands on main.
 on:
   push:
-    branches: [feat/zk-t147-encrypted-audio]
+    branches: [feat/zk-t148-patient-portal]
 
 permissions:
   contents: read
