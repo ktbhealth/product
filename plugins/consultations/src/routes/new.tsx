@@ -4,8 +4,12 @@ import { createPluginFileRoute } from "@ktb/server-fns";
 import { makeKeyring } from "@ktb/crypto/keyring";
 import { vaultStateFn } from "@ktb/vault/fns";
 import { decryptPatients, isCipheredPatient } from "@ktb/patients/zk";
+import type { AnamnesisExtractor } from "@ktb/anamnesis";
+import { makeByokExtractor } from "@ktb/anamnesis-llm/byok";
+import { webSpeechBackend } from "@ktb/transcription-webspeech";
 
 import { NewConsultationPage } from "../views/index.ts";
+import { resolveByokExtractor } from "../byok.ts";
 import { prefersWhisper, transcriptionBackend } from "../backend.ts";
 import {
 	consultationsZkApi,
@@ -34,10 +38,26 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 		const { patientId } = Route.useSearch();
 		const keyring = useMemo(() => (zk ? makeKeyring() : null), [zk]);
 		// Only warm the Whisper model when Whisper actually won resolution —
-		// on the Web Speech fallback there is no model to prefetch.
+		// on the Web Speech fallback (and always under ZK) there is no
+		// model to prefetch.
 		useEffect(() => {
-			if (prefersWhisper) prefetchWhisperModel();
-		}, []);
+			if (prefersWhisper && !zk) prefetchWhisperModel();
+		}, [zk]);
+		// T-146: resolve the clinic BYOK extractor for this device once —
+		// no provider key sealed → the seam stays on the heuristic.
+		const [extractor, setExtractor] = useState<AnamnesisExtractor | null>(null);
+		useEffect(() => {
+			if (!zk || !keyring) return;
+			let live = true;
+			resolveByokExtractor(keyring, makeByokExtractor)
+				.then((resolved) => {
+					if (live) setExtractor(resolved);
+				})
+				.catch(() => {});
+			return () => {
+				live = false;
+			};
+		}, [zk, keyring]);
 		// T-145: patient names arrive ciphered under ZK — decrypt them
 		// for the picker; rows this device cannot read get the locked
 		// label instead of a raw envelope.
@@ -67,9 +87,16 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 				initialPatients={patients}
 				initialPatientId={patientId}
 				api={newConsultationApi}
-				backend={transcriptionBackend}
+				// T-146: ZK tenants use the browser's Web Speech path only —
+				// no model download, and no Whisper-in-browser pipeline at
+				// all (the server transcription endpoints are gated too).
+				backend={zk ? webSpeechBackend : transcriptionBackend}
 				locale={locale}
-				zk={zk && keyring ? { keyring, api: consultationsZkApi } : undefined}
+				zk={
+					zk && keyring
+						? { keyring, api: consultationsZkApi, extractor: extractor ?? undefined }
+						: undefined
+				}
 			/>
 		);
 	},

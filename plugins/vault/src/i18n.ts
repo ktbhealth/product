@@ -53,6 +53,17 @@ export interface VaultMessages {
 	readonly phrasePlaceholder: string;
 	readonly restore: string;
 	readonly actionFailed: string;
+	/** BYOK card (T-146): clinic-configured provider key for ZK
+	 * anamnesis extraction — sealed to this device. */
+	readonly byokTitle: string;
+	readonly byokDescription: string;
+	readonly byokConfigured: string;
+	readonly byokNotConfigured: string;
+	readonly byokModelLabel: string;
+	readonly byokBaseUrlLabel: string;
+	readonly byokApiKeyLabel: string;
+	readonly byokSave: string;
+	readonly byokClear: string;
 }
 
 const en: VaultMessages = {
@@ -99,6 +110,16 @@ const en: VaultMessages = {
 	phrasePlaceholder: "xxxx-xxxx-xxxx-…",
 	restore: "Restore",
 	actionFailed: "The action failed — try again.",
+	byokTitle: "LLM extraction key (BYOK)",
+	byokDescription:
+		"Optional. With your own provider key, anamnesis extraction calls your LLM provider directly from this device — transcripts never pass through KTB servers. Without it, the local heuristic extractor runs.",
+	byokConfigured: "A provider key is stored on this device (encrypted).",
+	byokNotConfigured: "No provider key on this device — the local heuristic extractor runs.",
+	byokModelLabel: "Model",
+	byokBaseUrlLabel: "Endpoint URL",
+	byokApiKeyLabel: "Provider API key",
+	byokSave: "Save key",
+	byokClear: "Remove key",
 };
 
 const ptBR: VaultMessages = {
@@ -147,6 +168,17 @@ const ptBR: VaultMessages = {
 	phrasePlaceholder: "xxxx-xxxx-xxxx-…",
 	restore: "Restaurar",
 	actionFailed: "A ação falhou — tente novamente.",
+	byokTitle: "Chave de LLM para extração (BYOK)",
+	byokDescription:
+		"Opcional. Com sua própria chave de provedor, a extração da anamnese chama seu provedor de LLM diretamente deste dispositivo — as transcrições nunca passam pelos servidores da KTB. Sem ela, o extrator heurístico local é usado.",
+	byokConfigured: "Há uma chave de provedor armazenada neste dispositivo (criptografada).",
+	byokNotConfigured:
+		"Nenhuma chave de provedor neste dispositivo — o extrator heurístico local é usado.",
+	byokModelLabel: "Modelo",
+	byokBaseUrlLabel: "URL do endpoint",
+	byokApiKeyLabel: "Chave de API do provedor",
+	byokSave: "Salvar chave",
+	byokClear: "Remover chave",
 };
 
 const es: VaultMessages = {
@@ -195,6 +227,17 @@ const es: VaultMessages = {
 	phrasePlaceholder: "xxxx-xxxx-xxxx-…",
 	restore: "Restaurar",
 	actionFailed: "La acción falló — inténtalo de nuevo.",
+	byokTitle: "Clave LLM de extracción (BYOK)",
+	byokDescription:
+		"Opcional. Con tu propia clave de proveedor, la extracción de la anamnesis llama a tu proveedor de LLM directamente desde este dispositivo: las transcripciones nunca pasan por los servidores de KTB. Sin ella, se usa el extractor heurístico local.",
+	byokConfigured: "Hay una clave de proveedor almacenada en este dispositivo (cifrada).",
+	byokNotConfigured:
+		"No hay clave de proveedor en este dispositivo: se usa el extractor heurístico local.",
+	byokModelLabel: "Modelo",
+	byokBaseUrlLabel: "URL del endpoint",
+	byokApiKeyLabel: "Clave de API del proveedor",
+	byokSave: "Guardar clave",
+	byokClear: "Eliminar clave",
 };
 
 const catalogs: Record<VaultLocale, VaultMessages> = { en, "pt-BR": ptBR, es };

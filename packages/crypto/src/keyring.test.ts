@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { Keyring, makeKeyring, memoryStore, type DeviceIdentity } from "./keyring.ts";
+import {
+	Keyring,
+	makeKeyring,
+	memorySecretStore,
+	memoryStore,
+	type DeviceIdentity,
+	type SealedSecret,
+} from "./keyring.ts";
 import { importSignPublicKey, verify } from "./sign.ts";
 import { exportWrapPublicKey, generateWrapKeyPair, unwrapDek } from "./wrap.ts";
 
@@ -77,6 +84,49 @@ describe("makeKeyring (memory store)", () => {
 		);
 	});
 
+	it("seals and reads back device secrets (T-146)", async () => {
+		const secrets = memorySecretStore();
+		const keyring = makeKeyring({ store: memoryStore(), secrets });
+		await keyring.putSecret("clinic.byok", "sk-test-key");
+		expect(await keyring.getSecret("clinic.byok")).toBe("sk-test-key");
+		// The stored row is ciphertext — the plaintext is nowhere in it.
+		const stored = await secrets.load("clinic.byok");
+		expect(stored).not.toBeNull();
+		expect(JSON.stringify(stored)).not.toContain("sk-test-key");
+		expect(stored!.dek.startsWith("w1.")).toBe(true);
+		expect(stored!.ct.startsWith("v1.")).toBe(true);
+	});
+
+	it("returns null for missing, replaced and undecryptable secrets", async () => {
+		const secrets = memorySecretStore();
+		const keyring = makeKeyring({ store: memoryStore(), secrets });
+		expect(await keyring.getSecret("absent")).toBeNull();
+		await keyring.putSecret("key", "first");
+		await keyring.putSecret("key", "second");
+		expect(await keyring.getSecret("key")).toBe("second");
+		// A row this device cannot open behaves as absent.
+		const corrupt: SealedSecret = { dek: "w1.bogus.envelope", ct: "v1.bogus.envelope" };
+		await secrets.save("corrupt", corrupt);
+		expect(await keyring.getSecret("corrupt")).toBeNull();
+	});
+
+	it("deletes device secrets", async () => {
+		const keyring = makeKeyring({ store: memoryStore(), secrets: memorySecretStore() });
+		await keyring.putSecret("key", "value");
+		await keyring.deleteSecret("key");
+		expect(await keyring.getSecret("key")).toBeNull();
+	});
+
+	it("shares secrets across keyring instances over the same store", async () => {
+		const store = memoryStore();
+		const secrets = memorySecretStore();
+		const first = makeKeyring({ store, secrets });
+		await first.putSecret("key", "shared");
+		// Same device identity + same secret rows → a second instance reads it.
+		const second = makeKeyring({ store, secrets });
+		expect(await second.getSecret("key")).toBe("shared");
+	});
+
 	it("fails to unwrap envelopes not addressed to this device", async () => {
 		const keyring = makeKeyring({ store: memoryStore() });
 		const other = await generateWrapKeyPair();
@@ -105,6 +155,8 @@ describe("idbStore", () => {
 		// picks memoryStore and the keyring still works.
 		const keyring = makeKeyring();
 		expect((await keyring.deviceKeys()).wrapPublicKey).toBeTruthy();
+		await keyring.putSecret("k", "v");
+		expect(await keyring.getSecret("k")).toBe("v");
 	});
 
 	/** Minimal fake IndexedDB: one object store, microtask-fired request
@@ -137,6 +189,12 @@ describe("idbStore", () => {
 							failAt === "put"
 								? { result: undefined, error: new Error("quota"), fail: true }
 								: { result: (rows.set(key, value), undefined), error: null },
+						),
+					delete: (key: string) =>
+						makeReq(() =>
+							failAt === "delete"
+								? { result: undefined, error: new Error("blocked"), fail: true }
+								: { result: (rows.delete(key), undefined), error: null },
 						),
 				}),
 			}),
@@ -205,6 +263,46 @@ describe("idbStore", () => {
 		await withFakeIdb(fakeIndexedDB(new Map(), "get:readonly"), async () => {
 			const { idbStore } = await import("./keyring.ts");
 			await expect(idbStore().load()).rejects.toThrow("indexeddb request failed");
+		});
+	});
+
+	it("seals, loads and removes device secrets in IndexedDB (T-146)", async () => {
+		const rows = new Map<string, unknown>();
+		await withFakeIdb(fakeIndexedDB(rows), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			const store = idbSecretStore("test-secrets");
+			expect(await store.load("dev")).toBeNull();
+			const secret = { kind: "x" } as unknown as Parameters<typeof store.save>[1];
+			await store.save("dev", secret);
+			expect(await store.load("dev")).toBe(secret);
+			await store.remove("dev");
+			expect(await store.load("dev")).toBeNull();
+		});
+	});
+
+	it("propagates secrets-store open failures", async () => {
+		await withFakeIdb(fakeIndexedDB(new Map(), "open"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").load("k")).rejects.toThrow("blocked");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "open-null"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").load("k")).rejects.toThrow("indexeddb open failed");
+		});
+	});
+
+	it("propagates secrets-store request failures", async () => {
+		await withFakeIdb(fakeIndexedDB(new Map(), "delete"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").remove("k")).rejects.toThrow("blocked");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "put"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").save("k", { kind: "x" } as never)).rejects.toThrow("quota");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "get:readonly"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").load("k")).rejects.toThrow("indexeddb request failed");
 		});
 	});
 

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 	newProps: { current: undefined as Record<string, unknown> | undefined },
 	decryptPatients: vi.fn(async (_k: unknown, _api: unknown, rows: unknown[]) => rows),
 	isCipheredPatient: vi.fn(() => false),
+	resolveByokExtractor: vi.fn(async () => ({ tag: "extractor" })),
 }));
 
 vi.mock("../guard.ts", () => ({ requireDoctor: vi.fn() }));
@@ -40,6 +41,9 @@ vi.mock("../backend.ts", () => ({
 	prefersWhisper: false,
 	transcriptionBackend: undefined,
 }));
+vi.mock("../byok.ts", () => ({ resolveByokExtractor: mocks.resolveByokExtractor }));
+vi.mock("@ktb/anamnesis-llm/byok", () => ({ makeByokExtractor: vi.fn(() => ({})) }));
+vi.mock("@ktb/transcription-webspeech", () => ({ webSpeechBackend: { id: "web-speech" } }));
 vi.mock("@ktb/patient-access/fns", () => ({
 	invitePatientFn: vi.fn(async () => ({ ok: true })),
 	patientLinksFn: vi.fn(async () => []),
@@ -278,6 +282,56 @@ describe("/consultations/new", () => {
 				{ id: 1, name: "Encrypted record" },
 			]),
 		);
+	});
+
+	it("binds the resolved BYOK extractor to the page under ZK", async () => {
+		mocks.loaderData.current = {
+			initialPatients: [],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() => expect(mocks.resolveByokExtractor).toHaveBeenCalled());
+		await waitFor(() =>
+			expect(
+				(mocks.newProps.current?.zk as { extractor?: unknown } | undefined)?.extractor,
+			).toEqual({ tag: "extractor" }),
+		);
+	});
+
+	it("keeps the heuristic extractor when BYOK resolution fails", async () => {
+		mocks.resolveByokExtractor.mockRejectedValueOnce(new Error("no key"));
+		mocks.loaderData.current = {
+			initialPatients: [],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() => expect(mocks.resolveByokExtractor).toHaveBeenCalled());
+		await act(async () => {});
+		expect(
+			(mocks.newProps.current?.zk as { extractor?: unknown } | undefined)?.extractor,
+		).toBeUndefined();
+	});
+
+	it("ignores late extractor resolutions after unmount", async () => {
+		let resolve: (e: { tag: string }) => void = () => {};
+		mocks.resolveByokExtractor.mockImplementationOnce(
+			() =>
+				new Promise<{ tag: string }>((r) => {
+					resolve = r;
+				}),
+		);
+		mocks.loaderData.current = {
+			initialPatients: [],
+			locale: "en",
+			zk: true,
+		};
+		const { unmount } = render(createElement(opts.component));
+		unmount();
+		await act(async () => {
+			resolve({ tag: "extractor" });
+		});
 	});
 
 	it("ignores late patient decryptions after unmount", async () => {

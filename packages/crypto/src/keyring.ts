@@ -1,6 +1,6 @@
 import * as Context from "effect/Context";
 
-import { generateDek } from "./aead.ts";
+import { decryptText, encrypt, generateDek } from "./aead.ts";
 import { exportSignPublicKey, sign } from "./sign.ts";
 import { exportWrapPublicKey, importWrapPublicKey, unwrapDek, wrapDek } from "./wrap.ts";
 
@@ -88,6 +88,90 @@ export const memoryStore = (): DeviceStore => {
 const defaultStore = (): DeviceStore =>
 	typeof indexedDB === "undefined" ? memoryStore() : idbStore();
 
+// ---------- device-sealed secrets (T-146: clinic BYOK key) ----------
+
+/**
+ * A small secret sealed to THIS device: the value is AES-256-GCM
+ * encrypted under a fresh DEK, and that DEK is wrapped to the device's
+ * wrap pubkey — only this device's non-extractable private key can open
+ * it. `dek` is a `w1.` wrap envelope, `ct` a `v1.` AEAD envelope; the
+ * plaintext never touches storage.
+ */
+export interface SealedSecret {
+	readonly dek: string;
+	readonly ct: string;
+}
+
+/** Storage seam for sealed secrets — IndexedDB in the browser,
+ * memoryMap in tests/SSR. */
+export interface SecretStore {
+	readonly load: (name: string) => Promise<SealedSecret | null>;
+	readonly save: (name: string, secret: SealedSecret) => Promise<void>;
+	readonly remove: (name: string) => Promise<void>;
+}
+
+const IDB_SECRETS_NAME = "ktb-secrets";
+const IDB_SECRETS_STORE = "secrets";
+
+const openSecretsDb = (dbName: string): Promise<IDBDatabase> =>
+	new Promise((resolve, reject) => {
+		const req = indexedDB.open(dbName, 1);
+		req.onupgradeneeded = () => req.result.createObjectStore(IDB_SECRETS_STORE);
+		req.onsuccess = () => resolve(req.result);
+		req.onerror = () => reject(req.error ?? new Error("indexeddb open failed"));
+	});
+
+/** IndexedDB-backed secret store — browsers only; callers pick
+ * `memorySecretStore` when `indexedDB` is unavailable. */
+export const idbSecretStore = (dbName = IDB_SECRETS_NAME): SecretStore => ({
+	async load(name) {
+		const db = await openSecretsDb(dbName);
+		try {
+			const tx = db.transaction(IDB_SECRETS_STORE, "readonly");
+			const row = await request(tx.objectStore(IDB_SECRETS_STORE).get(name));
+			return (row as SealedSecret | undefined) ?? null;
+		} finally {
+			db.close();
+		}
+	},
+	async save(name, secret) {
+		const db = await openSecretsDb(dbName);
+		try {
+			const tx = db.transaction(IDB_SECRETS_STORE, "readwrite");
+			await request(tx.objectStore(IDB_SECRETS_STORE).put(secret, name));
+		} finally {
+			db.close();
+		}
+	},
+	async remove(name) {
+		const db = await openSecretsDb(dbName);
+		try {
+			const tx = db.transaction(IDB_SECRETS_STORE, "readwrite");
+			await request(tx.objectStore(IDB_SECRETS_STORE).delete(name));
+		} finally {
+			db.close();
+		}
+	},
+});
+
+/** Volatile secret store for tests, SSR and the crypto-stub vault. */
+export const memorySecretStore = (): SecretStore => {
+	const saved = new Map<string, SealedSecret>();
+	return {
+		load: async (name) => saved.get(name) ?? null,
+		save: async (name, secret) => {
+			saved.set(name, secret);
+		},
+		remove: async (name) => {
+			saved.delete(name);
+		},
+	};
+};
+
+/** Auto-select: IndexedDB when present (browser), memory otherwise. */
+const defaultSecrets = (): SecretStore =>
+	typeof indexedDB === "undefined" ? memorySecretStore() : idbSecretStore();
+
 /** Generate the device identity — both PRIVATE keys non-extractable
  * (WebCrypto keeps public keys exportable regardless of the flag). */
 const generateIdentity = async (): Promise<DeviceIdentity> => ({
@@ -132,6 +216,20 @@ export interface KeyringService {
 	readonly wrapKeyFor: (dek: CryptoKey, recipientPublicKey: string) => Promise<string>;
 	/** ECDSA over a content hash hex — device-bound version signing. */
 	readonly signHash: (contentHashHex: string) => Promise<string>;
+	/**
+	 * Seal a small secret to this device (T-146: the clinic BYOK
+	 * provider key is the first consumer). The value is AES-GCM
+	 * encrypted under a DEK wrapped to the device's own pubkey — only
+	 * this device can open it, and the plaintext never reaches the
+	 * secret store.
+	 */
+	readonly putSecret: (name: string, plaintext: string) => Promise<void>;
+	/** Read back a sealed secret — null when absent or no longer
+	 * decryptable (e.g. written under a since-replaced device
+	 * identity). */
+	readonly getSecret: (name: string) => Promise<string | null>;
+	/** Drop a sealed secret. */
+	readonly deleteSecret: (name: string) => Promise<void>;
 	/** Drop the session caches (identity stays persisted). */
 	readonly clearSession: () => void;
 }
@@ -140,9 +238,13 @@ export interface KeyringService {
  * Build a keyring bound to `store` (default: IndexedDB when available,
  * in-memory otherwise). Identity creation is lazy + deduplicated — a
  * single keyring instance shares one device across all callers.
+ * `secrets` backs the sealed-secret methods the same way.
  */
-export const makeKeyring = (options: { readonly store?: DeviceStore } = {}): KeyringService => {
+export const makeKeyring = (
+	options: { readonly store?: DeviceStore; readonly secrets?: SecretStore } = {},
+): KeyringService => {
 	const store = options.store ?? defaultStore();
+	const secrets = options.secrets ?? defaultSecrets();
 	let identityPromise: Promise<DeviceIdentity> | null = null;
 	const cache = new Map<string, CryptoKey>();
 
@@ -157,7 +259,7 @@ export const makeKeyring = (options: { readonly store?: DeviceStore } = {}): Key
 		return identityPromise;
 	};
 
-	return {
+	const service: KeyringService = {
 		deviceKeys: async () => {
 			const id = await identity();
 			const [wrapPublicKey, signPublicKey] = await Promise.all([
@@ -184,8 +286,27 @@ export const makeKeyring = (options: { readonly store?: DeviceStore } = {}): Key
 		wrapKeyFor: async (dek, recipientPublicKey) =>
 			wrapDek(dek, await importWrapPublicKey(recipientPublicKey)),
 		signHash: async (contentHashHex) => sign((await identity()).sign.privateKey, contentHashHex),
+		putSecret: async (name, plaintext) => {
+			const { wrapPublicKey } = await service.deviceKeys();
+			const { dek, envelope } = await service.mintDek(wrapPublicKey);
+			await secrets.save(name, { dek: envelope, ct: await encrypt(dek, plaintext) });
+		},
+		getSecret: async (name) => {
+			const secret = await secrets.load(name);
+			if (secret === null) return null;
+			try {
+				const dek = await service.unwrapKey(secret.dek);
+				return await decryptText(dek, secret.ct);
+			} catch {
+				// Undecryptable rows are treated as absent — a device that
+				// cannot open the secret behaves as if it were never set.
+				return null;
+			}
+		},
+		deleteSecret: (name) => secrets.remove(name),
 		clearSession: () => cache.clear(),
 	};
+	return service;
 };
 
 /**

@@ -27,6 +27,7 @@ import {
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
 import { setServerRuntime } from "@ktb/server-fns";
+import { Tenant } from "@ktb/tenant";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
@@ -52,6 +53,8 @@ INSERT INTO "user" VALUES ('u-plain', 'Plain Doc', 'plain@x.com', 0, NULL, 0, 0)
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
+CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO groups (id, name, slug, kind, zk) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1), (10, 'Plain Clinic', 'plain', 'clinic', 0);
 `;
 
 /** Mutable enable-state behind the route gate (createPluginApiRoute). */
@@ -143,11 +146,13 @@ const fakeBucket = {
 
 const runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
 
-beforeAll(() => {
+/** Publish a ManagedRuntime as the host runtime — a tenant-bound
+ * variant (zk gate tests) swaps this in temporarily. */
+const publishRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, unknown>) =>
 	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
+		run: (effect) => rt.runPromise(effect),
 		runAs: (user, effect) =>
-			runtime.runPromise(
+			rt.runPromise(
 				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
 			),
 		audio: fakeBucket,
@@ -164,6 +169,9 @@ beforeAll(() => {
 		audioTranscribeModel: "test-model",
 		pluginEnabled: async () => pluginGate.enabled,
 	});
+
+beforeAll(() => {
+	publishRuntime(runtime);
 });
 
 const useSession = (key: string) => {
@@ -237,6 +245,29 @@ describe("GET /api/transcribe", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ text: "transcrição do servidor" });
 	});
+
+	it("403s inside a zero-knowledge tenant — browser transcription only (T-146)", async () => {
+		useSession("owner");
+		const zkRuntime = ManagedRuntime.make(
+			Layer.mergeAll(
+				services,
+				Layer.succeed(Tenant, { id: 9, kind: "clinic", slug: "zk", role: "admin" }),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		publishRuntime(zkRuntime);
+		try {
+			const form = new FormData();
+			form.set("audio", new File([new Uint8Array([1, 2, 3])], "a.wav"));
+			const res = await post(form);
+			expect(res.status).toBe(403);
+			expect(await res.json()).toEqual({
+				error: "server transcription unavailable for zero-knowledge tenants",
+			});
+		} finally {
+			publishRuntime(runtime);
+			await zkRuntime.dispose();
+		}
+	});
 });
 
 describe("GET /api/consultations/:id/pdf", () => {
@@ -287,6 +318,20 @@ describe("GET /api/consultations/:id/pdf", () => {
 		expect(pdf.status).toBe(200);
 		expect(pdf.headers.get("content-type")).toBe("application/pdf");
 		expect((await pdf.arrayBuffer()).byteLength).toBeGreaterThan(100);
+	});
+
+	it("refuses to render a PDF for a ciphered anamnesis envelope (T-146)", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }))!;
+		await db
+			.update(consultationsTable)
+			.set({ anamnesis: "v1.aXY.Y2lwaGVy" })
+			.where(eq(consultationsTable.id, id));
+		const res = await get(String(id));
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({
+			error: "zero-knowledge record — render the PDF on an approved device",
+		});
 	});
 });
 

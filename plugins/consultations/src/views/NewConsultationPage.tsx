@@ -485,10 +485,11 @@ export function NewConsultationPage({
 		setError(null);
 		setSavedId(null);
 		try {
-			// T-145: under ZK the transcript never leaves the browser —
-			// extraction runs locally (BYOK LLM port arrives with T-146).
+			// T-145/T-146: under ZK the transcript never leaves the
+			// device for KTB — extraction runs locally through the
+			// clinic-configured BYOK port or the heuristic fallback.
 			const res = zk
-				? await extractAnamnesisZk(text)
+				? await extractAnamnesisZk(text, zk.extractor)
 				: await api.extractAnamnesis({
 						data: { transcript: text, patientId: patientId ?? undefined },
 					});

@@ -39,6 +39,14 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 					}),
 				);
 				if (!detail) return Response.json({ error: "not found" }, { status: 404 });
+				// T-146: a ZK row stores a `v1.` envelope — the server cannot
+				// render it (fail closed; the client exports in the browser).
+				if (detail.anamnesisRaw?.startsWith("v1.")) {
+					return Response.json(
+						{ error: "zero-knowledge record — render the PDF on an approved device" },
+						{ status: 409 },
+					);
+				}
 				if (!detail.anamnesis)
 					return Response.json({ error: "consultation has no saved anamnesis" }, { status: 409 });
 

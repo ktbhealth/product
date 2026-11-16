@@ -4,7 +4,7 @@ import { decryptText } from "@ktb/crypto/aead";
 import { decryptRow, encryptRow } from "@ktb/crypto/cipher";
 import { contentHash } from "@ktb/crypto/digest";
 import type { KeyringService } from "@ktb/crypto/keyring";
-import type { Anamnesis } from "@ktb/anamnesis";
+import type { Anamnesis, AnamnesisExtractor } from "@ktb/anamnesis";
 import { HeuristicExtractor } from "@ktb/anamnesis";
 import { decodeAnamnesisOption } from "@ktb/anamnesis/schema";
 import {
@@ -41,6 +41,9 @@ export type ConsultationZkApi = PatientZkApi;
 export interface ConsultationZk {
 	readonly keyring: KeyringService;
 	readonly api: ConsultationZkApi;
+	/** Clinic-configured BYOK extractor (T-146) — absent when the device
+	 * holds no provider key; the seam then stays on the heuristic. */
+	readonly extractor?: AnamnesisExtractor;
 }
 
 export { isEnvelope };
@@ -274,14 +277,28 @@ export async function signAnamnesis(
 }
 
 /**
- * Client-side extraction for ZK tenants (T-145): the deterministic
- * heuristic runs in the browser — the transcript never leaves the
- * device. T-146 swaps this seam for the clinic-configured BYOK LLM
- * port; the call site does not change.
+ * Client-side extraction for ZK tenants (T-145/T-146): the transcript
+ * never leaves the device as plaintext for KTB — when the clinic
+ * configured BYOK, `extractor` posts it to the clinic's own provider
+ * directly; the deterministic heuristic is the zero-config fallback.
+ * A failing BYOK call degrades to the heuristic with the same
+ * `!fallback` engine marker the server pipeline uses.
  */
 export async function extractAnamnesisZk(
 	transcript: string,
+	extractor?: AnamnesisExtractor,
 ): Promise<{ readonly anamnesis: Anamnesis; readonly engine: string }> {
+	if (extractor !== undefined) {
+		try {
+			return { anamnesis: await extractor.extract(transcript), engine: extractor.name };
+		} catch {
+			const engine = new HeuristicExtractor();
+			return {
+				anamnesis: await engine.extract(transcript),
+				engine: `${extractor.name}!fallback`,
+			};
+		}
+	}
 	const engine = new HeuristicExtractor();
 	return { anamnesis: await engine.extract(transcript), engine: engine.name };
 }

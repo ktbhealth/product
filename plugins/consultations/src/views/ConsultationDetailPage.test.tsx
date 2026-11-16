@@ -124,6 +124,24 @@ describe("ConsultationDetailPage", () => {
 		expect(screen.getByText("olá doutor")).toBeTruthy();
 	});
 
+	it("renders the locked export control on ZK records (T-146)", async () => {
+		// Plaintext test row passes the ZK decrypt path straight through
+		// (no envelopes → no keyring calls); the export affordance is a
+		// gated disabled control, not a hidden link.
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				zk={{ keyring: {} as never, api: {} as never }}
+			/>,
+		);
+		const locked = await screen.findByRole("button", {
+			name: "PDF export unavailable for encrypted records",
+		});
+		expect((locked as HTMLButtonElement).disabled).toBe(true);
+		expect(screen.queryByRole("link", { name: /PDF/i })).toBeNull();
+	});
+
 	it("shows empty transcript message", () => {
 		render(<ConsultationDetailPage c={detail({ transcript: "  \n " })} history={null} />);
 		expect(screen.getByText("No transcript.")).toBeTruthy();
