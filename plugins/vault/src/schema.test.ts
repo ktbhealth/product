@@ -1,7 +1,7 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
-import { clinicKeys, entityDeks, groups } from "@ktb/db/schema";
+import { clinicKeys, entityDeks, groups, portalKeys } from "@ktb/db/schema";
 
 describe("vault schema", () => {
 	it("exposes clinic_keys columns and unique device index", () => {
@@ -52,6 +52,26 @@ describe("vault schema", () => {
 		]);
 		const fk = cfg.foreignKeys[0]!;
 		expect(fk.reference().foreignTable).toBe(groups);
+		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
+		expect(fk.onDelete).toBe("cascade");
+	});
+
+	it("exposes portal_keys columns and the per-user device unique index", () => {
+		const cfg = getTableConfig(portalKeys);
+		expect(cfg.name).toBe("portal_keys");
+		expect(cfg.columns.map((c) => c.name)).toEqual([
+			"id",
+			"user_id",
+			"wrap_public_key",
+			"sign_public_key",
+			"created_at",
+		]);
+		const unique = cfg.indexes.find((i) => i.config.unique);
+		expect(unique?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
+			"user_id",
+			"wrap_public_key",
+		]);
+		const fk = cfg.foreignKeys[0]!;
 		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
 		expect(fk.onDelete).toBe("cascade");
 	});

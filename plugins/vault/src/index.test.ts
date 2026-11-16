@@ -13,11 +13,14 @@ import {
 	approveClinicDevice,
 	deviceByWrapPubkey,
 	enrollClinicDevice,
+	enrollPortalDevice,
 	entityDekEnvelope,
 	grantEntityDeks,
 	listClinicDevices,
 	listEntityReaders,
 	plugins,
+	portalDeviceOf,
+	portalDevicesOf,
 	revokeClinicDevice,
 	setTenantZk,
 	tenantIsZk,
@@ -31,7 +34,11 @@ import {
 	VAULT_TEST_DDL,
 } from "./index.ts";
 
-const DDL = VAULT_TEST_DDL;
+// `portal_keys` REFERENCES user(id) — the consumer-side stub the
+// VAULT_TEST_DDL comment calls for.
+const DDL =
+	`CREATE TABLE user (id TEXT PRIMARY KEY); INSERT INTO user (id) VALUES ('ana'), ('eva');` +
+	VAULT_TEST_DDL;
 const TENANT_ID = 7;
 
 const makeRuntime = (db: DbClient) => {
@@ -167,6 +174,37 @@ describe("vault repo", () => {
 		expect(await tenantIsZk(db, TENANT_ID)).toBe(false);
 		await setTenantZk(db, TENANT_ID);
 		expect(await tenantIsZk(db, TENANT_ID)).toBe(true);
+	});
+
+	it("enrolls portal devices idempotently per (user, wrap pubkey)", async () => {
+		const first = await enrollPortalDevice(db, {
+			userId: "ana",
+			wrapPublicKey: "pWrap",
+			signPublicKey: "pSign",
+		});
+		expect(first.userId).toBe("ana");
+		const again = await enrollPortalDevice(db, {
+			userId: "ana",
+			wrapPublicKey: "pWrap",
+			signPublicKey: "pSign",
+		});
+		expect(again.id).toBe(first.id);
+		// Same pubkey under another user is a different device row.
+		const other = await enrollPortalDevice(db, {
+			userId: "eva",
+			wrapPublicKey: "pWrap",
+			signPublicKey: "pSign",
+		});
+		expect(other.id).not.toBe(first.id);
+	});
+
+	it("finds portal devices by user list and by owner+pubkey", async () => {
+		const rows = await portalDevicesOf(db, ["ana", "eva"]);
+		expect(rows.map((r) => r.userId).sort()).toEqual(["ana", "eva"]);
+		expect(await portalDevicesOf(db, [])).toEqual([]);
+		expect(await portalDeviceOf(db, "ana", "pWrap")).toMatchObject({ userId: "ana" });
+		expect(await portalDeviceOf(db, "ana", "nope")).toBeNull();
+		expect(await portalDeviceOf(db, "nobody", "pWrap")).toBeNull();
 	});
 
 	it("tenantZkOrClosed fails closed on anything unresolvable", async () => {

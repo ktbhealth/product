@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const zkMocks = vi.hoisted(() => ({
+	decryptConsultations: vi.fn(async () => [] as unknown[]),
+}));
+vi.mock("../zk.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../zk.ts")>()),
+	decryptConsultations: zkMocks.decryptConsultations,
+}));
 
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
@@ -180,6 +188,92 @@ describe("ConsultationsPage", () => {
 		expect(container.querySelector('a[href="/portal/patients/5"]')).not.toBeNull();
 		expect(container.querySelector('a[href="/portal/consultations/1"]')).not.toBeNull();
 		expect(container.querySelector('a[href="/portal/consultations/new"]')).not.toBeNull();
+	});
+
+	it("decrypts ciphered rows under ZK and derives the chief complaint", async () => {
+		const doc = {
+			queixa_principal: { content: "Dor aguda", confidence: "alta", evidence: ["x"] },
+			hda: { content: "", confidence: "baixa", evidence: [] },
+			antecedentes: { content: "", confidence: "baixa", evidence: [] },
+			alergias: { content: "", confidence: "baixa", evidence: [] },
+			medicamentos_em_uso: { content: "", confidence: "baixa", evidence: [] },
+			exame_fisico: { content: "", confidence: "baixa", evidence: [] },
+			hipoteses: { content: "", confidence: "baixa", evidence: [] },
+			conduta: { content: "", confidence: "baixa", evidence: [] },
+		};
+		const ciphered = item({ id: 1, anamnesis: "v1.x.y", chiefComplaint: null });
+		const locked = item({
+			id: 2,
+			anamnesis: "v1.locked.z",
+			chiefComplaint: null,
+			patientName: null,
+			transcript: "",
+		});
+		const known = item({ id: 3, anamnesis: "v1.q.r", chiefComplaint: "Febre" });
+		zkMocks.decryptConsultations.mockResolvedValueOnce([
+			{ ...ciphered, anamnesis: JSON.stringify(doc) },
+			locked,
+			{ ...known, anamnesis: JSON.stringify(doc) },
+		]);
+		render(
+			<ConsultationsPage
+				consultations={[ciphered, locked, known]}
+				zk={{ keyring: {}, api: {} } as never}
+			/>,
+		);
+		await waitFor(() => expect(screen.getByText("Dor aguda")).toBeTruthy());
+		expect(screen.getByText("Febre")).toBeTruthy();
+		expect(zkMocks.decryptConsultations).toHaveBeenCalledWith({}, {}, [ciphered, locked, known]);
+	});
+
+	it("ignores late ZK resolutions after unmount", async () => {
+		let resolve: (rows: unknown[]) => void = () => {};
+		zkMocks.decryptConsultations.mockImplementationOnce(
+			() =>
+				new Promise<unknown[]>((r) => {
+					resolve = r;
+				}),
+		);
+		const { unmount } = render(
+			<ConsultationsPage
+				consultations={[item({ anamnesis: "v1.x.y" })]}
+				zk={{ keyring: {}, api: {} } as never}
+			/>,
+		);
+		unmount();
+		await act(async () => {
+			resolve([]);
+		});
+	});
+
+	it("searches locked rows by id only under ZK", async () => {
+		const user = userEvent.setup();
+		zkMocks.decryptConsultations.mockResolvedValueOnce([]);
+		render(
+			<ConsultationsPage
+				consultations={[
+					item({ id: 42, anamnesis: "v1.x.y", chiefComplaint: null }),
+					item({ id: 7, patientName: "Ana" }),
+				]}
+				zk={{ keyring: {}, api: {} } as never}
+			/>,
+		);
+		const input = screen.getByLabelText("Search consultations");
+		await user.type(input, "42");
+		// The locked row matches by id; the plain row filters out.
+		expect(screen.getByText("Encrypted record")).toBeTruthy();
+		expect(screen.queryByText("Ana")).toBeNull();
+	});
+
+	it("keeps the list usable when ZK decryption fails", async () => {
+		zkMocks.decryptConsultations.mockRejectedValueOnce(new Error("no key"));
+		render(
+			<ConsultationsPage
+				consultations={[item({ id: 1, anamnesis: "v1.x.y", chiefComplaint: null })]}
+				zk={{ keyring: {}, api: {} } as never}
+			/>,
+		);
+		await waitFor(() => expect(screen.getByText("Encrypted record")).toBeTruthy());
 	});
 
 	it("hides search when list is empty", () => {

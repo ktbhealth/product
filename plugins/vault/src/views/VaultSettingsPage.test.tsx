@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,9 @@ const keyring = (): KeyringService => ({
 	}),
 	wrapKeyFor: vi.fn(async () => "w1.wrapped"),
 	signHash: vi.fn(async () => "sig"),
+	putSecret: vi.fn(async () => {}),
+	getSecret: vi.fn(async () => null),
+	deleteSecret: vi.fn(async () => {}),
 	clearSession: vi.fn(),
 });
 
@@ -491,5 +494,105 @@ describe("VaultSettingsPage", () => {
 		expect(screen.getByText("Revoked")).toBeTruthy();
 		expect(screen.queryByText("Approve")).toBeNull();
 		expect(screen.queryByText("Revoke")).toBeNull();
+	});
+
+	it("seals a BYOK provider key on this device (T-146)", async () => {
+		const k = keyring();
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("No provider key", { exact: false });
+		await userEvent.type(screen.getByLabelText("Provider API key"), "sk-1");
+		fireEvent.change(screen.getByLabelText("Endpoint URL"), {
+			target: { value: "https://llm.x/v1" },
+		});
+		await userEvent.click(screen.getByRole("button", { name: "Save key" }));
+		await waitFor(() => expect(k.putSecret).toHaveBeenCalled());
+		const secret = JSON.parse(String((k.putSecret as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]));
+		expect(secret).toEqual({
+			apiKey: "sk-1",
+			model: "gpt-4o-mini",
+			baseUrl: "https://llm.x/v1",
+		});
+	});
+
+	it("shows a stored BYOK config and clears it", async () => {
+		const k = keyring();
+		(k.getSecret as ReturnType<typeof vi.fn>).mockResolvedValue(
+			JSON.stringify({ apiKey: "sk", model: "m", baseUrl: "https://x" }),
+		);
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("A provider key is stored", { exact: false });
+		expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("m");
+		expect((screen.getByLabelText("Endpoint URL") as HTMLInputElement).value).toBe("https://x");
+		await userEvent.click(screen.getByRole("button", { name: "Remove key" }));
+		await waitFor(() => expect(k.deleteSecret).toHaveBeenCalled());
+	});
+
+	it("edits the BYOK model field", async () => {
+		const k = keyring();
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("No provider key", { exact: false });
+		fireEvent.change(screen.getByLabelText("Model"), { target: { value: "m2" } });
+		expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("m2");
+	});
+
+	it("treats a failed BYOK config read as unconfigured", async () => {
+		const k = keyring();
+		(k.getSecret as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("idb"));
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("No provider key", { exact: false });
+	});
+
+	it("ignores a late BYOK config read resolving after unmount", async () => {
+		const k = keyring();
+		let resolve: (v: string | null) => void = () => {};
+		(k.getSecret as ReturnType<typeof vi.fn>).mockImplementation(
+			() =>
+				new Promise<string | null>((r) => {
+					resolve = r;
+				}),
+		);
+		const { unmount } = render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		unmount();
+		await act(async () => {
+			resolve(JSON.stringify({ apiKey: "sk", model: "m" }));
+		});
+	});
+
+	it("ignores a late failed BYOK config read after unmount", async () => {
+		const k = keyring();
+		let reject: (e: unknown) => void = () => {};
+		(k.getSecret as ReturnType<typeof vi.fn>).mockImplementation(
+			() =>
+				new Promise<null>((_r, rej) => {
+					reject = rej;
+				}),
+		);
+		const { unmount } = render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		unmount();
+		await act(async () => {
+			reject(new Error("late"));
+		});
+	});
+
+	it("surfaces a failure when the BYOK seal fails", async () => {
+		const k = keyring();
+		(k.putSecret as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("idb"));
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("No provider key", { exact: false });
+		await userEvent.type(screen.getByLabelText("Provider API key"), "sk-1");
+		await userEvent.click(screen.getByRole("button", { name: "Save key" }));
+		await screen.findByText("The action failed — try again.");
+	});
+
+	it("surfaces a failure when the BYOK clear fails", async () => {
+		const k = keyring();
+		(k.getSecret as ReturnType<typeof vi.fn>).mockResolvedValue(
+			JSON.stringify({ apiKey: "sk", model: "m" }),
+		);
+		(k.deleteSecret as ReturnType<typeof vi.fn>).mockRejectedValue(new Error("idb"));
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("A provider key is stored", { exact: false });
+		await userEvent.click(screen.getByRole("button", { name: "Remove key" }));
+		await screen.findByText("The action failed — try again.");
 	});
 });

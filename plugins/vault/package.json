@@ -6,6 +6,7 @@
 		".": "./src/index.ts",
 		"./schema": "./src/schema.ts",
 		"./apis": "./src/apis.ts",
+		"./byok": "./src/byok.ts",
 		"./fns": "./src/fns.ts",
 		"./i18n": "./src/i18n.ts",
 		"./onboarding": "./src/onboarding.ts",

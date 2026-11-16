@@ -54,6 +54,13 @@ export interface PatientZk {
 	readonly api: PatientZkApi;
 }
 
+/**
+ * The minimal surface the decrypt paths need — they never list devices
+ * or write grants, so readers that can only FETCH their own envelopes
+ * (the patient portal, T-148) reuse them through this narrower shape.
+ */
+export type DekEnvelopesApi = Pick<PatientZkApi, "dekEnvelopes">;
+
 /** `v1.` AEAD envelope marker — how callers detect ciphertext values. */
 export const isEnvelope = (value: unknown): value is string =>
 	typeof value === "string" && value.startsWith(`${AEAD_ENVELOPE_VERSION}.`);
@@ -70,7 +77,7 @@ export const isCipheredPatient = (p: { readonly name?: string | null }): boolean
  */
 export async function decryptPatients<R extends { readonly id: number }>(
 	keyring: KeyringService,
-	api: PatientZkApi,
+	api: DekEnvelopesApi,
 	rows: readonly R[],
 ): Promise<R[]> {
 	const ciphered = rows.filter((r) => isCipheredPatient(r as { readonly name?: string | null }));
@@ -101,7 +108,7 @@ export async function decryptPatients<R extends { readonly id: number }>(
 /** Decrypt one row — detail/edit pages. null when locked or unreadable. */
 export async function decryptPatient<R extends { readonly id: number }>(
 	keyring: KeyringService,
-	api: PatientZkApi,
+	api: DekEnvelopesApi,
 	row: R,
 ): Promise<R | null> {
 	if (!isCipheredPatient(row as { readonly name?: string | null })) return row;

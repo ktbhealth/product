@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeftIcon } from "lucide-react";
+import { ArrowLeftIcon, LockIcon } from "lucide-react";
 
 import type { AnamnesisSectionKey } from "@ktb/anamnesis/types";
 
@@ -23,11 +23,14 @@ export interface PortalConsultationView {
  * saved, read-only — no actions beyond going back to the list. */
 export function PortalConsultationPage({
 	consultation,
+	locked,
 	i18n,
-
 	locale,
 }: {
 	consultation: PortalConsultationView;
+	/** The record is client-encrypted and this device holds no grant
+	 * (T-148) — renders the locked card instead of empty sections. */
+	locked?: boolean;
 	/** Active UI locale, injected by the host. */
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
@@ -61,7 +64,13 @@ export function PortalConsultationPage({
 					) : null}
 				</dl>
 			</div>
-			{consultation.sections.length === 0 ? (
+			{locked ? (
+				<div className="flex flex-col items-center gap-2 rounded-xl border border-border px-4 py-8 text-center">
+					<LockIcon className="size-5 text-muted-foreground" />
+					<p className="text-sm font-medium">{t.zk.lockedRecord}</p>
+					<p className="text-sm text-muted-foreground">{t.zk.lockedHint}</p>
+				</div>
+			) : consultation.sections.length === 0 ? (
 				<p className="rounded-xl border border-border px-4 py-6 text-center text-sm text-muted-foreground">
 					{t.sectionsEmpty}
 				</p>

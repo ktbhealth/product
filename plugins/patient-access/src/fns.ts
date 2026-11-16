@@ -3,10 +3,10 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Schema } from "effect";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, like, or } from "drizzle-orm";
 
 import { Db } from "@ktb/db";
-import { patients } from "@ktb/db/schema";
+import { consultations, patientAccess, patients, portalKeys } from "@ktb/db/schema";
 import { Email } from "@ktb/email";
 import { inviteAcceptPath } from "@ktb/invites";
 import { getDoctorAccess, getDoctorUser, getLocale, run, runAs } from "@ktb/server-fns";
@@ -195,3 +195,78 @@ export const approvePatientLinkFn = createServerFn({ method: "POST" })
 export const revokePatientLinkFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))
 	.handler(({ data: id }) => changeLink("revoke", id));
+
+/** A registered portal device of a user holding an active link — the
+ * recipient a clinic device wraps record DEKs to (T-148). */
+export interface PortalReader {
+	readonly readerId: string;
+	readonly wrapPublicKey: string;
+}
+
+/**
+ * Everything an approved clinic device needs to extend portal access
+ * to one of the acting doctor's patients (T-148): the registered
+ * device pubkeys of users holding an *active* link (`portal_keys` —
+ * users publish them on portal login) and the patient's ciphered
+ * consultations — the entities whose DEKs get wrapped to those
+ * pubkeys. Null for non-doctors and foreign patients (the
+ * `PatientLinks.list` authz decides).
+ */
+export const portalReadersFn = createServerFn({ method: "GET" })
+	.validator((id: number) => decodeNumber(id))
+	.handler(
+		async ({
+			data: patientId,
+		}): Promise<{
+			readonly readers: readonly PortalReader[];
+			readonly cipheredConsultationIds: readonly number[];
+		} | null> => {
+			const user = await getDoctorUser();
+			if (!user) return null;
+			return runAs(
+				user,
+				Effect.gen(function* () {
+					const service = yield* PatientLinks;
+					// Ownership gate — same authz as the links page itself.
+					yield* service.list(patientId);
+					const db = yield* Db;
+					const linked = yield* Effect.promise(() =>
+						db
+							.select({ userId: patientAccess.userId })
+							.from(patientAccess)
+							.where(
+								and(
+									eq(patientAccess.patientId, patientId),
+									eq(patientAccess.status, "active"),
+									isNotNull(patientAccess.userId),
+								),
+							),
+					);
+					const userIds = linked.map((l) => l.userId!);
+					const readers = yield* Effect.promise(() =>
+						userIds.length === 0
+							? Promise.resolve([] as PortalReader[])
+							: db
+									.select({
+										readerId: portalKeys.userId,
+										wrapPublicKey: portalKeys.wrapPublicKey,
+									})
+									.from(portalKeys)
+									.where(inArray(portalKeys.userId, userIds)),
+					);
+					const ciphered = yield* Effect.promise(() =>
+						db
+							.select({ id: consultations.id })
+							.from(consultations)
+							.where(
+								and(
+									eq(consultations.patientId, patientId),
+									or(like(consultations.anamnesis, "v1.%"), like(consultations.transcript, "v1.%")),
+								),
+							),
+					);
+					return { readers, cipheredConsultationIds: ciphered.map((c) => c.id) };
+				}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
+			);
+		},
+	);
