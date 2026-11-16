@@ -203,6 +203,16 @@ describe("Vault service", () => {
 		expect(row.status).toBe("pending");
 	});
 
+	it("lists the tenant's devices for the admin UI", async () => {
+		const devices = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.devices(TENANT_ID)),
+			{ role: "admin" },
+		);
+		expect(devices.length).toBeGreaterThan(0);
+		expect(devices.every((d) => d.tenantId === TENANT_ID)).toBe(true);
+	});
+
 	it("records empty actor ids when no principal is bound (system context)", async () => {
 		// run() always binds a Principal — bind null explicitly to cover
 		// the `?.userId ?? ""`/`?? null` fallbacks (jobs/system paths).
@@ -244,6 +254,25 @@ describe("Vault service", () => {
 			Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "patient", 1)),
 		);
 		expect(readers[0]?.grantedByUserId).toBeNull();
+	});
+
+	it("fails device-not-found on unknown device ids", async () => {
+		const approveExit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: 9999, wrappedMasterKey: "w1.x" }),
+			).pipe(Effect.exit),
+			{ role: "admin" },
+		);
+		expect(approveExit._tag).toBe("Failure");
+		const revokeExit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.revokeDevice({ tenantId: TENANT_ID, clinicKeyId: 9999 })).pipe(
+				Effect.exit,
+			),
+			{ role: "member" },
+		);
+		expect(revokeExit._tag).toBe("Failure");
 	});
 
 	it("fails closed without a member role", async () => {
