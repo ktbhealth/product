@@ -32,8 +32,17 @@ describe("ai-endpoints schema", () => {
 		const cfg = getTableConfig(aiAgentLink);
 		expect(cfg.name).toBe("ai_agent_link");
 		expect(cfg.columns.map((c) => c.name)).toEqual(
-			expect.arrayContaining(["endpoint_id", "token_hash", "created_by", "expires_at", "used_at"]),
+			expect.arrayContaining([
+				"endpoint_id",
+				"token_hash",
+				"created_by",
+				"expires_at",
+				"used_at",
+				"revoked_at",
+			]),
 		);
+		// revoked_at stays nullable — unset rows are live links.
+		expect(cfg.columns.find((c) => c.name === "revoked_at")?.notNull).toBe(false);
 		for (const fk of cfg.foreignKeys) {
 			expect(fk.onDelete).toBe("cascade");
 			// reference() evaluates the lazy `() => aiEndpoint.id` callback.

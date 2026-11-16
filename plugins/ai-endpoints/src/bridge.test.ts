@@ -42,7 +42,7 @@ const harness = async () => {
 const seedLink = async (
 	db: Awaited<ReturnType<typeof harness>>["db"],
 	endpointId: number,
-	over: { usedAt?: Date; expiresAt?: Date } = {},
+	over: { usedAt?: Date; expiresAt?: Date; revokedAt?: Date } = {},
 ) => {
 	const token = mintBridgeToken();
 	await db.insert(aiAgentLink).values({
@@ -51,6 +51,7 @@ const seedLink = async (
 		createdBy: "u1",
 		expiresAt: over.expiresAt ?? new Date(Date.now() + 60_000),
 		...(over.usedAt !== undefined ? { usedAt: over.usedAt } : {}),
+		...(over.revokedAt !== undefined ? { revokedAt: over.revokedAt } : {}),
 	});
 	return token;
 };
@@ -99,6 +100,22 @@ describe("handleBridgeUpgrade", () => {
 
 		const expired = await seedLink(db, endpointId, { expiresAt: new Date(Date.now() - 1) });
 		expect((await handleBridgeUpgrade(upgrade(expired))).status).toBe(410);
+		await rt.dispose();
+	});
+
+	it("refuses revoked tokens before the used/expired checks", async () => {
+		const { db, rt, endpointId, forwards } = await harness();
+		const token = await seedLink(db, endpointId, { revokedAt: new Date() });
+		const res = await handleBridgeUpgrade(upgrade(token));
+		expect(res.status).toBe(403);
+		expect(await res.json()).toEqual({ error: "token revoked" });
+		expect(forwards).toHaveLength(0);
+		// Revocation wins over the used flag too — a pulled link is dead.
+		const usedRevoked = await seedLink(db, endpointId, {
+			usedAt: new Date(),
+			revokedAt: new Date(),
+		});
+		expect((await handleBridgeUpgrade(upgrade(usedRevoked))).status).toBe(403);
 		await rt.dispose();
 	});
 

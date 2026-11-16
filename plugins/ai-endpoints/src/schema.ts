@@ -62,6 +62,8 @@ export type AiEndpoint = typeof aiEndpoint.$inferSelect;
  * link (`used_at` set, ~15min expiry) and upgrades to the endpoint's
  * AcpBridge durable object. The agent command itself is NEVER stored
  * or sent by the server — it is a local `--cmd` flag on the CLI.
+ * `revoked_at` (F4) marks a link the admin pulled from the Agents
+ * page — the row stays for audit, the token dies for future upgrades.
  */
 export const aiAgentLink = sqliteTable(
 	"ai_agent_link",
@@ -77,6 +79,9 @@ export const aiAgentLink = sqliteTable(
 		createdBy: text("created_by").notNull(),
 		expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 		usedAt: integer("used_at", { mode: "timestamp_ms" }),
+		/** Admin revocation (F4) — the bridge route refuses the token and
+		 * the Agents page shows `revoked`; nullable keeps the audit row. */
+		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
 		createdAt: integer("created_at", { mode: "timestamp_ms" })
 			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 			.notNull(),
