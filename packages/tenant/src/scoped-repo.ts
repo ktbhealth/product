@@ -56,12 +56,13 @@ export type ScopedRows<T extends TenantScopedTable> = T["$inferSelect"][];
  * writes (`insert`/`update`/`remove`) are fenced by it too — `insert`
  * stamps `tenant_id` with the active tenant (NULL in personal scope),
  * `update` refuses to move rows across the scope (a `tenantId` key in
- * the patch is dropped), and `update`/`remove` AND the caller's extra
- * condition with the scope so foreign-tenant rows are untouchable.
+ * the patch is dropped), and reads/writes accept an optional caller
+ * condition that is ANDed with the scope so foreign-tenant rows are
+ * neither readable nor writable.
  */
 export interface ScopedRepo<T extends TenantScopedTable> {
-	readonly findMany: () => Effect.Effect<ScopedRows<T>>;
-	readonly findFirst: () => Effect.Effect<T["$inferSelect"] | null>;
+	readonly findMany: (condition?: SQL) => Effect.Effect<ScopedRows<T>>;
+	readonly findFirst: (condition?: SQL) => Effect.Effect<T["$inferSelect"] | null>;
 	readonly insert: (values: T["$inferInsert"]) => Effect.Effect<T["$inferSelect"] | null>;
 	readonly update: (values: Partial<T["$inferInsert"]>) => {
 		readonly where: (condition?: SQL) => Effect.Effect<ScopedRows<T>>;
@@ -83,20 +84,20 @@ export const scopedRepo = <T extends TenantScopedTable>(
 		const scope = yield* tenantScopeCondition(table);
 
 		return {
-			findMany: () =>
+			findMany: (condition) =>
 				Effect.promise(
 					() =>
 						db
 							.select()
 							.from(table)
-							.where(scope as SQL) as Promise<ScopedRows<T>>,
+							.where(and(scope as SQL, condition)) as Promise<ScopedRows<T>>,
 				),
-			findFirst: () =>
+			findFirst: (condition) =>
 				Effect.promise(async () => {
 					const rows = (await db
 						.select()
 						.from(table)
-						.where(scope as SQL)
+						.where(and(scope as SQL, condition))
 						.limit(1)) as ScopedRows<T>;
 					return rows[0] ?? null;
 				}),
