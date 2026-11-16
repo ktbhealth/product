@@ -111,6 +111,42 @@ describe("resolveMessage", () => {
 		expect(r2.template).toBe("English");
 	});
 
+	it("probes the default locale when a hand-built chain omits it", () => {
+		// localeChain() always appends the default, but hand-built chains
+		// (e.g. a custom fallback list) may not — the resolver still
+		// probes defaultLocale across every scope before missing.
+		const idx = indexMessages([
+			row({ locale: "en", value: "English" }),
+			row({ locale: "en", scope: "tenant", scopeId: "t1", value: "Tenant EN" }),
+		]);
+		const chain = { locales: ["fr"], defaultLocale: "en" };
+		const global = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: GLOBAL_SCOPE,
+			locales: chain,
+		});
+		expect(global.template).toBe("English");
+		// Scope order still applies inside the default-locale probe.
+		const tenant = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: tenantScope("t1"),
+			locales: chain,
+		});
+		expect(tenant.template).toBe("Tenant EN");
+		// A scope without a default-locale row falls through to the next
+		// scope in the chain (tenant t2 has no rows → global wins).
+		const idx2 = indexMessages([row({ locale: "en", value: "English" })]);
+		const fallthrough = resolveMessage(idx2, {
+			namespace: "app",
+			key: "title",
+			scopeChain: tenantScope("t2"),
+			locales: chain,
+		});
+		expect(fallthrough.template).toBe("English");
+	});
+
 	it("returns namespace.key sentinel on total miss", () => {
 		const idx = indexMessages([]);
 		const r = resolveMessage(idx, {

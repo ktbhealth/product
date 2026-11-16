@@ -39,6 +39,20 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("#/lib/registry.ts")>();
 	return {
 		...actual,
+		// A locale-pinned instance no real plugin declares — appended so
+		// the pinned-locale chrome branch (PL-008) is reachable in tests.
+		portalInstances: [
+			...actual.portalInstances,
+			{
+				instance: {
+					id: "clinician-pt",
+					basePath: "/portal/clinician-pt",
+					label: "Clinician PT",
+					locale: "pt-BR",
+				},
+				pluginId: "test.pinned",
+			},
+		],
 		collectChrome: (
 			pluginList: Parameters<typeof actual.collectChrome>[0],
 			region: string,
@@ -141,10 +155,16 @@ const TEST_PAGE: PanelPage = {
 	component: () => createElement("div", { "data-testid": "portal-page" }, "CLINICIAN PAGE"),
 };
 
-const registerPage = () => {
+const PINNED_PAGE: PanelPage = {
+	id: "test.widget.pt",
+	path: "/portal/clinician-pt/test",
+	component: () => createElement("div", { "data-testid": "portal-page-pt" }, "PT PAGE"),
+};
+
+const registerPage = (page: PanelPage = TEST_PAGE) => {
 	const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
-	pages.set(TEST_PAGE.path, { page: TEST_PAGE, pluginId: "clinician.pages" });
-	return () => pages.delete(TEST_PAGE.path);
+	pages.set(page.path, { page, pluginId: "clinician.pages" });
+	return () => pages.delete(page.path);
 };
 
 afterEach(() => {
@@ -302,6 +322,25 @@ describe("/portal/$instance/$ component", () => {
 			render(createElement(component(PortalInstanceRoute)));
 			expect(screen.getByTestId("portal-page").textContent).toBe("CLINICIAN PAGE");
 			expect(screen.getAllByText("Clinician").length).toBeGreaterThan(0);
+		} finally {
+			unregister();
+		}
+	});
+
+	it("pins the locale picker to the instance locale when one is declared", () => {
+		const unregister = registerPage(PINNED_PAGE);
+		instance = "clinician-pt";
+		splat = "test";
+		pathname = "/portal/clinician-pt/test";
+		loaderData = {
+			path: "/portal/clinician-pt/test",
+			data: null,
+			audiences: [],
+			pluginStates: { enabled: plugins.map((p) => p.id) },
+		};
+		try {
+			render(createElement(component(PortalInstanceRoute)));
+			expect(screen.getByTestId("portal-page-pt").textContent).toBe("PT PAGE");
 		} finally {
 			unregister();
 		}

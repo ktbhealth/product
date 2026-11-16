@@ -153,6 +153,22 @@ describe("changeLocale", () => {
 		expect(jar[0]).toContain("samesite=lax");
 		expect(jar[0]).toContain("secure");
 	});
+
+	it("writes the cookie without reloading when window is absent", () => {
+		const jar: string[] = [];
+		vi.stubGlobal("document", {
+			set cookie(value: string) {
+				jar.push(value);
+			},
+			get cookie() {
+				return jar.at(-1) ?? "";
+			},
+		});
+		vi.stubGlobal("window", undefined);
+		changeLocale("es");
+		expect(jar).toHaveLength(1);
+		expect(jar[0]).toContain("ktb-locale=es");
+	});
 });
 
 describe("pluginNavLabel", () => {

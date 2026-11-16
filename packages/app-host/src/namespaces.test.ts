@@ -86,11 +86,34 @@ describe("namespacesForPath", () => {
 		]);
 		expect(namespacesForPath(plugins, "/eval/x")).toEqual(["app", "eval.persona"]);
 	});
+
+	it("a shorter wildcard later in topo order does not displace the winner", () => {
+		// Reversed order vs "longest wildcard base wins": the short
+		// pattern's baseLen is NOT > winnerScore → keeps the long one.
+		const plugins = [pagePlugin("long.plugin", ["/x/y/*"]), pagePlugin("short.plugin", ["/x/*"])];
+		expect(namespacesForPath(plugins, "/x/y/z")).toEqual(["app", "long"]);
+	});
+
+	it("chrome `when` with only exceptPaths matches every other path", () => {
+		const plugins = [chromePlugin("theme.chrome", { exceptPaths: ["/admin"] })];
+		expect(namespacesForPath(plugins, "/page")).toEqual(["app", "theme"]);
+		expect(namespacesForPath(plugins, "/admin")).toEqual(["app"]);
+	});
+
+	it("chrome without a `when` clause matches every path", () => {
+		const plugins = [chromePlugin("theme.chrome", undefined)];
+		expect(namespacesForPath(plugins, "/anything")).toEqual(["app", "theme"]);
+	});
 });
 
 describe("allNamespaces", () => {
 	it("collects every plugin domain + app", () => {
 		const plugins = [pagePlugin("patients.pages", ["/p"]), chromePlugin("theme.chrome", undefined)];
 		expect(allNamespaces(plugins)).toEqual(["app", "patients", "theme"]);
+	});
+
+	it("keeps single-segment plugin ids verbatim and skips id-less plugins", () => {
+		const plugins = [pagePlugin("solo", ["/s"]), { pages: [] } as unknown as Plugin];
+		expect(allNamespaces(plugins)).toEqual(["app", "solo"]);
 	});
 });

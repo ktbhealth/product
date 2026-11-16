@@ -170,6 +170,13 @@ describe("i18n fns", () => {
 		await expect(i18nPublishFn({ data: ID })).resolves.toEqual({ ok: false });
 		h.admin.discardDraft.mockReturnValueOnce(denied());
 		await expect(i18nDiscardDraftFn({ data: ID })).resolves.toEqual({ ok: false });
+		h.admin.discardDraft.mockReturnValueOnce(
+			Effect.fail(new I18nValidationError({ error: "no draft to discard" })),
+		);
+		await expect(i18nDiscardDraftFn({ data: ID })).resolves.toEqual({
+			ok: false,
+			error: "no draft to discard",
+		});
 	});
 
 	it("maps publish + locale validation errors to ok:false with the message", async () => {

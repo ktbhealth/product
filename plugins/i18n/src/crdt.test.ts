@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyTextEdit, docFromUpdates, docValue, newMessageDoc, snapshotUpdate } from "./crdt.ts";
+import {
+	applyTextEdit,
+	docFromUpdates,
+	docValue,
+	newMessageDoc,
+	replaceDocValue,
+	snapshotUpdate,
+} from "./crdt.ts";
 
 describe("crdt helpers", () => {
 	it("creates a doc and materializes its value", () => {
@@ -33,6 +40,15 @@ describe("crdt helpers", () => {
 		expect(v).toContain("B");
 	});
 
+	it("applies a trailing delete edit", () => {
+		const doc = newMessageDoc("");
+		const r1 = applyTextEdit(doc, { insert: "Hello world" });
+		const r2 = applyTextEdit(r1.doc, { delete: 6 });
+		expect(docValue(r2.doc)).toBe("Hello");
+		// The delete delta replays through the op log like any other op.
+		expect(docValue(docFromUpdates([r1.update, r2.update]))).toBe("Hello");
+	});
+
 	it("snapshotUpdate collapses a log into one replayable update", () => {
 		const doc = newMessageDoc("");
 		const r1 = applyTextEdit(doc, { insert: "Hello " });
@@ -47,5 +63,18 @@ describe("crdt helpers", () => {
 		const continued = docFromUpdates([snapshot]);
 		const r3 = applyTextEdit(continued, { insert: "!" });
 		expect(docValue(r3.doc)).toBe("Hello world!");
+	});
+
+	it("snapshotUpdate on an empty log yields an empty doc", () => {
+		expect(docValue(docFromUpdates([snapshotUpdate([])]))).toBe("");
+	});
+
+	it("replaceDocValue clears the text when the new value is empty", () => {
+		const doc = newMessageDoc("");
+		const r1 = applyTextEdit(doc, { insert: "Hello" });
+		const r2 = replaceDocValue([r1.update], "");
+		expect(r2.value).toBe("");
+		// The clearing delta replays through the op log like any other op.
+		expect(docValue(docFromUpdates([r1.update, r2.update]))).toBe("");
 	});
 });

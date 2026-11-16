@@ -7,10 +7,20 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Forbidden } from "@ktb/authz";
 import { GLOBAL_SCOPE, localeChain, type LocaleChain, type ScopeChain } from "@ktb/i18n";
+import { PlatformAdmin } from "@ktb/platform";
+import { Permissions } from "@ktb/rbac";
 
 import { syncBaseline } from "./baseline.ts";
-import { I18N_TEST_DDL, i18nLocales, i18nMessages, i18nNamespaces } from "./index.ts";
+import { I18nAdmin, type I18nAdminShape } from "./contract.ts";
+import {
+	I18N_TEST_DDL,
+	i18nLocales,
+	i18nMessages,
+	i18nNamespaces,
+	i18nPanelPlugin,
+} from "./index.ts";
 import {
 	I18nRuntime,
 	I18nRuntimeLive,
@@ -96,6 +106,26 @@ describe("syncBaseline", () => {
 		expect(r.invalid).toHaveLength(3);
 		const rows = await db.select().from(i18nMessages).where(eq(i18nMessages.key, "has space"));
 		expect(rows).toHaveLength(0);
+	});
+
+	it("syncBaseline with no entries is a no-op", async () => {
+		const r = await syncBaseline(db, []);
+		expect(r).toEqual({ inserted: 0, skipped: 0, invalid: [] });
+	});
+
+	it("skips duplicate tuples within one batch — first occurrence wins", async () => {
+		const r = await syncBaseline(db, [
+			{ namespace: "dup.ns", key: "k", locale: "en", value: "first" },
+			{ namespace: "dup.ns", key: "k", locale: "en", value: "second" },
+		]);
+		expect(r.inserted).toBe(1);
+		expect(r.skipped).toBe(1);
+		const rows = await db
+			.select()
+			.from(i18nMessages)
+			.where(and(eq(i18nMessages.namespace, "dup.ns"), eq(i18nMessages.key, "k")));
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.value).toBe("first");
 	});
 });
 
@@ -191,6 +221,75 @@ describe("store", () => {
 			scopeId: "other",
 		});
 		expect(miss.find((r) => r.key === "scoped")).toBeUndefined();
+	});
+
+	it("listMessageRows filters by locale + status (panel matrix)", async () => {
+		await db.insert(i18nMessages).values([
+			{
+				namespace: "flt.ns",
+				key: "k",
+				locale: "en",
+				scope: "global",
+				scopeId: "",
+				kind: "text",
+				value: "published",
+				status: "published",
+				params: [],
+				version: 1,
+			},
+			{
+				namespace: "flt.ns",
+				key: "k-draft",
+				locale: "en",
+				scope: "global",
+				scopeId: "",
+				kind: "text",
+				value: "draft",
+				status: "draft",
+				params: [],
+				version: 1,
+			},
+			{
+				namespace: "flt.ns",
+				key: "k",
+				locale: "pt-BR",
+				scope: "global",
+				scopeId: "",
+				kind: "text",
+				value: "publicado",
+				status: "published",
+				params: [],
+				version: 1,
+			},
+		]);
+		const drafts = await listMessageRows(db, {
+			namespace: "flt.ns",
+			locale: "en",
+			status: "draft",
+		});
+		expect(drafts).toHaveLength(1);
+		expect(drafts[0]?.value).toBe("draft");
+		const pt = await listMessageRows(db, {
+			namespace: "flt.ns",
+			locale: "pt-BR",
+			status: "published",
+		});
+		expect(pt).toHaveLength(1);
+		expect(pt[0]?.value).toBe("publicado");
+	});
+
+	it("listMessageRows with no filter returns every row", async () => {
+		const all = await listMessageRows(db);
+		expect(all.length).toBeGreaterThan(0);
+		// A partial filter (no locale) still constrains by namespace.
+		const ns = await listMessageRows(db, { namespace: "flt.ns" });
+		expect(ns.every((r) => r.namespace === "flt.ns")).toBe(true);
+		expect(ns.length).toBeGreaterThan(0);
+	});
+
+	it("catalogStamp reads r0 before the first revision bump", async () => {
+		const fresh = makeDb(makeD1(I18N_TEST_DDL));
+		expect(await catalogStamp(fresh)).toBe("r0");
 	});
 });
 
@@ -415,6 +514,62 @@ describe("I18nRuntime cache", () => {
 		);
 		expect(retainedIdx.get(rowKey(`fill${MAX_CACHE_ENTRIES + 7}`))).toBeUndefined();
 	});
+
+	it("re-checks the stamp after TTL and serves the cached index when unchanged", async () => {
+		const runtime = makeRuntime();
+		const rt = await runtime.runPromise(
+			Effect.gen(function* () {
+				return yield* I18nRuntime;
+			}),
+		);
+		const locales = localeChain(["en"], "en");
+		const first = await runtime.runPromise(rt.catalogFor(GLOBAL_SCOPE, locales));
+		// Jump past the TTL: the stamp re-read finds no change, so the
+		// SAME index object is served with a refreshed loadedAt.
+		const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + STAMP_TTL_MS + 1);
+		try {
+			const second = await runtime.runPromise(rt.catalogFor(GLOBAL_SCOPE, locales));
+			expect(second).toBe(first);
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
+
+	it("reloads after TTL when the catalog stamp changed", async () => {
+		const runtime = makeRuntime();
+		const rt = await runtime.runPromise(
+			Effect.gen(function* () {
+				return yield* I18nRuntime;
+			}),
+		);
+		const locales = localeChain(["en"], "en");
+		const first = await runtime.runPromise(rt.catalogFor(GLOBAL_SCOPE, locales));
+		// A write + revision bump moves the stamp → the expired-TTL
+		// re-check must reload instead of serving the stale index.
+		await db.insert(i18nMessages).values({
+			namespace: "stamp-change",
+			key: "k",
+			locale: "en",
+			scope: "global",
+			scopeId: "",
+			kind: "text",
+			value: "fresh",
+			status: "published",
+			params: [],
+			version: 1,
+		});
+		await bumpCatalogRevision(db);
+		const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + STAMP_TTL_MS + 1);
+		try {
+			const second = await runtime.runPromise(rt.catalogFor(GLOBAL_SCOPE, locales));
+			expect(second).not.toBe(first);
+			expect(second.get(JSON.stringify(["stamp-change", "k", "en", "global", ""]))?.value).toBe(
+				"fresh",
+			);
+		} finally {
+			nowSpy.mockRestore();
+		}
+	});
 });
 
 describe("runtime auto-seed", () => {
@@ -552,5 +707,105 @@ describe("constants", () => {
 	});
 	it("scope helpers produce chains", () => {
 		expect(GLOBAL_SCOPE.scopes).toHaveLength(1);
+	});
+});
+
+describe("i18nPanelPlugin page", () => {
+	const page = i18nPanelPlugin.panel?.pages[0];
+
+	const fakeAdmin = (over: Partial<I18nAdminShape> = {}): I18nAdminShape => ({
+		namespaces: () => Effect.succeed([]),
+		locales: () => Effect.succeed([]),
+		messages: () => Effect.succeed([]),
+		saveDraft: () => Effect.void,
+		publish: () => Effect.void,
+		discardDraft: () => Effect.void,
+		setLocaleEnabled: () => Effect.void,
+		exportNamespace: () => Effect.succeed({ version: 1 as const, namespace: "app", messages: {} }),
+		importNamespace: () => Effect.succeed({ imported: 0 }),
+		...over,
+	});
+
+	const adminGate = (ok: boolean) => ({
+		isAdmin: () => Effect.succeed(ok),
+		requireAdmin: () => (ok ? Effect.void : Effect.fail(new Forbidden({ path: "/platform/i18n" }))),
+	});
+
+	it("guard passes on an rbac grant without consulting the admin gate", async () => {
+		const guard = page?.guard;
+		expect(guard).toBeDefined();
+		const requireAdmin = vi.fn(() => Effect.fail(new Forbidden({ path: "x" })));
+		const result = await Effect.runPromise(
+			guard!().pipe(
+				Effect.provideService(Permissions, {
+					can: () => Effect.succeed(true),
+				} as never),
+				Effect.provideService(PlatformAdmin, {
+					isAdmin: () => Effect.succeed(false),
+					requireAdmin,
+				}),
+			),
+		);
+		expect(result).toBe(true);
+		expect(requireAdmin).not.toHaveBeenCalled();
+	});
+
+	it("guard falls back to the admin allowlist when rbac denies", async () => {
+		const guard = page?.guard;
+		const allowed = await Effect.runPromise(
+			guard!().pipe(
+				Effect.provideService(Permissions, {
+					can: () => Effect.succeed(false),
+				} as never),
+				Effect.provideService(PlatformAdmin, adminGate(true)),
+			),
+		);
+		expect(allowed).toBe(true);
+		const denied = await Effect.runPromise(
+			guard!().pipe(
+				Effect.provideService(Permissions, {
+					can: () => Effect.succeed(false),
+				} as never),
+				Effect.provideService(PlatformAdmin, adminGate(false)),
+			),
+		);
+		expect(denied).toBe(false);
+	});
+
+	it("guard works without the Permissions service (admin gate only)", async () => {
+		const guard = page?.guard;
+		const allowed = await Effect.runPromise(
+			guard!().pipe(Effect.provideService(PlatformAdmin, adminGate(true))),
+		);
+		expect(allowed).toBe(true);
+		const denied = await Effect.runPromise(
+			guard!().pipe(Effect.provideService(PlatformAdmin, adminGate(false))),
+		);
+		expect(denied).toBe(false);
+	});
+
+	it("loader returns namespaces + locales from I18nAdmin", async () => {
+		const loader = page?.loader;
+		expect(loader).toBeDefined();
+		const admin = fakeAdmin({
+			namespaces: () =>
+				Effect.succeed([
+					{ namespace: "app", pluginId: "host", defaultLocale: "en", messageCount: 3 },
+				]),
+			locales: () =>
+				Effect.succeed([{ code: "en", endonym: "English", fallbacks: [], enabled: true }]),
+		});
+		const out = await Effect.runPromise(loader!().pipe(Effect.provideService(I18nAdmin, admin)));
+		expect(out.namespaces).toHaveLength(1);
+		expect(out.locales).toHaveLength(1);
+	});
+
+	it("loader degrades to empty lists on Forbidden", async () => {
+		const loader = page?.loader;
+		const admin = fakeAdmin({
+			namespaces: () => Effect.fail(new Forbidden({ path: "i18n.namespaces" })),
+		});
+		const out = await Effect.runPromise(loader!().pipe(Effect.provideService(I18nAdmin, admin)));
+		expect(out).toEqual({ namespaces: [], locales: [] });
 	});
 });

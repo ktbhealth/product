@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
-import { parseMessage, paramSignature } from "@ktb/i18n";
+import { parseMessage } from "@ktb/i18n";
 
 import { MAX_MESSAGE_VALUE_LENGTH, validateMessageId } from "./contract.ts";
 import { i18nMessages, i18nNamespaces } from "./schema.ts";
@@ -95,8 +95,9 @@ export const prepareBaselineEntries = (
 			invalid.push({ entry: e, error: parsed.error });
 			continue;
 		}
-		const params = paramSignature(e.value);
-		const paramList = Array.isArray(params) ? params : [];
+		// parsed.ok guarantees a signature — reuse it rather than
+		// re-deriving (paramSignature can't fail on the same input).
+		const paramList = parsed.message.params;
 
 		// First occurrence wins — a duplicated baseline key is skipped
 		// exactly like a pre-existing DB row (never overwrite).

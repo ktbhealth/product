@@ -90,6 +90,23 @@ describe("parseMessage", () => {
 		expect(r.ok).toBe(false);
 	});
 
+	it("rejects malformed plural/select case lists", () => {
+		// Empty case list.
+		expect(parseMessage("text", "{n, plural,}").ok).toBe(false);
+		// Case key not followed by a body brace.
+		expect(parseMessage("text", "{n, plural,one x other {y}}").ok).toBe(false);
+		// Case body brace never closed inside the arg list.
+		expect(parseMessage("text", "{n, plural,one {a} other {}").ok).toBe(false);
+		// Case key that matches neither `=N` nor a keyword.
+		expect(parseMessage("text", "{n, plural,!!!{x} other {y}}").ok).toBe(false);
+		// Formatter hint with extra args.
+		expect(parseMessage("text", "{n, number, extra}").ok).toBe(false);
+	});
+
+	it("accepts trailing whitespace after the last case", () => {
+		expect(parseMessage("text", "{n, plural, one {a} other {b} }").ok).toBe(true);
+	});
+
 	it("sees params nested inside plural/select case bodies", () => {
 		const r = parseMessage("text", "{a,select,x{{secret}} other{y}}");
 		expect(r.ok).toBe(true);
@@ -199,6 +216,40 @@ describe("renderMessage", () => {
 	it("renders nested params inside cases", () => {
 		const tpl = "{count, plural, one {{name} has # msg} other {{name} has # msgs}}";
 		expect(renderMessage(tpl, { count: 1, name: "Ana" }, "en")).toBe("Ana has 1 msg");
+	});
+
+	it("renders datetime and relative hints via Intl", () => {
+		const d = new Date("2024-01-15T10:30:00Z");
+		expect(renderMessage("{d, datetime}", { d }, "en")).toContain("2024");
+		expect(renderMessage("{d, relative}", { d }, "en")).toEqual(expect.any(String));
+		// Non-Date values degrade to the safe string form.
+		expect(renderMessage("{d, datetime}", { d: "soon" }, "en")).toBe("soon");
+		expect(renderMessage("{d, relative}", { d: "soon" }, "en")).toBe("soon");
+		// Same for the plain date hint.
+		expect(renderMessage("{d, date}", { d: "soon" }, "en")).toBe("soon");
+	});
+
+	it("degrades non-array list values and unstringifiable objects", () => {
+		expect(renderMessage("{items, list}", { items: "one,two" }, "en")).toBe("one,two");
+		// toJSON → undefined makes JSON.stringify return undefined despite
+		// its string return type — the safeString fallback must catch it.
+		const odd = { toJSON: () => undefined };
+		expect(renderMessage("{v}", { v: odd }, "en")).toBe("[object Object]");
+		// Plain objects render their JSON form.
+		expect(renderMessage("{v}", { v: { a: 1 } }, "en")).toBe('{"a":1}');
+	});
+
+	it("renders select with a missing value via the other case", () => {
+		const tpl = "{role, select, admin {A} other {O}}";
+		expect(renderMessage(tpl, {}, "en")).toBe("O");
+	});
+
+	it("skips case bodies that fail to tokenize at render time", () => {
+		// `{!!!}` is not a valid param name — the case body cannot
+		// tokenize, so the case contributes nothing.
+		const tpl = "{n, plural, one {{!!!}} other {why}}";
+		expect(renderMessage(tpl, { n: 1 }, "en")).toBe("");
+		expect(renderMessage(tpl, { n: 2 }, "en")).toBe("why");
 	});
 
 	it("renders list hint", () => {
@@ -338,11 +389,21 @@ describe("validateAgainstSignature", () => {
 		expect(issues.some((i) => i.detail.includes("hint"))).toBe(true);
 	});
 
+	it("flags hint mismatch when only the template declares a hint", () => {
+		const issues = validateAgainstSignature("{n, number}", [{ name: "n" }]);
+		expect(issues.some((i) => i.code === "param_mismatch" && i.detail.includes("hint"))).toBe(true);
+	});
+
 	it("flags params that only appear inside case bodies", () => {
 		const issues = validateAgainstSignature("{a,select,x{{secret}} other{y}}", [{ name: "a" }]);
 		expect(issues.some((i) => i.code === "param_mismatch" && i.detail.includes("secret"))).toBe(
 			true,
 		);
+	});
+
+	it("reports bad_syntax for templates that fail to parse", () => {
+		const issues = validateAgainstSignature("Hi {name", []);
+		expect(issues).toEqual([{ code: "bad_syntax", detail: expect.stringContaining("unclosed") }]);
 	});
 });
 
@@ -378,6 +439,22 @@ describe("pseudoLocalize", () => {
 		// Strip the ⟦⟧ wrap + pad, then the result must re-parse.
 		const inner = out.slice(1, out.indexOf("⟧"));
 		expect(parseMessage("text", inner).ok).toBe(true);
+	});
+
+	it("keeps formatter hints and unparseable case bodies intact", () => {
+		// Hint tokens round-trip with their formatter.
+		const hinted = pseudoLocalize("Total {n, number}");
+		expect(parseMessage("text", hinted.slice(1, hinted.indexOf("⟧"))).ok).toBe(true);
+		// A case body that cannot tokenize is accented verbatim — the
+		// braces still survive for downstream parsers to reject.
+		const bad = pseudoLocalize("{n, plural, one {{!!!}} other {y}}");
+		expect(bad).toContain("{!!!}");
+	});
+
+	it("keeps brace spans verbatim when the whole template fails to parse", () => {
+		const out = pseudoLocalize("{!!!}");
+		expect(out).toContain("{!!!}");
+		expect(out.startsWith("⟦")).toBe(true);
 	});
 
 	it("does not stack-overflow on deeply nested or oversized input", () => {

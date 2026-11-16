@@ -70,9 +70,8 @@ const putCache = (
 	next.delete(key); // re-insert → most-recently-used position
 	next.set(key, entry);
 	while (next.size > MAX_CACHE_ENTRIES) {
-		const oldest = next.keys().next().value;
-		if (oldest === undefined) break;
-		next.delete(oldest);
+		// size > MAX_CACHE_ENTRIES ≥ 1 → the iterator always yields.
+		next.delete(next.keys().next().value!);
 	}
 	return next;
 };

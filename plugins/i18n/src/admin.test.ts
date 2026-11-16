@@ -231,6 +231,49 @@ describe("I18nAdmin", () => {
 		expect(await db.select().from(i18nMessages)).toHaveLength(before);
 	});
 
+	it("importNamespace reports every per-entry problem and writes nothing", async () => {
+		const rt = makeRuntime();
+		const before = (await db.select().from(i18nMessages)).length;
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin
+					.importNamespace({
+						version: 1,
+						namespace: "probs",
+						messages: {
+							// Non-object locale bucket.
+							fr: "not-an-object",
+							en: {
+								good: "Fine",
+								badtype: 42,
+								"has space": "bad key",
+								toolong: "x".repeat(50_001),
+							},
+							// Locale id itself fails validation.
+							"en US": { k: "v" },
+							// Pseudo-locale never holds authored copy.
+							qps: { k: "v" },
+							// Well-formed but unregistered locale.
+							zz: { k: "v" },
+						},
+					} as never)
+					.pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(I18nValidationError);
+		const msg = (err as I18nValidationError).error;
+		expect(msg).toContain("locale 'fr': expected object");
+		expect(msg).toContain("en.badtype: value must be a string");
+		expect(msg).toContain("en.has space");
+		expect(msg).toContain("en.toolong: value exceeds");
+		expect(msg).toContain("en US.k");
+		expect(msg).toContain("qps.k");
+		expect(msg).toContain("zz.k: unknown locale 'zz'");
+		// Atomic: the valid 'good' entry was not staged either.
+		expect(await db.select().from(i18nMessages)).toHaveLength(before);
+	});
+
 	it("namespaces + locales list for the panel", async () => {
 		const rt = makeRuntime();
 		const out = await rt.runPromise(
@@ -1007,5 +1050,214 @@ describe("I18nAdmin import kind reset", () => {
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.kind).toBe("text");
 		expect(rows[0]?.draftValue).toBe("plain text");
+	});
+});
+
+describe("I18nAdmin read-gate fallbacks", () => {
+	it("messages() global resolves through requireAdmin when no Permissions service exists", async () => {
+		const rt = makeRuntime(); // adminGate, no Permissions layer
+		const rows = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.messages({});
+			}),
+		);
+		expect(Array.isArray(rows)).toBe(true);
+	});
+
+	it("messages() global falls back to the admin gate when the grant denies", async () => {
+		const denyAll: PermissionsShape = {
+			...globalOnlyPermissions,
+			can: () => Effect.succeed(false),
+			canFor: () => Effect.succeed(false),
+		};
+		const rt = makeRuntimeWithPermissions(denyAll, adminGate);
+		const rows = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.messages({});
+			}),
+		);
+		expect(Array.isArray(rows)).toBe(true);
+	});
+
+	it("messages() global is Forbidden when grant AND admin gate deny", async () => {
+		const rt = makeRuntime(denyGate); // no Permissions + denied admin
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.messages({}).pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(Forbidden);
+	});
+
+	it("messages() rejects a non-global scope without a scopeId", async () => {
+		const rt = makeRuntime();
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.messages({ scope: "tenant" }).pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(Forbidden);
+	});
+});
+
+describe("I18nAdmin edge coverage", () => {
+	it("namespaces() includes namespaces known only from message rows", async () => {
+		// Register "app" (which already has global message rows) so the
+		// merge loop exercises the registered-and-counted path too.
+		await db
+			.insert(i18nNamespaces)
+			.values({ namespace: "app", pluginId: "", defaultLocale: "en" })
+			.onConflictDoNothing();
+		await db.insert(i18nMessages).values({
+			namespace: "orphan.ns",
+			key: "k",
+			locale: "en",
+			scope: "global",
+			scopeId: "",
+			kind: "text",
+			value: "x",
+			status: "published",
+			params: [],
+			version: 1,
+		});
+		const rt = makeRuntime();
+		const list = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.namespaces();
+			}),
+		);
+		const ns = list.find((n) => n.namespace === "orphan.ns");
+		expect(ns).toBeDefined();
+		expect(ns?.pluginId).toBe("");
+		expect(ns?.messageCount).toBe(1);
+	});
+
+	it("saveDraft defaults omitted scope fields to global", async () => {
+		const rt = makeRuntime();
+		// Wire callers may omit scope/scopeId — the admin layer must
+		// default them rather than fail validation.
+		const partial = {
+			namespace: "app",
+			key: "scope-default",
+			locale: "en",
+			value: "defaults",
+			scope: undefined,
+			scopeId: undefined,
+		} as unknown as SaveDraftInput;
+		await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				yield* admin.saveDraft(partial);
+			}),
+		);
+		const rows = await db
+			.select()
+			.from(i18nMessages)
+			.where(and(eq(i18nMessages.key, "scope-default"), eq(i18nMessages.scope, "global")));
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.scopeId).toBe("");
+	});
+
+	it("publish re-validates a staged rich draft and rejects forbidden markup", async () => {
+		// Stage directly — bypasses saveDraft's own validation, the
+		// exact hole the publish-time re-check exists for.
+		await db.insert(i18nMessages).values({
+			namespace: "app",
+			key: "rich-bad",
+			locale: "en",
+			scope: "global",
+			scopeId: "",
+			kind: "rich",
+			value: "",
+			draftValue: '<iframe src="https://evil.example"></iframe>',
+			status: "draft",
+			params: [],
+			version: 1,
+		});
+		const rt = makeRuntime();
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin
+					.publish({
+						namespace: "app",
+						key: "rich-bad",
+						locale: "en",
+						scope: "global",
+						scopeId: "",
+					})
+					.pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(I18nValidationError);
+	});
+
+	it("publish accepts a clean staged rich draft", async () => {
+		await db.insert(i18nMessages).values({
+			namespace: "app",
+			key: "rich-ok",
+			locale: "en",
+			scope: "global",
+			scopeId: "",
+			kind: "rich",
+			value: "",
+			draftValue: "<p>Hello <b>world</b></p>",
+			status: "draft",
+			params: [],
+			version: 1,
+		});
+		const rt = makeRuntime();
+		await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				yield* admin.publish({
+					namespace: "app",
+					key: "rich-ok",
+					locale: "en",
+					scope: "global",
+					scopeId: "",
+				});
+			}),
+		);
+		const rows = await db.select().from(i18nMessages).where(eq(i18nMessages.key, "rich-ok"));
+		expect(rows[0]?.value).toBe("<p>Hello <b>world</b></p>");
+		expect(rows[0]?.status).toBe("published");
+	});
+
+	it("discardDraft on a published row with no staged draft is a no-op", async () => {
+		await db.insert(i18nMessages).values({
+			namespace: "app",
+			key: "no-draft",
+			locale: "en",
+			scope: "global",
+			scopeId: "",
+			kind: "text",
+			value: "live",
+			draftValue: null,
+			status: "published",
+			params: [],
+			version: 1,
+		});
+		const rt = makeRuntime();
+		await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				yield* admin.discardDraft({
+					namespace: "app",
+					key: "no-draft",
+					locale: "en",
+					scope: "global",
+					scopeId: "",
+				});
+			}),
+		);
+		const rows = await db.select().from(i18nMessages).where(eq(i18nMessages.key, "no-draft"));
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.value).toBe("live");
 	});
 });

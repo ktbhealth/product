@@ -64,6 +64,46 @@ describe("catalogSlice", () => {
 		expect(slice["app.title"]).toBe("Tenant title");
 	});
 
+	it("pseudo-localizes slice values when the chain leads with qps", async () => {
+		const slice = await Effect.runPromise(
+			catalogSlice(db, {
+				namespaces: ["app"],
+				scopeChain: GLOBAL_SCOPE,
+				locales: localeChain(["qps", "en"], "en"),
+			}),
+		);
+		// qps has no authored rows — the en template is resolved, then
+		// pseudo-localized (accented + ⟦⟧ wrapped).
+		expect(slice["app.title"]).toMatch(/^⟦.+⟧$/);
+	});
+
+	it("skips published rows the scope chain cannot resolve", async () => {
+		// A global row carrying a stray scopeId is visible to
+		// listPublishedRows (the global scope cond ignores scopeId) but
+		// unresolvable — resolveRow probes scopeId "" and misses.
+		await db.insert(i18nMessages).values({
+			namespace: "app",
+			key: "odd-scope",
+			locale: "en",
+			scope: "global",
+			scopeId: "stray",
+			kind: "text",
+			value: "stray",
+			status: "published",
+			params: [],
+			version: 1,
+		});
+		const slice = await Effect.runPromise(
+			catalogSlice(db, {
+				namespaces: ["app"],
+				scopeChain: GLOBAL_SCOPE,
+				locales: localeChain(["en"], "en"),
+			}),
+		);
+		expect(slice["app.odd-scope"]).toBeUndefined();
+		expect(slice["app.title"]).toBe("App title");
+	});
+
 	it("stableSlice sorts keys", () => {
 		const s = stableSlice({ "b.k": "1", "a.k": "2" });
 		expect(Object.keys(s)).toEqual(["a.k", "b.k"]);

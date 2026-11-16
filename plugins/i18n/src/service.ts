@@ -35,7 +35,7 @@ let missingSuppressed = 0;
 const sanitizeTelemetryField = (value: string): string => {
 	let out = "";
 	for (const ch of value) {
-		const code = ch.codePointAt(0) ?? 0;
+		const code = ch.codePointAt(0)!; // for-of yields non-empty strings
 		if (code > 0x1f && code !== 0x7f) out += ch;
 		if (out.length >= MISSING_FIELD_MAX) break;
 	}

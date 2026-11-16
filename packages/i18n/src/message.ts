@@ -102,15 +102,15 @@ const parseCases = (src: string): Array<{ key: string; body: string }> | null =>
 	let i = 0;
 	while (i < src.length) {
 		while (i < src.length && /\s/.test(src[i]!)) i++;
-		if (i >= src.length) break;
 		// case key: keyword or =N
 		const m = /^(=\d+|[A-Za-z_]+)\s*/.exec(src.slice(i));
 		if (!m) return null;
 		const key = m[1]!;
 		i += m[0].length;
 		if (src[i] !== "{") return null;
+		// `src` is a slice of a brace-balanced param body, so the case
+		// body's closing brace always exists.
 		const end = matchBrace(src, i);
-		if (end === -1) return null;
 		cases.push({ key, body: src.slice(i + 1, end) });
 		i = end + 1;
 	}
@@ -310,7 +310,7 @@ const renderTokens = (
 			if (t.plural && typeof value === "number") {
 				try {
 					const exact = t.cases.find((c) => c.key === `=${value}`);
-					key = exact?.key ?? new Intl.PluralRules(locale).select(value) ?? undefined;
+					key = exact?.key ?? new Intl.PluralRules(locale).select(value);
 				} catch {
 					// Exotic locale — fall back to the select/other path.
 					key = undefined;
@@ -458,7 +458,7 @@ const PSEUDO_ACCENTS: Readonly<Record<string, string>> = {
 };
 
 const accentVowels = (text: string): string =>
-	text.replace(/[aeiouAEIOU]/g, (c) => PSEUDO_ACCENTS[c] ?? c);
+	text.replace(/[aeiouAEIOU]/g, (c) => PSEUDO_ACCENTS[c] as string);
 
 /**
  * Re-emit tokens with copy accented but syntax verbatim: param names,

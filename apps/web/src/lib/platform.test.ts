@@ -1,5 +1,32 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
+
+const hoisted = vi.hoisted(() => ({
+	throwHeaders: false,
+	account: null as null | { id: string; email: string; name: string },
+	accountFails: false,
+	headers: new Headers(),
+}));
+
+vi.mock("@tanstack/react-start/server", () => ({
+	getRequestHeaders: () => {
+		if (hoisted.throwHeaders) throw new Error("no request context");
+		return hoisted.headers;
+	},
+}));
+
+// The session lookup behind requestScopeChain is a server-fn port —
+// stub it so tenant-selector tests control the account directly.
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return {
+		...actual,
+		getSessionAccount: async () => {
+			if (hoisted.accountFails) throw new Error("session store down");
+			return hoisted.account;
+		},
+	};
+});
 
 import { groupMembers, groups } from "@ktb/db/schema";
 import { GLOBAL_SCOPE, tenantScope } from "@ktb/i18n";
@@ -94,5 +121,53 @@ describe("platform", () => {
 		// An explicit scopeChain still wins (portal-scoped callers).
 		const scoped = await getI18n({ scopeChain: tenantScope("t1") });
 		expect(scoped.scopeChain).toEqual(tenantScope("t1"));
+	});
+
+	it("i18n capability binds tenant scope from request headers + session", async () => {
+		const reset = () => {
+			hoisted.headers = new Headers();
+			hoisted.account = null;
+			hoisted.accountFails = false;
+			hoisted.throwHeaders = false;
+		};
+		reset();
+		try {
+			hoisted.headers = new Headers({ "x-tenant-slug": "clinic-a" });
+			hoisted.account = { id: "u1", email: "u@x.com", name: "U" };
+			const i18n = await getI18n();
+			expect(i18n.scopeChain).toEqual(tenantScope(String(clinicAId)));
+		} finally {
+			reset();
+		}
+	});
+
+	it("i18n capability degrades to global scope on selector/session failures", async () => {
+		const reset = () => {
+			hoisted.headers = new Headers();
+			hoisted.account = null;
+			hoisted.accountFails = false;
+			hoisted.throwHeaders = false;
+		};
+		reset();
+		try {
+			// Session lookup throws → `.catch(() => null)` → resolver sees
+			// no user → TenantNotFound → caught → personal/global scope.
+			hoisted.headers = new Headers({ "x-tenant-slug": "clinic-a" });
+			hoisted.accountFails = true;
+			expect((await getI18n()).scopeChain).toEqual(GLOBAL_SCOPE);
+			// Anonymous account → same degradation.
+			hoisted.accountFails = false;
+			expect((await getI18n()).scopeChain).toEqual(GLOBAL_SCOPE);
+			// Unknown slug with a real account → TenantNotFound → global.
+			hoisted.headers = new Headers({ "x-tenant-slug": "no-such-tenant" });
+			hoisted.account = { id: "u1", email: "u@x.com", name: "U" };
+			expect((await getI18n()).scopeChain).toEqual(GLOBAL_SCOPE);
+			// getRequestHeaders throwing → empty headers → no selector.
+			hoisted.throwHeaders = true;
+			hoisted.account = null;
+			expect((await getI18n()).scopeChain).toEqual(GLOBAL_SCOPE);
+		} finally {
+			reset();
+		}
 	});
 });
