@@ -50,5 +50,8 @@ export const domain = defineDomain({
 	params: {
 		dataset: { count: 8, step: 7, seed: 100, noise: "clean" },
 		voices: ["br_male_1", "br_female_1"],
+		// Full anamnesis dialogue (~35 turns, 10+ min audio) with
+		// per-speaker voices — doctor ≠ patient.
+		scriptVariant: "anamnesis",
 	},
 });

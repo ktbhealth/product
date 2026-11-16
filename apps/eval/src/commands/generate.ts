@@ -173,11 +173,26 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 				const startedAt = Date.now();
 				const ttsKey = resolution.adapters.tts ?? "stub";
 				const voices = jsonStringArray(domainParams?.voices) ?? ["br_male_1", "br_female_1"];
+				// Multi-speaker voices (P-080): `params.speakerVoices` maps
+				// dialogue roles → voice aliases, e.g.
+				// {"doctor":"br_male_1","patient":"br_female_1"}. Present →
+				// the TTS adapter renders each script turn with its own
+				// voice and concatenates into one consultation audio.
+				const speakerVoicesRec = jsonRecord(domainParams?.speakerVoices);
+				const speakerVoices =
+					speakerVoicesRec !== undefined
+						? Object.fromEntries(
+								Object.entries(speakerVoicesRec).filter(
+									(e): e is [string, string] => typeof e[1] === "string",
+								),
+							)
+						: undefined;
 				const acoustic = (_p: Persona, i: number): AcousticProfile => ({
 					ttsModel: ttsKey,
 					voiceId: voices[i % voices.length]!,
 					noise,
 					sampleRate: 16000,
+					...(speakerVoices !== undefined ? { speakerVoices } : {}),
 				});
 
 				// Persona matrix from the domain definition (P-079) —
@@ -215,7 +230,10 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 								concurrency,
 								retry: Schedule.exponential("300 millis").pipe(Schedule.upTo({ times: 2 })),
 								retryWhile: isTransientBatchError,
-								timeoutMs: 120_000,
+								// Anamnesis samples run ~80 turn-syntheses each —
+								// even fanned out they need minutes, not the
+								// short-script budget.
+								timeoutMs: domainParams?.scriptVariant === "anamnesis" ? 900_000 : 120_000,
 							},
 						});
 
