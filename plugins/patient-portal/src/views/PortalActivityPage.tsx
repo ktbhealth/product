@@ -1,7 +1,9 @@
 import { AuditPage } from "@ktb/audit/views/audit-page";
 import type { AuditListResult } from "@ktb/audit";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 
-import { portalMessages } from "../i18n.ts";
+import { portalMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const EMPTY: AuditListResult = { entries: [], total: 0, limit: 100 };
 
@@ -13,14 +15,24 @@ const EMPTY: AuditListResult = { entries: [], total: 0, limit: 100 };
  * `AuditListResult` (unknown at the boundary, narrowed like
  * `AuditActivityPage` does for the clinician mount).
  */
-export function PortalActivityPage({ data, locale }: { data: unknown; locale: string }) {
+export function PortalActivityPage({
+	data,
+	locale,
+	i18n,
+}: {
+	data: unknown;
+	locale: string;
+	i18n?: PageI18nSlice;
+}) {
 	const d = (data ?? {}) as Partial<AuditListResult>;
+	const t = sliceMessages(i18n, I18N_NAMESPACE, portalMessages(locale));
 	return (
 		<AuditPage
 			entries={Array.isArray(d.entries) ? d.entries : EMPTY.entries}
 			total={typeof d.total === "number" ? d.total : 0}
 			locale={locale}
-			title={portalMessages(locale).activityTitle}
+			i18n={i18n}
+			title={t.activityTitle}
 		/>
 	);
 }

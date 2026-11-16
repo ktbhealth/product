@@ -110,7 +110,8 @@ const PANEL_LABELS: Record<string, string> = {
 	"/platform/groups": "panel_nav_groups",
 	"/platform/ops": "panel_nav_ops",
 	"/platform/plugins": "panel_nav_plugins",
-	"/portal/clinician/activity": "panel_nav_activity",
+	"/portal/doctor/activity": "panel_nav_activity",
+	"/portal/secretary/activity": "panel_nav_activity",
 };
 
 const PANEL_GROUPS: Record<string, string> = {

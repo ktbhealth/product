@@ -13,36 +13,34 @@ import { VaultClinicPage } from "./vault-page.tsx";
  * degrade to markers. Keep in sync — parity is asserted by
  * apps/web/src/plugins.test.ts.
  */
+const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
+
 export const vaultPagesPlugin = definePlugin({
 	id: "vault.pages",
 	requiredDeps: ["vault.services"],
-	pages: [
-		{
-			id: "vault.clinic",
-			path: "/portal/clinician/vault",
-			component: VaultClinicPage,
-		},
-	],
+	pages: CLINICAL_INSTANCES.map((instance) => ({
+		id: `vault.${instance}`,
+		path: `/portal/${instance}/vault`,
+		component: VaultClinicPage,
+	})),
 });
 
 export const vaultChromePlugin = definePlugin({
 	id: "vault.chrome",
-	chrome: [
-		{
-			id: "vault.nav",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/vault",
-					label: "Vault",
-					icon: KeyRoundIcon,
-					group: "Clinic",
-				},
+	chrome: CLINICAL_INSTANCES.map((instance) => ({
+		id: `vault.${instance}.nav`,
+		region: "portal.sidebar" as const,
+		portal: instance,
+		content: {
+			kind: "sidebarItem" as const,
+			item: {
+				to: `/portal/${instance}/vault`,
+				label: "Vault",
+				icon: KeyRoundIcon,
+				group: "Clinic",
 			},
 		},
-	],
+	})),
 });
 
 /** Single-concern plugins contributed by this module — the client

@@ -98,7 +98,9 @@ export function LoginPage({
 		// is a patient account: it only has the patient portal.
 		const context = await doctorContextFn();
 		const profiles = context?.profiles.length;
-		window.location.assign(profiles === 0 ? "/portal" : profiles === 1 ? "/" : "/doctors/select");
+		window.location.assign(
+			profiles === 0 ? "/portal/patient" : profiles === 1 ? "/" : "/doctors/select",
+		);
 	};
 
 	return (

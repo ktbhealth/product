@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
 	useSearch: () => mocks.search.current,
+	useLocation: (opts: { select: (l: { pathname: string }) => unknown }) =>
+		opts.select({ pathname: "/portal/doctor/consultations/5" }),
 }));
 vi.mock("@ktb/consultations/views", () => {
 	const capture = (testId: string) => (props: Record<string, unknown>) => {
@@ -60,7 +62,7 @@ describe("ClinicianConsultationRecordPage", () => {
 			api: { kind: "new" },
 			backend: { kind: "backend" },
 			locale: "en",
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 		});
 	});
 
@@ -90,7 +92,7 @@ describe("ClinicianConsultationRecordPage", () => {
 			history,
 			api: { kind: "detail" },
 			locale: "en",
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 		});
 	});
 });

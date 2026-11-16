@@ -88,8 +88,8 @@ describe("PortalPage", () => {
 		expect(screen.getByText("Consultation")).toBeTruthy();
 		const links = screen.getAllByRole("link", { name: "View consultation" });
 		expect(links.map((a) => a.getAttribute("href"))).toEqual([
-			"/portal/consultations/11",
-			"/portal/consultations/10",
+			"/portal/patient/consultations/11",
+			"/portal/patient/consultations/10",
 		]);
 	});
 
@@ -112,7 +112,7 @@ describe("PortalPage", () => {
 	it("links to the open record's activity log", () => {
 		setup();
 		const link = screen.getByRole("link", { name: "View activity" });
-		expect(link.getAttribute("href")).toBe("/portal/activity");
+		expect(link.getAttribute("href")).toBe("/portal/patient/activity");
 	});
 
 	it("hides the activity link while no record is open", () => {

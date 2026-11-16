@@ -30,19 +30,19 @@ describe("isPortalPath / portalInstanceIdForPath / defaultPageContext", () => {
 	});
 
 	it("treats /portal/<instance>/… as portal but leaves bare /portal to the app", () => {
-		expect(isPortalPath("/portal/clinician")).toBe(true);
-		expect(isPortalPath("/portal/clinician/patients")).toBe(true);
+		expect(isPortalPath("/portal/doctor")).toBe(true);
+		expect(isPortalPath("/portal/doctor/patients")).toBe(true);
 		expect(isPortalPath("/portal")).toBe(false);
 		expect(isPortalPath("/portal/")).toBe(false);
-		expect(isPortalPath("/portalx/clinician")).toBe(false);
-		expect(defaultPageContext("/portal/clinician/x")).toBe("portal");
+		expect(isPortalPath("/portalx/doctor")).toBe(false);
+		expect(defaultPageContext("/portal/doctor/x")).toBe("portal");
 	});
 
 	it("derives the instance id from the path", () => {
 		expect(portalInstanceIdForPath("/platform")).toBe("platform");
 		expect(portalInstanceIdForPath("/platform/patients")).toBe("platform");
-		expect(portalInstanceIdForPath("/portal/clinician")).toBe("clinician");
-		expect(portalInstanceIdForPath("/portal/clinician/patients")).toBe("clinician");
+		expect(portalInstanceIdForPath("/portal/doctor")).toBe("doctor");
+		expect(portalInstanceIdForPath("/portal/doctor/patients")).toBe("doctor");
 		expect(portalInstanceIdForPath("/portal")).toBeUndefined();
 		expect(portalInstanceIdForPath("/portal/")).toBeUndefined();
 		expect(portalInstanceIdForPath("/about")).toBeUndefined();
@@ -211,10 +211,10 @@ describe("collectPortals / findPortalInstance", () => {
 	it("collects instance descriptors with their owning plugin id", () => {
 		const entries = collectPortals([
 			{ id: "a.marker" },
-			portalsPlugin("b.portals", [{ id: "clinician" }, { id: "translator" }]),
+			portalsPlugin("b.portals", [{ id: "doctor" }, { id: "translator" }]),
 		]);
 		expect(entries.map((e) => [e.instance.id, e.pluginId])).toEqual([
-			["clinician", "b.portals"],
+			["doctor", "b.portals"],
 			["translator", "b.portals"],
 		]);
 	});
@@ -231,8 +231,8 @@ describe("collectPortals / findPortalInstance", () => {
 	});
 
 	it("finds instances by id and misses unknown ones", () => {
-		const entries = collectPortals([portalsPlugin("b.portals", [{ id: "clinician" }])]);
-		expect(findPortalInstance(entries, "clinician")?.pluginId).toBe("b.portals");
+		const entries = collectPortals([portalsPlugin("b.portals", [{ id: "doctor" }])]);
+		expect(findPortalInstance(entries, "doctor")?.pluginId).toBe("b.portals");
 		expect(findPortalInstance(entries, "nope")).toBeUndefined();
 	});
 });

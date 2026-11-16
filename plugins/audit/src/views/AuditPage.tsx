@@ -70,7 +70,7 @@ const targetTypeKey = (row: AdminAuditRow): string => row.targetType ?? NO_TARGE
 
 /**
  * Shared audit listing — /platform/audit (T-037, platform admin log)
- * and /portal/clinician/activity (P-080, tenant-scoped staff feed).
+ * and /portal/<instance>/activity (P-080, tenant-scoped staff feed).
  * Rows arrive newest-first, already capped server-side; search and the
  * action-group/actor/target-type filters run client-side over that
  * window. Detail JSON is shown in a dialog — ids and non-sensitive

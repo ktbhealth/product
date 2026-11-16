@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 
 const mocks = vi.hoisted(() => ({
 	getDoctorAccess: vi.fn(),
+	getDoctorContext: vi.fn(),
 	getDoctorUser: vi.fn(),
 	getLocale: vi.fn(() => "en"),
 	run: vi.fn(),
@@ -38,9 +39,9 @@ import { Invites } from "@ktb/invites";
 import { PatientInviteRejected, PatientLinks } from "./index.ts";
 import {
 	approvePatientLinkFn,
+	clinicalPortalFn,
 	doctorAccessFn,
 	invitePatientFn,
-	localeFn,
 	patientLinksFn,
 	portalReadersFn,
 	revokePatientLinkFn,
@@ -135,12 +136,29 @@ beforeEach(() => {
 	links.revoke.mockReturnValue(Effect.succeed(true));
 });
 
-describe("localeFn / doctorAccessFn", () => {
-	it("expose the request's locale and doctor-side standing", async () => {
-		mocks.getLocale.mockReturnValue("pt-BR");
+describe("doctorAccessFn", () => {
+	it("exposes the request's doctor-side standing", async () => {
 		mocks.getDoctorAccess.mockResolvedValue("no-doctor");
-		await expect(localeFn()).resolves.toBe("pt-BR");
 		await expect(doctorAccessFn()).resolves.toBe("no-doctor");
+	});
+});
+
+describe("clinicalPortalFn", () => {
+	it("names the doctor instance for an account with an own profile", async () => {
+		mocks.getDoctorContext.mockResolvedValue({
+			profiles: [{ role: "owner" }, { role: "secretary" }],
+		});
+		await expect(clinicalPortalFn()).resolves.toBe("doctor");
+	});
+
+	it("names the secretary instance for a delegated-only account", async () => {
+		mocks.getDoctorContext.mockResolvedValue({ profiles: [{ role: "secretary" }] });
+		await expect(clinicalPortalFn()).resolves.toBe("secretary");
+	});
+
+	it("is null without a doctor context", async () => {
+		mocks.getDoctorContext.mockResolvedValue(null);
+		await expect(clinicalPortalFn()).resolves.toBeNull();
 	});
 });
 
@@ -188,7 +206,7 @@ describe("invitePatientFn", () => {
 		expect(sent[0]).toMatchObject({ to: "ana@ktb.test" });
 		expect(sent[0]!.subject).toContain("Dra. Bia");
 		expect(sent[0]!.text).toContain("Ana's consultations");
-		expect(sent[0]!.text).toContain("https://app.ktb.test/portal/login");
+		expect(sent[0]!.text).toContain("https://app.ktb.test/login/patient");
 	});
 
 	it("sends someone with no account a single-use accept link", async () => {
@@ -201,13 +219,13 @@ describe("invitePatientFn", () => {
 		});
 		expect(sent[0]!.text.split("\n")).toContain("https://app.ktb.test/invite#tok-123");
 		expect(sent[0]!.text).toContain("choose your password");
-		expect(sent[0]!.text).not.toContain("/portal/login");
+		expect(sent[0]!.text).not.toContain("/login/patient");
 	});
 
 	it("points an address that already has an account at the portal sign-in", async () => {
 		issue = vi.fn(() => Effect.succeed(null));
 		await invitePatientFn({ data: invite });
-		expect(sent[0]!.text.split("\n")).toContain("https://app.ktb.test/portal/login");
+		expect(sent[0]!.text.split("\n")).toContain("https://app.ktb.test/login/patient");
 		expect(sent[0]!.text).toContain("Sign in with this email address");
 	});
 

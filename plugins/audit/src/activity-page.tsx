@@ -7,7 +7,7 @@ import { AuditPage } from "./views/AuditPage.tsx";
 const EMPTY: AuditListResult = { entries: [], total: 0, limit: 200 };
 
 /**
- * `pages` component for /portal/clinician/activity (P-080): the host
+ * `pages` component for /portal/<instance>/activity (P-080): the host
  * dispatcher hands the loader Effect's result as `data`; this wrapper
  * narrows it back into the view's props (tenant scope and the
  * `audit.read` grant already ran in the page `guard` and inside

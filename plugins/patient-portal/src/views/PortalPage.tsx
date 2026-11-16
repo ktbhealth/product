@@ -186,12 +186,8 @@ export function PortalPage({
 										</p>
 									</div>
 									<Link
-										to="/portal/consultations/$id"
-										params={{ id: String(consultation.id) }}
-										className={buttonVariants({
-											variant: "outline",
-											size: "sm",
-										})}
+										to={`/portal/patient/consultations/${consultation.id}`}
+										className={buttonVariants({ variant: "outline", size: "sm" })}
 									>
 										{t.viewConsultation}
 									</Link>
@@ -200,7 +196,7 @@ export function PortalPage({
 						</ul>
 					)}
 					<Link
-						to="/portal/activity"
+						to="/portal/patient/activity"
 						className={buttonVariants({ variant: "outline", size: "sm" })}
 					>
 						{t.activityLink}

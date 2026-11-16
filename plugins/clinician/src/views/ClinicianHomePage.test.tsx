@@ -7,6 +7,8 @@ vi.mock("@tanstack/react-router", async () => {
 	return {
 		Link: ({ to, ...props }: Record<string, unknown>) =>
 			React.createElement("a", { ...props, href: String(to) }, props.children as never),
+		useLocation: (opts: { select: (l: { pathname: string }) => unknown }) =>
+			opts.select({ pathname: "/portal/doctor" }),
 	};
 });
 

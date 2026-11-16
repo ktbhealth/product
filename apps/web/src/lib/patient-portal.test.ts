@@ -28,18 +28,19 @@ import { newConsultationApi } from "@ktb/consultations/apis";
 import { patientAccess, user } from "@ktb/db/schema";
 import { doctorContextFn } from "@ktb/doctors/fns";
 import { approvePatientLinkFn, patientLinksFn, revokePatientLinkFn } from "@ktb/patient-access/fns";
-import { portalConsultationFn, portalFn } from "@ktb/patient-portal/fns";
 import { getConsultationFn, listConsultationsFn, saveConsultationFn } from "@ktb/consultations/fns";
 import { createPatientFn, listPatientsFn } from "@ktb/patients/fns";
 import { eq } from "drizzle-orm";
 
 import { signUpDoctor } from "#/test/doctor.ts";
 import { auth, db } from "./platform.ts";
-import { emailEnabledFn, sessionFn } from "./fns.ts";
+import { emailEnabledFn, portalPageDataFn, sessionFn } from "./fns.ts";
 
 // End to end: the doctor saves a consultation and sends the patient the
 // access email; the patient's account then sees that consultation —
-// read-only, and nothing of the doctor side.
+// read-only, and nothing of the doctor side. The reads go through the
+// portal-instance gate (portalPageDataFn), so the audience rule, the
+// page loaders and the PatientPortal service are all exercised.
 
 const PASSWORD = "senha-forte-123";
 
@@ -64,6 +65,20 @@ async function signUpPatient(email: string, name: string, verified: boolean) {
 const as = (cookie: string) => {
 	headers.current = new Headers({ cookie });
 };
+
+/** Portal home through the instance gate + page loader. */
+const portalHome = () => portalPageDataFn({ data: "/portal/patient" });
+
+interface PortalHomeData {
+	awaitingInvites: number;
+	profiles: { patientId: number; name: string; relation: string }[];
+	profile: { patientId: number; name: string; doctorName: string | null } | null;
+	consultations: { id: number; createdAt: Date; chiefComplaint: string | null }[];
+}
+
+/** Portal consultation page through the instance gate + page loader. */
+const portalConsultation = (id: number) =>
+	portalPageDataFn({ data: `/portal/patient/consultations/${id}` });
 
 const section = (content: string): AnamnesisSection => ({
 	content,
@@ -132,13 +147,14 @@ describe("patient portal, end to end", () => {
 	it("an unverified account with the invited address sees nothing — but is told why", async () => {
 		patient = await signUpPatient("portal-patient@x.com", "Paciente Portal", false);
 		as(patient);
-		expect(await portalFn()).toMatchObject({
-			awaitingInvites: 1,
-			profiles: [],
-			profile: null,
-			consultations: [],
+		// The patient audience admits a doctor-less account even before
+		// the invite is claimed — the home renders the "confirm your
+		// email" notice instead of 404ing.
+		expect(await portalHome()).toMatchObject({
+			status: "ok",
+			data: { awaitingInvites: 1, profiles: [], profile: null, consultations: [] },
 		});
-		expect(await portalConsultationFn({ data: consultationId })).toEqual({ status: "missing" });
+		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });
 	});
 
 	it("once the address is verified, the patient sees the consultation", async () => {
@@ -147,12 +163,16 @@ describe("patient portal, end to end", () => {
 			.set({ emailVerified: true })
 			.where(eq(user.email, "portal-patient@x.com"));
 		as(patient);
-		const portal = await portalFn();
-		expect(portal).toMatchObject({
-			profiles: [{ patientId, name: "Paciente Portal", relation: "self" }],
-			profile: { patientId, name: "Paciente Portal", doctorName: "Dra. Portal" },
+		const res = await portalHome();
+		expect(res).toMatchObject({
+			status: "ok",
+			data: {
+				profiles: [{ patientId, name: "Paciente Portal", relation: "self" }],
+				profile: { patientId, name: "Paciente Portal", doctorName: "Dra. Portal" },
+			},
 		});
-		expect(portal!.consultations).toEqual([
+		const data = res.status === "ok" ? (res.data as PortalHomeData) : null;
+		expect(data?.consultations).toEqual([
 			{
 				id: consultationId,
 				createdAt: expect.any(Date),
@@ -164,21 +184,24 @@ describe("patient portal, end to end", () => {
 
 	it("the consultation opens read-only: the doctor's record, no transcript", async () => {
 		as(patient);
-		const result = await portalConsultationFn({ data: consultationId });
+		const result = await portalConsultation(consultationId);
 		expect(result).toMatchObject({
 			status: "ok",
-			consultation: {
-				id: consultationId,
-				patientName: "Paciente Portal",
-				doctorName: "Dra. Portal",
-				sections: [
-					{ key: "queixa_principal", content: "Dor de cabeça há três dias" },
-					{ key: "hda", content: "Início súbito" },
-					{ key: "alergias", content: "Nega alergias" },
-					{ key: "medicamentos_em_uso", content: "Losartana 50 mg" },
-					{ key: "hipoteses", content: "Cefaleia tensional" },
-					{ key: "conduta", content: "Retorno em 15 dias" },
-				],
+			data: {
+				view: "detail",
+				consultation: {
+					id: consultationId,
+					patientName: "Paciente Portal",
+					doctorName: "Dra. Portal",
+					sections: [
+						{ key: "queixa_principal", content: "Dor de cabeça há três dias" },
+						{ key: "hda", content: "Início súbito" },
+						{ key: "alergias", content: "Nega alergias" },
+						{ key: "medicamentos_em_uso", content: "Losartana 50 mg" },
+						{ key: "hipoteses", content: "Cefaleia tensional" },
+						{ key: "conduta", content: "Retorno em 15 dias" },
+					],
+				},
 			},
 		});
 		const wire = JSON.stringify(result);
@@ -201,23 +224,30 @@ describe("patient portal, end to end", () => {
 		).rejects.toMatchObject({ status: 403 });
 	});
 
-	it("the doctor keeps the doctor side", async () => {
+	it("the doctor keeps the doctor side — and the patient portal denies them", async () => {
 		as(doctor);
 		expect(await sessionFn()).toMatchObject({ email: "portal-doctor@x.com", patientOnly: false });
+		// The hybrid rule: a doctor profile without an active patient
+		// link is not a portal patient — the audience gate 404s.
+		expect(await portalHome()).toEqual({ status: "notfound" });
+		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });
 	});
 
 	it("another patient account cannot open it", async () => {
 		stranger = await signUpPatient("portal-stranger@x.com", "Estranho", true);
 		as(stranger);
-		expect(await portalFn()).toMatchObject({ profiles: [], consultations: [] });
-		expect(await portalConsultationFn({ data: consultationId })).toEqual({ status: "missing" });
+		expect(await portalHome()).toMatchObject({
+			status: "ok",
+			data: { profiles: [], consultations: [] },
+		});
+		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });
 	});
 
 	it("anonymous visitors get nothing", async () => {
 		headers.current = new Headers();
 		expect(await sessionFn()).toBeNull();
-		expect(await portalFn()).toBeNull();
-		expect(await portalConsultationFn({ data: consultationId })).toEqual({ status: "anonymous" });
+		expect(await portalHome()).toEqual({ status: "notfound" });
+		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });
 	});
 
 	it("the doctor removing the access closes the portal again", async () => {
@@ -226,8 +256,11 @@ describe("patient portal, end to end", () => {
 		expect(record!.links).toMatchObject([{ email: "portal-patient@x.com", status: "active" }]);
 		expect(await revokePatientLinkFn({ data: record!.links[0]!.id })).toEqual({ ok: true });
 		as(patient);
-		expect(await portalFn()).toMatchObject({ profiles: [], consultations: [] });
-		expect(await portalConsultationFn({ data: consultationId })).toEqual({ status: "missing" });
+		expect(await portalHome()).toMatchObject({
+			status: "ok",
+			data: { profiles: [], consultations: [] },
+		});
+		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });
 	});
 });
 
@@ -275,8 +308,11 @@ describe("patient portal, pending link awaiting approval", () => {
 
 	it("a pending link opens nothing: it waits for the doctor", async () => {
 		as(patient);
-		expect(await portalFn()).toMatchObject({ profiles: [], consultations: [] });
-		expect(await portalConsultationFn({ data: consultationId })).toEqual({ status: "missing" });
+		expect(await portalHome()).toMatchObject({
+			status: "ok",
+			data: { profiles: [], consultations: [] },
+		});
+		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });
 		expect(await linkOf()).toMatchObject({
 			email: "pend-patient@x.com",
 			status: "pending",
@@ -307,9 +343,16 @@ describe("patient portal, pending link awaiting approval", () => {
 		expect(await approvePatientLinkFn({ data: link!.id })).toEqual({ ok: false });
 		expect(await linkOf()).toMatchObject({ status: "active" });
 		as(patient);
-		const portal = await portalFn();
-		expect(portal).toMatchObject({ profile: { patientId, name: "Paciente Pendente" } });
-		expect(portal!.consultations.map((c) => c.id)).toEqual([consultationId]);
-		expect(await portalConsultationFn({ data: consultationId })).toMatchObject({ status: "ok" });
+		const res = await portalHome();
+		expect(res).toMatchObject({
+			status: "ok",
+			data: { profile: { patientId, name: "Paciente Pendente" } },
+		});
+		const data = res.status === "ok" ? (res.data as PortalHomeData) : null;
+		expect(data?.consultations.map((c) => c.id)).toEqual([consultationId]);
+		expect(await portalConsultation(consultationId)).toMatchObject({
+			status: "ok",
+			data: { view: "detail" },
+		});
 	});
 });

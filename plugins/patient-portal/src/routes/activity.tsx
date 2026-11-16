@@ -2,26 +2,16 @@ import { redirect } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
-import { PortalActivityPage } from "../views/index.ts";
-import { localeFn, patientActivityFn, portalFn } from "../fns.ts";
+import { portalSessionFn } from "../fns.ts";
 
-// Patient-facing access log (P-086): audit entries naming the record
-// currently open in the portal. Anonymous visitors go to the patient
-// sign-in page; with no record open the page renders empty — the fn
-// fails closed on its own, so a denied read looks the same.
+// Legacy activity page, kept as a redirect: the patient-facing access
+// log now lives inside the portal instance at /portal/patient/activity.
+// Same funnel as the other legacy paths — anonymous visitors land on
+// the patient sign-in page.
 export const Route = createPluginFileRoute("patient-portal.routes")("/portal/activity")({
-	loader: async () => {
-		const [portal, locale] = await Promise.all([portalFn(), localeFn()]);
-		if (!portal) throw redirect({ to: "/portal/login" });
-		const patientId = portal.profile?.patientId ?? null;
-		const activity =
-			patientId === null
-				? { entries: [], total: 0, limit: 100 }
-				: await patientActivityFn({ data: { patientId } });
-		return { activity, locale };
+	beforeLoad: async () => {
+		const { signedIn } = await portalSessionFn();
+		throw redirect({ href: signedIn ? "/portal/patient/activity" : "/login/patient" });
 	},
-	component: function PortalActivityRoute() {
-		const { activity, locale } = Route.useLoaderData();
-		return <PortalActivityPage data={activity} locale={locale} />;
-	},
+	component: () => null,
 });

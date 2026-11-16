@@ -65,11 +65,11 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 	};
 });
 
-let instance = "clinician";
+let instance = "doctor";
 let splat: string | undefined = "test";
-let pathname = "/portal/clinician/test";
+let pathname = "/portal/doctor/test";
 let loaderData: unknown = {
-	path: "/portal/clinician/test",
+	path: "/portal/doctor/test",
 	data: null,
 	audiences: [],
 	pluginStates: { enabled: [] },
@@ -157,7 +157,7 @@ const head = (route: unknown) =>
 
 const TEST_PAGE: PanelPage = {
 	id: "test.widget",
-	path: "/portal/clinician/test",
+	path: "/portal/doctor/test",
 	component: () => createElement("div", { "data-testid": "portal-page" }, "CLINICIAN PAGE"),
 };
 
@@ -184,15 +184,15 @@ afterEach(() => {
 	chromeExtra = [];
 	signOut.mockClear();
 	navigate.mockClear();
-	instance = "clinician";
+	instance = "doctor";
 	splat = "test";
-	pathname = "/portal/clinician/test";
+	pathname = "/portal/doctor/test";
 	getSessionUserFn.mockReset().mockResolvedValue({ id: "u1", email: "doc@x.com", name: "Dra" });
 	pluginStatesFn.mockReset().mockResolvedValue({ enabled: plugins.map((p) => p.id) });
 	portalAudiencesFn.mockReset().mockResolvedValue([]);
 	portalPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
 	loaderData = {
-		path: "/portal/clinician/test",
+		path: "/portal/doctor/test",
 		data: null,
 		audiences: [],
 		pluginStates: { enabled: plugins.map((p) => p.id) },
@@ -215,7 +215,7 @@ describe("/portal/$instance/$ beforeLoad", () => {
 
 	it("passes for signed-in users", async () => {
 		await expect(
-			beforeLoad(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "x" } }),
+			beforeLoad(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "x" } }),
 		).resolves.toBeUndefined();
 	});
 });
@@ -231,7 +231,7 @@ describe("/portal/$instance/$ loader", () => {
 		const unregister = registerPage();
 		try {
 			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "nope" } }),
+				loader(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "nope" } }),
 			).rejects.toMatchObject({ isNotFound: true });
 			expect(portalPageDataFn).not.toHaveBeenCalled();
 		} finally {
@@ -252,7 +252,7 @@ describe("/portal/$instance/$ loader", () => {
 				enabled: plugins.filter((p) => !clinicianIds.includes(p.id)).map((p) => p.id),
 			});
 			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "test" } }),
+				loader(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "test" } }),
 			).rejects.toMatchObject({ isNotFound: true });
 		} finally {
 			unregister();
@@ -269,9 +269,9 @@ describe("/portal/$instance/$ loader", () => {
 				enabled: plugins.filter((p) => p.id !== "clinician.portal").map((p) => p.id),
 			});
 			const res = (await loader(PortalInstanceRoute)!({
-				params: { instance: "clinician", _splat: "test" },
+				params: { instance: "doctor", _splat: "test" },
 			})) as { path: string };
-			expect(res.path).toBe("/portal/clinician/test");
+			expect(res.path).toBe("/portal/doctor/test");
 		} finally {
 			unregister();
 		}
@@ -282,7 +282,7 @@ describe("/portal/$instance/$ loader", () => {
 		try {
 			portalPageDataFn.mockResolvedValue({ status: "notfound" });
 			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "test" } }),
+				loader(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "test" } }),
 			).rejects.toMatchObject({ isNotFound: true });
 		} finally {
 			unregister();
@@ -294,17 +294,17 @@ describe("/portal/$instance/$ loader", () => {
 		try {
 			portalPageDataFn.mockResolvedValue({ status: "ok", data: { view: "home" } });
 			// Bare root (no splat) and empty splat both resolve to the
-			// instance path — the real clinician home page.
+			// instance path — the real doctor home page.
 			const bare = (await loader(PortalInstanceRoute)!({
-				params: { instance: "clinician" },
+				params: { instance: "doctor" },
 			})) as { path: string };
-			expect(bare.path).toBe("/portal/clinician");
-			// Empty splat resolves to /portal/clinician — the real home page.
+			expect(bare.path).toBe("/portal/doctor");
+			// Empty splat resolves to /portal/doctor — the real home page.
 			const res = (await loader(PortalInstanceRoute)!({
-				params: { instance: "clinician", _splat: "" },
+				params: { instance: "doctor", _splat: "" },
 			})) as { path: string; data: unknown };
-			expect(res.path).toBe("/portal/clinician");
-			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/clinician");
+			expect(res.path).toBe("/portal/doctor");
+			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/doctor");
 		} finally {
 			unregister();
 		}
@@ -313,20 +313,20 @@ describe("/portal/$instance/$ loader", () => {
 	it("returns path, data, audiences and plugin states on success", async () => {
 		const unregister = registerPage();
 		try {
-			portalAudiencesFn.mockResolvedValue(["clinician"]);
+			portalAudiencesFn.mockResolvedValue(["doctor"]);
 			pluginStatesFn.mockResolvedValue({ enabled: ["clinician.portal", "clinician.pages"] });
 			portalPageDataFn.mockResolvedValue({ status: "ok", data: { rows: [1] } });
 			const res = (await loader(PortalInstanceRoute)!({
-				params: { instance: "clinician", _splat: "test" },
+				params: { instance: "doctor", _splat: "test" },
 			})) as Record<string, unknown>;
 			expect(res).toEqual({
-				path: "/portal/clinician/test",
+				path: "/portal/doctor/test",
 				data: { rows: [1] },
-				audiences: ["clinician"],
+				audiences: ["doctor"],
 				pluginStates: { enabled: ["clinician.portal", "clinician.pages"] },
 				theme: null,
 			});
-			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/clinician/test");
+			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/doctor/test");
 		} finally {
 			unregister();
 		}
@@ -360,7 +360,7 @@ describe("/portal/$instance/$ component", () => {
 		try {
 			render(createElement(component(PortalInstanceRoute)));
 			expect(screen.getByTestId("portal-page").textContent).toBe("CLINICIAN PAGE");
-			expect(screen.getAllByText("Clinician").length).toBeGreaterThan(0);
+			expect(screen.getAllByText("Doctor").length).toBeGreaterThan(0);
 		} finally {
 			unregister();
 		}
@@ -399,7 +399,7 @@ describe("/portal/$instance/$ component", () => {
 				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
-					item: { to: "/portal/clinician/test", label: "Test Page", group: "Care" },
+					item: { to: "/portal/doctor/test", label: "Test Page", group: "Care" },
 				},
 			},
 			{
@@ -436,9 +436,9 @@ describe("/portal/$instance/$ component", () => {
 	it("shows the portal switcher when more than one instance admits the user", () => {
 		const unregister = registerPage();
 		loaderData = {
-			path: "/portal/clinician/test",
+			path: "/portal/doctor/test",
 			data: null,
-			audiences: ["clinician", "platform-admin", "member"],
+			audiences: ["doctor", "platform-admin", "member"],
 			pluginStates: { enabled: plugins.map((p) => p.id) },
 		};
 		try {
@@ -507,7 +507,7 @@ describe("/portal/$instance/$ component", () => {
 	});
 
 	const themedLoaderData = (theme: unknown) => ({
-		path: "/portal/clinician/test",
+		path: "/portal/doctor/test",
 		data: null,
 		audiences: [],
 		pluginStates: { enabled: plugins.map((p) => p.id) },

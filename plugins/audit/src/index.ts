@@ -402,7 +402,7 @@ export async function listAuditEntries(
 /**
  * Newest-first audit listing scoped to ONE tenant (P-080) — the staff
  * activity feed the clinician plugin mounts at
- * /portal/clinician/activity. Same ordering and
+ * /portal/<instance>/activity. Same ordering and
  * limit clamp as {@link listAuditEntries} but fenced by
  * `tenant_id = tenantId`; platform-global rows (`tenant_id` NULL) are
  * excluded — they stay admin-only. Callers MUST have resolved tenant

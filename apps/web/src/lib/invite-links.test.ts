@@ -34,11 +34,11 @@ const { and, eq } = await import("drizzle-orm");
 const { doctorAccess, inviteTokens, patientAccess, user } = await import("@ktb/db/schema");
 const { acceptInviteFn, invitePreviewFn } = await import("@ktb/invites/fns");
 const { invitePatientFn } = await import("@ktb/patient-access/fns");
-const { portalFn } = await import("@ktb/patient-portal/fns");
 const { createPatientFn, listPatientsFn } = await import("@ktb/patients/fns");
 const { inviteSecretaryFn } = await import("@ktb/secretaries/fns");
 const { signUpDoctor } = await import("#/test/doctor.ts");
 const { auth, db } = await import("./platform.ts");
+const { portalPageDataFn } = await import("./fns.ts");
 
 // End to end: a doctor invites someone who has no account; the invitee
 // opens the emailed link, chooses a password, and is in — verified and
@@ -174,7 +174,8 @@ describe("invite links, end to end", () => {
 		expect(link).toMatchObject({ status: "active", userId: created!.id });
 
 		as((await signIn("novo-paciente@x.com")).cookie);
-		const portal = await portalFn();
+		const res = await portalPageDataFn({ data: "/portal/patient" });
+		const portal = res.status === "ok" ? (res.data as { profiles: unknown[] }) : null;
 		expect(portal?.profiles).toEqual([{ patientId, name: "Paciente Convidado", relation: "self" }]);
 		// A patient account has no doctor side.
 		expect(await listPatientsFn()).toEqual([]);

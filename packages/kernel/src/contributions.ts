@@ -191,7 +191,7 @@ export interface ChromeWhen {
  * an audience — the platform admin console, a clinician portal, a
  * translator portal, … `id` is the instance id chrome contributions
  * and audience rules refer to; `basePath` is where the instance's
- * pages live ("/platform", "/portal/clinician", …); `label` is the
+ * pages live ("/platform", "/portal/doctor", …); `label` is the
  * shell/switcher display string; `icon` an optional brand mark;
  * `audience` names the audience RULE the portal gate checks (see
  * `PortalAudience` in @ktb/portal) — absent means `PORTAL_AUDIENCE_MEMBER`

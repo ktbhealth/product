@@ -7,6 +7,10 @@ const mocks = vi.hoisted(() => ({
 	props: { current: undefined as Record<string, unknown> | undefined },
 }));
 
+vi.mock("@tanstack/react-router", () => ({
+	useLocation: (opts: { select: (l: { pathname: string }) => unknown }) =>
+		opts.select({ pathname: "/portal/doctor/consultations" }),
+}));
 vi.mock("@ktb/consultations/views", () => ({
 	ConsultationsPage: (props: Record<string, unknown>) => {
 		mocks.props.current = props;
@@ -30,7 +34,7 @@ describe("ClinicianConsultationsPage", () => {
 		expect(mocks.props.current).toMatchObject({
 			consultations,
 			locale: "en",
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 		});
 	});
 

@@ -46,7 +46,7 @@ describe("PortalConsultationPage", () => {
 		expect(screen.queryByRole("textbox")).toBeNull();
 		const links = screen.getAllByRole("link");
 		expect(links).toHaveLength(1);
-		expect(links[0]!.getAttribute("href")).toBe("/portal");
+		expect(links[0]!.getAttribute("href")).toBe("/portal/patient");
 		expect(screen.getByText(/Only your doctor can change it/)).toBeTruthy();
 	});
 

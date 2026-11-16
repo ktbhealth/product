@@ -88,7 +88,14 @@ let i18nTenantId = 0;
 beforeAll(async () => {
 	const [tenant] = await db
 		.insert(groups)
-		.values({ name: "I18n Tenant", slug: "i18n-tenant", kind: "clinic", meta: null })
+		.values({
+			name: "I18n Tenant",
+			slug: "i18n-tenant",
+			kind: "clinic",
+			meta: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
 		.returning();
 	i18nTenantId = tenant!.id;
 	await db.insert(groupMembers).values({
@@ -96,6 +103,7 @@ beforeAll(async () => {
 		memberKind: "user",
 		memberId: "u1",
 		role: "member",
+		createdAt: new Date(),
 	});
 });
 
@@ -120,12 +128,12 @@ describe("i18nRouteFn failure isolation", () => {
 describe("i18nRouteFn portal scope gating", () => {
 	it("scopes copy to a registered portal instance", async () => {
 		hoisted.scopeChains.length = 0;
-		const res = await i18nRouteFn({ data: "/portal/clinician" });
+		const res = await i18nRouteFn({ data: "/portal/doctor" });
 		expect(res.locale).toBeTruthy();
 		expect(hoisted.scopeChains).toHaveLength(1);
 		expect(hoisted.scopeChains[0]!.scopes[0]).toEqual({
 			scope: "portal",
-			scopeId: "clinician",
+			scopeId: "doctor",
 		});
 	});
 
@@ -190,10 +198,10 @@ describe("i18nRouteFn tenant scope", () => {
 		try {
 			hoisted.headers = new Headers({ "x-tenant-slug": "i18n-tenant" });
 			hoisted.account = { id: "u1", email: "u@x.com", name: "U" };
-			await i18nRouteFn({ data: "/portal/clinician" });
+			await i18nRouteFn({ data: "/portal/doctor" });
 			expect(hoisted.scopeChains).toHaveLength(1);
 			expect(hoisted.scopeChains[0]!.scopes).toEqual([
-				{ scope: "portal", scopeId: "clinician" },
+				{ scope: "portal", scopeId: "doctor" },
 				{ scope: "tenant", scopeId: String(i18nTenantId) },
 				{ scope: "global", scopeId: "" },
 			]);

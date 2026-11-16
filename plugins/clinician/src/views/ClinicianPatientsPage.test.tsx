@@ -15,6 +15,8 @@ const captured = () => {
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: mocks.invalidate }),
+	useLocation: (opts: { select: (l: { pathname: string }) => unknown }) =>
+		opts.select({ pathname: "/portal/doctor/patients" }),
 }));
 vi.mock("@ktb/patients/views", () => ({
 	PatientsPage: (props: Record<string, unknown>) => {
@@ -41,7 +43,7 @@ describe("ClinicianPatientsPage", () => {
 		expect(mocks.props.current).toMatchObject({
 			patients,
 			locale: "en",
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 			deleteApi: { delete: "sentinel" },
 		});
 		expect(typeof mocks.props.current?.onDeleted).toBe("function");
