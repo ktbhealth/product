@@ -20,6 +20,8 @@ import {
 } from "@ktb/eval-core";
 import { DatasetStorePort, Sample, SampleResult } from "@ktb/eval-consultation";
 
+import { appendDurable, sweepOrphanTmps, writeAtomic } from "./fsx.ts";
+
 /**
  * Local adapters — filesystem + SQLite, no network. Blobs land under
  * `<root>/blobs/<sha256-of-uri>` (hashed: URIs can exceed filename
@@ -52,13 +54,6 @@ const fail = (port: string, op: string) => (cause: unknown) =>
 		cause,
 	});
 
-/** Atomic write: tmp + rename so a crash never leaves a half file. */
-const writeAtomic = (p: string, bytes: Uint8Array): void => {
-	const tmp = `${p}.tmp-${process.pid}`;
-	fs.writeFileSync(tmp, bytes);
-	fs.renameSync(tmp, p);
-};
-
 /** DatasetStorePort over SQLite (manifest + results) + filesystem
  * (blobs). The connection is scoped — the layer closes it on release. */
 export const makeLocalStoreLayer = (rootDir: string) =>
@@ -67,7 +62,12 @@ export const makeLocalStoreLayer = (rootDir: string) =>
 		Effect.gen(function* () {
 			yield* Effect.try({
 				try: () => {
-					fs.mkdirSync(path.join(rootDir, "blobs"), { recursive: true });
+					const blobs = path.join(rootDir, "blobs");
+					fs.mkdirSync(blobs, { recursive: true });
+					// Crash debris from a previous run — `.tmp-*` files
+					// older than the freshness window never belonged to
+					// a live writer.
+					sweepOrphanTmps(blobs);
 				},
 				catch: fail("store-local", "mkdir"),
 			});
@@ -76,6 +76,10 @@ export const makeLocalStoreLayer = (rootDir: string) =>
 					try: () => {
 						const d = new Database(path.join(rootDir, "manifest.sqlite"));
 						d.pragma("journal_mode = WAL");
+						// FULL: every commit hits stable storage before
+						// returning — NORMAL would trade a power-loss
+						// window for speed we don't need.
+						d.pragma("synchronous = FULL");
 						d.pragma("busy_timeout = 5000");
 						return d;
 					},
@@ -265,6 +269,7 @@ export const makeLocalEvalStoreLayer = (rootDir: string) =>
 					try: () => {
 						const d = new Database(path.join(rootDir, "manifest.sqlite"));
 						d.pragma("journal_mode = WAL");
+						d.pragma("synchronous = FULL");
 						d.pragma("busy_timeout = 5000");
 						return d;
 					},
@@ -311,6 +316,25 @@ export const makeLocalEvalStoreLayer = (rootDir: string) =>
 			);
 			const listCal = db.prepare(`SELECT doc FROM calibration_reports`);
 
+			// Check-then-insert must be one transaction — otherwise a
+			// concurrent or racing re-registration could slip a
+			// different contentHash past the guard.
+			const registerManifest = db.transaction((m: DatasetManifest) => {
+				const existing = selectDs.get(m.id, m.version) as { doc: string } | undefined;
+				if (existing !== undefined) {
+					const prior = decodeDatasetManifest(JSON.parse(existing.doc));
+					if (prior.contentHash !== m.contentHash) {
+						throw new Error(
+							`dataset ${m.id}@${m.version} already registered ` +
+								`with contentHash ${prior.contentHash} — refusing to overwrite ` +
+								`with ${m.contentHash}; bump the suite's dataset version`,
+						);
+					}
+					return; // identical re-registration — idempotent
+				}
+				upsertDs.run({ id: m.id, version: m.version, doc: JSON.stringify(m) });
+			});
+
 			return EvalStorePort.of({
 				putExperiment: (experiment) =>
 					Effect.try({
@@ -338,28 +362,7 @@ export const makeLocalEvalStoreLayer = (rootDir: string) =>
 					}),
 				putDatasetManifest: (manifest) =>
 					Effect.try({
-						try: () => {
-							const validated = decodeDatasetManifest(manifest);
-							const existing = selectDs.get(validated.id, validated.version) as
-								| { doc: string }
-								| undefined;
-							if (existing !== undefined) {
-								const prior = decodeDatasetManifest(JSON.parse(existing.doc));
-								if (prior.contentHash !== validated.contentHash) {
-									throw new Error(
-										`dataset ${validated.id}@${validated.version} already registered ` +
-											`with contentHash ${prior.contentHash} — refusing to overwrite ` +
-											`with ${validated.contentHash}; bump the suite's dataset version`,
-									);
-								}
-								return; // identical re-registration — idempotent
-							}
-							upsertDs.run({
-								id: validated.id,
-								version: validated.version,
-								doc: JSON.stringify(validated),
-							});
-						},
+						try: () => registerManifest(decodeDatasetManifest(manifest)),
 						catch: fail("eval-store-local", "putDatasetManifest"),
 					}),
 				getDatasetManifest: (id, version) =>
@@ -412,20 +415,30 @@ export const makeLocalReportLayer = (filePath: string) =>
 				Effect.try({
 					try: () => {
 						fs.mkdirSync(path.dirname(filePath), { recursive: true });
-						fs.appendFileSync(filePath, `${JSON.stringify(record)}\n`);
+						appendDurable(filePath, `${JSON.stringify(record)}\n`);
 					},
 					catch: fail("report-local", "append"),
 				}),
 			render: (runId) =>
 				Effect.try({
 					try: () => {
-						const records: RunRecord[] = fs.existsSync(filePath)
-							? fs
-									.readFileSync(filePath, "utf8")
-									.split("\n")
-									.filter((l) => l.trim())
-									.map((l) => JSON.parse(l) as RunRecord)
-							: [];
+						if (!fs.existsSync(filePath)) return renderRunMarkdown(runId, []);
+						const lines = fs
+							.readFileSync(filePath, "utf8")
+							.split("\n")
+							.filter((l) => l.trim());
+						// A crash mid-append can leave a torn LAST line —
+						// drop it; a corrupt line anywhere else is real
+						// damage and must still throw.
+						if (lines.length > 0) {
+							const last = lines[lines.length - 1]!;
+							try {
+								JSON.parse(last);
+							} catch {
+								lines.pop();
+							}
+						}
+						const records = lines.map((l) => JSON.parse(l) as RunRecord);
 						return renderRunMarkdown(runId, records);
 					},
 					catch: fail("report-local", "render"),
@@ -437,3 +450,5 @@ export * from "./asr.ts";
 export * from "./llm.ts";
 export * from "./eval.ts";
 export * from "./systemone.ts";
+export * from "./runner.ts";
+export * from "./artifacts.ts";
