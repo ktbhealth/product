@@ -190,6 +190,12 @@ describe("idbStore", () => {
 								? { result: undefined, error: new Error("quota"), fail: true }
 								: { result: (rows.set(key, value), undefined), error: null },
 						),
+					delete: (key: string) =>
+						makeReq(() =>
+							failAt === "delete"
+								? { result: undefined, error: new Error("blocked"), fail: true }
+								: { result: (rows.delete(key), undefined), error: null },
+						),
 				}),
 			}),
 			createObjectStore: () => ({}),
@@ -257,6 +263,35 @@ describe("idbStore", () => {
 		await withFakeIdb(fakeIndexedDB(new Map(), "get:readonly"), async () => {
 			const { idbStore } = await import("./keyring.ts");
 			await expect(idbStore().load()).rejects.toThrow("indexeddb request failed");
+		});
+	});
+
+	it("seals, loads and removes device secrets in IndexedDB (T-146)", async () => {
+		const rows = new Map<string, unknown>();
+		await withFakeIdb(fakeIndexedDB(rows), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			const store = idbSecretStore("test-secrets");
+			expect(await store.load("dev")).toBeNull();
+			const secret = { kind: "x" } as unknown as Parameters<typeof store.save>[1];
+			await store.save("dev", secret);
+			expect(await store.load("dev")).toBe(secret);
+			await store.remove("dev");
+			expect(await store.load("dev")).toBeNull();
+		});
+	});
+
+	it("propagates secrets-store request failures", async () => {
+		await withFakeIdb(fakeIndexedDB(new Map(), "delete"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").remove("k")).rejects.toThrow("blocked");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "put"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").save("k", { kind: "x" } as never)).rejects.toThrow("quota");
+		});
+		await withFakeIdb(fakeIndexedDB(new Map(), "get:readonly"), async () => {
+			const { idbSecretStore } = await import("./keyring.ts");
+			await expect(idbSecretStore("t").load("k")).rejects.toThrow("indexeddb request failed");
 		});
 	});
 
