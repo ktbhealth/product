@@ -14,8 +14,19 @@ vi.mock("@tanstack/react-router", async () => {
 	};
 });
 
+import type { KeyringService } from "@ktb/crypto/keyring";
+
+const mocks = vi.hoisted(() => ({ decryptPatient: vi.fn() }));
+// WebCrypto is absent under jsdom — stub the decrypt entry point; the
+// real crypto path is covered in ../zk.test.ts.
+vi.mock("../zk.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("../zk.ts")>();
+	return { ...actual, decryptPatient: mocks.decryptPatient };
+});
+
 import { makePatient } from "../testing.ts";
 import { PatientDetailPage, type PatientConsultationItem } from "./PatientDetailPage.tsx";
+import type { PatientZkApi } from "../zk.ts";
 
 const FULL = makePatient({
 	id: 7,
@@ -57,7 +68,10 @@ const consult = (over: Partial<PatientConsultationItem>): PatientConsultationIte
 
 import type { PatientDeleteApi } from "./DeletePatientDialog.tsx";
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	mocks.decryptPatient.mockReset();
+});
 
 const actions = {
 	deleteApi: {
@@ -256,5 +270,126 @@ describe("PatientDetailPage", () => {
 			.map((a) => a.getAttribute("href"))
 			.filter((h) => h?.startsWith("/consultations/1"));
 		expect(links).toEqual(["/consultations/10", "/consultations/11", "/consultations/12"]);
+	});
+});
+
+describe("PatientDetailPage under ZK (T-144)", () => {
+	const zkApi: PatientZkApi = {
+		devices: vi.fn(async () => []),
+		dekEnvelopes: vi.fn(async () => ({})),
+		grant: vi.fn(async () => ({ ok: true })),
+	};
+	const keyring = {} as unknown as KeyringService;
+	const cipheredPatient = makePatient({ id: 7, name: "v1.YWFh.YmJi", birthDate: null });
+
+	it("renders a locked record when the device holds no grant", async () => {
+		mocks.decryptPatient.mockResolvedValue(null);
+		render(
+			<PatientDetailPage
+				patient={cipheredPatient}
+				consultations={[]}
+				locale="en"
+				zk={{ keyring, api: zkApi }}
+				{...actions}
+			/>,
+		);
+		expect(await screen.findByText("Encrypted record")).toBeTruthy();
+		expect(screen.getByText("Unlock it on an approved clinic device to view it.")).toBeTruthy();
+		// No sections render while locked — nothing derives from ciphertext.
+		expect(screen.queryByText("Identification")).toBeNull();
+		expect(mocks.decryptPatient).toHaveBeenCalledWith(keyring, zkApi, cipheredPatient);
+	});
+
+	it("renders the decrypted record once unlocked", async () => {
+		mocks.decryptPatient.mockResolvedValue(FULL);
+		render(
+			<PatientDetailPage
+				patient={cipheredPatient}
+				consultations={[]}
+				locale="en"
+				zk={{ keyring, api: zkApi }}
+				{...actions}
+			/>,
+		);
+		expect(await screen.findByRole("heading", { name: "Cida" })).toBeTruthy();
+		expect(screen.getByText("Identification")).toBeTruthy();
+	});
+
+	it("keeps the record locked when decrypt rejects", async () => {
+		mocks.decryptPatient.mockRejectedValue(new Error("offline"));
+		render(
+			<PatientDetailPage
+				patient={cipheredPatient}
+				consultations={[]}
+				locale="en"
+				zk={{ keyring, api: zkApi }}
+				{...actions}
+			/>,
+		);
+		expect(await screen.findByText("Encrypted record")).toBeTruthy();
+	});
+
+	it("does not decrypt plaintext rows even when zk context exists", () => {
+		render(
+			<PatientDetailPage
+				patient={FULL}
+				consultations={[]}
+				locale="en"
+				zk={{ keyring, api: zkApi }}
+				{...actions}
+			/>,
+		);
+		expect(mocks.decryptPatient).not.toHaveBeenCalled();
+		expect(screen.getByRole("heading", { name: "Cida" })).toBeTruthy();
+	});
+});
+
+describe("PatientDetailPage — ZK edge branches", () => {
+	const zkApi: PatientZkApi = {
+		devices: vi.fn(async () => []),
+		dekEnvelopes: vi.fn(async () => ({})),
+		grant: vi.fn(async () => ({ ok: true })),
+	};
+	const keyring = {} as unknown as KeyringService;
+	const cipheredPatient = makePatient({ id: 7, name: "v1.YWFh.YmJi", birthDate: null });
+
+	it("uses the opaque label in the delete dialog while locked", async () => {
+		mocks.decryptPatient.mockResolvedValue(null);
+		const user = userEvent.setup();
+		render(
+			<PatientDetailPage
+				patient={cipheredPatient}
+				consultations={[]}
+				locale="en"
+				zk={{ keyring, api: zkApi }}
+				{...actions}
+			/>,
+		);
+		await screen.findByText("Encrypted record");
+		await user.click(screen.getByRole("button", { name: "Delete patient" }));
+		// The dialog shows the opaque label — never the envelope.
+		expect(await screen.findByText("Delete patient?")).toBeTruthy();
+		expect(screen.getAllByText("Encrypted record").length).toBeGreaterThan(0);
+		expect(screen.queryByText("v1.YWFh.YmJi")).toBeNull();
+	});
+
+	it("ignores decrypt results arriving after unmount", async () => {
+		let resolve: ((p: typeof FULL | null) => void) | undefined;
+		mocks.decryptPatient.mockImplementation(
+			() => new Promise<typeof FULL | null>((r) => (resolve = r)),
+		);
+		const { unmount } = render(
+			<PatientDetailPage
+				patient={cipheredPatient}
+				consultations={[]}
+				locale="en"
+				zk={{ keyring, api: zkApi }}
+				{...actions}
+			/>,
+		);
+		unmount();
+		resolve?.(FULL);
+		await Promise.resolve();
+		expect(mocks.decryptPatient).toHaveBeenCalledOnce();
 	});
 });

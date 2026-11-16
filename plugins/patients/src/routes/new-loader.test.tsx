@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 const localeFn = vi.hoisted(() => vi.fn(async () => "pt-BR"));
+const vaultStateFn = vi.hoisted(() =>
+	vi.fn(async () => ({ tenantId: 7, role: "admin", zk: false })),
+);
 
 vi.mock("../fns.ts", () => ({ localeFn }));
 vi.mock("../guard.ts", () => ({ requireDoctor: vi.fn() }));
-vi.mock("../apis.ts", () => ({ newPatientApi: {} }));
+vi.mock("../apis.ts", () => ({ newPatientApi: {}, patientsZkApi: {} }));
+vi.mock("@ktb/vault/fns", () => ({ vaultStateFn }));
+vi.mock("@ktb/crypto/keyring", () => ({ makeKeyring: vi.fn() }));
 vi.mock("../views/index.ts", () => ({ PatientFormPage: () => null }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -32,9 +37,13 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { Route } from "./new.tsx";
 
 describe("/patients/new loader", () => {
-	it("attaches the active locale to the route data", async () => {
-		const { loader } = (Route as unknown as { options: { loader: () => Promise<string> } }).options;
-		await expect(loader()).resolves.toBe("pt-BR");
+	it("attaches the active locale and zk flag to the route data", async () => {
+		const { loader } = (
+			Route as unknown as {
+				options: { loader: () => Promise<{ locale: string; zk: boolean }> };
+			}
+		).options;
+		await expect(loader()).resolves.toEqual({ locale: "pt-BR", zk: false });
 		expect(localeFn).toHaveBeenCalledOnce();
 	});
 });

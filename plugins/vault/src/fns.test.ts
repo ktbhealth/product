@@ -33,10 +33,12 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { vaultServicesPlugin, VAULT_TEST_DDL } from "./index.ts";
 import {
 	vaultApproveDeviceFn,
+	vaultDekEnvelopesFn,
 	vaultDevicesFn,
 	vaultEnableZkFn,
 	vaultEnrollDeviceFn,
 	vaultEnrollmentFn,
+	vaultGrantAccessFn,
 	vaultRevokeDeviceFn,
 	vaultStateFn,
 } from "./fns.ts";
@@ -101,6 +103,20 @@ describe("vault fns", () => {
 		expect(await vaultStateFn()).toEqual({ tenantId: null, role: null, zk: false });
 		expect(await vaultDevicesFn()).toEqual([]);
 		expect(await vaultEnrollmentFn({ data: { wrapPublicKey: "w" } })).toBeNull();
+		expect(
+			await vaultDekEnvelopesFn({
+				data: { entityType: "patient", entityIds: [1], wrapPublicKey: "w" },
+			}),
+		).toEqual({});
+		expect(
+			await vaultGrantAccessFn({
+				data: {
+					entityType: "patient",
+					entityId: 1,
+					grants: [{ readerKind: "device", readerPubkey: "w", wrappedDek: "w1.x" }],
+				},
+			}),
+		).toEqual({ ok: false });
 		expect(await vaultEnrollDeviceFn({ data: { wrapPublicKey: "w", signPublicKey: "s" } })).toEqual(
 			{ ok: false },
 		);
@@ -128,6 +144,20 @@ describe("vault fns", () => {
 		expect(await vaultStateFn()).toEqual({ tenantId: null, role: null, zk: false });
 		expect(await vaultDevicesFn()).toEqual([]);
 		expect(await vaultEnrollmentFn({ data: { wrapPublicKey: "w" } })).toBeNull();
+		expect(
+			await vaultDekEnvelopesFn({
+				data: { entityType: "patient", entityIds: [1], wrapPublicKey: "w" },
+			}),
+		).toEqual({});
+		await expect(
+			vaultGrantAccessFn({
+				data: {
+					entityType: "patient",
+					entityId: 1,
+					grants: [{ readerKind: "device", readerPubkey: "w", wrappedDek: "w1.x" }],
+				},
+			}),
+		).rejects.toThrow("unauthenticated");
 	});
 
 	it("runs the member enrollment → admin approval lifecycle", async () => {
@@ -197,5 +227,35 @@ describe("vault fns", () => {
 		currentEmail = "member@x.com";
 		currentRole = "member";
 		expect(await vaultEnableZkFn()).toEqual({ ok: false });
+	});
+
+	it("stores record DEK grants and returns the caller's envelopes", async () => {
+		currentEmail = "member@x.com";
+		currentRole = "member";
+
+		const grant = await vaultGrantAccessFn({
+			data: {
+				entityType: "patient",
+				entityId: 42,
+				grants: [
+					{ readerKind: "device", readerPubkey: "wMem", wrappedDek: "w1.dek42" },
+					{ readerKind: "device", readerPubkey: "wOther", wrappedDek: "w1.dek42b" },
+				],
+			},
+		});
+		expect(grant.ok).toBe(true);
+		expect(grant.ok && grant.data).toHaveLength(2);
+
+		// Only the caller's pubkey resolves; non-granted ids are absent.
+		expect(
+			await vaultDekEnvelopesFn({
+				data: { entityType: "patient", entityIds: [42, 43], wrapPublicKey: "wMem" },
+			}),
+		).toEqual({ "42": "w1.dek42" });
+		expect(
+			await vaultDekEnvelopesFn({
+				data: { entityType: "patient", entityIds: [42], wrapPublicKey: "wNobody" },
+			}),
+		).toEqual({});
 	});
 });
