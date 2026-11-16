@@ -6,7 +6,14 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { EntityCipher, defineCipher } from "@ktb/crypto/cipher";
 import { CryptoFormatError } from "@ktb/crypto";
 
-import { EntityCipherStubLive, makePassthroughCipher, passthroughCipherDriver } from "./index.ts";
+import { Keyring } from "@ktb/crypto/keyring";
+import {
+	EntityCipherStubLive,
+	KeyringStubLive,
+	makePassthroughCipher,
+	passthroughCipherDriver,
+	stubKeyringDriver,
+} from "./index.ts";
 
 const spec = defineCipher({
 	entity: "patient",
@@ -58,5 +65,24 @@ describe("passthroughCipherDriver", () => {
 
 	it("provides the stub layer", () => {
 		expect(passthroughCipherDriver.provides({})).toBe(EntityCipherStubLive);
+	});
+});
+
+describe("stub keyring (T-141)", () => {
+	it("resolves a working ephemeral keyring through the layer", async () => {
+		const runtime = ManagedRuntime.make(KeyringStubLive);
+		const keys = await runtime.runPromise(
+			Effect.flatMap(Keyring, (k) => Effect.promise(() => k.deviceKeys())),
+		);
+		expect(keys.wrapPublicKey).toBeTruthy();
+		expect(keys.signPublicKey).toBeTruthy();
+		await runtime.dispose();
+	});
+
+	it("is always eligible and provides the stub layer", () => {
+		expect(stubKeyringDriver.id).toBe("keyring-stub");
+		expect(stubKeyringDriver.port).toBe(Keyring.key);
+		expect(stubKeyringDriver.when?.({})).toBe(true);
+		expect(stubKeyringDriver.provides({})).toBe(KeyringStubLive);
 	});
 });
