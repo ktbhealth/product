@@ -198,6 +198,8 @@
         "@ktb/captcha": "workspace:*",
         "@ktb/captcha-stub": "workspace:*",
         "@ktb/captcha-turnstile": "workspace:*",
+        "@ktb/crypto": "workspace:*",
+        "@ktb/crypto-stub": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
         "@ktb/email": "workspace:*",
@@ -289,6 +291,17 @@
     },
     "packages/crypto": {
       "name": "@ktb/crypto",
+      "dependencies": {
+        "effect": "4.1.2",
+      },
+    },
+    "packages/crypto-stub": {
+      "name": "@ktb/crypto-stub",
+      "dependencies": {
+        "@ktb/crypto": "workspace:*",
+        "@ktb/driver-framework": "workspace:*",
+        "effect": "4.1.2",
+      },
     },
     "packages/db": {
       "name": "@ktb/db",
@@ -1684,6 +1697,8 @@
     "@ktb/consultations": ["@ktb/consultations@workspace:plugins/consultations"],
 
     "@ktb/crypto": ["@ktb/crypto@workspace:packages/crypto"],
+
+    "@ktb/crypto-stub": ["@ktb/crypto-stub@workspace:packages/crypto-stub"],
 
     "@ktb/dashboard": ["@ktb/dashboard@workspace:plugins/dashboard"],
 
