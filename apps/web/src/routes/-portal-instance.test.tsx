@@ -252,7 +252,7 @@ describe("/portal/$instance/$ component", () => {
 		try {
 			render(createElement(component(PortalInstanceRoute)));
 			expect(screen.getByTestId("portal-page").textContent).toBe("CLINICIAN PAGE");
-			expect(screen.getByText("Clinician")).toBeTruthy();
+			expect(screen.getAllByText("Clinician").length).toBeGreaterThan(0);
 		} finally {
 			unregister();
 		}
@@ -298,8 +298,8 @@ describe("/portal/$instance/$ component", () => {
 		];
 		try {
 			render(createElement(component(PortalInstanceRoute)));
-			expect(screen.getByText("Test Page")).toBeTruthy();
-			expect(screen.getByText("Care")).toBeTruthy();
+			expect(screen.getAllByText("Test Page").length).toBeGreaterThan(0);
+			expect(screen.getAllByText("Care").length).toBeGreaterThan(0);
 			expect(screen.getByText("HDR-ACTION")).toBeTruthy();
 		} finally {
 			unregister();
@@ -319,6 +319,52 @@ describe("/portal/$instance/$ component", () => {
 			expect(screen.getByLabelText("Switch portal")).toBeTruthy();
 		} finally {
 			unregister();
+		}
+	});
+
+	it("omits header actions when the platform header plugin is absent", async () => {
+		// headerEnabled is a module-level registry check — re-import the
+		// route with the header plugin filtered out of #/plugins.ts.
+		vi.resetModules();
+		vi.doMock("#/plugins.ts", async (importOriginal) => {
+			const actual = await importOriginal<typeof import("#/plugins.ts")>();
+			return {
+				...actual,
+				plugins: actual.plugins.filter((p) => p.id !== "platform.header"),
+			};
+		});
+		try {
+			const [{ Route: R }, { portalPages: freshPages }] = await Promise.all([
+				import("./portal.$instance.$.tsx"),
+				import("#/lib/registry.ts"),
+			]);
+			const pages = freshPages as unknown as Map<
+				string,
+				{ page: PanelPage; pluginId: string }
+			>;
+			pages.set(TEST_PAGE.path, { page: TEST_PAGE, pluginId: "clinician.pages" });
+			chromeExtra = [
+				{
+					id: "t.hdr",
+					region: "portal.header.actions",
+					content: {
+						kind: "headerAction",
+						id: "t.hdr.c",
+						component: () => createElement("div", null, "HDR-ACTION"),
+					},
+				},
+			];
+			render(
+				createElement(
+					(R as unknown as { options: { component: () => ReactElement } }).options.component,
+				),
+			);
+			expect(screen.getByTestId("portal-page")).toBeTruthy();
+			expect(screen.queryByText("HDR-ACTION")).toBeNull();
+			pages.delete(TEST_PAGE.path);
+		} finally {
+			vi.doUnmock("#/plugins.ts");
+			vi.resetModules();
 		}
 	});
 

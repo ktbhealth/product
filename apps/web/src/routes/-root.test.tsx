@@ -199,6 +199,25 @@ describe("root document", () => {
 		}
 	});
 
+	it("treats contributed portal instance paths as console surfaces", () => {
+		for (const pathname of ["/portal/clinician", "/portal/clinician/patients"]) {
+			state.pathname = pathname;
+			const html = render();
+			expect(html).toContain('<div id="child">page</div>');
+			expect(html).not.toContain("<header");
+			expect(html).not.toContain("<footer");
+		}
+	});
+
+	it("keeps marketing chrome on /portal paths that are not instances", () => {
+		for (const pathname of ["/portal", "/portal/", "/portal/not-an-instance"]) {
+			state.pathname = pathname;
+			const html = render();
+			expect(html).toContain("<header");
+			expect(html).toContain("<footer");
+		}
+	});
+
 	it("renders contributed footer blocks and skips chrome kinds that do not match the slot", () => {
 		state.chromeExtra = [
 			{
