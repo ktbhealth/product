@@ -21,6 +21,7 @@ import {
 	revokeClinicDevice,
 	setTenantZk,
 	tenantIsZk,
+	tenantZkOrClosed,
 	Vault,
 	vaultChromePlugin,
 	VaultLive,
@@ -75,6 +76,7 @@ describe("vault repo", () => {
 		db = makeDb(makeD1(DDL));
 		await seedGroup(db, TENANT_ID);
 		await seedGroup(db, 8, true);
+		await seedGroup(db, 9); // stays non-ZK — setTenantZk flips TENANT_ID
 	});
 
 	it("enrolls a device as pending and is idempotent on the wrap pubkey", async () => {
@@ -165,6 +167,16 @@ describe("vault repo", () => {
 		expect(await tenantIsZk(db, TENANT_ID)).toBe(false);
 		await setTenantZk(db, TENANT_ID);
 		expect(await tenantIsZk(db, TENANT_ID)).toBe(true);
+	});
+
+	it("tenantZkOrClosed fails closed on anything unresolvable", async () => {
+		expect(await tenantZkOrClosed(db, null)).toBe(false); // personal scope — no clinic
+		expect(await tenantZkOrClosed(db, 9)).toBe(false);
+		expect(await tenantZkOrClosed(db, 8)).toBe(true);
+		expect(await tenantZkOrClosed(db, 999)).toBe(true); // missing group → metadata-only
+		// A lookup that throws (no groups table) fails closed too.
+		const broken = makeDb(makeD1(`CREATE TABLE "user" (id TEXT PRIMARY KEY);`));
+		expect(await tenantZkOrClosed(broken, TENANT_ID)).toBe(true);
 	});
 });
 
