@@ -42,6 +42,15 @@ import {
 	type ConsultationAudioInfo,
 	type TranscriptView,
 } from "./-transcript.tsx";
+import {
+	consultationDek,
+	encryptAnamnesis,
+	encryptConsultationDraft,
+	extractAnamnesisZk,
+	newConsultationDek,
+	signAnamnesis,
+	type ConsultationZk,
+} from "../zk.ts";
 
 function fmtElapsed(totalSec: number) {
 	const m = Math.floor(totalSec / 60);
@@ -69,19 +78,27 @@ export interface NewConsultationApi {
 		transcript: string;
 		status: string | null;
 	} | null>;
+	/** Server-side extraction — refuses ZK tenants (returns null there;
+	 * the ZK view path extracts locally instead). */
 	extractAnamnesis(input: {
 		data: { transcript: string; patientId?: number };
-	}): Promise<{ anamnesis: Anamnesis; engine: string }>;
+	}): Promise<{ anamnesis: Anamnesis; engine: string } | null>;
 	attachAnamnesis(input: {
 		data: {
 			consultationId: number;
-			anamnesis: Anamnesis;
+			/** Parsed document for plaintext writes; a `v1.` envelope for
+			 * `ciphered: true` writes (T-145). */
+			anamnesis: Anamnesis | string;
 			engine: string;
 			// Tri-state: undefined keeps the link, null clears it.
 			patientId?: number | null;
+			ciphered?: true;
+			grants?: unknown[];
+			version?: { contentHash: string; signature: string };
 		};
 	}): Promise<{ ok: boolean }>;
-	saveConsultation(input: { data: unknown }): Promise<{ id: number; updated?: boolean }>;
+	/** null when the write is denied or the ZK payload is malformed. */
+	saveConsultation(input: { data: unknown }): Promise<{ id: number; updated?: boolean } | null>;
 	recordConsent(input: { data: number }): Promise<{ ok: boolean }>;
 	/** Quick registration: name + approximate (year-only) birth date. */
 	createPatient(input: {
@@ -116,6 +133,7 @@ export function NewConsultationPage({
 	backend,
 	locale = "en",
 	portalBase,
+	zk,
 }: {
 	initialPatients: Array<{ id: number; name: string }>;
 	/** Preselect a patient (e.g. "New consultation" from the patient record). */
@@ -126,6 +144,10 @@ export function NewConsultationPage({
 	locale?: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
+	/** ZK context (T-145): present only on ZK tenants — extraction runs
+	 * locally and the saved record is encrypted + client-signed before
+	 * it leaves the browser. */
+	zk?: ConsultationZk;
 }) {
 	const t = consultationMessages(locale);
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
@@ -276,6 +298,9 @@ export function NewConsultationPage({
 	 * lines. No-op for transcribers without stats/recording support.
 	 */
 	async function maybeServerFallback(mode: "mic" | "tab" | "dict") {
+		// T-145: ZK tenants never send audio/transcript to the server —
+		// the reprocess fallback is a plaintext upload, so it is skipped.
+		if (zk) return;
 		const tr = mode === "tab" ? tabRef.current : transcriberRef.current;
 		/* v8 ignore next -- refs are assigned in useEffect before any capture ends */
 		if (!tr) return;
@@ -460,9 +485,17 @@ export function NewConsultationPage({
 		setError(null);
 		setSavedId(null);
 		try {
-			const res = await api.extractAnamnesis({
-				data: { transcript: text, patientId: patientId ?? undefined },
-			});
+			// T-145: under ZK the transcript never leaves the browser —
+			// extraction runs locally (BYOK LLM port arrives with T-146).
+			const res = zk
+				? await extractAnamnesisZk(text)
+				: await api.extractAnamnesis({
+						data: { transcript: text, patientId: patientId ?? undefined },
+					});
+			if (res === null) {
+				setError(t.newConsultation.transcriptionFailed);
+				return;
+			}
 			setAnamnesis(res.anamnesis);
 			setEngine(res.engine);
 		} catch (e) {
@@ -485,32 +518,68 @@ export function NewConsultationPage({
 			const existing = liveId ?? savedId;
 			let id: number | null = existing;
 			if (existing) {
-				const r = await api.attachAnamnesis({
-					data: {
+				let data: Parameters<NewConsultationApi["attachAnamnesis"]>[0]["data"];
+				if (zk) {
+					// T-145: encrypt the document under the record DEK and
+					// sign the canonical hash with this device's key — the
+					// server stores ciphertext + the signed version entry.
+					const dek = await consultationDek(zk.keyring, zk.api, existing);
+					if (dek === null) throw new Error(t.zk.decryptFailed);
+					const version = await signAnamnesis(zk.keyring, anamnesis);
+					data = {
+						consultationId: existing,
+						anamnesis: await encryptAnamnesis(dek, anamnesis),
+						engine: engine ?? "unknown",
+						patientId,
+						ciphered: true,
+						version,
+					};
+				} else {
+					data = {
 						consultationId: existing,
 						anamnesis,
 						engine: engine ?? "unknown",
 						// null clears a previously linked patient; undefined
 						// would keep it (tri-state on the wire).
 						patientId,
-					},
-				});
+					};
+				}
+				const r = await api.attachAnamnesis({ data });
 				if (!r.ok) throw new Error(t.newConsultation.saveSessionExpired);
 			} else {
-				const res = await api.saveConsultation({
-					data: {
+				let payload: Record<string, unknown>;
+				if (zk) {
+					// T-145: mint the record DEK, wrap it to every approved
+					// clinic device, encrypt transcript + anamnesis and sign
+					// the version — grants travel with the create.
+					const { dek, grants } = await newConsultationDek(zk.keyring, zk.api);
+					const encrypted = await encryptConsultationDraft(dek, { transcript, anamnesis });
+					const version = await signAnamnesis(zk.keyring, anamnesis);
+					payload = {
+						...encrypted,
+						engine: engine ?? "unknown",
+						patientId: patientId ?? undefined,
+						ciphered: true,
+						grants,
+						version,
+					};
+				} else {
+					payload = {
 						transcript,
 						anamnesis,
 						engine: engine ?? "unknown",
 						patientId: patientId ?? undefined,
-					},
-				});
-				id = res.id ?? null;
+					};
+				}
+				const res = await api.saveConsultation({ data: payload });
+				id = res?.id ?? null;
 			}
 			if (!id) throw new Error(t.newConsultation.saveFailed);
 			if (consented) await api.recordConsent({ data: id });
 			setSavedId(id);
-			void uploadSessionAudio(id);
+			// T-145: no plaintext audio ever leaves a ZK device — T-147
+			// adds the client-encrypted upload path.
+			if (!zk) void uploadSessionAudio(id);
 			// The consultation is saved either way: a failed lookup only
 			// means the access question is not asked.
 			const standing =
@@ -739,7 +808,9 @@ export function NewConsultationPage({
 				<section className={cardCls}>
 					<div className="flex items-center justify-between border-b border-border px-5 py-3">
 						<h2 className="font-semibold">{t.common.transcript}</h2>
-						{mode === "live" ? (
+						{/* ZK tenants have no server audio/transcript path —
+						 * upload and the meet bot stay hidden (T-145/T-147). */}
+						{mode === "live" && !zk ? (
 							<Tabs
 								value={source}
 								onValueChange={(v) => setSource(v as "record" | "upload" | "bot")}
@@ -1106,14 +1177,18 @@ export function NewConsultationPage({
 				actions={
 					saveDialog?.kind === "ok" ? (
 						<>
-							<a
-								href={`/api/consultations/${saveDialog.id}/pdf`}
-								download
-								className={buttonVariants({ variant: "outline", size: "sm" })}
-							>
-								<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
-								{t.common.downloadPdf}
-							</a>
+							{/* Server-side PDF reads plaintext columns — hidden
+							 * under ZK until T-146's client-side renderer. */}
+							{!zk ? (
+								<a
+									href={`/api/consultations/${saveDialog.id}/pdf`}
+									download
+									className={buttonVariants({ variant: "outline", size: "sm" })}
+								>
+									<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
+									{t.common.downloadPdf}
+								</a>
+							) : null}
 							<Link
 								to={portalPath(`/consultations/${saveDialog.id}`)}
 								className={buttonVariants({ variant: "outline", size: "sm" })}

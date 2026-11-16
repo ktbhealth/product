@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	getConsultationFn: vi.fn(),
 	patientHistoryFn: vi.fn(),
+	patientHistoryRowsFn: vi.fn(),
+	vaultStateFn: vi.fn(async () => ({ tenantId: 7, role: "admin", zk: false })),
 	loaderData: { current: undefined as unknown },
 	props: { current: undefined as Record<string, unknown> | undefined },
 }));
@@ -14,6 +16,7 @@ vi.mock("../guard.ts", () => ({ requireDoctor: vi.fn() }));
 vi.mock("../fns.ts", () => ({
 	getConsultationFn: mocks.getConsultationFn,
 	patientHistoryFn: mocks.patientHistoryFn,
+	patientHistoryRowsFn: mocks.patientHistoryRowsFn,
 	attachAnamnesisFn: vi.fn(),
 	extractAnamnesisFn: vi.fn(),
 	getLiveConsultationFn: vi.fn(),
@@ -22,6 +25,13 @@ vi.mock("../fns.ts", () => ({
 	sessionUserFn: vi.fn(),
 	localeFn: vi.fn(),
 }));
+vi.mock("@ktb/vault/fns", () => ({
+	vaultStateFn: mocks.vaultStateFn,
+	vaultDevicesFn: vi.fn(),
+	vaultDekEnvelopesFn: vi.fn(),
+	vaultGrantAccessFn: vi.fn(),
+}));
+vi.mock("@ktb/crypto/keyring", () => ({ makeKeyring: vi.fn(() => ({ tag: "keyring" })) }));
 vi.mock("../whisper-prefetch.ts", () => ({ prefetchWhisperModel: vi.fn() }));
 vi.mock("@ktb/transcription-whisper", () => ({ whisperBackend: { id: "whisper" } }));
 vi.mock("../views/index.ts", () => ({
@@ -90,7 +100,13 @@ describe("/consultations/$id", () => {
 	it("skips the history for a consultation without a patient", async () => {
 		const c = { id: 9, patientId: null };
 		mocks.getConsultationFn.mockResolvedValue(c);
-		await expect(opts.loader({ params: { id: "9" } })).resolves.toEqual({ c, history: null });
+		await expect(opts.loader({ params: { id: "9" } })).resolves.toEqual({
+			c,
+			history: null,
+			historyRows: null,
+			locale: undefined,
+			zk: false,
+		});
 		expect(mocks.patientHistoryFn).not.toHaveBeenCalled();
 	});
 
@@ -101,22 +117,53 @@ describe("/consultations/$id", () => {
 		await expect(opts.loader({ params: { id: "9" } })).resolves.toEqual({
 			c,
 			history: { items: [] },
+			historyRows: null,
+			locale: undefined,
+			zk: false,
 		});
 		expect(mocks.patientHistoryFn).toHaveBeenCalledWith({
 			data: { patientId: 4, excludeId: 9 },
 		});
 	});
 
+	it("loads raw history rows instead of the summary under ZK", async () => {
+		mocks.vaultStateFn.mockResolvedValueOnce({ tenantId: 7, role: "admin", zk: true });
+		const c = { id: 9, patientId: 4 };
+		mocks.getConsultationFn.mockResolvedValue(c);
+		mocks.patientHistoryRowsFn.mockResolvedValue({ count: 1, rows: [] });
+		await expect(opts.loader({ params: { id: "9" } })).resolves.toEqual({
+			c,
+			history: null,
+			historyRows: { count: 1, rows: [] },
+			locale: undefined,
+			zk: true,
+		});
+		expect(mocks.patientHistoryRowsFn).toHaveBeenCalledWith({
+			data: { patientId: 4, excludeId: 9 },
+		});
+		expect(mocks.patientHistoryFn).not.toHaveBeenCalled();
+	});
+
 	it("renders the detail page with a live-refetch api backed by getConsultationFn", async () => {
-		mocks.loaderData.current = { c: { id: 9 }, history: null };
+		mocks.loaderData.current = { c: { id: 9 }, history: null, historyRows: null, zk: false };
 		mocks.getConsultationFn.mockResolvedValue({ id: 9, audioStatus: "done" });
 		render(createElement(opts.component));
 		const props = mocks.props.current!;
 		expect(props.c).toEqual({ id: 9 });
 		expect(props.history).toBeNull();
+		expect(props.zk).toBeUndefined();
 		const api = props.api as { getConsultation: (i: { data: number }) => Promise<unknown> };
 		await expect(api.getConsultation({ data: 9 })).resolves.toEqual({ id: 9, audioStatus: "done" });
 		expect(mocks.getConsultationFn).toHaveBeenCalledWith({ data: 9 });
+	});
+
+	it("passes a keyring-bound zk surface to the detail page under ZK", async () => {
+		mocks.loaderData.current = { c: { id: 9 }, history: null, historyRows: null, zk: true };
+		render(createElement(opts.component));
+		const props = mocks.props.current!;
+		const zk = props.zk as { keyring: unknown; api: unknown } | undefined;
+		expect(zk?.keyring).toEqual({ tag: "keyring" });
+		expect(zk?.api).toBeDefined();
 	});
 });
 

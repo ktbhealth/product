@@ -1,6 +1,8 @@
 import type { ConsultationDetailApi, NewConsultationApi } from "./views/index.ts";
 import { invitePatientFn, patientLinksFn } from "@ktb/patient-access/fns";
 import { createPatientFn, listPatientsFn } from "@ktb/patients/fns";
+import { vaultDekEnvelopesFn, vaultDevicesFn, vaultGrantAccessFn } from "@ktb/vault/fns";
+import type { ConsultationZkApi } from "./zk.ts";
 import {
 	attachAnamnesisFn,
 	extractAnamnesisFn,
@@ -48,6 +50,18 @@ export const newConsultationApi: NewConsultationApi = {
 		const res = await invitePatientFn({ data: { ...input.data, relation: "self" } });
 		return res.ok ? { ok: true as const, emailed: res.emailed } : res;
 	},
+};
+
+/**
+ * ZK surface for the doctor views (T-145): device listing, own DEK
+ * envelopes and grant writes — all bound-tenant scoped inside the
+ * vault fns. Identical shape to `patientsZkApi`; only ever receives
+ * pubkeys/`w1.` envelopes.
+ */
+export const consultationsZkApi: ConsultationZkApi = {
+	devices: () => vaultDevicesFn(),
+	dekEnvelopes: (input) => vaultDekEnvelopesFn({ data: input }),
+	grant: async (input) => vaultGrantAccessFn({ data: input }),
 };
 
 /** Loader data for /consultations/new — the patient picker list. */

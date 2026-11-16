@@ -229,6 +229,12 @@ export interface ConsultationMessages {
 		readonly deleteConfirm: string;
 		readonly cancel: string;
 	};
+	/** ZK locked-record copy (T-145) — rows this device cannot decrypt. */
+	readonly zk: {
+		readonly lockedRecord: string;
+		readonly lockedHint: string;
+		readonly decryptFailed: string;
+	};
 }
 
 const en: ConsultationMessages = {
@@ -450,6 +456,11 @@ const en: ConsultationMessages = {
 		deleteDescription: (label) => `This permanently deletes ${label} and its recording.`,
 		deleteConfirm: "Delete permanently",
 		cancel: "Cancel",
+	},
+	zk: {
+		lockedRecord: "Encrypted record",
+		lockedHint: "Unlock it on an approved clinic device to view it.",
+		decryptFailed: "This record could not be decrypted on this device.",
 	},
 };
 
@@ -673,6 +684,11 @@ const ptBR: ConsultationMessages = {
 		deleteDescription: (label) => `Isso exclui permanentemente ${label} e sua gravação.`,
 		deleteConfirm: "Excluir permanentemente",
 		cancel: "Cancelar",
+	},
+	zk: {
+		lockedRecord: "Registro criptografado",
+		lockedHint: "Desbloqueie em um dispositivo aprovado da clínica para visualizar.",
+		decryptFailed: "Não foi possível descriptografar este registro neste dispositivo.",
 	},
 };
 
@@ -899,6 +915,11 @@ const es: ConsultationMessages = {
 		deleteDescription: (label) => `Esto elimina permanentemente ${label} y su grabación.`,
 		deleteConfirm: "Eliminar permanentemente",
 		cancel: "Cancelar",
+	},
+	zk: {
+		lockedRecord: "Registro cifrado",
+		lockedHint: "Desbloquéalo en un dispositivo aprobado de la clínica para verlo.",
+		decryptFailed: "No se pudo descifrar este registro en este dispositivo.",
 	},
 };
 
