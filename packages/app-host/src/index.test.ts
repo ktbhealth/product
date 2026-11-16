@@ -12,7 +12,14 @@ import {
 } from "../../../plugins/notifications/src/api.ts";
 import * as Effect from "effect/Effect";
 
-import { assertCaptchaConfigured, createApp, defaultVerificationEmail, plugins } from "./index.ts";
+import {
+	assertAuthConfigured,
+	assertCaptchaConfigured,
+	createApp,
+	defaultVerificationEmail,
+	isProductionBuild,
+	plugins,
+} from "./index.ts";
 
 const DDL = `
 CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
@@ -194,6 +201,44 @@ describe("createApp", () => {
 
 		it("allows dev/test without any captcha env", () => {
 			expect(() => assertCaptchaConfigured({}, false)).not.toThrow();
+		});
+	});
+
+	describe("assertAuthConfigured", () => {
+		const configured = {
+			BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long!!",
+			BETTER_AUTH_URL: "http://localhost:3000",
+		};
+
+		it("throws in production when the secret is missing", () => {
+			expect(() =>
+				assertAuthConfigured({ BETTER_AUTH_URL: configured.BETTER_AUTH_URL }, true),
+			).toThrow(/auth not configured/);
+		});
+
+		it("throws in production when the base URL is missing", () => {
+			expect(() =>
+				assertAuthConfigured({ BETTER_AUTH_SECRET: configured.BETTER_AUTH_SECRET }, true),
+			).toThrow(/auth not configured/);
+		});
+
+		it("allows production with both auth vars set", () => {
+			expect(() => assertAuthConfigured(configured, true)).not.toThrow();
+		});
+
+		it("allows dev/test without any auth env", () => {
+			expect(() => assertAuthConfigured({}, false)).not.toThrow();
+		});
+	});
+
+	describe("isProductionBuild", () => {
+		it("reads PROD from import.meta.env", () => {
+			expect(isProductionBuild({ PROD: true })).toBe(true);
+			expect(isProductionBuild({ PROD: false })).toBe(false);
+		});
+
+		it("treats a missing import.meta.env as non-production", () => {
+			expect(isProductionBuild(undefined)).toBe(false);
 		});
 	});
 
