@@ -442,6 +442,8 @@ describe("bridge endpoints (F3b)", () => {
 		expect(row.baseUrl).toBeNull();
 		expect(isBridgeEndpoint(row)).toBe(true);
 		expect(isBridgeEndpoint({ kind: "openai", baseUrl: null, transport: null })).toBe(false);
+		// transport null defaults to ws — the bridge shape.
+		expect(isBridgeEndpoint({ kind: "acp", baseUrl: null, transport: null })).toBe(true);
 		expect(isBridgeEndpoint({ kind: "acp", baseUrl: "ws://h", transport: "ws" })).toBe(false);
 		expect(isBridgeEndpoint({ kind: "acp", baseUrl: null, transport: "child" })).toBe(false);
 		// The descriptor carries "" + endpointId — the factory routes it

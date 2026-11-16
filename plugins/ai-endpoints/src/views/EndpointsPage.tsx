@@ -281,9 +281,11 @@ export function EndpointsPage({
 			const r = await endpointBridgeStatusFn({ data: { id } });
 			if (stopped) return;
 			if (r.ok) {
-				setBridge((prev) =>
-					prev === null || prev.id !== id ? prev : { ...prev, status: r.data?.status ?? null },
-				);
+				setBridge((prev) => {
+					/* v8 ignore next -- the tick only runs while this id's dialog is open */
+					if (prev === null || prev.id !== id) return prev;
+					return { ...prev, status: r.data?.status ?? null };
+				});
 			}
 		};
 		void tick();
@@ -295,6 +297,7 @@ export function EndpointsPage({
 	}, [bridgeId]);
 
 	const copyCommand = async () => {
+		/* v8 ignore next -- the Copy button only renders with a non-empty command */
 		if (bridge?.command == null || bridge.command === "") return;
 		try {
 			await navigator.clipboard.writeText(bridge.command);

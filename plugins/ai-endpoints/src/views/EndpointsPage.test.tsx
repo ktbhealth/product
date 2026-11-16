@@ -514,6 +514,93 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
 	});
 
+	it("treats a null transport as the ws default for bridge detection", () => {
+		renderPage([{ ...bridgeEp, id: 11, name: "Null tx", transport: null }]);
+		expect(screen.getByText("bridge")).toBeTruthy();
+		expect(screen.getByText("Connect via bridge")).toBeTruthy();
+	});
+
+	it("drops mints that land after close or for a different endpoint", async () => {
+		const user = userEvent.setup();
+		type Mint = { ok: true; data: { command: string; expiresAt: Date } };
+		let resolveA: ((v: Mint) => void) | undefined;
+		let resolveB: ((v: Mint) => void) | undefined;
+		fns.createBridgeLinkFn
+			.mockImplementationOnce(() => new Promise<Mint>((res) => (resolveA = res)))
+			.mockImplementationOnce(() => new Promise<Mint>((res) => (resolveB = res)));
+		renderPage([bridgeEp, { ...bridgeEp, id: 9, name: "Other agent" }]);
+
+		await user.click(screen.getAllByText("Connect via bridge")[0]!);
+		await waitFor(() => expect(fns.createBridgeLinkFn).toHaveBeenCalledWith({ data: { id: 7 } }));
+		const closeButton = () =>
+			screen.getAllByText("Close").find((el) => el instanceof HTMLButtonElement)!;
+		await user.click(closeButton());
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+
+		// Stale mint for id 7 while endpoint 9's dialog is open → prev.id !== id.
+		await user.click(screen.getAllByText("Connect via bridge")[1]!);
+		await waitFor(() => expect(fns.createBridgeLinkFn).toHaveBeenCalledWith({ data: { id: 9 } }));
+		resolveA!({ ok: true, data: { command: "stale-7", expiresAt: new Date() } });
+		// Endpoint 9's own mint still lands.
+		resolveB!({ ok: true, data: { command: "fresh-9", expiresAt: new Date() } });
+		expect((await screen.findByDisplayValue("fresh-9"))).toBeTruthy();
+
+		// Mint resolving after the dialog closed → prev === null.
+		let resolveC: ((v: Mint) => void) | undefined;
+		fns.createBridgeLinkFn.mockImplementationOnce(
+			() => new Promise<Mint>((res) => (resolveC = res)),
+		);
+		await user.click(closeButton());
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+		await user.click(screen.getAllByText("Connect via bridge")[0]!);
+		await user.click(closeButton());
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+		resolveC!({ ok: true, data: { command: "stale-7", expiresAt: new Date() } });
+		await waitFor(() => expect(screen.queryByDisplayValue("stale-7")).toBeNull());
+	});
+
+	it(
+		"keeps polling while open and tolerates failed or empty status reads",
+		{ timeout: 15_000 },
+		async () => {
+			fns.endpointBridgeStatusFn
+				.mockResolvedValueOnce({ ok: false } as never)
+				.mockResolvedValueOnce({ ok: true, data: null } as never);
+			const user = userEvent.setup();
+			renderPage([bridgeEp]);
+			await user.click(screen.getByText("Connect via bridge"));
+			// Failed + null reads leave the badge on the waiting copy.
+			expect(await screen.findByText(/waiting for the CLI/)).toBeTruthy();
+			// The 3s interval keeps ticking while the dialog stays open.
+			await waitFor(() => expect(fns.endpointBridgeStatusFn).toHaveBeenCalledTimes(3), {
+				timeout: 10_000,
+			});
+		},
+	);
+
+	it("drops the in-flight status tick once the dialog closes", async () => {
+		let resolveStatus:
+			| ((v: { ok: true; data: { status: string; lastSeenAt: Date | null } }) => void)
+			| undefined;
+		fns.endpointBridgeStatusFn.mockImplementationOnce(
+			() =>
+				new Promise<{ ok: true; data: { status: string; lastSeenAt: Date | null } }>(
+					(res) => (resolveStatus = res),
+				),
+		);
+		const user = userEvent.setup();
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		await waitFor(() => expect(fns.endpointBridgeStatusFn).toHaveBeenCalled());
+		const closeButton = screen
+			.getAllByText("Close")
+			.find((el) => el instanceof HTMLButtonElement)!;
+		await user.click(closeButton);
+		resolveStatus!({ ok: true, data: { status: "connected", lastSeenAt: new Date() } });
+		// The stale tick short-circuits on `stopped` — no status lands.
+		await waitFor(() => expect(screen.queryByText("bridge connected")).toBeNull());
+	});
+
 	it("omits the command box when the link mint fails", async () => {
 		fns.createBridgeLinkFn.mockResolvedValueOnce({ ok: true, data: null } as never);
 		const user = userEvent.setup();
