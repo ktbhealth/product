@@ -11,6 +11,12 @@ import type { Gender, Language, MaritalStatus, RaceColor } from "./record.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const PATIENT_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "patients";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): PatientMessages => patientMessages(locale);
 export type PatientLocale = (typeof PATIENT_LOCALES)[number];
 export const BASE_LOCALE: PatientLocale = "en";
 

@@ -9,6 +9,9 @@ import {
 	UsersIcon,
 } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -29,7 +32,7 @@ import {
 } from "@ktbhealth/ui/components/empty";
 import { SearchInput } from "@ktbhealth/ui/components/search-input";
 import type { Patient } from "../index.ts";
-import { patientMessages } from "../i18n.ts";
+import { patientMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { formatCpf } from "../record.ts";
 import { demographics, displayName, initials } from "./-format.ts";
 import { exportLinks } from "./-export.ts";
@@ -42,12 +45,15 @@ export type PatientListItem = Pick<
 
 export function PatientsPage({
 	patients,
+	i18n,
 	locale,
 	deleteApi,
 	onDeleted,
 	portalBase,
 }: {
 	patients: PatientListItem[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host. */
 	locale: string;
 	deleteApi: PatientDeleteApi;
@@ -56,7 +62,7 @@ export function PatientsPage({
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
 }) {
-	const t = patientMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [q, setQ] = useState("");
 	const [toDelete, setToDelete] = useState<{ id: number; name: string } | null>(null);

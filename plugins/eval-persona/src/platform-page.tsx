@@ -10,6 +10,7 @@ export function PersonasPanelPage({ data, ctx }: { data: unknown; ctx: PanelPage
 	return (
 		<PersonasPage
 			defs={Array.isArray(data) ? (data as PersonaDefCard[]) : []}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 		/>
 	);
@@ -29,6 +30,7 @@ export function InstancesPanelPage({ data, ctx }: { data: unknown; ctx: PanelPag
 			instances={d.instances ?? []}
 			defs={d.defs ?? []}
 			endpoints={d.endpoints ?? []}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 		/>
 	);

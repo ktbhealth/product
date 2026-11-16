@@ -2,6 +2,12 @@
  * panel page ctx (same contract as eval-validator's i18n). */
 export const EVAL_LOCALES = ["en", "pt-BR", "es"] as const;
 
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "eval.persona";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): EvalLabMessages => evalLabMessages(locale);
+
 export interface EvalLabMessages {
 	readonly personasTitle: string;
 	readonly personasDesc: string;

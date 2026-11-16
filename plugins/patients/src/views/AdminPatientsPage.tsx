@@ -2,6 +2,9 @@ import { Link, useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
@@ -21,7 +24,7 @@ import {
 
 import { patientDeleteApi } from "../apis.ts";
 import type { AdminPatientRow, OwnerOption } from "../index.ts";
-import { patientMessages } from "../i18n.ts";
+import { patientMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { AdminPatientCreateDialog } from "./AdminPatientCreateDialog.tsx";
 import { DeletePatientDialog } from "./DeletePatientDialog.tsx";
 
@@ -36,15 +39,18 @@ const SEARCH_CLS = "w-56 sm:w-64";
 export function AdminPatientsPage({
 	patients,
 	owners,
+	i18n,
 	locale = "en",
 }: {
 	patients: AdminPatientRow[];
 	/** User accounts for the create form's owner picker. */
 	owners: OwnerOption[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host via the panel page ctx. */
 	locale?: string;
 }) {
-	const t = patientMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const router = useRouter();
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
@@ -21,7 +24,7 @@ import {
 	reviewPersonaFn,
 	startRunFn,
 } from "../fns.ts";
-import { evalMessages } from "../i18n.ts";
+import { evalMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { AxisAggregate, BatchSummary, PersonaCard, RunProgress } from "../index.ts";
 
 const stateVariant = (state: string) =>
@@ -31,12 +34,15 @@ const stateVariant = (state: string) =>
  * run progress. Run polling is effect-scoped — no leaked timers. */
 export function EvalValidatorPage({
 	batches: initial,
+	i18n,
 	locale,
 }: {
 	batches: readonly BatchSummary[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 }) {
-	const m = evalMessages(locale);
+	const m = sliceMessages(i18n, I18N_NAMESPACE, evalMessages(locale));
 	const [batches, setBatches] = useState<readonly BatchSummary[]>(initial);
 	const [personas, setPersonas] = useState<readonly PersonaCard[]>([]);
 	const [selectedBatch, setSelectedBatch] = useState<number | null>(null);

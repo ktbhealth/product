@@ -2,6 +2,9 @@ import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { PencilIcon, PlusIcon, SparklesIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent } from "@ktbhealth/ui/components/card";
@@ -33,7 +36,7 @@ import {
 	listPersonaDefsFn,
 	savePersonaDefFn,
 } from "../fns.ts";
-import { evalLabMessages } from "../i18n.ts";
+import { evalLabMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { EndpointCard, PersonaDefCard } from "../index.ts";
 
 const GEN_TEMPLATE = "__template__";
@@ -149,12 +152,15 @@ const randomizeForm = (base: FormState): FormState => ({
  * instance generation time. */
 export function PersonasPage({
 	defs: initial,
+	i18n,
 	locale,
 }: {
 	defs: readonly PersonaDefCard[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 }) {
-	const m = evalLabMessages(locale);
+	const m = sliceMessages(i18n, I18N_NAMESPACE, evalLabMessages(locale));
 	const router = useRouter();
 	const [defs, setDefs] = useState<readonly PersonaDefCard[]>(initial);
 	const [form, setForm] = useState<FormState | null>(null);

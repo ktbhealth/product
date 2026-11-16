@@ -1,4 +1,4 @@
-import { useRouter } from "@tanstack/react-router";
+import { useRouter, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -15,10 +15,12 @@ export const Route = createPluginFileRoute("patients.routes")("/patients/")({
 	},
 	component: function PatientsRoute() {
 		const { patients, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const router = useRouter();
 		return (
 			<PatientsPage
 				patients={patients}
+				i18n={i18n}
 				locale={locale}
 				deleteApi={patientDeleteApi}
 				onDeleted={() => void router.invalidate()}

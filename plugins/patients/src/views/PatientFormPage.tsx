@@ -4,6 +4,9 @@ import { AsteriskIcon, CalendarIcon } from "lucide-react";
 import type { Locale as CalendarLocale } from "react-day-picker";
 import { enUS, es, ptBR } from "react-day-picker/locale";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert } from "@ktbhealth/ui/components/alert";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Calendar } from "@ktbhealth/ui/components/calendar";
@@ -27,7 +30,7 @@ import {
 } from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import type { Patient } from "../index.ts";
-import { patientMessages, type PatientLocale } from "../i18n.ts";
+import { patientMessages, type PatientLocale, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	ageFromBirthDate,
 	birthDateFromAge,
@@ -84,6 +87,7 @@ export function PatientFormPage({
 	patient,
 	api,
 	onSaved,
+	i18n,
 	locale,
 	portalBase,
 }: {
@@ -91,12 +95,14 @@ export function PatientFormPage({
 	patient?: Patient;
 	api: PatientFormApi;
 	onSaved: (id: number) => void;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host. */
 	locale: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
 }) {
-	const t = patientMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const f = t.fields;
 	const countries = useMemo(() => countryOptions(locale), [locale]);
 	const [form, setForm] = useState(() => initialState(patient));

@@ -1,4 +1,4 @@
-import { notFound, useNavigate } from "@tanstack/react-router";
+import { notFound, useNavigate, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -19,11 +19,13 @@ export const Route = createPluginFileRoute("patients.routes")("/patients/$id/edi
 	},
 	component: function EditPatientRoute() {
 		const { patient, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const navigate = useNavigate();
 		return (
 			<PatientFormPage
 				patient={patient}
 				api={editPatientApi(patient.id)}
+				i18n={i18n}
 				locale={locale}
 				onSaved={(id) => navigate({ to: "/patients/$id", params: { id: String(id) } })}
 			/>
