@@ -243,9 +243,7 @@ describe("/patient-access/$patientId", () => {
 			cipheredConsultationIds: [10],
 		});
 		render(createElement(options.component));
-		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe(
-			"Ana Plain",
-		);
+		expect((mocks.props.current as { patient: { name: string } }).patient.name).toBe("Ana Plain");
 		await vi.waitFor(() => expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 7 }));
 		await vi.waitFor(() => expect(mocks.vaultDekEnvelopesFn).toHaveBeenCalled());
 	});
