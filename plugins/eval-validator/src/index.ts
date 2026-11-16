@@ -725,7 +725,7 @@ export const evalValidatorChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "eval-validator.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
