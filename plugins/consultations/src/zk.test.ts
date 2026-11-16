@@ -182,6 +182,15 @@ describe("decryptConsultations", () => {
 		const bogus = api({ dekEnvelopes: vi.fn(async () => ({ "9": "w1.bogus.envelope" })) });
 		expect((await decryptConsultations(k, bogus, [row]))[0]).toBe(row);
 	});
+
+	it("keeps patient names locked when the patient DEK unwrap fails", async () => {
+		const k = keyring();
+		const row = { id: 9, patientId: 5, patientName: "v1.aa.bb", transcript: "plain" };
+		const bogus = api({ dekEnvelopes: vi.fn(async () => ({ "5": "w1.bogus.envelope" })) });
+		const out = await decryptConsultations(k, bogus, [row]);
+		expect(out[0]).toBe(row);
+		expect(out[0]?.patientName).toBe("v1.aa.bb");
+	});
 });
 
 describe("decryptConsultation", () => {

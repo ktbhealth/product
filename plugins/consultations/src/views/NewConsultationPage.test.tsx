@@ -72,6 +72,25 @@ vi.mock("@tanstack/react-router", async () => {
 	};
 });
 
+const zkMocks = vi.hoisted(() => ({
+	newConsultationDek: vi.fn(async () => ({
+		dek: { tag: "dek" } as never,
+		grants: [{ readerKind: "device" as const, readerPubkey: "w", wrappedDek: "w1.g" }],
+	})),
+	consultationDek: vi.fn(async (): Promise<unknown> => ({ tag: "dek" })),
+	encryptConsultationDraft: vi.fn(async () => ({
+		transcript: "v1.t.e",
+		anamnesis: "v1.a.e",
+	})),
+	encryptAnamnesis: vi.fn(async () => "v1.a2.e"),
+	signAnamnesis: vi.fn(async () => ({ contentHash: "h1", signature: "s1" })),
+	extractAnamnesisZk: vi.fn(),
+}));
+vi.mock("../zk.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../zk.ts")>()),
+	...zkMocks,
+}));
+
 import { NewConsultationPage } from "./NewConsultationPage.tsx";
 
 const SECTION = { content: "", confidence: "baixa" as const, evidence: [] as string[] };
@@ -1604,6 +1623,124 @@ describe("NewConsultationPage", () => {
 				await new Promise((r) => setTimeout(r, 0));
 			});
 			expect(fetchMock).not.toHaveBeenCalledWith("/api/consultations/42/audio", expect.anything());
+		});
+	});
+
+	describe("ZK save paths (T-145)", () => {
+		const zk = { keyring: { tag: "k" }, api: { tag: "a" } } as never;
+
+		it("encrypts the draft and signs the version for a new consultation", async () => {
+			const api = makeApi();
+			zkMocks.extractAnamnesisZk.mockResolvedValueOnce({
+				anamnesis: ANAMNESIS,
+				engine: "heuristic",
+			});
+			const user = userEvent.setup();
+			render(
+				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+			);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			expect(zkMocks.newConsultationDek).toHaveBeenCalledWith({ tag: "k" }, { tag: "a" });
+			expect(api.saveConsultation).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					transcript: "v1.t.e",
+					anamnesis: "v1.a.e",
+					ciphered: true,
+					grants: [{ readerKind: "device", readerPubkey: "w", wrappedDek: "w1.g" }],
+					version: { contentHash: "h1", signature: "s1" },
+				}),
+			});
+			expect(api.attachAnamnesis).not.toHaveBeenCalled();
+		});
+
+		it("encrypts only the anamnesis under the record DEK on update", async () => {
+			const api = makeApi();
+			zkMocks.extractAnamnesisZk.mockResolvedValue({
+				anamnesis: ANAMNESIS,
+				engine: null as never,
+			});
+			const user = userEvent.setup();
+			render(
+				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+			);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			await user.click(screen.getByText("Update consultation"));
+			await waitFor(() =>
+				expect(api.attachAnamnesis).toHaveBeenCalledWith({
+					data: expect.objectContaining({
+						consultationId: 42,
+						anamnesis: "v1.a2.e",
+						ciphered: true,
+						version: { contentHash: "h1", signature: "s1" },
+					}),
+				}),
+			);
+			expect(zkMocks.consultationDek).toHaveBeenCalledWith({ tag: "k" }, { tag: "a" }, 42);
+		});
+
+		it("surfaces the decrypt failure when the record DEK is missing", async () => {
+			const api = makeApi();
+			zkMocks.extractAnamnesisZk.mockResolvedValue({
+				anamnesis: ANAMNESIS,
+				engine: "heuristic",
+			});
+			const user = userEvent.setup();
+			render(
+				<NewConsultationPage initialPatients={PATIENTS} api={api} backend={backend} zk={zk} />,
+			);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			zkMocks.consultationDek.mockResolvedValueOnce(null);
+			await user.click(screen.getByText("Update consultation"));
+			await screen.findByText(/decrypt/i);
+		});
+
+		it("shows the transcription error when ZK extraction returns null", async () => {
+			zkMocks.extractAnamnesisZk.mockResolvedValueOnce(null);
+			const user = userEvent.setup();
+			render(
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={makeApi()}
+					backend={backend}
+					zk={zk}
+				/>,
+			);
+			await fillTranscript();
+			await user.click(screen.getByText("Generate anamnesis →"));
+			await screen.findByText(/transcription failed/);
+		});
+
+		it("never falls back to server-side re-transcription under ZK", async () => {
+			const user = userEvent.setup();
+			const fetchMock = vi.fn(async () => ({
+				ok: true,
+				json: async () => ({ text: "servidor" }),
+			}));
+			vi.stubGlobal("fetch", fetchMock);
+			micStatsFn = () => ({ voicedSec: 10, chars: 5 });
+			micRecFn = async () => new Blob(["audio"], { type: "audio/webm" });
+			render(
+				<NewConsultationPage
+					initialPatients={PATIENTS}
+					api={makeApi()}
+					backend={backend}
+					zk={zk}
+				/>,
+			);
+			await consent(user);
+			await user.click(screen.getByText("Record microphone"));
+			act(() => micCb!({ type: "final", text: "lixo local" }));
+			act(() => micCb!({ type: "end" }));
+			await act(async () => {
+				await new Promise((r) => setTimeout(r, 0));
+			});
+			expect(fetchMock).not.toHaveBeenCalledWith("/api/transcribe", expect.anything());
 		});
 	});
 });
