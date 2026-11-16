@@ -107,7 +107,21 @@ export const i18nCrdtUpdates = sqliteTable(
 	],
 );
 
+/**
+ * Single-row catalog revision counter. Every mutation that can change
+ * the published catalog (publish, locale enable/disable, baseline
+ * inserts) bumps it via `bumpCatalogRevision`; `catalogStamp` reads
+ * this one row instead of scanning i18n_messages, keeping the
+ * per-isolate cache stamp O(1).
+ */
+export const i18nRevision = sqliteTable("i18n_revision", {
+	/** Always 1 — the table holds exactly one row. */
+	id: integer("id").primaryKey(),
+	revision: integer("revision").notNull().default(0),
+});
+
 export type I18nNamespace = typeof i18nNamespaces.$inferSelect;
 export type I18nLocale = typeof i18nLocales.$inferSelect;
 export type I18nMessage = typeof i18nMessages.$inferSelect;
 export type I18nCrdtUpdate = typeof i18nCrdtUpdates.$inferSelect;
+export type I18nRevision = typeof i18nRevision.$inferSelect;

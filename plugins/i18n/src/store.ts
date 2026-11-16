@@ -8,6 +8,7 @@ import {
 	i18nLocales,
 	i18nMessages,
 	i18nNamespaces,
+	i18nRevision,
 	type I18nMessage,
 } from "./schema.ts";
 
@@ -62,29 +63,44 @@ export const listPublishedRows = async (
 	return rows.map(toRow);
 };
 
+/** The single row id inside i18n_revision. */
+const REVISION_ROW_ID = 1;
+
 /**
- * Cache stamp: COUNT(*) + SUM(version) + MAX(updated_at) over published
- * rows. Every write bumps `version` and `updated_at`, every insert adds
- * to the count — monotonic, so the ~15s TTL re-read detects any change.
- * `max(updated_at)` covers deletes/resets that could otherwise leave
- * count+versionSum frozen while the row set changed.
+ * Bump the published-catalog revision — call after ANY write that can
+ * change what `listPublishedRows` returns (publish, locale
+ * enable/disable, baseline inserts). Draft-only writes (saveDraft,
+ * importNamespace, discardDraft on published rows) must NOT call this:
+ * the stamp only needs to move when the live catalog does.
  *
- * Cost note: `status = 'published'` has no dedicated index (the table
- * carries only the (namespace, locale) one), so this is a full scan of
- * i18n_messages — fine at catalog scale (~4k rows) and re-read at most
- * every STAMP_TTL_MS per isolate; revisit if the table grows past that.
+ * Single-row upsert: first bump inserts id=1, later bumps increment.
+ * Racing writers may lose an increment — harmless, the stamp only
+ * needs to differ, not count exactly.
+ */
+export const bumpCatalogRevision = async (db: DbClient): Promise<void> => {
+	await db
+		.insert(i18nRevision)
+		.values({ id: REVISION_ROW_ID, revision: 1 })
+		.onConflictDoUpdate({
+			target: i18nRevision.id,
+			set: { revision: sql`${i18nRevision.revision} + 1` },
+		});
+};
+
+/**
+ * Cache stamp: the i18n_revision counter as an opaque string. O(1)
+ * single-row read — the previous count+sum(version)+max(updated_at)
+ * aggregation scanned every published row on each TTL re-check.
+ * Writers keep it honest via `bumpCatalogRevision`; an absent row
+ * (pre-first-bump) reads as revision 0.
  */
 export const catalogStamp = async (db: DbClient): Promise<string> => {
 	const rows = await db
-		.select({
-			count: sql<number>`count(*)`,
-			versionSum: sql<number>`coalesce(sum(${i18nMessages.version}), 0)`,
-			maxUpdated: sql<number>`coalesce(max(${i18nMessages.updatedAt}), 0)`,
-		})
-		.from(i18nMessages)
-		.where(eq(i18nMessages.status, "published"));
-	const r = rows[0];
-	return `${r?.count ?? 0}:${r?.versionSum ?? 0}:${r?.maxUpdated ?? 0}`;
+		.select({ revision: i18nRevision.revision })
+		.from(i18nRevision)
+		.where(eq(i18nRevision.id, REVISION_ROW_ID))
+		.limit(1);
+	return `r${rows[0]?.revision ?? 0}`;
 };
 
 /** Enabled locales with their fallback chains, default first. */
@@ -113,7 +129,7 @@ export const listEnabledLocales = async (
 	return rows;
 };
 
-export { i18nLocales, i18nMessages, i18nNamespaces };
+export { i18nLocales, i18nMessages, i18nNamespaces, i18nRevision };
 
 // ---------- panel/admin reads (all statuses, drafts included) ----------
 

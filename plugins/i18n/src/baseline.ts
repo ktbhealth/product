@@ -5,6 +5,7 @@ import { parseMessage, paramSignature } from "@ktb/i18n";
 
 import { MAX_MESSAGE_VALUE_LENGTH, validateMessageId } from "./contract.ts";
 import { i18nMessages, i18nNamespaces } from "./schema.ts";
+import { bumpCatalogRevision } from "./store.ts";
 
 /**
  * Baseline sync (PL-008 Phase 1): imports code-side catalogs
@@ -13,7 +14,8 @@ import { i18nMessages, i18nNamespaces } from "./schema.ts";
  * NEVER overwrites an existing row: the DB is canonical, so panel edits
  * survive re-imports. Re-importing changed baseline copy is a manual
  * ops step — `tools/import-i18n-baseline.mjs` re-runs this sync against
- * a target database; there is no in-panel reset-to-baseline op.
+ * a target database (or emits equivalent idempotent SQL via `--sql`);
+ * there is no in-panel reset-to-baseline op.
  *
  * Batched (not per-entry): validation is pure, existing keys come from
  * ONE select, and inserts go out in chunks — the runtime auto-seed runs
@@ -47,10 +49,22 @@ const INSERT_CHUNK_SIZE = 64;
 const messageTuple = (namespace: string, key: string, locale: string): string =>
 	JSON.stringify([namespace, key, locale]);
 
-export const syncBaseline = async (
-	db: DbClient,
+/**
+ * Pure half of the baseline sync: validate + parse every entry into
+ * insert-ready `global`/`published` rows. Shared with
+ * tools/import-i18n-baseline.mjs `--sql` mode so emitted SQL rows pass
+ * the exact same gates the DB path enforces (id charset, value-length
+ * cap, MF1 template parse, duplicate collapse). `skipped` here counts
+ * in-batch duplicates only — pre-existing DB rows are filtered by
+ * syncBaseline's existence select.
+ */
+export const prepareBaselineEntries = (
 	entries: readonly BaselineEntry[],
-): Promise<BaselineResult> => {
+): {
+	readonly rows: ReadonlyArray<typeof i18nMessages.$inferInsert>;
+	readonly skipped: number;
+	readonly invalid: ReadonlyArray<{ entry: BaselineEntry; error: string }>;
+} => {
 	let skipped = 0;
 	const invalid: Array<{ entry: BaselineEntry; error: string }> = [];
 
@@ -105,6 +119,17 @@ export const syncBaseline = async (
 			version: 1,
 		});
 	}
+	return { rows: candidates, skipped, invalid };
+};
+
+export const syncBaseline = async (
+	db: DbClient,
+	entries: readonly BaselineEntry[],
+): Promise<BaselineResult> => {
+	const prepared = prepareBaselineEntries(entries);
+	let skipped = prepared.skipped;
+	const invalid = prepared.invalid;
+	const candidates = prepared.rows;
 
 	// One SELECT for every existing global baseline key, then chunked
 	// inserts. `onConflictDoNothing` still guards the select-then-insert
@@ -139,10 +164,14 @@ export const syncBaseline = async (
 				.onConflictDoNothing();
 		}
 		inserted = fresh.length;
+		// Published rows landed → move the cache stamp so isolates pick
+		// the new catalog up on their next TTL re-check.
+		if (inserted > 0) await bumpCatalogRevision(db);
 	}
 
 	// Register namespaces seen in the baseline — one batched insert
-	// (idempotent).
+	// (idempotent). Namespaces aren't part of the published catalog, so
+	// no revision bump here.
 	const namespaces = [...new Set(entries.map((e) => e.namespace))];
 	if (namespaces.length > 0) {
 		await db

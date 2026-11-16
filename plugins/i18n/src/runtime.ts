@@ -2,6 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as Schedule from "effect/Schedule";
 
 import { Db, type DbClient } from "@ktb/db";
 import {
@@ -92,10 +93,11 @@ const SEED_LOCALES = Object.entries(LOCALE_META).map(([code, meta]) => ({
 }));
 
 /**
- * One-time runtime defaults at layer build (per isolate): all seed
- * locales plus, on a completely empty namespaces table, the
- * code-catalog baseline as global/published rows. Never per-request —
- * `catalogFor` stays read-only after this.
+ * One-time runtime defaults per isolate: all seed locales plus, on a
+ * completely empty namespaces table, the code-catalog baseline as
+ * global/published rows. Idempotent — safe to re-run, which is what
+ * the lazy re-check in the load path relies on after a failed
+ * layer-build attempt.
  */
 const seedRuntimeDefaults = async (db: DbClient): Promise<void> => {
 	await db.insert(i18nLocales).values(SEED_LOCALES).onConflictDoNothing();
@@ -112,19 +114,60 @@ const seedRuntimeDefaults = async (db: DbClient): Promise<void> => {
 	await syncBaseline(db, baselineEntries);
 };
 
+/** Retries after the initial seed attempt — exponential backoff,
+ * ~700ms worst case at layer build. */
+const SEED_RETRY_TIMES = 3;
+
+/** Rate limit between lazy re-seed attempts after a failure, so a
+ * down D1 doesn't add seed latency to every catalog load. */
+export const SEED_RETRY_COOLDOWN_MS = 30_000;
+
+/**
+ * Seed with bounded retry: a transient D1 error at layer build
+ * (cold binding, raced isolate) must not leave the isolate unseeded
+ * for its lifetime. `Effect.tryPromise` surfaces rejections as typed
+ * errors so `Effect.retry` sees them.
+ */
+const attemptSeed = (db: DbClient) =>
+	Effect.tryPromise({
+		try: () => seedRuntimeDefaults(db),
+		catch: (error) => error,
+	}).pipe(
+		Effect.retry({
+			times: SEED_RETRY_TIMES,
+			schedule: Schedule.exponential("100 millis"),
+		}),
+	);
+
+interface SeedState {
+	/** Latched on success — once seeded, never re-attempted. */
+	readonly ok: boolean;
+	/** Earliest timestamp (ms) a failed seed may be retried. */
+	readonly nextAttemptAt: number;
+}
+
 export const I18nRuntimeLive = Layer.effect(
 	I18nRuntime,
 	Effect.gen(function* () {
 		const db = yield* Db;
-		// Seed once per isolate at layer build. A failure (raced isolate,
-		// missing tables in a partial test schema) must not take the
-		// runtime down — log and serve the sentinel/fallback path.
-		yield* Effect.tryPromise({
-			try: () => seedRuntimeDefaults(db),
-			catch: (error) => error,
-		}).pipe(
-			Effect.catch((error) => Effect.logWarning(`i18n runtime seed failed: ${String(error)}`)),
-		);
+		// Seed once per isolate at layer build, with retry. A failure
+		// (raced isolate, missing tables in a partial test schema) must
+		// not take the runtime down — log, keep serving the
+		// sentinel/fallback path, and let the load path re-attempt.
+		const seedState = yield* Ref.make<SeedState>({ ok: false, nextAttemptAt: 0 });
+		const runSeed = Effect.gen(function* () {
+			const ok = yield* attemptSeed(db).pipe(
+				Effect.as(true),
+				Effect.catch((error) =>
+					Effect.logWarning(`i18n runtime seed failed: ${String(error)}`).pipe(Effect.as(false)),
+				),
+			);
+			yield* Ref.set(seedState, {
+				ok,
+				nextAttemptAt: ok ? 0 : Date.now() + SEED_RETRY_COOLDOWN_MS,
+			});
+		});
+		yield* runSeed;
 		const cache = yield* Ref.make(new Map<string, CacheEntry>());
 
 		const load = (
@@ -133,6 +176,16 @@ export const I18nRuntimeLive = Layer.effect(
 			locales: LocaleChain,
 		): Effect.Effect<ReadonlyMap<string, MessageRow>> =>
 			Effect.gen(function* () {
+				// Lazy re-seed: if the layer-build seed failed, the first
+				// catalog load after the cooldown re-attempts it (rate-
+				// limited via seedState). Runs BEFORE the stamp read so
+				// a successful seed is visible to this same load; the
+				// namespaces-empty gate + onConflictDoNothing keep
+				// re-entry safe.
+				const seed = yield* Ref.get(seedState);
+				if (!seed.ok && Date.now() >= seed.nextAttemptAt) {
+					yield* runSeed;
+				}
 				const stamp = yield* Effect.promise(() => catalogStamp(db));
 				const rows = yield* Effect.promise(() =>
 					listPublishedRows(db, {

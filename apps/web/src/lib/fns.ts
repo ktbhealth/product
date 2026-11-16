@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
-import { Db } from "@ktb/db";
+import { Db, type DbClient } from "@ktb/db";
 import {
 	GLOBAL_SCOPE,
 	PSEUDO_LOCALE,
@@ -81,12 +81,9 @@ export const emailEnabledFn = createServerFn({ method: "GET" }).handler(() =>
  */
 export const pluginStatesFn = createServerFn({ method: "GET" }).handler(
 	async (): Promise<PluginStatesResult> => {
-		const enabled = await run(
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				return yield* states.enabledIds();
-			}),
-		);
+		// TTL-cached (ROUTE_CACHE_TTL_MS): plugin_state rows are global and
+		// only admin toggles change them — see cachedEnabledIds.
+		const enabled = await run(cachedEnabledIds());
 		return { enabled: [...enabled] };
 	},
 );
@@ -123,6 +120,52 @@ const EMPTY_I18N_ROUTE: I18nRouteResult = {
 	catalog: {},
 };
 
+/**
+ * Short-TTL per-isolate caches for reads that only change via admin
+ * actions — matches the plugins/i18n STAMP_TTL_MS convention (15s). An
+ * admin locale/plugin toggle can take up to the TTL to reach an
+ * in-flight isolate; accepted trade-off (no invalidation is wired on
+ * the admin write path). Rejections are never cached. catalogSlice
+ * deliberately stays per-navigation (see plugins/i18n slice.ts).
+ */
+const ROUTE_CACHE_TTL_MS = 15_000;
+
+type EnabledLocaleRows = Awaited<ReturnType<typeof listEnabledLocales>>;
+
+let enabledLocalesCache: { readonly at: number; readonly rows: EnabledLocaleRows } | undefined;
+
+/** `i18n_locales` is global (not tenant-scoped) and only admin locale
+ * toggles change it — cache the enabled set per isolate. */
+const cachedListEnabledLocales = (db: DbClient): Promise<EnabledLocaleRows> => {
+	const now = Date.now();
+	if (enabledLocalesCache !== undefined && now - enabledLocalesCache.at < ROUTE_CACHE_TTL_MS) {
+		return Promise.resolve(enabledLocalesCache.rows);
+	}
+	return listEnabledLocales(db).then((rows) => {
+		enabledLocalesCache = { at: Date.now(), rows };
+		return rows;
+	});
+};
+
+let enabledIdsCache: { readonly at: number; readonly ids: ReadonlySet<string> } | undefined;
+
+/** `PluginStates.enabledIds` is uncached upstream (a `plugin_state`
+ * select per call, and plugin_states rows are global) — share the same
+ * TTL cache so the root loader's pluginStatesFn + i18nRouteFn don't
+ * each pay a query per navigation. Plugin enable toggles are admin
+ * actions; same staleness trade-off as the locale list. */
+const cachedEnabledIds = (): Effect.Effect<ReadonlySet<string>, never, PluginStates> =>
+	Effect.gen(function* () {
+		const now = Date.now();
+		if (enabledIdsCache !== undefined && now - enabledIdsCache.at < ROUTE_CACHE_TTL_MS) {
+			return enabledIdsCache.ids;
+		}
+		const states = yield* PluginStates;
+		const ids = yield* states.enabledIds();
+		enabledIdsCache = { at: now, ids };
+		return ids;
+	});
+
 export const i18nRouteFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) =>
 		Schema.decodeUnknownSync(
@@ -144,12 +187,12 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 		const search = typeof input === "string" ? undefined : input.search;
 		return run(
 			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				const enabled = yield* states.enabledIds();
+				// TTL-cached — this fn runs on EVERY navigation.
+				const enabled = yield* cachedEnabledIds();
 				const database = yield* Db;
 				const visible = enabledPlugins(serverPlugins, enabledIdSet({ enabled: [...enabled] }));
 				const namespaces = namespacesForPath(visible, pathname);
-				const enabledLocales = yield* Effect.promise(() => listEnabledLocales(database));
+				const enabledLocales = yield* Effect.promise(() => cachedListEnabledLocales(database));
 				const portalId = portalInstanceIdForPath(pathname);
 				const instanceId = portalId === "platform" ? undefined : portalId;
 				// Portal scope + pinned locale (PL-008 Phase 6): /portal/<id>

@@ -6,6 +6,7 @@ import type { PageI18nSlice } from "@ktb/kernel";
 import {
 	appMessage,
 	changeLocale,
+	i18nSliceFromHeadMatches,
 	localeFromCookieHeader,
 	localeFromSearch,
 	localeName,
@@ -202,6 +203,29 @@ describe("pluginFooterNote", () => {
 
 	it("falls back to the plugin-provided text for unknown keys", () => {
 		expect(pluginFooterNote("unknown", "Custom note", FULL)).toBe("Custom note");
+	});
+});
+
+describe("i18nSliceFromHeadMatches", () => {
+	const i18n = slice({ "app.meta_title": "Localized" });
+
+	it("reads the root match's loaderData i18n slice", () => {
+		const matches = [
+			{ routeId: "__root__", loaderData: { i18n } },
+			{ routeId: "/verify-email", loaderData: undefined },
+		];
+		expect(i18nSliceFromHeadMatches(matches)).toBe(i18n);
+	});
+
+	it("falls back to the first match when no __root__ id is present", () => {
+		expect(i18nSliceFromHeadMatches([{ loaderData: { i18n } }])).toBe(i18n);
+	});
+
+	it("returns undefined without matches or without an i18n field", () => {
+		expect(i18nSliceFromHeadMatches(undefined)).toBeUndefined();
+		expect(i18nSliceFromHeadMatches([])).toBeUndefined();
+		expect(i18nSliceFromHeadMatches([{ routeId: "__root__", loaderData: {} }])).toBeUndefined();
+		expect(i18nSliceFromHeadMatches([{ routeId: "__root__" }])).toBeUndefined();
 	});
 });
 

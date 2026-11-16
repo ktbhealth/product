@@ -15,23 +15,21 @@ import { Label } from "@ktbhealth/ui/components/label";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
-import { emailEnabledFn, i18nRouteFn } from "#/lib/fns.ts";
-import type { PageI18nSlice } from "@ktb/kernel";
+import { emailEnabledFn } from "#/lib/fns.ts";
 
-import { appCatalogT, useRootI18nSlice } from "#/lib/i18n.ts";
+import { appCatalogT, i18nSliceFromHeadMatches, useRootI18nSlice } from "#/lib/i18n.ts";
 
 export const Route = createFileRoute("/portal/login")({
 	head: (ctx) => {
-		const i18n = ctx?.loaderData?.i18n as PageI18nSlice | undefined;
+		// The ROOT match's i18n slice — it already honors `?locale=`;
+		// no per-route i18nRouteFn call needed (that would be a second,
+		// search-blind server roundtrip per navigation).
+		const i18n = i18nSliceFromHeadMatches(ctx?.matches);
 		const title = appCatalogT(i18n)("app.portal_login_meta_title");
 		return { meta: [{ title }] };
 	},
 	loader: async () => ({
 		emailEnabled: await emailEnabledFn(),
-		// Route-scoped i18n slice — head() reads it for the localized title.
-		// (Bare pathname: the root loader already forwards `?locale=`;
-		// this slice only feeds the head() title.)
-		i18n: await i18nRouteFn({ data: "/portal/login" }),
 	}),
 	component: PortalSignInPage,
 });

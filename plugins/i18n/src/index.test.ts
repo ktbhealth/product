@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
@@ -11,9 +11,21 @@ import { GLOBAL_SCOPE, localeChain, type LocaleChain, type ScopeChain } from "@k
 
 import { syncBaseline } from "./baseline.ts";
 import { I18N_TEST_DDL, i18nLocales, i18nMessages, i18nNamespaces } from "./index.ts";
-import { I18nRuntime, I18nRuntimeLive, MAX_CACHE_ENTRIES, STAMP_TTL_MS } from "./runtime.ts";
+import {
+	I18nRuntime,
+	I18nRuntimeLive,
+	MAX_CACHE_ENTRIES,
+	SEED_RETRY_COOLDOWN_MS,
+	STAMP_TTL_MS,
+} from "./runtime.ts";
 import { requestI18n } from "./service.ts";
-import { catalogStamp, listLocales, listMessageRows, listPublishedRows } from "./store.ts";
+import {
+	bumpCatalogRevision,
+	catalogStamp,
+	listLocales,
+	listMessageRows,
+	listPublishedRows,
+} from "./store.ts";
 
 let db: DbClient;
 
@@ -61,8 +73,8 @@ describe("syncBaseline", () => {
 		expect(r1.inserted).toBe(150);
 		expect(r1.skipped).toBe(0);
 		// 1 existence select + 3 chunked inserts (150/64 → 3) + 1
-		// namespaces insert = 5 statements total.
-		expect(prepares).toBe(5);
+		// revision bump + 1 namespaces insert = 6 statements total.
+		expect(prepares).toBe(6);
 		const rows = await batchDb.select().from(i18nMessages);
 		expect(rows.filter((r) => r.namespace === "batch.ns")).toHaveLength(150);
 
@@ -118,8 +130,10 @@ describe("store", () => {
 		expect(rows.find((r) => r.key === "draft-only")).toBeUndefined();
 	});
 
-	it("catalogStamp changes on write", async () => {
+	it("catalogStamp is the single-row revision — moved only by bumpCatalogRevision", async () => {
 		const s1 = await catalogStamp(db);
+		// Direct message writes do NOT move the stamp — the revision
+		// counter is the contract; writers bump it explicitly.
 		await db.insert(i18nMessages).values({
 			namespace: "app",
 			key: "stamp-test",
@@ -132,28 +146,19 @@ describe("store", () => {
 			params: [],
 			version: 1,
 		});
-		const s2 = await catalogStamp(db);
-		expect(s2).not.toBe(s1);
+		expect(await catalogStamp(db)).toBe(s1);
+		await bumpCatalogRevision(db);
+		expect(await catalogStamp(db)).not.toBe(s1);
 	});
 
-	it("catalogStamp includes max(updated_at) — timestamp-only writes move it", async () => {
-		const s1 = await catalogStamp(db);
-		// Bump updated_at on a published row WITHOUT touching version —
-		// count+versionSum stay frozen, only the timestamp component moves.
-		await db
-			.update(i18nMessages)
-			.set({ updatedAt: new Date(Date.now() + 60_000) })
-			.where(
-				and(
-					eq(i18nMessages.namespace, "app"),
-					eq(i18nMessages.key, "title"),
-					eq(i18nMessages.status, "published"),
-				),
-			);
-		const s2 = await catalogStamp(db);
-		expect(s2).not.toBe(s1);
-		// Stamp shape: count:versionSum:maxUpdatedAt.
-		expect(s2.split(":")).toHaveLength(3);
+	it("bumpCatalogRevision is monotonic across repeated bumps", async () => {
+		const stamps = new Set<string>();
+		for (let i = 0; i < 3; i++) {
+			stamps.add(await catalogStamp(db));
+			await bumpCatalogRevision(db);
+		}
+		stamps.add(await catalogStamp(db));
+		expect(stamps.size).toBe(4);
 	});
 
 	it("listLocales reads i18n_locales", async () => {
@@ -456,6 +461,87 @@ describe("runtime auto-seed", () => {
 		} as unknown as DbClient;
 		const rt2 = ManagedRuntime.make(I18nRuntimeLive.pipe(Layer.provide(Layer.succeed(Db, broken))));
 		await rt2.runPromise(Effect.void);
+	});
+
+	it("retries the layer-build seed through transient failures", async () => {
+		const inner = makeDb(makeD1(I18N_TEST_DDL));
+		// Fail the first two seed attempts (locales insert rejects), then
+		// delegate — the exponential-backoff retry must still seed.
+		let failures = 2;
+		const flaky = new Proxy(inner, {
+			get(target, prop) {
+				if (prop === "insert") {
+					return (...args: unknown[]) => {
+						if (failures > 0) {
+							failures--;
+							return {
+								values: () => ({
+									onConflictDoNothing: () => Promise.reject(new Error("transient D1")),
+								}),
+							};
+						}
+						return (target.insert as (...a: unknown[]) => unknown)(...args);
+					};
+				}
+				const v = Reflect.get(target, prop, target);
+				return typeof v === "function" ? v.bind(target) : v;
+			},
+		}) as unknown as DbClient;
+		const runtime = ManagedRuntime.make(
+			I18nRuntimeLive.pipe(Layer.provide(Layer.succeed(Db, flaky))),
+		);
+		await runtime.runPromise(Effect.void);
+		expect(await inner.select().from(i18nLocales)).not.toHaveLength(0);
+	});
+
+	it("re-seeds lazily via catalogFor after the build seed exhausts retries", async () => {
+		const inner = makeDb(makeD1(I18N_TEST_DDL));
+		// 1 initial attempt + SEED_RETRY_TIMES retries, one insert call
+		// each — exhaust them all at layer build.
+		let failures = 4;
+		const flaky = new Proxy(inner, {
+			get(target, prop) {
+				if (prop === "insert") {
+					return (...args: unknown[]) => {
+						if (failures > 0) {
+							failures--;
+							return {
+								values: () => ({
+									onConflictDoNothing: () => Promise.reject(new Error("transient D1")),
+								}),
+							};
+						}
+						return (target.insert as (...a: unknown[]) => unknown)(...args);
+					};
+				}
+				const v = Reflect.get(target, prop, target);
+				return typeof v === "function" ? v.bind(target) : v;
+			},
+		}) as unknown as DbClient;
+		const runtime = ManagedRuntime.make(
+			I18nRuntimeLive.pipe(Layer.provide(Layer.succeed(Db, flaky))),
+		);
+		const rt = await runtime.runPromise(
+			Effect.gen(function* () {
+				return yield* I18nRuntime;
+			}),
+		);
+		// Build-time seed failed every attempt — isolate starts empty.
+		expect(await inner.select().from(i18nLocales)).toHaveLength(0);
+
+		// Jump past the re-seed cooldown: the next catalog load
+		// re-attempts the seed BEFORE reading the stamp, so this same
+		// call already serves the seeded catalog.
+		const nowSpy = vi.spyOn(Date, "now").mockReturnValue(Date.now() + SEED_RETRY_COOLDOWN_MS + 1);
+		try {
+			const index = await runtime.runPromise(
+				rt.catalogFor(GLOBAL_SCOPE, localeChain(["en"], "en")),
+			);
+			expect(index.size).toBeGreaterThan(0);
+		} finally {
+			nowSpy.mockRestore();
+		}
+		expect(await inner.select().from(i18nLocales)).not.toHaveLength(0);
 	});
 });
 

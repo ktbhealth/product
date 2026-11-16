@@ -28,7 +28,13 @@ import {
 import { replaceDocValue, snapshotUpdate } from "./crdt.ts";
 import { I18nRuntime } from "./runtime.ts";
 import { i18nCrdtUpdates, i18nLocales, i18nMessages, i18nNamespaces } from "./schema.ts";
-import { getMessageRow, listCrdtUpdates, listLocales, listMessageRows } from "./store.ts";
+import {
+	bumpCatalogRevision,
+	getMessageRow,
+	listCrdtUpdates,
+	listLocales,
+	listMessageRows,
+} from "./store.ts";
 
 export {
 	I18nAdmin,
@@ -480,6 +486,9 @@ export const I18nAdminLive = Layer.effect(
 					if (updated.length === 0) {
 						return yield* forbidden(MSG_PATH);
 					}
+					// The live catalog changed → move the O(1) stamp so
+					// other isolates reload on their next TTL re-check.
+					yield* Effect.promise(() => bumpCatalogRevision(db));
 					yield* runtime.invalidate();
 					yield* audit({
 						action: "i18n.message.publish",
@@ -584,6 +593,9 @@ export const I18nAdminLive = Layer.effect(
 							new I18nValidationError({ error: `unknown locale '${code}'` }),
 						);
 					}
+					// Enabled-locale set feeds listPublishedRows' locale
+					// filter → the published catalog changed.
+					yield* Effect.promise(() => bumpCatalogRevision(db));
 					yield* runtime.invalidate();
 					yield* audit({
 						action: "i18n.locale.toggle",
@@ -752,6 +764,10 @@ export const I18nAdminLive = Layer.effect(
 								}),
 						);
 					}
+					// No catalog revision bump: imports stage drafts
+					// only — `value`/`status` are untouched, so the
+					// published catalog (and its stamp) doesn't move
+					// until publish().
 					yield* audit({
 						action: "i18n.messages.import",
 						targetType: "i18n_namespace",

@@ -71,6 +71,23 @@ export const useRootI18nSlice = (): PageI18nSlice | undefined => {
 	}
 };
 
+/**
+ * i18n slice for route `head()` functions. The head ctx carries the
+ * full `matches` chain (root match first) with each match's resolved
+ * `loaderData` — read the ROOT match's slice, which already honors the
+ * `?locale=` override the root loader forwards. Leaf routes must NOT
+ * run `i18nRouteFn` just to feed `head()`: that would be a second,
+ * search-blind server call per navigation. Returns undefined outside a
+ * router context (bare unit-test `head()` invocations) so titles fall
+ * back to the English baseline.
+ */
+export const i18nSliceFromHeadMatches = (
+	matches: ReadonlyArray<{ routeId?: unknown; loaderData?: unknown }> | undefined,
+): PageI18nSlice | undefined => {
+	const root = matches?.find((m) => m.routeId === "__root__") ?? matches?.[0];
+	return (root?.loaderData as { i18n?: PageI18nSlice } | undefined)?.i18n;
+};
+
 /** Endonym for a locale, resolved from the `app.locale_*` messages. */
 export function localeName(locale: string, slice?: PageI18nSlice): string {
 	return appMessage(slice, `locale_${locale.replaceAll("-", "_")}`, locale);

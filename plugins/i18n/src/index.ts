@@ -12,19 +12,28 @@ import { I18nAdmin } from "./contract.ts";
 import { I18nAdminLive } from "./admin.ts";
 import { I18nPlatformPage } from "./platform-page.tsx";
 import { I18nRuntimeLive } from "./runtime.ts";
-import { i18nCrdtUpdates, i18nLocales, i18nMessages, i18nNamespaces } from "./schema.ts";
+import {
+	i18nCrdtUpdates,
+	i18nLocales,
+	i18nMessages,
+	i18nNamespaces,
+	i18nRevision,
+} from "./schema.ts";
 
 export {
 	i18nCrdtUpdates,
 	i18nLocales,
 	i18nMessages,
 	i18nNamespaces,
+	i18nRevision,
 	type I18nCrdtUpdate,
 	type I18nLocale,
 	type I18nMessage,
 	type I18nNamespace,
+	type I18nRevision,
 } from "./schema.ts";
-export { syncBaseline, type BaselineEntry, type BaselineResult } from "./baseline.ts";
+export { syncBaseline, prepareBaselineEntries } from "./baseline.ts";
+export type { BaselineEntry, BaselineResult } from "./baseline.ts";
 export { applyTextEdit, docFromUpdates, docValue, newMessageDoc } from "./crdt.ts";
 export { I18nAdmin, I18nValidationError } from "./contract.ts";
 export type {
@@ -37,10 +46,17 @@ export type {
 } from "./contract.ts";
 export { I18nAdminLive } from "./admin.ts";
 export { I18nRuntime, I18nRuntimeLive, MAX_CACHE_ENTRIES, STAMP_TTL_MS } from "./runtime.ts";
+export { SEED_RETRY_COOLDOWN_MS } from "./runtime.ts";
 export { requestI18n, i18nLayerFor } from "./service.ts";
 export { catalogSlice, stableSlice } from "./slice.ts";
 export { resolveRequestI18n, DEFAULT_LOCALE } from "./request.ts";
-export { catalogStamp, listEnabledLocales, listLocales, listPublishedRows } from "./store.ts";
+export {
+	catalogStamp,
+	bumpCatalogRevision,
+	listEnabledLocales,
+	listLocales,
+	listPublishedRows,
+} from "./store.ts";
 
 /** i18n tables citizen (P-083). */
 export const i18nTablesPlugin = definePlugin({
@@ -50,6 +66,7 @@ export const i18nTablesPlugin = definePlugin({
 		i18nLocales,
 		i18nMessages,
 		i18nCrdtUpdates,
+		i18nRevision,
 	},
 });
 
@@ -173,6 +190,10 @@ CREATE TABLE i18n_crdt_updates (
 	"update" BLOB NOT NULL,
 	actor_id TEXT NOT NULL DEFAULT '',
 	created_at INTEGER NOT NULL
+);
+CREATE TABLE i18n_revision (
+	id INTEGER PRIMARY KEY,
+	revision INTEGER NOT NULL DEFAULT 0
 );
 `;
 
