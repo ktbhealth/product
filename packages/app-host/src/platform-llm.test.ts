@@ -35,11 +35,25 @@ const llmLayer = (generate: (input: string) => { text: string } | Error) =>
 		}),
 	);
 
-const platformService = (layer: Layer.Layer<LlmPort> | null | "fail") =>
+const platformService = (layer: Layer.Layer<LlmPort> | null | "fail" | "die") =>
 	PlatformLlm.of({
 		defaultLayer: (): Effect.Effect<Layer.Layer<LlmPort> | null, never, unknown> =>
-			layer === "fail" ? (Effect.fail(new Error("db gone")) as never) : Effect.succeed(layer),
+			layer === "fail"
+				? (Effect.fail(new Error("db gone")) as never)
+				: layer === "die"
+					? (Effect.die(new Error("db defect")) as never)
+					: Effect.succeed(layer),
 	});
+
+/** Port that dies (defect) instead of failing — exercises the
+ * catchDefect degradation arms, which typed failures never reach. */
+const dyingLlmLayer = Layer.succeed(
+	LlmPort,
+	LlmPort.of({
+		generate: () => Effect.die(new Error("boom")),
+		correct: () => Effect.die(new Error("boom")),
+	}),
+);
 
 const run = <A>(eff: Effect.Effect<A>, service?: PlatformLlm["Service"]) =>
 	Effect.runPromise(service === undefined ? eff : Effect.provideService(eff, PlatformLlm, service));
@@ -55,6 +69,10 @@ describe("correctTranscriptViaPlatform", () => {
 
 	it("returns null when defaultLayer resolution fails", async () => {
 		expect(await run(correctTranscriptViaPlatform("t"), platformService("fail"))).toBeNull();
+	});
+
+	it("returns null when defaultLayer resolution defects", async () => {
+		expect(await run(correctTranscriptViaPlatform("t"), platformService("die"))).toBeNull();
 	});
 
 	it("corrects through the bound endpoint layer", async () => {
@@ -78,6 +96,10 @@ describe("correctTranscriptViaPlatform", () => {
 				platformService(llmLayer(() => ({ text: "   " }))),
 			),
 		).toBeNull();
+	});
+
+	it("returns null when the endpoint defects", async () => {
+		expect(await run(correctTranscriptViaPlatform("t"), platformService(dyingLlmLayer))).toBeNull();
 	});
 });
 
@@ -130,6 +152,8 @@ describe("platformPreferringEngine", () => {
 		).toBe("env");
 		// Port bound but no default configured.
 		expect((await extract(innerEngine("env"), platformService(null))).engine).toBe("env");
+		// Defects on the platform path degrade the same way.
+		expect((await extract(innerEngine("env"), platformService(dyingLlmLayer))).engine).toBe("env");
 	});
 
 	it("falls back to the inner engine when the port is unbound", async () => {
