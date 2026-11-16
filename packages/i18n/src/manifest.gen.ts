@@ -311,6 +311,9 @@ export const I18N_MANIFEST = {
 		locale_pt_BR: {
 			params: [],
 		},
+		locale_qps: {
+			params: [],
+		},
 		login_confirm_password: {
 			params: [],
 		},
@@ -610,6 +613,7 @@ export const I18N_BASE_CATALOG = {
 	nav_patients: "Patients",
 	lang_menu_label: "Language",
 	lang_menu_heading: "Language",
+	locale_qps: "Pseudo (QA)",
 	locale_en: "English",
 	locale_pt_BR: "Português (Brasil)",
 	locale_es: "Español",

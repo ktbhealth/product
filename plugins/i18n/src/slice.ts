@@ -1,7 +1,14 @@
 import * as Effect from "effect/Effect";
 
 import type { DbClient } from "@ktb/db";
-import { indexMessages, resolveMessage, type LocaleChain, type ScopeChain } from "@ktb/i18n";
+import {
+	indexMessages,
+	PSEUDO_LOCALE,
+	pseudoLocalize,
+	resolveMessage,
+	type LocaleChain,
+	type ScopeChain,
+} from "@ktb/i18n";
 
 import { listPublishedRows } from "./store.ts";
 
@@ -35,6 +42,7 @@ export const catalogSlice = (
 			}),
 		);
 		const index = indexMessages(rows);
+		const pseudo = input.locales.locales[0] === PSEUDO_LOCALE;
 		const keys = new Set(rows.map((r) => `${r.namespace}${SEP}${r.key}`));
 		const slice: Record<string, string> = {};
 		for (const composite of keys) {
@@ -48,7 +56,8 @@ export const catalogSlice = (
 				locales: input.locales,
 			});
 			if (resolved.source.kind === "hit") {
-				slice[`${namespace}.${key}`] = resolved.template;
+				const template = resolved.template;
+				slice[`${namespace}.${key}`] = pseudo ? pseudoLocalize(template) : template;
 			}
 		}
 		return slice;

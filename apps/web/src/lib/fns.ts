@@ -4,7 +4,7 @@ import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
 import { Db } from "@ktb/db";
-import { GLOBAL_SCOPE, resolveRequestLocales } from "@ktb/i18n";
+import { GLOBAL_SCOPE, portalInstanceScope, resolveRequestLocales } from "@ktb/i18n";
 import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
 import { currentLocale } from "./locale-context.ts";
 import {
@@ -15,8 +15,10 @@ import {
 	enabledIdSet,
 	enabledPlugins,
 	findPage,
+	findPortalInstance,
 	namespacesForPath,
 	portalInstanceIdForPath,
+	portalInstances,
 	type PageShell,
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
@@ -107,10 +109,23 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 				const visible = enabledPlugins(serverPlugins, enabledIdSet({ enabled: [...enabled] }));
 				const namespaces = namespacesForPath(visible, pathname);
 				const enabledLocales = yield* Effect.promise(() => listEnabledLocales(database));
-				const locales = resolveRequestLocales(currentLocale(), enabledLocales, DEFAULT_LOCALE);
+				// Portal scope + pinned locale (PL-008 Phase 6): /portal/<id>
+				// paths resolve portal-scoped copy, and an instance that
+				// declares `locale` overrides the visitor's cookie locale.
+				// "/platform" is the console shell, not a portal instance.
+				const portalId = portalInstanceIdForPath(pathname);
+				const instanceId = portalId === "platform" ? undefined : portalId;
+				const pinned = instanceId
+					? findPortalInstance(portalInstances, instanceId)?.instance.locale
+					: undefined;
+				const locales = resolveRequestLocales(
+					pinned ?? currentLocale(),
+					enabledLocales,
+					DEFAULT_LOCALE,
+				);
 				const catalog = yield* catalogSlice(database, {
 					namespaces,
-					scopeChain: GLOBAL_SCOPE,
+					scopeChain: instanceId === undefined ? GLOBAL_SCOPE : portalInstanceScope(instanceId),
 					locales,
 				});
 				return {

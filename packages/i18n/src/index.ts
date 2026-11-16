@@ -1,12 +1,14 @@
 export {
 	parseMessage,
 	paramSignature,
+	pseudoLocalize,
 	renderMessage,
 	validateAgainstSignature,
 	type MessageKind,
 	type MessageParam,
 	type ParamHint,
 	type ParsedMessage,
+	PSEUDO_LOCALE,
 	type ParseResult,
 	type ValidationIssue,
 } from "./message.ts";
@@ -14,6 +16,7 @@ export {
 	GLOBAL_SCOPE,
 	indexMessages,
 	localeChain,
+	portalInstanceScope,
 	portalScope,
 	resolveMessage,
 	resolveRequestLocales,

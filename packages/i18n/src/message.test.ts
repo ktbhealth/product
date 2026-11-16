@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	parseMessage,
+	pseudoLocalize,
 	paramSignature,
 	renderMessage,
 	validateAgainstSignature,
@@ -155,5 +156,22 @@ describe("validateAgainstSignature", () => {
 	it("flags hint mismatch", () => {
 		const issues = validateAgainstSignature("{amount}", expected);
 		expect(issues.some((i) => i.detail.includes("hint"))).toBe(true);
+	});
+});
+
+describe("pseudoLocalize", () => {
+	it("accents vowels, wraps in brackets and pads", () => {
+		const out = pseudoLocalize("Save patient");
+		expect(out.startsWith("⟦")).toBe(true);
+		expect(out.endsWith("⟧")).toBe(true);
+		expect(out).toContain("á");
+	});
+
+	it("leaves param tokens intact", () => {
+		const out = pseudoLocalize(
+			"Hello {name}, you have {count, plural, one {# item} other {# items}}",
+		);
+		expect(out).toContain("{name}");
+		expect(out).toContain("{count, plural,");
 	});
 });

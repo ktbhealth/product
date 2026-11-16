@@ -41,6 +41,9 @@ const LOCALE_META = {
 	en: { endonym: "English", fallbacks: [] },
 	"pt-BR": { endonym: "Português (Brasil)", fallbacks: ["en"] },
 	es: { endonym: "Español", fallbacks: ["en"] },
+	// QA pseudo-locale (PL-008 Phase 6): renders default-locale copy
+	// accented/bracketed/padded — opt-in per environment.
+	qps: { endonym: "Pseudo (QA)", fallbacks: ["en"] },
 };
 
 const entries = [];
@@ -63,7 +66,9 @@ for (const dir of readdirSync(pluginsDir)) {
 	if (typeof mod.I18N_NAMESPACE !== "string" || typeof mod.i18nMessagesFor !== "function") {
 		continue;
 	}
-	for (const locale of Object.keys(LOCALE_META)) {
+	// qps is a pseudo-locale — catalogs render it from the default
+	// locale at slice time, so plugins don't need qps entries.
+	for (const locale of Object.keys(LOCALE_META).filter((l) => l !== "qps")) {
 		const catalog = mod.i18nMessagesFor(locale);
 		for (const [key, value] of Object.entries(catalog)) {
 			if (typeof value !== "string") {

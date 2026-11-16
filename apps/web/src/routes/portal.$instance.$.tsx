@@ -144,6 +144,9 @@ export const Route = createFileRoute("/portal/$instance/$")({
 			},
 			theme,
 			i18n,
+			// A pinned portal locale (PL-008) leaves the picker a single
+			// option — effectively hidden, since the cookie can't win.
+			instance.locale === undefined ? undefined : [instance.locale],
 		);
 		const brandComponents = collectChrome(
 			visiblePlugins,

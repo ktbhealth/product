@@ -207,6 +207,10 @@ export interface PortalInstance {
 	readonly icon?: ComponentType<{ readonly className?: string }>;
 	readonly audience?: string;
 	readonly subject?: "session" | "doctor";
+	/** Pinned UI locale for this portal (PL-008 Phase 6) — when set it
+	 * overrides the visitor's locale cookie for all copy under the
+	 * portal (e.g. a clinic portal pinned to pt-BR). */
+	readonly locale?: string;
 }
 
 /** Portal instance contributions: the portals a plugin ships. The

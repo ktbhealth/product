@@ -3,6 +3,7 @@ import {
 	GLOBAL_SCOPE,
 	indexMessages,
 	localeChain,
+	portalInstanceScope,
 	portalScope,
 	resolveMessage,
 	resolveRequestLocales,
@@ -50,6 +51,29 @@ describe("resolveMessage", () => {
 			locales: localeChain(["en"], "en"),
 		});
 		expect(r.template).toBe("portal");
+	});
+
+	it("portal-instance scope hits portal then global (no tenant slot)", () => {
+		const idx = indexMessages([
+			row({ value: "global" }),
+			row({ scope: "portal", scopeId: "clinician", value: "portal" }),
+			row({ scope: "tenant", scopeId: "t1", value: "tenant" }),
+		]);
+		const hit = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: portalInstanceScope("clinician"),
+			locales: localeChain(["en"], "en"),
+		});
+		expect(hit.template).toBe("portal");
+		// A different portal id skips both portal and tenant rows.
+		const miss = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: portalInstanceScope("other"),
+			locales: localeChain(["en"], "en"),
+		});
+		expect(miss.template).toBe("global");
 	});
 
 	it("falls back tenant→global when portal misses", () => {

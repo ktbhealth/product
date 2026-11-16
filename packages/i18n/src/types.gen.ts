@@ -102,6 +102,7 @@ export type I18nKey =
 	| "app.locale_en"
 	| "app.locale_es"
 	| "app.locale_pt_BR"
+	| "app.locale_qps"
 	| "app.login_confirm_password"
 	| "app.login_email"
 	| "app.login_error_fallback"
@@ -310,6 +311,7 @@ export interface I18nTypedT {
 	(key: "app.locale_en"): Effect.Effect<string>;
 	(key: "app.locale_es"): Effect.Effect<string>;
 	(key: "app.locale_pt_BR"): Effect.Effect<string>;
+	(key: "app.locale_qps"): Effect.Effect<string>;
 	(key: "app.login_confirm_password"): Effect.Effect<string>;
 	(key: "app.login_email"): Effect.Effect<string>;
 	(key: "app.login_error_fallback"): Effect.Effect<string>;

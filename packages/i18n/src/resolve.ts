@@ -39,6 +39,16 @@ export const tenantScope = (tenantId: string): ScopeChain => ({
 	],
 });
 
+/** Portal-instance scope without a tenant binding (PL-008 Phase 6):
+ * portal copy overrides global; tenant slot lands when request context
+ * carries a tenant id. */
+export const portalInstanceScope = (portalId: string): ScopeChain => ({
+	scopes: [
+		{ scope: "portal", scopeId: portalId },
+		{ scope: "global", scopeId: "" },
+	],
+});
+
 /** Portal-instance scope for a portal inside a tenant. */
 export const portalScope = (tenantId: string, portalId: string): ScopeChain => ({
 	scopes: [

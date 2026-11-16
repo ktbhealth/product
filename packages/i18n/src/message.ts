@@ -320,3 +320,33 @@ export const validateAgainstSignature = (
 	}
 	return issues;
 };
+
+/** Pseudo-locale for QA (PL-008 Phase 6): `qps` resolves the default
+ * locale's templates, then accents vowels, wraps in brackets and pads
+ * ~30% so layout overflows surface in testing. Param tokens `{…}` are
+ * left intact so signatures still validate. */
+export const PSEUDO_LOCALE = "qps";
+
+const PSEUDO_ACCENTS: Readonly<Record<string, string>> = {
+	a: "á",
+	e: "é",
+	i: "í",
+	o: "ó",
+	u: "ú",
+	A: "Á",
+	E: "É",
+	I: "Í",
+	O: "Ó",
+	U: "Ú",
+};
+
+export const pseudoLocalize = (template: string): string => {
+	const parts = template.split(/(\{[^}]*\})/g);
+	const body = parts
+		.map((part, i) =>
+			i % 2 === 1 ? part : part.replace(/[aeiouAEIOU]/g, (c) => PSEUDO_ACCENTS[c] ?? c),
+		)
+		.join("");
+	const pad = "·".repeat(Math.ceil(body.length * 0.3));
+	return `⟦${body}${pad}⟧`;
+};
