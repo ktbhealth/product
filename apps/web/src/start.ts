@@ -2,6 +2,7 @@ import { createMiddleware, createStart } from "@tanstack/react-start";
 import { requestLocale } from "#/lib/i18n.ts";
 import { localeStorage } from "#/lib/locale-context.ts";
 import { accessLog } from "#/lib/access-log.ts";
+import { unwrapResponse } from "#/lib/response.ts";
 import {
 	isValidTraceparent,
 	newRequestId,
@@ -62,9 +63,18 @@ const telemetryMiddleware = createMiddleware().server(
 
 		// RED metrics + structured access log — shared by the success and
 		// the thrown-request paths so errors can't go unobserved.
-		const emit = async (status: number): Promise<void> => {
+		const emit = async (status: number | undefined): Promise<void> => {
 			const durationMs = Date.now() - started;
-			recordUnsafe(tagged(httpRequests, { handlerType, status }), 1);
+			// `status` stays off the metric when no Response resolved —
+			// a literal 0 would be a bogus status series polluting the
+			// label set (dashboards regex-match real codes like "5..").
+			recordUnsafe(
+				tagged(httpRequests, {
+					handlerType,
+					...(status !== undefined ? { status } : {}),
+				}),
+				1,
+			);
 			recordUnsafe(tagged(httpRequestDuration, { handlerType }), durationMs);
 			// Emitted through the app runtime's logger set (console JSON +
 			// OTLP) via the sink platform.ts registers, so the record
@@ -73,7 +83,10 @@ const telemetryMiddleware = createMiddleware().server(
 			await accessLog({
 				method: request.method,
 				path: pathname,
-				status,
+				// Access-log `status` is a required number; 0 means "no
+				// Response resolved" (same convention as before — Loki
+				// queries filter on real codes like `status >= 500`).
+				status: status ?? 0,
 				handlerType,
 				durationMs,
 				requestId,
@@ -95,16 +108,9 @@ const telemetryMiddleware = createMiddleware().server(
 
 		// `next()` resolves to the shared pipeline result; `response` is
 		// typed `Response` but SSR may hand back a wrapper carrying one.
-		const exposed: unknown = result?.response;
-		const response =
-			exposed instanceof Response
-				? exposed
-				: exposed !== null && typeof exposed === "object" && "response" in exposed
-					? ((exposed as { response?: unknown }).response as Response | undefined)
-					: undefined;
-		const status = response?.status ?? 0;
+		const response = unwrapResponse(result);
 
-		await emit(status);
+		await emit(response?.status);
 
 		// Echo correlation ids back so clients/support can quote them.
 		// Response headers on a constructed Response are mutable pre-send.

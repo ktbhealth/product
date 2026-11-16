@@ -45,6 +45,13 @@ export interface AuditMessages {
 	readonly systemActor: string;
 	readonly noTarget: string;
 	readonly noTenant: string;
+	/** On-demand chain verification (platform console only). */
+	readonly verifyButton: string;
+	readonly verifyRunning: string;
+	readonly verifyVerified: (entries: number) => string;
+	readonly verifyTampered: (brokenAt: number | null) => string;
+	readonly verifyEmpty: string;
+	readonly verifyFailed: string;
 }
 
 const en: AuditMessages = {
@@ -74,6 +81,13 @@ const en: AuditMessages = {
 	systemActor: "system",
 	noTarget: "—",
 	noTenant: "—",
+	verifyButton: "Verify chain",
+	verifyRunning: "Verifying…",
+	verifyVerified: (entries) =>
+		`Chain verified — ${entries} ${entries === 1 ? "entry" : "entries"} intact.`,
+	verifyTampered: (brokenAt) => `Chain tampered — first broken link at entry #${brokenAt ?? "?"}.`,
+	verifyEmpty: "The audit log is empty — nothing to verify.",
+	verifyFailed: "Verification failed — the request was denied or errored.",
 };
 
 const ptBR: AuditMessages = {
@@ -103,6 +117,14 @@ const ptBR: AuditMessages = {
 	systemActor: "sistema",
 	noTarget: "—",
 	noTenant: "—",
+	verifyButton: "Verificar cadeia",
+	verifyRunning: "Verificando…",
+	verifyVerified: (entries) =>
+		`Cadeia verificada — ${entries} ${entries === 1 ? "entrada" : "entradas"} íntegras.`,
+	verifyTampered: (brokenAt) =>
+		`Cadeia adulterada — primeiro elo quebrado na entrada #${brokenAt ?? "?"}.`,
+	verifyEmpty: "O log de auditoria está vazio — nada a verificar.",
+	verifyFailed: "A verificação falhou — a solicitação foi negada ou erro.",
 };
 
 const es: AuditMessages = {
@@ -132,6 +154,14 @@ const es: AuditMessages = {
 	systemActor: "sistema",
 	noTarget: "—",
 	noTenant: "—",
+	verifyButton: "Verificar cadena",
+	verifyRunning: "Verificando…",
+	verifyVerified: (entries) =>
+		`Cadena verificada — ${entries} ${entries === 1 ? "entrada" : "entradas"} íntegras.`,
+	verifyTampered: (brokenAt) =>
+		`Cadena alterada — primer eslabón roto en la entrada #${brokenAt ?? "?"}.`,
+	verifyEmpty: "El registro de auditoría está vacío — nada que verificar.",
+	verifyFailed: "La verificación falló — la solicitud fue denegada o erró.",
 };
 
 const CATALOGS: Record<AuditLocale, AuditMessages> = { en, "pt-BR": ptBR, es };

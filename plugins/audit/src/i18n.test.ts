@@ -68,6 +68,40 @@ describe("audit catalogs", () => {
 		}
 	});
 
+	it("verify copy covers singular/plural entries and a null brokenAt in every locale", () => {
+		const expected: Record<
+			string,
+			{ verified1: string; verified2: string; tampered5: string; tamperedNull: string }
+		> = {
+			en: {
+				verified1: "Chain verified — 1 entry intact.",
+				verified2: "Chain verified — 2 entries intact.",
+				tampered5: "Chain tampered — first broken link at entry #5.",
+				tamperedNull: "Chain tampered — first broken link at entry #?.",
+			},
+			"pt-BR": {
+				verified1: "Cadeia verificada — 1 entrada íntegras.",
+				verified2: "Cadeia verificada — 2 entradas íntegras.",
+				tampered5: "Cadeia adulterada — primeiro elo quebrado na entrada #5.",
+				tamperedNull: "Cadeia adulterada — primeiro elo quebrado na entrada #?.",
+			},
+			es: {
+				verified1: "Cadena verificada — 1 entrada íntegras.",
+				verified2: "Cadena verificada — 2 entradas íntegras.",
+				tampered5: "Cadena alterada — primer eslabón roto en la entrada #5.",
+				tamperedNull: "Cadena alterada — primer eslabón roto en la entrada #?.",
+			},
+		};
+		for (const locale of AUDIT_LOCALES) {
+			const m = auditMessages(locale);
+			const want = expected[locale]!;
+			expect(m.verifyVerified(1)).toBe(want.verified1);
+			expect(m.verifyVerified(2)).toBe(want.verified2);
+			expect(m.verifyTampered(5)).toBe(want.tampered5);
+			expect(m.verifyTampered(null)).toBe(want.tamperedNull);
+		}
+	});
+
 	it("every catalog function returns copy in every locale", () => {
 		for (const locale of AUDIT_LOCALES) {
 			for (const fn of functionsOf(auditMessages(locale))) {

@@ -335,6 +335,10 @@ export type I18nKey =
 	| "audit.searchPlaceholder"
 	| "audit.systemActor"
 	| "audit.title"
+	| "audit.verifyButton"
+	| "audit.verifyEmpty"
+	| "audit.verifyFailed"
+	| "audit.verifyRunning"
 	| "auth.confirmPassword"
 	| "auth.descIn"
 	| "auth.descUp"
@@ -1711,6 +1715,10 @@ export interface I18nTypedT {
 	(key: "audit.searchPlaceholder"): Effect.Effect<string>;
 	(key: "audit.systemActor"): Effect.Effect<string>;
 	(key: "audit.title"): Effect.Effect<string>;
+	(key: "audit.verifyButton"): Effect.Effect<string>;
+	(key: "audit.verifyEmpty"): Effect.Effect<string>;
+	(key: "audit.verifyFailed"): Effect.Effect<string>;
+	(key: "audit.verifyRunning"): Effect.Effect<string>;
 	(key: "auth.confirmPassword"): Effect.Effect<string>;
 	(key: "auth.descIn"): Effect.Effect<string>;
 	(key: "auth.descUp"): Effect.Effect<string>;

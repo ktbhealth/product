@@ -15,6 +15,9 @@ import { plugins as clientPlugins } from "./plugins.ts";
  */
 const clientView = (p: Plugin) => ({
 	id: p.id,
+	// The discoverPlugins pkg stamp must match across the parity
+	// boundary — enable-state gates resolve package membership from it.
+	pkg: p.pkg ?? null,
 	system: p.system ?? null,
 	meta: p.meta ?? null,
 	requiredDeps: p.requiredDeps ?? [],

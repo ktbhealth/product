@@ -32,7 +32,7 @@ import {
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
-import type { AdminAuditRow } from "../index.ts";
+import type { AdminAuditRow, AuditVerifyResult } from "../index.ts";
 import { auditMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
@@ -83,6 +83,7 @@ export function AuditPage({
 	i18n,
 	locale = "en",
 	title,
+	onVerify,
 }: {
 	entries: readonly AdminAuditRow[];
 	/** Total rows in the log (may exceed the capped page). */
@@ -94,6 +95,10 @@ export function AuditPage({
 	/** Page heading override — the staff activity feed (P-080) passes
 	 * its own title; defaults to the console's "Audit log" copy. */
 	title?: string;
+	/** Opt-in on-demand chain verification (T-139): only the platform
+	 * console passes this — the staff/patient feeds never see the
+	 * button. Resolves the walk result, or null when denied/absent. */
+	onVerify?: () => Promise<AuditVerifyResult | null>;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, auditMessages(locale));
 	const [q, setQ] = useState("");
@@ -102,6 +107,38 @@ export function AuditPage({
 	const [actor, setActor] = useState("all");
 	const [targetType, setTargetType] = useState("all");
 	const [detailFor, setDetailFor] = useState<AdminAuditRow | null>(null);
+	const [verify, setVerify] = useState<{
+		readonly state: "idle" | "running" | "done" | "failed";
+		readonly result: AuditVerifyResult | null;
+	}>({ state: "idle", result: null });
+
+	// The button (and this handler) exists only when the host passes
+	// onVerify — building the handler conditionally keeps the guard
+	// out of the click path entirely.
+	const runVerify =
+		onVerify === undefined
+			? undefined
+			: async () => {
+					setVerify({ state: "running", result: null });
+					try {
+						const result = await onVerify();
+						setVerify(
+							result === null ? { state: "failed", result: null } : { state: "done", result },
+						);
+					} catch {
+						setVerify({ state: "failed", result: null });
+					}
+				};
+
+	const verifyMessage = (): string => {
+		if (verify.state === "running") return t.verifyRunning;
+		if (verify.state === "failed") return t.verifyFailed;
+		const result = verify.result;
+		if (verify.state !== "done" || result === null) return "";
+		if (result.status === "tampered") return t.verifyTampered(result.brokenAt);
+		if (result.status === "empty") return t.verifyEmpty;
+		return t.verifyVerified(result.entries);
+	};
 
 	const groups = useMemo(
 		() => [...new Set(entries.map((e) => actionGroup(e.action)))].sort(),
@@ -129,6 +166,22 @@ export function AuditPage({
 	return (
 		<PageContainer>
 			<PageHeader title={title ?? t.title} description={t.description(entries.length, total)} />
+			{onVerify !== undefined ? (
+				<div className="flex items-center gap-3">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={runVerify}
+						disabled={verify.state === "running"}
+					>
+						{t.verifyButton}
+					</Button>
+					{verifyMessage() !== "" ? (
+						<span className="text-xs text-muted-foreground">{verifyMessage()}</span>
+					) : null}
+				</div>
+			) : null}
 			{entries.length === 0 ? (
 				<Empty className="border">
 					<EmptyHeader>

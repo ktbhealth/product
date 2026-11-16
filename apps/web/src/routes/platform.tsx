@@ -12,6 +12,7 @@ import { platformHeaderPlugin } from "@ktb/platform-header";
 import { PortalShell } from "@ktb/portal/views";
 import { portalAdmits } from "@ktb/portal/rules";
 import { JobsDataContext, jobsFromAudioRows } from "@ktb/jobs";
+import { adminListAudioJobsFn } from "@ktb/consultations/fns";
 import {
 	NotificationsActionsContext,
 	NotificationsDataContext,
@@ -23,7 +24,6 @@ import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
 
 import {
-	adminListAudioJobsFn,
 	consoleDeniedFn,
 	listMyNotificationsFn,
 	markAllMyNotificationsReadFn,
@@ -41,7 +41,7 @@ import {
 	enabledPlugins,
 	findPortalInstance,
 	KNOWN_CHROME_REGIONS,
-	packageEnabled,
+	packageLive,
 	portalInstances,
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
@@ -103,12 +103,15 @@ export const Route = createFileRoute("/platform")({
 		]);
 		const enabled = enabledIdSet(pluginStates);
 		return {
+			// Package-granular gates (P-058): skip feeds whose plugin
+			// package is fully disabled — the same contract the CQRS
+			// dispatch gate applies to the fns below.
 			audioJobs:
-				hasJobsPlugin && packageEnabled(enabled, "consultations")
+				hasJobsPlugin && packageLive(plugins, enabled, "consultations")
 					? await adminListAudioJobsFn()
 					: [],
 			notifications:
-				hasNotificationsPlugin && packageEnabled(enabled, "notifications")
+				hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
 					? await listMyNotificationsFn()
 					: [],
 			audiences,

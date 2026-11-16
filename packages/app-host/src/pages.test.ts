@@ -66,6 +66,20 @@ describe("collectPages", () => {
 		expect(reg.portalPages.has("/about")).toBe(false);
 	});
 
+	it("propagates the plugin's pkg stamp onto page and portal entries", () => {
+		const reg = collectPages([
+			{
+				id: "patients.panel",
+				pkg: "patients",
+				panel: { pages: [{ id: "p", path: "/platform/x", component: Page }] },
+			},
+			pagePlugin("b.pages", [{ id: "b.about", path: "/about", component: Page }]),
+		]);
+		expect(reg.portalPages.get("/platform/x")?.pkg).toBe("patients");
+		// No stamp on the plugin → no pkg on the entry (per-id gate).
+		expect(reg.appPages.get("/about")?.pkg).toBeUndefined();
+	});
+
 	it("derives context from the path when undeclared", () => {
 		const reg = collectPages([
 			pagePlugin("x", [
@@ -203,6 +217,17 @@ describe("collectPortals / findPortalInstance", () => {
 			["clinician", "b.portals"],
 			["translator", "b.portals"],
 		]);
+	});
+
+	it("propagates the pkg stamp onto portal instance entries", () => {
+		const entries = collectPortals([
+			{
+				id: "clinician.portal",
+				pkg: "clinician",
+				portals: [{ id: "clinician", basePath: "/portal/clinician", label: "C" }],
+			},
+		]);
+		expect(entries[0]?.pkg).toBe("clinician");
 	});
 
 	it("finds instances by id and misses unknown ones", () => {

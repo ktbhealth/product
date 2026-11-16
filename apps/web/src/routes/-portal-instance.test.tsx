@@ -162,8 +162,13 @@ const PINNED_PAGE: PanelPage = {
 };
 
 const registerPage = (page: PanelPage = TEST_PAGE) => {
-	const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
-	pages.set(page.path, { page, pluginId: "clinician.pages" });
+	const pages = portalPages as unknown as Map<
+		string,
+		{ page: PanelPage; pluginId: string; pkg?: string }
+	>;
+	// Mirrors a real registry entry: the owning plugin's pkg stamp
+	// makes the enable gate package-granular.
+	pages.set(page.path, { page, pluginId: "clinician.pages", pkg: "clinician" });
 	return () => pages.delete(page.path);
 };
 
@@ -218,21 +223,39 @@ describe("/portal/$instance/$ loader", () => {
 		}
 	});
 
-	it("404s when the owning plugin or the instance plugin is disabled", async () => {
+	it("404s when the page's or the instance's package is fully disabled", async () => {
 		const unregister = registerPage();
 		try {
+			// Package granularity (P-058): the gate is live while ANY
+			// member id of `plugins/<pkg>` is enabled — disabling every
+			// clinician member kills both the page gate and the portal
+			// instance gate.
+			const clinicianIds = plugins.filter((p) => p.pkg === "clinician").map((p) => p.id);
+			expect(clinicianIds.length).toBeGreaterThan(1);
 			pluginStatesFn.mockResolvedValue({
-				enabled: plugins.filter((p) => p.id !== "clinician.pages").map((p) => p.id),
+				enabled: plugins.filter((p) => !clinicianIds.includes(p.id)).map((p) => p.id),
 			});
 			await expect(
 				loader(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "test" } }),
 			).rejects.toMatchObject({ isNotFound: true });
+		} finally {
+			unregister();
+		}
+	});
+
+	it("stays live while any member of the package is enabled", async () => {
+		const unregister = registerPage();
+		try {
+			// Disabling only the instance plugin's own id leaves sibling
+			// clinician.* ids enabled — the package gate stays open, same
+			// contract as pageData and the CQRS gate.
 			pluginStatesFn.mockResolvedValue({
 				enabled: plugins.filter((p) => p.id !== "clinician.portal").map((p) => p.id),
 			});
-			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "clinician", _splat: "test" } }),
-			).rejects.toMatchObject({ isNotFound: true });
+			const res = (await loader(PortalInstanceRoute)!({
+				params: { instance: "clinician", _splat: "test" },
+			})) as { path: string };
+			expect(res.path).toBe("/portal/clinician/test");
 		} finally {
 			unregister();
 		}

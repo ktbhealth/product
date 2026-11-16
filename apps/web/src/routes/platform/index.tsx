@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 
 import { portalPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
-import { portalPages, enabledIdSet, findPage } from "#/lib/registry.ts";
+import { portalPages, enabledIdSet, entryEnabled, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 
 const PATH = "/platform";
@@ -20,7 +20,7 @@ export const Route = createFileRoute("/platform/")({
 		const entry = findPage(portalPages, PATH);
 		if (entry === undefined) throw notFound();
 		const states = await pluginStatesFn();
-		if (!enabledIdSet(states).has(entry.pluginId)) throw notFound();
+		if (!entryEnabled(plugins, enabledIdSet(states), entry)) throw notFound();
 		const result = await portalPageDataFn({ data: PATH });
 		if (result.status === "notfound") throw notFound();
 		return result.data;

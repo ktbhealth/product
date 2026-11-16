@@ -12924,6 +12924,30 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "audit",
+		key: "verifyButton",
+		locale: "en",
+		value: "Verify chain",
+	},
+	{
+		namespace: "audit",
+		key: "verifyRunning",
+		locale: "en",
+		value: "Verifying…",
+	},
+	{
+		namespace: "audit",
+		key: "verifyEmpty",
+		locale: "en",
+		value: "The audit log is empty — nothing to verify.",
+	},
+	{
+		namespace: "audit",
+		key: "verifyFailed",
+		locale: "en",
+		value: "Verification failed — the request was denied or errored.",
+	},
+	{
+		namespace: "audit",
 		key: "title",
 		locale: "pt-BR",
 		value: "Log de auditoria",
@@ -13057,6 +13081,30 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "audit",
+		key: "verifyButton",
+		locale: "pt-BR",
+		value: "Verificar cadeia",
+	},
+	{
+		namespace: "audit",
+		key: "verifyRunning",
+		locale: "pt-BR",
+		value: "Verificando…",
+	},
+	{
+		namespace: "audit",
+		key: "verifyEmpty",
+		locale: "pt-BR",
+		value: "O log de auditoria está vazio — nada a verificar.",
+	},
+	{
+		namespace: "audit",
+		key: "verifyFailed",
+		locale: "pt-BR",
+		value: "A verificação falhou — a solicitação foi negada ou erro.",
+	},
+	{
+		namespace: "audit",
 		key: "title",
 		locale: "es",
 		value: "Registro de auditoría",
@@ -13187,6 +13235,30 @@ export const I18N_BASELINE = [
 		key: "noTenant",
 		locale: "es",
 		value: "—",
+	},
+	{
+		namespace: "audit",
+		key: "verifyButton",
+		locale: "es",
+		value: "Verificar cadena",
+	},
+	{
+		namespace: "audit",
+		key: "verifyRunning",
+		locale: "es",
+		value: "Verificando…",
+	},
+	{
+		namespace: "audit",
+		key: "verifyEmpty",
+		locale: "es",
+		value: "El registro de auditoría está vacío — nada que verificar.",
+	},
+	{
+		namespace: "audit",
+		key: "verifyFailed",
+		locale: "es",
+		value: "La verificación falló — la solicitud fue denegada o erró.",
 	},
 	{
 		namespace: "theme",

@@ -55,13 +55,18 @@ let lookups: string[] = [];
 let claims: string[] = [];
 /** Patient link syncs performed, by user id. */
 let syncs: string[] = [];
+/** When set, Auth.getSession throws it — proves rejected lookups are
+ * evicted and retried. */
+let authError: unknown;
 
 const AuthStub = (user: typeof sec | null) =>
 	Layer.succeed(
 		Auth,
 		Auth.of({
-			getSession: async () =>
-				user === null ? null : { user, sessionId: "s1", expiresAt: new Date(0) },
+			getSession: async () => {
+				if (authError !== undefined) throw authError;
+				return user === null ? null : { user, sessionId: "s1", expiresAt: new Date(0) };
+			},
 			setUserBanned: async () => {},
 		}),
 	);
@@ -97,6 +102,7 @@ const boot = (layer: Layer.Layer<never>) => {
 	lookups = [];
 	claims = [];
 	syncs = [];
+	authError = undefined;
 	const run = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
 		Effect.runPromise(Effect.provide(effect as Effect.Effect<A, E, never>, layer));
 	setServerRuntime({
@@ -220,6 +226,28 @@ describe("getDoctorContext", () => {
 			active: null,
 		});
 	});
+
+	it("shares one directory lookup across helpers for the same request", async () => {
+		signedIn();
+		const headers = new Headers();
+		await getDoctorContext(headers);
+		await getDoctorUser(headers);
+		await getSessionAccount(headers);
+		expect(lookups).toEqual(["sec"]);
+	});
+
+	it("claimInvites bypasses the cached pre-claim read and refreshes it", async () => {
+		signedIn();
+		const headers = new Headers();
+		await getDoctorContext(headers);
+		expect(lookups).toEqual(["sec"]);
+		await getDoctorContext(headers, { claimInvites: true });
+		expect(claims).toEqual(["sec"]);
+		expect(lookups).toEqual(["sec", "sec"]);
+		// The stored post-claim result serves later non-claim reads.
+		await getDoctorContext(headers);
+		expect(lookups).toEqual(["sec", "sec"]);
+	});
 });
 
 describe("setDoctorSelection", () => {
@@ -290,5 +318,45 @@ describe("getPatientContext", () => {
 			profiles: [],
 			active: null,
 		});
+	});
+
+	it("shares one directory lookup across calls for the same request", async () => {
+		signedIn();
+		const headers = new Headers();
+		await getPatientContext(headers);
+		await getPatientContext(headers);
+		expect(lookups).toEqual(["sec"]);
+	});
+
+	it("syncLinks bypasses the cached read and refreshes it", async () => {
+		signedIn();
+		const headers = new Headers();
+		await getPatientContext(headers);
+		await getPatientContext(headers, { syncLinks: true });
+		expect(syncs).toEqual(["sec"]);
+		expect(lookups).toEqual(["sec", "sec"]);
+		// The stored post-sync result serves later non-sync reads.
+		await getPatientContext(headers);
+		expect(lookups).toEqual(["sec", "sec"]);
+	});
+
+	it("does not let a stale rejection evict the newer cache entry", async () => {
+		signedIn();
+		authError = new Error("auth db down");
+		const headers = new Headers();
+		// The claimInvites call bypasses the read and replaces the pending
+		// non-claim entry; both reject on the shared session lookup. The
+		// stale rejection must not delete the newer entry — but the newer
+		// one rejects too, so its own eviction still applies.
+		const stale = getDoctorContext(headers);
+		const fresh = getDoctorContext(headers, { claimInvites: true });
+		await expect(stale).rejects.toThrow("auth db down");
+		await expect(fresh).rejects.toThrow("auth db down");
+		authError = undefined;
+		// Both entries were evicted: the next call retries and succeeds.
+		await expect(getDoctorContext(headers)).resolves.toMatchObject({
+			profiles: [delegated],
+		});
+		expect(lookups).toEqual(["sec"]);
 	});
 });

@@ -18,6 +18,7 @@ import {
 	collectChrome,
 	enabledIdSet,
 	enabledPlugins,
+	entryEnabled,
 	findPage,
 	findPortalInstance,
 	portalInstances,
@@ -64,7 +65,10 @@ export const Route = createFileRoute("/portal/$instance/$")({
 			themeScopeFn({ data: { scope: "portal-instance", id: params.instance } }),
 		]);
 		const enabled = enabledIdSet(states);
-		if (!enabled.has(pageEntry.pluginId) || !enabled.has(entry.pluginId)) {
+		// Package-granular gates (P-058): both the page's package and the
+		// portal instance's package must be live — same contract as the
+		// server-side pageData/CQRS gates.
+		if (!entryEnabled(plugins, enabled, pageEntry) || !entryEnabled(plugins, enabled, entry)) {
 			throw notFound();
 		}
 		if (result.status === "notfound") throw notFound();

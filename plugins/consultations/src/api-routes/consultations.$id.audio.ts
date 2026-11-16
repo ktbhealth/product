@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { audit } from "@ktb/audit";
 import { AUDIO_TRANSCRIPTION_JOB_KIND, Consultations } from "@ktb/consultations";
 import { Db } from "@ktb/db";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
@@ -196,6 +197,22 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 
 				const detail = await fetchOwned(id, user.id);
 				if (!detail?.audioKey) return Response.json({ error: "not found" }, { status: 404 });
+
+				// Sensitive-read audit: the audio bytes are the most sensitive
+				// payload a consultation carries — record the download after
+				// authz, before the stream. ids only.
+				await runAs(
+					{ id: user.id },
+					Effect.gen(function* () {
+						yield* audit({
+							action: "consultations.audio.read",
+							targetType: "consultation",
+							targetId: id,
+							tenantId: detail.tenantId,
+							detail: { patientId: detail.patientId, via: "audio-download" },
+						});
+					}),
+				);
 
 				const object = await audioBucket.get(detail.audioKey);
 				if (!object) return Response.json({ error: "not found" }, { status: 404 });

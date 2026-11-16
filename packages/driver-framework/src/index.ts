@@ -10,6 +10,11 @@ interface PluginModule {
 const isPlugin = (value: unknown): value is Plugin =>
 	typeof value === "object" && value !== null && typeof (value as Plugin).id === "string";
 
+/** `plugins/<pkg>/src/…` glob-path → package dir name. Module keys
+ * that don't match (explicit entries like "@ktb/platform", test
+ * fixtures) leave `pkg` unstamped. */
+const PLUGIN_PKG_PATH = /(?:^|\/)plugins\/([^/]+)\/src\//;
+
 /**
  * Collect every plugin object exported by Vite
  * `import.meta.glob(..., { eager: true })` modules. Convention: a plugin
@@ -17,6 +22,12 @@ const isPlugin = (value: unknown): value is Plugin =>
  * values (each built with `definePlugin`). A module that does not export
  * a `plugins` array, or one containing a non-plugin value, is a broken
  * entry and throws — discovery fails loudly rather than dropping it.
+ *
+ * Each discovered plugin is stamped with `pkg` — the `plugins/<pkg>`
+ * directory its module lives under — so enable-state gates can treat a
+ * package as one deployable unit without guessing package membership
+ * from plugin ids (which are not reliably namespaced). Stamping wraps
+ * the plugin in a new object; `orderPlugins` preserves it.
  */
 export const discoverPlugins = (modules: Record<string, unknown>): Plugin[] => {
 	const plugins: Plugin[] = [];
@@ -24,10 +35,11 @@ export const discoverPlugins = (modules: Record<string, unknown>): Plugin[] => {
 		const exported = typeof m === "object" && m !== null ? (m as PluginModule).plugins : undefined;
 		if (!Array.isArray(exported))
 			throw new Error(`plugin module "${path}" must export \`plugins\` as a Plugin array`);
+		const pkg = PLUGIN_PKG_PATH.exec(path)?.[1];
 		for (const p of exported) {
 			if (!isPlugin(p))
 				throw new Error(`plugin module "${path}" exports a value that is not a Plugin`);
-			plugins.push(p);
+			plugins.push(pkg === undefined ? p : { ...p, pkg });
 		}
 	}
 	return plugins;

@@ -1,5 +1,6 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
+import { auditVerifyFn } from "./fns.ts";
 import type { AuditListResult } from "./index.ts";
 import { AuditPage } from "./views/AuditPage.tsx";
 
@@ -10,7 +11,9 @@ const EMPTY: AuditListResult = { entries: [], total: 0, limit: 200 };
  * dispatcher hands the loader Effect's result as `data`; this wrapper
  * narrows it back into the view's props (the admin gate already ran in
  * the page `guard` and inside `Audit.adminList`). `ctx.locale` feeds
- * the view's catalog.
+ * the view's catalog. This is the ONLY surface that enables the
+ * on-demand chain verification — the shared view keeps it opt-in so
+ * the clinician/patient feeds never render it.
  */
 export function AuditPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<AuditListResult>;
@@ -20,6 +23,7 @@ export function AuditPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPage
 			total={typeof d.total === "number" ? d.total : 0}
 			i18n={ctx.i18n}
 			locale={ctx.locale}
+			onVerify={() => auditVerifyFn()}
 		/>
 	);
 }

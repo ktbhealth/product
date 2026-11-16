@@ -9,7 +9,9 @@ import type { ReactElement } from "react";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -66,7 +68,8 @@ import { plugins } from "./plugins.ts";
 import { routes } from "./routes.ts";
 import { auth, db } from "#/lib/platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
-import { createPatientFn, saveConsultationFn } from "#/lib/fns.ts";
+import { saveConsultationFn } from "@ktb/consultations/fns";
+import { createPatientFn } from "@ktb/patients/fns";
 import { SAMPLE_TRANSCRIPT, SECTION_LABELS } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSection } from "@ktb/anamnesis";
 

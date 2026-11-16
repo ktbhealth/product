@@ -24,9 +24,15 @@ const session: Session = {
 };
 
 let sessionResult: Session | null = session;
+let sessionError: unknown;
+let sessionCalls = 0;
 
 const authShape: AuthShape = {
-	getSession: async () => sessionResult,
+	getSession: async () => {
+		sessionCalls += 1;
+		if (sessionError !== undefined) throw sessionError;
+		return sessionResult;
+	},
 	setUserBanned: async () => {},
 };
 
@@ -45,6 +51,8 @@ beforeEach(() => {
 	resetServerRuntime();
 	setServerRuntime(runtime);
 	sessionResult = session;
+	sessionError = undefined;
+	sessionCalls = 0;
 	requestHeaders.current = new Headers();
 });
 
@@ -62,6 +70,34 @@ describe("getSessionUser", () => {
 	it("returns null when there is no session", async () => {
 		sessionResult = null;
 		await expect(getSessionUser(new Headers())).resolves.toBeNull();
+	});
+
+	it("memoizes the lookup per Headers object", async () => {
+		const headers = new Headers({ cookie: "session=abc" });
+		await getSessionUser(headers);
+		await ensureSessionUser(headers);
+		expect(sessionCalls).toBe(1);
+	});
+
+	it("memoizes the implicit request-headers path", async () => {
+		await getSessionUser();
+		await getSessionUser();
+		expect(sessionCalls).toBe(1);
+	});
+
+	it("does not share the lookup across different Headers objects", async () => {
+		await getSessionUser(new Headers());
+		await getSessionUser(new Headers());
+		expect(sessionCalls).toBe(2);
+	});
+
+	it("retries the lookup after a rejection instead of caching the failure", async () => {
+		const headers = new Headers();
+		sessionError = new Error("db down");
+		await expect(getSessionUser(headers)).rejects.toThrow("db down");
+		sessionError = undefined;
+		await expect(getSessionUser(headers)).resolves.toEqual(session.user);
+		expect(sessionCalls).toBe(2);
 	});
 });
 

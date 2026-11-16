@@ -2385,6 +2385,18 @@ export const I18N_MANIFEST = {
 		noTenant: {
 			params: [],
 		},
+		verifyButton: {
+			params: [],
+		},
+		verifyRunning: {
+			params: [],
+		},
+		verifyEmpty: {
+			params: [],
+		},
+		verifyFailed: {
+			params: [],
+		},
 	},
 	theme: {
 		pageTitle: {

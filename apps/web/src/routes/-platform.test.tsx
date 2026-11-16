@@ -49,7 +49,6 @@ vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: () => platformAdminFn(),
 	consoleDeniedFn: () => consoleDeniedFn(),
 	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
-	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
 	countMyUnreadNotificationsFn: () => countMyUnreadNotificationsFn(),
 	markMyNotificationsReadFn: (arg: unknown) => markMyNotificationsReadFn(arg),
@@ -58,6 +57,11 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 	i18nRouteFn: vi.fn(async () => undefined),
+}));
+// The layout imports the audio-jobs feed fn from the consultations
+// plugin directly — stub that module the same way.
+vi.mock("@ktb/consultations/fns", () => ({
+	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 vi.mock("@ktb/theme/fns", () => ({
@@ -231,9 +235,12 @@ describe("/platform layout", () => {
 	});
 
 	it("loader skips feeds whose plugin package is fully disabled (P-058)", async () => {
+		// Package granularity (P-058): a package is off only when EVERY
+		// stamped member id is disabled — the bare "notifications"
+		// marker id has no dot, so prefix matching would leave it on.
 		pluginStatesFn.mockResolvedValue({
 			enabled: plugins
-				.filter((p) => !p.id.startsWith("consultations.") && !p.id.startsWith("notifications."))
+				.filter((p) => p.pkg !== "consultations" && p.pkg !== "notifications")
 				.map((p) => p.id),
 		});
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({

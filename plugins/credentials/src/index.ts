@@ -32,12 +32,14 @@ const parseMeta = (raw: string | null): Record<string, unknown> => {
 const toCard = (row: ApiKeyRow): CredentialCard => {
 	const meta = parseMeta(row.metadata);
 	const provider = meta.provider;
-	const secret = meta.secret;
+	// `list` strips `secret`; adapters store `secretLast4` as the only
+	// displayable hint — rows predating it fall back to a bare mask.
+	const last4 = meta.secretLast4;
 	return {
 		id: row.id,
 		name: row.name ?? "credential",
 		provider: typeof provider === "string" ? provider : "other",
-		masked: typeof secret === "string" && secret.length > 4 ? `••••${secret.slice(-4)}` : "••••",
+		masked: typeof last4 === "string" && last4.length > 0 ? `••••${last4}` : "••••",
 	};
 };
 

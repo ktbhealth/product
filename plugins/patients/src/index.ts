@@ -401,6 +401,15 @@ export const PatientsLive = Layer.effect(
 				// owner-scoped and platform admins read cross-owner either
 				// way (admin detail/edit pages).
 				yield* authorizePatientRow(platformAdmin, row, "patient.read");
+				// Sensitive-read audit (P-086 feed): the ROW's tenant_id is
+				// authoritative — a cross-owner admin read must scope to the
+				// record's tenant, not the ambient one. ids only, never fields.
+				yield* audit({
+					action: "patients.read",
+					targetType: "patient",
+					targetId: row.id,
+					tenantId: row.tenantId,
+				});
 				return row;
 			}),
 			create: Effect.fn("Patients.create")(function* (ownerId: string, fields: PatientFields) {

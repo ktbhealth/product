@@ -25,6 +25,7 @@ import {
 	findPage,
 	findPortalInstance,
 	namespacesForPath,
+	packageLive,
 	portalInstanceIdForPath,
 	portalInstances,
 	type PageShell,
@@ -367,8 +368,9 @@ const portalAudienceAllows = async (
  * in the path's portal instance audience (anonymous → notfound);
  * app pages may be public — effects then run without a bound Principal
  * (`run` instead of `runAs`), so loaders that need a user must guard
- * themselves. The enabled-state gate (`PluginStates.isEnabled`) applies
- * to both shells: a disabled plugin's pages 404 exactly like
+ * themselves. The enabled-state gate applies to both shells at PACKAGE
+ * granularity (same contract as the CQRS gate — `plugins/<pkg>` is one
+ * deployable unit): a fully disabled package's pages 404 exactly like
  * unregistered paths. Page `guard` runs before `loader`; `false` or a
  * failure hides the page. Pages without a loader get
  * `{ status: "ok", data: null }`.
@@ -398,10 +400,19 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
 	const runEffect = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
 		user === null ? run(effect) : runAs(user, effect);
 	// Enabled-state gate (P-058): checked before guard/loader.
+	// Package-granular — the same contract as the CQRS dispatch gate
+	// and the client-side early gates in the route loaders: a page's
+	// package (`plugins/<pkg>`, stamped on the plugin by
+	// discoverPlugins) stays live while ANY member plugin id is
+	// enabled, so disabling `patients.services` alone does not 404 the
+	// package's pages while `patients.routes` is still on. Entries
+	// without a `pkg` stamp (out-of-glob plugins like @ktb/platform,
+	// test-injected fixtures) keep the per-id check.
 	const pluginOn = await runEffect(
 		Effect.gen(function* () {
 			const states = yield* PluginStates;
-			return yield* states.isEnabled(entry.pluginId);
+			if (entry.pkg === undefined) return yield* states.isEnabled(entry.pluginId);
+			return packageLive(serverPlugins, yield* states.enabledIds(), entry.pkg);
 		}),
 	);
 	if (!pluginOn) return { status: "notfound" };
@@ -485,15 +496,23 @@ export const portalAudiencesFn = createServerFn({ method: "GET" }).handler(
 export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(async () => {
 	const user = await getSessionUser();
 	if (user === null) return [] as string[];
-	const denied: string[] = [];
-	for (const entry of portalPages.values()) {
-		const path = entry.page.path;
-		const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
-		if (guard === undefined) continue;
-		const allowed = await runAs(user, guard(path)).catch(() => false);
-		if (!allowed) denied.push(path);
-	}
-	return denied;
+	// Guards run in parallel — each is its own runAs, and serial awaits
+	// would multiply sidebar-load latency by the page count. Promise.all
+	// preserves portalPages iteration order; failures count as denied,
+	// same contract as pageData.
+	const checks = await Promise.all(
+		[...portalPages.values()].flatMap((entry) => {
+			const path = entry.page.path;
+			const guard = entry.page.guard ?? serverPageMap().get(path)?.guard;
+			if (guard === undefined) return [];
+			return [
+				runAs(user, guard(path))
+					.catch(() => false)
+					.then((ok) => ({ path, ok })),
+			];
+		}),
+	);
+	return checks.filter((check) => !check.ok).map((check) => check.path);
 });
 
 /**
@@ -504,43 +523,6 @@ export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(async (
 export const appPageDataFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
 	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "app"));
-
-// ---------- patients ----------
-// Patient server functions are owned by the patients plugin (P-033) —
-// its route modules and this host file share the same implementations
-// through @ktb/patients/fns. Re-exported here so existing host callers
-// (tests) keep their import path.
-export {
-	adminCreatePatientFn,
-	createPatientFn,
-	deletePatientFn,
-	getPatientFn,
-	listPatientsFn,
-	patientConsultationsFn as listPatientConsultationsFn,
-	patientDeletionImpactFn,
-	updatePatientFn,
-} from "@ktb/patients/fns";
-
-// ---------- consultations ----------
-// Consultation server functions are owned by the consultations plugin —
-// its route modules (plugins/consultations/src/routes/**) and this host
-// file share the same implementations through @ktb/consultations/fns.
-// Re-exported here so existing host callers (tests, /platform routes)
-// keep their import path.
-export {
-	adminCreateConsultationFn,
-	adminDeleteConsultationFn,
-	adminListAudioJobsFn,
-	attachAnamnesisFn,
-	extractAnamnesisFn,
-	getConsultationFn,
-	getLiveConsultationFn,
-	listConsultationsFn,
-	patientHistoryFn,
-	recordConsentFn,
-	saveConsultationFn,
-	verifyConsultationIntegrityFn,
-} from "@ktb/consultations/fns";
 
 // ---------- plugin manager (P-058) ----------
 // Plugin-state server functions are owned by the manager plugin — its

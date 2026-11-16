@@ -26,6 +26,9 @@ export const cloudflareWorker: DeployWorker<Providers> = Effect.fnUntraced(funct
 		compatibility: spec.compatibilityFlags?.length
 			? { flags: [...spec.compatibilityFlags] }
 			: undefined,
+		// Cron Triggers for the worker's `scheduled` handler — forwarded
+		// verbatim; `undefined` leaves existing triggers untouched.
+		crons: spec.crons === undefined ? undefined : [...spec.crons],
 	});
 	return { url: site.url, scriptName: site.workerName };
 });

@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { createFileRoute, getRouteApi, notFound } from "@tanstack/react-router";
 
 import { appPageDataFn, pluginStatesFn } from "#/lib/fns.ts";
-import { appPages, enabledIdSet, enabledPlugins, findPage } from "#/lib/registry.ts";
+import { appPages, enabledIdSet, enabledPlugins, entryEnabled, findPage } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 
 const rootApi = getRouteApi("__root__");
@@ -26,10 +26,11 @@ export const Route = createFileRoute("/$")({
 		// pages) resolve by longest matching base.
 		const entry = findPage(appPages, path);
 		if (entry === undefined) throw notFound();
-		// Client-side early gate: a disabled plugin's page 404s before the
-		// server fn round-trip (appPageDataFn re-checks server-side).
+		// Client-side early gate: a disabled package's page 404s before
+		// the server fn round-trip (appPageDataFn re-checks server-side
+		// with the same package-granular contract).
 		const states = await pluginStatesFn();
-		if (!enabledIdSet(states).has(entry.pluginId)) throw notFound();
+		if (!entryEnabled(plugins, enabledIdSet(states), entry)) throw notFound();
 		const result = await appPageDataFn({ data: path });
 		if (result.status === "notfound") throw notFound();
 		return { data: result.data, pluginStates: states };

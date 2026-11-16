@@ -32,6 +32,7 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
+import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
@@ -208,6 +209,35 @@ export const assertCaptchaConfigured = (
 	}
 };
 
+/**
+ * Production must never run without auth secrets: makeAuth passes
+ * `secret`/`baseURL` straight through to better-auth, which only
+ * hard-fails on the default secret when its own NODE_ENV detection
+ * fires — an early, explicit assert here keeps a missing
+ * BETTER_AUTH_SECRET/BETTER_AUTH_URL from silently falling back to
+ * insecure defaults (or a runtime surprise) on a prod deploy.
+ */
+export const assertAuthConfigured = (
+	env: Pick<AppEnv, "BETTER_AUTH_SECRET" | "BETTER_AUTH_URL">,
+	production: boolean,
+): void => {
+	if (production && (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL)) {
+		throw new Error(
+			"auth not configured for production: bind BETTER_AUTH_SECRET and " +
+				"BETTER_AUTH_URL (better-auth falls back to insecure defaults otherwise)",
+		);
+	}
+};
+
+/**
+ * `import.meta.env` only exists inside the Vite pipeline — under plain
+ * node/bun the property is undefined and a bare `import.meta.env.PROD`
+ * read throws TypeError. Callers pass the (possibly absent) env object;
+ * exported so tests can exercise both shapes.
+ */
+export const isProductionBuild = (env: { readonly PROD?: unknown } | undefined): boolean =>
+	env?.PROD === true;
+
 /** Subject and body of a transactional email, before addressing. */
 export type EmailContent = Omit<EmailMessage, "to">;
 
@@ -253,11 +283,17 @@ export interface AppOptions {
  * once with their env and re-export the pieces they need.
  */
 export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
-	// import.meta.env.PROD is statically replaced by the Vite build:
-	// true for `vp build`/`vp preview` output (prod deploy), false for
-	// dev servers and vitest. Same convention as the stub-bot guard in
-	// apps/web routes.
-	assertCaptchaConfigured(env, import.meta.env.PROD);
+	// isProductionBuild reads import.meta.env.PROD safely: the Vite build
+	// statically replaces it (true for `vp build`/`vp preview` output —
+	// prod deploy — false for dev servers and vitest), while runtimes
+	// outside the Vite pipeline get `undefined` instead of a TypeError.
+	// Same convention as the stub-bot guard in apps/web routes.
+	// The cast widens the ambient ImportMeta type (env.d.ts declares
+	// env as always-present for the vite/client case) so the possibly-
+	// absent runtime shape typechecks.
+	const production = isProductionBuild((import.meta as { env?: { PROD?: unknown } }).env);
+	assertCaptchaConfigured(env, production);
+	assertAuthConfigured(env, production);
 	const BindingLive = Layer.succeed(Binding, env.DB);
 	const db = makeDb(env.DB);
 
@@ -497,8 +533,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Enabled-state gate (P-058): services layers always compose
 	// (ManagedRuntime can't recompose per toggle), so dispatch is the
 	// fail-closed seam — a group's handlers are unreachable while EVERY
-	// plugin id of its package (`plugins/<pkg>/*`) is disabled. The gate
-	// reads PluginStates per dispatch so toggles apply without restart.
+	// plugin of its package (`plugins/<pkg>`) is disabled. Membership
+	// resolves through the `pkg` stamp on discovered plugins (plugin ids
+	// are not reliably namespaced — see packageLive), NOT an id-prefix
+	// guess; the page dispatchers apply the same package contract. The
+	// gate reads PluginStates per dispatch so toggles apply without
+	// restart.
 	//
 	// `Middleware` is typed `(payload) => Effect<A, E>` — R=never — but
 	// the bus executes inside the app runtime where core services are
@@ -513,8 +553,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 				Effect.gen(function* () {
 					const states = yield* PluginStates;
 					const enabled = yield* states.enabledIds();
-					const prefix = `${pkg}.`;
-					if (![...enabled].some((id) => id.startsWith(prefix))) {
+					if (!packageLive(plugins, enabled, pkg)) {
 						return yield* Effect.fail(new PluginDisabled({ pluginId: pkg }));
 					}
 					return yield* dispatch(payload);

@@ -61,6 +61,19 @@ export interface PluginContribution {
 
 export interface PluginBase {
 	readonly id: string;
+	/** Deployable package this plugin belongs to — the `plugins/<pkg>`
+	 * directory name, stamped by `discoverPlugins`
+	 * (@ktb/driver-framework) from the module's glob path. Plugin
+	 * authors never declare it, and plugin ids are NOT reliably
+	 * namespaced (`auth` ships `session.menu`, `transcription-asr`
+	 * ships `asr`/`transcribe`), so this field — not an id-prefix guess
+	 * — is how enable-state gates find a plugin's package siblings.
+	 * `undefined` for plugins registered outside the `plugins/*` glob
+	 * (e.g. @ktb/platform's explicit manifest): those keep per-id
+	 * enable checks. Enable-state surfaces (page dispatch, CQRS groups,
+	 * plugin file/api routes) are PACKAGE-granular: a package is live
+	 * while ANY of its member plugin ids is enabled (P-058). */
+	readonly pkg?: string;
 	/** Display/config metadata consumed by the platform plugin manager. */
 	readonly meta?: PluginMeta;
 	/** Server-only: the effect/Schema that `meta.config.schema` (the
