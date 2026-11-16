@@ -1,8 +1,8 @@
-import { PlugZapIcon } from "lucide-react";
+import { BotIcon, PlugZapIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { EndpointsPanelPage } from "./platform-page.tsx";
+import { AgentsPanelPage, EndpointsPanelPage } from "./platform-page.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -45,6 +45,19 @@ export const plugins: readonly Plugin[] = [
 					},
 				},
 			},
+			{
+				id: "ai-agents.sidebar",
+				region: "portal.sidebar",
+				content: {
+					kind: "sidebarItem",
+					item: {
+						to: "/platform/ai/agents",
+						label: "Agents",
+						icon: BotIcon,
+						group: "AI",
+					},
+				},
+			},
 		],
 	}),
 	definePlugin({
@@ -57,9 +70,14 @@ export const plugins: readonly Plugin[] = [
 					path: "/platform/ai/endpoints",
 					component: EndpointsPanelPage,
 				},
+				{
+					id: "ai.agents",
+					path: "/platform/ai/agents",
+					component: AgentsPanelPage,
+				},
 			],
 		},
 	}),
 ];
 
-export type { EndpointCard } from "./index.ts";
+export type { AgentLinkRow, EndpointCard } from "./index.ts";

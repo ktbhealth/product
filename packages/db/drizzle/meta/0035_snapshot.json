@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "a8a51bbc-a74b-47e9-a7fc-1d6009e47ec9",
+  "id": "89434658-3801-47fd-8577-aed916ff52be",
   "prevId": "7a9186ed-c8b9-4802-82b1-bd115d9625be",
   "tables": {
     "account": {
@@ -715,6 +715,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -995,17 +1002,6 @@
           "name": "admin_audit_tenant_created_idx",
           "columns": [
             "tenant_id",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "admin_audit_dedupe_idx": {
-          "name": "admin_audit_dedupe_idx",
-          "columns": [
-            "actor_user_id",
-            "action",
-            "target_type",
-            "target_id",
             "created_at"
           ],
           "isUnique": false

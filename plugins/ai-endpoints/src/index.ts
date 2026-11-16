@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
-import { PlugZapIcon } from "lucide-react";
+import { BotIcon, PlugZapIcon } from "lucide-react";
 
 import { type Forbidden } from "@ktb/authz";
 import { Credentials } from "@ktb/credentials";
@@ -21,8 +21,8 @@ import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
 import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
-import { EndpointsPanelPage } from "./platform-page.tsx";
-import { aiAgentLink, aiEndpoint, type AiEndpoint } from "./schema.ts";
+import { AgentsPanelPage, EndpointsPanelPage } from "./platform-page.tsx";
+import { aiAgentLink, aiEndpoint, type AiAgentLink, type AiEndpoint } from "./schema.ts";
 
 // ---------------------------------------------------------------------------
 // DTOs — what the panel page and fns exchange (plain JSON on the wire).
@@ -60,6 +60,39 @@ export interface BridgeLink {
  * `connected` = socket seen inside the heartbeat window,
  * `waiting` = an unused unexpired link exists, `offline` otherwise. */
 export type BridgeStatus = "connected" | "waiting" | "offline";
+
+/** Per-link lifecycle shown on the Agents page (F4): `revoked` wins
+ * (admin pulled it); an unconsumed link is `waiting` until
+ * `expires_at` passes (`expired`); a consumed one tracks the
+ * endpoint's heartbeat — `connected` inside ~2 ping intervals,
+ * `offline` after. */
+export type AgentLinkStatus = "waiting" | "connected" | "offline" | "expired" | "revoked";
+
+/** Wire row for the Agents table — joins the link to its endpoint.
+ * token_hash NEVER leaves the server (only the hash exists anyway —
+ * the raw token was shown once at mint). */
+export interface AgentLinkRow {
+	readonly id: number;
+	readonly endpointId: number;
+	readonly endpointName: string;
+	readonly status: AgentLinkStatus;
+	readonly createdAt: Date;
+	readonly expiresAt: Date;
+	readonly usedAt: Date | null;
+	readonly lastSeenAt: Date | null;
+}
+
+export const agentLinkStatus = (
+	link: Pick<AiAgentLink, "usedAt" | "expiresAt" | "revokedAt">,
+	lastSeenAt: Date | null,
+	now: number,
+): AgentLinkStatus => {
+	if (link.revokedAt !== null) return "revoked";
+	if (link.usedAt === null) return link.expiresAt.getTime() <= now ? "expired" : "waiting";
+	return lastSeenAt !== null && now - lastSeenAt.getTime() <= BRIDGE_LIVE_MS
+		? "connected"
+		: "offline";
+};
 
 /** Bridge liveness window: ~2 heartbeat intervals (the CLI pings
  * every 30s). */
@@ -225,6 +258,17 @@ export class AiEndpoints extends Context.Service<
 			Forbidden,
 			unknown
 		>;
+		/** All bridge links joined to their endpoint — the Agents page's
+		 * consolidated view (F4). The wire never carries token_hash. */
+		readonly listAgentLinks: () => Effect.Effect<readonly AgentLinkRow[], Forbidden, unknown>;
+		/** Revoke a link: stamps `revoked_at` and keeps the audit row.
+		 * Returns false for unknown or already-revoked ids. V1 NOTE: a
+		 * live socket minted from this link is NOT severed — AcpBridge
+		 * binds sockets per-endpoint (idFromName(endpointId)), not
+		 * per-link, so there is no link→socket handle to drop without a
+		 * new DO contract; revocation blocks FUTURE token use in
+		 * /api/ai/bridge and flips the status badge. */
+		readonly revokeAgentLink: (id: number) => Effect.Effect<boolean, Forbidden, unknown>;
 	}
 >()("@ktb/ai-endpoints/AiEndpoints") {}
 
@@ -378,6 +422,7 @@ export const AiEndpointsLive = Layer.effect(
 							and(
 								eq(aiAgentLink.endpointId, endpointId),
 								isNull(aiAgentLink.usedAt),
+								isNull(aiAgentLink.revokedAt),
 								gt(aiAgentLink.expiresAt, new Date()),
 							),
 						),
@@ -386,6 +431,42 @@ export const AiEndpointsLive = Layer.effect(
 					status: open.length > 0 ? ("waiting" as const) : ("offline" as const),
 					lastSeenAt,
 				};
+			}),
+			listAgentLinks: Effect.fn("AiEndpoints.listAgentLinks")(function* () {
+				yield* requireGrant();
+				const rows = yield* Effect.promise(() =>
+					db
+						.select({
+							link: aiAgentLink,
+							endpointName: aiEndpoint.name,
+							lastSeenAt: aiEndpoint.lastSeenAt,
+						})
+						.from(aiAgentLink)
+						.innerJoin(aiEndpoint, eq(aiAgentLink.endpointId, aiEndpoint.id))
+						.orderBy(desc(aiAgentLink.id)),
+				);
+				const now = Date.now();
+				return rows.map(({ link, endpointName, lastSeenAt }): AgentLinkRow => ({
+					id: link.id,
+					endpointId: link.endpointId,
+					endpointName,
+					status: agentLinkStatus(link, lastSeenAt, now),
+					createdAt: link.createdAt,
+					expiresAt: link.expiresAt,
+					usedAt: link.usedAt,
+					lastSeenAt,
+				}));
+			}),
+			revokeAgentLink: Effect.fn("AiEndpoints.revokeAgentLink")(function* (id) {
+				yield* requireGrant();
+				const row = (yield* Effect.promise(() =>
+					db.select().from(aiAgentLink).where(eq(aiAgentLink.id, id)),
+				))[0];
+				if (row === undefined || row.revokedAt !== null) return false;
+				yield* Effect.promise(() =>
+					db.update(aiAgentLink).set({ revokedAt: new Date() }).where(eq(aiAgentLink.id, id)),
+				);
+				return true;
 			}),
 		});
 	}),
@@ -445,7 +526,7 @@ export const PlatformLlmLive = Layer.effect(
  * contract as EVAL_PERSONA_TEST_DDL). */
 export const AI_ENDPOINTS_TEST_DDL = `
 CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id INTEGER NOT NULL REFERENCES ai_endpoint(id) ON DELETE cascade, token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id INTEGER NOT NULL REFERENCES ai_endpoint(id) ON DELETE cascade, token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL);
 `;
 
 export const aiEndpointsTablesPlugin = definePlugin({
@@ -476,6 +557,19 @@ export const aiEndpointsChromePlugin = definePlugin({
 					to: "/platform/ai/endpoints",
 					label: "Endpoints",
 					icon: PlugZapIcon,
+					group: "AI",
+				},
+			},
+		},
+		{
+			id: "ai-agents.sidebar",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/ai/agents",
+					label: "Agents",
+					icon: BotIcon,
 					group: "AI",
 				},
 			},
@@ -515,6 +609,34 @@ export const aiEndpointsPanelPlugin = definePlugin({
 						return yield* endpoints
 							.list()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as EndpointCard[])));
+					}),
+			},
+			{
+				id: "ai.agents",
+				path: "/platform/ai/agents",
+				component: AgentsPanelPage,
+				guard: () =>
+					Effect.gen(function* () {
+						const permissions = yield* Permissions;
+						return yield* permissions.can(EVAL_RESOURCE, EVAL_ACTION);
+					}),
+				// Links + bridge endpoints (the New-link dialog's select
+				// options) — one loader payload, Forbidden degrades to
+				// empty lists like the endpoints page.
+				loader: () =>
+					Effect.gen(function* () {
+						const endpoints = yield* AiEndpoints;
+						return yield* Effect.all({
+							links: endpoints.listAgentLinks(),
+							endpoints: endpoints.list(),
+						}).pipe(
+							Effect.catchTag("Forbidden", () =>
+								Effect.succeed({
+									links: [] as AgentLinkRow[],
+									endpoints: [] as EndpointCard[],
+								}),
+							),
+						);
 					}),
 			},
 		],
