@@ -315,10 +315,10 @@ describe("/consultations/new", () => {
 	});
 
 	it("ignores late extractor resolutions after unmount", async () => {
-		let resolve: (e: unknown) => void = () => {};
+		let resolve: (e: { tag: string }) => void = () => {};
 		mocks.resolveByokExtractor.mockImplementationOnce(
 			() =>
-				new Promise<unknown>((r) => {
+				new Promise<{ tag: string }>((r) => {
 					resolve = r;
 				}),
 		);
