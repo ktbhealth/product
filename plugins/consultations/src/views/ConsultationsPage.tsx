@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
-import { ClipboardListIcon, DownloadIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
+
+import { factContent } from "@ktb/anamnesis";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
@@ -17,6 +19,12 @@ import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES } from "./-ui.ts";
 import { consultationMessages, sourceLabel } from "../i18n.ts";
+import {
+	decryptConsultations,
+	isCipheredConsultation,
+	parseAnamnesis,
+	type ConsultationZk,
+} from "../zk.ts";
 
 function initials(name: string | null) {
 	if (!name) return "?";
@@ -51,18 +59,26 @@ export interface ConsultationListItem {
 	patientName: string | null;
 	chiefComplaint: string | null;
 	hasAnamnesis: boolean;
+	/** Raw stored `anamnesis` column (T-145): plaintext JSON for non-ZK
+	 * rows, a `v1.` envelope under ZK — decrypted client-side. */
+	anamnesis?: string | null;
 }
 
 export function ConsultationsPage({
 	consultations,
 	locale = "en",
 	portalBase,
+	zk,
 }: {
 	consultations: ConsultationListItem[];
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
 	portalBase?: string;
+	/** ZK context (T-145): present only on ZK tenants — rows arrive as
+	 * `v1.` envelopes and are decrypted in the browser; rows without a
+	 * grant render a locked card. */
+	zk?: ConsultationZk;
 }) {
 	const t = consultationMessages(locale);
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
@@ -74,17 +90,50 @@ export function ConsultationsPage({
 	const [q, setQ] = useState("");
 	const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
 
+	// Client-side decrypt under ZK (T-145): rows without a grant stay
+	// ciphered and render a locked card; decrypted rows get their
+	// chiefComplaint re-derived here because the server could not parse
+	// the envelope to compute it.
+	const [decrypted, setDecrypted] = useState<ReadonlyMap<number, ConsultationListItem>>(new Map());
+	useEffect(() => {
+		if (!zk) return;
+		let live = true;
+		decryptConsultations(zk.keyring, zk.api, consultations)
+			.then((rows) => {
+				if (live) setDecrypted(new Map(rows.map((r) => [r.id, r])));
+			})
+			.catch(() => {});
+		return () => {
+			live = false;
+		};
+	}, [zk, consultations]);
+
+	const display = useMemo(() => {
+		if (!zk) return consultations;
+		return consultations.map((c) => {
+			const row = decrypted.get(c.id) ?? c;
+			if (isCipheredConsultation(row)) return row;
+			const parsed = parseAnamnesis(row.anamnesis);
+			return parsed !== null && row.chiefComplaint === null
+				? { ...row, chiefComplaint: factContent(parsed.queixa_principal.content) }
+				: row;
+		});
+	}, [consultations, decrypted, zk]);
+
 	const shown = useMemo(() => {
 		const needle = q.trim().toLowerCase();
-		return consultations.filter((c) => {
+		return display.filter((c) => {
 			if (filter === "anamnesis" && !c.hasAnamnesis) return false;
 			if (filter === "pending" && c.hasAnamnesis) return false;
 			if (!needle) return true;
+			// Locked rows are opaque — searchable by id only, never by
+			// envelope content.
+			if (isCipheredConsultation(c)) return String(c.id).includes(needle);
 			return [c.patientName, c.chiefComplaint, c.transcript, String(c.id)]
 				.filter(Boolean)
 				.some((t) => (t as string).toLowerCase().includes(needle));
 		});
-	}, [consultations, q, filter]);
+	}, [display, q, filter]);
 
 	return (
 		<div>
@@ -126,71 +175,93 @@ export function ConsultationsPage({
 			) : null}
 
 			<div className="mt-5 space-y-3">
-				{shown.map((c) => (
-					<article
-						key={c.id}
-						className="group relative flex items-start gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm transition hover:border-foreground/20 hover:shadow"
-					>
-						<div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-primary/5 text-sm font-semibold text-primary">
-							{initials(c.patientName)}
-						</div>
-						<div className="min-w-0 flex-1">
-							<div className="flex flex-wrap items-baseline gap-x-2">
+				{shown.map((c) =>
+					isCipheredConsultation(c) ? (
+						// Locked row (T-145): no DEK grant for this device — the
+						// envelope stays opaque and the card is not navigable.
+						<article
+							key={c.id}
+							className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm"
+						>
+							<div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+								<LockIcon className="size-4" />
+							</div>
+							<div className="min-w-0 flex-1">
+								<p className="font-semibold">{t.zk.lockedRecord}</p>
+								<p className="mt-0.5 text-sm text-muted-foreground">{t.zk.lockedHint}</p>
+								<p className="mt-0.5 text-xs text-muted-foreground">
+									#{c.id} · {new Date(c.createdAt).toLocaleString()}
+								</p>
+							</div>
+						</article>
+					) : (
+						<article
+							key={c.id}
+							className="group relative flex items-start gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm transition hover:border-foreground/20 hover:shadow"
+						>
+							<div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-primary/5 text-sm font-semibold text-primary">
+								{initials(c.patientName)}
+							</div>
+							<div className="min-w-0 flex-1">
+								<div className="flex flex-wrap items-baseline gap-x-2">
+									<Link
+										to={portalPath(`/consultations/${c.id}`)}
+										className="font-semibold after:absolute after:inset-0 after:content-['']"
+									>
+										{c.patientName ?? t.list.unlinkedPatient}
+									</Link>
+									<span className="text-xs text-muted-foreground">
+										#{c.id} · {new Date(c.createdAt).toLocaleString()}
+									</span>
+									{c.patientId ? (
+										<Link
+											to={portalPath(`/patients/${c.patientId}`)}
+											className="relative z-10 text-xs text-primary hover:underline"
+										>
+											{t.list.patientRecord}
+										</Link>
+									) : null}
+								</div>
+								<p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+									{c.chiefComplaint && !c.chiefComplaint.startsWith("A preencher")
+										? c.chiefComplaint
+										: c.transcript || t.common.noTranscript}
+								</p>
+								<div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+									{c.status === "live" ? <ToneBadge tone="red">● {t.list.live}</ToneBadge> : null}
+									{c.hasAnamnesis ? (
+										<ToneBadge tone="green">{t.common.anamnesis}</ToneBadge>
+									) : (
+										<ToneBadge tone="amber">{t.list.noAnamnesis}</ToneBadge>
+									)}
+									{c.consentAt ? <ToneBadge tone="green">{t.list.consent}</ToneBadge> : null}
+									<ToneBadge>{sourceLabel(t, c.source)}</ToneBadge>
+								</div>
+							</div>
+							<div className="relative z-10 flex shrink-0 items-center gap-1.5">
 								<Link
 									to={portalPath(`/consultations/${c.id}`)}
-									className="font-semibold after:absolute after:inset-0 after:content-['']"
-								>
-									{c.patientName ?? t.list.unlinkedPatient}
-								</Link>
-								<span className="text-xs text-muted-foreground">
-									#{c.id} · {new Date(c.createdAt).toLocaleString()}
-								</span>
-								{c.patientId ? (
-									<Link
-										to={portalPath(`/patients/${c.patientId}`)}
-										className="relative z-10 text-xs text-primary hover:underline"
-									>
-										{t.list.patientRecord}
-									</Link>
-								) : null}
-							</div>
-							<p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-								{c.chiefComplaint && !c.chiefComplaint.startsWith("A preencher")
-									? c.chiefComplaint
-									: c.transcript || t.common.noTranscript}
-							</p>
-							<div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-								{c.status === "live" ? <ToneBadge tone="red">● {t.list.live}</ToneBadge> : null}
-								{c.hasAnamnesis ? (
-									<ToneBadge tone="green">{t.common.anamnesis}</ToneBadge>
-								) : (
-									<ToneBadge tone="amber">{t.list.noAnamnesis}</ToneBadge>
-								)}
-								{c.consentAt ? <ToneBadge tone="green">{t.list.consent}</ToneBadge> : null}
-								<ToneBadge>{sourceLabel(t, c.source)}</ToneBadge>
-							</div>
-						</div>
-						<div className="relative z-10 flex shrink-0 items-center gap-1.5">
-							<Link
-								to={portalPath(`/consultations/${c.id}`)}
-								className={buttonVariants({ variant: "outline", size: "sm" })}
-							>
-								{t.list.open}
-							</Link>
-							{c.hasAnamnesis ? (
-								<a
-									href={`/api/consultations/${c.id}/pdf`}
-									download
-									title={t.list.downloadPdfTitle}
 									className={buttonVariants({ variant: "outline", size: "sm" })}
 								>
-									<DownloadIcon className="mr-1 inline size-3.5 -translate-y-px" />
-									PDF
-								</a>
-							) : null}
-						</div>
-					</article>
-				))}
+									{t.list.open}
+								</Link>
+								{/* Server-side PDF reads plaintext columns — impossible
+								 * under ZK; T-146 adds the client-side renderer. */}
+								{c.hasAnamnesis && !zk ? (
+									<a
+										href={`/api/consultations/${c.id}/pdf`}
+										download
+										title={t.list.downloadPdfTitle}
+										className={buttonVariants({ variant: "outline", size: "sm" })}
+									>
+										<DownloadIcon className="mr-1 inline size-3.5 -translate-y-px" />
+										PDF
+									</a>
+								) : null}
+							</div>
+						</article>
+					),
+				)}
 
 				{consultations.length > 0 && shown.length === 0 ? (
 					<Empty className="border">

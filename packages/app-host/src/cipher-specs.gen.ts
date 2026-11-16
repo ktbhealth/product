@@ -6,7 +6,10 @@
 // impls that resolve a row's spec at runtime.
 import type { CipherSpec } from "@ktb/crypto/cipher";
 
-const modules: readonly Record<string, unknown>[] = [];
+import * as _0 from "../../../plugins/consultations/src/cipher.ts";
+import * as _1 from "../../../plugins/patients/src/cipher.ts";
+
+const modules: readonly Record<string, unknown>[] = [_0, _1];
 
 const isSpec = (value: unknown): value is CipherSpec =>
 	typeof value === "object" &&

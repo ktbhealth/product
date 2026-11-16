@@ -104,7 +104,7 @@ describe("patient portal, end to end", () => {
 		const saved = await saveConsultationFn({
 			data: { transcript: "fala gravada na consulta", anamnesis, engine: "heuristic", patientId },
 		});
-		consultationId = saved.id;
+		consultationId = saved!.id;
 	});
 
 	it("after saving, the doctor is told the patient has no portal access yet", async () => {
@@ -252,7 +252,7 @@ describe("patient portal, pending link awaiting approval", () => {
 		const saved = await saveConsultationFn({
 			data: { transcript: "fala", anamnesis, engine: "heuristic", patientId },
 		});
-		consultationId = saved.id;
+		consultationId = saved!.id;
 		patient = await signUpPatient("pend-patient@x.com", "Paciente Pendente", true);
 		// Nothing creates pending links any more (account CPFs are gone),
 		// but links already pending still wait on the doctor's approval.

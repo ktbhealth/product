@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { Integrity, IntegrityLive, RECORD_VERSIONS_TEST_DDL, recordVersions } from "@ktb/integrity";
+import { VAULT_TEST_DDL } from "@ktb/vault";
 import { Db, makeDb } from "@ktb/db";
 import {
 	consultations as consultationsTable,
@@ -64,6 +65,9 @@ CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
 ${AUDIT_TEST_DDL}
 ${RECORD_VERSIONS_TEST_DDL}
+${VAULT_TEST_DDL}
+-- A ZK-flagged tenant for the cipher-gate tests; 7/8 stay plaintext.
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
 `;
 
 // ConsultationsLive requires PlatformAdmin (adminList) — every runtime
@@ -1742,6 +1746,7 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 
 	const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
 	const TENANT_B: TenantScope = { id: 8, kind: "clinic", slug: "clinica-b", role: "member" };
+	const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
 
 	const asUser = <A, E>(
 		userId: string | null,
@@ -2014,5 +2019,226 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 				call((c) => c.save("u1", saveInput({ patientId: patient.id }))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
+	// ---------- T-145: ZK cipher gates ----------
+
+	const ENV = "v1.aXYtLmN0";
+	const ENV2 = "v1.YW5hbS5jdA";
+	const VERSION = { contentHash: "sha256:client-hash", signature: "sig-1" };
+
+	it("save fails closed: plaintext under zk and envelopes outside zk", async () => {
+		// Plaintext transcript/anamnesis under the ZK tenant → Forbidden.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.save("u1", saveInput())),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.create" });
+
+		// Envelope write under ZK succeeds — stored verbatim, with the
+		// client-signed version landing on record_versions.
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2, version: VERSION }))),
+		);
+		expect(await tenantIdOf(saved.id)).toBe(9);
+		const stored = await testDb
+			.select()
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.transcript).toBe(ENV);
+		expect(stored[0]?.anamnesis).toBe(ENV2);
+		const versions = await testDb
+			.select()
+			.from(recordVersions)
+			.where(
+				and(
+					eq(recordVersions.entityType, "consultation.anamnesis"),
+					eq(recordVersions.entityId, String(saved.id)),
+				),
+			);
+		expect(versions).toHaveLength(1);
+		expect(versions[0]?.contentHash).toBe(VERSION.contentHash);
+		expect(versions[0]?.signature).toBe(VERSION.signature);
+
+		// Same envelopes under a plaintext tenant and in personal scope
+		// are rejected — ciphertext needs a clinic keyring.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_A,
+				call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.create" });
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
+	it("create under zk rejects a populated plaintext transcript but allows the empty live form", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.create({ userId: "u1", transcript: "plaintext live", source: "browser" })),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.create" });
+		const live = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.create({ userId: "u1", source: "browser", status: "live" })),
+		);
+		expect(live).not.toBeNull();
+	});
+
+	it("attachAnamnesis under zk stores envelopes with the client signature and rejects plaintext", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) =>
+					c.attachAnamnesis("u1", {
+						consultationId: saved.id,
+						anamnesis: {} as SaveConsultationInput["anamnesis"],
+						engine: "e",
+					}),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.update" });
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: saved.id,
+					anamnesis: "v1.bmV3LWVuYQ",
+					engine: "heuristic",
+					version: { contentHash: "sha256:v2", signature: "sig-2" },
+				}),
+			),
+		);
+		const stored = await testDb
+			.select({ anamnesis: consultationsTable.anamnesis })
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.anamnesis).toBe("v1.bmV3LWVuYQ");
+		const v2 = await testDb
+			.select()
+			.from(recordVersions)
+			.where(
+				and(
+					eq(recordVersions.entityType, "consultation.anamnesis"),
+					eq(recordVersions.entityId, String(saved.id)),
+					eq(recordVersions.version, 2),
+				),
+			);
+		expect(v2[0]?.contentHash).toBe("sha256:v2");
+		expect(v2[0]?.signature).toBe("sig-2");
+	});
+
+	it("list keeps envelope rows opaque — hasAnamnesis set, chiefComplaint null", async () => {
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		const rows = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.list("u1")),
+		);
+		const env = rows.find((r) => r.hasAnamnesis);
+		expect(env).toBeDefined();
+		expect(env?.chiefComplaint).toBeNull();
+		expect(env?.anamnesis).toBe(ENV2);
+	});
+
+	it("historyRows returns the raw envelopes for client-side decryption", async () => {
+		const patient = (
+			await testDb
+				.insert(patientsTable)
+				.values({ ownerId: "u1", name: "ZK Patient", createdAt: new Date() })
+				.returning({ id: patientsTable.id })
+		)[0]!;
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) =>
+				c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2, patientId: patient.id })),
+			),
+		);
+		const history = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.historyRows(patient.id, "u1")),
+		);
+		expect(history?.rows[0]?.id).toBe(saved.id);
+		expect(history?.rows[0]?.anamnesis).toBe(ENV2);
+		// Scoping to another owner fails Forbidden (same gate as
+		// `history`); a patient the caller does not own yields null.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.historyRows(patient.id, "u2")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.read" });
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.historyRows(999_999, "u1")),
+			),
+		).resolves.toBeNull();
+	});
+
+	it("system transcript paths no-op on zk rows", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		// Whisper pipeline + LLM-cleaned transcript + live append all
+		// refuse plaintext persistence on a zk-owned row.
+		await appendTranscript(testDb, saved.id, "server asr text");
+		await completeAudioJob(testDb, saved.id, "server asr text");
+		await saveCorrectedTranscript(testDb, saved.id, "server llm text", "llm");
+		const stored = await testDb
+			.select({
+				transcript: consultationsTable.transcript,
+				serverTranscript: consultationsTable.serverTranscript,
+				correctedTranscript: consultationsTable.correctedTranscript,
+			})
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.transcript).toBe(ENV);
+		expect(stored[0]?.serverTranscript).toBeNull();
+		expect(stored[0]?.correctedTranscript).toBeNull();
+	});
+
+	it("get returns the envelope via anamnesisRaw with a null parsed anamnesis", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		const detail = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.get(saved.id, "u1")),
+		);
+		expect(detail?.anamnesisRaw).toBe(ENV2);
+		expect(detail?.anamnesis).toBeNull();
 	});
 });
