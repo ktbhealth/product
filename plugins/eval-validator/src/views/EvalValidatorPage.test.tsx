@@ -19,6 +19,7 @@ const fns = vi.hoisted(() => ({
 		data: { runId: 42 },
 	})),
 	progressFn: vi.fn<(a?: Arg) => Res<unknown>>(async () => ({ ok: true, data: null })),
+	deleteRunFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({ ok: true, data: null })),
 }));
 
 vi.mock("../fns.ts", () => fns);
@@ -41,6 +42,9 @@ const persona: PersonaCard = {
 	batchId: 1,
 	state: "under_review",
 	feedback: null,
+	patientId: 5,
+	doctorId: null,
+	scriptMode: "llm",
 	persona: {
 		name: "Paciente Ana",
 		gender: "female",
@@ -110,7 +114,9 @@ describe("EvalValidatorPage", () => {
 		render(<EvalValidatorPage batches={[]} locale="en" />);
 		const user = userEvent.setup();
 		await user.click(screen.getByRole("button", { name: "Generate personas" }));
-		await waitFor(() => expect(fns.generateBatchFn).toHaveBeenCalledWith({ data: { count: 6 } }));
+		await waitFor(() =>
+			expect(fns.generateBatchFn).toHaveBeenCalledWith({ data: { count: 6, minutes: 15 } }),
+		);
 		expect(await screen.findByText(/Paciente Ana/)).toBeTruthy();
 		expect(screen.getByText(/under_review/)).toBeTruthy();
 	});
@@ -129,6 +135,26 @@ describe("EvalValidatorPage", () => {
 		await waitFor(() => expect(fns.generateBatchFn).toHaveBeenCalled());
 	});
 
+	it("renders synthetic entity links and the script source badge", async () => {
+		const linked: PersonaCard = {
+			...persona,
+			id: 13,
+			patientId: null,
+			doctorId: 7,
+			scriptMode: "template",
+		};
+		fns.listPersonasFn.mockResolvedValue({ ok: true, data: [persona, linked] });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		await screen.findByText(/doctor #7/);
+		// patientId null renders the "—" placeholder; both script
+		// source badges show.
+		expect(screen.getByText(/patient #—/)).toBeTruthy();
+		expect(screen.getByText("llm")).toBeTruthy();
+		expect(screen.getByText("template")).toBeTruthy();
+	});
+
 	it("approves a persona with feedback", async () => {
 		fns.listPersonasFn.mockResolvedValue({ ok: true, data: [persona] });
 		render(<EvalValidatorPage batches={[batch]} locale="en" />);
@@ -143,7 +169,7 @@ describe("EvalValidatorPage", () => {
 		);
 	});
 
-	it("rejects a persona and renders feedback + long-turn ellipsis", async () => {
+	it("rejects a persona and renders feedback + all turns", async () => {
 		const longTurns = Array.from({ length: 14 }, (_, i) => ({
 			speaker: "doctor",
 			text: `turn ${i}`,
@@ -160,13 +186,42 @@ describe("EvalValidatorPage", () => {
 		const user = userEvent.setup();
 		await user.click(screen.getByRole("button", { name: "View" }));
 		await screen.findByText(/Paciente Ana/);
-		expect(screen.getByText(/2 more turns/)).toBeTruthy();
+		// The full script renders — no truncation, the reviewer reads
+		// every turn before approving.
+		expect(screen.getByText(/turn 13/)).toBeTruthy();
 		expect(screen.getByText(/unrealistic script/)).toBeTruthy();
 		await user.click(screen.getByRole("button", { name: "Reject" }));
 		await waitFor(() =>
 			expect(fns.reviewPersonaFn).toHaveBeenCalledWith({
 				data: { personaId: 12, decision: "rejected", feedback: undefined },
 			}),
+		);
+	});
+
+	it("surfaces the error message when a review is denied", async () => {
+		fns.listPersonasFn.mockResolvedValue({ ok: true, data: [persona] });
+		fns.reviewPersonaFn.mockResolvedValue({ ok: false as const });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		await screen.findByText(/Paciente Ana/);
+		await user.click(screen.getByRole("button", { name: "Approve" }));
+		expect(await screen.findByText(/Action failed/)).toBeTruthy();
+	});
+
+	it("clamps the minutes input and sends it to generate", async () => {
+		fns.listPersonasFn.mockResolvedValueOnce({ ok: true, data: [persona] });
+		render(<EvalValidatorPage batches={[]} locale="en" />);
+		const user = userEvent.setup();
+		const input = screen.getByLabelText(/Interview length/);
+		await user.clear(input);
+		// Clearing leaves the field empty → the onChange fallback
+		// clamps NaN/0 back to 1.
+		await waitFor(() => expect((input as HTMLInputElement).value).toBe("1"));
+		await user.type(input, "5");
+		await user.click(screen.getByRole("button", { name: "Generate personas" }));
+		await waitFor(() =>
+			expect(fns.generateBatchFn).toHaveBeenCalledWith({ data: { count: 6, minutes: 15 } }),
 		);
 	});
 
@@ -214,9 +269,107 @@ describe("EvalValidatorPage", () => {
 		expect(screen.getByText(/CER 0.045/)).toBeTruthy();
 		expect(screen.getByText(/enalapril/)).toBeTruthy();
 		expect(screen.getByText(/sub ·/)).toBeTruthy();
-		expect(screen.getByText(/formal: 0.10/)).toBeTruthy();
-		expect(screen.getByText(/colloquial: —/)).toBeTruthy();
+		expect(screen.getByText("formal")).toBeTruthy();
+		expect(screen.getByText(/0.10 \(/)).toBeTruthy();
+		expect(screen.getByText("colloquial")).toBeTruthy();
+		expect(screen.getByText(/— \(/)).toBeTruthy();
 		vi.useRealTimers();
+	});
+
+	it("renders stage metrics, corrected diff and completeness", async () => {
+		const staged: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.2,
+						cer: 0.1,
+						asrText: "enalapril xtra",
+						stages: ["asr", "cleanup", "anamnesis"],
+						cleanup: { edits: 2, corrected: "enalapril", werAfter: 0.0, cerAfter: 0.0 },
+						anamnesis: { engine: "acp", sections: 8, filled: 6, completeness: 0.75 },
+					}),
+				},
+			],
+			summary: { meanWer: 0.2, meanWerAfter: 0.0, meanCompleteness: 0.75 },
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: staged });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect((await screen.findAllByText(/cleanup/)).length).toBeGreaterThan(0);
+		expect(screen.getAllByText(/anamnesis/i).length).toBeGreaterThan(0);
+		expect(screen.getByText(/WER→0.000/)).toBeTruthy();
+		expect(screen.getByText(/acp — 6\/8 sections \(75%\)/)).toBeTruthy();
+		expect(screen.getByText(/2 edits — WER→/)).toBeTruthy();
+	});
+
+	it("renders stage errors and missing stage fields", async () => {
+		const errored: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.5,
+						asrText: "x",
+						cleanup: { error: "llm timeout" },
+						anamnesis: { error: "extract failed" },
+					}),
+				},
+			],
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: errored });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/llm timeout/)).toBeTruthy();
+		expect(screen.getByText(/extract failed/)).toBeTruthy();
+	});
+
+	it("renders anamnesis defaults when fields are absent", async () => {
+		const bare: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.5,
+						asrText: "x",
+						cleanup: {},
+						anamnesis: {},
+					}),
+				},
+			],
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: bare });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/0 edits — WER→—/)).toBeTruthy();
+		expect(screen.getByText(/— — 0\/8 sections \(0%\)/)).toBeTruthy();
+	});
+
+	it("deletes a run through the confirm flow", async () => {
+		fns.progressFn.mockResolvedValue({ ok: true, data: { ...runProgress, status: "done" } });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await user.click(await screen.findByRole("button", { name: "Delete run" }));
+		await user.click(screen.getByRole("button", { name: /Confirm/ }));
+		expect(fns.deleteRunFn).toHaveBeenCalledWith({ data: { runId: 42 } });
+	});
+
+	it("surfaces an error when deleteRunFn is denied", async () => {
+		fns.deleteRunFn.mockResolvedValue({ ok: false });
+		fns.progressFn.mockResolvedValue({ ok: true, data: { ...runProgress, status: "done" } });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await user.click(await screen.findByRole("button", { name: "Delete run" }));
+		await user.click(screen.getByRole("button", { name: /Confirm/ }));
+		expect(await screen.findByText(/failed|error|denied/i)).toBeTruthy();
 	});
 
 	it("stops polling when the run row is gone", async () => {
@@ -229,6 +382,102 @@ describe("EvalValidatorPage", () => {
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(fns.progressFn).toHaveBeenCalledTimes(1);
 		vi.useRealTimers();
+	});
+
+	it("renders stage metrics, corrected diff and completeness", async () => {
+		const staged: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.2,
+						cer: 0.1,
+						asrText: "enalapril xtra",
+						stages: ["asr", "cleanup", "anamnesis"],
+						cleanup: { edits: 2, corrected: "enalapril", werAfter: 0.0, cerAfter: 0.0 },
+						anamnesis: { engine: "acp", sections: 8, filled: 6, completeness: 0.75 },
+					}),
+				},
+			],
+			summary: { meanWer: 0.2, meanWerAfter: 0.0, meanCompleteness: 0.75 },
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: staged });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect((await screen.findAllByText(/cleanup/)).length).toBeGreaterThan(0);
+		expect(screen.getAllByText(/anamnesis/i).length).toBeGreaterThan(0);
+		expect(screen.getByText(/WER→0.000/)).toBeTruthy();
+		expect(screen.getByText(/acp — 6\/8 sections \(75%\)/)).toBeTruthy();
+		expect(screen.getByText(/2 edits — WER→/)).toBeTruthy();
+	});
+
+	it("renders stage errors and missing stage fields", async () => {
+		const errored: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.5,
+						asrText: "x",
+						cleanup: { error: "llm timeout" },
+						anamnesis: { error: "extract failed" },
+					}),
+				},
+			],
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: errored });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/llm timeout/)).toBeTruthy();
+		expect(screen.getByText(/extract failed/)).toBeTruthy();
+	});
+
+	it("renders anamnesis defaults when fields are absent", async () => {
+		const bare: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.5,
+						asrText: "x",
+						cleanup: {},
+						anamnesis: {},
+					}),
+				},
+			],
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: bare });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/0 edits — WER→—/)).toBeTruthy();
+		expect(screen.getByText(/— — 0\/8 sections \(0%\)/)).toBeTruthy();
+	});
+
+	it("deletes a run through the confirm flow", async () => {
+		fns.progressFn.mockResolvedValue({ ok: true, data: { ...runProgress, status: "done" } });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await user.click(await screen.findByRole("button", { name: "Delete run" }));
+		await user.click(screen.getByRole("button", { name: /Confirm/ }));
+		expect(fns.deleteRunFn).toHaveBeenCalledWith({ data: { runId: 42 } });
+	});
+
+	it("surfaces an error when deleteRunFn is denied", async () => {
+		fns.deleteRunFn.mockResolvedValue({ ok: false });
+		fns.progressFn.mockResolvedValue({ ok: true, data: { ...runProgress, status: "done" } });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await user.click(await screen.findByRole("button", { name: "Delete run" }));
+		await user.click(screen.getByRole("button", { name: /Confirm/ }));
+		expect(await screen.findByText(/failed|error|denied/i)).toBeTruthy();
 	});
 
 	it("does not touch state after unmount", async () => {
@@ -255,6 +504,102 @@ describe("EvalValidatorPage", () => {
 		await vi.waitFor(() => expect(fns.progressFn).toHaveBeenCalledTimes(2));
 		expect(await screen.findByText(/Run #42 — done/)).toBeTruthy();
 		vi.useRealTimers();
+	});
+
+	it("renders stage metrics, corrected diff and completeness", async () => {
+		const staged: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.2,
+						cer: 0.1,
+						asrText: "enalapril xtra",
+						stages: ["asr", "cleanup", "anamnesis"],
+						cleanup: { edits: 2, corrected: "enalapril", werAfter: 0.0, cerAfter: 0.0 },
+						anamnesis: { engine: "acp", sections: 8, filled: 6, completeness: 0.75 },
+					}),
+				},
+			],
+			summary: { meanWer: 0.2, meanWerAfter: 0.0, meanCompleteness: 0.75 },
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: staged });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect((await screen.findAllByText(/cleanup/)).length).toBeGreaterThan(0);
+		expect(screen.getAllByText(/anamnesis/i).length).toBeGreaterThan(0);
+		expect(screen.getByText(/WER→0.000/)).toBeTruthy();
+		expect(screen.getByText(/acp — 6\/8 sections \(75%\)/)).toBeTruthy();
+		expect(screen.getByText(/2 edits — WER→/)).toBeTruthy();
+	});
+
+	it("renders stage errors and missing stage fields", async () => {
+		const errored: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.5,
+						asrText: "x",
+						cleanup: { error: "llm timeout" },
+						anamnesis: { error: "extract failed" },
+					}),
+				},
+			],
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: errored });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/llm timeout/)).toBeTruthy();
+		expect(screen.getByText(/extract failed/)).toBeTruthy();
+	});
+
+	it("renders anamnesis defaults when fields are absent", async () => {
+		const bare: RunProgress = {
+			...runProgress,
+			samples: [
+				{
+					...runSample,
+					result: JSON.stringify({
+						wer: 0.5,
+						asrText: "x",
+						cleanup: {},
+						anamnesis: {},
+					}),
+				},
+			],
+		};
+		fns.progressFn.mockResolvedValue({ ok: true, data: bare });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/0 edits — WER→—/)).toBeTruthy();
+		expect(screen.getByText(/— — 0\/8 sections \(0%\)/)).toBeTruthy();
+	});
+
+	it("deletes a run through the confirm flow", async () => {
+		fns.progressFn.mockResolvedValue({ ok: true, data: { ...runProgress, status: "done" } });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await user.click(await screen.findByRole("button", { name: "Delete run" }));
+		await user.click(screen.getByRole("button", { name: /Confirm/ }));
+		expect(fns.deleteRunFn).toHaveBeenCalledWith({ data: { runId: 42 } });
+	});
+
+	it("surfaces an error when deleteRunFn is denied", async () => {
+		fns.deleteRunFn.mockResolvedValue({ ok: false });
+		fns.progressFn.mockResolvedValue({ ok: true, data: { ...runProgress, status: "done" } });
+		render(<EvalValidatorPage batches={[batch]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await user.click(await screen.findByRole("button", { name: "Delete run" }));
+		await user.click(screen.getByRole("button", { name: /Confirm/ }));
+		expect(await screen.findByText(/failed|error|denied/i)).toBeTruthy();
 	});
 
 	it("passes typed feedback to the review fn", async () => {

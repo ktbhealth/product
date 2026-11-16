@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import type * as Layer from "effect/Layer";
 
 import type { PortError, TaskEnvelope } from "@ktb/eval-core";
 
@@ -175,6 +176,9 @@ export interface EvalRunnerItem {
 	readonly script: string;
 	readonly turns?: readonly { readonly speaker: string; readonly text: string }[];
 	readonly voices?: Readonly<Record<string, string>>;
+	/** Demographic context handed to the anamnesis stage — mirrors the
+	 * `patient` field the production extractor accepts; never evidence. */
+	readonly patient?: { readonly sex?: string; readonly age?: number };
 }
 
 export interface EvalRunnerOutcome {
@@ -217,3 +221,56 @@ export class EvalArtifacts extends Context.Service<
 		readonly getAudio: (uri: string) => Effect.Effect<Uint8Array | null, PortError>;
 	}
 >()("@ktb/eval-consultation/EvalArtifacts") {}
+
+/** Provider descriptor for a generative endpoint — the rows the eval
+ * lab's endpoint CRUD persists. `kind` selects the wire protocol:
+ * `acp` = JSON-RPC agent transport (Claude Code, Gemini CLI, custom
+ * agents); `openai` = OpenAI-compatible chat completions (Ollama, LM
+ * Studio, GPT, Gemini's compat endpoint). `secretRef` is the NAME of
+ * an env var holding the API key — keys never live in tables. */
+export interface LlmEndpointDescriptor {
+	readonly kind: "acp" | "openai";
+	readonly baseUrl: string;
+	readonly model?: string;
+	readonly sessionId?: string;
+	readonly secretRef?: string;
+	/** ACP transport — `ws` is the HTTP/WebSocket path adapters in this
+	 * runtime support; `child`/`ssh` require a Node-runtime driver and
+	 * resolve to a PortError under workerd. Absent = `ws`. */
+	readonly transport?: "ws" | "child" | "ssh";
+	/** Raw API key resolved server-side (e.g. from the credentials
+	 * store) — never persisted on the endpoint row. */
+	readonly apiKey?: string;
+	readonly timeoutMs?: number;
+}
+
+/** A starter endpoint for the eval lab's endpoint form — surfaced by
+ * the bound adapter so provider endpoints stay in the exempt edge
+ * (arch-policy bans provider literals in port/domain code). `label`
+ * is the UI-facing chip name; the rest pre-fills the form fields. */
+export interface LlmEndpointPreset {
+	readonly label: string;
+	readonly kind: LlmEndpointDescriptor["kind"];
+	readonly baseUrl: string;
+	readonly model?: string;
+}
+
+/** Factory port — resolves an endpoint descriptor into a bound
+ * LlmPort layer on demand. Lives next to the other eval ports so
+ * plugins (eval lab) can build per-endpoint generators without
+ * importing adapters: the composition root binds one factory and the
+ * plugin asks it for concrete ports. `test` is a liveness ping used
+ * by the endpoint CRUD's "test connection" action. `presets` is the
+ * adapter's list of provider starter endpoints the endpoint dialog
+ * offers as one-click chips — optional since adapters may know no
+ * hosted providers. */
+export class LlmFactory extends Context.Service<
+	LlmFactory,
+	{
+		readonly resolve: (
+			descriptor: LlmEndpointDescriptor,
+		) => Effect.Effect<Layer.Layer<LlmPort>, PortError>;
+		readonly test: (descriptor: LlmEndpointDescriptor) => Effect.Effect<void, PortError>;
+		readonly presets?: readonly LlmEndpointPreset[];
+	}
+>()("@ktb/eval-consultation/LlmFactory") {}

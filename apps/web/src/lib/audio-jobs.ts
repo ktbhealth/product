@@ -267,7 +267,7 @@ export type QueueMessageLike = JobMessageLike;
  * run comes from the normalized envelope (which folds in the payload's
  * tenantId for pre-envelope messages).
  */
-export const audioJobRegistration = (deps: AudioJobDeps): JobRegistration => ({
+const audioJobRegistration = (deps: AudioJobDeps): JobRegistration => ({
 	decodePayload: (payload) => decodeAudioJob(payload),
 	handle: (payload, envelope) => {
 		const job = payload as AudioJobMessage;

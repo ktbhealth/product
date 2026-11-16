@@ -1,6 +1,12 @@
 import { sql } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+// Relative imports on purpose: drizzle-kit loads the composed schema
+// through a CJS resolver that cannot follow `@ktb/*` package
+// specifiers — same pattern as plugins/doctors/src/schema.ts.
+import { doctors } from "../../doctors/src/schema.ts";
+import { patients } from "../../patients/src/schema.ts";
+
 /**
  * Eval validator workflow tables (P-081): the in-app surface for
  * generating persona cohorts, reviewing them, and tracking eval runs.
@@ -52,6 +58,17 @@ export const evalPersona = sqliteTable(
 		turns: text().notNull(),
 		/** JSON: {doctor: alias, patient: alias} derived voices. */
 		voices: text().notNull(),
+		/** Synthetic entities created with the persona — the patient
+		 * row and the doctor row (backing a synthetic `user`). Set
+		 * null when the entities are removed on rejection. */
+		patientId: integer("patient_id").references(() => patients.id, {
+			onDelete: "set null",
+		}),
+		doctorId: integer("doctor_id").references(() => doctors.id, {
+			onDelete: "set null",
+		}),
+		/** llm | template — which script source rendered the dialogue. */
+		scriptMode: text("script_mode"),
 		/** under_review | approved | rejected */
 		state: text().notNull().default("under_review"),
 		/** Validator feedback — verbatim, feeds the regen round. */

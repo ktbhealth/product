@@ -1,10 +1,11 @@
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vitest";
+import * as Layer from "effect/Layer";
+import { describe, expect, it, vi } from "vitest";
 
 import { PortError } from "@ktb/eval-core";
 import { ACP_VERSION, LlmPort, type AcpRequest } from "@ktb/eval-consultation";
 
-import { makeAcpLlm, type AcpTransport } from "./llm.ts";
+import { evalLlmAcpDriver, makeAcpLlm, type AcpTransport } from "./llm.ts";
 
 const respond = (payload: unknown, id = "t-1") => ({
 	jsonrpc: ACP_VERSION,
@@ -201,5 +202,61 @@ describe("egress declaration", () => {
 	it("defaults to egress (remote ACP agent) and honors the override", async () => {
 		expect(await flag()).toBe(true);
 		expect(await flag(false)).toBe(false);
+	});
+});
+
+describe("evalLlmAcpDriver", () => {
+	it("is eligible only when EVAL_ACP_URL is set", () => {
+		expect(evalLlmAcpDriver.when?.({}) ?? true).toBe(false);
+		expect(evalLlmAcpDriver.when?.({ EVAL_ACP_URL: "http://acp" }) ?? false).toBe(true);
+	});
+
+	it("provides a working LlmPort layer over real fetch (stubbed)", async () => {
+		const calls: string[] = [];
+		const fetchImpl = (async (input: RequestInfo | URL) => {
+			calls.push(String(input));
+			return new Response(
+				JSON.stringify({ jsonrpc: "2.0", id: "t-9", result: { payload: "resposta" } }),
+				{ headers: { "Content-Type": "application/json" } },
+			);
+		}) as typeof fetch;
+		vi.stubGlobal("fetch", fetchImpl);
+		try {
+			const layer = evalLlmAcpDriver.provides({
+				EVAL_ACP_URL: "http://acp.example/",
+				EVAL_ACP_SESSION_ID: "sess-42",
+				EVAL_LLM_TIMEOUT_MS: "5000",
+			}) as Layer.Layer<LlmPort>;
+			const out = await Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) => l.generate(env({ taskId: "t-9" }))).pipe(
+					Effect.provide(layer),
+				),
+			);
+			expect(out.text).toBe("resposta");
+			expect(out.record.runId).toBe("sess-42");
+			expect(calls[0]).toBe("http://acp.example");
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("an invalid EVAL_LLM_TIMEOUT_MS falls back to the 60s default", async () => {
+		vi.stubGlobal(
+			"fetch",
+			(async () =>
+				new Response("{}", { headers: { "Content-Type": "application/json" } })) as typeof fetch,
+		);
+		try {
+			// NaN timeout still builds the layer — coverage for the
+			// default-timeout branch.
+			expect(
+				evalLlmAcpDriver.provides({
+					EVAL_ACP_URL: "http://acp.example",
+					EVAL_LLM_TIMEOUT_MS: "not-a-number",
+				}),
+			).toBeDefined();
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

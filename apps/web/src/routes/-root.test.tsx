@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
 	user: null as { name?: string; email?: string; patientOnly?: boolean } | null,
 	pluginStates: null as { enabled: string[] } | null,
 	enabledIds: [] as string[],
+	theme: null as unknown,
 	chromeExtra: [] as {
 		id: string;
 		region: string;
@@ -25,6 +26,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 			useLoaderData: () => ({
 				user: state.user,
 				pluginStates: state.pluginStates ?? { enabled: state.enabledIds },
+				theme: state.theme,
 			}),
 		}),
 		useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) => {
@@ -62,20 +64,32 @@ vi.mock("#/lib/fns.ts", () => ({
 	sessionFn: vi.fn(async () => null),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] })),
 }));
+// Theme resolution is a server fn — stub it so the loader stays pure.
+// The built-in KTB default stands in for "a theme resolved" so the
+// theme.brand chrome contribution has brand data to render.
+vi.mock("@ktb/theme/fns", async () => {
+	const { KTB_DEFAULT_THEME } = await import("@ktb/theme/default-theme");
+	return { themeScopeFn: vi.fn(async () => KTB_DEFAULT_THEME) };
+});
 vi.mock("../styles.css?url", () => ({ default: "/styles.css" }));
 
 import { plugins } from "#/plugins.ts";
+import { KTB_DEFAULT_THEME } from "@ktb/theme/default-theme";
 import { Route } from "./__root.tsx";
 
 // Populated after the registry import resolves — the react-router mock
 // reads it lazily inside useLoaderData (importing #/plugins.ts inside
 // the mock factory would deadlock on the circular client manifests).
 state.enabledIds = plugins.map((p) => p.id);
+state.theme = KTB_DEFAULT_THEME;
 
 type RootOpts = {
 	shellComponent: (p: { children: ReactNode }) => ReactElement;
 	loader: () => Promise<unknown>;
-	head: () => { meta: unknown[]; links: unknown[] };
+	head: (ctx?: { loaderData?: { theme?: unknown }; match?: { pathname?: string } }) => {
+		meta: unknown[];
+		links: unknown[];
+	};
 	errorComponent: (p: { error: Error; reset: () => void }) => ReactElement;
 	notFoundComponent: () => ReactElement;
 };
@@ -88,6 +102,7 @@ afterEach(() => {
 	state.pathname = "/";
 	state.user = null;
 	state.pluginStates = null;
+	state.theme = KTB_DEFAULT_THEME;
 	state.chromeExtra = [];
 });
 
@@ -96,6 +111,7 @@ describe("root route", () => {
 		await expect(opts.loader()).resolves.toEqual({
 			user: null,
 			pluginStates: { enabled: [] },
+			theme: KTB_DEFAULT_THEME,
 		});
 		const head = opts.head();
 		expect(head.links).toEqual([{ rel: "stylesheet", href: "/styles.css" }]);
@@ -106,6 +122,26 @@ describe("root route", () => {
 		});
 		expect(head.meta).toContainEqual({ property: "og:type", content: "website" });
 		expect(renderToStaticMarkup(opts.notFoundComponent())).toContain("/consultations");
+	});
+
+	it("projects theme head tags on app paths and skips them on console paths", () => {
+		const themed = opts.head({
+			loaderData: { theme: KTB_DEFAULT_THEME },
+			match: { pathname: "/" },
+		});
+		expect(themed.meta).toContainEqual({ title: "KTB Health" });
+		expect(themed.links).toContainEqual({ rel: "icon", href: "/brand/logo-mark.png" });
+		// Console shells resolve their own instance theme — the app head
+		// emits only the stylesheet there.
+		const consoleHead = opts.head({
+			loaderData: { theme: KTB_DEFAULT_THEME },
+			match: { pathname: "/platform" },
+		});
+		expect(consoleHead.links).toEqual([{ rel: "stylesheet", href: "/styles.css" }]);
+		// Null/absent theme → same minimal head.
+		expect(opts.head({ loaderData: { theme: null }, match: { pathname: "/" } }).links).toEqual([
+			{ rel: "stylesheet", href: "/styles.css" },
+		]);
 	});
 
 	it("renders a friendly error page without the stack trace", () => {
@@ -129,7 +165,7 @@ describe("root document", () => {
 
 	it("renders the plugin-owned chrome regions from the real registry", () => {
 		const html = render();
-		// site.chrome → app.header.brand
+		// theme.brand → app.header.brand (PL-006: brand lives in theme data)
 		expect(html).toContain("KTB Health");
 		expect(html).toContain('href="/"');
 		// patients/consultations chrome → app.header.nav
@@ -262,6 +298,12 @@ describe("root document", () => {
 		expect(html).toContain("Resources");
 		expect(html).toContain("Docs");
 		expect(html).toContain("About");
+	});
+
+	it("shows the theme preview banner while a preview theme resolves", () => {
+		state.theme = { ...KTB_DEFAULT_THEME, preview: true };
+		const html = render();
+		expect(html).toContain("Theme preview active");
 	});
 
 	it("stays silent outside dev", async () => {
