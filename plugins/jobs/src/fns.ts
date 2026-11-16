@@ -61,7 +61,10 @@ export const retryAudioJobFn = createServerFn({ method: "POST" })
 					userId: record.userId ?? "",
 					tenantId: record.tenantId,
 				},
-				{ tenantId: record.tenantId, payloadRef: `consultation:${data.consultationId}` },
+				{
+					tenantId: record.tenantId,
+					payloadRef: `consultation:${data.consultationId}`,
+				},
 			);
 		} catch {
 			// Nothing was enqueued — the row keeps its honest failed/stored

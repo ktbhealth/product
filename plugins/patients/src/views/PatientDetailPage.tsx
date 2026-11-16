@@ -58,9 +58,10 @@ function sections(
 	p: Patient,
 	t: PatientMessages,
 	locale: string,
+	i18n?: PageI18nSlice,
 ): Array<readonly [title: string, rows: Row[]]> {
 	const birth = p.birthDate
-		? `${formatBirthDate(p.birthDate)} (${ageLabel(p.birthDate, locale)})`
+		? `${formatBirthDate(p.birthDate)} (${ageLabel(p.birthDate, locale, undefined, i18n)})`
 		: null;
 	const f = t.fields;
 	return [
@@ -150,7 +151,7 @@ export function PatientDetailPage({
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [deleting, setDeleting] = useState(false);
 	const id = String(patient.id);
-	const filled = sections(patient, t, locale)
+	const filled = sections(patient, t, locale, i18n)
 		.map(([title, rows]) => [title, rows.filter(([, v]) => v)] as const)
 		.filter(([, rows]) => rows.length > 0);
 
@@ -175,7 +176,7 @@ export function PatientDetailPage({
 					<div>
 						<h1 className="text-3xl font-bold tracking-tight">{displayName(patient)}</h1>
 						<p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-							{demographics(patient, locale) || t.common.noDemographics}
+							{demographics(patient, locale, undefined, i18n) || t.common.noDemographics}
 							{!patient.active ? <Badge variant="outline">{t.common.inactive}</Badge> : null}
 						</p>
 					</div>

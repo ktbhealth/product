@@ -141,7 +141,7 @@ const rootApi = getRouteApi("__root__");
 
 function PlatformLayout() {
 	const pathname = useLocation({ select: (l) => l.pathname });
-	const { user, pluginStates } = rootApi.useLoaderData();
+	const { user, pluginStates, i18n } = rootApi.useLoaderData();
 	const { audioJobs, notifications, audiences, theme, deniedPaths } = Route.useLoaderData();
 	const locale = getLocale();
 	// Enabled-state filter (P-058): disabled plugins contribute no
@@ -175,7 +175,13 @@ function PlatformLayout() {
 		? collectChrome(visiblePlugins, "portal.header.actions", pathname, "platform").flatMap(
 				(entry) =>
 					entry.content.kind === "headerAction"
-						? [createElement(entry.content.component, { key: entry.content.id, locale })]
+						? [
+								createElement(entry.content.component, {
+									key: entry.content.id,
+									locale,
+									i18n,
+								}),
+							]
 						: [],
 			)
 		: undefined;
@@ -193,6 +199,7 @@ function PlatformLayout() {
 			window.location.assign("/");
 		},
 		theme,
+		i18n,
 	);
 	const brandComponents = collectChrome(
 		visiblePlugins,
@@ -240,10 +247,15 @@ function PlatformLayout() {
 						items={items}
 						pathname={pathname}
 						locale={locale}
+						i18n={i18n}
 						userEmail={user?.email}
 						headerActions={headerActions}
 						brand={brand}
-						banner={theme?.preview === true ? <ThemePreviewBanner locale={locale} /> : undefined}
+						banner={
+							theme?.preview === true ? (
+								<ThemePreviewBanner locale={locale} i18n={i18n} />
+							) : undefined
+						}
 						themeCss={themeCss}
 						portals={switchablePortals}
 						onSignOut={async () => {

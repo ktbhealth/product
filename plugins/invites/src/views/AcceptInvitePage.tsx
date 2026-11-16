@@ -1,5 +1,8 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { authClient } from "@ktb/auth-better/client";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
 import {
@@ -14,7 +17,7 @@ import { Label } from "@ktbhealth/ui/components/label";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
 
-import { inviteMessages, type InviteFailure } from "../i18n.ts";
+import { inviteMessages, type InviteFailure, I18N_NAMESPACE } from "../i18n.ts";
 import { INVITE_DESTINATIONS } from "../kinds.ts";
 import type { InviteKind } from "../schema.ts";
 
@@ -46,15 +49,19 @@ export interface AcceptInviteApi {
  */
 export function AcceptInvitePage({
 	invite,
+	i18n,
+
 	locale,
 	api,
 }: {
 	/** Null when the link is unknown, already used or expired. */
 	readonly invite: AcceptInviteInvite | null;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	readonly locale: string;
 	readonly api: AcceptInviteApi;
 }) {
-	const t = inviteMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, inviteMessages(locale));
 	const [name, setName] = useState("");
 	const [password, setPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");

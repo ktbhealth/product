@@ -116,7 +116,7 @@ export function PatientFormPage({
 	const set = (key: TextField) => (value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 	const errorFor = (key: TextField) => {
 		const code = errors[key];
-		return code ? errorMessage(code, locale) : undefined;
+		return code ? errorMessage(code, locale, i18n) : undefined;
 	};
 
 	const text = (key: TextField, label: string, extra: Partial<TextInputProps> = {}) => (
@@ -185,8 +185,15 @@ export function PatientFormPage({
 
 			<div className="mt-6 space-y-6">
 				<Section legend={t.sections.identification}>
-					{text("name", f.name, { required: true, autoComplete: "name", wide: true })}
-					{text("socialName", f.socialName, { description: f.socialNameHint, wide: true })}
+					{text("name", f.name, {
+						required: true,
+						autoComplete: "name",
+						wide: true,
+					})}
+					{text("socialName", f.socialName, {
+						description: f.socialNameHint,
+						wide: true,
+					})}
 					{select(
 						"gender",
 						f.gender,
@@ -249,8 +256,14 @@ export function PatientFormPage({
 				</Section>
 
 				<Section legend={t.sections.identifiers}>
-					{text("cpf", f.cpf, { inputMode: "numeric", placeholder: "000.000.000-00" })}
-					{text("cns", f.cns, { inputMode: "numeric", placeholder: f.cnsPlaceholder })}
+					{text("cpf", f.cpf, {
+						inputMode: "numeric",
+						placeholder: "000.000.000-00",
+					})}
+					{text("cns", f.cns, {
+						inputMode: "numeric",
+						placeholder: f.cnsPlaceholder,
+					})}
 					{text("passport", f.passport)}
 				</Section>
 
@@ -270,7 +283,10 @@ export function PatientFormPage({
 						autoComplete: "postal-code",
 						inputMode: isBrazil ? "numeric" : undefined,
 					})}
-					{text("addressLine", f.street, { autoComplete: "address-line1", wide: true })}
+					{text("addressLine", f.street, {
+						autoComplete: "address-line1",
+						wide: true,
+					})}
 					{text("addressNumber", f.number)}
 					{text("addressComplement", f.complement)}
 					{text("district", f.district)}
@@ -281,7 +297,9 @@ export function PatientFormPage({
 								f.state,
 								BR_STATES.map((s) => [s, s]),
 							)
-						: text("state", f.stateProvince, { autoComplete: "address-level1" })}
+						: text("state", f.stateProvince, {
+								autoComplete: "address-level1",
+							})}
 				</Section>
 
 				<Section legend={t.sections.family}>

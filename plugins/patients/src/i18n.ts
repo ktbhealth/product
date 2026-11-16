@@ -182,7 +182,12 @@ export interface PatientMessages {
 }
 
 const en: PatientMessages = {
-	gender: { female: "Female", male: "Male", other: "Other", unknown: "Unknown" },
+	gender: {
+		female: "Female",
+		male: "Male",
+		other: "Other",
+		unknown: "Unknown",
+	},
 	maritalStatus: {
 		S: "Never married",
 		M: "Married",
@@ -362,7 +367,12 @@ const en: PatientMessages = {
 };
 
 const ptBR: PatientMessages = {
-	gender: { female: "Feminino", male: "Masculino", other: "Outro", unknown: "Desconhecido" },
+	gender: {
+		female: "Feminino",
+		male: "Masculino",
+		other: "Outro",
+		unknown: "Desconhecido",
+	},
 	maritalStatus: {
 		S: "Solteiro(a)",
 		M: "Casado(a)",
@@ -542,7 +552,12 @@ const ptBR: PatientMessages = {
 };
 
 const es: PatientMessages = {
-	gender: { female: "Femenino", male: "Masculino", other: "Otro", unknown: "Desconocido" },
+	gender: {
+		female: "Femenino",
+		male: "Masculino",
+		other: "Otro",
+		unknown: "Desconocido",
+	},
 	maritalStatus: {
 		S: "Soltero(a)",
 		M: "Casado(a)",
@@ -724,7 +739,11 @@ const es: PatientMessages = {
 	},
 };
 
-const CATALOGS: Record<PatientLocale, PatientMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<PatientLocale, PatientMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isPatientLocale = (locale: string): locale is PatientLocale =>
 	(PATIENT_LOCALES as readonly string[]).includes(locale);

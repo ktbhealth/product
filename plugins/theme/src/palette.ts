@@ -517,7 +517,12 @@ export const CONTRAST_PAIRS: readonly {
 	{ name: "foreground", fg: "--foreground", bg: "--background", min: 4.5 },
 	{ name: "card", fg: "--card-foreground", bg: "--card", min: 4.5 },
 	{ name: "popover", fg: "--popover-foreground", bg: "--popover", min: 4.5 },
-	{ name: "secondary", fg: "--secondary-foreground", bg: "--secondary", min: 4.5 },
+	{
+		name: "secondary",
+		fg: "--secondary-foreground",
+		bg: "--secondary",
+		min: 4.5,
+	},
 	{ name: "muted", fg: "--muted-foreground", bg: "--muted", min: 4.5 },
 	{ name: "accent", fg: "--accent-foreground", bg: "--accent", min: 4.5 },
 	{ name: "sidebar", fg: "--sidebar-foreground", bg: "--sidebar", min: 4.5 },

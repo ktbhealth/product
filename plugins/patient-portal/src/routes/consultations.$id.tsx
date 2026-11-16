@@ -1,4 +1,4 @@
-import { notFound, redirect } from "@tanstack/react-router";
+import { notFound, redirect, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -20,6 +20,7 @@ export const Route = createPluginFileRoute("patient-portal.routes")("/portal/con
 	},
 	component: function PortalConsultationRoute() {
 		const { consultation, locale } = Route.useLoaderData();
-		return <PortalConsultationPage consultation={consultation} locale={locale} />;
+		const { i18n } = getRouteApi("__root__").useLoaderData();
+		return <PortalConsultationPage consultation={consultation} i18n={i18n} locale={locale} />;
 	},
 });

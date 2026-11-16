@@ -252,7 +252,9 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	const loadTheme = async (id: number) => {
 		setBusy(`edit-${id}`);
 		try {
-			const theme = (await getThemeFn({ data: { id } })) as ResolvedTheme | null;
+			const theme = (await getThemeFn({
+				data: { id },
+			})) as ResolvedTheme | null;
 			if (theme === null) return;
 			setScope(theme.scope);
 			setScopeId(theme.scopeId);
@@ -347,7 +349,10 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 				form.set("family", assetFontFamily.trim() || assetFile.name.replace(/\.[^.]+$/, ""));
 				form.set("slot", assetFontSlot);
 			}
-			const res = await fetch("/api/theme/assets", { method: "POST", body: form });
+			const res = await fetch("/api/theme/assets", {
+				method: "POST",
+				body: form,
+			});
 			if (!res.ok) throw new Error(`upload failed: ${res.status}`);
 			setAssetFile(null);
 			setNotice(t.assetUploaded);

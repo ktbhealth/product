@@ -23,8 +23,13 @@ import { setServerRuntime } from "@ktb/server-fns";
 import { Route as JobsRoute } from "./api-routes/jobs.ts";
 
 const handlersOf = (r: unknown) =>
-	(r as { options: { server: { handlers: Record<string, (a: never) => Promise<Response>> } } })
-		.options.server.handlers;
+	(
+		r as {
+			options: {
+				server: { handlers: Record<string, (a: never) => Promise<Response>> };
+			};
+		}
+	).options.server.handlers;
 
 const get = () =>
 	handlersOf(JobsRoute).GET!({
@@ -106,7 +111,12 @@ beforeAll(() => {
 		run: (effect) => runtime.runPromise(effect),
 		runAs: (user, effect) =>
 			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
+				effect.pipe(
+					Effect.provideService(Principal, {
+						userId: user.id,
+						email: user.email,
+					}),
+				),
 			),
 		getLocale: () => "en",
 		audioTranscribeModel: "test-model",
@@ -192,7 +202,10 @@ describe("GET /api/jobs", () => {
 		const { userId } = signIn("admin");
 		useSession(signIn("admin"));
 		const id = (await createConsultation(db, { userId, source: "browser" }))!;
-		await attachAudioRecord(db, id, { audioKey: `audio/${userId}/${id}/a.webm`, size: 3 });
+		await attachAudioRecord(db, id, {
+			audioKey: `audio/${userId}/${id}/a.webm`,
+			size: 3,
+		});
 
 		const res = await get();
 		expect(res.status).toBe(200);

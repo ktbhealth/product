@@ -9,6 +9,12 @@ import type { AnamnesisSectionKey } from "@ktb/anamnesis/types";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const PORTAL_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "patient-portal";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): PortalMessages => portalMessages(locale);
 export type PortalLocale = (typeof PORTAL_LOCALES)[number];
 export const BASE_LOCALE: PortalLocale = "en";
 
@@ -167,7 +173,11 @@ const es: PortalMessages = {
 	},
 };
 
-const CATALOGS: Record<PortalLocale, PortalMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<PortalLocale, PortalMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isPortalLocale = (locale: string): locale is PortalLocale =>
 	(PORTAL_LOCALES as readonly string[]).includes(locale);

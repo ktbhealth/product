@@ -31,7 +31,10 @@ const BASE: PatientListItem = {
 	active: true,
 };
 
-const item = (over: Partial<PatientListItem>): PatientListItem => ({ ...BASE, ...over });
+const item = (over: Partial<PatientListItem>): PatientListItem => ({
+	...BASE,
+	...over,
+});
 
 import type { PatientDeleteApi } from "./DeletePatientDialog.tsx";
 
@@ -39,7 +42,9 @@ afterEach(cleanup);
 
 const actions = {
 	deleteApi: {
-		impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 0 })),
+		impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+			consultations: 0,
+		})),
 		remove: vi.fn<PatientDeleteApi["remove"]>(async () => ({ ok: true })),
 	},
 	onDeleted: vi.fn<() => void>(),
@@ -90,7 +95,16 @@ describe("PatientsPage", () => {
 			<PatientsPage
 				locale="pt-BR"
 				{...actions}
-				patients={[BASE, item({ id: 2, birthDate: null, gender: null, cpf: null, active: false })]}
+				patients={[
+					BASE,
+					item({
+						id: 2,
+						birthDate: null,
+						gender: null,
+						cpf: null,
+						active: false,
+					}),
+				]}
 			/>,
 		);
 		expect(screen.getByRole("heading", { name: "Pacientes" })).toBeTruthy();
@@ -122,7 +136,9 @@ describe("PatientsPage", () => {
 	it("offers edit, export and delete actions per patient", async () => {
 		const user = userEvent.setup();
 		const deleteApi = {
-			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 2 })),
+			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+				consultations: 2,
+			})),
 			remove: vi.fn<PatientDeleteApi["remove"]>(async () => ({ ok: true })),
 		};
 		const onDeleted = vi.fn<(id: number) => void>();
@@ -139,7 +155,9 @@ describe("PatientsPage", () => {
 			"/patients/2/edit",
 		);
 		await user.click(screen.getByRole("button", { name: "Actions for Joana Pereira" }));
-		const fhir = await screen.findByRole("menuitem", { name: "HL7 FHIR R4 (JSON)" });
+		const fhir = await screen.findByRole("menuitem", {
+			name: "HL7 FHIR R4 (JSON)",
+		});
 		expect(fhir.getAttribute("href")).toBe("/api/patients/2/export?format=fhir-r4");
 		expect(fhir.hasAttribute("download")).toBe(true);
 		expect(
@@ -173,7 +191,13 @@ describe("PatientsPage", () => {
 				{...actions}
 				patients={[
 					BASE,
-					item({ id: 2, name: "Ana Costa", socialName: "Nina", cpf: null, cns: "100000000000007" }),
+					item({
+						id: 2,
+						name: "Ana Costa",
+						socialName: "Nina",
+						cpf: null,
+						cns: "100000000000007",
+					}),
 				]}
 			/>,
 		);

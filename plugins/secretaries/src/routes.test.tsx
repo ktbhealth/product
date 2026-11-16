@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	sessionUserFn: vi.fn(),
 	listSecretariesFn: vi.fn(),
-	inviteSecretaryFn: vi.fn(async (_arg: { data: { email: string } }) => ({ ok: true })),
+	inviteSecretaryFn: vi.fn(async (_arg: { data: { email: string } }) => ({
+		ok: true,
+	})),
 	revokeSecretaryFn: vi.fn(async (_arg: { data: number }) => ({ ok: true })),
 	localeFn: vi.fn(async () => "pt-BR"),
 	emailEnabledFn: vi.fn(async () => true),
@@ -48,7 +50,9 @@ vi.mock("@tanstack/react-start", () => ({
 				return api;
 			},
 			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
+				h({
+					data: validate === undefined ? call?.data : validate(call?.data),
+				}),
 		};
 		return api;
 	},
@@ -57,6 +61,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {
 		...actual,
+		getRouteApi: () => ({ useLoaderData: () => ({ i18n: undefined }) }),
 		useRouter: () => ({ invalidate: mocks.invalidate }),
 		createFileRoute: () => (opts: Record<string, unknown>) => ({
 			options: opts,
@@ -99,7 +104,10 @@ describe("/secretaries", () => {
 	it("loads the secretaries with the locale", async () => {
 		const secretaries = [{ id: 1, email: "ana@ktb.test", status: "active" }];
 		mocks.listSecretariesFn.mockResolvedValue(secretaries);
-		await expect(options.loader()).resolves.toEqual({ secretaries, locale: "pt-BR" });
+		await expect(options.loader()).resolves.toEqual({
+			secretaries,
+			locale: "pt-BR",
+		});
 	});
 
 	it("sends accounts without their own doctor profile to the chooser", async () => {
@@ -113,12 +121,17 @@ describe("/secretaries", () => {
 		const props = mocks.props.current as {
 			secretaries: unknown[];
 			locale: string;
-			api: { invite(email: string): Promise<unknown>; revoke(id: number): Promise<unknown> };
+			api: {
+				invite(email: string): Promise<unknown>;
+				revoke(id: number): Promise<unknown>;
+			};
 			onChanged(): void;
 		};
 		expect(props).toMatchObject({ secretaries: [], locale: "en" });
 		await props.api.invite("new@ktb.test");
-		expect(mocks.inviteSecretaryFn).toHaveBeenCalledWith({ data: { email: "new@ktb.test" } });
+		expect(mocks.inviteSecretaryFn).toHaveBeenCalledWith({
+			data: { email: "new@ktb.test" },
+		});
 		await props.api.revoke(5);
 		expect(mocks.revokeSecretaryFn).toHaveBeenCalledWith({ data: 5 });
 		props.onChanged();
@@ -131,7 +144,9 @@ describe("/secretaries/login", () => {
 		LoginRoute as unknown as {
 			options: {
 				loader: () => Promise<unknown>;
-				head: (arg: { loaderData?: { locale: string } }) => { meta: { title: string }[] };
+				head: (arg: { loaderData?: { locale: string } }) => {
+					meta: { title: string }[];
+				};
 				component: () => ReactElement;
 			};
 		}
@@ -161,13 +176,18 @@ describe("/secretaries/login", () => {
 			api: { context(): Promise<unknown> };
 		};
 		expect(props).toMatchObject({ locale: "en", emailEnabled: true });
-		await expect(props.api.context()).resolves.toEqual({ profiles: [{ doctorId: 1 }] });
+		await expect(props.api.context()).resolves.toEqual({
+			profiles: [{ doctorId: 1 }],
+		});
 		expect(mocks.doctorContextFn).toHaveBeenCalledTimes(1);
 	});
 
 	it("falls back to defaults without loader data", () => {
 		mocks.loaderData.current = undefined;
 		render(createElement(loginOptions.component));
-		expect(mocks.props.current).toMatchObject({ locale: "en", emailEnabled: false });
+		expect(mocks.props.current).toMatchObject({
+			locale: "en",
+			emailEnabled: false,
+		});
 	});
 });

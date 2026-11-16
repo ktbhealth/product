@@ -169,7 +169,7 @@ function TelemetryInit() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	const { user, pluginStates, theme } = Route.useLoaderData();
+	const { user, pluginStates, theme, i18n } = Route.useLoaderData();
 	// A patient account (no doctor profile to act as) only ever sees the
 	// patient portal: no doctor navigation, nothing that creates or
 	// switches doctor profiles.
@@ -198,6 +198,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	const chromeProps: ChromeProps = {
 		user,
 		locale: getLocale(),
+		i18n,
 		plugins: visiblePlugins,
 		locales,
 		localeName,
@@ -282,7 +283,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 						children
 					) : (
 						<>
-							{theme?.preview === true ? <ThemePreviewBanner locale={getLocale()} /> : null}
+							{theme?.preview === true ? (
+								<ThemePreviewBanner locale={getLocale()} i18n={i18n} />
+							) : null}
 							<header className="sticky top-0 z-40 border-b border-border bg-background">
 								<nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
 									{brand}

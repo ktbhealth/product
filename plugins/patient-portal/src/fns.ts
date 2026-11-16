@@ -78,7 +78,10 @@ export const portalConsultationFn = createServerFn({ method: "GET" })
 			user,
 			Effect.gen(function* () {
 				const portal = yield* PatientPortal;
-				return { status: "ok" as const, consultation: yield* portal.consultation(id) };
+				return {
+					status: "ok" as const,
+					consultation: yield* portal.consultation(id),
+				};
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ status: "missing" as const }))),
 		);
 	});

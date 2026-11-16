@@ -45,7 +45,13 @@ describe("PagesAdminPage", () => {
 			<PagesAdminPage
 				pages={[
 					row({}),
-					row({ id: 2, path: "/draft", title: "Secret", published: false, showInNav: false }),
+					row({
+						id: 2,
+						path: "/draft",
+						title: "Secret",
+						published: false,
+						showInNav: false,
+					}),
 				]}
 				locale="en"
 			/>,
@@ -109,7 +115,11 @@ describe("PagesAdminPage", () => {
 		await user.click(screen.getByRole("button", { name: "Save" }));
 		await waitFor(() =>
 			expect(fns.updatePageFn).toHaveBeenCalledWith({
-				data: expect.objectContaining({ id: 1, title: "Renamed", path: "/about" }),
+				data: expect.objectContaining({
+					id: 1,
+					title: "Renamed",
+					path: "/about",
+				}),
 			}),
 		);
 	});

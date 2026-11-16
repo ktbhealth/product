@@ -29,13 +29,13 @@ const rootApi = getRouteApi("__root__");
 function Landing() {
 	// Enabled-state filter (P-058): the first ENABLED landing plugin in
 	// topo order wins; a disabled one is skipped like it never existed.
-	const { pluginStates } = rootApi.useLoaderData();
+	const { pluginStates, i18n } = rootApi.useLoaderData();
 	const Page = enabledPlugins(plugins, enabledIdSet(pluginStates)).find(
 		(p) => p.landing !== undefined,
 	)?.landing?.page;
-	// `locale` is injected by the host — plugins cannot import the host's
-	// i18n runtime (see LandingPageProps in @ktb/kernel).
-	return Page === undefined ? <MissingLanding /> : <Page locale={getLocale()} />;
+	// `locale`/`i18n` are injected by the host — plugins cannot import
+	// the host's i18n runtime (see LandingPageProps in @ktb/kernel).
+	return Page === undefined ? <MissingLanding /> : <Page locale={getLocale()} i18n={i18n} />;
 }
 
 export const Route = createFileRoute("/")({

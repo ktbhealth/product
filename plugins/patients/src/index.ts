@@ -72,7 +72,10 @@ async function withIdentifiers<R extends { readonly id: number }>(
 		identifiers[document.type] = document.number;
 		byPatient.set(document.patientId, identifiers);
 	}
-	return rows.map((row) => ({ ...row, ...(byPatient.get(row.id) ?? noIdentifiers()) }));
+	return rows.map((row) => ({
+		...row,
+		...(byPatient.get(row.id) ?? noIdentifiers()),
+	}));
 }
 
 /** Split validated record fields into the `patients` columns and the
@@ -80,16 +83,28 @@ async function withIdentifiers<R extends { readonly id: number }>(
 const splitFields = (fields: PatientFields) => {
 	const row: Partial<PatientFields> = { ...fields };
 	const identifiers = noIdentifiers();
-	const documents: { type: PatientDocumentType; country: string | null; number: string }[] = [];
+	const documents: {
+		type: PatientDocumentType;
+		country: string | null;
+		number: string;
+	}[] = [];
 	for (const type of PATIENT_DOCUMENT_KEYS) {
 		const number = fields[type];
 		delete row[type];
 		identifiers[type] = number;
 		if (number !== null) {
-			documents.push({ type, country: PATIENT_DOCUMENT_TYPES[type].country, number });
+			documents.push({
+				type,
+				country: PATIENT_DOCUMENT_TYPES[type].country,
+				number,
+			});
 		}
 	}
-	return { row: row as Omit<PatientFields, PatientDocumentType>, identifiers, documents };
+	return {
+		row: row as Omit<PatientFields, PatientDocumentType>,
+		identifiers,
+		documents,
+	};
 };
 
 /** Admin-console row: patient plus the owning user's display fields. */
@@ -134,13 +149,21 @@ export async function getPatient(db: DbClient, id: number) {
  */
 export async function listAllPatients(db: DbClient): Promise<AdminPatientRow[]> {
 	const rows = await db
-		.select({ patient: patients, ownerEmail: users.email, ownerName: users.name })
+		.select({
+			patient: patients,
+			ownerEmail: users.email,
+			ownerName: users.name,
+		})
 		.from(patients)
 		.leftJoin(users, eq(patients.ownerId, users.id))
 		.orderBy(desc(patients.id));
 	return withIdentifiers(
 		db,
-		rows.map(({ patient, ownerEmail, ownerName }) => ({ ...patient, ownerEmail, ownerName })),
+		rows.map(({ patient, ownerEmail, ownerName }) => ({
+			...patient,
+			ownerEmail,
+			ownerName,
+		})),
 	);
 }
 
@@ -456,7 +479,11 @@ export const PatientsCommandsLive = Command.handlersOf(PatientsCommands, {
 			yield* events.dispatch([
 				// The row's tenant_id is authoritative — ambient Tenant may
 				// differ from the deleted row's owner scope.
-				PatientDeleted.make({ id, ownerId: row.ownerId, tenantId: row.tenantId }),
+				PatientDeleted.make({
+					id,
+					ownerId: row.ownerId,
+					tenantId: row.tenantId,
+				}),
 			]);
 		}),
 });

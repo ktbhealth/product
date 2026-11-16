@@ -1,4 +1,7 @@
 import { Link, useSearch } from "@tanstack/react-router";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import {
@@ -32,7 +35,7 @@ import {
 } from "lucide-react";
 
 import { docsHref, parseAudience, type Audience } from "./audience.ts";
-import { BASE_LOCALE, audienceMessages, type AudienceMessages } from "./i18n.ts";
+import { BASE_LOCALE, audienceMessages, type AudienceMessages, I18N_NAMESPACE } from "./i18n.ts";
 import { AudienceSelect } from "./select.tsx";
 
 function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
@@ -196,12 +199,15 @@ const audienceLabels = (t: AudienceMessages): Record<Audience, string> => ({
  * plugin (P-056). `locale` is injected by the host; the audience itself
  * comes from the `?audience=` search param of `/`.
  */
-export function AudienceLanding({ locale }: LandingPageProps) {
-	const t = audienceMessages(locale ?? BASE_LOCALE);
+export function AudienceLanding({ locale, i18n }: LandingPageProps) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, audienceMessages(locale ?? BASE_LOCALE));
 	// The host route validates `?audience=`; reading it loosely here
 	// keeps the plugin independent of the host's route-tree types.
 	const audience = parseAudience(
-		useSearch({ strict: false, select: (s: Record<string, unknown>) => s.audience }),
+		useSearch({
+			strict: false,
+			select: (s: Record<string, unknown>) => s.audience,
+		}),
 	);
 	const copy = audienceCopy(t)[audience];
 	const docs = docsHref(audience, locale ?? BASE_LOCALE);

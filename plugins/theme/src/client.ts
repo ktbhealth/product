@@ -36,7 +36,13 @@ export const themePanelPlugin = definePlugin({
 	id: "theme.panel",
 	requiredDeps: ["platform.panel", "theme.services"],
 	panel: {
-		pages: [{ id: "theme.admin", path: "/platform/theme", component: ThemePlatformPage }],
+		pages: [
+			{
+				id: "theme.admin",
+				path: "/platform/theme",
+				component: ThemePlatformPage,
+			},
+		],
 	},
 });
 
@@ -48,7 +54,11 @@ export const themeHeaderPlugin = definePlugin({
 		{
 			id: "theme.header-action",
 			region: "portal.header.actions",
-			content: { kind: "headerAction", id: "theme", component: ThemeHeaderAction },
+			content: {
+				kind: "headerAction",
+				id: "theme",
+				component: ThemeHeaderAction,
+			},
 		},
 	],
 });
@@ -62,7 +72,12 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "System" },
+				item: {
+					to: "/platform/theme",
+					label: "Theme",
+					icon: PaletteIcon,
+					group: "System",
+				},
 			},
 		},
 	],

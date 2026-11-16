@@ -32,7 +32,10 @@ const ScopeInput = Schema.Union([
 	Schema.Struct({ scope: Schema.Literal("session") }),
 	Schema.Struct({ scope: Schema.Literal("tenant") }),
 	Schema.Struct({ scope: Schema.Literal("platform") }),
-	Schema.Struct({ scope: Schema.Literal("portal-instance"), id: Schema.String }),
+	Schema.Struct({
+		scope: Schema.Literal("portal-instance"),
+		id: Schema.String,
+	}),
 ]);
 const decodeScope = Schema.decodeUnknownSync(ScopeInput);
 
@@ -172,7 +175,10 @@ export const publishThemeFn = createServerFn({ method: "POST" })
 		);
 	});
 
-const EnabledInput = Schema.Struct({ id: Schema.Number, enabled: Schema.Boolean });
+const EnabledInput = Schema.Struct({
+	id: Schema.Number,
+	enabled: Schema.Boolean,
+});
 const decodeEnabled = Schema.decodeUnknownSync(EnabledInput);
 
 export const setThemeEnabledFn = createServerFn({ method: "POST" })

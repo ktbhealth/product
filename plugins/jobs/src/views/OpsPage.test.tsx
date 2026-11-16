@@ -29,7 +29,11 @@ const job = (over: Partial<AudioJobRow> = {}): AudioJobRow => ({
 });
 
 const queue: QueueDepth = { pending: 2, processing: 1, done: 40, failed: 3 };
-const storage: AudioStorageStats = { objects: 12, bytes: 5 * 1024 * 1024, truncated: false };
+const storage: AudioStorageStats = {
+	objects: 12,
+	bytes: 5 * 1024 * 1024,
+	truncated: false,
+};
 
 afterEach(() => {
 	cleanup();
@@ -67,13 +71,23 @@ describe("OpsPage", () => {
 	it("filters jobs by the search box", () => {
 		render(
 			<OpsPage
-				jobs={[job(), job({ id: 2, patientName: "João", audioStatus: "done", audioError: null })]}
+				jobs={[
+					job(),
+					job({
+						id: 2,
+						patientName: "João",
+						audioStatus: "done",
+						audioError: null,
+					}),
+				]}
 				queue={queue}
 				storage={storage}
 				locale="en"
 			/>,
 		);
-		fireEvent.change(screen.getByLabelText("Filter jobs"), { target: { value: "joão" } });
+		fireEvent.change(screen.getByLabelText("Filter jobs"), {
+			target: { value: "joão" },
+		});
 		expect(screen.queryByText("Maria Silva")).toBeNull();
 		expect(screen.getByText("João")).toBeTruthy();
 	});
@@ -84,13 +98,18 @@ describe("OpsPage", () => {
 		expect(screen.getByText("Retry transcription?")).toBeTruthy();
 		fireEvent.click(screen.getByText("Retry job"));
 		await waitFor(() =>
-			expect(retryAudioJobFn).toHaveBeenCalledWith({ data: { consultationId: 1 } }),
+			expect(retryAudioJobFn).toHaveBeenCalledWith({
+				data: { consultationId: 1 },
+			}),
 		);
 		await waitFor(() => expect(invalidate).toHaveBeenCalled());
 	});
 
 	it("shows an error when the retry fn fails", async () => {
-		retryAudioJobFn.mockResolvedValueOnce({ ok: false, reason: "enqueue-failed" } as never);
+		retryAudioJobFn.mockResolvedValueOnce({
+			ok: false,
+			reason: "enqueue-failed",
+		} as never);
 		render(<OpsPage jobs={[job()]} queue={queue} storage={storage} locale="en" />);
 		fireEvent.click(screen.getByText("Retry"));
 		fireEvent.click(screen.getByText("Retry job"));
@@ -152,18 +171,32 @@ describe("OpsPage", () => {
 		render(
 			<OpsPage
 				jobs={[
-					job({ id: 8, audioStatus: "done", audioError: null, patientName: null }),
-					job({ id: 9, patientName: "Ana", audioStatus: "done", audioError: null }),
+					job({
+						id: 8,
+						audioStatus: "done",
+						audioError: null,
+						patientName: null,
+					}),
+					job({
+						id: 9,
+						patientName: "Ana",
+						audioStatus: "done",
+						audioError: null,
+					}),
 				]}
 				queue={queue}
 				storage={storage}
 				locale="en"
 			/>,
 		);
-		fireEvent.change(screen.getByLabelText("Filter jobs"), { target: { value: "ana" } });
+		fireEvent.change(screen.getByLabelText("Filter jobs"), {
+			target: { value: "ana" },
+		});
 		expect(screen.queryByText("#8")).toBeNull();
 		expect(screen.getByText("#9")).toBeTruthy();
-		fireEvent.change(screen.getByLabelText("Filter jobs"), { target: { value: "zzz" } });
+		fireEvent.change(screen.getByLabelText("Filter jobs"), {
+			target: { value: "zzz" },
+		});
 		expect(screen.getByText("No jobs match the filter.")).toBeTruthy();
 	});
 

@@ -116,7 +116,10 @@ describe("getPortalProfile", () => {
 	});
 
 	it("has no doctor name when the owner has no doctor profile", async () => {
-		expect(await getPortalProfile(db, "ana", 2)).toMatchObject({ name: "Leo", doctorName: null });
+		expect(await getPortalProfile(db, "ana", 2)).toMatchObject({
+			name: "Leo",
+			doctorName: null,
+		});
 	});
 
 	it("is null without an active link", async () => {
@@ -132,7 +135,11 @@ describe("listPortalConsultations", () => {
 	it("lists the saved records of a linked patient, newest first", async () => {
 		expect(await listPortalConsultations(db, "ana", 1)).toEqual([
 			{ id: 11, createdAt: new Date(2_000_000), chiefComplaint: "Retorno" },
-			{ id: 10, createdAt: new Date(1_000_000), chiefComplaint: "Dor de cabeça há três dias" },
+			{
+				id: 10,
+				createdAt: new Date(1_000_000),
+				chiefComplaint: "Dor de cabeça há três dias",
+			},
 			{ id: 14, createdAt: new Date(500_000), chiefComplaint: null },
 		]);
 	});
@@ -185,7 +192,9 @@ describe("getPortalConsultation", () => {
 	});
 
 	it("has no doctor name when the recording doctor has no profile", async () => {
-		expect(await getPortalConsultation(db, "ana", 20)).toMatchObject({ doctorName: null });
+		expect(await getPortalConsultation(db, "ana", 20)).toMatchObject({
+			doctorName: null,
+		});
 	});
 
 	it("is null for a consultation with no saved, readable record", async () => {
@@ -257,7 +266,10 @@ describe("PatientPortalLive", () => {
 			await as(ana, (p) => p.consultation(12)),
 			await as({ userId: "eva" }, (p) => p.consultation(10)),
 		]) {
-			expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Forbidden" } });
+			expect(result).toMatchObject({
+				_tag: "Failure",
+				failure: { _tag: "Forbidden" },
+			});
 		}
 		expect(await as({ userId: "eva" }, (p) => p.consultations(1))).toMatchObject({
 			_tag: "Success",
@@ -284,7 +296,10 @@ describe("PatientPortalLive", () => {
 				await as(who, (p) => p.consultation(10)),
 				await as(who, (p) => p.awaitingInvites()),
 			]) {
-				expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Forbidden" } });
+				expect(result).toMatchObject({
+					_tag: "Failure",
+					failure: { _tag: "Forbidden" },
+				});
 			}
 		}
 	});

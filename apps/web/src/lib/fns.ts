@@ -3,7 +3,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
-import { namespacesForPath } from "@ktb/app-host";
 import { Db } from "@ktb/db";
 import { GLOBAL_SCOPE, resolveRequestLocales } from "@ktb/i18n";
 import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
@@ -16,6 +15,7 @@ import {
 	enabledIdSet,
 	enabledPlugins,
 	findPage,
+	namespacesForPath,
 	portalInstanceIdForPath,
 	type PageShell,
 	type PluginStatesResult,

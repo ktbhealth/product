@@ -9,7 +9,10 @@
  * ./i18n.ts; validation reports error codes the views translate.
  */
 
-import { patientMessages, type PatientErrorCode } from "./i18n.ts";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
+import { patientMessages, I18N_NAMESPACE, type PatientErrorCode } from "./i18n.ts";
 
 /** FHIR AdministrativeGender. */
 export const GENDERS = ["female", "male", "other", "unknown"] as const;
@@ -244,11 +247,19 @@ export const birthDateFromAge = (age: number, now: Date = new Date()) =>
 	String(now.getFullYear() - age);
 
 /** "42 years", "~42 years" for a year-only birth date; null when unknown. */
-export function ageLabel(birthDate: string | null, locale = "en", now?: Date): string | null {
+export function ageLabel(
+	birthDate: string | null,
+	locale = "en",
+	now?: Date,
+	i18n?: PageI18nSlice,
+): string | null {
 	if (!birthDate) return null;
 	const age = ageFromBirthDate(birthDate, now);
 	if (age === null) return null;
-	return patientMessages(locale).age(age, birthDate.length === 4);
+	return sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale)).age(
+		age,
+		birthDate.length === 4,
+	);
 }
 
 interface Demographic {
@@ -257,9 +268,15 @@ interface Demographic {
 }
 
 /** "Female · 42 years" — whatever of sex/age is recorded. */
-export function demographics(p: Demographic, locale = "en", now?: Date): string {
-	const sex = p.gender ? patientMessages(locale).gender[p.gender as Gender] : null;
-	return [sex, ageLabel(p.birthDate, locale, now)].filter(Boolean).join(" · ");
+export function demographics(
+	p: Demographic,
+	locale = "en",
+	now?: Date,
+	i18n?: PageI18nSlice,
+): string {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
+	const sex = p.gender ? t.gender[p.gender as Gender] : null;
+	return [sex, ageLabel(p.birthDate, locale, now, i18n)].filter(Boolean).join(" · ");
 }
 
 /** One-line record summary for documents (PDF header); null when nothing is recorded. */
@@ -267,9 +284,10 @@ export function recordSummary(
 	p: Demographic & { readonly cpf: string | null },
 	locale = "en",
 	now?: Date,
+	i18n?: PageI18nSlice,
 ) {
 	return (
-		[demographics(p, locale, now), p.cpf ? `CPF ${formatCpf(p.cpf)}` : null]
+		[demographics(p, locale, now, i18n), p.cpf ? `CPF ${formatCpf(p.cpf)}` : null]
 			.filter(Boolean)
 			.join(" · ") || null
 	);
@@ -295,8 +313,8 @@ export function formatBirthDate(birthDate: string): string {
 export const MAX_TEXT = 200;
 
 /** Localized copy for a validation error code. */
-export function errorMessage(code: PatientErrorCode, locale = "en"): string {
-	const { errors } = patientMessages(locale);
+export function errorMessage(code: PatientErrorCode, locale = "en", i18n?: PageI18nSlice): string {
+	const { errors } = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	return code === "too_long" ? errors.too_long(MAX_TEXT) : errors[code];
 }
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -10,6 +10,13 @@ import type { PatientAccessRelation, PatientAccessStatus } from "./schema.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const PATIENT_ACCESS_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "patient-access";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): PatientAccessMessages =>
+	patientAccessMessages(locale);
 export type PatientAccessLocale = (typeof PATIENT_ACCESS_LOCALES)[number];
 export const BASE_LOCALE: PatientAccessLocale = "en";
 
@@ -55,7 +62,11 @@ const en: PatientAccessMessages = {
 	emptyDescription: "Invite the patient, or a guardian, by email.",
 	cpfMatch: "CPF match",
 	relation: { self: "Patient", guardian: "Guardian" },
-	status: { invited: "Invited", pending: "Awaiting approval", active: "Active" },
+	status: {
+		invited: "Invited",
+		pending: "Awaiting approval",
+		active: "Active",
+	},
 	errors: {
 		invalid_email: "Enter a valid email address.",
 		invalid_relation: "Choose who this person is to the patient.",
@@ -93,7 +104,11 @@ const ptBR: PatientAccessMessages = {
 	emptyDescription: "Convide o paciente, ou um responsável, por e-mail.",
 	cpfMatch: "Match por CPF",
 	relation: { self: "Paciente", guardian: "Responsável" },
-	status: { invited: "Convidado", pending: "Aguardando aprovação", active: "Ativo" },
+	status: {
+		invited: "Convidado",
+		pending: "Aguardando aprovação",
+		active: "Ativo",
+	},
 	errors: {
 		invalid_email: "Informe um e-mail válido.",
 		invalid_relation: "Escolha quem esta pessoa é para o paciente.",
@@ -131,7 +146,11 @@ const es: PatientAccessMessages = {
 	emptyDescription: "Invita al paciente, o a un responsable, por correo.",
 	cpfMatch: "Coincidencia por CPF",
 	relation: { self: "Paciente", guardian: "Responsable" },
-	status: { invited: "Invitado", pending: "Esperando aprobación", active: "Activo" },
+	status: {
+		invited: "Invitado",
+		pending: "Esperando aprobación",
+		active: "Activo",
+	},
 	errors: {
 		invalid_email: "Ingresa un correo válido.",
 		invalid_relation: "Elige quién es esta persona para el paciente.",
@@ -154,7 +173,11 @@ const es: PatientAccessMessages = {
 	},
 };
 
-const CATALOGS: Record<PatientAccessLocale, PatientAccessMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<PatientAccessLocale, PatientAccessMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isPatientAccessLocale = (locale: string): locale is PatientAccessLocale =>
 	(PATIENT_ACCESS_LOCALES as readonly string[]).includes(locale);

@@ -68,7 +68,13 @@ describe("AdminPatientsPage", () => {
 				owners={OWNERS}
 				patients={[
 					row({}),
-					row({ id: 2, name: "Bia", ownerId: "u2", ownerEmail: null, ownerName: null }),
+					row({
+						id: 2,
+						name: "Bia",
+						ownerId: "u2",
+						ownerEmail: null,
+						ownerName: null,
+					}),
 				]}
 			/>,
 		);
@@ -93,7 +99,13 @@ describe("AdminPatientsPage", () => {
 				owners={OWNERS}
 				patients={[
 					row({}),
-					row({ id: 2, name: "Bia", ownerId: "u2", ownerEmail: "drb@x.com", ownerName: "Dr B" }),
+					row({
+						id: 2,
+						name: "Bia",
+						ownerId: "u2",
+						ownerEmail: "drb@x.com",
+						ownerName: "Dr B",
+					}),
 				]}
 			/>,
 		);
@@ -139,7 +151,10 @@ describe("AdminPatientsPage", () => {
 
 	it("creates a patient for a chosen owner", async () => {
 		const user = userEvent.setup();
-		fns.adminCreatePatientFn.mockResolvedValue({ ok: true, patient: { id: 9 } });
+		fns.adminCreatePatientFn.mockResolvedValue({
+			ok: true,
+			patient: { id: 9 },
+		});
 		render(<AdminPatientsPage owners={OWNERS} patients={[]} />);
 		await user.click(screen.getByRole("button", { name: "New patient" }));
 		// Submit stays disabled until an owner is picked.
@@ -177,7 +192,11 @@ describe("AdminPatientsPage", () => {
 	it("deletes a patient through the cascade dialog", async () => {
 		const user = userEvent.setup();
 		fns.patientDeletionImpactFn.mockResolvedValue({ consultations: 0 });
-		fns.deletePatientFn.mockResolvedValue({ ok: true, consultations: 0, orphanedAudio: 0 });
+		fns.deletePatientFn.mockResolvedValue({
+			ok: true,
+			consultations: 0,
+			orphanedAudio: 0,
+		});
 		render(<AdminPatientsPage owners={OWNERS} patients={[row({})]} />);
 		await user.click(screen.getByRole("button", { name: "Delete Ana" }));
 		expect(await screen.findByText("This permanently deletes the record of Ana.")).toBeTruthy();

@@ -55,7 +55,9 @@ vi.mock("@tanstack/react-start", () => ({
 				return api;
 			},
 			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
+				h({
+					data: validate === undefined ? call?.data : validate(call?.data),
+				}),
 		};
 		return api;
 	},
@@ -212,7 +214,10 @@ describe("patient routes", () => {
 		});
 
 		it("renders the form for the loaded patient and navigates after saving", () => {
-			mocks.loaderData.current = { patient: { id: 5, name: "Ana" }, locale: "pt-BR" };
+			mocks.loaderData.current = {
+				patient: { id: 5, name: "Ana" },
+				locale: "pt-BR",
+			};
 			render(createElement(opts(EditRoute).component));
 			expect(props().patient).toEqual({ id: 5, name: "Ana" });
 			expect(props().api).toEqual({ tag: "edit-api-5" });

@@ -128,7 +128,12 @@ beforeAll(() => {
 		run: (effect) => runtime.runPromise(effect),
 		runAs: (user, effect) =>
 			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
+				effect.pipe(
+					Effect.provideService(Principal, {
+						userId: user.id,
+						email: user.email,
+					}),
+				),
 			),
 		getLocale: () => "en",
 		audioTranscribeModel: "test-model",
@@ -172,7 +177,10 @@ describe("retryAudioJobFn", () => {
 			ok: false,
 			reason: "not-found",
 		});
-		const noAudio = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
+		const noAudio = (await createConsultation(db, {
+			userId: "u-ops",
+			source: "browser",
+		}))!;
 		expect(await retryAudioJobFn({ data: { consultationId: noAudio } })).toEqual({
 			ok: false,
 			reason: "not-found",
@@ -181,7 +189,10 @@ describe("retryAudioJobFn", () => {
 
 	it("refuses non-retryable statuses", async () => {
 		useSession("admin");
-		const id = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
+		const id = (await createConsultation(db, {
+			userId: "u-ops",
+			source: "browser",
+		}))!;
 		await attachAudioRecord(db, id, { audioKey: "k-done", size: 1 });
 		await completeAudioJob(db, id, "done transcript");
 		expect(await retryAudioJobFn({ data: { consultationId: id } })).toEqual({
@@ -214,7 +225,10 @@ describe("retryAudioJobFn", () => {
 
 	it("re-enqueues a stored job (upload landed, enqueue previously failed)", async () => {
 		useSession("admin");
-		const id = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
+		const id = (await createConsultation(db, {
+			userId: "u-ops",
+			source: "browser",
+		}))!;
 		await attachAudioRecord(db, id, { audioKey: "k-stored", size: 5 });
 		const res = await retryAudioJobFn({ data: { consultationId: id } });
 		expect(res).toEqual({ ok: true });
@@ -227,7 +241,10 @@ describe("retryAudioJobFn", () => {
 
 	it("reports unavailable when the queue binding is missing", async () => {
 		useSession("admin");
-		const id = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
+		const id = (await createConsultation(db, {
+			userId: "u-ops",
+			source: "browser",
+		}))!;
 		await attachAudioRecord(db, id, { audioKey: "k-noqueue", size: 1 });
 		await failAudioJob(db, id, "boom");
 		// Swap the registry entry for a runtime without the jobs port.
@@ -236,7 +253,12 @@ describe("retryAudioJobFn", () => {
 			run: (effect) => runtime.runPromise(effect),
 			runAs: (user, effect) =>
 				runtime.runPromise(
-					effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
+					effect.pipe(
+						Effect.provideService(Principal, {
+							userId: user.id,
+							email: user.email,
+						}),
+					),
 				),
 			getLocale: () => "en",
 			audioTranscribeModel: "test-model",
@@ -252,7 +274,12 @@ describe("retryAudioJobFn", () => {
 				run: (effect) => runtime.runPromise(effect),
 				runAs: (user, effect) =>
 					runtime.runPromise(
-						effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
+						effect.pipe(
+							Effect.provideService(Principal, {
+								userId: user.id,
+								email: user.email,
+							}),
+						),
 					),
 				getLocale: () => "en",
 				audioTranscribeModel: "test-model",
@@ -286,7 +313,10 @@ describe("retryAudioJobFn", () => {
 
 	it("still reports ok when the phase-2 admin re-check is denied", async () => {
 		useSession("admin");
-		const id = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
+		const id = (await createConsultation(db, {
+			userId: "u-ops",
+			source: "browser",
+		}))!;
 		await attachAudioRecord(db, id, { audioKey: "k-phase2", size: 1 });
 		await failAudioJob(db, id, "boom");
 		// adminAudioJob's requireAdmin is call 1 (passes); adminRequeueAudio's
@@ -294,7 +324,9 @@ describe("retryAudioJobFn", () => {
 		adminRequireCalls = 0;
 		forbidAdminCallAt = 2;
 		try {
-			expect(await retryAudioJobFn({ data: { consultationId: id } })).toEqual({ ok: true });
+			expect(await retryAudioJobFn({ data: { consultationId: id } })).toEqual({
+				ok: true,
+			});
 			// The requeue never ran — the row keeps its failed status.
 			expect(await audioStatusOf(id)).toBe("failed");
 		} finally {
@@ -304,7 +336,10 @@ describe("retryAudioJobFn", () => {
 
 	it("reports enqueue-failed and keeps the failed status when send() rejects", async () => {
 		useSession("admin");
-		const id = (await createConsultation(db, { userId: "u-ops", source: "browser" }))!;
+		const id = (await createConsultation(db, {
+			userId: "u-ops",
+			source: "browser",
+		}))!;
 		await attachAudioRecord(db, id, { audioKey: "k-queuefail", size: 1 });
 		await failAudioJob(db, id, "boom");
 		queueFails = true;

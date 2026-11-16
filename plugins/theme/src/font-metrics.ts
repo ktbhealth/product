@@ -185,8 +185,20 @@ const woffMetrics = async (bytes: Uint8Array): Promise<FontMetrics | null> => {
 /** Fallback fonts with published metrics (capsize metrics collection,
  * latin subset xWidthAvg). Keyed by the `local()` family name. */
 export const FALLBACK_FONT_METRICS: Readonly<Record<string, FontMetrics>> = {
-	arial: { unitsPerEm: 2048, ascent: 1854, descent: -434, lineGap: 67, xAvgCharWidth: 913 },
-	"segoe ui": { unitsPerEm: 2048, ascent: 2210, descent: -514, lineGap: 0, xAvgCharWidth: 908 },
+	arial: {
+		unitsPerEm: 2048,
+		ascent: 1854,
+		descent: -434,
+		lineGap: 67,
+		xAvgCharWidth: 913,
+	},
+	"segoe ui": {
+		unitsPerEm: 2048,
+		ascent: 2210,
+		descent: -514,
+		lineGap: 0,
+		xAvgCharWidth: 908,
+	},
 	"courier new": {
 		unitsPerEm: 2048,
 		ascent: 1705,
@@ -201,8 +213,20 @@ export const FALLBACK_FONT_METRICS: Readonly<Record<string, FontMetrics>> = {
 		lineGap: 87,
 		xAvgCharWidth: 832,
 	},
-	georgia: { unitsPerEm: 2048, ascent: 1878, descent: -449, lineGap: 0, xAvgCharWidth: 913 },
-	helvetica: { unitsPerEm: 2048, ascent: 1577, descent: -471, lineGap: 0, xAvgCharWidth: 913 },
+	georgia: {
+		unitsPerEm: 2048,
+		ascent: 1878,
+		descent: -449,
+		lineGap: 0,
+		xAvgCharWidth: 913,
+	},
+	helvetica: {
+		unitsPerEm: 2048,
+		ascent: 1577,
+		descent: -471,
+		lineGap: 0,
+		xAvgCharWidth: 913,
+	},
 	"roboto mono": {
 		unitsPerEm: 2048,
 		ascent: 2146,
@@ -210,7 +234,13 @@ export const FALLBACK_FONT_METRICS: Readonly<Record<string, FontMetrics>> = {
 		lineGap: 0,
 		xAvgCharWidth: 1229,
 	},
-	"noto sans": { unitsPerEm: 1, ascent: 1069, descent: -293, lineGap: 0, xAvgCharWidth: 474 },
+	"noto sans": {
+		unitsPerEm: 1,
+		ascent: 1069,
+		descent: -293,
+		lineGap: 0,
+		xAvgCharWidth: 474,
+	},
 };
 
 /** System font a slot's metric-matched fallback resolves via local(). */

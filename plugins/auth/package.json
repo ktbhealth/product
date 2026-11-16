@@ -13,6 +13,7 @@
 		"@ktb/captcha": "workspace:*",
 		"@ktb/doctors": "workspace:*",
 		"@ktb/email": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",

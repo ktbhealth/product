@@ -22,6 +22,10 @@ const asRows = (data: unknown): readonly AdminPageRow[] =>
  * inside every `CustomPages.admin*` method.
  */
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
-	const props: PagesAdminPageProps = { pages: asRows(data), locale: ctx.locale };
+	const props: PagesAdminPageProps = {
+		pages: asRows(data),
+		i18n: ctx.i18n,
+		locale: ctx.locale,
+	};
 	return <PagesAdminPage {...props} />;
 }

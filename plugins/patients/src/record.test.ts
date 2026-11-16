@@ -70,7 +70,11 @@ describe("dates", () => {
 	it("parses FHIR dates at every precision", () => {
 		expect(parseFhirDate("1984")).toEqual({ year: 1984 });
 		expect(parseFhirDate("1984-03")).toEqual({ year: 1984, month: 3 });
-		expect(parseFhirDate("1984-03-05")).toEqual({ year: 1984, month: 3, day: 5 });
+		expect(parseFhirDate("1984-03-05")).toEqual({
+			year: 1984,
+			month: 3,
+			day: 5,
+		});
 	});
 
 	it("rejects malformed or impossible dates", () => {
@@ -246,7 +250,11 @@ describe("validatePatient", () => {
 
 	it("accepts a Brazilian address without state or CEP", () => {
 		const r = validatePatient({ ...minimal, country: "BR", city: "Olinda" }, NOW);
-		expect(r.ok && r.fields).toMatchObject({ country: "BR", state: null, postalCode: null });
+		expect(r.ok && r.fields).toMatchObject({
+			country: "BR",
+			state: null,
+			postalCode: null,
+		});
 	});
 
 	it("rejects an unknown address country", () => {

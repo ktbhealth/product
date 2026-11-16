@@ -7,6 +7,12 @@
  */
 
 export const PAGES_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "pages";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): PagesMessages => pagesMessages(locale);
 export type PagesLocale = (typeof PAGES_LOCALES)[number];
 const BASE_LOCALE: PagesLocale = "en";
 

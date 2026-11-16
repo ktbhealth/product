@@ -61,7 +61,9 @@ afterEach(cleanup);
 
 const actions = {
 	deleteApi: {
-		impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 0 })),
+		impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+			consultations: 0,
+		})),
 		remove: vi.fn<PatientDeleteApi["remove"]>(async () => ({ ok: true })),
 	},
 	onDeleted: vi.fn<() => void>(),
@@ -122,7 +124,9 @@ describe("PatientDetailPage", () => {
 		const user = userEvent.setup();
 		render(<PatientDetailPage patient={FULL} consultations={[]} locale="en" {...actions} />);
 		await user.click(screen.getByRole("button", { name: "Export" }));
-		const fhir = await screen.findByRole("menuitem", { name: "HL7 FHIR R4 (JSON)" });
+		const fhir = await screen.findByRole("menuitem", {
+			name: "HL7 FHIR R4 (JSON)",
+		});
 		expect(fhir.getAttribute("href")).toBe("/api/patients/7/export?format=fhir-r4");
 		expect(fhir.hasAttribute("download")).toBe(true);
 		expect(screen.getByRole("menuitem", { name: "openEHR (JSON)" }).getAttribute("href")).toBe(
@@ -134,7 +138,9 @@ describe("PatientDetailPage", () => {
 	it("deletes the patient from the record page after confirmation", async () => {
 		const user = userEvent.setup();
 		const deleteApi = {
-			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 0 })),
+			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+				consultations: 0,
+			})),
 			remove: vi.fn<PatientDeleteApi["remove"]>(async () => ({ ok: true })),
 		};
 		const onDeleted = vi.fn<() => void>();
@@ -201,7 +207,12 @@ describe("PatientDetailPage", () => {
 				locale="pt-BR"
 				{...actions}
 				consultations={[
-					consult({ id: 11, status: "live", hasAnamnesis: false, chiefComplaint: null }),
+					consult({
+						id: 11,
+						status: "live",
+						hasAnamnesis: false,
+						chiefComplaint: null,
+					}),
 				]}
 			/>,
 		);
@@ -242,7 +253,12 @@ describe("PatientDetailPage", () => {
 				{...actions}
 				consultations={[
 					consult({}),
-					consult({ id: 11, status: "live", hasAnamnesis: false, chiefComplaint: null }),
+					consult({
+						id: 11,
+						status: "live",
+						hasAnamnesis: false,
+						chiefComplaint: null,
+					}),
 					consult({ id: 12, chiefComplaint: "A preencher pelo médico" }),
 				]}
 			/>,

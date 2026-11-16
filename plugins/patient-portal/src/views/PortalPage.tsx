@@ -2,6 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ClipboardListIcon, FileHeartIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert, AlertDescription, AlertTitle } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
@@ -13,7 +16,7 @@ import {
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
 
-import { portalMessages, type PortalMessages } from "../i18n.ts";
+import { portalMessages, type PortalMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 export interface PortalProfileItem {
 	readonly patientId: number;
@@ -47,6 +50,8 @@ export function PortalPage({
 	profiles,
 	profile,
 	consultations,
+	i18n,
+
 	locale,
 	api,
 	onChanged,
@@ -61,12 +66,14 @@ export function PortalPage({
 	/** Consultations of the open record, newest first — read-only. */
 	consultations: readonly PortalConsultationItem[];
 	/** Active UI locale, injected by the host. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 	api: PortalApi;
 	/** Called after a profile switch — the host reloads the data. */
 	onChanged: () => void;
 }) {
-	const t = portalMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, portalMessages(locale));
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<PortalError | null>(null);
 
@@ -181,7 +188,10 @@ export function PortalPage({
 									<Link
 										to="/portal/consultations/$id"
 										params={{ id: String(consultation.id) }}
-										className={buttonVariants({ variant: "outline", size: "sm" })}
+										className={buttonVariants({
+											variant: "outline",
+											size: "sm",
+										})}
 									>
 										{t.viewConsultation}
 									</Link>

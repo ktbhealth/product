@@ -27,7 +27,11 @@ export const jobsHeaderPlugin = definePlugin({
 		{
 			id: "jobs.header-action",
 			region: "portal.header.actions",
-			content: { kind: "headerAction", id: "jobs", component: JobsHeaderAction },
+			content: {
+				kind: "headerAction",
+				id: "jobs",
+				component: JobsHeaderAction,
+			},
 		},
 	],
 });
@@ -73,7 +77,12 @@ export const opsChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/ops", label: "Ops", icon: ActivityIcon, group: "System" },
+				item: {
+					to: "/platform/ops",
+					label: "Ops",
+					icon: ActivityIcon,
+					group: "System",
+				},
 			},
 		},
 	],

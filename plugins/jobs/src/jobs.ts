@@ -1,7 +1,10 @@
 import type { JobStatusValue } from "@ktbhealth/ui/components/job-status";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import type { ConsoleJob } from "./context.ts";
-import { jobMessages } from "./i18n.ts";
+import { jobMessages, I18N_NAMESPACE } from "./i18n.ts";
 
 /** Minimal row shape the mapper needs — AdminConsultationRow satisfies it. */
 export interface AudioJobRow {
@@ -47,8 +50,12 @@ const fmtDate = (value: Date | string, locale: string): string => {
  * `audioStatus: "none"` (no recording) are skipped — they are not jobs.
  * `locale` localizes the job title/description copy.
  */
-export const jobsFromAudioRows = (rows: readonly AudioJobRow[], locale = "en"): ConsoleJob[] => {
-	const t = jobMessages(locale);
+export const jobsFromAudioRows = (
+	rows: readonly AudioJobRow[],
+	locale = "en",
+	i18n?: PageI18nSlice,
+): ConsoleJob[] => {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, jobMessages(locale));
 	return rows.flatMap((row) => {
 		const status = STATUS_MAP[row.audioStatus];
 		if (status === undefined) return [];
@@ -70,5 +77,8 @@ export const jobsFromAudioRows = (rows: readonly AudioJobRow[], locale = "en"): 
  * AudioJobRow at a time) — null when the row isn't a job
  * (audioStatus "none" or unmapped), so callers can drop it.
  */
-export const jobFromAudioRow = (row: AudioJobRow, locale = "en"): ConsoleJob | null =>
-	jobsFromAudioRows([row], locale)[0] ?? null;
+export const jobFromAudioRow = (
+	row: AudioJobRow,
+	locale = "en",
+	i18n?: PageI18nSlice,
+): ConsoleJob | null => jobsFromAudioRows([row], locale, i18n)[0] ?? null;

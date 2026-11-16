@@ -21,9 +21,11 @@ export const portalChromeProps = (
 	plugins: readonly Plugin[],
 	signOut: () => Promise<void>,
 	theme?: ResolvedTheme | null,
+	i18n?: ChromeProps["i18n"],
 ): ChromeProps => ({
 	user,
 	locale,
+	i18n,
 	plugins,
 	locales,
 	localeName,

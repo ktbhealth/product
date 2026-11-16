@@ -14,6 +14,7 @@ export {
 	findPage,
 	findPortalInstance,
 	KNOWN_CHROME_REGIONS,
+	namespacesForPath,
 	packageEnabled,
 	portalInstances,
 	portalInstanceIdForPath,

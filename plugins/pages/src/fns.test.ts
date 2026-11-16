@@ -178,12 +178,18 @@ describe("pages fns", () => {
 				showInNav: false,
 			},
 		});
-		expect(updated).toMatchObject({ id: created!.id, path: "/hello", title: "Hello!" });
+		expect(updated).toMatchObject({
+			id: created!.id,
+			path: "/hello",
+			title: "Hello!",
+		});
 		await expect(
 			updatePageFn({ data: { id: 999, path: "/x", title: "X", content: "" } }),
 		).resolves.toBeNull();
 		await expect(
-			updatePageFn({ data: { id: created!.id, path: "/platform/x", title: "X", content: "" } }),
+			updatePageFn({
+				data: { id: created!.id, path: "/platform/x", title: "X", content: "" },
+			}),
 		).resolves.toBeNull();
 
 		// Republish for nav, then check the public listing.
@@ -215,7 +221,13 @@ describe("pages fns", () => {
 	it("navPagesFn returns [] while the render plugin is disabled", async () => {
 		currentEmail = "admin@x.com";
 		const created = await createPageFn({
-			data: { path: "/nav", title: "Nav", content: "", published: true, showInNav: true },
+			data: {
+				path: "/nav",
+				title: "Nav",
+				content: "",
+				published: true,
+				showInNav: true,
+			},
 		});
 		expect(created).not.toBeNull();
 		await runtime.runPromise(

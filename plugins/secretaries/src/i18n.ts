@@ -10,6 +10,12 @@ import type { DoctorAccessStatus } from "./schema.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const SECRETARY_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "secretaries";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): SecretaryMessages => secretaryMessages(locale);
 export type SecretaryLocale = (typeof SECRETARY_LOCALES)[number];
 export const BASE_LOCALE: SecretaryLocale = "en";
 
@@ -223,7 +229,11 @@ const es: SecretaryMessages = {
 	},
 };
 
-const CATALOGS: Record<SecretaryLocale, SecretaryMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<SecretaryLocale, SecretaryMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isSecretaryLocale = (locale: string): locale is SecretaryLocale =>
 	(SECRETARY_LOCALES as readonly string[]).includes(locale);

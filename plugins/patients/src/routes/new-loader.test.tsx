@@ -15,7 +15,9 @@ vi.mock("@tanstack/react-start", () => ({
 				return api;
 			},
 			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
+				h({
+					data: validate === undefined ? call?.data : validate(call?.data),
+				}),
 		};
 		return api;
 	},
@@ -25,7 +27,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	return {
 		...actual,
 		useNavigate: () => vi.fn(),
-		createFileRoute: () => (opts: Record<string, unknown>) => ({ options: opts }),
+		createFileRoute: () => (opts: Record<string, unknown>) => ({
+			options: opts,
+		}),
 	};
 });
 

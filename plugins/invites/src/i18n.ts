@@ -9,6 +9,12 @@ import type { InviteKind } from "./schema.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const INVITE_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "invites";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): InviteMessages => inviteMessages(locale);
 export type InviteLocale = (typeof INVITE_LOCALES)[number];
 export const BASE_LOCALE: InviteLocale = "en";
 
@@ -143,7 +149,11 @@ const es: InviteMessages = {
 	signIn: "Iniciar sesión",
 };
 
-const CATALOGS: Record<InviteLocale, InviteMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<InviteLocale, InviteMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isInviteLocale = (locale: string): locale is InviteLocale =>
 	(INVITE_LOCALES as readonly string[]).includes(locale);

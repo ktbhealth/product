@@ -76,7 +76,10 @@ describe("theme.panel page guard", () => {
 		const result = await Effect.runPromise(
 			guard("/platform/theme").pipe(
 				Effect.provideService(PlatformAdmin, gate(true)),
-				Effect.provideService(Principal, { userId: "u1", email: "admin@x.com" }),
+				Effect.provideService(Principal, {
+					userId: "u1",
+					email: "admin@x.com",
+				}),
 			),
 		);
 		expect(result).toBe(true);
@@ -110,7 +113,14 @@ describe("theme.panel page loader", () => {
 
 	it("returns the theme list", async () => {
 		const rows: ThemeSummary[] = [
-			{ id: 1, scope: "platform", scopeId: "", appName: "P", enabled: true, version: 1 },
+			{
+				id: 1,
+				scope: "platform",
+				scopeId: "",
+				appName: "P",
+				enabled: true,
+				version: 1,
+			},
 		];
 		const result = await Effect.runPromise(
 			loader("/platform/theme").pipe(

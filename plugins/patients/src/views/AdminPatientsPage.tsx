@@ -187,6 +187,7 @@ export function AdminPatientsPage({
 					owners={owners}
 					t={t}
 					locale={locale}
+					i18n={i18n}
 					onClose={() => setCreating(false)}
 				/>
 			) : null}

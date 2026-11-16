@@ -139,12 +139,17 @@ describe("invites repo", () => {
 			email: "sec@ktb.test",
 			kind: "patient",
 		});
-		expect(await findInvite(db, otherEmail, NOW)).toMatchObject({ email: "other@ktb.test" });
+		expect(await findInvite(db, otherEmail, NOW)).toMatchObject({
+			email: "other@ktb.test",
+		});
 		const hashes = (await db.select().from(inviteTokens)).map((r) => r.tokenHash);
 		expect(hashes).toHaveLength(4);
 		expect(hashes).not.toContain(await hashInviteToken(first));
 		const [consumed] = await db.select().from(inviteTokens).where(eq(inviteTokens.id, usedRow!.id));
-		expect(consumed).toMatchObject({ tokenHash: await hashInviteToken(used), consumedAt: NOW });
+		expect(consumed).toMatchObject({
+			tokenHash: await hashInviteToken(used),
+			consumedAt: NOW,
+		});
 	});
 
 	it("finds a live link and nothing for unknown, used or expired ones", async () => {
@@ -158,7 +163,9 @@ describe("invites repo", () => {
 
 		const live = await findInvite(db, token, NOW);
 		expect(live).toMatchObject({ ...secretaryInvite, consumedAt: null });
-		expect(await findInvite(db, token, new Date(expiresAt - 1))).toMatchObject({ id: live!.id });
+		expect(await findInvite(db, token, new Date(expiresAt - 1))).toMatchObject({
+			id: live!.id,
+		});
 		// Expired from the very instant it expires.
 		expect(await findInvite(db, token, new Date(expiresAt))).toBeNull();
 		expect(await findInvite(db, token, new Date(expiresAt + 1))).toBeNull();
@@ -202,8 +209,14 @@ describe("InvitesLive", () => {
 		runtime = ManagedRuntime.make(
 			Layer.mergeAll(
 				invitesLayer,
-				Layer.succeed(DoctorProfiles, { listFor: () => Effect.succeed([]), claimInvites }),
-				Layer.succeed(PatientProfiles, { listFor: () => Effect.succeed([]), syncLinks }),
+				Layer.succeed(DoctorProfiles, {
+					listFor: () => Effect.succeed([]),
+					claimInvites,
+				}),
+				Layer.succeed(PatientProfiles, {
+					listFor: () => Effect.succeed([]),
+					syncLinks,
+				}),
 			),
 		);
 		bare = ManagedRuntime.make(invitesLayer);
@@ -260,7 +273,11 @@ describe("InvitesLive", () => {
 		it("issues nothing for an address that already has an account", async () => {
 			const before = await db.select().from(inviteTokens);
 			const token = await invites((s) =>
-				s.issue({ email: "  Taken@KTB.test ", kind: "secretary", inviterName: "Dra. Ana" }),
+				s.issue({
+					email: "  Taken@KTB.test ",
+					kind: "secretary",
+					inviterName: "Dra. Ana",
+				}),
 			);
 			expect(token).toBeNull();
 			expect(await db.select().from(inviteTokens)).toEqual(before);
@@ -304,12 +321,25 @@ describe("InvitesLive", () => {
 	describe("accept", () => {
 		it("rejects a blank name before looking at the link or creating anything", async () => {
 			const token = await issue("blank@ktb.test");
-			const rejected = await rejection({ token, name: " \t ", password: "senha12345" });
+			const rejected = await rejection({
+				token,
+				name: " \t ",
+				password: "senha12345",
+			});
 			expect(rejected).toBeInstanceOf(InviteRejected);
-			expect(rejected).toMatchObject({ _tag: "InviteRejected", code: "invalid_name" });
+			expect(rejected).toMatchObject({
+				_tag: "InviteRejected",
+				code: "invalid_name",
+			});
 			// Also the answer for a dead link: the name is checked first.
 			expect(
-				(await rejection({ token: newInviteToken(), name: "", password: "senha12345" })).code,
+				(
+					await rejection({
+						token: newInviteToken(),
+						name: "",
+						password: "senha12345",
+					})
+				).code,
 			).toBe("invalid_name");
 			expect(createVerified).not.toHaveBeenCalled();
 			expect((await rowFor(token)).consumedAt).toBeNull();
@@ -343,7 +373,11 @@ describe("InvitesLive", () => {
 			async (error, code) => {
 				const token = await issue(`${error}@ktb.test`);
 				createVerified.mockResolvedValueOnce({ ok: false, error });
-				const rejected = await rejection({ token, name: "Maria Souza", password: "short" });
+				const rejected = await rejection({
+					token,
+					name: "Maria Souza",
+					password: "short",
+				});
 				expect(rejected).toBeInstanceOf(InviteRejected);
 				expect(rejected.code).toBe(code);
 				expect(createVerified).toHaveBeenCalledTimes(1);
@@ -386,9 +420,15 @@ describe("InvitesLive", () => {
 
 			// Single use: the same link opens and creates nothing afterwards.
 			expect(await invites((s) => s.preview(token))).toBeNull();
-			expect((await rejection({ token, name: "Maria Souza", password: "senha12345" })).code).toBe(
-				"invalid",
-			);
+			expect(
+				(
+					await rejection({
+						token,
+						name: "Maria Souza",
+						password: "senha12345",
+					})
+				).code,
+			).toBe("invalid");
 			expect(createVerified).toHaveBeenCalledTimes(1);
 			expect(claimInvites).toHaveBeenCalledTimes(1);
 			expect(syncLinks).toHaveBeenCalledTimes(1);
@@ -414,7 +454,11 @@ describe("InvitesLive", () => {
 	});
 
 	describe("inviteAcceptPath", () => {
-		const input = { email: "  Path@KTB.test ", kind: "patient", inviterName: "Dra. Ana" } as const;
+		const input = {
+			email: "  Path@KTB.test ",
+			kind: "patient",
+			inviterName: "Dra. Ana",
+		} as const;
 
 		it("is null when invite links are not deployed", async () => {
 			const before = await db.select().from(inviteTokens);
@@ -446,8 +490,14 @@ describe("invite destinations", () => {
 	it("sends each kind to its own home and sign-in screen", () => {
 		expect(INVITE_KINDS).toEqual(["secretary", "patient"]);
 		expect(Object.keys(INVITE_DESTINATIONS)).toEqual([...INVITE_KINDS]);
-		expect(INVITE_DESTINATIONS.secretary).toEqual({ home: "/", login: "/secretaries/login" });
-		expect(INVITE_DESTINATIONS.patient).toEqual({ home: "/portal", login: "/portal/login" });
+		expect(INVITE_DESTINATIONS.secretary).toEqual({
+			home: "/",
+			login: "/secretaries/login",
+		});
+		expect(INVITE_DESTINATIONS.patient).toEqual({
+			home: "/portal",
+			login: "/portal/login",
+		});
 	});
 });
 

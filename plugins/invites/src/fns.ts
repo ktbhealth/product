@@ -14,7 +14,11 @@ import { Invites, type InviteErrorCode, type InviteKind } from "./index.ts";
 
 const decodeToken = Schema.decodeUnknownSync(Schema.String);
 const decodeAccept = Schema.decodeUnknownSync(
-	Schema.Struct({ token: Schema.String, name: Schema.String, password: Schema.String }),
+	Schema.Struct({
+		token: Schema.String,
+		name: Schema.String,
+		password: Schema.String,
+	}),
 );
 
 /** Active UI locale for the current request — route loaders attach it

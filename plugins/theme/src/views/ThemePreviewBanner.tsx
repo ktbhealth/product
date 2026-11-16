@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { XIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Button } from "@ktbhealth/ui/components/button";
 
 import { setThemePreviewFn } from "../fns.ts";
-import { themeMessages } from "../i18n.ts";
+import { themeMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /**
  * Dismissible banner rendered by shells while the resolved theme came
@@ -13,8 +16,14 @@ import { themeMessages } from "../i18n.ts";
  * loader re-resolves to the real theme. Rendered only for admins —
  * non-admin sessions never resolve a preview row.
  */
-export function ThemePreviewBanner({ locale = "en" }: { readonly locale?: string }) {
-	const t = themeMessages(locale);
+export function ThemePreviewBanner({
+	i18n,
+	locale = "en",
+}: {
+	readonly i18n?: PageI18nSlice;
+	readonly locale?: string;
+}) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, themeMessages(locale));
 	const [busy, setBusy] = useState(false);
 	const exit = async () => {
 		setBusy(true);

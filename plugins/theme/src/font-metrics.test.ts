@@ -335,7 +335,12 @@ describe("computeMetricOverrides", () => {
 	});
 
 	it("falls back to sizeAdjust 100 when widths are missing", () => {
-		const noWidth: FontMetrics = { unitsPerEm: 1000, ascent: 800, descent: -200, lineGap: 0 };
+		const noWidth: FontMetrics = {
+			unitsPerEm: 1000,
+			ascent: 800,
+			descent: -200,
+			lineGap: 0,
+		};
 		const m = computeMetricOverrides(noWidth, FALLBACK_FONT_METRICS["noto sans"]!);
 		expect(m.sizeAdjust).toBe(100);
 		expect(m.ascentOverride).toBeCloseTo(80, 5);
@@ -349,7 +354,13 @@ describe("computeMetricOverrides", () => {
 			lineGap: 0,
 		};
 		const m = computeMetricOverrides(
-			{ unitsPerEm: 1000, ascent: 800, descent: -200, lineGap: 0, xAvgCharWidth: 500 },
+			{
+				unitsPerEm: 1000,
+				ascent: 800,
+				descent: -200,
+				lineGap: 0,
+				xAvgCharWidth: 500,
+			},
 			noWidthFallback,
 		);
 		expect(m.sizeAdjust).toBe(100);

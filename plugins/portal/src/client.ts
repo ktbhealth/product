@@ -9,5 +9,9 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  */
 export const plugins: readonly Plugin[] = [
 	definePlugin({ id: "portal.services", system: true }),
-	definePlugin({ id: "portal.shell", system: true, requiredDeps: ["portal.services"] }),
+	definePlugin({
+		id: "portal.shell",
+		system: true,
+		requiredDeps: ["portal.services"],
+	}),
 ];

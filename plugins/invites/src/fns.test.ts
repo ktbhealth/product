@@ -49,7 +49,11 @@ const input = { token: "tok-1", name: "Maria Souza", password: "senha12345" };
 beforeEach(() => {
 	vi.clearAllMocks();
 	mocks.getLocale.mockReturnValue("en");
-	const service = { issue: mocks.issue, preview: mocks.preview, accept: mocks.accept };
+	const service = {
+		issue: mocks.issue,
+		preview: mocks.preview,
+		accept: mocks.accept,
+	};
 	// `run` resolves the Invites service like the app runtime would.
 	mocks.run.mockImplementation((effect: Effect.Effect<unknown, never, Invites>) =>
 		Effect.runPromise(effect.pipe(Effect.provideService(Invites, service))),
@@ -109,7 +113,9 @@ describe("acceptInviteFn", () => {
 
 	it("passes only the token, the name and the password to the service", async () => {
 		mocks.accept.mockReturnValue(Effect.succeed({ email: "sec@ktb.test", kind: "secretary" }));
-		await acceptInviteFn({ data: { ...input, email: "attacker@evil.test" } as never });
+		await acceptInviteFn({
+			data: { ...input, email: "attacker@evil.test" } as never,
+		});
 		expect(mocks.accept.mock.calls).toEqual([[input]]);
 	});
 
@@ -117,7 +123,10 @@ describe("acceptInviteFn", () => {
 		"returns the %s rejection as a result, not a failure",
 		async (code: InviteErrorCode) => {
 			mocks.accept.mockReturnValue(Effect.fail(new InviteRejected({ code })));
-			await expect(acceptInviteFn({ data: input })).resolves.toEqual({ ok: false, error: code });
+			await expect(acceptInviteFn({ data: input })).resolves.toEqual({
+				ok: false,
+				error: code,
+			});
 		},
 	);
 

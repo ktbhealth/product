@@ -13,6 +13,7 @@
 		"@ktb/auth": "workspace:*",
 		"@ktb/auth-better": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",

@@ -135,7 +135,10 @@ const serverRuntime = {
 	runAs: (user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
 		runtime.runPromise(
 			effect.pipe(
-				Effect.provideService(Principal, { userId: user.id, email: user.email }),
+				Effect.provideService(Principal, {
+					userId: user.id,
+					email: user.email,
+				}),
 			) as never,
 		),
 	audioTranscribeModel: "test-model",
@@ -278,7 +281,14 @@ describe("listThemesFn", () => {
 		useSession("plain");
 		hooks.list = () =>
 			Effect.succeed([
-				{ id: 1, scope: "platform", scopeId: "", appName: "P", enabled: true, version: 2 },
+				{
+					id: 1,
+					scope: "platform",
+					scopeId: "",
+					appName: "P",
+					enabled: true,
+					version: 2,
+				},
 			]);
 		try {
 			expect(await listThemesFn()).toHaveLength(1);
@@ -351,7 +361,11 @@ describe("publishThemeFn", () => {
 		};
 		try {
 			const summary = await publishThemeFn({
-				data: { scope: "tenant", scopeId: "t-1", seeds: { primary: "#123456" } },
+				data: {
+					scope: "tenant",
+					scopeId: "t-1",
+					seeds: { primary: "#123456" },
+				},
 			});
 			expect(summary.id).toBe(3);
 			expect(seen[0]).toEqual({
@@ -414,31 +428,43 @@ describe("setThemePreviewFn", () => {
 
 	it("returns ok:false for non-admins without touching cookies", async () => {
 		useSession("plain");
-		expect(await setThemePreviewFn({ data: { themeId: 3 } })).toEqual({ ok: false });
+		expect(await setThemePreviewFn({ data: { themeId: 3 } })).toEqual({
+			ok: false,
+		});
 		expect(cookie.set).toHaveLength(0);
 		expect(cookie.del).toHaveLength(0);
 	});
 
 	it("clears the preview cookie for admins", async () => {
 		useSession("admin");
-		expect(await setThemePreviewFn({ data: { themeId: null } })).toEqual({ ok: true });
+		expect(await setThemePreviewFn({ data: { themeId: null } })).toEqual({
+			ok: true,
+		});
 		expect(cookie.del[0]?.[0]).toBe("ktb-theme-preview");
 	});
 
 	it("sets the preview cookie with the documented attributes", async () => {
 		useSession("admin");
 		cookie.set.length = 0;
-		expect(await setThemePreviewFn({ data: { themeId: 9 } })).toEqual({ ok: true });
+		expect(await setThemePreviewFn({ data: { themeId: 9 } })).toEqual({
+			ok: true,
+		});
 		expect(cookie.set[0]?.[0]).toBe("ktb-theme-preview");
 		expect(cookie.set[0]?.[1]).toBe("9");
-		expect(cookie.set[0]?.[2]).toMatchObject({ httpOnly: true, path: "/", maxAge: 28800 });
+		expect(cookie.set[0]?.[2]).toMatchObject({
+			httpOnly: true,
+			path: "/",
+			maxAge: 28800,
+		});
 	});
 
 	it("returns ok:false when the cookie write throws", async () => {
 		useSession("admin");
 		cookie.setThrows = true;
 		try {
-			expect(await setThemePreviewFn({ data: { themeId: 1 } })).toEqual({ ok: false });
+			expect(await setThemePreviewFn({ data: { themeId: 1 } })).toEqual({
+				ok: false,
+			});
 		} finally {
 			cookie.setThrows = false;
 		}

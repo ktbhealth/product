@@ -70,7 +70,12 @@ vi.mock("@ktb/server-fns", async () => {
 		);
 		return user === undefined
 			? provided
-			: provided.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email }));
+			: provided.pipe(
+					Effect.provideService(Principal, {
+						userId: user.id,
+						email: user.email,
+					}),
+				);
 	};
 	const user = { id: "u-admin", email: "admin@x.com" };
 	return {
@@ -93,6 +98,8 @@ describe("server fns without the react-start server module", () => {
 	});
 
 	it("setThemePreviewFn reports ok:false instead of throwing", async () => {
-		expect(await setThemePreviewFn({ data: { themeId: 3 } })).toEqual({ ok: false });
+		expect(await setThemePreviewFn({ data: { themeId: 3 } })).toEqual({
+			ok: false,
+		});
 	});
 });

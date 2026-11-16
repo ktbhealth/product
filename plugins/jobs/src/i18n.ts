@@ -8,6 +8,16 @@
  */
 
 export const JOB_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "jobs";
+
+/** Locale→merged messages accessor the baseline importer discovers
+ * (catalogs share the namespace; keys are disjoint). */
+export const i18nMessagesFor = (locale: string): Record<string, unknown> => ({
+	...jobMessages(locale),
+	...opsMessages(locale),
+});
 export type JobLocale = (typeof JOB_LOCALES)[number];
 export const BASE_LOCALE: JobLocale = "en";
 

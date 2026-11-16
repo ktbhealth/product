@@ -1,4 +1,4 @@
-import { notFound, redirect, useRouter } from "@tanstack/react-router";
+import { notFound, redirect, useRouter, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -32,6 +32,7 @@ export const Route = createPluginFileRoute("patient-access.routes")("/patient-ac
 	},
 	component: function PatientAccessRoute() {
 		const { patient, links, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const router = useRouter();
 		const api: PatientAccessApi = {
 			invite: (input) => invitePatientFn({ data: { patientId: patient.id, ...input } }),
@@ -42,6 +43,7 @@ export const Route = createPluginFileRoute("patient-access.routes")("/patient-ac
 			<PatientAccessPage
 				patient={patient}
 				links={links}
+				i18n={i18n}
 				locale={locale}
 				api={api}
 				onChanged={() => void router.invalidate()}

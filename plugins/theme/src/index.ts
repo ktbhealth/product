@@ -80,7 +80,11 @@ export const themeHeaderPlugin = definePlugin({
 		{
 			id: "theme.header-action",
 			region: "portal.header.actions",
-			content: { kind: "headerAction", id: "theme", component: ThemeHeaderAction },
+			content: {
+				kind: "headerAction",
+				id: "theme",
+				component: ThemeHeaderAction,
+			},
 		},
 	],
 });
@@ -124,7 +128,12 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "System" },
+				item: {
+					to: "/platform/theme",
+					label: "Theme",
+					icon: PaletteIcon,
+					group: "System",
+				},
 			},
 		},
 	],

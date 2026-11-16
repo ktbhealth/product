@@ -14,7 +14,11 @@ describe("CustomPageView", () => {
 	it("renders the title and markdown content", () => {
 		render(
 			<CustomPageView
-				data={{ path: "/about", title: "About us", content: "# Hi\n\nSome **bold** text." }}
+				data={{
+					path: "/about",
+					title: "About us",
+					content: "# Hi\n\nSome **bold** text.",
+				}}
 				ctx={ctx}
 			/>,
 		);

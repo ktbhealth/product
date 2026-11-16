@@ -164,7 +164,11 @@ describe("fonts", () => {
 			assets: {
 				Inter: {
 					faces: [
-						{ url: "/api/theme/assets?key=a.woff2", weight: 400, format: "woff2" },
+						{
+							url: "/api/theme/assets?key=a.woff2",
+							weight: 400,
+							format: "woff2",
+						},
 						{ url: "/api/theme/assets?key=b.woff", weight: 700 },
 						{ url: "" }, // skipped
 					],
@@ -214,7 +218,12 @@ describe("fonts", () => {
 					fallback: {
 						name: "F",
 						local: "  ",
-						metrics: { sizeAdjust: 1, ascentOverride: 1, descentOverride: 1, lineGapOverride: 0 },
+						metrics: {
+							sizeAdjust: 1,
+							ascentOverride: 1,
+							descentOverride: 1,
+							lineGapOverride: 0,
+						},
 					},
 				},
 				Other: { faces: [{ url: "/b.woff2" }], fallback: null },

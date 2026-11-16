@@ -18,7 +18,10 @@ import type { AudienceMessages } from "./i18n.ts";
 export function AudienceSelect({ t }: { readonly t: AudienceMessages }) {
 	const navigate = useNavigate();
 	const audience = parseAudience(
-		useSearch({ strict: false, select: (s: Record<string, unknown>) => s.audience }),
+		useSearch({
+			strict: false,
+			select: (s: Record<string, unknown>) => s.audience,
+		}),
 	);
 	const items = AUDIENCES.map((a) => ({
 		value: a,
@@ -34,7 +37,11 @@ export function AudienceSelect({ t }: { readonly t: AudienceMessages }) {
 			items={items}
 			value={audience}
 			onValueChange={(value) =>
-				void navigate({ to: "/", search: { audience: parseAudience(value) }, replace: true })
+				void navigate({
+					to: "/",
+					search: { audience: parseAudience(value) },
+					replace: true,
+				})
 			}
 		>
 			<SelectTrigger aria-label={t.audience_label} size="sm" className="min-w-36">

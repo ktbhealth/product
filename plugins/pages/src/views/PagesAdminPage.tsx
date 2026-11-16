@@ -3,6 +3,9 @@ import { useRouter } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
 import { ExternalLinkIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
@@ -40,7 +43,7 @@ import {
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import { createPageFn, deletePageFn, updatePageFn } from "../fns.ts";
-import { pagesMessages } from "../i18n.ts";
+import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /** Row shape the panel loader hands down — the `custom_pages` record
  * narrowed to the fields the console edits (timestamps unused). */
@@ -56,6 +59,8 @@ export interface AdminPageRow {
 
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	readonly locale?: string;
 }
 
@@ -108,8 +113,8 @@ const toInput = (form: FormState) => ({
  * through the plugin's admin-gated server fns; the loader re-runs via
  * `router.invalidate()` after each write.
  */
-export function PagesAdminPage({ pages, locale }: PagesAdminPageProps) {
-	const t = pagesMessages(locale);
+export function PagesAdminPage({ pages, i18n, locale }: PagesAdminPageProps) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, pagesMessages(locale));
 	const router = useRouter();
 	const [form, setForm] = useState<FormState | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<AdminPageRow | null>(null);

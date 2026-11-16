@@ -142,7 +142,9 @@ describe("OpsLive", () => {
 			await expect(asPrincipal(runtime, "user@x.com")).rejects.toMatchObject({
 				_tag: "Forbidden",
 			});
-			await expect(asPrincipal(runtime)).rejects.toMatchObject({ _tag: "Forbidden" });
+			await expect(asPrincipal(runtime)).rejects.toMatchObject({
+				_tag: "Forbidden",
+			});
 		} finally {
 			await runtime.dispose();
 		}

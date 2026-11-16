@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { doctorContextFn } from "@ktb/doctors/fns";
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -19,14 +20,19 @@ const api: SecretaryLoginApi = {
  * Gated on `secretaries.routes` like the management page.
  */
 export const Route = createPluginFileRoute("secretaries.routes")("/secretaries/login")({
-	loader: async () => ({ locale: await localeFn(), emailEnabled: await emailEnabledFn() }),
+	loader: async () => ({
+		locale: await localeFn(),
+		emailEnabled: await emailEnabledFn(),
+	}),
 	head: ({ loaderData }) => ({
 		meta: [{ title: secretaryMessages(loaderData?.locale ?? "en").login.metaTitle }],
 	}),
 	component: function SecretaryLoginRoute() {
 		const data = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		return (
 			<SecretaryLoginPage
+				i18n={i18n}
 				locale={data?.locale ?? "en"}
 				emailEnabled={data?.emailEnabled ?? false}
 				api={api}

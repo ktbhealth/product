@@ -2,12 +2,14 @@ import * as Effect from "effect/Effect";
 import { LanguagesIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
+import { auditServicesPlugin } from "@ktb/audit";
 import { definePlugin, type Plugin } from "@ktb/kernel";
-import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
+import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import { I18nAdmin } from "./contract.ts";
-import { i18nAdminServicesPlugin } from "./admin.ts";
+import { I18nAdminLive } from "./admin.ts";
 import { I18nPlatformPage } from "./platform-page.tsx";
 import type { I18nPageData } from "./views/I18nPage.tsx";
 import { I18nRuntimeLive } from "./runtime.ts";
@@ -34,7 +36,7 @@ export type {
 	NamespaceInfo,
 	SaveDraftInput,
 } from "./contract.ts";
-export { I18nAdminLive, i18nAdminServicesPlugin } from "./admin.ts";
+export { I18nAdminLive } from "./admin.ts";
 export { I18nRuntime, I18nRuntimeLive, STAMP_TTL_MS } from "./runtime.ts";
 export { requestI18n, i18nLayerFor } from "./service.ts";
 export { catalogSlice, stableSlice } from "./slice.ts";
@@ -56,6 +58,18 @@ export const i18nTablesPlugin = definePlugin({
 export const i18nServicesPlugin = definePlugin({
 	id: "i18n.services",
 	services: I18nRuntimeLive,
+});
+
+/** i18n admin service citizen (P-083): panel read/write path.
+ * Defined here (not admin.ts) so the ktb-arch plugin-contract rule can
+ * resolve the `plugins` entry — it only follows same-file consts. */
+export const i18nAdminServicesPlugin = definePlugin({
+	id: "i18n.admin.services",
+	// i18n.services first: publish() invalidates the shared isolate
+	// cache — the runtime must be the SAME instance, not a private one.
+	requiredDeps: [platformAdminPlugin.id, rbacServicesPlugin.id, "i18n.services"],
+	optionalDeps: [auditServicesPlugin.id],
+	services: I18nAdminLive,
 });
 
 // Chrome contribution: the console sidebar entry (P-060 region).

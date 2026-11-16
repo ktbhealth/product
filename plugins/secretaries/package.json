@@ -16,6 +16,7 @@
 		"@ktb/db": "workspace:*",
 		"@ktb/doctors": "workspace:*",
 		"@ktb/email": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/invites": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

@@ -262,7 +262,11 @@ describe("CustomPagesLive", () => {
 			bind: () => emptyStatement,
 			first: async <T = unknown>() => null as T | null,
 			run: async () => ({ success: true, results: [], meta: {} }),
-			all: async <T = unknown>() => ({ success: true, results: [] as T[], meta: {} }),
+			all: async <T = unknown>() => ({
+				success: true,
+				results: [] as T[],
+				meta: {},
+			}),
 			raw: async <T = unknown[]>() => [] as unknown as T[],
 		};
 		const emptySql: SqlDatabase = {

@@ -3,13 +3,11 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { and, eq, sql } from "drizzle-orm";
 
-import { audit, auditServicesPlugin } from "@ktb/audit";
+import { audit } from "@ktb/audit";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
-import { definePlugin } from "@ktb/kernel";
-import { PlatformAdmin, platformAdminPlugin, type PlatformAdminShape } from "@ktb/platform";
+import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
-import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import { parseMessage } from "@ktb/i18n";
 
 import {
@@ -421,19 +419,6 @@ export const I18nAdminLive = Layer.effect(
 	}),
 );
 
-/** i18n admin service citizen (P-083): panel read/write path. */
-export const i18nAdminServicesPlugin = definePlugin({
-	id: "i18n.admin.services",
-	// i18n.services first: publish() invalidates the shared isolate
-	// cache — the runtime must be the SAME instance, not a private one.
-	requiredDeps: [platformAdminPlugin.id, rbacServicesPlugin.id, "i18n.services"],
-	optionalDeps: [auditServicesPlugin.id],
-	services: I18nAdminLive,
-});
-
-/** Compile-time dep registry. */
-declare module "@ktb/kernel" {
-	interface PluginRegistry {
-		"i18n.admin.services": true;
-	}
-}
+// The `i18n.admin.services` plugin citizen is defined in index.ts next to
+// the other single-concern plugins (the ktb-arch plugin-contract rule
+// resolves `plugins` entries within the entry file only).

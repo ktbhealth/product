@@ -125,7 +125,10 @@ export function PatientsPage({
 								) : null}
 							</div>
 							<p className="mt-0.5 text-sm text-muted-foreground">
-								{[demographics(p, locale), p.cpf ? `CPF ${formatCpf(p.cpf)}` : null]
+								{[
+									demographics(p, locale, undefined, i18n),
+									p.cpf ? `CPF ${formatCpf(p.cpf)}` : null,
+								]
 									.filter(Boolean)
 									.join(" · ") || t.common.noDemographics}
 							</p>

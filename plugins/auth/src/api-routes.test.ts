@@ -6,8 +6,13 @@ import { setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import { Route } from "./api-routes/auth.$.ts";
 
 const handlersOf = (r: unknown) =>
-	(r as { options: { server: { handlers: Record<string, (a: never) => Promise<Response>> } } })
-		.options.server.handlers;
+	(
+		r as {
+			options: {
+				server: { handlers: Record<string, (a: never) => Promise<Response>> };
+			};
+		}
+	).options.server.handlers;
 
 // In-plugin harness (P-033): the route reaches the app runtime through
 // @ktb/server-fns, so the test publishes its own runtime stub — a
@@ -81,7 +86,10 @@ describe("/api/auth/api-key/* block", () => {
 		captchaBox.current = { verify };
 		const h = handlersOf(Route);
 		const res = await h.POST!({
-			request: post("/api-key/create", { name: "x", metadata: { secret: "s" } }),
+			request: post("/api-key/create", {
+				name: "x",
+				metadata: { secret: "s" },
+			}),
 		} as never);
 		expect(res.status).toBe(404);
 		expect(verify).not.toHaveBeenCalled();
@@ -123,7 +131,9 @@ describe("POST /api/auth/* captcha gate", () => {
 
 	it("skips the check when Captcha resolves null (bot checks disabled)", async () => {
 		const h = handlersOf(Route);
-		const res = await h.POST!({ request: post("/sign-in/email", { email: "a@b.com" }) } as never);
+		const res = await h.POST!({
+			request: post("/sign-in/email", { email: "a@b.com" }),
+		} as never);
 		expect(res.status).toBe(200);
 		expect(authCalls).toEqual(["/api/auth/sign-in/email"]);
 	});
@@ -161,7 +171,9 @@ describe("POST /api/auth/* captcha gate", () => {
 		const verify = vi.fn(async () => true);
 		captchaBox.current = { verify };
 		const h = handlersOf(Route);
-		const res = await h.POST!({ request: post("/sign-in/email", "{not json") } as never);
+		const res = await h.POST!({
+			request: post("/sign-in/email", "{not json"),
+		} as never);
 		expect(res.status).toBe(200);
 		expect(verify).toHaveBeenCalledWith(undefined, undefined);
 	});

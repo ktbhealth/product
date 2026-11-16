@@ -1,6 +1,9 @@
 import * as React from "react";
 import { ListTodoIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Button } from "@ktbhealth/ui/components/button";
 import {
 	JobBatchProgress,
@@ -26,7 +29,7 @@ import {
 } from "@ktbhealth/ui/components/tooltip";
 
 import { jobFromAudioRow, type AudioJobRow } from "../jobs.ts";
-import { jobMessages } from "../i18n.ts";
+import { jobMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { JobsDataContext, type ConsoleJob } from "../context.ts";
 
 const GROUP_ORDER = ["processing", "queued", "failed", "done"] as const;
@@ -69,8 +72,14 @@ const upsertJob = (
  * renders meanwhile; without EventSource, e.g. jsdom tests, the seed is
  * authoritative). Empty state when none.
  */
-export function JobsHeaderAction({ locale = "en" }: { locale?: string }) {
-	const t = jobMessages(locale);
+export function JobsHeaderAction({
+	i18n,
+	locale = "en",
+}: {
+	readonly i18n?: PageI18nSlice;
+	readonly locale?: string;
+}) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, jobMessages(locale));
 	const seeded = React.useContext(JobsDataContext);
 	// null → context seed is authoritative (no live connection yet/ever).
 	const [live, setLive] = React.useState<readonly ConsoleJob[] | null>(null);
@@ -85,7 +94,7 @@ export function JobsHeaderAction({ locale = "en" }: { locale?: string }) {
 		source.onmessage = (event) => {
 			try {
 				const row = JSON.parse(event.data) as AudioJobRow;
-				const job = jobFromAudioRow(row, locale);
+				const job = jobFromAudioRow(row, locale, i18n);
 				setLive((prev) => upsertJob(prev ?? seeded, `audio-${row.id}`, job));
 			} catch {
 				// Malformed frame — ignore.

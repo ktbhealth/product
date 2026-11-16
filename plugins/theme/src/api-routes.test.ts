@@ -21,8 +21,13 @@ import { Route as AssetsRoute } from "./api-routes/theme.assets.ts";
 import { Route as FontsRoute } from "./api-routes/theme.fonts.ts";
 
 const handlersOf = (r: unknown) =>
-	(r as { options: { server: { handlers: Record<string, (a: never) => Promise<Response>> } } })
-		.options.server.handlers;
+	(
+		r as {
+			options: {
+				server: { handlers: Record<string, (a: never) => Promise<Response>> };
+			};
+		}
+	).options.server.handlers;
 
 const DDL = `
 CREATE TABLE theme_assets (
@@ -104,7 +109,9 @@ const runtimeGateDown = ManagedRuntime.make(
 );
 
 const fakeDb = {
-	select: () => ({ from: () => ({ where: () => ({ limit: async () => [{ id: 1 }] }) }) }),
+	select: () => ({
+		from: () => ({ where: () => ({ limit: async () => [{ id: 1 }] }) }),
+	}),
 	insert: () => ({ values: () => ({ returning: async () => [] }) }),
 } as unknown as DbClient;
 
@@ -141,7 +148,10 @@ const runAsOn =
 	(user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
 		rt.runPromise(
 			effect.pipe(
-				Effect.provideService(Principal, { userId: user.id, email: user.email }),
+				Effect.provideService(Principal, {
+					userId: user.id,
+					email: user.email,
+				}),
 			) as never,
 		);
 
@@ -172,7 +182,10 @@ const fakeBucket = {
 				: value instanceof ArrayBuffer
 					? new Uint8Array(value)
 					: new Uint8Array(await new Response(value).arrayBuffer());
-		bucketStore.set(key, { data, contentType: options?.httpMetadata?.contentType });
+		bucketStore.set(key, {
+			data,
+			contentType: options?.httpMetadata?.contentType,
+		});
 		return {};
 	},
 	get: async (key: string) => {
@@ -199,7 +212,10 @@ const runtimeConfig = {
 	runAs: (user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
 		runtime.runPromise(
 			effect.pipe(
-				Effect.provideService(Principal, { userId: user.id, email: user.email }),
+				Effect.provideService(Principal, {
+					userId: user.id,
+					email: user.email,
+				}),
 			) as never,
 		),
 	themeAssets: fakeBucket,
@@ -234,11 +250,17 @@ const postAsset = (fields: Record<string, string>, file?: File) => {
 	for (const [k, v] of Object.entries(fields)) form.set(k, v);
 	if (file !== undefined) form.set("file", file);
 	return handlersOf(AssetsRoute).POST!({
-		request: new Request("http://x/api/theme/assets", { method: "POST", body: form }),
+		request: new Request("http://x/api/theme/assets", {
+			method: "POST",
+			body: form,
+		}),
 	} as never);
 };
 
-const png = () => new File([new Uint8Array([137, 80, 78, 71])], "logo.png", { type: "image/png" });
+const png = () =>
+	new File([new Uint8Array([137, 80, 78, 71])], "logo.png", {
+		type: "image/png",
+	});
 
 describe("POST /api/theme/assets", () => {
 	it("rejects anonymous and non-admin callers", async () => {
@@ -268,9 +290,13 @@ describe("POST /api/theme/assets", () => {
 	});
 
 	it("rejects unsupported extensions, MIME mismatches and oversize files", async () => {
-		const txt = new File([new Uint8Array([1])], "x.txt", { type: "text/plain" });
+		const txt = new File([new Uint8Array([1])], "x.txt", {
+			type: "text/plain",
+		});
 		expect((await postAsset({ themeId: "1", kind: "favicon" }, txt)).status).toBe(415);
-		const html = new File([new Uint8Array([1])], "x.png", { type: "text/html" });
+		const html = new File([new Uint8Array([1])], "x.png", {
+			type: "text/html",
+		});
 		expect((await postAsset({ themeId: "1", kind: "favicon" }, html)).status).toBe(415);
 		const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "big.png", {
 			type: "image/png",
@@ -284,7 +310,11 @@ describe("POST /api/theme/assets", () => {
 		jobsSent.length = 0;
 		const res = await postAsset({ themeId: "1", kind: "favicon" }, png());
 		expect(res.status).toBe(200);
-		const body = (await res.json()) as { ok: boolean; assetId: number; status: string };
+		const body = (await res.json()) as {
+			ok: boolean;
+			assetId: number;
+			status: string;
+		};
 		expect(body).toMatchObject({ ok: true, status: "queued" });
 		expect(jobsSent).toHaveLength(1);
 		expect(jobsSent[0]!.kind).toBe("theme.asset");
@@ -318,7 +348,9 @@ describe("POST /api/theme/assets", () => {
 	});
 
 	it("requires a family for font uploads", async () => {
-		const woff2 = new File([new Uint8Array([1])], "x.woff2", { type: "font/woff2" });
+		const woff2 = new File([new Uint8Array([1])], "x.woff2", {
+			type: "font/woff2",
+		});
 		expect((await postAsset({ themeId: "1", kind: "font" }, woff2)).status).toBe(400);
 	});
 });
@@ -369,7 +401,10 @@ describe("POST /api/theme/fonts", () => {
 		expect(
 			(
 				await handlersOf(FontsRoute).POST!({
-					request: new Request("http://x/api/theme/fonts", { method: "POST", body: "{" }),
+					request: new Request("http://x/api/theme/fonts", {
+						method: "POST",
+						body: "{",
+					}),
 				} as never)
 			).status,
 		).toBe(400);
@@ -392,7 +427,12 @@ describe("POST /api/theme/fonts", () => {
 		expect(jobsSent).toHaveLength(1);
 		expect(jobsSent[0]).toMatchObject({
 			kind: "theme.font",
-			payload: { source: "google", family: "Open Sans", slot: "heading", weights: [400, 700] },
+			payload: {
+				source: "google",
+				family: "Open Sans",
+				slot: "heading",
+				weights: [400, 700],
+			},
 		});
 	});
 });
@@ -412,7 +452,10 @@ describe("POST /api/theme/assets — edge branches", () => {
 		form.set("file", png());
 		form.set("themeId", "1");
 		const res = await handlersOf(AssetsRoute).POST!({
-			request: new Request("http://x/api/theme/assets", { method: "POST", body: form }),
+			request: new Request("http://x/api/theme/assets", {
+				method: "POST",
+				body: form,
+			}),
 		} as never);
 		expect(res.status).toBe(400);
 	});
@@ -420,10 +463,14 @@ describe("POST /api/theme/assets — edge branches", () => {
 	it("415s on nameless/dotless files and non-font MIME on font uploads", async () => {
 		useSession("admin");
 		// Dotless name → empty extension → 415.
-		const dotless = new File([new Uint8Array([1])], "logo", { type: "image/png" });
+		const dotless = new File([new Uint8Array([1])], "logo", {
+			type: "image/png",
+		});
 		expect((await postAsset({ themeId: "1", kind: "favicon" }, dotless)).status).toBe(415);
 		// Font kind with an image MIME → 415.
-		const wrongMime = new File([new Uint8Array([1, 2])], "x.woff2", { type: "image/png" });
+		const wrongMime = new File([new Uint8Array([1, 2])], "x.woff2", {
+			type: "image/png",
+		});
 		expect((await postAsset({ themeId: "1", kind: "font", family: "F" }, wrongMime)).status).toBe(
 			415,
 		);
@@ -497,7 +544,9 @@ describe("GET /api/theme/assets — edge branches", () => {
 	});
 
 	it("falls back to the key-derived content type", async () => {
-		bucketStore.set("theme-assets/1/font/x.woff2", { data: new Uint8Array([1]) });
+		bucketStore.set("theme-assets/1/font/x.woff2", {
+			data: new Uint8Array([1]),
+		});
 		const res = await get("key=theme-assets%2F1%2Ffont%2Fx.woff2");
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("font/woff2");

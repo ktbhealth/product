@@ -121,6 +121,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 									createElement(chromeEntry.content.component, {
 										key: chromeEntry.content.id,
 										locale,
+										i18n,
 									}),
 								]
 							: [],
@@ -142,6 +143,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 				window.location.assign("/");
 			},
 			theme,
+			i18n,
 		);
 		const brandComponents = collectChrome(
 			visiblePlugins,
@@ -179,10 +181,13 @@ export const Route = createFileRoute("/portal/$instance/$")({
 				items={items}
 				pathname={pathname}
 				locale={locale}
+				i18n={i18n}
 				userEmail={user?.email}
 				headerActions={headerActions}
 				brand={brand}
-				banner={theme?.preview === true ? <ThemePreviewBanner locale={locale} /> : undefined}
+				banner={
+					theme?.preview === true ? <ThemePreviewBanner locale={locale} i18n={i18n} /> : undefined
+				}
 				themeCss={themeCss}
 				portals={switchablePortals}
 				onSignOut={async () => {

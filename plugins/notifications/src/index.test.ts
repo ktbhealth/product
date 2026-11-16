@@ -45,7 +45,11 @@ describe("notifications repo", () => {
 	});
 
 	it("inserts and lists scoped by user, newest first", async () => {
-		await insertNotification(db, { userId: "u1", kind: "patient.created", title: "One" });
+		await insertNotification(db, {
+			userId: "u1",
+			kind: "patient.created",
+			title: "One",
+		});
 		await insertNotification(db, {
 			userId: "u1",
 			kind: "patient.deleted",
@@ -124,7 +128,11 @@ describe("NotificationsLive", () => {
 			call((n) => n.list("u1")),
 		);
 		const hit = rows.find((r) => r.kind === "patient.created");
-		expect(hit).toMatchObject({ userId: "u1", title: "Patient created", body: "Ana" });
+		expect(hit).toMatchObject({
+			userId: "u1",
+			title: "Patient created",
+			body: "Ana",
+		});
 	});
 
 	it("ingests PatientDeleted and ConsultationCreated", async () => {
@@ -219,7 +227,10 @@ describe("NotificationsLive", () => {
 			),
 		);
 		expect(result).toHaveLength(1);
-		expect(result[0]).toMatchObject({ title: "Patient created", description: "Live" });
+		expect(result[0]).toMatchObject({
+			title: "Patient created",
+			description: "Live",
+		});
 	});
 
 	it("fails Forbidden for another userId and for null principal", async () => {
@@ -251,9 +262,13 @@ describe("NotificationsLive", () => {
 					yield* bus.dispatch([PatientCreated.make({ id: 12, ownerId: "u1", name: "Counted" })]);
 					const queries = yield* Query.dispatcher(NotificationsQueries);
 					const commands = yield* Command.dispatcher(NotificationsCommands);
-					const count = yield* queries["notifications.unreadCount"]({ userId: "u1" });
+					const count = yield* queries["notifications.unreadCount"]({
+						userId: "u1",
+					});
 					yield* commands["notifications.markAllRead"]({ userId: "u1" });
-					const after = yield* queries["notifications.unreadCount"]({ userId: "u1" });
+					const after = yield* queries["notifications.unreadCount"]({
+						userId: "u1",
+					});
 					return { count, after };
 				}).pipe(Effect.scoped),
 				Principal,
@@ -272,9 +287,18 @@ describe("NotificationsLive", () => {
 					yield* bus.dispatch([PatientCreated.make({ id: 13, ownerId: "u1", name: "Listed" })]);
 					const queries = yield* Query.dispatcher(NotificationsQueries);
 					const commands = yield* Command.dispatcher(NotificationsCommands);
-					const rows = yield* queries["notifications.list"]({ userId: "u1", limit: 1 });
-					yield* commands["notifications.markRead"]({ userId: "u1", ids: rows.map((r) => r.id) });
-					const after = yield* queries["notifications.list"]({ userId: "u1", limit: 1 });
+					const rows = yield* queries["notifications.list"]({
+						userId: "u1",
+						limit: 1,
+					});
+					yield* commands["notifications.markRead"]({
+						userId: "u1",
+						ids: rows.map((r) => r.id),
+					});
+					const after = yield* queries["notifications.list"]({
+						userId: "u1",
+						limit: 1,
+					});
 					return { rows, after };
 				}).pipe(Effect.scoped),
 				Principal,

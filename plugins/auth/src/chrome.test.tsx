@@ -86,7 +86,12 @@ describe("SessionMenu", () => {
 		render(
 			<SessionMenu
 				{...props({
-					user: { id: "u1", email: "bia@ktb.test", name: "Bia", patientOnly: false },
+					user: {
+						id: "u1",
+						email: "bia@ktb.test",
+						name: "Bia",
+						patientOnly: false,
+					},
 					labels: {
 						switchDoctor: "Trocar de médico",
 						secretaries: "Secretárias",
@@ -119,7 +124,12 @@ describe("SessionMenu", () => {
 		fireEvent.click(await screen.findByText("Platform console"));
 		expect(assign).toHaveBeenCalledWith("/platform");
 
-		const plain = { id: "u1", email: "bia@ktb.test", name: "Bia", patientOnly: false };
+		const plain = {
+			id: "u1",
+			email: "bia@ktb.test",
+			name: "Bia",
+			patientOnly: false,
+		};
 		render(<SessionMenu {...props({ user: plain, labels: {} })} />);
 		fireEvent.click(screen.getByText("Bia"));
 		expect(screen.queryByText("Platform console")).toBeNull();
@@ -128,7 +138,10 @@ describe("SessionMenu", () => {
 	it("falls back to English profile shortcuts when the host fills none", async () => {
 		render(
 			<SessionMenu
-				{...props({ user: { id: "u1", email: "bia@ktb.test", name: "Bia" }, labels: {} })}
+				{...props({
+					user: { id: "u1", email: "bia@ktb.test", name: "Bia" },
+					labels: {},
+				})}
 			/>,
 		);
 		fireEvent.click(screen.getByText("Bia"));
@@ -140,7 +153,12 @@ describe("SessionMenu", () => {
 	it("narrows a patient account to its own consultations", async () => {
 		const assign = vi.fn();
 		vi.stubGlobal("location", { assign });
-		const user = { id: "p1", email: "ana@ktb.test", name: "Ana", patientOnly: true };
+		const user = {
+			id: "p1",
+			email: "ana@ktb.test",
+			name: "Ana",
+			patientOnly: true,
+		};
 		const view = render(
 			<SessionMenu {...props({ user, labels: { myConsultations: "Minhas consultas" } })} />,
 		);

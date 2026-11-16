@@ -64,7 +64,11 @@ const es: NotificationMessages = {
 	},
 };
 
-const CATALOGS: Record<NotificationLocale, NotificationMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<NotificationLocale, NotificationMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isNotificationLocale = (locale: string): locale is NotificationLocale =>
 	(NOTIFICATION_LOCALES as readonly string[]).includes(locale);
@@ -72,3 +76,10 @@ export const isNotificationLocale = (locale: string): locale is NotificationLoca
 /** Catalog for a locale tag; unknown tags get the base locale. */
 export const notificationMessages = (locale: string): NotificationMessages =>
 	CATALOGS[isNotificationLocale(locale) ? locale : BASE_LOCALE];
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "notifications";
+
+/** Locale→catalog accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): NotificationMessages =>
+	notificationMessages(locale);

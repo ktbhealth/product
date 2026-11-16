@@ -48,10 +48,34 @@ const summary = (over: Partial<ThemeSummary>): ThemeSummary => ({
 });
 
 const THEMES: ThemeSummary[] = [
-	summary({ id: 1, scope: "platform", appName: "Plat", enabled: true, version: 3 }),
-	summary({ id: 2, scope: "tenant", scopeId: "", appName: "Tenant Wide", enabled: false }),
-	summary({ id: 3, scope: "tenant", scopeId: "t-1", appName: null, enabled: true }),
-	summary({ id: 4, scope: "portal-instance", scopeId: "", appName: null, enabled: true }),
+	summary({
+		id: 1,
+		scope: "platform",
+		appName: "Plat",
+		enabled: true,
+		version: 3,
+	}),
+	summary({
+		id: 2,
+		scope: "tenant",
+		scopeId: "",
+		appName: "Tenant Wide",
+		enabled: false,
+	}),
+	summary({
+		id: 3,
+		scope: "tenant",
+		scopeId: "t-1",
+		appName: null,
+		enabled: true,
+	}),
+	summary({
+		id: 4,
+		scope: "portal-instance",
+		scopeId: "",
+		appName: null,
+		enabled: true,
+	}),
 	summary({
 		id: 5,
 		scope: "portal-instance",
@@ -313,7 +337,9 @@ describe("ThemePage — publish", () => {
 		change(assetTheme, "2");
 		expect(assetTheme.value).toBe("2");
 		// File input cleared/emptied → assetFile null.
-		const file = new File([new Uint8Array([1])], "a.png", { type: "image/png" });
+		const file = new File([new Uint8Array([1])], "a.png", {
+			type: "image/png",
+		});
 		fireEvent.change(fileInput(), { target: { files: [file] } });
 		fireEvent.change(fileInput(), { target: { files: [] } });
 	});
@@ -337,7 +363,9 @@ describe("ThemePage — toggle, preview and contrast", () => {
 		expect(switches).toHaveLength(5);
 		fireEvent.click(switches[0]!);
 		await waitFor(() =>
-			expect(fns.setThemeEnabledFn).toHaveBeenCalledWith({ data: { id: 1, enabled: false } }),
+			expect(fns.setThemeEnabledFn).toHaveBeenCalledWith({
+				data: { id: 1, enabled: false },
+			}),
 		);
 		expect(fns.invalidate).toHaveBeenCalled();
 	});
@@ -350,7 +378,9 @@ describe("ThemePage — toggle, preview and contrast", () => {
 		renderPage();
 		fireEvent.click(screen.getAllByRole("button", { name: "Preview" })[1]!);
 		await waitFor(() =>
-			expect(fns.setThemePreviewFn).toHaveBeenCalledWith({ data: { themeId: 2 } }),
+			expect(fns.setThemePreviewFn).toHaveBeenCalledWith({
+				data: { themeId: 2 },
+			}),
 		);
 		await act(async () => pending.resolve({ ok: true }));
 		expect(reload).toHaveBeenCalled();
@@ -371,7 +401,9 @@ describe("ThemePage — asset uploads", () => {
 		const fetchMock = okFetch();
 		vi.stubGlobal("fetch", fetchMock);
 		renderPage();
-		const file = new File([new Uint8Array([137, 80])], "logo.png", { type: "image/png" });
+		const file = new File([new Uint8Array([137, 80])], "logo.png", {
+			type: "image/png",
+		});
 		fireEvent.change(fileInput(), { target: { files: [file] } });
 		fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 		await screen.findByText("Upload queued — variants are generated asynchronously.");
@@ -407,7 +439,9 @@ describe("ThemePage — asset uploads", () => {
 		renderPage();
 		change(byId("asset-kind"), "font");
 		change(byId("asset-font-family"), "Custom Family");
-		const file = new File([new Uint8Array([1])], "x.woff2", { type: "font/woff2" });
+		const file = new File([new Uint8Array([1])], "x.woff2", {
+			type: "font/woff2",
+		});
 		fireEvent.change(fileInput(), { target: { files: [file] } });
 		fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 		await screen.findByText(/Upload queued/);
@@ -418,7 +452,9 @@ describe("ThemePage — asset uploads", () => {
 	it("shows the upload error notice when the request fails", async () => {
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response));
 		renderPage();
-		const file = new File([new Uint8Array([1])], "a.png", { type: "image/png" });
+		const file = new File([new Uint8Array([1])], "a.png", {
+			type: "image/png",
+		});
 		fireEvent.change(fileInput(), { target: { files: [file] } });
 		fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 		expect(await screen.findByText("Upload failed")).toBeTruthy();

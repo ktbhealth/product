@@ -11,6 +11,7 @@
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@ktb/authz": "workspace:*",
 		"@ktb/consultations": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/platform-header": "workspace:*",
