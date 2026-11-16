@@ -495,6 +495,25 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		expect(await screen.findByText("bridge offline")).toBeTruthy();
 	});
 
+	it("closes the bridge dialog via the Close button and via dismiss", async () => {
+		const user = userEvent.setup();
+		renderPage([bridgeEp]);
+		await user.click(screen.getByText("Connect via bridge"));
+		expect(await screen.findByText("Connect agent via bridge")).toBeTruthy();
+		// Footer Close button → setBridge(null). ("Close" also matches the
+		// dialog X's sr-only span — pick the actual button element.)
+		const closeButton = screen.getAllByText("Close").find((el) => el instanceof HTMLButtonElement);
+		expect(closeButton).toBeDefined();
+		await user.click(closeButton!);
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+
+		// Reopen, then dismiss through onOpenChange (Escape).
+		await user.click(screen.getByText("Connect via bridge"));
+		expect(await screen.findByText("Connect agent via bridge")).toBeTruthy();
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByText("Connect agent via bridge")).toBeNull());
+	});
+
 	it("omits the command box when the link mint fails", async () => {
 		fns.createBridgeLinkFn.mockResolvedValueOnce({ ok: true, data: null } as never);
 		const user = userEvent.setup();
