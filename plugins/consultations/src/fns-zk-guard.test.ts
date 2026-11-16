@@ -56,8 +56,9 @@ const session = {
 
 const db = makeDb(makeD1(DDL));
 const runtime = ManagedRuntime.make(Layer.succeed(Db, db) as Layer.Layer<unknown>);
+let activeSession: typeof session | null = session;
 const auth = Auth.of({
-	getSession: async () => session as never,
+	getSession: async () => activeSession as never,
 	setUserBanned: async () => {},
 });
 
@@ -112,6 +113,15 @@ describe("patientHistoryRowsFn", () => {
 		await expect(patientHistoryRowsFn({ data: { patientId: 4, excludeId: 9 } })).resolves.toEqual(
 			historyRowsResult,
 		);
+	});
+
+	it("is null when the request has no doctor session", async () => {
+		activeSession = null;
+		try {
+			await expect(patientHistoryRowsFn({ data: { patientId: 4 } })).resolves.toBeNull();
+		} finally {
+			activeSession = session;
+		}
 	});
 });
 

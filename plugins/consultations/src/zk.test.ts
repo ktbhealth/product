@@ -191,6 +191,42 @@ describe("decryptConsultations", () => {
 		expect(out[0]).toBe(row);
 		expect(out[0]?.patientName).toBe("v1.aa.bb");
 	});
+
+	it("keeps the name enveloped when the patient envelope is absent", async () => {
+		const k = keyring();
+		const { wrapPublicKey } = await k.deviceKeys();
+		const { dek: patientDek } = await k.mintDek(wrapPublicKey);
+		const { encrypt } = await import("@ktb/crypto/aead");
+		const row = {
+			id: 3,
+			patientId: 11,
+			patientName: await encrypt(patientDek, "Maria"),
+			anamnesis: null,
+			transcript: "t",
+		};
+		// No envelope for patient 11 in the response → name stays opaque.
+		const out = await decryptConsultations(k, api(), [row]);
+		expect(out[0]?.patientName).toBe(row.patientName);
+	});
+
+	it("unwraps a shared patient DEK once across rows", async () => {
+		const k = keyring();
+		const { wrapPublicKey } = await k.deviceKeys();
+		const { dek: patientDek, envelope: patientEnv } = await k.mintDek(wrapPublicKey);
+		const { encrypt } = await import("@ktb/crypto/aead");
+		const patientName = await encrypt(patientDek, "Maria Silva");
+		const rows = [
+			{ id: 1, patientId: 11, patientName, anamnesis: null, transcript: "a" },
+			{ id: 2, patientId: 11, patientName, anamnesis: null, transcript: "b" },
+		];
+		const dekEnvelopes: ConsultationZkApi["dekEnvelopes"] = vi.fn(
+			async (): Promise<Record<string, string>> => ({ "11": patientEnv }),
+		);
+		const unwrap = vi.spyOn(k, "unwrapKey");
+		const out = await decryptConsultations(k, api({ dekEnvelopes }), rows);
+		expect(unwrap).toHaveBeenCalledTimes(1);
+		expect(out.map((r) => r.patientName)).toEqual(["Maria Silva", "Maria Silva"]);
+	});
 });
 
 describe("decryptConsultation", () => {

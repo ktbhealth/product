@@ -180,8 +180,10 @@ export async function decryptConsultation<R extends { readonly id: number }>(
 	row: R,
 ): Promise<R | null> {
 	if (!isCipheredConsultation(row as { readonly anamnesis?: string | null })) {
-		const [named] = await decryptConsultations(keyring, api, [row]);
-		return named ?? null;
+		// decryptConsultations yields one out-row per input — [0] is
+		// always defined; the ?? is for the noUncheckedIndexedAccess type.
+		/* v8 ignore next 2 */
+		return (await decryptConsultations(keyring, api, [row]))[0] ?? null;
 	}
 	const [decrypted] = await decryptConsultations(keyring, api, [row]);
 	return decrypted !== undefined &&
