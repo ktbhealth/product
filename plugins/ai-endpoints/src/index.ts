@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { PlugZapIcon } from "lucide-react";
 
 import { type Forbidden } from "@ktb/authz";
@@ -10,6 +10,7 @@ import { Credentials } from "@ktb/credentials";
 import { Db } from "@ktb/db";
 import {
 	LlmFactory,
+	PlatformLlm,
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
 } from "@ktb/eval-consultation";
@@ -126,6 +127,10 @@ export class AiEndpoints extends Context.Service<
 			input: EndpointInput & { readonly id: number },
 		) => Effect.Effect<void, Forbidden, unknown>;
 		readonly remove: (id: number) => Effect.Effect<void, Forbidden, unknown>;
+		/** Promote an endpoint to THE platform default — sets
+		 * `scope='platform'` + `is_default` and clears the previous
+		 * platform default in the same batch (one default per scope). */
+		readonly setPlatformDefault: (id: number) => Effect.Effect<void, Forbidden, unknown>;
 		/** Provider starter endpoints for the form's preset chips —
 		 * declared by the bound LlmFactory (provider URLs live in the
 		 * adapter edge, never in this package). */
@@ -213,6 +218,23 @@ export const AiEndpointsLive = Layer.effect(
 				yield* requireGrant();
 				yield* Effect.promise(() => db.delete(aiEndpoint).where(eq(aiEndpoint.id, id)));
 			}),
+			setPlatformDefault: Effect.fn("AiEndpoints.setPlatformDefault")(function* (id) {
+				yield* requireGrant();
+				yield* Effect.promise(() =>
+					// db.batch is one transaction on D1 — the old default can
+					// never coexist with the new one, even on mid-write crash.
+					db.batch([
+						db
+							.update(aiEndpoint)
+							.set({ isDefault: false })
+							.where(and(eq(aiEndpoint.scope, "platform"), eq(aiEndpoint.isDefault, true))),
+						db
+							.update(aiEndpoint)
+							.set({ scope: "platform", isDefault: true })
+							.where(eq(aiEndpoint.id, id)),
+					]),
+				);
+			}),
 			presets: Effect.fn("AiEndpoints.presets")(function* () {
 				yield* requireGrant();
 				return Option.isNone(factory) ? [] : (factory.value.presets ?? []);
@@ -255,6 +277,52 @@ export const AiEndpointsLive = Layer.effect(
 );
 
 // ---------------------------------------------------------------------------
+// PlatformLlm — the production surface's default-endpoint capability.
+// System path (no principal): the audio pipeline resolves the enabled
+// `scope='platform'` `is_default` endpoint through LlmFactory per call,
+// so "Set as platform default" applies without a restart. Absent
+// factory, missing default, disabled endpoint, or a resolve failure all
+// answer null — consumers fall back to env config, then deterministic.
+// ---------------------------------------------------------------------------
+
+export const PlatformLlmLive = Layer.effect(
+	PlatformLlm,
+	Effect.gen(function* () {
+		const db = yield* Db;
+		const factory = yield* Effect.serviceOption(LlmFactory);
+		return PlatformLlm.of({
+			defaultLayer: () =>
+				Effect.gen(function* () {
+					if (Option.isNone(factory)) return null;
+					const rows = yield* Effect.promise(() =>
+						db
+							.select()
+							.from(aiEndpoint)
+							.where(
+								and(
+									eq(aiEndpoint.scope, "platform"),
+									eq(aiEndpoint.isDefault, true),
+									eq(aiEndpoint.enabled, true),
+								),
+							)
+							.orderBy(desc(aiEndpoint.id)),
+					);
+					const row = rows[0];
+					if (row === undefined) return null;
+					const descriptor = yield* descriptorOf(row);
+					return yield* factory.value.resolve(descriptor);
+				}).pipe(
+					Effect.catch((error) =>
+						Effect.logWarning("platform default endpoint resolution failed", {
+							error: String(error),
+						}).pipe(Effect.as(null)),
+					),
+				),
+		});
+	}),
+);
+
+// ---------------------------------------------------------------------------
 // Plugin manifests
 // ---------------------------------------------------------------------------
 
@@ -276,7 +344,7 @@ export const aiEndpointsServicesPlugin = definePlugin({
 	// The credential:<id> ref path resolves through the credentials
 	// store when that plugin is enabled — absence just skips it.
 	optionalDeps: ["credentials.services"],
-	services: AiEndpointsLive,
+	services: Layer.mergeAll(AiEndpointsLive, PlatformLlmLive),
 });
 
 export const aiEndpointsChromePlugin = definePlugin({

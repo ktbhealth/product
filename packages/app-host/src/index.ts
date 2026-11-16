@@ -67,6 +67,7 @@ import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
 import { correctTranscript as correctTranscriptEffect } from "@ktb/anamnesis-llm";
+import { correctTranscriptViaPlatform, platformPreferringEngine } from "./platform-llm.ts";
 import {
 	Command,
 	CommandBus,
@@ -372,7 +373,15 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAi: env.AI,
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
-	const AnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
+	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
+	// F2: the ai-endpoints plugin's PlatformLlm capability wins over env
+	// providers when a platform-default endpoint is configured; the
+	// wrapped engine is the (b) env fallback → (c) heuristic path.
+	const AnamnesisEngineLive = Layer.unwrap(
+		Effect.map(AnamnesisEngine, (inner) =>
+			Layer.succeed(AnamnesisEngine, platformPreferringEngine(inner)),
+		),
+	).pipe(Layer.provide(envAnamnesisEngineLive));
 	// Telemetry port: driver-selected exporter set (OTLP when configured,
 	// console JSON otherwise) — provides Logger/Tracer references, the
 	// Telemetry service, metric instrumentation and KTB_LOG_LEVEL.
@@ -650,7 +659,15 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	 * or on provider failure (correctedTranscript stays null).
 	 */
 	const correctTranscript = (transcript: string) =>
-		runtime.runPromise(correctTranscriptEffect(llmConfig, transcript));
+		runtime.runPromise(
+			// Platform-default endpoint first (F2); env providers on
+			// absence/failure — both paths degrade to null, never reject.
+			correctTranscriptViaPlatform(transcript).pipe(
+				Effect.flatMap((res) =>
+					res !== null ? Effect.succeed(res) : correctTranscriptEffect(llmConfig, transcript),
+				),
+			),
+		);
 
 	/**
 	 * Drain telemetry exporters (OTLP batch queues) — bounded by each

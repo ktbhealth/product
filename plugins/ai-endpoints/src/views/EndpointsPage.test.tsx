@@ -20,6 +20,10 @@ const fns = vi.hoisted(() => ({
 		ok: true,
 		data: { id: 3 },
 	})),
+	setPlatformDefaultEndpointFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({
+		ok: true,
+		data: null,
+	})),
 	testEndpointFn: vi.fn<(a?: Arg) => Res<{ message?: string }>>(async () => ({
 		ok: true,
 		data: {},
@@ -195,6 +199,28 @@ describe("EndpointsPage", () => {
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		const wire = fns.saveEndpointFn.mock.calls[0]?.[0]?.data as Record<string, unknown>;
 		expect("scope" in wire).toBe(false);
+	});
+
+	it("promotes an endpoint to platform default", async () => {
+		const user = userEvent.setup();
+		renderPage([endpoint]);
+		await user.click(screen.getByText("Set as platform default"));
+		await waitFor(() =>
+			expect(fns.setPlatformDefaultEndpointFn).toHaveBeenCalledWith({ data: { id: 2 } }),
+		);
+	});
+
+	it("hides the promote action on the current platform default", () => {
+		renderPage([{ ...endpoint, scope: "platform", isDefault: true }]);
+		expect(screen.queryByText("Set as platform default")).toBeNull();
+	});
+
+	it("surfaces the failure when the platform-default swap is denied", async () => {
+		const user = userEvent.setup();
+		fns.setPlatformDefaultEndpointFn.mockResolvedValueOnce({ ok: false } as never);
+		renderPage([endpoint]);
+		await user.click(screen.getByText("Set as platform default"));
+		expect(await screen.findByText(/Action failed/)).toBeTruthy();
 	});
 
 	it("edits a model-less endpoint — empty optional fields stay off the wire", async () => {
