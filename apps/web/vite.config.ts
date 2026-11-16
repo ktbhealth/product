@@ -66,6 +66,16 @@ export default defineConfig(({ command, isPreview }) => {
 						new URL("./src/lib/use-sync-external-store-shim-with-selector.ts", import.meta.url),
 					),
 				},
+				{
+					// loro-crdt's exports map resolves `browser` under the
+					// worker build — its WASM loader is synchronous XHR,
+					// which workerd doesn't have. The `bundler` entry imports
+					// the .wasm as an ES module; @cloudflare/vite-plugin
+					// serves that as a WebAssembly.Module, which the glue
+					// already special-cases (PL-008 workerd spike).
+					find: /^loro-crdt$/,
+					replacement: "loro-crdt/bundler",
+				},
 			],
 		},
 		// Whisper worker imports this lazily; pre-bundle it at startup so the
