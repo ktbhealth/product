@@ -170,7 +170,10 @@ export function PatientsPage({
 									) : null}
 								</div>
 								<p className="mt-0.5 text-sm text-muted-foreground">
-									{[demographics(p, locale, undefined, i18n), p.cpf ? `CPF ${formatCpf(p.cpf)}` : null]
+									{[
+										demographics(p, locale, undefined, i18n),
+										p.cpf ? `CPF ${formatCpf(p.cpf)}` : null,
+									]
 										.filter(Boolean)
 										.join(" · ") || t.common.noDemographics}
 								</p>
@@ -186,7 +189,6 @@ export function PatientsPage({
 									size="icon"
 									aria-label={t.actions.editFor(displayName(p))}
 									render={<Link to={portalPath(`/patients/${p.id}/edit`)} />}
-
 								>
 									<PencilIcon />
 								</Button>
