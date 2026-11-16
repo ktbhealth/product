@@ -295,8 +295,9 @@ export async function processThemeAssetJob(
 // ---------- theme.font ----------
 
 /** Google Fonts css2: a modern UA yields woff2 URLs; an old UA yields
- * truetype — used once per job as the metrics probe (woff2 is brotli
- * and cannot be parsed for hhea/OS-2 metrics in workerd). */
+ * truetype — kept as a metrics fallback for fonts whose woff2 tables
+ * cannot be parsed (parseFontMetrics handles woff2 via a WASM brotli
+ * decoder, but returns null on unusual/corrupt containers). */
 const MODERN_UA =
 	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const LEGACY_UA = "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1)";
@@ -337,8 +338,8 @@ const fetchBytes = async (
 	}
 };
 
-/** Downloaded font file + its parsed metrics (null for woff2 — brotli
- * metrics extraction is a documented TODO). */
+/** Downloaded font file + its parsed metrics (null when the container
+ * cannot be parsed — parseFontMetrics returns null for corrupt input). */
 interface FontProbe {
 	readonly bytes: Uint8Array;
 	readonly format: string;
@@ -358,8 +359,9 @@ const probeFont = async (
 };
 
 /** Metric-matched fallback descriptors for a probed font, or null
- * when metrics/fallback-font data is unavailable (woff2 uploads, unknown
- * system fonts) — the @font-face still emits, just without overrides. */
+ * when metrics/fallback-font data is unavailable (unparseable font
+ * containers, unknown system fonts) — the @font-face still emits, just
+ * without overrides. */
 const buildFallback = (
 	family: string,
 	slot: ThemeFontSlot,
@@ -438,8 +440,8 @@ export async function processThemeFontJob(
 				weight: face.weight,
 				format: downloaded.format,
 			});
-			// woff2 metrics are unparseable (brotli) — keep the first
-			// parseable probe; the TTF fallback below covers the rest.
+			// Keep the first parseable probe; the TTF fallback below
+			// covers fonts whose woff2 metrics could not be extracted.
 			if (metrics === null) metrics = downloaded.metrics;
 		}
 		if (faces.length === 0) {
