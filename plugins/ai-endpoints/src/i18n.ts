@@ -35,6 +35,17 @@ export interface AiEndpointMessages {
 	readonly emptyEndpoints: string;
 	readonly actionFailed: string;
 	readonly setPlatformDefault: string;
+	readonly bridgeBadge: string;
+	readonly baseUrlBridgeHint: string;
+	readonly bridgeConnect: string;
+	readonly bridgeTitle: string;
+	readonly bridgeDesc: string;
+	readonly bridgeCopy: string;
+	readonly bridgeCopied: string;
+	readonly bridgeWaiting: string;
+	readonly bridgeConnected: string;
+	readonly bridgeOffline: string;
+	readonly bridgeClose: string;
 }
 
 const en: AiEndpointMessages = {
@@ -72,6 +83,18 @@ const en: AiEndpointMessages = {
 	emptyEndpoints: "No endpoints — generation falls back to the template renderer.",
 	actionFailed: "Action failed — check permissions and try again.",
 	setPlatformDefault: "Set as platform default",
+	bridgeBadge: "bridge",
+	baseUrlBridgeHint: "Leave empty on acp+ws to connect a local agent through the bridge.",
+	bridgeConnect: "Connect via bridge",
+	bridgeTitle: "Connect agent via bridge",
+	bridgeDesc:
+		"Run this command on the machine that hosts the agent — it mints a one-shot link (shown once, ~15min). The agent command stays local: the server only ever sends frames.",
+	bridgeCopy: "Copy command",
+	bridgeCopied: "Copied",
+	bridgeWaiting: "waiting for the CLI to connect",
+	bridgeConnected: "bridge connected",
+	bridgeOffline: "bridge offline",
+	bridgeClose: "Close",
 };
 
 const ptBR: AiEndpointMessages = {
@@ -110,6 +133,18 @@ const ptBR: AiEndpointMessages = {
 	emptyEndpoints: "Sem endpoints — a geração usa o renderizador de template.",
 	actionFailed: "Ação falhou — verifique permissões e tente de novo.",
 	setPlatformDefault: "Definir como padrão da plataforma",
+	bridgeBadge: "bridge",
+	baseUrlBridgeHint: "Deixe vazio em acp+ws para conectar um agente local pela bridge.",
+	bridgeConnect: "Conectar via bridge",
+	bridgeTitle: "Conectar agente via bridge",
+	bridgeDesc:
+		"Execute este comando na máquina que hospeda o agente — ele gera um link de uso único (exibido uma vez, ~15min). O comando do agente fica local: o servidor só envia frames.",
+	bridgeCopy: "Copiar comando",
+	bridgeCopied: "Copiado",
+	bridgeWaiting: "aguardando a CLI conectar",
+	bridgeConnected: "bridge conectada",
+	bridgeOffline: "bridge offline",
+	bridgeClose: "Fechar",
 };
 
 const es: AiEndpointMessages = {
@@ -137,6 +172,18 @@ const es: AiEndpointMessages = {
 	secretRefCustom: "Env var personalizada",
 	actionFailed: "La acción falló — revisa permisos e intenta de nuevo.",
 	setPlatformDefault: "Establecer como predeterminado de la plataforma",
+	bridgeBadge: "bridge",
+	baseUrlBridgeHint: "Deja vacío en acp+ws para conectar un agente local por el bridge.",
+	bridgeConnect: "Conectar vía bridge",
+	bridgeTitle: "Conectar agente vía bridge",
+	bridgeDesc:
+		"Ejecuta este comando en la máquina que hospeda el agente — genera un enlace de un solo uso (se muestra una vez, ~15min). El comando del agente queda local: el servidor solo envía frames.",
+	bridgeCopy: "Copiar comando",
+	bridgeCopied: "Copiado",
+	bridgeWaiting: "esperando que la CLI conecte",
+	bridgeConnected: "bridge conectado",
+	bridgeOffline: "bridge sin conexión",
+	bridgeClose: "Cerrar",
 };
 
 export const aiEndpointMessages = (locale: string): AiEndpointMessages =>

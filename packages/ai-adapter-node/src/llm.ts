@@ -6,7 +6,10 @@
  * call opens a fresh session — spawn → initialize → session/new →
  * session/prompt — and the scope teardown kills the process, so a hung
  * or crashed agent can't leak between calls. The `ws` HTTP transport
- * and the `task.submit` wire format belong to @ktb/ai-adapter-acp.
+ * and the `task.submit` wire format belong to @ktb/ai-adapter-acp; the
+ * session-level LlmPort logic moved there in F3b
+ * (`makeAcpSessionLlm`), this file only supplies the spawned
+ * transport and the descriptor dispatch.
  *
  * Runtime gate: this package is an adapter — platform APIs are allowed —
  * but it can only spawn under Node/Bun. Under workerd `process` is
@@ -17,22 +20,14 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
-import {
-	fnvHex,
-	LlmPort,
-	outputValidators,
-	type EditList,
-	type LlmEndpointDescriptor,
-} from "@ktb/eval-consultation";
+import { makeAcpSessionLlm } from "@ktb/ai-adapter-acp";
+import { PortError } from "@ktb/eval-core";
+import { fnvHex, LlmPort, type LlmEndpointDescriptor } from "@ktb/eval-consultation";
 
-import { openAcpSession } from "./acp-client.ts";
 import type { SpawnImpl } from "./stdio-rpc.ts";
+import { makeStdioRpc } from "./stdio-rpc.ts";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
-
-const causeMessage = (cause: unknown): string =>
-	cause instanceof Error ? cause.message : String(cause);
 
 const fail = (message: string, cause?: unknown) => new PortError({ port: "llm", message, cause });
 
@@ -51,101 +46,23 @@ export interface NodeAcpLlmOptions {
 	readonly spawnImpl?: SpawnImpl;
 }
 
-/** Spawn a session, run one prompt turn, return the agent's text. */
-const promptText = (
-	opts: NodeAcpLlmOptions,
-	envelope: TaskEnvelope,
-	stage: string,
-): Effect.Effect<{ text: string; record: RunRecord }, PortError> => {
-	const started = Date.now();
-	return Effect.scoped(
-		Effect.gen(function* () {
-			const client = yield* openAcpSession({
-				argv: opts.argv,
-				...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
-				...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
-				...(opts.spawnImpl !== undefined ? { spawnImpl: opts.spawnImpl } : {}),
-			});
-			return yield* client.prompt(envelope.input);
-		}),
-	).pipe(
-		Effect.map((text) => ({
-			text,
-			record: {
-				runId: opts.sessionId ?? "acp-node",
-				taskId: envelope.taskId,
-				stage,
-				engine: "acp-node",
-				model: envelope.modelHint,
-				...(opts.engineVersion !== undefined ? { engineVersion: opts.engineVersion } : {}),
-				inputHash: fnvHex(
-					`${envelope.taskId}:${envelope.outputSchema}:${envelope.input}:${envelope.seed ?? 0}`,
-				),
-				seed: envelope.seed,
-				startedAt: started,
-				latencyMs: Date.now() - started,
-			},
-		})),
-	);
-};
-
-/** LlmPort over a spawned ACP agent. `generate` validates the agent's
- * text against the envelope's declared `outputSchema` through the same
- * validator registry the ws adapter uses; `correct` pins `EditList`
- * and parses the agent's reply as JSON before decoding. */
+/** LlmPort over a spawned ACP agent — the stdio transport plugged
+ * into the shared session port. */
 export const makeNodeAcpLlm = (opts: NodeAcpLlmOptions): Layer.Layer<LlmPort> =>
-	Layer.succeed(
-		LlmPort,
-		LlmPort.of({
-			egress: opts.egress ?? true,
-			generate: (envelope) =>
-				promptText(opts, envelope, "script_gen").pipe(
-					Effect.flatMap(({ text, record }) => {
-						const validator = outputValidators[envelope.outputSchema];
-						if (validator === undefined) {
-							return Effect.fail(fail(`unknown outputSchema: ${envelope.outputSchema}`));
-						}
-						return Effect.try({
-							try: () => validator(text),
-							catch: (e) =>
-								fail(`payload failed ${envelope.outputSchema} validation: ${causeMessage(e)}`, e),
-						}).pipe(
-							Effect.flatMap((payload) => {
-								// Whatever schema the envelope declared validated
-								// the payload, but it must still be a string —
-								// never cast an object into a lie.
-								if (typeof payload !== "string") {
-									return Effect.fail(
-										fail(
-											`generate requires a string payload, ${envelope.outputSchema} produced ${typeof payload}`,
-										),
-									);
-								}
-								return Effect.succeed({ text: payload, record });
-							}),
-						);
-					}),
-				),
-			correct: (envelope) => {
-				if (envelope.outputSchema !== "EditList") {
-					return Effect.fail(
-						fail(`cleanup requires outputSchema=EditList, got ${envelope.outputSchema}`),
-					);
-				}
-				return promptText(opts, envelope, "cleanup").pipe(
-					Effect.flatMap(({ text, record }) =>
-						Effect.try({
-							// The agent's reply text is the EditList JSON —
-							// parse then schema-decode; either failure is one
-							// typed PortError.
-							try: () => outputValidators.EditList(JSON.parse(text)) as EditList,
-							catch: (e) => fail(`payload failed EditList validation: ${causeMessage(e)}`, e),
-						}).pipe(Effect.map((edits) => ({ edits, record }))),
-					),
-				);
-			},
-		}),
-	);
+	makeAcpSessionLlm({
+		connect: (onNotification) =>
+			makeStdioRpc({
+				argv: opts.argv,
+				...(opts.spawnImpl !== undefined ? { spawnImpl: opts.spawnImpl } : {}),
+				onNotification,
+			}),
+		engine: "acp-node",
+		...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+		...(opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {}),
+		...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+		...(opts.egress !== undefined ? { egress: opts.egress } : {}),
+		...(opts.engineVersion !== undefined ? { engineVersion: opts.engineVersion } : {}),
+	});
 
 const nodeOnly = (transport: string) =>
 	fail(

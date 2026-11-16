@@ -1,0 +1,20 @@
+{
+	"name": "@ktb/ai-bridge",
+	"private": true,
+	"bin": {
+		"ai-bridge": "./src/cli.ts"
+	},
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./do": "./src/do.ts",
+		"./cli": "./src/cli.ts"
+	},
+	"dependencies": {
+		"@ktb/ai-adapter-acp": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"vitest": "5.1.0"
+	}
+}

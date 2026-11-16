@@ -10,6 +10,10 @@ import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
 import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
 import { flushTelemetry } from "#/lib/platform.ts";
 
+// F3b: re-export the AcpBridge Durable Object class — the Alchemy
+// `ACP_BRIDGE` binding points at this worker's `AcpBridge` export.
+export { AcpBridge } from "@ktb/ai-bridge";
+
 const fetch = createStartHandler(defaultStreamHandler);
 
 // Providing `RequestHandler` from `@tanstack/react-start/server` is required so that the output types don't import it from `@tanstack/start-server-core`

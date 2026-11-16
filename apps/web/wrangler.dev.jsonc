@@ -36,6 +36,12 @@
 		],
 		"consumers": [{ "queue": "ktb-transcription" }, { "queue": "ktb-theme-assets" }],
 	},
+	// ACP bridge (F3b): same DO binding as wrangler.jsonc — dev needs it
+	// for `ai-bridge` CLIs to connect against the local worker.
+	"durable_objects": {
+		"bindings": [{ "name": "ACP_BRIDGE", "class_name": "AcpBridge" }],
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AcpBridge"] }],
 	"d1_databases": [
 		{
 			"binding": "DB",

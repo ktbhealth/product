@@ -1,8 +1,9 @@
+import { physical } from "@tanstack/virtual-file-routes";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { PlugZapIcon } from "lucide-react";
 
 import { type Forbidden } from "@ktb/authz";
@@ -19,8 +20,9 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
+import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
 import { EndpointsPanelPage } from "./platform-page.tsx";
-import { aiEndpoint, type AiEndpoint } from "./schema.ts";
+import { aiAgentLink, aiEndpoint, type AiEndpoint } from "./schema.ts";
 
 // ---------------------------------------------------------------------------
 // DTOs — what the panel page and fns exchange (plain JSON on the wire).
@@ -41,8 +43,39 @@ export interface EndpointCard {
 	readonly isDefault: boolean;
 	readonly timeoutMs: number;
 	readonly enabled: boolean;
+	/** Last bridge connect/heartbeat (F3b) — null when no bridge CLI
+	 * has ever held a socket for this endpoint. */
+	readonly lastSeenAt: Date | null;
 	readonly createdAt: Date;
 }
+
+/** One-shot link the fn mints for a bridge endpoint — the raw token
+ * exists ONLY in the returned command; the table keeps its SHA-256. */
+export interface BridgeLink {
+	readonly token: string;
+	readonly expiresAt: Date;
+}
+
+/** Badge state derived from last_seen_at + open links:
+ * `connected` = socket seen inside the heartbeat window,
+ * `waiting` = an unused unexpired link exists, `offline` otherwise. */
+export type BridgeStatus = "connected" | "waiting" | "offline";
+
+/** Bridge liveness window: ~2 heartbeat intervals (the CLI pings
+ * every 30s). */
+export const BRIDGE_LIVE_MS = 90_000;
+
+/** One-shot link lifetime — long enough to paste a command, short
+ * enough that a leaked link is useless. */
+export const BRIDGE_LINK_TTL_MS = 15 * 60_000;
+
+/** Is this row an acp+ws bridge endpoint? `base_url` NULL is the
+ * sentinel — the agent lives behind a local ai-bridge CLI. */
+export const isBridgeEndpoint = (row: {
+	readonly kind: string;
+	readonly baseUrl: string | null;
+	readonly transport: string | null;
+}): boolean => row.kind === "acp" && (row.transport ?? "ws") === "ws" && row.baseUrl === null;
 
 export interface EndpointInput {
 	readonly name: string;
@@ -68,7 +101,9 @@ const toEndpointCard = (row: AiEndpoint): EndpointCard => ({
 	id: row.id,
 	name: row.name,
 	kind: row.kind,
-	baseUrl: row.baseUrl,
+	// The column went nullable in F3b (bridge endpoints have no URL) —
+	// the DTO keeps a string; "" is the bridge sentinel end to end.
+	baseUrl: row.baseUrl ?? "",
 	model: row.model,
 	sessionId: row.sessionId,
 	secretRef: row.secretRef,
@@ -79,6 +114,7 @@ const toEndpointCard = (row: AiEndpoint): EndpointCard => ({
 	isDefault: row.isDefault,
 	timeoutMs: row.timeoutMs,
 	enabled: row.enabled,
+	lastSeenAt: row.lastSeenAt,
 	createdAt: row.createdAt,
 });
 
@@ -95,7 +131,10 @@ const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, nev
 		const transport = row.transport;
 		const base: LlmEndpointDescriptor = {
 			kind: row.kind === "acp" ? "acp" : "openai",
-			baseUrl: row.baseUrl,
+			baseUrl: row.baseUrl ?? "",
+			// DO name for acp+ws bridge endpoints (F3b) — the factory
+			// resolves idFromName(endpointId).
+			endpointId: row.id,
 			...(row.model !== null ? { model: row.model } : {}),
 			...(row.sessionId !== null ? { sessionId: row.sessionId } : {}),
 			...(row.kind === "acp" && (transport === "child" || transport === "ssh" || transport === "ws")
@@ -167,6 +206,25 @@ export class AiEndpoints extends Context.Service<
 		readonly resolveDefault: (
 			scope?: string,
 		) => Effect.Effect<LlmEndpointDescriptor | null, Forbidden, unknown>;
+		/** Mint a one-shot bridge link (F3b): stores only the SHA-256 of
+		 * the raw token; the fn composes the `ai-bridge connect`
+		 * command with the request origin. Null for unknown/disabled/
+		 * non-bridge endpoints. SECURITY INVARIANT: the agent command
+		 * never comes from the server — the returned command only
+		 * carries the token; `--cmd` is a local CLI flag. */
+		readonly createBridgeLink: (
+			endpointId: number,
+			createdBy: string,
+		) => Effect.Effect<BridgeLink | null, Forbidden, unknown>;
+		/** Bridge status for the row badge — null for unknown/disabled/
+		 * non-bridge endpoints. */
+		readonly bridgeStatus: (
+			endpointId: number,
+		) => Effect.Effect<
+			{ readonly status: BridgeStatus; readonly lastSeenAt: Date | null } | null,
+			Forbidden,
+			unknown
+		>;
 	}
 >()("@ktb/ai-endpoints/AiEndpoints") {}
 
@@ -178,7 +236,10 @@ export const AiEndpointsLive = Layer.effect(
 		const values = (input: EndpointInput) => ({
 			name: input.name,
 			kind: input.kind,
-			baseUrl: input.baseUrl,
+			// "" is the bridge sentinel (acp+ws via the AcpBridge DO) —
+			// stored NULL so "has a dialable URL" stays a real column
+			// state rather than a magic string.
+			baseUrl: input.baseUrl === "" ? null : input.baseUrl,
 			model: input.model ?? null,
 			sessionId: input.sessionId ?? null,
 			secretRef: input.secretRef ?? null,
@@ -284,6 +345,48 @@ export const AiEndpointsLive = Layer.effect(
 				if (row === undefined) return null;
 				return yield* descriptorOf(row);
 			}),
+			createBridgeLink: Effect.fn("AiEndpoints.createBridgeLink")(
+				function* (endpointId, createdBy) {
+					yield* requireGrant();
+					const row = yield* fetchRow(endpointId);
+					if (row === undefined || !row.enabled || !isBridgeEndpoint(row)) return null;
+					const token = mintBridgeToken();
+					const tokenHash = yield* Effect.promise(() => sha256Hex(token));
+					const expiresAt = new Date(Date.now() + BRIDGE_LINK_TTL_MS);
+					yield* Effect.promise(() =>
+						db.insert(aiAgentLink).values({ endpointId, tokenHash, createdBy, expiresAt }),
+					);
+					return { token, expiresAt };
+				},
+			),
+			bridgeStatus: Effect.fn("AiEndpoints.bridgeStatus")(function* (endpointId) {
+				yield* requireGrant();
+				const row = yield* fetchRow(endpointId);
+				if (row === undefined || !row.enabled || !isBridgeEndpoint(row)) return null;
+				const lastSeenAt = row.lastSeenAt;
+				if (lastSeenAt !== null && Date.now() - lastSeenAt.getTime() <= BRIDGE_LIVE_MS) {
+					return { status: "connected" as const, lastSeenAt };
+				}
+				// A minted-but-unconsumed link means a CLI command is in
+				// somebody's clipboard — the badge says waiting until it
+				// connects or the link expires.
+				const open = yield* Effect.promise(() =>
+					db
+						.select({ id: aiAgentLink.id })
+						.from(aiAgentLink)
+						.where(
+							and(
+								eq(aiAgentLink.endpointId, endpointId),
+								isNull(aiAgentLink.usedAt),
+								gt(aiAgentLink.expiresAt, new Date()),
+							),
+						),
+				);
+				return {
+					status: open.length > 0 ? ("waiting" as const) : ("offline" as const),
+					lastSeenAt,
+				};
+			}),
 		});
 	}),
 );
@@ -341,13 +444,14 @@ export const PlatformLlmLive = Layer.effect(
 /** DDL mirror of schema.ts for in-memory test databases (same
  * contract as EVAL_PERSONA_TEST_DDL). */
 export const AI_ENDPOINTS_TEST_DDL = `
-CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT NOT NULL, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id INTEGER NOT NULL REFERENCES ai_endpoint(id) ON DELETE cascade, token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, created_at INTEGER NOT NULL);
 `;
 
 export const aiEndpointsTablesPlugin = definePlugin({
 	id: "ai.endpoints.tables",
 	requiredDeps: [],
-	tables: { aiEndpoint },
+	tables: { aiAgentLink, aiEndpoint },
 });
 
 export const aiEndpointsServicesPlugin = definePlugin({
@@ -379,6 +483,18 @@ export const aiEndpointsChromePlugin = definePlugin({
 	],
 });
 
+// Route subtree (P-033 style): the bridge handoff route module lives
+// in THIS package (src/api-routes/**) and mounts under the shared
+// "/api" prefix via a physical() scan — machine-token auth, no
+// session. Route modules must live directly in src/api-routes/ — the
+// generator scans every .ts file there, so tests stay outside it.
+export const aiEndpointsRoutesPlugin = definePlugin({
+	// The ktb-arch route gate derives this id from the package dir:
+	// plugins/ai-endpoints → "ai-endpoints.routes".
+	id: "ai-endpoints.routes",
+	routes: [physical("/api", "../../../../plugins/ai-endpoints/src/api-routes")],
+});
+
 export const aiEndpointsPanelPlugin = definePlugin({
 	id: "ai.endpoints.panel",
 	requiredDeps: [platformPanelPlugin.id, aiEndpointsServicesPlugin.id],
@@ -408,6 +524,7 @@ export const aiEndpointsPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	aiEndpointsTablesPlugin,
 	aiEndpointsServicesPlugin,
+	aiEndpointsRoutesPlugin,
 	aiEndpointsChromePlugin,
 	aiEndpointsPanelPlugin,
 ];
@@ -416,6 +533,7 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"ai.endpoints.tables": true;
 		"ai.endpoints.services": true;
+		"ai-endpoints.routes": true;
 		"ai.endpoints.chrome": true;
 		"ai.endpoints.panel": true;
 	}

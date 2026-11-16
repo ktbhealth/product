@@ -36,6 +36,11 @@ export default Alchemy.Stack(
 		});
 		const transcriptionQueue = yield* Cloudflare.Queues.Queue("transcription");
 
+		// ACP bridge (F3b): the durable object holding each ai_endpoint's
+		// outbound agent socket (idFromName(endpointId)). The class is
+		// exported as `AcpBridge` from the worker entry (src/server.ts).
+		const acpBridge = Cloudflare.DurableObject("AcpBridge");
+
 		// Theme brand assets + font files (P-082/PL-006 phase 4): private
 		// bucket served only through the worker's /api/theme/assets route;
 		// dedicated queue (decided over sharing ktb-transcription) so image
@@ -75,6 +80,7 @@ export default Alchemy.Stack(
 			bindings: {
 				DB: db,
 				AI: Cloudflare.Workers.AI(),
+				ACP_BRIDGE: acpBridge,
 				AUDIO_BUCKET: audioBucket,
 				AUDIO_QUEUE: transcriptionQueue,
 				THEME_ASSETS_BUCKET: themeAssetsBucket,

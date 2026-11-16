@@ -1,6 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
-import { useState } from "react";
-import { PencilIcon, PlusIcon, StarIcon, Trash2Icon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CopyIcon, PencilIcon, PlugZapIcon, PlusIcon, StarIcon, Trash2Icon } from "lucide-react";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -31,7 +31,9 @@ import type { CredentialCard } from "@ktb/credentials";
 import type { LlmEndpointPreset } from "@ktb/eval-consultation";
 
 import {
+	createBridgeLinkFn,
 	deleteEndpointFn,
+	endpointBridgeStatusFn,
 	listEndpointPresetsFn,
 	listEndpointsFn,
 	saveEndpointFn,
@@ -39,7 +41,12 @@ import {
 	testEndpointFn,
 } from "../fns.ts";
 import { aiEndpointMessages } from "../i18n.ts";
-import type { EndpointCard } from "../index.ts";
+import type { BridgeStatus, EndpointCard } from "../index.ts";
+
+/** A bridge endpoint: acp+ws with no dialable URL — the agent lives
+ * behind the local `ai-bridge` CLI (F3b). */
+const isBridgeCard = (e: EndpointCard): boolean =>
+	e.kind === "acp" && (e.transport ?? "ws") === "ws" && e.baseUrl === "";
 
 const SECRET_NONE = "__none__";
 const SECRET_CUSTOM = "__custom__";
@@ -157,6 +164,14 @@ export function EndpointsPage({
 	const [testResult, setTestResult] = useState<Record<number, string>>({});
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
+	// Bridge connect dialog: the one-shot command is minted on open and
+	// lives only in this state — status polls while the dialog is up.
+	const [bridge, setBridge] = useState<{
+		readonly id: number;
+		readonly command: string | null;
+		readonly status: BridgeStatus | null;
+	} | null>(null);
+	const [copied, setCopied] = useState(false);
 
 	const refresh = async () => {
 		const e = await listEndpointsFn();
@@ -242,6 +257,57 @@ export function EndpointsPage({
 		}
 	};
 
+	/** Mint the one-shot link and open the connect dialog — the raw
+	 * command exists only in component state, never re-fetchable. */
+	const openBridge = async (id: number) => {
+		setCopied(false);
+		setBridge({ id, command: null, status: null });
+		const r = await createBridgeLinkFn({ data: { id } });
+		setBridge((prev) =>
+			prev === null || prev.id !== id
+				? prev
+				: { ...prev, command: r.ok && r.data !== null ? r.data.command : "" },
+		);
+	};
+
+	// Poll the bridge status while the dialog is open — the badge
+	// flips to connected as soon as the CLI's socket lands on the DO.
+	const bridgeId = bridge?.id;
+	useEffect(() => {
+		if (bridgeId === undefined) return;
+		const id = bridgeId;
+		let stopped = false;
+		const tick = async () => {
+			const r = await endpointBridgeStatusFn({ data: { id } });
+			if (stopped) return;
+			if (r.ok) {
+				setBridge((prev) => {
+					/* v8 ignore next -- the tick only runs while this id's dialog is open */
+					if (prev === null || prev.id !== id) return prev;
+					return { ...prev, status: r.data?.status ?? null };
+				});
+			}
+		};
+		void tick();
+		const timer = setInterval(() => void tick(), 3_000);
+		return () => {
+			stopped = true;
+			clearInterval(timer);
+		};
+	}, [bridgeId]);
+
+	const copyCommand = async () => {
+		/* v8 ignore next -- the Copy button only renders with a non-empty command */
+		if (bridge?.command == null || bridge.command === "") return;
+		try {
+			await navigator.clipboard.writeText(bridge.command);
+		} catch {
+			// Clipboard API unavailable (insecure context) — the command
+			// stays selected in the read-only input for manual copy.
+		}
+		setCopied(true);
+	};
+
 	const test = async (id: number) => {
 		setTestResult((prev) => ({ ...prev, [id]: "…" }));
 		const r = await testEndpointFn({ data: { id } });
@@ -284,9 +350,10 @@ export function EndpointsPage({
 										<Badge variant="outline">{e.scope}</Badge>
 										{e.isDefault && <Badge variant="secondary">default</Badge>}
 										{!e.enabled && <Badge variant="secondary">off</Badge>}
+										{isBridgeCard(e) && <Badge variant="outline">{m.bridgeBadge}</Badge>}
 									</div>
 									<p className="mt-1 truncate text-sm text-muted-foreground">
-										{e.baseUrl}
+										{e.baseUrl === "" ? m.bridgeBadge : e.baseUrl}
 										{e.model !== null ? ` · ${e.model}` : ""}
 									</p>
 									{testResult[e.id] !== undefined && (
@@ -294,6 +361,17 @@ export function EndpointsPage({
 									)}
 								</div>
 								<div className="flex shrink-0 gap-2">
+									{isBridgeCard(e) && e.enabled && (
+										<Button
+											variant="outline"
+											size="sm"
+											disabled={busy}
+											onClick={() => void openBridge(e.id)}
+										>
+											<PlugZapIcon className="mr-1 size-3" />
+											{m.bridgeConnect}
+										</Button>
+									)}
 									{!(e.scope === "platform" && e.isDefault) && (
 										<Button
 											variant="outline"
@@ -452,6 +530,9 @@ export function EndpointsPage({
 									value={epForm.baseUrl}
 									onChange={(e) => setEpForm({ ...epForm, baseUrl: e.target.value })}
 								/>
+								{epForm.kind === "acp" && epForm.transport === "ws" && (
+									<p className="mt-1 text-xs text-muted-foreground">{m.baseUrlBridgeHint}</p>
+								)}
 							</Field>
 							<div className="grid grid-cols-2 gap-3">
 								<Field>
@@ -561,10 +642,50 @@ export function EndpointsPage({
 							{m.cancel}
 						</Button>
 						<Button
-							disabled={busy || epForm === null || epForm.name === "" || epForm.baseUrl === ""}
+							disabled={
+								busy ||
+								epForm === null ||
+								epForm.name === "" ||
+								// acp+ws tolerates an empty baseUrl — that IS the
+								// bridge endpoint (the agent connects outbound
+								// through the DO instead of being dialed).
+								(epForm.baseUrl === "" && !(epForm.kind === "acp" && epForm.transport === "ws"))
+							}
 							onClick={() => void saveEndpoint()}
 						>
 							{m.save}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog open={bridge !== null} onOpenChange={(open) => !open && setBridge(null)}>
+				<DialogContent className="sm:max-w-lg">
+					<DialogHeader>
+						<DialogTitle>{m.bridgeTitle}</DialogTitle>
+					</DialogHeader>
+					<div className="grid gap-3">
+						<p className="text-sm text-muted-foreground">{m.bridgeDesc}</p>
+						{bridge?.command != null && bridge.command !== "" && (
+							<div className="flex gap-2">
+								<Input readOnly value={bridge.command} aria-label={m.bridgeTitle} />
+								<Button variant="outline" size="sm" onClick={() => void copyCommand()}>
+									<CopyIcon className="mr-1 size-3" />
+									{copied ? m.bridgeCopied : m.bridgeCopy}
+								</Button>
+							</div>
+						)}
+						<p className="text-sm" aria-live="polite">
+							{bridge?.status === "connected"
+								? m.bridgeConnected
+								: bridge?.status === "offline"
+									? m.bridgeOffline
+									: m.bridgeWaiting}
+						</p>
+					</div>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setBridge(null)}>
+							{m.bridgeClose}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

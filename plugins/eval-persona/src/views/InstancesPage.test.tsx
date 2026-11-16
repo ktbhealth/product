@@ -108,6 +108,7 @@ const endpoint: EndpointCard = {
 	isDefault: false,
 	timeoutMs: 60_000,
 	enabled: true,
+	lastSeenAt: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 };
 

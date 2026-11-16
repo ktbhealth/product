@@ -24,6 +24,11 @@ export const plugins: readonly Plugin[] = [
 		optionalDeps: ["credentials.services"],
 	}),
 	definePlugin({
+		// Mirrors aiEndpointsRoutesPlugin — the /api route subtree is
+		// server-only; the client carries the bare id for parity.
+		id: "ai-endpoints.routes",
+	}),
+	definePlugin({
 		id: "ai.endpoints.chrome",
 		requiredDeps: ["platform.panel"],
 		chrome: [

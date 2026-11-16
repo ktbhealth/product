@@ -4,6 +4,7 @@ const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestHeaders: () => headers.current,
+	getRequestUrl: () => "https://app.test/req",
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -33,7 +34,9 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { AI_ENDPOINTS_TEST_DDL, AiEndpointsLive } from "./index.ts";
 import {
+	createBridgeLinkFn,
 	deleteEndpointFn,
+	endpointBridgeStatusFn,
 	listEndpointPresetsFn,
 	listEndpointsFn,
 	saveEndpointFn,
@@ -130,6 +133,8 @@ describe("ai-endpoints fns", () => {
 		await expect(setPlatformDefaultEndpointFn({ data: { id: 1 } })).rejects.toThrow(
 			"unauthenticated",
 		);
+		await expect(createBridgeLinkFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
+		await expect(endpointBridgeStatusFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 	});
 
 	it("returns { ok: false } when the grant is missing", async () => {
@@ -143,6 +148,8 @@ describe("ai-endpoints fns", () => {
 		expect(await deleteEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await testEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await setPlatformDefaultEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
+		expect(await createBridgeLinkFn({ data: { id: 1 } })).toEqual({ ok: false });
+		expect(await endpointBridgeStatusFn({ data: { id: 1 } })).toEqual({ ok: false });
 		allow = true;
 	});
 
@@ -218,5 +225,55 @@ describe("ai-endpoints fns", () => {
 		factoryFails = false;
 
 		expect(await deleteEndpointFn({ data: { id } })).toEqual({ ok: true, data: null });
+	});
+
+	it("mints the bridge command once and polls bridge status through the fn surface", async () => {
+		currentEmail = "v@x.com";
+		allow = true;
+		const created = await saveEndpointFn({
+			data: { name: "agent", kind: "acp", transport: "ws", baseUrl: "", enabled: true },
+		});
+		expect(created.ok).toBe(true);
+		if (!created.ok) return;
+		const id = created.data.id;
+
+		// No minted link yet — the bridge endpoint reads offline.
+		expect(await endpointBridgeStatusFn({ data: { id } })).toEqual({
+			ok: true,
+			data: { status: "offline", lastSeenAt: null },
+		});
+
+		const link = await createBridgeLinkFn({ data: { id } });
+		expect(link.ok).toBe(true);
+		if (!link.ok || link.data === null) return;
+		expect(link.data.command).toContain("bunx @ktb/ai-bridge connect ");
+		expect(link.data.command).toContain("https://app.test/api/ai/bridge?token=");
+		expect(link.data.command).toContain('--cmd "claude agent acp"');
+		expect(link.data.expiresAt).toBeInstanceOf(Date);
+
+		// A minted-but-unconsumed link flips the badge to waiting.
+		expect(await endpointBridgeStatusFn({ data: { id } })).toEqual({
+			ok: true,
+			data: { status: "waiting", lastSeenAt: null },
+		});
+
+		// Non-bridge and unknown endpoints resolve to null data.
+		const openai = await saveEndpointFn({
+			data: { name: "o", kind: "openai", baseUrl: "http://x/v1" },
+		});
+		expect(openai.ok).toBe(true);
+		if (!openai.ok) return;
+		expect(await endpointBridgeStatusFn({ data: { id: openai.data.id } })).toEqual({
+			ok: true,
+			data: null,
+		});
+		expect(await createBridgeLinkFn({ data: { id: openai.data.id } })).toEqual({
+			ok: true,
+			data: null,
+		});
+		expect(await endpointBridgeStatusFn({ data: { id: 9999 } })).toEqual({
+			ok: true,
+			data: null,
+		});
 	});
 });

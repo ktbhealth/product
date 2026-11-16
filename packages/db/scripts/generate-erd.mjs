@@ -161,8 +161,8 @@ const DOMAINS = [
 		title: "AI endpoints",
 		owner: "`plugins/ai-endpoints`",
 		description:
-			"Generative providers (acp/openai) any AI surface binds through AiEndpoints.resolve — scoped per consuming surface with an is_default pick.",
-		tables: ["ai_endpoint"],
+			"Generative providers (acp/openai) any AI surface binds through AiEndpoints.resolve — scoped per consuming surface with an is_default pick — plus the one-shot ai-bridge connect links.",
+		tables: ["ai_agent_link", "ai_endpoint"],
 	},
 	{
 		id: "eval-persona",

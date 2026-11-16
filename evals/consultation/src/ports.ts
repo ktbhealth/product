@@ -230,7 +230,13 @@ export class EvalArtifacts extends Context.Service<
  * an env var holding the API key — keys never live in tables. */
 export interface LlmEndpointDescriptor {
 	readonly kind: "acp" | "openai";
+	/** Optional for acp+ws bridge endpoints (F3b): absent/empty means
+	 * "connect through the AcpBridge durable object" — the agent lives
+	 * behind a local ai-bridge CLI, not a URL. */
 	readonly baseUrl: string;
+	/** Owning ai_endpoint row id — set by the plugin's descriptor
+	 * resolution; the bridge DO names itself `idFromName(endpointId)`. */
+	readonly endpointId?: number;
 	readonly model?: string;
 	readonly sessionId?: string;
 	readonly secretRef?: string;

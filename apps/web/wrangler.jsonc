@@ -30,6 +30,13 @@
 		],
 		"consumers": [{ "queue": "ktb-transcription" }, { "queue": "ktb-theme-assets" }],
 	},
+	// ACP bridge (F3b): the durable object holding each ai_endpoint's
+	// outbound agent socket. Local emulation only — the production
+	// binding is declared in alchemy.run.ts.
+	"durable_objects": {
+		"bindings": [{ "name": "ACP_BRIDGE", "class_name": "AcpBridge" }],
+	},
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AcpBridge"] }],
 	"d1_databases": [
 		{
 			"binding": "DB",

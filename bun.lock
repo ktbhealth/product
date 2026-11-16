@@ -46,6 +46,7 @@
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@huggingface/transformers": "^4.3.2",
         "@inlang/paraglide-js": "2.29.3",
+        "@ktb/ai-bridge": "workspace:*",
         "@ktb/ai-endpoints": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/app-host": "workspace:*",
@@ -188,6 +189,7 @@
     "packages/ai-adapter-node": {
       "name": "@ktb/ai-adapter-node",
       "dependencies": {
+        "@ktb/ai-adapter-acp": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-core": "workspace:*",
         "effect": "4.1.2",
@@ -203,6 +205,19 @@
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-core": "workspace:*",
         "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
+    "packages/ai-bridge": {
+      "name": "@ktb/ai-bridge",
+      "bin": {
+        "ai-bridge": "./src/cli.ts",
+      },
+      "dependencies": {
+        "@ktb/ai-adapter-acp": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "^22.10.2",
@@ -599,6 +614,7 @@
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.2@react",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
+        "@tanstack/virtual-file-routes": "1.162.0",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
         "lucide-react": "0.544.0",
@@ -1784,6 +1800,8 @@
     "@ktb/ai-adapter-node": ["@ktb/ai-adapter-node@workspace:packages/ai-adapter-node"],
 
     "@ktb/ai-adapter-openai": ["@ktb/ai-adapter-openai@workspace:packages/ai-adapter-openai"],
+
+    "@ktb/ai-bridge": ["@ktb/ai-bridge@workspace:packages/ai-bridge"],
 
     "@ktb/ai-endpoints": ["@ktb/ai-endpoints@workspace:plugins/ai-endpoints"],
 
