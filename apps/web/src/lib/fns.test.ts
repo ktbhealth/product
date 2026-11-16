@@ -32,36 +32,40 @@ import { eq } from "drizzle-orm";
 import { audioBucketStore } from "#/test/cloudflare-workers.ts";
 import {
 	adminCreateConsultationFn,
-	adminCreatePatientFn,
 	adminDeleteConsultationFn,
 	adminListAudioJobsFn,
 	attachAnamnesisFn,
-	countMyUnreadNotificationsFn,
-	createPatientFn,
-	deletePatientFn,
-	emailEnabledFn,
 	extractAnamnesisFn,
 	getConsultationFn,
 	getLiveConsultationFn,
-	getPatientFn,
-	getSessionUserFn,
 	listConsultationsFn,
-	listMyNotificationsFn,
-	listPatientConsultationsFn,
+	patientHistoryFn,
+	recordConsentFn,
+	saveConsultationFn,
+	verifyConsultationIntegrityFn,
+} from "@ktb/consultations/fns";
+import {
+	adminCreatePatientFn,
+	createPatientFn,
+	deletePatientFn,
+	getPatientFn,
 	listPatientsFn,
+	patientConsultationsFn,
+	patientDeletionImpactFn,
+	updatePatientFn,
+} from "@ktb/patients/fns";
+import {
+	countMyUnreadNotificationsFn,
+	emailEnabledFn,
+	getSessionUserFn,
+	listMyNotificationsFn,
 	markAllMyNotificationsReadFn,
 	markMyNotificationsReadFn,
-	patientDeletionImpactFn,
-	patientHistoryFn,
 	platformAdminFn,
 	consoleDeniedFn,
 	portalPageDataFn,
 	appPageDataFn,
-	recordConsentFn,
-	saveConsultationFn,
 	sessionFn,
-	updatePatientFn,
-	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
 /** Registers a patient through the server fn, failing the test on validation errors. */
@@ -141,7 +145,7 @@ describe("server fns", () => {
 			updatePatientFn({ data: { id: 1, name: "X", birthDate: "1984" } }),
 		).rejects.toThrow("unauthenticated");
 		expect(await getPatientFn({ data: 1 })).toBeNull();
-		expect(await listPatientConsultationsFn({ data: 1 })).toEqual([]);
+		expect(await patientConsultationsFn({ data: 1 })).toEqual([]);
 		await expect(
 			saveConsultationFn({
 				data: { transcript: "t", anamnesis: makeAnamnesis("q"), engine: "e" },
@@ -474,7 +478,7 @@ describe("server fns", () => {
 		await saveConsultationFn({
 			data: { transcript: "t", anamnesis: makeAnamnesis("Sem paciente"), engine: "e" },
 		});
-		const own = await listPatientConsultationsFn({ data: patient.id });
+		const own = await patientConsultationsFn({ data: patient.id });
 		expect(own.map((c) => c.chiefComplaint)).toEqual(["Do paciente"]);
 		expect(own[0]?.patientId).toBe(patient.id);
 	});

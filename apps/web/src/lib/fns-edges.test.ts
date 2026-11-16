@@ -102,18 +102,18 @@ vi.mock("#/lib/platform.ts", async (importOriginal) => {
 import * as Effect from "effect/Effect";
 import type { Page, PanelPage } from "@ktb/kernel";
 import { appPages, portalPages } from "./registry.ts";
+import { extractAnamnesisFn } from "@ktb/consultations/fns";
 import {
+	createPatientFn,
 	localeFn as patientsLocaleFn,
 	sessionUserFn as patientsSessionUserFn,
+	updatePatientFn,
 } from "@ktb/patients/fns";
 import {
 	appPageDataFn,
-	createPatientFn,
-	extractAnamnesisFn,
 	markAllMyNotificationsReadFn,
 	markMyNotificationsReadFn,
 	portalPageDataFn,
-	updatePatientFn,
 } from "./fns.ts";
 
 afterEach(() => {

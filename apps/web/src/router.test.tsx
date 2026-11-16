@@ -66,7 +66,8 @@ import { plugins } from "./plugins.ts";
 import { routes } from "./routes.ts";
 import { auth, db } from "#/lib/platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
-import { createPatientFn, saveConsultationFn } from "#/lib/fns.ts";
+import { saveConsultationFn } from "@ktb/consultations/fns";
+import { createPatientFn } from "@ktb/patients/fns";
 import { SAMPLE_TRANSCRIPT, SECTION_LABELS } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSection } from "@ktb/anamnesis";
 

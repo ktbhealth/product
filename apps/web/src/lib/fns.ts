@@ -306,43 +306,6 @@ export const appPageDataFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
 	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "app"));
 
-// ---------- patients ----------
-// Patient server functions are owned by the patients plugin (P-033) —
-// its route modules and this host file share the same implementations
-// through @ktb/patients/fns. Re-exported here so existing host callers
-// (tests) keep their import path.
-export {
-	adminCreatePatientFn,
-	createPatientFn,
-	deletePatientFn,
-	getPatientFn,
-	listPatientsFn,
-	patientConsultationsFn as listPatientConsultationsFn,
-	patientDeletionImpactFn,
-	updatePatientFn,
-} from "@ktb/patients/fns";
-
-// ---------- consultations ----------
-// Consultation server functions are owned by the consultations plugin —
-// its route modules (plugins/consultations/src/routes/**) and this host
-// file share the same implementations through @ktb/consultations/fns.
-// Re-exported here so existing host callers (tests, /platform routes)
-// keep their import path.
-export {
-	adminCreateConsultationFn,
-	adminDeleteConsultationFn,
-	adminListAudioJobsFn,
-	attachAnamnesisFn,
-	extractAnamnesisFn,
-	getConsultationFn,
-	getLiveConsultationFn,
-	listConsultationsFn,
-	patientHistoryFn,
-	recordConsentFn,
-	saveConsultationFn,
-	verifyConsultationIntegrityFn,
-} from "@ktb/consultations/fns";
-
 // ---------- plugin manager (P-058) ----------
 // Plugin-state server functions are owned by the manager plugin — its
 // /platform/plugins page imports them from @ktb/manager/fns directly.

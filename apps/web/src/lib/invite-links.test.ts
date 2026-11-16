@@ -33,10 +33,10 @@ const { doctorAccess, inviteTokens, patientAccess, user } = await import("@ktb/d
 const { acceptInviteFn, invitePreviewFn } = await import("@ktb/invites/fns");
 const { invitePatientFn } = await import("@ktb/patient-access/fns");
 const { portalFn } = await import("@ktb/patient-portal/fns");
+const { createPatientFn, listPatientsFn } = await import("@ktb/patients/fns");
 const { inviteSecretaryFn } = await import("@ktb/secretaries/fns");
 const { signUpDoctor } = await import("#/test/doctor.ts");
 const { auth, db } = await import("./platform.ts");
-const { createPatientFn, listPatientsFn } = await import("./fns.ts");
 
 // End to end: a doctor invites someone who has no account; the invitee
 // opens the emailed link, chooses a password, and is in — verified and

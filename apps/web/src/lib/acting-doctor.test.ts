@@ -23,8 +23,9 @@ vi.mock("@tanstack/react-start", () => ({
 import { doctorAccess, doctors, patients, user } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
 
+import { createPatientFn, listPatientsFn } from "@ktb/patients/fns";
 import { auth, db } from "./platform.ts";
-import { createPatientFn, getSessionUserFn, listPatientsFn } from "./fns.ts";
+import { getSessionUserFn } from "./fns.ts";
 
 // End-to-end delegation: a secretary acts on a doctor's data through the
 // same server fns the doctor uses, selected by the `ktb_doctor` cookie

@@ -49,7 +49,6 @@ vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: () => platformAdminFn(),
 	consoleDeniedFn: () => consoleDeniedFn(),
 	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
-	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
 	countMyUnreadNotificationsFn: () => countMyUnreadNotificationsFn(),
 	markMyNotificationsReadFn: (arg: unknown) => markMyNotificationsReadFn(arg),
@@ -57,6 +56,11 @@ vi.mock("#/lib/fns.ts", () => ({
 	getSessionUserFn: () => getSessionUserFn(),
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
+}));
+// The layout imports the audio-jobs feed fn from the consultations
+// plugin directly — stub that module the same way.
+vi.mock("@ktb/consultations/fns", () => ({
+	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 vi.mock("@ktb/theme/fns", () => ({
