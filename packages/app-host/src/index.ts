@@ -34,15 +34,25 @@ import {
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
-import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
-import { evalArtifactsLocalDriver, evalRunnerLocalDriver } from "@ktb/eval-adapter-local";
+import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import {
+	evalArtifactsLocalDriver,
+	evalLlmAcpDriver,
+	evalLlmFactoryDriver,
+	evalRunnerLocalDriver,
+} from "@ktb/eval-adapter-local";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Clock from "effect/Clock";
 import { Binding, DbLive, makeDb, type SqlDatabase } from "@ktb/db";
-import { makeAccountsService, makeAuth, makeAuthService } from "@ktb/auth-better";
+import {
+	makeAccountsService,
+	makeApiKeysAdapter,
+	makeAuth,
+	makeAuthService,
+} from "@ktb/auth-better";
 import { Email, nullEmailDriver, type EmailMessage } from "@ktb/email";
 import { cloudflareEmailDriver } from "@ktb/email-cloudflare";
 import { smtpEmailDriver } from "@ktb/email-smtp";
@@ -50,7 +60,7 @@ import { stubEmailDriver } from "@ktb/email-stub";
 import { Captcha, nullCaptchaDriver } from "@ktb/captcha";
 import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
-import { Accounts, Auth } from "@ktb/auth";
+import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
@@ -274,6 +284,14 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		evalRunnerLocalDriver,
 		// Same env gate, read side: serves run audio to the validator UI.
 		evalArtifactsLocalDriver,
+		// Generative script path for persona cohorts — bound only when
+		// EVAL_ACP_URL points at an agent; otherwise the validator falls
+		// back to the deterministic template renderer.
+		evalLlmAcpDriver,
+		// Endpoint factory for the eval lab — always eligible; it only
+		// resolves descriptor rows into LlmPort layers on demand, so
+		// binding it carries no env requirement of its own.
+		evalLlmFactoryDriver,
 	];
 	// Drivers are type-erased (Layer.Any); each port maps to exactly one
 	// service, so the concrete layer type is restored here — same shape
@@ -338,6 +356,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Auth port backed by the same better-auth instance the routes use;
 	// makeAuthService adds the banned-user enforcement + revocation (T-034).
 	const AuthServiceLive = Layer.succeed(Auth, makeAuthService(auth, db));
+	// Managed api-key store (better-auth apiKey plugin) — eval
+	// credentials port; same auth instance/table.
+	const ApiKeysLive = Layer.succeed(ApiKeys, makeApiKeysAdapter(auth, db));
 	// Account provisioning over the same instance — what invite acceptance
 	// creates accounts through.
 	const AccountsLive = Layer.succeed(Accounts, makeAccountsService(auth));
@@ -360,6 +381,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// wired; the plugin then leaves run rows `queued` (P-081).
 	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
 	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
+	// LLM script generation for persona cohorts — bound only when an
+	// ACP endpoint is configured; the service degrades to templates.
+	const LlmLive = optionalLayerFor<LlmPort>(LlmPort.key, env);
+	// Endpoint factory for the eval lab — always bound (the driver is
+	// always eligible); without it plugins fall back to template mode.
+	const LlmFactoryLive = optionalLayerFor<LlmFactory>(LlmFactory.key, env);
 	// Platform admin gate (P-026): env allowlist resolved once here; the
 	// gate fails closed (Forbidden) when the list is unset/empty.
 	const PlatformAdminLive = Layer.succeed(
@@ -386,11 +413,14 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		EmailLive,
 		DbLive,
 		AuthServiceLive,
+		ApiKeysLive,
 		AccountsLive,
 		AnamnesisEngineLive,
 		TelemetryLive,
 		EvalRunnerLive,
 		EvalArtifactsLive,
+		LlmLive,
+		LlmFactoryLive,
 		PlatformAdminLive,
 		PluginStatesLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus

@@ -1,18 +1,23 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
+import { doctors, patients } from "@ktb/db/schema";
+
 import { evalPersona, evalPersonaBatch, evalRun, evalRunSample } from "./schema.ts";
 
 describe("eval validator schema", () => {
 	it("eval_persona FKs to its batch and indexes batch/state", () => {
 		const cfg = getTableConfig(evalPersona);
 		expect(cfg.name).toBe("eval_persona");
-		for (const fk of cfg.foreignKeys) {
-			expect(fk.onDelete).toBe("cascade");
-			const ref = fk.reference();
-			expect(ref.foreignTable).toBe(evalPersonaBatch);
-			expect(ref.foreignColumns.map((c) => c.name)).toEqual(["id"]);
-		}
+		// batchId cascades with its batch; patient/doctor links only
+		// release the persona row (set null) when the synthetic entity
+		// is deleted — the review row stays for audit.
+		const byTable = new Map(
+			cfg.foreignKeys.map((fk) => [fk.reference().foreignTable, fk.onDelete] as const),
+		);
+		expect(byTable.get(evalPersonaBatch)).toBe("cascade");
+		expect(byTable.get(patients)).toBe("set null");
+		expect(byTable.get(doctors)).toBe("set null");
 		expect(cfg.indexes.map((i) => i.config.name)).toEqual([
 			"eval_persona_batch_idx",
 			"eval_persona_state_idx",

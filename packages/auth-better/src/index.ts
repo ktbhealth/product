@@ -2,6 +2,7 @@ export {
 	makeAccountsService,
 	makeAuth,
 	makeAuthService,
+	makeApiKeysAdapter,
 	toSession,
 	toSessionUser,
 } from "./auth.ts";

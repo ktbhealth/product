@@ -447,6 +447,9 @@ export const makeLocalReportLayer = (filePath: string) =>
 	);
 export * from "./tts.ts";
 export * from "./asr.ts";
+export * from "./acp-transport.ts";
+export * from "./chat.ts";
+export * from "./factory.ts";
 export * from "./llm.ts";
 export * from "./eval.ts";
 export * from "./systemone.ts";

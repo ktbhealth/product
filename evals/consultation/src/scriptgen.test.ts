@@ -181,6 +181,79 @@ describe("anamnesis variant (T-128/T-129)", () => {
 		expect(r.script).toContain("Paciente Zed");
 	});
 
+	it("scales the beat list to the requested interview minutes", () => {
+		const full = renderScript({
+			template: TEMPLATE,
+			persona: persona(),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		const short = renderScript({
+			template: TEMPLATE,
+			persona: persona(),
+			seed: 7,
+			variant: "anamnesis",
+			minutes: 5,
+		});
+		// 5min → ~20 turns; the full anamnesis is untouched without
+		// minutes, and the opening/closing beats always survive.
+		expect(short.turns.length).toBe(20);
+		expect(short.turns.length).toBeLessThan(full.turns.length);
+		expect(short.turns[0]).toEqual(full.turns[0]);
+		expect(short.turns.at(-1)).toEqual(full.turns.at(-1));
+	});
+
+	it("clamps tiny and huge minute targets", () => {
+		const persona_ = persona();
+		const tiny = renderScript({
+			template: TEMPLATE,
+			persona: persona_,
+			seed: 7,
+			variant: "anamnesis",
+			minutes: 0.2,
+		});
+		// Below one minute → the 4-beat minimum (head + tail, no
+		// middle take).
+		expect(tiny.turns).toHaveLength(4);
+		const huge = renderScript({
+			template: TEMPLATE,
+			persona: persona_,
+			seed: 7,
+			variant: "anamnesis",
+			minutes: 120,
+		});
+		const full = renderScript({
+			template: TEMPLATE,
+			persona: persona_,
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(huge.turns.length).toBe(full.turns.length);
+	});
+
+	it("takes no middle beats when the target is exactly head+tail", () => {
+		const profile: typeof ptBR = {
+			...ptBR,
+			script: {
+				...ptBR.script,
+				anamnesis: {
+					...ptBR.script.anamnesis!,
+					beats: ptBR.script.anamnesis!.beats.slice(0, 6),
+				},
+			},
+		};
+		// beats=6, minutes=1 → target 4 = head(2)+tail(2), take<=0.
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona(),
+			seed: 7,
+			profile,
+			variant: "anamnesis",
+			minutes: 1,
+		});
+		expect(r.turns).toHaveLength(4);
+	});
+
 	it("falls back to the short form when the locale has no anamnesis", () => {
 		const profile: typeof ptBR = {
 			...ptBR,
