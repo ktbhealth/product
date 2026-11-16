@@ -3,6 +3,16 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const zkMocks = vi.hoisted(() => ({
+	decryptConsultation: vi.fn(async () => null as unknown),
+	decryptConsultations: vi.fn(async () => [] as unknown[]),
+}));
+vi.mock("../zk.ts", async (importOriginal) => ({
+	...(await importOriginal<typeof import("../zk.ts")>()),
+	decryptConsultation: zkMocks.decryptConsultation,
+	decryptConsultations: zkMocks.decryptConsultations,
+}));
+
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -211,6 +221,158 @@ describe("ConsultationDetailPage", () => {
 		);
 		expect(screen.getByText("1 previous consultation")).toBeTruthy();
 		expect(screen.getByText("Complaint: Febre")).toBeTruthy();
+	});
+
+	describe("ZK decryption (T-145)", () => {
+		const zk = { keyring: { tag: "k" }, api: { tag: "a" } } as never;
+
+		it("renders the locked state when the consultation has no grant", async () => {
+			zkMocks.decryptConsultation.mockResolvedValueOnce(null);
+			render(
+				<ConsultationDetailPage c={detail({ anamnesisRaw: "v1.aa.bb" })} history={null} zk={zk} />,
+			);
+			expect(await screen.findByText("Encrypted record")).toBeTruthy();
+			expect(screen.getByText("Unlock it on an approved clinic device to view it.")).toBeTruthy();
+			expect(zkMocks.decryptConsultation).toHaveBeenCalledWith(
+				{ tag: "k" },
+				{ tag: "a" },
+				expect.objectContaining({ anamnesis: "v1.aa.bb" }),
+			);
+		});
+
+		it("locks the record when decryption throws", async () => {
+			zkMocks.decryptConsultation.mockRejectedValueOnce(new Error("no grant"));
+			render(<ConsultationDetailPage c={detail({})} history={null} zk={zk} />);
+			expect(await screen.findByText("Encrypted record")).toBeTruthy();
+		});
+
+		it("overlays decrypted fields and builds the history client-side", async () => {
+			zkMocks.decryptConsultation.mockResolvedValueOnce({
+				anamnesis: JSON.stringify(ANAMNESIS),
+				transcript: "decrypted transcript body",
+				patientName: "Maria Dec",
+				serverTranscript: "v1.st.env",
+				correctedTranscript: null,
+			});
+			zkMocks.decryptConsultations.mockResolvedValueOnce([
+				{
+					id: 3,
+					anamnesis: JSON.stringify({
+						...ANAMNESIS,
+						conduta: { content: "Dipirona", confidence: "alta", evidence: [] },
+					}),
+					createdAt: new Date("2026-01-01"),
+				},
+			]);
+			render(
+				<ConsultationDetailPage
+					c={detail({ anamnesisRaw: "v1.aa.bb" })}
+					history={null}
+					historyRows={{
+						count: 1,
+						rows: [{ id: 3, anamnesis: "v1.hist.env", createdAt: new Date() }],
+					}}
+					zk={zk}
+				/>,
+			);
+			expect(await screen.findByText("Maria Dec")).toBeTruthy();
+			expect(await screen.findByText("decrypted transcript body")).toBeTruthy();
+			expect(await screen.findByText("Complaint: Dor")).toBeTruthy();
+			expect(await screen.findByText("Plan: Dipirona")).toBeTruthy();
+		});
+
+		it("falls back to the server anamnesis when the decrypted payload is corrupt", async () => {
+			zkMocks.decryptConsultation.mockResolvedValueOnce({
+				anamnesis: "v1.corrupt",
+				transcript: "plain",
+				patientName: "Maria",
+				serverTranscript: null,
+				correctedTranscript: null,
+			});
+			render(<ConsultationDetailPage c={detail({})} history={null} zk={zk} />);
+			expect(await screen.findByText("Dor")).toBeTruthy();
+		});
+
+		it("keeps the page usable when history decryption fails", async () => {
+			zkMocks.decryptConsultation.mockResolvedValueOnce({
+				anamnesis: JSON.stringify(ANAMNESIS),
+				transcript: "plain",
+				patientName: "Maria",
+				serverTranscript: null,
+				correctedTranscript: null,
+			});
+			zkMocks.decryptConsultations.mockRejectedValueOnce(new Error("no hist"));
+			render(
+				<ConsultationDetailPage
+					c={detail({})}
+					history={null}
+					historyRows={{
+						count: 1,
+						rows: [{ id: 3, anamnesis: "v1.h", createdAt: new Date() }],
+					}}
+					zk={zk}
+				/>,
+			);
+			expect(await screen.findByText("Maria")).toBeTruthy();
+		});
+
+		it("ignores late decrypt resolutions and rejections after unmount", async () => {
+			let resolveRow: (v: unknown) => void = () => {};
+			let resolveHist: (v: unknown[]) => void = () => {};
+			let resolveIntegrity: (v: unknown) => void = () => {};
+			let rejectRow: (e: unknown) => void = () => {};
+			zkMocks.decryptConsultation
+				.mockImplementationOnce(
+					() =>
+						new Promise((r) => {
+							resolveRow = r;
+						}),
+				)
+				.mockImplementationOnce(
+					() =>
+						new Promise((_r, rej) => {
+							rejectRow = rej;
+						}),
+				);
+			zkMocks.decryptConsultations.mockImplementationOnce(
+				() =>
+					new Promise<unknown[]>((r) => {
+						resolveHist = r;
+					}),
+			);
+			const api = {
+				getConsultation: vi.fn(async () => null),
+				verifyIntegrity: vi.fn(
+					() =>
+						new Promise<unknown>((r) => {
+							resolveIntegrity = r;
+						}),
+				),
+			} as never;
+			const first = render(
+				<ConsultationDetailPage
+					c={detail({})}
+					history={null}
+					historyRows={{
+						count: 1,
+						rows: [{ id: 3, anamnesis: "v1.h", createdAt: new Date() }],
+					}}
+					api={api}
+					zk={zk}
+				/>,
+			);
+			first.unmount();
+			await act(async () => {
+				resolveRow(null);
+				resolveHist([]);
+				resolveIntegrity(null);
+			});
+			const second = render(<ConsultationDetailPage c={detail({})} history={null} zk={zk} />);
+			second.unmount();
+			await act(async () => {
+				rejectRow(new Error("late"));
+			});
+		});
 	});
 
 	it("hides history UI when count is zero", () => {

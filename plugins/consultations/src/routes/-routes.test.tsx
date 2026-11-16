@@ -1,15 +1,22 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { createElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	getConsultationFn: vi.fn(),
 	patientHistoryFn: vi.fn(),
+	listConsultationsFn: vi.fn(async () => []),
+	localeFn: vi.fn(),
 	patientHistoryRowsFn: vi.fn(),
 	vaultStateFn: vi.fn(async () => ({ tenantId: 7, role: "admin", zk: false })),
 	loaderData: { current: undefined as unknown },
 	props: { current: undefined as Record<string, unknown> | undefined },
+	listProps: { current: undefined as Record<string, unknown> | undefined },
+	newProps: { current: undefined as Record<string, unknown> | undefined },
+	decryptPatients: vi.fn(async (_k: unknown, _api: unknown, rows: unknown[]) => rows),
+	isCipheredPatient: vi.fn(() => false),
+	resolveByokExtractor: vi.fn(async () => ({ tag: "extractor" })),
 }));
 
 vi.mock("../guard.ts", () => ({ requireDoctor: vi.fn() }));
@@ -18,12 +25,32 @@ vi.mock("../fns.ts", () => ({
 	patientHistoryFn: mocks.patientHistoryFn,
 	patientHistoryRowsFn: mocks.patientHistoryRowsFn,
 	attachAnamnesisFn: vi.fn(),
+	listConsultationsFn: mocks.listConsultationsFn,
 	extractAnamnesisFn: vi.fn(),
 	getLiveConsultationFn: vi.fn(),
 	recordConsentFn: vi.fn(),
 	saveConsultationFn: vi.fn(),
 	sessionUserFn: vi.fn(),
-	localeFn: vi.fn(),
+	localeFn: mocks.localeFn,
+}));
+vi.mock("@ktb/patients/zk", () => ({
+	decryptPatients: mocks.decryptPatients,
+	isCipheredPatient: mocks.isCipheredPatient,
+}));
+vi.mock("../backend.ts", () => ({
+	prefersWhisper: false,
+	transcriptionBackend: undefined,
+}));
+vi.mock("../byok.ts", () => ({ resolveByokExtractor: mocks.resolveByokExtractor }));
+vi.mock("@ktb/anamnesis-llm/byok", () => ({ makeByokExtractor: vi.fn(() => ({})) }));
+vi.mock("@ktb/transcription-webspeech", () => ({ webSpeechBackend: { id: "web-speech" } }));
+vi.mock("@ktb/patient-access/fns", () => ({
+	invitePatientFn: vi.fn(async () => ({ ok: true })),
+	patientLinksFn: vi.fn(async () => []),
+}));
+vi.mock("@ktb/patients/fns", () => ({
+	createPatientFn: vi.fn(async () => ({ ok: true, patient: { id: 1, name: "p" } })),
+	listPatientsFn: vi.fn(async () => []),
 }));
 vi.mock("@ktb/vault/fns", () => ({
 	vaultStateFn: mocks.vaultStateFn,
@@ -39,7 +66,14 @@ vi.mock("../views/index.ts", () => ({
 		mocks.props.current = props;
 		return createElement("div");
 	},
-	NewConsultationPage: () => createElement("div"),
+	ConsultationsPage: (props: Record<string, unknown>) => {
+		mocks.listProps.current = props;
+		return createElement("div");
+	},
+	NewConsultationPage: (props: Record<string, unknown>) => {
+		mocks.newProps.current = props;
+		return createElement("div");
+	},
 }));
 // Server fns become plain async calls; with no runtime registered the
 // plugin route gate (createPluginFileRoute → pluginEnabledFn) is inert.
@@ -70,6 +104,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 import { Route as DetailRoute } from "./$id.tsx";
+import { Route as ListRoute } from "./index.tsx";
+import { Route as NewRoute } from "./new.tsx";
 import { newConsultationApi } from "../apis.ts";
 
 type Opts = {
@@ -172,5 +208,173 @@ describe("newConsultationApi", () => {
 		mocks.getConsultationFn.mockResolvedValue({ id: 3 });
 		await expect(newConsultationApi.getConsultation!({ data: 3 })).resolves.toEqual({ id: 3 });
 		expect(mocks.getConsultationFn).toHaveBeenCalledWith({ data: 3 });
+	});
+});
+
+describe("/consultations/", () => {
+	const opts = (ListRoute as unknown as { options: Opts }).options;
+
+	it("renders the list page without a zk surface for plain tenants", () => {
+		mocks.loaderData.current = { consultations: [], locale: "en", zk: false };
+		render(createElement(opts.component));
+		expect(mocks.listProps.current?.zk).toBeUndefined();
+	});
+
+	it("binds a device keyring to the list page under ZK", () => {
+		mocks.loaderData.current = { consultations: [], locale: "en", zk: true };
+		render(createElement(opts.component));
+		const zk = mocks.listProps.current?.zk as { keyring: unknown; api: unknown } | undefined;
+		expect(zk?.keyring).toEqual({ tag: "keyring" });
+		expect(zk?.api).toBeDefined();
+	});
+
+	it("loads consultations, locale and vault state, and guards the session", async () => {
+		mocks.listConsultationsFn.mockResolvedValueOnce([{ id: 1 }] as never);
+		mocks.localeFn.mockResolvedValueOnce("en");
+		mocks.vaultStateFn.mockResolvedValueOnce({ tenantId: 7, role: "admin", zk: true });
+		await expect(opts.loader({ params: {} as { id: string } })).resolves.toEqual({
+			consultations: [{ id: 1 }],
+			locale: "en",
+			zk: true,
+		});
+		await expect(opts.beforeLoad() as Promise<unknown>).resolves.toBeUndefined();
+	});
+});
+
+describe("/consultations/new", () => {
+	const opts = (NewRoute as unknown as { options: Opts }).options;
+
+	it("passes patients through unchanged for plain tenants", () => {
+		const patients = [{ id: 1, name: "Maria" }];
+		mocks.loaderData.current = { initialPatients: patients, locale: "en", zk: false };
+		render(createElement(opts.component));
+		expect(mocks.newProps.current?.initialPatients).toEqual(patients);
+		expect(mocks.decryptPatients).not.toHaveBeenCalled();
+	});
+
+	it("decrypts patient names for the picker under ZK", async () => {
+		mocks.decryptPatients.mockResolvedValueOnce([{ id: 1, name: "Maria" }] as never);
+		mocks.loaderData.current = {
+			initialPatients: [{ id: 1, name: "v1.aa.bb" }],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() =>
+			expect(mocks.newProps.current?.initialPatients).toEqual([{ id: 1, name: "Maria" }]),
+		);
+		expect(mocks.decryptPatients).toHaveBeenCalledWith({ tag: "keyring" }, expect.anything(), [
+			{ id: 1, name: "v1.aa.bb" },
+		]);
+	});
+
+	it("labels still-ciphered patients as locked", async () => {
+		mocks.isCipheredPatient.mockImplementationOnce(() => true);
+		mocks.decryptPatients.mockResolvedValueOnce([{ id: 1, name: "v1.aa.bb" }] as never);
+		mocks.loaderData.current = {
+			initialPatients: [{ id: 1, name: "v1.aa.bb" }],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() =>
+			expect(mocks.newProps.current?.initialPatients).toEqual([
+				{ id: 1, name: "Encrypted record" },
+			]),
+		);
+	});
+
+	it("binds the resolved BYOK extractor to the page under ZK", async () => {
+		mocks.loaderData.current = {
+			initialPatients: [],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() => expect(mocks.resolveByokExtractor).toHaveBeenCalled());
+		await waitFor(() =>
+			expect(
+				(mocks.newProps.current?.zk as { extractor?: unknown } | undefined)?.extractor,
+			).toEqual({ tag: "extractor" }),
+		);
+	});
+
+	it("keeps the heuristic extractor when BYOK resolution fails", async () => {
+		mocks.resolveByokExtractor.mockRejectedValueOnce(new Error("no key"));
+		mocks.loaderData.current = {
+			initialPatients: [],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() => expect(mocks.resolveByokExtractor).toHaveBeenCalled());
+		await act(async () => {});
+		expect(
+			(mocks.newProps.current?.zk as { extractor?: unknown } | undefined)?.extractor,
+		).toBeUndefined();
+	});
+
+	it("ignores late extractor resolutions after unmount", async () => {
+		let resolve: (e: unknown) => void = () => {};
+		mocks.resolveByokExtractor.mockImplementationOnce(
+			() =>
+				new Promise<unknown>((r) => {
+					resolve = r;
+				}),
+		);
+		mocks.loaderData.current = {
+			initialPatients: [],
+			locale: "en",
+			zk: true,
+		};
+		const { unmount } = render(createElement(opts.component));
+		unmount();
+		await act(async () => {
+			resolve({ tag: "extractor" });
+		});
+	});
+
+	it("ignores late patient decryptions after unmount", async () => {
+		let resolve: (rows: unknown[]) => void = () => {};
+		mocks.decryptPatients.mockImplementationOnce(
+			() =>
+				new Promise<unknown[]>((r) => {
+					resolve = r;
+				}),
+		);
+		mocks.loaderData.current = {
+			initialPatients: [{ id: 1, name: "v1.aa.bb" }],
+			locale: "en",
+			zk: true,
+		};
+		const { unmount } = render(createElement(opts.component));
+		unmount();
+		await act(async () => {
+			resolve([]);
+		});
+	});
+
+	it("loads initial patients, locale and vault state, and guards the session", async () => {
+		mocks.localeFn.mockResolvedValueOnce("en");
+		mocks.vaultStateFn.mockResolvedValueOnce({ tenantId: 7, role: "admin", zk: false });
+		await expect(opts.loader({ params: {} as { id: string } })).resolves.toEqual({
+			initialPatients: [],
+			locale: "en",
+			zk: false,
+		});
+		await expect(opts.beforeLoad() as Promise<unknown>).resolves.toBeUndefined();
+	});
+
+	it("keeps the picker rows when patient decryption fails", async () => {
+		mocks.decryptPatients.mockRejectedValueOnce(new Error("no key"));
+		mocks.loaderData.current = {
+			initialPatients: [{ id: 1, name: "v1.aa.bb" }],
+			locale: "en",
+			zk: true,
+		};
+		render(createElement(opts.component));
+		await waitFor(() => expect(mocks.decryptPatients).toHaveBeenCalled());
+		await act(async () => {});
+		expect(mocks.newProps.current?.initialPatients).toEqual([{ id: 1, name: "v1.aa.bb" }]);
 	});
 });
