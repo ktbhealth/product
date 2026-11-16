@@ -42,6 +42,7 @@ import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consul
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'
 import { Route as PatientsIdIndexRouteImport } from './../../../plugins/patients/src/routes/$id/index'
 import { Route as PatientsIdEditRouteImport } from './../../../plugins/patients/src/routes/$id/edit'
+import { Route as portalDotinstanceDotsplatRouteImport } from './routes/portal.$instance.$'
 import { Route as PortalConsultationsDotidRouteImport } from './../../../plugins/patient-portal/src/routes/consultations.$id'
 import { Route as ApiConsultationsDotidDotaudioRouteImport } from './../../../plugins/consultations/src/api-routes/consultations.$id.audio'
 import { Route as ApiConsultationsDotidDotpdfRouteImport } from './../../../plugins/consultations/src/api-routes/consultations.$id.pdf'
@@ -214,6 +215,12 @@ const PatientsIdEditRoute = PatientsIdEditRouteImport.update({
   path: '/patients/$id/edit',
   getParentRoute: () => rootRouteImport,
 } as any)
+const portalDotinstanceDotsplatRoute =
+  portalDotinstanceDotsplatRouteImport.update({
+    id: '/portal/$instance/$',
+    path: '/portal/$instance/$',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const PortalConsultationsDotidRoute =
   PortalConsultationsDotidRouteImport.update({
     id: '/portal/consultations/$id',
@@ -278,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
+  '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
   '/patients/$id/': typeof PatientsIdIndexRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
@@ -317,6 +325,7 @@ export interface FileRoutesByTo {
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
+  '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
   '/patients/$id': typeof PatientsIdIndexRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
@@ -358,6 +367,7 @@ export interface FileRoutesById {
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
+  '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
   '/patients/$id/': typeof PatientsIdIndexRoute
   '/api/consultations/$id/audio': typeof ApiConsultationsDotidDotaudioRoute
@@ -400,6 +410,7 @@ export interface FileRouteTypes {
     | '/api/bots/webhook'
     | '/api/cdn/$'
     | '/patients/$id/edit'
+    | '/portal/$instance/$'
     | '/portal/consultations/$id'
     | '/patients/$id/'
     | '/api/consultations/$id/audio'
@@ -439,6 +450,7 @@ export interface FileRouteTypes {
     | '/api/bots/webhook'
     | '/api/cdn/$'
     | '/patients/$id/edit'
+    | '/portal/$instance/$'
     | '/portal/consultations/$id'
     | '/patients/$id'
     | '/api/consultations/$id/audio'
@@ -479,6 +491,7 @@ export interface FileRouteTypes {
     | '/api/bots/webhook'
     | '/api/cdn/$'
     | '/patients/$id/edit'
+    | '/portal/$instance/$'
     | '/portal/consultations/$id'
     | '/patients/$id/'
     | '/api/consultations/$id/audio'
@@ -517,6 +530,7 @@ export interface RootRouteChildren {
   ApiAuthDotsplatRoute: typeof ApiAuthDotsplatRoute
   ApiCdnSplatRoute: typeof ApiCdnSplatRoute
   PatientsIdEditRoute: typeof PatientsIdEditRoute
+  portalDotinstanceDotsplatRoute: typeof portalDotinstanceDotsplatRoute
   PortalConsultationsDotidRoute: typeof PortalConsultationsDotidRoute
   PatientsIdIndexRoute: typeof PatientsIdIndexRoute
   ApiConsultationsDotidDotaudioRoute: typeof ApiConsultationsDotidDotaudioRoute
@@ -758,6 +772,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PatientsIdEditRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/portal/$instance/$': {
+      id: '/portal/$instance/$'
+      path: '/portal/$instance/$'
+      fullPath: '/portal/$instance/$'
+      preLoaderRoute: typeof portalDotinstanceDotsplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/portal/consultations/$id': {
       id: '/portal/consultations/$id'
       path: '/portal/consultations/$id'
@@ -852,6 +873,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthDotsplatRoute: ApiAuthDotsplatRoute,
   ApiCdnSplatRoute: ApiCdnSplatRoute,
   PatientsIdEditRoute: PatientsIdEditRoute,
+  portalDotinstanceDotsplatRoute: portalDotinstanceDotsplatRoute,
   PortalConsultationsDotidRoute: PortalConsultationsDotidRoute,
   PatientsIdIndexRoute: PatientsIdIndexRoute,
   ApiConsultationsDotidDotaudioRoute: ApiConsultationsDotidDotaudioRoute,

@@ -126,10 +126,7 @@ describe("portal audience gate failure", () => {
 			component: () => null,
 			loader: () => Effect.succeed("never"),
 		};
-		const pages = portalPages as unknown as Map<
-			string,
-			{ page: PanelPage; pluginId: string }
-		>;
+		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set(path, { page, pluginId: "t.portal" });
 		try {
 			expect(await portalPageDataFn({ data: path })).toEqual({ status: "notfound" });

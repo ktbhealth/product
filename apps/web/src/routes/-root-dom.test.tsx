@@ -110,11 +110,7 @@ describe("root document (dom)", () => {
 				content: {
 					kind: "component",
 					component: (props: { signOut?: () => Promise<void> }) =>
-						createElement(
-							"button",
-							{ onClick: () => void props.signOut?.() },
-							"do-sign-out",
-						),
+						createElement("button", { onClick: () => void props.signOut?.() }, "do-sign-out"),
 				},
 			},
 		];
