@@ -1,14 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import type { AdminConsultationRow } from "@ktb/consultations";
+import { sliceMessages } from "@ktb/i18n";
 import { collectChrome } from "@ktb/kernel";
-import type { PageContext, Plugin } from "@ktb/kernel";
+import type { PageContext, PageI18nSlice, Plugin } from "@ktb/kernel";
 import type { ConsoleNotification } from "@ktb/notifications/context";
 import type { AdminPatientRow } from "@ktb/patients";
 import type { PluginStateEntry } from "@ktb/platform/plugin-states";
 import { ArrowRightIcon, ClipboardListIcon, PuzzleIcon, RadioIcon, UsersIcon } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 
-import { dashboardMessages } from "../i18n.ts";
+import { dashboardMessages, I18N_NAMESPACE } from "../i18n.ts";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
@@ -170,6 +172,7 @@ export function DashboardPage({
 	pluginStates,
 	notifications,
 	unreadCount = 0,
+	i18n,
 	locale = "en",
 	user,
 }: {
@@ -181,6 +184,8 @@ export function DashboardPage({
 	 * enabled, matching the absence=enabled default. */
 	pluginStates?: readonly PluginStateEntry[];
 	/** Active UI locale, injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale?: string;
 	/** Session user, injected by the host via the panel page ctx. */
 	user?: PageContext["user"];
@@ -189,7 +194,7 @@ export function DashboardPage({
 	notifications?: readonly ConsoleNotification[];
 	unreadCount?: number;
 }) {
-	const t = dashboardMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, dashboardMessages(locale));
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const recent = consultations.slice(0, 8);
 	const liveCount = consultations.filter((c) => c.status === "live").length;

@@ -7,6 +7,12 @@
  */
 
 export const TENANT_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "tenant";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): TenantMessages => tenantMessages(locale);
 export type TenantLocale = (typeof TENANT_LOCALES)[number];
 export const BASE_LOCALE: TenantLocale = "en";
 

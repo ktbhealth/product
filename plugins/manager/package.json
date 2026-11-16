@@ -9,6 +9,7 @@
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
+		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

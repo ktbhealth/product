@@ -7,6 +7,12 @@
  */
 
 export const GROUP_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "groups";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): GroupMessages => groupMessages(locale);
 export type GroupLocale = (typeof GROUP_LOCALES)[number];
 export const BASE_LOCALE: GroupLocale = "en";
 

@@ -1,6 +1,9 @@
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
@@ -20,7 +23,7 @@ import {
 
 import type { AdminUserRow } from "../index.ts";
 import { setUserSuspendedFn } from "../fns.ts";
-import { userMessages } from "../i18n.ts";
+import { userMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 
@@ -33,13 +36,16 @@ const SEARCH_CLS = "w-56 sm:w-64";
  */
 export function AdminUsersPage({
 	users,
+	i18n,
 	locale = "en",
 }: {
 	users: AdminUserRow[];
 	/** Active UI locale, injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale?: string;
 }) {
-	const t = userMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, userMessages(locale));
 	const router = useRouter();
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");

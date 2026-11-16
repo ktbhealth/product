@@ -2,6 +2,9 @@ import { useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { PlusIcon, PencilIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
@@ -42,7 +45,7 @@ import {
 	unassignSubjectFn,
 	updateRoleFn,
 } from "../fns.ts";
-import { rbacMessages, type RbacMessages } from "../i18n.ts";
+import { rbacMessages, type RbacMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const inputCls =
 	"h-8 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring";
@@ -63,13 +66,16 @@ const KIND_ITEMS = [
  */
 export function AdminRbacPage({
 	data,
+	i18n,
 	locale = "en",
 }: {
 	data: AdminRbacPageData;
 	/** Active UI locale, injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale?: string;
 }) {
-	const t = rbacMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, rbacMessages(locale));
 	const router = useRouter();
 	const [selectedId, setSelectedId] = useState<number | null>(data.roles[0]?.id ?? null);
 	const [busy, setBusy] = useState(false);

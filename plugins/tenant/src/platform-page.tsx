@@ -11,5 +11,5 @@ import { AdminTenantsPage } from "./views/AdminTenantsPage.tsx";
  */
 export function TenantsPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const tenants = Array.isArray(data) ? (data as TenantRow[]) : [];
-	return <AdminTenantsPage tenants={tenants} locale={ctx.locale} />;
+	return <AdminTenantsPage tenants={tenants} i18n={ctx.i18n} locale={ctx.locale} />;
 }

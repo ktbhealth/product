@@ -669,6 +669,7 @@
       "dependencies": {
         "@ktb/authz": "workspace:*",
         "@ktb/consultations": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/notifications": "workspace:*",
         "@ktb/patients": "workspace:*",
@@ -807,6 +808,7 @@
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -938,6 +940,7 @@
     "plugins/manager": {
       "name": "@ktb/manager",
       "dependencies": {
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -1140,6 +1143,7 @@
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -1221,6 +1225,7 @@
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/groups": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -1294,6 +1299,7 @@
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",

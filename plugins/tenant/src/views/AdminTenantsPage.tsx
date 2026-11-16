@@ -2,6 +2,9 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { UsersIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
@@ -40,7 +43,7 @@ import {
 	removeTenantMemberFn,
 	setTenantMemberRoleFn,
 } from "../fns.ts";
-import { tenantMessages, type TenantMessages } from "../i18n.ts";
+import { tenantMessages, type TenantMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 const inputCls =
@@ -71,13 +74,16 @@ const roleItems = (t: TenantMessages) =>
  */
 export function AdminTenantsPage({
 	tenants,
+	i18n,
 	locale = "en",
 }: {
 	tenants: TenantRow[];
 	/** Active UI locale, injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale?: string;
 }) {
-	const t = tenantMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, tenantMessages(locale));
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
 	const [membersFor, setMembersFor] = useState<TenantRow | null>(null);
