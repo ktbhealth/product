@@ -648,6 +648,7 @@ describe("client plugin mirror", () => {
 		expect(clientPlugins.map((p) => p.id)).toEqual([
 			"ai.endpoints.tables",
 			"ai.endpoints.services",
+			"ai-endpoints.routes",
 			"ai.endpoints.chrome",
 			"ai.endpoints.panel",
 		]);
