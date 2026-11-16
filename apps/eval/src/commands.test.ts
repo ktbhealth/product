@@ -101,6 +101,18 @@ const SUITE_PARAMS = SUITE.replace('id: "fx"', 'id: "fx-params"')
 	domainParams: { params: { dataset: { count: 1 }, cohort: "p1", entityCategories: ["medication"] } },`,
 	);
 
+/** Long-form variant suite (P-080): domainParams select the
+ * anamnesis script variant (long timeout budget in both generate
+ * and run) and pin per-speaker voices — exercises the
+ * speakerVoices record filter and the anamnesis timeout branches. */
+const SUITE_ANAMNESIS = SUITE.replace('id: "fx"', 'id: "fx-anamnesis"')
+	.replace('dataset: { id: "fx", version: "v1" }', 'dataset: { id: "fxa", version: "v1" }')
+	.replace(
+		'adapterProfile: "stub",',
+		`adapterProfile: "stub",
+	domainParams: { params: { scriptVariant: "anamnesis", speakerVoices: { doctor: "br_male_1", patient: "br_female_1", ignored: 7 } } },`,
+	);
+
 beforeAll(() => {
 	evalsDir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-evals-"));
 	fs.writeFileSync(path.join(evalsDir, "fx.suite.ts"), SUITE);
@@ -292,6 +304,28 @@ describe("generate", () => {
 			);
 		} finally {
 			vi.restoreAllMocks();
+		}
+	});
+
+	test("anamnesis scriptVariant + speakerVoices flow through generate and run", async () => {
+		// Dedicated evals dir: the suite's domain id has no domain.ts,
+		// so domainParams merge over a synthetic definition and the
+		// pre-P-079 fallbacks (pt-BR, DEFAULT_MATRIX, the real
+		// consultation templates under repoRoot) apply.
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-anamd-"));
+		const wd = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-anam-"));
+		fs.writeFileSync(path.join(dir, "fx-anamnesis.suite.ts"), SUITE_ANAMNESIS);
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			const c = { ...ctx(), evalsDir: dir };
+			expect(await exec(["generate", "fx-anamnesis", "--n", "1", "--workdir", wd], c)).toBe(0);
+			expect(await exec(["run", "fx-anamnesis", "--workdir", wd, "--run-id", "run-anam"], c)).toBe(
+				0,
+			);
+		} finally {
+			vi.restoreAllMocks();
+			fs.rmSync(dir, { recursive: true, force: true });
+			fs.rmSync(wd, { recursive: true, force: true });
 		}
 	});
 
