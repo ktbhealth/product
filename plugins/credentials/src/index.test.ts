@@ -243,6 +243,35 @@ describe("Credentials", () => {
 		await rt.dispose();
 	});
 
+	it("tolerates ApiKeys impls returning non-JSON or null-literal metadata", async () => {
+		// The in-memory mock normalizes bad metadata to "{}" like the real
+		// adapter — this raw stub exercises parseMeta's defensive paths.
+		const apiKeys = ApiKeys.of({
+			create: async () => ({ id: "k" }),
+			list: async () => [
+				row("x1", "not-json{{"),
+				row("x2", "null"),
+				row("x3", '{"kind":"credential","provider":"p"}'),
+			],
+			remove: async () => {},
+			getSecret: async () => null,
+		});
+		const layers = Layer.mergeAll(Layer.succeed(ApiKeys, apiKeys), grantLayer(true));
+		const rt = ManagedRuntime.make(
+			Layer.merge(CredentialsLive.pipe(Layer.provide(layers)), layers),
+		);
+		const listed = await rt.runPromise(
+			Effect.provideService(
+				Effect.flatMap(Credentials, (s) => s.list()),
+				Principal,
+				{ userId: "u1", email: "v@x.com" },
+			) as Effect.Effect<unknown, unknown>,
+		);
+		expect(listed).toHaveLength(1);
+		expect((listed as { id: string }[])[0]?.id).toBe("x3");
+		await rt.dispose();
+	});
+
 	it("resolve returns the raw secret for credential:<id> refs", async () => {
 		const { rt, run } = make({
 			seed: [
