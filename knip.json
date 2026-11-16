@@ -20,6 +20,12 @@
 			// (SSR cold-start fix) — referenced by name, never imported here.
 			"ignoreDependencies": ["tailwindcss", "pdfkit"]
 		},
+		"packages/app-host": {
+			// Generated aggregated cipher-spec map (gen:cipher-specs) —
+			// exported ahead of its first consumer (the EntityCipher impls
+			// that resolve a row's spec at runtime, later ZK tasks).
+			"entry": ["src/cipher-specs.gen.ts"]
+		},
 		"packages/db": {
 			"entry": ["scripts/**/*.mjs"]
 		},
