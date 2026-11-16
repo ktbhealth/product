@@ -1,4 +1,9 @@
-import { createPluginApiRoute, getDoctorUser, getServerRuntime } from "@ktb/server-fns";
+import * as Effect from "effect/Effect";
+
+import { Db } from "@ktb/db";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
+import { tenantIsZk } from "@ktb/vault";
+import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 
 /**
  * POST /api/transcribe — server-side transcription of an uploaded
@@ -40,6 +45,26 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/transcri
 			POST: async ({ request }) => {
 				const user = await getDoctorUser();
 				if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
+				// T-146: a ZK tenant's audio/transcript is client-side content —
+				// the server Whisper endpoint must never see it (browser
+				// transcription is the only path there).
+				const zk = await runAs(
+					user,
+					Effect.gen(function* () {
+						const db = yield* Db;
+						// serviceOption: an unbound tenant is personal scope —
+						// never ZK (the clinic flag lives on groups).
+						const tenant = yield* Effect.serviceOption(Tenant);
+						const tenantId = tenantScopeId(tenant._tag === "Some" ? tenant.value : null);
+						return tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)));
+					}),
+				);
+				if (zk) {
+					return Response.json(
+						{ error: "server transcription unavailable for zero-knowledge tenants" },
+						{ status: 403 },
+					);
+				}
 				const form = await request.formData();
 				const file = form.get("audio");
 				if (!(file instanceof File)) {

@@ -50,6 +50,9 @@ const keyring = (): KeyringService => ({
 	}),
 	wrapKeyFor: vi.fn(async () => "w1.wrapped"),
 	signHash: vi.fn(async () => "sig"),
+	putSecret: vi.fn(async () => {}),
+	getSecret: vi.fn(async () => null),
+	deleteSecret: vi.fn(async () => {}),
 	clearSession: vi.fn(),
 });
 
@@ -491,5 +494,36 @@ describe("VaultSettingsPage", () => {
 		expect(screen.getByText("Revoked")).toBeTruthy();
 		expect(screen.queryByText("Approve")).toBeNull();
 		expect(screen.queryByText("Revoke")).toBeNull();
+	});
+
+	it("seals a BYOK provider key on this device (T-146)", async () => {
+		const k = keyring();
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("No provider key", { exact: false });
+		await userEvent.type(screen.getByLabelText("Provider API key"), "sk-1");
+		fireEvent.change(screen.getByLabelText("Endpoint URL"), {
+			target: { value: "https://llm.x/v1" },
+		});
+		await userEvent.click(screen.getByRole("button", { name: "Save key" }));
+		await waitFor(() => expect(k.putSecret).toHaveBeenCalled());
+		const secret = JSON.parse(String((k.putSecret as ReturnType<typeof vi.fn>).mock.calls[0]?.[1]));
+		expect(secret).toEqual({
+			apiKey: "sk-1",
+			model: "gpt-4o-mini",
+			baseUrl: "https://llm.x/v1",
+		});
+	});
+
+	it("shows a stored BYOK config and clears it", async () => {
+		const k = keyring();
+		(k.getSecret as ReturnType<typeof vi.fn>).mockResolvedValue(
+			JSON.stringify({ apiKey: "sk", model: "m", baseUrl: "https://x" }),
+		);
+		render(<VaultSettingsPage data={baseData()} api={api()} keyring={k} />);
+		await screen.findByText("A provider key is stored", { exact: false });
+		expect((screen.getByLabelText("Model") as HTMLInputElement).value).toBe("m");
+		expect((screen.getByLabelText("Endpoint URL") as HTMLInputElement).value).toBe("https://x");
+		await userEvent.click(screen.getByRole("button", { name: "Remove key" }));
+		await waitFor(() => expect(k.deleteSecret).toHaveBeenCalled());
 	});
 });

@@ -265,6 +265,28 @@ describe("signAnamnesis / extractAnamnesisZk", () => {
 		expect(res.engine).toBe("heuristic");
 		expect(res.anamnesis.queixa_principal.content.length).toBeGreaterThan(0);
 	});
+
+	it("uses the clinic BYOK extractor when configured (T-146)", async () => {
+		const extractor = {
+			name: "byok",
+			extract: vi.fn(async () => anamnesis()),
+		};
+		const res = await extractAnamnesisZk("texto", extractor);
+		expect(extractor.extract).toHaveBeenCalledWith("texto");
+		expect(res.engine).toBe("byok");
+	});
+
+	it("degrades to the heuristic when the BYOK call fails", async () => {
+		const extractor = {
+			name: "byok",
+			extract: vi.fn(async () => {
+				throw new Error("provider down");
+			}),
+		};
+		const res = await extractAnamnesisZk("Paciente com dor de cabeça e febre.", extractor);
+		expect(res.engine).toBe("byok!fallback");
+		expect(res.anamnesis.queixa_principal.content.length).toBeGreaterThan(0);
+	});
 });
 
 describe("spec coverage sanity", () => {

@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { Keyring, makeKeyring, memoryStore, type DeviceIdentity } from "./keyring.ts";
+import {
+	Keyring,
+	makeKeyring,
+	memorySecretStore,
+	memoryStore,
+	type DeviceIdentity,
+	type SealedSecret,
+} from "./keyring.ts";
 import { importSignPublicKey, verify } from "./sign.ts";
 import { exportWrapPublicKey, generateWrapKeyPair, unwrapDek } from "./wrap.ts";
 
@@ -77,6 +84,49 @@ describe("makeKeyring (memory store)", () => {
 		);
 	});
 
+	it("seals and reads back device secrets (T-146)", async () => {
+		const secrets = memorySecretStore();
+		const keyring = makeKeyring({ store: memoryStore(), secrets });
+		await keyring.putSecret("clinic.byok", "sk-test-key");
+		expect(await keyring.getSecret("clinic.byok")).toBe("sk-test-key");
+		// The stored row is ciphertext — the plaintext is nowhere in it.
+		const stored = await secrets.load("clinic.byok");
+		expect(stored).not.toBeNull();
+		expect(JSON.stringify(stored)).not.toContain("sk-test-key");
+		expect(stored!.dek.startsWith("w1.")).toBe(true);
+		expect(stored!.ct.startsWith("v1.")).toBe(true);
+	});
+
+	it("returns null for missing, replaced and undecryptable secrets", async () => {
+		const secrets = memorySecretStore();
+		const keyring = makeKeyring({ store: memoryStore(), secrets });
+		expect(await keyring.getSecret("absent")).toBeNull();
+		await keyring.putSecret("key", "first");
+		await keyring.putSecret("key", "second");
+		expect(await keyring.getSecret("key")).toBe("second");
+		// A row this device cannot open behaves as absent.
+		const corrupt: SealedSecret = { dek: "w1.bogus.envelope", ct: "v1.bogus.envelope" };
+		await secrets.save("corrupt", corrupt);
+		expect(await keyring.getSecret("corrupt")).toBeNull();
+	});
+
+	it("deletes device secrets", async () => {
+		const keyring = makeKeyring({ store: memoryStore(), secrets: memorySecretStore() });
+		await keyring.putSecret("key", "value");
+		await keyring.deleteSecret("key");
+		expect(await keyring.getSecret("key")).toBeNull();
+	});
+
+	it("shares secrets across keyring instances over the same store", async () => {
+		const store = memoryStore();
+		const secrets = memorySecretStore();
+		const first = makeKeyring({ store, secrets });
+		await first.putSecret("key", "shared");
+		// Same device identity + same secret rows → a second instance reads it.
+		const second = makeKeyring({ store, secrets });
+		expect(await second.getSecret("key")).toBe("shared");
+	});
+
 	it("fails to unwrap envelopes not addressed to this device", async () => {
 		const keyring = makeKeyring({ store: memoryStore() });
 		const other = await generateWrapKeyPair();
@@ -105,5 +155,7 @@ describe("idbStore", () => {
 		// picks memoryStore and the keyring still works.
 		const keyring = makeKeyring();
 		expect((await keyring.deviceKeys()).wrapPublicKey).toBeTruthy();
+		await keyring.putSecret("k", "v");
+		expect(await keyring.getSecret("k")).toBe("v");
 	});
 });

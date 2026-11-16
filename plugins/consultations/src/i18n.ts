@@ -234,6 +234,9 @@ export interface ConsultationMessages {
 		readonly lockedRecord: string;
 		readonly lockedHint: string;
 		readonly decryptFailed: string;
+		/** Disabled-export reason (T-146): server PDF cannot render
+		 * ciphertext, no browser-safe renderer ships. */
+		readonly exportLocked: string;
 	};
 }
 
@@ -461,6 +464,7 @@ const en: ConsultationMessages = {
 		lockedRecord: "Encrypted record",
 		lockedHint: "Unlock it on an approved clinic device to view it.",
 		decryptFailed: "This record could not be decrypted on this device.",
+		exportLocked: "PDF export unavailable for encrypted records",
 	},
 };
 
@@ -689,6 +693,7 @@ const ptBR: ConsultationMessages = {
 		lockedRecord: "Registro criptografado",
 		lockedHint: "Desbloqueie em um dispositivo aprovado da clínica para visualizar.",
 		decryptFailed: "Não foi possível descriptografar este registro neste dispositivo.",
+		exportLocked: "Exportação em PDF indisponível para registros criptografados",
 	},
 };
 
@@ -920,6 +925,7 @@ const es: ConsultationMessages = {
 		lockedRecord: "Registro cifrado",
 		lockedHint: "Desbloquéalo en un dispositivo aprobado de la clínica para verlo.",
 		decryptFailed: "No se pudo descifrar este registro en este dispositivo.",
+		exportLocked: "Exportación a PDF no disponible para registros cifrados",
 	},
 };
 

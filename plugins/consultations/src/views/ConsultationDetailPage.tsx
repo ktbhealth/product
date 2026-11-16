@@ -309,14 +309,21 @@ export function ConsultationDetailPage({
 						<Button type="button" variant="outline" onClick={copy}>
 							{t.common.copy}
 						</Button>
-						{/* Server-side PDF reads plaintext columns — impossible
-						 * under ZK; T-146 adds the client-side renderer. */}
+						{/* T-146: the server-side PDF reads plaintext columns —
+						 * impossible under ZK. The export is gated (not hidden):
+						 * a disabled control states why instead of silently
+						 * dropping the affordance. */}
 						{!zk ? (
 							<a href={`/api/consultations/${c.id}/pdf`} download className={buttonVariants()}>
 								<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
 								{t.common.downloadPdf}
 							</a>
-						) : null}
+						) : (
+							<Button type="button" variant="outline" disabled title={t.zk.exportLocked}>
+								<LockIcon className="mr-1.5 inline size-4 -translate-y-px" />
+								{t.zk.exportLocked}
+							</Button>
+						)}
 					</div>
 				) : null}
 			</header>

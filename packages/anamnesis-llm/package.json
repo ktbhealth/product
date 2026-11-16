@@ -4,7 +4,9 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./byok": "./src/byok.ts",
 		"./drivers": "./src/drivers.ts",
+		"./prompt": "./src/prompt.ts",
 		"./services": "./src/services.ts"
 	},
 	"dependencies": {

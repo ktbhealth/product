@@ -28,6 +28,7 @@ import {
 import type { KeyringService } from "@ktb/crypto/keyring";
 
 import type { ClinicKey } from "../index.ts";
+import { clearByokConfig, loadByokConfig, saveByokConfig } from "../byok.ts";
 import {
 	approvalEnvelope,
 	enrollmentKeys,
@@ -249,6 +250,70 @@ export function VaultSettingsPage({
 		}
 	}, [admin, api, fail, keyring, ownDevice, phraseInput, refresh]);
 
+	// ── BYOK extraction key (T-146): optional provider key sealed to
+	// this device; without one the ZK consult pipeline stays on the
+	// local heuristic. The key is write-only — never rendered back.
+	const [byokConfigured, setByokConfigured] = useState<boolean | null>(null);
+	const [byokModel, setByokModel] = useState("");
+	const [byokBaseUrl, setByokBaseUrl] = useState("");
+	const [byokApiKey, setByokApiKey] = useState("");
+	useEffect(() => {
+		if (!data.zk) return;
+		let live = true;
+		loadByokConfig(keyring)
+			.then((config) => {
+				if (!live) return;
+				setByokConfigured(config !== null);
+				if (config !== null) {
+					setByokModel(config.model);
+					setByokBaseUrl(config.baseUrl ?? "");
+				}
+			})
+			.catch(() => {
+				if (live) setByokConfigured(false);
+			});
+		return () => {
+			live = false;
+		};
+	}, [data.zk, keyring]);
+
+	const saveByok = useCallback(async () => {
+		const apiKey = byokApiKey.trim();
+		if (apiKey === "") return;
+		setError(false);
+		setBusy(true);
+		try {
+			const baseUrl = byokBaseUrl.trim();
+			await saveByokConfig(keyring, {
+				apiKey,
+				model: byokModel.trim() || "gpt-4o-mini",
+				...(baseUrl === "" ? {} : { baseUrl }),
+			});
+			setByokApiKey("");
+			setByokConfigured(true);
+		} catch {
+			fail();
+		} finally {
+			setBusy(false);
+		}
+	}, [byokApiKey, byokBaseUrl, byokModel, fail, keyring]);
+
+	const clearByok = useCallback(async () => {
+		setError(false);
+		setBusy(true);
+		try {
+			await clearByokConfig(keyring);
+			setByokConfigured(false);
+			setByokApiKey("");
+			setByokModel("");
+			setByokBaseUrl("");
+		} catch {
+			fail();
+		} finally {
+			setBusy(false);
+		}
+	}, [fail, keyring]);
+
 	if (data.tenantId === null) {
 		return (
 			<PageContainer>
@@ -384,6 +449,50 @@ export function VaultSettingsPage({
 							>
 								{t.restore}
 							</Button>
+						</div>
+					</div>
+
+					<div className="rounded-lg border border-border p-4">
+						<h3 className="text-sm font-medium">{t.byokTitle}</h3>
+						<p className="mt-1 text-sm text-muted-foreground">{t.byokDescription}</p>
+						<p className="mt-2 text-xs text-muted-foreground">
+							{byokConfigured === true ? t.byokConfigured : t.byokNotConfigured}
+						</p>
+						<div className="mt-3 grid gap-2 sm:grid-cols-2">
+							<Input
+								value={byokModel}
+								onChange={(e) => setByokModel(e.target.value)}
+								placeholder="gpt-4o-mini"
+								aria-label={t.byokModelLabel}
+							/>
+							<Input
+								value={byokBaseUrl}
+								onChange={(e) => setByokBaseUrl(e.target.value)}
+								placeholder="https://llm.example.com/v1"
+								aria-label={t.byokBaseUrlLabel}
+							/>
+							<Input
+								type="password"
+								value={byokApiKey}
+								onChange={(e) => setByokApiKey(e.target.value)}
+								aria-label={t.byokApiKeyLabel}
+								autoComplete="off"
+								className="sm:col-span-2"
+							/>
+						</div>
+						<div className="mt-3 flex items-center gap-2">
+							<Button
+								variant="outline"
+								onClick={() => void saveByok()}
+								disabled={busy || byokApiKey.trim() === ""}
+							>
+								{t.byokSave}
+							</Button>
+							{byokConfigured === true ? (
+								<Button variant="ghost" onClick={() => void clearByok()} disabled={busy}>
+									{t.byokClear}
+								</Button>
+							) : null}
 						</div>
 					</div>
 				</>
