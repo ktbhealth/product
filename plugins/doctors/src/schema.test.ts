@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { doctors } from "./schema.ts";
 
 const DDL = `
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE doctors (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 `;
 
 describe("doctors schema", () => {
@@ -21,6 +21,7 @@ describe("doctors schema", () => {
 			"display_name",
 			"crm",
 			"specialty",
+			"synthetic",
 			"created_at",
 			"updated_at",
 		]);

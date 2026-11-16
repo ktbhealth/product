@@ -1,0 +1,71 @@
+import { describe, expect, it } from "vitest";
+
+import { decrypt, decryptText, encrypt, exportDek, generateDek, importDek } from "./aead.ts";
+import { bytesToB64u, CryptoFormatError } from "./encoding.ts";
+
+describe("AEAD (AES-256-GCM envelope)", () => {
+	it("round-trips a string", async () => {
+		const key = await generateDek();
+		const envelope = await encrypt(key, "anamnese do paciente");
+		expect(envelope.startsWith("v1.")).toBe(true);
+		expect(await decryptText(key, envelope)).toBe("anamnese do paciente");
+	});
+
+	it("round-trips raw bytes", async () => {
+		const key = await generateDek();
+		const bytes = crypto.getRandomValues(new Uint8Array(512));
+		const envelope = await encrypt(key, bytes);
+		expect(await decrypt(key, envelope)).toEqual(bytes);
+	});
+
+	it("produces a fresh IV per message", async () => {
+		const key = await generateDek();
+		const a = await encrypt(key, "same");
+		const b = await encrypt(key, "same");
+		expect(a).not.toBe(b);
+	});
+
+	it("exports and re-imports a DEK", async () => {
+		const key = await generateDek();
+		const raw = await exportDek(key);
+		expect(raw.length).toBe(32);
+		const reimported = await importDek(raw);
+		const envelope = await encrypt(key, "data");
+		expect(await decryptText(reimported, envelope)).toBe("data");
+	});
+
+	it("imports with restricted usages", async () => {
+		const key = await importDek(crypto.getRandomValues(new Uint8Array(32)), ["decrypt"]);
+		await expect(encrypt(key, "x")).rejects.toThrow();
+	});
+
+	it("rejects a wrong key", async () => {
+		const a = await generateDek();
+		const b = await generateDek();
+		const envelope = await encrypt(a, "secret");
+		await expect(decrypt(b, envelope)).rejects.toThrow();
+	});
+
+	it("rejects tampered ciphertext", async () => {
+		const key = await generateDek();
+		const envelope = await encrypt(key, "secret");
+		const [v, iv, ct] = envelope.split(".");
+		const tampered = `${v}.${iv}.${ct!.slice(0, -2)}${ct!.endsWith("00") ? "11" : "00"}`;
+		await expect(decrypt(key, tampered)).rejects.toThrow();
+	});
+
+	it("rejects malformed envelopes", async () => {
+		const key = await generateDek();
+		await expect(decrypt(key, "not-an-envelope")).rejects.toThrow(CryptoFormatError);
+		await expect(decrypt(key, "v9.aaa.bbb")).rejects.toThrow(CryptoFormatError);
+		await expect(decrypt(key, "v1.too.few")).rejects.toThrow();
+		await expect(decrypt(key, "v1.a.b.c.d")).rejects.toThrow(CryptoFormatError);
+	});
+
+	it("rejects a wrong-length IV", async () => {
+		const key = await generateDek();
+		const shortIv = bytesToB64u(new Uint8Array(4));
+		const ct = bytesToB64u(new Uint8Array(32));
+		await expect(decrypt(key, `v1.${shortIv}.${ct}`)).rejects.toThrow(CryptoFormatError);
+	});
+});

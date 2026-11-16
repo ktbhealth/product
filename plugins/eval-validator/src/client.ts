@@ -28,7 +28,7 @@ export const evalValidatorChromePlugin = definePlugin({
 					to: "/platform/eval",
 					label: "Eval validator",
 					icon: ClipboardCheckIcon,
-					group: "System",
+					group: "Eval",
 				},
 			},
 		},

@@ -148,6 +148,8 @@ export interface PatientMessages {
 		readonly searchLabel: string;
 		readonly noMatch: string;
 		readonly filteredCount: (shown: number, total: number) => string;
+		readonly showSynthetic: string;
+		readonly syntheticBadge: string;
 		readonly colActions: string;
 		readonly newPatient: string;
 		readonly createTitle: string;
@@ -325,6 +327,8 @@ const en: PatientMessages = {
 		searchLabel: "Search patients",
 		noMatch: "No patients match the search.",
 		filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+		showSynthetic: "Show synthetic",
+		syntheticBadge: "synthetic",
 		colActions: "Actions",
 		newPatient: "New patient",
 		createTitle: "New patient",
@@ -503,6 +507,8 @@ const ptBR: PatientMessages = {
 		searchLabel: "Buscar pacientes",
 		noMatch: "Nenhum paciente corresponde à busca.",
 		filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+		showSynthetic: "Mostrar sintéticos",
+		syntheticBadge: "sintético",
 		colActions: "Ações",
 		newPatient: "Novo paciente",
 		createTitle: "Novo paciente",
@@ -683,6 +689,8 @@ const es: PatientMessages = {
 		searchLabel: "Buscar pacientes",
 		noMatch: "Ningún paciente coincide con la búsqueda.",
 		filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+		showSynthetic: "Mostrar sintéticos",
+		syntheticBadge: "sintético",
 		colActions: "Acciones",
 		newPatient: "Nuevo paciente",
 		createTitle: "Nuevo paciente",

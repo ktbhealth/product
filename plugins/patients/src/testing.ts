@@ -33,5 +33,6 @@ export const makePatient = (over: Partial<Patient> = {}): Patient => ({
 	emergencyContactPhone: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 	updatedAt: null,
+	synthetic: false,
 	...over,
 });

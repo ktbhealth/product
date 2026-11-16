@@ -19,7 +19,21 @@ export default Alchemy.Stack(
 		// Consultation audio storage (P-015) + async transcription queue
 		// (P-016). Private bucket — reads only through authenticated
 		// worker routes; the queue's consumer is this same worker script.
-		const audioBucket = yield* Cloudflare.R2.Bucket("audio");
+		// PL-007 F4/T-150: abort multipart uploads stranded for over a
+		// week — incomplete uploads bill storage and would hold the
+		// bucket non-empty on destroy. Object locks stay unconfigured on
+		// purpose: any lock would also block the purge path that runs on
+		// consultation deletion (see infra/cloudflare/DISASTER_RECOVERY.md).
+		const audioBucket = yield* Cloudflare.R2.Bucket("audio", {
+			lifecycleRules: [
+				{
+					id: "abort-incomplete-multipart-uploads",
+					abortMultipartUploadsTransition: {
+						condition: { type: "Age", maxAge: 604_800 },
+					},
+				},
+			],
+		});
 		const transcriptionQueue = yield* Cloudflare.Queues.Queue("transcription");
 
 		// Theme brand assets + font files (P-082/PL-006 phase 4): private

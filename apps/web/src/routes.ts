@@ -1,6 +1,8 @@
 import { plugins as authPlugins } from "@ktb/auth-plugin";
 import { plugins as consultationsPlugins } from "@ktb/consultations";
 import { plugins as doctorsPlugins } from "@ktb/doctors";
+import { plugins as evalPersonaPlugins } from "@ktb/eval-persona";
+import { plugins as evalCredentialsPlugins } from "@ktb/eval-credentials";
 import { plugins as evalValidatorPlugins } from "@ktb/eval-validator";
 import { plugins as invitesPlugins } from "@ktb/invites";
 import { plugins as jobsPlugins } from "@ktb/jobs";
@@ -20,6 +22,8 @@ const routePlugins = [
 	...authPlugins,
 	...consultationsPlugins,
 	...doctorsPlugins,
+	...evalPersonaPlugins,
+	...evalCredentialsPlugins,
 	...evalValidatorPlugins,
 	...invitesPlugins,
 	...jobsPlugins,

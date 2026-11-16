@@ -37,6 +37,7 @@ import {
 	listBatchesFn,
 	listPersonasFn,
 	progressFn,
+	deleteRunFn,
 	reviewPersonaFn,
 	startRunFn,
 } from "./fns.ts";
@@ -129,6 +130,7 @@ describe("eval validator fns", () => {
 		});
 		expect(await startRunFn({ data: { batchId: 1 } })).toEqual({ ok: false });
 		expect(await progressFn({ data: { runId: 1 } })).toEqual({ ok: false });
+		expect(await deleteRunFn({ data: { runId: 1 } })).toEqual({ ok: false });
 		allow = true;
 	});
 
@@ -173,5 +175,9 @@ describe("eval validator fns", () => {
 		currentEmail = "v@x.com";
 		const res = await progressFn({ data: { runId: 9999 } });
 		expect(res).toEqual({ ok: true, data: null });
+	});
+
+	it("deleteRunFn denies without the grant and deletes with it", async () => {
+		expect(await deleteRunFn({ data: { runId: 1 } })).toEqual({ ok: true, data: null });
 	});
 });

@@ -19,6 +19,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	markAllMyNotificationsReadFn: vi.fn(),
 	getSessionUserFn: vi.fn(async () => ({ id: "u1", email: "a@x.com", name: "A" })),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] as string[] })),
+	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 vi.mock("@ktb/theme/fns", () => ({
@@ -94,6 +95,7 @@ describe("/platform without the optional header plugins", () => {
 			notifications: [],
 			audiences: [],
 			theme: null,
+			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();

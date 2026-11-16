@@ -24,6 +24,7 @@ import type { ResolvedTheme } from "@ktb/theme/types";
 
 import {
 	adminListAudioJobsFn,
+	consoleDeniedFn,
 	listMyNotificationsFn,
 	markAllMyNotificationsReadFn,
 	markMyNotificationsReadFn,
@@ -113,6 +114,9 @@ export const Route = createFileRoute("/platform")({
 					: [],
 			audiences,
 			theme,
+			// Guard-filtered sidebar: page paths whose guard denies this
+			// user — items pointing there would just 404.
+			deniedPaths: await consoleDeniedFn(),
 		};
 	},
 	// Theme head projection (P-082): favicon/OG/font links + title from
@@ -138,11 +142,15 @@ const rootApi = getRouteApi("__root__");
 function PlatformLayout() {
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const { user, pluginStates } = rootApi.useLoaderData();
-	const { audioJobs, notifications, audiences, theme } = Route.useLoaderData();
+	const { audioJobs, notifications, audiences, theme, deniedPaths } = Route.useLoaderData();
 	const locale = getLocale();
 	// Enabled-state filter (P-058): disabled plugins contribute no
 	// sidebar items or header actions.
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
+	// Guard filter: sidebar items pointing at pages whose guard denied
+	// this user are hidden — a menu of 404s is worse than a short menu.
+	// Items without a matching guarded page are never denied.
+	const denied = new Set(deniedPaths);
 	// Sidebar/header chrome comes from `chrome` contributions into the
 	// portal.* regions (P-060/P-081), scoped to the "platform" instance
 	// and filtered by `when` against the pathname. Sidebar labels/groups
@@ -151,7 +159,7 @@ function PlatformLayout() {
 	// landing nav's pluginNavLabel).
 	const items = collectChrome(visiblePlugins, "portal.sidebar", pathname, "platform").flatMap(
 		(entry) =>
-			entry.content.kind === "sidebarItem"
+			entry.content.kind === "sidebarItem" && !denied.has(entry.content.item.to)
 				? [
 						{
 							...entry.content.item,
