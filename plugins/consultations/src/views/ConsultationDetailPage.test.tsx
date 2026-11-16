@@ -306,6 +306,64 @@ describe("ConsultationDetailPage", () => {
 		vi.useRealTimers();
 	});
 
+	it("shows the integrity badge once verification resolves", async () => {
+		const verifyIntegrity = vi.fn(async () => ({
+			status: "verified" as const,
+			versions: 2,
+			unverifiableContent: 0,
+			signed: 0,
+			issues: [],
+			head: { version: 2, contentHash: "ab".repeat(32) },
+			storedVersion: 2,
+		}));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), verifyIntegrity }}
+			/>,
+		);
+		expect(verifyIntegrity).toHaveBeenCalledWith({ data: 10 });
+		expect(await screen.findByText("Integrity verified")).toBeTruthy();
+	});
+
+	it("surfaces a tampered chain and never blocks rendering on a failed check", async () => {
+		const tampered = vi.fn(async () => ({
+			status: "tampered" as const,
+			versions: 2,
+			unverifiableContent: 0,
+			signed: 0,
+			issues: [{ version: 2, code: "chain-broken" as const }],
+			head: { version: 2, contentHash: "ab".repeat(32) },
+			storedVersion: 2,
+		}));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), verifyIntegrity: tampered }}
+			/>,
+		);
+		expect(await screen.findByText("Integrity check failed")).toBeTruthy();
+
+		cleanup();
+		const rejected = vi.fn(async () => {
+			throw new Error("fn down");
+		});
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), verifyIntegrity: rejected }}
+			/>,
+		);
+		// Rejected verification leaves no badge — the page still renders.
+		await act(async () => {});
+		expect(screen.queryByText("Integrity verified")).toBeNull();
+		expect(screen.queryByText("Integrity check failed")).toBeNull();
+		expect(screen.getByText("Maria")).toBeTruthy();
+	});
+
 	it("renders transcript lines without speaker prefix and unknown speakers", () => {
 		render(
 			<ConsultationDetailPage
