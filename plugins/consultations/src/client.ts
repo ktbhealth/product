@@ -77,7 +77,7 @@ export const plugins: readonly Plugin[] = [
 		id: "consultations.services",
 		requiredDeps: ["patients.services", "platform.admin"],
 		// Mirrors consultationsServicesPlugin.optionalDeps (server index.ts).
-		optionalDeps: ["audit.services"],
+		optionalDeps: ["audit.services", "integrity.services"],
 	}),
 	definePlugin({ id: "consultations.routes" }),
 	consultationsChromePlugin,
