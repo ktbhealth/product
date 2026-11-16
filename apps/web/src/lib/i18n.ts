@@ -46,11 +46,13 @@ const PANEL_LABELS: Record<string, () => string> = {
 	"/platform/groups": () => m.panel_nav_groups(),
 	"/platform/ops": () => m.panel_nav_ops(),
 	"/platform/plugins": () => m.panel_nav_plugins(),
+	"/portal/clinician/activity": () => m.panel_nav_activity(),
 };
 
 const PANEL_GROUPS: Record<string, () => string> = {
 	Access: () => m.panel_group_access(),
 	Domains: () => m.panel_group_domains(),
+	Governance: () => m.panel_group_governance(),
 	System: () => m.panel_group_system(),
 };
 

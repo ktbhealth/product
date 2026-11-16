@@ -83,13 +83,14 @@ describe("pluginNavLabel", () => {
 });
 
 describe("pluginPanelLabel", () => {
-	it("localizes known /platform sidebar destinations", () => {
+	it("localizes known sidebar destinations", () => {
 		for (const to of [
 			"/platform",
 			"/platform/consultations",
 			"/platform/patients",
 			"/platform/users",
 			"/platform/groups",
+			"/portal/clinician/activity",
 		]) {
 			expect(pluginPanelLabel(to, "fallback")).not.toBe("fallback");
 		}
@@ -105,6 +106,7 @@ describe("pluginPanelGroup", () => {
 		// en catalog endonyms equal the group keys; pt-BR proves the lookup.
 		expect(pluginPanelGroup("Access")).toBe("Access");
 		expect(pluginPanelGroup("Domains")).toBe("Domains");
+		expect(pluginPanelGroup("Governance")).toBe("Governance");
 	});
 
 	it("passes unknown groups through unchanged", () => {

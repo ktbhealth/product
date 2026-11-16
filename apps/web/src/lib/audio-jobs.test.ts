@@ -354,6 +354,100 @@ describe("processAudioJob", () => {
 	});
 });
 
+describe("transcription audit trail (P-080)", () => {
+	type AuditEntry = Parameters<NonNullable<AudioJobDeps["recordAudit"]>>[0];
+
+	it("records a completed event on success", async () => {
+		const entries: AuditEntry[] = [];
+		const { db, deps } = makeDeps({
+			recordAudit: async (e) => {
+				entries.push(e);
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }, 4))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+
+		expect(entries).toEqual([
+			{
+				action: "consultations.transcription.completed",
+				targetType: "consultation",
+				targetId: id,
+				tenantId: 4,
+				detail: null,
+			},
+		]);
+	});
+
+	it("records failed with the coarse reason when the provider errors", async () => {
+		const entries: AuditEntry[] = [];
+		const { db, deps } = makeDeps({
+			ai: {
+				run: async () => {
+					throw new Error("provider internals: quota exceeded");
+				},
+			},
+			recordAudit: async (e) => {
+				entries.push(e);
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+
+		expect(entries).toEqual([
+			{
+				action: "consultations.transcription.failed",
+				targetType: "consultation",
+				targetId: id,
+				tenantId: null,
+				detail: { reason: "transcription failed" },
+			},
+		]);
+		// The row keeps the raw reason; only the audit detail is coerced.
+		expect((await row(db, id))?.audioError).toContain("provider internals");
+	});
+
+	it("records failed with the literal reason on fixed-string paths", async () => {
+		const entries: AuditEntry[] = [];
+		const { deps } = makeDeps({
+			recordAudit: async (e) => {
+				entries.push(e);
+			},
+		});
+		// Missing row: tenantId falls back to the payload's tenant_id.
+		await processAudioJob(job(424242, { tenantId: 9 }), deps);
+		expect(entries).toEqual([
+			{
+				action: "consultations.transcription.failed",
+				targetType: "consultation",
+				targetId: 424242,
+				tenantId: 9,
+				detail: { reason: "consultation not found" },
+			},
+		]);
+	});
+
+	it("survives a rejecting audit hook on both outcomes", async () => {
+		const { db, deps } = makeDeps({
+			recordAudit: async () => {
+				throw new Error("audit down");
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect((await row(db, id))?.audioStatus).toBe("done");
+
+		const id2 = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id2, { audioKey: "audio/u1/1/missing.webm", size: 3 });
+		await processAudioJob(job(id2), deps);
+		expect((await row(db, id2))?.audioStatus).toBe("failed");
+	});
+});
+
 describe("handleAudioQueueBatch", () => {
 	const msg = (body: unknown, log: string[]): QueueMessageLike => ({
 		body,

@@ -8,6 +8,8 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import { Permissions } from "@ktb/rbac";
+import { Tenant } from "@ktb/tenant";
 
 import { eq } from "drizzle-orm";
 
@@ -17,6 +19,7 @@ import {
 	Audit,
 	AuditLive,
 	audit,
+	auditActivityPlugin,
 	auditChromePlugin,
 	auditEntryHash,
 	auditPanelPlugin,
@@ -24,6 +27,7 @@ import {
 	auditTablesPlugin,
 	insertAuditEntry,
 	listAuditEntries,
+	listTenantAuditEntries,
 	plugins,
 	verifyAuditChain,
 	type AuditListResult,
@@ -159,6 +163,55 @@ describe("audit repo", () => {
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listAuditEntries(fakeDb);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+});
+
+describe("listTenantAuditEntries", () => {
+	it("returns only the tenant's rows, newest-first — NULL tenant excluded", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		const write = (action: string, tenantId?: string | number | null) =>
+			insertAuditEntry(fresh, {
+				actorUserId: null,
+				actorEmail: null,
+				action,
+				tenantId,
+			});
+		await write("feed.t1.first", 1);
+		await write("feed.t1.second", "1");
+		await write("feed.t2", 2);
+		await write("feed.global");
+		const result = await listTenantAuditEntries(fresh, 1);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.t1.second", "feed.t1.first"]);
+		expect(result.total).toBe(2);
+		expect(result.limit).toBe(200);
+	});
+
+	it("clamps the page limit like the admin listing", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		for (let i = 0; i < 3; i++) {
+			await insertAuditEntry(fresh, {
+				actorUserId: null,
+				actorEmail: null,
+				action: `feed.${i}`,
+				tenantId: 7,
+			});
+		}
+		expect((await listTenantAuditEntries(fresh, 7, { limit: 2 })).entries).toHaveLength(2);
+		expect((await listTenantAuditEntries(fresh, 7, { limit: 0 })).entries).toHaveLength(1);
+		expect((await listTenantAuditEntries(fresh, 7, { limit: 9999 })).limit).toBe(500);
+	});
+
+	it("reports a zero total when the count query yields no row", async () => {
+		// Same thenable stub as the admin listing, plus the tenant
+		// `where` fence both queries now chain through.
+		const query = {
+			where: () => query,
+			orderBy: () => ({ limit: async () => [] }),
+			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+		};
+		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
+		const result = await listTenantAuditEntries(fakeDb, 1);
 		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
 	});
 });
@@ -394,6 +447,117 @@ describe("AuditLive", () => {
 	});
 });
 
+describe("Audit activity feed (P-080)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
+
+	const tenant: Tenant = { id: 1, kind: "clinic", slug: "clinic-a", role: "admin" };
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(DDL));
+		const write = (action: string, tenantId?: number | null) =>
+			insertAuditEntry(db, { action, actorUserId: null, actorEmail: null, tenantId });
+		await write("feed.t1.first", 1);
+		await write("feed.t1.second", 1);
+		await write("feed.t2", 2);
+		await write("feed.global");
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const call = <A, E>(f: (p: Audit["Service"]) => Effect.Effect<A, E>) => Effect.flatMap(Audit, f);
+
+	/** Stub Permissions port: records `can` calls, answers `allowed`. */
+	const permissions = (allowed: boolean, seen?: unknown[]) =>
+		({
+			can: (resource: string, action: string, opts?: unknown) => {
+				seen?.push([resource, action, opts]);
+				return Effect.succeed(allowed);
+			},
+		}) as unknown as Permissions["Service"];
+
+	/** Run under a staff principal + tenant scope; `perms` absent means
+	 * the rbac plugin is disabled (serviceOption → None). */
+	const asStaff = <A, E>(
+		effect: Effect.Effect<A, E, Audit>,
+		opts: { tenant?: Tenant | null; perms?: Permissions["Service"] } = {},
+	) => {
+		let eff = effect.pipe(
+			Effect.provideService(Principal, { userId: "u1", email: "staff@x.com" }),
+			Effect.provideService(Tenant, opts.tenant === undefined ? tenant : opts.tenant),
+		);
+		if (opts.perms !== undefined) eff = Effect.provideService(eff, Permissions, opts.perms);
+		return runtime.runPromise(eff);
+	};
+
+	it("activityAccess is true and activityList returns only tenant rows", async () => {
+		const seen: unknown[] = [];
+		const access = await asStaff(
+			call((p) => p.activityAccess()),
+			{
+				perms: permissions(true, seen),
+			},
+		);
+		expect(access).toBe(true);
+		expect(seen).toEqual([["audit", "read", { tenantId: 1 }]]);
+		const result = await asStaff(
+			call((p) => p.activityList()),
+			{
+				perms: permissions(true),
+			},
+		);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.t1.second", "feed.t1.first"]);
+		expect(result.total).toBe(2);
+	});
+
+	it("denies access and fails activityList Forbidden without the grant", async () => {
+		await expect(
+			asStaff(
+				call((p) => p.activityAccess()),
+				{ perms: permissions(false) },
+			),
+		).resolves.toBe(false);
+		await expect(
+			asStaff(
+				call((p) => p.activityList()),
+				{ perms: permissions(false) },
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "rbac.audit.read" });
+	});
+
+	it("fails closed when the Permissions service is absent", async () => {
+		await expect(asStaff(call((p) => p.activityAccess()))).resolves.toBe(false);
+		await expect(asStaff(call((p) => p.activityList()))).rejects.toMatchObject({
+			_tag: "Forbidden",
+		});
+	});
+
+	it("fails closed without a resolvable tenant scope", async () => {
+		const cases: Array<Tenant | null> = [
+			null,
+			{ id: "clinic-x", kind: "clinic", slug: "x", role: "admin" },
+		];
+		for (const t of cases) {
+			await expect(
+				asStaff(
+					call((p) => p.activityAccess()),
+					{ tenant: t, perms: permissions(true) },
+				),
+			).resolves.toBe(false);
+			await expect(
+				asStaff(
+					call((p) => p.activityList()),
+					{ tenant: t, perms: permissions(true) },
+				),
+			).rejects.toMatchObject({ _tag: "Forbidden" });
+		}
+	});
+});
+
 describe("AuditLive failure isolation", () => {
 	it("record resolves even when the insert throws", async () => {
 		const brokenDb = {
@@ -449,11 +613,31 @@ describe("plugins", () => {
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/audit", label: "Audit log", group: "System" },
+				item: { to: "/platform/audit", label: "Audit log", group: "Governance" },
+			},
+		});
+		expect(auditChromePlugin.chrome?.[1]).toMatchObject({
+			id: "audit.activity.sidebar",
+			region: "portal.sidebar",
+			portal: "clinician",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/portal/clinician/activity",
+					label: "Activity",
+					group: "Governance",
+				},
 			},
 		});
 		expect(auditPanelPlugin.id).toBe("audit.panel");
 		expect(auditPanelPlugin.requiredDeps).toEqual(["platform.panel", "audit.services"]);
+		expect(auditActivityPlugin.id).toBe("audit.activity");
+		expect(auditActivityPlugin.requiredDeps).toEqual(["audit.services"]);
+		expect(auditActivityPlugin.pages).toHaveLength(1);
+		expect(auditActivityPlugin.pages?.[0]).toMatchObject({
+			id: "audit.activity",
+			path: "/portal/clinician/activity",
+		});
 	});
 
 	describe("panel page guard", () => {
@@ -523,12 +707,83 @@ describe("plugins", () => {
 		});
 	});
 
+	describe("activity page guard", () => {
+		const guard = auditActivityPlugin.pages![0]!.guard as () => Effect.Effect<
+			boolean,
+			never,
+			Audit
+		>;
+		const stubAudit = (activityAccess: Audit["Service"]["activityAccess"]) =>
+			({ activityAccess }) as unknown as Audit["Service"];
+
+		it("delegates to Audit.activityAccess", async () => {
+			expect(
+				await Effect.runPromise(
+					guard().pipe(
+						Effect.provideService(
+							Audit,
+							stubAudit(() => Effect.succeed(true)),
+						),
+					),
+				),
+			).toBe(true);
+			expect(
+				await Effect.runPromise(
+					guard().pipe(
+						Effect.provideService(
+							Audit,
+							stubAudit(() => Effect.succeed(false)),
+						),
+					),
+				),
+			).toBe(false);
+		});
+	});
+
+	describe("activity page loader", () => {
+		const loader = auditActivityPlugin.pages![0]!.loader as () => Effect.Effect<
+			AuditListResult,
+			never,
+			Audit
+		>;
+		const stubAudit = (activityList: Audit["Service"]["activityList"]) =>
+			({ activityList }) as unknown as Audit["Service"];
+
+		it("returns the tenant feed", async () => {
+			const result: AuditListResult = { entries: [], total: 0, limit: 200 };
+			expect(
+				await Effect.runPromise(
+					loader().pipe(
+						Effect.provideService(
+							Audit,
+							stubAudit(() => Effect.succeed(result)),
+						),
+					),
+				),
+			).toEqual(result);
+		});
+
+		it("collapses Forbidden to an empty page", async () => {
+			expect(
+				await Effect.runPromise(
+					loader().pipe(
+						Effect.provideService(
+							Audit,
+							stubAudit(() => Effect.fail(new Forbidden({ path: "rbac.audit.read" }))),
+						),
+					),
+				),
+			).toEqual({ entries: [], total: 0, limit: 200 });
+		});
+	});
+
 	it("exports the discovery plugins array", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"audit.tables",
 			"audit.services",
 			"audit.chrome",
 			"audit.panel",
+			"audit.activity",
 		]);
 	});
 });

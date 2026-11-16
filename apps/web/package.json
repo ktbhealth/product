@@ -34,6 +34,7 @@
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/app-host": "workspace:*",
 		"@ktb/audience": "workspace:*",
+		"@ktb/audit": "workspace:*",
 		"@ktb/auth-better": "workspace:*",
 		"@ktb/auth-plugin": "workspace:*",
 		"@ktb/consultations": "workspace:*",

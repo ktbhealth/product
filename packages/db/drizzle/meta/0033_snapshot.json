@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "130f8120-4ef7-487e-a375-c03a94f32459",
-  "prevId": "d65c8694-841b-4f56-8a99-2bc6b9a3521f",
+  "id": "6449c637-dd32-495f-8d3d-62e782bee0c2",
+  "prevId": "a4b721ce-e479-4de0-b83b-155f3b520b0c",
   "tables": {
     "account": {
       "name": "account",
@@ -988,6 +988,14 @@
           "name": "admin_audit_actor_idx",
           "columns": [
             "actor_user_id"
+          ],
+          "isUnique": false
+        },
+        "admin_audit_tenant_created_idx": {
+          "name": "admin_audit_tenant_created_idx",
+          "columns": [
+            "tenant_id",
+            "created_at"
           ],
           "isUnique": false
         }

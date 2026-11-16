@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "d65c8694-841b-4f56-8a99-2bc6b9a3521f",
+  "id": "a4b721ce-e479-4de0-b83b-155f3b520b0c",
   "prevId": "d3ce3789-2a8e-4b56-8255-dcd365aa05b3",
   "tables": {
     "account": {
@@ -670,95 +670,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "ai_agent_link": {
-      "name": "ai_agent_link",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "endpoint_id": {
-          "name": "endpoint_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "used_at": {
-          "name": "used_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
-        }
-      },
-      "indexes": {
-        "ai_agent_link_token_hash_unique": {
-          "name": "ai_agent_link_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
-          "isUnique": true
-        },
-        "ai_agent_link_endpoint_idx": {
-          "name": "ai_agent_link_endpoint_idx",
-          "columns": [
-            "endpoint_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "ai_agent_link_endpoint_id_ai_endpoint_id_fk": {
-          "name": "ai_agent_link_endpoint_id_ai_endpoint_id_fk",
-          "tableFrom": "ai_agent_link",
-          "tableTo": "ai_endpoint",
-          "columnsFrom": [
-            "endpoint_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "ai_endpoint": {
       "name": "ai_endpoint",
       "columns": {
@@ -863,13 +774,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": true
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         },
         "created_at": {
           "name": "created_at",
@@ -988,6 +892,14 @@
           "name": "admin_audit_actor_idx",
           "columns": [
             "actor_user_id"
+          ],
+          "isUnique": false
+        },
+        "admin_audit_tenant_created_idx": {
+          "name": "admin_audit_tenant_created_idx",
+          "columns": [
+            "tenant_id",
+            "created_at"
           ],
           "isUnique": false
         }

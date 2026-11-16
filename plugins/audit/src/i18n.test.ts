@@ -34,6 +34,7 @@ describe("audit catalogs", () => {
 		expect(isAuditLocale("fr")).toBe(false);
 		expect(auditMessages("fr")).toBe(auditMessages(BASE_LOCALE));
 		expect(auditMessages("pt-BR").title).toBe("Log de auditoria");
+		expect(auditMessages("pt-BR").activityTitle).toBe("Atividade");
 	});
 
 	it("covers exactly the three supported locales", () => {
