@@ -1,7 +1,8 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon } from "lucide-react";
 
+import { IntegrityBadge } from "@ktb/integrity/badge";
 import { anamnesisToText } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSectionKey, PatientHistory } from "@ktb/anamnesis";
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
@@ -15,6 +16,7 @@ import {
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
 
+import type { ConsultationIntegrityReport } from "../index.ts";
 import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, sourceLabel } from "../i18n.ts";
 import {
@@ -65,6 +67,8 @@ export interface ConsultationDetail {
 /** Optional live refetch — enables polling while the audio pipeline runs. */
 export interface ConsultationDetailApi {
 	getConsultation(input: { data: number }): Promise<ConsultationAudioInfo | null>;
+	/** Integrity re-verification for the anamnesis badge (T-139). */
+	verifyIntegrity?(input: { data: number }): Promise<ConsultationIntegrityReport | null>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
@@ -95,6 +99,23 @@ export function ConsultationDetailPage({
 		(c.audioStatus === "done" && Boolean(c.serverTranscript) && !c.correctedTranscript);
 	const live = useConsultationAudio(api && pipelineActive ? api.getConsultation : undefined, c.id);
 	const v = live ?? c;
+	// Tamper-evidence badge (T-139): re-verify the anamnesis version
+	// chain once on mount — only meaningful when an anamnesis exists.
+	const [integrity, setIntegrity] = useState<ConsultationIntegrityReport | null>(null);
+	useEffect(() => {
+		if (!api?.verifyIntegrity || !c.anamnesis) return;
+		let alive = true;
+		void api
+			.verifyIntegrity({ data: c.id })
+			.then((report) => {
+				if (alive) setIntegrity(report);
+			})
+			// A failed verification must never break the record view.
+			.catch(() => {});
+		return () => {
+			alive = false;
+		};
+	}, [api, c.id, c.anamnesis]);
 	const when = new Date(c.createdAt).toLocaleString(locale, {
 		dateStyle: "long",
 		timeStyle: "short",
@@ -150,6 +171,7 @@ export function ConsultationDetailPage({
 							<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
 						)}
 						{c.status === "live" ? <Chip tone="amber">{t.detail.inProgress}</Chip> : null}
+						{c.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
 						{history && history.count > 0 ? (
 							<Chip>{t.detail.previousConsultations(history.count)}</Chip>
 						) : null}

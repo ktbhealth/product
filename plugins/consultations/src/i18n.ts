@@ -73,6 +73,12 @@ export interface ConsultationMessages {
 		readonly evidence: (n: number) => string;
 		readonly noAnamnesisTitle: string;
 		readonly noAnamnesisDescription: string;
+		/** Tamper-evidence badge labels (T-139) — mirrors IntegrityBadgeLabels. */
+		readonly integrity: {
+			readonly verified: string;
+			readonly tampered: string;
+			readonly unversioned: string;
+		};
 	};
 	readonly transcriptPanel: {
 		readonly sourceServer: string;
@@ -291,6 +297,11 @@ const en: ConsultationMessages = {
 		evidence: (n) => `evidence (${n})`,
 		noAnamnesisTitle: "No anamnesis saved",
 		noAnamnesisDescription: "This consultation does not have a saved anamnesis yet.",
+		integrity: {
+			verified: "Integrity verified",
+			tampered: "Integrity check failed",
+			unversioned: "Integrity not recorded",
+		},
 	},
 	transcriptPanel: {
 		sourceServer: "server · whisper large-v3-turbo",
@@ -510,6 +521,11 @@ const ptBR: ConsultationMessages = {
 		evidence: (n) => `evidências (${n})`,
 		noAnamnesisTitle: "Nenhuma anamnese salva",
 		noAnamnesisDescription: "Esta consulta ainda não tem uma anamnese salva.",
+		integrity: {
+			verified: "Integridade verificada",
+			tampered: "Falha na verificação de integridade",
+			unversioned: "Integridade não registrada",
+		},
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",
@@ -728,6 +744,11 @@ const es: ConsultationMessages = {
 		evidence: (n) => `evidencias (${n})`,
 		noAnamnesisTitle: "Ninguna anamnesis guardada",
 		noAnamnesisDescription: "Esta consulta aún no tiene una anamnesis guardada.",
+		integrity: {
+			verified: "Integridad verificada",
+			tampered: "Falló la verificación de integridad",
+			unversioned: "Integridad no registrada",
+		},
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",

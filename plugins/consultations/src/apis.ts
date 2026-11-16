@@ -8,6 +8,7 @@ import {
 	getLiveConsultationFn,
 	recordConsentFn,
 	saveConsultationFn,
+	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
 /**
@@ -19,6 +20,7 @@ import {
  */
 export const consultationDetailApi: ConsultationDetailApi = {
 	getConsultation: (input: { data: number }) => getConsultationFn(input),
+	verifyIntegrity: (input: { data: number }) => verifyConsultationIntegrityFn(input),
 };
 
 export const newConsultationApi: NewConsultationApi = {

@@ -38,6 +38,11 @@ export const adminAudit = sqliteTable(
 		targetId: text("target_id"),
 		detail: text(),
 		tenantId: integer("tenant_id").references(() => groups.id, { onDelete: "set null" }),
+		// Tamper-evident chain link (T-139): SHA-256 over the previous
+		// row's canonical content INCLUDING its own prev_hash — every row
+		// commits to the whole log history. NULL on the first entry and
+		// on rows predating the chain (verifiers treat them as genesis).
+		prevHash: text("prev_hash"),
 		createdAt: integer("created_at", { mode: "timestamp_ms" })
 			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 			.notNull(),

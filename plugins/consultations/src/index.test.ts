@@ -894,6 +894,137 @@ describe("anamnesis integrity versioning (T-138)", () => {
 	});
 });
 
+describe("verifyIntegrity (T-139)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Consultations | Integrity, never>;
+	let testDb: ReturnType<typeof makeDb>;
+
+	const asUser = <A, E>(
+		userId: string | null,
+		effect: Effect.Effect<A, E, Consultations | Integrity>,
+		email?: string,
+	) =>
+		runtime.runPromise(
+			Effect.provideService(effect, Principal, userId === null ? null : { userId, email }),
+		);
+
+	const call = <A, E>(f: (c: Consultations["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(Consultations, f);
+
+	beforeAll(() => {
+		testDb = makeDb(makeD1(DDL));
+		runtime = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const saveInput = (): SaveConsultationInput => ({
+		transcript: "t",
+		anamnesis: { marker: Math.random() } as unknown as SaveConsultationInput["anamnesis"],
+		engine: "e",
+	});
+
+	it("verifies a saved anamnesis (head matches the row columns)", async () => {
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		const report = await asUser(
+			"u1",
+			call((c) => c.verifyIntegrity(saved.id, "u1")),
+		);
+		expect(report).not.toBeNull();
+		expect(report!.status).toBe("verified");
+		expect(report!.versions).toBe(1);
+		expect(report!.storedVersion).toBe(1);
+		expect(report!.head!.version).toBe(1);
+	});
+
+	it("flags a tampered stored version payload", async () => {
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		const versions = await runtime.runPromise(
+			Effect.flatMap(Integrity, (i) => i.versions("consultation.anamnesis", saved.id)),
+		);
+		await testDb
+			.update(recordVersions)
+			.set({ payload: JSON.stringify({ forged: true }) })
+			.where(eq(recordVersions.id, versions[0]!.id));
+		const report = await asUser(
+			"u1",
+			call((c) => c.verifyIntegrity(saved.id, "u1")),
+		);
+		expect(report!.status).toBe("tampered");
+		expect(report!.issues.map((i) => i.code)).toEqual(
+			expect.arrayContaining(["blob-mismatch", "content-mismatch"]),
+		);
+	});
+
+	it("flags a rewritten head pointer on the consultation row", async () => {
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		// An attacker rewrites the materialized columns — the chain head
+		// no longer matches what the row claims.
+		await testDb
+			.update(consultationsTable)
+			.set({ anamnesisHash: "ff".repeat(32) })
+			.where(eq(consultationsTable.id, saved.id));
+		const report = await asUser(
+			"u1",
+			call((c) => c.verifyIntegrity(saved.id, "u1")),
+		);
+		expect(report!.status).toBe("tampered");
+		expect(report!.issues).toEqual([{ version: 1, code: "head-diverged" }]);
+	});
+
+	it("reports unversioned when no chain exists and null for a missing row", async () => {
+		const id = await createConsultation(testDb, { userId: "u1", source: "browser" });
+		const report = await asUser(
+			"u1",
+			call((c) => c.verifyIntegrity(id!, "u1")),
+		);
+		expect(report!.status).toBe("unversioned");
+		expect(report!.storedVersion).toBeNull();
+		expect(
+			await asUser(
+				"u1",
+				call((c) => c.verifyIntegrity(424242, "u1")),
+			),
+		).toBeNull();
+	});
+
+	it("is Forbidden for a foreign owner and degrades without the plugin", async () => {
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		await expect(
+			asUser(
+				"u2",
+				call((c) => c.verifyIntegrity(saved.id, "u2")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+
+		const withoutIntegrity = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb, makeEventBus(), false))),
+		);
+		const report = await withoutIntegrity.runPromise(
+			Effect.provideService(
+				call((c) => c.verifyIntegrity(saved.id, "u1")),
+				Principal,
+				{
+					userId: "u1",
+				},
+			),
+		);
+		expect(report!.status).toBe("unversioned");
+		await withoutIntegrity.dispose();
+	});
+});
+
 describe("audio pipeline", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Consultations, never>;
 	let testDb: ReturnType<typeof makeDb>;

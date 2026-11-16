@@ -20,7 +20,12 @@ import {
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
-import { integrityServicesPlugin, recordVersion } from "@ktb/integrity";
+import {
+	Integrity,
+	integrityServicesPlugin,
+	recordVersion,
+	type IntegrityVerification,
+} from "@ktb/integrity";
 import { Db, type DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
@@ -613,6 +618,30 @@ async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, scope?:
 	return rows.length > 0;
 }
 
+/** Integrity columns + authz fields for the verifyIntegrity walk. */
+async function anamnesisIntegrityHead(db: DbClient, id: number) {
+	const rows = await db
+		.select({
+			userId: consultations.userId,
+			tenantId: consultations.tenantId,
+			anamnesisHash: consultations.anamnesisHash,
+			anamnesisVersion: consultations.anamnesisVersion,
+		})
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/** Domain verifyIntegrity report (T-139): the generic chain walk plus
+ * the consultation row's materialized head pointer (`storedVersion`). */
+export interface ConsultationIntegrityReport extends IntegrityVerification {
+	/** `consultations.anamnesis_version` — must equal the chain head's
+	 * version (a divergence means a version write was lost or the
+	 * columns were rewritten → status "tampered", "head-diverged"). */
+	readonly storedVersion: number | null;
+}
+
 /** Rows awaiting the v1 materialization (T-138 backfill): anamnesis
  * written before integrity columns existed. */
 async function unversionedAnamnesisRows(db: DbClient, limit: number) {
@@ -871,6 +900,16 @@ export class Consultations extends Context.Service<
 			{ backfilled: number; remaining: number },
 			Forbidden
 		>;
+		/**
+		 * `verifyIntegrity(entity, id)` for anamneses (T-139): re-derives
+		 * the version chain and checks the row's integrity columns still
+		 * point at the chain head. Same read authz as `get`; null when
+		 * the consultation does not exist.
+		 */
+		readonly verifyIntegrity: (
+			id: number,
+			userId: string,
+		) => Effect.Effect<ConsultationIntegrityReport | null, Forbidden>;
 		readonly recordConsent: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
 		/** Link a stored R2 audio object to the consultation (status "stored"). */
 		readonly attachAudio: (
@@ -1247,6 +1286,44 @@ export const ConsultationsLive = Layer.effect(
 					});
 				}
 				return { backfilled, remaining };
+			}),
+			verifyIntegrity: Effect.fn("Consultations.verifyIntegrity")(function* (
+				id: number,
+				userId: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.read");
+				const row = yield* Effect.promise(() => anamnesisIntegrityHead(db, id));
+				if (row === null) return null;
+				// Same read authz as `get` — the report leaks no content, but
+				// the chain's existence/shape is still record metadata.
+				yield* authorizeConsultationRow(platformAdmin, row, "consultation.read");
+				const option = yield* Effect.serviceOption(Integrity);
+				const base: IntegrityVerification = Option.isSome(option)
+					? yield* option.value.verify(ANAMNESIS_ENTITY_TYPE, id)
+					: {
+							status: "unversioned",
+							versions: 0,
+							unverifiableContent: 0,
+							signed: 0,
+							issues: [],
+							head: null,
+						};
+				// The row's materialized head must point at the chain head —
+				// a diverged column pair means a version write was swallowed
+				// or the columns were rewritten underneath the chain.
+				const headIssue =
+					base.head !== null &&
+					(row.anamnesisVersion !== base.head.version ||
+						row.anamnesisHash !== base.head.contentHash)
+						? [{ version: base.head.version, code: "head-diverged" as const }]
+						: [];
+				const issues = [...base.issues, ...headIssue];
+				return {
+					...base,
+					status: issues.length > 0 ? ("tampered" as const) : base.status,
+					issues,
+					storedVersion: row.anamnesisVersion,
+				};
 			}),
 			recordConsent: Effect.fn("Consultations.recordConsent")(function* (
 				id: number,

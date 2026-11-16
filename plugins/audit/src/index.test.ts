@@ -9,6 +9,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 
+import { eq } from "drizzle-orm";
+
 import { adminAudit } from "./schema.ts";
 import {
 	AUDIT_TEST_DDL,
@@ -16,12 +18,14 @@ import {
 	AuditLive,
 	audit,
 	auditChromePlugin,
+	auditEntryHash,
 	auditPanelPlugin,
 	auditServicesPlugin,
 	auditTablesPlugin,
 	insertAuditEntry,
 	listAuditEntries,
 	plugins,
+	verifyAuditChain,
 	type AuditListResult,
 } from "./index.ts";
 
@@ -100,6 +104,9 @@ describe("audit repo", () => {
 
 	it("returns null when the driver yields no RETURNING row", async () => {
 		const emptyInsert = {
+			select: () => ({
+				from: () => ({ orderBy: () => ({ limit: async () => [] }) }),
+			}),
 			insert: () => ({ values: () => ({ returning: async () => [] }) }),
 		} as unknown as DbClient;
 		expect(
@@ -153,6 +160,153 @@ describe("audit repo", () => {
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listAuditEntries(fakeDb);
 		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+});
+
+describe("audit chain (T-139)", () => {
+	let db: ReturnType<typeof makeDb>;
+
+	beforeAll(() => {
+		db = makeDb(makeD1(DDL));
+	});
+
+	const write = (action: string) =>
+		insertAuditEntry(db, { action, actorUserId: "u", actorEmail: "a@x.com" });
+
+	it("chains each insert to the previous row's hash", async () => {
+		const first = (await write("chain.one"))!;
+		const second = (await write("chain.two"))!;
+		expect(first.prevHash).toBeNull();
+		expect(second.prevHash).toBe(await auditEntryHash(first));
+		// The second row's own hash (implicitly committed by the NEXT
+		// row's prev_hash) covers its prevHash — history-committed.
+		const third = (await write("chain.three"))!;
+		expect(third.prevHash).toBe(await auditEntryHash(second));
+	});
+
+	it("verifies a clean log and an empty one", async () => {
+		expect(await verifyAuditChain(db)).toMatchObject({ status: "verified" });
+		const empty = makeDb(makeD1(DDL));
+		expect(await verifyAuditChain(empty)).toEqual({
+			status: "empty",
+			entries: 0,
+			brokenAt: null,
+		});
+	});
+
+	it("accepts an unchained legacy prefix (pre-column rows)", async () => {
+		const legacy = makeDb(makeD1(DDL));
+		// Legacy row written before prev_hash existed — NULL link.
+		await legacy.insert(adminAudit).values({ action: "legacy.one", createdAt: new Date(0) });
+		// The first post-migration row chains onto the legacy row's hash.
+		const chained = (await insertAuditEntry(legacy, {
+			action: "legacy.two",
+			actorUserId: null,
+			actorEmail: null,
+		}))!;
+		expect(chained.prevHash).not.toBeNull();
+		expect(await verifyAuditChain(legacy)).toMatchObject({
+			status: "verified",
+			entries: 2,
+		});
+	});
+
+	it("detects a rewritten historical row", async () => {
+		const tampered = makeDb(makeD1(DDL));
+		const a = (await insertAuditEntry(tampered, {
+			action: "t.one",
+			actorUserId: null,
+			actorEmail: null,
+		}))!;
+		await insertAuditEntry(tampered, {
+			action: "t.two",
+			actorUserId: null,
+			actorEmail: null,
+		});
+		// Rewrite row 1 underneath row 2's link.
+		await tampered
+			.update(adminAudit)
+			.set({ action: "t.one.forged" })
+			.where(eq(adminAudit.id, a.id));
+		const report = await verifyAuditChain(tampered);
+		expect(report.status).toBe("tampered");
+		expect(report.brokenAt).not.toBeNull();
+	});
+
+	it("detects a de-chained row via the next link", async () => {
+		// Nulling a TAIL row's prev_hash is indistinguishable from a
+		// legacy prefix — the tamper surfaces at the NEXT chained row,
+		// whose stored link no longer matches the rewritten predecessor.
+		const tampered = makeDb(makeD1(DDL));
+		await insertAuditEntry(tampered, { action: "d.one", actorUserId: null, actorEmail: null });
+		const second = (await insertAuditEntry(tampered, {
+			action: "d.two",
+			actorUserId: null,
+			actorEmail: null,
+		}))!;
+		const third = (await insertAuditEntry(tampered, {
+			action: "d.three",
+			actorUserId: null,
+			actorEmail: null,
+		}))!;
+		await tampered.update(adminAudit).set({ prevHash: null }).where(eq(adminAudit.id, second.id));
+		expect(await verifyAuditChain(tampered)).toMatchObject({
+			status: "tampered",
+			brokenAt: third.id,
+		});
+	});
+
+	it("detects an unchained row appearing after the chain started", async () => {
+		// A NULL prev_hash after the first chained row is tamper evidence
+		// in itself — verification stops at that row.
+		const tampered = makeDb(makeD1(DDL));
+		await insertAuditEntry(tampered, { action: "u.one", actorUserId: null, actorEmail: null });
+		await insertAuditEntry(tampered, { action: "u.two", actorUserId: null, actorEmail: null });
+		const third = (await insertAuditEntry(tampered, {
+			action: "u.three",
+			actorUserId: null,
+			actorEmail: null,
+		}))!;
+		await tampered.update(adminAudit).set({ prevHash: null }).where(eq(adminAudit.id, third.id));
+		expect(await verifyAuditChain(tampered)).toMatchObject({
+			status: "tampered",
+			brokenAt: third.id,
+		});
+	});
+
+	it("rejects a first row that is already chained", async () => {
+		// prev_hash on the genesis row has no predecessor to match.
+		const tampered = makeDb(makeD1(DDL));
+		await tampered
+			.insert(adminAudit)
+			.values({ action: "g.one", prevHash: "forged", createdAt: new Date(0) });
+		expect(await verifyAuditChain(tampered)).toMatchObject({
+			status: "tampered",
+			entries: 1,
+		});
+	});
+
+	it("adminVerify gates the walk behind the platform admin", async () => {
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(deps)));
+		try {
+			const asUser = (email: string | null) =>
+				runtime.runPromise(
+					Effect.provideService(
+						Effect.flatMap(Audit, (p) => p.adminVerify()),
+						Principal,
+						email === null ? null : { userId: "u", email },
+					),
+				);
+			await expect(asUser("doc@x.com")).rejects.toMatchObject({ _tag: "Forbidden" });
+			await expect(asUser(null)).rejects.toMatchObject({ _tag: "Forbidden" });
+			await expect(asUser("admin@x.com")).resolves.toMatchObject({ status: "verified" });
+		} finally {
+			await runtime.dispose();
+		}
 	});
 });
 

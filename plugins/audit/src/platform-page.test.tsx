@@ -22,6 +22,7 @@ const row = (over: Partial<AdminAuditRow>): AdminAuditRow => ({
 	targetId: "u9",
 	detail: '{"suspended":true}',
 	tenantId: null,
+	prevHash: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 	...over,
 });

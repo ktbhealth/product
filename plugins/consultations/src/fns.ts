@@ -220,6 +220,26 @@ export const getLiveConsultationFn = createServerFn({ method: "GET" })
 		);
 	});
 
+/**
+ * Re-verify the anamnesis integrity chain (T-139): same read authz as
+ * `getConsultationFn` — non-owners and missing rows get null.
+ */
+export const verifyConsultationIntegrityFn = createServerFn({ method: "GET" })
+	.validator((id: number) => decodeNumber(id))
+	.handler(async ({ data: id }) => {
+		const user = await getDoctorUser();
+		if (!user) return null;
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				return yield* consultations
+					.verifyIntegrity(id, user.id)
+					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+			}),
+		);
+	});
+
 export const attachAnamnesisFn = createServerFn({ method: "POST" })
 	.validator((input) => decodeAttachInput(input))
 	.handler(async ({ data }) => {
