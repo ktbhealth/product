@@ -4,7 +4,7 @@ import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
 import { Db } from "@ktb/db";
-import { GLOBAL_SCOPE, portalInstanceScope, resolveRequestLocales } from "@ktb/i18n";
+import { GLOBAL_SCOPE, portalInstanceScope, resolveRequestLocales, tenantScope } from "@ktb/i18n";
 import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
 import { currentLocale } from "./locale-context.ts";
 import {
@@ -23,6 +23,7 @@ import {
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
 import { PortalAudience, PORTAL_AUDIENCE } from "@ktb/portal";
+import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import type { Page, PanelPage } from "@ktb/kernel";
@@ -123,9 +124,39 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 					enabledLocales,
 					DEFAULT_LOCALE,
 				);
+				// Tenant scope binding (PL-008 Phase 6): same selector +
+				// resolver pipeline runAs uses — tenant headers + session
+				// account → TenantResolver → tenant→global chain.
+				// Anonymous/selector-less requests stay global; portal
+				// paths keep portal→global (patients carry no tenant).
+				const headers = yield* Effect.promise(() =>
+					import("@tanstack/react-start/server")
+						.then((m) => m.getRequestHeaders())
+						.catch(() => new Headers()),
+				);
+				const selector = tenantSelectorFromHeaders(headers);
+				// No tenant headers → personal scope; skip the session
+				// lookup so anonymous/app requests pay nothing extra.
+				const tenant =
+					selector === null
+						? null
+						: yield* Effect.gen(function* () {
+								const account = yield* Effect.promise(() => getSessionAccount().catch(() => null));
+								const resolver = yield* TenantResolver;
+								return yield* resolver
+									.resolve(selector, account?.id ?? null)
+									.pipe(Effect.catch(() => Effect.succeed(null)));
+							});
+				const tenantId = tenant === null ? null : tenantScopeId(tenant);
+				const scopeChain =
+					instanceId !== undefined
+						? portalInstanceScope(instanceId)
+						: tenantId !== null
+							? tenantScope(String(tenantId))
+							: GLOBAL_SCOPE;
 				const catalog = yield* catalogSlice(database, {
 					namespaces,
-					scopeChain: instanceId === undefined ? GLOBAL_SCOPE : portalInstanceScope(instanceId),
+					scopeChain,
 					locales,
 				});
 				return {
