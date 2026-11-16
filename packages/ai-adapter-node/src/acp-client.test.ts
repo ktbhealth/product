@@ -1,8 +1,6 @@
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 
-import { PortError } from "@ktb/eval-core";
-
 import { openAcpSession } from "./acp-client.ts";
 import type { SpawnedProcess } from "./stdio-rpc.ts";
 

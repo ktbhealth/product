@@ -1,8 +1,6 @@
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 
-import { PortError } from "@ktb/eval-core";
-
 import { makeStdioRpc, type SpawnedProcess } from "./stdio-rpc.ts";
 
 /** In-memory SpawnedProcess: stdin writes are parsed as JSON-RPC frames
@@ -137,7 +135,7 @@ describe("makeStdioRpc", () => {
 	});
 
 	it("ignores responses for unknown ids, blank lines and buffers partial frames", async () => {
-		const proc = makeFakeProc((msg, send) => {
+		const proc = makeFakeProc((msg) => {
 			// A bogus reply for an id nothing waits on + a blank line +
 			// a frame with neither method nor id, then the real response
 			// split across two stdout writes.

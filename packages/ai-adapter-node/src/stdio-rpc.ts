@@ -211,7 +211,10 @@ export const makeStdioRpc = (
 			}
 		});
 		proc.on("exit", (code) => {
-			failAll(fail(`acp agent exited (code ${code ?? "unknown"})`));
+			// Exit listeners fire with a number (or null on signal death);
+			// anything else collapses to "unknown" rather than stringifying.
+			const label = typeof code === "number" || typeof code === "string" ? code : "unknown";
+			failAll(fail(`acp agent exited (code ${label})`));
 		});
 		proc.on("error", (err) => {
 			failAll(fail(`acp agent error: ${causeMessage(err)}`));

@@ -25,7 +25,7 @@ import * as Layer from "effect/Layer";
 
 import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
 import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
-import { makeAcpLlm, makeHttpAcpTransport, type AcpTransport } from "@ktb/ai-adapter-acp";
+import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
 import { makeWorkersAiAsr } from "@ktb/eval-adapter-cloud";
 import {
 	makeJevEval,
