@@ -9,7 +9,9 @@ import type { ReactElement } from "react";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {

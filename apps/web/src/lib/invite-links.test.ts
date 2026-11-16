@@ -5,7 +5,9 @@ import { env } from "cloudflare:workers";
 const headers = vi.hoisted(() => ({ current: new Headers() }));
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 	getRequestUrl: () => new URL("http://localhost:3000/secretaries"),
 }));
 vi.mock("@tanstack/react-start", () => ({
