@@ -18,5 +18,17 @@ import { TEXT_FIELDS } from "./record.ts";
 export const patientCipher = defineCipher({
 	entity: "patient",
 	fields: TEXT_FIELDS,
-	plaintext: ["id", "ownerId", "tenantId", "active", "createdAt", "updatedAt"],
+	plaintext: [
+		"id",
+		"ownerId",
+		"tenantId",
+		"active",
+		"synthetic",
+		"createdAt",
+		"updatedAt",
+		// Read-model joins (listPatients flattens owner display fields
+		// onto the row) — plaintext metadata, never persisted by clients.
+		"ownerEmail",
+		"ownerName",
+	],
 });
