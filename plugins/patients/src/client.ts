@@ -9,8 +9,8 @@ import { PatientsPlatformPage } from "./platform-page.tsx";
  * through `@ktb/app-host/client` (import.meta.glob on
  * `plugins/<name>/src/client.ts`). Every server entry keeps its id and dep
  * edges so topo order matches the server registry, but only
- * client-consumed contributions are carried: chrome regions (nav link,
- * console sidebar) and panel pages. `panel.pages` keep id/path/component only — the
+ * client-consumed contributions are carried: chrome regions (console
+ * sidebar) and panel pages. `panel.pages` keep id/path/component only — the
  * loader Effect runs server-side and stays in ./index.ts.
  * tables/services/routes degrade to markers. Dep ids are literals:
  * importing ./index.ts would pull the server graph into the client
@@ -20,11 +20,6 @@ export const patientsChromePlugin = definePlugin({
 	id: "patients.chrome",
 	requiredDeps: ["platform.panel"],
 	chrome: [
-		{
-			id: "patients.nav",
-			region: "app.header.nav",
-			content: { kind: "link", to: "/patients", label: "Patients" },
-		},
 		{
 			id: "patients.sidebar",
 			region: "portal.sidebar",

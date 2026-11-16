@@ -176,8 +176,6 @@ describe("router integration", () => {
 		// inside the portal instances, not the marketing header.
 		expect(screen.getByText("I am a doctor")).toBeTruthy();
 		expect(screen.getByText("I am a patient")).toBeTruthy();
-		// nav links from plugin manifests
-		expect(screen.getByText("Consultations")).toBeTruthy();
 
 		await act(async () => {
 			await router.navigate({ to: "/login/doctor" });
@@ -188,8 +186,8 @@ describe("router integration", () => {
 		await act(async () => {
 			await router.navigate({ to: "/consultations" });
 		});
-		// anonymous → route guard funnels into the patient front door
-		await waitFor(() => expect(router.state.location.pathname).toBe("/login/patient"));
+		// anonymous → the clinical funnel sends them to the doctor sign-in
+		await waitFor(() => expect(router.state.location.pathname).toBe("/login/doctor"));
 	});
 
 	it("authenticated user sees name in nav and consultation detail", async () => {

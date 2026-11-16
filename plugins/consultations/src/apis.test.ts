@@ -4,14 +4,19 @@ const mocks = vi.hoisted(() => ({
 	patientLinksFn: vi.fn(),
 	invitePatientFn: vi.fn(),
 	portalReadersFn: vi.fn(),
+	getConsultationFn: vi.fn(),
 }));
 
-vi.mock("@ktb/patient-access/fns", () => mocks);
+vi.mock("@ktb/patient-access/fns", () => ({
+	patientLinksFn: mocks.patientLinksFn,
+	invitePatientFn: mocks.invitePatientFn,
+	portalReadersFn: mocks.portalReadersFn,
+}));
 vi.mock("@ktb/patients/fns", () => ({ createPatientFn: vi.fn(), listPatientsFn: vi.fn() }));
 vi.mock("./fns.ts", () => ({
 	attachAnamnesisFn: vi.fn(),
 	extractAnamnesisFn: vi.fn(),
-	getConsultationFn: vi.fn(),
+	getConsultationFn: mocks.getConsultationFn,
 	getLiveConsultationFn: vi.fn(),
 	recordConsentFn: vi.fn(),
 	saveConsultationFn: vi.fn(),
@@ -28,6 +33,20 @@ const patient = { id: 1, name: "Maria", email: "maria@ktb.test" };
 const link = (status: string) => ({ id: 7, email: "maria@ktb.test", status });
 
 beforeEach(() => vi.clearAllMocks());
+
+describe("getConsultation delegation", () => {
+	it("newConsultationApi delegates getConsultation to the server fn", async () => {
+		mocks.getConsultationFn.mockResolvedValue({ id: 3 });
+		await expect(newConsultationApi.getConsultation!({ data: 3 })).resolves.toEqual({ id: 3 });
+		expect(mocks.getConsultationFn).toHaveBeenCalledWith({ data: 3 });
+	});
+
+	it("consultationDetailApi delegates getConsultation to the server fn", async () => {
+		mocks.getConsultationFn.mockResolvedValue({ id: 5 });
+		await expect(consultationDetailApi.getConsultation!({ data: 5 })).resolves.toEqual({ id: 5 });
+		expect(mocks.getConsultationFn).toHaveBeenCalledWith({ data: 5 });
+	});
+});
 
 describe("newConsultationApi.patientAccess", () => {
 	const standing = () => newConsultationApi.patientAccess!({ data: 1 });

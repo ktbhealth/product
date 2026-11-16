@@ -22,6 +22,8 @@ import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES } from "./-ui.ts";
 import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
+import { prefersWhisper } from "../backend.ts";
+import { prefetchWhisperModel } from "../whisper-prefetch.ts";
 import {
 	decryptConsultations,
 	isCipheredConsultation,
@@ -126,6 +128,12 @@ export function ConsultationsPage({
 				: row;
 		});
 	}, [consultations, decrypted, zk]);
+
+	// Warm the Whisper model while the doctor browses the list — on the
+	// Web Speech fallback there is no model to prefetch.
+	useEffect(() => {
+		if (prefersWhisper) prefetchWhisperModel();
+	}, []);
 
 	const shown = useMemo(() => {
 		const needle = q.trim().toLowerCase();

@@ -170,12 +170,6 @@ describe("root document", () => {
 		// theme.brand → app.header.brand (PL-006: brand lives in theme data)
 		expect(html).toContain("KTB Health");
 		expect(html).toContain('href="/"');
-		// patients/consultations chrome → app.header.nav
-		expect(html).toContain('href="/patients"');
-		expect(html).toContain('href="/consultations"');
-		// consultations.chrome → app.header.actions (host-injected label)
-		expect(html).toContain('href="/consultations/new"');
-		expect(html).toContain("New consultation");
 		// auth.chrome → app.header.session (anonymous → role logins)
 		expect(html).toContain('href="/login/doctor"');
 		expect(html).toContain('href="/login/patient"');
@@ -195,14 +189,14 @@ describe("root document", () => {
 		expect(html).not.toContain('href="/login/doctor"');
 	});
 
-	it("offers a doctor the doctor navigation", () => {
+	it("keeps domain navigation out of the site header for a doctor account", () => {
 		state.user = { name: "Dra. Bia", email: "bia@ktb.test", patientOnly: false };
 		const html = render();
-		// The profile shortcuts live inside the portaled account menu
-		// (covered by plugins/session tests).
-		expect(html).toContain('href="/patients"');
-		expect(html).toContain('href="/consultations"');
-		expect(html).toContain('href="/consultations/new"');
+		// Domain navigation lives in the portals — the site header keeps
+		// only brand, custom-page links, locale and the session menu.
+		expect(html).not.toContain('href="/patients"');
+		expect(html).not.toContain('href="/consultations"');
+		expect(html).not.toContain('href="/consultations/new"');
 		expect(html).not.toContain('href="/portal"');
 		expect(html).not.toContain("My consultations");
 	});
@@ -226,12 +220,13 @@ describe("root document", () => {
 
 	it("hides a disabled plugin's chrome contributions (P-058)", () => {
 		state.pluginStates = {
-			enabled: plugins.filter((p) => p.id !== "patients.chrome").map((p) => p.id),
+			enabled: plugins.filter((p) => p.id !== "site.chrome").map((p) => p.id),
 		};
 		const html = render();
-		expect(html).not.toContain('href="/patients"');
+		// site.chrome contributes the footer note and the locale toggle.
+		expect(html).not.toContain("documentation tool");
 		// Other plugins' chrome still renders.
-		expect(html).toContain('href="/consultations"');
+		expect(html).toContain('href="/login/doctor"');
 	});
 
 	it("gives the /platform console the whole viewport", () => {

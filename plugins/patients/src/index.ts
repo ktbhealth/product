@@ -600,18 +600,13 @@ export const patientsRoutesPlugin = definePlugin({
 	routes: [physical("/patients", "../../../../plugins/patients/src/routes")],
 });
 
-// Chrome contributions (P-060): the app-shell nav link and the console
-// sidebar entry live in `chrome` regions; the dep edge orders the
-// sidebar item after the platform shell like the retired panel entry.
+// Chrome contributions (P-060): the console sidebar entry lives in a
+// `chrome` region; the dep edge orders it after the platform shell
+// like the retired panel entry.
 export const patientsChromePlugin = definePlugin({
 	id: "patients.chrome",
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
-		{
-			id: "patients.nav",
-			region: "app.header.nav",
-			content: { kind: "link", to: "/patients", label: "Patients" },
-		},
 		{
 			id: "patients.sidebar",
 			region: "portal.sidebar",

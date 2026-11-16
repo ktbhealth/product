@@ -191,7 +191,7 @@ describe("pluginPanelLabel", () => {
 			"/platform/patients",
 			"/platform/users",
 			"/platform/groups",
-			"/portal/clinician/activity",
+			"/portal/doctor/activity",
 		]) {
 			expect(pluginPanelLabel(to, "fallback", FULL)).not.toBe("fallback");
 		}
