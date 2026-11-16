@@ -75,8 +75,8 @@ describe("eval-credentials fns", () => {
 						enabled: true,
 						metadata: JSON.stringify(v.metadata),
 					})),
-			remove: async (keyId) => {
-				store.delete(keyId);
+			remove: async (keyId, referenceId) => {
+				if (store.get(keyId)?.referenceId === referenceId) store.delete(keyId);
 			},
 			getSecret: async () => null,
 		});

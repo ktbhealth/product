@@ -351,6 +351,58 @@ describe("eval-persona fns", () => {
 		});
 	});
 
+	it("rejects out-of-range counts, defCounts and seeds at the wire", async () => {
+		for (const count of [0, -1, 1e9, 1.5]) {
+			await expect(spawnInstancesFn({ data: { count } })).rejects.toThrow("Expected");
+			await expect(generatePersonasFn({ data: { count } })).rejects.toThrow("Expected");
+		}
+		await expect(spawnInstancesFn({ data: { count: 1, defCount: 0 } })).rejects.toThrow("Expected");
+		await expect(spawnInstancesFn({ data: { count: 1, defCount: 201 } })).rejects.toThrow(
+			"Expected",
+		);
+		await expect(spawnInstancesFn({ data: { count: 1, seed: -5 } })).rejects.toThrow("Expected");
+		await expect(spawnInstancesFn({ data: { count: 1, seed: 3e9 } })).rejects.toThrow("Expected");
+		await expect(
+			createInstanceFn({ data: { name: "x", mode: "random", count: 0 } }),
+		).rejects.toThrow("Expected");
+		await expect(
+			createInstanceFn({ data: { name: "x", mode: "random", count: 1e9 } }),
+		).rejects.toThrow("Expected");
+	});
+
+	it("rejects persona defs with non-whitelist axis values", async () => {
+		await expect(
+			savePersonaDefFn({ data: { ...defInput, ageBand: "centenarian" } }),
+		).rejects.toThrow("Expected");
+		await expect(savePersonaDefFn({ data: { ...defInput, gender: "x" } })).rejects.toThrow(
+			"Expected",
+		);
+		await expect(
+			savePersonaDefFn({ data: { ...defInput, doctorRegister: "baroque" } }),
+		).rejects.toThrow("Expected");
+	});
+
+	it("surfaces InstanceRejected as { ok: false, data: { message } }", async () => {
+		// Selected mode with only unknown defIds — nothing to insert.
+		const rejected = await createInstanceFn({
+			data: { name: "sel", mode: "selected", defIds: [9999] },
+		});
+		expect(rejected).toEqual({
+			ok: false,
+			data: { message: "selected mode needs at least one known persona def" },
+		});
+
+		// Deleting a generating instance is refused with the reason.
+		const inst = await createInstanceFn({ data: { name: "busy", mode: "random", count: 1 } });
+		if (!inst.ok) return;
+		await startInstanceFn({ data: { id: inst.data.id } });
+		const del = await deleteInstanceFn({ data: { id: inst.data.id } });
+		expect(del).toEqual({
+			ok: false,
+			data: { message: "instance is generating — wait for it to finish before removing" },
+		});
+	});
+
 	it("spawns generator instances through the fn surface", async () => {
 		const ep = await saveEndpointFn({
 			data: { name: "sp-ep", kind: "acp", baseUrl: "u", transport: "ssh" },

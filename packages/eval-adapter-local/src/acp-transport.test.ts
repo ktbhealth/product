@@ -39,13 +39,14 @@ describe("makeHttpAcpTransport", () => {
 		expect(JSON.parse(calls[0]!.body!)).toMatchObject({ id: "t-1", method: "task" });
 	});
 
-	it("a non-2xx response fails as PortError with status + body", async () => {
+	it("a non-2xx response fails as PortError with the status only — never the body", async () => {
 		const fetchImpl = (async () => new Response("agent exploded", { status: 502 })) as typeof fetch;
 		const t = makeHttpAcpTransport("http://acp.local", fetchImpl);
 		const err = await Effect.runPromise(Effect.flip(t(REQUEST)));
 		expect(err).toBeInstanceOf(PortError);
-		expect((err as PortError).message).toContain("acp 502");
-		expect((err as PortError).message).toContain("agent exploded");
+		// The body is remote-controlled content: it must not reach the
+		// wire-visible message (server logs carry it instead).
+		expect((err as PortError).message).toBe("acp 502");
 	});
 
 	it("a network/abort failure wraps as PortError 'acp transport'", async () => {

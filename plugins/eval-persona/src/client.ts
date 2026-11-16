@@ -20,8 +20,10 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "eval.persona.services",
-		// Mirrors evalPersonaServicesPlugin.requiredDeps — literal ids.
+		// Mirrors evalPersonaServicesPlugin.requiredDeps/optionalDeps —
+		// literal ids.
 		requiredDeps: ["eval.persona.tables"],
+		optionalDeps: ["eval.credentials.services"],
 	}),
 	definePlugin({
 		id: "eval.persona.chrome",

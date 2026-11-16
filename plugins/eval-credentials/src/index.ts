@@ -75,7 +75,9 @@ export const EvalCredentialsLive = Layer.effect(
 				const principal = yield* Principal;
 				const refId = principal?.userId ?? "";
 				const rows = yield* Effect.promise(() => apiKeys.list(refId));
-				return rows.filter((r) => parseMeta(r.metadata).provider !== undefined).map(toCard);
+				// Strict marker: unrelated apikey rows (anything that sets a
+				// `provider` key) must not leak into the credential surface.
+				return rows.filter((r) => parseMeta(r.metadata).kind === "credential").map(toCard);
 			}),
 			create: Effect.fn("EvalCredentials.create")(function* (input) {
 				yield* requireGrant();
@@ -85,18 +87,29 @@ export const EvalCredentialsLive = Layer.effect(
 					apiKeys.create({
 						name: input.name,
 						referenceId: refId,
-						metadata: { provider: input.provider, secret: input.secret },
+						metadata: {
+							kind: "credential",
+							provider: input.provider,
+							secret: input.secret,
+						},
 					}),
 				);
 			}),
 			remove: Effect.fn("EvalCredentials.remove")(function* (id) {
 				yield* requireGrant();
-				yield* Effect.promise(() => apiKeys.remove(id));
+				const principal = yield* Principal;
+				// Owner-scoped: another user's key id is a silent no-op.
+				yield* Effect.promise(() => apiKeys.remove(id, principal?.userId ?? ""));
 			}),
 			resolve: Effect.fn("EvalCredentials.resolve")(function* (ref) {
 				yield* requireGrant();
-				const id = ref.replace(/^credential:/, "");
-				return yield* Effect.promise(() => apiKeys.getSecret(id));
+				// Only managed-credential refs read secrets back — bare
+				// ids or env-var names are not credential refs.
+				if (!ref.startsWith("credential:")) return null;
+				const id = ref.slice("credential:".length);
+				if (id === "") return null;
+				const principal = yield* Principal;
+				return yield* Effect.promise(() => apiKeys.getSecret(id, principal?.userId ?? ""));
 			}),
 		});
 	}),

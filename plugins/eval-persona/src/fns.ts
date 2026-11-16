@@ -20,25 +20,42 @@ import {
 // Eval lab server fns: the /platform/eval/* surfaces mutate through
 // these. Each service re-checks the eval.validator grant inside
 // runAs; `Forbidden` collapses to `{ ok: false }` like the other
-// admin fns. Wire inputs tolerate undefined/null keys the same way
-// eval-validator's ReviewInput does.
+// admin fns, and domain rejections (`InstanceRejected`) carry their
+// reason back in `data.message`. Wire inputs tolerate undefined/null
+// keys the same way eval-validator's ReviewInput does.
+//
+// Note: like every other plugin's fns, these do NOT re-check plugin
+// enablement — the plugin-enable gate lives on routes/panel pages
+// (consistent with auth/patients/consultations fns).
 
 const optStr = Schema.optional(Schema.Union([Schema.String, Schema.Null]));
 const optNum = Schema.optional(Schema.Union([Schema.Number, Schema.Null]));
 
+// Bounded counters — a bare Number lets a caller fan out 1e9 items in
+// one request (self-DoS). `count` caps instances/defs per call,
+// `defCount` caps items per spawned instance, seeds stay in int32+.
+const boundedCount = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 50 }));
+const boundedDefCount = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }));
+const boundedSeed = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 2147483647 }));
+const optCount = Schema.optional(Schema.Union([boundedCount, Schema.Null]));
+const optDefCount = Schema.optional(Schema.Union([boundedDefCount, Schema.Null]));
+const optSeed = Schema.optional(Schema.Union([boundedSeed, Schema.Null]));
+
+// Axis fields are literal-whitelisted — arbitrary strings would be
+// persisted straight into stored personas otherwise.
 const PersonaDefInput = Schema.Struct({
 	id: optNum,
 	name: Schema.String,
 	patientName: Schema.String,
-	gender: Schema.String,
-	ageBand: Schema.String,
-	socialClass: Schema.String,
-	education: Schema.String,
-	region: Schema.String,
-	register: Schema.String,
-	specialty: Schema.String,
-	doctorGender: Schema.String,
-	doctorRegister: Schema.String,
+	gender: Schema.Literals(["female", "male"]),
+	ageBand: Schema.Literals(["child", "adult", "elderly"]),
+	socialClass: Schema.Literals(["low", "middle", "high"]),
+	education: Schema.Literals(["primary", "secondary", "higher"]),
+	region: Schema.Literals(["north", "northeast", "central", "southeast", "south"]),
+	register: Schema.Literals(["colloquial", "neutral", "technical"]),
+	specialty: Schema.Literals(["general_practice", "cardiology", "dermatology", "pediatrics"]),
+	doctorGender: Schema.Literals(["female", "male"]),
+	doctorRegister: Schema.Literals(["colloquial", "neutral", "technical"]),
 	notes: optStr,
 });
 const IdInput = Schema.Struct({ id: Schema.Number });
@@ -59,20 +76,20 @@ const InstanceCreateInput = Schema.Struct({
 	mode: Schema.Literals(["selected", "random"]),
 	endpointId: optNum,
 	defIds: Schema.optional(Schema.Union([Schema.Array(Schema.Number), Schema.Null])),
-	count: optNum,
-	seed: optNum,
+	count: optCount,
+	seed: optSeed,
 	minutes: optNum,
 });
 const GenerateInput = Schema.Struct({
-	count: Schema.Number,
+	count: boundedCount,
 	endpointId: optNum,
-	seed: optNum,
+	seed: optSeed,
 });
 const SpawnInput = Schema.Struct({
-	count: Schema.Number,
+	count: boundedCount,
 	endpointId: optNum,
-	defCount: optNum,
-	seed: optNum,
+	defCount: optDefCount,
+	seed: optSeed,
 	name: optStr,
 });
 
@@ -324,7 +341,12 @@ export const createInstanceFn = createServerFn({ method: "POST" })
 				};
 				const r = yield* s.create(input);
 				return { ok: true as const, data: r };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(
+				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				Effect.catchTag("InstanceRejected", (e) =>
+					Effect.succeed({ ok: false as const, data: { message: e.reason } }),
+				),
+			),
 		);
 	});
 
@@ -344,7 +366,7 @@ export const startInstanceFn = createServerFn({ method: "POST" })
 
 export const deleteInstanceFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
-	.handler(async ({ data }): Promise<Result<null>> => {
+	.handler(async ({ data }): Promise<Result<{ readonly message?: string } | null>> => {
 		const user = await ensureSessionUser();
 		return run(
 			user,
@@ -352,7 +374,12 @@ export const deleteInstanceFn = createServerFn({ method: "POST" })
 				const s = yield* EvalInstances;
 				yield* s.remove(data.id);
 				return { ok: true as const, data: null };
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+			}).pipe(
+				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+				Effect.catchTag("InstanceRejected", (e) =>
+					Effect.succeed({ ok: false as const, data: { message: e.reason } }),
+				),
+			),
 		);
 	});
 

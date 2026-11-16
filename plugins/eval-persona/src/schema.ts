@@ -116,6 +116,10 @@ export const evalInstanceItem = sqliteTable(
 		/** pending | generating | done | error */
 		status: text().notNull().default("pending"),
 		error: text(),
+		/** Stamp written by the atomic pending→generating claim — a claim
+		 * older than the stale threshold means the request died
+		 * mid-generation and the next tick reclaims the item. */
+		claimedAt: integer("claimed_at", { mode: "timestamp_ms" }),
 		createdAt: integer("created_at", { mode: "timestamp_ms" })
 			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 			.notNull(),

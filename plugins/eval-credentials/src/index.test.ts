@@ -82,11 +82,13 @@ const makeApiKeys = (seed: readonly SeedRow[] = []) => {
 		},
 		list: async (referenceId: string) =>
 			[...store.values()].filter((s) => s.referenceId === referenceId).map((s) => s.row),
-		remove: async (keyId: string) => {
-			store.delete(keyId);
+		remove: async (keyId: string, referenceId: string) => {
+			if (store.get(keyId)?.referenceId === referenceId) store.delete(keyId);
 		},
-		getSecret: async (keyId: string) => {
-			const raw = store.get(keyId)?.row.metadata;
+		getSecret: async (keyId: string, referenceId: string) => {
+			const entry = store.get(keyId);
+			if (entry === undefined || entry.referenceId !== referenceId) return null;
+			const raw = entry.row.metadata;
 			if (raw === null || raw === undefined) return null;
 			try {
 				const parsed = JSON.parse(raw) as { secret?: unknown };
@@ -129,7 +131,7 @@ describe("EvalCredentials", () => {
 		expect(apiKeys.created[0]).toEqual({
 			name: "prod key",
 			referenceId: "u1",
-			metadata: { provider: "openai", secret: "sk-live-1234" },
+			metadata: { kind: "credential", provider: "openai", secret: "sk-live-1234" },
 		});
 
 		const listed = await run(Effect.flatMap(EvalCredentials, (s) => s.list()));
@@ -177,18 +179,20 @@ describe("EvalCredentials", () => {
 		const { rt, run } = make({
 			seed: [
 				{
-					row: row("a", '{"provider":"gemini","secret":"abc"}'),
+					row: row("a", '{"kind":"credential","provider":"gemini","secret":"abc"}'),
 					referenceId: "u1",
 				},
 				{
-					row: row("b", '{"provider":"anthropic"}', null),
+					row: row("b", '{"kind":"credential","provider":"anthropic"}', null),
 					referenceId: "u1",
 				},
 				{
-					row: row("c", '{"provider":42,"secret":"sk-77777"}'),
+					row: row("c", '{"kind":"credential","provider":42,"secret":"sk-77777"}'),
 					referenceId: "u1",
 				},
-				{ row: row("d", '{"secret":"sk-99999"}'), referenceId: "u1" },
+				// Unmarked rows — even ones carrying provider/secret-shaped
+				// metadata — are not eval credentials and never list.
+				{ row: row("d", '{"provider":"openai","secret":"sk-99999"}'), referenceId: "u1" },
 				{ row: row("e", "not-json"), referenceId: "u1" },
 				{ row: row("f", "5"), referenceId: "u1" },
 				{ row: row("g", null), referenceId: "u1" },
@@ -201,7 +205,7 @@ describe("EvalCredentials", () => {
 		expect(byId.get("b")?.name).toBe("credential");
 		expect(byId.get("c")?.provider).toBe("other");
 		expect(byId.get("c")?.masked).toBe("••••7777");
-		// Rows without a provider key are not eval credentials at all.
+		// Rows without the kind marker are not eval credentials at all.
 		expect(byId.has("d")).toBe(false);
 		expect(byId.has("e")).toBe(false);
 		expect(byId.has("f")).toBe(false);
@@ -222,7 +226,37 @@ describe("EvalCredentials", () => {
 		expect(await resolve("credential:missing")).toBeNull();
 		expect(await resolve("credential:k2")).toBeNull();
 		expect(await resolve("credential:k3")).toBeNull();
+		// Bare ids and env-var names are not credential refs — the
+		// `credential:` prefix is required, and a bare prefix is empty.
 		expect(await resolve("ENV_VAR")).toBeNull();
+		expect(await resolve("k1")).toBeNull();
+		expect(await resolve("credential:")).toBeNull();
+		await rt.dispose();
+	});
+
+	it("resolve and remove cannot reach another user's key", async () => {
+		const { rt, run, apiKeys } = make({
+			seed: [
+				{
+					row: row("other-1", '{"kind":"credential","provider":"openai","secret":"sk-9999"}'),
+					referenceId: "u2",
+				},
+			],
+		});
+		// Acting as u1 on u2's key id: the secret is invisible and the
+		// delete is a no-op — the row survives untouched.
+		expect(
+			await run(Effect.flatMap(EvalCredentials, (s) => s.resolve("credential:other-1"))),
+		).toBeNull();
+		await run(Effect.flatMap(EvalCredentials, (s) => s.remove("other-1")));
+		expect(apiKeys.store.has("other-1")).toBe(true);
+		// ...while the owner can still resolve it.
+		expect(
+			await run(
+				Effect.flatMap(EvalCredentials, (s) => s.resolve("credential:other-1")),
+				"u2",
+			),
+		).toBe("sk-9999");
 		await rt.dispose();
 	});
 

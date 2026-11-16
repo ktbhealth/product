@@ -63,15 +63,21 @@ describe("makeChatLlm", () => {
 		const bad = makeChatLlm({
 			baseUrl: "http://x/v1",
 			model: "m",
-			fetchImpl: stubFetch(async () => ({ ok: false, status: 500, text: async () => "boom" })),
+			fetchImpl: stubFetch(async () => ({
+				ok: false,
+				status: 500,
+				text: async () => "boom — echoed Authorization: Bearer sk-secret",
+			})),
 		});
+		// The provider body never reaches the wire-visible message — a
+		// hostile endpoint could echo our Authorization header in it.
 		await expect(
 			Effect.runPromise(
 				Effect.flatMap(LlmPort, (l) =>
 					l.generate({ taskId: "t", role: "generator", input: "i", outputSchema: "Text" }),
 				).pipe(Effect.provide(bad)),
 			),
-		).rejects.toMatchObject({ _tag: "PortError", message: expect.stringContaining("500") });
+		).rejects.toMatchObject({ _tag: "PortError", message: "chat 500" });
 		const dead = makeChatLlm({
 			baseUrl: "http://x/v1",
 			model: "m",

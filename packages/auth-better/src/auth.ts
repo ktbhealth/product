@@ -1,7 +1,7 @@
 import { betterAuth } from "better-auth";
 import { apiKey } from "@better-auth/api-key";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
 import type { AccountsShape, ApiKeysShape, AuthShape, Session, SessionUser } from "@ktb/auth";
@@ -166,18 +166,28 @@ export const makeApiKeysAdapter = (auth: Auth, db: AuthDb): ApiKeysShape => ({
 	},
 	list: async (referenceId: string) =>
 		db.select().from(apikeyTable).where(eq(apikeyTable.referenceId, referenceId)),
-	remove: async (keyId: string) => {
+	remove: async (keyId: string, referenceId: string) => {
+		// Ownership check first — acting on `keyId` alone would let one
+		// user delete another's credential by guessing the id.
+		const owned = await db
+			.select({ id: apikeyTable.id })
+			.from(apikeyTable)
+			.where(and(eq(apikeyTable.id, keyId), eq(apikeyTable.referenceId, referenceId)))
+			.limit(1);
+		if (owned.length === 0) return;
 		try {
 			await auth.api.deleteApiKey({ body: { keyId } });
 		} catch {
-			await db.delete(apikeyTable).where(eq(apikeyTable.id, keyId));
+			await db
+				.delete(apikeyTable)
+				.where(and(eq(apikeyTable.id, keyId), eq(apikeyTable.referenceId, referenceId)));
 		}
 	},
-	getSecret: async (keyId: string): Promise<string | null> => {
+	getSecret: async (keyId: string, referenceId: string): Promise<string | null> => {
 		const rows = await db
 			.select({ metadata: apikeyTable.metadata })
 			.from(apikeyTable)
-			.where(eq(apikeyTable.id, keyId));
+			.where(and(eq(apikeyTable.id, keyId), eq(apikeyTable.referenceId, referenceId)));
 		const raw = rows[0]?.metadata;
 		if (raw === null || raw === undefined) return null;
 		try {
