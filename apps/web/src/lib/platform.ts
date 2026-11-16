@@ -6,6 +6,7 @@ import {
 	getTenantSelector,
 	setServerRuntime,
 	type AudioObjectLister,
+	type AudioStore,
 	type QueueDepth,
 } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
@@ -152,6 +153,18 @@ const jobs =
 		? undefined
 		: makeJobs({ send: (envelope) => jobsQueue.send(envelope), db });
 
+// PL-006 phase 4: theme asset uploads ride a DEDICATED queue
+// (ktb-theme-assets) — image derivatives and font downloads never
+// contend with transcription. Same jobs-port shape: job_runs projection
+// + kind-dispatched envelope; the consumer lives in theme-jobs.ts.
+const themeJobsQueue = env.THEME_ASSETS_QUEUE as unknown as
+	| { send(body: unknown): Promise<unknown> }
+	| undefined;
+const themeJobs =
+	themeJobsQueue === undefined
+		? undefined
+		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
+
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
 // without importing this module. Env reads stay here — the registry
@@ -161,6 +174,8 @@ setServerRuntime({
 	runAs,
 	audio: env.AUDIO_BUCKET,
 	audioQueue: env.AUDIO_QUEUE,
+	themeAssets: env.THEME_ASSETS_BUCKET as unknown as AudioStore | undefined,
+	themeJobs,
 	jobs,
 	audioQueueDepth:
 		typeof queueDepthProbe === "function" ? () => queueDepthProbe().catch(() => null) : undefined,
@@ -188,6 +203,7 @@ setServerRuntime({
 // Raw platform binding passthrough — not composed, just exposed.
 export const ai = aiBinding;
 export const audioBucket = env.AUDIO_BUCKET;
+export const themeAssetsBucket = env.THEME_ASSETS_BUCKET;
 
 /** Coalesced flush (see telemetry-flush.ts): at most one real drain per
  * min-interval across ALL callers — the worker entry invokes this after

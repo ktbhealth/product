@@ -36,6 +36,13 @@ export default Alchemy.Stack(
 		});
 		const transcriptionQueue = yield* Cloudflare.Queues.Queue("transcription");
 
+		// Theme brand assets + font files (P-082/PL-006 phase 4): private
+		// bucket served only through the worker's /api/theme/assets route;
+		// dedicated queue (decided over sharing ktb-transcription) so image
+		// derivatives and font downloads never contend with audio jobs.
+		const themeAssetsBucket = yield* Cloudflare.R2.Bucket("theme-assets");
+		const themeAssetsQueue = yield* Cloudflare.Queues.Queue("theme-assets");
+
 		// Outbound email (Cloudflare Email Service): the `send_email`
 		// binding is restricted to the configured sender. EMAIL_FROM's
 		// domain must be onboarded for sending in the Cloudflare account;
@@ -68,6 +75,8 @@ export default Alchemy.Stack(
 				AI: Cloudflare.Workers.AI(),
 				AUDIO_BUCKET: audioBucket,
 				AUDIO_QUEUE: transcriptionQueue,
+				THEME_ASSETS_BUCKET: themeAssetsBucket,
+				THEME_ASSETS_QUEUE: themeAssetsQueue,
 				...(process.env.BETTER_AUTH_SECRET
 					? { BETTER_AUTH_SECRET: Redacted.make(process.env.BETTER_AUTH_SECRET) }
 					: {}),
@@ -161,6 +170,11 @@ export default Alchemy.Stack(
 		if (site.scriptName) {
 			yield* Cloudflare.Queues.Consumer("transcription-consumer", {
 				queueId: transcriptionQueue.queueId,
+				scriptName: site.scriptName as string,
+				settings: { maxRetries: 3 },
+			});
+			yield* Cloudflare.Queues.Consumer("theme-assets-consumer", {
+				queueId: themeAssetsQueue.queueId,
 				scriptName: site.scriptName as string,
 				settings: { maxRetries: 3 },
 			});

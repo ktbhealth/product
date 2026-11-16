@@ -156,6 +156,14 @@ const DOMAINS = [
 			"Eval lab surfaces — reusable persona definitions, LLM endpoints and persona instances with their items.",
 		tables: ["eval_instance", "eval_instance_item", "eval_llm_endpoint", "eval_persona_def"],
 	},
+	{
+		id: "theme",
+		title: "Theme",
+		owner: "`plugins/theme`",
+		description:
+			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline.",
+		tables: ["theme_assets", "theme_definitions"],
+	},
 ];
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));

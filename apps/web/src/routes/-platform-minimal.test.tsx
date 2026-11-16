@@ -21,6 +21,15 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] as string[] })),
 	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
 }));
+// Theme resolution is a server fn — stub it so the loader stays pure.
+vi.mock("@ktb/theme/fns", () => ({
+	themeScopeFn: vi.fn(async () => null),
+	listThemesFn: vi.fn(async () => []),
+	getThemeFn: vi.fn(async () => null),
+	publishThemeFn: vi.fn(async () => ({})),
+	setThemeEnabledFn: vi.fn(async () => ({ ok: true })),
+	setThemePreviewFn: vi.fn(async () => ({ ok: true })),
+}));
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: vi.fn() } }));
 
 let outletChild: (() => ReactElement | null) | null = null;
@@ -85,6 +94,7 @@ describe("/platform without the optional header plugins", () => {
 			audioJobs: [],
 			notifications: [],
 			audiences: [],
+			theme: null,
 			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
