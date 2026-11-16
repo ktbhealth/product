@@ -20,4 +20,17 @@ export const plugins: readonly Plugin[] = [
 		system: true,
 		requiredDeps: ["platform.routes"],
 	}),
+	definePlugin({
+		id: "platform.portal",
+		system: true,
+		requiredDeps: ["platform.panel"],
+		portals: [
+			{
+				id: "platform",
+				basePath: "/platform",
+				label: "Platform",
+				audience: "platform-admin",
+			},
+		],
+	}),
 ];

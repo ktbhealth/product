@@ -26,7 +26,7 @@ import {
 	createPatient,
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
-import { setServerRuntime, type AudioJobMessage } from "@ktb/server-fns";
+import { setServerRuntime } from "@ktb/server-fns";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
@@ -107,7 +107,7 @@ const services = Layer.mergeAll(
 // in-memory R2/Queue/AI doubles (same shapes as apps/web test env) plus
 // the real interop exporters the host wires in platform.ts.
 const audioBucketStore = new Map<string, { data: Uint8Array; contentType?: string }>();
-const audioQueueSent: AudioJobMessage[] = [];
+const jobsSent: { kind: string; payload: unknown; options?: unknown }[] = [];
 
 const fakeBucket = {
 	put: async (
@@ -151,9 +151,9 @@ beforeAll(() => {
 				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
 			),
 		audio: fakeBucket,
-		audioQueue: {
-			send: async (message: AudioJobMessage) => {
-				audioQueueSent.push(message);
+		jobs: {
+			enqueue: async (kind: string, payload: unknown, options?: unknown) => {
+				jobsSent.push({ kind, payload, options });
 			},
 		},
 		ai: {
@@ -331,12 +331,16 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 		expect(row.audioContentType).toBe("audio/webm");
 		expect(row.audioSize).toBe(4);
 		expect(audioBucketStore.has(row.audioKey!)).toBe(true);
-		expect(audioQueueSent.at(-1)).toMatchObject({
-			consultationId: id,
-			audioKey: row.audioKey,
-			userId: "u-owner",
-			// Personal-scope row → explicit null tenant on the message.
-			tenantId: null,
+		expect(jobsSent.at(-1)).toMatchObject({
+			kind: "transcription.audio",
+			payload: {
+				consultationId: id,
+				audioKey: row.audioKey,
+				userId: "u-owner",
+				// Personal-scope row → explicit null tenant on the message.
+				tenantId: null,
+			},
+			options: { tenantId: null, payloadRef: `consultation:${id}` },
 		});
 	});
 

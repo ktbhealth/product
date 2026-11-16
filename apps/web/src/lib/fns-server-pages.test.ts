@@ -53,21 +53,27 @@ vi.mock("#/lib/platform.ts", async () => {
 		run: (effect: any) => runEffect(effect),
 		runAs: (_user: unknown, effect: any) => runEffect(effect),
 		// Two server plugins claim the same page path — topo order wins.
+		// The portals entry lets the P-081 audience gate resolve the
+		// "platform" instance for /platform/* paths.
 		serverPlugins: [
-			{ id: "first.routes", panel: { pages: [page("first.page", "first")] } },
+			{
+				id: "first.routes",
+				portals: [{ id: "platform", basePath: "/platform", label: "Platform" }],
+				panel: { pages: [page("first.page", "first")] },
+			},
 			{ id: "second.routes", panel: { pages: [page("second.page", "second")] } },
 		] as never,
 	};
 });
 
 import type { PanelPage } from "@ktb/kernel";
-import { consolePages } from "./registry.ts";
-import { platformPageDataFn } from "./fns.ts";
+import { portalPages } from "./registry.ts";
+import { portalPageDataFn } from "./fns.ts";
 
 describe("serverPageMap duplicate paths", () => {
 	it("keeps the first server plugin's page when two claim one path", async () => {
 		const path = "/platform/dup-page";
-		const pages = consolePages as unknown as Map<
+		const pages = portalPages as unknown as Map<
 			string,
 			{ page: PanelPage; pluginId: string; context?: string }
 		>;
@@ -78,7 +84,7 @@ describe("serverPageMap duplicate paths", () => {
 		try {
 			// The client-registry entry has no loader — the merged server
 			// page supplies it, and the FIRST contributor wins the dup.
-			expect(await platformPageDataFn({ data: path })).toEqual({
+			expect(await portalPageDataFn({ data: path })).toEqual({
 				status: "ok",
 				data: "first",
 			});

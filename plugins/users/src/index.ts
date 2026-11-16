@@ -141,7 +141,7 @@ export const usersServicesPlugin = definePlugin({
 });
 
 // Chrome contribution (P-060): the console sidebar entry lives in the
-// `console.sidebar` chrome region; the dep edge orders it after the
+// `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const usersChromePlugin = definePlugin({
 	id: "users.chrome",
@@ -149,7 +149,7 @@ export const usersChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "users.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/users", label: "Users", icon: UserCogIcon, group: "Access" },

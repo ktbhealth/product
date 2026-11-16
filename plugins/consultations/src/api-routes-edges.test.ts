@@ -28,7 +28,7 @@ import {
 	createPatient,
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
-import { setServerRuntime, type AudioJobMessage } from "@ktb/server-fns";
+import { setServerRuntime } from "@ktb/server-fns";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
@@ -99,7 +99,7 @@ const services = Layer.mergeAll(
 // (503 paths) or swap the AI answer — same role the platform-module
 // getters played in the host-side edge tests.
 const audioBucketStore = new Map<string, { data: Uint8Array; contentType?: string }>();
-const audioQueueSent: AudioJobMessage[] = [];
+const jobsSent: { kind: string; payload: unknown; options?: unknown }[] = [];
 
 const fakeBucket = {
 	put: async (
@@ -133,9 +133,9 @@ const fakeBucket = {
 	},
 };
 
-const audioQueue = {
-	send: async (message: AudioJobMessage) => {
-		audioQueueSent.push(message);
+const jobs = {
+	enqueue: async (kind: string, payload: unknown, options?: unknown) => {
+		jobsSent.push({ kind, payload, options });
 	},
 };
 
@@ -155,8 +155,8 @@ beforeAll(() => {
 		get audio() {
 			return flags.noBucket ? undefined : fakeBucket;
 		},
-		get audioQueue() {
-			return flags.noQueue ? undefined : audioQueue;
+		get jobs() {
+			return flags.noQueue ? undefined : jobs;
 		},
 		get ai() {
 			return ai.current;
@@ -429,7 +429,7 @@ describe("audio upload edge cases", () => {
 
 	it("reports 502 when the audio is stored but the queue is down", async () => {
 		const id = await newConsultation();
-		vi.spyOn(audioQueue, "send").mockRejectedValueOnce(new Error("queue down"));
+		vi.spyOn(jobs, "enqueue").mockRejectedValueOnce(new Error("queue down"));
 		const res = await audioPost(id, new Uint8Array([1]), "audio/webm");
 		expect(res.status).toBe(502);
 		expect(await res.json()).toEqual({

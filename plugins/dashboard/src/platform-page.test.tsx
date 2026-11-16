@@ -1,22 +1,26 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
-import type { PanelPageContext } from "@ktb/kernel";
+vi.mock("@tanstack/react-router", async () => {
+	const React = await import("react");
+	return {
+		Link: ({ to, ...props }: Record<string, unknown>) =>
+			React.createElement("a", { ...props, href: String(to) }, props.children as never),
+	};
+});
 
 import { DashboardPlatformPage } from "./platform-page.tsx";
 
-const ctx = (over: Partial<PanelPageContext> = {}): PanelPageContext =>
-	({ locale: "en", plugins: [], ...over }) as PanelPageContext;
-
-const data = { patients: [], consultations: [] };
-
-afterEach(cleanup);
-
 describe("DashboardPlatformPage", () => {
-	it("narrows data+ctx into the view props", () => {
-		render(<DashboardPlatformPage data={data} ctx={ctx()} />);
-		expect(screen.getByText("dashboard")).toBeTruthy();
+	it("maps loader data and the panel ctx into the view", () => {
+		render(
+			<DashboardPlatformPage
+				data={{ patients: [], consultations: [] }}
+				ctx={{ plugins: [], locale: "en", user: null }}
+			/>,
+		);
+		expect(screen.getByText("Dashboard")).toBeTruthy();
 		expect(screen.getByText("Patients")).toBeTruthy();
 	});
 });

@@ -15,7 +15,19 @@ export interface ManagerMessages {
 	readonly colPlugin: string;
 	readonly colKind: string;
 	readonly colStatus: string;
-	readonly colConfig: string;
+	readonly colActions: string;
+	readonly searchPlaceholder: string;
+	readonly searchLabel: string;
+	readonly statusFilterLabel: string;
+	readonly filterAll: string;
+	readonly filteredCount: (shown: number, total: number) => string;
+	readonly noResults: string;
+	readonly rowActions: (name: string) => string;
+	readonly actionConfigure: string;
+	readonly configDialogTitle: (name: string) => string;
+	readonly paginationPrevious: string;
+	readonly paginationNext: string;
+	readonly paginationPage: (page: number) => string;
 	readonly statusEnabled: string;
 	readonly statusDisabled: string;
 	readonly statusBlocked: string;
@@ -42,7 +54,19 @@ const en: ManagerMessages = {
 	colPlugin: "Plugin",
 	colKind: "Contributions",
 	colStatus: "Status",
-	colConfig: "Configuration",
+	colActions: "Actions",
+	searchPlaceholder: "Filter by name or id…",
+	searchLabel: "Filter plugins",
+	statusFilterLabel: "Filter by status",
+	filterAll: "All",
+	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	noResults: "No plugins match the current filters.",
+	rowActions: (name) => `Actions for ${name}`,
+	actionConfigure: "Configure",
+	configDialogTitle: (name) => `Configure ${name}`,
+	paginationPrevious: "Previous",
+	paginationNext: "Next",
+	paginationPage: (page) => `Page ${page}`,
 	statusEnabled: "Enabled",
 	statusDisabled: "Disabled",
 	statusBlocked: "Blocked",
@@ -70,7 +94,19 @@ const ptBR: ManagerMessages = {
 	colPlugin: "Plugin",
 	colKind: "Contribuições",
 	colStatus: "Status",
-	colConfig: "Configuração",
+	colActions: "Ações",
+	searchPlaceholder: "Filtrar por nome ou id…",
+	searchLabel: "Filtrar plugins",
+	statusFilterLabel: "Filtrar por status",
+	filterAll: "Todos",
+	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	noResults: "Nenhum plugin corresponde aos filtros.",
+	rowActions: (name) => `Ações de ${name}`,
+	actionConfigure: "Configurar",
+	configDialogTitle: (name) => `Configurar ${name}`,
+	paginationPrevious: "Anterior",
+	paginationNext: "Próxima",
+	paginationPage: (page) => `Página ${page}`,
 	statusEnabled: "Ativo",
 	statusDisabled: "Inativo",
 	statusBlocked: "Bloqueado",
@@ -98,7 +134,19 @@ const es: ManagerMessages = {
 	colPlugin: "Plugin",
 	colKind: "Contribuciones",
 	colStatus: "Estado",
-	colConfig: "Configuración",
+	colActions: "Acciones",
+	searchPlaceholder: "Filtrar por nombre o id…",
+	searchLabel: "Filtrar plugins",
+	statusFilterLabel: "Filtrar por estado",
+	filterAll: "Todos",
+	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	noResults: "Ningún plugin coincide con los filtros.",
+	rowActions: (name) => `Acciones de ${name}`,
+	actionConfigure: "Configurar",
+	configDialogTitle: (name) => `Configurar ${name}`,
+	paginationPrevious: "Anterior",
+	paginationNext: "Siguiente",
+	paginationPage: (page) => `Página ${page}`,
 	statusEnabled: "Activo",
 	statusDisabled: "Inactivo",
 	statusBlocked: "Bloqueado",

@@ -201,7 +201,7 @@ export const auditServicesPlugin = definePlugin({
 });
 
 // Chrome contribution (P-060): the console sidebar entry lives in the
-// `console.sidebar` chrome region; the dep edge orders it after the
+// `portal.sidebar` chrome region; the dep edge orders it after the
 // shell like the retired panel entry.
 export const auditChromePlugin = definePlugin({
 	id: "audit.chrome",
@@ -209,7 +209,7 @@ export const auditChromePlugin = definePlugin({
 	chrome: [
 		{
 			id: "audit.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/platform/audit", label: "Audit log", icon: ScrollTextIcon, group: "System" },

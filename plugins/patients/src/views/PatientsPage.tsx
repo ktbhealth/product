@@ -45,6 +45,7 @@ export function PatientsPage({
 	locale,
 	deleteApi,
 	onDeleted,
+	portalBase,
 }: {
 	patients: PatientListItem[];
 	/** Active UI locale, injected by the host. */
@@ -52,8 +53,11 @@ export function PatientsPage({
 	deleteApi: PatientDeleteApi;
 	/** Called once a patient (and their consultations) are gone — the host refreshes the list. */
 	onDeleted: (id: number) => void;
+	/** Portal instance base path — internal links stay under it (P-081). */
+	portalBase?: string;
 }) {
 	const t = patientMessages(locale);
+	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [q, setQ] = useState("");
 	const [toDelete, setToDelete] = useState<{ id: number; name: string } | null>(null);
 
@@ -77,7 +81,7 @@ export function PatientsPage({
 						{patients.length === 0 ? t.list.none : t.list.count(patients.length)}
 					</p>
 				</div>
-				<Button nativeButton={false} render={<Link to="/patients/new" />}>
+				<Button nativeButton={false} render={<Link to={portalPath("/patients/new")} />}>
 					<PlusIcon data-icon="inline-start" />
 					{t.common.newPatient}
 				</Button>
@@ -105,8 +109,7 @@ export function PatientsPage({
 						<div className="min-w-0 flex-1">
 							<div className="flex flex-wrap items-baseline gap-x-2">
 								<Link
-									to="/patients/$id"
-									params={{ id: String(p.id) }}
+									to={portalPath(`/patients/${p.id}`)}
 									className="font-semibold after:absolute after:inset-0 after:content-['']"
 								>
 									{displayName(p)}
@@ -131,7 +134,7 @@ export function PatientsPage({
 								variant="ghost"
 								size="icon"
 								aria-label={t.actions.editFor(displayName(p))}
-								render={<Link to="/patients/$id/edit" params={{ id: String(p.id) }} />}
+								render={<Link to={portalPath(`/patients/${p.id}/edit`)} />}
 							>
 								<PencilIcon />
 							</Button>
@@ -198,7 +201,7 @@ export function PatientsPage({
 							<EmptyDescription>{t.list.emptyDescription}</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent>
-							<Button nativeButton={false} render={<Link to="/patients/new" />}>
+							<Button nativeButton={false} render={<Link to={portalPath("/patients/new")} />}>
 								{t.common.registerPatient}
 							</Button>
 						</EmptyContent>

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { Consultations } from "@ktb/consultations";
+import { AUDIO_TRANSCRIPTION_JOB_KIND, Consultations } from "@ktb/consultations";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 
 /**
@@ -58,8 +58,8 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 				const id = Number.parseInt(params.id, 10);
 				if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
 				if (!Number.isFinite(id)) return Response.json({ error: "not found" }, { status: 404 });
-				const { audio: audioBucket, audioQueue } = getServerRuntime();
-				if (!audioBucket || !audioQueue) {
+				const { audio: audioBucket, jobs } = getServerRuntime();
+				if (!audioBucket || !jobs) {
 					return Response.json({ error: "audio storage not configured" }, { status: 503 });
 				}
 
@@ -121,16 +121,23 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 				);
 
 				try {
-					// tenantId travels on the message so the queue consumer
-					// can re-bind tenant scope (P-053 phase D). The fetched
-					// row's tenant_id is authoritative — it matches what
-					// attachAudio stamped under the bound Tenant.
-					await audioQueue.send({
-						consultationId: id,
-						audioKey,
-						userId: user.id,
-						tenantId: detail.tenantId,
-					});
+					// Enqueue via the jobs port (PL-007): the host adapter
+					// writes the job_runs row and sends the kind-dispatched
+					// envelope. tenantId travels on both the envelope and the
+					// payload so the consumer can re-bind tenant scope
+					// (P-053 phase D); the fetched row's tenant_id is
+					// authoritative — it matches what attachAudio stamped
+					// under the bound Tenant.
+					await jobs.enqueue(
+						AUDIO_TRANSCRIPTION_JOB_KIND,
+						{
+							consultationId: id,
+							audioKey,
+							userId: user.id,
+							tenantId: detail.tenantId,
+						},
+						{ tenantId: detail.tenantId, payloadRef: `consultation:${id}` },
+					);
 				} catch {
 					return Response.json(
 						{ error: "audio stored but transcription queue unavailable" },

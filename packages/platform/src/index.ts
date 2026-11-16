@@ -68,7 +68,7 @@ export const platformAdminPlugin = definePlugin({
 // is the console layout; `physical("", "platform")` mounts every module
 // under the host's routes/platform/ directory as a child of the layout —
 // feature plugins (e.g. patients) contribute console pages by dropping
-// route modules there plus a `console.sidebar` chrome entry, without being able to
+// route modules there plus a `portal.sidebar` chrome entry, without being able to
 // import apps (arch lint).
 export const platformRoutesPlugin = definePlugin({
 	id: "platform.routes",
@@ -85,12 +85,30 @@ export const platformPanelPlugin = definePlugin({
 	// panel plugins order after.
 });
 
+/** The platform admin console as a portal instance (P-081): /platform
+ * is the default portal — `portal`-less chrome contributions render
+ * here. System plugin: the console is host infrastructure. */
+export const platformPortalPlugin = definePlugin({
+	id: "platform.portal",
+	system: true,
+	requiredDeps: [platformPanelPlugin.id],
+	portals: [
+		{
+			id: "platform",
+			basePath: "/platform",
+			label: "Platform",
+			audience: "platform-admin",
+		},
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	platformAdminPlugin,
 	platformRoutesPlugin,
 	platformPanelPlugin,
+	platformPortalPlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -100,5 +118,6 @@ declare module "@ktb/kernel" {
 		"platform.admin": true;
 		"platform.routes": true;
 		"platform.panel": true;
+		"platform.portal": true;
 	}
 }

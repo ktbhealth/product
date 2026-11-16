@@ -54,7 +54,7 @@ describe("chromeWhenMatches", () => {
 describe("collectChrome", () => {
 	it("filters by region and when, preserving plugin/entry order", () => {
 		const plugins = [
-			plugin("a", [entry("a.nav", "app.header.nav"), entry("a.side", "console.sidebar")]),
+			plugin("a", [entry("a.nav", "app.header.nav"), entry("a.side", "portal.sidebar")]),
 			plugin("b", [entry("b.nav", "app.header.nav", { when: { paths: ["/x"] } })]),
 		];
 		expect(collectChrome(plugins, "app.header.nav", "/x").map((e) => e.id)).toEqual([
@@ -62,7 +62,7 @@ describe("collectChrome", () => {
 			"b.nav",
 		]);
 		expect(collectChrome(plugins, "app.header.nav", "/y").map((e) => e.id)).toEqual(["a.nav"]);
-		expect(collectChrome(plugins, "console.sidebar", "/x").map((e) => e.id)).toEqual(["a.side"]);
+		expect(collectChrome(plugins, "portal.sidebar", "/x").map((e) => e.id)).toEqual(["a.side"]);
 	});
 
 	it("sorts by order, then plugin topo order, then array index", () => {

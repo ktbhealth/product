@@ -8,6 +8,8 @@ export {
 	type AudioQueueSender,
 	type AudioStorageStats,
 	type AudioStore,
+	type JobEnqueueOptions,
+	type JobsEnqueuer,
 	getLocale,
 	getServerRuntime,
 	purgeAudio,

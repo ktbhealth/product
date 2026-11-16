@@ -13,6 +13,7 @@ import { makeTenantResolver } from "@ktb/tenant";
 import { makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
+import { makeJobs } from "@ktb/jobs-port";
 import { getLocale } from "#/paraglide/runtime.js";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
@@ -139,6 +140,18 @@ const queueDepthProbe = (env.AUDIO_QUEUE as { stats?: () => Promise<QueueDepth> 
 	?.stats;
 const audioBucketLister = env.AUDIO_BUCKET as unknown as AudioObjectLister | undefined;
 
+// PL-007: the generic jobs port rides the same AUDIO_QUEUE transport —
+// enqueue writes the job_runs projection (via `db`) then sends the
+// kind-dispatched envelope. Undefined when the queue is unbound; the
+// consumer side lives in audio-jobs.ts (kind → handler registry).
+const jobsQueue = env.AUDIO_QUEUE as unknown as
+	| { send(body: unknown): Promise<unknown> }
+	| undefined;
+const jobs =
+	jobsQueue === undefined
+		? undefined
+		: makeJobs({ send: (envelope) => jobsQueue.send(envelope), db });
+
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
 // without importing this module. Env reads stay here — the registry
@@ -148,6 +161,7 @@ setServerRuntime({
 	runAs,
 	audio: env.AUDIO_BUCKET,
 	audioQueue: env.AUDIO_QUEUE,
+	jobs,
 	audioQueueDepth:
 		typeof queueDepthProbe === "function" ? () => queueDepthProbe().catch(() => null) : undefined,
 	audioStorageStats:

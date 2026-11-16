@@ -12,6 +12,7 @@ const listMyNotificationsFn = vi.fn(async () => [] as unknown[]);
 vi.mock("#/plugins.ts", () => ({ plugins: [] }));
 vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: vi.fn(async () => true),
+	portalAudiencesFn: vi.fn(async () => [] as string[]),
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
 	markMyNotificationsReadFn: vi.fn(),
@@ -19,6 +20,15 @@ vi.mock("#/lib/fns.ts", () => ({
 	getSessionUserFn: vi.fn(async () => ({ id: "u1", email: "a@x.com", name: "A" })),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] as string[] })),
 	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
+}));
+// Theme resolution is a server fn — stub it so the loader stays pure.
+vi.mock("@ktb/theme/fns", () => ({
+	themeScopeFn: vi.fn(async () => null),
+	listThemesFn: vi.fn(async () => []),
+	getThemeFn: vi.fn(async () => null),
+	publishThemeFn: vi.fn(async () => ({})),
+	setThemeEnabledFn: vi.fn(async () => ({ ok: true })),
+	setThemePreviewFn: vi.fn(async () => ({ ok: true })),
 }));
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: vi.fn() } }));
 
@@ -83,13 +93,15 @@ describe("/platform without the optional header plugins", () => {
 		await expect(options.loader()).resolves.toEqual({
 			audioJobs: [],
 			notifications: [],
+			audiences: [],
+			theme: null,
 			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
 	});
 
-	it("renders the shell with no notification actions and the admin fallback label", () => {
+	it("renders the shell with no notification actions and the account fallback label", () => {
 		let actions: NotificationsActions | null | undefined;
 		outletChild = function Probe() {
 			actions = useContext(NotificationsActionsContext);
@@ -97,6 +109,6 @@ describe("/platform without the optional header plugins", () => {
 		};
 		render(createElement(options.component));
 		expect(actions).toBeNull();
-		expect(screen.getByText("admin")).toBeTruthy();
+		expect(screen.getByText("account")).toBeTruthy();
 	});
 });

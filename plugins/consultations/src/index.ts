@@ -173,6 +173,13 @@ export interface AudioJobFields {
 export const AUDIO_ROUTE_STATUSES = ["queued"] as const;
 export type AudioRouteStatus = (typeof AUDIO_ROUTE_STATUSES)[number];
 
+/**
+ * Job kind for the async transcription pipeline on the shared jobs
+ * queue (PL-007). Producers (upload route, admin retry) and the
+ * apps/web consumer registration all dispatch on this literal.
+ */
+export const AUDIO_TRANSCRIPTION_JOB_KIND = "transcription.audio";
+
 /** Record the R2 object link after a successful upload (status "stored"). */
 export async function attachAudioRecord(
 	db: DbClient,
@@ -1331,7 +1338,7 @@ export const consultationsChromePlugin = definePlugin({
 		},
 		{
 			id: "consultations.sidebar",
-			region: "console.sidebar",
+			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
