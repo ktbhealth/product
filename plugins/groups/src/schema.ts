@@ -22,6 +22,11 @@ export const groups = sqliteTable("groups", {
 		.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 		.$onUpdate(() => /* @__PURE__ */ new Date())
 		.notNull(),
+	// Zero-knowledge flag (PL-007 F2, T-142): ZK tenants encrypt all
+	// record content client-side via the clinic keyring (`@ktb/vault`);
+	// non-ZK tenants keep today's plaintext flow during migration.
+	// Declared last so the migration is a plain ALTER TABLE ADD COLUMN.
+	zk: integer("zk", { mode: "boolean" }).notNull().default(false),
 });
 
 /**

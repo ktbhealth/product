@@ -1,0 +1,387 @@
+import { beforeAll, describe, expect, it } from "vitest";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
+
+import { Principal } from "@ktb/authz";
+import { Db, makeDb, type DbClient } from "@ktb/db";
+import { makeD1 } from "@ktb/db/testing";
+import { Tenant, type TenantRole } from "@ktb/tenant";
+
+import { groups } from "../../groups/src/schema.ts";
+import {
+	approveClinicDevice,
+	deviceByWrapPubkey,
+	enrollClinicDevice,
+	entityDekEnvelope,
+	grantEntityDeks,
+	listClinicDevices,
+	listEntityReaders,
+	plugins,
+	revokeClinicDevice,
+	tenantIsZk,
+	Vault,
+	VaultLive,
+	vaultServicesPlugin,
+	vaultTablesPlugin,
+	VAULT_TEST_DDL,
+} from "./index.ts";
+
+const DDL = VAULT_TEST_DDL;
+const TENANT_ID = 7;
+
+const makeRuntime = (db: DbClient) => {
+	const infra = Layer.succeed(Db, db);
+	return ManagedRuntime.make(
+		Layer.mergeAll(infra, VaultLive.pipe(Layer.provide(infra))),
+	) as ManagedRuntime.ManagedRuntime<Vault, never>;
+};
+
+const run = <A, E>(
+	runtime: ManagedRuntime.ManagedRuntime<Vault, never>,
+	effect: Effect.Effect<A, E, Vault>,
+	options: {
+		readonly role?: TenantRole | null;
+		readonly userId?: string;
+	} = {},
+) =>
+	runtime.runPromise(
+		effect.pipe(
+			Effect.provideService(
+				Tenant,
+				options.role === null
+					? null // no bound tenant — personal scope → tenant-mismatch
+					: {
+							id: TENANT_ID,
+							kind: "clinic",
+							slug: "clinic-7",
+							role: options.role ?? "member",
+						},
+			),
+			Effect.provideService(Principal, { userId: options.userId ?? "u-owner" }),
+		),
+	);
+
+const seedGroup = (db: DbClient, id: number, zk = false) =>
+	db.insert(groups).values({ id, name: "Clinic", slug: `clinic-${id}`, kind: "clinic", zk });
+
+describe("vault repo", () => {
+	let db: DbClient;
+
+	beforeAll(async () => {
+		db = makeDb(makeD1(DDL));
+		await seedGroup(db, TENANT_ID);
+		await seedGroup(db, 8, true);
+	});
+
+	it("enrolls a device as pending and is idempotent on the wrap pubkey", async () => {
+		const first = await enrollClinicDevice(db, {
+			tenantId: TENANT_ID,
+			userId: "u1",
+			wrapPublicKey: "wrapA",
+			signPublicKey: "signA",
+		});
+		expect(first.status).toBe("pending");
+		expect(first.wrappedMasterKey).toBeNull();
+		const again = await enrollClinicDevice(db, {
+			tenantId: TENANT_ID,
+			userId: "u1",
+			wrapPublicKey: "wrapA",
+			signPublicKey: "signA",
+		});
+		expect(again.id).toBe(first.id);
+		expect(await listClinicDevices(db, TENANT_ID)).toHaveLength(1);
+	});
+
+	it("approves a pending device with the client-supplied master envelope", async () => {
+		const row = await enrollClinicDevice(db, {
+			tenantId: TENANT_ID,
+			userId: "u2",
+			wrapPublicKey: "wrapB",
+			signPublicKey: "signB",
+		});
+		const approved = await approveClinicDevice(db, {
+			clinicKeyId: row.id,
+			wrappedMasterKey: "w1.eph.master",
+			approvedByUserId: "u-admin",
+		});
+		expect(approved.status).toBe("approved");
+		expect(approved.wrappedMasterKey).toBe("w1.eph.master");
+		expect(approved.approvedByUserId).toBe("u-admin");
+		expect(approved.approvedAt).toBeInstanceOf(Date);
+	});
+
+	it("revokes a device without deleting the row", async () => {
+		const row = await enrollClinicDevice(db, {
+			tenantId: TENANT_ID,
+			userId: "u3",
+			wrapPublicKey: "wrapC",
+			signPublicKey: "signC",
+		});
+		const revoked = await revokeClinicDevice(db, row.id);
+		expect(revoked.status).toBe("revoked");
+		expect(await deviceByWrapPubkey(db, TENANT_ID, "wrapC")).not.toBeNull();
+	});
+
+	it("grants, replaces, and reads record DEK envelopes", async () => {
+		await grantEntityDeks(db, {
+			tenantId: TENANT_ID,
+			entityType: "patient",
+			entityId: 42,
+			grantedByUserId: "u-owner",
+			grants: [
+				{ readerKind: "device", readerPubkey: "wrapA", readerId: "u1", wrappedDek: "w1.e1" },
+				{ readerKind: "patient", readerPubkey: "patWrap", readerId: "p42", wrappedDek: "w1.e2" },
+			],
+		});
+		const readers = await listEntityReaders(db, TENANT_ID, "patient", 42);
+		expect(readers).toHaveLength(2);
+		expect(readers.map((r) => r.readerKind).sort()).toEqual(["device", "patient"]);
+		// Re-grant replaces the envelope (DEK rotation).
+		await grantEntityDeks(db, {
+			tenantId: TENANT_ID,
+			entityType: "patient",
+			entityId: 42,
+			grantedByUserId: "u-owner",
+			grants: [{ readerKind: "device", readerPubkey: "wrapA", wrappedDek: "w1.e3" }],
+		});
+		expect(await listEntityReaders(db, TENANT_ID, "patient", 42)).toHaveLength(2);
+		const env = await entityDekEnvelope(db, TENANT_ID, "patient", 42, "wrapA");
+		expect(env?.wrappedDek).toBe("w1.e3");
+		// Numeric and string entity ids resolve to the same row.
+		expect(await entityDekEnvelope(db, TENANT_ID, "patient", "42", "patWrap")).not.toBeNull();
+	});
+
+	it("reads the tenant zk flag", async () => {
+		expect(await tenantIsZk(db, TENANT_ID)).toBe(false);
+		expect(await tenantIsZk(db, 8)).toBe(true);
+		expect(await tenantIsZk(db, 999)).toBe(false); // missing → non-ZK
+	});
+});
+
+describe("Vault service", () => {
+	let db: DbClient;
+	let runtime: ManagedRuntime.ManagedRuntime<Vault, never>;
+
+	beforeAll(async () => {
+		db = makeDb(makeD1(DDL));
+		await seedGroup(db, TENANT_ID);
+		await seedGroup(db, 8, true);
+		runtime = makeRuntime(db);
+	});
+
+	it("enrolls the caller's device under their principal", async () => {
+		const row = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wS", signPublicKey: "sS" }),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		expect(row.userId).toBe("u-member");
+		expect(row.status).toBe("pending");
+	});
+
+	it("fails closed without a member role", async () => {
+		const exit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wX", signPublicKey: "sX" }),
+			).pipe(Effect.exit),
+			{ role: null },
+		);
+		expect(exit._tag).toBe("Failure");
+	});
+
+	it("rejects cross-tenant operations with tenant-mismatch", async () => {
+		const exit = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: 8, wrapPublicKey: "wY", signPublicKey: "sY" }),
+			).pipe(Effect.exit),
+			{ role: "member" }, // bound tenant is 7, target is 8
+		);
+		expect(exit._tag).toBe("Failure");
+	});
+
+	it("approves devices at admin+ and stores the envelope", async () => {
+		const pending = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wD", signPublicKey: "sD" }),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		// member can't approve
+		const denied = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: pending.id, wrappedMasterKey: "w1.a" }),
+			).pipe(Effect.exit),
+			{ role: "member" },
+		);
+		expect(denied._tag).toBe("Failure");
+		// admin approves
+		const approved = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: pending.id, wrappedMasterKey: "w1.a" }),
+			),
+			{ role: "admin", userId: "u-admin" },
+		);
+		expect(approved.status).toBe("approved");
+		expect(approved.wrappedMasterKey).toBe("w1.a");
+		expect(approved.approvedByUserId).toBe("u-admin");
+		// second approval fails — not pending anymore
+		const again = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.approveDevice({ tenantId: TENANT_ID, clinicKeyId: pending.id, wrappedMasterKey: "w1.b" }),
+			).pipe(Effect.exit),
+			{ role: "admin" },
+		);
+		expect(again._tag).toBe("Failure");
+	});
+
+	it("lets a member revoke their own device but not another's", async () => {
+		const mine = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wMine", signPublicKey: "sMine" }),
+			),
+			{ role: "member", userId: "u-me" },
+		);
+		const revoked = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.revokeDevice({ tenantId: TENANT_ID, clinicKeyId: mine.id })),
+			{ role: "member", userId: "u-me" },
+		);
+		expect(revoked.status).toBe("revoked");
+		// member revoking someone else's device → forbidden
+		const other = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wOther", signPublicKey: "sOther" }),
+			),
+			{ role: "member", userId: "u-other" },
+		);
+		const denied = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.revokeDevice({ tenantId: TENANT_ID, clinicKeyId: other.id }),
+			).pipe(Effect.exit),
+			{ role: "member", userId: "u-me" },
+		);
+		expect(denied._tag).toBe("Failure");
+	});
+
+	it("serves dek envelopes to member readers and lists readers", async () => {
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.grantAccess({
+					tenantId: TENANT_ID,
+					entityType: "consultation",
+					entityId: 9,
+					grants: [{ readerKind: "device", readerPubkey: "wD", wrappedDek: "w1.dek" }],
+				}),
+			),
+			{ role: "member", userId: "u-member" },
+		);
+		const env = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.dekEnvelope({
+					tenantId: TENANT_ID,
+					entityType: "consultation",
+					entityId: 9,
+					readerPubkey: "wD",
+				}),
+			),
+			{ role: "member" },
+		);
+		expect(env).toBe("w1.dek");
+		const readers = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.readers(TENANT_ID, "consultation", 9)),
+			{ role: "member" },
+		);
+		expect(readers).toHaveLength(1);
+		expect(readers[0]!.readerPubkey).toBe("wD");
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.revokeAccess({
+					tenantId: TENANT_ID,
+					entityType: "consultation",
+					entityId: 9,
+					readerPubkey: "wD",
+				}),
+			),
+			{ role: "member" },
+		);
+		expect(
+			await run(
+				runtime,
+				Effect.flatMap(Vault, (v) =>
+					v.dekEnvelope({
+						tenantId: TENANT_ID,
+						entityType: "consultation",
+						entityId: 9,
+						readerPubkey: "wD",
+					}),
+				),
+				{ role: "member" },
+			),
+		).toBeNull();
+	});
+
+	it("isZk reflects the bound tenant's flag, false when mismatched", async () => {
+		expect(
+			await run(
+				runtime,
+				Effect.flatMap(Vault, (v) => v.isZk(TENANT_ID)),
+				{ role: "member" },
+			),
+		).toBe(false);
+		// Bound tenant is 7 but tenant 8 is ZK → out-of-scope read = false.
+		expect(
+			await run(
+				runtime,
+				Effect.flatMap(Vault, (v) => v.isZk(8)),
+				{ role: "member" },
+			),
+		).toBe(false);
+	});
+
+	it("exposes deviceEnrollment for the client's status poll", async () => {
+		await run(
+			runtime,
+			Effect.flatMap(Vault, (v) =>
+				v.enrollDevice({ tenantId: TENANT_ID, wrapPublicKey: "wPoll", signPublicKey: "sPoll" }),
+			),
+			{ role: "member", userId: "u-poll" },
+		);
+		const row = await run(
+			runtime,
+			Effect.flatMap(Vault, (v) => v.deviceEnrollment(TENANT_ID, "wPoll")),
+			{ role: "member" },
+		);
+		expect(row?.status).toBe("pending");
+		expect(
+			await run(
+				runtime,
+				Effect.flatMap(Vault, (v) => v.deviceEnrollment(TENANT_ID, "wNope")),
+				{ role: "member" },
+			),
+		).toBeNull();
+	});
+});
+
+describe("vault plugins", () => {
+	it("exports the tables + services plugins for host discovery", () => {
+		expect(plugins).toEqual([vaultTablesPlugin, vaultServicesPlugin]);
+		expect(vaultTablesPlugin.id).toBe("vault.tables");
+		expect(vaultServicesPlugin.id).toBe("vault.services");
+	});
+});
