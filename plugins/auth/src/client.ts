@@ -13,11 +13,13 @@ import { SessionMenu } from "./chrome.tsx";
  */
 export const authRoutesPlugin = definePlugin({
 	id: "auth.routes",
+	meta: { keywords: ["auth", "routes"] },
 	system: true,
 });
 
 export const authChromePlugin = definePlugin({
 	id: "auth.chrome",
+	meta: { keywords: ["auth", "ui"] },
 	system: true,
 	chrome: [
 		{

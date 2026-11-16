@@ -111,6 +111,7 @@ export const TenantsLive = Layer.effect(
 
 export const tenantServicesPlugin = definePlugin({
 	id: "tenant.services",
+	meta: { keywords: ["tenant", "services"] },
 	// Consumes the Groups service — the dep edge keeps groups.services
 	// (and its platform.admin anchor) ordered before this layer.
 	requiredDeps: [groupsServicesPlugin.id],
@@ -122,6 +123,7 @@ export const tenantServicesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const tenantChromePlugin = definePlugin({
 	id: "tenant.chrome",
+	meta: { keywords: ["tenant", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -140,6 +142,7 @@ export const tenantChromePlugin = definePlugin({
 // the page descriptor. The dep edge orders it after the shell.
 export const tenantPanelPlugin = definePlugin({
 	id: "tenant.panel",
+	meta: { keywords: ["tenant", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	panel: {
 		pages: [

@@ -17,6 +17,7 @@ import { JobsHeaderAction } from "./views/JobsHeaderAction.tsx";
  */
 export const jobsHeaderPlugin = definePlugin({
 	id: "jobs.header",
+	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: ["platform.panel"],
 	optionalDeps: ["platform.header"],
 	chrome: [
@@ -39,6 +40,7 @@ export const jobsHeaderPlugin = definePlugin({
  */
 export const opsServicesPlugin = definePlugin({
 	id: "jobs.ops.services",
+	meta: { keywords: ["jobs", "services"] },
 	requiredDeps: ["consultations.services", "platform.admin"],
 });
 
@@ -48,6 +50,7 @@ export const opsServicesPlugin = definePlugin({
  */
 export const opsChromePlugin = definePlugin({
 	id: "jobs.chrome",
+	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -73,6 +76,7 @@ export const opsChromePlugin = definePlugin({
  */
 export const opsPanelPlugin = definePlugin({
 	id: "jobs.panel",
+	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: ["platform.panel", "jobs.ops.services"],
 	panel: {
 		pages: [{ id: "jobs.ops", path: "/platform/ops", component: OpsPlatformPage }],
@@ -83,7 +87,7 @@ export const opsPanelPlugin = definePlugin({
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	jobsHeaderPlugin,
-	definePlugin({ id: "jobs.routes" }),
+	definePlugin({ id: "jobs.routes", meta: { keywords: ["jobs", "routes"] } }),
 	opsServicesPlugin,
 	opsChromePlugin,
 	opsPanelPlugin,

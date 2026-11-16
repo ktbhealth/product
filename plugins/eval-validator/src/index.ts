@@ -709,17 +709,20 @@ CREATE TABLE eval_run_sample (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEG
 
 export const evalValidatorTablesPlugin = definePlugin({
 	id: "eval.validator.tables",
+	meta: { keywords: ["eval", "validator", "tables"] },
 	tables: { evalPersonaBatch, evalPersona, evalRun, evalRunSample },
 });
 
 export const evalValidatorServicesPlugin = definePlugin({
 	id: "eval.validator.services",
+	meta: { keywords: ["eval", "validator", "services"] },
 	requiredDeps: [evalValidatorTablesPlugin.id],
 	services: EvalValidatorLive,
 });
 
 export const evalValidatorChromePlugin = definePlugin({
 	id: "eval.validator.chrome",
+	meta: { keywords: ["eval", "validator", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -740,6 +743,7 @@ export const evalValidatorChromePlugin = definePlugin({
 
 export const evalValidatorPanelPlugin = definePlugin({
 	id: "eval.validator.panel",
+	meta: { keywords: ["eval", "validator", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, evalValidatorServicesPlugin.id],
 	panel: {
 		pages: [
@@ -772,6 +776,7 @@ export const evalValidatorPanelPlugin = definePlugin({
 // src/api-routes/ — the generator scans the mounted directory.
 export const evalValidatorRoutesPlugin = definePlugin({
 	id: "eval-validator.routes",
+	meta: { keywords: ["eval", "validator", "routes"] },
 	routes: [physical("/api", "../../../../plugins/eval-validator/src/api-routes")],
 });
 

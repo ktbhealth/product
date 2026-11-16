@@ -21,6 +21,7 @@ import { ClinicianPatientsPage } from "./views/ClinicianPatientsPage.tsx";
  */
 export const clinicianPortalPlugin = definePlugin({
 	id: "clinician.portal",
+	meta: { keywords: ["clinician", "shell", "doctor"] },
 	requiredDeps: ["portal.shell"],
 	portals: [
 		{
@@ -35,6 +36,7 @@ export const clinicianPortalPlugin = definePlugin({
 
 export const clinicianPagesPlugin = definePlugin({
 	id: "clinician.pages",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: ["patients.services", "consultations.services"],
 	// Mirrors clinicianPagesPlugin.optionalDeps (server index.ts).
 	optionalDeps: ["audit.services"],
@@ -70,6 +72,7 @@ export const clinicianPagesPlugin = definePlugin({
 
 export const clinicianChromePlugin = definePlugin({
 	id: "clinician.chrome",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: ["clinician.portal"],
 	chrome: [
 		{

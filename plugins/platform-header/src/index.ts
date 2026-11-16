@@ -11,6 +11,7 @@ import { platformPanelPlugin } from "@ktb/platform";
  */
 export const platformHeaderPlugin = definePlugin({
 	id: "platform.header",
+	meta: { keywords: ["platform", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 });
 

@@ -9,4 +9,6 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * same convention tables/services follow. Keep ids and dep edges in
  * sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
-export const plugins: readonly Plugin[] = [definePlugin({ id: "llm.eval" })];
+export const plugins: readonly Plugin[] = [
+	definePlugin({ id: "llm.eval", meta: { keywords: ["eval", "llm", "services"] } }),
+];

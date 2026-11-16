@@ -520,6 +520,7 @@ export const PatientsLive = Layer.effect(
 
 export const patientsTablesPlugin = definePlugin({
 	id: "patients.tables",
+	meta: { keywords: ["patients", "tables"] },
 	tables: { patients },
 });
 
@@ -571,6 +572,7 @@ export const PatientsCommandsLive = Command.handlersOf(PatientsCommands, {
 
 export const patientsServicesPlugin = definePlugin({
 	id: "patients.services",
+	meta: { keywords: ["patients", "services"] },
 	// adminList consumes the PlatformAdmin gate — the dep edge keeps the
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
@@ -589,6 +591,7 @@ export const patientsServicesPlugin = definePlugin({
 // the plugin owns routes end to end with zero host route files.
 export const patientsRoutesPlugin = definePlugin({
 	id: "patients.routes",
+	meta: { keywords: ["patients", "routes"] },
 	routes: [physical("/patients", "../../../../plugins/patients/src/routes")],
 });
 
@@ -597,6 +600,7 @@ export const patientsRoutesPlugin = definePlugin({
 // sidebar item after the platform shell like the retired panel entry.
 export const patientsChromePlugin = definePlugin({
 	id: "patients.chrome",
+	meta: { keywords: ["patients", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -627,6 +631,7 @@ export const patientsPanelPlugin = definePlugin({
 	id: "patients.panel",
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {
+		keywords: ["patients", "ui"],
 		name: "Patients",
 		description: "Patient records and demographics",
 		icon: UsersIcon,

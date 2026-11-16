@@ -935,6 +935,7 @@ CREATE TABLE eval_persona (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGE
 
 export const evalPersonaTablesPlugin = definePlugin({
 	id: "eval.persona.tables",
+	meta: { keywords: ["eval", "persona", "tables"] },
 	requiredDeps: ["eval.validator.tables"],
 	// eval_instance.endpoint_id references ai_endpoint — ordering hint
 	// only; the plugin works standalone (tests supply the table).
@@ -944,6 +945,7 @@ export const evalPersonaTablesPlugin = definePlugin({
 
 export const evalPersonaServicesPlugin = definePlugin({
 	id: "eval.persona.services",
+	meta: { keywords: ["eval", "persona", "services"] },
 	requiredDeps: [evalPersonaTablesPlugin.id],
 	// Endpoint binding/resolution is a soft dep — AiEndpoints absence
 	// degrades every endpoint pick to template mode.
@@ -953,6 +955,7 @@ export const evalPersonaServicesPlugin = definePlugin({
 
 export const evalPersonaChromePlugin = definePlugin({
 	id: "eval.persona.chrome",
+	meta: { keywords: ["eval", "persona", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -986,6 +989,7 @@ export const evalPersonaChromePlugin = definePlugin({
 
 export const evalPersonaPanelPlugin = definePlugin({
 	id: "eval.persona.panel",
+	meta: { keywords: ["eval", "persona", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, evalPersonaServicesPlugin.id],
 	panel: {
 		pages: [

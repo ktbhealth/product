@@ -522,6 +522,7 @@ export const RbacCommandsLive = Command.handlersOf(RbacCommands, {
 
 export const rbacServicesPlugin = definePlugin({
 	id: "rbac.services",
+	meta: { keywords: ["rbac", "services"] },
 	// Admin ops consume the PlatformAdmin gate — the dep edge keeps the
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
@@ -538,6 +539,7 @@ export const rbacServicesPlugin = definePlugin({
 
 export const rbacTablesPlugin = definePlugin({
 	id: "rbac.tables",
+	meta: { keywords: ["rbac", "tables"] },
 	tables: {
 		roles,
 		rolePermissions,
@@ -551,6 +553,7 @@ export const rbacTablesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const rbacChromePlugin = definePlugin({
 	id: "rbac.chrome",
+	meta: { keywords: ["rbac", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -569,6 +572,7 @@ export const rbacChromePlugin = definePlugin({
 // the page descriptor.
 export const rbacPanelPlugin = definePlugin({
 	id: "rbac.panel",
+	meta: { keywords: ["rbac", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	panel: {
 		pages: [

@@ -18,6 +18,7 @@ import { RbacPlatformPage } from "./platform-page.tsx";
  */
 export const rbacChromePlugin = definePlugin({
 	id: "rbac.chrome",
+	meta: { keywords: ["rbac", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -33,6 +34,7 @@ export const rbacChromePlugin = definePlugin({
 
 export const rbacPanelPlugin = definePlugin({
 	id: "rbac.panel",
+	meta: { keywords: ["rbac", "ui"] },
 	requiredDeps: ["platform.panel"],
 	panel: {
 		pages: [
@@ -48,9 +50,10 @@ export const rbacPanelPlugin = definePlugin({
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "rbac.tables" }),
+	definePlugin({ id: "rbac.tables", meta: { keywords: ["rbac", "tables"] } }),
 	definePlugin({
 		id: "rbac.services",
+		meta: { keywords: ["rbac", "services"] },
 		requiredDeps: ["platform.admin"],
 		// Mirrors rbacServicesPlugin.optionalDeps (server index.ts).
 		optionalDeps: ["audit.services"],

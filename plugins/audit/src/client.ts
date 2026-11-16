@@ -17,6 +17,7 @@ import { auditConfig } from "./config.tsx";
  */
 export const auditChromePlugin = definePlugin({
 	id: "audit.chrome",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -37,6 +38,7 @@ export const auditChromePlugin = definePlugin({
 
 export const auditPanelPlugin = definePlugin({
 	id: "audit.panel",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: ["platform.panel", "audit.services"],
 	panel: {
 		pages: [{ id: "audit.admin", path: "/platform/audit", component: AuditPlatformPage }],
@@ -48,11 +50,13 @@ export const auditPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "audit.tables",
+		meta: { keywords: ["audit", "tables"] },
 		// Mirrors auditTablesPlugin (server index.ts) minus the tables
 		// slice — drizzle schema never reaches the client bundle.
 	}),
 	definePlugin({
 		id: "audit.services",
+		meta: { keywords: ["audit", "services"] },
 		// Mirrors auditServicesPlugin.requiredDeps (server index.ts) —
 		// literal id: importing @ktb/platform would pull the server graph
 		// into the client bundle. `meta` must match the server manifest

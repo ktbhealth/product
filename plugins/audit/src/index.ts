@@ -695,11 +695,13 @@ CREATE INDEX admin_audit_dedupe_idx ON admin_audit (actor_user_id, action, targe
 
 export const auditTablesPlugin = definePlugin({
 	id: "audit.tables",
+	meta: { keywords: ["audit", "tables"] },
 	tables: { adminAudit },
 });
 
 export const auditServicesPlugin = definePlugin({
 	id: "audit.services",
+	meta: { keywords: ["audit", "services"] },
 	// adminList consumes the PlatformAdmin gate — the dep edge keeps the
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
@@ -721,6 +723,7 @@ export const auditServicesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const auditChromePlugin = definePlugin({
 	id: "audit.chrome",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -745,6 +748,7 @@ export const auditChromePlugin = definePlugin({
 // audit services its loader consumes.
 export const auditPanelPlugin = definePlugin({
 	id: "audit.panel",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, auditServicesPlugin.id],
 	panel: {
 		pages: [

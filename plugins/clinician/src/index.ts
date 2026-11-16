@@ -44,6 +44,7 @@ const subpath = (path: string, prefix: string) =>
  */
 export const clinicianPortalPlugin = definePlugin({
 	id: "clinician.portal",
+	meta: { keywords: ["clinician", "shell", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],
 	portals: [
 		{
@@ -62,6 +63,7 @@ export const clinicianPortalPlugin = definePlugin({
  * like the app routes' fns. */
 export const clinicianPagesPlugin = definePlugin({
 	id: "clinician.pages",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
 	// The activity feed resolves the Audit service via serviceOption —
 	// the dep edge orders it after audit.services when that plugin is
@@ -227,6 +229,7 @@ export const clinicianPagesPlugin = definePlugin({
  * chrome region renders them only inside /portal/clinician. */
 export const clinicianChromePlugin = definePlugin({
 	id: "clinician.chrome",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: [clinicianPortalPlugin.id],
 	chrome: [
 		{

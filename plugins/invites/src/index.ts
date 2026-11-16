@@ -228,11 +228,13 @@ export const inviteAcceptPath = (input: {
 
 export const invitesTablesPlugin = definePlugin({
 	id: "invites.tables",
+	meta: { keywords: ["invites", "tables"] },
 	tables: { inviteTokens },
 });
 
 export const invitesServicesPlugin = definePlugin({
 	id: "invites.services",
+	meta: { keywords: ["invites", "services"] },
 	services: InvitesLive,
 });
 
@@ -241,6 +243,7 @@ export const invitesServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const invitesRoutesPlugin = definePlugin({
 	id: "invites.routes",
+	meta: { keywords: ["invites", "routes"] },
 	routes: [physical("/invite", "../../../../plugins/invites/src/routes")],
 });
 
