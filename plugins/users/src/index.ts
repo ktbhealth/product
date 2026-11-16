@@ -7,7 +7,7 @@ import { UserCogIcon } from "lucide-react";
 import { Auth } from "@ktb/auth";
 import { audit, auditServicesPlugin } from "@ktb/audit";
 import { Db, type DbClient } from "@ktb/db";
-import { consultations, patients, user as users } from "@ktb/db/schema";
+import { consultations, doctors, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import type { Forbidden } from "@ktb/authz";
@@ -35,7 +35,15 @@ export interface AdminUserRow extends UserRow {
  */
 export async function listAllUsers(db: DbClient): Promise<UserRow[]> {
 	const [rows, patientCounts, consultationCounts] = await Promise.all([
-		db.select().from(users).orderBy(desc(users.createdAt)),
+		// Left join doctors: synthetic backing users (eval validator
+		// cohorts) are plumbing, not accounts — excluded from the
+		// console listing entirely.
+		db
+			.select({ user: users, synthetic: doctors.synthetic })
+			.from(users)
+			.leftJoin(doctors, eq(doctors.userId, users.id))
+			.orderBy(desc(users.createdAt))
+			.then((joined) => joined.filter((r) => r.synthetic !== true).map((r) => r.user)),
 		db.select({ ownerId: patients.ownerId, n: count() }).from(patients).groupBy(patients.ownerId),
 		db
 			.select({ userId: consultations.userId, n: count() })

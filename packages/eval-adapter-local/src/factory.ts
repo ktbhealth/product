@@ -1,0 +1,138 @@
+/**
+ * factory.ts — `LlmFactory` driver: resolves endpoint descriptors
+ * (the eval lab's CRUD rows) into concrete LlmPort layers.
+ *
+ * Always eligible — the factory itself has no env requirement; each
+ * descriptor carries its own baseUrl/kind. `secretRef` names an env
+ * var resolved HERE (the adapter edge, where process access is
+ * allowed) — the plugin only ever sees the name, never the key.
+ */
+
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+import type { Driver } from "@ktb/driver-framework";
+
+import { PortError } from "@ktb/eval-core";
+import {
+	fnvHex,
+	LlmFactory,
+	LlmPort,
+	type LlmEndpointDescriptor,
+	type LlmEndpointPreset,
+} from "@ktb/eval-consultation";
+
+import { makeHttpAcpTransport } from "./acp-transport.ts";
+import { makeChatLlm } from "./chat.ts";
+import { makeAcpLlm } from "./llm.ts";
+
+const DEFAULT_TIMEOUT_MS = 60_000;
+const TEST_TIMEOUT_MS = 15_000;
+
+const resolveDescriptor = (
+	d: LlmEndpointDescriptor,
+): Effect.Effect<Layer.Layer<LlmPort>, PortError> => {
+	const timeoutMs = d.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	switch (d.kind) {
+		case "acp": {
+			// `ws` is the only transport this (workerd-compatible) adapter
+			// drives; child-process and ssh ACP need a Node runtime.
+			const transport = d.transport ?? "ws";
+			if (transport !== "ws") {
+				return Effect.fail(
+					new PortError({
+						port: "llm",
+						message: `transport ${transport} requires Node runtime — bind the node ACP driver`,
+					}),
+				);
+			}
+			return Effect.succeed(
+				makeAcpLlm({
+					transport: makeHttpAcpTransport(d.baseUrl, fetch, timeoutMs),
+					...(d.sessionId !== undefined ? { sessionId: d.sessionId } : {}),
+					timeoutMs,
+					engineVersion: fnvHex(d.baseUrl),
+				}),
+			);
+		}
+		case "openai": {
+			if (d.model === undefined || d.model.trim() === "") {
+				return Effect.fail(
+					new PortError({ port: "llm", message: "openai endpoints require a model" }),
+				);
+			}
+			// Edge-only env read: the endpoint row stores the env var
+			// NAME (`secretRef`), never the credential itself.
+			const apiKey = d.apiKey ?? (d.secretRef !== undefined ? process.env[d.secretRef] : undefined);
+			return Effect.succeed(
+				makeChatLlm({
+					baseUrl: d.baseUrl,
+					model: d.model,
+					...(apiKey !== undefined ? { apiKey } : {}),
+					...(d.sessionId !== undefined ? { sessionId: d.sessionId } : {}),
+					timeoutMs,
+				}),
+			);
+		}
+		default:
+			return Effect.fail(
+				new PortError({
+					port: "llm",
+					message: `unknown endpoint kind: ${JSON.stringify(d.kind)}`,
+				}),
+			);
+	}
+};
+
+/** Provider starter endpoints for the eval lab's endpoint dialog.
+ * Hosted-provider URLs live HERE (the adapter edge) — arch-policy's
+ * provider-lockin keeps them out of port/domain code. */
+const PRESETS: readonly LlmEndpointPreset[] = [
+	{
+		label: "OpenAI",
+		kind: "openai",
+		baseUrl: "https://api.openai.com/v1",
+		model: "gpt-4o-mini",
+	},
+];
+
+/** Driver for `LlmFactory` — always eligible; each descriptor
+ * resolves its own transport. Without it the eval lab can still use
+ * the template renderer (plugin treats the port as optional). */
+export const evalLlmFactoryDriver: Driver = {
+	id: "eval-llm-factory",
+	port: LlmFactory.key,
+	provides: () =>
+		Layer.succeed(
+			LlmFactory,
+			LlmFactory.of({
+				resolve: resolveDescriptor,
+				presets: PRESETS,
+				test: (d) =>
+					resolveDescriptor(d).pipe(
+						Effect.flatMap((layer) =>
+							Effect.flatMap(LlmPort, (llm) =>
+								llm.generate({
+									taskId: "endpoint-test",
+									role: "generator",
+									input: "Reply with the single word: ok",
+									outputSchema: "Text",
+								}),
+							).pipe(
+								Effect.provide(layer),
+								// A ping shouldn't burn the configured generation
+								// budget — 15s is enough to prove liveness.
+								Effect.timeout(`${TEST_TIMEOUT_MS} millis`),
+								/* v8 ignore next 4 -- else arm only fires on raw timeout defects */
+								Effect.mapError((e) =>
+									e instanceof PortError
+										? e
+										: new PortError({ port: "llm", message: "endpoint test timed out", cause: e }),
+								),
+							),
+						),
+						Effect.asVoid,
+					),
+			}),
+		),
+};

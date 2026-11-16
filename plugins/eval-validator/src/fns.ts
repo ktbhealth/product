@@ -13,13 +13,19 @@ import { EvalValidator, type BatchSummary, type PersonaCard, type RunProgress } 
 
 const GenerateInput = Schema.Struct({
 	count: Schema.Number,
-	seed: Schema.optionalKey(Schema.Number),
+	seed: Schema.optional(Schema.Number),
+	// Target interview length — the script generator scales the beat
+	// list to ~4 turns/minute; absent keeps the full anamnesis.
+	minutes: Schema.optional(Schema.Number),
 });
 const BatchIdInput = Schema.Struct({ batchId: Schema.Number });
 const ReviewInput = Schema.Struct({
 	personaId: Schema.Number,
 	decision: Schema.Literals(["approved", "rejected"]),
-	feedback: Schema.optionalKey(Schema.String),
+	// The client sends `feedback: undefined` when the textarea is
+	// empty — the serializer keeps the key, so this must tolerate
+	// undefined/null on the wire.
+	feedback: Schema.optional(Schema.Union([Schema.String, Schema.Null])),
 });
 const RunIdInput = Schema.Struct({ runId: Schema.Number });
 
@@ -87,7 +93,7 @@ export const reviewPersonaFn = createServerFn({ method: "POST" })
 			Effect.scoped(
 				Effect.gen(function* () {
 					const v = yield* EvalValidator;
-					yield* v.review(data);
+					yield* v.review({ ...data, feedback: data.feedback ?? undefined });
 					return { ok: true as const, data: null };
 				}),
 			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
@@ -121,6 +127,22 @@ export const progressFn = createServerFn({ method: "GET" })
 					const v = yield* EvalValidator;
 					const r = yield* v.progress(data.runId);
 					return { ok: true as const, data: r };
+				}),
+			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});
+
+export const deleteRunFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeRunId(input))
+	.handler(async ({ data }): Promise<Result<null>> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.scoped(
+				Effect.gen(function* () {
+					const v = yield* EvalValidator;
+					yield* v.deleteRun(data.runId);
+					return { ok: true as const, data: null };
 				}),
 			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
 		);

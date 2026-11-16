@@ -29,7 +29,7 @@ import { patientAccess } from "./schema.ts";
 // "Rui" is still pending, the invite to "Eva" unclaimed and the link to
 // "Ivo" revoked.
 const DDL = `
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
 INSERT INTO patients (id, owner_id, name) VALUES
   (1, 'doc', 'Leo'), (2, 'doc', 'Ana'), (3, 'doc', 'Rui'), (4, 'doc', 'Eva'), (5, 'doc', 'Ivo');
 CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -49,7 +49,7 @@ const LINKS_DDL = `
 CREATE TABLE user (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0);
 INSERT INTO user (id, email, email_verified) VALUES
   ('ana', 'Ana@KTB.test', 1), ('leo', 'leo@ktb.test', 0), ('eva', 'eva@ktb.test', 1);
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
+CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL);
 INSERT INTO patients (id, owner_id, name) VALUES (1, 'doc', 'Ana'), (2, 'doc', 'Leo'), (3, 'other', 'Rui');
 CREATE TABLE patient_access (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL, user_id TEXT, email TEXT, relation TEXT NOT NULL, status TEXT NOT NULL, source TEXT NOT NULL, granted_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE UNIQUE INDEX patient_access_patient_user_idx ON patient_access (patient_id, user_id);

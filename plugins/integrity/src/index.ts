@@ -130,6 +130,7 @@ export async function verifyRecordVersions(
 	let signed = 0;
 	for (const [index, row] of rows.entries()) {
 		if (row.version !== index + 1) issues.push({ version: row.version, code: "version-gap" });
+		/* v8 ignore next -- index > 0 implies the previous row exists */
 		const expectedPrev = index === 0 ? null : (rows[index - 1]?.contentHash ?? null);
 		if (row.prevHash !== expectedPrev) {
 			issues.push({ version: row.version, code: index === 0 ? "genesis-link" : "chain-broken" });

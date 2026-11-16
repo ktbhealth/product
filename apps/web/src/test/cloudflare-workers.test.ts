@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { audioBucketStore, audioQueueSent, env } from "./cloudflare-workers.ts";
+import {
+	audioBucketStore,
+	audioQueueSent,
+	env,
+	themeAssetsQueueSent,
+	themeAssetsStore,
+} from "./cloudflare-workers.ts";
 
 // The module is the test double for `cloudflare:workers`; its fakes carry
 // real logic (R2 put/get/delete, queue capture) that the route tests rely on.
@@ -20,6 +26,8 @@ const bucket = env.AUDIO_BUCKET as unknown as Bucket;
 afterEach(() => {
 	audioBucketStore.clear();
 	audioQueueSent.length = 0;
+	themeAssetsStore.clear();
+	themeAssetsQueueSent.length = 0;
 	vi.unstubAllEnvs();
 	vi.resetModules();
 });
@@ -72,5 +80,57 @@ describe("fake queue and env", () => {
 
 	it("carries a fixed platform admin allowlist binding", () => {
 		expect(env.PLATFORM_ADMIN_EMAILS).toBe("platform-admin@ktb.test");
+	});
+});
+
+// The theme-assets doubles mirror the audio bucket/queue — separate
+// store + sent log (PL-006 phase 4) so theme tests never mix with
+// consultation audio fixtures.
+const themeBucket = env.THEME_ASSETS_BUCKET as unknown as Bucket;
+
+describe("fake theme assets bucket", () => {
+	it("stores Uint8Array, ArrayBuffer and stream values", async () => {
+		await themeBucket.put("t/a", new Uint8Array([1, 2]), {
+			httpMetadata: { contentType: "image/png" },
+		});
+		await themeBucket.put("t/b", new Uint8Array([3]).buffer);
+		await themeBucket.put("t/c", new Response(new Uint8Array([4, 5])).body!);
+		expect([...themeAssetsStore.get("t/a")!.data]).toEqual([1, 2]);
+		expect(themeAssetsStore.get("t/a")!.contentType).toBe("image/png");
+		expect([...themeAssetsStore.get("t/b")!.data]).toEqual([3]);
+		expect(themeAssetsStore.get("t/b")!.contentType).toBeUndefined();
+		expect([...themeAssetsStore.get("t/c")!.data]).toEqual([4, 5]);
+	});
+
+	it("returns a readable object on get and null for a missing key", async () => {
+		await themeBucket.put("k", new Uint8Array([7, 8]), {
+			httpMetadata: { contentType: "font/woff2" },
+		});
+		const obj = (await themeBucket.get("k"))!;
+		expect(obj.key).toBe("k");
+		expect(obj.size).toBe(2);
+		expect(obj.httpMetadata.contentType).toBe("font/woff2");
+		expect(new Uint8Array(await obj.arrayBuffer())).toEqual(new Uint8Array([7, 8]));
+		expect(new Uint8Array(await new Response(obj.body).arrayBuffer())).toEqual(
+			new Uint8Array([7, 8]),
+		);
+		expect(await themeBucket.get("missing")).toBeNull();
+	});
+
+	it("deletes one key or a list of keys", async () => {
+		for (const k of ["x", "y", "z"]) await themeBucket.put(k, new Uint8Array([1]));
+		await themeBucket.delete("x");
+		expect([...themeAssetsStore.keys()]).toEqual(["y", "z"]);
+		await themeBucket.delete(["y", "z"]);
+		expect(themeAssetsStore.size).toBe(0);
+	});
+});
+
+describe("fake theme assets queue", () => {
+	it("records sent queue messages", async () => {
+		await (env.THEME_ASSETS_QUEUE as { send: (b: unknown) => Promise<unknown> }).send({
+			kind: "theme.asset",
+		});
+		expect(themeAssetsQueueSent).toEqual([{ kind: "theme.asset" }]);
 	});
 });
