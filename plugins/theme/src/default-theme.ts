@@ -24,12 +24,18 @@
  * fills `fonts.assets` later without touching this file.
  *
  * Brand: logo/wordmark/favicon point at the brand assets served from
- * `apps/web/public/brand/` (mirrors of `@ktbhealth/ui/brand` — kept as
- * static files because the TanStack route generator evaluates this
- * module through jiti, which cannot load `.svg`/`.png` `?url` imports;
- * plain string URLs are serializable and work identically under vite,
- * vitest and workerd). `id: 0`/`scopeId: ""` mark it as synthetic: it is
- * never a `theme_definitions` row and never appears in admin lists.
+ * `apps/web/public/brand/` — verbatim copies of the canonical files in
+ * `@ktbhealth/ui` (`packages/brand/assets`, exposed as
+ * `@ktbhealth/ui/brand/*` since ui v0.2.3; this repo pins that tag).
+ * They stay as static files because the TanStack route generator
+ * evaluates this module through jiti, which cannot load `.svg`/`.png`
+ * `?url` imports; plain string URLs are serializable and work
+ * identically under vite, vitest and workerd.
+ * `apps/web/src/lib/brand-assets.test.ts` pins each copy byte-for-byte
+ * against the installed ui package so upstream brand changes fail CI
+ * until the public files are re-synced. `id: 0`/`scopeId: ""` mark it
+ * as synthetic: it is never a `theme_definitions` row and never
+ * appears in admin lists.
  */
 
 import { deriveThemeTokens } from "./palette.ts";
