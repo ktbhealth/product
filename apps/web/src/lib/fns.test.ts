@@ -607,17 +607,12 @@ describe("server fns", () => {
 		// The audioJobs CQRS query answers the same admin gate.
 		const audioJobs = await adminListAudioJobsFn();
 		expect(Array.isArray(audioJobs)).toBe(true);
-		// The dashboard index aggregates listings + notification activity.
+		// T-125: domain listings moved to the /platform layout's dashboard
+		// slot contexts — page data carries only the plugin registry feed.
 		const dashboard = (await pageData("/platform")) as {
-			patients: unknown[];
-			consultations: unknown[];
-			notifications?: unknown[];
-			unreadCount?: number;
+			pluginStates?: { pluginId: string; enabled: boolean }[];
 		};
-		expect(dashboard.patients.length).toBeGreaterThan(0);
-		expect(Array.isArray(dashboard.consultations)).toBe(true);
-		expect(Array.isArray(dashboard.notifications)).toBe(true);
-		expect(typeof dashboard.unreadCount).toBe("number");
+		expect(Array.isArray(dashboard.pluginStates)).toBe(true);
 	});
 
 	it("platform admin CRUD fns mutate cross-owner records; non-admins get ok:false", async () => {
