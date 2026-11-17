@@ -49,6 +49,7 @@
         "@ktb/ai-bridge": "workspace:*",
         "@ktb/ai-endpoints": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
+        "@ktb/api": "workspace:*",
         "@ktb/app-host": "workspace:*",
         "@ktb/audience": "workspace:*",
         "@ktb/audit": "workspace:*",
@@ -250,6 +251,7 @@
         "@ktb/ai-adapter-acp": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/anamnesis-llm": "workspace:*",
+        "@ktb/api": "workspace:*",
         "@ktb/auth": "workspace:*",
         "@ktb/auth-better": "workspace:*",
         "@ktb/authz": "workspace:*",
@@ -649,6 +651,25 @@
       },
       "peerDependencies": {
         "react": "^19.2.0",
+      },
+    },
+    "plugins/api": {
+      "name": "@ktb/api",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/document-store": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/rbac": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "@tanstack/virtual-file-routes": "1.162.0",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/auth": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "vitest": "5.1.0",
       },
     },
     "plugins/audience": {
@@ -2017,6 +2038,8 @@
     "@ktb/anamnesis": ["@ktb/anamnesis@workspace:packages/anamnesis"],
 
     "@ktb/anamnesis-llm": ["@ktb/anamnesis-llm@workspace:packages/anamnesis-llm"],
+
+    "@ktb/api": ["@ktb/api@workspace:plugins/api"],
 
     "@ktb/app-eval": ["@ktb/app-eval@workspace:apps/eval"],
 

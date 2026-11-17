@@ -1,4 +1,5 @@
 import { plugins as aiEndpointsPlugins } from "@ktb/ai-endpoints";
+import { plugins as apiPlugins } from "@ktb/api";
 import { plugins as authPlugins } from "@ktb/auth-plugin";
 import { plugins as consultationsPlugins } from "@ktb/consultations";
 import { plugins as credentialsPlugins } from "@ktb/credentials";
@@ -21,6 +22,7 @@ import { index, physical, rootRoute, route } from "@tanstack/virtual-file-routes
 // so plugin entries are imported statically here instead of via `plugins`.
 const routePlugins = [
 	...aiEndpointsPlugins,
+	...apiPlugins,
 	...authPlugins,
 	...consultationsPlugins,
 	...credentialsPlugins,

@@ -11,6 +11,7 @@
 		"@ktb/ai-adapter-acp": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/anamnesis-llm": "workspace:*",
+		"@ktb/api": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/auth-better": "workspace:*",
 		"@ktb/authz": "workspace:*",
