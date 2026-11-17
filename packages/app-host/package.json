@@ -8,6 +8,7 @@
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
+		"@ktb/ai-adapter-acp": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/anamnesis-llm": "workspace:*",
 		"@ktb/auth": "workspace:*",
@@ -18,6 +19,8 @@
 		"@ktb/captcha": "workspace:*",
 		"@ktb/captcha-stub": "workspace:*",
 		"@ktb/captcha-turnstile": "workspace:*",
+		"@ktb/crypto": "workspace:*",
+		"@ktb/crypto-stub": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/driver-framework": "workspace:*",
 		"@ktb/email": "workspace:*",

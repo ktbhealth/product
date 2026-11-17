@@ -3,7 +3,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 	getRequestUrl: () => new URL("http://localhost:3000/consultations/new"),
 }));
 vi.mock("@tanstack/react-start", () => ({
@@ -27,19 +29,13 @@ import { patientAccess, user } from "@ktb/db/schema";
 import { doctorContextFn } from "@ktb/doctors/fns";
 import { approvePatientLinkFn, patientLinksFn, revokePatientLinkFn } from "@ktb/patient-access/fns";
 import { portalConsultationFn, portalFn } from "@ktb/patient-portal/fns";
+import { getConsultationFn, listConsultationsFn, saveConsultationFn } from "@ktb/consultations/fns";
+import { createPatientFn, listPatientsFn } from "@ktb/patients/fns";
 import { eq } from "drizzle-orm";
 
 import { signUpDoctor } from "#/test/doctor.ts";
 import { auth, db } from "./platform.ts";
-import {
-	createPatientFn,
-	emailEnabledFn,
-	getConsultationFn,
-	listConsultationsFn,
-	listPatientsFn,
-	saveConsultationFn,
-	sessionFn,
-} from "./fns.ts";
+import { emailEnabledFn, sessionFn } from "./fns.ts";
 
 // End to end: the doctor saves a consultation and sends the patient the
 // access email; the patient's account then sees that consultation —
@@ -104,7 +100,7 @@ describe("patient portal, end to end", () => {
 		const saved = await saveConsultationFn({
 			data: { transcript: "fala gravada na consulta", anamnesis, engine: "heuristic", patientId },
 		});
-		consultationId = saved.id;
+		consultationId = saved!.id;
 	});
 
 	it("after saving, the doctor is told the patient has no portal access yet", async () => {
@@ -161,6 +157,7 @@ describe("patient portal, end to end", () => {
 				id: consultationId,
 				createdAt: expect.any(Date),
 				chiefComplaint: "Dor de cabeça há três dias",
+				anamnesis: null,
 			},
 		]);
 	});
@@ -252,7 +249,7 @@ describe("patient portal, pending link awaiting approval", () => {
 		const saved = await saveConsultationFn({
 			data: { transcript: "fala", anamnesis, engine: "heuristic", patientId },
 		});
-		consultationId = saved.id;
+		consultationId = saved!.id;
 		patient = await signUpPatient("pend-patient@x.com", "Paciente Pendente", true);
 		// Nothing creates pending links any more (account CPFs are gone),
 		// but links already pending still wait on the doctor's approval.

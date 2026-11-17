@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { audit } from "@ktb/audit";
 import { Consultations } from "@ktb/consultations";
 import { isExportFormat } from "@ktb/interop";
 import { Patients } from "@ktb/patients";
@@ -45,6 +46,16 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/patients
 							.get(user.id, id)
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
 						if (!patient) return null;
+						// Sensitive-read audit: the export ships the whole
+						// patient record — record it once authz+fetch succeeded.
+						// ids/format only.
+						yield* audit({
+							action: "patients.export",
+							targetType: "patient",
+							targetId: patient.id,
+							tenantId: patient.tenantId,
+							detail: { format },
+						});
 						const consultations = yield* Consultations;
 						const summaries = yield* consultations.list(user.id, id);
 						const details = yield* Effect.forEach(summaries, (s) =>

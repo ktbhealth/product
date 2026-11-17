@@ -9,7 +9,9 @@ import type { ReactElement } from "react";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -66,7 +68,8 @@ import { plugins } from "./plugins.ts";
 import { routes } from "./routes.ts";
 import { auth, db } from "#/lib/platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
-import { createPatientFn, saveConsultationFn } from "#/lib/fns.ts";
+import { saveConsultationFn } from "@ktb/consultations/fns";
+import { createPatientFn } from "@ktb/patients/fns";
 import { SAMPLE_TRANSCRIPT, SECTION_LABELS } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSection } from "@ktb/anamnesis";
 
@@ -100,7 +103,7 @@ async function signInRouterUser() {
 			engine: "heuristic",
 		},
 	});
-	consultationId = saved.id!;
+	consultationId = saved!.id;
 }
 
 // The root route renders the full document shell (<html>/<body>). Mounting it
@@ -235,7 +238,7 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await act(async () => {
-			await router.navigate({ to: "/consultations/$id", params: { id: String(second.id!) } });
+			await router.navigate({ to: "/consultations/$id", params: { id: String(second!.id) } });
 		});
 		await waitFor(() => expect(document.body.textContent).toContain("1 previous consultation"));
 		expect(document.body.textContent).toContain("Complaint: Primeira queixa");

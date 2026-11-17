@@ -36,12 +36,19 @@ export default Alchemy.Stack(
 		});
 		const transcriptionQueue = yield* Cloudflare.Queues.Queue("transcription");
 
+		// ACP bridge (F3b): the durable object holding each ai_endpoint's
+		// outbound agent socket (idFromName(endpointId)). The class is
+		// exported as `AcpBridge` from the worker entry (src/server.ts).
+		const acpBridge = Cloudflare.DurableObject("AcpBridge");
+
 		// Theme brand assets + font files (P-082/PL-006 phase 4): private
 		// bucket served only through the worker's /api/theme/assets route;
 		// dedicated queue (decided over sharing ktb-transcription) so image
 		// derivatives and font downloads never contend with audio jobs.
 		const themeAssetsBucket = yield* Cloudflare.R2.Bucket("theme-assets");
-		const themeAssetsQueue = yield* Cloudflare.Queues.Queue("theme-assets");
+		// Logical id must differ from the "theme-assets" R2 bucket above —
+		// alchemy logical ids are unique per stack regardless of type.
+		const themeAssetsQueue = yield* Cloudflare.Queues.Queue("theme-assets-queue");
 
 		// Outbound email (Cloudflare Email Service): the `send_email`
 		// binding is restricted to the configured sender. EMAIL_FROM's
@@ -70,9 +77,16 @@ export default Alchemy.Stack(
 			outdir: "dist/client",
 			main: "dist/server/index.js",
 			bundle: false,
+			// Daily audit-chain verification (T-139 follow-up): fires the
+			// worker's `scheduled` handler (src/server.ts → lib/audit-chain.ts)
+			// at 03:17 UTC — off-peak, staggered off the hour. `scheduled()`
+			// never runs under `bun run dev`; use the /platform/audit
+			// "Verify chain" action there.
+			crons: ["17 3 * * *"],
 			bindings: {
 				DB: db,
 				AI: Cloudflare.Workers.AI(),
+				ACP_BRIDGE: acpBridge,
 				AUDIO_BUCKET: audioBucket,
 				AUDIO_QUEUE: transcriptionQueue,
 				THEME_ASSETS_BUCKET: themeAssetsBucket,

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
 
 const mocks = vi.hoisted(() => ({
+	ensureSessionUser: vi.fn(),
 	getLocale: vi.fn(),
 	getPatientContext: vi.fn(),
 	getSessionUser: vi.fn(),
@@ -27,9 +28,18 @@ vi.mock("@tanstack/react-start", () => ({
 vi.mock("@ktb/server-fns", () => mocks);
 
 import { Forbidden } from "@ktb/authz";
+import { Audit } from "@ktb/audit";
 
 import { PatientPortal } from "./index.ts";
-import { localeFn, portalConsultationFn, portalFn, selectPatientFn } from "./fns.ts";
+import {
+	localeFn,
+	patientActivityFn,
+	portalConsultationFn,
+	portalDekEnvelopesFn,
+	portalFn,
+	portalRegisterDeviceFn,
+	selectPatientFn,
+} from "./fns.ts";
 
 const user = { id: "ana", email: "ana@ktb.test", name: "Ana" };
 const me = { patientId: 1, name: "Ana", relation: "self" };
@@ -50,15 +60,26 @@ const portal = {
 	consultations: vi.fn(),
 	consultation: vi.fn(),
 	awaitingInvites: vi.fn<() => Effect.Effect<number, Forbidden>>(),
+	registerDevice: vi.fn(),
+	dekEnvelopes: vi.fn(),
+};
+const audit = {
+	patientList: vi.fn(),
 };
 const denied = Effect.fail(new Forbidden({ path: "portal.read" }));
+const ACTIVITY_EMPTY = { entries: [], total: 0, limit: 100 };
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	// runAs executes the program against the PatientPortal stub.
+	// runAs executes the program against the PatientPortal + Audit stubs.
 	mocks.runAs.mockImplementation(
-		(_user: unknown, effect: Effect.Effect<unknown, unknown, PatientPortal>) =>
-			Effect.runPromise(effect.pipe(Effect.provideService(PatientPortal, portal as never))),
+		(_user: unknown, effect: Effect.Effect<unknown, unknown, PatientPortal | Audit>) =>
+			Effect.runPromise(
+				effect.pipe(
+					Effect.provideService(PatientPortal, portal as never),
+					Effect.provideService(Audit, audit as never),
+				),
+			),
 	);
 	portal.profile.mockReturnValue(Effect.succeed(profile));
 	portal.consultations.mockReturnValue(Effect.succeed(listed));
@@ -168,5 +189,105 @@ describe("selectPatientFn", () => {
 		mocks.getPatientContext.mockResolvedValue(null);
 		await expect(selectPatientFn({ data: 1 })).resolves.toEqual({ ok: false });
 		expect(mocks.setPatientSelection).not.toHaveBeenCalled();
+	});
+});
+
+describe("portalRegisterDeviceFn", () => {
+	const device = { wrapPublicKey: "wrap", signPublicKey: "sign" };
+
+	beforeEach(() => {
+		mocks.ensureSessionUser.mockResolvedValue(user);
+		portal.registerDevice.mockReturnValue(Effect.succeed({ id: 4, userId: "ana" }));
+	});
+
+	it("registers the session user's device pubkeys", async () => {
+		await expect(portalRegisterDeviceFn({ data: device })).resolves.toEqual({
+			ok: true,
+			device: { id: 4, userId: "ana" },
+		});
+		expect(mocks.runAs).toHaveBeenCalledWith(user, expect.anything());
+		expect(portal.registerDevice).toHaveBeenCalledWith(device);
+	});
+
+	it("reports a denied registration without throwing", async () => {
+		portal.registerDevice.mockReturnValue(denied);
+		await expect(portalRegisterDeviceFn({ data: device })).resolves.toEqual({ ok: false });
+	});
+
+	it("validates the wire shape", async () => {
+		await expect(portalRegisterDeviceFn({ data: { wrapPublicKey: "" } })).rejects.toThrow();
+	});
+});
+
+describe("portalDekEnvelopesFn", () => {
+	const input = {
+		entityType: "consultation" as const,
+		entityIds: [10, "12"],
+		wrapPublicKey: "dev",
+	};
+
+	it("is empty for anonymous callers", async () => {
+		mocks.getSessionUser.mockResolvedValue(null);
+		await expect(portalDekEnvelopesFn({ data: input })).resolves.toEqual({});
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("returns the caller's envelopes keyed by record", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		portal.dekEnvelopes.mockReturnValue(Effect.succeed({ "10": "w1.x" }));
+		await expect(portalDekEnvelopesFn({ data: input })).resolves.toEqual({ "10": "w1.x" });
+		expect(mocks.runAs).toHaveBeenCalledWith(user, expect.anything());
+		expect(portal.dekEnvelopes).toHaveBeenCalledWith(input);
+	});
+
+	it("is empty — not an error — when the read is denied", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		portal.dekEnvelopes.mockReturnValue(denied);
+		await expect(portalDekEnvelopesFn({ data: input })).resolves.toEqual({});
+	});
+
+	it("validates the wire shape", async () => {
+		await expect(
+			portalDekEnvelopesFn({ data: { entityType: "bogus", entityIds: [], wrapPublicKey: "d" } }),
+		).rejects.toThrow();
+	});
+});
+
+describe("patientActivityFn", () => {
+	const feed = { entries: [{ id: 1, action: "patients.update" }], total: 1, limit: 100 };
+
+	it("is an empty page for anonymous visitors", async () => {
+		mocks.getSessionUser.mockResolvedValue(null);
+		await expect(patientActivityFn({ data: { patientId: 1 } })).resolves.toEqual(ACTIVITY_EMPTY);
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("returns the patient-scoped feed as the session user", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		audit.patientList.mockReturnValue(Effect.succeed(feed));
+		await expect(patientActivityFn({ data: { patientId: 1 } })).resolves.toEqual(feed);
+		expect(mocks.runAs).toHaveBeenCalledWith(user, expect.anything());
+		expect(audit.patientList).toHaveBeenCalledWith({ patientId: 1, limit: 100 });
+	});
+
+	it("is an empty page — not an error — when the read is denied", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		audit.patientList.mockReturnValue(Effect.fail(new Forbidden({ path: "audit.patient" })));
+		await expect(patientActivityFn({ data: { patientId: 9 } })).resolves.toEqual(ACTIVITY_EMPTY);
+	});
+
+	it("is an empty page when the audit plugin is absent", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		// runAs without the Audit service — serviceOption resolves None.
+		mocks.runAs.mockImplementationOnce(
+			(_user: unknown, effect: Effect.Effect<unknown, unknown, PatientPortal>) =>
+				Effect.runPromise(effect.pipe(Effect.provideService(PatientPortal, portal as never))),
+		);
+		await expect(patientActivityFn({ data: { patientId: 1 } })).resolves.toEqual(ACTIVITY_EMPTY);
+		expect(audit.patientList).not.toHaveBeenCalled();
+	});
+
+	it("rejects a malformed patientId on the wire", async () => {
+		await expect(patientActivityFn({ data: { patientId: "x" } })).rejects.toThrow();
 	});
 });

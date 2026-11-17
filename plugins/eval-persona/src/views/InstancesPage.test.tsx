@@ -47,54 +47,34 @@ const fns = vi.hoisted(() => ({
 		ok: true,
 		data: { id: 5 },
 	})),
-	deleteEndpointFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({ ok: true, data: null })),
 	deleteInstanceFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({ ok: true, data: null })),
 	instanceDetailFn: vi.fn<(a?: Arg) => Res<unknown>>(async () => ({ ok: true, data: detail })),
-	listEndpointPresetsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
-		ok: true,
-		data: [],
-	})),
-	listEndpointsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
-		ok: true,
-		data: [],
-	})),
 	listInstancesFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
 		ok: true,
 		data: [],
-	})),
-	saveEndpointFn: vi.fn<(a?: Arg) => Res<{ id: number }>>(async () => ({
-		ok: true,
-		data: { id: 3 },
 	})),
 	spawnInstancesFn: vi.fn<(a?: Arg) => Res<{ created: number }>>(async () => ({
 		ok: true,
 		data: { created: 5 },
 	})),
 	startInstanceFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({ ok: true, data: null })),
-	testEndpointFn: vi.fn<(a?: Arg) => Res<{ message?: string }>>(async () => ({
-		ok: true,
-		data: {},
-	})),
 }));
 vi.mock("../fns.ts", () => fns);
-const credFns = vi.hoisted(() => ({
-	listCredentialsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
+const epFns = vi.hoisted(() => ({
+	listEndpointsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
 		ok: true,
 		data: [],
 	})),
 }));
-vi.mock("@ktb/eval-credentials/fns", () => credFns);
-vi.mock("@tanstack/react-router", () => ({ useRouter: () => ({ invalidate: vi.fn() }) }));
+vi.mock("@ktb/ai-endpoints/fns", () => epFns);
+vi.mock("@tanstack/react-router", () => ({
+	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
+}));
 
-import type { EndpointCard, InstanceCard, PersonaDefCard } from "../index.ts";
+import type { EndpointCard } from "@ktb/ai-endpoints";
+
+import type { InstanceCard, PersonaDefCard } from "../index.ts";
 import { InstancesPage } from "./InstancesPage.tsx";
-
-const credential = {
-	id: "k3",
-	name: "openai prod",
-	provider: "openai",
-	masked: "••••9abc",
-};
 
 const instance: InstanceCard = {
 	id: 1,
@@ -122,8 +102,13 @@ const endpoint: EndpointCard = {
 	sessionId: null,
 	secretRef: null,
 	transport: null,
+	agentCmd: null,
+	sshHost: null,
+	scope: "eval",
+	isDefault: false,
 	timeoutMs: 60_000,
 	enabled: true,
+	lastSeenAt: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 };
 
@@ -162,12 +147,9 @@ const renderPage = (
 afterEach(cleanup);
 
 describe("InstancesPage", () => {
-	it("renders empty states in both tabs", async () => {
-		const user = userEvent.setup();
+	it("renders the empty state", () => {
 		renderPage();
 		expect(screen.getByText(/No instances yet/)).toBeTruthy();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		expect(await screen.findByText(/No endpoints/)).toBeTruthy();
 	});
 
 	it("lists instances with progress and starts a draft", async () => {
@@ -211,28 +193,6 @@ describe("InstancesPage", () => {
 		await user.click(trash[trash.length - 1]!);
 		await user.click(await screen.findByText("Confirm delete"));
 		await waitFor(() => expect(fns.deleteInstanceFn).toHaveBeenCalledWith({ data: { id: 1 } }));
-	});
-
-	it("creates and tests an endpoint", async () => {
-		const user = userEvent.setup();
-		renderPage({ endpoints: [endpoint] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		expect(await screen.findByText("Ollama")).toBeTruthy();
-		await user.click(screen.getByText("Test"));
-		await waitFor(() => expect(fns.testEndpointFn).toHaveBeenCalledWith({ data: { id: 2 } }));
-		expect(await screen.findByText("endpoint ok")).toBeTruthy();
-
-		await user.click(screen.getByText("Edit"));
-		const nameInput = screen.getAllByRole("textbox")[0]!;
-		await user.clear(nameInput);
-		await user.type(nameInput, "Ollama 2");
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
-			id: 2,
-			name: "Ollama 2",
-			kind: "openai",
-		});
 	});
 
 	it("creates a selected-mode instance with def checkboxes", async () => {
@@ -301,61 +261,6 @@ describe("InstancesPage", () => {
 		expect(await screen.findByText("#9")).toBeTruthy();
 	});
 
-	it("deletes an endpoint after confirm and reports test failures", async () => {
-		const user = userEvent.setup();
-		renderPage({ endpoints: [{ ...endpoint, enabled: false }] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		expect(await screen.findByText("off")).toBeTruthy();
-
-		fns.testEndpointFn.mockResolvedValueOnce({
-			ok: false,
-			data: { message: "connection refused" },
-		} as never);
-		await user.click(screen.getByText("Test"));
-		expect(await screen.findByText(/connection refused/)).toBeTruthy();
-
-		const row = screen.getByText("Ollama").closest("div")!.parentElement!.parentElement!;
-		const buttons = row.querySelectorAll("button");
-		await user.click(buttons[buttons.length - 1]!);
-		await user.click(await screen.findByText("Confirm delete"));
-		await waitFor(() => expect(fns.deleteEndpointFn).toHaveBeenCalledWith({ data: { id: 2 } }));
-	});
-
-	it("creates an acp endpoint filling every field", async () => {
-		const user = userEvent.setup();
-		renderPage();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		const boxes = screen.getAllByRole("textbox");
-		await user.type(boxes[0]!, "ACP agent");
-		await user.click(screen.getByLabelText("Kind"));
-		await user.click(await screen.findByRole("option", { name: "acp" }));
-		expect(screen.getByText(/Connects a local agent over ACP/)).toBeTruthy();
-		await user.clear(boxes[1]!);
-		await user.type(boxes[1]!, "http://agent.local/rpc");
-		const spinners = screen.getAllByRole("spinbutton");
-		await user.clear(spinners[0]!);
-		await user.type(spinners[0]!, "90000");
-		await user.type(boxes[2]!, "model-x");
-		await user.type(boxes[3]!, "session-1");
-		await user.click(screen.getByLabelText("API key env var"));
-		await user.click(await screen.findByRole("option", { name: "Custom env var" }));
-		await user.type(screen.getByPlaceholderText("OLLAMA_API_KEY"), "MY_KEY");
-		await user.click(screen.getByRole("checkbox"));
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
-			name: "ACP agent",
-			kind: "acp",
-			baseUrl: "http://agent.local/rpc",
-			model: "model-x",
-			sessionId: "session-1",
-			secretRef: "MY_KEY",
-			timeoutMs: 90000,
-			enabled: false,
-		});
-	});
-
 	it("chooses a concrete endpoint and edits random-mode fields", async () => {
 		const user = userEvent.setup();
 		renderPage({ endpoints: [endpoint] });
@@ -380,15 +285,11 @@ describe("InstancesPage", () => {
 		});
 	});
 
-	it("closes both dialogs through their cancel buttons", async () => {
+	it("closes the create dialog through Cancel", async () => {
 		const user = userEvent.setup();
 		renderPage();
 		await user.click(screen.getByText("New instance"));
 		await user.click(screen.getByText("Cancel"));
-		expect(screen.queryByRole("dialog")).toBeNull();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		await user.click(await screen.findByText("Cancel"));
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
@@ -481,7 +382,7 @@ describe("InstancesPage — branch completion", () => {
 		renderPage({
 			instances: [
 				{ ...readyInstance, status: "failed", total: 0, done: 0 },
-				{ ...endpoint, ...instance, id: 8, name: "c2", endpointName: "Ollama" },
+				{ ...instance, id: 8, name: "c2", endpointName: "Ollama" },
 			],
 		});
 		expect(screen.getByText("failed")).toBeTruthy();
@@ -511,45 +412,16 @@ describe("InstancesPage — branch completion", () => {
 		expect(await screen.findByRole("option", { name: /ACP · acp/ })).toBeTruthy();
 	});
 
-	it("edits a model-less endpoint — empty optional fields stay off the wire", async () => {
-		const noModel: EndpointCard = { ...endpoint, model: null, sessionId: "s1", secretRef: "K" };
+	it("skips non-eval scopes and disabled endpoints in the picker", async () => {
+		const foreign: EndpointCard = { ...endpoint, id: 10, name: "Foreign", scope: "ops" };
+		const off: EndpointCard = { ...endpoint, id: 11, name: "Off", enabled: false };
 		const user = userEvent.setup();
-		renderPage({ endpoints: [noModel] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("Edit"));
-		const spinners = screen.getAllByRole("spinbutton");
-		await user.clear(spinners[0]!);
-		const boxes = screen.getAllByRole("textbox");
-		await user.clear(boxes[3]!);
-		await user.clear(boxes[4]!);
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		const wire = fns.saveEndpointFn.mock.calls[0]?.[0]?.data as Record<string, unknown>;
-		expect("model" in wire).toBe(false);
-		expect("sessionId" in wire).toBe(false);
-		expect("secretRef" in wire).toBe(false);
-		expect("timeoutMs" in wire).toBe(false);
-	});
-
-	it("shows the failure when endpoint save is denied", async () => {
-		fns.saveEndpointFn.mockResolvedValueOnce({ ok: false });
-		const user = userEvent.setup();
-		renderPage();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		const boxes = screen.getAllByRole("textbox");
-		await user.type(boxes[0]!, "x");
-		await user.click(screen.getByText("Save"));
-		expect(await screen.findByText(/Action failed/)).toBeTruthy();
-	});
-
-	it("reports a bare failure when the test fn denies", async () => {
-		fns.testEndpointFn.mockResolvedValueOnce({ ok: false });
-		const user = userEvent.setup();
-		renderPage({ endpoints: [endpoint] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("Test"));
-		expect(await screen.findByText(/endpoint failed/)).toBeTruthy();
+		renderPage({ endpoints: [endpoint, foreign, off] });
+		await user.click(screen.getByText("New instance"));
+		await user.click(screen.getByLabelText("Endpoint"));
+		expect(await screen.findByRole("option", { name: /Ollama · qwen/ })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: /Foreign/ })).toBeNull();
+		expect(screen.queryByRole("option", { name: /Off/ })).toBeNull();
 	});
 
 	it("keeps the list when refresh fails after start", async () => {
@@ -573,146 +445,12 @@ describe("InstancesPage — branch completion", () => {
 		});
 	});
 
-	it("closes both dialogs via Escape", async () => {
+	it("closes the create dialog via Escape", async () => {
 		const user = userEvent.setup();
 		renderPage();
 		await user.click(screen.getByText("New instance"));
 		await user.keyboard("{Escape}");
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		await user.keyboard("{Escape}");
-		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-	});
-});
-
-describe("InstancesPage — last branches", () => {
-	it("clears the open detail when its instance is deleted", async () => {
-		fns.instanceDetailFn.mockResolvedValue({ ok: true, data: detail });
-		renderPage({ instances: [instance] });
-		const user = userEvent.setup();
-		await user.click(screen.getByText("Open"));
-		expect(await screen.findByText("Maria")).toBeTruthy();
-		const trash = document.querySelector("svg.lucide-trash-2")!.closest("button")!;
-		await user.click(trash);
-		await user.click(await screen.findByText("Confirm delete"));
-		await waitFor(() => expect(screen.queryByText("Maria")).toBeNull());
-	});
-
-	it("shows a bare failure when the test result carries no message", async () => {
-		fns.testEndpointFn.mockResolvedValueOnce({ ok: false, data: {} } as never);
-		const user = userEvent.setup();
-		renderPage({ endpoints: [endpoint] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("Test"));
-		await waitFor(() => expect(fns.testEndpointFn).toHaveBeenCalled());
-		expect(await screen.findByText(/endpoint failed/)).toBeTruthy();
-	});
-
-	it("fills the endpoint form from a preset chip", async () => {
-		// Provider presets arrive via the adapter-backed fn; one carries
-		// no model to exercise the `?? ""` fill arm.
-		fns.listEndpointPresetsFn.mockResolvedValueOnce({
-			ok: true,
-			data: [
-				{
-					label: "OpenAI",
-					kind: "openai",
-					baseUrl: "https://api.openai.com/v1",
-					model: "gpt-4o-mini",
-				},
-				{ label: "Proxy", kind: "openai", baseUrl: "http://proxy/v1" },
-			],
-		});
-		render(<InstancesPage instances={[]} endpoints={[]} defs={[]} locale="en" />);
-		const user = userEvent.setup();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		await waitFor(() => expect(fns.listEndpointPresetsFn).toHaveBeenCalled());
-		await user.click(await screen.findByRole("button", { name: "Ollama local" }));
-		const url = screen.getByDisplayValue("http://127.0.0.1:11434/v1");
-		expect(url).toBeTruthy();
-		await user.click(screen.getByRole("button", { name: "LM Studio" }));
-		expect(screen.getByDisplayValue("http://127.0.0.1:1234/v1")).toBeTruthy();
-		await user.click(screen.getByRole("button", { name: "OpenAI" }));
-		expect(screen.getByDisplayValue("https://api.openai.com/v1")).toBeTruthy();
-		expect(screen.getByDisplayValue("gpt-4o-mini")).toBeTruthy();
-		await user.click(screen.getByRole("button", { name: "Proxy" }));
-		expect(screen.getByDisplayValue("http://proxy/v1")).toBeTruthy();
-		await user.click(screen.getByRole("button", { name: "Gemini" }));
-		expect(
-			screen.getByDisplayValue("https://generativelanguage.googleapis.com/v1beta/openai/"),
-		).toBeTruthy();
-		expect(screen.getByDisplayValue("gemini-2.0-flash")).toBeTruthy();
-		await user.click(screen.getByRole("button", { name: "Claude Code agent" }));
-		expect(await screen.findByText(/Connects a local agent over ACP/)).toBeTruthy();
-	});
-});
-
-describe("InstancesPage — credential select", () => {
-	it("lists credentials lazily and stores credential:<id> on the wire", async () => {
-		credFns.listCredentialsFn.mockResolvedValue({ ok: true, data: [credential] });
-		const user = userEvent.setup();
-		renderPage();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		await waitFor(() => expect(credFns.listCredentialsFn).toHaveBeenCalled());
-		const boxes = screen.getAllByRole("textbox");
-		await user.type(boxes[0]!, "OpenAI prod");
-		await user.clear(boxes[1]!);
-		await user.type(boxes[1]!, "https://api.openai.com/v1");
-		await user.type(boxes[2]!, "gpt-4o-mini");
-		await user.click(screen.getByLabelText("API key env var"));
-		await user.click(await screen.findByRole("option", { name: /openai prod · openai/ }));
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
-			secretRef: "credential:k3",
-		});
-	});
-
-	it("offers a stale credential ref when editing and swaps it for custom", async () => {
-		const stale: EndpointCard = { ...endpoint, secretRef: "credential:99" };
-		const user = userEvent.setup();
-		renderPage({ endpoints: [stale] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("Edit"));
-		await user.click(screen.getByLabelText("API key env var"));
-		expect(await screen.findByRole("option", { name: "credential:99" })).toBeTruthy();
-		await user.click(await screen.findByRole("option", { name: "Custom env var" }));
-		await user.type(screen.getByPlaceholderText("OLLAMA_API_KEY"), "LEGACY_KEY");
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
-			secretRef: "LEGACY_KEY",
-		});
-	});
-
-	it("still works when the credential + preset fetches fail", async () => {
-		credFns.listCredentialsFn.mockResolvedValueOnce({ ok: false });
-		fns.listEndpointPresetsFn.mockResolvedValueOnce({ ok: false });
-		const user = userEvent.setup();
-		renderPage();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		await waitFor(() => expect(credFns.listCredentialsFn).toHaveBeenCalled());
-		await user.click(screen.getByLabelText("API key env var"));
-		expect(await screen.findByRole("option", { name: "None" })).toBeTruthy();
-		expect(await screen.findByRole("option", { name: "Custom env var" })).toBeTruthy();
-	});
-
-	it("None clears the stored ref", async () => {
-		const withKey: EndpointCard = { ...endpoint, secretRef: "OLD_KEY" };
-		const user = userEvent.setup();
-		renderPage({ endpoints: [withKey] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("Edit"));
-		await user.click(screen.getByLabelText("API key env var"));
-		await user.click(await screen.findByRole("option", { name: "None" }));
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		const wire = fns.saveEndpointFn.mock.calls[0]?.[0]?.data as Record<string, unknown>;
-		expect("secretRef" in wire).toBe(false);
 	});
 });
 
@@ -778,40 +516,5 @@ describe("InstancesPage — spawn generators", () => {
 		await user.click(screen.getByText("Spawn generators"));
 		await user.keyboard("{Escape}");
 		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-	});
-});
-
-describe("InstancesPage — acp transport", () => {
-	it("sends the chosen transport on the wire for acp endpoints", async () => {
-		const user = userEvent.setup();
-		renderPage();
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("New endpoint"));
-		await user.type(screen.getAllByRole("textbox")[0]!, "ACP ssh");
-		await user.click(screen.getByLabelText("Kind"));
-		await user.click(await screen.findByRole("option", { name: "acp" }));
-		expect(screen.getByText(/child\/ssh need the Node runtime/)).toBeTruthy();
-		await user.click(screen.getByLabelText("Transport"));
-		await user.click(await screen.findByRole("option", { name: "ssh" }));
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
-			kind: "acp",
-			transport: "ssh",
-		});
-	});
-
-	it("restores the stored transport when editing and omits it for openai", async () => {
-		const acp: EndpointCard = { ...endpoint, kind: "acp", model: null, transport: "child" };
-		const user = userEvent.setup();
-		renderPage({ endpoints: [acp] });
-		await user.click(screen.getByRole("tab", { name: /endpoints/i }));
-		await user.click(await screen.findByText("Edit"));
-		await user.click(screen.getByText("Save"));
-		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
-		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
-			kind: "acp",
-			transport: "child",
-		});
 	});
 });

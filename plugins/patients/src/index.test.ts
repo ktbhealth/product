@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
+import { VAULT_TEST_DDL } from "@ktb/vault";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { patientDocuments, user as userTable } from "@ktb/db/schema";
@@ -36,7 +37,7 @@ import {
 	updatePatient,
 } from "./index.ts";
 import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
-import { validatePatient, type PatientFields } from "./record.ts";
+import { TEXT_FIELDS, validatePatient, type PatientFields } from "./record.ts";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant, type Tenant as TenantScope } from "@ktb/tenant";
 
@@ -54,6 +55,10 @@ INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, 
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 ${AUDIT_TEST_DDL}
+${VAULT_TEST_DDL}
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'Clínica A', 'clinica-a', 'clinic', 0, 0, 0);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (8, 'Clínica B', 'clinica-b', 'clinic', 0, 0, 0);
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
 `;
 
 describe("patients repo", () => {
@@ -387,6 +392,33 @@ describe("PatientsLive", () => {
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 
+	it("audits owner create/update with ids only (P-080)", async () => {
+		const created = await asUser(
+			"u1",
+			call((p) => p.create("u1", fields("Audited Pat"))),
+		);
+		let rows = await db.select().from(adminAudit);
+		const createEntry = rows.find(
+			(r) => r.action === "patients.create" && r.targetId === String(created!.id),
+		);
+		expect(createEntry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+		expect(createEntry?.detail).toContain('"ownerId":"u1"');
+		expect(createEntry?.detail).not.toContain("Audited Pat");
+
+		const updated = await asUser(
+			"u1",
+			call((p) => p.update("u1", created!.id, fields("Audited Pat 2"))),
+		);
+		expect(updated?.name).toBe("Audited Pat 2");
+		rows = await db.select().from(adminAudit);
+		const updateEntry = rows.find(
+			(r) => r.action === "patients.update" && r.targetId === String(created!.id),
+		);
+		expect(updateEntry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+		expect(updateEntry?.detail).toContain('"ownerId":"u1"');
+		expect(updateEntry?.detail).not.toContain("Audited Pat 2");
+	});
+
 	it("adminList returns cross-owner rows for an allowlisted principal", async () => {
 		const rows = await asUser(
 			"u1",
@@ -515,6 +547,14 @@ describe("PatientsLive", () => {
 			"admin@x.com",
 		);
 		expect(updated?.name).toBe("Foreign Edited");
+		// P-080: the audit row records the ROW's owner (u2), not the
+		// admin caller — ownerId is patient attribution, not the actor.
+		const auditRows = await db.select().from(adminAudit);
+		const updateEntry = auditRows.find(
+			(r) => r.action === "patients.update" && r.targetId === String(id),
+		);
+		expect(updateEntry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+		expect(updateEntry?.detail).toContain('"ownerId":"u2"');
 		// A non-admin still gets Forbidden on the same row.
 		await expect(
 			asUser(
@@ -524,6 +564,60 @@ describe("PatientsLive", () => {
 		).rejects.toMatchObject({
 			_tag: "Forbidden",
 		});
+	});
+
+	it("get audits the sensitive read scoped to the row's tenant (P-086)", async () => {
+		// Tenant-owned row (group 7) read cross-owner by a platform admin —
+		// the audit entry must carry the ROW's tenant_id, not ambient scope.
+		const tenantRow = await createPatient(db, "u2", fields("Tenant Read"), 7);
+		await asUser(
+			"u1",
+			call((p) => p.get("u1", tenantRow!.id)),
+			"admin@x.com",
+		);
+		// Personal row → tenant_id NULL.
+		const personal = await asUser(
+			"u1",
+			call((p) => p.create("u1", fields("Personal Read"))),
+		);
+		await asUser(
+			"u1",
+			call((p) => p.get("u1", personal!.id)),
+		);
+
+		const rows = await db.select().from(adminAudit);
+		const tenantEntry = rows.find(
+			(r) => r.action === "patients.read" && r.targetId === String(tenantRow!.id),
+		);
+		expect(tenantEntry).toMatchObject({
+			actorUserId: "u1",
+			targetType: "patient",
+			tenantId: 7,
+		});
+		const personalEntry = rows.find(
+			(r) => r.action === "patients.read" && r.targetId === String(personal!.id),
+		);
+		expect(personalEntry).toMatchObject({ targetType: "patient", tenantId: null });
+
+		// Missing rows, denied reads and list() write nothing.
+		const before = rows.length;
+		expect(
+			await asUser(
+				"u1",
+				call((p) => p.get("u1", 99999)),
+			),
+		).toBeNull();
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.get("u2", personal!.id)),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await asUser(
+			"u1",
+			call((p) => p.list("u1")),
+		);
+		expect(await db.select().from(adminAudit)).toHaveLength(before);
 	});
 });
 
@@ -664,6 +758,48 @@ describe("PatientsLive without a stored row", () => {
 			await runtime.dispose();
 		}
 	});
+
+	it("update returns null (and skips the audit write) when the update yields no row", async () => {
+		// getPatient sees the row but updatePatient's RETURNING is empty —
+		// the concurrent-delete shape the `updated !== null` guard covers.
+		const existing = { id: 7, ownerId: "u1", tenantId: null, name: "Ghost" };
+		const stub = {
+			select: () => ({
+				from: () => ({
+					// patients path ends in .limit(1); the patient_documents
+					// join in withIdentifiers awaits the where() result.
+					where: () => ({
+						limit: async () => [existing],
+						then: (resolve: (rows: unknown[]) => void) => resolve([]),
+					}),
+					innerJoin: () => ({ where: async () => [] }),
+				}),
+			}),
+			delete: () => ({ where: () => ({}) }),
+			update: () => ({
+				set: () => ({ where: () => ({ returning: async () => [] }) }),
+			}),
+			batch: async () => [[], []],
+		} as unknown as ReturnType<typeof makeDb>;
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, stub),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			makeEventBus(),
+		);
+		const runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provide(deps)));
+		try {
+			const row = await runtime.runPromise(
+				Effect.provideService(
+					Effect.flatMap(Patients, (p) => p.update("u1", 7, fields("Ghost Update"))),
+					Principal,
+					{ userId: "u1" },
+				),
+			);
+			expect(row).toBeNull();
+		} finally {
+			await runtime.dispose();
+		}
+	});
 });
 
 describe("PatientsCommandsLive", () => {
@@ -695,10 +831,11 @@ describe("PatientsCommandsLive", () => {
 		}
 	});
 
-	it("patients.delete removes the owner's patient and emits patient.deleted", async () => {
+	it("patients.delete removes the owner's patient, emits patient.deleted and audits (P-080)", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u1", fields("To Delete")))!;
-		const deps = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const deps = Layer.mergeAll(infra, AuditLive.pipe(Layer.provide(infra)));
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
 			await runtime.runPromise(
@@ -712,15 +849,23 @@ describe("PatientsCommandsLive", () => {
 				),
 			);
 			expect(await getPatient(db, row.id)).toBeNull();
+			// ids only — the audit row carries the row's owner, never fields.
+			const auditRows = await db.select().from(adminAudit);
+			const entry = auditRows.find(
+				(r) => r.action === "patients.delete" && r.targetId === String(row.id),
+			);
+			expect(entry).toMatchObject({ actorUserId: "u1", targetType: "patient" });
+			expect(entry?.detail).toContain('"ownerId":"u1"');
 		} finally {
 			await runtime.dispose();
 		}
 	});
 
-	it("patients.delete lets a platform admin remove another owner's patient", async () => {
+	it("patients.delete lets a platform admin remove another owner's patient and audits the row's owner", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u2", fields("Foreign")))!;
-		const deps = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const deps = Layer.mergeAll(infra, AuditLive.pipe(Layer.provide(infra)));
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
 			await runtime.runPromise(
@@ -734,6 +879,16 @@ describe("PatientsCommandsLive", () => {
 				),
 			);
 			expect(await getPatient(db, row.id)).toBeNull();
+			const auditRows = await db.select().from(adminAudit);
+			const entry = auditRows.find(
+				(r) => r.action === "patients.delete" && r.targetId === String(row.id),
+			);
+			expect(entry).toMatchObject({
+				actorUserId: "u1",
+				actorEmail: "admin@x.com",
+				targetType: "patient",
+			});
+			expect(entry?.detail).toContain('"ownerId":"u2"');
 		} finally {
 			await runtime.dispose();
 		}
@@ -1008,5 +1163,146 @@ describe("PatientsLive tenant scope (P-053)", () => {
 			await rt.dispose();
 			await busRuntime.dispose();
 		}
+	});
+});
+
+describe("PatientsLive ZK gate (T-144)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Patients, never>;
+	let db: ReturnType<typeof makeDb>;
+
+	// Group 9 is `zk = 1` in the shared DDL; groups 7/8 stay plaintext.
+	const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
+
+	beforeAll(() => {
+		db = makeDb(makeD1(DDL));
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			makeEventBus(),
+		);
+		runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provideMerge(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const asTenant = <A, E>(
+		userId: string,
+		tenant: TenantScope,
+		effect: Effect.Effect<A, E, Patients>,
+		email?: string,
+	) =>
+		runtime.runPromise(
+			Effect.provideService(
+				Effect.provideService(effect, Principal, { userId, email }),
+				Tenant,
+				tenant,
+			),
+		);
+
+	const call = <A, E>(f: (p: Patients["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(Patients, f);
+
+	/** Envelope-shaped fields — what the browser sends for a ZK tenant. */
+	const ciphered = (extra: Partial<PatientFields> = {}): PatientFields => ({
+		...(Object.fromEntries(TEXT_FIELDS.map((k) => [k, null])) as Record<
+			(typeof TEXT_FIELDS)[number],
+			null
+		>),
+		name: "v1.aXYtLmN0",
+		birthDate: "v1.ZGF0YQ",
+		active: true,
+		...extra,
+	});
+
+	it("create rejects plaintext fields for a ZK tenant", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.create("u1", fields("Plain"))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("create rejects a ciphered payload carrying one plaintext value", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.create("u1", ciphered({ phone: "11999990000" }))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("create persists envelope fields for a ZK tenant", async () => {
+		const row = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((p) => p.create("u1", ciphered())),
+		);
+		expect(row?.tenantId).toBe(9);
+		expect(row?.name).toBe("v1.aXYtLmN0");
+		expect(row?.birthDate).toBe("v1.ZGF0YQ");
+	});
+
+	it("update gates on the row's tenant, not the caller's fields", async () => {
+		const row = (await createPatient(db, "u1", ciphered(), 9))!;
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.update("u1", row.id, fields("Plain Update"))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.update" });
+		const updated = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((p) => p.update("u1", row.id, ciphered({ name: "v1.bmV3TmFtZQ" }))),
+		);
+		expect(updated?.name).toBe("v1.bmV3TmFtZQ");
+	});
+
+	it("adminCreate rejects plaintext for a ZK tenant", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((p) => p.adminCreate("u2", fields("Admin Plain"))),
+				"admin@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("plaintext still flows for non-ZK tenant writes", async () => {
+		const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
+		const row = await asTenant(
+			"u1",
+			TENANT_A,
+			call((p) => p.create("u1", fields("Plain Ok"))),
+		);
+		expect(row?.name).toBe("Plain Ok");
+	});
+
+	it("create rejects a ciphered payload on a non-ZK tenant", async () => {
+		const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_A,
+				call((p) => p.create("u1", ciphered())),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.create" });
+	});
+
+	it("update rejects a ciphered payload when the row lives in a non-ZK tenant", async () => {
+		const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
+		const row = (await createPatient(db, "u1", fields("Plain Row"), 7))!;
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_A,
+				call((p) => p.update("u1", row.id, ciphered())),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.update" });
 	});
 });

@@ -112,15 +112,16 @@ describe("patients.* CQRS surface", () => {
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 			makeEventBus(),
 		);
+		// P-080: the `patients.delete` command handler owns the audit write
+		// for every patient delete — the Audit service must be in the
+		// command handlers' context, not just the cascade's.
+		const auditLive = AuditLive.pipe(Layer.provide(infra));
 		const patientsHandlers = Layer.mergeAll(PatientsQueriesLive, PatientsCommandsLive).pipe(
-			Layer.provide(infra),
+			Layer.provide(Layer.mergeAll(infra, auditLive)),
 		);
-		const live = Layer.mergeAll(
-			PatientRecordConsultationsLive,
-			PatientDeleteCascadeLive,
-			// T-037: the admin patient-delete path writes admin_audit.
-			AuditLive.pipe(Layer.provide(infra)),
-		).pipe(Layer.provide(Layer.mergeAll(infra, patientsHandlers)));
+		const live = Layer.mergeAll(PatientRecordConsultationsLive, PatientDeleteCascadeLive).pipe(
+			Layer.provide(Layer.mergeAll(infra, patientsHandlers)),
+		);
 		runtime = ManagedRuntime.make(live as Layer.Layer<unknown, never, never>);
 	});
 
@@ -204,22 +205,30 @@ describe("patients.* CQRS surface", () => {
 			await expect(deleteCascade(patient.id, "u1")).rejects.toBeInstanceOf(Forbidden);
 		});
 
-		it("records a patients.delete audit row for platform-admin deletes only", async () => {
+		it("records a patients.delete audit row for owner and admin deletes alike", async () => {
 			const patient = (await createPatient(db, "u1", fields("Cascade Admin")))!;
 			await linkedConsultation(patient.id, "u1");
 
-			// Owner path — not an admin action, no audit row.
+			// Owner path — the patients.delete command handler audits
+			// every delete now (P-080), not just admin actions.
 			await deleteCascade(patient.id, "u1");
 			let rows = await db.select().from(adminAudit);
-			expect(rows.filter((r) => r.action === "patients.delete")).toHaveLength(0);
+			let entry = rows.find(
+				(r) => r.action === "patients.delete" && r.targetId === String(patient.id),
+			);
+			expect(entry).toMatchObject({
+				actorUserId: "u1",
+				targetType: "patient",
+			});
+			expect(entry?.detail).toContain('"ownerId":"u1"');
 
-			// Admin path — cross-owner delete is audited with ids/counts.
+			// Admin path — same unified audit row, admin actor.
 			const adminPatient = (await createPatient(db, "u1", fields("Cascade Admin 2")))!;
 			await linkedConsultation(adminPatient.id, "u1");
 			await linkedConsultation(adminPatient.id, "u2");
 			await deleteCascade(adminPatient.id, "admin@x.com", undefined, "admin@x.com");
 			rows = await db.select().from(adminAudit);
-			const entry = rows.find(
+			entry = rows.find(
 				(r) => r.action === "patients.delete" && r.targetId === String(adminPatient.id),
 			);
 			expect(entry).toMatchObject({
@@ -228,7 +237,6 @@ describe("patients.* CQRS surface", () => {
 				targetType: "patient",
 			});
 			expect(entry?.detail).toContain('"ownerId":"u1"');
-			expect(entry?.detail).toContain('"consultations":2');
 		});
 	});
 

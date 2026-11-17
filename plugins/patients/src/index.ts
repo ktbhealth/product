@@ -20,10 +20,12 @@ import {
 } from "@ktb/platform";
 import { Forbidden, requireCanAs, requirePrincipalUser } from "@ktb/authz";
 import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
+import { tenantIsZk } from "@ktb/vault";
 import {
 	isPatientDocumentType,
 	PATIENT_DOCUMENT_KEYS,
 	PATIENT_DOCUMENT_TYPES,
+	TEXT_FIELDS,
 	type PatientDocumentType,
 	type PatientFields,
 	type PatientIdentifiers,
@@ -280,6 +282,42 @@ const authorizePatientRow = (
 		yield* orPlatformAdmin(platformAdmin, requireCanAs(action, { ownerId: row.ownerId }));
 	});
 
+const ENVELOPE = /^v1\./;
+
+/**
+ * ZK write gate (PL-007 F3, T-144): under a ZK tenant every non-null
+ * PII field must already be a `v1.` AEAD envelope — the server never
+ * stores plaintext PII there, so a plaintext write is denied like an
+ * authz violation. `name`/`birthDate` stay required (mirroring
+ * `validatePatient`), `active` is declared plaintext BY DESIGN. Reads
+ * need no gate: rows come back exactly as stored (envelopes for ZK,
+ * plaintext otherwise) and clients decrypt.
+ */
+const zkCipheredFields = (fields: PatientFields) =>
+	fields.name !== null &&
+	fields.birthDate !== null &&
+	TEXT_FIELDS.every((key) => fields[key] === null || ENVELOPE.test(fields[key]!));
+
+/** Any populated PII field already looks like ciphertext. */
+const hasCipheredField = (fields: PatientFields) =>
+	TEXT_FIELDS.some((key) => fields[key] !== null && ENVELOPE.test(fields[key]!));
+
+const requireCipheredWhenZk = Effect.fn("Patients.requireCipheredWhenZk")(function* (
+	db: DbClient,
+	tenantId: number | null,
+	fields: PatientFields,
+	action: "patient.create" | "patient.update",
+) {
+	const zk = tenantId !== null && (yield* Effect.promise(() => tenantIsZk(db, tenantId)));
+	// Fails closed both ways: under ZK every populated PII field must be
+	// an envelope; outside ZK (non-ZK tenant or personal scope — no
+	// clinic keyring exists there) an envelope write is unreadable
+	// forever, so it is denied the same way.
+	if (zk ? !zkCipheredFields(fields) : hasCipheredField(fields)) {
+		yield* Effect.fail(new Forbidden({ path: action }));
+	}
+});
+
 /**
  * Patients domain port — Effect service, swappable in tests.
  *
@@ -340,12 +378,22 @@ export const PatientsLive = Layer.effect(
 				// owner-scoped and platform admins read cross-owner either
 				// way (admin detail/edit pages).
 				yield* authorizePatientRow(platformAdmin, row, "patient.read");
+				// Sensitive-read audit (P-086 feed): the ROW's tenant_id is
+				// authoritative — a cross-owner admin read must scope to the
+				// record's tenant, not the ambient one. ids only, never fields.
+				yield* audit({
+					action: "patients.read",
+					targetType: "patient",
+					targetId: row.id,
+					tenantId: row.tenantId,
+				});
 				return row;
 			}),
 			create: Effect.fn("Patients.create")(function* (ownerId: string, fields: PatientFields) {
 				yield* requirePrincipalUser(ownerId, "patient.create");
 				yield* requireCanAs("patient.create");
 				const tenant = yield* Tenant;
+				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
 				yield* Effect.logInfo("patient create", { ownerId });
 				const row = yield* Effect.promise(() =>
@@ -360,6 +408,15 @@ export const PatientsLive = Layer.effect(
 							tenantId: tenantScopeId(tenant),
 						}),
 					]);
+					// ids only — patient fields are PHI and stay out of the
+					// audit log (same rule as adminCreate).
+					yield* audit({
+						action: "patients.create",
+						targetType: "patient",
+						targetId: row.id,
+						tenantId: tenantScopeId(tenant),
+						detail: { ownerId },
+					});
 				}
 				return row;
 			}),
@@ -372,9 +429,22 @@ export const PatientsLive = Layer.effect(
 				const row = yield* Effect.promise(() => getPatient(db, id));
 				if (row === null) return null;
 				yield* authorizePatientRow(platformAdmin, row, "patient.update");
+				yield* requireCipheredWhenZk(db, row.tenantId, fields, "patient.update");
 				yield* Effect.annotateCurrentSpan({ ownerId, patientId: id });
 				yield* Effect.logInfo("patient update", { ownerId, patientId: id });
-				return yield* Effect.promise(() => updatePatient(db, id, fields));
+				const updated = yield* Effect.promise(() => updatePatient(db, id, fields));
+				if (updated !== null) {
+					// ids only — the row's tenant_id and owner_id are
+					// authoritative (the caller may be a cross-owner admin).
+					yield* audit({
+						action: "patients.update",
+						targetType: "patient",
+						targetId: id,
+						tenantId: row.tenantId,
+						detail: { ownerId: row.ownerId },
+					});
+				}
+				return updated;
 			}),
 			adminList: Effect.fn("Patients.adminList")(function* () {
 				// Platform gate first — fails Forbidden for non-admins and
@@ -390,6 +460,7 @@ export const PatientsLive = Layer.effect(
 			) {
 				yield* platformAdmin.requireAdmin();
 				const tenant = yield* Tenant;
+				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
 				yield* Effect.logInfo("patient admin create", { ownerId });
 				const row = yield* Effect.promise(() =>
@@ -458,6 +529,16 @@ export const PatientsCommandsLive = Command.handlersOf(PatientsCommands, {
 				// differ from the deleted row's owner scope.
 				PatientDeleted.make({ id, ownerId: row.ownerId, tenantId: row.tenantId }),
 			]);
+			// P-080: every patient delete is audited here — owner and
+			// platform-admin paths alike (the consultations cascade no
+			// longer writes its own row). ids only, never record fields.
+			yield* audit({
+				action: "patients.delete",
+				targetType: "patient",
+				targetId: id,
+				tenantId: row.tenantId,
+				detail: { ownerId: row.ownerId },
+			});
 		}),
 });
 

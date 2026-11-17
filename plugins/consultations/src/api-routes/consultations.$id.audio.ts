@@ -1,7 +1,10 @@
 import { Effect } from "effect";
 
+import { audit } from "@ktb/audit";
 import { AUDIO_TRANSCRIPTION_JOB_KIND, Consultations } from "@ktb/consultations";
+import { Db } from "@ktb/db";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
+import { tenantIsZk } from "@ktb/vault";
 
 /**
  * POST /api/consultations/:id/audio — store the session recording in R2
@@ -120,6 +123,30 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 					}),
 				);
 
+				// T-147: a ZK tenant uploads ciphertext (client-side framed
+				// AES-GCM). It is stored for approved-device retrieval, but
+				// must never reach the Whisper queue — the tenant's own row
+				// metadata is the gate, not anything the client sent.
+				const zk =
+					detail.tenantId !== null &&
+					(await runAs(
+						{ id: user.id },
+						Effect.gen(function* () {
+							const db = yield* Db;
+							return yield* Effect.promise(() => tenantIsZk(db, detail.tenantId!));
+						}),
+					));
+				if (zk) {
+					await runAs(
+						{ id: user.id },
+						Effect.gen(function* () {
+							const consultations = yield* Consultations;
+							yield* consultations.updateAudioStatus(user.id, id, "zk");
+						}),
+					);
+					return Response.json({ ok: true, audioStatus: "zk", audioSize: bytes.byteLength });
+				}
+
 				try {
 					// Enqueue via the jobs port (PL-007): the host adapter
 					// writes the job_runs row and sends the kind-dispatched
@@ -170,6 +197,22 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 
 				const detail = await fetchOwned(id, user.id);
 				if (!detail?.audioKey) return Response.json({ error: "not found" }, { status: 404 });
+
+				// Sensitive-read audit: the audio bytes are the most sensitive
+				// payload a consultation carries — record the download after
+				// authz, before the stream. ids only.
+				await runAs(
+					{ id: user.id },
+					Effect.gen(function* () {
+						yield* audit({
+							action: "consultations.audio.read",
+							targetType: "consultation",
+							targetId: id,
+							tenantId: detail.tenantId,
+							detail: { patientId: detail.patientId, via: "audio-download" },
+						});
+					}),
+				);
 
 				const object = await audioBucket.get(detail.audioKey);
 				if (!object) return Response.json({ error: "not found" }, { status: 404 });

@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 
 const headers = { current: null as Headers | null };
+const url = { current: "http://localhost/x" };
 
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestHeaders: () => {
 		if (headers.current === null) throw new Error("no request context");
 		return headers.current;
+	},
+	getRequestUrl: () => {
+		if (headers.current === null) throw new Error("no request context");
+		return new URL(url.current);
 	},
 }));
 
@@ -57,5 +62,21 @@ describe("requestTelemetryContext", () => {
 		const ctx = await requestTelemetryContext();
 		expect(ctx.requestId).toMatch(/^[0-9a-f-]{36}$|^req-/);
 		expect(ctx.traceparent).toBeUndefined();
+		expect(ctx.route).toBeUndefined();
+	});
+
+	it("seeds route with the server-fn id for /_serverFn/ requests", async () => {
+		headers.current = new Headers();
+		url.current = "http://localhost/_serverFn/fn-route-1";
+		const ctx = await requestTelemetryContext();
+		expect(ctx.route).toBe("fn-route-1");
+		url.current = "http://localhost/x";
+	});
+
+	it("leaves route unset for router requests", async () => {
+		headers.current = new Headers();
+		url.current = "http://localhost/consultations/42";
+		const ctx = await requestTelemetryContext();
+		expect(ctx.route).toBeUndefined();
 	});
 });

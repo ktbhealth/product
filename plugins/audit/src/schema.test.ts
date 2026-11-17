@@ -23,9 +23,13 @@ describe("admin_audit schema", () => {
 		]);
 	});
 
-	it("indexes created_at, action and actor_user_id and FKs tenant_id to groups", () => {
+	it("indexes created_at, action, actor_user_id, (tenant_id, created_at) and the read-dedupe composite, FKs tenant_id to groups", () => {
 		const cfg = getTableConfig(adminAudit);
-		expect(cfg.indexes).toHaveLength(3);
+		expect(cfg.indexes).toHaveLength(5);
+		const names = cfg.indexes.map((i) => i.config.name);
+		expect(names).toContain("admin_audit_tenant_created_idx");
+		// P-087 D3: the coalescing probe's composite index.
+		expect(names).toContain("admin_audit_dedupe_idx");
 		for (const fk of cfg.foreignKeys) {
 			expect(fk.onDelete).toBe("set null");
 			// reference() evaluates the lazy `() => groups.id` callback.

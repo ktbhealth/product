@@ -156,6 +156,41 @@ describe("scopedRepo reads", () => {
 		expect(row).toBeNull();
 	});
 
+	it("findFirst with a matching condition returns the row", async () => {
+		const f = await makeFixture();
+		const row = await repo(f, tenantA, (r) => r.findFirst(eq(notes.body, "a2")));
+		expect(row?.id).toBe(f.ids.a2);
+	});
+
+	it("findFirst with a non-matching condition returns null", async () => {
+		const f = await makeFixture();
+		const row = await repo(f, tenantA, (r) => r.findFirst(eq(notes.body, "missing")));
+		expect(row).toBeNull();
+	});
+
+	it("findFirst condition cannot reach foreign-tenant rows", async () => {
+		const f = await makeFixture();
+		// The condition matches tenant B's row, but the tenant-A scope
+		// fence still excludes it — the condition is ANDed, never a
+		// substitute for the scope.
+		const row = await repo(f, tenantA, (r) => r.findFirst(eq(notes.body, "b1")));
+		expect(row).toBeNull();
+	});
+
+	it("findMany with a condition filters inside the scope", async () => {
+		const f = await makeFixture();
+		const rows = await repo(f, tenantA, (r) => r.findMany(eq(notes.tenantId, 1)));
+		expect(rows.map((r) => r.id).sort((a, b) => a - b)).toEqual(
+			[f.ids.a1, f.ids.a2].sort((a, b) => a - b),
+		);
+	});
+
+	it("findMany condition cannot reach foreign-tenant rows", async () => {
+		const f = await makeFixture();
+		const rows = await repo(f, tenantA, (r) => r.findMany(eq(notes.body, "b1")));
+		expect(rows).toEqual([]);
+	});
+
 	it("TenantAccess widens the visible set across tenants", async () => {
 		const f = await makeFixture();
 		const rows = await withTenant(

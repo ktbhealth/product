@@ -86,7 +86,8 @@ function base64url(data: ArrayBuffer | Uint8Array | string): string {
 		typeof data === "string"
 			? encoder.encode(data)
 			: data instanceof Uint8Array
-				? data
+				? /* v8 ignore next -- call sites only pass string | ArrayBuffer;
+				     the Uint8Array arm is defensive */ data
 				: new Uint8Array(data);
 	let bin = "";
 	for (const b of bytes) bin += String.fromCharCode(b);
@@ -113,7 +114,10 @@ async function appJwt(env: Env): Promise<string> {
 	const unsigned = `${header}.${payload}`;
 	const key = await crypto.subtle.importKey(
 		"pkcs8",
-		pemToDer(env.GITHUB_APP_PRIVATE_KEY ?? "") as BufferSource,
+		pemToDer(
+			/* v8 ignore next -- handleTokenMint 503s when the key is unset;
+			   this fallback is for direct calls only */ env.GITHUB_APP_PRIVATE_KEY ?? "",
+		) as BufferSource,
 		{ name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
 		false,
 		["sign"],

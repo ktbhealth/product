@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { Integrity, IntegrityLive, RECORD_VERSIONS_TEST_DDL, recordVersions } from "@ktb/integrity";
+import { VAULT_TEST_DDL } from "@ktb/vault";
 import { Db, makeDb } from "@ktb/db";
 import {
 	consultations as consultationsTable,
@@ -64,6 +65,9 @@ CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
 ${AUDIT_TEST_DDL}
 ${RECORD_VERSIONS_TEST_DDL}
+${VAULT_TEST_DDL}
+-- A ZK-flagged tenant for the cipher-gate tests; 7/8 stay plaintext.
+INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (9, 'Clínica ZK', 'clinica-zk', 'clinic', 1, 0, 0);
 `;
 
 // ConsultationsLive requires PlatformAdmin (adminList) — every runtime
@@ -460,10 +464,14 @@ describe("ConsultationsLive", () => {
 	});
 
 	it("adminDelete removes the row and returns its audio key", async () => {
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Del Paciente", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
 		const id = await createConsultation(testDb, {
 			userId: "u1",
 			source: "mic",
-			patientId: undefined,
+			patientId: p!.id,
 		});
 		await testDb
 			.update(consultationsTable)
@@ -480,7 +488,8 @@ describe("ConsultationsLive", () => {
 			.from(consultationsTable)
 			.where(eq(consultationsTable.id, id!));
 		expect(rows).toEqual([]);
-		// T-037: delete is audited with hadAudio only — never the audio key.
+		// T-037/P-086: delete is audited with hadAudio + patientId —
+		// never the audio key or record fields.
 		const auditRows = await testDb.select().from(adminAudit);
 		const entry = auditRows.find(
 			(r) => r.action === "consultations.delete" && r.targetId === String(id),
@@ -491,6 +500,7 @@ describe("ConsultationsLive", () => {
 			targetType: "consultation",
 		});
 		expect(entry?.detail).toContain('"hadAudio":true');
+		expect(entry?.detail).toContain(`"patientId":${p!.id}`);
 		expect(entry?.detail).not.toContain("audios/x.webm");
 	});
 
@@ -642,6 +652,140 @@ describe("ConsultationsLive", () => {
 			"u1",
 			call((c) => c.recordConsent(9999, "u1")),
 		);
+	});
+
+	it("audits owner mutations with ids/flags only (P-080)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "secret", source: "mic" })),
+		);
+		const saved = await asUser(
+			"u1",
+			call((c) => c.save("u1", saveInput())),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: saved.id,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e2",
+				}),
+			),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.recordConsent(saved.id, "u1")),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAudio("u1", {
+					consultationId: saved.id,
+					audioKey: "k-audit",
+					contentType: "audio/webm",
+					size: 5,
+				}),
+			),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.updateAudioStatus("u1", saved.id, "queued")),
+		);
+		// finish is a system path — no principal bound, actor columns NULL.
+		await runtime.runPromise(Effect.flatMap(Consultations, (c) => c.finish(saved.id)));
+
+		const rows = await testDb.select().from(adminAudit);
+		const find = (action: string, targetId: number) =>
+			rows.find((r) => r.action === action && r.targetId === String(targetId));
+
+		const created = find("consultations.create", id!);
+		expect(created).toMatchObject({
+			actorUserId: "u1",
+			targetType: "consultation",
+		});
+		expect(created?.detail).toContain('"source":"mic"');
+		expect(created?.detail).not.toContain("secret");
+
+		expect(find("consultations.save", saved.id)?.detail).toContain('"engine":"e"');
+		expect(find("consultations.anamnesis.attach", saved.id)?.detail).toContain('"engine":"e2"');
+		expect(find("consultations.consent.record", saved.id)).toMatchObject({
+			targetType: "consultation",
+		});
+		// P-087 D1 sanitizer drops `contentType` ("content" substring) by
+		// design — `size` survives as the remaining non-sensitive flag.
+		expect(find("consultations.audio.attach", saved.id)?.detail).toContain('"size":5');
+		expect(find("consultations.audio.status", saved.id)?.detail).toContain('"status":"queued"');
+		const finished = find("consultations.finish", saved.id);
+		expect(finished).toMatchObject({
+			actorUserId: null,
+			targetType: "consultation",
+		});
+		expect(finished?.detail).toContain('"status":"done"');
+	});
+
+	it("get audits consultations.read with patientId and the row's tenant", async () => {
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Read Audit", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		// Tenant-owned row (group 9 exists in the fixture DDL).
+		const tenantId = await createConsultation(
+			testDb,
+			{ userId: "u1", patientId: p!.id, source: "browser" },
+			9,
+		);
+		// Personal (tenantless) row read by its owner.
+		const personalId = await createConsultation(testDb, {
+			userId: "u1",
+			patientId: p!.id,
+			source: "browser",
+		});
+		await asUser(
+			"u1",
+			call((c) => c.get(personalId!, "u1")),
+		);
+		// Cross-owner admin read of the tenant row — tenant_id is
+		// row-authoritative, not the ambient scope.
+		await asUser(
+			"u1",
+			call((c) => c.get(tenantId!, "u1")),
+			"admin@x.com",
+		);
+
+		const rows = await testDb.select().from(adminAudit);
+		const find = (targetId: number) =>
+			rows.find((r) => r.action === "consultations.read" && r.targetId === String(targetId));
+		const personal = find(personalId!);
+		expect(personal).toMatchObject({
+			actorUserId: "u1",
+			targetType: "consultation",
+			tenantId: null,
+		});
+		expect(personal?.detail).toContain(`"patientId":${p!.id}`);
+		expect(personal?.detail).toContain('"via":"detail"');
+		expect(personal?.detail).not.toContain("Read Audit");
+		expect(find(tenantId!)).toMatchObject({ targetType: "consultation", tenantId: 9 });
+
+		// Missing rows and denied reads write nothing; getLive is not audited.
+		const before = rows.length;
+		expect(
+			await asUser(
+				"u1",
+				call((c) => c.get(999999, "u1")),
+			),
+		).toBeNull();
+		await expect(
+			asUser(
+				"u2",
+				call((c) => c.get(personalId!, "u2")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await asUser(
+			"u1",
+			call((c) => c.getLive(personalId!, "u1")),
+		);
+		expect(await testDb.select().from(adminAudit)).toHaveLength(before);
 	});
 });
 
@@ -1457,6 +1601,53 @@ describe("Consultations.history", () => {
 		expect(h?.visits[0]?.chiefComplaint).toBeNull();
 		expect(h?.visits[0]?.plan).toBeNull();
 	});
+
+	it("audits history reads on the patient target (P-086)", async () => {
+		// Two fresh patients: identical `.read` emissions coalesce inside
+		// Audit.record (P-087 D3), so each via gets its own target.
+		const [p4] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Audit Hist", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		const [p5] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Audit Rows", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		await addConsultation({ patientId: p4!.id, anamnesis: doc("QA", "CA") });
+		await addConsultation({ patientId: p5!.id, anamnesis: doc("QB", "CB") });
+		await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.history(p4!.id, "u1")),
+		);
+		await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.historyRows(p5!.id, "u1")),
+		);
+		// A patient the caller cannot see is not a sensitive read — no entry.
+		await asUser(
+			"u1",
+			Effect.flatMap(Consultations, (c) => c.history(99999, "u1")),
+		);
+
+		const rows = await testDb.select().from(adminAudit);
+		const historyEntry = rows.find(
+			(r) => r.action === "consultations.history.read" && r.targetId === String(p4!.id),
+		);
+		expect(historyEntry).toMatchObject({ targetType: "patient" });
+		expect(historyEntry?.detail).toContain('"via":"history"');
+		expect(historyEntry?.detail).toContain(`"patientId":${p4!.id}`);
+		const rowsEntry = rows.find(
+			(r) => r.action === "consultations.history.read" && r.targetId === String(p5!.id),
+		);
+		expect(rowsEntry).toMatchObject({ targetType: "patient" });
+		expect(rowsEntry?.detail).toContain('"via":"history-rows"');
+		expect(rowsEntry?.detail).toContain(`"patientId":${p5!.id}`);
+		expect(
+			(await testDb.select().from(adminAudit)).filter(
+				(r) => r.action === "consultations.history.read" && r.targetId === "99999",
+			),
+		).toHaveLength(0);
+	});
 });
 
 describe("patientId ownership on save/attach", () => {
@@ -1742,6 +1933,7 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 
 	const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
 	const TENANT_B: TenantScope = { id: 8, kind: "clinic", slug: "clinica-b", role: "member" };
+	const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
 
 	const asUser = <A, E>(
 		userId: string | null,
@@ -2014,5 +2206,226 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 				call((c) => c.save("u1", saveInput({ patientId: patient.id }))),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
+	// ---------- T-145: ZK cipher gates ----------
+
+	const ENV = "v1.aXYtLmN0";
+	const ENV2 = "v1.YW5hbS5jdA";
+	const VERSION = { contentHash: "sha256:client-hash", signature: "sig-1" };
+
+	it("save fails closed: plaintext under zk and envelopes outside zk", async () => {
+		// Plaintext transcript/anamnesis under the ZK tenant → Forbidden.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.save("u1", saveInput())),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.create" });
+
+		// Envelope write under ZK succeeds — stored verbatim, with the
+		// client-signed version landing on record_versions.
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2, version: VERSION }))),
+		);
+		expect(await tenantIdOf(saved.id)).toBe(9);
+		const stored = await testDb
+			.select()
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.transcript).toBe(ENV);
+		expect(stored[0]?.anamnesis).toBe(ENV2);
+		const versions = await testDb
+			.select()
+			.from(recordVersions)
+			.where(
+				and(
+					eq(recordVersions.entityType, "consultation.anamnesis"),
+					eq(recordVersions.entityId, String(saved.id)),
+				),
+			);
+		expect(versions).toHaveLength(1);
+		expect(versions[0]?.contentHash).toBe(VERSION.contentHash);
+		expect(versions[0]?.signature).toBe(VERSION.signature);
+
+		// Same envelopes under a plaintext tenant and in personal scope
+		// are rejected — ciphertext needs a clinic keyring.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_A,
+				call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.create" });
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
+	it("create under zk rejects a populated plaintext transcript but allows the empty live form", async () => {
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.create({ userId: "u1", transcript: "plaintext live", source: "browser" })),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.create" });
+		const live = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.create({ userId: "u1", source: "browser", status: "live" })),
+		);
+		expect(live).not.toBeNull();
+	});
+
+	it("attachAnamnesis under zk stores envelopes with the client signature and rejects plaintext", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) =>
+					c.attachAnamnesis("u1", {
+						consultationId: saved.id,
+						anamnesis: {} as SaveConsultationInput["anamnesis"],
+						engine: "e",
+					}),
+				),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.update" });
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: saved.id,
+					anamnesis: "v1.bmV3LWVuYQ",
+					engine: "heuristic",
+					version: { contentHash: "sha256:v2", signature: "sig-2" },
+				}),
+			),
+		);
+		const stored = await testDb
+			.select({ anamnesis: consultationsTable.anamnesis })
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.anamnesis).toBe("v1.bmV3LWVuYQ");
+		const v2 = await testDb
+			.select()
+			.from(recordVersions)
+			.where(
+				and(
+					eq(recordVersions.entityType, "consultation.anamnesis"),
+					eq(recordVersions.entityId, String(saved.id)),
+					eq(recordVersions.version, 2),
+				),
+			);
+		expect(v2[0]?.contentHash).toBe("sha256:v2");
+		expect(v2[0]?.signature).toBe("sig-2");
+	});
+
+	it("list keeps envelope rows opaque — hasAnamnesis set, chiefComplaint null", async () => {
+		await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		const rows = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.list("u1")),
+		);
+		const env = rows.find((r) => r.hasAnamnesis);
+		expect(env).toBeDefined();
+		expect(env?.chiefComplaint).toBeNull();
+		expect(env?.anamnesis).toBe(ENV2);
+	});
+
+	it("historyRows returns the raw envelopes for client-side decryption", async () => {
+		const patient = (
+			await testDb
+				.insert(patientsTable)
+				.values({ ownerId: "u1", name: "ZK Patient", createdAt: new Date() })
+				.returning({ id: patientsTable.id })
+		)[0]!;
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) =>
+				c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2, patientId: patient.id })),
+			),
+		);
+		const history = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.historyRows(patient.id, "u1")),
+		);
+		expect(history?.rows[0]?.id).toBe(saved.id);
+		expect(history?.rows[0]?.anamnesis).toBe(ENV2);
+		// Scoping to another owner fails Forbidden (same gate as
+		// `history`); a patient the caller does not own yields null.
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.historyRows(patient.id, "u2")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "consultation.read" });
+		await expect(
+			asTenant(
+				"u1",
+				TENANT_ZK,
+				call((c) => c.historyRows(999_999, "u1")),
+			),
+		).resolves.toBeNull();
+	});
+
+	it("system transcript paths no-op on zk rows", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		// Whisper pipeline + LLM-cleaned transcript + live append all
+		// refuse plaintext persistence on a zk-owned row.
+		await appendTranscript(testDb, saved.id, "server asr text");
+		await completeAudioJob(testDb, saved.id, "server asr text");
+		await saveCorrectedTranscript(testDb, saved.id, "server llm text", "llm");
+		const stored = await testDb
+			.select({
+				transcript: consultationsTable.transcript,
+				serverTranscript: consultationsTable.serverTranscript,
+				correctedTranscript: consultationsTable.correctedTranscript,
+			})
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, saved.id));
+		expect(stored[0]?.transcript).toBe(ENV);
+		expect(stored[0]?.serverTranscript).toBeNull();
+		expect(stored[0]?.correctedTranscript).toBeNull();
+	});
+
+	it("get returns the envelope via anamnesisRaw with a null parsed anamnesis", async () => {
+		const saved = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.save("u1", saveInput({ transcript: ENV, anamnesis: ENV2 }))),
+		);
+		const detail = await asTenant(
+			"u1",
+			TENANT_ZK,
+			call((c) => c.get(saved.id, "u1")),
+		);
+		expect(detail?.anamnesisRaw).toBe(ENV2);
+		expect(detail?.anamnesis).toBeNull();
 	});
 });

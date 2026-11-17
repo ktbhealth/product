@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import { Query } from "@effect-server-utils/cqrs";
 
 import { Forbidden, Principal } from "@ktb/authz";
+import { Audit } from "@ktb/audit";
 import { Consultations } from "@ktb/consultations";
 import type { Page } from "@ktb/kernel";
 import { Patients } from "@ktb/patients";
@@ -48,6 +49,15 @@ const consultationsLayer = (impl: Record<string, unknown> = {}) =>
 		history: () => Effect.succeed(null),
 		...impl,
 	} as never);
+
+/** Stub Audit port for the activity page — absent layer means the
+ * audit plugin is disabled (serviceOption → None). */
+const auditLayer = (impl: Record<string, unknown> = {}) =>
+	Layer.succeed(Audit, {
+		activityAccess: () => Effect.succeed(false),
+		activityList: () => Effect.succeed({ entries: [], total: 0, limit: 200 }),
+		...impl,
+	} as never) as unknown as Layer.Layer<never, never, never>;
 
 const recordConsultationsLayer = (rows: readonly unknown[] = []) =>
 	Query.handlersOf(PatientRecordConsultationsQueries, {
@@ -353,5 +363,58 @@ describe("clinician.consultations.record loader", () => {
 				layer: withConsultation,
 			}),
 		).resolves.toEqual({ view: "detail", c: consultation, history: null });
+	});
+});
+
+describe("clinician.activity guard", () => {
+	const g = guard("clinician.activity");
+	const ACTIVITY_PATH = "/portal/clinician/activity";
+
+	it("denies when the Audit service is absent", async () => {
+		await expect(run(g(ACTIVITY_PATH), { principal: DOCTOR, layer: Layer.empty })).resolves.toBe(
+			false,
+		);
+	});
+
+	it("delegates to Audit.activityAccess", async () => {
+		for (const allowed of [true, false]) {
+			await expect(
+				run(g(ACTIVITY_PATH), {
+					principal: DOCTOR,
+					layer: auditLayer({ activityAccess: () => Effect.succeed(allowed) }),
+				}),
+			).resolves.toBe(allowed);
+		}
+	});
+});
+
+describe("clinician.activity loader", () => {
+	const l = loader("clinician.activity");
+	const ACTIVITY_PATH = "/portal/clinician/activity";
+	const EMPTY = { entries: [], total: 0, limit: 200 };
+
+	it("returns an empty page when the Audit service is absent", async () => {
+		await expect(run(l(ACTIVITY_PATH), { principal: DOCTOR, layer: Layer.empty })).resolves.toEqual(
+			EMPTY,
+		);
+	});
+
+	it("returns the tenant feed", async () => {
+		const result = { entries: [{ id: 1, action: "a.b" }], total: 1, limit: 200 };
+		await expect(
+			run(l(ACTIVITY_PATH), {
+				principal: DOCTOR,
+				layer: auditLayer({ activityList: () => Effect.succeed(result) }),
+			}),
+		).resolves.toEqual(result);
+	});
+
+	it("collapses Forbidden to an empty page", async () => {
+		await expect(
+			run(l(ACTIVITY_PATH), {
+				principal: DOCTOR,
+				layer: auditLayer({ activityList: forbidden }),
+			}),
+		).resolves.toEqual(EMPTY);
 	});
 });

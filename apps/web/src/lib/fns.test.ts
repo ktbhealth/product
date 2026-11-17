@@ -3,7 +3,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -24,6 +26,8 @@ import { env } from "cloudflare:workers";
 import * as Effect from "effect/Effect";
 import type { Page, PanelPage } from "@ktb/kernel";
 import { appPages, portalPages } from "./registry.ts";
+import { plugins } from "#/plugins.ts";
+import { pluginEnabledFn } from "@ktb/server-fns";
 import { SAMPLE_TRANSCRIPT, type Anamnesis, type AnamnesisSection } from "@ktb/anamnesis";
 import { auth, db } from "./platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
@@ -32,36 +36,40 @@ import { eq } from "drizzle-orm";
 import { audioBucketStore } from "#/test/cloudflare-workers.ts";
 import {
 	adminCreateConsultationFn,
-	adminCreatePatientFn,
 	adminDeleteConsultationFn,
 	adminListAudioJobsFn,
 	attachAnamnesisFn,
-	countMyUnreadNotificationsFn,
-	createPatientFn,
-	deletePatientFn,
-	emailEnabledFn,
 	extractAnamnesisFn,
 	getConsultationFn,
 	getLiveConsultationFn,
-	getPatientFn,
-	getSessionUserFn,
 	listConsultationsFn,
-	listMyNotificationsFn,
-	listPatientConsultationsFn,
+	patientHistoryFn,
+	recordConsentFn,
+	saveConsultationFn,
+	verifyConsultationIntegrityFn,
+} from "@ktb/consultations/fns";
+import {
+	adminCreatePatientFn,
+	createPatientFn,
+	deletePatientFn,
+	getPatientFn,
 	listPatientsFn,
+	patientConsultationsFn,
+	patientDeletionImpactFn,
+	updatePatientFn,
+} from "@ktb/patients/fns";
+import {
+	countMyUnreadNotificationsFn,
+	emailEnabledFn,
+	getSessionUserFn,
+	listMyNotificationsFn,
 	markAllMyNotificationsReadFn,
 	markMyNotificationsReadFn,
-	patientDeletionImpactFn,
-	patientHistoryFn,
 	platformAdminFn,
 	consoleDeniedFn,
 	portalPageDataFn,
 	appPageDataFn,
-	recordConsentFn,
-	saveConsultationFn,
 	sessionFn,
-	updatePatientFn,
-	verifyConsultationIntegrityFn,
 } from "./fns.ts";
 
 /** Registers a patient through the server fn, failing the test on validation errors. */
@@ -141,7 +149,7 @@ describe("server fns", () => {
 			updatePatientFn({ data: { id: 1, name: "X", birthDate: "1984" } }),
 		).rejects.toThrow("unauthenticated");
 		expect(await getPatientFn({ data: 1 })).toBeNull();
-		expect(await listPatientConsultationsFn({ data: 1 })).toEqual([]);
+		expect(await patientConsultationsFn({ data: 1 })).toEqual([]);
 		await expect(
 			saveConsultationFn({
 				data: { transcript: "t", anamnesis: makeAnamnesis("q"), engine: "e" },
@@ -167,7 +175,7 @@ describe("server fns", () => {
 				patientId: patient!.id,
 			},
 		});
-		expect(saved.id!).toBeGreaterThan(0);
+		expect(saved!.id).toBeGreaterThan(0);
 
 		const list = await listConsultationsFn();
 		expect(list).toHaveLength(1);
@@ -175,37 +183,37 @@ describe("server fns", () => {
 		expect(list[0]?.chiefComplaint).toBe("Dor de cabeça");
 		expect(list[0]?.patientName).toBe("Maria Silva");
 
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.anamnesis?.queixa_principal.content).toBe("Dor de cabeça");
 		expect(detail?.patientName).toBe("Maria Silva");
 
-		expect(await getLiveConsultationFn({ data: saved.id! })).toMatchObject({
+		expect(await getLiveConsultationFn({ data: saved!.id })).toMatchObject({
 			transcript: SAMPLE_TRANSCRIPT,
 		});
 		expect(await getLiveConsultationFn({ data: 999 })).toBeNull();
 
-		expect(await recordConsentFn({ data: saved.id! })).toEqual({ ok: true });
+		expect(await recordConsentFn({ data: saved!.id })).toEqual({ ok: true });
 
 		// verifyIntegrity: same read authz as getConsultationFn — the owner
 		// gets a chain report, a foreign user degrades to null.
-		const report = await verifyConsultationIntegrityFn({ data: saved.id! });
+		const report = await verifyConsultationIntegrityFn({ data: saved!.id });
 		expect(report?.status).toBe("verified");
 		expect(report?.versions).toBeGreaterThan(0);
 		headers.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
-		expect(await verifyConsultationIntegrityFn({ data: saved.id! })).toBeNull();
+		expect(await verifyConsultationIntegrityFn({ data: saved!.id })).toBeNull();
 		headers.current = new Headers({ cookie });
 
 		expect(
 			await attachAnamnesisFn({
 				data: {
-					consultationId: saved.id!,
+					consultationId: saved!.id,
 					anamnesis: makeAnamnesis("Nova queixa"),
 					engine: "openai",
 				},
 			}),
 		).toEqual({ ok: true });
 
-		const after = await getConsultationFn({ data: saved.id! });
+		const after = await getConsultationFn({ data: saved!.id });
 		expect(after?.anamnesis?.queixa_principal.content).toBe("Nova queixa");
 		expect(after?.engine).toBe("openai");
 	});
@@ -215,7 +223,7 @@ describe("server fns", () => {
 		const saved = await saveConsultationFn({
 			data: { transcript: "t2", anamnesis: makeAnamnesis("Q2"), engine: "heuristic" },
 		});
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.anamnesis).not.toBeNull();
 		expect(detail?.patientName).toBeNull();
 
@@ -235,13 +243,13 @@ describe("server fns", () => {
 		});
 		await attachAnamnesisFn({
 			data: {
-				consultationId: saved.id!,
+				consultationId: saved!.id,
 				anamnesis: makeAnamnesis("Q3b"),
 				engine: "e2",
 				patientId: patient!.id,
 			},
 		});
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.patientName).toBe("João");
 	});
 
@@ -253,7 +261,7 @@ describe("server fns", () => {
 		});
 		await attachAnamnesisFn({
 			data: {
-				consultationId: saved.id!,
+				consultationId: saved!.id,
 				anamnesis: makeAnamnesis("Q4"),
 				engine: "e",
 				patientId: patient!.id,
@@ -263,14 +271,14 @@ describe("server fns", () => {
 		// not be dropped as "absent" by the normalizer.
 		const res = await attachAnamnesisFn({
 			data: {
-				consultationId: saved.id!,
+				consultationId: saved!.id,
 				anamnesis: makeAnamnesis("Q4b"),
 				engine: "e",
 				patientId: null,
 			},
 		});
 		expect(res).toEqual({ ok: true });
-		const detail = await getConsultationFn({ data: saved.id! });
+		const detail = await getConsultationFn({ data: saved!.id });
 		expect(detail?.patientName).toBeNull();
 	});
 
@@ -305,9 +313,9 @@ describe("server fns", () => {
 	it("extract fn returns a structured result", async () => {
 		headers.current = new Headers({ cookie });
 		const extracted = await extractAnamnesisFn({ data: { transcript: SAMPLE_TRANSCRIPT } });
-		expect(extracted.anamnesis.queixa_principal.content).toBeTruthy();
-		expect(extracted.engine).toBeTruthy();
-		expect(extracted.anamnesis.historico).toBeUndefined();
+		expect(extracted!.anamnesis.queixa_principal.content).toBeTruthy();
+		expect(extracted!.engine).toBeTruthy();
+		expect(extracted!.anamnesis.historico).toBeUndefined();
 	});
 
 	it("patientHistoryFn summarizes prior consultations and feeds extraction", async () => {
@@ -331,7 +339,7 @@ describe("server fns", () => {
 		});
 		// viewing the second consultation → history holds only the first
 		const history = await patientHistoryFn({
-			data: { patientId: patient!.id, excludeId: second.id! },
+			data: { patientId: patient!.id, excludeId: second!.id },
 		});
 		expect(history?.count).toBe(1);
 		expect(history?.visits[0]?.chiefComplaint).toBe("Primeira queixa");
@@ -345,12 +353,12 @@ describe("server fns", () => {
 		const extracted = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: patient!.id },
 		});
-		expect(extracted.anamnesis.historico?.content).toContain("Consultas anteriores (2):");
+		expect(extracted!.anamnesis.historico?.content).toContain("Consultas anteriores (2):");
 		// patientId that resolves to no history → unchanged behavior
 		const noHistory = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: 99999 },
 		});
-		expect(noHistory.anamnesis.historico).toBeUndefined();
+		expect(noHistory!.anamnesis.historico).toBeUndefined();
 	});
 
 	it("tolerates non-number patientId on the wire (undefined/null/string)", async () => {
@@ -361,26 +369,26 @@ describe("server fns", () => {
 			const res = await extractAnamnesisFn({
 				data: { transcript: SAMPLE_TRANSCRIPT, patientId: patientId as never },
 			});
-			expect(res.anamnesis).toBeTruthy();
+			expect(res!.anamnesis).toBeTruthy();
 		}
 		// numeric string is coerced
 		const res = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: String(patient!.id) as never },
 		});
-		expect(res.engine).toBeTruthy();
+		expect(res!.engine).toBeTruthy();
 	});
 
 	it("deletes a patient with their consultations and recordings", async () => {
 		headers.current = new Headers({ cookie });
 		const patient = await newPatient("Para Excluir");
-		const { id: consultationId } = await saveConsultationFn({
+		const { id: consultationId } = (await saveConsultationFn({
 			data: {
 				transcript: "t",
 				anamnesis: makeAnamnesis("Excluir"),
 				engine: "e",
 				patientId: patient.id,
 			},
-		});
+		}))!;
 		const audioKey = `audio/delete-${consultationId}.webm`;
 		await env.AUDIO_BUCKET!.put(audioKey, new Uint8Array([1, 2, 3]));
 		await db.update(consultations).set({ audioKey }).where(eq(consultations.id, consultationId));
@@ -474,7 +482,7 @@ describe("server fns", () => {
 		await saveConsultationFn({
 			data: { transcript: "t", anamnesis: makeAnamnesis("Sem paciente"), engine: "e" },
 		});
-		const own = await listPatientConsultationsFn({ data: patient.id });
+		const own = await patientConsultationsFn({ data: patient.id });
 		expect(own.map((c) => c.chiefComplaint)).toEqual(["Do paciente"]);
 		expect(own[0]?.patientId).toBe(patient.id);
 	});
@@ -515,19 +523,19 @@ describe("server fns", () => {
 		const extracted = await extractAnamnesisFn({
 			data: { transcript: SAMPLE_TRANSCRIPT, patientId: foreignPatient.id },
 		});
-		expect(extracted.anamnesis).toBeTruthy();
-		expect(await getConsultationFn({ data: saved.id! })).toBeNull();
-		expect(await getLiveConsultationFn({ data: saved.id! })).toBeNull();
-		expect(await recordConsentFn({ data: saved.id! })).toEqual({ ok: false });
+		expect(extracted!.anamnesis).toBeTruthy();
+		expect(await getConsultationFn({ data: saved!.id })).toBeNull();
+		expect(await getLiveConsultationFn({ data: saved!.id })).toBeNull();
+		expect(await recordConsentFn({ data: saved!.id })).toEqual({ ok: false });
 		expect(
 			await attachAnamnesisFn({
-				data: { consultationId: saved.id!, anamnesis: makeAnamnesis("x"), engine: "e" },
+				data: { consultationId: saved!.id, anamnesis: makeAnamnesis("x"), engine: "e" },
 			}),
 		).toEqual({ ok: false });
 
 		// Owner still reads fine afterwards.
 		headers.current = new Headers({ cookie });
-		expect(await getConsultationFn({ data: saved.id! })).not.toBeNull();
+		expect(await getConsultationFn({ data: saved!.id })).not.toBeNull();
 	});
 
 	it("platform admin gate: allowlist decides /platform access", async () => {
@@ -713,6 +721,18 @@ describe("server fns", () => {
 
 	it("consoleDeniedFn lists only paths whose guard denies the session", async () => {
 		headers.current = new Headers({ cookie });
+		// Two slow guards track overlap: if consoleDeniedFn awaited guards
+		// serially, `active` could never exceed 1.
+		let active = 0;
+		let maxActive = 0;
+		const slowGuard = () =>
+			Effect.gen(function* () {
+				active += 1;
+				maxActive = Math.max(maxActive, active);
+				yield* Effect.sleep("10 millis");
+				active -= 1;
+				return true;
+			});
 		const denied: PanelPage = {
 			id: "test.denied",
 			path: "/platform/test-denied",
@@ -737,22 +757,44 @@ describe("server fns", () => {
 			component: () => null,
 			guard: () => Effect.fail("boom") as never,
 		};
+		const slowA: PanelPage = {
+			id: "test.slow-a",
+			path: "/platform/test-slow-a",
+			component: () => null,
+			guard: slowGuard,
+		};
+		const slowB: PanelPage = {
+			id: "test.slow-b",
+			path: "/platform/test-slow-b",
+			component: () => null,
+			guard: slowGuard,
+		};
 		const pages = portalPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
 		pages.set(denied.path, { page: denied, pluginId: "platform.routes" });
 		pages.set(allowed.path, { page: allowed, pluginId: "platform.routes" });
 		pages.set(unguarded.path, { page: unguarded, pluginId: "platform.routes" });
 		pages.set(exploding.path, { page: exploding, pluginId: "platform.routes" });
+		pages.set(slowA.path, { page: slowA, pluginId: "platform.routes" });
+		pages.set(slowB.path, { page: slowB, pluginId: "platform.routes" });
 		try {
 			const deniedPaths = await consoleDeniedFn();
 			expect(deniedPaths).toContain(denied.path);
 			expect(deniedPaths).toContain(exploding.path);
 			expect(deniedPaths).not.toContain(allowed.path);
 			expect(deniedPaths).not.toContain(unguarded.path);
+			expect(deniedPaths).not.toContain(slowA.path);
+			expect(deniedPaths).not.toContain(slowB.path);
+			// Guards run concurrently and output stays in portalPages
+			// iteration order even though the slow guards finish last.
+			expect(maxActive).toBeGreaterThanOrEqual(2);
+			expect(deniedPaths.indexOf(denied.path)).toBeLessThan(deniedPaths.indexOf(exploding.path));
 		} finally {
 			pages.delete(denied.path);
 			pages.delete(allowed.path);
 			pages.delete(unguarded.path);
 			pages.delete(exploding.path);
+			pages.delete(slowA.path);
+			pages.delete(slowB.path);
 		}
 		// Anonymous → empty list (nothing to filter; the menu never
 		// renders for them anyway).
@@ -904,6 +946,62 @@ describe("server fns", () => {
 			pages.delete(page.path);
 			await db.delete(pluginState).where(eq(pluginState.pluginId, "consultations.services"));
 		}
+	});
+
+	it("page data gates at package granularity: one disabled id keeps the package live (P-058)", async () => {
+		const adminCookie = await signIn("platform-admin@ktb.test");
+		headers.current = new Headers({ cookie: adminCookie });
+		// /platform is owned by dashboard.panel; the dashboard package's
+		// other member is dashboard.chrome. Disabling ONLY the owning id
+		// leaves the package live — the same contract the CQRS gate and
+		// the route early gates apply.
+		const dashboardIds = plugins.filter((p) => p.pkg === "dashboard").map((p) => p.id);
+		expect(dashboardIds).toContain("dashboard.panel");
+		const disable = (ids: readonly string[]) =>
+			db
+				.insert(pluginState)
+				.values(ids.map((pluginId) => ({ pluginId, enabled: false, updatedAt: new Date() })));
+		const restore = (ids: readonly string[]) =>
+			Promise.all(
+				ids.map((pluginId) => db.delete(pluginState).where(eq(pluginState.pluginId, pluginId))),
+			);
+		try {
+			await disable(["dashboard.panel"]);
+			expect((await portalPageDataFn({ data: "/platform" })).status).toBe("ok");
+			// Every member id off → the package's pages 404 like
+			// unregistered paths.
+			await disable(dashboardIds.filter((id) => id !== "dashboard.panel"));
+			expect(await portalPageDataFn({ data: "/platform" })).toEqual({ status: "notfound" });
+		} finally {
+			await restore(dashboardIds);
+		}
+		expect((await portalPageDataFn({ data: "/platform" })).status).toBe("ok");
+	});
+
+	it("pluginEnabledFn gates plugin file/api routes at package granularity (P-058)", async () => {
+		const patientIds = plugins.filter((p) => p.pkg === "patients").map((p) => p.id);
+		expect(patientIds).toContain("patients.routes");
+		const disable = (ids: readonly string[]) =>
+			db
+				.insert(pluginState)
+				.values(ids.map((pluginId) => ({ pluginId, enabled: false, updatedAt: new Date() })));
+		const restore = (ids: readonly string[]) =>
+			Promise.all(
+				ids.map((pluginId) => db.delete(pluginState).where(eq(pluginState.pluginId, pluginId))),
+			);
+		try {
+			expect(await pluginEnabledFn({ data: "patients.routes" })).toBe(true);
+			// Disabling the gate id itself keeps the route live while a
+			// package sibling stays enabled.
+			await disable(["patients.routes"]);
+			expect(await pluginEnabledFn({ data: "patients.routes" })).toBe(true);
+			await disable(patientIds.filter((id) => id !== "patients.routes"));
+			expect(await pluginEnabledFn({ data: "patients.routes" })).toBe(false);
+		} finally {
+			await restore(patientIds);
+		}
+		// Unknown ids keep the per-id check — unknown counts as enabled.
+		expect(await pluginEnabledFn({ data: "no.such.plugin" })).toBe(true);
 	});
 
 	it("notifications fns list, count and mark read for the session user", async () => {

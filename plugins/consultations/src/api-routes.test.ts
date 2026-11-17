@@ -4,13 +4,16 @@ import { eq } from "drizzle-orm";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
@@ -27,6 +30,7 @@ import {
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
 import { setServerRuntime } from "@ktb/server-fns";
+import { Tenant } from "@ktb/tenant";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
@@ -52,6 +56,9 @@ INSERT INTO "user" VALUES ('u-plain', 'Plain Doc', 'plain@x.com', 0, NULL, 0, 0)
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
+${AUDIT_TEST_DDL}
+CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, zk INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0);
+INSERT INTO groups (id, name, slug, kind, zk) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1), (10, 'Plain Clinic', 'plain', 'clinic', 0);
 `;
 
 /** Mutable enable-state behind the route gate (createPluginApiRoute). */
@@ -101,6 +108,9 @@ const services = Layer.mergeAll(
 	patientsHandlers,
 	PatientsLive.pipe(Layer.provide(infra)),
 	ConsultationsLive.pipe(Layer.provide(Layer.mergeAll(infra, patientsHandlers))),
+	// Real audit service so the sensitive-read emissions (P-086) write
+	// admin_audit rows the tests can assert on.
+	AuditLive.pipe(Layer.provide(infra)),
 );
 
 // Host-published capabilities the routes reach through the registry:
@@ -143,11 +153,13 @@ const fakeBucket = {
 
 const runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
 
-beforeAll(() => {
+/** Publish a ManagedRuntime as the host runtime — a tenant-bound
+ * variant (zk gate tests) swaps this in temporarily. */
+const publishRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, unknown>) =>
 	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
+		run: (effect) => rt.runPromise(effect),
 		runAs: (user, effect) =>
-			runtime.runPromise(
+			rt.runPromise(
 				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
 			),
 		audio: fakeBucket,
@@ -164,6 +176,9 @@ beforeAll(() => {
 		audioTranscribeModel: "test-model",
 		pluginEnabled: async () => pluginGate.enabled,
 	});
+
+beforeAll(() => {
+	publishRuntime(runtime);
 });
 
 const useSession = (key: string) => {
@@ -237,6 +252,29 @@ describe("GET /api/transcribe", () => {
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ text: "transcrição do servidor" });
 	});
+
+	it("403s inside a zero-knowledge tenant — browser transcription only (T-146)", async () => {
+		useSession("owner");
+		const zkRuntime = ManagedRuntime.make(
+			Layer.mergeAll(
+				services,
+				Layer.succeed(Tenant, { id: 9, kind: "clinic", slug: "zk", role: "admin" }),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		publishRuntime(zkRuntime);
+		try {
+			const form = new FormData();
+			form.set("audio", new File([new Uint8Array([1, 2, 3])], "a.wav"));
+			const res = await post(form);
+			expect(res.status).toBe(403);
+			expect(await res.json()).toEqual({
+				error: "server transcription unavailable for zero-knowledge tenants",
+			});
+		} finally {
+			publishRuntime(runtime);
+			await zkRuntime.dispose();
+		}
+	});
 });
 
 describe("GET /api/consultations/:id/pdf", () => {
@@ -288,6 +326,20 @@ describe("GET /api/consultations/:id/pdf", () => {
 		expect(pdf.headers.get("content-type")).toBe("application/pdf");
 		expect((await pdf.arrayBuffer()).byteLength).toBeGreaterThan(100);
 	});
+
+	it("refuses to render a PDF for a ciphered anamnesis envelope (T-146)", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }))!;
+		await db
+			.update(consultationsTable)
+			.set({ anamnesis: "v1.aXY.Y2lwaGVy" })
+			.where(eq(consultationsTable.id, id));
+		const res = await get(String(id));
+		expect(res.status).toBe(409);
+		expect(await res.json()).toEqual({
+			error: "zero-knowledge record — render the PDF on an approved device",
+		});
+	});
 });
 
 describe("POST/GET /api/consultations/:id/audio", () => {
@@ -314,6 +366,76 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 		} finally {
 			headers.current = saved;
 		}
+	});
+
+	it("stores ciphertext but never enqueues Whisper under a ZK tenant (T-147)", async () => {
+		useSession("owner");
+		const zkRuntime = ManagedRuntime.make(
+			Layer.mergeAll(
+				services,
+				Layer.succeed(Tenant, { id: 9, kind: "clinic", slug: "zk", role: "admin" }),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		publishRuntime(zkRuntime);
+		try {
+			const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }, 9))!;
+			const before = jobsSent.length;
+			const res = await post(
+				id,
+				new Uint8Array([75, 84, 66, 49, 1, 2, 3]),
+				"application/octet-stream",
+			);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { audioStatus: string };
+			expect(body.audioStatus).toBe("zk");
+			expect(jobsSent.length).toBe(before); // ciphertext never reaches the queue
+			const row = await db.query.consultations.findFirst({
+				where: eq(consultationsTable.id, id),
+			});
+			expect(row?.audioStatus).toBe("zk");
+			expect(row?.audioKey).toMatch(/^audio\/u-owner\//);
+			// The stored object is opaque — GET streams the ciphertext back.
+			const got = await get(id);
+			expect(got.status).toBe(200);
+			expect(new Uint8Array(await got.arrayBuffer())).toEqual(
+				new Uint8Array([75, 84, 66, 49, 1, 2, 3]),
+			);
+		} finally {
+			publishRuntime(runtime);
+			await zkRuntime.dispose();
+		}
+	});
+
+	it("enqueues Whisper normally for a non-ZK clinic tenant", async () => {
+		useSession("owner");
+		const plainRuntime = ManagedRuntime.make(
+			Layer.mergeAll(
+				services,
+				Layer.succeed(Tenant, { id: 10, kind: "clinic", slug: "plain", role: "admin" }),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		publishRuntime(plainRuntime);
+		try {
+			const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }, 10))!;
+			const before = jobsSent.length;
+			const res = await post(id, new Uint8Array([1, 2, 3]), "audio/webm");
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as { audioStatus: string }).audioStatus).toBe("queued");
+			expect(jobsSent.length).toBe(before + 1);
+		} finally {
+			publishRuntime(runtime);
+			await plainRuntime.dispose();
+		}
+	});
+
+	it("enqueues Whisper for a personal-scope row (tenant_id null short-circuits ZK)", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "mic" }))!;
+		const before = jobsSent.length;
+		const res = await post(id, new Uint8Array([1, 2, 3]), "audio/webm");
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as { audioStatus: string }).audioStatus).toBe("queued");
+		expect(jobsSent.length).toBe(before + 1);
 	});
 
 	it("uploads raw audio to R2, links the row and enqueues the job", async () => {
@@ -513,5 +635,99 @@ describe("GET /api/patients/:id/export", () => {
 			"X_VERSIONED_COMPOSITION",
 			"X_VERSIONED_COMPOSITION",
 		]);
+	});
+});
+
+describe("sensitive-read audit emissions (P-086)", () => {
+	const auditRows = () => db.select().from(adminAudit);
+	const entriesFor = (action: string, targetId: number | string) =>
+		auditRows().then((rows) =>
+			rows.filter((r) => r.action === action && r.targetId === String(targetId)),
+		);
+
+	const anamnesisDoc = () => {
+		const s = { content: "x", confidence: "alta", evidence: [] };
+		return JSON.stringify({
+			queixa_principal: s,
+			hda: s,
+			antecedentes: s,
+			alergias: s,
+			medicamentos_em_uso: s,
+			exame_fisico: s,
+			hipoteses: s,
+			conduta: s,
+		});
+	};
+
+	const newPatientWithConsultation = async (name: string) => {
+		const fields = validatePatient({ name, birthDate: "1990" });
+		if (!fields.ok) throw new Error("fixture");
+		const pid = (await createPatient(db, "u-owner", fields.fields))!.id;
+		const id = (await createConsultation(db, {
+			userId: "u-owner",
+			patientId: pid,
+			source: "browser",
+		}))!;
+		return { pid, id };
+	};
+
+	it("pdf export emits consultations.export (via pdf) plus the detail read", async () => {
+		useSession("owner");
+		const { pid, id } = await newPatientWithConsultation("Audit Pdf");
+		await db
+			.update(consultationsTable)
+			.set({ anamnesis: anamnesisDoc() })
+			.where(eq(consultationsTable.id, id));
+		const res = await handlersOf(PdfRoute).GET!({ params: { id: String(id) } } as never);
+		expect(res.status).toBe(200);
+
+		const [exp] = await entriesFor("consultations.export", id);
+		expect(exp).toMatchObject({ targetType: "consultation", tenantId: null });
+		expect(exp?.detail).toContain(`"patientId":${pid}`);
+		expect(exp?.detail).toContain('"via":"pdf"');
+		// Consultations.get inside the route emits the detail read too.
+		const [read] = await entriesFor("consultations.read", id);
+		expect(read?.detail).toContain('"via":"detail"');
+		expect(read?.detail).toContain(`"patientId":${pid}`);
+	});
+
+	it("audio download emits consultations.audio.read (via audio-download)", async () => {
+		useSession("owner");
+		const { pid, id } = await newPatientWithConsultation("Audit Audio");
+		// Store audio first so GET has an object to stream.
+		const up = await handlersOf(AudioRoute).POST!({
+			request: new Request(`http://x/api/consultations/${id}/audio`, {
+				method: "POST",
+				headers: { "content-type": "audio/webm" },
+				body: new Uint8Array([1, 2, 3]),
+			}),
+			params: { id: String(id) },
+		} as never);
+		expect(up.status).toBe(200);
+
+		const res = await handlersOf(AudioRoute).GET!({ params: { id: String(id) } } as never);
+		expect(res.status).toBe(200);
+		await res.arrayBuffer();
+
+		const [audio] = await entriesFor("consultations.audio.read", id);
+		expect(audio).toMatchObject({ targetType: "consultation", tenantId: null });
+		expect(audio?.detail).toContain(`"patientId":${pid}`);
+		expect(audio?.detail).toContain('"via":"audio-download"');
+	});
+
+	it("patient export emits patients.export with the requested format", async () => {
+		useSession("owner");
+		const { pid } = await newPatientWithConsultation("Audit Export");
+		const res = await handlersOf(ExportRoute).GET!({
+			params: { id: String(pid) },
+			request: new Request(`http://x/api/patients/${pid}/export?format=fhir-r4`),
+		} as never);
+		expect(res.status).toBe(200);
+		await res.arrayBuffer();
+
+		const [exp] = await entriesFor("patients.export", pid);
+		expect(exp).toMatchObject({ targetType: "patient", tenantId: null });
+		expect(exp?.detail).toContain('"format":"fhir-r4"');
+		expect(exp?.detail).not.toContain("Audit Export");
 	});
 });

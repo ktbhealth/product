@@ -139,6 +139,25 @@ export const makeAccountsService = (auth: Auth): AccountsShape => ({
 });
 
 /**
+ * `list` projection: metadata goes out with `secret` removed — the
+ * raw column still holds it for `getSecret`/outbound reads, but a
+ * listed row must never carry the plaintext. Unparseable or
+ * non-object metadata collapses to `"{}"` rather than passing
+ * through unchecked.
+ */
+const stripMetadataSecret = (raw: string | null): string | null => {
+	if (raw === null) return null;
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return "{}";
+		const { secret: _secret, ...rest } = parsed as Record<string, unknown>;
+		return JSON.stringify(rest);
+	} catch {
+		return "{}";
+	}
+};
+
+/**
  * apiKey-plugin adapter for eval-lab outbound credentials. The plugin
  * OWNS create/delete semantics (its `apikey` table is the store); raw
  * secrets ride inside `metadata.secret` — `disableKeyHashing` keeps
@@ -147,6 +166,11 @@ export const makeAccountsService = (auth: Auth): AccountsShape => ({
  * table directly because the plugin's read endpoints are
  * session-header-scoped (a service has no headers); writes go
  * through `auth.api` so plugin hooks and bookkeeping stay canonical.
+ *
+ * Secrets at rest are plaintext-in-metadata BY DESIGN for the eval
+ * lab's outbound calls; this adapter is the boundary that keeps them
+ * off list/read paths. If these keys ever serve production tenants,
+ * migrate secret storage to @ktb/crypto EntityCipher.
  */
 export const makeApiKeysAdapter = (auth: Auth, db: AuthDb): ApiKeysShape => ({
 	create: async (input: {
@@ -154,18 +178,31 @@ export const makeApiKeysAdapter = (auth: Auth, db: AuthDb): ApiKeysShape => ({
 		readonly referenceId: string;
 		readonly metadata: Record<string, unknown>;
 	}) => {
+		// `secret` stays for getSecret/outbound reads; `secretLast4` is
+		// the only hint `list` may show. The >4 guard keeps a short
+		// secret from being revealed whole by its own "last 4".
+		const secret = input.metadata.secret;
+		const metadata =
+			typeof secret === "string" && secret.length > 4
+				? { ...input.metadata, secretLast4: secret.slice(-4) }
+				: input.metadata;
 		const r = await auth.api.createApiKey({
 			body: {
 				name: input.name,
 				userId: input.referenceId,
-				metadata: input.metadata,
+				metadata,
 				rateLimitEnabled: false,
 			},
 		});
 		return { id: r.id };
 	},
-	list: async (referenceId: string) =>
-		db.select().from(apikeyTable).where(eq(apikeyTable.referenceId, referenceId)),
+	list: async (referenceId: string) => {
+		const rows = await db
+			.select()
+			.from(apikeyTable)
+			.where(eq(apikeyTable.referenceId, referenceId));
+		return rows.map((row) => ({ ...row, metadata: stripMetadataSecret(row.metadata) }));
+	},
 	remove: async (keyId: string, referenceId: string) => {
 		// Ownership check first — acting on `keyId` alone would let one
 		// user delete another's credential by guessing the id.

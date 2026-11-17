@@ -51,6 +51,18 @@ export const adminAudit = sqliteTable(
 		index("admin_audit_created_at_idx").on(table.createdAt),
 		index("admin_audit_action_idx").on(table.action),
 		index("admin_audit_actor_idx").on(table.actorUserId),
+		// Tenant-scoped activity feed (P-080): newest-first per tenant.
+		index("admin_audit_tenant_created_idx").on(table.tenantId, table.createdAt),
+		// Read-event coalescing lookup (P-087 D3): "does an identical
+		// (actor, action, target) row exist within the window" — the
+		// created_at tail bounds the recency scan.
+		index("admin_audit_dedupe_idx").on(
+			table.actorUserId,
+			table.action,
+			table.targetType,
+			table.targetId,
+			table.createdAt,
+		),
 	],
 );
 

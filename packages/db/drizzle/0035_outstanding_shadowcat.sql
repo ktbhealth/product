@@ -1,0 +1,1 @@
+ALTER TABLE `ai_agent_link` ADD `revoked_at` integer;

@@ -73,6 +73,20 @@ export const platformDashboard = () =>
 				.includeAll(true)
 				.allValue(".*"),
 		)
+		.withVariable(
+			new QueryVariableBuilder("serverFn")
+				.label("Server fn")
+				.description(
+					"createServerFn id recorded on ktb_server_fn_* metrics — the /_serverFn/<id> path segment (sha256 of file--export).",
+				)
+				.datasource(DS_PROMETHEUS)
+				.query("label_values(ktb_server_fn_request_duration_ms_bucket, fn)")
+				.refresh(VariableRefresh.OnDashboardLoad)
+				.sort(VariableSort.AlphabeticalAsc)
+				.multi(true)
+				.includeAll(true)
+				.allValue(".*"),
+		)
 		// ---- Header links -------------------------------------------------
 		.link(
 			new DashboardLinkBuilder("Traces (Tempo)")
@@ -485,6 +499,98 @@ export const platformDashboard = () =>
 							"A",
 							"sum by (stage) (rate(ktb_telemetry_errors_total[$__rate_interval]))",
 							"{{stage}}",
+						),
+					),
+			),
+		)
+		// ---- Row: Server functions & session resolution -------------------
+		.withRow(
+			new RowBuilder("Server functions & session resolution")
+				.id(19)
+				.gridPos(grid(0, 47, 24, 1))
+				.collapsed(false),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(20)
+					.title("Server fn request rate by fn")
+					.description(
+						"ktb_server_fn_requests_total rate per createServerFn id — which server functions carry the traffic. fn is the /_serverFn/<id> path segment.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(0, 48, 6, 8))
+					.unit("reqps")
+					.decimals(2)
+					.withTarget(
+						prom(
+							"A",
+							'sum by (fn) (rate(ktb_server_fn_requests_total{fn=~"$serverFn"}[$__rate_interval]))',
+							"{{fn}}",
+						),
+					),
+			),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(21)
+					.title("Server fn p95 latency by fn")
+					.description(
+						"p95 wall time per server function (ktb_server_fn_request_duration_ms). Compare against the session-resolution panels — a slow fn with mostly cache hits is doing its own I/O.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(6, 48, 6, 8))
+					.unit("ms")
+					.decimals(0)
+					.withTarget(
+						prom(
+							"A",
+							'histogram_quantile(0.95, sum by (le, fn) (rate(ktb_server_fn_request_duration_ms_bucket{fn=~"$serverFn"}[$__rate_interval])))',
+							"{{fn}}",
+						),
+					),
+			),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(22)
+					.title("Server fn 5xx ratio by fn")
+					.description(
+						"Share of 5xx responses per server function (ktb_server_fn_requests_total status label). Serialized fn errors still count — the status is the response code.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(12, 48, 6, 8))
+					.unit("percentunit")
+					.decimals(2)
+					.max(1)
+					.withTarget(
+						prom(
+							"A",
+							'sum by (fn) (rate(ktb_server_fn_requests_total{fn=~"$serverFn",status=~"5.."}[$__rate_interval])) / sum by (fn) (rate(ktb_server_fn_requests_total{fn=~"$serverFn"}[$__rate_interval]))',
+							"{{fn}}",
+						),
+					),
+			),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(23)
+					.title("Session context lookups by result")
+					.description(
+						"ktb_session_context_lookups_total — context (session|doctor|patient) × result (cache|load). A high load share means the per-request memoization is not absorbing repeat resolutions; pair with ktb_session_context_load_duration_ms for the DB cost.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(18, 48, 6, 8))
+					.unit("ops")
+					.decimals(2)
+					.withTarget(
+						prom(
+							"A",
+							"sum by (context, result) (rate(ktb_session_context_lookups_total[$__rate_interval]))",
+							"{{context}}/{{result}}",
 						),
 					),
 			),

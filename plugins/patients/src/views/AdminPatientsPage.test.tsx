@@ -86,6 +86,19 @@ describe("AdminPatientsPage", () => {
 		expect(screen.getByRole("link", { name: "Bia" }).getAttribute("href")).toBe("/patients/2");
 	});
 
+	it("renders ZK rows opaquely — no link, no envelope text", () => {
+		render(
+			<AdminPatientsPage
+				owners={OWNERS}
+				patients={[row({ name: "v1.YWFh.YmJi" }), row({ id: 2, name: "Bia" })]}
+			/>,
+		);
+		expect(screen.getByText("Encrypted record")).toBeTruthy();
+		expect(screen.queryByText("v1.YWFh.YmJi")).toBeNull();
+		expect(screen.queryByRole("link", { name: /v1\./ })).toBeNull();
+		expect(screen.getByRole("link", { name: "Bia" })).toBeTruthy();
+	});
+
 	it("filters rows case-insensitively by name or owner", async () => {
 		const user = userEvent.setup();
 		render(

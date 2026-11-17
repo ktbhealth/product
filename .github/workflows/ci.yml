@@ -56,10 +56,10 @@ jobs:
   # Informational only — never gates. Lines-of-code report via tokei,
   # provided by the shared cypera toolbox (9aia/cypera).
   metrics:
-    uses: 9aia/cypera/.github/workflows/loc-repo.yml@loc-v1
+    uses: 9aia/cypera/.github/workflows/loc-repo.yml@v0.2.3
     with:
       repo_name: product
-      tool_ref: loc-v1
+      tool_ref: v0.2.3
 
   # ERD drift: regenerate the database docs (they live in the sibling public
   # docs repo) and fail if the committed output is stale. generate-erd.mjs

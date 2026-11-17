@@ -24,6 +24,7 @@ import { requestTelemetryContext } from "./telemetry.ts";
 import { makeFlushThrottler } from "./telemetry-flush.ts";
 import { setAccessLogSink } from "./access-log.ts";
 import { createApp } from "@ktb/app-host";
+import { packageLive } from "@ktb/kernel";
 import type { ExportFormat, RecordExporter } from "@ktb/interop";
 import { fhirR4Exporter } from "@ktb/interop-fhir";
 import { openEhrExporter } from "@ktb/interop-openehr";
@@ -165,6 +166,16 @@ const themeJobs =
 		? undefined
 		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
 
+// F3b: the AcpBridge durable-object namespace (workerd binding —
+// declared in the Alchemy stack). Structural slice only; the plugin
+// route reaches it through ServerRuntime.acpBridge, never the env.
+const acpBridgeNs = env.ACP_BRIDGE as unknown as
+	| {
+			readonly idFromName: (name: string) => unknown;
+			readonly get: (id: unknown) => { fetch(request: Request): Promise<Response> };
+	  }
+	| undefined;
+
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
 // without importing this module. Env reads stay here — the registry
@@ -185,19 +196,40 @@ setServerRuntime({
 	audioTranscribeModel,
 	recordExporters,
 	getLocale,
-	// P-058: backs `pluginEnabledFn` / `createPluginFileRoute` — plugin
-	// page routes 404 when their `*.routes` plugin is disabled.
+	// P-058: backs `pluginEnabledFn` / `createPluginFileRoute` /
+	// `createPluginApiRoute`. Package-granular like every other
+	// enable-state surface: the route stays live while ANY plugin of the
+	// owning package (`plugins/<pkg>`) is enabled — disabling
+	// `patients.routes` alone no longer kills the package's file routes
+	// while `patients.services` is still on. Ids without a pkg stamp
+	// (out-of-glob plugins, unknown ids) keep the per-id check.
 	pluginEnabled: (pluginId) =>
 		run(
 			Effect.gen(function* () {
 				const states = yield* PluginStates;
-				return yield* states.isEnabled(pluginId);
+				const plugin = serverPlugins.find((p) => p.id === pluginId);
+				if (plugin?.pkg === undefined) return yield* states.isEnabled(pluginId);
+				return packageLive(serverPlugins, yield* states.enabledIds(), plugin.pkg);
 			}),
 		),
 	// P-062: the auth plugin's /api/auth/* catch-all reaches the
 	// better-auth instance through this capability — plugins never
 	// import the adapter.
 	authHandler: (request) => auth.handler(request),
+	// F3b: the bridge route's handoff to the AcpBridge durable object
+	// (idFromName(endpointId)). The ?endpoint= rewrite lets the DO
+	// stamp ai_endpoint.last_seen_at on connect/heartbeat. Undefined
+	// when the binding is absent (Node dev).
+	acpBridge:
+		acpBridgeNs === undefined
+			? undefined
+			: (endpointId, request) => {
+					const url = new URL(request.url);
+					url.searchParams.set("endpoint", String(endpointId));
+					return acpBridgeNs
+						.get(acpBridgeNs.idFromName(String(endpointId)))
+						.fetch(new Request(url, request));
+				},
 });
 
 // Raw platform binding passthrough — not composed, just exposed.

@@ -198,9 +198,11 @@ export interface ServerRuntime {
 	readonly getLocale: () => string;
 	/**
 	 * Plugin enable-state check (P-058) backing `pluginEnabledFn` and the
-	 * `createPluginFileRoute` gate. The composition root wires it to
-	 * `PluginStates.isEnabled`; absent (tests, non-app contexts) the gate
-	 * is inert — there is no plugin_state store to consult anyway.
+	 * `createPluginFileRoute`/`createPluginApiRoute` gates. The
+	 * composition root wires it PACKAGE-granular (live while any member
+	 * plugin id of the owning `plugins/<pkg>` is enabled); absent
+	 * (tests, non-app contexts) the gate is inert — there is no
+	 * plugin_state store to consult anyway.
 	 */
 	readonly pluginEnabled?: (pluginId: string) => Promise<boolean>;
 	/**
@@ -212,6 +214,14 @@ export interface ServerRuntime {
 	 * outside the composed app — the route answers 500.
 	 */
 	readonly authHandler?: (request: Request) => Promise<Response>;
+	/**
+	 * AcpBridge durable-object handoff (F3b): forwards a validated
+	 * WebSocket upgrade request for `endpointId` to the DO holding the
+	 * bridge's socket (`idFromName(endpointId)`). The composition root
+	 * owns the `ACP_BRIDGE` binding; the plugin route never touches
+	 * it. Undefined when unbound (Node dev) — the route answers 501.
+	 */
+	readonly acpBridge?: (endpointId: number, request: Request) => Promise<Response>;
 }
 
 let runtime: ServerRuntime | undefined;

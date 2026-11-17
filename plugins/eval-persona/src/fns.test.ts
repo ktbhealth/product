@@ -3,7 +3,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -20,6 +22,7 @@ vi.mock("@tanstack/react-start", () => ({
 	},
 }));
 
+import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-endpoints";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
@@ -31,28 +34,18 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import {
-	EVAL_PERSONA_TEST_DDL,
-	EvalEndpointsLive,
-	EvalInstancesLive,
-	EvalPersonasLive,
-} from "./index.ts";
+import { EVAL_PERSONA_TEST_DDL, EvalInstancesLive, EvalPersonasLive } from "./index.ts";
 import {
 	createInstanceFn,
-	deleteEndpointFn,
 	deleteInstanceFn,
 	deletePersonaDefFn,
 	generatePersonasFn,
 	instanceDetailFn,
-	listEndpointPresetsFn,
-	listEndpointsFn,
 	listInstancesFn,
 	listPersonaDefsFn,
-	saveEndpointFn,
 	savePersonaDefFn,
 	spawnInstancesFn,
 	startInstanceFn,
-	testEndpointFn,
 } from "./fns.ts";
 
 const sessionFor = (email: string | null) =>
@@ -82,7 +75,11 @@ describe("eval-persona fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
 	let allow = true;
-	let factoryFails: false | "port" | "raw" = false;
+
+	// Endpoint rows go through the AiEndpoints service — the fn
+	// surface for endpoint CRUD lives in @ktb/ai-endpoints now.
+	const createEndpoint = (input: EndpointInput) =>
+		runtime.runPromise(Effect.flatMap(AiEndpoints, (s) => s.create(input)));
 
 	beforeAll(() => {
 		const db = makeDb(makeD1(EVAL_PERSONA_TEST_DDL));
@@ -119,22 +116,24 @@ describe("eval-persona fns", () => {
 								}),
 							),
 						),
-					test: () =>
-						factoryFails === "port"
-							? (Effect.fail({ _tag: "PortError", port: "l", message: "down" }) as never)
-							: factoryFails === "raw"
-								? (Effect.fail("raw outage") as never)
-								: Effect.void,
+					test: () => Effect.void,
 				}),
 			),
 		);
+		// app-host topo composition: eval-persona's services layer sees
+		// the AiEndpoints output it soft-deps on.
+		const services = (
+			[AiEndpointsLive, EvalPersonasLive, EvalInstancesLive] as Layer.Layer<
+				unknown,
+				unknown,
+				unknown
+			>[]
+		).reduce<Layer.Layer<unknown, unknown, unknown>>(
+			(acc, svc) => Layer.merge(acc, svc.pipe(Layer.provideMerge(acc))),
+			Layer.empty as unknown as Layer.Layer<unknown, unknown, unknown>,
+		);
 		runtime = ManagedRuntime.make(
-			Layer.merge(
-				Layer.mergeAll(EvalPersonasLive, EvalEndpointsLive, EvalInstancesLive).pipe(
-					Layer.provide(env),
-				),
-				env,
-			) as Layer.Layer<unknown, never, never>,
+			Layer.merge(services.pipe(Layer.provide(env)), env) as Layer.Layer<unknown, never, never>,
 		);
 		const auth = Auth.of({
 			setUserBanned: async () => {},
@@ -178,13 +177,6 @@ describe("eval-persona fns", () => {
 		expect(await savePersonaDefFn({ data: defInput })).toEqual({ ok: false });
 		expect(await deletePersonaDefFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await generatePersonasFn({ data: { count: 5 } })).toEqual({ ok: false });
-		expect(await listEndpointsFn({ data: undefined })).toEqual({ ok: false });
-		expect(await listEndpointPresetsFn({ data: undefined })).toEqual({ ok: false });
-		expect(await saveEndpointFn({ data: { name: "x", kind: "openai", baseUrl: "u" } })).toEqual({
-			ok: false,
-		});
-		expect(await deleteEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
-		expect(await testEndpointFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await listInstancesFn({ data: undefined })).toEqual({ ok: false });
 		expect(await instanceDetailFn({ data: { id: 1 } })).toEqual({ ok: false });
 		expect(await createInstanceFn({ data: { name: "i", mode: "random" } })).toEqual({
@@ -237,59 +229,11 @@ describe("eval-persona fns", () => {
 		});
 		// Endpoint path — the llm returns a script, not a def array, so
 		// the sample top-up still lands the requested count.
-		const ep = await saveEndpointFn({
-			data: { name: "gen-ep", kind: "openai", baseUrl: "http://llm" },
-		});
-		if (!ep.ok) return;
-		expect(await generatePersonasFn({ data: { count: 1, endpointId: ep.data.id } })).toEqual({
+		const ep = await createEndpoint({ name: "gen-ep", kind: "openai", baseUrl: "http://llm" });
+		expect(await generatePersonasFn({ data: { count: 1, endpointId: ep.id } })).toEqual({
 			ok: true,
 			data: { created: 1 },
 		});
-	});
-
-	it("drives the endpoint CRUD + test through the fn surface", async () => {
-		const created = await saveEndpointFn({
-			data: {
-				name: "Ollama",
-				kind: "openai",
-				baseUrl: "http://localhost:11434/v1",
-				model: "qwen",
-				sessionId: "s",
-				secretRef: "KEY",
-				timeoutMs: 5000,
-				enabled: true,
-			},
-		});
-		expect(created.ok).toBe(true);
-		if (!created.ok) return;
-		const id = created.data.id;
-
-		expect(await saveEndpointFn({ data: { id, name: "O2", kind: "acp", baseUrl: "u2" } })).toEqual({
-			ok: true,
-			data: { id },
-		});
-		const listed = await listEndpointsFn({ data: undefined });
-		expect(listed.ok && listed.data[0]?.kind).toBe("acp");
-
-		// The stub factory declares no presets — the fn degrades to [].
-		expect(await listEndpointPresetsFn({ data: undefined })).toEqual({ ok: true, data: [] });
-
-		// Required-fields-only create — no optionals on the wire.
-		expect(
-			await saveEndpointFn({ data: { name: "bare-ep", kind: "openai", baseUrl: "u" } }),
-		).toMatchObject({ ok: true });
-
-		const okTest = await testEndpointFn({ data: { id } });
-		expect(okTest.ok).toBe(true);
-		factoryFails = "port";
-		const badTest = await testEndpointFn({ data: { id } });
-		expect(badTest).toEqual({ ok: false, data: { message: "down" } });
-		factoryFails = "raw";
-		const rawTest = await testEndpointFn({ data: { id } });
-		expect(rawTest).toEqual({ ok: false, data: { message: "raw outage" } });
-		factoryFails = false;
-
-		expect(await deleteEndpointFn({ data: { id } })).toEqual({ ok: true, data: null });
 	});
 
 	it("drives instance create/start/detail/delete through the fn surface", async () => {
@@ -312,14 +256,13 @@ describe("eval-persona fns", () => {
 			ok: true,
 		});
 		// Populated create — every optional on the wire.
-		const ep = await saveEndpointFn({ data: { name: "e2", kind: "acp", baseUrl: "u" } });
-		if (!ep.ok) return;
+		const ep = await createEndpoint({ name: "e2", kind: "acp", baseUrl: "u" });
 		expect(
 			await createInstanceFn({
 				data: {
 					name: "full",
 					mode: "random",
-					endpointId: ep.data.id,
+					endpointId: ep.id,
 					count: 1,
 					seed: 1,
 					minutes: 5,
@@ -404,16 +347,18 @@ describe("eval-persona fns", () => {
 	});
 
 	it("spawns generator instances through the fn surface", async () => {
-		const ep = await saveEndpointFn({
-			data: { name: "sp-ep", kind: "acp", baseUrl: "u", transport: "ssh" },
+		const ep = await createEndpoint({
+			name: "sp-ep",
+			kind: "acp",
+			baseUrl: "u",
+			transport: "ssh",
 		});
-		if (!ep.ok) return;
-		const listed = await listEndpointsFn({ data: undefined });
-		const sp = listed.ok ? listed.data.find((e) => e.name === "sp-ep") : undefined;
+		const listed = await runtime.runPromise(Effect.flatMap(AiEndpoints, (s) => s.list()));
+		const sp = listed.find((e) => e.name === "sp-ep");
 		expect(sp?.transport).toBe("ssh");
 
 		const r = await spawnInstancesFn({
-			data: { count: 3, endpointId: ep.data.id, defCount: 2, seed: 42, name: "gen" },
+			data: { count: 3, endpointId: ep.id, defCount: 2, seed: 42, name: "gen" },
 		});
 		expect(r).toEqual({ ok: true, data: { created: 3 } });
 		const inst = await listInstancesFn({ data: undefined });
@@ -422,6 +367,6 @@ describe("eval-persona fns", () => {
 		const one = inst.ok ? inst.data.find((i) => i.name === "gen #2") : undefined;
 		expect(one?.mode).toBe("random");
 		expect(one?.total).toBe(2);
-		expect(one?.endpointId).toBe(ep.data.id);
+		expect(one?.endpointId).toBe(ep.id);
 	});
 });

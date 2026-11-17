@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { audit } from "@ktb/audit";
 import { Consultations } from "@ktb/consultations";
 import { Patients } from "@ktb/patients";
 import { recordSummary } from "@ktb/patients/record";
@@ -30,6 +31,17 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 						const detail = yield* consultations
 							.get(id, user.id)
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+						// Sensitive-read audit: the PDF export ships the whole
+						// record — record it once authz+fetch succeeded. ids only.
+						if (detail !== null) {
+							yield* audit({
+								action: "consultations.export",
+								targetType: "consultation",
+								targetId: detail.id,
+								tenantId: detail.tenantId,
+								detail: { patientId: detail.patientId, via: "pdf" },
+							});
+						}
 						if (!detail?.patientId) return { detail, patient: null };
 						const patients = yield* Patients;
 						const patient = yield* patients
@@ -39,6 +51,14 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 					}),
 				);
 				if (!detail) return Response.json({ error: "not found" }, { status: 404 });
+				// T-146: a ZK row stores a `v1.` envelope — the server cannot
+				// render it (fail closed; the client exports in the browser).
+				if (detail.anamnesisRaw?.startsWith("v1.")) {
+					return Response.json(
+						{ error: "zero-knowledge record — render the PDF on an approved device" },
+						{ status: 409 },
+					);
+				}
 				if (!detail.anamnesis)
 					return Response.json({ error: "consultation has no saved anamnesis" }, { status: 409 });
 

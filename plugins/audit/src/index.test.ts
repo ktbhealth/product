@@ -8,6 +8,9 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import { PluginStates } from "@ktb/platform/plugin-states";
+import { Permissions } from "@ktb/rbac";
+import { Tenant } from "@ktb/tenant";
 
 import { eq } from "drizzle-orm";
 
@@ -22,8 +25,13 @@ import {
 	auditPanelPlugin,
 	auditServicesPlugin,
 	auditTablesPlugin,
+	hasRecentAuditRead,
 	insertAuditEntry,
 	listAuditEntries,
+	sanitizeAuditDetail,
+	listPatientAuditEntries,
+	listTenantAuditEntries,
+	PatientAuditAccess,
 	plugins,
 	verifyAuditChain,
 	type AuditListResult,
@@ -33,11 +41,21 @@ import {
 // documentation; better-sqlite3 does not enforce it, but the parent
 // table exists in every real database, so the test DDL mirrors that.
 const GROUPS_DDL = `
-CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
 INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES ('Clinic A', 'clinic-a', 'clinic', NULL, 1000, 1000);
 `;
 
 const DDL = GROUPS_DDL + AUDIT_TEST_DDL;
+
+// Patient feed (P-086): the consultations join needs only id +
+// patient_id — the WHERE never touches the clinical columns. Rows are
+// seeded through the D1 shim's exec (the drizzle insert would demand
+// every notNull column of the real table).
+const CONSULTATIONS_DDL = `
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER);
+INSERT INTO consultations (id, patient_id) VALUES (10, 5), (11, 6), (12, NULL);
+`;
+const PATIENT_DDL = GROUPS_DDL + AUDIT_TEST_DDL + CONSULTATIONS_DDL;
 
 describe("audit repo", () => {
 	let db: ReturnType<typeof makeDb>;
@@ -93,13 +111,25 @@ describe("audit repo", () => {
 		expect(noDetail!.detail).toBeNull();
 		expect(noDetail!.targetType).toBeNull();
 		expect(noDetail!.targetId).toBeNull();
+		// D1: strings cap at 200 chars inside the sanitizer, so a single
+		// blob can no longer reach the 4000-char JSON cap — pad with
+		// many keys to still exercise DETAIL_MAX.
+		const wide: Record<string, string> = {};
+		for (let i = 0; i < 30; i++) wide[`k${i}`] = "x".repeat(200);
 		const big = await insertAuditEntry(db, {
+			actorUserId: null,
+			actorEmail: null,
+			action: "a.b",
+			detail: wide,
+		});
+		expect(big!.detail!.length).toBe(4000);
+		const cappedString = await insertAuditEntry(db, {
 			actorUserId: null,
 			actorEmail: null,
 			action: "a.b",
 			detail: { blob: "x".repeat(5000) },
 		});
-		expect(big!.detail!.length).toBe(4000);
+		expect(JSON.parse(cappedString!.detail!)).toEqual({ blob: "x".repeat(200) });
 	});
 
 	it("returns null when the driver yields no RETURNING row", async () => {
@@ -159,6 +189,55 @@ describe("audit repo", () => {
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listAuditEntries(fakeDb);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+});
+
+describe("listTenantAuditEntries", () => {
+	it("returns only the tenant's rows, newest-first — NULL tenant excluded", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		const write = (action: string, tenantId?: string | number | null) =>
+			insertAuditEntry(fresh, {
+				actorUserId: null,
+				actorEmail: null,
+				action,
+				tenantId,
+			});
+		await write("feed.t1.first", 1);
+		await write("feed.t1.second", "1");
+		await write("feed.t2", 2);
+		await write("feed.global");
+		const result = await listTenantAuditEntries(fresh, 1);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.t1.second", "feed.t1.first"]);
+		expect(result.total).toBe(2);
+		expect(result.limit).toBe(200);
+	});
+
+	it("clamps the page limit like the admin listing", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		for (let i = 0; i < 3; i++) {
+			await insertAuditEntry(fresh, {
+				actorUserId: null,
+				actorEmail: null,
+				action: `feed.${i}`,
+				tenantId: 7,
+			});
+		}
+		expect((await listTenantAuditEntries(fresh, 7, { limit: 2 })).entries).toHaveLength(2);
+		expect((await listTenantAuditEntries(fresh, 7, { limit: 0 })).entries).toHaveLength(1);
+		expect((await listTenantAuditEntries(fresh, 7, { limit: 9999 })).limit).toBe(500);
+	});
+
+	it("reports a zero total when the count query yields no row", async () => {
+		// Same thenable stub as the admin listing, plus the tenant
+		// `where` fence both queries now chain through.
+		const query = {
+			where: () => query,
+			orderBy: () => ({ limit: async () => [] }),
+			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+		};
+		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
+		const result = await listTenantAuditEntries(fakeDb, 1);
 		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
 	});
 });
@@ -360,6 +439,28 @@ describe("AuditLive", () => {
 		expect(row.tenantId).toBe(9);
 	});
 
+	it("record attributes delegated actions to the actor (actorId), not userId", async () => {
+		// Secretary acting on a doctor's behalf: authz follows userId but
+		// the audit row must name the signed-in account.
+		await runtime.runPromise(
+			Effect.flatMap(Audit, (p) => p.record({ action: "delegated.action" })).pipe(
+				Effect.provideService(Principal, {
+					userId: "doc-1",
+					actorId: "sec-1",
+					email: "sec@x.com",
+				}),
+			),
+		);
+		const result = await asUser(
+			"admin-1",
+			call((p) => p.adminList()),
+			"admin@x.com",
+		);
+		const row = result.entries.find((e) => e.action === "delegated.action")!;
+		expect(row.actorUserId).toBe("sec-1");
+		expect(row.actorEmail).toBe("sec@x.com");
+	});
+
 	it("record stamps null actors in system contexts (null principal)", async () => {
 		await asUser(
 			null,
@@ -391,6 +492,117 @@ describe("AuditLive", () => {
 		).rejects.toMatchObject({
 			_tag: "Forbidden",
 		});
+	});
+});
+
+describe("Audit activity feed (P-080)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
+
+	const tenant: Tenant = { id: 1, kind: "clinic", slug: "clinic-a", role: "admin" };
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(DDL));
+		const write = (action: string, tenantId?: number | null) =>
+			insertAuditEntry(db, { action, actorUserId: null, actorEmail: null, tenantId });
+		await write("feed.t1.first", 1);
+		await write("feed.t1.second", 1);
+		await write("feed.t2", 2);
+		await write("feed.global");
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const call = <A, E>(f: (p: Audit["Service"]) => Effect.Effect<A, E>) => Effect.flatMap(Audit, f);
+
+	/** Stub Permissions port: records `can` calls, answers `allowed`. */
+	const permissions = (allowed: boolean, seen?: unknown[]) =>
+		({
+			can: (resource: string, action: string, opts?: unknown) => {
+				seen?.push([resource, action, opts]);
+				return Effect.succeed(allowed);
+			},
+		}) as unknown as Permissions["Service"];
+
+	/** Run under a staff principal + tenant scope; `perms` absent means
+	 * the rbac plugin is disabled (serviceOption → None). */
+	const asStaff = <A, E>(
+		effect: Effect.Effect<A, E, Audit>,
+		opts: { tenant?: Tenant | null; perms?: Permissions["Service"] } = {},
+	) => {
+		let eff = effect.pipe(
+			Effect.provideService(Principal, { userId: "u1", email: "staff@x.com" }),
+			Effect.provideService(Tenant, opts.tenant === undefined ? tenant : opts.tenant),
+		);
+		if (opts.perms !== undefined) eff = Effect.provideService(eff, Permissions, opts.perms);
+		return runtime.runPromise(eff);
+	};
+
+	it("activityAccess is true and activityList returns only tenant rows", async () => {
+		const seen: unknown[] = [];
+		const access = await asStaff(
+			call((p) => p.activityAccess()),
+			{
+				perms: permissions(true, seen),
+			},
+		);
+		expect(access).toBe(true);
+		expect(seen).toEqual([["audit", "read", { tenantId: 1 }]]);
+		const result = await asStaff(
+			call((p) => p.activityList()),
+			{
+				perms: permissions(true),
+			},
+		);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.t1.second", "feed.t1.first"]);
+		expect(result.total).toBe(2);
+	});
+
+	it("denies access and fails activityList Forbidden without the grant", async () => {
+		await expect(
+			asStaff(
+				call((p) => p.activityAccess()),
+				{ perms: permissions(false) },
+			),
+		).resolves.toBe(false);
+		await expect(
+			asStaff(
+				call((p) => p.activityList()),
+				{ perms: permissions(false) },
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "rbac.audit.read" });
+	});
+
+	it("fails closed when the Permissions service is absent", async () => {
+		await expect(asStaff(call((p) => p.activityAccess()))).resolves.toBe(false);
+		await expect(asStaff(call((p) => p.activityList()))).rejects.toMatchObject({
+			_tag: "Forbidden",
+		});
+	});
+
+	it("fails closed without a resolvable tenant scope", async () => {
+		const cases: Array<Tenant | null> = [
+			null,
+			{ id: "clinic-x", kind: "clinic", slug: "x", role: "admin" },
+		];
+		for (const t of cases) {
+			await expect(
+				asStaff(
+					call((p) => p.activityAccess()),
+					{ tenant: t, perms: permissions(true) },
+				),
+			).resolves.toBe(false);
+			await expect(
+				asStaff(
+					call((p) => p.activityList()),
+					{ tenant: t, perms: permissions(true) },
+				),
+			).rejects.toMatchObject({ _tag: "Forbidden" });
+		}
 	});
 });
 
@@ -445,11 +657,12 @@ describe("plugins", () => {
 		expect(auditServicesPlugin.services).toBeDefined();
 		expect(auditChromePlugin.id).toBe("audit.chrome");
 		expect(auditChromePlugin.requiredDeps).toEqual(["platform.panel"]);
+		expect(auditChromePlugin.chrome).toHaveLength(1);
 		expect(auditChromePlugin.chrome?.[0]).toMatchObject({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/audit", label: "Audit log", group: "System" },
+				item: { to: "/platform/audit", label: "Audit log", group: "Governance" },
 			},
 		});
 		expect(auditPanelPlugin.id).toBe("audit.panel");
@@ -537,5 +750,514 @@ describe("adminAudit schema", () => {
 	it("is registered in the composed drizzle schema", async () => {
 		const { adminAudit: composed } = await import("@ktb/db/schema");
 		expect(composed).toBe(adminAudit);
+	});
+});
+
+describe("listPatientAuditEntries", () => {
+	/** Seed one row per feed branch; returns the fresh db. */
+	const seed = async () => {
+		const d1 = makeD1(PATIENT_DDL);
+		const fresh = makeDb(d1);
+		const write = (
+			action: string,
+			targetType: string | null,
+			targetId: string | number | null,
+			detail?: Record<string, unknown> | null,
+		) =>
+			insertAuditEntry(fresh, {
+				actorUserId: null,
+				actorEmail: null,
+				action,
+				targetType,
+				targetId,
+				detail,
+			});
+		await write("patients.create", "patient", 5);
+		await write("patients.update", "patient", "5");
+		await write("patients.delete", "patient", 6);
+		// Live consultation of patient 5 (consultations.id = 10).
+		await write("consultations.save", "consultation", 10);
+		// Live consultation of patient 6 — must not leak into patient 5.
+		await write("consultations.anamnesis.attach", "consultation", 11);
+		// Consultation already deleted: the join misses, detail.patientId catches.
+		await write("consultations.delete", "consultation", 99, { hadAudio: true, patientId: 5 });
+		await write("consultations.delete", "consultation", 98, { hadAudio: false });
+		// Malformed JSON detail — json_extract yields NULL, no match.
+		await fresh.insert(adminAudit).values({
+			action: "consultations.delete",
+			targetType: "consultation",
+			targetId: "97",
+			detail: "not-json{",
+			createdAt: new Date(),
+		});
+		// Same targetId digits under another target type stay out.
+		await write("users.suspend", "user", 5);
+		await write("groups.update", "group", 5);
+		return fresh;
+	};
+
+	it("returns patient-target rows plus the patient's consultation events only", async () => {
+		const fresh = await seed();
+		const result = await listPatientAuditEntries(fresh, 5);
+		expect(result.entries.map((e) => e.action).sort()).toEqual([
+			"consultations.delete",
+			"consultations.save",
+			"patients.create",
+			"patients.update",
+		]);
+		expect(result.total).toBe(4);
+		expect(result.limit).toBe(200);
+	});
+
+	it("matches nothing for a patient with no rows", async () => {
+		const fresh = await seed();
+		const result = await listPatientAuditEntries(fresh, 42);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+
+	it("clamps the page limit like the other listings", async () => {
+		const fresh = await seed();
+		expect((await listPatientAuditEntries(fresh, 5, { limit: 2 })).entries).toHaveLength(2);
+		expect((await listPatientAuditEntries(fresh, 5, { limit: 0 })).entries).toHaveLength(1);
+		expect((await listPatientAuditEntries(fresh, 5, { limit: 9999 })).limit).toBe(500);
+	});
+
+	it("reports a zero total when the count query yields no row", async () => {
+		// Same thenable stub as the tenant listing, plus the `or`/`and`
+		// scope both queries chain through.
+		const query = {
+			where: () => query,
+			orderBy: () => ({ limit: async () => [] }),
+			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+		};
+		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
+		const result = await listPatientAuditEntries(fakeDb, 5);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+	});
+});
+
+describe("Audit patientList (P-086)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(PATIENT_DDL));
+		await insertAuditEntry(db, {
+			actorUserId: null,
+			actorEmail: null,
+			action: "patients.update",
+			targetType: "patient",
+			targetId: 5,
+		});
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const call = <A, E>(f: (p: Audit["Service"]) => Effect.Effect<A, E>) => Effect.flatMap(Audit, f);
+
+	const access = (allowed: boolean, seen?: number[]) =>
+		({
+			canView: (patientId: number) => {
+				seen?.push(patientId);
+				return Effect.succeed(allowed);
+			},
+		}) as unknown as PatientAuditAccess["Service"];
+
+	const asPatient = <A, E>(
+		effect: Effect.Effect<A, E, Audit>,
+		port?: PatientAuditAccess["Service"],
+	) => {
+		let eff = effect.pipe(Effect.provideService(Principal, { userId: "pat-1", email: "p@x.com" }));
+		if (port !== undefined) eff = Effect.provideService(eff, PatientAuditAccess, port);
+		return runtime.runPromise(eff);
+	};
+
+	it("fails closed when the PatientAuditAccess port is absent", async () => {
+		await expect(asPatient(call((p) => p.patientList({ patientId: 5 })))).rejects.toMatchObject({
+			_tag: "Forbidden",
+			path: "audit.patient",
+		});
+	});
+
+	it("fails Forbidden when canView denies the record", async () => {
+		const seen: number[] = [];
+		await expect(
+			asPatient(
+				call((p) => p.patientList({ patientId: 5 })),
+				access(false, seen),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "audit.patient" });
+		expect(seen).toEqual([5]);
+	});
+
+	it("returns the patient-scoped feed when canView allows", async () => {
+		const seen: number[] = [];
+		const result = await asPatient(
+			call((p) => p.patientList({ patientId: 5, limit: 10 })),
+			access(true, seen),
+		);
+		expect(seen).toEqual([5]);
+		expect(result.entries.map((e) => e.action)).toEqual(["patients.update"]);
+		expect(result.limit).toBe(10);
+	});
+});
+
+describe("sanitizeAuditDetail (P-087 D1)", () => {
+	it("drops blocklisted keys at any depth and keeps legit ids/flags", () => {
+		const clean = sanitizeAuditDetail({
+			patientId: 5,
+			ownerId: "u1",
+			hadAudio: true,
+			engine: "whisper",
+			via: "portal",
+			status: "done",
+			source: "mic",
+			backfilled: 2,
+			remaining: 0,
+			patientName: "Maria",
+			nested: { email: "a@b.c", cpf: "123", ok: 1 },
+			list: [{ phone: "999", note: "x" }, { fine: true }],
+		});
+		expect(clean).toEqual({
+			patientId: 5,
+			ownerId: "u1",
+			hadAudio: true,
+			engine: "whisper",
+			via: "portal",
+			status: "done",
+			source: "mic",
+			backfilled: 2,
+			remaining: 0,
+			nested: { ok: 1 },
+			list: [{}, { fine: true }],
+		});
+	});
+
+	it("matches the blocklist case-insensitively as a substring (camelCase)", () => {
+		const clean = sanitizeAuditDetail({
+			FileName: "a.pdf",
+			APIKey: "k",
+			DEK: "d",
+			patientEMAIL: "x",
+			transcriptText: "t",
+			ok: 1,
+		});
+		expect(clean).toEqual({ ok: 1 });
+	});
+
+	it("caps nesting depth, array length and string length", () => {
+		// root(0) → l1(1) → l2(2) → l3(3) → l4(4 = dropped)
+		expect(sanitizeAuditDetail({ l1: { l2: { l3: { l4: { l5: "x" } } } } })).toEqual({
+			l1: { l2: { l3: {} } },
+		});
+		const many = Array.from({ length: 25 }, (_, i) => i);
+		expect(sanitizeAuditDetail({ arr: many })).toEqual({ arr: many.slice(0, 20) });
+		expect(sanitizeAuditDetail({ s: "y".repeat(500) })).toEqual({ s: "y".repeat(200) });
+	});
+
+	it("coerces/drops non-JSON-safe values without throwing", () => {
+		const circular: Record<string, unknown> = { ok: 1 };
+		circular.self = circular;
+		const clean = sanitizeAuditDetail({
+			big: BigInt(10),
+			nan: Number.NaN,
+			inf: Number.POSITIVE_INFINITY,
+			nothing: undefined,
+			fn: () => 1,
+			sym: Symbol("s"),
+			when: new Date(0),
+			circular,
+			// Array items that sanitize to the drop sentinel are skipped.
+			arr: [undefined, () => 1, Symbol("s"), "kept"],
+		});
+		expect(clean).toEqual({
+			big: "10",
+			nan: null,
+			inf: null,
+			when: "1970-01-01T00:00:00.000Z",
+			circular: { ok: 1 },
+			arr: ["kept"],
+		});
+	});
+
+	it("returns null when nothing survives sanitization", () => {
+		expect(sanitizeAuditDetail(null)).toBeNull();
+		expect(sanitizeAuditDetail(undefined)).toBeNull();
+		expect(sanitizeAuditDetail({})).toBeNull();
+		expect(sanitizeAuditDetail({ patientName: "x", email: "y" })).toBeNull();
+	});
+
+	it("returns null when the sanitized value is not a plain record", () => {
+		// Top-level arrays/scalars (cast past the Record type) sanitize
+		// to non-records; toJSON can also collapse the payload to a
+		// scalar, null, an array or the drop sentinel — all record NULL.
+		expect(sanitizeAuditDetail([] as unknown as Record<string, unknown>)).toBeNull();
+		expect(sanitizeAuditDetail("raw" as unknown as Record<string, unknown>)).toBeNull();
+		expect(sanitizeAuditDetail(new Date(0) as unknown as Record<string, unknown>)).toBeNull();
+		expect(sanitizeAuditDetail({ toJSON: () => null })).toBeNull();
+		expect(sanitizeAuditDetail({ toJSON: () => ["a"] })).toBeNull();
+		expect(sanitizeAuditDetail({ toJSON: () => undefined })).toBeNull();
+	});
+
+	it("insertAuditEntry stores the sanitized detail JSON", async () => {
+		const db = makeDb(makeD1(DDL));
+		const row = await insertAuditEntry(db, {
+			actorUserId: null,
+			actorEmail: null,
+			action: "sanitize.check",
+			detail: { patientId: 5, patientName: "X", nested: { secret: "s", flag: true } },
+		});
+		expect(JSON.parse(row!.detail!)).toEqual({
+			patientId: 5,
+			nested: { flag: true },
+		});
+	});
+});
+
+describe("hasRecentAuditRead (P-087 D3)", () => {
+	it("matches NULL columns via IS NULL and respects the window", async () => {
+		const db = makeDb(makeD1(DDL));
+		await insertAuditEntry(db, {
+			actorUserId: null,
+			actorEmail: null,
+			action: "probe.read",
+			targetType: "patient",
+			targetId: 5,
+		});
+		const key = {
+			actorUserId: null,
+			action: "probe.read",
+			targetType: "patient",
+			targetId: "5",
+		};
+		await expect(hasRecentAuditRead(db, key, 60000)).resolves.toBe(true);
+		// A different (non-null) actor must NOT match the null-actor row.
+		await expect(hasRecentAuditRead(db, { ...key, actorUserId: "u1" }, 60000)).resolves.toBe(false);
+		// Outside the window nothing matches.
+		await expect(hasRecentAuditRead(db, key, -1)).resolves.toBe(false);
+	});
+});
+
+describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
+	// PluginStates is resolved per record() call from the CALLER's
+	// context (serviceOption) — provide it on the effect, not the layer,
+	// same as the Permissions stubs in the activity-feed suite.
+	const depsFor = (db: DbClient) =>
+		Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+
+	const statesStub = (config: unknown) =>
+		({ config: () => Effect.succeed(config) }) as unknown as PluginStates["Service"];
+
+	const record = (
+		runtime: ManagedRuntime.ManagedRuntime<Audit, never>,
+		entry: Parameters<Audit["Service"]["record"]>[0],
+		principal: { userId: string; email?: string } | null = { userId: "u1", email: "u@x.com" },
+		states?: unknown,
+	) => {
+		let eff = Effect.flatMap(Audit, (p) => p.record(entry)).pipe(
+			Effect.provideService(Principal, principal),
+		);
+		if (states !== undefined) {
+			eff = Effect.provideService(eff, PluginStates, states as PluginStates["Service"]);
+		}
+		return runtime.runPromise(eff);
+	};
+
+	const actions = async (db: DbClient) => (await db.select().from(adminAudit)).map((r) => r.action);
+
+	it("coalesces an identical .read within the window; mutations never coalesce", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
+			await record(runtime, read);
+			await record(runtime, read);
+			// Same action, different target → not coalesced.
+			await record(runtime, { ...read, targetId: 6 });
+			// Same target, different actor → not coalesced.
+			await record(runtime, read, { userId: "u2", email: "v@x.com" });
+			// Different action suffix → not coalesced.
+			await record(runtime, {
+				action: "patients.history.read",
+				targetType: "patient",
+				targetId: 5,
+			});
+			// Mutation actions are never coalesced.
+			await record(runtime, { action: "patients.update", targetType: "patient", targetId: 5 });
+			await record(runtime, { action: "patients.update", targetType: "patient", targetId: 5 });
+			const rows = await db.select().from(adminAudit);
+			expect(rows.filter((r) => r.action === "patients.read")).toHaveLength(3);
+			expect(rows.filter((r) => r.action === "patients.history.read")).toHaveLength(1);
+			expect(rows.filter((r) => r.action === "patients.update")).toHaveLength(2);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("coalesces NULL-actor reads via IS NULL, distinct from user reads", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			const read = { action: "system.read", targetType: "report", targetId: "r1" };
+			await record(runtime, read, null);
+			await record(runtime, read, null);
+			await record(runtime, read, { userId: "u1" });
+			const rows = (await db.select().from(adminAudit)).filter((r) => r.action === "system.read");
+			expect(rows).toHaveLength(2);
+			expect(rows.filter((r) => r.actorUserId === null)).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("coalesces reads with absent target fields via the NULL-key probe", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			// No targetType/targetId → the dedupe probe compares NULL
+			// columns with IS NULL; identical reads still coalesce.
+			const read = { action: "feed.read" };
+			await record(runtime, read);
+			await record(runtime, read);
+			// Explicit nulls take the same path.
+			await record(runtime, { action: "feed.read", targetType: null, targetId: null });
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "feed.read"),
+			).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("inserts again once the coalescing window has expired", async () => {
+		const db = makeDb(makeD1(DDL));
+		// Seed a read older than the default 60s window directly.
+		await db.insert(adminAudit).values({
+			action: "patients.read",
+			actorUserId: "u1",
+			targetType: "patient",
+			targetId: "5",
+			createdAt: new Date(Date.now() - 120_000),
+		});
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			await record(runtime, {
+				action: "patients.read",
+				targetType: "patient",
+				targetId: 5,
+			});
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "patients.read"),
+			).toHaveLength(2);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("readCoalesceMs=0 disables coalescing; partial stored config keeps defaults", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
+			const states = statesStub({ readCoalesceMs: 0 });
+			await record(runtime, read, undefined, states);
+			await record(runtime, read, undefined, states);
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "patients.read"),
+			).toHaveLength(2);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("readsEnabled=false drops *.read events but mutations still record", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			const states = statesStub({ readsEnabled: false });
+			await record(
+				runtime,
+				{ action: "patients.read", targetType: "patient", targetId: 5 },
+				undefined,
+				states,
+			);
+			await record(
+				runtime,
+				{ action: "patients.update", targetType: "patient", targetId: 5 },
+				undefined,
+				states,
+			);
+			expect(await actions(db)).toEqual(["patients.update"]);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("enabled=false is the global kill switch", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			const states = statesStub({ enabled: false });
+			await record(
+				runtime,
+				{ action: "patients.read", targetType: "patient", targetId: 5 },
+				undefined,
+				states,
+			);
+			await record(
+				runtime,
+				{ action: "patients.update", targetType: "patient", targetId: 5 },
+				undefined,
+				states,
+			);
+			expect(await actions(db)).toEqual([]);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("corrupt stored config falls back to defaults (coalescing still applies)", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
+			const states = statesStub("not-an-object");
+			await record(runtime, read, undefined, states);
+			await record(runtime, read, undefined, states);
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "patients.read"),
+			).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("falls back to defaults when the PluginStates config read itself fails", async () => {
+		const db = makeDb(makeD1(DDL));
+		const runtime = ManagedRuntime.make(AuditLive.pipe(Layer.provide(depsFor(db))));
+		try {
+			// config() failing (typed error — Effect.catch only handles
+			// failures, not defects) must not break record(): the write
+			// proceeds under DEFAULT_AUDIT_CONFIG.
+			const states = {
+				config: () => Effect.fail(new Error("state store down")),
+			} as unknown as PluginStates["Service"];
+			const read = { action: "patients.read", targetType: "patient", targetId: 5 };
+			await record(runtime, read, undefined, states);
+			await record(runtime, read, undefined, states);
+			// Defaults apply: readsEnabled + 60s coalescing window.
+			expect(
+				(await db.select().from(adminAudit)).filter((r) => r.action === "patients.read"),
+			).toHaveLength(1);
+		} finally {
+			await runtime.dispose();
+		}
 	});
 });

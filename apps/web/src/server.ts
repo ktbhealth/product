@@ -6,9 +6,14 @@ import {
 import type { Register } from "@tanstack/react-router";
 import type { RequestHandler } from "@tanstack/react-start/server";
 
+import { runScheduledAuditVerification } from "#/lib/audit-chain.ts";
 import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
 import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
 import { flushTelemetry } from "#/lib/platform.ts";
+
+// F3b: re-export the AcpBridge Durable Object class — the Alchemy
+// `ACP_BRIDGE` binding points at this worker's `AcpBridge` export.
+export { AcpBridge } from "@ktb/ai-bridge";
 
 const fetch = createStartHandler(defaultStreamHandler);
 
@@ -51,6 +56,13 @@ export default {
 		} else {
 			await handleAudioQueueBatch(batch.messages);
 		}
+		ctx?.waitUntil?.(flushTelemetry());
+	},
+	// Daily cron (Alchemy `crons` trigger — see alchemy.run.ts): walks
+	// the tamper-evident audit chain and records a marker row on tamper.
+	// Never fires under `bun run dev`; failures are logged, not thrown.
+	scheduled: async (_controller: ScheduledController, _env: unknown, ctx: ExecutionContext) => {
+		await runScheduledAuditVerification();
 		ctx?.waitUntil?.(flushTelemetry());
 	},
 };

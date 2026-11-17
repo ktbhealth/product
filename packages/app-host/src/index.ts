@@ -32,12 +32,13 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
+import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import {
 	evalArtifactsLocalDriver,
-	evalLlmAcpDriver,
 	evalLlmFactoryDriver,
 	evalRunnerLocalDriver,
 } from "@ktb/eval-adapter-local";
@@ -60,6 +61,8 @@ import { stubEmailDriver } from "@ktb/email-stub";
 import { Captcha, nullCaptchaDriver } from "@ktb/captcha";
 import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
+import { EntityCipher } from "@ktb/crypto/cipher";
+import { passthroughCipherDriver } from "@ktb/crypto-stub";
 import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
@@ -67,6 +70,7 @@ import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
 import { correctTranscript as correctTranscriptEffect } from "@ktb/anamnesis-llm";
+import { correctTranscriptViaPlatform, platformPreferringEngine } from "./platform-llm.ts";
 import {
 	Command,
 	CommandBus,
@@ -201,6 +205,35 @@ export const assertCaptchaConfigured = (
 	}
 };
 
+/**
+ * Production must never run without auth secrets: makeAuth passes
+ * `secret`/`baseURL` straight through to better-auth, which only
+ * hard-fails on the default secret when its own NODE_ENV detection
+ * fires — an early, explicit assert here keeps a missing
+ * BETTER_AUTH_SECRET/BETTER_AUTH_URL from silently falling back to
+ * insecure defaults (or a runtime surprise) on a prod deploy.
+ */
+export const assertAuthConfigured = (
+	env: Pick<AppEnv, "BETTER_AUTH_SECRET" | "BETTER_AUTH_URL">,
+	production: boolean,
+): void => {
+	if (production && (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL)) {
+		throw new Error(
+			"auth not configured for production: bind BETTER_AUTH_SECRET and " +
+				"BETTER_AUTH_URL (better-auth falls back to insecure defaults otherwise)",
+		);
+	}
+};
+
+/**
+ * `import.meta.env` only exists inside the Vite pipeline — under plain
+ * node/bun the property is undefined and a bare `import.meta.env.PROD`
+ * read throws TypeError. Callers pass the (possibly absent) env object;
+ * exported so tests can exercise both shapes.
+ */
+export const isProductionBuild = (env: { readonly PROD?: unknown } | undefined): boolean =>
+	env?.PROD === true;
+
 /** Subject and body of a transactional email, before addressing. */
 export type EmailContent = Omit<EmailMessage, "to">;
 
@@ -242,11 +275,17 @@ export interface AppOptions {
  * once with their env and re-export the pieces they need.
  */
 export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
-	// import.meta.env.PROD is statically replaced by the Vite build:
-	// true for `vp build`/`vp preview` output (prod deploy), false for
-	// dev servers and vitest. Same convention as the stub-bot guard in
-	// apps/web routes.
-	assertCaptchaConfigured(env, import.meta.env.PROD);
+	// isProductionBuild reads import.meta.env.PROD safely: the Vite build
+	// statically replaces it (true for `vp build`/`vp preview` output —
+	// prod deploy — false for dev servers and vitest), while runtimes
+	// outside the Vite pipeline get `undefined` instead of a TypeError.
+	// Same convention as the stub-bot guard in apps/web routes.
+	// The cast widens the ambient ImportMeta type (env.d.ts declares
+	// env as always-present for the vite/client case) so the possibly-
+	// absent runtime shape typechecks.
+	const production = isProductionBuild((import.meta as { env?: { PROD?: unknown } }).env);
+	assertCaptchaConfigured(env, production);
+	assertAuthConfigured(env, production);
 	const BindingLive = Layer.succeed(Binding, env.DB);
 	const db = makeDb(env.DB);
 
@@ -278,6 +317,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// the console driver is the always-eligible local/DX fallback.
 		otlpTelemetryDriver,
 		telemetryConsoleDriver,
+		// Entity cipher (PL-007 F2): the passthrough is the non-ZK
+		// default — always eligible, LAST in the list once real
+		// keyring-backed drivers arrive (first eligible wins).
+		passthroughCipherDriver,
 		// Eval validator runner (P-081): eligible only when the local
 		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
 		// otherwise no EvalRunner is bound and eval runs stay queued.
@@ -372,7 +415,15 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAi: env.AI,
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
-	const AnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
+	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
+	// F2: the ai-endpoints plugin's PlatformLlm capability wins over env
+	// providers when a platform-default endpoint is configured; the
+	// wrapped engine is the (b) env fallback → (c) heuristic path.
+	const AnamnesisEngineLive = Layer.unwrap(
+		Effect.map(AnamnesisEngine, (inner) =>
+			Layer.succeed(AnamnesisEngine, platformPreferringEngine(inner)),
+		),
+	).pipe(Layer.provide(envAnamnesisEngineLive));
 	// Telemetry port: driver-selected exporter set (OTLP when configured,
 	// console JSON otherwise) — provides Logger/Tracer references, the
 	// Telemetry service, metric instrumentation and KTB_LOG_LEVEL.
@@ -381,6 +432,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// wired; the plugin then leaves run rows `queued` (P-081).
 	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
 	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
+	// Entity cipher port (T-140): passthrough until ZK keyring drivers
+	// exist — plugins resolve it via serviceOption like other ports.
+	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
 	// LLM script generation for persona cohorts — bound only when an
 	// ACP endpoint is configured; the service degrades to templates.
 	const LlmLive = optionalLayerFor<LlmPort>(LlmPort.key, env);
@@ -419,6 +473,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TelemetryLive,
 		EvalRunnerLive,
 		EvalArtifactsLive,
+		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,
 		PlatformAdminLive,
@@ -467,8 +522,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Enabled-state gate (P-058): services layers always compose
 	// (ManagedRuntime can't recompose per toggle), so dispatch is the
 	// fail-closed seam — a group's handlers are unreachable while EVERY
-	// plugin id of its package (`plugins/<pkg>/*`) is disabled. The gate
-	// reads PluginStates per dispatch so toggles apply without restart.
+	// plugin of its package (`plugins/<pkg>`) is disabled. Membership
+	// resolves through the `pkg` stamp on discovered plugins (plugin ids
+	// are not reliably namespaced — see packageLive), NOT an id-prefix
+	// guess; the page dispatchers apply the same package contract. The
+	// gate reads PluginStates per dispatch so toggles apply without
+	// restart.
 	//
 	// `Middleware` is typed `(payload) => Effect<A, E>` — R=never — but
 	// the bus executes inside the app runtime where core services are
@@ -483,8 +542,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 				Effect.gen(function* () {
 					const states = yield* PluginStates;
 					const enabled = yield* states.enabledIds();
-					const prefix = `${pkg}.`;
-					if (![...enabled].some((id) => id.startsWith(prefix))) {
+					if (!packageLive(plugins, enabled, pkg)) {
 						return yield* Effect.fail(new PluginDisabled({ pluginId: pkg }));
 					}
 					return yield* dispatch(payload);
@@ -650,7 +708,15 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	 * or on provider failure (correctedTranscript stays null).
 	 */
 	const correctTranscript = (transcript: string) =>
-		runtime.runPromise(correctTranscriptEffect(llmConfig, transcript));
+		runtime.runPromise(
+			// Platform-default endpoint first (F2); env providers on
+			// absence/failure — both paths degrade to null, never reject.
+			correctTranscriptViaPlatform(transcript).pipe(
+				Effect.flatMap((res) =>
+					res !== null ? Effect.succeed(res) : correctTranscriptEffect(llmConfig, transcript),
+				),
+			),
+		);
 
 	/**
 	 * Drain telemetry exporters (OTLP batch queues) — bounded by each

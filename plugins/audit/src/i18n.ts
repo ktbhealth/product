@@ -12,10 +12,17 @@ export const BASE_LOCALE: AuditLocale = "en";
 
 export interface AuditMessages {
 	readonly title: string;
+	/** Staff-feed heading (P-080) — the portal page reuses this view
+	 * with its own title instead of the console's "Audit log". */
+	readonly activityTitle: string;
 	readonly description: (shown: number, total: number) => string;
 	readonly searchPlaceholder: string;
 	readonly searchLabel: string;
 	readonly allActions: string;
+	readonly allActors: string;
+	readonly allTargetTypes: string;
+	/** Filter-option label for rows with no target type (null column). */
+	readonly noTargetType: string;
 	readonly noMatch: string;
 	readonly filteredCount: (shown: number, total: number) => string;
 	readonly colTime: string;
@@ -30,10 +37,18 @@ export interface AuditMessages {
 	readonly systemActor: string;
 	readonly noTarget: string;
 	readonly noTenant: string;
+	/** On-demand chain verification (platform console only). */
+	readonly verifyButton: string;
+	readonly verifyRunning: string;
+	readonly verifyVerified: (entries: number) => string;
+	readonly verifyTampered: (brokenAt: number | null) => string;
+	readonly verifyEmpty: string;
+	readonly verifyFailed: string;
 }
 
 const en: AuditMessages = {
 	title: "Audit log",
+	activityTitle: "Activity",
 	description: (shown, total) =>
 		shown >= total
 			? `${total} admin ${total === 1 ? "action" : "actions"} recorded.`
@@ -41,6 +56,9 @@ const en: AuditMessages = {
 	searchPlaceholder: "Search actor, action or target…",
 	searchLabel: "Search audit entries",
 	allActions: "All actions",
+	allActors: "All actors",
+	allTargetTypes: "All target types",
+	noTargetType: "none",
 	noMatch: "No entries match the filters.",
 	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
 	colTime: "Time",
@@ -55,10 +73,18 @@ const en: AuditMessages = {
 	systemActor: "system",
 	noTarget: "—",
 	noTenant: "—",
+	verifyButton: "Verify chain",
+	verifyRunning: "Verifying…",
+	verifyVerified: (entries) =>
+		`Chain verified — ${entries} ${entries === 1 ? "entry" : "entries"} intact.`,
+	verifyTampered: (brokenAt) => `Chain tampered — first broken link at entry #${brokenAt ?? "?"}.`,
+	verifyEmpty: "The audit log is empty — nothing to verify.",
+	verifyFailed: "Verification failed — the request was denied or errored.",
 };
 
 const ptBR: AuditMessages = {
 	title: "Log de auditoria",
+	activityTitle: "Atividade",
 	description: (shown, total) =>
 		shown >= total
 			? `${total} ${total === 1 ? "ação" : "ações"} de admin registradas.`
@@ -66,6 +92,9 @@ const ptBR: AuditMessages = {
 	searchPlaceholder: "Buscar ator, ação ou alvo…",
 	searchLabel: "Buscar entradas de auditoria",
 	allActions: "Todas as ações",
+	allActors: "Todos os atores",
+	allTargetTypes: "Todos os tipos de alvo",
+	noTargetType: "nenhum",
 	noMatch: "Nenhuma entrada corresponde aos filtros.",
 	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
 	colTime: "Hora",
@@ -80,10 +109,19 @@ const ptBR: AuditMessages = {
 	systemActor: "sistema",
 	noTarget: "—",
 	noTenant: "—",
+	verifyButton: "Verificar cadeia",
+	verifyRunning: "Verificando…",
+	verifyVerified: (entries) =>
+		`Cadeia verificada — ${entries} ${entries === 1 ? "entrada" : "entradas"} íntegras.`,
+	verifyTampered: (brokenAt) =>
+		`Cadeia adulterada — primeiro elo quebrado na entrada #${brokenAt ?? "?"}.`,
+	verifyEmpty: "O log de auditoria está vazio — nada a verificar.",
+	verifyFailed: "A verificação falhou — a solicitação foi negada ou erro.",
 };
 
 const es: AuditMessages = {
 	title: "Registro de auditoría",
+	activityTitle: "Actividad",
 	description: (shown, total) =>
 		shown >= total
 			? `${total} ${total === 1 ? "acción" : "acciones"} de admin registradas.`
@@ -91,6 +129,9 @@ const es: AuditMessages = {
 	searchPlaceholder: "Buscar actor, acción o destino…",
 	searchLabel: "Buscar entradas de auditoría",
 	allActions: "Todas las acciones",
+	allActors: "Todos los actores",
+	allTargetTypes: "Todos los tipos de destino",
+	noTargetType: "ninguno",
 	noMatch: "Ninguna entrada coincide con los filtros.",
 	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
 	colTime: "Hora",
@@ -105,6 +146,14 @@ const es: AuditMessages = {
 	systemActor: "sistema",
 	noTarget: "—",
 	noTenant: "—",
+	verifyButton: "Verificar cadena",
+	verifyRunning: "Verificando…",
+	verifyVerified: (entries) =>
+		`Cadena verificada — ${entries} ${entries === 1 ? "entrada" : "entradas"} íntegras.`,
+	verifyTampered: (brokenAt) =>
+		`Cadena alterada — primer eslabón roto en la entrada #${brokenAt ?? "?"}.`,
+	verifyEmpty: "El registro de auditoría está vacío — nada que verificar.",
+	verifyFailed: "La verificación falló — la solicitud fue denegada o erró.",
 };
 
 const CATALOGS: Record<AuditLocale, AuditMessages> = { en, "pt-BR": ptBR, es };

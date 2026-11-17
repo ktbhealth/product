@@ -230,7 +230,13 @@ export class EvalArtifacts extends Context.Service<
  * an env var holding the API key — keys never live in tables. */
 export interface LlmEndpointDescriptor {
 	readonly kind: "acp" | "openai";
+	/** Optional for acp+ws bridge endpoints (F3b): absent/empty means
+	 * "connect through the AcpBridge durable object" — the agent lives
+	 * behind a local ai-bridge CLI, not a URL. */
 	readonly baseUrl: string;
+	/** Owning ai_endpoint row id — set by the plugin's descriptor
+	 * resolution; the bridge DO names itself `idFromName(endpointId)`. */
+	readonly endpointId?: number;
 	readonly model?: string;
 	readonly sessionId?: string;
 	readonly secretRef?: string;
@@ -238,6 +244,13 @@ export interface LlmEndpointDescriptor {
 	 * runtime support; `child`/`ssh` require a Node-runtime driver and
 	 * resolve to a PortError under workerd. Absent = `ws`. */
 	readonly transport?: "ws" | "child" | "ssh";
+	/** Agent command for `child`/`ssh` ACP transports — e.g.
+	 * `claude agent acp` or `gemini --acp`. Spawned by
+	 * @ktb/ai-adapter-node; unused by `ws`/`openai`. */
+	readonly agentCmd?: string;
+	/** SSH target (`user@host`) for the `ssh` ACP transport — the
+	 * `agentCmd` runs on that host. Unused by `child`/`ws`. */
+	readonly sshHost?: string;
 	/** Raw API key resolved server-side (e.g. from the credentials
 	 * store) — never persisted on the endpoint row. */
 	readonly apiKey?: string;
@@ -274,3 +287,21 @@ export class LlmFactory extends Context.Service<
 		readonly presets?: readonly LlmEndpointPreset[];
 	}
 >()("@ktb/eval-consultation/LlmFactory") {}
+
+/**
+ * Platform-default generative endpoint for PRODUCTION surfaces
+ * (transcript cleanup, anamnesis extraction) — bound by the
+ * ai-endpoints plugin's services layer. `defaultLayer` resolves the
+ * enabled `scope='platform'` `is_default` endpoint through LlmFactory
+ * on every call, so admin changes apply without a restart; `null`
+ * means "no platform default configured" and consumers fall back to
+ * env-derived provider config, then their deterministic path. Absent
+ * service (plugin not registered) is the same fallback — read it via
+ * `Effect.serviceOption`.
+ */
+export class PlatformLlm extends Context.Service<
+	PlatformLlm,
+	{
+		readonly defaultLayer: () => Effect.Effect<Layer.Layer<LlmPort> | null, never, unknown>;
+	}
+>()("@ktb/eval-consultation/PlatformLlm") {}

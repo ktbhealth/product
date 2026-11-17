@@ -11,6 +11,12 @@ import {
 } from "@ktb/auth";
 import type { ActingUser, DoctorProfile, PatientProfile, SessionUser } from "@ktb/auth";
 import { tenantSelectorFromHeaders, type TenantSelector } from "@ktb/tenant/selector";
+import {
+	recordUnsafe,
+	sessionContextLoadDuration,
+	sessionContextLookups,
+	tagged,
+} from "@ktb/observability/metrics";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -45,8 +51,84 @@ export class UnauthenticatedError extends Error {
 const requestHeadersOr = async (headers?: Headers): Promise<Headers> =>
 	headers ?? (await import("@tanstack/react-start/server")).getRequestHeaders();
 
-export async function getSessionUser(headers?: Headers): Promise<SessionUser | null> {
-	const requestHeaders = await requestHeadersOr(headers);
+/**
+ * Per-request memoization. Every helper in this module is invoked with
+ * the same `Headers` object within one request (explicitly, or the
+ * stable `getRequestHeaders()` result for the implicit path), so it is
+ * a natural WeakMap key: the session and directory lookups are shared
+ * across `getSessionUser`/`getDoctorUser`/`ensureDoctorUser`/… calls in
+ * one request and can never leak into the next — keys are collected
+ * with the request. Rejections are evicted so a failed lookup is
+ * retried by the next call instead of caching the failure.
+ */
+const sessionUserCache = new WeakMap<Headers, Promise<SessionUser | null>>();
+
+interface ResolvedDoctorContext {
+	readonly user: SessionUser;
+	readonly profiles: readonly DoctorProfile[] | null;
+	readonly selectedId: number | null;
+}
+
+const doctorContextCache = new WeakMap<Headers, Promise<ResolvedDoctorContext | null>>();
+
+interface ResolvedPatientContext {
+	readonly user: SessionUser;
+	readonly profiles: readonly PatientProfile[];
+	readonly selectedId: number | null;
+}
+
+const patientContextCache = new WeakMap<Headers, Promise<ResolvedPatientContext | null>>();
+
+/** Store `promise` under `key`, evicting it if it rejects while still
+ * current (a later call may already have replaced the entry). */
+const cacheLookup = <K extends object, V>(
+	cache: WeakMap<K, Promise<V>>,
+	key: K,
+	promise: Promise<V>,
+): Promise<V> => {
+	cache.set(key, promise);
+	void promise.catch(() => {
+		if (cache.get(key) === promise) cache.delete(key);
+	});
+	return promise;
+};
+
+/** Which resolution a lookup serves — the `context` label on
+ * `ktb_session_context_lookups_total` / `ktb_session_context_load_duration_ms`. */
+type SessionContextKind = "session" | "doctor" | "patient";
+
+/**
+ * Memoized resolution with lookup telemetry. `result: cache` means the
+ * per-request WeakMap entry served the call — no session or directory
+ * I/O; `result: load` means the backing lookup ran and its wall time is
+ * recorded on `ktb_session_context_load_duration_ms{context}` (the
+ * DB-cost signal the memoization exists to contain). `readCache: false`
+ * preserves the claimInvites/syncLinks contract — the mutation path
+ * always loads fresh but still stores its result for later reads in the
+ * same request. Memoization semantics are unchanged.
+ */
+const memoized = async <V>(
+	cache: WeakMap<Headers, Promise<V>>,
+	requestHeaders: Headers,
+	context: SessionContextKind,
+	readCache: boolean,
+	load: () => Promise<V>,
+): Promise<V> => {
+	const cached = readCache ? cache.get(requestHeaders) : undefined;
+	if (cached !== undefined) {
+		recordUnsafe(tagged(sessionContextLookups, { context, result: "cache" }), 1);
+		return cached;
+	}
+	recordUnsafe(tagged(sessionContextLookups, { context, result: "load" }), 1);
+	const started = Date.now();
+	try {
+		return await cacheLookup(cache, requestHeaders, load());
+	} finally {
+		recordUnsafe(tagged(sessionContextLoadDuration, { context }), Date.now() - started);
+	}
+};
+
+async function loadSessionUser(requestHeaders: Headers): Promise<SessionUser | null> {
 	const session = await run(
 		Effect.gen(function* () {
 			const auth = yield* Auth;
@@ -60,6 +142,13 @@ export async function getSessionUser(headers?: Headers): Promise<SessionUser | n
 	);
 	if (!session) return null;
 	return session.user;
+}
+
+export async function getSessionUser(headers?: Headers): Promise<SessionUser | null> {
+	const requestHeaders = await requestHeadersOr(headers);
+	return memoized(sessionUserCache, requestHeaders, "session", true, () =>
+		loadSessionUser(requestHeaders),
+	);
 }
 
 export async function ensureSessionUser(headers?: Headers): Promise<SessionUser> {
@@ -103,15 +192,10 @@ export interface DoctorContext {
  * Returns `profiles: null` when no directory is deployed: a single-role
  * app where every account acts for itself.
  */
-async function resolveDoctorContext(
-	headers: Headers | undefined,
+async function loadDoctorContext(
+	requestHeaders: Headers,
 	claimInvites: boolean,
-): Promise<{
-	user: SessionUser;
-	profiles: readonly DoctorProfile[] | null;
-	selectedId: number | null;
-} | null> {
-	const requestHeaders = await requestHeadersOr(headers);
+): Promise<ResolvedDoctorContext | null> {
 	const user = await getSessionUser(requestHeaders);
 	if (!user) return null;
 	const profiles = await run(
@@ -127,6 +211,20 @@ async function resolveDoctorContext(
 		profiles,
 		selectedId: profileIdFromHeaders(requestHeaders, DOCTOR_PROFILE_COOKIE),
 	};
+}
+
+async function resolveDoctorContext(
+	headers: Headers | undefined,
+	claimInvites: boolean,
+): Promise<ResolvedDoctorContext | null> {
+	const requestHeaders = await requestHeadersOr(headers);
+	// `claimInvites` mutates invite state, so it must never be served a
+	// pre-claim cache entry — it always runs fresh. Its result IS stored:
+	// post-claim profiles are the newest truth, and later non-claim reads
+	// in the same request should see the just-claimed invites.
+	return memoized(doctorContextCache, requestHeaders, "doctor", !claimInvites, () =>
+		loadDoctorContext(requestHeaders, claimInvites),
+	);
 }
 
 export async function getDoctorContext(
@@ -249,11 +347,10 @@ export interface PatientContext {
  * `syncLinks` first claims invites — pass it on entry points (the
  * portal home), not on every request.
  */
-export async function getPatientContext(
-	headers?: Headers,
-	options?: { readonly syncLinks?: boolean },
-): Promise<PatientContext | null> {
-	const requestHeaders = await requestHeadersOr(headers);
+async function loadPatientContext(
+	requestHeaders: Headers,
+	syncLinks: boolean,
+): Promise<ResolvedPatientContext | null> {
 	const user = await getSessionUser(requestHeaders);
 	if (!user) return null;
 	const profiles = await run(
@@ -261,12 +358,35 @@ export async function getPatientContext(
 			// Optional: absent when the patient-access plugin is not deployed.
 			const directory = yield* Effect.serviceOption(PatientProfiles);
 			if (Option.isNone(directory)) return [];
-			if (options?.syncLinks === true) yield* directory.value.syncLinks(user.id);
+			if (syncLinks) yield* directory.value.syncLinks(user.id);
 			return yield* directory.value.listFor(user.id);
 		}),
 	);
-	const selectedId = profileIdFromHeaders(requestHeaders, PATIENT_PROFILE_COOKIE);
-	return { user, profiles, active: resolvePatientProfile(profiles, selectedId) };
+	return {
+		user,
+		profiles,
+		selectedId: profileIdFromHeaders(requestHeaders, PATIENT_PROFILE_COOKIE),
+	};
+}
+
+export async function getPatientContext(
+	headers?: Headers,
+	options?: { readonly syncLinks?: boolean },
+): Promise<PatientContext | null> {
+	const requestHeaders = await requestHeadersOr(headers);
+	// Same rule as `claimInvites` in resolveDoctorContext: `syncLinks`
+	// mutates link state, so it bypasses the cache read but stores its
+	// fresh post-sync result for later non-sync reads in this request.
+	const syncLinks = options?.syncLinks === true;
+	const resolved = await memoized(patientContextCache, requestHeaders, "patient", !syncLinks, () =>
+		loadPatientContext(requestHeaders, syncLinks),
+	);
+	if (!resolved) return null;
+	return {
+		user: resolved.user,
+		profiles: resolved.profiles,
+		active: resolvePatientProfile(resolved.profiles, resolved.selectedId),
+	};
 }
 
 /**

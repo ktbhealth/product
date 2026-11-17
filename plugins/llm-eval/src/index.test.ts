@@ -14,7 +14,7 @@ describe("llm.eval", () => {
 		expect(registry.get("eval.capability", "llm").meta?.adapters).toEqual({
 			stub: "@ktb/eval-adapter-stub",
 			noop: "@ktb/eval-adapter-stub",
-			acp: "@ktb/eval-adapter-local",
+			acp: "@ktb/ai-adapter-acp",
 		});
 		expect(registry.get("eval.capability", "eval").meta?.port).toBe(EvalPort.key);
 		expect(registry.get("eval.capability", "eval").meta?.adapters).toEqual({

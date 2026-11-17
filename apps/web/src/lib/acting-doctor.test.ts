@@ -3,7 +3,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 const headers = { current: new Headers() };
 
 vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => headers.current,
+	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
+	// per request keyed on the Headers identity.
+	getRequestHeaders: () => new Headers(headers.current),
 }));
 vi.mock("@tanstack/react-start", () => ({
 	createServerFn: () => {
@@ -23,8 +25,9 @@ vi.mock("@tanstack/react-start", () => ({
 import { doctorAccess, doctors, patients, user } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
 
+import { createPatientFn, listPatientsFn } from "@ktb/patients/fns";
 import { auth, db } from "./platform.ts";
-import { createPatientFn, getSessionUserFn, listPatientsFn } from "./fns.ts";
+import { getSessionUserFn } from "./fns.ts";
 
 // End-to-end delegation: a secretary acts on a doctor's data through the
 // same server fns the doctor uses, selected by the `ktb_doctor` cookie

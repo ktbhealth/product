@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
+import * as Metric from "effect/Metric";
 
 import { Auth, type AuthShape, type Session } from "@ktb/auth";
+import {
+	sessionContextLoadDuration,
+	sessionContextLookups,
+	tagged,
+} from "@ktb/observability/metrics";
 
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
 
@@ -24,9 +30,15 @@ const session: Session = {
 };
 
 let sessionResult: Session | null = session;
+let sessionError: unknown;
+let sessionCalls = 0;
 
 const authShape: AuthShape = {
-	getSession: async () => sessionResult,
+	getSession: async () => {
+		sessionCalls += 1;
+		if (sessionError !== undefined) throw sessionError;
+		return sessionResult;
+	},
 	setUserBanned: async () => {},
 };
 
@@ -45,6 +57,8 @@ beforeEach(() => {
 	resetServerRuntime();
 	setServerRuntime(runtime);
 	sessionResult = session;
+	sessionError = undefined;
+	sessionCalls = 0;
 	requestHeaders.current = new Headers();
 });
 
@@ -62,6 +76,65 @@ describe("getSessionUser", () => {
 	it("returns null when there is no session", async () => {
 		sessionResult = null;
 		await expect(getSessionUser(new Headers())).resolves.toBeNull();
+	});
+
+	it("memoizes the lookup per Headers object", async () => {
+		const headers = new Headers({ cookie: "session=abc" });
+		await getSessionUser(headers);
+		await ensureSessionUser(headers);
+		expect(sessionCalls).toBe(1);
+	});
+
+	it("memoizes the implicit request-headers path", async () => {
+		await getSessionUser();
+		await getSessionUser();
+		expect(sessionCalls).toBe(1);
+	});
+
+	it("does not share the lookup across different Headers objects", async () => {
+		await getSessionUser(new Headers());
+		await getSessionUser(new Headers());
+		expect(sessionCalls).toBe(2);
+	});
+
+	it("retries the lookup after a rejection instead of caching the failure", async () => {
+		const headers = new Headers();
+		sessionError = new Error("db down");
+		await expect(getSessionUser(headers)).rejects.toThrow("db down");
+		sessionError = undefined;
+		await expect(getSessionUser(headers)).resolves.toEqual(session.user);
+		expect(sessionCalls).toBe(2);
+	});
+});
+
+describe("session lookup telemetry", () => {
+	const lookupCount = (context: string, result: string) =>
+		Effect.runPromise(Metric.value(tagged(sessionContextLookups, { context, result }))).then(
+			(state) => ("count" in state ? state.count : 0),
+		);
+	const loadDurationCount = (context: string) =>
+		Effect.runPromise(Metric.value(tagged(sessionContextLoadDuration, { context }))).then((state) =>
+			"count" in state ? state.count : 0,
+		);
+
+	it("counts one load then cache hits for repeated lookups on one Headers", async () => {
+		const loadBefore = await lookupCount("session", "load");
+		const cacheBefore = await lookupCount("session", "cache");
+		const durationBefore = await loadDurationCount("session");
+		const headers = new Headers();
+		await getSessionUser(headers);
+		await getSessionUser(headers);
+		await getSessionUser(headers);
+		expect(await lookupCount("session", "load")).toBe(loadBefore + 1);
+		expect(await lookupCount("session", "cache")).toBe(cacheBefore + 2);
+		expect(await loadDurationCount("session")).toBe(durationBefore + 1);
+	});
+
+	it("counts a load per distinct Headers object", async () => {
+		const loadBefore = await lookupCount("session", "load");
+		await getSessionUser(new Headers());
+		await getSessionUser(new Headers());
+		expect(await lookupCount("session", "load")).toBe(loadBefore + 2);
 	});
 });
 

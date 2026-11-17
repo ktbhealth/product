@@ -5,6 +5,7 @@ import * as Layer from "effect/Layer";
 import { and, asc, eq, ne, or } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
+import { PatientAuditAccess } from "@ktb/audit";
 import { PatientProfiles, type PatientProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
@@ -335,9 +336,46 @@ export const patientAccessTablesPlugin = definePlugin({
 	tables: { patientAccess },
 });
 
+/**
+ * `PatientAuditAccess` implementation (P-086): the patient portal's
+ * audit feed asks this port whether the bound principal holds an
+ * *active* `patient_access` link to the record — the same grant that
+ * opens the portal itself, so the log never widens what the portal
+ * already shows. Read per call: `Principal` is request-scoped and a
+ * revocation applies at once. No `audit()` emissions here — the
+ * patient-access.* events are deferred (a write would need an audit
+ * dep edge this plugin deliberately avoids).
+ */
+export const PatientAuditAccessLive = Layer.effect(
+	PatientAuditAccess,
+	Effect.gen(function* () {
+		const db = yield* Db;
+		return PatientAuditAccess.of({
+			canView: Effect.fn("PatientAuditAccess.canView")(function* (patientId: number) {
+				const principal = yield* Principal;
+				if (principal === null) return false;
+				const rows = yield* Effect.promise(() =>
+					db
+						.select({ id: patientAccess.id })
+						.from(patientAccess)
+						.where(
+							and(
+								eq(patientAccess.patientId, patientId),
+								eq(patientAccess.userId, principal.userId),
+								eq(patientAccess.status, "active"),
+							),
+						)
+						.limit(1),
+				);
+				return rows.length > 0;
+			}),
+		});
+	}),
+);
+
 export const patientAccessServicesPlugin = definePlugin({
 	id: "patient-access.services",
-	services: Layer.mergeAll(PatientProfilesLive, PatientLinksLive),
+	services: Layer.mergeAll(PatientProfilesLive, PatientLinksLive, PatientAuditAccessLive),
 });
 
 // Route subtree composed into the host's virtualRouteConfig: the route

@@ -59,6 +59,14 @@ const DOMAINS = [
 		tables: ["record_versions"],
 	},
 	{
+		id: "vault",
+		title: "Vault",
+		owner: "`plugins/vault`",
+		description:
+			"Zero-knowledge key custody — wrapped clinic keys and per-entity data encryption key grants.",
+		tables: ["clinic_keys", "entity_deks", "portal_keys"],
+	},
+	{
 		id: "notifications",
 		title: "Notifications",
 		owner: "`plugins/notifications`",
@@ -114,7 +122,7 @@ const DOMAINS = [
 		title: "Auth",
 		owner: "`packages/db/src/auth.ts` (better-auth)",
 		description:
-			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (eval credentials).",
+			"better-auth core tables: users, sessions, OAuth accounts, verification tokens, and the api-key plugin table (AI credentials).",
 		tables: ["account", "apikey", "session", "user", "verification"],
 	},
 	{
@@ -149,12 +157,20 @@ const DOMAINS = [
 		tables: ["eval_persona", "eval_persona_batch", "eval_run", "eval_run_sample"],
 	},
 	{
+		id: "ai-endpoints",
+		title: "AI endpoints",
+		owner: "`plugins/ai-endpoints`",
+		description:
+			"Generative providers (acp/openai) any AI surface binds through AiEndpoints.resolve — scoped per consuming surface with an is_default pick — plus the one-shot ai-bridge connect links.",
+		tables: ["ai_agent_link", "ai_endpoint"],
+	},
+	{
 		id: "eval-persona",
 		title: "Eval persona",
 		owner: "`plugins/eval-persona`",
 		description:
-			"Eval lab surfaces — reusable persona definitions, LLM endpoints and persona instances with their items.",
-		tables: ["eval_instance", "eval_instance_item", "eval_llm_endpoint", "eval_persona_def"],
+			"Eval lab surfaces — reusable persona definitions and persona instances with their items (instances soft-link ai_endpoint).",
+		tables: ["eval_instance", "eval_instance_item", "eval_persona_def"],
 	},
 	{
 		id: "theme",
@@ -412,7 +428,15 @@ if (check) {
 			)
 				continue;
 			if (/^[^/]+\/index\.mdx$/.test(rel)) continue;
-			if (!expected.has(rel)) diffs.push(`stale (not generated): ${rel}`);
+			if (!expected.has(rel)) {
+				// Plugin dirs without a table domain are fully hand-written
+				// (e.g. i18n's developer guide) — only flag files that carry
+				// the generator's own do-not-edit marker.
+				const domainOwned = new Set(DOMAINS.map((d) => d.id)).has(rel.split("/")[0]);
+				const marked = readFileSync(join(checkBase, rel), "utf8").includes(GENERATED_BY);
+				if (!domainOwned && !marked) continue;
+				diffs.push(`stale (not generated): ${rel}`);
+			}
 		}
 		if (diffs.length) {
 			drift = true;
