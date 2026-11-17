@@ -9,6 +9,6 @@ describe("invites client plugins", () => {
 	});
 
 	it("carries ids only — no tables, services or routes reach the browser", () => {
-		for (const plugin of plugins) expect(Object.keys(plugin)).toEqual(["id"]);
+		for (const plugin of plugins) expect(Object.keys(plugin)).toEqual(["id", "meta"]);
 	});
 });
