@@ -67,6 +67,7 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 vi.mock("#/lib/fns.ts", () => ({
 	sessionFn: vi.fn(async () => null),
 	pluginStatesFn: vi.fn(async () => ({ enabled: [] })),
+	i18nRouteFn: vi.fn(async () => undefined),
 }));
 
 import { plugins } from "#/plugins.ts";

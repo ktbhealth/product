@@ -11,5 +11,5 @@ import { AdminUsersPage } from "./views/AdminUsersPage.tsx";
  */
 export function UsersPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const users = data as AdminUserRow[];
-	return <AdminUsersPage users={users} locale={ctx.locale} />;
+	return <AdminUsersPage users={users} i18n={ctx.i18n} locale={ctx.locale} />;
 }

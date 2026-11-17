@@ -1,4 +1,4 @@
-import { redirect, useRouter } from "@tanstack/react-router";
+import { redirect, useRouter, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -30,10 +30,12 @@ export const Route = createPluginFileRoute("secretaries.routes")("/secretaries/"
 	},
 	component: function SecretariesRoute() {
 		const { secretaries, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const router = useRouter();
 		return (
 			<SecretariesPage
 				secretaries={secretaries}
+				i18n={i18n}
 				locale={locale}
 				api={api}
 				onChanged={() => void router.invalidate()}

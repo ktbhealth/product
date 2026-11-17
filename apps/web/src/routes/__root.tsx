@@ -14,9 +14,14 @@ import {
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { SearchXIcon, TriangleAlertIcon } from "lucide-react";
 import { createElement, useEffect, type ReactNode } from "react";
-import * as m from "#/paraglide/messages.js";
-import { getLocale, locales } from "#/paraglide/runtime.js";
-import { changeLocale, localeName, pluginFooterNote, pluginNavLabel } from "#/lib/i18n.ts";
+import {
+	appMessage,
+	changeLocale,
+	localeName,
+	pluginFooterNote,
+	pluginNavLabel,
+	useRootI18nSlice,
+} from "#/lib/i18n.ts";
 import {
 	collectChrome,
 	enabledIdSet,
@@ -25,13 +30,13 @@ import {
 	portalInstances,
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
-import { sessionFn, pluginStatesFn } from "#/lib/fns.ts";
+import { sessionFn, pluginStatesFn, i18nRouteFn } from "#/lib/fns.ts";
 import { themeScopeFn } from "@ktb/theme/fns";
 import { themeHead, themeTitle } from "@ktb/theme/head";
 import { ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
 import { plugins } from "#/plugins.ts";
-import type { ChromeContribution, ChromeProps } from "@ktb/kernel";
+import type { ChromeContribution, ChromeProps, PageI18nSlice } from "@ktb/kernel";
 import appCss from "../styles.css?url";
 
 // Chrome regions (P-060): this shell declares the app.* slots; plugins
@@ -58,11 +63,22 @@ export const Route = createRootRoute({
 	// contributions are filtered by the enabled set before render. The
 	// theme resolves session → tenant → platform (P-082); console paths
 	// ignore it (their shells resolve per-instance themes).
-	loader: async () => ({
-		user: await sessionFn(),
-		pluginStates: await pluginStatesFn(),
-		theme: await themeScopeFn({ data: { scope: "session" } }),
-	}),
+	loader: async (ctx) => {
+		// `ctx` is typed non-optional but bare unit tests invoke the
+		// loader without arguments — tolerate that.
+		const pathname = ctx?.location?.pathname ?? "/";
+		// searchStr carries `?locale=` through client-side navigations —
+		// the server-fn RPC request URL would not (PL-008).
+		const search = ctx?.location?.searchStr ?? "";
+		return {
+			user: await sessionFn(),
+			pluginStates: await pluginStatesFn(),
+			theme: await themeScopeFn({ data: { scope: "session" } }),
+			// DB-backed i18n slice for this path (PL-008): namespaces derived
+			// from the registry + resolved catalog for the request locale.
+			i18n: await i18nRouteFn({ data: { pathname, search } }),
+		};
+	},
 	head: (ctx) => {
 		const loaderData = ctx?.loaderData;
 		const pathname = ctx?.match?.pathname ?? "";
@@ -72,19 +88,22 @@ export const Route = createRootRoute({
 				: null;
 		const themed = theme === null ? null : themeHead(theme);
 		const title = theme === null ? null : themeTitle(theme);
+		const i18n = loaderData?.i18n as PageI18nSlice | undefined;
+		const metaTitle = appMessage(i18n, "meta_title", "KTB Health");
+		const metaDescription = appMessage(i18n, "meta_description", "");
 		return {
 			meta: [
 				{ charSet: "utf-8" },
 				{ name: "viewport", content: "width=device-width, initial-scale=1" },
-				{ title: title ?? m.meta_title() },
-				{ name: "description", content: m.meta_description() },
+				{ title: title ?? metaTitle },
+				{ name: "description", content: metaDescription },
 				{ name: "robots", content: "index, follow" },
 				{ property: "og:type", content: "website" },
-				{ property: "og:title", content: title ?? m.meta_title() },
-				{ property: "og:description", content: m.meta_description() },
+				{ property: "og:title", content: title ?? metaTitle },
+				{ property: "og:description", content: metaDescription },
 				{ name: "twitter:card", content: "summary" },
-				{ name: "twitter:title", content: title ?? m.meta_title() },
-				{ name: "twitter:description", content: m.meta_description() },
+				{ name: "twitter:title", content: title ?? metaTitle },
+				{ name: "twitter:description", content: metaDescription },
 				// Theme og:image only (P-082) — the rest of the theme head
 				// (favicon/font links) rides `links` below.
 				...(themed?.meta ?? []),
@@ -98,20 +117,32 @@ export const Route = createRootRoute({
 	},
 	shellComponent: RootDocument,
 	errorComponent: RootError,
-	notFoundComponent: () => (
+	notFoundComponent: NotFound,
+});
+
+/** `app.*` copy for shell-level surfaces (404/error) that render outside
+ * a page context — they still read the root loader's i18n slice. */
+function useAppCopy() {
+	const slice = useRootI18nSlice();
+	return (key: string, fallback = "") => appMessage(slice, key, fallback);
+}
+
+function NotFound() {
+	const t = useAppCopy();
+	return (
 		<div className="py-24 text-center">
 			<SearchXIcon className="mx-auto size-12 text-muted-foreground" />
-			<h1 className="mt-4 text-2xl font-bold tracking-tight">{m.notfound_title()}</h1>
-			<p className="mt-1 text-sm text-muted-foreground">{m.notfound_body()}</p>
+			<h1 className="mt-4 text-2xl font-bold tracking-tight">{t("notfound_title")}</h1>
+			<p className="mt-1 text-sm text-muted-foreground">{t("notfound_body")}</p>
 			<Link
 				to="/consultations"
 				className="mt-6 inline-block rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80"
 			>
-				{m.notfound_cta()}
+				{t("notfound_cta")}
 			</Link>
 		</div>
-	),
-});
+	);
+}
 
 /**
  * Root error boundary — friendly localized message, never a stack trace.
@@ -119,24 +150,25 @@ export const Route = createRootRoute({
  * failure is permanent.
  */
 function RootError({ reset }: ErrorComponentProps) {
+	const t = useAppCopy();
 	return (
 		<div className="py-24 text-center">
 			<TriangleAlertIcon className="mx-auto size-12 text-muted-foreground" />
-			<h1 className="mt-4 text-2xl font-bold tracking-tight">{m.error_title()}</h1>
-			<p className="mt-1 text-sm text-muted-foreground">{m.error_body()}</p>
+			<h1 className="mt-4 text-2xl font-bold tracking-tight">{t("error_title")}</h1>
+			<p className="mt-1 text-sm text-muted-foreground">{t("error_body")}</p>
 			<div className="mt-6 flex items-center justify-center gap-3">
 				<button
 					type="button"
 					onClick={reset}
 					className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/80"
 				>
-					{m.error_retry()}
+					{t("error_retry")}
 				</button>
 				<Link
 					to="/consultations"
 					className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted"
 				>
-					{m.notfound_cta()}
+					{t("notfound_cta")}
 				</Link>
 			</div>
 		</div>
@@ -165,7 +197,7 @@ function TelemetryInit() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	const { user, pluginStates, theme } = Route.useLoaderData();
+	const { user, pluginStates, theme, i18n } = Route.useLoaderData();
 	// A patient account (no doctor profile to act as) only ever sees the
 	// patient portal: no doctor navigation, nothing that creates or
 	// switches doctor profiles.
@@ -191,23 +223,26 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
 	// Chrome regions (P-060): the shell owns the slots; plugins fill
 	// them via `chrome` contributions filtered by `when` + pathname.
+	const slice = i18n as PageI18nSlice | undefined;
+	const activeLocale = i18n?.locale ?? "en";
 	const chromeProps: ChromeProps = {
 		user,
-		locale: getLocale(),
+		locale: activeLocale,
+		i18n: slice,
 		plugins: visiblePlugins,
-		locales,
-		localeName,
+		locales: i18n?.enabledLocales ?? ["en"],
+		localeName: (l: string) => localeName(l, slice),
 		setLocale: changeLocale,
 		labels: {
-			signIn: m.nav_sign_in(),
-			signOut: m.nav_sign_out(),
-			newConsultation: m.nav_new_consultation(),
-			langMenu: m.lang_menu_label(),
-			switchDoctor: m.nav_switch_doctor(),
-			secretaries: m.nav_secretaries(),
-			patientPortal: m.nav_patient_portal(),
-			platformConsole: m.nav_platform_console(),
-			myConsultations: m.nav_my_consultations(),
+			signIn: appMessage(slice, "nav_sign_in", "Sign in"),
+			signOut: appMessage(slice, "nav_sign_out", "Sign out"),
+			newConsultation: appMessage(slice, "nav_new_consultation", "+ New consultation"),
+			langMenu: appMessage(slice, "lang_menu_label", "Language"),
+			switchDoctor: appMessage(slice, "nav_switch_doctor", "Switch doctor"),
+			secretaries: appMessage(slice, "nav_secretaries", "Secretaries"),
+			patientPortal: appMessage(slice, "nav_patient_portal", "Patient portal"),
+			platformConsole: appMessage(slice, "nav_platform_console", "Platform"),
+			myConsultations: appMessage(slice, "nav_my_consultations", "My consultations"),
 		},
 		signOut: async () => {
 			await authClient.signOut();
@@ -231,7 +266,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 						className={NAV_LINK}
 						activeProps={{ className: `${NAV_LINK} ${NAV_ACTIVE}` }}
 					>
-						{pluginNavLabel(content.to, content.label)}
+						{pluginNavLabel(content.to, content.label, slice)}
 					</Link>
 				);
 			case "component":
@@ -251,7 +286,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 					className={NAV_LINK}
 					activeProps={{ className: `${NAV_LINK} ${NAV_ACTIVE}` }}
 				>
-					{m.nav_my_consultations()}
+					{appMessage(slice, "nav_my_consultations", "My consultations")}
 				</Link>,
 			]
 		: entries("app.header.nav").map(renderEntry);
@@ -262,11 +297,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	);
 	const footerNotes = entries("app.footer.note").flatMap((entry) =>
 		entry.content.kind === "note"
-			? [<div key={entry.id}>{pluginFooterNote(entry.content.key, entry.content.fallback)}</div>]
+			? [
+					<div key={entry.id}>
+						{pluginFooterNote(entry.content.key, entry.content.fallback, slice)}
+					</div>,
+				]
 			: [],
 	);
 	return (
-		<html lang={getLocale()}>
+		<html lang={activeLocale}>
 			<head>
 				<HeadContent />
 			</head>
@@ -278,7 +317,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 						children
 					) : (
 						<>
-							{theme?.preview === true ? <ThemePreviewBanner locale={getLocale()} /> : null}
+							{theme?.preview === true ? (
+								<ThemePreviewBanner locale={activeLocale} i18n={slice} />
+							) : null}
 							<header className="sticky top-0 z-40 border-b border-border bg-background">
 								<nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
 									{brand}

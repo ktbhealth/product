@@ -2,6 +2,9 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
@@ -43,7 +46,7 @@ import {
 	listGroupMembersFn,
 	removeGroupMemberFn,
 } from "../fns.ts";
-import { groupMessages, type GroupMessages } from "../i18n.ts";
+import { groupMessages, type GroupMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 const inputCls =
@@ -64,13 +67,16 @@ const EMPTY_FORM = { name: "", slug: "", kind: "", meta: "" };
  */
 export function AdminGroupsPage({
 	groups,
+	i18n,
 	locale = "en",
 }: {
 	groups: AdminGroupRow[];
 	/** Active UI locale, injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale?: string;
 }) {
-	const t = groupMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, groupMessages(locale));
 	const router = useRouter();
 	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");

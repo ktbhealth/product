@@ -67,7 +67,9 @@ vi.mock("@tanstack/react-start", () => ({
 				return api;
 			},
 			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
+				h({
+					data: validate === undefined ? call?.data : validate(call?.data),
+				}),
 		};
 		return api;
 	},
@@ -76,6 +78,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {
 		...actual,
+		getRouteApi: () => ({ useLoaderData: () => ({ i18n: undefined }) }),
 		useRouter: () => ({ invalidate: mocks.invalidate }),
 		createFileRoute: () => (opts: Record<string, unknown>) => ({
 			options: opts,
@@ -114,7 +117,13 @@ afterEach(() => {
 describe("/patient-access/$patientId", () => {
 	const patient = { id: 7, name: "Ana", email: "ana@ktb.test" };
 	const links = [
-		{ id: 1, email: "ana@ktb.test", relation: "self", status: "active", source: "invite" },
+		{
+			id: 1,
+			email: "ana@ktb.test",
+			relation: "self",
+			status: "active",
+			source: "invite",
+		},
 	];
 	const load = () => options.loader({ params: { patientId: "7" } });
 

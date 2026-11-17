@@ -52,7 +52,13 @@ export const runChat = (
 				max_tokens: 4096,
 			}),
 		catch: (e) => e,
-	}).pipe(Effect.flatMap((raw) => Effect.try({ try: () => responseText(raw), catch: (e) => e })));
+	})
+		// Transport-boundary span around the binding call; the model id is
+		// deploy config (bounded), never request data.
+		.pipe(
+			Effect.withSpan("ai.workers-ai", { attributes: { "ai.model": model } }),
+			Effect.flatMap((raw) => Effect.try({ try: () => responseText(raw), catch: (e) => e })),
+		);
 
 /** Models sometimes wrap JSON in prose/fences — extract the outermost object. */
 const extractJson = (text: string): unknown => {

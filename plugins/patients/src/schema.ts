@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 // Relative import on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package
@@ -32,7 +31,9 @@ export const patients = sqliteTable(
 	{
 		id: integer().primaryKey({ autoIncrement: true }),
 		ownerId: text("owner_id").notNull(),
-		tenantId: integer("tenant_id").references(() => groups.id, { onDelete: "set null" }),
+		tenantId: integer("tenant_id").references(() => groups.id, {
+			onDelete: "set null",
+		}),
 		name: text().notNull(),
 		active: integer({ mode: "boolean" }).notNull().default(true),
 		socialName: text("social_name"),
@@ -98,9 +99,7 @@ export const patientDocuments = sqliteTable(
 		country: text(),
 		/** Normalized value — digits only for numeric identifiers. */
 		number: text().notNull(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [uniqueIndex("patient_documents_patient_type_idx").on(table.patientId, table.type)],
 );

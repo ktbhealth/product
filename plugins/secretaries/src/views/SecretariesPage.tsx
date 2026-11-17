@@ -1,6 +1,9 @@
 import { useState, type FormEvent } from "react";
 import { UserPlusIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -14,7 +17,7 @@ import {
 import { Input } from "@ktbhealth/ui/components/input";
 import { Label } from "@ktbhealth/ui/components/label";
 
-import { secretaryMessages, type SecretaryMessages } from "../i18n.ts";
+import { secretaryMessages, type SecretaryMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 export interface SecretaryListItem {
 	readonly id: number;
@@ -32,18 +35,22 @@ export interface SecretariesApi {
 
 export function SecretariesPage({
 	secretaries,
+	i18n,
+
 	locale,
 	api,
 	onChanged,
 }: {
 	secretaries: readonly SecretaryListItem[];
 	/** Active UI locale, injected by the host. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 	api: SecretariesApi;
 	/** Called after an invite or removal — the host refreshes the list. */
 	onChanged: () => void;
 }) {
-	const t = secretaryMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, secretaryMessages(locale));
 	const [email, setEmail] = useState("");
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<InviteError | null>(null);

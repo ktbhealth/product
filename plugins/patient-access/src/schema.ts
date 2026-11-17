@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 // Relative imports on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package
@@ -50,11 +49,8 @@ export const patientAccess = sqliteTable(
 		source: text().notNull(),
 		/** `user.id` of who invited or approved the link. */
 		grantedBy: text("granted_by"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 			.$onUpdate(() => /* @__PURE__ */ new Date())
 			.notNull(),
 	},

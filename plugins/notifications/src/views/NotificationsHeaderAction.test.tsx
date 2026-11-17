@@ -12,7 +12,13 @@ import {
 import { NotificationsHeaderAction } from "./NotificationsHeaderAction.tsx";
 
 const seeded: ConsoleNotification[] = [
-	{ id: "1", title: "Patient created", description: "Ana", read: false, meta: "patient.created" },
+	{
+		id: "1",
+		title: "Patient created",
+		description: "Ana",
+		read: false,
+		meta: "patient.created",
+	},
 	{ id: "2", title: "Consultation started", read: true },
 ];
 
@@ -106,7 +112,11 @@ describe("NotificationsHeaderAction", () => {
 		});
 
 		await user.click(screen.getByRole("button", { name: "Notifications" }));
-		await user.click(await screen.findByRole("button", { name: 'Mark "Patient created" as read' }));
+		await user.click(
+			await screen.findByRole("button", {
+				name: 'Mark "Patient created" as read',
+			}),
+		);
 		expect(markRead).toHaveBeenCalledWith([1]);
 		// Unread row flipped to read → badge clears.
 		expect(
@@ -114,7 +124,9 @@ describe("NotificationsHeaderAction", () => {
 		).not.toContain("1");
 		// Read rows are no longer clickable.
 		expect(
-			screen.queryByRole("button", { name: 'Mark "Consultation started" as read' }),
+			screen.queryByRole("button", {
+				name: 'Mark "Consultation started" as read',
+			}),
 		).toBeNull();
 	});
 
@@ -184,7 +196,11 @@ describe("NotificationsHeaderAction", () => {
 			markAllRead: vi.fn<NotificationsActions["markAllRead"]>(async () => true),
 		});
 		await user.click(screen.getByRole("button", { name: "Notifications" }));
-		await user.click(await screen.findByRole("button", { name: 'Mark "Patient created" as read' }));
+		await user.click(
+			await screen.findByRole("button", {
+				name: 'Mark "Patient created" as read',
+			}),
+		);
 		await vi.waitFor(() => expect(markRead).toHaveBeenCalledWith([1]));
 		expect(screen.getByRole("button", { name: "Notifications" }).textContent).toContain("1");
 		expect(screen.getByRole("button", { name: 'Mark "Patient created" as read' })).toBeTruthy();

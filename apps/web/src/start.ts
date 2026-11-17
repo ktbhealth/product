@@ -1,9 +1,6 @@
 import { createMiddleware, createStart } from "@tanstack/react-start";
-import {
-	getServerAsyncLocalStorage,
-	overwriteServerAsyncLocalStorage,
-} from "#/paraglide/runtime.js";
 import { requestLocale } from "#/lib/i18n.ts";
+import { localeStorage } from "#/lib/locale-context.ts";
 import { accessLog } from "#/lib/access-log.ts";
 import { unwrapResponse } from "#/lib/response.ts";
 import { serverFnIdFromPathname } from "#/lib/server-fn.ts";
@@ -19,19 +16,35 @@ import {
 	serverFnRequestDuration,
 } from "@ktb/observability";
 
-// Runs every request inside paraglide's AsyncLocalStorage so getLocale()
-// resolves the ktb-locale cookie during SSR — the cookie strategy cannot
-// read request headers without it (paraglideMiddleware equivalent for
-// TanStack Start's request-middleware pipeline).
+// Runs every request inside the locale AsyncLocalStorage so
+// currentLocale() resolves the ktb-locale cookie during SSR and in
+// server fns — deep server code (email copy, plugin services) reads the
+// active locale without threading it through every signature.
+// One-time ALS failure warning: when node:async_hooks can't be
+// imported (runtime regression — the compat date implies
+// nodejs_compat_v2, see alchemy.run.ts) every request silently serves
+// the base locale. Log once per isolate so the degradation is visible
+// instead of looking like "everyone uses en".
+let alsUnavailableWarned = false;
+
 const localeMiddleware = createMiddleware().server(async ({ request, next }) => {
 	const locale = requestLocale(request);
-	let als = getServerAsyncLocalStorage();
-	if (!als) {
-		const { AsyncLocalStorage } = await import("node:async_hooks");
-		als = new AsyncLocalStorage();
-		overwriteServerAsyncLocalStorage(als);
-	}
-	return als.run({ locale, origin: new URL(request.url).origin }, () => next());
+	// Singleton ALS (see locale-context.ts) — a per-request instance
+	// would race under concurrent requests on one isolate. When the ALS
+	// can't be created (non-Node runtime, failed import) the request
+	// still proceeds without locale context — currentLocale() falls
+	// back to the base locale outside a store.
+	const als = await localeStorage().catch((error: unknown) => {
+		if (!alsUnavailableWarned) {
+			alsUnavailableWarned = true;
+			console.warn(
+				`[i18n] locale AsyncLocalStorage unavailable; requests serve the base locale: ${String(error)}`,
+			);
+		}
+		return undefined;
+	});
+	if (als === undefined) return next();
+	return als.run({ locale }, () => next());
 });
 
 /**

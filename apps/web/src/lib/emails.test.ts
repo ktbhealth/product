@@ -1,16 +1,26 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { overwriteGetLocale } from "#/paraglide/runtime.js";
+import { createCatalogT } from "@ktb/i18n";
 
-import { verificationEmail } from "./emails.ts";
+import { emailCatalogT, verificationEmail } from "./emails.ts";
 
 const url = "http://localhost:3000/api/auth/verify-email?token=t";
 
-afterEach(() => overwriteGetLocale(() => "en"));
+/** Catalog `t` over a fake resolved slice — mirrors what platform.ts
+ * injects at send time (request locale → enabled-locale chain). */
+const catalogT = (entries: Record<string, string>, locale = "en") => emailCatalogT(entries, locale);
+
+const PT_BR: Record<string, string> = {
+	"app.email_verify_subject": "Confirme seu e-mail — KTB Health",
+	"app.email_verify_greeting": "Olá, {name}.",
+	"app.email_verify_greeting_anon": "Olá.",
+	"app.email_verify_body":
+		"Confirme seu endereço de e-mail para concluir a configuração da sua conta KTB Health:",
+	"app.email_verify_ignore": "Se você não criou esta conta, pode ignorar esta mensagem.",
+};
 
 describe("verificationEmail", () => {
-	it("greets by name and carries the link", () => {
-		overwriteGetLocale(() => "en");
+	it("greets by name and carries the link (English fallback, no catalog)", () => {
 		const mail = verificationEmail({ name: "Ana", url });
 		expect(mail.subject).toBe("Confirm your email — KTB Health");
 		expect(mail.text.split("\n")).toEqual([
@@ -24,16 +34,19 @@ describe("verificationEmail", () => {
 	});
 
 	it("falls back to an anonymous greeting", () => {
-		overwriteGetLocale(() => "en");
 		expect(verificationEmail({ name: null, url }).text).toMatch(/^Hello\.\n/);
 	});
 
-	it("follows the current request locale", () => {
-		overwriteGetLocale(() => "pt-BR");
-		const pt = verificationEmail({ name: "Ana", url });
+	it("renders catalog copy for the resolved locale", () => {
+		const pt = verificationEmail({ name: "Ana", url }, catalogT(PT_BR, "pt-BR"));
 		expect(pt.subject).toBe("Confirme seu e-mail — KTB Health");
 		expect(pt.text).toContain("Olá, Ana.");
-		overwriteGetLocale(() => "es");
-		expect(verificationEmail({ name: "Ana", url }).text).toContain("Hola, Ana.");
+	});
+
+	it("falls back to English literals for keys missing from the catalog", () => {
+		const t = createCatalogT({}, "pt-BR");
+		const mail = verificationEmail({ name: "Ana", url }, (key, params) => t(key, params));
+		expect(mail.subject).toBe("Confirm your email — KTB Health");
+		expect(mail.text).toContain("Hello, Ana.");
 	});
 });

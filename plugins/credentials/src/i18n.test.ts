@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CRED_LOCALES, credMessages } from "./i18n.ts";
+import { CRED_LOCALES, credMessages, i18nMessagesFor } from "./i18n.ts";
 
 describe("credMessages", () => {
 	it("returns a catalog for every locale", () => {
@@ -16,5 +16,15 @@ describe("credMessages", () => {
 		expect(credMessages("pt").title).toBe("Credenciais");
 		expect(credMessages("es-MX").desc).toContain("Secretos");
 		expect(credMessages("fr")).toBe(credMessages("en"));
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as credMessages, with English fallback", () => {
+		for (const locale of CRED_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(credMessages(locale));
+		}
+		expect(i18nMessagesFor("pt")).toBe(credMessages("pt"));
+		expect(i18nMessagesFor("fr")).toBe(credMessages("en"));
 	});
 });

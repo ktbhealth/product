@@ -8,7 +8,7 @@ const sources = import.meta.glob(
 		"../../../../plugins/*/src/**/*.{ts,tsx}",
 		"../../../../packages/*/src/**/*.{ts,tsx}",
 		"!**/*.test.*",
-		"!**/paraglide/**",
+		"!**/generated/**",
 		"!**/routeTree.gen.ts",
 	],
 	{ query: "?raw", import: "default", eager: true },

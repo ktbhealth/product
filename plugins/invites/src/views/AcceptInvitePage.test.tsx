@@ -53,14 +53,24 @@ const patient: AcceptInviteInvite = {
 };
 
 const page = (invite: AcceptInviteInvite | null, locale = "en") =>
-	createElement(AcceptInvitePage, { invite, locale, api: { accept } }) as ReactElement;
+	createElement(AcceptInvitePage, {
+		invite,
+		locale,
+		api: { accept },
+	}) as ReactElement;
 
 const SUBMIT = "Create account and continue";
 
 function fill(password = "senha12345", confirm = password) {
-	fireEvent.change(screen.getByLabelText("Full name"), { target: { value: "Maria Souza" } });
-	fireEvent.change(screen.getByLabelText("Password"), { target: { value: password } });
-	fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: confirm } });
+	fireEvent.change(screen.getByLabelText("Full name"), {
+		target: { value: "Maria Souza" },
+	});
+	fireEvent.change(screen.getByLabelText("Password"), {
+		target: { value: password },
+	});
+	fireEvent.change(screen.getByLabelText("Confirm password"), {
+		target: { value: confirm },
+	});
 }
 
 async function submit() {
@@ -165,7 +175,13 @@ describe("accept invite page", () => {
 			await waitFor(() => expect(assign).toHaveBeenCalled());
 			expect(accept.mock.calls).toEqual([[{ name: "Maria Souza", password: "senha12345" }]]);
 			expect(signInEmail.mock.calls).toEqual([
-				[{ email: invite.email, password: "senha12345", captchaToken: "captcha-token" }],
+				[
+					{
+						email: invite.email,
+						password: "senha12345",
+						captchaToken: "captcha-token",
+					},
+				],
 			]);
 			// The account exists before anyone signs in to it.
 			expect(accept.mock.invocationCallOrder[0]!).toBeLessThan(
@@ -187,7 +203,13 @@ describe("accept invite page", () => {
 			await submit();
 			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 			expect(signInEmail.mock.calls).toEqual([
-				[{ email: "sec@ktb.test", password: "senha12345", captchaToken: undefined }],
+				[
+					{
+						email: "sec@ktb.test",
+						password: "senha12345",
+						captchaToken: undefined,
+					},
+				],
 			]);
 		});
 
@@ -232,7 +254,10 @@ describe("accept invite page", () => {
 		describe("when the account is created but signing in fails", () => {
 			const failures = {
 				"an error result": () =>
-					signInEmail.mockResolvedValue({ data: null, error: { message: "captcha failed" } }),
+					signInEmail.mockResolvedValue({
+						data: null,
+						error: { message: "captcha failed" },
+					}),
 				"a rejected request": () => signInEmail.mockRejectedValue(new Error("network down")),
 			};
 
@@ -273,7 +298,9 @@ describe("accept invite page", () => {
 			const form = container.querySelector("form")!;
 			fill();
 			fireEvent.submit(form);
-			const button = await screen.findByRole("button", { name: /Please wait…/ });
+			const button = await screen.findByRole("button", {
+				name: /Please wait…/,
+			});
 			expect(button).toHaveProperty("disabled", true);
 			expect(accept).toHaveBeenCalledTimes(1);
 			await act(async () => {
@@ -297,8 +324,12 @@ describe("accept invite page", () => {
 				screen.getByText("Dra. Ana convidou você para trabalhar em nome dele(a)"),
 			).toBeTruthy();
 			expect((screen.getByLabelText("E-mail") as HTMLInputElement).value).toBe("sec@ktb.test");
-			fireEvent.change(screen.getByLabelText("Nome completo"), { target: { value: "Maria" } });
-			fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "senha12345" } });
+			fireEvent.change(screen.getByLabelText("Nome completo"), {
+				target: { value: "Maria" },
+			});
+			fireEvent.change(screen.getByLabelText("Senha"), {
+				target: { value: "senha12345" },
+			});
 			fireEvent.change(screen.getByLabelText("Confirmar senha"), {
 				target: { value: "outra12345" },
 			});

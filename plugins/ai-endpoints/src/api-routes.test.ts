@@ -27,7 +27,13 @@ describe("GET /api/ai/bridge route", () => {
 		const rt = ManagedRuntime.make(Layer.succeed(Db, db as never));
 		const [row] = await db
 			.insert(aiEndpoint)
-			.values({ name: "Local agent", kind: "acp", baseUrl: null, transport: "ws" })
+			.values({
+				name: "Local agent",
+				kind: "acp",
+				baseUrl: null,
+				transport: "ws",
+				createdAt: new Date(),
+			})
 			.returning({ id: aiEndpoint.id });
 		const token = mintBridgeToken();
 		await db.insert(aiAgentLink).values({
@@ -35,6 +41,7 @@ describe("GET /api/ai/bridge route", () => {
 			tokenHash: await sha256Hex(token),
 			createdBy: "u1",
 			expiresAt: new Date(Date.now() + 60_000),
+			createdAt: new Date(),
 		});
 		const forwards: number[] = [];
 		setServerRuntime({

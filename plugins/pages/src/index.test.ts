@@ -124,7 +124,9 @@ describe("pages page effects", () => {
 
 	it("wildcard loader returns the published row for the request path", async () => {
 		const loader = pagesRenderPlugin.pages![0]!.loader!;
-		const row = (await asPrincipal(null, loader("/pub/"))) as { title?: string } | null;
+		const row = (await asPrincipal(null, loader("/pub/"))) as {
+			title?: string;
+		} | null;
 		expect(row?.title).toBe("Pub");
 		await expect(asPrincipal(null, loader("/draft"))).resolves.toBeNull();
 	});

@@ -99,7 +99,12 @@ describe("patients repo", () => {
 			fields("Dora", { cpf: "529.982.247-25", city: "Recife" }),
 		);
 		const row = await getPatient(db, p!.id);
-		expect(row).toMatchObject({ name: "Dora", cpf: "52998224725", city: "Recife", active: true });
+		expect(row).toMatchObject({
+			name: "Dora",
+			cpf: "52998224725",
+			city: "Recife",
+			active: true,
+		});
 		expect(row?.birthDate).toBe("1984-03-05");
 		expect(await getPatient(db, 9999)).toBeNull();
 	});
@@ -107,7 +112,10 @@ describe("patients repo", () => {
 	it("updates a record and stamps updatedAt", async () => {
 		const p = await createPatient(db, "u1", fields("Eva"));
 		expect(p?.updatedAt).toBeNull();
-		const updated = await updatePatient(db, p!.id, { ...fields("Eva Lima"), active: false });
+		const updated = await updatePatient(db, p!.id, {
+			...fields("Eva Lima"),
+			active: false,
+		});
 		expect(updated).toMatchObject({ name: "Eva Lima", active: false });
 		expect(updated?.updatedAt).toBeInstanceOf(Date);
 		expect(await updatePatient(db, 9999, fields("Nobody"))).toBeNull();
@@ -126,12 +134,20 @@ describe("patients repo", () => {
 					.where(eq(patientDocuments.patientId, patientId))
 			).sort((a, b) => a.type.localeCompare(b.type));
 
-		const full = { cpf: "529.982.247-25", cns: "100 0000 0000 0007", passport: "FX123456" };
+		const full = {
+			cpf: "529.982.247-25",
+			cns: "100 0000 0000 0007",
+			passport: "FX123456",
+		};
 
 		it("stores each identifier as its own row, with the issuing country", async () => {
 			const p = await createPatient(db, "u1", fields("Doc Ana", full));
 			// The read model stays flat…
-			expect(p).toMatchObject({ cpf: "52998224725", cns: "100000000000007", passport: "FX123456" });
+			expect(p).toMatchObject({
+				cpf: "52998224725",
+				cns: "100000000000007",
+				passport: "FX123456",
+			});
 			// …while storage is one row per document.
 			expect(await documentsOf(p!.id)).toEqual([
 				{ type: "cns", country: "BR", number: "100000000000007" },
@@ -143,7 +159,11 @@ describe("patients repo", () => {
 		it("stores nothing for a record without identifiers and reads them as null", async () => {
 			const p = await createPatient(db, "u1", fields("Doc Bia"));
 			expect(await documentsOf(p!.id)).toEqual([]);
-			expect(await getPatient(db, p!.id)).toMatchObject({ cpf: null, cns: null, passport: null });
+			expect(await getPatient(db, p!.id)).toMatchObject({
+				cpf: null,
+				cns: null,
+				passport: null,
+			});
 		});
 
 		it("replaces the documents on update: changed, removed and added", async () => {
@@ -153,7 +173,11 @@ describe("patients repo", () => {
 				p!.id,
 				fields("Doc Cid", { cpf: "111.444.777-35", passport: "ZZ998877" }),
 			);
-			expect(updated).toMatchObject({ cpf: "11144477735", cns: null, passport: "ZZ998877" });
+			expect(updated).toMatchObject({
+				cpf: "11144477735",
+				cns: null,
+				passport: "ZZ998877",
+			});
 			expect(await documentsOf(p!.id)).toEqual([
 				{ type: "cpf", country: "BR", number: "11144477735" },
 				{ type: "passport", country: null, number: "ZZ998877" },
@@ -182,15 +206,23 @@ describe("patients repo", () => {
 			// Another owner's listing is unaffected, and so is the admin one.
 			expect(await listPatients(db, "u9")).toEqual([]);
 			const admin = await listAllPatients(db);
-			expect(admin.find((r) => r.id === withDocs!.id)).toMatchObject({ cpf: "52998224725" });
-			expect(admin.find((r) => r.id === without!.id)).toMatchObject({ cpf: null });
+			expect(admin.find((r) => r.id === withDocs!.id)).toMatchObject({
+				cpf: "52998224725",
+			});
+			expect(admin.find((r) => r.id === without!.id)).toMatchObject({
+				cpf: null,
+			});
 		});
 
 		it("leaves a document type this build does not know out of the read model", async () => {
 			const p = await createPatient(db, "u1", fields("Doc Dora", { cpf: full.cpf }));
-			await db
-				.insert(patientDocuments)
-				.values({ patientId: p!.id, type: "dni", country: "AR", number: "30123456" });
+			await db.insert(patientDocuments).values({
+				patientId: p!.id,
+				type: "dni",
+				country: "AR",
+				number: "30123456",
+				createdAt: new Date(),
+			});
 			const row = await getPatient(db, p!.id);
 			expect(row).toMatchObject({ cpf: "52998224725" });
 			expect(row).not.toHaveProperty("dni");
@@ -651,7 +683,11 @@ describe("plugins", () => {
 		// src/routes directory — resolved against the host routes dir.
 		expect(JSON.stringify(patientsRoutesPlugin.routes)).toContain("plugins/patients/src/routes");
 		const nav = patientsChromePlugin.chrome.find((c) => c.region === "app.header.nav");
-		expect(nav?.content).toEqual({ kind: "link", to: "/patients", label: "Patients" });
+		expect(nav?.content).toEqual({
+			kind: "link",
+			to: "/patients",
+			label: "Patients",
+		});
 	});
 
 	it("exports the discovery plugins array", () => {
@@ -670,7 +706,10 @@ describe("plugins", () => {
 		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
 		const result = await Effect.runPromise(
 			loader!().pipe(
-				Effect.provideService(Patients, { adminList: forbidden, adminOwners: forbidden } as never),
+				Effect.provideService(Patients, {
+					adminList: forbidden,
+					adminOwners: forbidden,
+				} as never),
 			),
 		);
 		expect(result).toEqual({ patients: [], owners: [] });
@@ -925,8 +964,18 @@ describe("PatientsLive tenant scope (P-053)", () => {
 	let db: ReturnType<typeof makeDb>;
 	let bus: EventBusShape;
 
-	const TENANT_A: TenantScope = { id: 7, kind: "clinic", slug: "clinica-a", role: "member" };
-	const TENANT_B: TenantScope = { id: 8, kind: "clinic", slug: "clinica-b", role: "member" };
+	const TENANT_A: TenantScope = {
+		id: 7,
+		kind: "clinic",
+		slug: "clinica-a",
+		role: "member",
+	};
+	const TENANT_B: TenantScope = {
+		id: 8,
+		kind: "clinic",
+		slug: "clinica-b",
+		role: "member",
+	};
 
 	beforeAll(async () => {
 		db = makeDb(makeD1(DDL));

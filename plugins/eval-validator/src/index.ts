@@ -7,7 +7,7 @@ import { count, desc, eq } from "drizzle-orm";
 import { ClipboardCheckIcon } from "lucide-react";
 
 import { Forbidden, Principal } from "@ktb/authz";
-import { Db, type DbClient } from "@ktb/db";
+import { Db, tx, type DbClient } from "@ktb/db";
 import { doctors, patients, user as userTable } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
@@ -241,41 +241,43 @@ export const insertSyntheticEntities = (
 ): Promise<{ readonly doctorId: number; readonly patientId: number }> => {
 	const docGender = input.persona.doctor?.gender === "m" ? "m" : "f";
 	const displayName = DOCTOR_TAGS[docGender]![input.index % DOCTOR_TAGS[docGender]!.length]!;
-	return db
-		.batch([
-			db.insert(userTable).values({
-				id: input.synUserId,
-				name: displayName,
-				email: `${input.synUserId}@eval.ktb`,
-			}),
-			db
-				.insert(doctors)
-				.values({
-					userId: input.synUserId,
-					displayName,
-					/* v8 ignore next -- enrichPersona always fills specialty from the matrix cell */
-					specialty: input.persona.specialty ?? null,
-					synthetic: true,
-				})
-				.returning({ id: doctors.id }),
-			db
-				.insert(patients)
-				.values({
-					ownerId: input.synUserId,
-					/* v8 ignore next -- enrichPersona always fills name/gender from the locale tables */
-					name: input.persona.name ?? "Paciente",
-					/* v8 ignore next -- persona.gender is f|m, both in FHIR_GENDER; "unknown" is schema-defensive */
-					gender: FHIR_GENDER[input.persona.gender ?? "f"] ?? "unknown",
-					birthDate: birthDateFor(input.persona.ageBand),
-					synthetic: true,
-					createdAt: new Date(),
-				})
-				.returning({ id: patients.id }),
-		])
-		.then(([, docRows, patRows]) => ({
-			doctorId: docRows[0]!.id,
-			patientId: patRows[0]!.id,
-		}));
+	return tx(db, [
+		db.insert(userTable).values({
+			id: input.synUserId,
+			name: displayName,
+			email: `${input.synUserId}@eval.ktb`,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}),
+		db
+			.insert(doctors)
+			.values({
+				userId: input.synUserId,
+				displayName,
+				/* v8 ignore next -- enrichPersona always fills specialty from the matrix cell */
+				specialty: input.persona.specialty ?? null,
+				synthetic: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.returning({ id: doctors.id }),
+		db
+			.insert(patients)
+			.values({
+				ownerId: input.synUserId,
+				/* v8 ignore next -- enrichPersona always fills name/gender from the locale tables */
+				name: input.persona.name ?? "Paciente",
+				/* v8 ignore next -- persona.gender is f|m, both in FHIR_GENDER; "unknown" is schema-defensive */
+				gender: FHIR_GENDER[input.persona.gender ?? "f"] ?? "unknown",
+				birthDate: birthDateFor(input.persona.ageBand),
+				synthetic: true,
+				createdAt: new Date(),
+			})
+			.returning({ id: patients.id }),
+	]).then(([, docRows, patRows]) => ({
+		doctorId: docRows[0]!.id,
+		patientId: patRows[0]!.id,
+	}));
 };
 
 /** The validator surface — generation, review workflow, run tracking.
@@ -342,7 +344,7 @@ export const EvalValidatorLive = Layer.effect(
 					DEFAULT_MATRIX,
 					Math.max(1, Math.floor(total / input.count)),
 				).slice(0, input.count);
-				// db.batch = one transaction on D1: personas land all-or-
+				// tx() = one transaction on every dialect: personas land all-or-
 				// nothing, a crash mid-batch leaves at most an empty batch
 				// row (visible, deletable) — never half a cohort.
 				const [batch] = yield* Effect.promise(() =>
@@ -357,11 +359,12 @@ export const EvalValidatorLive = Layer.effect(
 								locale: "pt-BR",
 							}),
 							createdBy: principal?.email ?? null,
+							createdAt: new Date(),
 						})
 						.returning(),
 				);
 				// Per persona: synthetic user+doctor+patient entities (one
-				// db.batch each — atomic, all flagged synthetic, related
+				// tx() each — atomic, all flagged synthetic, related
 				// ONLY to each other) then the dialogue — LlmPort when a
 				// driver is bound, template otherwise.
 				const rows = yield* Effect.all(
@@ -410,7 +413,8 @@ export const EvalValidatorLive = Layer.effect(
 				);
 				if (rows.length > 0) {
 					yield* Effect.promise(() =>
-						db.batch(
+						tx(
+							db,
 							rows.map((r) =>
 								db.insert(evalPersona).values({
 									batchId: batch!.id,
@@ -424,6 +428,7 @@ export const EvalValidatorLive = Layer.effect(
 									patientId: r.entities.patientId,
 									doctorId: r.entities.doctorId,
 									scriptMode: r.mode,
+									createdAt: new Date(),
 								}),
 							) as [never, ...never[]],
 						),
@@ -499,7 +504,7 @@ export const EvalValidatorLive = Layer.effect(
 						: [];
 				const synUserId = doctorRow[0]?.userId;
 				yield* Effect.promise(() =>
-					db.batch([
+					tx(db, [
 						db
 							.update(evalPersona)
 							.set({
@@ -528,14 +533,23 @@ export const EvalValidatorLive = Layer.effect(
 				const runRows = yield* Effect.promise(() =>
 					db
 						.insert(evalRun)
-						.values({ batchId, status: "queued", total: approved.length })
+						.values({
+							batchId,
+							status: "queued",
+							total: approved.length,
+							createdAt: new Date(),
+						})
 						.returning(),
 				);
 				const run = runRows[0]!;
 				yield* Effect.promise(() =>
-					db
-						.insert(evalRunSample)
-						.values(approved.map((p) => ({ runId: run.id, personaId: p.id }))),
+					db.insert(evalRunSample).values(
+						approved.map((p) => ({
+							runId: run.id,
+							personaId: p.id,
+							createdAt: new Date(),
+						})),
+					),
 				);
 				// No EvalRunner bound → run stays queued; the local driver
 				// picks it up when present (dev:node).

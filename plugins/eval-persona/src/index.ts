@@ -285,6 +285,7 @@ export const EvalPersonasLive = Layer.effect(
 							persona: JSON.stringify(input.persona),
 							notes: input.notes ?? null,
 							createdBy: principal?.email ?? null,
+							createdAt: new Date(),
 						})
 						.returning({ id: evalPersonaDef.id }),
 				);
@@ -346,6 +347,7 @@ export const EvalPersonasLive = Layer.effect(
 							persona: JSON.stringify(d.persona),
 							notes: d.notes,
 							createdBy: principal?.email ?? null,
+							createdAt: new Date(),
 						}),
 					);
 				}
@@ -496,6 +498,7 @@ export const EvalInstancesLive = Layer.effect(
 							patientId: entities.patientId,
 							doctorId: entities.doctorId,
 							scriptMode: rendered.mode,
+							createdAt: new Date(),
 						})
 						.returning({ id: evalPersona.id }),
 				);
@@ -570,6 +573,7 @@ export const EvalInstancesLive = Layer.effect(
 								locale: "pt-BR",
 							}),
 							createdBy: inst.createdBy,
+							createdAt: new Date(),
 						})
 						.returning(),
 				).pipe(Effect.catch(initFailed), Effect.catchDefect(initFailed));
@@ -747,6 +751,7 @@ export const EvalInstancesLive = Layer.effect(
 						// defIds are dropped, not promised.
 						total: picked.length,
 						createdBy,
+						createdAt: new Date(),
 					})
 					.returning();
 				await client.insert(evalInstanceItem).values(
@@ -754,6 +759,7 @@ export const EvalInstancesLive = Layer.effect(
 						instanceId: inst!.id,
 						personaDefId: d.id,
 						persona: d.persona,
+						createdAt: new Date(),
 					})),
 				);
 				return { ok: true, id: inst!.id };
@@ -772,12 +778,16 @@ export const EvalInstancesLive = Layer.effect(
 					}),
 					total,
 					createdBy,
+					createdAt: new Date(),
 				})
 				.returning();
 			if (total > 0) {
-				await client
-					.insert(evalInstanceItem)
-					.values(Array.from({ length: total }, () => ({ instanceId: inst!.id })));
+				await client.insert(evalInstanceItem).values(
+					Array.from({ length: total }, () => ({
+						instanceId: inst!.id,
+						createdAt: new Date(),
+					})),
+				);
 			}
 			return { ok: true, id: inst!.id };
 		};

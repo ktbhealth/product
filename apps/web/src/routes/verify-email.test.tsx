@@ -13,6 +13,7 @@ const state: { session: SessionState; account: { patientOnly: boolean } | null }
 	session: { data: null, isPending: false },
 	account: null,
 };
+const catalogMiss = vi.hoisted(() => ({ current: false }));
 const sendVerificationEmail = vi.fn<(arg?: unknown) => Promise<SendResult>>(async () => ({
 	data: {},
 	error: null,
@@ -38,6 +39,17 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
+// Total catalog miss: every `app.*` lookup returns the raw key, so the
+// page's `resolved === full ? key : resolved` fallback is exercised.
+vi.mock("#/lib/app-catalog.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#/lib/app-catalog.ts")>();
+	return {
+		...actual,
+		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) =>
+			catalogMiss.current ? (key: string) => key : actual.appCatalogT(slice),
+	};
+});
+
 import { Route } from "./verify-email.tsx";
 
 const options = (
@@ -60,6 +72,7 @@ describe("verify-email page", () => {
 	beforeEach(() => {
 		state.session = { data: null, isPending: false };
 		state.account = null;
+		catalogMiss.current = false;
 		sendVerificationEmail.mockClear();
 		sendVerificationEmail.mockResolvedValue({ data: {}, error: null });
 	});
@@ -89,6 +102,15 @@ describe("verify-email page", () => {
 			email: "dra@x.com",
 			callbackURL: "/verify-email",
 		});
+	});
+
+	it("falls back to raw message keys when the catalog misses", () => {
+		catalogMiss.current = true;
+		render(createElement(Page));
+		// t() returns the bare key (no `app.` prefix) on a sentinel hit.
+		expect(screen.getByText("verify_heading")).toBeTruthy();
+		expect(screen.getByLabelText("login_email")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "verify_submit" })).toBeTruthy();
 	});
 
 	it("lets an anonymous visitor type the address", async () => {

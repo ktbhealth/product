@@ -2,6 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { ArrowLeftIcon, KeyRoundIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -15,7 +18,7 @@ import {
 import { Input } from "@ktbhealth/ui/components/input";
 import { Label } from "@ktbhealth/ui/components/label";
 
-import { patientAccessMessages, type PatientAccessMessages } from "../i18n.ts";
+import { patientAccessMessages, type PatientAccessMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 export interface PatientLinkItem {
 	readonly id: number;
@@ -40,6 +43,8 @@ export interface PatientAccessApi {
 export function PatientAccessPage({
 	patient,
 	links,
+	i18n,
+
 	locale,
 	api,
 	onChanged,
@@ -47,12 +52,14 @@ export function PatientAccessPage({
 	patient: { readonly id: number; readonly name: string };
 	links: readonly PatientLinkItem[];
 	/** Active UI locale, injected by the host. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 	api: PatientAccessApi;
 	/** Called after any change — the host refreshes the list. */
 	onChanged: () => void;
 }) {
-	const t = patientAccessMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientAccessMessages(locale));
 	const [email, setEmail] = useState("");
 	const [relation, setRelation] = useState("self");
 	const [pending, setPending] = useState(false);

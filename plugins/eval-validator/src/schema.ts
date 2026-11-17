@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 // Relative imports on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package
@@ -35,9 +34,7 @@ export const evalPersonaBatch = sqliteTable(
 		/** JSON: { count, seed, variant, locale } the batch was made with. */
 		params: text().notNull(),
 		createdBy: text("created_by"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("eval_persona_batch_created_at_idx").on(table.createdAt)],
 );
@@ -75,9 +72,7 @@ export const evalPersona = sqliteTable(
 		feedback: text(),
 		reviewedBy: text("reviewed_by"),
 		reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		index("eval_persona_batch_idx").on(table.batchId),
@@ -101,9 +96,7 @@ export const evalRun = sqliteTable(
 		summary: text(),
 		startedAt: integer("started_at", { mode: "timestamp_ms" }),
 		finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("eval_run_batch_idx").on(table.batchId)],
 );
@@ -124,9 +117,7 @@ export const evalRunSample = sqliteTable(
 		/** JSON: asrText, correctedText, metrics, verdicts, conf bands. */
 		result: text(),
 		error: text(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [uniqueIndex("eval_run_sample_run_persona_idx").on(table.runId, table.personaId)],
 );

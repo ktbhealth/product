@@ -51,7 +51,9 @@ vi.mock("@tanstack/react-start", () => ({
 				return api;
 			},
 			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
+				h({
+					data: validate === undefined ? call?.data : validate(call?.data),
+				}),
 		};
 		return api;
 	},
@@ -60,6 +62,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {
 		...actual,
+		getRouteApi: () => ({ useLoaderData: () => ({ i18n: undefined }) }),
 		createFileRoute: () => (opts: Record<string, unknown>) => ({
 			options: opts,
 			useLoaderData: () => mocks.loaderData.current,
@@ -102,7 +105,10 @@ describe("/portal", () => {
 
 	it("loads the portal with the locale", async () => {
 		mocks.portalFn.mockResolvedValue(portal);
-		await expect(home.loader()).resolves.toEqual({ ...portal, locale: "pt-BR" });
+		await expect(home.loader()).resolves.toEqual({
+			...portal,
+			locale: "pt-BR",
+		});
 	});
 
 	it("sends anonymous visitors to the patient sign-in page", async () => {
@@ -203,7 +209,10 @@ describe("/portal/consultations/$id", () => {
 	const load = () => detail.loader({ params: { id: "10" } });
 
 	it("loads the consultation with the locale", async () => {
-		mocks.portalConsultationFn.mockResolvedValue({ status: "ok", consultation });
+		mocks.portalConsultationFn.mockResolvedValue({
+			status: "ok",
+			consultation,
+		});
 		await expect(load()).resolves.toEqual({ consultation, locale: "pt-BR" });
 		expect(mocks.portalConsultationFn).toHaveBeenCalledWith({ data: 10 });
 	});

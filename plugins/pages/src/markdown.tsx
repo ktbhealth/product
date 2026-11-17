@@ -12,7 +12,11 @@ import type { ReactNode } from "react";
 
 type Block =
 	| { readonly kind: "code"; readonly text: string }
-	| { readonly kind: "heading"; readonly level: 1 | 2 | 3; readonly text: string }
+	| {
+			readonly kind: "heading";
+			readonly level: 1 | 2 | 3;
+			readonly text: string;
+	  }
 	| { readonly kind: "ul"; readonly items: readonly string[] }
 	| { readonly kind: "ol"; readonly items: readonly string[] }
 	| { readonly kind: "quote"; readonly text: string }

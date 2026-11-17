@@ -5,6 +5,9 @@ import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon } from "lucide
 import { IntegrityBadge } from "@ktb/integrity/badge";
 import { anamnesisToText, factContent } from "@ktb/anamnesis";
 import type { Anamnesis, AnamnesisSectionKey, PatientHistory } from "@ktb/anamnesis";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
@@ -18,7 +21,7 @@ import {
 
 import type { ConsultationIntegrityReport } from "../index.ts";
 import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
-import { consultationMessages, sourceLabel } from "../i18n.ts";
+import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
 import { decryptBlob } from "@ktb/crypto/stream";
 
 import {
@@ -101,6 +104,8 @@ export function ConsultationDetailPage({
 	history: historyProp,
 	historyRows,
 	api,
+	i18n,
+
 	locale = "en",
 	portalBase,
 	zk,
@@ -111,6 +116,8 @@ export function ConsultationDetailPage({
 	 * row's `anamnesis` and derives the visit facts itself. */
 	historyRows?: ConsultationHistoryRows | null;
 	api?: ConsultationDetailApi;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
@@ -120,7 +127,7 @@ export function ConsultationDetailPage({
 	 * the page renders the locked state. */
 	zk?: ConsultationZk;
 }) {
-	const t = consultationMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [toast, setToast] = useState<ToastData | null>(null);
 
@@ -452,6 +459,7 @@ export function ConsultationDetailPage({
 					</div>
 					<div className="max-h-[70vh] overflow-y-auto p-5">
 						<AudioTranscriptPanel
+							i18n={i18n}
 							locale={locale}
 							consultationId={c.id}
 							audioStatus={v.audioStatus}

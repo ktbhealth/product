@@ -11,6 +11,9 @@ import { AsteriskIcon, CalendarIcon } from "lucide-react";
 import type { Locale as CalendarLocale } from "react-day-picker";
 import { enUS, es, ptBR } from "react-day-picker/locale";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert } from "@ktbhealth/ui/components/alert";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Calendar } from "@ktbhealth/ui/components/calendar";
@@ -34,7 +37,7 @@ import {
 } from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import type { Patient } from "../index.ts";
-import { patientMessages, type PatientLocale } from "../i18n.ts";
+import { patientMessages, type PatientLocale, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	ageFromBirthDate,
 	birthDateFromAge,
@@ -105,6 +108,8 @@ interface PatientFormPageProps {
 	patient?: Patient;
 	api: PatientFormApi;
 	onSaved: (id: number) => void;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host. */
 	locale: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
@@ -131,8 +136,8 @@ export function PatientFormPage(props: PatientFormPageProps) {
  * alternative would be overwriting ciphertext with a fresh draft.
  */
 function CipheredPatientForm(props: PatientFormPageProps & { patient: Patient }) {
-	const { patient, zk, locale } = props;
-	const t = patientMessages(locale);
+	const { patient, zk, locale, i18n } = props;
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const [resolved, setResolved] = useState<Patient | "failed" | null>(null);
 	useEffect(() => {
 		let live = true;
@@ -164,8 +169,16 @@ function CipheredPatientForm(props: PatientFormPageProps & { patient: Patient })
 	return <PatientForm {...props} patient={resolved} />;
 }
 
-function PatientForm({ patient, api, onSaved, locale, portalBase, zk }: PatientFormPageProps) {
-	const t = patientMessages(locale);
+function PatientForm({
+	patient,
+	api,
+	onSaved,
+	locale,
+	portalBase,
+	zk,
+	i18n,
+}: PatientFormPageProps) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const f = t.fields;
 	const countries = useMemo(() => countryOptions(locale), [locale]);
 	const [form, setForm] = useState(() => initialState(patient));
@@ -179,7 +192,7 @@ function PatientForm({ patient, api, onSaved, locale, portalBase, zk }: PatientF
 	const set = (key: TextField) => (value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 	const errorFor = (key: TextField) => {
 		const code = errors[key];
-		return code ? errorMessage(code, locale) : undefined;
+		return code ? errorMessage(code, locale, i18n) : undefined;
 	};
 
 	const text = (key: TextField, label: string, extra: Partial<TextInputProps> = {}) => (
@@ -271,8 +284,15 @@ function PatientForm({ patient, api, onSaved, locale, portalBase, zk }: PatientF
 
 			<div className="mt-6 space-y-6">
 				<Section legend={t.sections.identification}>
-					{text("name", f.name, { required: true, autoComplete: "name", wide: true })}
-					{text("socialName", f.socialName, { description: f.socialNameHint, wide: true })}
+					{text("name", f.name, {
+						required: true,
+						autoComplete: "name",
+						wide: true,
+					})}
+					{text("socialName", f.socialName, {
+						description: f.socialNameHint,
+						wide: true,
+					})}
 					{select(
 						"gender",
 						f.gender,
@@ -335,8 +355,14 @@ function PatientForm({ patient, api, onSaved, locale, portalBase, zk }: PatientF
 				</Section>
 
 				<Section legend={t.sections.identifiers}>
-					{text("cpf", f.cpf, { inputMode: "numeric", placeholder: "000.000.000-00" })}
-					{text("cns", f.cns, { inputMode: "numeric", placeholder: f.cnsPlaceholder })}
+					{text("cpf", f.cpf, {
+						inputMode: "numeric",
+						placeholder: "000.000.000-00",
+					})}
+					{text("cns", f.cns, {
+						inputMode: "numeric",
+						placeholder: f.cnsPlaceholder,
+					})}
 					{text("passport", f.passport)}
 				</Section>
 
@@ -356,7 +382,10 @@ function PatientForm({ patient, api, onSaved, locale, portalBase, zk }: PatientF
 						autoComplete: "postal-code",
 						inputMode: isBrazil ? "numeric" : undefined,
 					})}
-					{text("addressLine", f.street, { autoComplete: "address-line1", wide: true })}
+					{text("addressLine", f.street, {
+						autoComplete: "address-line1",
+						wide: true,
+					})}
 					{text("addressNumber", f.number)}
 					{text("addressComplement", f.complement)}
 					{text("district", f.district)}
@@ -367,7 +396,9 @@ function PatientForm({ patient, api, onSaved, locale, portalBase, zk }: PatientF
 								f.state,
 								BR_STATES.map((s) => [s, s]),
 							)
-						: text("state", f.stateProvince, { autoComplete: "address-level1" })}
+						: text("state", f.stateProvince, {
+								autoComplete: "address-level1",
+							})}
 				</Section>
 
 				<Section legend={t.sections.family}>

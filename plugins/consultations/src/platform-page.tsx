@@ -31,6 +31,7 @@ export function ConsultationsPlatformPage({ data, ctx }: { data: unknown; ctx: P
 			consultations={consultations}
 			owners={owners}
 			patients={patients}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 		/>
 	);

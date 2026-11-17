@@ -10,6 +10,7 @@ export {
 	type AudioStore,
 	type JobEnqueueOptions,
 	type JobsEnqueuer,
+	getI18n,
 	getLocale,
 	getServerRuntime,
 	purgeAudio,

@@ -11,5 +11,11 @@ import { EvalValidatorPage as View } from "./views/EvalValidatorPage.tsx";
  * view's catalog.
  */
 export function EvalValidatorPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
-	return <View batches={Array.isArray(data) ? (data as BatchSummary[]) : []} locale={ctx.locale} />;
+	return (
+		<View
+			batches={Array.isArray(data) ? (data as BatchSummary[]) : []}
+			i18n={ctx.i18n}
+			locale={ctx.locale}
+		/>
+	);
 }

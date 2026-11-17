@@ -17,5 +17,7 @@ interface AdminPatientsData {
  */
 export function PatientsPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const { patients, owners } = data as AdminPatientsData;
-	return <AdminPatientsPage patients={patients} owners={owners} locale={ctx.locale} />;
+	return (
+		<AdminPatientsPage patients={patients} owners={owners} i18n={ctx.i18n} locale={ctx.locale} />
+	);
 }

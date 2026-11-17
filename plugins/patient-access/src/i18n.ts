@@ -5,11 +5,19 @@
  * A locale catalog must implement `PatientAccessMessages` in full — a
  * missing key is a type error, not an English fallback at runtime.
  */
+import { paramMessage } from "@ktb/i18n";
 import type { PatientInviteErrorCode } from "./index.ts";
 import type { PatientAccessRelation, PatientAccessStatus } from "./schema.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const PATIENT_ACCESS_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "patient-access";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): PatientAccessMessages =>
+	patientAccessMessages(locale);
 export type PatientAccessLocale = (typeof PATIENT_ACCESS_LOCALES)[number];
 export const BASE_LOCALE: PatientAccessLocale = "en";
 
@@ -46,7 +54,7 @@ export interface PatientAccessMessages {
 }
 
 const en: PatientAccessMessages = {
-	title: (patient) => `Portal access — ${patient}`,
+	title: paramMessage("en", "Portal access — {patient}", ["patient"]),
 	description:
 		"Who can open this record in the patient portal: the patient, or someone responsible for them.",
 	back: "Back to the patient",
@@ -60,7 +68,11 @@ const en: PatientAccessMessages = {
 	emptyDescription: "Invite the patient, or a guardian, by email.",
 	cpfMatch: "CPF match",
 	relation: { self: "Patient", guardian: "Guardian" },
-	status: { invited: "Invited", pending: "Awaiting approval", active: "Active" },
+	status: {
+		invited: "Invited",
+		pending: "Awaiting approval",
+		active: "Active",
+	},
 	errors: {
 		invalid_email: "Enter a valid email address.",
 		invalid_relation: "Choose who this person is to the patient.",
@@ -68,7 +80,9 @@ const en: PatientAccessMessages = {
 	},
 	zk: { lockedRecord: "Encrypted record" },
 	inviteEmail: {
-		subject: (doctor) => `${doctor} gave you access to the KTB Health patient portal`,
+		subject: paramMessage("en", "{doctor} gave you access to the KTB Health patient portal", [
+			"doctor",
+		]),
 		body: (doctor, patient, url, accept) =>
 			[
 				"Hello.",
@@ -87,7 +101,7 @@ const en: PatientAccessMessages = {
 };
 
 const ptBR: PatientAccessMessages = {
-	title: (patient) => `Acesso ao portal — ${patient}`,
+	title: paramMessage("pt-BR", "Acesso ao portal — {patient}", ["patient"]),
 	description:
 		"Quem pode abrir esta ficha no portal do paciente: o próprio paciente ou um responsável por ele.",
 	back: "Voltar ao paciente",
@@ -101,7 +115,11 @@ const ptBR: PatientAccessMessages = {
 	emptyDescription: "Convide o paciente, ou um responsável, por e-mail.",
 	cpfMatch: "Match por CPF",
 	relation: { self: "Paciente", guardian: "Responsável" },
-	status: { invited: "Convidado", pending: "Aguardando aprovação", active: "Ativo" },
+	status: {
+		invited: "Convidado",
+		pending: "Aguardando aprovação",
+		active: "Ativo",
+	},
 	errors: {
 		invalid_email: "Informe um e-mail válido.",
 		invalid_relation: "Escolha quem esta pessoa é para o paciente.",
@@ -109,7 +127,9 @@ const ptBR: PatientAccessMessages = {
 	},
 	zk: { lockedRecord: "Registro criptografado" },
 	inviteEmail: {
-		subject: (doctor) => `${doctor} liberou seu acesso ao portal do paciente KTB Health`,
+		subject: paramMessage("pt-BR", "{doctor} liberou seu acesso ao portal do paciente KTB Health", [
+			"doctor",
+		]),
 		body: (doctor, patient, url, accept) =>
 			[
 				"Olá.",
@@ -128,7 +148,7 @@ const ptBR: PatientAccessMessages = {
 };
 
 const es: PatientAccessMessages = {
-	title: (patient) => `Acceso al portal — ${patient}`,
+	title: paramMessage("es", "Acceso al portal — {patient}", ["patient"]),
 	description:
 		"Quién puede abrir esta ficha en el portal del paciente: el propio paciente o un responsable.",
 	back: "Volver al paciente",
@@ -142,7 +162,11 @@ const es: PatientAccessMessages = {
 	emptyDescription: "Invita al paciente, o a un responsable, por correo.",
 	cpfMatch: "Coincidencia por CPF",
 	relation: { self: "Paciente", guardian: "Responsable" },
-	status: { invited: "Invitado", pending: "Esperando aprobación", active: "Activo" },
+	status: {
+		invited: "Invitado",
+		pending: "Esperando aprobación",
+		active: "Activo",
+	},
 	errors: {
 		invalid_email: "Ingresa un correo válido.",
 		invalid_relation: "Elige quién es esta persona para el paciente.",
@@ -150,7 +174,9 @@ const es: PatientAccessMessages = {
 	},
 	zk: { lockedRecord: "Registro cifrado" },
 	inviteEmail: {
-		subject: (doctor) => `${doctor} te dio acceso al portal del paciente de KTB Health`,
+		subject: paramMessage("es", "{doctor} te dio acceso al portal del paciente de KTB Health", [
+			"doctor",
+		]),
 		body: (doctor, patient, url, accept) =>
 			[
 				"Hola.",
@@ -168,7 +194,11 @@ const es: PatientAccessMessages = {
 	},
 };
 
-const CATALOGS: Record<PatientAccessLocale, PatientAccessMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<PatientAccessLocale, PatientAccessMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isPatientAccessLocale = (locale: string): locale is PatientAccessLocale =>
 	(PATIENT_ACCESS_LOCALES as readonly string[]).includes(locale);

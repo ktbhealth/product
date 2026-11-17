@@ -1,6 +1,6 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import * as m from "#/paraglide/messages.js";
+import { appCatalogT, useRootI18nSlice } from "#/lib/i18n.ts";
 
 export const Route = createFileRoute("/capture-test")({
 	// Dev-only spike (T-012): the Playwright e2e boots `vp dev`, so the
@@ -14,6 +14,13 @@ export const Route = createFileRoute("/capture-test")({
 
 /** Spike: proves that tab audio (e.g. a WhatsApp Web call) is capturable. */
 function CaptureTest() {
+	const slice = useRootI18nSlice();
+	const appT = appCatalogT(slice);
+	const t = (key: string, params: Record<string, unknown> = {}) => {
+		const full = `app.${key}`;
+		const resolved = appT(full, params);
+		return resolved === full ? key : resolved;
+	};
 	const [level, setLevel] = useState(0);
 	const [status, setStatus] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -25,16 +32,16 @@ function CaptureTest() {
 
 	async function start() {
 		setError(null);
-		setStatus(m.capture_status_requesting());
+		setStatus(t("capture_status_requesting"));
 		try {
 			const stream = await navigator.mediaDevices.getDisplayMedia({
 				video: true,
 				audio: { echoCancellation: false, noiseSuppression: false },
 			});
-			for (const t of stream.getVideoTracks()) t.stop();
-			const track = stream.getAudioTracks()[0];
-			if (!track) {
-				setError(m.capture_error_no_audio());
+			for (const track of stream.getVideoTracks()) track.stop();
+			const audioTrack = stream.getAudioTracks()[0];
+			if (!audioTrack) {
+				setError(t("capture_error_no_audio"));
 				return;
 			}
 			refs.current.stream = stream;
@@ -45,7 +52,12 @@ function CaptureTest() {
 			analyser.fftSize = 256;
 			src.connect(analyser);
 			const data = new Uint8Array(analyser.frequencyBinCount);
-			setStatus(m.capture_status_capturing({ track: track.label, state: track.readyState }));
+			setStatus(
+				t("capture_status_capturing", {
+					track: audioTrack.label,
+					state: audioTrack.readyState,
+				}),
+			);
 
 			const tick = () => {
 				analyser.getByteTimeDomainData(data);
@@ -70,22 +82,22 @@ function CaptureTest() {
 
 	return (
 		<div>
-			<h1 className="text-2xl font-bold">{m.capture_title()}</h1>
-			<p className="mt-2 text-sm text-muted-foreground">{m.capture_desc()}</p>
+			<h1 className="text-2xl font-bold">{t("capture_title")}</h1>
+			<p className="mt-2 text-sm text-muted-foreground">{t("capture_desc")}</p>
 			<div className="mt-6 flex gap-2">
 				<button
 					type="button"
 					onClick={start}
 					className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/80"
 				>
-					{m.capture_start()}
+					{t("capture_start")}
 				</button>
 				<button
 					type="button"
 					onClick={stop}
 					className="rounded-lg border border-border px-4 py-2 text-sm"
 				>
-					{m.capture_stop()}
+					{t("capture_stop")}
 				</button>
 			</div>
 			{status ? <p className="mt-3 text-xs text-muted-foreground">{status}</p> : null}
@@ -97,7 +109,7 @@ function CaptureTest() {
 				/>
 			</div>
 			<p className="mt-1 text-xs text-muted-foreground">
-				{m.capture_level({ level: (level * 100).toFixed(1) })}
+				{t("capture_level", { level: (level * 100).toFixed(1) })}
 			</p>
 		</div>
 	);

@@ -116,7 +116,11 @@ describe("theme repo helpers", () => {
 
 	it("getThemeById ignores the enabled flag", async () => {
 		const { db, d1 } = makeTestDb();
-		const id = await insertRow(d1, { scope: "tenant", scopeId: "3", enabled: false });
+		const id = await insertRow(d1, {
+			scope: "tenant",
+			scopeId: "3",
+			enabled: false,
+		});
 		expect((await getThemeById(db, id))?.scopeId).toBe("3");
 		expect(await getThemeById(db, 999)).toBeNull();
 	});
@@ -137,10 +141,17 @@ describe("theme repo helpers", () => {
 	it("upsertTheme inserts enabled rows and bumps version on update", async () => {
 		const { db } = makeTestDb();
 		const seeds: ThemeSeeds = { primary: "#2563eb", radius: "0.6rem" };
-		const fonts = { delivery: "self-host" as const, families: { sans: "Inter" } };
+		const fonts = {
+			delivery: "self-host" as const,
+			families: { sans: "Inter" },
+		};
 		const brand = { appName: "Acme", favicon: "/f.ico" };
 		const created = await upsertTheme(db, publishInput({ appName: "Acme", seeds, fonts, brand }));
-		expect(created).toMatchObject({ scope: "platform", enabled: true, version: 1 });
+		expect(created).toMatchObject({
+			scope: "platform",
+			enabled: true,
+			version: 1,
+		});
 		expect(JSON.parse(created!.seeds)).toEqual(seeds);
 		expect(JSON.parse(created!.tokens)["light"]).toBeDefined();
 		expect(JSON.parse(created!.fonts!)).toEqual(fonts);
@@ -218,7 +229,11 @@ describe("ThemeLive.resolve", () => {
 	});
 
 	it("resolves tenant → platform for session scope", async () => {
-		const tenantId = await insertRow(d1, { scope: "tenant", scopeId: "7", appName: "Tenant Co" });
+		const tenantId = await insertRow(d1, {
+			scope: "tenant",
+			scopeId: "7",
+			appName: "Tenant Co",
+		});
 		const theme = await runtime.runPromise(
 			withTheme((t) => t.resolve()).pipe(
 				Effect.provideService(Tenant, {
@@ -235,7 +250,10 @@ describe("ThemeLive.resolve", () => {
 	});
 
 	it("falls through to platform when the tenant row is absent", async () => {
-		const platformId = await insertRow(d1, { scope: "platform", appName: "Platform Co" });
+		const platformId = await insertRow(d1, {
+			scope: "platform",
+			appName: "Platform Co",
+		});
 		const theme = await runtime.runPromise(withTheme((t) => t.resolve({ scope: "session" })));
 		expect(theme.id).toBe(platformId);
 		expect(theme.scope).toBe("platform");
@@ -294,7 +312,11 @@ describe("ThemeLive admin surface", () => {
 			),
 		)) as readonly ThemeSummary[];
 		expect(rows.length).toBeGreaterThan(0);
-		expect(rows[0]).toMatchObject({ scope: "platform", appName: "Plat", version: 3 });
+		expect(rows[0]).toMatchObject({
+			scope: "platform",
+			appName: "Plat",
+			version: 3,
+		});
 		await expect(
 			runtime.runPromise(
 				asUser(
@@ -373,7 +395,9 @@ describe("ThemeLive admin surface", () => {
 
 	it("publish dies when the upsert returns no row", async () => {
 		const emptyDb = {
-			select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }),
+			select: () => ({
+				from: () => ({ where: () => ({ limit: async () => [] }) }),
+			}),
 			insert: () => ({ values: () => ({ returning: async () => [] }) }),
 		} as unknown as DbClient;
 		const rt = makeRuntime(emptyDb);

@@ -34,7 +34,11 @@ import { UsersIcon } from "lucide-react";
 import { PortalShell } from "./PortalShell.tsx";
 
 const instance = { id: "platform", basePath: "/platform", label: "Platform" };
-const clinician = { id: "clinician", basePath: "/portal/clinician", label: "Clinician" };
+const clinician = {
+	id: "clinician",
+	basePath: "/portal/clinician",
+	label: "Clinician",
+};
 
 const items: PanelSidebarItem[] = [
 	{ to: "/platform", label: "Dashboard", exact: true },

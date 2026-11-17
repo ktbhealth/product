@@ -149,7 +149,10 @@ describe("PatientAccessPage", () => {
 	it("invites the patient by email, clears the field and refreshes", async () => {
 		const { api, onChanged } = setup([]);
 		await submitInvite("new@ktb.test");
-		expect(api.invite).toHaveBeenCalledWith({ email: "new@ktb.test", relation: "self" });
+		expect(api.invite).toHaveBeenCalledWith({
+			email: "new@ktb.test",
+			relation: "self",
+		});
 		await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
 		expect(email().value).toBe("");
 		expect(screen.getByRole("button", { name: "Invite" })).toHaveProperty("disabled", false);
@@ -159,7 +162,10 @@ describe("PatientAccessPage", () => {
 		const { api } = setup([]);
 		fireEvent.change(relation(), { target: { value: "guardian" } });
 		await submitInvite("mae@ktb.test");
-		expect(api.invite).toHaveBeenCalledWith({ email: "mae@ktb.test", relation: "guardian" });
+		expect(api.invite).toHaveBeenCalledWith({
+			email: "mae@ktb.test",
+			relation: "guardian",
+		});
 	});
 
 	it("ignores an empty address", async () => {
@@ -180,7 +186,9 @@ describe("PatientAccessPage", () => {
 	});
 
 	it("reports a generic failure when the invite call throws", async () => {
-		const { onChanged } = setup([], { invite: async () => Promise.reject(new Error("network")) });
+		const { onChanged } = setup([], {
+			invite: async () => Promise.reject(new Error("network")),
+		});
 		await submitInvite("new@ktb.test");
 		await waitFor(() => expect(screen.getByText(/Something went wrong/)).toBeTruthy());
 		expect(email().value).toBe("new@ktb.test");

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { managerMessages, MANAGER_LOCALES, BASE_LOCALE } from "./i18n.ts";
+import { managerMessages, MANAGER_LOCALES, BASE_LOCALE, i18nMessagesFor } from "./i18n.ts";
 
 describe("managerMessages", () => {
 	it("resolves every declared locale catalog", () => {
@@ -28,5 +28,15 @@ describe("managerMessages", () => {
 				}
 			}
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of MANAGER_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(managerMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(managerMessages("en"));
+		expect(i18nMessagesFor("")).toBe(managerMessages("en"));
 	});
 });

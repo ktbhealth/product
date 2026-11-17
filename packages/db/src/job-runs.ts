@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "./table.ts";
 
 /**
  * Job runs (PL-007): host/platform-owned status projection for the

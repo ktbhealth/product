@@ -31,6 +31,7 @@ export const plugins: readonly Plugin[] = orderPlugins(
 // plugin list, re-exported so apps consume one client entry. The page
 // maps are computed once here — the registry is static.
 export * from "./chrome.ts";
+export * from "./namespaces.ts";
 export * from "./pages.ts";
 export * from "./plugin-state.ts";
 

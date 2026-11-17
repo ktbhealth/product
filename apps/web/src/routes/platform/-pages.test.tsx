@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("#/lib/fns.ts", () => ({
 	portalPageDataFn: mocks.portalPageDataFn,
 	pluginStatesFn: mocks.pluginStatesFn,
+	i18nRouteFn: vi.fn(async () => undefined),
 }));
 vi.mock("@ktb/app-host/client", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@ktb/app-host/client")>();

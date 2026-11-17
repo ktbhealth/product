@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { BASE_LOCALE, INVITE_LOCALES, inviteMessages, isInviteLocale } from "./i18n.ts";
+import {
+	BASE_LOCALE,
+	INVITE_LOCALES,
+	inviteMessages,
+	isInviteLocale,
+	i18nMessagesFor,
+} from "./i18n.ts";
 import { INVITE_KINDS } from "./schema.ts";
 
 /** Every string leaf of a catalog (functions are exercised separately). */
@@ -76,5 +82,15 @@ describe("invite catalogs", () => {
 		expect(isInviteLocale("fr")).toBe(false);
 		expect(inviteMessages("fr")).toBe(inviteMessages(BASE_LOCALE));
 		expect(inviteMessages("es")).not.toBe(inviteMessages(BASE_LOCALE));
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of INVITE_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(inviteMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(inviteMessages("en"));
+		expect(i18nMessagesFor("")).toBe(inviteMessages("en"));
 	});
 });

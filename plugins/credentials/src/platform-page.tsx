@@ -7,6 +7,7 @@ export function CredentialsPanelPage({ data, ctx }: { data: unknown; ctx: PanelP
 	return (
 		<CredentialsPage
 			creds={Array.isArray(data) ? (data as CredentialCard[]) : []}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 		/>
 	);

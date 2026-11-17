@@ -36,7 +36,12 @@ describe("doctors schema", () => {
 		const db = makeDb(makeD1(DDL));
 		const [created] = await db
 			.insert(doctors)
-			.values({ userId: "u1", displayName: "Dra. Ana", updatedAt: new Date(0) })
+			.values({
+				userId: "u1",
+				displayName: "Dra. Ana",
+				createdAt: new Date(0),
+				updatedAt: new Date(0),
+			})
 			.returning();
 		await db.update(doctors).set({ crm: "CRM-SP 1" }).where(eq(doctors.id, created!.id));
 		const [row] = await db.select().from(doctors);

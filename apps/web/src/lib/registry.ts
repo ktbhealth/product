@@ -15,6 +15,7 @@ export {
 	findPortalInstance,
 	KNOWN_CHROME_REGIONS,
 	entryEnabled,
+	namespacesForPath,
 	packageLive,
 	portalInstances,
 	portalInstanceIdForPath,

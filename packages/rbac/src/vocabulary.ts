@@ -22,6 +22,9 @@ export const PLATFORM_ACTIONS = [
 	"rbac.manage",
 	"audit.read",
 	"eval.validator",
+	"i18n.messages.read",
+	"i18n.messages.edit",
+	"i18n.locales.manage",
 ] as const;
 
 /** Entity actions mirrored from the permix `Def` in @ktb/authz. */

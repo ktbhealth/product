@@ -31,6 +31,7 @@ export function DashboardPlatformPage({ data, ctx }: { data: unknown; ctx: Panel
 			pluginStates={d.pluginStates}
 			notifications={d.notifications}
 			unreadCount={d.unreadCount}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 			user={ctx.user}
 		/>

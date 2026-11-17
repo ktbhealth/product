@@ -47,7 +47,10 @@ export async function listPatientProfiles(db: DbClient, userId: string): Promise
 		.innerJoin(patients, eq(patientAccess.patientId, patients.id))
 		.where(and(eq(patientAccess.userId, userId), eq(patientAccess.status, "active")))
 		.orderBy(patients.name, patients.id);
-	return rows.map((row) => ({ ...row, relation: row.relation as PatientAccessRelation }));
+	return rows.map((row) => ({
+		...row,
+		relation: row.relation as PatientAccessRelation,
+	}));
 }
 
 const accountOf = async (db: DbClient, userId: string) => {
@@ -194,7 +197,12 @@ export async function invitePatientAccess(
 		existing === undefined
 			? await db
 					.insert(patientAccess)
-					.values({ patientId: input.patientId, ...link })
+					.values({
+						patientId: input.patientId,
+						...link,
+						createdAt: new Date(),
+						updatedAt: new Date(),
+					})
 					.returning()
 			: await db
 					.update(patientAccess)

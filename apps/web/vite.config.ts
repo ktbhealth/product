@@ -11,7 +11,6 @@ import { fileURLToPath } from "node:url";
 // vite process, i.e. after this module evaluates.
 process.env.JITI_JSX ??= "1";
 
-import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
@@ -66,6 +65,16 @@ export default defineConfig(({ command, isPreview }) => {
 						new URL("./src/lib/use-sync-external-store-shim-with-selector.ts", import.meta.url),
 					),
 				},
+				{
+					// loro-crdt's exports map resolves `browser` under the
+					// worker build — its WASM loader is synchronous XHR,
+					// which workerd doesn't have. The `bundler` entry imports
+					// the .wasm as an ES module; @cloudflare/vite-plugin
+					// serves that as a WebAssembly.Module, which the glue
+					// already special-cases (PL-008 workerd spike).
+					find: /^loro-crdt$/,
+					replacement: "loro-crdt/bundler",
+				},
 			],
 		},
 		// Whisper worker imports this lazily; pre-bundle it at startup so the
@@ -111,13 +120,6 @@ export default defineConfig(({ command, isPreview }) => {
 					]),
 			devtools(),
 			tailwindcss(),
-			paraglideVitePlugin({
-				project: "./project.inlang",
-				outdir: "./src/paraglide",
-				strategy: ["cookie", "baseLocale"],
-				cookieName: "ktb-locale",
-				emitTsDeclarations: true,
-			}),
 			// Custom server entry (src/server.ts) adds the Cloudflare Queue
 			// consumer for async audio transcription alongside the fetch handler.
 			...tanstackStart({ server: { entry: "server.ts" } }),

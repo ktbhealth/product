@@ -89,7 +89,9 @@ const pickDate = async (user: User, year: number, month: string, day: number) =>
 	await user.selectOptions(await screen.findByRole("combobox", { name: /year/i }), String(year));
 	await user.selectOptions(screen.getByRole("combobox", { name: /month/i }), month);
 	await user.click(
-		screen.getByRole("button", { name: new RegExp(`${month} ${day}\\w*, ${year}`) }),
+		screen.getByRole("button", {
+			name: new RegExp(`${month} ${day}\\w*, ${year}`),
+		}),
 	);
 };
 
@@ -212,7 +214,11 @@ describe("PatientFormPage — registration", () => {
 		await user.click(screen.getByRole("button", { name: "Register patient" }));
 		expect(await screen.findByText("Could not save the patient. Try again.")).toBeTruthy();
 		expect(
-			(screen.getByRole("button", { name: "Register patient" }) as HTMLButtonElement).disabled,
+			(
+				screen.getByRole("button", {
+					name: "Register patient",
+				}) as HTMLButtonElement
+			).disabled,
 		).toBe(false);
 	});
 });
@@ -269,7 +275,11 @@ describe("PatientFormPage — edit", () => {
 		await user.type(input("Full name"), "Maria S. Lima");
 		await user.click(screen.getByRole("button", { name: "Save changes" }));
 		expect(save).toHaveBeenCalledWith(
-			expect.objectContaining({ name: "Maria S. Lima", active: false, birthDate: "1984" }),
+			expect.objectContaining({
+				name: "Maria S. Lima",
+				active: false,
+				birthDate: "1984",
+			}),
 		);
 		expect(onSaved).toHaveBeenCalledWith(7);
 	});

@@ -33,7 +33,9 @@ vi.mock("@tanstack/react-start", () => ({
 				return api;
 			},
 			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
+				h({
+					data: validate === undefined ? call?.data : validate(call?.data),
+				}),
 		};
 		return api;
 	},
@@ -42,6 +44,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {
 		...actual,
+		getRouteApi: () => ({ useLoaderData: () => ({ i18n: undefined }) }),
 		createFileRoute: () => (opts: Record<string, unknown>) => ({
 			options: opts,
 			useLoaderData: () => mocks.loaderData.current,
@@ -55,7 +58,9 @@ const options = (
 	Route as unknown as {
 		options: {
 			loader: () => Promise<unknown>;
-			head: (arg: { loaderData?: string }) => { meta: Record<string, string>[] };
+			head: (arg: { loaderData?: string }) => {
+				meta: Record<string, string>[];
+			};
 			component: () => ReactElement;
 		};
 	}
@@ -163,7 +168,11 @@ describe("/invite", () => {
 			pageProps().api.accept({ name: "Maria Souza", password: "senha12345" }),
 		).resolves.toBe(result);
 		expect(mocks.acceptInviteFn.mock.calls).toEqual([
-			[{ data: { token: "tok-9", name: "Maria Souza", password: "senha12345" } }],
+			[
+				{
+					data: { token: "tok-9", name: "Maria Souza", password: "senha12345" },
+				},
+			],
 		]);
 	});
 

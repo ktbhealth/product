@@ -6,7 +6,7 @@ import { physical } from "@tanstack/virtual-file-routes";
 import { UsersIcon } from "lucide-react";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
-import { Db, type DbClient } from "@ktb/db";
+import { Db, tx, type DbClient } from "@ktb/db";
 import { patientDocuments, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
@@ -74,7 +74,10 @@ async function withIdentifiers<R extends { readonly id: number }>(
 		identifiers[document.type] = document.number;
 		byPatient.set(document.patientId, identifiers);
 	}
-	return rows.map((row) => ({ ...row, ...(byPatient.get(row.id) ?? noIdentifiers()) }));
+	return rows.map((row) => ({
+		...row,
+		...(byPatient.get(row.id) ?? noIdentifiers()),
+	}));
 }
 
 /** Split validated record fields into the `patients` columns and the
@@ -82,16 +85,28 @@ async function withIdentifiers<R extends { readonly id: number }>(
 const splitFields = (fields: PatientFields) => {
 	const row: Partial<PatientFields> = { ...fields };
 	const identifiers = noIdentifiers();
-	const documents: { type: PatientDocumentType; country: string | null; number: string }[] = [];
+	const documents: {
+		type: PatientDocumentType;
+		country: string | null;
+		number: string;
+	}[] = [];
 	for (const type of PATIENT_DOCUMENT_KEYS) {
 		const number = fields[type];
 		delete row[type];
 		identifiers[type] = number;
 		if (number !== null) {
-			documents.push({ type, country: PATIENT_DOCUMENT_TYPES[type].country, number });
+			documents.push({
+				type,
+				country: PATIENT_DOCUMENT_TYPES[type].country,
+				number,
+			});
 		}
 	}
-	return { row: row as Omit<PatientFields, PatientDocumentType>, identifiers, documents };
+	return {
+		row: row as Omit<PatientFields, PatientDocumentType>,
+		identifiers,
+		documents,
+	};
 };
 
 /** Admin-console row: patient plus the owning user's display fields. */
@@ -136,13 +151,21 @@ export async function getPatient(db: DbClient, id: number) {
  */
 export async function listAllPatients(db: DbClient): Promise<AdminPatientRow[]> {
 	const rows = await db
-		.select({ patient: patients, ownerEmail: users.email, ownerName: users.name })
+		.select({
+			patient: patients,
+			ownerEmail: users.email,
+			ownerName: users.name,
+		})
 		.from(patients)
 		.leftJoin(users, eq(patients.ownerId, users.id))
 		.orderBy(desc(patients.id));
 	return withIdentifiers(
 		db,
-		rows.map(({ patient, ownerEmail, ownerName }) => ({ ...patient, ownerEmail, ownerName })),
+		rows.map(({ patient, ownerEmail, ownerName }) => ({
+			...patient,
+			ownerEmail,
+			ownerName,
+		})),
 	);
 }
 
@@ -180,7 +203,7 @@ export async function getPatientOwnerId(db: DbClient, id: number) {
  * the command handler, not here. The documents go in the same batch
  * rather than relying on the foreign key's cascade alone. */
 export async function deletePatientRow(db: DbClient, id: number) {
-	await db.batch([
+	await tx(db, [
 		db.delete(patientDocuments).where(eq(patientDocuments.patientId, id)),
 		db.delete(patients).where(eq(patients.id, id)),
 	]);
@@ -199,16 +222,20 @@ export async function createPatient(
 		.returning();
 	if (created === undefined) return null;
 	if (documents.length > 0) {
-		await db
-			.insert(patientDocuments)
-			.values(documents.map((document) => ({ ...document, patientId: created.id })));
+		await db.insert(patientDocuments).values(
+			documents.map((document) => ({
+				...document,
+				patientId: created.id,
+				createdAt: new Date(),
+			})),
+		);
 	}
 	return { ...created, ...identifiers };
 }
 
 /**
- * Replace the record's fields and documents in one batch (a
- * transaction on D1), so a failed write never leaves the row and its
+ * Replace the record's fields and documents in one tx() (atomic on
+ * every dialect), so a failed write never leaves the row and its
  * documents out of step. Callers resolve and authorize the row first —
  * `id` is an existing patient.
  */
@@ -222,13 +249,17 @@ export async function updatePatient(db: DbClient, id: number, fields: PatientFie
 		.returning();
 	const [, [updated]] =
 		documents.length === 0
-			? await db.batch([clear, update])
-			: await db.batch([
+			? await tx(db, [clear, update])
+			: await tx(db, [
 					clear,
 					update,
-					db
-						.insert(patientDocuments)
-						.values(documents.map((document) => ({ ...document, patientId: id }))),
+					db.insert(patientDocuments).values(
+						documents.map((document) => ({
+							...document,
+							patientId: id,
+							createdAt: new Date(),
+						})),
+					),
 				]);
 	return updated === undefined ? null : { ...updated, ...identifiers };
 }
@@ -527,7 +558,11 @@ export const PatientsCommandsLive = Command.handlersOf(PatientsCommands, {
 			yield* events.dispatch([
 				// The row's tenant_id is authoritative — ambient Tenant may
 				// differ from the deleted row's owner scope.
-				PatientDeleted.make({ id, ownerId: row.ownerId, tenantId: row.tenantId }),
+				PatientDeleted.make({
+					id,
+					ownerId: row.ownerId,
+					tenantId: row.tenantId,
+				}),
 			]);
 			// P-080: every patient delete is audited here — owner and
 			// platform-admin paths alike (the consultations cascade no

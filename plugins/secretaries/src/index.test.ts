@@ -103,7 +103,11 @@ describe("claimDoctorInvites", () => {
 
 	it("claims nothing for an unverified email or an unknown user", async () => {
 		const db = freshDb();
-		await inviteSecretary(db, { doctorId: 1, email: "unverified@ktb.test", invitedBy: "doc-a" });
+		await inviteSecretary(db, {
+			doctorId: 1,
+			email: "unverified@ktb.test",
+			invitedBy: "doc-a",
+		});
 		expect(await claimDoctorInvites(db, "unverified")).toBe(0);
 		expect(await claimDoctorInvites(db, "ghost")).toBe(0);
 		expect(await listDelegatedProfiles(db, "unverified")).toEqual([]);
@@ -131,7 +135,11 @@ describe("secretaries repo", () => {
 			email: "newbie@ktb.test",
 			invitedBy: "doc-b",
 		});
-		expect(known).toMatchObject({ userId: "newbie", status: "active", invitedBy: "doc-b" });
+		expect(known).toMatchObject({
+			userId: "newbie",
+			status: "active",
+			invitedBy: "doc-b",
+		});
 		const unproven = await inviteSecretary(db, {
 			doctorId: 2,
 			email: "unverified@ktb.test",
@@ -223,7 +231,11 @@ describe("SecretariesLive", () => {
 			"sec@ktb.test",
 		]);
 		const invited = await as(doc, (s) => s.invite("  Newbie@KTB.test "));
-		expect(invited).toMatchObject({ doctorId: 2, email: "newbie@ktb.test", status: "active" });
+		expect(invited).toMatchObject({
+			doctorId: 2,
+			email: "newbie@ktb.test",
+			status: "active",
+		});
 		const id = (invited as { id: number }).id;
 		expect(await as(doc, (s) => s.revoke(id))).toBe(true);
 		// Another doctor cannot revoke it back or touch it.

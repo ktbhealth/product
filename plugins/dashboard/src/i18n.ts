@@ -7,6 +7,12 @@
  */
 
 export const DASHBOARD_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "dashboard";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): DashboardMessages => dashboardMessages(locale);
 export type DashboardLocale = (typeof DASHBOARD_LOCALES)[number];
 export const BASE_LOCALE: DashboardLocale = "en";
 

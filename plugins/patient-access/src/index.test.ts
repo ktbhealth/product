@@ -136,8 +136,20 @@ describe("listPatientLinks", () => {
 	it("lists a patient's links, oldest first, under the account or invite address", async () => {
 		const db = linksDb();
 		expect(await listPatientLinks(db, 2)).toEqual([
-			{ id: 2, email: "Ana@KTB.test", relation: "self", status: "pending", source: "cpf" },
-			{ id: 3, email: "ana@ktb.test", relation: "guardian", status: "invited", source: "invite" },
+			{
+				id: 2,
+				email: "Ana@KTB.test",
+				relation: "self",
+				status: "pending",
+				source: "cpf",
+			},
+			{
+				id: 3,
+				email: "ana@ktb.test",
+				relation: "guardian",
+				status: "invited",
+				source: "invite",
+			},
 		]);
 		expect(await listPatientLinks(db, 99)).toEqual([]);
 	});
@@ -147,14 +159,25 @@ describe("listPatientLinks", () => {
 		await db.update(patientAccess).set({ status: "revoked" }).where(eq(patientAccess.id, 2));
 		await db.update(patientAccess).set({ email: null }).where(eq(patientAccess.id, 3));
 		expect(await listPatientLinks(db, 2)).toEqual([
-			{ id: 3, email: "", relation: "guardian", status: "invited", source: "invite" },
+			{
+				id: 3,
+				email: "",
+				relation: "guardian",
+				status: "invited",
+				source: "invite",
+			},
 		]);
 	});
 });
 
 describe("invitePatientAccess", () => {
 	const invite = (db: TestDb, email: string, relation: "self" | "guardian" = "self") =>
-		invitePatientAccess(db, { patientId: 1, email, relation, grantedBy: "doc" });
+		invitePatientAccess(db, {
+			patientId: 1,
+			email,
+			relation,
+			grantedBy: "doc",
+		});
 
 	it("waits as invited while no verified account has the address", async () => {
 		const db = linksDb();
@@ -168,7 +191,10 @@ describe("invitePatientAccess", () => {
 			grantedBy: "doc",
 		});
 		// An account that has not verified the address gets nothing yet.
-		expect(await invite(db, "leo@ktb.test")).toMatchObject({ userId: null, status: "invited" });
+		expect(await invite(db, "leo@ktb.test")).toMatchObject({
+			userId: null,
+			status: "invited",
+		});
 		expect(await listPatientProfiles(db, "leo")).toEqual([]);
 	});
 
@@ -188,7 +214,11 @@ describe("invitePatientAccess", () => {
 		const db = linksDb();
 		const first = await invite(db, "new@ktb.test", "self");
 		const again = await invite(db, "new@ktb.test", "guardian");
-		expect(again).toMatchObject({ id: first.id, relation: "guardian", status: "invited" });
+		expect(again).toMatchObject({
+			id: first.id,
+			relation: "guardian",
+			status: "invited",
+		});
 		expect((await rowsOf(db, 1)).filter((row) => row.email === "new@ktb.test")).toHaveLength(1);
 	});
 
@@ -196,7 +226,15 @@ describe("invitePatientAccess", () => {
 		const db = linksDb();
 		const [pending] = await db
 			.insert(patientAccess)
-			.values({ patientId: 1, userId: "eva", relation: "self", status: "pending", source: "cpf" })
+			.values({
+				patientId: 1,
+				userId: "eva",
+				relation: "self",
+				status: "pending",
+				source: "cpf",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})
 			.returning();
 		expect(await invite(db, "eva@ktb.test", "guardian")).toMatchObject({
 			id: pending!.id,
@@ -243,21 +281,43 @@ describe("PatientLinksLive", () => {
 
 	it("lists the links of the doctor's own patient", async () => {
 		expect(await as(doc, (s) => s.list(2))).toEqual([
-			{ id: 2, email: "Ana@KTB.test", relation: "self", status: "pending", source: "cpf" },
-			{ id: 3, email: "ana@ktb.test", relation: "guardian", status: "invited", source: "invite" },
+			{
+				id: 2,
+				email: "Ana@KTB.test",
+				relation: "self",
+				status: "pending",
+				source: "cpf",
+			},
+			{
+				id: 3,
+				email: "ana@ktb.test",
+				relation: "guardian",
+				status: "invited",
+				source: "invite",
+			},
 		]);
 	});
 
 	it("invites under a normalized address, recording who granted it", async () => {
 		expect(
 			await as(doc, (s) => s.invite({ patientId: 1, email: "  New@KTB.test ", relation: "self" })),
-		).toMatchObject({ patientId: 1, email: "new@ktb.test", status: "invited", grantedBy: "doc" });
+		).toMatchObject({
+			patientId: 1,
+			email: "new@ktb.test",
+			status: "invited",
+			grantedBy: "doc",
+		});
 		// A secretary acting for the doctor is the one on record.
 		expect(
 			await as(secretary, (s) =>
 				s.invite({ patientId: 1, email: "eva@ktb.test", relation: "guardian" }),
 			),
-		).toMatchObject({ userId: "eva", relation: "guardian", status: "active", grantedBy: "sec" });
+		).toMatchObject({
+			userId: "eva",
+			relation: "guardian",
+			status: "active",
+			grantedBy: "sec",
+		});
 	});
 
 	it("rejects a malformed address or an unknown relation without writing", async () => {

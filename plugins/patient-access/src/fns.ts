@@ -22,7 +22,11 @@ import { PatientLinks, type PatientInviteErrorCode, type PatientLink } from "./i
 
 const decodeNumber = Schema.decodeUnknownSync(Schema.Number);
 const decodeInvite = Schema.decodeUnknownSync(
-	Schema.Struct({ patientId: Schema.Number, email: Schema.String, relation: Schema.String }),
+	Schema.Struct({
+		patientId: Schema.Number,
+		email: Schema.String,
+		relation: Schema.String,
+	}),
 );
 
 /** Active UI locale for the current request — route loaders attach it
@@ -50,7 +54,11 @@ export const patientLinksFn = createServerFn({ method: "GET" })
 				const db = yield* Db;
 				const [patient] = yield* Effect.promise(() =>
 					db
-						.select({ id: patients.id, name: patients.name, email: patients.email })
+						.select({
+							id: patients.id,
+							name: patients.name,
+							email: patients.email,
+						})
 						.from(patients)
 						.where(and(eq(patients.id, patientId), eq(patients.ownerId, user.id))),
 				);

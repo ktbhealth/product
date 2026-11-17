@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { EVAL_LOCALES, evalMessages, isEvalLocale } from "./i18n.ts";
+import { EVAL_LOCALES, evalMessages, isEvalLocale, i18nMessagesFor } from "./i18n.ts";
 
 describe("eval i18n catalog", () => {
 	it("exposes the three locales and narrows correctly", () => {
@@ -13,5 +13,15 @@ describe("eval i18n catalog", () => {
 		expect(evalMessages("en").title).toBe("Eval validator");
 		expect(evalMessages("pt-BR").title).toBe("Validador de eval");
 		expect(evalMessages("fr").generate).toBe("Generate personas");
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of EVAL_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(evalMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(evalMessages("en"));
+		expect(i18nMessagesFor("")).toBe(evalMessages("en"));
 	});
 });

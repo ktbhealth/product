@@ -214,7 +214,9 @@ describe("invitePatientFn", () => {
 	it("issues no accept link when no email can go out", async () => {
 		issue = vi.fn(() => Effect.succeed("tok-123"));
 		sender = null;
-		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({ emailed: false });
+		await expect(invitePatientFn({ data: invite })).resolves.toMatchObject({
+			emailed: false,
+		});
 		expect(issue).not.toHaveBeenCalled();
 	});
 
@@ -275,7 +277,9 @@ describe("invitePatientFn", () => {
 
 	it("grants access without an email when the record is gone mid-invite", async () => {
 		await expect(
-			invitePatientFn({ data: { patientId: 99, email: "x@ktb.test", relation: "self" } }),
+			invitePatientFn({
+				data: { patientId: 99, email: "x@ktb.test", relation: "self" },
+			}),
 		).resolves.toEqual({
 			ok: true,
 			link: { id: 9, email: "ana@ktb.test", status: "invited" },
@@ -317,18 +321,26 @@ describe("invitePatientFn", () => {
 
 describe("approvePatientLinkFn / revokePatientLinkFn", () => {
 	it("apply the change through the service", async () => {
-		await expect(approvePatientLinkFn({ data: 7 })).resolves.toEqual({ ok: true });
+		await expect(approvePatientLinkFn({ data: 7 })).resolves.toEqual({
+			ok: true,
+		});
 		expect(links.approve).toHaveBeenCalledWith(7);
 		links.revoke.mockReturnValue(Effect.succeed(false));
-		await expect(revokePatientLinkFn({ data: 7 })).resolves.toEqual({ ok: false });
+		await expect(revokePatientLinkFn({ data: 7 })).resolves.toEqual({
+			ok: false,
+		});
 		expect(links.revoke).toHaveBeenCalledWith(7);
 	});
 
 	it("refuse denied changes and non-doctors", async () => {
 		links.approve.mockReturnValue(denied);
-		await expect(approvePatientLinkFn({ data: 7 })).resolves.toEqual({ ok: false });
+		await expect(approvePatientLinkFn({ data: 7 })).resolves.toEqual({
+			ok: false,
+		});
 		mocks.getDoctorUser.mockResolvedValue(null);
-		await expect(revokePatientLinkFn({ data: 7 })).resolves.toEqual({ ok: false });
+		await expect(revokePatientLinkFn({ data: 7 })).resolves.toEqual({
+			ok: false,
+		});
 	});
 });
 

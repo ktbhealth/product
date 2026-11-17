@@ -9,9 +9,17 @@
  * Pure module (no React): also used by -ui.ts-style label lookups.
  */
 import type { AnamnesisSectionKey, Confidence } from "@ktb/anamnesis";
+import { paramMessage } from "@ktb/i18n";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const CONSULTATION_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "consultations";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): ConsultationMessages =>
+	consultationMessages(locale);
 export type ConsultationLocale = (typeof CONSULTATION_LOCALES)[number];
 export const BASE_LOCALE: ConsultationLocale = "en";
 
@@ -267,13 +275,17 @@ const en: ConsultationMessages = {
 		noTranscript: "No transcript.",
 		copy: "Copy",
 		downloadPdf: "Download PDF",
-		engine: (engine) => `engine: ${engine}`,
-		consultationId: (id) => `Consultation #${id}`,
+		engine: paramMessage("en", "engine: {engine}", ["engine"]),
+		consultationId: paramMessage("en", "Consultation #{id}", ["id"]),
 	},
 	list: {
 		title: "Consultations",
 		none: "No consultations yet.",
-		count: (n) => `${n} consultation${n === 1 ? "" : "s"} recorded.`,
+		count: paramMessage(
+			"en",
+			"{n, plural, =1{{n} consultation recorded.} other{{n} consultations recorded.}}",
+			["n"],
+		),
 		newConsultation: "+ New consultation",
 		searchPlaceholder: "Search by patient, complaint, or text…",
 		searchLabel: "Search consultations",
@@ -294,16 +306,20 @@ const en: ConsultationMessages = {
 	detail: {
 		back: "Consultations",
 		openPatientRecord: "Open patient record",
-		consentRecorded: (date) => `Consent ✓ ${date}`,
+		consentRecorded: paramMessage("en", "Consent ✓ {date}", ["date"]),
 		consentNotRecorded: "Consent not recorded",
 		inProgress: "in progress",
-		previousConsultations: (n) => `${n} previous consultation${n === 1 ? "" : "s"}`,
+		previousConsultations: paramMessage(
+			"en",
+			"{n, plural, =1{{n} previous consultation} other{{n} previous consultations}}",
+			["n"],
+		),
 		anamnesisCopied: "Anamnesis copied",
-		complaint: (text) => `Complaint: ${text}`,
-		plan: (text) => `Plan: ${text}`,
+		complaint: paramMessage("en", "Complaint: {text}", ["text"]),
+		plan: paramMessage("en", "Plan: {text}", ["text"]),
 		historyNote: "Factual record of prior consultations — context only, not clinical suggestions.",
 		notReported: "Not reported",
-		evidence: (n) => `evidence (${n})`,
+		evidence: paramMessage("en", "evidence ({n})", ["n"]),
 		noAnamnesisTitle: "No anamnesis saved",
 		noAnamnesisDescription: "This consultation does not have a saved anamnesis yet.",
 		integrity: {
@@ -348,9 +364,13 @@ const en: ConsultationMessages = {
 		tabBot: "Teleconsult (bot)",
 		dictationDescription:
 			"The consultation already happened? Narrate everything out loud, as if explaining the case, in a single voice (yours): chief complaint, history, exam, and plan. The narration becomes the transcript that generates the anamnesis.",
-		stopDictation: (elapsed) => `Stop dictation (${elapsed})`,
+		stopDictation: paramMessage("en", "Stop dictation ({elapsed})", ["elapsed"]),
 		startDictation: "Start dictation",
-		dictatingHint: (elapsed) => `recording… ${elapsed}. The transcript appears below in real time`,
+		dictatingHint: paramMessage(
+			"en",
+			"recording… {elapsed}. The transcript appears below in real time",
+			["elapsed"],
+		),
 		consentRequiredDictation: "Check the consent box above to enable dictation.",
 		consentRequiredRecording: "Check the consent box above to enable recording.",
 		unsupportedBrowser:
@@ -360,10 +380,10 @@ const en: ConsultationMessages = {
 		uploadHint: "Audio transcribed on the server (Whisper)",
 		recordMic: "Record microphone",
 		stopMic: "Stop microphone",
-		micHint: (doctor) => `Your voice, shown as “${doctor}”`,
+		micHint: paramMessage("en", "Your voice, shown as “{doctor}”", ["doctor"]),
 		captureTab: "Capture call tab",
 		stopTab: "Stop tab",
-		tabHint: (patient) => `Call audio, shown as “${patient}”`,
+		tabHint: paramMessage("en", "Call audio, shown as “{patient}”", ["patient"]),
 		recordingTip:
 			"Tip: enable both to separate doctor and patient, and use headphones so the microphone does not pick up the speakers.",
 		channelsBadge: "free speaker labels via channels",
@@ -372,7 +392,7 @@ const en: ConsultationMessages = {
 		teleconsultLinkLabel: "Teleconsult link",
 		sendBot: "Send bot",
 		botInCall: "bot in call…",
-		consultationLive: (id, status) => `consultation #${id} · ${status}`,
+		consultationLive: paramMessage("en", "consultation #{id} · {status}", ["id", "status"]),
 		transcribingLive: "transcribing live",
 		callEnded: "call ended",
 		recordingSpeak: "recording… speak normally",
@@ -383,12 +403,14 @@ const en: ConsultationMessages = {
 		serverTranscript: "Server transcript",
 		generating: "Generating anamnesis…",
 		generate: "Generate anamnesis →",
-		generatedFrom: (source) => `anamnesis generated from the ${source} transcript`,
+		generatedFrom: paramMessage("en", "anamnesis generated from the {source} transcript", [
+			"source",
+		]),
 		modelReady: (device) => `model ready${device ? ` (${device})` : ""}`,
-		modelUnavailable: (message) => `model unavailable: ${message}`,
+		modelUnavailable: paramMessage("en", "model unavailable: {message}", ["message"]),
 		lowConfidenceReprocessing: "low confidence, reprocessing on the server…",
 		transcriptionRedone: "transcription redone on the server",
-		engineLabel: (engine) => `engine: ${engine}`,
+		engineLabel: paramMessage("en", "engine: {engine}", ["engine"]),
 		waitingTitle: "Waiting for anamnesis",
 		waitingDescription:
 			"The structured anamnesis appears here. Each section shows the confidence and the source sentences that ground it.",
@@ -401,15 +423,20 @@ const en: ConsultationMessages = {
 		viewConsultation: "View consultation",
 		confirm: "Confirm",
 		gotIt: "Got it",
-		accessQuestion: (patient) => `Send ${patient} the patient portal access email?`,
+		accessQuestion: paramMessage("en", "Send {patient} the patient portal access email?", [
+			"patient",
+		]),
 		accessHint:
 			"The patient signs in with this email address to see the consultations you saved, read-only.",
 		accessEmailPlaceholder: "patient@email.com",
 		accessSend: "Send access email",
 		accessNotNow: "Not now",
-		accessSent: (email) => `Access email sent to ${email}.`,
-		accessUnsent: (email) =>
-			`Portal access granted to ${email}, but the email could not be sent. Ask the patient to sign in to the patient portal with this address.`,
+		accessSent: paramMessage("en", "Access email sent to {email}.", ["email"]),
+		accessUnsent: paramMessage(
+			"en",
+			"Portal access granted to {email}, but the email could not be sent. Ask the patient to sign in to the patient portal with this address.",
+			["email"],
+		),
 		accessInvalidEmail: "Enter a valid email address.",
 		accessFailed: "Could not send the access email. Please try again.",
 		dialogSavedBody: ({ id, patientName, updated, consented }) =>
@@ -418,17 +445,24 @@ const en: ConsultationMessages = {
 		saveFailed: "could not save the consultation",
 		anamnesisCopied: "Anamnesis copied to clipboard",
 		copyFailed: "Could not copy. Select the text manually.",
-		audioUploadFailed: (message) =>
-			`Audio could not be uploaded (${message}). The consultation was saved without it.`,
-		transcriptionFailedStatus: (status) => `transcription failed (${status})`,
+		audioUploadFailed: paramMessage(
+			"en",
+			"Audio could not be uploaded ({message}). The consultation was saved without it.",
+			["message"],
+		),
+		transcriptionFailedStatus: paramMessage("en", "transcription failed ({status})", ["status"]),
 		transcriptionFailed: "transcription failed",
-		botFailed: (status) => `bot failed: HTTP ${status}`,
+		botFailed: paramMessage("en", "bot failed: HTTP {status}", ["status"]),
 		patientFallback: "patient",
 	},
 	admin: {
 		title: "Consultations",
 		none: "No consultations yet.",
-		count: (n) => `${n} consultation${n === 1 ? "" : "s"} across all owners.`,
+		count: paramMessage(
+			"en",
+			"{n, plural, =1{{n} consultation} other{{n} consultations}} across all owners.",
+			["n"],
+		),
 		emptyTitle: "No consultations",
 		emptyDescription: "Consultations appear here once created.",
 		colId: "Id",
@@ -441,7 +475,7 @@ const en: ConsultationMessages = {
 		searchPlaceholder: "Search by patient or owner…",
 		searchLabel: "Search consultations",
 		noMatch: "No consultations match the search.",
-		filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+		filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 		colActions: "Actions",
 		newConsultation: "New consultation",
 		createTitle: "New consultation",
@@ -454,9 +488,11 @@ const en: ConsultationMessages = {
 		patientNone: "No patient",
 		transcriptLabel: "Transcript",
 		transcriptPlaceholder: "Optional transcript text…",
-		deleteFor: (label) => `Delete ${label}`,
+		deleteFor: paramMessage("en", "Delete {label}", ["label"]),
 		deleteTitle: "Delete consultation?",
-		deleteDescription: (label) => `This permanently deletes ${label} and its recording.`,
+		deleteDescription: paramMessage("en", "This permanently deletes {label} and its recording.", [
+			"label",
+		]),
 		deleteConfirm: "Delete permanently",
 		cancel: "Cancel",
 	},
@@ -495,13 +531,17 @@ const ptBR: ConsultationMessages = {
 		noTranscript: "Sem transcrição.",
 		copy: "Copiar",
 		downloadPdf: "Baixar PDF",
-		engine: (engine) => `motor: ${engine}`,
-		consultationId: (id) => `Consulta #${id}`,
+		engine: paramMessage("pt-BR", "motor: {engine}", ["engine"]),
+		consultationId: paramMessage("pt-BR", "Consulta #{id}", ["id"]),
 	},
 	list: {
 		title: "Consultas",
 		none: "Nenhuma consulta ainda.",
-		count: (n) => `${n} consulta${n === 1 ? "" : "s"} registrada${n === 1 ? "" : "s"}.`,
+		count: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{{n} consulta registrada.} other{{n} consultas registradas.}}",
+			["n"],
+		),
 		newConsultation: "+ Nova consulta",
 		searchPlaceholder: "Buscar por paciente, queixa ou texto…",
 		searchLabel: "Buscar consultas",
@@ -522,18 +562,21 @@ const ptBR: ConsultationMessages = {
 	detail: {
 		back: "Consultas",
 		openPatientRecord: "Abrir cadastro do paciente",
-		consentRecorded: (date) => `Consentimento ✓ ${date}`,
+		consentRecorded: paramMessage("pt-BR", "Consentimento ✓ {date}", ["date"]),
 		consentNotRecorded: "Consentimento não registrado",
 		inProgress: "em andamento",
-		previousConsultations: (n) =>
-			`${n} consulta${n === 1 ? "" : "s"} anterior${n === 1 ? "" : "es"}`,
+		previousConsultations: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{{n} consulta anterior} other{{n} consultas anteriores}}",
+			["n"],
+		),
 		anamnesisCopied: "Anamnese copiada",
-		complaint: (text) => `Queixa: ${text}`,
-		plan: (text) => `Conduta: ${text}`,
+		complaint: paramMessage("pt-BR", "Queixa: {text}", ["text"]),
+		plan: paramMessage("pt-BR", "Conduta: {text}", ["text"]),
 		historyNote:
 			"Registro factual de consultas anteriores — apenas contexto, não sugestões clínicas.",
 		notReported: "Não informado",
-		evidence: (n) => `evidências (${n})`,
+		evidence: paramMessage("pt-BR", "evidências ({n})", ["n"]),
 		noAnamnesisTitle: "Nenhuma anamnese salva",
 		noAnamnesisDescription: "Esta consulta ainda não tem uma anamnese salva.",
 		integrity: {
@@ -577,9 +620,13 @@ const ptBR: ConsultationMessages = {
 		tabBot: "Teleconsulta (bot)",
 		dictationDescription:
 			"A consulta já aconteceu? Narre tudo em voz alta, como se explicasse o caso, em uma única voz (a sua): queixa principal, história, exame e conduta. A narração vira a transcrição que gera a anamnese.",
-		stopDictation: (elapsed) => `Parar ditado (${elapsed})`,
+		stopDictation: paramMessage("pt-BR", "Parar ditado ({elapsed})", ["elapsed"]),
 		startDictation: "Iniciar ditado",
-		dictatingHint: (elapsed) => `gravando… ${elapsed}. A transcrição aparece abaixo em tempo real`,
+		dictatingHint: paramMessage(
+			"pt-BR",
+			"gravando… {elapsed}. A transcrição aparece abaixo em tempo real",
+			["elapsed"],
+		),
 		consentRequiredDictation: "Marque a caixa de consentimento acima para ativar o ditado.",
 		consentRequiredRecording: "Marque a caixa de consentimento acima para ativar a gravação.",
 		unsupportedBrowser:
@@ -589,10 +636,10 @@ const ptBR: ConsultationMessages = {
 		uploadHint: "Áudio transcrito no servidor (Whisper)",
 		recordMic: "Gravar microfone",
 		stopMic: "Parar microfone",
-		micHint: (doctor) => `Sua voz, exibida como “${doctor}”`,
+		micHint: paramMessage("pt-BR", "Sua voz, exibida como “{doctor}”", ["doctor"]),
 		captureTab: "Capturar aba da chamada",
 		stopTab: "Parar aba",
-		tabHint: (patient) => `Áudio da chamada, exibido como “${patient}”`,
+		tabHint: paramMessage("pt-BR", "Áudio da chamada, exibido como “{patient}”", ["patient"]),
 		recordingTip:
 			"Dica: ative os dois para separar médico e paciente, e use fones de ouvido para o microfone não captar as caixas de som.",
 		channelsBadge: "vozes separadas por canais",
@@ -601,7 +648,7 @@ const ptBR: ConsultationMessages = {
 		teleconsultLinkLabel: "Link da teleconsulta",
 		sendBot: "Enviar bot",
 		botInCall: "bot na chamada…",
-		consultationLive: (id, status) => `consulta #${id} · ${status}`,
+		consultationLive: paramMessage("pt-BR", "consulta #{id} · {status}", ["id", "status"]),
 		transcribingLive: "transcrevendo ao vivo",
 		callEnded: "chamada encerrada",
 		recordingSpeak: "gravando… fale normalmente",
@@ -612,12 +659,14 @@ const ptBR: ConsultationMessages = {
 		serverTranscript: "Transcrição do servidor",
 		generating: "Gerando anamnese…",
 		generate: "Gerar anamnese →",
-		generatedFrom: (source) => `anamnese gerada a partir da transcrição ${source}`,
+		generatedFrom: paramMessage("pt-BR", "anamnese gerada a partir da transcrição {source}", [
+			"source",
+		]),
 		modelReady: (device) => `modelo pronto${device ? ` (${device})` : ""}`,
-		modelUnavailable: (message) => `modelo indisponível: ${message}`,
+		modelUnavailable: paramMessage("pt-BR", "modelo indisponível: {message}", ["message"]),
 		lowConfidenceReprocessing: "confiança baixa, reprocessando no servidor…",
 		transcriptionRedone: "transcrição refeita no servidor",
-		engineLabel: (engine) => `motor: ${engine}`,
+		engineLabel: paramMessage("pt-BR", "motor: {engine}", ["engine"]),
 		waitingTitle: "Aguardando anamnese",
 		waitingDescription:
 			"A anamnese estruturada aparece aqui. Cada seção mostra a confiança e as frases de origem que a sustentam.",
@@ -630,15 +679,22 @@ const ptBR: ConsultationMessages = {
 		viewConsultation: "Ver consulta",
 		confirm: "Confirmar",
 		gotIt: "Entendi",
-		accessQuestion: (patient) => `Enviar para ${patient} o e-mail de acesso ao portal do paciente?`,
+		accessQuestion: paramMessage(
+			"pt-BR",
+			"Enviar para {patient} o e-mail de acesso ao portal do paciente?",
+			["patient"],
+		),
 		accessHint:
 			"O paciente entra com este e-mail para ver, somente para leitura, as consultas que você salvou.",
 		accessEmailPlaceholder: "paciente@email.com",
 		accessSend: "Enviar e-mail de acesso",
 		accessNotNow: "Agora não",
-		accessSent: (email) => `E-mail de acesso enviado para ${email}.`,
-		accessUnsent: (email) =>
-			`Acesso ao portal liberado para ${email}, mas o e-mail não pôde ser enviado. Peça ao paciente que entre no portal do paciente com este endereço.`,
+		accessSent: paramMessage("pt-BR", "E-mail de acesso enviado para {email}.", ["email"]),
+		accessUnsent: paramMessage(
+			"pt-BR",
+			"Acesso ao portal liberado para {email}, mas o e-mail não pôde ser enviado. Peça ao paciente que entre no portal do paciente com este endereço.",
+			["email"],
+		),
 		accessInvalidEmail: "Informe um e-mail válido.",
 		accessFailed: "Não foi possível enviar o e-mail de acesso. Tente novamente.",
 		dialogSavedBody: ({ id, patientName, updated, consented }) =>
@@ -647,17 +703,24 @@ const ptBR: ConsultationMessages = {
 		saveFailed: "não foi possível salvar a consulta",
 		anamnesisCopied: "Anamnese copiada para a área de transferência",
 		copyFailed: "Não foi possível copiar. Selecione o texto manualmente.",
-		audioUploadFailed: (message) =>
-			`Não foi possível enviar o áudio (${message}). A consulta foi salva sem ele.`,
-		transcriptionFailedStatus: (status) => `transcrição falhou (${status})`,
+		audioUploadFailed: paramMessage(
+			"pt-BR",
+			"Não foi possível enviar o áudio ({message}). A consulta foi salva sem ele.",
+			["message"],
+		),
+		transcriptionFailedStatus: paramMessage("pt-BR", "transcrição falhou ({status})", ["status"]),
 		transcriptionFailed: "falha na transcrição",
-		botFailed: (status) => `bot falhou: HTTP ${status}`,
+		botFailed: paramMessage("pt-BR", "bot falhou: HTTP {status}", ["status"]),
 		patientFallback: "paciente",
 	},
 	admin: {
 		title: "Consultas",
 		none: "Nenhuma consulta ainda.",
-		count: (n) => `${n} consulta${n === 1 ? "" : "s"} em toda a plataforma.`,
+		count: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{{n} consulta} other{{n} consultas}} em toda a plataforma.",
+			["n"],
+		),
 		emptyTitle: "Nenhuma consulta",
 		emptyDescription: "As consultas aparecem aqui após serem criadas.",
 		colId: "Id",
@@ -670,7 +733,7 @@ const ptBR: ConsultationMessages = {
 		searchPlaceholder: "Buscar por paciente ou proprietário…",
 		searchLabel: "Buscar consultas",
 		noMatch: "Nenhuma consulta corresponde à busca.",
-		filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+		filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 		colActions: "Ações",
 		newConsultation: "Nova consulta",
 		createTitle: "Nova consulta",
@@ -683,9 +746,13 @@ const ptBR: ConsultationMessages = {
 		patientNone: "Sem paciente",
 		transcriptLabel: "Transcrição",
 		transcriptPlaceholder: "Texto da transcrição (opcional)…",
-		deleteFor: (label) => `Excluir ${label}`,
+		deleteFor: paramMessage("pt-BR", "Excluir {label}", ["label"]),
 		deleteTitle: "Excluir consulta?",
-		deleteDescription: (label) => `Isso exclui permanentemente ${label} e sua gravação.`,
+		deleteDescription: paramMessage(
+			"pt-BR",
+			"Isso exclui permanentemente {label} e sua gravação.",
+			["label"],
+		),
 		deleteConfirm: "Excluir permanentemente",
 		cancel: "Cancelar",
 	},
@@ -724,13 +791,17 @@ const es: ConsultationMessages = {
 		noTranscript: "Sin transcripción.",
 		copy: "Copiar",
 		downloadPdf: "Descargar PDF",
-		engine: (engine) => `motor: ${engine}`,
-		consultationId: (id) => `Consulta #${id}`,
+		engine: paramMessage("es", "motor: {engine}", ["engine"]),
+		consultationId: paramMessage("es", "Consulta #{id}", ["id"]),
 	},
 	list: {
 		title: "Consultas",
 		none: "Ninguna consulta aún.",
-		count: (n) => `${n} consulta${n === 1 ? "" : "s"} registrada${n === 1 ? "" : "s"}.`,
+		count: paramMessage(
+			"es",
+			"{n, plural, =1{{n} consulta registrada.} other{{n} consultas registradas.}}",
+			["n"],
+		),
 		newConsultation: "+ Nueva consulta",
 		searchPlaceholder: "Buscar por paciente, motivo o texto…",
 		searchLabel: "Buscar consultas",
@@ -751,18 +822,21 @@ const es: ConsultationMessages = {
 	detail: {
 		back: "Consultas",
 		openPatientRecord: "Abrir registro del paciente",
-		consentRecorded: (date) => `Consentimiento ✓ ${date}`,
+		consentRecorded: paramMessage("es", "Consentimiento ✓ {date}", ["date"]),
 		consentNotRecorded: "Consentimiento no registrado",
 		inProgress: "en curso",
-		previousConsultations: (n) =>
-			`${n} consulta${n === 1 ? "" : "s"} anterior${n === 1 ? "" : "es"}`,
+		previousConsultations: paramMessage(
+			"es",
+			"{n, plural, =1{{n} consulta anterior} other{{n} consultas anteriores}}",
+			["n"],
+		),
 		anamnesisCopied: "Anamnesis copiada",
-		complaint: (text) => `Motivo: ${text}`,
-		plan: (text) => `Plan: ${text}`,
+		complaint: paramMessage("es", "Motivo: {text}", ["text"]),
+		plan: paramMessage("es", "Plan: {text}", ["text"]),
 		historyNote:
 			"Registro factual de consultas anteriores — solo contexto, no sugerencias clínicas.",
 		notReported: "No informado",
-		evidence: (n) => `evidencias (${n})`,
+		evidence: paramMessage("es", "evidencias ({n})", ["n"]),
 		noAnamnesisTitle: "Ninguna anamnesis guardada",
 		noAnamnesisDescription: "Esta consulta aún no tiene una anamnesis guardada.",
 		integrity: {
@@ -807,10 +881,13 @@ const es: ConsultationMessages = {
 		tabBot: "Teleconsulta (bot)",
 		dictationDescription:
 			"¿La consulta ya ocurrió? Narre todo en voz alta, como si explicara el caso, en una sola voz (la suya): motivo de consulta, historia, examen y plan. La narración se convierte en la transcripción que genera la anamnesis.",
-		stopDictation: (elapsed) => `Detener dictado (${elapsed})`,
+		stopDictation: paramMessage("es", "Detener dictado ({elapsed})", ["elapsed"]),
 		startDictation: "Iniciar dictado",
-		dictatingHint: (elapsed) =>
-			`grabando… ${elapsed}. La transcripción aparece abajo en tiempo real`,
+		dictatingHint: paramMessage(
+			"es",
+			"grabando… {elapsed}. La transcripción aparece abajo en tiempo real",
+			["elapsed"],
+		),
 		consentRequiredDictation: "Marque la casilla de consentimiento arriba para activar el dictado.",
 		consentRequiredRecording:
 			"Marque la casilla de consentimiento arriba para activar la grabación.",
@@ -821,10 +898,10 @@ const es: ConsultationMessages = {
 		uploadHint: "Audio transcrito en el servidor (Whisper)",
 		recordMic: "Grabar micrófono",
 		stopMic: "Detener micrófono",
-		micHint: (doctor) => `Su voz, mostrada como “${doctor}”`,
+		micHint: paramMessage("es", "Su voz, mostrada como “{doctor}”", ["doctor"]),
 		captureTab: "Capturar pestaña de la llamada",
 		stopTab: "Detener pestaña",
-		tabHint: (patient) => `Audio de la llamada, mostrado como “${patient}”`,
+		tabHint: paramMessage("es", "Audio de la llamada, mostrado como “{patient}”", ["patient"]),
 		recordingTip:
 			"Consejo: active ambos para separar médico y paciente, y use auriculares para que el micrófono no capte los altavoces.",
 		channelsBadge: "voces separadas por canales",
@@ -833,7 +910,7 @@ const es: ConsultationMessages = {
 		teleconsultLinkLabel: "Enlace de teleconsulta",
 		sendBot: "Enviar bot",
 		botInCall: "bot en la llamada…",
-		consultationLive: (id, status) => `consulta #${id} · ${status}`,
+		consultationLive: paramMessage("es", "consulta #{id} · {status}", ["id", "status"]),
 		transcribingLive: "transcribiendo en vivo",
 		callEnded: "llamada finalizada",
 		recordingSpeak: "grabando… hable con normalidad",
@@ -844,12 +921,14 @@ const es: ConsultationMessages = {
 		serverTranscript: "Transcripción del servidor",
 		generating: "Generando anamnesis…",
 		generate: "Generar anamnesis →",
-		generatedFrom: (source) => `anamnesis generada a partir de la transcripción ${source}`,
+		generatedFrom: paramMessage("es", "anamnesis generada a partir de la transcripción {source}", [
+			"source",
+		]),
 		modelReady: (device) => `modelo listo${device ? ` (${device})` : ""}`,
-		modelUnavailable: (message) => `modelo no disponible: ${message}`,
+		modelUnavailable: paramMessage("es", "modelo no disponible: {message}", ["message"]),
 		lowConfidenceReprocessing: "confianza baja, reprocesando en el servidor…",
 		transcriptionRedone: "transcripción rehecha en el servidor",
-		engineLabel: (engine) => `motor: ${engine}`,
+		engineLabel: paramMessage("es", "motor: {engine}", ["engine"]),
 		waitingTitle: "Esperando anamnesis",
 		waitingDescription:
 			"La anamnesis estructurada aparece aquí. Cada sección muestra la confianza y las frases de origen que la respaldan.",
@@ -862,15 +941,22 @@ const es: ConsultationMessages = {
 		viewConsultation: "Ver consulta",
 		confirm: "Confirmar",
 		gotIt: "Entendido",
-		accessQuestion: (patient) => `¿Enviar a ${patient} el correo de acceso al portal del paciente?`,
+		accessQuestion: paramMessage(
+			"es",
+			"¿Enviar a {patient} el correo de acceso al portal del paciente?",
+			["patient"],
+		),
 		accessHint:
 			"El paciente inicia sesión con este correo para ver, solo en lectura, las consultas que guardaste.",
 		accessEmailPlaceholder: "paciente@correo.com",
 		accessSend: "Enviar correo de acceso",
 		accessNotNow: "Ahora no",
-		accessSent: (email) => `Correo de acceso enviado a ${email}.`,
-		accessUnsent: (email) =>
-			`Acceso al portal concedido a ${email}, pero no se pudo enviar el correo. Pide al paciente que inicie sesión en el portal del paciente con esta dirección.`,
+		accessSent: paramMessage("es", "Correo de acceso enviado a {email}.", ["email"]),
+		accessUnsent: paramMessage(
+			"es",
+			"Acceso al portal concedido a {email}, pero no se pudo enviar el correo. Pide al paciente que inicie sesión en el portal del paciente con esta dirección.",
+			["email"],
+		),
 		accessInvalidEmail: "Ingresa un correo válido.",
 		accessFailed: "No se pudo enviar el correo de acceso. Inténtalo de nuevo.",
 		dialogSavedBody: ({ id, patientName, updated, consented }) =>
@@ -879,17 +965,24 @@ const es: ConsultationMessages = {
 		saveFailed: "no se pudo guardar la consulta",
 		anamnesisCopied: "Anamnesis copiada al portapapeles",
 		copyFailed: "No se pudo copiar. Seleccione el texto manualmente.",
-		audioUploadFailed: (message) =>
-			`No se pudo enviar el audio (${message}). La consulta se guardó sin él.`,
-		transcriptionFailedStatus: (status) => `la transcripción falló (${status})`,
+		audioUploadFailed: paramMessage(
+			"es",
+			"No se pudo enviar el audio ({message}). La consulta se guardó sin él.",
+			["message"],
+		),
+		transcriptionFailedStatus: paramMessage("es", "la transcripción falló ({status})", ["status"]),
 		transcriptionFailed: "falló la transcripción",
-		botFailed: (status) => `el bot falló: HTTP ${status}`,
+		botFailed: paramMessage("es", "el bot falló: HTTP {status}", ["status"]),
 		patientFallback: "paciente",
 	},
 	admin: {
 		title: "Consultas",
 		none: "Ninguna consulta aún.",
-		count: (n) => `${n} consulta${n === 1 ? "" : "s"} en toda la plataforma.`,
+		count: paramMessage(
+			"es",
+			"{n, plural, =1{{n} consulta} other{{n} consultas}} en toda la plataforma.",
+			["n"],
+		),
 		emptyTitle: "Ninguna consulta",
 		emptyDescription: "Las consultas aparecen aquí una vez creadas.",
 		colId: "Id",
@@ -902,7 +995,7 @@ const es: ConsultationMessages = {
 		searchPlaceholder: "Buscar por paciente o propietario…",
 		searchLabel: "Buscar consultas",
 		noMatch: "Ninguna consulta coincide con la búsqueda.",
-		filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+		filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 		colActions: "Acciones",
 		newConsultation: "Nueva consulta",
 		createTitle: "Nueva consulta",
@@ -915,9 +1008,11 @@ const es: ConsultationMessages = {
 		patientNone: "Sin paciente",
 		transcriptLabel: "Transcripción",
 		transcriptPlaceholder: "Texto de la transcripción (opcional)…",
-		deleteFor: (label) => `Eliminar ${label}`,
+		deleteFor: paramMessage("es", "Eliminar {label}", ["label"]),
 		deleteTitle: "¿Eliminar consulta?",
-		deleteDescription: (label) => `Esto elimina permanentemente ${label} y su grabación.`,
+		deleteDescription: paramMessage("es", "Esto elimina permanentemente {label} y su grabación.", [
+			"label",
+		]),
 		deleteConfirm: "Eliminar permanentemente",
 		cancel: "Cancelar",
 	},

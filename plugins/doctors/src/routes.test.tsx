@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 	selectDoctorFn: vi.fn(async (_arg: { data: number }) => ({ ok: true })),
 	localeFn: vi.fn(async () => "pt-BR"),
 	loaderData: { current: undefined as unknown },
+	rootData: { current: { i18n: undefined } as { i18n?: unknown } },
 	props: { current: undefined as Record<string, unknown> | undefined },
 }));
 
@@ -46,6 +47,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 			options: opts,
 			useLoaderData: () => mocks.loaderData.current,
 		}),
+		// Root route api — the component reads the i18n slice from it.
+		getRouteApi: () => ({ useLoaderData: () => mocks.rootData.current }),
 	};
 });
 

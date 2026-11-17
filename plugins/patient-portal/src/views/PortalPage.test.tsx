@@ -26,10 +26,22 @@ import {
 } from "./index.ts";
 
 const me: PortalProfileItem = { patientId: 1, name: "Ana", relation: "self" };
-const kid: PortalProfileItem = { patientId: 2, name: "Leo", relation: "guardian" };
-const record: PortalRecord = { patientId: 1, name: "Ana", doctorName: "Dra. Bia" };
+const kid: PortalProfileItem = {
+	patientId: 2,
+	name: "Leo",
+	relation: "guardian",
+};
+const record: PortalRecord = {
+	patientId: 1,
+	name: "Ana",
+	doctorName: "Dra. Bia",
+};
 const consultations: PortalConsultationItem[] = [
-	{ id: 11, createdAt: new Date("2026-11-06T14:30:00"), chiefComplaint: "Dor de cabeça" },
+	{
+		id: 11,
+		createdAt: new Date("2026-11-06T14:30:00"),
+		chiefComplaint: "Dor de cabeça",
+	},
 	{ id: 10, createdAt: new Date("2026-10-01T09:00:00"), chiefComplaint: null },
 ];
 
@@ -120,9 +132,16 @@ describe("PortalPage", () => {
 	});
 
 	it("tells the user to confirm their email while invites wait on it", () => {
-		setup({ awaitingInvites: 1, profiles: [], profile: null, consultations: [] });
+		setup({
+			awaitingInvites: 1,
+			profiles: [],
+			profile: null,
+			consultations: [],
+		});
 		expect(screen.getByText("Confirm your email")).toBeTruthy();
-		const action = screen.getByRole("link", { name: "Resend verification link" });
+		const action = screen.getByRole("link", {
+			name: "Resend verification link",
+		});
 		expect(action.getAttribute("href")).toBe("/verify-email");
 	});
 

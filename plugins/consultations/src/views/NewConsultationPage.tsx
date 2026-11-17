@@ -2,6 +2,9 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { BrainIcon, ClipboardListIcon, DownloadIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Dialog } from "@ktbhealth/ui/components/app-dialog";
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Alert } from "@ktbhealth/ui/components/alert";
@@ -36,7 +39,7 @@ import {
 } from "@ktb/transcription";
 
 import { CONF_BAR, CONF_STYLE } from "./-ui.ts";
-import { consultationMessages } from "../i18n.ts";
+import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	AudioTranscriptPanel,
 	useConsultationAudio,
@@ -142,6 +145,8 @@ export function NewConsultationPage({
 	initialPatientId,
 	api,
 	backend,
+	i18n,
+
 	locale = "en",
 	portalBase,
 	zk,
@@ -151,6 +156,8 @@ export function NewConsultationPage({
 	initialPatientId?: number;
 	api: NewConsultationApi;
 	backend: TranscriptionBackend;
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
@@ -160,7 +167,7 @@ export function NewConsultationPage({
 	 * it leaves the browser. */
 	zk?: ConsultationZk;
 }) {
-	const t = consultationMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const nc = t.newConsultation;
 	const [recording, setRecording] = useState(false);
@@ -1114,6 +1121,7 @@ export function NewConsultationPage({
 									{nc.serverTranscript}
 								</p>
 								<AudioTranscriptPanel
+									i18n={i18n}
 									locale={locale}
 									consultationId={audioConsultId}
 									audioStatus={audioDetail?.audioStatus ?? "queued"}

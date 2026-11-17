@@ -196,9 +196,9 @@ export const deletePatientFn = createServerFn({ method: "POST" })
 			Effect.scoped(
 				Effect.gen(function* () {
 					const commands = yield* Command.dispatcher(PatientCascadeCommands);
-					return yield* commands["patients.deleteCascade"]({ patientId: id }).pipe(
-						Effect.catchTag("Forbidden", () => Effect.succeed(null)),
-					);
+					return yield* commands["patients.deleteCascade"]({
+						patientId: id,
+					}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
 				}),
 			),
 		);

@@ -23,8 +23,14 @@ vi.mock("@ktb/auth-better/client", () => ({
 
 const loaderData = { emailEnabled: false };
 
-type DoctorContext = { profiles: { doctorId: number }[]; activeDoctorId: number | null } | null;
-const ownProfile: DoctorContext = { profiles: [{ doctorId: 1 }], activeDoctorId: 1 };
+type DoctorContext = {
+	profiles: { doctorId: number }[];
+	activeDoctorId: number | null;
+} | null;
+const ownProfile: DoctorContext = {
+	profiles: [{ doctorId: 1 }],
+	activeDoctorId: 1,
+};
 const doctorContextFn = vi.fn<() => Promise<DoctorContext>>(async () => ownProfile);
 const ensureDoctorProfileFn = vi.fn<() => Promise<{ ok: boolean }>>(async () => ({ ok: true }));
 vi.mock("@ktb/doctors/fns", () => ({
@@ -53,8 +59,12 @@ const Page = () =>
 	}) as ReactElement;
 
 async function fillAndSubmit() {
-	fireEvent.change(screen.getByLabelText("Email"), { target: { value: "dra@x.com" } });
-	fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+	fireEvent.change(screen.getByLabelText("Email"), {
+		target: { value: "dra@x.com" },
+	});
+	fireEvent.change(screen.getByLabelText("Password"), {
+		target: { value: "senha12345" },
+	});
 	await act(async () => {
 		fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 	});
@@ -98,8 +108,12 @@ describe("sign-in page", () => {
 	it("toggles to sign-up mode and submits", async () => {
 		render(createElement(Page));
 		fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "dra@x.com" } });
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "dra@x.com" },
+		});
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		fireEvent.change(screen.getByLabelText("Confirm password"), {
 			target: { value: "senha12345" },
 		});
@@ -114,8 +128,12 @@ describe("sign-in page", () => {
 	it("blocks sign-up when passwords do not match", async () => {
 		render(createElement(Page));
 		fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "dra@x.com" } });
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "dra@x.com" },
+		});
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		fireEvent.change(screen.getByLabelText("Confirm password"), {
 			target: { value: "different1" },
 		});
@@ -157,8 +175,12 @@ describe("sign-in page", () => {
 				}),
 		);
 		render(createElement(Page));
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.com" } });
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "a@b.com" },
+		});
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		const btn = screen.getByRole("button", { name: "Sign in" });
 		await act(async () => {
 			fireEvent.click(btn);
@@ -191,10 +213,14 @@ describe("sign-in page", () => {
 		const form = container.querySelector("form")!;
 		fireEvent.submit(form);
 		expect(signInEmail).not.toHaveBeenCalled();
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.com" } });
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "a@b.com" },
+		});
 		fireEvent.submit(form);
 		expect(signInEmail).not.toHaveBeenCalled();
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		fireEvent.submit(form);
 		await waitFor(() => expect(signInEmail).toHaveBeenCalledTimes(1));
 		fireEvent.submit(form);
@@ -229,8 +255,12 @@ describe("sign-in page", () => {
 		const signUp = async () => {
 			render(createElement(Page));
 			fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
-			fireEvent.change(screen.getByLabelText("Email"), { target: { value: "dra@x.com" } });
-			fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+			fireEvent.change(screen.getByLabelText("Email"), {
+				target: { value: "dra@x.com" },
+			});
+			fireEvent.change(screen.getByLabelText("Password"), {
+				target: { value: "senha12345" },
+			});
 			fireEvent.change(screen.getByLabelText("Confirm password"), {
 				target: { value: "senha12345" },
 			});

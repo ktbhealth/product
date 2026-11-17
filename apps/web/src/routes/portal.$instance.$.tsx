@@ -25,7 +25,6 @@ import {
 	portalPages,
 } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
-import { getLocale } from "#/paraglide/runtime.js";
 
 const rootApi = getRouteApi("__root__");
 const headerEnabled = plugins.some((p) => p.id === platformHeaderPlugin.id);
@@ -98,8 +97,8 @@ export const Route = createFileRoute("/portal/$instance/$")({
 		const { instance: instanceId } = Route.useParams();
 		const { path, data, audiences, pluginStates, theme } = Route.useLoaderData();
 		const pathname = useLocation({ select: (l) => l.pathname });
-		const { user } = rootApi.useLoaderData();
-		const locale = getLocale();
+		const { user, i18n } = rootApi.useLoaderData();
+		const locale = i18n?.locale ?? "en";
 		const entry = findPortalInstance(portalInstances, instanceId);
 		const pageEntry = findPage(portalPages, path);
 		if (entry === undefined || pageEntry === undefined) return null;
@@ -114,9 +113,10 @@ export const Route = createFileRoute("/portal/$instance/$")({
 								label: pluginPanelLabel(
 									chromeEntry.content.item.to,
 									chromeEntry.content.item.label,
+									i18n,
 								),
 								...(chromeEntry.content.item.group !== undefined
-									? { group: pluginPanelGroup(chromeEntry.content.item.group) }
+									? { group: pluginPanelGroup(chromeEntry.content.item.group, i18n) }
 									: {}),
 							},
 						]
@@ -130,6 +130,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 									createElement(chromeEntry.content.component, {
 										key: chromeEntry.content.id,
 										locale,
+										i18n,
 									}),
 								]
 							: [],
@@ -151,6 +152,10 @@ export const Route = createFileRoute("/portal/$instance/$")({
 				window.location.assign("/");
 			},
 			theme,
+			i18n,
+			// A pinned portal locale (PL-008) leaves the picker a single
+			// option — effectively hidden, since the cookie can't win.
+			instance.locale === undefined ? undefined : [instance.locale],
 		);
 		const brandComponents = collectChrome(
 			visiblePlugins,
@@ -188,10 +193,13 @@ export const Route = createFileRoute("/portal/$instance/$")({
 				items={items}
 				pathname={pathname}
 				locale={locale}
+				i18n={i18n}
 				userEmail={user?.email}
 				headerActions={headerActions}
 				brand={brand}
-				banner={theme?.preview === true ? <ThemePreviewBanner locale={locale} /> : undefined}
+				banner={
+					theme?.preview === true ? <ThemePreviewBanner locale={locale} i18n={i18n} /> : undefined
+				}
 				themeCss={themeCss}
 				portals={switchablePortals}
 				onSignOut={async () => {
@@ -201,7 +209,7 @@ export const Route = createFileRoute("/portal/$instance/$")({
 			>
 				{createElement(pageEntry.page.component, {
 					data,
-					ctx: { plugins, locale, user },
+					ctx: { plugins, locale, user, i18n },
 				})}
 			</PortalShell>
 		);

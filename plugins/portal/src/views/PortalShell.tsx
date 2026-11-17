@@ -10,6 +10,9 @@ import {
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from "@ktbhealth/ui/components/breadcrumb";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
 import {
 	Sidebar,
@@ -26,7 +29,7 @@ import {
 } from "@ktbhealth/ui/components/sidebar";
 import type { PanelSidebarItem } from "@ktb/kernel";
 
-import { portalMessages } from "../i18n.ts";
+import { portalMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /** The portal instance this shell renders — a client-safe projection
  * of the kernel `PortalInstance` (id/basePath/label/icon). */
@@ -62,6 +65,8 @@ export interface PortalShellProps {
 	 * portal shell owns exactly one style emitter per page. */
 	readonly themeCss?: string | null;
 	/** Active UI locale — injected by the host route. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	readonly locale?: string;
 	readonly userEmail?: string;
 	/** Every instance the user may enter (audience-filtered by the host),
@@ -94,13 +99,15 @@ export function PortalShell({
 	brand,
 	banner,
 	themeCss,
+	i18n,
+
 	locale = "en",
 	userEmail,
 	portals,
 	onSignOut,
 	children,
 }: PortalShellProps) {
-	const t = portalMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, portalMessages(locale));
 	const navigate = useNavigate();
 	// Group sidebar items by their `group` label, preserving the
 	// flattened topo order — groups order by first appearance, with the

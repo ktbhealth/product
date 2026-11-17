@@ -1,6 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -16,7 +19,7 @@ import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
 
-import { secretaryMessages } from "../i18n.ts";
+import { secretaryMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /**
  * Server calls the page needs — the route binds `context` to the
@@ -38,15 +41,19 @@ export interface SecretaryLoginApi {
  * patient portal.
  */
 export function SecretaryLoginPage({
+	i18n,
+
 	locale,
 	emailEnabled,
 	api,
 }: {
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	readonly locale: string;
 	readonly emailEnabled: boolean;
 	readonly api: SecretaryLoginApi;
 }) {
-	const t = secretaryMessages(locale).login;
+	const t = sliceMessages(i18n, I18N_NAMESPACE, secretaryMessages(locale).login);
 	const [mode, setMode] = useState<"in" | "up">("in");
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
@@ -67,7 +74,11 @@ export function SecretaryLoginPage({
 		setPending(true);
 		setError(null);
 		setNoDelegation(false);
-		const credentials = { email, password, captchaToken: captchaToken ?? undefined };
+		const credentials = {
+			email,
+			password,
+			captchaToken: captchaToken ?? undefined,
+		};
 		const res =
 			mode === "up"
 				? await authClient.signUp.email({

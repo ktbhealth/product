@@ -6,6 +6,7 @@ import {
 	groupMessages,
 	isGroupLocale,
 	type GroupMessages,
+	i18nMessagesFor,
 } from "./i18n.ts";
 
 /** Every string leaf of a catalog (functions are exercised separately). */
@@ -64,5 +65,15 @@ describe("group catalogs", () => {
 				}
 			}
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of GROUP_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(groupMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(groupMessages("en"));
+		expect(i18nMessagesFor("")).toBe(groupMessages("en"));
 	});
 });

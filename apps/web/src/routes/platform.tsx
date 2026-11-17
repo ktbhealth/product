@@ -46,7 +46,6 @@ import {
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
-import { getLocale } from "#/paraglide/runtime.js";
 
 // /platform portal shell (P-031/P-081): the platform admin console is the
 // default portal instance — the root route drops its marketing chrome on
@@ -144,9 +143,9 @@ const rootApi = getRouteApi("__root__");
 
 function PlatformLayout() {
 	const pathname = useLocation({ select: (l) => l.pathname });
-	const { user, pluginStates } = rootApi.useLoaderData();
+	const { user, pluginStates, i18n } = rootApi.useLoaderData();
 	const { audioJobs, notifications, audiences, theme, deniedPaths } = Route.useLoaderData();
-	const locale = getLocale();
+	const locale = i18n?.locale ?? "en";
 	// Enabled-state filter (P-058): disabled plugins contribute no
 	// sidebar items or header actions.
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
@@ -166,9 +165,9 @@ function PlatformLayout() {
 				? [
 						{
 							...entry.content.item,
-							label: pluginPanelLabel(entry.content.item.to, entry.content.item.label),
+							label: pluginPanelLabel(entry.content.item.to, entry.content.item.label, i18n),
 							...(entry.content.item.group !== undefined
-								? { group: pluginPanelGroup(entry.content.item.group) }
+								? { group: pluginPanelGroup(entry.content.item.group, i18n) }
 								: {}),
 						},
 					]
@@ -178,7 +177,13 @@ function PlatformLayout() {
 		? collectChrome(visiblePlugins, "portal.header.actions", pathname, "platform").flatMap(
 				(entry) =>
 					entry.content.kind === "headerAction"
-						? [createElement(entry.content.component, { key: entry.content.id, locale })]
+						? [
+								createElement(entry.content.component, {
+									key: entry.content.id,
+									locale,
+									i18n,
+								}),
+							]
 						: [],
 			)
 		: undefined;
@@ -196,6 +201,7 @@ function PlatformLayout() {
 			window.location.assign("/");
 		},
 		theme,
+		i18n,
 	);
 	const brandComponents = collectChrome(
 		visiblePlugins,
@@ -243,10 +249,15 @@ function PlatformLayout() {
 						items={items}
 						pathname={pathname}
 						locale={locale}
+						i18n={i18n}
 						userEmail={user?.email}
 						headerActions={headerActions}
 						brand={brand}
-						banner={theme?.preview === true ? <ThemePreviewBanner locale={locale} /> : undefined}
+						banner={
+							theme?.preview === true ? (
+								<ThemePreviewBanner locale={locale} i18n={i18n} />
+							) : undefined
+						}
 						themeCss={themeCss}
 						portals={switchablePortals}
 						onSignOut={async () => {

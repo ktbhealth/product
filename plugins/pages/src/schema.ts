@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 /**
  * Custom pages (T-083): admin-authored, DB-stored pages rendered by
@@ -25,12 +24,8 @@ export const customPage = sqliteTable(
 		published: integer({ mode: "boolean" }).notNull().default(false),
 		showInNav: integer("show_in_nav", { mode: "boolean" }).notNull().default(false),
 		sortOrder: integer("sort_order").notNull().default(0),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
-		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		uniqueIndex("custom_pages_path_idx").on(table.path),

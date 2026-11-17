@@ -17,5 +17,5 @@ export function RbacPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageC
 		assignments: [],
 		catalog: [],
 	}) as AdminRbacPageData;
-	return <AdminRbacPage data={pageData} locale={ctx.locale} />;
+	return <AdminRbacPage data={pageData} i18n={ctx.i18n} locale={ctx.locale} />;
 }

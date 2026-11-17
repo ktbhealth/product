@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { notFound } from "@tanstack/react-router";
+import { notFound, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 import { makeKeyring } from "@ktb/crypto/keyring";
@@ -35,6 +35,7 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 	},
 	component: function ConsultationRoute() {
 		const { c, history, historyRows, locale, zk } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const keyring = useMemo(() => (zk ? makeKeyring() : null), [zk]);
 		return (
 			<ConsultationDetailPage
@@ -42,6 +43,7 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 				history={history}
 				historyRows={historyRows}
 				api={consultationDetailApi}
+				i18n={i18n}
 				locale={locale}
 				zk={zk && keyring ? { keyring, api: consultationsZkApi } : undefined}
 			/>

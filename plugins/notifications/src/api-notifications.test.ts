@@ -23,8 +23,13 @@ import { insertNotification, NotificationsLive } from "./Notifications.ts";
 import { Route as NotificationsRoute } from "./api-routes/notifications.ts";
 
 const handlersOf = (r: unknown) =>
-	(r as { options: { server: { handlers: Record<string, (a: never) => Promise<Response>> } } })
-		.options.server.handlers;
+	(
+		r as {
+			options: {
+				server: { handlers: Record<string, (a: never) => Promise<Response>> };
+			};
+		}
+	).options.server.handlers;
 
 // In-plugin harness (P-033): the route reaches the app runtime through
 // @ktb/server-fns, so the test publishes its own ManagedRuntime — a
@@ -75,7 +80,12 @@ beforeAll(() => {
 		run: (effect) => runtime.runPromise(effect),
 		runAs: (user, effect) =>
 			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
+				effect.pipe(
+					Effect.provideService(Principal, {
+						userId: user.id,
+						email: user.email,
+					}),
+				),
 			),
 		getLocale: () => "en",
 		audioTranscribeModel: "test-model",

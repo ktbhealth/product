@@ -56,6 +56,7 @@ vi.mock("#/lib/fns.ts", () => ({
 	getSessionUserFn: () => getSessionUserFn(),
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
+	i18nRouteFn: vi.fn(async () => undefined),
 }));
 // The layout imports the audio-jobs feed fn from the consultations
 // plugin directly — stub that module the same way.

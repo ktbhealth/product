@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useRouter } from "@tanstack/react-router";
+import { useRouter, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 import { makeKeyring } from "@ktb/crypto/keyring";
@@ -22,6 +22,7 @@ export const Route = createPluginFileRoute("patients.routes")("/patients/")({
 	},
 	component: function PatientsRoute() {
 		const { patients, locale, zk } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const router = useRouter();
 		// T-144: rows arrive ciphered on ZK tenants — the view decrypts
 		// in the browser through this device's keyring.
@@ -29,6 +30,7 @@ export const Route = createPluginFileRoute("patients.routes")("/patients/")({
 		return (
 			<PatientsPage
 				patients={patients}
+				i18n={i18n}
 				locale={locale}
 				deleteApi={patientDeleteApi}
 				onDeleted={() => void router.invalidate()}

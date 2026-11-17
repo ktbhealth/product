@@ -60,6 +60,7 @@ export type {
 	PanelSidebarItem,
 	Page,
 	PageContext,
+	PageI18nSlice,
 	PagesPlugin,
 	Plugin,
 	PortalInstance,

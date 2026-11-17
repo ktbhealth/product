@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
@@ -35,6 +36,7 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 	},
 	component: function NewRoute() {
 		const { initialPatients, locale, zk } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const { patientId } = Route.useSearch();
 		const keyring = useMemo(() => (zk ? makeKeyring() : null), [zk]);
 		// Only warm the Whisper model when Whisper actually won resolution —
@@ -91,6 +93,7 @@ export const Route = createPluginFileRoute("consultations.routes")("/consultatio
 				// no model download, and no Whisper-in-browser pipeline at
 				// all (the server transcription endpoints are gated too).
 				backend={zk ? webSpeechBackend : transcriptionBackend}
+				i18n={i18n}
 				locale={locale}
 				zk={
 					zk && keyring

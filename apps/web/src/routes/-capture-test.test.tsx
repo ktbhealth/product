@@ -14,6 +14,18 @@ vi.mock("@tanstack/react-start", () => ({
 	},
 }));
 
+const catalogMiss = vi.hoisted(() => ({ current: false }));
+// Total catalog miss: every `app.*` lookup returns the raw key, so the
+// page's `resolved === full ? key : resolved` fallback is exercised.
+vi.mock("#/lib/app-catalog.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#/lib/app-catalog.ts")>();
+	return {
+		...actual,
+		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) =>
+			catalogMiss.current ? (key: string) => key : actual.appCatalogT(slice),
+	};
+});
+
 import { Route } from "./capture-test.tsx";
 import { isNotFound } from "@tanstack/react-router";
 
@@ -66,6 +78,7 @@ function installMedia(stream: unknown) {
 
 afterEach(() => {
 	cleanup();
+	catalogMiss.current = false;
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 });
@@ -82,6 +95,14 @@ describe("capture-test", () => {
 		vi.unstubAllEnvs();
 		expect(isNotFound(caught)).toBe(true);
 		expect(() => beforeLoad()).not.toThrow();
+	});
+
+	it("falls back to raw message keys when the catalog misses", () => {
+		catalogMiss.current = true;
+		render(createElement(Page));
+		// t() returns the bare key (no `app.` prefix) on a sentinel hit.
+		expect(screen.getByText("capture_title")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "capture_start" })).toBeTruthy();
 	});
 
 	it("captures tab audio and shows level meter", async () => {

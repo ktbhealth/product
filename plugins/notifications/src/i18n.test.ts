@@ -6,6 +6,7 @@ import {
 	isNotificationLocale,
 	notificationMessages,
 	type NotificationMessages,
+	i18nMessagesFor,
 } from "./i18n.ts";
 
 /** Every string leaf of a catalog (functions are exercised separately). */
@@ -60,5 +61,15 @@ describe("notification catalogs", () => {
 				}
 			}
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of NOTIFICATION_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(notificationMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(notificationMessages("en"));
+		expect(i18nMessagesFor("")).toBe(notificationMessages("en"));
 	});
 });

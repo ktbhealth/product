@@ -21,7 +21,13 @@ const harness = async () => {
 	const rt = ManagedRuntime.make(Layer.succeed(Db, db as never));
 	const [row] = await db
 		.insert(aiEndpoint)
-		.values({ name: "Local agent", kind: "acp", baseUrl: null, transport: "ws" })
+		.values({
+			name: "Local agent",
+			kind: "acp",
+			baseUrl: null,
+			transport: "ws",
+			createdAt: new Date(),
+		})
 		.returning({ id: aiEndpoint.id });
 	const forwards: { endpointId: number; url: string }[] = [];
 	const runtime: ServerRuntime = {
@@ -50,6 +56,7 @@ const seedLink = async (
 		tokenHash: await sha256Hex(token),
 		createdBy: "u1",
 		expiresAt: over.expiresAt ?? new Date(Date.now() + 60_000),
+		createdAt: new Date(),
 		...(over.usedAt !== undefined ? { usedAt: over.usedAt } : {}),
 		...(over.revokedAt !== undefined ? { revokedAt: over.revokedAt } : {}),
 	});
