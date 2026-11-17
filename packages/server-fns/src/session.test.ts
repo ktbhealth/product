@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
+import * as Metric from "effect/Metric";
 
 import { Auth, type AuthShape, type Session } from "@ktb/auth";
+import {
+	sessionContextLoadDuration,
+	sessionContextLookups,
+	tagged,
+} from "@ktb/observability/metrics";
 
 const requestHeaders = vi.hoisted(() => ({ current: new Headers() }));
 
@@ -98,6 +104,37 @@ describe("getSessionUser", () => {
 		sessionError = undefined;
 		await expect(getSessionUser(headers)).resolves.toEqual(session.user);
 		expect(sessionCalls).toBe(2);
+	});
+});
+
+describe("session lookup telemetry", () => {
+	const lookupCount = (context: string, result: string) =>
+		Effect.runPromise(Metric.value(tagged(sessionContextLookups, { context, result }))).then(
+			(state) => ("count" in state ? state.count : 0),
+		);
+	const loadDurationCount = (context: string) =>
+		Effect.runPromise(Metric.value(tagged(sessionContextLoadDuration, { context }))).then((state) =>
+			"count" in state ? state.count : 0,
+		);
+
+	it("counts one load then cache hits for repeated lookups on one Headers", async () => {
+		const loadBefore = await lookupCount("session", "load");
+		const cacheBefore = await lookupCount("session", "cache");
+		const durationBefore = await loadDurationCount("session");
+		const headers = new Headers();
+		await getSessionUser(headers);
+		await getSessionUser(headers);
+		await getSessionUser(headers);
+		expect(await lookupCount("session", "load")).toBe(loadBefore + 1);
+		expect(await lookupCount("session", "cache")).toBe(cacheBefore + 2);
+		expect(await loadDurationCount("session")).toBe(durationBefore + 1);
+	});
+
+	it("counts a load per distinct Headers object", async () => {
+		const loadBefore = await lookupCount("session", "load");
+		await getSessionUser(new Headers());
+		await getSessionUser(new Headers());
+		expect(await lookupCount("session", "load")).toBe(loadBefore + 2);
 	});
 });
 

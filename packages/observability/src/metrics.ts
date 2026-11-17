@@ -57,6 +57,36 @@ export const httpRequestDuration = Metric.histogram("ktb_http_request_duration_m
 	boundaries: [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000],
 });
 
+/** Per-server-function request signals — the `handlerType: "serverFn"`
+ * slice of the HTTP edge broken down by the createServerFn id (the
+ * `/_serverFn/<id>` path segment; a sha256 of `file--export`, so the
+ * label set is bounded by the number of compiled server functions and
+ * matches the `path` the access log already records). `status` follows
+ * the httpRequests convention: present only when a Response resolved. */
+export const serverFnRequests = Metric.counter("ktb_server_fn_requests_total", {
+	description: "Server function requests by fn id and status",
+	incremental: true,
+});
+export const serverFnRequestDuration = Metric.histogram("ktb_server_fn_request_duration_ms", {
+	description: "Server function request wall time by fn id",
+	boundaries: [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000],
+});
+
+/** Session-context resolution (@ktb/server-fns session.ts): every
+ * helper shares one per-request WeakMap memoization, so `result: cache`
+ * means the lookup was served without session/profile-directory I/O and
+ * `result: load` means the backing lookup actually ran. `context` is
+ * bounded: session | doctor | patient. The duration histogram records
+ * load wall time only — cache hits have no I/O cost to measure. */
+export const sessionContextLookups = Metric.counter("ktb_session_context_lookups_total", {
+	description: "Session/doctor/patient context resolutions by cache result",
+	incremental: true,
+});
+export const sessionContextLoadDuration = Metric.histogram("ktb_session_context_load_duration_ms", {
+	description: "Wall time of uncached session-context loads",
+	boundaries: [1, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000],
+});
+
 /** Client telemetry ingest — events/errors received at /api/telemetry. */
 export const clientEvents = Metric.counter("ktb_client_events_total", {
 	description: "Browser telemetry events ingested",
