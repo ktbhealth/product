@@ -17,6 +17,12 @@ export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "patient-portal.services",
 		meta: { keywords: ["patient-portal", "services", "patient"] },
+		requiredDeps: [
+			"patient-access.services",
+			"consultations.services",
+			"doctors.services",
+			"patients.services",
+		],
 		optionalDeps: ["audit.services"],
 	}),
 	definePlugin({
