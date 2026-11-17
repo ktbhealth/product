@@ -188,7 +188,12 @@ describe("dominant color → seed suggestion", () => {
 
 describe("job payload contracts", () => {
 	it("decodes image asset payloads", () => {
-		const p = decodeThemeAssetJob({ assetId: 1, themeId: 2, kind: "favicon", key: "k" });
+		const p = decodeThemeAssetJob({
+			assetId: 1,
+			themeId: 2,
+			kind: "favicon",
+			key: "k",
+		});
 		expect(p).toEqual({ assetId: 1, themeId: 2, kind: "favicon", key: "k" });
 		expect(THEME_ASSET_JOB_KIND).toBe("theme.asset");
 		expect(() => decodeThemeAssetJob({ assetId: "x" })).toThrow();
@@ -249,8 +254,16 @@ describe("google fonts css", () => {
 `;
 		const faces = parseGoogleFontsCss(css);
 		expect(faces).toEqual([
-			{ url: "https://fonts.gstatic.com/lat.woff2", weight: 400, format: "woff2" },
-			{ url: "https://fonts.gstatic.com/bold.woff2", weight: 700, format: "woff2" },
+			{
+				url: "https://fonts.gstatic.com/lat.woff2",
+				weight: 400,
+				format: "woff2",
+			},
+			{
+				url: "https://fonts.gstatic.com/bold.woff2",
+				weight: 700,
+				format: "woff2",
+			},
 		]);
 	});
 
@@ -279,15 +292,24 @@ describe("theme_assets repo helpers", () => {
 			kind: "favicon",
 			r2Key: `${THEME_ASSETS_PREFIX}${themeId}/favicon/u.png`,
 		});
-		expect(asset).toMatchObject({ themeId, kind: "favicon", status: "pending" });
+		expect(asset).toMatchObject({
+			themeId,
+			kind: "favicon",
+			status: "pending",
+		});
 
 		await completeThemeAsset(db, asset!.id, {
 			status: "ready",
-			variants: { files: { "favicon-32.png": { key: "k" } }, dominantColor: "#112233" },
+			variants: {
+				files: { "favicon-32.png": { key: "k" } },
+				dominantColor: "#112233",
+			},
 		});
 		const row = await getThemeAsset(db, asset!.id);
 		expect(row?.status).toBe("ready");
-		expect(JSON.parse(row!.variants!)).toMatchObject({ dominantColor: "#112233" });
+		expect(JSON.parse(row!.variants!)).toMatchObject({
+			dominantColor: "#112233",
+		});
 
 		await setThemeBrandRef(db, themeId, "favicon", "/api/theme/assets?key=k");
 		const themes = await all<{ brand: string }>(
@@ -295,7 +317,9 @@ describe("theme_assets repo helpers", () => {
 			`SELECT brand FROM theme_definitions WHERE id = ?`,
 			[themeId],
 		);
-		expect(JSON.parse(themes[0]!.brand)).toEqual({ favicon: "/api/theme/assets?key=k" });
+		expect(JSON.parse(themes[0]!.brand)).toEqual({
+			favicon: "/api/theme/assets?key=k",
+		});
 	});
 
 	it("upsertThemeFontAsset forces self-host and preserves other slots/families", async () => {
@@ -305,7 +329,9 @@ describe("theme_assets repo helpers", () => {
 			JSON.stringify({
 				delivery: "google-fonts",
 				families: { mono: "JetBrains Mono" },
-				assets: { "JetBrains Mono": { faces: [{ url: "u", format: "woff2" }] } },
+				assets: {
+					"JetBrains Mono": { faces: [{ url: "u", format: "woff2" }] },
+				},
 			}),
 			themeId,
 		]);
@@ -314,7 +340,12 @@ describe("theme_assets repo helpers", () => {
 			fallback: {
 				name: "Inter fallback",
 				local: "Arial",
-				metrics: { sizeAdjust: 100, ascentOverride: 90, descentOverride: 20, lineGapOverride: 0 },
+				metrics: {
+					sizeAdjust: 100,
+					ascentOverride: 90,
+					descentOverride: 20,
+					lineGapOverride: 0,
+				},
 			},
 		};
 		const next = await upsertThemeFontAsset(db, themeId, {
@@ -358,7 +389,11 @@ describe("edge branches", () => {
 			insert: () => ({ values: () => ({ returning: async () => [] }) }),
 		} as unknown as DbClient;
 		expect(
-			await insertThemeAsset(emptyInsert, { themeId: 1, kind: "favicon", r2Key: "k" }),
+			await insertThemeAsset(emptyInsert, {
+				themeId: 1,
+				kind: "favicon",
+				r2Key: "k",
+			}),
 		).toBeNull();
 	});
 
@@ -383,7 +418,10 @@ describe("edge branches", () => {
 			`SELECT brand FROM theme_definitions WHERE id = ?`,
 			[themeId],
 		);
-		expect(JSON.parse(rows[0]!.brand)).toEqual({ appName: "Acme", favicon: "/fav.ico" });
+		expect(JSON.parse(rows[0]!.brand)).toEqual({
+			appName: "Acme",
+			favicon: "/fav.ico",
+		});
 		// Invalid JSON and non-object JSON both degrade to {}.
 		for (const bad of ["{oops", "[1,2,3]", "42"]) {
 			await run(d1, `UPDATE theme_definitions SET brand = ? WHERE id = ?`, [bad, themeId]);
@@ -398,7 +436,10 @@ describe("edge branches", () => {
 	it("upsertThemeFontAsset tolerates null/invalid/empty fonts columns", async () => {
 		const { db, d1 } = makeTestDb();
 		const themeId = await seedTheme({ db, d1 });
-		const asset: ThemeFontAsset = { faces: [{ url: "/f.woff2" }], fallback: null };
+		const asset: ThemeFontAsset = {
+			faces: [{ url: "/f.woff2" }],
+			fallback: null,
+		};
 		for (const fonts of [null, "{oops", "[1]", "{}", "42"]) {
 			await run(d1, `UPDATE theme_definitions SET fonts = ? WHERE id = ?`, [fonts, themeId]);
 			const next = await upsertThemeFontAsset(db, themeId, {

@@ -84,7 +84,10 @@ describe("ops panel page guard", () => {
 		const result = await Effect.runPromise(
 			guard().pipe(
 				Effect.provideService(PlatformAdmin, gate(true)),
-				Effect.provideService(Principal, { userId: "u1", email: "admin@x.com" }),
+				Effect.provideService(Principal, {
+					userId: "u1",
+					email: "admin@x.com",
+				}),
 			),
 		);
 		expect(result).toBe(true);
@@ -165,7 +168,11 @@ describe("audio job status helpers", () => {
 });
 
 describe("jobsFromAudioRows", () => {
-	const base = { id: 1, audioError: null, createdAt: new Date("2025-01-01T00:00:00Z") };
+	const base = {
+		id: 1,
+		audioError: null,
+		createdAt: new Date("2025-01-01T00:00:00Z"),
+	};
 
 	it("maps pipeline statuses and skips rows without audio", () => {
 		const jobs = jobsFromAudioRows([
@@ -189,7 +196,11 @@ describe("jobsFromAudioRows", () => {
 });
 
 describe("jobFromAudioRow", () => {
-	const base = { id: 7, audioError: null, createdAt: "2025-01-01T00:00:00.000Z" };
+	const base = {
+		id: 7,
+		audioError: null,
+		createdAt: "2025-01-01T00:00:00.000Z",
+	};
 
 	it("maps a single live-frame row to its job", () => {
 		const job = jobFromAudioRow({ ...base, audioStatus: "processing" });
@@ -204,8 +215,18 @@ describe("jobFromAudioRow", () => {
 describe("job meta date fallback", () => {
 	it("leaves the meta empty when the row date is not parseable", () => {
 		const [job] = jobsFromAudioRows([
-			{ id: 3, audioStatus: "done", audioError: null, createdAt: "not-a-date", patientName: null },
+			{
+				id: 3,
+				audioStatus: "done",
+				audioError: null,
+				createdAt: "not-a-date",
+				patientName: null,
+			},
 		]);
-		expect(job).toMatchObject({ id: "audio-3", meta: "", description: "consultation #3" });
+		expect(job).toMatchObject({
+			id: "audio-3",
+			meta: "",
+			description: "consultation #3",
+		});
 	});
 });

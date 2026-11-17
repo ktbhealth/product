@@ -3,6 +3,7 @@ import { connect as socketConnect } from "cloudflare:sockets";
 
 import {
 	audioStorageStats,
+	getSessionAccount,
 	getTenantSelector,
 	setServerRuntime,
 	type AudioObjectLister,
@@ -10,15 +11,28 @@ import {
 	type QueueDepth,
 } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
-import { makeTenantResolver } from "@ktb/tenant";
-import { makeDb, type SqlDatabase } from "@ktb/db";
+import {
+	makeTenantResolver,
+	TenantResolver,
+	tenantSelectorFromHeaders,
+	tenantScopeId,
+} from "@ktb/tenant";
+import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { makeJobs } from "@ktb/jobs-port";
-import { getLocale } from "#/paraglide/runtime.js";
+import { currentLocale } from "./locale-context.ts";
+import { GLOBAL_SCOPE, resolveRequestLocales, tenantScope } from "@ktb/i18n";
+import {
+	catalogSlice,
+	DEFAULT_LOCALE,
+	I18nRuntime,
+	listEnabledLocales,
+	resolveRequestI18n,
+} from "@ktb/i18n-plugin";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
-import { verificationEmail } from "./emails.ts";
+import { emailCatalogT, verificationEmail } from "./emails.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
 import { requestTelemetryContext } from "./telemetry.ts";
 import { makeFlushThrottler } from "./telemetry-flush.ts";
@@ -54,7 +68,31 @@ const tenantResolver = makeTenantResolver({
 	selectDefault: (memberships) => (memberships.length === 1 ? memberships[0] : undefined),
 });
 
-const app = createApp(appEnv as unknown as typeof env, { tenantResolver, verificationEmail });
+// Verification email resolves its copy from the DB `app` namespace at
+// send time (PL-008): request locale → enabled-locale chain → catalog
+// slice. `run` is defined below — the callback only fires per send,
+// long after module init. A resolution failure falls back to the
+// English literals inside verificationEmail (email must not break
+// sign-up).
+const app = createApp(appEnv as unknown as typeof env, {
+	tenantResolver,
+	verificationEmail: async ({ name, url }) => {
+		const t = await run(
+			Effect.gen(function* () {
+				const database = yield* Db;
+				const enabled = yield* Effect.promise(() => listEnabledLocales(database));
+				const chain = resolveRequestLocales(currentLocale(), enabled, DEFAULT_LOCALE);
+				const catalog = yield* catalogSlice(database, {
+					namespaces: ["app"],
+					scopeChain: GLOBAL_SCOPE,
+					locales: chain,
+				});
+				return emailCatalogT(catalog, chain.locales[0] ?? DEFAULT_LOCALE);
+			}),
+		).catch(() => undefined);
+		return verificationEmail({ name, url }, t);
+	},
+});
 
 // T-105: hand the request middleware (start.ts — outside the Effect
 // runtime, and client-safe so it can't import this module) a way to
@@ -166,6 +204,34 @@ const themeJobs =
 		? undefined
 		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
 
+/**
+ * Request scope chain for the i18n capability (PL-008): the same
+ * pipeline `i18nRouteFn` uses — tenant headers + session account →
+ * TenantResolver → tenantScope; anonymous/selector-less requests stay
+ * global. Portal scope is NOT derivable here: plugin server fns run on
+ * the RPC endpoint, not the page path, so callers needing portal-scoped
+ * copy pass `scopeChain` explicitly (same escape hatch as before).
+ */
+const requestScopeChain = () =>
+	Effect.gen(function* () {
+		const headers = yield* Effect.promise(() =>
+			import("@tanstack/react-start/server")
+				.then((m) => m.getRequestHeaders())
+				.catch(() => new Headers()),
+		);
+		const selector = tenantSelectorFromHeaders(headers);
+		// No tenant headers → personal scope; skip the session lookup so
+		// anonymous/app requests pay nothing extra.
+		if (selector === null) return GLOBAL_SCOPE;
+		const account = yield* Effect.promise(() => getSessionAccount(headers).catch(() => null));
+		const resolver = yield* TenantResolver;
+		const tenant = yield* resolver
+			.resolve(selector, account?.id ?? null)
+			.pipe(Effect.catch(() => Effect.succeed(null)));
+		const tenantId = tenant === null ? null : tenantScopeId(tenant);
+		return tenantId === null ? GLOBAL_SCOPE : tenantScope(String(tenantId));
+	});
+
 // F3b: the AcpBridge durable-object namespace (workerd binding —
 // declared in the Alchemy stack). Structural slice only; the plugin
 // route reaches it through ServerRuntime.acpBridge, never the env.
@@ -195,7 +261,26 @@ setServerRuntime({
 	ai: aiBinding,
 	audioTranscribeModel,
 	recordExporters,
-	getLocale,
+	getLocale: currentLocale,
+	// PL-008: DB-canonical i18n capability — resolves enabled locales +
+	// scope chain inside the app runtime (I18nRuntime cache + Db) and
+	// returns the request-bound I18n shape. Locale defaults to the
+	// request-scoped UI locale (locale-context ALS); scope defaults to
+	// the request's tenant chain (portal scope stays caller-supplied —
+	// see requestScopeChain).
+	i18n: (input) =>
+		run(
+			Effect.gen(function* () {
+				const runtime = yield* I18nRuntime;
+				const database = yield* Db;
+				const scopeChain = input?.scopeChain ?? (yield* requestScopeChain());
+				const { i18n } = yield* resolveRequestI18n(runtime, database, {
+					requestedLocale: input?.locale ?? currentLocale(),
+					scopeChain,
+				});
+				return i18n;
+			}),
+		),
 	// P-058: backs `pluginEnabledFn` / `createPluginFileRoute` /
 	// `createPluginApiRoute`. Package-granular like every other
 	// enable-state surface: the route stays live while ANY plugin of the

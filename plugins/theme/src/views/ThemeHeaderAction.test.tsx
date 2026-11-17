@@ -29,9 +29,20 @@ const summary = (over: Partial<ThemeSummary>): ThemeSummary => ({
 const THEMES: ThemeSummary[] = [
 	summary({ id: 1, scope: "platform", appName: "Platform Theme" }),
 	summary({ id: 2, scope: "tenant", scopeId: "", appName: "Tenant Wide" }),
-	summary({ id: 3, scope: "tenant", scopeId: "t-42", appName: null, enabled: false }),
+	summary({
+		id: 3,
+		scope: "tenant",
+		scopeId: "t-42",
+		appName: null,
+		enabled: false,
+	}),
 	summary({ id: 4, scope: "portal-instance", scopeId: "", appName: null }),
-	summary({ id: 5, scope: "portal-instance", scopeId: "inst-9", appName: "Portal Co" }),
+	summary({
+		id: 5,
+		scope: "portal-instance",
+		scopeId: "inst-9",
+		appName: "Portal Co",
+	}),
 ];
 
 const deferred = <T,>() => {
@@ -115,7 +126,9 @@ describe("ThemeHeaderAction", () => {
 
 		const buttons = await screen.findAllByRole("button", { name: "Preview" });
 		await user.click(buttons[0]!);
-		expect(fns.setThemePreviewFn).toHaveBeenCalledWith({ data: { themeId: 1 } });
+		expect(fns.setThemePreviewFn).toHaveBeenCalledWith({
+			data: { themeId: 1 },
+		});
 		// Busy state swaps the label while the fn is in flight.
 		expect(await screen.findByRole("button", { name: "Previewing…" })).toBeTruthy();
 		await act(async () => pending.resolve({ ok: true }));

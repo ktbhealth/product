@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useRouter } from "@tanstack/react-router";
 import { KeyRoundIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent } from "@ktbhealth/ui/components/card";
@@ -17,20 +18,24 @@ import {
 } from "@ktbhealth/ui/components/select";
 
 import { createCredentialFn, removeCredentialFn } from "../fns.ts";
-import { credMessages } from "../i18n.ts";
+import { credMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { CredentialCard } from "../index.ts";
 
 const PROVIDERS = ["openai", "anthropic", "gemini", "acp", "other"] as const;
 
 export function CredentialsPage({
 	creds: initial,
+	i18n,
 	locale,
 }: {
 	creds: readonly CredentialCard[];
+	i18n?: PageI18nSlice;
 	locale: string;
 }) {
-	const m = credMessages(locale);
-	const router = useRouter();
+	// PL-008 Phase 4: string copy resolves from the DB catalog slice
+	// (ctx.i18n); the code catalog is the fallback until every
+	// environment has re-run i18n:import-baseline.
+	const m = sliceMessages(i18n, I18N_NAMESPACE, credMessages(locale));
 	const [creds, setCreds] = useState(initial);
 	const [form, setForm] = useState<{ name: string; provider: string; secret: string } | null>(null);
 	const [confirmId, setConfirmId] = useState<string | null>(null);

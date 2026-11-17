@@ -180,6 +180,20 @@ const DOMAINS = [
 			"White-label theme definitions per scope (platform/tenant/portal-instance) — authored seeds, derived token maps, fonts, brand assets — plus the theme_assets upload pipeline.",
 		tables: ["theme_assets", "theme_definitions"],
 	},
+	{
+		id: "i18n",
+		title: "Internationalization",
+		owner: "`plugins/i18n` + `packages/i18n`",
+		description:
+			"DB-canonical localization — registered namespaces and locales, scoped message rows (global/tenant/portal) with draft/publish lifecycle, a single-row revision stamp for catalog caching, and the Loro CRDT op log behind staged rich-text edits.",
+		tables: [
+			"i18n_crdt_updates",
+			"i18n_locales",
+			"i18n_messages",
+			"i18n_namespaces",
+			"i18n_revision",
+		],
+	},
 ];
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));

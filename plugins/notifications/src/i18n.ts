@@ -7,6 +7,8 @@
  * an English fallback at runtime.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const NOTIFICATION_LOCALES = ["en", "pt-BR", "es"] as const;
 export type NotificationLocale = (typeof NOTIFICATION_LOCALES)[number];
 export const BASE_LOCALE: NotificationLocale = "en";
@@ -27,10 +29,10 @@ export interface NotificationMessages {
 
 const en: NotificationMessages = {
 	label: "Notifications",
-	unreadCount: (n) => `${n} unread`,
+	unreadCount: paramMessage("en", "{n} unread", ["n"]),
 	markAllRead: "Mark all read",
 	empty: "No notifications",
-	markAsRead: (title) => `Mark "${title}" as read`,
+	markAsRead: paramMessage("en", 'Mark "{title}" as read', ["title"]),
 	titles: {
 		patientCreated: "Patient created",
 		patientDeleted: "Patient deleted",
@@ -40,10 +42,10 @@ const en: NotificationMessages = {
 
 const ptBR: NotificationMessages = {
 	label: "Notificações",
-	unreadCount: (n) => `${n} não lida${n === 1 ? "" : "s"}`,
+	unreadCount: paramMessage("pt-BR", "{n, plural, =1{{n} não lida} other{{n} não lidas}}", ["n"]),
 	markAllRead: "Marcar todas como lidas",
 	empty: "Nenhuma notificação",
-	markAsRead: (title) => `Marcar "${title}" como lida`,
+	markAsRead: paramMessage("pt-BR", 'Marcar "{title}" como lida', ["title"]),
 	titles: {
 		patientCreated: "Paciente criado",
 		patientDeleted: "Paciente excluído",
@@ -53,10 +55,10 @@ const ptBR: NotificationMessages = {
 
 const es: NotificationMessages = {
 	label: "Notificaciones",
-	unreadCount: (n) => `${n} sin leer`,
+	unreadCount: paramMessage("es", "{n} sin leer", ["n"]),
 	markAllRead: "Marcar todas como leídas",
 	empty: "Ninguna notificación",
-	markAsRead: (title) => `Marcar "${title}" como leída`,
+	markAsRead: paramMessage("es", 'Marcar "{title}" como leída', ["title"]),
 	titles: {
 		patientCreated: "Paciente creado",
 		patientDeleted: "Paciente eliminado",
@@ -64,7 +66,11 @@ const es: NotificationMessages = {
 	},
 };
 
-const CATALOGS: Record<NotificationLocale, NotificationMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<NotificationLocale, NotificationMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isNotificationLocale = (locale: string): locale is NotificationLocale =>
 	(NOTIFICATION_LOCALES as readonly string[]).includes(locale);
@@ -72,3 +78,10 @@ export const isNotificationLocale = (locale: string): locale is NotificationLoca
 /** Catalog for a locale tag; unknown tags get the base locale. */
 export const notificationMessages = (locale: string): NotificationMessages =>
 	CATALOGS[isNotificationLocale(locale) ? locale : BASE_LOCALE];
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "notifications";
+
+/** Locale→catalog accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): NotificationMessages =>
+	notificationMessages(locale);

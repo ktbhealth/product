@@ -69,7 +69,13 @@ const row = {
 const context = {
 	user,
 	profiles: [
-		{ doctorId: 1, userId: "doc", email: "doc@ktb.test", displayName: "Dra. Ana", role: "owner" },
+		{
+			doctorId: 1,
+			userId: "doc",
+			email: "doc@ktb.test",
+			displayName: "Dra. Ana",
+			role: "owner",
+		},
 	],
 	active: null,
 };
@@ -80,7 +86,11 @@ beforeEach(() => {
 	mocks.emailService.current = "sender";
 	mocks.inviteLinks.current = false;
 	mocks.send.mockResolvedValue(undefined);
-	const service = { list: mocks.list, invite: mocks.invite, revoke: mocks.revoke };
+	const service = {
+		list: mocks.list,
+		invite: mocks.invite,
+		revoke: mocks.revoke,
+	};
 	mocks.runAs.mockImplementation(
 		(_user: unknown, effect: Effect.Effect<unknown, never, Secretaries>) =>
 			Effect.runPromise(effect.pipe(Effect.provideService(Secretaries, service))),
@@ -166,7 +176,11 @@ describe("inviteSecretaryFn", () => {
 			secretary: { id: 3, email: "sec@ktb.test", status: "invited" },
 		});
 		expect(mocks.invite).toHaveBeenCalledWith("sec@ktb.test");
-		const sent = mocks.send.mock.calls[0]![0] as { to: string; subject: string; text: string };
+		const sent = mocks.send.mock.calls[0]![0] as {
+			to: string;
+			subject: string;
+			text: string;
+		};
 		expect(sent.to).toBe("sec@ktb.test");
 		expect(sent.subject).toBe("Dra. Ana convidou você para o KTB Health");
 		expect(sent.text).toContain("https://app.ktb.test/secretaries/login");
@@ -242,7 +256,10 @@ describe("inviteSecretaryFn", () => {
 	it("returns the rejection code and sends nothing", async () => {
 		mocks.getDoctorContext.mockResolvedValue(context);
 		mocks.invite.mockReturnValue(Effect.fail(new InviteRejected({ code: "self" })));
-		await expect(invite("doc@ktb.test")).resolves.toEqual({ ok: false, error: "self" });
+		await expect(invite("doc@ktb.test")).resolves.toEqual({
+			ok: false,
+			error: "self",
+		});
 		expect(mocks.send).not.toHaveBeenCalled();
 	});
 
@@ -270,10 +287,16 @@ describe("revokeSecretaryFn", () => {
 	it("reports failure for foreign rows, non-doctors and anonymous callers", async () => {
 		mocks.getSessionUser.mockResolvedValue(user);
 		mocks.revoke.mockReturnValue(Effect.succeed(false));
-		await expect(revokeSecretaryFn({ data: 3 })).resolves.toEqual({ ok: false });
+		await expect(revokeSecretaryFn({ data: 3 })).resolves.toEqual({
+			ok: false,
+		});
 		mocks.revoke.mockReturnValue(Effect.fail(new Forbidden({ path: "secretary.revoke" })));
-		await expect(revokeSecretaryFn({ data: 3 })).resolves.toEqual({ ok: false });
+		await expect(revokeSecretaryFn({ data: 3 })).resolves.toEqual({
+			ok: false,
+		});
 		mocks.getSessionUser.mockResolvedValue(null);
-		await expect(revokeSecretaryFn({ data: 3 })).resolves.toEqual({ ok: false });
+		await expect(revokeSecretaryFn({ data: 3 })).resolves.toEqual({
+			ok: false,
+		});
 	});
 });

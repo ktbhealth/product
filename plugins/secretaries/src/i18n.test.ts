@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { BASE_LOCALE, SECRETARY_LOCALES, isSecretaryLocale, secretaryMessages } from "./i18n.ts";
+import {
+	BASE_LOCALE,
+	SECRETARY_LOCALES,
+	isSecretaryLocale,
+	secretaryMessages,
+	i18nMessagesFor,
+} from "./i18n.ts";
 
 /** Every string leaf of a catalog (functions are exercised separately). */
 const leaves = (node: unknown): string[] =>
@@ -43,5 +49,15 @@ describe("secretary catalogs", () => {
 		expect(isSecretaryLocale("es")).toBe(true);
 		expect(isSecretaryLocale("fr")).toBe(false);
 		expect(secretaryMessages("fr")).toBe(secretaryMessages(BASE_LOCALE));
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of SECRETARY_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(secretaryMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(secretaryMessages("en"));
+		expect(i18nMessagesFor("")).toBe(secretaryMessages("en"));
 	});
 });

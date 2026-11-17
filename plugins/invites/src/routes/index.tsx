@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
@@ -28,6 +29,7 @@ export const Route = createPluginFileRoute("invites.routes")("/invite/")({
 	}),
 	component: function AcceptInviteRoute() {
 		const locale = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const [link, setLink] = useState<{
 			readonly token: string;
 			readonly invite: AcceptInviteInvite | null;
@@ -51,6 +53,6 @@ export const Route = createPluginFileRoute("invites.routes")("/invite/")({
 		const api: AcceptInviteApi = {
 			accept: (input) => acceptInviteFn({ data: { token: link.token, ...input } }),
 		};
-		return <AcceptInvitePage invite={link.invite} locale={locale} api={api} />;
+		return <AcceptInvitePage invite={link.invite} i18n={i18n} locale={locale} api={api} />;
 	},
 });

@@ -26,6 +26,7 @@ export function OpsPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageCo
 			jobs={d.jobs ?? null}
 			queue={d.queue ?? null}
 			storage={d.storage ?? null}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 		/>
 	);

@@ -3,7 +3,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const state = vi.hoisted(() => ({ search: { audience: "doctors" } as Record<string, unknown> }));
+const state = vi.hoisted(() => ({
+	search: { audience: "doctors" } as Record<string, unknown>,
+}));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();

@@ -5,7 +5,15 @@
  * the view resolves strings here.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const MANAGER_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "manager";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): ManagerMessages => managerMessages(locale);
 export type ManagerLocale = (typeof MANAGER_LOCALES)[number];
 export const BASE_LOCALE: ManagerLocale = "en";
 
@@ -59,25 +67,28 @@ const en: ManagerMessages = {
 	searchLabel: "Filter plugins",
 	statusFilterLabel: "Filter by status",
 	filterAll: "All",
-	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 	noResults: "No plugins match the current filters.",
-	rowActions: (name) => `Actions for ${name}`,
+	rowActions: paramMessage("en", "Actions for {name}", ["name"]),
 	actionConfigure: "Configure",
-	configDialogTitle: (name) => `Configure ${name}`,
+	configDialogTitle: paramMessage("en", "Configure {name}", ["name"]),
 	paginationPrevious: "Previous",
 	paginationNext: "Next",
-	paginationPage: (page) => `Page ${page}`,
+	paginationPage: paramMessage("en", "Page {page}", ["page"]),
 	statusEnabled: "Enabled",
 	statusDisabled: "Disabled",
 	statusBlocked: "Blocked",
 	statusSystem: "System",
 	systemHint: "System plugin — always enabled and cannot be disabled.",
-	blockedHint: (deps) => `Requires ${deps} to be enabled first.`,
+	blockedHint: paramMessage("en", "Requires {deps} to be enabled first.", ["deps"]),
 	enable: "Enable",
 	disable: "Disable",
 	confirmDisableTitle: "Disable plugin?",
-	confirmDisableBody: (names) =>
-		`This also disables ${names}, which depend on it. Their data is retained.`,
+	confirmDisableBody: paramMessage(
+		"en",
+		"This also disables {names}, which depend on it. Their data is retained.",
+		["names"],
+	),
 	confirmDisableAction: "Disable all",
 	cancel: "Cancel",
 	configSave: "Save",
@@ -99,25 +110,28 @@ const ptBR: ManagerMessages = {
 	searchLabel: "Filtrar plugins",
 	statusFilterLabel: "Filtrar por status",
 	filterAll: "Todos",
-	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 	noResults: "Nenhum plugin corresponde aos filtros.",
-	rowActions: (name) => `Ações de ${name}`,
+	rowActions: paramMessage("pt-BR", "Ações de {name}", ["name"]),
 	actionConfigure: "Configurar",
-	configDialogTitle: (name) => `Configurar ${name}`,
+	configDialogTitle: paramMessage("pt-BR", "Configurar {name}", ["name"]),
 	paginationPrevious: "Anterior",
 	paginationNext: "Próxima",
-	paginationPage: (page) => `Página ${page}`,
+	paginationPage: paramMessage("pt-BR", "Página {page}", ["page"]),
 	statusEnabled: "Ativo",
 	statusDisabled: "Inativo",
 	statusBlocked: "Bloqueado",
 	statusSystem: "Sistema",
 	systemHint: "Plugin do sistema — sempre ativo e não pode ser desativado.",
-	blockedHint: (deps) => `Requer ${deps} ativado primeiro.`,
+	blockedHint: paramMessage("pt-BR", "Requer {deps} ativado primeiro.", ["deps"]),
 	enable: "Ativar",
 	disable: "Desativar",
 	confirmDisableTitle: "Desativar plugin?",
-	confirmDisableBody: (names) =>
-		`Isso também desativa ${names}, que dependem dele. Os dados são mantidos.`,
+	confirmDisableBody: paramMessage(
+		"pt-BR",
+		"Isso também desativa {names}, que dependem dele. Os dados são mantidos.",
+		["names"],
+	),
 	confirmDisableAction: "Desativar todos",
 	cancel: "Cancelar",
 	configSave: "Salvar",
@@ -139,25 +153,28 @@ const es: ManagerMessages = {
 	searchLabel: "Filtrar plugins",
 	statusFilterLabel: "Filtrar por estado",
 	filterAll: "Todos",
-	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 	noResults: "Ningún plugin coincide con los filtros.",
-	rowActions: (name) => `Acciones de ${name}`,
+	rowActions: paramMessage("es", "Acciones de {name}", ["name"]),
 	actionConfigure: "Configurar",
-	configDialogTitle: (name) => `Configurar ${name}`,
+	configDialogTitle: paramMessage("es", "Configurar {name}", ["name"]),
 	paginationPrevious: "Anterior",
 	paginationNext: "Siguiente",
-	paginationPage: (page) => `Página ${page}`,
+	paginationPage: paramMessage("es", "Página {page}", ["page"]),
 	statusEnabled: "Activo",
 	statusDisabled: "Inactivo",
 	statusBlocked: "Bloqueado",
 	statusSystem: "Sistema",
 	systemHint: "Plugin del sistema — siempre activo y no se puede desactivar.",
-	blockedHint: (deps) => `Requiere ${deps} activado primero.`,
+	blockedHint: paramMessage("es", "Requiere {deps} activado primero.", ["deps"]),
 	enable: "Activar",
 	disable: "Desactivar",
 	confirmDisableTitle: "¿Desactivar plugin?",
-	confirmDisableBody: (names) =>
-		`Esto también desactiva ${names}, que dependen de él. Los datos se conservan.`,
+	confirmDisableBody: paramMessage(
+		"es",
+		"Esto también desactiva {names}, que dependen de él. Los datos se conservan.",
+		["names"],
+	),
 	confirmDisableAction: "Desactivar todos",
 	cancel: "Cancelar",
 	configSave: "Guardar",

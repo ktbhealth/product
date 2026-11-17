@@ -8,6 +8,12 @@
  */
 
 export const AUTH_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "auth";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): AuthMessages => authMessages(locale);
 export type AuthLocale = (typeof AUTH_LOCALES)[number];
 export const BASE_LOCALE: AuthLocale = "en";
 

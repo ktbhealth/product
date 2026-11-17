@@ -1,22 +1,51 @@
-import * as m from "#/paraglide/messages.js";
+import { createCatalogT, renderMessage } from "@ktb/i18n";
+
+import { APP_EN } from "./app-catalog.ts";
 
 /**
- * Sign-up verification email, in the locale of the request that triggered
- * it: messages resolve through paraglide's request-scoped `getLocale()`
- * (ktb-locale cookie, see src/start.ts), so the copy follows the language
- * the user is browsing in.
+ * Sign-up verification email (PL-008 Phase 5). Copy resolves from the
+ * DB `app` namespace through the catalog `t` the composition root
+ * injects (request locale → enabled-locale chain → fallbacks); the
+ * English literals below are the last-resort fallback when no slice
+ * resolved (tests, degenerate registries).
  */
-export const verificationEmail = (input: {
-	readonly name: string | null;
-	readonly url: string;
-}): { subject: string; text: string } => ({
-	subject: m.email_verify_subject(),
-	text: [
-		input.name ? m.email_verify_greeting({ name: input.name }) : m.email_verify_greeting_anon(),
-		"",
-		m.email_verify_body(),
-		input.url,
-		"",
-		m.email_verify_ignore(),
-	].join("\n"),
-});
+export const verificationEmail = (
+	input: {
+		readonly name: string | null;
+		readonly url: string;
+	},
+	t?: (key: string, params?: Readonly<Record<string, unknown>>) => string,
+): { subject: string; text: string } => {
+	const msg = (key: string, fallback: string, params?: Record<string, unknown>) => {
+		if (t === undefined) return renderMessage(fallback, params ?? {}, "en");
+		const resolved = t(`app.${key}`, params);
+		return resolved === `app.${key}` ? renderMessage(fallback, params ?? {}, "en") : resolved;
+	};
+	return {
+		subject: msg("email_verify_subject", "Confirm your email — KTB Health"),
+		text: [
+			input.name
+				? msg("email_verify_greeting", "Hello, {name}.", { name: input.name })
+				: msg("email_verify_greeting_anon", "Hello."),
+			"",
+			msg(
+				"email_verify_body",
+				"Confirm your email address to finish setting up your KTB Health account:",
+			),
+			input.url,
+			"",
+			msg(
+				"email_verify_ignore",
+				"If you did not create this account, you can ignore this message.",
+			),
+		].join("\n"),
+	};
+};
+
+/** Build the catalog `t` for email copy — platform.ts resolves the
+ * `app` namespace slice for the request locale and passes this in. */
+export const emailCatalogT = (
+	catalog: Readonly<Record<string, string>>,
+	locale: string,
+): ((key: string, params?: Readonly<Record<string, unknown>>) => string) =>
+	createCatalogT({ ...APP_EN, ...catalog }, locale);

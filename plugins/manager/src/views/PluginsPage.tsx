@@ -2,6 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { EllipsisVerticalIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -68,7 +71,7 @@ import {
 	pluginDisplayName,
 	type ConfigFormField,
 } from "../logic.ts";
-import { managerMessages } from "../i18n.ts";
+import { managerMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { getPluginConfigFn, setPluginConfigFn, setPluginEnabledFn } from "../fns.ts";
 
 /** Server-resolved state for one plugin (PluginStates.entries row). */
@@ -84,6 +87,8 @@ export interface PluginsPageProps {
 	/** State map keyed by plugin id, from the page loader. */
 	readonly states: ReadonlyMap<string, PluginStateInfo>;
 	/** Active UI locale injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	readonly locale?: string;
 	/** When false, disabling skips the cascade confirm dialog (the
 	 * plugin's own `meta.config.cascadeConfirm`, dogfooded). */
@@ -161,8 +166,14 @@ const pageWindow = (page: number, total: number): readonly (number | "…")[] =>
  * while required deps are off; `meta.config` plugins get a generated
  * settings form inside a dialog.
  */
-export function PluginsPage({ plugins, states, locale, cascadeConfirm = true }: PluginsPageProps) {
-	const t = managerMessages(locale);
+export function PluginsPage({
+	plugins,
+	states,
+	i18n,
+	locale,
+	cascadeConfirm = true,
+}: PluginsPageProps) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, managerMessages(locale));
 	const router = useRouter();
 	const [q, setQ] = useState("");
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");

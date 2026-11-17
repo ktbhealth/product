@@ -46,7 +46,11 @@ describe("parseColor", () => {
 	it("parses hex, oklch and rgb", () => {
 		expect(parseColor("#ffffff")).not.toBeNull();
 		expect(parseColor("#fff")).not.toBeNull();
-		expect(parseColor("oklch(0.5 0.1 250)")).toEqual({ l: 0.5, c: 0.1, h: 250 });
+		expect(parseColor("oklch(0.5 0.1 250)")).toEqual({
+			l: 0.5,
+			c: 0.1,
+			h: 250,
+		});
 		expect(parseColor("oklch(50% 0.1 250)")?.l).toBeCloseTo(0.5, 5);
 		expect(parseColor("rgb(255, 0, 0)")).not.toBeNull();
 		expect(parseColor("rgba(0,0,0,0.5)")).not.toBeNull();
@@ -235,7 +239,10 @@ describe("deriveThemeTokens", () => {
 	});
 
 	it("invalid seed strings fall back instead of failing", () => {
-		const tokens = deriveThemeTokens({ primary: "garbage", background: "#zzz" });
+		const tokens = deriveThemeTokens({
+			primary: "garbage",
+			background: "#zzz",
+		});
 		expect(parseColor(tokens.light["--primary"])).not.toBeNull();
 		expect(parseColor(tokens.light["--background"])).not.toBeNull();
 	});

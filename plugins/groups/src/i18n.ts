@@ -6,7 +6,15 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const GROUP_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "groups";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): GroupMessages => groupMessages(locale);
 export type GroupLocale = (typeof GROUP_LOCALES)[number];
 export const BASE_LOCALE: GroupLocale = "en";
 
@@ -61,7 +69,9 @@ export interface GroupMessages {
 const en: GroupMessages = {
 	title: "Groups",
 	none: "No groups registered.",
-	count: (n) => `${n} group${n === 1 ? "" : "s"} across the platform.`,
+	count: paramMessage("en", "{n, plural, =1{{n} group} other{{n} groups}} across the platform.", [
+		"n",
+	]),
 	emptyTitle: "No groups",
 	emptyDescription: "Groups appear here once they are created.",
 	colId: "Id",
@@ -73,7 +83,7 @@ const en: GroupMessages = {
 	searchPlaceholder: "Search by name or slug…",
 	searchLabel: "Search groups",
 	noMatch: "No groups match the search.",
-	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 	colActions: "Actions",
 	colMember: "Member",
 	colRole: "Role",
@@ -99,18 +109,25 @@ const en: GroupMessages = {
 	addMember: "Add member",
 	removeMember: "Remove",
 	removeMemberTitle: "Remove member",
-	removeMemberDescription: (memberId) => `Remove ${memberId} from this group?`,
+	removeMemberDescription: paramMessage("en", "Remove {memberId} from this group?", ["memberId"]),
 	deleteGroup: "Delete",
 	deleteGroupTitle: "Delete group",
-	deleteGroupDescription: (name) =>
-		`Delete “${name}”? This removes the group and all of its memberships.`,
+	deleteGroupDescription: paramMessage(
+		"en",
+		"Delete “{name}”? This removes the group and all of its memberships.",
+		["name"],
+	),
 	confirmDelete: "Delete",
 };
 
 const ptBR: GroupMessages = {
 	title: "Grupos",
 	none: "Nenhum grupo cadastrado.",
-	count: (n) => `${n} grupo${n === 1 ? "" : "s"} em toda a plataforma.`,
+	count: paramMessage(
+		"pt-BR",
+		"{n, plural, =1{{n} grupo} other{{n} grupos}} em toda a plataforma.",
+		["n"],
+	),
 	emptyTitle: "Nenhum grupo",
 	emptyDescription: "Os grupos aparecem aqui após serem criados.",
 	colId: "Id",
@@ -122,7 +139,7 @@ const ptBR: GroupMessages = {
 	searchPlaceholder: "Buscar por nome ou slug…",
 	searchLabel: "Buscar grupos",
 	noMatch: "Nenhum grupo corresponde à busca.",
-	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 	colActions: "Ações",
 	colMember: "Membro",
 	colRole: "Função",
@@ -148,18 +165,23 @@ const ptBR: GroupMessages = {
 	addMember: "Adicionar membro",
 	removeMember: "Remover",
 	removeMemberTitle: "Remover membro",
-	removeMemberDescription: (memberId) => `Remover ${memberId} deste grupo?`,
+	removeMemberDescription: paramMessage("pt-BR", "Remover {memberId} deste grupo?", ["memberId"]),
 	deleteGroup: "Excluir",
 	deleteGroupTitle: "Excluir grupo",
-	deleteGroupDescription: (name) =>
-		`Excluir “${name}”? Isso remove o grupo e todas as suas associações.`,
+	deleteGroupDescription: paramMessage(
+		"pt-BR",
+		"Excluir “{name}”? Isso remove o grupo e todas as suas associações.",
+		["name"],
+	),
 	confirmDelete: "Excluir",
 };
 
 const es: GroupMessages = {
 	title: "Grupos",
 	none: "Ningún grupo registrado.",
-	count: (n) => `${n} grupo${n === 1 ? "" : "s"} en toda la plataforma.`,
+	count: paramMessage("es", "{n, plural, =1{{n} grupo} other{{n} grupos}} en toda la plataforma.", [
+		"n",
+	]),
 	emptyTitle: "Ningún grupo",
 	emptyDescription: "Los grupos aparecen aquí una vez que se crean.",
 	colId: "Id",
@@ -171,7 +193,7 @@ const es: GroupMessages = {
 	searchPlaceholder: "Buscar por nombre o slug…",
 	searchLabel: "Buscar grupos",
 	noMatch: "Ningún grupo coincide con la búsqueda.",
-	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 	colActions: "Acciones",
 	colMember: "Miembro",
 	colRole: "Rol",
@@ -197,11 +219,14 @@ const es: GroupMessages = {
 	addMember: "Añadir miembro",
 	removeMember: "Eliminar",
 	removeMemberTitle: "Eliminar miembro",
-	removeMemberDescription: (memberId) => `¿Eliminar ${memberId} de este grupo?`,
+	removeMemberDescription: paramMessage("es", "¿Eliminar {memberId} de este grupo?", ["memberId"]),
 	deleteGroup: "Eliminar",
 	deleteGroupTitle: "Eliminar grupo",
-	deleteGroupDescription: (name) =>
-		`¿Eliminar “${name}”? Esto elimina el grupo y todas sus membresías.`,
+	deleteGroupDescription: paramMessage(
+		"es",
+		"¿Eliminar “{name}”? Esto elimina el grupo y todas sus membresías.",
+		["name"],
+	),
 	confirmDelete: "Eliminar",
 };
 

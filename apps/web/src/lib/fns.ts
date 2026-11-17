@@ -3,23 +3,42 @@ import { createServerFn } from "@tanstack/react-start";
 import { Email } from "@ktb/email";
 import { Notifications, rowToConsole } from "@ktb/notifications";
 import { run, runAs, serverPlugins } from "#/lib/platform.ts";
+import { Db, type DbClient } from "@ktb/db";
+import {
+	GLOBAL_SCOPE,
+	PSEUDO_LOCALE,
+	portalInstanceScope,
+	portalScope,
+	resolveRequestLocales,
+	tenantScope,
+} from "@ktb/i18n";
+import { catalogSlice, DEFAULT_LOCALE, listEnabledLocales, stableSlice } from "@ktb/i18n-plugin";
+import { currentLocale } from "./locale-context.ts";
+import { localeFromSearch } from "./i18n.ts";
 import {
 	appPages,
 	portalPages,
 	collectPortals,
 	defaultPageContext,
+	enabledIdSet,
+	enabledPlugins,
 	findPage,
+	findPortalInstance,
+	namespacesForPath,
 	packageLive,
 	portalInstanceIdForPath,
+	portalInstances,
 	type PageShell,
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
 import { PortalAudience, PORTAL_AUDIENCE } from "@ktb/portal";
+import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import type { Page, PanelPage } from "@ktb/kernel";
 import { Schema } from "effect";
 import { ensureDoctorUser, getDoctorUser, getSessionAccount, getSessionUser } from "#/lib/auth.ts";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -63,15 +82,195 @@ export const emailEnabledFn = createServerFn({ method: "GET" }).handler(() =>
  */
 export const pluginStatesFn = createServerFn({ method: "GET" }).handler(
 	async (): Promise<PluginStatesResult> => {
-		const enabled = await run(
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				return yield* states.enabledIds();
-			}),
-		);
+		// TTL-cached (ROUTE_CACHE_TTL_MS): plugin_state rows are global and
+		// only admin toggles change them — see cachedEnabledIds.
+		const enabled = await run(cachedEnabledIds());
 		return { enabled: [...enabled] };
 	},
 );
+
+/**
+ * Route-scoped i18n payload (PL-008 Phase 2): which namespaces the
+ * pathname needs (derived from the server registry — page winner +
+ * visible chrome, same rules as the dispatcher) plus the resolved
+ * catalog slice for the request's locale chain. Loader data carries
+ * this to the client; `t()` there is a pure lookup — no second
+ * roundtrip. The scope chain resolves portal instance → tenant →
+ * global from the request path + tenant headers (PL-008 Phase 6).
+ */
+export interface I18nRouteResult {
+	readonly locale: string;
+	readonly locales: readonly string[];
+	readonly enabledLocales: readonly string[];
+	readonly namespaces: readonly string[];
+	readonly catalog: Record<string, string>;
+}
+
+/**
+ * Safe degradation for the root-loader i18n payload: EVERY route runs
+ * this fn, so any resolution failure (i18n migration not yet applied,
+ * D1 error, registry problem) must not 500 the page. The empty
+ * base-locale slice lets copy fall back to English baselines
+ * downstream; the failure is logged, not swallowed.
+ */
+const EMPTY_I18N_ROUTE: I18nRouteResult = {
+	locale: DEFAULT_LOCALE,
+	locales: [DEFAULT_LOCALE],
+	enabledLocales: [DEFAULT_LOCALE],
+	namespaces: [],
+	catalog: {},
+};
+
+/**
+ * Short-TTL per-isolate caches for reads that only change via admin
+ * actions — matches the plugins/i18n STAMP_TTL_MS convention (15s). An
+ * admin locale/plugin toggle can take up to the TTL to reach an
+ * in-flight isolate; accepted trade-off (no invalidation is wired on
+ * the admin write path). Rejections are never cached. catalogSlice
+ * deliberately stays per-navigation (see plugins/i18n slice.ts).
+ */
+const ROUTE_CACHE_TTL_MS = 15_000;
+
+type EnabledLocaleRows = Awaited<ReturnType<typeof listEnabledLocales>>;
+
+let enabledLocalesCache: { readonly at: number; readonly rows: EnabledLocaleRows } | undefined;
+
+/** `i18n_locales` is global (not tenant-scoped) and only admin locale
+ * toggles change it — cache the enabled set per isolate. */
+const cachedListEnabledLocales = (db: DbClient): Promise<EnabledLocaleRows> => {
+	const now = Date.now();
+	if (enabledLocalesCache !== undefined && now - enabledLocalesCache.at < ROUTE_CACHE_TTL_MS) {
+		return Promise.resolve(enabledLocalesCache.rows);
+	}
+	return listEnabledLocales(db).then((rows) => {
+		enabledLocalesCache = { at: Date.now(), rows };
+		return rows;
+	});
+};
+
+let enabledIdsCache: { readonly at: number; readonly ids: ReadonlySet<string> } | undefined;
+
+/** `PluginStates.enabledIds` is uncached upstream (a `plugin_state`
+ * select per call, and plugin_states rows are global) — share the same
+ * TTL cache so the root loader's pluginStatesFn + i18nRouteFn don't
+ * each pay a query per navigation. Plugin enable toggles are admin
+ * actions; same staleness trade-off as the locale list. */
+const cachedEnabledIds = (): Effect.Effect<ReadonlySet<string>, never, PluginStates> =>
+	Effect.gen(function* () {
+		const now = Date.now();
+		if (enabledIdsCache !== undefined && now - enabledIdsCache.at < ROUTE_CACHE_TTL_MS) {
+			return enabledIdsCache.ids;
+		}
+		const states = yield* PluginStates;
+		const ids = yield* states.enabledIds();
+		enabledIdsCache = { at: now, ids };
+		return ids;
+	});
+
+export const i18nRouteFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) =>
+		Schema.decodeUnknownSync(
+			Schema.Union([
+				Schema.String,
+				Schema.Struct({
+					pathname: Schema.String,
+					search: Schema.optionalKey(Schema.String),
+				}),
+			]),
+		)(input),
+	)
+	.handler(async ({ data: input }): Promise<I18nRouteResult> => {
+		// Callers may pass a bare pathname or { pathname, search } — the
+		// search carries the page's `?locale=` QA override, which the
+		// server-fn RPC request URL would otherwise lose on client-side
+		// navigation (the ALS locale only sees the RPC request's own URL).
+		const pathname = typeof input === "string" ? input : input.pathname;
+		const search = typeof input === "string" ? undefined : input.search;
+		return run(
+			Effect.gen(function* () {
+				// TTL-cached — this fn runs on EVERY navigation.
+				const enabled = yield* cachedEnabledIds();
+				const database = yield* Db;
+				const visible = enabledPlugins(serverPlugins, enabledIdSet({ enabled: [...enabled] }));
+				const namespaces = namespacesForPath(visible, pathname);
+				const enabledLocales = yield* Effect.promise(() => cachedListEnabledLocales(database));
+				const portalId = portalInstanceIdForPath(pathname);
+				const instanceId = portalId === "platform" ? undefined : portalId;
+				// Portal scope + pinned locale (PL-008 Phase 6): /portal/<id>
+				// paths resolve portal-scoped copy, and an instance that
+				// declares `locale` overrides the visitor's cookie locale.
+				// "/platform" is the console shell, not a portal instance.
+				// The instance must actually resolve in the registry —
+				// otherwise an arbitrary /portal/<seg> would let anonymous
+				// callers probe portal-scoped rows (scope gating, L2).
+				const instance =
+					instanceId === undefined ? undefined : findPortalInstance(portalInstances, instanceId);
+				const pinned = instance?.instance.locale;
+				// Page `?locale=` (passed by the loader) wins over the
+				// ALS/cookie locale on client-side navigations; portal
+				// pinned locale still wins over both.
+				const requested =
+					pinned ??
+					(search === undefined ? undefined : localeFromSearch(search)) ??
+					currentLocale();
+				const locales = resolveRequestLocales(requested, enabledLocales, DEFAULT_LOCALE);
+				// Tenant scope binding (PL-008 Phase 6): same selector +
+				// resolver pipeline runAs uses — tenant headers + session
+				// account → TenantResolver → scope chain. Anonymous/
+				// selector-less requests stay global; portal paths add the
+				// tenant slot between portal and global when one resolves.
+				const headers = yield* Effect.promise(() =>
+					import("@tanstack/react-start/server")
+						.then((m) => m.getRequestHeaders())
+						.catch(() => new Headers()),
+				);
+				const selector = tenantSelectorFromHeaders(headers);
+				// No tenant headers → personal scope; skip the session
+				// lookup so anonymous/app requests pay nothing extra.
+				const tenant =
+					selector === null
+						? null
+						: yield* Effect.gen(function* () {
+								const account = yield* Effect.promise(() => getSessionAccount().catch(() => null));
+								const resolver = yield* TenantResolver;
+								return yield* resolver
+									.resolve(selector, account?.id ?? null)
+									.pipe(Effect.catch(() => Effect.succeed(null)));
+							});
+				const tenantId = tenant === null ? null : tenantScopeId(tenant);
+				const scopeChain =
+					instance !== undefined
+						? tenantId !== null
+							? portalScope(String(tenantId), instance.instance.id)
+							: portalInstanceScope(instance.instance.id)
+						: tenantId !== null
+							? tenantScope(String(tenantId))
+							: GLOBAL_SCOPE;
+				const catalog = yield* catalogSlice(database, {
+					namespaces,
+					scopeChain,
+					locales,
+				});
+				return {
+					locale: locales.locales[0] ?? DEFAULT_LOCALE,
+					locales: locales.locales,
+					enabledLocales: enabledLocales.filter((l) => l.code !== PSEUDO_LOCALE).map((l) => l.code),
+					namespaces: [...namespaces],
+					catalog: stableSlice(catalog),
+				};
+			}).pipe(
+				// Failure isolation (H3): this fn feeds the root loader on
+				// every route — degrade to the empty base-locale slice on
+				// ANY failure (failures AND defects) instead of 500ing.
+				Effect.catchCause((cause) =>
+					Effect.logWarning("i18nRouteFn resolution failed; serving base-locale fallback", {
+						pathname,
+						cause: Cause.pretty(cause),
+					}).pipe(Effect.as(EMPTY_I18N_ROUTE)),
+				),
+			),
+		);
+	});
 
 /**
  * /platform console gate: true when the session user's email is in the

@@ -4,6 +4,12 @@
  */
 
 export const THEME_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "theme";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): ThemeMessages => themeMessages(locale);
 export type ThemeLocale = (typeof THEME_LOCALES)[number];
 export const BASE_LOCALE: ThemeLocale = "en";
 

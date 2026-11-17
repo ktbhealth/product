@@ -2,6 +2,8 @@ import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PlayIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 import type { EndpointCard } from "@ktb/ai-endpoints";
 import { listEndpointsFn } from "@ktb/ai-endpoints/fns";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -37,7 +39,7 @@ import {
 	spawnInstancesFn,
 	startInstanceFn,
 } from "../fns.ts";
-import { evalLabMessages } from "../i18n.ts";
+import { evalLabMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { InstanceCard, InstanceDetail, PersonaDefCard } from "../index.ts";
 
 const TEMPLATE = "__template__";
@@ -126,14 +128,17 @@ export function InstancesPage({
 	instances: initial,
 	defs,
 	endpoints: initialEndpoints,
+	i18n,
 	locale,
 }: {
 	instances: readonly InstanceCard[];
 	defs: readonly PersonaDefCard[];
 	endpoints: readonly EndpointCard[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 }) {
-	const m = evalLabMessages(locale);
+	const m = sliceMessages(i18n, I18N_NAMESPACE, evalLabMessages(locale));
 	const router = useRouter();
 	const [instances, setInstances] = useState<readonly InstanceCard[]>(initial);
 	const [endpoints, setEndpoints] = useState<readonly EndpointCard[]>(initialEndpoints);

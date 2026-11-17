@@ -24,7 +24,10 @@ describe("KTB_DEFAULT_THEME — the built-in platform default (PL-006 phase 7)",
 	it("derives tokens from the stock ui seeds — never stored state", () => {
 		expect(KTB_DEFAULT_THEME.tokens).toEqual(deriveThemeTokens(KTB_DEFAULT_THEME.seeds));
 		expect(KTB_DEFAULT_THEME.styleCss).toBe(
-			themeStyleCss({ seeds: KTB_DEFAULT_THEME.seeds, fonts: KTB_DEFAULT_THEME.fonts }),
+			themeStyleCss({
+				seeds: KTB_DEFAULT_THEME.seeds,
+				fonts: KTB_DEFAULT_THEME.fonts,
+			}),
 		);
 		expect(KTB_DEFAULT_THEME.styleCss).toContain(":root{");
 		expect(KTB_DEFAULT_THEME.styleCss).toContain(".dark{");

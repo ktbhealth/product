@@ -11,6 +11,9 @@ import {
 	Trash2Icon,
 } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -24,7 +27,7 @@ import {
 } from "@ktbhealth/ui/components/dropdown-menu";
 import { Empty, EmptyDescription, EmptyMedia } from "@ktbhealth/ui/components/empty";
 import type { Patient } from "../index.ts";
-import { patientMessages, type PatientMessages } from "../i18n.ts";
+import { patientMessages, type PatientMessages, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	countryName,
 	formatBirthDate,
@@ -57,9 +60,10 @@ function sections(
 	p: Patient,
 	t: PatientMessages,
 	locale: string,
+	i18n?: PageI18nSlice,
 ): Array<readonly [title: string, rows: Row[]]> {
 	const birth = p.birthDate
-		? `${formatBirthDate(p.birthDate)} (${ageLabel(p.birthDate, locale)})`
+		? `${formatBirthDate(p.birthDate)} (${ageLabel(p.birthDate, locale, undefined, i18n)})`
 		: null;
 	const f = t.fields;
 	return [
@@ -127,6 +131,7 @@ function sections(
 export function PatientDetailPage({
 	patient,
 	consultations,
+	i18n,
 	locale,
 	deleteApi,
 	onDeleted,
@@ -134,7 +139,9 @@ export function PatientDetailPage({
 	zk,
 }: {
 	patient: Patient;
-	consultations: PatientConsultationItem[];
+	consultations: readonly PatientConsultationItem[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host. */
 	locale: string;
 	deleteApi: PatientDeleteApi;
@@ -146,7 +153,7 @@ export function PatientDetailPage({
 	 * a record without a grant renders a locked card. */
 	zk?: PatientZk;
 }) {
-	const t = patientMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const [deleting, setDeleting] = useState(false);
 
@@ -171,7 +178,7 @@ export function PatientDetailPage({
 	const id = String(patient.id);
 	const filled = locked
 		? []
-		: sections(record, t, locale)
+		: sections(record, t, locale, i18n)
 				.map(([title, rows]) => [title, rows.filter(([, v]) => v)] as const)
 				.filter(([, rows]) => rows.length > 0);
 
@@ -202,7 +209,9 @@ export function PatientDetailPage({
 							{locked ? t.zk.lockedRecord : displayName(record)}
 						</h1>
 						<p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-							{locked ? t.zk.lockedHint : demographics(record, locale) || t.common.noDemographics}
+							{locked
+								? t.zk.lockedHint
+								: demographics(record, locale, undefined, i18n) || t.common.noDemographics}
 							{!locked && !record.active ? (
 								<Badge variant="outline">{t.common.inactive}</Badge>
 							) : null}

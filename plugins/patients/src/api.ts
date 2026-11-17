@@ -11,7 +11,10 @@ const ForbiddenSchema = Schema.declare<Forbidden>((u): u is Forbidden => u insta
 export const PatientOwnerOf = Query.make("patients.ownerOf", {
 	payload: { id: Schema.Number },
 	success: Schema.NullOr(
-		Schema.Struct({ ownerId: Schema.String, tenantId: Schema.NullOr(Schema.Number) }),
+		Schema.Struct({
+			ownerId: Schema.String,
+			tenantId: Schema.NullOr(Schema.Number),
+		}),
 	),
 });
 

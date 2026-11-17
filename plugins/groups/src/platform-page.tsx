@@ -11,5 +11,5 @@ import { AdminGroupsPage } from "./views/AdminGroupsPage.tsx";
  */
 export function GroupsPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const groups = data as AdminGroupRow[];
-	return <AdminGroupsPage groups={groups} locale={ctx.locale} />;
+	return <AdminGroupsPage groups={groups} i18n={ctx.i18n} locale={ctx.locale} />;
 }

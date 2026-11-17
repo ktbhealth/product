@@ -22,7 +22,10 @@ import {
 	type ConsoleNotification,
 	type NotificationsActions,
 } from "../context.ts";
-import { notificationMessages } from "../i18n.ts";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
+import { notificationMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const NotificationBody = ({ notification }: { notification: ConsoleNotification }) => (
 	<>
@@ -108,8 +111,14 @@ const markIdsRead = (
  * click-to-mark-read and the header offers "mark all read". Renders only
  * when the `platform.header` extension point is present.
  */
-export function NotificationsHeaderAction({ locale = "en" }: { locale?: string }) {
-	const t = notificationMessages(locale);
+export function NotificationsHeaderAction({
+	i18n,
+	locale = "en",
+}: {
+	readonly i18n?: PageI18nSlice;
+	readonly locale?: string;
+}) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, notificationMessages(locale));
 	const seeded = React.useContext(NotificationsDataContext);
 	const actions = React.useContext(NotificationsActionsContext);
 	// null → context seed is authoritative (no live connection yet/ever).

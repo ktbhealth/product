@@ -4,6 +4,9 @@ import { ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
 
 import { factContent } from "@ktb/anamnesis";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import {
@@ -18,7 +21,7 @@ import { SearchInput } from "@ktbhealth/ui/components/search-input";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES } from "./-ui.ts";
-import { consultationMessages, sourceLabel } from "../i18n.ts";
+import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	decryptConsultations,
 	isCipheredConsultation,
@@ -66,11 +69,15 @@ export interface ConsultationListItem {
 
 export function ConsultationsPage({
 	consultations,
+	i18n,
+
 	locale = "en",
 	portalBase,
 	zk,
 }: {
 	consultations: ConsultationListItem[];
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	/** Active UI locale, injected by the host (route loader / panel ctx). */
 	locale?: string;
 	/** Portal instance base path — internal links stay under it (P-081). */
@@ -80,7 +87,7 @@ export function ConsultationsPage({
 	 * grant render a locked card. */
 	zk?: ConsultationZk;
 }) {
-	const t = consultationMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const FILTERS = [
 		["all", t.list.filters.all],

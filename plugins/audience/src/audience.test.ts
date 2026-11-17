@@ -35,8 +35,12 @@ describe("audience", () => {
 		expect(validateAudienceSearch({ audience: "developers" } as never)).toEqual({
 			audience: "developers",
 		});
-		expect(validateAudienceSearch({ audience: "x" } as never)).toEqual({ audience: "doctors" });
-		expect(validateAudienceSearch({} as never)).toEqual({ audience: "doctors" });
+		expect(validateAudienceSearch({ audience: "x" } as never)).toEqual({
+			audience: "doctors",
+		});
+		expect(validateAudienceSearch({} as never)).toEqual({
+			audience: "doctors",
+		});
 	});
 
 	it("labels every audience", () => {

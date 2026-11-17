@@ -7,10 +7,17 @@
  *
  * Pure module (no React): also used by record.ts for labels and errors.
  */
+import { paramMessage } from "@ktb/i18n";
 import type { Gender, Language, MaritalStatus, RaceColor } from "./record.ts";
 
 /** Locales with a catalog; the host asserts it covers every app locale. */
 export const PATIENT_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "patients";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): PatientMessages => patientMessages(locale);
 export type PatientLocale = (typeof PATIENT_LOCALES)[number];
 export const BASE_LOCALE: PatientLocale = "en";
 
@@ -182,7 +189,12 @@ export interface PatientMessages {
 }
 
 const en: PatientMessages = {
-	gender: { female: "Female", male: "Male", other: "Other", unknown: "Unknown" },
+	gender: {
+		female: "Female",
+		male: "Male",
+		other: "Other",
+		unknown: "Unknown",
+	},
 	maritalStatus: {
 		S: "Never married",
 		M: "Married",
@@ -208,9 +220,13 @@ const en: PatientMessages = {
 		it: "Italian",
 		de: "German",
 	},
-	age: (years, approx) => `${approx ? "~" : ""}${years} year${years === 1 ? "" : "s"}`,
+	age: paramMessage(
+		"en",
+		"{approx, select, true{~} other{}}{years, plural, =1{{years} year} other{{years} years}}",
+		["years", "approx"],
+	),
 	errors: {
-		too_long: (max) => `Must be at most ${max} characters.`,
+		too_long: paramMessage("en", "Must be at most {max} characters.", ["max"]),
 		name_required: "Name is required.",
 		birth_date_required: "Birth date (or age) is required.",
 		invalid_date: "Enter a valid date.",
@@ -274,7 +290,11 @@ const en: PatientMessages = {
 	},
 	list: {
 		none: "No patients yet.",
-		count: (n) => `${n} patient${n === 1 ? "" : "s"} registered.`,
+		count: paramMessage(
+			"en",
+			"{n, plural, =1{{n} patient registered.} other{{n} patients registered.}}",
+			["n"],
+		),
 		searchPlaceholder: "Search by name, CPF, or CNS…",
 		searchLabel: "Search patients",
 		incomplete: "Incomplete record",
@@ -299,21 +319,27 @@ const en: PatientMessages = {
 		exportOpenEhr: "openEHR (JSON)",
 	},
 	actions: {
-		menu: (name) => `Actions for ${name}`,
+		menu: paramMessage("en", "Actions for {name}", ["name"]),
 		edit: "Edit record",
 		delete: "Delete patient",
-		editFor: (name) => `Edit ${name}`,
-		deleteFor: (name) => `Delete ${name}`,
+		editFor: paramMessage("en", "Edit {name}", ["name"]),
+		deleteFor: paramMessage("en", "Delete {name}", ["name"]),
 	},
 	remove: {
 		title: "Delete patient?",
-		body: (name) => `This permanently deletes the record of ${name}.`,
+		body: paramMessage("en", "This permanently deletes the record of {name}.", ["name"]),
 		checking: "Checking linked consultations…",
 		noConsultations: "This patient has no consultations. This action cannot be undone.",
-		withConsultations: (n) =>
-			`${n === 1 ? "1 consultation" : `${n} consultations`} of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.`,
-		acknowledge: (n) =>
-			`I understand that ${n === 1 ? "1 consultation" : `${n} consultations`} will be deleted`,
+		withConsultations: paramMessage(
+			"en",
+			"{n, plural, =1{1 consultation of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.} other{{n} consultations of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.}}",
+			["n"],
+		),
+		acknowledge: paramMessage(
+			"en",
+			"{n, plural, =1{I understand that 1 consultation will be deleted} other{I understand that {n} consultations will be deleted}}",
+			["n"],
+		),
 		confirm: "Delete permanently",
 		cancel: "Cancel",
 		failed: "Could not delete the patient. Try again.",
@@ -321,7 +347,11 @@ const en: PatientMessages = {
 	admin: {
 		title: "Patients",
 		none: "No patients registered.",
-		count: (n) => `${n} patient${n === 1 ? "" : "s"} across all owners.`,
+		count: paramMessage(
+			"en",
+			"{n, plural, =1{{n} patient} other{{n} patients}} across all owners.",
+			["n"],
+		),
 		emptyTitle: "No patients",
 		emptyDescription: "Patients appear here once created.",
 		colId: "Id",
@@ -332,7 +362,7 @@ const en: PatientMessages = {
 		searchPlaceholder: "Search by name or owner…",
 		searchLabel: "Search patients",
 		noMatch: "No patients match the search.",
-		filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+		filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 		showSynthetic: "Show synthetic",
 		syntheticBadge: "synthetic",
 		colActions: "Actions",
@@ -350,7 +380,11 @@ const en: PatientMessages = {
 		or: "or",
 		ageLabel: "Age in years",
 		agePlaceholder: "age",
-		approximate: (date) => `Recorded as ${date} (approximate). Enter the exact date if known.`,
+		approximate: paramMessage(
+			"en",
+			"Recorded as {date} (approximate). Enter the exact date if known.",
+			["date"],
+		),
 		pickDate: "Pick a date",
 		activeRecord: "Active record",
 		fixFields: "Please fix the highlighted fields.",
@@ -367,7 +401,12 @@ const en: PatientMessages = {
 };
 
 const ptBR: PatientMessages = {
-	gender: { female: "Feminino", male: "Masculino", other: "Outro", unknown: "Desconhecido" },
+	gender: {
+		female: "Feminino",
+		male: "Masculino",
+		other: "Outro",
+		unknown: "Desconhecido",
+	},
 	maritalStatus: {
 		S: "Solteiro(a)",
 		M: "Casado(a)",
@@ -393,9 +432,13 @@ const ptBR: PatientMessages = {
 		it: "Italiano",
 		de: "Alemão",
 	},
-	age: (years, approx) => `${approx ? "~" : ""}${years} ano${years === 1 ? "" : "s"}`,
+	age: paramMessage(
+		"pt-BR",
+		"{approx, select, true{~} other{}}{years, plural, =1{{years} ano} other{{years} anos}}",
+		["years", "approx"],
+	),
 	errors: {
-		too_long: (max) => `Use no máximo ${max} caracteres.`,
+		too_long: paramMessage("pt-BR", "Use no máximo {max} caracteres.", ["max"]),
 		name_required: "O nome é obrigatório.",
 		birth_date_required: "A data de nascimento (ou idade) é obrigatória.",
 		invalid_date: "Informe uma data válida.",
@@ -459,7 +502,11 @@ const ptBR: PatientMessages = {
 	},
 	list: {
 		none: "Nenhum paciente ainda.",
-		count: (n) => `${n} paciente${n === 1 ? "" : "s"} cadastrado${n === 1 ? "" : "s"}.`,
+		count: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{{n} paciente cadastrado.} other{{n} pacientes cadastrados.}}",
+			["n"],
+		),
 		searchPlaceholder: "Buscar por nome, CPF ou CNS…",
 		searchLabel: "Buscar pacientes",
 		incomplete: "Cadastro incompleto",
@@ -484,21 +531,27 @@ const ptBR: PatientMessages = {
 		exportOpenEhr: "openEHR (JSON)",
 	},
 	actions: {
-		menu: (name) => `Ações para ${name}`,
+		menu: paramMessage("pt-BR", "Ações para {name}", ["name"]),
 		edit: "Editar cadastro",
 		delete: "Excluir paciente",
-		editFor: (name) => `Editar ${name}`,
-		deleteFor: (name) => `Excluir ${name}`,
+		editFor: paramMessage("pt-BR", "Editar {name}", ["name"]),
+		deleteFor: paramMessage("pt-BR", "Excluir {name}", ["name"]),
 	},
 	remove: {
 		title: "Excluir paciente?",
-		body: (name) => `Isso exclui permanentemente o cadastro de ${name}.`,
+		body: paramMessage("pt-BR", "Isso exclui permanentemente o cadastro de {name}.", ["name"]),
 		checking: "Verificando consultas vinculadas…",
 		noConsultations: "Este paciente não tem consultas. Esta ação não pode ser desfeita.",
-		withConsultations: (n) =>
-			`${n === 1 ? "1 consulta" : `${n} consultas`} deste paciente também ${n === 1 ? "será excluída" : "serão excluídas"} permanentemente, incluindo transcrições, anamneses e gravações de áudio. Esta ação não pode ser desfeita.`,
-		acknowledge: (n) =>
-			`Entendo que ${n === 1 ? "1 consulta será excluída" : `${n} consultas serão excluídas`}`,
+		withConsultations: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{1 consulta deste paciente também será excluída permanentemente, incluindo transcrições, anamneses e gravações de áudio. Esta ação não pode ser desfeita.} other{{n} consultas deste paciente também serão excluídas permanentemente, incluindo transcrições, anamneses e gravações de áudio. Esta ação não pode ser desfeita.}}",
+			["n"],
+		),
+		acknowledge: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{Entendo que 1 consulta será excluída} other{Entendo que {n} consultas serão excluídas}}",
+			["n"],
+		),
 		confirm: "Excluir permanentemente",
 		cancel: "Cancelar",
 		failed: "Não foi possível excluir o paciente. Tente novamente.",
@@ -506,7 +559,11 @@ const ptBR: PatientMessages = {
 	admin: {
 		title: "Pacientes",
 		none: "Nenhum paciente cadastrado.",
-		count: (n) => `${n} paciente${n === 1 ? "" : "s"} em toda a plataforma.`,
+		count: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{{n} paciente} other{{n} pacientes}} em toda a plataforma.",
+			["n"],
+		),
 		emptyTitle: "Nenhum paciente",
 		emptyDescription: "Os pacientes aparecem aqui após serem cadastrados.",
 		colId: "Id",
@@ -517,7 +574,7 @@ const ptBR: PatientMessages = {
 		searchPlaceholder: "Buscar por nome ou proprietário…",
 		searchLabel: "Buscar pacientes",
 		noMatch: "Nenhum paciente corresponde à busca.",
-		filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+		filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 		showSynthetic: "Mostrar sintéticos",
 		syntheticBadge: "sintético",
 		colActions: "Ações",
@@ -535,7 +592,11 @@ const ptBR: PatientMessages = {
 		or: "ou",
 		ageLabel: "Idade em anos",
 		agePlaceholder: "idade",
-		approximate: (date) => `Registrado como ${date} (aproximado). Informe a data exata, se souber.`,
+		approximate: paramMessage(
+			"pt-BR",
+			"Registrado como {date} (aproximado). Informe a data exata, se souber.",
+			["date"],
+		),
 		pickDate: "Selecione uma data",
 		activeRecord: "Cadastro ativo",
 		fixFields: "Corrija os campos destacados.",
@@ -552,7 +613,12 @@ const ptBR: PatientMessages = {
 };
 
 const es: PatientMessages = {
-	gender: { female: "Femenino", male: "Masculino", other: "Otro", unknown: "Desconocido" },
+	gender: {
+		female: "Femenino",
+		male: "Masculino",
+		other: "Otro",
+		unknown: "Desconocido",
+	},
 	maritalStatus: {
 		S: "Soltero(a)",
 		M: "Casado(a)",
@@ -578,9 +644,13 @@ const es: PatientMessages = {
 		it: "Italiano",
 		de: "Alemán",
 	},
-	age: (years, approx) => `${approx ? "~" : ""}${years} año${years === 1 ? "" : "s"}`,
+	age: paramMessage(
+		"es",
+		"{approx, select, true{~} other{}}{years, plural, =1{{years} año} other{{years} años}}",
+		["years", "approx"],
+	),
 	errors: {
-		too_long: (max) => `Use como máximo ${max} caracteres.`,
+		too_long: paramMessage("es", "Use como máximo {max} caracteres.", ["max"]),
 		name_required: "El nombre es obligatorio.",
 		birth_date_required: "La fecha de nacimiento (o edad) es obligatoria.",
 		invalid_date: "Ingrese una fecha válida.",
@@ -645,7 +715,11 @@ const es: PatientMessages = {
 	},
 	list: {
 		none: "Ningún paciente aún.",
-		count: (n) => `${n} paciente${n === 1 ? "" : "s"} registrado${n === 1 ? "" : "s"}.`,
+		count: paramMessage(
+			"es",
+			"{n, plural, =1{{n} paciente registrado.} other{{n} pacientes registrados.}}",
+			["n"],
+		),
 		searchPlaceholder: "Buscar por nombre, CPF o CNS…",
 		searchLabel: "Buscar pacientes",
 		incomplete: "Registro incompleto",
@@ -671,21 +745,27 @@ const es: PatientMessages = {
 		exportOpenEhr: "openEHR (JSON)",
 	},
 	actions: {
-		menu: (name) => `Acciones para ${name}`,
+		menu: paramMessage("es", "Acciones para {name}", ["name"]),
 		edit: "Editar registro",
 		delete: "Eliminar paciente",
-		editFor: (name) => `Editar ${name}`,
-		deleteFor: (name) => `Eliminar ${name}`,
+		editFor: paramMessage("es", "Editar {name}", ["name"]),
+		deleteFor: paramMessage("es", "Eliminar {name}", ["name"]),
 	},
 	remove: {
 		title: "¿Eliminar paciente?",
-		body: (name) => `Esto elimina permanentemente el registro de ${name}.`,
+		body: paramMessage("es", "Esto elimina permanentemente el registro de {name}.", ["name"]),
 		checking: "Verificando consultas vinculadas…",
 		noConsultations: "Este paciente no tiene consultas. Esta acción no se puede deshacer.",
-		withConsultations: (n) =>
-			`${n === 1 ? "1 consulta" : `${n} consultas`} de este paciente también ${n === 1 ? "será eliminada" : "serán eliminadas"} permanentemente, incluidas las transcripciones, anamnesis y grabaciones de audio. Esta acción no se puede deshacer.`,
-		acknowledge: (n) =>
-			`Entiendo que ${n === 1 ? "1 consulta será eliminada" : `${n} consultas serán eliminadas`}`,
+		withConsultations: paramMessage(
+			"es",
+			"{n, plural, =1{1 consulta de este paciente también será eliminada permanentemente, incluidas las transcripciones, anamnesis y grabaciones de audio. Esta acción no se puede deshacer.} other{{n} consultas de este paciente también serán eliminadas permanentemente, incluidas las transcripciones, anamnesis y grabaciones de audio. Esta acción no se puede deshacer.}}",
+			["n"],
+		),
+		acknowledge: paramMessage(
+			"es",
+			"{n, plural, =1{Entiendo que 1 consulta será eliminada} other{Entiendo que {n} consultas serán eliminadas}}",
+			["n"],
+		),
 		confirm: "Eliminar permanentemente",
 		cancel: "Cancelar",
 		failed: "No se pudo eliminar el paciente. Inténtelo de nuevo.",
@@ -693,7 +773,11 @@ const es: PatientMessages = {
 	admin: {
 		title: "Pacientes",
 		none: "Ningún paciente registrado.",
-		count: (n) => `${n} paciente${n === 1 ? "" : "s"} en toda la plataforma.`,
+		count: paramMessage(
+			"es",
+			"{n, plural, =1{{n} paciente} other{{n} pacientes}} en toda la plataforma.",
+			["n"],
+		),
 		emptyTitle: "Ningún paciente",
 		emptyDescription: "Los pacientes aparecen aquí una vez creados.",
 		colId: "Id",
@@ -704,7 +788,7 @@ const es: PatientMessages = {
 		searchPlaceholder: "Buscar por nombre o propietario…",
 		searchLabel: "Buscar pacientes",
 		noMatch: "Ningún paciente coincide con la búsqueda.",
-		filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+		filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 		showSynthetic: "Mostrar sintéticos",
 		syntheticBadge: "sintético",
 		colActions: "Acciones",
@@ -722,8 +806,11 @@ const es: PatientMessages = {
 		or: "o",
 		ageLabel: "Edad en años",
 		agePlaceholder: "edad",
-		approximate: (date) =>
-			`Registrado como ${date} (aproximado). Ingrese la fecha exacta, si la conoce.`,
+		approximate: paramMessage(
+			"es",
+			"Registrado como {date} (aproximado). Ingrese la fecha exacta, si la conoce.",
+			["date"],
+		),
 		pickDate: "Seleccione una fecha",
 		activeRecord: "Registro activo",
 		fixFields: "Corrija los campos resaltados.",
@@ -739,7 +826,11 @@ const es: PatientMessages = {
 	},
 };
 
-const CATALOGS: Record<PatientLocale, PatientMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<PatientLocale, PatientMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isPatientLocale = (locale: string): locale is PatientLocale =>
 	(PATIENT_LOCALES as readonly string[]).includes(locale);

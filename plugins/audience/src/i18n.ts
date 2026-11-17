@@ -10,6 +10,12 @@
  */
 
 export const AUDIENCE_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "audience";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): AudienceMessages => audienceMessages(locale);
 export type AudienceLocale = (typeof AUDIENCE_LOCALES)[number];
 export const BASE_LOCALE: AudienceLocale = "en";
 
@@ -558,7 +564,11 @@ const es: AudienceMessages = {
 	step4_title: "El médico revisa",
 };
 
-const CATALOGS: Record<AudienceLocale, AudienceMessages> = { en, "pt-BR": ptBR, es };
+const CATALOGS: Record<AudienceLocale, AudienceMessages> = {
+	en,
+	"pt-BR": ptBR,
+	es,
+};
 
 export const isAudienceLocale = (locale: string): locale is AudienceLocale =>
 	(AUDIENCE_LOCALES as readonly string[]).includes(locale);

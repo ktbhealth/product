@@ -4,7 +4,9 @@ import { createElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-	loaderData: { current: undefined as { locale: string; emailEnabled: boolean } | undefined },
+	loaderData: {
+		current: undefined as { locale: string; emailEnabled: boolean } | undefined,
+	},
 	pageProps: { current: undefined as Record<string, unknown> | undefined },
 }));
 
@@ -19,6 +21,13 @@ vi.mock("@ktb/server-fns", async (importOriginal) => {
 			options: opts,
 			useLoaderData: () => mocks.loaderData.current,
 		}),
+	};
+});
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+	return {
+		...actual,
+		getRouteApi: () => ({ useLoaderData: () => ({ i18n: undefined }) }),
 	};
 });
 vi.mock("../fns.ts", () => ({
@@ -49,7 +58,10 @@ afterEach(() => {
 
 describe("/login route", () => {
 	it("loads the active locale and email capability", async () => {
-		await expect(opts.loader()).resolves.toEqual({ locale: "pt-BR", emailEnabled: true });
+		await expect(opts.loader()).resolves.toEqual({
+			locale: "pt-BR",
+			emailEnabled: true,
+		});
 	});
 
 	it("sets the localized document title from loader data", () => {
@@ -66,12 +78,18 @@ describe("/login route", () => {
 	it("renders LoginPage with the loader data", () => {
 		mocks.loaderData.current = { locale: "es", emailEnabled: false };
 		render(createElement(opts.component));
-		expect(mocks.pageProps.current).toEqual({ locale: "es", emailEnabled: false });
+		expect(mocks.pageProps.current).toEqual({
+			locale: "es",
+			emailEnabled: false,
+		});
 	});
 
 	it("falls back to English without email when the loader data is missing", () => {
 		mocks.loaderData.current = undefined;
 		render(createElement(opts.component));
-		expect(mocks.pageProps.current).toEqual({ locale: "en", emailEnabled: false });
+		expect(mocks.pageProps.current).toEqual({
+			locale: "en",
+			emailEnabled: false,
+		});
 	});
 });

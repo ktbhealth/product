@@ -3,6 +3,9 @@ import { EyeIcon, EyeOffIcon } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
 import { doctorContextFn, ensureDoctorProfileFn } from "@ktb/doctors/fns";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -18,7 +21,7 @@ import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
 
-import { authMessages } from "../i18n.ts";
+import { authMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /**
  * Sign-in / create-account page (moved from apps/web/src/routes/login.tsx,
@@ -29,13 +32,17 @@ import { authMessages } from "../i18n.ts";
  * vite.config exception, same role the host route files had).
  */
 export function LoginPage({
+	i18n,
+
 	locale,
 	emailEnabled,
 }: {
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	readonly locale: string;
 	readonly emailEnabled: boolean;
 }) {
-	const t = authMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, authMessages(locale));
 	const [mode, setMode] = useState<"in" | "up">("in");
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -54,7 +61,11 @@ export function LoginPage({
 		}
 		setPending(true);
 		setError(null);
-		const credentials = { email, password, captchaToken: captchaToken ?? undefined };
+		const credentials = {
+			email,
+			password,
+			captchaToken: captchaToken ?? undefined,
+		};
 		/* v8 ignore next -- split() always yields a first element */
 		const signUpName = email.split("@")[0] ?? email;
 		const res =

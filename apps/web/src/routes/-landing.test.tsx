@@ -52,7 +52,6 @@ vi.mock("#/plugins.ts", async () => {
 		},
 	};
 });
-vi.mock("#/paraglide/runtime.js", () => ({ getLocale: () => "en" }));
 
 // Base UI's Select needs pointer/portal plumbing jsdom lacks.
 vi.mock("@ktbhealth/ui/components/select", () => ({

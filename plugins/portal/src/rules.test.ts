@@ -7,14 +7,24 @@ describe("portal audience rules", () => {
 		expect(instanceAudience({ id: "x", basePath: "/portal/x", label: "X" })).toBe(
 			PORTAL_AUDIENCE.member,
 		);
-		expect(instanceAudience({ id: "x", basePath: "/p", label: "X", audience: "doctor" })).toBe(
-			"doctor",
-		);
+		expect(
+			instanceAudience({
+				id: "x",
+				basePath: "/p",
+				label: "X",
+				audience: "doctor",
+			}),
+		).toBe("doctor");
 	});
 
 	it("admits instances whose rule is satisfied", () => {
 		const open = { id: "open", basePath: "/portal/open", label: "Open" };
-		const medics = { id: "medics", basePath: "/portal/medics", label: "M", audience: "doctor" };
+		const medics = {
+			id: "medics",
+			basePath: "/portal/medics",
+			label: "M",
+			audience: "doctor",
+		};
 		expect(portalAdmits(open, [PORTAL_AUDIENCE.member])).toBe(true);
 		expect(portalAdmits(open, [])).toBe(false);
 		expect(portalAdmits(medics, new Set([PORTAL_AUDIENCE.doctor]))).toBe(true);

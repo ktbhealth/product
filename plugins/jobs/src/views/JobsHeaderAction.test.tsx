@@ -15,7 +15,12 @@ import { JobsDataContext, type ConsoleJob } from "../context.ts";
 import { JobsHeaderAction } from "./JobsHeaderAction.tsx";
 
 const jobs: ConsoleJob[] = [
-	{ id: "a", title: "Audio transcription", status: "processing", description: "pt-1" },
+	{
+		id: "a",
+		title: "Audio transcription",
+		status: "processing",
+		description: "pt-1",
+	},
 	{ id: "b", title: "PDF export", status: "failed", error: "render timeout" },
 	{ id: "c", title: "FHIR sync", status: "done" },
 ];
@@ -155,8 +160,19 @@ describe("JobsHeaderAction", () => {
 	it("renders job progress and filters by status, with an empty state per filter", async () => {
 		const user = userEvent.setup();
 		renderAction([
-			{ id: "a", title: "Audio transcription", status: "processing", progress: 40 },
-			{ id: "b", title: "PDF export", status: "failed", error: "render timeout", meta: "2m ago" },
+			{
+				id: "a",
+				title: "Audio transcription",
+				status: "processing",
+				progress: 40,
+			},
+			{
+				id: "b",
+				title: "PDF export",
+				status: "failed",
+				error: "render timeout",
+				meta: "2m ago",
+			},
 		]);
 		await user.click(screen.getByRole("button", { name: "Background jobs" }));
 		expect(await screen.findByText("PDF export")).toBeTruthy();

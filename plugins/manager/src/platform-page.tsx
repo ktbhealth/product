@@ -30,6 +30,7 @@ export function ManagerPage({ data, ctx }: { data: unknown; ctx: PanelPageContex
 		<PluginsPage
 			plugins={ctx.plugins}
 			states={map}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 			cascadeConfirm={cascadeConfirm}
 		/>

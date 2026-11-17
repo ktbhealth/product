@@ -21,6 +21,7 @@ export function AuditPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPage
 		<AuditPage
 			entries={Array.isArray(d.entries) ? d.entries : EMPTY.entries}
 			total={typeof d.total === "number" ? d.total : 0}
+			i18n={ctx.i18n}
 			locale={ctx.locale}
 			onVerify={() => auditVerifyFn()}
 		/>

@@ -1,0 +1,14 @@
+{
+	"name": "@ktb/i18n",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"effect": "4.1.2"
+	},
+	"devDependencies": {
+		"vitest": "5.1.0"
+	}
+}

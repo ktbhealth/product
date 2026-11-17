@@ -46,8 +46,12 @@ const Page = () =>
 	}) as ReactElement;
 
 async function fillAndSubmit() {
-	fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sec@x.com" } });
-	fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+	fireEvent.change(screen.getByLabelText("Email"), {
+		target: { value: "sec@x.com" },
+	});
+	fireEvent.change(screen.getByLabelText("Password"), {
+		target: { value: "senha12345" },
+	});
 	await act(async () => {
 		fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 	});
@@ -76,9 +80,15 @@ describe("secretary sign-in page", () => {
 	it("signs up with name and never asks for a doctor context", async () => {
 		render(createElement(Page));
 		fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
-		fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Maria Souza" } });
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sec@x.com" } });
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Name"), {
+			target: { value: "Maria Souza" },
+		});
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "sec@x.com" },
+		});
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		fireEvent.change(screen.getByLabelText("Confirm password"), {
 			target: { value: "senha12345" },
 		});
@@ -97,9 +107,15 @@ describe("secretary sign-in page", () => {
 	it("blocks sign-up when passwords do not match", async () => {
 		render(createElement(Page));
 		fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
-		fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Maria" } });
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sec@x.com" } });
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Name"), {
+			target: { value: "Maria" },
+		});
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "sec@x.com" },
+		});
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		fireEvent.change(screen.getByLabelText("Confirm password"), {
 			target: { value: "different1" },
 		});
@@ -111,7 +127,10 @@ describe("secretary sign-in page", () => {
 	});
 
 	it("shows error on failed sign-in", async () => {
-		signInEmail.mockResolvedValue({ data: null, error: { message: "invalid credentials" } });
+		signInEmail.mockResolvedValue({
+			data: null,
+			error: { message: "invalid credentials" },
+		});
 		render(createElement(Page));
 		await fillAndSubmit();
 		await waitFor(() => expect(screen.getByText("invalid credentials")).toBeTruthy());
@@ -145,10 +164,14 @@ describe("secretary sign-in page", () => {
 		const form = container.querySelector("form")!;
 		fireEvent.submit(form);
 		expect(signInEmail).not.toHaveBeenCalled();
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.com" } });
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "a@b.com" },
+		});
 		fireEvent.submit(form);
 		expect(signInEmail).not.toHaveBeenCalled();
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		fireEvent.submit(form);
 		await waitFor(() => expect(signInEmail).toHaveBeenCalledTimes(1));
 		fireEvent.submit(form);
@@ -167,8 +190,12 @@ describe("secretary sign-in page", () => {
 				}),
 		);
 		render(createElement(Page));
-		fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@b.com" } });
-		fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+		fireEvent.change(screen.getByLabelText("Email"), {
+			target: { value: "a@b.com" },
+		});
+		fireEvent.change(screen.getByLabelText("Password"), {
+			target: { value: "senha12345" },
+		});
 		const btn = screen.getByRole("button", { name: "Sign in" });
 		await act(async () => {
 			fireEvent.click(btn);
@@ -197,9 +224,15 @@ describe("secretary sign-in page", () => {
 		const signUp = async () => {
 			render(createElement(Page));
 			fireEvent.click(screen.getByRole("tab", { name: "Create account" }));
-			fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Maria" } });
-			fireEvent.change(screen.getByLabelText("Email"), { target: { value: "sec@x.com" } });
-			fireEvent.change(screen.getByLabelText("Password"), { target: { value: "senha12345" } });
+			fireEvent.change(screen.getByLabelText("Name"), {
+				target: { value: "Maria" },
+			});
+			fireEvent.change(screen.getByLabelText("Email"), {
+				target: { value: "sec@x.com" },
+			});
+			fireEvent.change(screen.getByLabelText("Password"), {
+				target: { value: "senha12345" },
+			});
 			fireEvent.change(screen.getByLabelText("Confirm password"), {
 				target: { value: "senha12345" },
 			});
@@ -226,7 +259,9 @@ describe("secretary sign-in page", () => {
 		});
 
 		it("sends a sign-in with several profiles to the chooser", async () => {
-			context.mockResolvedValueOnce({ profiles: [{ doctorId: 1 }, { doctorId: 2 }] });
+			context.mockResolvedValueOnce({
+				profiles: [{ doctorId: 1 }, { doctorId: 2 }],
+			});
 			render(createElement(Page));
 			await fillAndSubmit();
 			await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));

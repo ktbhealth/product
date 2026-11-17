@@ -32,7 +32,9 @@ export const patients = sqliteTable(
 	{
 		id: integer().primaryKey({ autoIncrement: true }),
 		ownerId: text("owner_id").notNull(),
-		tenantId: integer("tenant_id").references(() => groups.id, { onDelete: "set null" }),
+		tenantId: integer("tenant_id").references(() => groups.id, {
+			onDelete: "set null",
+		}),
 		name: text().notNull(),
 		active: integer({ mode: "boolean" }).notNull().default(true),
 		socialName: text("social_name"),

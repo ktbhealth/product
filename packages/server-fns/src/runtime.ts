@@ -1,4 +1,5 @@
 import type * as Effect from "effect/Effect";
+import type { I18nShape, ScopeChain } from "@ktb/i18n";
 import type { ExportFormat, RecordExporter } from "@ktb/interop";
 import type { TenantSelector } from "@ktb/tenant/selector";
 
@@ -194,8 +195,19 @@ export interface ServerRuntime {
 	/** Interop record exporters behind the @ktb/interop port — the host
 	 * wires the standard-specific adapters, plugins only see the port. */
 	readonly recordExporters?: Record<ExportFormat, RecordExporter>;
-	/** Active UI locale — the host's i18n runtime (paraglide) resolved per request. */
+	/** Active UI locale — the host's request-scoped UI locale (locale-context ALS). */
 	readonly getLocale: () => string;
+	/**
+	 * DB-canonical i18n (P-083/PL-008): resolves the request's scope chain
+	 * + locale chain into a bound `I18n` shape over the isolate catalog
+	 * cache. `locale` defaults to the active UI locale; `scopeChain`
+	 * defaults to global scope until tenant/portal wiring lands. Absent
+	 * outside the composed app or before the i18n plugin registers.
+	 */
+	readonly i18n?: (input?: {
+		readonly locale?: string;
+		readonly scopeChain?: ScopeChain;
+	}) => Promise<I18nShape>;
 	/**
 	 * Plugin enable-state check (P-058) backing `pluginEnabledFn` and the
 	 * `createPluginFileRoute`/`createPluginApiRoute` gates. The
@@ -264,6 +276,19 @@ export const runAs = <A, E>(
 
 /** Active locale for the current request (SSR ALS / client cookie). */
 export const getLocale = (): string => getServerRuntime().getLocale();
+
+/** Bound i18n shape for the current request (PL-008). Throws when the
+ * composition root did not wire the capability (tests, bare runtimes). */
+export const getI18n = (input?: {
+	readonly locale?: string;
+	readonly scopeChain?: ScopeChain;
+}): Promise<I18nShape> => {
+	const capability = getServerRuntime().i18n;
+	if (capability === undefined) {
+		throw new Error("@ktb/server-fns: i18n capability not wired — setServerRuntime() lacks `i18n`");
+	}
+	return capability(input);
+};
 
 /** R2 delete batch size — the bucket accepts at most 1000 keys per call. */
 const AUDIO_DELETE_BATCH = 1000;

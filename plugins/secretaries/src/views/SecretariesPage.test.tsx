@@ -4,8 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SecretariesPage, type SecretariesApi, type SecretaryListItem } from "./index.ts";
 
-const active: SecretaryListItem = { id: 1, email: "ana@ktb.test", status: "active" };
-const invited: SecretaryListItem = { id: 2, email: "leo@ktb.test", status: "invited" };
+const active: SecretaryListItem = {
+	id: 1,
+	email: "ana@ktb.test",
+	status: "active",
+};
+const invited: SecretaryListItem = {
+	id: 2,
+	email: "leo@ktb.test",
+	status: "invited",
+};
 
 const setup = (secretaries: SecretaryListItem[], overrides: Partial<SecretariesApi> = {}) => {
 	const api: SecretariesApi = {

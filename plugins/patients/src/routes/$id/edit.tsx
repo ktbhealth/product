@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { notFound, useNavigate } from "@tanstack/react-router";
+import { notFound, useNavigate, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 import { makeKeyring } from "@ktb/crypto/keyring";
@@ -26,6 +26,7 @@ export const Route = createPluginFileRoute("patients.routes")("/patients/$id/edi
 	},
 	component: function EditPatientRoute() {
 		const { patient, locale, zk } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const navigate = useNavigate();
 		// T-144: ciphered rows decrypt in the browser via the keyring.
 		const keyring = useMemo(() => (zk ? makeKeyring() : null), [zk]);
@@ -33,6 +34,7 @@ export const Route = createPluginFileRoute("patients.routes")("/patients/$id/edi
 			<PatientFormPage
 				patient={patient}
 				api={editPatientApi(patient.id)}
+				i18n={i18n}
 				locale={locale}
 				onSaved={(id) => navigate({ to: "/patients/$id", params: { id: String(id) } })}
 				zk={zk && keyring ? { keyring, api: patientsZkApi } : undefined}

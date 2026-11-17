@@ -103,7 +103,11 @@ export async function listDoctorAccess(db: DbClient, doctorId: number): Promise<
  */
 export async function inviteSecretary(
 	db: DbClient,
-	input: { readonly doctorId: number; readonly email: string; readonly invitedBy: string },
+	input: {
+		readonly doctorId: number;
+		readonly email: string;
+		readonly invitedBy: string;
+	},
 ): Promise<DoctorAccess> {
 	const [account] = await db
 		.select({ id: user.id, emailVerified: user.emailVerified })
@@ -114,7 +118,12 @@ export async function inviteSecretary(
 		: { userId: null, status: "invited" };
 	const [row] = await db
 		.insert(doctorAccess)
-		.values({ doctorId: input.doctorId, email: input.email, invitedBy: input.invitedBy, ...link })
+		.values({
+			doctorId: input.doctorId,
+			email: input.email,
+			invitedBy: input.invitedBy,
+			...link,
+		})
 		.onConflictDoUpdate({
 			target: [doctorAccess.doctorId, doctorAccess.email],
 			set: { invitedBy: input.invitedBy, ...link },
@@ -172,7 +181,11 @@ export const SecretariesLive = Layer.effect(
 				}
 				const [own] = yield* Effect.promise(() =>
 					db
-						.select({ doctorId: doctors.id, userId: doctors.userId, email: user.email })
+						.select({
+							doctorId: doctors.id,
+							userId: doctors.userId,
+							email: user.email,
+						})
 						.from(doctors)
 						.innerJoin(user, eq(doctors.userId, user.id))
 						.where(eq(doctors.userId, principal.userId)),
@@ -195,7 +208,11 @@ export const SecretariesLive = Layer.effect(
 					return yield* Effect.fail(new InviteRejected({ code: "self" }));
 				}
 				return yield* Effect.promise(() =>
-					inviteSecretary(db, { doctorId: own.doctorId, email, invitedBy: own.userId }),
+					inviteSecretary(db, {
+						doctorId: own.doctorId,
+						email,
+						invitedBy: own.userId,
+					}),
 				);
 			}),
 			revoke: Effect.fn("Secretaries.revoke")(function* (id: number) {

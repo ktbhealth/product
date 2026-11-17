@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { notFound, redirect } from "@tanstack/react-router";
+import { notFound, redirect, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 import { makeKeyring } from "@ktb/crypto/keyring";
@@ -24,6 +24,7 @@ export const Route = createPluginFileRoute("patient-portal.routes")("/portal/con
 	},
 	component: function PortalConsultationRoute() {
 		const { consultation, locale } = Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const t = portalMessages(locale);
 		// T-148: the device keypair is only worth generating when the
 		// row actually arrived ciphered — plaintext portals never touch
@@ -54,6 +55,7 @@ export const Route = createPluginFileRoute("patient-portal.routes")("/portal/con
 					patientName: isEnvelope(resolved.patientName) ? t.zk.lockedRecord : resolved.patientName,
 				}}
 				locked={isEnvelope(resolved.anamnesis)}
+				i18n={i18n}
 				locale={locale}
 			/>
 		);

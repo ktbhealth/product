@@ -4,6 +4,12 @@
  * active locale and the view resolves its strings here.
  */
 export const EVAL_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "eval.validator";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): EvalMessages => evalMessages(locale);
 export type EvalLocale = (typeof EVAL_LOCALES)[number];
 const BASE_LOCALE: EvalLocale = "en";
 

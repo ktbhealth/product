@@ -1,4 +1,4 @@
-import { redirect } from "@tanstack/react-router";
+import { redirect, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
@@ -24,10 +24,13 @@ export const Route = createPluginFileRoute("doctors.routes")("/doctors/select")(
 	},
 	component: function DoctorSelectRoute() {
 		const { profiles, activeDoctorId, locale } = Route.useLoaderData();
+		// Root loader carries the route-scoped DB catalog slice (PL-008).
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		return (
 			<DoctorSelectPage
 				profiles={profiles}
 				activeDoctorId={activeDoctorId}
+				i18n={i18n}
 				locale={locale}
 				api={api}
 				// Full reload: every loader re-runs under the new profile.

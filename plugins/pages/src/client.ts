@@ -59,7 +59,13 @@ export const pagesPanelPlugin = definePlugin({
 	id: "pages.panel",
 	requiredDeps: ["platform.panel", "pages.services"],
 	panel: {
-		pages: [{ id: "pages.admin", path: "/platform/pages", component: PagesAdminConsolePage }],
+		pages: [
+			{
+				id: "pages.admin",
+				path: "/platform/pages",
+				component: PagesAdminConsolePage,
+			},
+		],
 	},
 });
 

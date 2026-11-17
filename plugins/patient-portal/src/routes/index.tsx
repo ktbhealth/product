@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { redirect, useRouter } from "@tanstack/react-router";
+import { redirect, useRouter, getRouteApi } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 import { makeKeyring } from "@ktb/crypto/keyring";
@@ -32,6 +32,7 @@ export const Route = createPluginFileRoute("patient-portal.routes")("/portal/")(
 	component: function PortalRoute() {
 		const { user, awaitingInvites, profiles, profile, consultations, locale } =
 			Route.useLoaderData();
+		const { i18n } = getRouteApi("__root__").useLoaderData();
 		const router = useRouter();
 		const t = portalMessages(locale);
 		// T-148: the portal device keypair lives in this browser — one
@@ -89,6 +90,7 @@ export const Route = createPluginFileRoute("patient-portal.routes")("/portal/")(
 					(resolved?.profile ?? profile) === null ? null : named((resolved?.profile ?? profile)!)
 				}
 				consultations={resolved?.consultations ?? consultations}
+				i18n={i18n}
 				locale={locale}
 				api={api}
 				onChanged={() => void router.invalidate()}

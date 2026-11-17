@@ -1,6 +1,5 @@
 import { createFileRoute, getRouteApi, Link } from "@tanstack/react-router";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
-import { getLocale } from "#/paraglide/runtime.js";
 import { plugins } from "#/plugins.ts";
 import { enabledIdSet, enabledPlugins } from "#/lib/registry.ts";
 import { validateAudienceSearch } from "@ktb/audience";
@@ -29,13 +28,17 @@ const rootApi = getRouteApi("__root__");
 function Landing() {
 	// Enabled-state filter (P-058): the first ENABLED landing plugin in
 	// topo order wins; a disabled one is skipped like it never existed.
-	const { pluginStates } = rootApi.useLoaderData();
+	const { pluginStates, i18n } = rootApi.useLoaderData();
 	const Page = enabledPlugins(plugins, enabledIdSet(pluginStates)).find(
 		(p) => p.landing !== undefined,
 	)?.landing?.page;
-	// `locale` is injected by the host — plugins cannot import the host's
-	// i18n runtime (see LandingPageProps in @ktb/kernel).
-	return Page === undefined ? <MissingLanding /> : <Page locale={getLocale()} />;
+	// `locale`/`i18n` are injected by the host — plugins cannot import
+	// the host's i18n runtime (see LandingPageProps in @ktb/kernel).
+	return Page === undefined ? (
+		<MissingLanding />
+	) : (
+		<Page locale={i18n?.locale ?? "en"} i18n={i18n} />
+	);
 }
 
 export const Route = createFileRoute("/")({

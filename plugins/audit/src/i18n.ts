@@ -6,7 +6,15 @@
  * full — a missing key is a type error, not an English fallback.
  */
 
+import { paramMessage } from "@ktb/i18n";
+
 export const AUDIT_LOCALES = ["en", "pt-BR", "es"] as const;
+
+/** DB namespace this catalog imports into (PL-008 Phase 4). */
+export const I18N_NAMESPACE = "audit";
+
+/** Locale→messages accessor the baseline importer discovers. */
+export const i18nMessagesFor = (locale: string): AuditMessages => auditMessages(locale);
 export type AuditLocale = (typeof AUDIT_LOCALES)[number];
 export const BASE_LOCALE: AuditLocale = "en";
 
@@ -60,7 +68,7 @@ const en: AuditMessages = {
 	allTargetTypes: "All target types",
 	noTargetType: "none",
 	noMatch: "No entries match the filters.",
-	filteredCount: (shown, total) => `Showing ${shown} of ${total}`,
+	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
 	colTime: "Time",
 	colActor: "Actor",
 	colAction: "Action",
@@ -96,7 +104,7 @@ const ptBR: AuditMessages = {
 	allTargetTypes: "Todos os tipos de alvo",
 	noTargetType: "nenhum",
 	noMatch: "Nenhuma entrada corresponde aos filtros.",
-	filteredCount: (shown, total) => `Exibindo ${shown} de ${total}`,
+	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
 	colTime: "Hora",
 	colActor: "Ator",
 	colAction: "Ação",
@@ -133,7 +141,7 @@ const es: AuditMessages = {
 	allTargetTypes: "Todos los tipos de destino",
 	noTargetType: "ninguno",
 	noMatch: "Ninguna entrada coincide con los filtros.",
-	filteredCount: (shown, total) => `Mostrando ${shown} de ${total}`,
+	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
 	colTime: "Hora",
 	colActor: "Actor",
 	colAction: "Acción",

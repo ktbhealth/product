@@ -51,7 +51,10 @@ describe("markdownBlocks", () => {
 	});
 
 	it("tolerates an unterminated code fence and empty input", () => {
-		expect(markdownBlocks("```\nopen").at(-1)).toMatchObject({ kind: "code", text: "open" });
+		expect(markdownBlocks("```\nopen").at(-1)).toMatchObject({
+			kind: "code",
+			text: "open",
+		});
 		expect(markdownBlocks("")).toEqual([]);
 		expect(markdownBlocks("\n\n  \n")).toEqual([]);
 	});

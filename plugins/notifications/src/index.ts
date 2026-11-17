@@ -37,7 +37,11 @@ export const notificationsHeaderPlugin = definePlugin({
 		{
 			id: "notifications.header-action",
 			region: "portal.header.actions",
-			content: { kind: "headerAction", id: "notifications", component: NotificationsHeaderAction },
+			content: {
+				kind: "headerAction",
+				id: "notifications",
+				component: NotificationsHeaderAction,
+			},
 		},
 	],
 });

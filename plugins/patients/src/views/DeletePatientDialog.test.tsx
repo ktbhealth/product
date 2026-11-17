@@ -63,7 +63,9 @@ describe("DeletePatientDialog", () => {
 
 	it("spells out the consultation cascade and requires an explicit acknowledgement", async () => {
 		const { remove, onDeleted, user } = setup({
-			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 3 })),
+			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+				consultations: 3,
+			})),
 		});
 		expect(
 			await screen.findByText(
@@ -80,7 +82,11 @@ describe("DeletePatientDialog", () => {
 	});
 
 	it("uses the singular for one consultation", async () => {
-		setup({ impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 1 })) });
+		setup({
+			impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+				consultations: 1,
+			})),
+		});
 		expect(await screen.findByText(/^1 consultation of this patient/)).toBeTruthy();
 		expect(screen.getByText("I understand that 1 consultation will be deleted")).toBeTruthy();
 	});
@@ -131,7 +137,11 @@ describe("DeletePatientDialog", () => {
 
 	it("speaks Portuguese", async () => {
 		setup(
-			{ impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 2 })) },
+			{
+				impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+					consultations: 2,
+				})),
+			},
 			"pt-BR",
 		);
 		expect(
@@ -144,7 +154,11 @@ describe("DeletePatientDialog", () => {
 		expect(confirmButton("Excluir permanentemente")).toBeTruthy();
 		cleanup();
 		setup(
-			{ impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({ consultations: 1 })) },
+			{
+				impact: vi.fn<PatientDeleteApi["impact"]>(async () => ({
+					consultations: 1,
+				})),
+			},
 			"pt-BR",
 		);
 		expect(await screen.findByText(/^1 consulta deste paciente também será excluída/)).toBeTruthy();

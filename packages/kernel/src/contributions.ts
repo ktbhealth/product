@@ -27,10 +27,14 @@ export interface PanelSidebarItem {
  * injects — plugins cannot import apps or server fns. */
 export interface PanelHeaderAction {
 	readonly id: string;
-	/** The host injects the active UI locale — header actions are
-	 * self-contained components that cannot import the host's i18n
-	 * runtime, so they resolve their own copy from it. */
-	readonly component: ComponentType<{ readonly locale?: string }>;
+	/** The host injects the active UI locale plus the route-scoped DB
+	 * catalog slice (PL-008) — header actions are self-contained
+	 * components that cannot import the host's i18n runtime, so they
+	 * resolve their own copy from them. */
+	readonly component: ComponentType<{
+		readonly locale?: string;
+		readonly i18n?: PageI18nSlice;
+	}>;
 }
 
 /**
@@ -55,10 +59,23 @@ export interface PanelHeaderAction {
  * plugin-aware views without importing the app host, plus the active
  * UI locale so views resolve their own localized copy, plus the
  * session user when one exists (app pages may be public). */
+/** Resolved DB-catalog slice injected into page contexts (PL-008):
+ * `namespace.key` → MF1 template for the active locale + scope chain. */
+export interface PageI18nSlice {
+	readonly locale: string;
+	readonly catalog: Readonly<Record<string, string>>;
+	/** Enabled locale codes for the language picker (host payloads only). */
+	readonly enabledLocales?: readonly string[];
+}
+
 export interface PageContext {
 	readonly plugins: readonly Plugin[];
 	readonly locale: string;
 	readonly user?: ChromeUser | null;
+	/** Present when the host wired i18n into loader data; absent on
+	 * surfaces without it (views keep their code catalogs as
+	 * fallback). */
+	readonly i18n?: PageI18nSlice;
 }
 
 /** Host-injected context handed to every panel page component — the
@@ -190,6 +207,10 @@ export interface PortalInstance {
 	readonly icon?: ComponentType<{ readonly className?: string }>;
 	readonly audience?: string;
 	readonly subject?: "session" | "doctor";
+	/** Pinned UI locale for this portal (PL-008 Phase 6) — when set it
+	 * overrides the visitor's locale cookie for all copy under the
+	 * portal (e.g. a clinic portal pinned to pt-BR). */
+	readonly locale?: string;
 }
 
 /** Portal instance contributions: the portals a plugin ships. The
@@ -239,6 +260,8 @@ export interface ChromeProps {
 	 * chrome narrows it. Absent/null when no theme resolved (the host
 	 * always injects the built-in default in practice). */
 	readonly theme?: unknown;
+	/** Route-scoped DB catalog slice for chrome components (PL-008). */
+	readonly i18n?: PageI18nSlice;
 }
 
 /** What a chrome contribution renders. `link` is a router link (nav
@@ -248,12 +271,18 @@ export interface ChromeProps {
  * host's i18n mapping. */
 export type ChromeContent =
 	| { readonly kind: "link"; readonly to: string; readonly label: string }
-	| { readonly kind: "component"; readonly component: ComponentType<ChromeProps> }
+	| {
+			readonly kind: "component";
+			readonly component: ComponentType<ChromeProps>;
+	  }
 	| { readonly kind: "sidebarItem"; readonly item: PanelSidebarItem }
 	| {
 			readonly kind: "headerAction";
 			readonly id: string;
-			readonly component: ComponentType<{ readonly locale?: string }>;
+			readonly component: ComponentType<{
+				readonly locale?: string;
+				readonly i18n?: PageI18nSlice;
+			}>;
 	  }
 	| { readonly kind: "footerBlock"; readonly block: LandingFooterBlock }
 	| { readonly kind: "note"; readonly key: string; readonly fallback: string };
@@ -289,6 +318,8 @@ export interface ChromePlugin extends PluginBase, ForbiddenContributions<"chrome
  * import the host's i18n runtime). */
 export interface LandingPageProps {
 	readonly locale?: string;
+	/** Route-scoped DB catalog slice (PL-008). */
+	readonly i18n?: PageI18nSlice;
 }
 
 /** Whole-page landing slot: the host renders the first landing plugin's

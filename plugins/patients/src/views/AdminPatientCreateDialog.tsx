@@ -19,6 +19,8 @@ import {
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
 
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { adminCreatePatientFn } from "../fns.ts";
 import type { PatientMessages } from "../i18n.ts";
 import type { OwnerOption } from "../index.ts";
@@ -55,11 +57,13 @@ export function AdminPatientCreateDialog({
 	owners,
 	t,
 	locale,
+	i18n,
 	onClose,
 }: {
 	owners: readonly OwnerOption[];
 	t: PatientMessages;
 	locale: string;
+	i18n?: PageI18nSlice;
 	onClose: () => void;
 }) {
 	const router = useRouter();
@@ -76,7 +80,7 @@ export function AdminPatientCreateDialog({
 	const fieldError = (key: keyof PatientErrors) => {
 		const code = errors[key];
 		return code === undefined ? null : (
-			<p className="mt-1 text-xs text-destructive">{errorMessage(code, locale)}</p>
+			<p className="mt-1 text-xs text-destructive">{errorMessage(code, locale, i18n)}</p>
 		);
 	};
 

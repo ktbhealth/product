@@ -53,7 +53,12 @@ describe("patient-access schema", () => {
 
 	it("allows several unclaimed invites per patient but one row per user", async () => {
 		const db = makeDb(makeD1(DDL));
-		const invite = { patientId: 1, relation: "guardian", status: "invited", source: "invite" };
+		const invite = {
+			patientId: 1,
+			relation: "guardian",
+			status: "invited",
+			source: "invite",
+		};
 		await db.insert(patientAccess).values({ ...invite, email: "mom@ktb.test" });
 		const [second] = await db
 			.insert(patientAccess)
@@ -66,9 +71,13 @@ describe("patient-access schema", () => {
 		const [claimed] = await db.select().from(patientAccess).where(eq(patientAccess.userId, "u1"));
 		expect(claimed!.updatedAt.getTime()).toBeGreaterThan(0);
 		await expect(
-			db
-				.insert(patientAccess)
-				.values({ patientId: 1, userId: "u1", relation: "self", status: "pending", source: "cpf" }),
+			db.insert(patientAccess).values({
+				patientId: 1,
+				userId: "u1",
+				relation: "self",
+				status: "pending",
+				source: "cpf",
+			}),
 		).rejects.toThrow(/Failed query/);
 	});
 });

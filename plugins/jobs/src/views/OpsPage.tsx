@@ -1,6 +1,9 @@
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
@@ -21,7 +24,7 @@ import type { AudioStorageStats, QueueDepth } from "@ktb/server-fns";
 
 import { retryAudioJobFn } from "../fns.ts";
 import { isAudioRetryable, jobStatusOf, type AudioJobRow } from "../jobs.ts";
-import { opsMessages, type OpsMessages } from "../i18n.ts";
+import { opsMessages, type OpsMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 
@@ -105,6 +108,8 @@ export function OpsPage({
 	jobs,
 	queue,
 	storage,
+	i18n,
+
 	locale = "en",
 }: {
 	/** null = the signal could not be read (Forbidden/runtime missing). */
@@ -112,9 +117,11 @@ export function OpsPage({
 	queue: QueueDepth | null;
 	storage: AudioStorageStats | null;
 	/** Active UI locale, injected by the host via the panel page ctx. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale?: string;
 }) {
-	const t = opsMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, opsMessages(locale));
 	const router = useRouter();
 	const [q, setQ] = useState("");
 	const [retrying, setRetrying] = useState<AudioJobRow | null>(null);

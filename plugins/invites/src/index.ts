@@ -51,7 +51,11 @@ export async function accountExists(db: DbClient, email: string): Promise<boolea
  */
 export async function issueInvite(
 	db: DbClient,
-	input: { readonly email: string; readonly kind: InviteKind; readonly inviterName: string },
+	input: {
+		readonly email: string;
+		readonly kind: InviteKind;
+		readonly inviterName: string;
+	},
 	now: Date,
 ): Promise<string> {
 	const token = newInviteToken();
@@ -176,7 +180,11 @@ export const InvitesLive = Layer.effect(
 				const invite = yield* Effect.promise(() => findInvite(db, input.token, new Date()));
 				if (invite === null) return yield* Effect.fail(new InviteRejected({ code: "invalid" }));
 				const created = yield* Effect.promise(() =>
-					accounts.createVerified({ email: invite.email, name, password: input.password }),
+					accounts.createVerified({
+						email: invite.email,
+						name,
+						password: input.password,
+					}),
 				);
 				if (!created.ok) {
 					return yield* Effect.fail(

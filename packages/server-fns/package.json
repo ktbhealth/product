@@ -7,6 +7,7 @@
 	},
 	"dependencies": {
 		"@ktb/auth": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/interop": "workspace:*",
 		"@ktb/observability": "workspace:*",
 		"@ktb/tenant": "workspace:*",

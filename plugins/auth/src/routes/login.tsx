@@ -1,3 +1,4 @@
+import { getRouteApi } from "@tanstack/react-router";
 import { createPluginFileRoute } from "@ktb/server-fns";
 
 import { emailEnabledFn, localeFn } from "../fns.ts";
@@ -15,12 +16,22 @@ import { LoginPage } from "../views/LoginPage.tsx";
  * always passes.
  */
 export const Route = createPluginFileRoute("auth.routes")("/login")({
-	loader: async () => ({ locale: await localeFn(), emailEnabled: await emailEnabledFn() }),
+	loader: async () => ({
+		locale: await localeFn(),
+		emailEnabled: await emailEnabledFn(),
+	}),
 	head: ({ loaderData }) => ({
 		meta: [{ title: authMessages(loaderData?.locale ?? "en").metaTitle }],
 	}),
 	component: function LoginRoute() {
 		const data = Route.useLoaderData();
-		return <LoginPage locale={data?.locale ?? "en"} emailEnabled={data?.emailEnabled ?? false} />;
+		const { i18n } = getRouteApi("__root__").useLoaderData();
+		return (
+			<LoginPage
+				i18n={i18n}
+				locale={data?.locale ?? "en"}
+				emailEnabled={data?.emailEnabled ?? false}
+			/>
+		);
 	},
 });

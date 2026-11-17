@@ -5,6 +5,7 @@ import {
 	PATIENT_ACCESS_LOCALES,
 	isPatientAccessLocale,
 	patientAccessMessages,
+	i18nMessagesFor,
 } from "./i18n.ts";
 import { PATIENT_ACCESS_RELATIONS, PATIENT_ACCESS_STATUSES } from "./schema.ts";
 
@@ -103,5 +104,15 @@ describe("patient-access catalogs", () => {
 		expect(isPatientAccessLocale("pt-BR")).toBe(true);
 		expect(isPatientAccessLocale("fr")).toBe(false);
 		expect(patientAccessMessages("fr")).toBe(patientAccessMessages(BASE_LOCALE));
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of PATIENT_ACCESS_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(patientAccessMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(patientAccessMessages("en"));
+		expect(i18nMessagesFor("")).toBe(patientAccessMessages("en"));
 	});
 });

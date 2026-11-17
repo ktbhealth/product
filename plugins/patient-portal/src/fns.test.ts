@@ -44,7 +44,12 @@ import {
 const user = { id: "ana", email: "ana@ktb.test", name: "Ana" };
 const me = { patientId: 1, name: "Ana", relation: "self" };
 const kid = { patientId: 2, name: "Leo", relation: "guardian" };
-const profile = { patientId: 1, relation: "self", name: "Ana", doctorName: "Dra. Bia" };
+const profile = {
+	patientId: 1,
+	relation: "self",
+	name: "Ana",
+	doctorName: "Dra. Bia",
+};
 const listed = [{ id: 10, createdAt: new Date(0), chiefComplaint: "Dor de cabeça" }];
 const consultation = {
 	id: 10,
@@ -102,7 +107,11 @@ describe("portalFn", () => {
 	});
 
 	it("syncs the links, then loads the open record with its consultations", async () => {
-		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me, kid], active: me });
+		mocks.getPatientContext.mockResolvedValue({
+			user,
+			profiles: [me, kid],
+			active: me,
+		});
 		await expect(portalFn()).resolves.toEqual({
 			user: { name: "Ana", email: "ana@ktb.test" },
 			awaitingInvites: 0,
@@ -110,20 +119,30 @@ describe("portalFn", () => {
 			profile,
 			consultations: listed,
 		});
-		expect(mocks.getPatientContext).toHaveBeenCalledWith(undefined, { syncLinks: true });
+		expect(mocks.getPatientContext).toHaveBeenCalledWith(undefined, {
+			syncLinks: true,
+		});
 		expect(mocks.runAs).toHaveBeenCalledWith(user, expect.anything());
 		expect(portal.profile).toHaveBeenCalledWith(1);
 		expect(portal.consultations).toHaveBeenCalledWith(1);
 	});
 
 	it("reports invites still waiting on email verification", async () => {
-		mocks.getPatientContext.mockResolvedValue({ user, profiles: [], active: null });
+		mocks.getPatientContext.mockResolvedValue({
+			user,
+			profiles: [],
+			active: null,
+		});
 		portal.awaitingInvites.mockReturnValue(Effect.succeed(2));
 		await expect(portalFn()).resolves.toMatchObject({ awaitingInvites: 2 });
 	});
 
 	it("opens nothing while a profile choice is pending", async () => {
-		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me, kid], active: null });
+		mocks.getPatientContext.mockResolvedValue({
+			user,
+			profiles: [me, kid],
+			active: null,
+		});
 		await expect(portalFn()).resolves.toEqual({
 			user: { name: "Ana", email: "ana@ktb.test" },
 			awaitingInvites: 0,
@@ -136,7 +155,11 @@ describe("portalFn", () => {
 	});
 
 	it("shows an empty portal when the link was revoked mid-request", async () => {
-		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me], active: me });
+		mocks.getPatientContext.mockResolvedValue({
+			user,
+			profiles: [me],
+			active: me,
+		});
 		portal.profile.mockReturnValue(denied);
 		await expect(portalFn()).resolves.toEqual({
 			user: { name: "Ana", email: "ana@ktb.test" },
@@ -151,7 +174,9 @@ describe("portalFn", () => {
 describe("portalConsultationFn", () => {
 	it("tells anonymous visitors apart so the route can send them to sign in", async () => {
 		mocks.getSessionUser.mockResolvedValue(null);
-		await expect(portalConsultationFn({ data: 10 })).resolves.toEqual({ status: "anonymous" });
+		await expect(portalConsultationFn({ data: 10 })).resolves.toEqual({
+			status: "anonymous",
+		});
 		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 
@@ -168,7 +193,9 @@ describe("portalConsultationFn", () => {
 	it("reports a consultation the user may not see as missing", async () => {
 		mocks.getSessionUser.mockResolvedValue(user);
 		portal.consultation.mockReturnValue(denied);
-		await expect(portalConsultationFn({ data: 30 })).resolves.toEqual({ status: "missing" });
+		await expect(portalConsultationFn({ data: 30 })).resolves.toEqual({
+			status: "missing",
+		});
 	});
 
 	it("rejects a non-numeric id on the wire", async () => {
@@ -178,13 +205,21 @@ describe("portalConsultationFn", () => {
 
 describe("selectPatientFn", () => {
 	it("stores a profile the user holds", async () => {
-		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me, kid], active: me });
+		mocks.getPatientContext.mockResolvedValue({
+			user,
+			profiles: [me, kid],
+			active: me,
+		});
 		await expect(selectPatientFn({ data: 2 })).resolves.toEqual({ ok: true });
 		expect(mocks.setPatientSelection).toHaveBeenCalledWith(2);
 	});
 
 	it("refuses a profile the user does not hold, and anonymous callers", async () => {
-		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me], active: me });
+		mocks.getPatientContext.mockResolvedValue({
+			user,
+			profiles: [me],
+			active: me,
+		});
 		await expect(selectPatientFn({ data: 2 })).resolves.toEqual({ ok: false });
 		mocks.getPatientContext.mockResolvedValue(null);
 		await expect(selectPatientFn({ data: 1 })).resolves.toEqual({ ok: false });

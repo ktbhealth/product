@@ -428,7 +428,11 @@ export const parseGoogleFontsCss = (css: string): readonly GoogleFontFace[] => {
 		// non-latin pick for the same weight.
 		if (existing === undefined || (isLatin && !existing.latin)) {
 			byWeight.set(w, {
-				face: { url: src[1]!.trim(), weight: w, format: format?.[1] ?? "woff2" },
+				face: {
+					url: src[1]!.trim(),
+					weight: w,
+					format: format?.[1] ?? "woff2",
+				},
 				latin: isLatin,
 			});
 		}

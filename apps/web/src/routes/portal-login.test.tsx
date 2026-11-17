@@ -12,6 +12,7 @@ const okResult: AuthResult = { data: { user: {} }, error: null };
 const mocks = vi.hoisted(() => ({
 	emailEnabledFn: vi.fn(async () => true),
 	loaderData: { current: { emailEnabled: false } },
+	catalogMiss: false,
 }));
 const signInEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
 const signUpEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
@@ -22,7 +23,19 @@ vi.mock("@ktb/auth-better/client", () => ({
 		signUp: { email: (arg: unknown) => signUpEmail(arg) },
 	},
 }));
-vi.mock("#/lib/fns.ts", () => ({ emailEnabledFn: mocks.emailEnabledFn }));
+vi.mock("#/lib/fns.ts", () => ({
+	emailEnabledFn: mocks.emailEnabledFn,
+}));
+// Total catalog miss: every `app.*` lookup returns the raw key, so the
+// page's `resolved === full ? key : resolved` fallback is exercised.
+vi.mock("#/lib/app-catalog.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#/lib/app-catalog.ts")>();
+	return {
+		...actual,
+		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) =>
+			mocks.catalogMiss ? (key: string) => key : actual.appCatalogT(slice),
+	};
+});
 // The widget needs a site key and Cloudflare's script; the stand-in
 // hands the page a token on demand.
 vi.mock("@ktbhealth/ui/components/turnstile", async () => {
@@ -103,6 +116,7 @@ describe("portal sign-in page", () => {
 		signInEmail.mockResolvedValue(okResult);
 		signUpEmail.mockResolvedValue(okResult);
 		mocks.loaderData.current = { emailEnabled: false };
+		mocks.catalogMiss = false;
 		vi.stubGlobal("location", { assign });
 	});
 
@@ -124,6 +138,14 @@ describe("portal sign-in page", () => {
 		expect(screen.queryByLabelText("Confirm password")).toBeNull();
 		expect(screen.getByLabelText("Password").getAttribute("autocomplete")).toBe("current-password");
 		expect(screen.getByRole("button", { name: "Sign in" })).toHaveProperty("disabled", false);
+	});
+
+	it("falls back to raw message keys when the catalog misses", () => {
+		mocks.catalogMiss = true;
+		render(createElement(Page));
+		// t() returns the bare key (no `app.` prefix) on a sentinel hit.
+		expect(screen.getByLabelText("login_email")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "login_submit_in" })).toBeTruthy();
 	});
 
 	it("switches to the create-account form", () => {

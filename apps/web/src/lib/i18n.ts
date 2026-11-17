@@ -1,89 +1,159 @@
-import * as m from "#/paraglide/messages.js";
-import { baseLocale, cookieName, setLocale, toLocale, type Locale } from "#/paraglide/runtime.js";
+import { getRouteApi } from "@tanstack/react-router";
+import type { PageI18nSlice } from "@ktb/kernel";
 
-/** Endonym labels for the language picker (not translated themselves). */
-const LOCALE_NAMES: Record<string, () => string> = {
-	en: m.locale_en,
-	"pt-BR": m.locale_pt_BR,
-	es: m.locale_es,
+import { appCatalogT } from "./app-catalog.ts";
+
+export { appCatalogT } from "./app-catalog.ts";
+
+/**
+ * Host i18n helpers (PL-008 Phase 5 — Paraglide retired). Locale
+ * persistence stays the `ktb-locale` cookie; copy resolves from the
+ * DB-backed route slice (`app.*` namespace) with the plugin-declared
+ * fallback when the slice is absent.
+ */
+
+export const LOCALE_COOKIE = "ktb-locale";
+export const BASE_LOCALE = "en";
+
+/**
+ * Extract the locale cookie from a raw `Cookie` header value.
+ * Returns undefined when absent; enabled-locale validation happens in
+ * `resolveRequestLocales` downstream.
+ */
+export function localeFromCookieHeader(header: string | null): string | undefined {
+	if (!header) return undefined;
+	const match = header.match(new RegExp(`(?:^|;\\s*)${LOCALE_COOKIE}=([^;]*)`));
+	const value = match?.[1];
+	return value === undefined || value === "" ? undefined : value;
+}
+
+/** The `?locale=` QA override from a raw query string (`location.search`
+ * on the client). Returns undefined when absent/empty — callers decide
+ * precedence against the cookie/default. */
+export function localeFromSearch(search: string): string | undefined {
+	const param = new URLSearchParams(search).get("locale");
+	return param === null || param === "" ? undefined : param;
+}
+
+/** Locale for an incoming request: `?locale=` wins (the QA hook —
+ * e.g. `?locale=qps` for the pseudo-locale without touching cookie
+ * state), then the `ktb-locale` cookie, then the base locale.
+ * Enabled-locale validation happens downstream in
+ * `resolveRequestLocales`, so unknown values degrade to default. */
+export function requestLocale(request: Request): string {
+	return (
+		localeFromSearch(new URL(request.url).search) ??
+		localeFromCookieHeader(request.headers.get("cookie")) ??
+		BASE_LOCALE
+	);
+}
+
+/** Catalog lookup for an `app.*` message; the declared fallback wins
+ * when even the baseline lacks the key. */
+export const appMessage = (
+	slice: PageI18nSlice | undefined,
+	key: string,
+	fallback: string,
+): string => {
+	const full = `app.${key}`;
+	const resolved = appCatalogT(slice)(full);
+	return resolved === full ? fallback : resolved;
+};
+
+/** Root-loader i18n slice for standalone route components. Returns
+ * undefined outside a router context (bare unit-test renders) so copy
+ * degrades to the English baseline instead of throwing. */
+export const useRootI18nSlice = (): PageI18nSlice | undefined => {
+	try {
+		return getRouteApi("__root__").useLoaderData().i18n as PageI18nSlice | undefined;
+	} catch {
+		return undefined;
+	}
 };
 
 /**
- * Extract the paraglide locale cookie from a raw `Cookie` header value.
- * Returns undefined when absent or not a known locale.
+ * i18n slice for route `head()` functions. The head ctx carries the
+ * full `matches` chain (root match first) with each match's resolved
+ * `loaderData` — read the ROOT match's slice, which already honors the
+ * `?locale=` override the root loader forwards. Leaf routes must NOT
+ * run `i18nRouteFn` just to feed `head()`: that would be a second,
+ * search-blind server call per navigation. Returns undefined outside a
+ * router context (bare unit-test `head()` invocations) so titles fall
+ * back to the English baseline.
  */
-export function localeFromCookieHeader(header: string | null): Locale | undefined {
-	if (!header) return undefined;
-	const match = header.match(new RegExp(`(?:^|;\\s*)${cookieName}=([^;]*)`));
-	const value = match?.[1];
-	return toLocale(value);
-}
+export const i18nSliceFromHeadMatches = (
+	matches: ReadonlyArray<{ routeId?: unknown; loaderData?: unknown }> | undefined,
+): PageI18nSlice | undefined => {
+	const root = matches?.find((m) => m.routeId === "__root__") ?? matches?.[0];
+	return (root?.loaderData as { i18n?: PageI18nSlice } | undefined)?.i18n;
+};
 
-/** Locale for an incoming request: cookie first, then the base locale. */
-export function requestLocale(request: Request): Locale {
-	return localeFromCookieHeader(request.headers.get("cookie")) ?? baseLocale;
-}
-
-/** Display name for a locale, falling back to the raw tag. */
-export function localeName(locale: string): string {
-	return LOCALE_NAMES[locale]?.() ?? locale;
+/** Endonym for a locale, resolved from the `app.locale_*` messages. */
+export function localeName(locale: string, slice?: PageI18nSlice): string {
+	return appMessage(slice, `locale_${locale.replaceAll("-", "_")}`, locale);
 }
 
 // Plugin nav labels are declared in plugin manifests (English-only data);
 // the host maps known destinations to localized chrome strings here.
-const NAV_LABELS: Record<string, () => string> = {
-	"/consultations": () => m.nav_consultations(),
-	"/patients": () => m.nav_patients(),
+const NAV_LABELS: Record<string, string> = {
+	"/consultations": "nav_consultations",
+	"/patients": "nav_patients",
 };
 
 // Same deal for /platform console chrome: sidebar item labels are keyed
 // by route path, group headers by their manifest group name.
-const PANEL_LABELS: Record<string, () => string> = {
-	"/platform": () => m.panel_nav_dashboard(),
-	"/platform/consultations": () => m.nav_consultations(),
-	"/platform/patients": () => m.nav_patients(),
-	"/platform/users": () => m.panel_nav_users(),
-	"/platform/groups": () => m.panel_nav_groups(),
-	"/platform/ops": () => m.panel_nav_ops(),
-	"/platform/plugins": () => m.panel_nav_plugins(),
-	"/portal/clinician/activity": () => m.panel_nav_activity(),
+const PANEL_LABELS: Record<string, string> = {
+	"/platform": "panel_nav_dashboard",
+	"/platform/consultations": "nav_consultations",
+	"/platform/patients": "nav_patients",
+	"/platform/users": "panel_nav_users",
+	"/platform/groups": "panel_nav_groups",
+	"/platform/ops": "panel_nav_ops",
+	"/platform/plugins": "panel_nav_plugins",
+	"/portal/clinician/activity": "panel_nav_activity",
 };
 
-const PANEL_GROUPS: Record<string, () => string> = {
-	Access: () => m.panel_group_access(),
-	Domains: () => m.panel_group_domains(),
-	Governance: () => m.panel_group_governance(),
-	System: () => m.panel_group_system(),
+const PANEL_GROUPS: Record<string, string> = {
+	Access: "panel_group_access",
+	Domains: "panel_group_domains",
+	Governance: "panel_group_governance",
+	System: "panel_group_system",
 };
 
 // Footer notes are plugin-declared keys (English fallback in the
 // manifest); the host maps known keys to localized strings here.
-const FOOTER_NOTES: Record<string, () => string> = {
-	disclaimer: () => m.footer_disclaimer(),
+const FOOTER_NOTES: Record<string, string> = {
+	disclaimer: "footer_disclaimer",
 };
 
-/** Switch the UI locale (paraglide persists the cookie and reloads). */
+/** Switch the UI locale: persist the cookie, then reload so SSR and
+ * the client catalog stay in lockstep (hard-reload requirement). */
 export function changeLocale(locale: string): void {
-	const resolved = toLocale(locale);
-	if (resolved) void setLocale(resolved);
+	if (typeof document === "undefined") return;
+	document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; samesite=lax; secure`;
+	if (typeof window !== "undefined") window.location.reload();
 }
 
 /** Localized label for a plugin-declared nav item, or its raw label. */
-export function pluginNavLabel(to: string, fallback: string): string {
-	return NAV_LABELS[to]?.() ?? fallback;
+export function pluginNavLabel(to: string, fallback: string, slice?: PageI18nSlice): string {
+	const key = NAV_LABELS[to];
+	return key === undefined ? fallback : appMessage(slice, key, fallback);
 }
 
 /** Localized label for a plugin-declared /platform sidebar item. */
-export function pluginPanelLabel(to: string, fallback: string): string {
-	return PANEL_LABELS[to]?.() ?? fallback;
+export function pluginPanelLabel(to: string, fallback: string, slice?: PageI18nSlice): string {
+	const key = PANEL_LABELS[to];
+	return key === undefined ? fallback : appMessage(slice, key, fallback);
 }
 
 /** Localized label for a plugin-declared sidebar group, or its raw label. */
-export function pluginPanelGroup(group: string): string {
-	return PANEL_GROUPS[group]?.() ?? group;
+export function pluginPanelGroup(group: string, slice?: PageI18nSlice): string {
+	const key = PANEL_GROUPS[group];
+	return key === undefined ? group : appMessage(slice, key, group);
 }
 
 /** Localized text for a plugin-declared footer note, or its fallback. */
-export function pluginFooterNote(key: string, fallback: string): string {
-	return FOOTER_NOTES[key]?.() ?? fallback;
+export function pluginFooterNote(key: string, fallback: string, slice?: PageI18nSlice): string {
+	const messageKey = FOOTER_NOTES[key];
+	return messageKey === undefined ? fallback : appMessage(slice, messageKey, fallback);
 }

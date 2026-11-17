@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { PaletteIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
+
 import { Button } from "@ktbhealth/ui/components/button";
 import {
 	Popover,
@@ -17,7 +20,7 @@ import {
 } from "@ktbhealth/ui/components/tooltip";
 
 import { listThemesFn, setThemePreviewFn } from "../fns.ts";
-import { themeMessages } from "../i18n.ts";
+import { themeMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { ThemeScopeKind, ThemeSummary } from "../types.ts";
 
 const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
@@ -40,8 +43,14 @@ const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
  * independently re-checks PlatformAdmin, so this component never
  * exposes preview controls to non-admins.
  */
-export function ThemeHeaderAction({ locale = "en" }: { readonly locale?: string }) {
-	const t = themeMessages(locale);
+export function ThemeHeaderAction({
+	i18n,
+	locale = "en",
+}: {
+	readonly i18n?: PageI18nSlice;
+	readonly locale?: string;
+}) {
+	const t = sliceMessages(i18n, I18N_NAMESPACE, themeMessages(locale));
 	const [themes, setThemes] = useState<readonly ThemeSummary[] | null>(null);
 	const [busy, setBusy] = useState<number | "off" | null>(null);
 

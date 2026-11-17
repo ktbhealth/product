@@ -34,7 +34,9 @@ describe("ThemePreviewBanner", () => {
 		expect(screen.getByText("Theme preview active")).toBeTruthy();
 		const button = screen.getByRole("button", { name: /Exit preview/ });
 		await userEvent.click(button);
-		expect(fns.setThemePreviewFn).toHaveBeenCalledWith({ data: { themeId: null } });
+		expect(fns.setThemePreviewFn).toHaveBeenCalledWith({
+			data: { themeId: null },
+		});
 		// Still busy while the fn is in flight.
 		expect((button as HTMLButtonElement).disabled).toBe(true);
 		await act(async () => resolveFn?.());

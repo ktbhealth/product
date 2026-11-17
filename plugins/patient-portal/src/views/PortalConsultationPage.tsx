@@ -3,7 +3,9 @@ import { ArrowLeftIcon, LockIcon } from "lucide-react";
 
 import type { AnamnesisSectionKey } from "@ktb/anamnesis/types";
 
-import { portalMessages } from "../i18n.ts";
+import { portalMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 
 export interface PortalConsultationView {
 	readonly id: number;
@@ -22,6 +24,7 @@ export interface PortalConsultationView {
 export function PortalConsultationPage({
 	consultation,
 	locked,
+	i18n,
 	locale,
 }: {
 	consultation: PortalConsultationView;
@@ -29,9 +32,11 @@ export function PortalConsultationPage({
 	 * (T-148) — renders the locked card instead of empty sections. */
 	locked?: boolean;
 	/** Active UI locale, injected by the host. */
+	/** DB catalog slice for this route's namespaces (PL-008). */
+	i18n?: PageI18nSlice;
 	locale: string;
 }) {
-	const t = portalMessages(locale);
+	const t = sliceMessages(i18n, I18N_NAMESPACE, portalMessages(locale));
 	const when = new Date(consultation.createdAt).toLocaleString(locale, {
 		dateStyle: "long",
 		timeStyle: "short",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPagesLocale, pagesMessages, PAGES_LOCALES } from "./i18n.ts";
+import { i18nMessagesFor, isPagesLocale, pagesMessages, PAGES_LOCALES } from "./i18n.ts";
 
 describe("pages i18n", () => {
 	it("serves a complete catalog for every declared locale", () => {
@@ -30,5 +30,15 @@ describe("pages i18n", () => {
 		expect(isPagesLocale("pt-BR")).toBe(true);
 		expect(isPagesLocale("es")).toBe(true);
 		expect(isPagesLocale("en-US")).toBe(false);
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as pagesMessages, with base fallback", () => {
+		for (const locale of PAGES_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(pagesMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(pagesMessages("en"));
+		expect(i18nMessagesFor("")).toBe(pagesMessages("en"));
 	});
 });
