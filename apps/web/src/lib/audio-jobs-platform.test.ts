@@ -63,4 +63,18 @@ describe("handleAudioQueueBatch with the platform deps", () => {
 		expect(r?.audioStatus).toBe("done");
 		expect(r?.correctedTranscript).toBeNull();
 	});
+
+	it("accepts caller-supplied deps instead of the platform defaults", async () => {
+		// Missing consultation → permanent failure → ack; the injected
+		// deps never touch bucket/ai.
+		const log: string[] = [];
+		await handleAudioQueueBatch([message(424242, log)], {
+			db,
+			bucket: undefined,
+			ai: undefined,
+			model: "test-model",
+			correctTranscript: async () => null,
+		});
+		expect(log).toEqual(["ack"]);
+	});
 });

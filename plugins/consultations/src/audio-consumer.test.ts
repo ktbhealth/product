@@ -1,28 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { makeDb, type DbClient } from "@ktb/db";
+import * as Effect from "effect/Effect";
+
+import { makeDb, Db, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { consultations, jobRuns } from "@ktb/db/schema";
-import {
-	AUDIO_TRANSCRIPTION_JOB_KIND,
-	attachAudioRecord,
-	createConsultation,
-} from "@ktb/consultations";
+import { jobHandlers, registerJobHandler } from "@ktb/jobs-port";
+import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
+import type { AudioJobMessage } from "@ktb/server-fns";
 
-import { jobHandlers, registerJobHandler } from "#/lib/jobs.ts";
+import { AUDIO_TRANSCRIPTION_JOB_KIND, attachAudioRecord } from "./audio-jobs.ts";
 import {
 	bytesToBase64,
+	defaultAudioJobDeps,
 	extractWhisperText,
 	handleAudioQueueBatch,
 	MAX_AUDIO_BYTES,
+	normalizeAudioJobBody,
 	processAudioJob,
 	transcribeAudio,
 	whisperInputs,
 	type AudioJobDeps,
-	type AudioJobMessage,
 	type QueueMessageLike,
-} from "./audio-jobs.ts";
+} from "./audio-consumer.ts";
+import { createConsultation } from "./lifecycle.ts";
 
 const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -32,11 +34,14 @@ CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, s
 INSERT INTO groups (id, name, slug, kind, zk) VALUES (9, 'ZK Clinic', 'zk', 'clinic', 1);
 `;
 
+const TEST_MODEL = "test-whisper";
+
 const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
 	const db = makeDb(makeD1(DDL));
 	const calls = { corrected: [] as string[] };
 	const deps: AudioJobDeps = {
 		db,
+		model: TEST_MODEL,
 		bucket: {
 			get: async (key) => {
 				const objects: Record<string, { size: number; data: Uint8Array }> = {
@@ -79,7 +84,7 @@ const envelope = (j: AudioJobMessage, id = "env-1"): unknown => ({
 const jobRun = async (db: DbClient, id: string) =>
 	(await db.select().from(jobRuns).where(eq(jobRuns.id, id)))[0];
 
-describe("audio-jobs pure helpers", () => {
+describe("audio-consumer pure helpers", () => {
 	it("bytesToBase64 round-trips", () => {
 		const bytes = new Uint8Array([104, 101, 108, 108, 111]); // "hello"
 		expect(atob(bytesToBase64(bytes))).toBe("hello");
@@ -98,7 +103,7 @@ describe("audio-jobs pure helpers", () => {
 		expect(() => extractWhisperText(42)).toThrow("unrecognized");
 	});
 
-	it("transcribeAudio calls the large-v3-turbo model", async () => {
+	it("transcribeAudio calls the given model with whisper inputs", async () => {
 		const seen: { model?: string; inputs?: unknown } = {};
 		const ai = {
 			run: async (model: string, inputs: unknown) => {
@@ -107,9 +112,9 @@ describe("audio-jobs pure helpers", () => {
 				return { text: "fala" };
 			},
 		};
-		const text = await transcribeAudio(ai, new Uint8Array([65, 66]));
+		const text = await transcribeAudio(ai, new Uint8Array([65, 66]), TEST_MODEL);
 		expect(text).toBe("fala");
-		expect(seen.model).toBe("@cf/openai/whisper-large-v3-turbo");
+		expect(seen.model).toBe(TEST_MODEL);
 		expect((seen.inputs as { audio: string }).audio).toBeTruthy();
 	});
 });
@@ -448,7 +453,74 @@ describe("transcription audit trail (P-080)", () => {
 	});
 });
 
+describe("defaultAudioJobDeps", () => {
+	it("resolves bindings from the server runtime and Db from the app runtime", async () => {
+		const db = makeDb(makeD1(DDL));
+		const bucket = { get: async () => null };
+		const ai = { run: async () => ({}) };
+		const correct = async () => null;
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				Effect.runPromise(
+					(effect as Effect.Effect<A, E, never>).pipe(Effect.provideService(Db, db)),
+				),
+			runAs: () => Promise.reject(new Error("unused")),
+			audio: bucket,
+			ai,
+			audioTranscribeModel: "runtime-model",
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+		try {
+			const deps = await defaultAudioJobDeps(correct);
+			expect(deps.db).toBe(db);
+			expect(deps.bucket).toBe(bucket);
+			expect(deps.ai).toBe(ai);
+			expect(deps.model).toBe("runtime-model");
+			expect(deps.correctTranscript).toBe(correct);
+		} finally {
+			resetServerRuntime();
+		}
+	});
+});
+
+describe("normalizeAudioJobBody", () => {
+	it("decodes envelopes and legacy payloads, rejects the rest", () => {
+		const j = job(1);
+		expect(normalizeAudioJobBody(envelope(j, "e1"))).toEqual({
+			kind: AUDIO_TRANSCRIPTION_JOB_KIND,
+			payload: j,
+			id: "e1",
+			tenantId: null,
+		});
+		expect(normalizeAudioJobBody({ ...j, tenantId: 4 })).toEqual({
+			kind: AUDIO_TRANSCRIPTION_JOB_KIND,
+			payload: { ...j, tenantId: 4 },
+			tenantId: 4,
+		});
+		expect(normalizeAudioJobBody({ bogus: true })).toBeNull();
+		expect(normalizeAudioJobBody({ kind: AUDIO_TRANSCRIPTION_JOB_KIND })).toBeNull();
+		expect(normalizeAudioJobBody("nope")).toBeNull();
+	});
+});
+
 describe("handleAudioQueueBatch", () => {
+	// The consumer's `run` goes through the @ktb/server-fns runtime
+	// registry: a minimal fake executes effects directly (Db is not
+	// needed — deps carry it; EventBus-dependent side effects degrade
+	// to the same caught failures as a missing bus).
+	beforeAll(() => {
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				Effect.runPromise(effect as Effect.Effect<A, E, never>),
+			runAs: () => Promise.reject(new Error("unused")),
+			audioTranscribeModel: TEST_MODEL,
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+	});
+	afterAll(() => {
+		resetServerRuntime();
+	});
+
 	const msg = (body: unknown, log: string[]): QueueMessageLike => ({
 		body,
 		ack: () => log.push("ack"),
@@ -524,6 +596,7 @@ describe("handleAudioQueueBatch", () => {
 			await handleAudioQueueBatch(
 				[msg({ id: "ping-1", kind: "test.ping", payload: { hi: 1 } }, log)],
 				deps,
+				jobHandlers,
 			);
 			expect(log).toEqual(["ack"]);
 			expect(seen).toEqual([{ hi: 1 }]);

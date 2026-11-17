@@ -5,6 +5,8 @@ import { Tenant, tenantScopeId } from "@ktb/tenant";
 import { tenantIsZk } from "@ktb/vault";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 
+import { bytesToBase64, MAX_AUDIO_BYTES, whisperInputs } from "../audio-consumer.ts";
+
 /**
  * POST /api/transcribe — server-side transcription of an uploaded
  * recording via Workers AI Whisper.
@@ -13,31 +15,10 @@ import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@k
  * virtual route tree by `consultationsRoutesPlugin`
  * (physical("/api", "src/api-routes")); the AI binding arrives through
  * the @ktb/server-fns runtime registry (host-resolved, incl. dev
- * stand-ins), so no host imports are needed (P-033).
+ * stand-ins), so no host imports are needed (P-033). The size ceiling
+ * and the whisper payload shape are shared with the queued pipeline
+ * (../audio-consumer.ts) — one definition, two entry points.
  */
-
-/**
- * Workers AI rejects oversized audio and chunked transcription is not
- * supported — keep in sync with MAX_AUDIO_BYTES in
- * apps/web/src/lib/audio-jobs.ts, which enforces the same ceiling on
- * the queued pipeline.
- */
-const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
-
-/** Payload shape shared with the queue pipeline (audio-jobs.ts):
- * whisper-class models take base64 audio, not a number[] byte array —
- * a 25MB number[] would serialize to a ~100MB JSON body. The model id
- * is host-resolved deploy config (AUDIO_TRANSCRIBE_MODEL). */
-
-/** btoa without stack overflow on large buffers (chunked fromCharCode). */
-const bytesToBase64 = (bytes: Uint8Array): string => {
-	let binary = "";
-	const CHUNK = 0x8000;
-	for (let i = 0; i < bytes.length; i += CHUNK) {
-		binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-	}
-	return btoa(binary);
-};
 
 export const Route = createPluginApiRoute("consultations.routes")("/api/transcribe")({
 	server: {
@@ -94,10 +75,9 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/transcri
 				}
 				const bytes = new Uint8Array(await file.arrayBuffer());
 				const model = getServerRuntime().audioTranscribeModel;
-				const result = (await ai.run(model, {
-					audio: bytesToBase64(bytes),
-					language: "pt",
-				})) as { text?: string };
+				const result = (await ai.run(model, whisperInputs(bytesToBase64(bytes)))) as {
+					text?: string;
+				};
 				return Response.json({ text: result.text ?? "" });
 			},
 		},

@@ -16,7 +16,8 @@
 		"./views": "./src/views/index.ts",
 		"./backend": "./src/backend.ts",
 		"./api-route-bots": "./src/api-routes/bots.ts",
-		"./api-route-bots-webhook": "./src/api-routes/bots.webhook.ts"
+		"./api-route-bots-webhook": "./src/api-routes/bots.webhook.ts",
+		"./audio-consumer": "./src/audio-consumer.ts"
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
@@ -32,6 +33,7 @@
 		"@ktb/i18n": "workspace:*",
 		"@ktb/integrity": "workspace:*",
 		"@ktb/interop": "workspace:*",
+		"@ktb/jobs-port": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/patient-access": "workspace:*",
 		"@ktb/patients": "workspace:*",

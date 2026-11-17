@@ -198,7 +198,8 @@ const audioBucketLister = env.AUDIO_BUCKET as unknown as AudioObjectLister | und
 // PL-007: the generic jobs port rides the same AUDIO_QUEUE transport —
 // enqueue writes the job_runs projection (via `db`) then sends the
 // kind-dispatched envelope. Undefined when the queue is unbound; the
-// consumer side lives in audio-jobs.ts (kind → handler registry).
+// consumer side lives in @ktb/consultations/audio-consumer (kind →
+// handler registry in @ktb/jobs-port, wired by lib/audio-jobs.ts).
 const jobsQueue = env.AUDIO_QUEUE as unknown as
 	| { send(body: unknown): Promise<unknown> }
 	| undefined;
@@ -210,7 +211,7 @@ const jobs =
 // PL-006 phase 4: theme asset uploads ride a DEDICATED queue
 // (ktb-theme-assets) — image derivatives and font downloads never
 // contend with transcription. Same jobs-port shape: job_runs projection
-// + kind-dispatched envelope; the consumer lives in theme-jobs.ts.
+// + kind-dispatched envelope; the consumer lives in @ktb/theme/jobs.
 const themeJobsQueue = env.THEME_ASSETS_QUEUE as unknown as
 	| { send(body: unknown): Promise<unknown> }
 	| undefined;

@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
-import { makeDb, type DbClient } from "@ktb/db";
+import * as Effect from "effect/Effect";
+
+import { makeDb, Db, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { themeAssets, themeDefinitions } from "@ktb/db/schema";
 import type { JobMessageLike } from "@ktb/jobs-port";
-import { insertThemeAsset } from "@ktb/theme/assets";
-import { localFontForSlot } from "@ktb/theme/font-metrics";
+import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
+import { insertThemeAsset } from "./assets.ts";
+import { localFontForSlot } from "./font-metrics.ts";
 
 // photon.resize is wrapped so one test can force the dominant-color
 // probe to see a pixel buffer too small to read channels from; every
@@ -33,8 +36,8 @@ vi.mock("@cf-wasm/photon", async (importOriginal) => {
 // localFontForSlot stays real by default (it wraps the actual impl); a
 // test can force an unknown system font to cover the missing-metrics
 // fallback path in buildFallback.
-vi.mock("@ktb/theme/font-metrics", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@ktb/theme/font-metrics")>();
+vi.mock("./font-metrics.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./font-metrics.ts")>();
 	return { ...actual, localFontForSlot: vi.fn(actual.localFontForSlot) };
 });
 
@@ -48,7 +51,7 @@ import {
 	type ThemeFontFetch,
 	type ThemeImageProcessor,
 	type ThemeJobDeps,
-} from "./theme-jobs.ts";
+} from "./jobs.ts";
 
 const DDL = `
 CREATE TABLE theme_assets (
@@ -987,14 +990,29 @@ describe("handleThemeQueueBatch", () => {
 		expect((await assetRow(db, asset.id))?.status).toBe("ready");
 	});
 
-	it("uses the platform deps when none are injected", async () => {
-		// Covers platformDeps() + the default parameter: the consumer
-		// binds the real platform db/bucket/processor (test doubles via
-		// the cloudflare:workers alias). An unknown kind acks without
+	it("resolves the platform deps when none are injected", async () => {
+		// Covers defaultThemeJobDeps() + the optional deps parameter: the
+		// consumer binds the Db service and theme-assets bucket through
+		// the server runtime registry. An unknown kind acks without
 		// touching the asset pipeline.
-		const m = msg(envelope("bogus.kind", {}));
-		await handleThemeQueueBatch([m]);
-		expect(m.log).toEqual(["ack"]);
+		const db = makeDb(makeD1(DDL));
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				Effect.runPromise(
+					(effect as Effect.Effect<A, E, never>).pipe(Effect.provideService(Db, db)),
+				),
+			runAs: () => Promise.reject(new Error("unused")),
+			themeAssets: makeBucket({}).bucket,
+			audioTranscribeModel: "test-model",
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+		try {
+			const m = msg(envelope("bogus.kind", {}));
+			await handleThemeQueueBatch([m]);
+			expect(m.log).toEqual(["ack"]);
+		} finally {
+			resetServerRuntime();
+		}
 	});
 
 	it("retries when the handler throws", async () => {

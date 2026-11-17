@@ -6,6 +6,8 @@ import { Db } from "@ktb/db";
 import { createPluginApiRoute, getDoctorUser, getServerRuntime, runAs } from "@ktb/server-fns";
 import { tenantIsZk } from "@ktb/vault";
 
+import { MAX_AUDIO_BYTES } from "../audio-consumer.ts";
+
 /**
  * POST /api/consultations/:id/audio — store the session recording in R2
  * and enqueue the async transcription job (P-015/P-016).
@@ -26,11 +28,11 @@ import { tenantIsZk } from "@ktb/vault";
 
 /**
  * Bound worker memory: the body is buffered fully before the R2 put.
- * Capped at the Whisper transcription ceiling (25MB — same as
- * MAX_AUDIO_BYTES in apps/web/src/lib/audio-jobs.ts) so nothing stored
- * here can end up untranscribable in the queue pipeline.
+ * Capped at the Whisper transcription ceiling — the same
+ * MAX_AUDIO_BYTES the queued pipeline enforces (../audio-consumer.ts) —
+ * so nothing stored here can end up untranscribable.
  */
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = MAX_AUDIO_BYTES;
 
 const EXT_BY_TYPE: Record<string, string> = {
 	"audio/webm": "webm",
