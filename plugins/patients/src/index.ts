@@ -387,6 +387,15 @@ export class Patients extends Context.Service<
 		) => Effect.Effect<Patient | null, Forbidden>;
 		/** User accounts for the admin create-form owner picker — platform admins only. */
 		readonly adminOwners: () => Effect.Effect<OwnerOption[], Forbidden>;
+		/**
+		 * Cross-plugin owner lookup — `ownerId` + `tenantId` of a record
+		 * regardless of caller (the same data the `patients.ownerOf`
+		 * query exposes). Portal/link resolution only: ownership
+		 * metadata, no record fields, so no authz — null when missing.
+		 */
+		readonly ownerOf: (
+			id: number,
+		) => Effect.Effect<{ ownerId: string; tenantId: number | null } | null>;
 	}
 >()("@ktb/patients/Patients") {}
 
@@ -523,6 +532,9 @@ export const PatientsLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				return yield* Effect.promise(() => listOwnerOptions(db));
 			}),
+			ownerOf: Effect.fn("Patients.ownerOf")((id: number) =>
+				Effect.promise(() => getPatientOwnerId(db, id)),
+			),
 		});
 	}),
 );

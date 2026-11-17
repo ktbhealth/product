@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
 	runAs: vi.fn(),
 	setDoctorSelection: vi.fn(),
 	ensureProfile: vi.fn(),
+	displayName: vi.fn(),
 }));
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
@@ -51,7 +52,12 @@ beforeEach(() => {
 	mocks.runAs.mockImplementation(
 		(_user: unknown, effect: Effect.Effect<unknown, unknown, Doctors>) =>
 			Effect.runPromise(
-				effect.pipe(Effect.provideService(Doctors, { ensureProfile: mocks.ensureProfile })),
+				effect.pipe(
+					Effect.provideService(Doctors, {
+						ensureProfile: mocks.ensureProfile,
+						displayName: mocks.displayName,
+					}),
+				),
 			),
 	);
 });

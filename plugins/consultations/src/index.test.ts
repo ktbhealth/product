@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
@@ -27,6 +27,7 @@ import {
 	platformAdminPlugin,
 	platformPanelPlugin,
 } from "@ktb/platform";
+import { PortalAccess } from "@ktb/patient-access";
 import { ConsultationAudioUpdated, ConsultationsQueries } from "./api.ts";
 import {
 	Consultations,
@@ -2427,5 +2428,149 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 		);
 		expect(detail?.anamnesisRaw).toBe(ENV2);
 		expect(detail?.anamnesis).toBeNull();
+	});
+});
+
+describe("ConsultationsLive portal reads (T-141)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Consultations, never>;
+	let testDb: ReturnType<typeof makeDb>;
+	const allowed = new Set<number>();
+	let ids: { p1: number; p2: number; ids: Record<string, number> };
+
+	const accessLayer = Layer.succeed(PortalAccess, {
+		link: (patientId: number) =>
+			Effect.succeed(
+				allowed.has(patientId) ? { patientId, name: "Paciente", relation: "self" as const } : null,
+			),
+		awaitingInvites: () => Effect.succeed(0),
+	});
+
+	beforeAll(async () => {
+		testDb = makeDb(makeD1(DDL));
+		runtime = ManagedRuntime.make(
+			ConsultationsLive.pipe(Layer.provideMerge(Layer.mergeAll(liveDeps(testDb), accessLayer))),
+		);
+		const [p1] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "P1", createdAt: new Date(0) })
+			.returning({ id: patientsTable.id });
+		const [p2] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "P2", createdAt: new Date(0) })
+			.returning({ id: patientsTable.id });
+		const base = {
+			userId: "u1",
+			source: "browser",
+			status: "done",
+			transcript: "t",
+		};
+		const seed = async (key: string, values: Record<string, unknown>) => {
+			const [row] = await testDb
+				.insert(consultationsTable)
+				.values({ ...base, ...values } as never)
+				.returning({ id: consultationsTable.id });
+			return row.id;
+		};
+		ids = {
+			p1: p1!.id,
+			p2: p2!.id,
+			ids: {
+				plain: await seed("plain", {
+					patientId: p1!.id,
+					anamnesis: "{}",
+					createdAt: new Date(1000),
+				}),
+				zk: await seed("zk", {
+					patientId: p1!.id,
+					anamnesis: "v1.env",
+					createdAt: new Date(2000),
+				}),
+				noAnamnesis: await seed("noAnamnesis", {
+					patientId: p1!.id,
+					anamnesis: null,
+					createdAt: new Date(3000),
+				}),
+				other: await seed("other", {
+					patientId: p2!.id,
+					anamnesis: "{}",
+					createdAt: new Date(4000),
+				}),
+				noPatient: await seed("noPatient", {
+					patientId: null,
+					anamnesis: "{}",
+					tenantId: 7,
+					createdAt: new Date(5000),
+				}),
+				scopeOnly: await seed("scopeOnly", {
+					patientId: p1!.id,
+					anamnesis: null,
+					tenantId: 9,
+					createdAt: new Date(6000),
+				}),
+			},
+		};
+	});
+
+	afterAll(() => runtime.dispose());
+	afterEach(() => allowed.clear());
+
+	const run = <A, E>(f: (c: Consultations["Service"]) => Effect.Effect<A, E>) =>
+		runtime.runPromise(Effect.flatMap(Consultations, f));
+
+	it("portalList returns the patient's saved rows newest-first, link-gated", async () => {
+		allowed.add(ids.p1);
+		const rows = await run((c) => c.portalList(ids.p1));
+		expect(rows.map((r) => r.id)).toEqual([ids.ids.zk, ids.ids.plain]);
+		expect(rows[0]).toMatchObject({ anamnesis: "v1.env" });
+		expect(await run((c) => c.portalList(ids.p2))).toEqual([]);
+	});
+
+	it("portalList is empty when the PortalAccess port is absent", async () => {
+		const bare = ManagedRuntime.make(ConsultationsLive.pipe(Layer.provideMerge(liveDeps(testDb))));
+		try {
+			allowed.add(ids.p1);
+			expect(
+				await bare.runPromise(Effect.flatMap(Consultations, (c) => c.portalList(ids.p1))),
+			).toEqual([]);
+			expect(
+				await bare.runPromise(Effect.flatMap(Consultations, (c) => c.portalGet(ids.ids.plain))),
+			).toBeNull();
+			expect(
+				await bare.runPromise(Effect.flatMap(Consultations, (c) => c.portalScope(ids.ids.plain))),
+			).toBeNull();
+		} finally {
+			await bare.dispose();
+		}
+	});
+
+	it("portalGet returns the row for a linked patient and null otherwise", async () => {
+		allowed.add(ids.p1);
+		const row = await run((c) => c.portalGet(ids.ids.plain));
+		expect(row).toMatchObject({
+			id: ids.ids.plain,
+			patientId: ids.p1,
+			userId: "u1",
+			anamnesis: "{}",
+		});
+		expect(row?.createdAt).toBeInstanceOf(Date);
+		expect(await run((c) => c.portalGet(ids.ids.other))).toBeNull();
+		expect(await run((c) => c.portalGet(ids.ids.noAnamnesis))).toBeNull();
+		expect(await run((c) => c.portalGet(ids.ids.noPatient))).toBeNull();
+		expect(await run((c) => c.portalGet(99999))).toBeNull();
+	});
+
+	it("portalScope returns patient + tenant for linked rows without requiring anamnesis", async () => {
+		allowed.add(ids.p1);
+		expect(await run((c) => c.portalScope(ids.ids.scopeOnly))).toEqual({
+			patientId: ids.p1,
+			tenantId: 9,
+		});
+		expect(await run((c) => c.portalScope(ids.ids.plain))).toEqual({
+			patientId: ids.p1,
+			tenantId: null,
+		});
+		expect(await run((c) => c.portalScope(ids.ids.noPatient))).toBeNull();
+		expect(await run((c) => c.portalScope(ids.ids.other))).toBeNull();
+		expect(await run((c) => c.portalScope(99999))).toBeNull();
 	});
 });

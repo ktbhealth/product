@@ -3,15 +3,17 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { HouseIcon } from "lucide-react";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Audit, audit, auditServicesPlugin, type AuditListResult } from "@ktb/audit";
-import { Db, type DbClient } from "@ktb/db";
-import { consultations, doctors, entityDeks, patientAccess, patients, user } from "@ktb/db/schema";
-import { normalizeEmail } from "@ktb/patient-access";
-import { enrollPortalDevice, portalDeviceOf, type PortalKey } from "@ktb/vault";
+import { Consultations, consultationsServicesPlugin } from "@ktb/consultations";
+import { Db } from "@ktb/db";
+import { Doctors, doctorsServicesPlugin } from "@ktb/doctors";
+import { patientAccessServicesPlugin, PortalAccess } from "@ktb/patient-access";
+import { Patients, patientsServicesPlugin } from "@ktb/patients";
+import { isEnvelope } from "@ktb/patients/zk";
+import { enrollPortalDevice, entityDekEnvelope, portalDeviceOf, type PortalKey } from "@ktb/vault";
 import { definePlugin, type Page, type Plugin } from "@ktb/kernel";
 import { portalShellPlugin } from "@ktb/portal";
 import { getPatientContext } from "@ktb/server-fns";
@@ -39,40 +41,6 @@ export interface PortalProfile {
 	/** Display name of the doctor who keeps the record, when known. */
 	readonly doctorName: string | null;
 }
-
-/** The record `patientId` as `userId` may see it — null unless they hold
- * an *active* link to it. */
-export async function getPortalProfile(
-	db: DbClient,
-	userId: string,
-	patientId: number,
-): Promise<PortalProfile | null> {
-	const [row] = await db
-		.select({
-			patientId: patients.id,
-			relation: patientAccess.relation,
-			name: patients.name,
-			doctorName: doctors.displayName,
-		})
-		.from(patientAccess)
-		.innerJoin(patients, eq(patientAccess.patientId, patients.id))
-		.leftJoin(doctors, eq(doctors.userId, patients.ownerId))
-		.where(
-			and(
-				eq(patientAccess.patientId, patientId),
-				eq(patientAccess.userId, userId),
-				eq(patientAccess.status, "active"),
-			),
-		);
-	return row ?? null;
-}
-
-/** `v1.` AEAD envelope marker (same rule as `@ktb/patients/zk`'s
- * `isEnvelope`): an envelope in a clinical column means the row is
- * client-encrypted — the server ships it opaque and the portal
- * decrypts in the browser (T-148). */
-const isEnvelope = (value: unknown): value is string =>
-	typeof value === "string" && value.startsWith("v1.");
 
 /** A consultation as the portal lists it. */
 export interface PortalConsultationSummary {
@@ -103,192 +71,20 @@ export interface PortalConsultation {
 	readonly anamnesis: string | null;
 }
 
-/** Internal read shape: `getPortalConsultation` also returns the row's
- * `tenant_id` so the service can scope the sensitive-read audit entry —
- * it is stripped before the value crosses the wire (portal clients get
- * {@link PortalConsultation} only). */
-export type PortalConsultationRead = PortalConsultation & {
-	readonly tenantId: number | null;
-};
-
-/** Rows of `consultations` a holder of an *active* link may see: the
- * ones with a saved record. A consultation still being transcribed, or
- * saved without an anamnesis, is not shown. */
-const visibleTo = (userId: string) =>
-	and(
-		eq(patientAccess.userId, userId),
-		eq(patientAccess.status, "active"),
-		isNotNull(consultations.anamnesis),
-	);
-
-/**
- * The consultations of `patientId` as `userId` may see them, newest
- * first — empty unless they hold an *active* link to the record.
- */
-export async function listPortalConsultations(
-	db: DbClient,
-	userId: string,
-	patientId: number,
-): Promise<PortalConsultationSummary[]> {
-	const rows = await db
-		.select({
-			id: consultations.id,
-			createdAt: consultations.createdAt,
-			anamnesis: consultations.anamnesis,
-		})
-		.from(consultations)
-		.innerJoin(patientAccess, eq(patientAccess.patientId, consultations.patientId))
-		.where(and(eq(consultations.patientId, patientId), visibleTo(userId)))
-		.orderBy(desc(consultations.createdAt), desc(consultations.id));
-	return rows.flatMap(({ anamnesis, ...row }): PortalConsultationSummary[] => {
-		// T-148: a ZK row is opaque — list it with the raw envelope so the
-		// client can decrypt; the complaint derives after decrypting.
-		if (isEnvelope(anamnesis)) return [{ ...row, chiefComplaint: null, anamnesis }];
-		const parsed = parseAnamnesis(anamnesis);
-		if (parsed === null) return [];
-		return [{ ...row, chiefComplaint: written(parsed.queixa_principal.content), anamnesis: null }];
-	});
-}
-
-/**
- * Consultation `id` as `userId` may see it — null unless it has a saved
- * record and they hold an *active* link to its patient.
- */
-export async function getPortalConsultation(
-	db: DbClient,
-	userId: string,
-	id: number,
-): Promise<PortalConsultationRead | null> {
-	const [row] = await db
-		.select({
-			id: consultations.id,
-			createdAt: consultations.createdAt,
-			anamnesis: consultations.anamnesis,
-			patientId: patients.id,
-			tenantId: consultations.tenantId,
-			patientName: patients.name,
-			doctorName: doctors.displayName,
-		})
-		.from(consultations)
-		.innerJoin(patients, eq(consultations.patientId, patients.id))
-		.innerJoin(patientAccess, eq(patientAccess.patientId, patients.id))
-		.leftJoin(doctors, eq(doctors.userId, consultations.userId))
-		.where(and(eq(consultations.id, id), visibleTo(userId)));
-	if (row === undefined) return null;
-	const { anamnesis, ...consultation } = row;
-	// T-148: a ZK row ships its envelope untouched — the portal unwraps
-	// the record DEK for the caller's device and decrypts client-side.
-	if (isEnvelope(anamnesis)) return { ...consultation, sections: [], anamnesis };
-	const parsed = parseAnamnesis(anamnesis);
-	if (parsed === null) return null;
-	return { ...consultation, sections: portalSections(parsed), anamnesis: null };
-}
-
-/**
- * Invites addressed to the user's account email still sitting unclaimed
- * because the address is not verified — how many records wait on the
- * verification step. Zero for a verified address: every matching invite
- * is claimed by `syncLinks` on the next entry point, so a lingering one
- * can only belong to an unverified account. The email comparison uses
- * the same normalization the invite write path applies.
- */
-export async function countAwaitingInvites(db: DbClient, userId: string): Promise<number> {
-	const [account] = await db
-		.select({ email: user.email, emailVerified: user.emailVerified })
-		.from(user)
-		.where(eq(user.id, userId));
-	if (account === undefined || account.emailVerified) return 0;
-	const rows = await db
-		.select({ id: patientAccess.id })
-		.from(patientAccess)
-		.where(
-			and(
-				eq(patientAccess.email, normalizeEmail(account.email)),
-				eq(patientAccess.status, "invited"),
-			),
-		);
-	return rows.length;
-}
-
-/**
- * The `entity_deks` envelope addressed to one of the caller's OWN
- * portal devices for one record (T-148) — the portal-side counterpart
- * of the member-scoped `vault.dekEnvelope`. Authorization is the
- * portal rule, not tenant membership: the `wrapPublicKey` must be
- * registered to the caller (`portal_keys`), the record must resolve to
- * a patient the caller holds an *active* link to, and the tenant id is
- * read off the record itself (a portal identity spans clinics). Any
- * check failing yields null — indistinguishable from "no grant".
- */
-export async function portalDekEnvelope(
-	db: DbClient,
-	userId: string,
-	input: {
-		readonly entityType: "patient" | "consultation";
-		readonly entityId: number | string;
-		readonly wrapPublicKey: string;
-	},
-): Promise<string | null> {
-	const entityId = Number(input.entityId);
-	if (!Number.isInteger(entityId)) return null;
-	const device = await portalDeviceOf(db, userId, input.wrapPublicKey);
-	if (device === null) return null;
-	let patientId: number;
-	let tenantId: number | null;
-	if (input.entityType === "consultation") {
-		const [row] = await db
-			.select({ patientId: consultations.patientId, tenantId: consultations.tenantId })
-			.from(consultations)
-			.where(eq(consultations.id, entityId))
-			.limit(1);
-		if (row === undefined || row.patientId === null) return null;
-		patientId = row.patientId;
-		tenantId = row.tenantId;
-	} else {
-		const [row] = await db
-			.select({ tenantId: patients.tenantId })
-			.from(patients)
-			.where(eq(patients.id, entityId))
-			.limit(1);
-		if (row === undefined) return null;
-		patientId = entityId;
-		tenantId = row.tenantId;
-	}
-	// entity_deks rows are tenant-owned — a personal (tenantless)
-	// record can never carry a grant.
-	if (tenantId === null) return null;
-	const [link] = await db
-		.select({ id: patientAccess.id })
-		.from(patientAccess)
-		.where(
-			and(
-				eq(patientAccess.patientId, patientId),
-				eq(patientAccess.userId, userId),
-				eq(patientAccess.status, "active"),
-			),
-		)
-		.limit(1);
-	if (link === undefined) return null;
-	const [dek] = await db
-		.select({ wrappedDek: entityDeks.wrappedDek })
-		.from(entityDeks)
-		.where(
-			and(
-				eq(entityDeks.tenantId, tenantId),
-				eq(entityDeks.entityType, input.entityType),
-				eq(entityDeks.entityId, String(entityId)),
-				eq(entityDeks.readerPubkey, input.wrapPublicKey),
-			),
-		)
-		.limit(1);
-	return dek?.wrappedDek ?? null;
-}
-
 /**
  * Patient portal port — the *patient* side: read-only on clinical data,
  * and everything is scoped to the signed-in user themself. Fails
  * `Forbidden` without a principal and under delegation (a secretary
  * acting for a doctor has no business in someone's portal).
+ *
+ * T-141: this service no longer reads other plugins' tables — every
+ * row comes through the owning plugin's service: `PortalAccess`
+ * (patient-access) resolves the active `patient_access` link every
+ * read gates on, `Consultations`/`Patients`/`Doctors` own the record,
+ * owner and display-name reads, and `@ktb/vault`'s portal helpers own
+ * the device/DEK envelope lookups (portal users hold no tenant, so the
+ * tenant-bound `Vault` service cannot serve them — the repo helpers
+ * are the owner's portal surface by design).
  */
 export class PatientPortal extends Context.Service<
 	PatientPortal,
@@ -327,6 +123,10 @@ export const PatientPortalLive = Layer.effect(
 	PatientPortal,
 	Effect.gen(function* () {
 		const db = yield* Db;
+		const access = yield* PortalAccess;
+		const consultations = yield* Consultations;
+		const doctors = yield* Doctors;
+		const patients = yield* Patients;
 		const self = (path: string) =>
 			Effect.flatMap(Principal, (principal) =>
 				principal === null || principal.actorId !== undefined
@@ -335,19 +135,62 @@ export const PatientPortalLive = Layer.effect(
 			);
 		return PatientPortal.of({
 			profile: Effect.fn("PatientPortal.profile")(function* (patientId: number) {
-				const userId = yield* self("portal.read");
-				const profile = yield* Effect.promise(() => getPortalProfile(db, userId, patientId));
-				if (profile === null) return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
-				return profile;
+				yield* self("portal.read");
+				const link = yield* access.link(patientId);
+				if (link === null) return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+				const owner = yield* patients.ownerOf(patientId);
+				const doctorName = owner === null ? null : yield* doctors.displayName(owner.ownerId);
+				return {
+					patientId: link.patientId,
+					relation: link.relation,
+					name: link.name,
+					doctorName,
+				};
 			}),
 			consultations: Effect.fn("PatientPortal.consultations")(function* (patientId: number) {
-				const userId = yield* self("portal.read");
-				return yield* Effect.promise(() => listPortalConsultations(db, userId, patientId));
+				yield* self("portal.read");
+				const rows = yield* consultations.portalList(patientId);
+				return rows.flatMap(({ anamnesis, ...row }): PortalConsultationSummary[] => {
+					// T-148: a ZK row is opaque — list it with the raw envelope so the
+					// client can decrypt; the complaint derives after decrypting.
+					if (isEnvelope(anamnesis)) return [{ ...row, chiefComplaint: null, anamnesis }];
+					const parsed = parseAnamnesis(anamnesis);
+					if (parsed === null) return [];
+					return [
+						{ ...row, chiefComplaint: written(parsed.queixa_principal.content), anamnesis: null },
+					];
+				});
 			}),
 			consultation: Effect.fn("PatientPortal.consultation")(function* (id: number) {
-				const userId = yield* self("portal.read");
-				const found = yield* Effect.promise(() => getPortalConsultation(db, userId, id));
-				if (found === null) return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+				yield* self("portal.read");
+				const row = yield* consultations.portalGet(id);
+				if (row === null) return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+				// The link was just authorized inside portalGet — re-read it
+				// for the record name (and to fail on a revocation landing
+				// between the two reads).
+				const link = yield* access.link(row.patientId);
+				if (link === null) return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+				const doctorName = row.userId === null ? null : yield* doctors.displayName(row.userId);
+				const base = {
+					id: row.id,
+					createdAt: row.createdAt,
+					patientId: row.patientId,
+					patientName: link.name,
+					doctorName,
+				};
+				let consultation: PortalConsultation;
+				// T-148: a ZK row ships its envelope untouched — the portal
+				// unwraps the record DEK for the caller's device and
+				// decrypts client-side.
+				if (isEnvelope(row.anamnesis)) {
+					consultation = { ...base, sections: [], anamnesis: row.anamnesis };
+				} else {
+					const parsed = parseAnamnesis(row.anamnesis);
+					if (parsed === null) {
+						return yield* Effect.fail(new Forbidden({ path: "portal.read" }));
+					}
+					consultation = { ...base, sections: portalSections(parsed), anamnesis: null };
+				}
 				// Sensitive-read audit (P-086 feed): same `consultations.read`
 				// action the clinician detail read emits, `via: "portal"`
 				// marks the patient-facing path; tenant_id is row-authoritative.
@@ -355,16 +198,15 @@ export const PatientPortalLive = Layer.effect(
 				yield* audit({
 					action: "consultations.read",
 					targetType: "consultation",
-					targetId: found.id,
-					tenantId: found.tenantId,
-					detail: { patientId: found.patientId, via: "portal" },
+					targetId: row.id,
+					tenantId: row.tenantId,
+					detail: { patientId: row.patientId, via: "portal" },
 				});
-				const { tenantId: _tenantId, ...consultation } = found;
 				return consultation;
 			}),
 			awaitingInvites: Effect.fn("PatientPortal.awaitingInvites")(function* () {
-				const userId = yield* self("portal.read");
-				return yield* Effect.promise(() => countAwaitingInvites(db, userId));
+				yield* self("portal.read");
+				return yield* access.awaitingInvites();
 			}),
 			registerDevice: Effect.fn("PatientPortal.registerDevice")(function* (input) {
 				const userId = yield* self("portal.device");
@@ -372,16 +214,34 @@ export const PatientPortalLive = Layer.effect(
 			}),
 			dekEnvelopes: Effect.fn("PatientPortal.dekEnvelopes")(function* (input) {
 				const userId = yield* self("portal.read");
+				// The wrap pubkey must be registered to the caller — one
+				// check up front, before any record resolution.
+				const device = yield* Effect.promise(() => portalDeviceOf(db, userId, input.wrapPublicKey));
+				if (device === null) return {};
 				const out: Record<string, string> = {};
-				for (const entityId of input.entityIds) {
-					const envelope = yield* Effect.promise(() =>
-						portalDekEnvelope(db, userId, {
-							entityType: input.entityType,
-							entityId,
-							wrapPublicKey: input.wrapPublicKey,
-						}),
+				for (const rawId of input.entityIds) {
+					const entityId = Number(rawId);
+					if (!Number.isInteger(entityId)) continue;
+					let tenantId: number | null;
+					if (input.entityType === "consultation") {
+						// portalScope carries the active-link check — a
+						// consultation the caller cannot see resolves to
+						// nothing, indistinguishable from "no grant".
+						const scope = yield* consultations.portalScope(entityId);
+						if (scope === null) continue;
+						tenantId = scope.tenantId;
+					} else {
+						const owner = yield* patients.ownerOf(entityId);
+						if (owner === null || (yield* access.link(entityId)) === null) continue;
+						tenantId = owner.tenantId;
+					}
+					// entity_deks rows are tenant-owned — a personal
+					// (tenantless) record can never carry a grant.
+					if (tenantId === null) continue;
+					const dek = yield* Effect.promise(() =>
+						entityDekEnvelope(db, tenantId, input.entityType, entityId, input.wrapPublicKey),
 					);
-					if (envelope !== null) out[String(entityId)] = envelope;
+					if (dek !== null) out[String(rawId)] = dek.wrappedDek;
 				}
 				return out;
 			}),
@@ -392,8 +252,17 @@ export const PatientPortalLive = Layer.effect(
 export const patientPortalServicesPlugin = definePlugin({
 	id: "patient-portal.services",
 	meta: { keywords: ["patient-portal", "services", "patient"] },
-	// Audit resolves via serviceOption per call — the dep edge is an
-	// ordering hint only; absence of the audit plugin is legal.
+	// Every read composes another plugin's service: patient-access owns
+	// the active-link grant, consultations/patients/doctors own the
+	// record, owner and display-name reads behind it. Audit resolves via
+	// serviceOption per call — the dep edge is an ordering hint only;
+	// absence of the audit plugin is legal.
+	requiredDeps: [
+		patientAccessServicesPlugin.id,
+		consultationsServicesPlugin.id,
+		doctorsServicesPlugin.id,
+		patientsServicesPlugin.id,
+	],
 	optionalDeps: [auditServicesPlugin.id],
 	services: PatientPortalLive,
 });

@@ -7,13 +7,13 @@ import { integrityServicesPlugin } from "@ktb/integrity";
 import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { patientAccessServicesPlugin } from "@ktb/patient-access";
 import {
 	Patients,
 	patientsServicesPlugin,
 	type AdminPatientRow,
 	type OwnerOption,
 } from "@ktb/patients";
-import { patientAccessServicesPlugin } from "@ktb/patient-access";
 import { vaultServicesPlugin } from "@ktb/vault";
 import { ClipboardListIcon } from "lucide-react";
 
@@ -74,7 +74,12 @@ export {
 	finishConsultation,
 	ownsBot,
 } from "./lifecycle.ts";
-export { listAllConsultations, type AdminConsultationRow } from "./queries.ts";
+export {
+	listAllConsultations,
+	type AdminConsultationRow,
+	type PortalConsultationRow,
+	type PortalConsultationSummaryRow,
+} from "./queries.ts";
 export { Consultations, ConsultationsLive } from "./service.ts";
 export {
 	serializeAnamnesis,
@@ -103,7 +108,9 @@ export const consultationsServicesPlugin = definePlugin({
 	// serviceOption and read clinic_keys through tenantIsZk, while the
 	// views call patient-access/vault server fns (invite, portal
 	// readers, DEK envelopes, grants) that degrade to hidden/failed
-	// features when those plugins are absent.
+	// features when those plugins are absent. PortalAccess (T-141) is
+	// the same again: the portal* reads gate on the patient-access
+	// plugin's active-link port, absent → fail closed.
 	optionalDeps: [
 		auditServicesPlugin.id,
 		integrityServicesPlugin.id,
