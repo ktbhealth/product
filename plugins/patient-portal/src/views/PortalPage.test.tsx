@@ -5,15 +5,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
-		Link: ({ to, params, children, ...rest }: Record<string, unknown>) =>
-			React.createElement(
+		Link: ({ to, params, children, ...rest }: Record<string, unknown>) => {
+			const p = (params ?? {}) as {
+				instance?: string;
+				_splat?: string;
+				id?: string;
+			};
+			return React.createElement(
 				"a",
 				{
-					href: String(to).replace("$id", String((params as { id?: string } | undefined)?.id)),
+					href: String(to)
+						.replace("$instance", p.instance ?? "")
+						.replace("$id", p.id ?? "")
+						.replace(/\/\$$/, `/${p._splat ?? ""}`),
 					...rest,
 				},
 				children as never,
-			),
+			);
+		},
 	};
 });
 
