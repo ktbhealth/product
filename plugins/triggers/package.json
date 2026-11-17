@@ -9,6 +9,7 @@
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@ktb/document-store": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/platform": "workspace:*",
 		"@ktb/wizards": "workspace:*",
 		"effect": "4.1.2"
 	},

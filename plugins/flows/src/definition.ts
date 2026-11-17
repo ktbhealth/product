@@ -207,7 +207,10 @@ const assertTransition = (
 		throw new Error(`${context}: transition must be an object`);
 	}
 	const { target, guard, actions } = value;
-	if (typeof target !== "string" || !(target in states)) {
+	// hasOwn, not `in`: "constructor"/"toString" satisfy the state
+	// pattern but are Object.prototype members — `in` would accept a
+	// target/initial that was never declared.
+	if (typeof target !== "string" || !Object.hasOwn(states, target)) {
 		throw new Error(
 			`${context}: transition target ${JSON.stringify(target)} is not a declared state`,
 		);
@@ -279,7 +282,7 @@ export const assertFlowDef = (value: unknown, context: string): FlowDef => {
 			);
 		}
 	}
-	if (typeof initial !== "string" || !(initial in states)) {
+	if (typeof initial !== "string" || !Object.hasOwn(states, initial)) {
 		throw new Error(`${context}: flow "${id}" initial must name a declared state`);
 	}
 	const checkedStates: Record<string, FlowState> = {};
@@ -385,20 +388,77 @@ export const collectFlowDefinitions = (plugins: readonly Plugin[]): readonly Flo
 };
 
 /**
+ * Owner→enablement index built from the plugin registry at composition
+ * time. Enablement itself is RUNTIME state (`PluginStates`, DB-backed)
+ * — defs stay static composition data and the Flows service re-checks
+ * `def.owner` against `PluginStates.enabledIds()` on every call, so a
+ * /platform/plugins toggle takes effect without a layer rebuild (same
+ * contract as the CQRS dispatch gate in @ktb/app-host).
+ */
+export interface DefOwnerIndex {
+	/** plugin id → `pkg` stamp (`undefined` when the plugin carries none). */
+	readonly pkgById: ReadonlyMap<string, string | undefined>;
+	/** pkg → member plugin ids — packageLive needs the whole member set. */
+	readonly membersByPkg: ReadonlyMap<string, readonly string[]>;
+}
+
+/** Build the index `makeFlowDefinitions` attaches to the registry. */
+export const buildDefOwnerIndex = (plugins: readonly Plugin[]): DefOwnerIndex => {
+	const pkgById = new Map<string, string | undefined>();
+	const membersByPkg = new Map<string, string[]>();
+	for (const plugin of plugins) {
+		pkgById.set(plugin.id, plugin.pkg);
+		if (plugin.pkg !== undefined) {
+			const members = membersByPkg.get(plugin.pkg) ?? [];
+			members.push(plugin.id);
+			membersByPkg.set(plugin.pkg, members);
+		}
+	}
+	return { pkgById, membersByPkg };
+};
+
+/**
+ * Package-granular enablement for a def `owner` — mirrors
+ * `entryEnabled`/`packageLive` (@ktb/kernel): a pkg-stamped owner is
+ * live while ANY package member id is enabled; an unstamped or
+ * unindexed owner falls back to the per-id check. `owner`/`index`
+ * absent → `true`: unattributed defs (hand-built registries) cannot be
+ * gated and stay live.
+ */
+export const defOwnerEnabled = (
+	index: DefOwnerIndex | undefined,
+	owner: string | undefined,
+	enabled: ReadonlySet<string>,
+): boolean => {
+	if (owner === undefined) return true;
+	if (index === undefined || !index.pkgById.has(owner)) return enabled.has(owner);
+	const pkg = index.pkgById.get(owner);
+	if (pkg === undefined) return enabled.has(owner);
+	return (index.membersByPkg.get(pkg) ?? [owner]).some((id) => enabled.has(id));
+};
+
+/**
  * The ordered flow registry the composition root provides to the
  * `Flows` service — the layer @ktb/app-host merges into `core` next
  * to `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`/
  * `makeViewDefinitions(plugins)`/`makeApiExposures(plugins)`/
  * `makeTriggerDefinitions(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeFlowDefinitions` always populates it.
  */
 export class FlowDefinitions extends Context.Service<
 	FlowDefinitions,
-	{ readonly flows: readonly FlowDef[] }
+	{
+		readonly flows: readonly FlowDef[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/flows/FlowDefinitions") {}
 
 /** Build the `FlowDefinitions` service value for a plugin graph. */
 export const makeFlowDefinitions = (
 	plugins: readonly Plugin[],
-): { readonly flows: readonly FlowDef[] } => ({
+): { readonly flows: readonly FlowDef[]; readonly ownerIndex: DefOwnerIndex } => ({
 	flows: collectFlowDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

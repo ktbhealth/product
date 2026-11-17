@@ -26,6 +26,18 @@ import { type TriggersHooksService, type TriggerHookHandle } from "./hooks.ts";
  * binding + consumer for no v1 benefit — revisit if actions grow
  * expensive or need retries.
  *
+ * DURABILITY CONTRACT: dispatch is AT-MOST-ONCE and in-memory. Events
+ * are broadcast AFTER the write commits; a consumer fiber that is
+ * dead (layer torn down, defect escaped the per-event guard) simply
+ * loses the reactions for writes that landed while it was gone —
+ * there is no replay, no queue and no retry. Trigger defs must
+ * therefore be idempotent-safe to miss: they are conveniences
+ * (audit mirrors, denormalized fields), never the system of record.
+ * Per-event failures are caught and logged so one poison event cannot
+ * kill the consumer (see service.ts); defects in MATCHING are guarded
+ * the same way — `triggerMatches`/`evaluateCondition` run inside the
+ * per-event `catchCause`, not per-action.
+ *
  * LOOP PREVENTION: `collection-write` actions write back through
  * DocumentStore, which publishes new write events — a self-referencing
  * def would recurse forever. The cap is a cascade DEPTH, carried on
@@ -66,12 +78,23 @@ const resolveTemplate = (value: string, scope: Record<string, unknown>): unknown
 	return resolved === undefined ? value : resolved;
 };
 
+/** Prototype-polluting segments refused in mapping keys — mirrors the
+ * assertTriggerDef validation (defense-in-depth for hand-built defs
+ * that bypassed it): `out["__proto__"] = …` would hit the prototype
+ * setter instead of creating an own key. */
+const FORBIDDEN_KEY_SEGMENTS: ReadonlySet<string> = new Set([
+	"__proto__",
+	"constructor",
+	"prototype",
+]);
+
 const resolveMapping = (
 	mapping: Readonly<Record<string, string>>,
 	scope: Record<string, unknown>,
 ): Record<string, unknown> => {
 	const out: Record<string, unknown> = {};
 	for (const [key, template] of Object.entries(mapping)) {
+		if (key.split(".").some((seg) => FORBIDDEN_KEY_SEGMENTS.has(seg))) continue;
 		out[key] = resolveTemplate(template, scope);
 	}
 	return out;
@@ -156,7 +179,20 @@ export const dispatchTriggerEvent = (
 			});
 			return;
 		}
-		const matching = defs.filter((def) => triggerMatches(def, event));
+		// Matching is isolated PER DEF: `triggerMatches`/`evaluateCondition`
+		// run on untrusted def data and a defect in one def must not mask
+		// its siblings for this event (nor kill the consumer fiber — the
+		// service wraps the whole per-event dispatch in catchCause).
+		const matched = yield* Effect.forEach(defs, (def) =>
+			Effect.sync(() => triggerMatches(def, event)).pipe(
+				Effect.catchCause((cause) =>
+					Effect.logError("trigger match failed", { trigger: def.id, cause }).pipe(
+						Effect.as(false),
+					),
+				),
+			),
+		);
+		const matching = defs.filter((_, i) => matched[i] === true);
 		yield* Effect.forEach(
 			matching,
 			(def) =>

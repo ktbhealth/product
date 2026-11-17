@@ -14,6 +14,7 @@ import {
 	type DocumentStoreError,
 	type DocumentStoreShape,
 } from "@ktb/document-store";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -351,13 +352,25 @@ const permissionsStub = (allowed: boolean): PermissionsShape =>
 		invalidate: () => Effect.void,
 	}) as unknown as PermissionsShape;
 
+/** PluginStates stub — only `enabledIds` is read by the Flows gate. */
+const pluginStatesStub = (enabled: readonly string[]) =>
+	({
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set(enabled)),
+		config: () => Effect.succeed(null),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	}) as unknown as PluginStates["Service"];
+
 /** Build a Flows runtime over stub services: FlowDefinitions +
- * DocumentStore stub + optional Permissions. Uses
+ * DocumentStore stub + optional Permissions/PluginStates. Uses
  * `FlowsServicesLive` so the FlowsHooks registry is also live. */
 const flowsRuntime = (
 	defs: readonly FlowDef[],
 	store: DocumentStoreShape,
 	perms?: PermissionsShape,
+	states?: PluginStates["Service"],
 ) =>
 	ManagedRuntime.make(
 		FlowsServicesLive.pipe(
@@ -366,6 +379,7 @@ const flowsRuntime = (
 					Layer.succeed(FlowDefinitions, { flows: defs }),
 					Layer.succeed(DocumentStore, store),
 					...(perms === undefined ? [] : [Layer.succeed(Permissions, perms)]),
+					...(states === undefined ? [] : [Layer.succeed(PluginStates, states)]),
 				),
 			),
 		),
@@ -491,6 +505,158 @@ describe("FlowsLive (stub store)", () => {
 				}),
 			);
 			expect(result.to).toBe("review");
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("gates currentState/canTransition on def.permission (fail closed)", async () => {
+		const { shape, calls } = storeStub([stubRecord(1, { status: "draft" })]);
+		const runtime = flowsRuntime([GATED], shape, permissionsStub(false));
+		try {
+			const input = { flow: "gated-flow", collection: "test.docs", id: 1 };
+			const info = await runtime.runPromise(Effect.flatMap(Flows, (f) => f.currentState(input)));
+			expect(info).toBeNull();
+			const can = await runtime.runPromise(
+				Effect.flatMap(Flows, (f) => f.canTransition({ ...input, event: "submit" })),
+			);
+			expect(can).toBe(false);
+			// denied before any store read — same "learns nothing" contract
+			expect(calls.filter((c) => c.method === "get")).toHaveLength(0);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("lets permission'd flows through currentState/canTransition when granted", async () => {
+		const { shape } = storeStub([stubRecord(1, { status: "draft" })]);
+		const runtime = flowsRuntime([GATED], shape, permissionsStub(true));
+		try {
+			const input = { flow: "gated-flow", collection: "test.docs", id: 1 };
+			const info = await runtime.runPromise(Effect.flatMap(Flows, (f) => f.currentState(input)));
+			expect(info?.state).toBe("draft");
+			const can = await runtime.runPromise(
+				Effect.flatMap(Flows, (f) => f.canTransition({ ...input, event: "submit" })),
+			);
+			expect(can).toBe(true);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("treats defs owned by disabled plugins as UnknownFlow everywhere", async () => {
+		const owned = { ...FLOW, id: "owned-flow", owner: "plugin.off" } as FlowDef;
+		const { shape, calls } = storeStub([stubRecord(1, { status: "draft", ready: true })]);
+		const runtime = flowsRuntime([owned], shape, undefined, pluginStatesStub(["other.plugin"]));
+		try {
+			const input = { flow: "owned-flow", collection: "test.docs", id: 1, event: "submit" };
+			const error = await runtime.runPromise(
+				Effect.gen(function* () {
+					const flows = yield* Flows;
+					return yield* flows.transition(input).pipe(Effect.flip);
+				}),
+			);
+			expect(error._tag).toBe("UnknownFlow");
+			const info = await runtime.runPromise(
+				Effect.flatMap(Flows, (f) => f.currentState({ ...input })),
+			);
+			expect(info).toBeNull();
+			const can = await runtime.runPromise(Effect.flatMap(Flows, (f) => f.canTransition(input)));
+			expect(can).toBe(false);
+			expect(calls.filter((c) => c.method === "update")).toHaveLength(0);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("serves defs whose owner plugin is enabled", async () => {
+		const owned = { ...FLOW, id: "owned-flow", owner: "plugin.on" } as FlowDef;
+		const { shape } = storeStub([stubRecord(1, { status: "draft", ready: true })]);
+		const runtime = flowsRuntime([owned], shape, undefined, pluginStatesStub(["plugin.on"]));
+		try {
+			const result = await runtime.runPromise(
+				Effect.gen(function* () {
+					const flows = yield* Flows;
+					return yield* flows.transition({
+						flow: "owned-flow",
+						collection: "test.docs",
+						id: 1,
+						event: "submit",
+					});
+				}),
+			);
+			expect(result.to).toBe("review");
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("skips store.update on a no-op self-loop transition", async () => {
+		const LOOP = defineFlow({
+			id: "loop-flow",
+			collection: "test.docs",
+			stateField: "status",
+			initial: "a",
+			states: { a: { on: { ping: { target: "a" } } } },
+		});
+		const { shape, calls } = storeStub([stubRecord(1, { status: "a", note: "same" })]);
+		const runtime = flowsRuntime([LOOP], shape);
+		try {
+			const result = await runtime.runPromise(
+				Effect.gen(function* () {
+					const flows = yield* Flows;
+					return yield* flows.transition({
+						flow: "loop-flow",
+						collection: "test.docs",
+						id: 1,
+						event: "ping",
+					});
+				}),
+			);
+			expect(result.from).toBe("a");
+			expect(result.to).toBe("a");
+			// read + re-check read happened, but NO write — no updated_at
+			// bump and no record-written event for triggers to see.
+			expect(calls.filter((c) => c.method === "update")).toHaveLength(0);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("still writes a self-loop that changes fields", async () => {
+		const LOOP = defineFlow({
+			id: "loop-write",
+			collection: "test.docs",
+			stateField: "status",
+			initial: "a",
+			states: {
+				a: {
+					on: {
+						ping: {
+							target: "a",
+							actions: [{ kind: "set-field", field: "note", value: "$event.note" }],
+						},
+					},
+				},
+			},
+		});
+		const { shape, calls } = storeStub([stubRecord(1, { status: "a", note: "old" })]);
+		const runtime = flowsRuntime([LOOP], shape);
+		try {
+			const result = await runtime.runPromise(
+				Effect.gen(function* () {
+					const flows = yield* Flows;
+					return yield* flows.transition({
+						flow: "loop-write",
+						collection: "test.docs",
+						id: 1,
+						event: "ping",
+						payload: { note: "new" },
+					});
+				}),
+			);
+			expect(result.to).toBe("a");
+			expect(calls.filter((c) => c.method === "update")).toHaveLength(1);
 		} finally {
 			await runtime.dispose();
 		}

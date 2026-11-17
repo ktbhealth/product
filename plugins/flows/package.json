@@ -9,6 +9,7 @@
 	"dependencies": {
 		"@ktb/document-store": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/platform": "workspace:*",
 		"@ktb/rbac": "workspace:*",
 		"@ktb/rbac-plugin": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

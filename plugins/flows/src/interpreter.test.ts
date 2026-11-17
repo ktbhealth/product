@@ -146,6 +146,48 @@ describe("resolveTransition", () => {
 		const res = resolveTransition(def, { status: "review" }, "approve");
 		expect(res).toMatchObject({ ok: true, from: "review", to: "published" });
 	});
+
+	it("never resolves prototype-chain members as states or events", () => {
+		// "constructor"/"toString" satisfy FLOW_STATE_PATTERN/FLOW_EVENT_PATTERN
+		// but are Object.prototype members — hasOwn must read them as
+		// undeclared, never as inherited transitions.
+		for (const event of ["constructor", "toString", "hasOwnProperty", "valueOf"]) {
+			const res = resolveTransition(def, { status: "draft", ready: true }, event);
+			expect(res).toMatchObject({ ok: false, reason: "no-transition", state: "draft" });
+		}
+		// "__proto__" fails FLOW_EVENT_PATTERN outright.
+		expect(resolveTransition(def, { status: "draft" }, "__proto__")).toMatchObject({
+			ok: false,
+			reason: "no-transition",
+		});
+		// A stored state naming a prototype member is unknown-state, not a hit.
+		for (const state of ["constructor", "toString", "__proto__"]) {
+			const res = resolveTransition(def, { status: state }, "submit");
+			expect(res).toMatchObject({ ok: false, reason: "unknown-state" });
+		}
+	});
+
+	it("still allows 'constructor' as a DECLARED event name", () => {
+		const weird = defineFlow({
+			id: "proto-names",
+			collection: "c",
+			stateField: "s",
+			initial: "a",
+			states: {
+				a: { on: { constructor: { target: "b" } } },
+				b: {},
+			},
+		});
+		const res = resolveTransition(weird, { s: "a" }, "constructor");
+		expect(res).toMatchObject({ ok: true, from: "a", to: "b" });
+	});
+
+	it("rejects event names outside FLOW_EVENT_PATTERN", () => {
+		for (const event of ["", "bad event!", "a/b", "x".repeat(200)]) {
+			const res = resolveTransition(def, { status: "draft", ready: true }, event);
+			expect(res).toMatchObject({ ok: false, reason: "no-transition" });
+		}
+	});
 });
 
 describe("resolveTemplate", () => {

@@ -107,6 +107,19 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const HOOK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
+/** Prototype-polluting path segments — refused in mapping keys for
+ * hygiene (same list the flows/views field-path validators use). A
+ * `"__proto__"` mapping key would hit the Object.prototype setter when
+ * the runner folds templates into the write payload. */
+const FORBIDDEN_KEY_SEGMENTS: ReadonlySet<string> = new Set([
+	"__proto__",
+	"constructor",
+	"prototype",
+]);
+
+const hasForbiddenKeySegment = (key: string): boolean =>
+	key.split(".").some((seg) => FORBIDDEN_KEY_SEGMENTS.has(seg));
+
 const assertAction = (value: unknown, context: string): TriggerAction => {
 	if (!isRecord(value)) {
 		throw new Error(`${context}: trigger action must be an object`);
@@ -120,6 +133,11 @@ const assertAction = (value: unknown, context: string): TriggerAction => {
 			throw new Error(`${context}: collection-write mapping must be an object`);
 		}
 		for (const [key, template] of Object.entries(mapping)) {
+			if (hasForbiddenKeySegment(key)) {
+				throw new Error(
+					`${context}: collection-write mapping key ${JSON.stringify(key)} uses a forbidden path segment`,
+				);
+			}
 			if (typeof template !== "string") {
 				throw new Error(`${context}: collection-write mapping "${key}" must be a template string`);
 			}
@@ -252,19 +270,77 @@ export const collectTriggerDefinitions = (plugins: readonly Plugin[]): readonly 
 };
 
 /**
+ * Owner→enablement index built from the plugin registry at composition
+ * time. Enablement itself is RUNTIME state (`PluginStates`, DB-backed)
+ * — defs stay static composition data and the Triggers service
+ * re-checks each def's `owner` against `PluginStates.enabledIds()` on
+ * every dispatched event, so a /platform/plugins toggle takes effect
+ * without a layer rebuild (same contract as the CQRS dispatch gate in
+ * @ktb/app-host).
+ */
+export interface DefOwnerIndex {
+	/** plugin id → `pkg` stamp (`undefined` when the plugin carries none). */
+	readonly pkgById: ReadonlyMap<string, string | undefined>;
+	/** pkg → member plugin ids — packageLive needs the whole member set. */
+	readonly membersByPkg: ReadonlyMap<string, readonly string[]>;
+}
+
+/** Build the index `makeTriggerDefinitions` attaches to the registry. */
+export const buildDefOwnerIndex = (plugins: readonly Plugin[]): DefOwnerIndex => {
+	const pkgById = new Map<string, string | undefined>();
+	const membersByPkg = new Map<string, string[]>();
+	for (const plugin of plugins) {
+		pkgById.set(plugin.id, plugin.pkg);
+		if (plugin.pkg !== undefined) {
+			const members = membersByPkg.get(plugin.pkg) ?? [];
+			members.push(plugin.id);
+			membersByPkg.set(plugin.pkg, members);
+		}
+	}
+	return { pkgById, membersByPkg };
+};
+
+/**
+ * Package-granular enablement for a def `owner` — mirrors
+ * `entryEnabled`/`packageLive` (@ktb/kernel): a pkg-stamped owner is
+ * live while ANY package member id is enabled; an unstamped or
+ * unindexed owner falls back to the per-id check. `owner`/`index`
+ * absent → `true`: unattributed defs (hand-built registries) cannot be
+ * gated and stay live.
+ */
+export const defOwnerEnabled = (
+	index: DefOwnerIndex | undefined,
+	owner: string | undefined,
+	enabled: ReadonlySet<string>,
+): boolean => {
+	if (owner === undefined) return true;
+	if (index === undefined || !index.pkgById.has(owner)) return enabled.has(owner);
+	const pkg = index.pkgById.get(owner);
+	if (pkg === undefined) return enabled.has(owner);
+	return (index.membersByPkg.get(pkg) ?? [owner]).some((id) => enabled.has(id));
+};
+
+/**
  * The ordered trigger registry the composition root provides to the
  * `Triggers` service — the layer @ktb/app-host merges into `core` next
  * to `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`/
  * `makeViewDefinitions(plugins)`/`makeApiExposures(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeTriggerDefinitions` always populates it.
  */
 export class TriggerDefinitions extends Context.Service<
 	TriggerDefinitions,
-	{ readonly triggers: readonly TriggerDef[] }
+	{
+		readonly triggers: readonly TriggerDef[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/triggers/TriggerDefinitions") {}
 
 /** Build the `TriggerDefinitions` service value for a plugin graph. */
 export const makeTriggerDefinitions = (
 	plugins: readonly Plugin[],
-): { readonly triggers: readonly TriggerDef[] } => ({
+): { readonly triggers: readonly TriggerDef[]; readonly ownerIndex: DefOwnerIndex } => ({
 	triggers: collectTriggerDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

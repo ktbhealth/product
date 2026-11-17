@@ -6,9 +6,10 @@ import * as Option from "effect/Option";
 
 import type { DocumentRecord, DocumentStoreError } from "@ktb/document-store";
 import { DocumentStore } from "@ktb/document-store";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
 
-import { FlowDefinitions, type FlowDef } from "./definition.ts";
+import { defOwnerEnabled, FlowDefinitions, type FlowDef } from "./definition.ts";
 import { FlowsHooks, FlowsHooksLive, type FlowHookHandle } from "./hooks.ts";
 import { currentState, planWrites, resolveTransition } from "./interpreter.ts";
 
@@ -44,9 +45,24 @@ import { currentState, planWrites, resolveTransition } from "./interpreter.ts";
  * 6. ONE `store.update` carries every `set-field` action plus the
  *    `stateField` write (see ./interpreter.ts `planWrites`) — the
  *    state change and its side effects commit atomically.
- * 7. `hook` actions run AFTER the commit, in declaration order.
- *    Failures (including `UnknownFlowHook`) are logged and isolated —
- *    a hook can never roll back a committed transition.
+ * 7. `hook` actions run AFTER the commit, in declaration order, each
+ *    bounded by {@link FLOW_HOOK_TIMEOUT}. Failures (including
+ *    `UnknownFlowHook` and timeouts) are logged and isolated — a hook
+ *    can never roll back a committed transition.
+ *
+ * ENABLEMENT: defs are static composition data collected from the FULL
+ * registry; enablement is runtime state. Every call re-reads
+ * `PluginStates.enabledIds()` (optional port — absent service means
+ * "no gate", same convention as `Permissions`) and treats a def whose
+ * `owner` plugin/package is disabled as `UnknownFlow` — a disabled
+ * plugin's flows are invisible to every entry point, and a
+ * /platform/plugins toggle applies without a layer rebuild.
+ *
+ * NO-OP TRANSITIONS: when the resolved transition is a self-loop
+ * (`to === from`) AND the write plan is empty, `store.update` is
+ * skipped entirely — no `updated_at` bump, no write event for
+ * triggers to react to. Declared `hook` actions still run (they are
+ * part of the transition, not of the write) against the fresh record.
  */
 
 /** Which document a flow call targets. `collection` must equal the
@@ -133,17 +149,21 @@ export type FlowError =
 	| FlowPermissionDenied;
 
 export interface FlowsShape {
-	/** Every collected flow def (topo order) — introspection/tooling. */
+	/** Every collected flow def (topo order) — introspection/tooling.
+	 * UNFILTERED: includes defs whose owner plugin is currently
+	 * disabled (enablement gates the operations below, not this list —
+	 * it is synchronous and cannot await `PluginStates`). */
 	readonly defs: readonly FlowDef[];
 	/** The document's current state: stored `stateField` value, else
-	 * `def.initial`. `null` for unknown flows and missing/invisible
-	 * records. */
+	 * `def.initial`. `null` for unknown/disabled flows, denied
+	 * permission and missing/invisible records. */
 	readonly currentState: (
 		input: FlowTargetInput,
 	) => Effect.Effect<FlowStateInfo | null, DocumentStoreError>;
 	/** Would `event` resolve to a transition right now? `false` for
-	 * unknown flows, missing records and every illegal transition —
-	 * never throws on legality, only on store failures. */
+	 * unknown/disabled flows, missing records, denied permission and
+	 * every illegal transition — never throws on legality, only on
+	 * store failures. */
 	readonly canTransition: (input: FlowEventInput) => Effect.Effect<boolean, DocumentStoreError>;
 	/** Resolve + commit a transition (see the module doc for the full
 	 * contract). */
@@ -153,6 +173,12 @@ export interface FlowsShape {
 }
 
 export class Flows extends Context.Service<Flows, FlowsShape>()("@ktb/flows/Flows") {}
+
+/** Post-commit hook bound — a hung handler must not pin the
+ * transition's fiber forever (the write already committed; the hook
+ * is best-effort). Same order of magnitude as other in-process
+ * timeout conventions in the repo. */
+const FLOW_HOOK_TIMEOUT = "30 seconds";
 
 export const FlowsLive = Layer.effect(
 	Flows,
@@ -164,17 +190,31 @@ export const FlowsLive = Layer.effect(
 		// disabled or ordered later): a def declaring `permission`
 		// fails closed without it — same contract as @ktb/api exposures.
 		const permissions = yield* Effect.serviceOption(Permissions);
+		// PluginStates is likewise an OPTIONAL port: when bound, defs
+		// owned by disabled plugins/packages resolve as UnknownFlow on
+		// every call (runtime enablement — see the module doc).
+		const pluginStates = yield* Effect.serviceOption(PluginStates);
 
 		const byId = new Map(registry.flows.map((def) => [def.id, def] as const));
 
-		/** Def lookup + collection match — one indistinguishable
-		 * `UnknownFlow` for both failure modes. */
-		const resolveDef = (input: FlowTargetInput): Effect.Effect<FlowDef, UnknownFlow> => {
-			const def = byId.get(input.flow);
-			return def !== undefined && def.collection === input.collection
-				? Effect.succeed(def)
-				: Effect.fail(new UnknownFlow({ flow: input.flow, collection: input.collection }));
-		};
+		/** Def lookup + collection match + owner enablement — one
+		 * indistinguishable `UnknownFlow` for all failure modes (a
+		 * disabled plugin's flow is invisible, not an error). */
+		const resolveDef = (input: FlowTargetInput): Effect.Effect<FlowDef, UnknownFlow> =>
+			Effect.gen(function* () {
+				const def = byId.get(input.flow);
+				const unknown = new UnknownFlow({ flow: input.flow, collection: input.collection });
+				if (def === undefined || def.collection !== input.collection) {
+					return yield* Effect.fail(unknown);
+				}
+				if (Option.isSome(pluginStates)) {
+					const enabled = yield* pluginStates.value.enabledIds();
+					if (!defOwnerEnabled(registry.ownerIndex, def.owner, enabled)) {
+						return yield* Effect.fail(unknown);
+					}
+				}
+				return def;
+			});
 
 		/** Optional permission gate — checked before any store read so a
 		 * denied caller learns nothing about the record. */
@@ -227,6 +267,9 @@ export const FlowsLive = Layer.effect(
 			currentState: (input) =>
 				Effect.gen(function* () {
 					const def = yield* resolveDef(input);
+					// Same permission gate as transition — a denied caller
+					// learns nothing, not even the state (fail closed).
+					yield* authorize(def);
 					const record = yield* store.get(def.collection, input.id);
 					if (record === null) return null;
 					return {
@@ -235,14 +278,19 @@ export const FlowsLive = Layer.effect(
 						record,
 					};
 				}).pipe(
-					// UnknownFlow/missing record collapse to null — same
-					// "not visible" contract as the store's scoped reads.
+					// UnknownFlow/missing record/denied permission collapse
+					// to null — same "not visible" contract as the store's
+					// scoped reads.
 					Effect.catchTag("UnknownFlow", () => Effect.succeed(null)),
+					Effect.catchTag("FlowPermissionDenied", () => Effect.succeed(null)),
 				),
 
 			canTransition: (input) =>
 				Effect.gen(function* () {
 					const def = yield* resolveDef(input);
+					// Same permission gate as transition — denied reads as
+					// "not transitionable" (fail closed).
+					yield* authorize(def);
 					const record = yield* store.get(def.collection, input.id);
 					if (record === null) return false;
 					return resolveTransition(
@@ -252,10 +300,11 @@ export const FlowsLive = Layer.effect(
 						input.payload,
 					).ok;
 				}).pipe(
-					// UnknownFlow is a caller bug surfaced as "not
-					// transitionable" — canTransition never fails on
+					// UnknownFlow/denied permission is a caller-visible
+					// "not transitionable" — canTransition never fails on
 					// legality, only on store errors.
 					Effect.catchTag("UnknownFlow", () => Effect.succeed(false)),
+					Effect.catchTag("FlowPermissionDenied", () => Effect.succeed(false)),
 				),
 
 			transition: (input) =>
@@ -307,8 +356,16 @@ export const FlowsLive = Layer.effect(
 						);
 					}
 					const plan = planWrites(def, fresh.data as Record<string, unknown>, freshResolution);
-					const updated = yield* store.update(def.collection, input.id, plan.patch);
-					// Post-commit hooks: ordered, isolated, never fatal.
+					// No-op self-loop: `to === from` AND an empty patch means
+					// the write would change nothing — skip store.update so
+					// no updated_at bump and no record-written event fires
+					// for triggers to react to. (A self-loop that DOES
+					// write fields, or the first transition persisting
+					// `initial` into an unset stateField, still commits.)
+					const noop = resolution.to === resolution.from && Object.keys(plan.patch).length === 0;
+					const updated = noop ? fresh : yield* store.update(def.collection, input.id, plan.patch);
+					// Post-commit hooks: ordered, isolated, never fatal,
+					// each bounded by FLOW_HOOK_TIMEOUT.
 					yield* Effect.forEach(
 						plan.hookIds,
 						(hookId) => {
@@ -320,6 +377,7 @@ export const FlowsLive = Layer.effect(
 								to: resolution.to,
 							};
 							return hooks.invoke(hookId, handle).pipe(
+								Effect.timeout(FLOW_HOOK_TIMEOUT),
 								Effect.catchCause((cause) =>
 									Effect.logError("flow hook failed", {
 										flow: def.id,

@@ -6,6 +6,7 @@ import type { Json } from "effect/Schema";
 
 import { ensureSessionUser, runAs } from "@ktb/server-fns";
 
+import { FLOW_EVENT_PATTERN } from "./definition.ts";
 import { Flows, type FlowEventInput, type FlowTargetInput } from "./service.ts";
 
 export type { FlowEventInput, FlowTargetInput };
@@ -53,7 +54,12 @@ const EventInput = Schema.Struct({
 	flow: Schema.String,
 	collection: Schema.String,
 	id: Schema.Number,
-	event: Schema.String,
+	// Wire-level event names are untrusted: only names matching the
+	// flow grammar reach the service ("__proto__"-style names are
+	// rejected here; "constructor" stays legal — it must be DECLARED
+	// in the def's `on` map to do anything, enforced interpreter-side
+	// via Object.hasOwn).
+	event: Schema.String.check(Schema.isPattern(FLOW_EVENT_PATTERN)),
 	payload: Schema.optionalKey(Schema.Unknown),
 });
 

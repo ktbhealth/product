@@ -527,22 +527,28 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// View-definition registry (view.def contributions): same
 	// composition-time collection as DocumentCollections — the
 	// @ktb/views service layer consumes it via `ViewDefinitions`.
-	// Enablement is likewise ignored: defs are static composition data.
+	// Enablement is NOT filtered here: defs are static composition
+	// data and the Views service re-checks each def's owner against
+	// PluginStates.enabledIds() per request.
 	const ViewDefinitionsLive = Layer.succeed(ViewDefinitions, makeViewDefinitions(plugins));
 	// Api-exposure registry (api.expose contributions): same
 	// composition-time collection — the @ktb/api service layer consumes
-	// it via `ApiExposures`. Enablement is likewise ignored: exposures
-	// are static composition data.
+	// it via `ApiExposures`. Enablement is likewise enforced at request
+	// time inside the Api service, not at composition.
 	const ApiExposuresLive = Layer.succeed(ApiExposures, makeApiExposures(plugins));
 	// Trigger-definition registry (trigger.def contributions): same
 	// composition-time collection — the @ktb/triggers service layer
-	// consumes it via `TriggerDefinitions`. Enablement is likewise
-	// ignored: defs are static composition data.
+	// consumes it via `TriggerDefinitions` (which also carries the
+	// owner→pkg enablement index built here). Enablement is NOT
+	// filtered at composition: the Triggers service re-checks each
+	// def's owner against PluginStates.enabledIds() per dispatch, so
+	// toggles apply without a layer rebuild.
 	const TriggerDefinitionsLive = Layer.succeed(TriggerDefinitions, makeTriggerDefinitions(plugins));
 	// Flow-definition registry (flow.def contributions): same
 	// composition-time collection — the @ktb/flows service layer
-	// consumes it via `FlowDefinitions`. Enablement is likewise
-	// ignored: defs are static composition data.
+	// consumes it via `FlowDefinitions` (with the same owner→pkg
+	// enablement index). Enablement is likewise enforced at request
+	// time inside the Flows service, not here.
 	const FlowDefinitionsLive = Layer.succeed(FlowDefinitions, makeFlowDefinitions(plugins));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When

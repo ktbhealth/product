@@ -16,9 +16,12 @@ import type { FlowDef } from "./definition.ts";
  * Mirrors `WizardHooks`/`TriggersHooks`: same mutable-registry
  * pattern, same trust contract. Handlers receive the transitioned
  * record and the caller-supplied event payload as UNTRUSTED input —
- * `handle.event.payload` is user-controlled data, so handlers must
- * validate what they consume and scope any writes to the record's
- * `ownerId`/`tenantId` attribution (or their own tenancy rules).
+ * `handle.record.data` is user-controlled record content and
+ * `handle.event.payload` is user-controlled transition input (the
+ * event NAME is grammar-checked, the payload is not), so handlers
+ * must validate what they consume and scope any writes to the
+ * record's `ownerId`/`tenantId` attribution (or their own tenancy
+ * rules).
  * Registering a hook is a composition-time act: do it inside the
  * plugin's services layer (`yield* FlowsHooks` then `register`),
  * never per-request. Hook failures are logged and isolated by the

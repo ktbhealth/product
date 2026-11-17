@@ -1,6 +1,11 @@
 import { evaluateCondition, resolveAnswerPath } from "@ktb/wizards/condition";
 
-import type { FlowAction, FlowDef, FlowTransition } from "./definition.ts";
+import {
+	FLOW_EVENT_PATTERN,
+	type FlowAction,
+	type FlowDef,
+	type FlowTransition,
+} from "./definition.ts";
 
 /**
  * Flow interpreter — the PURE half of the runtime. Everything here is
@@ -88,11 +93,19 @@ export type TransitionResolution =
  * Pure and total: every non-transition outcome is a typed
  * {@link TransitionResolution} failure, never a throw.
  *
- * Order of checks: stored state must be a DECLARED state (a stateField
+ * Order of checks: the event name must match {@link FLOW_EVENT_PATTERN}
+ * (wire input is untrusted — anything else is `no-transition` before any
+ * lookup) → stored state must be a DECLARED state (a stateField
  * holding an undeclared/garbage value is `unknown-state`, not a silent
  * fallback to `initial` — only absent/empty falls back) → the state
  * must declare `on.<event>` (`no-transition`) → the transition's
  * optional `guard` must hold over the scope (`guard-failed`).
+ *
+ * All object lookups use `Object.hasOwn`, never `in`/bare indexing:
+ * event names like `"constructor"` are LEGAL (`FLOW_EVENT_PATTERN`
+ * admits them) and state names like `"toString"` can arrive via
+ * document data — a prototype-chain hit must read as "not declared",
+ * not as an inherited member.
  */
 export const resolveTransition = (
 	def: FlowDef,
@@ -103,11 +116,22 @@ export const resolveTransition = (
 	const stored = readState(def, data);
 	const state = stored ?? def.initial;
 	const scope = transitionScope(def, data, payload);
-	const stateDef = def.states[state];
+	// Wire-level event names are untrusted: reject anything outside the
+	// def grammar before touching the state machine (also keeps
+	// "__proto__"-style names — illegal per the pattern — away from the
+	// `on` lookup entirely).
+	if (!FLOW_EVENT_PATTERN.test(event)) {
+		return { ok: false, reason: "no-transition", state, event };
+	}
+	const stateDef = Object.hasOwn(def.states, state) ? def.states[state] : undefined;
 	if (stateDef === undefined) {
 		return { ok: false, reason: "unknown-state", state: stored, event };
 	}
-	const transition = stateDef.on?.[event];
+	const on = stateDef.on;
+	// hasOwn, not `on[event]`: "constructor"/"toString" are legal event
+	// names and must only match DECLARED handlers — an inherited
+	// Object.prototype member is not a transition.
+	const transition = on !== undefined && Object.hasOwn(on, event) ? on[event] : undefined;
 	if (transition === undefined) {
 		return { ok: false, reason: "no-transition", state, event };
 	}
@@ -222,5 +246,8 @@ const jsonEquals = (a: unknown, b: unknown): boolean => {
 	const rb = b as Record<string, unknown>;
 	const ka = Object.keys(ra);
 	const kb = Object.keys(rb);
-	return ka.length === kb.length && ka.every((key) => key in rb && jsonEquals(ra[key], rb[key]));
+	return (
+		ka.length === kb.length &&
+		ka.every((key) => Object.hasOwn(rb, key) && jsonEquals(ra[key], rb[key]))
+	);
 };

@@ -15,7 +15,8 @@ export {
 	generateRecord,
 	DEFAULT_MAX_DEPTH,
 	DEFAULT_MAX_NODES,
+	MAX_GENERATE_MANY,
 } from "./generate.ts";
 export type { GenerateOptions } from "./generate.ts";
 export { poolsFor, type LocalePools } from "./pools.ts";
-export { generateFromPattern } from "./pattern.ts";
+export { generateFromPattern, patternHasUnsafeRepetition } from "./pattern.ts";
