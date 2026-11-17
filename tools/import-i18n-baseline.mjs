@@ -71,7 +71,7 @@ for (const file of readdirSync(messagesDir).filter((f) => f.endsWith(".json"))) 
 // I18N_NAMESPACE + i18nMessagesFor(locale) → flat string record.
 const pluginsDir = join(root, "plugins");
 const pluginWarnings = [];
-for (const dir of readdirSync(pluginsDir)) {
+for (const dir of readdirSync(pluginsDir).sort()) {
 	const file = join(pluginsDir, dir, "src/i18n.ts");
 	if (!existsSync(file)) continue;
 	const mod = await import(pathToFileURL(file).href);

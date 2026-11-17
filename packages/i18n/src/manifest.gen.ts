@@ -955,1361 +955,6 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
-	jobs: {
-		label: {
-			params: [],
-		},
-		activeCount: {
-			params: [
-				{
-					name: "n",
-				},
-			],
-			template: "{n} active",
-		},
-		emptyFilteredTitle: {
-			params: [],
-		},
-		emptyFilteredDescription: {
-			params: [],
-		},
-		emptyAllTitle: {
-			params: [],
-		},
-		emptyAllDescription: {
-			params: [],
-		},
-		openConsultations: {
-			params: [],
-		},
-		jobTitle: {
-			params: [],
-		},
-		consultationRef: {
-			params: [
-				{
-					name: "id",
-				},
-			],
-			template: "consultation #{id}",
-		},
-		title: {
-			params: [],
-		},
-		description: {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template:
-				"{n, plural, =1{{n} audio pipeline job tracked.} other{{n} audio pipeline jobs tracked.}}",
-		},
-		jobsTitle: {
-			params: [],
-		},
-		jobsDescription: {
-			params: [],
-		},
-		colConsultation: {
-			params: [],
-		},
-		colPatient: {
-			params: [],
-		},
-		colStatus: {
-			params: [],
-		},
-		colError: {
-			params: [],
-		},
-		colCreated: {
-			params: [],
-		},
-		colActions: {
-			params: [],
-		},
-		noPatient: {
-			params: [],
-		},
-		emptyJobsTitle: {
-			params: [],
-		},
-		emptyJobsDescription: {
-			params: [],
-		},
-		unavailableTitle: {
-			params: [],
-		},
-		unavailableDescription: {
-			params: [],
-		},
-		searchPlaceholder: {
-			params: [],
-		},
-		searchLabel: {
-			params: [],
-		},
-		noMatch: {
-			params: [],
-		},
-		statusStored: {
-			params: [],
-		},
-		statusQueued: {
-			params: [],
-		},
-		statusProcessing: {
-			params: [],
-		},
-		statusDone: {
-			params: [],
-		},
-		statusFailed: {
-			params: [],
-		},
-		retry: {
-			params: [],
-		},
-		retryTitle: {
-			params: [],
-		},
-		retryDescription: {
-			params: [
-				{
-					name: "ref",
-				},
-			],
-			template:
-				"Re-enqueue the transcription job for {ref}. The stored recording is transcribed again.",
-		},
-		retryConfirm: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		retryError: {
-			params: [],
-		},
-		queueTitle: {
-			params: [],
-		},
-		queueDescription: {
-			params: [],
-		},
-		queuePending: {
-			params: [],
-		},
-		queueProcessing: {
-			params: [],
-		},
-		queueDone: {
-			params: [],
-		},
-		queueFailed: {
-			params: [],
-		},
-		storageTitle: {
-			params: [],
-		},
-		storageDescription: {
-			params: [],
-		},
-		storageObjects: {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template: "{n, plural, =1{{n} object} other{{n} objects}}",
-		},
-		storageTruncated: {
-			params: [],
-		},
-		webhooksTitle: {
-			params: [],
-		},
-		webhooksDescription: {
-			params: [],
-		},
-		webhooksUnavailable: {
-			params: [],
-		},
-	},
-	portal: {
-		switcherLabel: {
-			params: [],
-		},
-		overview: {
-			params: [],
-		},
-		backToApp: {
-			params: [],
-		},
-		signOut: {
-			params: [],
-		},
-		userFallback: {
-			params: [],
-		},
-	},
-	rbac: {
-		title: {
-			params: [],
-		},
-		subtitle: {
-			params: [],
-		},
-		rolesTitle: {
-			params: [],
-		},
-		rolesEmpty: {
-			params: [],
-		},
-		newRole: {
-			params: [],
-		},
-		roleName: {
-			params: [],
-		},
-		roleDescription: {
-			params: [],
-		},
-		createRole: {
-			params: [],
-		},
-		deleteRole: {
-			params: [],
-		},
-		colActions: {
-			params: [],
-		},
-		editRole: {
-			params: [],
-		},
-		editRoleTitle: {
-			params: [],
-		},
-		editRoleSubmit: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		roleMeta: {
-			params: [],
-		},
-		metaPlaceholder: {
-			params: [],
-		},
-		deleteRoleTitle: {
-			params: [],
-		},
-		deleteRoleDescription: {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template:
-				"Delete “{name}”? This removes the role, its permission grants, and all of its assignments.",
-		},
-		unassignTitle: {
-			params: [],
-		},
-		unassignDescription: {
-			params: [
-				{
-					name: "subjectId",
-				},
-				{
-					name: "roleName",
-				},
-			],
-			template: "Remove {subjectId} from the “{roleName}” role?",
-		},
-		permissionsTitle: {
-			params: [],
-		},
-		matrixEmpty: {
-			params: [],
-		},
-		colPermission: {
-			params: [],
-		},
-		colEffect: {
-			params: [],
-		},
-		effectNone: {
-			params: [],
-		},
-		effectAllow: {
-			params: [],
-		},
-		effectDeny: {
-			params: [],
-		},
-		assignmentsTitle: {
-			params: [],
-		},
-		assignmentsEmpty: {
-			params: [],
-		},
-		colSubject: {
-			params: [],
-		},
-		colSubjectId: {
-			params: [],
-		},
-		colRole: {
-			params: [],
-		},
-		colTenant: {
-			params: [],
-		},
-		colExpires: {
-			params: [],
-		},
-		colGrantedBy: {
-			params: [],
-		},
-		globalTenant: {
-			params: [],
-		},
-		neverExpires: {
-			params: [],
-		},
-		assignSubject: {
-			params: [],
-		},
-		subjectKind: {
-			params: [],
-		},
-		subjectId: {
-			params: [],
-		},
-		tenantId: {
-			params: [],
-		},
-		expiresAt: {
-			params: [],
-		},
-		unassign: {
-			params: [],
-		},
-		saveError: {
-			params: [],
-		},
-		selectRole: {
-			params: [],
-		},
-	},
-	doctors: {
-		selectTitle: {
-			params: [],
-		},
-		selectDescription: {
-			params: [],
-		},
-		roleOwner: {
-			params: [],
-		},
-		roleSecretary: {
-			params: [],
-		},
-		current: {
-			params: [],
-		},
-		choose: {
-			params: [],
-		},
-		error: {
-			params: [],
-		},
-	},
-	pages: {
-		title: {
-			params: [],
-		},
-		description: {
-			params: [],
-		},
-		newPage: {
-			params: [],
-		},
-		edit: {
-			params: [],
-		},
-		view: {
-			params: [],
-		},
-		delete: {
-			params: [],
-		},
-		save: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		create: {
-			params: [],
-		},
-		saving: {
-			params: [],
-		},
-		emptyTitle: {
-			params: [],
-		},
-		emptyDescription: {
-			params: [],
-		},
-		colPath: {
-			params: [],
-		},
-		colTitle: {
-			params: [],
-		},
-		colStatus: {
-			params: [],
-		},
-		colNav: {
-			params: [],
-		},
-		colOrder: {
-			params: [],
-		},
-		colActions: {
-			params: [],
-		},
-		statusPublished: {
-			params: [],
-		},
-		statusDraft: {
-			params: [],
-		},
-		navShown: {
-			params: [],
-		},
-		navHidden: {
-			params: [],
-		},
-		fieldPath: {
-			params: [],
-		},
-		fieldTitle: {
-			params: [],
-		},
-		fieldContent: {
-			params: [],
-		},
-		fieldPublished: {
-			params: [],
-		},
-		fieldShowInNav: {
-			params: [],
-		},
-		fieldSortOrder: {
-			params: [],
-		},
-		contentHint: {
-			params: [],
-		},
-		pathHint: {
-			params: [],
-		},
-		deleteTitle: {
-			params: [],
-		},
-		deleteBody: {
-			params: [
-				{
-					name: "path",
-				},
-			],
-			template: 'Delete "{path}"? This cannot be undone.',
-		},
-		deleteConfirm: {
-			params: [],
-		},
-		saveFailed: {
-			params: [],
-		},
-	},
-	"eval.validator": {
-		title: {
-			params: [],
-		},
-		description: {
-			params: [],
-		},
-		generate: {
-			params: [],
-		},
-		runEval: {
-			params: [],
-		},
-		view: {
-			params: [],
-		},
-		approve: {
-			params: [],
-		},
-		reject: {
-			params: [],
-		},
-		pending: {
-			params: [],
-		},
-		approved: {
-			params: [],
-		},
-		rejected: {
-			params: [],
-		},
-		personas: {
-			params: [],
-		},
-		doctor: {
-			params: [],
-		},
-		voices: {
-			params: [],
-		},
-		feedbackPlaceholder: {
-			params: [],
-		},
-		feedback: {
-			params: [],
-		},
-		run: {
-			params: [],
-		},
-		samplesOf: {
-			params: [],
-		},
-		emptyBatches: {
-			params: [],
-		},
-		emptyPersonas: {
-			params: [],
-		},
-		moreTurns: {
-			params: [],
-		},
-		minutesLabel: {
-			params: [],
-		},
-		actionFailed: {
-			params: [],
-		},
-		synthetic: {
-			params: [],
-		},
-		deleteRun: {
-			params: [],
-		},
-		confirmDelete: {
-			params: [],
-		},
-		stageCleanup: {
-			params: [],
-		},
-		stageAnamnesis: {
-			params: [],
-		},
-		stageError: {
-			params: [],
-		},
-		completeness: {
-			params: [],
-		},
-		edits: {
-			params: [],
-		},
-	},
-	tenant: {
-		title: {
-			params: [],
-		},
-		none: {
-			params: [],
-		},
-		count: {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template: "{n, plural, =1{{n} tenant} other{{n} tenants}} across the platform.",
-		},
-		emptyTitle: {
-			params: [],
-		},
-		emptyDescription: {
-			params: [],
-		},
-		colId: {
-			params: [],
-		},
-		colName: {
-			params: [],
-		},
-		colSlug: {
-			params: [],
-		},
-		colKind: {
-			params: [],
-		},
-		colMembers: {
-			params: [],
-		},
-		colCreated: {
-			params: [],
-		},
-		searchPlaceholder: {
-			params: [],
-		},
-		searchLabel: {
-			params: [],
-		},
-		noMatch: {
-			params: [],
-		},
-		filteredCount: {
-			params: [
-				{
-					name: "shown",
-				},
-				{
-					name: "total",
-				},
-			],
-			template: "Showing {shown} of {total}",
-		},
-		colActions: {
-			params: [],
-		},
-		colMember: {
-			params: [],
-		},
-		colRole: {
-			params: [],
-		},
-		membersTitle: {
-			params: [],
-		},
-		membersLoading: {
-			params: [],
-		},
-		membersEmpty: {
-			params: [],
-		},
-		memberIdPlaceholder: {
-			params: [],
-		},
-		addMember: {
-			params: [],
-		},
-		removeMember: {
-			params: [],
-		},
-		removeMemberTitle: {
-			params: [],
-		},
-		removeMemberDescription: {
-			params: [
-				{
-					name: "memberId",
-				},
-			],
-			template: "Remove {memberId} from this tenant?",
-		},
-		roleOwner: {
-			params: [],
-		},
-		roleAdmin: {
-			params: [],
-		},
-		roleMember: {
-			params: [],
-		},
-		saveError: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-	},
-	users: {
-		title: {
-			params: [],
-		},
-		none: {
-			params: [],
-		},
-		count: {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template: "{n, plural, =1{{n} user} other{{n} users}} across the platform.",
-		},
-		emptyTitle: {
-			params: [],
-		},
-		emptyDescription: {
-			params: [],
-		},
-		colId: {
-			params: [],
-		},
-		colName: {
-			params: [],
-		},
-		colEmail: {
-			params: [],
-		},
-		colVerified: {
-			params: [],
-		},
-		colPatients: {
-			params: [],
-		},
-		colConsultations: {
-			params: [],
-		},
-		colRole: {
-			params: [],
-		},
-		colStatus: {
-			params: [],
-		},
-		colCreated: {
-			params: [],
-		},
-		colActions: {
-			params: [],
-		},
-		yes: {
-			params: [],
-		},
-		no: {
-			params: [],
-		},
-		roleAdmin: {
-			params: [],
-		},
-		roleUser: {
-			params: [],
-		},
-		statusActive: {
-			params: [],
-		},
-		statusSuspended: {
-			params: [],
-		},
-		suspend: {
-			params: [],
-		},
-		reactivate: {
-			params: [],
-		},
-		suspendTitle: {
-			params: [],
-		},
-		suspendDescription: {
-			params: [
-				{
-					name: "email",
-				},
-			],
-			template: "Suspend {email}? They will be signed out and unable to sign in until reactivated.",
-		},
-		suspendConfirm: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		saveError: {
-			params: [],
-		},
-		searchPlaceholder: {
-			params: [],
-		},
-		searchLabel: {
-			params: [],
-		},
-		noMatch: {
-			params: [],
-		},
-		filteredCount: {
-			params: [
-				{
-					name: "shown",
-				},
-				{
-					name: "total",
-				},
-			],
-			template: "Showing {shown} of {total}",
-		},
-	},
-	patients: {
-		"gender.female": {
-			params: [],
-		},
-		"gender.male": {
-			params: [],
-		},
-		"gender.other": {
-			params: [],
-		},
-		"gender.unknown": {
-			params: [],
-		},
-		"maritalStatus.S": {
-			params: [],
-		},
-		"maritalStatus.M": {
-			params: [],
-		},
-		"maritalStatus.T": {
-			params: [],
-		},
-		"maritalStatus.L": {
-			params: [],
-		},
-		"maritalStatus.D": {
-			params: [],
-		},
-		"maritalStatus.W": {
-			params: [],
-		},
-		"maritalStatus.UNK": {
-			params: [],
-		},
-		"raceColor.99": {
-			params: [],
-		},
-		"raceColor.01": {
-			params: [],
-		},
-		"raceColor.02": {
-			params: [],
-		},
-		"raceColor.03": {
-			params: [],
-		},
-		"raceColor.04": {
-			params: [],
-		},
-		"raceColor.05": {
-			params: [],
-		},
-		"language.pt-BR": {
-			params: [],
-		},
-		"language.en": {
-			params: [],
-		},
-		"language.es": {
-			params: [],
-		},
-		"language.fr": {
-			params: [],
-		},
-		"language.it": {
-			params: [],
-		},
-		"language.de": {
-			params: [],
-		},
-		age: {
-			params: [
-				{
-					name: "approx",
-					cases: ["true", "other"],
-				},
-				{
-					name: "years",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template:
-				"{approx, select, true{~} other{}}{years, plural, =1{{years} year} other{{years} years}}",
-		},
-		"errors.too_long": {
-			params: [
-				{
-					name: "max",
-				},
-			],
-			template: "Must be at most {max} characters.",
-		},
-		"errors.name_required": {
-			params: [],
-		},
-		"errors.birth_date_required": {
-			params: [],
-		},
-		"errors.invalid_date": {
-			params: [],
-		},
-		"errors.future_date": {
-			params: [],
-		},
-		"errors.invalid_option": {
-			params: [],
-		},
-		"errors.invalid_country": {
-			params: [],
-		},
-		"errors.invalid_cpf": {
-			params: [],
-		},
-		"errors.invalid_cns": {
-			params: [],
-		},
-		"errors.invalid_email": {
-			params: [],
-		},
-		"errors.invalid_phone": {
-			params: [],
-		},
-		"errors.invalid_state": {
-			params: [],
-		},
-		"errors.invalid_cep": {
-			params: [],
-		},
-		"sections.identification": {
-			params: [],
-		},
-		"sections.identifiers": {
-			params: [],
-		},
-		"sections.contact": {
-			params: [],
-		},
-		"sections.address": {
-			params: [],
-		},
-		"sections.family": {
-			params: [],
-		},
-		"sections.emergency": {
-			params: [],
-		},
-		"fields.name": {
-			params: [],
-		},
-		"fields.socialName": {
-			params: [],
-		},
-		"fields.socialNameHint": {
-			params: [],
-		},
-		"fields.gender": {
-			params: [],
-		},
-		"fields.birthDate": {
-			params: [],
-		},
-		"fields.cpf": {
-			params: [],
-		},
-		"fields.cns": {
-			params: [],
-		},
-		"fields.cnsShort": {
-			params: [],
-		},
-		"fields.cnsPlaceholder": {
-			params: [],
-		},
-		"fields.passport": {
-			params: [],
-		},
-		"fields.phone": {
-			params: [],
-		},
-		"fields.email": {
-			params: [],
-		},
-		"fields.preferredLanguage": {
-			params: [],
-		},
-		"fields.country": {
-			params: [],
-		},
-		"fields.cep": {
-			params: [],
-		},
-		"fields.postalCode": {
-			params: [],
-		},
-		"fields.street": {
-			params: [],
-		},
-		"fields.number": {
-			params: [],
-		},
-		"fields.complement": {
-			params: [],
-		},
-		"fields.district": {
-			params: [],
-		},
-		"fields.city": {
-			params: [],
-		},
-		"fields.state": {
-			params: [],
-		},
-		"fields.stateProvince": {
-			params: [],
-		},
-		"fields.motherName": {
-			params: [],
-		},
-		"fields.maritalStatus": {
-			params: [],
-		},
-		"fields.raceColor": {
-			params: [],
-		},
-		"fields.raceColorShort": {
-			params: [],
-		},
-		"fields.nationality": {
-			params: [],
-		},
-		"fields.contactName": {
-			params: [],
-		},
-		"fields.relationship": {
-			params: [],
-		},
-		"fields.relationshipPlaceholder": {
-			params: [],
-		},
-		"common.patients": {
-			params: [],
-		},
-		"common.inactive": {
-			params: [],
-		},
-		"common.noDemographics": {
-			params: [],
-		},
-		"common.registerPatient": {
-			params: [],
-		},
-		"common.newPatient": {
-			params: [],
-		},
-		"list.none": {
-			params: [],
-		},
-		"list.count": {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template: "{n, plural, =1{{n} patient registered.} other{{n} patients registered.}}",
-		},
-		"list.searchPlaceholder": {
-			params: [],
-		},
-		"list.searchLabel": {
-			params: [],
-		},
-		"list.incomplete": {
-			params: [],
-		},
-		"list.noMatch": {
-			params: [],
-		},
-		"list.emptyTitle": {
-			params: [],
-		},
-		"list.emptyDescription": {
-			params: [],
-		},
-		"detail.editRecord": {
-			params: [],
-		},
-		"detail.portalAccess": {
-			params: [],
-		},
-		"detail.newConsultation": {
-			params: [],
-		},
-		"detail.incomplete": {
-			params: [],
-		},
-		"detail.completeRecord": {
-			params: [],
-		},
-		"detail.consultations": {
-			params: [],
-		},
-		"detail.live": {
-			params: [],
-		},
-		"detail.noAnamnesis": {
-			params: [],
-		},
-		"detail.noChiefComplaint": {
-			params: [],
-		},
-		"detail.noConsultations": {
-			params: [],
-		},
-		"detail.exportRecord": {
-			params: [],
-		},
-		"detail.exportHeading": {
-			params: [],
-		},
-		"detail.exportFhir": {
-			params: [],
-		},
-		"detail.exportOpenEhr": {
-			params: [],
-		},
-		"actions.menu": {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template: "Actions for {name}",
-		},
-		"actions.edit": {
-			params: [],
-		},
-		"actions.delete": {
-			params: [],
-		},
-		"actions.editFor": {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template: "Edit {name}",
-		},
-		"actions.deleteFor": {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template: "Delete {name}",
-		},
-		"remove.title": {
-			params: [],
-		},
-		"remove.body": {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template: "This permanently deletes the record of {name}.",
-		},
-		"remove.checking": {
-			params: [],
-		},
-		"remove.noConsultations": {
-			params: [],
-		},
-		"remove.withConsultations": {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template:
-				"{n, plural, =1{1 consultation of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.} other{{n} consultations of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.}}",
-		},
-		"remove.acknowledge": {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template:
-				"{n, plural, =1{I understand that 1 consultation will be deleted} other{I understand that {n} consultations will be deleted}}",
-		},
-		"remove.confirm": {
-			params: [],
-		},
-		"remove.cancel": {
-			params: [],
-		},
-		"remove.failed": {
-			params: [],
-		},
-		"admin.title": {
-			params: [],
-		},
-		"admin.none": {
-			params: [],
-		},
-		"admin.count": {
-			params: [
-				{
-					name: "n",
-					cases: ["=1", "other"],
-					plural: true,
-				},
-			],
-			template: "{n, plural, =1{{n} patient} other{{n} patients}} across all owners.",
-		},
-		"admin.emptyTitle": {
-			params: [],
-		},
-		"admin.emptyDescription": {
-			params: [],
-		},
-		"admin.colId": {
-			params: [],
-		},
-		"admin.colName": {
-			params: [],
-		},
-		"admin.colOwner": {
-			params: [],
-		},
-		"admin.colOwnerId": {
-			params: [],
-		},
-		"admin.colCreated": {
-			params: [],
-		},
-		"admin.searchPlaceholder": {
-			params: [],
-		},
-		"admin.searchLabel": {
-			params: [],
-		},
-		"admin.noMatch": {
-			params: [],
-		},
-		"admin.filteredCount": {
-			params: [
-				{
-					name: "shown",
-				},
-				{
-					name: "total",
-				},
-			],
-			template: "Showing {shown} of {total}",
-		},
-		"admin.showSynthetic": {
-			params: [],
-		},
-		"admin.syntheticBadge": {
-			params: [],
-		},
-		"admin.colActions": {
-			params: [],
-		},
-		"admin.newPatient": {
-			params: [],
-		},
-		"admin.createTitle": {
-			params: [],
-		},
-		"admin.createDescription": {
-			params: [],
-		},
-		"admin.ownerLabel": {
-			params: [],
-		},
-		"admin.ownerPlaceholder": {
-			params: [],
-		},
-		"admin.createFailed": {
-			params: [],
-		},
-		"form.editTitle": {
-			params: [],
-		},
-		"form.intro": {
-			params: [],
-		},
-		"form.or": {
-			params: [],
-		},
-		"form.ageLabel": {
-			params: [],
-		},
-		"form.agePlaceholder": {
-			params: [],
-		},
-		"form.approximate": {
-			params: [
-				{
-					name: "date",
-				},
-			],
-			template: "Recorded as {date} (approximate). Enter the exact date if known.",
-		},
-		"form.pickDate": {
-			params: [],
-		},
-		"form.activeRecord": {
-			params: [],
-		},
-		"form.fixFields": {
-			params: [],
-		},
-		"form.saveFailed": {
-			params: [],
-		},
-		"form.saveFailedRetry": {
-			params: [],
-		},
-		"form.cancel": {
-			params: [],
-		},
-		"form.saveChanges": {
-			params: [],
-		},
-		"zk.lockedRecord": {
-			params: [],
-		},
-		"zk.lockedHint": {
-			params: [],
-		},
-		"zk.decryptFailed": {
-			params: [],
-		},
-	},
 	audit: {
 		title: {
 			params: [],
@@ -2398,271 +1043,65 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
-	theme: {
-		pageTitle: {
+	auth: {
+		metaTitle: {
 			params: [],
 		},
-		pageDescription: {
+		headingIn: {
 			params: [],
 		},
-		scopeLabel: {
+		headingUp: {
 			params: [],
 		},
-		scopePlatform: {
+		descIn: {
 			params: [],
 		},
-		scopeTenant: {
+		descUp: {
 			params: [],
 		},
-		scopePortalInstance: {
+		tabIn: {
 			params: [],
 		},
-		scopeIdLabel: {
+		tabUp: {
 			params: [],
 		},
-		scopeIdPlaceholder: {
+		email: {
 			params: [],
 		},
-		appNameLabel: {
+		password: {
 			params: [],
 		},
-		appNamePlaceholder: {
+		confirmPassword: {
 			params: [],
 		},
-		seedsTitle: {
+		showPassword: {
 			params: [],
 		},
-		seedsDescription: {
+		hidePassword: {
 			params: [],
 		},
-		seedPrimary: {
+		submitIn: {
 			params: [],
 		},
-		seedSecondary: {
+		submitUp: {
 			params: [],
 		},
-		seedAccent: {
+		pending: {
 			params: [],
 		},
-		seedBackground: {
+		errorFallback: {
 			params: [],
 		},
-		seedForeground: {
+		errorPasswordMismatch: {
 			params: [],
 		},
-		seedDestructive: {
+		verifyLink: {
 			params: [],
 		},
-		seedRadius: {
+		patientLink: {
 			params: [],
 		},
-		darkTitle: {
-			params: [],
-		},
-		darkDescription: {
-			params: [],
-		},
-		fontsTitle: {
-			params: [],
-		},
-		fontsDeliveryLabel: {
-			params: [],
-		},
-		fontsSelfHost: {
-			params: [],
-		},
-		fontsGoogle: {
-			params: [],
-		},
-		fontsGoogleWarning: {
-			params: [],
-		},
-		fontsFamiliesLabel: {
-			params: [],
-		},
-		fontSans: {
-			params: [],
-		},
-		fontHeading: {
-			params: [],
-		},
-		fontMono: {
-			params: [],
-		},
-		brandTitle: {
-			params: [],
-		},
-		brandAppName: {
-			params: [],
-		},
-		previewTitle: {
-			params: [],
-		},
-		previewDescription: {
-			params: [],
-		},
-		contrastTitle: {
-			params: [],
-		},
-		contrastLight: {
-			params: [],
-		},
-		contrastDark: {
-			params: [],
-		},
-		contrastPass: {
-			params: [],
-		},
-		contrastFail: {
-			params: [],
-		},
-		publish: {
-			params: [],
-		},
-		publishing: {
-			params: [],
-		},
-		published: {
-			params: [],
-		},
-		publishError: {
-			params: [],
-		},
-		listTitle: {
-			params: [],
-		},
-		colScope: {
-			params: [],
-		},
-		colScopeId: {
-			params: [],
-		},
-		colName: {
-			params: [],
-		},
-		colEnabled: {
-			params: [],
-		},
-		colVersion: {
-			params: [],
-		},
-		colActions: {
-			params: [],
-		},
-		emptyList: {
-			params: [],
-		},
-		previewAction: {
-			params: [],
-		},
-		previewing: {
-			params: [],
-		},
-		edit: {
-			params: [],
-		},
-		enable: {
-			params: [],
-		},
-		disable: {
-			params: [],
-		},
-		assetTodo: {
-			params: [],
-		},
-		assetsTitle: {
-			params: [],
-		},
-		assetThemeLabel: {
-			params: [],
-		},
-		assetKindLabel: {
-			params: [],
-		},
-		assetFileLabel: {
-			params: [],
-		},
-		assetUpload: {
-			params: [],
-		},
-		assetUploading: {
-			params: [],
-		},
-		assetUploaded: {
-			params: [],
-		},
-		assetUploadError: {
-			params: [],
-		},
-		assetFontFamily: {
-			params: [],
-		},
-		assetFontSlot: {
-			params: [],
-		},
-		assetGoogleFetch: {
-			params: [],
-		},
-		assetGoogleFetching: {
-			params: [],
-		},
-		assetGoogleError: {
-			params: [],
-		},
-		bannerText: {
-			params: [],
-		},
-		bannerExit: {
-			params: [],
-		},
-		headerLabel: {
-			params: [],
-		},
-		headerEmpty: {
-			params: [],
-		},
-		headerPreview: {
-			params: [],
-		},
-		headerManage: {
-			params: [],
-		},
-	},
-	"eval.credentials": {
-		title: {
-			params: [],
-		},
-		desc: {
-			params: [],
-		},
-		newCred: {
-			params: [],
-		},
-		name: {
-			params: [],
-		},
-		provider: {
-			params: [],
-		},
-		secret: {
-			params: [],
-		},
-		save: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		delete: {
-			params: [],
-		},
-		confirmDelete: {
-			params: [],
-		},
-		empty: {
-			params: [],
-		},
-		actionFailed: {
+		secretaryLink: {
 			params: [],
 		},
 	},
@@ -3411,6 +1850,147 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	"eval.credentials": {
+		title: {
+			params: [],
+		},
+		desc: {
+			params: [],
+		},
+		newCred: {
+			params: [],
+		},
+		name: {
+			params: [],
+		},
+		provider: {
+			params: [],
+		},
+		secret: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		confirmDelete: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		actionFailed: {
+			params: [],
+		},
+	},
+	dashboard: {
+		title: {
+			params: [],
+		},
+		subtitle: {
+			params: [],
+		},
+		"stats.patients": {
+			params: [],
+		},
+		"stats.consultations": {
+			params: [],
+		},
+		"stats.live": {
+			params: [],
+		},
+		"stats.plugins": {
+			params: [],
+		},
+		byStatus: {
+			params: [],
+		},
+		bySource: {
+			params: [],
+		},
+		recentConsultations: {
+			params: [],
+		},
+		noConsultations: {
+			params: [],
+		},
+		viewAll: {
+			params: [],
+		},
+		registeredPlugins: {
+			params: [],
+		},
+		managePlugins: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colStatus: {
+			params: [],
+		},
+		colSource: {
+			params: [],
+		},
+		colOwner: {
+			params: [],
+		},
+		colCreated: {
+			params: [],
+		},
+		colState: {
+			params: [],
+		},
+		colContributions: {
+			params: [],
+		},
+		stateEnabled: {
+			params: [],
+		},
+		stateDisabled: {
+			params: [],
+		},
+		stateSystem: {
+			params: [],
+		},
+		consoleActivity: {
+			params: [],
+		},
+		unreadNotifications: {
+			params: [],
+		},
+		noNotifications: {
+			params: [],
+		},
+	},
+	doctors: {
+		selectTitle: {
+			params: [],
+		},
+		selectDescription: {
+			params: [],
+		},
+		roleOwner: {
+			params: [],
+		},
+		roleSecretary: {
+			params: [],
+		},
+		current: {
+			params: [],
+		},
+		choose: {
+			params: [],
+		},
+		error: {
+			params: [],
+		},
+	},
 	"eval.persona": {
 		personasTitle: {
 			params: [],
@@ -3662,98 +2242,114 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
-	"patient-portal": {
+	"eval.validator": {
 		title: {
 			params: [],
 		},
-		greeting: {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template: "Hello, {name}.",
-		},
-		profilesTitle: {
+		description: {
 			params: [],
 		},
-		"relation.self": {
+		generate: {
 			params: [],
 		},
-		"relation.guardian": {
+		runEval: {
 			params: [],
 		},
-		current: {
+		view: {
 			params: [],
 		},
-		open: {
+		approve: {
 			params: [],
 		},
-		chooseHint: {
+		reject: {
+			params: [],
+		},
+		pending: {
+			params: [],
+		},
+		approved: {
+			params: [],
+		},
+		rejected: {
+			params: [],
+		},
+		personas: {
 			params: [],
 		},
 		doctor: {
 			params: [],
 		},
-		patient: {
+		voices: {
 			params: [],
 		},
-		consultationsTitle: {
+		feedbackPlaceholder: {
 			params: [],
 		},
-		consultationUntitled: {
+		feedback: {
 			params: [],
 		},
-		viewConsultation: {
+		run: {
 			params: [],
 		},
-		consultationsEmptyTitle: {
+		samplesOf: {
 			params: [],
 		},
-		consultationsEmptyDescription: {
+		emptyBatches: {
 			params: [],
 		},
-		activityTitle: {
+		emptyPersonas: {
 			params: [],
 		},
-		activityLink: {
+		moreTurns: {
 			params: [],
 		},
-		consultationTitle: {
+		minutesLabel: {
 			params: [],
 		},
-		back: {
+		actionFailed: {
 			params: [],
 		},
-		readOnlyNote: {
+		synthetic: {
 			params: [],
 		},
-		sectionsEmpty: {
+		deleteRun: {
 			params: [],
 		},
-		"sections.queixa_principal": {
+		confirmDelete: {
 			params: [],
 		},
-		"sections.hda": {
+		stageCleanup: {
 			params: [],
 		},
-		"sections.antecedentes": {
+		stageAnamnesis: {
 			params: [],
 		},
-		"sections.alergias": {
+		stageError: {
 			params: [],
 		},
-		"sections.medicamentos_em_uso": {
+		completeness: {
 			params: [],
 		},
-		"sections.exame_fisico": {
+		edits: {
 			params: [],
 		},
-		"sections.hipoteses": {
+	},
+	groups: {
+		title: {
 			params: [],
 		},
-		"sections.conduta": {
+		none: {
 			params: [],
+		},
+		count: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} group} other{{n} groups}} across the platform.",
 		},
 		emptyTitle: {
 			params: [],
@@ -3761,22 +2357,415 @@ export const I18N_MANIFEST = {
 		emptyDescription: {
 			params: [],
 		},
-		"zk.lockedRecord": {
+		colId: {
 			params: [],
 		},
-		"zk.lockedHint": {
+		colName: {
 			params: [],
 		},
-		verifyEmailTitle: {
+		colSlug: {
 			params: [],
 		},
-		verifyEmailDescription: {
+		colKind: {
 			params: [],
 		},
-		verifyEmailAction: {
+		colMembers: {
+			params: [],
+		},
+		colCreated: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		noMatch: {
+			params: [],
+		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
+		},
+		colActions: {
+			params: [],
+		},
+		colMember: {
+			params: [],
+		},
+		colRole: {
+			params: [],
+		},
+		newGroup: {
+			params: [],
+		},
+		createTitle: {
+			params: [],
+		},
+		createSubmit: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		fieldName: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		fieldSlug: {
+			params: [],
+		},
+		slugPlaceholder: {
+			params: [],
+		},
+		fieldKind: {
+			params: [],
+		},
+		kindPlaceholder: {
+			params: [],
+		},
+		fieldMeta: {
+			params: [],
+		},
+		metaPlaceholder: {
+			params: [],
+		},
+		saveError: {
+			params: [],
+		},
+		membersTitle: {
+			params: [],
+		},
+		membersLoading: {
+			params: [],
+		},
+		membersEmpty: {
+			params: [],
+		},
+		memberKindLabel: {
+			params: [],
+		},
+		memberIdPlaceholder: {
+			params: [],
+		},
+		rolePlaceholder: {
+			params: [],
+		},
+		addMember: {
+			params: [],
+		},
+		removeMember: {
+			params: [],
+		},
+		removeMemberTitle: {
+			params: [],
+		},
+		removeMemberDescription: {
+			params: [
+				{
+					name: "memberId",
+				},
+			],
+			template: "Remove {memberId} from this group?",
+		},
+		deleteGroup: {
+			params: [],
+		},
+		deleteGroupTitle: {
+			params: [],
+		},
+		deleteGroupDescription: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Delete “{name}”? This removes the group and all of its memberships.",
+		},
+		confirmDelete: {
+			params: [],
+		},
+	},
+	invites: {
+		metaTitle: {
+			params: [],
+		},
+		"heading.secretary": {
+			params: [
+				{
+					name: "inviter",
+				},
+			],
+			template: "{inviter} invited you to work on their behalf",
+		},
+		"heading.patient": {
+			params: [
+				{
+					name: "inviter",
+				},
+			],
+			template: "{inviter} gave you access to the patient portal",
+		},
+		description: {
+			params: [],
+		},
+		email: {
+			params: [],
+		},
+		name: {
+			params: [],
+		},
+		password: {
+			params: [],
+		},
+		confirmPassword: {
+			params: [],
+		},
+		submit: {
+			params: [],
+		},
+		pending: {
+			params: [],
+		},
+		errorPasswordMismatch: {
+			params: [],
+		},
+		"errors.invalid": {
+			params: [],
+		},
+		"errors.account_exists": {
+			params: [],
+		},
+		"errors.invalid_name": {
+			params: [],
+		},
+		"errors.invalid_password": {
 			params: [],
 		},
 		"errors.failed": {
+			params: [],
+		},
+		createdTitle: {
+			params: [],
+		},
+		createdSignIn: {
+			params: [],
+		},
+		existsTitle: {
+			params: [],
+		},
+		existsBody: {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template:
+				"{email} already has a KTB Health account. Sign in with it to see what you were invited to.",
+		},
+		invalidTitle: {
+			params: [],
+		},
+		invalidBody: {
+			params: [],
+		},
+		signIn: {
+			params: [],
+		},
+	},
+	jobs: {
+		label: {
+			params: [],
+		},
+		activeCount: {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} active",
+		},
+		emptyFilteredTitle: {
+			params: [],
+		},
+		emptyFilteredDescription: {
+			params: [],
+		},
+		emptyAllTitle: {
+			params: [],
+		},
+		emptyAllDescription: {
+			params: [],
+		},
+		openConsultations: {
+			params: [],
+		},
+		jobTitle: {
+			params: [],
+		},
+		consultationRef: {
+			params: [
+				{
+					name: "id",
+				},
+			],
+			template: "consultation #{id}",
+		},
+		title: {
+			params: [],
+		},
+		description: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{{n} audio pipeline job tracked.} other{{n} audio pipeline jobs tracked.}}",
+		},
+		jobsTitle: {
+			params: [],
+		},
+		jobsDescription: {
+			params: [],
+		},
+		colConsultation: {
+			params: [],
+		},
+		colPatient: {
+			params: [],
+		},
+		colStatus: {
+			params: [],
+		},
+		colError: {
+			params: [],
+		},
+		colCreated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		noPatient: {
+			params: [],
+		},
+		emptyJobsTitle: {
+			params: [],
+		},
+		emptyJobsDescription: {
+			params: [],
+		},
+		unavailableTitle: {
+			params: [],
+		},
+		unavailableDescription: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		noMatch: {
+			params: [],
+		},
+		statusStored: {
+			params: [],
+		},
+		statusQueued: {
+			params: [],
+		},
+		statusProcessing: {
+			params: [],
+		},
+		statusDone: {
+			params: [],
+		},
+		statusFailed: {
+			params: [],
+		},
+		retry: {
+			params: [],
+		},
+		retryTitle: {
+			params: [],
+		},
+		retryDescription: {
+			params: [
+				{
+					name: "ref",
+				},
+			],
+			template:
+				"Re-enqueue the transcription job for {ref}. The stored recording is transcribed again.",
+		},
+		retryConfirm: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		retryError: {
+			params: [],
+		},
+		queueTitle: {
+			params: [],
+		},
+		queueDescription: {
+			params: [],
+		},
+		queuePending: {
+			params: [],
+		},
+		queueProcessing: {
+			params: [],
+		},
+		queueDone: {
+			params: [],
+		},
+		queueFailed: {
+			params: [],
+		},
+		storageTitle: {
+			params: [],
+		},
+		storageDescription: {
+			params: [],
+		},
+		storageObjects: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} object} other{{n} objects}}",
+		},
+		storageTruncated: {
+			params: [],
+		},
+		webhooksTitle: {
+			params: [],
+		},
+		webhooksDescription: {
+			params: [],
+		},
+		webhooksUnavailable: {
 			params: [],
 		},
 	},
@@ -3956,65 +2945,112 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
-	auth: {
-		metaTitle: {
+	pages: {
+		title: {
 			params: [],
 		},
-		headingIn: {
+		description: {
 			params: [],
 		},
-		headingUp: {
+		newPage: {
 			params: [],
 		},
-		descIn: {
+		edit: {
 			params: [],
 		},
-		descUp: {
+		view: {
 			params: [],
 		},
-		tabIn: {
+		delete: {
 			params: [],
 		},
-		tabUp: {
+		save: {
 			params: [],
 		},
-		email: {
+		cancel: {
 			params: [],
 		},
-		password: {
+		create: {
 			params: [],
 		},
-		confirmPassword: {
+		saving: {
 			params: [],
 		},
-		showPassword: {
+		emptyTitle: {
 			params: [],
 		},
-		hidePassword: {
+		emptyDescription: {
 			params: [],
 		},
-		submitIn: {
+		colPath: {
 			params: [],
 		},
-		submitUp: {
+		colTitle: {
 			params: [],
 		},
-		pending: {
+		colStatus: {
 			params: [],
 		},
-		errorFallback: {
+		colNav: {
 			params: [],
 		},
-		errorPasswordMismatch: {
+		colOrder: {
 			params: [],
 		},
-		verifyLink: {
+		colActions: {
 			params: [],
 		},
-		patientLink: {
+		statusPublished: {
 			params: [],
 		},
-		secretaryLink: {
+		statusDraft: {
+			params: [],
+		},
+		navShown: {
+			params: [],
+		},
+		navHidden: {
+			params: [],
+		},
+		fieldPath: {
+			params: [],
+		},
+		fieldTitle: {
+			params: [],
+		},
+		fieldContent: {
+			params: [],
+		},
+		fieldPublished: {
+			params: [],
+		},
+		fieldShowInNav: {
+			params: [],
+		},
+		fieldSortOrder: {
+			params: [],
+		},
+		contentHint: {
+			params: [],
+		},
+		pathHint: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "path",
+				},
+			],
+			template: 'Delete "{path}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		saveFailed: {
 			params: [],
 		},
 	},
@@ -4094,6 +3130,836 @@ export const I18N_MANIFEST = {
 				},
 			],
 			template: "{doctor} gave you access to the KTB Health patient portal",
+		},
+	},
+	"patient-portal": {
+		title: {
+			params: [],
+		},
+		greeting: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Hello, {name}.",
+		},
+		profilesTitle: {
+			params: [],
+		},
+		"relation.self": {
+			params: [],
+		},
+		"relation.guardian": {
+			params: [],
+		},
+		current: {
+			params: [],
+		},
+		open: {
+			params: [],
+		},
+		chooseHint: {
+			params: [],
+		},
+		doctor: {
+			params: [],
+		},
+		patient: {
+			params: [],
+		},
+		consultationsTitle: {
+			params: [],
+		},
+		consultationUntitled: {
+			params: [],
+		},
+		viewConsultation: {
+			params: [],
+		},
+		consultationsEmptyTitle: {
+			params: [],
+		},
+		consultationsEmptyDescription: {
+			params: [],
+		},
+		activityTitle: {
+			params: [],
+		},
+		activityLink: {
+			params: [],
+		},
+		consultationTitle: {
+			params: [],
+		},
+		back: {
+			params: [],
+		},
+		readOnlyNote: {
+			params: [],
+		},
+		sectionsEmpty: {
+			params: [],
+		},
+		"sections.queixa_principal": {
+			params: [],
+		},
+		"sections.hda": {
+			params: [],
+		},
+		"sections.antecedentes": {
+			params: [],
+		},
+		"sections.alergias": {
+			params: [],
+		},
+		"sections.medicamentos_em_uso": {
+			params: [],
+		},
+		"sections.exame_fisico": {
+			params: [],
+		},
+		"sections.hipoteses": {
+			params: [],
+		},
+		"sections.conduta": {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		"zk.lockedRecord": {
+			params: [],
+		},
+		"zk.lockedHint": {
+			params: [],
+		},
+		verifyEmailTitle: {
+			params: [],
+		},
+		verifyEmailDescription: {
+			params: [],
+		},
+		verifyEmailAction: {
+			params: [],
+		},
+		"errors.failed": {
+			params: [],
+		},
+	},
+	patients: {
+		"gender.female": {
+			params: [],
+		},
+		"gender.male": {
+			params: [],
+		},
+		"gender.other": {
+			params: [],
+		},
+		"gender.unknown": {
+			params: [],
+		},
+		"maritalStatus.S": {
+			params: [],
+		},
+		"maritalStatus.M": {
+			params: [],
+		},
+		"maritalStatus.T": {
+			params: [],
+		},
+		"maritalStatus.L": {
+			params: [],
+		},
+		"maritalStatus.D": {
+			params: [],
+		},
+		"maritalStatus.W": {
+			params: [],
+		},
+		"maritalStatus.UNK": {
+			params: [],
+		},
+		"raceColor.99": {
+			params: [],
+		},
+		"raceColor.01": {
+			params: [],
+		},
+		"raceColor.02": {
+			params: [],
+		},
+		"raceColor.03": {
+			params: [],
+		},
+		"raceColor.04": {
+			params: [],
+		},
+		"raceColor.05": {
+			params: [],
+		},
+		"language.pt-BR": {
+			params: [],
+		},
+		"language.en": {
+			params: [],
+		},
+		"language.es": {
+			params: [],
+		},
+		"language.fr": {
+			params: [],
+		},
+		"language.it": {
+			params: [],
+		},
+		"language.de": {
+			params: [],
+		},
+		age: {
+			params: [
+				{
+					name: "approx",
+					cases: ["true", "other"],
+				},
+				{
+					name: "years",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{approx, select, true{~} other{}}{years, plural, =1{{years} year} other{{years} years}}",
+		},
+		"errors.too_long": {
+			params: [
+				{
+					name: "max",
+				},
+			],
+			template: "Must be at most {max} characters.",
+		},
+		"errors.name_required": {
+			params: [],
+		},
+		"errors.birth_date_required": {
+			params: [],
+		},
+		"errors.invalid_date": {
+			params: [],
+		},
+		"errors.future_date": {
+			params: [],
+		},
+		"errors.invalid_option": {
+			params: [],
+		},
+		"errors.invalid_country": {
+			params: [],
+		},
+		"errors.invalid_cpf": {
+			params: [],
+		},
+		"errors.invalid_cns": {
+			params: [],
+		},
+		"errors.invalid_email": {
+			params: [],
+		},
+		"errors.invalid_phone": {
+			params: [],
+		},
+		"errors.invalid_state": {
+			params: [],
+		},
+		"errors.invalid_cep": {
+			params: [],
+		},
+		"sections.identification": {
+			params: [],
+		},
+		"sections.identifiers": {
+			params: [],
+		},
+		"sections.contact": {
+			params: [],
+		},
+		"sections.address": {
+			params: [],
+		},
+		"sections.family": {
+			params: [],
+		},
+		"sections.emergency": {
+			params: [],
+		},
+		"fields.name": {
+			params: [],
+		},
+		"fields.socialName": {
+			params: [],
+		},
+		"fields.socialNameHint": {
+			params: [],
+		},
+		"fields.gender": {
+			params: [],
+		},
+		"fields.birthDate": {
+			params: [],
+		},
+		"fields.cpf": {
+			params: [],
+		},
+		"fields.cns": {
+			params: [],
+		},
+		"fields.cnsShort": {
+			params: [],
+		},
+		"fields.cnsPlaceholder": {
+			params: [],
+		},
+		"fields.passport": {
+			params: [],
+		},
+		"fields.phone": {
+			params: [],
+		},
+		"fields.email": {
+			params: [],
+		},
+		"fields.preferredLanguage": {
+			params: [],
+		},
+		"fields.country": {
+			params: [],
+		},
+		"fields.cep": {
+			params: [],
+		},
+		"fields.postalCode": {
+			params: [],
+		},
+		"fields.street": {
+			params: [],
+		},
+		"fields.number": {
+			params: [],
+		},
+		"fields.complement": {
+			params: [],
+		},
+		"fields.district": {
+			params: [],
+		},
+		"fields.city": {
+			params: [],
+		},
+		"fields.state": {
+			params: [],
+		},
+		"fields.stateProvince": {
+			params: [],
+		},
+		"fields.motherName": {
+			params: [],
+		},
+		"fields.maritalStatus": {
+			params: [],
+		},
+		"fields.raceColor": {
+			params: [],
+		},
+		"fields.raceColorShort": {
+			params: [],
+		},
+		"fields.nationality": {
+			params: [],
+		},
+		"fields.contactName": {
+			params: [],
+		},
+		"fields.relationship": {
+			params: [],
+		},
+		"fields.relationshipPlaceholder": {
+			params: [],
+		},
+		"common.patients": {
+			params: [],
+		},
+		"common.inactive": {
+			params: [],
+		},
+		"common.noDemographics": {
+			params: [],
+		},
+		"common.registerPatient": {
+			params: [],
+		},
+		"common.newPatient": {
+			params: [],
+		},
+		"list.none": {
+			params: [],
+		},
+		"list.count": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} patient registered.} other{{n} patients registered.}}",
+		},
+		"list.searchPlaceholder": {
+			params: [],
+		},
+		"list.searchLabel": {
+			params: [],
+		},
+		"list.incomplete": {
+			params: [],
+		},
+		"list.noMatch": {
+			params: [],
+		},
+		"list.emptyTitle": {
+			params: [],
+		},
+		"list.emptyDescription": {
+			params: [],
+		},
+		"detail.editRecord": {
+			params: [],
+		},
+		"detail.portalAccess": {
+			params: [],
+		},
+		"detail.newConsultation": {
+			params: [],
+		},
+		"detail.incomplete": {
+			params: [],
+		},
+		"detail.completeRecord": {
+			params: [],
+		},
+		"detail.consultations": {
+			params: [],
+		},
+		"detail.live": {
+			params: [],
+		},
+		"detail.noAnamnesis": {
+			params: [],
+		},
+		"detail.noChiefComplaint": {
+			params: [],
+		},
+		"detail.noConsultations": {
+			params: [],
+		},
+		"detail.exportRecord": {
+			params: [],
+		},
+		"detail.exportHeading": {
+			params: [],
+		},
+		"detail.exportFhir": {
+			params: [],
+		},
+		"detail.exportOpenEhr": {
+			params: [],
+		},
+		"actions.menu": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Actions for {name}",
+		},
+		"actions.edit": {
+			params: [],
+		},
+		"actions.delete": {
+			params: [],
+		},
+		"actions.editFor": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Edit {name}",
+		},
+		"actions.deleteFor": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "Delete {name}",
+		},
+		"remove.title": {
+			params: [],
+		},
+		"remove.body": {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: "This permanently deletes the record of {name}.",
+		},
+		"remove.checking": {
+			params: [],
+		},
+		"remove.noConsultations": {
+			params: [],
+		},
+		"remove.withConsultations": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{1 consultation of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.} other{{n} consultations of this patient will also be permanently deleted, including transcripts, anamneses and audio recordings. This action cannot be undone.}}",
+		},
+		"remove.acknowledge": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{I understand that 1 consultation will be deleted} other{I understand that {n} consultations will be deleted}}",
+		},
+		"remove.confirm": {
+			params: [],
+		},
+		"remove.cancel": {
+			params: [],
+		},
+		"remove.failed": {
+			params: [],
+		},
+		"admin.title": {
+			params: [],
+		},
+		"admin.none": {
+			params: [],
+		},
+		"admin.count": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} patient} other{{n} patients}} across all owners.",
+		},
+		"admin.emptyTitle": {
+			params: [],
+		},
+		"admin.emptyDescription": {
+			params: [],
+		},
+		"admin.colId": {
+			params: [],
+		},
+		"admin.colName": {
+			params: [],
+		},
+		"admin.colOwner": {
+			params: [],
+		},
+		"admin.colOwnerId": {
+			params: [],
+		},
+		"admin.colCreated": {
+			params: [],
+		},
+		"admin.searchPlaceholder": {
+			params: [],
+		},
+		"admin.searchLabel": {
+			params: [],
+		},
+		"admin.noMatch": {
+			params: [],
+		},
+		"admin.filteredCount": {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
+		},
+		"admin.showSynthetic": {
+			params: [],
+		},
+		"admin.syntheticBadge": {
+			params: [],
+		},
+		"admin.colActions": {
+			params: [],
+		},
+		"admin.newPatient": {
+			params: [],
+		},
+		"admin.createTitle": {
+			params: [],
+		},
+		"admin.createDescription": {
+			params: [],
+		},
+		"admin.ownerLabel": {
+			params: [],
+		},
+		"admin.ownerPlaceholder": {
+			params: [],
+		},
+		"admin.createFailed": {
+			params: [],
+		},
+		"form.editTitle": {
+			params: [],
+		},
+		"form.intro": {
+			params: [],
+		},
+		"form.or": {
+			params: [],
+		},
+		"form.ageLabel": {
+			params: [],
+		},
+		"form.agePlaceholder": {
+			params: [],
+		},
+		"form.approximate": {
+			params: [
+				{
+					name: "date",
+				},
+			],
+			template: "Recorded as {date} (approximate). Enter the exact date if known.",
+		},
+		"form.pickDate": {
+			params: [],
+		},
+		"form.activeRecord": {
+			params: [],
+		},
+		"form.fixFields": {
+			params: [],
+		},
+		"form.saveFailed": {
+			params: [],
+		},
+		"form.saveFailedRetry": {
+			params: [],
+		},
+		"form.cancel": {
+			params: [],
+		},
+		"form.saveChanges": {
+			params: [],
+		},
+		"zk.lockedRecord": {
+			params: [],
+		},
+		"zk.lockedHint": {
+			params: [],
+		},
+		"zk.decryptFailed": {
+			params: [],
+		},
+	},
+	portal: {
+		switcherLabel: {
+			params: [],
+		},
+		overview: {
+			params: [],
+		},
+		backToApp: {
+			params: [],
+		},
+		signOut: {
+			params: [],
+		},
+		userFallback: {
+			params: [],
+		},
+	},
+	rbac: {
+		title: {
+			params: [],
+		},
+		subtitle: {
+			params: [],
+		},
+		rolesTitle: {
+			params: [],
+		},
+		rolesEmpty: {
+			params: [],
+		},
+		newRole: {
+			params: [],
+		},
+		roleName: {
+			params: [],
+		},
+		roleDescription: {
+			params: [],
+		},
+		createRole: {
+			params: [],
+		},
+		deleteRole: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		editRole: {
+			params: [],
+		},
+		editRoleTitle: {
+			params: [],
+		},
+		editRoleSubmit: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		roleMeta: {
+			params: [],
+		},
+		metaPlaceholder: {
+			params: [],
+		},
+		deleteRoleTitle: {
+			params: [],
+		},
+		deleteRoleDescription: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template:
+				"Delete “{name}”? This removes the role, its permission grants, and all of its assignments.",
+		},
+		unassignTitle: {
+			params: [],
+		},
+		unassignDescription: {
+			params: [
+				{
+					name: "subjectId",
+				},
+				{
+					name: "roleName",
+				},
+			],
+			template: "Remove {subjectId} from the “{roleName}” role?",
+		},
+		permissionsTitle: {
+			params: [],
+		},
+		matrixEmpty: {
+			params: [],
+		},
+		colPermission: {
+			params: [],
+		},
+		colEffect: {
+			params: [],
+		},
+		effectNone: {
+			params: [],
+		},
+		effectAllow: {
+			params: [],
+		},
+		effectDeny: {
+			params: [],
+		},
+		assignmentsTitle: {
+			params: [],
+		},
+		assignmentsEmpty: {
+			params: [],
+		},
+		colSubject: {
+			params: [],
+		},
+		colSubjectId: {
+			params: [],
+		},
+		colRole: {
+			params: [],
+		},
+		colTenant: {
+			params: [],
+		},
+		colExpires: {
+			params: [],
+		},
+		colGrantedBy: {
+			params: [],
+		},
+		globalTenant: {
+			params: [],
+		},
+		neverExpires: {
+			params: [],
+		},
+		assignSubject: {
+			params: [],
+		},
+		subjectKind: {
+			params: [],
+		},
+		subjectId: {
+			params: [],
+		},
+		tenantId: {
+			params: [],
+		},
+		expiresAt: {
+			params: [],
+		},
+		unassign: {
+			params: [],
+		},
+		saveError: {
+			params: [],
+		},
+		selectRole: {
+			params: [],
 		},
 	},
 	secretaries: {
@@ -4218,7 +4084,7 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
-	groups: {
+	tenant: {
 		title: {
 			params: [],
 		},
@@ -4233,7 +4099,7 @@ export const I18N_MANIFEST = {
 					plural: true,
 				},
 			],
-			template: "{n, plural, =1{{n} group} other{{n} groups}} across the platform.",
+			template: "{n, plural, =1{{n} tenant} other{{n} tenants}} across the platform.",
 		},
 		emptyTitle: {
 			params: [],
@@ -4288,45 +4154,6 @@ export const I18N_MANIFEST = {
 		colRole: {
 			params: [],
 		},
-		newGroup: {
-			params: [],
-		},
-		createTitle: {
-			params: [],
-		},
-		createSubmit: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		fieldName: {
-			params: [],
-		},
-		namePlaceholder: {
-			params: [],
-		},
-		fieldSlug: {
-			params: [],
-		},
-		slugPlaceholder: {
-			params: [],
-		},
-		fieldKind: {
-			params: [],
-		},
-		kindPlaceholder: {
-			params: [],
-		},
-		fieldMeta: {
-			params: [],
-		},
-		metaPlaceholder: {
-			params: [],
-		},
-		saveError: {
-			params: [],
-		},
 		membersTitle: {
 			params: [],
 		},
@@ -4336,13 +4163,7 @@ export const I18N_MANIFEST = {
 		membersEmpty: {
 			params: [],
 		},
-		memberKindLabel: {
-			params: [],
-		},
 		memberIdPlaceholder: {
-			params: [],
-		},
-		rolePlaceholder: {
 			params: [],
 		},
 		addMember: {
@@ -4360,191 +4181,370 @@ export const I18N_MANIFEST = {
 					name: "memberId",
 				},
 			],
-			template: "Remove {memberId} from this group?",
+			template: "Remove {memberId} from this tenant?",
 		},
-		deleteGroup: {
+		roleOwner: {
 			params: [],
 		},
-		deleteGroupTitle: {
+		roleAdmin: {
 			params: [],
 		},
-		deleteGroupDescription: {
-			params: [
-				{
-					name: "name",
-				},
-			],
-			template: "Delete “{name}”? This removes the group and all of its memberships.",
+		roleMember: {
+			params: [],
 		},
-		confirmDelete: {
+		saveError: {
+			params: [],
+		},
+		cancel: {
 			params: [],
 		},
 	},
-	dashboard: {
+	theme: {
+		pageTitle: {
+			params: [],
+		},
+		pageDescription: {
+			params: [],
+		},
+		scopeLabel: {
+			params: [],
+		},
+		scopePlatform: {
+			params: [],
+		},
+		scopeTenant: {
+			params: [],
+		},
+		scopePortalInstance: {
+			params: [],
+		},
+		scopeIdLabel: {
+			params: [],
+		},
+		scopeIdPlaceholder: {
+			params: [],
+		},
+		appNameLabel: {
+			params: [],
+		},
+		appNamePlaceholder: {
+			params: [],
+		},
+		seedsTitle: {
+			params: [],
+		},
+		seedsDescription: {
+			params: [],
+		},
+		seedPrimary: {
+			params: [],
+		},
+		seedSecondary: {
+			params: [],
+		},
+		seedAccent: {
+			params: [],
+		},
+		seedBackground: {
+			params: [],
+		},
+		seedForeground: {
+			params: [],
+		},
+		seedDestructive: {
+			params: [],
+		},
+		seedRadius: {
+			params: [],
+		},
+		darkTitle: {
+			params: [],
+		},
+		darkDescription: {
+			params: [],
+		},
+		fontsTitle: {
+			params: [],
+		},
+		fontsDeliveryLabel: {
+			params: [],
+		},
+		fontsSelfHost: {
+			params: [],
+		},
+		fontsGoogle: {
+			params: [],
+		},
+		fontsGoogleWarning: {
+			params: [],
+		},
+		fontsFamiliesLabel: {
+			params: [],
+		},
+		fontSans: {
+			params: [],
+		},
+		fontHeading: {
+			params: [],
+		},
+		fontMono: {
+			params: [],
+		},
+		brandTitle: {
+			params: [],
+		},
+		brandAppName: {
+			params: [],
+		},
+		previewTitle: {
+			params: [],
+		},
+		previewDescription: {
+			params: [],
+		},
+		contrastTitle: {
+			params: [],
+		},
+		contrastLight: {
+			params: [],
+		},
+		contrastDark: {
+			params: [],
+		},
+		contrastPass: {
+			params: [],
+		},
+		contrastFail: {
+			params: [],
+		},
+		publish: {
+			params: [],
+		},
+		publishing: {
+			params: [],
+		},
+		published: {
+			params: [],
+		},
+		publishError: {
+			params: [],
+		},
+		listTitle: {
+			params: [],
+		},
+		colScope: {
+			params: [],
+		},
+		colScopeId: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colEnabled: {
+			params: [],
+		},
+		colVersion: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		emptyList: {
+			params: [],
+		},
+		previewAction: {
+			params: [],
+		},
+		previewing: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		enable: {
+			params: [],
+		},
+		disable: {
+			params: [],
+		},
+		assetTodo: {
+			params: [],
+		},
+		assetsTitle: {
+			params: [],
+		},
+		assetThemeLabel: {
+			params: [],
+		},
+		assetKindLabel: {
+			params: [],
+		},
+		assetFileLabel: {
+			params: [],
+		},
+		assetUpload: {
+			params: [],
+		},
+		assetUploading: {
+			params: [],
+		},
+		assetUploaded: {
+			params: [],
+		},
+		assetUploadError: {
+			params: [],
+		},
+		assetFontFamily: {
+			params: [],
+		},
+		assetFontSlot: {
+			params: [],
+		},
+		assetGoogleFetch: {
+			params: [],
+		},
+		assetGoogleFetching: {
+			params: [],
+		},
+		assetGoogleError: {
+			params: [],
+		},
+		bannerText: {
+			params: [],
+		},
+		bannerExit: {
+			params: [],
+		},
+		headerLabel: {
+			params: [],
+		},
+		headerEmpty: {
+			params: [],
+		},
+		headerPreview: {
+			params: [],
+		},
+		headerManage: {
+			params: [],
+		},
+	},
+	users: {
 		title: {
 			params: [],
 		},
-		subtitle: {
+		none: {
 			params: [],
 		},
-		"stats.patients": {
+		count: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} user} other{{n} users}} across the platform.",
+		},
+		emptyTitle: {
 			params: [],
 		},
-		"stats.consultations": {
-			params: [],
-		},
-		"stats.live": {
-			params: [],
-		},
-		"stats.plugins": {
-			params: [],
-		},
-		byStatus: {
-			params: [],
-		},
-		bySource: {
-			params: [],
-		},
-		recentConsultations: {
-			params: [],
-		},
-		noConsultations: {
-			params: [],
-		},
-		viewAll: {
-			params: [],
-		},
-		registeredPlugins: {
-			params: [],
-		},
-		managePlugins: {
+		emptyDescription: {
 			params: [],
 		},
 		colId: {
 			params: [],
 		},
+		colName: {
+			params: [],
+		},
+		colEmail: {
+			params: [],
+		},
+		colVerified: {
+			params: [],
+		},
+		colPatients: {
+			params: [],
+		},
+		colConsultations: {
+			params: [],
+		},
+		colRole: {
+			params: [],
+		},
 		colStatus: {
-			params: [],
-		},
-		colSource: {
-			params: [],
-		},
-		colOwner: {
 			params: [],
 		},
 		colCreated: {
 			params: [],
 		},
-		colState: {
+		colActions: {
 			params: [],
 		},
-		colContributions: {
+		yes: {
 			params: [],
 		},
-		stateEnabled: {
+		no: {
 			params: [],
 		},
-		stateDisabled: {
+		roleAdmin: {
 			params: [],
 		},
-		stateSystem: {
+		roleUser: {
 			params: [],
 		},
-		consoleActivity: {
+		statusActive: {
 			params: [],
 		},
-		unreadNotifications: {
+		statusSuspended: {
 			params: [],
 		},
-		noNotifications: {
+		suspend: {
 			params: [],
 		},
-	},
-	invites: {
-		metaTitle: {
+		reactivate: {
 			params: [],
 		},
-		"heading.secretary": {
-			params: [
-				{
-					name: "inviter",
-				},
-			],
-			template: "{inviter} invited you to work on their behalf",
-		},
-		"heading.patient": {
-			params: [
-				{
-					name: "inviter",
-				},
-			],
-			template: "{inviter} gave you access to the patient portal",
-		},
-		description: {
+		suspendTitle: {
 			params: [],
 		},
-		email: {
-			params: [],
-		},
-		name: {
-			params: [],
-		},
-		password: {
-			params: [],
-		},
-		confirmPassword: {
-			params: [],
-		},
-		submit: {
-			params: [],
-		},
-		pending: {
-			params: [],
-		},
-		errorPasswordMismatch: {
-			params: [],
-		},
-		"errors.invalid": {
-			params: [],
-		},
-		"errors.account_exists": {
-			params: [],
-		},
-		"errors.invalid_name": {
-			params: [],
-		},
-		"errors.invalid_password": {
-			params: [],
-		},
-		"errors.failed": {
-			params: [],
-		},
-		createdTitle: {
-			params: [],
-		},
-		createdSignIn: {
-			params: [],
-		},
-		existsTitle: {
-			params: [],
-		},
-		existsBody: {
+		suspendDescription: {
 			params: [
 				{
 					name: "email",
 				},
 			],
-			template:
-				"{email} already has a KTB Health account. Sign in with it to see what you were invited to.",
+			template: "Suspend {email}? They will be signed out and unable to sign in until reactivated.",
 		},
-		invalidTitle: {
+		suspendConfirm: {
 			params: [],
 		},
-		invalidBody: {
+		cancel: {
 			params: [],
 		},
-		signIn: {
+		saveError: {
 			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		noMatch: {
+			params: [],
+		},
+		filteredCount: {
+			params: [
+				{
+					name: "shown",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Showing {shown} of {total}",
 		},
 	},
 } as const;

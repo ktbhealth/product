@@ -111,7 +111,9 @@ const pluginsDir = join(root, "plugins");
 // qps is a pseudo-locale — catalogs render it from the default locale
 // at slice time, so plugins don't need qps baseline entries.
 const pluginLocales = Object.keys(LOCALE_META).filter((l) => l !== PSEUDO_LOCALE);
-for (const dir of readdirSync(pluginsDir)) {
+// readdir order is filesystem-dependent — sort so generated output is
+// byte-identical across machines (ci:i18n diffs regenerated files).
+for (const dir of readdirSync(pluginsDir).sort()) {
 	const file = join(pluginsDir, dir, "src/i18n.ts");
 	if (!existsSync(file)) continue;
 	const mod = await import(pathToFileURL(file).href);
