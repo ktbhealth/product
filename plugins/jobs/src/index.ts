@@ -21,6 +21,7 @@ import { JobsHeaderAction } from "./views/JobsHeaderAction.tsx";
  */
 export const jobsHeaderPlugin = definePlugin({
 	id: "jobs.header",
+	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	optionalDeps: [platformHeaderPlugin.id],
 	chrome: [
@@ -49,6 +50,7 @@ export const jobsHeaderPlugin = definePlugin({
 // .ts file there, so tests stay outside this directory.
 export const jobsRoutesPlugin = definePlugin({
 	id: "jobs.routes",
+	meta: { keywords: ["jobs", "routes"] },
 	routes: [physical("/api", "../../../../plugins/jobs/src/api-routes")],
 });
 
@@ -61,6 +63,7 @@ export const jobsRoutesPlugin = definePlugin({
  */
 export const opsServicesPlugin = definePlugin({
 	id: "jobs.ops.services",
+	meta: { keywords: ["jobs", "services"] },
 	requiredDeps: [consultationsServicesPlugin.id, platformAdminPlugin.id],
 	services: OpsLive,
 });
@@ -70,6 +73,7 @@ export const opsServicesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const opsChromePlugin = definePlugin({
 	id: "jobs.chrome",
+	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -94,6 +98,7 @@ export const opsChromePlugin = definePlugin({
 // services its loader consumes.
 export const opsPanelPlugin = definePlugin({
 	id: "jobs.panel",
+	meta: { keywords: ["jobs", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, opsServicesPlugin.id],
 	panel: {
 		pages: [

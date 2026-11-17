@@ -14,12 +14,14 @@ import { CredentialsPanelPage } from "./platform-page.tsx";
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "credentials.services",
+		meta: { keywords: ["eval", "credentials", "services"] },
 		// Mirrors credentialsServicesPlugin — the ApiKeys port has
 		// no registry dep; requiredDeps is empty on the server side too.
 		requiredDeps: [],
 	}),
 	definePlugin({
 		id: "credentials.chrome",
+		meta: { keywords: ["eval", "credentials", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [
 			{
@@ -39,6 +41,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "credentials.panel",
+		meta: { keywords: ["eval", "credentials", "ui"] },
 		requiredDeps: ["platform.panel", "credentials.services"],
 		panel: {
 			pages: [

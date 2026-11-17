@@ -8,9 +8,10 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "portal.services", system: true }),
+	definePlugin({ id: "portal.services", meta: { keywords: ["portal", "services"] }, system: true }),
 	definePlugin({
 		id: "portal.shell",
+		meta: { keywords: ["portal", "shell", "ui"] },
 		system: true,
 		requiredDeps: ["portal.services"],
 	}),

@@ -81,4 +81,15 @@ describe("client plugin registry", () => {
 			expect(p.configSchema, `${p.id} leaks configSchema to the client`).toBeUndefined();
 		}
 	});
+
+	it("declares manifest keywords on every plugin (P-082)", () => {
+		// Membership in PLUGIN_KEYWORDS is enforced at compile time —
+		// meta.keywords is typed `PluginKeyword[]`, so an unknown word
+		// fails `vp check` at the manifest itself. Runtime asserts the
+		// non-empty contract: the first keyword is the plugin's domain
+		// lane in the plugins map.
+		for (const p of serverPlugins) {
+			expect(p.meta?.keywords?.length ?? 0, `${p.id} has no meta.keywords`).toBeGreaterThan(0);
+		}
+	});
 });

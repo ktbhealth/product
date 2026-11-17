@@ -374,6 +374,7 @@ export const GroupsLive = Layer.effect(
 
 export const groupsTablesPlugin = definePlugin({
 	id: "groups.tables",
+	meta: { keywords: ["groups", "tables"] },
 	tables: { groups, groupMembers },
 });
 
@@ -400,6 +401,7 @@ export const GroupsQueriesLive = Query.handlersOf(GroupsQueries, {
 
 export const groupsServicesPlugin = definePlugin({
 	id: "groups.services",
+	meta: { keywords: ["groups", "services"] },
 	// Admin ops consume the PlatformAdmin gate — the dep edge keeps the
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
@@ -414,6 +416,7 @@ export const groupsServicesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const groupsChromePlugin = definePlugin({
 	id: "groups.chrome",
+	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -432,6 +435,7 @@ export const groupsChromePlugin = definePlugin({
 // declares the page descriptor. The dep edge orders it after the shell.
 export const groupsPanelPlugin = definePlugin({
 	id: "groups.panel",
+	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	panel: {
 		pages: [

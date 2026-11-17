@@ -16,11 +16,12 @@ import { SecretariesPortalPage } from "./views/SecretariesPortalPage.tsx";
  * apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "secretaries.tables" }),
-	definePlugin({ id: "secretaries.services" }),
-	definePlugin({ id: "secretaries.routes" }),
+	definePlugin({ id: "secretaries.tables", meta: { keywords: ["secretaries", "tables"] } }),
+	definePlugin({ id: "secretaries.services", meta: { keywords: ["secretaries", "services"] } }),
+	definePlugin({ id: "secretaries.routes", meta: { keywords: ["secretaries", "routes"] } }),
 	definePlugin({
 		id: "secretaries.pages",
+		meta: { keywords: ["secretaries", "ui", "doctor"] },
 		requiredDeps: ["portal.shell"],
 		pages: [
 			{
@@ -32,6 +33,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "secretaries.chrome",
+		meta: { keywords: ["secretaries", "ui", "doctor"] },
 		requiredDeps: ["portal.shell"],
 		chrome: [
 			{

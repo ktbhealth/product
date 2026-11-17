@@ -116,11 +116,13 @@ export const DoctorsLive = Layer.effect(
 
 export const doctorsTablesPlugin = definePlugin({
 	id: "doctors.tables",
+	meta: { keywords: ["doctors", "tables"] },
 	tables: { doctors },
 });
 
 export const doctorsServicesPlugin = definePlugin({
 	id: "doctors.services",
+	meta: { keywords: ["doctors", "services"] },
 	services: Layer.mergeAll(DoctorsLive, DoctorProfilesLive),
 });
 
@@ -129,6 +131,7 @@ export const doctorsServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const doctorsRoutesPlugin = definePlugin({
 	id: "doctors.routes",
+	meta: { keywords: ["doctors", "routes"] },
 	routes: [physical("/doctors", "../../../../plugins/doctors/src/routes")],
 });
 
@@ -166,6 +169,7 @@ const selectDoctorLoader = (_path: string) =>
 // portal — the app route /doctors/select stays for the sign-in flow.
 export const doctorsPagesPlugin = definePlugin({
 	id: "doctors.pages",
+	meta: { keywords: ["doctors", "ui", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],
 	pages: CLINICAL_PORTALS.map((portal): Page => ({
 		id: `doctors.${portal}.select`,
@@ -198,6 +202,7 @@ const switchDoctorChrome = (portal: (typeof CLINICAL_PORTALS)[number]): ChromeCo
 // shell anchor.
 export const doctorsChromePlugin = definePlugin({
 	id: "doctors.chrome",
+	meta: { keywords: ["doctors", "ui", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],
 	chrome: CLINICAL_PORTALS.map(switchDoctorChrome),
 });

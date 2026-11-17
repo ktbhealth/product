@@ -9,7 +9,19 @@ import { env } from "cloudflare:workers";
 // still send the English literals (email must not break sign-up).
 // `emptyChain` makes the resolved locale chain empty so the
 // `chain.locales[0] ?? DEFAULT_LOCALE` fallback branch is exercised.
-const hoisted = vi.hoisted(() => ({ failLocales: true, emptyChain: false }));
+const hoisted = vi.hoisted(() => ({
+	failLocales: true,
+	emptyChain: false,
+	locale: "en",
+	requestedLocales: [] as (string | undefined)[],
+}));
+
+// The request locale comes from the ALS-backed locale-context — stub
+// it so the qps guard branch is reachable without request plumbing.
+vi.mock("./locale-context.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./locale-context.ts")>();
+	return { ...actual, currentLocale: () => hoisted.locale };
+});
 
 vi.mock("@ktb/i18n-plugin", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@ktb/i18n-plugin")>();
@@ -28,10 +40,12 @@ vi.mock("@ktb/i18n", async (importOriginal) => {
 		...actual,
 		resolveRequestLocales: (
 			...args: Parameters<typeof actual.resolveRequestLocales>
-		): ReturnType<typeof actual.resolveRequestLocales> =>
-			hoisted.emptyChain
+		): ReturnType<typeof actual.resolveRequestLocales> => {
+			hoisted.requestedLocales.push(args[0]);
+			return hoisted.emptyChain
 				? { locales: [], defaultLocale: "en" }
-				: actual.resolveRequestLocales(...args),
+				: actual.resolveRequestLocales(...args);
+		},
 	};
 });
 
@@ -84,6 +98,23 @@ describe("verificationEmail i18n", () => {
 		} finally {
 			hoisted.failLocales = true;
 			hoisted.emptyChain = false;
+		}
+	});
+
+	it("never resolves email copy through the qps pseudo-locale", async () => {
+		hoisted.failLocales = false;
+		hoisted.locale = "qps";
+		hoisted.requestedLocales.length = 0;
+		try {
+			await expect(sendVerification()).resolves.toBeUndefined();
+			// qps is substituted with the default locale before the
+			// enabled-locale chain resolves — email copy is never
+			// pseudo-localized.
+			expect(hoisted.requestedLocales[0]).toBe("en");
+		} finally {
+			hoisted.failLocales = true;
+			hoisted.locale = "en";
+			hoisted.requestedLocales.length = 0;
 		}
 	});
 });

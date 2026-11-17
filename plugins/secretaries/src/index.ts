@@ -230,11 +230,13 @@ export const SecretariesLive = Layer.effect(
 
 export const secretariesTablesPlugin = definePlugin({
 	id: "secretaries.tables",
+	meta: { keywords: ["secretaries", "tables"] },
 	tables: { doctorAccess },
 });
 
 export const secretariesServicesPlugin = definePlugin({
 	id: "secretaries.services",
+	meta: { keywords: ["secretaries", "services"] },
 	services: Layer.mergeAll(DoctorDelegationsLive, SecretariesLive),
 });
 
@@ -243,6 +245,7 @@ export const secretariesServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const secretariesRoutesPlugin = definePlugin({
 	id: "secretaries.routes",
+	meta: { keywords: ["secretaries", "routes"] },
 	routes: [
 		physical("/secretaries", "../../../../plugins/secretaries/src/routes"),
 		// /secretaries/login (above) stays as a redirect for invite
@@ -280,6 +283,7 @@ const secretariesPortalLoader = (_path: string) =>
 // the doctor portal alone. The app route /secretaries redirects here.
 export const secretariesPagesPlugin = definePlugin({
 	id: "secretaries.pages",
+	meta: { keywords: ["secretaries", "ui", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],
 	pages: [
 		{
@@ -296,6 +300,7 @@ export const secretariesPagesPlugin = definePlugin({
 // shell anchor.
 export const secretariesChromePlugin = definePlugin({
 	id: "secretaries.chrome",
+	meta: { keywords: ["secretaries", "ui", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],
 	chrome: [
 		{
