@@ -3,8 +3,11 @@ import { createServerFn } from "@tanstack/react-start";
 import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
+import { Telemetry } from "@ktb/observability";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
+
+import { summarizeMetrics, type ManagerMetrics } from "./metrics.ts";
 
 // Plugin manager server functions (P-058): every handler is
 // PlatformAdmin-gated — the /platform layout already 404s non-admins,
@@ -118,6 +121,36 @@ export const getPluginConfigFn = createServerFn({ method: "GET" })
 			throw error;
 		});
 	});
+
+export type { ManagerMetrics } from "./metrics.ts";
+
+/**
+ * Aggregated runtime metrics for the /platform/plugins panel: scrapes
+ * the process-wide registry through `Telemetry.scrape` (the same
+ * exposition GET /api/metrics serves) and reduces it server-side to
+ * per-serverFn and per-session-context rows. Counters are cumulative
+ * since process start — the UI labels them accordingly. `null` for
+ * non-admins, same gate as the other manager fns.
+ */
+export const getMetricsFn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<ManagerMetrics | null> => {
+		const user = await getSessionUser();
+		if (!user) return null;
+		return asAdmin(
+			user,
+			Effect.gen(function* () {
+				const telemetry = yield* Telemetry;
+				const text = yield* telemetry.scrape;
+				return summarizeMetrics(text);
+			}),
+		).catch((error: unknown) => {
+			if (typeof error === "object" && error !== null && "_tag" in error) {
+				if ((error as { _tag?: string })._tag === "Forbidden") return null;
+			}
+			throw error;
+		});
+	},
+);
 
 const SetConfigInput = Schema.Struct({
 	pluginId: Schema.String,
