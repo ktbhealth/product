@@ -4,6 +4,11 @@ import type { DbClient } from "@ktb/db";
 import { consultations, patients } from "@ktb/db/schema";
 
 import { rowTenantIsZk } from "./lifecycle.ts";
+import { AUDIO_RETRY_STATUSES, type AudioJobRow } from "./api.ts";
+
+// Canonical home is ./api.ts (client-safe cross-plugin surface); the
+// root index re-exports both names through this module unchanged.
+export { AUDIO_RETRY_STATUSES, type AudioJobRow } from "./api.ts";
 
 // ---------- audio pipeline (system paths — queue consumer, no principal) ----------
 
@@ -114,16 +119,6 @@ export async function failAudioJob(db: DbClient, consultationId: number, reason:
 }
 
 /**
- * Audio statuses an admin retry may re-queue (T-035): "failed" is the
- * terminal pipeline state and "stored" means the upload landed but the
- * enqueue failed. "queued"/"processing" may have a live delivery in
- * flight — re-enqueueing them risks duplicate transcription — and
- * "done" is terminal-success. A job stuck in "queued" with no pending
- * message has no staleness signal to detect it; recovery stays manual.
- */
-export const AUDIO_RETRY_STATUSES = ["stored", "failed"] as const;
-
-/**
  * Re-queue marker for the admin retry path: flips a retryable
  * consultation back to "queued" and clears the error. The UPDATE is
  * conditional on the retryable set so a concurrent consumer transition
@@ -162,9 +157,14 @@ export async function saveCorrectedTranscript(
 		.where(eq(consultations.id, consultationId));
 }
 
-/** Row shape behind the `consultations.audioJobs` query — the minimal
- * audio-pipeline projection the /platform jobs feed maps. */
-export interface AudioJobRow {
+/**
+ * DB projection row behind the audio-job repo reads — narrower than the
+ * client-facing {@link AudioJobRow}: `createdAt` is always a `Date` and
+ * `patientName` always present (null when the consultation has no
+ * linked patient). The wide API shape only exists because loader and
+ * SSE payloads serialize Dates and tolerate absent names.
+ */
+export interface AudioJobDbRow {
 	readonly id: number;
 	readonly audioStatus: string;
 	readonly audioError: string | null;
@@ -177,7 +177,7 @@ export interface AudioJobRow {
  * Callers MUST have passed the `PlatformAdmin` gate first — this repo
  * function itself is unauthenticated, like `listAllConsultations`.
  */
-export async function listAudioJobRows(db: DbClient): Promise<AudioJobRow[]> {
+export async function listAudioJobRows(db: DbClient): Promise<AudioJobDbRow[]> {
 	return db
 		.select({
 			id: consultations.id,
@@ -196,7 +196,7 @@ export async function listAudioJobRows(db: DbClient): Promise<AudioJobRow[]> {
 export async function audioJobRow(
 	db: DbClient,
 	consultationId: number,
-): Promise<AudioJobRow | null> {
+): Promise<AudioJobDbRow | null> {
 	const rows = await db
 		.select({
 			id: consultations.id,

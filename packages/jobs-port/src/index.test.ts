@@ -17,6 +17,8 @@ import {
 	listJobRuns,
 	makeJobConsumer,
 	makeJobs,
+	jobHandlers,
+	registerJobHandler,
 	upsertJobRun,
 	type JobEnvelope,
 	type JobMessageLike,
@@ -461,5 +463,22 @@ describe("makeJobConsumer", () => {
 		expect(log).toEqual(["ack", "ack"]);
 		expect(warn).toHaveBeenCalled();
 		warn.mockRestore();
+	});
+});
+
+describe("jobHandlers registry", () => {
+	it("registers and replaces kind handlers", () => {
+		const first: JobRegistration = { handle: async () => {} };
+		const second: JobRegistration = { handle: async () => {} };
+		const kind = "test.registry";
+		try {
+			registerJobHandler(kind, first);
+			expect(jobHandlers[kind]).toBe(first);
+			registerJobHandler(kind, second);
+			expect(jobHandlers[kind]).toBe(second);
+		} finally {
+			delete jobHandlers[kind];
+		}
+		expect(jobHandlers[kind]).toBeUndefined();
 	});
 });

@@ -281,6 +281,21 @@ export interface JobRegistration {
 
 export type JobHandlers = Readonly<Record<string, JobRegistration>>;
 
+/**
+ * Kind → handler registry for the shared jobs queue consumer (PL-007).
+ * The composition root (apps/web) registers non-built-in kinds here at
+ * startup — domain plugins contribute their registrations through the
+ * edge modules that own the platform bindings, never from request
+ * paths.
+ */
+export const jobHandlers: Record<string, JobRegistration> = {};
+
+/** Register (or replace) a job kind handler. Called once at app
+ * composition by the owning edge module — never from request paths. */
+export const registerJobHandler = (kind: string, registration: JobRegistration): void => {
+	jobHandlers[kind] = registration;
+};
+
 export interface JobConsumerDeps {
 	readonly handlers: JobHandlers;
 	/** When bound, delivery lifecycle writes the job_runs projection

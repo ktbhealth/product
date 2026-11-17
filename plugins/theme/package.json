@@ -12,12 +12,15 @@
 		"./i18n": "./src/i18n.ts",
 		"./palette": "./src/palette.ts",
 		"./types": "./src/types.ts",
-		"./views": "./src/views/index.ts"
+		"./views": "./src/views/index.ts",
+		"./jobs": "./src/jobs.ts"
 	},
 	"dependencies": {
+		"@cf-wasm/photon": "^0.4.0",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
+		"@ktb/jobs-port": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/platform-header": "workspace:*",

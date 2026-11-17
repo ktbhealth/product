@@ -55,3 +55,38 @@ export const ConsultationAudioUpdated = Event.make("consultation.audioUpdated", 
 	 * {@link ConsultationCreated}. */
 	tenantId: Schema.optionalKey(Schema.NullOr(Schema.Number)),
 });
+
+/**
+ * Row shape behind the `consultations.audioJobs` query — the minimal
+ * audio-pipeline projection the /platform jobs feed maps. Canonical
+ * here (client-safe) so consumer plugins share one definition instead
+ * of re-declaring it. `createdAt` widens to `string` because loader and
+ * SSE payloads serialize `Date`s; `patientName` stays optional for the
+ * same tolerance. The DB projection always fills both.
+ */
+export interface AudioJobRow {
+	readonly id: number;
+	readonly audioStatus: string;
+	readonly audioError: string | null;
+	readonly createdAt: Date | string;
+	readonly patientName?: string | null;
+}
+
+/**
+ * `audioStatus` values that represent a queued transcription job — the
+ * /platform jobs-feed vocabulary (stored → queued → processing → done |
+ * failed). "none" (no recording) and "zk" (client-encrypted, T-147) are
+ * deliberately absent: neither is a server job.
+ */
+export const AUDIO_JOB_STATUSES = ["stored", "queued", "processing", "done", "failed"] as const;
+export type AudioJobStatus = (typeof AUDIO_JOB_STATUSES)[number];
+
+/**
+ * Audio statuses an admin retry may re-queue (T-035): "failed" is the
+ * terminal pipeline state and "stored" means the upload landed but the
+ * enqueue failed. "queued"/"processing" may have a live delivery in
+ * flight — re-enqueueing them risks duplicate transcription — and
+ * "done" is terminal-success. A job stuck in "queued" with no pending
+ * message has no staleness signal to detect it; recovery stays manual.
+ */
+export const AUDIO_RETRY_STATUSES = ["stored", "failed"] as const;

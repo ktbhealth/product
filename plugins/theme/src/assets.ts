@@ -4,8 +4,8 @@
  * `theme_definitions` repo helpers and Google Fonts CSS parsing.
  *
  * Transport stays at the edge per ADR-0001: the api-route stores bytes
- * in R2 and enqueues via the jobs port; the queue consumer (host-side,
- * apps/web/src/lib/theme-jobs.ts) decodes images with the WASM
+ * in R2 and enqueues via the jobs port; the queue consumer (./jobs.ts)
+ * decodes images with the WASM
  * processor, writes derivatives back to R2 and calls the repo helpers
  * here. Everything in this module is plain TS — no workerd/node APIs —
  * so it stays unit-testable.

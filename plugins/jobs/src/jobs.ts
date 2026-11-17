@@ -1,19 +1,17 @@
 import type { JobStatusValue } from "@ktbhealth/ui/components/job-status";
 
+import { AUDIO_JOB_STATUSES, AUDIO_RETRY_STATUSES } from "@ktb/consultations/api";
+import type { AudioJobRow } from "@ktb/consultations/api";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
 import type { ConsoleJob } from "./context.ts";
 import { jobMessages, I18N_NAMESPACE } from "./i18n.ts";
 
-/** Minimal row shape the mapper needs — AdminConsultationRow satisfies it. */
-export interface AudioJobRow {
-	readonly id: number;
-	readonly audioStatus: string;
-	readonly audioError: string | null;
-	readonly createdAt: Date | string;
-	readonly patientName?: string | null;
-}
+// Canonical row shape + status vocabularies live in @ktb/consultations/api
+// (client-safe); re-exported so existing "../jobs.ts" importers are
+// unaffected.
+export type { AudioJobRow } from "@ktb/consultations/api";
 
 const STATUS_MAP: Record<string, JobStatusValue | undefined> = {
 	stored: "queued",
@@ -21,7 +19,7 @@ const STATUS_MAP: Record<string, JobStatusValue | undefined> = {
 	processing: "processing",
 	done: "done",
 	failed: "failed",
-};
+} satisfies Record<(typeof AUDIO_JOB_STATUSES)[number], JobStatusValue>;
 
 /**
  * Audio-pipeline status → job badge status; null for rows that are not
@@ -31,11 +29,11 @@ export const jobStatusOf = (audioStatus: string): JobStatusValue | null =>
 	STATUS_MAP[audioStatus] ?? null;
 
 /**
- * Audio statuses the admin retry accepts — mirrors
- * `AUDIO_RETRY_STATUSES` in @ktb/consultations (kept here so views stay
- * client-safe; the service re-checks server-side).
+ * Audio statuses the admin retry accepts — the canonical
+ * `AUDIO_RETRY_STATUSES` from @ktb/consultations/api (kept under this
+ * name so views stay client-safe; the service re-checks server-side).
  */
-export const RETRYABLE_AUDIO_STATUSES = ["stored", "failed"] as const;
+export const RETRYABLE_AUDIO_STATUSES = AUDIO_RETRY_STATUSES;
 
 export const isAudioRetryable = (audioStatus: string): boolean =>
 	(RETRYABLE_AUDIO_STATUSES as readonly string[]).includes(audioStatus);
