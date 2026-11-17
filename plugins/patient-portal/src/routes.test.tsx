@@ -48,6 +48,9 @@ const detail = (
 	}
 ).options;
 
+const componentOf = (route: unknown) =>
+	(route as { options: { component: () => unknown } }).options.component;
+
 const redirectHref = (caught: unknown) =>
 	(caught as Response & { options: { href: string } }).options.href;
 
@@ -100,5 +103,13 @@ describe("/portal/activity redirect", () => {
 		const caught = await activity.beforeLoad().catch((e: unknown) => e);
 		expect(isRedirect(caught)).toBe(true);
 		expect(redirectHref(caught)).toBe("/login/patient");
+	});
+});
+
+describe("legacy route components", () => {
+	it("render nothing — the funnel lives in beforeLoad", () => {
+		for (const route of [HomeRoute, ActivityRoute, ConsultationRoute]) {
+			expect(componentOf(route)()).toBeNull();
+		}
 	});
 });

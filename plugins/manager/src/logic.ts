@@ -226,10 +226,10 @@ const KIND_CONSUMERS: readonly (readonly [string, readonly string[]])[] = [
 	["theme.", ["app-host.server", "app-host.client", "app.routes"]],
 ];
 
-/** Consumers that name a plugin id resolve to it directly; everything
- * else is a host surface and gets a `surface:` pseudo-node. */
-const consumerEdgeTarget = (consumer: string): string =>
-	consumer === "plugin-manager" ? "manager.panel" : surfaceNodeId(consumer);
+/** Every kind consumer is a host surface today — the KIND_CONSUMERS
+ * table only names surfaces (`eval-cli`, `app-host.*`, `app.routes`),
+ * so edges always land on a `surface:` pseudo-node. */
+const consumerEdgeTarget = (consumer: string): string => surfaceNodeId(consumer);
 
 /** Surfaces collecting `kind` — falls back to the generic host surface
  * for kinds no table claims. */
@@ -320,11 +320,12 @@ const assignDepths = (
 	}
 	const maxPluginDepth = Math.max(
 		0,
-		...[...nodes.values()].filter((n) => n.pseudo === undefined).map((n) => depth.get(n.id) ?? 0),
+		// Every node id is visited above, so plugin depths are always set.
+		...[...nodes.values()].filter((n) => n.pseudo === undefined).map((n) => depth.get(n.id)!),
 	);
 	return [...nodes.values()].map((node) => ({
 		...node,
-		depth: node.pseudo === undefined ? (depth.get(node.id) ?? 0) : maxPluginDepth + 1,
+		depth: node.pseudo === undefined ? depth.get(node.id)! : maxPluginDepth + 1,
 	}));
 };
 

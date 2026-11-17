@@ -35,6 +35,9 @@ declare module "@ktb/kernel" {
 		"t.opt": true;
 		"t.pub": true;
 		"t.contrib": true;
+		"t.x": true;
+		"t.y": true;
+		"t.reorder.c": true;
 		"dashboard.panel": true;
 		"manager.panel": true;
 	}
@@ -356,6 +359,23 @@ describe("layeredLayout / depths", () => {
 		for (const e of edgesOf(g, "required")) {
 			expect(depth.get(e.source)!).toBeLessThan(depth.get(e.target)!);
 		}
+	});
+
+	it("resolves deps declared out of topo order", () => {
+		// The dependent lists first: its predecessors are visited
+		// recursively, so their own loop turns are already memoized.
+		const g = graphFromPlugins([dep("t.reorder.c", ["t.b"]), dep("t.a"), dep("t.b", ["t.a"])]);
+		const depth = new Map(g.nodes.map((n) => [n.id, n.depth]));
+		expect(depth.get("t.reorder.c")).toBe(2);
+		expect(depth.get("t.b")).toBe(1);
+		expect(depth.get("t.a")).toBe(0);
+	});
+
+	it("terminates on a dep cycle instead of recursing forever", () => {
+		const g = graphFromPlugins([dep("t.x", ["t.y"]), dep("t.y", ["t.x"])]);
+		const depth = new Map(g.nodes.map((n) => [n.id, n.depth]));
+		expect(depth.get("t.x")).toBe(2);
+		expect(depth.get("t.y")).toBe(1);
 	});
 
 	it("places columns by depth, rows in node order", () => {

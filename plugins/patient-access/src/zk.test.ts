@@ -122,4 +122,20 @@ describe("grantPortalAccess", () => {
 		// grant was attempted but the write failed.
 		expect(a.grant).toHaveBeenCalledTimes(1);
 	});
+
+	it("skips the patient record when this device holds no envelope for it", async () => {
+		const clinic = keyring();
+		const portal = keyring();
+		const { wrapPublicKey: portalPub } = await portal.deviceKeys();
+		const consult = await clinic.mintDek((await clinic.deviceKeys()).wrapPublicKey);
+		const a = api({ "10": consult.envelope });
+		const granted = await grantPortalAccess(clinic, a, {
+			patientId: 1,
+			consultationIds: [10],
+			readers: [{ readerId: "ana", wrapPublicKey: portalPub }],
+		});
+		expect(granted).toBe(1);
+		const calls = (a.grant as ReturnType<typeof vi.fn>).mock.calls;
+		expect(calls.map((c) => c[0].entityType)).toEqual(["consultation"]);
+	});
 });

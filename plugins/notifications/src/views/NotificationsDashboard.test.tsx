@@ -10,7 +10,7 @@ import {
 import { NotificationsDashboardSections } from "./NotificationsDashboard.tsx";
 
 const rows: ConsoleNotification[] = [
-	{ id: "1", title: "Patient created", description: "Ana", read: false },
+	{ id: "1", title: "Patient created", description: "Ana", meta: "ward-4", read: false },
 	{ id: "2", title: "Consultation done", read: true },
 ];
 

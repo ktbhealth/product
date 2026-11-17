@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -9,7 +9,7 @@ import { Consultations } from "@ktb/consultations";
 import { Doctors } from "@ktb/doctors";
 import { Patients } from "@ktb/patients";
 import { PortalAccess } from "@ktb/patient-access";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 
@@ -25,6 +25,15 @@ import {
 	plugins,
 	portalSections,
 } from "./index.ts";
+
+// The page loaders resolve the request's patient context through
+// @ktb/server-fns; outside a request there is none, so the mock is the
+// only way to drive the activity loader's open-record branches.
+const mocks = vi.hoisted(() => ({ patientContext: vi.fn() }));
+vi.mock("@ktb/server-fns", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
+	return { ...actual, getPatientContext: mocks.patientContext };
+});
 
 const section = (content: string): AnamnesisSection => ({
 	content,
@@ -319,6 +328,15 @@ describe("PatientPortal.consultation", () => {
 		]);
 	});
 
+	it("reports no recording doctor when the row has no user", async () => {
+		const anonymous = makeRuntime({ ...stubs, get: portalRow({ userId: null }) });
+		const result = await as(anonymous, ana, (p) => p.consultation(10));
+		expect(result).toMatchObject({
+			_tag: "Success",
+			success: { doctorName: null },
+		});
+	});
+
 	it("ships a ZK row's envelope untouched, with no sections", async () => {
 		const zkRuntime = makeRuntime({ ...stubs, get: portalRow({ anamnesis: "v1.ct" }) });
 		expect(await as(zkRuntime, ana, (p) => p.consultation(10))).toMatchObject({
@@ -505,5 +523,69 @@ describe("patient-portal plugins", () => {
 			portal: "patient",
 			content: { kind: "sidebarItem", item: { to: "/portal/patient", exact: true } },
 		});
+	});
+});
+
+describe("patient-portal activity loader", () => {
+	const page = patientPortalPagesPlugin.pages?.find((p) => p.id === "patient-portal.activity");
+	const loader = () =>
+		(
+			page as unknown as {
+				loader: (path: string) => Effect.Effect<unknown, unknown, never>;
+			}
+		).loader("/portal/patient/activity");
+
+	const EMPTY = { entries: [], total: 0, limit: 100 };
+	const openRecord = {
+		user: { id: "ana", email: "ana@ktb.test", name: "Ana" },
+		profiles: [{ patientId: 1, name: "Ana", relation: "self" }],
+		active: { patientId: 1, name: "Ana", relation: "self" },
+	};
+
+	const auditStub = (patientList: (options: { patientId: number; limit?: number }) => unknown) =>
+		Layer.succeed(Audit, {
+			record: () => Effect.void,
+			adminList: () => Effect.die("unused"),
+			adminVerify: () => Effect.die("unused"),
+			activityAccess: () => Effect.succeed(false),
+			activityList: () => Effect.die("unused"),
+			patientList,
+		} as never);
+
+	it("fails closed to an empty page without an open record", async () => {
+		mocks.patientContext.mockResolvedValue(null);
+		await expect(Effect.runPromise(loader())).resolves.toEqual(EMPTY);
+	});
+
+	it("fails closed when no patient record is selected", async () => {
+		mocks.patientContext.mockResolvedValue({ ...openRecord, active: null });
+		await expect(Effect.runPromise(loader())).resolves.toEqual(EMPTY);
+	});
+
+	it("fails closed when the audit plugin is absent", async () => {
+		mocks.patientContext.mockResolvedValue(openRecord);
+		await expect(Effect.runPromise(loader())).resolves.toEqual(EMPTY);
+	});
+
+	it("serves the open record's feed through Audit.patientList", async () => {
+		mocks.patientContext.mockResolvedValue(openRecord);
+		const seen: { patientId: number; limit?: number }[] = [];
+		const layer = auditStub((options) => {
+			seen.push(options);
+			return Effect.succeed({
+				entries: [{ id: 1 }],
+				total: 1,
+				limit: options.limit ?? 100,
+			});
+		});
+		const result = await Effect.runPromise(loader().pipe(Effect.provide(layer)));
+		expect(result).toEqual({ entries: [{ id: 1 }], total: 1, limit: 100 });
+		expect(seen).toEqual([{ patientId: 1, limit: 100 }]);
+	});
+
+	it("fails closed when the audit check is denied", async () => {
+		mocks.patientContext.mockResolvedValue(openRecord);
+		const layer = auditStub(() => Effect.fail(new Forbidden({ path: "audit.patient" })));
+		await expect(Effect.runPromise(loader().pipe(Effect.provide(layer)))).resolves.toEqual(EMPTY);
 	});
 });

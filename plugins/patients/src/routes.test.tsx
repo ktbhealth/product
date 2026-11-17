@@ -37,6 +37,8 @@ import { Route as EditRoute } from "./routes/$id/edit.tsx";
 type BeforeLoad = (arg: { params?: { id: string } }) => unknown;
 const beforeLoadOf = (route: unknown) =>
 	(route as { options: { beforeLoad: BeforeLoad } }).options.beforeLoad;
+const componentOf = (route: unknown) =>
+	(route as { options: { component: () => unknown } }).options.component;
 
 describe("/patients* legacy redirects", () => {
 	it("/patients funnels to the portal list", async () => {
@@ -57,5 +59,11 @@ describe("/patients* legacy redirects", () => {
 	it("/patients/$id/edit funnels to the portal edit form", async () => {
 		await expect(beforeLoadOf(EditRoute)({ params: { id: "9" } })).resolves.toBeUndefined();
 		expect(mocks.redirectToPortal).toHaveBeenCalledWith("/patients/9/edit");
+	});
+
+	it("renders nothing — the funnel lives in beforeLoad", () => {
+		for (const route of [IndexRoute, NewRoute, DetailRoute, EditRoute]) {
+			expect(componentOf(route)()).toBeNull();
+		}
 	});
 });

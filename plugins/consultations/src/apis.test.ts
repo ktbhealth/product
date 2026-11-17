@@ -5,6 +5,11 @@ const mocks = vi.hoisted(() => ({
 	invitePatientFn: vi.fn(),
 	portalReadersFn: vi.fn(),
 	getConsultationFn: vi.fn(),
+	createPatientFn: vi.fn(),
+	listPatientsFn: vi.fn(),
+	vaultDevicesFn: vi.fn(),
+	vaultDekEnvelopesFn: vi.fn(),
+	vaultGrantAccessFn: vi.fn(),
 }));
 
 vi.mock("@ktb/patient-access/fns", () => ({
@@ -12,7 +17,15 @@ vi.mock("@ktb/patient-access/fns", () => ({
 	invitePatientFn: mocks.invitePatientFn,
 	portalReadersFn: mocks.portalReadersFn,
 }));
-vi.mock("@ktb/patients/fns", () => ({ createPatientFn: vi.fn(), listPatientsFn: vi.fn() }));
+vi.mock("@ktb/patients/fns", () => ({
+	createPatientFn: mocks.createPatientFn,
+	listPatientsFn: mocks.listPatientsFn,
+}));
+vi.mock("@ktb/vault/fns", () => ({
+	vaultDevicesFn: mocks.vaultDevicesFn,
+	vaultDekEnvelopesFn: mocks.vaultDekEnvelopesFn,
+	vaultGrantAccessFn: mocks.vaultGrantAccessFn,
+}));
 vi.mock("./fns.ts", () => ({
 	attachAnamnesisFn: vi.fn(),
 	extractAnamnesisFn: vi.fn(),
@@ -25,7 +38,9 @@ vi.mock("./fns.ts", () => ({
 
 import {
 	consultationDetailApi,
+	consultationsZkApi,
 	newConsultationApi,
+	newConsultationLoader,
 	validateNewConsultationSearch,
 } from "./apis.ts";
 
@@ -135,5 +150,51 @@ describe("api delegates forward to the server fns", () => {
 		expect(fns.getConsultationFn).toHaveBeenCalledWith({ data: 5 });
 		await newConsultationApi.portalReaders!({ data: 6 });
 		expect(mocks.portalReadersFn).toHaveBeenCalledWith({ data: 6 });
+	});
+});
+
+describe("consultationsZkApi", () => {
+	it("binds the vault device/envelope/grant fns", async () => {
+		mocks.vaultDevicesFn.mockResolvedValue([{ id: "dev-1" }]);
+		mocks.vaultDekEnvelopesFn.mockResolvedValue({ "10": "w1.x" });
+		mocks.vaultGrantAccessFn.mockResolvedValue({ ok: true });
+		await expect(consultationsZkApi.devices()).resolves.toEqual([{ id: "dev-1" }]);
+		expect(mocks.vaultDevicesFn).toHaveBeenCalledWith();
+		await expect(
+			consultationsZkApi.dekEnvelopes({
+				entityType: "consultation",
+				entityIds: [10],
+				wrapPublicKey: "dev",
+			}),
+		).resolves.toEqual({ "10": "w1.x" });
+		expect(mocks.vaultDekEnvelopesFn).toHaveBeenCalledWith({
+			data: {
+				entityType: "consultation",
+				entityIds: [10],
+				wrapPublicKey: "dev",
+			},
+		});
+		await expect(
+			consultationsZkApi.grant({
+				entityType: "consultation",
+				entityId: 10,
+				grants: [{ readerKind: "patient", readerPubkey: "p", wrappedDek: "w1.y" }],
+			}),
+		).resolves.toEqual({ ok: true });
+		expect(mocks.vaultGrantAccessFn).toHaveBeenCalledWith({
+			data: {
+				entityType: "consultation",
+				entityId: 10,
+				grants: [{ readerKind: "patient", readerPubkey: "p", wrappedDek: "w1.y" }],
+			},
+		});
+	});
+});
+
+describe("newConsultationLoader", () => {
+	it("lists the patients for the picker", async () => {
+		mocks.listPatientsFn.mockResolvedValue([{ id: 1, name: "Maria" }]);
+		await expect(newConsultationLoader()).resolves.toEqual([{ id: 1, name: "Maria" }]);
+		expect(mocks.listPatientsFn).toHaveBeenCalledWith();
 	});
 });

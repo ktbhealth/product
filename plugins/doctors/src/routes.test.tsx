@@ -39,7 +39,11 @@ import { isRedirect } from "@tanstack/react-router";
 
 import { Route } from "./routes/select.tsx";
 
-const options = (Route as unknown as { options: { loader: () => Promise<unknown> } }).options;
+const options = (
+	Route as unknown as {
+		options: { loader: () => Promise<unknown>; component: () => unknown };
+	}
+).options;
 
 type RedirectTarget = Response & { options: { href?: string; to?: string } };
 const redirectedTo = async (): Promise<RedirectTarget> => {
@@ -76,5 +80,9 @@ describe("/doctors/select", () => {
 			activeDoctorId: 2,
 		});
 		expect((await redirectedTo()).options.href).toBe("/portal/secretary");
+	});
+
+	it("renders nothing — the funnel lives in the loader", () => {
+		expect(options.component()).toBeNull();
 	});
 });

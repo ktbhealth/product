@@ -108,6 +108,26 @@ describe("PatientAccessPage", () => {
 		);
 	});
 
+	it("links back inside the portal shell when mounted under an instance", () => {
+		render(
+			<PatientAccessPage
+				patient={patient}
+				links={[]}
+				locale="en"
+				api={{
+					invite: vi.fn(async () => ({ ok: true as const })),
+					approve: vi.fn(async () => ({ ok: true })),
+					revoke: vi.fn(async () => ({ ok: true })),
+				}}
+				onChanged={() => {}}
+				portalBase="/portal/doctor"
+			/>,
+		);
+		expect(screen.getByRole("link", { name: "Back to the patient" }).getAttribute("href")).toBe(
+			"/portal/doctor/patients/7",
+		);
+	});
+
 	it("shows the empty state without links", () => {
 		setup([]);
 		expect(screen.getByText("Nobody has portal access yet")).toBeTruthy();

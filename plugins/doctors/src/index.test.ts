@@ -168,6 +168,21 @@ describe("switch-doctor portal loader", () => {
 		});
 	});
 
+	it("reports no active profile when the acting user owns none of them", async () => {
+		// The account lists profiles, but none belongs to the acting
+		// userId — the chooser renders with nothing preselected.
+		expect(await runLoader({ userId: "u9", actorId: "sec" })).toEqual({
+			profiles: [
+				{
+					doctorId: delegated.doctorId,
+					displayName: delegated.displayName,
+					role: delegated.role,
+				},
+			],
+			activeDoctorId: null,
+		});
+	});
+
 	it("is empty without a principal or a deployed directory", async () => {
 		expect(await runLoader(null)).toEqual({ profiles: [], activeDoctorId: null });
 		await expect(

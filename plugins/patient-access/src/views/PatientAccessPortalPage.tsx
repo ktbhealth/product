@@ -41,6 +41,9 @@ export function PatientAccessPortalPage({ data, ctx }: { data: unknown; ctx: Pag
 	const base = `/portal/${useLocation({ select: (l) => l.pathname.split("/")[2] ?? "" })}`;
 	const d = (data ?? { view: "missing" }) as PatientAccessPortalData;
 	const patient = d.view === "detail" ? d.patient : null;
+	// Hoisted above the early return so the missing-record render
+	// still evaluates the empty-links branch.
+	const links = d.view === "detail" ? d.links : [];
 	const t = sliceMessages(ctx.i18n, I18N_NAMESPACE, patientAccessMessages(ctx.locale));
 	const [zk, setZk] = useState(false);
 	useEffect(() => {
@@ -102,7 +105,7 @@ export function PatientAccessPortalPage({ data, ctx }: { data: unknown; ctx: Pag
 	return (
 		<PatientAccessPage
 			patient={{ ...patient, name: patientName }}
-			links={d.view === "detail" ? d.links : []}
+			links={links}
 			i18n={ctx.i18n}
 			locale={ctx.locale}
 			api={api}

@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
 	getSessionUser: vi.fn(),
 	getDoctorAccess: vi.fn(),
 	getDoctorContext: vi.fn(),
+	getLocale: vi.fn(() => "pt-BR"),
 }));
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
@@ -21,9 +22,10 @@ vi.mock("@ktb/server-fns", async (importOriginal) => ({
 	getSessionUser: mocks.getSessionUser,
 	getDoctorAccess: mocks.getDoctorAccess,
 	getDoctorContext: mocks.getDoctorContext,
+	getLocale: mocks.getLocale,
 }));
 
-import { clinicalPortalFn, doctorAccessFn, sessionUserFn } from "./fns.ts";
+import { clinicalPortalFn, doctorAccessFn, localeFn, sessionUserFn } from "./fns.ts";
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -60,5 +62,10 @@ describe("session server fns", () => {
 			activeDoctorId: 2,
 		});
 		await expect(clinicalPortalFn()).resolves.toBe("secretary");
+	});
+
+	it("localeFn returns the request locale", async () => {
+		await expect(localeFn()).resolves.toBe("pt-BR");
+		expect(mocks.getLocale).toHaveBeenCalled();
 	});
 });

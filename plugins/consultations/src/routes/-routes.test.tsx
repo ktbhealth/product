@@ -36,6 +36,8 @@ import { Route as DetailRoute } from "./$id.tsx";
 type BeforeLoad = (arg: { location?: { searchStr: string }; params?: { id: string } }) => unknown;
 const beforeLoadOf = (route: unknown) =>
 	(route as { options: { beforeLoad: BeforeLoad } }).options.beforeLoad;
+const componentOf = (route: unknown) =>
+	(route as { options: { component: () => unknown } }).options.component;
 
 describe("/consultations* legacy redirects", () => {
 	it("/consultations funnels to the portal list", async () => {
@@ -53,5 +55,11 @@ describe("/consultations* legacy redirects", () => {
 	it("/consultations/$id funnels to the portal record", async () => {
 		await expect(beforeLoadOf(DetailRoute)({ params: { id: "9" } })).resolves.toBeUndefined();
 		expect(mocks.redirectToPortal).toHaveBeenCalledWith("/consultations/9");
+	});
+
+	it("renders nothing — the funnel lives in beforeLoad", () => {
+		for (const route of [IndexRoute, NewRoute, DetailRoute]) {
+			expect(componentOf(route)()).toBeNull();
+		}
 	});
 });
