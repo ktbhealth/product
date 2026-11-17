@@ -181,7 +181,7 @@ function PortalSignInPage() {
 						</Button>
 					</form>
 					<Link
-						to="/login"
+						to="/login/doctor"
 						className="mt-4 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
 						{t("portal_login_doctor_link")}

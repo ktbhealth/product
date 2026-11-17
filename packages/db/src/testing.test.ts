@@ -31,6 +31,10 @@ describe("makeD1", () => {
 
 		const raw = await d1.prepare("SELECT v FROM t").raw();
 		expect(raw).toBeDefined();
+
+		const readerOf = (q: string) => (d1.prepare(q) as unknown as { reader: boolean }).reader;
+		expect(readerOf("SELECT 1")).toBe(true);
+		expect(readerOf("INSERT INTO t (v) VALUES ('x')")).toBe(false);
 	});
 
 	it("batch executes prepared statements", async () => {
