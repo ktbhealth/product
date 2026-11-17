@@ -88,4 +88,11 @@ describe("makeD1", () => {
 		const row = await d1.prepare("SELECT id FROM t").first<{ id: number }>();
 		expect(row?.id).toBe(1);
 	});
+
+	it("exposes the reader flag for SELECT-like statements", () => {
+		const d1 = makeD1("CREATE TABLE t (id INTEGER)");
+		const readerOf = (q: string) => (d1.prepare(q) as { reader: boolean }).reader;
+		expect(readerOf("SELECT * FROM t")).toBe(true);
+		expect(readerOf("INSERT INTO t DEFAULT VALUES")).toBe(false);
+	});
 });
