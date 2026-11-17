@@ -304,7 +304,14 @@ describe("dispatchTriggerEvent", () => {
 			action: {
 				kind: "collection-write",
 				collection: "dst",
-				mapping: { __proto__: "$record.data.name", ok: "$record.data.name" },
+				// "__proto__" never becomes an own key in an object literal
+				// (it sets the prototype); "constructor" does — both spellings
+				// must be skipped by the runtime guard.
+				mapping: {
+					__proto__: "$record.data.name",
+					constructor: "$record.data.name",
+					ok: "$record.data.name",
+				},
 				mode: "insert",
 			},
 		} as unknown as TriggerDef;

@@ -8,7 +8,16 @@ import {
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
-import { assertCondition, type WizardCondition } from "@ktb/wizards/condition";
+import {
+	assertCondition,
+	COLLECTION_NAME_RE,
+	HOOK_ID_RE,
+	isFieldPath,
+	isRecord,
+	PERMISSION_RE,
+	SLUG_PATTERN,
+	type Condition,
+} from "@ktb/dsl";
 
 /**
  * Flow definitions as DATA — the `flow.def` contribution kind.
@@ -51,41 +60,16 @@ export const FLOW_DEF_KIND: ContributionKindDescriptor = {
 
 /** Flow ids are diagnostic keys (logs, hook handles, wire payloads) —
  * slug-safe. */
-export const FLOW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const FLOW_ID_PATTERN = SLUG_PATTERN;
 
 /** State names double as stateField values stored on documents —
  * identifier-ish, kebab allowed ("under-review"). */
 export const FLOW_STATE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 /** Event names are caller-chosen labels ("submit", "approve",
- * "doc.published") — dotted segments allowed, length-capped. */
-export const FLOW_EVENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-/** Dotted field path into a record's `data` document — same contract
- * as view field paths (numeric segments index arrays). Prototype-
- * polluting segments are refused for hygiene. */
-const FIELD_PATH_RE = /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/;
-const FORBIDDEN_PATH_SEGMENTS: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
-
-const isFieldPath = (value: unknown): value is string =>
-	typeof value === "string" &&
-	FIELD_PATH_RE.test(value) &&
-	!value.split(".").some((seg) => FORBIDDEN_PATH_SEGMENTS.has(seg));
-
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
-/** Permission strings use the rbac catalog spelling
- * (`"resource.action"`, e.g. `"credential.verify"`) — same contract
- * as view/api exposures. */
-const PERMISSION_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
-
-const HOOK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+ * "doc.published") — dotted segments allowed, length-capped. Same
+ * grammar as hook ids (@ktb/dsl `HOOK_ID_RE`). */
+export const FLOW_EVENT_PATTERN = HOOK_ID_RE;
 
 /** A template string: `"$<scope>.<dot.path>"` resolves against the
  * transition scope (`record`, `event`, `flow` — see ./interpreter.ts);
@@ -123,7 +107,7 @@ export interface FlowTransition {
 	/** Optional wizards-style condition evaluated against the scope
 	 * `{ record: <doc data>, event: <payload>, flow: {id,title} }` —
 	 * a non-match makes the event illegal in this state. */
-	readonly guard?: WizardCondition;
+	readonly guard?: Condition;
 	/** Ordered actions applied on a successful transition. */
 	readonly actions?: readonly FlowAction[];
 }
@@ -163,9 +147,6 @@ export interface FlowDef {
 	 * manifest omits it. */
 	readonly owner?: string;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** `"$scope.path"` templates must at least parse; anything else is a
  * literal string. Unresolvable paths at apply time pass the template
@@ -227,7 +208,7 @@ const assertTransition = (
 	}
 	return {
 		target,
-		...(guard === undefined ? {} : { guard: guard as WizardCondition }),
+		...(guard === undefined ? {} : { guard: guard as Condition }),
 		...(checkedActions === undefined ? {} : { actions: checkedActions }),
 	};
 };

@@ -5,8 +5,7 @@ import {
 	evaluateCondition,
 	jsonEquals,
 	MAX_CONDITION_DEPTH,
-	resolveAnswerPath,
-	type WizardCondition,
+	type Condition,
 } from "./condition.ts";
 
 describe("assertCondition", () => {
@@ -44,7 +43,7 @@ describe("assertCondition", () => {
 	});
 
 	it("rejects conditions nested past MAX_CONDITION_DEPTH", () => {
-		let cond: WizardCondition = { path: "a" };
+		let cond: Condition = { path: "a" };
 		for (let i = 0; i <= MAX_CONDITION_DEPTH; i += 1) {
 			cond = { not: cond };
 		}
@@ -69,41 +68,11 @@ describe("jsonEquals", () => {
 	});
 });
 
-describe("resolveAnswerPath", () => {
-	const answers = { step: { items: ["a", "b"], flag: true }, n: 3 };
-
-	it("resolves dot paths and array indices", () => {
-		expect(resolveAnswerPath(answers, "step.items.1")).toBe("b");
-		expect(resolveAnswerPath(answers, "step.flag")).toBe(true);
-		expect(resolveAnswerPath(answers, "n")).toBe(3);
-	});
-
-	it("returns undefined for missing or mistyped segments", () => {
-		expect(resolveAnswerPath(answers, "missing.deep.path")).toBeUndefined();
-		expect(resolveAnswerPath(answers, "step.items.x")).toBeUndefined();
-		expect(resolveAnswerPath(answers, "n.child")).toBeUndefined();
-		expect(resolveAnswerPath(answers, "step.items.9")).toBeUndefined();
-		expect(resolveAnswerPath(null, "a")).toBeUndefined();
-		expect(resolveAnswerPath(undefined, "a.b")).toBeUndefined();
-	});
-
-	it("never walks the prototype chain", () => {
-		// Inherited members must not resolve — own-property walk only.
-		expect(resolveAnswerPath(answers, "constructor.name")).toBeUndefined();
-		expect(resolveAnswerPath(answers, "__proto__.polluted")).toBeUndefined();
-		expect(resolveAnswerPath(answers, "step.constructor")).toBeUndefined();
-		// own properties still resolve, including shadowing names
-		const own = { constructor: "mine", hasOwnProperty: 1 };
-		expect(resolveAnswerPath(own, "constructor")).toBe("mine");
-		expect(resolveAnswerPath(own, "hasOwnProperty")).toBe(1);
-	});
-});
-
 describe("evaluateCondition", () => {
 	const answers = { contact: { email: "a@b.c", age: 30 }, tags: ["x", "y"], done: true };
 
 	it("evaluates leaf ops", () => {
-		const cases: ReadonlyArray<readonly [WizardCondition, boolean]> = [
+		const cases: ReadonlyArray<readonly [Condition, boolean]> = [
 			[{ path: "contact.email" }, false], // default eq needs value
 			[{ path: "contact.email", value: "a@b.c" }, true],
 			[{ path: "contact.email", op: "eq", value: "a@b.c" }, true],
@@ -164,7 +133,7 @@ describe("evaluateCondition", () => {
 		// Hand-built (unasserted) condition nested deeper than the cap —
 		// evaluateCondition must not recurse into it. `all` (not `not`)
 		// keeps the over-depth false from being negated back to true.
-		let cond: WizardCondition = { path: "done", op: "truthy" };
+		let cond: Condition = { path: "done", op: "truthy" };
 		for (let i = 0; i <= MAX_CONDITION_DEPTH; i += 1) {
 			cond = { all: [cond] };
 		}

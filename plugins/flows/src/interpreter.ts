@@ -1,4 +1,11 @@
-import { evaluateCondition, resolveAnswerPath } from "@ktb/wizards/condition";
+import {
+	evaluateCondition,
+	getPath,
+	isRecord,
+	jsonEquals,
+	resolveTemplate,
+	setPath,
+} from "@ktb/dsl";
 
 import {
 	FLOW_EVENT_PATTERN,
@@ -29,9 +36,6 @@ import {
  * paths pass the template through literally).
  */
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 /** Everything a guard/template resolves against for ONE transition
  * attempt. */
 export interface TransitionScope {
@@ -56,7 +60,7 @@ export const transitionScope = (
  * `undefined` when the field is absent/empty (flows never
  * auto-initialize; see {@link currentState}). */
 export const readState = (def: FlowDef, data: Record<string, unknown>): string | undefined => {
-	const value = resolveAnswerPath(data, def.stateField);
+	const value = getPath(data, def.stateField);
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
@@ -141,41 +145,9 @@ export const resolveTransition = (
 	return { ok: true, from: state, to: transition.target, transition, scope };
 };
 
-const TEMPLATE_RE = /^\$([A-Za-z]+)\.(.+)$/;
-
-/** `"$<scope>.<path>"` resolves via dot path against the scope;
- * unresolved paths and non-`$` strings pass through literally. */
-export const resolveTemplate = (value: string, scope: TransitionScope): unknown => {
-	const match = TEMPLATE_RE.exec(value);
-	if (match === null) return value;
-	const [, root, path] = match;
-	const resolved = resolveAnswerPath(scope[root as keyof TransitionScope] ?? {}, path);
-	return resolved === undefined ? value : resolved;
-};
-
-const FORBIDDEN_SEGMENTS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
-
-/** Set `value` at a dotted `path` inside `root`, creating intermediate
- * objects (or arrays when the NEXT segment is numeric). Paths come
- * from validated defs (`assertFlowDef` already refuses prototype-
- * polluting segments); the guard here is defense-in-depth for
- * hand-built defs that bypassed validation. */
-const setPath = (root: Record<string, unknown>, path: string, value: unknown): void => {
-	const segments = path.split(".");
-	if (segments.some((seg) => FORBIDDEN_SEGMENTS.has(seg))) return;
-	let current: Record<string, unknown> | unknown[] = root;
-	for (let i = 0; i < segments.length - 1; i++) {
-		const segment = segments[i] as string;
-		const nextSegment = segments[i + 1] as string;
-		const existing = (current as Record<string, unknown>)[segment];
-		if (existing === null || typeof existing !== "object") {
-			(current as Record<string, unknown>)[segment] = /^\d+$/.test(nextSegment) ? [] : {};
-		}
-		current = (current as Record<string, unknown>)[segment] as Record<string, unknown> | unknown[];
-	}
-	const leaf = segments[segments.length - 1] as string;
-	(current as Record<string, unknown>)[leaf] = value;
-};
+// `resolveTemplate`/`setPath` come from @ktb/dsl — re-exported here so
+// the interpreter's public surface is unchanged.
+export { resolveTemplate } from "@ktb/dsl";
 
 /** The write plan for a resolved transition: the top-level patch keys
  * DocumentStore's shallow merge needs (only CHANGED top-level keys are
@@ -227,27 +199,4 @@ const applyAction = (
 		return;
 	}
 	hookIds.push(action.hook);
-};
-
-/** Deep JSON equality for the top-level patch diff — key order free,
- * arrays strict (mirrors the wizards condition contract). */
-const jsonEquals = (a: unknown, b: unknown): boolean => {
-	if (a === b) return true;
-	if (typeof a !== "object" || a === null || b === null) return false;
-	if (Array.isArray(a) || Array.isArray(b)) {
-		return (
-			Array.isArray(a) &&
-			Array.isArray(b) &&
-			a.length === b.length &&
-			a.every((item, index) => jsonEquals(item, b[index]))
-		);
-	}
-	const ra = a as Record<string, unknown>;
-	const rb = b as Record<string, unknown>;
-	const ka = Object.keys(ra);
-	const kb = Object.keys(rb);
-	return (
-		ka.length === kb.length &&
-		ka.every((key) => Object.hasOwn(rb, key) && jsonEquals(ra[key], rb[key]))
-	);
 };

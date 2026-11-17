@@ -13,6 +13,7 @@
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/document-store": "workspace:*",
+		"@ktb/dsl": "workspace:*",
 		"@ktb/forms": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/json-schema": "workspace:*",

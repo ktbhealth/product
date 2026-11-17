@@ -4,7 +4,8 @@ import * as Option from "effect/Option";
 
 import { DocumentStore } from "@ktb/document-store";
 
-import { resolveAnswerPath } from "./condition.ts";
+import { resolveTemplate } from "@ktb/dsl";
+
 import type { WizardCompletion, WizardDefinition } from "./definition.ts";
 import { WizardHooks, type WizardRunHandle } from "./hooks.ts";
 
@@ -24,8 +25,9 @@ import { WizardHooks, type WizardRunHandle } from "./hooks.ts";
  *
  * `data` templates: string values of the form `"$<scope>.<path>"`
  * resolve against `{ answers, wizard, run }` (dot path via
- * resolveAnswerPath); `"$answers.<stepId>.<field>"` is the common case.
- * Non-string values and non-`$` strings pass through literally.
+ * @ktb/dsl `resolveTemplate`); `"$answers.<stepId>.<field>"` is the
+ * common case. Non-string values and non-`$` strings pass through
+ * literally.
  */
 
 /** Completion could not run — unknown collection/hook, template or
@@ -46,21 +48,6 @@ export interface CompletionContext {
 	readonly definition: WizardDefinition;
 	readonly answers: Readonly<Record<string, unknown>>;
 }
-
-const TEMPLATE_RE = /^\$([A-Za-z]+)\.(.+)$/;
-
-const resolveTemplate = (value: unknown, scope: Record<string, unknown>): unknown => {
-	if (typeof value !== "string") return value;
-	const match = TEMPLATE_RE.exec(value);
-	if (match === null) return value;
-	const [, root, path] = match;
-	// Own-property root lookup only — "$constructor.x" must not reach
-	// Object.prototype members through the scope object.
-	const rootValue = Object.hasOwn(scope, root) ? scope[root] : {};
-	// undefined roots resolve to undefined (→ literal passthrough).
-	const resolved = resolveAnswerPath(rootValue, path);
-	return resolved === undefined ? value : resolved;
-};
 
 /** Expand every `data` template against the run scope. */
 export const resolveCompletionData = (

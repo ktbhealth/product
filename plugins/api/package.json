@@ -8,6 +8,7 @@
 	"dependencies": {
 		"@ktb/authz": "workspace:*",
 		"@ktb/document-store": "workspace:*",
+		"@ktb/dsl": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/rbac": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

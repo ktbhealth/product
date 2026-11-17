@@ -8,6 +8,7 @@ import {
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
+import { COLLECTION_NAME_RE, isFieldPath, isRecord, PERMISSION_RE, SLUG_PATTERN } from "@ktb/dsl";
 import {
 	QUERY_OPERATORS,
 	validateFilter,
@@ -50,7 +51,7 @@ export const VIEW_DEF_KIND: ContributionKindDescriptor = {
 };
 
 /** View ids double as URL segments — keep them slug-safe. */
-export const VIEW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const VIEW_ID_PATTERN = SLUG_PATTERN;
 
 /** Mount path prefix every view lives under — the `/v/*` wildcard
  * descriptor claims the whole subtree. */
@@ -60,28 +61,9 @@ export const VIEW_PATH_PREFIX = "/v/";
  * single slug segment as its key (`/v/reports` → key "reports"). */
 export const VIEW_PATH_PATTERN = /^\/v\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
-/** Dotted field path into a record's `data` document. Segments are
- * identifier-shaped (field names) or numeric (array indices, per
- * document-store's getPath); prototype-polluting segments are refused
- * for hygiene even though reads cannot mutate. */
-const FIELD_PATH_RE = /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/;
-const FORBIDDEN_PATH_SEGMENTS: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
-
 /** URL/search-param names for interactive filters — keep them
  * slug-safe so they round-trip through query strings untouched. */
 const FILTER_PARAM_RE = /^[A-Za-z0-9_-]{1,64}$/;
-
-/** Permission strings use the rbac catalog spelling
- * (`"resource.action"`, e.g. `"patient.read"`, `"audit.read"`). */
-const PERMISSION_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
 
 export const VIEW_FIELD_FORMATS = ["text", "date", "enum", "ref", "boolean", "json"] as const;
 export type ViewFieldFormat = (typeof VIEW_FIELD_FORMATS)[number];
@@ -173,14 +155,6 @@ export interface ViewDef {
 	 * manifest omits it. */
 	readonly owner?: string;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-const isFieldPath = (value: unknown): value is string =>
-	typeof value === "string" &&
-	FIELD_PATH_RE.test(value) &&
-	!value.split(".").some((seg) => FORBIDDEN_PATH_SEGMENTS.has(seg));
 
 const assertField = (value: unknown, context: string, what: string): ViewField => {
 	if (!isRecord(value)) {

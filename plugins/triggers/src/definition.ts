@@ -8,7 +8,15 @@ import {
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
-import { assertCondition, type WizardCondition } from "@ktb/wizards/condition";
+import {
+	assertCondition,
+	COLLECTION_NAME_RE,
+	HOOK_ID_RE,
+	hasForbiddenPathSegment,
+	isRecord,
+	SLUG_PATTERN,
+	type Condition,
+} from "@ktb/dsl";
 
 /**
  * Trigger definitions as DATA — the `trigger.def` contribution kind.
@@ -42,11 +50,7 @@ export const TRIGGER_DEF_KIND: ContributionKindDescriptor = {
 };
 
 /** Trigger ids are diagnostic keys (logs, hook handles) — slug-safe. */
-export const TRIGGER_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
+export const TRIGGER_ID_PATTERN = SLUG_PATTERN;
 
 /** Write ops a trigger can match — mirrors DOCUMENT_WRITE_OPS. */
 export const TRIGGER_OPS = ["insert", "update", "remove"] as const;
@@ -95,31 +99,18 @@ export interface TriggerDef {
 	readonly ops?: readonly TriggerOp[];
 	/** Optional wizards-style condition evaluated against the written
 	 * record's `data` payload — a non-match skips the action. */
-	readonly when?: WizardCondition;
+	readonly when?: Condition;
 	readonly action: TriggerAction;
 	/** Owning plugin id — stamped from the contributing plugin when the
 	 * manifest omits it. */
 	readonly owner?: string;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-const HOOK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-/** Prototype-polluting path segments — refused in mapping keys for
- * hygiene (same list the flows/views field-path validators use). A
- * `"__proto__"` mapping key would hit the Object.prototype setter when
- * the runner folds templates into the write payload. */
-const FORBIDDEN_KEY_SEGMENTS: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
-
-const hasForbiddenKeySegment = (key: string): boolean =>
-	key.split(".").some((seg) => FORBIDDEN_KEY_SEGMENTS.has(seg));
-
+// Mapping keys are dotted paths into the write payload —
+// prototype-polluting segments are refused (@ktb/dsl
+// `hasForbiddenPathSegment`): a `"__proto__"` mapping key would hit
+// the Object.prototype setter when the runner folds templates into
+// the write payload.
 const assertAction = (value: unknown, context: string): TriggerAction => {
 	if (!isRecord(value)) {
 		throw new Error(`${context}: trigger action must be an object`);
@@ -133,7 +124,7 @@ const assertAction = (value: unknown, context: string): TriggerAction => {
 			throw new Error(`${context}: collection-write mapping must be an object`);
 		}
 		for (const [key, template] of Object.entries(mapping)) {
-			if (hasForbiddenKeySegment(key)) {
+			if (hasForbiddenPathSegment(key)) {
 				throw new Error(
 					`${context}: collection-write mapping key ${JSON.stringify(key)} uses a forbidden path segment`,
 				);
@@ -209,7 +200,7 @@ export const assertTriggerDef = (value: unknown, context: string): TriggerDef =>
 		...(title === undefined ? {} : { title }),
 		collection,
 		...(checkedOps === undefined ? {} : { ops: checkedOps }),
-		...(when === undefined ? {} : { when: when as WizardCondition }),
+		...(when === undefined ? {} : { when: when as Condition }),
 		action: assertAction(action, `${context} trigger "${id}"`),
 		...(owner === undefined ? {} : { owner }),
 	};

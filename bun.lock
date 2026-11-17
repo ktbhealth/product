@@ -403,6 +403,9 @@
         "effect": "4.1.2",
       },
     },
+    "packages/dsl": {
+      "name": "@ktb/dsl",
+    },
     "packages/email": {
       "name": "@ktb/email",
       "dependencies": {
@@ -667,6 +670,7 @@
       "dependencies": {
         "@ktb/authz": "workspace:*",
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -907,6 +911,7 @@
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
@@ -1000,12 +1005,12 @@
       "name": "@ktb/flows",
       "dependencies": {
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
-        "@ktb/wizards": "workspace:*",
         "@tanstack/react-start": "1.169.5",
         "effect": "4.1.2",
       },
@@ -1608,9 +1613,9 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
-        "@ktb/wizards": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -1681,6 +1686,7 @@
       "name": "@ktb/views",
       "dependencies": {
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/rbac": "workspace:*",
@@ -1709,6 +1715,7 @@
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/forms": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/json-schema": "workspace:*",
@@ -2137,6 +2144,8 @@
     "@ktb/document-store": ["@ktb/document-store@workspace:plugins/document-store"],
 
     "@ktb/driver-framework": ["@ktb/driver-framework@workspace:packages/driver-framework"],
+
+    "@ktb/dsl": ["@ktb/dsl@workspace:packages/dsl"],
 
     "@ktb/email": ["@ktb/email@workspace:packages/email"],
 

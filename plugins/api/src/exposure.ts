@@ -1,6 +1,7 @@
 import * as Context from "effect/Context";
 import type { JsonObject } from "effect/Schema";
 
+import { API_KEY_PATTERN, COLLECTION_NAME_RE, isRecord, PERMISSION_RE } from "@ktb/dsl";
 import {
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
@@ -48,16 +49,9 @@ export const API_EXPOSE_KIND: ContributionKindDescriptor = {
 export const API_BASE_PATH = "/api/documents";
 
 /** URL key charset — the `<key>` segment of `/api/documents/<key>`.
- * Slug-safe so keys round-trip through paths and query strings. */
-export const API_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/;
-
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
-/** Permission strings use the rbac catalog spelling
- * (`"resource.action"`, e.g. `"patient.read"`, `"audit.read"`). */
-const PERMISSION_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
+ * Slug-safe so keys round-trip through paths and query strings.
+ * Re-exported from @ktb/dsl (the shared grammar). */
+export { API_KEY_PATTERN };
 
 /** The CRUD verbs an exposure can publish. `list`/`get` are reads;
  * `create`/`update`/`delete` are writes. */
@@ -96,9 +90,6 @@ export interface ApiExposure {
 	 * manifest omits it. */
 	readonly owner?: string;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The URL key an exposure mounts under: the `basePath` tail when
  * present, else the collection name. */

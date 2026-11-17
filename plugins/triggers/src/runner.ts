@@ -6,7 +6,7 @@ import {
 	DocumentWriteDepth,
 	type DocumentRecordWrittenEvent,
 } from "@ktb/document-store";
-import { evaluateCondition, resolveAnswerPath } from "@ktb/wizards/condition";
+import { evaluateCondition, hasForbiddenPathSegment, resolveTemplate } from "@ktb/dsl";
 
 import { TRIGGER_OPS, type TriggerDef } from "./definition.ts";
 import { type TriggersHooksService, type TriggerHookHandle } from "./hooks.ts";
@@ -52,8 +52,6 @@ import { type TriggersHooksService, type TriggerHookHandle } from "./hooks.ts";
 /** Max cascade depth: events stamped ≥ this never fire triggers. */
 export const TRIGGER_MAX_DEPTH = 3;
 
-const TEMPLATE_RE = /^\$([A-Za-z]+)\.(.+)$/;
-
 /** The template scope a trigger action resolves against. */
 const scopeFor = (def: TriggerDef, event: DocumentRecordWrittenEvent) => ({
 	record: {
@@ -67,34 +65,20 @@ const scopeFor = (def: TriggerDef, event: DocumentRecordWrittenEvent) => ({
 	trigger: { id: def.id, title: def.title },
 });
 
-/** `"$<scope>.<path>"` resolves via dot path; unresolved or non-`$`
- * strings pass through literally (same contract as wizard
- * completion templates). */
-const resolveTemplate = (value: string, scope: Record<string, unknown>): unknown => {
-	const match = TEMPLATE_RE.exec(value);
-	if (match === null) return value;
-	const [, root, path] = match;
-	const resolved = resolveAnswerPath(scope[root] ?? {}, path);
-	return resolved === undefined ? value : resolved;
-};
-
-/** Prototype-polluting segments refused in mapping keys — mirrors the
- * assertTriggerDef validation (defense-in-depth for hand-built defs
- * that bypassed it): `out["__proto__"] = …` would hit the prototype
- * setter instead of creating an own key. */
-const FORBIDDEN_KEY_SEGMENTS: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
-
+/** Fold `mapping` templates into the write payload — `"$<scope>.<path>"`
+ * resolves via @ktb/dsl `resolveTemplate`; unresolved or non-`$`
+ * strings pass through literally (same contract as wizard completion
+ * templates). Prototype-polluting segments are refused (@ktb/dsl
+ * `hasForbiddenPathSegment`) as defense-in-depth for hand-built defs
+ * that bypassed assertTriggerDef: `out["__proto__"] = …` would hit
+ * the prototype setter instead of creating an own key. */
 const resolveMapping = (
 	mapping: Readonly<Record<string, string>>,
 	scope: Record<string, unknown>,
 ): Record<string, unknown> => {
 	const out: Record<string, unknown> = {};
 	for (const [key, template] of Object.entries(mapping)) {
-		if (key.split(".").some((seg) => FORBIDDEN_KEY_SEGMENTS.has(seg))) continue;
+		if (hasForbiddenPathSegment(key)) continue;
 		out[key] = resolveTemplate(template, scope);
 	}
 	return out;

@@ -1,4 +1,4 @@
-import { evaluateCondition } from "./condition.ts";
+import { evaluateCondition } from "@ktb/dsl";
 import type { WizardDefinition, WizardStep } from "./definition.ts";
 
 /**

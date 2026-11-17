@@ -8,6 +8,7 @@
 	},
 	"dependencies": {
 		"@ktb/document-store": "workspace:*",
+		"@ktb/dsl": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/rbac": "workspace:*",

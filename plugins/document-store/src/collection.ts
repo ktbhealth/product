@@ -8,6 +8,7 @@ import {
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
+import { COLLECTION_NAME_RE, FORBIDDEN_PATH_SEGMENTS } from "@ktb/dsl";
 
 import type { Fields } from "./fields.ts";
 import { checkValue } from "./validate.ts";
@@ -179,8 +180,6 @@ export const defineCollection = <const F extends Fields>(options: {
 	...(options.owner === undefined ? {} : { owner: options.owner }),
 });
 
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
 /** Field names become literal keys of the stored `data` JSON document.
  * Restricting them to identifier shape (plus the denylist below) keeps
  * prototype-polluting names and dotted names — which would collide
@@ -190,12 +189,9 @@ const FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Identifier-shaped but still dangerous as own data keys —
  * `__proto__` assignments mutate prototypes on plain objects,
  * `constructor`/`prototype` collide with Object.prototype members
- * in `in`-style lookups downstream. */
-const FORBIDDEN_FIELD_NAMES: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
+ * in `in`-style lookups downstream. Same denylist as @ktb/dsl
+ * `FORBIDDEN_PATH_SEGMENTS`. */
+const FORBIDDEN_FIELD_NAMES = FORBIDDEN_PATH_SEGMENTS;
 
 /** Runtime shape check for a def arriving over the wire (contribution
  * meta or a stored `schema_json` blob). Throws on malformed data —

@@ -11,7 +11,16 @@ import {
 	type PluginContribution,
 } from "@ktb/kernel";
 
-import { assertCondition, type WizardCondition } from "./condition.ts";
+import {
+	assertCondition,
+	COLLECTION_NAME_RE,
+	FORBIDDEN_PATH_SEGMENTS,
+	HOOK_ID_RE,
+	isRecord,
+	PERMISSION_RE,
+	SLUG_PATTERN,
+	type Condition,
+} from "@ktb/dsl";
 
 /**
  * Wizard definitions as DATA — the `wizard.def` contribution kind.
@@ -47,23 +56,7 @@ export const WIZARD_DEF_KIND: ContributionKindDescriptor = {
 };
 
 /** Wizard ids double as URL segments — keep them slug-safe. */
-export const WIZARD_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** Completion collection names — mirrors COLLECTION_NAME_RE in
- * plugins/document-store (kept private there; same grammar so a wizard
- * completion can only ever name a legal collection). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
-/** Completion hook ids — same grammar as trigger/flow hook ids. */
-const HOOK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-/** Optional `"resource.action"` permission spelling (same grammar as
- * flow/view defs). */
-const PERMISSION_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
-
-/** Step ids key the `answers` object — prototype-polluting names are
- * rejected outright (same denylist as document-store field names). */
-const FORBIDDEN_STEP_IDS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+export const WIZARD_ID_PATTERN = SLUG_PATTERN;
 
 /** Step kinds the v1 interpreter knows how to render. */
 export type WizardStepKind = "form" | "info";
@@ -75,7 +68,7 @@ interface WizardStepBase {
 	readonly description?: string;
 	/** Optional visibility condition evaluated against submitted answers
 	 * — a hidden step is skipped by the interpreter (./resolve.ts). */
-	readonly when?: WizardCondition;
+	readonly when?: Condition;
 }
 
 /** A step that collects input: rendered with @ktb/forms `SchemaForm`
@@ -142,9 +135,6 @@ export interface WizardDefinition {
 	readonly permission?: string;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
 const WIDGETS = new Set([
 	"input",
 	"textarea",
@@ -166,7 +156,9 @@ const assertStep = (value: unknown, context: string, seen: Set<string>): void =>
 	if (typeof id !== "string" || id.length === 0) {
 		throw new Error(`${context}: wizard step id must be a non-empty string`);
 	}
-	if (FORBIDDEN_STEP_IDS.has(id)) {
+	// Step ids key the `answers` object — prototype-polluting names are
+	// rejected outright (same denylist as document-store field names).
+	if (FORBIDDEN_PATH_SEGMENTS.has(id)) {
 		throw new Error(`${context}: wizard step id ${JSON.stringify(id)} is reserved`);
 	}
 	if (seen.has(id)) {
