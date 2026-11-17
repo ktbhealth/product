@@ -533,6 +533,9 @@ export const I18N_MANIFEST = {
 		portal_login_desc_up: {
 			params: [],
 		},
+		portal_login_doctor_link: {
+			params: [],
+		},
 		portal_login_heading_in: {
 			params: [],
 		},
@@ -2911,6 +2914,60 @@ export const I18N_MANIFEST = {
 		requiredMark: {
 			params: [],
 		},
+		tabTable: {
+			params: [],
+		},
+		tabMap: {
+			params: [],
+		},
+		viewDependencies: {
+			params: [],
+		},
+		viewChannels: {
+			params: [],
+		},
+		viewDomains: {
+			params: [],
+		},
+		viewHierarchy: {
+			params: [],
+		},
+		edgeRequired: {
+			params: [],
+		},
+		edgeOptional: {
+			params: [],
+		},
+		edgeRegion: {
+			params: [],
+		},
+		edgeKind: {
+			params: [],
+		},
+		edgeTree: {
+			params: [],
+		},
+		keywordsLabel: {
+			params: [],
+		},
+		depsSection: {
+			params: [],
+		},
+		dependentsSection: {
+			params: [],
+		},
+		regionsSection: {
+			params: [],
+		},
+		fullscreenEnter: {
+			params: [],
+		},
+		fullscreenExit: {
+			params: [],
+		},
+		layoutLoading: {
+			params: [],
+		},
 		metricsTitle: {
 			params: [],
 		},
@@ -4639,6 +4696,7 @@ export const I18N_BASE_CATALOG = {
 	portal_login_desc_in: "Sign in to see your consultations.",
 	portal_login_desc_up: "Create an account to see the consultations your doctors recorded for you.",
 	portal_login_name: "Full name",
+	portal_login_doctor_link: "I am a doctor",
 	verify_meta_title: "Verify email | KTB Health",
 	verify_heading: "Verify your email",
 	verify_desc_signed: "We sent a verification link to {email}. Open it to confirm your address.",

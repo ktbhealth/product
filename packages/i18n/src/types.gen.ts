@@ -176,6 +176,7 @@ export type I18nKey =
 	| "app.persona_patients"
 	| "app.portal_login_desc_in"
 	| "app.portal_login_desc_up"
+	| "app.portal_login_doctor_link"
 	| "app.portal_login_heading_in"
 	| "app.portal_login_heading_up"
 	| "app.portal_login_meta_title"
@@ -859,12 +860,23 @@ export type I18nKey =
 	| "manager.confirmDisableAction"
 	| "manager.confirmDisableBody"
 	| "manager.confirmDisableTitle"
+	| "manager.dependentsSection"
+	| "manager.depsSection"
 	| "manager.description"
 	| "manager.disable"
+	| "manager.edgeKind"
+	| "manager.edgeOptional"
+	| "manager.edgeRegion"
+	| "manager.edgeRequired"
+	| "manager.edgeTree"
 	| "manager.empty"
 	| "manager.enable"
 	| "manager.filterAll"
 	| "manager.filteredCount"
+	| "manager.fullscreenEnter"
+	| "manager.fullscreenExit"
+	| "manager.keywordsLabel"
+	| "manager.layoutLoading"
 	| "manager.metricsEmpty"
 	| "manager.metricsError"
 	| "manager.metricsServerFns"
@@ -875,6 +887,7 @@ export type I18nKey =
 	| "manager.paginationNext"
 	| "manager.paginationPage"
 	| "manager.paginationPrevious"
+	| "manager.regionsSection"
 	| "manager.requiredMark"
 	| "manager.rowActions"
 	| "manager.searchLabel"
@@ -885,7 +898,13 @@ export type I18nKey =
 	| "manager.statusFilterLabel"
 	| "manager.statusSystem"
 	| "manager.systemHint"
+	| "manager.tabMap"
+	| "manager.tabTable"
 	| "manager.title"
+	| "manager.viewChannels"
+	| "manager.viewDependencies"
+	| "manager.viewDomains"
+	| "manager.viewHierarchy"
 	| "notifications.empty"
 	| "notifications.label"
 	| "notifications.markAllRead"
@@ -1555,6 +1574,7 @@ export interface I18nTypedT {
 	(key: "app.persona_patients"): Effect.Effect<string>;
 	(key: "app.portal_login_desc_in"): Effect.Effect<string>;
 	(key: "app.portal_login_desc_up"): Effect.Effect<string>;
+	(key: "app.portal_login_doctor_link"): Effect.Effect<string>;
 	(key: "app.portal_login_heading_in"): Effect.Effect<string>;
 	(key: "app.portal_login_heading_up"): Effect.Effect<string>;
 	(key: "app.portal_login_meta_title"): Effect.Effect<string>;
@@ -2462,8 +2482,15 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "manager.confirmDisableTitle"): Effect.Effect<string>;
+	(key: "manager.dependentsSection"): Effect.Effect<string>;
+	(key: "manager.depsSection"): Effect.Effect<string>;
 	(key: "manager.description"): Effect.Effect<string>;
 	(key: "manager.disable"): Effect.Effect<string>;
+	(key: "manager.edgeKind"): Effect.Effect<string>;
+	(key: "manager.edgeOptional"): Effect.Effect<string>;
+	(key: "manager.edgeRegion"): Effect.Effect<string>;
+	(key: "manager.edgeRequired"): Effect.Effect<string>;
+	(key: "manager.edgeTree"): Effect.Effect<string>;
 	(key: "manager.empty"): Effect.Effect<string>;
 	(key: "manager.enable"): Effect.Effect<string>;
 	(key: "manager.filterAll"): Effect.Effect<string>;
@@ -2474,6 +2501,10 @@ export interface I18nTypedT {
 			total: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "manager.fullscreenEnter"): Effect.Effect<string>;
+	(key: "manager.fullscreenExit"): Effect.Effect<string>;
+	(key: "manager.keywordsLabel"): Effect.Effect<string>;
+	(key: "manager.layoutLoading"): Effect.Effect<string>;
 	(key: "manager.metricsEmpty"): Effect.Effect<string>;
 	(key: "manager.metricsError"): Effect.Effect<string>;
 	(key: "manager.metricsServerFns"): Effect.Effect<string>;
@@ -2489,6 +2520,7 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "manager.paginationPrevious"): Effect.Effect<string>;
+	(key: "manager.regionsSection"): Effect.Effect<string>;
 	(key: "manager.requiredMark"): Effect.Effect<string>;
 	(
 		key: "manager.rowActions",
@@ -2504,7 +2536,13 @@ export interface I18nTypedT {
 	(key: "manager.statusFilterLabel"): Effect.Effect<string>;
 	(key: "manager.statusSystem"): Effect.Effect<string>;
 	(key: "manager.systemHint"): Effect.Effect<string>;
+	(key: "manager.tabMap"): Effect.Effect<string>;
+	(key: "manager.tabTable"): Effect.Effect<string>;
 	(key: "manager.title"): Effect.Effect<string>;
+	(key: "manager.viewChannels"): Effect.Effect<string>;
+	(key: "manager.viewDependencies"): Effect.Effect<string>;
+	(key: "manager.viewDomains"): Effect.Effect<string>;
+	(key: "manager.viewHierarchy"): Effect.Effect<string>;
 	(key: "notifications.empty"): Effect.Effect<string>;
 	(key: "notifications.label"): Effect.Effect<string>;
 	(key: "notifications.markAllRead"): Effect.Effect<string>;
