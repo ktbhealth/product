@@ -11,6 +11,13 @@ const okResult: AuthResult = { data: { user: {} }, error: null };
 
 const mocks = vi.hoisted(() => ({
 	emailEnabledFn: vi.fn(async () => true),
+	portalAudiencesFn: vi.fn(async (): Promise<readonly string[]> => ["member", "patient"]),
+	doctorContextFn: vi.fn(
+		async (): Promise<{
+			profiles: { doctorId: number; displayName: string; role: string }[];
+			activeDoctorId: number | null;
+		} | null> => ({ profiles: [], activeDoctorId: null }),
+	),
 	loaderData: { current: { emailEnabled: false } },
 }));
 const signInEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
@@ -22,7 +29,11 @@ vi.mock("@ktb/auth-better/client", () => ({
 		signUp: { email: (arg: unknown) => signUpEmail(arg) },
 	},
 }));
-vi.mock("#/lib/fns.ts", () => ({ emailEnabledFn: mocks.emailEnabledFn }));
+vi.mock("#/lib/fns.ts", () => ({
+	emailEnabledFn: mocks.emailEnabledFn,
+	portalAudiencesFn: mocks.portalAudiencesFn,
+}));
+vi.mock("@ktb/doctors/fns", () => ({ doctorContextFn: mocks.doctorContextFn }));
 vi.mock("#/lib/i18n.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("#/lib/i18n.ts")>();
 	return { ...actual, useRootI18nSlice: () => undefined };
@@ -108,6 +119,10 @@ describe("portal sign-in page", () => {
 		signInEmail.mockResolvedValue(okResult);
 		signUpEmail.mockResolvedValue(okResult);
 		mocks.loaderData.current = { emailEnabled: false };
+		mocks.portalAudiencesFn.mockReset();
+		mocks.portalAudiencesFn.mockResolvedValue(["member", "patient"]);
+		mocks.doctorContextFn.mockReset();
+		mocks.doctorContextFn.mockResolvedValue({ profiles: [], activeDoctorId: null });
 		vi.stubGlobal("location", { assign });
 	});
 
@@ -155,6 +170,39 @@ describe("portal sign-in page", () => {
 		expect(signUpEmail).not.toHaveBeenCalled();
 		// Stays pending until the browser navigates away.
 		expect(screen.getByRole("button", { name: /Please wait…/ })).toHaveProperty("disabled", true);
+	});
+
+	it("routes a staff account (no patient audience) through the doctor funnel", async () => {
+		mocks.portalAudiencesFn.mockResolvedValue(["member", "doctor", "clinician"]);
+		mocks.doctorContextFn.mockResolvedValue({
+			profiles: [{ doctorId: 7, displayName: "Dr. Ana", role: "owner" }],
+			activeDoctorId: 7,
+		});
+		render(createElement(Page));
+		await signIn();
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+		expect(assign).toHaveBeenCalledTimes(1);
+	});
+
+	it("sends a multi-profile staff account to the doctor chooser", async () => {
+		mocks.portalAudiencesFn.mockResolvedValue(["member", "doctor", "clinician"]);
+		mocks.doctorContextFn.mockResolvedValue({
+			profiles: [
+				{ doctorId: 7, displayName: "Dr. Ana", role: "owner" },
+				{ doctorId: 8, displayName: "Clinic", role: "secretary" },
+			],
+			activeDoctorId: null,
+		});
+		render(createElement(Page));
+		await signIn();
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));
+	});
+
+	it("falls back to the portal when the audience lookup fails", async () => {
+		mocks.portalAudiencesFn.mockRejectedValue(new Error("boom"));
+		render(createElement(Page));
+		await signIn();
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 	});
 
 	it("forwards the captcha token once the challenge is solved", async () => {
