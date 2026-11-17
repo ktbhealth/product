@@ -29,11 +29,7 @@ const formatAvg = (value: number | null): string =>
  * server-side). Counters are cumulative since process start — rates
  * need windows and are deliberately not shown.
  */
-export function MetricsSection({
-	t,
-}: {
-	readonly t: ReturnType<typeof managerMessages>;
-}) {
+export function MetricsSection({ t }: { readonly t: ReturnType<typeof managerMessages> }) {
 	const [state, setState] = useState<LoadState>({ status: "loading" });
 
 	useEffect(() => {
