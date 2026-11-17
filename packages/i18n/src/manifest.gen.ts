@@ -1958,6 +1958,149 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	"document-store": {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colOwner: {
+			params: [],
+		},
+		colVersion: {
+			params: [],
+		},
+		colFields: {
+			params: [],
+		},
+		colRecords: {
+			params: [],
+		},
+		colStatus: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		statusContributed: {
+			params: [],
+		},
+		statusDbOnly: {
+			params: [],
+		},
+		badgeUnregistered: {
+			params: [],
+		},
+		open: {
+			params: [],
+		},
+		back: {
+			params: [],
+		},
+		newDocument: {
+			params: [],
+		},
+		editDocument: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		emptyCollectionsTitle: {
+			params: [],
+		},
+		emptyCollectionsDescription: {
+			params: [],
+		},
+		emptyDocumentsTitle: {
+			params: [],
+		},
+		emptyDocumentsDescription: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "id",
+				},
+			],
+			template: "Delete document #{id}? This cannot be undone.",
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteInUse: {
+			params: [
+				{
+					name: "referrers",
+				},
+			],
+			template: "This document is still referenced by {referrers}.",
+		},
+		prevPage: {
+			params: [],
+		},
+		nextPage: {
+			params: [],
+		},
+		pageInfo: {
+			params: [
+				{
+					name: "current",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Page {current} of {total}",
+		},
+		none: {
+			params: [],
+		},
+		invalidJson: {
+			params: [],
+		},
+		invalidNumber: {
+			params: [],
+		},
+		invalidDate: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+	},
 	"eval.persona": {
 		personasTitle: {
 			params: [],

@@ -8,6 +8,7 @@ export * from "../../../plugins/ai-endpoints/src/schema.ts";
 export * from "../../../plugins/audit/src/schema.ts";
 export * from "../../../plugins/consultations/src/schema.ts";
 export * from "../../../plugins/doctors/src/schema.ts";
+export * from "../../../plugins/document-store/src/schema.ts";
 export * from "../../../plugins/eval-persona/src/schema.ts";
 export * from "../../../plugins/eval-validator/src/schema.ts";
 export * from "../../../plugins/groups/src/schema.ts";
