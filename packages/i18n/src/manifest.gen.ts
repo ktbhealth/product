@@ -2908,6 +2908,102 @@ export const I18N_MANIFEST = {
 		requiredMark: {
 			params: [],
 		},
+		tabTable: {
+			params: [],
+		},
+		tabMap: {
+			params: [],
+		},
+		viewDependencies: {
+			params: [],
+		},
+		viewChannels: {
+			params: [],
+		},
+		viewDomains: {
+			params: [],
+		},
+		viewHierarchy: {
+			params: [],
+		},
+		edgeRequired: {
+			params: [],
+		},
+		edgeOptional: {
+			params: [],
+		},
+		edgeRegion: {
+			params: [],
+		},
+		edgeKind: {
+			params: [],
+		},
+		edgeTree: {
+			params: [],
+		},
+		keywordsLabel: {
+			params: [],
+		},
+		depsSection: {
+			params: [],
+		},
+		dependentsSection: {
+			params: [],
+		},
+		regionsSection: {
+			params: [],
+		},
+		fullscreenEnter: {
+			params: [],
+		},
+		fullscreenExit: {
+			params: [],
+		},
+		layoutLoading: {
+			params: [],
+		},
+		metricsTitle: {
+			params: [],
+		},
+		metricsSinceStart: {
+			params: [],
+		},
+		metricsError: {
+			params: [],
+		},
+		metricsEmpty: {
+			params: [],
+		},
+		metricsServerFns: {
+			params: [],
+		},
+		metricsSessionContexts: {
+			params: [],
+		},
+		colFn: {
+			params: [],
+		},
+		colRequests: {
+			params: [],
+		},
+		colErrors: {
+			params: [],
+		},
+		colAvgDuration: {
+			params: [],
+		},
+		colContext: {
+			params: [],
+		},
+		colLookups: {
+			params: [],
+		},
+		colLoads: {
+			params: [],
+		},
+		colAvgLoad: {
+			params: [],
+		},
 	},
 	notifications: {
 		label: {
