@@ -19,6 +19,8 @@ export interface CollectionWire {
 	readonly contributed: boolean;
 	readonly registered: boolean;
 	readonly recordCount: number;
+	/** Def declares schema migrations (T-130). */
+	readonly hasMigrations: boolean;
 }
 
 export const toCollectionWire = (info: AdminCollectionInfo): CollectionWire => ({
@@ -29,6 +31,7 @@ export const toCollectionWire = (info: AdminCollectionInfo): CollectionWire => (
 	contributed: info.contributed,
 	registered: info.registered,
 	recordCount: info.recordCount,
+	hasMigrations: info.hasMigrations,
 });
 
 /** Serializable document row — timestamps as ISO strings (Date does
@@ -39,6 +42,10 @@ export interface DocumentWire {
 	/** Stored payload — always JSON-shaped (validate.ts guarantees it);
 	 * typed `Json` so server-fn serialization checks accept the wire. */
 	readonly data: Record<string, Json>;
+	/** Stored `schema_version` — `data` is already migrated to the
+	 * current def version on read (T-130); this reports the row's
+	 * persisted version so the console can spot unmigrated docs. */
+	readonly schemaVersion: number;
 	readonly ownerId: string;
 	readonly tenantId: number | null;
 	readonly createdAt: string;
@@ -49,6 +56,7 @@ export const toDocumentWire = (record: DocumentRecord): DocumentWire => ({
 	id: record.id,
 	collection: record.collection,
 	data: record.data as Record<string, Json>,
+	schemaVersion: record.schemaVersion,
 	ownerId: record.ownerId,
 	tenantId: record.tenantId,
 	createdAt: record.createdAt.toISOString(),

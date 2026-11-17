@@ -57,7 +57,22 @@ const lazyOwned = defineCollection({
 	fields: { v: f.string() },
 });
 
-const DEFS = [targets, notes, lazy, lazyOwned];
+/** Contributed with schema migrations (T-130) — covers hasMigrations
+ * and the admin migrateCollection sweep. */
+const migNotes = defineCollection({
+	name: "admin.mignotes",
+	version: 2,
+	fields: { v: f.string({ required: true }) },
+	migrations: [
+		{
+			from: 1,
+			to: 2,
+			migrate: (doc) => ({ ...doc, v: typeof doc.v === "string" ? doc.v : "" }),
+		},
+	],
+});
+
+const DEFS = [targets, notes, lazy, lazyOwned, migNotes];
 
 const tenantA = { id: 1, kind: "clinic", slug: "a", role: "member" } as const;
 
@@ -121,6 +136,9 @@ describe("DocumentStoreAdminLive", () => {
 		await expect(
 			asUser(Effect.flatMap(DocumentStoreAdmin, (a) => a.listDocuments("admin.notes"))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await expect(
+			asUser(Effect.flatMap(DocumentStoreAdmin, (a) => a.migrateCollection("admin.notes"))),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 
 	it("lists contributed defs, DB rows and record counts", async () => {
@@ -175,7 +193,17 @@ describe("DocumentStoreAdminLive", () => {
 			contributed: true,
 			registered: false,
 			recordCount: 0,
+			hasMigrations: false,
 		});
+		// Contributed with migrations but never written — unregistered,
+		// yet hasMigrations reflects the live def.
+		expect(byName.get("admin.mignotes")).toMatchObject({
+			contributed: true,
+			registered: false,
+			recordCount: 0,
+			hasMigrations: true,
+		});
+		expect(byName.get("admin.notes")?.hasMigrations).toBe(false);
 		expect(byName.get("legacy.thing")).toMatchObject({
 			contributed: false,
 			registered: true,
@@ -276,6 +304,40 @@ describe("DocumentStoreAdminLive", () => {
 		await expect(
 			asAdmin(Effect.flatMap(DocumentStoreAdmin, (a) => a.getDocument("admin.notes", created.id))),
 		).resolves.toBeNull();
+	});
+
+	it("migrateCollection sweeps stored documents unscoped (T-130)", async () => {
+		// Register the collection, then seed an unversioned (v1) row
+		// directly — schema_version defaults to 1.
+		await store.runPromise(Effect.flatMap(DocumentStore, (s) => s.ensureCollection(migNotes)));
+		const coll = await db
+			.select()
+			.from(documentCollections)
+			.where(eq(documentCollections.name, "admin.mignotes"));
+		const now = new Date();
+		await db.insert(documentRecords).values({
+			collectionId: coll[0]!.id,
+			data: JSON.stringify({ v: "old" }),
+			ownerId: "u9",
+			createdAt: now,
+			updatedAt: now,
+		});
+		const report = await asAdmin(
+			Effect.flatMap(DocumentStoreAdmin, (a) => a.migrateCollection("admin.mignotes")),
+		);
+		expect(report.collection).toBe("admin.mignotes");
+		expect(report.scanned).toBe(1);
+		expect(report.migrated).toBe(1);
+		expect(report.failed).toEqual([]);
+		const rows = await db
+			.select()
+			.from(documentRecords)
+			.where(eq(documentRecords.collectionId, coll[0]!.id));
+		expect(rows[0]!.schemaVersion).toBe(2);
+		// Unknown collection → typed error surfaces through the admin.
+		await expect(
+			asAdmin(Effect.flatMap(DocumentStoreAdmin, (a) => a.migrateCollection("no.such"))),
+		).rejects.toMatchObject({ _tag: "UnknownCollection" });
 	});
 
 	it("surfaces ref onDelete policies unscoped", async () => {

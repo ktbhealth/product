@@ -41,6 +41,7 @@ import {
 	deleteDocumentFn,
 	documentsFn,
 	listCollectionsFn,
+	migrateCollectionFn,
 	updateDocumentFn,
 } from "./fns.ts";
 
@@ -264,6 +265,20 @@ describe("document-store fns", () => {
 		expect(del).toEqual({ status: "in-use", referencedBy: ["fns.refs.target"] });
 	});
 
+	it("migrates a collection and reports the sweep (T-130)", async () => {
+		currentEmail = "admin@x.com";
+		const res = await migrateCollectionFn({ data: { collection: "fns.notes" } });
+		expect(res.status).toBe("migrated");
+		if (res.status === "migrated") {
+			expect(res.report.collection).toBe("fns.notes");
+			expect(res.report.failed).toEqual([]);
+		}
+		// Unknown collection → denied (isHandled maps it).
+		await expect(migrateCollectionFn({ data: { collection: "no.such" } })).resolves.toEqual({
+			status: "denied",
+		});
+	});
+
 	it("validates wire input before the handler runs", async () => {
 		currentEmail = "admin@x.com";
 		await expect(documentsFn({ data: {} } as never)).rejects.toBeInstanceOf(Error);
@@ -274,6 +289,7 @@ describe("document-store fns", () => {
 			updateDocumentFn({ data: { collection: "fns.notes", id: "1" } } as never),
 		).rejects.toBeInstanceOf(Error);
 		await expect(deleteDocumentFn({ data: { id: 1 } } as never)).rejects.toBeInstanceOf(Error);
+		await expect(migrateCollectionFn({ data: {} } as never)).rejects.toBeInstanceOf(Error);
 	});
 
 	it("propagates unexpected service errors instead of mapping them", async () => {
@@ -285,6 +301,7 @@ describe("document-store fns", () => {
 			insertDocument: () => Effect.fail({ _tag: "Other" }),
 			updateDocument: () => Effect.fail({ _tag: "Other" }),
 			deleteDocument: () => Effect.fail({ _tag: "Other" }),
+			migrateCollection: () => Effect.fail({ _tag: "Other" }),
 		} as unknown as DocumentStoreAdmin["Service"]);
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
@@ -311,6 +328,9 @@ describe("document-store fns", () => {
 			await expect(
 				deleteDocumentFn({ data: { collection: "fns.notes", id: 1 } }),
 			).rejects.toMatchObject({ _tag: "Other" });
+			await expect(
+				migrateCollectionFn({ data: { collection: "fns.notes" } }),
+			).rejects.toMatchObject({ _tag: "Other" });
 		} finally {
 			installRuntime(runtime);
 			await rt.dispose();
@@ -326,6 +346,7 @@ describe("document-store fns", () => {
 			insertDocument: () => Effect.fail(new Error("plain-boom")),
 			updateDocument: () => Effect.fail(new Error("plain-boom")),
 			deleteDocument: () => Effect.fail(new Error("plain-boom")),
+			migrateCollection: () => Effect.fail(new Error("plain-boom")),
 		} as unknown as DocumentStoreAdmin["Service"]);
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
@@ -341,6 +362,9 @@ describe("document-store fns", () => {
 		try {
 			await expect(listCollectionsFn()).rejects.toThrow("plain-boom");
 			await expect(documentsFn({ data: { collection: "fns.notes" } })).rejects.toBe("str-boom");
+			await expect(migrateCollectionFn({ data: { collection: "fns.notes" } })).rejects.toThrow(
+				"plain-boom",
+			);
 		} finally {
 			installRuntime(runtime);
 			await rt.dispose();

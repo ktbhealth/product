@@ -7,6 +7,7 @@ import { ensureSessionUser, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import { DocumentStoreAdmin } from "./admin.ts";
+import type { CollectionMigrationReport } from "./service.ts";
 import {
 	toCollectionWire,
 	toDocumentWire,
@@ -54,11 +55,13 @@ const UpdateInput = Schema.Struct({
 	id: Schema.Number,
 	data: Schema.Unknown,
 });
+const MigrateInput = Schema.Struct({ collection: Schema.String });
 
 const decodeList = Schema.decodeUnknownSync(ListInput);
 const decodeDocumentId = Schema.decodeUnknownSync(DocumentIdInput);
 const decodeCreate = Schema.decodeUnknownSync(CreateInput);
 const decodeUpdate = Schema.decodeUnknownSync(UpdateInput);
+const decodeMigrate = Schema.decodeUnknownSync(MigrateInput);
 
 /** `data` arrives as untyped JSON — the store re-validates it against
  * the collection's field DSL; a non-object payload fails there as a
@@ -231,6 +234,31 @@ export const deleteDocumentFn = createServerFn({ method: "POST" })
 						: /* v8 ignore next -- DocumentInUse always carries referencedBy */ [],
 				};
 			}
+			throw error;
+		});
+	});
+
+export type MigrateCollectionResult =
+	| { readonly status: "migrated"; readonly report: CollectionMigrationReport }
+	| { readonly status: "denied" };
+
+/** Eager schema-migration sweep (T-130): rewrite every stored document
+ * of the collection whose `schema_version` is behind the current def.
+ * Per-document failures come back inside `report.failed` — the call
+ * itself only fails `denied` for non-admins/unknown collections. */
+export const migrateCollectionFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeMigrate(input))
+	.handler(async ({ data }): Promise<MigrateCollectionResult> => {
+		const user = await ensureSessionUser();
+		return asAdmin(
+			user,
+			Effect.gen(function* () {
+				const admin = yield* DocumentStoreAdmin;
+				const report = yield* admin.migrateCollection(data.collection);
+				return { status: "migrated" as const, report };
+			}),
+		).catch((error: unknown): MigrateCollectionResult => {
+			if (isHandled(error)) return { status: "denied" };
 			throw error;
 		});
 	});

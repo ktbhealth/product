@@ -217,6 +217,7 @@ describe("document-store page effects with a failing admin service", () => {
 		contributed: false,
 		registered: true,
 		recordCount: 0,
+		hasMigrations: false,
 	};
 
 	beforeAll(() => {
