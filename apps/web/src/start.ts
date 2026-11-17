@@ -3,6 +3,7 @@ import { requestLocale } from "#/lib/i18n.ts";
 import { localeStorage } from "#/lib/locale-context.ts";
 import { accessLog } from "#/lib/access-log.ts";
 import { unwrapResponse } from "#/lib/response.ts";
+import { serverFnIdFromPathname } from "#/lib/server-fn.ts";
 import {
 	isValidTraceparent,
 	newRequestId,
@@ -11,6 +12,8 @@ import {
 	tagged,
 	httpRequests,
 	httpRequestDuration,
+	serverFnRequests,
+	serverFnRequestDuration,
 } from "@ktb/observability";
 
 // Runs every request inside the locale AsyncLocalStorage so
@@ -60,6 +63,10 @@ const telemetryMiddleware = createMiddleware().server(
 		const rawTraceparent = request.headers.get("traceparent");
 		const traceparent = isValidTraceparent(rawTraceparent) ? rawTraceparent : undefined;
 		const started = Date.now();
+		// Per-server-function breakdown: the createServerFn id rides the
+		// `/_serverFn/<id>` path, so serverFn requests get their own
+		// counter/histogram series on top of the aggregate http_* ones.
+		const serverFnId = handlerType === "serverFn" ? serverFnIdFromPathname(pathname) : undefined;
 
 		// RED metrics + structured access log — shared by the success and
 		// the thrown-request paths so errors can't go unobserved.
@@ -76,6 +83,16 @@ const telemetryMiddleware = createMiddleware().server(
 				1,
 			);
 			recordUnsafe(tagged(httpRequestDuration, { handlerType }), durationMs);
+			if (serverFnId !== undefined) {
+				recordUnsafe(
+					tagged(serverFnRequests, {
+						fn: serverFnId,
+						...(status !== undefined ? { status } : {}),
+					}),
+					1,
+				);
+				recordUnsafe(tagged(serverFnRequestDuration, { fn: serverFnId }), durationMs);
+			}
 			// Emitted through the app runtime's logger set (console JSON +
 			// OTLP) via the sink platform.ts registers, so the record
 			// reaches exporters, not just Workers Logs. Falls back to a

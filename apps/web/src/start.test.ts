@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import * as Effect from "effect/Effect";
+import * as Metric from "effect/Metric";
 
 const hoisted = vi.hoisted(() => ({ failAls: false }));
 
@@ -15,6 +17,7 @@ vi.mock("#/lib/locale-context.ts", async (importOriginal) => {
 
 import { currentLocale } from "#/lib/locale-context.ts";
 import { setAccessLogSink } from "#/lib/access-log.ts";
+import { serverFnRequestDuration, serverFnRequests, tagged } from "@ktb/observability";
 import { startInstance } from "./start.ts";
 
 type ServerFn = (options: {
@@ -111,16 +114,24 @@ describe("telemetry request middleware", () => {
 			context: {},
 			response: new Response("ok", { status: 201 }),
 		}),
+		overrides: { pathname?: string; handlerType?: "router" | "serverFn" } = {},
 	) => {
 		const server = await middleware();
+		const pathname = overrides.pathname ?? "/x";
 		return server({
 			request,
-			pathname: "/x",
+			pathname,
 			context: {},
-			handlerType: "router",
+			handlerType: overrides.handlerType ?? "router",
 			next: respond,
 		});
 	};
+
+	const metricCount = <A, S>(metric: Metric.Metric<A, S>) =>
+		Effect.runPromise(Metric.value(metric)).then((state) => {
+			const count = (state as { count?: number | bigint }).count;
+			return typeof count === "number" ? count : 0;
+		});
 
 	it("echoes inbound correlation headers and records the request", async () => {
 		const request = new Request("http://localhost/x", {
@@ -222,6 +233,62 @@ describe("telemetry request middleware", () => {
 			traceId: "0af7651916cd43dd8448eb211c80319c",
 		});
 		vi.restoreAllMocks();
+	});
+
+	it("records per-server-fn request count and duration", async () => {
+		const request = new Request("http://localhost/_serverFn/fn-lat-1", { method: "POST" });
+		const result = await run(request, undefined, {
+			pathname: "/_serverFn/fn-lat-1",
+			handlerType: "serverFn",
+		});
+		expect(result.response.status).toBe(201);
+		await expect(
+			metricCount(tagged(serverFnRequests, { fn: "fn-lat-1", status: "201" })),
+		).resolves.toBe(1);
+		await expect(metricCount(tagged(serverFnRequestDuration, { fn: "fn-lat-1" }))).resolves.toBe(1);
+	});
+
+	it("tags the server-fn counter with status 500 when next() throws", async () => {
+		const request = new Request("http://localhost/_serverFn/fn-lat-2", { method: "POST" });
+		await expect(
+			run(request, () => Promise.reject(new Error("fn exploded")), {
+				pathname: "/_serverFn/fn-lat-2",
+				handlerType: "serverFn",
+			}),
+		).rejects.toThrow("fn exploded");
+		await expect(
+			metricCount(tagged(serverFnRequests, { fn: "fn-lat-2", status: "500" })),
+		).resolves.toBe(1);
+		await expect(metricCount(tagged(serverFnRequestDuration, { fn: "fn-lat-2" }))).resolves.toBe(1);
+	});
+
+	it("does not emit per-fn metrics for router requests or unparseable fn paths", async () => {
+		// handlerType "router" wins even on a server-fn-looking path.
+		await run(new Request("http://localhost/_serverFn/fn-lat-3"), undefined, {
+			pathname: "/_serverFn/fn-lat-3",
+			handlerType: "router",
+		});
+		// A serverFn request whose path carries no id still skips the fn series.
+		await run(new Request("http://localhost/_serverFn/"), undefined, {
+			pathname: "/_serverFn/",
+			handlerType: "serverFn",
+		});
+		// A serverFn request resolving to no Response emits the fn series
+		// without a status label (same convention as httpRequests).
+		await run(
+			new Request("http://localhost/_serverFn/fn-lat-4"),
+			() => ({
+				request: new Request("http://localhost/_serverFn/fn-lat-4"),
+				pathname: "/_serverFn/fn-lat-4",
+				context: {},
+				response: "not-a-response",
+			}),
+			{ pathname: "/_serverFn/fn-lat-4", handlerType: "serverFn" },
+		);
+		await expect(
+			metricCount(tagged(serverFnRequests, { fn: "fn-lat-3", status: "201" })),
+		).resolves.toBe(0);
+		await expect(metricCount(tagged(serverFnRequests, { fn: "fn-lat-4" }))).resolves.toBe(1);
 	});
 
 	it("routes the access record through the registered sink when present", async () => {

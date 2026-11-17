@@ -47,6 +47,27 @@
 				"refresh": 1,
 				"sort": 1,
 				"allValue": ".*"
+			},
+			{
+				"type": "query",
+				"name": "serverFn",
+				"skipUrlSync": false,
+				"multi": true,
+				"allowCustomValue": true,
+				"includeAll": true,
+				"auto": false,
+				"auto_min": "10s",
+				"auto_count": 30,
+				"label": "Server fn",
+				"description": "createServerFn id recorded on ktb_server_fn_* metrics — the /_serverFn/<id> path segment (sha256 of file--export).",
+				"datasource": {
+					"type": "prometheus",
+					"uid": "prometheus"
+				},
+				"query": "label_values(ktb_server_fn_request_duration_ms_bucket, fn)",
+				"refresh": 1,
+				"sort": 1,
+				"allValue": ".*"
 			}
 		]
 	},
@@ -980,6 +1001,220 @@
 					"range": true,
 					"instant": false,
 					"legendFormat": "{{stage}}"
+				}
+			]
+		},
+		{
+			"type": "row",
+			"collapsed": false,
+			"id": 19,
+			"panels": [],
+			"title": "Server functions & session resolution",
+			"gridPos": {
+				"x": 0,
+				"y": 47,
+				"w": 24,
+				"h": 1
+			}
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "reqps",
+					"decimals": 2,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 20,
+			"title": "Server fn request rate by fn",
+			"description": "ktb_server_fn_requests_total rate per createServerFn id — which server functions carry the traffic. fn is the /_serverFn/<id> path segment.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 0,
+				"y": 48,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "sum by (fn) (rate(ktb_server_fn_requests_total{fn=~\"$serverFn\"}[$__rate_interval]))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{fn}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "ms",
+					"decimals": 0,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 21,
+			"title": "Server fn p95 latency by fn",
+			"description": "p95 wall time per server function (ktb_server_fn_request_duration_ms). Compare against the session-resolution panels — a slow fn with mostly cache hits is doing its own I/O.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 6,
+				"y": 48,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "histogram_quantile(0.95, sum by (le, fn) (rate(ktb_server_fn_request_duration_ms_bucket{fn=~\"$serverFn\"}[$__rate_interval])))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{fn}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "percentunit",
+					"decimals": 2,
+					"max": 1,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 22,
+			"title": "Server fn 5xx ratio by fn",
+			"description": "Share of 5xx responses per server function (ktb_server_fn_requests_total status label). Serialized fn errors still count — the status is the response code.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 12,
+				"y": 48,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "sum by (fn) (rate(ktb_server_fn_requests_total{fn=~\"$serverFn\",status=~\"5..\"}[$__rate_interval])) / sum by (fn) (rate(ktb_server_fn_requests_total{fn=~\"$serverFn\"}[$__rate_interval]))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{fn}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "ops",
+					"decimals": 2,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 23,
+			"title": "Session context lookups by result",
+			"description": "ktb_session_context_lookups_total — context (session|doctor|patient) × result (cache|load). A high load share means the per-request memoization is not absorbing repeat resolutions; pair with ktb_session_context_load_duration_ms for the DB cost.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 18,
+				"y": 48,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "sum by (context, result) (rate(ktb_session_context_lookups_total[$__rate_interval]))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{context}}/{{result}}"
 				}
 			]
 		}
