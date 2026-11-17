@@ -3,6 +3,8 @@ import type * as JsonSchema from "effect/JsonSchema";
 import type { JsonObject } from "effect/Schema";
 import type * as Schema from "effect/Schema";
 
+import type { PluginKeyword } from "./keywords.ts";
+
 /**
  * Registry of plugin ids known at compile time. Each plugin entry module
  * contributes its ids via `declare module "@ktb/kernel"` augmentation;
@@ -40,6 +42,12 @@ export interface PluginMeta {
 	readonly version?: string;
 	readonly icon?: ComponentType<{ readonly className?: string }>;
 	readonly config?: PluginConfigSchema;
+	/** Controlled-vocabulary tags (P-082): the first keyword is the
+	 * plugin's domain lane — it drives grouping in the plugins map —
+	 * and the rest describe role/audience. Typed against
+	 * `PLUGIN_KEYWORDS` (./keywords.ts), so unknown words fail
+	 * typecheck at the manifest itself. */
+	readonly keywords?: readonly PluginKeyword[];
 }
 
 /**

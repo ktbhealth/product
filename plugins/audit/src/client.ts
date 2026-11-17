@@ -17,6 +17,7 @@ import { auditConfig } from "./config.tsx";
  */
 export const auditChromePlugin = definePlugin({
 	id: "audit.chrome",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -37,6 +38,7 @@ export const auditChromePlugin = definePlugin({
 
 export const auditPanelPlugin = definePlugin({
 	id: "audit.panel",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: ["platform.panel", "audit.services"],
 	panel: {
 		pages: [{ id: "audit.admin", path: "/platform/audit", component: AuditPlatformPage }],
@@ -48,6 +50,7 @@ export const auditPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "audit.tables",
+		meta: { keywords: ["audit", "tables"] },
 		// Mirrors auditTablesPlugin (server index.ts) minus the tables
 		// slice — drizzle schema never reaches the client bundle.
 	}),
@@ -60,6 +63,7 @@ export const plugins: readonly Plugin[] = [
 		// /platform/plugins form renders; `configSchema` stays server-only.
 		requiredDeps: ["platform.admin"],
 		meta: {
+			keywords: ["audit", "services"],
 			name: "Audit",
 			description: "Append-only admin audit log with hash-chained entries",
 			icon: ScrollTextIcon,

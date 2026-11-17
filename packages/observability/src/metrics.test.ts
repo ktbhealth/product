@@ -8,6 +8,8 @@ import {
 	clientEventsDropped,
 	cqrsDispatches,
 	httpRequests,
+	pluginDuration,
+	pluginInvocations,
 	record,
 	recordSafe,
 	recordUnsafe,
@@ -60,6 +62,7 @@ describe("metric definitions", () => {
 		for (const m of [
 			appInvocations,
 			cqrsDispatches,
+			pluginInvocations,
 			httpRequests,
 			serverFnRequests,
 			sessionContextLookups,
@@ -68,6 +71,7 @@ describe("metric definitions", () => {
 		]) {
 			expect(Metric.isMetric(m)).toBe(true);
 		}
+		expect(Metric.isMetric(pluginDuration)).toBe(true);
 	});
 
 	it("counters are incremental so OTLP exports them as monotonic sums", async () => {
@@ -80,6 +84,7 @@ describe("metric definitions", () => {
 			httpRequests,
 			serverFnRequests,
 			sessionContextLookups,
+			pluginInvocations,
 			clientEvents,
 			clientEventsDropped,
 			telemetryErrors,

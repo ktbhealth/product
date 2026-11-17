@@ -5,12 +5,14 @@ import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { makeD1 } from "@ktb/db/testing";
 import { PluginStates } from "@ktb/platform/plugin-states";
+import { pluginDuration, pluginInvocations, tagged } from "@ktb/observability";
 import { AI_ENDPOINTS_TEST_DDL } from "../../../plugins/ai-endpoints/src/index.ts";
 import {
 	NotificationsMarkAllRead,
 	NotificationsUnreadCount,
 } from "../../../plugins/notifications/src/api.ts";
 import * as Effect from "effect/Effect";
+import * as Metric from "effect/Metric";
 
 import {
 	assertAuthConfigured,
@@ -288,6 +290,81 @@ describe("createApp", () => {
 			);
 			expect(exit).toMatchObject({ _tag: "Forbidden" });
 			expect(logged(log).some((l: string) => l.includes("cqrs dispatch failed"))).toBe(true);
+		});
+	});
+
+	describe("plugin SLO metrics", () => {
+		const user = { id: "u1", email: "u1@x.com" };
+		// The metric registry is process-wide, so earlier tests in this
+		// file already contributed counts — assert deltas, not absolutes.
+		const metricCount = <A, S>(metric: Metric.Metric<A, S>) =>
+			Effect.runPromise(Metric.value(metric)).then((state) => {
+				const count = (state as { count?: number | bigint }).count;
+				return typeof count === "bigint" ? Number(count) : (count ?? 0);
+			});
+		const invocations = (side: "command" | "query", outcome: string) =>
+			metricCount(tagged(pluginInvocations, { plugin: "notifications", side, outcome }));
+		const durationCount = (side: "command" | "query") =>
+			metricCount(tagged(pluginDuration, { plugin: "notifications", side }));
+		const unread = () =>
+			app.runAs(
+				user,
+				Effect.flatMap(QueryBus, (bus) => bus.execute(NotificationsUnreadCount, { userId: "u1" })),
+			);
+		const markAllRead = (userId: string) =>
+			app.runAs(
+				user,
+				Effect.flatMap(CommandBus, (bus) => bus.execute(NotificationsMarkAllRead, { userId })),
+			);
+		const notificationsIds = plugins.filter((p) => p.pkg === "notifications").map((p) => p.id);
+		const setEnabled = (enabled: boolean) =>
+			app.run(
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					yield* states.setEnabled(notificationsIds, enabled);
+				}),
+			);
+
+		it("counts a successful query as outcome=success and records duration", async () => {
+			const [before, durationBefore] = await Promise.all([
+				invocations("query", "success"),
+				durationCount("query"),
+			]);
+			await expect(unread()).resolves.toBe(0);
+			expect(await invocations("query", "success")).toBe(before + 1);
+			expect(await durationCount("query")).toBe(durationBefore + 1);
+		});
+
+		it("counts a handler failure as outcome=error on the command side", async () => {
+			const before = await invocations("command", "error");
+			const exit = await markAllRead("someone-else").then(
+				() => null,
+				(e: unknown) => e,
+			);
+			expect(exit).toMatchObject({ _tag: "Forbidden" });
+			expect(await invocations("command", "error")).toBe(before + 1);
+		});
+
+		it("counts a gate-blocked dispatch as outcome=disabled, not error", async () => {
+			await setEnabled(false);
+			try {
+				const [disabledBefore, errorBefore, successBefore] = await Promise.all([
+					invocations("query", "disabled"),
+					invocations("query", "error"),
+					invocations("query", "success"),
+				]);
+				const exit = await unread().then(
+					() => null,
+					(e: unknown) => e,
+				);
+				expect(exit).toMatchObject({ _tag: "PluginDisabled" });
+				expect(await invocations("query", "disabled")).toBe(disabledBefore + 1);
+				// Disabled traffic stays out of the success/error split.
+				expect(await invocations("query", "error")).toBe(errorBefore);
+				expect(await invocations("query", "success")).toBe(successBefore);
+			} finally {
+				await setEnabled(true);
+			}
 		});
 	});
 

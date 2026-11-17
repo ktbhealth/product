@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { validateMessageId } from "./contract.ts";
+import { MAX_MESSAGE_FIELD_LENGTH, validateMessageId } from "./contract.ts";
 
 const base = {
 	namespace: "app",
@@ -48,5 +48,18 @@ describe("validateMessageId", () => {
 
 	it("accepts a well-formed tenant id", () => {
 		expect(validateMessageId({ ...base, scope: "tenant", scopeId: "t1" })).toBeNull();
+	});
+
+	it("rejects over-length id fields", () => {
+		expect(validateMessageId({ ...base, key: "k".repeat(MAX_MESSAGE_FIELD_LENGTH + 1) })).toBe(
+			`key must be at most ${MAX_MESSAGE_FIELD_LENGTH} characters`,
+		);
+		expect(
+			validateMessageId({
+				...base,
+				scope: "tenant",
+				scopeId: "t".repeat(MAX_MESSAGE_FIELD_LENGTH + 1),
+			}),
+		).toBe(`scopeId must be at most ${MAX_MESSAGE_FIELD_LENGTH} characters`);
 	});
 });

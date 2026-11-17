@@ -286,6 +286,7 @@ const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
 
 export const clinicianPortalPlugin = definePlugin({
 	id: "clinician.portal",
+	meta: { keywords: ["clinician", "shell", "doctor"] },
 	requiredDeps: [portalShellPlugin.id],
 	portals: CLINICAL_INSTANCES.map((instance) => ({
 		id: instance.id,
@@ -302,6 +303,7 @@ export const clinicianPortalPlugin = definePlugin({
  * empty lists exactly like the app routes' fns. */
 export const clinicianPagesPlugin = definePlugin({
 	id: "clinician.pages",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
 	// The activity feed resolves the Audit service via serviceOption —
 	// the dep edge orders it after audit.services when that plugin is
@@ -312,6 +314,7 @@ export const clinicianPagesPlugin = definePlugin({
 
 export const clinicianChromePlugin = definePlugin({
 	id: "clinician.chrome",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: [clinicianPortalPlugin.id],
 	chrome: [...sidebarChrome("doctor"), ...sidebarChrome("secretary")],
 });

@@ -19,6 +19,7 @@ import { CustomPageView } from "./views/CustomPageView.tsx";
  */
 export const pagesChromePlugin = definePlugin({
 	id: "pages.chrome",
+	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -44,6 +45,7 @@ export const pagesChromePlugin = definePlugin({
 
 export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
+	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["pages.services"],
 	pages: [
 		{
@@ -57,6 +59,7 @@ export const pagesRenderPlugin = definePlugin({
 
 export const pagesPanelPlugin = definePlugin({
 	id: "pages.panel",
+	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["platform.panel", "pages.services"],
 	panel: {
 		pages: [
@@ -76,8 +79,12 @@ export const plugins: readonly Plugin[] = [
 	// minus their server-only slices — tables/services never reach the
 	// client bundle, but the ids must exist so dep edges and enabled-state
 	// filtering line up with the server registry.
-	definePlugin({ id: "pages.tables" }),
-	definePlugin({ id: "pages.services", requiredDeps: ["platform.admin"] }),
+	definePlugin({ id: "pages.tables", meta: { keywords: ["pages", "tables"] } }),
+	definePlugin({
+		id: "pages.services",
+		meta: { keywords: ["pages", "services"] },
+		requiredDeps: ["platform.admin"],
+	}),
 	pagesChromePlugin,
 	pagesRenderPlugin,
 	pagesPanelPlugin,

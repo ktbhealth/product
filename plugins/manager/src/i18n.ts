@@ -53,6 +53,24 @@ export interface ManagerMessages {
 	readonly configSaveFailed: string;
 	readonly empty: string;
 	readonly requiredMark: string;
+	readonly tabTable: string;
+	readonly tabMap: string;
+	readonly viewDependencies: string;
+	readonly viewChannels: string;
+	readonly viewDomains: string;
+	readonly viewHierarchy: string;
+	readonly edgeRequired: string;
+	readonly edgeOptional: string;
+	readonly edgeRegion: string;
+	readonly edgeKind: string;
+	readonly edgeTree: string;
+	readonly keywordsLabel: string;
+	readonly depsSection: string;
+	readonly dependentsSection: string;
+	readonly regionsSection: string;
+	readonly fullscreenEnter: string;
+	readonly fullscreenExit: string;
+	readonly layoutLoading: string;
 	readonly metricsTitle: string;
 	readonly metricsSinceStart: string;
 	readonly metricsError: string;
@@ -110,6 +128,24 @@ const en: ManagerMessages = {
 	configSaveFailed: "Could not save the configuration.",
 	empty: "No plugins discovered.",
 	requiredMark: "required",
+	tabTable: "Table",
+	tabMap: "Map",
+	viewDependencies: "Dependencies",
+	viewChannels: "Channels",
+	viewDomains: "Domains",
+	viewHierarchy: "Hierarchy",
+	edgeRequired: "Required dep",
+	edgeOptional: "Optional dep",
+	edgeRegion: "Publishes to region",
+	edgeKind: "Contributes kind",
+	edgeTree: "Namespace",
+	keywordsLabel: "Keywords",
+	depsSection: "Dependencies",
+	dependentsSection: "Required by",
+	regionsSection: "Channels",
+	fullscreenEnter: "Full screen",
+	fullscreenExit: "Exit full screen",
+	layoutLoading: "Organizing graph…",
 	metricsTitle: "Runtime metrics",
 	metricsSinceStart: "Cumulative since process start.",
 	metricsError: "Could not load runtime metrics.",
@@ -167,6 +203,24 @@ const ptBR: ManagerMessages = {
 	configSaveFailed: "Não foi possível salvar a configuração.",
 	empty: "Nenhum plugin encontrado.",
 	requiredMark: "obrigatório",
+	tabTable: "Tabela",
+	tabMap: "Mapa",
+	viewDependencies: "Dependências",
+	viewChannels: "Canais",
+	viewDomains: "Domínios",
+	viewHierarchy: "Hierarquia",
+	edgeRequired: "Dep obrigatória",
+	edgeOptional: "Dep opcional",
+	edgeRegion: "Publica na region",
+	edgeKind: "Contribui kind",
+	edgeTree: "Namespace",
+	keywordsLabel: "Palavras-chave",
+	depsSection: "Dependências",
+	dependentsSection: "Requerido por",
+	regionsSection: "Canais",
+	fullscreenEnter: "Tela cheia",
+	fullscreenExit: "Sair da tela cheia",
+	layoutLoading: "Organizando grafo…",
 	metricsTitle: "Métricas de execução",
 	metricsSinceStart: "Acumulado desde o início do processo.",
 	metricsError: "Não foi possível carregar as métricas de execução.",
@@ -224,6 +278,24 @@ const es: ManagerMessages = {
 	configSaveFailed: "No se pudo guardar la configuración.",
 	empty: "No se encontraron plugins.",
 	requiredMark: "obligatorio",
+	tabTable: "Tabla",
+	tabMap: "Mapa",
+	viewDependencies: "Dependencias",
+	viewChannels: "Canales",
+	viewDomains: "Dominios",
+	viewHierarchy: "Jerarquía",
+	edgeRequired: "Dep obligatoria",
+	edgeOptional: "Dep opcional",
+	edgeRegion: "Publica en region",
+	edgeKind: "Contribuye kind",
+	edgeTree: "Namespace",
+	keywordsLabel: "Palabras clave",
+	depsSection: "Dependencias",
+	dependentsSection: "Requerido por",
+	regionsSection: "Canales",
+	fullscreenEnter: "Pantalla completa",
+	fullscreenExit: "Salir de pantalla completa",
+	layoutLoading: "Organizando grafo…",
 	metricsTitle: "Métricas de ejecución",
 	metricsSinceStart: "Acumulado desde el inicio del proceso.",
 	metricsError: "No se pudieron cargar las métricas de ejecución.",

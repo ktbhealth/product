@@ -391,6 +391,7 @@ export const PatientPortalLive = Layer.effect(
 
 export const patientPortalServicesPlugin = definePlugin({
 	id: "patient-portal.services",
+	meta: { keywords: ["patient-portal", "services", "patient"] },
 	// Audit resolves via serviceOption per call — the dep edge is an
 	// ordering hint only; absence of the audit plugin is legal.
 	optionalDeps: [auditServicesPlugin.id],
@@ -513,6 +514,7 @@ const activityLoader = () =>
  */
 export const patientPortalInstancePlugin = definePlugin({
 	id: "patient-portal.portal",
+	meta: { keywords: ["patient-portal", "shell", "patient"] },
 	requiredDeps: [portalShellPlugin.id],
 	portals: [
 		{
@@ -530,6 +532,7 @@ export const patientPortalInstancePlugin = definePlugin({
  * link to is a plain 404, like one that does not exist. */
 export const patientPortalPagesPlugin = definePlugin({
 	id: "patient-portal.pages",
+	meta: { keywords: ["patient-portal", "ui", "patient"] },
 	requiredDeps: [patientPortalServicesPlugin.id],
 	pages: [
 		{
@@ -556,6 +559,7 @@ export const patientPortalPagesPlugin = definePlugin({
 
 export const patientPortalChromePlugin = definePlugin({
 	id: "patient-portal.chrome",
+	meta: { keywords: ["patient-portal", "ui", "patient"] },
 	requiredDeps: [patientPortalInstancePlugin.id],
 	chrome: [
 		{
@@ -578,6 +582,7 @@ export const patientPortalChromePlugin = definePlugin({
 // twin — so existing links and emails keep landing in the right place.
 export const patientPortalRoutesPlugin = definePlugin({
 	id: "patient-portal.routes",
+	meta: { keywords: ["patient-portal", "routes", "patient"] },
 	routes: [physical("/portal", "../../../../plugins/patient-portal/src/routes")],
 });
 

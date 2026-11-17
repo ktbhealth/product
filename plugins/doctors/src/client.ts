@@ -7,7 +7,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "doctors.tables" }),
-	definePlugin({ id: "doctors.services" }),
-	definePlugin({ id: "doctors.routes" }),
+	definePlugin({ id: "doctors.tables", meta: { keywords: ["doctors", "tables"] } }),
+	definePlugin({ id: "doctors.services", meta: { keywords: ["doctors", "services"] } }),
+	definePlugin({ id: "doctors.routes", meta: { keywords: ["doctors", "routes"] } }),
 ];

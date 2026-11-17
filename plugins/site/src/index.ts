@@ -11,6 +11,7 @@ import { SiteLocaleToggle } from "./chrome.tsx";
  */
 export const siteChromePlugin = definePlugin({
 	id: "site.chrome",
+	meta: { keywords: ["site", "ui"] },
 	chrome: [
 		{
 			id: "site.locale",
