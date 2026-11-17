@@ -4,6 +4,7 @@ import {
 	sanitizeRequestId,
 	type TelemetryContextValue,
 } from "@ktb/observability";
+import { serverFnIdFromPathname } from "./server-fn.ts";
 
 /**
  * App-edge telemetry glue: extracts request-scoped context (request id,
@@ -27,6 +28,24 @@ const headersFromRequest = async (): Promise<Headers | null> => {
 };
 
 /**
+ * Server-fn route label for the current request: the createServerFn id
+ * parsed out of the `/_serverFn/<id>` request path. Seeds
+ * `TelemetryContext.route`, which lands on `app.<kind>` span attributes
+ * and `telemetry.route` log annotations — per-function attribution in
+ * traces without a metric-label cardinality change. Router/page
+ * requests yield undefined (pathnames there carry entity ids — too
+ * high-cardinality for a label). Never throws.
+ */
+const serverFnRoute = async (): Promise<string | undefined> => {
+	try {
+		const { getRequestUrl } = await import("@tanstack/react-start/server");
+		return serverFnIdFromPathname(getRequestUrl().pathname);
+	} catch {
+		return undefined;
+	}
+};
+
+/**
  * TelemetryContext seed for the current invocation: honors an upstream
  * `x-request-id`/`x-trace-id` (load balancer / caller correlation) and a
  * W3C `traceparent` for distributed tracing — but only after format
@@ -37,12 +56,15 @@ const headersFromRequest = async (): Promise<Headers | null> => {
  */
 export const requestTelemetryContext = async (): Promise<TelemetryContextValue> => {
 	const headers = await headersFromRequest();
-	if (headers === null) return { requestId: newRequestId() };
+	const route = await serverFnRoute();
+	const routeField = route === undefined ? {} : { route };
+	if (headers === null) return { requestId: newRequestId(), ...routeField };
 	const inboundId =
 		sanitizeRequestId(headers.get("x-request-id")) ?? sanitizeRequestId(headers.get("x-trace-id"));
 	const rawTraceparent = headers.get("traceparent");
 	return {
 		requestId: inboundId ?? newRequestId(),
 		traceparent: isValidTraceparent(rawTraceparent) ? rawTraceparent : undefined,
+		...routeField,
 	};
 };

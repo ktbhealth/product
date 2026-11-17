@@ -11,6 +11,12 @@ import {
 } from "@ktb/auth";
 import type { ActingUser, DoctorProfile, PatientProfile, SessionUser } from "@ktb/auth";
 import { tenantSelectorFromHeaders, type TenantSelector } from "@ktb/tenant/selector";
+import {
+	recordUnsafe,
+	sessionContextLoadDuration,
+	sessionContextLookups,
+	tagged,
+} from "@ktb/observability/metrics";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -87,6 +93,41 @@ const cacheLookup = <K extends object, V>(
 	return promise;
 };
 
+/** Which resolution a lookup serves — the `context` label on
+ * `ktb_session_context_lookups_total` / `ktb_session_context_load_duration_ms`. */
+type SessionContextKind = "session" | "doctor" | "patient";
+
+/**
+ * Memoized resolution with lookup telemetry. `result: cache` means the
+ * per-request WeakMap entry served the call — no session or directory
+ * I/O; `result: load` means the backing lookup ran and its wall time is
+ * recorded on `ktb_session_context_load_duration_ms{context}` (the
+ * DB-cost signal the memoization exists to contain). `readCache: false`
+ * preserves the claimInvites/syncLinks contract — the mutation path
+ * always loads fresh but still stores its result for later reads in the
+ * same request. Memoization semantics are unchanged.
+ */
+const memoized = async <V>(
+	cache: WeakMap<Headers, Promise<V>>,
+	requestHeaders: Headers,
+	context: SessionContextKind,
+	readCache: boolean,
+	load: () => Promise<V>,
+): Promise<V> => {
+	const cached = readCache ? cache.get(requestHeaders) : undefined;
+	if (cached !== undefined) {
+		recordUnsafe(tagged(sessionContextLookups, { context, result: "cache" }), 1);
+		return cached;
+	}
+	recordUnsafe(tagged(sessionContextLookups, { context, result: "load" }), 1);
+	const started = Date.now();
+	try {
+		return await cacheLookup(cache, requestHeaders, load());
+	} finally {
+		recordUnsafe(tagged(sessionContextLoadDuration, { context }), Date.now() - started);
+	}
+};
+
 async function loadSessionUser(requestHeaders: Headers): Promise<SessionUser | null> {
 	const session = await run(
 		Effect.gen(function* () {
@@ -105,9 +146,8 @@ async function loadSessionUser(requestHeaders: Headers): Promise<SessionUser | n
 
 export async function getSessionUser(headers?: Headers): Promise<SessionUser | null> {
 	const requestHeaders = await requestHeadersOr(headers);
-	return (
-		sessionUserCache.get(requestHeaders) ??
-		cacheLookup(sessionUserCache, requestHeaders, loadSessionUser(requestHeaders))
+	return memoized(sessionUserCache, requestHeaders, "session", true, () =>
+		loadSessionUser(requestHeaders),
 	);
 }
 
@@ -182,10 +222,8 @@ async function resolveDoctorContext(
 	// pre-claim cache entry — it always runs fresh. Its result IS stored:
 	// post-claim profiles are the newest truth, and later non-claim reads
 	// in the same request should see the just-claimed invites.
-	const cached = claimInvites ? undefined : doctorContextCache.get(requestHeaders);
-	return (
-		cached ??
-		cacheLookup(doctorContextCache, requestHeaders, loadDoctorContext(requestHeaders, claimInvites))
+	return memoized(doctorContextCache, requestHeaders, "doctor", !claimInvites, () =>
+		loadDoctorContext(requestHeaders, claimInvites),
 	);
 }
 
@@ -340,13 +378,9 @@ export async function getPatientContext(
 	// mutates link state, so it bypasses the cache read but stores its
 	// fresh post-sync result for later non-sync reads in this request.
 	const syncLinks = options?.syncLinks === true;
-	const cached = syncLinks ? undefined : patientContextCache.get(requestHeaders);
-	const resolved = await (cached ??
-		cacheLookup(
-			patientContextCache,
-			requestHeaders,
-			loadPatientContext(requestHeaders, syncLinks),
-		));
+	const resolved = await memoized(patientContextCache, requestHeaders, "patient", !syncLinks, () =>
+		loadPatientContext(requestHeaders, syncLinks),
+	);
 	if (!resolved) return null;
 	return {
 		user: resolved.user,

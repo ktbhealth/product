@@ -11,6 +11,8 @@ import {
 	record,
 	recordSafe,
 	recordUnsafe,
+	serverFnRequests,
+	sessionContextLookups,
 	tagged,
 	telemetryErrors,
 } from "./metrics.ts";
@@ -55,7 +57,15 @@ describe("recordSafe", () => {
 
 describe("metric definitions", () => {
 	it("all counters/histograms are valid Metric instances", () => {
-		for (const m of [appInvocations, cqrsDispatches, httpRequests, clientEvents, telemetryErrors]) {
+		for (const m of [
+			appInvocations,
+			cqrsDispatches,
+			httpRequests,
+			serverFnRequests,
+			sessionContextLookups,
+			clientEvents,
+			telemetryErrors,
+		]) {
 			expect(Metric.isMetric(m)).toBe(true);
 		}
 	});
@@ -68,6 +78,8 @@ describe("metric definitions", () => {
 			appInvocations,
 			cqrsDispatches,
 			httpRequests,
+			serverFnRequests,
+			sessionContextLookups,
 			clientEvents,
 			clientEventsDropped,
 			telemetryErrors,
