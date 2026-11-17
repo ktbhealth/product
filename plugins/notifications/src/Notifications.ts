@@ -11,6 +11,9 @@ import { Event, EventBus } from "@effect-server-utils/cqrs";
 import { getLocale } from "@ktb/server-fns";
 import { PatientCreated, PatientDeleted } from "@ktb/patients/api";
 import { ConsultationCreated } from "@ktb/consultations/api";
+// Plain db read (clinic_keys via tenantZkOrClosed) — no service edge on
+// vault.services: plugin deps order layers, and nothing here consumes
+// the Vault service.
 import { tenantZkOrClosed } from "@ktb/vault";
 
 import type { ConsoleNotification } from "./context.ts";

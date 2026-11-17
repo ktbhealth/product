@@ -5,6 +5,9 @@ import { KeyRoundIcon } from "lucide-react";
 
 import { ApiKeys, type ApiKeyRow } from "@ktb/auth";
 import { Principal, type Forbidden } from "@ktb/authz";
+// EVAL_ACTION/EVAL_RESOURCE are compile-time permission-string
+// constants, not services — no dep edge on eval-validator: the rbac
+// check degrades on its own when that plugin is absent.
 import { EVAL_ACTION, EVAL_RESOURCE } from "@ktb/eval-validator";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";

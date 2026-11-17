@@ -13,6 +13,8 @@ import {
 	type AdminPatientRow,
 	type OwnerOption,
 } from "@ktb/patients";
+import { patientAccessServicesPlugin } from "@ktb/patient-access";
+import { vaultServicesPlugin } from "@ktb/vault";
 import { ClipboardListIcon } from "lucide-react";
 
 import { ConsultationsPlatformPage } from "./platform-page.tsx";
@@ -96,8 +98,18 @@ export const consultationsServicesPlugin = definePlugin({
 	meta: { keywords: ["consultations", "services"] },
 	requiredDeps: [patientsServicesPlugin.id, platformAdminPlugin.id],
 	// Audit + integrity writes resolve via serviceOption — the dep edges
-	// are ordering hints only; absence of either is legal.
-	optionalDeps: [auditServicesPlugin.id, integrityServicesPlugin.id],
+	// are ordering hints only; absence of either is legal. Vault and
+	// patient-access are the same shape: ZK paths resolve Vault via
+	// serviceOption and read clinic_keys through tenantIsZk, while the
+	// views call patient-access/vault server fns (invite, portal
+	// readers, DEK envelopes, grants) that degrade to hidden/failed
+	// features when those plugins are absent.
+	optionalDeps: [
+		auditServicesPlugin.id,
+		integrityServicesPlugin.id,
+		patientAccessServicesPlugin.id,
+		vaultServicesPlugin.id,
+	],
 	services: Layer.mergeAll(
 		ConsultationsLive,
 		ConsultationsQueriesLive,

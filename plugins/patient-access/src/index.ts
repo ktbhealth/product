@@ -10,6 +10,9 @@ import { PatientProfiles, type PatientProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { patients, user } from "@ktb/db/schema";
+import { invitesServicesPlugin } from "@ktb/invites";
+import { patientsServicesPlugin } from "@ktb/patients";
+import { vaultServicesPlugin } from "@ktb/vault";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { PatientAccessPortalPage } from "./views/PatientAccessPortalPage.tsx";
@@ -387,6 +390,12 @@ export const PatientAuditAccessLive = Layer.effect(
 export const patientAccessServicesPlugin = definePlugin({
 	id: "patient-access.services",
 	meta: { keywords: ["patient-access", "services", "patient"] },
+	// Ordering hints only — every consumer degrades without the producer:
+	// PatientLinks joins the patients table and zk.ts reads
+	// @ktb/patients/zk grant constants; fns.ts gates invites through
+	// tenantZkOrClosed and inviteAcceptPath (Invites resolves via
+	// serviceOption), and zk.ts calls the vault grant/envelope fns.
+	optionalDeps: [invitesServicesPlugin.id, patientsServicesPlugin.id, vaultServicesPlugin.id],
 	services: Layer.mergeAll(PatientProfilesLive, PatientLinksLive, PatientAuditAccessLive),
 });
 
