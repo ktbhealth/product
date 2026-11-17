@@ -194,6 +194,22 @@ const DOMAINS = [
 			"i18n_revision",
 		],
 	},
+	{
+		id: "kv",
+		title: "Key/value state",
+		owner: "`plugins/kv`",
+		description:
+			"TTL'd namespaced key/value store — durable small-state primitives (idempotency keys, rate limits, per-tenant flags, job checkpoints) with CAS versioning and tenant/owner scoping.",
+		tables: ["kv_entries"],
+	},
+	{
+		id: "document-store",
+		title: "Document store",
+		owner: "`plugins/document-store`",
+		description:
+			"Runtime data collections — plugins contribute schemas as data (document.collection kind); registry of collections plus JSON document records with tenant/owner fencing.",
+		tables: ["document_collections", "document_records"],
+	},
 ];
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));
