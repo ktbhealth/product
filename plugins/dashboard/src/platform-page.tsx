@@ -1,17 +1,10 @@
 import type { PanelPageContext } from "@ktb/kernel";
-import type { AdminConsultationRow } from "@ktb/consultations";
-import type { ConsoleNotification } from "@ktb/notifications/context";
-import type { AdminPatientRow } from "@ktb/patients";
 import type { PluginStateEntry } from "@ktb/platform/plugin-states";
 
 import { DashboardPage } from "./views/DashboardPage.tsx";
 
 interface DashboardData {
-	readonly patients: AdminPatientRow[];
-	readonly consultations: AdminConsultationRow[];
 	readonly pluginStates?: readonly PluginStateEntry[];
-	readonly notifications?: readonly ConsoleNotification[];
-	readonly unreadCount?: number;
 }
 
 /**
@@ -19,18 +12,17 @@ interface DashboardData {
  * hands the loader Effect's result as `data` and the discovered plugin
  * registry as `ctx.plugins` — the dashboard's plugin-cards section
  * needs it and plugins cannot import the app host themselves.
- * `ctx.locale` feeds the view's catalog.
+ * `ctx.locale` feeds the view's catalog. Domain data no longer flows
+ * through the loader: each domain plugin contributes its own
+ * portal.dashboard.* chrome slots, fed by contexts the /platform
+ * layout provides (T-125).
  */
 export function DashboardPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = data as DashboardData;
 	return (
 		<DashboardPage
-			patients={d.patients}
-			consultations={d.consultations}
 			plugins={ctx.plugins}
 			pluginStates={d.pluginStates}
-			notifications={d.notifications}
-			unreadCount={d.unreadCount}
 			i18n={ctx.i18n}
 			locale={ctx.locale}
 			user={ctx.user}

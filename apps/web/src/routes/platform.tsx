@@ -12,10 +12,14 @@ import { platformHeaderPlugin } from "@ktb/platform-header";
 import { PortalShell } from "@ktb/portal/views";
 import { portalAdmits } from "@ktb/portal/rules";
 import { JobsDataContext, jobsFromAudioRows } from "@ktb/jobs";
-import { adminListAudioJobsFn } from "@ktb/consultations/fns";
+import { adminListAudioJobsFn, adminListConsultationsFn } from "@ktb/consultations/fns";
+import { ConsultationsDashboardContext } from "@ktb/consultations/context";
+import { adminListPatientsFn } from "@ktb/patients/fns";
+import { PatientsDashboardContext } from "@ktb/patients/context";
 import {
 	NotificationsActionsContext,
 	NotificationsDataContext,
+	NotificationsUnreadContext,
 	type NotificationsActions,
 } from "@ktb/notifications/context";
 import { themeScopeFn } from "@ktb/theme/fns";
@@ -25,6 +29,7 @@ import type { ResolvedTheme } from "@ktb/theme/types";
 
 import {
 	consoleDeniedFn,
+	countMyUnreadNotificationsFn,
 	listMyNotificationsFn,
 	markAllMyNotificationsReadFn,
 	markMyNotificationsReadFn,
@@ -114,6 +119,20 @@ export const Route = createFileRoute("/platform")({
 				hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
 					? await listMyNotificationsFn()
 					: [],
+			// Dashboard slot feeds (T-125): the domain plugins' contributed
+			// portal.dashboard.* components read these through their
+			// contexts — empty arrays when the package is off.
+			consultations: packageLive(plugins, enabled, "consultations")
+				? await adminListConsultationsFn()
+				: [],
+			patients: packageLive(plugins, enabled, "patients") ? await adminListPatientsFn() : [],
+			// Exact unread count for the dashboard's console-activity card —
+			// the notifications feed above is capped, so it cannot be
+			// derived client-side.
+			unreadCount:
+				hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
+					? await countMyUnreadNotificationsFn()
+					: undefined,
 			audiences,
 			theme,
 			// Guard-filtered sidebar: page paths whose guard denies this
@@ -144,7 +163,16 @@ const rootApi = getRouteApi("__root__");
 function PlatformLayout() {
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const { user, pluginStates, i18n } = rootApi.useLoaderData();
-	const { audioJobs, notifications, audiences, theme, deniedPaths } = Route.useLoaderData();
+	const {
+		audioJobs,
+		notifications,
+		consultations,
+		patients,
+		unreadCount,
+		audiences,
+		theme,
+		deniedPaths,
+	} = Route.useLoaderData();
 	const locale = i18n?.locale ?? "en";
 	// Enabled-state filter (P-058): disabled plugins contribute no
 	// sidebar items or header actions.
@@ -243,31 +271,37 @@ function PlatformLayout() {
 	return (
 		<JobsDataContext.Provider value={jobsFromAudioRows(audioJobs, locale)}>
 			<NotificationsDataContext.Provider value={notifications}>
-				<NotificationsActionsContext.Provider value={notificationActions}>
-					<PortalShell
-						instance={platformInstance}
-						items={items}
-						pathname={pathname}
-						locale={locale}
-						i18n={i18n}
-						userEmail={user?.email}
-						headerActions={headerActions}
-						brand={brand}
-						banner={
-							theme?.preview === true ? (
-								<ThemePreviewBanner locale={locale} i18n={i18n} />
-							) : undefined
-						}
-						themeCss={themeCss}
-						portals={switchablePortals}
-						onSignOut={async () => {
-							await authClient.signOut();
-							window.location.assign("/");
-						}}
-					>
-						<Outlet />
-					</PortalShell>
-				</NotificationsActionsContext.Provider>
+				<NotificationsUnreadContext.Provider value={unreadCount}>
+					<NotificationsActionsContext.Provider value={notificationActions}>
+						<ConsultationsDashboardContext.Provider value={consultations}>
+							<PatientsDashboardContext.Provider value={patients}>
+								<PortalShell
+									instance={platformInstance}
+									items={items}
+									pathname={pathname}
+									locale={locale}
+									i18n={i18n}
+									userEmail={user?.email}
+									headerActions={headerActions}
+									brand={brand}
+									banner={
+										theme?.preview === true ? (
+											<ThemePreviewBanner locale={locale} i18n={i18n} />
+										) : undefined
+									}
+									themeCss={themeCss}
+									portals={switchablePortals}
+									onSignOut={async () => {
+										await authClient.signOut();
+										window.location.assign("/");
+									}}
+								>
+									<Outlet />
+								</PortalShell>
+							</PatientsDashboardContext.Provider>
+						</ConsultationsDashboardContext.Provider>
+					</NotificationsActionsContext.Provider>
+				</NotificationsUnreadContext.Provider>
 			</NotificationsDataContext.Provider>
 		</JobsDataContext.Provider>
 	);

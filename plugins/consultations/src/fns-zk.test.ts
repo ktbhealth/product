@@ -9,7 +9,7 @@ import { Vault } from "@ktb/vault";
 
 const mocks = vi.hoisted(() => ({
 	ensureDoctorUser: vi.fn(async () => ({ id: "u1" })),
-	getDoctorUser: vi.fn(async () => ({ id: "u1" })),
+	getDoctorUser: vi.fn(async (): Promise<{ id: string } | null> => ({ id: "u1" })),
 	runAs: vi.fn<(user: unknown, effect: unknown) => Promise<unknown>>(async () => ({ id: 1 })),
 	save: vi.fn(),
 	attachAnamnesis: vi.fn(),
@@ -56,7 +56,8 @@ const fakeDb = {
 } as unknown as Db["Service"];
 
 import { Consultations } from "./index.ts";
-import { attachAnamnesisFn, saveConsultationFn } from "./fns.ts";
+import { Forbidden } from "@ktb/authz";
+import { adminListConsultationsFn, attachAnamnesisFn, saveConsultationFn } from "./fns.ts";
 
 const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
 
@@ -287,5 +288,37 @@ describe("attachAnamnesisFn — ciphered writes", () => {
 			await expect(attachAnamnesisFn({ data } as never)).resolves.toEqual({ ok: false });
 		}
 		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+});
+
+describe("adminListConsultationsFn", () => {
+	const adminList = vi.fn();
+	const runAdmin = () =>
+		mocks.runAs.mockImplementation(async (_user, effect) =>
+			Effect.runPromise(
+				Effect.provide(
+					effect as Effect.Effect<unknown, unknown>,
+					Layer.succeed(Consultations, { adminList } as unknown as Consultations["Service"]),
+				),
+			),
+		);
+
+	it("returns an empty feed without a session user", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce(null);
+		await expect(adminListConsultationsFn()).resolves.toEqual([]);
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("returns the cross-owner rows for a platform admin", async () => {
+		adminList.mockReturnValue(Effect.succeed([{ id: 1 }]));
+		runAdmin();
+		await expect(adminListConsultationsFn()).resolves.toEqual([{ id: 1 }]);
+		expect(adminList).toHaveBeenCalledOnce();
+	});
+
+	it("collapses Forbidden to the same empty feed", async () => {
+		adminList.mockReturnValue(Effect.fail(new Forbidden({ path: "x" })));
+		runAdmin();
+		await expect(adminListConsultationsFn()).resolves.toEqual([]);
 	});
 });

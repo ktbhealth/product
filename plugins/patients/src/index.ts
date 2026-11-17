@@ -12,6 +12,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
 import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
 import { PatientsPlatformPage } from "./platform-page.tsx";
+import { PatientsDashboardStats } from "./views/PatientsDashboard.tsx";
 import {
 	PlatformAdmin,
 	platformAdminPlugin,
@@ -623,6 +624,17 @@ export const patientsChromePlugin = definePlugin({
 					group: "Domains",
 				},
 			},
+		},
+		// /platform dashboard slot (T-125): the console landing page is a
+		// generic shell — this plugin contributes its patients-count stat
+		// cell through the portal.dashboard.stats region. Rows arrive via
+		// PatientsDashboardContext, which the /platform layout provides
+		// from adminListPatientsFn.
+		{
+			id: "patients.dashboard.stats",
+			region: "portal.dashboard.stats",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: PatientsDashboardStats },
 		},
 	],
 });

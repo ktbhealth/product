@@ -7,13 +7,17 @@ import { NotificationsActionsContext, type NotificationsActions } from "@ktb/not
 // A host that registers none of the optional header plugins: the layout
 // must skip the jobs/notifications feeds and render no header actions.
 const adminListAudioJobsFn = vi.fn(async () => [] as unknown[]);
+const adminListConsultationsFn = vi.fn(async () => [] as unknown[]);
+const adminListPatientsFn = vi.fn(async () => [] as unknown[]);
 const listMyNotificationsFn = vi.fn(async () => [] as unknown[]);
+const countMyUnreadNotificationsFn = vi.fn(async () => 0);
 
 vi.mock("#/plugins.ts", () => ({ plugins: [] }));
 vi.mock("#/lib/fns.ts", () => ({
 	platformAdminFn: vi.fn(async () => true),
 	portalAudiencesFn: vi.fn(async () => [] as string[]),
 	listMyNotificationsFn: () => listMyNotificationsFn(),
+	countMyUnreadNotificationsFn: () => countMyUnreadNotificationsFn(),
 	markMyNotificationsReadFn: vi.fn(),
 	markAllMyNotificationsReadFn: vi.fn(),
 	getSessionUserFn: vi.fn(async () => ({ id: "u1", email: "a@x.com", name: "A" })),
@@ -21,10 +25,14 @@ vi.mock("#/lib/fns.ts", () => ({
 	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
 	i18nRouteFn: vi.fn(async () => undefined),
 }));
-// The layout imports the audio-jobs feed fn from the consultations
-// plugin directly — stub that module the same way.
+// The layout imports the audio-jobs and dashboard feed fns from the
+// domain plugins directly — stub those modules the same way.
 vi.mock("@ktb/consultations/fns", () => ({
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
+	adminListConsultationsFn: () => adminListConsultationsFn(),
+}));
+vi.mock("@ktb/patients/fns", () => ({
+	adminListPatientsFn: () => adminListPatientsFn(),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 vi.mock("@ktb/theme/fns", () => ({
@@ -46,7 +54,16 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 		...actual,
 		createFileRoute: () => (opts: Record<string, unknown>) => ({
 			options: opts,
-			useLoaderData: () => ({ audioJobs: [], notifications: [] }),
+			useLoaderData: () => ({
+				audioJobs: [],
+				notifications: [],
+				consultations: [],
+				patients: [],
+				unreadCount: undefined,
+				audiences: [],
+				theme: null,
+				deniedPaths: [],
+			}),
 		}),
 		useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) => {
 			const loc = { pathname: "/platform" };
@@ -94,16 +111,22 @@ const options = (
 ).options;
 
 describe("/platform without the optional header plugins", () => {
-	it("loader skips the jobs and notifications queries", async () => {
+	it("loader skips the jobs, notifications, and dashboard feeds", async () => {
 		await expect(options.loader()).resolves.toEqual({
 			audioJobs: [],
 			notifications: [],
+			consultations: [],
+			patients: [],
+			unreadCount: undefined,
 			audiences: [],
 			theme: null,
 			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
+		expect(adminListConsultationsFn).not.toHaveBeenCalled();
+		expect(adminListPatientsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
+		expect(countMyUnreadNotificationsFn).not.toHaveBeenCalled();
 	});
 
 	it("renders the shell with no notification actions and the account fallback label", () => {

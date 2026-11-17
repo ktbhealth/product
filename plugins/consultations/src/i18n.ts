@@ -237,6 +237,15 @@ export interface ConsultationMessages {
 		readonly deleteConfirm: string;
 		readonly cancel: string;
 	};
+	/** /platform dashboard slot: stat cells + sections contributed via
+	 * the portal.dashboard.* chrome regions (T-125). */
+	readonly dashboard: {
+		readonly live: string;
+		readonly byStatus: string;
+		readonly bySource: string;
+		readonly recentConsultations: string;
+		readonly viewAll: string;
+	};
 	/** ZK locked-record copy (T-145) — rows this device cannot decrypt. */
 	readonly zk: {
 		readonly lockedRecord: string;
@@ -495,6 +504,13 @@ const en: ConsultationMessages = {
 		]),
 		deleteConfirm: "Delete permanently",
 		cancel: "Cancel",
+	},
+	dashboard: {
+		live: "Live now",
+		byStatus: "Consultations by status",
+		bySource: "By source",
+		recentConsultations: "Recent consultations",
+		viewAll: "View all",
 	},
 	zk: {
 		lockedRecord: "Encrypted record",
@@ -756,6 +772,13 @@ const ptBR: ConsultationMessages = {
 		deleteConfirm: "Excluir permanentemente",
 		cancel: "Cancelar",
 	},
+	dashboard: {
+		live: "Ao vivo",
+		byStatus: "Consultas por status",
+		bySource: "Por origem",
+		recentConsultations: "Consultas recentes",
+		viewAll: "Ver tudo",
+	},
 	zk: {
 		lockedRecord: "Registro criptografado",
 		lockedHint: "Desbloqueie em um dispositivo aprovado da clínica para visualizar.",
@@ -1015,6 +1038,13 @@ const es: ConsultationMessages = {
 		]),
 		deleteConfirm: "Eliminar permanentemente",
 		cancel: "Cancelar",
+	},
+	dashboard: {
+		live: "En vivo",
+		byStatus: "Consultas por estado",
+		bySource: "Por origen",
+		recentConsultations: "Consultas recientes",
+		viewAll: "Ver todo",
 	},
 	zk: {
 		lockedRecord: "Registro cifrado",

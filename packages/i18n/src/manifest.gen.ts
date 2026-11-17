@@ -1843,6 +1843,21 @@ export const I18N_MANIFEST = {
 		"admin.cancel": {
 			params: [],
 		},
+		"dashboard.live": {
+			params: [],
+		},
+		"dashboard.byStatus": {
+			params: [],
+		},
+		"dashboard.bySource": {
+			params: [],
+		},
+		"dashboard.recentConsultations": {
+			params: [],
+		},
+		"dashboard.viewAll": {
+			params: [],
+		},
 		"zk.lockedRecord": {
 			params: [],
 		},
@@ -1901,58 +1916,13 @@ export const I18N_MANIFEST = {
 		subtitle: {
 			params: [],
 		},
-		"stats.patients": {
-			params: [],
-		},
-		"stats.consultations": {
-			params: [],
-		},
-		"stats.live": {
-			params: [],
-		},
 		"stats.plugins": {
-			params: [],
-		},
-		byStatus: {
-			params: [],
-		},
-		bySource: {
-			params: [],
-		},
-		recentConsultations: {
-			params: [],
-		},
-		noConsultations: {
-			params: [],
-		},
-		viewAll: {
 			params: [],
 		},
 		registeredPlugins: {
 			params: [],
 		},
 		managePlugins: {
-			params: [],
-		},
-		colId: {
-			params: [],
-		},
-		colStatus: {
-			params: [],
-		},
-		colSource: {
-			params: [],
-		},
-		colOwner: {
-			params: [],
-		},
-		colCreated: {
-			params: [],
-		},
-		colState: {
-			params: [],
-		},
-		colContributions: {
 			params: [],
 		},
 		stateEnabled: {
@@ -1962,15 +1932,6 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		stateSystem: {
-			params: [],
-		},
-		consoleActivity: {
-			params: [],
-		},
-		unreadNotifications: {
-			params: [],
-		},
-		noNotifications: {
 			params: [],
 		},
 	},
@@ -3044,6 +3005,15 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"titles.consultationCreated": {
+			params: [],
+		},
+		"dashboard.consoleActivity": {
+			params: [],
+		},
+		"dashboard.unreadNotifications": {
+			params: [],
+		},
+		"dashboard.noNotifications": {
 			params: [],
 		},
 	},

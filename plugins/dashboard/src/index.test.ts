@@ -3,13 +3,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { LayoutDashboardIcon } from "lucide-react";
 
-import { Forbidden, Principal } from "@ktb/authz";
-
 import { platformPanelPlugin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { Consultations, consultationsServicesPlugin } from "@ktb/consultations";
-import { Notifications, notificationsServicesPlugin } from "@ktb/notifications";
-import { Patients, patientsServicesPlugin } from "@ktb/patients";
 import type { Plugin } from "@ktb/kernel";
 
 import { dashboardChromePlugin, dashboardPanelPlugin, plugins } from "./index.ts";
@@ -38,11 +33,9 @@ describe("dashboard plugins", () => {
 	it("declares the /platform page descriptor", () => {
 		expect(dashboardPanelPlugin.id).toBe("dashboard.panel");
 		expect(dashboardPanelPlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
-		expect(dashboardPanelPlugin.optionalDeps).toEqual([
-			patientsServicesPlugin.id,
-			consultationsServicesPlugin.id,
-			notificationsServicesPlugin.id,
-		]);
+		// T-125: the dashboard is a generic shell — no domain-service dep
+		// edges; domain plugins extend it via portal.dashboard.* chrome.
+		expect(dashboardPanelPlugin).not.toHaveProperty("optionalDeps");
 		expect(dashboardPanelPlugin.panel?.pages?.[0]?.path).toBe("/platform");
 	});
 
@@ -53,7 +46,7 @@ describe("dashboard plugins", () => {
 	});
 });
 
-type Loader = () => Effect.Effect<unknown, never, Patients | Consultations>;
+type Loader = () => Effect.Effect<unknown, never, PluginStates>;
 
 const loader = (): Loader => {
 	const page = dashboardPanelPlugin.panel?.pages?.[0];
@@ -61,107 +54,28 @@ const loader = (): Loader => {
 	return page.loader as unknown as Loader;
 };
 
-const patientRows = [{ id: 1, name: "Ana" }];
-const consultationRows = [{ id: 2 }];
-
-const listings = (opts: { forbidden?: boolean } = {}) =>
-	Layer.mergeAll(
-		Layer.succeed(Patients, {
-			adminList: () =>
-				opts.forbidden ? Effect.fail(new Forbidden({ path: "x" })) : Effect.succeed(patientRows),
-		} as never),
-		Layer.succeed(Consultations, {
-			adminList: () =>
-				opts.forbidden
-					? Effect.fail(new Forbidden({ path: "x" }))
-					: Effect.succeed(consultationRows),
-		} as never),
-	);
-
 const pluginStatesLive = Layer.succeed(PluginStates, {
 	entries: () => Effect.succeed([{ pluginId: "a.b", enabled: true, system: false, config: null }]),
 } as never);
 
-const notificationsLive = Layer.succeed(Notifications, {
-	list: (_userId: string, limit?: number) =>
-		Effect.succeed([
-			{ id: 5, userId: "u1", kind: "k", title: `T${limit}`, body: null, readAt: null },
-		]),
-	unreadCount: () => Effect.succeed(3),
-} as never);
-
-const runLoader = (opts: {
-	forbidden?: boolean;
-	notifications?: boolean;
-	listings?: boolean;
-	pluginStates?: boolean;
-	principal: { userId: string } | null;
-}) => {
-	let layer =
-		opts.listings === false
+const runLoader = (opts: { pluginStates?: boolean }) => {
+	const layer =
+		opts.pluginStates === false
 			? (Layer.empty as unknown as Layer.Layer<unknown, never, unknown>)
-			: (listings(opts) as Layer.Layer<unknown, never, unknown>);
-	if (opts.notifications) {
-		layer = Layer.merge(layer, notificationsLive as Layer.Layer<unknown, never, unknown>);
-	}
-	if (opts.pluginStates) {
-		layer = Layer.merge(layer, pluginStatesLive as Layer.Layer<unknown, never, unknown>);
-	}
-	return Effect.runPromise(
-		loader()().pipe(
-			Effect.provide(layer),
-			Effect.provideService(Principal, opts.principal),
-		) as Effect.Effect<unknown>,
-	);
+			: (pluginStatesLive as Layer.Layer<unknown, never, unknown>);
+	return Effect.runPromise(loader()().pipe(Effect.provide(layer)) as Effect.Effect<unknown>);
 };
 
 describe("dashboard loader", () => {
-	it("collapses Forbidden to empty tables and hides the activity card without notifications", async () => {
-		await expect(runLoader({ forbidden: true, principal: null })).resolves.toEqual({
-			patients: [],
-			consultations: [],
-			notifications: undefined,
-			unreadCount: undefined,
-		});
-	});
-
-	it("omits notifications when the backend is registered but nobody is signed in", async () => {
-		await expect(runLoader({ notifications: true, principal: null })).resolves.toMatchObject({
-			patients: patientRows,
-			consultations: consultationRows,
-			notifications: undefined,
-			unreadCount: undefined,
-		});
-	});
-
-	it("omits notifications when the backend plugin is absent even with a principal", async () => {
-		await expect(runLoader({ principal: { userId: "u1" } })).resolves.toMatchObject({
-			notifications: undefined,
-			unreadCount: undefined,
-		});
-	});
-
-	it("collapses to empty listings when the domain plugins are absent", async () => {
-		await expect(runLoader({ listings: false, principal: null })).resolves.toEqual({
-			patients: [],
-			consultations: [],
-			notifications: undefined,
-			unreadCount: undefined,
-		});
-	});
-
-	it("includes plugin states when the service is registered", async () => {
-		await expect(runLoader({ pluginStates: true, principal: null })).resolves.toMatchObject({
+	it("returns only plugin states — domain feeds moved to chrome slots (T-125)", async () => {
+		await expect(runLoader({})).resolves.toEqual({
 			pluginStates: [{ pluginId: "a.b", enabled: true, system: false, config: null }],
 		});
 	});
 
-	it("adds the session user's recent notifications and unread count", async () => {
-		await expect(runLoader({ notifications: true, principal: { userId: "u1" } })).resolves.toEqual({
-			patients: patientRows,
-			consultations: consultationRows,
-			notifications: [{ id: "5", title: "T50", description: undefined, read: false, meta: "k" }],
-			unreadCount: 3,
+	it("omits plugin states when the service is absent", async () => {
+		await expect(runLoader({ pluginStates: false })).resolves.toEqual({
+			pluginStates: undefined,
 		});
 	});
 });

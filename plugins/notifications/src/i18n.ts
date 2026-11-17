@@ -25,6 +25,13 @@ export interface NotificationMessages {
 		readonly patientDeleted: string;
 		readonly consultationCreated: string;
 	};
+	/** /platform dashboard slot: the console-activity card contributed
+	 * via portal.dashboard.sections. */
+	readonly dashboard: {
+		readonly consoleActivity: string;
+		readonly unreadNotifications: string;
+		readonly noNotifications: string;
+	};
 }
 
 const en: NotificationMessages = {
@@ -37,6 +44,11 @@ const en: NotificationMessages = {
 		patientCreated: "Patient created",
 		patientDeleted: "Patient deleted",
 		consultationCreated: "Consultation started",
+	},
+	dashboard: {
+		consoleActivity: "Console activity",
+		unreadNotifications: "Unread notifications",
+		noNotifications: "No notifications yet.",
 	},
 };
 
@@ -51,6 +63,11 @@ const ptBR: NotificationMessages = {
 		patientDeleted: "Paciente excluído",
 		consultationCreated: "Consulta iniciada",
 	},
+	dashboard: {
+		consoleActivity: "Atividade do console",
+		unreadNotifications: "Notificações não lidas",
+		noNotifications: "Nenhuma notificação ainda.",
+	},
 };
 
 const es: NotificationMessages = {
@@ -63,6 +80,11 @@ const es: NotificationMessages = {
 		patientCreated: "Paciente creado",
 		patientDeleted: "Paciente eliminado",
 		consultationCreated: "Consulta iniciada",
+	},
+	dashboard: {
+		consoleActivity: "Actividad de la consola",
+		unreadNotifications: "Notificaciones no leídas",
+		noNotifications: "Ninguna notificación aún.",
 	},
 };
 

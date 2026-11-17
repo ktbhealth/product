@@ -3,6 +3,7 @@ import { UsersIcon } from "lucide-react";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { PatientsPlatformPage } from "./platform-page.tsx";
+import { PatientsDashboardStats } from "./views/PatientsDashboard.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -33,6 +34,13 @@ export const patientsChromePlugin = definePlugin({
 					group: "Domains",
 				},
 			},
+		},
+		// Mirrors patientsChromePlugin's dashboard slot (server index.ts).
+		{
+			id: "patients.dashboard.stats",
+			region: "portal.dashboard.stats",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: PatientsDashboardStats },
 		},
 	],
 });

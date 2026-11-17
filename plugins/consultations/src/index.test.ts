@@ -1854,7 +1854,11 @@ describe("plugins", () => {
 		]);
 		expect(consultationsChromePlugin.id).toBe("consultations.chrome");
 		expect(consultationsChromePlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
-		expect(consultationsChromePlugin.chrome.map((c) => c.region)).toEqual(["portal.sidebar"]);
+		expect(consultationsChromePlugin.chrome.map((c) => c.region)).toEqual([
+			"portal.sidebar",
+			"portal.dashboard.stats",
+			"portal.dashboard.sections",
+		]);
 		expect(consultationsPanelPlugin.id).toBe("consultations.panel");
 		expect(consultationsPanelPlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
 		expect(consultationsPanelPlugin.panel?.pages?.[0]?.path).toBe("/platform/consultations");

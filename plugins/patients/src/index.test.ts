@@ -664,7 +664,10 @@ describe("plugins", () => {
 		expect(patientsPanelPlugin.requiredDeps).toEqual(["platform.panel"]);
 		expect(patientsPanelPlugin.panel?.pages?.[0]?.path).toBe("/platform/patients");
 		expect(patientsChromePlugin.id).toBe("patients.chrome");
-		expect(patientsChromePlugin.chrome.map((c) => c.region)).toEqual(["portal.sidebar"]);
+		expect(patientsChromePlugin.chrome.map((c) => c.region)).toEqual([
+			"portal.sidebar",
+			"portal.dashboard.stats",
+		]);
 	});
 
 	it("keeps routes and chrome out of the tables, services and panel plugins", () => {

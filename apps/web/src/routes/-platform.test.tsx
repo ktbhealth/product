@@ -12,6 +12,8 @@ const portalPageDataFn = vi.fn(
 	}),
 );
 const adminListAudioJobsFn = vi.fn(async () => [] as unknown[]);
+const adminListConsultationsFn = vi.fn(async () => [] as unknown[]);
+const adminListPatientsFn = vi.fn(async () => [] as unknown[]);
 const countMyUnreadNotificationsFn = vi.fn(async () => 0);
 const markMyNotificationsReadFn = vi.fn(async (_arg?: unknown) => true);
 const markAllMyNotificationsReadFn = vi.fn(async () => true);
@@ -58,6 +60,10 @@ vi.mock("#/lib/fns.ts", () => ({
 // plugin directly — stub that module the same way.
 vi.mock("@ktb/consultations/fns", () => ({
 	adminListAudioJobsFn: () => adminListAudioJobsFn(),
+	adminListConsultationsFn: () => adminListConsultationsFn(),
+}));
+vi.mock("@ktb/patients/fns", () => ({
+	adminListPatientsFn: () => adminListPatientsFn(),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
 vi.mock("@ktb/theme/fns", () => ({
@@ -166,6 +172,8 @@ afterEach(() => {
 	platformAdminFn.mockReset().mockResolvedValue(true);
 	portalPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
 	adminListAudioJobsFn.mockReset().mockResolvedValue([]);
+	adminListConsultationsFn.mockReset().mockResolvedValue([]);
+	adminListPatientsFn.mockReset().mockResolvedValue([]);
 	listMyNotificationsFn.mockReset().mockResolvedValue([]);
 	countMyUnreadNotificationsFn.mockReset().mockResolvedValue(0);
 	markMyNotificationsReadFn.mockReset().mockResolvedValue(true);
@@ -178,7 +186,10 @@ afterEach(() => {
 		consultations: [],
 		notifications: undefined,
 		unreadCount: undefined,
+		audioJobs: [],
 		audiences: [],
+		theme: null,
+		deniedPaths: [],
 	};
 });
 
@@ -187,7 +198,16 @@ describe("/platform layout", () => {
 	// { audioJobs, notifications } seeded into the jobs/notifications
 	// header-action contexts.
 	beforeEach(() => {
-		loaderData = { audioJobs: [], notifications: [], audiences: [] };
+		loaderData = {
+			audioJobs: [],
+			notifications: [],
+			consultations: [],
+			patients: [],
+			unreadCount: undefined,
+			audiences: [],
+			theme: null,
+			deniedPaths: [],
+		};
 	});
 
 	it("renders sidebar items aggregated from plugin panel contributions", () => {
@@ -218,12 +238,18 @@ describe("/platform layout", () => {
 		expect(sidebarLink("/platform/patients")).toBeTruthy();
 	});
 
-	it("loader seeds the jobs and notifications feeds", async () => {
+	it("loader seeds the jobs, notifications and dashboard feeds", async () => {
 		adminListAudioJobsFn.mockResolvedValue([{ id: 1 }]);
 		listMyNotificationsFn.mockResolvedValue([{ id: 2 }]);
+		adminListConsultationsFn.mockResolvedValue([{ id: 3 }]);
+		adminListPatientsFn.mockResolvedValue([{ id: 4 }]);
+		countMyUnreadNotificationsFn.mockResolvedValue(2);
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({
 			audioJobs: [{ id: 1 }],
 			notifications: [{ id: 2 }],
+			consultations: [{ id: 3 }],
+			patients: [{ id: 4 }],
+			unreadCount: 2,
 			audiences: [],
 			theme: null,
 			deniedPaths: [],
@@ -242,12 +268,19 @@ describe("/platform layout", () => {
 		await expect(loader(PlatformRoute)!()).resolves.toEqual({
 			audioJobs: [],
 			notifications: [],
+			consultations: [],
+			patients: [],
+			unreadCount: undefined,
 			audiences: [],
 			theme: null,
 			deniedPaths: [],
 		});
 		expect(adminListAudioJobsFn).not.toHaveBeenCalled();
+		expect(adminListConsultationsFn).not.toHaveBeenCalled();
 		expect(listMyNotificationsFn).not.toHaveBeenCalled();
+		expect(countMyUnreadNotificationsFn).not.toHaveBeenCalled();
+		// patients package stayed enabled — its dashboard feed still loads.
+		expect(adminListPatientsFn).toHaveBeenCalled();
 	});
 
 	it("injects mark-read actions for the notifications popover", async () => {

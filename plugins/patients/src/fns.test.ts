@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
 		ok: true as const,
 		patient: { id: 1 },
 	})),
+	getDoctorUser: vi.fn(async (): Promise<{ id: string } | null> => null),
+	adminList: vi.fn(),
 	batch: vi.fn(async (_stmts: unknown[]) => [] as unknown[]),
 	create: vi.fn(),
 	update: vi.fn(),
@@ -41,7 +43,7 @@ vi.mock("@ktb/server-fns", () => ({
 	ensureDoctorUser: mocks.ensureDoctorUser,
 	ensureSessionUser: mocks.ensureSessionUser,
 	getDoctorAccess: vi.fn(),
-	getDoctorUser: vi.fn(async () => null),
+	getDoctorUser: mocks.getDoctorUser,
 	getLocale: vi.fn(),
 	getServerRuntime: vi.fn(),
 	getSessionUser: vi.fn(),
@@ -56,7 +58,13 @@ const fakeDb = {
 } as unknown as Db["Service"];
 
 import { Patients } from "./index.ts";
-import { adminCreatePatientFn, createPatientFn, updatePatientFn } from "./fns.ts";
+import { Forbidden } from "@ktb/authz";
+import {
+	adminCreatePatientFn,
+	adminListPatientsFn,
+	createPatientFn,
+	updatePatientFn,
+} from "./fns.ts";
 
 const TENANT_ZK: TenantScope = { id: 9, kind: "clinic", slug: "clinica-zk", role: "member" };
 
@@ -340,5 +348,37 @@ describe("adminCreatePatientFn", () => {
 		await expect(
 			adminCreatePatientFn({ data: { ownerId: "u2", name: "Bia", birthDate: "1990" } }),
 		).resolves.toEqual({ ok: false, errors: {} });
+	});
+});
+
+describe("adminListPatientsFn", () => {
+	const runAdmin = () =>
+		mocks.runAs.mockImplementation(async (_user, effect) =>
+			Effect.runPromise(
+				Effect.provide(
+					effect as Effect.Effect<unknown, unknown>,
+					Layer.succeed(Patients, { adminList: mocks.adminList } as unknown as Patients["Service"]),
+				),
+			),
+		);
+
+	it("returns an empty feed without a session user", async () => {
+		await expect(adminListPatientsFn()).resolves.toEqual([]);
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("returns the cross-owner rows for a platform admin", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce({ id: "u1" });
+		mocks.adminList.mockReturnValue(Effect.succeed([{ id: 1 }]));
+		runAdmin();
+		await expect(adminListPatientsFn()).resolves.toEqual([{ id: 1 }]);
+		expect(mocks.adminList).toHaveBeenCalledOnce();
+	});
+
+	it("collapses Forbidden to the same empty feed", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce({ id: "u1" });
+		mocks.adminList.mockReturnValue(Effect.fail(new Forbidden({ path: "x" })));
+		runAdmin();
+		await expect(adminListPatientsFn()).resolves.toEqual([]);
 	});
 });

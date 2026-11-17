@@ -405,6 +405,11 @@ export type I18nKey =
 	| "consultations.confidence.alta"
 	| "consultations.confidence.baixa"
 	| "consultations.confidence.media"
+	| "consultations.dashboard.bySource"
+	| "consultations.dashboard.byStatus"
+	| "consultations.dashboard.live"
+	| "consultations.dashboard.recentConsultations"
+	| "consultations.dashboard.viewAll"
 	| "consultations.detail.anamnesisCopied"
 	| "consultations.detail.back"
 	| "consultations.detail.complaint"
@@ -561,32 +566,14 @@ export type I18nKey =
 	| "consultations.zk.exportLocked"
 	| "consultations.zk.lockedHint"
 	| "consultations.zk.lockedRecord"
-	| "dashboard.bySource"
-	| "dashboard.byStatus"
-	| "dashboard.colContributions"
-	| "dashboard.colCreated"
-	| "dashboard.colId"
-	| "dashboard.colOwner"
-	| "dashboard.colSource"
-	| "dashboard.colState"
-	| "dashboard.colStatus"
-	| "dashboard.consoleActivity"
 	| "dashboard.managePlugins"
-	| "dashboard.noConsultations"
-	| "dashboard.noNotifications"
-	| "dashboard.recentConsultations"
 	| "dashboard.registeredPlugins"
 	| "dashboard.stateDisabled"
 	| "dashboard.stateEnabled"
 	| "dashboard.stateSystem"
-	| "dashboard.stats.consultations"
-	| "dashboard.stats.live"
-	| "dashboard.stats.patients"
 	| "dashboard.stats.plugins"
 	| "dashboard.subtitle"
 	| "dashboard.title"
-	| "dashboard.unreadNotifications"
-	| "dashboard.viewAll"
 	| "doctors.choose"
 	| "doctors.current"
 	| "doctors.error"
@@ -905,6 +892,9 @@ export type I18nKey =
 	| "manager.viewDependencies"
 	| "manager.viewDomains"
 	| "manager.viewHierarchy"
+	| "notifications.dashboard.consoleActivity"
+	| "notifications.dashboard.noNotifications"
+	| "notifications.dashboard.unreadNotifications"
 	| "notifications.empty"
 	| "notifications.label"
 	| "notifications.markAllRead"
@@ -1850,6 +1840,11 @@ export interface I18nTypedT {
 	(key: "consultations.confidence.alta"): Effect.Effect<string>;
 	(key: "consultations.confidence.baixa"): Effect.Effect<string>;
 	(key: "consultations.confidence.media"): Effect.Effect<string>;
+	(key: "consultations.dashboard.bySource"): Effect.Effect<string>;
+	(key: "consultations.dashboard.byStatus"): Effect.Effect<string>;
+	(key: "consultations.dashboard.live"): Effect.Effect<string>;
+	(key: "consultations.dashboard.recentConsultations"): Effect.Effect<string>;
+	(key: "consultations.dashboard.viewAll"): Effect.Effect<string>;
 	(key: "consultations.detail.anamnesisCopied"): Effect.Effect<string>;
 	(key: "consultations.detail.back"): Effect.Effect<string>;
 	(
@@ -2107,32 +2102,14 @@ export interface I18nTypedT {
 	(key: "consultations.zk.exportLocked"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedHint"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedRecord"): Effect.Effect<string>;
-	(key: "dashboard.bySource"): Effect.Effect<string>;
-	(key: "dashboard.byStatus"): Effect.Effect<string>;
-	(key: "dashboard.colContributions"): Effect.Effect<string>;
-	(key: "dashboard.colCreated"): Effect.Effect<string>;
-	(key: "dashboard.colId"): Effect.Effect<string>;
-	(key: "dashboard.colOwner"): Effect.Effect<string>;
-	(key: "dashboard.colSource"): Effect.Effect<string>;
-	(key: "dashboard.colState"): Effect.Effect<string>;
-	(key: "dashboard.colStatus"): Effect.Effect<string>;
-	(key: "dashboard.consoleActivity"): Effect.Effect<string>;
 	(key: "dashboard.managePlugins"): Effect.Effect<string>;
-	(key: "dashboard.noConsultations"): Effect.Effect<string>;
-	(key: "dashboard.noNotifications"): Effect.Effect<string>;
-	(key: "dashboard.recentConsultations"): Effect.Effect<string>;
 	(key: "dashboard.registeredPlugins"): Effect.Effect<string>;
 	(key: "dashboard.stateDisabled"): Effect.Effect<string>;
 	(key: "dashboard.stateEnabled"): Effect.Effect<string>;
 	(key: "dashboard.stateSystem"): Effect.Effect<string>;
-	(key: "dashboard.stats.consultations"): Effect.Effect<string>;
-	(key: "dashboard.stats.live"): Effect.Effect<string>;
-	(key: "dashboard.stats.patients"): Effect.Effect<string>;
 	(key: "dashboard.stats.plugins"): Effect.Effect<string>;
 	(key: "dashboard.subtitle"): Effect.Effect<string>;
 	(key: "dashboard.title"): Effect.Effect<string>;
-	(key: "dashboard.unreadNotifications"): Effect.Effect<string>;
-	(key: "dashboard.viewAll"): Effect.Effect<string>;
 	(key: "doctors.choose"): Effect.Effect<string>;
 	(key: "doctors.current"): Effect.Effect<string>;
 	(key: "doctors.error"): Effect.Effect<string>;
@@ -2543,6 +2520,9 @@ export interface I18nTypedT {
 	(key: "manager.viewDependencies"): Effect.Effect<string>;
 	(key: "manager.viewDomains"): Effect.Effect<string>;
 	(key: "manager.viewHierarchy"): Effect.Effect<string>;
+	(key: "notifications.dashboard.consoleActivity"): Effect.Effect<string>;
+	(key: "notifications.dashboard.noNotifications"): Effect.Effect<string>;
+	(key: "notifications.dashboard.unreadNotifications"): Effect.Effect<string>;
 	(key: "notifications.empty"): Effect.Effect<string>;
 	(key: "notifications.label"): Effect.Effect<string>;
 	(key: "notifications.markAllRead"): Effect.Effect<string>;
