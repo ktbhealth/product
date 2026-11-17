@@ -6,7 +6,6 @@ import * as Schedule from "effect/Schedule";
 
 import { Db, type DbClient } from "@ktb/db";
 import {
-	I18N_BASELINE,
 	indexMessages,
 	LOCALE_META,
 	PSEUDO_LOCALE,
@@ -76,8 +75,16 @@ const putCache = (
 	return next;
 };
 
-/** Code-catalog baseline (global/published rows) shipped by @ktb/i18n. */
-const baselineEntries: readonly BaselineEntry[] = I18N_BASELINE;
+/**
+ * Lazy baseline loader (P-088): the ~24k-line I18N_BASELINE dataset is
+ * NOT statically imported — the dynamic import lets bundlers keep it
+ * out of the always-loaded worker path (separate chunk where the
+ * target supports code splitting). Production bootstrap is the
+ * deploy-time `i18n:import-baseline --sql | wrangler d1 execute`
+ * runbook; this path covers fresh dev DBs and first-boot stragglers.
+ */
+const loadBaselineEntries = (): Promise<readonly BaselineEntry[]> =>
+	import("@ktb/i18n/baseline.gen").then((m) => m.I18N_BASELINE);
 
 /** Seed locales from LOCALE_META so `?locale=…` works out of the box
  * on a fresh D1 — EXCEPT the pseudo-locale: qps is a QA opt-in and
@@ -100,12 +107,15 @@ const SEED_LOCALES = Object.entries(LOCALE_META).map(([code, meta]) => ({
  */
 const seedRuntimeDefaults = async (db: DbClient): Promise<void> => {
 	await db.insert(i18nLocales).values(SEED_LOCALES).onConflictDoNothing();
-	if (baselineEntries.length === 0) return;
+	// The namespaces-empty gate runs BEFORE the baseline import so a
+	// populated DB never pays for (or fetches) the seed chunk.
 	const rows = await db
 		.select({ namespace: i18nNamespaces.namespace })
 		.from(i18nNamespaces)
 		.limit(1);
 	if (rows.length > 0) return;
+	const baselineEntries = await loadBaselineEntries();
+	if (baselineEntries.length === 0) return;
 	// Layer build runs once per isolate, so concurrent seeds only come
 	// from racing isolates on a shared D1 — the namespaces-empty gate
 	// above plus onConflictDoNothing inside syncBaseline keep that safe

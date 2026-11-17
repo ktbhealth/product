@@ -7,11 +7,10 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 // An empty code-catalog baseline: the seed must still write locales but
-// skip the baseline sync entirely (namespaces stay empty).
-vi.mock("@ktb/i18n", async (importOriginal) => {
-	const mod = await importOriginal<typeof import("@ktb/i18n")>();
-	return { ...mod, I18N_BASELINE: [] };
-});
+// skip the baseline sync entirely (namespaces stay empty). The baseline
+// loads lazily via the "@ktb/i18n/baseline.gen" subpath (P-088) — mock
+// that module, not the barrel.
+vi.mock("@ktb/i18n/baseline.gen", () => ({ I18N_BASELINE: [] }));
 
 import { I18N_TEST_DDL, i18nLocales, i18nNamespaces } from "./index.ts";
 import { I18nRuntimeLive } from "./runtime.ts";

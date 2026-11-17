@@ -594,12 +594,12 @@ describe("runtime auto-seed", () => {
 		}
 		expect(locales.find((l) => l.code === "qps")?.enabled).toBe(false);
 
-		// I18N_BASELINE lands with the code-catalog extraction — assert
-		// against whatever it exports (empty until then).
-		const core = (await import("@ktb/i18n")) as {
-			I18N_BASELINE?: readonly { namespace: string }[];
+		// The baseline loads lazily from the "@ktb/i18n/baseline.gen"
+		// subpath (P-088) — assert against whatever it exports.
+		const core = (await import("@ktb/i18n/baseline.gen")) as {
+			I18N_BASELINE: readonly { namespace: string }[];
 		};
-		const expected = new Set((core.I18N_BASELINE ?? []).map((e) => e.namespace)).size;
+		const expected = new Set(core.I18N_BASELINE.map((e) => e.namespace)).size;
 		const namespaces = await fresh.select().from(i18nNamespaces);
 		expect(namespaces).toHaveLength(expected);
 	});
