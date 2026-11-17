@@ -6,10 +6,11 @@ import * as Option from "effect/Option";
 
 import type { DocumentRecord, DocumentStoreError } from "@ktb/document-store";
 import { DocumentStore } from "@ktb/document-store";
+import { defOwnerEnabled } from "@ktb/kernel";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
 
-import { defOwnerEnabled, FlowDefinitions, type FlowDef } from "./definition.ts";
+import { FlowDefinitions, type FlowDef } from "./definition.ts";
 import { FlowsHooks, FlowsHooksLive, type FlowHookHandle } from "./hooks.ts";
 import { currentState, planWrites, resolveTransition } from "./interpreter.ts";
 

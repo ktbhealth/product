@@ -9,6 +9,8 @@ import {
 	type DocumentStoreShape,
 	type FindResult,
 } from "@ktb/document-store";
+import type { DefOwnerIndex } from "@ktb/kernel";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
 
 import type { ViewDef } from "./definition.ts";
@@ -51,20 +53,37 @@ const makeViews = (
 	defs: readonly ViewDef[],
 	docStore: DocumentStoreShape,
 	perms?: PermissionsShape,
+	states?: PluginStates["Service"],
+	ownerIndex?: DefOwnerIndex,
 ): Effect.Effect<ViewsShape> =>
 	Effect.scoped(
 		Layer.build(
 			ViewsLive.pipe(
 				Layer.provide(
 					Layer.mergeAll(
-						Layer.succeed(ViewDefinitions, { views: defs }),
+						Layer.succeed(ViewDefinitions, {
+							views: defs,
+							...(ownerIndex === undefined ? {} : { ownerIndex }),
+						}),
 						Layer.succeed(DocumentStore, docStore),
 						...(perms === undefined ? [] : [Layer.succeed(Permissions, perms)]),
+						...(states === undefined ? [] : [Layer.succeed(PluginStates, states)]),
 					),
 				),
 			),
 		),
 	).pipe(Effect.map((ctx) => Context.get(ctx, Views)));
+
+/** PluginStates stub — only `enabledIds` is read by the enablement gate. */
+const pluginStatesStub = (enabled: readonly string[]) =>
+	({
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set(enabled)),
+		config: () => Effect.succeed(null),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	}) as unknown as PluginStates["Service"];
 
 const run = <A, E>(eff: Effect.Effect<A, E, Views>, views: ViewsShape): Promise<A> =>
 	Effect.runPromise(eff.pipe(Effect.provideService(Views, views)));
@@ -96,6 +115,49 @@ describe("Views.allows", () => {
 		const allowed = await Effect.runPromise(makeViews([guarded], store(), permissions(can)));
 		expect(await run(allowed.allows("/v/g"), allowed)).toBe(true);
 		expect(can).toHaveBeenCalledWith("patient", "read");
+	});
+});
+
+describe("Views owner enablement", () => {
+	// plugin.on is enabled, plugin.off (and every other id) disabled.
+	const states = pluginStatesStub(["plugin.on"]);
+	const ownedOff: ViewDef = { ...DEF, id: "off", owner: "plugin.off" };
+	const ownedOn: ViewDef = { ...DEF, id: "on", owner: "plugin.on" };
+	const unowned: ViewDef = { ...DEF, id: "plain" };
+
+	it("hides defs owned by disabled plugins — same null as unknown", async () => {
+		const views = await Effect.runPromise(
+			makeViews([ownedOff, ownedOn, unowned], store(), undefined, states),
+		);
+		expect(await run(views.allows("/v/off"), views)).toBe(false);
+		expect(await run(views.load("/v/off"), views)).toBeNull();
+		expect(await run(views.query("/v/off"), views)).toBeNull();
+	});
+
+	it("keeps enabled-owner and ownerless defs live while PluginStates is bound", async () => {
+		const views = await Effect.runPromise(
+			makeViews([ownedOff, ownedOn, unowned], store(), undefined, states),
+		);
+		expect(await run(views.allows("/v/on"), views)).toBe(true);
+		expect(await run(views.allows("/v/plain"), views)).toBe(true);
+	});
+
+	it("is package-granular through the owner index", async () => {
+		// pkg.x.main owns the def; only sibling pkg.x.extra is enabled —
+		// the package stays live (same rule as entryEnabled).
+		const ownerIndex: DefOwnerIndex = {
+			pkgById: new Map([["pkg.x.main", "pkg.x"]]),
+			membersByPkg: new Map([["pkg.x", ["pkg.x.main", "pkg.x.extra"]]]),
+		};
+		const pkgDef: ViewDef = { ...DEF, id: "pkg", owner: "pkg.x.main" };
+		const views = await Effect.runPromise(
+			makeViews([pkgDef], store(), undefined, pluginStatesStub(["pkg.x.extra"]), ownerIndex),
+		);
+		expect(await run(views.allows("/v/pkg"), views)).toBe(true);
+		const dead = await Effect.runPromise(
+			makeViews([pkgDef], store(), undefined, pluginStatesStub(["other.plugin"]), ownerIndex),
+		);
+		expect(await run(dead.allows("/v/pkg"), dead)).toBe(false);
 	});
 });
 

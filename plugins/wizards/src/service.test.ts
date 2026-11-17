@@ -4,6 +4,7 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -73,6 +74,11 @@ const permDef: WizardDefinition = {
 	permission: "wizards.run",
 };
 
+// Enablement fixtures: the bound PluginStates stub enables plugin.on
+// only — plugin.off's contributed def must not be honored.
+const ownedOff: WizardDefinition = { ...twoStep, id: "ownedoff", owner: "plugin.off" };
+const ownedOn: WizardDefinition = { ...twoStep, id: "ownedon", owner: "plugin.on" };
+
 /** The contributed-def allowlist the service checks client-supplied
  * definitions against — every def the tests start runs with. */
 const contributed: readonly WizardDefinition[] = [
@@ -82,7 +88,20 @@ const contributed: readonly WizardDefinition[] = [
 	retryDef,
 	retry2Def,
 	permDef,
+	ownedOff,
+	ownedOn,
 ];
+
+/** PluginStates stub — only `enabledIds` is read by the Wizards gate. */
+const pluginStatesStub = (enabled: readonly string[]) =>
+	({
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set(enabled)),
+		config: () => Effect.succeed(null),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	}) as unknown as PluginStates["Service"];
 
 const permissionsStub = (allowed: boolean): PermissionsShape =>
 	({
@@ -104,6 +123,8 @@ describe("WizardsLive", () => {
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 			Layer.succeed(WizardDefinitions, { wizards: contributed }),
+			// plugin.on enabled; plugin.off and every other id disabled.
+			Layer.succeed(PluginStates, pluginStatesStub(["plugin.on"])),
 		);
 		runtime = ManagedRuntime.make(WizardsServicesLive.pipe(Layer.provide(env)));
 	});
@@ -294,6 +315,22 @@ describe("WizardsLive", () => {
 			);
 			expect(Exit.isFailure(e2)).toBe(true);
 			if (Exit.isFailure(e2)) expect(String(e2.cause)).toContain("ForbiddenWizardDefinition");
+		});
+
+		it("rejects contributed defs owned by disabled plugins", async () => {
+			// plugin.off is disabled in the bound PluginStates stub — the
+			// contributed def is not honored: same ForbiddenWizardDefinition
+			// as an unregistered/forged def.
+			const e1 = await asUser(
+				"u1",
+				Effect.exit(call((w) => w.startRun({ key: "ownedoff", definition: ownedOff }))),
+			);
+			expect(Exit.isFailure(e1)).toBe(true);
+			if (Exit.isFailure(e1)) expect(String(e1.cause)).toContain("ForbiddenWizardDefinition");
+			// Enabled owner stays live — the run starts normally. Ownerless
+			// contributed defs (every other fixture) are likewise live.
+			const view = await user((w) => w.startRun({ key: "ownedon", definition: ownedOn }));
+			expect(view.status).toBe("active");
 		});
 
 		it("accepts a contributed def regardless of key order", async () => {

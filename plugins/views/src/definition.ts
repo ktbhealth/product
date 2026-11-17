@@ -2,9 +2,11 @@ import * as Context from "effect/Context";
 import type { Json, JsonObject } from "effect/Schema";
 
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
@@ -33,10 +35,17 @@ import {
  * contributed definition once at composition time
  * (`collectViewDefinitions` over the topo-ordered registry) and
  * provides them next to `DocumentCollections` (same injection
- * pattern). Unlike `form.def`/`wizard.def`, defs do NOT need a
- * `src/client.ts` mirror to be renderable: the wire payload embeds
- * the resolved def. Emitters may still mirror `contributions` in
- * client.ts when other client surfaces need to enumerate defs.
+ * pattern). The wire payload embeds the resolved def for data, but
+ * `ViewPage` re-resolves it against `ctx.plugins` — the
+ * enabled-filtered CLIENT registry — so emitters MUST mirror
+ * `contributions` in their `src/client.ts`, same contract as
+ * `form.def`/`wizard.def` (a disabled contributor's view 404s like
+ * an unknown path). `VIEW_DEF_KIND.consumers` records that.
+ *
+ * Extension points: view kinds (`VIEW_KINDS`), field formats and
+ * filter operators are CLOSED unions rendered by ./views/* — there
+ * is no `hook` escape hatch; new presentation needs a renderer in
+ * @ktb/views or a bespoke page contribution.
  */
 
 /** The registered contribution kind for view definitions. */
@@ -429,15 +438,25 @@ export const parseViewPath = (path: string): ViewPathSegments | null => {
  * The ordered view registry the composition root provides to the
  * `Views` service — the layer @ktb/app-host merges into `core` next to
  * `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeViewDefinitions` always populates it. The Views
+ * service re-checks each def's `owner` against
+ * `PluginStates.enabledIds()` per request — a disabled plugin's view
+ * resolves as unknown (404/null), same contract as @ktb/triggers.
  */
 export class ViewDefinitions extends Context.Service<
 	ViewDefinitions,
-	{ readonly views: readonly ViewDef[] }
+	{
+		readonly views: readonly ViewDef[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/views/ViewDefinitions") {}
 
 /** Build the `ViewDefinitions` service value for a plugin graph. */
 export const makeViewDefinitions = (
 	plugins: readonly Plugin[],
-): { readonly views: readonly ViewDef[] } => ({
+): { readonly views: readonly ViewDef[]; readonly ownerIndex: DefOwnerIndex } => ({
 	views: collectViewDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

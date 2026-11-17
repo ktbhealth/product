@@ -20,6 +20,7 @@ describe("views plugins", () => {
 
 	it("declares the expected dependency edges", () => {
 		expect(viewsServicesPlugin.requiredDeps).toEqual(["document-store.services"]);
+		expect(viewsServicesPlugin.optionalDeps).toEqual(["rbac.services"]);
 		expect(viewsPagesPlugin.requiredDeps).toEqual(["views.services"]);
 	});
 

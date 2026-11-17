@@ -4,9 +4,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import {
 	assertFlowDef,
-	buildDefOwnerIndex,
 	collectFlowDefinitions,
-	defOwnerEnabled,
 	defineFlow,
 	FLOW_DEF_KIND,
 	flowDefContribution,
@@ -321,32 +319,5 @@ describe("toFlowDefinition / collectFlowDefinitions", () => {
 		expect(built.flows).toHaveLength(1);
 		expect(built.ownerIndex?.pkgById.get("plugin.a")).toBeUndefined();
 		expect(makeFlowDefinitions([]).flows).toEqual([]);
-	});
-});
-
-describe("buildDefOwnerIndex / defOwnerEnabled", () => {
-	// Hand-built plugin rows — the index only reads id/pkg.
-	const plugins = [
-		{ id: "pkg.x.main", pkg: "pkg.x" },
-		{ id: "pkg.x.extra", pkg: "pkg.x" },
-		{ id: "solo.plugin" },
-	] as unknown as Plugin[];
-	const index = buildDefOwnerIndex(plugins);
-
-	it("is package-granular: any enabled member keeps pkg-stamped owners live", () => {
-		expect(defOwnerEnabled(index, "pkg.x.main", new Set(["pkg.x.extra"]))).toBe(true);
-		expect(defOwnerEnabled(index, "pkg.x.main", new Set(["solo.plugin"]))).toBe(false);
-		expect(defOwnerEnabled(index, "pkg.x.main", new Set())).toBe(false);
-	});
-
-	it("falls back to per-id for unstamped owners", () => {
-		expect(defOwnerEnabled(index, "solo.plugin", new Set(["solo.plugin"]))).toBe(true);
-		expect(defOwnerEnabled(index, "solo.plugin", new Set())).toBe(false);
-	});
-
-	it("unattributed or unindexed defs stay live", () => {
-		expect(defOwnerEnabled(index, undefined, new Set())).toBe(true);
-		expect(defOwnerEnabled(undefined, "pkg.x.main", new Set())).toBe(false);
-		expect(defOwnerEnabled(undefined, "pkg.x.main", new Set(["pkg.x.main"]))).toBe(true);
 	});
 });

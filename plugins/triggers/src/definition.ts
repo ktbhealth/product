@@ -2,9 +2,11 @@ import * as Context from "effect/Context";
 import type { JsonObject } from "effect/Schema";
 
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
@@ -36,6 +38,10 @@ import {
  * doc's `data`) DO `action` — either a `collection-write` back into
  * the store (templated field mapping) or a `hook` resolved through
  * the `TriggersHooks` registry (./hooks.ts).
+ *
+ * Extension points: action kinds are a CLOSED union — new reaction
+ * types land in ./runner.ts; the `hook` action id is the escape
+ * hatch for domain logic.
  */
 
 /** The registered contribution kind for trigger definitions. */
@@ -258,57 +264,6 @@ export const collectTriggerDefinitions = (plugins: readonly Plugin[]): readonly 
 		seen.add(def.id);
 	}
 	return collected;
-};
-
-/**
- * Owner→enablement index built from the plugin registry at composition
- * time. Enablement itself is RUNTIME state (`PluginStates`, DB-backed)
- * — defs stay static composition data and the Triggers service
- * re-checks each def's `owner` against `PluginStates.enabledIds()` on
- * every dispatched event, so a /platform/plugins toggle takes effect
- * without a layer rebuild (same contract as the CQRS dispatch gate in
- * @ktb/app-host).
- */
-export interface DefOwnerIndex {
-	/** plugin id → `pkg` stamp (`undefined` when the plugin carries none). */
-	readonly pkgById: ReadonlyMap<string, string | undefined>;
-	/** pkg → member plugin ids — packageLive needs the whole member set. */
-	readonly membersByPkg: ReadonlyMap<string, readonly string[]>;
-}
-
-/** Build the index `makeTriggerDefinitions` attaches to the registry. */
-export const buildDefOwnerIndex = (plugins: readonly Plugin[]): DefOwnerIndex => {
-	const pkgById = new Map<string, string | undefined>();
-	const membersByPkg = new Map<string, string[]>();
-	for (const plugin of plugins) {
-		pkgById.set(plugin.id, plugin.pkg);
-		if (plugin.pkg !== undefined) {
-			const members = membersByPkg.get(plugin.pkg) ?? [];
-			members.push(plugin.id);
-			membersByPkg.set(plugin.pkg, members);
-		}
-	}
-	return { pkgById, membersByPkg };
-};
-
-/**
- * Package-granular enablement for a def `owner` — mirrors
- * `entryEnabled`/`packageLive` (@ktb/kernel): a pkg-stamped owner is
- * live while ANY package member id is enabled; an unstamped or
- * unindexed owner falls back to the per-id check. `owner`/`index`
- * absent → `true`: unattributed defs (hand-built registries) cannot be
- * gated and stay live.
- */
-export const defOwnerEnabled = (
-	index: DefOwnerIndex | undefined,
-	owner: string | undefined,
-	enabled: ReadonlySet<string>,
-): boolean => {
-	if (owner === undefined) return true;
-	if (index === undefined || !index.pkgById.has(owner)) return enabled.has(owner);
-	const pkg = index.pkgById.get(owner);
-	if (pkg === undefined) return enabled.has(owner);
-	return (index.membersByPkg.get(pkg) ?? [owner]).some((id) => enabled.has(id));
 };
 
 /**

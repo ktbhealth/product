@@ -17,6 +17,10 @@ export const plugins: readonly Plugin[] = [
 		id: "api.services",
 		meta: { keywords: ["api", "services"] },
 		requiredDeps: ["document-store.services"],
+		// Mirrors apiServicesPlugin.optionalDeps (server index.ts) —
+		// literal id: importing @ktb/rbac-plugin would pull the server
+		// graph into the client bundle.
+		optionalDeps: ["rbac.services"],
 	}),
 	definePlugin({
 		id: "api.routes",

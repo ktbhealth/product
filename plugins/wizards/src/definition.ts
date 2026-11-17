@@ -4,9 +4,11 @@ import type { JsonSchemaObject } from "@ktb/json-schema";
 import { assertSchema } from "@ktb/json-schema";
 import type { FormFieldUi } from "@ktb/forms";
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
@@ -40,6 +42,12 @@ import {
  * in their `src/client.ts` (same contract as `form.def`) because the
  * runner resolves defs from `ctx.plugins` — the enabled-filtered
  * CLIENT registry.
+ *
+ * Extension points: step kinds (`"form"`/`"info"`) and completion
+ * kinds (`"document-store"`/`"hook"`) are CLOSED unions — new
+ * behavior lands in ./resolve.ts/./completion.ts; the `hook`
+ * completion id is the escape hatch for domain logic, resolved
+ * through the WizardHooks registry (./hooks.ts).
  */
 
 /** The registered contribution kind for wizard definitions. */
@@ -341,20 +349,28 @@ export const collectWizardDefinitions = (plugins: readonly Plugin[]): readonly W
  * to `makeViewDefinitions(plugins)`/`makeTriggerDefinitions(plugins)`/
  * `makeFlowDefinitions(plugins)`. The run service uses it to decide
  * whether a client-supplied definition snapshot is a legitimate
- * code-contribution (deep-equal) or a forgery. Enablement is ignored:
- * defs are static composition data, same contract as the sibling
- * registries.
+ * code-contribution (deep-equal) or a forgery.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeWizardDefinitions` always populates it. The run
+ * service re-checks each contributed def's `owner` against
+ * `PluginStates.enabledIds()` at `startRun` — a disabled plugin's def
+ * is not honored (same contract as @ktb/views/@ktb/api).
  */
 export class WizardDefinitions extends Context.Service<
 	WizardDefinitions,
-	{ readonly wizards: readonly WizardDefinition[] }
+	{
+		readonly wizards: readonly WizardDefinition[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/wizards/WizardDefinitions") {}
 
 /** Build the `WizardDefinitions` service value for a plugin graph. */
 export const makeWizardDefinitions = (
 	plugins: readonly Plugin[],
-): { readonly wizards: readonly WizardDefinition[] } => ({
+): { readonly wizards: readonly WizardDefinition[]; readonly ownerIndex: DefOwnerIndex } => ({
 	wizards: collectWizardDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });
 
 /** Extract the wizard id from a `/wizards/<id>` request path — the

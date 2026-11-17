@@ -9,7 +9,9 @@ import { and, asc, eq } from "drizzle-orm";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
 import { validate, type ValidationIssue } from "@ktb/json-schema";
+import { defOwnerEnabled } from "@ktb/kernel";
 import { PlatformAdmin } from "@ktb/platform";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
 
 import { runCompletion, type CompletionFailed } from "./completion.ts";
@@ -46,6 +48,10 @@ export type { WizardDefRow, WizardRunRow } from "./schema.ts";
  * attempt (`ForbiddenWizardDefinition`): without this check any user
  * could snapshot a def whose completion writes arbitrary
  * document-store collections or invokes arbitrary WizardHooks.
+ * Contributed defs owned by DISABLED plugins are likewise not honored
+ * — runtime `PluginStates` enablement re-checked per `startRun`, same
+ * contract as @ktb/views/@ktb/api (DB-authored `wizard_defs` rows are
+ * admin content and unaffected).
  * Runs snapshot the resolved definition into `definition_json`, so
  * later def edits never mutate an in-flight run.
  *
@@ -379,6 +385,10 @@ export const WizardsLive = Layer.effect(
 		// or ordered later): a def declaring `permission` fails closed
 		// without it — same contract as @ktb/flows.
 		const permissions = yield* Effect.serviceOption(Permissions);
+		// PluginStates is likewise OPTIONAL: when bound, contributed
+		// defs owned by disabled plugins are not honored at startRun —
+		// runtime enablement, same contract as @ktb/views/@ktb/api.
+		const pluginStates = yield* Effect.serviceOption(PluginStates);
 
 		const now = () => new Date();
 
@@ -827,8 +837,21 @@ export const WizardsLive = Layer.effect(
 					// target (collection write / hook invocation) smuggled
 					// in as "code contribution".
 					const contributedDef = contributed.wizards.find((def) => def.id === input.key);
+					// Runtime enablement: a def owned by a disabled plugin
+					// is not a legitimate contribution — it fails the same
+					// ForbiddenWizardDefinition as an unregistered def.
+					let contributedLive = contributedDef !== undefined;
+					if (contributedDef !== undefined && Option.isSome(pluginStates)) {
+						const enabled = yield* pluginStates.value.enabledIds();
+						contributedLive = defOwnerEnabled(
+							contributed.ownerIndex,
+							contributedDef.owner,
+							enabled,
+						);
+					}
 					if (
 						contributedDef === undefined ||
+						!contributedLive ||
 						canonicalJson(contributedDef) !== canonicalJson(definition)
 					) {
 						return yield* Effect.fail(new ForbiddenWizardDefinition({ key: input.key }));

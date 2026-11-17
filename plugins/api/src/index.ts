@@ -2,6 +2,7 @@ import { physical } from "@tanstack/virtual-file-routes";
 
 import { documentStoreServicesPlugin } from "@ktb/document-store";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import { ApiLive } from "./service.ts";
 
@@ -30,12 +31,18 @@ export * from "./service.ts";
  * `DocumentCollections`/`ViewDefinitions`. `Permissions` (@ktb/rbac)
  * is an OPTIONAL port consumed via `Effect.serviceOption`: exposures
  * without a `permission` work with rbac disabled; permission'd
- * exposures fail closed.
+ * exposures fail closed. `rbac.services` is an OPTIONAL dep purely
+ * for ordering — when the rbac plugin is enabled its `Permissions`
+ * port is bound before this layer builds (same contract as
+ * flows.services). `PluginStates` (@ktb/platform) is likewise
+ * optional: when bound, exposures owned by disabled plugins 404 like
+ * unexposed collections.
  */
 export const apiServicesPlugin = definePlugin({
 	id: "api.services",
 	meta: { keywords: ["api", "services"] },
 	requiredDeps: [documentStoreServicesPlugin.id],
+	optionalDeps: [rbacServicesPlugin.id],
 	services: ApiLive,
 });
 

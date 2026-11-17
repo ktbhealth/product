@@ -8,9 +8,10 @@ import * as Stream from "effect/Stream";
 
 import { EventBus } from "@effect-server-utils/cqrs";
 import { DOCUMENT_RECORD_WRITTEN_TAG, type DocumentRecordWrittenEvent } from "@ktb/document-store";
+import { defOwnerEnabled } from "@ktb/kernel";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
-import { defOwnerEnabled, TriggerDefinitions } from "./definition.ts";
+import { TriggerDefinitions } from "./definition.ts";
 import { TriggersHooks, TriggersHooksLive } from "./hooks.ts";
 import { dispatchTriggerEvent } from "./runner.ts";
 

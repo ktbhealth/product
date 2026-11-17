@@ -3,9 +3,11 @@ import type { JsonObject } from "effect/Schema";
 
 import { API_KEY_PATTERN, COLLECTION_NAME_RE, isRecord, PERMISSION_RE } from "@ktb/dsl";
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
@@ -32,6 +34,10 @@ import {
  * stay inside that subtree (`/api/documents/<key>`) — arbitrary mount
  * points would need per-exposure routes the kernel's virtual route
  * tree does not support.
+ *
+ * Extension points: `methods` (`API_METHODS`) is a CLOSED union — the
+ * dispatch in ./service.ts is a fixed switch; there is no `hook`
+ * escape hatch, custom verbs need a route contribution instead.
  */
 
 /** The registered contribution kind for API exposures. */
@@ -232,15 +238,25 @@ export const collectApiExposures = (plugins: readonly Plugin[]): readonly ApiExp
  * The ordered exposure registry the composition root provides to the
  * `Api` service — the layer @ktb/app-host merges into `core` next to
  * `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeApiExposures` always populates it. The Api
+ * service re-checks each exposure's `owner` against
+ * `PluginStates.enabledIds()` per request — a disabled plugin's
+ * exposure answers the same 404 as an unexposed collection.
  */
 export class ApiExposures extends Context.Service<
 	ApiExposures,
-	{ readonly exposures: readonly ApiExposure[] }
+	{
+		readonly exposures: readonly ApiExposure[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/api/ApiExposures") {}
 
 /** Build the `ApiExposures` service value for a plugin graph. */
 export const makeApiExposures = (
 	plugins: readonly Plugin[],
-): { readonly exposures: readonly ApiExposure[] } => ({
+): { readonly exposures: readonly ApiExposure[]; readonly ownerIndex: DefOwnerIndex } => ({
 	exposures: collectApiExposures(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

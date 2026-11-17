@@ -527,15 +527,17 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	);
 	// View-definition registry (view.def contributions): same
 	// composition-time collection as DocumentCollections — the
-	// @ktb/views service layer consumes it via `ViewDefinitions`.
-	// Enablement is NOT filtered here: defs are static composition
-	// data and the Views service re-checks each def's owner against
+	// @ktb/views service layer consumes it via `ViewDefinitions`
+	// (with the same owner→pkg enablement index). Enablement is NOT
+	// filtered here: defs are static composition data and the Views
+	// service re-checks each def's owner against
 	// PluginStates.enabledIds() per request.
 	const ViewDefinitionsLive = Layer.succeed(ViewDefinitions, makeViewDefinitions(plugins));
 	// Api-exposure registry (api.expose contributions): same
 	// composition-time collection — the @ktb/api service layer consumes
-	// it via `ApiExposures`. Enablement is likewise enforced at request
-	// time inside the Api service, not at composition.
+	// it via `ApiExposures` (with the same owner→pkg enablement index).
+	// Enablement is likewise enforced at request time inside the Api
+	// service, not at composition.
 	const ApiExposuresLive = Layer.succeed(ApiExposures, makeApiExposures(plugins));
 	// Trigger-definition registry (trigger.def contributions): same
 	// composition-time collection — the @ktb/triggers service layer
@@ -553,9 +555,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const FlowDefinitionsLive = Layer.succeed(FlowDefinitions, makeFlowDefinitions(plugins));
 	// Wizard-definition registry (wizard.def contributions): same
 	// composition-time collection — the @ktb/wizards service layer
-	// consumes it via `WizardDefinitions` to verify client-supplied
+	// consumes it via `WizardDefinitions` (which also carries the
+	// owner→pkg enablement index built here) to verify client-supplied
 	// definition snapshots are real contributions, not forgeries.
-	// Enablement is likewise ignored: defs are static composition data.
+	// Enablement is NOT filtered here: the Wizards service re-checks
+	// each contributed def's owner against PluginStates.enabledIds()
+	// at startRun, so toggles apply without a layer rebuild.
 	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
