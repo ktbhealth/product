@@ -88,7 +88,14 @@ let i18nTenantId = 0;
 beforeAll(async () => {
 	const [tenant] = await db
 		.insert(groups)
-		.values({ name: "I18n Tenant", slug: "i18n-tenant", kind: "clinic", meta: null })
+		.values({
+			name: "I18n Tenant",
+			slug: "i18n-tenant",
+			kind: "clinic",
+			meta: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
 		.returning();
 	i18nTenantId = tenant!.id;
 	await db.insert(groupMembers).values({
@@ -96,6 +103,7 @@ beforeAll(async () => {
 		memberKind: "user",
 		memberId: "u1",
 		role: "member",
+		createdAt: new Date(),
 	});
 });
 
