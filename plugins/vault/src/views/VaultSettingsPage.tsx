@@ -74,7 +74,7 @@ const statusLabel = (t: VaultMessages, status: string) =>
 			: t.statusPending;
 
 /**
- * /portal/clinician/vault — clinic key onboarding and device approval.
+ * /portal/<instance>/vault — clinic key onboarding and device approval.
  * The page itself is a client surface: the device's keypair lives in
  * IndexedDB (non-extractable) so enrollment state can only resolve in
  * the browser. All wrapping happens via the injected KeyringService —

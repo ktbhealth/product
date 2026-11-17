@@ -402,7 +402,7 @@ export async function listAuditEntries(
 /**
  * Newest-first audit listing scoped to ONE tenant (P-080) — the staff
  * activity feed the clinician plugin mounts at
- * /portal/clinician/activity. Same ordering and
+ * /portal/<instance>/activity. Same ordering and
  * limit clamp as {@link listAuditEntries} but fenced by
  * `tenant_id = tenantId`; platform-global rows (`tenant_id` NULL) are
  * excluded — they stay admin-only. Callers MUST have resolved tenant
@@ -696,6 +696,7 @@ CREATE INDEX admin_audit_dedupe_idx ON admin_audit (actor_user_id, action, targe
 
 export const auditTablesPlugin = definePlugin({
 	id: "audit.tables",
+	meta: { keywords: ["audit", "tables"] },
 	tables: { adminAudit },
 });
 
@@ -705,6 +706,7 @@ export const auditServicesPlugin = definePlugin({
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
 	meta: {
+		keywords: ["audit", "services"],
 		name: "Audit",
 		description: "Append-only admin audit log with hash-chained entries",
 		icon: ScrollTextIcon,
@@ -722,6 +724,7 @@ export const auditServicesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const auditChromePlugin = definePlugin({
 	id: "audit.chrome",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -746,6 +749,7 @@ export const auditChromePlugin = definePlugin({
 // audit services its loader consumes.
 export const auditPanelPlugin = definePlugin({
 	id: "audit.panel",
+	meta: { keywords: ["audit", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, auditServicesPlugin.id],
 	panel: {
 		pages: [

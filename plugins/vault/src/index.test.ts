@@ -563,8 +563,11 @@ describe("vault plugins", () => {
 		expect(vaultTablesPlugin.id).toBe("vault.tables");
 		expect(vaultServicesPlugin.id).toBe("vault.services");
 		expect(vaultPagesPlugin.id).toBe("vault.pages");
-		expect(vaultPagesPlugin.pages[0]?.path).toBe("/portal/clinician/vault");
+		expect(vaultPagesPlugin.pages.map((p) => p.path)).toEqual([
+			"/portal/doctor/vault",
+			"/portal/secretary/vault",
+		]);
 		expect(vaultChromePlugin.id).toBe("vault.chrome");
-		expect(vaultChromePlugin.chrome[0]?.portal).toBe("clinician");
+		expect(vaultChromePlugin.chrome.map((c) => c.portal)).toEqual(["doctor", "secretary"]);
 	});
 });

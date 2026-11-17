@@ -5,15 +5,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
-		Link: ({ to, params, children, ...rest }: Record<string, unknown>) =>
-			React.createElement(
+		Link: ({ to, params, children, ...rest }: Record<string, unknown>) => {
+			const p = (params ?? {}) as {
+				instance?: string;
+				_splat?: string;
+				id?: string;
+			};
+			return React.createElement(
 				"a",
 				{
-					href: String(to).replace("$id", String((params as { id?: string } | undefined)?.id)),
+					href: String(to)
+						.replace("$instance", p.instance ?? "")
+						.replace("$id", p.id ?? "")
+						.replace(/\/\$$/, `/${p._splat ?? ""}`),
 					...rest,
 				},
 				children as never,
-			),
+			);
+		},
 	};
 });
 
@@ -88,8 +97,8 @@ describe("PortalPage", () => {
 		expect(screen.getByText("Consultation")).toBeTruthy();
 		const links = screen.getAllByRole("link", { name: "View consultation" });
 		expect(links.map((a) => a.getAttribute("href"))).toEqual([
-			"/portal/consultations/11",
-			"/portal/consultations/10",
+			"/portal/patient/consultations/11",
+			"/portal/patient/consultations/10",
 		]);
 	});
 
@@ -112,7 +121,7 @@ describe("PortalPage", () => {
 	it("links to the open record's activity log", () => {
 		setup();
 		const link = screen.getByRole("link", { name: "View activity" });
-		expect(link.getAttribute("href")).toBe("/portal/activity");
+		expect(link.getAttribute("href")).toBe("/portal/patient/activity");
 	});
 
 	it("hides the activity link while no record is open", () => {

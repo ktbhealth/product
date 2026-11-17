@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
 	getSessionUser: vi.fn(),
 	getDoctorAccess: vi.fn(),
+	getDoctorContext: vi.fn(),
 	getLocale: vi.fn(),
 	sessionUserFn: vi.fn(),
 }));
@@ -20,6 +21,7 @@ vi.mock("@tanstack/react-start", () => ({
 vi.mock("@ktb/server-fns", () => ({
 	ensureDoctorUser: vi.fn(),
 	getDoctorAccess: mocks.getDoctorAccess,
+	getDoctorContext: mocks.getDoctorContext,
 	getDoctorUser: vi.fn(),
 	getLocale: mocks.getLocale,
 	getServerRuntime: vi.fn(),
@@ -28,7 +30,7 @@ vi.mock("@ktb/server-fns", () => ({
 	runAs: vi.fn(),
 }));
 
-import { doctorAccessFn, localeFn, sessionUserFn } from "./fns.ts";
+import { clinicalPortalFn, doctorAccessFn, localeFn, sessionUserFn } from "./fns.ts";
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -54,5 +56,26 @@ describe("session and locale server fns", () => {
 	it("localeFn returns the request's active locale", async () => {
 		mocks.getLocale.mockReturnValue("pt-BR");
 		await expect(localeFn()).resolves.toBe("pt-BR");
+	});
+
+	it("clinicalPortalFn is null for anonymous visitors", async () => {
+		mocks.getDoctorContext.mockResolvedValue(null);
+		await expect(clinicalPortalFn()).resolves.toBeNull();
+	});
+
+	it("clinicalPortalFn sends own-profile accounts to the doctor portal", async () => {
+		mocks.getDoctorContext.mockResolvedValue({
+			profiles: [{ doctorId: 1, role: "owner" }],
+			activeDoctorId: 1,
+		});
+		await expect(clinicalPortalFn()).resolves.toBe("doctor");
+	});
+
+	it("clinicalPortalFn sends delegated-only accounts to the secretary portal", async () => {
+		mocks.getDoctorContext.mockResolvedValue({
+			profiles: [{ doctorId: 2, role: "secretary" }],
+			activeDoctorId: 2,
+		});
+		await expect(clinicalPortalFn()).resolves.toBe("secretary");
 	});
 });

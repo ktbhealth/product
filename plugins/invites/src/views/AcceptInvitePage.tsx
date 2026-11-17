@@ -73,7 +73,7 @@ export function AcceptInvitePage({
 	if (invite === null) {
 		return (
 			<Notice title={t.invalidTitle} body={t.invalidBody}>
-				<a href="/login" className={buttonVariants({ className: "w-full" })}>
+				<a href="/login/doctor" className={buttonVariants({ className: "w-full" })}>
 					{t.signIn}
 				</a>
 			</Notice>

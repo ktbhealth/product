@@ -9,7 +9,14 @@ import { Db } from "@ktb/db";
 import { consultations, patientAccess, patients, portalKeys } from "@ktb/db/schema";
 import { Email } from "@ktb/email";
 import { inviteAcceptPath } from "@ktb/invites";
-import { getDoctorAccess, getDoctorUser, getLocale, run, runAs } from "@ktb/server-fns";
+import {
+	getDoctorAccess,
+	getDoctorContext,
+	getDoctorUser,
+	getLocale,
+	run,
+	runAs,
+} from "@ktb/server-fns";
 import { tenantZkOrClosed } from "@ktb/vault";
 
 import { patientAccessMessages } from "./i18n.ts";
@@ -29,12 +36,17 @@ const decodeInvite = Schema.decodeUnknownSync(
 	}),
 );
 
-/** Active UI locale for the current request — route loaders attach it
- * to their data so plugin views never import the host's i18n runtime. */
-export const localeFn = createServerFn({ method: "GET" }).handler(() => getLocale());
-
 /** Doctor-side standing of the request — drives the route guard. */
 export const doctorAccessFn = createServerFn({ method: "GET" }).handler(() => getDoctorAccess());
+
+/** Which clinical portal instance this request belongs in — "doctor"
+ * for own-profile accounts, "secretary" for delegated-only ones. Null
+ * for anonymous visitors and for accounts with no doctor side. */
+export const clinicalPortalFn = createServerFn({ method: "GET" }).handler(async () => {
+	const context = await getDoctorContext();
+	if (!context) return null;
+	return context.profiles.some((p) => p.role === "owner") ? "doctor" : "secretary";
+});
 
 /**
  * A patient of the acting doctor with its portal links; null when the
@@ -100,7 +112,7 @@ const notifyInvitee = async (
 	const acceptPath = await run(
 		inviteAcceptPath({ email: to, kind: "patient", inviterName: doctorName }),
 	);
-	const url = new URL(acceptPath ?? "/portal/login", getRequestUrl()).toString();
+	const url = new URL(acceptPath ?? "/login/patient", getRequestUrl()).toString();
 	try {
 		await sender.send({
 			to,

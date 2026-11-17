@@ -350,7 +350,12 @@ export const renderMessage = (
 ): string => {
 	const tokens = tokenize(template);
 	if (!Array.isArray(tokens)) return template;
-	return renderTokens(tokens, params, locale);
+	// `qps` is a QA pseudo-locale, not a formattable one — Intl.*
+	// constructors reject it on runtimes with strict ICU data, which
+	// would degrade every hinted param to the safe-string fallback.
+	// Message lookup already resolved upstream; `locale` here only
+	// feeds Intl calls, so format against the base locale instead.
+	return renderTokens(tokens, params, locale === PSEUDO_LOCALE ? "en" : locale);
 };
 
 /**

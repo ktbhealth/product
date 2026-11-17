@@ -161,6 +161,19 @@ describe("i18n fns", () => {
 		);
 	});
 
+	it("rejects over-long message-id fields at the validator", async () => {
+		await expect(
+			i18nSaveDraftFn({ data: { ...ID, key: "k".repeat(201), value: "x" } }),
+		).rejects.toThrow(/at most 200/);
+		await expect(i18nNamespaceMessagesFn({ data: { namespace: "n".repeat(201) } })).rejects.toThrow(
+			/at most 200/,
+		);
+		await expect(
+			i18nPublishFn({ data: { ...ID, scope: "tenant", scopeId: "s".repeat(201) } }),
+		).rejects.toThrow(/at most 200/);
+		expect(h.admin.saveDraft).not.toHaveBeenCalled();
+	});
+
 	it("publishes and discards drafts", async () => {
 		await expect(i18nPublishFn({ data: ID })).resolves.toEqual({ ok: true });
 		await expect(

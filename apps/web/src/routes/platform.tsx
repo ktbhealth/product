@@ -87,7 +87,7 @@ if (import.meta.env.DEV) warnUnknownChromeRegions(plugins, KNOWN_CHROME_REGIONS)
 
 export const Route = createFileRoute("/platform")({
 	beforeLoad: async () => {
-		await requireSession();
+		await requireSession("/login/doctor");
 		if (!(await platformAdminFn())) throw notFound();
 	},
 	loader: async () => {
@@ -159,7 +159,7 @@ function PlatformLayout() {
 	// are plugin-declared English strings; the host maps the known
 	// destinations/groups to localized chrome (same mechanism as the
 	// landing nav's pluginNavLabel).
-	const items = collectChrome(visiblePlugins, "portal.sidebar", pathname, "platform").flatMap(
+	const items = collectChrome(visiblePlugins, "portal.sidebar", pathname, "platform", user).flatMap(
 		(entry) =>
 			entry.content.kind === "sidebarItem" && !denied.has(entry.content.item.to)
 				? [

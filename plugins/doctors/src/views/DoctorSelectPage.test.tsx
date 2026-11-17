@@ -16,7 +16,7 @@ const setup = (
 		select: vi.fn<DoctorSelectApi["select"]>(async () => ({ ok: true })),
 		...overrides,
 	};
-	const onDone = vi.fn<() => void>();
+	const onDone = vi.fn<(profile: DoctorProfileItem) => void>();
 	render(
 		<DoctorSelectPage
 			profiles={profiles}
@@ -50,7 +50,7 @@ describe("DoctorSelectPage", () => {
 		const { api, onDone } = setup([own, delegated]);
 		await click("Use this profile", 1);
 		expect(api.select).toHaveBeenCalledWith(2);
-		await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(onDone).toHaveBeenCalledWith(delegated));
 	});
 
 	it("stays and reports when the selection is refused or fails", async () => {

@@ -16,7 +16,6 @@ import {
 import { ClipboardListIcon } from "lucide-react";
 
 import { ConsultationsPlatformPage } from "./platform-page.tsx";
-import { NewConsultationLink } from "./chrome.tsx";
 import { Consultations, ConsultationsLive } from "./service.ts";
 import type { AdminConsultationRow } from "./queries.ts";
 import {
@@ -84,11 +83,13 @@ export { consultationScope } from "./tenant-visibility.ts";
 
 export const consultationsTablesPlugin = definePlugin({
 	id: "consultations.tables",
+	meta: { keywords: ["consultations", "tables"] },
 	tables: { consultations },
 });
 
 export const consultationsServicesPlugin = definePlugin({
 	id: "consultations.services",
+	meta: { keywords: ["consultations", "services"] },
 	requiredDeps: [patientsServicesPlugin.id, platformAdminPlugin.id],
 	// Audit + integrity writes resolve via serviceOption — the dep edges
 	// are ordering hints only; absence of either is legal.
@@ -110,6 +111,7 @@ export const consultationsServicesPlugin = definePlugin({
 // the plugin owns routes end to end with zero host route files.
 export const consultationsRoutesPlugin = definePlugin({
 	id: "consultations.routes",
+	meta: { keywords: ["consultations", "routes"] },
 	routes: [
 		physical("/consultations", "../../../../plugins/consultations/src/routes"),
 		// API subtree: /api/consultations/:id/{audio,pdf}, /api/transcribe and
@@ -120,26 +122,14 @@ export const consultationsRoutesPlugin = definePlugin({
 	],
 });
 
-// Chrome contributions (P-060): the app-shell nav link, the
-// "New consultation" CTA and the console sidebar entry live in `chrome`
-// regions; the dep edge orders the sidebar item after the platform
-// shell like the retired panel entry.
+// Chrome contributions (P-060): the console sidebar entry lives in a
+// `chrome` region; the dep edge orders it after the platform shell
+// like the retired panel entry.
 export const consultationsChromePlugin = definePlugin({
 	id: "consultations.chrome",
+	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
-		{
-			id: "consultations.nav",
-			region: "app.header.nav",
-			content: { kind: "link", to: "/consultations", label: "Consultations" },
-		},
-		{
-			id: "consultations.new",
-			region: "app.header.actions",
-			// Before the locale toggle (unordered → Infinity).
-			order: 0,
-			content: { kind: "component", component: NewConsultationLink },
-		},
 		{
 			id: "consultations.sidebar",
 			region: "portal.sidebar",
@@ -164,6 +154,7 @@ export const consultationsPanelPlugin = definePlugin({
 	id: "consultations.panel",
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {
+		keywords: ["consultations", "ui"],
 		name: "Consultations",
 		description: "Consultation records and audio jobs",
 		icon: ClipboardListIcon,

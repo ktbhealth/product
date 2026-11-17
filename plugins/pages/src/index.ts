@@ -24,11 +24,13 @@ import { CustomPageView } from "./views/CustomPageView.tsx";
 
 export const pagesTablesPlugin = definePlugin({
 	id: "pages.tables",
+	meta: { keywords: ["pages", "tables"] },
 	tables: { customPage },
 });
 
 export const pagesServicesPlugin = definePlugin({
 	id: "pages.services",
+	meta: { keywords: ["pages", "services"] },
 	// adminList/adminCreate/adminUpdate/adminRemove consume the
 	// PlatformAdmin gate — the dep edge keeps the platform module
 	// ordered (and discovered) before this plugin's layer.
@@ -44,6 +46,7 @@ export const pagesServicesPlugin = definePlugin({
  */
 export const pagesChromePlugin = definePlugin({
 	id: "pages.chrome",
+	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -77,6 +80,7 @@ export const pagesChromePlugin = definePlugin({
  */
 export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
+	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [pagesServicesPlugin.id],
 	pages: [
 		{
@@ -106,6 +110,7 @@ export const pagesRenderPlugin = definePlugin({
  */
 export const pagesPanelPlugin = definePlugin({
 	id: "pages.panel",
+	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, pagesServicesPlugin.id],
 	panel: {
 		pages: [

@@ -20,6 +20,8 @@ import {
 	revokeSecretary,
 	Secretaries,
 	SecretariesLive,
+	secretariesChromePlugin,
+	secretariesPagesPlugin,
 	secretariesRoutesPlugin,
 	secretariesServicesPlugin,
 	secretariesTablesPlugin,
@@ -255,6 +257,33 @@ describe("SecretariesLive", () => {
 		);
 		expect(await as({ userId: "plain" }, (s) => s.revoke(1))).toBe("forbidden:secretary.revoke");
 	});
+
+	describe("portal page loader", () => {
+		const loadAs = (principal: { userId: string; actorId?: string } | null) =>
+			runtime.runPromise(
+				(
+					secretariesPagesPlugin.pages?.[0]?.loader ??
+					((_path: string) => Effect.fail(new Error("missing loader")))
+				)("/portal/doctor/secretaries").pipe(
+					Effect.provideService(Principal, principal),
+				) as Effect.Effect<unknown, never, Secretaries>,
+			);
+
+		it("lists the signed-in account's own secretaries, not the acted doctor's", async () => {
+			// doc-a's own staff, acting as self.
+			expect(await loadAs({ userId: "doc-a" })).toEqual([
+				{ id: expect.any(Number), email: "both@ktb.test", status: "active" },
+				{ id: expect.any(Number), email: "sec@ktb.test", status: "active" },
+			]);
+			// Acting AS doc-a on behalf of account "both" — a doctor with
+			// its own profile: the list is the account's own (empty here),
+			// never the acted doctor's.
+			expect(await loadAs({ userId: "doc-a", actorId: "both" })).toEqual([]);
+			// A delegated-only account has no own profile to manage.
+			expect(await loadAs({ userId: "doc-a", actorId: "sec" })).toBeNull();
+			expect(await loadAs(null)).toBeNull();
+		});
+	});
 });
 
 describe("secretaries plugins", () => {
@@ -263,12 +292,41 @@ describe("secretaries plugins", () => {
 			secretariesTablesPlugin,
 			secretariesServicesPlugin,
 			secretariesRoutesPlugin,
+			secretariesPagesPlugin,
+			secretariesChromePlugin,
 		]);
 		expect(secretariesRoutesPlugin.id).toBe("secretaries.routes");
-		expect(secretariesRoutesPlugin.routes).toHaveLength(1);
+		expect(secretariesRoutesPlugin.routes).toHaveLength(2);
 		expect(secretariesTablesPlugin.id).toBe("secretaries.tables");
 		expect(secretariesTablesPlugin.tables.doctorAccess).toBe(doctorAccess);
 		expect(secretariesServicesPlugin.id).toBe("secretaries.services");
 		expect(secretariesServicesPlugin.services).toBeDefined();
+	});
+
+	it("mounts secretaries management inside the doctor portal", () => {
+		expect(secretariesPagesPlugin.requiredDeps).toEqual(["portal.shell"]);
+		expect(secretariesPagesPlugin.pages).toMatchObject([
+			{ id: "secretaries.manage", path: "/portal/doctor/secretaries" },
+		]);
+		expect(secretariesPagesPlugin.pages?.[0]?.component).toBeDefined();
+		expect(secretariesPagesPlugin.pages?.[0]?.loader).toBeDefined();
+	});
+
+	it("links the doctor portal sidebar to the in-portal page", () => {
+		expect(secretariesChromePlugin.requiredDeps).toEqual(["portal.shell"]);
+		expect(secretariesChromePlugin.chrome).toMatchObject([
+			{
+				region: "portal.sidebar",
+				portal: "doctor",
+				content: {
+					kind: "sidebarItem",
+					item: {
+						to: "/portal/doctor/secretaries",
+						label: "Secretaries",
+						group: "Account",
+					},
+				},
+			},
+		]);
 	});
 });

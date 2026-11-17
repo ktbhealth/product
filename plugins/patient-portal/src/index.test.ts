@@ -17,6 +17,9 @@ import {
 	parseAnamnesis,
 	PatientPortal,
 	PatientPortalLive,
+	patientPortalChromePlugin,
+	patientPortalInstancePlugin,
+	patientPortalPagesPlugin,
 	patientPortalRoutesPlugin,
 	patientPortalServicesPlugin,
 	plugins,
@@ -523,11 +526,52 @@ describe("PatientPortal.consultation audit", () => {
 });
 
 describe("patient-portal plugins", () => {
-	it("contributes the portal service and its route subtree", () => {
-		expect(plugins).toEqual([patientPortalServicesPlugin, patientPortalRoutesPlugin]);
+	it("contributes the service, the patient instance, its pages, chrome and the legacy redirects", () => {
+		expect(plugins).toEqual([
+			patientPortalServicesPlugin,
+			patientPortalInstancePlugin,
+			patientPortalPagesPlugin,
+			patientPortalChromePlugin,
+			patientPortalRoutesPlugin,
+		]);
 		expect(patientPortalServicesPlugin.id).toBe("patient-portal.services");
 		expect(patientPortalServicesPlugin.services).toBe(PatientPortalLive);
 		expect(patientPortalRoutesPlugin.id).toBe("patient-portal.routes");
 		expect(patientPortalRoutesPlugin.routes).toHaveLength(1);
+	});
+
+	it("declares the patient instance — patient audience, session subject", () => {
+		expect(patientPortalInstancePlugin.id).toBe("patient-portal.portal");
+		expect(patientPortalInstancePlugin.portals).toEqual([
+			{
+				id: "patient",
+				basePath: "/portal/patient",
+				label: "Patient",
+				audience: "patient",
+			},
+		]);
+	});
+
+	it("declares the home page and the consultation wildcard under the instance base", () => {
+		const pages = patientPortalPagesPlugin.pages ?? [];
+		expect(pages.map((p) => p.path)).toEqual([
+			"/portal/patient",
+			"/portal/patient/consultations/*",
+			"/portal/patient/activity",
+		]);
+		expect("loader" in pages[0]!).toBe(true);
+		expect("guard" in pages[1]!).toBe(true);
+		expect("loader" in pages[1]!).toBe(true);
+		expect("loader" in pages[2]!).toBe(true);
+	});
+
+	it("scopes the sidebar entry to the patient instance", () => {
+		const entries = patientPortalChromePlugin.chrome ?? [];
+		expect(entries).toHaveLength(1);
+		expect(entries[0]).toMatchObject({
+			region: "portal.sidebar",
+			portal: "patient",
+			content: { kind: "sidebarItem", item: { to: "/portal/patient", exact: true } },
+		});
 	});
 });

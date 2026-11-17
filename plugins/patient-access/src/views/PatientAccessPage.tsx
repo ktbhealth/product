@@ -48,6 +48,7 @@ export function PatientAccessPage({
 	locale,
 	api,
 	onChanged,
+	portalBase,
 }: {
 	patient: { readonly id: number; readonly name: string };
 	links: readonly PatientLinkItem[];
@@ -58,6 +59,9 @@ export function PatientAccessPage({
 	api: PatientAccessApi;
 	/** Called after any change — the host refreshes the list. */
 	onChanged: () => void;
+	/** Portal instance base ("/portal/doctor") — set when the page mounts
+	 * inside the portal shell so the back link stays in it. */
+	portalBase?: string;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, patientAccessMessages(locale));
 	const [email, setEmail] = useState("");
@@ -97,8 +101,7 @@ export function PatientAccessPage({
 		<div className="mx-auto flex max-w-2xl flex-col gap-6">
 			<div>
 				<Link
-					to="/patients/$id"
-					params={{ id: String(patient.id) }}
+					to={portalBase ? `${portalBase}/patients/${patient.id}` : `/patients/${patient.id}`}
 					className="inline-flex items-center gap-1 text-sm text-muted-foreground transition hover:text-foreground"
 				>
 					<ArrowLeftIcon className="size-4" />

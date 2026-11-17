@@ -15,6 +15,13 @@ import type { AnyRoute } from "@tanstack/react-router";
 
 declare module "@tanstack/react-router" {
 	interface FileRoutesByPath {
+		"/login/secretary": {
+			id: "/login/secretary";
+			path: "/login/secretary";
+			fullPath: "/login/secretary";
+			preLoaderRoute: AnyRoute;
+			parentRoute: AnyRoute;
+		};
 		"/secretaries/": {
 			id: "/secretaries/";
 			path: "/secretaries";

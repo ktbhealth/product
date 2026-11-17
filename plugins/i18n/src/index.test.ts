@@ -139,6 +139,12 @@ describe("store", () => {
 		expect(rows.every((r) => r.status === "published")).toBe(true);
 	});
 
+	it("listPublishedRows returns no rows for an empty scope list", async () => {
+		// Empty scopes must short-circuit — sql.join([]) would emit
+		// invalid `()` SQL.
+		await expect(listPublishedRows(db, { locales: ["en"], scopes: [] })).resolves.toEqual([]);
+	});
+
 	it("listPublishedRows excludes draft rows", async () => {
 		await db.insert(i18nMessages).values({
 			namespace: "app",

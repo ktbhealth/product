@@ -1,45 +1,20 @@
-import { redirect, useRouter, getRouteApi } from "@tanstack/react-router";
+import { redirect } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
-import { SecretariesPage, type SecretariesApi } from "../views/index.ts";
-import {
-	inviteSecretaryFn,
-	listSecretariesFn,
-	localeFn,
-	revokeSecretaryFn,
-	sessionUserFn,
-} from "../fns.ts";
+import { listSecretariesFn, sessionUserFn } from "../fns.ts";
 
-const api: SecretariesApi = {
-	invite: (email) => inviteSecretaryFn({ data: { email } }),
-	revoke: (id) => revokeSecretaryFn({ data: id }),
-};
-
-// A doctor's secretaries: who may act on their behalf. Only the doctor
-// themself manages this list — anonymous visitors go to /login, accounts
-// without a doctor profile of their own to the profile chooser.
+// A doctor's secretaries moved inside the doctor portal
+// (/portal/doctor/secretaries). The old app route stays only as a
+// redirect: anonymous visitors to /login, accounts without a doctor
+// profile of their own to the profile chooser — like before.
 export const Route = createPluginFileRoute("secretaries.routes")("/secretaries/")({
 	beforeLoad: async () => {
-		if (!(await sessionUserFn())) throw redirect({ to: "/login" });
+		if (!(await sessionUserFn())) throw redirect({ href: "/login/doctor" });
 	},
 	loader: async () => {
-		const [secretaries, locale] = await Promise.all([listSecretariesFn(), localeFn()]);
-		if (secretaries === null) throw redirect({ to: "/doctors/select" });
-		return { secretaries, locale };
+		if ((await listSecretariesFn()) === null) throw redirect({ to: "/doctors/select" });
+		throw redirect({ href: "/portal/doctor/secretaries" });
 	},
-	component: function SecretariesRoute() {
-		const { secretaries, locale } = Route.useLoaderData();
-		const { i18n } = getRouteApi("__root__").useLoaderData();
-		const router = useRouter();
-		return (
-			<SecretariesPage
-				secretaries={secretaries}
-				i18n={i18n}
-				locale={locale}
-				api={api}
-				onChanged={() => void router.invalidate()}
-			/>
-		);
-	},
+	component: () => null,
 });

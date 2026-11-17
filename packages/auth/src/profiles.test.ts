@@ -117,13 +117,13 @@ describe("resolveDoctorProfile", () => {
 		expect(resolveDoctorProfile([own, a], 99)).toBe(own);
 	});
 
-	it("defaults to the only delegated profile", () => {
+	it("defaults to the first delegated profile", () => {
 		expect(resolveDoctorProfile([a], null)).toBe(a);
+		expect(resolveDoctorProfile([a, b], null)).toBe(a);
+		expect(resolveDoctorProfile([a, b], 99)).toBe(a);
 	});
 
-	it("is null without a profile or while a choice is pending", () => {
+	it("is null only when the user holds no profile", () => {
 		expect(resolveDoctorProfile([], 1)).toBeNull();
-		expect(resolveDoctorProfile([a, b], null)).toBeNull();
-		expect(resolveDoctorProfile([a, b], 99)).toBeNull();
 	});
 });

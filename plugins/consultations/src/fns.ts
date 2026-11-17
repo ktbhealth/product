@@ -8,6 +8,7 @@ import {
 	ensureDoctorUser,
 	ensureSessionUser,
 	getDoctorAccess,
+	getDoctorContext,
 	getDoctorUser,
 	getLocale,
 	getServerRuntime,
@@ -172,6 +173,15 @@ export const sessionUserFn = createServerFn({ method: "GET" }).handler(() => get
 
 /** Doctor-side standing of the request — drives the route guard. */
 export const doctorAccessFn = createServerFn({ method: "GET" }).handler(() => getDoctorAccess());
+
+/** Which clinical portal instance this request belongs in — "doctor"
+ * for own-profile accounts, "secretary" for delegated-only ones. Null
+ * for anonymous visitors and for accounts with no doctor side. */
+export const clinicalPortalFn = createServerFn({ method: "GET" }).handler(async () => {
+	const context = await getDoctorContext();
+	if (!context) return null;
+	return context.profiles.some((p) => p.role === "owner") ? "doctor" : "secretary";
+});
 
 /** Active UI locale for the current request — route loaders attach it
  * to their data so plugin views never import the host's i18n runtime. */

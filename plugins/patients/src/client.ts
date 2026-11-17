@@ -9,8 +9,8 @@ import { PatientsPlatformPage } from "./platform-page.tsx";
  * through `@ktb/app-host/client` (import.meta.glob on
  * `plugins/<name>/src/client.ts`). Every server entry keeps its id and dep
  * edges so topo order matches the server registry, but only
- * client-consumed contributions are carried: chrome regions (nav link,
- * console sidebar) and panel pages. `panel.pages` keep id/path/component only — the
+ * client-consumed contributions are carried: chrome regions (console
+ * sidebar) and panel pages. `panel.pages` keep id/path/component only — the
  * loader Effect runs server-side and stays in ./index.ts.
  * tables/services/routes degrade to markers. Dep ids are literals:
  * importing ./index.ts would pull the server graph into the client
@@ -18,13 +18,9 @@ import { PatientsPlatformPage } from "./platform-page.tsx";
  */
 export const patientsChromePlugin = definePlugin({
 	id: "patients.chrome",
+	meta: { keywords: ["patients", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
-		{
-			id: "patients.nav",
-			region: "app.header.nav",
-			content: { kind: "link", to: "/patients", label: "Patients" },
-		},
 		{
 			id: "patients.sidebar",
 			region: "portal.sidebar",
@@ -45,6 +41,7 @@ export const patientsPanelPlugin = definePlugin({
 	id: "patients.panel",
 	requiredDeps: ["platform.panel"],
 	meta: {
+		keywords: ["patients", "ui"],
 		name: "Patients",
 		description: "Patient records and demographics",
 		icon: UsersIcon,
@@ -63,14 +60,15 @@ export const patientsPanelPlugin = definePlugin({
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "patients.tables" }),
+	definePlugin({ id: "patients.tables", meta: { keywords: ["patients", "tables"] } }),
 	definePlugin({
 		id: "patients.services",
+		meta: { keywords: ["patients", "services"] },
 		requiredDeps: ["platform.admin"],
 		// Mirrors patientsServicesPlugin.optionalDeps (server index.ts).
 		optionalDeps: ["audit.services"],
 	}),
-	definePlugin({ id: "patients.routes" }),
+	definePlugin({ id: "patients.routes", meta: { keywords: ["patients", "routes"] } }),
 	patientsChromePlugin,
 	patientsPanelPlugin,
 ];

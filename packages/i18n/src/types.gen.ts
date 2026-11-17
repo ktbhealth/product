@@ -136,13 +136,15 @@ export type I18nKey =
 	| "app.mock_review_rest"
 	| "app.mock_sample"
 	| "app.nav_consultations"
+	| "app.nav_doctor_login"
+	| "app.nav_doctor_portal"
 	| "app.nav_my_consultations"
-	| "app.nav_new_consultation"
+	| "app.nav_patient_login"
 	| "app.nav_patient_portal"
 	| "app.nav_patients"
 	| "app.nav_platform_console"
 	| "app.nav_secretaries"
-	| "app.nav_sign_in"
+	| "app.nav_secretary_portal"
 	| "app.nav_sign_out"
 	| "app.nav_switch_doctor"
 	| "app.never_1"
@@ -157,6 +159,7 @@ export type I18nKey =
 	| "app.notfound_cta"
 	| "app.notfound_title"
 	| "app.panel_group_access"
+	| "app.panel_group_account"
 	| "app.panel_group_domains"
 	| "app.panel_group_governance"
 	| "app.panel_group_system"
@@ -350,7 +353,6 @@ export type I18nKey =
 	| "auth.hidePassword"
 	| "auth.metaTitle"
 	| "auth.password"
-	| "auth.patientLink"
 	| "auth.pending"
 	| "auth.secretaryLink"
 	| "auth.showPassword"
@@ -840,8 +842,16 @@ export type I18nKey =
 	| "manager.blockedHint"
 	| "manager.cancel"
 	| "manager.colActions"
+	| "manager.colAvgDuration"
+	| "manager.colAvgLoad"
+	| "manager.colContext"
+	| "manager.colErrors"
+	| "manager.colFn"
 	| "manager.colKind"
+	| "manager.colLoads"
+	| "manager.colLookups"
 	| "manager.colPlugin"
+	| "manager.colRequests"
 	| "manager.colStatus"
 	| "manager.configDialogTitle"
 	| "manager.configSave"
@@ -850,16 +860,34 @@ export type I18nKey =
 	| "manager.confirmDisableAction"
 	| "manager.confirmDisableBody"
 	| "manager.confirmDisableTitle"
+	| "manager.dependentsSection"
+	| "manager.depsSection"
 	| "manager.description"
 	| "manager.disable"
+	| "manager.edgeKind"
+	| "manager.edgeOptional"
+	| "manager.edgeRegion"
+	| "manager.edgeRequired"
+	| "manager.edgeTree"
 	| "manager.empty"
 	| "manager.enable"
 	| "manager.filterAll"
 	| "manager.filteredCount"
+	| "manager.fullscreenEnter"
+	| "manager.fullscreenExit"
+	| "manager.keywordsLabel"
+	| "manager.layoutLoading"
+	| "manager.metricsEmpty"
+	| "manager.metricsError"
+	| "manager.metricsServerFns"
+	| "manager.metricsSessionContexts"
+	| "manager.metricsSinceStart"
+	| "manager.metricsTitle"
 	| "manager.noResults"
 	| "manager.paginationNext"
 	| "manager.paginationPage"
 	| "manager.paginationPrevious"
+	| "manager.regionsSection"
 	| "manager.requiredMark"
 	| "manager.rowActions"
 	| "manager.searchLabel"
@@ -870,7 +898,13 @@ export type I18nKey =
 	| "manager.statusFilterLabel"
 	| "manager.statusSystem"
 	| "manager.systemHint"
+	| "manager.tabMap"
+	| "manager.tabTable"
 	| "manager.title"
+	| "manager.viewChannels"
+	| "manager.viewDependencies"
+	| "manager.viewDomains"
+	| "manager.viewHierarchy"
 	| "notifications.empty"
 	| "notifications.label"
 	| "notifications.markAllRead"
@@ -1500,13 +1534,15 @@ export interface I18nTypedT {
 	(key: "app.mock_review_rest"): Effect.Effect<string>;
 	(key: "app.mock_sample"): Effect.Effect<string>;
 	(key: "app.nav_consultations"): Effect.Effect<string>;
+	(key: "app.nav_doctor_login"): Effect.Effect<string>;
+	(key: "app.nav_doctor_portal"): Effect.Effect<string>;
 	(key: "app.nav_my_consultations"): Effect.Effect<string>;
-	(key: "app.nav_new_consultation"): Effect.Effect<string>;
+	(key: "app.nav_patient_login"): Effect.Effect<string>;
 	(key: "app.nav_patient_portal"): Effect.Effect<string>;
 	(key: "app.nav_patients"): Effect.Effect<string>;
 	(key: "app.nav_platform_console"): Effect.Effect<string>;
 	(key: "app.nav_secretaries"): Effect.Effect<string>;
-	(key: "app.nav_sign_in"): Effect.Effect<string>;
+	(key: "app.nav_secretary_portal"): Effect.Effect<string>;
 	(key: "app.nav_sign_out"): Effect.Effect<string>;
 	(key: "app.nav_switch_doctor"): Effect.Effect<string>;
 	(key: "app.never_1"): Effect.Effect<string>;
@@ -1521,6 +1557,7 @@ export interface I18nTypedT {
 	(key: "app.notfound_cta"): Effect.Effect<string>;
 	(key: "app.notfound_title"): Effect.Effect<string>;
 	(key: "app.panel_group_access"): Effect.Effect<string>;
+	(key: "app.panel_group_account"): Effect.Effect<string>;
 	(key: "app.panel_group_domains"): Effect.Effect<string>;
 	(key: "app.panel_group_governance"): Effect.Effect<string>;
 	(key: "app.panel_group_system"): Effect.Effect<string>;
@@ -1730,7 +1767,6 @@ export interface I18nTypedT {
 	(key: "auth.hidePassword"): Effect.Effect<string>;
 	(key: "auth.metaTitle"): Effect.Effect<string>;
 	(key: "auth.password"): Effect.Effect<string>;
-	(key: "auth.patientLink"): Effect.Effect<string>;
 	(key: "auth.pending"): Effect.Effect<string>;
 	(key: "auth.secretaryLink"): Effect.Effect<string>;
 	(key: "auth.showPassword"): Effect.Effect<string>;
@@ -2418,8 +2454,16 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "manager.cancel"): Effect.Effect<string>;
 	(key: "manager.colActions"): Effect.Effect<string>;
+	(key: "manager.colAvgDuration"): Effect.Effect<string>;
+	(key: "manager.colAvgLoad"): Effect.Effect<string>;
+	(key: "manager.colContext"): Effect.Effect<string>;
+	(key: "manager.colErrors"): Effect.Effect<string>;
+	(key: "manager.colFn"): Effect.Effect<string>;
 	(key: "manager.colKind"): Effect.Effect<string>;
+	(key: "manager.colLoads"): Effect.Effect<string>;
+	(key: "manager.colLookups"): Effect.Effect<string>;
 	(key: "manager.colPlugin"): Effect.Effect<string>;
+	(key: "manager.colRequests"): Effect.Effect<string>;
 	(key: "manager.colStatus"): Effect.Effect<string>;
 	(
 		key: "manager.configDialogTitle",
@@ -2438,8 +2482,15 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "manager.confirmDisableTitle"): Effect.Effect<string>;
+	(key: "manager.dependentsSection"): Effect.Effect<string>;
+	(key: "manager.depsSection"): Effect.Effect<string>;
 	(key: "manager.description"): Effect.Effect<string>;
 	(key: "manager.disable"): Effect.Effect<string>;
+	(key: "manager.edgeKind"): Effect.Effect<string>;
+	(key: "manager.edgeOptional"): Effect.Effect<string>;
+	(key: "manager.edgeRegion"): Effect.Effect<string>;
+	(key: "manager.edgeRequired"): Effect.Effect<string>;
+	(key: "manager.edgeTree"): Effect.Effect<string>;
 	(key: "manager.empty"): Effect.Effect<string>;
 	(key: "manager.enable"): Effect.Effect<string>;
 	(key: "manager.filterAll"): Effect.Effect<string>;
@@ -2450,6 +2501,16 @@ export interface I18nTypedT {
 			total: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "manager.fullscreenEnter"): Effect.Effect<string>;
+	(key: "manager.fullscreenExit"): Effect.Effect<string>;
+	(key: "manager.keywordsLabel"): Effect.Effect<string>;
+	(key: "manager.layoutLoading"): Effect.Effect<string>;
+	(key: "manager.metricsEmpty"): Effect.Effect<string>;
+	(key: "manager.metricsError"): Effect.Effect<string>;
+	(key: "manager.metricsServerFns"): Effect.Effect<string>;
+	(key: "manager.metricsSessionContexts"): Effect.Effect<string>;
+	(key: "manager.metricsSinceStart"): Effect.Effect<string>;
+	(key: "manager.metricsTitle"): Effect.Effect<string>;
 	(key: "manager.noResults"): Effect.Effect<string>;
 	(key: "manager.paginationNext"): Effect.Effect<string>;
 	(
@@ -2459,6 +2520,7 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "manager.paginationPrevious"): Effect.Effect<string>;
+	(key: "manager.regionsSection"): Effect.Effect<string>;
 	(key: "manager.requiredMark"): Effect.Effect<string>;
 	(
 		key: "manager.rowActions",
@@ -2474,7 +2536,13 @@ export interface I18nTypedT {
 	(key: "manager.statusFilterLabel"): Effect.Effect<string>;
 	(key: "manager.statusSystem"): Effect.Effect<string>;
 	(key: "manager.systemHint"): Effect.Effect<string>;
+	(key: "manager.tabMap"): Effect.Effect<string>;
+	(key: "manager.tabTable"): Effect.Effect<string>;
 	(key: "manager.title"): Effect.Effect<string>;
+	(key: "manager.viewChannels"): Effect.Effect<string>;
+	(key: "manager.viewDependencies"): Effect.Effect<string>;
+	(key: "manager.viewDomains"): Effect.Effect<string>;
+	(key: "manager.viewHierarchy"): Effect.Effect<string>;
 	(key: "notifications.empty"): Effect.Effect<string>;
 	(key: "notifications.label"): Effect.Effect<string>;
 	(key: "notifications.markAllRead"): Effect.Effect<string>;

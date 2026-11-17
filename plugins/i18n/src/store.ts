@@ -43,6 +43,9 @@ export const listPublishedRows = async (
 		readonly namespaces?: readonly string[];
 	},
 ): Promise<MessageRow[]> => {
+	// An empty scope list would emit `sql.join([])` — invalid `()` SQL.
+	// No scopes means nothing is visible, so short-circuit to no rows.
+	if (input.scopes.length === 0) return [];
 	const scopeConds = input.scopes.map(({ scope, scopeId }) =>
 		scope === "global"
 			? eq(i18nMessages.scope, "global")

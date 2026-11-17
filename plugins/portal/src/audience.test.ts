@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles, type DoctorProfile } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { PlatformAdmin } from "@ktb/platform";
 
@@ -29,11 +29,18 @@ const directory = (profiles: readonly DoctorProfile[] | ((id: string) => DoctorP
 		claimInvites: () => Effect.succeed(0),
 	});
 
+const patientDirectory = (profiles: readonly { patientId: number }[]) =>
+	Layer.succeed(PatientProfiles, {
+		listFor: () => Effect.succeed(profiles as never),
+		syncLinks: () => Effect.succeed(0),
+	});
+
 const audiencesAs = (
 	principal: { userId: string; email?: string; actorId?: string } | null,
 	services?: {
 		readonly admin?: Layer.Layer<PlatformAdmin>;
 		readonly profiles?: Layer.Layer<DoctorProfiles>;
+		readonly patients?: Layer.Layer<PatientProfiles>;
 	},
 ) =>
 	Effect.runPromise(
@@ -42,6 +49,7 @@ const audiencesAs = (
 			Effect.provideService(Principal, principal),
 			Effect.provide(services?.admin ?? Layer.empty),
 			Effect.provide(services?.profiles ?? Layer.empty),
+			Effect.provide(services?.patients ?? Layer.empty),
 		),
 	);
 
@@ -114,6 +122,63 @@ describe("PortalAudience.audiences", () => {
 		});
 		expect(await audiencesAs({ userId: "u1" }, { profiles: broken })).toEqual(
 			new Set([PORTAL_AUDIENCE.member]),
+		);
+	});
+
+	it("grants patient to an account with no doctor side at all", async () => {
+		// patientOnly — covers invited users still waiting on email
+		// verification (their links are not active yet).
+		expect(await audiencesAs({ userId: "u1" }, { profiles: directory([]) })).toEqual(
+			new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.patient]),
+		);
+	});
+
+	it("grants patient to any holder of an active link — clinical roles included", async () => {
+		const patients = patientDirectory([{ patientId: 1 }]);
+		expect(
+			await audiencesAs({ userId: "doc1" }, { profiles: directory([profile("owner")]), patients }),
+		).toEqual(
+			new Set([
+				PORTAL_AUDIENCE.member,
+				PORTAL_AUDIENCE.doctor,
+				PORTAL_AUDIENCE.clinician,
+				PORTAL_AUDIENCE.patient,
+			]),
+		);
+	});
+
+	it("denies patient to clinical accounts holding no links", async () => {
+		expect(
+			await audiencesAs(
+				{ userId: "doc1" },
+				{ profiles: directory([profile("owner")]), patients: patientDirectory([]) },
+			),
+		).toEqual(new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.doctor, PORTAL_AUDIENCE.clinician]));
+	});
+
+	it("resolves patient links for the signed-in account under delegation", async () => {
+		// A secretary acting for a doctor sees the portal through her OWN
+		// links — audiences describe who is signed in, not who they act as.
+		const seen: string[] = [];
+		const patients = Layer.succeed(PatientProfiles, {
+			listFor: (id: string) => {
+				seen.push(id);
+				return Effect.succeed(id === "sec1" ? ([{ patientId: 7 }] as never) : []);
+			},
+			syncLinks: () => Effect.succeed(0),
+		});
+		const set = await audiencesAs(
+			{ userId: "doc1", actorId: "sec1" },
+			{ profiles: directory([profile("secretary", "doc1")]), patients },
+		);
+		expect(seen).toEqual(["sec1"]);
+		expect(set).toEqual(
+			new Set([
+				PORTAL_AUDIENCE.member,
+				PORTAL_AUDIENCE.secretary,
+				PORTAL_AUDIENCE.clinician,
+				PORTAL_AUDIENCE.patient,
+			]),
 		);
 	});
 });

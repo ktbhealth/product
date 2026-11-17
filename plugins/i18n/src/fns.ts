@@ -8,6 +8,7 @@ import { Forbidden } from "@ktb/authz";
 
 import {
 	I18nAdmin,
+	MAX_MESSAGE_FIELD_LENGTH,
 	MAX_MESSAGE_VALUE_LENGTH,
 	type I18nAdminShape,
 	type MessageId,
@@ -21,12 +22,16 @@ import {
  * contract as the patients fns.
  */
 
+/** Message-id fields are composite-PRIMARY-KEY material — cap them on
+ * the wire like MAX_MESSAGE_VALUE_LENGTH caps values (contract.ts). */
+const MessageField = Schema.String.check(Schema.isMaxLength(MAX_MESSAGE_FIELD_LENGTH));
+
 const MessageIdInput = Schema.Struct({
-	namespace: Schema.String,
-	key: Schema.String,
-	locale: Schema.String,
+	namespace: MessageField,
+	key: MessageField,
+	locale: MessageField,
 	scope: Schema.optionalKey(Schema.Literals(["global", "tenant", "portal"])),
-	scopeId: Schema.optionalKey(Schema.String),
+	scopeId: Schema.optionalKey(MessageField),
 });
 const decodeMessageId = Schema.decodeUnknownSync(MessageIdInput);
 
@@ -75,9 +80,9 @@ const withAdmin = <A>(
 const NamespaceMessagesInput = Schema.Struct({
 	// Non-empty: `input ?? {}` used to decode to an unfiltered dump of
 	// every scope's rows — the namespace is the matrix's root filter.
-	namespace: Schema.NonEmptyString,
+	namespace: Schema.NonEmptyString.check(Schema.isMaxLength(MAX_MESSAGE_FIELD_LENGTH)),
 	scope: Schema.optionalKey(Schema.Literals(["global", "tenant", "portal"])),
-	scopeId: Schema.optionalKey(Schema.String),
+	scopeId: Schema.optionalKey(MessageField),
 });
 const decodeNamespaceMessages = Schema.decodeUnknownSync(NamespaceMessagesInput);
 
@@ -157,7 +162,7 @@ export const i18nDiscardDraftFn = createServerFn({ method: "POST" })
 	);
 
 export const i18nExportFn = createServerFn({ method: "GET" })
-	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
+	.validator((input: unknown) => Schema.decodeUnknownSync(MessageField)(input))
 	.handler(({ data: namespace }) => withAdmin((admin) => admin.exportNamespace(namespace)));
 
 /** Wire caps for namespace imports — the payload shape itself is
@@ -210,9 +215,7 @@ export const i18nImportFn = createServerFn({ method: "POST" })
 
 export const i18nSetLocaleFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) =>
-		Schema.decodeUnknownSync(Schema.Struct({ code: Schema.String, enabled: Schema.Boolean }))(
-			input,
-		),
+		Schema.decodeUnknownSync(Schema.Struct({ code: MessageField, enabled: Schema.Boolean }))(input),
 	)
 	.handler(({ data }) =>
 		withAdmin((admin) =>

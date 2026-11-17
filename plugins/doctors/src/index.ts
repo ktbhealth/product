@@ -4,14 +4,18 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { eq } from "drizzle-orm";
 
+import { ArrowLeftRightIcon } from "lucide-react";
+
 import { DoctorDelegations, DoctorProfiles, type DoctorProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
+import { portalShellPlugin } from "@ktb/portal";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { doctors, type Doctor } from "./schema.ts";
+import { DoctorSelectPortalPage } from "./views/DoctorSelectPortalPage.tsx";
 
 export type { Doctor } from "./schema.ts";
 
@@ -112,11 +116,13 @@ export const DoctorsLive = Layer.effect(
 
 export const doctorsTablesPlugin = definePlugin({
 	id: "doctors.tables",
+	meta: { keywords: ["doctors", "tables"] },
 	tables: { doctors },
 });
 
 export const doctorsServicesPlugin = definePlugin({
 	id: "doctors.services",
+	meta: { keywords: ["doctors", "services"] },
 	services: Layer.mergeAll(DoctorsLive, DoctorProfilesLive),
 });
 
@@ -125,7 +131,80 @@ export const doctorsServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const doctorsRoutesPlugin = definePlugin({
 	id: "doctors.routes",
+	meta: { keywords: ["doctors", "routes"] },
 	routes: [physical("/doctors", "../../../../plugins/doctors/src/routes")],
+});
+
+/** The clinical portals the profile chooser is mounted in — doctor
+ * AND secretary: picking the acting profile matters in both. */
+const CLINICAL_PORTALS = ["doctor", "secretary"] as const;
+
+/**
+ * Chooser page loader: the account's profiles plus the one this
+ * request acts as. `subject: "doctor"` binds the ACTING doctor, so
+ * `principal.userId` identifies the active profile's entry while
+ * `actorId` names the signed-in account the directory is read for.
+ * Claims pending invites first — the chooser is an entry point.
+ */
+const selectDoctorLoader = (_path: string) =>
+	Effect.gen(function* () {
+		const principal = yield* Principal;
+		if (principal === null) return { profiles: [], activeDoctorId: null };
+		const directory = yield* Effect.serviceOption(DoctorProfiles);
+		if (Option.isNone(directory)) return { profiles: [], activeDoctorId: null };
+		const accountId = principal.actorId ?? principal.userId;
+		yield* directory.value.claimInvites(accountId);
+		const profiles = yield* directory.value.listFor(accountId);
+		return {
+			profiles: profiles.map(({ doctorId, displayName, role }) => ({
+				doctorId,
+				displayName,
+				role,
+			})),
+			activeDoctorId: profiles.find((p) => p.userId === principal.userId)?.doctorId ?? null,
+		};
+	});
+
+// Portal page (P-081): the chooser itself lives inside each clinical
+// portal — the app route /doctors/select stays for the sign-in flow.
+export const doctorsPagesPlugin = definePlugin({
+	id: "doctors.pages",
+	meta: { keywords: ["doctors", "ui", "doctor"] },
+	requiredDeps: [portalShellPlugin.id],
+	pages: CLINICAL_PORTALS.map((portal): Page => ({
+		id: `doctors.${portal}.select`,
+		path: `/portal/${portal}/switch-doctor`,
+		component: DoctorSelectPortalPage,
+		loader: selectDoctorLoader,
+	})),
+});
+
+const switchDoctorChrome = (portal: (typeof CLINICAL_PORTALS)[number]): ChromeContribution => ({
+	id: `doctors.nav.switch.${portal}`,
+	region: "portal.sidebar",
+	portal,
+	// Only meaningful when the account acts through more than one
+	// profile — an owner without delegations has nothing to switch to.
+	when: { minDoctorProfiles: 2 },
+	content: {
+		kind: "sidebarItem",
+		item: {
+			to: `/portal/${portal}/switch-doctor`,
+			label: "Switch doctor",
+			icon: ArrowLeftRightIcon,
+			group: "Account",
+		},
+	},
+});
+
+// Chrome contribution (P-060): the sidebar entries point at the
+// in-portal chooser above. The dep edge orders them after the portal
+// shell anchor.
+export const doctorsChromePlugin = definePlugin({
+	id: "doctors.chrome",
+	meta: { keywords: ["doctors", "ui", "doctor"] },
+	requiredDeps: [portalShellPlugin.id],
+	chrome: CLINICAL_PORTALS.map(switchDoctorChrome),
 });
 
 /** Single-concern plugins contributed by this module — the host
@@ -134,6 +213,8 @@ export const plugins: readonly Plugin[] = [
 	doctorsTablesPlugin,
 	doctorsServicesPlugin,
 	doctorsRoutesPlugin,
+	doctorsPagesPlugin,
+	doctorsChromePlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -143,5 +224,7 @@ declare module "@ktb/kernel" {
 		"doctors.tables": true;
 		"doctors.services": true;
 		"doctors.routes": true;
+		"doctors.pages": true;
+		"doctors.chrome": true;
 	}
 }

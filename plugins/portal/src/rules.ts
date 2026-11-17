@@ -9,6 +9,10 @@ import type { PortalInstance } from "@ktb/kernel";
  * - `doctor` — the signed-in account holds its OWN doctor profile.
  * - `secretary` — the signed-in account holds delegated doctor access.
  * - `clinician` — doctor OR secretary (the clinical workspace audience).
+ * - `patient` — the signed-in account holds an active patient_access
+ *   link, OR has no doctor side at all (a patient account — the app
+ *   chrome's `patientOnly` concept; covers invited users whose links
+ *   still wait on email verification).
  * - `member` — any authenticated user (the default when an instance
  *   declares no `audience`).
  */
@@ -17,6 +21,7 @@ export const PORTAL_AUDIENCE = {
 	doctor: "doctor",
 	secretary: "secretary",
 	clinician: "clinician",
+	patient: "patient",
 	member: "member",
 } as const;
 

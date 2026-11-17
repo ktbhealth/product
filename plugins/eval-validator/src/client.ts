@@ -17,6 +17,7 @@ import { EvalValidatorPage } from "./platform-page.tsx";
  */
 export const evalValidatorChromePlugin = definePlugin({
 	id: "eval.validator.chrome",
+	meta: { keywords: ["eval", "validator", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -37,6 +38,7 @@ export const evalValidatorChromePlugin = definePlugin({
 
 export const evalValidatorPanelPlugin = definePlugin({
 	id: "eval.validator.panel",
+	meta: { keywords: ["eval", "validator", "ui"] },
 	requiredDeps: ["platform.panel", "eval.validator.services"],
 	panel: {
 		pages: [{ id: "eval.validator", path: "/platform/eval", component: EvalValidatorPage }],
@@ -48,11 +50,13 @@ export const evalValidatorPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "eval.validator.tables",
+		meta: { keywords: ["eval", "validator", "tables"] },
 		// Mirrors evalValidatorTablesPlugin (server index.ts) minus the
 		// tables slice — drizzle schema never reaches the client bundle.
 	}),
 	definePlugin({
 		id: "eval.validator.services",
+		meta: { keywords: ["eval", "validator", "services"] },
 		// Mirrors evalValidatorServicesPlugin.requiredDeps (server
 		// index.ts) — literal ids.
 		requiredDeps: ["eval.validator.tables"],
@@ -61,6 +65,7 @@ export const plugins: readonly Plugin[] = [
 	evalValidatorPanelPlugin,
 	definePlugin({
 		id: "eval-validator.routes",
+		meta: { keywords: ["eval", "validator", "routes"] },
 		// Mirrors evalValidatorRoutesPlugin (server index.ts) minus the
 		// routes slice — api route paths never reach the client bundle.
 	}),

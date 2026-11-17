@@ -183,7 +183,7 @@ describe("inviteSecretaryFn", () => {
 		};
 		expect(sent.to).toBe("sec@ktb.test");
 		expect(sent.subject).toBe("Dra. Ana convidou você para o KTB Health");
-		expect(sent.text).toContain("https://app.ktb.test/secretaries/login");
+		expect(sent.text).toContain("https://app.ktb.test/login/secretary");
 	});
 
 	it("sends someone with no account a single-use accept link", async () => {
@@ -200,7 +200,7 @@ describe("inviteSecretaryFn", () => {
 		const { text } = mocks.send.mock.calls[0]![0] as { text: string };
 		expect(text.split("\n")).toContain("https://app.ktb.test/invite#tok-123");
 		expect(text).toContain("choose your password");
-		expect(text).not.toContain("/secretaries/login");
+		expect(text).not.toContain("/login/secretary");
 	});
 
 	it("points an address that already has an account at the staff sign-in", async () => {
@@ -210,7 +210,7 @@ describe("inviteSecretaryFn", () => {
 		mocks.invite.mockReturnValue(Effect.succeed(row));
 		await invite();
 		const { text } = mocks.send.mock.calls[0]![0] as { text: string };
-		expect(text.split("\n")).toContain("https://app.ktb.test/secretaries/login");
+		expect(text.split("\n")).toContain("https://app.ktb.test/login/secretary");
 		expect(text).toContain("Sign in with this email address");
 	});
 

@@ -44,21 +44,22 @@ export function DoctorSelectPage({
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	api: DoctorSelectApi;
-	/** Called once a profile is in effect — the host leaves the chooser. */
-	onDone: () => void;
+	/** Called once a profile is in effect — the host leaves the chooser
+	 * for the clinical surface the picked profile belongs to. */
+	onDone: (profile: DoctorProfileItem) => void;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, doctorMessages(locale));
 	const [pending, setPending] = useState(false);
 	const [failed, setFailed] = useState(false);
 
-	const run = async (action: () => Promise<{ ok: boolean }>) => {
+	const run = async (profile: DoctorProfileItem) => {
 		setPending(true);
 		setFailed(false);
-		const ok = await action().then(
+		const ok = await api.select(profile.doctorId).then(
 			(res) => res.ok,
 			() => false,
 		);
-		if (ok) return onDone();
+		if (ok) return onDone(profile);
 		setPending(false);
 		setFailed(true);
 	};
@@ -89,7 +90,7 @@ export function DoctorSelectPage({
 						<Button
 							variant={profile.doctorId === activeDoctorId ? "outline" : "default"}
 							disabled={pending}
-							onClick={() => void run(() => api.select(profile.doctorId))}
+							onClick={() => void run(profile)}
 						>
 							{t.choose}
 						</Button>

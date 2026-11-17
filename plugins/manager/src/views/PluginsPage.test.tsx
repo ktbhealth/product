@@ -17,6 +17,19 @@ const fns = vi.hoisted(() => ({
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate }),
 }));
+// URL state is a nuqs concern — the page test runs adapter-less, so
+// useQueryState degrades to plain useState seeded by the parser's
+// defaultValue (URL wiring itself is covered in the map tests).
+vi.mock("nuqs", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("nuqs")>();
+	const { useState } = await import("react");
+	return {
+		...actual,
+		useQueryState: (_key: string, parser: { defaultValue?: unknown }) =>
+			// eslint-disable-next-line react-hooks/rules-of-hooks -- shim keeps call order
+			useState(parser?.defaultValue ?? null) as never,
+	};
+});
 vi.mock("../fns.ts", () => fns);
 
 import { PluginsPage, type PluginStateInfo } from "./PluginsPage.tsx";

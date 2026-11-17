@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 import { createElement } from "react";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
@@ -56,6 +56,22 @@ vi.mock("@ktb/auth-better/client", () => ({
 	},
 }));
 vi.mock("@tanstack/react-devtools", () => ({ TanStackDevtools: () => null }));
+// jsdom has no matchMedia; the ui sidebar's useIsMobile needs it once
+// navigation lands inside a portal shell.
+window.matchMedia =
+	window.matchMedia ??
+	((query: string) =>
+		({
+			matches: false,
+			media: query,
+			onchange: null,
+			addListener: () => {},
+			removeListener: () => {},
+			addEventListener: () => {},
+			removeEventListener: () => {},
+			dispatchEvent: () => false,
+		}) as MediaQueryList);
+
 vi.mock("@tanstack/react-router-devtools", () => ({
 	TanStackRouterDevtoolsPanel: () => null,
 }));
@@ -120,6 +136,11 @@ const renderShell = async (el: ReactElement) => {
 };
 
 describe("router integration", () => {
+	beforeEach(() => {
+		// Tests inherit jsdom's location from the previous navigation —
+		// href redirects can't complete there, so start each at "/".
+		window.history.replaceState(null, "", "/");
+	});
 	afterEach(() => {
 		shellRoot?.unmount();
 		shellRoot = null;
@@ -151,13 +172,13 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await waitFor(() => expect(document.body.textContent).toContain("The doctor decides."));
-		// sign-in link present (anonymous)
-		expect(screen.getByText("Sign in")).toBeTruthy();
-		// nav links from plugin manifests
-		expect(screen.getByText("Consultations")).toBeTruthy();
+		// role sign-in links present (anonymous); clinical nav lives
+		// inside the portal instances, not the marketing header.
+		expect(screen.getByText("I am a doctor")).toBeTruthy();
+		expect(screen.getByText("I am a patient")).toBeTruthy();
 
 		await act(async () => {
-			await router.navigate({ to: "/login" });
+			await router.navigate({ to: "/login/doctor" });
 		});
 		await waitFor(() => expect(screen.getByLabelText("Email")).toBeTruthy());
 		expect(screen.getByLabelText("Password")).toBeTruthy();
@@ -165,8 +186,8 @@ describe("router integration", () => {
 		await act(async () => {
 			await router.navigate({ to: "/consultations" });
 		});
-		// anonymous → route guard redirects to sign-in
-		await waitFor(() => expect(router.state.location.pathname).toBe("/login"));
+		// anonymous → the clinical funnel sends them to the doctor sign-in
+		await waitFor(() => expect(router.state.location.pathname).toBe("/login/doctor"));
 	});
 
 	it("authenticated user sees name in nav and consultation detail", async () => {
@@ -175,10 +196,11 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await waitFor(() => expect(document.body.textContent).toContain("Dra Router"));
-		// The user menu offers the doctor chooser, the secretaries page and
-		// sign-out; each closes the menu, so it is reopened per item.
+		// The user menu offers the clinical portal and sign-out — this
+		// account holds no patient record, so no patient-portal entry.
+		// Each item closes the menu, so it is reopened per item.
 		const trigger = screen.getAllByText("Dra Router")[0]!;
-		for (const item of ["Switch doctor", "Secretaries", "Patient portal", "Sign out"]) {
+		for (const item of ["Doctor portal", "Sign out"]) {
 			await act(async () => {
 				fireEvent.click(trigger);
 			});

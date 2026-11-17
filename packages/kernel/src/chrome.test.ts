@@ -49,6 +49,22 @@ describe("chromeWhenMatches", () => {
 		expect(chromeWhenMatches(when, "/platform/users")).toBe(false);
 		expect(chromeWhenMatches(when, "/platform/users/42")).toBe(true);
 	});
+
+	it("gates on minDoctorProfiles against the session user", () => {
+		const when = { minDoctorProfiles: 2 };
+		const solo = { id: "u", email: "u@x", doctorProfiles: 1 };
+		const duo = { ...solo, doctorProfiles: 2 };
+		expect(chromeWhenMatches(when, "/x", duo)).toBe(true);
+		expect(chromeWhenMatches(when, "/x", solo)).toBe(false);
+		// Fails closed: unknown count or no user hides the contribution.
+		expect(chromeWhenMatches(when, "/x", { id: "u", email: "u@x" })).toBe(false);
+		expect(chromeWhenMatches(when, "/x", null)).toBe(false);
+		expect(chromeWhenMatches(when, "/x")).toBe(false);
+		// Combines with path rules — both must admit.
+		const both = { ...when, paths: ["/portal/*"] };
+		expect(chromeWhenMatches(both, "/portal/doctor", duo)).toBe(true);
+		expect(chromeWhenMatches(both, "/elsewhere", duo)).toBe(false);
+	});
 });
 
 describe("collectChrome", () => {
@@ -86,6 +102,26 @@ describe("collectChrome", () => {
 			plugin("b", [entry("b.1", "r", { order: 1 })]),
 		];
 		expect(collectChrome(tied, "r", "/").map((e) => e.id)).toEqual(["a.2", "a.1", "b.1"]);
+	});
+
+	it("filters clinical conditions against the session user", () => {
+		const plugins = [
+			plugin("a", [
+				entry("a.switch", "portal.sidebar", {
+					portal: "doctor",
+					when: { minDoctorProfiles: 2 },
+				}),
+				entry("a.plain", "portal.sidebar", { portal: "doctor" }),
+			]),
+		];
+		const solo = { id: "u", email: "u@x", doctorProfiles: 1 };
+		const duo = { ...solo, doctorProfiles: 2 };
+		const ids = (user?: typeof solo | null) =>
+			collectChrome(plugins, "portal.sidebar", "/x", "doctor", user).map((e) => e.id);
+		expect(ids(duo)).toEqual(["a.switch", "a.plain"]);
+		expect(ids(solo)).toEqual(["a.plain"]);
+		// No resolved user → clinical conditions fail closed.
+		expect(ids()).toEqual(["a.plain"]);
 	});
 
 	it("tolerates plugins without a chrome contribution", () => {

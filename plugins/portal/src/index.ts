@@ -2,8 +2,9 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 
-import { DoctorProfiles, type DoctorProfile } from "@ktb/auth";
+import { DoctorProfiles, PatientProfiles, type PatientProfile } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin } from "@ktb/platform";
@@ -52,17 +53,37 @@ export const PortalAudienceLive = Layer.succeed(
 			if (Option.isSome(platformAdmin) && (yield* platformAdmin.value.isAdmin(principal.email))) {
 				out.add(PORTAL_AUDIENCE.platformAdmin);
 			}
+			const accountId = principal.actorId ?? principal.userId;
 			const profiles = yield* Effect.serviceOption(DoctorProfiles);
 			if (Option.isSome(profiles)) {
-				const accountId = principal.actorId ?? principal.userId;
-				const list = yield* profiles.value
-					.listFor(accountId)
-					.pipe(Effect.orElseSucceed(() => [] as readonly DoctorProfile[]));
-				if (list.some((p) => p.role === "owner")) out.add(PORTAL_AUDIENCE.doctor);
-				if (list.some((p) => p.role === "secretary")) out.add(PORTAL_AUDIENCE.secretary);
-				if (out.has(PORTAL_AUDIENCE.doctor) || out.has(PORTAL_AUDIENCE.secretary)) {
-					out.add(PORTAL_AUDIENCE.clinician);
+				// A directory failure is not an empty list: it grants no
+				// clinical rules AND must not infer patientOnly either —
+				// degrading to member only, like before.
+				const list = yield* profiles.value.listFor(accountId).pipe(Effect.result);
+				if (Result.isSuccess(list)) {
+					if (list.success.some((p) => p.role === "owner")) {
+						out.add(PORTAL_AUDIENCE.doctor);
+					}
+					if (list.success.some((p) => p.role === "secretary")) {
+						out.add(PORTAL_AUDIENCE.secretary);
+					}
+					if (out.has(PORTAL_AUDIENCE.doctor) || out.has(PORTAL_AUDIENCE.secretary)) {
+						out.add(PORTAL_AUDIENCE.clinician);
+					}
+					// No doctor side at all — a patient account (the app
+					// chrome's `patientOnly` concept). Covers invited users
+					// whose links still wait on email verification.
+					if (list.success.length === 0) out.add(PORTAL_AUDIENCE.patient);
 				}
+			}
+			// Active patient_access links admit the clinical roles too —
+			// a doctor may be someone's patient elsewhere.
+			const patientProfiles = yield* Effect.serviceOption(PatientProfiles);
+			if (Option.isSome(patientProfiles)) {
+				const links = yield* patientProfiles.value
+					.listFor(accountId)
+					.pipe(Effect.orElseSucceed(() => [] as readonly PatientProfile[]));
+				if (links.length > 0) out.add(PORTAL_AUDIENCE.patient);
 			}
 			return out;
 		}),
@@ -73,6 +94,7 @@ export const PortalAudienceLive = Layer.succeed(
  * break every portal gate and shell, so it can never be turned off. */
 export const portalServicesPlugin = definePlugin({
 	id: "portal.services",
+	meta: { keywords: ["portal", "services"] },
 	system: true,
 	services: PortalAudienceLive,
 });
@@ -82,6 +104,7 @@ export const portalServicesPlugin = definePlugin({
  * console.* entries ordered after `platform.panel`. */
 export const portalShellPlugin = definePlugin({
 	id: "portal.shell",
+	meta: { keywords: ["portal", "shell", "ui"] },
 	system: true,
 	requiredDeps: [portalServicesPlugin.id],
 });

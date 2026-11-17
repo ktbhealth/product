@@ -12,8 +12,8 @@ import { PatientRecordConsultationsQueries } from "@ktb/patients/api";
 
 import { clinicianPagesPlugin } from "./index.ts";
 
-const PATIENTS_PREFIX = "/portal/clinician/patients";
-const CONSULTATIONS_PREFIX = "/portal/clinician/consultations";
+const PATIENTS_PREFIX = "/portal/doctor/patients";
+const CONSULTATIONS_PREFIX = "/portal/doctor/consultations";
 
 const page = (id: string): Page => {
 	const found = clinicianPagesPlugin.pages?.find((p) => p.id === id);
@@ -83,7 +83,7 @@ const DOCTOR = { userId: "u1" };
 describe("clinician.pages list loaders", () => {
 	it("patients loader returns [] without a principal", async () => {
 		await expect(
-			run(loader("clinician.patients")("/portal/clinician/patients"), {
+			run(loader("clinician.doctor.patients")("/portal/doctor/patients"), {
 				principal: null,
 				layer: patientsLayer(),
 			}),
@@ -93,7 +93,7 @@ describe("clinician.pages list loaders", () => {
 	it("patients loader lists the principal's patients", async () => {
 		const rows = [{ id: 1, name: "Ana" }];
 		await expect(
-			run(loader("clinician.patients")("/portal/clinician/patients"), {
+			run(loader("clinician.doctor.patients")("/portal/doctor/patients"), {
 				principal: DOCTOR,
 				layer: patientsLayer({ list: () => Effect.succeed(rows) }),
 			}),
@@ -102,7 +102,7 @@ describe("clinician.pages list loaders", () => {
 
 	it("patients loader collapses Forbidden to an empty list", async () => {
 		await expect(
-			run(loader("clinician.patients")("/portal/clinician/patients"), {
+			run(loader("clinician.doctor.patients")("/portal/doctor/patients"), {
 				principal: DOCTOR,
 				layer: patientsLayer({ list: forbidden }),
 			}),
@@ -111,7 +111,7 @@ describe("clinician.pages list loaders", () => {
 
 	it("consultations loader returns [] without a principal", async () => {
 		await expect(
-			run(loader("clinician.consultations")("/portal/clinician/consultations"), {
+			run(loader("clinician.doctor.consultations")("/portal/doctor/consultations"), {
 				principal: null,
 				layer: consultationsLayer(),
 			}),
@@ -121,7 +121,7 @@ describe("clinician.pages list loaders", () => {
 	it("consultations loader lists the principal's consultations", async () => {
 		const rows = [{ id: 2 }];
 		await expect(
-			run(loader("clinician.consultations")("/portal/clinician/consultations"), {
+			run(loader("clinician.doctor.consultations")("/portal/doctor/consultations"), {
 				principal: DOCTOR,
 				layer: consultationsLayer({ list: () => Effect.succeed(rows) }),
 			}),
@@ -130,16 +130,26 @@ describe("clinician.pages list loaders", () => {
 
 	it("consultations loader collapses Forbidden to an empty list", async () => {
 		await expect(
-			run(loader("clinician.consultations")("/portal/clinician/consultations"), {
+			run(loader("clinician.doctor.consultations")("/portal/doctor/consultations"), {
 				principal: DOCTOR,
 				layer: consultationsLayer({ list: forbidden }),
 			}),
 		).resolves.toEqual([]);
 	});
+
+	it("the secretary instance mounts the same shared loaders", async () => {
+		const rows = [{ id: 1, name: "Ana" }];
+		await expect(
+			run(loader("clinician.secretary.patients")("/portal/secretary/patients"), {
+				principal: DOCTOR,
+				layer: patientsLayer({ list: () => Effect.succeed(rows) }),
+			}),
+		).resolves.toEqual(rows);
+	});
 });
 
 describe("clinician.patients.record guard", () => {
-	const g = guard("clinician.patients.record");
+	const g = guard("clinician.doctor.patients.record");
 	const patient = { id: 5, name: "Ana" };
 	const withPatient = patientsLayer({ get: () => Effect.succeed(patient) });
 
@@ -188,7 +198,7 @@ describe("clinician.patients.record guard", () => {
 });
 
 describe("clinician.patients.record loader", () => {
-	const l = loader("clinician.patients.record");
+	const l = loader("clinician.doctor.patients.record");
 	const patient = { id: 5, name: "Ana" };
 	const withPatient = patientsLayer({ get: () => Effect.succeed(patient) });
 
@@ -243,7 +253,7 @@ describe("clinician.patients.record loader", () => {
 });
 
 describe("clinician.consultations.record guard", () => {
-	const g = guard("clinician.consultations.record");
+	const g = guard("clinician.doctor.consultations.record");
 	const consultation = { id: 5, patientId: null };
 	const withConsultation = consultationsLayer({ get: () => Effect.succeed(consultation) });
 
@@ -288,7 +298,7 @@ describe("clinician.consultations.record guard", () => {
 });
 
 describe("clinician.consultations.record loader", () => {
-	const l = loader("clinician.consultations.record");
+	const l = loader("clinician.doctor.consultations.record");
 	const consultation = { id: 5, patientId: null };
 	const withConsultation = consultationsLayer({ get: () => Effect.succeed(consultation) });
 
@@ -367,8 +377,8 @@ describe("clinician.consultations.record loader", () => {
 });
 
 describe("clinician.activity guard", () => {
-	const g = guard("clinician.activity");
-	const ACTIVITY_PATH = "/portal/clinician/activity";
+	const g = guard("clinician.doctor.activity");
+	const ACTIVITY_PATH = "/portal/doctor/activity";
 
 	it("denies when the Audit service is absent", async () => {
 		await expect(run(g(ACTIVITY_PATH), { principal: DOCTOR, layer: Layer.empty })).resolves.toBe(
@@ -389,8 +399,8 @@ describe("clinician.activity guard", () => {
 });
 
 describe("clinician.activity loader", () => {
-	const l = loader("clinician.activity");
-	const ACTIVITY_PATH = "/portal/clinician/activity";
+	const l = loader("clinician.doctor.activity");
+	const ACTIVITY_PATH = "/portal/doctor/activity";
 	const EMPTY = { entries: [], total: 0, limit: 200 };
 
 	it("returns an empty page when the Audit service is absent", async () => {

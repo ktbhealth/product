@@ -84,6 +84,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 
 export const llmEvalPlugin = definePlugin({
 	id: "llm.eval",
+	meta: { keywords: ["eval", "llm", "services"] },
 	contributions: llmEvalContributions,
 });
 
