@@ -66,7 +66,12 @@ describe("acting as a doctor", () => {
 		stranger = await signIn("acting-stranger@x.com");
 		const [profile] = await db
 			.insert(doctors)
-			.values({ userId: doctor.id, displayName: "Dra. Acting" })
+			.values({
+				userId: doctor.id,
+				displayName: "Dra. Acting",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})
 			.returning();
 		doctorId = profile!.id;
 		await db.insert(doctorAccess).values({
@@ -74,6 +79,8 @@ describe("acting as a doctor", () => {
 			userId: secretary.id,
 			email: "acting-secretary@x.com",
 			status: "active",
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		});
 		as(doctor.cookie);
 		await createPatientFn({ data: { name: "Paciente Um", birthDate: "1984-03-05" } });

@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "./table.ts";
 
 /**
  * Runtime plugin state (P-058): host/platform-owned, NOT a plugin table —

@@ -550,6 +550,7 @@ describe("bridge endpoints (F3b)", () => {
 			tokenHash: "deadbeef",
 			createdBy: "u1",
 			expiresAt: new Date(Date.now() - 1_000),
+			createdAt: new Date(),
 		});
 		expect((await run(Effect.flatMap(AiEndpoints, (s) => s.bridgeStatus(id))))?.status).toBe(
 			"offline",
@@ -646,6 +647,7 @@ describe("agent links (F4)", () => {
 			tokenHash: "expired-hash",
 			createdBy: "u1",
 			expiresAt: new Date(Date.now() - 1_000),
+			createdAt: new Date(),
 		});
 		const links = await run(Effect.flatMap(AiEndpoints, (s) => s.listAgentLinks()));
 		expect(links).toHaveLength(2);

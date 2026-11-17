@@ -37,22 +37,70 @@ CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DE
 
 const seed = async (db: DbClient) => {
 	await db.insert(roles).values([
-		{ id: 1, name: "auditor", description: null, meta: null },
-		{ id: 2, name: "billing", description: null, meta: null },
-		{ id: 3, name: "temp", description: null, meta: null },
+		{
+			id: 1,
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		},
+		{
+			id: 2,
+			name: "billing",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		},
+		{
+			id: 3,
+			name: "temp",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		},
 	]);
 	await db.insert(rolePermissions).values([
-		{ roleId: 1, resource: "patient", action: "read", effect: "allow" },
-		{ roleId: 1, resource: "patient", action: "delete", effect: "deny" },
-		{ roleId: 2, resource: "billing", action: "manage", effect: "allow" },
-		{ roleId: 3, resource: "consultation", action: "read", effect: "allow" },
+		{ roleId: 1, resource: "patient", action: "read", effect: "allow", createdAt: new Date(0) },
+		{ roleId: 1, resource: "patient", action: "delete", effect: "deny", createdAt: new Date(0) },
+		{ roleId: 2, resource: "billing", action: "manage", effect: "allow", createdAt: new Date(0) },
+		{
+			roleId: 3,
+			resource: "consultation",
+			action: "read",
+			effect: "allow",
+			createdAt: new Date(0),
+		},
 	]);
 	await db.insert(subjectRoles).values([
 		// u1: auditor globally + billing inside tenant t1
-		{ subjectKind: "user", subjectId: "u1", roleId: 1, tenantId: null, grantedBy: "admin" },
-		{ subjectKind: "user", subjectId: "u1", roleId: 2, tenantId: "t1", grantedBy: "admin" },
+		{
+			subjectKind: "user",
+			subjectId: "u1",
+			roleId: 1,
+			tenantId: null,
+			grantedBy: "admin",
+			createdAt: new Date(0),
+		},
+		{
+			subjectKind: "user",
+			subjectId: "u1",
+			roleId: 2,
+			tenantId: "t1",
+			grantedBy: "admin",
+			createdAt: new Date(0),
+		},
 		// g9: auditor globally
-		{ subjectKind: "group", subjectId: "9", roleId: 1, tenantId: null, grantedBy: "admin" },
+		{
+			subjectKind: "group",
+			subjectId: "9",
+			roleId: 1,
+			tenantId: null,
+			grantedBy: "admin",
+			createdAt: new Date(0),
+		},
 		// u2: temp role, already expired
 		{
 			subjectKind: "user",
@@ -61,6 +109,7 @@ const seed = async (db: DbClient) => {
 			tenantId: null,
 			grantedBy: "admin",
 			expiresAt: new Date(Date.now() - 1000),
+			createdAt: new Date(0),
 		},
 		// u3: temp role expiring in the future
 		{
@@ -70,6 +119,7 @@ const seed = async (db: DbClient) => {
 			tenantId: null,
 			grantedBy: "admin",
 			expiresAt: new Date(Date.now() + 60_000),
+			createdAt: new Date(0),
 		},
 	]);
 };
@@ -182,6 +232,7 @@ describe("buildPermissions", () => {
 			roleId: 1,
 			tenantId: null,
 			grantedBy: "test",
+			createdAt: new Date(0),
 		});
 		await Effect.runPromise(p.invalidate());
 		const after = await Effect.runPromise(p.permissionsFor("u9"));
@@ -200,16 +251,38 @@ describe("buildPermissions", () => {
 		// u5 holds two roles that both allow patient.read — the second
 		// row must not overwrite the first (deny-wins ordering stays
 		// stable regardless of row order).
-		await db.insert(roles).values({ id: 4, name: "auditor2", description: null, meta: null });
+		await db.insert(roles).values({
+			id: 4,
+			name: "auditor2",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
 		await db.insert(rolePermissions).values({
 			roleId: 4,
 			resource: "patient",
 			action: "read",
 			effect: "allow",
+			createdAt: new Date(0),
 		});
 		await db.insert(subjectRoles).values([
-			{ subjectKind: "user", subjectId: "u5", roleId: 1, tenantId: null, grantedBy: "test" },
-			{ subjectKind: "user", subjectId: "u5", roleId: 4, tenantId: null, grantedBy: "test" },
+			{
+				subjectKind: "user",
+				subjectId: "u5",
+				roleId: 1,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			{
+				subjectKind: "user",
+				subjectId: "u5",
+				roleId: 4,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
 		]);
 		const p = buildPermissions(db);
 		const grants = await Effect.runPromise(p.permissionsFor("u5"));
@@ -228,6 +301,7 @@ describe("buildPermissions", () => {
 				tenantId: null,
 				grantedBy: "test",
 				expiresAt: new Date(Date.now() + 30_000),
+				createdAt: new Date(0),
 			},
 			{
 				subjectKind: "user",
@@ -236,6 +310,7 @@ describe("buildPermissions", () => {
 				tenantId: null,
 				grantedBy: "test",
 				expiresAt: new Date(Date.now() + 90_000),
+				createdAt: new Date(0),
 			},
 		]);
 		const p = buildPermissions(db);

@@ -221,6 +221,7 @@ describe("patients repo", () => {
 				type: "dni",
 				country: "AR",
 				number: "30123456",
+				createdAt: new Date(),
 			});
 			const row = await getPatient(db, p!.id);
 			expect(row).toMatchObject({ cpf: "52998224725" });

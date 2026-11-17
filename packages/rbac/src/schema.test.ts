@@ -34,6 +34,8 @@ describe("rbac schema", () => {
 			name: "auditor",
 			description: null,
 			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
 		});
 		await db.update(roles).set({ description: "RO" }).where(eq(roles.id, 1));
 		const row = await db.select().from(roles).where(eq(roles.id, 1));

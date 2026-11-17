@@ -260,6 +260,13 @@
       "when": 1794872836727,
       "tag": "0037_tidy_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1794878725232,
+      "tag": "0038_magical_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

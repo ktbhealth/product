@@ -1,5 +1,5 @@
-import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { relations } from "drizzle-orm";
+import { sqliteTable, text, integer, index } from "./table.ts";
 
 // Host-owned by @ktb/db (not a plugin slice) to break the @ktb/db ↔
 // package workspace cycle — consumers import this from `@ktb/db/schema`.
@@ -14,11 +14,8 @@ export const user = sqliteTable("user", {
 	// setUserBanned; Auth.getSession returns null while true and all
 	// session rows are revoked on ban.
 	banned: integer("banned", { mode: "boolean" }).default(false).notNull(),
-	createdAt: integer("created_at", { mode: "timestamp_ms" })
-		.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-		.notNull(),
+	createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-		.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 		.$onUpdate(() => /* @__PURE__ */ new Date())
 		.notNull(),
 });
@@ -29,9 +26,7 @@ export const session = sqliteTable(
 		id: text("id").primaryKey(),
 		expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 		token: text("token").notNull().unique(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
 			.$onUpdate(() => /* @__PURE__ */ new Date())
 			.notNull(),
@@ -64,9 +59,7 @@ export const account = sqliteTable(
 		}),
 		scope: text("scope"),
 		password: text("password"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
 			.$onUpdate(() => /* @__PURE__ */ new Date())
 			.notNull(),
@@ -81,11 +74,8 @@ export const verification = sqliteTable(
 		identifier: text("identifier").notNull(),
 		value: text("value").notNull(),
 		expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 			.$onUpdate(() => /* @__PURE__ */ new Date())
 			.notNull(),
 	},
@@ -116,9 +106,7 @@ export const apikey = sqliteTable(
 		remaining: integer("remaining"),
 		lastRequest: integer("last_request", { mode: "timestamp_ms" }),
 		expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" })
 			.$onUpdate(() => /* @__PURE__ */ new Date())
 			.notNull(),
