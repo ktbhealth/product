@@ -87,6 +87,20 @@ export const platformDashboard = () =>
 				.includeAll(true)
 				.allValue(".*"),
 		)
+		.withVariable(
+			new QueryVariableBuilder("plugin")
+				.label("Plugin package")
+				.description(
+					"Plugin package id recorded on ktb_plugin_* metrics — the pkg stamp on discovered plugins (e.g. notifications, patients).",
+				)
+				.datasource(DS_PROMETHEUS)
+				.query("label_values(ktb_plugin_invocations_total, plugin)")
+				.refresh(VariableRefresh.OnDashboardLoad)
+				.sort(VariableSort.AlphabeticalAsc)
+				.multi(true)
+				.includeAll(true)
+				.allValue(".*"),
+		)
 		// ---- Header links -------------------------------------------------
 		.link(
 			new DashboardLinkBuilder("Traces (Tempo)")
@@ -591,6 +605,98 @@ export const platformDashboard = () =>
 							"A",
 							"sum by (context, result) (rate(ktb_session_context_lookups_total[$__rate_interval]))",
 							"{{context}}/{{result}}",
+						),
+					),
+			),
+		)
+		// ---- Row: Plugin SLOs ----------------------------------------------
+		.withRow(
+			new RowBuilder("Plugin SLOs")
+				.id(24)
+				.gridPos(grid(0, 56, 24, 1))
+				.collapsed(false),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(25)
+					.title("Plugin dispatch rate by plugin/side")
+					.description(
+						"ktb_plugin_invocations_total rate per plugin package and CQRS side — which plugins carry the dispatch traffic.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(0, 57, 6, 8))
+					.unit("ops")
+					.decimals(2)
+					.withTarget(
+						prom(
+							"A",
+							'sum by (plugin, side) (rate(ktb_plugin_invocations_total{plugin=~"$plugin"}[$__rate_interval]))',
+							"{{plugin}}/{{side}}",
+						),
+					),
+			),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(26)
+					.title("Plugin p95 duration by plugin")
+					.description(
+						"p95 dispatch wall time per plugin package (ktb_plugin_duration_ms) — the 'which plugin is slow' panel. Includes gate-blocked dispatches; their cost is the PluginStates read.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(6, 57, 6, 8))
+					.unit("ms")
+					.decimals(0)
+					.withTarget(
+						prom(
+							"A",
+							'histogram_quantile(0.95, sum by (le, plugin) (rate(ktb_plugin_duration_ms_bucket{plugin=~"$plugin"}[$__rate_interval])))',
+							"{{plugin}}",
+						),
+					),
+			),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(27)
+					.title("Plugin error ratio by plugin")
+					.description(
+						"Share of dispatches ending in failure per plugin (ktb_plugin_invocations_total outcome=error). outcome=disabled is excluded from both sides — gate-blocked traffic is not handler error. Effect failures, not HTTP 5xx.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(12, 57, 6, 8))
+					.unit("percentunit")
+					.decimals(2)
+					.max(1)
+					.withTarget(
+						prom(
+							"A",
+							'sum by (plugin) (rate(ktb_plugin_invocations_total{plugin=~"$plugin",outcome="error"}[$__rate_interval])) / sum by (plugin) (rate(ktb_plugin_invocations_total{plugin=~"$plugin",outcome=~"success|error"}[$__rate_interval]))',
+							"{{plugin}}",
+						),
+					),
+			),
+		)
+		.withPanel(
+			timeseriesStyle(
+				new TimeseriesPanelBuilder()
+					.id(28)
+					.title("Plugin invocations by outcome")
+					.description(
+						"ktb_plugin_invocations_total split by outcome (success | error | disabled). A disabled share means callers are still dispatching into toggled-off packages — the gate blocks them, but the traffic is real.",
+					)
+					.datasource(DS_PROMETHEUS)
+					.gridPos(grid(18, 57, 6, 8))
+					.unit("ops")
+					.decimals(2)
+					.withTarget(
+						prom(
+							"A",
+							'sum by (plugin, outcome) (rate(ktb_plugin_invocations_total{plugin=~"$plugin"}[$__rate_interval]))',
+							"{{plugin}}/{{outcome}}",
 						),
 					),
 			),
