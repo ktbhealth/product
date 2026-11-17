@@ -25,7 +25,7 @@ const fns = vi.hoisted(() => ({
 			ok: true,
 			data: {
 				command:
-					'bunx @ktb/ai-bridge connect https://app.test/api/ai/bridge?token=tok123 --cmd "claude agent acp"',
+					'bun /repo/packages/ai-bridge/src/cli.ts connect https://app.test/api/ai/bridge?token=tok123 --cmd "bunx @agentclientprotocol/claude-agent-acp"',
 				expiresAt: new Date("2026-11-01T10:15:00Z"),
 			},
 		}),
@@ -410,14 +410,14 @@ describe("EndpointsPage — acp transport", () => {
 		expect(screen.getByText(/child\/ssh need the Node runtime/)).toBeTruthy();
 		await user.click(screen.getByLabelText("Transport"));
 		await user.click(await screen.findByRole("option", { name: "ssh" }));
-		await user.type(screen.getByPlaceholderText("claude agent acp"), "claude agent acp --verbose");
+		await user.type(screen.getByPlaceholderText("claude-agent-acp"), "claude-agent-acp --verbose");
 		await user.type(screen.getByPlaceholderText("user@host"), "me@gpu-box");
 		await user.click(screen.getByText("Save"));
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
 			kind: "acp",
 			transport: "ssh",
-			agentCmd: "claude agent acp --verbose",
+			agentCmd: "claude-agent-acp --verbose",
 			sshHost: "me@gpu-box",
 		});
 	});
@@ -455,7 +455,7 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		expect(screen.getAllByText("Connect via bridge")).toHaveLength(1);
 	});
 
-	it("mints the one-shot command, shows it once, polls status, and copies", async () => {
+	it("mints the connect command, shows it once, polls status, and copies", async () => {
 		const user = userEvent.setup();
 		// userEvent installs its own clipboard stub on setup — spy on
 		// the instance it left behind rather than racing it.
@@ -465,7 +465,7 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		await waitFor(() => expect(fns.createBridgeLinkFn).toHaveBeenCalledWith({ data: { id: 7 } }));
 		const commandInput = (await screen.findByDisplayValue(/token=tok123/)) as HTMLInputElement;
 		expect(commandInput.value).toContain("https://app.test/api/ai/bridge?token=tok123");
-		expect(commandInput.value).toContain('--cmd "claude agent acp"');
+		expect(commandInput.value).toContain('--cmd "bunx @agentclientprotocol/claude-agent-acp"');
 		// Status poll ran once on open — waiting by default.
 		await waitFor(() =>
 			expect(fns.endpointBridgeStatusFn).toHaveBeenCalledWith({ data: { id: 7 } }),

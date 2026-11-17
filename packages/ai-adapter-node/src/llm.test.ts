@@ -275,14 +275,14 @@ describe("resolveNodeAcp", () => {
 			resolve({ kind: "acp", baseUrl: "x", transport: "child", agentCmd: "   " }),
 		).rejects.toMatchObject({ message: expect.stringContaining("require agentCmd") });
 		await expect(
-			resolve({ kind: "acp", baseUrl: "x", transport: "ssh", agentCmd: "claude agent acp" }),
+			resolve({ kind: "acp", baseUrl: "x", transport: "ssh", agentCmd: "claude-agent-acp" }),
 		).rejects.toMatchObject({ message: expect.stringContaining("require sshHost") });
 		await expect(
 			resolve({
 				kind: "acp",
 				baseUrl: "x",
 				transport: "ssh",
-				agentCmd: "claude agent acp",
+				agentCmd: "claude-agent-acp",
 				sshHost: " ",
 			}),
 		).rejects.toMatchObject({ message: expect.stringContaining("require sshHost") });
@@ -296,7 +296,7 @@ describe("resolveNodeAcp", () => {
 				kind: "acp",
 				baseUrl: "x",
 				transport: "child",
-				agentCmd: "claude agent acp",
+				agentCmd: "claude-agent-acp",
 				sessionId: "sess-7",
 				timeoutMs: 9_000,
 			},
@@ -310,7 +310,7 @@ describe("resolveNodeAcp", () => {
 		);
 		expect(out.text).toBe("child-ok");
 		expect(out.record.runId).toBe("sess-7");
-		expect(captured[0]).toEqual(["claude", "agent", "acp"]);
+		expect(captured[0]).toEqual(["claude-agent-acp"]);
 	});
 
 	it("spawns ssh <host> <cmd> for ssh descriptors", async () => {

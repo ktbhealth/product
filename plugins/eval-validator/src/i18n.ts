@@ -16,7 +16,9 @@ const BASE_LOCALE: EvalLocale = "en";
 export interface EvalMessages {
 	readonly title: string;
 	readonly description: string;
-	readonly generate: string;
+	readonly stepPersonas: string;
+	readonly stepGenerate: string;
+	readonly stepRunEval: string;
 	readonly runEval: string;
 	readonly view: string;
 	readonly approve: string;
@@ -24,17 +26,17 @@ export interface EvalMessages {
 	readonly pending: string;
 	readonly approved: string;
 	readonly rejected: string;
-	readonly personas: string;
+	readonly items: string;
+	readonly generating: string;
 	readonly doctor: string;
 	readonly voices: string;
 	readonly feedbackPlaceholder: string;
 	readonly feedback: string;
 	readonly run: string;
 	readonly samplesOf: string;
-	readonly emptyBatches: string;
-	readonly emptyPersonas: string;
+	readonly emptyCohorts: string;
+	readonly emptyItems: string;
 	readonly moreTurns: string;
-	readonly minutesLabel: string;
 	readonly actionFailed: string;
 	readonly synthetic: string;
 	readonly deleteRun: string;
@@ -47,9 +49,12 @@ export interface EvalMessages {
 }
 
 const en: EvalMessages = {
-	title: "Eval validator",
-	description: "Generate persona cohorts, review them, then run the eval and inspect metrics.",
-	generate: "Generate personas",
+	title: "Run eval",
+	description:
+		"Review the generated consultations of a cohort, approve them, then run the eval and inspect per-stage metrics.",
+	stepPersonas: "1 · Personas",
+	stepGenerate: "2 · Generate consultations",
+	stepRunEval: "3 · Run eval",
 	runEval: "Run eval",
 	view: "View",
 	approve: "Approve",
@@ -57,17 +62,17 @@ const en: EvalMessages = {
 	pending: "pending",
 	approved: "approved",
 	rejected: "rejected",
-	personas: "personas",
+	items: "consultations",
+	generating: "generating",
 	doctor: "Doctor",
 	voices: "voices",
 	feedbackPlaceholder: "feedback (optional)",
 	feedback: "Feedback",
 	run: "Run",
 	samplesOf: "samples",
-	emptyBatches: "No persona batches yet — generate one to start reviewing.",
-	emptyPersonas: "Select a batch to review its personas.",
+	emptyCohorts: "No cohorts yet — generate consultations on step 2 first.",
+	emptyItems: "Select a cohort to review its consultations.",
 	moreTurns: "more turns",
-	minutesLabel: "Interview length (min)",
 	actionFailed: "Action failed — check your permissions and try again.",
 	synthetic: "synthetic",
 	deleteRun: "Delete run",
@@ -81,9 +86,12 @@ const en: EvalMessages = {
 
 const ptBR: EvalMessages = {
 	...en,
-	title: "Validador de eval",
-	description: "Gere personas, revise-as, depois rode o eval e inspecione as métricas.",
-	generate: "Gerar personas",
+	title: "Rodar eval",
+	description:
+		"Revise as consultas geradas de uma coorte, aprove-as, depois rode o eval e inspecione as métricas por estágio.",
+	stepPersonas: "1 · Personas",
+	stepGenerate: "2 · Gerar consultas",
+	stepRunEval: "3 · Rodar eval",
 	runEval: "Rodar eval",
 	view: "Ver",
 	approve: "Aprovar",
@@ -91,16 +99,16 @@ const ptBR: EvalMessages = {
 	pending: "pendentes",
 	approved: "aprovadas",
 	rejected: "rejeitadas",
-	personas: "personas",
+	items: "consultas",
+	generating: "gerando",
 	doctor: "Médico",
 	voices: "vozes",
 	feedbackPlaceholder: "feedback (opcional)",
 	run: "Run",
 	samplesOf: "amostras",
-	emptyBatches: "Nenhuma coorte ainda — gere uma para começar a revisão.",
-	emptyPersonas: "Selecione uma coorte para revisar as personas.",
+	emptyCohorts: "Nenhuma coorte ainda — gere consultas na etapa 2 primeiro.",
+	emptyItems: "Selecione uma coorte para revisar as consultas.",
 	moreTurns: "turnos a mais",
-	minutesLabel: "Duração da entrevista (min)",
 	actionFailed: "Ação falhou — verifique suas permissões e tente novamente.",
 	synthetic: "sintético",
 	deleteRun: "Excluir run",
@@ -112,7 +120,13 @@ const ptBR: EvalMessages = {
 	edits: "edições",
 };
 
-const es: EvalMessages = { ...en };
+const es: EvalMessages = {
+	...en,
+	title: "Ejecutar eval",
+	stepPersonas: "1 · Personas",
+	stepGenerate: "2 · Generar consultas",
+	stepRunEval: "3 · Ejecutar eval",
+};
 
 const CATALOGS: Record<EvalLocale, EvalMessages> = { en, "pt-BR": ptBR, es };
 

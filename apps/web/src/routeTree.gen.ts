@@ -61,16 +61,6 @@ const indexRoute = indexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiThemeDotassetsRoute = ApiThemeDotassetsRouteImport.update({
-  id: '/api/theme/assets',
-  path: '/api/theme/assets',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiThemeDotfontsRoute = ApiThemeDotfontsRouteImport.update({
-  id: '/api/theme/fonts',
-  path: '/api/theme/fonts',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const splatRoute = splatRouteImport.update({
   id: '/$',
   path: '/$',
@@ -250,6 +240,16 @@ const ApiCdnSplatRoute = ApiCdnSplatRouteImport.update({
   path: '/api/cdn/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiThemeDotassetsRoute = ApiThemeDotassetsRouteImport.update({
+  id: '/api/theme/assets',
+  path: '/api/theme/assets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiThemeDotfontsRoute = ApiThemeDotfontsRouteImport.update({
+  id: '/api/theme/fonts',
+  path: '/api/theme/fonts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PatientsIdIndexRoute = PatientsIdIndexRouteImport.update({
   id: '/patients/$id/',
   path: '/patients/$id/',
@@ -336,10 +336,6 @@ export interface FileRoutesByFullPath {
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
-  '/api/theme/assets': typeof ApiThemeDotassetsRoute
-  '/api/theme/fonts': typeof ApiThemeDotfontsRoute
-  '/api/theme/assets': typeof ApiThemeDotassetsRoute
-  '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
@@ -385,6 +381,8 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
+  '/api/theme/assets': typeof ApiThemeDotassetsRoute
+  '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
@@ -432,6 +430,8 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
+  '/api/theme/assets': typeof ApiThemeDotassetsRoute
+  '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
   '/portal/consultations/$id': typeof PortalConsultationsDotidRoute
@@ -482,10 +482,6 @@ export interface FileRouteTypes {
     | '/api/cdn/$'
     | '/api/theme/assets'
     | '/api/theme/fonts'
-    | '/api/theme/assets'
-    | '/api/theme/fonts'
-    | '/api/theme/assets'
-    | '/api/theme/fonts'
     | '/patients/$id/edit'
     | '/portal/$instance/$'
     | '/portal/consultations/$id'
@@ -531,6 +527,8 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
+    | '/api/theme/assets'
+    | '/api/theme/fonts'
     | '/patients/$id/edit'
     | '/portal/$instance/$'
     | '/portal/consultations/$id'
@@ -577,6 +575,8 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
+    | '/api/theme/assets'
+    | '/api/theme/fonts'
     | '/patients/$id/edit'
     | '/portal/$instance/$'
     | '/portal/consultations/$id'
@@ -640,20 +640,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof indexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/theme/assets': {
-      id: '/api/theme/assets'
-      path: '/api/theme/assets'
-      fullPath: '/api/theme/assets'
-      preLoaderRoute: typeof ApiThemeDotassetsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/theme/fonts': {
-      id: '/api/theme/fonts'
-      path: '/api/theme/fonts'
-      fullPath: '/api/theme/fonts'
-      preLoaderRoute: typeof ApiThemeDotfontsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$': {
@@ -899,6 +885,20 @@ declare module '@tanstack/react-router' {
       path: '/api/cdn/$'
       fullPath: '/api/cdn/$'
       preLoaderRoute: typeof ApiCdnSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/theme/assets': {
+      id: '/api/theme/assets'
+      path: '/api/theme/assets'
+      fullPath: '/api/theme/assets'
+      preLoaderRoute: typeof ApiThemeDotassetsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/theme/fonts': {
+      id: '/api/theme/fonts'
+      path: '/api/theme/fonts'
+      fullPath: '/api/theme/fonts'
+      preLoaderRoute: typeof ApiThemeDotfontsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/patients/$id/': {

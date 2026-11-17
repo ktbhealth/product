@@ -30,7 +30,7 @@ export const aiEndpoint = sqliteTable(
 		 * transports need a Node-runtime driver. */
 		transport: text(),
 		/** Agent command for child/ssh ACP transports — e.g.
-		 * "claude agent acp". Spawned by @ktb/ai-adapter-node. */
+		 * "claude-agent-acp". Spawned by @ktb/ai-adapter-node. */
 		agentCmd: text("agent_cmd"),
 		/** SSH target (user@host) for the ssh transport — agentCmd runs
 		 * on that host. */
@@ -52,15 +52,19 @@ export const aiEndpoint = sqliteTable(
 export type AiEndpoint = typeof aiEndpoint.$inferSelect;
 
 /**
- * `ai_agent_link` — one-shot connect links for the ACP bridge (F3b).
+ * `ai_agent_link` — bearer connect links for the ACP bridge (F3b).
  * `createBridgeLinkFn` mints a 128-bit token, stores only its SHA-256
  * (raw token shown once, never persisted) and hands the admin the
- * `ai-bridge connect` command. `GET /api/ai/bridge?token=` consumes the
- * link (`used_at` set, ~15min expiry) and upgrades to the endpoint's
- * AcpBridge durable object. The agent command itself is NEVER stored
- * or sent by the server — it is a local `--cmd` flag on the CLI.
- * `revoked_at` (F4) marks a link the admin pulled from the Agents
- * page — the row stays for audit, the token dies for future upgrades.
+ * `ai-bridge connect` command. `GET /api/ai/bridge?token=` upgrades to
+ * the endpoint's AcpBridge durable object — the token is a session
+ * bearer valid for upgrades until `expires_at` (~15min) or
+ * `revoked_at`, so the CLI can reconnect after a socket drop.
+ * `used_at` stamps the FIRST upgrade for audit (Agents page "Used"
+ * column + status flip) — it does NOT gate reconnects. The agent
+ * command itself is NEVER stored or sent by the server — it is a local
+ * `--cmd` flag on the CLI. `revoked_at` (F4) marks a link the admin
+ * pulled from the Agents page — the row stays for audit, the token
+ * dies for future upgrades.
  */
 export const aiAgentLink = sqliteTable(
 	"ai_agent_link",

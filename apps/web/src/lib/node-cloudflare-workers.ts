@@ -71,6 +71,22 @@ const ENV_KEYS = [
 	"SMTP_URL",
 	"EMAIL_FROM",
 	"EMAIL_STUB",
+	// Eval pipeline drivers (eval-adapter-local): runner dir + ASR
+	// service gate evalRunnerLocalDriver/evalArtifactsLocalDriver;
+	// EVAL_ACP_URL gates the generative script path; SYSTEMONE is the
+	// alternative ASR provider. Without these the shim can never bind
+	// the drivers — validator runs would stay `queued` forever.
+	"EVAL_RUNNER_DIR",
+	"EVAL_ASR_BASE_URL",
+	"EVAL_ASR_TIMEOUT_MS",
+	"EVAL_ACP_URL",
+	"EVAL_KEY",
+	"EVAL_SYSTEMONE_URL",
+	"EVAL_SYSTEMONE_MODEL",
+	// Optional override for the minted `ai-bridge connect` argv prefix
+	// (see ServerRuntime.aiBridgeCli); platform.ts auto-resolves the
+	// repo's cli.ts under vite dev, this is the explicit escape hatch.
+	"AI_BRIDGE_CLI",
 	// Every ObservabilityEnv key — telemetryConfigFromEnv reads them off
 	// the worker env, so dev:node must forward the full canonical list
 	// (single source in @ktb/observability, pinned by its tests).

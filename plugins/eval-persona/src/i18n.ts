@@ -13,6 +13,9 @@ export interface EvalLabMessages {
 	readonly personasDesc: string;
 	readonly instancesTitle: string;
 	readonly instancesDesc: string;
+	readonly stepPersonas: string;
+	readonly stepGenerate: string;
+	readonly stepRunEval: string;
 	readonly newPersona: string;
 	readonly newInstance: string;
 	readonly edit: string;
@@ -79,6 +82,9 @@ const en: EvalLabMessages = {
 	personasDesc: "Curated persona definitions — the eval setup each instance can pick.",
 	instancesTitle: "Instances",
 	instancesDesc: "Generation runs: pick personas or sample randomly, then generate.",
+	stepPersonas: "1 · Personas",
+	stepGenerate: "2 · Generate consultations",
+	stepRunEval: "3 · Run eval",
 	newPersona: "New persona",
 	newInstance: "New instance",
 	edit: "Edit",
@@ -171,6 +177,9 @@ const ptBR: EvalLabMessages = {
 	personasDesc: "Definições de personas — o setup que cada instância pode selecionar.",
 	instancesTitle: "Instâncias",
 	instancesDesc: "Execuções de geração: selecione personas ou sorteie, depois gere.",
+	stepPersonas: "1 · Personas",
+	stepGenerate: "2 · Gerar consultas",
+	stepRunEval: "3 · Rodar eval",
 	newPersona: "Nova persona",
 	newInstance: "Nova instância",
 	edit: "Editar",
@@ -298,6 +307,9 @@ const es: EvalLabMessages = {
 		pediatrics: "Pediatría",
 	},
 	instancesTitle: "Instancias",
+	stepPersonas: "1 · Personas",
+	stepGenerate: "2 · Generar consultas",
+	stepRunEval: "3 · Ejecutar eval",
 	newPersona: "Nueva persona",
 	newInstance: "Nueva instancia",
 	edit: "Editar",

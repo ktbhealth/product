@@ -131,9 +131,21 @@ const telemetryMiddleware = createMiddleware().server(
 
 		// Echo correlation ids back so clients/support can quote them.
 		// Response headers on a constructed Response are mutable pre-send.
-		if (response) {
-			response.headers.set("x-request-id", requestId);
-			if (traceparent !== undefined) response.headers.set("x-traceparent", traceparent);
+		// Two exceptions, both best-effort rather than fatal:
+		//   - 101 upgrade responses (the ACP bridge's DO handoff) —
+		//     workerd marks their headers immutable; touching them throws
+		//     "Can't modify immutable headers" AFTER the 101 is already
+		//     logged, which used to kill the socket pre-handshake.
+		//   - any other runtime-owned passthrough (a subrequest Response
+		//     returned unwrapped) — same immutability guard.
+		if (response && response.status !== 101) {
+			try {
+				response.headers.set("x-request-id", requestId);
+				if (traceparent !== undefined) response.headers.set("x-traceparent", traceparent);
+			} catch {
+				// Immutable-header response (runtime-owned) — the
+				// correlation echo is not worth breaking the request.
+			}
 		}
 		return result;
 	},

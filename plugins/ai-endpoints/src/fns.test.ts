@@ -121,6 +121,8 @@ describe("ai-endpoints fns", () => {
 				)) as ServerRuntime["runAs"],
 			audioTranscribeModel: "test-model",
 			getLocale: () => "en",
+			// Dev-style argv prefix — the repo's unpublished CLI source.
+			aiBridgeCli: "bun /repo/packages/ai-bridge/src/cli.ts",
 		});
 	});
 
@@ -189,7 +191,7 @@ describe("ai-endpoints fns", () => {
 					kind: "acp",
 					baseUrl: "u2",
 					transport: "ssh",
-					agentCmd: "claude agent acp",
+					agentCmd: "claude-agent-acp",
 					sshHost: "me@gpu-box",
 				},
 			}),
@@ -200,7 +202,7 @@ describe("ai-endpoints fns", () => {
 		const listed = await listEndpointsFn({ data: undefined });
 		expect(listed.ok && listed.data[0]?.kind).toBe("acp");
 		expect(listed.ok && listed.data[0]).toMatchObject({
-			agentCmd: "claude agent acp",
+			agentCmd: "claude-agent-acp",
 			sshHost: "me@gpu-box",
 		});
 
@@ -254,9 +256,9 @@ describe("ai-endpoints fns", () => {
 		const link = await createBridgeLinkFn({ data: { id } });
 		expect(link.ok).toBe(true);
 		if (!link.ok || link.data === null) return;
-		expect(link.data.command).toContain("bunx @ktb/ai-bridge connect ");
+		expect(link.data.command).toContain("bun /repo/packages/ai-bridge/src/cli.ts connect ");
 		expect(link.data.command).toContain("https://app.test/api/ai/bridge?token=");
-		expect(link.data.command).toContain('--cmd "claude agent acp"');
+		expect(link.data.command).toContain('--cmd "bunx @agentclientprotocol/claude-agent-acp"');
 		expect(link.data.expiresAt).toBeInstanceOf(Date);
 
 		// A minted-but-unconsumed link flips the badge to waiting.

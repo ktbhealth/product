@@ -17,7 +17,6 @@ const detail: unknown = {
 	total: 2,
 	done: 2,
 	pct: 100,
-	batchId: 7,
 	createdBy: null,
 	createdAt: new Date(),
 	items: [
@@ -25,7 +24,6 @@ const detail: unknown = {
 			id: 1,
 			instanceId: 1,
 			personaDefId: null,
-			evalPersonaId: 11,
 			persona: { name: "Maria", region: "northeast", ageBand: "elderly", register: "colloquial" },
 			status: "done",
 			error: null,
@@ -34,7 +32,6 @@ const detail: unknown = {
 			id: 2,
 			instanceId: 1,
 			personaDefId: null,
-			evalPersonaId: 12,
 			persona: { name: "João", region: "south", ageBand: "adult", register: "neutral" },
 			status: "error",
 			error: "llm down",
@@ -67,9 +64,16 @@ const epFns = vi.hoisted(() => ({
 	})),
 }));
 vi.mock("@ktb/ai-endpoints/fns", () => epFns);
-vi.mock("@tanstack/react-router", () => ({
-	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
-}));
+vi.mock("@tanstack/react-router", async () => {
+	const React = await import("react");
+	return {
+		useRouter: () => ({ invalidate: vi.fn<() => void>() }),
+		// EvalSteps renders Link — degrade it to a plain anchor outside
+		// a router.
+		Link: ({ to, ...props }: Record<string, unknown>) =>
+			React.createElement("a", { ...props, href: String(to) }, props.children as never),
+	};
+});
 
 import type { EndpointCard } from "@ktb/ai-endpoints";
 
@@ -86,12 +90,11 @@ const instance: InstanceCard = {
 	status: "draft",
 	total: 2,
 	done: 0,
-	batchId: null,
 	createdBy: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 };
 
-const readyInstance: InstanceCard = { ...instance, status: "ready", done: 2, batchId: 7 };
+const readyInstance: InstanceCard = { ...instance, status: "ready", done: 2 };
 
 const endpoint: EndpointCard = {
 	id: 2,
@@ -247,7 +250,6 @@ describe("InstancesPage", () => {
 						id: 9,
 						instanceId: 1,
 						personaDefId: 4,
-						evalPersonaId: null,
 						persona: null,
 						status: "pending",
 						error: null,

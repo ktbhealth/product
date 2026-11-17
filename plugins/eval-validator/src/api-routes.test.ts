@@ -16,8 +16,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { EVAL_VALIDATOR_TEST_DDL, EvalValidatorLive } from "./index.ts";
-import { evalPersona, evalRun, evalRunSample } from "./schema.ts";
+import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
+import { EvalValidatorLive } from "./index.ts";
+import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
+import { evalRun, evalRunSample } from "./schema.ts";
 import { Route } from "./api-routes/eval.$sampleId.audio.ts";
 
 const handlersOf = (r: unknown) =>
@@ -65,13 +67,25 @@ const runtime = ManagedRuntime.make(
 	>,
 );
 
-const seedBatch = async () => {
-	const { evalPersonaBatch } = await import("./schema.ts");
-	const [b] = await db
-		.insert(evalPersonaBatch)
-		.values({ params: "{}", createdAt: new Date() })
+const seedItem = async () => {
+	const [inst] = await db
+		.insert(evalInstance)
+		.values({ name: "cohort", mode: "selected", params: "{}", createdAt: new Date() })
 		.returning();
-	return b!.id;
+	const [item] = await db
+		.insert(evalInstanceItem)
+		.values({
+			instanceId: inst!.id,
+			persona: "{}",
+			script: "s",
+			turns: "[]",
+			voices: "{}",
+			status: "done",
+			state: "approved",
+			createdAt: new Date(),
+		})
+		.returning();
+	return { instanceId: inst!.id, itemId: item!.id };
 };
 
 beforeAll(async () => {
@@ -95,24 +109,14 @@ beforeAll(async () => {
 	});
 
 	// Seed a finished run sample carrying an audioUri.
-	const [p] = await db
-		.insert(evalPersona)
-		.values({
-			batchId: await seedBatch(),
-			persona: "{}",
-			script: "s",
-			turns: "[]",
-			voices: "{}",
-			createdAt: new Date(),
-		})
-		.returning();
+	const seeded = await seedItem();
 	const [r] = await db
 		.insert(evalRun)
-		.values({ batchId: p!.batchId, createdAt: new Date() })
+		.values({ instanceId: seeded.instanceId, createdAt: new Date() })
 		.returning();
 	await db.insert(evalRunSample).values({
 		runId: r!.id,
-		personaId: p!.id,
+		itemId: seeded.itemId,
 		status: "ok",
 		result: JSON.stringify({ audioUri: "file:///work/a.wav" }),
 		createdAt: new Date(),

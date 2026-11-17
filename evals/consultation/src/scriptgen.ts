@@ -19,6 +19,7 @@ import { Eta } from "eta";
 
 import type {
 	AnamnesisDynamics,
+	GenderedText,
 	LocaleProfile,
 	ScriptContent,
 	ScriptPrescription,
@@ -54,6 +55,25 @@ export const rng = (seed: number) => {
 
 const pick = <T>(rand: () => number, xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
 
+/** Persona genders as the locale pools need them — patient drives
+ * self-inflections ("sou alérgica") and honorifics the doctor uses
+ * ("a senhora"); doctor drives honorifics the patient returns
+ * ("não, senhora"). Defaults keep pre-gender personas working. */
+const patientGenderOf = (persona: Persona): string => (persona.gender === "f" ? "f" : "m");
+const doctorGenderOf = (persona: Persona): string => (persona.doctor?.gender === "f" ? "f" : "m");
+
+/** Resolve a GenderedText — `by: "doctor"` entries inflect on the
+ * doctor's gender, everything else on the patient's. */
+export const genderText = (
+	t: GenderedText,
+	genders: { readonly patient: string; readonly doctor: string },
+): string =>
+	typeof t === "string"
+		? t
+		: (t.by === "doctor" ? genders.doctor : genders.patient) === "f"
+			? t.f
+			: t.m;
+
 // ---------- context builder ----------
 
 /** Builds the render context for a persona+seed. All randomness flows
@@ -77,10 +97,11 @@ export const buildScriptContext = (
 			? `${c.regionMarker[persona.region] ?? c.fallbackRegionMarker}, ${chiefComplaint}`
 			: chiefComplaint;
 
+	const genders = { patient: patientGenderOf(persona), doctor: doctorGenderOf(persona) };
 	const denyAllergy = rand() < 0.6;
 	const deny = pick(rand, c.allergyDeny);
 	const affirm = pick(rand, c.allergyAffirm);
-	const allergyAnswer = denyAllergy ? deny.text : affirm.text;
+	const allergyAnswer = denyAllergy ? deny.text : genderText(affirm.text, genders);
 
 	const rx: ScriptPrescription = pick(rand, c.prescriptions[specialty]!);
 	const entities: GoldEntity[] = [
@@ -92,9 +113,9 @@ export const buildScriptContext = (
 	];
 
 	const slots = {
-		greeting: pick(rand, c.greeting[register]!),
+		greeting: genderText(pick(rand, c.greeting[register]!), genders),
 		chief_complaint: marked,
-		allergy_question: pick(rand, c.allergyQuestion[register]!),
+		allergy_question: genderText(pick(rand, c.allergyQuestion[register]!), genders),
 		allergy_answer: allergyAnswer,
 		prescription: c.prescriptionText[register]!(rx),
 		closing: pick(rand, c.closing[register]!),
@@ -154,6 +175,8 @@ const buildAnamnesisContext = (
 	const specialty =
 		c.chiefComplaint[persona.specialty] !== undefined ? persona.specialty : "general_practice";
 
+	const genders = { patient: patientGenderOf(persona), doctor: doctorGenderOf(persona) };
+	const minor = persona.ageBand === "child" || persona.ageBand === "teen";
 	const complaint = pick(rand, c.chiefComplaint[specialty]![register]!);
 	const denyAllergy = rand() < 0.6;
 	const deny = pick(rand, c.allergyDeny);
@@ -174,12 +197,15 @@ const buildAnamnesisContext = (
 			a.hpiDetail[specialty]?.[register] ?? a.hpiDetail["general_practice"]![register]!,
 		),
 		associated: pick(rand, a.associated[specialty] ?? a.associated["general_practice"]!),
-		comorbidities: pick(rand, pick(rand, a.comorbidSets)),
+		comorbidities: genderText(pick(rand, pick(rand, a.comorbidSets)), genders),
 		currentMeds,
-		allergyAnswer: denyAllergy ? deny.text : affirm.text,
-		familyHx: pick(rand, a.familyHx),
-		habits: pick(rand, a.habits),
-		occupation: pick(rand, a.occupations),
+		allergyAnswer: denyAllergy ? deny.text : genderText(affirm.text, genders),
+		familyHx: genderText(pick(rand, a.familyHx), genders),
+		habits: pick(rand, minor ? (a.minorHabits ?? a.habits) : a.habits),
+		occupation: genderText(
+			pick(rand, minor ? (a.minorOccupations ?? a.occupations) : a.occupations),
+			genders,
+		),
 		examFindings: pick(rand, a.examFindings[specialty] ?? a.examFindings["general_practice"]!),
 		hypothesis: pick(rand, a.hypothesis[specialty] ?? a.hypothesis["general_practice"]!),
 		rx,
@@ -192,6 +218,9 @@ const buildAnamnesisContext = (
 			sat: 95 + Math.floor(rand() * 5),
 		},
 		patientTag: persona.name ?? pick(rand, a.patientTags),
+		patientGender: genders.patient,
+		doctorGender: genders.doctor,
+		minor,
 	};
 
 	const doctorRegister = persona.doctor?.register ?? "formal";

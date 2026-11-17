@@ -27,7 +27,7 @@ export const evalValidatorChromePlugin = definePlugin({
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/eval",
-					label: "Eval validator",
+					label: "3 · Run eval",
 					icon: ClipboardCheckIcon,
 					group: "Eval",
 				},
@@ -53,6 +53,7 @@ export const plugins: readonly Plugin[] = [
 		meta: { keywords: ["eval", "validator", "tables"] },
 		// Mirrors evalValidatorTablesPlugin (server index.ts) minus the
 		// tables slice — drizzle schema never reaches the client bundle.
+		requiredDeps: ["eval.persona.tables"],
 	}),
 	definePlugin({
 		id: "eval.validator.services",

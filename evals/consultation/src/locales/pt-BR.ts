@@ -1,4 +1,9 @@
-import type { AnamnesisContent, LocaleProfile, ScriptContent } from "../locale.ts";
+import type {
+	AnamnesisContent,
+	AnamnesisDynamics,
+	LocaleProfile,
+	ScriptContent,
+} from "../locale.ts";
 
 /**
  * pt-BR locale profile — the default `LocaleProfile` for the eval
@@ -106,7 +111,13 @@ const PII_PATTERNS: LocaleProfile["piiPatterns"] = [
 
 const SCRIPT: ScriptContent = {
 	greeting: {
-		formal: ["Bom dia. Sou o médico responsável pelo seu atendimento. Em que posso ajudar?"],
+		formal: [
+			{
+				by: "doctor",
+				m: "Bom dia. Sou o médico responsável pelo seu atendimento. Em que posso ajudar?",
+				f: "Bom dia. Sou a médica responsável pelo seu atendimento. Em que posso ajudar?",
+			},
+		],
 		colloquial: [
 			"Oi, bom dia! Me conta o que tá acontecendo.",
 			"Bom dia! Como posso te ajudar hoje?",
@@ -141,7 +152,12 @@ const SCRIPT: ScriptContent = {
 	},
 
 	allergyQuestion: {
-		formal: ["O senhor possui alergia conhecida a algum medicamento?"],
+		formal: [
+			{
+				m: "O senhor possui alergia conhecida a algum medicamento?",
+				f: "A senhora possui alergia conhecida a algum medicamento?",
+			},
+		],
 		colloquial: ["Você tem alergia a algum remédio?"],
 	},
 
@@ -155,8 +171,8 @@ const SCRIPT: ScriptContent = {
 	],
 
 	allergyAffirm: [
-		{ med: "penicilina", text: "sou alérgico a penicilina" },
-		{ med: "dipirona", text: "sou alérgico a dipirona" },
+		{ med: "penicilina", text: { m: "sou alérgico a penicilina", f: "sou alérgica a penicilina" } },
+		{ med: "dipirona", text: { m: "sou alérgico a dipirona", f: "sou alérgica a dipirona" } },
 	],
 
 	prescriptions: {
@@ -208,6 +224,18 @@ const SCRIPT: ScriptContent = {
 
 // ---------- long-form anamnesis ----------
 
+/** Gendered address helpers — beat lambdas interpolate these; the
+ * genders arrive on the dynamics from scriptgen (persona + doctor).
+ * Patient honorific / doctor honorific / doctor self-title /
+ * gendered welcome / patient self-inflected thanks. */
+const paddr = (d: AnamnesisDynamics) => (d.patientGender === "f" ? "a senhora" : "o senhor");
+const paddrS = (d: AnamnesisDynamics) => (d.patientGender === "f" ? "A senhora" : "O senhor");
+const daddr = (d: AnamnesisDynamics) => (d.doctorGender === "f" ? "senhora" : "senhor");
+const doutor = (d: AnamnesisDynamics) => (d.doctorGender === "f" ? "doutora" : "doutor");
+const med = (d: AnamnesisDynamics) => (d.doctorGender === "f" ? "a médica" : "o médico");
+const bv = (d: AnamnesisDynamics) => (d.patientGender === "f" ? "bem-vinda" : "bem-vindo");
+const obrigado = (d: AnamnesisDynamics) => (d.patientGender === "f" ? "obrigada" : "obrigado");
+
 const ANAMNESIS: AnamnesisContent = {
 	beats: [
 		// abertura + identificação
@@ -216,12 +244,12 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Bom dia, ${d.patientTag}. Sou o médico responsável pelo seu atendimento. Pode se acomodar. Como posso ajudar hoje?`
+						? `Bom dia, ${d.patientTag}. Sou ${med(d)} responsável pelo seu atendimento. Pode se acomodar. Como posso ajudar hoje?`
 						: `Bom dia, ${d.patientTag}! Pode sentar, fica à vontade. Me conta o que te trouxe aqui hoje?`,
 				(d, r) =>
 					r === "formal"
-						? `Bom dia, ${d.patientTag}. Seja bem-vindo. Sou o médico de plantão e vou acompanhar o senhor hoje. O que o traz ao consultório?`
-						: `Bom dia, ${d.patientTag}! Sou o médico que vai te atender hoje. O que tá pegando?`,
+						? `Bom dia, ${d.patientTag}. ${bv(d)}. Sou ${med(d)} de plantão e vou acompanhar ${paddr(d)} hoje. O que o traz ao consultório?`
+						: `Bom dia, ${d.patientTag}! Sou ${med(d)} que vai te atender hoje. O que tá pegando?`,
 			],
 		},
 		{ speaker: "patient", variants: [(d) => d.complaint] },
@@ -253,7 +281,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Certo. E como o senhor descreveria essa dor? É uma dor em peso, em pontada, em queimação?`
+						? `Certo. E como ${paddr(d)} descreveria essa dor? É uma dor em peso, em pontada, em queimação?`
 						: `E essa dor é como? Tipo um peso, uma pontada, uma queimação?`,
 			],
 		},
@@ -263,7 +291,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Numa escala de zero a dez, em que zero é ausência de dor e dez é a pior dor da sua vida, que nota o senhor daria?`
+						? `Numa escala de zero a dez, em que zero é ausência de dor e dez é a pior dor da sua vida, que nota ${paddr(d)} daria?`
 						: `De zero a dez, quanto tá essa dor agora? Zero é nada e dez é insuportável.`,
 			],
 		},
@@ -276,7 +304,7 @@ const ANAMNESIS: AnamnesisContent = {
 						: `Ah, acho que uns ${d.intensity}. Tem hora que aperta mais.`,
 				(d, r) =>
 					r === "formal"
-						? `Por volta de ${d.intensity}, senhor. De noite fica pior.`
+						? `Por volta de ${d.intensity}, ${daddr(d)}. De noite fica pior.`
 						: `Uns ${d.intensity} mais ou menos. De noite aperta mais.`,
 			],
 		},
@@ -307,7 +335,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E junto com isso, o senhor sente mais alguma coisa? Febre, enjoo, tontura, falta de ar?`
+						? `E junto com isso, ${paddr(d)} sente mais alguma coisa? Febre, enjoo, tontura, falta de ar?`
 						: `E além disso, sente mais alguma coisa junto? Febre, ânsia, tontura?`,
 			],
 		},
@@ -317,7 +345,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `O senhor já teve um episódio parecido antes, ou é a primeira vez?`
+						? `${paddrS(d)} já teve um episódio parecido antes, ou é a primeira vez?`
 						: `Já teve isso antes ou é a primeira vez?`,
 			],
 		},
@@ -339,7 +367,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `O senhor fez alguma coisa diferente esses dias? Viagem, mudança de rotina, alimentação diferente?`
+						? `${paddrS(d)} fez alguma coisa diferente esses dias? Viagem, mudança de rotina, alimentação diferente?`
 						: `Fez algo diferente esses dias? Viajou, mudou rotina, comeu diferente?`,
 			],
 		},
@@ -348,12 +376,16 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Não, senhor. A rotina foi a mesma de sempre. Só andei dormindo pior essa semana.`
+						? `Não, ${daddr(d)}. A rotina foi a mesma de sempre. Só andei dormindo pior essa semana.`
 						: `Nada diferente não. Só andei dormindo mal essa semana.`,
 				(d, r) =>
 					r === "formal"
-						? `Na verdade trabalhei bastante esses dias, muito tempo sentado e pouca pausa.`
-						: `Ah, trabalhei bastante esses dias, muito tempo sentado, sem pausa.`,
+						? d.minor
+							? `Na verdade andei jogando bastante bola esses dias, cansei bastante.`
+							: `Na verdade trabalhei bastante esses dias, muito tempo sentado e pouca pausa.`
+						: d.minor
+							? `Ah, andei jogando bola direto esses dias, cansei bastante.`
+							: `Ah, trabalhei bastante esses dias, muito tempo sentado, sem pausa.`,
 			],
 		},
 		// revisão de sistemas
@@ -369,7 +401,7 @@ const ANAMNESIS: AnamnesisContent = {
 		{
 			speaker: "patient",
 			variants: [
-				(d, r) => (r === "formal" ? `Não, senhor. Peso estável.` : `Não, peso tá o mesmo.`),
+				(d, r) => (r === "formal" ? `Não, ${daddr(d)}. Peso estável.` : `Não, peso tá o mesmo.`),
 			],
 		},
 		{
@@ -400,7 +432,9 @@ const ANAMNESIS: AnamnesisContent = {
 			speaker: "patient",
 			variants: [
 				(d, r) =>
-					r === "formal" ? `Não, senhor. A visão está normal.` : `Não, tá tudo normal com a vista.`,
+					r === "formal"
+						? `Não, ${daddr(d)}. A visão está normal.`
+						: `Não, tá tudo normal com a vista.`,
 				(d, r) =>
 					r === "formal"
 						? `Só uma vista um pouco cansada no fim do dia, nada além disso.`
@@ -418,7 +452,9 @@ const ANAMNESIS: AnamnesisContent = {
 		},
 		{
 			speaker: "patient",
-			variants: [(d, r) => (r === "formal" ? `Não, senhor. Nada disso.` : `Não, tá tudo normal.`)],
+			variants: [
+				(d, r) => (r === "formal" ? `Não, ${daddr(d)}. Nada disso.` : `Não, tá tudo normal.`),
+			],
 		},
 		{
 			speaker: "doctor",
@@ -450,7 +486,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Não, senhor. Nunca senti nada disso.`
+						? `Não, ${daddr(d)}. Nunca senti nada disso.`
 						: `Não, graças a Deus nunca senti.`,
 			],
 		},
@@ -466,7 +502,8 @@ const ANAMNESIS: AnamnesisContent = {
 		{
 			speaker: "patient",
 			variants: [
-				(d, r) => (r === "formal" ? `Não, senhor. Pele normal.` : `Nada disso não, pele tá boa.`),
+				(d, r) =>
+					r === "formal" ? `Não, ${daddr(d)}. Pele normal.` : `Nada disso não, pele tá boa.`,
 			],
 		},
 		{
@@ -492,7 +529,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E dormindo, o senhor ronca? Já disseram que para de respirar?`
+						? `E dormindo, ${paddr(d)} ronca? Já disseram que para de respirar?`
 						: `E dormindo, ronca? Alguém já falou que para de respirar?`,
 			],
 		},
@@ -503,7 +540,7 @@ const ANAMNESIS: AnamnesisContent = {
 					r === "formal"
 						? `Minha esposa diz que ronco, mas nada de parar de respirar.`
 						: `Dizem que eu ronco bastante, mas parar de respirar nunca ouvi.`,
-				(d, r) => (r === "formal" ? `Não que eu saiba, senhor.` : `Que eu saiba não, não.`),
+				(d, r) => (r === "formal" ? `Não que eu saiba, ${daddr(d)}.` : `Que eu saiba não, não.`),
 			],
 		},
 		{
@@ -529,14 +566,15 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Certo, obrigado pelas respostas. Isso me ajuda a montar o quadro completo. Agora vou fazer mais umas perguntas sobre a sua saúde em geral, pode ser?`
+						? `Certo, ${obrigado(d)} pelas respostas. Isso me ajuda a montar o quadro completo. Agora vou fazer mais umas perguntas sobre a sua saúde em geral, pode ser?`
 						: `Beleza, anotado. Isso me ajuda bastante. Agora deixa eu perguntar mais umas coisas da sua saúde, rapidinho.`,
 			],
 		},
 		{
 			speaker: "patient",
 			variants: [
-				(d, r) => (r === "formal" ? `Claro, doutor. Pode perguntar.` : `Pode sim, doutor.`),
+				(d, r) =>
+					r === "formal" ? `Claro, ${doutor(d)}. Pode perguntar.` : `Pode sim, ${doutor(d)}.`,
 			],
 		},
 		// antecedentes pessoais
@@ -555,7 +593,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E o senhor usa algum medicamento de forma contínua? Remédios de uso diário?`
+						? `E ${paddr(d)} usa algum medicamento de forma contínua? Remédios de uso diário?`
 						: `E toma remédio todo dia? Tem algum de uso contínuo?`,
 			],
 		},
@@ -565,7 +603,7 @@ const ANAMNESIS: AnamnesisContent = {
 				(d, r) =>
 					d.currentMeds.length === 0
 						? r === "formal"
-							? `Não, senhor. Não uso nenhum medicamento de forma contínua.`
+							? `Não, ${daddr(d)}. Não uso nenhum medicamento de forma contínua.`
 							: `Não, não tomo nada de uso contínuo não.`
 						: r === "formal"
 							? `Sim. Eu uso ${d.currentMeds.map((m) => `${m.med} ${m.dose}, ${m.freq}`).join("; e também ")}.`
@@ -578,7 +616,7 @@ const ANAMNESIS: AnamnesisContent = {
 				(d, r) =>
 					d.currentMeds.length > 0
 						? r === "formal"
-							? `O senhor toma direitinho, nos horários certos, ou acaba esquecendo às vezes?`
+							? `${paddrS(d)} toma direitinho, nos horários certos, ou acaba esquecendo às vezes?`
 							: `E toma certinho todo dia ou acaba esquecendo?`
 						: r === "formal"
 							? `Entendo. E vitaminas, fitoterápicos, algum remédio por conta própria?`
@@ -594,7 +632,7 @@ const ANAMNESIS: AnamnesisContent = {
 							? `Confesso que às vezes esqueço a dose da noite, mas no geral tomo direito.`
 							: `Ah, de vez em quando eu esqueço a da noite, mas no geral tomo direitinho.`
 						: r === "formal"
-							? `Não, senhor. De vez em quando tomo um analgésico para dor de cabeça, só isso.`
+							? `Não, ${daddr(d)}. De vez em quando tomo um analgésico para dor de cabeça, só isso.`
 							: `Não, só um remedinho pra dor de cabeça de vez em quando.`,
 			],
 		},
@@ -604,7 +642,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `O senhor possui alergia conhecida a algum medicamento, alimento ou substância?`
+						? `${paddrS(d)} possui alergia conhecida a algum medicamento, alimento ou substância?`
 						: `Você tem alergia a algum remédio, comida, qualquer coisa?`,
 			],
 		},
@@ -625,9 +663,11 @@ const ANAMNESIS: AnamnesisContent = {
 			speaker: "doctor",
 			variants: [
 				(d, r) =>
-					r === "formal"
-						? `O senhor fuma ou já fumou? E bebida alcoólica, consome com que frequência?`
-						: `Você fuma? E de bebida, bebe bastante?`,
+					d.minor
+						? `E a sua rotina, como é? Estuda de manhã ou de tarde? Fica muito tempo no celular, videogame?`
+						: r === "formal"
+							? `${paddrS(d)} fuma ou já fumou? E bebida alcoólica, consome com que frequência?`
+							: `Você fuma? E de bebida, bebe bastante?`,
 			],
 		},
 		{ speaker: "patient", variants: [(d) => d.habits] },
@@ -663,7 +703,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Muito pouco, senhor. Queria caminhar, mas falta tempo e ânimo.`
+						? `Muito pouco, ${daddr(d)}. Queria caminhar, mas falta tempo e ânimo.`
 						: `Quase nada, viu. Queria caminhar mas sempre falta tempo.`,
 			],
 		},
@@ -672,8 +712,12 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E o que o senhor faz da vida? Trabalha com o quê? Como anda o sono?`
-						: `E trabalha com o quê? Tá dormindo bem?`,
+						? d.minor
+							? `E como é a rotina d${paddr(d)} na escola? Estuda e dorme bem?`
+							: `E o que ${paddr(d)} faz da vida? Trabalha com o quê? Como anda o sono?`
+						: d.minor
+							? `E você estuda onde? Tá dormindo bem?`
+							: `E trabalha com o quê? Tá dormindo bem?`,
 			],
 		},
 		{ speaker: "patient", variants: [(d) => d.occupation] },
@@ -682,7 +726,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E o senhor consegue descansar bem à noite? Quantas horas dorme por noite, em média?`
+						? `E ${paddr(d)} consegue descansar bem à noite? Quantas horas dorme por noite, em média?`
 						: `E consegue dormir bem? Quantas horas por noite, mais ou menos?`,
 			],
 		},
@@ -719,9 +763,11 @@ const ANAMNESIS: AnamnesisContent = {
 			speaker: "doctor",
 			variants: [
 				(d, r) =>
-					r === "formal"
-						? `E como anda o estresse no trabalho e em casa? Algum período mais difícil recentemente?`
-						: `E o estresse? Tá passando por alguma fase difícil?`,
+					d.minor
+						? `E na escola, como vai? Tem alguma coisa te preocupando — prova, amigos?`
+						: r === "formal"
+							? `E como anda o estresse no trabalho e em casa? Algum período mais difícil recentemente?`
+							: `E o estresse? Tá passando por alguma fase difícil?`,
 			],
 		},
 		{
@@ -729,12 +775,18 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `O trabalho anda puxado, muita cobrança. Em casa está tudo bem.`
-						: `No trabalho tá apertado, muita cobrança. Em casa tá tranquilo.`,
+						? d.minor
+							? `A escola está puxada, muita prova essa semana. Em casa está tudo bem.`
+							: `O trabalho anda puxado, muita cobrança. Em casa está tudo bem.`
+						: d.minor
+							? `A escola tá puxada, muita prova essa semana. Em casa tá tranquilo.`
+							: `No trabalho tá apertado, muita cobrança. Em casa tá tranquilo.`,
 				(d, r) =>
-					r === "formal"
-						? `Um pouco de preocupação com as contas, mas nada fora do normal.`
-						: `Aquela preocupação de conta pra pagar, mas nada demais.`,
+					d.minor
+						? `Tô preocupado com a prova de recuperação, mas nada demais.`
+						: r === "formal"
+							? `Um pouco de preocupação com as contas, mas nada fora do normal.`
+							: `Aquela preocupação de conta pra pagar, mas nada demais.`,
 			],
 		},
 		{
@@ -752,7 +804,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Agora vou examinar o senhor. Pode deitar aqui na maca, por favor.`
+						? `Agora vou examinar ${paddr(d)}. Pode deitar aqui na maca, por favor.`
 						: `Deixa eu te examinar agora. Deita aqui na maca pra mim.`,
 			],
 		},
@@ -789,8 +841,8 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Entendo, doutor. E é grave? Preciso me preocupar?`
-						: `Ah tá. Mas é grave isso, doutor?`,
+						? `Entendo, ${doutor(d)}. E é grave? Preciso me preocupar?`
+						: `Ah tá. Mas é grave isso, ${doutor(d)}?`,
 			],
 		},
 		{
@@ -807,7 +859,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Veja bem: o nosso corpo dá sinais quando algo está fora do lugar, e o seu quadro, pelo que o senhor me contou e pelo exame, se encaixa num padrão bastante conhecido na clínica. A gente trata a causa, alivia os sintomas e acompanha a evolução de perto.`
+						? `Veja bem: o nosso corpo dá sinais quando algo está fora do lugar, e o seu quadro, pelo que ${paddr(d)} me contou e pelo exame, se encaixa num padrão bastante conhecido na clínica. A gente trata a causa, alivia os sintomas e acompanha a evolução de perto.`
 						: `Olha, o corpo dá sinais quando algo tá errado, e o seu caso, pelo que você contou e pelo exame, é bem típico. A gente trata a causa, alivia os sintomas e vai acompanhando de perto.`,
 			],
 		},
@@ -816,8 +868,8 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Entendi. E precisa de exame, doutor? Tomografia, ressonância, essas coisas?`
-						: `Entendi. E precisa fazer exame, doutor? Tipo tomografia?`,
+						? `Entendi. E precisa de exame, ${doutor(d)}? Tomografia, ressonância, essas coisas?`
+						: `Entendi. E precisa fazer exame, ${doutor(d)}? Tipo tomografia?`,
 			],
 		},
 		{
@@ -857,8 +909,12 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E eu posso continuar trabalhando normalmente, doutor?`
-						: `Posso continuar trabalhando normal, doutor?`,
+						? d.minor
+							? `E eu posso voltar para a escola normalmente, ${doutor(d)}?`
+							: `E eu posso continuar trabalhando normalmente, ${doutor(d)}?`
+						: d.minor
+							? `Posso voltar pra escola normal, ${doutor(d)}?`
+							: `Posso continuar trabalhando normal, ${doutor(d)}?`,
 			],
 		},
 		{
@@ -925,7 +981,7 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `E qualquer outra dúvida, o senhor pode voltar aqui ou mandar mensagem para a clínica. Não guarde dúvida para casa.`
+						? `E qualquer outra dúvida, ${paddr(d)} pode voltar aqui ou mandar mensagem para a clínica. Não guarde dúvida para casa.`
 						: `E qualquer dúvida é só voltar aqui ou mandar mensagem pra clínica, tá? Não fica com dúvida não.`,
 			],
 		},
@@ -934,8 +990,8 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Entendi, doutor. Agradeço muito a atenção e o cuidado.`
-						: `Entendi tudo direitinho. Obrigado mesmo pela paciência, doutor.`,
+						? `Entendi, ${doutor(d)}. Agradeço muito a atenção e o cuidado.`
+						: `Entendi tudo direitinho. ${obrigado(d)} mesmo pela paciência, ${doutor(d)}.`,
 			],
 		},
 		{
@@ -943,8 +999,8 @@ const ANAMNESIS: AnamnesisContent = {
 			variants: [
 				(d, r) =>
 					r === "formal"
-						? `Entendi, doutor. Muito obrigado pela atenção.`
-						: `Tá bom, doutor, muito obrigado mesmo.`,
+						? `Entendi, ${doutor(d)}. Muito ${obrigado(d)} pela atenção.`
+						: `Tá bom, ${doutor(d)}, muito ${obrigado(d)} mesmo.`,
 			],
 		},
 		{
@@ -1069,11 +1125,21 @@ const ANAMNESIS: AnamnesisContent = {
 
 	comorbidSets: [
 		[
-			"Não, senhor. Graças a Deus não tenho nenhuma doença de base.",
+			{
+				by: "doctor",
+				m: "Não, senhor. Graças a Deus não tenho nenhuma doença de base.",
+				f: "Não, senhora. Graças a Deus não tenho nenhuma doença de base.",
+			},
 			"Sou saudável, nunca tive nada de sério.",
 		],
 		["Tenho pressão alta há uns cinco anos.", "Faço acompanhamento de hipertensão arterial."],
-		["Tenho diabetes tipo dois e colesterol alto.", "Sou diabético e tenho o colesterol alterado."],
+		[
+			"Tenho diabetes tipo dois e colesterol alto.",
+			{
+				m: "Sou diabético e tenho o colesterol alterado.",
+				f: "Sou diabética e tenho o colesterol alterado.",
+			},
+		],
 		[
 			"Tenho hipotireoidismo e pressão alta.",
 			"Faço tratamento para hipotireoidismo e hipertensão.",
@@ -1094,7 +1160,11 @@ const ANAMNESIS: AnamnesisContent = {
 	familyHx: [
 		"Meu pai era hipertenso e minha mãe tem diabetes.",
 		"Tenho histórico de infarto na família, meu avô faleceu aos cinquenta e oito.",
-		"Não, senhor. Família toda saudável, que eu saiba.",
+		{
+			by: "doctor",
+			m: "Não, senhor. Família toda saudável, que eu saiba.",
+			f: "Não, senhora. Família toda saudável, que eu saiba.",
+		},
 		"Minha mãe tem hipotireoidismo e meu pai era cardíaco.",
 	],
 
@@ -1108,12 +1178,38 @@ const ANAMNESIS: AnamnesisContent = {
 	occupations: [
 		"Trabalho como professor numa escola pública, muito estresse ultimamente. O sono anda ruim, durmo umas cinco horas por noite.",
 		"Trabalho em obra, é pesado fisicamente. Durmo razoavelmente, umas seis horas.",
-		"Sou dona de casa e cuido dos netos. Durmo mal, acordo muito de madrugada.",
+		{
+			m: "Sou aposentado e ajudo a cuidar dos netos. Durmo mal, acordo muito de madrugada.",
+			f: "Sou dona de casa e cuido dos netos. Durmo mal, acordo muito de madrugada.",
+		},
 		"Trabalho sentado em escritório o dia todo. O sono tá péssimo, não consigo desligar a cabeça.",
 		"Sou motorista de aplicativo, rodo bastante. Durmo umas seis horas mas descanso pouco.",
 	],
 
-	patientQuestions: ["Entendo, doutor. E é grave? Preciso me preocupar?"],
+	minorOccupations: [
+		{
+			m: "Sou aluno, tô no fundamental. Durmo tarde vendo vídeo, aí acordo cansado.",
+			f: "Sou aluna, tô no fundamental. Durmo tarde vendo vídeo, aí acordo cansada.",
+		},
+		"Vou pra escola de manhã e durmo cedo na maior parte dos dias.",
+		{
+			m: "Tô no ensino médio, estudando pra prova. Acordo cedo e durmo pouco.",
+			f: "Tô no ensino médio, estudando pra prova. Acordo cedo e durmo pouco.",
+		},
+	],
+	minorHabits: [
+		"Jogo bola com os amigos no fim de semana. Às vezes durmo tarde no celular.",
+		"Fico bastante no celular e no videogame, às vezes até tarde.",
+		"Faço natação duas vezes por semana. O resto do tempo é escola.",
+	],
+
+	patientQuestions: [
+		{
+			by: "doctor",
+			m: "Entendo, doutor. E é grave? Preciso me preocupar?",
+			f: "Entendo, doutora. E é grave? Preciso me preocupar?",
+		},
+	],
 
 	patientTags: ["paciente um", "paciente dois", "paciente três"],
 };

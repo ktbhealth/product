@@ -47,5 +47,10 @@ declare namespace Cloudflare {
 		OTEL_SDK_DISABLED?: string;
 		/** Bearer token guarding GET /api/metrics (secret). */
 		METRICS_SCRAPE_TOKEN?: string;
+		/** Optional override for the minted `ai-bridge connect` argv
+		 * prefix (F3b) — e.g. an installed `ai-bridge` binary. Unset →
+		 * dev resolves the repo's packages/ai-bridge/src/cli.ts, prod
+		 * falls back to `bunx @ktb/ai-bridge`. */
+		AI_BRIDGE_CLI?: string;
 	}
 }

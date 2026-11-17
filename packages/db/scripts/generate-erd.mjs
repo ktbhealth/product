@@ -153,8 +153,8 @@ const DOMAINS = [
 		title: "Eval validator",
 		owner: "`plugins/eval-validator`",
 		description:
-			"Persona generation and eval run tracking — generated patient+doctor pairs awaiting review, and per-sample run metrics.",
-		tables: ["eval_persona", "eval_persona_batch", "eval_run", "eval_run_sample"],
+			"Eval run tracking — step 3 of the eval pipeline: runs over a generation instance's approved items, per-sample metrics and diffs.",
+		tables: ["eval_run", "eval_run_sample"],
 	},
 	{
 		id: "ai-endpoints",
@@ -169,7 +169,7 @@ const DOMAINS = [
 		title: "Eval persona",
 		owner: "`plugins/eval-persona`",
 		description:
-			"Eval lab surfaces — reusable persona definitions and persona instances with their items (instances soft-link ai_endpoint).",
+			"Steps 1–2 of the eval pipeline — the persona registry (eval_persona_def) and consultation-generation instances whose items carry the synthetic corpus and the review gate (instances soft-link ai_endpoint).",
 		tables: ["eval_instance", "eval_instance_item", "eval_persona_def"],
 	},
 	{

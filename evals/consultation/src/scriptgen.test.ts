@@ -203,6 +203,22 @@ describe("anamnesis variant (T-128/T-129)", () => {
 		expect(short.turns.at(-1)).toEqual(full.turns.at(-1));
 	});
 
+	it("school-age patients never draw adult occupations or habits", () => {
+		for (const ageBand of ["child", "teen"]) {
+			for (const seed of [1, 2, 3]) {
+				const r = renderScript({
+					template: TEMPLATE,
+					persona: persona({ ageBand }),
+					seed,
+					variant: "anamnesis",
+				});
+				expect(r.script).not.toMatch(
+					/Trabalho|aposentad|dona de casa|fum|cerveja|cigarro|motorista/i,
+				);
+			}
+		}
+	});
+
 	it("clamps tiny and huge minute targets", () => {
 		const persona_ = persona();
 		const tiny = renderScript({

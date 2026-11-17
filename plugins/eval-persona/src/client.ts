@@ -17,7 +17,6 @@ export const plugins: readonly Plugin[] = [
 		meta: { keywords: ["eval", "persona", "tables"] },
 		// Mirrors evalPersonaTablesPlugin — drizzle schema never reaches
 		// the client bundle.
-		requiredDeps: ["eval.validator.tables"],
 		optionalDeps: ["ai.endpoints.tables"],
 	}),
 	definePlugin({
@@ -40,7 +39,7 @@ export const plugins: readonly Plugin[] = [
 					kind: "sidebarItem",
 					item: {
 						to: "/platform/eval/personas",
-						label: "Personas",
+						label: "1 · Personas",
 						icon: Users2Icon,
 						group: "Eval",
 					},
@@ -53,7 +52,7 @@ export const plugins: readonly Plugin[] = [
 					kind: "sidebarItem",
 					item: {
 						to: "/platform/eval/instances",
-						label: "Instances",
+						label: "2 · Generate consultations",
 						icon: FlaskConicalIcon,
 						group: "Eval",
 					},

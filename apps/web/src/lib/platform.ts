@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { connect as socketConnect } from "cloudflare:sockets";
+import { fileURLToPath } from "node:url";
 
 import {
 	audioStorageStats,
@@ -38,6 +39,7 @@ import {
 } from "@ktb/i18n-plugin";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
+import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, verificationEmail } from "./emails.ts";
 import { portalInstances } from "./registry.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
@@ -292,6 +294,27 @@ const acpBridgeNs = env.ACP_BRIDGE as unknown as
 	  }
 	| undefined;
 
+// F3b: argv prefix for the `connect` command createBridgeLinkFn mints
+// (see lib/ai-bridge-cli.ts — unpublished package, dev resolves the
+// repo source, prod the published bunx path). import.meta.env is a
+// Vite-pipeline-only property; the cast keeps a possibly-absent shape.
+// import.meta.url is a file:// URL under vite dev/workerd, but the
+// vitest module-runner serves modules over http:// — fileURLToPath
+// throws there, so fall back to a repo-relative path (the minted
+// string is a suggestion; tests never execute it).
+const repoCliPath = (() => {
+	try {
+		return fileURLToPath(new URL("../../../../packages/ai-bridge/src/cli.ts", import.meta.url));
+	} catch {
+		return "packages/ai-bridge/src/cli.ts";
+	}
+})();
+const aiBridgeCli = resolveAiBridgeCli({
+	override: env.AI_BRIDGE_CLI,
+	dev: (import.meta as { env?: { DEV?: unknown } }).env?.DEV === true,
+	cliPath: repoCliPath,
+});
+
 // P-033: publish the runtime to @ktb/server-fns so plugin-owned server
 // functions (plugins/*/src/**) reach run/runAs, audio purge and locale
 // without importing this module. Env reads stay here — the registry
@@ -373,6 +396,7 @@ setServerRuntime({
 						.get(acpBridgeNs.idFromName(String(endpointId)))
 						.fetch(new Request(url, request));
 				},
+	aiBridgeCli,
 });
 
 // Raw platform binding passthrough — not composed, just exposed.

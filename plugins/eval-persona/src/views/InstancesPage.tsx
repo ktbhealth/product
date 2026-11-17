@@ -40,6 +40,7 @@ import {
 	startInstanceFn,
 } from "../fns.ts";
 import { evalLabMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { EvalSteps } from "../steps.tsx";
 import type { InstanceCard, InstanceDetail, PersonaDefCard } from "../index.ts";
 
 const TEMPLATE = "__template__";
@@ -281,6 +282,7 @@ export function InstancesPage({
 
 	return (
 		<PageContainer>
+			<EvalSteps active={2} labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]} />
 			<PageHeader title={m.instancesTitle} description={m.instancesDesc} />
 			{error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
 
