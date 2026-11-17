@@ -54,7 +54,11 @@ const resolveTemplate = (value: unknown, scope: Record<string, unknown>): unknow
 	const match = TEMPLATE_RE.exec(value);
 	if (match === null) return value;
 	const [, root, path] = match;
-	const resolved = resolveAnswerPath(scope[root] ?? {}, path);
+	// Own-property root lookup only — "$constructor.x" must not reach
+	// Object.prototype members through the scope object.
+	const rootValue = Object.hasOwn(scope, root) ? scope[root] : {};
+	// undefined roots resolve to undefined (→ literal passthrough).
+	const resolved = resolveAnswerPath(rootValue, path);
 	return resolved === undefined ? value : resolved;
 };
 
@@ -71,7 +75,14 @@ export const resolveCompletionData = (
 	};
 	const out: Record<string, unknown> = {};
 	for (const [key, value] of Object.entries(data)) {
-		out[key] = resolveTemplate(value, scope);
+		// defineProperty, not assignment: a "__proto__" data key must
+		// become an own data property, never hit the prototype setter.
+		Object.defineProperty(out, key, {
+			value: resolveTemplate(value, scope),
+			enumerable: true,
+			writable: true,
+			configurable: true,
+		});
 	}
 	return out;
 };

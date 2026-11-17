@@ -120,6 +120,11 @@ const HANDLED_TAGS = [
 	"RunForbidden",
 	"WizardNotActive",
 	"StepMismatch",
+	"ForbiddenWizardDefinition",
+	"WizardPermissionDenied",
+	"WizardRunConflict",
+	"InvalidStepValue",
+	"CorruptWizardRun",
 	"CompletionFailed",
 ] as const;
 

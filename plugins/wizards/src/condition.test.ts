@@ -4,6 +4,7 @@ import {
 	assertCondition,
 	evaluateCondition,
 	jsonEquals,
+	MAX_CONDITION_DEPTH,
 	resolveAnswerPath,
 	type WizardCondition,
 } from "./condition.ts";
@@ -41,6 +42,14 @@ describe("assertCondition", () => {
 			expect(() => assertCondition(value, "ctx")).toThrow("ctx");
 		}
 	});
+
+	it("rejects conditions nested past MAX_CONDITION_DEPTH", () => {
+		let cond: WizardCondition = { path: "a" };
+		for (let i = 0; i <= MAX_CONDITION_DEPTH; i += 1) {
+			cond = { not: cond };
+		}
+		expect(() => assertCondition(cond, "ctx")).toThrow("nesting exceeds");
+	});
 });
 
 describe("jsonEquals", () => {
@@ -76,6 +85,17 @@ describe("resolveAnswerPath", () => {
 		expect(resolveAnswerPath(answers, "step.items.9")).toBeUndefined();
 		expect(resolveAnswerPath(null, "a")).toBeUndefined();
 		expect(resolveAnswerPath(undefined, "a.b")).toBeUndefined();
+	});
+
+	it("never walks the prototype chain", () => {
+		// Inherited members must not resolve — own-property walk only.
+		expect(resolveAnswerPath(answers, "constructor.name")).toBeUndefined();
+		expect(resolveAnswerPath(answers, "__proto__.polluted")).toBeUndefined();
+		expect(resolveAnswerPath(answers, "step.constructor")).toBeUndefined();
+		// own properties still resolve, including shadowing names
+		const own = { constructor: "mine", hasOwnProperty: 1 };
+		expect(resolveAnswerPath(own, "constructor")).toBe("mine");
+		expect(resolveAnswerPath(own, "hasOwnProperty")).toBe(1);
 	});
 });
 
@@ -138,5 +158,16 @@ describe("evaluateCondition", () => {
 		expect(evaluateCondition({ any: [] }, answers)).toBe(false);
 		expect(evaluateCondition({ not: { path: "done", op: "truthy" } }, answers)).toBe(false);
 		expect(evaluateCondition({ not: { path: "nope", value: 1 } }, answers)).toBe(true);
+	});
+
+	it("fails closed past the recursion depth cap", () => {
+		// Hand-built (unasserted) condition nested deeper than the cap —
+		// evaluateCondition must not recurse into it. `all` (not `not`)
+		// keeps the over-depth false from being negated back to true.
+		let cond: WizardCondition = { path: "done", op: "truthy" };
+		for (let i = 0; i <= MAX_CONDITION_DEPTH; i += 1) {
+			cond = { all: [cond] };
+		}
+		expect(evaluateCondition(cond, answers)).toBe(false);
 	});
 });

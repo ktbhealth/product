@@ -279,6 +279,7 @@
         "@ktb/tenant": "workspace:*",
         "@ktb/triggers": "workspace:*",
         "@ktb/views": "workspace:*",
+        "@ktb/wizards": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -1713,6 +1714,7 @@
         "@ktb/json-schema": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
+        "@ktb/rbac": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
         "@tanstack/react-router": "1.170.46",

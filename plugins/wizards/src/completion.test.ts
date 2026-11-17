@@ -49,6 +49,29 @@ describe("resolveCompletionData", () => {
 		});
 		expect(resolveCompletionData(undefined, ctx)).toEqual({});
 	});
+
+	it("treats __proto__ data keys as own properties, not prototype writes", () => {
+		// JSON.parse produces a real own "__proto__" key (an object
+		// literal would just set the prototype instead).
+		const data = JSON.parse('{"__proto__":{"polluted":true},"safe":1}') as Record<string, unknown>;
+		const out = resolveCompletionData(data, ctx);
+		expect(Object.hasOwn(out, "__proto__")).toBe(true);
+		expect(out.safe).toBe(1);
+		expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+	});
+
+	it("does not resolve $-templates against prototype members", () => {
+		const out = resolveCompletionData(
+			{
+				ctor: "$answers.constructor",
+				proto: "$answers.__proto__",
+			},
+			ctx,
+		);
+		// Unresolvable templates stay literal — never leak Object members.
+		expect(out.ctor).toBe("$answers.constructor");
+		expect(out.proto).toBe("$answers.__proto__");
+	});
 });
 
 describe("runCompletion", () => {

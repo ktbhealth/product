@@ -39,6 +39,7 @@
 		"@ktb/tenant": "workspace:*",
 		"@ktb/triggers": "workspace:*",
 		"@ktb/views": "workspace:*",
+		"@ktb/wizards": "workspace:*",
 		"effect": "4.1.2"
 	},
 	"devDependencies": {

@@ -18,6 +18,7 @@
 		"@ktb/json-schema": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
+		"@ktb/rbac": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
 		"@tanstack/react-router": "1.170.46",

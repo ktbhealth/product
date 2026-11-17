@@ -39,6 +39,7 @@ import { ViewDefinitions, makeViewDefinitions } from "@ktb/views";
 import { ApiExposures, makeApiExposures } from "@ktb/api";
 import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
 import { FlowDefinitions, makeFlowDefinitions } from "@ktb/flows";
+import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -550,6 +551,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// enablement index). Enablement is likewise enforced at request
 	// time inside the Flows service, not here.
 	const FlowDefinitionsLive = Layer.succeed(FlowDefinitions, makeFlowDefinitions(plugins));
+	// Wizard-definition registry (wizard.def contributions): same
+	// composition-time collection — the @ktb/wizards service layer
+	// consumes it via `WizardDefinitions` to verify client-supplied
+	// definition snapshots are real contributions, not forgeries.
+	// Enablement is likewise ignored: defs are static composition data.
+	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -579,6 +586,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		ApiExposuresLive,
 		TriggerDefinitionsLive,
 		FlowDefinitionsLive,
+		WizardDefinitionsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),
