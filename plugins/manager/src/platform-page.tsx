@@ -1,4 +1,5 @@
 import type { PanelPageContext } from "@ktb/kernel";
+import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
 
 import type { PluginStateEntry } from "@ktb/platform/plugin-states";
 
@@ -27,12 +28,18 @@ export function ManagerPage({ data, ctx }: { data: unknown; ctx: PanelPageContex
 	const self = map.get("manager.panel");
 	const cascadeConfirm = configObject(self?.config).cascadeConfirm !== false;
 	return (
-		<PluginsPage
-			plugins={ctx.plugins}
-			states={map}
-			i18n={ctx.i18n}
-			locale={ctx.locale}
-			cascadeConfirm={cascadeConfirm}
-		/>
+		// nuqs binds the page's screen state (tab/filters/map view) to
+		// TanStack Router search params — links are shareable and
+		// reload-safe. Mounted here at the composition boundary so the
+		// views stay adapter-agnostic (tests use NuqsTestingAdapter).
+		<NuqsAdapter>
+			<PluginsPage
+				plugins={ctx.plugins}
+				states={map}
+				i18n={ctx.i18n}
+				locale={ctx.locale}
+				cascadeConfirm={cascadeConfirm}
+			/>
+		</NuqsAdapter>
 	);
 }

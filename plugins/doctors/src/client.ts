@@ -36,11 +36,12 @@ const switchDoctorChrome = (portal: (typeof CLINICAL_PORTALS)[number]): ChromeCo
 });
 
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "doctors.tables" }),
-	definePlugin({ id: "doctors.services" }),
-	definePlugin({ id: "doctors.routes" }),
+	definePlugin({ id: "doctors.tables", meta: { keywords: ["doctors", "tables"] } }),
+	definePlugin({ id: "doctors.services", meta: { keywords: ["doctors", "services"] } }),
+	definePlugin({ id: "doctors.routes", meta: { keywords: ["doctors", "routes"] } }),
 	definePlugin({
 		id: "doctors.pages",
+		meta: { keywords: ["doctors", "ui", "doctor"] },
 		requiredDeps: ["portal.shell"],
 		pages: CLINICAL_PORTALS.map((portal): Page => ({
 			id: `doctors.${portal}.select`,
@@ -50,6 +51,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "doctors.chrome",
+		meta: { keywords: ["doctors", "ui", "doctor"] },
 		requiredDeps: ["portal.shell"],
 		chrome: CLINICAL_PORTALS.map(switchDoctorChrome),
 	}),

@@ -9,5 +9,9 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * asserted by apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "platform.header", requiredDeps: ["platform.panel"] }),
+	definePlugin({
+		id: "platform.header",
+		meta: { keywords: ["platform", "ui"] },
+		requiredDeps: ["platform.panel"],
+	}),
 ];

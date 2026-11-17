@@ -536,12 +536,14 @@ CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id IN
 
 export const aiEndpointsTablesPlugin = definePlugin({
 	id: "ai.endpoints.tables",
+	meta: { keywords: ["ai", "tables"] },
 	requiredDeps: [],
 	tables: { aiAgentLink, aiEndpoint },
 });
 
 export const aiEndpointsServicesPlugin = definePlugin({
 	id: "ai.endpoints.services",
+	meta: { keywords: ["ai", "services"] },
 	requiredDeps: [aiEndpointsTablesPlugin.id],
 	// The credential:<id> ref path resolves through the credentials
 	// store when that plugin is enabled — absence just skips it.
@@ -551,6 +553,7 @@ export const aiEndpointsServicesPlugin = definePlugin({
 
 export const aiEndpointsChromePlugin = definePlugin({
 	id: "ai.endpoints.chrome",
+	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -591,11 +594,13 @@ export const aiEndpointsRoutesPlugin = definePlugin({
 	// The ktb-arch route gate derives this id from the package dir:
 	// plugins/ai-endpoints → "ai-endpoints.routes".
 	id: "ai-endpoints.routes",
+	meta: { keywords: ["ai", "routes"] },
 	routes: [physical("/api", "../../../../plugins/ai-endpoints/src/api-routes")],
 });
 
 export const aiEndpointsPanelPlugin = definePlugin({
 	id: "ai.endpoints.panel",
+	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, aiEndpointsServicesPlugin.id],
 	panel: {
 		pages: [

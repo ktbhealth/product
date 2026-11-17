@@ -34,12 +34,14 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
  */
 export const themeServicesPlugin = definePlugin({
 	id: "theme.services",
+	meta: { keywords: ["theme", "services"] },
 	requiredDeps: [platformAdminPlugin.id],
 	services: ThemeLive,
 });
 
 export const themePanelPlugin = definePlugin({
 	id: "theme.panel",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, themeServicesPlugin.id],
 	panel: {
 		pages: [
@@ -74,6 +76,7 @@ export const themePanelPlugin = definePlugin({
  * (listThemesFn returns [] otherwise, and the component hides on empty). */
 export const themeHeaderPlugin = definePlugin({
 	id: "theme.header",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, themeServicesPlugin.id],
 	optionalDeps: [platformHeaderPlugin.id],
 	chrome: [
@@ -94,6 +97,7 @@ export const themeHeaderPlugin = definePlugin({
  * hardcoded site brand. */
 export const themeBrandPlugin = definePlugin({
 	id: "theme.brand",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: [themeServicesPlugin.id],
 	chrome: [
 		{
@@ -113,6 +117,7 @@ export const themeBrandPlugin = definePlugin({
  */
 export const themeRoutesPlugin = definePlugin({
 	id: "theme.routes",
+	meta: { keywords: ["theme", "routes"] },
 	requiredDeps: [themeServicesPlugin.id],
 	routes: [physical("/api", "../../../../plugins/theme/src/api-routes")],
 });
@@ -120,6 +125,7 @@ export const themeRoutesPlugin = definePlugin({
 /** Sidebar entry under the System group (same mechanism as jobs.chrome). */
 export const themeChromePlugin = definePlugin({
 	id: "theme.chrome",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, themeServicesPlugin.id],
 	chrome: [
 		{

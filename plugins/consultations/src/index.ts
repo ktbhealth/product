@@ -83,11 +83,13 @@ export { consultationScope } from "./tenant-visibility.ts";
 
 export const consultationsTablesPlugin = definePlugin({
 	id: "consultations.tables",
+	meta: { keywords: ["consultations", "tables"] },
 	tables: { consultations },
 });
 
 export const consultationsServicesPlugin = definePlugin({
 	id: "consultations.services",
+	meta: { keywords: ["consultations", "services"] },
 	requiredDeps: [patientsServicesPlugin.id, platformAdminPlugin.id],
 	// Audit + integrity writes resolve via serviceOption — the dep edges
 	// are ordering hints only; absence of either is legal.
@@ -109,6 +111,7 @@ export const consultationsServicesPlugin = definePlugin({
 // the plugin owns routes end to end with zero host route files.
 export const consultationsRoutesPlugin = definePlugin({
 	id: "consultations.routes",
+	meta: { keywords: ["consultations", "routes"] },
 	routes: [
 		physical("/consultations", "../../../../plugins/consultations/src/routes"),
 		// API subtree: /api/consultations/:id/{audio,pdf}, /api/transcribe and
@@ -124,6 +127,7 @@ export const consultationsRoutesPlugin = definePlugin({
 // like the retired panel entry.
 export const consultationsChromePlugin = definePlugin({
 	id: "consultations.chrome",
+	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -150,6 +154,7 @@ export const consultationsPanelPlugin = definePlugin({
 	id: "consultations.panel",
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {
+		keywords: ["consultations", "ui"],
 		name: "Consultations",
 		description: "Consultation records and audio jobs",
 		icon: ClipboardListIcon,

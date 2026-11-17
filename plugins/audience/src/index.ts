@@ -11,6 +11,7 @@ import { AudienceLanding } from "./landing.tsx";
  */
 export const audienceLandingPlugin = definePlugin({
 	id: "audience.landing",
+	meta: { keywords: ["audience", "ui"] },
 	landing: { page: AudienceLanding },
 });
 

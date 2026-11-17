@@ -16,6 +16,7 @@ import { DashboardPlatformPage } from "./platform-page.tsx";
  */
 export const dashboardChromePlugin = definePlugin({
 	id: "dashboard.chrome",
+	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -36,6 +37,7 @@ export const dashboardChromePlugin = definePlugin({
 
 export const dashboardPanelPlugin = definePlugin({
 	id: "dashboard.panel",
+	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: ["platform.panel"],
 	optionalDeps: ["patients.services", "consultations.services", "notifications.services"],
 	panel: {

@@ -19,6 +19,7 @@ import { ConsultationsPlatformPage } from "./platform-page.tsx";
  */
 export const consultationsChromePlugin = definePlugin({
 	id: "consultations.chrome",
+	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -41,6 +42,7 @@ export const consultationsPanelPlugin = definePlugin({
 	id: "consultations.panel",
 	requiredDeps: ["platform.panel"],
 	meta: {
+		keywords: ["consultations", "ui"],
 		name: "Consultations",
 		description: "Consultation records and audio jobs",
 		icon: ClipboardListIcon,
@@ -59,14 +61,15 @@ export const consultationsPanelPlugin = definePlugin({
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "consultations.tables" }),
+	definePlugin({ id: "consultations.tables", meta: { keywords: ["consultations", "tables"] } }),
 	definePlugin({
 		id: "consultations.services",
+		meta: { keywords: ["consultations", "services"] },
 		requiredDeps: ["patients.services", "platform.admin"],
 		// Mirrors consultationsServicesPlugin.optionalDeps (server index.ts).
 		optionalDeps: ["audit.services", "integrity.services"],
 	}),
-	definePlugin({ id: "consultations.routes" }),
+	definePlugin({ id: "consultations.routes", meta: { keywords: ["consultations", "routes"] } }),
 	consultationsChromePlugin,
 	consultationsPanelPlugin,
 ];

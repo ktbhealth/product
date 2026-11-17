@@ -8,9 +8,15 @@ import {
 	contributionKinds,
 	dependentClosure,
 	disabledClosure,
+	focusNeighborhood,
+	graphFromPlugins,
+	kindConsumers,
+	layeredLayout,
 	missingRequiredDeps,
 	pluginDisplayName,
+	regionEdgeTarget,
 	requiredClosure,
+	type GraphEdge,
 } from "./logic.ts";
 
 declare module "@ktb/kernel" {
@@ -26,6 +32,11 @@ declare module "@ktb/kernel" {
 		"t.routes": true;
 		"t.landing": true;
 		"t.top": true;
+		"t.opt": true;
+		"t.pub": true;
+		"t.contrib": true;
+		"dashboard.panel": true;
+		"manager.panel": true;
 	}
 }
 
@@ -223,5 +234,165 @@ describe("configFormFields", () => {
 		expect(
 			configFormFields({ schema: { dialect: "draft-2020-12", schema: {}, definitions: {} } }),
 		).toEqual([]);
+	});
+});
+
+// ---------- plugins-map graph derivation (P-082) ----------
+
+const chromePub = (id: string, regions: readonly string[]) =>
+	definePlugin({
+		id,
+		chrome: regions.map((region, i) => ({
+			id: `${id}.entry-${i}`,
+			region,
+			content: { kind: "link" as const, to: "/x", label: "X" },
+		})),
+	});
+
+const edge = (g: ReturnType<typeof graphFromPlugins>, s: string, t: string, kind: string) =>
+	g.edges.find((e) => e.source === s && e.target === t && e.kind === kind);
+
+const edgesOf = (g: ReturnType<typeof graphFromPlugins>, kind: GraphEdge["kind"]) =>
+	g.edges.filter((e) => e.kind === kind);
+
+describe("regionEdgeTarget / kindConsumers", () => {
+	it("routes owned region prefixes to their plugin, shared slots to pseudo-nodes", () => {
+		expect(regionEdgeTarget("portal.dashboard.stats")).toBe("dashboard.panel");
+		expect(regionEdgeTarget("portal.dashboard.sections")).toBe("dashboard.panel");
+		expect(regionEdgeTarget("portal.sidebar")).toBe("region:portal.sidebar");
+		expect(regionEdgeTarget("app.header.brand")).toBe("region:app.header.brand");
+		// Unknown regions get a pseudo-node too — declared communication
+		// is never dropped.
+		expect(regionEdgeTarget("future.slot")).toBe("region:future.slot");
+	});
+
+	it("resolves contribution kinds to their collecting surfaces", () => {
+		expect(kindConsumers("eval.stage")).toEqual(["eval-cli"]);
+		expect(kindConsumers("eval.capability")).toEqual(["eval-cli"]);
+		expect(kindConsumers("theme.tokens")).toEqual([
+			"app-host.server",
+			"app-host.client",
+			"app.routes",
+		]);
+		// Unknown kinds fall back to the generic host surface.
+		expect(kindConsumers("mystery.kind")).toEqual(["app-host.server"]);
+	});
+});
+
+describe("graphFromPlugins", () => {
+	it("draws required and optional dep edges dep → dependent", () => {
+		const g = graphFromPlugins([
+			dep("t.a"),
+			dep("t.b", ["t.a"]),
+			definePlugin({ id: "t.opt", optionalDeps: ["t.a"] }),
+		]);
+		expect(edge(g, "t.a", "t.b", "required")).toBeDefined();
+		expect(edge(g, "t.a", "t.opt", "optional")).toBeDefined();
+		expect(edgesOf(g, "required")).toHaveLength(1);
+	});
+
+	it("draws one region edge per plugin/region pair regardless of entry count", () => {
+		const g = graphFromPlugins([
+			chromePub("t.pub", ["portal.sidebar", "portal.sidebar", "portal.header.actions"]),
+		]);
+		const regionEdges = edgesOf(g, "region");
+		expect(regionEdges).toHaveLength(2);
+		expect(edge(g, "t.pub", "region:portal.sidebar", "region")?.label).toBe("portal.sidebar");
+		expect(edge(g, "t.pub", "region:portal.header.actions", "region")).toBeDefined();
+		// Pseudo-nodes materialize for both slots.
+		expect(g.nodes.find((n) => n.id === "region:portal.sidebar")?.pseudo).toBe("region");
+	});
+
+	it("points chrome entries at owned slots' plugin when one declares them", () => {
+		const g = graphFromPlugins([
+			dep("dashboard.panel"),
+			chromePub("t.pub", ["portal.dashboard.stats"]),
+		]);
+		expect(edge(g, "t.pub", "dashboard.panel", "region")?.label).toBe("portal.dashboard.stats");
+		expect(g.nodes.some((n) => n.pseudo === "region")).toBe(false);
+	});
+
+	it("draws kind edges to each collecting surface of the kind", () => {
+		const g = graphFromPlugins([
+			definePlugin({
+				id: "t.contrib",
+				contributions: [{ kind: "eval.stage", id: "s", version: "1" }],
+			}),
+		]);
+		expect(edge(g, "t.contrib", "surface:eval-cli", "kind")?.label).toBe("eval.stage");
+		expect(g.nodes.find((n) => n.id === "surface:eval-cli")?.pseudo).toBe("surface");
+	});
+
+	it("marks every edge target as a node", () => {
+		const g = graphFromPlugins([
+			chromePub("t.pub", ["portal.sidebar"]),
+			definePlugin({
+				id: "t.contrib",
+				contributions: [{ kind: "theme.tokens", id: "t", version: "1" }],
+			}),
+		]);
+		const ids = new Set(g.nodes.map((n) => n.id));
+		for (const e of g.edges) {
+			expect(ids.has(e.source), `source ${e.source}`).toBe(true);
+			expect(ids.has(e.target), `target ${e.target}`).toBe(true);
+		}
+	});
+});
+
+describe("layeredLayout / depths", () => {
+	it("layers by longest dep path; pseudo-nodes one column past the deepest", () => {
+		const g = graphFromPlugins([...plugins, chromePub("t.pub", ["portal.sidebar"])]);
+		const depth = new Map(g.nodes.map((n) => [n.id, n.depth]));
+		expect(depth.get("t.a")).toBe(0);
+		expect(depth.get("t.b")).toBe(1);
+		expect(depth.get("t.c")).toBe(2);
+		expect(depth.get("t.pub")).toBe(0);
+		expect(depth.get("region:portal.sidebar")).toBe(3); // max plugin depth (2) + 1
+	});
+
+	it("respects every required edge: depth(dep) < depth(dependent)", () => {
+		const g = graphFromPlugins(plugins);
+		const depth = new Map(g.nodes.map((n) => [n.id, n.depth]));
+		for (const e of edgesOf(g, "required")) {
+			expect(depth.get(e.source)!).toBeLessThan(depth.get(e.target)!);
+		}
+	});
+
+	it("places columns by depth, rows in node order", () => {
+		const g = graphFromPlugins(plugins);
+		const layout = layeredLayout(g);
+		expect(layout.positions.get("t.a")).toEqual({ x: 0, y: 0 });
+		expect(layout.positions.get("t.d")).toEqual({ x: 0, y: 96 });
+		expect(layout.positions.get("t.c")).toEqual({ x: 560, y: 0 });
+		expect(layout.width).toBe(3);
+	});
+});
+
+describe("focusNeighborhood", () => {
+	const graph = graphFromPlugins([
+		...plugins,
+		chromePub("t.pub", ["portal.sidebar"]),
+		dep("t.top", ["t.c"]),
+	]);
+
+	it("walks deps transitively both ways, plus direct channels", () => {
+		const { upstream, downstream } = focusNeighborhood(graph, "t.b");
+		expect([...upstream].sort()).toEqual(["t.a"]);
+		expect([...downstream].sort()).toEqual(["t.c", "t.top"]);
+		expect(upstream.has("t.b")).toBe(false);
+		expect(downstream.has("t.b")).toBe(false);
+	});
+
+	it("includes channel endpoints: publishers downstream of their region", () => {
+		const { downstream } = focusNeighborhood(graph, "region:portal.sidebar");
+		expect(downstream.has("t.pub")).toBe(true);
+		const { upstream } = focusNeighborhood(graph, "t.pub");
+		expect(upstream.has("region:portal.sidebar")).toBe(true);
+	});
+
+	it("returns empty sets for isolated nodes", () => {
+		const { upstream, downstream } = focusNeighborhood(graph, "t.d");
+		expect(upstream.size).toBe(0);
+		expect(downstream.size).toBe(0);
 	});
 });

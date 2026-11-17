@@ -31,6 +31,7 @@ import { NotificationsHeaderAction } from "./views/NotificationsHeaderAction.tsx
  */
 export const notificationsHeaderPlugin = definePlugin({
 	id: "notifications.header",
+	meta: { keywords: ["notifications", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	optionalDeps: [platformHeaderPlugin.id],
 	chrome: [
@@ -48,6 +49,7 @@ export const notificationsHeaderPlugin = definePlugin({
 
 export const notificationsTablesPlugin = definePlugin({
 	id: "notifications.tables",
+	meta: { keywords: ["notifications", "tables"] },
 	tables: { notifications },
 });
 
@@ -83,6 +85,7 @@ export const NotificationsCommandsLive = Command.handlersOf(NotificationsCommand
 
 export const notificationsServicesPlugin = definePlugin({
 	id: "notifications.services",
+	meta: { keywords: ["notifications", "services"] },
 	// Subscribes to patient/consultation domain events — the dep edges
 	// order those plugins' layers (and their event producers) first.
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
@@ -106,6 +109,7 @@ export const notificationsServicesPlugin = definePlugin({
 // scans every .ts file there, so tests stay outside this directory.
 export const notificationsRoutesPlugin = definePlugin({
 	id: "notifications.routes",
+	meta: { keywords: ["notifications", "routes"] },
 	routes: [physical("/api", "../../../../plugins/notifications/src/api-routes")],
 });
 

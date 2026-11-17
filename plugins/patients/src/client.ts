@@ -18,6 +18,7 @@ import { PatientsPlatformPage } from "./platform-page.tsx";
  */
 export const patientsChromePlugin = definePlugin({
 	id: "patients.chrome",
+	meta: { keywords: ["patients", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -40,6 +41,7 @@ export const patientsPanelPlugin = definePlugin({
 	id: "patients.panel",
 	requiredDeps: ["platform.panel"],
 	meta: {
+		keywords: ["patients", "ui"],
 		name: "Patients",
 		description: "Patient records and demographics",
 		icon: UsersIcon,
@@ -58,14 +60,15 @@ export const patientsPanelPlugin = definePlugin({
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "patients.tables" }),
+	definePlugin({ id: "patients.tables", meta: { keywords: ["patients", "tables"] } }),
 	definePlugin({
 		id: "patients.services",
+		meta: { keywords: ["patients", "services"] },
 		requiredDeps: ["platform.admin"],
 		// Mirrors patientsServicesPlugin.optionalDeps (server index.ts).
 		optionalDeps: ["audit.services"],
 	}),
-	definePlugin({ id: "patients.routes" }),
+	definePlugin({ id: "patients.routes", meta: { keywords: ["patients", "routes"] } }),
 	patientsChromePlugin,
 	patientsPanelPlugin,
 ];

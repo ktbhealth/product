@@ -14,9 +14,14 @@ import { PatientPortalHomePage } from "./views/PatientPortalHomePage.tsx";
  */
 export const plugins: readonly Plugin[] = [
 	// Mirrors patientPortalServicesPlugin.optionalDeps (server index.ts).
-	definePlugin({ id: "patient-portal.services", optionalDeps: ["audit.services"] }),
+	definePlugin({
+		id: "patient-portal.services",
+		meta: { keywords: ["patient-portal", "services", "patient"] },
+		optionalDeps: ["audit.services"],
+	}),
 	definePlugin({
 		id: "patient-portal.portal",
+		meta: { keywords: ["patient-portal", "shell", "patient"] },
 		requiredDeps: ["portal.shell"],
 		portals: [
 			{
@@ -29,6 +34,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "patient-portal.pages",
+		meta: { keywords: ["patient-portal", "ui", "patient"] },
 		requiredDeps: ["patient-portal.services"],
 		pages: [
 			{
@@ -50,6 +56,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "patient-portal.chrome",
+		meta: { keywords: ["patient-portal", "ui", "patient"] },
 		requiredDeps: ["patient-portal.portal"],
 		chrome: [
 			{
@@ -63,5 +70,8 @@ export const plugins: readonly Plugin[] = [
 			},
 		],
 	}),
-	definePlugin({ id: "patient-portal.routes" }),
+	definePlugin({
+		id: "patient-portal.routes",
+		meta: { keywords: ["patient-portal", "routes", "patient"] },
+	}),
 ];

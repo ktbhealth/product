@@ -41,6 +41,28 @@ export const cqrsDispatchFailures = Metric.counter("ktb_cqrs_dispatch_failures_t
 	incremental: true,
 });
 
+/** Per-plugin CQRS SLOs — the package-level breakdown of the
+ * cqrsDispatch* aggregates above, so "which plugin is slow/erroring"
+ * is a first-class query. Recorded in the app-host bus middleware
+ * (packages/app-host/src/index.ts).
+ *
+ * Labels are bounded: `plugin` is the plugin package id stamped on
+ * discovered plugins (the registry is ~20 entries — never a message
+ * tag or payload field), `side` is command|query, `outcome` is
+ * success|error|disabled. `disabled` means the enabled-state gate
+ * blocked the dispatch before any handler ran: the middleware sits
+ * OUTSIDE the gate so attempted traffic stays visible, and disabled
+ * outcomes stay out of the success/error split — an SLO query reads
+ * `outcome=~"success|error"` or filters `outcome!="disabled"`. */
+export const pluginInvocations = Metric.counter("ktb_plugin_invocations_total", {
+	description: "Plugin CQRS dispatches by package, side and outcome",
+	incremental: true,
+});
+export const pluginDuration = Metric.histogram("ktb_plugin_duration_ms", {
+	description: "Plugin CQRS dispatch wall time by package and side",
+	boundaries: [5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000],
+});
+
 /** HTTP edge signals from the request middleware — handlerType
  * (`serverFn` | `router`) keeps server-fn traffic separable from page
  * loads; status is the response code (bounded).

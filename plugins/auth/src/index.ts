@@ -20,6 +20,7 @@ import { SessionMenu } from "./chrome.tsx";
  */
 export const authRoutesPlugin = definePlugin({
 	id: "auth.routes",
+	meta: { keywords: ["auth", "routes"] },
 	system: true,
 	routes: [
 		// Single-file page route: `route()` resolves the module path
@@ -39,6 +40,7 @@ export const authRoutesPlugin = definePlugin({
  */
 export const authChromePlugin = definePlugin({
 	id: "auth.chrome",
+	meta: { keywords: ["auth", "ui"] },
 	system: true,
 	chrome: [
 		{
