@@ -59,5 +59,11 @@ export const makeHttpAcpTransport = (
 						cause,
 					}),
 			})) as unknown;
-		});
+		}).pipe(
+			// One span per JSON-RPC POST. `method` is a compile-time
+			// constant ("task.submit") so there is nothing bounded worth
+			// attributing; params carry prompt content and never leave
+			// the process boundary as span data.
+			Effect.withSpan("llm.acp"),
+		);
 };

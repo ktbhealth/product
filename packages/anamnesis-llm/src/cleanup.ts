@@ -48,6 +48,11 @@ const viaLanguageModel = (
 		const corrected = response.text.trim();
 		return corrected ? { corrected, engine } : null;
 	}).pipe(
+		// Transport-boundary span: the engine tag is a bounded provider
+		// name, never transcript content.
+		Effect.withSpan("transcript.cleanup", {
+			attributes: { "transcript.engine": engine },
+		}),
 		Effect.provide(layer),
 		Effect.catch((error) =>
 			Effect.logWarning("transcript cleanup failed", { engine, error: String(error) }).pipe(
