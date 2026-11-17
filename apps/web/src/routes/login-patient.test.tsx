@@ -23,6 +23,10 @@ vi.mock("@ktb/auth-better/client", () => ({
 	},
 }));
 vi.mock("#/lib/fns.ts", () => ({ emailEnabledFn: mocks.emailEnabledFn }));
+vi.mock("#/lib/i18n.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#/lib/i18n.ts")>();
+	return { ...actual, useRootI18nSlice: () => undefined };
+});
 // The widget needs a site key and Cloudflare's script; the stand-in
 // hands the page a token on demand.
 vi.mock("@ktbhealth/ui/components/turnstile", async () => {
@@ -49,6 +53,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 			options: opts,
 			useLoaderData: () => mocks.loaderData.current,
 		}),
+		useLoaderData: () => mocks.loaderData.current,
 	};
 });
 
@@ -140,7 +145,7 @@ describe("portal sign-in page", () => {
 	it("signs in with the credentials and lands on the portal", async () => {
 		render(createElement(Page));
 		await signIn();
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 		expect(signInEmail).toHaveBeenCalledTimes(1);
 		expect(signInEmail).toHaveBeenCalledWith({
 			email: "ana@x.com",
@@ -185,7 +190,7 @@ describe("portal sign-in page", () => {
 	it("sends a new account straight to the portal when email is disabled", async () => {
 		render(createElement(Page));
 		await signUp();
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 		expect(assign).toHaveBeenCalledTimes(1);
 	});
 
@@ -216,7 +221,7 @@ describe("portal sign-in page", () => {
 		await screen.findByText("Invalid credentials");
 		expect(assign).not.toHaveBeenCalled();
 		await press("Sign in");
-		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 		expect(screen.queryByText("Invalid credentials")).toBeNull();
 	});
 
