@@ -291,7 +291,10 @@ const providerLockin = {
 			TemplateLiteral(node) {
 				for (const quasi of node.quasis ?? []) {
 					const cooked = quasi.value?.cooked ?? quasi.value?.raw;
-					if (typeof cooked === "string" && PROVIDER_LITERAL_PATTERNS.some((re) => re.test(cooked))) {
+					if (
+						typeof cooked === "string" &&
+						PROVIDER_LITERAL_PATTERNS.some((re) => re.test(cooked))
+					) {
 						context.report({
 							node: quasi,
 							message:
@@ -585,7 +588,8 @@ const pluginApiRouteGate = makePluginRouteGate(PLUGIN_API_ROUTE_RE, "createPlugi
 
 /** `<abs>/plugins/<pkg>` (or packages/apps/evals) prefix of a filename. */
 const PACKAGE_ROOT_RE = /^(.*[/\\])?(?:plugins|packages|apps|evals)[/\\][^/\\]+/;
-const BOUNDARY_EXEMPT_BASENAME_RE = /(?:^|[/\\])(?:schema\.tsx?|[^/\\]*\.gen\.tsx?|[^/\\]*\.test\.tsx?)$/;
+const BOUNDARY_EXEMPT_BASENAME_RE =
+	/(?:^|[/\\])(?:schema\.tsx?|[^/\\]*\.gen\.tsx?|[^/\\]*\.test\.tsx?)$/;
 
 const packageBoundary = {
 	create(context) {

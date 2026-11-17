@@ -424,7 +424,10 @@ const runProgramRule = (ruleName, filename, body) => {
 	visitor.TemplateLiteral({
 		type: "TemplateLiteral",
 		quasis: [
-			{ type: "TemplateElement", value: { cooked: "https://fonts.googleapis.com/css2?family=", raw: "" } },
+			{
+				type: "TemplateElement",
+				value: { cooked: "https://fonts.googleapis.com/css2?family=", raw: "" },
+			},
 			{ type: "TemplateElement", value: { cooked: "&display=swap", raw: "" } },
 		],
 		expressions: [],
@@ -438,9 +441,7 @@ const runProgramRule = (ruleName, filename, body) => {
 		const ctx = makeContext(filename);
 		// Exempt files get an empty visitor set — optional-call keeps
 		// the smoke test honest (no visitors ⇒ no reports).
-		plugin.rules["package-boundary"].create(ctx).ImportDeclaration?.(
-			importDecl(source, ["x"]),
-		);
+		plugin.rules["package-boundary"].create(ctx).ImportDeclaration?.(importDecl(source, ["x"]));
 		return ctx.reports;
 	};
 
