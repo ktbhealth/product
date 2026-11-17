@@ -567,11 +567,13 @@ CREATE INDEX portal_keys_wrap_idx ON portal_keys (wrap_public_key);
 
 export const vaultTablesPlugin = definePlugin({
 	id: "vault.tables",
+	meta: { keywords: ["vault", "tables"] },
 	tables: { clinicKeys, entityDeks, portalKeys },
 });
 
 export const vaultServicesPlugin = definePlugin({
 	id: "vault.services",
+	meta: { keywords: ["vault", "services"] },
 	services: VaultLive,
 });
 
@@ -584,6 +586,7 @@ export const vaultServicesPlugin = definePlugin({
  */
 export const vaultPagesPlugin = definePlugin({
 	id: "vault.pages",
+	meta: { keywords: ["vault", "ui"] },
 	requiredDeps: ["vault.services"],
 	pages: [
 		{
@@ -615,6 +618,7 @@ export const vaultPagesPlugin = definePlugin({
  * never render the item (no dep edge needed). */
 export const vaultChromePlugin = definePlugin({
 	id: "vault.chrome",
+	meta: { keywords: ["vault", "ui"] },
 	chrome: [
 		{
 			id: "vault.nav",

@@ -56,7 +56,6 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "audit.services",
-		meta: { keywords: ["audit", "services"] },
 		// Mirrors auditServicesPlugin.requiredDeps (server index.ts) —
 		// literal id: importing @ktb/platform would pull the server graph
 		// into the client bundle. `meta` must match the server manifest
@@ -64,6 +63,7 @@ export const plugins: readonly Plugin[] = [
 		// /platform/plugins form renders; `configSchema` stays server-only.
 		requiredDeps: ["platform.admin"],
 		meta: {
+			keywords: ["audit", "services"],
 			name: "Audit",
 			description: "Append-only admin audit log with hash-chained entries",
 			icon: ScrollTextIcon,

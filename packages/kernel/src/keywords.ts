@@ -9,6 +9,7 @@
  */
 export const PLUGIN_KEYWORDS = [
 	// domains — the lanes of the Domains view; one per plugin namespace
+	"ai",
 	"audience",
 	"audit",
 	"auth",
@@ -18,6 +19,7 @@ export const PLUGIN_KEYWORDS = [
 	"doctors",
 	"eval",
 	"groups",
+	"integrity",
 	"invites",
 	"jobs",
 	"manager",
@@ -32,8 +34,10 @@ export const PLUGIN_KEYWORDS = [
 	"secretaries",
 	"site",
 	"tenant",
+	"theme",
 	"transcription",
 	"users",
+	"vault",
 	// eval/transcription sub-domains
 	"asr",
 	"credentials",

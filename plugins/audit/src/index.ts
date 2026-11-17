@@ -701,11 +701,11 @@ export const auditTablesPlugin = definePlugin({
 
 export const auditServicesPlugin = definePlugin({
 	id: "audit.services",
-	meta: { keywords: ["audit", "services"] },
 	// adminList consumes the PlatformAdmin gate — the dep edge keeps the
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
 	meta: {
+		keywords: ["audit", "services"],
 		name: "Audit",
 		description: "Append-only admin audit log with hash-chained entries",
 		icon: ScrollTextIcon,

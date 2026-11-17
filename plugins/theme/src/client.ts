@@ -17,11 +17,13 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
  */
 export const themeServicesPlugin = definePlugin({
 	id: "theme.services",
+	meta: { keywords: ["theme", "services"] },
 	requiredDeps: ["platform.admin"],
 });
 
 export const themeBrandPlugin = definePlugin({
 	id: "theme.brand",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["theme.services"],
 	chrome: [
 		{
@@ -34,6 +36,7 @@ export const themeBrandPlugin = definePlugin({
 
 export const themePanelPlugin = definePlugin({
 	id: "theme.panel",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["platform.panel", "theme.services"],
 	panel: {
 		pages: [{ id: "theme.admin", path: "/platform/theme", component: ThemePlatformPage }],
@@ -42,6 +45,7 @@ export const themePanelPlugin = definePlugin({
 
 export const themeHeaderPlugin = definePlugin({
 	id: "theme.header",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["platform.panel", "theme.services"],
 	optionalDeps: ["platform.header"],
 	chrome: [
@@ -58,6 +62,7 @@ export const themeHeaderPlugin = definePlugin({
 
 export const themeChromePlugin = definePlugin({
 	id: "theme.chrome",
+	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["platform.panel", "theme.services"],
 	chrome: [
 		{
@@ -75,6 +80,7 @@ export const themeChromePlugin = definePlugin({
  * stub like jobs.routes/consultations.routes so registry parity holds. */
 const themeRoutesPlugin = definePlugin({
 	id: "theme.routes",
+	meta: { keywords: ["theme", "routes"] },
 	requiredDeps: ["theme.services"],
 });
 
