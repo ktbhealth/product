@@ -158,6 +158,20 @@ describe("get/set", () => {
 			expect(err).toBeInstanceOf(KvValidationError);
 		}
 	});
+
+	it("rejects values over MAX_VALUE_BYTES on set and setIfAbsent", async () => {
+		const big = "x".repeat(256 * 1024);
+		const err = await runErr(eff((kv) => kv.set("t.size", "big", big, { scope: GLOBAL })));
+		expect(err).toBeInstanceOf(KvValidationError);
+		expect((err as KvValidationError).reason).toContain("serialized bytes");
+		const err2 = await runErr(
+			eff((kv) => kv.setIfAbsent("t.size", "big2", big, { scope: GLOBAL })),
+		);
+		expect(err2).toBeInstanceOf(KvValidationError);
+		// Just under the cap still writes.
+		const ok = await run(eff((kv) => kv.set("t.size", "ok", "y".repeat(1024), { scope: GLOBAL })));
+		expect(ok.version).toBe(1);
+	});
 });
 
 describe("lazy expiry + sweep", () => {

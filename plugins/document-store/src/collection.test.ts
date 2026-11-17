@@ -36,6 +36,22 @@ describe("defineCollection", () => {
 		expect(def).toMatchObject({ version: 3, indexes: ["a.b"], owner: "x.services" });
 		expect(def.indexes).toBeDefined();
 	});
+
+	it("keeps an optional permissions block (JSON-shaped)", () => {
+		const def = defineCollection({
+			name: "c",
+			fields: { secret: f.string() },
+			permissions: {
+				read: "docs.c.read",
+				write: ["docs.c.write", "docs.c.admin"],
+				delete: "docs.c.delete",
+				fields: { secret: { read: "docs.c.secret.read", write: "docs.c.secret.write" } },
+			},
+		});
+		expect(def.permissions?.read).toBe("docs.c.read");
+		expect(def.permissions?.fields?.secret?.write).toBe("docs.c.secret.write");
+		expect(JSON.parse(JSON.stringify(def))).toEqual(def);
+	});
 });
 
 describe("documentCollectionContribution / toDocumentCollection", () => {
@@ -113,6 +129,43 @@ describe("assertCollectionDef", () => {
 			fields: { n: { kind: "number", default: 3 }, r: { kind: "ref", default: null } },
 		};
 		expect(() => assertCollectionDef(good, "test")).not.toThrow();
+	});
+
+	it("accepts a well-formed permissions block", () => {
+		const def = {
+			name: "ok.name",
+			version: 1,
+			fields: { s: { kind: "string" } },
+			permissions: {
+				read: "r.a",
+				write: ["r.b", "r.c"],
+				fields: { s: { read: "r.d", write: ["r.e"] } },
+				futureKey: { anything: true }, // unknown keys tolerated
+			},
+		};
+		expect(() => assertCollectionDef(def, "test")).not.toThrow();
+	});
+
+	it("rejects malformed permissions blocks", () => {
+		const base = { name: "ok.name", version: 1, fields: {} };
+		for (const permissions of [
+			"yes",
+			[],
+			{ read: "" },
+			{ read: [] },
+			{ read: ["ok", 5] },
+			{ read: [""] },
+			{ fields: [] },
+			{ fields: { "bad.name": { read: "r.a" } } },
+			// JSON.parse yields an OWN "__proto__" key (literal syntax
+			// would silently set the prototype instead).
+			{ fields: JSON.parse('{"__proto__":{"read":"r.a"}}') },
+			{ fields: { s: "r.a" } },
+			{ fields: { s: { read: "" } } },
+			{ fields: { s: { write: [1] } } },
+		]) {
+			expect(() => assertCollectionDef({ ...base, permissions }, "test")).toThrow(/permissions/);
+		}
 	});
 });
 

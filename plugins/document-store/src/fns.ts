@@ -96,6 +96,7 @@ const issuesOf = (error: unknown): readonly string[] | null => {
 		value?: unknown;
 		targetCollection?: unknown;
 		targetId?: unknown;
+		bytes?: unknown;
 	};
 	if (tag === "DocumentValidationError") {
 		return Array.isArray(e.issues)
@@ -109,6 +110,9 @@ const issuesOf = (error: unknown): readonly string[] | null => {
 		return [
 			`${String(e.field)}: unknown ${String(e.targetCollection)} record #${String(e.targetId)}`,
 		];
+	}
+	if (tag === "DocumentTooLarge") {
+		return [`document too large: ${String(e.bytes)} bytes serialized`];
 	}
 	return null;
 };

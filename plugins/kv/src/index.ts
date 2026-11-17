@@ -20,6 +20,7 @@ export {
 	KvValidationError,
 	MAX_FIELD_LENGTH,
 	MAX_KEYS_LIMIT,
+	MAX_VALUE_BYTES,
 	type KvEntry,
 	type KvError,
 	type KvKeysOptions,

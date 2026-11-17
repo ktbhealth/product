@@ -872,6 +872,8 @@
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
+        "@ktb/rbac": "workspace:*",
+        "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",

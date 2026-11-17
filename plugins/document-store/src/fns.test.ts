@@ -69,7 +69,12 @@ const refs = defineCollection({
 	fields: { target: f.ref({ collection: "fns.uniq" }) },
 });
 
-const DEFS = [notes, uniq, refs];
+const big = defineCollection({
+	name: "fns.big",
+	fields: { payload: f.json() },
+});
+
+const DEFS = [notes, uniq, refs, big];
 
 const sessionFor = (email: string | null) =>
 	email === null
@@ -157,14 +162,14 @@ describe("document-store fns", () => {
 	it("creates, lists, updates and deletes documents as admin", async () => {
 		currentEmail = "admin@x.com";
 		const collections = await listCollectionsFn();
-		expect(collections).toHaveLength(3);
-		expect(collections![0]).toMatchObject({
-			name: "fns.notes",
+		expect(collections).toHaveLength(4);
+		const notesInfo = collections!.find((c) => c.name === "fns.notes");
+		expect(notesInfo).toMatchObject({
 			contributed: true,
 			registered: false,
 			recordCount: 0,
 		});
-		expect(Object.keys(collections![0]!.fields)).toContain("title");
+		expect(Object.keys(notesInfo!.fields)).toContain("title");
 
 		const created = await createDocumentFn({
 			data: { collection: "fns.notes", data: { title: "first", kind: "a" } },
@@ -237,6 +242,15 @@ describe("document-store fns", () => {
 		expect(bad.status).toBe("invalid");
 		expect(bad.status === "invalid" ? bad.issues.join(" ") : "").toContain("target");
 		expect(id).toBeGreaterThan(0);
+	});
+
+	it("maps oversized documents to invalid results", async () => {
+		currentEmail = "admin@x.com";
+		const res = await createDocumentFn({
+			data: { collection: "fns.big", data: { payload: "x".repeat(70 * 1024) } },
+		});
+		expect(res.status).toBe("invalid");
+		expect(res.status === "invalid" ? res.issues.join(" ") : "").toContain("too large");
 	});
 
 	it("returns in-use with referrers when a restricted delete is blocked", async () => {
