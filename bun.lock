@@ -525,6 +525,12 @@
         "effect": "4.1.2",
       },
     },
+    "packages/json-schema": {
+      "name": "@ktb/json-schema",
+      "dependencies": {
+        "ajv": "^8.20.0",
+      },
+    },
     "packages/kernel": {
       "name": "@ktb/kernel",
       "devDependencies": {
@@ -2032,6 +2038,8 @@
     "@ktb/jobs": ["@ktb/jobs@workspace:plugins/jobs"],
 
     "@ktb/jobs-port": ["@ktb/jobs-port@workspace:packages/jobs-port"],
+
+    "@ktb/json-schema": ["@ktb/json-schema@workspace:packages/json-schema"],
 
     "@ktb/kernel": ["@ktb/kernel@workspace:packages/kernel"],
 

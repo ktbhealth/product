@@ -1,0 +1,11 @@
+{
+	"name": "@ktb/json-schema",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"ajv": "^8.20.0"
+	}
+}
