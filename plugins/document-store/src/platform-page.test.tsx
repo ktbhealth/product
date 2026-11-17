@@ -37,6 +37,7 @@ const collection = (over: Partial<CollectionWire> = {}): CollectionWire => ({
 	contributed: true,
 	registered: true,
 	recordCount: 0,
+	hasMigrations: false,
 	...over,
 });
 
@@ -44,6 +45,7 @@ const doc = (over: Partial<DocumentWire> = {}): DocumentWire => ({
 	id: 1,
 	collection: "test.notes",
 	data: { title: "hello" },
+	schemaVersion: 1,
 	ownerId: "u1",
 	tenantId: null,
 	createdAt: "2024-01-01T00:00:00.000Z",

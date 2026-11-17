@@ -51,6 +51,11 @@ export const documentRecords = sqliteTable(
 			.references(() => documentCollections.id, { onDelete: "cascade" }),
 		/** JSON-serialized validated field data. */
 		data: text().notNull(),
+		/** Def `version` the stored `data` was written/migrated under
+		 * (T-130). Pre-existing rows default to 1 = "unversioned"; the
+		 * service migrates lazily on read and stamps the current def
+		 * version on write. */
+		schemaVersion: integer("schema_version").notNull().default(1),
 		/** Owner attribution — "" for system contexts (no principal). */
 		ownerId: text("owner_id").notNull().default(""),
 		/** NULL = personal row; groups.id = tenant-owned row. */

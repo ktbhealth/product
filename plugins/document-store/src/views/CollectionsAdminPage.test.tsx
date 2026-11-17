@@ -21,6 +21,7 @@ const collection = (over: Partial<CollectionWire> = {}): CollectionWire => ({
 	contributed: true,
 	registered: true,
 	recordCount: 0,
+	hasMigrations: false,
 	...over,
 });
 

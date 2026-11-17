@@ -24,6 +24,7 @@ import {
 	DuplicateFieldValue,
 	DOCUMENT_STORE_TEST_DDL,
 	InvalidDocumentQuery,
+	type DocumentBatchResult,
 	RecordNotFound,
 	UnknownCollection,
 	type DocumentStoreError,
@@ -1234,6 +1235,41 @@ describe("DocumentStoreLive permissions + guards (T-128)", () => {
 		expect(ok.id).toBeGreaterThan(0);
 	});
 
+	it("checks permissions per op inside a batch — denial rolls everything back", async () => {
+		for (const g of ALL_GRANTS) grants.add(g);
+		// secret.write denied: the second op fails planning, so the
+		// permitted first insert must not commit either.
+		grants.delete("docs.permthings.secret.write");
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "insert", collection: permThings, data: { title: "ok-op" } },
+							{ op: "insert", collection: permThings, data: { title: "bad", secret: "x" } },
+						]),
+					),
+				),
+			),
+		).toBe("Forbidden");
+		const page = await as(
+			"u1",
+			call((s) => s.find(permThings, { filter: { title: "ok-op" } })),
+		);
+		expect(page.total).toBe(0);
+		// delete permission is checked per op too.
+		grants.delete("docs.permthings.delete");
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) => s.batch([{ op: "delete", collection: permThings, id: 1 }])),
+				),
+			),
+		).toBe("Forbidden");
+	});
+
 	it("fails find when the visible slice exceeds the scan cap", async () => {
 		// One service insert + FIND_SCAN_MAX_ROWS bulk rows.
 		const first = await as(
@@ -1266,3 +1302,1277 @@ describe("DocumentStoreLive permissions + guards (T-128)", () => {
 		expect(err?.issues?.[0]).toContain("scan cap");
 	});
 });
+
+// ---------- T-126: multi-document batch ----------
+
+const bTargets = defineCollection({
+	name: "batch.targets",
+	fields: {
+		label: f.string({ required: true }),
+		code: f.string({ unique: true }),
+	},
+});
+
+const bThings = defineCollection({
+	name: "batch.things",
+	fields: {
+		title: f.string({ required: true, maxLength: 20 }),
+		count: f.number({ default: 0 }),
+		target: f.ref({ collection: "batch.targets" }),
+	},
+});
+
+const bCascade = defineCollection({
+	name: "batch.cascade",
+	fields: {
+		t: f.ref({ collection: "batch.targets", onDelete: "cascade" }),
+		t2: f.ref({ collection: "batch.targets", onDelete: "cascade" }),
+		v: f.string(),
+	},
+});
+
+const bNullify = defineCollection({
+	name: "batch.nullify",
+	fields: {
+		t: f.ref({ collection: "batch.targets", onDelete: "nullify" }),
+		t2: f.ref({ collection: "batch.targets", onDelete: "nullify" }),
+		v: f.string({ required: true }),
+	},
+});
+
+/** Required ref + nullify: a nullify patch fails re-validation, so the
+ * policy skips the document (best-effort) instead of writing invalid. */
+const bReqNull = defineCollection({
+	name: "batch.reqnull",
+	fields: {
+		t: f.ref({ collection: "batch.targets", onDelete: "nullify" }, { required: true }),
+		v: f.string(),
+	},
+});
+
+const BATCH_DEFS = [bTargets, bThings, bCascade, bNullify, bReqNull];
+
+describe("DocumentStoreLive batch (T-126)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+	let db: ReturnType<typeof makeDb>;
+
+	beforeAll(() => {
+		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: BATCH_DEFS }),
+		);
+		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const as = <A, E>(userId: string | null, effect: Effect.Effect<A, E, DocumentStore>) => {
+		let eff = Effect.provideService(effect, Principal, userId === null ? null : { userId });
+		return runtime.runPromise(eff);
+	};
+
+	const call = <A, E>(f: (s: DocumentStore["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(DocumentStore, f);
+
+	const tagOf = (p: Promise<unknown>) =>
+		p.then(
+			() => "ok",
+			(e: unknown) => (e as { _tag?: string })._tag,
+		);
+
+	it("runs mixed ops atomically and returns position-aligned results", async () => {
+		// Pre-existing committed rows the batch will update/delete.
+		const oldTarget = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "old", code: "old1" })),
+		);
+		const oldThing = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "old-thing" })),
+		);
+
+		const results = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bThings, data: { title: "b1" }, id: 910001 },
+					{ op: "insert", collection: bTargets, data: { label: "BT", code: "bc1" }, id: 910002 },
+					// Update merges over the pending insert above.
+					{ op: "update", collection: bThings, id: 910001, data: { count: 7 } },
+					// Ref resolves through the same-batch explicit-id insert.
+					{ op: "insert", collection: bThings, data: { title: "linked", target: 910002 } },
+					{ op: "update", collection: bTargets, id: oldTarget.id, data: { label: "renamed" } },
+					{ op: "delete", collection: bThings, id: oldThing.id },
+				]),
+			),
+		);
+		expect(results).toHaveLength(6);
+		expect(results[0]).toMatchObject({ op: "insert" });
+		expect((results[0] as { record: { id: number } }).record.id).toBe(910001);
+		const updRec = (results[2] as Extract<DocumentBatchResult, { op: "insert" | "update" }>).record;
+		expect(updRec?.data).toEqual(expect.objectContaining({ title: "b1", count: 7 }));
+		expect(results[5]).toEqual({ op: "delete" });
+
+		// Persisted state reflects every op.
+		const got = await as(
+			"u1",
+			call((s) => s.get(bThings, 910001)),
+		);
+		expect(got?.data).toEqual(expect.objectContaining({ title: "b1", count: 7 }));
+		expect(got?.schemaVersion).toBe(1);
+		const linked = await as(
+			"u1",
+			call((s) => s.find(bThings, { filter: { target: 910002 } })),
+		);
+		expect(linked.rows).toHaveLength(1);
+		const renamed = await as(
+			"u1",
+			call((s) => s.get(bTargets, oldTarget.id)),
+		);
+		expect(renamed?.data.label).toBe("renamed");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, oldThing.id)),
+			),
+		).toBeNull();
+	});
+
+	it("rolls the whole batch back when a later op fails validation", async () => {
+		const before = await as(
+			"u1",
+			call((s) => s.find(bThings)),
+		);
+		const err = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bThings, data: { title: "survivor?" }, id: 910010 },
+					// Over maxLength — fails planning, nothing may commit.
+					{ op: "insert", collection: bThings, data: { title: "x".repeat(30) } },
+				]),
+			),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string },
+		);
+		expect(err?._tag).toBe("DocumentValidationError");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, 910010)),
+			),
+		).toBeNull();
+		const after = await as(
+			"u1",
+			call((s) => s.find(bThings)),
+		);
+		expect(after.total).toBe(before.total);
+	});
+
+	it("rolls back when a mid-batch ref check fails", async () => {
+		const err = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bThings, data: { title: "doomed" }, id: 910011 },
+					{ op: "insert", collection: bThings, data: { title: "bad-ref", target: 424242 } },
+				]),
+			),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string },
+		);
+		expect(err?._tag).toBe("BrokenReference");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, 910011)),
+			),
+		).toBeNull();
+	});
+
+	it("enforces explicit-id conflicts inside the batch", async () => {
+		const existing = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "taken" })),
+		);
+		// Explicit id of a committed row → RecordIdConflict.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([{ op: "insert", collection: bThings, data: { title: "x" }, id: existing.id }]),
+					),
+				),
+			),
+		).toBe("RecordIdConflict");
+		// Two inserts claiming the same explicit id → second conflicts.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "insert", collection: bThings, data: { title: "a" }, id: 910020 },
+							{ op: "insert", collection: bThings, data: { title: "b" }, id: 910020 },
+						]),
+					),
+				),
+			),
+		).toBe("RecordIdConflict");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, 910020)),
+			),
+		).toBeNull();
+		// Non-positive ids are validation errors.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([{ op: "insert", collection: bThings, data: { title: "x" }, id: 0 }]),
+					),
+				),
+			),
+		).toBe("DocumentValidationError");
+	});
+
+	it("lets a later op reuse an id freed by an earlier delete", async () => {
+		const old = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "freed" })),
+		);
+		const results = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "delete", collection: bThings, id: old.id },
+					{ op: "insert", collection: bThings, data: { title: "reborn", count: 3 }, id: old.id },
+				]),
+			),
+		);
+		expect(results[1]).toMatchObject({ op: "insert" });
+		const got = await as(
+			"u1",
+			call((s) => s.get(bThings, old.id)),
+		);
+		expect(got?.data.title).toBe("reborn");
+	});
+
+	it("update and delete compose over pending writes", async () => {
+		// insert → update merges into the SAME write; both ops report
+		// the resulting record.
+		const merged = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bThings, data: { title: "pend" }, id: 910030 },
+					{ op: "update", collection: bThings, id: 910030, data: { count: 9, title: "pend2" } },
+				]),
+			),
+		);
+		expect(merged[0]).toMatchObject({ op: "insert" });
+		expect(merged[1]).toMatchObject({ op: "update" });
+		const got = await as(
+			"u1",
+			call((s) => s.get(bThings, 910030)),
+		);
+		expect(got?.data).toEqual(expect.objectContaining({ title: "pend2", count: 9 }));
+
+		// insert → delete: the write is dropped, both ops resolve.
+		const dropped = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bThings, data: { title: "ghost" }, id: 910031 },
+					{ op: "delete", collection: bThings, id: 910031 },
+				]),
+			),
+		);
+		expect(dropped[0]).toEqual({ op: "insert", record: null });
+		expect(dropped[1]).toEqual({ op: "delete" });
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, 910031)),
+			),
+		).toBeNull();
+
+		// delete → update of the same committed row fails not-found.
+		const victim = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "victim" })),
+		);
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "delete", collection: bThings, id: victim.id },
+							{ op: "update", collection: bThings, id: victim.id, data: { count: 1 } },
+						]),
+					),
+				),
+			),
+		).toBe("RecordNotFound");
+		// The failed batch persisted nothing — the victim survives.
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, victim.id)),
+			),
+		).not.toBeNull();
+	});
+
+	it("enforces unique fields across pending writes in one batch", async () => {
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "insert", collection: bTargets, data: { label: "U", code: "dup1" } },
+							{ op: "insert", collection: bTargets, data: { label: "U2", code: "dup1" } },
+						]),
+					),
+				),
+			),
+		).toBe("DuplicateFieldValue");
+		const page = await as(
+			"u1",
+			call((s) => s.find(bTargets, { filter: { code: "dup1" } })),
+		);
+		expect(page.total).toBe(0);
+	});
+
+	it("applies cascade/nullify/restrict atomically with the delete", async () => {
+		// Seed one target per policy.
+		const cTarget = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "C", code: "bc-c" })),
+		);
+		const cascRef = await as(
+			"u1",
+			call((s) => s.insert(bCascade, { t: cTarget.id, v: "keep?" })),
+		);
+		const nTarget = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "N", code: "bc-n" })),
+		);
+		const nullRef = await as(
+			"u1",
+			call((s) => s.insert(bNullify, { t: nTarget.id, v: "req" })),
+		);
+		const rTarget = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "R", code: "bc-r" })),
+		);
+		const restrRef = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "holds", target: rTarget.id })),
+		);
+
+		// A failing op AFTER the delete rolls the cascade back too —
+		// no orphans, no half-applied policies.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "delete", collection: bTargets, id: cTarget.id },
+							{ op: "insert", collection: bThings, data: { title: "x".repeat(30) } },
+						]),
+					),
+				),
+			),
+		).toBe("DocumentValidationError");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bTargets, cTarget.id)),
+			),
+		).not.toBeNull();
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bCascade, cascRef.id)),
+			),
+		).not.toBeNull();
+
+		// Clean cascade delete: target AND referrer gone together.
+		await as(
+			"u1",
+			call((s) => s.batch([{ op: "delete", collection: bTargets, id: cTarget.id }])),
+		);
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bTargets, cTarget.id)),
+			),
+		).toBeNull();
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bCascade, cascRef.id)),
+			),
+		).toBeNull();
+
+		// Nullify patches the referrer inside the same transaction.
+		await as(
+			"u1",
+			call((s) => s.batch([{ op: "delete", collection: bTargets, id: nTarget.id }])),
+		);
+		const nullified = await as(
+			"u1",
+			call((s) => s.get(bNullify, nullRef.id)),
+		);
+		expect(nullified?.data.t).toBeNull();
+		expect(nullified?.data.v).toBe("req");
+
+		// Restrict still blocks — referencedBy names the batch-visible ref.
+		const inUse = await as(
+			"u1",
+			call((s) => s.batch([{ op: "delete", collection: bTargets, id: rTarget.id }])),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string; referencedBy?: string[] },
+		);
+		expect(inUse?._tag).toBe("DocumentInUse");
+		expect(inUse?.referencedBy).toContain("batch.things.target");
+		// Clean up the restrict pair so later tests stay isolated.
+		await as(
+			"u1",
+			call((s) => s.delete(bThings, restrRef.id)),
+		);
+		await as(
+			"u1",
+			call((s) => s.delete(bTargets, rTarget.id)),
+		);
+	});
+
+	it("sees pending writes during ref-policy scans (cascade + nullify)", async () => {
+		// Same-batch insert referenced by a cascade ref, then the target
+		// is deleted — the pending ref write is dropped with it.
+		const res = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bTargets, data: { label: "P", code: "bc-p" }, id: 910040 },
+					{ op: "insert", collection: bCascade, data: { t: 910040, v: "pend" }, id: 910041 },
+					{ op: "delete", collection: bTargets, id: 910040 },
+				]),
+			),
+		);
+		expect(res[0]).toEqual({ op: "insert", record: null });
+		expect(res[1]).toEqual({ op: "insert", record: null });
+		expect(res[2]).toEqual({ op: "delete" });
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bTargets, 910040)),
+			),
+		).toBeNull();
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bCascade, 910041)),
+			),
+		).toBeNull();
+
+		// Nullify patches the PENDING write's data (t → null) instead of
+		// emitting a second write.
+		const res2 = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bTargets, data: { label: "P2", code: "bc-p2" }, id: 910042 },
+					{ op: "insert", collection: bNullify, data: { t: 910042, v: "pend-n" }, id: 910043 },
+					{ op: "delete", collection: bTargets, id: 910042 },
+				]),
+			),
+		);
+		const nullRec = (res2[1] as Extract<DocumentBatchResult, { op: "insert" | "update" }>).record;
+		expect(nullRec?.data.t).toBeNull();
+		const stored = await as(
+			"u1",
+			call((s) => s.get(bNullify, 910043)),
+		);
+		expect(stored?.data.t).toBeNull();
+
+		// Restrict sees the pending ref and fails the whole batch —
+		// the target insert rolls back with it.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{
+								op: "insert",
+								collection: bTargets,
+								data: { label: "P3", code: "bc-p3" },
+								id: 910044,
+							},
+							{ op: "insert", collection: bThings, data: { title: "holds-p", target: 910044 } },
+							{ op: "delete", collection: bTargets, id: 910044 },
+						]),
+					),
+				),
+			),
+		).toBe("DocumentInUse");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bTargets, 910044)),
+			),
+		).toBeNull();
+	});
+
+	it("sees earlier deletes when checking refs and uniqueness", async () => {
+		// Ref to a target deleted earlier in the same batch → broken.
+		const doomed = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "doomed", code: "bc-doomed" })),
+		);
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "delete", collection: bTargets, id: doomed.id },
+							{ op: "insert", collection: bThings, data: { title: "late", target: doomed.id } },
+						]),
+					),
+				),
+			),
+		).toBe("BrokenReference");
+
+		// Unique value freed by an earlier delete is reusable.
+		const freed = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "freed", code: "reuse-me" })),
+		);
+		const reused = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "delete", collection: bTargets, id: freed.id },
+					{ op: "insert", collection: bTargets, data: { label: "new", code: "reuse-me" } },
+				]),
+			),
+		);
+		expect(reused[1]).toMatchObject({ op: "insert" });
+		const page = await as(
+			"u1",
+			call((s) => s.find(bTargets, { filter: { code: "reuse-me" } })),
+		);
+		expect(page.total).toBe(1);
+	});
+
+	it("rejects a ref that resolves to a pending write of another collection", async () => {
+		// The id exists in the plan, but under batch.things — a ref
+		// field pointing at batch.targets must not resolve it.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "insert", collection: bThings, data: { title: "wrong-coll" }, id: 910050 },
+							{ op: "insert", collection: bCascade, data: { t: 910050 } },
+						]),
+					),
+				),
+			),
+		).toBe("BrokenReference");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, 910050)),
+			),
+		).toBeNull();
+	});
+
+	it("sees pending updates inside uniqueness buckets", async () => {
+		const ct = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "CT", code: "ct-base" })),
+		);
+		// update → update merges; the second update's own uniqueness
+		// check excludes itself. The trailing insert then collides
+		// with the pending write's effective data.
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "update", collection: bTargets, id: ct.id, data: { code: "u-move" } },
+							{ op: "update", collection: bTargets, id: ct.id, data: { code: "u-move2" } },
+							{ op: "insert", collection: bTargets, data: { label: "X", code: "u-move2" } },
+						]),
+					),
+				),
+			),
+		).toBe("DuplicateFieldValue");
+		// Whole batch rolled back — the committed row keeps its code.
+		const after = await as(
+			"u1",
+			call((s) => s.get(bTargets, ct.id)),
+		);
+		expect(after?.data.code).toBe("ct-base");
+	});
+
+	it("skips dropped and foreign-collection writes during uniqueness scans", async () => {
+		const victim = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "upd-me" })),
+		);
+		const results = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					// Pending insert later cascade-dropped by the delete.
+					{ op: "insert", collection: bTargets, data: { label: "D", code: "bc-drop" }, id: 910080 },
+					// Autoincrement pending insert (id null) — also dropped.
+					{ op: "insert", collection: bCascade, data: { t: 910080 } },
+					// A pending UPDATE — exercises the kind!==insert skip.
+					{ op: "update", collection: bThings, id: victim.id, data: { count: 4 } },
+					{ op: "delete", collection: bTargets, id: 910080 },
+					// Later ops' uniqueness scans must skip the dropped
+					// writes and the foreign-collection update above.
+					{ op: "insert", collection: bThings, data: { title: "after" } },
+					{ op: "insert", collection: bTargets, data: { label: "post" } },
+				]),
+			),
+		);
+		expect(results[0]).toEqual({ op: "insert", record: null });
+		expect(results[1]).toEqual({ op: "insert", record: null });
+		expect(results[3]).toEqual({ op: "delete" });
+		expect(results[4]).toMatchObject({ op: "insert" });
+		expect(results[5]).toMatchObject({ op: "insert" });
+	});
+
+	it("rejects updates that fail validation after merging into a pending write", async () => {
+		expect(
+			await tagOf(
+				as(
+					"u1",
+					call((s) =>
+						s.batch([
+							{ op: "insert", collection: bThings, data: { title: "ok" }, id: 910070 },
+							{ op: "update", collection: bThings, id: 910070, data: { title: "x".repeat(30) } },
+						]),
+					),
+				),
+			),
+		).toBe("DocumentValidationError");
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, 910070)),
+			),
+		).toBeNull();
+	});
+
+	it("delete drops a pending update on the same committed row", async () => {
+		const victim = await as(
+			"u1",
+			call((s) => s.insert(bThings, { title: "doomed-update" })),
+		);
+		const results = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "update", collection: bThings, id: victim.id, data: { count: 2 } },
+					{ op: "delete", collection: bThings, id: victim.id },
+				]),
+			),
+		);
+		// The update's write is dropped — its op reports record: null.
+		expect(results[0]).toEqual({ op: "update", record: null });
+		expect(results[1]).toEqual({ op: "delete" });
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bThings, victim.id)),
+			),
+		).toBeNull();
+	});
+
+	it("cascade and nullify compose across multiple fields and ops", async () => {
+		// One doc referencing two targets through two cascade fields.
+		const t1 = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "C1", code: "bc-c1" })),
+		);
+		const t2 = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "C2", code: "bc-c2" })),
+		);
+		const multi = await as(
+			"u1",
+			call((s) => s.insert(bCascade, { t: t1.id, t2: t2.id, v: "multi" })),
+		);
+		// Delete t1 first (cascade kills `multi`), then t2 — the second
+		// delete's scan must skip the already-deleted referrer.
+		await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "delete", collection: bTargets, id: t1.id },
+					{ op: "delete", collection: bTargets, id: t2.id },
+				]),
+			),
+		);
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bCascade, multi.id)),
+			),
+		).toBeNull();
+
+		// Two nullify fields on one doc, deleted in one batch — the
+		// second patch merges over the first (both fields end null).
+		const n1 = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "N1", code: "bc-n1" })),
+		);
+		const n2 = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "N2", code: "bc-n2" })),
+		);
+		const holder = await as(
+			"u1",
+			call((s) => s.insert(bNullify, { t: n1.id, t2: n2.id, v: "both" })),
+		);
+		await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "delete", collection: bTargets, id: n1.id },
+					{ op: "delete", collection: bTargets, id: n2.id },
+				]),
+			),
+		);
+		const patched = await as(
+			"u1",
+			call((s) => s.get(bNullify, holder.id)),
+		);
+		expect(patched?.data.t).toBeNull();
+		expect(patched?.data.t2).toBeNull();
+		expect(patched?.data.v).toBe("both");
+	});
+
+	it("nullify patches pending updates and skips invalid documents", async () => {
+		// Pending UPDATE on a committed nullify ref: the policy patches
+		// the update's effective data (t → null) rather than the stored row.
+		const nt = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "NP", code: "bc-np" })),
+		);
+		const holder = await as(
+			"u1",
+			call((s) => s.insert(bNullify, { t: nt.id, v: "orig" })),
+		);
+		await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "update", collection: bNullify, id: holder.id, data: { v: "changed" } },
+					{ op: "delete", collection: bTargets, id: nt.id },
+				]),
+			),
+		);
+		const patched = await as(
+			"u1",
+			call((s) => s.get(bNullify, holder.id)),
+		);
+		expect(patched?.data.t).toBeNull();
+		expect(patched?.data.v).toBe("changed");
+
+		// Cascade through a pending update kills the committed row too.
+		const ct = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "CP", code: "bc-cp" })),
+		);
+		const casc = await as(
+			"u1",
+			call((s) => s.insert(bCascade, { t: ct.id, v: "orig" })),
+		);
+		const res = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "update", collection: bCascade, id: casc.id, data: { v: "changed" } },
+					{ op: "delete", collection: bTargets, id: ct.id },
+				]),
+			),
+		);
+		expect(res[0]).toEqual({ op: "update", record: null });
+		expect(
+			await as(
+				"u1",
+				call((s) => s.get(bCascade, casc.id)),
+			),
+		).toBeNull();
+
+		// A stored row whose data fails re-validation is skipped by
+		// nullify (best-effort), exactly like the sequential path.
+		const st = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "SKIP", code: "bc-skip" })),
+		);
+		const skip = await as(
+			"u1",
+			call((s) => s.insert(bNullify, { t: st.id, v: "ok" })),
+		);
+		await db
+			.update(documentRecords)
+			.set({ data: JSON.stringify({ t: st.id, t2: null, v: 42 }) })
+			.where(eq(documentRecords.id, skip.id));
+		await as(
+			"u1",
+			call((s) => s.batch([{ op: "delete", collection: bTargets, id: st.id }])),
+		);
+		const skipped = await as(
+			"u1",
+			call((s) => s.get(bNullify, skip.id)),
+		);
+		expect(skipped?.data.t).toBe(st.id); // patch skipped — still dangling
+
+		// Nullify on a pending insert patches its data in place — even a
+		// `required` ref accepts null (null = unset is valid for refs).
+		const rt = await as(
+			"u1",
+			call((s) => s.insert(bTargets, { label: "RQ", code: "bc-rq" })),
+		);
+		const res2 = await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: bReqNull, data: { t: rt.id, v: "x" } },
+					{ op: "delete", collection: bTargets, id: rt.id },
+				]),
+			),
+		);
+		const kept = (res2[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>).record;
+		expect(kept?.data.t).toBeNull();
+	});
+
+	it("empty batch is a no-op", async () => {
+		const res = await as(
+			"u1",
+			call((s) => s.batch([])),
+		);
+		expect(res).toEqual([]);
+	});
+});
+
+// ---------- T-130: schema versioning + migration hooks ----------
+
+/** Version-3 def with a two-step chain: v1 docs gain `b`, then `b`
+ * is bumped — exercises chained lazy migration end to end. */
+const migGood = defineCollection({
+	name: "test.miggood",
+	version: 3,
+	fields: {
+		a: f.string({ required: true }),
+		b: f.number(),
+	},
+	migrations: [
+		{
+			from: 1,
+			to: 2,
+			migrate: (doc) => ({ ...doc, b: typeof doc.a === "string" ? doc.a.length : 0 }),
+		},
+		{
+			from: 2,
+			to: 3,
+			migrate: (doc) => ({ ...doc, b: (doc.b as number) + 10 }),
+		},
+	],
+});
+
+/** Version bump with a gap: v1→v2 exists but nothing covers v2→v3. */
+const migGap = defineCollection({
+	name: "test.miggap",
+	version: 3,
+	fields: { a: f.string() },
+	migrations: [{ from: 1, to: 2, migrate: (doc) => doc }],
+});
+
+/** migrate() throws — typed failure, stored row untouched. */
+const migThrow = defineCollection({
+	name: "test.migthrw",
+	version: 2,
+	fields: { a: f.string() },
+	migrations: [
+		{
+			from: 1,
+			to: 2,
+			migrate: () => {
+				throw new Error("boom");
+			},
+		},
+	],
+});
+
+/** migrate() returns a non-object. */
+const migBadRet = defineCollection({
+	name: "test.migbadret",
+	version: 2,
+	fields: { a: f.string() },
+	migrations: [{ from: 1, to: 2, migrate: () => 42 as unknown as Record<string, unknown> }],
+});
+
+/** migrate() output fails current-field validation (drops required `a`). */
+const migInvalid = defineCollection({
+	name: "test.miginvalid",
+	version: 2,
+	fields: { a: f.string({ required: true }) },
+	migrations: [{ from: 1, to: 2, migrate: () => ({}) }],
+});
+
+/** Version bump WITHOUT migrations — version stays advisory. */
+const migNone = defineCollection({
+	name: "test.mignone",
+	version: 2,
+	fields: { a: f.string() },
+});
+
+/** Explicit empty migrations array — the `length === 0` pass-through. */
+const migEmpty = defineCollection({
+	name: "test.migempty",
+	version: 2,
+	fields: { a: f.string() },
+	migrations: [],
+});
+
+/** Contributed but never registered — sweep answers empty. */
+const migLazy = defineCollection({
+	name: "test.miglazy",
+	version: 2,
+	fields: { a: f.string() },
+	migrations: [{ from: 1, to: 2, migrate: (doc) => doc }],
+});
+
+const MIG_DEFS = [migGood, migGap, migThrow, migBadRet, migInvalid, migNone, migEmpty, migLazy];
+
+describe("DocumentStoreLive migrations (T-130)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+	let db: ReturnType<typeof makeDb>;
+
+	beforeAll(() => {
+		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: MIG_DEFS }),
+		);
+		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const as = <A, E>(userId: string | null, effect: Effect.Effect<A, E, DocumentStore>) => {
+		let eff = Effect.provideService(effect, Principal, userId === null ? null : { userId });
+		return runtime.runPromise(eff);
+	};
+
+	const call = <A, E>(f: (s: DocumentStore["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(DocumentStore, f);
+
+	const collectionIdOf = async (name: string) => {
+		const rows = await db
+			.select()
+			.from(documentCollections)
+			.where(eq(documentCollections.name, name));
+		return rows[0]!.id;
+	};
+
+	/** Insert a raw stored row — `schema_version` omitted so the
+	 * column DEFAULT 1 models a pre-T-130 unversioned document. */
+	const seedV1 = async (
+		collection: string,
+		data: unknown,
+		ownerId = "u1",
+		schemaVersion?: number,
+	) => {
+		const now = new Date();
+		const rows = await db
+			.insert(documentRecords)
+			.values({
+				collectionId: await collectionIdOf(collection),
+				data: typeof data === "string" ? data : JSON.stringify(data),
+				ownerId,
+				...(schemaVersion === undefined ? {} : { schemaVersion }),
+				createdAt: now,
+				updatedAt: now,
+			})
+			.returning();
+		return rows[0]!;
+	};
+
+	const storedRow = async (id: number) => {
+		const rows = await db.select().from(documentRecords).where(eq(documentRecords.id, id));
+		return rows[0]!;
+	};
+
+	beforeAll(async () => {
+		// Register every contributed def EXCEPT migLazy (it must stay
+		// unregistered for the empty-sweep test) so seedV1 resolves ids.
+		await runtime.runPromise(
+			call((s) =>
+				Effect.forEach(
+					MIG_DEFS.filter((d) => d !== migLazy),
+					(d) => s.ensureCollection(d),
+					{ discard: true },
+				),
+			),
+		);
+	});
+
+	it("migrates lazily on get/find without rewriting the stored row", async () => {
+		const row = await seedV1("test.miggood", { a: "hey" });
+		const got = await as(
+			"u1",
+			call((s) => s.get(migGood, row.id)),
+		);
+		// 1→2 sets b=len("hey")=3; 2→3 adds 10 → 13.
+		expect(got?.data).toEqual({ a: "hey", b: 13 });
+		// schemaVersion still reports the STORED version.
+		expect(got?.schemaVersion).toBe(1);
+		// The stored payload is untouched — migration is read-time only.
+		const stored = await storedRow(row.id);
+		expect(stored.data).toBe(JSON.stringify({ a: "hey" }));
+		expect(stored.schemaVersion).toBe(1);
+
+		// find filters/sorts over migrated data too.
+		const page = await as(
+			"u1",
+			call((s) => s.find(migGood, { filter: { b: 13 } })),
+		);
+		expect(page.rows.some((r) => r.id === row.id)).toBe(true);
+	});
+
+	it("update migrates first, then stamps the current version", async () => {
+		const row = await seedV1("test.miggood", { a: "abc" });
+		const updated = await as(
+			"u1",
+			call((s) => s.update(migGood, row.id, { a: "abcd" })),
+		);
+		// Migration ran on the STORED doc first (b = len("abc") + 10 =
+		// 13), then the patch merged over it — `a` changed, `b` kept.
+		expect(updated.data).toEqual({ a: "abcd", b: 13 });
+		expect(updated.schemaVersion).toBe(3);
+		const stored = await storedRow(row.id);
+		expect(stored.schemaVersion).toBe(3);
+		expect(JSON.parse(stored.data)).toEqual({ a: "abcd", b: 13 });
+	});
+
+	it("batch update migrates the same way", async () => {
+		const row = await seedV1("test.miggood", { a: "zz" });
+		const results = await as(
+			"u1",
+			call((s) => s.batch([{ op: "update", collection: migGood, id: row.id, data: {} }])),
+		);
+		const rec = (results[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>).record;
+		expect(rec?.data.b).toBe(12); // len("zz")=2 → 2+10
+		expect(rec?.schemaVersion).toBe(3);
+	});
+
+	it("migrateCollection sweeps every in-scope row and reports", async () => {
+		await seedV1("test.miggood", { a: "one" });
+		await seedV1("test.miggood", { a: "three!" });
+		// A current-version row — scanned but not rewritten.
+		const current = await as(
+			"u1",
+			call((s) => s.insert(migGood, { a: "now", b: 1 })),
+		);
+		const report = await as(
+			"u1",
+			call((s) => s.migrateCollection(migGood)),
+		);
+		expect(report.collection).toBe("test.miggood");
+		expect(report.migrated).toBeGreaterThanOrEqual(2);
+		expect(report.failed).toEqual([]);
+		// Every miggood row is now at the def version.
+		const rows = await db
+			.select()
+			.from(documentRecords)
+			.where(eq(documentRecords.collectionId, await collectionIdOf("test.miggood")));
+		expect(rows.every((r) => r.schemaVersion === 3)).toBe(true);
+		expect(current.schemaVersion).toBe(3);
+		// Idempotent: a second sweep migrates nothing.
+		const again = await as(
+			"u1",
+			call((s) => s.migrateCollection("test.miggood")),
+		);
+		expect(again.migrated).toBe(0);
+	});
+
+	it("migrateCollection reports per-document failures and leaves them", async () => {
+		const good = await seedV1("test.miggood", { a: "fine" });
+		// Corrupt payload → parseData {} → migrated doc misses required `a`.
+		const bad = await seedV1("test.miggood", "{corrupt");
+		const report = await as(
+			"u1",
+			call((s) => s.migrateCollection("test.miggood")),
+		);
+		expect(report.failed.map((f) => f.id)).toContain(bad.id);
+		expect(report.failed.find((f) => f.id === bad.id)?.reason).toContain(
+			"migrated document invalid",
+		);
+		// Bad row untouched; good row migrated.
+		const badStored = await storedRow(bad.id);
+		expect(badStored.data).toBe("{corrupt");
+		expect(badStored.schemaVersion).toBe(1);
+		expect((await storedRow(good.id)).schemaVersion).toBe(3);
+		// And the bad row surfaces the typed error on read.
+		const err = await as(
+			"u1",
+			call((s) => s.get(migGood, bad.id)),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string; reason?: string },
+		);
+		expect(err?._tag).toBe("DocumentMigrationError");
+		expect(err?.reason).toContain("migrated document invalid");
+	});
+
+	it("distinguishes every migration failure mode", async () => {
+		// No covering path: v1→v2 exists, v2→v3 does not.
+		const gap = await seedV1("test.miggap", { a: "x" });
+		const gapErr = await as(
+			"u1",
+			call((s) => s.get(migGap, gap.id)),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string; reason?: string },
+		);
+		expect(gapErr?._tag).toBe("DocumentMigrationError");
+		expect(gapErr?.reason).toContain("no migration path");
+
+		// migrate() throws.
+		const thr = await seedV1("test.migthrw", { a: "x" });
+		const thrErr = await as(
+			"u1",
+			call((s) => s.get(migThrow, thr.id)),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string; reason?: string },
+		);
+		expect(thrErr?._tag).toBe("DocumentMigrationError");
+		expect(thrErr?.reason).toContain("threw");
+
+		// migrate() returns a non-object.
+		const bad = await seedV1("test.migbadret", { a: "x" });
+		const badErr = await as(
+			"u1",
+			call((s) => s.get(migBadRet, bad.id)),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string; reason?: string },
+		);
+		expect(badErr?._tag).toBe("DocumentMigrationError");
+		expect(badErr?.reason).toContain("non-object");
+
+		// Migrated doc fails current-field validation.
+		const inv = await seedV1("test.miginvalid", { a: "x" });
+		const invErr = await as(
+			"u1",
+			call((s) => s.get(migInvalid, inv.id)),
+		).then(
+			() => null,
+			(e: unknown) => e as { _tag?: string; reason?: string },
+		);
+		expect(invErr?._tag).toBe("DocumentMigrationError");
+		expect(invErr?.reason).toContain("migrated document invalid");
+
+		// Every failure left the stored rows byte-identical.
+		for (const [id, data] of [
+			[gap.id, JSON.stringify({ a: "x" })],
+			[thr.id, JSON.stringify({ a: "x" })],
+			[bad.id, JSON.stringify({ a: "x" })],
+			[inv.id, JSON.stringify({ a: "x" })],
+		] as const) {
+			const stored = await storedRow(id);
+			expect(stored.data).toBe(data);
+			expect(stored.schemaVersion).toBe(1);
+		}
+	});
+
+	it("treats missing migrations and ahead-of-def versions as pass-through", async () => {
+		// migNone bumped to v2 with NO migrations: a v1 row reads
+		// exactly as stored — version stays advisory.
+		const legacy = await seedV1("test.mignone", { a: "old" });
+		const got = await as(
+			"u1",
+			call((s) => s.get(migNone, legacy.id)),
+		);
+		expect(got?.data).toEqual({ a: "old" });
+		expect(got?.schemaVersion).toBe(1);
+
+		// A stored version AHEAD of the def also passes through.
+		const ahead = await seedV1("test.mignone", { a: "future" }, "u1", 9);
+		const gotAhead = await as(
+			"u1",
+			call((s) => s.get(migNone, ahead.id)),
+		);
+		expect(gotAhead?.data).toEqual({ a: "future" });
+		expect(gotAhead?.schemaVersion).toBe(9);
+
+		// Explicit empty migrations array behaves the same.
+		const empty = await seedV1("test.migempty", { a: "e" });
+		const gotEmpty = await as(
+			"u1",
+			call((s) => s.get(migEmpty, empty.id)),
+		);
+		expect(gotEmpty?.data).toEqual({ a: "e" });
+		expect(gotEmpty?.schemaVersion).toBe(1);
+
+		// Sweep on a no-migration def: scanned, nothing rewritten.
+		const report = await as(
+			"u1",
+			call((s) => s.migrateCollection("test.mignone")),
+		);
+		expect(report.scanned).toBeGreaterThanOrEqual(2);
+		expect(report.migrated).toBe(0);
+		expect(report.failed).toEqual([]);
+	});
+
+	it("migrateCollection handles unregistered and unknown collections", async () => {
+		const empty = await as(
+			"u1",
+			call((s) => s.migrateCollection("test.miglazy")),
+		);
+		expect(empty).toEqual({
+			collection: "test.miglazy",
+			scanned: 0,
+			migrated: 0,
+			failed: [],
+		});
+		expect(
+			await tagOf2(
+				as(
+					"u1",
+					call((s) => s.migrateCollection("no.such")),
+				),
+			),
+		).toBe("UnknownCollection");
+	});
+});
+
+const tagOf2 = (p: Promise<unknown>) =>
+	p.then(
+		() => "ok",
+		(e: unknown) => (e as { _tag?: string })._tag,
+	);

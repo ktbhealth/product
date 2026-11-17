@@ -34,6 +34,7 @@ describe("document_records schema", () => {
 			"id",
 			"collection_id",
 			"data",
+			"schema_version",
 			"owner_id",
 			"tenant_id",
 			"created_at",

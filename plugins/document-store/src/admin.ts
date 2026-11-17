@@ -13,6 +13,7 @@ import { documentCollections, documentRecords } from "./schema.ts";
 import type { FindQuery } from "./query.ts";
 import {
 	DocumentStore,
+	type CollectionMigrationReport,
 	type DocumentRecord,
 	type DocumentStoreError,
 	type FindResult,
@@ -48,6 +49,12 @@ export interface AdminCollectionInfo {
 	/** Has a `document_collections` registry row (records may exist). */
 	readonly registered: boolean;
 	readonly recordCount: number;
+	/** The resolved def declares schema `migrations` (T-130) — stored
+	 * documents below `version` can be brought forward by
+	 * `migrateCollection` (or lazily on read). Always false for defs
+	 * reconstructed from `schema_json` alone (migrations are code and
+	 * never persist there). */
+	readonly hasMigrations: boolean;
 }
 
 export class DocumentStoreAdmin extends Context.Service<
@@ -92,6 +99,13 @@ export class DocumentStoreAdmin extends Context.Service<
 			collection: string,
 			id: number,
 		) => Effect.Effect<void, Forbidden | DocumentStoreError>;
+		/** Eager schema-migration sweep (T-130): rewrite every stored
+		 * document of the collection whose `schema_version` is behind
+		 * the current def through its `migrations` chain. Per-document
+		 * failures are reported, not thrown. */
+		readonly migrateCollection: (
+			collection: string,
+		) => Effect.Effect<CollectionMigrationReport, Forbidden | DocumentStoreError>;
 	}
 >()("@ktb/document-store/DocumentStoreAdmin") {}
 
@@ -156,6 +170,7 @@ export const DocumentStoreAdminLive = Layer.effect(
 					contributed: def !== undefined,
 					registered: true,
 					recordCount: yield* recordCountFor(row.id),
+					hasMigrations: (resolved?.migrations?.length ?? 0) > 0,
 				} satisfies AdminCollectionInfo;
 			});
 
@@ -169,6 +184,7 @@ export const DocumentStoreAdminLive = Layer.effect(
 			contributed: true,
 			registered: false,
 			recordCount: 0,
+			hasMigrations: (def.migrations?.length ?? 0) > 0,
 		});
 
 		return DocumentStoreAdmin.of({
@@ -235,6 +251,12 @@ export const DocumentStoreAdminLive = Layer.effect(
 				Effect.gen(function* () {
 					yield* requireAdmin;
 					yield* store.delete(collection, id, UNSCOPED);
+				}),
+
+			migrateCollection: (collection) =>
+				Effect.gen(function* () {
+					yield* requireAdmin;
+					return yield* store.migrateCollection(collection, UNSCOPED);
 				}),
 		});
 	}),

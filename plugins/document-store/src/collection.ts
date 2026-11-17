@@ -86,13 +86,42 @@ export interface CollectionPermissions {
 	readonly fields?: Record<string, CollectionFieldPermissions>;
 }
 
+/**
+ * One schema-migration step (T-130): upgrades a stored document from
+ * `from` to `to`. `migrate` must be a PURE doc→doc function — same
+ * input, same output, no I/O — because the store re-runs it on every
+ * read of a not-yet-swept row. It receives the raw stored `data`
+ * object and must return the migrated `data` object; the result is
+ * re-validated against the CURRENT field DSL before it is used (a
+ * migration that produces invalid data fails the read/write with a
+ * typed error and leaves the stored row untouched).
+ *
+ * Migrations are CODE, not data: they cannot ride `schema_json`, so
+ * they live on the contributed def object only (see
+ * {@link DocumentCollection.migrations}). Steps are applied in
+ * `from` order until the document reaches the def's `version`; a
+ * document whose version has no covering step fails loudly rather
+ * than silently drifting.
+ */
+export interface CollectionMigration {
+	/** Document `schema_version` this step upgrades FROM. */
+	readonly from: number;
+	/** Document `schema_version` this step upgrades TO. */
+	readonly to: number;
+	/** Pure transform: stored doc → migrated doc. */
+	readonly migrate: (doc: Record<string, unknown>) => Record<string, unknown>;
+}
+
 /** A document collection definition — the unit plugins contribute. */
 export interface DocumentCollection<F extends Fields = Fields> {
 	/** Collection name — unique across all contributors; used as the
 	 * `collection` argument of every DocumentStore method. */
 	readonly name: string;
 	/** Schema version — bump on breaking field changes. `ensureCollection`
-	 * keeps the highest version seen (see service.ts). */
+	 * keeps the highest version seen (see service.ts). Stored documents
+	 * carry their own `schema_version`; reads/writes migrate them
+	 * lazily through {@link DocumentCollection.migrations} when the
+	 * def declares any (see service.ts). */
 	readonly version: number;
 	/** Field map — see ./fields.ts for the DSL and InferFields typing. */
 	readonly fields: F;
@@ -100,6 +129,18 @@ export interface DocumentCollection<F extends Fields = Fields> {
 	readonly indexes?: readonly CollectionIndex[];
 	/** Optional RBAC gate — see {@link CollectionPermissions}. */
 	readonly permissions?: CollectionPermissions;
+	/**
+	 * Ordered schema-migration steps for evolving STORED documents
+	 * when `version` bumps (T-130). These are functions — code, not
+	 * JSON — so they ride the contributed def object in-process but
+	 * are deliberately stripped before `schema_json` persistence
+	 * (ensureCollection): a def reconstructed from a DB row alone has
+	 * no migrations, and its documents stay at their stored versions
+	 * until a contributing def (or an explicit sweep) brings them
+	 * forward. Omit entirely when a version bump needs no document
+	 * transform — version stays advisory, exactly like before T-130.
+	 */
+	readonly migrations?: readonly CollectionMigration[];
 	/** Owning plugin id — stamped from the contributing plugin when the
 	 * manifest omits it. */
 	readonly owner?: string;
@@ -107,8 +148,9 @@ export interface DocumentCollection<F extends Fields = Fields> {
 
 /**
  * Declare a collection. `version` defaults to 1; everything else is
- * required data — the result is JSON-serializable by construction so it
- * can be dropped into `PluginContribution.meta` unchanged.
+ * required data — the result is JSON-serializable EXCEPT
+ * `migrations`, whose `migrate` functions are code that rides the
+ * contribution in-process only (never `schema_json`).
  */
 export const defineCollection = <const F extends Fields>(options: {
 	readonly name: string;
@@ -116,6 +158,7 @@ export const defineCollection = <const F extends Fields>(options: {
 	readonly fields: F;
 	readonly indexes?: readonly CollectionIndex[];
 	readonly permissions?: CollectionPermissions;
+	readonly migrations?: readonly CollectionMigration[];
 	readonly owner?: string;
 }): DocumentCollection<F> => ({
 	name: options.name,
@@ -123,6 +166,7 @@ export const defineCollection = <const F extends Fields>(options: {
 	fields: options.fields,
 	...(options.indexes === undefined ? {} : { indexes: options.indexes }),
 	...(options.permissions === undefined ? {} : { permissions: options.permissions }),
+	...(options.migrations === undefined ? {} : { migrations: options.migrations }),
 	...(options.owner === undefined ? {} : { owner: options.owner }),
 });
 
@@ -192,7 +236,55 @@ export const assertCollectionDef = (value: unknown, source: string): DocumentCol
 		}
 	}
 	assertPermissionsBlock(def.permissions, def.name);
+	assertMigrationsBlock(def.migrations, def.name);
 	return def as unknown as DocumentCollection;
+};
+
+/** Runtime shape check for `migrations` (T-130): an array of
+ * `{ from, to, migrate }` steps — `from`/`to` positive-version
+ * integers with `from < to`, `migrate` a function. Stored
+ * `schema_json` never carries this key (ensureCollection strips it —
+ * functions are not JSON), so anything present here came from a live
+ * contributed def; a malformed entry is a packaging bug → throw. */
+const assertMigrationsBlock = (value: unknown, collectionName: string): void => {
+	if (value === undefined) return;
+	if (!Array.isArray(value)) {
+		throw new Error(`document collection "${collectionName}": migrations must be an array`);
+	}
+	const seenFrom = new Set<number>();
+	for (const [i, entry] of value.entries()) {
+		const path = `migrations[${i}]`;
+		if (!isPlainObject(entry)) {
+			throw new Error(`document collection "${collectionName}": ${path} must be an object`);
+		}
+		const { from, to, migrate } = entry;
+		if (
+			typeof from !== "number" ||
+			!Number.isInteger(from) ||
+			from < 1 ||
+			typeof to !== "number" ||
+			!Number.isInteger(to) ||
+			from >= to
+		) {
+			throw new Error(
+				`document collection "${collectionName}": ${path} needs integer 1 <= from < to versions`,
+			);
+		}
+		// Two steps sharing `from` make the path ambiguous — the
+		// runtime picks the first sorted match, which would silently
+		// depend on declaration order.
+		if (seenFrom.has(from)) {
+			throw new Error(
+				`document collection "${collectionName}": duplicate migration from version ${from}`,
+			);
+		}
+		seenFrom.add(from);
+		if (typeof migrate !== "function") {
+			throw new Error(
+				`document collection "${collectionName}": ${path}.migrate must be a function`,
+			);
+		}
+	}
 };
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
@@ -268,8 +360,11 @@ export const documentCollectionContribution = (def: DocumentCollection): PluginC
 	id: def.name,
 	version: String(def.version),
 	// Defs are pure JSON by construction (fields.ts keeps every
-	// descriptor JSON-shaped) — the cast bridges the typed view onto
-	// the serializable contract.
+	// descriptor JSON-shaped) — EXCEPT `migrations`, whose `migrate`
+	// functions are code: they ride `meta` in-process (same JS object,
+	// never serialized — the client registry uses separate client.ts
+	// modules) and are stripped from `schema_json` by ensureCollection.
+	// The cast bridges the typed view onto the serializable contract.
 	meta: def as unknown as JsonObject,
 });
 

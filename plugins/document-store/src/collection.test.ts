@@ -224,3 +224,63 @@ describe("collectDocumentCollections", () => {
 		expect(collectDocumentCollections(plugins)).toEqual([]);
 	});
 });
+
+describe("collection migrations (T-130)", () => {
+	it("defineCollection keeps an ordered migrations block", () => {
+		const migrate = (doc: Record<string, unknown>) => doc;
+		const def = defineCollection({
+			name: "c",
+			version: 2,
+			fields: { a: f.string() },
+			migrations: [
+				{ from: 1, to: 2, migrate },
+				{ from: 2, to: 3, migrate },
+			],
+		});
+		expect(def.migrations).toHaveLength(2);
+		expect(def.migrations?.[0]?.migrate).toBe(migrate);
+		// `migrate` is code — JSON serialization drops the functions
+		// (ensureCollection strips the whole key from schema_json).
+		const roundTripped = JSON.parse(JSON.stringify(def)) as {
+			migrations?: { migrate?: unknown }[];
+		};
+		expect(roundTripped.migrations?.[0]?.migrate).toBeUndefined();
+	});
+
+	it("assertCollectionDef accepts well-formed migration steps", () => {
+		const def = {
+			name: "ok.name",
+			version: 3,
+			fields: {},
+			migrations: [
+				{ from: 1, to: 2, migrate: (d: Record<string, unknown>) => d },
+				{ from: 2, to: 3, migrate: (d: Record<string, unknown>) => d },
+			],
+		};
+		expect(assertCollectionDef(def, "test")).toEqual(def);
+	});
+
+	it("assertCollectionDef rejects malformed migration blocks", () => {
+		const base = { name: "ok.name", version: 3, fields: {} };
+		const migrate = (d: Record<string, unknown>) => d;
+		const cases: unknown[] = [
+			{ ...base, migrations: "nope" },
+			{ ...base, migrations: ["x"] },
+			{ ...base, migrations: [{ from: 1, to: 2 }] }, // no migrate fn
+			{ ...base, migrations: [{ from: 1, to: 2, migrate: "f" }] },
+			{ ...base, migrations: [{ from: 2, to: 2, migrate }] }, // from >= to
+			{ ...base, migrations: [{ from: 1.5, to: 2, migrate }] }, // non-integer
+			{ ...base, migrations: [{ from: 0, to: 2, migrate }] }, // from < 1
+			{
+				...base,
+				migrations: [
+					{ from: 1, to: 2, migrate },
+					{ from: 1, to: 3, migrate }, // duplicate from
+				],
+			},
+		];
+		for (const bad of cases) {
+			expect(() => assertCollectionDef(bad, "test")).toThrow(/migration|migrate/);
+		}
+	});
+});
