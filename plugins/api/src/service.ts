@@ -45,8 +45,12 @@ import {
  *    contribution resolve; unknown keys, unexposed collections and
  *    malformed paths collapse to the same 404.
  * 2. Method gate: the exposure's `methods` list (default read-only
- *    `["list","get"]`) must publish the requested verb — anything else
- *    is 405.
+ *    `["list","get"]`) must publish the requested verb. A verb the
+ *    exposure does not publish answers the SAME 404 as an unknown
+ *    key — a distinct 405 would let anonymous callers probe which
+ *    collections are exposed. 405 is reserved for method/path-shape
+ *    combos the API never serves (checked BEFORE the exposure lookup
+ *    so it reveals nothing either).
  * 3. Session + permission: `public: true` exposures serve anonymous
  *    `list`/`get`; every other call needs a bound Principal (401
  *    without one) and, when `permission` is declared, the rbac
@@ -218,26 +222,26 @@ export const ApiLive = Layer.effect(
 		return Api.of({
 			handle: (request) =>
 				Effect.gen(function* () {
-					const exposure = byKey.get(request.key);
-					// Unknown key, unexposed collection and malformed paths
-					// all land here — one indistinguishable 404.
-					if (exposure === undefined) {
-						return yield* Effect.fail(notFound("not found"));
-					}
+					// Method/path-shape check FIRST: it is uniform for
+					// every key (exposed or not), so the 405 it produces
+					// leaks no exposure information.
 					const resolved = methodFor(request.method, request.id);
 					if (resolved === null) {
 						return yield* Effect.fail(
 							apiError(405, "method_not_allowed", "method not allowed for this path"),
 						);
 					}
+					const exposure = byKey.get(request.key);
+					// Unknown key, unexposed collection and malformed paths
+					// all land here — one indistinguishable 404.
+					if (exposure === undefined) {
+						return yield* Effect.fail(notFound("not found"));
+					}
+					// A method the exposure does not publish gets the same
+					// 404 — answering 405 here would distinguish exposed
+					// collections from unexposed ones.
 					if (!exposureMethods(exposure).includes(resolved.method)) {
-						return yield* Effect.fail(
-							apiError(
-								405,
-								"method_not_allowed",
-								`method "${resolved.method}" is not exposed for this collection`,
-							),
-						);
+						return yield* Effect.fail(notFound("not found"));
 					}
 					yield* authorize(exposure, resolved.method);
 					// methodFor only resolves id-methods when request.id is a

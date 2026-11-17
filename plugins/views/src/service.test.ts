@@ -404,4 +404,24 @@ describe("Views.query", () => {
 		);
 		expect(await run(broken.query("/v/notes"), broken)).toBeNull();
 	});
+
+	it("collapses InvalidDocumentQuery to null (bad interactive operand)", async () => {
+		// Interactive filter values are raw user input — a bad operand
+		// shape fails store-side validation; the fn contract treats it
+		// like an invisible view rather than a 500.
+		const views = await Effect.runPromise(
+			makeViews(
+				[DEF],
+				store({
+					find: () =>
+						Effect.fail({
+							_tag: "InvalidDocumentQuery",
+							collection: "clinic.notes",
+							issues: ["bad operand"],
+						}),
+				}),
+			),
+		);
+		expect(await run(views.query("/v/notes", { values: { q: "[" } }), views)).toBeNull();
+	});
 });

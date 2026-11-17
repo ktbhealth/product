@@ -8,7 +8,12 @@ import {
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
-import { QUERY_OPERATORS, type QueryOperator, type SortTerm } from "@ktb/document-store";
+import {
+	QUERY_OPERATORS,
+	validateFilter,
+	type QueryOperator,
+	type SortTerm,
+} from "@ktb/document-store";
 
 /**
  * View definitions as DATA — the `view.def` contribution kind.
@@ -232,8 +237,22 @@ const assertFilters = (value: unknown, context: string): readonly ViewFilter[] =
 			throw new Error(`${at}.label must be a string`);
 		}
 		// `value` is arbitrary JSON (fixed filters) — presence, not
-		// type, selects the fixed-vs-interactive shape.
-		void fixed;
+		// type, selects the fixed-vs-interactive shape. When present,
+		// the operand must satisfy the document-store operator
+		// contract ($in/$nin arrays, $regex a safe pattern string,
+		// $exists boolean, …): build the exact condition the planner
+		// will emit and run it through the store's own
+		// validateFilter, so def-time and runtime rules can never
+		// drift — a bad fixed filter is a packaging bug and dies
+		// here instead of escaping as InvalidDocumentQuery at query
+		// time. Interactive filters carry no operand yet (the caller
+		// supplies it); the store re-validates those per query.
+		if ("value" in entry) {
+			const issues = validateFilter({ [field]: { [op]: fixed } });
+			if (issues.length > 0) {
+				throw new Error(`${at}.value is not a valid ${String(op)} operand: ${issues.join("; ")}`);
+			}
+		}
 		return entry as unknown as ViewFilter;
 	});
 };

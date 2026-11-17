@@ -49,6 +49,11 @@ import {
  * back to `#<id>`. */
 export const REF_LOOKUP_CAP = 50;
 
+/** Concurrent `DocumentStore.get` lookups per payload. Each get is a
+ * store-side scan (v1 JS evaluation), so the cap bounds in-flight D1
+ * round-trips without serializing the whole page. */
+const REF_LOOKUP_CONCURRENCY = 8;
+
 export interface ViewsShape {
 	/** Cheap gate for the page `guard`: the path parses, a def owns the
 	 * key, and its optional permission grant holds. No record fetch. */
@@ -162,7 +167,7 @@ export const ViewsLive = Layer.effect(
 									: viewScalarText(labelValue);
 							return [key, label] as const;
 						}),
-					{ concurrency: 1 },
+					{ concurrency: REF_LOOKUP_CONCURRENCY },
 				);
 				return Object.fromEntries(pairs.filter((p): p is readonly [string, string] => p !== null));
 			});
@@ -231,7 +236,18 @@ export const ViewsLive = Layer.effect(
 					// Detail paths don't paginate — only list payloads refetch.
 					if (resolved === null || resolved.docId !== null) return null;
 					return yield* loadList(resolved.def, viewKey(resolved.def), input);
-				}).pipe(Effect.catchTag("UnknownCollection", () => Effect.succeed(null))),
+				}).pipe(
+					Effect.catchTag("UnknownCollection", () => Effect.succeed(null)),
+					// Interactive filter values are raw user input — a bad
+					// operand shape ($in without an array, an invalid
+					// $regex, …) fails store-side validation as
+					// InvalidDocumentQuery. Collapse it to null like
+					// UnknownCollection: the caller sees "no payload"
+					// instead of a 500. Fixed-filter defs are validated
+					// at assertViewDef time, so this can only come from
+					// interactive input or a store-side rule change.
+					Effect.catchTag("InvalidDocumentQuery", () => Effect.succeed(null)),
+				),
 		});
 	}),
 );

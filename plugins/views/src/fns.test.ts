@@ -83,6 +83,10 @@ describe("viewQueryFn", () => {
 		server.user = null;
 		server.views.query.mockReturnValue(Effect.fail({ _tag: "UnknownCollection", name: "x" }));
 		await expect(viewQueryFn({ data: { path: "/v/notes" } })).resolves.toBeNull();
+		server.views.query.mockReturnValue(
+			Effect.fail({ _tag: "InvalidDocumentQuery", collection: "x", issues: [] }),
+		);
+		await expect(viewQueryFn({ data: { path: "/v/notes" } })).resolves.toBeNull();
 	});
 
 	it("rethrows unexpected errors", async () => {

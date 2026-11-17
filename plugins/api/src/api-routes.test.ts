@@ -200,15 +200,15 @@ describe("api documents splat route", () => {
 		expect(await deleted.text()).toBe("");
 	});
 
-	it("enforces the exposure methods gate over HTTP", async () => {
-		// public-notes is read-only: POST → 405 even though the collection
-		// itself allows writes under its other key.
+	it("404s methods an exposure does not publish (same as unknown keys)", async () => {
+		// public-notes is read-only: POST gets the same 404 an unknown
+		// key would — no exposure oracle for anonymous callers.
 		const res = await call(splatHandlers, "POST", "/api/documents/public-notes", {
 			body: { title: "x" },
 			headers: authed,
 		});
-		expect(res.status).toBe(405);
-		expect(await res.json()).toMatchObject({ error: { kind: "method_not_allowed" } });
+		expect(res.status).toBe(404);
+		expect(await res.json()).toMatchObject({ error: { kind: "not_found" } });
 	});
 
 	it("404s unknown keys, unexposed collections and malformed paths", async () => {
@@ -307,6 +307,35 @@ describe("api documents splat route", () => {
 		});
 		const res = await splatHandlers.POST({ request, params: {} } as never);
 		expect(res.status).toBe(413);
+	});
+
+	it("aborts oversized streamed bodies mid-read without buffering them", async () => {
+		// A chunked body with no content-length that NEVER closes: the
+		// byte counter must trip the cap after the second chunk and
+		// cancel the stream — the handler resolves 413 instead of
+		// hanging on the open stream.
+		const chunk = new Uint8Array(200 * 1024).fill(0x61);
+		let pulls = 0;
+		const stream = new ReadableStream<Uint8Array>({
+			pull(controller) {
+				pulls++;
+				controller.enqueue(chunk);
+				// Intentionally never close.
+			},
+		});
+		const request = new Request("http://test.local/api/documents/test.notes", {
+			method: "POST",
+			headers: { ...authed, "content-type": "application/json" },
+			body: stream,
+			// @ts-expect-error -- undici requires duplex for stream bodies
+			duplex: "half",
+		});
+		const res = await splatHandlers.POST({ request, params: {} } as never);
+		expect(res.status).toBe(413);
+		expect(await res.json()).toMatchObject({ error: { kind: "payload_too_large" } });
+		// Two 200KiB chunks exceed the 256KiB cap; a third pull would
+		// mean the reader kept consuming past the abort.
+		expect(pulls).toBeLessThanOrEqual(3);
 	});
 
 	it("maps store validation errors to the envelope", async () => {

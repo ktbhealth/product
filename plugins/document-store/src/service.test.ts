@@ -293,6 +293,21 @@ describe("DocumentStoreLive", () => {
 		await failWith("InvalidDocumentQuery")(
 			call((s) => s.find(things, { filter: { title: { $regex: "(a+)+" } } })),
 		);
+		// Quantified-alternation ReDoS shapes the nested-quantifier
+		// heuristic misses are rejected too.
+		await failWith("InvalidDocumentQuery")(
+			call((s) => s.find(things, { filter: { title: { $regex: "(a|a)*$" } } })),
+		);
+		await failWith("InvalidDocumentQuery")(
+			call((s) => s.find(things, { filter: { title: { $regex: "(a|aa)+b" } } })),
+		);
+		// Deeply nested logical filters hit the depth cap instead of
+		// overflowing the stack in validateFilter/matchFilter.
+		const deepFilter = (n: number): Record<string, unknown> =>
+			n === 0 ? { title: "x" } : { $or: [deepFilter(n - 1)] };
+		await failWith("InvalidDocumentQuery")(
+			call((s) => s.find(things, { filter: deepFilter(100) })),
+		);
 		await failWith("InvalidDocumentQuery")(
 			call((s) => s.find(things, { filter: { title: { $regex: "x".repeat(201) } } })),
 		);

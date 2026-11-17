@@ -230,7 +230,10 @@ describe("Api service", () => {
 		}
 	});
 
-	it("enforces the methods gate (default read-only)", async () => {
+	it("answers 404 for methods an exposure does not publish (no oracle)", async () => {
+		// test.things publishes only list+get — writes get the SAME 404
+		// as an unknown/unexposed key so anonymous callers cannot probe
+		// which collections are exposed.
 		await expectApiError(
 			call(runtime, "u1", {
 				key: "test.things",
@@ -238,14 +241,20 @@ describe("Api service", () => {
 				method: "POST",
 				body: { label: "x" },
 			}),
-			405,
-			"method_not_allowed",
+			404,
+			"not_found",
 		);
 		// delete is not published either (default methods are list+get).
 		await expectApiError(
 			call(runtime, "u1", { key: "test.things", id: 1, method: "DELETE" }),
-			405,
-			"method_not_allowed",
+			404,
+			"not_found",
+		);
+		// The 404 is indistinguishable from a genuinely unknown key.
+		await expectApiError(
+			call(runtime, "u1", { key: "test.secret", id: null, method: "POST", body: {} }),
+			404,
+			"not_found",
 		);
 		// get IS published — a missing record 404s through the store.
 		await expectApiError(
