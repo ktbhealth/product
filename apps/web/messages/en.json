@@ -39,6 +39,7 @@
 	"portal_login_desc_in": "Sign in to see your consultations.",
 	"portal_login_desc_up": "Create an account to see the consultations your doctors recorded for you.",
 	"portal_login_name": "Full name",
+	"portal_login_doctor_link": "I am a doctor",
 	"verify_meta_title": "Verify email | KTB Health",
 	"verify_heading": "Verify your email",
 	"verify_desc_signed": "We sent a verification link to {email}. Open it to confirm your address.",
