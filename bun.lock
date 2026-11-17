@@ -271,6 +271,7 @@
         "@ktb/email-stub": "workspace:*",
         "@ktb/eval-adapter-local": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
+        "@ktb/flows": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
@@ -992,6 +993,26 @@
       },
       "peerDependencies": {
         "react": "^19.2.0",
+      },
+    },
+    "plugins/flows": {
+      "name": "@ktb/flows",
+      "dependencies": {
+        "@ktb/document-store": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/rbac": "workspace:*",
+        "@ktb/rbac-plugin": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/wizards": "workspace:*",
+        "@tanstack/react-start": "1.169.5",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/auth": "workspace:*",
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "vitest": "5.1.0",
       },
     },
     "plugins/forms": {
@@ -2136,6 +2157,8 @@
     "@ktb/eval-validator": ["@ktb/eval-validator@workspace:plugins/eval-validator"],
 
     "@ktb/export-pdf": ["@ktb/export-pdf@workspace:packages/export-pdf"],
+
+    "@ktb/flows": ["@ktb/flows@workspace:plugins/flows"],
 
     "@ktb/forms": ["@ktb/forms@workspace:plugins/forms"],
 

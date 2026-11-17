@@ -1,0 +1,26 @@
+{
+	"name": "@ktb/flows",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./fns": "./src/fns.ts"
+	},
+	"dependencies": {
+		"@ktb/document-store": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"@ktb/rbac": "workspace:*",
+		"@ktb/rbac-plugin": "workspace:*",
+		"@ktb/server-fns": "workspace:*",
+		"@ktb/wizards": "workspace:*",
+		"@tanstack/react-start": "1.169.5",
+		"effect": "4.1.2"
+	},
+	"devDependencies": {
+		"@ktb/auth": "workspace:*",
+		"@ktb/authz": "workspace:*",
+		"@ktb/db": "workspace:*",
+		"@ktb/tenant": "workspace:*",
+		"vitest": "5.1.0"
+	}
+}
