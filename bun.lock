@@ -964,6 +964,28 @@
         "react": "^19.2.0",
       },
     },
+    "plugins/forms": {
+      "name": "@ktb/forms",
+      "dependencies": {
+        "@ktb/i18n": "workspace:*",
+        "@ktb/json-schema": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
     "plugins/groups": {
       "name": "@ktb/groups",
       "dependencies": {
@@ -2008,6 +2030,8 @@
     "@ktb/eval-validator": ["@ktb/eval-validator@workspace:plugins/eval-validator"],
 
     "@ktb/export-pdf": ["@ktb/export-pdf@workspace:packages/export-pdf"],
+
+    "@ktb/forms": ["@ktb/forms@workspace:plugins/forms"],
 
     "@ktb/groups": ["@ktb/groups@workspace:plugins/groups"],
 
