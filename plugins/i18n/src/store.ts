@@ -129,8 +129,6 @@ export const listEnabledLocales = async (
 	return rows;
 };
 
-export { i18nLocales, i18nMessages, i18nNamespaces, i18nRevision };
-
 // ---------- panel/admin reads (all statuses, drafts included) ----------
 
 export interface MessageFilter {

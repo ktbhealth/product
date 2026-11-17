@@ -36,20 +36,7 @@ import {
 	listMessageRows,
 } from "./store.ts";
 
-export {
-	I18nAdmin,
-	I18nValidationError,
-	I18N_EDIT_ACTION,
-	I18N_LOCALES_ACTION,
-	I18N_READ_ACTION,
-	I18N_RESOURCE,
-	type I18nAdminShape,
-	type I18nExportPayload,
-	type LocaleInfo,
-	type MessageId,
-	type NamespaceInfo,
-	type SaveDraftInput,
-} from "./contract.ts";
+export { I18nAdmin, I18nValidationError, type MessageId, type SaveDraftInput } from "./contract.ts";
 
 /**
  * Panel write path (P-083 / PL-008 Phase 3). Copy edits are data

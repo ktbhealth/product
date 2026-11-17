@@ -18,9 +18,6 @@ const fns = vi.hoisted(() => ({
 	removeCredentialFn: vi.fn<(a?: Arg) => Res<null>>(async () => ({ ok: true, data: null })),
 }));
 vi.mock("../fns.ts", () => fns);
-vi.mock("@tanstack/react-router", () => ({
-	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
-}));
 
 import type { PanelPageContext } from "@ktb/kernel";
 

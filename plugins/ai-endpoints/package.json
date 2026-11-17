@@ -14,7 +14,6 @@
 		"@ktb/db": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",
 		"@ktb/eval-validator": "workspace:*",
-		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/rbac": "workspace:*",
