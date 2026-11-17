@@ -21,6 +21,7 @@ export const PLUGIN_KEYWORDS = [
 	"groups",
 	"integrity",
 	"invites",
+	"i18n",
 	"jobs",
 	"manager",
 	"notifications",
