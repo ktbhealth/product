@@ -14,6 +14,7 @@ import { NotificationsHeaderAction } from "./views/NotificationsHeaderAction.tsx
  */
 export const notificationsHeaderPlugin = definePlugin({
 	id: "notifications.header",
+	meta: { keywords: ["notifications", "ui"] },
 	requiredDeps: ["platform.panel"],
 	optionalDeps: ["platform.header"],
 	chrome: [
@@ -33,10 +34,11 @@ export const notificationsHeaderPlugin = definePlugin({
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	notificationsHeaderPlugin,
-	definePlugin({ id: "notifications.tables" }),
+	definePlugin({ id: "notifications.tables", meta: { keywords: ["notifications", "tables"] } }),
 	definePlugin({
 		id: "notifications.services",
+		meta: { keywords: ["notifications", "services"] },
 		requiredDeps: ["patients.services", "consultations.services"],
 	}),
-	definePlugin({ id: "notifications.routes" }),
+	definePlugin({ id: "notifications.routes", meta: { keywords: ["notifications", "routes"] } }),
 ];

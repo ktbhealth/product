@@ -61,6 +61,7 @@ export const makePlatformAdminGate = (emails: ReadonlySet<string>): PlatformAdmi
 /** Marker plugin for the env-composed admin gate — see PlatformAdmin. */
 export const platformAdminPlugin = definePlugin({
 	id: "platform.admin",
+	meta: { keywords: ["platform", "admin", "marker"] },
 	system: true,
 });
 
@@ -72,12 +73,14 @@ export const platformAdminPlugin = definePlugin({
 // import apps (arch lint).
 export const platformRoutesPlugin = definePlugin({
 	id: "platform.routes",
+	meta: { keywords: ["platform", "routes"] },
 	system: true,
 	routes: [route("platform", "platform.tsx", [physical("", "platform")])],
 });
 
 export const platformPanelPlugin = definePlugin({
 	id: "platform.panel",
+	meta: { keywords: ["platform", "marker"] },
 	system: true,
 	requiredDeps: [platformRoutesPlugin.id],
 	// No sidebar entry of its own — the dashboard plugin owns the
@@ -90,6 +93,7 @@ export const platformPanelPlugin = definePlugin({
  * here. System plugin: the console is host infrastructure. */
 export const platformPortalPlugin = definePlugin({
 	id: "platform.portal",
+	meta: { keywords: ["platform", "shell"] },
 	system: true,
 	requiredDeps: [platformPanelPlugin.id],
 	portals: [

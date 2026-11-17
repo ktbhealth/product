@@ -20,6 +20,7 @@ export const managerChromePlugin = definePlugin({
 	system: true,
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {
+		keywords: ["platform", "ui", "admin"],
 		name: "Plugin manager",
 		description: "Runtime plugin enable/config administration",
 		icon: PuzzleIcon,
@@ -55,6 +56,7 @@ export const managerPanelPlugin = definePlugin({
 	system: true,
 	requiredDeps: [platformPanelPlugin.id],
 	meta: {
+		keywords: ["platform", "ui", "admin"],
 		name: "Plugin manager",
 		description: "Runtime plugin enable/config administration",
 		icon: PuzzleIcon,

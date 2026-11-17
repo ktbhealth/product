@@ -87,6 +87,7 @@ const dashboardLoader = () =>
 // platform shell like the retired panel entry.
 export const dashboardChromePlugin = definePlugin({
 	id: "dashboard.chrome",
+	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -114,6 +115,7 @@ export const dashboardChromePlugin = definePlugin({
 // portal.dashboard.* chrome regions instead of being required by it.
 export const dashboardPanelPlugin = definePlugin({
 	id: "dashboard.panel",
+	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	optionalDeps: [
 		patientsServicesPlugin.id,

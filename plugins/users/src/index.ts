@@ -131,6 +131,7 @@ export const UsersQueriesLive = Query.handlersOf(UsersQueries, {
 
 export const usersServicesPlugin = definePlugin({
 	id: "users.services",
+	meta: { keywords: ["users", "services"] },
 	// adminList consumes the PlatformAdmin gate — the dep edge keeps the
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
@@ -145,6 +146,7 @@ export const usersServicesPlugin = definePlugin({
 // shell like the retired panel entry.
 export const usersChromePlugin = definePlugin({
 	id: "users.chrome",
+	meta: { keywords: ["users", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -163,6 +165,7 @@ export const usersChromePlugin = definePlugin({
 // declares the page descriptor. The dep edge orders it after the shell.
 export const usersPanelPlugin = definePlugin({
 	id: "users.panel",
+	meta: { keywords: ["users", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	panel: {
 		pages: [

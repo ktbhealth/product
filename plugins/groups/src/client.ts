@@ -18,6 +18,7 @@ import { GroupsPlatformPage } from "./platform-page.tsx";
  */
 export const groupsChromePlugin = definePlugin({
 	id: "groups.chrome",
+	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -33,6 +34,7 @@ export const groupsChromePlugin = definePlugin({
 
 export const groupsPanelPlugin = definePlugin({
 	id: "groups.panel",
+	meta: { keywords: ["groups", "ui"] },
 	requiredDeps: ["platform.panel"],
 	panel: {
 		pages: [
@@ -48,9 +50,10 @@ export const groupsPanelPlugin = definePlugin({
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "groups.tables" }),
+	definePlugin({ id: "groups.tables", meta: { keywords: ["groups", "tables"] } }),
 	definePlugin({
 		id: "groups.services",
+		meta: { keywords: ["groups", "services"] },
 		requiredDeps: ["platform.admin"],
 		// Mirrors groupsServicesPlugin.optionalDeps (server index.ts) —
 		// literal id: importing @ktb/rbac-plugin would pull the server

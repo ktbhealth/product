@@ -112,11 +112,13 @@ export const DoctorsLive = Layer.effect(
 
 export const doctorsTablesPlugin = definePlugin({
 	id: "doctors.tables",
+	meta: { keywords: ["doctors", "tables"] },
 	tables: { doctors },
 });
 
 export const doctorsServicesPlugin = definePlugin({
 	id: "doctors.services",
+	meta: { keywords: ["doctors", "services"] },
 	services: Layer.mergeAll(DoctorsLive, DoctorProfilesLive),
 });
 
@@ -125,6 +127,7 @@ export const doctorsServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const doctorsRoutesPlugin = definePlugin({
 	id: "doctors.routes",
+	meta: { keywords: ["doctors", "routes"] },
 	routes: [physical("/doctors", "../../../../plugins/doctors/src/routes")],
 });
 

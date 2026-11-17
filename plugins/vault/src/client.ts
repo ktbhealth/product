@@ -15,6 +15,7 @@ import { VaultClinicPage } from "./vault-page.tsx";
  */
 export const vaultPagesPlugin = definePlugin({
 	id: "vault.pages",
+	meta: { keywords: ["vault", "ui"] },
 	requiredDeps: ["vault.services"],
 	pages: [
 		{
@@ -27,6 +28,7 @@ export const vaultPagesPlugin = definePlugin({
 
 export const vaultChromePlugin = definePlugin({
 	id: "vault.chrome",
+	meta: { keywords: ["vault", "ui"] },
 	chrome: [
 		{
 			id: "vault.nav",
@@ -48,8 +50,8 @@ export const vaultChromePlugin = definePlugin({
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "vault.tables" }),
-	definePlugin({ id: "vault.services" }),
+	definePlugin({ id: "vault.tables", meta: { keywords: ["vault", "tables"] } }),
+	definePlugin({ id: "vault.services", meta: { keywords: ["vault", "services"] } }),
 	vaultPagesPlugin,
 	vaultChromePlugin,
 ];
