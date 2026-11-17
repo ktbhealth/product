@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 // Relative import — same rationale as @ktb/audit: @ktb/groups depends
 // on @ktb/db transitively and @ktb/db's generated schema re-exports
@@ -47,9 +46,7 @@ export const clinicKeys = sqliteTable(
 		status: text().notNull().default("pending"),
 		approvedByUserId: text("approved_by_user_id"),
 		approvedAt: integer("approved_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		// A device (wrap pubkey) enrolls once per clinic — re-registration
@@ -97,9 +94,7 @@ export const entityDeks = sqliteTable(
 		/** The wrapped DEK — `w1.` ECIES envelope, opaque to the server. */
 		wrappedDek: text("wrapped_dek").notNull(),
 		grantedByUserId: text("granted_by_user_id"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		// One envelope per (record, reader) — re-granting replaces.
@@ -145,9 +140,7 @@ export const portalKeys = sqliteTable(
 		/** Device ECDSA P-256 sign pubkey (b64u raw) — kept for parity with
 		 * clinic devices; nothing verifies portal signatures yet. */
 		signPublicKey: text("sign_public_key").notNull(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		// A device (wrap pubkey) enrolls once per user — re-registration

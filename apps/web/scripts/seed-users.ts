@@ -68,7 +68,13 @@ const grantPatientAccess = (
 ) =>
 	db
 		.insert(patientAccess)
-		.values({ ...input, status: "active", source: "invite" })
+		.values({
+			...input,
+			status: "active",
+			source: "invite",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
 		.onConflictDoNothing();
 
 const { env, dispose } = await getPlatformProxy({

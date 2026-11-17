@@ -11,6 +11,7 @@ const fns = vi.hoisted(() => ({
 	setPluginEnabledFn: vi.fn(),
 	setPluginConfigFn: vi.fn(),
 	getPluginConfigFn: vi.fn(),
+	getMetricsFn: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -107,6 +108,7 @@ beforeEach(() => {
 	fns.setPluginEnabledFn.mockResolvedValue(true);
 	fns.setPluginConfigFn.mockResolvedValue(true);
 	fns.getPluginConfigFn.mockResolvedValue({ title: "T" });
+	fns.getMetricsFn.mockResolvedValue({ serverFns: [], sessionContexts: [] });
 });
 
 afterEach(cleanup);
@@ -572,5 +574,97 @@ describe("PluginsPage", () => {
 		render(<PluginsPage plugins={[...plugins, rich]} states={states} locale="en" />);
 		expect(screen.getByText("tables, chrome")).toBeTruthy();
 		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+	});
+
+	it("renders serverFn and session-context metric rows once loaded", async () => {
+		fns.getMetricsFn.mockResolvedValue({
+			serverFns: [
+				{ fn: "abc123", requests: 12, errors: 2, avgDurationMs: 42.4 },
+				{ fn: "def456", requests: 3, errors: 0, avgDurationMs: null },
+			],
+			sessionContexts: [{ context: "session", lookups: 10, loads: 3, avgLoadDurationMs: 8.6 }],
+		});
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		expect(await screen.findByText("Runtime metrics")).toBeTruthy();
+		expect(screen.getByText("Cumulative since process start.")).toBeTruthy();
+		expect(screen.getByText("Server functions")).toBeTruthy();
+		expect(screen.getByText("abc123")).toBeTruthy();
+		expect(screen.getByText("def456")).toBeTruthy();
+		expect(screen.getByText("Session context")).toBeTruthy();
+		expect(screen.getByText("session")).toBeTruthy();
+		// Averages are rounded to whole ms; a null avg renders an em dash.
+		expect(screen.getByText("42")).toBeTruthy();
+		expect(screen.getByText("9")).toBeTruthy();
+		// Em dash marks the null avg (plugin kind cells render "—" too).
+		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+	});
+
+	it("shows the metrics empty state when nothing was recorded", async () => {
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		expect(
+			await screen.findByText("No server function or session context traffic recorded yet."),
+		).toBeTruthy();
+	});
+
+	it("treats a null metrics response as empty", async () => {
+		fns.getMetricsFn.mockResolvedValue(null);
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		expect(
+			await screen.findByText("No server function or session context traffic recorded yet."),
+		).toBeTruthy();
+	});
+
+	it("surfaces a metrics error when the fetch rejects", async () => {
+		fns.getMetricsFn.mockRejectedValueOnce(new Error("boom"));
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		expect(await screen.findByText("Could not load runtime metrics.")).toBeTruthy();
+	});
+
+	it("renders only the session-context table when no serverFn rows exist", async () => {
+		fns.getMetricsFn.mockResolvedValue({
+			serverFns: [],
+			sessionContexts: [{ context: "doctor", lookups: 4, loads: 1, avgLoadDurationMs: 3 }],
+		});
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		expect(await screen.findByText("Session context")).toBeTruthy();
+		expect(screen.queryByText("Server functions")).toBeNull();
+	});
+
+	it("renders only the serverFn table when no session-context rows exist", async () => {
+		fns.getMetricsFn.mockResolvedValue({
+			serverFns: [{ fn: "abc123", requests: 1, errors: 0, avgDurationMs: 5 }],
+			sessionContexts: [],
+		});
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		expect(await screen.findByText("Server functions")).toBeTruthy();
+		expect(screen.queryByText("Session context")).toBeNull();
+	});
+
+	it("ignores a metrics response that resolves after unmount", async () => {
+		let resolve!: (v: unknown) => void;
+		fns.getMetricsFn.mockReturnValueOnce(
+			new Promise((r) => {
+				resolve = r;
+			}),
+		);
+		const { unmount } = render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		unmount();
+		resolve({ serverFns: [], sessionContexts: [] });
+		await Promise.resolve();
+		expect(fns.getMetricsFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores a metrics rejection that lands after unmount", async () => {
+		let reject!: (e: unknown) => void;
+		fns.getMetricsFn.mockReturnValueOnce(
+			new Promise((_r, rej) => {
+				reject = rej;
+			}),
+		);
+		const { unmount } = render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		unmount();
+		reject(new Error("boom"));
+		await Promise.resolve();
+		expect(fns.getMetricsFn).toHaveBeenCalledTimes(1);
 	});
 });

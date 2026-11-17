@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
 // Relative imports on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package

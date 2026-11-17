@@ -113,6 +113,8 @@ export async function createRole(
 			name: input.name,
 			description: input.description ?? null,
 			meta: input.meta ?? null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		})
 		.returning();
 	return rows[0] ?? null;
@@ -146,6 +148,7 @@ export async function setRolePermission(
 			resource: input.resource,
 			action: input.action,
 			effect: input.effect,
+			createdAt: new Date(),
 		})
 		.onConflictDoUpdate({
 			target: [rolePermissions.roleId, rolePermissions.resource, rolePermissions.action],
@@ -236,6 +239,7 @@ export async function assignSubject(
 				tenantId: input.tenantId == null ? null : String(input.tenantId),
 				grantedBy: input.grantedBy ?? null,
 				expiresAt,
+				createdAt: new Date(),
 			})
 			.returning();
 		row = rows[0];

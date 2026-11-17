@@ -560,13 +560,35 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 				}) as Effect.Effect<A, E>;
 		return gate as Middleware.Middleware;
 	};
+	// Per-dispatch trace span: the cqrs library already opens
+	// `command.<tag>`/`query.<tag>` spans, but they carry no plugin
+	// attribution — this span groups handler time by owning package so a
+	// request trace shows which plugin's CQRS surface ran. Attributes are
+	// compile-time constants (message tag, package id); payloads never
+	// reach a span. Runs inside the enabled-state gate so a disabled
+	// package's dispatch fails without opening one.
+	const traceSpan = (pkg: string): Middleware.Middleware => {
+		const span: Middleware.Middleware =
+			(dispatch, { tag, side }) =>
+			(payload) =>
+				dispatch(payload).pipe(
+					Effect.withSpan(`cqrs.${side}`, {
+						attributes: { "cqrs.name": tag, "ktb.plugin": pkg },
+					}),
+				);
+		return span;
+	};
 	const busesLive = Layer.unwrap(
 		Effect.gen(function* () {
 			const queryTables = yield* Effect.forEach(queryGroups, ({ pkg, group }) =>
-				Query.dispatcher(group, { middleware: [pluginGate(pkg), ...busMiddleware] }),
+				Query.dispatcher(group, {
+					middleware: [pluginGate(pkg), traceSpan(pkg), ...busMiddleware],
+				}),
 			);
 			const commandTables = yield* Effect.forEach(commandGroups, ({ pkg, group }) =>
-				Command.dispatcher(group, { middleware: [pluginGate(pkg), ...busMiddleware] }),
+				Command.dispatcher(group, {
+					middleware: [pluginGate(pkg), traceSpan(pkg), ...busMiddleware],
+				}),
 			);
 			return Layer.mergeAll(
 				Layer.succeed(

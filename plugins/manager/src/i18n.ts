@@ -71,6 +71,20 @@ export interface ManagerMessages {
 	readonly fullscreenEnter: string;
 	readonly fullscreenExit: string;
 	readonly layoutLoading: string;
+	readonly metricsTitle: string;
+	readonly metricsSinceStart: string;
+	readonly metricsError: string;
+	readonly metricsEmpty: string;
+	readonly metricsServerFns: string;
+	readonly metricsSessionContexts: string;
+	readonly colFn: string;
+	readonly colRequests: string;
+	readonly colErrors: string;
+	readonly colAvgDuration: string;
+	readonly colContext: string;
+	readonly colLookups: string;
+	readonly colLoads: string;
+	readonly colAvgLoad: string;
 }
 
 const en: ManagerMessages = {
@@ -132,6 +146,20 @@ const en: ManagerMessages = {
 	fullscreenEnter: "Full screen",
 	fullscreenExit: "Exit full screen",
 	layoutLoading: "Organizing graph…",
+	metricsTitle: "Runtime metrics",
+	metricsSinceStart: "Cumulative since process start.",
+	metricsError: "Could not load runtime metrics.",
+	metricsEmpty: "No server function or session context traffic recorded yet.",
+	metricsServerFns: "Server functions",
+	metricsSessionContexts: "Session context",
+	colFn: "Function",
+	colRequests: "Requests",
+	colErrors: "Errors",
+	colAvgDuration: "Avg duration (ms)",
+	colContext: "Context",
+	colLookups: "Lookups",
+	colLoads: "Loads",
+	colAvgLoad: "Avg load (ms)",
 };
 
 const ptBR: ManagerMessages = {
@@ -193,6 +221,20 @@ const ptBR: ManagerMessages = {
 	fullscreenEnter: "Tela cheia",
 	fullscreenExit: "Sair da tela cheia",
 	layoutLoading: "Organizando grafo…",
+	metricsTitle: "Métricas de execução",
+	metricsSinceStart: "Acumulado desde o início do processo.",
+	metricsError: "Não foi possível carregar as métricas de execução.",
+	metricsEmpty: "Nenhum tráfego de server function ou contexto de sessão registrado ainda.",
+	metricsServerFns: "Server functions",
+	metricsSessionContexts: "Contexto de sessão",
+	colFn: "Função",
+	colRequests: "Requisições",
+	colErrors: "Erros",
+	colAvgDuration: "Duração média (ms)",
+	colContext: "Contexto",
+	colLookups: "Consultas",
+	colLoads: "Carregamentos",
+	colAvgLoad: "Carga média (ms)",
 };
 
 const es: ManagerMessages = {
@@ -254,6 +296,20 @@ const es: ManagerMessages = {
 	fullscreenEnter: "Pantalla completa",
 	fullscreenExit: "Salir de pantalla completa",
 	layoutLoading: "Organizando grafo…",
+	metricsTitle: "Métricas de ejecución",
+	metricsSinceStart: "Acumulado desde el inicio del proceso.",
+	metricsError: "No se pudieron cargar las métricas de ejecución.",
+	metricsEmpty: "Aún no se registró tráfico de server functions ni de contexto de sesión.",
+	metricsServerFns: "Server functions",
+	metricsSessionContexts: "Contexto de sesión",
+	colFn: "Función",
+	colRequests: "Solicitudes",
+	colErrors: "Errores",
+	colAvgDuration: "Duración media (ms)",
+	colContext: "Contexto",
+	colLookups: "Consultas",
+	colLoads: "Cargas",
+	colAvgLoad: "Carga media (ms)",
 };
 
 const catalogs: Record<ManagerLocale, ManagerMessages> = { en, "pt-BR": ptBR, es };

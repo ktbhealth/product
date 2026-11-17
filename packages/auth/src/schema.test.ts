@@ -55,6 +55,8 @@ describe("auth-better schema", () => {
 			identifier: "a@x.com",
 			value: "123",
 			expiresAt: new Date(Date.now() + 10000),
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
 		});
 		await db.update(session).set({ token: "tok2" }).where(eq(session.id, "s1"));
 		await db.update(account).set({ scope: "s" }).where(eq(account.id, "a1"));

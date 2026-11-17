@@ -296,6 +296,7 @@ export async function insertAuditEntry(
 			detail: serializeDetail(entry.detail),
 			tenantId: normalizeTenantId(entry.tenantId),
 			prevHash: prev[0] ? await auditEntryHash(prev[0]) : null,
+			createdAt: new Date(),
 		})
 		.returning();
 	return rows[0] ?? null;

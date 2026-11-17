@@ -263,6 +263,8 @@ describe("patient portal, pending link awaiting approval", () => {
 			relation: "self",
 			status: "pending",
 			source: "cpf",
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		});
 	});
 

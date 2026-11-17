@@ -43,7 +43,7 @@ describe("secretaries schema", () => {
 		const db = makeDb(makeD1(DDL));
 		const [created] = await db
 			.insert(doctorAccess)
-			.values({ doctorId: 1, email: "sec@ktb.test", updatedAt: new Date(0) })
+			.values({ doctorId: 1, email: "sec@ktb.test", createdAt: new Date(), updatedAt: new Date(0) })
 			.returning();
 		expect(created!.role).toBe(DOCTOR_ACCESS_ROLES[0]);
 		expect(created!.status).toBe(DOCTOR_ACCESS_STATUSES[0]);
@@ -59,9 +59,16 @@ describe("secretaries schema", () => {
 
 	it("rejects a second row for the same doctor and email", async () => {
 		const db = makeDb(makeD1(DDL));
-		await db.insert(doctorAccess).values({ doctorId: 1, email: "sec@ktb.test" });
+		await db
+			.insert(doctorAccess)
+			.values({ doctorId: 1, email: "sec@ktb.test", createdAt: new Date(), updatedAt: new Date() });
 		await expect(
-			db.insert(doctorAccess).values({ doctorId: 1, email: "sec@ktb.test" }),
+			db.insert(doctorAccess).values({
+				doctorId: 1,
+				email: "sec@ktb.test",
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			}),
 		).rejects.toThrow(/Failed query/);
 	});
 });

@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 /**
  * Append-only, entity-generic record versions (PL-007 F1, T-138): one
@@ -45,9 +44,7 @@ export const recordVersions = sqliteTable(
 		actorUserId: text("actor_user_id"),
 		/** Producing engine (e.g. the anamnesis extractor) — provenance only. */
 		engine: text(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		index("record_versions_entity_idx").on(table.entityType, table.entityId),

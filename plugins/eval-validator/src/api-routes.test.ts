@@ -67,7 +67,10 @@ const runtime = ManagedRuntime.make(
 
 const seedBatch = async () => {
 	const { evalPersonaBatch } = await import("./schema.ts");
-	const [b] = await db.insert(evalPersonaBatch).values({ params: "{}" }).returning();
+	const [b] = await db
+		.insert(evalPersonaBatch)
+		.values({ params: "{}", createdAt: new Date() })
+		.returning();
 	return b!.id;
 };
 
@@ -100,14 +103,19 @@ beforeAll(async () => {
 			script: "s",
 			turns: "[]",
 			voices: "{}",
+			createdAt: new Date(),
 		})
 		.returning();
-	const [r] = await db.insert(evalRun).values({ batchId: p!.batchId }).returning();
+	const [r] = await db
+		.insert(evalRun)
+		.values({ batchId: p!.batchId, createdAt: new Date() })
+		.returning();
 	await db.insert(evalRunSample).values({
 		runId: r!.id,
 		personaId: p!.id,
 		status: "ok",
 		result: JSON.stringify({ audioUri: "file:///work/a.wav" }),
+		createdAt: new Date(),
 	});
 });
 

@@ -246,6 +246,8 @@ export const insertSyntheticEntities = (
 			id: input.synUserId,
 			name: displayName,
 			email: `${input.synUserId}@eval.ktb`,
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		}),
 		db
 			.insert(doctors)
@@ -255,6 +257,8 @@ export const insertSyntheticEntities = (
 				/* v8 ignore next -- enrichPersona always fills specialty from the matrix cell */
 				specialty: input.persona.specialty ?? null,
 				synthetic: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
 			})
 			.returning({ id: doctors.id }),
 		db
@@ -355,6 +359,7 @@ export const EvalValidatorLive = Layer.effect(
 								locale: "pt-BR",
 							}),
 							createdBy: principal?.email ?? null,
+							createdAt: new Date(),
 						})
 						.returning(),
 				);
@@ -423,6 +428,7 @@ export const EvalValidatorLive = Layer.effect(
 									patientId: r.entities.patientId,
 									doctorId: r.entities.doctorId,
 									scriptMode: r.mode,
+									createdAt: new Date(),
 								}),
 							) as [never, ...never[]],
 						),
@@ -527,14 +533,23 @@ export const EvalValidatorLive = Layer.effect(
 				const runRows = yield* Effect.promise(() =>
 					db
 						.insert(evalRun)
-						.values({ batchId, status: "queued", total: approved.length })
+						.values({
+							batchId,
+							status: "queued",
+							total: approved.length,
+							createdAt: new Date(),
+						})
 						.returning(),
 				);
 				const run = runRows[0]!;
 				yield* Effect.promise(() =>
-					db
-						.insert(evalRunSample)
-						.values(approved.map((p) => ({ runId: run.id, personaId: p.id }))),
+					db.insert(evalRunSample).values(
+						approved.map((p) => ({
+							runId: run.id,
+							personaId: p.id,
+							createdAt: new Date(),
+						})),
+					),
 				);
 				// No EvalRunner bound → run stays queued; the local driver
 				// picks it up when present (dev:node).

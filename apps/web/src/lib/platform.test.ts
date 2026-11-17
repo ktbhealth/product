@@ -42,21 +42,60 @@ let clinicAId = 0;
 beforeAll(async () => {
 	const [clinicA] = await db
 		.insert(groups)
-		.values({ name: "Clinic A", slug: "clinic-a", kind: "clinic", meta: null })
+		.values({
+			name: "Clinic A",
+			slug: "clinic-a",
+			kind: "clinic",
+			meta: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
 		.returning();
 	clinicAId = clinicA!.id;
 	const [orgB] = await db
 		.insert(groups)
-		.values({ name: "Org B", slug: "org-b", kind: "org", meta: null })
+		.values({
+			name: "Org B",
+			slug: "org-b",
+			kind: "org",
+			meta: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
 		.returning();
 	const [clinicC] = await db
 		.insert(groups)
-		.values({ name: "Clinic C", slug: "clinic-c", kind: "clinic", meta: null })
+		.values({
+			name: "Clinic C",
+			slug: "clinic-c",
+			kind: "clinic",
+			meta: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		})
 		.returning();
 	await db.insert(groupMembers).values([
-		{ groupId: clinicA!.id, memberKind: "user", memberId: "u1", role: "admin" },
-		{ groupId: orgB!.id, memberKind: "user", memberId: "u-multi", role: "member" },
-		{ groupId: clinicC!.id, memberKind: "user", memberId: "u-multi", role: "member" },
+		{
+			groupId: clinicA!.id,
+			memberKind: "user",
+			memberId: "u1",
+			role: "admin",
+			createdAt: new Date(),
+		},
+		{
+			groupId: orgB!.id,
+			memberKind: "user",
+			memberId: "u-multi",
+			role: "member",
+			createdAt: new Date(),
+		},
+		{
+			groupId: clinicC!.id,
+			memberKind: "user",
+			memberId: "u-multi",
+			role: "member",
+			createdAt: new Date(),
+		},
 	]);
 });
 

@@ -123,6 +123,8 @@ export async function inviteSecretary(
 			email: input.email,
 			invitedBy: input.invitedBy,
 			...link,
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		})
 		.onConflictDoUpdate({
 			target: [doctorAccess.doctorId, doctorAccess.email],

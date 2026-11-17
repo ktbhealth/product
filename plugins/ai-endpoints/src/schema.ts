@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
 /**
  * `ai_endpoint` — a generative provider any AI-capable plugin can
@@ -46,9 +45,7 @@ export const aiEndpoint = sqliteTable(
 		 * (connect + heartbeat) — drives the bridge status badge. Null when
 		 * no bridge has ever connected. */
 		lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("ai_endpoint_enabled_idx").on(table.enabled)],
 );
@@ -82,9 +79,7 @@ export const aiAgentLink = sqliteTable(
 		/** Admin revocation (F4) — the bridge route refuses the token and
 		 * the Agents page shows `revoked`; nullable keeps the audit row. */
 		revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("ai_agent_link_endpoint_idx").on(table.endpointId)],
 );

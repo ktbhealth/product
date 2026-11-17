@@ -202,7 +202,7 @@ export async function appendRecordVersion(
 			blobHash,
 			actorUserId: input.actorUserId,
 			engine: input.engine ?? null,
-			...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
+			createdAt: input.createdAt ?? new Date(),
 		})
 		.returning();
 	return rows[0]!;

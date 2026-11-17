@@ -30,7 +30,10 @@ export async function ensureDoctorProfile(
 	userId: string,
 	displayName: string,
 ): Promise<Doctor> {
-	await db.insert(doctors).values({ userId, displayName }).onConflictDoNothing();
+	await db
+		.insert(doctors)
+		.values({ userId, displayName, createdAt: new Date(), updatedAt: new Date() })
+		.onConflictDoNothing();
 	return (await getDoctorByUser(db, userId))!;
 }
 

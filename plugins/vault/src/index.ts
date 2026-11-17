@@ -87,6 +87,7 @@ export async function enrollClinicDevice(
 			wrapPublicKey: input.wrapPublicKey,
 			signPublicKey: input.signPublicKey,
 			status: "pending",
+			createdAt: new Date(),
 		})
 		.returning();
 	return rows[0]!;
@@ -187,6 +188,7 @@ export async function grantEntityDeks(
 				readerId: grant.readerId ?? null,
 				wrappedDek: grant.wrappedDek,
 				grantedByUserId: input.grantedByUserId,
+				createdAt: new Date(),
 			})
 			// Re-granting to the same reader replaces the envelope —
 			// DEK rotation (T-150 re-wrap) depends on this.
@@ -294,6 +296,7 @@ export async function enrollPortalDevice(
 			userId: input.userId,
 			wrapPublicKey: input.wrapPublicKey,
 			signPublicKey: input.signPublicKey,
+			createdAt: new Date(),
 		})
 		.returning();
 	return rows[0]!;

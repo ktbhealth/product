@@ -159,7 +159,14 @@ export const makeWorkersAiAsr = (opts: WorkersAiAsrOptions): Layer.Layer<AsrPort
 									return res.json() as Promise<unknown>;
 								},
 								catch: (e) => fail(e instanceof Error ? e.message : String(e)),
-							}),
+							}).pipe(
+								// Transport-boundary span around the provider
+								// call; the model id is caller-pinned config
+								// (bounded), never audio or transcript content.
+								Effect.withSpan("asr.transcribe", {
+									attributes: { "asr.model": opts.model },
+								}),
+							),
 						),
 						Effect.timeout(`${timeoutMs} millis`),
 						Effect.mapError((e) =>

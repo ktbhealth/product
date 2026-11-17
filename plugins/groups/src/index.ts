@@ -63,6 +63,8 @@ export async function createGroup(db: DbClient, input: CreateGroupInput) {
 			slug: input.slug,
 			kind: input.kind,
 			meta: input.meta ?? null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
 		})
 		.returning();
 	return rows[0] ?? null;
@@ -115,6 +117,7 @@ export async function addMember(db: DbClient, input: AddGroupMemberInput) {
 			memberKind: input.memberKind,
 			memberId: input.memberId,
 			role: input.role ?? null,
+			createdAt: new Date(),
 		})
 		.returning();
 	return rows[0] ?? null;

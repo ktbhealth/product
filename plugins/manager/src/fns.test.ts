@@ -39,6 +39,7 @@ import {
 	type PluginStatesShape,
 } from "@ktb/platform/plugin-states";
 import { Principal } from "@ktb/authz";
+import { Telemetry } from "@ktb/observability";
 import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -46,6 +47,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { managerChromePlugin, managerPanelPlugin, plugins } from "./index.ts";
 import {
+	getMetricsFn,
 	getPluginConfigFn,
 	listPluginStatesFn,
 	setPluginConfigFn,
@@ -88,6 +90,10 @@ describe("manager fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
 	let auth: ReturnType<typeof Auth.of>;
+	// Mutable scrape payload — tests swap in different expositions, and
+	// `scrapeImpl` can be swapped for a failing effect.
+	let scrapeText = "";
+	let scrapeImpl: () => Effect.Effect<string> = () => Effect.sync(() => scrapeText);
 
 	// (Re)install the server-runtime registry against `rt` — the error
 	// propagation test swaps in a stub PluginStates and restores this.
@@ -113,6 +119,15 @@ describe("manager fns", () => {
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(
+				Telemetry,
+				Telemetry.of({
+					flush: Effect.void,
+					scrape: Effect.suspend(() => scrapeImpl()),
+					ingest: () => Effect.void,
+					health: Effect.succeed({ logs: "console", traces: "off", metrics: "prometheus" }),
+				}),
+			),
 		);
 		const states = makePluginStatesLive(registry);
 		runtime = ManagedRuntime.make(
@@ -134,6 +149,7 @@ describe("manager fns", () => {
 		currentEmail = null;
 		expect(await listPluginStatesFn()).toBeNull();
 		expect(await getPluginConfigFn({ data: "manager.panel" })).toBeNull();
+		expect(await getMetricsFn()).toBeNull();
 		await expect(
 			setPluginEnabledFn({ data: { ids: ["manager.chrome"], enabled: false } }),
 		).rejects.toThrow("unauthenticated");
@@ -149,6 +165,7 @@ describe("manager fns", () => {
 		expect(await setPluginConfigFn({ data: { pluginId: "manager.panel", config: {} } })).toBe(
 			false,
 		);
+		expect(await getMetricsFn()).toBeNull();
 	});
 
 	it("lists, toggles and configures plugins as admin", async () => {
@@ -209,6 +226,39 @@ describe("manager fns", () => {
 		).rejects.toMatchObject({ _tag: "PluginSystemLocked" });
 	});
 
+	it("returns aggregated metrics from the Telemetry scrape for admins", async () => {
+		currentEmail = "admin@x.com";
+		scrapeText = [
+			'ktb_server_fn_requests_total{fn="aaa",status="200"} 3',
+			'ktb_server_fn_requests_total{fn="aaa",status="500"} 1',
+			'ktb_server_fn_request_duration_ms_sum{fn="aaa"} 200',
+			'ktb_server_fn_request_duration_ms_count{fn="aaa"} 4',
+			'ktb_session_context_lookups_total{context="session",result="load"} 2',
+			'ktb_session_context_lookups_total{context="session",result="cache"} 5',
+			'ktb_session_context_load_duration_ms_sum{context="session"} 40',
+			'ktb_session_context_load_duration_ms_count{context="session"} 2',
+			"# unrelated exposition ignored",
+			'ktb_other_total{fn="zzz"} 9',
+		].join("\n");
+		expect(await getMetricsFn()).toEqual({
+			serverFns: [{ fn: "aaa", requests: 4, errors: 1, avgDurationMs: 50 }],
+			sessionContexts: [{ context: "session", lookups: 7, loads: 2, avgLoadDurationMs: 20 }],
+		});
+		scrapeText = "";
+		expect(await getMetricsFn()).toEqual({ serverFns: [], sessionContexts: [] });
+	});
+
+	it("rethrows non-Forbidden failures from the metrics scrape", async () => {
+		currentEmail = "admin@x.com";
+		// Tagged but not Forbidden — the catch must not map it to null.
+		scrapeImpl = () => Effect.fail({ _tag: "Boom" }) as unknown as Effect.Effect<string>;
+		try {
+			await expect(getMetricsFn()).rejects.toMatchObject({ _tag: "Boom" });
+		} finally {
+			scrapeImpl = () => Effect.sync(() => scrapeText);
+		}
+	});
+
 	it("propagates unexpected service errors instead of mapping them", async () => {
 		// A stub PluginStates whose every method fails with `failure` —
 		// the fns' catch blocks only translate Forbidden/UnknownPlugin;
@@ -238,6 +288,9 @@ describe("manager fns", () => {
 			() => getPluginConfigFn({ data: "manager.panel" }),
 			() => setPluginEnabledFn({ data: { ids: ["manager.chrome"], enabled: false } }),
 			() => setPluginConfigFn({ data: { pluginId: "manager.panel", config: {} } }),
+			// The stub runtime has no Telemetry service — the metrics fn
+			// must surface that failure rather than mapping it to null.
+			() => getMetricsFn(),
 		];
 		try {
 			for (const failureValue of [

@@ -321,7 +321,10 @@ export const AiEndpointsLive = Layer.effect(
 			create: Effect.fn("AiEndpoints.create")(function* (input) {
 				yield* requireGrant();
 				const rows = yield* Effect.promise(() =>
-					db.insert(aiEndpoint).values(values(input)).returning({ id: aiEndpoint.id }),
+					db
+						.insert(aiEndpoint)
+						.values({ ...values(input), createdAt: new Date() })
+						.returning({ id: aiEndpoint.id }),
 				);
 				return { id: rows[0]!.id };
 			}),
@@ -398,7 +401,9 @@ export const AiEndpointsLive = Layer.effect(
 					const tokenHash = yield* Effect.promise(() => sha256Hex(token));
 					const expiresAt = new Date(Date.now() + BRIDGE_LINK_TTL_MS);
 					yield* Effect.promise(() =>
-						db.insert(aiAgentLink).values({ endpointId, tokenHash, createdBy, expiresAt }),
+						db
+							.insert(aiAgentLink)
+							.values({ endpointId, tokenHash, createdBy, expiresAt, createdAt: new Date() }),
 					);
 					return { token, expiresAt };
 				},
