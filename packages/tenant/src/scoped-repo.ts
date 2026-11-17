@@ -1,4 +1,4 @@
-import { and, inArray, isNull, or, type Column, type SQL } from "drizzle-orm";
+import { and, getTableName, inArray, isNull, or, type Column, type SQL } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as Effect from "effect/Effect";
 
@@ -82,33 +82,49 @@ export const scopedRepo = <T extends TenantScopedTable>(
 		const db = yield* Db;
 		const tenant = yield* Tenant;
 		const scope = yield* tenantScopeCondition(table);
+		// One `db.<op>` span per repo call so a request trace shows which
+		// table each query hit. Attributes stay bounded: the drizzle table
+		// name is a schema constant, never row data. Spans are no-ops
+		// without a configured tracer.
+		const tableName = getTableName(table);
+		const op = <A, E>(name: string, effect: Effect.Effect<A, E>) =>
+			effect.pipe(Effect.withSpan(`db.${name}`, { attributes: { "db.table": tableName } }));
 
 		return {
 			findMany: (condition) =>
-				Effect.promise(
-					() =>
-						db
-							.select()
-							.from(table)
-							.where(and(scope as SQL, condition)) as Promise<ScopedRows<T>>,
+				op(
+					"findMany",
+					Effect.promise(
+						() =>
+							db
+								.select()
+								.from(table)
+								.where(and(scope as SQL, condition)) as Promise<ScopedRows<T>>,
+					),
 				),
 			findFirst: (condition) =>
-				Effect.promise(async () => {
-					const rows = (await db
-						.select()
-						.from(table)
-						.where(and(scope as SQL, condition))
-						.limit(1)) as ScopedRows<T>;
-					return rows[0] ?? null;
-				}),
+				op(
+					"findFirst",
+					Effect.promise(async () => {
+						const rows = (await db
+							.select()
+							.from(table)
+							.where(and(scope as SQL, condition))
+							.limit(1)) as ScopedRows<T>;
+						return rows[0] ?? null;
+					}),
+				),
 			insert: (values) =>
-				Effect.promise(async () => {
-					const rows = (await db
-						.insert(table)
-						.values({ ...values, tenantId: tenant?.id ?? null } as T["$inferInsert"])
-						.returning()) as ScopedRows<T>;
-					return rows[0] ?? null;
-				}),
+				op(
+					"insert",
+					Effect.promise(async () => {
+						const rows = (await db
+							.insert(table)
+							.values({ ...values, tenantId: tenant?.id ?? null } as T["$inferInsert"])
+							.returning()) as ScopedRows<T>;
+						return rows[0] ?? null;
+					}),
+				),
 			update: (values) => ({
 				where: (condition) => {
 					// tenantId is owned by the scope, not by patches — dropping
@@ -116,23 +132,29 @@ export const scopedRepo = <T extends TenantScopedTable>(
 					// another tenant through the update path.
 					const patch = { ...values } as Record<string, unknown>;
 					delete patch.tenantId;
-					return Effect.promise(
-						() =>
-							db
-								.update(table)
-								.set(patch as Partial<T["$inferInsert"]>)
-								.where(and(scope as SQL, condition))
-								.returning() as Promise<ScopedRows<T>>,
+					return op(
+						"update",
+						Effect.promise(
+							() =>
+								db
+									.update(table)
+									.set(patch as Partial<T["$inferInsert"]>)
+									.where(and(scope as SQL, condition))
+									.returning() as Promise<ScopedRows<T>>,
+						),
 					);
 				},
 			}),
 			remove: (condition) =>
-				Effect.promise(
-					() =>
-						db
-							.delete(table)
-							.where(and(scope as SQL, condition))
-							.returning() as Promise<ScopedRows<T>>,
+				op(
+					"remove",
+					Effect.promise(
+						() =>
+							db
+								.delete(table)
+								.where(and(scope as SQL, condition))
+								.returning() as Promise<ScopedRows<T>>,
+					),
 				),
 		};
 	});

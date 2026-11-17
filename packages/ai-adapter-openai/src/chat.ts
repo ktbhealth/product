@@ -109,6 +109,9 @@ export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
 			generate: (envelope) => {
 				const started = Date.now();
 				return postChat(url, opts, envelope, timeoutMs, fetchImpl).pipe(
+					// Transport-boundary span; the model id is deploy config
+					// (bounded), never prompt or completion content.
+					Effect.withSpan("llm.chat", { attributes: { "llm.model": opts.model } }),
 					Effect.timeout(`${timeoutMs} millis`),
 					/* v8 ignore next 4 -- else arm only fires on raw timeout defects */
 					Effect.mapError((e) =>

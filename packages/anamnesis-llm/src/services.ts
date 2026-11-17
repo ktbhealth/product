@@ -43,7 +43,12 @@ export const makeAnamnesisEngine = (
 								}),
 							],
 						})
+						// Transport-boundary span: attributes are the bounded
+						// engine tag, never transcript/patient content.
 						.pipe(
+							Effect.withSpan("anamnesis.llm", {
+								attributes: { "anamnesis.engine": engineName },
+							}),
 							Effect.map((r) => ({ anamnesis: r.value, engine: engineName })),
 							Effect.catch((error) =>
 								Effect.logWarning(`anamnesis extraction failed, using heuristic`, {
