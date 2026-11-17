@@ -186,7 +186,11 @@ export function PortalPage({
 										</p>
 									</div>
 									<Link
-										to={`/portal/patient/consultations/${consultation.id}`}
+										to="/portal/$instance/$"
+										params={{
+											instance: "patient",
+											_splat: `consultations/${consultation.id}`,
+										}}
 										className={buttonVariants({ variant: "outline", size: "sm" })}
 									>
 										{t.viewConsultation}

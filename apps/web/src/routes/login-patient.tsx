@@ -15,7 +15,9 @@ import { Label } from "@ktbhealth/ui/components/label";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
-import { emailEnabledFn } from "#/lib/fns.ts";
+import { emailEnabledFn, portalAudiencesFn } from "#/lib/fns.ts";
+import { doctorContextFn } from "@ktb/doctors/fns";
+import { PORTAL_AUDIENCE } from "@ktb/portal/rules";
 
 import { appCatalogT, i18nSliceFromHeadMatches, useRootI18nSlice } from "#/lib/i18n.ts";
 
@@ -85,6 +87,21 @@ function PortalSignInPage() {
 		if (mode === "up") {
 			window.location.assign(emailEnabled ? "/verify-email" : "/portal");
 			return;
+		}
+		// A staff account (a doctor/secretary profile and no patient
+		// side) does not satisfy the patient audience — /portal would
+		// 404 it at the gate. Route it through the same post-login
+		// funnel as /login/doctor instead.
+		try {
+			const audiences = await portalAudiencesFn();
+			if (!audiences.includes(PORTAL_AUDIENCE.patient)) {
+				const context = await doctorContextFn();
+				const profiles = context?.profiles.length ?? 0;
+				window.location.assign(profiles > 1 ? "/doctors/select" : "/");
+				return;
+			}
+		} catch {
+			// Lookup failure: fall through to the patient portal.
 		}
 		window.location.assign("/portal");
 	};
@@ -181,7 +198,7 @@ function PortalSignInPage() {
 						</Button>
 					</form>
 					<Link
-						to="/login"
+						to="/login/doctor"
 						className="mt-4 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
 						{t("portal_login_doctor_link")}
