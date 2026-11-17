@@ -140,6 +140,8 @@ export const CustomPagesLive = Layer.effect(
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
+							createdAt: new Date(),
+							updatedAt: new Date(),
 						})
 						.returning(),
 				);

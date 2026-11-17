@@ -53,7 +53,10 @@ describe("invites schema", () => {
 	it("starts a link unconsumed, stamped with its creation time", async () => {
 		const db = makeDb(makeD1(DDL));
 		const before = Date.now();
-		const [created] = await db.insert(inviteTokens).values(invite).returning();
+		const [created] = await db
+			.insert(inviteTokens)
+			.values({ ...invite, createdAt: new Date() })
+			.returning();
 		expect(created).toMatchObject({ ...invite, id: 1, consumedAt: null });
 		expect(created!.createdAt.getTime()).toBeGreaterThanOrEqual(before - 1);
 		expect(created!.createdAt.getTime()).toBeLessThanOrEqual(Date.now() + 1);
@@ -67,12 +70,16 @@ describe("invites schema", () => {
 
 	it("rejects a second row with the same token hash", async () => {
 		const db = makeDb(makeD1(DDL));
-		await db.insert(inviteTokens).values(invite);
+		await db.insert(inviteTokens).values({ ...invite, createdAt: new Date() });
 		await expect(
-			db.insert(inviteTokens).values({ ...invite, email: "other@ktb.test", kind: "patient" }),
+			db
+				.insert(inviteTokens)
+				.values({ ...invite, email: "other@ktb.test", kind: "patient", createdAt: new Date() }),
 		).rejects.toThrow(/Failed query/);
 		// The same address may hold several links, one per hash.
-		await db.insert(inviteTokens).values({ ...invite, tokenHash: "b".repeat(64) });
+		await db
+			.insert(inviteTokens)
+			.values({ ...invite, tokenHash: "b".repeat(64), createdAt: new Date() });
 		expect(await db.select().from(inviteTokens)).toHaveLength(2);
 	});
 });

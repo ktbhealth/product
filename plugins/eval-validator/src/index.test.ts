@@ -324,7 +324,10 @@ describe("EvalValidator", () => {
 		);
 		const [b] = await run(Effect.flatMap(EvalValidator, (v) => v.listBatches()));
 		expect(b?.state).toBe("rejected");
-		const [r] = await db.insert(evalRun).values({ batchId, total: 0 }).returning();
+		const [r] = await db
+			.insert(evalRun)
+			.values({ batchId, total: 0, createdAt: new Date() })
+			.returning();
 		const progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(r!.id)));
 		expect(progress?.pct).toBe(0);
 		await rt.dispose();
@@ -435,17 +438,22 @@ describe("EvalValidator", () => {
 			.update(evalPersona)
 			.set({ persona: JSON.stringify({ region: "south" }) })
 			.where(eq(evalPersona.id, p2!.id));
-		const [r] = await db.insert(evalRun).values({ batchId, total: 2 }).returning();
+		const [r] = await db
+			.insert(evalRun)
+			.values({ batchId, total: 2, createdAt: new Date() })
+			.returning();
 		await db.insert(evalRunSample).values({
 			runId: r!.id,
 			personaId: p1!.id,
 			status: "ok",
 			result: JSON.stringify({ wer: 0.2 }),
+			createdAt: new Date(),
 		});
 		await db.insert(evalRunSample).values({
 			runId: r!.id,
 			personaId: p2!.id,
 			status: "pending",
+			createdAt: new Date(),
 		});
 		const progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(r!.id)));
 		const gender = progress?.aggregates.find((a) => a.axis === "gender");
@@ -485,7 +493,7 @@ describe("EvalValidator", () => {
 				Effect.flatMap(EvalValidator, (v) => v.generate({ count: 1, seed: 2 })),
 			);
 			const [p] = await db.select().from(evalPersona).where(eq(evalPersona.batchId, batchId));
-			const [r] = await db.insert(evalRun).values({ batchId }).returning();
+			const [r] = await db.insert(evalRun).values({ batchId, createdAt: new Date() }).returning();
 			const [s] = await db
 				.insert(evalRunSample)
 				.values({
@@ -493,6 +501,7 @@ describe("EvalValidator", () => {
 					personaId: p!.id,
 					status: "ok",
 					result: JSON.stringify({ audioUri: "file:///work/tts/audio/a.wav" }),
+					createdAt: new Date(),
 				})
 				.returning();
 			return s!.id;

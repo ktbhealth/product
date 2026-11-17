@@ -285,7 +285,13 @@ describe("rbac services + CQRS", () => {
 
 	beforeAll(async () => {
 		db = makeDb(makeD1(DDL));
-		await db.insert(rolesTable).values({ name: "auditor", description: null, meta: null });
+		await db.insert(rolesTable).values({
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
 		const env = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(PlatformAdmin, adminGate));
 		// Provide the real audit service so admin commands write
 		// admin_audit rows (T-037); the empty-driver describes below
@@ -593,7 +599,13 @@ describe("rbac services — empty-driver paths", () => {
 
 	it("assignSubject records a null grantedBy without a bound principal", async () => {
 		const db = makeDb(makeD1(DDL));
-		await db.insert(rolesTable).values({ name: "auditor", description: null, meta: null });
+		await db.insert(rolesTable).values({
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
 		// A gate that admits everyone isolates the grantedBy null path.
 		const openGate: PlatformAdmin["Service"] = {
 			isAdmin: () => Effect.succeed(true),
@@ -632,7 +644,13 @@ describe("rbac panel loader", () => {
 
 	it("returns roles, details, assignments and the catalog", async () => {
 		const db = makeDb(makeD1(DDL));
-		await db.insert(rolesTable).values({ name: "auditor", description: null, meta: null });
+		await db.insert(rolesTable).values({
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
 		const env = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(PlatformAdmin, adminGate));
 		const rt = ManagedRuntime.make(
 			servicesLayer().pipe(Layer.provide(env)) as unknown as Layer.Layer<unknown, never, never>,

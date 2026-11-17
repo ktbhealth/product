@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
 /** What the invitee is being let into — picks the copy and where the
  * accept screen leads. */
@@ -30,9 +29,7 @@ export const inviteTokens = sqliteTable(
 		expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 		/** Set once the link created its account; a consumed link is dead. */
 		consumedAt: integer("consumed_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("invite_tokens_email_idx").on(table.email)],
 );

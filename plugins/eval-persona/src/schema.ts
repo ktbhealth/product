@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
 // Relative imports on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package
@@ -32,9 +31,7 @@ export const evalPersonaDef = sqliteTable("eval_persona_def", {
 	persona: text().notNull(),
 	notes: text(),
 	createdBy: text("created_by"),
-	createdAt: integer("created_at", { mode: "timestamp_ms" })
-		.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-		.notNull(),
+	createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
 });
 export type EvalPersonaDef = typeof evalPersonaDef.$inferSelect;
@@ -61,9 +58,7 @@ export const evalInstance = sqliteTable(
 			onDelete: "set null",
 		}),
 		createdBy: text("created_by"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("eval_instance_status_idx").on(table.status)],
 );
@@ -92,9 +87,7 @@ export const evalInstanceItem = sqliteTable(
 		 * older than the stale threshold means the request died
 		 * mid-generation and the next tick reclaims the item. */
 		claimedAt: integer("claimed_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [index("eval_instance_item_instance_idx").on(table.instanceId)],
 );

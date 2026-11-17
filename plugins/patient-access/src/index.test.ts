@@ -232,6 +232,8 @@ describe("invitePatientAccess", () => {
 				relation: "self",
 				status: "pending",
 				source: "cpf",
+				createdAt: new Date(),
+				updatedAt: new Date(),
 			})
 			.returning();
 		expect(await invite(db, "eva@ktb.test", "guardian")).toMatchObject({

@@ -1,5 +1,4 @@
-import { integer } from "drizzle-orm/sqlite-core";
-import { sqliteTable } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable } from "@ktb/db/table";
 
 /**
  * Declaration helpers for tenant-scoped tables (P-053).

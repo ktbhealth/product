@@ -74,6 +74,7 @@ export async function issueInvite(
 		kind: input.kind,
 		inviterName: input.inviterName,
 		expiresAt: new Date(now.getTime() + INVITE_TTL_MS),
+		createdAt: now,
 	});
 	return token;
 }

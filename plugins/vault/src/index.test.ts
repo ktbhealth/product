@@ -74,7 +74,15 @@ const run = <A, E>(
 	);
 
 const seedGroup = (db: DbClient, id: number, zk = false) =>
-	db.insert(groups).values({ id, name: "Clinic", slug: `clinic-${id}`, kind: "clinic", zk });
+	db.insert(groups).values({
+		id,
+		name: "Clinic",
+		slug: `clinic-${id}`,
+		kind: "clinic",
+		zk,
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	});
 
 describe("vault repo", () => {
 	let db: DbClient;

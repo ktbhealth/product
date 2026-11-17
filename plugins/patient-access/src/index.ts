@@ -197,7 +197,12 @@ export async function invitePatientAccess(
 		existing === undefined
 			? await db
 					.insert(patientAccess)
-					.values({ patientId: input.patientId, ...link })
+					.values({
+						patientId: input.patientId,
+						...link,
+						createdAt: new Date(),
+						updatedAt: new Date(),
+					})
 					.returning()
 			: await db
 					.update(patientAccess)

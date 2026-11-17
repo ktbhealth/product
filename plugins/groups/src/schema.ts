@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 
 /**
  * Generic groups: clinics, orgs, cohorts or any custom grouping. `kind`
@@ -15,11 +14,8 @@ export const groups = sqliteTable("groups", {
 	slug: text().notNull().unique(),
 	kind: text().notNull(),
 	meta: text(),
-	createdAt: integer("created_at", { mode: "timestamp_ms" })
-		.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-		.notNull(),
+	createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-		.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
 		.$onUpdate(() => /* @__PURE__ */ new Date())
 		.notNull(),
 	// Zero-knowledge flag (PL-007 F2, T-142): ZK tenants encrypt all
@@ -43,9 +39,7 @@ export const groupMembers = sqliteTable(
 		memberKind: text("member_kind").notNull(),
 		memberId: text("member_id").notNull(),
 		role: text(),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		uniqueIndex("group_members_group_member_idx").on(

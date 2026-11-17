@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
 /**
  * Plugin-owned table definition (P-061): aggregated into the drizzle

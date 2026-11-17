@@ -222,9 +222,13 @@ export async function createPatient(
 		.returning();
 	if (created === undefined) return null;
 	if (documents.length > 0) {
-		await db
-			.insert(patientDocuments)
-			.values(documents.map((document) => ({ ...document, patientId: created.id })));
+		await db.insert(patientDocuments).values(
+			documents.map((document) => ({
+				...document,
+				patientId: created.id,
+				createdAt: new Date(),
+			})),
+		);
 	}
 	return { ...created, ...identifiers };
 }
@@ -249,9 +253,13 @@ export async function updatePatient(db: DbClient, id: number, fields: PatientFie
 			: await tx(db, [
 					clear,
 					update,
-					db
-						.insert(patientDocuments)
-						.values(documents.map((document) => ({ ...document, patientId: id }))),
+					db.insert(patientDocuments).values(
+						documents.map((document) => ({
+							...document,
+							patientId: id,
+							createdAt: new Date(),
+						})),
+					),
 				]);
 	return updated === undefined ? null : { ...updated, ...identifiers };
 }

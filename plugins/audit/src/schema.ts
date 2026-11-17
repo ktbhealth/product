@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
 // Relative import on purpose: `@ktb/groups` already depends on
 // `@ktb/audit` (the Audit service groups mutations record through), so a
@@ -43,9 +42,7 @@ export const adminAudit = sqliteTable(
 		// commits to the whole log history. NULL on the first entry and
 		// on rows predating the chain (verifiers treat them as genesis).
 		prevHash: text("prev_hash"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" })
-			.default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-			.notNull(),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
 		index("admin_audit_created_at_idx").on(table.createdAt),
