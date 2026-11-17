@@ -840,8 +840,16 @@ export type I18nKey =
 	| "manager.blockedHint"
 	| "manager.cancel"
 	| "manager.colActions"
+	| "manager.colAvgDuration"
+	| "manager.colAvgLoad"
+	| "manager.colContext"
+	| "manager.colErrors"
+	| "manager.colFn"
 	| "manager.colKind"
+	| "manager.colLoads"
+	| "manager.colLookups"
 	| "manager.colPlugin"
+	| "manager.colRequests"
 	| "manager.colStatus"
 	| "manager.configDialogTitle"
 	| "manager.configSave"
@@ -856,6 +864,12 @@ export type I18nKey =
 	| "manager.enable"
 	| "manager.filterAll"
 	| "manager.filteredCount"
+	| "manager.metricsEmpty"
+	| "manager.metricsError"
+	| "manager.metricsServerFns"
+	| "manager.metricsSessionContexts"
+	| "manager.metricsSinceStart"
+	| "manager.metricsTitle"
 	| "manager.noResults"
 	| "manager.paginationNext"
 	| "manager.paginationPage"
@@ -2418,8 +2432,16 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "manager.cancel"): Effect.Effect<string>;
 	(key: "manager.colActions"): Effect.Effect<string>;
+	(key: "manager.colAvgDuration"): Effect.Effect<string>;
+	(key: "manager.colAvgLoad"): Effect.Effect<string>;
+	(key: "manager.colContext"): Effect.Effect<string>;
+	(key: "manager.colErrors"): Effect.Effect<string>;
+	(key: "manager.colFn"): Effect.Effect<string>;
 	(key: "manager.colKind"): Effect.Effect<string>;
+	(key: "manager.colLoads"): Effect.Effect<string>;
+	(key: "manager.colLookups"): Effect.Effect<string>;
 	(key: "manager.colPlugin"): Effect.Effect<string>;
+	(key: "manager.colRequests"): Effect.Effect<string>;
 	(key: "manager.colStatus"): Effect.Effect<string>;
 	(
 		key: "manager.configDialogTitle",
@@ -2450,6 +2472,12 @@ export interface I18nTypedT {
 			total: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "manager.metricsEmpty"): Effect.Effect<string>;
+	(key: "manager.metricsError"): Effect.Effect<string>;
+	(key: "manager.metricsServerFns"): Effect.Effect<string>;
+	(key: "manager.metricsSessionContexts"): Effect.Effect<string>;
+	(key: "manager.metricsSinceStart"): Effect.Effect<string>;
+	(key: "manager.metricsTitle"): Effect.Effect<string>;
 	(key: "manager.noResults"): Effect.Effect<string>;
 	(key: "manager.paginationNext"): Effect.Effect<string>;
 	(
