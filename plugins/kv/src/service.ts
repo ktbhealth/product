@@ -201,7 +201,7 @@ export const validateKey = (namespace: string, key: string) =>
 		if (bad !== null) return yield* Effect.fail(bad);
 	});
 
-export const validateNamespace = (namespace: string) =>
+const validateNamespace = (namespace: string) =>
 	Effect.gen(function* () {
 		const bad = validateField("namespace", namespace);
 		if (bad !== null) return yield* Effect.fail(bad);
@@ -352,7 +352,7 @@ export const findRow = (
 export const isExpired = (row: Row, now: number): boolean =>
 	row.expiresAt !== null && row.expiresAt <= now;
 
-export const toEntry = <T>(row: Row): KvEntry<T> => ({
+const toEntry = <T>(row: Row): KvEntry<T> => ({
 	namespace: row.namespace,
 	key: row.key,
 	value: JSON.parse(row.value) as T,

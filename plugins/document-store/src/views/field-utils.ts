@@ -7,7 +7,7 @@ import type { FieldDescriptor, FieldKind } from "../fields.ts";
  * unit-testable.
  */
 
-export const EMPTY_CELL = "—";
+const EMPTY_CELL = "—";
 
 /** Documents-table page size — shared by the view's pagination and
  * the panel loader's first-page fetch (keep in sync). */

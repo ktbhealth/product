@@ -49,8 +49,8 @@ export interface FindQuery {
 	readonly offset?: number;
 }
 
-export const FIND_LIMIT_DEFAULT = 100;
-export const FIND_LIMIT_MAX = 500;
+const FIND_LIMIT_DEFAULT = 100;
+const FIND_LIMIT_MAX = 500;
 
 /** Clamp pagination inputs — negatives and NaN collapse to defaults. */
 export const clampLimit = (limit: number | undefined): number => {

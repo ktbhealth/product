@@ -9,17 +9,6 @@ import { jobHandlers } from "@ktb/jobs-port";
 import { correctTranscript } from "#/lib/platform.ts";
 
 export type { AudioJobDeps, QueueMessageLike } from "@ktb/consultations/audio-consumer";
-export type { AudioJobMessage } from "@ktb/server-fns";
-export {
-	bytesToBase64,
-	extractWhisperText,
-	MAX_AUDIO_BYTES,
-	processAudioJob,
-	transcribeAudio,
-	whisperInputs,
-	type AudioBucketLike,
-	type AudioTranscriber,
-} from "@ktb/consultations/audio-consumer";
 
 /**
  * App-bound wiring for the transcription queue consumer (T-137): the
