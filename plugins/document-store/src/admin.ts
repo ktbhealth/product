@@ -16,6 +16,7 @@ import {
 	type CollectionMigrationReport,
 	type DocumentRecord,
 	type DocumentStoreError,
+	type DocumentWriteOptions,
 	type FindResult,
 } from "./service.ts";
 
@@ -82,16 +83,20 @@ export class DocumentStoreAdmin extends Context.Service<
 			collection: string,
 			id: number,
 		) => Effect.Effect<DocumentRecord | null, Forbidden | DocumentStoreError>;
-		/** Validate + insert a document (all scopes visible to checks). */
+		/** Validate + insert a document (all scopes visible to checks).
+		 * `options.idempotencyKey` replays a prior keyed insert (T-127). */
 		readonly insertDocument: (
 			collection: string,
 			data: Record<string, unknown>,
+			options?: DocumentWriteOptions,
 		) => Effect.Effect<DocumentRecord, Forbidden | DocumentStoreError>;
-		/** Merge-patch a document across all scopes. */
+		/** Merge-patch a document across all scopes.
+		 * `options.expectedVersion` adds the If-Match guard (T-127). */
 		readonly updateDocument: (
 			collection: string,
 			id: number,
 			data: Record<string, unknown>,
+			options?: DocumentWriteOptions,
 		) => Effect.Effect<DocumentRecord, Forbidden | DocumentStoreError>;
 		/** Delete a document across all scopes, applying ref onDelete
 		 * policies against every in-scope reference. */
@@ -235,16 +240,16 @@ export const DocumentStoreAdminLive = Layer.effect(
 					return yield* store.get(collection, id, UNSCOPED);
 				}),
 
-			insertDocument: (collection, data) =>
+			insertDocument: (collection, data, options) =>
 				Effect.gen(function* () {
 					yield* requireAdmin;
-					return yield* store.insert(collection, data, UNSCOPED);
+					return yield* store.insert(collection, data, UNSCOPED, options);
 				}),
 
-			updateDocument: (collection, id, data) =>
+			updateDocument: (collection, id, data, options) =>
 				Effect.gen(function* () {
 					yield* requireAdmin;
-					return yield* store.update(collection, id, data, UNSCOPED);
+					return yield* store.update(collection, id, data, UNSCOPED, options);
 				}),
 
 			deleteDocument: (collection, id) =>

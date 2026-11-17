@@ -49,11 +49,20 @@ const ListInput = Schema.Struct({
 	offset: Schema.optionalKey(Schema.Number),
 });
 const DocumentIdInput = Schema.Struct({ collection: Schema.String, id: Schema.Number });
-const CreateInput = Schema.Struct({ collection: Schema.String, data: Schema.Unknown });
+const CreateInput = Schema.Struct({
+	collection: Schema.String,
+	data: Schema.Unknown,
+	/** Optional idempotent-insert key (T-127) — a retry replays the
+	 * stored record instead of duplicating. */
+	idempotencyKey: Schema.optionalKey(Schema.String),
+});
 const UpdateInput = Schema.Struct({
 	collection: Schema.String,
 	id: Schema.Number,
 	data: Schema.Unknown,
+	/** Optional If-Match guard (T-127): the patch lands only when the
+	 * stored row `version` equals this — mismatch fails the save. */
+	expectedVersion: Schema.optionalKey(Schema.Number),
 });
 const MigrateInput = Schema.Struct({ collection: Schema.String });
 
@@ -184,7 +193,9 @@ export const createDocumentFn = createServerFn({ method: "POST" })
 			user,
 			Effect.gen(function* () {
 				const admin = yield* DocumentStoreAdmin;
-				const record = yield* admin.insertDocument(data.collection, asData(data.data));
+				const record = yield* admin.insertDocument(data.collection, asData(data.data), {
+					...(data.idempotencyKey === undefined ? {} : { idempotencyKey: data.idempotencyKey }),
+				});
 				return { status: "saved" as const, record: toDocumentWire(record) };
 			}),
 		).catch(saveResult);
@@ -199,7 +210,9 @@ export const updateDocumentFn = createServerFn({ method: "POST" })
 			user,
 			Effect.gen(function* () {
 				const admin = yield* DocumentStoreAdmin;
-				const record = yield* admin.updateDocument(data.collection, data.id, asData(data.data));
+				const record = yield* admin.updateDocument(data.collection, data.id, asData(data.data), {
+					...(data.expectedVersion === undefined ? {} : { expectedVersion: data.expectedVersion }),
+				});
 				return { status: "saved" as const, record: toDocumentWire(record) };
 			}),
 		).catch(saveResult);
