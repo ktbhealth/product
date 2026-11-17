@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { SqlStatement } from "./index.ts";
 import { makeD1 } from "./testing.ts";
 
 describe("makeD1", () => {
@@ -39,6 +40,35 @@ describe("makeD1", () => {
 			d1.prepare("SELECT 1 AS one"),
 		]);
 		expect(results).toHaveLength(2);
+	});
+
+	it("batch falls back to sequential execution for foreign statements", async () => {
+		const d1 = makeD1("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)");
+		const foreign = (reader: boolean, v: string): SqlStatement =>
+			({
+				reader,
+				run: async () => {
+					await d1.prepare("INSERT INTO t (v) VALUES (?)").bind(v).run();
+					return { success: true, results: [], meta: {} };
+				},
+				all: async () => ({ success: true, results: [{ v }], meta: {} }),
+			}) as unknown as SqlStatement;
+		const results = await d1.batch([foreign(false, "a"), foreign(true, "b")]);
+		expect(results).toHaveLength(2);
+		const rows = await d1.prepare("SELECT v FROM t ORDER BY v").all<{ v: string }>();
+		expect(rows.results.map((r) => r.v)).toEqual(["a"]);
+	});
+
+	it("batch rolls back atomically when a statement fails", async () => {
+		const d1 = makeD1("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT NOT NULL)");
+		await expect(
+			d1.batch([
+				d1.prepare("INSERT INTO t (v) VALUES (?)").bind("kept?"),
+				d1.prepare("INSERT INTO t (v) VALUES (?)").bind(null),
+			]),
+		).rejects.toThrow(/constraint failed/);
+		const rows = await d1.prepare("SELECT * FROM t").all();
+		expect(rows.results).toHaveLength(0);
 	});
 
 	it("dump returns an empty ArrayBuffer", async () => {

@@ -8,7 +8,7 @@ import { BotIcon, PlugZapIcon } from "lucide-react";
 
 import { type Forbidden } from "@ktb/authz";
 import { Credentials } from "@ktb/credentials";
-import { Db } from "@ktb/db";
+import { Db, tx } from "@ktb/db";
 import {
 	LlmFactory,
 	PlatformLlm,
@@ -338,9 +338,9 @@ export const AiEndpointsLive = Layer.effect(
 			setPlatformDefault: Effect.fn("AiEndpoints.setPlatformDefault")(function* (id) {
 				yield* requireGrant();
 				yield* Effect.promise(() =>
-					// db.batch is one transaction on D1 — the old default can
+					// tx() is atomic on every dialect — the old default can
 					// never coexist with the new one, even on mid-write crash.
-					db.batch([
+					tx(db, [
 						db
 							.update(aiEndpoint)
 							.set({ isDefault: false })

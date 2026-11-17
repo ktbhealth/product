@@ -6,7 +6,7 @@ import { physical } from "@tanstack/virtual-file-routes";
 import { UsersIcon } from "lucide-react";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
-import { Db, type DbClient } from "@ktb/db";
+import { Db, tx, type DbClient } from "@ktb/db";
 import { patientDocuments, patients, user as users } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
@@ -180,7 +180,7 @@ export async function getPatientOwnerId(db: DbClient, id: number) {
  * the command handler, not here. The documents go in the same batch
  * rather than relying on the foreign key's cascade alone. */
 export async function deletePatientRow(db: DbClient, id: number) {
-	await db.batch([
+	await tx(db, [
 		db.delete(patientDocuments).where(eq(patientDocuments.patientId, id)),
 		db.delete(patients).where(eq(patients.id, id)),
 	]);
@@ -207,8 +207,8 @@ export async function createPatient(
 }
 
 /**
- * Replace the record's fields and documents in one batch (a
- * transaction on D1), so a failed write never leaves the row and its
+ * Replace the record's fields and documents in one tx() (atomic on
+ * every dialect), so a failed write never leaves the row and its
  * documents out of step. Callers resolve and authorize the row first —
  * `id` is an existing patient.
  */
@@ -222,8 +222,8 @@ export async function updatePatient(db: DbClient, id: number, fields: PatientFie
 		.returning();
 	const [, [updated]] =
 		documents.length === 0
-			? await db.batch([clear, update])
-			: await db.batch([
+			? await tx(db, [clear, update])
+			: await tx(db, [
 					clear,
 					update,
 					db
