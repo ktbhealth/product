@@ -40,6 +40,8 @@ import {
 
 import { CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { prefersWhisper } from "../backend.ts";
+import { prefetchWhisperModel } from "../whisper-prefetch.ts";
 import {
 	AudioTranscriptPanel,
 	useConsultationAudio,
@@ -170,6 +172,13 @@ export function NewConsultationPage({
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const nc = t.newConsultation;
+
+	// Warm the Whisper model so dictation starts fast — on the Web
+	// Speech fallback there is no model to prefetch.
+	useEffect(() => {
+		if (prefersWhisper) prefetchWhisperModel();
+	}, []);
+
 	const [recording, setRecording] = useState(false);
 	// `supported` probes browser APIs, so it differs between the SSR pass
 	// (no window → unsupported) and hydration — resolve it after mount.

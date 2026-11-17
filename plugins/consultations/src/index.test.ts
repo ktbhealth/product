@@ -1843,7 +1843,7 @@ describe("consultations.audioJobs query", () => {
 });
 
 describe("plugins", () => {
-	it("declares tables, services, routes, nav and panel as single-concern plugins", () => {
+	it("declares tables, services, routes, chrome and panel as single-concern plugins", () => {
 		expect(consultationsTablesPlugin.id).toBe("consultations.tables");
 		expect(consultationsTablesPlugin.tables?.consultations).toBeDefined();
 		expect(consultationsServicesPlugin.id).toBe("consultations.services");
@@ -1854,11 +1854,7 @@ describe("plugins", () => {
 		]);
 		expect(consultationsChromePlugin.id).toBe("consultations.chrome");
 		expect(consultationsChromePlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
-		expect(consultationsChromePlugin.chrome.map((c) => c.region)).toEqual([
-			"app.header.nav",
-			"app.header.actions",
-			"portal.sidebar",
-		]);
+		expect(consultationsChromePlugin.chrome.map((c) => c.region)).toEqual(["portal.sidebar"]);
 		expect(consultationsPanelPlugin.id).toBe("consultations.panel");
 		expect(consultationsPanelPlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
 		expect(consultationsPanelPlugin.panel?.pages?.[0]?.path).toBe("/platform/consultations");

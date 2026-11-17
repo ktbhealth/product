@@ -47,6 +47,10 @@ export const routes = rootRoute("__root.tsx", [
 	index("index.tsx"),
 	...routePlugins.flatMap((p) => p.routes ?? []),
 	route("capture-test", "capture-test.tsx"),
+	// /login → /login/patient (front door), /portal/login stays as a
+	// legacy redirect for access emails already sent.
+	route("login", "login.tsx"),
+	route("login/patient", "login-patient.tsx"),
 	route("portal/login", "portal-login.tsx"),
 	// Namespaced portal instances (P-081): /portal/<instanceId>/* —
 	// patient-portal's physical /portal routes outrank this splat.

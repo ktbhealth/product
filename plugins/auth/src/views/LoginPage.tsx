@@ -98,7 +98,9 @@ export function LoginPage({
 		// is a patient account: it only has the patient portal.
 		const context = await doctorContextFn();
 		const profiles = context?.profiles.length;
-		window.location.assign(profiles === 0 ? "/portal" : profiles === 1 ? "/" : "/doctors/select");
+		window.location.assign(
+			profiles === 0 ? "/portal/patient" : profiles === 1 ? "/" : "/doctors/select",
+		);
 	};
 
 	return (
@@ -192,13 +194,7 @@ export function LoginPage({
 						{t.verifyLink}
 					</Link>
 					<Link
-						to="/portal/login"
-						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
-					>
-						{t.patientLink}
-					</Link>
-					<Link
-						to="/secretaries/login"
+						to="/login/secretary"
 						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
 						{t.secretaryLink}

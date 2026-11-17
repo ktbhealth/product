@@ -307,7 +307,7 @@ describe("sign-in page", () => {
 			} as DoctorContext);
 			render(createElement(Page));
 			await fillAndSubmit();
-			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
+			await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal/patient"));
 			expect(ensureDoctorProfileFn).not.toHaveBeenCalled();
 		});
 	});

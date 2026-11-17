@@ -181,17 +181,21 @@ export interface LandingFooterBlock {
  * stay unit-testable. `paths`/`exceptPaths` entries match the current
  * pathname exactly or as a `prefix/*` subtree (the bare prefix itself
  * counts); `exceptPaths` wins over `paths`. Absent `paths` means "every
- * page". */
+ * page". `minDoctorProfiles` is the clinical request-state condition:
+ * the contribution only renders when the session account's doctor-
+ * profile directory holds at least that many entries — fails closed
+ * (hidden) when the host resolves no user or no count. */
 export interface ChromeWhen {
 	readonly paths?: readonly string[];
 	readonly exceptPaths?: readonly string[];
+	readonly minDoctorProfiles?: number;
 }
 
 /** A named portal instance (P-081): a sidebar-shell surface scoped to
  * an audience — the platform admin console, a clinician portal, a
  * translator portal, … `id` is the instance id chrome contributions
  * and audience rules refer to; `basePath` is where the instance's
- * pages live ("/platform", "/portal/clinician", …); `label` is the
+ * pages live ("/platform", "/portal/doctor", …); `label` is the
  * shell/switcher display string; `icon` an optional brand mark;
  * `audience` names the audience RULE the portal gate checks (see
  * `PortalAudience` in @ktb/portal) — absent means `PORTAL_AUDIENCE_MEMBER`
@@ -233,14 +237,36 @@ export interface ChromeUser {
 	/** True when the session passes the console gate (same check the
 	 * /platform beforeLoad runs) — chrome shows the console entry. */
 	readonly platformAdmin?: boolean;
+	/**
+	 * The account's clinical standing from the doctor-profile directory:
+	 * "owner" holds its own doctor profile, "secretary" only acts through
+	 * delegations, null has no doctor side (patient). Hosts that do not
+	 * resolve a role leave it undefined — chrome treats that as "owner".
+	 */
+	readonly clinicalRole?: "owner" | "secretary" | null;
+	/**
+	 * Number of entries in the account's doctor-profile directory — own
+	 * profile plus delegations. `when.minDoctorProfiles` gates chrome on
+	 * it; hosts that do not resolve the directory leave it undefined,
+	 * which gates treat as 0.
+	 */
+	readonly doctorProfiles?: number;
+	/**
+	 * Number of patient records linked to the account — how many profiles
+	 * the patient portal would offer. Hosts that do not resolve the
+	 * patient directory leave it undefined, which chrome treats as 0 —
+	 * the patient-portal entry only renders when there is a record to
+	 * open.
+	 */
+	readonly patientProfiles?: number;
 }
 
 /** Everything the host injects into a chrome `component` contribution —
  * plugins cannot import the host's i18n runtime or session helpers, so
  * the shell resolves locale, user, labels and sign-out and hands them
  * down. `labels` carries the host-localized strings plugins need
- * (documented keys: `signIn`, `signOut`, `newConsultation`, `langMenu`,
- * `switchDoctor`, `secretaries`, `patientPortal`, `myConsultations`,
+ * (documented keys: `doctorLogin`, `patientLogin`, `signOut`, `langMenu`,
+ * `patientPortal`, `doctorPortal`, `secretaryPortal`, `myConsultations`,
  * `platformConsole`);
  * plugins fall back to their own English literal per key. `signOut`
  * performs the host's sign-out flow (plugins may not import auth
@@ -292,7 +318,7 @@ export type ChromeContent =
  * valid set per shell; unknown regions are skipped with a dev warning.
  * `order` sorts within the region (ascending, `order ?? Infinity`),
  * ties break by plugin topo order then array index; `when` filters by
- * pathname at render time. `portal` scopes the contribution to ONE
+ * pathname and session clinical state at render time. `portal` scopes the contribution to ONE
  * portal instance (P-081): only consulted for `portal.*` regions —
  * absent means the default instance ("platform"), so pre-portal
  * contributions keep rendering in the platform console only. */

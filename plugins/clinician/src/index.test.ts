@@ -8,33 +8,45 @@ import {
 } from "./index.ts";
 import { plugins as clientPlugins } from "./client.ts";
 
+const doctorPaths = (instance: string) => [
+	`/portal/${instance}`,
+	`/portal/${instance}/patients`,
+	`/portal/${instance}/consultations`,
+	`/portal/${instance}/patients/*`,
+	`/portal/${instance}/consultations/*`,
+	`/portal/${instance}/activity`,
+];
+
 describe("clinician portal plugins", () => {
-	it("declares the clinician instance — clinician audience, doctor subject", () => {
+	it("declares the doctor and secretary instances — role audiences, doctor subject", () => {
 		expect(clinicianPortalPlugin.id).toBe("clinician.portal");
 		expect(clinicianPortalPlugin.portals).toEqual([
 			{
-				id: "clinician",
-				basePath: "/portal/clinician",
-				label: "Clinician",
-				audience: "clinician",
+				id: "doctor",
+				basePath: "/portal/doctor",
+				label: "Doctor",
+				audience: "doctor",
+				subject: "doctor",
+			},
+			{
+				id: "secretary",
+				basePath: "/portal/secretary",
+				label: "Secretary",
+				audience: "secretary",
 				subject: "doctor",
 			},
 		]);
 	});
 
-	it("declares portal pages for home, patients, consultations and activity", () => {
+	it("declares the shared page set — home, patients, consultations and activity — under both instance bases", () => {
 		expect(clinicianPagesPlugin.id).toBe("clinician.pages");
 		expect(clinicianPagesPlugin.optionalDeps).toEqual(["audit.services"]);
 		const pages = clinicianPagesPlugin.pages ?? [];
 		expect(pages.map((p) => p.path)).toEqual([
-			"/portal/clinician",
-			"/portal/clinician/patients",
-			"/portal/clinician/consultations",
-			"/portal/clinician/patients/*",
-			"/portal/clinician/consultations/*",
-			"/portal/clinician/activity",
+			...doctorPaths("doctor"),
+			...doctorPaths("secretary"),
 		]);
-		// List pages carry owner-scoped loaders; the home page does not.
+		// List pages carry owner-scoped loaders; the home pages do not.
 		expect("loader" in pages[0]!).toBe(false);
 		expect("loader" in pages[1]!).toBe(true);
 		expect("loader" in pages[2]!).toBe(true);
@@ -47,13 +59,22 @@ describe("clinician portal plugins", () => {
 		expect("loader" in pages[5]!).toBe(true);
 	});
 
-	it("scopes every sidebar item to the clinician instance", () => {
+	it("scopes every sidebar item to its own instance", () => {
 		expect(clinicianChromePlugin.id).toBe("clinician.chrome");
 		const entries = clinicianChromePlugin.chrome ?? [];
-		expect(entries).toHaveLength(4);
+		expect(entries).toHaveLength(8);
+		expect(entries.map((e) => e.portal)).toEqual([
+			"doctor",
+			"doctor",
+			"doctor",
+			"doctor",
+			"secretary",
+			"secretary",
+			"secretary",
+			"secretary",
+		]);
 		for (const entry of entries) {
 			expect(entry.region).toBe("portal.sidebar");
-			expect(entry.portal).toBe("clinician");
 		}
 	});
 

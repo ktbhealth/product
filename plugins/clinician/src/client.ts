@@ -1,7 +1,7 @@
 import { ActivityIcon, ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
 
 import { AuditActivityPage } from "@ktb/audit/activity-page";
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 
 import { ClinicianConsultationRecordPage } from "./views/ClinicianConsultationRecordPage.tsx";
 import { ClinicianConsultationsPage } from "./views/ClinicianConsultationsPage.tsx";
@@ -19,19 +19,115 @@ import { ClinicianPatientsPage } from "./views/ClinicianPatientsPage.tsx";
  * client bundle. Keep in sync — parity is asserted by
  * apps/web/src/plugins.test.ts.
  */
+const CLINICAL_INSTANCES = [
+	{ id: "doctor", label: "Doctor", audience: "doctor" },
+	{ id: "secretary", label: "Secretary", audience: "secretary" },
+] as const;
+
+type ClinicalInstanceId = (typeof CLINICAL_INSTANCES)[number]["id"];
+
+const instanceBase = (id: ClinicalInstanceId) => `/portal/${id}`;
+
+const clinicalPages = (instance: ClinicalInstanceId): Page[] => {
+	const base = instanceBase(instance);
+	return [
+		{ id: `clinician.${instance}.home`, path: base, component: ClinicianHomePage },
+		{
+			id: `clinician.${instance}.patients`,
+			path: `${base}/patients`,
+			component: ClinicianPatientsPage,
+		},
+		{
+			id: `clinician.${instance}.consultations`,
+			path: `${base}/consultations`,
+			component: ClinicianConsultationsPage,
+		},
+		{
+			id: `clinician.${instance}.patients.record`,
+			path: `${base}/patients/*`,
+			component: ClinicianPatientRecordPage,
+		},
+		{
+			id: `clinician.${instance}.consultations.record`,
+			path: `${base}/consultations/*`,
+			component: ClinicianConsultationRecordPage,
+		},
+		{
+			id: `clinician.${instance}.activity`,
+			path: `${base}/activity`,
+			component: AuditActivityPage,
+		},
+	];
+};
+
+const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
+	const base = instanceBase(instance);
+	return [
+		{
+			id: `clinician.${instance}.nav.home`,
+			region: "portal.sidebar",
+			portal: instance,
+			content: {
+				kind: "sidebarItem",
+				item: { to: base, label: "Home", icon: HouseIcon, exact: true },
+			},
+		},
+		{
+			id: `clinician.${instance}.nav.patients`,
+			region: "portal.sidebar",
+			portal: instance,
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: `${base}/patients`,
+					label: "Patients",
+					icon: UsersIcon,
+					group: "Care",
+				},
+			},
+		},
+		{
+			id: `clinician.${instance}.nav.consultations`,
+			region: "portal.sidebar",
+			portal: instance,
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: `${base}/consultations`,
+					label: "Consultations",
+					icon: ClipboardListIcon,
+					group: "Care",
+				},
+			},
+		},
+		{
+			id: `clinician.${instance}.activity.sidebar`,
+			region: "portal.sidebar",
+			portal: instance,
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: `${base}/activity`,
+					label: "Activity",
+					icon: ActivityIcon,
+					group: "Governance",
+				},
+			},
+		},
+	];
+};
+
 export const clinicianPortalPlugin = definePlugin({
 	id: "clinician.portal",
 	meta: { keywords: ["clinician", "shell", "doctor"] },
 	requiredDeps: ["portal.shell"],
-	portals: [
-		{
-			id: "clinician",
-			basePath: "/portal/clinician",
-			label: "Clinician",
-			audience: "clinician",
-			subject: "doctor",
-		},
-	],
+	portals: CLINICAL_INSTANCES.map((instance) => ({
+		id: instance.id,
+		basePath: instanceBase(instance.id),
+		label: instance.label,
+		audience: instance.audience,
+		subject: "doctor" as const,
+	})),
 });
 
 export const clinicianPagesPlugin = definePlugin({
@@ -40,98 +136,14 @@ export const clinicianPagesPlugin = definePlugin({
 	requiredDeps: ["patients.services", "consultations.services"],
 	// Mirrors clinicianPagesPlugin.optionalDeps (server index.ts).
 	optionalDeps: ["audit.services"],
-	pages: [
-		{ id: "clinician.home", path: "/portal/clinician", component: ClinicianHomePage },
-		{
-			id: "clinician.patients",
-			path: "/portal/clinician/patients",
-			component: ClinicianPatientsPage,
-		},
-		{
-			id: "clinician.consultations",
-			path: "/portal/clinician/consultations",
-			component: ClinicianConsultationsPage,
-		},
-		{
-			id: "clinician.patients.record",
-			path: "/portal/clinician/patients/*",
-			component: ClinicianPatientRecordPage,
-		},
-		{
-			id: "clinician.consultations.record",
-			path: "/portal/clinician/consultations/*",
-			component: ClinicianConsultationRecordPage,
-		},
-		{
-			id: "clinician.activity",
-			path: "/portal/clinician/activity",
-			component: AuditActivityPage,
-		},
-	],
+	pages: [...clinicalPages("doctor"), ...clinicalPages("secretary")],
 });
 
 export const clinicianChromePlugin = definePlugin({
 	id: "clinician.chrome",
 	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: ["clinician.portal"],
-	chrome: [
-		{
-			id: "clinician.nav.home",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician",
-					label: "Home",
-					icon: HouseIcon,
-					exact: true,
-				},
-			},
-		},
-		{
-			id: "clinician.nav.patients",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/patients",
-					label: "Patients",
-					icon: UsersIcon,
-					group: "Care",
-				},
-			},
-		},
-		{
-			id: "clinician.nav.consultations",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/consultations",
-					label: "Consultations",
-					icon: ClipboardListIcon,
-					group: "Care",
-				},
-			},
-		},
-		{
-			id: "clinician.activity.sidebar",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/activity",
-					label: "Activity",
-					icon: ActivityIcon,
-					group: "Governance",
-				},
-			},
-		},
-	],
+	chrome: [...sidebarChrome("doctor"), ...sidebarChrome("secretary")],
 });
 
 /** Single-concern plugins contributed by this module — the client

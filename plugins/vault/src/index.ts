@@ -581,63 +581,67 @@ export const vaultServicesPlugin = definePlugin({
 });
 
 /**
- * Clinic vault page (T-143): /portal/clinician/vault — key onboarding
- * (zk enable + recovery phrase) and the admin device-approval surface.
- * Dispatched inside the clinician portal instance whenever it exists
- * (audience + subject gates are the portal's); the loader only ever
- * reads the bound tenant's vault rows.
+ * The clinical instances the vault page mounts under, coupled by URL
+ * only — the same ids the clinician plugin registers its portals with.
+ * Both run loaders under the acting doctor (`subject: "doctor"`), so a
+ * secretary manages the clinic vault of the doctor they act for.
+ */
+const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
+
+/**
+ * Clinic vault page (T-143): /portal/<doctor|secretary>/vault — key
+ * onboarding (zk enable + recovery phrase) and the admin
+ * device-approval surface. Dispatched inside the clinical portal
+ * instances (audience + subject gates are the portal's); the loader
+ * only ever reads the bound tenant's vault rows.
  */
 export const vaultPagesPlugin = definePlugin({
 	id: "vault.pages",
 	meta: { keywords: ["vault", "ui"] },
 	requiredDeps: ["vault.services"],
-	pages: [
-		{
-			id: "vault.clinic",
-			path: "/portal/clinician/vault",
-			component: VaultClinicPage,
-			loader: () =>
-				Effect.gen(function* () {
-					const tenant = yield* Tenant;
-					const tenantId = tenantScopeId(tenant);
-					if (tenant === null || tenantId === null) {
-						return { tenantId: null, role: null, zk: false, devices: [] as ClinicKey[] };
-					}
-					const vault = yield* Vault;
-					const zk = yield* vault.isZk(tenantId);
-					// Role denials degrade to an empty list — a cross-tenant
-					// VaultError cannot fire here (tenantId IS the bound id).
-					const devices = yield* vault
-						.devices(tenantId)
-						.pipe(Effect.catchTag("TenantForbidden", () => Effect.succeed([] as ClinicKey[])));
-					return { tenantId, role: tenant.role, zk, devices };
-				}),
-		},
-	],
+	pages: CLINICAL_INSTANCES.map((instance) => ({
+		id: `vault.${instance}`,
+		path: `/portal/${instance}/vault`,
+		component: VaultClinicPage,
+		loader: () =>
+			Effect.gen(function* () {
+				const tenant = yield* Tenant;
+				const tenantId = tenantScopeId(tenant);
+				if (tenant === null || tenantId === null) {
+					return { tenantId: null, role: null, zk: false, devices: [] as ClinicKey[] };
+				}
+				const vault = yield* Vault;
+				const zk = yield* vault.isZk(tenantId);
+				// Role denials degrade to an empty list — a cross-tenant
+				// VaultError cannot fire here (tenantId IS the bound id).
+				const devices = yield* vault
+					.devices(tenantId)
+					.pipe(Effect.catchTag("TenantForbidden", () => Effect.succeed([] as ClinicKey[])));
+				return { tenantId, role: tenant.role, zk, devices };
+			}),
+	})),
 });
 
-/** Sidebar entry into the clinician portal — the contribution scopes
- * itself to the "clinician" instance, so deployments without it simply
- * never render the item (no dep edge needed). */
+/** Sidebar entries into the clinical portals — each contribution
+ * scopes itself to its own instance, so deployments without them
+ * simply never render the item (no dep edge needed). */
 export const vaultChromePlugin = definePlugin({
 	id: "vault.chrome",
 	meta: { keywords: ["vault", "ui"] },
-	chrome: [
-		{
-			id: "vault.nav",
-			region: "portal.sidebar",
-			portal: "clinician",
-			content: {
-				kind: "sidebarItem",
-				item: {
-					to: "/portal/clinician/vault",
-					label: "Vault",
-					icon: KeyRoundIcon,
-					group: "Clinic",
-				},
+	chrome: CLINICAL_INSTANCES.map((instance) => ({
+		id: `vault.${instance}.nav`,
+		region: "portal.sidebar" as const,
+		portal: instance,
+		content: {
+			kind: "sidebarItem" as const,
+			item: {
+				to: `/portal/${instance}/vault`,
+				label: "Vault",
+				icon: KeyRoundIcon,
+				group: "Clinic",
 			},
 		},
-	],
+	})),
 });
 
 /** Single-concern plugins contributed by this module — the host

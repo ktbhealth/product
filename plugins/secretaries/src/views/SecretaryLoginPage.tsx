@@ -109,7 +109,9 @@ export function SecretaryLoginPage({
 			setNoDelegation(true);
 			return;
 		}
-		window.location.assign(profiles === 1 ? "/" : "/doctors/select");
+		// The portal binds the first delegated doctor by default; the
+		// sidebar's switch-doctor entry opens the chooser from there.
+		window.location.assign("/portal/secretary");
 	};
 
 	return (
@@ -208,7 +210,7 @@ export function SecretaryLoginPage({
 						{t.verifyLink}
 					</Link>
 					<Link
-						to="/login"
+						to="/login/doctor"
 						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 					>
 						{t.doctorLink}

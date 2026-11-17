@@ -1,16 +1,26 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import { HouseIcon } from "lucide-react";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { Forbidden, Principal } from "@ktb/authz";
-import { audit, auditServicesPlugin } from "@ktb/audit";
+import { Audit, audit, auditServicesPlugin, type AuditListResult } from "@ktb/audit";
 import { Db, type DbClient } from "@ktb/db";
 import { consultations, doctors, entityDeks, patientAccess, patients, user } from "@ktb/db/schema";
 import { normalizeEmail } from "@ktb/patient-access";
 import { enrollPortalDevice, portalDeviceOf, type PortalKey } from "@ktb/vault";
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { definePlugin, type Page, type Plugin } from "@ktb/kernel";
+import { portalShellPlugin } from "@ktb/portal";
+import { getPatientContext } from "@ktb/server-fns";
+
+import {
+	PatientPortalActivityPage,
+	PatientPortalConsultationPage,
+	PatientPortalHomePage,
+} from "./views/index.ts";
 
 import { parseAnamnesis, portalSections, written, type PortalSection } from "./sections.ts";
 
@@ -388,9 +398,188 @@ export const patientPortalServicesPlugin = definePlugin({
 	services: PatientPortalLive,
 });
 
+/** Subpath segments under a portal prefix — "consultations/5" →
+ * ["5"]; the exact list path never reaches a wildcard. */
+const subpath = (path: string, prefix: string) =>
+	path
+		.slice(prefix.length)
+		.replace(/^\/+|\/+$/g, "")
+		.split("/");
+
+/**
+ * Everything the portal home shows. An entry point: `syncLinks` claims
+ * pending invites first, so a new link shows up as soon as the patient
+ * opens the portal. The context resolves the signed-in account and its
+ * linked records (the ktb_patient selector cookie picks the open one);
+ * the service reads run under the session Principal the page gate
+ * bound — `subject: "session"`, so delegated doctor access never leaks
+ * into someone's portal.
+ */
+const homeLoader = () =>
+	Effect.gen(function* () {
+		const context = yield* Effect.promise(() => getPatientContext(undefined, { syncLinks: true }));
+		if (context === null) return { view: "missing" };
+		const { user, profiles, active } = context;
+		const portal = yield* PatientPortal;
+		const empty = { profiles: [] as typeof profiles, profile: null, consultations: [] };
+		return yield* Effect.gen(function* () {
+			return {
+				view: "home" as const,
+				user: { name: user.name, email: user.email },
+				awaitingInvites: yield* portal.awaitingInvites(),
+				profiles,
+				profile: active === null ? null : yield* portal.profile(active.patientId),
+				consultations: active === null ? [] : yield* portal.consultations(active.patientId),
+			};
+		}).pipe(
+			// The link was revoked between resolving the context and reading it.
+			Effect.catchTag("Forbidden", () =>
+				Effect.succeed({
+					view: "home" as const,
+					user: { name: user.name, email: user.email },
+					awaitingInvites: 0,
+					...empty,
+				}),
+			),
+		);
+	});
+
+const CONSULTATIONS_PREFIX = "/portal/patient/consultations";
+
+const consultationId = (path: string): number | null => {
+	const [head, tail, ...rest] = subpath(path, CONSULTATIONS_PREFIX);
+	const id = Number(head);
+	return rest.length === 0 && tail === undefined && Number.isInteger(id) && id > 0 ? id : null;
+};
+
+const consultationGuard = (path: string) =>
+	Effect.gen(function* () {
+		const id = consultationId(path);
+		if (id === null) return false;
+		const portal = yield* PatientPortal;
+		const consultation = yield* portal
+			.consultation(id)
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+		return consultation !== null;
+	});
+
+const consultationLoader = (path: string) =>
+	Effect.gen(function* () {
+		const id = consultationId(path);
+		if (id === null) return { view: "missing" };
+		const portal = yield* PatientPortal;
+		const consultation = yield* portal
+			.consultation(id)
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+		return consultation === null ? { view: "missing" } : { view: "detail", consultation };
+	});
+
+/** Page size the portal activity feed asks for (P-086). */
+const PATIENT_ACTIVITY_LIMIT = 100;
+
+const ACTIVITY_EMPTY: AuditListResult = {
+	entries: [],
+	total: 0,
+	limit: PATIENT_ACTIVITY_LIMIT,
+};
+
+/**
+ * The patient-facing access log (P-086) for the record currently open
+ * in the portal: audit entries naming its `patientId`, across every
+ * clinic that keeps it. Same fail-closed contract as
+ * `patientActivityFn` — no open record, an absent audit plugin and a
+ * denied `PatientAuditAccess` check all collapse to an empty page, so
+ * the route never learns which case it was. Runs under the session
+ * Principal the portal page gate bound.
+ */
+const activityLoader = () =>
+	Effect.gen(function* () {
+		const context = yield* Effect.promise(() => getPatientContext());
+		const patientId = context?.active?.patientId ?? null;
+		if (patientId === null) return ACTIVITY_EMPTY;
+		const auditService = yield* Effect.serviceOption(Audit);
+		if (Option.isNone(auditService)) return ACTIVITY_EMPTY;
+		return yield* auditService.value
+			.patientList({ patientId, limit: PATIENT_ACTIVITY_LIMIT })
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(ACTIVITY_EMPTY)));
+	});
+
+/**
+ * The patient portal instance (P-081): `/portal/patient` admits the
+ * `patient` audience — accounts holding an active patient link, and
+ * patient-only accounts with no doctor profile. Pages run under the
+ * session subject (the default): the portal shows what the person
+ * signed in may see, and `PatientPortal` itself still fails
+ * `Forbidden` for anonymous or delegated principals.
+ */
+export const patientPortalInstancePlugin = definePlugin({
+	id: "patient-portal.portal",
+	meta: { keywords: ["patient-portal", "shell", "patient"] },
+	requiredDeps: [portalShellPlugin.id],
+	portals: [
+		{
+			id: "patient",
+			basePath: "/portal/patient",
+			label: "Patient",
+			audience: "patient",
+		},
+	],
+});
+
+/** Portal pages under /portal/patient/* — the read-only record views
+ * mounted as page descriptors; loaders call `PatientPortal` under the
+ * bound session Principal. A consultation the caller holds no active
+ * link to is a plain 404, like one that does not exist. */
+export const patientPortalPagesPlugin = definePlugin({
+	id: "patient-portal.pages",
+	meta: { keywords: ["patient-portal", "ui", "patient"] },
+	requiredDeps: [patientPortalServicesPlugin.id],
+	pages: [
+		{
+			id: "patient-portal.home",
+			path: "/portal/patient",
+			component: PatientPortalHomePage,
+			loader: homeLoader,
+		},
+		{
+			id: "patient-portal.consultation",
+			path: `${CONSULTATIONS_PREFIX}/*`,
+			component: PatientPortalConsultationPage,
+			guard: consultationGuard,
+			loader: consultationLoader,
+		},
+		{
+			id: "patient-portal.activity",
+			path: "/portal/patient/activity",
+			component: PatientPortalActivityPage,
+			loader: activityLoader,
+		},
+	] satisfies Page[],
+});
+
+export const patientPortalChromePlugin = definePlugin({
+	id: "patient-portal.chrome",
+	meta: { keywords: ["patient-portal", "ui", "patient"] },
+	requiredDeps: [patientPortalInstancePlugin.id],
+	chrome: [
+		{
+			id: "patient-portal.nav.home",
+			region: "portal.sidebar",
+			portal: "patient",
+			content: {
+				kind: "sidebarItem",
+				item: { to: "/portal/patient", label: "Home", icon: HouseIcon, exact: true },
+			},
+		},
+	],
+});
+
 // Route subtree composed into the host's virtualRouteConfig: the route
 // modules live in THIS package (src/routes/**), discovered by a
 // physical() directory scan relative to the host's routes directory.
+// Today they are only the pre-instance paths kept as redirects —
+// /portal → /portal/patient, /portal/consultations/$id → the instance
+// twin — so existing links and emails keep landing in the right place.
 export const patientPortalRoutesPlugin = definePlugin({
 	id: "patient-portal.routes",
 	meta: { keywords: ["patient-portal", "routes", "patient"] },
@@ -399,13 +588,22 @@ export const patientPortalRoutesPlugin = definePlugin({
 
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
-export const plugins: readonly Plugin[] = [patientPortalServicesPlugin, patientPortalRoutesPlugin];
+export const plugins: readonly Plugin[] = [
+	patientPortalServicesPlugin,
+	patientPortalInstancePlugin,
+	patientPortalPagesPlugin,
+	patientPortalChromePlugin,
+	patientPortalRoutesPlugin,
+];
 
 // Compile-time dep registry: ids declared here are referenceable in
 // requiredDeps/optionalDeps of any plugin that imports this module.
 declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"patient-portal.services": true;
+		"patient-portal.portal": true;
+		"patient-portal.pages": true;
+		"patient-portal.chrome": true;
 		"patient-portal.routes": true;
 	}
 }

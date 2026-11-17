@@ -16,6 +16,7 @@ import {
 	listPatientLinks,
 	listPatientProfiles,
 	normalizeEmail,
+	patientAccessPagesPlugin,
 	patientAccessRoutesPlugin,
 	patientAccessServicesPlugin,
 	patientAccessTablesPlugin,
@@ -427,17 +428,24 @@ describe("PatientProfilesLive", () => {
 });
 
 describe("patient-access plugins", () => {
-	it("contributes the patient_access table, its services and the doctor-side route", () => {
+	it("contributes the patient_access table, its services, the redirect route and the portal pages", () => {
 		expect(plugins).toEqual([
 			patientAccessTablesPlugin,
 			patientAccessServicesPlugin,
 			patientAccessRoutesPlugin,
+			patientAccessPagesPlugin,
 		]);
 		expect(patientAccessTablesPlugin.id).toBe("patient-access.tables");
 		expect(patientAccessTablesPlugin.tables.patientAccess).toBe(patientAccess);
 		expect(patientAccessServicesPlugin.id).toBe("patient-access.services");
 		expect(patientAccessRoutesPlugin.id).toBe("patient-access.routes");
 		expect(patientAccessRoutesPlugin.routes).toHaveLength(1);
+		expect(patientAccessPagesPlugin.id).toBe("patient-access.pages");
+		expect(patientAccessPagesPlugin.requiredDeps).toEqual(["patient-access.services"]);
+		expect(patientAccessPagesPlugin.pages.map((p) => [p.id, p.path])).toEqual([
+			["patient-access.doctor.record", "/portal/doctor/patient-access/*"],
+			["patient-access.secretary.record", "/portal/secretary/patient-access/*"],
+		]);
 	});
 });
 

@@ -175,7 +175,7 @@ export class NotADoctorError extends Error {
 export interface DoctorContext {
 	readonly user: SessionUser;
 	readonly profiles: readonly DoctorProfile[];
-	/** Null when the user holds no profile or a choice is still needed. */
+	/** Null when the user holds no profile at all. */
 	readonly active: DoctorProfile | null;
 }
 
@@ -265,6 +265,29 @@ export interface SessionAccount extends SessionUser {
 	 * (a single-role app where every account acts for itself).
 	 */
 	readonly patientOnly: boolean;
+	/**
+	 * The account's clinical standing: "owner" when it holds its own
+	 * doctor profile (or no directory is deployed — every account acts
+	 * for itself), "secretary" when it only acts through delegations,
+	 * null when it has no doctor side at all (a patient-only account).
+	 */
+	readonly clinicalRole: "owner" | "secretary" | null;
+	/**
+	 * Number of entries in the account's doctor-profile directory — its
+	 * own profile plus delegations. 0 for a patient-only account and
+	 * when no directory is deployed (a single-role app has nothing to
+	 * switch between either). Chrome uses it to gate multi-profile
+	 * affordances like the profile chooser.
+	 */
+	readonly doctorProfiles: number;
+	/**
+	 * Number of patient records linked to the account — how many profiles
+	 * the patient portal would offer. 0 when the account holds no patient
+	 * access and when no patient directory is deployed (an app without a
+	 * patient portal). Chrome uses it to hide the patient-portal entry —
+	 * the link only makes sense when there is a record to open.
+	 */
+	readonly patientProfiles: number;
 }
 
 /** The session user plus which side of the app the account belongs to
@@ -273,9 +296,28 @@ export interface SessionAccount extends SessionUser {
 export async function getSessionAccount(headers?: Headers): Promise<SessionAccount | null> {
 	const resolved = await resolveDoctorContext(headers, false);
 	if (!resolved) return null;
+	const profiles = resolved.profiles;
+	// Read-only on purpose: invites are claimed on entry points (sign-up,
+	// the portal home), not on every request that renders chrome.
+	const patientProfiles = await run(
+		Effect.gen(function* () {
+			// Optional: absent when the patient-access plugin is not deployed.
+			const directory = yield* Effect.serviceOption(PatientProfiles);
+			if (Option.isNone(directory)) return 0;
+			return (yield* directory.value.listFor(resolved.user.id)).length;
+		}),
+	);
 	return {
 		...resolved.user,
-		patientOnly: resolved.profiles !== null && resolved.profiles.length === 0,
+		patientOnly: profiles !== null && profiles.length === 0,
+		clinicalRole:
+			profiles === null || profiles.some((p) => p.role === "owner")
+				? "owner"
+				: profiles.length === 0
+					? null
+					: "secretary",
+		doctorProfiles: profiles === null ? 0 : profiles.length,
+		patientProfiles,
 	};
 }
 

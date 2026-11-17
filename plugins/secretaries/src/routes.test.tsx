@@ -73,14 +73,14 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { isRedirect } from "@tanstack/react-router";
 
 import { Route } from "./routes/index.tsx";
-import { Route as LoginRoute } from "./routes/login.tsx";
+import { Route as LegacyLoginRoute } from "./routes/login.tsx";
+import { Route as LoginRoute } from "./routes-login/secretary.tsx";
 
 const options = (
 	Route as unknown as {
 		options: {
 			beforeLoad: () => Promise<void>;
 			loader: () => Promise<unknown>;
-			component: () => ReactElement;
 		};
 	}
 ).options;
@@ -88,58 +88,47 @@ const options = (
 const redirectTarget = async (run: () => Promise<unknown>) => {
 	const caught = await run().catch((e: unknown) => e);
 	expect(isRedirect(caught)).toBe(true);
-	return (caught as Response & { options: { to: string } }).options.to;
+	return (caught as Response & { options: { to?: string; href?: string } }).options;
 };
 
 afterEach(cleanup);
 
-describe("/secretaries", () => {
+describe("/secretaries redirect", () => {
 	it("requires a session", async () => {
 		mocks.sessionUserFn.mockResolvedValue({ id: "u1" });
 		await expect(options.beforeLoad()).resolves.toBeUndefined();
 		mocks.sessionUserFn.mockResolvedValue(null);
-		expect(await redirectTarget(options.beforeLoad)).toBe("/login");
+		expect((await redirectTarget(options.beforeLoad)).href).toBe("/login/doctor");
 	});
 
-	it("loads the secretaries with the locale", async () => {
-		const secretaries = [{ id: 1, email: "ana@ktb.test", status: "active" }];
-		mocks.listSecretariesFn.mockResolvedValue(secretaries);
-		await expect(options.loader()).resolves.toEqual({
-			secretaries,
-			locale: "pt-BR",
-		});
+	it("sends a doctor into the portal page", async () => {
+		mocks.listSecretariesFn.mockResolvedValue([]);
+		expect((await redirectTarget(options.loader)).href).toBe("/portal/doctor/secretaries");
 	});
 
 	it("sends accounts without their own doctor profile to the chooser", async () => {
 		mocks.listSecretariesFn.mockResolvedValue(null);
-		expect(await redirectTarget(options.loader)).toBe("/doctors/select");
-	});
-
-	it("wires the view to the server fns and refreshes on change", async () => {
-		mocks.loaderData.current = { secretaries: [], locale: "en" };
-		render(createElement(options.component));
-		const props = mocks.props.current as {
-			secretaries: unknown[];
-			locale: string;
-			api: {
-				invite(email: string): Promise<unknown>;
-				revoke(id: number): Promise<unknown>;
-			};
-			onChanged(): void;
-		};
-		expect(props).toMatchObject({ secretaries: [], locale: "en" });
-		await props.api.invite("new@ktb.test");
-		expect(mocks.inviteSecretaryFn).toHaveBeenCalledWith({
-			data: { email: "new@ktb.test" },
-		});
-		await props.api.revoke(5);
-		expect(mocks.revokeSecretaryFn).toHaveBeenCalledWith({ data: 5 });
-		props.onChanged();
-		expect(mocks.invalidate).toHaveBeenCalledTimes(1);
+		expect((await redirectTarget(options.loader)).to).toBe("/doctors/select");
 	});
 });
 
-describe("/secretaries/login", () => {
+describe("/secretaries/login redirect", () => {
+	const legacyOptions = (
+		LegacyLoginRoute as unknown as {
+			options: { beforeLoad: () => Promise<void>; component: () => null };
+		}
+	).options;
+
+	it("sends visitors to the canonical secretary sign-in", async () => {
+		expect((await redirectTarget(legacyOptions.beforeLoad)).href).toBe("/login/secretary");
+	});
+
+	it("renders nothing", () => {
+		expect(legacyOptions.component()).toBeNull();
+	});
+});
+
+describe("/login/secretary", () => {
 	const loginOptions = (
 		LoginRoute as unknown as {
 			options: {

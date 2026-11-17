@@ -9,11 +9,9 @@ import {
 	type PatientConsultationItem,
 } from "@ktb/patients/views";
 
-/** The clinician portal instance base — every in-view link stays under
- * it so drill-down never drops the clinician back into the app shell. */
-const BASE = "/portal/clinician";
+import { usePortalBase } from "./portal-base.ts";
 
-/** Loader payload for /portal/clinician/patients/* — the wildcard page
+/** Loader payload for <instance>/patients/* — the wildcard page
  * resolves `new`, `<id>` and `<id>/edit` subpaths server-side and tags
  * the result so the component picks the right domain view. */
 type ClinicianPatientRecordData =
@@ -26,12 +24,15 @@ type ClinicianPatientRecordData =
 	  }
 	| { readonly view: "missing" };
 
-/** /portal/clinician/patients/{new,$id,$id/edit} — patient record
- * surfaces mounted inside the portal shell (P-081). */
+/** patients/{new,$id,$id/edit} under the current instance — patient
+ * record surfaces mounted inside the portal shell (P-081). In-view
+ * links stay under the live base so drill-down never drops the
+ * clinician back into the app shell. */
 export function ClinicianPatientRecordPage({ data, ctx }: { data: unknown; ctx: PageContext }) {
 	const navigate = useNavigate();
+	const base = usePortalBase();
 	const d = (data ?? { view: "missing" }) as ClinicianPatientRecordData;
-	const onSaved = (id: number) => void navigate({ to: `${BASE}/patients/${id}` });
+	const onSaved = (id: number) => void navigate({ to: `${base}/patients/${id}` });
 
 	switch (d.view) {
 		case "new":
@@ -39,8 +40,9 @@ export function ClinicianPatientRecordPage({ data, ctx }: { data: unknown; ctx: 
 				<PatientFormPage
 					api={newPatientApi}
 					onSaved={onSaved}
+					i18n={ctx.i18n}
 					locale={ctx.locale}
-					portalBase={BASE}
+					portalBase={base}
 				/>
 			);
 		case "edit":
@@ -49,8 +51,9 @@ export function ClinicianPatientRecordPage({ data, ctx }: { data: unknown; ctx: 
 					patient={d.patient}
 					api={editPatientApi(d.patient.id)}
 					onSaved={onSaved}
+					i18n={ctx.i18n}
 					locale={ctx.locale}
-					portalBase={BASE}
+					portalBase={base}
 				/>
 			);
 		case "detail":
@@ -58,10 +61,11 @@ export function ClinicianPatientRecordPage({ data, ctx }: { data: unknown; ctx: 
 				<PatientDetailPage
 					patient={d.patient}
 					consultations={d.consultations}
+					i18n={ctx.i18n}
 					locale={ctx.locale}
 					deleteApi={patientDeleteApi}
-					onDeleted={() => void navigate({ to: `${BASE}/patients` })}
-					portalBase={BASE}
+					onDeleted={() => void navigate({ to: `${base}/patients` })}
+					portalBase={base}
 				/>
 			);
 		default:

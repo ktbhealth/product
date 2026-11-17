@@ -21,7 +21,7 @@ async function waitForHydration(page: Page, selector = "header nav") {
 }
 
 async function gotoLogin(page: Page) {
-	await page.goto("/login");
+	await page.goto("/login/doctor");
 	await waitForHydration(page, "[role=tab]");
 }
 
@@ -59,7 +59,7 @@ test.describe("auth flow", () => {
 		await page.getByRole("menuitem", { name: "Sign out" }).click();
 		await expect(page).toHaveURL("/");
 		await waitForHydration(page);
-		await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
+		await expect(page.getByRole("link", { name: "I am a doctor" })).toBeVisible();
 
 		// Sign back in (the "Sign in" tab is the default).
 		await gotoLogin(page);
@@ -75,6 +75,6 @@ test.describe("auth flow", () => {
 		await fillCredentials(page, `nobody-${Date.now()}@test.dev`);
 		await page.getByRole("button", { name: "Sign in" }).click();
 		await expect(page.getByText(/invalid email or password/i)).toBeVisible();
-		await expect(page).toHaveURL("/login");
+		await expect(page).toHaveURL("/login/doctor");
 	});
 });

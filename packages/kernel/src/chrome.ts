@@ -1,4 +1,4 @@
-import type { ChromeContribution, Plugin } from "./contributions.ts";
+import type { ChromeContribution, ChromeUser, Plugin } from "./contributions.ts";
 
 /**
  * Chrome region collection (P-060): shells own named regions and plugins
@@ -19,10 +19,23 @@ const pathMatches = (pattern: string, pathname: string): boolean => {
 	return pathname === pattern;
 };
 
-/** Whether a contribution's `when` rules admit `pathname`. */
-export const chromeWhenMatches = (when: ChromeContribution["when"], pathname: string): boolean => {
+/** Whether a contribution's `when` rules admit `pathname` under the
+ * session `user` (when clinical conditions apply). `minDoctorProfiles`
+ * fails closed: no resolved user or no resolved count hides the
+ * contribution — clinical chrome never leaks to unknown accounts. */
+export const chromeWhenMatches = (
+	when: ChromeContribution["when"],
+	pathname: string,
+	user?: ChromeUser | null,
+): boolean => {
 	if (when === undefined) return true;
 	if (when.exceptPaths?.some((p) => pathMatches(p, pathname))) return false;
+	if (
+		when.minDoctorProfiles !== undefined &&
+		(user?.doctorProfiles ?? 0) < when.minDoctorProfiles
+	) {
+		return false;
+	}
 	if (when.paths === undefined || when.paths.length === 0) return true;
 	return when.paths.some((p) => pathMatches(p, pathname));
 };
@@ -45,12 +58,16 @@ export const chromePortal = (entry: ChromeContribution): string =>
 /** Chrome contributions for `region` visible at `pathname`, in render
  * order. Plugins without `chrome` contribute nothing. `portal` (P-081)
  * additionally keeps only entries scoped to that instance — pass it for
- * `portal.*` regions; app.* regions ignore it. */
+ * `portal.*` regions; app.* regions ignore it. `user` is the session
+ * account the `when` clinical conditions evaluate against — regions
+ * without clinical chrome may omit it (their `when` rules only see
+ * the pathname). */
 export const collectChrome = (
 	plugins: readonly Plugin[],
 	region: string,
 	pathname: string,
 	portal?: string,
+	user?: ChromeUser | null,
 ): ChromeContribution[] => {
 	const ranked: Ranked[] = [];
 	plugins.forEach((plugin, pluginIndex) => {
@@ -58,7 +75,7 @@ export const collectChrome = (
 			if (
 				entry.region === region &&
 				(portal === undefined || chromePortal(entry) === portal) &&
-				chromeWhenMatches(entry.when, pathname)
+				chromeWhenMatches(entry.when, pathname, user)
 			) {
 				ranked.push({ entry, pluginIndex, entryIndex });
 			}

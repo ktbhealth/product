@@ -1,15 +1,19 @@
 import { redirect } from "@tanstack/react-router";
 
-import { doctorAccessFn } from "./fns.ts";
+import { clinicalPortalFn, doctorAccessFn } from "./fns.ts";
 
 /**
- * Route guard for doctor pages: anonymous visitors are sent to /login,
- * signed-in accounts with no doctor profile to act as to the profile
- * chooser. Data endpoints stay protected independently — server fns and
- * api handlers enforce the acting doctor themselves.
+ * The consultations workspace lives inside the clinical portals now —
+ * the flat /consultations URLs are kept only as funnels: anonymous
+ * visitors go to the doctor sign-in, signed-in accounts with no doctor
+ * profile to the chooser, everyone else to the matching surface under
+ * their portal instance. Data endpoints stay protected independently —
+ * server fns and api handlers enforce the acting doctor themselves.
  */
-export async function requireDoctor() {
+export async function redirectToPortal(subpath: string): Promise<never> {
 	const access = await doctorAccessFn();
-	if (access === "anonymous") throw redirect({ to: "/login" });
+	if (access === "anonymous") throw redirect({ href: "/login/doctor" });
 	if (access === "no-doctor") throw redirect({ to: "/doctors/select" });
+	const instance = await clinicalPortalFn();
+	throw redirect({ href: `/portal/${instance ?? "doctor"}${subpath}` });
 }

@@ -7,7 +7,7 @@ import { vaultApi } from "./apis.ts";
 import { VaultSettingsPage, type VaultPageData } from "./views/index.ts";
 
 /**
- * `pages` component for /portal/clinician/vault (T-143): the host
+ * `pages` component for /portal/<instance>/vault (T-143): the host
  * dispatcher hands the loader Effect's result as `data`; this wrapper
  * narrows it into the view's props and binds the real keyring
  * (IndexedDB device store) plus the plugin's server fns.

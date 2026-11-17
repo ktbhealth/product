@@ -6,14 +6,12 @@ import { consultationDetailApi, newConsultationApi } from "@ktb/consultations/ap
 import { transcriptionBackend } from "@ktb/consultations/backend";
 import { ConsultationDetailPage, NewConsultationPage } from "@ktb/consultations/views";
 
-/** The clinician portal instance base — every in-view link stays under
- * it so drill-down never drops the clinician back into the app shell. */
-const BASE = "/portal/clinician";
+import { usePortalBase } from "./portal-base.ts";
 
 type DetailProps = ComponentProps<typeof ConsultationDetailPage>;
 type NewProps = ComponentProps<typeof NewConsultationPage>;
 
-/** Loader payload for /portal/clinician/consultations/* — the wildcard
+/** Loader payload for <instance>/consultations/* — the wildcard
  * page resolves `new` and `<id>` subpaths server-side and tags the
  * result so the component picks the right domain view. */
 type ClinicianConsultationRecordData =
@@ -25,8 +23,10 @@ type ClinicianConsultationRecordData =
 	  }
 	| { readonly view: "missing" };
 
-/** /portal/clinician/consultations/{new,$id} — consultation surfaces
- * mounted inside the portal shell (P-081). */
+/** consultations/{new,$id} under the current instance — consultation
+ * surfaces mounted inside the portal shell (P-081). In-view links stay
+ * under the live base so drill-down never drops the clinician back
+ * into the app shell. */
 export function ClinicianConsultationRecordPage({
 	data,
 	ctx,
@@ -34,6 +34,7 @@ export function ClinicianConsultationRecordPage({
 	data: unknown;
 	ctx: PageContext;
 }) {
+	const base = usePortalBase();
 	const d = (data ?? { view: "missing" }) as ClinicianConsultationRecordData;
 	const search = useSearch({ strict: false }) as { patientId?: string | number };
 	const rawPatientId = Number(search?.patientId);
@@ -48,8 +49,9 @@ export function ClinicianConsultationRecordPage({
 					initialPatientId={initialPatientId}
 					api={newConsultationApi}
 					backend={transcriptionBackend}
+					i18n={ctx.i18n}
 					locale={ctx.locale}
-					portalBase={BASE}
+					portalBase={base}
 				/>
 			);
 		case "detail":
@@ -58,8 +60,9 @@ export function ClinicianConsultationRecordPage({
 					c={d.c}
 					history={d.history}
 					api={consultationDetailApi}
+					i18n={ctx.i18n}
 					locale={ctx.locale}
-					portalBase={BASE}
+					portalBase={base}
 				/>
 			);
 		default:

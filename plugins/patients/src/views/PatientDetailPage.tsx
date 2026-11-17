@@ -252,7 +252,7 @@ export function PatientDetailPage({
 						variant="outline"
 						nativeButton={false}
 						// Owned by the patient-access plugin — coupled by URL only.
-						render={<Link to="/patient-access/$patientId" params={{ patientId: id }} />}
+						render={<Link to={portalPath(`/patient-access/${id}`)} />}
 					>
 						<KeyRoundIcon data-icon="inline-start" />
 						{t.detail.portalAccess}

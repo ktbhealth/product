@@ -300,7 +300,7 @@ export default defineConfig({
 				//   SDK (moved from the host's login.tsx in P-062), which is
 				//   inherently impl-bound — same exception the host route
 				//   files had. __root.tsx / platform.tsx keep theirs, as do
-				//   portal-login.tsx / verify-email.tsx (still host routes).
+				//   login-patient.tsx / verify-email.tsx (still host routes).
 				//   The secretaries plugin's login view is the same case —
 				//   the staff sign-in screen — as is the invites plugin's
 				//   accept page, which signs the new account in.
@@ -310,7 +310,7 @@ export default defineConfig({
 					"apps/web/src/lib/registry.ts",
 					"apps/web/src/lib/node-cloudflare-workers.ts",
 					"apps/web/src/plugins.ts",
-					"apps/web/src/routes/portal-login.tsx",
+					"apps/web/src/routes/login-patient.tsx",
 					"apps/web/src/routes/verify-email.tsx",
 					"apps/web/src/routes/__root.tsx",
 					"apps/web/src/routes/platform.tsx",

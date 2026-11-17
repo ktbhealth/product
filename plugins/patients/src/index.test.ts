@@ -664,10 +664,7 @@ describe("plugins", () => {
 		expect(patientsPanelPlugin.requiredDeps).toEqual(["platform.panel"]);
 		expect(patientsPanelPlugin.panel?.pages?.[0]?.path).toBe("/platform/patients");
 		expect(patientsChromePlugin.id).toBe("patients.chrome");
-		expect(patientsChromePlugin.chrome.map((c) => c.region)).toEqual([
-			"app.header.nav",
-			"portal.sidebar",
-		]);
+		expect(patientsChromePlugin.chrome.map((c) => c.region)).toEqual(["portal.sidebar"]);
 	});
 
 	it("keeps routes and chrome out of the tables, services and panel plugins", () => {
@@ -677,17 +674,11 @@ describe("plugins", () => {
 		expect("chrome" in patientsPanelPlugin).toBe(false);
 	});
 
-	it("declares the /patients route subtree and nav entry", () => {
+	it("declares the /patients route subtree", () => {
 		expect(patientsRoutesPlugin.id).toBe("patients.routes");
 		// P-033: the subtree is a physical() mount of this package's own
 		// src/routes directory — resolved against the host routes dir.
 		expect(JSON.stringify(patientsRoutesPlugin.routes)).toContain("plugins/patients/src/routes");
-		const nav = patientsChromePlugin.chrome.find((c) => c.region === "app.header.nav");
-		expect(nav?.content).toEqual({
-			kind: "link",
-			to: "/patients",
-			label: "Patients",
-		});
 	});
 
 	it("exports the discovery plugins array", () => {

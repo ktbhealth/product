@@ -62,6 +62,8 @@ const backend: TranscriptionBackend = {
 	load: vi.fn(),
 };
 
+const prefetch = vi.hoisted(() => ({ fn: vi.fn(), prefers: { current: false } }));
+
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -73,6 +75,13 @@ vi.mock("@tanstack/react-router", async () => {
 			),
 	};
 });
+vi.mock("../backend.ts", () => ({
+	get prefersWhisper() {
+		return prefetch.prefers.current;
+	},
+	transcriptionBackend: {},
+}));
+vi.mock("../whisper-prefetch.ts", () => ({ prefetchWhisperModel: prefetch.fn }));
 
 const zkMocks = vi.hoisted(() => ({
 	newConsultationDek: vi.fn(async () => ({
@@ -2034,5 +2043,23 @@ describe("NewConsultationPage ZK portal grants", () => {
 			await user.click(screen.getByText("Save consultation"));
 			await waitFor(() => expect(api["saveConsultation"]).toHaveBeenCalled());
 		}
+	});
+});
+
+describe("whisper prefetch", () => {
+	afterEach(() => {
+		prefetch.prefers.current = false;
+		prefetch.fn.mockClear();
+	});
+
+	it("warms the model when whisper won resolution", () => {
+		prefetch.prefers.current = true;
+		renderPage();
+		expect(prefetch.fn).toHaveBeenCalled();
+	});
+
+	it("skips prefetch on the web speech fallback", () => {
+		renderPage();
+		expect(prefetch.fn).not.toHaveBeenCalled();
 	});
 });

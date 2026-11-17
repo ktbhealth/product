@@ -191,9 +191,19 @@ describe("pluginPanelLabel", () => {
 			"/platform/patients",
 			"/platform/users",
 			"/platform/groups",
-			"/portal/clinician/activity",
+			"/portal/doctor/activity",
 		]) {
 			expect(pluginPanelLabel(to, "fallback", FULL)).not.toBe("fallback");
+		}
+	});
+
+	it("localizes the clinical Account sidebar destinations", () => {
+		for (const to of [
+			"/portal/doctor/switch-doctor",
+			"/portal/secretary/switch-doctor",
+			"/portal/doctor/secretaries",
+		]) {
+			expect(pluginPanelLabel(to, "fallback")).not.toBe("fallback");
 		}
 	});
 
@@ -204,9 +214,9 @@ describe("pluginPanelLabel", () => {
 
 describe("pluginPanelGroup", () => {
 	it("localizes known sidebar groups", () => {
-		expect(pluginPanelGroup("Access", FULL)).toBe("Access");
-		expect(pluginPanelGroup("Domains", FULL)).toBe("Domains");
-		expect(pluginPanelGroup("Governance", FULL)).toBe("Governance");
+		for (const group of ["Access", "Account", "Domains", "Governance", "System"]) {
+			expect(pluginPanelGroup(group, FULL)).toBe(group);
+		}
 	});
 
 	it("passes unknown groups through unchanged", () => {

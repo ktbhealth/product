@@ -18,9 +18,15 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "nav_sign_in",
+		key: "nav_doctor_login",
 		locale: "en",
-		value: "Sign in",
+		value: "I am a doctor",
+	},
+	{
+		namespace: "app",
+		key: "nav_patient_login",
+		locale: "en",
+		value: "I am a patient",
 	},
 	{
 		namespace: "app",
@@ -48,15 +54,21 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "nav_my_consultations",
+		key: "nav_doctor_portal",
 		locale: "en",
-		value: "My consultations",
+		value: "Doctor portal",
 	},
 	{
 		namespace: "app",
-		key: "nav_new_consultation",
+		key: "nav_secretary_portal",
 		locale: "en",
-		value: "+ New consultation",
+		value: "Secretary portal",
+	},
+	{
+		namespace: "app",
+		key: "nav_my_consultations",
+		locale: "en",
+		value: "My consultations",
 	},
 	{
 		namespace: "app",
@@ -830,6 +842,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "panel_group_account",
+		locale: "en",
+		value: "Account",
+	},
+	{
+		namespace: "app",
 		key: "panel_group_domains",
 		locale: "en",
 		value: "Domains",
@@ -1192,9 +1210,15 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "nav_sign_in",
+		key: "nav_doctor_login",
 		locale: "es",
-		value: "Iniciar sesión",
+		value: "Soy médico",
+	},
+	{
+		namespace: "app",
+		key: "nav_patient_login",
+		locale: "es",
+		value: "Soy paciente",
 	},
 	{
 		namespace: "app",
@@ -1222,15 +1246,21 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "nav_my_consultations",
+		key: "nav_doctor_portal",
 		locale: "es",
-		value: "Mis consultas",
+		value: "Portal del médico",
 	},
 	{
 		namespace: "app",
-		key: "nav_new_consultation",
+		key: "nav_secretary_portal",
 		locale: "es",
-		value: "+ Nueva consulta",
+		value: "Portal de la secretaria",
+	},
+	{
+		namespace: "app",
+		key: "nav_my_consultations",
+		locale: "es",
+		value: "Mis consultas",
 	},
 	{
 		namespace: "app",
@@ -2005,6 +2035,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "panel_group_account",
+		locale: "es",
+		value: "Cuenta",
+	},
+	{
+		namespace: "app",
 		key: "panel_group_domains",
 		locale: "es",
 		value: "Dominios",
@@ -2367,9 +2403,15 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "nav_sign_in",
+		key: "nav_doctor_login",
 		locale: "pt-BR",
-		value: "Entrar",
+		value: "Sou doutor",
+	},
+	{
+		namespace: "app",
+		key: "nav_patient_login",
+		locale: "pt-BR",
+		value: "Sou paciente",
 	},
 	{
 		namespace: "app",
@@ -2397,15 +2439,21 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "nav_my_consultations",
+		key: "nav_doctor_portal",
 		locale: "pt-BR",
-		value: "Minhas consultas",
+		value: "Portal do médico",
 	},
 	{
 		namespace: "app",
-		key: "nav_new_consultation",
+		key: "nav_secretary_portal",
 		locale: "pt-BR",
-		value: "+ Nova consulta",
+		value: "Portal da secretaria",
+	},
+	{
+		namespace: "app",
+		key: "nav_my_consultations",
+		locale: "pt-BR",
+		value: "Minhas consultas",
 	},
 	{
 		namespace: "app",
@@ -3174,6 +3222,12 @@ export const I18N_BASELINE = [
 		key: "panel_group_access",
 		locale: "pt-BR",
 		value: "Acesso",
+	},
+	{
+		namespace: "app",
+		key: "panel_group_account",
+		locale: "pt-BR",
+		value: "Conta",
 	},
 	{
 		namespace: "app",
@@ -6268,12 +6322,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "auth",
-		key: "patientLink",
-		locale: "en",
-		value: "I am a patient",
-	},
-	{
-		namespace: "auth",
 		key: "secretaryLink",
 		locale: "en",
 		value: "I am a secretary",
@@ -6388,12 +6436,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "auth",
-		key: "patientLink",
-		locale: "pt-BR",
-		value: "Sou paciente",
-	},
-	{
-		namespace: "auth",
 		key: "secretaryLink",
 		locale: "pt-BR",
 		value: "Sou secretária",
@@ -6505,12 +6547,6 @@ export const I18N_BASELINE = [
 		key: "verifyLink",
 		locale: "es",
 		value: "¿No recibiste el correo de verificación?",
-	},
-	{
-		namespace: "auth",
-		key: "patientLink",
-		locale: "es",
-		value: "Soy paciente",
 	},
 	{
 		namespace: "auth",

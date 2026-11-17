@@ -12,6 +12,8 @@ import { Db, type DbClient } from "@ktb/db";
 import { patients, user } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
+import { PatientAccessPortalPage } from "./views/PatientAccessPortalPage.tsx";
+
 import {
 	PATIENT_ACCESS_RELATIONS,
 	patientAccess,
@@ -397,12 +399,85 @@ export const patientAccessRoutesPlugin = definePlugin({
 	routes: [physical("/patient-access", "../../../../plugins/patient-access/src/routes")],
 });
 
+/**
+ * The clinical instances the access page mounts under, coupled by URL
+ * only — the same ids the clinician plugin registers its portals with.
+ * Both run loaders under the acting doctor (`subject: "doctor"`), so a
+ * secretary manages the links of the doctor they act for.
+ */
+const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
+
+/** Subpath segments under a portal prefix — "8/edit" → ["8", "edit"]. */
+const accessSubpath = (path: string, prefix: string) =>
+	path
+		.slice(prefix.length)
+		.replace(/^\/+|\/+$/g, "")
+		.split("/");
+
+/** <instance>/patient-access/<id> — shape only; ownership is checked by
+ * the loader (and again inside `PatientLinks`). */
+const accessGuard = (prefix: string) => (path: string) =>
+	Effect.gen(function* () {
+		const [head, tail] = accessSubpath(path, prefix);
+		const id = Number(head);
+		if (tail !== undefined || !Number.isInteger(id) || id <= 0) return false;
+		const principal = yield* Principal;
+		return principal !== null;
+	});
+
+/** The patient and its portal links — what the old /patient-access
+ * route loaded through `patientLinksFn`. Forbidden and missing
+ * patients collapse to the "missing" view, like the clinical pages. */
+const accessLoader = (prefix: string) => (path: string) =>
+	Effect.gen(function* () {
+		const [head, tail] = accessSubpath(path, prefix);
+		const id = Number(head);
+		const principal = yield* Principal;
+		if (principal === null || tail !== undefined || !Number.isInteger(id) || id <= 0) {
+			return { view: "missing" };
+		}
+		const service = yield* PatientLinks;
+		const links = yield* service
+			.list(id)
+			.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
+		if (links === null) return { view: "missing" };
+		const db = yield* Db;
+		const [patient] = yield* Effect.promise(() =>
+			db
+				.select({ id: patients.id, name: patients.name, email: patients.email })
+				.from(patients)
+				.where(and(eq(patients.id, id), eq(patients.ownerId, principal.userId))),
+		);
+		if (patient === undefined) return { view: "missing" };
+		return { view: "detail", patient, links };
+	});
+
+/** Portal pages under /portal/<doctor|secretary>/patient-access/<id> —
+ * the access surface moved off its physical route into the portal
+ * shell; the old route redirects here. */
+export const patientAccessPagesPlugin = definePlugin({
+	id: "patient-access.pages",
+	meta: { keywords: ["patient-access", "ui", "patient"] },
+	requiredDeps: [patientAccessServicesPlugin.id],
+	pages: CLINICAL_INSTANCES.map((instance) => {
+		const base = `/portal/${instance}/patient-access`;
+		return {
+			id: `patient-access.${instance}.record`,
+			path: `${base}/*`,
+			component: PatientAccessPortalPage,
+			guard: accessGuard(base),
+			loader: accessLoader(base),
+		};
+	}),
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	patientAccessTablesPlugin,
 	patientAccessServicesPlugin,
 	patientAccessRoutesPlugin,
+	patientAccessPagesPlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -412,5 +487,6 @@ declare module "@ktb/kernel" {
 		"patient-access.tables": true;
 		"patient-access.services": true;
 		"patient-access.routes": true;
+		"patient-access.pages": true;
 	}
 }

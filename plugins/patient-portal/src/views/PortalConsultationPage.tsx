@@ -45,7 +45,7 @@ export function PortalConsultationPage({
 		<div className="mx-auto flex max-w-2xl flex-col gap-6">
 			<div>
 				<Link
-					to="/portal"
+					to="/portal/patient"
 					className="inline-flex items-center gap-1 text-sm text-muted-foreground transition hover:text-foreground"
 				>
 					<ArrowLeftIcon className="size-4" />

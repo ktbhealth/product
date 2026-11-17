@@ -54,13 +54,9 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("#/lib/registry.ts")>();
 	return {
 		...actual,
-		collectChrome: (
-			pluginList: Parameters<typeof actual.collectChrome>[0],
-			region: string,
-			pathname: string,
-		) => [
-			...actual.collectChrome(pluginList, region, pathname),
-			...state.chromeExtra.filter((entry) => entry.region === region),
+		collectChrome: (...args: Parameters<typeof actual.collectChrome>) => [
+			...actual.collectChrome(...args),
+			...state.chromeExtra.filter((entry) => entry.region === args[1]),
 		],
 	};
 });

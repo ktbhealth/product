@@ -16,7 +16,6 @@ import {
 import { ClipboardListIcon } from "lucide-react";
 
 import { ConsultationsPlatformPage } from "./platform-page.tsx";
-import { NewConsultationLink } from "./chrome.tsx";
 import { Consultations, ConsultationsLive } from "./service.ts";
 import type { AdminConsultationRow } from "./queries.ts";
 import {
@@ -123,27 +122,14 @@ export const consultationsRoutesPlugin = definePlugin({
 	],
 });
 
-// Chrome contributions (P-060): the app-shell nav link, the
-// "New consultation" CTA and the console sidebar entry live in `chrome`
-// regions; the dep edge orders the sidebar item after the platform
-// shell like the retired panel entry.
+// Chrome contributions (P-060): the console sidebar entry lives in a
+// `chrome` region; the dep edge orders it after the platform shell
+// like the retired panel entry.
 export const consultationsChromePlugin = definePlugin({
 	id: "consultations.chrome",
 	meta: { keywords: ["consultations", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
-		{
-			id: "consultations.nav",
-			region: "app.header.nav",
-			content: { kind: "link", to: "/consultations", label: "Consultations" },
-		},
-		{
-			id: "consultations.new",
-			region: "app.header.actions",
-			// Before the locale toggle (unordered → Infinity).
-			order: 0,
-			content: { kind: "component", component: NewConsultationLink },
-		},
 		{
 			id: "consultations.sidebar",
 			region: "portal.sidebar",

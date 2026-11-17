@@ -34,11 +34,7 @@ import { UsersIcon } from "lucide-react";
 import { PortalShell } from "./PortalShell.tsx";
 
 const instance = { id: "platform", basePath: "/platform", label: "Platform" };
-const clinician = {
-	id: "clinician",
-	basePath: "/portal/clinician",
-	label: "Clinician",
-};
+const doctor = { id: "doctor", basePath: "/portal/doctor", label: "Doctor" };
 
 const items: PanelSidebarItem[] = [
 	{ to: "/platform", label: "Dashboard", exact: true },
@@ -108,15 +104,15 @@ describe("PortalShell", () => {
 
 	it("switches portals through the footer picker", async () => {
 		const user = userEvent.setup();
-		renderShell({ portals: [instance, clinician] });
+		renderShell({ portals: [instance, doctor] });
 		const select = screen.getByLabelText("Switch portal") as HTMLSelectElement;
 		expect(select.value).toBe("platform");
-		await user.selectOptions(select, "clinician");
-		expect(navigate).toHaveBeenCalledWith({ to: "/portal/clinician" });
+		await user.selectOptions(select, "doctor");
+		expect(navigate).toHaveBeenCalledWith({ to: "/portal/doctor" });
 	});
 
 	it("ignores switcher values that match no portal", () => {
-		renderShell({ portals: [instance, clinician] });
+		renderShell({ portals: [instance, doctor] });
 		const select = screen.getByLabelText("Switch portal") as HTMLSelectElement;
 		fireEvent.change(select, { target: { value: "ghost" } });
 		expect(navigate).not.toHaveBeenCalled();

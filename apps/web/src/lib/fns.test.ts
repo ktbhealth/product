@@ -802,51 +802,78 @@ describe("server fns", () => {
 		expect(await consoleDeniedFn()).toEqual([]);
 	});
 
-	it("clinician portal pages serve doctor-scoped data (P-081)", async () => {
+	it("clinical portal pages serve doctor-scoped data (P-081)", async () => {
 		// Anonymous → the audience gate fails before any loader runs.
 		headers.current = new Headers();
-		expect(await portalPageDataFn({ data: "/portal/clinician" })).toEqual({
+		expect(await portalPageDataFn({ data: "/portal/doctor" })).toEqual({
 			status: "notfound",
 		});
-		expect(await portalPageDataFn({ data: "/portal/clinician/patients" })).toEqual({
+		expect(await portalPageDataFn({ data: "/portal/doctor/patients" })).toEqual({
 			status: "notfound",
 		});
 
-		// fns@x.com signed up as a doctor — the clinician audience admits
+		// fns@x.com signed up as a doctor — the doctor audience admits
 		// and `subject: "doctor"` binds the acting user, so the patients
 		// loader returns the owner's rows.
 		headers.current = new Headers({ cookie });
-		const home = await portalPageDataFn({ data: "/portal/clinician" });
+		const home = await portalPageDataFn({ data: "/portal/doctor" });
 		expect(home).toEqual({ status: "ok", data: null });
-		const patients = await portalPageDataFn({ data: "/portal/clinician/patients" });
+		const patients = await portalPageDataFn({ data: "/portal/doctor/patients" });
 		expect(patients.status).toBe("ok");
 		if (patients.status === "ok") expect(Array.isArray(patients.data)).toBe(true);
-		const consults = await portalPageDataFn({ data: "/portal/clinician/consultations" });
+		const consults = await portalPageDataFn({ data: "/portal/doctor/consultations" });
 		expect(consults.status).toBe("ok");
 		if (consults.status === "ok") expect(Array.isArray(consults.data)).toBe(true);
 		// Wildcard record pages: the `new` subpaths resolve to form views,
 		// malformed/unknown ids fail the guard → notfound.
-		const patientNew = await portalPageDataFn({ data: "/portal/clinician/patients/new" });
+		const patientNew = await portalPageDataFn({ data: "/portal/doctor/patients/new" });
 		expect(patientNew).toEqual({ status: "ok", data: { view: "new" } });
 		const consultNew = await portalPageDataFn({
-			data: "/portal/clinician/consultations/new",
+			data: "/portal/doctor/consultations/new",
 		});
 		expect(consultNew.status).toBe("ok");
 		if (consultNew.status === "ok") {
 			expect((consultNew.data as { view: string }).view).toBe("new");
 		}
-		expect(await portalPageDataFn({ data: "/portal/clinician/patients/abc" })).toEqual({
+		expect(await portalPageDataFn({ data: "/portal/doctor/patients/abc" })).toEqual({
 			status: "notfound",
 		});
-		expect(await portalPageDataFn({ data: "/portal/clinician/patients/999999" })).toEqual({
+		expect(await portalPageDataFn({ data: "/portal/doctor/patients/999999" })).toEqual({
 			status: "notfound",
 		});
-		expect(await portalPageDataFn({ data: "/portal/clinician/consultations/999999" })).toEqual({
+		expect(await portalPageDataFn({ data: "/portal/doctor/consultations/999999" })).toEqual({
+			status: "notfound",
+		});
+		// The account pages mount inside the portals too: the chooser
+		// lists the account's profiles under the acting doctor, and the
+		// doctor's own secretaries list comes back under the session
+		// principal (empty here — the fixture doctor has none).
+		const chooser = await portalPageDataFn({ data: "/portal/doctor/switch-doctor" });
+		expect(chooser.status).toBe("ok");
+		if (chooser.status === "ok") {
+			const d = chooser.data as {
+				profiles: readonly { doctorId: number; role: string }[];
+				activeDoctorId: number | null;
+			};
+			expect(d.profiles.map((p) => p.role)).toEqual(["owner"]);
+			expect(d.activeDoctorId).toBe(d.profiles[0]?.doctorId);
+		}
+		expect(await portalPageDataFn({ data: "/portal/doctor/secretaries" })).toEqual({
+			status: "ok",
+			data: [],
+		});
+		// A doctor-only account satisfies neither the secretary audience
+		// nor the hybrid patient rule (it has a doctor profile and no
+		// active patient link): the split holds on both sides.
+		expect(await portalPageDataFn({ data: "/portal/secretary" })).toEqual({
+			status: "notfound",
+		});
+		expect(await portalPageDataFn({ data: "/portal/patient" })).toEqual({
 			status: "notfound",
 		});
 		// Unknown instance ids and paths under them still 404.
 		expect(await portalPageDataFn({ data: "/portal/nope" })).toEqual({ status: "notfound" });
-		expect(await portalPageDataFn({ data: "/portal/clinician/nope" })).toEqual({
+		expect(await portalPageDataFn({ data: "/portal/doctor/nope" })).toEqual({
 			status: "notfound",
 		});
 	});

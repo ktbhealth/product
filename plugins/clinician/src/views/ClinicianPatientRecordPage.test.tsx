@@ -15,6 +15,8 @@ const captured = () => {
 
 vi.mock("@tanstack/react-router", () => ({
 	useNavigate: () => mocks.navigate,
+	useLocation: (opts: { select: (l: { pathname: string }) => unknown }) =>
+		opts.select({ pathname: "/portal/doctor/patients/7" }),
 }));
 vi.mock("@ktb/patients/views", () => {
 	const capture = (testId: string) => (props: Record<string, unknown>) => {
@@ -60,10 +62,10 @@ describe("ClinicianPatientRecordPage", () => {
 			testId: "patient-form",
 			api: { kind: "new" },
 			locale: "en",
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 		});
 		(captured().onSaved as (id: number) => void)(42);
-		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/portal/clinician/patients/42" });
+		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/portal/doctor/patients/42" });
 	});
 
 	it("mounts the edit form scoped to the patient id", () => {
@@ -72,10 +74,10 @@ describe("ClinicianPatientRecordPage", () => {
 			testId: "patient-form",
 			patient,
 			api: { kind: "edit", id: 7 },
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 		});
 		(captured().onSaved as (id: number) => void)(7);
-		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/portal/clinician/patients/7" });
+		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/portal/doctor/patients/7" });
 	});
 
 	it("mounts the detail view and navigates back to the list on delete", () => {
@@ -89,9 +91,9 @@ describe("ClinicianPatientRecordPage", () => {
 			consultations,
 			locale: "en",
 			deleteApi: { kind: "delete" },
-			portalBase: "/portal/clinician",
+			portalBase: "/portal/doctor",
 		});
 		(captured().onDeleted as () => void)();
-		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/portal/clinician/patients" });
+		expect(mocks.navigate).toHaveBeenCalledWith({ to: "/portal/doctor/patients" });
 	});
 });

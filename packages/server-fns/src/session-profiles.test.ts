@@ -31,6 +31,14 @@ import {
 } from "./index.ts";
 
 const sec = { id: "sec", email: "sec@ktb.test", name: "Sec" };
+const doc = { id: "doc", email: "doc@ktb.test", name: "Doc" };
+const own: DoctorProfile = {
+	doctorId: 3,
+	userId: "doc",
+	email: "doc@ktb.test",
+	displayName: "Doc",
+	role: "owner",
+};
 const delegated: DoctorProfile = {
 	doctorId: 7,
 	userId: "doc",
@@ -38,6 +46,14 @@ const delegated: DoctorProfile = {
 	displayName: "Dra",
 	role: "secretary",
 };
+const delegated2: DoctorProfile = {
+	doctorId: 9,
+	userId: "doc9",
+	email: "doc9@ktb.test",
+	displayName: "Dr9",
+	role: "secretary",
+};
+const sec2 = { id: "sec2", email: "sec2@ktb.test", name: "Sec2" };
 const self = { ...sec, actorId: "sec", doctor: { name: "Sec", email: "sec@ktb.test" } };
 const asDoctor = {
 	id: "doc",
@@ -76,7 +92,13 @@ const DirectoriesStub = Layer.mergeAll(
 		listFor: (userId) =>
 			Effect.sync(() => {
 				lookups.push(userId);
-				return userId === "sec" ? [delegated] : [];
+				return userId === "sec"
+					? [delegated]
+					: userId === "sec2"
+						? [delegated, delegated2]
+						: userId === "doc"
+							? [own]
+							: [];
 			}),
 		claimInvites: (userId) =>
 			Effect.sync(() => {
@@ -134,6 +156,27 @@ describe("getDoctorUser", () => {
 		expect(await getDoctorUser(new Headers())).toEqual(asDoctor);
 	});
 
+	it("acts as the first delegated doctor when several are held and none selected", async () => {
+		signedIn(sec2);
+		expect(await getDoctorUser(new Headers())).toEqual({
+			...asDoctor,
+			email: "sec2@ktb.test",
+			name: "Sec2",
+			actorId: "sec2",
+		});
+	});
+
+	it("lets a multi-delegation account act as the selected doctor", async () => {
+		signedIn(sec2);
+		expect(await getDoctorUser(cookie("ktb_doctor=9"))).toEqual({
+			id: "doc9",
+			email: "sec2@ktb.test",
+			name: "Sec2",
+			actorId: "sec2",
+			doctor: { name: "Dr9", email: "doc9@ktb.test" },
+		});
+	});
+
 	it("acts as the selected doctor when the directory confirms the delegation", async () => {
 		signedIn();
 		expect(await ensureDoctorUser(cookie("ktb_doctor=7"))).toEqual(asDoctor);
@@ -178,21 +221,58 @@ describe("getSessionAccount", () => {
 		expect(await getSessionAccount(new Headers())).toBeNull();
 	});
 
-	it("marks an account with no doctor profile as patient-only", async () => {
+	it("marks an account with no doctor profile as patient-only with no clinical role", async () => {
 		const nobody = { id: "nobody", email: "nobody@ktb.test", name: "Nobody" };
 		signedIn(nobody);
-		expect(await getSessionAccount(new Headers())).toEqual({ ...nobody, patientOnly: true });
+		expect(await getSessionAccount(new Headers())).toEqual({
+			...nobody,
+			patientOnly: true,
+			clinicalRole: null,
+			doctorProfiles: 0,
+			patientProfiles: 0,
+		});
 	});
 
-	it("keeps the doctor side for own and delegated profiles, without claiming invites", async () => {
+	it("marks own and delegated profiles as owner and secretary, without claiming invites", async () => {
+		signedIn(doc);
+		expect(await getSessionAccount(new Headers())).toEqual({
+			...doc,
+			patientOnly: false,
+			clinicalRole: "owner",
+			doctorProfiles: 1,
+			patientProfiles: 0,
+		});
 		signedIn();
-		expect(await getSessionAccount(new Headers())).toEqual({ ...sec, patientOnly: false });
+		expect(await getSessionAccount(new Headers())).toEqual({
+			...sec,
+			patientOnly: false,
+			clinicalRole: "secretary",
+			doctorProfiles: 1,
+			patientProfiles: 2,
+		});
 		expect(claims).toEqual([]);
 	});
 
-	it("is never patient-only when no directory is deployed", async () => {
+	it("counts every directory entry — own profile plus delegations", async () => {
+		signedIn(sec2);
+		expect((await getSessionAccount(new Headers()))?.doctorProfiles).toBe(2);
+	});
+
+	it("counts the account's linked patient records without syncing links", async () => {
+		signedIn();
+		expect((await getSessionAccount(new Headers()))?.patientProfiles).toBe(2);
+		expect(syncs).toEqual([]);
+	});
+
+	it("is never patient-only and always owner when no directory is deployed", async () => {
 		boot(AuthStub(sec) as Layer.Layer<never>);
-		expect(await getSessionAccount(new Headers())).toEqual({ ...sec, patientOnly: false });
+		expect(await getSessionAccount(new Headers())).toEqual({
+			...sec,
+			patientOnly: false,
+			clinicalRole: "owner",
+			doctorProfiles: 0,
+			patientProfiles: 0,
+		});
 	});
 });
 

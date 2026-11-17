@@ -136,13 +136,15 @@ export type I18nKey =
 	| "app.mock_review_rest"
 	| "app.mock_sample"
 	| "app.nav_consultations"
+	| "app.nav_doctor_login"
+	| "app.nav_doctor_portal"
 	| "app.nav_my_consultations"
-	| "app.nav_new_consultation"
+	| "app.nav_patient_login"
 	| "app.nav_patient_portal"
 	| "app.nav_patients"
 	| "app.nav_platform_console"
 	| "app.nav_secretaries"
-	| "app.nav_sign_in"
+	| "app.nav_secretary_portal"
 	| "app.nav_sign_out"
 	| "app.nav_switch_doctor"
 	| "app.never_1"
@@ -157,6 +159,7 @@ export type I18nKey =
 	| "app.notfound_cta"
 	| "app.notfound_title"
 	| "app.panel_group_access"
+	| "app.panel_group_account"
 	| "app.panel_group_domains"
 	| "app.panel_group_governance"
 	| "app.panel_group_system"
@@ -350,7 +353,6 @@ export type I18nKey =
 	| "auth.hidePassword"
 	| "auth.metaTitle"
 	| "auth.password"
-	| "auth.patientLink"
 	| "auth.pending"
 	| "auth.secretaryLink"
 	| "auth.showPassword"
@@ -1532,13 +1534,15 @@ export interface I18nTypedT {
 	(key: "app.mock_review_rest"): Effect.Effect<string>;
 	(key: "app.mock_sample"): Effect.Effect<string>;
 	(key: "app.nav_consultations"): Effect.Effect<string>;
+	(key: "app.nav_doctor_login"): Effect.Effect<string>;
+	(key: "app.nav_doctor_portal"): Effect.Effect<string>;
 	(key: "app.nav_my_consultations"): Effect.Effect<string>;
-	(key: "app.nav_new_consultation"): Effect.Effect<string>;
+	(key: "app.nav_patient_login"): Effect.Effect<string>;
 	(key: "app.nav_patient_portal"): Effect.Effect<string>;
 	(key: "app.nav_patients"): Effect.Effect<string>;
 	(key: "app.nav_platform_console"): Effect.Effect<string>;
 	(key: "app.nav_secretaries"): Effect.Effect<string>;
-	(key: "app.nav_sign_in"): Effect.Effect<string>;
+	(key: "app.nav_secretary_portal"): Effect.Effect<string>;
 	(key: "app.nav_sign_out"): Effect.Effect<string>;
 	(key: "app.nav_switch_doctor"): Effect.Effect<string>;
 	(key: "app.never_1"): Effect.Effect<string>;
@@ -1553,6 +1557,7 @@ export interface I18nTypedT {
 	(key: "app.notfound_cta"): Effect.Effect<string>;
 	(key: "app.notfound_title"): Effect.Effect<string>;
 	(key: "app.panel_group_access"): Effect.Effect<string>;
+	(key: "app.panel_group_account"): Effect.Effect<string>;
 	(key: "app.panel_group_domains"): Effect.Effect<string>;
 	(key: "app.panel_group_governance"): Effect.Effect<string>;
 	(key: "app.panel_group_system"): Effect.Effect<string>;
@@ -1762,7 +1767,6 @@ export interface I18nTypedT {
 	(key: "auth.hidePassword"): Effect.Effect<string>;
 	(key: "auth.metaTitle"): Effect.Effect<string>;
 	(key: "auth.password"): Effect.Effect<string>;
-	(key: "auth.patientLink"): Effect.Effect<string>;
 	(key: "auth.pending"): Effect.Effect<string>;
 	(key: "auth.secretaryLink"): Effect.Effect<string>;
 	(key: "auth.showPassword"): Effect.Effect<string>;

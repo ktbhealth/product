@@ -1,41 +1,23 @@
-import { redirect, getRouteApi } from "@tanstack/react-router";
+import { redirect } from "@tanstack/react-router";
 
 import { createPluginFileRoute } from "@ktb/server-fns";
 
-import { DoctorSelectPage, type DoctorSelectApi } from "../views/index.ts";
-import { doctorContextFn, localeFn, selectDoctorFn } from "../fns.ts";
+import { doctorContextFn } from "../fns.ts";
 
-const api: DoctorSelectApi = {
-	select: (doctorId) => selectDoctorFn({ data: doctorId }),
-};
-
-// Doctor profile chooser: where a signed-in user picks whose data they
-// act on (their own profile or a doctor they are secretary of). An
-// account with no doctor profile is a patient account — it has nothing
-// to choose here and is sent to the patient portal; doctor profiles are
-// only created by the doctor sign-up.
+// Legacy profile-chooser URL, kept as a redirect: the chooser itself is
+// a portal page now (/portal/{doctor,secretary}/switch-doctor) and the
+// first directory profile auto-resolves, so this route only funnels
+// callers to where they belong — anonymous visitors to the doctor
+// sign-in, accounts with no doctor side to the patient portal, the
+// rest into their clinical portal (owners to doctor, delegated-only
+// accounts to secretary). Claims pending invites first, like before.
 export const Route = createPluginFileRoute("doctors.routes")("/doctors/select")({
 	loader: async () => {
-		const [context, locale] = await Promise.all([doctorContextFn(), localeFn()]);
-		if (!context) throw redirect({ to: "/login" });
-		// Owned by the patient-portal plugin — coupled by URL only.
-		if (context.profiles.length === 0) throw redirect({ to: "/portal" });
-		return { ...context, locale };
+		const context = await doctorContextFn();
+		if (!context) throw redirect({ href: "/login/doctor" });
+		if (context.profiles.length === 0) throw redirect({ to: "/portal/patient" });
+		const instance = context.profiles.some((p) => p.role === "owner") ? "doctor" : "secretary";
+		throw redirect({ href: `/portal/${instance}` });
 	},
-	component: function DoctorSelectRoute() {
-		const { profiles, activeDoctorId, locale } = Route.useLoaderData();
-		// Root loader carries the route-scoped DB catalog slice (PL-008).
-		const { i18n } = getRouteApi("__root__").useLoaderData();
-		return (
-			<DoctorSelectPage
-				profiles={profiles}
-				activeDoctorId={activeDoctorId}
-				i18n={i18n}
-				locale={locale}
-				api={api}
-				// Full reload: every loader re-runs under the new profile.
-				onDone={() => window.location.assign("/")}
-			/>
-		);
-	},
+	component: () => null,
 });
