@@ -130,12 +130,16 @@ describe("/secretaries", () => {
 describe("/secretaries/login redirect", () => {
 	const legacyOptions = (
 		LegacyLoginRoute as unknown as {
-			options: { beforeLoad: () => Promise<void> };
+			options: { beforeLoad: () => Promise<void>; component: () => null };
 		}
 	).options;
 
 	it("sends visitors to the canonical secretary sign-in", async () => {
 		expect((await redirectTarget(legacyOptions.beforeLoad)).href).toBe("/login/secretary");
+	});
+
+	it("renders nothing", () => {
+		expect(legacyOptions.component()).toBeNull();
 	});
 });
 
