@@ -22,6 +22,7 @@
 		"@ktb/crypto": "workspace:*",
 		"@ktb/crypto-stub": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/document-store": "workspace:*",
 		"@ktb/driver-framework": "workspace:*",
 		"@ktb/email": "workspace:*",
 		"@ktb/email-cloudflare": "workspace:*",

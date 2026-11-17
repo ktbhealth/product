@@ -263,6 +263,7 @@
         "@ktb/crypto": "workspace:*",
         "@ktb/crypto-stub": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/document-store": "workspace:*",
         "@ktb/driver-framework": "workspace:*",
         "@ktb/email": "workspace:*",
         "@ktb/email-cloudflare": "workspace:*",
@@ -860,6 +861,37 @@
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/document-store": {
+      "name": "@ktb/document-store",
+      "dependencies": {
+        "@ktb/auth": "workspace:*",
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^9.6.0",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "better-sqlite3": "^13.0.3",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
       },
       "peerDependencies": {
         "react": "^19.2.0",
@@ -1941,6 +1973,8 @@
     "@ktb/db-sqlite": ["@ktb/db-sqlite@workspace:packages/db-sqlite"],
 
     "@ktb/doctors": ["@ktb/doctors@workspace:plugins/doctors"],
+
+    "@ktb/document-store": ["@ktb/document-store@workspace:plugins/document-store"],
 
     "@ktb/driver-framework": ["@ktb/driver-framework@workspace:packages/driver-framework"],
 

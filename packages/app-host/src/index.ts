@@ -34,6 +34,7 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
+import { DocumentCollections, makeDocumentCollections } from "@ktb/document-store";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -469,6 +470,19 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// DbLive))` wires the sibling Db output in explicitly (mergeAll does
 	// not), leaving only `Binding` for the outer provideMerge.
 	const PluginStatesLive = makePluginStatesLive(plugins).pipe(Layer.provide(DbLive));
+	// Document-store collection registry (P-089): the ordered plugin
+	// graph's `document.collection` contributions, collected once at
+	// composition — same injection pattern as PluginStates above. The
+	// document-store plugin's service layer consumes it via
+	// `DocumentCollections`; plugins that don't use it pay nothing.
+	// NOTE: collections are collected from the FULL plugin registry,
+	// ignoring PluginStates enablement — enablement gates dispatch
+	// (routes/CQRS), not this static composition data; a disabled
+	// plugin's contributed collections simply go unused.
+	const DocumentCollectionsLive = Layer.succeed(
+		DocumentCollections,
+		makeDocumentCollections(plugins),
+	);
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -493,6 +507,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		LlmFactoryLive,
 		PlatformAdminLive,
 		PluginStatesLive,
+		DocumentCollectionsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),

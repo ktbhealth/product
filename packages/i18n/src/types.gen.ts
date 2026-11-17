@@ -581,6 +581,47 @@ export type I18nKey =
 	| "doctors.roleSecretary"
 	| "doctors.selectDescription"
 	| "doctors.selectTitle"
+	| "document-store.back"
+	| "document-store.badgeUnregistered"
+	| "document-store.cancel"
+	| "document-store.colActions"
+	| "document-store.colFields"
+	| "document-store.colId"
+	| "document-store.colName"
+	| "document-store.colOwner"
+	| "document-store.colRecords"
+	| "document-store.colStatus"
+	| "document-store.colUpdated"
+	| "document-store.colVersion"
+	| "document-store.create"
+	| "document-store.delete"
+	| "document-store.deleteBody"
+	| "document-store.deleteConfirm"
+	| "document-store.deleteInUse"
+	| "document-store.deleteTitle"
+	| "document-store.description"
+	| "document-store.edit"
+	| "document-store.editDocument"
+	| "document-store.emptyCollectionsDescription"
+	| "document-store.emptyCollectionsTitle"
+	| "document-store.emptyDocumentsDescription"
+	| "document-store.emptyDocumentsTitle"
+	| "document-store.invalidDate"
+	| "document-store.invalidJson"
+	| "document-store.invalidNumber"
+	| "document-store.loadFailed"
+	| "document-store.newDocument"
+	| "document-store.nextPage"
+	| "document-store.none"
+	| "document-store.open"
+	| "document-store.pageInfo"
+	| "document-store.prevPage"
+	| "document-store.save"
+	| "document-store.saveFailed"
+	| "document-store.saving"
+	| "document-store.statusContributed"
+	| "document-store.statusDbOnly"
+	| "document-store.title"
 	| "eval.credentials.actionFailed"
 	| "eval.credentials.cancel"
 	| "eval.credentials.confirmDelete"
@@ -2164,6 +2205,63 @@ export interface I18nTypedT {
 	(key: "doctors.roleSecretary"): Effect.Effect<string>;
 	(key: "doctors.selectDescription"): Effect.Effect<string>;
 	(key: "doctors.selectTitle"): Effect.Effect<string>;
+	(key: "document-store.back"): Effect.Effect<string>;
+	(key: "document-store.badgeUnregistered"): Effect.Effect<string>;
+	(key: "document-store.cancel"): Effect.Effect<string>;
+	(key: "document-store.colActions"): Effect.Effect<string>;
+	(key: "document-store.colFields"): Effect.Effect<string>;
+	(key: "document-store.colId"): Effect.Effect<string>;
+	(key: "document-store.colName"): Effect.Effect<string>;
+	(key: "document-store.colOwner"): Effect.Effect<string>;
+	(key: "document-store.colRecords"): Effect.Effect<string>;
+	(key: "document-store.colStatus"): Effect.Effect<string>;
+	(key: "document-store.colUpdated"): Effect.Effect<string>;
+	(key: "document-store.colVersion"): Effect.Effect<string>;
+	(key: "document-store.create"): Effect.Effect<string>;
+	(key: "document-store.delete"): Effect.Effect<string>;
+	(
+		key: "document-store.deleteBody",
+		params: {
+			id: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "document-store.deleteConfirm"): Effect.Effect<string>;
+	(
+		key: "document-store.deleteInUse",
+		params: {
+			referrers: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "document-store.deleteTitle"): Effect.Effect<string>;
+	(key: "document-store.description"): Effect.Effect<string>;
+	(key: "document-store.edit"): Effect.Effect<string>;
+	(key: "document-store.editDocument"): Effect.Effect<string>;
+	(key: "document-store.emptyCollectionsDescription"): Effect.Effect<string>;
+	(key: "document-store.emptyCollectionsTitle"): Effect.Effect<string>;
+	(key: "document-store.emptyDocumentsDescription"): Effect.Effect<string>;
+	(key: "document-store.emptyDocumentsTitle"): Effect.Effect<string>;
+	(key: "document-store.invalidDate"): Effect.Effect<string>;
+	(key: "document-store.invalidJson"): Effect.Effect<string>;
+	(key: "document-store.invalidNumber"): Effect.Effect<string>;
+	(key: "document-store.loadFailed"): Effect.Effect<string>;
+	(key: "document-store.newDocument"): Effect.Effect<string>;
+	(key: "document-store.nextPage"): Effect.Effect<string>;
+	(key: "document-store.none"): Effect.Effect<string>;
+	(key: "document-store.open"): Effect.Effect<string>;
+	(
+		key: "document-store.pageInfo",
+		params: {
+			current: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "document-store.prevPage"): Effect.Effect<string>;
+	(key: "document-store.save"): Effect.Effect<string>;
+	(key: "document-store.saveFailed"): Effect.Effect<string>;
+	(key: "document-store.saving"): Effect.Effect<string>;
+	(key: "document-store.statusContributed"): Effect.Effect<string>;
+	(key: "document-store.statusDbOnly"): Effect.Effect<string>;
+	(key: "document-store.title"): Effect.Effect<string>;
 	(key: "eval.credentials.actionFailed"): Effect.Effect<string>;
 	(key: "eval.credentials.cancel"): Effect.Effect<string>;
 	(key: "eval.credentials.confirmDelete"): Effect.Effect<string>;
