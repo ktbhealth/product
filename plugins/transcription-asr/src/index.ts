@@ -50,6 +50,7 @@ export const asrContributions: readonly Contribution[] = [
 
 export const asrPlugin = definePlugin({
 	id: "transcription.asr",
+	meta: { keywords: ["transcription", "asr", "services"] },
 	contributions: asrContributions,
 });
 

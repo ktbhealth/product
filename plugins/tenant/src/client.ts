@@ -18,6 +18,7 @@ import { TenantsPlatformPage } from "./platform-page.tsx";
  */
 export const tenantChromePlugin = definePlugin({
 	id: "tenant.chrome",
+	meta: { keywords: ["tenant", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -33,6 +34,7 @@ export const tenantChromePlugin = definePlugin({
 
 export const tenantPanelPlugin = definePlugin({
 	id: "tenant.panel",
+	meta: { keywords: ["tenant", "ui"] },
 	requiredDeps: ["platform.panel"],
 	panel: {
 		pages: [
@@ -50,6 +52,7 @@ export const tenantPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "tenant.services",
+		meta: { keywords: ["tenant", "services"] },
 		// Mirrors tenantServicesPlugin.requiredDeps (server index.ts) —
 		// literal id: importing @ktb/groups would pull the server graph
 		// into the client bundle.

@@ -41,6 +41,7 @@ export {
 	type CollectedContribution,
 	type ContributionKindDescriptor,
 } from "./kinds.ts";
+export { PLUGIN_KEYWORD_SET, PLUGIN_KEYWORDS, type PluginKeyword } from "./keywords.ts";
 export type {
 	ChromeContent,
 	ChromeContribution,

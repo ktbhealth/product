@@ -381,6 +381,7 @@ export const PatientPortalLive = Layer.effect(
 
 export const patientPortalServicesPlugin = definePlugin({
 	id: "patient-portal.services",
+	meta: { keywords: ["patient-portal", "services", "patient"] },
 	// Audit resolves via serviceOption per call — the dep edge is an
 	// ordering hint only; absence of the audit plugin is legal.
 	optionalDeps: [auditServicesPlugin.id],
@@ -392,6 +393,7 @@ export const patientPortalServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const patientPortalRoutesPlugin = definePlugin({
 	id: "patient-portal.routes",
+	meta: { keywords: ["patient-portal", "routes", "patient"] },
 	routes: [physical("/portal", "../../../../plugins/patient-portal/src/routes")],
 });
 

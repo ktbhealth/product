@@ -341,6 +341,7 @@ export const PatientLinksLive = Layer.effect(
 
 export const patientAccessTablesPlugin = definePlugin({
 	id: "patient-access.tables",
+	meta: { keywords: ["patient-access", "tables", "patient"] },
 	tables: { patientAccess },
 });
 
@@ -383,6 +384,7 @@ export const PatientAuditAccessLive = Layer.effect(
 
 export const patientAccessServicesPlugin = definePlugin({
 	id: "patient-access.services",
+	meta: { keywords: ["patient-access", "services", "patient"] },
 	services: Layer.mergeAll(PatientProfilesLive, PatientLinksLive, PatientAuditAccessLive),
 });
 
@@ -391,6 +393,7 @@ export const patientAccessServicesPlugin = definePlugin({
 // physical() directory scan relative to the host's routes directory.
 export const patientAccessRoutesPlugin = definePlugin({
 	id: "patient-access.routes",
+	meta: { keywords: ["patient-access", "routes", "patient"] },
 	routes: [physical("/patient-access", "../../../../plugins/patient-access/src/routes")],
 });
 

@@ -14,12 +14,14 @@ import { AgentsPanelPage, EndpointsPanelPage } from "./platform-page.tsx";
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "ai.endpoints.tables",
+		meta: { keywords: ["ai", "tables"] },
 		// Mirrors aiEndpointsTablesPlugin — drizzle schema never reaches
 		// the client bundle.
 		requiredDeps: [],
 	}),
 	definePlugin({
 		id: "ai.endpoints.services",
+		meta: { keywords: ["ai", "services"] },
 		requiredDeps: ["ai.endpoints.tables"],
 		optionalDeps: ["credentials.services"],
 	}),
@@ -27,9 +29,11 @@ export const plugins: readonly Plugin[] = [
 		// Mirrors aiEndpointsRoutesPlugin — the /api route subtree is
 		// server-only; the client carries the bare id for parity.
 		id: "ai-endpoints.routes",
+		meta: { keywords: ["ai", "routes"] },
 	}),
 	definePlugin({
 		id: "ai.endpoints.chrome",
+		meta: { keywords: ["ai", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [
 			{
@@ -62,6 +66,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "ai.endpoints.panel",
+		meta: { keywords: ["ai", "ui"] },
 		requiredDeps: ["platform.panel", "ai.endpoints.services"],
 		panel: {
 			pages: [

@@ -119,12 +119,14 @@ export const CredentialsLive = Layer.effect(
 
 export const credentialsServicesPlugin = definePlugin({
 	id: "credentials.services",
+	meta: { keywords: ["eval", "credentials", "services"] },
 	requiredDeps: [],
 	services: CredentialsLive,
 });
 
 export const credentialsChromePlugin = definePlugin({
 	id: "credentials.chrome",
+	meta: { keywords: ["eval", "credentials", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -145,6 +147,7 @@ export const credentialsChromePlugin = definePlugin({
 
 export const credentialsPanelPlugin = definePlugin({
 	id: "credentials.panel",
+	meta: { keywords: ["eval", "credentials", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, credentialsServicesPlugin.id],
 	panel: {
 		pages: [

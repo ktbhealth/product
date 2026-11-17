@@ -52,6 +52,7 @@ export const ttsContributions: readonly Contribution[] = [
 
 export const ttsPlugin = definePlugin({
 	id: "transcription.tts",
+	meta: { keywords: ["transcription", "tts", "services"] },
 	contributions: ttsContributions,
 });
 

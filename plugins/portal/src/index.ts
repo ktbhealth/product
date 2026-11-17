@@ -73,6 +73,7 @@ export const PortalAudienceLive = Layer.succeed(
  * break every portal gate and shell, so it can never be turned off. */
 export const portalServicesPlugin = definePlugin({
 	id: "portal.services",
+	meta: { keywords: ["portal", "services"] },
 	system: true,
 	services: PortalAudienceLive,
 });
@@ -82,6 +83,7 @@ export const portalServicesPlugin = definePlugin({
  * console.* entries ordered after `platform.panel`. */
 export const portalShellPlugin = definePlugin({
 	id: "portal.shell",
+	meta: { keywords: ["portal", "shell", "ui"] },
 	system: true,
 	requiredDeps: [portalServicesPlugin.id],
 });
