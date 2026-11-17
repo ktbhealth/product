@@ -22,7 +22,13 @@ import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { makeJobs } from "@ktb/jobs-port";
 import { currentLocale } from "./locale-context.ts";
-import { GLOBAL_SCOPE, resolveRequestLocales, tenantScope } from "@ktb/i18n";
+import {
+	GLOBAL_SCOPE,
+	PSEUDO_LOCALE,
+	resolveRequestLocales,
+	tenantScope,
+	type ScopeChain,
+} from "@ktb/i18n";
 import {
 	catalogSlice,
 	DEFAULT_LOCALE,
@@ -33,6 +39,7 @@ import {
 
 import { resolveAi, type AiEnv } from "./ai.ts";
 import { emailCatalogT, verificationEmail } from "./emails.ts";
+import { portalInstances } from "./registry.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
 import { requestTelemetryContext } from "./telemetry.ts";
 import { makeFlushThrottler } from "./telemetry-flush.ts";
@@ -81,7 +88,15 @@ const app = createApp(appEnv as unknown as typeof env, {
 			Effect.gen(function* () {
 				const database = yield* Db;
 				const enabled = yield* Effect.promise(() => listEnabledLocales(database));
-				const chain = resolveRequestLocales(currentLocale(), enabled, DEFAULT_LOCALE);
+				// `qps` is a QA pseudo-locale — outbound email must never
+				// ship accented/bracketed copy, so it resolves against the
+				// default locale instead of the request locale.
+				const requested = currentLocale();
+				const chain = resolveRequestLocales(
+					requested === PSEUDO_LOCALE ? DEFAULT_LOCALE : requested,
+					enabled,
+					DEFAULT_LOCALE,
+				);
 				const catalog = yield* catalogSlice(database, {
 					namespaces: ["app"],
 					scopeChain: GLOBAL_SCOPE,
@@ -210,7 +225,8 @@ const themeJobs =
  * TenantResolver → tenantScope; anonymous/selector-less requests stay
  * global. Portal scope is NOT derivable here: plugin server fns run on
  * the RPC endpoint, not the page path, so callers needing portal-scoped
- * copy pass `scopeChain` explicitly (same escape hatch as before).
+ * copy pass `scopeChain` explicitly — sanitized by sanitizeScopeChain
+ * before use.
  */
 const requestScopeChain = () =>
 	Effect.gen(function* () {
@@ -231,6 +247,39 @@ const requestScopeChain = () =>
 		const tenantId = tenant === null ? null : tenantScopeId(tenant);
 		return tenantId === null ? GLOBAL_SCOPE : tenantScope(String(tenantId));
 	});
+
+/** Portal instance ids the plugin registry declares — the only portal
+ * scopes a caller-supplied chain may name (see sanitizeScopeChain). */
+const KNOWN_PORTAL_SCOPE_IDS: ReadonlySet<string> = new Set(
+	portalInstances.map((entry) => entry.instance.id),
+);
+
+/**
+ * Caller-supplied scope chains are an escape hatch for portal-scoped
+ * copy: plugin server fns run on the RPC endpoint, not the page path,
+ * so the portal instance is not derivable from the request here. The
+ * chain is NOT trusted verbatim — an entry survives only when provable:
+ * `global` always; `tenant` only when its id matches the tenant the
+ * request itself resolves to; `portal` only for ids the plugin
+ * registry actually declares. Anything else is dropped, and the global
+ * fallback is re-appended when nothing survives, so a caller cannot
+ * read another tenant's scoped rows by naming them.
+ */
+const sanitizeScopeChain = (chain: ScopeChain, request: ScopeChain): ScopeChain => {
+	const requestTenantIds = new Set(
+		request.scopes.filter((s) => s.scope === "tenant").map((s) => s.scopeId),
+	);
+	const scopes = chain.scopes.flatMap((s) => {
+		if (s.scope === "global") return [{ scope: "global" as const, scopeId: "" }];
+		if (s.scope === "tenant" && requestTenantIds.has(s.scopeId)) return [s];
+		if (s.scope === "portal" && KNOWN_PORTAL_SCOPE_IDS.has(s.scopeId)) return [s];
+		return [];
+	});
+	if (!scopes.some((s) => s.scope === "global")) {
+		scopes.push({ scope: "global", scopeId: "" });
+	}
+	return { scopes };
+};
 
 // F3b: the AcpBridge durable-object namespace (workerd binding —
 // declared in the Alchemy stack). Structural slice only; the plugin
@@ -266,14 +315,22 @@ setServerRuntime({
 	// scope chain inside the app runtime (I18nRuntime cache + Db) and
 	// returns the request-bound I18n shape. Locale defaults to the
 	// request-scoped UI locale (locale-context ALS); scope defaults to
-	// the request's tenant chain (portal scope stays caller-supplied —
-	// see requestScopeChain).
+	// the request's tenant chain. Portal scope stays caller-supplied
+	// (see requestScopeChain) but is sanitized against the request
+	// context — see sanitizeScopeChain.
 	i18n: (input) =>
 		run(
 			Effect.gen(function* () {
 				const runtime = yield* I18nRuntime;
 				const database = yield* Db;
-				const scopeChain = input?.scopeChain ?? (yield* requestScopeChain());
+				// The request chain is always resolved: it is both the
+				// fallback and the provenance check for caller-supplied
+				// scopes.
+				const requestChain = yield* requestScopeChain();
+				const scopeChain =
+					input?.scopeChain === undefined
+						? requestChain
+						: sanitizeScopeChain(input.scopeChain, requestChain);
 				const { i18n } = yield* resolveRequestI18n(runtime, database, {
 					requestedLocale: input?.locale ?? currentLocale(),
 					scopeChain,

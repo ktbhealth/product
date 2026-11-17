@@ -35,6 +35,10 @@ export class I18nValidationError extends Data.TaggedError("I18nValidationError")
  */
 export const MESSAGE_ID_FORBIDDEN_RE = /[\s\x00-\x1f]/;
 export const MAX_MESSAGE_VALUE_LENGTH = 50_000;
+/** Cap on message-id fields (namespace/key/locale/scopeId) — they are
+ * composite-PRIMARY-KEY material, so an unbounded string would let a
+ * caller stuff arbitrarily large values into index columns. */
+export const MAX_MESSAGE_FIELD_LENGTH = 200;
 export const RICH_FORBIDDEN_RE =
 	/<\s*(?:script|iframe|object|embed|style)\b|\bon\w+\s*=|javascript\s*:/i;
 
@@ -57,11 +61,17 @@ export const validateMessageId = (id: {
 		if (value === "" || MESSAGE_ID_FORBIDDEN_RE.test(value)) {
 			return `${field} must be non-empty and free of whitespace/control characters`;
 		}
+		if (value.length > MAX_MESSAGE_FIELD_LENGTH) {
+			return `${field} must be at most ${MAX_MESSAGE_FIELD_LENGTH} characters`;
+		}
 	}
 	if (id.scope === "global") {
 		return id.scopeId === "" ? null : "scopeId must be empty for global scope";
 	}
 	if (id.scopeId === "") return "scopeId is required for tenant/portal scope";
+	if (id.scopeId.length > MAX_MESSAGE_FIELD_LENGTH) {
+		return `scopeId must be at most ${MAX_MESSAGE_FIELD_LENGTH} characters`;
+	}
 	if (MESSAGE_ID_FORBIDDEN_RE.test(id.scopeId)) {
 		return "scopeId must be free of whitespace/control characters";
 	}

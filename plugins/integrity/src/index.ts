@@ -297,11 +297,13 @@ CREATE UNIQUE INDEX record_versions_entity_version_idx ON record_versions (entit
 
 export const integrityTablesPlugin = definePlugin({
 	id: "integrity.tables",
+	meta: { keywords: ["integrity", "tables"] },
 	tables: { recordVersions },
 });
 
 export const integrityServicesPlugin = definePlugin({
 	id: "integrity.services",
+	meta: { keywords: ["integrity", "services"] },
 	services: IntegrityLive,
 });
 

@@ -14,6 +14,8 @@ import {
 	externalSpanFromLogFields,
 	externalSpanFromTraceparent,
 	newRequestId,
+	pluginDuration,
+	pluginInvocations,
 	record,
 	tagged,
 	Telemetry,
@@ -42,8 +44,10 @@ import {
 	evalLlmFactoryDriver,
 	evalRunnerLocalDriver,
 } from "@ktb/eval-adapter-local";
+import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Clock from "effect/Clock";
@@ -578,16 +582,56 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 				);
 		return span;
 	};
+	// A dispatch blocked by pluginGate fails with PluginDisabled as its
+	// only typed failure — inspecting the first error in the cause is
+	// enough to classify the outcome.
+	const isDisabled = (cause: Cause.Cause<unknown>): boolean =>
+		Option.exists(Cause.findErrorOption(cause), (e) => e instanceof PluginDisabled);
+	// Per-plugin SLO metrics: invocation count + duration labeled by
+	// owning package, so "which plugin is slow/erroring" is a
+	// first-class Prometheus query (`ktb_plugin_*`). Runs OUTERMOST —
+	// before pluginGate — deliberately: a dispatch blocked by the
+	// enabled-state gate still counts, tagged `outcome=disabled`
+	// instead of vanishing. Attempted traffic to a disabled package is
+	// real signal (stale UI, misconfigured callers), and keeping it out
+	// of the success/error split means error-ratio SLOs measure only
+	// work that actually ran. The gate's PluginStates read lands inside
+	// the measured window — one indexed lookup that is part of the
+	// dispatch's real cost. Duration is recorded on EVERY exit
+	// (success, failure, disabled) via Effect.exit, matching how
+	// `instrument` times app invocations.
+	const pluginMetrics = (pkg: string): Middleware.Middleware => {
+		const metrics: Middleware.Middleware =
+			(dispatch, { side }) =>
+			(payload) =>
+				Effect.gen(function* () {
+					const start = yield* Clock.currentTimeMillis;
+					const exit = yield* Effect.exit(dispatch(payload));
+					const elapsed = (yield* Clock.currentTimeMillis) - start;
+					yield* record(tagged(pluginDuration, { plugin: pkg, side }), elapsed);
+					const outcome = Exit.isSuccess(exit)
+						? "success"
+						: isDisabled(exit.cause)
+							? "disabled"
+							: "error";
+					yield* record(tagged(pluginInvocations, { plugin: pkg, side, outcome }), 1);
+					if (Exit.isSuccess(exit)) {
+						return exit.value;
+					}
+					return yield* Effect.failCause(exit.cause);
+				});
+		return metrics;
+	};
 	const busesLive = Layer.unwrap(
 		Effect.gen(function* () {
 			const queryTables = yield* Effect.forEach(queryGroups, ({ pkg, group }) =>
 				Query.dispatcher(group, {
-					middleware: [pluginGate(pkg), traceSpan(pkg), ...busMiddleware],
+					middleware: [pluginMetrics(pkg), pluginGate(pkg), traceSpan(pkg), ...busMiddleware],
 				}),
 			);
 			const commandTables = yield* Effect.forEach(commandGroups, ({ pkg, group }) =>
 				Command.dispatcher(group, {
-					middleware: [pluginGate(pkg), traceSpan(pkg), ...busMiddleware],
+					middleware: [pluginMetrics(pkg), pluginGate(pkg), traceSpan(pkg), ...busMiddleware],
 				}),
 			);
 			return Layer.mergeAll(

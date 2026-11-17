@@ -61,6 +61,7 @@ export {
 /** i18n tables citizen (P-083). */
 export const i18nTablesPlugin = definePlugin({
 	id: "i18n.tables",
+	meta: { keywords: ["i18n", "tables"] },
 	tables: {
 		i18nNamespaces,
 		i18nLocales,
@@ -73,6 +74,7 @@ export const i18nTablesPlugin = definePlugin({
 /** Runtime service citizen: per-isolate catalog cache + stamp. */
 export const i18nServicesPlugin = definePlugin({
 	id: "i18n.services",
+	meta: { keywords: ["i18n", "services"] },
 	services: I18nRuntimeLive,
 });
 
@@ -81,6 +83,7 @@ export const i18nServicesPlugin = definePlugin({
  * resolve the `plugins` entry — it only follows same-file consts. */
 export const i18nAdminServicesPlugin = definePlugin({
 	id: "i18n.admin.services",
+	meta: { keywords: ["i18n", "services", "admin"] },
 	// i18n.services first: publish() invalidates the shared isolate
 	// cache — the runtime must be the SAME instance, not a private one.
 	requiredDeps: [platformAdminPlugin.id, rbacServicesPlugin.id, "i18n.services"],
@@ -91,6 +94,7 @@ export const i18nAdminServicesPlugin = definePlugin({
 // Chrome contribution: the console sidebar entry (P-060 region).
 export const i18nChromePlugin = definePlugin({
 	id: "i18n.chrome",
+	meta: { keywords: ["i18n", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
@@ -108,6 +112,7 @@ export const i18nChromePlugin = definePlugin({
 // platform plugin's physical route subtree; this declares the page.
 export const i18nPanelPlugin = definePlugin({
 	id: "i18n.panel",
+	meta: { keywords: ["i18n", "ui", "admin"] },
 	requiredDeps: [platformPanelPlugin.id, i18nAdminServicesPlugin.id],
 	panel: {
 		pages: [

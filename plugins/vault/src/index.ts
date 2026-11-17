@@ -570,11 +570,13 @@ CREATE INDEX portal_keys_wrap_idx ON portal_keys (wrap_public_key);
 
 export const vaultTablesPlugin = definePlugin({
 	id: "vault.tables",
+	meta: { keywords: ["vault", "tables"] },
 	tables: { clinicKeys, entityDeks, portalKeys },
 });
 
 export const vaultServicesPlugin = definePlugin({
 	id: "vault.services",
+	meta: { keywords: ["vault", "services"] },
 	services: VaultLive,
 });
 
@@ -595,6 +597,7 @@ const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
  */
 export const vaultPagesPlugin = definePlugin({
 	id: "vault.pages",
+	meta: { keywords: ["vault", "ui"] },
 	requiredDeps: ["vault.services"],
 	pages: CLINICAL_INSTANCES.map((instance) => ({
 		id: `vault.${instance}`,
@@ -624,6 +627,7 @@ export const vaultPagesPlugin = definePlugin({
  * simply never render the item (no dep edge needed). */
 export const vaultChromePlugin = definePlugin({
 	id: "vault.chrome",
+	meta: { keywords: ["vault", "ui"] },
 	chrome: CLINICAL_INSTANCES.map((instance) => ({
 		id: `vault.${instance}.nav`,
 		region: "portal.sidebar" as const,

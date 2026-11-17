@@ -9,6 +9,6 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "integrity.tables" }),
-	definePlugin({ id: "integrity.services" }),
+	definePlugin({ id: "integrity.tables", meta: { keywords: ["integrity", "tables"] } }),
+	definePlugin({ id: "integrity.services", meta: { keywords: ["integrity", "services"] } }),
 ];

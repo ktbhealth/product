@@ -14,6 +14,7 @@ import { InstancesPanelPage, PersonasPanelPage } from "./platform-page.tsx";
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "eval.persona.tables",
+		meta: { keywords: ["eval", "persona", "tables"] },
 		// Mirrors evalPersonaTablesPlugin — drizzle schema never reaches
 		// the client bundle.
 		requiredDeps: ["eval.validator.tables"],
@@ -21,6 +22,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "eval.persona.services",
+		meta: { keywords: ["eval", "persona", "services"] },
 		// Mirrors evalPersonaServicesPlugin.requiredDeps/optionalDeps —
 		// literal ids.
 		requiredDeps: ["eval.persona.tables"],
@@ -28,6 +30,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "eval.persona.chrome",
+		meta: { keywords: ["eval", "persona", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [
 			{
@@ -60,6 +63,7 @@ export const plugins: readonly Plugin[] = [
 	}),
 	definePlugin({
 		id: "eval.persona.panel",
+		meta: { keywords: ["eval", "persona", "ui"] },
 		requiredDeps: ["platform.panel", "eval.persona.services"],
 		panel: {
 			pages: [

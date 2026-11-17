@@ -17,6 +17,7 @@ import { UsersPlatformPage } from "./platform-page.tsx";
  */
 export const usersChromePlugin = definePlugin({
 	id: "users.chrome",
+	meta: { keywords: ["users", "ui"] },
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
@@ -32,6 +33,7 @@ export const usersChromePlugin = definePlugin({
 
 export const usersPanelPlugin = definePlugin({
 	id: "users.panel",
+	meta: { keywords: ["users", "ui"] },
 	requiredDeps: ["platform.panel"],
 	panel: {
 		pages: [
@@ -49,6 +51,7 @@ export const usersPanelPlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	definePlugin({
 		id: "users.services",
+		meta: { keywords: ["users", "services"] },
 		requiredDeps: ["platform.admin"],
 		// Mirrors usersServicesPlugin.optionalDeps (server index.ts) —
 		// literal id: importing @ktb/audit would pull the server graph

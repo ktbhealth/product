@@ -77,6 +77,7 @@ export const storageDatasetContributions: readonly Contribution[] = [
 
 export const storageDatasetPlugin = definePlugin({
 	id: "storage.dataset",
+	meta: { keywords: ["eval", "dataset", "services"] },
 	contributions: storageDatasetContributions,
 });
 

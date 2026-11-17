@@ -119,6 +119,7 @@ const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
 
 export const clinicianPortalPlugin = definePlugin({
 	id: "clinician.portal",
+	meta: { keywords: ["clinician", "shell", "doctor"] },
 	requiredDeps: ["portal.shell"],
 	portals: CLINICAL_INSTANCES.map((instance) => ({
 		id: instance.id,
@@ -131,6 +132,7 @@ export const clinicianPortalPlugin = definePlugin({
 
 export const clinicianPagesPlugin = definePlugin({
 	id: "clinician.pages",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: ["patients.services", "consultations.services"],
 	// Mirrors clinicianPagesPlugin.optionalDeps (server index.ts).
 	optionalDeps: ["audit.services"],
@@ -139,6 +141,7 @@ export const clinicianPagesPlugin = definePlugin({
 
 export const clinicianChromePlugin = definePlugin({
 	id: "clinician.chrome",
+	meta: { keywords: ["clinician", "ui", "doctor"] },
 	requiredDeps: ["clinician.portal"],
 	chrome: [...sidebarChrome("doctor"), ...sidebarChrome("secretary")],
 });

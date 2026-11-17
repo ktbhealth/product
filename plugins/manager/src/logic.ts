@@ -155,3 +155,266 @@ export const configFormFields = (config: PluginConfigSchema): readonly ConfigFor
 	}
 	return fields;
 };
+
+// ---------- plugins-map graph derivation (P-082) ----------
+
+/**
+ * Structural graph of the plugin registry for the map view — every
+ * `Plugin` object is a node; declared relationships are edges. All
+ * derivation is manifest-only: `requiredDeps`/`optionalDeps` order the
+ * graph, `chrome[].region` shows which named slots a plugin publishes
+ * into, and generic `contributions[]` entries point at the surfaces
+ * that collect their kind.
+ */
+
+export type GraphEdgeKind = "required" | "optional" | "region" | "kind";
+
+export interface GraphEdge {
+	readonly source: string;
+	readonly target: string;
+	readonly kind: GraphEdgeKind;
+	/** The concrete slot/kind behind the edge — region name or
+	 * contribution kind id; undefined for dep edges. */
+	readonly label?: string;
+}
+
+export type PseudoNodeKind = "region" | "surface";
+
+export interface GraphNode {
+	readonly id: string;
+	/** Display label — plugin id, region name, or surface name. */
+	readonly label: string;
+	/** Present for real plugin nodes; absent on pseudo-nodes. */
+	readonly plugin?: Plugin;
+	readonly pseudo?: PseudoNodeKind;
+	/** Longest-path layer over dep edges (0 = no deps). Pseudo-nodes
+	 * sit one column past the deepest plugin. */
+	readonly depth: number;
+}
+
+export interface PluginGraph {
+	readonly nodes: readonly GraphNode[];
+	readonly edges: readonly GraphEdge[];
+}
+
+export const regionNodeId = (region: string): string => `region:${region}`;
+export const surfaceNodeId = (consumer: string): string => `surface:${consumer}`;
+
+/** Region prefixes whose slots are declared AND rendered by a plugin —
+ * region edges point at that plugin rather than a `region:` pseudo-node.
+ * Shared slots (`portal.*` chrome, `app.*` chrome) are rendered by
+ * whichever shell is active, so they keep a pseudo-node each. */
+const REGION_OWNERS: readonly (readonly [string, string])[] = [
+	["portal.dashboard.", "dashboard.panel"],
+];
+
+/** The node a `chrome[].region` edge targets: the owning plugin when
+ * one declares the slot, else a `region:` pseudo-node. Unknown regions
+ * still get a node — the map never hides declared communication. */
+export const regionEdgeTarget = (region: string): string =>
+	REGION_OWNERS.find(([prefix]) => region.startsWith(prefix))?.[1] ?? regionNodeId(region);
+
+/** Generic-contribution kind prefixes → the surfaces that collect
+ * them. Mirrors the `consumers` field of the kind descriptors
+ * (`EVAL_CONTRIBUTION_KINDS` in @ktb/eval-core, `THEME_*_KIND` in
+ * @ktb/kernel) — kept as a static table so the manager does not import
+ * domain packages just for descriptors. A registry-level test asserts
+ * every used kind resolves here, so a new kind forces this table (and
+ * its consumer list) to be revisited instead of silently degrading. */
+const KIND_CONSUMERS: readonly (readonly [string, readonly string[]])[] = [
+	["eval.", ["eval-cli"]],
+	["theme.", ["app-host.server", "app-host.client", "app.routes"]],
+];
+
+/** Consumers that name a plugin id resolve to it directly; everything
+ * else is a host surface and gets a `surface:` pseudo-node. */
+const consumerEdgeTarget = (consumer: string): string =>
+	consumer === "plugin-manager" ? "manager.panel" : surfaceNodeId(consumer);
+
+/** Surfaces collecting `kind` — falls back to the generic host surface
+ * for kinds no table claims. */
+export const kindConsumers = (kind: string): readonly string[] =>
+	KIND_CONSUMERS.find(([prefix]) => kind.startsWith(prefix))?.[1] ?? ["app-host.server"];
+
+/**
+ * Derive the map's nodes and edges from the registry. `requiredDeps`
+ * and `optionalDeps` edges run dep → dependent (same orientation as
+ * `orderPlugins`); `region`/`kind` edges run plugin → consumer.
+ * Parallel same-kind edges between a pair collapse into one — a plugin
+ * publishing five chrome entries into `portal.sidebar` draws a single
+ * edge labeled with the region.
+ */
+export const graphFromPlugins = (plugins: readonly Plugin[]): PluginGraph => {
+	const nodes = new Map<string, GraphNode>();
+	const edges = new Map<string, GraphEdge>();
+	const addEdge = (edge: GraphEdge) => {
+		const key = `${edge.source}\0${edge.kind}\0${edge.target}\0${edge.label ?? ""}`;
+		if (!edges.has(key)) edges.set(key, edge);
+	};
+	for (const plugin of plugins) {
+		nodes.set(plugin.id, { id: plugin.id, label: plugin.id, plugin, depth: 0 });
+		for (const dep of plugin.requiredDeps ?? []) {
+			addEdge({ source: dep, target: plugin.id, kind: "required" });
+		}
+		for (const dep of plugin.optionalDeps ?? []) {
+			addEdge({ source: dep, target: plugin.id, kind: "optional" });
+		}
+		for (const entry of plugin.chrome ?? []) {
+			const target = regionEdgeTarget(entry.region);
+			addEdge({ source: plugin.id, target, kind: "region", label: entry.region });
+		}
+		for (const entry of plugin.contributions ?? []) {
+			for (const consumer of kindConsumers(entry.kind)) {
+				addEdge({
+					source: plugin.id,
+					target: consumerEdgeTarget(consumer),
+					kind: "kind",
+					label: entry.kind,
+				});
+			}
+		}
+	}
+	// Materialize pseudo-nodes for every edge target that is not a
+	// plugin id — a target without a node would render nothing.
+	for (const edge of edges.values()) {
+		if (!nodes.has(edge.target)) {
+			const pseudo: PseudoNodeKind = edge.target.startsWith("region:") ? "region" : "surface";
+			const label = edge.target.slice(pseudo.length + 1);
+			nodes.set(edge.target, { id: edge.target, label, pseudo, depth: 0 });
+		}
+	}
+	return { nodes: assignDepths(nodes, edges), edges: [...edges.values()] };
+};
+
+/** Longest-path depth over required+optional edges: depth(p) = 0 with
+ * no dep predecessors, else 1 + max(depth of predecessors). Registry
+ * order feeds the walk (topo already), so a single pass suffices.
+ * Pseudo-nodes are placed one column past the deepest plugin — they
+ * are sinks of the communication flow, not part of composition. */
+const assignDepths = (
+	nodes: Map<string, GraphNode>,
+	edges: Map<string, GraphEdge>,
+): readonly GraphNode[] => {
+	const incoming = new Map<string, string[]>();
+	for (const edge of edges.values()) {
+		if (edge.kind !== "required" && edge.kind !== "optional") continue;
+		incoming.set(edge.target, [...(incoming.get(edge.target) ?? []), edge.source]);
+	}
+	const depth = new Map<string, number>();
+	for (const id of nodes.keys()) {
+		if (!depth.has(id)) {
+			const visit = (n: string, trail: ReadonlySet<string>): number => {
+				const memo = depth.get(n);
+				if (memo !== undefined) return memo;
+				if (trail.has(n)) return 0;
+				const preds = incoming.get(n) ?? [];
+				const d =
+					preds.length === 0
+						? 0
+						: 1 + Math.max(...preds.map((p) => visit(p, new Set([...trail, n]))));
+				depth.set(n, d);
+				return d;
+			};
+			visit(id, new Set());
+		}
+	}
+	const maxPluginDepth = Math.max(
+		0,
+		...[...nodes.values()].filter((n) => n.pseudo === undefined).map((n) => depth.get(n.id) ?? 0),
+	);
+	return [...nodes.values()].map((node) => ({
+		...node,
+		depth: node.pseudo === undefined ? (depth.get(node.id) ?? 0) : maxPluginDepth + 1,
+	}));
+};
+
+export interface GraphLayout {
+	readonly positions: ReadonlyMap<string, { readonly x: number; readonly y: number }>;
+	readonly width: number;
+	readonly height: number;
+}
+
+export const LAYOUT_COLUMN_WIDTH = 280;
+export const LAYOUT_ROW_HEIGHT = 96;
+
+/**
+ * Deterministic layered layout, no dependencies: x = depth × column
+ * width, y = order within the layer following node order (registry
+ * topo for plugin nodes, discovery order for pseudo-nodes).
+ */
+export const layeredLayout = (graph: PluginGraph): GraphLayout => {
+	const byDepth = new Map<number, GraphNode[]>();
+	for (const node of graph.nodes) {
+		byDepth.set(node.depth, [...(byDepth.get(node.depth) ?? []), node]);
+	}
+	const positions = new Map<string, { x: number; y: number }>();
+	let height = 0;
+	for (const [depth, layer] of [...byDepth.entries()].sort((a, b) => a[0] - b[0])) {
+		height = Math.max(height, layer.length);
+		layer.forEach((node, index) => {
+			positions.set(node.id, { x: depth * LAYOUT_COLUMN_WIDTH, y: index * LAYOUT_ROW_HEIGHT });
+		});
+	}
+	return {
+		positions,
+		width: byDepth.size,
+		height,
+	};
+};
+
+/**
+ * The transitive neighborhood of `id` over ALL edge kinds:
+ * `upstream` = everything the node consumes (deps, regions it
+ * publishes into are excluded — regions are written TO, not read),
+ * `downstream` = everything that depends on or consumes it. Dep edges
+ * walk transitively; region/kind edges contribute their direct
+ * endpoints only. Includes `id` itself in neither set.
+ */
+export const focusNeighborhood = (
+	graph: PluginGraph,
+	id: string,
+): { readonly upstream: ReadonlySet<string>; readonly downstream: ReadonlySet<string> } => {
+	const depOut = new Map<string, string[]>();
+	const depIn = new Map<string, string[]>();
+	const direct = new Map<string, string[]>();
+	for (const edge of graph.edges) {
+		if (edge.kind === "required" || edge.kind === "optional") {
+			depOut.set(edge.source, [...(depOut.get(edge.source) ?? []), edge.target]);
+			depIn.set(edge.target, [...(depIn.get(edge.target) ?? []), edge.source]);
+		}
+		direct.set(edge.source, [...(direct.get(edge.source) ?? []), edge.target]);
+		direct.set(edge.target, [...(direct.get(edge.target) ?? []), edge.source]);
+	}
+	const walk = (
+		starts: readonly string[],
+		next: (id: string) => readonly string[],
+	): Set<string> => {
+		const seen = new Set<string>();
+		const queue = [...starts];
+		while (queue.length > 0) {
+			const current = queue.shift()!;
+			if (seen.has(current) || current === id) continue;
+			seen.add(current);
+			queue.push(...next(current));
+		}
+		return seen;
+	};
+	// Upstream: transitive dep predecessors + direct channel targets
+	// (the surfaces this node publishes into).
+	const upstream = walk(depIn.get(id) ?? [], (n) => depIn.get(n) ?? []);
+	for (const t of direct.get(id) ?? []) {
+		const edge = graph.edges.find((e) => e.source === id && e.target === t);
+		if (edge !== undefined && edge.kind !== "required" && edge.kind !== "optional") {
+			upstream.add(t);
+		}
+	}
+	// Downstream: transitive dep dependents + direct channel sources
+	// (plugins publishing into this node's region).
+	const downstream = walk(depOut.get(id) ?? [], (n) => depOut.get(n) ?? []);
+	for (const s of graph.edges.filter(
+		(e) => e.target === id && (e.kind === "region" || e.kind === "kind"),
+	)) {
+		downstream.add(s.source);
+	}
+	return { upstream, downstream };
+};
