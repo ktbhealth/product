@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import type { SqlDatabase, SqlStatement } from "@ktb/db";
+
 import { AcpBridge, type BridgeSocket, type BridgeDoState } from "./do.ts";
 
 /**
@@ -44,19 +46,38 @@ const makeState = (restored: readonly FakeSocket[] = []) => {
 	return state;
 };
 
+/** Recording SqlDatabase fake — the DO now stamps last_seen_at through
+ * drizzle, so tests observe the prepared SQL + bound params instead of
+ * a hand-rolled prepare/bind/run surface. */
 const makeDb = () => {
 	const calls: { sql: string; args: readonly unknown[] }[] = [];
-	return {
-		calls,
-		prepare: (sql: string) => ({
-			bind: (...args: readonly unknown[]) => ({
-				run: async () => {
-					calls.push({ sql, args });
-					return {};
-				},
-			}),
-		}),
+	const record = (sql: string, args: readonly unknown[]) => {
+		calls.push({ sql, args });
+		return { success: true, results: [], meta: {} };
 	};
+	const database: SqlDatabase = {
+		prepare: (sql: string) => {
+			let args: readonly unknown[] = [];
+			const statement: SqlStatement = {
+				bind: (...values: unknown[]) => {
+					args = values;
+					return statement;
+				},
+				first: async () => null,
+				run: async () => record(sql, args),
+				all: async () => record(sql, args),
+				raw: async () => {
+					record(sql, args);
+					return [];
+				},
+			};
+			return statement;
+		},
+		dump: async () => new ArrayBuffer(0),
+		batch: async () => [],
+		exec: async () => ({ count: 0, duration: 0 }),
+	};
+	return { calls, database };
 };
 
 const upgradeReq = (endpoint = 7) =>
@@ -106,12 +127,16 @@ describe("AcpBridge", () => {
 	it("accepts the bridge socket via hibernation and stamps last_seen_at", async () => {
 		const state = makeState();
 		const db = makeDb();
-		const b = new AcpBridge(state, { DB: db });
+		const b = new AcpBridge(state, { DB: db.database });
 		const res = await b.fetch(upgradeReq(7));
 		expect(res.status).toBe(101);
 		expect(state.accepted).toHaveLength(1);
+		await state.waits[0]!; // the stamp is a waitUntil'd promise
 		expect(db.calls).toHaveLength(1);
+		expect(db.calls[0]!.sql).toContain("last_seen_at");
 		expect(db.calls[0]!.args[1]).toBe(7);
+		// timestamp_ms maps Date → epoch ms, same wire value as before.
+		expect(typeof db.calls[0]!.args[0]).toBe("number");
 	});
 
 	it("answers 503 offline before any socket is held", async () => {
@@ -178,11 +203,12 @@ describe("AcpBridge", () => {
 	it("heartbeat updates last_seen_at and answers pong, never counting as rpc", async () => {
 		const state = makeState();
 		const db = makeDb();
-		const b = new AcpBridge(state, { DB: db });
+		const b = new AcpBridge(state, { DB: db.database });
 		await b.fetch(upgradeReq(3));
 		const server = state.accepted[0]!;
 		server.sent.length = 0;
 		b.webSocketMessage(server, JSON.stringify({ type: "ping" }));
+		await Promise.all(state.waits); // connect + heartbeat stamps
 		expect(db.calls).toHaveLength(2);
 		expect(JSON.parse(server.sent[0]!)).toEqual({ type: "pong" });
 	});
@@ -281,7 +307,7 @@ describe("AcpBridge", () => {
 	it("a restored socket heartbeats without an endpoint id and no DB write", async () => {
 		const restored = new FakeSocket();
 		const db = makeDb();
-		const b = new AcpBridge(makeState([restored]), { DB: db });
+		const b = new AcpBridge(makeState([restored]), { DB: db.database });
 		b.webSocketMessage(restored, JSON.stringify({ type: "ping" }));
 		expect(restored.sent[0]).toBe(JSON.stringify({ type: "pong" }));
 		// endpointId is only set by a fresh upgrade — a restored socket
@@ -298,14 +324,21 @@ describe("AcpBridge", () => {
 	});
 
 	it("swallows a failed last_seen_at write — never breaks the socket path", async () => {
-		const db = {
-			prepare: () => ({
-				bind: () => ({
-					run: async () => {
-						throw new Error("d1 down");
-					},
-				}),
-			}),
+		const failing = async (): Promise<never> => {
+			throw new Error("d1 down");
+		};
+		const statement: SqlStatement = {
+			bind: () => statement,
+			first: failing,
+			run: failing,
+			all: failing,
+			raw: failing,
+		};
+		const db: SqlDatabase = {
+			prepare: () => statement,
+			dump: async () => new ArrayBuffer(0),
+			batch: async () => [],
+			exec: async () => ({ count: 0, duration: 0 }),
 		};
 		const state = makeState();
 		const b = new AcpBridge(state, { DB: db });

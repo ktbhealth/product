@@ -34,6 +34,11 @@
  * fully mockable for tests (fake state, sockets, env).
  */
 
+import { eq } from "drizzle-orm";
+
+import { makeDb, type DbClient, type SqlDatabase } from "@ktb/db";
+import { aiEndpoint } from "@ktb/db/schema";
+
 const RPC_TIMEOUT_MS = 60_000;
 
 /** The WebSocket slice the DO uses (workerd's WebSocket satisfies it). */
@@ -51,15 +56,10 @@ export interface BridgeDoState {
 	waitUntil?(promise: Promise<unknown>): void;
 }
 
-/** The D1 slice for the last_seen_at write — bound by the host worker. */
-export interface BridgeSqlDatabase {
-	prepare(sql: string): {
-		bind(...args: readonly unknown[]): { run(): Promise<unknown> };
-	};
-}
-
+/** The DB port for the last_seen_at write — the worker's SqlDatabase
+ * binding (D1 today), adapted to drizzle lazily on first stamp. */
 export interface AcpBridgeEnv {
-	readonly DB?: BridgeSqlDatabase;
+	readonly DB?: SqlDatabase;
 }
 
 interface WireMessage {
@@ -89,6 +89,7 @@ const json = (body: unknown, status = 200): Response =>
 export class AcpBridge {
 	private socket: BridgeSocket | null = null;
 	private endpointId: number | null = null;
+	private db: DbClient | null = null;
 	private readonly pending = new Map<string, Pending>();
 	private notifies: WireMessage[] = [];
 	private readonly rpcTimeoutMs: number;
@@ -106,17 +107,29 @@ export class AcpBridge {
 		this.socket = live[0] ?? null;
 	}
 
-	/** D1 write for the status badge — connect + heartbeat. Best-effort:
-	 * a failed stamp never breaks the socket path. */
+	/** Drizzle client over the SqlDatabase binding — built once per DO
+	 * instance (hibernation wakes construct fresh). */
+	private stampDb(): DbClient | null {
+		const raw = this.env.DB;
+		if (raw === undefined) return null;
+		this.db ??= makeDb(raw);
+		return this.db;
+	}
+
+	/** Status-badge write — connect + heartbeat. Goes through drizzle
+	 * (typed `ai_endpoint` update), never raw SQL. Best-effort: a
+	 * failed stamp never breaks the socket path. */
 	private markSeen() {
 		if (this.endpointId === null) return;
-		const db = this.env.DB;
-		if (db === undefined) return;
-		const done = db
-			.prepare("UPDATE ai_endpoint SET last_seen_at = ? WHERE id = ?")
-			.bind(Date.now(), this.endpointId)
-			.run()
-			.catch(() => {});
+		const db = this.stampDb();
+		if (db === null) return;
+		const endpointId = this.endpointId;
+		const done = (async () => {
+			await db
+				.update(aiEndpoint)
+				.set({ lastSeenAt: new Date() })
+				.where(eq(aiEndpoint.id, endpointId));
+		})().catch(() => {});
 		this.state.waitUntil?.(done);
 	}
 

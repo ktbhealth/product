@@ -61,3 +61,7 @@ export type DbClient = ReturnType<typeof makeDb>;
 export class Binding extends Context.Service<Binding, SqlDatabase>()("@ktb/db/Binding") {}
 export class Db extends Context.Service<Db, DbClient>()("@ktb/db/Db") {}
 export const DbLive = Layer.effect(Db, Effect.map(Binding, makeDb));
+
+// Portable atomic multi-op execution — see tx.ts for the dialect seam.
+export { tx } from "./tx.ts";
+export type { TxOp } from "./tx.ts";
