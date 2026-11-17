@@ -1068,6 +1068,37 @@
         "react": "^19.2.0",
       },
     },
+    "plugins/kv": {
+      "name": "@ktb/kv",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@ktb/auth": "workspace:*",
+        "@types/better-sqlite3": "^9.6.0",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "better-sqlite3": "^13.0.3",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
     "plugins/llm-eval": {
       "name": "@ktb/llm-eval",
       "dependencies": {
@@ -1968,6 +1999,8 @@
     "@ktb/jobs-port": ["@ktb/jobs-port@workspace:packages/jobs-port"],
 
     "@ktb/kernel": ["@ktb/kernel@workspace:packages/kernel"],
+
+    "@ktb/kv": ["@ktb/kv@workspace:plugins/kv"],
 
     "@ktb/llm-eval": ["@ktb/llm-eval@workspace:plugins/llm-eval"],
 

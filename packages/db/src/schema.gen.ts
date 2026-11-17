@@ -14,6 +14,7 @@ export * from "../../../plugins/groups/src/schema.ts";
 export * from "../../../plugins/i18n/src/schema.ts";
 export * from "../../../plugins/integrity/src/schema.ts";
 export * from "../../../plugins/invites/src/schema.ts";
+export * from "../../../plugins/kv/src/schema.ts";
 export * from "../../../plugins/notifications/src/schema.ts";
 export * from "../../../plugins/pages/src/schema.ts";
 export * from "../../../plugins/patient-access/src/schema.ts";
