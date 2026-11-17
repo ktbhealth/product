@@ -10,6 +10,12 @@ import * as Option from "effect/Option";
 import { Forbidden, Principal } from "@ktb/authz";
 import { contentHash } from "@ktb/crypto/digest";
 import { Db, type DbClient } from "@ktb/db";
+// `consultations` comes from the composed schema, NOT
+// `@ktb/consultations/schema`: consultations depends on @ktb/audit, so
+// a package-specifier import of the plugin would create a workspace
+// cycle. @ktb/db sits below the plugin system and re-exports the same
+// table object via the generated schema.gen.ts.
+import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
@@ -19,12 +25,6 @@ import { Tenant, tenantScopeId } from "@ktb/tenant";
 import { AuditPlatformPage } from "./platform-page.tsx";
 import { auditConfig, auditConfigSchema } from "./config.tsx";
 import { adminAudit, type AdminAudit } from "./schema.ts";
-// Relative import on purpose: `@ktb/consultations` depends on
-// `@ktb/audit` (the Audit service its mutations record through), so a
-// package-specifier import here would create a workspace cycle — same
-// rule as the groups import in ./schema.ts. The schema module is
-// dependency-free, so the cycle stays broken.
-import { consultations } from "../../consultations/src/schema.ts";
 
 export type { AdminAudit };
 export { adminAudit } from "./schema.ts";

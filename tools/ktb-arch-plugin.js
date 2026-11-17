@@ -40,6 +40,13 @@
  *   beforeLoad, so the helper wraps `server.handlers` with the same
  *   enabled-state check, answering 404 when the plugin is disabled).
  *   Same bare-creator ban and test exemption as the page gate.
+ * - `ktb-arch/package-boundary` — a relative import (`../…`) may not
+ *   resolve outside the importing package's root (plugins/<pkg>,
+ *   packages/<pkg>, apps/<pkg>, evals/<pkg>): reaching into a sibling
+ *   workspace package's sources bypasses its export map and dependency
+ *   edges — use `@ktb/<pkg>/<subpath>` instead. `schema.ts` is exempt
+ *   (drizzle-kit's CJS resolver cannot follow `@ktb/*` specifiers —
+ *   T-143), as are `*.gen.*` aggregations and `*.test.*` files.
  */
 
 import { PROVIDER_LITERAL_PATTERNS } from "./arch-policy.mjs";
@@ -265,15 +272,34 @@ const clientContract = {
 
 const providerLockin = {
 	create(context) {
+		const check = (node, value) => {
+			if (typeof value !== "string") return;
+			if (!PROVIDER_LITERAL_PATTERNS.some((re) => re.test(value))) return;
+			context.report({
+				node,
+				message:
+					"provider-named literal in port/domain code — move it to an adapter or deploy config (tools/arch-policy.mjs PROVIDER_LITERAL_PATTERNS)",
+			});
+		};
 		return {
 			Literal(node) {
-				if (typeof node.value !== "string") return;
-				if (!PROVIDER_LITERAL_PATTERNS.some((re) => re.test(node.value))) return;
-				context.report({
-					node,
-					message:
-						"provider-named literal in port/domain code — move it to an adapter or deploy config (tools/arch-policy.mjs PROVIDER_LITERAL_PATTERNS)",
-				});
+				check(node, node.value);
+			},
+			// Template literals hide provider endpoints the same way —
+			// e.g. `https://fonts.googleapis.com/css2?family=${x}` — so
+			// every quasi's cooked text is scanned too.
+			TemplateLiteral(node) {
+				for (const quasi of node.quasis ?? []) {
+					const cooked = quasi.value?.cooked ?? quasi.value?.raw;
+					if (typeof cooked === "string" && PROVIDER_LITERAL_PATTERNS.some((re) => re.test(cooked))) {
+						context.report({
+							node: quasi,
+							message:
+								"provider-named literal in port/domain code — move it to an adapter or deploy config (tools/arch-policy.mjs PROVIDER_LITERAL_PATTERNS)",
+						});
+						return;
+					}
+				}
 			},
 		};
 	},
@@ -535,6 +561,73 @@ const makePluginRouteGate = (fileRe, helperName) => ({
 const pluginRouteGate = makePluginRouteGate(PLUGIN_PAGE_ROUTE_RE, "createPluginFileRoute");
 const pluginApiRouteGate = makePluginRouteGate(PLUGIN_API_ROUTE_RE, "createPluginApiRoute");
 
+// --- ktb-arch/package-boundary ----------------------------------------------
+// A relative import may not escape the importing package's root
+// (plugins/<pkg>, packages/<pkg>, apps/<pkg>, evals/<pkg>): `../../x`
+// reaching into a sibling workspace package bypasses that package's
+// export map and hides undeclared dependency edges. Cross-package
+// references must use `@ktb/<pkg>/<subpath>` specifiers (add the
+// subpath to the dependency's package.json `exports` when missing).
+//
+// Exemptions (encoded narrowly, see tools/arch-policy.mjs
+// PACKAGE_BOUNDARY_GLOBS for the scanned trees):
+// - `schema.ts` — drizzle-kit loads the composed schema
+//   (packages/db/src/schema.ts → generated schema.gen.ts → every
+//   plugins/*/src/schema.ts) through a CJS resolver that cannot follow
+//   `@ktb/*` package specifiers, so plugin schema modules MUST keep
+//   relative imports for the table DSL (@ktb/db/table, @ktb/db/auth)
+//   and cross-plugin FK targets. Tracked as T-143.
+// - `*.gen.*` — generated aggregations (schema.gen.ts,
+//   cipher-specs.gen.ts, i18n manifest/types) reach across packages by
+//   design; they are regenerated, never hand-edited.
+// - `*.test.*` — tests may wire plugin internals directly (same
+//   relaxation as the other ktb-arch rules).
+
+/** `<abs>/plugins/<pkg>` (or packages/apps/evals) prefix of a filename. */
+const PACKAGE_ROOT_RE = /^(.*[/\\])?(?:plugins|packages|apps|evals)[/\\][^/\\]+/;
+const BOUNDARY_EXEMPT_BASENAME_RE = /(?:^|[/\\])(?:schema\.tsx?|[^/\\]*\.gen\.tsx?|[^/\\]*\.test\.tsx?)$/;
+
+const packageBoundary = {
+	create(context) {
+		const filename = context.filename.replaceAll("\\", "/");
+		const rootMatch = filename.match(PACKAGE_ROOT_RE);
+		if (rootMatch === null || BOUNDARY_EXEMPT_BASENAME_RE.test(filename)) return {};
+		// normalizePath drops the leading "/" — normalize the root the
+		// same way so the prefix comparison below is apples-to-apples.
+		const root = normalizePath(rootMatch[0]);
+
+		const checkSource = (node, source) => {
+			if (typeof source !== "string" || !source.startsWith(".")) return;
+			const dir = filename.slice(0, filename.lastIndexOf("/") + 1);
+			const resolved = normalizePath(`${dir}${source}`);
+			if (resolved === root || resolved.startsWith(`${root}/`)) return;
+			context.report({
+				node,
+				message:
+					`relative import "${source}" escapes the package root — import through ` +
+					`the package's export map (@ktb/<pkg>/<subpath>) instead ` +
+					"(ktb-arch/package-boundary)",
+			});
+		};
+
+		return {
+			ImportDeclaration(node) {
+				checkSource(node, node.source?.value);
+			},
+			ExportNamedDeclaration(node) {
+				if (node.source) checkSource(node, node.source.value);
+			},
+			ExportAllDeclaration(node) {
+				if (node.source) checkSource(node, node.source.value);
+			},
+			ImportExpression(node) {
+				const source = node.source;
+				checkSource(node, source?.type === "Literal" ? source.value : undefined);
+			},
+		};
+	},
+};
+
 export default {
 	meta: { name: "ktb-arch" },
 	rules: {
@@ -545,5 +638,6 @@ export default {
 		"tenant-scope": tenantScope,
 		"plugin-route-gate": pluginRouteGate,
 		"plugin-api-route-gate": pluginApiRouteGate,
+		"package-boundary": packageBoundary,
 	},
 };

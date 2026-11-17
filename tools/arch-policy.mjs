@@ -64,6 +64,21 @@ export const PORT_TEST_GLOBS = [
 	"evals/**/*.test.{ts,tsx}",
 ];
 
+/**
+ * Source trees scanned by ktb-arch/package-boundary: a relative import
+ * (`../…`) may not resolve outside the importing package's root —
+ * cross-package references must go through the dependency's export map
+ * (`@ktb/<pkg>/<subpath>`). Exemptions live inside the rule itself:
+ * `schema.ts` (drizzle-kit CJS resolver, T-143), `*.gen.*` (generated
+ * aggregations) and `*.test.*` (tests may wire internals directly).
+ */
+export const PACKAGE_BOUNDARY_GLOBS = [
+	"plugins/**/*.{ts,tsx}",
+	"packages/**/*.{ts,tsx}",
+	"apps/**/*.{ts,tsx}",
+	"evals/**/*.{ts,tsx}",
+];
+
 /** Import specifiers that tie code to a runtime or cloud platform. */
 export const PLATFORM_IMPORT_PATTERNS = ["node:*", "bun:*", "deno:*", "cloudflare:*", "workerd:*"];
 
@@ -79,6 +94,7 @@ export const PROVIDER_LITERAL_PATTERNS = [
 	/^@cf\//, // Cloudflare Workers AI model ids
 	/\bapi\.anthropic\.com\b/,
 	/\bapi\.openai\.com\b/,
+	/\bgoogleapis\.com\b/, // fonts.googleapis.com css2 + generativelanguage.googleapis.com LLM endpoint
 	/\btypesafe\.ai\b/, // Jev decision-model endpoint (P-066 eval port)
 	/\/v1\/systemone\b/, // Jev API path — belongs in adapters
 ];
