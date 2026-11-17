@@ -41,6 +41,7 @@ export const PLUGIN_KEYWORDS = [
 	"tenant",
 	"theme",
 	"transcription",
+	"triggers",
 	"users",
 	"vault",
 	"views",

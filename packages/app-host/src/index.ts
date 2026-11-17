@@ -37,6 +37,7 @@ import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platfor
 import { DocumentCollections, makeDocumentCollections } from "@ktb/document-store";
 import { ViewDefinitions, makeViewDefinitions } from "@ktb/views";
 import { ApiExposures, makeApiExposures } from "@ktb/api";
+import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -532,6 +533,11 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// it via `ApiExposures`. Enablement is likewise ignored: exposures
 	// are static composition data.
 	const ApiExposuresLive = Layer.succeed(ApiExposures, makeApiExposures(plugins));
+	// Trigger-definition registry (trigger.def contributions): same
+	// composition-time collection — the @ktb/triggers service layer
+	// consumes it via `TriggerDefinitions`. Enablement is likewise
+	// ignored: defs are static composition data.
+	const TriggerDefinitionsLive = Layer.succeed(TriggerDefinitions, makeTriggerDefinitions(plugins));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -559,6 +565,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		DocumentCollectionsLive,
 		ViewDefinitionsLive,
 		ApiExposuresLive,
+		TriggerDefinitionsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),
