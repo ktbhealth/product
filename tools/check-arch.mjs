@@ -52,10 +52,14 @@ check(
 	["process", "Bun", "Deno"].every((g) => PLATFORM_GLOBALS.includes(g)),
 );
 check(
-	"provider literals cover @cf/* and major provider endpoints",
+	"provider literals cover @cf/*, major provider endpoints and googleapis.com",
 	PROVIDER_LITERAL_PATTERNS.some((re) => re.test("@cf/meta/llama-3.1-8b")) &&
 		PROVIDER_LITERAL_PATTERNS.some((re) => re.test("https://api.anthropic.com/v1")) &&
-		PROVIDER_LITERAL_PATTERNS.some((re) => re.test("https://api.openai.com/v1")),
+		PROVIDER_LITERAL_PATTERNS.some((re) => re.test("https://api.openai.com/v1")) &&
+		PROVIDER_LITERAL_PATTERNS.some((re) => re.test("https://fonts.googleapis.com/css2")) &&
+		PROVIDER_LITERAL_PATTERNS.some((re) =>
+			re.test("https://generativelanguage.googleapis.com/v1beta/openai/"),
+		),
 );
 check(
 	"impl imports ban the composition root and app-host",
@@ -410,6 +414,69 @@ const runProgramRule = (ruleName, filename, body) => {
 	const apiTestVisitor = plugin.rules["plugin-api-route-gate"].create(apiTestCtx);
 	apiTestVisitor.Program?.(program([importDecl("@tanstack/react-router", ["createFileRoute"])]));
 	check("plugin-api-route-gate exempts test files", apiTestCtx.reports.length === 0);
+}
+
+// provider-lockin also scans template-literal quasis — provider
+// endpoints are often built with interpolation.
+{
+	const ctx = makeContext("packages/kernel/src/port.ts");
+	const visitor = plugin.rules["provider-lockin"].create(ctx);
+	visitor.TemplateLiteral({
+		type: "TemplateLiteral",
+		quasis: [
+			{ type: "TemplateElement", value: { cooked: "https://fonts.googleapis.com/css2?family=", raw: "" } },
+			{ type: "TemplateElement", value: { cooked: "&display=swap", raw: "" } },
+		],
+		expressions: [],
+	});
+	check("provider-lockin flags provider literals in template quasis", ctx.reports.length === 1);
+}
+
+// package-boundary: relative imports may not escape the package root.
+{
+	const run = (filename, source) => {
+		const ctx = makeContext(filename);
+		// Exempt files get an empty visitor set — optional-call keeps
+		// the smoke test honest (no visitors ⇒ no reports).
+		plugin.rules["package-boundary"].create(ctx).ImportDeclaration?.(
+			importDecl(source, ["x"]),
+		);
+		return ctx.reports;
+	};
+
+	check(
+		"package-boundary flags sibling-package escape",
+		run("/repo/plugins/demo/src/index.ts", "../../other/src/schema.ts").length === 1,
+	);
+	check(
+		"package-boundary flags deep escape into packages/",
+		run("/repo/plugins/demo/src/index.ts", "../../../packages/db/src/table.ts").length === 1,
+	);
+	check(
+		"package-boundary allows in-package ../",
+		run("/repo/plugins/demo/src/routes/x.tsx", "../../guard.ts").length === 0,
+	);
+	check(
+		"package-boundary allows ./ imports",
+		run("/repo/plugins/demo/src/index.ts", "./schema.ts").length === 0,
+	);
+	check(
+		"package-boundary ignores package specifiers",
+		run("/repo/plugins/demo/src/index.ts", "@ktb/db/schema").length === 0,
+	);
+	check(
+		"package-boundary exempts schema.ts (drizzle-kit CJS, T-143)",
+		run("/repo/plugins/demo/src/schema.ts", "../../groups/src/schema.ts").length === 0,
+	);
+	check(
+		"package-boundary exempts generated aggregations",
+		run("/repo/packages/db/src/schema.gen.ts", "../../../plugins/audit/src/schema.ts").length === 0,
+	);
+	check(
+		"package-boundary exempts test files",
+		run("/repo/packages/app-host/src/index.test.ts", "../../../plugins/audit/src/index.ts")
+			.length === 0,
+	);
 }
 
 if (failures > 0) {

@@ -5,10 +5,9 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
+import { groups } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import { Tenant, type TenantRole } from "@ktb/tenant";
-
-import { groups } from "../../groups/src/schema.ts";
 import {
 	approveClinicDevice,
 	deviceByWrapPubkey,

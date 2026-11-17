@@ -1,6 +1,7 @@
 import { defineConfig } from "vite-plus";
 import {
 	IMPL_IMPORT_PATTERNS,
+	PACKAGE_BOUNDARY_GLOBS,
 	PLATFORM_GLOBALS,
 	PLATFORM_IMPORT_PATTERNS,
 	PORT_GLOBS,
@@ -179,6 +180,35 @@ export default defineConfig({
 					// Fixtures seed tenant tables directly — the guard targets
 					// domain code, not test setup.
 					"ktb-arch/tenant-scope": "off",
+				},
+			},
+			{
+				// Package boundary (tools/arch-policy.mjs): a relative
+				// import may not escape the importing package's root —
+				// cross-package references go through `@ktb/<pkg>` export
+				// maps. schema.ts (drizzle-kit CJS resolver, T-143),
+				// *.gen.* aggregations and *.test.* files are exempt
+				// inside the rule.
+				files: PACKAGE_BOUNDARY_GLOBS,
+				rules: {
+					"ktb-arch/package-boundary": "error",
+				},
+			},
+			{
+				// Provider-literal exemptions (T-138): these are deliberate
+				// product surfaces, not port leakage — the theme plugin's
+				// font pipeline fetches fonts.googleapis.com css2 by design
+				// (self-hosted @font-face manifests), and the ai-endpoints
+				// console ships known LLM baseUrls as pickable presets.
+				// Exempted per file; PROVIDER_LITERAL_PATTERNS itself stays
+				// strict for everything else.
+				files: [
+					"plugins/theme/src/assets.ts",
+					"plugins/theme/src/present.ts",
+					"plugins/ai-endpoints/src/views/EndpointsPage.tsx",
+				],
+				rules: {
+					"ktb-arch/provider-lockin": "off",
 				},
 			},
 			{

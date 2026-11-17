@@ -7,6 +7,7 @@ import { KeyRoundIcon } from "lucide-react";
 
 import { Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
+import { groups } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { requireTenantRole, Tenant, TenantForbidden, tenantScopeId } from "@ktb/tenant";
 
@@ -21,7 +22,6 @@ import {
 	type EntityDekReaderKind,
 	type PortalKey,
 } from "./schema.ts";
-import { groups } from "../../groups/src/schema.ts";
 
 export type {
 	ClinicKey,

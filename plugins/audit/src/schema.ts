@@ -1,10 +1,12 @@
 import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
 
-// Relative import on purpose: `@ktb/groups` already depends on
-// `@ktb/audit` (the Audit service groups mutations record through), so a
-// package-specifier import of `@ktb/groups/schema` here would create a
-// workspace package cycle. The schema subpath resolves to this same
-// module, so the FK target is identical either way.
+// Relative import on purpose, twice over: `@ktb/groups` already
+// depends on `@ktb/audit` (the Audit service groups mutations record
+// through), so a package-specifier import of `@ktb/groups/schema` here
+// would create a workspace package cycle — and drizzle-kit's CJS
+// resolver cannot follow `@ktb/*` specifiers anyway (T-143). The
+// schema subpath resolves to this same module, so the FK target is
+// identical either way.
 import { groups } from "../../groups/src/schema.ts";
 
 /**
