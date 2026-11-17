@@ -294,19 +294,17 @@ export interface SessionAccount extends SessionUser {
  * — what the root layout renders its navigation from. Null when
  * anonymous. */
 export async function getSessionAccount(headers?: Headers): Promise<SessionAccount | null> {
-	const resolved = await resolveDoctorContext(headers, false);
+	const requestHeaders = await requestHeadersOr(headers);
+	const resolved = await resolveDoctorContext(requestHeaders, false);
 	if (!resolved) return null;
 	const profiles = resolved.profiles;
-	// Read-only on purpose: invites are claimed on entry points (sign-up,
-	// the portal home), not on every request that renders chrome.
-	const patientProfiles = await run(
-		Effect.gen(function* () {
-			// Optional: absent when the patient-access plugin is not deployed.
-			const directory = yield* Effect.serviceOption(PatientProfiles);
-			if (Option.isNone(directory)) return 0;
-			return (yield* directory.value.listFor(resolved.user.id)).length;
-		}),
-	);
+	// Read-only on purpose: invites/links are claimed on entry points
+	// (sign-up, the portal home), not on every request that renders
+	// chrome. Goes through getPatientContext so the per-request
+	// patient-context cache is shared with the portal path — the
+	// directory is read at most once per request either way.
+	const patient = await getPatientContext(requestHeaders);
+	const patientProfiles = patient?.profiles.length ?? 0;
 	return {
 		...resolved.user,
 		patientOnly: profiles !== null && profiles.length === 0,

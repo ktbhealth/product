@@ -165,11 +165,11 @@ describe("platform", () => {
 		// A registered portal id survives (with global re-appended); an
 		// unknown portal id does not.
 		const portal = await getI18n({
-			scopeChain: { scopes: [{ scope: "portal", scopeId: "clinician" }] },
+			scopeChain: { scopes: [{ scope: "portal", scopeId: "doctor" }] },
 		});
 		expect(portal.scopeChain).toEqual({
 			scopes: [
-				{ scope: "portal", scopeId: "clinician" },
+				{ scope: "portal", scopeId: "doctor" },
 				{ scope: "global", scopeId: "" },
 			],
 		});
@@ -196,16 +196,16 @@ describe("platform", () => {
 			hoisted.headers = new Headers({ "x-tenant-slug": "clinic-a" });
 			hoisted.account = { id: "u1", email: "u@x.com", name: "U" };
 			// Portal + the request's own tenant id → the chain is honored.
-			const chain = portalScope(String(clinicAId), "clinician");
+			const chain = portalScope(String(clinicAId), "doctor");
 			expect((await getI18n({ scopeChain: chain })).scopeChain).toEqual(chain);
 			// A different tenant id is not provable → dropped; the
 			// registered portal scope and global fallback survive.
 			const other = await getI18n({
-				scopeChain: portalScope("999999", "clinician"),
+				scopeChain: portalScope("999999", "doctor"),
 			});
 			expect(other.scopeChain).toEqual({
 				scopes: [
-					{ scope: "portal", scopeId: "clinician" },
+					{ scope: "portal", scopeId: "doctor" },
 					{ scope: "global", scopeId: "" },
 				],
 			});
