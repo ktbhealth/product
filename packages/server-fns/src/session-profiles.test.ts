@@ -65,8 +65,11 @@ const asDoctor = {
 const me: PatientProfile = { patientId: 1, name: "Ana", relation: "self" };
 const kid: PatientProfile = { patientId: 2, name: "Leo", relation: "guardian" };
 
-/** Directory lookups performed, by user id — proves when no lookup happens. */
+/** Doctor-directory lookups performed, by user id — proves when no
+ * lookup happens. Patient-directory reads are tracked separately in
+ * `patientLookups`: `getSessionAccount` legitimately reads both. */
 let lookups: string[] = [];
+let patientLookups: string[] = [];
 /** Invite claims performed, by user id. */
 let claims: string[] = [];
 /** Patient link syncs performed, by user id. */
@@ -109,7 +112,7 @@ const DirectoriesStub = Layer.mergeAll(
 	Layer.succeed(PatientProfiles, {
 		listFor: (userId) =>
 			Effect.sync(() => {
-				lookups.push(userId);
+				patientLookups.push(userId);
 				return userId === "sec" ? [me, kid] : [];
 			}),
 		syncLinks: (userId) =>
@@ -122,6 +125,7 @@ const DirectoriesStub = Layer.mergeAll(
 
 const boot = (layer: Layer.Layer<never>) => {
 	lookups = [];
+	patientLookups = [];
 	claims = [];
 	syncs = [];
 	authError = undefined;
@@ -313,7 +317,11 @@ describe("getDoctorContext", () => {
 		await getDoctorContext(headers);
 		await getDoctorUser(headers);
 		await getSessionAccount(headers);
+		// One doctor-directory read shared by all three helpers;
+		// getSessionAccount additionally reads the patient directory
+		// once for its patientProfiles count.
 		expect(lookups).toEqual(["sec"]);
+		expect(patientLookups).toEqual(["sec"]);
 	});
 
 	it("claimInvites bypasses the cached pre-claim read and refreshes it", async () => {
@@ -405,7 +413,7 @@ describe("getPatientContext", () => {
 		const headers = new Headers();
 		await getPatientContext(headers);
 		await getPatientContext(headers);
-		expect(lookups).toEqual(["sec"]);
+		expect(patientLookups).toEqual(["sec"]);
 	});
 
 	it("syncLinks bypasses the cached read and refreshes it", async () => {
@@ -414,10 +422,10 @@ describe("getPatientContext", () => {
 		await getPatientContext(headers);
 		await getPatientContext(headers, { syncLinks: true });
 		expect(syncs).toEqual(["sec"]);
-		expect(lookups).toEqual(["sec", "sec"]);
+		expect(patientLookups).toEqual(["sec", "sec"]);
 		// The stored post-sync result serves later non-sync reads.
 		await getPatientContext(headers);
-		expect(lookups).toEqual(["sec", "sec"]);
+		expect(patientLookups).toEqual(["sec", "sec"]);
 	});
 
 	it("does not let a stale rejection evict the newer cache entry", async () => {
