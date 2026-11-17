@@ -28,6 +28,7 @@
 		"db:erd": "bun packages/db/scripts/generate-erd.mjs",
 		"db:erd:check": "bun packages/db/scripts/generate-erd.mjs --check",
 		"i18n:import-baseline": "bun tools/import-i18n-baseline.mjs",
+		"i18n:doctor": "bun tools/check-i18n.mjs",
 		"knip": "knip",
 		"gen:route-types": "bun tools/gen-plugin-route-types.mjs",
 		"gen:db-schema": "bun tools/gen-db-schema.mjs",

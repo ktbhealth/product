@@ -34,7 +34,10 @@ export {
 } from "./resolve.ts";
 export { createCatalogT, flattenCatalog, sliceMessages } from "./catalog.ts";
 export { I18n, bindNamespace, type I18nShape, type TParams } from "./service.ts";
-export { I18N_BASELINE } from "./baseline.gen.ts";
+// I18N_BASELINE is deliberately NOT re-exported here (P-088): the
+// ~24k-line seed dataset must stay out of the worker bundle — consumers
+// that need it import the "@ktb/i18n/baseline.gen" subpath so bundlers
+// can code-split/lazy-load it.
 export { LOCALE_META } from "./locales.ts";
 export { I18N_BASE_CATALOG, I18N_BASE_LOCALES, I18N_MANIFEST } from "./manifest.gen.ts";
 export type { I18nKey, I18nTypedT } from "./types.gen.ts";
