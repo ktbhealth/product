@@ -46,6 +46,9 @@ export interface DocumentWire {
 	 * current def version on read (T-130); this reports the row's
 	 * persisted version so the console can spot unmigrated docs. */
 	readonly schemaVersion: number;
+	/** Row version for optimistic concurrency (T-127) — the
+	 * If-Match token for `expectedVersion` on updates. */
+	readonly version: number;
 	readonly ownerId: string;
 	readonly tenantId: number | null;
 	readonly createdAt: string;
@@ -57,6 +60,7 @@ export const toDocumentWire = (record: DocumentRecord): DocumentWire => ({
 	collection: record.collection,
 	data: record.data as Record<string, Json>,
 	schemaVersion: record.schemaVersion,
+	version: record.version,
 	ownerId: record.ownerId,
 	tenantId: record.tenantId,
 	createdAt: record.createdAt.toISOString(),

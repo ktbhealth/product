@@ -66,14 +66,18 @@ import {
 } from "./schema.ts";
 import {
 	BrokenReference,
+	COLLECTION_CACHE_TTL_MS,
+	DocumentIdempotencyConflict,
 	DocumentInUse,
 	DocumentMigrationError,
 	DocumentStore,
 	DocumentStoreLive,
 	DocumentTooLarge,
 	DocumentValidationError,
+	DocumentVersionConflict,
 	DuplicateFieldValue,
 	InvalidDocumentQuery,
+	MAX_COLLECTION_CACHE_ENTRIES,
 	MAX_DOCUMENT_BYTES,
 	RecordIdConflict,
 	RecordNotFound,
@@ -87,6 +91,7 @@ import {
 	type DocumentStoreContext,
 	type DocumentStoreError,
 	type DocumentStoreShape,
+	type DocumentWriteOptions,
 	type FindResult,
 } from "./service.ts";
 import { isJson, validateDocumentData } from "./validate.ts";
@@ -164,14 +169,18 @@ export {
 	type DocumentRecordRow,
 	// service + errors
 	BrokenReference,
+	COLLECTION_CACHE_TTL_MS,
+	DocumentIdempotencyConflict,
 	DocumentInUse,
 	DocumentMigrationError,
 	DocumentStore,
 	DocumentStoreLive,
 	DocumentTooLarge,
 	DocumentValidationError,
+	DocumentVersionConflict,
 	DuplicateFieldValue,
 	InvalidDocumentQuery,
+	MAX_COLLECTION_CACHE_ENTRIES,
 	MAX_DOCUMENT_BYTES,
 	RecordIdConflict,
 	RecordNotFound,
@@ -185,6 +194,7 @@ export {
 	type DocumentStoreContext,
 	type DocumentStoreError,
 	type DocumentStoreShape,
+	type DocumentWriteOptions,
 	type FindResult,
 	// validation helpers
 	isJson,

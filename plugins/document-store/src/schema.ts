@@ -56,12 +56,25 @@ export const documentRecords = sqliteTable(
 		 * service migrates lazily on read and stamps the current def
 		 * version on write. */
 		schemaVersion: integer("schema_version").notNull().default(1),
+		/** Row version for optimistic concurrency (T-127): starts at 1
+		 * and bumps on every committed record write (each merged batch
+		 * write counts once). Distinct from `schema_version`, which
+		 * versions the FIELD SCHEMA the payload was written under —
+		 * `update(..., { expectedVersion })` is the If-Match guard, and
+		 * schema-migration sweeps deliberately do NOT bump it (a def
+		 * upgrade is not a user edit). */
+		version: integer("version").notNull().default(1),
 		/** Owner attribution — "" for system contexts (no principal). */
 		ownerId: text("owner_id").notNull().default(""),
 		/** NULL = personal row; groups.id = tenant-owned row. */
 		tenantId: integer("tenant_id").references(() => groups.id, {
 			onDelete: "set null",
 		}),
+		/** Caller-supplied idempotency key (T-127): unique per
+		 * (collection_id, key) when non-NULL — SQLite treats NULLs as
+		 * distinct, so keyless inserts never collide. A repeated insert
+		 * with the same key replays the existing record. */
+		idempotencyKey: text("idempotency_key"),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 	},
@@ -69,6 +82,7 @@ export const documentRecords = sqliteTable(
 		index("document_records_collection_idx").on(table.collectionId),
 		index("document_records_collection_owner_idx").on(table.collectionId, table.ownerId),
 		index("document_records_collection_tenant_idx").on(table.collectionId, table.tenantId),
+		uniqueIndex("document_records_idempotency_idx").on(table.collectionId, table.idempotencyKey),
 	],
 );
 

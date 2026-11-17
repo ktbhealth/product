@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, eq, isNotNull, or, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, tx, type TxOp } from "@ktb/db";
@@ -66,7 +66,29 @@ import { validateDocumentData } from "./validate.ts";
  * tradeoff is that `find` scans the collection's in-scope rows. Unique
  * checks and `ref` onDelete policies scan likewise — fine at
  * specialty-pack/intake-form volumes; a hot collection graduates to a
- * dedicated table.
+ * dedicated table. SCALE CEILING (T-129, measured by
+ * src/benchmark.test.ts on better-sqlite3): `find` scans the whole
+ * visible slice in JS — ~17ms at 1k docs, ~35–45ms at the 10k
+ * FIND_SCAN_MAX_ROWS ceiling (past that it fails
+ * `InvalidDocumentQuery` rather than scanning unboundedly; D1 may be
+ * slower). Fine for admin consoles, background jobs and moderate
+ * per-request reads; NOT for hot paths over big collections. Beyond
+ * ~10k visible docs per collection, declare a typed table instead of
+ * growing the document store. Declared `indexes` on a collection def
+ * are advisory metadata only (stored in schema_json for tooling) —
+ * they do NOT create SQL indexes; filtering stays JS-side by design.
+ *
+ * Concurrency + idempotency (T-127): every record carries a `version`
+ * (returned on DocumentRecord) bumped by each committed write;
+ * `update(..., { expectedVersion })` is the If-Match guard — a stale
+ * expectation fails `DocumentVersionConflict` carrying the actual
+ * version (mirrors kv's KvConflictError). `insert(...,
+ * { idempotencyKey })` stores a caller key unique per collection —
+ * a retry replays the existing record instead of duplicating;
+ * keys are COLLECTION-GLOBAL across owner/tenant scopes (callers
+ * namespace keys, e.g. prefix the tenant/user id), and a key held by
+ * a record outside the caller's visible scope fails
+ * `DocumentIdempotencyConflict` rather than leaking it.
  */
 
 export class UnknownCollection extends Data.TaggedError("UnknownCollection")<{
@@ -129,6 +151,32 @@ export class RecordIdConflict extends Data.TaggedError("RecordIdConflict")<{
 	readonly id: number;
 }> {}
 
+/** An `update` `expectedVersion` guard missed (T-127): the stored
+ * row's `version` differs from the caller's expectation — someone
+ * wrote since the caller last read. `actualVersion` carries the
+ * current version so the caller can re-read and retry (mirrors kv's
+ * KvConflictError). Checked at batch plan time; absent the option,
+ * updates stay last-write-wins. */
+export class DocumentVersionConflict extends Data.TaggedError("DocumentVersionConflict")<{
+	readonly collection: string;
+	readonly id: number;
+	readonly expectedVersion: number;
+	readonly actualVersion: number;
+}> {}
+
+/** An `insert` `idempotencyKey` is already held by a record the caller
+ * cannot see (T-127). Keys are unique per COLLECTION across every
+ * owner/tenant scope — a same-scope hit replays the existing record;
+ * a cross-scope hit fails here rather than leaking the stored
+ * document. Callers that share key namespaces across scopes should
+ * prefix keys (e.g. `${tenantId}:${key}`). Also raised when two ops
+ * in ONE batch carry the same key for the same collection — a
+ * pending (uncommitted) insert cannot be replayed by id. */
+export class DocumentIdempotencyConflict extends Data.TaggedError("DocumentIdempotencyConflict")<{
+	readonly collection: string;
+	readonly idempotencyKey: string;
+}> {}
+
 /** Schema migration (T-130) failed: no migration path covers the
  * document's stored `schema_version`, a `migrate` step threw or
  * returned a non-object, or the migrated document failed validation
@@ -153,6 +201,8 @@ export type DocumentStoreError =
 	| DocumentInUse
 	| DocumentTooLarge
 	| RecordIdConflict
+	| DocumentVersionConflict
+	| DocumentIdempotencyConflict
 	| DocumentMigrationError
 	| Forbidden;
 
@@ -193,6 +243,10 @@ export interface DocumentRecord<F extends Fields = Fields> {
 	readonly collection: string;
 	readonly data: InferRecord<F>;
 	readonly schemaVersion: number;
+	/** Row version for optimistic concurrency (T-127) — pass back as
+	 * `expectedVersion` on `update` for If-Match semantics. Bumps on
+	 * every committed write; schema-migration sweeps do not bump it. */
+	readonly version: number;
 	readonly ownerId: string;
 	readonly tenantId: number | null;
 	readonly createdAt: Date;
@@ -223,18 +277,47 @@ export type DocumentBatchOp =
 			readonly collection: CollectionRef;
 			readonly data: Record<string, unknown>;
 			readonly id?: number;
+			/** Caller-supplied idempotency key (T-127) — same contract as
+			 * `DocumentWriteOptions.idempotencyKey`. A key matching an
+			 * existing in-scope record replays it (no write lands); a
+			 * key held outside the caller's scope or by another pending
+			 * insert in the same batch fails
+			 * `DocumentIdempotencyConflict`. */
+			readonly idempotencyKey?: string;
 	  }
 	| {
 			readonly op: "update";
 			readonly collection: CollectionRef;
 			readonly id: number;
 			readonly data: Record<string, unknown>;
+			/** Optimistic-concurrency guard (T-127) — same contract as
+			 * `DocumentWriteOptions.expectedVersion`. Compared against
+			 * the version the row will have after earlier ops in the
+			 * batch (a pending insert reads as version 1). */
+			readonly expectedVersion?: number;
 	  }
 	| {
 			readonly op: "delete";
 			readonly collection: CollectionRef;
 			readonly id: number;
 	  };
+
+/** Optional write modifiers for `insert`/`update` (T-127). Each field
+ * applies to one direction only — `idempotencyKey` on inserts,
+ * `expectedVersion` on updates; passing the other is ignored. */
+export interface DocumentWriteOptions {
+	/** Idempotent-insert key (insert only): 1–255 chars, unique per
+	 * collection across ALL scopes (see DocumentIdempotencyConflict).
+	 * A retry with a key that already produced a visible record
+	 * returns THAT record — payload and explicit `id` are ignored on
+	 * replay. Omit for ordinary inserts (NULL keys never collide). */
+	readonly idempotencyKey?: string;
+	/** If-Match guard (update only): the write lands only when the
+	 * stored row's `version` equals this positive integer — mismatch
+	 * fails `DocumentVersionConflict` with the actual version. Absent
+	 * = last-write-wins (pre-T-127 behavior). */
+	readonly expectedVersion?: number;
+}
 
 /** Per-op result of {@link DocumentStoreShape.batch}, aligned by
  * position with the input ops. `record` is null for `delete` ops and
@@ -270,11 +353,16 @@ export interface DocumentStoreShape {
 	/** Validate + insert a record. Applies defaults, enforces required
 	 * fields, field constraints and `unique` fields, checks `ref`
 	 * targets exist in the caller's visible scope, and auto-registers
-	 * the collection row when needed. */
+	 * the collection row when needed. `options.idempotencyKey` (T-127)
+	 * makes the insert replayable: a key that already produced a
+	 * visible record returns THAT record instead of writing a second
+	 * one; a key held outside the caller's scope fails
+	 * `DocumentIdempotencyConflict`. */
 	readonly insert: <F extends Fields>(
 		collection: CollectionRef<F>,
 		data: InferInsert<F>,
 		ctx?: DocumentStoreContext,
+		options?: DocumentWriteOptions,
 	) => Effect.Effect<DocumentRecord<F>, DocumentStoreError>;
 	/** Fetch one record by id inside the caller's visible scope, or
 	 * null (missing and not-visible are indistinguishable — no
@@ -300,12 +388,17 @@ export interface DocumentStoreShape {
 	 * (only present keys are checked; required is not re-asserted) and
 	 * merged over the stored document — stored values are re-validated
 	 * too, so a schema-tightening deploy fails loudly on old rows.
-	 * `unique`/`ref` rules apply to the resulting document. */
+	 * `unique`/`ref` rules apply to the resulting document.
+	 * `options.expectedVersion` adds the If-Match guard (T-127): the
+	 * patch lands only when the stored `version` matches, else
+	 * `DocumentVersionConflict` carries the actual version; absent it,
+	 * updates are last-write-wins. */
 	readonly update: <F extends Fields>(
 		collection: CollectionRef<F>,
 		id: number,
 		data: Partial<InferInsert<F>>,
 		ctx?: DocumentStoreContext,
+		options?: DocumentWriteOptions,
 	) => Effect.Effect<DocumentRecord<F>, DocumentStoreError>;
 	/** Delete a record inside the caller's visible scope, applying each
 	 * `ref` field's `onDelete` policy toward it (`restrict` default —
@@ -383,6 +476,21 @@ const fail = (error: DocumentStoreError): Effect.Effect<never, DocumentStoreErro
  * storage, not the document store. */
 export const MAX_DOCUMENT_BYTES = 64 * 1024;
 
+/** Per-isolate collection-registry cache bounds (T-129), mirroring the
+ * i18n runtime stamp pattern: `document_collections` rows are re-read
+ * at most every {@link COLLECTION_CACHE_TTL_MS} — `ensureCollection`
+ * writes refresh the entry immediately, and expiry picks up registry
+ * changes made by OTHER isolates. Parsed defs are keyed by their
+ * `schema_json` content, so a refetched row carrying a different def
+ * re-parses exactly once (and a cached live def — including code-only
+ * `migrations` — survives as long as its schema_json matches).
+ * Document RECORDS are never cached. Both maps are bounded:
+ * {@link MAX_COLLECTION_CACHE_ENTRIES} leaves generous headroom over
+ * realistic collection counts; Map iterates in insertion order, so
+ * eviction drops the oldest entry. */
+export const COLLECTION_CACHE_TTL_MS = 15_000;
+export const MAX_COLLECTION_CACHE_ENTRIES = 128;
+
 const utf8 = new TextEncoder();
 
 const serializedBytes = (data: Record<string, unknown>): number =>
@@ -400,32 +508,50 @@ export const DocumentStoreLive = Layer.effect(
 		// rbac.services before this layer when both are installed.
 		const permissionsOpt = yield* Effect.serviceOption(Permissions);
 
-		// Def caches: contributed defs are static per runtime; DB rows
-		// (ensureCollection) are cached and invalidated on upsert.
+		// Def caches (T-129): contributed defs are static per runtime.
+		// DB collection ROWS are cached with a TTL stamp (cross-isolate
+		// freshness) and bounded; parsed defs are cached against the
+		// schema_json they were decoded from — content-keyed invalidation
+		// keeps live defs (with code-only `migrations`) valid exactly as
+		// long as the row they describe is current.
 		const contributed = new Map(collections.collections.map((d) => [d.name, d] as const));
-		const registeredDefs = new Map<string, DocumentCollection>();
-		const collectionRows = new Map<string, DocumentCollectionRow>();
+		const registeredDefs = new Map<string, { def: DocumentCollection; schemaJson: string }>();
+		const collectionRows = new Map<string, { row: DocumentCollectionRow; at: number }>();
+
+		/** Bounded map insert: re-insert moves the key to the
+		 * most-recently-used position; overflow evicts oldest-first. */
+		const cachePut = <K, V>(map: Map<K, V>, key: K, value: V): void => {
+			map.delete(key);
+			map.set(key, value);
+			while (map.size > MAX_COLLECTION_CACHE_ENTRIES) {
+				// size > MAX ≥ 1 → the iterator always yields.
+				map.delete(map.keys().next().value!);
+			}
+		};
 
 		const rowFor = (name: string): Effect.Effect<DocumentCollectionRow | null> =>
 			Effect.gen(function* () {
-				const cached = collectionRows.get(name);
-				if (cached !== undefined) return cached;
+				const now = Date.now();
+				const hit = collectionRows.get(name);
+				if (hit !== undefined && now - hit.at < COLLECTION_CACHE_TTL_MS) return hit.row;
 				const rows = yield* Effect.promise(() =>
 					db.select().from(documentCollections).where(eq(documentCollections.name, name)).limit(1),
 				);
 				const row = (rows[0] as DocumentCollectionRow | undefined) ?? null;
-				if (row !== null) collectionRows.set(name, row);
+				// Negative lookups are NOT cached — a first write
+				// auto-registers and must be visible immediately.
+				if (row !== null) cachePut(collectionRows, name, { row, at: now });
 				return row;
 			});
 
 		const defFromRow = (row: DocumentCollectionRow): DocumentCollection => {
 			const cached = registeredDefs.get(row.name);
-			if (cached !== undefined) return cached;
+			if (cached !== undefined && cached.schemaJson === row.schemaJson) return cached.def;
 			// schema_json is written by ensureCollection from a
 			// DocumentCollection — a parse failure is corruption, so it
 			// dies as a defect rather than a typed error.
 			const def = JSON.parse(row.schemaJson) as DocumentCollection;
-			registeredDefs.set(row.name, def);
+			cachePut(registeredDefs, row.name, { def, schemaJson: row.schemaJson });
 			return def;
 		};
 
@@ -504,6 +630,29 @@ export const DocumentStoreLive = Layer.effect(
 						.limit(1),
 				);
 				return (rows[0] as DocumentRecordRow | undefined) ?? null;
+			});
+
+		/** Ids of `ids` that exist inside the caller's visible scope of
+		 * one collection — the batched counterpart of `scopedRow` used
+		 * by `checkRefs` (T-129): one `IN` query per target collection
+		 * instead of one point lookup per ref field. Only `id` is
+		 * selected — callers need existence, not payloads. `ids` is
+		 * always non-empty (checkRefs only queries collected id sets). */
+		const scopedExistingIds = (
+			collectionId: number,
+			ids: readonly number[],
+			ownerId: string,
+			unscoped: boolean,
+		): Effect.Effect<ReadonlySet<number>> =>
+			Effect.gen(function* () {
+				const where = yield* scopeCondition(collectionId, ownerId, unscoped);
+				const rows = yield* Effect.promise(() =>
+					db
+						.select({ id: documentRecords.id })
+						.from(documentRecords)
+						.where(and(where, inArray(documentRecords.id, [...ids]))),
+				);
+				return new Set(rows.map((r) => r.id));
 			});
 
 		// ---------- collection permissions (T-128) ----------
@@ -632,6 +781,7 @@ export const DocumentStoreLive = Layer.effect(
 			collection: def.name,
 			data: stripDenied(data, denied) as InferRecord<F>,
 			schemaVersion: row.schemaVersion,
+			version: row.version,
 			ownerId: row.ownerId,
 			tenantId: row.tenantId,
 			createdAt: row.createdAt,
@@ -770,8 +920,8 @@ export const DocumentStoreLive = Layer.effect(
 							.returning(),
 					);
 					const row = rows[0] as DocumentCollectionRow;
-					collectionRows.set(def.name, row);
-					registeredDefs.set(def.name, def);
+					cachePut(collectionRows, def.name, { row, at: Date.now() });
+					cachePut(registeredDefs, def.name, { def, schemaJson });
 					return row;
 				}
 				// Highest version wins; equal/older defs are a no-op
@@ -794,8 +944,8 @@ export const DocumentStoreLive = Layer.effect(
 				);
 				// `.returning()` on a matched update always yields the row.
 				const row = rows[0] as DocumentCollectionRow;
-				collectionRows.set(def.name, row);
-				registeredDefs.set(def.name, def);
+				cachePut(collectionRows, def.name, { row, at: Date.now() });
+				cachePut(registeredDefs, def.name, { def, schemaJson });
 				return row;
 			});
 
@@ -823,6 +973,13 @@ export const DocumentStoreLive = Layer.effect(
 			 * pending writes join unique buckets exactly like stored rows. */
 			readonly ownerId: string;
 			readonly tenantId: number | null;
+			/** The row `version` after this write materializes (T-127):
+			 * inserts are born at 1, an update plans committed+1 (the
+			 * materialized UPDATE bumps `version + 1` in SQL, so a
+			 * concurrent writer can't be overwritten backwards). Later
+			 * ops' `expectedVersion` compares against this planned
+			 * value — sequential semantics inside the batch. */
+			readonly version: number;
 			data: Record<string, unknown>;
 			/** Set when a later op removes this write (cascade or delete
 			 * of the pending doc itself). */
@@ -830,10 +987,12 @@ export const DocumentStoreLive = Layer.effect(
 		}
 
 		/** insert = new row; `id` is the optional explicit primary key
-		 * (null = autoincrement — unreachable by id within the batch). */
+		 * (null = autoincrement — unreachable by id within the batch).
+		 * `idempotencyKey` is the validated op key (null = none). */
 		interface PendingInsert extends PendingWriteBase {
 			readonly kind: "insert";
 			readonly id: number | null;
+			readonly idempotencyKey: string | null;
 		}
 
 		/** update = patch of a committed row; `id` always set. */
@@ -852,6 +1011,16 @@ export const DocumentStoreLive = Layer.effect(
 					readonly kind: "record";
 					readonly op: "insert" | "update";
 					readonly write: PendingWrite;
+			  }
+			| {
+					/** Idempotent-insert replay (T-127): the op's key matched
+					 * an already-committed record — no write lands and the
+					 * result projects the STORED row (migrated + read-field
+					 * stripping applied at materialization, like `get`). */
+					readonly kind: "replay";
+					readonly op: "insert";
+					readonly def: DocumentCollection;
+					readonly row: DocumentRecordRow;
 			  }
 			| { readonly kind: "delete" };
 
@@ -876,6 +1045,11 @@ export const DocumentStoreLive = Layer.effect(
 				number,
 				{ def: DocumentCollection; data: Record<string, unknown>; opIndex: number }
 			>;
+			/** Batched ref-existence lookups (T-129): committed state
+			 * doesn't change during planning, so `scopedExistingIds`
+			 * results are reusable across ops — key is
+			 * `collectionId:sortedIds`. */
+			readonly refCache: Map<string, ReadonlySet<number>>;
 			readonly outcomes: OpOutcome[];
 		}
 
@@ -911,44 +1085,115 @@ export const DocumentStoreLive = Layer.effect(
 			plan: BatchPlan,
 		): Effect.Effect<void, DocumentStoreError> =>
 			Effect.gen(function* () {
+				// Phase 1 — classify every ref field in declaration order:
+				// plan-resolved (pending write of the target collection),
+				// already-broken (missing target collection name, deleted
+				// target, or cross-collection pending target), or needing
+				// a DB existence check. `pending` keeps field order so
+				// phase 3 fails on the FIRST problem exactly like the old
+				// per-field loop did.
+				interface DbCheck {
+					readonly field: string;
+					readonly targetName: string;
+					readonly targetId: number;
+				}
+				type Pending =
+					| { readonly kind: "broken"; readonly error: DocumentStoreError }
+					| { readonly kind: "db"; readonly check: DbCheck };
+				const pending: Pending[] = [];
 				for (const [field, descriptor] of Object.entries(def.fields)) {
 					if (descriptor.kind !== "ref") continue;
 					const targetId = data[field];
 					if (typeof targetId !== "number") continue;
 					const targetName = descriptor.collection;
 					if (targetName === undefined) {
-						return yield* fail(
-							new DocumentValidationError({
+						pending.push({
+							kind: "broken",
+							error: new DocumentValidationError({
 								collection: def.name,
 								issues: [`${field}: ref field missing target collection`],
 							}),
-						);
+						});
+						continue;
 					}
 					const broken = () =>
-						fail(
-							new BrokenReference({
-								collection: def.name,
-								field,
-								targetCollection: targetName,
-								targetId,
-							}),
-						);
+						new BrokenReference({
+							collection: def.name,
+							field,
+							targetCollection: targetName,
+							targetId,
+						});
 					// Earlier batch ops win over the committed read: a
 					// delete makes the target unreachable even though the
 					// row still exists pre-transaction.
-					if (plan.rowDeletes.has(targetId)) return yield* broken();
+					if (plan.rowDeletes.has(targetId)) {
+						pending.push({ kind: "broken", error: broken() });
+						continue;
+					}
 					const pendingTarget = plan.byId.get(targetId);
 					if (pendingTarget !== undefined) {
 						// Resolvable only when the pending write belongs to
 						// the referenced collection — an id is global, so a
 						// same-id write of ANOTHER collection is still broken.
-						if (pendingTarget.def.name === targetName) continue;
-						return yield* broken();
+						if (pendingTarget.def.name !== targetName) {
+							pending.push({ kind: "broken", error: broken() });
+						}
+						continue;
 					}
-					const target = yield* resolveDef(targetName);
-					const targetRow = yield* ensureDefRow(target.def, target.row);
-					const targetRecord = yield* scopedRow(targetRow.id, targetId, ownerId, unscoped);
-					if (targetRecord === null) return yield* broken();
+					pending.push({ kind: "db", check: { field, targetName, targetId } });
+				}
+				// Phase 2 — ONE existence query per target collection for
+				// ALL referenced ids (T-129), cached per batch plan.
+				// Target-resolution failures (UnknownCollection) are
+				// captured per collection and re-thrown in field order
+				// during phase 3.
+				const idsByTarget = new Map<string, Set<number>>();
+				for (const entry of pending) {
+					if (entry.kind !== "db") continue;
+					const set = idsByTarget.get(entry.check.targetName) ?? new Set<number>();
+					set.add(entry.check.targetId);
+					idsByTarget.set(entry.check.targetName, set);
+				}
+				const resolved = new Map<
+					string,
+					{ found: ReadonlySet<number> } | { error: DocumentStoreError }
+				>();
+				for (const [targetName, idSet] of idsByTarget) {
+					const outcome = yield* Effect.result(
+						Effect.gen(function* () {
+							const target = yield* resolveDef(targetName);
+							const targetRow = yield* ensureDefRow(target.def, target.row);
+							const ids = [...idSet].sort((a, b) => a - b);
+							const cacheKey = `${targetRow.id}:${ids.join(",")}`;
+							const cached = plan.refCache.get(cacheKey);
+							const found =
+								cached ?? (yield* scopedExistingIds(targetRow.id, ids, ownerId, unscoped));
+							if (cached === undefined) plan.refCache.set(cacheKey, found);
+							return { found };
+						}),
+					);
+					resolved.set(
+						targetName,
+						Result.isFailure(outcome) ? { error: outcome.failure } : outcome.success,
+					);
+				}
+				// Phase 3 — fail on the first problem in field order.
+				for (const entry of pending) {
+					if (entry.kind === "broken") return yield* fail(entry.error);
+					const target = resolved.get(entry.check.targetName);
+					/* v8 ignore next -- every db entry's target was resolved above */
+					if (target === undefined) continue;
+					if ("error" in target) return yield* fail(target.error);
+					if (!target.found.has(entry.check.targetId)) {
+						return yield* fail(
+							new BrokenReference({
+								collection: def.name,
+								field: entry.check.field,
+								targetCollection: entry.check.targetName,
+								targetId: entry.check.targetId,
+							}),
+						);
+					}
 				}
 			});
 
@@ -1128,6 +1373,83 @@ export const DocumentStoreLive = Layer.effect(
 				yield* requireOp(def, "write", plan.unscoped);
 				yield* assertWritableData(def, op.data, plan.unscoped);
 				const targetRow = yield* ensureDefRow(def, row);
+				// Idempotent insert (T-127): the key is collection-global
+				// across scopes — dedupe BEFORE payload validation so a
+				// retry replays the stored record even if the resubmitted
+				// payload would now fail (e.g. schema tightened since).
+				const idempotencyKey = op.idempotencyKey;
+				if (idempotencyKey !== undefined) {
+					if (
+						typeof idempotencyKey !== "string" ||
+						idempotencyKey.length === 0 ||
+						idempotencyKey.length > 255
+					) {
+						return yield* fail(
+							new DocumentValidationError({
+								collection: def.name,
+								issues: ["idempotencyKey must be a non-empty string of at most 255 characters"],
+							}),
+						);
+					}
+					// A pending insert with the same key can't be replayed
+					// (its id — and record — doesn't exist until commit),
+					// so a second keyed insert in one batch conflicts.
+					// Dropped writes freed their key.
+					for (const w of plan.writes) {
+						if (
+							w.kind === "insert" &&
+							!w.dropped &&
+							w.collectionId === targetRow.id &&
+							w.idempotencyKey === idempotencyKey
+						) {
+							return yield* fail(
+								new DocumentIdempotencyConflict({
+									collection: def.name,
+									idempotencyKey,
+								}),
+							);
+						}
+					}
+					// Committed lookup is deliberately UNSCOPED — the unique
+					// index spans every owner/tenant slice of the
+					// collection. A hit inside the caller's visible scope
+					// replays as a read would (migration + field stripping
+					// applied at materialization); a hit outside it fails
+					// typed rather than leaking the document.
+					const keyed = yield* Effect.promise(() =>
+						db
+							.select()
+							.from(documentRecords)
+							.where(
+								and(
+									eq(documentRecords.collectionId, targetRow.id),
+									eq(documentRecords.idempotencyKey, idempotencyKey),
+								),
+							)
+							.limit(1),
+					);
+					const hit = keyed[0] as DocumentRecordRow | undefined;
+					// rowDeletes means an earlier op frees the key — reuse
+					// is legal (the delete write lands first in op order).
+					if (hit !== undefined && !plan.rowDeletes.has(hit.id)) {
+						const visible = yield* scopedRow(targetRow.id, hit.id, plan.ownerId, plan.unscoped);
+						if (visible === null) {
+							return yield* fail(
+								new DocumentIdempotencyConflict({
+									collection: def.name,
+									idempotencyKey,
+								}),
+							);
+						}
+						plan.outcomes[opIndex] = {
+							kind: "replay",
+							op: "insert",
+							def,
+							row: visible,
+						};
+						return;
+					}
+				}
 				const validated = validateDocumentData(def.fields, op.data);
 				if (!validated.ok) {
 					return yield* fail(
@@ -1185,8 +1507,10 @@ export const DocumentStoreLive = Layer.effect(
 					id: explicitId,
 					ownerId: plan.ownerId,
 					tenantId: plan.tenantId,
+					version: 1,
 					data: validated.data,
 					dropped: false,
+					idempotencyKey: idempotencyKey ?? null,
 				};
 				plan.writes.push(write);
 				if (explicitId !== null) plan.byId.set(explicitId, write);
@@ -1206,11 +1530,39 @@ export const DocumentStoreLive = Layer.effect(
 				const { def, row } = yield* resolveDef(op.collection);
 				yield* requireOp(def, "write", plan.unscoped);
 				yield* assertWritableData(def, op.data, plan.unscoped);
+				// If-Match guard (T-127): positive-integer expectation or
+				// a typed validation failure — checked before any row
+				// lookup so a malformed guard can't mask RecordNotFound.
+				const expectedVersion = op.expectedVersion;
+				if (
+					expectedVersion !== undefined &&
+					(!Number.isInteger(expectedVersion) || expectedVersion < 1)
+				) {
+					return yield* fail(
+						new DocumentValidationError({
+							collection: def.name,
+							issues: ["expectedVersion must be a positive integer"],
+						}),
+					);
+				}
 				if (row === null || plan.rowDeletes.has(op.id)) {
 					return yield* fail(new RecordNotFound({ collection: def.name, id: op.id }));
 				}
 				const pending = plan.byId.get(op.id);
 				if (pending !== undefined && pending.collectionId === row.id) {
+					// Sequential semantics: the guard compares against the
+					// version the row will carry after earlier ops (a
+					// pending insert reads as version 1).
+					if (expectedVersion !== undefined && expectedVersion !== pending.version) {
+						return yield* fail(
+							new DocumentVersionConflict({
+								collection: def.name,
+								id: op.id,
+								expectedVersion,
+								actualVersion: pending.version,
+							}),
+						);
+					}
 					// Update lands on a pending write of the SAME collection
 					// (explicit-id insert or earlier update) — merge over
 					// its data; the shared write produces both records.
@@ -1240,6 +1592,16 @@ export const DocumentStoreLive = Layer.effect(
 				const existing = yield* scopedRow(row.id, op.id, plan.ownerId, plan.unscoped);
 				if (existing === null) {
 					return yield* fail(new RecordNotFound({ collection: def.name, id: op.id }));
+				}
+				if (expectedVersion !== undefined && existing.version !== expectedVersion) {
+					return yield* fail(
+						new DocumentVersionConflict({
+							collection: def.name,
+							id: op.id,
+							expectedVersion,
+							actualVersion: existing.version,
+						}),
+					);
 				}
 				// Lazy migration before merge: the patch applies to the
 				// CURRENT-shape document and the write re-stamps
@@ -1277,6 +1639,7 @@ export const DocumentStoreLive = Layer.effect(
 					id: op.id,
 					ownerId: existing.ownerId,
 					tenantId: existing.tenantId,
+					version: existing.version + 1,
 					data: validated.data,
 					dropped: false,
 				};
@@ -1409,6 +1772,7 @@ export const DocumentStoreLive = Layer.effect(
 					byId: new Map(),
 					rowDeletes: new Map(),
 					nullifies: new Map(),
+					refCache: new Map(),
 					outcomes: [],
 				};
 				for (const [opIndex, op] of ops.entries()) {
@@ -1436,6 +1800,7 @@ export const DocumentStoreLive = Layer.effect(
 											ownerId: w.ownerId,
 											tenantId: w.tenantId,
 											schemaVersion: w.def.version,
+											idempotencyKey: w.idempotencyKey,
 											createdAt: now,
 											updatedAt: now,
 										})
@@ -1445,6 +1810,11 @@ export const DocumentStoreLive = Layer.effect(
 										.set({
 											data: JSON.stringify(w.data),
 											schemaVersion: w.def.version,
+											// Bump in SQL, not from the plan-time
+											// read — a concurrent writer between
+											// plan and commit still advances the
+											// version (T-127).
+											version: sql`${documentRecords.version} + 1`,
 											updatedAt: now,
 										})
 										.where(eq(documentRecords.id, w.id))
@@ -1464,7 +1834,13 @@ export const DocumentStoreLive = Layer.effect(
 						seq: seq++,
 						op: db
 							.update(documentRecords)
-							.set({ data: JSON.stringify(n.data), updatedAt: now })
+							.set({
+								data: JSON.stringify(n.data),
+								// A nullify rewrites the document — bump the
+								// row version like any other write (T-127).
+								version: sql`${documentRecords.version} + 1`,
+								updatedAt: now,
+							})
 							.where(eq(documentRecords.id, id)),
 					});
 				}
@@ -1494,6 +1870,27 @@ export const DocumentStoreLive = Layer.effect(
 						results.push({ op: "delete" });
 						continue;
 					}
+					if (outcome.kind === "replay") {
+						// Idempotent-insert hit: project the STORED row like
+						// `get` does — lazy migration + read-field stripping.
+						const migrated = yield* migrateData(
+							outcome.def,
+							parseData(outcome.row.data),
+							outcome.row.schemaVersion,
+							outcome.row.id,
+						);
+						const denied = yield* deniedFor(outcome.def);
+						results.push({
+							op: "insert",
+							record: projectRecord(
+								outcome.def,
+								outcome.row,
+								migrated.data,
+								denied,
+							) as DocumentRecord,
+						});
+						continue;
+					}
 					const w = outcome.write;
 					if (w.dropped) {
 						results.push({ op: outcome.op, record: null });
@@ -1518,9 +1915,22 @@ export const DocumentStoreLive = Layer.effect(
 				collection: CollectionRef<F>,
 				data: InferInsert<F>,
 				ctx?: DocumentStoreContext,
+				options?: DocumentWriteOptions,
 			) =>
 				Effect.map(
-					runBatch([{ op: "insert", collection, data: data as Record<string, unknown> }], ctx),
+					runBatch(
+						[
+							{
+								op: "insert",
+								collection,
+								data: data as Record<string, unknown>,
+								...(options?.idempotencyKey === undefined
+									? {}
+									: { idempotencyKey: options.idempotencyKey }),
+							},
+						],
+						ctx,
+					),
 					(rs) =>
 						(rs[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>)
 							.record as DocumentRecord<F>,
@@ -1619,9 +2029,23 @@ export const DocumentStoreLive = Layer.effect(
 				id: number,
 				data: Partial<InferInsert<F>>,
 				ctx?: DocumentStoreContext,
+				options?: DocumentWriteOptions,
 			) =>
 				Effect.map(
-					runBatch([{ op: "update", collection, id, data: data as Record<string, unknown> }], ctx),
+					runBatch(
+						[
+							{
+								op: "update",
+								collection,
+								id,
+								data: data as Record<string, unknown>,
+								...(options?.expectedVersion === undefined
+									? {}
+									: { expectedVersion: options.expectedVersion }),
+							},
+						],
+						ctx,
+					),
 					(rs) =>
 						(rs[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>)
 							.record as DocumentRecord<F>,
@@ -1710,12 +2134,15 @@ CREATE TABLE document_records (
 	collection_id INTEGER NOT NULL REFERENCES document_collections(id) ON DELETE CASCADE,
 	data TEXT NOT NULL,
 	schema_version INTEGER NOT NULL DEFAULT 1,
+	version INTEGER NOT NULL DEFAULT 1,
 	owner_id TEXT NOT NULL DEFAULT '',
 	tenant_id INTEGER REFERENCES groups(id) ON DELETE SET NULL,
+	idempotency_key TEXT,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
 CREATE INDEX document_records_collection_idx ON document_records (collection_id);
 CREATE INDEX document_records_collection_owner_idx ON document_records (collection_id, owner_id);
 CREATE INDEX document_records_collection_tenant_idx ON document_records (collection_id, tenant_id);
+CREATE UNIQUE INDEX document_records_idempotency_idx ON document_records (collection_id, idempotency_key);
 `;

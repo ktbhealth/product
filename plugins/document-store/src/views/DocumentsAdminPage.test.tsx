@@ -59,6 +59,7 @@ const doc = (over: Partial<DocumentWire> = {}): DocumentWire => ({
 		target: 42,
 	},
 	schemaVersion: 1,
+	version: 1,
 	ownerId: "u1",
 	tenantId: null,
 	createdAt: "2024-01-01T00:00:00.000Z",

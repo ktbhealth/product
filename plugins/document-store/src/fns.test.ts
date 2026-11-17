@@ -173,12 +173,28 @@ describe("document-store fns", () => {
 		expect(Object.keys(notesInfo!.fields)).toContain("title");
 
 		const created = await createDocumentFn({
-			data: { collection: "fns.notes", data: { title: "first", kind: "a" } },
+			data: {
+				collection: "fns.notes",
+				data: { title: "first", kind: "a" },
+				idempotencyKey: "fns-k1",
+			},
 		});
 		expect(created.status).toBe("saved");
 		if (created.status !== "saved") return;
 		expect(created.record.data).toMatchObject({ title: "first", kind: "a" });
 		expect(created.record.createdAt).toMatch(/^\d{4}-/);
+		// Idempotent replay through the wire: same key returns the
+		// stored record, no second row.
+		const replayed = await createDocumentFn({
+			data: {
+				collection: "fns.notes",
+				data: { title: "ignored" },
+				idempotencyKey: "fns-k1",
+			},
+		});
+		expect(replayed.status).toBe("saved");
+		const replayedRecord = replayed.status === "saved" ? replayed.record : null;
+		expect(replayedRecord?.id).toBe(created.record.id);
 
 		// Non-object data collapses to {} → required-field validation.
 		const badData = await createDocumentFn({
@@ -201,7 +217,12 @@ describe("document-store fns", () => {
 		expect(page!.rows[0]!.id).toBe(created.record.id);
 
 		const updated = await updateDocumentFn({
-			data: { collection: "fns.notes", id: created.record.id, data: { title: "second" } },
+			data: {
+				collection: "fns.notes",
+				id: created.record.id,
+				data: { title: "second" },
+				expectedVersion: created.record.version,
+			},
 		});
 		expect(updated.status).toBe("saved");
 		expect(updated.status === "saved" ? updated.record.data.title : null).toBe("second");

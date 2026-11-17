@@ -36,9 +36,13 @@ export const DOCUMENT_COLLECTION_KIND: ContributionKindDescriptor = {
 	ordering: "topo",
 };
 
-/** Declared secondary indexes — v1 stores them in `schema_json` for
- * tooling/future DB-side indexes; records live in one shared table so
- * they are NOT created as SQL indexes. Entries are dotted field paths. */
+/** Declared secondary indexes — dotted field paths, ADVISORY ONLY
+ * (T-129): stored in `schema_json` for tooling/future DB-side indexes.
+ * Records live in one shared `document_records` table with JSON
+ * payloads, so these do NOT create SQL indexes and do not change
+ * query behavior — `find` filtering stays JS-side (see the scale
+ * ceiling in service.ts). Treat them as documentation of intended
+ * hot fields for whoever graduates the collection to a typed table. */
 export type CollectionIndex = string;
 
 /**
@@ -125,7 +129,8 @@ export interface DocumentCollection<F extends Fields = Fields> {
 	readonly version: number;
 	/** Field map — see ./fields.ts for the DSL and InferFields typing. */
 	readonly fields: F;
-	/** Declared index paths (dotted), informational in v1. */
+	/** Declared index paths (dotted), advisory metadata only — see
+	 * {@link CollectionIndex}. Not applied to storage. */
 	readonly indexes?: readonly CollectionIndex[];
 	/** Optional RBAC gate — see {@link CollectionPermissions}. */
 	readonly permissions?: CollectionPermissions;

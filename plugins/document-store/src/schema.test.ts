@@ -35,8 +35,10 @@ describe("document_records schema", () => {
 			"collection_id",
 			"data",
 			"schema_version",
+			"version",
 			"owner_id",
 			"tenant_id",
+			"idempotency_key",
 			"created_at",
 			"updated_at",
 		]);
@@ -61,6 +63,12 @@ describe("document_records schema", () => {
 			"document_records_collection_idx",
 			"document_records_collection_owner_idx",
 			"document_records_collection_tenant_idx",
+			"document_records_idempotency_idx",
 		]);
+	});
+
+	it("keeps idempotency keys unique per collection", () => {
+		const unique = cfg.indexes.find((i) => i.config.name === "document_records_idempotency_idx");
+		expect(unique?.config.unique).toBe(true);
 	});
 });
