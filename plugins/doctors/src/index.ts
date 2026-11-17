@@ -95,6 +95,12 @@ export class Doctors extends Context.Service<
 	Doctors,
 	{
 		readonly ensureProfile: (displayName: string) => Effect.Effect<Doctor, Forbidden>;
+		/**
+		 * Display name of the doctor profile `userId` owns — null for a
+		 * non-doctor. Directory metadata (the portal's "kept by" / "recorded
+		 * by" labels); any authenticated principal may read it.
+		 */
+		readonly displayName: (userId: string) => Effect.Effect<string | null, Forbidden>;
 	}
 >()("@ktb/doctors/Doctors") {}
 
@@ -109,6 +115,12 @@ export const DoctorsLive = Layer.effect(
 					return yield* Effect.fail(new Forbidden({ path: "doctor.create" }));
 				}
 				return yield* Effect.promise(() => ensureDoctorProfile(db, principal.userId, displayName));
+			}),
+			displayName: Effect.fn("Doctors.displayName")(function* (userId: string) {
+				const principal = yield* Principal;
+				if (principal === null) return yield* Effect.fail(new Forbidden({ path: "doctor.read" }));
+				const row = yield* Effect.promise(() => getDoctorByUser(db, userId));
+				return row?.displayName ?? null;
 			}),
 		});
 	}),

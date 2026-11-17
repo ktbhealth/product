@@ -112,6 +112,61 @@ export async function claimPatientInvites(db: DbClient, userId: string): Promise
 	return invites.length;
 }
 
+/**
+ * The bound principal's *active* link to one record — relation and
+ * display name — or null. This is the portal's per-record
+ * authorization read: every patient-portal surface (profile,
+ * consultations, DEK envelopes) gates on the same `patient_access`
+ * grant, resolved here where the link semantics live.
+ */
+export async function portalLink(
+	db: DbClient,
+	userId: string,
+	patientId: number,
+): Promise<PatientProfile | null> {
+	const [row] = await db
+		.select({
+			patientId: patients.id,
+			name: patients.name,
+			relation: patientAccess.relation,
+		})
+		.from(patientAccess)
+		.innerJoin(patients, eq(patientAccess.patientId, patients.id))
+		.where(
+			and(
+				eq(patientAccess.patientId, patientId),
+				eq(patientAccess.userId, userId),
+				eq(patientAccess.status, "active"),
+			),
+		)
+		.limit(1);
+	if (row === undefined) return null;
+	return { ...row, relation: row.relation as PatientAccessRelation };
+}
+
+/**
+ * Invites addressed to the user's account email still sitting unclaimed
+ * because the address is not verified — how many records wait on the
+ * verification step. Zero for a verified address (every matching invite
+ * is claimed by `claimPatientInvites` on the next entry point) and for
+ * an unknown account. The email comparison uses the same normalization
+ * the invite write path applies.
+ */
+export async function awaitingPortalInvites(db: DbClient, userId: string): Promise<number> {
+	const account = await accountOf(db, userId);
+	if (account === undefined || account.emailVerified) return 0;
+	const rows = await db
+		.select({ id: patientAccess.id })
+		.from(patientAccess)
+		.where(
+			and(
+				eq(patientAccess.email, normalizeEmail(account.email)),
+				eq(patientAccess.status, "invited"),
+			),
+		);
+	return rows.length;
+}
+
 /** `PatientProfiles` directory backed by `patient_access` + `patients`. */
 export const PatientProfilesLive = Layer.effect(
 	PatientProfiles,
@@ -344,6 +399,44 @@ export const PatientLinksLive = Layer.effect(
 	}),
 );
 
+/**
+ * Patient-portal port — the *patient* side of access. Every method is
+ * scoped to the bound `Principal`'s own account: the portal shows a
+ * person their own links, nothing else. Reads re-check the link per
+ * call, so a revocation applies at once.
+ */
+export class PortalAccess extends Context.Service<
+	PortalAccess,
+	{
+		/** The principal's *active* link to `patientId` — relation and
+		 * record name — or null. The portal's per-record authorization
+		 * read: profile, consultations and DEK envelopes all gate on it. */
+		readonly link: (patientId: number) => Effect.Effect<PatientProfile | null>;
+		/** Invites addressed to the principal's account email still
+		 * waiting on email verification — zero for a verified address. */
+		readonly awaitingInvites: () => Effect.Effect<number>;
+	}
+>()("@ktb/patient-access/PortalAccess") {}
+
+export const PortalAccessLive = Layer.effect(
+	PortalAccess,
+	Effect.gen(function* () {
+		const db = yield* Db;
+		return PortalAccess.of({
+			link: Effect.fn("PortalAccess.link")(function* (patientId: number) {
+				const principal = yield* Principal;
+				if (principal === null) return null;
+				return yield* Effect.promise(() => portalLink(db, principal.userId, patientId));
+			}),
+			awaitingInvites: Effect.fn("PortalAccess.awaitingInvites")(function* () {
+				const principal = yield* Principal;
+				if (principal === null) return 0;
+				return yield* Effect.promise(() => awaitingPortalInvites(db, principal.userId));
+			}),
+		});
+	}),
+);
+
 export const patientAccessTablesPlugin = definePlugin({
 	id: "patient-access.tables",
 	meta: { keywords: ["patient-access", "tables", "patient"] },
@@ -396,7 +489,12 @@ export const patientAccessServicesPlugin = definePlugin({
 	// tenantZkOrClosed and inviteAcceptPath (Invites resolves via
 	// serviceOption), and zk.ts calls the vault grant/envelope fns.
 	optionalDeps: [invitesServicesPlugin.id, patientsServicesPlugin.id, vaultServicesPlugin.id],
-	services: Layer.mergeAll(PatientProfilesLive, PatientLinksLive, PatientAuditAccessLive),
+	services: Layer.mergeAll(
+		PatientProfilesLive,
+		PatientLinksLive,
+		PatientAuditAccessLive,
+		PortalAccessLive,
+	),
 });
 
 // Route subtree composed into the host's virtualRouteConfig: the route

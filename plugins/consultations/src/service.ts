@@ -12,6 +12,7 @@ import { Db } from "@ktb/db";
 import { PlatformAdmin } from "@ktb/platform";
 import { Forbidden, requireCanAs, requirePrincipalUser } from "@ktb/authz";
 import { PatientsQueries } from "@ktb/patients/api";
+import { PortalAccess } from "@ktb/patient-access";
 import { ConsultationAudioUpdated, ConsultationCreated } from "./api.ts";
 import { EventBus, Query } from "@effect-server-utils/cqrs";
 import { runAsTenantId, Tenant, tenantScopeId } from "@ktb/tenant";
@@ -60,6 +61,11 @@ import {
 	listAllConsultations,
 	listConsultations,
 	type AdminConsultationRow,
+	portalConsultation,
+	portalConsultationRows,
+	portalConsultationScope,
+	type PortalConsultationRow,
+	type PortalConsultationSummaryRow,
 } from "./queries.ts";
 import {
 	serializeAnamnesis,
@@ -213,6 +219,27 @@ export class Consultations extends Context.Service<
 			userId: string,
 			excludeId?: number,
 		) => Effect.Effect<PatientHistoryRows | null, Forbidden>;
+		/**
+		 * Patient-portal reads (T-141): the saved records (`anamnesis`
+		 * present) of `patientId` the bound principal may see through an
+		 * *active* `patient_access` link — resolved via the
+		 * patient-access plugin's `PortalAccess` port, re-checked per
+		 * call. `anamnesis` ships raw (a `v1.` envelope under ZK — the
+		 * portal decrypts client-side); transcript/audio never leave this
+		 * surface. No link (or no link port deployed) → empty.
+		 */
+		readonly portalList: (patientId: number) => Effect.Effect<PortalConsultationSummaryRow[]>;
+		/** One saved consultation as the portal opens it — null when the
+		 * row is missing, unsaved, or its patient holds no active link
+		 * for the principal. */
+		readonly portalGet: (id: number) => Effect.Effect<PortalConsultationRow | null>;
+		/** The patient/tenant scope a portal DEK grant resolves against —
+		 * link-checked like `portalGet`, but any consultation row (a
+		 * ciphered transcript can carry a grant before the record is
+		 * saved). Null when missing, patient-less or unlinked. */
+		readonly portalScope: (
+			id: number,
+		) => Effect.Effect<{ readonly patientId: number; readonly tenantId: number | null } | null>;
 	}
 >()("@ktb/consultations/Consultations") {}
 
@@ -247,6 +274,16 @@ export const ConsultationsLive = Layer.effect(
 					return;
 				}
 				yield* requireCanAs("patient.read", { ownerId: owner.ownerId });
+			});
+		// Portal reads authorize through the patient-access plugin's
+		// link port — serviceOption keeps this plugin deployable without
+		// it, and the answer is still right: the links live there, so no
+		// port means no active links (fail closed → null).
+		const portalLinkFor = (patientId: number) =>
+			Effect.gen(function* () {
+				const access = yield* Effect.serviceOption(PortalAccess);
+				if (Option.isNone(access)) return null;
+				return yield* access.value.link(patientId);
 			});
 		yield* events.subscribeAfterCommit(ConsultationAudioUpdated, (event) =>
 			// After-commit handlers must not inherit the publisher's
@@ -818,6 +855,20 @@ export const ConsultationsLive = Layer.effect(
 					});
 				}
 				return result;
+			}),
+			portalList: Effect.fn("Consultations.portalList")(function* (patientId: number) {
+				if ((yield* portalLinkFor(patientId)) === null) return [];
+				return yield* Effect.promise(() => portalConsultationRows(db, patientId));
+			}),
+			portalGet: Effect.fn("Consultations.portalGet")(function* (id: number) {
+				const row = yield* Effect.promise(() => portalConsultation(db, id));
+				if (row === null) return null;
+				return (yield* portalLinkFor(row.patientId)) === null ? null : row;
+			}),
+			portalScope: Effect.fn("Consultations.portalScope")(function* (id: number) {
+				const scope = yield* Effect.promise(() => portalConsultationScope(db, id));
+				if (scope === null) return null;
+				return (yield* portalLinkFor(scope.patientId)) === null ? null : scope;
 			}),
 		});
 	}),

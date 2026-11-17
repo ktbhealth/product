@@ -11,6 +11,7 @@ import { makeD1 } from "@ktb/db/testing";
 import { asc, eq } from "drizzle-orm";
 
 import {
+	awaitingPortalInvites,
 	claimPatientInvites,
 	invitePatientAccess,
 	listPatientLinks,
@@ -24,7 +25,10 @@ import {
 	PatientLinks,
 	PatientLinksLive,
 	PatientProfilesLive,
+	PortalAccess,
+	PortalAccessLive,
 	plugins,
+	portalLink,
 } from "./index.ts";
 import { patientAccess } from "./schema.ts";
 
@@ -490,5 +494,91 @@ describe("PatientAuditAccessLive", () => {
 	it("is false without a principal", async () => {
 		const db = linksDb();
 		expect(await canView(db, null, 1)).toBe(false);
+	});
+});
+
+describe("portalLink", () => {
+	const db = makeDb(makeD1(DDL));
+
+	it("returns relation and record name for an active link only", async () => {
+		expect(await portalLink(db, "parent", 1)).toEqual({
+			patientId: 1,
+			name: "Leo",
+			relation: "guardian",
+		});
+		expect(await portalLink(db, "parent", 2)).toEqual({
+			patientId: 2,
+			name: "Ana",
+			relation: "self",
+		});
+	});
+
+	it("is null for pending, revoked, invited and stranger links", async () => {
+		expect(await portalLink(db, "parent", 3)).toBeNull(); // pending
+		expect(await portalLink(db, "parent", 4)).toBeNull(); // revoked
+		expect(await portalLink(db, "parent", 5)).toBeNull(); // invite only
+		expect(await portalLink(db, "stranger", 1)).toBeNull();
+		expect(await portalLink(db, "parent", 999)).toBeNull();
+	});
+});
+
+describe("awaitingPortalInvites", () => {
+	const db = linksDb();
+
+	it("counts the invites an unverified address cannot claim yet", async () => {
+		// leo@ktb.test is unverified and invited to patient 3.
+		expect(await awaitingPortalInvites(db, "leo")).toBe(1);
+	});
+
+	it("is zero for a verified address and for a stranger or unknown account", async () => {
+		expect(await awaitingPortalInvites(db, "ana")).toBe(0);
+		expect(await awaitingPortalInvites(db, "eva")).toBe(0);
+		expect(await awaitingPortalInvites(db, "ghost")).toBe(0);
+	});
+});
+
+describe("PortalAccessLive", () => {
+	const call = async <A>(
+		db: TestDb,
+		principal: { userId: string } | null,
+		use: (access: PortalAccess["Service"]) => Effect.Effect<A>,
+	) => {
+		const runtime = ManagedRuntime.make(
+			PortalAccessLive.pipe(Layer.provide(Layer.succeed(Db, db))),
+		);
+		try {
+			return await runtime.runPromise(
+				Effect.flatMap(PortalAccess, use).pipe(Effect.provideService(Principal, principal)),
+			);
+		} finally {
+			await runtime.dispose();
+		}
+	};
+
+	it("link resolves the principal's active link and re-checks per call", async () => {
+		const db = linksDb();
+		// Before claiming, ana's rows are invited/pending — no link yet.
+		expect(await call(db, { userId: "ana" }, (a) => a.link(1))).toBeNull();
+		await claimPatientInvites(db, "ana");
+		expect(await call(db, { userId: "ana" }, (a) => a.link(1))).toEqual({
+			patientId: 1,
+			name: "Ana",
+			relation: "self",
+		});
+		expect(await call(db, { userId: "ana" }, (a) => a.link(3))).toBeNull();
+		await db.update(patientAccess).set({ status: "revoked" }).where(eq(patientAccess.patientId, 1));
+		expect(await call(db, { userId: "ana" }, (a) => a.link(1))).toBeNull();
+	});
+
+	it("link and awaitingInvites are empty without a principal", async () => {
+		const db = linksDb();
+		expect(await call(db, null, (a) => a.link(1))).toBeNull();
+		expect(await call(db, null, (a) => a.awaitingInvites())).toBe(0);
+	});
+
+	it("awaitingInvites counts the unverified account's pending invites", async () => {
+		const db = linksDb();
+		expect(await call(db, { userId: "leo" }, (a) => a.awaitingInvites())).toBe(1);
+		expect(await call(db, { userId: "ana" }, (a) => a.awaitingInvites())).toBe(0);
 	});
 });

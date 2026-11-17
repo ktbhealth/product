@@ -295,6 +295,29 @@ describe("PatientsLive", () => {
 		expect(rows.map((r) => r.name)).toContain("Ana");
 	});
 
+	it("ownerOf resolves owner + tenant regardless of caller", async () => {
+		const created = await asUser(
+			"u1",
+			call((p) => p.create("u1", fields("Owner Lookup Svc"))),
+		);
+		expect(created?.id).toBeTypeOf("number");
+		// No authz — ownership metadata only, like the patients.ownerOf query.
+		expect(
+			await asUser(
+				null,
+				call((p) => p.ownerOf(created!.id)),
+			),
+		).toMatchObject({
+			ownerId: "u1",
+		});
+		expect(
+			await asUser(
+				null,
+				call((p) => p.ownerOf(99999)),
+			),
+		).toBeNull();
+	});
+
 	it("list fails Forbidden for another ownerId and for null principal", async () => {
 		await expect(
 			asUser(

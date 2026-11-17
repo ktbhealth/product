@@ -1,4 +1,4 @@
-import { and, desc, eq, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNotNull, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
@@ -142,6 +142,99 @@ export async function getConsultation(
 		anamnesis: parseStored(row.c.anamnesis, decodeAnamnesisOption),
 		anamnesisRaw: row.c.anamnesis,
 	};
+}
+
+// ── Portal reads (T-141) ────────────────────────────────────────
+// The patient portal's slice of this table: saved records only
+// (`anamnesis` present — a row still being transcribed is not shown),
+// raw column values (`anamnesis` stays a `v1.` envelope under ZK),
+// never transcript/audio. Link authorization is NOT here — the service
+// resolves it through the patient-access plugin's `PortalAccess` port.
+
+/** One saved consultation as the portal lists it. */
+export interface PortalConsultationSummaryRow {
+	readonly id: number;
+	readonly createdAt: Date;
+	readonly anamnesis: string;
+}
+
+/** One saved consultation as the portal opens it. `userId` is the
+ * recording doctor's account — the portal resolves its display name;
+ * `tenantId` feeds the sensitive-read audit entry. */
+export interface PortalConsultationRow {
+	readonly id: number;
+	readonly createdAt: Date;
+	readonly patientId: number;
+	readonly tenantId: number | null;
+	readonly userId: string | null;
+	readonly anamnesis: string;
+}
+
+/** Saved (`anamnesis` present) consultations of `patientId`, newest
+ * first — whoever recorded them; the portal link is the caller's check. */
+export async function portalConsultationRows(
+	db: DbClient,
+	patientId: number,
+): Promise<PortalConsultationSummaryRow[]> {
+	const rows = await db
+		.select({
+			id: consultations.id,
+			createdAt: consultations.createdAt,
+			anamnesis: consultations.anamnesis,
+		})
+		.from(consultations)
+		.where(and(eq(consultations.patientId, patientId), isNotNull(consultations.anamnesis)))
+		.orderBy(desc(consultations.createdAt), desc(consultations.id));
+	// `as string` — the query filters IS NOT NULL.
+	return rows.map((row) => ({ ...row, anamnesis: row.anamnesis as string }));
+}
+
+/** Consultation `id` when it has a saved record and a linked patient —
+ * null otherwise. */
+export async function portalConsultation(
+	db: DbClient,
+	id: number,
+): Promise<PortalConsultationRow | null> {
+	const rows = await db
+		.select({
+			id: consultations.id,
+			createdAt: consultations.createdAt,
+			patientId: consultations.patientId,
+			tenantId: consultations.tenantId,
+			userId: consultations.userId,
+			anamnesis: consultations.anamnesis,
+		})
+		.from(consultations)
+		.where(and(eq(consultations.id, id), isNotNull(consultations.anamnesis)))
+		.limit(1);
+	const row = rows[0];
+	if (row === undefined || row.patientId === null) return null;
+	return {
+		id: row.id,
+		createdAt: row.createdAt,
+		patientId: row.patientId,
+		tenantId: row.tenantId,
+		userId: row.userId,
+		// `as string` — the query filters IS NOT NULL.
+		anamnesis: row.anamnesis as string,
+	};
+}
+
+/** The patient/tenant scope a portal DEK grant resolves against —
+ * any consultation row (saved record or not), null when it does not
+ * exist or links no patient. */
+export async function portalConsultationScope(
+	db: DbClient,
+	id: number,
+): Promise<{ readonly patientId: number; readonly tenantId: number | null } | null> {
+	const rows = await db
+		.select({ patientId: consultations.patientId, tenantId: consultations.tenantId })
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	const row = rows[0];
+	if (row === undefined || row.patientId === null) return null;
+	return { patientId: row.patientId, tenantId: row.tenantId };
 }
 
 export async function getLiveConsultation(db: DbClient, id: number) {

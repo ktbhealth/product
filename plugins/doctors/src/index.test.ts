@@ -210,6 +210,25 @@ describe("DoctorsLive", () => {
 		expect(await ensureAs({ userId: "u2", actorId: "sec" })).toBe("forbidden:doctor.create");
 		expect(await getDoctorByUser(db, "u2")).toBeNull();
 	});
+
+	const nameAs = (principal: { userId: string } | null, userId: string) =>
+		runtime.runPromise(
+			Effect.flatMap(Doctors, (svc) => svc.displayName(userId)).pipe(
+				Effect.provideService(Principal, principal),
+				Effect.catchTag("Forbidden", (e) => Effect.succeed(`forbidden:${e.path}`)),
+			),
+		);
+
+	it("displayName resolves a doctor profile for any principal", async () => {
+		// u1's profile was ensured by the test above.
+		expect(await nameAs({ userId: "u1" }, "u1")).toBe("Dra. Ana");
+		expect(await nameAs({ userId: "sec" }, "u1")).toBe("Dra. Ana");
+		expect(await nameAs({ userId: "u1" }, "ghost")).toBeNull();
+	});
+
+	it("displayName fails Forbidden without a principal", async () => {
+		expect(await nameAs(null, "u1")).toBe("forbidden:doctor.read");
+	});
 });
 
 describe("doctors plugins", () => {
