@@ -60,7 +60,7 @@ export const parsePrometheusSeries = (text: string): readonly PrometheusSeries[]
 };
 
 /** Per-serverFn rollup: totals plus histogram sum/count for the avg. */
-export interface ServerFnMetricRow {
+interface ServerFnMetricRow {
 	/** createServerFn id (sha256 of file--export) — not plugin-attributable. */
 	readonly fn: string;
 	readonly requests: number;
@@ -71,7 +71,7 @@ export interface ServerFnMetricRow {
 }
 
 /** Per session-context rollup (session | doctor | patient). */
-export interface SessionContextMetricRow {
+interface SessionContextMetricRow {
 	readonly context: string;
 	/** All lookups (cache hits + loads). */
 	readonly lookups: number;

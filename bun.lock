@@ -44,7 +44,6 @@
     "apps/web": {
       "name": "@ktb/web",
       "dependencies": {
-        "@cf-wasm/photon": "^0.4.0",
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@huggingface/transformers": "^4.3.2",
         "@ktb/ai-bridge": "workspace:*",
@@ -87,7 +86,6 @@
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/theme": "workspace:*",
-        "@ktb/vault": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
         "@tanstack/react-devtools": "0.10.14",
         "@tanstack/react-router": "1.170.46",
@@ -748,7 +746,6 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/anamnesis": "workspace:*",
-        "@ktb/anamnesis-llm": "workspace:*",
         "@ktb/audit": "workspace:*",
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
@@ -1111,7 +1108,6 @@
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
-        "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",

@@ -12,7 +12,7 @@ export { appCatalogT } from "./app-catalog.ts";
  * fallback when the slice is absent.
  */
 
-export const LOCALE_COOKIE = "ktb-locale";
+const LOCALE_COOKIE = "ktb-locale";
 export const BASE_LOCALE = "en";
 
 /**

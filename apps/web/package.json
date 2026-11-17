@@ -25,7 +25,6 @@
 		"db:seed": "bun scripts/seed-users.ts"
 	},
 	"dependencies": {
-		"@cf-wasm/photon": "^0.4.0",
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",
 		"@huggingface/transformers": "^4.3.2",
 		"@ktb/ai-bridge": "workspace:*",
@@ -68,7 +67,6 @@
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktb/theme": "workspace:*",
-		"@ktb/vault": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
 		"@tanstack/react-devtools": "0.10.14",
 		"@tanstack/react-router": "1.170.46",
