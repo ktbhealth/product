@@ -72,6 +72,7 @@ import {
 	type ConfigFormField,
 } from "../logic.ts";
 import { managerMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { MetricsSection } from "./MetricsSection.tsx";
 import { getPluginConfigFn, setPluginConfigFn, setPluginEnabledFn } from "../fns.ts";
 
 /** Server-resolved state for one plugin (PluginStates.entries row). */
@@ -407,6 +408,8 @@ export function PluginsPage({
 					) : null}
 				</>
 			)}
+
+			<MetricsSection t={t} />
 
 			{configFor !== null && configFor.meta?.config !== undefined ? (
 				<ConfigDialog
