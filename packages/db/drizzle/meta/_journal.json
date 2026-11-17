@@ -267,6 +267,13 @@
       "when": 1794878725232,
       "tag": "0038_magical_scarlet_spider",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1794886268993,
+      "tag": "0039_certain_lady_bullseye",
+      "breakpoints": true
     }
   ]
 }

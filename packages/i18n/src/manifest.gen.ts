@@ -2775,6 +2775,154 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	kv: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newEntry: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		invalidJson: {
+			params: [],
+		},
+		invalidTtl: {
+			params: [],
+		},
+		conflict: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		allNamespaces: {
+			params: [],
+		},
+		namespacesTitle: {
+			params: [],
+		},
+		previous: {
+			params: [],
+		},
+		next: {
+			params: [],
+		},
+		colKey: {
+			params: [],
+		},
+		colNamespace: {
+			params: [],
+		},
+		colScope: {
+			params: [],
+		},
+		colValue: {
+			params: [],
+		},
+		colExpiry: {
+			params: [],
+		},
+		colVersion: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		scopeGlobal: {
+			params: [],
+		},
+		statusExpired: {
+			params: [],
+		},
+		statusNoExpiry: {
+			params: [],
+		},
+		fieldNamespace: {
+			params: [],
+		},
+		fieldKey: {
+			params: [],
+		},
+		fieldTenantId: {
+			params: [],
+		},
+		fieldOwnerId: {
+			params: [],
+		},
+		fieldValue: {
+			params: [],
+		},
+		fieldTtl: {
+			params: [],
+		},
+		ttlKeep: {
+			params: [],
+		},
+		ttlNone: {
+			params: [],
+		},
+		ttlCustom: {
+			params: [],
+		},
+		ttlSeconds: {
+			params: [],
+		},
+		fieldVersion: {
+			params: [],
+		},
+		scopeHint: {
+			params: [],
+		},
+		valueHint: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "key",
+				},
+			],
+			template: 'Delete "{key}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+	},
 	manager: {
 		title: {
 			params: [],

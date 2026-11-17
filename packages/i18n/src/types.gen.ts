@@ -838,6 +838,53 @@ export type I18nKey =
 	| "jobs.webhooksDescription"
 	| "jobs.webhooksTitle"
 	| "jobs.webhooksUnavailable"
+	| "kv.allNamespaces"
+	| "kv.cancel"
+	| "kv.colActions"
+	| "kv.colExpiry"
+	| "kv.colKey"
+	| "kv.colNamespace"
+	| "kv.colScope"
+	| "kv.colValue"
+	| "kv.colVersion"
+	| "kv.conflict"
+	| "kv.create"
+	| "kv.delete"
+	| "kv.deleteBody"
+	| "kv.deleteConfirm"
+	| "kv.deleteTitle"
+	| "kv.description"
+	| "kv.edit"
+	| "kv.emptyDescription"
+	| "kv.emptyTitle"
+	| "kv.fieldKey"
+	| "kv.fieldNamespace"
+	| "kv.fieldOwnerId"
+	| "kv.fieldTenantId"
+	| "kv.fieldTtl"
+	| "kv.fieldValue"
+	| "kv.fieldVersion"
+	| "kv.invalidJson"
+	| "kv.invalidTtl"
+	| "kv.loadFailed"
+	| "kv.namespacesTitle"
+	| "kv.newEntry"
+	| "kv.next"
+	| "kv.previous"
+	| "kv.save"
+	| "kv.saveFailed"
+	| "kv.saving"
+	| "kv.scopeGlobal"
+	| "kv.scopeHint"
+	| "kv.searchPlaceholder"
+	| "kv.statusExpired"
+	| "kv.statusNoExpiry"
+	| "kv.title"
+	| "kv.ttlCustom"
+	| "kv.ttlKeep"
+	| "kv.ttlNone"
+	| "kv.ttlSeconds"
+	| "kv.valueHint"
 	| "manager.actionConfigure"
 	| "manager.blockedHint"
 	| "manager.cancel"
@@ -2445,6 +2492,58 @@ export interface I18nTypedT {
 	(key: "jobs.webhooksDescription"): Effect.Effect<string>;
 	(key: "jobs.webhooksTitle"): Effect.Effect<string>;
 	(key: "jobs.webhooksUnavailable"): Effect.Effect<string>;
+	(key: "kv.allNamespaces"): Effect.Effect<string>;
+	(key: "kv.cancel"): Effect.Effect<string>;
+	(key: "kv.colActions"): Effect.Effect<string>;
+	(key: "kv.colExpiry"): Effect.Effect<string>;
+	(key: "kv.colKey"): Effect.Effect<string>;
+	(key: "kv.colNamespace"): Effect.Effect<string>;
+	(key: "kv.colScope"): Effect.Effect<string>;
+	(key: "kv.colValue"): Effect.Effect<string>;
+	(key: "kv.colVersion"): Effect.Effect<string>;
+	(key: "kv.conflict"): Effect.Effect<string>;
+	(key: "kv.create"): Effect.Effect<string>;
+	(key: "kv.delete"): Effect.Effect<string>;
+	(
+		key: "kv.deleteBody",
+		params: {
+			key: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "kv.deleteConfirm"): Effect.Effect<string>;
+	(key: "kv.deleteTitle"): Effect.Effect<string>;
+	(key: "kv.description"): Effect.Effect<string>;
+	(key: "kv.edit"): Effect.Effect<string>;
+	(key: "kv.emptyDescription"): Effect.Effect<string>;
+	(key: "kv.emptyTitle"): Effect.Effect<string>;
+	(key: "kv.fieldKey"): Effect.Effect<string>;
+	(key: "kv.fieldNamespace"): Effect.Effect<string>;
+	(key: "kv.fieldOwnerId"): Effect.Effect<string>;
+	(key: "kv.fieldTenantId"): Effect.Effect<string>;
+	(key: "kv.fieldTtl"): Effect.Effect<string>;
+	(key: "kv.fieldValue"): Effect.Effect<string>;
+	(key: "kv.fieldVersion"): Effect.Effect<string>;
+	(key: "kv.invalidJson"): Effect.Effect<string>;
+	(key: "kv.invalidTtl"): Effect.Effect<string>;
+	(key: "kv.loadFailed"): Effect.Effect<string>;
+	(key: "kv.namespacesTitle"): Effect.Effect<string>;
+	(key: "kv.newEntry"): Effect.Effect<string>;
+	(key: "kv.next"): Effect.Effect<string>;
+	(key: "kv.previous"): Effect.Effect<string>;
+	(key: "kv.save"): Effect.Effect<string>;
+	(key: "kv.saveFailed"): Effect.Effect<string>;
+	(key: "kv.saving"): Effect.Effect<string>;
+	(key: "kv.scopeGlobal"): Effect.Effect<string>;
+	(key: "kv.scopeHint"): Effect.Effect<string>;
+	(key: "kv.searchPlaceholder"): Effect.Effect<string>;
+	(key: "kv.statusExpired"): Effect.Effect<string>;
+	(key: "kv.statusNoExpiry"): Effect.Effect<string>;
+	(key: "kv.title"): Effect.Effect<string>;
+	(key: "kv.ttlCustom"): Effect.Effect<string>;
+	(key: "kv.ttlKeep"): Effect.Effect<string>;
+	(key: "kv.ttlNone"): Effect.Effect<string>;
+	(key: "kv.ttlSeconds"): Effect.Effect<string>;
+	(key: "kv.valueHint"): Effect.Effect<string>;
 	(key: "manager.actionConfigure"): Effect.Effect<string>;
 	(
 		key: "manager.blockedHint",
