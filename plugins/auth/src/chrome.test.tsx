@@ -170,6 +170,25 @@ describe("SessionMenu", () => {
 		expect(assign).toHaveBeenCalledWith("/portal/secretary");
 	});
 
+	it("falls back to the English secretary label when the host fills none", async () => {
+		render(
+			<SessionMenu
+				{...props({
+					user: {
+						id: "s1",
+						email: "sec@ktb.test",
+						name: "Sec",
+						patientOnly: false,
+						clinicalRole: "secretary",
+					},
+					labels: {},
+				})}
+			/>,
+		);
+		fireEvent.click(screen.getByText("Sec"));
+		expect(await screen.findByText("Secretary portal")).toBeTruthy();
+	});
+
 	it("falls back to English portal labels when the host fills none", async () => {
 		render(
 			<SessionMenu

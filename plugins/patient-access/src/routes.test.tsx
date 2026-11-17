@@ -47,6 +47,7 @@ const options = (
 	Route as unknown as {
 		options: {
 			beforeLoad: (args: { params: { patientId: string } }) => Promise<void>;
+			component: () => unknown;
 		};
 	}
 ).options;
@@ -98,5 +99,9 @@ describe("/patient-access/$patientId", () => {
 		mocks.clinicalPortalFn.mockResolvedValue(null);
 		const caught = await redirectTarget(beforeLoad);
 		expect(caught.options.href).toBe("/portal/doctor/patient-access/7");
+	});
+
+	it("renders nothing — the funnel lives in beforeLoad", () => {
+		expect(options.component()).toBeNull();
 	});
 });

@@ -304,7 +304,10 @@ export async function getSessionAccount(headers?: Headers): Promise<SessionAccou
 	// patient-context cache is shared with the portal path — the
 	// directory is read at most once per request either way.
 	const patient = await getPatientContext(requestHeaders);
-	const patientProfiles = patient?.profiles.length ?? 0;
+	// Non-null: a resolved doctor context implies a session user, and the
+	// patient context resolves from the same memoized session — only its
+	// directory may be absent (profiles: []).
+	const patientProfiles = patient!.profiles.length;
 	return {
 		...resolved.user,
 		patientOnly: profiles !== null && profiles.length === 0,

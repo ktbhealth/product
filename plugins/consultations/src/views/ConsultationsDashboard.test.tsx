@@ -76,4 +76,12 @@ describe("ConsultationsDashboardSections", () => {
 		expect(screen.getAllByText("No consultations yet.")).toHaveLength(3);
 		expect(screen.queryByRole("link", { name: /View all/ })).toBeNull();
 	});
+
+	it("falls back to the done tone for an unknown status", () => {
+		renderWith(<ConsultationsDashboardSections locale="en" />, [
+			row({ id: 9, status: "archived" }),
+		]);
+		// The status shows in both the breakdown list and the row badge.
+		expect(screen.getAllByText("archived").length).toBeGreaterThan(0);
+	});
 });

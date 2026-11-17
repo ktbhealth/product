@@ -616,4 +616,27 @@ describe("handleAudioQueueBatch", () => {
 		await handleAudioQueueBatch([msg(job(1), log)], deps);
 		expect(log).toEqual(["retry"]);
 	});
+
+	it("keeps caller deps untouched when no server runtime is bound", async () => {
+		resetServerRuntime();
+		try {
+			const { db, deps } = makeDeps();
+			const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+			const log: string[] = [];
+			// withSideEffectDefaults returns deps as-is (no publish/audit
+			// defaults); `run` then fails without a runtime → the message
+			// is retried rather than poisoned.
+			await handleAudioQueueBatch([msg(job(id), log)], deps);
+			expect(log).toEqual(["retry"]);
+		} finally {
+			setServerRuntime({
+				run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+					Effect.runPromise(effect as Effect.Effect<A, E, never>),
+				runAs: () => Promise.reject(new Error("unused")),
+				audioTranscribeModel: TEST_MODEL,
+				getLocale: () => "en",
+			} as unknown as ServerRuntime);
+		}
+	});
 });

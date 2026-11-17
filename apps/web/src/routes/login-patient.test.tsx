@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 		} | null> => ({ profiles: [], activeDoctorId: null }),
 	),
 	loaderData: { current: { emailEnabled: false } },
+	missingKey: { current: null as string | null },
 }));
 const signInEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
 const signUpEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
@@ -36,7 +37,17 @@ vi.mock("#/lib/fns.ts", () => ({
 vi.mock("@ktb/doctors/fns", () => ({ doctorContextFn: mocks.doctorContextFn }));
 vi.mock("#/lib/i18n.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("#/lib/i18n.ts")>();
-	return { ...actual, useRootI18nSlice: () => undefined };
+	return {
+		...actual,
+		useRootI18nSlice: () => undefined,
+		// Lets a test make one catalog key miss so the page's raw-key
+		// fallback branch runs.
+		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) => {
+			const t = actual.appCatalogT(slice);
+			return (key: string, params?: Record<string, unknown>) =>
+				key === mocks.missingKey.current ? key : t(key, params);
+		},
+	};
 });
 // The widget needs a site key and Cloudflare's script; the stand-in
 // hands the page a token on demand.
@@ -119,6 +130,7 @@ describe("portal sign-in page", () => {
 		signInEmail.mockResolvedValue(okResult);
 		signUpEmail.mockResolvedValue(okResult);
 		mocks.loaderData.current = { emailEnabled: false };
+		mocks.missingKey.current = null;
 		mocks.portalAudiencesFn.mockReset();
 		mocks.portalAudiencesFn.mockResolvedValue(["member", "patient"]);
 		mocks.doctorContextFn.mockReset();
@@ -203,6 +215,20 @@ describe("portal sign-in page", () => {
 		render(createElement(Page));
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
+	});
+
+	it("sends a staff account with no resolvable doctor context to the app home", async () => {
+		mocks.portalAudiencesFn.mockResolvedValue(["member", "doctor"]);
+		mocks.doctorContextFn.mockResolvedValue(null);
+		render(createElement(Page));
+		await signIn();
+		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
+	});
+
+	it("renders the raw key when a translation is missing", () => {
+		mocks.missingKey.current = "app.login_tab_in";
+		render(createElement(Page));
+		expect(screen.getByRole("tab", { name: "login_tab_in" })).toBeTruthy();
 	});
 
 	it("forwards the captcha token once the challenge is solved", async () => {

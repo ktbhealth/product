@@ -258,6 +258,40 @@ describe("root document", () => {
 		}
 	});
 
+	it("renders component- and link-kind chrome contributions in the header regions", () => {
+		const Marker = () => createElement("span", null, "INJECTED-COMPONENT");
+		state.chromeExtra = [
+			{
+				id: "t.comp-nav",
+				region: "app.header.nav",
+				content: { kind: "component", component: Marker },
+			},
+			{
+				id: "t.comp-actions",
+				region: "app.header.actions",
+				content: { kind: "component", component: Marker },
+			},
+			{
+				id: "t.nav-link",
+				region: "app.header.nav",
+				content: { kind: "link", to: "/docs", label: "Docs" },
+			},
+		];
+		const html = render();
+		expect(html).toContain("INJECTED-COMPONENT");
+		expect(html).toContain('href="/docs"');
+		expect(html).toContain("Docs");
+	});
+
+	it("hides the portal link when the patient profile count is unresolved", () => {
+		// patientOnly without a resolved patientProfiles count — the
+		// `?? 0` fallback must treat it as "no records".
+		state.user = { name: "Ana", email: "ana@ktb.test", patientOnly: true };
+		const html = render();
+		expect(html).not.toContain('href="/portal"');
+		expect(html).not.toContain("My consultations");
+	});
+
 	it("renders contributed footer blocks and skips chrome kinds that do not match the slot", () => {
 		state.chromeExtra = [
 			{

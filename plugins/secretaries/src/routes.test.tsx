@@ -81,6 +81,7 @@ const options = (
 		options: {
 			beforeLoad: () => Promise<void>;
 			loader: () => Promise<unknown>;
+			component: () => null;
 		};
 	}
 ).options;
@@ -109,6 +110,10 @@ describe("/secretaries redirect", () => {
 	it("sends accounts without their own doctor profile to the chooser", async () => {
 		mocks.listSecretariesFn.mockResolvedValue(null);
 		expect((await redirectTarget(options.loader)).to).toBe("/doctors/select");
+	});
+
+	it("renders nothing — the funnel lives in beforeLoad/loader", () => {
+		expect(options.component()).toBeNull();
 	});
 });
 

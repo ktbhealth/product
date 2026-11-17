@@ -134,7 +134,7 @@ const isPluginNode = (n: GraphNode): boolean => n.pseudo === undefined;
 // from this context instead — the nodes prop stays referentially
 // stable across hovers.
 const DimContext = createContext<ReadonlyMap<string, boolean>>(new Map());
-const useDimmed = (id: string): boolean => useContext(DimContext).get(id) ?? false;
+const useDimmed = (id: string): boolean => useContext(DimContext).get(id) === true;
 
 const domainOf = (node: GraphNode): string => node.plugin?.meta?.keywords?.[0] ?? "platform";
 
@@ -268,15 +268,16 @@ export const buildFlow = (
 		/** Nodes hidden by branch collapse — skipped with their edges. */
 		hidden?: ReadonlySet<string>;
 		collapsed?: ReadonlySet<string>;
-		onToggleCollapse?: (id: string) => void;
-	} = {},
+		onToggleCollapse: (id: string) => void;
+	},
 ): { nodes: MapFlowNode[]; edges: Edge[] } => {
 	const hidden = opts.hidden ?? new Set<string>();
 	const collapsed = opts.collapsed ?? new Set<string>();
-	const onToggleCollapse = opts.onToggleCollapse ?? (() => {});
+	const onToggleCollapse = opts.onToggleCollapse;
 	const pluginData = (node: GraphNode): PluginFlowNodeData => ({
 		node,
-		displayName: pluginDisplayName(node.plugin ?? { id: node.id }),
+		// Only plugin nodes reach pluginData, so `plugin` is defined.
+		displayName: pluginDisplayName(node.plugin!),
 		status: statusById.get(node.id) ?? "enabled",
 		branchCount: focusNeighborhood(graph, node.id).downstream.size,
 		collapsed: collapsed.has(node.id),
@@ -292,7 +293,7 @@ export const buildFlow = (
 				position: { x: 0, y: 0 },
 				data: {
 					label: ns,
-					memberCount: prefixCount.get(ns) ?? 0,
+					memberCount: prefixCount.get(ns)!,
 					collapsed: collapsed.has(`ns:${ns}`),
 					onToggleCollapse,
 				},
@@ -409,7 +410,8 @@ export const buildFlow = (
 	const nodes: MapFlowNode[] = graph.nodes
 		.filter((n) => (isPluginNode(n) || shownIds.has(n.id)) && !hidden.has(n.id))
 		.map((node) => {
-			const position = layout.positions.get(node.id) ?? { x: 0, y: 0 };
+			// layeredLayout positions every graph node.
+			const position = layout.positions.get(node.id)!;
 			if (isPluginNode(node)) {
 				return {
 					id: node.id,
@@ -515,8 +517,9 @@ export const elkPositions = async (
 			],
 			edges: elkEdges.map((e, i) => ({ id: `e${i}`, sources: [e.source], targets: [e.target] })),
 		});
-		for (const child of laid.children ?? []) {
-			boxes.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
+		// ELK always resolves children with x/y for a laid-out graph.
+		for (const child of laid.children!) {
+			boxes.set(child.id, { x: child.x!, y: child.y! });
 		}
 		return boxes;
 	}
@@ -545,13 +548,13 @@ export const elkPositions = async (
 				children: members.map((m) => ({ id: m.id, ...NODE_SIZE.plugin })),
 				edges: intra.map((e, i) => ({ id: `in${i}`, sources: [e.source], targets: [e.target] })),
 			});
-			const width = LANE_PAD_X * 2 + (laid.width ?? NODE_SIZE.plugin.width);
-			const height = LANE_HEADER_H + (laid.height ?? NODE_SIZE.plugin.height);
+			const width = LANE_PAD_X * 2 + laid.width!;
+			const height = LANE_HEADER_H + laid.height!;
 			boxes.set(`lane:${domain}`, { x, y: 0, width, height });
-			for (const child of laid.children ?? []) {
+			for (const child of laid.children!) {
 				boxes.set(child.id, {
-					x: x + LANE_PAD_X + (child.x ?? 0),
-					y: LANE_HEADER_H + (child.y ?? 0),
+					x: x + LANE_PAD_X + child.x!,
+					y: LANE_HEADER_H + child.y!,
 				});
 			}
 			x += width + LANE_GAP;
@@ -577,8 +580,8 @@ export const elkPositions = async (
 		})),
 		edges: shownEdges.map((e, i) => ({ id: `e${i}`, sources: [e.source], targets: [e.target] })),
 	});
-	for (const child of laid.children ?? []) {
-		boxes.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
+	for (const child of laid.children!) {
+		boxes.set(child.id, { x: child.x!, y: child.y! });
 	}
 	return boxes;
 };
@@ -821,7 +824,7 @@ function MapCanvas({
 			if (!isPluginNode(node)) continue;
 			for (const ns of nsChain(node.id)) {
 				const key = `ns:${ns}`;
-				map.set(key, (map.get(key) ?? true) && (map.get(node.id) ?? false));
+				map.set(key, (map.get(key) ?? true) && map.get(node.id) === true);
 			}
 		}
 		return map;
@@ -844,13 +847,8 @@ function MapCanvas({
 			}
 			for (const d of focusNeighborhood(graph, id).downstream) hidden.add(d);
 		}
-		for (const node of graph.nodes) {
-			if (isPluginNode(node) || !hidden.has(node.id)) continue;
-			const neighbors = graph.edges
-				.filter((e) => e.source === node.id || e.target === node.id)
-				.map((e) => (e.source === node.id ? e.target : e.source));
-			if (neighbors.some((n) => !hidden.has(n))) hidden.delete(node.id);
-		}
+		// Every downstream/ns-member id is a plugin, so `hidden` never
+		// contains pseudo-nodes — no rescue pass needed.
 		return hidden;
 	}, [graph, collapsed]);
 
@@ -927,9 +925,8 @@ function MapCanvas({
 	// inside iframes/previews where requestFullscreen is blocked.
 	// Esc exits, like F11.
 	useEffect(() => {
-		if (!isFullscreen) return;
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") void setIsFullscreen(false);
+			if (isFullscreen && e.key === "Escape") void setIsFullscreen(false);
 		};
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
@@ -1091,16 +1088,16 @@ function MapCanvas({
 
 			<Sheet
 				open={selectedPlugin !== undefined}
-				onOpenChange={(o) => {
-					if (!o) void setNodeId(null);
-				}}
+				// No SheetTrigger exists — the only transition is a close
+				// request, which clears the deep-linked node param.
+				onOpenChange={() => void setNodeId(null)}
 			>
 				<SheetContent side="right" className="w-96 overflow-y-auto">
-					{selectedPlugin !== undefined && selected !== null ? (
+					{selected?.plugin !== undefined ? (
 						<ManifestSheet
 							node={selected}
 							graph={graph}
-							status={statusById.get(selected.id) ?? "enabled"}
+							status={statusById.get(selected.id)!}
 							busy={busy}
 							t={t}
 							onToggle={onToggle}
@@ -1125,7 +1122,7 @@ function Legend({ swatch, label }: { swatch: Record<string, string>; label: stri
 
 /** The manifest sheet — everything the plugin declares plus runtime
  * state and the same enable/configure actions the table row runs. */
-function ManifestSheet({
+export function ManifestSheet({
 	node,
 	graph,
 	status,
@@ -1144,8 +1141,9 @@ function ManifestSheet({
 	onConfigure: (plugin: Plugin) => void;
 	onFocusNode: (id: string) => void;
 }) {
-	const plugin = node.plugin;
-	if (plugin === undefined) return null;
+	// Callers only mount the sheet for plugin nodes (selectedPlugin is
+	// the selected node's plugin), so `plugin` is always defined here.
+	const plugin = node.plugin!;
 	const name = pluginDisplayName(plugin);
 	const keywords = plugin.meta?.keywords ?? [];
 	const dependents = graph.edges

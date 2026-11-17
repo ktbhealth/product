@@ -31,6 +31,11 @@ vi.mock("nuqs", async (importOriginal) => {
 	};
 });
 vi.mock("../fns.ts", () => fns);
+// The map pane is a React Flow canvas with its own suite — here it only
+// needs to prove the tab switch mounts it.
+vi.mock("./PluginsMapPage.tsx", () => ({
+	PluginsMapPage: () => <div data-testid="plugins-map" />,
+}));
 
 import { PluginsPage, type PluginStateInfo } from "./PluginsPage.tsx";
 
@@ -469,6 +474,26 @@ describe("PluginsPage", () => {
 		expect(screen.queryAllByText("v.base")).toHaveLength(0);
 		expect(screen.getAllByText("v.other").length).toBeGreaterThan(0);
 		expect(screen.getByText("Showing 1 of 5")).toBeTruthy();
+	});
+
+	it("switches to the map tab", async () => {
+		const user = userEvent.setup();
+		render(<PluginsPage plugins={plugins} states={allEnabled()} locale="en" />);
+		await user.click(screen.getByRole("tab", { name: "Map" }));
+		expect(await screen.findByTestId("plugins-map")).toBeTruthy();
+	});
+
+	it("resets the status filter back to all", async () => {
+		const user = userEvent.setup();
+		const states = allEnabled();
+		states.set("v.other", { pluginId: "v.other", enabled: false, config: null });
+		render(<PluginsPage plugins={plugins} states={states} locale="en" />);
+		await user.click(screen.getByRole("combobox", { name: "Filter by status" }));
+		await user.click(await screen.findByRole("option", { name: "Disabled" }));
+		expect(screen.queryAllByText("v.base")).toHaveLength(0);
+		await user.click(screen.getByRole("combobox", { name: "Filter by status" }));
+		await user.click(await screen.findByRole("option", { name: "All" }));
+		expect(screen.getAllByText("v.base").length).toBeGreaterThan(0);
 	});
 
 	it("shows a no-results row when filters match nothing", async () => {

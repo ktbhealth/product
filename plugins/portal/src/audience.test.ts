@@ -156,6 +156,20 @@ describe("PortalAudience.audiences", () => {
 		).toEqual(new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.doctor, PORTAL_AUDIENCE.clinician]));
 	});
 
+	it("treats a failing patient-link lookup as no links", async () => {
+		const patients = Layer.succeed(PatientProfiles, {
+			listFor: () => Effect.fail("boom" as never),
+			syncLinks: () => Effect.succeed(0),
+		});
+		const set = await audiencesAs(
+			{ userId: "doc1" },
+			{ profiles: directory([profile("owner")]), patients },
+		);
+		expect(set).toEqual(
+			new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.doctor, PORTAL_AUDIENCE.clinician]),
+		);
+	});
+
 	it("resolves patient links for the signed-in account under delegation", async () => {
 		// A secretary acting for a doctor sees the portal through her OWN
 		// links — audiences describe who is signed in, not who they act as.
