@@ -4,6 +4,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./context": "./src/context.ts",
 		"./schema": "./src/schema.ts",
 		"./api": "./src/api.ts",
 		"./byok": "./src/byok.ts",

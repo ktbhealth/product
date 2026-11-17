@@ -16,6 +16,10 @@ import {
 import { ClipboardListIcon } from "lucide-react";
 
 import { ConsultationsPlatformPage } from "./platform-page.tsx";
+import {
+	ConsultationsDashboardSections,
+	ConsultationsDashboardStats,
+} from "./views/ConsultationsDashboard.tsx";
 import { Consultations, ConsultationsLive } from "./service.ts";
 import type { AdminConsultationRow } from "./queries.ts";
 import {
@@ -142,6 +146,23 @@ export const consultationsChromePlugin = definePlugin({
 					group: "Domains",
 				},
 			},
+		},
+		// /platform dashboard slots (T-125): the console landing page is a
+		// generic shell — this plugin contributes its stat cells and the
+		// consultations section through the portal.dashboard.* regions.
+		// Rows arrive via ConsultationsDashboardContext, which the
+		// /platform layout provides from adminListConsultationsFn.
+		{
+			id: "consultations.dashboard.stats",
+			region: "portal.dashboard.stats",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: ConsultationsDashboardStats },
+		},
+		{
+			id: "consultations.dashboard.sections",
+			region: "portal.dashboard.sections",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: ConsultationsDashboardSections },
 		},
 	],
 });

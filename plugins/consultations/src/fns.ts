@@ -28,6 +28,7 @@ import { Tenant, tenantScopeId } from "@ktb/tenant";
 import { Consultations, deleteConsultationRow } from "./index.ts";
 import { consultationCipher } from "./cipher.ts";
 import { ConsultationsQueries } from "./api.ts";
+import type { AdminConsultationRow } from "./queries.ts";
 
 // Consultations plugin server functions: the route modules under
 // src/routes/** are owned by this package and reach the app runtime
@@ -441,6 +442,25 @@ export const adminListAudioJobsFn = createServerFn({ method: "GET" }).handler(as
 				);
 			}),
 		),
+	);
+});
+
+/**
+ * Cross-owner consultation rows for the /platform dashboard slots —
+ * the service re-checks the PlatformAdmin gate; non-admins and missing
+ * sessions get the same empty feed as an empty table.
+ */
+export const adminListConsultationsFn = createServerFn({ method: "GET" }).handler(async () => {
+	const user = await getDoctorUser();
+	if (!user) return [];
+	return runAs(
+		user,
+		Effect.gen(function* () {
+			const consultations = yield* Consultations;
+			return yield* consultations
+				.adminList()
+				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as AdminConsultationRow[])));
+		}),
 	);
 });
 

@@ -7,3 +7,4 @@ export {
 export { PatientDetailPage, type PatientConsultationItem } from "./PatientDetailPage.tsx";
 export { DeletePatientDialog, type PatientDeleteApi } from "./DeletePatientDialog.tsx";
 export { AdminPatientsPage } from "./AdminPatientsPage.tsx";
+export { PatientsDashboardStats } from "./PatientsDashboard.tsx";

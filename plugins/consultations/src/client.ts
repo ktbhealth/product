@@ -3,6 +3,10 @@ import { ClipboardListIcon } from "lucide-react";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { ConsultationsPlatformPage } from "./platform-page.tsx";
+import {
+	ConsultationsDashboardSections,
+	ConsultationsDashboardStats,
+} from "./views/ConsultationsDashboard.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -34,6 +38,20 @@ export const consultationsChromePlugin = definePlugin({
 					group: "Domains",
 				},
 			},
+		},
+		// Mirrors consultationsChromePlugin's dashboard slots (server
+		// index.ts) — same entries, literal dep ids.
+		{
+			id: "consultations.dashboard.stats",
+			region: "portal.dashboard.stats",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: ConsultationsDashboardStats },
+		},
+		{
+			id: "consultations.dashboard.sections",
+			region: "portal.dashboard.sections",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: ConsultationsDashboardSections },
 		},
 	],
 });

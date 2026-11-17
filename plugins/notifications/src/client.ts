@@ -1,6 +1,7 @@
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { NotificationsHeaderAction } from "./views/NotificationsHeaderAction.tsx";
+import { NotificationsDashboardSections } from "./views/NotificationsDashboard.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -30,10 +31,25 @@ export const notificationsHeaderPlugin = definePlugin({
 	],
 });
 
+export const notificationsDashboardPlugin = definePlugin({
+	id: "notifications.dashboard",
+	meta: { keywords: ["notifications", "ui"] },
+	requiredDeps: ["platform.panel"],
+	chrome: [
+		{
+			id: "notifications.dashboard.sections",
+			region: "portal.dashboard.sections",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: NotificationsDashboardSections },
+		},
+	],
+});
+
 /** Single-concern plugins contributed by this module — the client
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	notificationsHeaderPlugin,
+	notificationsDashboardPlugin,
 	definePlugin({ id: "notifications.tables", meta: { keywords: ["notifications", "tables"] } }),
 	definePlugin({
 		id: "notifications.services",

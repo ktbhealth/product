@@ -16,11 +16,11 @@ describe("DashboardPlatformPage", () => {
 	it("maps loader data and the panel ctx into the view", () => {
 		render(
 			<DashboardPlatformPage
-				data={{ patients: [], consultations: [] }}
+				data={{ pluginStates: [{ pluginId: "a.b", enabled: true, system: false, config: null }] }}
 				ctx={{ plugins: [], locale: "en", user: null }}
 			/>,
 		);
 		expect(screen.getByText("Dashboard")).toBeTruthy();
-		expect(screen.getByText("Patients")).toBeTruthy();
+		expect(screen.getByText("Plugins")).toBeTruthy();
 	});
 });

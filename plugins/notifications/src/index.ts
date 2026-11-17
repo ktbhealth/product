@@ -20,6 +20,7 @@ import { NotificationsCommands, NotificationsQueries } from "./api.ts";
 import { notifications } from "@ktb/db/schema";
 
 import { NotificationsHeaderAction } from "./views/NotificationsHeaderAction.tsx";
+import { NotificationsDashboardSections } from "./views/NotificationsDashboard.tsx";
 
 /**
  * Console notifications: contributes a header action (bell icon +
@@ -43,6 +44,27 @@ export const notificationsHeaderPlugin = definePlugin({
 				id: "notifications",
 				component: NotificationsHeaderAction,
 			},
+		},
+	],
+});
+
+/**
+ * /platform dashboard slot (T-125): the console-activity card the
+ * dashboard shell used to own, contributed via the
+ * portal.dashboard.sections region. Rows arrive through
+ * NotificationsDataContext and the exact unread count through
+ * NotificationsUnreadContext — both provided by the /platform layout.
+ */
+export const notificationsDashboardPlugin = definePlugin({
+	id: "notifications.dashboard",
+	meta: { keywords: ["notifications", "ui"] },
+	requiredDeps: [platformPanelPlugin.id],
+	chrome: [
+		{
+			id: "notifications.dashboard.sections",
+			region: "portal.dashboard.sections",
+			when: { paths: ["/platform"] },
+			content: { kind: "component", component: NotificationsDashboardSections },
 		},
 	],
 });
@@ -117,6 +139,7 @@ export const notificationsRoutesPlugin = definePlugin({
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
 	notificationsHeaderPlugin,
+	notificationsDashboardPlugin,
 	notificationsTablesPlugin,
 	notificationsServicesPlugin,
 	notificationsRoutesPlugin,
@@ -148,6 +171,7 @@ export { notifications } from "@ktb/db/schema";
 export {
 	NotificationsActionsContext,
 	NotificationsDataContext,
+	NotificationsUnreadContext,
 	type ConsoleNotification,
 	type NotificationsActions,
 } from "./context.ts";
@@ -157,6 +181,7 @@ export {
 declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"notifications.header": true;
+		"notifications.dashboard": true;
 		"notifications.tables": true;
 		"notifications.services": true;
 		"notifications.routes": true;

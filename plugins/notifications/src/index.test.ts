@@ -24,6 +24,7 @@ import {
 	NotificationsLive,
 	NotificationsQueries,
 	NotificationsQueriesLive,
+	notificationsDashboardPlugin,
 	notificationsHeaderPlugin,
 	notificationsServicesPlugin,
 	notificationsTablesPlugin,
@@ -432,6 +433,17 @@ describe("plugins", () => {
 		});
 	});
 
+	it("declares the /platform dashboard slot contribution", () => {
+		expect(notificationsDashboardPlugin.id).toBe("notifications.dashboard");
+		expect(notificationsDashboardPlugin.requiredDeps).toEqual(["platform.panel"]);
+		expect(notificationsDashboardPlugin.chrome).toHaveLength(1);
+		expect(notificationsDashboardPlugin.chrome?.[0]).toMatchObject({
+			region: "portal.dashboard.sections",
+			when: { paths: ["/platform"] },
+			content: { kind: "component" },
+		});
+	});
+
 	it("declares tables and services as single-concern plugins", () => {
 		expect(notificationsTablesPlugin.id).toBe("notifications.tables");
 		expect(notificationsTablesPlugin.tables?.notifications).toBeDefined();
@@ -446,6 +458,7 @@ describe("plugins", () => {
 	it("exports the discovery plugins array", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"notifications.header",
+			"notifications.dashboard",
 			"notifications.tables",
 			"notifications.services",
 			"notifications.routes",

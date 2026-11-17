@@ -39,7 +39,6 @@ export const dashboardPanelPlugin = definePlugin({
 	id: "dashboard.panel",
 	meta: { keywords: ["dashboard", "ui"] },
 	requiredDeps: ["platform.panel"],
-	optionalDeps: ["patients.services", "consultations.services", "notifications.services"],
 	panel: {
 		pages: [
 			{

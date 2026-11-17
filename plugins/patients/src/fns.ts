@@ -21,7 +21,7 @@ import { Vault } from "@ktb/vault";
 import { Db } from "@ktb/db";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 
-import { deletePatientRow, Patients } from "./index.ts";
+import { deletePatientRow, Patients, type AdminPatientRow } from "./index.ts";
 import { patientCipher } from "./cipher.ts";
 import {
 	TEXT_FIELDS,
@@ -295,6 +295,25 @@ export const createPatientFn = createServerFn({ method: "POST" })
  * re-checks the PlatformAdmin gate; non-admins get the same
  * `{ ok: false }` shape as a validation failure.
  */
+/**
+ * Cross-owner patient rows for the /platform dashboard stat — the
+ * service re-checks the PlatformAdmin gate; non-admins and missing
+ * sessions get the same empty feed as an empty table.
+ */
+export const adminListPatientsFn = createServerFn({ method: "GET" }).handler(async () => {
+	const user = await getDoctorUser();
+	if (!user) return [];
+	return runAs(
+		user,
+		Effect.gen(function* () {
+			const patients = yield* Patients;
+			return yield* patients
+				.adminList()
+				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as AdminPatientRow[])));
+		}),
+	);
+});
+
 export const adminCreatePatientFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeAdminPatientCreate(input))
 	.handler(async ({ data: { ownerId, ...draft } }) => {

@@ -7,3 +7,7 @@ export {
 } from "./ConsultationDetailPage.tsx";
 export { NewConsultationPage, type NewConsultationApi } from "./NewConsultationPage.tsx";
 export { AdminConsultationsPage } from "./AdminConsultationsPage.tsx";
+export {
+	ConsultationsDashboardSections,
+	ConsultationsDashboardStats,
+} from "./ConsultationsDashboard.tsx";

@@ -32,3 +32,11 @@ export interface NotificationsActions {
 }
 
 export const NotificationsActionsContext = createContext<NotificationsActions | null>(null);
+
+/**
+ * Exact unread count for the session user — the host route provides it
+ * next to NotificationsDataContext (the feed is capped, so the count
+ * cannot be derived client-side). `undefined` means no exact count was
+ * wired; consumers may fall back to counting unread rows in the feed.
+ */
+export const NotificationsUnreadContext = createContext<number | undefined>(undefined);
