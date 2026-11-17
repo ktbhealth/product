@@ -13,7 +13,21 @@ const hoisted = vi.hoisted(() => ({
 	accountFails: false,
 	headers: new Headers(),
 	scopeChains: [] as { scopes: readonly { scope: string; scopeId: string }[] }[],
+	emptyLocaleChain: false,
 }));
+
+vi.mock("@ktb/i18n", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/i18n")>();
+	return {
+		...actual,
+		resolveRequestLocales: (
+			...args: Parameters<typeof actual.resolveRequestLocales>
+		): ReturnType<typeof actual.resolveRequestLocales> =>
+			hoisted.emptyLocaleChain
+				? { locales: [], defaultLocale: "en" }
+				: actual.resolveRequestLocales(...args),
+	};
+});
 
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestHeaders: () => {
@@ -121,6 +135,27 @@ describe("i18nRouteFn portal scope gating", () => {
 		expect(res.locale).toBeTruthy();
 		expect(hoisted.scopeChains).toHaveLength(1);
 		expect(hoisted.scopeChains[0]!.scopes.every((s) => s.scope !== "portal")).toBe(true);
+	});
+
+	it("treats /platform paths as the console shell, not a portal instance", async () => {
+		hoisted.scopeChains.length = 0;
+		const res = await i18nRouteFn({ data: "/platform/ops" });
+		expect(res.locale).toBeTruthy();
+		expect(hoisted.scopeChains).toHaveLength(1);
+		expect(hoisted.scopeChains[0]!.scopes.every((s) => s.scope === "global")).toBe(true);
+	});
+});
+
+describe("i18nRouteFn locale chain edge", () => {
+	it("serves the default locale when the resolved chain is empty", async () => {
+		hoisted.emptyLocaleChain = true;
+		try {
+			const res = await i18nRouteFn({ data: "/consultations" });
+			expect(res.locale).toBe("en");
+			expect(res.locales).toEqual([]);
+		} finally {
+			hoisted.emptyLocaleChain = false;
+		}
 	});
 });
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { AUDIENCE_LOCALES, BASE_LOCALE, audienceMessages, isAudienceLocale } from "./i18n.ts";
+import {
+	AUDIENCE_LOCALES,
+	BASE_LOCALE,
+	audienceMessages,
+	isAudienceLocale,
+	i18nMessagesFor,
+} from "./i18n.ts";
 
 /** Every string leaf of a catalog. */
 const leaves = (node: unknown): string[] =>
@@ -28,5 +34,15 @@ describe("audience catalogs", () => {
 		for (const locale of AUDIENCE_LOCALES) {
 			expect(leaves(audienceMessages(locale)).every((s) => s.trim() !== "")).toBe(true);
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of AUDIENCE_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(audienceMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(audienceMessages("en"));
+		expect(i18nMessagesFor("")).toBe(audienceMessages("en"));
 	});
 });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { BASE_LOCALE, DOCTOR_LOCALES, doctorMessages, isDoctorLocale } from "./i18n.ts";
+import {
+	BASE_LOCALE,
+	DOCTOR_LOCALES,
+	doctorMessages,
+	isDoctorLocale,
+	i18nMessagesFor,
+} from "./i18n.ts";
 
 describe("doctor catalogs", () => {
 	it("has a complete, non-empty catalog per locale", () => {
@@ -21,5 +27,15 @@ describe("doctor catalogs", () => {
 		expect(isDoctorLocale("pt-BR")).toBe(true);
 		expect(isDoctorLocale("fr")).toBe(false);
 		expect(doctorMessages("fr")).toBe(doctorMessages(BASE_LOCALE));
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of DOCTOR_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(doctorMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(doctorMessages("en"));
+		expect(i18nMessagesFor("")).toBe(doctorMessages("en"));
 	});
 });

@@ -6,6 +6,7 @@ import {
 	auditMessages,
 	isAuditLocale,
 	type AuditMessages,
+	i18nMessagesFor,
 } from "./i18n.ts";
 
 /** Every string leaf of a catalog (functions are exercised separately). */
@@ -115,5 +116,15 @@ describe("audit catalogs", () => {
 				}
 			}
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of AUDIT_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(auditMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(auditMessages("en"));
+		expect(i18nMessagesFor("")).toBe(auditMessages("en"));
 	});
 });

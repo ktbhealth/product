@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { BASE_LOCALE, DASHBOARD_LOCALES, dashboardMessages, isDashboardLocale } from "./i18n.ts";
+import {
+	BASE_LOCALE,
+	DASHBOARD_LOCALES,
+	dashboardMessages,
+	isDashboardLocale,
+	i18nMessagesFor,
+} from "./i18n.ts";
 
 describe("dashboard catalogs", () => {
 	it("resolves known locales and falls back to the base locale", () => {
@@ -22,5 +28,15 @@ describe("dashboard catalogs", () => {
 		for (const locale of DASHBOARD_LOCALES) {
 			expect(leaves(dashboardMessages(locale)).every((s) => s.trim() !== "")).toBe(true);
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of DASHBOARD_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(dashboardMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(dashboardMessages("en"));
+		expect(i18nMessagesFor("")).toBe(dashboardMessages("en"));
 	});
 });

@@ -6,6 +6,7 @@ import {
 	PATIENT_LOCALES,
 	patientMessages,
 	type PatientErrorCode,
+	i18nMessagesFor,
 } from "./i18n.ts";
 import { errorMessage, MAX_TEXT } from "./record.ts";
 
@@ -97,5 +98,15 @@ describe("patient catalogs", () => {
 		expect(errorMessage("too_long")).toBe(`Must be at most ${MAX_TEXT} characters.`);
 		expect(errorMessage("too_long", "pt-BR")).toBe(`Use no máximo ${MAX_TEXT} caracteres.`);
 		expect(errorMessage("invalid_cpf", "pt-BR")).toBe("CPF inválido.");
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of PATIENT_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(patientMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(patientMessages("en"));
+		expect(i18nMessagesFor("")).toBe(patientMessages("en"));
 	});
 });

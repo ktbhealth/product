@@ -71,12 +71,16 @@ describe("locale request middleware", () => {
 			expect(response.status).toBe(200);
 			// Outside an ALS store currentLocale() degrades to base locale.
 			expect(localeInsideNext).toBe("en");
+			// A second degraded request must NOT warn again — the
+			// warn-once flag keeps the log single-shot per isolate.
+			const again = await runMiddleware("ktb-locale=pt-BR");
+			expect(again.response.status).toBe(200);
 			// The degradation is logged once (not silently) so a compat
 			// regression is visible in worker logs.
 			const alsWarnings = warn.mock.calls.filter((c) =>
 				String(c[0]).includes("AsyncLocalStorage unavailable"),
 			);
-			expect(alsWarnings.length).toBeGreaterThanOrEqual(1);
+			expect(alsWarnings).toHaveLength(1);
 		} finally {
 			hoisted.failAls = false;
 			warn.mockRestore();

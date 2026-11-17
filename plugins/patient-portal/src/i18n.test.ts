@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { SECTION_LABELS } from "@ktb/anamnesis/types";
 
-import { BASE_LOCALE, PORTAL_LOCALES, isPortalLocale, portalMessages } from "./i18n.ts";
+import {
+	BASE_LOCALE,
+	PORTAL_LOCALES,
+	isPortalLocale,
+	portalMessages,
+	i18nMessagesFor,
+} from "./i18n.ts";
 
 /** Flattened `path → rendered string` view of a catalog. */
 const flatten = (value: unknown, path = ""): Record<string, string> => {
@@ -49,5 +55,15 @@ describe("portal catalogs", () => {
 		expect(isPortalLocale("pt-BR")).toBe(true);
 		expect(isPortalLocale("fr")).toBe(false);
 		expect(portalMessages("fr")).toBe(portalMessages(BASE_LOCALE));
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("resolves the same catalog as the locale accessor, with base fallback", () => {
+		for (const locale of PORTAL_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(portalMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(portalMessages("en"));
+		expect(i18nMessagesFor("")).toBe(portalMessages("en"));
 	});
 });

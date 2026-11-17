@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	BASE_LOCALE,
+	i18nMessagesFor,
 	JOB_LOCALES,
 	jobMessages,
 	isJobLocale,
@@ -120,5 +121,20 @@ describe("ops catalogs", () => {
 				}
 			}
 		}
+	});
+});
+
+describe("i18nMessagesFor", () => {
+	it("merges the job and ops catalogs per locale, with base fallback", () => {
+		for (const locale of JOB_LOCALES) {
+			expect(i18nMessagesFor(locale)).toEqual({
+				...jobMessages(locale),
+				...opsMessages(locale),
+			});
+		}
+		expect(i18nMessagesFor("fr")).toEqual({
+			...jobMessages(BASE_LOCALE),
+			...opsMessages(BASE_LOCALE),
+		});
 	});
 });
