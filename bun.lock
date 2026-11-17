@@ -218,6 +218,8 @@
       },
       "dependencies": {
         "@ktb/ai-adapter-acp": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "drizzle-orm": "^0.45.1",
       },
       "devDependencies": {
         "@types/node": "^22.10.2",
