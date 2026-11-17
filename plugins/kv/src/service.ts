@@ -187,6 +187,11 @@ export class Kv extends Context.Service<Kv, KvShape>()("@ktb/kv/Kv") {}
 export const MAX_FIELD_LENGTH = 200;
 export const DEFAULT_KEYS_LIMIT = 200;
 export const MAX_KEYS_LIMIT = 1000;
+/** Serialized-value size cap (UTF-8 bytes) enforced by `serialize` —
+ * bounds every `set`/`setIfAbsent` write so a single entry can't grow
+ * an unbounded JSON blob (T-128 parity with document-store's
+ * MAX_DOCUMENT_BYTES). */
+export const MAX_VALUE_BYTES = 256 * 1024;
 
 export const validateField = (field: string, value: string): KvValidationError | null =>
 	value.length === 0 || value.length > MAX_FIELD_LENGTH
@@ -220,10 +225,13 @@ export const validateTtl = (ttlMs: number, now: number) => {
 		: Effect.fail(new KvValidationError({ reason: "ttlMs must be a positive finite number" }));
 };
 
+const utf8 = new TextEncoder();
+
 /** JSON-serialize a value; rejects non-JSON shapes (undefined,
  * functions, symbols, bigint, circular refs, top-level non-finite
- * numbers). Nested non-finite numbers degrade to `null` per JSON
- * semantics — same as JSON.stringify everywhere else. */
+ * numbers) and payloads over {@link MAX_VALUE_BYTES}. Nested
+ * non-finite numbers degrade to `null` per JSON semantics — same as
+ * JSON.stringify everywhere else. */
 export const serialize = (value: unknown): Effect.Effect<string, KvValidationError> => {
 	if (typeof value === "number" && !Number.isFinite(value)) {
 		return Effect.fail(
@@ -241,7 +249,13 @@ export const serialize = (value: unknown): Effect.Effect<string, KvValidationErr
 		);
 	}
 	return typeof out === "string"
-		? Effect.succeed(out)
+		? utf8.encode(out).byteLength > MAX_VALUE_BYTES
+			? Effect.fail(
+					new KvValidationError({
+						reason: `value exceeds ${MAX_VALUE_BYTES} serialized bytes`,
+					}),
+				)
+			: Effect.succeed(out)
 		: Effect.fail(
 				new KvValidationError({
 					reason: "value must be JSON-serializable (undefined/function/symbol)",

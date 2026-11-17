@@ -50,7 +50,22 @@ export interface FindQuery {
 }
 
 const FIND_LIMIT_DEFAULT = 100;
-const FIND_LIMIT_MAX = 500;
+export const FIND_LIMIT_MAX = 500;
+
+/** Hard cap on rows a single `find` scans in JS (T-128). `find`
+ * evaluates filters/sorts in memory over the caller's whole visible
+ * slice; past this bound the honest answer is a typed
+ * `InvalidDocumentQuery`, not a multi-second scan. Collections that
+ * outgrow it should graduate to a dedicated table (see module doc). */
+export const FIND_SCAN_MAX_ROWS = 10_000;
+
+/** Filter-structure DoS bounds (T-128): `$and`/`$or` nesting deeper
+ * than this or a filter with more total nodes than this is rejected
+ * by `validateFilter` before any row is scanned. Node counting: each
+ * filter object, each field condition, each operator entry and each
+ * `$in`/`$nin` element costs one node. */
+export const MAX_FILTER_DEPTH = 8;
+export const MAX_FILTER_NODES = 100;
 
 /** Clamp pagination inputs — negatives and NaN collapse to defaults. */
 export const clampLimit = (limit: number | undefined): number => {
@@ -232,23 +247,63 @@ export const compareData =
 
 /** Structural validation of a filter — returns issue strings (empty =
  * valid). Catches unknown operators, non-array `$and`/`$or`, bad
- * `$regex` sources and non-boolean `$exists` operands up front so
- * `find` fails with `InvalidDocumentQuery` instead of silently
- * matching nothing. */
-export const validateFilter = (filter: unknown, path = "filter"): string[] => {
+ * `$regex` sources, non-boolean `$exists` operands, excessive nesting
+ * ({@link MAX_FILTER_DEPTH}) and oversized filters
+ * ({@link MAX_FILTER_NODES}) up front so `find` fails with
+ * `InvalidDocumentQuery` instead of silently matching nothing or
+ * burning CPU on a pathological tree. */
+export const validateFilter = (filter: unknown, path = "filter"): string[] =>
+	validateFilterNode(filter, path, 1, { nodes: 0 });
+
+interface FilterBudget {
+	nodes: number;
+}
+
+/** Spend one node; returns the over-budget issue once, or null. */
+const spendNode = (budget: FilterBudget, path: string): string | null => {
+	budget.nodes += 1;
+	return budget.nodes > MAX_FILTER_NODES
+		? `${path}: filter exceeds ${MAX_FILTER_NODES} nodes`
+		: null;
+};
+
+const validateFilterNode = (
+	filter: unknown,
+	path: string,
+	depth: number,
+	budget: FilterBudget,
+): string[] => {
 	const issues: string[] = [];
 	if (!isPlainObject(filter)) return [`${path} must be an object`];
+	if (depth > MAX_FILTER_DEPTH) {
+		return [`${path} exceeds max nesting depth ${MAX_FILTER_DEPTH}`];
+	}
+	// The root object spends one node — it can never be the
+	// over-budget spend (the budget starts empty), so no check here.
+	spendNode(budget, path);
 	for (const [key, cond] of Object.entries(filter)) {
+		const keyIssue = spendNode(budget, `${path}.${key}`);
+		if (keyIssue !== null) {
+			issues.push(keyIssue);
+			return issues;
+		}
 		if (key === "$and" || key === "$or") {
 			if (!Array.isArray(cond) || cond.length === 0) {
 				issues.push(`${path}.${key} must be a non-empty array of filters`);
 				continue;
 			}
-			cond.forEach((sub, i) => issues.push(...validateFilter(sub, `${path}.${key}[${i}]`)));
+			cond.forEach((sub, i) =>
+				issues.push(...validateFilterNode(sub, `${path}.${key}[${i}]`, depth + 1, budget)),
+			);
 			continue;
 		}
 		if (isOperatorObject(cond)) {
 			for (const [op, operand] of Object.entries(cond)) {
+				const opIssue = spendNode(budget, `${path}.${key}.${op}`);
+				if (opIssue !== null) {
+					issues.push(opIssue);
+					return issues;
+				}
 				if (!(QUERY_OPERATORS as readonly string[]).includes(op)) {
 					issues.push(`${path}.${key}: unknown operator ${op}`);
 					continue;
@@ -265,6 +320,20 @@ export const validateFilter = (filter: unknown, path = "filter"): string[] => {
 				}
 				if ((op === "$in" || op === "$nin") && !Array.isArray(operand)) {
 					issues.push(`${path}.${key}.${op} operand must be an array`);
+					continue;
+				}
+				// $in/$nin element lists are unbounded JSON — each element
+				// spends a node so a giant literal can't slip past the
+				// structural budget (matchCondition would otherwise
+				// jsonEqual-scan it per row).
+				if ((op === "$in" || op === "$nin") && Array.isArray(operand)) {
+					for (let i = 0; i < operand.length; i++) {
+						const elemIssue = spendNode(budget, `${path}.${key}.${op}[${i}]`);
+						if (elemIssue !== null) {
+							issues.push(elemIssue);
+							return issues;
+						}
+					}
 				}
 			}
 		}
@@ -317,12 +386,23 @@ export const REGEX_MAX_PATTERN_LENGTH = 200;
  * security boundary). */
 const NESTED_QUANTIFIER_RE = /\([^()]*[+*?{][^()]*\)\s*[+*?{]/;
 
+/** Second cheap heuristic (T-128): a quantified group containing an
+ * alternation — `(a|ab)+`, `(x|xy)*` — is the other classic
+ * catastrophic-backtracking shape the nested-quantifier regex misses.
+ * Deliberately conservative: `(cat|dog)+` is also rejected even though
+ * many alternations are safe — filters come from trusted server-fn
+ * callers and this is defense in depth, not a security boundary. */
+const QUANTIFIED_ALTERNATION_RE = /\([^()]*\|[^()]*\)\s*[+*?{]/;
+
 const regexIssues = (pattern: string, path: string): string[] => {
 	if (pattern.length > REGEX_MAX_PATTERN_LENGTH) {
 		return [`${path}.$regex pattern exceeds ${REGEX_MAX_PATTERN_LENGTH} characters`];
 	}
 	if (NESTED_QUANTIFIER_RE.test(pattern)) {
 		return [`${path}.$regex pattern has nested quantifiers (ReDoS risk)`];
+	}
+	if (QUANTIFIED_ALTERNATION_RE.test(pattern)) {
+		return [`${path}.$regex pattern has a quantified alternation (ReDoS risk)`];
 	}
 	try {
 		new RegExp(pattern);

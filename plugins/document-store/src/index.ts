@@ -2,6 +2,7 @@ import { DatabaseIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import * as Effect from "effect/Effect";
 
 import { DocumentStoreAdmin, DocumentStoreAdminLive, type AdminCollectionInfo } from "./admin.ts";
@@ -14,7 +15,10 @@ import {
 	makeDocumentCollections,
 	toDocumentCollection,
 	assertCollectionDef,
+	type CollectionFieldPermissions,
 	type CollectionIndex,
+	type CollectionPermissionSpec,
+	type CollectionPermissions,
 	type DocumentCollection,
 } from "./collection.ts";
 import {
@@ -32,9 +36,13 @@ import {
 	clampOffset,
 	compileFilter,
 	compareData,
+	FIND_LIMIT_MAX,
+	FIND_SCAN_MAX_ROWS,
 	getPath as queryGetPath,
 	jsonEqual,
 	LOGICAL_KEYS,
+	MAX_FILTER_DEPTH,
+	MAX_FILTER_NODES,
 	matchFilter,
 	normalizeSort,
 	QUERY_OPERATORS,
@@ -60,9 +68,11 @@ import {
 	DocumentInUse,
 	DocumentStore,
 	DocumentStoreLive,
+	DocumentTooLarge,
 	DocumentValidationError,
 	DuplicateFieldValue,
 	InvalidDocumentQuery,
+	MAX_DOCUMENT_BYTES,
 	RecordNotFound,
 	UnknownCollection,
 	DOCUMENT_STORE_TEST_DDL,
@@ -101,7 +111,10 @@ export {
 	DocumentCollections,
 	makeDocumentCollections,
 	toDocumentCollection,
+	type CollectionFieldPermissions,
 	type CollectionIndex,
+	type CollectionPermissionSpec,
+	type CollectionPermissions,
 	type DocumentCollection,
 	// field DSL + inference
 	f,
@@ -117,8 +130,12 @@ export {
 	clampOffset,
 	compileFilter,
 	compareData,
+	FIND_LIMIT_MAX,
+	FIND_SCAN_MAX_ROWS,
 	jsonEqual,
 	LOGICAL_KEYS,
+	MAX_FILTER_DEPTH,
+	MAX_FILTER_NODES,
 	matchFilter,
 	normalizeSort,
 	QUERY_OPERATORS,
@@ -143,9 +160,11 @@ export {
 	DocumentInUse,
 	DocumentStore,
 	DocumentStoreLive,
+	DocumentTooLarge,
 	DocumentValidationError,
 	DuplicateFieldValue,
 	InvalidDocumentQuery,
+	MAX_DOCUMENT_BYTES,
 	RecordNotFound,
 	UnknownCollection,
 	DOCUMENT_STORE_TEST_DDL,
@@ -177,6 +196,12 @@ export const documentStoreTablesPlugin = definePlugin({
 export const documentStoreServicesPlugin = definePlugin({
 	id: "document-store.services",
 	meta: { keywords: ["documents", "services"] },
+	// Ordering hint only: when the rbac citizen is installed its
+	// Permissions service composes BEFORE this layer so collections
+	// declaring `permissions` resolve grants. Absence is legal —
+	// permissionless collections are unaffected and permissioned ones
+	// fail closed (see service.ts specAllowed).
+	optionalDeps: [rbacServicesPlugin.id],
 	services: DocumentStoreLive,
 });
 

@@ -2,19 +2,27 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { and, eq, inArray, isNotNull, or, type SQL } from "drizzle-orm";
 
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
+import { Permissions, splitPermission } from "@ktb/rbac";
 import { tenantScopeCondition, tenantScopeId, Tenant } from "@ktb/tenant";
 
-import { assertCollectionDef, DocumentCollections, type DocumentCollection } from "./collection.ts";
+import {
+	assertCollectionDef,
+	DocumentCollections,
+	type CollectionPermissionSpec,
+	type DocumentCollection,
+} from "./collection.ts";
 import type { Fields, InferInsert, InferRecord } from "./fields.ts";
 import {
 	clampLimit,
 	clampOffset,
 	compileFilter,
 	compareData,
+	FIND_SCAN_MAX_ROWS,
 	matchFilter,
 	normalizeSort,
 	validateFilter,
@@ -45,9 +53,13 @@ import { validateDocumentData } from "./validate.ts";
  * rows are visible to every member of that tenant. `ctx.ownerId`
  * overrides the bound `Principal` (system flows pass it explicitly);
  * a null principal resolves to `""` — system-owned personal rows are
- * invisible to user callers (fail closed). This is row-level fencing,
- * NOT authz: plugins decide WHO may call (PlatformAdmin, Permissions,
- * audience gates) exactly like every other service.
+ * invisible to user callers (fail closed). This is row-level fencing;
+ * collections may additionally declare a `permissions` block (T-128)
+ * that gates every operation through the rbac `Permissions` service —
+ * see {@link CollectionPermissions} in collection.ts. Callers without
+ * declared permissions keep the fencing-only contract: plugins still
+ * decide WHO may call (PlatformAdmin, audience gates) exactly like
+ * every other service.
  *
  * Query evaluation is JS-side over parsed JSON (see query.ts): the v1
  * tradeoff is that `find` scans the collection's in-scope rows. Unique
@@ -73,6 +85,13 @@ export class InvalidDocumentQuery extends Data.TaggedError("InvalidDocumentQuery
 export class RecordNotFound extends Data.TaggedError("RecordNotFound")<{
 	readonly collection: string;
 	readonly id: number;
+}> {}
+
+/** The serialized `data` payload exceeded {@link MAX_DOCUMENT_BYTES}
+ * on insert/update — a typed rejection, not a DB error. */
+export class DocumentTooLarge extends Data.TaggedError("DocumentTooLarge")<{
+	readonly collection: string;
+	readonly bytes: number;
 }> {}
 
 /** A `unique: true` field already holds the value inside the record's
@@ -110,7 +129,9 @@ export type DocumentStoreError =
 	| RecordNotFound
 	| DuplicateFieldValue
 	| BrokenReference
-	| DocumentInUse;
+	| DocumentInUse
+	| DocumentTooLarge
+	| Forbidden;
 
 /** Explicit caller context — `ownerId` overrides the bound Principal.
  * Pass `{ ownerId: null }` (or omit in a principal-less system
@@ -191,7 +212,9 @@ export interface DocumentStoreShape {
 	 * dotted paths with `$eq/$ne/$gt/$gte/$lt/$lte/$in/$nin/$exists/
 	 * $regex` operators plus `$and`/`$or`; evaluation is JS-side over
 	 * parsed JSON (see query.ts for the v1 tradeoff). `limit` clamps to
-	 * [1, 500] (default 100), `offset` to ≥ 0. */
+	 * [1, 500] (default 100), `offset` to ≥ 0; filters are structurally
+	 * bounded (depth/nodes — see query.ts) and the visible slice is
+	 * capped at FIND_SCAN_MAX_ROWS scanned rows. */
 	readonly find: <F extends Fields>(
 		collection: CollectionRef<F>,
 		query?: FindQuery,
@@ -242,28 +265,31 @@ const parseData = (raw: string): Record<string, unknown> => {
 	}
 };
 
-const toRecord = <F extends Fields>(
-	row: DocumentRecordRow,
-	collectionName: string,
-): DocumentRecord<F> => ({
-	id: row.id,
-	collectionId: row.collectionId,
-	collection: collectionName,
-	data: parseData(row.data) as InferRecord<F>,
-	ownerId: row.ownerId,
-	tenantId: row.tenantId,
-	createdAt: row.createdAt,
-	updatedAt: row.updatedAt,
-});
-
 const fail = (error: DocumentStoreError): Effect.Effect<never, DocumentStoreError> =>
 	Effect.fail(error);
+
+/** Serialized-`data` size cap in UTF-8 bytes, enforced on insert and
+ * update (T-128). 64KB keeps one document small against the JS-side
+ * query scan and worker memory; bigger payloads belong in dedicated
+ * storage, not the document store. */
+export const MAX_DOCUMENT_BYTES = 64 * 1024;
+
+const utf8 = new TextEncoder();
+
+const serializedBytes = (data: Record<string, unknown>): number =>
+	utf8.encode(JSON.stringify(data)).byteLength;
 
 export const DocumentStoreLive = Layer.effect(
 	DocumentStore,
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const collections = yield* DocumentCollections;
+		// Optional rbac citizen (plugins/rbac `rbac.services`): absent →
+		// collections WITHOUT a `permissions` block behave exactly as
+		// before; collections WITH one fail closed (Forbidden) — see
+		// requireOp/specAllowed below. Optional-dep ordering puts
+		// rbac.services before this layer when both are installed.
+		const permissionsOpt = yield* Effect.serviceOption(Permissions);
 
 		// Def caches: contributed defs are static per runtime; DB rows
 		// (ensureCollection) are cached and invalidated on upsert.
@@ -370,6 +396,144 @@ export const DocumentStoreLive = Layer.effect(
 				);
 				return (rows[0] as DocumentRecordRow | undefined) ?? null;
 			});
+
+		// ---------- collection permissions (T-128) ----------
+
+		/** Ambient tenant id for tenant-scoped grant lookups (P-084):
+		 * the record's own tenant isn't known before the fetch, so every
+		 * check binds the ambient `Tenant` — global grants always
+		 * satisfy, tenant-pinned grants only inside their tenant.
+		 * Personal/system scope resolves `undefined` → global grants
+		 * only (rbac treats an absent tenantId as tenant_id NULL). */
+		const grantTenantId = Effect.map(Tenant, (t) => {
+			const id = tenantScopeId(t);
+			return id === null ? undefined : id;
+		});
+
+		/** ANY-of permission spec → boolean. Fails CLOSED on every
+		 * ambiguity: no `Permissions` service, no bound principal, or no
+		 * matching allow grant all resolve false. */
+		const specAllowed = (
+			spec: CollectionPermissionSpec,
+			tenantId: string | number | undefined,
+		): Effect.Effect<boolean> =>
+			Effect.gen(function* () {
+				if (Option.isNone(permissionsOpt)) return false;
+				const permissions = permissionsOpt.value;
+				const list = typeof spec === "string" ? [spec] : spec;
+				for (const entry of list) {
+					const { resource, action } = splitPermission(entry);
+					if (yield* permissions.can(resource, action, { tenantId })) return true;
+				}
+				return false;
+			});
+
+		/** Collection-level gate: no-op when the def declares no
+		 * `permissions` block, the op has no spec, or the caller is
+		 * `unscoped` (system/admin flows — DocumentStoreAdmin is already
+		 * gated by PlatformAdmin). Denial → `Forbidden`. */
+		const requireOp = (
+			def: DocumentCollection,
+			op: "read" | "write" | "delete",
+			unscoped: boolean,
+		): Effect.Effect<void, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const perms = def.permissions;
+				if (unscoped || perms === undefined) return;
+				const spec = perms[op];
+				if (spec === undefined) return;
+				const tenantId = yield* grantTenantId;
+				if (!(yield* specAllowed(spec, tenantId))) {
+					return yield* fail(new Forbidden({ path: `documents.${def.name}.${op}` }));
+				}
+			});
+
+		/** Write gate for caller-supplied keys: rejects the write when a
+		 * `permissions.fields.<name>.write` spec exists AND the caller's
+		 * payload carries that key AND the grant is denied. Untouched
+		 * stored values of denied fields are not gated — they simply
+		 * can't be changed (insert-side `default` injection is likewise
+		 * not caller input). */
+		const assertWritableData = (
+			def: DocumentCollection,
+			input: object,
+			unscoped: boolean,
+		): Effect.Effect<void, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const fieldPerms = def.permissions?.fields;
+				if (unscoped || fieldPerms === undefined) return;
+				const checks: { field: string; spec: CollectionPermissionSpec }[] = [];
+				for (const [field, rule] of Object.entries(fieldPerms)) {
+					if (rule.write !== undefined && Object.hasOwn(input, field)) {
+						checks.push({ field, spec: rule.write });
+					}
+				}
+				if (checks.length === 0) return;
+				const tenantId = yield* grantTenantId;
+				for (const { field, spec } of checks) {
+					if (!(yield* specAllowed(spec, tenantId))) {
+						return yield* fail(new Forbidden({ path: `documents.${def.name}.${field}.write` }));
+					}
+				}
+			});
+
+		/** Fields whose `permissions.fields.<name>.read` spec denies the
+		 * caller — resolved ONCE per call (grants don't vary per row),
+		 * then stripped synchronously from every returned document.
+		 * Whole-field allow/deny: no partial masking. */
+		const deniedReadFields = (
+			def: DocumentCollection,
+			unscoped: boolean,
+		): Effect.Effect<ReadonlySet<string>, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const denied = new Set<string>();
+				const fieldPerms = def.permissions?.fields;
+				if (unscoped || fieldPerms === undefined) return denied;
+				const tenantId = yield* grantTenantId;
+				for (const [field, rule] of Object.entries(fieldPerms)) {
+					if (rule.read !== undefined && !(yield* specAllowed(rule.read, tenantId))) {
+						denied.add(field);
+					}
+				}
+				return denied;
+			});
+
+		const stripDenied = (
+			data: Record<string, unknown>,
+			denied: ReadonlySet<string>,
+		): Record<string, unknown> => {
+			if (denied.size === 0) return data;
+			const out = { ...data };
+			for (const field of denied) delete out[field];
+			return out;
+		};
+
+		/** Stored row → wire record with read-denied fields stripped. */
+		const projectRecord = <F extends Fields>(
+			def: DocumentCollection,
+			row: DocumentRecordRow,
+			denied: ReadonlySet<string>,
+		): DocumentRecord<F> => ({
+			id: row.id,
+			collectionId: row.collectionId,
+			collection: def.name,
+			data: stripDenied(parseData(row.data), denied) as InferRecord<F>,
+			ownerId: row.ownerId,
+			tenantId: row.tenantId,
+			createdAt: row.createdAt,
+			updatedAt: row.updatedAt,
+		});
+
+		/** Serialized-size gate shared by insert/update. */
+		const checkDocumentSize = (
+			def: DocumentCollection,
+			data: Record<string, unknown>,
+		): Effect.Effect<void, DocumentStoreError> => {
+			const bytes = serializedBytes(data);
+			return bytes > MAX_DOCUMENT_BYTES
+				? fail(new DocumentTooLarge({ collection: def.name, bytes }))
+				: Effect.void;
+		};
 
 		/** Every def the service knows: contributed defs plus
 		 * DB-registered rows (parsed lazily). The delete path scans
@@ -542,6 +706,10 @@ export const DocumentStoreLive = Layer.effect(
 					const tenant = yield* Tenant;
 					const tenantId = tenantScopeId(tenant);
 					const { def, row } = yield* resolveDef(collection);
+					// Authz before any registry/write side effects: a denied
+					// caller must not even auto-register the collection.
+					yield* requireOp(def, "write", unscoped);
+					yield* assertWritableData(def, data, unscoped);
 					const targetRow = yield* ensureDefRow(def, row);
 					const validated = validateDocumentData(def.fields, data);
 					if (!validated.ok) {
@@ -549,6 +717,7 @@ export const DocumentStoreLive = Layer.effect(
 							new DocumentValidationError({ collection: def.name, issues: validated.issues }),
 						);
 					}
+					yield* checkDocumentSize(def, validated.data);
 					yield* checkRefs(def, validated.data, ownerId, unscoped);
 					yield* checkUnique(
 						def,
@@ -573,7 +742,8 @@ export const DocumentStoreLive = Layer.effect(
 							})
 							.returning(),
 					);
-					return toRecord<F>(rows[0] as DocumentRecordRow, def.name);
+					const denied = yield* deniedReadFields(def, unscoped);
+					return projectRecord<F>(def, rows[0] as DocumentRecordRow, denied);
 				}),
 
 			get: <F extends Fields>(
@@ -585,9 +755,12 @@ export const DocumentStoreLive = Layer.effect(
 					const ownerId = yield* resolveOwner(ctx);
 					const unscoped = ctx?.unscoped === true;
 					const { def, row } = yield* resolveDef(collection);
+					yield* requireOp(def, "read", unscoped);
 					if (row === null) return null;
 					const record = yield* scopedRow(row.id, id, ownerId, unscoped);
-					return record === null ? null : toRecord<F>(record, def.name);
+					if (record === null) return null;
+					const denied = yield* deniedReadFields(def, unscoped);
+					return projectRecord<F>(def, record, denied);
 				}),
 
 			find: <F extends Fields>(
@@ -599,6 +772,7 @@ export const DocumentStoreLive = Layer.effect(
 					const ownerId = yield* resolveOwner(ctx);
 					const unscoped = ctx?.unscoped === true;
 					const { def, row } = yield* resolveDef(collection);
+					yield* requireOp(def, "read", unscoped);
 					// row === null here means a contributed def with no
 					// registry row yet — no records can exist, so the
 					// honest answer is an empty page (unknown NAMES
@@ -614,6 +788,17 @@ export const DocumentStoreLive = Layer.effect(
 						);
 					}
 					const rows = yield* scopedRows(row.id, ownerId, unscoped);
+					// Total-scan cap (T-128): find evaluates in JS over the
+					// whole visible slice — past FIND_SCAN_MAX_ROWS the
+					// typed error beats a multi-second scan.
+					if (rows.length > FIND_SCAN_MAX_ROWS) {
+						return yield* fail(
+							new InvalidDocumentQuery({
+								collection: def.name,
+								issues: [`visible rows (${rows.length}) exceed scan cap ${FIND_SCAN_MAX_ROWS}`],
+							}),
+						);
+					}
 					// Parse once — filter/sort run over the data payload,
 					// not the storage row. compileFilter precompiles every
 					// $regex ONCE per find (not per row) — see query.ts.
@@ -625,8 +810,11 @@ export const DocumentStoreLive = Layer.effect(
 					matched.sort((a, b) => byData(a.data, b.data));
 					const offset = clampOffset(query.offset);
 					const limit = clampLimit(query.limit);
+					const denied = yield* deniedReadFields(def, unscoped);
 					return {
-						rows: matched.slice(offset, offset + limit).map((p) => toRecord<F>(p.row, def.name)),
+						rows: matched
+							.slice(offset, offset + limit)
+							.map((p) => projectRecord<F>(def, p.row, denied)),
 						total,
 					};
 				}),
@@ -641,6 +829,8 @@ export const DocumentStoreLive = Layer.effect(
 					const ownerId = yield* resolveOwner(ctx);
 					const unscoped = ctx?.unscoped === true;
 					const { def, row } = yield* resolveDef(collection);
+					yield* requireOp(def, "write", unscoped);
+					yield* assertWritableData(def, data, unscoped);
 					const existing = row === null ? null : yield* scopedRow(row.id, id, ownerId, unscoped);
 					if (existing === null || row === null) {
 						return yield* fail(new RecordNotFound({ collection: def.name, id }));
@@ -652,6 +842,7 @@ export const DocumentStoreLive = Layer.effect(
 							new DocumentValidationError({ collection: def.name, issues: validated.issues }),
 						);
 					}
+					yield* checkDocumentSize(def, validated.data);
 					yield* checkRefs(def, validated.data, ownerId, unscoped);
 					yield* checkUnique(def, row.id, validated.data, ownerId, existing.tenantId, id, unscoped);
 					const rows = yield* Effect.promise(() =>
@@ -661,7 +852,8 @@ export const DocumentStoreLive = Layer.effect(
 							.where(eq(documentRecords.id, id))
 							.returning(),
 					);
-					return toRecord<F>(rows[0] as DocumentRecordRow, def.name);
+					const denied = yield* deniedReadFields(def, unscoped);
+					return projectRecord<F>(def, rows[0] as DocumentRecordRow, denied);
 				}),
 
 			delete: <F extends Fields>(
@@ -673,6 +865,7 @@ export const DocumentStoreLive = Layer.effect(
 					const ownerId = yield* resolveOwner(ctx);
 					const unscoped = ctx?.unscoped === true;
 					const { def, row } = yield* resolveDef(collection);
+					yield* requireOp(def, "delete", unscoped);
 					const existing = row === null ? null : yield* scopedRow(row.id, id, ownerId, unscoped);
 					if (existing === null || row === null) {
 						return yield* fail(new RecordNotFound({ collection: def.name, id }));

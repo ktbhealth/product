@@ -212,8 +212,40 @@ describe("validateFilter", () => {
 			expect(issues[0]).toContain("nested quantifiers");
 		}
 		// Ordinary grouped/quantified patterns still pass.
-		expect(validateFilter({ a: { $regex: "^(ab|cd)+$" } })).toEqual([]);
+		expect(validateFilter({ a: { $regex: "^(ab)+$" } })).toEqual([]);
 		expect(validateFilter({ a: { $regex: "a{2,3}" } })).toEqual([]);
+	});
+
+	it("rejects quantified alternations (conservative ReDoS heuristic)", () => {
+		for (const pattern of ["(a|ab)+", "(x|xy)*", "^(ab|cd)+$"]) {
+			const issues = validateFilter({ a: { $regex: pattern } });
+			expect(issues[0]).toContain("quantified alternation");
+		}
+		// Alternation WITHOUT a quantifier is fine.
+		expect(validateFilter({ a: { $regex: "^(ab|cd)$" } })).toEqual([]);
+	});
+
+	it("bounds filter depth and node count", () => {
+		// Nesting deeper than MAX_FILTER_DEPTH is rejected.
+		let deep: Record<string, unknown> = { a: 1 };
+		for (let i = 0; i < 10; i++) deep = { $and: [deep] };
+		expect(validateFilter(deep)[0]).toContain("nesting depth");
+		// Exactly at the boundary passes.
+		let ok: Record<string, unknown> = { a: 1 };
+		for (let i = 0; i < 7; i++) ok = { $and: [ok] };
+		expect(validateFilter(ok)).toEqual([]);
+		// A wide filter blows the node budget — field conditions,
+		// operator entries and $in elements each spend a node.
+		const wide: Record<string, unknown> = {};
+		for (let i = 0; i < 60; i++) wide[`f${i}`] = { $eq: i };
+		expect(validateFilter(wide)[0]).toContain("nodes");
+		// Literal-only conditions spend one node per key — the
+		// over-budget spend lands on a field key.
+		const wideLiteral: Record<string, unknown> = {};
+		for (let i = 0; i < 101; i++) wideLiteral[`g${i}`] = i;
+		expect(validateFilter(wideLiteral)[0]).toContain("nodes");
+		const bigIn = { a: { $in: Array.from({ length: 200 }, (_, i) => i) } };
+		expect(validateFilter(bigIn)[0]).toContain("nodes");
 	});
 });
 

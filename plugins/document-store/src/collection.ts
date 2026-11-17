@@ -41,6 +41,51 @@ export const DOCUMENT_COLLECTION_KIND: ContributionKindDescriptor = {
  * they are NOT created as SQL indexes. Entries are dotted field paths. */
 export type CollectionIndex = string;
 
+/**
+ * A permission requirement: one `"resource.action"` string or an
+ * array of alternatives (ANY grant satisfies the check). Strings use
+ * the same spelling as `Permissions.can(resource, action)` calls and
+ * the rbac vocabulary — split at the FIRST dot (`"i18n.messages.read"`
+ * → resource `"i18n"`, action `"messages.read"`), so collection names
+ * containing dots stay inside the action segment.
+ *
+ * Tenant-scoped grants (P-084) compose automatically: the service
+ * passes the ambient `Tenant` id to `Permissions.can`, whose grant
+ * resolution already unions global (`tenant_id NULL`) and
+ * tenant-pinned rows — a global grant satisfies tenant-scoped checks,
+ * a tenant-pinned grant only its own tenant.
+ */
+export type CollectionPermissionSpec = string | readonly string[];
+
+/** Per-field permission overrides — whole-field allow/deny (no partial
+ * masking): a `read`-denied field is stripped from returned documents;
+ * a `write`-denied field rejects any write that touches it. Field names
+ * are top-level `data` keys (same namespace as `fields`). */
+export interface CollectionFieldPermissions {
+	readonly read?: CollectionPermissionSpec;
+	readonly write?: CollectionPermissionSpec;
+}
+
+/**
+ * Optional collection-level RBAC gate (T-128). When ABSENT the
+ * collection keeps the original contract: owner/tenant row fencing
+ * only, no grant checks. When PRESENT the service checks
+ * `Permissions.can(...)` for the bound `Principal` on every record
+ * operation — `read` gates get/find, `write` gates insert/update,
+ * `delete` gates delete — and fails `Forbidden` on denial. An absent
+ * `Permissions` service fails CLOSED (permissioned collections are
+ * unusable without the rbac citizen). `ctx.unscoped` system flows
+ * (DocumentStoreAdmin) bypass the checks entirely — they are already
+ * gated by PlatformAdmin. Declaring only some operations gates just
+ * those (e.g. `{ write: "…" }` leaves reads fencing-only).
+ */
+export interface CollectionPermissions {
+	readonly read?: CollectionPermissionSpec;
+	readonly write?: CollectionPermissionSpec;
+	readonly delete?: CollectionPermissionSpec;
+	readonly fields?: Record<string, CollectionFieldPermissions>;
+}
+
 /** A document collection definition — the unit plugins contribute. */
 export interface DocumentCollection<F extends Fields = Fields> {
 	/** Collection name — unique across all contributors; used as the
@@ -53,6 +98,8 @@ export interface DocumentCollection<F extends Fields = Fields> {
 	readonly fields: F;
 	/** Declared index paths (dotted), informational in v1. */
 	readonly indexes?: readonly CollectionIndex[];
+	/** Optional RBAC gate — see {@link CollectionPermissions}. */
+	readonly permissions?: CollectionPermissions;
 	/** Owning plugin id — stamped from the contributing plugin when the
 	 * manifest omits it. */
 	readonly owner?: string;
@@ -68,12 +115,14 @@ export const defineCollection = <const F extends Fields>(options: {
 	readonly version?: number;
 	readonly fields: F;
 	readonly indexes?: readonly CollectionIndex[];
+	readonly permissions?: CollectionPermissions;
 	readonly owner?: string;
 }): DocumentCollection<F> => ({
 	name: options.name,
 	version: options.version ?? 1,
 	fields: options.fields,
 	...(options.indexes === undefined ? {} : { indexes: options.indexes }),
+	...(options.permissions === undefined ? {} : { permissions: options.permissions }),
 	...(options.owner === undefined ? {} : { owner: options.owner }),
 });
 
@@ -142,7 +191,66 @@ export const assertCollectionDef = (value: unknown, source: string): DocumentCol
 			}
 		}
 	}
+	assertPermissionsBlock(def.permissions, def.name);
 	return def as unknown as DocumentCollection;
+};
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+	typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** One permission spec: a non-empty string or a non-empty array of
+ * non-empty strings (ANY-of alternatives). */
+const assertPermissionSpec = (value: unknown, path: string): void => {
+	const specOk =
+		(typeof value === "string" && value.length > 0) ||
+		(Array.isArray(value) &&
+			value.length > 0 &&
+			value.every((s) => typeof s === "string" && s.length > 0));
+	if (!specOk) {
+		throw new Error(
+			`document collection permissions at ${path}: expected a non-empty string or string array`,
+		);
+	}
+};
+
+/** Runtime shape check for the optional `permissions` block — same
+ * packaging-bug contract as the rest of the def (throws, never a
+ * typed error). Unknown keys are tolerated (forward-compat); only the
+ * known ops/fields are shape-checked. */
+const assertPermissionsBlock = (value: unknown, collectionName: string): void => {
+	if (value === undefined) return;
+	if (!isPlainObject(value)) {
+		throw new Error(`document collection "${collectionName}": permissions must be an object`);
+	}
+	for (const op of ["read", "write", "delete"] as const) {
+		const spec = value[op];
+		if (spec !== undefined) assertPermissionSpec(spec, `permissions.${op}`);
+	}
+	const fields = value.fields;
+	if (fields === undefined) return;
+	if (!isPlainObject(fields)) {
+		throw new Error(
+			`document collection "${collectionName}": permissions.fields must be an object`,
+		);
+	}
+	for (const [field, rule] of Object.entries(fields)) {
+		if (!FIELD_NAME_RE.test(field) || FORBIDDEN_FIELD_NAMES.has(field)) {
+			throw new Error(
+				`document collection "${collectionName}": invalid permissions.fields key ${JSON.stringify(field)}`,
+			);
+		}
+		if (!isPlainObject(rule)) {
+			throw new Error(
+				`document collection "${collectionName}": permissions.fields.${field} must be an object`,
+			);
+		}
+		for (const op of ["read", "write"] as const) {
+			const spec = rule[op];
+			if (spec !== undefined) {
+				assertPermissionSpec(spec, `permissions.fields.${field}.${op}`);
+			}
+		}
+	}
 };
 
 /**

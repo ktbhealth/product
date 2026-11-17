@@ -65,7 +65,13 @@ export const plugins: readonly Plugin[] = [
 	// bundle, but the ids must exist so dep edges and enabled-state
 	// filtering line up with the server registry.
 	definePlugin({ id: "document-store.tables", meta: { keywords: ["documents", "tables"] } }),
-	definePlugin({ id: "document-store.services", meta: { keywords: ["documents", "services"] } }),
+	// optionalDeps mirrors the server manifest (parity test) — the
+	// rbac ordering hint is client-visible dep data, not a service.
+	definePlugin({
+		id: "document-store.services",
+		meta: { keywords: ["documents", "services"] },
+		optionalDeps: ["rbac.services"],
+	}),
 	definePlugin({
 		id: "document-store.admin",
 		meta: { keywords: ["documents", "admin"] },
