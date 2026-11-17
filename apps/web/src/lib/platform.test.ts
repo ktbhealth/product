@@ -29,7 +29,7 @@ vi.mock("@ktb/server-fns", async (importOriginal) => {
 });
 
 import { groupMembers, groups } from "@ktb/db/schema";
-import { GLOBAL_SCOPE, tenantScope } from "@ktb/i18n";
+import { GLOBAL_SCOPE, portalScope, tenantScope } from "@ktb/i18n";
 import { Tenant } from "@ktb/tenant";
 import { getI18n } from "@ktb/server-fns";
 
@@ -113,14 +113,66 @@ describe("platform", () => {
 		await expect(runAs({ id: "u1" }, Effect.succeed("ok"))).resolves.toBe("ok");
 	});
 
-	it("i18n capability resolves a request-bound shape and honors caller scope", async () => {
+	it("i18n capability resolves a request-bound shape and sanitizes caller scope", async () => {
 		// No tenant headers/session in tests → global scope chain.
 		const i18n = await getI18n();
 		expect(i18n.scopeChain).toEqual(GLOBAL_SCOPE);
 		expect(typeof i18n.t).toBe("function");
-		// An explicit scopeChain still wins (portal-scoped callers).
+		// Caller-supplied scopes are not trusted verbatim: with no
+		// request tenant, a tenant entry is unprovable and drops out,
+		// leaving only the global fallback.
 		const scoped = await getI18n({ scopeChain: tenantScope("t1") });
-		expect(scoped.scopeChain).toEqual(tenantScope("t1"));
+		expect(scoped.scopeChain).toEqual(GLOBAL_SCOPE);
+		// A registered portal id survives (with global re-appended); an
+		// unknown portal id does not.
+		const portal = await getI18n({
+			scopeChain: { scopes: [{ scope: "portal", scopeId: "clinician" }] },
+		});
+		expect(portal.scopeChain).toEqual({
+			scopes: [
+				{ scope: "portal", scopeId: "clinician" },
+				{ scope: "global", scopeId: "" },
+			],
+		});
+		const bogus = await getI18n({
+			scopeChain: { scopes: [{ scope: "portal", scopeId: "not-a-portal" }] },
+		});
+		expect(bogus.scopeChain).toEqual(GLOBAL_SCOPE);
+		// Global entries are normalized (scopeId forced to "").
+		const oddGlobal = await getI18n({
+			scopeChain: { scopes: [{ scope: "global", scopeId: "bogus" }] },
+		});
+		expect(oddGlobal.scopeChain).toEqual(GLOBAL_SCOPE);
+	});
+
+	it("i18n capability keeps caller scopes provable from the request tenant", async () => {
+		const reset = () => {
+			hoisted.headers = new Headers();
+			hoisted.account = null;
+			hoisted.accountFails = false;
+			hoisted.throwHeaders = false;
+		};
+		reset();
+		try {
+			hoisted.headers = new Headers({ "x-tenant-slug": "clinic-a" });
+			hoisted.account = { id: "u1", email: "u@x.com", name: "U" };
+			// Portal + the request's own tenant id → the chain is honored.
+			const chain = portalScope(String(clinicAId), "clinician");
+			expect((await getI18n({ scopeChain: chain })).scopeChain).toEqual(chain);
+			// A different tenant id is not provable → dropped; the
+			// registered portal scope and global fallback survive.
+			const other = await getI18n({
+				scopeChain: portalScope("999999", "clinician"),
+			});
+			expect(other.scopeChain).toEqual({
+				scopes: [
+					{ scope: "portal", scopeId: "clinician" },
+					{ scope: "global", scopeId: "" },
+				],
+			});
+		} finally {
+			reset();
+		}
 	});
 
 	it("i18n capability binds tenant scope from request headers + session", async () => {

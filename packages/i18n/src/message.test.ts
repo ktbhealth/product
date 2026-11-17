@@ -201,6 +201,16 @@ describe("renderMessage", () => {
 		// pt-BR treats 0 as 'many'? CLDR pt: 0 → 'many' category; 'other' still matches fallback? select returns 'many' which has no case → renders "". Use 'other' coverage in real messages.
 	});
 
+	it("formats params with the base locale when rendering under qps", () => {
+		// qps is a QA pseudo-locale, not a formattable locale — Intl
+		// calls must use the base locale ("en") instead of throwing or
+		// degrading hinted params to safe strings.
+		const tpl = "{count, plural, one {{n, number} item} other {{n, number} items}}";
+		const params = { count: 2, n: 1234.5 };
+		expect(renderMessage(tpl, params, "qps")).toBe(renderMessage(tpl, params, "en"));
+		expect(renderMessage(tpl, params, "qps")).toBe("1,234.5 items");
+	});
+
 	it("renders select", () => {
 		const tpl = "{role, select, admin {A} other {O}}";
 		expect(renderMessage(tpl, { role: "admin" }, "en")).toBe("A");
