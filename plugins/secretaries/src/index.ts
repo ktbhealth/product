@@ -9,6 +9,8 @@ import { DoctorDelegations, type DoctorProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { doctors, user } from "@ktb/db/schema";
+import { doctorsServicesPlugin } from "@ktb/doctors";
+import { invitesServicesPlugin } from "@ktb/invites";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { portalShellPlugin } from "@ktb/portal";
 import { physical, route } from "@tanstack/virtual-file-routes";
@@ -237,6 +239,10 @@ export const secretariesTablesPlugin = definePlugin({
 export const secretariesServicesPlugin = definePlugin({
 	id: "secretaries.services",
 	meta: { keywords: ["secretaries", "services"] },
+	// inviteAcceptPath (fns.ts) resolves the Invites service via
+	// serviceOption — ordering hint only; a deployment without invites
+	// simply emails no accept link.
+	optionalDeps: [invitesServicesPlugin.id],
 	services: Layer.mergeAll(DoctorDelegationsLive, SecretariesLive),
 });
 
@@ -246,6 +252,9 @@ export const secretariesServicesPlugin = definePlugin({
 export const secretariesRoutesPlugin = definePlugin({
 	id: "secretaries.routes",
 	meta: { keywords: ["secretaries", "routes"] },
+	// /login/secretary calls the doctors plugin's doctorContextFn —
+	// ordering hint only.
+	optionalDeps: [doctorsServicesPlugin.id],
 	routes: [
 		physical("/secretaries", "../../../../plugins/secretaries/src/routes"),
 		// /secretaries/login (above) stays as a redirect for invite

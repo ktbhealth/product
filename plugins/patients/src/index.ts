@@ -21,7 +21,7 @@ import {
 } from "@ktb/platform";
 import { Forbidden, requireCanAs, requirePrincipalUser } from "@ktb/authz";
 import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
-import { tenantIsZk } from "@ktb/vault";
+import { tenantIsZk, vaultServicesPlugin } from "@ktb/vault";
 import {
 	isPatientDocumentType,
 	PATIENT_DOCUMENT_KEYS,
@@ -586,8 +586,11 @@ export const patientsServicesPlugin = definePlugin({
 	// platform module ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
 	// Audit writes resolve the Audit service via serviceOption — the dep
-	// edge is an ordering hint only; absence is legal.
-	optionalDeps: [auditServicesPlugin.id],
+	// edge is an ordering hint only; absence is legal. Vault is the same
+	// shape: the ZK write gate reads clinic_keys (tenantIsZk) and create
+	// resolves Vault via serviceOption for grantAccess — both degrade
+	// gracefully when the vault plugin is absent.
+	optionalDeps: [auditServicesPlugin.id, vaultServicesPlugin.id],
 	services: Layer.mergeAll(PatientsLive, PatientsQueriesLive, PatientsCommandsLive),
 });
 

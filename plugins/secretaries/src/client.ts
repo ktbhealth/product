@@ -17,8 +17,18 @@ import { SecretariesPortalPage } from "./views/SecretariesPortalPage.tsx";
  */
 export const plugins: readonly Plugin[] = [
 	definePlugin({ id: "secretaries.tables", meta: { keywords: ["secretaries", "tables"] } }),
-	definePlugin({ id: "secretaries.services", meta: { keywords: ["secretaries", "services"] } }),
-	definePlugin({ id: "secretaries.routes", meta: { keywords: ["secretaries", "routes"] } }),
+	definePlugin({
+		id: "secretaries.services",
+		meta: { keywords: ["secretaries", "services"] },
+		// Mirrors secretariesServicesPlugin.optionalDeps (server index.ts).
+		optionalDeps: ["invites.services"],
+	}),
+	definePlugin({
+		id: "secretaries.routes",
+		meta: { keywords: ["secretaries", "routes"] },
+		// Mirrors secretariesRoutesPlugin.optionalDeps (server index.ts).
+		optionalDeps: ["doctors.services"],
+	}),
 	definePlugin({
 		id: "secretaries.pages",
 		meta: { keywords: ["secretaries", "ui", "doctor"] },

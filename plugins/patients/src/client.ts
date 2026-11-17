@@ -74,7 +74,7 @@ export const plugins: readonly Plugin[] = [
 		meta: { keywords: ["patients", "services"] },
 		requiredDeps: ["platform.admin"],
 		// Mirrors patientsServicesPlugin.optionalDeps (server index.ts).
-		optionalDeps: ["audit.services"],
+		optionalDeps: ["audit.services", "vault.services"],
 	}),
 	definePlugin({ id: "patients.routes", meta: { keywords: ["patients", "routes"] } }),
 	patientsChromePlugin,

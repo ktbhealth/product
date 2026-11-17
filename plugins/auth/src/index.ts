@@ -1,5 +1,6 @@
 import { physical, route } from "@tanstack/virtual-file-routes";
 
+import { doctorsServicesPlugin } from "@ktb/doctors";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { SessionMenu } from "./chrome.tsx";
@@ -22,6 +23,11 @@ export const authRoutesPlugin = definePlugin({
 	id: "auth.routes",
 	meta: { keywords: ["auth", "routes"] },
 	system: true,
+	// /login/doctor calls the doctors plugin's doctorContextFn /
+	// ensureDoctorProfileFn after sign-in — ordering hint only (optional,
+	// never required: auth is system and must compose even when the
+	// doctors plugin is absent; the fns then fail at call time).
+	optionalDeps: [doctorsServicesPlugin.id],
 	routes: [
 		// Single-file page route: `route()` resolves the module path
 		// relative to the host's routes directory, same as physical().

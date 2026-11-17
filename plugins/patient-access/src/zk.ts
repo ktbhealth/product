@@ -1,3 +1,7 @@
+// Canonical `consultationCipher.entity` — lives in @ktb/crypto/entities
+// because @ktb/consultations already depends on this plugin (apis.ts),
+// so importing its constant here would cycle the package graph.
+import { CONSULTATION_ENTITY_TYPE } from "@ktb/crypto/entities";
 import type { KeyringService } from "@ktb/crypto/keyring";
 import { PATIENT_ENTITY_TYPE, type GrantInput } from "@ktb/patients/zk";
 import { vaultDekEnvelopesFn, vaultGrantAccessFn } from "@ktb/vault/fns";
@@ -16,12 +20,6 @@ import { portalReadersFn, type PortalReader } from "./fns.ts";
  * doctor already manages links — and is idempotent: re-granting the
  * same (record, reader) replaces the envelope row.
  */
-
-// `consultationCipher.entity` duplicated on purpose: @ktb/consultations
-// already depends on this plugin (apis.ts), so importing its constant
-// here would cycle the package graph. Same namespacing as
-// record_versions/entity_deks.
-const CONSULTATION_ENTITY_TYPE = "consultation";
 
 export type { PortalReader };
 

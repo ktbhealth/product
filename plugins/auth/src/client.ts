@@ -15,6 +15,8 @@ export const authRoutesPlugin = definePlugin({
 	id: "auth.routes",
 	meta: { keywords: ["auth", "routes"] },
 	system: true,
+	// Mirrors authRoutesPlugin.optionalDeps (server index.ts).
+	optionalDeps: ["doctors.services"],
 });
 
 export const authChromePlugin = definePlugin({
