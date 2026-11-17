@@ -68,6 +68,27 @@
 				"refresh": 1,
 				"sort": 1,
 				"allValue": ".*"
+			},
+			{
+				"type": "query",
+				"name": "plugin",
+				"skipUrlSync": false,
+				"multi": true,
+				"allowCustomValue": true,
+				"includeAll": true,
+				"auto": false,
+				"auto_min": "10s",
+				"auto_count": 30,
+				"label": "Plugin package",
+				"description": "Plugin package id recorded on ktb_plugin_* metrics — the pkg stamp on discovered plugins (e.g. notifications, patients).",
+				"datasource": {
+					"type": "prometheus",
+					"uid": "prometheus"
+				},
+				"query": "label_values(ktb_plugin_invocations_total, plugin)",
+				"refresh": 1,
+				"sort": 1,
+				"allValue": ".*"
 			}
 		]
 	},
@@ -1215,6 +1236,220 @@
 					"range": true,
 					"instant": false,
 					"legendFormat": "{{context}}/{{result}}"
+				}
+			]
+		},
+		{
+			"type": "row",
+			"collapsed": false,
+			"id": 24,
+			"panels": [],
+			"title": "Plugin SLOs",
+			"gridPos": {
+				"x": 0,
+				"y": 56,
+				"w": 24,
+				"h": 1
+			}
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "ops",
+					"decimals": 2,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 25,
+			"title": "Plugin dispatch rate by plugin/side",
+			"description": "ktb_plugin_invocations_total rate per plugin package and CQRS side — which plugins carry the dispatch traffic.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 0,
+				"y": 57,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "sum by (plugin, side) (rate(ktb_plugin_invocations_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{plugin}}/{{side}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "ms",
+					"decimals": 0,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 26,
+			"title": "Plugin p95 duration by plugin",
+			"description": "p95 dispatch wall time per plugin package (ktb_plugin_duration_ms) — the 'which plugin is slow' panel. Includes gate-blocked dispatches; their cost is the PluginStates read.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 6,
+				"y": 57,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "histogram_quantile(0.95, sum by (le, plugin) (rate(ktb_plugin_duration_ms_bucket{plugin=~\"$plugin\"}[$__rate_interval])))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{plugin}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "percentunit",
+					"decimals": 2,
+					"max": 1,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 27,
+			"title": "Plugin error ratio by plugin",
+			"description": "Share of dispatches ending in failure per plugin (ktb_plugin_invocations_total outcome=error). outcome=disabled is excluded from both sides — gate-blocked traffic is not handler error. Effect failures, not HTTP 5xx.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 12,
+				"y": 57,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "sum by (plugin) (rate(ktb_plugin_invocations_total{plugin=~\"$plugin\",outcome=\"error\"}[$__rate_interval])) / sum by (plugin) (rate(ktb_plugin_invocations_total{plugin=~\"$plugin\",outcome=~\"success|error\"}[$__rate_interval]))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{plugin}}"
+				}
+			]
+		},
+		{
+			"type": "timeseries",
+			"transparent": false,
+			"repeatDirection": "h",
+			"options": {
+				"legend": {
+					"displayMode": "list",
+					"placement": "bottom",
+					"showLegend": true,
+					"calcs": [
+						"lastNotNull"
+					]
+				},
+				"tooltip": {
+					"mode": "multi",
+					"sort": "none"
+				}
+			},
+			"fieldConfig": {
+				"defaults": {
+					"custom": {},
+					"unit": "ops",
+					"decimals": 2,
+					"min": 0
+				},
+				"overrides": []
+			},
+			"id": 28,
+			"title": "Plugin invocations by outcome",
+			"description": "ktb_plugin_invocations_total split by outcome (success | error | disabled). A disabled share means callers are still dispatching into toggled-off packages — the gate blocks them, but the traffic is real.",
+			"datasource": {
+				"type": "prometheus",
+				"uid": "prometheus"
+			},
+			"gridPos": {
+				"x": 18,
+				"y": 57,
+				"w": 6,
+				"h": 8
+			},
+			"targets": [
+				{
+					"expr": "sum by (plugin, outcome) (rate(ktb_plugin_invocations_total{plugin=~\"$plugin\"}[$__rate_interval]))",
+					"refId": "A",
+					"range": true,
+					"instant": false,
+					"legendFormat": "{{plugin}}/{{outcome}}"
 				}
 			]
 		}
