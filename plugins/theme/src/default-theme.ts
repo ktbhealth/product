@@ -8,15 +8,16 @@
  * Chosen over a DB seed/migration because it needs no migration, cannot
  * be deleted or disabled by an admin, and is identical in every
  * environment (dev, preview, prod). The `ui` token defaults in
- * globals.css remain the final CSS fallback — this theme merely
- * reproduces them.
+ * globals.css remain the final CSS fallback.
  *
- * Palette: seeds carry the stock ui token values (`--primary`
- * oklch(0.62 0.11 259.02) light / oklch(0.62 0.19 259.76) dark). The
- * palette engine re-derives every `*-foreground` with WCAG clamps, so
- * on-colors may differ slightly from the hand-tuned ui tokens where
- * those fall below AA (e.g. primary-foreground becomes ink instead of
- * sub-AA white) — that is the engine working as designed.
+ * Palette: the stock ui hue/chroma (`--primary` oklch hue 259,
+ * chroma ~0.11/0.19) but the light seed's lightness is lowered to
+ * 0.55 — the stock 0.62 is too light for white text (3.66:1, fails
+ * AA), so the engine's `ensurePair` was emitting ink-on-blue. At
+ * 0.55 white reaches 4.88:1 and ships as `--primary-foreground`.
+ * The dark seed keeps the stock 0.62 (a lifted light blue where ink
+ * is the correct on-color). Surfaces and `*-foreground`s are still
+ * fully engine-derived — only the brand seed is chosen.
  *
  * Fonts: the current Geist stack via `self-host` delivery with no asset
  * files yet — `fontFaceCss`/`fontLinks` stay empty and the emitted
@@ -46,9 +47,9 @@ const logoHorizontal = "/brand/logo-horizontal.svg";
 const logoHorizontalInverse = "/brand/logo-horizontal-inverse.svg";
 const logoMark = "/brand/logo-mark.png";
 
-/** Stock ui palette seeds — see header for the AA-clamp caveat. */
+/** KTB brand seeds — see header for the lightness rationale. */
 const KTB_SEEDS: ThemeSeeds = {
-	primary: "oklch(0.62 0.11 259.02)",
+	primary: "oklch(0.55 0.11 259.02)",
 	dark: { primary: "oklch(0.62 0.19 259.76)" },
 };
 
