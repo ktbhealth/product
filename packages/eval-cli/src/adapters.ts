@@ -26,6 +26,7 @@ import * as Layer from "effect/Layer";
 import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
 import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
 import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
+import { makeNodeAcpLlm } from "@ktb/ai-adapter-node";
 import { makeWorkersAiAsr, makeWorkersAiEval, makeWorkersAiLlm } from "@ktb/eval-adapter-cloud";
 import {
 	makeJevEval,
@@ -255,6 +256,41 @@ const llmLayer = (ctx: WireContext, key: string) => {
 				// Endpoint hash as the engine-version signal — the ACP
 				// service exposes no version endpoint (P-076).
 				engineVersion: fnvHex(acpUrl),
+			});
+		}
+		case "acp-cli": {
+			// Spawned ACP agent over stdio (@ktb/ai-adapter-node) — the
+			// local path: `devin acp` (Devin CLI), `claude-agent-acp`,
+			// `gemini --acp`, … Each generate/correct call spawns a
+			// fresh process, runs initialize → session/new →
+			// session/prompt, and kills it on teardown. Agent→client
+			// requests (fs/terminal/permissions) are refused by the
+			// transport, so pick a prompt-only workload or an agent
+			// that copes without them.
+			//
+			// EVAL_ACP_AGENT_CMD is the full argv, whitespace-split
+			// (quote-quoted args need a wrapper script); defaults to
+			// `devin acp`. EVAL_ACP_CWD sets the session/new working
+			// directory (default: --workdir). EVAL_ACP_TIMEOUT_MS
+			// bounds each ACP request (default 120s — CLI agents are
+			// slower than the 60s HTTP default because every call
+			// pays process spawn + session setup).
+			const agentCmd = ctx.env.EVAL_ACP_AGENT_CMD ?? "devin acp";
+			if (agentCmd.trim() === "") {
+				throw new Error(`adapter "acp-cli" requires EVAL_ACP_AGENT_CMD (profile "${ctx.profile}")`);
+			}
+			const timeoutRaw = ctx.env.EVAL_ACP_TIMEOUT_MS;
+			const parsedTimeout =
+				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
+			const cwd = ctx.env.EVAL_ACP_CWD;
+			return makeNodeAcpLlm({
+				argv: agentCmd.trim().split(/\s+/),
+				cwd: cwd !== undefined && cwd !== "" ? cwd : ctx.workdir,
+				timeoutMs:
+					parsedTimeout !== undefined && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+						? parsedTimeout
+						: 120_000,
+				engineVersion: fnvHex(`cli:${agentCmd}`),
 			});
 		}
 		case "workers-ai": {

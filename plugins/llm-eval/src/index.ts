@@ -31,6 +31,10 @@ import { LlmPort } from "@ktb/eval-consultation/ports";
  * `makeWorkersAiEval` — generative Workers AI chat models; the judge
  * is a generative stand-in (self-reported probabilities, not
  * calibrated — System One stays the gate-grade judge).
+ * "acp-cli" → @ktb/ai-adapter-node `makeNodeAcpLlm` — a spawned ACP
+ * agent over stdio (Devin CLI `devin acp` by default via
+ * EVAL_ACP_AGENT_CMD); selected by the `devin`/`local-devin` eval
+ * profiles.
  */
 
 /**
@@ -50,6 +54,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 				stub: "@ktb/eval-adapter-stub",
 				noop: "@ktb/eval-adapter-stub",
 				acp: "@ktb/ai-adapter-acp",
+				"acp-cli": "@ktb/ai-adapter-node",
 				"workers-ai": "@ktb/eval-adapter-cloud",
 			},
 		},

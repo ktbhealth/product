@@ -242,3 +242,48 @@ sub-sampled by `step`, `noise: "clinic"`, `count: 12`, `seed: 4242`
 — registered as `consult-asr-noisy@v1`. To pin a new cohort, copy
 that manifest shape: distinct `dataset.id`/`version` + a
 `domainParams.params.dataset` block; no framework changes.
+
+## Running locally with a CLI agent (ACP)
+
+The `llm` capability has two ACP-backed adapter keys:
+
+- `acp` — an HTTP JSON-RPC ACP endpoint (`EVAL_ACP_URL`), used by the
+  `local`/`local-systemone` profiles.
+- `acp-cli` — a **spawned ACP agent over stdio** via
+  `@ktb/ai-adapter-node` (`makeNodeAcpLlm`). Each `generate`/`correct`
+  call spawns a fresh process, runs `initialize` → `session/new` →
+  `session/prompt`, and kills it on teardown. Agent→client requests
+  (fs/terminal/permissions) are refused with `-32601`, so the agent
+  must cope without them — fine for the eval's text-in/text-out
+  prompts.
+
+Two profiles select `acp-cli`:
+
+- `devin` — stub TTS/ASR/judge + `acp-cli` LLM + local
+  sqlite/jsonl persistence. The smallest fully-local run: no ASR
+  server, no Jev/System One, no cloud credentials — only the agent
+  CLI's own auth.
+- `local-devin` — the `local` profile (edge-tts, faster-whisper,
+  Jev judge) with the LLM swapped to `acp-cli`.
+
+```sh
+# Devin CLI as the agent backend (requires `devin` on PATH, logged in):
+bun packages/eval-cli/src/cli.ts generate consult-asr --profile devin --workdir /tmp/eval-devin
+bun packages/eval-cli/src/cli.ts run consult-asr --profile devin --workdir /tmp/eval-devin --limit 1
+```
+
+Env knobs for `acp-cli` (all optional):
+
+- `EVAL_ACP_AGENT_CMD` — full argv, whitespace-split; default
+  `devin acp`. Any ACP-speaking CLI works (`claude-agent-acp`,
+  `gemini --acp`, …). Quote-quoted args need a wrapper script.
+- `EVAL_ACP_CWD` — `session/new` working directory; default is the
+  run `--workdir`.
+- `EVAL_ACP_TIMEOUT_MS` — per-request timeout; default 120s (spawn +
+  session setup makes CLI agents slower than the 60s HTTP default).
+- `DEVIN_MODEL` / `devin acp --model` — model selection is the
+  agent's own concern; pass flags through `EVAL_ACP_AGENT_CMD`.
+
+Records from `acp-cli` calls carry `engine: "acp-node"` and an
+`engineVersion` hash of the agent command, so reruns are comparable
+in reports.

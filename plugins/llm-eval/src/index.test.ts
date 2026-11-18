@@ -15,6 +15,7 @@ describe("llm.eval", () => {
 			stub: "@ktb/eval-adapter-stub",
 			noop: "@ktb/eval-adapter-stub",
 			acp: "@ktb/ai-adapter-acp",
+			"acp-cli": "@ktb/ai-adapter-node",
 			"workers-ai": "@ktb/eval-adapter-cloud",
 		});
 		expect(registry.get("eval.capability", "eval").meta?.port).toBe(EvalPort.key);

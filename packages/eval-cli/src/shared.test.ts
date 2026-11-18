@@ -98,7 +98,9 @@ describe("selectProfile", () => {
 	test("unknown profile is a UsageError listing known profiles", async () => {
 		const err = await runErr(selectProfile(Option.some("nope"), suite()));
 		expect(err).toBeInstanceOf(UsageError);
-		expect(err.message).toMatch(/stub, local, local-asr, local-jev, local-systemone, cloud/);
+		expect(err.message).toMatch(
+			/stub, local, local-asr, local-jev, local-systemone, devin, local-devin, cloud/,
+		);
 	});
 });
 

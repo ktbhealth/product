@@ -45,6 +45,12 @@ describe("resolveSuite", () => {
 		expect(res.unresolved).toEqual([]);
 	});
 
+	test("devin profile routes the llm capability to acp-cli", () => {
+		const res = resolveSuite(registry, manifest({ caps: { llm: "llm.eval" } }), "devin");
+		expect(res.adapters).toEqual({ llm: "acp-cli" });
+		expect(res.unresolved).toEqual([]);
+	});
+
 	test("unknown refs are unresolved with a reason", () => {
 		const res = resolveSuite(
 			registry,

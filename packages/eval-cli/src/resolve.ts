@@ -85,6 +85,12 @@ export interface SuiteResolution {
  *                     serve`, local-jev) via EVAL_SYSTEMONE_URL —
  *                     the `local` profile keeps `jev` so existing
  *                     setups are untouched
+ *   devin          — stub audio/ASR/judge + a spawned ACP CLI agent
+ *                     for the LLM (`devin acp` by default; see the
+ *                     acp-cli adapter in adapters.ts) — the smallest
+ *                     fully-local run
+ *   local-devin    — `local` with the LLM swapped to the same
+ *                     spawned ACP CLI agent
  *   cloud           — managed adapters: Workers AI ASR + LLM/judge,
  *                     R2 store. Partial by design — transcription.tts
  *                     has no Workers AI equivalent, so suites
@@ -137,6 +143,32 @@ const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>
 		asr: "faster-whisper",
 		llm: "acp",
 		eval: "systemone",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
+	devin: {
+		// Local agent backend, stub everything else — the smallest
+		// fully-local run: deterministic audio/ASR/judge, real
+		// generative+cleanup calls through a spawned ACP CLI agent
+		// (`devin acp` by default; EVAL_ACP_AGENT_CMD overrides).
+		tts: "stub",
+		asr: "stub",
+		llm: "acp-cli",
+		eval: "stub",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
+	"local-devin": {
+		// The `local` profile with the LLM backend swapped from the
+		// HTTP ACP service to a spawned CLI agent — on-box ASR/TTS/
+		// judge plus `devin acp` (or any EVAL_ACP_AGENT_CMD) for
+		// script/cleanup turns.
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "acp-cli",
+		eval: "jev",
 		store: "sqlite-fs",
 		report: "jsonl",
 		registry: "sqlite-fs",
