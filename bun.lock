@@ -279,6 +279,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/triggers": "workspace:*",
+        "@ktb/vault-keyring": "workspace:*",
         "@ktb/views": "workspace:*",
         "@ktb/wizards": "workspace:*",
         "effect": "4.1.2",
@@ -634,6 +635,14 @@
       "dependencies": {
         "@huggingface/transformers": "^4.3.2",
         "@ktb/transcription": "workspace:*",
+      },
+    },
+    "packages/vault-keyring": {
+      "name": "@ktb/vault-keyring",
+      "dependencies": {
+        "@ktb/crypto": "workspace:*",
+        "@ktb/driver-framework": "workspace:*",
+        "effect": "4.1.2",
       },
     },
     "plugins/ai-endpoints": {
@@ -1660,11 +1669,13 @@
     "plugins/vault": {
       "name": "@ktb/vault",
       "dependencies": {
+        "@ktb/audit": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
@@ -1676,6 +1687,7 @@
       },
       "devDependencies": {
         "@ktb/auth": "workspace:*",
+        "@ktb/vault-keyring": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -2274,6 +2286,8 @@
     "@ktb/users": ["@ktb/users@workspace:plugins/users"],
 
     "@ktb/vault": ["@ktb/vault@workspace:plugins/vault"],
+
+    "@ktb/vault-keyring": ["@ktb/vault-keyring@workspace:packages/vault-keyring"],
 
     "@ktb/views": ["@ktb/views@workspace:plugins/views"],
 

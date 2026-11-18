@@ -66,6 +66,26 @@ export interface VaultMessages {
 	readonly byokApiKeyLabel: string;
 	readonly byokSave: string;
 	readonly byokClear: string;
+	/** Server-side secrets panel (P-098 C2): tenant credential store —
+	 * values are write-only; the table shows metadata only. */
+	readonly secretsTitle: string;
+	readonly secretsDescription: string;
+	readonly secretsEmpty: string;
+	readonly secretsAdd: string;
+	readonly secretName: string;
+	readonly secretProvider: string;
+	readonly secretKind: string;
+	readonly secretValue: string;
+	readonly secretValueHint: string;
+	readonly secretRotate: string;
+	readonly secretRotateTitle: string;
+	readonly secretRotateDescription: (name: string) => string;
+	readonly secretRemove: string;
+	readonly secretRemoveTitle: string;
+	readonly secretRemoveDescription: (name: string) => string;
+	readonly secretSaved: string;
+	readonly colSecret: string;
+	readonly colVersion: string;
 }
 
 const en: VaultMessages = {
@@ -128,6 +148,33 @@ const en: VaultMessages = {
 	byokApiKeyLabel: "Provider API key",
 	byokSave: "Save key",
 	byokClear: "Remove key",
+	secretsTitle: "Service secrets",
+	secretsDescription:
+		"API keys and credentials this clinic's integrations use. Values are encrypted and write-only — they are never shown again after saving.",
+	secretsEmpty: "No secrets stored yet.",
+	secretsAdd: "Add secret",
+	secretName: "Name",
+	secretProvider: "Provider",
+	secretKind: "Kind",
+	secretValue: "Secret value",
+	secretValueHint: "Stored encrypted — write-only after saving.",
+	secretRotate: "Rotate",
+	secretRotateTitle: "Rotate secret",
+	secretRotateDescription: paramMessage(
+		"en",
+		'Re-encrypt "{name}" under a fresh key. The stored value stays the same.',
+		["name"],
+	),
+	secretRemove: "Delete",
+	secretRemoveTitle: "Delete secret",
+	secretRemoveDescription: paramMessage(
+		"en",
+		'Permanently delete "{name}"? Integrations using its vault reference will stop working.',
+		["name"],
+	),
+	secretSaved: "Secret saved.",
+	colSecret: "Secret",
+	colVersion: "v",
 };
 
 const ptBR: VaultMessages = {
@@ -193,6 +240,33 @@ const ptBR: VaultMessages = {
 	byokApiKeyLabel: "Chave de API do provedor",
 	byokSave: "Salvar chave",
 	byokClear: "Remover chave",
+	secretsTitle: "Segredos de serviço",
+	secretsDescription:
+		"Chaves de API e credenciais usadas pelas integrações desta clínica. Os valores são criptografados e somente escrita — nunca são exibidos após salvar.",
+	secretsEmpty: "Nenhum segredo armazenado ainda.",
+	secretsAdd: "Adicionar segredo",
+	secretName: "Nome",
+	secretProvider: "Provedor",
+	secretKind: "Tipo",
+	secretValue: "Valor do segredo",
+	secretValueHint: "Armazenado criptografado — somente escrita após salvar.",
+	secretRotate: "Rotacionar",
+	secretRotateTitle: "Rotacionar segredo",
+	secretRotateDescription: paramMessage(
+		"pt-BR",
+		'Recodificar "{name}" com uma nova chave. O valor armazenado permanece o mesmo.',
+		["name"],
+	),
+	secretRemove: "Excluir",
+	secretRemoveTitle: "Excluir segredo",
+	secretRemoveDescription: paramMessage(
+		"pt-BR",
+		'Excluir "{name}" permanentemente? As integrações que usam sua referência deixarão de funcionar.',
+		["name"],
+	),
+	secretSaved: "Segredo salvo.",
+	colSecret: "Segredo",
+	colVersion: "v",
 };
 
 const es: VaultMessages = {
@@ -258,6 +332,33 @@ const es: VaultMessages = {
 	byokApiKeyLabel: "Clave de API del proveedor",
 	byokSave: "Guardar clave",
 	byokClear: "Eliminar clave",
+	secretsTitle: "Secretos de servicio",
+	secretsDescription:
+		"Claves de API y credenciales que usan las integraciones de esta clínica. Los valores se cifran y son de solo escritura: nunca se muestran tras guardar.",
+	secretsEmpty: "Aún no hay secretos almacenados.",
+	secretsAdd: "Añadir secreto",
+	secretName: "Nombre",
+	secretProvider: "Proveedor",
+	secretKind: "Tipo",
+	secretValue: "Valor del secreto",
+	secretValueHint: "Se almacena cifrado — de solo escritura tras guardar.",
+	secretRotate: "Rotar",
+	secretRotateTitle: "Rotar secreto",
+	secretRotateDescription: paramMessage(
+		"es",
+		'Recifrar "{name}" con una clave nueva. El valor almacenado no cambia.',
+		["name"],
+	),
+	secretRemove: "Eliminar",
+	secretRemoveTitle: "Eliminar secreto",
+	secretRemoveDescription: paramMessage(
+		"es",
+		'¿Eliminar "{name}" permanentemente? Las integraciones que usan su referencia dejarán de funcionar.',
+		["name"],
+	),
+	secretSaved: "Secreto guardado.",
+	colSecret: "Secreto",
+	colVersion: "v",
 };
 
 const catalogs: Record<VaultLocale, VaultMessages> = { en, "pt-BR": ptBR, es };

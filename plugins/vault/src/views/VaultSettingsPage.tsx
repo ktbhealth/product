@@ -28,6 +28,9 @@ import {
 import type { KeyringService } from "@ktb/crypto/keyring";
 
 import type { ClinicKey } from "../index.ts";
+import type { SecretMeta } from "../secrets.ts";
+import type { VaultSecretKind } from "../schema.ts";
+import { VaultSecretsPanel } from "./VaultSecretsPanel.tsx";
 import { clearByokConfig, loadByokConfig, saveByokConfig } from "../byok.ts";
 import {
 	approvalEnvelope,
@@ -44,6 +47,8 @@ export interface VaultPageData {
 	readonly role: string | null;
 	readonly zk: boolean;
 	readonly devices: readonly ClinicKey[];
+	/** Server-side secrets metadata (P-098 C2) — values never load. */
+	readonly secrets?: readonly SecretMeta[];
 }
 
 /** Small mutation surface the view needs — bound to this plugin's
@@ -59,6 +64,14 @@ export interface VaultApi {
 	}) => Promise<{ readonly ok: boolean }>;
 	readonly revoke: (clinicKeyId: number) => Promise<{ readonly ok: boolean }>;
 	readonly enableZk: () => Promise<{ readonly ok: boolean }>;
+	readonly secretPut: (input: {
+		readonly name: string;
+		readonly value: string;
+		readonly provider?: string | null;
+		readonly kind?: VaultSecretKind;
+	}) => Promise<{ readonly ok: boolean; readonly data?: SecretMeta }>;
+	readonly secretRotate: (id: number) => Promise<{ readonly ok: boolean }>;
+	readonly secretRemove: (id: number) => Promise<{ readonly ok: boolean }>;
 }
 
 const isAdmin = (role: string | null) => role === "admin" || role === "owner";
@@ -498,6 +511,20 @@ export function VaultSettingsPage({
 					</div>
 				</>
 			)}
+
+			{data.tenantId !== null ? (
+				<VaultSecretsPanel
+					secrets={data.secrets ?? []}
+					canManage={admin}
+					api={{
+						put: api.secretPut,
+						rotate: api.secretRotate,
+						remove: api.secretRemove,
+					}}
+					locale={locale}
+					onChanged={refresh}
+				/>
+			) : null}
 
 			<Dialog
 				open={phrase !== null}

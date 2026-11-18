@@ -33,11 +33,17 @@ const api = (): VaultApi & {
 	approve: ReturnType<typeof vi.fn>;
 	revoke: ReturnType<typeof vi.fn>;
 	enableZk: ReturnType<typeof vi.fn>;
+	secretPut: ReturnType<typeof vi.fn>;
+	secretRotate: ReturnType<typeof vi.fn>;
+	secretRemove: ReturnType<typeof vi.fn>;
 } => ({
 	enroll: vi.fn(async () => ({ ok: true, data: device({ id: 11 }) })),
 	approve: vi.fn(async () => ({ ok: true })),
 	revoke: vi.fn(async () => ({ ok: true })),
 	enableZk: vi.fn(async () => ({ ok: true })),
+	secretPut: vi.fn(async () => ({ ok: true })),
+	secretRotate: vi.fn(async () => ({ ok: true })),
+	secretRemove: vi.fn(async () => ({ ok: true })),
 });
 
 const keyring = (): KeyringService => ({

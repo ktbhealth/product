@@ -77,6 +77,7 @@ import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
 import { EntityCipher } from "@ktb/crypto/cipher";
 import { passthroughCipherDriver } from "@ktb/crypto-stub";
+import { vaultKeyringEnvDriver } from "@ktb/vault-keyring";
 import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
@@ -170,6 +171,9 @@ export interface AppEnv extends ObservabilityEnv {
 	/** Socket transport for the SMTP driver — the deploy target injects
 	 * `cloudflare:sockets` connect (workerd) or its node:net stand-in. */
 	readonly SMTP_CONNECT?: unknown;
+	/** Vault KEK (P-098): 32-byte hex/base64 key wrapping per-secret DEKs.
+	 * Absent → vault secret ops fail closed. */
+	readonly VAULT_MASTER_KEY?: string;
 	readonly ANTHROPIC_API_KEY?: string;
 	readonly LLM_API_KEY?: string;
 	readonly OPENAI_API_KEY?: string;
@@ -367,6 +371,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// default — always eligible, LAST in the list once real
 		// keyring-backed drivers arrive (first eligible wins).
 		passthroughCipherDriver,
+		// Vault secrets KEK (P-098 C1): eligible only when
+		// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
+		vaultKeyringEnvDriver,
 		// Eval validator runner (P-081): eligible only when the local
 		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
 		// otherwise no EvalRunner is bound and eval runs stay queued.

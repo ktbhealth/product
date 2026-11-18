@@ -32,7 +32,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { vaultServicesPlugin, VAULT_TEST_DDL } from "./index.ts";
+import { PlatformAdmin, makePlatformAdminGate, parsePlatformAdminEmails } from "@ktb/platform";
+import { secretKeyringLive } from "@ktb/vault-keyring";
+
+import { vaultSecretsPlugin, vaultServicesPlugin, VAULT_TEST_DDL } from "./index.ts";
 import {
 	vaultApproveDeviceFn,
 	vaultDekEnvelopesFn,
@@ -42,6 +45,10 @@ import {
 	vaultEnrollmentFn,
 	vaultGrantAccessFn,
 	vaultRevokeDeviceFn,
+	vaultSecretPutFn,
+	vaultSecretsListFn,
+	vaultSecretRemoveFn,
+	vaultSecretRotateFn,
 	vaultStateFn,
 } from "./fns.ts";
 
@@ -69,10 +76,24 @@ describe("vault fns", () => {
 	beforeAll(async () => {
 		const db = makeDb(makeD1(DDL));
 		const env = Layer.succeed(Db, db);
-		const services = (vaultServicesPlugin.services as Layer.Layer<unknown, unknown, unknown>).pipe(
-			Layer.provideMerge(env),
-		) as unknown as Layer.Layer<unknown, never, never>;
-		runtime = ManagedRuntime.make(services);
+		const servicesLayer = (plugin: { services?: unknown }) =>
+			(plugin.services as Layer.Layer<unknown, unknown, unknown>).pipe(
+				Layer.provideMerge(env),
+			) as unknown as Layer.Layer<unknown, never, never>;
+		// Secrets needs the keyring port too — the env driver under test.
+		const secretsEnv = Layer.mergeAll(
+			env,
+			secretKeyringLive("0".repeat(64)) as Layer.Layer<unknown>,
+			Layer.succeed(
+				PlatformAdmin,
+				makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+			) as Layer.Layer<unknown>,
+		);
+		const secretsLayer = (
+			vaultSecretsPlugin.services as Layer.Layer<unknown, unknown, unknown>
+		).pipe(Layer.provideMerge(secretsEnv)) as unknown as Layer.Layer<unknown, never, never>;
+		const services = Layer.mergeAll(servicesLayer(vaultServicesPlugin), secretsLayer);
+		runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
 		const auth = Auth.of({
 			setUserBanned: async () => {},
 			getSession: async () => sessionFor(currentEmail) as never,
@@ -259,5 +280,56 @@ describe("vault fns", () => {
 				data: { entityType: "patient", entityIds: [42], wrapPublicKey: "wNobody" },
 			}),
 		).toEqual({});
+	});
+
+	it("manages tenant secrets end-to-end under admin (P-098 C2)", async () => {
+		currentEmail = "admin@x.com";
+		currentRole = "admin";
+
+		const put = await vaultSecretPutFn({
+			data: {
+				name: "openai-prod",
+				value: "sk-live-test-1",
+				provider: "openai",
+				kind: "api-key",
+			},
+		});
+		expect(put.ok).toBe(true);
+		const meta = put.ok ? put.data : null;
+		expect(meta?.name).toBe("openai-prod");
+		expect(meta?.tenantId).toBe(7);
+		const id = meta!.id;
+
+		// Metadata list never carries the value or ciphertext.
+		const list = await vaultSecretsListFn();
+		const row = list.find((r) => r.id === id);
+		expect(row?.name).toBe("openai-prod");
+		expect(JSON.stringify(list)).not.toContain("sk-live-test-1");
+
+		// Upsert on (scope,name) bumps the version.
+		const again = await vaultSecretPutFn({
+			data: { name: "openai-prod", value: "sk-live-test-2", provider: "openai" },
+		});
+		expect(again.ok).toBe(true);
+		expect(again.ok ? again.data.id : null).toBe(id);
+		expect(again.ok ? again.data.version : null).toBe(2);
+
+		const rotated = await vaultSecretRotateFn({ data: { id } });
+		expect(rotated.ok).toBe(true);
+		expect(rotated.ok ? rotated.data.version : null).toBe(3);
+
+		const removed = await vaultSecretRemoveFn({ data: { id } });
+		expect(removed.ok).toBe(true);
+		expect((await vaultSecretsListFn()).some((r) => r.id === id)).toBe(false);
+	});
+
+	it("denies secret writes to members but allows listing", async () => {
+		currentEmail = "member@x.com";
+		currentRole = "member";
+
+		const denied = await vaultSecretPutFn({ data: { name: "smtp", value: "pw" } });
+		expect(denied.ok).toBe(false);
+		// List is member-readable (metadata only).
+		expect(Array.isArray(await vaultSecretsListFn())).toBe(true);
 	});
 });

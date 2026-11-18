@@ -38,6 +38,7 @@
 		"@ktb/platform": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktb/triggers": "workspace:*",
+		"@ktb/vault-keyring": "workspace:*",
 		"@ktb/views": "workspace:*",
 		"@ktb/wizards": "workspace:*",
 		"effect": "4.1.2"

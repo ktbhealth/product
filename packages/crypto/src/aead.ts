@@ -26,16 +26,40 @@ export const importDek = (raw: Uint8Array, usages: KeyUsage[] = ["encrypt", "dec
 export const exportDek = async (key: CryptoKey): Promise<Uint8Array> =>
 	new Uint8Array(await crypto.subtle.exportKey("raw", key));
 
-export const encrypt = async (key: CryptoKey, plaintext: Plaintext): Promise<string> => {
+export interface AeadOptions {
+	/** Optional additional authenticated data — bound into the tag, never
+	 * encrypted. Use it to tie a ciphertext to its row identity (e.g.
+	 * `"vault-secret:7:openai-key"`) so envelopes cannot be transplanted
+	 * between records. Must be identical at decrypt time. */
+	readonly aad?: string | Uint8Array;
+}
+
+const gcmParams = (iv: Uint8Array, aad: AeadOptions["aad"]): AesGcmParams => {
+	const params: AesGcmParams = { name: "AES-GCM", iv: iv as BufferSource };
+	if (aad !== undefined) {
+		params.additionalData = (typeof aad === "string" ? encoder.encode(aad) : aad) as BufferSource;
+	}
+	return params;
+};
+
+export const encrypt = async (
+	key: CryptoKey,
+	plaintext: Plaintext,
+	opts?: AeadOptions,
+): Promise<string> => {
 	const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
 	const data = typeof plaintext === "string" ? encoder.encode(plaintext) : plaintext;
 	const ct = new Uint8Array(
-		await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, data as BufferSource),
+		await crypto.subtle.encrypt(gcmParams(iv, opts?.aad), key, data as BufferSource),
 	);
 	return `${AEAD_ENVELOPE_VERSION}.${bytesToB64u(iv)}.${bytesToB64u(ct)}`;
 };
 
-export const decrypt = async (key: CryptoKey, envelope: string): Promise<Uint8Array> => {
+export const decrypt = async (
+	key: CryptoKey,
+	envelope: string,
+	opts?: AeadOptions,
+): Promise<Uint8Array> => {
 	const parts = envelope.split(".");
 	if (parts.length !== 3 || parts[0] !== AEAD_ENVELOPE_VERSION)
 		throw new CryptoFormatError("not a v1 AEAD envelope");
@@ -43,13 +67,12 @@ export const decrypt = async (key: CryptoKey, envelope: string): Promise<Uint8Ar
 	const ct = b64uToBytes(parts[2]!);
 	if (iv.length !== IV_BYTES) throw new CryptoFormatError("bad IV length");
 	return new Uint8Array(
-		await crypto.subtle.decrypt(
-			{ name: "AES-GCM", iv: iv as BufferSource },
-			key,
-			ct as BufferSource,
-		),
+		await crypto.subtle.decrypt(gcmParams(iv, opts?.aad), key, ct as BufferSource),
 	);
 };
 
-export const decryptText = async (key: CryptoKey, envelope: string): Promise<string> =>
-	decoder.decode(await decrypt(key, envelope));
+export const decryptText = async (
+	key: CryptoKey,
+	envelope: string,
+	opts?: AeadOptions,
+): Promise<string> => decoder.decode(await decrypt(key, envelope, opts));
