@@ -108,6 +108,10 @@ import {
 	DocumentStoreCollectionsPage,
 } from "./platform-page.tsx";
 
+// Write events on the app EventBus (insert/update/remove) — consumed
+// by reaction engines like @ktb/triggers.
+export * from "./events.ts";
+
 export {
 	// admin console surface
 	DocumentStoreAdmin,

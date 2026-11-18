@@ -1,0 +1,19 @@
+{
+	"name": "@ktb/triggers",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@effect-server-utils/cqrs": "0.1.0-beta.10",
+		"@ktb/document-store": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"@ktb/wizards": "workspace:*",
+		"effect": "4.1.2"
+	},
+	"devDependencies": {
+		"@ktb/db": "workspace:*",
+		"vitest": "5.1.0"
+	}
+}

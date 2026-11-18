@@ -6,7 +6,10 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Clock from "effect/Clock";
 import * as Exit from "effect/Exit";
+import type { Json } from "effect/Schema";
 import { and, eq, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
+
+import { EventBus } from "@effect-server-utils/cqrs";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, tx, type TxOp } from "@ktb/db";
@@ -26,6 +29,7 @@ import {
 	type CollectionPermissionSpec,
 	type DocumentCollection,
 } from "./collection.ts";
+import { DocumentRecordWritten, DocumentWriteDepth, type DocumentWriteOp } from "./events.ts";
 import type { Fields, InferInsert, InferRecord } from "./fields.ts";
 import {
 	clampLimit,
@@ -247,6 +251,9 @@ export type DocumentStoreError =
 export interface DocumentStoreContext {
 	readonly ownerId?: string | null;
 	readonly unscoped?: boolean;
+	/** System-only tenant attribution override — reaction engines
+	 * propagate the source event's tenancy through it (see events.ts). */
+	readonly tenantId?: number;
 }
 
 /** A stored record row with `data` parsed and typed by the collection's
@@ -527,6 +534,10 @@ export const DocumentStoreLive = Layer.effect(
 		// requireOp/specAllowed below. Optional-dep ordering puts
 		// rbac.services before this layer when both are installed.
 		const permissionsOpt = yield* Effect.serviceOption(Permissions);
+		// Optional like the wizards→DocumentStore edge: the bus is
+		// app-wide core in production, but tests/embedded uses may run
+		// the store without it — writes then simply publish nothing.
+		const eventBus = yield* Effect.serviceOption(EventBus);
 
 		// Def caches (T-129): contributed defs are static per runtime.
 		// DB collection ROWS are cached with a TTL stamp (cross-isolate
@@ -1042,7 +1053,15 @@ export const DocumentStoreLive = Layer.effect(
 					readonly def: DocumentCollection;
 					readonly row: DocumentRecordRow;
 			  }
-			| { readonly kind: "delete" };
+			| {
+					readonly kind: "delete";
+					/** The committed row being removed — set only when the
+					 * delete targets a stored row (pending-insert drops and
+					 * ref-policy cascade side-deletes carry none and publish
+					 * no event, matching the pre-batch contract). */
+					readonly row?: DocumentRecordRow;
+					readonly def?: DocumentCollection;
+			  };
 
 		/** Everything a batch needs to overlay committed state: pending
 		 * writes, in-batch deletes, and merged nullify patches. One
@@ -1690,11 +1709,13 @@ export const DocumentStoreLive = Layer.effect(
 					pendingTarget.collectionId === row.id
 						? pendingTarget
 						: undefined;
+				let deletedRow: DocumentRecordRow | undefined;
 				if (pendingInsert === undefined) {
 					const existing = yield* scopedRow(row.id, op.id, plan.ownerId, plan.unscoped);
 					if (existing === null) {
 						return yield* fail(new RecordNotFound({ collection: def.name, id: op.id }));
 					}
+					deletedRow = existing;
 					// A pending update on the committed target loses to
 					// the delete (sequential semantics).
 					if (
@@ -1766,8 +1787,53 @@ export const DocumentStoreLive = Layer.effect(
 				} else {
 					plan.rowDeletes.set(op.id, opIndex);
 				}
-				plan.outcomes[opIndex] = { kind: "delete" };
+				plan.outcomes[opIndex] = {
+					kind: "delete",
+					...(deletedRow === undefined ? {} : { row: deletedRow, def }),
+				};
 			});
+
+		/** Publish a committed write on the app EventBus — a no-op when
+		 * no bus is bound (see the serviceOption above). `depth` is read
+		 * from {@link DocumentWriteDepth} so reaction engines can bound
+		 * write→write cascades (see ./events.ts). `data` is already
+		 * validated JSON — the cast bridges the typed view onto the
+		 * event's Json record. */
+		const publishWrite = (
+			record: {
+				readonly id: number;
+				readonly collection: string;
+				readonly data: Record<string, unknown>;
+				readonly ownerId: string;
+				readonly tenantId: number | null;
+			},
+			op: DocumentWriteOp,
+		): Effect.Effect<void> =>
+			Option.isNone(eventBus)
+				? Effect.void
+				: Effect.gen(function* () {
+						const depth = yield* DocumentWriteDepth;
+						yield* eventBus.value
+							.dispatch([
+								DocumentRecordWritten.make({
+									collection: record.collection,
+									id: record.id,
+									op,
+									data: record.data as Record<string, Json>,
+									ownerId: record.ownerId,
+									tenantId: record.tenantId,
+									depth,
+								}),
+							])
+							.pipe(
+								Effect.catchCause((cause) =>
+									Effect.logWarning(
+										`document-store write event dispatch failed for ${record.collection}#${record.id}`,
+										{ cause: String(cause) },
+									),
+								),
+							);
+					});
 
 		/** Materialize the plan into drizzle ops and run them in ONE
 		 * `tx()` — all-or-nothing on every dialect (D1 batch /
@@ -1783,7 +1849,10 @@ export const DocumentStoreLive = Layer.effect(
 				const ownerId = yield* resolveOwner(ctx);
 				const unscoped = ctx?.unscoped === true;
 				const tenant = yield* Tenant;
-				const tenantId = tenantScopeId(tenant);
+				// ctx.tenantId is the system-only attribution override
+				// (see DocumentStoreContext) — reaction engines
+				// propagate the source event's tenancy through it.
+				const tenantId = ctx?.tenantId !== undefined ? ctx.tenantId : tenantScopeId(tenant);
 				const plan: BatchPlan = {
 					ownerId,
 					unscoped,
@@ -1887,6 +1956,22 @@ export const DocumentStoreLive = Layer.effect(
 				const results: DocumentBatchResult[] = [];
 				for (const outcome of plan.outcomes) {
 					if (outcome.kind === "delete") {
+						// Only explicit deletes of committed rows publish —
+						// pending-insert drops and ref-policy cascade
+						// side-deletes carry no row and stay silent (the
+						// pre-batch contract).
+						if (outcome.row !== undefined && outcome.def !== undefined) {
+							yield* publishWrite(
+								{
+									id: outcome.row.id,
+									collection: outcome.def.name,
+									data: parseData(outcome.row.data),
+									ownerId: outcome.row.ownerId,
+									tenantId: outcome.row.tenantId,
+								},
+								"remove",
+							);
+						}
 						results.push({ op: "delete" });
 						continue;
 					}
@@ -1919,6 +2004,16 @@ export const DocumentStoreLive = Layer.effect(
 					const recordRow = (
 						txResults[writeIndex.get(w)!] as DocumentRecordRow[]
 					)[0] as DocumentRecordRow;
+					yield* publishWrite(
+						{
+							id: recordRow.id,
+							collection: w.def.name,
+							data: parseData(recordRow.data),
+							ownerId: recordRow.ownerId,
+							tenantId: recordRow.tenantId,
+						},
+						outcome.op,
+					);
 					const denied = yield* deniedFor(w.def);
 					results.push({
 						op: outcome.op,
