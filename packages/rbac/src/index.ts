@@ -187,12 +187,14 @@ export const buildPermissions = (
 		const subjectConds = [
 			and(eq(subjectRoles.subjectKind, "user"), eq(subjectRoles.subjectId, userId)),
 		];
+		// Stryker disable next-line ConditionalExpression,EqualityOperator: with empty groupIds, inArray([]) compiles to `false`, so the pushed (subjectKind='group' AND false) condition is always false and `or(userCond, false)` is identical to userCond alone.
 		if (groupIds.length > 0) {
 			subjectConds.push(
 				and(eq(subjectRoles.subjectKind, "group"), inArray(subjectRoles.subjectId, groupIds)),
 			);
 		}
 		const tenantCond =
+			// Stryker disable next-line ConditionalExpression: when tid is undefined the or-branch binds eq(tenantId, undefined) as NULL; `tenant_id = NULL` is never true, so `isNull OR (tenant_id = NULL)` is identical to `isNull` in a WHERE clause.
 			tid === undefined
 				? isNull(subjectRoles.tenantId)
 				: or(isNull(subjectRoles.tenantId), eq(subjectRoles.tenantId, tid));
@@ -227,8 +229,10 @@ export const buildPermissions = (
 				grants.set(key, effect);
 			}
 			const exp = row.expiresAt === null ? null : row.expiresAt.getTime();
+			// Stryker disable next-line EqualityOperator: exp === notAfter would assign the identical value — notAfter only ever stores the minimum expiry, so `<` and `<=` are indistinguishable.
 			if (exp !== null && (notAfter === null || exp < notAfter)) notAfter = exp;
 		}
+		// Stryker disable next-line ConditionalExpression,EqualityOperator,CallExpression: CACHE_LIMIT only bounds memory — every cache hit revalidates epoch and notAfter, so when or whether cache.clear() runs cannot change any resolve result.
 		if (cache.size >= CACHE_LIMIT) cache.clear();
 		cache.set(key, { epoch, grants, notAfter });
 		return grants;
@@ -268,6 +272,7 @@ export const buildPermissions = (
 		);
 
 	const invalidate: PermissionsShape["invalidate"] = () =>
+		// Stryker disable next-line ArrowFunction: bumpEpoch already invalidates every cached entry through the epoch check on read — cache.clear() is redundant.
 		Effect.promise(() => bumpEpoch(db)).pipe(Effect.tap(() => Effect.sync(() => cache.clear())));
 
 	return {
