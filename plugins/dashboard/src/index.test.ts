@@ -24,7 +24,7 @@ describe("dashboard plugins", () => {
 						label: "Dashboard",
 						icon: LayoutDashboardIcon,
 						exact: true,
-						group: "Overview",
+						group: "Console",
 					},
 				},
 			},

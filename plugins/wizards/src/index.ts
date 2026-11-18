@@ -86,7 +86,7 @@ export const wizardsChromePlugin = definePlugin({
 					to: "/platform/wizards",
 					label: "Wizards",
 					icon: WandSparklesIcon,
-					group: "Experience",
+					group: "Presentation",
 				},
 			},
 		},

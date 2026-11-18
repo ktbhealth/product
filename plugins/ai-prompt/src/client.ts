@@ -36,7 +36,7 @@ export const plugins: readonly Plugin[] = [
 						to: "/platform/ai/prompts",
 						label: "Prompts",
 						icon: MessageSquareTextIcon,
-						group: "AI platform",
+						group: "Intelligence",
 					},
 				},
 			},

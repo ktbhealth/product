@@ -31,7 +31,7 @@ describe("manager plugins", () => {
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/plugins", label: "Plugins", group: "Infrastructure" },
+				item: { to: "/platform/plugins", label: "Plugins", group: "Runtime" },
 			},
 		});
 		expect(managerPanelPlugin.id).toBe("manager.panel");

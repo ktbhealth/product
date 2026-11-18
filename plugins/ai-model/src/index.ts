@@ -58,7 +58,7 @@ export const aiModelChromePlugin = definePlugin({
 					to: "/platform/ai/models",
 					label: "Models",
 					icon: CpuIcon,
-					group: "AI platform",
+					group: "Intelligence",
 				},
 			},
 		},

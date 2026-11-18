@@ -29,7 +29,7 @@ export const auditChromePlugin = definePlugin({
 					to: "/platform/audit",
 					label: "Audit log",
 					icon: ScrollTextIcon,
-					group: "Governance",
+					group: "Assurance",
 				},
 			},
 		},

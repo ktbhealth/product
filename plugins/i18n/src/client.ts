@@ -26,7 +26,7 @@ export const i18nChromePlugin = definePlugin({
 					to: "/platform/i18n",
 					label: "Translations",
 					icon: LanguagesIcon,
-					group: "Experience",
+					group: "Presentation",
 				},
 			},
 		},

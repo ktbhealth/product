@@ -84,9 +84,9 @@ const platformInstance = platformEntry?.instance ?? {
 	label: "Platform",
 };
 
-// Sidebar IA order: the systematic grouping (overview → access →
-// clinical data → AI platform → evaluation → experience →
-// infrastructure → governance). Plugin topo order is dep-driven, not
+// Sidebar IA order: the technical layering (console → identity →
+// domain data → storage → intelligence → evaluation →
+// presentation → runtime → assurance). Plugin topo order is dep-driven, not
 // IA-driven, so the console pins the sequence by destination; items
 // a plugin contributes that aren't listed keep their topo order at
 // the end.
@@ -96,15 +96,15 @@ const PLATFORM_SIDEBAR_ORDER: readonly string[] = [
 	"/platform/groups",
 	"/platform/roles",
 	"/platform/tenants",
+	"/platform/ai/credentials",
 	"/platform/patients",
 	"/platform/consultations",
 	"/platform/document-store",
+	"/platform/kv",
 	"/platform/ai/models",
 	"/platform/ai/prompts",
 	"/platform/ai/endpoints",
 	"/platform/ai/agents",
-	"/platform/ai/credentials",
-	"/platform/ai/machines",
 	"/platform/eval/personas",
 	"/platform/eval/instances",
 	"/platform/eval",
@@ -114,7 +114,7 @@ const PLATFORM_SIDEBAR_ORDER: readonly string[] = [
 	"/platform/wizards",
 	"/platform/plugins",
 	"/platform/ops",
-	"/platform/kv",
+	"/platform/ai/machines",
 	"/platform/audit",
 ];
 const sidebarRank = new Map(PLATFORM_SIDEBAR_ORDER.map((to, index) => [to, index]));

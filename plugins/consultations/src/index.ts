@@ -162,7 +162,7 @@ export const consultationsChromePlugin = definePlugin({
 					to: "/platform/consultations",
 					label: "Consultations",
 					icon: ClipboardListIcon,
-					group: "Clinical data",
+					group: "Domain data",
 				},
 			},
 		},

@@ -424,7 +424,7 @@ export const groupsChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/groups", label: "Groups", icon: BoxesIcon, group: "Access" },
+				item: { to: "/platform/groups", label: "Groups", icon: BoxesIcon, group: "Identity" },
 			},
 		},
 	],

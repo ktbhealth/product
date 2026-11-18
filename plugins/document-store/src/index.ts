@@ -283,7 +283,7 @@ export const documentStoreChromePlugin = definePlugin({
 					to: "/platform/document-store",
 					label: "Document store",
 					icon: DatabaseIcon,
-					group: "Clinical data",
+					group: "Storage",
 				},
 			},
 		},

@@ -90,7 +90,7 @@ export const kvChromePlugin = definePlugin({
 					to: "/platform/kv",
 					label: "Key-Value",
 					icon: DatabaseIcon,
-					group: "Infrastructure",
+					group: "Storage",
 				},
 			},
 		},

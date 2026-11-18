@@ -157,7 +157,7 @@ export const usersChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/users", label: "Users", icon: UserCogIcon, group: "Access" },
+				item: { to: "/platform/users", label: "Users", icon: UserCogIcon, group: "Identity" },
 			},
 		},
 	],

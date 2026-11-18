@@ -35,7 +35,7 @@ export const plugins: readonly Plugin[] = [
 						to: "/platform/ai/credentials",
 						label: "Credentials",
 						icon: KeyRoundIcon,
-						group: "AI platform",
+						group: "Identity",
 					},
 				},
 			},

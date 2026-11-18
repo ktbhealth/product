@@ -65,7 +65,7 @@ export const machinesChromePlugin = definePlugin({
 					to: "/platform/ai/machines",
 					label: "Machines",
 					icon: ServerIcon,
-					group: "AI platform",
+					group: "Runtime",
 				},
 			},
 		},
