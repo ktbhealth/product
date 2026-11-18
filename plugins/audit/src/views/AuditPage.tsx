@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -31,6 +31,7 @@ import {
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import type {
 	AdminAuditRow,
@@ -69,11 +70,6 @@ const EMPTY_FILTERS: Filters = {
 	targetType: ALL,
 	from: "",
 	to: "",
-};
-
-const fmtDate = (value: Date | string, locale: string): string => {
-	const d = value instanceof Date ? value : new Date(value);
-	return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(locale);
 };
 
 /** Action group = first dot segment ("users.suspend" → "users"). */
@@ -215,14 +211,6 @@ export function AuditPage({
 		offset,
 	}));
 	const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
-	// `toLocaleString` resolves in the runtime timezone — UTC on the SSR
-	// worker vs the browser's zone — so row timestamps are only emitted
-	// on the client or the server/client markup diverges.
-	const mounted = useSyncExternalStore(
-		() => () => {},
-		() => true,
-		() => false,
-	);
 	const [facets, setFacets] = useState<AuditFacets | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [failed, setFailed] = useState(false);
@@ -541,7 +529,7 @@ export function AuditPage({
 									shown.map((row) => (
 										<TableRow key={row.id}>
 											<TableCell className="text-xs text-muted-foreground">
-												{mounted ? fmtDate(row.createdAt, locale) : ""}
+												<LocalDateTime value={row.createdAt} locale={locale} />
 											</TableCell>
 											<TableCell className="text-xs">
 												{row.actorEmail ?? row.actorUserId ?? t.systemActor}
@@ -619,7 +607,9 @@ export function AuditPage({
 							<dt className="text-muted-foreground">{t.colId}</dt>
 							<dd className="font-mono">{detailFor.id}</dd>
 							<dt className="text-muted-foreground">{t.colTime}</dt>
-							<dd>{fmtDate(detailFor.createdAt, locale)}</dd>
+							<dd>
+								<LocalDateTime value={detailFor.createdAt} locale={locale} />
+							</dd>
 							<dt className="text-muted-foreground">{t.colActor}</dt>
 							<dd>{detailFor.actorEmail ?? detailFor.actorUserId ?? t.systemActor}</dd>
 							<dt className="text-muted-foreground">{t.colTarget}</dt>

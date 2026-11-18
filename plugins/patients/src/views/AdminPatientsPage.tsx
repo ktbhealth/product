@@ -1,9 +1,10 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState } from "react";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
@@ -54,15 +55,6 @@ export function AdminPatientsPage({
 	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const router = useRouter();
 	const [q, setQ] = useState("");
-	// `toLocaleString` resolves in the runtime timezone — UTC on the SSR
-	// worker vs the browser's zone — so the text is only emitted on the
-	// client or the server/client markup diverges.
-	const mounted = useSyncExternalStore(
-		() => () => {},
-		() => true,
-		() => false,
-	);
-	const fmtDate = (d: Date) => (mounted ? d.toLocaleString(locale) : "");
 	const [showSynthetic, setShowSynthetic] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const [toDelete, setToDelete] = useState<{ id: number; name: string } | null>(null);
@@ -172,7 +164,7 @@ export function AdminPatientsPage({
 												<TableCell>{p.ownerName ?? p.ownerEmail ?? "—"}</TableCell>
 												<TableCell className="text-xs text-muted-foreground">{p.ownerId}</TableCell>
 												<TableCell className="text-right text-muted-foreground">
-													{fmtDate(p.createdAt)}
+													<LocalDateTime value={p.createdAt} locale={locale} />
 												</TableCell>
 												<TableCell className="text-right">
 													<div className="flex justify-end gap-1">
