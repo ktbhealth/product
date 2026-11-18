@@ -23,6 +23,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 
 import { defaultContext, makeEvalCommand, teardown, VERSION } from "@ktb/eval-cli";
 
+/* v8 ignore next -- bare-invocation ShowHelp handler fires only via `ktb` argv dispatch; command semantics are covered in-process by @ktb/eval-cli */
 const root = Command.make("ktb", {}, () =>
 	Effect.fail(
 		new CliError.ShowHelp({
@@ -33,6 +34,7 @@ const root = Command.make("ktb", {}, () =>
 ).pipe(
 	Command.withSubcommands([
 		makeEvalCommand(defaultContext()),
+		/* v8 ignore next -- `ktb help` dispatch handler; same argv-only reachability as above */
 		Command.make("help", {}, () =>
 			Effect.fail(new CliError.ShowHelp({ commandPath: ["ktb"], errors: [] })),
 		),
@@ -40,9 +42,9 @@ const root = Command.make("ktb", {}, () =>
 	Command.withDescription("KTB platform CLI — command packs: eval (suite runs, gates, reports)."),
 );
 
-/* v8 ignore next 3 -- entrypoint guard: only true when executed directly, never under vitest */
 const invokedAs =
 	process.argv[1] === undefined ? "" : pathToFileURL(path.resolve(process.argv[1])).href;
+/* v8 ignore next -- entrypoint guard: only true when executed directly, never under vitest */
 if (import.meta.url === invokedAs) {
 	NodeRuntime.runMain(
 		Command.run(root, { version: VERSION }).pipe(Effect.provide(NodeServices.layer)),

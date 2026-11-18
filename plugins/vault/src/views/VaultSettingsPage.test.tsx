@@ -12,6 +12,7 @@ import { generateMasterKey } from "@ktb/crypto/recovery";
 import type { KeyringService } from "@ktb/crypto/keyring";
 
 import type { ClinicKey } from "../index.ts";
+import type { SecretMeta } from "../secrets.ts";
 import { VaultSettingsPage, type VaultApi, type VaultPageData } from "./index.ts";
 
 const device = (over: Partial<ClinicKey>): ClinicKey => ({
@@ -600,5 +601,31 @@ describe("VaultSettingsPage", () => {
 		await screen.findByText("A provider key is stored", { exact: false });
 		await userEvent.click(screen.getByRole("button", { name: "Remove key" }));
 		await screen.findByText("The action failed — try again.");
+	});
+});
+
+describe("VaultSettingsPage secrets panel", () => {
+	it("renders the secrets panel with loader metadata", () => {
+		const secret: SecretMeta = {
+			id: 3,
+			scope: "7",
+			tenantId: 7,
+			name: "openai-prod",
+			provider: "openai",
+			kind: "api-key",
+			hint: null,
+			version: 1,
+			status: "active",
+			kekVersion: null,
+			createdBy: null,
+			createdAt: new Date("2026-11-01T10:00:00Z"),
+			updatedAt: null,
+			rotatedAt: null,
+		};
+		render(
+			<VaultSettingsPage data={baseData({ secrets: [secret] })} api={api()} keyring={keyring()} />,
+		);
+		expect(screen.getByText("Service secrets")).toBeTruthy();
+		expect(screen.getByText("openai-prod")).toBeTruthy();
 	});
 });

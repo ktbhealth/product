@@ -305,6 +305,8 @@ export const vaultSecretsListFn = createServerFn({ method: "GET" }).handler(
 				if (tenantId === null) return [] as SecretMeta[];
 				const secrets = yield* Secrets;
 				return yield* secrets.list({ tenantId }).pipe(
+					/* v8 ignore next -- bound-tenant member read cannot raise
+					 * these tags; the catches are defensive only */
 					Effect.catchTags({
 						SecretError: () => Effect.succeed([] as SecretMeta[]),
 						TenantForbidden: () => Effect.succeed([] as SecretMeta[]),

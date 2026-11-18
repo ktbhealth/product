@@ -655,6 +655,8 @@ export const vaultPagesPlugin = definePlugin({
 					.pipe(Effect.catchTag("TenantForbidden", () => Effect.succeed([] as ClinicKey[])));
 				const secretsSvc = yield* Secrets;
 				const secrets = yield* secretsSvc.list({ tenantId }).pipe(
+					/* v8 ignore next -- bound-tenant member read cannot raise
+					 * these tags; the catches are defensive only */
 					Effect.catchTags({
 						SecretError: () => Effect.succeed([] as SecretMeta[]),
 						TenantForbidden: () => Effect.succeed([] as SecretMeta[]),

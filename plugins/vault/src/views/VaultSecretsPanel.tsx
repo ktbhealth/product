@@ -42,6 +42,8 @@ const KINDS: readonly VaultSecretKind[] = ["api-key", "token", "password", "pem"
 /** Wire dates may arrive as Date or ISO string depending on the fn
  * serializer — normalize before formatting. */
 const fmtDate = (value: Date | string | null | undefined, locale: string) => {
+	/* v8 ignore next -- callers pass updatedAt ?? createdAt; the null
+	 * guard is defensive only */
 	if (value === null || value === undefined) return "—";
 	const d = value instanceof Date ? value : new Date(value);
 	return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
@@ -181,7 +183,13 @@ export function VaultSecretsPanel({
 				</Table>
 			</div>
 
-			<Dialog open={adding} onOpenChange={(open) => !open && setAdding(false)}>
+			<Dialog
+				open={adding}
+				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
+					if (!open) setAdding(false);
+				}}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>{t.secretsAdd}</DialogTitle>
@@ -239,6 +247,7 @@ export function VaultSecretsPanel({
 			<ConfirmDialog
 				open={rotating !== null}
 				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
 					if (!open) setRotating(null);
 				}}
 				title={t.secretRotateTitle}
@@ -248,6 +257,7 @@ export function VaultSecretsPanel({
 				loading={busy}
 				onConfirm={() =>
 					void run(async () => {
+						/* v8 ignore next -- onConfirm only fires while the dialog is open */
 						if (rotating === null) return { ok: false };
 						const res = await api.rotate(rotating.id);
 						if (res.ok) setRotating(null);
@@ -258,6 +268,7 @@ export function VaultSecretsPanel({
 			<ConfirmDialog
 				open={removingSecret !== null}
 				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
 					if (!open) setRemovingSecret(null);
 				}}
 				title={t.secretRemoveTitle}
@@ -268,6 +279,7 @@ export function VaultSecretsPanel({
 				loading={busy}
 				onConfirm={() =>
 					void run(async () => {
+						/* v8 ignore next -- onConfirm only fires while the dialog is open */
 						if (removingSecret === null) return { ok: false };
 						const res = await api.remove(removingSecret.id);
 						if (res.ok) setRemovingSecret(null);

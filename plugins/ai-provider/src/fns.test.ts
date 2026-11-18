@@ -194,6 +194,7 @@ describe("ai-endpoints fns", () => {
 					transport: "ssh",
 					agentCmd: "claude-agent-acp",
 					sshHost: "me@gpu-box",
+					machineId: 7,
 				},
 			}),
 		).toEqual({
@@ -205,6 +206,7 @@ describe("ai-endpoints fns", () => {
 		expect(listed.ok && listed.data[0]).toMatchObject({
 			agentCmd: "claude-agent-acp",
 			sshHost: "me@gpu-box",
+			machineId: 7,
 		});
 
 		// The stub factory declares no presets — the fn degrades to [].

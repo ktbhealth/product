@@ -7,7 +7,7 @@ import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 import { secretKeyringLive } from "@ktb/vault-keyring";
-import { SecretsLive, VAULT_TEST_DDL } from "@ktb/vault";
+import { SecretError, Secrets, SecretsLive, VAULT_TEST_DDL, type SecretMeta } from "@ktb/vault";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -130,10 +130,18 @@ const makeApiKeys = (seed: readonly SeedRow[] = []) => {
 	return { store, created, layer: Layer.succeed(ApiKeys, ApiKeys.of(shape)) };
 };
 
-const make = (opts: { allow?: boolean; seed?: readonly SeedRow[] } = {}) => {
-	const { allow = true, seed = [] } = opts;
+type SecretsShape = Parameters<typeof Secrets.of>[0];
+
+const make = (
+	opts: { allow?: boolean; seed?: readonly SeedRow[]; secrets?: SecretsShape } = {},
+) => {
+	const { allow = true, seed = [], secrets } = opts;
 	const apiKeys = makeApiKeys(seed);
-	const layers = Layer.mergeAll(apiKeys.layer, grantLayer(allow));
+	const layers = Layer.mergeAll(
+		apiKeys.layer,
+		grantLayer(allow),
+		...(secrets === undefined ? [] : [Layer.succeed(Secrets, secrets)]),
+	);
 	const rt = ManagedRuntime.make(Layer.merge(CredentialsLive.pipe(Layer.provide(layers)), layers));
 	const run = <A, E>(effect: Effect.Effect<A, E, unknown>, userId: string | null = "u1") =>
 		rt.runPromise(
@@ -489,6 +497,121 @@ describe("Credentials (vault-backed, P-098 C3)", () => {
 
 		await run(Effect.flatMap(Credentials, (s) => s.remove(id)));
 		expect(await run(Effect.flatMap(Credentials, (s) => s.list()))).toHaveLength(0);
+		await rt.dispose();
+	});
+});
+
+describe("Credentials vault failure fallbacks", () => {
+	/** Same `_tag` as @ktb/tenant's TenantForbidden — catchTags dispatches
+	 * on the tag string and @ktb/tenant is not a direct dep here. */
+	const tenantForbidden = { _tag: "TenantForbidden", path: "vault.put" } as const;
+
+	const secretMeta = (over: Partial<SecretMeta> = {}): SecretMeta => ({
+		id: 7,
+		scope: "user:u1",
+		tenantId: null,
+		name: "prod key",
+		provider: "openai",
+		kind: "api-key",
+		hint: "9876",
+		version: 1,
+		status: "active",
+		kekVersion: null,
+		createdBy: "u1",
+		createdAt: new Date(0),
+		updatedAt: null,
+		rotatedAt: null,
+		...over,
+	});
+
+	const secrets = (over: Partial<SecretsShape>): SecretsShape =>
+		({
+			list: () => Effect.succeed([] as readonly SecretMeta[]),
+			put: () => Effect.succeed(secretMeta()),
+			resolve: () => Effect.succeed(null),
+			rotate: () => Effect.succeed(secretMeta()),
+			remove: () => Effect.void,
+			...over,
+		}) as SecretsShape;
+
+	it("list falls back to legacy rows when the vault list fails", async () => {
+		const { rt, run } = make({
+			seed: [
+				{
+					row: row("k1", '{"kind":"credential","provider":"openai","secret":"sk-9999"}'),
+					referenceId: "u1",
+				},
+			],
+			secrets: secrets({
+				list: () => Effect.fail(new SecretError({ reason: "invalid" })),
+			}),
+		});
+		const listed = await run(Effect.flatMap(Credentials, (s) => s.list()));
+		expect(listed.map((c) => c.id)).toEqual(["k1"]);
+		await rt.dispose();
+	});
+
+	it("list maps vault rows with missing provider/hint to masked defaults", async () => {
+		const { rt, run } = make({
+			secrets: secrets({
+				list: () =>
+					Effect.succeed([
+						secretMeta({ id: 3, name: "vault cred", provider: null, hint: null }),
+						secretMeta({ id: 4, name: "empty hint", provider: "gemini", hint: "" }),
+					]),
+			}),
+		});
+		const listed = await run(Effect.flatMap(Credentials, (s) => s.list()));
+		expect(listed).toEqual([
+			{ id: "3", name: "vault cred", provider: "other", masked: "••••" },
+			{ id: "4", name: "empty hint", provider: "gemini", masked: "••••" },
+		]);
+		await rt.dispose();
+	});
+
+	it("create maps vault SecretError and TenantForbidden denials to Forbidden", async () => {
+		for (const denial of [new SecretError({ reason: "invalid" }), tenantForbidden] as const) {
+			const { rt, run } = make({
+				secrets: secrets({ put: () => Effect.fail(denial as never) }),
+			});
+			await expect(
+				run(
+					Effect.flatMap(Credentials, (s) =>
+						s.create({ name: "k", provider: "openai", secret: "s" }),
+					),
+				),
+			).rejects.toMatchObject({ _tag: "Forbidden" });
+			await rt.dispose();
+		}
+	});
+
+	it("remove swallows vault remove failures on numeric ids", async () => {
+		const { rt, run } = make({
+			secrets: secrets({
+				remove: () => Effect.fail(new SecretError({ reason: "invalid" })),
+			}),
+		});
+		await expect(run(Effect.flatMap(Credentials, (s) => s.remove("42")))).resolves.toBeUndefined();
+		await rt.dispose();
+	});
+
+	it("resolve returns null when vault resolution fails — both ref spellings", async () => {
+		const { rt, run } = make({
+			secrets: secrets({
+				resolve: () => Effect.fail(new SecretError({ reason: "not-found" })),
+			}),
+		});
+		const resolve = (ref: string) => run(Effect.flatMap(Credentials, (s) => s.resolve(ref)));
+		// `vault:` refs resolve directly; numeric `credential:` ids go
+		// through the same vault lookup — both degrade to null.
+		expect(await resolve("vault:7")).toBeNull();
+		expect(await resolve("credential:7")).toBeNull();
+		await rt.dispose();
+	});
+
+	it("resolve vault: refs return null when no Secrets service is bound", async () => {
+		const { rt, run } = make();
+		expect(await run(Effect.flatMap(Credentials, (s) => s.resolve("vault:1")))).toBeNull();
 		await rt.dispose();
 	});
 });

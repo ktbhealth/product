@@ -14,6 +14,7 @@ import {
 } from "@ktb/eval-consultation";
 import { Machines, type MachineCard } from "@ktb/machines";
 import { Permissions } from "@ktb/rbac";
+import { Secrets } from "@ktb/vault";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -141,9 +142,17 @@ const MACHINE_CARD: MachineCard = {
 };
 
 /** Machines service stub — only `resolve` is exercised by descriptor
- * resolution; the rest of the surface is irrelevant here. */
-const machinesLayer = (card: MachineCard | null) =>
-	Layer.succeed(Machines, { resolve: () => Effect.succeed(card) } as never);
+ * resolution; the rest of the surface is irrelevant here. `fail`
+ * makes resolve() defect so the catch arm degrades to null. */
+const machinesLayer = (card: MachineCard | null, fail = false) =>
+	Layer.succeed(Machines, {
+		resolve: () => (fail ? Effect.fail("machine store down" as never) : Effect.succeed(card)),
+	} as never);
+
+/** Secrets service stub — only `resolve` is exercised by descriptor
+ * resolution; the fn signature stays loose like machinesLayer. */
+const secretsLayer = (resolve: (ref: string) => Effect.Effect<string | null, unknown>) =>
+	Layer.succeed(Secrets, { resolve } as never);
 
 const make = (
 	opts: {
@@ -151,11 +160,22 @@ const make = (
 		factory?: FactoryKind | "none";
 		credentials?: boolean;
 		machines?: MachineCard | null;
+		machinesFail?: boolean;
+		secrets?: (ref: string) => Effect.Effect<string | null, unknown>;
 		captured?: LlmEndpointDescriptor[];
 		presets?: readonly LlmEndpointPreset[];
 	} = {},
 ) => {
-	const { allow = true, factory = "none", credentials = false, machines, captured, presets } = opts;
+	const {
+		allow = true,
+		factory = "none",
+		credentials = false,
+		machines,
+		machinesFail = false,
+		secrets,
+		captured,
+		presets,
+	} = opts;
 	const d1 = makeD1(AI_ENDPOINTS_TEST_DDL);
 	const db = makeDb(d1);
 	const layers = Layer.mergeAll(
@@ -163,7 +183,8 @@ const make = (
 		grantLayer(allow),
 		apiKeysLayer(),
 		factory === "none" ? Layer.empty : factoryLayer(factory, captured, presets),
-		...(machines !== undefined ? [machinesLayer(machines)] : []),
+		...(machines !== undefined ? [machinesLayer(machines, machinesFail)] : []),
+		...(secrets !== undefined ? [secretsLayer(secrets)] : []),
 	);
 	const rt = ManagedRuntime.make(
 		Layer.merge(
@@ -501,6 +522,67 @@ describe("machine-linked endpoints (D3)", () => {
 		await absent.run(Effect.flatMap(AiEndpoints, (s) => s.test(b)));
 		expect(captured.at(-1)?.sshHost).toBeUndefined();
 		await absent.rt.dispose();
+	});
+
+	it("degrades to endpoint fields when the machine resolve fails", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		// Machines bound but resolve() defects — the catch arm yields
+		// null and the descriptor keeps the endpoint's own fields.
+		const { rt, run } = make({
+			factory: "ok",
+			captured,
+			machines: MACHINE_CARD,
+			machinesFail: true,
+		});
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(ACP_SSH)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(captured.at(-1)?.sshHost).toBeUndefined();
+		expect(captured.at(-1)?.transport).toBe("ssh");
+		await rt.dispose();
+	});
+});
+
+describe("vault-linked secrets", () => {
+	it("resolves vault:<id> refs into apiKey through the secrets store", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({
+			factory: "ok",
+			captured,
+			secrets: (ref) => Effect.succeed(ref === "vault:42" ? "vault-key-9" : null),
+		});
+		const { id } = await run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...EP, secretRef: "vault:42" })),
+		);
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(captured.at(-1)?.apiKey).toBe("vault-key-9");
+		expect(captured.at(-1)?.secretRef).toBeUndefined();
+		await rt.dispose();
+	});
+
+	it("leaves the endpoint keyless when the secret is missing or unresolvable", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		// resolve() → null: deleted/disabled secret row.
+		const missing = make({ factory: "ok", captured, secrets: () => Effect.succeed(null) });
+		const { id: a } = await missing.run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...EP, secretRef: "vault:1" })),
+		);
+		await missing.run(Effect.flatMap(AiEndpoints, (s) => s.test(a)));
+		expect(captured.at(-1)?.apiKey).toBeUndefined();
+		await missing.rt.dispose();
+
+		// resolve() defects (decrypt failure): the catch arm yields
+		// null and the descriptor ships without a key.
+		const failing = make({
+			factory: "ok",
+			captured,
+			secrets: () => Effect.fail(new Error("decrypt failed")),
+		});
+		const { id: b } = await failing.run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...EP, secretRef: "vault:2" })),
+		);
+		await failing.run(Effect.flatMap(AiEndpoints, (s) => s.test(b)));
+		expect(captured.at(-1)?.apiKey).toBeUndefined();
+		await failing.rt.dispose();
 	});
 });
 

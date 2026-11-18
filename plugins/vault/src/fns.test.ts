@@ -24,7 +24,7 @@ vi.mock("@tanstack/react-start", () => ({
 
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
-import { Db, makeDb } from "@ktb/db";
+import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 import { Tenant, type TenantRole } from "@ktb/tenant";
@@ -35,7 +35,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { PlatformAdmin, makePlatformAdminGate, parsePlatformAdminEmails } from "@ktb/platform";
 import { secretKeyringLive } from "@ktb/vault-keyring";
 
-import { vaultSecretsPlugin, vaultServicesPlugin, VAULT_TEST_DDL } from "./index.ts";
+import { vaultSecret, vaultSecretsPlugin, vaultServicesPlugin, VAULT_TEST_DDL } from "./index.ts";
 import {
 	vaultApproveDeviceFn,
 	vaultDekEnvelopesFn,
@@ -70,11 +70,12 @@ const TENANT_FOR = (role: TenantRole | null) =>
 
 describe("vault fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let db: DbClient;
 	let currentEmail: string | null = null;
 	let currentRole: TenantRole | null = null;
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(DDL));
+		db = makeDb(makeD1(DDL));
 		const env = Layer.succeed(Db, db);
 		const servicesLayer = (plugin: { services?: unknown }) =>
 			(plugin.services as Layer.Layer<unknown, unknown, unknown>).pipe(
@@ -331,5 +332,41 @@ describe("vault fns", () => {
 		expect(denied.ok).toBe(false);
 		// List is member-readable (metadata only).
 		expect(Array.isArray(await vaultSecretsListFn())).toBe(true);
+	});
+
+	it("collapses secret not-found and platform-scope denials to { ok: false }", async () => {
+		currentEmail = "member@x.com";
+		currentRole = "admin";
+		// Missing row → SecretError not-found.
+		expect(await vaultSecretRotateFn({ data: { id: 999_999 } })).toEqual({ ok: false });
+		expect(await vaultSecretRemoveFn({ data: { id: 999_999 } })).toEqual({ ok: false });
+		// Platform-scope row → PlatformAdmin gate → Forbidden.
+		const [row] = await db
+			.insert(vaultSecret)
+			.values({
+				scope: "platform",
+				name: "plat-secret",
+				wrappedDek: "w",
+				ciphertext: "c",
+				createdAt: new Date(),
+			})
+			.returning();
+		expect(await vaultSecretRotateFn({ data: { id: row!.id } })).toEqual({ ok: false });
+		expect(await vaultSecretRemoveFn({ data: { id: row!.id } })).toEqual({ ok: false });
+	});
+
+	it("secret fns degrade to empty/false in personal scope", async () => {
+		currentEmail = "user@x.com";
+		currentRole = null;
+		expect(await vaultSecretsListFn()).toEqual([]);
+		expect(await vaultSecretPutFn({ data: { name: "x", value: "y" } })).toEqual({ ok: false });
+		expect(await vaultSecretRotateFn({ data: { id: 1 } })).toEqual({ ok: false });
+		expect(await vaultSecretRemoveFn({ data: { id: 1 } })).toEqual({ ok: false });
+	});
+
+	it("secret list returns [] for anonymous callers", async () => {
+		currentEmail = null;
+		currentRole = null;
+		expect(await vaultSecretsListFn()).toEqual([]);
 	});
 });

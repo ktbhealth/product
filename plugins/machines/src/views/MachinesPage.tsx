@@ -145,6 +145,8 @@ export function MachinesPage({
 	};
 
 	const remove = async () => {
+		/* v8 ignore next -- onConfirm only fires while the dialog is open,
+		 * which implies pendingDelete is set */
 		if (pendingDelete === null) return;
 		const ok = await run(() => api.remove(pendingDelete.id));
 		setPendingDelete(null);
@@ -312,6 +314,7 @@ export function MachinesPage({
 			<ConfirmDialog
 				open={pendingDelete !== null}
 				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
 					if (!open) setPendingDelete(null);
 				}}
 				title={m.delete}
