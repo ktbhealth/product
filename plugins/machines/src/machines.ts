@@ -111,16 +111,16 @@ const toCardLive = (row: Machine, now: number): MachineCard => ({
 	status: derivedStatus(row, now),
 });
 
-export async function listMachines(db: DbClient, scope: string): Promise<Machine[]> {
+async function listMachines(db: DbClient, scope: string): Promise<Machine[]> {
 	return db.select().from(machine).where(eq(machine.scope, scope)).orderBy(machine.name);
 }
 
-export async function getMachineById(db: DbClient, id: number): Promise<Machine | null> {
+async function getMachineById(db: DbClient, id: number): Promise<Machine | null> {
 	const rows = await db.select().from(machine).where(eq(machine.id, id)).limit(1);
 	return rows[0] ?? null;
 }
 
-export async function getMachineByName(
+async function getMachineByName(
 	db: DbClient,
 	scope: string,
 	name: string,
@@ -133,7 +133,7 @@ export async function getMachineByName(
 	return rows[0] ?? null;
 }
 
-export async function insertMachine(
+async function insertMachine(
 	db: DbClient,
 	row: {
 		readonly scope: string;
@@ -181,7 +181,7 @@ export async function updateMachine(
 	return rows[0]!;
 }
 
-export async function deleteMachine(db: DbClient, id: number): Promise<void> {
+async function deleteMachine(db: DbClient, id: number): Promise<void> {
 	await db.delete(machine).where(eq(machine.id, id));
 }
 

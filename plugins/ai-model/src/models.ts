@@ -84,7 +84,7 @@ const toCard = (row: AiModel): ModelCard => ({
 	updatedAt: row.updatedAt,
 });
 
-export async function listModels(
+async function listModels(
 	db: DbClient,
 	scope: string,
 	endpointId?: number,
@@ -98,12 +98,12 @@ export async function listModels(
 		.orderBy(aiModel.name);
 }
 
-export async function getModelById(db: DbClient, id: number): Promise<AiModel | null> {
+async function getModelById(db: DbClient, id: number): Promise<AiModel | null> {
 	const rows = await db.select().from(aiModel).where(eq(aiModel.id, id)).limit(1);
 	return rows[0] ?? null;
 }
 
-export async function getModelByName(
+async function getModelByName(
 	db: DbClient,
 	scope: string,
 	name: string,
@@ -116,7 +116,7 @@ export async function getModelByName(
 	return rows[0] ?? null;
 }
 
-export async function insertModel(
+async function insertModel(
 	db: DbClient,
 	row: {
 		readonly scope: string;
@@ -138,7 +138,7 @@ export async function insertModel(
 	return rows[0]!;
 }
 
-export async function updateModel(
+async function updateModel(
 	db: DbClient,
 	id: number,
 	patch: Partial<{
@@ -161,7 +161,7 @@ export async function updateModel(
 	return rows[0]!;
 }
 
-export async function deleteModel(db: DbClient, id: number): Promise<void> {
+async function deleteModel(db: DbClient, id: number): Promise<void> {
 	await db.delete(aiModel).where(eq(aiModel.id, id));
 }
 

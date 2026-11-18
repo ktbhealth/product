@@ -100,7 +100,7 @@ const toCard = (row: AiPrompt): PromptCard => ({
 });
 
 /** Versions of one prompt family in a scope, newest first. */
-export async function listPromptVersions(
+async function listPromptVersions(
 	db: DbClient,
 	scope: string,
 	name: string,
@@ -112,16 +112,16 @@ export async function listPromptVersions(
 		.orderBy(desc(aiPrompt.version));
 }
 
-export async function listPrompts(db: DbClient, scope: string): Promise<AiPrompt[]> {
+async function listPrompts(db: DbClient, scope: string): Promise<AiPrompt[]> {
 	return db.select().from(aiPrompt).where(eq(aiPrompt.scope, scope)).orderBy(aiPrompt.name);
 }
 
-export async function getPromptById(db: DbClient, id: number): Promise<AiPrompt | null> {
+async function getPromptById(db: DbClient, id: number): Promise<AiPrompt | null> {
 	const rows = await db.select().from(aiPrompt).where(eq(aiPrompt.id, id)).limit(1);
 	return rows[0] ?? null;
 }
 
-export async function getPromptVersion(
+async function getPromptVersion(
 	db: DbClient,
 	scope: string,
 	name: string,
@@ -143,7 +143,7 @@ export async function getPromptVersion(
 	return rows[0] ?? null;
 }
 
-export async function insertPrompt(
+async function insertPrompt(
 	db: DbClient,
 	row: {
 		readonly scope: string;
@@ -165,7 +165,7 @@ export async function insertPrompt(
 	return rows[0]!;
 }
 
-export async function updatePrompt(
+async function updatePrompt(
 	db: DbClient,
 	id: number,
 	patch: Partial<{
@@ -185,7 +185,7 @@ export async function updatePrompt(
 	return rows[0]!;
 }
 
-export async function deletePrompt(db: DbClient, id: number): Promise<void> {
+async function deletePrompt(db: DbClient, id: number): Promise<void> {
 	await db.delete(aiPrompt).where(eq(aiPrompt.id, id));
 }
 
