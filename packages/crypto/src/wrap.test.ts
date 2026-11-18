@@ -61,10 +61,24 @@ describe("ECIES DEK wrap (w1)", () => {
 
 	it("rejects malformed blobs", async () => {
 		const { privateKey } = await generateWrapKeyPair();
+		const blob = await wrapDek(await generateDek(), (await generateWrapKeyPair()).publicKey);
 		await expect(unwrapDek("nope", privateKey)).rejects.toThrow(CryptoFormatError);
+		await expect(unwrapDek("nope", privateKey)).rejects.toThrow(/not a w1 wrapped-key blob/);
 		await expect(unwrapDek("v1.a.b.c", privateKey)).rejects.toThrow(CryptoFormatError);
 		await expect(unwrapDek("w1.a.b.c.d", privateKey)).rejects.toThrow(CryptoFormatError);
 		await expect(unwrapDek("w1.a.b", privateKey)).rejects.toThrow(CryptoFormatError);
+		// A structurally valid blob under a foreign version must fail the
+		// version check — not slip through to the KEK/decrypt path.
+		await expect(unwrapDek(blob.replace(/^w1/, "w9"), privateKey)).rejects.toThrow(
+			CryptoFormatError,
+		);
+		// A truncated-but-decodable blob must fail the segment count —
+		// not reach the decrypt path and fail differently.
+		const truncated = blob.split(".").slice(0, 3).join(".");
+		await expect(unwrapDek(truncated, privateKey)).rejects.toThrow(CryptoFormatError);
+		// Extra segments are malformed too — the first four are valid, so
+		// only the count check rejects this.
+		await expect(unwrapDek(`${blob}.extra`, privateKey)).rejects.toThrow(CryptoFormatError);
 	});
 
 	it("rejects a blob whose inner payload is not a 256-bit key", async () => {
@@ -80,7 +94,10 @@ describe("ECIES DEK wrap (w1)", () => {
 		const recipient = await generateWrapKeyPair();
 		const blob = await wrapDek(await generateDek(), recipient.publicKey);
 		const [w, eph, iv, ct] = blob.split(".");
-		const tampered = `${w}.${eph}.${iv}.${ct!.slice(0, -2)}${ct!.endsWith("00") ? "11" : "00"}`;
+		// Flip a middle char — trailing chars can sit in unused pad bits.
+		const mid = Math.floor(ct!.length / 2);
+		const flipped = ct![mid] === "A" ? "B" : "A";
+		const tampered = `${w}.${eph}.${iv}.${ct!.slice(0, mid)}${flipped}${ct!.slice(mid + 1)}`;
 		await expect(unwrapDek(tampered, recipient.privateKey)).rejects.toThrow();
 	});
 });
@@ -90,6 +107,10 @@ describe("wrap key import/export", () => {
 		const pair = await generateWrapKeyPair();
 		const pub = await exportWrapPublicKey(pair.publicKey);
 		const priv = await exportWrapPrivateKey(pair.privateKey);
+
+		// Default imports are extractable — callers may re-export.
+		expect((await importWrapPublicKey(pub)).extractable).toBe(true);
+		expect((await importWrapPrivateKey(priv)).extractable).toBe(true);
 
 		const dek = await generateDek();
 		const blob = await wrapDek(dek, await importWrapPublicKey(pub));
