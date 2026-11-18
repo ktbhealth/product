@@ -418,7 +418,7 @@ export function ConsultationDetailPage({
 										</div>
 										<p
 											className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
-												pending ? "text-amber-700 italic" : "text-foreground"
+												pending ? "text-warning italic" : "text-foreground"
 											}`}
 										>
 											{sec.content || t.detail.notReported}

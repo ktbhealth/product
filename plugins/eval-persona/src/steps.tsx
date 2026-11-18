@@ -42,7 +42,7 @@ export function EvalSteps({
 							)}
 						>
 							{done ? (
-								<CheckCircle2Icon className="size-4 text-emerald-600" />
+								<CheckCircle2Icon className="size-4 text-success" />
 							) : (
 								<CircleIcon className={cn("size-4", current && "text-accent-foreground")} />
 							)}

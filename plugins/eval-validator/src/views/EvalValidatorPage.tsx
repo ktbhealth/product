@@ -537,7 +537,7 @@ function DiffBlock({ refText, hypText }: { refText: string; hypText: string }) {
 							{o.ref}
 						</span>
 					) : (
-						<span key={i} className="text-emerald-600 underline">
+						<span key={i} className="text-success underline">
 							{" "}
 							+{o.hyp}
 						</span>

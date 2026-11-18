@@ -272,6 +272,9 @@ interface ModeAnchors {
 	readonly border: Oklch;
 	/** Default destructive. */
 	readonly destructive: Oklch;
+	/** Semantic status hues (success/warning/info) — fixed per scheme,
+	 * not brand-derived; each ships with an AA `*-foreground`. */
+	readonly status: Readonly<Record<"success" | "warning" | "info", Oklch>>;
 	/** Chart hues as offsets from primary. */
 	readonly chartOffsets: readonly number[];
 	/** Sidebar family. */
@@ -291,6 +294,11 @@ const LIGHT_ANCHORS: ModeAnchors = {
 	accentFg: NEUTRAL(0.38, 0.14, 265.59),
 	border: NEUTRAL(0.93, 0.01, 261.82),
 	destructive: { l: 0.64, c: 0.21, h: 25.39 },
+	status: {
+		success: { l: 0.53, c: 0.11, h: 163 },
+		warning: { l: 0.55, c: 0.11, h: 75 },
+		info: { l: 0.55, c: 0.15, h: 255 },
+	},
 	chartOffsets: [0, 30, 60, 160, 220],
 	sidebar: NEUTRAL(0.98, 0, 0),
 	sidebarAccent: NEUTRAL(0.97, 0, 0),
@@ -308,6 +316,11 @@ const DARK_ANCHORS: ModeAnchors = {
 	accentFg: NEUTRAL(0.88, 0.06, 254.63),
 	border: NEUTRAL(0.37, 0, 0),
 	destructive: { l: 0.64, c: 0.21, h: 25.39 },
+	status: {
+		success: { l: 0.75, c: 0.12, h: 163 },
+		warning: { l: 0.8, c: 0.1, h: 75 },
+		info: { l: 0.75, c: 0.13, h: 255 },
+	},
 	chartOffsets: [0, 30, 60, 160, 220],
 	sidebar: NEUTRAL(0.21, 0.01, 285.93),
 	sidebarAccent: NEUTRAL(0.27, 0.01, 286.1),
@@ -343,7 +356,20 @@ const buildMode = (
 	const mutedForeground = ensureContrast(seed(undefined, anchors.mutedFg), muted, 4.5);
 	const accent = seed(input.accent, tint(anchors.accent.l, 0.6));
 	const accentForeground = ensureContrast(seed(undefined, anchors.accentFg), accent, 4.5);
-	const destructive = seed(input.destructive, anchors.destructive);
+	// Destructive + status hues ship as fill/text pairs: ensurePair may
+	// nudge lightness until the chosen foreground reaches AA, and
+	// ensureContrast keeps the hue itself readable as text/icons on the
+	// scheme background (e.g. `text-destructive`).
+	const destructivePair = ensurePair(
+		ensureContrast(seed(input.destructive, anchors.destructive), background, 4.5),
+		4.5,
+	);
+	const statusPairs = Object.fromEntries(
+		(Object.keys(anchors.status) as (keyof typeof anchors.status)[]).map((name) => {
+			const hue = ensureContrast(anchors.status[name], background, 4.5);
+			return [name, ensurePair(hue, 4.5)];
+		}),
+	) as Record<keyof typeof anchors.status, { bg: Oklch; fg: Oklch }>;
 	const border = tint(anchors.border.l, 0.15);
 
 	// Brand color + its compliant on-color. ensurePair may nudge
@@ -387,7 +413,14 @@ const buildMode = (
 		"--muted-foreground": formatOklch(mutedForeground),
 		"--accent": formatOklch(accent),
 		"--accent-foreground": formatOklch(accentForeground),
-		"--destructive": formatOklch(destructive),
+		"--destructive": formatOklch(destructivePair.bg),
+		"--destructive-foreground": formatOklch(destructivePair.fg),
+		"--success": formatOklch(statusPairs.success.bg),
+		"--success-foreground": formatOklch(statusPairs.success.fg),
+		"--warning": formatOklch(statusPairs.warning.bg),
+		"--warning-foreground": formatOklch(statusPairs.warning.fg),
+		"--info": formatOklch(statusPairs.info.bg),
+		"--info-foreground": formatOklch(statusPairs.info.fg),
 		"--border": formatOklch(border),
 		"--input": formatOklch(border),
 		"--ring": formatOklch(ring),
@@ -525,6 +558,10 @@ export const CONTRAST_PAIRS: readonly {
 	},
 	{ name: "muted", fg: "--muted-foreground", bg: "--muted", min: 4.5 },
 	{ name: "accent", fg: "--accent-foreground", bg: "--accent", min: 4.5 },
+	{ name: "destructive", fg: "--destructive-foreground", bg: "--destructive", min: 4.5 },
+	{ name: "success", fg: "--success-foreground", bg: "--success", min: 4.5 },
+	{ name: "warning", fg: "--warning-foreground", bg: "--warning", min: 4.5 },
+	{ name: "info", fg: "--info-foreground", bg: "--info", min: 4.5 },
 	{ name: "sidebar", fg: "--sidebar-foreground", bg: "--sidebar", min: 4.5 },
 	{
 		name: "sidebar-primary",

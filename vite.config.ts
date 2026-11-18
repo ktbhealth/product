@@ -6,6 +6,8 @@ import {
 	PLATFORM_IMPORT_PATTERNS,
 	PORT_GLOBS,
 	PORT_TEST_GLOBS,
+	UI_GLOBS,
+	UI_TEST_GLOBS,
 } from "./tools/arch-policy.mjs";
 
 export default defineConfig({
@@ -192,6 +194,24 @@ export default defineConfig({
 				files: PACKAGE_BOUNDARY_GLOBS,
 				rules: {
 					"ktb-arch/package-boundary": "error",
+				},
+			},
+			{
+				// Theme tokens are the only color source: palette
+				// utilities (bg-red-500, text-amber-700…), arbitrary
+				// color values and literal white/black fills bypass the
+				// derived token set and its WCAG foreground pairs.
+				files: UI_GLOBS,
+				rules: {
+					"ktb-arch/no-hardcoded-colors": "error",
+				},
+			},
+			{
+				// Test fixtures may paint freely — the rule targets
+				// shipped UI only.
+				files: UI_TEST_GLOBS,
+				rules: {
+					"ktb-arch/no-hardcoded-colors": "off",
 				},
 			},
 			{

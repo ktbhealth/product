@@ -79,6 +79,24 @@ export const PACKAGE_BOUNDARY_GLOBS = [
 	"evals/**/*.{ts,tsx}",
 ];
 
+/** UI source trees held to the theme-token color rule
+ * (ktb-arch/no-hardcoded-colors): palette utilities, arbitrary color
+ * values and literal white/black fills bypass the derived token set
+ * and its WCAG foreground pairs. */
+export const UI_GLOBS = [
+	"plugins/**/*.{ts,tsx}",
+	"packages/**/*.{ts,tsx}",
+	"apps/**/*.{ts,tsx}",
+	"evals/**/*.{ts,tsx}",
+];
+
+export const UI_TEST_GLOBS = [
+	"plugins/**/*.test.{ts,tsx}",
+	"packages/**/*.test.{ts,tsx}",
+	"apps/**/*.test.{ts,tsx}",
+	"evals/**/*.test.{ts,tsx}",
+];
+
 /** Import specifiers that tie code to a runtime or cloud platform. */
 export const PLATFORM_IMPORT_PATTERNS = ["node:*", "bun:*", "deno:*", "cloudflare:*", "workerd:*"];
 

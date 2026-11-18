@@ -25,7 +25,7 @@ export function PatientsDashboardStats({ locale = "en", i18n }: DashboardSlotPro
 	return (
 		<Card>
 			<CardContent className="flex items-center gap-3 px-4 py-3">
-				<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600">
+				<span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-info/10 text-info">
 					<UsersIcon className="size-4" />
 				</span>
 				<div className="min-w-0">

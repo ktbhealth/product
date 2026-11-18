@@ -35,7 +35,7 @@ export function ThemePreviewBanner({
 		}
 	};
 	return (
-		<div className="flex items-center justify-center gap-3 border-b border-amber-300 bg-amber-100 px-4 py-1.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+		<div className="flex items-center justify-center gap-3 border-b border-warning/30 bg-warning/10 px-4 py-1.5 text-xs text-warning">
 			<span>{t.bannerText}</span>
 			<Button
 				variant="ghost"

@@ -29,11 +29,11 @@ const contributions = (p: Plugin) =>
 const STATE_BADGE: Record<string, string> = {
 	enabled: "bg-primary/10 text-primary ring-1 ring-primary/20",
 	disabled: "bg-muted text-muted-foreground ring-1 ring-border",
-	system: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
+	system: "bg-warning/10 text-warning ring-1 ring-warning/20",
 };
 
 const STAT_TONES = {
-	plugins: "bg-violet-500/10 text-violet-600",
+	plugins: "bg-primary/10 text-primary",
 } as const;
 
 function Stat({
