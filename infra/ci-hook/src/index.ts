@@ -190,6 +190,85 @@ async function handleTokenMint(request: Request, env: Env): Promise<Response> {
 	return Response.json({ token: data.token, expires_at: data.expires_at });
 }
 
+interface RepositoryPayload {
+	action?: string;
+	repository?: { full_name?: string };
+	sender?: { login?: string };
+}
+
+// Org `repository` webhooks fire on created / publicized / renamed —
+// the moments org policy (lasius doctor, repo hygiene) becomes
+// relevant. Anything else (deleted, archived, …) is just acked.
+const REPO_POLICY_ACTIONS = new Set(["created", "publicized", "renamed"]);
+
+const GITHUB_API = "https://api.github.com";
+
+const GITHUB_HEADERS = (jwt: string): Record<string, string> => ({
+	Authorization: `Bearer ${jwt}`,
+	Accept: "application/vnd.github+json",
+	"User-Agent": "lasius-ci-hook",
+	"X-GitHub-Api-Version": "2022-11-28",
+	"Content-Type": "application/json",
+});
+
+// Mint a lasius-bot installation token scoped to the workspace repo.
+// Throws on GitHub-side failure; callers decide how to degrade.
+async function mintWorkspaceToken(env: Env): Promise<string> {
+	const jwt = await appJwt(env);
+	const res = await fetch(
+		`${GITHUB_API}/app/installations/${env.GITHUB_APP_INSTALLATION_ID}/access_tokens`,
+		{
+			method: "POST",
+			headers: GITHUB_HEADERS(jwt),
+			body: JSON.stringify({ repositories: ["workspace"] }),
+		},
+	);
+	if (!res.ok) throw new Error(`token mint ${res.status}`);
+	const data = (await res.json()) as { token?: string };
+	if (!data.token) throw new Error("token mint returned no token");
+	return data.token;
+}
+
+async function handleRepository(env: Env, payload: RepositoryPayload): Promise<void> {
+	if (!payload.action || !REPO_POLICY_ACTIONS.has(payload.action)) return;
+	const repo = payload.repository?.full_name ?? "?";
+	const sender = payload.sender?.login ?? "?";
+
+	// Missing app creds must never 5xx the webhook — log and ack.
+	if (!env.GITHUB_APP_ID || !env.GITHUB_APP_INSTALLATION_ID || !env.GITHUB_APP_PRIVATE_KEY) {
+		console.log(`repo-policy: app creds not configured, skipping ${repo}`);
+		return;
+	}
+
+	try {
+		const token = await mintWorkspaceToken(env);
+		const res = await fetch(`${GITHUB_API}/repos/ktbhealth/workspace/dispatches`, {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/vnd.github+json",
+				"User-Agent": "lasius-ci-hook",
+				"X-GitHub-Api-Version": "2022-11-28",
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				event_type: "repo-policy",
+				client_payload: { repo, action: payload.action, sender },
+			}),
+		});
+		if (!res.ok) throw new Error(`dispatch ${res.status}`);
+	} catch (err) {
+		// Delivery must stay 200 even when GitHub flakes — surface via ntfy.
+		console.error(`repo-policy dispatch failed for ${repo}:`, err);
+		await notifyNtfy(
+			env,
+			`repo-policy dispatch failed: ${repo}`,
+			`${payload.action} by ${sender} — ${String(err)}`,
+			"default",
+		);
+	}
+}
+
 interface WorkflowRunPayload {
 	action?: string;
 	repository?: { full_name?: string };
@@ -251,6 +330,8 @@ export default {
 			const payload = JSON.parse(body);
 			if (event === "workflow_run") {
 				await handleWorkflowRun(env, payload as WorkflowRunPayload);
+			} else if (event === "repository") {
+				await handleRepository(env, payload as RepositoryPayload);
 			}
 			// push / pull_request / everything else: acknowledged, logged
 			// via workers observability. Extend here when peregrin lands.

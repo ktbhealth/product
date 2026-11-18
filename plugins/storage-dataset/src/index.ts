@@ -14,7 +14,7 @@ import { DatasetStorePort } from "@ktb/eval-consultation/ports";
  * implementations stay in the exempt-edge packages
  * (@ktb/eval-adapter-stub/-local/-cloud): the SQLite/filesystem store
  * needs node:fs/better-sqlite3, which plugins/* may not import
- * (arch-policy PORT_GLOBS). See plugins/transcription-tts/src/index.ts
+ * (the arch preset's PORT_GLOBS). See plugins/transcription-tts/src/index.ts
  * for the full mechanism.
  *
  * Storage is not a pipeline stage — it contributes capabilities only.

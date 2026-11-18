@@ -358,3 +358,198 @@ describe("token broker (POST /token)", () => {
 		expect(body.detail).toHaveLength(300);
 	});
 });
+
+describe("repository events → repo-policy dispatch", () => {
+	let appKeyPem: string;
+
+	const repoEnv = (overrides: Partial<Env> = {}): Env =>
+		makeEnv({
+			GITHUB_APP_ID: "1234",
+			GITHUB_APP_INSTALLATION_ID: "5678",
+			GITHUB_APP_PRIVATE_KEY: appKeyPem,
+			...overrides,
+		});
+
+	const repoEvent = (overrides: Record<string, unknown> = {}) =>
+		JSON.stringify({
+			action: "created",
+			repository: { full_name: "ktbhealth/newrepo" },
+			sender: { login: "luis" },
+			...overrides,
+		});
+
+	// access_tokens mint then dispatches — the happy-path call order.
+	const githubOk = () =>
+		vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes("/access_tokens")) {
+				return Response.json({ token: "ghs_ws", expires_at: "2030-01-01T00:00:00Z" });
+			}
+			return new Response(null, { status: 204 });
+		});
+
+	beforeAll(async () => {
+		const { privateKey } = (await crypto.subtle.generateKey(
+			{
+				name: "RSASSA-PKCS1-v1_5",
+				modulusLength: 2048,
+				publicExponent: new Uint8Array([1, 0, 1]),
+				hash: "SHA-256",
+			},
+			true,
+			["sign"],
+		)) as CryptoKeyPair;
+		const der = (await crypto.subtle.exportKey("pkcs8", privateKey)) as ArrayBuffer;
+		const b64 = btoa(String.fromCharCode(...new Uint8Array(der)));
+		const lines = b64.match(/.{1,64}/g) ?? [b64];
+		appKeyPem = `-----BEGIN PRIVATE KEY-----\n${lines.join("\n")}\n-----END PRIVATE KEY-----`;
+	});
+
+	afterEach(() => vi.unstubAllGlobals());
+
+	it("mints a workspace-scoped token then dispatches repo-policy", async () => {
+		const fetchMock = githubOk();
+		vi.stubGlobal("fetch", fetchMock);
+		const env = repoEnv();
+		const res = await post(repoEvent(), "repository", undefined, env);
+		expect(res.status).toBe(200);
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			1,
+			"https://api.github.com/app/installations/5678/access_tokens",
+			expect.objectContaining({
+				method: "POST",
+				headers: expect.objectContaining({
+					Authorization: expect.stringMatching(/^Bearer eyJ/),
+				}),
+				body: JSON.stringify({ repositories: ["workspace"] }),
+			}),
+		);
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			2,
+			"https://api.github.com/repos/ktbhealth/workspace/dispatches",
+			expect.objectContaining({
+				method: "POST",
+				headers: expect.objectContaining({
+					Authorization: "Bearer ghs_ws",
+					Accept: "application/vnd.github+json",
+					"User-Agent": "lasius-ci-hook",
+					"X-GitHub-Api-Version": "2022-11-28",
+				}),
+				body: JSON.stringify({
+					event_type: "repo-policy",
+					client_payload: {
+						repo: "ktbhealth/newrepo",
+						action: "created",
+						sender: "luis",
+					},
+				}),
+			}),
+		);
+	});
+
+	it("dispatches for publicized and renamed too", async () => {
+		const fetchMock = githubOk();
+		vi.stubGlobal("fetch", fetchMock);
+		const env = repoEnv();
+		for (const action of ["publicized", "renamed"]) {
+			const res = await post(repoEvent({ action }), "repository", undefined, env);
+			expect(res.status).toBe(200);
+		}
+		// 2 events × (token mint + dispatch)
+		expect(fetchMock).toHaveBeenCalledTimes(4);
+	});
+
+	it("ignores repository actions outside the policy set and missing fields", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		const env = repoEnv();
+		for (const payload of [
+			repoEvent({ action: "deleted" }),
+			repoEvent({ action: "archived" }),
+			repoEvent({ action: undefined }),
+			JSON.stringify({}), // no action at all
+		]) {
+			const res = await post(payload, "repository", undefined, env);
+			expect(res.status).toBe(200);
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("falls back to ? for missing repo and sender fields", async () => {
+		const fetchMock = githubOk();
+		vi.stubGlobal("fetch", fetchMock);
+		const env = repoEnv();
+		const res = await post(repoEvent({ repository: {}, sender: {} }), "repository", undefined, env);
+		expect(res.status).toBe(200);
+		expect(fetchMock).toHaveBeenLastCalledWith(
+			"https://api.github.com/repos/ktbhealth/workspace/dispatches",
+			expect.objectContaining({
+				body: JSON.stringify({
+					event_type: "repo-policy",
+					client_payload: { repo: "?", action: "created", sender: "?" },
+				}),
+			}),
+		);
+	});
+
+	it("acks without dispatching when app creds are missing", async () => {
+		const fetchMock = vi.fn();
+		vi.stubGlobal("fetch", fetchMock);
+		for (const env of [
+			makeEnv(),
+			makeEnv({ GITHUB_APP_ID: "1" }),
+			makeEnv({ GITHUB_APP_ID: "1", GITHUB_APP_INSTALLATION_ID: "2" }),
+		]) {
+			const res = await post(repoEvent(), "repository", undefined, env);
+			expect(res.status).toBe(200);
+		}
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("still 200s when the token mint fails", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => new Response("boom", { status: 500 })),
+		);
+		const res = await post(repoEvent(), "repository", undefined, repoEnv());
+		expect(res.status).toBe(200);
+	});
+
+	it("still 200s when the mint returns no token", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => Response.json({ expires_at: "e" })),
+		);
+		const res = await post(repoEvent(), "repository", undefined, repoEnv());
+		expect(res.status).toBe(200);
+	});
+
+	it("still 200s when the dispatch API fails", async () => {
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes("/access_tokens")) {
+				return Response.json({ token: "ghs_ws", expires_at: "2030-01-01T00:00:00Z" });
+			}
+			return new Response("forbidden", { status: 403 });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		const env = repoEnv({
+			NTFY_URL: "https://ntfy.example",
+			NTFY_TOPIC: "ci",
+		});
+		const res = await post(repoEvent(), "repository", undefined, env);
+		expect(res.status).toBe(200);
+		// Failure surfaced via ntfy as a third fetch.
+		expect(fetchMock).toHaveBeenCalledTimes(3);
+		expect(fetchMock).toHaveBeenLastCalledWith(
+			"https://ntfy.example/ci",
+			expect.objectContaining({
+				headers: expect.objectContaining({
+					Title: "repo-policy dispatch failed: ktbhealth/newrepo",
+				}),
+			}),
+		);
+	});
+});

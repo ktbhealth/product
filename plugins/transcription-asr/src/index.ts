@@ -9,7 +9,7 @@ import { AsrPort } from "@ktb/eval-consultation/ports";
  * the eval-core contributions (on the manifest's `contributions`
  * channel) and adapter keys for AsrPort; adapter implementations stay
  * in the exempt-edge packages (@ktb/eval-adapter-stub/-local/-cloud)
- * because plugins/* is inside arch-policy PORT_GLOBS (no node:*,
+ * because plugins/* is inside the arch preset's PORT_GLOBS (no node:*,
  * provider literals, or adapter imports). See
  * plugins/transcription-tts/src/index.ts for the full mechanism —
  * apps/eval resolves `meta.adapters[key]` per `meta.port`.
