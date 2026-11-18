@@ -67,6 +67,8 @@ export const loginTileTargets = (
 ): ReadonlySet<string> =>
 	new Set(
 		visibleLoginTiles(plugins, states).flatMap((entry) =>
-			entry.content.kind === "loginTile" ? [entry.content.to] : [],
+			entry.content.kind === "loginTile"
+				? [entry.content.to]
+				: /* v8 ignore next -- visibleLoginTiles already filters to loginTile entries */ [],
 		),
 	);
