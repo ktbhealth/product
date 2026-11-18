@@ -156,6 +156,10 @@ export interface DocumentCollection<F extends Fields = Fields> {
  * required data — the result is JSON-serializable EXCEPT
  * `migrations`, whose `migrate` functions are code that rides the
  * contribution in-process only (never `schema_json`).
+ *
+ * Before declaring one, check README.md — "when NOT to use": hot
+ * paths, aggregates/joins, DB-level constraints and >~10k docs per
+ * collection belong in a typed drizzle table, not here.
  */
 export const defineCollection = <const F extends Fields>(options: {
 	readonly name: string;
