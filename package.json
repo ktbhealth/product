@@ -60,7 +60,6 @@
 		"esbuild",
 		"lightningcss",
 		"msw",
-		"onnxruntime-node",
 		"protobufjs",
 		"workerd"
 	]
