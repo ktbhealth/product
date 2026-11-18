@@ -1,16 +1,35 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { and, asc, desc, eq, isNotNull, or, type SQL } from "drizzle-orm";
 import { physical } from "@tanstack/virtual-file-routes";
 import { UsersIcon } from "lucide-react";
 
+import { apiExposureContribution, defineApiExposure } from "@ktb/api";
 import { audit, auditServicesPlugin } from "@ktb/audit";
 import { Db, tx, type DbClient } from "@ktb/db";
 import { patientDocuments, patients, user as users } from "@ktb/db/schema";
+import {
+	assertCollectionDef,
+	DocumentStore,
+	documentCollectionContribution,
+} from "@ktb/document-store";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { viewDefContribution, defineView } from "@ktb/views";
+import { defineWizard, wizardDefContribution, WizardHooks } from "@ktb/wizards";
 import { Command, EventBus, Query } from "@effect-server-utils/cqrs";
 import { PatientCreated, PatientDeleted, PatientsCommands, PatientsQueries } from "./api.ts";
+import {
+	INTAKE_COLLECTION,
+	INTAKE_SUBMIT_HOOK,
+	INTAKE_WIZARD_ID,
+	intakeCollection,
+	intakeExposure,
+	intakeSubmissionFromAnswers,
+	intakeView,
+	intakeWizard,
+} from "./intake.ts";
 import { PatientsPlatformPage } from "./platform-page.tsx";
 import { PatientsDashboardStats } from "./views/PatientsDashboard.tsx";
 import {
@@ -693,6 +712,85 @@ export const patientsPanelPlugin = definePlugin({
 	},
 });
 
+/**
+ * Pre-consult intake defs — validated at module load (packaging bugs
+ * surface here, not at first render) then contributed as JSON on the
+ * generic `contributions` channel. `src/client.ts` mirrors the same
+ * defs verbatim (kind/id/version literals) — the wizard runner, view
+ * page and API surface all resolve defs from the enabled-filtered
+ * CLIENT registry.
+ */
+const intakeDefs = {
+	collection: assertCollectionDef(intakeCollection, `plugin "patients.intake"`),
+	wizard: defineWizard(intakeWizard),
+	view: defineView(intakeView),
+	exposure: defineApiExposure(intakeExposure),
+};
+
+/**
+ * Intake completion hook — registered on the shared `WizardHooks`
+ * registry when the wizards plugin is enabled. Maps the run's answers
+ * onto `patients.intake` fields and writes through `DocumentStore`
+ * (which re-validates against the contributed collection def). Both
+ * ports are OPTIONAL (`Effect.serviceOption`): the layer still builds
+ * when either plugin is absent — the hook then fails loudly at invoke
+ * time instead of silently dropping submissions.
+ *
+ * Ordering: `patients.intake` declares optionalDeps on
+ * `wizards.services` + `document-store.services` so their layers
+ * compose first and the services are visible at registration time.
+ */
+export const PatientsIntakeHooksLive = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const hooks = yield* Effect.serviceOption(WizardHooks);
+		if (Option.isNone(hooks)) return;
+		const store = yield* Effect.serviceOption(DocumentStore);
+		hooks.value.register(INTAKE_SUBMIT_HOOK, (run) =>
+			Effect.gen(function* () {
+				if (run.key !== INTAKE_WIZARD_ID) {
+					return yield* Effect.fail(
+						new Error(`intake hook invoked for unexpected wizard "${run.key}"`),
+					);
+				}
+				if (Option.isNone(store)) {
+					return yield* Effect.fail(
+						new Error(
+							`intake submission needs the DocumentStore service (collection "${INTAKE_COLLECTION}")`,
+						),
+					);
+				}
+				yield* store.value.insert(INTAKE_COLLECTION, intakeSubmissionFromAnswers(run.answers), {
+					ownerId: run.ownerId,
+				});
+			}),
+		);
+	}),
+);
+
+/**
+ * Dynamic-runtime defs citizen: the `patients.intake` document
+ * collection, the `patient-intake` wizard, the `patients-intake`
+ * browse view and the read-only API exposure — all JSON data on the
+ * generic contributions channel (P-070). The services layer only
+ * exists to register the completion hook; the defs themselves are
+ * inert data collected statically at composition time.
+ */
+export const patientsIntakePlugin = definePlugin({
+	id: "patients.intake",
+	meta: { keywords: ["patients", "documents"] },
+	// Ordering hints only: the hook layer consumes WizardHooks +
+	// DocumentStore via serviceOption when those plugins are enabled;
+	// absence is legal (registration is skipped / fails at invoke).
+	optionalDeps: ["wizards.services", "document-store.services"],
+	services: PatientsIntakeHooksLive,
+	contributions: [
+		documentCollectionContribution(intakeDefs.collection),
+		wizardDefContribution(intakeDefs.wizard),
+		viewDefContribution(intakeDefs.view),
+		apiExposureContribution(intakeDefs.exposure),
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
@@ -701,6 +799,7 @@ export const plugins: readonly Plugin[] = [
 	patientsRoutesPlugin,
 	patientsChromePlugin,
 	patientsPanelPlugin,
+	patientsIntakePlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -712,5 +811,6 @@ declare module "@ktb/kernel" {
 		"patients.routes": true;
 		"patients.chrome": true;
 		"patients.panel": true;
+		"patients.intake": true;
 	}
 }

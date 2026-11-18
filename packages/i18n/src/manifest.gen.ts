@@ -4299,6 +4299,27 @@ export const I18N_MANIFEST = {
 		"zk.decryptFailed": {
 			params: [],
 		},
+		"intake.viewTitle": {
+			params: [],
+		},
+		"intake.chiefComplaint": {
+			params: [],
+		},
+		"intake.symptomsDuration": {
+			params: [],
+		},
+		"intake.medications": {
+			params: [],
+		},
+		"intake.allergies": {
+			params: [],
+		},
+		"intake.termsAccepted": {
+			params: [],
+		},
+		"intake.dataUseConsent": {
+			params: [],
+		},
 	},
 	portal: {
 		switcherLabel: {
