@@ -31,7 +31,8 @@ import {
 	type PageShell,
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
-import { PortalAudience, PORTAL_AUDIENCE } from "@ktb/portal";
+import { PortalAudience } from "@ktb/portal";
+import { portalAdmits } from "@ktb/portal/rules";
 import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
@@ -59,7 +60,9 @@ export const sessionFn = createServerFn({ method: "GET" }).handler(async () => {
 	// the console entry iff the gate would let the account through.
 	// When the gate becomes permission-driven this flag follows.
 	const platformAdmin = await run(
-		Effect.flatMap(PlatformAdmin, (admin) => admin.isAdmin(account.email)),
+		Effect.flatMap(PlatformAdmin, (admin) =>
+			admin.isAdmin({ email: account.email, userId: account.id }),
+		),
 	);
 	return { ...account, platformAdmin };
 });
@@ -273,8 +276,9 @@ export const i18nRouteFn = createServerFn({ method: "GET" })
 	});
 
 /**
- * /platform console gate: true when the session user's email is in the
- * `PLATFORM_ADMIN_EMAILS` allowlist. Non-admins get `false` — route
+ * /platform console gate: true when the session user satisfies the
+ * `PlatformAdmin` gate — email allowlist or RBAC admin grant. Non-admins
+ * get `false` — route
  * guards turn that into a hard 404; admin data paths enforce the same
  * gate again inside domain services (defense in depth).
  */
@@ -284,7 +288,9 @@ export const platformAdminFn = createServerFn({ method: "GET" }).handler(async (
 	return run(
 		Effect.gen(function* () {
 			const platformAdmin = yield* PlatformAdmin;
-			return yield* platformAdmin.isAdmin(user.email);
+			// Subject form: RBAC-granted superadmins pass alongside the
+			// email allowlist — userId is the signed-in account id.
+			return yield* platformAdmin.isAdmin({ email: user.email, userId: user.id });
 		}),
 	);
 });
@@ -350,13 +356,13 @@ const portalAudienceAllows = async (
 ): Promise<boolean> => {
 	const entry = portalEntryForPath(path);
 	if (entry === undefined) return false;
-	const rule = entry.instance.audience ?? PORTAL_AUDIENCE.member;
 	return runEffect(
 		Effect.gen(function* () {
 			const audience = yield* Effect.serviceOption(PortalAudience);
 			if (Option.isNone(audience)) return true;
-			const set = yield* audience.value.audiences();
-			return set.has(rule);
+			// portalAdmits (not a bare rule check): the `superadmin`
+			// wildcard admits every instance, same as the shell switcher.
+			return portalAdmits(entry.instance, yield* audience.value.audiences());
 		}),
 	).catch(() => false);
 };

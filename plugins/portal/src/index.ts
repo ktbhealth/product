@@ -49,11 +49,23 @@ export const PortalAudienceLive = Layer.succeed(
 			const out = new Set<string>();
 			if (principal === null) return out;
 			out.add(PORTAL_AUDIENCE.member);
-			const platformAdmin = yield* Effect.serviceOption(PlatformAdmin);
-			if (Option.isSome(platformAdmin) && (yield* platformAdmin.value.isAdmin(principal.email))) {
-				out.add(PORTAL_AUDIENCE.platformAdmin);
-			}
 			const accountId = principal.actorId ?? principal.userId;
+			const platformAdmin = yield* Effect.serviceOption(PlatformAdmin);
+			if (Option.isSome(platformAdmin)) {
+				// The gate now evaluates RBAC grants too — pass the signed-in
+				// account id (actorId under delegation), not the acting one.
+				if (
+					yield* platformAdmin.value.isAdmin({
+						email: principal.email,
+						userId: accountId,
+					})
+				) {
+					out.add(PORTAL_AUDIENCE.platformAdmin);
+					// Superadmin: wildcard audience — portalAdmits opens every
+					// portal instance to it (clinical subject gates still apply).
+					out.add(PORTAL_AUDIENCE.superadmin);
+				}
+			}
 			const profiles = yield* Effect.serviceOption(DoctorProfiles);
 			if (Option.isSome(profiles)) {
 				// A directory failure is not an empty list: it grants no

@@ -82,7 +82,7 @@ export const themeScopeFn = createServerFn({ method: "GET" })
 			user,
 			Effect.gen(function* () {
 				const gate = yield* PlatformAdmin;
-				return yield* gate.isAdmin(user.email);
+				return yield* gate.isAdmin({ email: user.email, userId: user.id });
 			}),
 		).catch(() => false);
 		if (!isAdmin) return resolved;
@@ -211,7 +211,7 @@ export const setThemePreviewFn = createServerFn({ method: "POST" })
 			user,
 			Effect.gen(function* () {
 				const gate = yield* PlatformAdmin;
-				return yield* gate.isAdmin(user.email);
+				return yield* gate.isAdmin({ email: user.email, userId: user.id });
 			}),
 		);
 		if (!isAdmin) return { ok: false };

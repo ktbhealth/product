@@ -45,7 +45,7 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/fonts")({
 					user,
 					Effect.gen(function* () {
 						const gate = yield* PlatformAdmin;
-						return yield* gate.isAdmin(user.email);
+						return yield* gate.isAdmin({ email: user.email, userId: user.actorId });
 					}),
 				).catch(() => false);
 				if (!isAdmin) return Response.json({ error: "forbidden" }, { status: 403 });

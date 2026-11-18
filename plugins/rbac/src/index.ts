@@ -30,6 +30,7 @@ import { Command, Query } from "@effect-server-utils/cqrs";
 
 import { RbacCommands, RbacQueries } from "./api.ts";
 import { RbacPlatformPage } from "./platform-page.tsx";
+import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";
 
 // ---------- row shapes ----------
 
@@ -524,6 +525,31 @@ export const RbacCommandsLive = Command.handlersOf(RbacCommands, {
 		}),
 });
 
+/** Built-in `superadmin` role seed (./seed.ts): runs once at layer
+ * build, idempotent and create-only — inserts the role with its full
+ * catalog grant set when the name is absent, then bumps the permission
+ * epoch. An existing role is never repaired: revoked grants stay
+ * revoked across boots. Best-effort like the i18n seed: a deployment
+ * whose schema predates the rbac tables logs a warning instead of
+ * failing the whole services layer (rbac queries still fail loudly on
+ * use). */
+const SuperadminSeedLive = Layer.effectDiscard(
+	Effect.gen(function* () {
+		const db = yield* Db;
+		const result = yield* Effect.promise(() => ensureSuperadminRole(db)).pipe(
+			Effect.catchCause(() => Effect.logWarning("superadmin role seed failed — skipping")),
+		);
+		// "custom": an operator-owned role squats the name — the seed
+		// leaves it alone, but the collision is worth a boot warning.
+		if (result === "custom") {
+			yield* Effect.logWarning(
+				`a non-system role named "${SUPERADMIN_ROLE_NAME}" exists — ` +
+					"the built-in superadmin seed is skipped; rename or delete it to restore",
+			);
+		}
+	}),
+);
+
 export const rbacServicesPlugin = definePlugin({
 	id: "rbac.services",
 	meta: { keywords: ["rbac", "services"] },
@@ -538,6 +564,7 @@ export const rbacServicesPlugin = definePlugin({
 		GroupMembershipLive,
 		RbacQueriesLive,
 		RbacCommandsLive,
+		SuperadminSeedLive,
 	),
 });
 

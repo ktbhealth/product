@@ -17,8 +17,14 @@ const profile = (role: DoctorProfile["role"], userId = "u1"): DoctorProfile => (
 	role,
 });
 
+// The gate now receives a { email, userId } subject — the mock admits
+// the allowlisted email OR the RBAC-granted account id.
 const adminGate = Layer.succeed(PlatformAdmin, {
-	isAdmin: (email) => Effect.succeed(email === "admin@ktb.test"),
+	isAdmin: (subject) =>
+		Effect.succeed(
+			(typeof subject === "string" ? subject : subject?.email) === "admin@ktb.test" ||
+				(typeof subject === "object" && subject?.userId === "rbac-root"),
+		),
 	requireAdmin: () => Effect.void,
 });
 
@@ -64,13 +70,34 @@ describe("PortalAudience.audiences", () => {
 		);
 	});
 
-	it("grants platform-admin to allowlisted emails", async () => {
+	it("grants platform-admin + superadmin to allowlisted emails", async () => {
 		expect(
 			await audiencesAs({ userId: "u1", email: "admin@ktb.test" }, { admin: adminGate }),
-		).toEqual(new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.platformAdmin]));
+		).toEqual(
+			new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.platformAdmin, PORTAL_AUDIENCE.superadmin]),
+		);
 		expect(await audiencesAs({ userId: "u1", email: "u1@ktb.test" }, { admin: adminGate })).toEqual(
 			new Set([PORTAL_AUDIENCE.member]),
 		);
+	});
+
+	it("grants superadmin through the RBAC grant path — signed-in account id", async () => {
+		// The gate sees actorId under delegation: the grant belongs to the
+		// signed-in account, not the doctor being acted as.
+		const set = await audiencesAs(
+			{ userId: "doctor-1", actorId: "rbac-root", email: "root@ktb.test" },
+			{ admin: adminGate },
+		);
+		expect(set).toEqual(
+			new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.platformAdmin, PORTAL_AUDIENCE.superadmin]),
+		);
+		// A delegated principal acting AS the granted account does not
+		// inherit it — actorId is someone else.
+		const delegated = await audiencesAs(
+			{ userId: "rbac-root", actorId: "someone-else", email: "other@ktb.test" },
+			{ admin: adminGate },
+		);
+		expect(delegated).toEqual(new Set([PORTAL_AUDIENCE.member]));
 	});
 
 	it("grants doctor for an own profile and secretary for delegated ones", async () => {

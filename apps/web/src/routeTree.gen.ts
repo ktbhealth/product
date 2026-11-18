@@ -31,6 +31,7 @@ import { Route as ConsultationsIdRouteImport } from './../../../plugins/consulta
 import { Route as ConsultationsNewRouteImport } from './../../../plugins/consultations/src/routes/new'
 import { Route as DoctorsSelectRouteImport } from './../../../plugins/doctors/src/routes/select'
 import { Route as InviteIndexRouteImport } from './../../../plugins/invites/src/routes/index'
+import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRouteImport } from './../../../plugins/auth/src/routes/login-admin'
 import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRouteImport } from './../../../plugins/auth/src/routes/login'
 import { Route as loginPatientRouteImport } from './routes/login-patient'
 import { Route as DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRouteImport } from './../../../plugins/secretaries/src/routes-login/secretary'
@@ -172,6 +173,12 @@ const InviteIndexRoute = InviteIndexRouteImport.update({
   path: '/invite/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute =
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRouteImport.update({
+    id: '/login/admin',
+    path: '/login/admin',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute =
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRouteImport.update({
     id: '/login/doctor',
@@ -344,6 +351,7 @@ export interface FileRoutesByFullPath {
   '/consultations/$id': typeof ConsultationsIdRoute
   '/consultations/new': typeof ConsultationsNewRoute
   '/doctors/select': typeof DoctorsSelectRoute
+  '/login/admin': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   '/login/doctor': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
   '/login/patient': typeof loginPatientRoute
   '/login/secretary': typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
@@ -395,6 +403,7 @@ export interface FileRoutesByTo {
   '/consultations/$id': typeof ConsultationsIdRoute
   '/consultations/new': typeof ConsultationsNewRoute
   '/doctors/select': typeof DoctorsSelectRoute
+  '/login/admin': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   '/login/doctor': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
   '/login/patient': typeof loginPatientRoute
   '/login/secretary': typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
@@ -448,6 +457,7 @@ export interface FileRoutesById {
   '/consultations/$id': typeof ConsultationsIdRoute
   '/consultations/new': typeof ConsultationsNewRoute
   '/doctors/select': typeof DoctorsSelectRoute
+  '/login/admin': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   '/login/doctor': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
   '/login/patient': typeof loginPatientRoute
   '/login/secretary': typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
@@ -502,6 +512,7 @@ export interface FileRouteTypes {
     | '/consultations/$id'
     | '/consultations/new'
     | '/doctors/select'
+    | '/login/admin'
     | '/login/doctor'
     | '/login/patient'
     | '/login/secretary'
@@ -553,6 +564,7 @@ export interface FileRouteTypes {
     | '/consultations/$id'
     | '/consultations/new'
     | '/doctors/select'
+    | '/login/admin'
     | '/login/doctor'
     | '/login/patient'
     | '/login/secretary'
@@ -605,6 +617,7 @@ export interface FileRouteTypes {
     | '/consultations/$id'
     | '/consultations/new'
     | '/doctors/select'
+    | '/login/admin'
     | '/login/doctor'
     | '/login/patient'
     | '/login/secretary'
@@ -658,6 +671,7 @@ export interface RootRouteChildren {
   ConsultationsIdRoute: typeof ConsultationsIdRoute
   ConsultationsNewRoute: typeof ConsultationsNewRoute
   DoctorsSelectRoute: typeof DoctorsSelectRoute
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
   loginPatientRoute: typeof loginPatientRoute
   DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute: typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
@@ -840,6 +854,13 @@ declare module '@tanstack/react-router' {
       path: '/invite'
       fullPath: '/invite/'
       preLoaderRoute: typeof InviteIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login/admin': {
+      id: '/login/admin'
+      path: '/login/admin'
+      fullPath: '/login/admin'
+      preLoaderRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login/doctor': {
@@ -1101,6 +1122,8 @@ const rootRouteChildren: RootRouteChildren = {
   ConsultationsIdRoute: ConsultationsIdRoute,
   ConsultationsNewRoute: ConsultationsNewRoute,
   DoctorsSelectRoute: DoctorsSelectRoute,
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute:
+    DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute,
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute:
     DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute,
   loginPatientRoute: loginPatientRoute,

@@ -63,6 +63,13 @@ export interface AuthMessages {
 	readonly resetRequestNew: string;
 	readonly resetError: string;
 	readonly backToSignIn: string;
+	readonly adminLink: string;
+	readonly metaTitleAdmin: string;
+	readonly headingAdmin: string;
+	readonly descAdmin: string;
+	readonly submitAdmin: string;
+	readonly errorDenied: string;
+	readonly signInLink: string;
 }
 
 const en: AuthMessages = {
@@ -104,6 +111,13 @@ const en: AuthMessages = {
 	resetRequestNew: "Request a new link",
 	resetError: "Could not update the password. The link may have expired — request a new one.",
 	backToSignIn: "Back to sign in",
+	adminLink: "Administrator sign in",
+	metaTitleAdmin: "Admin sign in | KTB Health",
+	headingAdmin: "Administrator sign in",
+	descAdmin: "Sign in with an account that has platform admin access.",
+	submitAdmin: "Sign in",
+	errorDenied: "This account does not have administrator access.",
+	signInLink: "Back to sign in",
 };
 
 const ptBR: AuthMessages = {
@@ -145,6 +159,13 @@ const ptBR: AuthMessages = {
 	resetRequestNew: "Pedir novo link",
 	resetError: "Não foi possível atualizar a senha. O link pode ter expirado — peça um novo.",
 	backToSignIn: "Voltar para entrar",
+	adminLink: "Acesso administrativo",
+	metaTitleAdmin: "Acesso admin | KTB Health",
+	headingAdmin: "Acesso administrativo",
+	descAdmin: "Entre com uma conta que tenha acesso de administrador à plataforma.",
+	submitAdmin: "Entrar",
+	errorDenied: "Esta conta não tem acesso de administrador.",
+	signInLink: "Voltar para o login",
 };
 
 const es: AuthMessages = {
@@ -187,6 +208,13 @@ const es: AuthMessages = {
 	resetError:
 		"No se pudo actualizar la contraseña. El enlace pudo haber expirado — solicita uno nuevo.",
 	backToSignIn: "Volver a iniciar sesión",
+	adminLink: "Acceso de administrador",
+	metaTitleAdmin: "Acceso admin | KTB Health",
+	headingAdmin: "Acceso de administrador",
+	descAdmin: "Inicie sesión con una cuenta con acceso de administrador a la plataforma.",
+	submitAdmin: "Iniciar sesión",
+	errorDenied: "Esta cuenta no tiene acceso de administrador.",
+	signInLink: "Volver al inicio de sesión",
 };
 
 const CATALOGS: Record<AuthLocale, AuthMessages> = { en, "pt-BR": ptBR, es };

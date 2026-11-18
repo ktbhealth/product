@@ -76,6 +76,11 @@ const fakeDb = (opts: {
 			values: () => ({
 				returning: async () => opts.insertRows ?? [],
 				onConflictDoUpdate: async () => [],
+				// The superadmin seed's role insert — empty result simulates
+				// losing the create race (seed then no-ops).
+				onConflictDoNothing: () => ({
+					returning: async () => opts.insertRows ?? [],
+				}),
 			}),
 		}),
 	} as unknown as DbClient;
@@ -574,7 +579,9 @@ describe("rbac services — empty-driver paths", () => {
 			updatedAt: new Date(0),
 		};
 		// getRole → [role], findAssignment → [], insert RETURNING → [].
-		const rt = runtimeFor(fakeDb({ selects: [[role], []] }));
+		// The leading row answers the superadmin seed's existence probe
+		// at layer build (sees a role → no-op, consumes nothing else).
+		const rt = runtimeFor(fakeDb({ selects: [[{ id: 1 }], [role], []] }));
 		try {
 			await expect(
 				asPrincipal(
@@ -704,8 +711,10 @@ describe("rbac panel loader", () => {
 			updatedAt: new Date(0),
 		};
 		// rbac.roles → [role], rbac.assignments → [], rbac.role → null.
+		// Leading row: the superadmin seed's existence probe at layer
+		// build (role present → no-op).
 		const env = Layer.mergeAll(
-			Layer.succeed(Db, fakeDb({ selects: [[role], [], []] })),
+			Layer.succeed(Db, fakeDb({ selects: [[{ id: 1 }], [role], [], []] })),
 			Layer.succeed(PlatformAdmin, adminGate),
 		);
 		const rt = ManagedRuntime.make(

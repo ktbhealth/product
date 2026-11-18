@@ -1,8 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 
 import { Email } from "@ktb/email";
-import { getLocale, run } from "@ktb/server-fns";
+import { PlatformAdmin } from "@ktb/platform";
+import { getSessionUser, getLocale, run, runAs } from "@ktb/server-fns";
 
 /** Active UI locale for the current request — route loaders attach it
  * to their data so plugin views never import the host's i18n runtime. */
@@ -17,3 +18,26 @@ export const localeFn = createServerFn({ method: "GET" }).handler(() => getLocal
 export const emailEnabledFn = createServerFn({ method: "GET" }).handler(() =>
 	run(Effect.map(Effect.service(Email), (sender) => sender !== null)),
 );
+
+/**
+ * Whether the SESSION user satisfies the platform-admin gate (email
+ * allowlist or RBAC admin grant) — the /login/admin post-sign-in check.
+ * UX gate only: /platform and every admin service re-check
+ * `PlatformAdmin` server-side. Anonymous → false; a deployment without
+ * the gate service → false (fail closed).
+ */
+export const platformAdminAccessFn = createServerFn({ method: "GET" }).handler(async () => {
+	const user = await getSessionUser();
+	if (user === null) return false;
+	return runAs(
+		user,
+		Effect.gen(function* () {
+			const platformAdmin = yield* Effect.serviceOption(PlatformAdmin);
+			if (Option.isNone(platformAdmin)) return false;
+			return yield* platformAdmin.value.isAdmin({
+				email: user.email,
+				userId: user.id,
+			});
+		}),
+	);
+});
