@@ -176,16 +176,14 @@ const DOMAINS = [
 		id: "ai-model",
 		title: "AI model catalog",
 		owner: "`plugins/ai-model`",
-		description:
-			"Platform model catalog — curated model entries AI surfaces resolve against.",
+		description: "Platform model catalog — curated model entries AI surfaces resolve against.",
 		tables: ["ai_model"],
 	},
 	{
 		id: "ai-prompt",
 		title: "AI prompts",
 		owner: "`plugins/ai-prompt`",
-		description:
-			"Versioned prompt registry — named prompts with versioned bodies for AI surfaces.",
+		description: "Versioned prompt registry — named prompts with versioned bodies for AI surfaces.",
 		tables: ["ai_prompt"],
 	},
 	{
