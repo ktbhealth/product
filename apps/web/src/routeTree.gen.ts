@@ -44,7 +44,7 @@ import { Route as PortalActivityRouteImport } from './../../../plugins/patient-p
 import { Route as portalLoginRouteImport } from './routes/portal-login'
 import { Route as SecretariesIndexRouteImport } from './../../../plugins/secretaries/src/routes/index'
 import { Route as SecretariesLoginRouteImport } from './../../../plugins/secretaries/src/routes/login'
-import { Route as ApiAiDotbridgeRouteImport } from './../../../plugins/ai-endpoints/src/api-routes/ai.bridge'
+import { Route as ApiAiDotbridgeRouteImport } from './../../../plugins/ai-provider/src/api-routes/ai.bridge'
 import { Route as ApiAuthDotsplatRouteImport } from './../../../plugins/auth/src/api-routes/auth.$'
 import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consultations/src/api-routes/bots.webhook'
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'

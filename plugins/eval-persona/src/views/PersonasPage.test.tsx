@@ -28,7 +28,7 @@ const epFns = vi.hoisted(() => ({
 	})),
 }));
 vi.mock("../fns.ts", () => fns);
-vi.mock("@ktb/ai-endpoints/fns", () => epFns);
+vi.mock("@ktb/ai-provider/fns", () => epFns);
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -40,7 +40,7 @@ vi.mock("@tanstack/react-router", async () => {
 	};
 });
 
-import type { EndpointCard } from "@ktb/ai-endpoints";
+import type { EndpointCard } from "@ktb/ai-provider";
 
 import type { PersonaDefCard } from "../index.ts";
 import { PersonasPage } from "./PersonasPage.tsx";
@@ -56,6 +56,7 @@ const endpoint: EndpointCard = {
 	transport: null,
 	agentCmd: null,
 	sshHost: null,
+	machineId: null,
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: 60_000,

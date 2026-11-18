@@ -1,7 +1,7 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
-import { aiEndpoint } from "@ktb/ai-endpoints/schema";
+import { aiEndpoint } from "@ktb/ai-provider/schema";
 import { doctors, patients } from "@ktb/db/schema";
 
 import { evalInstance, evalInstanceItem, evalPersonaDef } from "./schema.ts";

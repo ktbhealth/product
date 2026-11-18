@@ -13,31 +13,31 @@ import { AgentsPanelPage, EndpointsPanelPage } from "./platform-page.tsx";
  */
 export const plugins: readonly Plugin[] = [
 	definePlugin({
-		id: "ai.endpoints.tables",
+		id: "ai.provider.tables",
 		meta: { keywords: ["ai", "tables"] },
 		// Mirrors aiEndpointsTablesPlugin — drizzle schema never reaches
 		// the client bundle.
 		requiredDeps: [],
 	}),
 	definePlugin({
-		id: "ai.endpoints.services",
+		id: "ai.provider.services",
 		meta: { keywords: ["ai", "services"] },
-		requiredDeps: ["ai.endpoints.tables"],
+		requiredDeps: ["ai.provider.tables"],
 		optionalDeps: ["credentials.services", "vault.secrets", "machines.services"],
 	}),
 	definePlugin({
 		// Mirrors aiEndpointsRoutesPlugin — the /api route subtree is
 		// server-only; the client carries the bare id for parity.
-		id: "ai-endpoints.routes",
+		id: "ai-provider.routes",
 		meta: { keywords: ["ai", "routes"] },
 	}),
 	definePlugin({
-		id: "ai.endpoints.chrome",
+		id: "ai.provider.chrome",
 		meta: { keywords: ["ai", "ui"] },
 		requiredDeps: ["platform.panel"],
 		chrome: [
 			{
-				id: "ai-endpoints.sidebar",
+				id: "ai-provider.sidebar",
 				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
@@ -65,13 +65,13 @@ export const plugins: readonly Plugin[] = [
 		],
 	}),
 	definePlugin({
-		id: "ai.endpoints.panel",
+		id: "ai.provider.panel",
 		meta: { keywords: ["ai", "ui"] },
-		requiredDeps: ["platform.panel", "ai.endpoints.services"],
+		requiredDeps: ["platform.panel", "ai.provider.services"],
 		panel: {
 			pages: [
 				{
-					id: "ai.endpoints",
+					id: "ai.provider",
 					path: "/platform/ai/endpoints",
 					component: EndpointsPanelPage,
 				},

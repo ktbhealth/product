@@ -22,7 +22,7 @@ vi.mock("@tanstack/react-start", () => ({
 	},
 }));
 
-import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-endpoints";
+import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-provider";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
@@ -77,7 +77,7 @@ describe("eval-persona fns", () => {
 	let allow = true;
 
 	// Endpoint rows go through the AiEndpoints service — the fn
-	// surface for endpoint CRUD lives in @ktb/ai-endpoints now.
+	// surface for endpoint CRUD lives in @ktb/ai-provider now.
 	const createEndpoint = (input: EndpointInput) =>
 		runtime.runPromise(Effect.flatMap(AiEndpoints, (s) => s.create(input)));
 

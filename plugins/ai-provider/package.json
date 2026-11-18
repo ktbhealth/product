@@ -1,5 +1,5 @@
 {
-	"name": "@ktb/ai-endpoints",
+	"name": "@ktb/ai-provider",
 	"private": true,
 	"type": "module",
 	"exports": {

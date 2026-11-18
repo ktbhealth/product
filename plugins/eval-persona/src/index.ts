@@ -6,7 +6,7 @@ import * as Option from "effect/Option";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { FlaskConicalIcon, Users2Icon } from "lucide-react";
 
-import { AiEndpoints, type EndpointCard } from "@ktb/ai-endpoints";
+import { AiEndpoints, type EndpointCard } from "@ktb/ai-provider";
 import { Principal, type Forbidden } from "@ktb/authz";
 import { Db, tx, type DbClient } from "@ktb/db";
 import { doctors, patients, user as userTable } from "@ktb/db/schema";
@@ -46,7 +46,7 @@ export type { EvalInstance, EvalInstanceItem, EvalPersonaDef } from "./schema.ts
  * (`eval.validator`). Canonical home is this plugin: the eval lab is
  * the pipeline's base layer (steps 1–2) that step 3 depends on. The
  * validator plugin re-exports it for consumers that pin the spelling
- * through @ktb/eval-validator (ai-endpoints, credentials). */
+ * through @ktb/eval-validator (ai-provider, credentials). */
 export const EVAL_RESOURCE = "eval";
 export const EVAL_ACTION = "validator";
 
@@ -535,7 +535,7 @@ export const EvalInstancesLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const factory = yield* Effect.serviceOption(LlmFactory);
-		// Optional dep: without the ai-endpoints plugin every endpoint
+		// Optional dep: without the ai-provider plugin every endpoint
 		// binding degrades to template mode and names render as the
 		// generic template label.
 		const endpoints = yield* Effect.serviceOption(AiEndpoints);
@@ -994,7 +994,7 @@ const buildPromptFor = (persona: Persona, minutes: number | undefined): string =
 /** DDL mirror of schema.ts for in-memory test databases (same
  * contract as EVAL_VALIDATOR_TEST_DDL). */
 export const EVAL_PERSONA_TEST_DDL = `
-CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, machine_id INTEGER, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_def (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, persona TEXT NOT NULL, notes TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER);
 CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES ai_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -1008,7 +1008,7 @@ export const evalPersonaTablesPlugin = definePlugin({
 	meta: { keywords: ["eval", "persona", "tables"] },
 	// eval_instance.endpoint_id references ai_endpoint — ordering hint
 	// only; the plugin works standalone (tests supply the table).
-	optionalDeps: ["ai.endpoints.tables"],
+	optionalDeps: ["ai.provider.tables"],
 	tables: { evalPersonaDef, evalInstance, evalInstanceItem },
 });
 
@@ -1018,7 +1018,7 @@ export const evalPersonaServicesPlugin = definePlugin({
 	requiredDeps: [evalPersonaTablesPlugin.id],
 	// Endpoint binding/resolution is a soft dep — AiEndpoints absence
 	// degrades every endpoint pick to template mode.
-	optionalDeps: ["ai.endpoints.services"],
+	optionalDeps: ["ai.provider.services"],
 	services: Layer.mergeAll(EvalPersonasLive, EvalInstancesLive),
 });
 

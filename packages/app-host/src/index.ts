@@ -485,7 +485,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
-	// F2: the ai-endpoints plugin's PlatformLlm capability wins over env
+	// F2: the ai-provider plugin's PlatformLlm capability wins over env
 	// providers when a platform-default endpoint is configured; the
 	// wrapped engine is the (b) env fallback → (c) heuristic path.
 	const AnamnesisEngineLive = Layer.unwrap(

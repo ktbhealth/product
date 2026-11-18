@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-endpoints";
+import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-provider";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
@@ -381,7 +381,7 @@ describe("EvalInstances", () => {
 		await rt.dispose();
 	});
 
-	it("runs standalone without the ai-endpoints plugin bound", async () => {
+	it("runs standalone without the ai-provider plugin bound", async () => {
 		const { rt, run, d1 } = make({ endpoints: false });
 		await run(seedDefs(1));
 		// A raw endpoint row satisfies the FK — nothing resolves it
@@ -802,7 +802,7 @@ describe("evalPersonaPanelPlugin", () => {
 		await denied.rt.dispose();
 	});
 
-	it("instances loader lists no endpoints without the ai-endpoints plugin", async () => {
+	it("instances loader lists no endpoints without the ai-provider plugin", async () => {
 		const { rt, run } = make({ endpoints: false });
 		const instancesPage = pages[1]!;
 		const data = (await run(instancesPage.loader!() as Effect.Effect<unknown, never, unknown>)) as {

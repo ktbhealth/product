@@ -9,7 +9,7 @@
 		"./steps": "./src/steps.tsx"
 	},
 	"dependencies": {
-		"@ktb/ai-endpoints": "workspace:*",
+		"@ktb/ai-provider": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",

@@ -309,7 +309,7 @@ export class AiEndpoints extends Context.Service<
 		 * /api/ai/bridge and flips the status badge. */
 		readonly revokeAgentLink: (id: number) => Effect.Effect<boolean, Forbidden, unknown>;
 	}
->()("@ktb/ai-endpoints/AiEndpoints") {}
+>()("@ktb/ai-provider/AiEndpoints") {}
 
 export const AiEndpointsLive = Layer.effect(
 	AiEndpoints,
@@ -575,14 +575,14 @@ CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id IN
 `;
 
 export const aiEndpointsTablesPlugin = definePlugin({
-	id: "ai.endpoints.tables",
+	id: "ai.provider.tables",
 	meta: { keywords: ["ai", "tables"] },
 	requiredDeps: [],
 	tables: { aiAgentLink, aiEndpoint },
 });
 
 export const aiEndpointsServicesPlugin = definePlugin({
-	id: "ai.endpoints.services",
+	id: "ai.provider.services",
 	meta: { keywords: ["ai", "services"] },
 	requiredDeps: [aiEndpointsTablesPlugin.id],
 	// credential:/vault: ref paths resolve through the credentials
@@ -593,12 +593,12 @@ export const aiEndpointsServicesPlugin = definePlugin({
 });
 
 export const aiEndpointsChromePlugin = definePlugin({
-	id: "ai.endpoints.chrome",
+	id: "ai.provider.chrome",
 	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
-			id: "ai-endpoints.sidebar",
+			id: "ai-provider.sidebar",
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
@@ -633,20 +633,20 @@ export const aiEndpointsChromePlugin = definePlugin({
 // generator scans every .ts file there, so tests stay outside it.
 export const aiEndpointsRoutesPlugin = definePlugin({
 	// The arch route gate derives this id from the package dir:
-	// plugins/ai-endpoints → "ai-endpoints.routes".
-	id: "ai-endpoints.routes",
+	// plugins/ai-provider → "ai-provider.routes".
+	id: "ai-provider.routes",
 	meta: { keywords: ["ai", "routes"] },
-	routes: [physical("/api", "../../../../plugins/ai-endpoints/src/api-routes")],
+	routes: [physical("/api", "../../../../plugins/ai-provider/src/api-routes")],
 });
 
 export const aiEndpointsPanelPlugin = definePlugin({
-	id: "ai.endpoints.panel",
+	id: "ai.provider.panel",
 	meta: { keywords: ["ai", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, aiEndpointsServicesPlugin.id],
 	panel: {
 		pages: [
 			{
-				id: "ai.endpoints",
+				id: "ai.provider",
 				path: "/platform/ai/endpoints",
 				component: EndpointsPanelPage,
 				guard: () =>
@@ -704,10 +704,10 @@ export const plugins: readonly Plugin[] = [
 
 declare module "@ktb/kernel" {
 	interface PluginRegistry {
-		"ai.endpoints.tables": true;
-		"ai.endpoints.services": true;
-		"ai-endpoints.routes": true;
-		"ai.endpoints.chrome": true;
-		"ai.endpoints.panel": true;
+		"ai.provider.tables": true;
+		"ai.provider.services": true;
+		"ai-provider.routes": true;
+		"ai.provider.chrome": true;
+		"ai.provider.panel": true;
 	}
 }

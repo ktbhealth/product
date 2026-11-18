@@ -17,7 +17,7 @@ export const plugins: readonly Plugin[] = [
 		meta: { keywords: ["eval", "persona", "tables"] },
 		// Mirrors evalPersonaTablesPlugin — drizzle schema never reaches
 		// the client bundle.
-		optionalDeps: ["ai.endpoints.tables"],
+		optionalDeps: ["ai.provider.tables"],
 	}),
 	definePlugin({
 		id: "eval.persona.services",
@@ -25,7 +25,7 @@ export const plugins: readonly Plugin[] = [
 		// Mirrors evalPersonaServicesPlugin.requiredDeps/optionalDeps —
 		// literal ids.
 		requiredDeps: ["eval.persona.tables"],
-		optionalDeps: ["ai.endpoints.services"],
+		optionalDeps: ["ai.provider.services"],
 	}),
 	definePlugin({
 		id: "eval.persona.chrome",

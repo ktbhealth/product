@@ -6,7 +6,7 @@ import { Principal } from "@ktb/authz";
 import { makeD1 } from "@ktb/db/testing";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { pluginDuration, pluginInvocations, tagged } from "@ktb/observability";
-import { AI_ENDPOINTS_TEST_DDL } from "../../../plugins/ai-endpoints/src/index.ts";
+import { AI_ENDPOINTS_TEST_DDL } from "../../../plugins/ai-provider/src/index.ts";
 import {
 	NotificationsMarkAllRead,
 	NotificationsUnreadCount,

@@ -819,7 +819,7 @@ describe("AiEndpoints.resolveDefault", () => {
 describe("aiEndpointsPanelPlugin", () => {
 	it("declares the AI endpoints page with a grant-gated loader", () => {
 		const page = aiEndpointsPanelPlugin.panel?.pages[0];
-		expect(page?.id).toBe("ai.endpoints");
+		expect(page?.id).toBe("ai.provider");
 		expect(page?.path).toBe("/platform/ai/endpoints");
 		expect(page?.component).toBeDefined();
 		expect(page?.guard).toBeDefined();
@@ -877,15 +877,15 @@ describe("aiEndpointsPanelPlugin", () => {
 describe("client plugin mirror", () => {
 	it("mirrors the client-safe plugin ids, sidebar item, and panel page", () => {
 		expect(clientPlugins.map((p) => p.id)).toEqual([
-			"ai.endpoints.tables",
-			"ai.endpoints.services",
-			"ai-endpoints.routes",
-			"ai.endpoints.chrome",
-			"ai.endpoints.panel",
+			"ai.provider.tables",
+			"ai.provider.services",
+			"ai-provider.routes",
+			"ai.provider.chrome",
+			"ai.provider.panel",
 		]);
-		const chrome = clientPlugins.find((p) => p.id === "ai.endpoints.chrome")?.chrome ?? [];
-		expect(chrome.map((c) => c.id)).toEqual(["ai-endpoints.sidebar", "ai-agents.sidebar"]);
-		const pages = clientPlugins.find((p) => p.id === "ai.endpoints.panel")?.panel?.pages ?? [];
+		const chrome = clientPlugins.find((p) => p.id === "ai.provider.chrome")?.chrome ?? [];
+		expect(chrome.map((c) => c.id)).toEqual(["ai-provider.sidebar", "ai-agents.sidebar"]);
+		const pages = clientPlugins.find((p) => p.id === "ai.provider.panel")?.panel?.pages ?? [];
 		expect(pages.map((p) => p.path)).toEqual(["/platform/ai/endpoints", "/platform/ai/agents"]);
 	});
 });

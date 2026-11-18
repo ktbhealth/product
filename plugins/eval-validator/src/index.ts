@@ -27,7 +27,7 @@ import { evalRun, evalRunSample, type EvalRunSample } from "./schema.ts";
 export { evalRun, evalRunSample } from "./schema.ts";
 
 // Re-exported for the plugins that pin the grant spelling through
-// this package (ai-endpoints, credentials) — the canonical
+// this package (ai-provider, credentials) — the canonical
 // definition lives in @ktb/eval-persona, the pipeline's base layer.
 export { EVAL_ACTION, EVAL_RESOURCE };
 
@@ -640,8 +640,8 @@ export const EvalValidatorLive = Layer.effect(
 
 // EVAL_VALIDATOR_TEST_DDL lives in ./test-ddl.ts — a top-level
 // `${EVAL_PERSONA_TEST_DDL}` const here would dereference the
-// eval-persona binding mid-cycle (ai-endpoints pins EVAL_* constants
-// from this module, so eval-persona → ai-endpoints → eval-validator
+// eval-persona binding mid-cycle (ai-provider pins EVAL_* constants
+// from this module, so eval-persona → ai-provider → eval-validator
 // → eval-persona is a real import cycle).
 export const evalValidatorTablesPlugin = definePlugin({
 	id: "eval.validator.tables",

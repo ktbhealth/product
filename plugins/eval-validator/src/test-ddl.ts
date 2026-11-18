@@ -5,7 +5,7 @@ import { EVAL_PERSONA_TEST_DDL } from "@ktb/eval-persona";
  * the step-2 tables (eval_instance / eval_instance_item) plus the
  * synthetic-entity tables rejection deletes.
  *
- * Lives in its own leaf module on purpose: ai-endpoints pins the
+ * Lives in its own leaf module on purpose: ai-provider pins the
  * EVAL_* permission constants from @ktb/eval-validator, which makes
  * eval-persona ↔ eval-validator a benign import cycle — but only as
  * long as neither side dereferences the other's bindings at module

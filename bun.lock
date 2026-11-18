@@ -49,7 +49,7 @@
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@huggingface/transformers": "^4.3.2",
         "@ktb/ai-bridge": "workspace:*",
-        "@ktb/ai-endpoints": "workspace:*",
+        "@ktb/ai-provider": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/api": "workspace:*",
         "@ktb/app-host": "workspace:*",
@@ -676,8 +676,8 @@
         "effect": "4.1.2",
       },
     },
-    "plugins/ai-endpoints": {
-      "name": "@ktb/ai-endpoints",
+    "plugins/ai-provider": {
+      "name": "@ktb/ai-provider",
       "dependencies": {
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
@@ -992,7 +992,7 @@
     "plugins/eval-persona": {
       "name": "@ktb/eval-persona",
       "dependencies": {
-        "@ktb/ai-endpoints": "workspace:*",
+        "@ktb/ai-provider": "workspace:*",
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -2169,7 +2169,7 @@
 
     "@ktb/ai-bridge": ["@ktb/ai-bridge@workspace:packages/ai-bridge"],
 
-    "@ktb/ai-endpoints": ["@ktb/ai-endpoints@workspace:plugins/ai-endpoints"],
+    "@ktb/ai-provider": ["@ktb/ai-provider@workspace:plugins/ai-provider"],
 
     "@ktb/anamnesis": ["@ktb/anamnesis@workspace:packages/anamnesis"],
 

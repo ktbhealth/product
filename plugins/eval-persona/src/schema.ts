@@ -3,7 +3,7 @@ import { index, integer, sqliteTable, text } from "../../../packages/db/src/tabl
 // Relative imports on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package
 // specifiers — same pattern as plugins/eval-validator/src/schema.ts.
-import { aiEndpoint } from "../../ai-endpoints/src/schema.ts";
+import { aiEndpoint } from "../../ai-provider/src/schema.ts";
 import { doctors } from "../../doctors/src/schema.ts";
 import { patients } from "../../patients/src/schema.ts";
 
@@ -19,7 +19,7 @@ import { patients } from "../../patients/src/schema.ts";
  * - `eval_instance` — one consultation-generation run over the
  *   registry: which defs (or a seeded random pick), which
  *   `ai_endpoint` (the AI plugin's provider table — endpoint
- *   CRUD/resolution lives in `plugins/ai-endpoints`), target
+ *   CRUD/resolution lives in `plugins/ai-provider`), target
  *   duration, progress counters.
  * - `eval_instance_item` — the corpus unit: one generated synthetic
  *   consultation for one persona. It snapshots the resolved persona,

@@ -291,7 +291,7 @@ export class LlmFactory extends Context.Service<
 /**
  * Platform-default generative endpoint for PRODUCTION surfaces
  * (transcript cleanup, anamnesis extraction) — bound by the
- * ai-endpoints plugin's services layer. `defaultLayer` resolves the
+ * ai-provider plugin's services layer. `defaultLayer` resolves the
  * enabled `scope='platform'` `is_default` endpoint through LlmFactory
  * on every call, so admin changes apply without a restart; `null`
  * means "no platform default configured" and consumers fall back to

@@ -7,9 +7,9 @@ import { handleBridgeUpgrade } from "../bridge.ts";
  * handoff (F3b). Machine-token auth only (bearer `?token=`); the
  * session gate does NOT apply — the handler validates the link row
  * itself and forwards to the endpoint's AcpBridge durable object.
- * Lives under the shared "/api" mount via `ai-endpoints.routes`.
+ * Lives under the shared "/api" mount via `ai-provider.routes`.
  */
-export const Route = createPluginApiRoute("ai-endpoints.routes")("/api/ai/bridge")({
+export const Route = createPluginApiRoute("ai-provider.routes")("/api/ai/bridge")({
 	server: {
 		handlers: {
 			GET: async ({ request }: { readonly request: Request }) => handleBridgeUpgrade(request),
