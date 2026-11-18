@@ -8,7 +8,7 @@ import { Binding } from "@ktb/db";
  *
  * RLS only exists on Postgres; on SQLite/D1 these helpers are a
  * dialect-detected no-op. Isolation must NEVER depend on RLS being
- * applied — `scopedRepo` + `ktb-arch/tenant-scope` are the contract;
+ * applied — `scopedRepo` + `arch/tenant-scope` are the contract;
  * policies are defense-in-depth for engines that support them.
  */
 

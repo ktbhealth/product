@@ -4,7 +4,7 @@ import { integer, sqliteTable } from "@ktb/db/table";
  * Declaration helpers for tenant-scoped tables (P-053).
  *
  * `tenantTable` is `sqliteTable` under a name that marks intent: the
- * `ktb-arch/tenant-scope` lint rule treats any table declared through it
+ * `arch/tenant-scope` lint rule treats any table declared through it
  * (and re-exported from a schema module) as tenant-scoped and
  * bans raw drizzle queries on it outside `scopedRepo` (@ktb/tenant).
  * Postgres-backed apps declare their tables with `pgTable` + a
