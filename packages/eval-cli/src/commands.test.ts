@@ -169,6 +169,9 @@ describe("list", () => {
 			const out = spy.mock.calls.map((c) => String(c[0])).join("\n");
 			expect(out).toContain("fx — ");
 			expect(out).toContain("0 unresolved ref(s)");
+			// T-120: per-profile capability satisfiability — the stub
+			// profile covers every cap the fixture declares.
+			expect(out).toMatch(/caps {2,}stub ok/);
 		} finally {
 			spy.mockRestore();
 		}
@@ -441,6 +444,21 @@ describe("generate", () => {
 		}
 	});
 
+	test("generate under the partial cloud profile names the missing tts cap (T-120)", async () => {
+		const err = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			expect(
+				await exec(["generate", "fx", "--profile", "cloud", "--n", "1", "--workdir", workdir]),
+			).toBe(1);
+			const msg = err.mock.calls.flat().join(" ");
+			expect(msg).toContain('profile "cloud" cannot satisfy');
+			expect(msg).toContain("tts→transcription.tts");
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
 	test("missing template file is a command error (exit 1)", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -503,6 +521,24 @@ describe("run/gate/report round-trip", () => {
 		try {
 			expect(await exec(["run", "fx", "--workdir", workdir, "--limit", "0"])).toBe(2);
 			expect(await exec(["run", "fx", "--workdir", workdir, "--concurrency", "x"])).toBe(2);
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
+	test("run under the partial cloud profile names the missing caps (T-120)", async () => {
+		const err = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			expect(await exec(["run", "fx", "--profile", "cloud", "--workdir", workdir])).toBe(1);
+			const msg = err.mock.calls.flat().join(" ");
+			expect(msg).toContain('profile "cloud" cannot satisfy');
+			// cap id → providing plugin id for the capabilities cloud
+			// lacks (llm/eval have no cloud adapter; asr IS satisfied
+			// by workers-ai and tts is not a run-time capability).
+			expect(msg).toContain("llm→llm.eval");
+			expect(msg).toContain("eval→llm.eval");
+			expect(msg).not.toContain("asr→");
 		} finally {
 			vi.restoreAllMocks();
 		}
@@ -1381,7 +1417,15 @@ describe("market parity (P-076)", () => {
 			});
 			expect(exp?.manifestHash).toMatch(/^[0-9a-f]{64}$/);
 			expect(exp?.gitSha).toMatch(/^[0-9a-f]{40}$/);
-			expect(exp?.summary).toMatchObject({ samples: 2, failed: 0 });
+			expect(exp?.summary).toMatchObject({
+				samples: 2,
+				failed: 0,
+				// T-135: resolved TTS adapter + template identity.
+				adapters: { tts: "stub" },
+				template: "consultation",
+			});
+			const genSummary = exp?.summary as Record<string, unknown> | undefined;
+			expect(genSummary?.templateHash).toMatch(/^[0-9a-f]{64}$/);
 
 			// Byte-identical regen → same contentHash → idempotent pass.
 			expect(
@@ -1427,6 +1471,11 @@ describe("market parity (P-076)", () => {
 			expect(expA).toMatchObject({ kind: "run", suiteId: "fx" });
 			const summaryA = (expA as { summary: Record<string, unknown> }).summary;
 			expect(summaryA.meanWerAsr).toBeTypeOf("number");
+			// T-135: resolved adapter keys + observed engine identities.
+			expect(summaryA.adapters).toEqual({ asr: "stub", llm: "stub", eval: "stub" });
+			expect(summaryA.engines).toEqual(
+				expect.arrayContaining([expect.objectContaining({ engine: "stub-asr" })]),
+			);
 			expect((expA as { gates: unknown[] }).gates).toHaveLength(2);
 
 			// report --compare renders the markdown diff.

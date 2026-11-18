@@ -286,6 +286,43 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Eval smoke gate: the consult-asr suite end-to-end on the `stub`
+  # adapter profile — deterministic, zero-cost, no external services.
+  # generate → run → gate --enforce exercises the whole CLI path
+  # (manifest resolution, dataset store, pipeline, gate verdicts).
+  # The gate's policy thresholds are overridden to values the canned
+  # stub outputs can satisfy (stub WER is ~1.0 and minN=40 needs a
+  # real cohort) — this job proves the pipeline RUNS and the enforce
+  # exit code propagates, not that stub quality passes the real gate.
+  eval-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      # tmp/ is gitignored and inside the workdir allowlist
+      # (<cwd>/tmp), so no absolute-path flag is needed.
+      - name: eval generate (stub cohort)
+        run: bun apps/cli/src/main.ts eval generate consult-asr --n 2 --workdir tmp/eval-ci --run-id ci-gen
+      - name: eval run (stub pipeline)
+        run: bun apps/cli/src/main.ts eval run consult-asr --workdir tmp/eval-ci --run-id ci-run
+      - name: eval gate --enforce
+        run: >-
+          bun apps/cli/src/main.ts eval gate consult-asr
+          --workdir tmp/eval-ci --run-id ci-run --enforce
+          --min-n 1 --max-wer 1 --target 0
+
   # Informational only — never gates. Lines-of-code report via tokei,
   # provided by the shared cypera toolbox (9aia/cypera).
   metrics:

@@ -110,15 +110,33 @@ describe("resolveFor", () => {
 describe("assertCapabilities", () => {
 	test("passes when needed caps are resolved", async () => {
 		const s = suite({ caps: { asr: "transcription.asr" } });
-		const { resolution } = resolveFor(s, "stub");
-		await expect(run(assertCapabilities(s, resolution, ["asr"]))).resolves.toBeUndefined();
+		const { profile, resolution } = resolveFor(s, "stub");
+		await expect(run(assertCapabilities(s, profile, resolution, ["asr"]))).resolves.toBeUndefined();
 	});
 
 	test("fails naming every missing ref", async () => {
 		const s = suite({ caps: { ghost: "x" } });
-		const { resolution } = resolveFor(s, "stub");
-		const err = await runErr(assertCapabilities(s, resolution, ["ghost"]));
-		expect(err.message).toMatch(/capability "ghost" \(no registered contribution\)/);
+		const { profile, resolution } = resolveFor(s, "stub");
+		const err = await runErr(assertCapabilities(s, profile, resolution, ["ghost"]));
+		expect(err.message).toMatch(/ghost→x \(no registered contribution\)/);
+	});
+
+	test("names the profile and each missing cap's provider id (T-120)", async () => {
+		const s = suite({
+			caps: {
+				asr: "transcription.asr",
+				tts: "transcription.tts",
+				llm: "llm.eval",
+			},
+		});
+		const { profile, resolution } = resolveFor(s, "cloud");
+		const err = await runErr(assertCapabilities(s, profile, resolution, ["asr", "tts", "llm"]));
+		// cloud satisfies asr (workers-ai) but has no tts/llm adapters —
+		// the error names the profile and the exact cap→provider pairs.
+		expect(err.message).toContain('profile "cloud" cannot satisfy');
+		expect(err.message).toContain("tts→transcription.tts");
+		expect(err.message).toContain("llm→llm.eval");
+		expect(err.message).not.toContain("asr→");
 	});
 });
 

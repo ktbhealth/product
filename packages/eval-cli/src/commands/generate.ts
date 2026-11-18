@@ -104,7 +104,7 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 				// Generation needs TTS + persistence; llm/asr/eval are
 				// run-time concerns and may legitimately be absent from a
 				// generate-only profile.
-				yield* assertCapabilities(suite, resolution, ["tts"]);
+				yield* assertCapabilities(suite, profile, resolution, ["tts"]);
 
 				// Domain params (P-079): `params.dataset` supplies the
 				// generator defaults flags fall back to; `params.voices`
@@ -297,6 +297,13 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 								failed: r.failed.length,
 								latencyMs: r.latencyMs,
 								datasetVersion,
+								// T-135: record the resolved adapter identity —
+								// which TTS engine produced the cohort — plus a
+								// hash of the .eta template source so prompt
+								// drift shows up in experiment compares.
+								adapters: { tts: ttsKey },
+								template: templateName,
+								templateHash: sha256Hex(template),
 								...(domainParams !== undefined ? { domainParams } : {}),
 							},
 						};

@@ -224,3 +224,21 @@ a stricter cohort or an entity-category subset) adds a
 `domainParams` block without touching the pack. A new locale or a
 consultation specialization is a new `domain.ts` (optionally
 `extends: "eval.consultation"`) — no pipeline fork.
+
+## Pinned datasets (T-042)
+
+A suite's `dataset {id, version}` IS the pin: `eval generate`
+registers a `DatasetManifest` under that key whose `contentHash`
+covers every sample's id+scriptHash — same pin + same generator
+inputs reproduces the cohort; same pin + different content is
+rejected. The generator inputs themselves are pinned by
+`domainParams.params.dataset` (`count`, `step`, `seed`, `noise` —
+NoiseProfile: clean | clinic | phone_bandpass | far_mic), with
+`--n/--step/--seed/--noise` flags winning at invocation time.
+
+`consult-asr-noisy.suite.ts` is the reference pinned cohort: pt-BR
+(domain default locale), the full multi-specialty persona matrix
+sub-sampled by `step`, `noise: "clinic"`, `count: 12`, `seed: 4242`
+— registered as `consult-asr-noisy@v1`. To pin a new cohort, copy
+that manifest shape: distinct `dataset.id`/`version` + a
+`domainParams.params.dataset` block; no framework changes.

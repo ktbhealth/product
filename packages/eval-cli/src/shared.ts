@@ -153,18 +153,32 @@ export const resolveFor = (suite: LoadedSuite, profile: string): ResolvedCommand
 });
 
 /** Fail when any of `needed` capability ids is unresolved — the
- * error names every missing ref so one run shows the whole gap. */
+ * error names the profile and every missing cap id WITH its
+ * providing plugin id (`manifest.caps`), so a partial profile like
+ * `cloud` reports exactly which capabilities it cannot satisfy
+ * (T-120) instead of a generic resolution failure. */
 export const assertCapabilities = Effect.fnUntraced(function* (
 	suite: LoadedSuite,
+	profile: string,
 	resolution: SuiteResolution,
 	needed: readonly string[],
 ): Effect.fn.Return<void, CliError.UserError> {
 	const missing = resolution.unresolved.filter((u) => needed.includes(u.id));
 	if (missing.length > 0) {
+		const detail = missing
+			.map((u) => {
+				// eval.capability refs carry the providing plugin id in
+				// manifest.caps — surface it next to the cap id.
+				const provider = u.kind === "eval.capability" ? suite.manifest.caps[u.id] : undefined;
+				return provider !== undefined
+					? `${u.id}→${provider} (${u.reason})`
+					: `${u.kind} "${u.id}" (${u.reason})`;
+			})
+			.join("; ");
 		return yield* userError(
 			new Error(
-				`suite "${suite.manifest.id}" profile resolution incomplete: ` +
-					missing.map((u) => `${u.kind} "${u.id}" (${u.reason})`).join("; "),
+				`suite "${suite.manifest.id}" profile "${profile}" cannot satisfy ` +
+					`required capabilities: ${detail}`,
 			),
 		);
 	}
