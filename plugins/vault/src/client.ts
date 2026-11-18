@@ -18,7 +18,7 @@ const CLINICAL_INSTANCES = ["doctor", "secretary"] as const;
 export const vaultPagesPlugin = definePlugin({
 	id: "vault.pages",
 	meta: { keywords: ["vault", "ui"] },
-	requiredDeps: ["vault.services"],
+	requiredDeps: ["vault.services", "vault.secrets"],
 	pages: CLINICAL_INSTANCES.map((instance) => ({
 		id: `vault.${instance}`,
 		path: `/portal/${instance}/vault`,
@@ -50,6 +50,11 @@ export const vaultChromePlugin = definePlugin({
 export const plugins: readonly Plugin[] = [
 	definePlugin({ id: "vault.tables", meta: { keywords: ["vault", "tables"] } }),
 	definePlugin({ id: "vault.services", meta: { keywords: ["vault", "services"] } }),
+	definePlugin({
+		id: "vault.secrets",
+		meta: { keywords: ["vault", "services"] },
+		optionalDeps: ["audit.services"],
+	}),
 	vaultPagesPlugin,
 	vaultChromePlugin,
 ];

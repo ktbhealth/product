@@ -29,7 +29,7 @@
 		"@huggingface/transformers": "^4.3.2",
 		"@ktb/agenda": "workspace:*",
 		"@ktb/ai-bridge": "workspace:*",
-		"@ktb/ai-endpoints": "workspace:*",
+		"@ktb/ai-provider": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
 		"@ktb/api": "workspace:*",
 		"@ktb/app-host": "workspace:*",

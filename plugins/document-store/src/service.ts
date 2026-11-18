@@ -43,6 +43,7 @@ import {
 	validateSort,
 	type FindQuery,
 } from "./query.ts";
+import { compileFilterPrefilter } from "./sqlfilter.ts";
 import {
 	documentCollections,
 	documentRecords,
@@ -50,6 +51,7 @@ import {
 	type DocumentRecordRow,
 } from "./schema.ts";
 import { validateDocumentData } from "./validate.ts";
+import { DocumentRefTargets } from "./ref-targets.ts";
 
 /**
  * DocumentStore (P-089) — runtime-validated document store for
@@ -75,21 +77,32 @@ import { validateDocumentData } from "./validate.ts";
  * decide WHO may call (PlatformAdmin, audience gates) exactly like
  * every other service.
  *
- * Query evaluation is JS-side over parsed JSON (see query.ts): the v1
- * tradeoff is that `find` scans the collection's in-scope rows. Unique
- * checks and `ref` onDelete policies scan likewise — fine at
- * specialty-pack/intake-form volumes; a hot collection graduates to a
- * dedicated table. SCALE CEILING (T-129, measured by
- * src/benchmark.test.ts on better-sqlite3): `find` scans the whole
- * visible slice in JS — ~17ms at 1k docs, ~35–45ms at the 10k
- * FIND_SCAN_MAX_ROWS ceiling (past that it fails
+ * Query evaluation is JS-side over parsed JSON (see query.ts) with a
+ * safe subset pushed into SQL as a `json_extract` prefilter (T-149,
+ * see sqlfilter.ts): `find` fetches only rows passing the compiled
+ * fragment, then `matchFilter` re-verifies every one — results are
+ * identical, but parse/migrate/match work shrinks to the
+ * SQL-selective slice. Sort/pagination stay JS-side (the missing-
+ * values-last rule and String()-coerced mixed-type ordering don't
+ * map cleanly onto SQLite ORDER BY), and defs declaring `migrations`
+ * skip pushdown entirely because SQL sees stored data while the
+ * matcher sees lazily migrated data. Unique checks and `ref`
+ * onDelete policies still scan in JS — fine at specialty-pack/
+ * intake-form volumes; a hot collection graduates to a dedicated
+ * table. SCALE CEILING (T-129, measured by src/benchmark.test.ts on
+ * better-sqlite3): an UNFILTERABLE find ($regex, object literals, or
+ * no filter) scans the whole visible slice in JS — ~17ms at 1k docs,
+ * ~22–45ms at the 10k FIND_SCAN_MAX_ROWS ceiling (past that it fails
  * `InvalidDocumentQuery` rather than scanning unboundedly; D1 may be
- * slower). Fine for admin consoles, background jobs and moderate
- * per-request reads; NOT for hot paths over big collections. Beyond
- * ~10k visible docs per collection, declare a typed table instead of
- * growing the document store. Declared `indexes` on a collection def
- * are advisory metadata only (stored in schema_json for tooling) —
- * they do NOT create SQL indexes; filtering stays JS-side by design.
+ * slower). A scalar filter like `{kind: $eq, count: $gte}` now costs
+ * ~10ms at 10k docs because SQLite pre-filters to the matching slice
+ * before any JSON parsing. Fine for admin consoles, background jobs
+ * and moderate per-request reads; NOT for hot paths over big
+ * collections. Beyond ~10k visible docs per collection, declare a
+ * typed table instead of growing the document store. Declared
+ * `indexes` on a collection def are advisory metadata only (stored in
+ * schema_json for tooling) — they do NOT create SQL indexes; the
+ * json_extract prefilter is a filter pushdown, not an index.
  *
  * WHEN NOT TO USE (see README.md for the full guide): hot list paths,
  * SQL aggregates/joins, DB-level constraints/FKs/cascades, high-write
@@ -116,6 +129,19 @@ import { validateDocumentData } from "./validate.ts";
 
 export class UnknownCollection extends Data.TaggedError("UnknownCollection")<{
 	readonly name: string;
+}> {}
+
+/** A `document_collections` row's `schema_json` failed to decode
+ * (T-147): invalid JSON, a shape `assertCollectionDef` rejects, or a
+ * def whose embedded name doesn't match the registry row. The
+ * collection is UNAVAILABLE — every op that resolves it fails this
+ * typed error while other collections keep working; delete/entity-
+ * delete ref scans skip the undecodable def (logged + metered).
+ * `reason` carries the decode/assert message (schema metadata only —
+ * never record payloads). */
+export class CorruptCollection extends Data.TaggedError("CorruptCollection")<{
+	readonly name: string;
+	readonly reason: string;
 }> {}
 
 export class DocumentValidationError extends Data.TaggedError("DocumentValidationError")<{
@@ -216,6 +242,7 @@ export class DocumentMigrationError extends Data.TaggedError("DocumentMigrationE
 
 export type DocumentStoreError =
 	| UnknownCollection
+	| CorruptCollection
 	| DocumentValidationError
 	| InvalidDocumentQuery
 	| RecordNotFound
@@ -401,7 +428,10 @@ export interface DocumentStoreShape {
 	/** List records inside the caller's visible scope. `filter` uses
 	 * dotted paths with `$eq/$ne/$gt/$gte/$lt/$lte/$in/$nin/$exists/
 	 * $regex` operators plus `$and`/`$or`; evaluation is JS-side over
-	 * parsed JSON (see query.ts for the v1 tradeoff). `limit` clamps to
+	 * parsed JSON (see query.ts for the v1 tradeoff), with a safe
+	 * subset pushed into SQL as a `json_extract` prefilter (T-149,
+	 * see sqlfilter.ts — results are identical either way).
+	 * `limit` clamps to
 	 * [1, 500] (default 100), `offset` to ≥ 0; filters are structurally
 	 * bounded (depth/nodes — see query.ts) and the visible slice is
 	 * capped at FIND_SCAN_MAX_ROWS scanned rows (see README.md for the
@@ -473,6 +503,25 @@ export interface DocumentStoreShape {
 		collection: CollectionRef,
 		ctx?: DocumentStoreContext,
 	) => Effect.Effect<CollectionMigrationReport, DocumentStoreError>;
+	/** Entity-side `onDelete` enforcement (T-149): the entity's owning
+	 * plugin calls this when its typed-table row is deleted (entity
+	 * refs can't cascade — document-store never deletes rows of a
+	 * table it does not own). Scans EVERY collection for `ref` fields
+	 * targeting `entity` and applies each field's `onDelete` policy
+	 * toward `id`: `restrict` (default) fails `DocumentInUse` listing
+	 * `collection.field` paths — the scan completes before any write,
+	 * so a blocked delete never half-applies; `nullify` rewrites the
+	 * field to `null` (best-effort: a patched document that fails
+	 * re-validation is skipped, like document nullify) and all patches
+	 * land in ONE transaction. Scope-bound like `delete`: only
+	 * references inside the caller's visible scope are seen —
+	 * `ctx.unscoped` for system flows. No-op when no collection refs
+	 * the entity. */
+	readonly applyEntityDelete: (
+		entity: string,
+		id: number,
+		ctx?: DocumentStoreContext,
+	) => Effect.Effect<void, DocumentStoreError>;
 }
 
 export class DocumentStore extends Context.Service<DocumentStore, DocumentStoreShape>()(
@@ -538,6 +587,10 @@ export const DocumentStoreLive = Layer.effect(
 		// app-wide core in production, but tests/embedded uses may run
 		// the store without it — writes then simply publish nothing.
 		const eventBus = yield* Effect.serviceOption(EventBus);
+		// Optional external-ref registry (T-149): entity `ref` targets
+		// resolve existence through owner-registered checkers; absent →
+		// document refs only and entity refs fail BrokenReference.
+		const refTargetsOpt = yield* Effect.serviceOption(DocumentRefTargets);
 
 		// Def caches (T-129): contributed defs are static per runtime.
 		// DB collection ROWS are cached with a TTL stamp (cross-isolate
@@ -575,16 +628,32 @@ export const DocumentStoreLive = Layer.effect(
 				return row;
 			});
 
-		const defFromRow = (row: DocumentCollectionRow): DocumentCollection => {
-			const cached = registeredDefs.get(row.name);
-			if (cached !== undefined && cached.schemaJson === row.schemaJson) return cached.def;
-			// schema_json is written by ensureCollection from a
-			// DocumentCollection — a parse failure is corruption, so it
-			// dies as a defect rather than a typed error.
-			const def = JSON.parse(row.schemaJson) as DocumentCollection;
-			cachePut(registeredDefs, row.name, { def, schemaJson: row.schemaJson });
-			return def;
-		};
+		/** Decode a registry row's `schema_json` into its def. T-147:
+		 * corruption is a TYPED failure (`CorruptCollection`), never a
+		 * SyntaxError defect — one malformed row must not take down
+		 * unrelated collections' operations. `assertCollectionDef`
+		 * re-checks the decoded shape (ensureCollection writes only
+		 * asserted defs, so a rejection means the row was corrupted
+		 * out-of-band); the embedded name must match the registry key —
+		 * a mismatch would mis-attribute every record of the row. */
+		const defFromRow = (
+			row: DocumentCollectionRow,
+		): Effect.Effect<DocumentCollection, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const cached = registeredDefs.get(row.name);
+				if (cached !== undefined && cached.schemaJson === row.schemaJson) return cached.def;
+				const corrupt = (reason: string) => new CorruptCollection({ name: row.name, reason });
+				const def = yield* Effect.try({
+					try: () =>
+						assertCollectionDef(JSON.parse(row.schemaJson), "document_collections.schema_json"),
+					catch: (e) => corrupt(String(e)),
+				});
+				if (def.name !== row.name) {
+					return yield* fail(corrupt(`schema_json name ${JSON.stringify(def.name)} != row name`));
+				}
+				cachePut(registeredDefs, row.name, { def, schemaJson: row.schemaJson });
+				return def;
+			});
 
 		/** Resolve a name or def to { def, row | null }. A name unknown
 		 * to BOTH the contributed registry and document_collections
@@ -604,7 +673,7 @@ export const DocumentStoreLive = Layer.effect(
 				const row = yield* rowFor(ref);
 				if (contributedDef !== undefined) return { def: contributedDef, row };
 				if (row === null) return yield* fail(new UnknownCollection({ name: ref }));
-				return { def: defFromRow(row), row };
+				return { def: yield* defFromRow(row), row };
 			});
 
 		const resolveOwner = (ctx: DocumentStoreContext | undefined) =>
@@ -635,11 +704,12 @@ export const DocumentStoreLive = Layer.effect(
 			collectionId: number,
 			ownerId: string,
 			unscoped: boolean,
+			extra?: SQL,
 		): Effect.Effect<DocumentRecordRow[]> =>
 			Effect.gen(function* () {
 				const where = yield* scopeCondition(collectionId, ownerId, unscoped);
 				return (yield* Effect.promise(() =>
-					db.select().from(documentRecords).where(where),
+					db.select().from(documentRecords).where(and(where, extra)),
 				)) as DocumentRecordRow[];
 			});
 
@@ -912,12 +982,29 @@ export const DocumentStoreLive = Layer.effect(
 
 		/** Every def the service knows: contributed defs plus
 		 * DB-registered rows (parsed lazily). The delete path scans
-		 * these for `ref` fields pointing at the deleted collection. */
+		 * these for `ref` fields pointing at the deleted collection.
+		 * T-147: a row whose `schema_json` won't decode is SKIPPED —
+		 * its ref fields are unknowable, so its policies can't be
+		 * enforced, but one corrupt registry row must not take down
+		 * delete/entity-delete for every other collection. The skip is
+		 * logged and metered (`kind: "corrupt"`) so the corruption
+		 * stays visible; the corrupt collection's own ops still fail
+		 * `CorruptCollection` through `resolveDef`. */
 		const allDefs = Effect.gen(function* () {
 			const defs = new Map(contributed);
 			const rows = yield* Effect.promise(() => db.select().from(documentCollections));
 			for (const row of rows as DocumentCollectionRow[]) {
-				if (!defs.has(row.name)) defs.set(row.name, defFromRow(row));
+				if (defs.has(row.name)) continue;
+				const decoded = yield* Effect.result(defFromRow(row));
+				if (Result.isFailure(decoded)) {
+					yield* Effect.logWarning(
+						`document-store: skipping corrupt collection "${row.name}" in ref scan`,
+						{ reason: String(decoded.failure) },
+					);
+					yield* recordSafe(tagged(documentStoreRows, { op: "registry", kind: "corrupt" }), 1);
+					continue;
+				}
+				defs.set(row.name, decoded.success);
 			}
 			return [...defs.values()] as readonly DocumentCollection[];
 		});
@@ -1136,14 +1223,32 @@ export const DocumentStoreLive = Layer.effect(
 					readonly targetName: string;
 					readonly targetId: number;
 				}
+				interface EntityCheck {
+					readonly field: string;
+					readonly entity: string;
+					readonly targetId: number;
+				}
 				type Pending =
 					| { readonly kind: "broken"; readonly error: DocumentStoreError }
-					| { readonly kind: "db"; readonly check: DbCheck };
+					| { readonly kind: "db"; readonly check: DbCheck }
+					| { readonly kind: "entity"; readonly check: EntityCheck };
 				const pending: Pending[] = [];
 				for (const [field, descriptor] of Object.entries(def.fields)) {
 					if (descriptor.kind !== "ref") continue;
 					const targetId = data[field];
 					if (typeof targetId !== "number") continue;
+					// Entity targets (T-149) resolve through the
+					// DocumentRefTargets registry, not document_records —
+					// batch plan state (rowDeletes/byId) never applies: an
+					// entity row is not a document record.
+					const entityName = descriptor.entity;
+					if (entityName !== undefined) {
+						pending.push({
+							kind: "entity",
+							check: { field, entity: entityName, targetId },
+						});
+						continue;
+					}
 					const targetName = descriptor.collection;
 					if (targetName === undefined) {
 						pending.push({
@@ -1216,9 +1321,58 @@ export const DocumentStoreLive = Layer.effect(
 						Result.isFailure(outcome) ? { error: outcome.failure } : outcome.success,
 					);
 				}
+				// Entity targets (T-149): ONE batched checker call per
+				// entity for ALL referenced ids, cached per batch plan
+				// under an `entity:` key (document-target keys are
+				// collection-row ids — no collision). An absent port or
+				// unregistered entity resolves to the empty set — every
+				// id is broken, same as a missing document target. A
+				// checker failure is a plugin bug → defect (orDie).
+				const idsByEntity = new Map<string, Set<number>>();
+				for (const entry of pending) {
+					if (entry.kind !== "entity") continue;
+					const set = idsByEntity.get(entry.check.entity) ?? new Set<number>();
+					set.add(entry.check.targetId);
+					idsByEntity.set(entry.check.entity, set);
+				}
+				const entityFound = new Map<string, ReadonlySet<number>>();
+				for (const [entity, idSet] of idsByEntity) {
+					const checker = Option.isNone(refTargetsOpt)
+						? undefined
+						: refTargetsOpt.value.get(entity);
+					if (checker === undefined) {
+						entityFound.set(entity, new Set<number>());
+						continue;
+					}
+					const ids = [...idSet].sort((a, b) => a - b);
+					const cacheKey = `entity:${entity}:${ids.join(",")}`;
+					const cached = plan.refCache.get(cacheKey);
+					const found =
+						cached ??
+						(yield* Effect.orDie(
+							checker(ids) as Effect.Effect<ReadonlySet<number>, unknown, never>,
+						));
+					if (cached === undefined) plan.refCache.set(cacheKey, found);
+					entityFound.set(entity, found);
+				}
 				// Phase 3 — fail on the first problem in field order.
 				for (const entry of pending) {
 					if (entry.kind === "broken") return yield* fail(entry.error);
+					if (entry.kind === "entity") {
+						const found = entityFound.get(entry.check.entity);
+						/* v8 ignore next -- every entity entry's target was resolved above */
+						if (found === undefined || !found.has(entry.check.targetId)) {
+							return yield* fail(
+								new BrokenReference({
+									collection: def.name,
+									field: entry.check.field,
+									targetCollection: entry.check.entity,
+									targetId: entry.check.targetId,
+								}),
+							);
+						}
+						continue;
+					}
 					const target = resolved.get(entry.check.targetName);
 					/* v8 ignore next -- every db entry's target was resolved above */
 					if (target === undefined) continue;
@@ -2023,6 +2177,80 @@ export const DocumentStoreLive = Layer.effect(
 				return results;
 			});
 
+		/** Apply an entity row's `onDelete` policies toward a delete
+		 * (T-149) — the standalone counterpart of the ref-policy scan
+		 * inside `planDelete`, run by the entity owner when ITS row is
+		 * deleted. Committed rows only (there is no batch to overlay);
+		 * restrict hits are collected across ALL collections before
+		 * any write so DocumentInUse is atomic, then nullify patches
+		 * materialize in one `tx()`. Only `nullify` patches — a
+		 * `cascade` descriptor on an entity target is rejected at def
+		 * assertion, and any other unexpected policy fails closed as
+		 * restrict. */
+		const applyEntityDeleteEffect = (
+			entity: string,
+			id: number,
+			ctx?: DocumentStoreContext,
+		): Effect.Effect<void, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const ownerId = yield* resolveOwner(ctx);
+				const unscoped = ctx?.unscoped === true;
+				const defs = yield* allDefs;
+				const referencedBy: string[] = [];
+				const nullifies: { row: DocumentRecordRow; data: Record<string, unknown> }[] = [];
+				for (const def of defs) {
+					const entityFields = Object.entries(def.fields).filter(
+						([, d]) => d.kind === "ref" && d.entity === entity,
+					);
+					if (entityFields.length === 0) continue;
+					const collectionRow = yield* rowFor(def.name);
+					if (collectionRow === null) continue;
+					const candidates = yield* scopedRows(collectionRow.id, ownerId, unscoped);
+					for (const r of candidates) {
+						const data = parseData(r.data);
+						const hits = entityFields.filter(([field]) => data[field] === id);
+						if (hits.length === 0) continue;
+						const nullifyFields: string[] = [];
+						for (const [field, descriptor] of hits) {
+							if ((descriptor.onDelete ?? "restrict") === "nullify") {
+								nullifyFields.push(field);
+							} else {
+								referencedBy.push(`${def.name}.${field}`);
+							}
+						}
+						if (nullifyFields.length === 0) continue;
+						const patched = { ...data };
+						for (const field of nullifyFields) patched[field] = null;
+						// Best-effort like document nullify: a patched doc
+						// that fails re-validation is skipped, never
+						// written invalid.
+						const validated = validateDocumentData(def.fields, patched, {
+							partial: true,
+						});
+						if (!validated.ok) continue;
+						nullifies.push({ row: r, data: validated.data });
+					}
+				}
+				if (referencedBy.length > 0) {
+					return yield* fail(new DocumentInUse({ collection: entity, id, referencedBy }));
+				}
+				if (nullifies.length === 0) return;
+				const now = new Date();
+				const ops: TxOp[] = nullifies.map((n) =>
+					db
+						.update(documentRecords)
+						.set({
+							data: JSON.stringify(n.data),
+							// A nullify rewrites the document — bump the row
+							// version like any other write (T-127).
+							version: sql`${documentRecords.version} + 1`,
+							updatedAt: now,
+						})
+						.where(eq(documentRecords.id, n.row.id)),
+				);
+				yield* Effect.promise(() => tx(db, ops as [TxOp, ...TxOp[]]));
+			});
+
 		// ---------- telemetry (T-131) ----------
 
 		/** Collection name for span attributes — plugin-defined and
@@ -2149,17 +2377,46 @@ export const DocumentStoreLive = Layer.effect(
 								new InvalidDocumentQuery({ collection: def.name, issues: queryIssues }),
 							);
 						}
-						const rows = yield* scopedRows(row.id, ownerId, unscoped);
+						// SQL pushdown (T-149): the safe subset of the
+						// filter compiles to a json_extract WHERE fragment
+						// so SQLite pre-filters the visible slice. It is
+						// ONLY a superset prefilter — matchFilter below
+						// still runs over every returned row, so results
+						// are identical; untranslatable filters ($regex,
+						// deep literals, exotic paths) simply contribute
+						// no SQL and stay fully JS-side. Skipped entirely
+						// when the def declares migrations: SQL would see
+						// STORED data while matchFilter sees lazily
+						// migrated data — the two could disagree.
+						const prefilter =
+							def.migrations === undefined || def.migrations.length === 0
+								? compileFilterPrefilter(query.filter)
+								: undefined;
+						// json_extract/json_type raise "malformed JSON" on
+						// corrupt rows instead of returning NULL, and SQLite
+						// does not guarantee AND/OR operand order — CASE
+						// evaluates lazily, so corrupt rows take ELSE 1 and
+						// reach parseData/matchFilter like before.
+						const rows = yield* scopedRows(
+							row.id,
+							ownerId,
+							unscoped,
+							prefilter === undefined
+								? undefined
+								: sql`CASE WHEN json_valid(${documentRecords.data}) THEN ((${prefilter})) ELSE 1 END`,
+						);
 						// Scan-cost signal (T-131): the visible slice size find
 						// pays for — recorded before the cap check so capped
-						// scans still count.
+						// scans still count. With pushdown this is the
+						// SQL-prefiltered count, not the raw visible slice.
 						yield* recordSafe(
 							tagged(documentStoreRows, { op: "find", kind: "scanned" }),
 							rows.length,
 						);
-						// Total-scan cap (T-128): find evaluates in JS over the
-						// whole visible slice — past FIND_SCAN_MAX_ROWS the
-						// typed error beats a multi-second scan.
+						// Total-scan cap (T-128): find still evaluates
+						// filter/sort in JS — now over the SQL-prefiltered
+						// slice; past FIND_SCAN_MAX_ROWS the typed error
+						// beats a multi-second scan.
 						if (rows.length > FIND_SCAN_MAX_ROWS) {
 							return yield* fail(
 								new InvalidDocumentQuery({
@@ -2315,6 +2572,13 @@ export const DocumentStoreLive = Layer.effect(
 						);
 						return { collection: def.name, scanned, migrated, failed };
 					}),
+				),
+
+			applyEntityDelete: (entity, id, ctx) =>
+				instrument(
+					"applyEntityDelete",
+					{ "documents.entity": entity },
+					applyEntityDeleteEffect(entity, id, ctx),
 				),
 		});
 	}),

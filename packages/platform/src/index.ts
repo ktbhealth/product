@@ -23,15 +23,28 @@ export const parsePlatformAdminEmails = (raw: string | null | undefined): Readon
 };
 
 export interface PlatformAdminShape {
-	/** Allowlist check against a session email (UI gate). */
-	readonly isAdmin: (email: string | null | undefined) => Effect.Effect<boolean>;
+	/**
+	 * Admin check. Accepts a bare email (legacy callers) or a subject
+	 * `{ email, userId }` — `userId` is the SIGNED-IN account id (not a
+	 * delegated acting id), which is what RBAC grant lookups key on.
+	 */
+	readonly isAdmin: (
+		subject: string | PlatformAdminSubject | null | undefined,
+	) => Effect.Effect<boolean>;
 	/**
 	 * Defense-in-depth check bound to the request `Principal`: fails
-	 * `Forbidden` unless the principal's email is allowlisted. Domain
-	 * services call this directly so admin paths stay closed even when
-	 * reached without the route guard.
+	 * `Forbidden` unless the principal is admin — email allowlisted or
+	 * holding an admin grant. Domain services call this directly so
+	 * admin paths stay closed even when reached without the route guard.
 	 */
 	readonly requireAdmin: () => Effect.Effect<void, Forbidden>;
+}
+
+/** Who `isAdmin` evaluates: the session email plus the account id
+ * dynamic grants resolve against. */
+export interface PlatformAdminSubject {
+	readonly email?: string | null;
+	readonly userId?: string | null;
 }
 
 /**
@@ -45,18 +58,46 @@ export class PlatformAdmin extends Context.Service<PlatformAdmin, PlatformAdminS
 	"@ktb/platform/PlatformAdmin",
 ) {}
 
-/** Build the gate from a parsed allowlist. */
-export const makePlatformAdminGate = (emails: ReadonlySet<string>): PlatformAdminShape => ({
-	isAdmin: (email) => Effect.succeed(emails.has(normalizeEmail(email))),
-	requireAdmin: () =>
-		Effect.flatMap(Principal, (principal) =>
-			principal !== null &&
-			principal.email !== undefined &&
-			emails.has(normalizeEmail(principal.email))
-				? Effect.void
-				: Effect.fail(new Forbidden({ path: "platform.admin" })),
-		),
-});
+const normalizeSubject = (
+	subject: string | PlatformAdminSubject | null | undefined,
+): PlatformAdminSubject => (typeof subject === "string" ? { email: subject } : (subject ?? {}));
+
+/** Build the gate from a parsed allowlist. `opts.grantFor` is the
+ * optional dynamic-grant hook (RBAC `platform.admin` allow): the
+ * composition root wires it to the permissions resolver so role-based
+ * superadmins pass the same gate as allowlisted emails. Absent →
+ * email allowlist only, exactly the P-026 behaviour. */
+export const makePlatformAdminGate = (
+	emails: ReadonlySet<string>,
+	opts?: {
+		readonly grantFor?: (userId: string) => Effect.Effect<boolean>;
+	},
+): PlatformAdminShape => {
+	const admits = (subject: PlatformAdminSubject): Effect.Effect<boolean> =>
+		emails.has(normalizeEmail(subject.email))
+			? Effect.succeed(true)
+			: subject.userId != null && opts?.grantFor !== undefined
+				? opts.grantFor(subject.userId)
+				: Effect.succeed(false);
+	return {
+		isAdmin: (subject) => admits(normalizeSubject(subject)),
+		requireAdmin: () =>
+			Effect.flatMap(Principal, (principal) =>
+				principal === null
+					? Effect.fail(new Forbidden({ path: "platform.admin" }))
+					: admits({
+							email: principal.email,
+							// Grants belong to the signed-in account — under a
+							// delegated principal userId is the ACTING doctor.
+							userId: principal.actorId ?? principal.userId,
+						}).pipe(
+							Effect.flatMap((ok) =>
+								ok ? Effect.void : Effect.fail(new Forbidden({ path: "platform.admin" })),
+							),
+						),
+			),
+	};
+};
 
 /** Marker plugin for the env-composed admin gate — see PlatformAdmin. */
 export const platformAdminPlugin = definePlugin({

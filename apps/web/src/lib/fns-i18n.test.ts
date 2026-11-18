@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import { groupMembers, groups } from "@ktb/db/schema";
 
 // i18nRouteFn edge coverage: failure isolation (H3 — the root loader
@@ -35,20 +37,7 @@ vi.mock("@tanstack/react-start/server", () => ({
 		return hoisted.headers;
 	},
 }));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktb/i18n-plugin", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@ktb/i18n-plugin")>();
 	return {

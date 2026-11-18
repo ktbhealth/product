@@ -29,7 +29,7 @@ const QueryInput = Schema.Struct({
 
 const decodeQuery = Schema.decodeUnknownSync(QueryInput);
 
-const HANDLED_TAGS = ["UnknownCollection"] as const;
+const HANDLED_TAGS = ["UnknownCollection", "InvalidDocumentQuery"] as const;
 
 const isHandled = (error: unknown): boolean =>
 	typeof error === "object" &&

@@ -34,6 +34,7 @@ const b32Encode = (bytes: Uint8Array): string => {
 	/* v8 ignore next -- the tail flush is unreachable: b32Encode only ever
 	   encodes the fixed 33-byte payload, whose bit count never lands on a
 	   5-bit boundary. */
+	// Stryker disable next-line all: tail flush unreachable for the fixed 33-byte payload
 	if (bits > 0) out += B32[(buffer << (5 - bits)) & 31];
 	return out;
 };

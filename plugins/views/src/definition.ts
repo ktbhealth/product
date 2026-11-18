@@ -2,13 +2,21 @@ import * as Context from "effect/Context";
 import type { Json, JsonObject } from "effect/Schema";
 
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
-import { QUERY_OPERATORS, type QueryOperator, type SortTerm } from "@ktb/document-store";
+import { COLLECTION_NAME_RE, isFieldPath, isRecord, PERMISSION_RE, SLUG_PATTERN } from "@ktb/dsl";
+import {
+	QUERY_OPERATORS,
+	validateFilter,
+	type QueryOperator,
+	type SortTerm,
+} from "@ktb/document-store";
 
 /**
  * View definitions as DATA — the `view.def` contribution kind.
@@ -27,10 +35,17 @@ import { QUERY_OPERATORS, type QueryOperator, type SortTerm } from "@ktb/documen
  * contributed definition once at composition time
  * (`collectViewDefinitions` over the topo-ordered registry) and
  * provides them next to `DocumentCollections` (same injection
- * pattern). Unlike `form.def`/`wizard.def`, defs do NOT need a
- * `src/client.ts` mirror to be renderable: the wire payload embeds
- * the resolved def. Emitters may still mirror `contributions` in
- * client.ts when other client surfaces need to enumerate defs.
+ * pattern). The wire payload embeds the resolved def for data, but
+ * `ViewPage` re-resolves it against `ctx.plugins` — the
+ * enabled-filtered CLIENT registry — so emitters MUST mirror
+ * `contributions` in their `src/client.ts`, same contract as
+ * `form.def`/`wizard.def` (a disabled contributor's view 404s like
+ * an unknown path). `VIEW_DEF_KIND.consumers` records that.
+ *
+ * Extension points: view kinds (`VIEW_KINDS`), field formats and
+ * filter operators are CLOSED unions rendered by ./views/* — there
+ * is no `hook` escape hatch; new presentation needs a renderer in
+ * @ktb/views or a bespoke page contribution.
  */
 
 /** The registered contribution kind for view definitions. */
@@ -45,7 +60,7 @@ export const VIEW_DEF_KIND: ContributionKindDescriptor = {
 };
 
 /** View ids double as URL segments — keep them slug-safe. */
-export const VIEW_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const VIEW_ID_PATTERN = SLUG_PATTERN;
 
 /** Mount path prefix every view lives under — the `/v/*` wildcard
  * descriptor claims the whole subtree. */
@@ -55,28 +70,9 @@ export const VIEW_PATH_PREFIX = "/v/";
  * single slug segment as its key (`/v/reports` → key "reports"). */
 export const VIEW_PATH_PATTERN = /^\/v\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
-/** Dotted field path into a record's `data` document. Segments are
- * identifier-shaped (field names) or numeric (array indices, per
- * document-store's getPath); prototype-polluting segments are refused
- * for hygiene even though reads cannot mutate. */
-const FIELD_PATH_RE = /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/;
-const FORBIDDEN_PATH_SEGMENTS: ReadonlySet<string> = new Set([
-	"__proto__",
-	"constructor",
-	"prototype",
-]);
-
 /** URL/search-param names for interactive filters — keep them
  * slug-safe so they round-trip through query strings untouched. */
 const FILTER_PARAM_RE = /^[A-Za-z0-9_-]{1,64}$/;
-
-/** Permission strings use the rbac catalog spelling
- * (`"resource.action"`, e.g. `"patient.read"`, `"audit.read"`). */
-const PERMISSION_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
 
 export const VIEW_FIELD_FORMATS = ["text", "date", "enum", "ref", "boolean", "json"] as const;
 export type ViewFieldFormat = (typeof VIEW_FIELD_FORMATS)[number];
@@ -169,14 +165,6 @@ export interface ViewDef {
 	readonly owner?: string;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-const isFieldPath = (value: unknown): value is string =>
-	typeof value === "string" &&
-	FIELD_PATH_RE.test(value) &&
-	!value.split(".").some((seg) => FORBIDDEN_PATH_SEGMENTS.has(seg));
-
 const assertField = (value: unknown, context: string, what: string): ViewField => {
 	if (!isRecord(value)) {
 		throw new Error(`${context}: ${what} must be an object`);
@@ -232,8 +220,22 @@ const assertFilters = (value: unknown, context: string): readonly ViewFilter[] =
 			throw new Error(`${at}.label must be a string`);
 		}
 		// `value` is arbitrary JSON (fixed filters) — presence, not
-		// type, selects the fixed-vs-interactive shape.
-		void fixed;
+		// type, selects the fixed-vs-interactive shape. When present,
+		// the operand must satisfy the document-store operator
+		// contract ($in/$nin arrays, $regex a safe pattern string,
+		// $exists boolean, …): build the exact condition the planner
+		// will emit and run it through the store's own
+		// validateFilter, so def-time and runtime rules can never
+		// drift — a bad fixed filter is a packaging bug and dies
+		// here instead of escaping as InvalidDocumentQuery at query
+		// time. Interactive filters carry no operand yet (the caller
+		// supplies it); the store re-validates those per query.
+		if ("value" in entry) {
+			const issues = validateFilter({ [field]: { [op]: fixed } });
+			if (issues.length > 0) {
+				throw new Error(`${at}.value is not a valid ${String(op)} operand: ${issues.join("; ")}`);
+			}
+		}
 		return entry as unknown as ViewFilter;
 	});
 };
@@ -436,15 +438,25 @@ export const parseViewPath = (path: string): ViewPathSegments | null => {
  * The ordered view registry the composition root provides to the
  * `Views` service — the layer @ktb/app-host merges into `core` next to
  * `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeViewDefinitions` always populates it. The Views
+ * service re-checks each def's `owner` against
+ * `PluginStates.enabledIds()` per request — a disabled plugin's view
+ * resolves as unknown (404/null), same contract as @ktb/triggers.
  */
 export class ViewDefinitions extends Context.Service<
 	ViewDefinitions,
-	{ readonly views: readonly ViewDef[] }
+	{
+		readonly views: readonly ViewDef[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/views/ViewDefinitions") {}
 
 /** Build the `ViewDefinitions` service value for a plugin graph. */
 export const makeViewDefinitions = (
 	plugins: readonly Plugin[],
-): { readonly views: readonly ViewDef[] } => ({
+): { readonly views: readonly ViewDef[]; readonly ownerIndex: DefOwnerIndex } => ({
 	views: collectViewDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

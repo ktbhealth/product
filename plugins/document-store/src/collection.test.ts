@@ -102,6 +102,35 @@ describe("assertCollectionDef", () => {
 		}
 	});
 
+	it("validates ref descriptors: exactly one target, entity onDelete policy", () => {
+		const base = { name: "ok.name", version: 1 };
+		const field = (d: Record<string, unknown>) => ({
+			...base,
+			fields: { r: { kind: "ref", ...d } },
+		});
+		// collection and entity are mutually exclusive; a targetless
+		// ref stays legal (writes fail it as "missing target").
+		expect(() => assertCollectionDef(field({ collection: "a", entity: "b" }), "test")).toThrow(
+			/ref/,
+		);
+		expect(() => assertCollectionDef(field({}), "test")).not.toThrow();
+		expect(() => assertCollectionDef(field({ collection: "a" }), "test")).not.toThrow();
+		expect(() => assertCollectionDef(field({ entity: "a" }), "test")).not.toThrow();
+		// Entity targets never cascade; both target kinds reject bogus policies.
+		expect(() => assertCollectionDef(field({ entity: "a", onDelete: "cascade" }), "test")).toThrow(
+			/onDelete/,
+		);
+		expect(() =>
+			assertCollectionDef(field({ entity: "a", onDelete: "nullify" }), "test"),
+		).not.toThrow();
+		expect(() =>
+			assertCollectionDef(field({ collection: "a", onDelete: "cascade" }), "test"),
+		).not.toThrow();
+		expect(() =>
+			assertCollectionDef(field({ collection: "a", onDelete: "bogus" }), "test"),
+		).toThrow(/onDelete/);
+	});
+
 	it("rejects unsafe or non-identifier field names", () => {
 		for (const field of ["__proto__", "constructor", "prototype", "a.b", "a-b", "0x", ""]) {
 			const def = { name: "ok.name", version: 1, fields: { [field]: { kind: "string" } } };

@@ -1,6 +1,6 @@
 /**
  * platform-llm.ts — F2: production LLM surfaces resolve the
- * ai-endpoints plugin's `PlatformLlm` capability BEFORE the env-derived
+ * ai-provider plugin's `PlatformLlm` capability BEFORE the env-derived
  * `LlmConfig` providers.
  *
  * Resolution order (per call — admin edits apply without a restart):

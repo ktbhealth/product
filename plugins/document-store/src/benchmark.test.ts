@@ -19,11 +19,14 @@ import { DocumentStore, DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./ser
  *
  *   DOCUMENT_STORE_BENCH=1 bunx vitest run src/benchmark.test.ts
  *
- * Measures the JS-side scan over better-sqlite3 at 1k and 10k stored
+ * Measures the find() cost on better-sqlite3 at 1k and 10k stored
  * documents (the FIND_SCAN_MAX_ROWS ceiling) to pin the documented
  * scale ceiling in service.ts's module doc. Rows are bulk-inserted
  * directly (bypassing per-op validation — this measures READ cost,
- * not write throughput).
+ * not write throughput). T-149: the scalar filter compiles to a SQL
+ * `json_extract` prefilter (see sqlfilter.ts) while the `$regex`
+ * filter stays fully JS-side — the pair shows both ends of the
+ * pushdown spectrum.
  */
 
 const GROUPS_DDL = `
@@ -104,7 +107,7 @@ describe.skipIf(!RUN)("document-store find() benchmark", () => {
 		return { ms: performance.now() - started, total: result.total };
 	};
 
-	it("times unfiltered and filtered find at 1k and 10k docs", async () => {
+	it("times unfiltered, SQL-pushed and JS-only filtered find", async () => {
 		for (const [name, expected] of [
 			["bench.1k", 1_000],
 			["bench.10k", FIND_SCAN_MAX_ROWS],
@@ -115,14 +118,26 @@ describe.skipIf(!RUN)("document-store find() benchmark", () => {
 				sort: [{ field: "title", dir: "asc" }],
 				limit: 50,
 			});
+			// $regex cannot push down — this is the pre-T-149 worst case:
+			// every visible row is parsed, migrated and regex-matched.
+			const jsOnly = await timeFind(name, {
+				filter: { title: { $regex: "^doc-5" } },
+				sort: [{ field: "title", dir: "asc" }],
+				limit: 50,
+			});
 			// eslint-disable-next-line no-console -- benchmark output IS the deliverable
 			console.log(
 				`[bench] ${name}: scan ${scan.ms.toFixed(1)}ms (total=${scan.total}), ` +
-					`filtered+sorted ${filtered.ms.toFixed(1)}ms (total=${filtered.total})`,
+					`sql-filtered ${filtered.ms.toFixed(1)}ms (total=${filtered.total}), ` +
+					`js-only ${jsOnly.ms.toFixed(1)}ms (total=${jsOnly.total})`,
 			);
 			expect(scan.total).toBe(expected);
 			expect(filtered.total).toBeGreaterThan(0);
 			expect(filtered.total).toBeLessThan(expected);
+			expect(jsOnly.total).toBeGreaterThan(0);
+			expect(jsOnly.total).toBeLessThan(expected);
+			// Pushdown must never be slower than the JS-only path.
+			expect(filtered.ms).toBeLessThanOrEqual(jsOnly.ms + 5);
 		}
 	}, 120_000);
 });

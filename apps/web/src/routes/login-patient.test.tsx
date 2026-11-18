@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
 		} | null> => ({ profiles: [], activeDoctorId: null }),
 	),
 	loaderData: { current: { emailEnabled: false } },
+	rootData: { current: { pluginStates: { enabled: [] as string[] } } },
 	missingKey: { current: null as string | null },
 }));
 const signInEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
@@ -52,14 +53,19 @@ vi.mock("@ktbhealth/ui/components/turnstile", async () => {
 	};
 });
 // Link needs a router context; the page only uses it as a plain anchor.
-// The route keeps its options and reads controllable loader data.
+// The route keeps its options and reads controllable loader data —
+// `getRouteApi` supplies the root match's pluginStates.
 vi.mock("@tanstack/react-router", (importOriginal) =>
 	import("./-route-test-mocks.ts").then((m) =>
-		m.routerMock(importOriginal, { useLoaderData: () => mocks.loaderData.current }),
+		m.routerMock(importOriginal, {
+			useLoaderData: () => mocks.loaderData.current,
+			getRouteApi: () => ({ useLoaderData: () => mocks.rootData.current }),
+		}),
 	),
 );
 
 import { Route } from "./login-patient.tsx";
+import { plugins } from "#/plugins.ts";
 
 const options = (
 	Route as unknown as {
@@ -110,6 +116,7 @@ describe("portal sign-in page", () => {
 		signInEmail.mockResolvedValue(okResult);
 		signUpEmail.mockResolvedValue(okResult);
 		mocks.loaderData.current = { emailEnabled: false };
+		mocks.rootData.current = { pluginStates: { enabled: plugins.map((p) => p.id) } };
 		mocks.missingKey.current = null;
 		mocks.portalAudiencesFn.mockReset();
 		mocks.portalAudiencesFn.mockResolvedValue(["member", "patient"]);
@@ -204,6 +211,26 @@ describe("portal sign-in page", () => {
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 	});
+
+	it("offers the doctor sign-in link while its flow is live", () => {
+		render(createElement(Page));
+		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe(
+			"/login/doctor",
+		);
+	});
+
+	it.each(["doctors", "clinician"] as const)(
+		"hides the doctor link when the %s package is disabled",
+		(pkg) => {
+			mocks.rootData.current = {
+				pluginStates: {
+					enabled: plugins.filter((p) => p.pkg !== pkg).map((p) => p.id),
+				},
+			};
+			render(createElement(Page));
+			expect(screen.queryByRole("link", { name: "I am a doctor" })).toBeNull();
+		},
+	);
 
 	it("renders the raw key when a translation is missing", () => {
 		mocks.missingKey.current = "app.login_tab_in";

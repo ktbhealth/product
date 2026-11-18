@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { clientStub, type Plugin } from "@ktb/kernel";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -13,12 +13,16 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({
+	clientStub({
 		id: "api.services",
 		meta: { keywords: ["api", "services"] },
 		requiredDeps: ["document-store.services"],
+		// Mirrors apiServicesPlugin.optionalDeps (server index.ts) —
+		// literal id: importing @ktb/rbac-plugin would pull the server
+		// graph into the client bundle.
+		optionalDeps: ["rbac.services"],
 	}),
-	definePlugin({
+	clientStub({
 		id: "api.routes",
 		meta: { keywords: ["api", "routes"] },
 		requiredDeps: ["api.services"],

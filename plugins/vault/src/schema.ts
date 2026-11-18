@@ -154,3 +154,64 @@ export const portalKeys = sqliteTable(
 );
 
 export type PortalKey = typeof portalKeys.$inferSelect;
+
+/**
+ * Server-side secrets (P-098 C1): THE credential store — provider API
+ * keys, SMTP passwords, `secretRef` material. Distinct from the ZK
+ * key-lifecycle tables above: those carry browser-side envelopes the
+ * server never opens; this table holds server-side envelope-encrypted
+ * values the `Secrets` service opens on resolve.
+ *
+ * Encryption: each row gets a fresh AES-256 DEK; the VALUE is
+ * `aead` ciphertext under it and the DEK is stored only as a
+ * `wrapped_dek` envelope under the deployment KEK (`SecretKeyring`
+ * port — `VAULT_MASTER_KEY` env driver). Both envelopes carry AAD
+ * bound to (scope, name) so ciphertexts cannot be transplanted
+ * between secrets.
+ *
+ * Scoping: `scope` is `"platform"` (tenantId NULL — deployment-wide
+ * secrets managed by platform admins) or the tenant id as text.
+ * `tenantId` stays a real FK for cascade + queries; `scope` exists
+ * because SQLite UNIQUE treats NULLs as distinct, so (scope, name)
+ * is the uniqueness that actually holds.
+ */
+export const vaultSecret = sqliteTable(
+	"vault_secret",
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		/** "platform" | String(tenantId) — the uniqueness half of (scope,name). */
+		scope: text().notNull(),
+		/** NULL = platform scope; set = owning clinic (groups.id). */
+		tenantId: integer("tenant_id").references(() => groups.id, { onDelete: "cascade" }),
+		/** Human label, unique per scope — e.g. "openai-prod", "smtp-main". */
+		name: text().notNull(),
+		/** Optional provider hint for pickers — "openai", "anthropic", "smtp", … */
+		provider: text(),
+		/** Non-secret display hint (e.g. last-4 of a key) for masked
+		 * reads — never key material. */
+		hint: text(),
+		/** "api-key" | "token" | "password" | "pem" | "generic". */
+		kind: text().notNull().default("generic"),
+		/** Per-row DEK wrapped under the deployment KEK (`v1.` envelope + AAD). */
+		wrappedDek: text("wrapped_dek").notNull(),
+		/** The secret value — `v1.` AES-256-GCM envelope under the row DEK. */
+		ciphertext: text().notNull(),
+		/** KEK fingerprint that wrapped the DEK (rotation bookkeeping). */
+		kekVersion: text("kek_version"),
+		/** Bumped on every value/DEK rotation. */
+		version: integer().notNull().default(1),
+		/** "active" | "disabled" — disabled rows never resolve. */
+		status: text().notNull().default("active"),
+		createdBy: text("created_by"),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp_ms" }),
+		rotatedAt: integer("rotated_at", { mode: "timestamp_ms" }),
+	},
+	(table) => [
+		uniqueIndex("vault_secret_scope_name_idx").on(table.scope, table.name),
+		index("vault_secret_tenant_idx").on(table.tenantId),
+	],
+);
+export type VaultSecret = typeof vaultSecret.$inferSelect;
+export type VaultSecretKind = "api-key" | "token" | "password" | "pem" | "generic";
+export type VaultSecretStatus = "active" | "disabled";

@@ -45,6 +45,7 @@ describe("pbkdf2ToAesKey", () => {
 	it("derives a usable AES-256-GCM key", async () => {
 		const salt = generateSalt();
 		const key = await pbkdf2ToAesKey("correct horse", salt, 1000);
+		expect(key.extractable).toBe(false);
 		const envelope = await encrypt(key, "vault secret");
 		expect(await decryptText(key, envelope)).toBe("vault secret");
 	});
@@ -97,6 +98,7 @@ describe("hkdfToAesKey", () => {
 		const ikm = crypto.getRandomValues(new Uint8Array(32));
 		const salt = generateSalt();
 		const key = await hkdfToAesKey(ikm, salt, "ktb.test");
+		expect(key.extractable).toBe(true);
 		const again = await hkdfToAesKey(ikm, salt, "ktb.test");
 		const envelope = await encrypt(key, "data");
 		expect(await decryptText(again, envelope)).toBe("data");

@@ -14,6 +14,7 @@ import {
 	wer,
 	cer,
 	type EvalRunnerItem,
+	type RunRecord,
 } from "@ktb/eval-consultation";
 
 import { makeLocalAsr } from "./asr.ts";
@@ -65,7 +66,18 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 		Effect.gen(function* () {
 			const tts = yield* TtsPort;
 			const asr = yield* AsrPort;
-			const { audio } = yield* tts.synthesize({
+			// Per-stage audit trail — every port record is tagged with
+			// this item's identity (same `eval-<id>` namespace the
+			// cleanup taskId uses) and returned on the outcome so the
+			// platform can persist it (WS-D). datasetVersion stays
+			// absent: the runner doesn't know the cohort's manifest.
+			const records: RunRecord[] = [];
+			const tag = (r: RunRecord): RunRecord => ({
+				...r,
+				runId: `eval-${item.id}`,
+				sampleId: String(item.id),
+			});
+			const { audio, record: ttsRecord } = yield* tts.synthesize({
 				script: item.script,
 				voiceId: "br_male_1",
 				acoustic: {
@@ -77,13 +89,24 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 				turns: item.turns,
 				speakerVoices: item.voices,
 			});
-			const { asr: asrResult } = yield* asr.transcribe(audio, { language: "pt" });
+			records.push(tag(ttsRecord));
+			const { asr: asrResult, record: asrRecord } = yield* asr.transcribe(audio, {
+				language: "pt",
+			});
+			records.push(tag(asrRecord));
 			const asrText = asrResult.text;
 
 			const llm = yield* Effect.serviceOption(LlmPort);
 			const cleanup = Option.isNone(llm)
 				? undefined
-				: yield* cleanupTranscript({ taskId: `eval-${item.id}`, raw: asrText }).pipe(
+				: yield* cleanupTranscript({
+						taskId: `eval-${item.id}`,
+						raw: asrText,
+						// onRecord fires before edit application — a
+						// corrupt-edit-list failure still keeps the
+						// corrector's audit record.
+						onRecord: (r) => records.push(tag(r)),
+					}).pipe(
 						Effect.provideService(LlmPort, llm.value),
 						Effect.map((r) => ({
 							edits: r.edits.ops.length,
@@ -121,18 +144,21 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 						);
 
 			return {
-				audioUri: audio.uri,
-				asrText,
-				wer: wer(item.script, asrText),
-				cer: cer(item.script, asrText),
-				confSegments: asrResult.segments,
-				stages: [
-					"asr",
-					...(cleanup !== undefined ? ["cleanup"] : []),
-					...(anamnesis !== undefined ? ["anamnesis"] : []),
-				],
-				...(cleanup !== undefined ? { cleanup } : {}),
-				...(anamnesis !== undefined ? { anamnesis } : {}),
+				result: {
+					audioUri: audio.uri,
+					asrText,
+					wer: wer(item.script, asrText),
+					cer: cer(item.script, asrText),
+					confSegments: asrResult.segments,
+					stages: [
+						"asr",
+						...(cleanup !== undefined ? ["cleanup"] : []),
+						...(anamnesis !== undefined ? ["anamnesis"] : []),
+					],
+					...(cleanup !== undefined ? { cleanup } : {}),
+					...(anamnesis !== undefined ? { anamnesis } : {}),
+				},
+				records,
 			};
 		});
 
@@ -145,7 +171,9 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 					(item) =>
 						runOne(item).pipe(
 							Effect.provide(ports),
-							Effect.flatMap((result) => onSample(item.id, { status: "ok", result })),
+							Effect.flatMap((out) =>
+								onSample(item.id, { status: "ok", result: out.result, records: out.records }),
+							),
 							Effect.catch((error) =>
 								onSample(item.id, { status: "failed", error: String(error) }),
 							),

@@ -277,6 +277,51 @@ describe("dispatchTriggerEvent", () => {
 		await Effect.runPromise(dispatchTriggerEvent([writeDef], hooks, ev()));
 	});
 
+	it("isolates match defects per def — a poison `when` doesn't mask siblings", async () => {
+		const { hooks, invoked } = hooksStub();
+		// Hand-built def bypassing assertTriggerDef: `when` is not a
+		// condition object, so evaluateCondition defects inside
+		// triggerMatches. Matching must isolate it, not the whole event.
+		const poison = {
+			id: "poison",
+			collection: "src",
+			when: "not-a-condition",
+			action: { kind: "hook", hook: "bad" },
+		} as unknown as TriggerDef;
+		const good = def({ id: "good" });
+		await Effect.runPromise(dispatchTriggerEvent([poison, good], hooks, ev()));
+		expect(invoked).toHaveLength(1);
+		expect(invoked[0]?.handle.trigger.id).toBe("good");
+	});
+
+	it("collection-write skips prototype-polluting mapping keys", async () => {
+		const { hooks } = hooksStub();
+		const { shape, calls } = storeStub();
+		// Bypass assertTriggerDef — the runtime guard is defense-in-depth.
+		const writeDef = {
+			id: "t-1",
+			collection: "src",
+			action: {
+				kind: "collection-write",
+				collection: "dst",
+				// "__proto__" never becomes an own key in an object literal
+				// (it sets the prototype); "constructor" does — both spellings
+				// must be skipped by the runtime guard.
+				mapping: {
+					__proto__: "$record.data.name",
+					constructor: "$record.data.name",
+					ok: "$record.data.name",
+				},
+				mode: "insert",
+			},
+		} as unknown as TriggerDef;
+		await withStore(dispatchTriggerEvent([writeDef], hooks, ev()), shape).pipe(Effect.runPromise);
+		expect(calls).toHaveLength(1);
+		const data = calls[0]?.data as Record<string, unknown>;
+		expect(data).toEqual({ ok: "Ana" });
+		expect(Object.getPrototypeOf(data)).toBe(Object.prototype);
+	});
+
 	it("isolates failures per trigger — a throwing hook does not stop siblings", async () => {
 		const calls: string[] = [];
 		const hooks = {

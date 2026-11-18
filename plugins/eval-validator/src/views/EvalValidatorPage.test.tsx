@@ -522,4 +522,93 @@ describe("EvalValidatorPage", () => {
 		expect(screen.getAllByText(/patient #—/)).toHaveLength(1);
 		expect(screen.getAllByText("synthetic")).toHaveLength(1);
 	});
+
+	it("warns when a queued run has no eval runner bound", async () => {
+		fns.startRunFn.mockResolvedValue({ ok: true, data: { runId: 42 } });
+		fns.progressFn.mockResolvedValue({
+			ok: true,
+			data: { ...runProgress, status: "queued", pct: 0, done: 0, runnerBound: false },
+		});
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/no eval runner bound/)).toBeTruthy();
+		expect(screen.queryByText(/jobs queue/)).toBeNull();
+	});
+
+	it("notes the inline fallback when the runner is bound without a queue", async () => {
+		fns.progressFn.mockResolvedValue({
+			ok: true,
+			data: {
+				...runProgress,
+				status: "running",
+				pct: 40,
+				done: 0,
+				runnerBound: true,
+				queueBound: false,
+			},
+		});
+		fns.startRunFn.mockResolvedValue({ ok: true, data: { runId: 42 } });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/runner bound but no jobs queue/)).toBeTruthy();
+		expect(screen.queryByText(/no eval runner bound/)).toBeNull();
+	});
+
+	it("renders no availability notice when the payload omits the flags", async () => {
+		fns.progressFn.mockResolvedValue({
+			ok: true,
+			data: { ...runProgress, status: "queued", pct: 0, done: 0 },
+		});
+		fns.startRunFn.mockResolvedValue({ ok: true, data: { runId: 42 } });
+		const { unmount } = render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await screen.findByText(/Run #42 — queued/);
+		expect(screen.queryByText(/no eval runner bound/)).toBeNull();
+		expect(screen.queryByText(/jobs queue/)).toBeNull();
+		unmount();
+	});
+
+	it("renders no availability notice when runner and queue are both bound", async () => {
+		fns.progressFn.mockResolvedValue({
+			ok: true,
+			data: {
+				...runProgress,
+				status: "queued",
+				pct: 0,
+				done: 0,
+				runnerBound: true,
+				queueBound: true,
+			},
+		});
+		fns.startRunFn.mockResolvedValue({ ok: true, data: { runId: 42 } });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await screen.findByText(/Run #42 — queued/);
+		expect(screen.queryByText(/no eval runner bound/)).toBeNull();
+		expect(screen.queryByText(/jobs queue/)).toBeNull();
+	});
+
+	it("shows the dataset identity and experiment metadata on the run card", async () => {
+		fns.progressFn.mockResolvedValue({
+			ok: true,
+			data: {
+				...runProgress,
+				experiment: {
+					profile: "full",
+					manifestHash: "0123456789abcdef",
+				},
+			},
+		});
+		fns.startRunFn.mockResolvedValue({ ok: true, data: { runId: 42 } });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/dataset eval-instance-1/)).toBeTruthy();
+		expect(screen.getByText(/profile full/)).toBeTruthy();
+		expect(screen.getByText(/manifest 0123456789ab/)).toBeTruthy();
+	});
 });

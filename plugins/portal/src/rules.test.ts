@@ -30,4 +30,24 @@ describe("portal audience rules", () => {
 		expect(portalAdmits(medics, new Set([PORTAL_AUDIENCE.doctor]))).toBe(true);
 		expect(portalAdmits(medics, [PORTAL_AUDIENCE.member])).toBe(false);
 	});
+
+	it("admits every instance to the superadmin wildcard", () => {
+		const medics = {
+			id: "medics",
+			basePath: "/portal/medics",
+			label: "M",
+			audience: "doctor",
+		};
+		const patients = {
+			id: "patients",
+			basePath: "/portal/patients",
+			label: "P",
+			audience: "patient",
+		};
+		const admins = new Set([PORTAL_AUDIENCE.member, PORTAL_AUDIENCE.superadmin]);
+		expect(portalAdmits(medics, admins)).toBe(true);
+		expect(portalAdmits(patients, admins)).toBe(true);
+		// Without the wildcard the same set admits nothing extra.
+		expect(portalAdmits(medics, [PORTAL_AUDIENCE.member])).toBe(false);
+	});
 });

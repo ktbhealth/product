@@ -1,26 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	reactStartMock,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { env } from "cloudflare:workers";
 import * as Effect from "effect/Effect";
@@ -127,7 +114,7 @@ describe("server fns", () => {
 	});
 
 	it("anonymous users get empty/null results", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await getSessionUserFn()).toBeNull();
 		expect(await sessionFn()).toBeNull();
 		expect(await listPatientsFn()).toEqual([]);
@@ -162,7 +149,7 @@ describe("server fns", () => {
 	});
 
 	it("full patient + consultation lifecycle", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Maria Silva");
 		expect(patient!.id).toBeGreaterThan(0);
 		expect((await listPatientsFn())[0]?.name).toBe("Maria Silva");
@@ -199,9 +186,9 @@ describe("server fns", () => {
 		const report = await verifyConsultationIntegrityFn({ data: saved!.id });
 		expect(report?.status).toBe("verified");
 		expect(report?.versions).toBeGreaterThan(0);
-		headers.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
+		serverFnRequestHeaders.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
 		expect(await verifyConsultationIntegrityFn({ data: saved!.id })).toBeNull();
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 
 		expect(
 			await attachAnamnesisFn({
@@ -219,7 +206,7 @@ describe("server fns", () => {
 	});
 
 	it("save without patientId and read null fields", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const saved = await saveConsultationFn({
 			data: { transcript: "t2", anamnesis: makeAnamnesis("Q2"), engine: "heuristic" },
 		});
@@ -236,7 +223,7 @@ describe("server fns", () => {
 	});
 
 	it("attachAnamnesis with patientId set covers ?? left side", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("João");
 		const saved = await saveConsultationFn({
 			data: { transcript: "t3", anamnesis: makeAnamnesis("Q3"), engine: "e" },
@@ -254,7 +241,7 @@ describe("server fns", () => {
 	});
 
 	it("attachAnamnesis with patientId null clears the link (tri-state wire)", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Desvincular");
 		const saved = await saveConsultationFn({
 			data: { transcript: "t4", anamnesis: makeAnamnesis("Q4"), engine: "e" },
@@ -283,7 +270,7 @@ describe("server fns", () => {
 	});
 
 	it("listConsultations chiefComplaint null via ?? on missing queixa_principal", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const user = await getSessionUserFn();
 		await db.insert(consultations).values({
 			userId: user!.id,
@@ -297,7 +284,7 @@ describe("server fns", () => {
 	});
 
 	it("listConsultations tolerates invalid anamnesis JSON", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const user = await getSessionUserFn();
 		await db.insert(consultations).values({
 			userId: user!.id,
@@ -311,7 +298,7 @@ describe("server fns", () => {
 	});
 
 	it("extract fn returns a structured result", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const extracted = await extractAnamnesisFn({ data: { transcript: SAMPLE_TRANSCRIPT } });
 		expect(extracted!.anamnesis.queixa_principal.content).toBeTruthy();
 		expect(extracted!.engine).toBeTruthy();
@@ -319,7 +306,7 @@ describe("server fns", () => {
 	});
 
 	it("patientHistoryFn summarizes prior consultations and feeds extraction", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Histórico");
 		await saveConsultationFn({
 			data: {
@@ -362,7 +349,7 @@ describe("server fns", () => {
 	});
 
 	it("tolerates non-number patientId on the wire (undefined/null/string)", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Wire");
 		// key present with undefined / null must not fail schema decode
 		for (const patientId of [undefined, null, ""] as const) {
@@ -379,7 +366,7 @@ describe("server fns", () => {
 	});
 
 	it("deletes a patient with their consultations and recordings", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Para Excluir");
 		const { id: consultationId } = (await saveConsultationFn({
 			data: {
@@ -406,22 +393,22 @@ describe("server fns", () => {
 		expect(audioBucketStore.has(audioKey)).toBe(false);
 		expect(await deletePatientFn({ data: patient.id })).toEqual({ ok: false });
 
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await patientDeletionImpactFn({ data: patient.id })).toBeNull();
 	});
 
 	it("never previews or deletes someone else's patient", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Alheio");
-		headers.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
+		serverFnRequestHeaders.current = new Headers({ cookie: await signIn("fns-intruder@x.com") });
 		expect(await patientDeletionImpactFn({ data: patient.id })).toBeNull();
 		expect(await deletePatientFn({ data: patient.id })).toEqual({ ok: false });
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		expect((await getPatientFn({ data: patient.id }))?.name).toBe("Alheio");
 	});
 
 	it("createPatientFn returns field errors instead of saving", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const before = (await listPatientsFn()).length;
 		const res = await createPatientFn({
 			data: { name: " ", birthDate: "2999-01-01", cpf: "111.111.111-11", phone: null },
@@ -438,7 +425,7 @@ describe("server fns", () => {
 	});
 
 	it("gets, updates and lists consultations for a full FHIR record", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Registro Completo", {
 			gender: "female",
 			cpf: "529.982.247-25",
@@ -488,7 +475,7 @@ describe("server fns", () => {
 	});
 
 	it("extraction receives the record's sex and age as context", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const patient = await newPatient("Contexto", { gender: "male" });
 		const run = vi.spyOn(env.AI, "run");
 		try {
@@ -503,7 +490,7 @@ describe("server fns", () => {
 	});
 
 	it("services deny cross-user access via the bound principal", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const saved = await saveConsultationFn({
 			data: { transcript: "t", anamnesis: makeAnamnesis("Q"), engine: "e" },
 		});
@@ -512,7 +499,7 @@ describe("server fns", () => {
 		// Second user: lists are scoped empty; entity access is denied
 		// (service fails Forbidden → handlers return the "not visible" shape).
 		const cookie2 = await signIn("fns2@x.com");
-		headers.current = new Headers({ cookie: cookie2 });
+		serverFnRequestHeaders.current = new Headers({ cookie: cookie2 });
 		expect(await listConsultationsFn()).toEqual([]);
 		expect(await listPatientsFn()).toEqual([]);
 		expect(await getPatientFn({ data: foreignPatient.id })).toBeNull();
@@ -534,14 +521,14 @@ describe("server fns", () => {
 		).toEqual({ ok: false });
 
 		// Owner still reads fine afterwards.
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		expect(await getConsultationFn({ data: saved!.id })).not.toBeNull();
 	});
 
 	it("platform admin gate: allowlist decides /platform access", async () => {
 		// Anonymous → not admin, no loader data (the layout guard
 		// redirects/404s before any page loader runs).
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await platformAdminFn()).toBe(false);
 		expect(await portalPageDataFn({ data: "/platform/patients" })).toEqual({
 			status: "notfound",
@@ -558,7 +545,7 @@ describe("server fns", () => {
 		// Signed-in non-admin → still not admin. The P-081 audience gate
 		// hides every /platform page behind the platform-admin rule, so
 		// page data collapses to notfound before any loader runs.
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		expect(await platformAdminFn()).toBe(false);
 		expect((await sessionFn())?.platformAdmin).toBe(false);
 		expect(await portalPageDataFn({ data: "/platform/patients" })).toEqual({
@@ -574,7 +561,7 @@ describe("server fns", () => {
 		// Allowlisted admin (PLATFORM_ADMIN_EMAILS test double) → full
 		// cross-owner listing.
 		const adminCookie = await signIn("platform-admin@ktb.test");
-		headers.current = new Headers({ cookie: adminCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: adminCookie });
 		expect(await platformAdminFn()).toBe(true);
 		expect((await sessionFn())?.platformAdmin).toBe(true);
 		const pageData = async (path: string) => {
@@ -617,7 +604,7 @@ describe("server fns", () => {
 
 	it("platform admin CRUD fns mutate cross-owner records; non-admins get ok:false", async () => {
 		const adminCookie = await signIn("platform-admin@ktb.test");
-		headers.current = new Headers({ cookie: adminCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: adminCookie });
 		const admin = await getSessionUserFn();
 		expect(admin).not.toBeNull();
 
@@ -650,7 +637,7 @@ describe("server fns", () => {
 			.where(eq(consultations.id, withAudio.id));
 		expect((await adminDeleteConsultationFn({ data: withAudio.id })).ok).toBe(true);
 
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		expect(
 			await adminCreatePatientFn({
 				data: { ownerId: "u1", name: "Nope", birthDate: "1990-01-01" },
@@ -672,7 +659,7 @@ describe("server fns", () => {
 		// The audience gate runs before page guards — the session must
 		// satisfy the platform instance's platform-admin rule.
 		const adminCookie = await signIn("platform-admin@ktb.test");
-		headers.current = new Headers({ cookie: adminCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: adminCookie });
 		let loaderRan = false;
 		const base = {
 			component: () => null,
@@ -715,7 +702,7 @@ describe("server fns", () => {
 	});
 
 	it("consoleDeniedFn lists only paths whose guard denies the session", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		// Two slow guards track overlap: if consoleDeniedFn awaited guards
 		// serially, `active` could never exceed 1.
 		let active = 0;
@@ -793,13 +780,13 @@ describe("server fns", () => {
 		}
 		// Anonymous → empty list (nothing to filter; the menu never
 		// renders for them anyway).
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await consoleDeniedFn()).toEqual([]);
 	});
 
 	it("clinical portal pages serve doctor-scoped data (P-081)", async () => {
 		// Anonymous → the audience gate fails before any loader runs.
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await portalPageDataFn({ data: "/portal/doctor" })).toEqual({
 			status: "notfound",
 		});
@@ -810,7 +797,7 @@ describe("server fns", () => {
 		// fns@x.com signed up as a doctor — the doctor audience admits
 		// and `subject: "doctor"` binds the acting user, so the patients
 		// loader returns the owner's rows.
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const home = await portalPageDataFn({ data: "/portal/doctor" });
 		expect(home).toEqual({ status: "ok", data: null });
 		const patients = await portalPageDataFn({ data: "/portal/doctor/patients" });
@@ -874,7 +861,7 @@ describe("server fns", () => {
 	});
 
 	it("platform page data reports notfound for a disabled plugin (P-058)", async () => {
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		const page: PanelPage = {
 			id: "test.disabled",
 			path: "/platform/test-disabled",
@@ -899,7 +886,7 @@ describe("server fns", () => {
 	});
 
 	it("app page data fn serves public pages to anonymous callers (P-059)", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		const page: Page = {
 			id: "test.app",
 			path: "/test-app-page",
@@ -924,12 +911,12 @@ describe("server fns", () => {
 			});
 			// Signed-in callers get the same result — effects then run
 			// under runAs (Principal + Authz bound) instead of run.
-			headers.current = new Headers({ cookie });
+			serverFnRequestHeaders.current = new Headers({ cookie });
 			expect(await appPageDataFn({ data: page.path })).toEqual({
 				status: "ok",
 				data: "public",
 			});
-			headers.current = new Headers();
+			serverFnRequestHeaders.current = new Headers();
 			// An entry whose context disagrees with the requested shell
 			// is refused even when the path is registered.
 			pages.set("/test-mismatch", {
@@ -945,7 +932,7 @@ describe("server fns", () => {
 	});
 
 	it("app page data fn reports notfound for a disabled plugin (P-058)", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		const page: Page = {
 			id: "test.app-disabled",
 			path: "/test-app-disabled",
@@ -972,7 +959,7 @@ describe("server fns", () => {
 
 	it("page data gates at package granularity: one disabled id keeps the package live (P-058)", async () => {
 		const adminCookie = await signIn("platform-admin@ktb.test");
-		headers.current = new Headers({ cookie: adminCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: adminCookie });
 		// /platform is owned by dashboard.panel; the dashboard package's
 		// other member is dashboard.chrome. Disabling ONLY the owning id
 		// leaves the package live — the same contract the CQRS gate and
@@ -1027,11 +1014,11 @@ describe("server fns", () => {
 	});
 
 	it("notifications fns list, count and mark read for the session user", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await listMyNotificationsFn()).toEqual([]);
 		expect(await countMyUnreadNotificationsFn()).toBe(0);
 
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		// PatientCreated → a persisted notification via the event bus.
 		await newPatient("Notificada");
 		const list = await listMyNotificationsFn();

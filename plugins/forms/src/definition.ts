@@ -27,6 +27,11 @@ import {
  * plugins that emit `form.def` entries MUST mirror `contributions` in
  * their `src/client.ts` (same contract as chrome/panel/pages).
  * `FORM_DEF_KIND.consumers` records that requirement.
+ *
+ * Extension points: the closed vocabulary is the schema subset
+ * (@ktb/json-schema PROFILE) plus `FormFieldUi.widget`; anything
+ * richer needs a code change in @ktb/forms — there is no `hook`
+ * escape hatch.
  */
 
 /** The registered contribution kind for form definitions. */

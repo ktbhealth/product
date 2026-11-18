@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -18,20 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 // Same fake as fns-attach-input.test.ts: handlers run as plain async
 // fns and the validator is applied to the incoming `data`.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((value: unknown) => unknown) | undefined;
-		const api = {
-			validator: (fn: (value: unknown) => unknown) => {
-				validate = fn;
-				return api;
-			},
-			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktb/server-fns", () => ({
 	ensureDoctorUser: mocks.ensureDoctorUser,
 	ensureSessionUser: vi.fn(async () => ({ id: "u1" })),

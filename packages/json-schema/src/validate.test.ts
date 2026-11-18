@@ -277,6 +277,27 @@ describe("compileSchema", () => {
 		expect(compileSchema(schema)).toBe(compileSchema(schema));
 	});
 
+	it("caches equivalent schemas by serialized JSON, not just identity", () => {
+		// Wire round-trips rebuild schema objects (JSON.parse output) —
+		// the WeakMap misses on the new identity, but the serialized
+		// document is identical, so the compiled validator is shared.
+		const a: JsonSchemaObject = { type: "object", properties: { n: { type: "string" } } };
+		const b = JSON.parse(JSON.stringify(a)) as JsonSchemaObject;
+		expect(compileSchema(a)).toBe(compileSchema(b));
+	});
+
+	it("evicts the oldest JSON-keyed validator past the cache cap", () => {
+		// >100 distinct serialized schemas force FIFO eviction; the
+		// first schema's validator must be recompiled (new identity).
+		const first: JsonSchemaObject = { type: "string", minLength: 0 };
+		compileSchema(first);
+		for (let i = 1; i <= 105; i += 1) {
+			compileSchema({ type: "string", minLength: i });
+		}
+		const reparsed = JSON.parse(JSON.stringify(first)) as JsonSchemaObject;
+		expect(compileSchema(reparsed)).not.toBe(compileSchema(first));
+	});
+
 	it("supports $ref to internal pointers", () => {
 		const schema: JsonSchemaObject = {
 			type: "object",

@@ -3,6 +3,8 @@ declare namespace Cloudflare {
 		BETTER_AUTH_SECRET?: string;
 		BETTER_AUTH_URL?: string;
 		TURNSTILE_SECRET_KEY?: string;
+		/** Vault KEK (P-098): 32-byte hex/base64 — wraps per-secret DEKs. */
+		VAULT_MASTER_KEY?: string;
 		CAPTCHA_STUB?: string;
 		/** Recall.ai bot provider API key (bot-recall driver). */
 		RECALL_API_KEY?: string;

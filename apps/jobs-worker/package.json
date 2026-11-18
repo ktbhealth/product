@@ -1,0 +1,18 @@
+{
+	"name": "@ktb/app-jobs-worker",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"worker": "bun src/main.ts",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@ktb/db": "workspace:*",
+		"@ktb/jobs-port": "workspace:*",
+		"@ktb/jobs-transport-redis": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^22.10.2",
+		"vitest": "5.1.0"
+	}
+}

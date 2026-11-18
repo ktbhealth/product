@@ -9,11 +9,12 @@
 		"./steps": "./src/steps.tsx"
 	},
 	"dependencies": {
-		"@ktb/ai-endpoints": "workspace:*",
+		"@ktb/ai-provider": "workspace:*",
 		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",
+		"@ktb/eval-core": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",

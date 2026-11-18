@@ -85,13 +85,14 @@ export const toErrorResponse = (error: unknown): Response => {
 export const jsonResponse = (body: unknown, status = 200): Response =>
 	Response.json(body, { status });
 
-/** A stored record as plain JSON — Dates become ISO strings. */
+/** A stored record as plain JSON — Dates become ISO strings.
+ * `ownerId`/`tenantId` are deliberately OMITTED: they are internal
+ * fencing ids, not API data, and the api surface is new enough that
+ * no consumer depends on them. */
 export const recordToJson = (record: DocumentRecord): Record<string, unknown> => ({
 	id: record.id,
 	collection: record.collection,
 	data: record.data,
-	ownerId: record.ownerId,
-	tenantId: record.tenantId,
 	createdAt: record.createdAt.toISOString(),
 	updatedAt: record.updatedAt.toISOString(),
 });

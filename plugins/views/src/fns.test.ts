@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import * as Effect from "effect/Effect";
 
 const server = vi.hoisted(() => ({
@@ -11,20 +14,7 @@ const server = vi.hoisted(() => ({
 	run: vi.fn<(eff: Effect.Effect<unknown, unknown, unknown>) => Promise<unknown>>(),
 }));
 
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 vi.mock("@ktb/server-fns", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@ktb/server-fns")>();
@@ -82,6 +72,10 @@ describe("viewQueryFn", () => {
 	it("collapses handled store errors to null", async () => {
 		server.user = null;
 		server.views.query.mockReturnValue(Effect.fail({ _tag: "UnknownCollection", name: "x" }));
+		await expect(viewQueryFn({ data: { path: "/v/notes" } })).resolves.toBeNull();
+		server.views.query.mockReturnValue(
+			Effect.fail({ _tag: "InvalidDocumentQuery", collection: "x", issues: [] }),
+		);
 		await expect(viewQueryFn({ data: { path: "/v/notes" } })).resolves.toBeNull();
 	});
 

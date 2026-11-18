@@ -15,8 +15,14 @@
  *   (`properties`→object, `items`→array, `pattern`/`minLength`→string,
  *   `minimum`/`maximum`→number), defaulting to string.
  * - `string` → `pattern` goes through a small regex-subset generator
- *   (see pattern.ts) verified against the real `RegExp` with retries;
- *   otherwise FIELD-NAME heuristics pick realistic locale-aware pools
+ *   (see pattern.ts) verified against the real `RegExp` with retries.
+ *   Patterns whose repetition can trigger catastrophic backtracking
+ *   (`(a|aa)+b`-style — see `patternHasUnsafeRepetition`) are rejected
+ *   UP FRONT with SeedError: the verify `RegExp.test` is synchronous
+ *   and uninterruptible, so screening is the only hang-proof option.
+ *   Schemas are TRUSTED input (dev/test tooling) — the screen is
+ *   defense in depth, not a security boundary. Without `pattern`,
+ *   FIELD-NAME heuristics pick realistic locale-aware pools
  *   (name/email/cpf/phone/cep/url/date…), then `minLength`/`maxLength`
  *   are enforced by padding/trimming.
  * - `number`/`integer` → uniform in [`minimum` ?? 0, `maximum` ??
@@ -50,7 +56,7 @@ import { validate } from "@ktb/json-schema";
 import type { JsonSchema, JsonSchemaObject } from "@ktb/json-schema";
 
 import { SeedError } from "./errors.ts";
-import { generateFromPattern } from "./pattern.ts";
+import { generateFromPattern, patternHasUnsafeRepetition } from "./pattern.ts";
 import { poolsFor, type LocalePools } from "./pools.ts";
 import { chance, int, makeRng, pick } from "./rng.ts";
 
@@ -575,6 +581,17 @@ const genString = (s: JsonSchemaObject, ctx: Ctx): string => {
 	const max = s.maxLength;
 
 	if (typeof s.pattern === "string") {
+		// ReDoS screen BEFORE any candidate work: `re.test` below is a
+		// synchronous, uninterruptible call — an alternation/nested-
+		// quantifier repetition like `(a|aa)+b` can hang the event loop
+		// on a near-miss candidate. Reject loudly instead (dev tooling:
+		// a rare SeedError beats a hang-forever).
+		if (patternHasUnsafeRepetition(s.pattern)) {
+			throw new SeedError(
+				`pattern /${s.pattern}/ has unsafe repetition (catastrophic backtracking risk)`,
+				ctx.path,
+			);
+		}
 		let re: RegExp;
 		try {
 			re = new RegExp(s.pattern);
@@ -842,7 +859,13 @@ export const generate = (schema: JsonSchema, opts: GenerateOptions = {}): unknow
 	return value;
 };
 
-/** Generate `count` independent values (rng advances between calls). */
+/** Hard cap on `generateMany` count — each value runs the full
+ * generator (pattern retries included), so an unbounded count is an
+ * unbounded hang/DoS surface even for benign schemas. */
+export const MAX_GENERATE_MANY = 10_000;
+
+/** Generate `count` independent values (rng advances between calls).
+ * `count` is capped at {@link MAX_GENERATE_MANY} — SeedError beyond. */
 export const generateMany = (
 	schema: JsonSchema,
 	count: number,
@@ -850,6 +873,9 @@ export const generateMany = (
 ): unknown[] => {
 	if (!Number.isInteger(count) || count < 0) {
 		throw new SeedError(`count must be a non-negative integer, got ${count}`);
+	}
+	if (count > MAX_GENERATE_MANY) {
+		throw new SeedError(`count ${count} exceeds MAX_GENERATE_MANY (${MAX_GENERATE_MANY})`);
 	}
 	const rng = opts.rng ?? makeRng(opts.seed ?? Math.floor(Math.random() * 0x1_0000_0000));
 	return Array.from({ length: count }, () => generate(schema, { ...opts, rng }));

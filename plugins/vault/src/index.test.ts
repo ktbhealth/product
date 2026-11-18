@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Principal } from "@ktb/authz";
+import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
@@ -28,6 +29,9 @@ import {
 	vaultChromePlugin,
 	VaultLive,
 	vaultPagesPlugin,
+	Secrets,
+	SecretsLive,
+	vaultSecretsPlugin,
 	vaultServicesPlugin,
 	vaultTablesPlugin,
 	VAULT_TEST_DDL,
@@ -41,15 +45,24 @@ const DDL =
 const TENANT_ID = 7;
 
 const makeRuntime = (db: DbClient) => {
-	const infra = Layer.succeed(Db, db);
+	// SecretsLive resolves at layer build: Db + the PlatformAdmin gate
+	// (no SecretKeyring bound → list still works; put/resolve fail closed).
+	const infra = Layer.mergeAll(
+		Layer.succeed(Db, db),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+	);
 	return ManagedRuntime.make(
-		Layer.mergeAll(infra, VaultLive.pipe(Layer.provide(infra))),
-	) as ManagedRuntime.ManagedRuntime<Vault, never>;
+		Layer.mergeAll(
+			infra,
+			VaultLive.pipe(Layer.provide(infra)),
+			SecretsLive.pipe(Layer.provide(infra)),
+		),
+	) as ManagedRuntime.ManagedRuntime<Vault | Secrets, never>;
 };
 
 const run = <A, E>(
-	runtime: ManagedRuntime.ManagedRuntime<Vault, never>,
-	effect: Effect.Effect<A, E, Vault>,
+	runtime: ManagedRuntime.ManagedRuntime<Vault | Secrets, never>,
+	effect: Effect.Effect<A, E, Vault | Secrets>,
 	options: {
 		readonly role?: TenantRole | null;
 		readonly userId?: string;
@@ -227,7 +240,7 @@ describe("vault repo", () => {
 
 describe("Vault service", () => {
 	let db: DbClient;
-	let runtime: ManagedRuntime.ManagedRuntime<Vault, never>;
+	let runtime: ManagedRuntime.ManagedRuntime<Vault | Secrets, never>;
 
 	beforeAll(async () => {
 		db = makeDb(makeD1(DDL));
@@ -261,7 +274,7 @@ describe("Vault service", () => {
 	it("records empty actor ids when no principal is bound (system context)", async () => {
 		// run() always binds a Principal — bind null explicitly to cover
 		// the `?.userId ?? ""`/`?? null` fallbacks (jobs/system paths).
-		const runSystem = <A, E>(effect: Effect.Effect<A, E, Vault>) =>
+		const runSystem = <A, E>(effect: Effect.Effect<A, E, Vault | Secrets>) =>
 			runtime.runPromise(
 				effect.pipe(
 					Effect.provideService(Tenant, {
@@ -535,7 +548,13 @@ describe("Vault service", () => {
 		const loader = vaultPagesPlugin.pages[0]!.loader!;
 		// Personal scope (no bound tenant) → null fields, no rows.
 		const personal = await run(runtime, loader(), { role: null });
-		expect(personal).toEqual({ tenantId: null, role: null, zk: false, devices: [] });
+		expect(personal).toEqual({
+			tenantId: null,
+			role: null,
+			zk: false,
+			devices: [],
+			secrets: [],
+		});
 		// Bound tenant → id/role/zk plus the member-visible device list.
 		const scoped = (await run(runtime, loader(), {
 			role: "admin",
@@ -556,11 +575,13 @@ describe("vault plugins", () => {
 		expect(plugins).toEqual([
 			vaultTablesPlugin,
 			vaultServicesPlugin,
+			vaultSecretsPlugin,
 			vaultPagesPlugin,
 			vaultChromePlugin,
 		]);
 		expect(vaultTablesPlugin.id).toBe("vault.tables");
 		expect(vaultServicesPlugin.id).toBe("vault.services");
+		expect(vaultSecretsPlugin.id).toBe("vault.secrets");
 		expect(vaultPagesPlugin.id).toBe("vault.pages");
 		expect(vaultPagesPlugin.pages.map((p) => p.path)).toEqual([
 			"/portal/doctor/vault",

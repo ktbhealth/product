@@ -371,6 +371,45 @@ const genNode = (rng: () => number, st: GenState, node: Node): void => {
 };
 
 /**
+ * Catastrophic-backtracking screen for the VERIFY step. `generate`
+ * confirms candidates with the real `RegExp.test` — synchronous and
+ * uninterruptible, so a pattern like `(a|aa)+b` tested against a
+ * near-miss candidate can hang the event loop forever (exponential
+ * backtracking). This walks the parsed AST and flags the classic
+ * shapes: a REPEATED unit (`*`, `+`, `{n,m}` with max > 1) whose
+ * subtree is ambiguous — i.e. contains an alternation or a nested
+ * quantifier (`(a|aa)+`, `(a|b)*`, `(a+)+`, `(a?)+`).
+ *
+ * Deliberately conservative: `(cat|dog)+` is rejected even though its
+ * branches are usually disjoint — telling them apart needs real
+ * regex analysis, and `@ktb/seed` is dev/test tooling where a rare
+ * SeedError beats a hang. Non-group atoms (`a+`, `\d*`, `[abc]+`) are
+ * never flagged: a single-char/class repeat cannot branch.
+ *
+ * Throws {@link SeedError} on patterns the subset parser rejects —
+ * callers already treat those as ungeneratable.
+ */
+export const patternHasUnsafeRepetition = (pattern: string): boolean => {
+	const ast = new Parser(pattern).parse();
+	// Does this subtree admit ambiguous parses? An alternation, or any
+	// nested quantified part, makes a repeated unit exponential.
+	const nodeAmbiguous = (node: Node): boolean =>
+		node.t === "alt"
+			? true
+			: node.parts.some((p) => atomAmbiguous(p.atom) || p.min !== 1 || p.max !== 1);
+	const atomAmbiguous = (atom: Atom): boolean => atom.t === "group" && nodeAmbiguous(atom.node);
+	const unsafeNode = (node: Node): boolean =>
+		node.t === "alt"
+			? node.options.some(unsafeNode)
+			: node.parts.some(
+					(p) =>
+						(p.max > 1 && atomAmbiguous(p.atom)) ||
+						(p.atom.t === "group" && unsafeNode(p.atom.node)),
+				);
+	return unsafeNode(ast);
+};
+
+/**
  * Generate a string matching `pattern` (a JS regex source). `limit`
  * caps output length (typically the schema's `maxLength`, else
  * {@link MAX_PATTERN_OUTPUT}). Throws {@link SeedError} on unsupported

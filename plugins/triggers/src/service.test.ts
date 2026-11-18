@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { makeEventBus } from "@effect-server-utils/cqrs";
+import { EventBus, makeEventBus } from "@effect-server-utils/cqrs";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import {
@@ -12,9 +12,11 @@ import {
 	f,
 	type DocumentRecordWrittenEvent,
 } from "@ktb/document-store";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Stream from "effect/Stream";
 
 import { defineTrigger, TriggerDefinitions, type TriggerDef } from "./definition.ts";
 import { TriggersHooks } from "./hooks.ts";
@@ -72,12 +74,39 @@ const chainDef: TriggerDef = defineTrigger({
 	},
 });
 
+// Enablement-gate fixtures: defs owned by plugin ids the PluginStates
+// stub reports disabled/enabled. Owner-less defs above stay live.
+const ownedOffDef: TriggerDef = defineTrigger({
+	id: "owned-off",
+	collection: "test.src",
+	owner: "plugin.off",
+	action: { kind: "hook", hook: "test.owned-off" },
+});
+const ownedOnDef: TriggerDef = defineTrigger({
+	id: "owned-on",
+	collection: "test.src",
+	owner: "plugin.on",
+	action: { kind: "hook", hook: "test.owned-on" },
+});
+
 const DEFS = [src, dst, chain];
-const TRIGGER_DEFS = [mirrorDef, hookDef, chainDef];
+const TRIGGER_DEFS = [mirrorDef, hookDef, chainDef, ownedOffDef, ownedOnDef];
+
+/** PluginStates stub — only `enabledIds` is read by the Triggers gate. */
+const pluginStatesStub = (enabled: readonly string[]) =>
+	({
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set(enabled)),
+		config: () => Effect.succeed(null),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	}) as unknown as PluginStates["Service"];
 
 describe("TriggersServicesLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore | Triggers | TriggersHooks, never>;
 	const hookCalls: DocumentRecordWrittenEvent[] = [];
+	const ownedCalls: string[] = [];
 
 	beforeAll(async () => {
 		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
@@ -89,6 +118,8 @@ describe("TriggersServicesLive", () => {
 			Layer.succeed(DocumentCollections, { collections: DEFS }),
 			makeEventBus(),
 			Layer.succeed(TriggerDefinitions, { triggers: TRIGGER_DEFS }),
+			// plugin.on enabled, plugin.off (and every other id) disabled.
+			Layer.succeed(PluginStates, pluginStatesStub(["plugin.on"])),
 		);
 		const withStore = Layer.mergeAll(shared, DocumentStoreLive.pipe(Layer.provide(shared)));
 		runtime = ManagedRuntime.make(
@@ -100,6 +131,16 @@ describe("TriggersServicesLive", () => {
 				hooks.register("test.observed", (handle) =>
 					Effect.sync(() => {
 						hookCalls.push(handle.event);
+					}),
+				);
+				hooks.register("test.owned-off", () =>
+					Effect.sync(() => {
+						ownedCalls.push("off");
+					}),
+				);
+				hooks.register("test.owned-on", () =>
+					Effect.sync(() => {
+						ownedCalls.push("on");
 					}),
 				);
 			}),
@@ -198,6 +239,17 @@ describe("TriggersServicesLive", () => {
 		expect(settled.total).toBe(TRIGGER_MAX_DEPTH + 1);
 	});
 
+	it("skips defs owned by disabled plugins but fires enabled ones", async () => {
+		const before = ownedCalls.length;
+		await insert("test.src", { v: "enablement" });
+		await vi.waitFor(() => expect(ownedCalls.length).toBeGreaterThan(before), {
+			timeout: 2000,
+		});
+		// plugin.on fired; plugin.off never did — per-event enablement
+		// is re-read from PluginStates on every dispatch.
+		expect(ownedCalls.slice(before)).toEqual(["on"]);
+	});
+
 	it("dispatch skips events at the depth cap without touching actions", async () => {
 		const before = hookCalls.length;
 		await runtime.runPromise(
@@ -217,5 +269,103 @@ describe("TriggersServicesLive", () => {
 		);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(hookCalls.length).toBe(before);
+	});
+});
+
+describe("consumer lifecycle", () => {
+	const busStub = (stream: Stream.Stream<never>) =>
+		Layer.succeed(EventBus, {
+			stream: () => Effect.succeed(stream),
+			dispatch: () => Effect.void,
+		} as never);
+
+	const baseLayer = (eventBus: Layer.Layer<EventBus>) =>
+		Layer.mergeAll(Layer.succeed(TriggerDefinitions, { triggers: [] }), eventBus);
+
+	it("logs a clean stop when the event stream completes", async () => {
+		const rt = ManagedRuntime.make(
+			TriggersServicesLive.pipe(Layer.provideMerge(baseLayer(busStub(Stream.empty)))),
+		);
+		try {
+			await rt.runPromise(Effect.void);
+			// Give the forked consumer a tick to drain the empty stream.
+			await new Promise((r) => setTimeout(r, 50));
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("logs consumer death when the event stream defects", async () => {
+		const rt = ManagedRuntime.make(
+			TriggersServicesLive.pipe(
+				Layer.provideMerge(baseLayer(busStub(Stream.die(new Error("stream dead"))))),
+			),
+		);
+		try {
+			await rt.runPromise(Effect.void);
+			await new Promise((r) => setTimeout(r, 50));
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("logs dispatch failures per event without killing the consumer", async () => {
+		const event = { id: "evt-1" } as unknown as DocumentRecordWrittenEvent;
+		const bus = Layer.succeed(EventBus, {
+			stream: () => Effect.succeed(Stream.fromIterable([event])),
+			dispatch: () => Effect.void,
+		} as never);
+		const defs = Layer.succeed(TriggerDefinitions, {
+			get triggers(): readonly TriggerDef[] {
+				throw new Error("defs boom");
+			},
+		} as never);
+		const rt = ManagedRuntime.make(
+			TriggersServicesLive.pipe(Layer.provideMerge(Layer.mergeAll(defs, bus))),
+		);
+		try {
+			await rt.runPromise(Effect.void);
+			// Give the forked consumer a tick to drain the one-event stream.
+			await new Promise((r) => setTimeout(r, 50));
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("isolates per-event dispatch defects — the write still succeeds", async () => {
+		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const shared = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: DEFS }),
+			makeEventBus(),
+			Layer.succeed(TriggerDefinitions, {
+				get triggers(): readonly TriggerDef[] {
+					throw new Error("defs boom");
+				},
+			} as never),
+		);
+		const withStore = Layer.mergeAll(shared, DocumentStoreLive.pipe(Layer.provide(shared)));
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(withStore, TriggersServicesLive.pipe(Layer.provideMerge(withStore))),
+		);
+		try {
+			const record = await rt.runPromise(
+				Effect.gen(function* () {
+					const store = yield* DocumentStore;
+					return yield* store.insert("test.src", { v: "dispatch-boom" }, { ownerId: "user-1" });
+				}),
+			);
+			expect(record.data.v).toBe("dispatch-boom");
+			// The consumer survives: a second write dispatches (and is
+			// logged) the same way instead of the fiber being dead.
+			await rt.runPromise(
+				Effect.gen(function* () {
+					const store = yield* DocumentStore;
+					yield* store.insert("test.src", { v: "again" }, { ownerId: "user-1" });
+				}),
+			);
+		} finally {
+			await rt.dispose();
+		}
 	});
 });

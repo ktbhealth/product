@@ -13,11 +13,13 @@
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
+		"@ktb/audit": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.2.3@react",
@@ -29,6 +31,7 @@
 	},
 	"devDependencies": {
 		"@ktb/auth": "workspace:*",
+		"@ktb/vault-keyring": "workspace:*",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",
 		"react": "^19.2.0",

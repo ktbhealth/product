@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { plugins, authRoutesPlugin, authChromePlugin } from "./index.ts";
 
 describe("auth plugin manifests", () => {
-	it("auth.routes is a system plugin mounting the credential pages + the /api subtree", () => {
+	it("auth.routes is a system plugin mounting the sign-in pages + the /api subtree", () => {
 		expect(authRoutesPlugin.id).toBe("auth.routes");
 		expect(authRoutesPlugin.system).toBe(true);
-		expect(authRoutesPlugin.routes).toHaveLength(4);
+		// /login/doctor, /login/admin, /forgot-password, /reset-password
+		// and the physical /api mount.
+		expect(authRoutesPlugin.routes).toHaveLength(5);
 	});
 
 	it("auth.chrome is a system plugin contributing the session menu", () => {

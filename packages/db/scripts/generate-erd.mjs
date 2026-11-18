@@ -64,7 +64,15 @@ const DOMAINS = [
 		owner: "`plugins/vault`",
 		description:
 			"Zero-knowledge key custody — wrapped clinic keys and per-entity data encryption key grants.",
-		tables: ["clinic_keys", "entity_deks", "portal_keys"],
+		tables: ["clinic_keys", "entity_deks", "portal_keys", "vault_secret"],
+	},
+	{
+		id: "machines",
+		title: "Machines",
+		owner: "`plugins/machines`",
+		description:
+			"Platform machine registry — ACP/agent endpoint hosts with health/last-seen tracking.",
+		tables: ["machine"],
 	},
 	{
 		id: "notifications",
@@ -154,15 +162,29 @@ const DOMAINS = [
 		owner: "`plugins/eval-validator`",
 		description:
 			"Eval run tracking — step 3 of the eval pipeline: runs over a generation instance's approved items, per-sample metrics and diffs.",
-		tables: ["eval_run", "eval_run_sample"],
+		tables: ["eval_run", "eval_run_sample", "eval_run_record"],
 	},
 	{
 		id: "ai-endpoints",
 		title: "AI endpoints",
-		owner: "`plugins/ai-endpoints`",
+		owner: "`plugins/ai-provider`",
 		description:
 			"Generative providers (acp/openai) any AI surface binds through AiEndpoints.resolve — scoped per consuming surface with an is_default pick — plus the one-shot ai-bridge connect links.",
 		tables: ["ai_agent_link", "ai_endpoint"],
+	},
+	{
+		id: "ai-model",
+		title: "AI model catalog",
+		owner: "`plugins/ai-model`",
+		description: "Platform model catalog — curated model entries AI surfaces resolve against.",
+		tables: ["ai_model"],
+	},
+	{
+		id: "ai-prompt",
+		title: "AI prompts",
+		owner: "`plugins/ai-prompt`",
+		description: "Versioned prompt registry — named prompts with versioned bodies for AI surfaces.",
+		tables: ["ai_prompt"],
 	},
 	{
 		id: "eval-persona",

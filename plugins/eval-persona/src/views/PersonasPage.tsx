@@ -29,8 +29,8 @@ import {
 } from "@ktbhealth/ui/components/select";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
-import type { EndpointCard } from "@ktb/ai-endpoints";
-import { listEndpointsFn } from "@ktb/ai-endpoints/fns";
+import type { EndpointCard } from "@ktb/ai-provider";
+import { listEndpointsFn } from "@ktb/ai-provider/fns";
 
 import {
 	deletePersonaDefFn,

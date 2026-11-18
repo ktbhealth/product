@@ -35,7 +35,7 @@ async function handle({ request }: { request: Request }) {
 				return run(
 					Effect.gen(function* () {
 						const gate = yield* PlatformAdmin;
-						return yield* gate.isAdmin(user.email);
+						return yield* gate.isAdmin({ email: user.email, userId: user.id });
 					}),
 				).catch(() => false);
 			})();

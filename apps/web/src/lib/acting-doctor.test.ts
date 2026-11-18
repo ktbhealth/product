@@ -1,26 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	reactStartMock,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { doctorAccess, doctors, patients, user } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
@@ -47,7 +34,7 @@ async function signIn(email: string) {
 }
 
 const as = (cookie: string, doctorId?: number) => {
-	headers.current = new Headers({
+	serverFnRequestHeaders.current = new Headers({
 		cookie: doctorId === undefined ? cookie : `${cookie}; ktb_doctor=${doctorId}`,
 	});
 };

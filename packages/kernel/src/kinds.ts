@@ -14,7 +14,7 @@ import type { Plugin } from "./contributions.ts";
  *
  * Consumers OPT IN: each surface collects only the kinds it knows —
  * the app host reads the dedicated fields through its own collectors
- * (pages.ts/chrome.ts), apps/eval collects `eval.*` entries from the
+ * (pages.ts/chrome.ts), packages/eval-cli collects `eval.*` entries from the
  * same plugin graph. The dep graph (requiredDeps/optionalDeps) stays
  * kind-agnostic: it orders plugins, never kinds.
  */

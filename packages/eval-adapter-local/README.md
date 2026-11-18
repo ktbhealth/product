@@ -39,7 +39,7 @@ that ARE stored — ingest pipelines, not generated audio.
   ```sh
   wev serve --model alanhuangya/OpenJev-4B --port 8009
   EVAL_SYSTEMONE_URL=http://127.0.0.1:8009 \
-    bun apps/eval/src/cli.ts run <suite> --profile local-systemone
+    bun packages/eval-cli/src/cli.ts run <suite> --profile local-systemone
   ```
 
   `EVAL_SYSTEMONE_MODEL` is optional — self-hosted servers treat the

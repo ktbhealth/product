@@ -60,7 +60,7 @@ export const DomainLocale = Schema.Struct({
 export type DomainLocale = typeof DomainLocale.Type;
 
 /** Template binding — `dir` is pack-relative (resolved against the
- * domain file's directory by apps/eval); `name` is the default
+ * domain file's directory by packages/eval-cli); `name` is the default
  * template basename (no `.eta`). */
 export const DomainTemplates = Schema.Struct({
 	dir: Schema.String,
@@ -99,7 +99,7 @@ export type DomainProvides = typeof DomainProvides.Type;
 
 /** The domain-pack definition — pure data, validated at definition
  * time by `defineDomain`. `extends` is a domain id resolved by the
- * composition root (apps/eval) against discovered definitions. */
+ * composition root (packages/eval-cli) against discovered definitions. */
 export const DomainDefinition = Schema.Struct({
 	id: Schema.String,
 	version: Schema.String,

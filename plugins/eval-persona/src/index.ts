@@ -6,10 +6,10 @@ import * as Option from "effect/Option";
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { FlaskConicalIcon, Users2Icon } from "lucide-react";
 
-import { AiEndpoints, type EndpointCard } from "@ktb/ai-endpoints";
+import { AiEndpoints, type EndpointCard } from "@ktb/ai-provider";
 import { Principal, type Forbidden } from "@ktb/authz";
 import { Db, tx, type DbClient } from "@ktb/db";
-import { doctors, patients, user as userTable } from "@ktb/db/schema";
+import { consultations, doctors, patients, user as userTable } from "@ktb/db/schema";
 import {
 	buildScriptPrompt,
 	DEFAULT_MATRIX,
@@ -29,6 +29,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
+import { instanceToDatasetManifest } from "./manifest.ts";
 import { InstancesPanelPage, PersonasPanelPage } from "./platform-page.tsx";
 import {
 	evalInstance,
@@ -46,7 +47,7 @@ export type { EvalInstance, EvalInstanceItem, EvalPersonaDef } from "./schema.ts
  * (`eval.validator`). Canonical home is this plugin: the eval lab is
  * the pipeline's base layer (steps 1–2) that step 3 depends on. The
  * validator plugin re-exports it for consumers that pin the spelling
- * through @ktb/eval-validator (ai-endpoints, credentials). */
+ * through @ktb/eval-validator (ai-provider, credentials). */
 export const EVAL_RESOURCE = "eval";
 export const EVAL_ACTION = "validator";
 
@@ -535,7 +536,7 @@ export const EvalInstancesLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const factory = yield* Effect.serviceOption(LlmFactory);
-		// Optional dep: without the ai-endpoints plugin every endpoint
+		// Optional dep: without the ai-provider plugin every endpoint
 		// binding degrades to template mode and names render as the
 		// generic template label.
 		const endpoints = yield* Effect.serviceOption(AiEndpoints);
@@ -598,22 +599,39 @@ export const EvalInstancesLive = Layer.effect(
 								return { script: r.script, turns: r.turns, mode: "template" };
 							})();
 				const rand = rng(item.id);
+				// WS-F: the generated consultation persists as a REAL
+				// consultations row (synthetic=1, evalItemId provenance)
+				// so evals exercise the actual pipeline records — the
+				// gold script lands as the consultation transcript and
+				// the run writes ASR/cleanup/anamnesis outputs back onto
+				// the same row (eval-validator onSample).
 				yield* Effect.promise(() =>
-					db
-						.update(evalInstanceItem)
-						.set({
-							status: "done",
-							script: rendered.script,
-							turns: JSON.stringify(rendered.turns),
-							voices: JSON.stringify({
-								doctor: voiceFor(persona.doctor?.gender, rand),
-								patient: voiceFor(persona.gender, rand),
-							}),
+					tx(db as DbClient, [
+						db.insert(consultations).values({
+							userId: `syn-inst${instanceId}-${item.id}`,
 							patientId: entities.patientId,
-							doctorId: entities.doctorId,
-							scriptMode: rendered.mode,
-						})
-						.where(eq(evalInstanceItem.id, item.id)),
+							transcript: rendered.script,
+							source: "eval",
+							synthetic: true,
+							evalItemId: item.id,
+							createdAt: new Date(),
+						}),
+						db
+							.update(evalInstanceItem)
+							.set({
+								status: "done",
+								script: rendered.script,
+								turns: JSON.stringify(rendered.turns),
+								voices: JSON.stringify({
+									doctor: voiceFor(persona.doctor?.gender, rand),
+									patient: voiceFor(persona.gender, rand),
+								}),
+								patientId: entities.patientId,
+								doctorId: entities.doctorId,
+								scriptMode: rendered.mode,
+							})
+							.where(eq(evalInstanceItem.id, item.id)),
+					]),
 				);
 			});
 
@@ -673,12 +691,20 @@ export const EvalInstancesLive = Layer.effect(
 				const inFlight = items.some((i) => i.status === "generating");
 				if (!inFlight) {
 					const okCount = items.filter((i) => i.status === "done").length;
+					// Dataset manifest (WS-D): written whenever the instance
+					// produced ANY items — `ready` cohorts get the registry
+					// identity runs pin, and a `failed` instance still
+					// records the partial corpus it attempted (sampleCount
+					// reflects only `done` items either way).
+					const manifest =
+						items.length === 0 ? null : JSON.stringify(instanceToDatasetManifest(inst, items));
 					yield* Effect.promise(() =>
 						db
 							.update(evalInstance)
 							.set({
 								status: okCount === 0 && items.length > 0 ? "failed" : "ready",
 								done: items.filter((i) => i.status === "done" || i.status === "error").length,
+								manifest,
 							})
 							.where(eq(evalInstance.id, instanceId)),
 					);
@@ -994,12 +1020,13 @@ const buildPromptFor = (persona: Persona, minutes: number | undefined): string =
 /** DDL mirror of schema.ts for in-memory test databases (same
  * contract as EVAL_VALIDATOR_TEST_DDL). */
 export const EVAL_PERSONA_TEST_DDL = `
-CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, machine_id INTEGER, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_def (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, persona TEXT NOT NULL, notes TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES ai_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, created_by TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES ai_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, manifest TEXT, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE REFERENCES user(id) ON DELETE cascade, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, tenant_id INTEGER, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, patient_id INTEGER REFERENCES patients(id), tenant_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL DEFAULT 'browser', status TEXT NOT NULL DEFAULT 'done', bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE eval_instance_item (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL REFERENCES eval_instance(id) ON DELETE cascade, persona_def_id INTEGER REFERENCES eval_persona_def(id) ON DELETE set null, persona TEXT, script TEXT, turns TEXT, voices TEXT, patient_id INTEGER REFERENCES patients(id) ON DELETE set null, doctor_id INTEGER REFERENCES doctors(id) ON DELETE set null, script_mode TEXT, status TEXT NOT NULL DEFAULT 'pending', error TEXT, state TEXT NOT NULL DEFAULT 'under_review', feedback TEXT, reviewed_by TEXT, reviewed_at INTEGER, claimed_at INTEGER, created_at INTEGER NOT NULL);
 `;
 
@@ -1008,7 +1035,7 @@ export const evalPersonaTablesPlugin = definePlugin({
 	meta: { keywords: ["eval", "persona", "tables"] },
 	// eval_instance.endpoint_id references ai_endpoint — ordering hint
 	// only; the plugin works standalone (tests supply the table).
-	optionalDeps: ["ai.endpoints.tables"],
+	optionalDeps: ["ai.provider.tables"],
 	tables: { evalPersonaDef, evalInstance, evalInstanceItem },
 });
 
@@ -1018,7 +1045,7 @@ export const evalPersonaServicesPlugin = definePlugin({
 	requiredDeps: [evalPersonaTablesPlugin.id],
 	// Endpoint binding/resolution is a soft dep — AiEndpoints absence
 	// degrades every endpoint pick to template mode.
-	optionalDeps: ["ai.endpoints.services"],
+	optionalDeps: ["ai.provider.services"],
 	services: Layer.mergeAll(EvalPersonasLive, EvalInstancesLive),
 });
 

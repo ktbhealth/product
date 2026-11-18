@@ -365,17 +365,25 @@ export type I18nKey =
 	| "audit.colAction"
 	| "audit.colActor"
 	| "audit.colDetail"
+	| "audit.colHash"
+	| "audit.colId"
 	| "audit.colTarget"
 	| "audit.colTenant"
 	| "audit.colTime"
+	| "audit.dateFrom"
+	| "audit.dateTo"
 	| "audit.detailTitle"
 	| "audit.emptyDescription"
 	| "audit.emptyTitle"
 	| "audit.filteredCount"
+	| "audit.loadFailed"
+	| "audit.nextPage"
 	| "audit.noMatch"
 	| "audit.noTarget"
 	| "audit.noTargetType"
 	| "audit.noTenant"
+	| "audit.pageInfo"
+	| "audit.prevPage"
 	| "audit.searchLabel"
 	| "audit.searchPlaceholder"
 	| "audit.systemActor"
@@ -797,11 +805,13 @@ export type I18nKey =
 	| "eval.validator.generating"
 	| "eval.validator.items"
 	| "eval.validator.moreTurns"
+	| "eval.validator.noRunnerBound"
 	| "eval.validator.pending"
 	| "eval.validator.reject"
 	| "eval.validator.rejected"
 	| "eval.validator.run"
 	| "eval.validator.runEval"
+	| "eval.validator.runnerInline"
 	| "eval.validator.samplesOf"
 	| "eval.validator.stageAnamnesis"
 	| "eval.validator.stageCleanup"
@@ -987,6 +997,34 @@ export type I18nKey =
 	| "kv.ttlNone"
 	| "kv.ttlSeconds"
 	| "kv.valueHint"
+	| "machines.actionFailed"
+	| "machines.add"
+	| "machines.cancel"
+	| "machines.capabilities"
+	| "machines.capabilitiesHint"
+	| "machines.check"
+	| "machines.checkAll"
+	| "machines.confirmDelete"
+	| "machines.delete"
+	| "machines.desc"
+	| "machines.disable"
+	| "machines.empty"
+	| "machines.enable"
+	| "machines.healthUrl"
+	| "machines.host"
+	| "machines.kind"
+	| "machines.lastCheck"
+	| "machines.lastSeen"
+	| "machines.name"
+	| "machines.port"
+	| "machines.save"
+	| "machines.secretRef"
+	| "machines.status"
+	| "machines.statusDraining"
+	| "machines.statusOffline"
+	| "machines.statusOnline"
+	| "machines.statusUnknown"
+	| "machines.title"
 	| "manager.actionConfigure"
 	| "manager.blockedHint"
 	| "manager.cancel"
@@ -1270,6 +1308,13 @@ export type I18nKey =
 	| "patients.gender.male"
 	| "patients.gender.other"
 	| "patients.gender.unknown"
+	| "patients.intake.allergies"
+	| "patients.intake.chiefComplaint"
+	| "patients.intake.dataUseConsent"
+	| "patients.intake.medications"
+	| "patients.intake.symptomsDuration"
+	| "patients.intake.termsAccepted"
+	| "patients.intake.viewTitle"
 	| "patients.language.de"
 	| "patients.language.en"
 	| "patients.language.es"
@@ -1993,9 +2038,13 @@ export interface I18nTypedT {
 	(key: "audit.colAction"): Effect.Effect<string>;
 	(key: "audit.colActor"): Effect.Effect<string>;
 	(key: "audit.colDetail"): Effect.Effect<string>;
+	(key: "audit.colHash"): Effect.Effect<string>;
+	(key: "audit.colId"): Effect.Effect<string>;
 	(key: "audit.colTarget"): Effect.Effect<string>;
 	(key: "audit.colTenant"): Effect.Effect<string>;
 	(key: "audit.colTime"): Effect.Effect<string>;
+	(key: "audit.dateFrom"): Effect.Effect<string>;
+	(key: "audit.dateTo"): Effect.Effect<string>;
 	(key: "audit.detailTitle"): Effect.Effect<string>;
 	(key: "audit.emptyDescription"): Effect.Effect<string>;
 	(key: "audit.emptyTitle"): Effect.Effect<string>;
@@ -2006,10 +2055,20 @@ export interface I18nTypedT {
 			total: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "audit.loadFailed"): Effect.Effect<string>;
+	(key: "audit.nextPage"): Effect.Effect<string>;
 	(key: "audit.noMatch"): Effect.Effect<string>;
 	(key: "audit.noTarget"): Effect.Effect<string>;
 	(key: "audit.noTargetType"): Effect.Effect<string>;
 	(key: "audit.noTenant"): Effect.Effect<string>;
+	(
+		key: "audit.pageInfo",
+		params: {
+			current: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "audit.prevPage"): Effect.Effect<string>;
 	(key: "audit.searchLabel"): Effect.Effect<string>;
 	(key: "audit.searchPlaceholder"): Effect.Effect<string>;
 	(key: "audit.systemActor"): Effect.Effect<string>;
@@ -2579,11 +2638,13 @@ export interface I18nTypedT {
 	(key: "eval.validator.generating"): Effect.Effect<string>;
 	(key: "eval.validator.items"): Effect.Effect<string>;
 	(key: "eval.validator.moreTurns"): Effect.Effect<string>;
+	(key: "eval.validator.noRunnerBound"): Effect.Effect<string>;
 	(key: "eval.validator.pending"): Effect.Effect<string>;
 	(key: "eval.validator.reject"): Effect.Effect<string>;
 	(key: "eval.validator.rejected"): Effect.Effect<string>;
 	(key: "eval.validator.run"): Effect.Effect<string>;
 	(key: "eval.validator.runEval"): Effect.Effect<string>;
+	(key: "eval.validator.runnerInline"): Effect.Effect<string>;
 	(key: "eval.validator.samplesOf"): Effect.Effect<string>;
 	(key: "eval.validator.stageAnamnesis"): Effect.Effect<string>;
 	(key: "eval.validator.stageCleanup"): Effect.Effect<string>;
@@ -2840,6 +2901,34 @@ export interface I18nTypedT {
 	(key: "kv.ttlNone"): Effect.Effect<string>;
 	(key: "kv.ttlSeconds"): Effect.Effect<string>;
 	(key: "kv.valueHint"): Effect.Effect<string>;
+	(key: "machines.actionFailed"): Effect.Effect<string>;
+	(key: "machines.add"): Effect.Effect<string>;
+	(key: "machines.cancel"): Effect.Effect<string>;
+	(key: "machines.capabilities"): Effect.Effect<string>;
+	(key: "machines.capabilitiesHint"): Effect.Effect<string>;
+	(key: "machines.check"): Effect.Effect<string>;
+	(key: "machines.checkAll"): Effect.Effect<string>;
+	(key: "machines.confirmDelete"): Effect.Effect<string>;
+	(key: "machines.delete"): Effect.Effect<string>;
+	(key: "machines.desc"): Effect.Effect<string>;
+	(key: "machines.disable"): Effect.Effect<string>;
+	(key: "machines.empty"): Effect.Effect<string>;
+	(key: "machines.enable"): Effect.Effect<string>;
+	(key: "machines.healthUrl"): Effect.Effect<string>;
+	(key: "machines.host"): Effect.Effect<string>;
+	(key: "machines.kind"): Effect.Effect<string>;
+	(key: "machines.lastCheck"): Effect.Effect<string>;
+	(key: "machines.lastSeen"): Effect.Effect<string>;
+	(key: "machines.name"): Effect.Effect<string>;
+	(key: "machines.port"): Effect.Effect<string>;
+	(key: "machines.save"): Effect.Effect<string>;
+	(key: "machines.secretRef"): Effect.Effect<string>;
+	(key: "machines.status"): Effect.Effect<string>;
+	(key: "machines.statusDraining"): Effect.Effect<string>;
+	(key: "machines.statusOffline"): Effect.Effect<string>;
+	(key: "machines.statusOnline"): Effect.Effect<string>;
+	(key: "machines.statusUnknown"): Effect.Effect<string>;
+	(key: "machines.title"): Effect.Effect<string>;
 	(key: "manager.actionConfigure"): Effect.Effect<string>;
 	(
 		key: "manager.blockedHint",
@@ -3237,6 +3326,13 @@ export interface I18nTypedT {
 	(key: "patients.gender.male"): Effect.Effect<string>;
 	(key: "patients.gender.other"): Effect.Effect<string>;
 	(key: "patients.gender.unknown"): Effect.Effect<string>;
+	(key: "patients.intake.allergies"): Effect.Effect<string>;
+	(key: "patients.intake.chiefComplaint"): Effect.Effect<string>;
+	(key: "patients.intake.dataUseConsent"): Effect.Effect<string>;
+	(key: "patients.intake.medications"): Effect.Effect<string>;
+	(key: "patients.intake.symptomsDuration"): Effect.Effect<string>;
+	(key: "patients.intake.termsAccepted"): Effect.Effect<string>;
+	(key: "patients.intake.viewTitle"): Effect.Effect<string>;
 	(key: "patients.language.de"): Effect.Effect<string>;
 	(key: "patients.language.en"): Effect.Effect<string>;
 	(key: "patients.language.es"): Effect.Effect<string>;

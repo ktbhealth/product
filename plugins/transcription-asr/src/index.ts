@@ -12,7 +12,7 @@ import { AsrPort } from "@ktb/eval-consultation/ports";
  * because plugins/* is inside the arch preset's PORT_GLOBS (no node:*,
  * provider literals, or adapter imports). See
  * plugins/transcription-tts/src/index.ts for the full mechanism —
- * apps/eval resolves `meta.adapters[key]` per `meta.port`.
+ * packages/eval-cli resolves `meta.adapters[key]` per `meta.port`.
  *
  * Adapter keys → packages: "stub" → @ktb/eval-adapter-stub AsrPort
  * layer, "faster-whisper" → @ktb/eval-adapter-local `makeLocalAsr`,

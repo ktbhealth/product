@@ -4,6 +4,8 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { DocumentStore, type DocumentRecord, type DocumentStoreError } from "@ktb/document-store";
+import { defOwnerEnabled } from "@ktb/kernel";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
 
 import {
@@ -33,8 +35,10 @@ import {
  * visible scope.
  *
  * Authorization is two-layered like every plugin surface: the page
- * `guard` runs {@link Views.allows} (def exists + permission grant)
- * and the loader/fn re-check inside {@link Views.load}/`query` —
+ * `guard` runs {@link Views.allows} (def exists + owner enabled +
+ * permission grant — owner enablement is the runtime `PluginStates`
+ * check shared with @ktb/triggers/@ktb/flows) and the
+ * loader/fn re-check inside {@link Views.load}/`query` —
  * denial collapses to `null` (the host maps it to not-found).
  *
  * `ref` label resolution is deliberately bounded: only fields on the
@@ -48,6 +52,11 @@ import {
 /** Max `ref` target lookups per wire payload — beyond this cells fall
  * back to `#<id>`. */
 export const REF_LOOKUP_CAP = 50;
+
+/** Concurrent `DocumentStore.get` lookups per payload. Each get is a
+ * store-side scan (v1 JS evaluation), so the cap bounds in-flight D1
+ * round-trips without serializing the whole page. */
+const REF_LOOKUP_CONCURRENCY = 8;
 
 export interface ViewsShape {
 	/** Cheap gate for the page `guard`: the path parses, a def owns the
@@ -90,6 +99,10 @@ export const ViewsLive = Layer.effect(
 		// Permissions is an OPTIONAL port (rbac plugin may be disabled):
 		// a declared `permission` with no grant service fails closed.
 		const permissions = yield* Effect.serviceOption(Permissions);
+		// PluginStates is likewise OPTIONAL: when bound, defs owned by
+		// disabled plugins/packages resolve as unknown (404/null) on
+		// every call — runtime enablement, same contract as @ktb/flows.
+		const pluginStates = yield* Effect.serviceOption(PluginStates);
 
 		const permissionAllows = (def: ViewDef): Effect.Effect<boolean> => {
 			if (def.permission === undefined) return Effect.succeed(true);
@@ -107,6 +120,12 @@ export const ViewsLive = Layer.effect(
 				if (segments === null) return null;
 				const def = defForKey(registry.views, segments.key);
 				if (def === undefined) return null;
+				// A disabled owner makes the def invisible — same null as
+				// an unknown key, so enablement leaks nothing.
+				if (Option.isSome(pluginStates)) {
+					const enabled = yield* pluginStates.value.enabledIds();
+					if (!defOwnerEnabled(registry.ownerIndex, def.owner, enabled)) return null;
+				}
 				if (!(yield* permissionAllows(def))) return null;
 				return { def, docId: segments.docId };
 			});
@@ -162,7 +181,7 @@ export const ViewsLive = Layer.effect(
 									: viewScalarText(labelValue);
 							return [key, label] as const;
 						}),
-					{ concurrency: 1 },
+					{ concurrency: REF_LOOKUP_CONCURRENCY },
 				);
 				return Object.fromEntries(pairs.filter((p): p is readonly [string, string] => p !== null));
 			});
@@ -231,7 +250,18 @@ export const ViewsLive = Layer.effect(
 					// Detail paths don't paginate — only list payloads refetch.
 					if (resolved === null || resolved.docId !== null) return null;
 					return yield* loadList(resolved.def, viewKey(resolved.def), input);
-				}).pipe(Effect.catchTag("UnknownCollection", () => Effect.succeed(null))),
+				}).pipe(
+					Effect.catchTag("UnknownCollection", () => Effect.succeed(null)),
+					// Interactive filter values are raw user input — a bad
+					// operand shape ($in without an array, an invalid
+					// $regex, …) fails store-side validation as
+					// InvalidDocumentQuery. Collapse it to null like
+					// UnknownCollection: the caller sees "no payload"
+					// instead of a 500. Fixed-filter defs are validated
+					// at assertViewDef time, so this can only come from
+					// interactive input or a store-side rule change.
+					Effect.catchTag("InvalidDocumentQuery", () => Effect.succeed(null)),
+				),
 		});
 	}),
 );

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import type * as Effect from "effect/Effect";
 
 import type { ThemePublishInput } from "./theme.ts";
@@ -10,20 +12,7 @@ import type { ThemeSummary } from "./types.ts";
  * this environment — `cookieApi()` must degrade to null so server fns
  * stay loadable outside a request context (tests, build).
  */
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 vi.mock("@tanstack/react-start/server", () => {
 	throw new Error("react-start server unavailable in this test env");

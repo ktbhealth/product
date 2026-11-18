@@ -9,6 +9,18 @@ vi.mock("@tanstack/react-router", () => ({
 
 const fns = vi.hoisted(() => ({
 	auditVerifyFn: vi.fn<() => Promise<null>>(async () => null),
+	auditAdminListFn: vi.fn(async ({ data }: { data: unknown }): Promise<unknown> => ({
+		entries: [],
+		total: 0,
+		limit: 200,
+		offset: 0,
+		data,
+	})),
+	auditAdminFacetsFn: vi.fn(async (): Promise<unknown> => ({
+		actionGroups: [],
+		actors: [],
+		targetTypes: [],
+	})),
 }));
 vi.mock("./fns.ts", () => fns);
 
@@ -43,15 +55,29 @@ describe("AuditPlatformPage", () => {
 	});
 
 	it("narrows loader data into the audit view", () => {
-		render(<AuditPlatformPage data={{ entries: [row({})], total: 1, limit: 200 }} ctx={ctx} />);
+		render(
+			<AuditPlatformPage
+				data={{ entries: [row({})], total: 1, limit: 200, offset: 3 }}
+				ctx={ctx}
+			/>,
+		);
 		expect(screen.getByText("admin@x.com")).toBeTruthy();
 		expect(screen.getByText("users.suspend")).toBeTruthy();
 		expect(screen.getByText("1 admin action recorded.")).toBeTruthy();
 	});
 
 	it("falls back to an empty page on malformed loader data", () => {
-		render(<AuditPlatformPage data={{ entries: "nope", total: "x" }} ctx={ctx} />);
+		render(<AuditPlatformPage data={{ entries: "nope", total: "x", offset: "y" }} ctx={ctx} />);
 		expect(screen.getByText("No audit entries")).toBeTruthy();
+	});
+
+	it("forwards server pagination to auditAdminListFn", async () => {
+		const user = userEvent.setup();
+		render(<AuditPlatformPage data={{ entries: [row({})], total: 5, limit: 1 }} ctx={ctx} />);
+		await user.click(screen.getByText("Next"));
+		expect(fns.auditAdminListFn).toHaveBeenCalledWith({
+			data: expect.objectContaining({ limit: 1, offset: 1 }),
+		});
 	});
 
 	it("enables the on-demand chain verification on the platform surface", async () => {

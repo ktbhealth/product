@@ -1,0 +1,8 @@
+{
+	"name": "@ktb/dsl",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	}
+}

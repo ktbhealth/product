@@ -17,7 +17,7 @@ vi.mock("./fns.ts", () => ({
 		data: { created: 0 },
 	})),
 }));
-vi.mock("@ktb/ai-endpoints/fns", () => ({
+vi.mock("@ktb/ai-provider/fns", () => ({
 	listEndpointsFn: vi.fn<() => Promise<unknown>>(async () => ({ ok: true, data: [] })),
 }));
 vi.mock("@tanstack/react-router", async () => {

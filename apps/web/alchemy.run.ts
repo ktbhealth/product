@@ -114,6 +114,7 @@ export default Alchemy.Stack(
 						"LLM_MODEL",
 						"WORKERS_AI_MODEL",
 						"RECALL_API_KEY",
+						"VAULT_MASTER_KEY",
 					]
 						.filter((k) => process.env[k])
 						.map((k) => [k, Redacted.make(process.env[k] as string)]),

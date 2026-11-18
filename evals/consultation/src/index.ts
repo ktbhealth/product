@@ -18,10 +18,10 @@ import {
 // modules build on live in @ktb/eval-core.
 //
 // This is NOT a plugin: domain packs live under evals/ (consumed only
-// by apps/eval) and are plain workspace packages — no `plugins`
+// by packages/eval-cli) and are plain workspace packages — no `plugins`
 // manifest, no `definePlugin`, no `@ktb/kernel` augmentation. The
 // contribution declarations below are exported as a plain array that
-// the eval composition root (apps/eval/src/contributions.ts) collects
+// the eval composition root (packages/eval-cli/src/contributions.ts) collects
 // directly.
 export * from "./accept.ts";
 export * from "./config.ts";
@@ -46,7 +46,7 @@ export * from "./scriptgen.ts";
  * Domain metric + gate contributions (P-074 phase 4, P-070) — declared
  * as `eval.metric`/`eval.gate` entries on a plain array (the domain
  * pack is not a plugin, so there is no manifest `contributions`
- * channel; apps/eval collects this directly). The pipeline computes
+ * channel; packages/eval-cli collects this directly). The pipeline computes
  * these inline (StageMetrics carries wer/cer/entityVerdicts;
  * accept.ts owns the auto-accept policy), so `meta.fn` remains a
  * pointer for humans/ops, not a dispatch key — EXCEPT for stages:

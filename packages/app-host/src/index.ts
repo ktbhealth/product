@@ -34,14 +34,21 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
-import { DocumentCollections, makeDocumentCollections } from "@ktb/document-store";
+import {
+	DocumentCollections,
+	DocumentRefTargetsLive,
+	makeDocumentCollections,
+} from "@ktb/document-store";
 import { ViewDefinitions, makeViewDefinitions } from "@ktb/views";
 import { ApiExposures, makeApiExposures } from "@ktb/api";
 import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
+import { FlowDefinitions, makeFlowDefinitions } from "@ktb/flows";
+import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import { Jobs, makeJobs } from "@ktb/jobs-port";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import {
 	evalArtifactsLocalDriver,
@@ -71,6 +78,8 @@ import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
 import { EntityCipher } from "@ktb/crypto/cipher";
 import { passthroughCipherDriver } from "@ktb/crypto-stub";
+import { buildPermissions } from "@ktb/rbac";
+import { vaultKeyringEnvDriver } from "@ktb/vault-keyring";
 import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
@@ -164,6 +173,9 @@ export interface AppEnv extends ObservabilityEnv {
 	/** Socket transport for the SMTP driver — the deploy target injects
 	 * `cloudflare:sockets` connect (workerd) or its node:net stand-in. */
 	readonly SMTP_CONNECT?: unknown;
+	/** Vault KEK (P-098): 32-byte hex/base64 key wrapping per-secret DEKs.
+	 * Absent → vault secret ops fail closed. */
+	readonly VAULT_MASTER_KEY?: string;
 	readonly ANTHROPIC_API_KEY?: string;
 	readonly LLM_API_KEY?: string;
 	readonly OPENAI_API_KEY?: string;
@@ -175,6 +187,14 @@ export interface AppEnv extends ObservabilityEnv {
 	/** Workers AI binding — optional; any object with `run(model, inputs)`. */
 	readonly AI?: {
 		run(model: string, inputs: unknown): Promise<unknown>;
+	};
+	/** Generic jobs queue producer (PL-007) — the same transport the
+	 * ServerRuntime.jobs capability wraps (apps/web lib/platform.ts
+	 * builds that enqueuer from this binding). When bound, the Jobs
+	 * port is composed as an Effect service so plugin layers can
+	 * enqueue kind-dispatched jobs (eval.run, …) via serviceOption. */
+	readonly AUDIO_QUEUE?: {
+		send(body: unknown): Promise<unknown>;
 	};
 }
 
@@ -361,6 +381,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// default — always eligible, LAST in the list once real
 		// keyring-backed drivers arrive (first eligible wins).
 		passthroughCipherDriver,
+		// Vault secrets KEK (P-098 C1): eligible only when
+		// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
+		vaultKeyringEnvDriver,
 		// Eval validator runner (P-081): eligible only when the local
 		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
 		// otherwise no EvalRunner is bound and eval runs stay queued.
@@ -472,7 +495,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
-	// F2: the ai-endpoints plugin's PlatformLlm capability wins over env
+	// F2: the ai-provider plugin's PlatformLlm capability wins over env
 	// providers when a platform-default endpoint is configured; the
 	// wrapped engine is the (b) env fallback → (c) heuristic path.
 	const AnamnesisEngineLive = Layer.unwrap(
@@ -488,6 +511,16 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// wired; the plugin then leaves run rows `queued` (P-081).
 	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
 	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
+	// PL-007/WS-E: the generic jobs enqueue port as an Effect service —
+	// the same AUDIO_QUEUE transport + job_runs projection the
+	// ServerRuntime.jobs capability wraps (apps/web lib/platform.ts
+	// builds that enqueuer from the same binding). Unbound → no Jobs
+	// service; consumers degrade via Effect.serviceOption.
+	const jobsQueue = env.AUDIO_QUEUE;
+	const JobsLive =
+		jobsQueue === undefined
+			? Layer.empty
+			: Layer.succeed(Jobs, makeJobs({ send: (envelope) => jobsQueue.send(envelope), db }));
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
@@ -498,10 +531,23 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// always eligible); without it plugins fall back to template mode.
 	const LlmFactoryLive = optionalLayerFor<LlmFactory>(LlmFactory.key, env);
 	// Platform admin gate (P-026): env allowlist resolved once here; the
-	// gate fails closed (Forbidden) when the list is unset/empty.
+	// gate fails closed (Forbidden) when the list is unset/empty. The
+	// RBAC hook admits role-based superadmins: an allow grant on
+	// (platform, admin) — e.g. the seeded `superadmin` role — passes the
+	// same gate as an allowlisted email. Resolved WITHOUT group
+	// memberships (the GroupMembership port lives in the rbac plugin's
+	// layer, below this composition point): direct user assignments
+	// only. Grant lookup errors fail closed — a DB hiccup denies admin
+	// rather than 500ing every admin path differently per caller.
+	const rbacGrants = buildPermissions(db);
 	const PlatformAdminLive = Layer.succeed(
 		PlatformAdmin,
-		makePlatformAdminGate(parsePlatformAdminEmails(env.PLATFORM_ADMIN_EMAILS)),
+		makePlatformAdminGate(parsePlatformAdminEmails(env.PLATFORM_ADMIN_EMAILS), {
+			grantFor: (userId) =>
+				rbacGrants
+					.canFor(userId, "platform", "admin")
+					.pipe(Effect.catch(() => Effect.succeed(false))),
+		}),
 	);
 	// Runtime plugin enable/config state (P-058): the service is built
 	// from the discovered registry (ids, dep edges, meta.config schemas)
@@ -525,19 +571,41 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	);
 	// View-definition registry (view.def contributions): same
 	// composition-time collection as DocumentCollections — the
-	// @ktb/views service layer consumes it via `ViewDefinitions`.
-	// Enablement is likewise ignored: defs are static composition data.
+	// @ktb/views service layer consumes it via `ViewDefinitions`
+	// (with the same owner→pkg enablement index). Enablement is NOT
+	// filtered here: defs are static composition data and the Views
+	// service re-checks each def's owner against
+	// PluginStates.enabledIds() per request.
 	const ViewDefinitionsLive = Layer.succeed(ViewDefinitions, makeViewDefinitions(plugins));
 	// Api-exposure registry (api.expose contributions): same
 	// composition-time collection — the @ktb/api service layer consumes
-	// it via `ApiExposures`. Enablement is likewise ignored: exposures
-	// are static composition data.
+	// it via `ApiExposures` (with the same owner→pkg enablement index).
+	// Enablement is likewise enforced at request time inside the Api
+	// service, not at composition.
 	const ApiExposuresLive = Layer.succeed(ApiExposures, makeApiExposures(plugins));
 	// Trigger-definition registry (trigger.def contributions): same
 	// composition-time collection — the @ktb/triggers service layer
-	// consumes it via `TriggerDefinitions`. Enablement is likewise
-	// ignored: defs are static composition data.
+	// consumes it via `TriggerDefinitions` (which also carries the
+	// owner→pkg enablement index built here). Enablement is NOT
+	// filtered at composition: the Triggers service re-checks each
+	// def's owner against PluginStates.enabledIds() per dispatch, so
+	// toggles apply without a layer rebuild.
 	const TriggerDefinitionsLive = Layer.succeed(TriggerDefinitions, makeTriggerDefinitions(plugins));
+	// Flow-definition registry (flow.def contributions): same
+	// composition-time collection — the @ktb/flows service layer
+	// consumes it via `FlowDefinitions` (with the same owner→pkg
+	// enablement index). Enablement is likewise enforced at request
+	// time inside the Flows service, not here.
+	const FlowDefinitionsLive = Layer.succeed(FlowDefinitions, makeFlowDefinitions(plugins));
+	// Wizard-definition registry (wizard.def contributions): same
+	// composition-time collection — the @ktb/wizards service layer
+	// consumes it via `WizardDefinitions` (which also carries the
+	// owner→pkg enablement index built here) to verify client-supplied
+	// definition snapshots are real contributions, not forgeries.
+	// Enablement is NOT filtered here: the Wizards service re-checks
+	// each contributed def's owner against PluginStates.enabledIds()
+	// at startRun, so toggles apply without a layer rebuild.
+	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -557,6 +625,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TelemetryLive,
 		EvalRunnerLive,
 		EvalArtifactsLive,
+		JobsLive,
 		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,
@@ -566,6 +635,14 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		ViewDefinitionsLive,
 		ApiExposuresLive,
 		TriggerDefinitionsLive,
+		FlowDefinitionsLive,
+		WizardDefinitionsLive,
+		// External document-ref target registry (T-149): entity owners
+		// register existence checkers into this shared instance from
+		// their service layers; DocumentStore resolves entity refs
+		// through it. Static composition data like DocumentCollections —
+		// provided unconditionally, consumed via serviceOption.
+		DocumentRefTargetsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),

@@ -36,7 +36,10 @@ export const Route = createPluginApiRoute("jobs.routes")("/api/jobs")({
 					user,
 					Effect.gen(function* () {
 						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.isAdmin(user.email);
+						return yield* platformAdmin.isAdmin({
+							email: user.email,
+							userId: user.actorId,
+						});
 					}),
 				);
 				if (!admin) return new Response("forbidden", { status: 403 });

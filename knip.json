@@ -31,7 +31,7 @@
 		},
 		"evals/*": {
 			// Suite manifests are loaded by file path at runtime
-			// (apps/eval/src/suites.ts scans evals/ recursively) — never
+			// (packages/eval-cli scans evals/ recursively) — never
 			// statically imported, so knip would flag them as unused.
 			"entry": ["*.suite.ts"]
 		},

@@ -38,6 +38,9 @@ export const authRoutesPlugin = definePlugin({
 		// account system serves patients, doctors and secretaries).
 		route("forgot-password", "../../../../plugins/auth/src/routes/forgot-password.tsx"),
 		route("reset-password", "../../../../plugins/auth/src/routes/reset-password.tsx"),
+		// /login/admin — superadmin sign-in (PlatformAdmin gate, RBAC or
+		// email allowlist); lands on /platform.
+		route("login/admin", "../../../../plugins/auth/src/routes/login-admin.tsx"),
 		// API subtree: every module in src/api-routes/ mounts under the
 		// shared "/api" prefix (auth.$.ts → /api/auth/$).
 		physical("/api", "../../../../plugins/auth/src/api-routes"),

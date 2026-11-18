@@ -100,9 +100,22 @@ describe("chunked AES-GCM blob (KTB1)", () => {
 	it("rejects non-KTB1 input", async () => {
 		const key = await generateDek();
 		await expect(decryptBlob(key, new Uint8Array(4))).rejects.toThrow(CryptoFormatError);
+		await expect(decryptBlob(key, new Uint8Array(4))).rejects.toThrow(/not a KTB1/);
+		// Bare magic is still too short for magic + chunkSize.
+		await expect(decryptBlob(key, MAGIC)).rejects.toThrow(CryptoFormatError);
 		await expect(
 			decryptBlob(key, concat([new Uint8Array([0, 0, 0, 0]), u32(1024), u32(0)])),
 		).rejects.toThrow(CryptoFormatError);
+		// Partial magic must not pass the magic check.
+		await expect(
+			decryptBlob(key, concat([new Uint8Array([0x4b, 0, 0, 0]), u32(0), u32(0)])),
+		).rejects.toThrow(CryptoFormatError);
+	});
+
+	it("reports a missing terminator on a header-only blob", async () => {
+		const key = await generateDek();
+		// magic + chunkSize but no chunk and no terminator.
+		await expect(decryptBlob(key, concat([MAGIC, u32(0)]))).rejects.toThrow("missing terminator");
 	});
 
 	it("detects a truncated tail (missing terminator)", async () => {
@@ -126,6 +139,29 @@ describe("chunked AES-GCM blob (KTB1)", () => {
 		const key = await generateDek();
 		const blob = concat([MAGIC, u32(4), u32(64), new Uint8Array(80), u32(0)]);
 		await expect(decryptBlob(key, blob)).rejects.toThrow("chunk exceeds declared chunk size");
+	});
+
+	it("accepts ctLen exactly at chunkSize + TAG_BYTES and rejects one byte more", async () => {
+		const key = await generateDek();
+		// Boundary: ctLen == chunkSize + 16 (tag) is admitted — the payload
+		// then fails GCM auth, NOT the format check.
+		const atLimit = concat([MAGIC, u32(16), u32(32), new Uint8Array(12), new Uint8Array(32)]);
+		const err = await decryptBlob(key, atLimit).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect(err).not.toBeNull();
+		expect(err).not.toBeInstanceOf(CryptoFormatError);
+		// One byte over the limit is a format error before any decrypt.
+		const overLimit = concat([MAGIC, u32(16), u32(33), new Uint8Array(12), new Uint8Array(33)]);
+		await expect(decryptBlob(key, overLimit)).rejects.toThrow("chunk exceeds declared chunk size");
+	});
+
+	it("rejects a chunk whose iv+ct runs past the blob end", async () => {
+		const key = await generateDek();
+		// Declared ctLen=20 with only 20 bytes present: iv(12)+ct needs 32.
+		const blob = concat([MAGIC, u32(DEFAULT_CHUNK_SIZE), u32(20), new Uint8Array(20)]);
+		await expect(decryptBlob(key, blob)).rejects.toThrow("truncated chunk");
 	});
 
 	it("fails authentication on a tampered middle chunk", async () => {

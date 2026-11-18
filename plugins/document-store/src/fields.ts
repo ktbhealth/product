@@ -52,15 +52,39 @@ export interface ArrayFieldOptions extends FieldOptions {
 	readonly maxLength?: number;
 }
 
-/** `ref` target: the referenced collection name plus the delete policy
- * applied when a referenced record is deleted. `restrict` (default)
- * fails the delete while in-scope references exist; `cascade` deletes
- * the referencing records; `nullify` rewrites the field to `null`.
- * Policies are best-effort and scope-bound — see service.ts. */
-export interface RefTarget {
+/** Delete policies a document `ref` field may declare. `restrict`
+ * (default) fails the delete while in-scope references exist;
+ * `cascade` deletes the referencing records; `nullify` rewrites the
+ * field to `null`. Policies are best-effort and scope-bound — see
+ * service.ts. */
+export type RefDeletePolicy = "restrict" | "cascade" | "nullify";
+
+/** `ref` target pointing at another document collection. */
+export interface DocumentRefTarget {
 	readonly collection: string;
-	readonly onDelete?: "restrict" | "cascade" | "nullify";
+	readonly onDelete?: RefDeletePolicy;
 }
+
+/**
+ * `ref` target pointing at an EXTERNAL entity — a typed-table row
+ * owned by another plugin (e.g. `patients.id`), registered through the
+ * `DocumentRefTargets` port (see ref-targets.ts). Entity refs store
+ * the target's numeric id like document refs but resolve existence
+ * through the entity's contributed checker instead of
+ * `document_records` — no join table, no cascade into Drizzle.
+ *
+ * `onDelete` is limited to `restrict`/`nullify`: `cascade` is rejected
+ * because document-store must never delete rows of a table it does
+ * not own. Enforcement runs through `DocumentStore.applyEntityDelete`
+ * — the entity owner calls it when its row is deleted.
+ */
+export interface EntityRefTarget {
+	readonly entity: string;
+	readonly onDelete?: "restrict" | "nullify";
+}
+
+/** `ref` target: a document collection (default) or an external entity. */
+export type RefTarget = DocumentRefTarget | EntityRefTarget;
 
 export interface RefFieldOptions extends FieldOptions {}
 
@@ -82,6 +106,7 @@ export interface FieldDescriptor {
 	readonly values?: readonly string[];
 	readonly of?: FieldDescriptor;
 	readonly collection?: string;
+	readonly entity?: string;
 	readonly onDelete?: "restrict" | "cascade" | "nullify";
 }
 
@@ -142,13 +167,31 @@ export const f = {
 	ref: <const O extends RefFieldOptions = {}>(
 		target: RefTarget,
 		opts?: O,
-	): ScalarField<"ref"> & O =>
-		({
+	): ScalarField<"ref"> & O => {
+		// Entity targets never cascade — document-store must not delete
+		// rows of a table it does not own. Reject at declaration time;
+		// assertCollectionDef re-checks defs that arrive as JSON.
+		if ("entity" in target) {
+			// EntityRefTarget.onDelete excludes "cascade" at the type
+			// level, but wire/contributed defs can still carry it — the
+			// runtime check stays (cast widens for the comparison).
+			if ((target.onDelete as RefDeletePolicy | undefined) === "cascade") {
+				throw new Error('entity ref targets do not support onDelete "cascade"');
+			}
+			return {
+				kind: "ref",
+				entity: target.entity,
+				onDelete: target.onDelete ?? "restrict",
+				...opts,
+			} as ScalarField<"ref"> & O;
+		}
+		return {
 			kind: "ref",
 			collection: target.collection,
 			onDelete: target.onDelete ?? "restrict",
 			...opts,
-		}) as ScalarField<"ref"> & O,
+		} as ScalarField<"ref"> & O;
+	},
 };
 
 /** Map one descriptor literal back to its value type. */

@@ -46,6 +46,10 @@ export const evalRun = sqliteTable(
 		done: integer().notNull().default(0),
 		/** JSON summary: mean WER, gate verdict, engine fingerprints. */
 		summary: text(),
+		/** JSON: eval-core Experiment projected at finalize
+		 * (core-map.ts) — the run's registry identity {id, manifestHash,
+		 * dataset pin, summary}. Null until the run finishes. */
+		experiment: text(),
 		startedAt: integer("started_at", { mode: "timestamp_ms" }),
 		finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
 		createdBy: text("created_by"),
@@ -78,3 +82,31 @@ export const evalRunSample = sqliteTable(
 	(table) => [uniqueIndex("eval_run_sample_run_item_idx").on(table.runId, table.itemId)],
 );
 export type EvalRunSample = typeof evalRunSample.$inferSelect;
+
+/** Per-stage audit records (WS-D): one row per RunRecord a runner
+ * emits (tts/asr/cleanup/anamnesis calls). The indexed columns
+ * (stage/engine/model/startedAt) are projections for slicing;
+ * `payload` holds the FULL eval-core RunRecord JSON — the row IS the
+ * audit artifact, decode via core-map's runRecordFromRow. `itemId`
+ * is a SOFT reference to eval_instance_item (plain integer, no FK):
+ * records must survive corpus edits/deletes the same way
+ * eval_run.params does. */
+export const evalRunRecord = sqliteTable(
+	"eval_run_record",
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		runId: integer("run_id")
+			.notNull()
+			.references(() => evalRun.id, { onDelete: "cascade" }),
+		itemId: integer("item_id"),
+		stage: text().notNull(),
+		engine: text().notNull(),
+		model: text(),
+		/** Epoch ms — mirrors RunRecord.startedAt. */
+		startedAt: integer("started_at"),
+		/** Full RunRecord JSON (eval-core schema). */
+		payload: text().notNull(),
+	},
+	(table) => [index("eval_run_record_run_idx").on(table.runId)],
+);
+export type EvalRunRecord = typeof evalRunRecord.$inferSelect;

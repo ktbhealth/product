@@ -5,7 +5,9 @@
 // Relative paths are deliberate: @ktb/db must not depend on plugin
 // packages — see tools/gen-db-schema.mjs.
 export * from "../../../plugins/agenda/src/schema.ts";
-export * from "../../../plugins/ai-endpoints/src/schema.ts";
+export * from "../../../plugins/ai-model/src/schema.ts";
+export * from "../../../plugins/ai-prompt/src/schema.ts";
+export * from "../../../plugins/ai-provider/src/schema.ts";
 export * from "../../../plugins/audit/src/schema.ts";
 export * from "../../../plugins/consultations/src/schema.ts";
 export * from "../../../plugins/doctors/src/schema.ts";
@@ -17,6 +19,7 @@ export * from "../../../plugins/i18n/src/schema.ts";
 export * from "../../../plugins/integrity/src/schema.ts";
 export * from "../../../plugins/invites/src/schema.ts";
 export * from "../../../plugins/kv/src/schema.ts";
+export * from "../../../plugins/machines/src/schema.ts";
 export * from "../../../plugins/notifications/src/schema.ts";
 export * from "../../../plugins/pages/src/schema.ts";
 export * from "../../../plugins/patient-access/src/schema.ts";

@@ -39,6 +39,21 @@ old URLs redirect).
 - `cd apps/web && bun run infra:deploy` — deploy to Cloudflare prod
   (needs cuora vault access)
 
+### Platform admin / superadmin
+
+Two ways into `/platform`: the `PLATFORM_ADMIN_EMAILS` env allowlist, or
+the built-in `superadmin` RBAC role — seeded at `rbac.services` layer
+build (`plugins/rbac/src/seed.ts`) with an `allow` grant for every
+`PERMISSION_CATALOG` entry. Assign it to a user under `/platform/roles`
+(subject = the account's `user.id`) and the `PlatformAdmin` gate admits
+them via the `grantFor` hook in `@ktb/app-host`; the `superadmin`
+audience then wildcard-admits every portal instance (`portalAdmits` in
+`plugins/portal`). The seed is create-only: revoked grants stay revoked,
+and a hand-made role squatting the name logs a boot warning instead of
+being repaired. Sign-in surface: `/login/admin` (admin-only, no
+sign-up). Clinical portals with `subject: "doctor"` still need an
+acting doctor profile — superadmin does not impersonate.
+
 ### Email in dev
 
 Outbound email is a driver behind the `@ktb/email` port (see
@@ -59,6 +74,21 @@ Web UI at http://localhost:8026; `docker compose down` stops it. Ports
 clashing with other local mail catchers. If those are taken too, set
 `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT` for `docker compose` and adjust
 `SMTP_URL` accordingly.
+
+## Jobs in dev
+
+Two transports behind the `@ktb/jobs-port` contract (enqueue port +
+kind-dispatched consumer + `job_runs` projection):
+
+- **Production** — Cloudflare Queue bindings (`AUDIO_QUEUE`,
+  `THEME_ASSETS_QUEUE`) consumed by the apps/web worker.
+- **Local** — `docker compose up -d` now includes Redis; run
+  `bun apps/jobs-worker/src/main.ts` (or `REDIS_URL=… bun run worker`
+  from `apps/jobs-worker`) to consume `ktb:jobs`. Producers enqueue via
+  `makeJobs({ send: transport.send, db })` where `transport` is
+  `@ktb/jobs-transport-redis`. `dev:node` keeps its SQLite queue for
+  the audio/theme bindings; the Redis path is for new job kinds
+  (eval runner first).
 
 ## Conventions
 

@@ -37,11 +37,12 @@ type Context = Awaited<ReturnType<SecretaryLoginApi["context"]>>;
 const oneProfile: Context = { profiles: [{ doctorId: 1 }] };
 const context = vi.fn<SecretaryLoginApi["context"]>(async () => oneProfile);
 
-const loaderData = { emailEnabled: false };
+const loaderData = { emailEnabled: false, doctorLoginEnabled: true };
 const Page = () =>
 	createElement(SecretaryLoginPage, {
 		locale: "en",
 		emailEnabled: loaderData.emailEnabled,
+		doctorLoginEnabled: loaderData.doctorLoginEnabled,
 		api: { context },
 	}) as ReactElement;
 
@@ -285,5 +286,12 @@ describe("secretary sign-in page", () => {
 		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe(
 			"/login/doctor",
 		);
+	});
+
+	it("hides the doctor link when its sign-in flow is disabled", () => {
+		loaderData.doctorLoginEnabled = false;
+		render(createElement(Page));
+		expect(screen.queryByRole("link", { name: "I am a doctor" })).toBeNull();
+		loaderData.doctorLoginEnabled = true;
 	});
 });

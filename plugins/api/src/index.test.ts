@@ -10,6 +10,7 @@ describe("api plugins", () => {
 
 	it("declares the expected dependency edges", () => {
 		expect(apiServicesPlugin.requiredDeps).toEqual(["document-store.services"]);
+		expect(apiServicesPlugin.optionalDeps).toEqual(["rbac.services"]);
 		expect(apiRoutesPlugin.requiredDeps).toEqual(["api.services"]);
 	});
 

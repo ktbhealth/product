@@ -4,9 +4,10 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
-import { Tenant, TenantForbidden, tenantScopeId } from "@ktb/tenant";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { Vault, type ClinicKey } from "./index.ts";
+import { Secrets, type SecretMeta } from "./secrets.ts";
 
 // Clinic vault server functions (PL-007 F2, T-143): device enrollment,
 // admin approval/revocation and the one-way zk enable switch. Every fn
@@ -64,6 +65,9 @@ const denyToFalse = <A>(fallback: A) =>
 	Effect.catchTags({
 		VaultError: () => Effect.succeed(fallback),
 		TenantForbidden: () => Effect.succeed(fallback),
+		SecretError: () => Effect.succeed(fallback),
+		/* v8 ignore next -- fns only ever resolve tenant scope */
+		Forbidden: () => Effect.succeed(fallback),
 	});
 
 /** Bound-tenant id or null — personal scope has no clinic vault. */
@@ -264,3 +268,106 @@ export const vaultEnableZkFn = createServerFn({ method: "POST" }).handler(
 		);
 	},
 );
+
+// ── Server-side secrets (P-098 C2) ────────────────────────────────
+//
+// Tenant-scoped credential management: the bound tenant IS the scope —
+// a caller can only ever list/write secrets of the clinic their
+// request resolved to (never a client-supplied tenant id). Platform
+// scope (`tenantId: null`) is deliberately NOT reachable here — it is
+// platform-admin territory and gets its own console surface.
+//
+// Wire safety: `put` accepts the plaintext value once (it is sealed
+// server-side and never echoed back); every read returns SecretMeta —
+// metadata only, no ciphertext, no DEK material. `resolve` is never
+// exposed over the wire: it is a server-side port for drivers.
+
+const SecretKindLiterals = Schema.Literals(["api-key", "token", "password", "pem", "generic"]);
+const SecretPutInput = Schema.Struct({
+	name: Schema.NonEmptyString,
+	value: Schema.NonEmptyString,
+	provider: Schema.optionalKey(Schema.NullishOr(Schema.String)),
+	kind: Schema.optionalKey(SecretKindLiterals),
+});
+const SecretIdInput = Schema.Struct({ id: Schema.Number });
+
+const decodeSecretPut = Schema.decodeUnknownSync(SecretPutInput);
+const decodeSecretId = Schema.decodeUnknownSync(SecretIdInput);
+
+/** Secret metadata for the bound tenant — members may list. */
+export const vaultSecretsListFn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<readonly SecretMeta[]> => {
+		const user = await getSessionUser();
+		if (!user) return [];
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const tenantId = yield* boundTenantId;
+				if (tenantId === null) return [] as SecretMeta[];
+				const secrets = yield* Secrets;
+				return yield* secrets.list({ tenantId }).pipe(
+					Effect.catchTags({
+						/* v8 ignore next -- list never raises SecretError */
+						SecretError: () => Effect.succeed([] as SecretMeta[]),
+						/* v8 ignore next -- bound role always satisfies member */
+						TenantForbidden: () => Effect.succeed([] as SecretMeta[]),
+						/* v8 ignore next -- tenant scope never raises Forbidden */
+						Forbidden: () => Effect.succeed([] as SecretMeta[]),
+					}),
+				);
+			}),
+		);
+	},
+);
+
+/** Create or rotate-by-name a tenant secret — admin+ (service gate). */
+export const vaultSecretPutFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeSecretPut(input))
+	.handler(async ({ data }): Promise<Result<SecretMeta>> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const tenantId = yield* boundTenantId;
+				if (tenantId === null) return { ok: false as const };
+				const secrets = yield* Secrets;
+				return yield* secrets.put({ tenantId, ...data }).pipe(
+					Effect.map((meta) => ({ ok: true as const, data: meta })),
+					denyToFalse({ ok: false as const }),
+				);
+			}),
+		);
+	});
+
+/** Re-wrap the DEK + re-encrypt the current value — admin+ (service gate). */
+export const vaultSecretRotateFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeSecretId(input))
+	.handler(async ({ data }): Promise<Result<SecretMeta>> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const secrets = yield* Secrets;
+				return yield* secrets.rotate({ id: data.id }).pipe(
+					Effect.map((meta) => ({ ok: true as const, data: meta })),
+					denyToFalse({ ok: false as const }),
+				);
+			}),
+		);
+	});
+
+/** Hard-delete a secret row — admin+ (service gate). */
+export const vaultSecretRemoveFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeSecretId(input))
+	.handler(async ({ data }): Promise<Result<null>> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const secrets = yield* Secrets;
+				return yield* secrets
+					.remove({ id: data.id })
+					.pipe(Effect.as({ ok: true as const, data: null }), denyToFalse({ ok: false as const }));
+			}),
+		);
+	});

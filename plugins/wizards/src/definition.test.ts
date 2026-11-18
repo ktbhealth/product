@@ -6,6 +6,7 @@ import {
 	assertWizardDefinition,
 	collectWizardDefinitions,
 	defineWizard,
+	makeWizardDefinitions,
 	toWizardDefinition,
 	WIZARD_DEF_KIND,
 	WIZARD_ID_PATTERN,
@@ -67,6 +68,21 @@ describe("assertWizardDefinition", () => {
 			"description",
 		);
 		expect(() => assertWizardDefinition({ ...base, submitLabel: 9 }, "ctx")).toThrow("submitLabel");
+		expect(() => assertWizardDefinition({ ...base, permission: 3 }, "ctx")).toThrow("permission");
+		expect(() => assertWizardDefinition({ ...base, permission: "no-dot" }, "ctx")).toThrow(
+			"resource.action",
+		);
+		expect(() =>
+			assertWizardDefinition({ ...base, permission: "res.action" }, "ctx"),
+		).not.toThrow();
+	});
+
+	it("rejects prototype-polluting step ids", () => {
+		for (const id of ["__proto__", "constructor", "prototype"]) {
+			expect(() =>
+				assertWizardDefinition({ id: "ok", steps: [{ kind: "info", id }] }, "ctx"),
+			).toThrow("reserved");
+		}
 	});
 
 	it("rejects missing/empty steps", () => {
@@ -193,6 +209,26 @@ describe("assertWizardDefinition", () => {
 		expect(() =>
 			assertWizardDefinition({ ...base, completion: { kind: "hook", hook: "h", data: "x" } }, ctx),
 		).toThrow("data must be an object");
+		// grammar tightening: collection/hook ids must match their
+		// registries' naming rules, not just be non-empty.
+		expect(() =>
+			assertWizardDefinition(
+				{ ...base, completion: { kind: "document-store", collection: "Bad Name" } },
+				ctx,
+			),
+		).toThrow("collection name");
+		expect(() =>
+			assertWizardDefinition(
+				{ ...base, completion: { kind: "document-store", collection: "a/b" } },
+				ctx,
+			),
+		).toThrow("collection name");
+		expect(() =>
+			assertWizardDefinition({ ...base, completion: { kind: "hook", hook: "has space" } }, ctx),
+		).toThrow("hook id");
+		expect(() =>
+			assertWizardDefinition({ ...base, completion: { kind: "hook", hook: "my.hook-1" } }, ctx),
+		).not.toThrow();
 	});
 });
 
@@ -237,6 +273,15 @@ describe("defineWizard / wizardDefContribution / toWizardDefinition", () => {
 		expect(defs.map((d) => d.id)).toEqual(["w-a", "w-b"]);
 		expect(defs[0]?.owner).toBe("plug.a");
 		expect(collectWizardDefinitions([])).toEqual([]);
+	});
+
+	it("makeWizardDefinitions builds the service registry value", () => {
+		const a = definePlugin({
+			id: "plug.a",
+			contributions: [wizardDefContribution({ id: "w-a", steps: [{ kind: "info", id: "s" }] })],
+		});
+		expect(makeWizardDefinitions([a]).wizards.map((d) => d.id)).toEqual(["w-a"]);
+		expect(makeWizardDefinitions([]).wizards).toEqual([]);
 	});
 });
 

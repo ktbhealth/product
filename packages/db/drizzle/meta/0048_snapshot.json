@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1a2ad462-ca65-4044-b268-136830286051",
+  "id": "b4bcfb50-0d21-4672-8e65-16625033ea6b",
   "prevId": "b32a5baf-38a5-4c1a-947c-f06551e820dd",
   "tables": {
     "account": {
@@ -659,218 +659,6 @@
       },
       "indexes": {},
       "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "appointments": {
-      "name": "appointments",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "owner_id": {
-          "name": "owner_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "patient_id": {
-          "name": "patient_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "tenant_id": {
-          "name": "tenant_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'scheduled'"
-        },
-        "starts_at": {
-          "name": "starts_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "duration_min": {
-          "name": "duration_min",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 30
-        },
-        "consultation_id": {
-          "name": "consultation_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "note": {
-          "name": "note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reminder_sent_at": {
-          "name": "reminder_sent_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "external_provider": {
-          "name": "external_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "external_calendar_id": {
-          "name": "external_calendar_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "external_event_id": {
-          "name": "external_event_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "external_etag": {
-          "name": "external_etag",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "sync_state": {
-          "name": "sync_state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'local'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "appointments_owner_start_idx": {
-          "name": "appointments_owner_start_idx",
-          "columns": [
-            "owner_id",
-            "starts_at"
-          ],
-          "isUnique": false
-        },
-        "appointments_reminder_idx": {
-          "name": "appointments_reminder_idx",
-          "columns": [
-            "reminder_sent_at",
-            "starts_at"
-          ],
-          "isUnique": false
-        },
-        "appointments_tenant_id_idx": {
-          "name": "appointments_tenant_id_idx",
-          "columns": [
-            "tenant_id"
-          ],
-          "isUnique": false
-        },
-        "appointments_patient_idx": {
-          "name": "appointments_patient_idx",
-          "columns": [
-            "patient_id"
-          ],
-          "isUnique": false
-        },
-        "appointments_external_idx": {
-          "name": "appointments_external_idx",
-          "columns": [
-            "external_provider",
-            "external_calendar_id",
-            "external_event_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "appointments_patient_id_patients_id_fk": {
-          "name": "appointments_patient_id_patients_id_fk",
-          "tableFrom": "appointments",
-          "tableTo": "patients",
-          "columnsFrom": [
-            "patient_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "appointments_tenant_id_groups_id_fk": {
-          "name": "appointments_tenant_id_groups_id_fk",
-          "tableFrom": "appointments",
-          "tableTo": "groups",
-          "columnsFrom": [
-            "tenant_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "appointments_consultation_id_consultations_id_fk": {
-          "name": "appointments_consultation_id_consultations_id_fk",
-          "tableFrom": "appointments",
-          "tableTo": "consultations",
-          "columnsFrom": [
-            "consultation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -4597,6 +4385,154 @@
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "vault_secret": {
+      "name": "vault_secret",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'generic'"
+        },
+        "wrapped_dek": {
+          "name": "wrapped_dek",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "ciphertext": {
+          "name": "ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kek_version": {
+          "name": "kek_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rotated_at": {
+          "name": "rotated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "vault_secret_scope_name_idx": {
+          "name": "vault_secret_scope_name_idx",
+          "columns": [
+            "scope",
+            "name"
+          ],
+          "isUnique": true
+        },
+        "vault_secret_tenant_idx": {
+          "name": "vault_secret_tenant_idx",
+          "columns": [
+            "tenant_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "vault_secret_tenant_id_groups_id_fk": {
+          "name": "vault_secret_tenant_id_groups_id_fk",
+          "tableFrom": "vault_secret",
+          "tableTo": "groups",
+          "columnsFrom": [
+            "tenant_id"
           ],
           "columnsTo": [
             "id"

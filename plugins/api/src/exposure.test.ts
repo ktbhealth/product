@@ -190,7 +190,10 @@ describe("toApiExposure / collectApiExposures", () => {
 			id: "p.x",
 			contributions: [apiExposureContribution(base)],
 		});
-		expect(makeApiExposures([p])).toEqual({ exposures: collectApiExposures([p]) });
+		const built = makeApiExposures([p]);
+		expect(built.exposures).toEqual(collectApiExposures([p]));
+		// The owner→enablement index is always populated for the service.
+		expect(built.ownerIndex?.pkgById.has("p.x")).toBe(true);
 	});
 });
 

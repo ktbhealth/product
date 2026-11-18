@@ -2,13 +2,23 @@ import * as Context from "effect/Context";
 import type { JsonObject } from "effect/Schema";
 
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
-import { assertCondition, type WizardCondition } from "@ktb/wizards/condition";
+import {
+	assertCondition,
+	COLLECTION_NAME_RE,
+	HOOK_ID_RE,
+	hasForbiddenPathSegment,
+	isRecord,
+	SLUG_PATTERN,
+	type Condition,
+} from "@ktb/dsl";
 
 /**
  * Trigger definitions as DATA — the `trigger.def` contribution kind.
@@ -28,6 +38,10 @@ import { assertCondition, type WizardCondition } from "@ktb/wizards/condition";
  * doc's `data`) DO `action` — either a `collection-write` back into
  * the store (templated field mapping) or a `hook` resolved through
  * the `TriggersHooks` registry (./hooks.ts).
+ *
+ * Extension points: action kinds are a CLOSED union — new reaction
+ * types land in ./runner.ts; the `hook` action id is the escape
+ * hatch for domain logic.
  */
 
 /** The registered contribution kind for trigger definitions. */
@@ -42,11 +56,7 @@ export const TRIGGER_DEF_KIND: ContributionKindDescriptor = {
 };
 
 /** Trigger ids are diagnostic keys (logs, hook handles) — slug-safe. */
-export const TRIGGER_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
+export const TRIGGER_ID_PATTERN = SLUG_PATTERN;
 
 /** Write ops a trigger can match — mirrors DOCUMENT_WRITE_OPS. */
 export const TRIGGER_OPS = ["insert", "update", "remove"] as const;
@@ -95,18 +105,18 @@ export interface TriggerDef {
 	readonly ops?: readonly TriggerOp[];
 	/** Optional wizards-style condition evaluated against the written
 	 * record's `data` payload — a non-match skips the action. */
-	readonly when?: WizardCondition;
+	readonly when?: Condition;
 	readonly action: TriggerAction;
 	/** Owning plugin id — stamped from the contributing plugin when the
 	 * manifest omits it. */
 	readonly owner?: string;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-
-const HOOK_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
+// Mapping keys are dotted paths into the write payload —
+// prototype-polluting segments are refused (@ktb/dsl
+// `hasForbiddenPathSegment`): a `"__proto__"` mapping key would hit
+// the Object.prototype setter when the runner folds templates into
+// the write payload.
 const assertAction = (value: unknown, context: string): TriggerAction => {
 	if (!isRecord(value)) {
 		throw new Error(`${context}: trigger action must be an object`);
@@ -120,6 +130,11 @@ const assertAction = (value: unknown, context: string): TriggerAction => {
 			throw new Error(`${context}: collection-write mapping must be an object`);
 		}
 		for (const [key, template] of Object.entries(mapping)) {
+			if (hasForbiddenPathSegment(key)) {
+				throw new Error(
+					`${context}: collection-write mapping key ${JSON.stringify(key)} uses a forbidden path segment`,
+				);
+			}
 			if (typeof template !== "string") {
 				throw new Error(`${context}: collection-write mapping "${key}" must be a template string`);
 			}
@@ -191,7 +206,7 @@ export const assertTriggerDef = (value: unknown, context: string): TriggerDef =>
 		...(title === undefined ? {} : { title }),
 		collection,
 		...(checkedOps === undefined ? {} : { ops: checkedOps }),
-		...(when === undefined ? {} : { when: when as WizardCondition }),
+		...(when === undefined ? {} : { when: when as Condition }),
 		action: assertAction(action, `${context} trigger "${id}"`),
 		...(owner === undefined ? {} : { owner }),
 	};
@@ -256,15 +271,22 @@ export const collectTriggerDefinitions = (plugins: readonly Plugin[]): readonly 
  * `Triggers` service — the layer @ktb/app-host merges into `core` next
  * to `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`/
  * `makeViewDefinitions(plugins)`/`makeApiExposures(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeTriggerDefinitions` always populates it.
  */
 export class TriggerDefinitions extends Context.Service<
 	TriggerDefinitions,
-	{ readonly triggers: readonly TriggerDef[] }
+	{
+		readonly triggers: readonly TriggerDef[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/triggers/TriggerDefinitions") {}
 
 /** Build the `TriggerDefinitions` service value for a plugin graph. */
 export const makeTriggerDefinitions = (
 	plugins: readonly Plugin[],
-): { readonly triggers: readonly TriggerDef[] } => ({
+): { readonly triggers: readonly TriggerDef[]; readonly ownerIndex: DefOwnerIndex } => ({
 	triggers: collectTriggerDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
 	vaultEnableZkFn: vi.fn(),
 	vaultEnrollDeviceFn: vi.fn(),
 	vaultRevokeDeviceFn: vi.fn(),
+	vaultSecretPutFn: vi.fn(),
+	vaultSecretRemoveFn: vi.fn(),
+	vaultSecretRotateFn: vi.fn(),
 }));
 
 vi.mock("./fns.ts", () => mocks);
@@ -29,5 +32,16 @@ describe("vaultApi", () => {
 
 		await vaultApi.enableZk();
 		expect(mocks.vaultEnableZkFn).toHaveBeenCalledWith();
+
+		await vaultApi.secretPut({ name: "k", value: "v", provider: "openai", kind: "api-key" });
+		expect(mocks.vaultSecretPutFn).toHaveBeenCalledWith({
+			data: { name: "k", value: "v", provider: "openai", kind: "api-key" },
+		});
+
+		await vaultApi.secretRotate(9);
+		expect(mocks.vaultSecretRotateFn).toHaveBeenCalledWith({ data: { id: 9 } });
+
+		await vaultApi.secretRemove(9);
+		expect(mocks.vaultSecretRemoveFn).toHaveBeenCalledWith({ data: { id: 9 } });
 	});
 });

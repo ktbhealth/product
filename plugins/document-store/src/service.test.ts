@@ -24,9 +24,8 @@ import { DocumentCollections } from "./collection.ts";
 import { f } from "./fields.ts";
 import { FIND_SCAN_MAX_ROWS } from "./query.ts";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
+import { DocumentRefTargets, makeDocumentRefTargets, type RefTargetExists } from "./ref-targets.ts";
 import {
-	BrokenReference,
-	DocumentInUse,
 	DocumentStore,
 	DocumentStoreLive,
 	DocumentValidationError,
@@ -119,22 +118,53 @@ const rawRef = defineCollection({
 	fields: { t: { kind: "ref", collection: "test.targets" } as never },
 });
 
+/** Entity refs (T-149): `patients`/`wards` resolve through the
+ * DocumentRefTargets registry; `ghosts` is deliberately unregistered. */
+const entityRefs = defineCollection({
+	name: "test.entityrefs",
+	fields: {
+		label: f.string(),
+		patient: f.ref({ entity: "patients" }),
+		backup: f.ref({ entity: "patients", onDelete: "nullify" }),
+		ward: f.ref({ entity: "wards" }),
+		ghost: f.ref({ entity: "ghosts" }),
+	},
+});
+
 const tenantA: TenantValue = { id: 1, kind: "clinic", slug: "a", role: "member" };
 const tenantB: TenantValue = { id: 2, kind: "clinic", slug: "b", role: "member" };
 
-const DEFS = [targets, things, v2, lazy, pointer, strictNullify, uniqJson, rawRef];
+const DEFS = [targets, things, v2, lazy, pointer, strictNullify, uniqJson, rawRef, entityRefs];
 
 describe("DocumentStoreLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
 	let db: ReturnType<typeof makeDb>;
+	const refTargets = makeDocumentRefTargets();
+	/** Mutable existence sets backing the registered checkers — tests
+	 * rewrite membership between cases; `checkerCalls` counts batched
+	 * invocations for the plan-cache assertion. */
+	const entityIds = new Map<string, Set<number>>();
+	const checkerCalls = new Map<string, number>();
 
-	beforeAll(() => {
+	beforeAll(async () => {
 		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
-		const deps = Layer.merge(
+		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(DocumentCollections, { collections: DEFS }),
+			Layer.succeed(DocumentRefTargets, refTargets),
 		);
 		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+		for (const entity of ["patients", "wards", "clinics"]) {
+			entityIds.set(entity, new Set());
+			checkerCalls.set(entity, 0);
+			const checker: RefTargetExists = (ids) =>
+				Effect.sync(() => {
+					checkerCalls.set(entity, (checkerCalls.get(entity) ?? 0) + 1);
+					const existing = entityIds.get(entity) ?? new Set<number>();
+					return new Set(ids.filter((id) => existing.has(id)));
+				});
+			await Effect.runPromise(refTargets.register(entity, checker));
+		}
 	});
 
 	afterAll(() => runtime.dispose());
@@ -292,6 +322,21 @@ describe("DocumentStoreLive", () => {
 		// at validation, before any row is scanned.
 		await failWith("InvalidDocumentQuery")(
 			call((s) => s.find(things, { filter: { title: { $regex: "(a+)+" } } })),
+		);
+		// Quantified-alternation ReDoS shapes the nested-quantifier
+		// heuristic misses are rejected too.
+		await failWith("InvalidDocumentQuery")(
+			call((s) => s.find(things, { filter: { title: { $regex: "(a|a)*$" } } })),
+		);
+		await failWith("InvalidDocumentQuery")(
+			call((s) => s.find(things, { filter: { title: { $regex: "(a|aa)+b" } } })),
+		);
+		// Deeply nested logical filters hit the depth cap instead of
+		// overflowing the stack in validateFilter/matchFilter.
+		const deepFilter = (n: number): Record<string, unknown> =>
+			n === 0 ? { title: "x" } : { $or: [deepFilter(n - 1)] };
+		await failWith("InvalidDocumentQuery")(
+			call((s) => s.find(things, { filter: deepFilter(100) })),
 		);
 		await failWith("InvalidDocumentQuery")(
 			call((s) => s.find(things, { filter: { title: { $regex: "x".repeat(201) } } })),
@@ -732,6 +777,36 @@ describe("DocumentStoreLive", () => {
 			);
 			expect(got?.data).toEqual({});
 		}
+	});
+
+	it("find with a pushable filter tolerates corrupt stored payloads", async () => {
+		const coll = await db
+			.select()
+			.from(documentCollections)
+			.where(eq(documentCollections.name, "test.things"));
+		const collectionId = coll[0]!.id;
+		const now = new Date();
+		// json_extract raises "malformed JSON" on this row — the
+		// pushdown prefilter must let it through to parseData/matchFilter
+		// instead of failing the whole query.
+		await db.insert(documentRecords).values({
+			collectionId,
+			data: "{oops",
+			ownerId: "u1",
+			createdAt: now,
+			updatedAt: now,
+		});
+		const marker = await as(
+			"u1",
+			call((s) => s.insert(things, { title: "PUSHDOWN-OK", count: 5 })),
+		);
+		const res = await as(
+			"u1",
+			call((s) =>
+				s.find(things, { filter: { title: { $eq: "PUSHDOWN-OK" } } }),
+			),
+		);
+		expect(res.rows.map((r) => r.id)).toEqual([marker.id]);
 	});
 
 	it("delete scans all contributed defs: default policy, dangling refs, invalid rows", async () => {
@@ -2757,5 +2832,175 @@ describe("DocumentStoreLive telemetry (T-131)", () => {
 			),
 		);
 		expect(rec.data.title).toBe("still works");
+	});
+});
+
+describe("DocumentStoreLive entity refs (T-149)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+	let bareRuntime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+	const refTargets = makeDocumentRefTargets();
+	const entityIds = new Map<string, Set<number>>();
+	const checkerCalls = new Map<string, number>();
+
+	const checkerFor =
+		(entity: string): RefTargetExists =>
+		(ids) =>
+			Effect.sync(() => {
+				checkerCalls.set(entity, (checkerCalls.get(entity) ?? 0) + 1);
+				const existing = entityIds.get(entity) ?? new Set<number>();
+				return new Set(ids.filter((id) => existing.has(id)));
+			});
+
+	const as = <A, E>(userId: string | null, effect: Effect.Effect<A, E, DocumentStore>) => {
+		let eff = Effect.provideService(effect, Principal, userId === null ? null : { userId });
+		return runtime.runPromise(eff);
+	};
+
+	const call = <A, E>(f: (s: DocumentStore["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(DocumentStore, f);
+
+	const failWith =
+		<A>(tag: string) =>
+		(effect: Effect.Effect<A, DocumentStoreError, DocumentStore>) =>
+			runtime
+				.runPromise(Effect.flip(Effect.provideService(effect, Principal, { userId: "u1" })))
+				.then((e) => {
+					expect((e as { _tag?: string })._tag).toBe(tag);
+					return e;
+				});
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: [entityRefs] }),
+			Layer.succeed(DocumentRefTargets, refTargets),
+		);
+		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+		// Same store WITHOUT the port — entity refs must fail closed.
+		const bareDeps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: [entityRefs] }),
+		);
+		bareRuntime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(bareDeps)));
+		for (const entity of ["patients", "wards", "clinics"]) {
+			entityIds.set(entity, new Set());
+			checkerCalls.set(entity, 0);
+			await Effect.runPromise(refTargets.register(entity, checkerFor(entity)));
+		}
+		entityIds.set("patients", new Set([100, 200, 500]));
+		entityIds.set("wards", new Set([300]));
+		entityIds.set("clinics", new Set([400]));
+	});
+
+	afterAll(() => Promise.all([runtime.dispose(), bareRuntime.dispose()]));
+
+	it("insert validates entity refs through the registered checker", async () => {
+		const ok = await as(
+			"u1",
+			call((s) => s.insert(entityRefs, { label: "ok", patient: 100, ward: 300 })),
+		);
+		expect(ok.data.patient).toBe(100);
+		expect(ok.data.ward).toBe(300);
+		// Missing entity id, unregistered entity, unknown ward id.
+		await failWith("BrokenReference")(
+			call((s) => s.insert(entityRefs, { label: "x", patient: 999 })),
+		);
+		await failWith("BrokenReference")(call((s) => s.insert(entityRefs, { label: "x", ghost: 1 })));
+		await failWith("BrokenReference")(call((s) => s.insert(entityRefs, { label: "x", ward: 999 })));
+	});
+
+	it("batches share one batched checker call per entity", async () => {
+		checkerCalls.set("patients", 0);
+		checkerCalls.set("wards", 0);
+		await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{
+						op: "insert",
+						collection: entityRefs,
+						data: { label: "b1", patient: 100 },
+					},
+					{
+						op: "insert",
+						collection: entityRefs,
+						data: { label: "b2", patient: 100, ward: 300 },
+					},
+				]),
+			),
+		);
+		expect(checkerCalls.get("patients")).toBe(1);
+		expect(checkerCalls.get("wards")).toBe(1);
+	});
+
+	it("entity refs fail BrokenReference when the port is absent", async () => {
+		const eff = Effect.flatMap(DocumentStore, (s) =>
+			s.insert(entityRefs, { label: "x", patient: 100 }),
+		);
+		const error = await bareRuntime.runPromise(
+			Effect.flip(Effect.provideService(eff, Principal, { userId: "u1" })),
+		);
+		expect((error as { _tag?: string })._tag).toBe("BrokenReference");
+	});
+
+	it("applyEntityDelete restrict fails DocumentInUse before any write", async () => {
+		// patient (restrict) + backup (nullify) on the SAME id: restrict
+		// must win and nothing may be written.
+		const rec = await as(
+			"u1",
+			call((s) => s.insert(entityRefs, { label: "r", patient: 100, backup: 100 })),
+		);
+		await failWith("DocumentInUse")(
+			call((s) => s.applyEntityDelete("patients", 100, { ownerId: "u1" })),
+		);
+		const got = await as(
+			"u1",
+			call((s) => s.get(entityRefs, rec.id)),
+		);
+		expect(got?.data.backup).toBe(100);
+		expect(got?.data.patient).toBe(100);
+	});
+
+	it("applyEntityDelete nullify rewrites only nullify fields", async () => {
+		const rec = await as(
+			"u1",
+			call((s) => s.insert(entityRefs, { label: "n", backup: 200 })),
+		);
+		await as(
+			"u1",
+			call((s) => s.applyEntityDelete("patients", 200, { ownerId: "u1" })),
+		);
+		const got = await as(
+			"u1",
+			call((s) => s.get(entityRefs, rec.id)),
+		);
+		expect(got?.data.backup).toBeNull();
+	});
+
+	it("applyEntityDelete is scope-bound and a no-op for unreferenced ids", async () => {
+		// u1's personal row is invisible to u2's scope — the restrict
+		// policy does not fire for a caller who cannot see the ref.
+		await as(
+			"u1",
+			call((s) => s.insert(entityRefs, { label: "scoped", patient: 500 })),
+		);
+		await as(
+			"u2",
+			call((s) => s.applyEntityDelete("patients", 500, { ownerId: "u2" })),
+		);
+		// …but the owner scope sees it and restrict blocks.
+		await failWith("DocumentInUse")(
+			call((s) => s.applyEntityDelete("patients", 500, { ownerId: "u1" })),
+		);
+		// Unknown entity / unreferenced id resolve as no-ops.
+		await as(
+			"u1",
+			call((s) => s.applyEntityDelete("ghosts", 1, { ownerId: "u1" })),
+		);
+		await as(
+			"u1",
+			call((s) => s.applyEntityDelete("wards", 999, { ownerId: "u1" })),
+		);
 	});
 });

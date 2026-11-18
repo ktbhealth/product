@@ -1,20 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Auth } from "@ktb/auth";
-import { Principal } from "@ktb/authz";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 
 import { Route as ExportRoute } from "./api-routes/patients.$id.export.ts";
 
@@ -43,26 +41,16 @@ const get = (url: string) =>
 	).options.server.handlers.GET!({ request: new Request(url), params: { id: "1" } } as never);
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect as Effect.Effect<never, never, never>),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(
-					Effect.provideService(Principal, { userId: user.id, email: user.email }),
-				) as Effect.Effect<never, never, never>,
-			),
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
-	});
+	installServerFnRuntime(runtime, authStub);
 });
 afterAll(async () => {
-	resetServerRuntime();
+	resetServerFnRuntime();
 	await runtime.dispose();
 });
 
 describe("GET /api/patients/:id/export without a configured exporter", () => {
 	it("answers 503 when the requested format has no exporter registered", async () => {
-		headers.current = new Headers({ cookie: "session=owner" });
+		serverFnRequestHeaders.current = new Headers({ cookie: "session=owner" });
 		const res = await get("http://localhost:3000/api/patients/1/export?format=fhir-r4");
 		expect(res.status).toBe(503);
 		await expect(res.json()).resolves.toEqual({ error: "export not configured" });

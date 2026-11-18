@@ -1,16 +1,28 @@
+import * as Context from "effect/Context";
 import type { JsonObject } from "effect/Schema";
 import type { JsonSchemaObject } from "@ktb/json-schema";
 import { assertSchema } from "@ktb/json-schema";
 import type { FormFieldUi } from "@ktb/forms";
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
 
-import { assertCondition, type WizardCondition } from "./condition.ts";
+import {
+	assertCondition,
+	COLLECTION_NAME_RE,
+	FORBIDDEN_PATH_SEGMENTS,
+	HOOK_ID_RE,
+	isRecord,
+	PERMISSION_RE,
+	SLUG_PATTERN,
+	type Condition,
+} from "@ktb/dsl";
 
 /**
  * Wizard definitions as DATA — the `wizard.def` contribution kind.
@@ -30,6 +42,12 @@ import { assertCondition, type WizardCondition } from "./condition.ts";
  * in their `src/client.ts` (same contract as `form.def`) because the
  * runner resolves defs from `ctx.plugins` — the enabled-filtered
  * CLIENT registry.
+ *
+ * Extension points: step kinds (`"form"`/`"info"`) and completion
+ * kinds (`"document-store"`/`"hook"`) are CLOSED unions — new
+ * behavior lands in ./resolve.ts/./completion.ts; the `hook`
+ * completion id is the escape hatch for domain logic, resolved
+ * through the WizardHooks registry (./hooks.ts).
  */
 
 /** The registered contribution kind for wizard definitions. */
@@ -46,7 +64,7 @@ export const WIZARD_DEF_KIND: ContributionKindDescriptor = {
 };
 
 /** Wizard ids double as URL segments — keep them slug-safe. */
-export const WIZARD_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const WIZARD_ID_PATTERN = SLUG_PATTERN;
 
 /** Step kinds the v1 interpreter knows how to render. */
 export type WizardStepKind = "form" | "info";
@@ -58,7 +76,7 @@ interface WizardStepBase {
 	readonly description?: string;
 	/** Optional visibility condition evaluated against submitted answers
 	 * — a hidden step is skipped by the interpreter (./resolve.ts). */
-	readonly when?: WizardCondition;
+	readonly when?: Condition;
 }
 
 /** A step that collects input: rendered with @ktb/forms `SchemaForm`
@@ -118,10 +136,12 @@ export interface WizardDefinition {
 	readonly completion?: WizardCompletion;
 	/** Label for form-step submit buttons; falls back to catalogs. */
 	readonly submitLabel?: string;
+	/** Optional `"resource.action"` grant required to START a run —
+	 * enforced by the run service through the optional `Permissions`
+	 * port (a declared permission fails closed when no grant service
+	 * is bound). */
+	readonly permission?: string;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const WIDGETS = new Set([
 	"input",
@@ -143,6 +163,11 @@ const assertStep = (value: unknown, context: string, seen: Set<string>): void =>
 	const { id, kind, title, description, when, schema, ui, submitLabel, body } = value;
 	if (typeof id !== "string" || id.length === 0) {
 		throw new Error(`${context}: wizard step id must be a non-empty string`);
+	}
+	// Step ids key the `answers` object — prototype-polluting names are
+	// rejected outright (same denylist as document-store field names).
+	if (FORBIDDEN_PATH_SEGMENTS.has(id)) {
+		throw new Error(`${context}: wizard step id ${JSON.stringify(id)} is reserved`);
 	}
 	if (seen.has(id)) {
 		throw new Error(`${context}: duplicate wizard step id "${id}"`);
@@ -212,12 +237,12 @@ const assertCompletion = (value: unknown, context: string): void => {
 	}
 	const { kind, collection, hook, data } = value;
 	if (kind === "document-store") {
-		if (typeof collection !== "string" || collection.length === 0) {
-			throw new Error(`${context}: document-store completion needs a collection name`);
+		if (typeof collection !== "string" || !COLLECTION_NAME_RE.test(collection)) {
+			throw new Error(`${context}: document-store completion needs a valid collection name`);
 		}
 	} else if (kind === "hook") {
-		if (typeof hook !== "string" || hook.length === 0) {
-			throw new Error(`${context}: hook completion needs a hook id`);
+		if (typeof hook !== "string" || !HOOK_ID_RE.test(hook)) {
+			throw new Error(`${context}: hook completion needs a valid hook id`);
 		}
 	} else {
 		throw new Error(`${context}: wizard completion kind must be "document-store" or "hook"`);
@@ -237,7 +262,7 @@ export const assertWizardDefinition = (value: unknown, context: string): WizardD
 	if (!isRecord(value)) {
 		throw new Error(`${context}: wizard definition must be an object`);
 	}
-	const { id, owner, title, description, steps, completion, submitLabel } = value;
+	const { id, owner, title, description, steps, completion, submitLabel, permission } = value;
 	if (typeof id !== "string" || !WIZARD_ID_PATTERN.test(id)) {
 		throw new Error(
 			`${context}: wizard id must match ${WIZARD_ID_PATTERN} (got ${JSON.stringify(id)})`,
@@ -254,6 +279,13 @@ export const assertWizardDefinition = (value: unknown, context: string): WizardD
 	}
 	if (submitLabel !== undefined && typeof submitLabel !== "string") {
 		throw new Error(`${context}: wizard submitLabel must be a string`);
+	}
+	if (permission !== undefined) {
+		if (typeof permission !== "string" || !PERMISSION_RE.test(permission)) {
+			throw new Error(
+				`${context}: wizard "${id}" permission must use the "resource.action" spelling`,
+			);
+		}
 	}
 	if (!Array.isArray(steps) || steps.length === 0) {
 		throw new Error(`${context}: wizard "${id}" needs at least one step`);
@@ -310,6 +342,36 @@ export const collectWizardDefinitions = (plugins: readonly Plugin[]): readonly W
 	collectKindContributions(plugins, WIZARD_DEF_KIND).map(({ plugin, payload }) =>
 		toWizardDefinition(payload as PluginContribution, plugin.id),
 	);
+
+/**
+ * The ordered wizard registry the composition root provides to the
+ * `Wizards` service — the layer @ktb/app-host merges into `core` next
+ * to `makeViewDefinitions(plugins)`/`makeTriggerDefinitions(plugins)`/
+ * `makeFlowDefinitions(plugins)`. The run service uses it to decide
+ * whether a client-supplied definition snapshot is a legitimate
+ * code-contribution (deep-equal) or a forgery.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeWizardDefinitions` always populates it. The run
+ * service re-checks each contributed def's `owner` against
+ * `PluginStates.enabledIds()` at `startRun` — a disabled plugin's def
+ * is not honored (same contract as @ktb/views/@ktb/api).
+ */
+export class WizardDefinitions extends Context.Service<
+	WizardDefinitions,
+	{
+		readonly wizards: readonly WizardDefinition[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
+>()("@ktb/wizards/WizardDefinitions") {}
+
+/** Build the `WizardDefinitions` service value for a plugin graph. */
+export const makeWizardDefinitions = (
+	plugins: readonly Plugin[],
+): { readonly wizards: readonly WizardDefinition[]; readonly ownerIndex: DefOwnerIndex } => ({
+	wizards: collectWizardDefinitions(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
+});
 
 /** Extract the wizard id from a `/wizards/<id>` request path — the
  * runner page's wildcard descriptor passes the full path as `data`.

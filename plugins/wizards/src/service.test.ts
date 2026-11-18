@@ -4,14 +4,24 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import type { WizardDefinition } from "./definition.ts";
+import { WizardDefinitions } from "./definition.ts";
 import { WizardHooks } from "./hooks.ts";
-import { WIZARDS_TEST_DDL, Wizards, WizardsServicesLive, type UpsertDefInput } from "./service.ts";
+import { Permissions, type PermissionsShape } from "@ktb/rbac";
+import {
+	MAX_ANSWERS_BYTES,
+	MAX_STEP_VALUE_BYTES,
+	WIZARDS_TEST_DDL,
+	Wizards,
+	WizardsServicesLive,
+	type UpsertDefInput,
+} from "./service.ts";
 import { wizardDefs, wizardRuns } from "./schema.ts";
 
 const FORM_SCHEMA = { type: "object", properties: { name: { type: "string" } } } as const;
@@ -46,15 +56,75 @@ const withCompletion: WizardDefinition = {
 	completion: { kind: "hook", hook: "test.done", data: { v: "$answers.only.note" } },
 };
 
+const retryDef: WizardDefinition = {
+	...withCompletion,
+	id: "retry",
+	completion: { kind: "hook", hook: "test.retry" },
+};
+
+const retry2Def: WizardDefinition = {
+	...withCompletion,
+	id: "retry2",
+	completion: { kind: "hook", hook: "test.retry2" },
+};
+
+const permDef: WizardDefinition = {
+	...twoStep,
+	id: "perm",
+	permission: "wizards.run",
+};
+
+// Enablement fixtures: the bound PluginStates stub enables plugin.on
+// only — plugin.off's contributed def must not be honored.
+const ownedOff: WizardDefinition = { ...twoStep, id: "ownedoff", owner: "plugin.off" };
+const ownedOn: WizardDefinition = { ...twoStep, id: "ownedon", owner: "plugin.on" };
+
+/** The contributed-def allowlist the service checks client-supplied
+ * definitions against — every def the tests start runs with. */
+const contributed: readonly WizardDefinition[] = [
+	twoStep,
+	conditional,
+	withCompletion,
+	retryDef,
+	retry2Def,
+	permDef,
+	ownedOff,
+	ownedOn,
+];
+
+/** PluginStates stub — only `enabledIds` is read by the Wizards gate. */
+const pluginStatesStub = (enabled: readonly string[]) =>
+	({
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set(enabled)),
+		config: () => Effect.succeed(null),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	}) as unknown as PluginStates["Service"];
+
+const permissionsStub = (allowed: boolean): PermissionsShape =>
+	({
+		permissionsFor: () => Effect.succeed(new Map()),
+		canFor: () => Effect.succeed(allowed),
+		can: () => Effect.succeed(allowed),
+		requirePermissionFor: () => (allowed ? Effect.void : Effect.die("forbidden")),
+		requirePermission: () => (allowed ? Effect.void : Effect.die("forbidden")),
+		invalidate: () => Effect.void,
+	}) as unknown as PermissionsShape;
+
 describe("WizardsLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Wizards | WizardHooks, never>;
 	let db: ReturnType<typeof makeDb>;
 
 	beforeAll(() => {
 		db = makeDb(makeD1(WIZARDS_TEST_DDL));
-		const env = Layer.merge(
+		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(WizardDefinitions, { wizards: contributed }),
+			// plugin.on enabled; plugin.off and every other id disabled.
+			Layer.succeed(PluginStates, pluginStatesStub(["plugin.on"])),
 		);
 		runtime = ManagedRuntime.make(WizardsServicesLive.pipe(Layer.provide(env)));
 	});
@@ -219,6 +289,110 @@ describe("WizardsLive", () => {
 			if (Exit.isFailure(exit)) expect(String(exit.cause)).toContain("Forbidden");
 		});
 
+		it("rejects client defs that aren't contributed defs", async () => {
+			// Well-formed, id matches the key, but nothing contributed it —
+			// a forgery attempt (arbitrary hook completion).
+			const forged: WizardDefinition = {
+				id: "forged",
+				steps: [{ kind: "info", id: "s" }],
+				completion: { kind: "hook", hook: "evil.hook" },
+			};
+			const e1 = await asUser(
+				"u1",
+				Effect.exit(call((w) => w.startRun({ key: "forged", definition: forged }))),
+			);
+			expect(Exit.isFailure(e1)).toBe(true);
+			if (Exit.isFailure(e1)) expect(String(e1.cause)).toContain("ForbiddenWizardDefinition");
+
+			// id matches a contributed def but the content differs.
+			const tampered: WizardDefinition = {
+				...withCompletion,
+				completion: { kind: "hook", hook: "attacker.hook" },
+			};
+			const e2 = await asUser(
+				"u1",
+				Effect.exit(call((w) => w.startRun({ key: "fin", definition: tampered }))),
+			);
+			expect(Exit.isFailure(e2)).toBe(true);
+			if (Exit.isFailure(e2)) expect(String(e2.cause)).toContain("ForbiddenWizardDefinition");
+		});
+
+		it("rejects contributed defs owned by disabled plugins", async () => {
+			// plugin.off is disabled in the bound PluginStates stub — the
+			// contributed def is not honored: same ForbiddenWizardDefinition
+			// as an unregistered/forged def.
+			const e1 = await asUser(
+				"u1",
+				Effect.exit(call((w) => w.startRun({ key: "ownedoff", definition: ownedOff }))),
+			);
+			expect(Exit.isFailure(e1)).toBe(true);
+			if (Exit.isFailure(e1)) expect(String(e1.cause)).toContain("ForbiddenWizardDefinition");
+			// Enabled owner stays live — the run starts normally. Ownerless
+			// contributed defs (every other fixture) are likewise live.
+			const view = await user((w) => w.startRun({ key: "ownedon", definition: ownedOn }));
+			expect(view.status).toBe("active");
+		});
+
+		it("accepts a contributed def regardless of key order", async () => {
+			// Same def, different top-level key order — canonical JSON
+			// comparison must still match the contributed registry entry.
+			const shuffled: WizardDefinition = {
+				steps: withCompletion.steps,
+				completion: withCompletion.completion,
+				id: "fin",
+			};
+			const view = await user((w) => w.startRun({ key: "fin", definition: shuffled }));
+			expect(view.status).toBe("active");
+			expect(view.definition.id).toBe("fin");
+		});
+
+		it("enforces def.permission through the optional Permissions port", async () => {
+			// No Permissions service bound → declared permission fails closed.
+			const e1 = await asUser(
+				"u1",
+				Effect.exit(call((w) => w.startRun({ key: "perm", definition: permDef }))),
+			);
+			expect(Exit.isFailure(e1)).toBe(true);
+			if (Exit.isFailure(e1)) expect(String(e1.cause)).toContain("WizardPermissionDenied");
+
+			// serviceOption(Permissions) is captured at layer build, so
+			// allow/deny need their own runtimes.
+			const startWith = (allowed: boolean) => {
+				const rt = ManagedRuntime.make(
+					WizardsServicesLive.pipe(
+						Layer.provide(
+							Layer.mergeAll(
+								Layer.succeed(Db, db),
+								Layer.succeed(
+									PlatformAdmin,
+									makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+								),
+								Layer.succeed(WizardDefinitions, { wizards: contributed }),
+								Layer.succeed(Permissions, permissionsStub(allowed)),
+							),
+						),
+					),
+				);
+				return rt
+					.runPromise(
+						Effect.exit(
+							Effect.flatMap(Wizards, (w) => w.startRun({ key: "perm", definition: permDef })).pipe(
+								Effect.provideService(Principal, { userId: "u1" }),
+							),
+						),
+					)
+					.finally(() => rt.dispose());
+			};
+
+			const granted = await startWith(true);
+			expect(Exit.isSuccess(granted)).toBe(true);
+			const denied = await startWith(false);
+			expect(Exit.isFailure(denied)).toBe(true);
+			if (Exit.isFailure(denied)) {
+				expect(String(denied.cause)).toContain("WizardPermissionDenied");
+			}
+		});
+
 		it("walks a run to completion through info + form steps", async () => {
 			const started = await user((w) => w.startRun({ key: "intake", definition: twoStep }));
 			const runId = started.id;
@@ -252,6 +426,64 @@ describe("WizardsLive", () => {
 			);
 			expect(Exit.isFailure(e)).toBe(true);
 			if (Exit.isFailure(e)) expect(String(e.cause)).toContain("WizardNotActive");
+		});
+
+		it("validates form-step values against the step schema server-side", async () => {
+			const started = await user((w) => w.startRun({ key: "intake", definition: twoStep }));
+			const runId = started.id;
+			await user((w) => w.advance(runId, { stepId: "welcome" }));
+			// FORM_SCHEMA requires name to be a string when present.
+			const e = await asUser(
+				"u1",
+				Effect.exit(
+					Effect.flatMap(Wizards, (w) =>
+						w.advance(runId, { stepId: "details", value: { name: 42 } }),
+					),
+				),
+			);
+			expect(Exit.isFailure(e)).toBe(true);
+			if (Exit.isFailure(e)) expect(String(e.cause)).toContain("InvalidStepValue");
+			// the rejected value was NOT persisted — a valid resubmit works
+			const done = await user((w) =>
+				w.advance(runId, { stepId: "details", value: { name: "Ana" } }),
+			);
+			expect(done.status).toBe("completed");
+			expect(done.answers).toEqual({ details: { name: "Ana" } });
+		});
+
+		it("rejects step values over the serialized cap", async () => {
+			const started = await user((w) => w.startRun({ key: "intake", definition: twoStep }));
+			const runId = started.id;
+			await user((w) => w.advance(runId, { stepId: "welcome" }));
+			const big = "x".repeat(MAX_STEP_VALUE_BYTES);
+			const e = await asUser(
+				"u1",
+				Effect.exit(
+					Effect.flatMap(Wizards, (w) => w.advance(runId, { stepId: "details", value: big })),
+				),
+			);
+			expect(Exit.isFailure(e)).toBe(true);
+			if (Exit.isFailure(e)) expect(String(e.cause)).toContain("InvalidStepValue");
+		});
+
+		it("rejects unserializable step values", async () => {
+			const started = await user((w) => w.startRun({ key: "intake", definition: twoStep }));
+			const runId = started.id;
+			await user((w) => w.advance(runId, { stepId: "welcome" }));
+			// Circular refs can't cross the wire, but a direct service
+			// caller could pass one — JSON.stringify throws → -1 → reject.
+			const circular: Record<string, unknown> = {};
+			circular.self = circular;
+			for (const bad of [circular, () => {}]) {
+				const e = await asUser(
+					"u1",
+					Effect.exit(
+						Effect.flatMap(Wizards, (w) => w.advance(runId, { stepId: "details", value: bad })),
+					),
+				);
+				expect(Exit.isFailure(e)).toBe(true);
+				if (Exit.isFailure(e)) expect(String(e.cause)).toContain("InvalidStepValue");
+			}
 		});
 
 		it("resolves conditional steps against answers", async () => {
@@ -342,11 +574,6 @@ describe("WizardsLive", () => {
 
 		it("keeps the run active when completion fails, then retries", async () => {
 			// "test.retry" is registered only AFTER the first failure.
-			const retryDef: WizardDefinition = {
-				...withCompletion,
-				id: "retry",
-				completion: { kind: "hook", hook: "test.retry" },
-			};
 			const started = await user((w) => w.startRun({ key: "retry", definition: retryDef }));
 			const runId = started.id;
 			// unregistered hook → CompletionFailed; run stays active at done
@@ -386,12 +613,7 @@ describe("WizardsLive", () => {
 		});
 
 		it("completes a parked run via a bare advance once the hook exists", async () => {
-			const retryDef: WizardDefinition = {
-				...withCompletion,
-				id: "retry2",
-				completion: { kind: "hook", hook: "test.retry2" },
-			};
-			const started = await user((w) => w.startRun({ key: "retry2", definition: retryDef }));
+			const started = await user((w) => w.startRun({ key: "retry2", definition: retry2Def }));
 			const runId = started.id;
 			// park at done with a failing completion
 			await asUser(
@@ -484,10 +706,68 @@ describe("WizardsLive", () => {
 			if (Exit.isFailure(e3)) expect(String(e3.cause)).toContain("CorruptWizardRun");
 		});
 
-		it("tolerates non-object answers_json", async () => {
-			const [row] = await insertRun({ answersJson: "[1,2,3]" });
-			const view = await user((w) => w.getRun(row!.id));
-			expect(view?.answers).toEqual({});
+		it("fails CorruptWizardRun on non-object or unparseable answers_json", async () => {
+			for (const answersJson of ["[1,2,3]", '"str"', "{nope"]) {
+				const [row] = await insertRun({ answersJson });
+				const e = await asUser(
+					"u1",
+					Effect.exit(Effect.flatMap(Wizards, (w) => w.getRun(row!.id))),
+				);
+				expect(Exit.isFailure(e)).toBe(true);
+				if (Exit.isFailure(e)) expect(String(e.cause)).toContain("CorruptWizardRun");
+			}
+		});
+
+		it("rejects answer sets over the serialized cap", async () => {
+			const [row] = await insertRun({
+				answersJson: JSON.stringify({ welcome: "x".repeat(MAX_ANSWERS_BYTES) }),
+			});
+			const e = await asUser(
+				"u1",
+				Effect.exit(Effect.flatMap(Wizards, (w) => w.advance(row!.id, { stepId: "welcome" }))),
+			);
+			expect(Exit.isFailure(e)).toBe(true);
+			if (Exit.isFailure(e)) expect(String(e.cause)).toContain("InvalidStepValue");
+		});
+
+		it("recovers stale completing claims and rejects fresh ones", async () => {
+			const [stale] = await insertRun({
+				status: "completing",
+				updatedAt: new Date(Date.now() - 10 * 60 * 1000),
+			});
+			const view = await user((w) => w.getRun(stale!.id));
+			expect(view?.status).toBe("active");
+			expect(view?.step?.id).toBe("welcome");
+
+			const [fresh] = await insertRun({ status: "completing" });
+			const e = await asUser(
+				"u1",
+				Effect.exit(Effect.flatMap(Wizards, (w) => w.advance(fresh!.id, {}))),
+			);
+			expect(Exit.isFailure(e)).toBe(true);
+			if (Exit.isFailure(e)) expect(String(e.cause)).toContain("WizardNotActive");
+		});
+
+		it("memoizes parsed definitions across ops and evicts past the cap", async () => {
+			// >100 distinct snapshots force FIFO eviction; re-reads hit
+			// the cache (correctness is what matters — the cache is an
+			// optimization, so assert views resolve identically).
+			const ids: number[] = [];
+			for (let i = 0; i < 105; i += 1) {
+				const [row] = await insertRun({
+					definitionJson: JSON.stringify({ ...twoStep, title: `t${i}` }),
+				});
+				ids.push(row!.id);
+			}
+			for (const id of ids) {
+				const view = await user((w) => w.getRun(id));
+				expect(view?.status).toBe("active");
+			}
+			// second pass — every read is now a cache hit
+			for (const id of ids.slice(0, 5)) {
+				const view = await user((w) => w.getRun(id));
+				expect(view?.step?.id).toBe("welcome");
+			}
 		});
 
 		it("rejects mutations on missing runs", async () => {
