@@ -13,7 +13,7 @@ export default defineConfig({
 		coverage: {
 			provider: "v8",
 			enabled: true,
-			reporter: ["text", "html"],
+			reporter: ["text", "html", "json-summary"],
 			include: [
 				"apps/web/src/**",
 				"apps/eval/src/**",
