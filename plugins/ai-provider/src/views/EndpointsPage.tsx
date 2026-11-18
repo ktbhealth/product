@@ -511,18 +511,29 @@ export function EndpointsPage({
 											)}
 											<Field>
 												<FieldLabel>{m.machine}</FieldLabel>
-												<select
-													className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+												<Select
+													items={[
+														{ value: "", label: "—" },
+														...machines.map((mc) => ({
+															value: String(mc.id),
+															label: mc.name,
+														})),
+													]}
 													value={epForm.machineId}
-													onChange={(e) => setEpForm({ ...epForm, machineId: e.target.value })}
+													onValueChange={(v) => setEpForm({ ...epForm, machineId: String(v) })}
 												>
-													<option value="">—</option>
-													{machines.map((mc) => (
-														<option key={mc.id} value={mc.id}>
-															{mc.name}
-														</option>
-													))}
-												</select>
+													<SelectTrigger aria-label={m.machine} className="w-full">
+														<SelectValue />
+													</SelectTrigger>
+													<SelectContent>
+														<SelectItem value="">—</SelectItem>
+														{machines.map((mc) => (
+															<SelectItem key={mc.id} value={String(mc.id)}>
+																{mc.name}
+															</SelectItem>
+														))}
+													</SelectContent>
+												</Select>
 												<p className="mt-1 text-xs text-muted-foreground">{m.machineHint}</p>
 											</Field>
 										</div>

@@ -460,14 +460,8 @@ describe("EndpointsPage — acp transport", () => {
 		// Machine picker lives under non-ws transports.
 		await user.click(screen.getByLabelText("Transport"));
 		await user.click(await screen.findByRole("option", { name: "ssh" }));
-		// The machine picker is the only visible native <select> — Radix
-		// Selects render aria-hidden bubble selects for form posts.
-		const picker = () =>
-			[...document.querySelectorAll<HTMLSelectElement>("select")].find(
-				(el) => !el.hasAttribute("aria-hidden"),
-			)!;
-		await waitFor(() => expect(picker().querySelectorAll("option")).toHaveLength(3));
-		await user.selectOptions(picker(), "7");
+		await user.click(screen.getByLabelText("Machine"));
+		await user.click(await screen.findByRole("option", { name: "gpu-box" }));
 		await user.click(screen.getByText("Save"));
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		expect(fns.saveEndpointFn.mock.calls.at(-1)?.[0]?.data).toMatchObject({
@@ -486,10 +480,8 @@ describe("EndpointsPage — acp transport", () => {
 		await user.click(await screen.findByRole("option", { name: "acp" }));
 		await user.click(screen.getByLabelText("Transport"));
 		await user.click(await screen.findByRole("option", { name: "ssh" }));
-		const picker = [...document.querySelectorAll<HTMLSelectElement>("select")].find(
-			(el) => !el.hasAttribute("aria-hidden"),
-		)!;
-		expect(picker.querySelectorAll("option")).toHaveLength(1);
+		await user.click(screen.getByLabelText("Machine"));
+		expect(await screen.findAllByRole("option")).toHaveLength(1);
 	});
 });
 
@@ -697,7 +689,7 @@ describe("EndpointsPage — machine picker", () => {
 	const gpuBox = { id: 7, name: "gpu-box" };
 
 	/** Open the endpoint dialog as acp+ssh — the only transport that
-	 * reveals the machine <select> (child/ssh block). */
+	 * reveals the machine picker (child/ssh block). */
 	const openAcpSsh = async (user: ReturnType<typeof userEvent.setup>) => {
 		await user.click(screen.getByText("New endpoint"));
 		await user.type(screen.getAllByRole("textbox")[0]!, "ACP on gpu");
@@ -707,18 +699,14 @@ describe("EndpointsPage — machine picker", () => {
 		await user.click(await screen.findByRole("option", { name: "ssh" }));
 	};
 
-	const machineSelect = () =>
-		screen.getByText("Machine").parentElement!.querySelector("select") as HTMLSelectElement;
-
 	it("lists registry machines for non-ws acp transports and sends machineId", async () => {
 		machineFns.machinesListFn.mockResolvedValueOnce([gpuBox]);
 		const user = userEvent.setup();
 		renderPage();
 		await openAcpSsh(user);
-		const select = machineSelect();
-		await waitFor(() => expect(select.querySelectorAll("option")).toHaveLength(2));
-		expect(select.querySelector("option[value='7']")?.textContent).toBe("gpu-box");
-		await user.selectOptions(select, "7");
+		await waitFor(() => expect(machineFns.machinesListFn).toHaveBeenCalled());
+		await user.click(screen.getByLabelText("Machine"));
+		await user.click(await screen.findByRole("option", { name: "gpu-box" }));
 		await user.click(screen.getByText("Save"));
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
@@ -740,8 +728,8 @@ describe("EndpointsPage — machine picker", () => {
 		const user = userEvent.setup();
 		renderPage([linked]);
 		await user.click(screen.getByText("Edit"));
-		const select = machineSelect();
-		await waitFor(() => expect(select.value).toBe("7"));
+		// The restored machineId resolves to its registry name on the trigger.
+		await waitFor(() => expect(screen.getByLabelText("Machine").textContent).toContain("gpu-box"));
 		await user.click(screen.getByText("Save"));
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
@@ -756,9 +744,9 @@ describe("EndpointsPage — machine picker", () => {
 		renderPage();
 		await openAcpSsh(user);
 		await waitFor(() => expect(machineFns.machinesListFn).toHaveBeenCalled());
-		const select = machineSelect();
 		// Only the "—" empty option survives the rejected fetch.
-		await waitFor(() => expect(select.querySelectorAll("option")).toHaveLength(1));
+		await user.click(screen.getByLabelText("Machine"));
+		await waitFor(() => expect(screen.getAllByRole("option")).toHaveLength(1));
 		await user.click(screen.getByText("Save"));
 		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
 		const wire = fns.saveEndpointFn.mock.calls[0]?.[0]?.data as Record<string, unknown>;

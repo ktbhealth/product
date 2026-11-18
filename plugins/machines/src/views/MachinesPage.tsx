@@ -11,6 +11,13 @@ import {
 } from "@ktbhealth/ui/components/dialog";
 import { Input } from "@ktbhealth/ui/components/input";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -254,17 +261,22 @@ export function MachinesPage({
 							onChange={(e) => setDraft({ ...draft, name: e.target.value })}
 						/>
 						<div className="grid grid-cols-2 gap-3">
-							<select
-								className="rounded-md border bg-background px-3 py-2 text-sm"
+							<Select
+								items={KINDS.map((k) => ({ value: k, label: k }))}
 								value={draft.kind}
-								onChange={(e) => setDraft({ ...draft, kind: e.target.value as MachineKind })}
+								onValueChange={(v) => setDraft({ ...draft, kind: v as MachineKind })}
 							>
-								{KINDS.map((k) => (
-									<option key={k} value={k}>
-										{k}
-									</option>
-								))}
-							</select>
+								<SelectTrigger className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{KINDS.map((k) => (
+										<SelectItem key={k} value={k}>
+											{k}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 							<Input
 								placeholder={m.host}
 								value={draft.host}

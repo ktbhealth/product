@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The view renders outside a router: Link degrades to a plain anchor
@@ -84,7 +85,7 @@ const setup = (
 };
 
 const email = () => screen.getByLabelText("Email") as HTMLInputElement;
-const relation = () => screen.getByLabelText("Relation") as HTMLSelectElement;
+const relation = () => screen.getByLabelText("Relation");
 const submitInvite = (value: string) =>
 	act(async () => {
 		fireEvent.change(email(), { target: { value } });
@@ -179,8 +180,10 @@ describe("PatientAccessPage", () => {
 	});
 
 	it("invites a guardian when that relation is chosen", async () => {
+		const user = userEvent.setup();
 		const { api } = setup([]);
-		fireEvent.change(relation(), { target: { value: "guardian" } });
+		await user.click(relation());
+		await user.click(await screen.findByRole("option", { name: "Guardian" }));
 		await submitInvite("mae@ktb.test");
 		expect(api.invite).toHaveBeenCalledWith({
 			email: "mae@ktb.test",

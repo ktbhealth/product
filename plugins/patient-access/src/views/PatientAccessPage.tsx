@@ -17,6 +17,13 @@ import {
 } from "@ktbhealth/ui/components/empty";
 import { Input } from "@ktbhealth/ui/components/input";
 import { Label } from "@ktbhealth/ui/components/label";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 
 import { patientAccessMessages, type PatientAccessMessages, I18N_NAMESPACE } from "../i18n.ts";
 
@@ -124,15 +131,22 @@ export function PatientAccessPage({
 				</div>
 				<div className="flex flex-col gap-1.5">
 					<Label htmlFor="access-relation">{t.relationLabel}</Label>
-					<select
-						id="access-relation"
+					<Select
+						items={[
+							{ value: "self", label: t.relation.self },
+							{ value: "guardian", label: t.relation.guardian },
+						]}
 						value={relation}
-						onChange={(e) => setRelation(e.target.value)}
-						className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm"
+						onValueChange={(v) => setRelation(String(v))}
 					>
-						<option value="self">{t.relation.self}</option>
-						<option value="guardian">{t.relation.guardian}</option>
-					</select>
+						<SelectTrigger id="access-relation" className="w-full">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="self">{t.relation.self}</SelectItem>
+							<SelectItem value="guardian">{t.relation.guardian}</SelectItem>
+						</SelectContent>
+					</Select>
 				</div>
 				<Button type="submit" disabled={pending}>
 					{pending ? t.pending : t.invite}

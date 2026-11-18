@@ -111,7 +111,8 @@ describe("VaultSecretsPanel", () => {
 
 		await user.type(nameInput, "  smtp-main  ");
 		await user.type(providerInput, "  ");
-		await user.selectOptions(screen.getByLabelText("Kind"), "password");
+		await user.click(screen.getByLabelText("Kind"));
+		await user.click(await screen.findByRole("option", { name: "password" }));
 		await user.type(valueInput, "pw-123");
 		await user.click(save);
 

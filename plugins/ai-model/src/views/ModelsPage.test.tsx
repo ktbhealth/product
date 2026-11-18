@@ -85,7 +85,8 @@ describe("ModelsPage", () => {
 		await user.type(inputs[0]!, "new-model");
 		await user.type(inputs[1]!, "provider/model-id");
 		await user.type(inputs[2]!, "12"); // endpointId
-		await user.selectOptions(screen.getByRole("combobox"), "vision");
+		await user.click(screen.getByRole("combobox"));
+		await user.click(await screen.findByRole("option", { name: "vision" }));
 		await user.type(inputs[3]!, "chat, vision"); // capabilities
 		await user.type(inputs[4]!, "32768"); // contextTokens
 		await user.type(inputs[5]!, "low"); // costTier
