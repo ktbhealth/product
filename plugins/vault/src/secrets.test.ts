@@ -204,4 +204,57 @@ describe("Secrets", () => {
 		expect(parseSecretRef("vault:abc")).toBeNull();
 		expect(parseSecretRef("other:1")).toBeNull();
 	});
+
+	it("user scope: owner manages own secrets, others denied", async () => {
+		const rt = makeRuntime(db);
+		const meta = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) =>
+				s.put({
+					tenantId: null,
+					userId: "u1",
+					name: "llm-key",
+					value: "sk-user-1",
+					provider: "openai",
+					kind: "api-key",
+					hint: "-1",
+				}),
+			),
+			{ userId: "u1", email: "u1@x.com" },
+		);
+		expect(meta.scope).toBe("user:u1");
+		expect(meta.tenantId).toBeNull();
+		expect(meta.hint).toBe("-1");
+
+		// Another user cannot list or write this scope.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.list({ tenantId: null, userId: "u1" })),
+				{ userId: "u2", email: "u2@x.com" },
+			),
+		).rejects.toThrow(Forbidden);
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) =>
+					s.put({ tenantId: null, userId: "u1", name: "x", value: "y" }),
+				),
+				{ userId: "u2", email: "u2@x.com" },
+			),
+		).rejects.toThrow(Forbidden);
+
+		// Owner lists + resolves; value round-trips.
+		const list = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) => s.list({ tenantId: null, userId: "u1" })),
+			{ userId: "u1", email: "u1@x.com" },
+		);
+		expect(list.map((r) => r.name)).toContain("llm-key");
+		const value = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) => s.resolve(secretRefFor(meta.id))),
+		);
+		expect(value).toBe("sk-user-1");
+	});
 });

@@ -580,7 +580,7 @@ CREATE INDEX entity_deks_reader_idx ON entity_deks (reader_pubkey);
 CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL REFERENCES user(id) ON DELETE cascade, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
 CREATE UNIQUE INDEX portal_keys_user_wrap_idx ON portal_keys (user_id, wrap_public_key);
 CREATE INDEX portal_keys_wrap_idx ON portal_keys (wrap_public_key);
-CREATE TABLE vault_secret (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, name TEXT NOT NULL, provider TEXT, kind TEXT NOT NULL DEFAULT 'generic', wrapped_dek TEXT NOT NULL, ciphertext TEXT NOT NULL, kek_version TEXT, version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', created_by TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER, rotated_at INTEGER);
+CREATE TABLE vault_secret (id INTEGER PRIMARY KEY AUTOINCREMENT, scope TEXT NOT NULL, tenant_id INTEGER REFERENCES groups(id) ON DELETE cascade, name TEXT NOT NULL, provider TEXT, kind TEXT NOT NULL DEFAULT 'generic', hint TEXT, wrapped_dek TEXT NOT NULL, ciphertext TEXT NOT NULL, kek_version TEXT, version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'active', created_by TEXT, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER, rotated_at INTEGER);
 CREATE UNIQUE INDEX vault_secret_scope_name_idx ON vault_secret (scope, name);
 CREATE INDEX vault_secret_tenant_idx ON vault_secret (tenant_id);
 `;

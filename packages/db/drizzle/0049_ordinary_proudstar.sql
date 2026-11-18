@@ -1,0 +1,1 @@
+ALTER TABLE `vault_secret` ADD `hint` text;

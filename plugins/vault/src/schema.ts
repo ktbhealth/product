@@ -187,6 +187,9 @@ export const vaultSecret = sqliteTable(
 		name: text().notNull(),
 		/** Optional provider hint for pickers — "openai", "anthropic", "smtp", … */
 		provider: text(),
+		/** Non-secret display hint (e.g. last-4 of a key) for masked
+		 * reads — never key material. */
+		hint: text(),
 		/** "api-key" | "token" | "password" | "pem" | "generic". */
 		kind: text().notNull().default("generic"),
 		/** Per-row DEK wrapped under the deployment KEK (`v1.` envelope + AAD). */

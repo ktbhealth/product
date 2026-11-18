@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { ApiKeys, type ApiKeyRow } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
+import { Db, makeDb } from "@ktb/db";
+import { makeD1 } from "@ktb/db/testing";
+import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
+import { secretKeyringLive } from "@ktb/vault-keyring";
+import { SecretsLive, VAULT_TEST_DDL } from "@ktb/vault";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -419,5 +424,71 @@ describe("client plugin mirror", () => {
 
 	it("keeps the schema module table-free — credentials live in apikey", () => {
 		expect(Object.keys(schemaModule)).toHaveLength(0);
+	});
+});
+
+describe("Credentials (vault-backed, P-098 C3)", () => {
+	const DDL = "CREATE TABLE user (id TEXT PRIMARY KEY);" + VAULT_TEST_DDL;
+
+	it("stores new credentials as vault user secrets; credential: refs resolve", async () => {
+		const db = makeDb(makeD1(DDL));
+		const secretsEnv = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(""))),
+			secretKeyringLive("0".repeat(64)) as Layer.Layer<unknown>,
+		);
+		const secretsLayer = SecretsLive.pipe(Layer.provide(secretsEnv)) as unknown as Layer.Layer<
+			unknown,
+			never,
+			never
+		>;
+		const apiKeys = makeApiKeys([]);
+		const layers = Layer.mergeAll(apiKeys.layer, grantLayer(true), secretsLayer);
+		const rt = ManagedRuntime.make(
+			Layer.merge(CredentialsLive.pipe(Layer.provide(layers)), layers) as Layer.Layer<
+				unknown,
+				never,
+				never
+			>,
+		);
+		const run = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+			rt.runPromise(
+				Effect.provideService(effect, Principal, {
+					userId: "u1",
+					email: "v@x.com",
+				}) as Effect.Effect<A, E>,
+			);
+
+		const { id } = await run(
+			Effect.flatMap(Credentials, (s) =>
+				s.create({ name: "prod key", provider: "openai", secret: "sk-live-9876" }),
+			),
+		);
+		expect(id).toMatch(/^\d+$/);
+		// Vault path taken — nothing landed in the legacy apiKey store.
+		expect(apiKeys.created).toHaveLength(0);
+
+		const listed = await run(Effect.flatMap(Credentials, (s) => s.list()));
+		expect(listed).toHaveLength(1);
+		expect(listed[0]).toMatchObject({
+			id,
+			name: "prod key",
+			provider: "openai",
+			masked: "••••9876",
+		});
+		// Metadata never carries the secret.
+		expect(JSON.stringify(listed)).not.toContain("sk-live-9876");
+
+		// Both ref spellings resolve server-side.
+		expect(await run(Effect.flatMap(Credentials, (s) => s.resolve(`credential:${id}`)))).toBe(
+			"sk-live-9876",
+		);
+		expect(await run(Effect.flatMap(Credentials, (s) => s.resolve(`vault:${id}`)))).toBe(
+			"sk-live-9876",
+		);
+
+		await run(Effect.flatMap(Credentials, (s) => s.remove(id)));
+		expect(await run(Effect.flatMap(Credentials, (s) => s.list()))).toHaveLength(0);
+		await rt.dispose();
 	});
 });

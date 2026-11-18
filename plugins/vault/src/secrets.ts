@@ -5,7 +5,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { and, eq, sql } from "drizzle-orm";
 
-import { Principal, type Forbidden } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { aead } from "@ktb/crypto";
 import type { SecretKeyringService } from "@ktb/crypto/secret-keyring";
 import { SecretKeyring } from "@ktb/crypto/secret-keyring";
@@ -59,8 +59,14 @@ export class SecretError extends Data.TaggedError("SecretError")<{
 }> {}
 
 const PLATFORM_SCOPE = "platform";
-const scopeOf = (tenantId: number | null): string =>
-	tenantId === null ? PLATFORM_SCOPE : String(tenantId);
+const USER_SCOPE_PREFIX = "user:";
+const userScope = (userId: string): string => `${USER_SCOPE_PREFIX}${userId}`;
+const scopeOf = (tenantId: number | null, userId?: string | null): string =>
+	userId != null && userId !== ""
+		? userScope(userId)
+		: tenantId === null
+			? PLATFORM_SCOPE
+			: String(tenantId);
 
 const dekAad = (scope: string, name: string): string => `vault-dek:${scope}:${name}`;
 const valueAad = (scope: string, name: string): string => `vault-secret:${scope}:${name}`;
@@ -101,6 +107,7 @@ export async function insertSecret(
 		readonly name: string;
 		readonly provider: string | null;
 		readonly kind: VaultSecretKind;
+		readonly hint?: string | null;
 		readonly wrappedDek: string;
 		readonly ciphertext: string;
 		readonly kekVersion: string | null;
@@ -125,6 +132,7 @@ export async function replaceSecretMaterial(
 		readonly kekVersion: string | null;
 		readonly provider?: string | null;
 		readonly kind?: VaultSecretKind;
+		readonly hint?: string | null;
 		readonly rotate?: boolean;
 	},
 ): Promise<VaultSecret> {
@@ -136,6 +144,7 @@ export async function replaceSecretMaterial(
 			kekVersion: input.kekVersion,
 			...(input.provider !== undefined ? { provider: input.provider } : {}),
 			...(input.kind !== undefined ? { kind: input.kind } : {}),
+			...(input.hint !== undefined ? { hint: input.hint } : {}),
 			version: sql`${vaultSecret.version} + 1`,
 			updatedAt: new Date(),
 			...(input.rotate === true ? { rotatedAt: new Date() } : {}),
@@ -191,25 +200,29 @@ const open = async (keyring: SecretKeyringService, row: VaultSecret): Promise<st
 
 // ── Authz ────────────────────────────────────────────────────────
 
-const requireSecretWrite = (admin: PlatformAdminShape, tenantId: number | null) =>
-	tenantId === null
-		? admin.requireAdmin()
-		: Effect.gen(function* () {
-				const tenant = yield* Tenant;
-				if (tenant === null || Number(tenant.id) !== tenantId)
-					return yield* Effect.fail(new SecretError({ reason: "tenant-mismatch" }));
-				yield* requireTenantRole("admin", "vault.secret.manage");
-			});
-
-const requireSecretRead = (admin: PlatformAdminShape, tenantId: number | null) =>
-	tenantId === null
-		? admin.requireAdmin()
-		: Effect.gen(function* () {
-				const tenant = yield* Tenant;
-				if (tenant === null || Number(tenant.id) !== tenantId)
-					return yield* Effect.fail(new SecretError({ reason: "tenant-mismatch" }));
-				yield* requireTenantRole("member", "vault.secret.read");
-			});
+/** Scope-aware gate shared by read/write — `scope` is the stored
+ * scope string ("platform" | "user:<id>" | String(tenantId)).
+ * platform → PlatformAdmin; user → the owning principal only (self
+ * manages own secrets — the caller's plugin keeps its own grant);
+ * tenant → bound-tenant admin (write) / member (read). */
+const requireScopeAccess = (admin: PlatformAdminShape, scope: string, min: "admin" | "member") => {
+	if (scope === PLATFORM_SCOPE) return admin.requireAdmin();
+	if (scope.startsWith(USER_SCOPE_PREFIX)) {
+		const owner = scope.slice(USER_SCOPE_PREFIX.length);
+		return Effect.gen(function* () {
+			const principal = yield* Principal;
+			if (principal?.userId !== owner)
+				return yield* Effect.fail(new Forbidden({ path: "vault.secret.user-scope" }));
+		});
+	}
+	const tenantId = Number(scope);
+	return Effect.gen(function* () {
+		const tenant = yield* Tenant;
+		if (tenant === null || Number(tenant.id) !== tenantId)
+			return yield* Effect.fail(new SecretError({ reason: "tenant-mismatch" }));
+		yield* requireTenantRole(min === "admin" ? "admin" : "member", `vault.secret.${min}`);
+	});
+};
 
 // ── Service ──────────────────────────────────────────────────────
 
@@ -221,6 +234,7 @@ export interface SecretMeta {
 	readonly name: string;
 	readonly provider: string | null;
 	readonly kind: VaultSecretKind;
+	readonly hint: string | null;
 	readonly version: number;
 	readonly status: string;
 	readonly kekVersion: string | null;
@@ -237,6 +251,7 @@ const toMeta = (row: VaultSecret): SecretMeta => ({
 	name: row.name,
 	provider: row.provider,
 	kind: row.kind as VaultSecretKind,
+	hint: row.hint,
 	version: row.version,
 	status: row.status,
 	kekVersion: row.kekVersion,
@@ -272,15 +287,21 @@ export class Secrets extends Context.Service<
 		/** Metadata list for a scope — never key material. */
 		readonly list: (input: {
 			readonly tenantId: number | null;
+			/** Personal scope — `user:<id>` rows owned by this user.
+			 * Wins over tenantId when both are set. */
+			readonly userId?: string | null;
 		}) => Effect.Effect<readonly SecretMeta[], SecretError | TenantForbidden | Forbidden>;
 		/** Create or replace a secret's value (upsert on scope+name).
 		 * Returns the row metadata; `secretRefFor(id)` is the ref. */
 		readonly put: (input: {
 			readonly tenantId: number | null;
+			readonly userId?: string | null;
 			readonly name: string;
 			readonly value: string;
 			readonly provider?: string | null;
 			readonly kind?: VaultSecretKind;
+			/** Non-secret display hint (e.g. last-4) stored for masked reads. */
+			readonly hint?: string | null;
 		}) => Effect.Effect<SecretMeta, SecretError | TenantForbidden | Forbidden>;
 		/** THE read-back — `vault:<id>` refs only; other spellings and
 		 * missing/disabled rows resolve null. Ungated by design (system
@@ -314,15 +335,16 @@ export const SecretsLive = Layer.effect(
 
 		return Secrets.of({
 			list: Effect.fn("Secrets.list")(function* (input) {
-				yield* requireSecretRead(platformAdmin, input.tenantId);
-				const rows = yield* Effect.promise(() => listSecrets(db, scopeOf(input.tenantId)));
+				const scope = scopeOf(input.tenantId, input.userId);
+				yield* requireScopeAccess(platformAdmin, scope, "member");
+				const rows = yield* Effect.promise(() => listSecrets(db, scope));
 				return rows.map(toMeta);
 			}),
 
 			put: Effect.fn("Secrets.put")(function* (input) {
-				yield* requireSecretWrite(platformAdmin, input.tenantId);
+				const scope = scopeOf(input.tenantId, input.userId);
+				yield* requireScopeAccess(platformAdmin, scope, "admin");
 				const kr = yield* requireKeyring();
-				const scope = scopeOf(input.tenantId);
 				const name = input.name.trim();
 				if (name === "")
 					return yield* Effect.fail(
@@ -344,7 +366,8 @@ export const SecretsLive = Layer.effect(
 						? yield* Effect.promise(() =>
 								insertSecret(db, {
 									scope,
-									tenantId: input.tenantId,
+									tenantId: scope === String(input.tenantId) ? input.tenantId : null,
+									hint: input.hint ?? null,
 									name,
 									provider: input.provider ?? null,
 									kind: input.kind ?? "generic",
@@ -362,6 +385,7 @@ export const SecretsLive = Layer.effect(
 									kekVersion: sealed.kekVersion,
 									provider: input.provider ?? existing.provider,
 									kind: input.kind ?? (existing.kind as VaultSecretKind),
+									hint: input.hint !== undefined ? input.hint : existing.hint,
 								}),
 							);
 				yield* recordAudit(existing === null ? "vault.secret.create" : "vault.secret.update", row, {
@@ -385,7 +409,7 @@ export const SecretsLive = Layer.effect(
 			rotate: Effect.fn("Secrets.rotate")(function* (input) {
 				const row = yield* Effect.promise(() => getSecretById(db, input.id));
 				if (row === null) return yield* Effect.fail(new SecretError({ reason: "not-found" }));
-				yield* requireSecretWrite(platformAdmin, row.tenantId);
+				yield* requireScopeAccess(platformAdmin, row.scope, "admin");
 				const kr = yield* requireKeyring();
 				// Open under the OLD material, reseal under a fresh DEK.
 				const value = yield* Effect.tryPromise({
@@ -412,7 +436,7 @@ export const SecretsLive = Layer.effect(
 			remove: Effect.fn("Secrets.remove")(function* (input) {
 				const row = yield* Effect.promise(() => getSecretById(db, input.id));
 				if (row === null) return yield* Effect.fail(new SecretError({ reason: "not-found" }));
-				yield* requireSecretWrite(platformAdmin, row.tenantId);
+				yield* requireScopeAccess(platformAdmin, row.scope, "admin");
 				yield* Effect.promise(() => deleteSecret(db, row.id));
 				yield* recordAudit("vault.secret.remove", row);
 			}),

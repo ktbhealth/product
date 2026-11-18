@@ -337,6 +337,13 @@
       "when": 1794987804672,
       "tag": "0048_clever_stardust",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1795005347830,
+      "tag": "0049_ordinary_proudstar",
+      "breakpoints": true
     }
   ]
 }

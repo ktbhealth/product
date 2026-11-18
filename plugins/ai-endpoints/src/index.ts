@@ -22,6 +22,7 @@ import { EVAL_ACTION, EVAL_RESOURCE } from "@ktb/eval-validator";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
+import { Secrets } from "@ktb/vault";
 
 import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
 import { AgentsPanelPage, EndpointsPanelPage } from "./platform-page.tsx";
@@ -159,9 +160,11 @@ const requireGrant = Effect.fn("AiEndpoints.gate")(function* () {
 	yield* permissions.requirePermission(EVAL_RESOURCE, EVAL_ACTION);
 });
 
-/** `secretRef` is either an env var NAME or `credential:<id>` — the
- * latter resolves through the credentials store so raw secrets are
- * injected into the descriptor and never leave the server. */
+/** `secretRef` is an env var NAME, `credential:<id>` (legacy eval
+ * credentials — resolved through the credentials store) or
+ * `vault:<id>` (P-098 — THE secret store). Resolved secrets are
+ * injected into the descriptor as `apiKey` and never leave the
+ * server; env names pass through for adapter-side lookup. */
 const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, never, unknown> =>
 	Effect.gen(function* () {
 		const transport = row.transport;
@@ -181,6 +184,17 @@ const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, nev
 			timeoutMs: row.timeoutMs,
 		};
 		const ref = row.secretRef;
+		if (ref !== null && ref.startsWith("vault:")) {
+			const secrets = yield* Effect.serviceOption(Secrets);
+			/* v8 ignore next -- soft dep: vault plugin absent */
+			if (Option.isNone(secrets)) return base;
+			const secret = yield* secrets.value
+				.resolve(ref)
+				.pipe(Effect.catch(() => Effect.succeed(null)));
+			/* v8 ignore next -- deleted/disabled secret leaves the endpoint without a key */
+			if (secret === null) return base;
+			return { ...base, apiKey: secret };
+		}
 		if (ref === null || !ref.startsWith("credential:"))
 			return { ...base, ...(ref !== null ? { secretRef: ref } : {}) };
 		const creds = yield* Effect.serviceOption(Credentials);
@@ -548,9 +562,10 @@ export const aiEndpointsServicesPlugin = definePlugin({
 	id: "ai.endpoints.services",
 	meta: { keywords: ["ai", "services"] },
 	requiredDeps: [aiEndpointsTablesPlugin.id],
-	// The credential:<id> ref path resolves through the credentials
-	// store when that plugin is enabled — absence just skips it.
-	optionalDeps: ["credentials.services"],
+	// credential:/vault: ref paths resolve through the credentials
+	// and vault stores when those plugins are enabled — absence
+	// just skips them.
+	optionalDeps: ["credentials.services", "vault.secrets"],
 	services: Layer.mergeAll(AiEndpointsLive, PlatformLlmLive),
 });
 
