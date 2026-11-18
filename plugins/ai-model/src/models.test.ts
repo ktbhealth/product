@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Audit } from "@ktb/audit";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
@@ -11,23 +12,33 @@ import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "
 import { Tenant, type TenantRole } from "@ktb/tenant";
 
 import { AI_MODEL_TEST_DDL, AiModels, AiModelsLive } from "./index.ts";
+import { getModelById, insertModel, listModels } from "./models.ts";
 
 const DDL = AI_MODEL_TEST_DDL;
 const TENANT_ID = 7;
 const ADMIN_EMAIL = "admin@x.com";
 const USER_EMAIL = "doc@clinic.com";
 
-const makeRuntime = (db: DbClient) => {
+const makeRuntime = (
+	db: DbClient,
+	extra: Layer.Layer<never, never, never> | Layer.Layer<Audit, never, never> = Layer.empty,
+) => {
 	const infra = Layer.mergeAll(
 		Layer.succeed(Db, db),
 		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN_EMAIL))),
 	);
-	return ManagedRuntime.make(AiModelsLive.pipe(Layer.provide(infra)));
+	return ManagedRuntime.make(
+		Layer.mergeAll(AiModelsLive.pipe(Layer.provide(infra)), infra, extra) as Layer.Layer<
+			unknown,
+			never,
+			never
+		>,
+	);
 };
 
 const run = <A, E>(
-	runtime: ManagedRuntime.ManagedRuntime<AiModels, never>,
-	effect: Effect.Effect<A, E, AiModels>,
+	runtime: ManagedRuntime.ManagedRuntime<unknown, never>,
+	effect: Effect.Effect<A, E, unknown>,
 	options: { role?: TenantRole | null; userId?: string; email?: string } = {},
 ) =>
 	runtime.runPromise(
@@ -255,5 +266,235 @@ describe("AiModels", () => {
 			asAdmin,
 		);
 		expect(only.map((c) => c.name)).toEqual(["ep5-model"]);
+	});
+
+	it("get returns the card for an existing row", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "get-me", modelId: "g1" })),
+			asAdmin,
+		);
+		const got = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.get(card.id)),
+			asAdmin,
+		);
+		expect(got?.name).toBe("get-me");
+		await rt.dispose();
+	});
+
+	it("update rejects unknown ids and blank fields", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "upd-me", modelId: "u1" })),
+			asAdmin,
+		);
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.update({ id: 99999, name: "x" })),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "not-found" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.update({ id: card.id, name: "   " })),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.update({ id: card.id, modelId: "  " })),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.remove(99999)),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "not-found" });
+		await rt.dispose();
+	});
+
+	it("update applies every patch field", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "patch-me", modelId: "p1" })),
+			asAdmin,
+		);
+		const updated = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) =>
+				m.update({
+					id: card.id,
+					name: "patch-me-2",
+					modelId: "p2",
+					endpointId: 11,
+					kind: "judge",
+					capabilities: ["judge"],
+					contextTokens: 4096,
+					costTier: "medium",
+					isDefault: true,
+					enabled: true,
+				}),
+			),
+			asAdmin,
+		);
+		expect(updated).toMatchObject({
+			name: "patch-me-2",
+			modelId: "p2",
+			endpointId: 11,
+			kind: "judge",
+			capabilities: ["judge"],
+			contextTokens: 4096,
+			costTier: "medium",
+			isDefault: true,
+			enabled: true,
+		});
+		await rt.dispose();
+	});
+
+	it("list defaults to platform scope; tenant mismatches fail", async () => {
+		const rt = makeRuntime(db);
+		const all = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.list()),
+			asAdmin,
+		);
+		expect(all.length).toBeGreaterThan(0);
+		// Bound tenant (id 7) asking for scope "8" → tenant-mismatch.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.list({ scope: "tenant", tenantId: 8 })),
+				asMember,
+			),
+		).rejects.toMatchObject({ reason: "tenant-mismatch" });
+		// No bound tenant at all → same failure via the null arm.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.list({ scope: "tenant", tenantId: TENANT_ID })),
+				{ role: null, email: "nobody@x.com" },
+			),
+		).rejects.toMatchObject({ reason: "tenant-mismatch" });
+		await rt.dispose();
+	});
+
+	it("resolveDefault with no args picks the platform default; empty scopes → null", async () => {
+		const rt = makeRuntime(db);
+		const def = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.resolveDefault()),
+			asAdmin,
+		);
+		expect(def?.scope).toBe("platform");
+		// An endpointId filter matching nothing yields no flagged default.
+		const none = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.resolveDefault({ endpointId: 424242 })),
+			asAdmin,
+		);
+		expect(none).toBeNull();
+		await rt.dispose();
+	});
+
+	it("parses malformed and non-array capabilities as []", async () => {
+		// Repo-level inserts bypass service validation on purpose — the
+		// card mapper must degrade gracefully.
+		await insertModel(db, {
+			scope: "platform",
+			tenantId: null,
+			endpointId: null,
+			name: "bad-json",
+			modelId: "x",
+			kind: "chat",
+			capabilities: "{not json",
+			contextTokens: null,
+			costTier: null,
+			isDefault: false,
+		});
+		await insertModel(db, {
+			scope: "platform",
+			tenantId: null,
+			endpointId: null,
+			name: "non-array",
+			modelId: "x",
+			kind: "chat",
+			capabilities: '{"a":1}',
+			contextTokens: null,
+			costTier: null,
+			isDefault: false,
+		});
+		const rt = makeRuntime(db);
+		const rows = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.list({ scope: "platform" })),
+			asAdmin,
+		);
+		for (const name of ["bad-json", "non-array"]) {
+			expect(rows.find((c) => c.name === name)?.capabilities).toEqual([]);
+		}
+		await rt.dispose();
+	});
+
+	it("records audit entries when the Audit service is bound", async () => {
+		const entries: { action: string; tenantId?: unknown }[] = [];
+		const audit = Layer.succeed(Audit, {
+			record: (entry: { action: string; tenantId?: unknown }) =>
+				Effect.sync(() => {
+					entries.push(entry);
+				}),
+		} as never);
+		const rt = makeRuntime(db, audit);
+		await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "audited", modelId: "a1" })),
+			asAdmin,
+		);
+		await run(
+			rt,
+			Effect.flatMap(AiModels, (m) =>
+				m.create({
+					scope: "tenant",
+					tenantId: TENANT_ID,
+					name: "audited-tenant",
+					modelId: "a2",
+				}),
+			),
+			asTenantAdmin,
+		);
+		const actions = entries.map((e) => e.action);
+		expect(actions).toContain("ai-model.create");
+		const tenantEntry = entries.find((e) => e.tenantId === TENANT_ID);
+		expect(tenantEntry).toBeDefined();
+		await rt.dispose();
+	});
+
+	it("repo functions round-trip rows directly", async () => {
+		const row = await insertModel(db, {
+			scope: "platform",
+			tenantId: null,
+			endpointId: 3,
+			name: "repo-row",
+			modelId: "r1",
+			kind: "tts",
+			capabilities: '["tts"]',
+			contextTokens: 2048,
+			costTier: "high",
+			isDefault: true,
+		});
+		expect(row.id).toBeGreaterThan(0);
+		expect((await getModelById(db, row.id))?.name).toBe("repo-row");
+		expect(await getModelById(db, 999999)).toBeNull();
+		expect((await listModels(db, "platform", 3)).map((r) => r.name)).toContain("repo-row");
+		expect((await listModels(db, "platform", 424242)).map((r) => r.name)).not.toContain("repo-row");
 	});
 });

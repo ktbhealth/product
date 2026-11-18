@@ -46,9 +46,7 @@ const MAX_BOUND_PARAMETERS = 100;
  * prepareBaselineEntries (createdAt/updatedAt/draftValue fall back to
  * column defaults and are not bound). */
 const PARAMS_PER_MESSAGE_ROW = 10;
-const INSERT_CHUNK_SIZE = Math.floor(
-	(MAX_BOUND_PARAMETERS - 1) / PARAMS_PER_MESSAGE_ROW,
-);
+const INSERT_CHUNK_SIZE = Math.floor((MAX_BOUND_PARAMETERS - 1) / PARAMS_PER_MESSAGE_ROW);
 
 /** Injective tuple key for the logical message identity — same
  * JSON-tuple trick as runtime.ts `cacheKey` (separator-joined keys

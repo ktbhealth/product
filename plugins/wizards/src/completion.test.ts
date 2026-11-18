@@ -96,6 +96,7 @@ describe("runCompletion", () => {
 			delete: () => Effect.die("unused"),
 			batch: () => Effect.die("unused"),
 			migrateCollection: () => Effect.die("unused"),
+			applyEntityDelete: () => Effect.die("unused"),
 		};
 		const payload = await Effect.runPromise(
 			runCompletion(docCompletion, ctx).pipe(

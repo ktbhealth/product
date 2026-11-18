@@ -512,19 +512,18 @@ export function VaultSettingsPage({
 				</>
 			)}
 
-			{data.tenantId !== null ? (
-				<VaultSecretsPanel
-					secrets={data.secrets ?? []}
-					canManage={admin}
-					api={{
-						put: api.secretPut,
-						rotate: api.secretRotate,
-						remove: api.secretRemove,
-					}}
-					locale={locale}
-					onChanged={refresh}
-				/>
-			) : null}
+			{/* tenantId is guaranteed non-null — personal scope early-returns above. */}
+			<VaultSecretsPanel
+				secrets={data.secrets ?? []}
+				canManage={admin}
+				api={{
+					put: api.secretPut,
+					rotate: api.secretRotate,
+					remove: api.secretRemove,
+				}}
+				locale={locale}
+				onChanged={refresh}
+			/>
 
 			<Dialog
 				open={phrase !== null}

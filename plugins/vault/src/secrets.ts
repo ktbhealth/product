@@ -364,6 +364,7 @@ export const SecretsLive = Layer.effect(
 					catch: asDecryptFailure,
 				});
 				const principal = yield* Effect.serviceOption(Principal);
+				/* v8 ignore next -- Principal is a Context.Reference; serviceOption always yields Some */
 				const createdBy = Option.isSome(principal) ? (principal.value?.userId ?? null) : null;
 				const existing = yield* Effect.promise(() => getSecretByName(db, scope, name));
 				const row =

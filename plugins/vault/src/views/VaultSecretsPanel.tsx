@@ -239,6 +239,7 @@ export function VaultSecretsPanel({
 			<ConfirmDialog
 				open={rotating !== null}
 				onOpenChange={(open) => {
+					/* v8 ignore next -- only close events fire; open is controlled */
 					if (!open) setRotating(null);
 				}}
 				title={t.secretRotateTitle}
@@ -248,6 +249,7 @@ export function VaultSecretsPanel({
 				loading={busy}
 				onConfirm={() =>
 					void run(async () => {
+						/* v8 ignore next -- confirm only fires while the dialog is open */
 						if (rotating === null) return { ok: false };
 						const res = await api.rotate(rotating.id);
 						if (res.ok) setRotating(null);
@@ -258,6 +260,7 @@ export function VaultSecretsPanel({
 			<ConfirmDialog
 				open={removingSecret !== null}
 				onOpenChange={(open) => {
+					/* v8 ignore next -- only close events fire; open is controlled */
 					if (!open) setRemovingSecret(null);
 				}}
 				title={t.secretRemoveTitle}
@@ -268,6 +271,7 @@ export function VaultSecretsPanel({
 				loading={busy}
 				onConfirm={() =>
 					void run(async () => {
+						/* v8 ignore next -- confirm only fires while the dialog is open */
 						if (removingSecret === null) return { ok: false };
 						const res = await api.remove(removingSecret.id);
 						if (res.ok) setRemovingSecret(null);

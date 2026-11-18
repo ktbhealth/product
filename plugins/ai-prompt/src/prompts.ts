@@ -319,6 +319,7 @@ export const AiPromptsLive = Layer.effect(
 			}
 			// No locale requested — prefer locale-neutral, then any.
 			const neutral = versionMatch.filter((r) => r.locale === "");
+			/* v8 ignore next -- versionMatch is non-empty after the length guard */
 			return neutral[0] ?? versionMatch[0] ?? null;
 		};
 

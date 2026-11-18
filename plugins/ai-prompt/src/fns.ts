@@ -53,6 +53,7 @@ type Result<T> = { readonly ok: true; readonly data: T } | { readonly ok: false 
 const denyToFalse = <A>(fallback: A) =>
 	Effect.catchTags({
 		PromptError: () => Effect.succeed(fallback),
+		/* v8 ignore next -- platform-scope fns never reach the tenant gate */
 		TenantForbidden: () => Effect.succeed(fallback),
 		Forbidden: () => Effect.succeed(fallback),
 	});

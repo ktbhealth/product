@@ -68,4 +68,18 @@ describe("AEAD (AES-256-GCM envelope)", () => {
 		const ct = bytesToB64u(new Uint8Array(32));
 		await expect(decrypt(key, `v1.${shortIv}.${ct}`)).rejects.toThrow(CryptoFormatError);
 	});
+
+	it("binds additional authenticated data — string and bytes", async () => {
+		const key = await generateDek();
+		const strAad = await encrypt(key, "secret", { aad: "vault-secret:7:k" });
+		expect(await decryptText(key, strAad, { aad: "vault-secret:7:k" })).toBe("secret");
+		// Wrong or missing AAD fails the GCM tag check.
+		await expect(decryptText(key, strAad, { aad: "vault-secret:8:k" })).rejects.toThrow();
+		await expect(decryptText(key, strAad)).rejects.toThrow();
+
+		const bytesAad = new Uint8Array([1, 2, 3]);
+		const env = await encrypt(key, "secret", { aad: bytesAad });
+		expect(await decryptText(key, env, { aad: bytesAad })).toBe("secret");
+		await expect(decryptText(key, env, { aad: new Uint8Array([1, 2, 4]) })).rejects.toThrow();
+	});
 });

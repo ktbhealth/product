@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 
 import { clinicKeys, entityDeks, groups, portalKeys } from "@ktb/db/schema";
 
+import { vaultSecret } from "./schema.ts";
+
 describe("vault schema", () => {
 	it("exposes clinic_keys columns and unique device index", () => {
 		const cfg = getTableConfig(clinicKeys);
@@ -72,6 +74,39 @@ describe("vault schema", () => {
 			"wrap_public_key",
 		]);
 		const fk = cfg.foreignKeys[0]!;
+		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
+		expect(fk.onDelete).toBe("cascade");
+	});
+
+	it("exposes vault_secret columns, scope-name unique index and tenant FK", () => {
+		const cfg = getTableConfig(vaultSecret);
+		expect(cfg.name).toBe("vault_secret");
+		expect(cfg.columns.map((c) => c.name)).toEqual([
+			"id",
+			"scope",
+			"tenant_id",
+			"name",
+			"provider",
+			"hint",
+			"kind",
+			"wrapped_dek",
+			"ciphertext",
+			"kek_version",
+			"version",
+			"status",
+			"created_by",
+			"created_at",
+			"updated_at",
+			"rotated_at",
+		]);
+		const unique = cfg.indexes.find((i) => i.config.unique);
+		expect(unique?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
+			"scope",
+			"name",
+		]);
+		const fk = cfg.foreignKeys[0]!;
+		// reference() evaluates the lazy `() => groups.id` callback.
+		expect(fk.reference().foreignTable).toBe(groups);
 		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
 		expect(fk.onDelete).toBe("cascade");
 	});

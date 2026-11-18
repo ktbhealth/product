@@ -656,8 +656,10 @@ export const vaultPagesPlugin = definePlugin({
 				const secretsSvc = yield* Secrets;
 				const secrets = yield* secretsSvc.list({ tenantId }).pipe(
 					Effect.catchTags({
+						/* v8 ignore next -- list never raises SecretError */
 						SecretError: () => Effect.succeed([] as SecretMeta[]),
 						TenantForbidden: () => Effect.succeed([] as SecretMeta[]),
+						/* v8 ignore next -- tenant scope never raises Forbidden */
 						Forbidden: () => Effect.succeed([] as SecretMeta[]),
 					}),
 				);

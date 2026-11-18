@@ -66,6 +66,7 @@ const denyToFalse = <A>(fallback: A) =>
 		VaultError: () => Effect.succeed(fallback),
 		TenantForbidden: () => Effect.succeed(fallback),
 		SecretError: () => Effect.succeed(fallback),
+		/* v8 ignore next -- fns only ever resolve tenant scope */
 		Forbidden: () => Effect.succeed(fallback),
 	});
 
@@ -306,8 +307,11 @@ export const vaultSecretsListFn = createServerFn({ method: "GET" }).handler(
 				const secrets = yield* Secrets;
 				return yield* secrets.list({ tenantId }).pipe(
 					Effect.catchTags({
+						/* v8 ignore next -- list never raises SecretError */
 						SecretError: () => Effect.succeed([] as SecretMeta[]),
+						/* v8 ignore next -- bound role always satisfies member */
 						TenantForbidden: () => Effect.succeed([] as SecretMeta[]),
+						/* v8 ignore next -- tenant scope never raises Forbidden */
 						Forbidden: () => Effect.succeed([] as SecretMeta[]),
 					}),
 				);

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ChromeContribution, Plugin } from "@ktb/kernel";
 
 import {
+	chromePortal,
 	chromeWhenMatches,
 	collectChrome,
 	unknownChromeRegions,
@@ -154,5 +155,12 @@ describe("unknownChromeRegions", () => {
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining("bogus"));
 		warn.mockRestore();
+	});
+});
+
+describe("chromePortal", () => {
+	it("defaults untagged entries to the platform portal", () => {
+		expect(chromePortal(entry("a.1", "portal.sidebar"))).toBe("platform");
+		expect(chromePortal(entry("a.2", "portal.sidebar", { portal: "doctor" }))).toBe("doctor");
 	});
 });
