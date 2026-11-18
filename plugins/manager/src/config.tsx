@@ -7,7 +7,7 @@ import type { PluginConfigSchema } from "@ktb/kernel";
  * /platform/plugins console itself.
  *
  * NOTE the `.tsx` extension: `src/client.ts` may only value-import
- * relative `.tsx` modules (ktb-arch/client-contract), so the shared
+ * relative `.tsx` modules (arch/client-contract), so the shared
  * isomorphic manifest data lives here even though it contains no JSX.
  *
  * `managerConfigSchema` is the effect/Schema SOURCE OF TRUTH: the

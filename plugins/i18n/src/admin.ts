@@ -767,5 +767,5 @@ export const I18nAdminLive = Layer.effect(
 );
 
 // The `i18n.admin.services` plugin citizen is defined in index.ts next to
-// the other single-concern plugins (the ktb-arch plugin-contract rule
+// the other single-concern plugins (the arch plugin-contract rule
 // resolves `plugins` entries within the entry file only).
