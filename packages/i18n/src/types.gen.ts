@@ -1505,6 +1505,19 @@ export type I18nKey =
 	| "users.suspendTitle"
 	| "users.title"
 	| "users.yes"
+	| "views.backToView"
+	| "views.emptyDescription"
+	| "views.emptyTitle"
+	| "views.filtersLabel"
+	| "views.loadFailed"
+	| "views.nextPage"
+	| "views.notFoundDescription"
+	| "views.notFoundTitle"
+	| "views.pageInfo"
+	| "views.prevPage"
+	| "views.recordNotFoundDescription"
+	| "views.recordNotFoundTitle"
+	| "views.resetFilters"
 	| "wizards.abandon"
 	| "wizards.abandonedDescription"
 	| "wizards.abandonedTitle"
@@ -3479,6 +3492,30 @@ export interface I18nTypedT {
 	(key: "users.suspendTitle"): Effect.Effect<string>;
 	(key: "users.title"): Effect.Effect<string>;
 	(key: "users.yes"): Effect.Effect<string>;
+	(
+		key: "views.backToView",
+		params: {
+			title: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "views.emptyDescription"): Effect.Effect<string>;
+	(key: "views.emptyTitle"): Effect.Effect<string>;
+	(key: "views.filtersLabel"): Effect.Effect<string>;
+	(key: "views.loadFailed"): Effect.Effect<string>;
+	(key: "views.nextPage"): Effect.Effect<string>;
+	(key: "views.notFoundDescription"): Effect.Effect<string>;
+	(key: "views.notFoundTitle"): Effect.Effect<string>;
+	(
+		key: "views.pageInfo",
+		params: {
+			current: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "views.prevPage"): Effect.Effect<string>;
+	(key: "views.recordNotFoundDescription"): Effect.Effect<string>;
+	(key: "views.recordNotFoundTitle"): Effect.Effect<string>;
+	(key: "views.resetFilters"): Effect.Effect<string>;
 	(key: "wizards.abandon"): Effect.Effect<string>;
 	(key: "wizards.abandonedDescription"): Effect.Effect<string>;
 	(key: "wizards.abandonedTitle"): Effect.Effect<string>;

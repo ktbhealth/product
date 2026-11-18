@@ -5056,6 +5056,60 @@ export const I18N_MANIFEST = {
 			template: "Showing {shown} of {total}",
 		},
 	},
+	views: {
+		notFoundTitle: {
+			params: [],
+		},
+		notFoundDescription: {
+			params: [],
+		},
+		recordNotFoundTitle: {
+			params: [],
+		},
+		recordNotFoundDescription: {
+			params: [],
+		},
+		filtersLabel: {
+			params: [],
+		},
+		resetFilters: {
+			params: [],
+		},
+		prevPage: {
+			params: [],
+		},
+		nextPage: {
+			params: [],
+		},
+		pageInfo: {
+			params: [
+				{
+					name: "current",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Page {current} of {total}",
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		backToView: {
+			params: [
+				{
+					name: "title",
+				},
+			],
+			template: "Back to {title}",
+		},
+		loadFailed: {
+			params: [],
+		},
+	},
 	wizards: {
 		notFoundTitle: {
 			params: [],
