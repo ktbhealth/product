@@ -392,11 +392,14 @@ export type I18nKey =
 	| "audit.verifyEmpty"
 	| "audit.verifyFailed"
 	| "audit.verifyRunning"
+	| "auth.adminLink"
 	| "auth.backToSignIn"
 	| "auth.confirmPassword"
+	| "auth.descAdmin"
 	| "auth.descIn"
 	| "auth.descUp"
 	| "auth.email"
+	| "auth.errorDenied"
 	| "auth.errorFallback"
 	| "auth.errorPasswordMismatch"
 	| "auth.forgotDesc"
@@ -406,10 +409,12 @@ export type I18nKey =
 	| "auth.forgotSent"
 	| "auth.forgotSubmit"
 	| "auth.forgotUnavailable"
+	| "auth.headingAdmin"
 	| "auth.headingIn"
 	| "auth.headingUp"
 	| "auth.hidePassword"
 	| "auth.metaTitle"
+	| "auth.metaTitleAdmin"
 	| "auth.newPassword"
 	| "auth.password"
 	| "auth.pending"
@@ -425,6 +430,8 @@ export type I18nKey =
 	| "auth.resetSubmit"
 	| "auth.secretaryLink"
 	| "auth.showPassword"
+	| "auth.signInLink"
+	| "auth.submitAdmin"
 	| "auth.submitIn"
 	| "auth.submitUp"
 	| "auth.tabIn"
@@ -2077,11 +2084,14 @@ export interface I18nTypedT {
 	(key: "audit.verifyEmpty"): Effect.Effect<string>;
 	(key: "audit.verifyFailed"): Effect.Effect<string>;
 	(key: "audit.verifyRunning"): Effect.Effect<string>;
+	(key: "auth.adminLink"): Effect.Effect<string>;
 	(key: "auth.backToSignIn"): Effect.Effect<string>;
 	(key: "auth.confirmPassword"): Effect.Effect<string>;
+	(key: "auth.descAdmin"): Effect.Effect<string>;
 	(key: "auth.descIn"): Effect.Effect<string>;
 	(key: "auth.descUp"): Effect.Effect<string>;
 	(key: "auth.email"): Effect.Effect<string>;
+	(key: "auth.errorDenied"): Effect.Effect<string>;
 	(key: "auth.errorFallback"): Effect.Effect<string>;
 	(key: "auth.errorPasswordMismatch"): Effect.Effect<string>;
 	(key: "auth.forgotDesc"): Effect.Effect<string>;
@@ -2091,10 +2101,12 @@ export interface I18nTypedT {
 	(key: "auth.forgotSent"): Effect.Effect<string>;
 	(key: "auth.forgotSubmit"): Effect.Effect<string>;
 	(key: "auth.forgotUnavailable"): Effect.Effect<string>;
+	(key: "auth.headingAdmin"): Effect.Effect<string>;
 	(key: "auth.headingIn"): Effect.Effect<string>;
 	(key: "auth.headingUp"): Effect.Effect<string>;
 	(key: "auth.hidePassword"): Effect.Effect<string>;
 	(key: "auth.metaTitle"): Effect.Effect<string>;
+	(key: "auth.metaTitleAdmin"): Effect.Effect<string>;
 	(key: "auth.newPassword"): Effect.Effect<string>;
 	(key: "auth.password"): Effect.Effect<string>;
 	(key: "auth.pending"): Effect.Effect<string>;
@@ -2110,6 +2122,8 @@ export interface I18nTypedT {
 	(key: "auth.resetSubmit"): Effect.Effect<string>;
 	(key: "auth.secretaryLink"): Effect.Effect<string>;
 	(key: "auth.showPassword"): Effect.Effect<string>;
+	(key: "auth.signInLink"): Effect.Effect<string>;
+	(key: "auth.submitAdmin"): Effect.Effect<string>;
 	(key: "auth.submitIn"): Effect.Effect<string>;
 	(key: "auth.submitUp"): Effect.Effect<string>;
 	(key: "auth.tabIn"): Effect.Effect<string>;

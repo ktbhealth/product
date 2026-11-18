@@ -1341,6 +1341,27 @@ export const I18N_MANIFEST = {
 		backToSignIn: {
 			params: [],
 		},
+		adminLink: {
+			params: [],
+		},
+		metaTitleAdmin: {
+			params: [],
+		},
+		headingAdmin: {
+			params: [],
+		},
+		descAdmin: {
+			params: [],
+		},
+		submitAdmin: {
+			params: [],
+		},
+		errorDenied: {
+			params: [],
+		},
+		signInLink: {
+			params: [],
+		},
 	},
 	consultations: {
 		"sources.browser": {
