@@ -1840,6 +1840,19 @@ describe("ZK encrypted audio upload (T-147)", () => {
 // linked patient's active links, on top of the clinic-device grants.
 describe("NewConsultationPage ZK portal grants", () => {
 	beforeEach(() => {
+		// Recorder hooks are module-level mock state — without this reset a
+		// `recording()` left over from the T-147 describe makes every save
+		// here fire the fire-and-forget uploadSessionAudio, whose late
+		// setToast can land after the jsdom teardown (unhandled rejection).
+		micSupported = true;
+		micCb = null;
+		tabCb = null;
+		micStatsFn = null;
+		micRecFn = null;
+		tabStatsFn = null;
+		tabRecFn = null;
+		statusImpl = () => ({ state: "idle", device: null });
+		engineSubs.clear();
 		// The portal-grant tests exercise the real local extraction seam —
 		// the deterministic heuristic produces the "media" confidence
 		// labels these flows assert on.
