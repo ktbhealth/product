@@ -84,7 +84,11 @@ const toCard = (row: AiModel): ModelCard => ({
 	updatedAt: row.updatedAt,
 });
 
-export async function listModels(db: DbClient, scope: string, endpointId?: number): Promise<AiModel[]> {
+export async function listModels(
+	db: DbClient,
+	scope: string,
+	endpointId?: number,
+): Promise<AiModel[]> {
 	const conditions = [eq(aiModel.scope, scope)];
 	if (endpointId !== undefined) conditions.push(eq(aiModel.endpointId, endpointId));
 	return db
