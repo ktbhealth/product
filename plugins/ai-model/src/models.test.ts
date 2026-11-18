@@ -511,7 +511,9 @@ describe("AiModels", () => {
 		}
 		// Platform rows record tenantId null; tenant rows record the numeric id.
 		const creates = entries.filter((e) => e.action === "ai-model.create");
-		expect(creates.map((e) => e.tenantId).sort()).toEqual([null, TENANT_ID].sort());
+		expect(creates.map((e) => String(e.tenantId)).sort()).toEqual(
+			[null, TENANT_ID].map(String).sort(),
+		);
 		await rt.dispose();
 	});
 });
