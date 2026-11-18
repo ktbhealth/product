@@ -68,13 +68,17 @@ clashing with other local mail catchers. If those are taken too, set
   calendar/notification ports in P-008/P-009).
 - Arch lint: plugins must not import from apps — inject via route
   composition (`api` objects in `apps/web/src/routes/`). Boundary
-  policy lives in `tools/arch-policy.mjs` (single source for the oxlint
-  overrides + `ktb-arch/*` rules): ports/plugins may not import adapters,
-  use `node:*`/`bun:*`/`deno:*`/`cloudflare:*`/`workerd:*`, touch
-  `process`/`Bun`/`Deno`, or hardcode provider literals (`@cf/*`
+  rules come from the `arch/*` oxlint plugin shipped as
+  `@ktbhealth/workspace` (`eslint-config-arch` preset —
+  `arch.product()` in `vite.config.ts`): ports/plugins may not import
+  adapters, use `node:*`/`bun:*`/`deno:*`/`cloudflare:*`/`workerd:*`,
+  touch `process`/`Bun`/`Deno`, or hardcode provider literals (`@cf/*`
   model ids, provider endpoints). Adapters, apps/_, infra/_ and
   @ktb/app-host are the exempt edge; tests keep adapter-import bans but
-  are exempt from platform/provider rules.
+  are exempt from platform/provider rules. Product-only overrides
+  (packages/** import cycles, the apps/web impl-import ban +
+  composition-root exceptions, vitest wiring) stay in
+  `vite.config.ts`.
 - packages/ vs plugins/: `plugins/` = registry citizens — they
   contribute tables/services/routes/nav/chrome/pages/panel AND can add
   capabilities other plugins consume (services, CQRS groups, events)

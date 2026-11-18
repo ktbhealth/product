@@ -594,7 +594,7 @@ export const aiEndpointsChromePlugin = definePlugin({
 // session. Route modules must live directly in src/api-routes/ — the
 // generator scans every .ts file there, so tests stay outside it.
 export const aiEndpointsRoutesPlugin = definePlugin({
-	// The ktb-arch route gate derives this id from the package dir:
+	// The arch route gate derives this id from the package dir:
 	// plugins/ai-endpoints → "ai-endpoints.routes".
 	id: "ai-endpoints.routes",
 	meta: { keywords: ["ai", "routes"] },
