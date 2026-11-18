@@ -86,8 +86,9 @@ describe("patientHistorySection", () => {
 	it("builds a factual alta-confidence section", () => {
 		const sec = patientHistorySection(HISTORY);
 		expect(sec?.confidence).toBe("alta");
-		expect(sec?.content).toContain("Consultas anteriores (2):");
-		expect(sec?.content).toContain('queixa "Dor de cabeça"');
+		expect(sec?.content).toBe(
+			'Consultas anteriores (2):\n- 05/03/2026 (#12): queixa "Dor de cabeça"; conduta "Dipirona 1g"\n- 20/01/2026 (#9)\nRegistro factual do prontuário — contexto, não sugestão clínica.',
+		);
 		expect(sec?.evidence).toEqual([
 			"consulta #12 · 2026-03-05T14:30:00.000Z",
 			"consulta #9 · 2026-01-20T10:00:00.000Z",

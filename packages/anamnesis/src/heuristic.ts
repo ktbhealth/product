@@ -39,7 +39,10 @@ export class HeuristicExtractor implements AnamnesisExtractor {
 
 	async extract(transcript: string): Promise<Anamnesis> {
 		const sentences = transcript
-			.split(/(?<=[.!?])\s+|\n+/)
+			.split(
+				// Stryker disable next-line Regex: splitting on a single vs a run of whitespace/newlines only adds empty fragments, all dropped by the length > 2 filter after trim — verified equivalent by fuzz probe
+				/(?<=[.!?])\s+|\n+/,
+			)
 			.map((s) => s.trim())
 			.filter((s) => s.length > 2);
 
