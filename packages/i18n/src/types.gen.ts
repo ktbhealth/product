@@ -717,6 +717,9 @@ export type I18nKey =
 	| "eval.persona.statusGenerating"
 	| "eval.persona.statusPending"
 	| "eval.persona.statusReady"
+	| "eval.persona.stepGenerate"
+	| "eval.persona.stepPersonas"
+	| "eval.persona.stepRunEval"
 	| "eval.validator.actionFailed"
 	| "eval.validator.approve"
 	| "eval.validator.approved"
@@ -726,15 +729,14 @@ export type I18nKey =
 	| "eval.validator.description"
 	| "eval.validator.doctor"
 	| "eval.validator.edits"
-	| "eval.validator.emptyBatches"
-	| "eval.validator.emptyPersonas"
+	| "eval.validator.emptyCohorts"
+	| "eval.validator.emptyItems"
 	| "eval.validator.feedback"
 	| "eval.validator.feedbackPlaceholder"
-	| "eval.validator.generate"
-	| "eval.validator.minutesLabel"
+	| "eval.validator.generating"
+	| "eval.validator.items"
 	| "eval.validator.moreTurns"
 	| "eval.validator.pending"
-	| "eval.validator.personas"
 	| "eval.validator.reject"
 	| "eval.validator.rejected"
 	| "eval.validator.run"
@@ -743,6 +745,9 @@ export type I18nKey =
 	| "eval.validator.stageAnamnesis"
 	| "eval.validator.stageCleanup"
 	| "eval.validator.stageError"
+	| "eval.validator.stepGenerate"
+	| "eval.validator.stepPersonas"
+	| "eval.validator.stepRunEval"
 	| "eval.validator.synthetic"
 	| "eval.validator.title"
 	| "eval.validator.view"
@@ -2357,6 +2362,9 @@ export interface I18nTypedT {
 	(key: "eval.persona.statusGenerating"): Effect.Effect<string>;
 	(key: "eval.persona.statusPending"): Effect.Effect<string>;
 	(key: "eval.persona.statusReady"): Effect.Effect<string>;
+	(key: "eval.persona.stepGenerate"): Effect.Effect<string>;
+	(key: "eval.persona.stepPersonas"): Effect.Effect<string>;
+	(key: "eval.persona.stepRunEval"): Effect.Effect<string>;
 	(key: "eval.validator.actionFailed"): Effect.Effect<string>;
 	(key: "eval.validator.approve"): Effect.Effect<string>;
 	(key: "eval.validator.approved"): Effect.Effect<string>;
@@ -2366,15 +2374,14 @@ export interface I18nTypedT {
 	(key: "eval.validator.description"): Effect.Effect<string>;
 	(key: "eval.validator.doctor"): Effect.Effect<string>;
 	(key: "eval.validator.edits"): Effect.Effect<string>;
-	(key: "eval.validator.emptyBatches"): Effect.Effect<string>;
-	(key: "eval.validator.emptyPersonas"): Effect.Effect<string>;
+	(key: "eval.validator.emptyCohorts"): Effect.Effect<string>;
+	(key: "eval.validator.emptyItems"): Effect.Effect<string>;
 	(key: "eval.validator.feedback"): Effect.Effect<string>;
 	(key: "eval.validator.feedbackPlaceholder"): Effect.Effect<string>;
-	(key: "eval.validator.generate"): Effect.Effect<string>;
-	(key: "eval.validator.minutesLabel"): Effect.Effect<string>;
+	(key: "eval.validator.generating"): Effect.Effect<string>;
+	(key: "eval.validator.items"): Effect.Effect<string>;
 	(key: "eval.validator.moreTurns"): Effect.Effect<string>;
 	(key: "eval.validator.pending"): Effect.Effect<string>;
-	(key: "eval.validator.personas"): Effect.Effect<string>;
 	(key: "eval.validator.reject"): Effect.Effect<string>;
 	(key: "eval.validator.rejected"): Effect.Effect<string>;
 	(key: "eval.validator.run"): Effect.Effect<string>;
@@ -2383,6 +2390,9 @@ export interface I18nTypedT {
 	(key: "eval.validator.stageAnamnesis"): Effect.Effect<string>;
 	(key: "eval.validator.stageCleanup"): Effect.Effect<string>;
 	(key: "eval.validator.stageError"): Effect.Effect<string>;
+	(key: "eval.validator.stepGenerate"): Effect.Effect<string>;
+	(key: "eval.validator.stepPersonas"): Effect.Effect<string>;
+	(key: "eval.validator.stepRunEval"): Effect.Effect<string>;
 	(key: "eval.validator.synthetic"): Effect.Effect<string>;
 	(key: "eval.validator.title"): Effect.Effect<string>;
 	(key: "eval.validator.view"): Effect.Effect<string>;
