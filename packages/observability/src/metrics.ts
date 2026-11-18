@@ -131,6 +131,47 @@ export const telemetryErrors = Metric.counter("ktb_telemetry_errors_total", {
 	incremental: true,
 });
 
+/** Document-store plugin (P-089, plugins/document-store): one
+ * `documents.<method>` span per public service call plus these
+ * instruments. `op` is the bounded method name (ensureCollection,
+ * insert, get, find, update, delete, batch, migrateCollection);
+ * `outcome` is success|error; `kind` on rows is bounded
+ * (scanned|migrated|failed|ops). Collection names, record ids and
+ * document payloads stay on spans only — caller-influenced values
+ * would multiply metric cardinality. */
+export const documentStoreOps = Metric.counter("ktb_document_store_ops_total", {
+	description: "DocumentStore service calls by method and outcome",
+	incremental: true,
+});
+export const documentStoreOpDuration = Metric.histogram("ktb_document_store_op_duration_ms", {
+	description: "DocumentStore service call wall time by method",
+	boundaries: [1, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000],
+});
+export const documentStoreRows = Metric.counter("ktb_document_store_rows_total", {
+	description: "Document rows scanned/migrated/failed and batch ops by method",
+	incremental: true,
+});
+
+/** Kv plugin (P-090, plugins/kv): one `kv.<method>` span per public
+ * service call plus these instruments. `op` is the bounded method name
+ * (get, set, setIfAbsent, delete, increment, expire, keys,
+ * sweepExpired, registerSchema); `outcome` is success|error; `kind` on
+ * rows is bounded (deleted|listed). Namespaces, keys and values stay
+ * on spans only (namespaces) or nowhere (keys/values) — key names can
+ * embed user data and would multiply metric cardinality. */
+export const kvOps = Metric.counter("ktb_kv_ops_total", {
+	description: "Kv service calls by method and outcome",
+	incremental: true,
+});
+export const kvOpDuration = Metric.histogram("ktb_kv_op_duration_ms", {
+	description: "Kv service call wall time by method",
+	boundaries: [1, 5, 10, 25, 50, 100, 250, 500, 1_000, 2_500, 5_000],
+});
+export const kvRows = Metric.counter("ktb_kv_rows_total", {
+	description: "Kv rows deleted by sweepExpired and keys listed by keys",
+	incremental: true,
+});
+
 export type MetricAttributes = Readonly<Record<string, string | number | boolean>>;
 
 /** Tag a metric with bounded-cardinality attributes — values are

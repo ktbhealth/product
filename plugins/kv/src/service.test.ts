@@ -2,11 +2,14 @@ import { beforeAll, describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Metric from "effect/Metric";
+import * as Tracer from "effect/Tracer";
 import { eq } from "drizzle-orm";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Forbidden, Principal } from "@ktb/authz";
+import { kvOpDuration, kvOps, kvRows, tagged } from "@ktb/observability";
 import { Tenant, TenantAccess, type Tenant as TenantT } from "@ktb/tenant";
 
 import { kvEntries, KV_TEST_DDL, plugins } from "./index.ts";
@@ -658,5 +661,99 @@ describe("scope resolution + fencing", () => {
 		expect(await run(eff((kv) => kv.get<string>("t.iso", "k", GLOBAL)))).toMatchObject({
 			value: "global",
 		});
+	});
+});
+
+describe("telemetry (T-131)", () => {
+	/** In-memory tracer — same shape as packages/observability sampler tests. */
+	const makeTracer = () => {
+		const spans: Tracer.NativeSpan[] = [];
+		const tracer = Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		});
+		return { tracer, spans };
+	};
+
+	// The metric registry is process-wide — assert deltas, not absolutes.
+	const metricCount = <A, S>(metric: Metric.Metric<A, S>) =>
+		Effect.runPromise(Metric.value(metric)).then((state) => {
+			const count = (state as { count?: number | bigint }).count;
+			return typeof count === "bigint" ? Number(count) : (count ?? 0);
+		});
+	const ops = (op: string, outcome: string) => metricCount(tagged(kvOps, { op, outcome }));
+	const durationCount = (op: string) => metricCount(tagged(kvOpDuration, { op }));
+	const rows = (op: string, kind: string) => metricCount(tagged(kvRows, { op, kind }));
+
+	const runTraced = <A, E>(effect: Effect.Effect<A, E, Kv>, tracer: Tracer.Tracer) =>
+		runtime.runPromise(Effect.provideService(effect, Tracer.Tracer, tracer));
+
+	it("emits a kv.<method> span per call with the namespace attribute", async () => {
+		const { tracer, spans } = makeTracer();
+		await runTraced(
+			eff((kv) => kv.set("t.telm", "k", 1, { scope: GLOBAL })),
+			tracer,
+		);
+		await runTraced(
+			eff((kv) => kv.get("t.telm", "k", GLOBAL)),
+			tracer,
+		);
+		const names = spans.map((s) => s.name);
+		expect(names).toContain("kv.set");
+		expect(names).toContain("kv.get");
+		const setSpan = spans.find((s) => s.name === "kv.set");
+		expect(setSpan?.attributes.get("kv.namespace")).toBe("t.telm");
+		// Keys and values never reach span attributes.
+		expect(setSpan?.attributes.has("kv.key")).toBe(false);
+		expect(setSpan?.attributes.has("kv.value")).toBe(false);
+	});
+
+	it("counts ops by outcome and records duration on success and failure", async () => {
+		const [before, errBefore, durBefore] = await Promise.all([
+			ops("get", "success"),
+			ops("get", "error"),
+			durationCount("get"),
+		]);
+		await run(eff((kv) => kv.set("t.telm-m", "k", 1, { scope: GLOBAL })));
+		await run(eff((kv) => kv.get("t.telm-m", "k", GLOBAL)));
+		// Invalid namespace → typed KvValidationError → outcome=error.
+		await runErr(eff((kv) => kv.get("", "k", GLOBAL)));
+		expect(await ops("get", "success")).toBe(before + 1);
+		expect(await ops("get", "error")).toBe(errBefore + 1);
+		expect(await durationCount("get")).toBe(durBefore + 2);
+	});
+
+	it("counts swept rows and listed keys", async () => {
+		const sweepBefore = await rows("sweepExpired", "deleted");
+		const keysBefore = await rows("keys", "listed");
+		await seedRow({ namespace: "t.telmsweep", key: "e", expiresAt: Date.now() - 1 });
+		await seedRow({ namespace: "t.telmsweep", key: "live", value: "1" });
+		const removed = await run(eff((kv) => kv.sweepExpired()));
+		expect(removed).toBeGreaterThanOrEqual(1);
+		expect(await rows("sweepExpired", "deleted")).toBe(sweepBefore + removed);
+		const keys = await run(eff((kv) => kv.keys("t.telmsweep", GLOBAL)));
+		expect(keys).toContain("live");
+		expect(await rows("keys", "listed")).toBe(keysBefore + keys.length);
+	});
+
+	it("swallows metric-registry failures — ops still succeed", async () => {
+		// A registry that throws on any access: recordSafe must keep the
+		// write path alive (telemetry is best-effort, never fatal).
+		const broken = new Proxy(new Map(), {
+			get: () => {
+				throw new Error("registry down");
+			},
+		});
+		const entry = await runtime.runPromise(
+			Effect.provideService(
+				eff((kv) => kv.set("t.telmbroken", "k", 42, { scope: GLOBAL })),
+				Metric.MetricRegistry,
+				broken as never,
+			),
+		);
+		expect(entry.value).toBe(42);
 	});
 });

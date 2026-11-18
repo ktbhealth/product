@@ -9,6 +9,15 @@ import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Metric from "effect/Metric";
+import * as Tracer from "effect/Tracer";
+
+import {
+	documentStoreOpDuration,
+	documentStoreOps,
+	documentStoreRows,
+	tagged,
+} from "@ktb/observability";
 
 import { defineCollection } from "./collection.ts";
 import { DocumentCollections } from "./collection.ts";
@@ -2576,3 +2585,177 @@ const tagOf2 = (p: Promise<unknown>) =>
 		() => "ok",
 		(e: unknown) => (e as { _tag?: string })._tag,
 	);
+
+describe("DocumentStoreLive telemetry (T-131)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+
+	beforeAll(() => {
+		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: DEFS }),
+		);
+		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const call = <A, E>(f: (s: DocumentStore["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(DocumentStore, f);
+
+	const asUser = <A, E>(userId: string, effect: Effect.Effect<A, E, DocumentStore>) =>
+		Effect.provideService(effect, Principal, { userId });
+
+	/** In-memory tracer — same shape as packages/observability sampler tests. */
+	const makeTracer = () => {
+		const spans: Tracer.NativeSpan[] = [];
+		const tracer = Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		});
+		return { tracer, spans };
+	};
+
+	// The metric registry is process-wide — assert deltas, not absolutes.
+	const metricCount = <A, S>(metric: Metric.Metric<A, S>) =>
+		Effect.runPromise(Metric.value(metric)).then((state) => {
+			const count = (state as { count?: number | bigint }).count;
+			return typeof count === "bigint" ? Number(count) : (count ?? 0);
+		});
+	const ops = (op: string, outcome: string) =>
+		metricCount(tagged(documentStoreOps, { op, outcome }));
+	const durationCount = (op: string) => metricCount(tagged(documentStoreOpDuration, { op }));
+	const rows = (op: string, kind: string) => metricCount(tagged(documentStoreRows, { op, kind }));
+
+	it("emits a documents.<method> span per call with bounded attributes", async () => {
+		const { tracer, spans } = makeTracer();
+		const traced = <A, E>(effect: Effect.Effect<A, E, DocumentStore>) =>
+			runtime.runPromise(Effect.provideService(asUser("u1", effect), Tracer.Tracer, tracer));
+		// Def ref (spanCollection's non-string branch) …
+		await traced(call((s) => s.insert(things, { title: "telemetry" })));
+		// … and a string ref for the find span.
+		await traced(call((s) => s.find("test.things")));
+		const names = spans.map((s) => s.name);
+		expect(names).toContain("documents.insert");
+		expect(names).toContain("documents.find");
+		for (const s of spans) {
+			expect(s.attributes.get("documents.collection")).toBe("test.things");
+			// Document payloads, record ids and caller data never leak.
+			for (const key of s.attributes.keys()) {
+				expect(key === "documents.collection" || key === "documents.ops").toBe(true);
+			}
+		}
+	});
+
+	it("counts ops by outcome and records duration on success and failure", async () => {
+		const [before, errBefore, durBefore] = await Promise.all([
+			ops("insert", "success"),
+			ops("insert", "error"),
+			durationCount("insert"),
+		]);
+		await runtime.runPromise(
+			asUser(
+				"u1",
+				call((s) => s.insert(things, { title: "ok" })),
+			),
+		);
+		// Overlong title → DocumentValidationError → outcome=error.
+		await runtime.runPromise(
+			Effect.flip(
+				asUser(
+					"u1",
+					call((s) => s.insert(things, { title: "x".repeat(30) })),
+				),
+			),
+		);
+		expect(await ops("insert", "success")).toBe(before + 1);
+		expect(await ops("insert", "error")).toBe(errBefore + 1);
+		expect(await durationCount("insert")).toBe(durBefore + 2);
+	});
+
+	it("counts find scan rows and batch ops", async () => {
+		const scannedBefore = await rows("find", "scanned");
+		const batchBefore = await rows("batch", "ops");
+		const found = await runtime.runPromise(
+			asUser(
+				"u1",
+				call((s) => s.find("test.things")),
+			),
+		);
+		// Scanned = the whole visible slice; with no filter total === scanned.
+		expect(await rows("find", "scanned")).toBe(scannedBefore + found.total);
+		const results = await runtime.runPromise(
+			asUser(
+				"u1",
+				call((s) =>
+					s.batch([
+						{ op: "insert", collection: "test.things", data: { title: "batch-a" } },
+						{
+							op: "delete",
+							collection: "test.things",
+							id: found.rows[0]!.id,
+						},
+					]),
+				),
+			),
+		);
+		expect(results).toHaveLength(2);
+		expect(await rows("batch", "ops")).toBe(batchBefore + 2);
+	});
+
+	it("counts migration sweep rows and spans the sweep", async () => {
+		const { tracer, spans } = makeTracer();
+		const scannedBefore = await rows("migrateCollection", "scanned");
+		const migratedBefore = await rows("migrateCollection", "migrated");
+		const failedBefore = await rows("migrateCollection", "failed");
+		await runtime.runPromise(
+			Effect.provideService(
+				asUser(
+					"u1",
+					call((s) => s.insert(v2, { a: "x" })),
+				),
+				Tracer.Tracer,
+				tracer,
+			),
+		);
+		const report = await runtime.runPromise(
+			Effect.provideService(
+				asUser(
+					"u1",
+					call((s) => s.migrateCollection("test.versioned")),
+				),
+				Tracer.Tracer,
+				tracer,
+			),
+		);
+		expect(report.scanned).toBe(1);
+		expect(await rows("migrateCollection", "scanned")).toBe(scannedBefore + report.scanned);
+		expect(await rows("migrateCollection", "migrated")).toBe(migratedBefore + report.migrated);
+		expect(await rows("migrateCollection", "failed")).toBe(failedBefore + report.failed.length);
+		expect(spans.map((s) => s.name)).toContain("documents.migrateCollection");
+	});
+
+	it("swallows metric-registry failures — ops still succeed", async () => {
+		// A registry that throws on any access: recordSafe must keep the
+		// write path alive (telemetry is best-effort, never fatal).
+		const broken = new Proxy(new Map(), {
+			get: () => {
+				throw new Error("registry down");
+			},
+		});
+		const rec = await runtime.runPromise(
+			Effect.provideService(
+				asUser(
+					"u1",
+					call((s) => s.insert(things, { title: "still works" })),
+				),
+				Metric.MetricRegistry,
+				broken as never,
+			),
+		);
+		expect(rec.data.title).toBe("still works");
+	});
+});

@@ -2,10 +2,13 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Clock from "effect/Clock";
+import * as Exit from "effect/Exit";
 import { and, asc, eq, gt, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
+import { kvOpDuration, kvOps, kvRows, recordSafe, tagged } from "@ktb/observability";
 import { accessibleTenantIds, Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { kvEntries, type KvEntryRow } from "./schema.ts";
@@ -399,76 +402,248 @@ export const KvLive = Layer.effect(
 				: Effect.void;
 		};
 
+		// ---------- telemetry (T-131) ----------
+
+		/** One `kv.<method>` span + op metrics per public call — mirrors
+		 * the document-store/app-host instrumentation: the span carries
+		 * bounded attributes (the namespace — plugin-defined, never the
+		 * key or value), metrics record on EVERY exit via `Effect.exit`
+		 * and stay best-effort through `recordSafe`, so telemetry can
+		 * never fail the operation. Duration rides the span; the
+		 * histogram is the Prometheus RED signal. */
+		const instrument = <A, E, R>(
+			method: string,
+			attributes: Record<string, string | number>,
+			self: Effect.Effect<A, E, R>,
+		): Effect.Effect<A, E, R> =>
+			Effect.gen(function* () {
+				const start = yield* Clock.currentTimeMillis;
+				const exit = yield* Effect.exit(self);
+				const elapsed = (yield* Clock.currentTimeMillis) - start;
+				const outcome = Exit.isSuccess(exit) ? "success" : "error";
+				yield* recordSafe(tagged(kvOps, { op: method, outcome }), 1);
+				yield* recordSafe(tagged(kvOpDuration, { op: method }), elapsed);
+				if (Exit.isSuccess(exit)) {
+					return exit.value;
+				}
+				return yield* Effect.failCause(exit.cause);
+			}).pipe(Effect.withSpan(`kv.${method}`, { attributes }));
+
 		return {
 			get: (namespace, key, scope) =>
-				Effect.gen(function* () {
-					yield* validateKey(namespace, key);
-					const resolved = yield* resolveScope(scope);
-					yield* assertScope(resolved);
-					const row = yield* Effect.promise(() => findRow(db, namespace, key, resolved));
-					if (row === null) return null;
-					if (isExpired(row, Date.now())) {
-						yield* Effect.promise(() => db.delete(kvEntries).where(eq(kvEntries.id, row.id)));
-						return null;
-					}
-					return toEntry(row);
-				}),
+				instrument(
+					"get",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateKey(namespace, key);
+						const resolved = yield* resolveScope(scope);
+						yield* assertScope(resolved);
+						const row = yield* Effect.promise(() => findRow(db, namespace, key, resolved));
+						if (row === null) return null;
+						if (isExpired(row, Date.now())) {
+							yield* Effect.promise(() => db.delete(kvEntries).where(eq(kvEntries.id, row.id)));
+							return null;
+						}
+						return toEntry(row);
+					}),
+				),
 
 			set: (namespace, key, value, options) =>
-				Effect.gen(function* () {
-					yield* validateKey(namespace, key);
-					const serialized = yield* serialize(value);
-					yield* checkSchema(namespace, value);
-					const resolved = yield* resolveScope(options?.scope);
-					yield* assertScope(resolved);
-					const now = Date.now();
-					const expiresAt =
-						options?.ttlMs === undefined ? null : yield* validateTtl(options.ttlMs, now);
+				instrument(
+					"set",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateKey(namespace, key);
+						const serialized = yield* serialize(value);
+						yield* checkSchema(namespace, value);
+						const resolved = yield* resolveScope(options?.scope);
+						yield* assertScope(resolved);
+						const now = Date.now();
+						const expiresAt =
+							options?.ttlMs === undefined ? null : yield* validateTtl(options.ttlMs, now);
 
-					if (options?.expectedVersion !== undefined) {
-						const expected = options.expectedVersion;
-						if (!Number.isInteger(expected) || expected < 1) {
-							return yield* Effect.fail(
-								new KvValidationError({ reason: "expectedVersion must be a positive integer" }),
+						if (options?.expectedVersion !== undefined) {
+							const expected = options.expectedVersion;
+							if (!Number.isInteger(expected) || expected < 1) {
+								return yield* Effect.fail(
+									new KvValidationError({ reason: "expectedVersion must be a positive integer" }),
+								);
+							}
+							const [updated] = yield* Effect.promise(() =>
+								db
+									.update(kvEntries)
+									.set({
+										value: serialized,
+										expiresAt,
+										version: sql`${kvEntries.version} + 1`,
+										updatedAt: new Date(now),
+									})
+									.where(
+										and(
+											sliceWhere(namespace, key, resolved),
+											eq(kvEntries.version, expected),
+											or(isNull(kvEntries.expiresAt), gt(kvEntries.expiresAt, now)),
+										),
+									)
+									.returning(),
 							);
+							if (updated !== undefined) return toEntry(updated);
+							const existing = yield* Effect.promise(() => findRow(db, namespace, key, resolved));
+							if (existing !== null && isExpired(existing, now)) {
+								yield* Effect.promise(() =>
+									db.delete(kvEntries).where(eq(kvEntries.id, existing.id)),
+								);
+							}
+							if (existing === null || isExpired(existing, now)) {
+								return yield* Effect.fail(new KvNotFoundError({ namespace, key }));
+							}
+							return yield* Effect.fail(
+								new KvConflictError({
+									namespace,
+									key,
+									expectedVersion: expected,
+									actualVersion: existing.version,
+								}),
+							);
+						} else {
+							const [row] = yield* Effect.promise(() =>
+								db
+									.insert(kvEntries)
+									.values({
+										namespace,
+										key,
+										tenantId: resolved.tenantId,
+										ownerId: resolved.ownerId,
+										value: serialized,
+										expiresAt,
+										version: 1,
+										createdAt: new Date(now),
+										updatedAt: new Date(now),
+									})
+									.onConflictDoUpdate({
+										target: [
+											kvEntries.namespace,
+											kvEntries.key,
+											kvEntries.tenantKey,
+											kvEntries.ownerKey,
+										],
+										set: {
+											value: serialized,
+											expiresAt,
+											version: sql`${kvEntries.version} + 1`,
+											updatedAt: new Date(now),
+										},
+									})
+									.returning(),
+							);
+							return toEntry(row!);
 						}
-						const [updated] = yield* Effect.promise(() =>
+					}),
+				),
+
+			setIfAbsent: (namespace, key, value, options) =>
+				instrument(
+					"setIfAbsent",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateKey(namespace, key);
+						const serialized = yield* serialize(value);
+						yield* checkSchema(namespace, value);
+						const resolved = yield* resolveScope(options?.scope);
+						yield* assertScope(resolved);
+						const now = Date.now();
+						const expiresAt =
+							options?.ttlMs === undefined ? null : yield* validateTtl(options.ttlMs, now);
+
+						const insertOnce = () =>
+							Effect.promise(() =>
+								db
+									.insert(kvEntries)
+									.values({
+										namespace,
+										key,
+										tenantId: resolved.tenantId,
+										ownerId: resolved.ownerId,
+										value: serialized,
+										expiresAt,
+										version: 1,
+										createdAt: new Date(now),
+										updatedAt: new Date(now),
+									})
+									.onConflictDoNothing()
+									.returning({ id: kvEntries.id }),
+							);
+
+						const first = yield* insertOnce();
+						if (first[0] !== undefined) return true;
+
+						// Conflict: a live row already owns the slice → false. An
+						// expired row is logically absent — claim it with a single
+						// guarded delete (expired rows only) and retry the insert.
+						const removed = yield* Effect.promise(() =>
 							db
-								.update(kvEntries)
-								.set({
-									value: serialized,
-									expiresAt,
-									version: sql`${kvEntries.version} + 1`,
-									updatedAt: new Date(now),
-								})
+								.delete(kvEntries)
 								.where(
 									and(
 										sliceWhere(namespace, key, resolved),
-										eq(kvEntries.version, expected),
-										or(isNull(kvEntries.expiresAt), gt(kvEntries.expiresAt, now)),
+										isNotNull(kvEntries.expiresAt),
+										lte(kvEntries.expiresAt, now),
 									),
 								)
-								.returning(),
+								.returning({ id: kvEntries.id }),
 						);
-						if (updated !== undefined) return toEntry(updated);
-						const existing = yield* Effect.promise(() => findRow(db, namespace, key, resolved));
-						if (existing !== null && isExpired(existing, now)) {
-							yield* Effect.promise(() =>
-								db.delete(kvEntries).where(eq(kvEntries.id, existing.id)),
+						if (removed[0] === undefined) return false;
+						const retry = yield* insertOnce();
+						return retry[0] !== undefined;
+					}),
+				),
+
+			delete: (namespace, key, scope) =>
+				instrument(
+					"delete",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateKey(namespace, key);
+						const resolved = yield* resolveScope(scope);
+						yield* assertScope(resolved);
+						const now = Date.now();
+						const rows = yield* Effect.promise(() =>
+							db
+								.delete(kvEntries)
+								.where(sliceWhere(namespace, key, resolved))
+								.returning({ expiresAt: kvEntries.expiresAt }),
+						);
+						const row = rows[0];
+						if (row === undefined) return false;
+						// Expired rows are removed too (lazy cleanup) but report false —
+						// they were already logically absent.
+						return row.expiresAt === null || row.expiresAt > now;
+					}),
+				),
+
+			increment: (namespace, key, by = 1, options) =>
+				instrument(
+					"increment",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateKey(namespace, key);
+						if (typeof by !== "number" || !Number.isFinite(by)) {
+							return yield* Effect.fail(
+								new KvValidationError({ reason: "by must be a finite number" }),
 							);
 						}
-						if (existing === null || isExpired(existing, now)) {
-							return yield* Effect.fail(new KvNotFoundError({ namespace, key }));
-						}
-						return yield* Effect.fail(
-							new KvConflictError({
-								namespace,
-								key,
-								expectedVersion: expected,
-								actualVersion: existing.version,
-							}),
-						);
-					} else {
+						const resolved = yield* resolveScope(options?.scope);
+						yield* assertScope(resolved);
+						const now = Date.now();
+						const hasTtl = options?.ttlMs !== undefined;
+						const newExpiresAt = hasTtl ? yield* validateTtl(options.ttlMs!, now) : null;
+
+						// One atomic upsert: missing → `by`; expired → reset to `by`
+						// (fresh semantics, TTL re-applied); live numeric → value + by;
+						// live non-numeric → value kept and reported via KvTypeError
+						// below (version/updated_at stay untouched on that path).
+						const expiredCond = sql`(${kvEntries.expiresAt} IS NOT NULL AND ${kvEntries.expiresAt} <= ${now})`;
+						const numericCond = sql`json_type(${kvEntries.value}) IN ('integer','real')`;
 						const [row] = yield* Effect.promise(() =>
 							db
 								.insert(kvEntries)
@@ -477,8 +652,8 @@ export const KvLive = Layer.effect(
 									key,
 									tenantId: resolved.tenantId,
 									ownerId: resolved.ownerId,
-									value: serialized,
-									expiresAt,
+									value: JSON.stringify(by),
+									expiresAt: newExpiresAt,
 									version: 1,
 									createdAt: new Date(now),
 									updatedAt: new Date(now),
@@ -491,261 +666,156 @@ export const KvLive = Layer.effect(
 										kvEntries.ownerKey,
 									],
 									set: {
-										value: serialized,
-										expiresAt,
-										version: sql`${kvEntries.version} + 1`,
-										updatedAt: new Date(now),
+										value: sql`CASE WHEN ${expiredCond} THEN ${by} WHEN ${numericCond} THEN json_extract(${kvEntries.value}, '$') + ${by} ELSE ${kvEntries.value} END`,
+										// TTL is only rewritten on the expired-reset path or when
+										// the live value is numeric (a successful increment) AND
+										// ttlMs was given — a live non-numeric value keeps its
+										// deadline even when ttlMs is passed (the KvTypeError
+										// path below must not mutate the row at all).
+										expiresAt: hasTtl
+											? sql`CASE WHEN ${expiredCond} OR ${numericCond} THEN ${newExpiresAt} ELSE ${kvEntries.expiresAt} END`
+											: sql`CASE WHEN ${expiredCond} THEN ${newExpiresAt} ELSE ${kvEntries.expiresAt} END`,
+										version: sql`CASE WHEN ${expiredCond} THEN 1 WHEN ${numericCond} THEN ${kvEntries.version} + 1 ELSE ${kvEntries.version} END`,
+										updatedAt: sql`CASE WHEN ${expiredCond} OR ${numericCond} THEN ${now} ELSE ${kvEntries.updatedAt} END`,
 									},
 								})
 								.returning(),
 						);
-						return toEntry(row!);
-					}
-				}),
-
-			setIfAbsent: (namespace, key, value, options) =>
-				Effect.gen(function* () {
-					yield* validateKey(namespace, key);
-					const serialized = yield* serialize(value);
-					yield* checkSchema(namespace, value);
-					const resolved = yield* resolveScope(options?.scope);
-					yield* assertScope(resolved);
-					const now = Date.now();
-					const expiresAt =
-						options?.ttlMs === undefined ? null : yield* validateTtl(options.ttlMs, now);
-
-					const insertOnce = () =>
-						Effect.promise(() =>
-							db
-								.insert(kvEntries)
-								.values({
+						const parsed: unknown = JSON.parse(row!.value);
+						if (typeof parsed !== "number" || !Number.isFinite(parsed)) {
+							return yield* Effect.fail(
+								new KvTypeError({
 									namespace,
 									key,
-									tenantId: resolved.tenantId,
-									ownerId: resolved.ownerId,
-									value: serialized,
-									expiresAt,
-									version: 1,
-									createdAt: new Date(now),
-									updatedAt: new Date(now),
-								})
-								.onConflictDoNothing()
-								.returning({ id: kvEntries.id }),
-						);
-
-					const first = yield* insertOnce();
-					if (first[0] !== undefined) return true;
-
-					// Conflict: a live row already owns the slice → false. An
-					// expired row is logically absent — claim it with a single
-					// guarded delete (expired rows only) and retry the insert.
-					const removed = yield* Effect.promise(() =>
-						db
-							.delete(kvEntries)
-							.where(
-								and(
-									sliceWhere(namespace, key, resolved),
-									isNotNull(kvEntries.expiresAt),
-									lte(kvEntries.expiresAt, now),
-								),
-							)
-							.returning({ id: kvEntries.id }),
-					);
-					if (removed[0] === undefined) return false;
-					const retry = yield* insertOnce();
-					return retry[0] !== undefined;
-				}),
-
-			delete: (namespace, key, scope) =>
-				Effect.gen(function* () {
-					yield* validateKey(namespace, key);
-					const resolved = yield* resolveScope(scope);
-					yield* assertScope(resolved);
-					const now = Date.now();
-					const rows = yield* Effect.promise(() =>
-						db
-							.delete(kvEntries)
-							.where(sliceWhere(namespace, key, resolved))
-							.returning({ expiresAt: kvEntries.expiresAt }),
-					);
-					const row = rows[0];
-					if (row === undefined) return false;
-					// Expired rows are removed too (lazy cleanup) but report false —
-					// they were already logically absent.
-					return row.expiresAt === null || row.expiresAt > now;
-				}),
-
-			increment: (namespace, key, by = 1, options) =>
-				Effect.gen(function* () {
-					yield* validateKey(namespace, key);
-					if (typeof by !== "number" || !Number.isFinite(by)) {
-						return yield* Effect.fail(
-							new KvValidationError({ reason: "by must be a finite number" }),
-						);
-					}
-					const resolved = yield* resolveScope(options?.scope);
-					yield* assertScope(resolved);
-					const now = Date.now();
-					const hasTtl = options?.ttlMs !== undefined;
-					const newExpiresAt = hasTtl ? yield* validateTtl(options.ttlMs!, now) : null;
-
-					// One atomic upsert: missing → `by`; expired → reset to `by`
-					// (fresh semantics, TTL re-applied); live numeric → value + by;
-					// live non-numeric → value kept and reported via KvTypeError
-					// below (version/updated_at stay untouched on that path).
-					const expiredCond = sql`(${kvEntries.expiresAt} IS NOT NULL AND ${kvEntries.expiresAt} <= ${now})`;
-					const numericCond = sql`json_type(${kvEntries.value}) IN ('integer','real')`;
-					const [row] = yield* Effect.promise(() =>
-						db
-							.insert(kvEntries)
-							.values({
-								namespace,
-								key,
-								tenantId: resolved.tenantId,
-								ownerId: resolved.ownerId,
-								value: JSON.stringify(by),
-								expiresAt: newExpiresAt,
-								version: 1,
-								createdAt: new Date(now),
-								updatedAt: new Date(now),
-							})
-							.onConflictDoUpdate({
-								target: [
-									kvEntries.namespace,
-									kvEntries.key,
-									kvEntries.tenantKey,
-									kvEntries.ownerKey,
-								],
-								set: {
-									value: sql`CASE WHEN ${expiredCond} THEN ${by} WHEN ${numericCond} THEN json_extract(${kvEntries.value}, '$') + ${by} ELSE ${kvEntries.value} END`,
-									// TTL is only rewritten on the expired-reset path or when
-									// the live value is numeric (a successful increment) AND
-									// ttlMs was given — a live non-numeric value keeps its
-									// deadline even when ttlMs is passed (the KvTypeError
-									// path below must not mutate the row at all).
-									expiresAt: hasTtl
-										? sql`CASE WHEN ${expiredCond} OR ${numericCond} THEN ${newExpiresAt} ELSE ${kvEntries.expiresAt} END`
-										: sql`CASE WHEN ${expiredCond} THEN ${newExpiresAt} ELSE ${kvEntries.expiresAt} END`,
-									version: sql`CASE WHEN ${expiredCond} THEN 1 WHEN ${numericCond} THEN ${kvEntries.version} + 1 ELSE ${kvEntries.version} END`,
-									updatedAt: sql`CASE WHEN ${expiredCond} OR ${numericCond} THEN ${now} ELSE ${kvEntries.updatedAt} END`,
-								},
-							})
-							.returning(),
-					);
-					const parsed: unknown = JSON.parse(row!.value);
-					if (typeof parsed !== "number" || !Number.isFinite(parsed)) {
-						return yield* Effect.fail(
-							new KvTypeError({
-								namespace,
-								key,
-								reason: "existing value is not a number",
-							}),
-						);
-					}
-					return parsed;
-				}),
+									reason: "existing value is not a number",
+								}),
+							);
+						}
+						return parsed;
+					}),
+				),
 
 			expire: (namespace, key, ttlMs, scope) =>
-				Effect.gen(function* () {
-					yield* validateKey(namespace, key);
-					const resolved = yield* resolveScope(scope);
-					yield* assertScope(resolved);
-					const now = Date.now();
-					const expiresAt = yield* validateTtl(ttlMs, now);
-					const rows = yield* Effect.promise(() =>
-						db
-							.update(kvEntries)
-							.set({ expiresAt, updatedAt: new Date(now) })
-							.where(
-								and(
-									sliceWhere(namespace, key, resolved),
-									or(isNull(kvEntries.expiresAt), gt(kvEntries.expiresAt, now)),
+				instrument(
+					"expire",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateKey(namespace, key);
+						const resolved = yield* resolveScope(scope);
+						yield* assertScope(resolved);
+						const now = Date.now();
+						const expiresAt = yield* validateTtl(ttlMs, now);
+						const rows = yield* Effect.promise(() =>
+							db
+								.update(kvEntries)
+								.set({ expiresAt, updatedAt: new Date(now) })
+								.where(
+									and(
+										sliceWhere(namespace, key, resolved),
+										or(isNull(kvEntries.expiresAt), gt(kvEntries.expiresAt, now)),
+									),
+								)
+								.returning({ id: kvEntries.id }),
+						);
+						if (rows.length > 0) return true;
+						// Align with get/delete: an already-expired row is logically
+						// absent — remove it (lazy cleanup) and report false.
+						yield* Effect.promise(() =>
+							db
+								.delete(kvEntries)
+								.where(
+									and(
+										sliceWhere(namespace, key, resolved),
+										isNotNull(kvEntries.expiresAt),
+										lte(kvEntries.expiresAt, now),
+									),
 								),
-							)
-							.returning({ id: kvEntries.id }),
-					);
-					if (rows.length > 0) return true;
-					// Align with get/delete: an already-expired row is logically
-					// absent — remove it (lazy cleanup) and report false.
-					yield* Effect.promise(() =>
-						db
-							.delete(kvEntries)
-							.where(
-								and(
-									sliceWhere(namespace, key, resolved),
-									isNotNull(kvEntries.expiresAt),
-									lte(kvEntries.expiresAt, now),
-								),
-							),
-					);
-					return false;
-				}),
+						);
+						return false;
+					}),
+				),
 
 			keys: (namespace, scope, options) =>
-				Effect.gen(function* () {
-					yield* validateNamespace(namespace);
-					const resolved = yield* resolveScope(scope);
-					yield* assertScope(resolved);
-					const now = Date.now();
-					if (
-						options?.limit !== undefined &&
-						(!Number.isInteger(options.limit) || options.limit < 1)
-					) {
-						return yield* Effect.fail(
-							new KvValidationError({ reason: "limit must be a positive integer" }),
+				instrument(
+					"keys",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateNamespace(namespace);
+						const resolved = yield* resolveScope(scope);
+						yield* assertScope(resolved);
+						const now = Date.now();
+						if (
+							options?.limit !== undefined &&
+							(!Number.isInteger(options.limit) || options.limit < 1)
+						) {
+							return yield* Effect.fail(
+								new KvValidationError({ reason: "limit must be a positive integer" }),
+							);
+						}
+						const prefix = options?.prefix;
+						// "" is a no-op filter (same as omitting prefix); anything
+						// else must be a well-formed field.
+						if (prefix !== undefined && prefix !== "") {
+							const bad = validateField("prefix", prefix);
+							if (bad !== null) return yield* Effect.fail(bad);
+						}
+						const limit = Math.min(options?.limit ?? DEFAULT_KEYS_LIMIT, MAX_KEYS_LIMIT);
+						const conds: (SQL | undefined)[] = [
+							eq(kvEntries.namespace, namespace),
+							resolved.tenantId === null
+								? isNull(kvEntries.tenantId)
+								: eq(kvEntries.tenantId, resolved.tenantId),
+							resolved.ownerId === null
+								? isNull(kvEntries.ownerId)
+								: eq(kvEntries.ownerId, resolved.ownerId),
+							or(isNull(kvEntries.expiresAt), gt(kvEntries.expiresAt, now)),
+						];
+						if (prefix !== undefined && prefix !== "") {
+							// instr-equality instead of LIKE — prefix needs no escaping.
+							// instr is character-based, so astral (non-BMP) prefixes
+							// work; JS string length would count UTF-16 code units.
+							conds.push(sql`instr(${kvEntries.key}, ${prefix}) = 1`);
+						}
+						const rows = yield* Effect.promise(() =>
+							db
+								.select({ key: kvEntries.key })
+								.from(kvEntries)
+								.where(and(...conds))
+								.orderBy(asc(kvEntries.key))
+								.limit(limit),
 						);
-					}
-					const prefix = options?.prefix;
-					// "" is a no-op filter (same as omitting prefix); anything
-					// else must be a well-formed field.
-					if (prefix !== undefined && prefix !== "") {
-						const bad = validateField("prefix", prefix);
-						if (bad !== null) return yield* Effect.fail(bad);
-					}
-					const limit = Math.min(options?.limit ?? DEFAULT_KEYS_LIMIT, MAX_KEYS_LIMIT);
-					const conds: (SQL | undefined)[] = [
-						eq(kvEntries.namespace, namespace),
-						resolved.tenantId === null
-							? isNull(kvEntries.tenantId)
-							: eq(kvEntries.tenantId, resolved.tenantId),
-						resolved.ownerId === null
-							? isNull(kvEntries.ownerId)
-							: eq(kvEntries.ownerId, resolved.ownerId),
-						or(isNull(kvEntries.expiresAt), gt(kvEntries.expiresAt, now)),
-					];
-					if (prefix !== undefined && prefix !== "") {
-						// instr-equality instead of LIKE — prefix needs no escaping.
-						// instr is character-based, so astral (non-BMP) prefixes
-						// work; JS string length would count UTF-16 code units.
-						conds.push(sql`instr(${kvEntries.key}, ${prefix}) = 1`);
-					}
-					const rows = yield* Effect.promise(() =>
-						db
-							.select({ key: kvEntries.key })
-							.from(kvEntries)
-							.where(and(...conds))
-							.orderBy(asc(kvEntries.key))
-							.limit(limit),
-					);
-					return rows.map((r) => r.key);
-				}),
+						// Listing-size signal (T-131): live keys returned.
+						yield* recordSafe(tagged(kvRows, { op: "keys", kind: "listed" }), rows.length);
+						return rows.map((r) => r.key);
+					}),
+				),
 
 			sweepExpired: () =>
-				Effect.gen(function* () {
-					const rows = yield* Effect.promise(() =>
-						db
-							.delete(kvEntries)
-							.where(and(isNotNull(kvEntries.expiresAt), lte(kvEntries.expiresAt, Date.now())))
-							.returning({ id: kvEntries.id }),
-					);
-					return rows.length;
-				}),
+				instrument(
+					"sweepExpired",
+					{},
+					Effect.gen(function* () {
+						const rows = yield* Effect.promise(() =>
+							db
+								.delete(kvEntries)
+								.where(and(isNotNull(kvEntries.expiresAt), lte(kvEntries.expiresAt, Date.now())))
+								.returning({ id: kvEntries.id }),
+						);
+						// Sweep signal (T-131): expired rows actually removed.
+						yield* recordSafe(tagged(kvRows, { op: "sweepExpired", kind: "deleted" }), rows.length);
+						return rows.length;
+					}),
+				),
 
 			registerSchema: (namespace, validate) =>
-				Effect.gen(function* () {
-					yield* validateNamespace(namespace);
-					schemas.set(namespace, validate);
-				}),
+				instrument(
+					"registerSchema",
+					{ "kv.namespace": namespace },
+					Effect.gen(function* () {
+						yield* validateNamespace(namespace);
+						schemas.set(namespace, validate);
+					}),
+				),
 		};
 	}),
 );

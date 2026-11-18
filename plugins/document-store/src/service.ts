@@ -4,10 +4,19 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Clock from "effect/Clock";
+import * as Exit from "effect/Exit";
 import { and, eq, inArray, isNotNull, or, sql, type SQL } from "drizzle-orm";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, tx, type TxOp } from "@ktb/db";
+import {
+	documentStoreOpDuration,
+	documentStoreOps,
+	documentStoreRows,
+	recordSafe,
+	tagged,
+} from "@ktb/observability";
 import { Permissions, splitPermission } from "@ktb/rbac";
 import { tenantScopeCondition, tenantScopeId, Tenant } from "@ktb/tenant";
 
@@ -1919,8 +1928,45 @@ export const DocumentStoreLive = Layer.effect(
 				return results;
 			});
 
+		// ---------- telemetry (T-131) ----------
+
+		/** Collection name for span attributes — plugin-defined and
+		 * therefore bounded; record ids and payloads never leave the
+		 * service boundary into telemetry. */
+		const spanCollection = (ref: CollectionRef): string =>
+			typeof ref === "string" ? ref : ref.name;
+
+		/** One `documents.<method>` span + op metrics per public call —
+		 * mirrors the app-host cqrs/plugin instrumentation: the span
+		 * carries bounded attributes (collection name, batch size),
+		 * metrics record on EVERY exit via `Effect.exit` and stay
+		 * best-effort through `recordSafe`, so telemetry can never fail
+		 * the operation. Duration rides the span; the histogram is the
+		 * Prometheus RED signal. Single ops (insert/update/delete)
+		 * delegate to `runBatch` internally, so wrapping at this level
+		 * yields exactly one span per public method — `batch` gets its
+		 * own. */
+		const instrument = <A, E, R>(
+			method: string,
+			attributes: Record<string, string | number>,
+			self: Effect.Effect<A, E, R>,
+		): Effect.Effect<A, E, R> =>
+			Effect.gen(function* () {
+				const start = yield* Clock.currentTimeMillis;
+				const exit = yield* Effect.exit(self);
+				const elapsed = (yield* Clock.currentTimeMillis) - start;
+				const outcome = Exit.isSuccess(exit) ? "success" : "error";
+				yield* recordSafe(tagged(documentStoreOps, { op: method, outcome }), 1);
+				yield* recordSafe(tagged(documentStoreOpDuration, { op: method }), elapsed);
+				if (Exit.isSuccess(exit)) {
+					return exit.value;
+				}
+				return yield* Effect.failCause(exit.cause);
+			}).pipe(Effect.withSpan(`documents.${method}`, { attributes }));
+
 		return DocumentStore.of({
-			ensureCollection: (def) => ensureRow(def),
+			ensureCollection: (def) =>
+				instrument("ensureCollection", { "documents.collection": def.name }, ensureRow(def)),
 
 			insert: <F extends Fields>(
 				collection: CollectionRef<F>,
@@ -1928,23 +1974,27 @@ export const DocumentStoreLive = Layer.effect(
 				ctx?: DocumentStoreContext,
 				options?: DocumentWriteOptions,
 			) =>
-				Effect.map(
-					runBatch(
-						[
-							{
-								op: "insert",
-								collection,
-								data: data as Record<string, unknown>,
-								...(options?.idempotencyKey === undefined
-									? {}
-									: { idempotencyKey: options.idempotencyKey }),
-							},
-						],
-						ctx,
+				instrument(
+					"insert",
+					{ "documents.collection": spanCollection(collection) },
+					Effect.map(
+						runBatch(
+							[
+								{
+									op: "insert",
+									collection,
+									data: data as Record<string, unknown>,
+									...(options?.idempotencyKey === undefined
+										? {}
+										: { idempotencyKey: options.idempotencyKey }),
+								},
+							],
+							ctx,
+						),
+						(rs) =>
+							(rs[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>)
+								.record as DocumentRecord<F>,
 					),
-					(rs) =>
-						(rs[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>)
-							.record as DocumentRecord<F>,
 				),
 
 			get: <F extends Fields>(
@@ -1952,88 +2002,103 @@ export const DocumentStoreLive = Layer.effect(
 				id: number,
 				ctx?: DocumentStoreContext,
 			) =>
-				Effect.gen(function* () {
-					const ownerId = yield* resolveOwner(ctx);
-					const unscoped = ctx?.unscoped === true;
-					const { def, row } = yield* resolveDef(collection);
-					yield* requireOp(def, "read", unscoped);
-					if (row === null) return null;
-					const record = yield* scopedRow(row.id, id, ownerId, unscoped);
-					if (record === null) return null;
-					// Lazy migration (T-130): data is always presented at the
-					// current def version; schemaVersion still reports the
-					// stored row version.
-					const migrated = yield* migrateData(
-						def,
-						parseData(record.data),
-						record.schemaVersion,
-						record.id,
-					);
-					const denied = yield* deniedReadFields(def, unscoped);
-					return projectRecord<F>(def, record, migrated.data, denied);
-				}),
+				instrument(
+					"get",
+					{ "documents.collection": spanCollection(collection) },
+					Effect.gen(function* () {
+						const ownerId = yield* resolveOwner(ctx);
+						const unscoped = ctx?.unscoped === true;
+						const { def, row } = yield* resolveDef(collection);
+						yield* requireOp(def, "read", unscoped);
+						if (row === null) return null;
+						const record = yield* scopedRow(row.id, id, ownerId, unscoped);
+						if (record === null) return null;
+						// Lazy migration (T-130): data is always presented at the
+						// current def version; schemaVersion still reports the
+						// stored row version.
+						const migrated = yield* migrateData(
+							def,
+							parseData(record.data),
+							record.schemaVersion,
+							record.id,
+						);
+						const denied = yield* deniedReadFields(def, unscoped);
+						return projectRecord<F>(def, record, migrated.data, denied);
+					}),
+				),
 
 			find: <F extends Fields>(
 				collection: CollectionRef<F>,
 				query: FindQuery = {},
 				ctx?: DocumentStoreContext,
 			) =>
-				Effect.gen(function* () {
-					const ownerId = yield* resolveOwner(ctx);
-					const unscoped = ctx?.unscoped === true;
-					const { def, row } = yield* resolveDef(collection);
-					yield* requireOp(def, "read", unscoped);
-					// row === null here means a contributed def with no
-					// registry row yet — no records can exist, so the
-					// honest answer is an empty page (unknown NAMES
-					// already failed inside resolveDef).
-					if (row === null) return { rows: [], total: 0 };
-					const queryIssues = [
-						...(query.filter !== undefined ? validateFilter(query.filter) : []),
-						...validateSort(query.sort),
-					];
-					if (queryIssues.length > 0) {
-						return yield* fail(
-							new InvalidDocumentQuery({ collection: def.name, issues: queryIssues }),
+				instrument(
+					"find",
+					{ "documents.collection": spanCollection(collection) },
+					Effect.gen(function* () {
+						const ownerId = yield* resolveOwner(ctx);
+						const unscoped = ctx?.unscoped === true;
+						const { def, row } = yield* resolveDef(collection);
+						yield* requireOp(def, "read", unscoped);
+						// row === null here means a contributed def with no
+						// registry row yet — no records can exist, so the
+						// honest answer is an empty page (unknown NAMES
+						// already failed inside resolveDef).
+						if (row === null) return { rows: [], total: 0 };
+						const queryIssues = [
+							...(query.filter !== undefined ? validateFilter(query.filter) : []),
+							...validateSort(query.sort),
+						];
+						if (queryIssues.length > 0) {
+							return yield* fail(
+								new InvalidDocumentQuery({ collection: def.name, issues: queryIssues }),
+							);
+						}
+						const rows = yield* scopedRows(row.id, ownerId, unscoped);
+						// Scan-cost signal (T-131): the visible slice size find
+						// pays for — recorded before the cap check so capped
+						// scans still count.
+						yield* recordSafe(
+							tagged(documentStoreRows, { op: "find", kind: "scanned" }),
+							rows.length,
 						);
-					}
-					const rows = yield* scopedRows(row.id, ownerId, unscoped);
-					// Total-scan cap (T-128): find evaluates in JS over the
-					// whole visible slice — past FIND_SCAN_MAX_ROWS the
-					// typed error beats a multi-second scan.
-					if (rows.length > FIND_SCAN_MAX_ROWS) {
-						return yield* fail(
-							new InvalidDocumentQuery({
-								collection: def.name,
-								issues: [`visible rows (${rows.length}) exceed scan cap ${FIND_SCAN_MAX_ROWS}`],
-							}),
+						// Total-scan cap (T-128): find evaluates in JS over the
+						// whole visible slice — past FIND_SCAN_MAX_ROWS the
+						// typed error beats a multi-second scan.
+						if (rows.length > FIND_SCAN_MAX_ROWS) {
+							return yield* fail(
+								new InvalidDocumentQuery({
+									collection: def.name,
+									issues: [`visible rows (${rows.length}) exceed scan cap ${FIND_SCAN_MAX_ROWS}`],
+								}),
+							);
+						}
+						// Parse + lazily migrate once per row — filter/sort run
+						// over the CURRENT-shape data payload, not the storage
+						// row. compileFilter precompiles every $regex ONCE per
+						// find (not per row) — see query.ts.
+						const prepared = compileFilter(query.filter);
+						const parsed = yield* Effect.forEach(rows, (r) =>
+							Effect.map(migrateData(def, parseData(r.data), r.schemaVersion, r.id), (m) => ({
+								row: r,
+								data: m.data,
+							})),
 						);
-					}
-					// Parse + lazily migrate once per row — filter/sort run
-					// over the CURRENT-shape data payload, not the storage
-					// row. compileFilter precompiles every $regex ONCE per
-					// find (not per row) — see query.ts.
-					const prepared = compileFilter(query.filter);
-					const parsed = yield* Effect.forEach(rows, (r) =>
-						Effect.map(migrateData(def, parseData(r.data), r.schemaVersion, r.id), (m) => ({
-							row: r,
-							data: m.data,
-						})),
-					);
-					const matched = parsed.filter((p) => matchFilter(p.data, prepared));
-					const total = matched.length;
-					const byData = compareData(normalizeSort(query.sort));
-					matched.sort((a, b) => byData(a.data, b.data));
-					const offset = clampOffset(query.offset);
-					const limit = clampLimit(query.limit);
-					const denied = yield* deniedReadFields(def, unscoped);
-					return {
-						rows: matched
-							.slice(offset, offset + limit)
-							.map((p) => projectRecord<F>(def, p.row, p.data, denied)),
-						total,
-					};
-				}),
+						const matched = parsed.filter((p) => matchFilter(p.data, prepared));
+						const total = matched.length;
+						const byData = compareData(normalizeSort(query.sort));
+						matched.sort((a, b) => byData(a.data, b.data));
+						const offset = clampOffset(query.offset);
+						const limit = clampLimit(query.limit);
+						const denied = yield* deniedReadFields(def, unscoped);
+						return {
+							rows: matched
+								.slice(offset, offset + limit)
+								.map((p) => projectRecord<F>(def, p.row, p.data, denied)),
+							total,
+						};
+					}),
+				),
 
 			update: <F extends Fields>(
 				collection: CollectionRef<F>,
@@ -2042,83 +2107,120 @@ export const DocumentStoreLive = Layer.effect(
 				ctx?: DocumentStoreContext,
 				options?: DocumentWriteOptions,
 			) =>
-				Effect.map(
-					runBatch(
-						[
-							{
-								op: "update",
-								collection,
-								id,
-								data: data as Record<string, unknown>,
-								...(options?.expectedVersion === undefined
-									? {}
-									: { expectedVersion: options.expectedVersion }),
-							},
-						],
-						ctx,
+				instrument(
+					"update",
+					{ "documents.collection": spanCollection(collection) },
+					Effect.map(
+						runBatch(
+							[
+								{
+									op: "update",
+									collection,
+									id,
+									data: data as Record<string, unknown>,
+									...(options?.expectedVersion === undefined
+										? {}
+										: { expectedVersion: options.expectedVersion }),
+								},
+							],
+							ctx,
+						),
+						(rs) =>
+							(rs[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>)
+								.record as DocumentRecord<F>,
 					),
-					(rs) =>
-						(rs[0] as Extract<DocumentBatchResult, { op: "insert" | "update" }>)
-							.record as DocumentRecord<F>,
 				),
 
 			delete: <F extends Fields>(
 				collection: CollectionRef<F>,
 				id: number,
 				ctx?: DocumentStoreContext,
-			) => Effect.asVoid(runBatch([{ op: "delete", collection, id }], ctx)),
+			) =>
+				instrument(
+					"delete",
+					{ "documents.collection": spanCollection(collection) },
+					Effect.asVoid(runBatch([{ op: "delete", collection, id }], ctx)),
+				),
 
-			batch: (ops, ctx) => runBatch(ops, ctx),
+			batch: (ops, ctx) =>
+				instrument(
+					"batch",
+					{ "documents.ops": ops.length },
+					Effect.gen(function* () {
+						// Batch-size signal (T-131) — counted up front: the
+						// ops were submitted regardless of the outcome.
+						yield* recordSafe(tagged(documentStoreRows, { op: "batch", kind: "ops" }), ops.length);
+						return yield* runBatch(ops, ctx);
+					}),
+				),
 
 			migrateCollection: (collection, ctx) =>
-				Effect.gen(function* () {
-					const ownerId = yield* resolveOwner(ctx);
-					const unscoped = ctx?.unscoped === true;
-					const { def, row } = yield* resolveDef(collection);
-					// Schema migration rewrites stored documents — gate it
-					// like any other mutation.
-					yield* requireOp(def, "write", unscoped);
-					let scanned = 0;
-					let migrated = 0;
-					const failed: { id: number; reason: string }[] = [];
-					if (row !== null) {
-						const rows = yield* scopedRows(row.id, ownerId, unscoped);
-						const now = new Date();
-						for (const r of rows) {
-							scanned += 1;
-							if (r.schemaVersion >= def.version) continue;
-							const outcome = yield* migrateData(
-								def,
-								parseData(r.data),
-								r.schemaVersion,
-								r.id,
-							).pipe(Effect.result);
-							if (Result.isFailure(outcome)) {
-								// migrateData fails only with
-								// DocumentMigrationError — the cast is its
-								// contract, not a guess.
-								failed.push({
-									id: r.id,
-									reason: (outcome.failure as DocumentMigrationError).reason,
-								});
-								continue;
+				instrument(
+					"migrateCollection",
+					{ "documents.collection": spanCollection(collection) },
+					Effect.gen(function* () {
+						const ownerId = yield* resolveOwner(ctx);
+						const unscoped = ctx?.unscoped === true;
+						const { def, row } = yield* resolveDef(collection);
+						// Schema migration rewrites stored documents — gate it
+						// like any other mutation.
+						yield* requireOp(def, "write", unscoped);
+						let scanned = 0;
+						let migrated = 0;
+						const failed: { id: number; reason: string }[] = [];
+						if (row !== null) {
+							const rows = yield* scopedRows(row.id, ownerId, unscoped);
+							const now = new Date();
+							for (const r of rows) {
+								scanned += 1;
+								if (r.schemaVersion >= def.version) continue;
+								const outcome = yield* migrateData(
+									def,
+									parseData(r.data),
+									r.schemaVersion,
+									r.id,
+								).pipe(Effect.result);
+								if (Result.isFailure(outcome)) {
+									// migrateData fails only with
+									// DocumentMigrationError — the cast is its
+									// contract, not a guess.
+									failed.push({
+										id: r.id,
+										reason: (outcome.failure as DocumentMigrationError).reason,
+									});
+									continue;
+								}
+								if (!outcome.success.applied) continue;
+								yield* Effect.promise(() =>
+									db
+										.update(documentRecords)
+										.set({
+											data: JSON.stringify(outcome.success.data),
+											schemaVersion: def.version,
+											updatedAt: now,
+										})
+										.where(eq(documentRecords.id, r.id)),
+								);
+								migrated += 1;
 							}
-							if (!outcome.success.applied) continue;
-							yield* Effect.promise(() =>
-								db
-									.update(documentRecords)
-									.set({
-										data: JSON.stringify(outcome.success.data),
-										schemaVersion: def.version,
-										updatedAt: now,
-									})
-									.where(eq(documentRecords.id, r.id)),
-							);
-							migrated += 1;
 						}
-					}
-					return { collection: def.name, scanned, migrated, failed };
-				}),
+						// Sweep telemetry (T-131): rows examined, rewritten and
+						// failed — the same counts the report returns.
+						yield* recordSafe(
+							tagged(documentStoreRows, { op: "migrateCollection", kind: "scanned" }),
+							scanned,
+						);
+						yield* recordSafe(
+							tagged(documentStoreRows, { op: "migrateCollection", kind: "migrated" }),
+							migrated,
+						);
+						yield* recordSafe(
+							tagged(documentStoreRows, { op: "migrateCollection", kind: "failed" }),
+							failed.length,
+						);
+						return { collection: def.name, scanned, migrated, failed };
+					}),
+				),
 		});
 	}),
 );
