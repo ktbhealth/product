@@ -84,11 +84,7 @@ const toCard = (row: AiModel): ModelCard => ({
 	updatedAt: row.updatedAt,
 });
 
-async function listModels(
-	db: DbClient,
-	scope: string,
-	endpointId?: number,
-): Promise<AiModel[]> {
+async function listModels(db: DbClient, scope: string, endpointId?: number): Promise<AiModel[]> {
 	const conditions = [eq(aiModel.scope, scope)];
 	if (endpointId !== undefined) conditions.push(eq(aiModel.endpointId, endpointId));
 	return db
@@ -103,11 +99,7 @@ async function getModelById(db: DbClient, id: number): Promise<AiModel | null> {
 	return rows[0] ?? null;
 }
 
-async function getModelByName(
-	db: DbClient,
-	scope: string,
-	name: string,
-): Promise<AiModel | null> {
+async function getModelByName(db: DbClient, scope: string, name: string): Promise<AiModel | null> {
 	const rows = await db
 		.select()
 		.from(aiModel)

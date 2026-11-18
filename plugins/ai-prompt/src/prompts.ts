@@ -100,11 +100,7 @@ const toCard = (row: AiPrompt): PromptCard => ({
 });
 
 /** Versions of one prompt family in a scope, newest first. */
-async function listPromptVersions(
-	db: DbClient,
-	scope: string,
-	name: string,
-): Promise<AiPrompt[]> {
+async function listPromptVersions(db: DbClient, scope: string, name: string): Promise<AiPrompt[]> {
 	return db
 		.select()
 		.from(aiPrompt)
