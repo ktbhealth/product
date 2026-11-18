@@ -186,6 +186,18 @@ export interface PatientMessages {
 		readonly lockedHint: string;
 		readonly decryptFailed: string;
 	};
+	/** Pre-consult intake (patients.intake defs): /v/patients-intake
+	 * view copy — catalog keys the view def references as
+	 * `patients.intake.*` / reused `patients.fields.*`. */
+	readonly intake: {
+		readonly viewTitle: string;
+		readonly chiefComplaint: string;
+		readonly symptomsDuration: string;
+		readonly medications: string;
+		readonly allergies: string;
+		readonly termsAccepted: string;
+		readonly dataUseConsent: string;
+	};
 }
 
 const en: PatientMessages = {
@@ -398,6 +410,15 @@ const en: PatientMessages = {
 		lockedHint: "Unlock it on an approved clinic device to view it.",
 		decryptFailed: "This record could not be decrypted on this device.",
 	},
+	intake: {
+		viewTitle: "Pre-consult intake",
+		chiefComplaint: "Reason for visit",
+		symptomsDuration: "Symptom duration",
+		medications: "Medications",
+		allergies: "Allergies",
+		termsAccepted: "Terms accepted",
+		dataUseConsent: "Data use consent",
+	},
 };
 
 const ptBR: PatientMessages = {
@@ -609,6 +630,15 @@ const ptBR: PatientMessages = {
 		lockedRecord: "Registro criptografado",
 		lockedHint: "Desbloqueie em um dispositivo aprovado da clínica para visualizar.",
 		decryptFailed: "Não foi possível descriptografar este registro neste dispositivo.",
+	},
+	intake: {
+		viewTitle: "Anamnese pré-consulta",
+		chiefComplaint: "Motivo da consulta",
+		symptomsDuration: "Tempo dos sintomas",
+		medications: "Medicamentos",
+		allergies: "Alergias",
+		termsAccepted: "Termos aceitos",
+		dataUseConsent: "Consentimento de uso de dados",
 	},
 };
 
@@ -823,6 +853,15 @@ const es: PatientMessages = {
 		lockedRecord: "Registro cifrado",
 		lockedHint: "Desbloquéalo en un dispositivo aprobado de la clínica para verlo.",
 		decryptFailed: "No se pudo descifrar este registro en este dispositivo.",
+	},
+	intake: {
+		viewTitle: "Anamnesis previa a la consulta",
+		chiefComplaint: "Motivo de la consulta",
+		symptomsDuration: "Duración de los síntomas",
+		medications: "Medicamentos",
+		allergies: "Alergias",
+		termsAccepted: "Términos aceptados",
+		dataUseConsent: "Consentimiento de uso de datos",
 	},
 };
 

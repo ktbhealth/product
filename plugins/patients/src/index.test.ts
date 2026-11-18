@@ -714,6 +714,7 @@ describe("plugins", () => {
 			"patients.routes",
 			"patients.chrome",
 			"patients.panel",
+			"patients.intake",
 		]);
 	});
 
