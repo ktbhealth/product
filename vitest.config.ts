@@ -2,6 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	test: {
+		// worker_threads workers spawn cheaper than child processes and
+		// the suite is import-bound (module evaluation dominates), so the
+		// threads pool is the faster default. Per-file isolation is
+		// unchanged — each test file still gets a fresh module registry.
+		pool: "threads",
 		projects: [
 			"apps/web",
 			"apps/eval",
