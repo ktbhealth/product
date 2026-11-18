@@ -6,13 +6,13 @@
 		".": "./src/index.ts",
 		"./baseline.gen": "./src/baseline.gen.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"effect": "4.1.2"
 	},
 	"devDependencies": {
 		"vitest": "5.1.0"
-	},
-	"scripts": {
-		"mutate": "stryker run"
 	}
 }

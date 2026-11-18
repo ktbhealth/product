@@ -2,11 +2,11 @@
 	"name": "@ktb/driver-framework",
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"mutate": "stryker run"
-	},
 	"exports": {
 		".": "./src/index.ts"
+	},
+	"scripts": {
+		"mutate": "stryker run"
 	},
 	"dependencies": {
 		"@ktb/kernel": "workspace:*",
