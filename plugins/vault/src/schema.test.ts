@@ -1,7 +1,7 @@
 import { getTableConfig } from "drizzle-orm/sqlite-core/utils";
 import { describe, expect, it } from "vitest";
 
-import { clinicKeys, entityDeks, groups, portalKeys } from "@ktb/db/schema";
+import { clinicKeys, entityDeks, groups, portalKeys, vaultSecret } from "@ktb/db/schema";
 
 import { vaultSecret } from "./schema.ts";
 
@@ -106,6 +106,41 @@ describe("vault schema", () => {
 		]);
 		const fk = cfg.foreignKeys[0]!;
 		// reference() evaluates the lazy `() => groups.id` callback.
+		expect(fk.reference().foreignTable).toBe(groups);
+		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
+		expect(fk.onDelete).toBe("cascade");
+	});
+});
+
+describe("vault_secret schema", () => {
+	it("exposes vault_secret columns, scope/name uniqueness and tenant FK", () => {
+		const cfg = getTableConfig(vaultSecret);
+		expect(cfg.name).toBe("vault_secret");
+		expect(cfg.columns.map((c) => c.name)).toEqual([
+			"id",
+			"scope",
+			"tenant_id",
+			"name",
+			"provider",
+			"hint",
+			"kind",
+			"wrapped_dek",
+			"ciphertext",
+			"kek_version",
+			"version",
+			"status",
+			"created_by",
+			"created_at",
+			"updated_at",
+			"rotated_at",
+		]);
+		const unique = cfg.indexes.find((i) => i.config.unique);
+		expect(unique?.config.name).toBe("vault_secret_scope_name_idx");
+		expect(unique?.config.columns.map((c) => (c as { name: string }).name)).toEqual([
+			"scope",
+			"name",
+		]);
+		const fk = cfg.foreignKeys[0]!;
 		expect(fk.reference().foreignTable).toBe(groups);
 		expect(fk.reference().foreignColumns[0]!.name).toBe("id");
 		expect(fk.onDelete).toBe("cascade");

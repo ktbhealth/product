@@ -213,7 +213,7 @@ const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, nev
 			const secret = yield* secrets.value
 				.resolve(ref)
 				.pipe(Effect.catch(() => Effect.succeed(null)));
-			/* v8 ignore next -- deleted/disabled secret leaves the endpoint without a key */
+			// Deleted/disabled secret leaves the endpoint without a key.
 			if (secret === null) return base;
 			return { ...base, apiKey: secret };
 		}

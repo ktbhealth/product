@@ -690,3 +690,78 @@ describe("EndpointsPage — bridge (F3b)", () => {
 		});
 	});
 });
+
+describe("EndpointsPage — machine picker", () => {
+	// Only id/name reach the DOM — the card shape is wider but the
+	// select renders name text and submits the numeric id.
+	const gpuBox = { id: 7, name: "gpu-box" };
+
+	/** Open the endpoint dialog as acp+ssh — the only transport that
+	 * reveals the machine <select> (child/ssh block). */
+	const openAcpSsh = async (user: ReturnType<typeof userEvent.setup>) => {
+		await user.click(screen.getByText("New endpoint"));
+		await user.type(screen.getAllByRole("textbox")[0]!, "ACP on gpu");
+		await user.click(screen.getByLabelText("Kind"));
+		await user.click(await screen.findByRole("option", { name: "acp" }));
+		await user.click(screen.getByLabelText("Transport"));
+		await user.click(await screen.findByRole("option", { name: "ssh" }));
+	};
+
+	const machineSelect = () =>
+		screen.getByText("Machine").parentElement!.querySelector("select") as HTMLSelectElement;
+
+	it("lists registry machines for non-ws acp transports and sends machineId", async () => {
+		machineFns.machinesListFn.mockResolvedValueOnce([gpuBox]);
+		const user = userEvent.setup();
+		renderPage();
+		await openAcpSsh(user);
+		const select = machineSelect();
+		await waitFor(() => expect(select.querySelectorAll("option")).toHaveLength(2));
+		expect(select.querySelector("option[value='7']")?.textContent).toBe("gpu-box");
+		await user.selectOptions(select, "7");
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
+		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
+			name: "ACP on gpu",
+			kind: "acp",
+			transport: "ssh",
+			machineId: 7,
+		});
+	});
+
+	it("restores machineId when editing a machine-linked endpoint", async () => {
+		const linked: EndpointCard = {
+			...endpoint,
+			kind: "acp",
+			transport: "ssh",
+			machineId: 7,
+		};
+		machineFns.machinesListFn.mockResolvedValueOnce([{ id: 7, name: "gpu-box" }]);
+		const user = userEvent.setup();
+		renderPage([linked]);
+		await user.click(screen.getByText("Edit"));
+		const select = machineSelect();
+		await waitFor(() => expect(select.value).toBe("7"));
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
+		expect(fns.saveEndpointFn.mock.calls[0]?.[0]?.data).toMatchObject({
+			id: 2,
+			machineId: 7,
+		});
+	});
+
+	it("keeps the picker empty when the machines fetch rejects", async () => {
+		machineFns.machinesListFn.mockRejectedValueOnce(new Error("machines down"));
+		const user = userEvent.setup();
+		renderPage();
+		await openAcpSsh(user);
+		await waitFor(() => expect(machineFns.machinesListFn).toHaveBeenCalled());
+		const select = machineSelect();
+		// Only the "—" empty option survives the rejected fetch.
+		await waitFor(() => expect(select.querySelectorAll("option")).toHaveLength(1));
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
+		const wire = fns.saveEndpointFn.mock.calls[0]?.[0]?.data as Record<string, unknown>;
+		expect("machineId" in wire).toBe(false);
+	});
+});
