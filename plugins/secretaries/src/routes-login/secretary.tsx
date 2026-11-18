@@ -1,5 +1,5 @@
 import { doctorContextFn } from "@ktb/doctors/fns";
-import { createPluginFileRoute } from "@ktb/server-fns";
+import { createPluginFileRoute, pluginEnabledFn } from "@ktb/server-fns";
 
 import { emailEnabledFn, localeFn } from "../fns.ts";
 import { secretaryMessages } from "../i18n.ts";
@@ -19,7 +19,17 @@ const api: SecretaryLoginApi = {
  * Gated on `secretaries.routes` like the management page.
  */
 export const Route = createPluginFileRoute("secretaries.routes")("/login/secretary")({
-	loader: async () => ({ locale: await localeFn(), emailEnabled: await emailEnabledFn() }),
+	loader: async () => ({
+		locale: await localeFn(),
+		emailEnabled: await emailEnabledFn(),
+		// The doctor cross-link follows the /login picker's rule (P-058):
+		// the clinical portal and the doctors package must be live.
+		doctorLoginEnabled: (
+			await Promise.all(
+				["doctors.routes", "clinician.portal"].map((id) => pluginEnabledFn({ data: id })),
+			)
+		).every(Boolean),
+	}),
 	head: ({ loaderData }) => ({
 		meta: [{ title: secretaryMessages(loaderData?.locale ?? "en").login.metaTitle }],
 	}),
@@ -29,6 +39,7 @@ export const Route = createPluginFileRoute("secretaries.routes")("/login/secreta
 			<SecretaryLoginPage
 				locale={data?.locale ?? "en"}
 				emailEnabled={data?.emailEnabled ?? false}
+				doctorLoginEnabled={data?.doctorLoginEnabled ?? true}
 				api={api}
 			/>
 		);

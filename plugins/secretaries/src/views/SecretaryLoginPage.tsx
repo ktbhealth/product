@@ -46,12 +46,16 @@ export function SecretaryLoginPage({
 
 	locale,
 	emailEnabled,
+	doctorLoginEnabled,
 	api,
 }: {
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale: string;
 	readonly emailEnabled: boolean;
+	/** Whether /login/doctor's whole flow is live (P-058) — the /login
+	 * picker's rule, resolved by the route loader. */
+	readonly doctorLoginEnabled: boolean;
 	readonly api: SecretaryLoginApi;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, secretaryMessages(locale).login);
@@ -213,12 +217,14 @@ export function SecretaryLoginPage({
 					>
 						{t.verifyLink}
 					</Link>
-					<Link
-						to="/login/doctor"
-						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
-					>
-						{t.doctorLink}
-					</Link>
+					{doctorLoginEnabled ? (
+						<Link
+							to="/login/doctor"
+							className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
+						>
+							{t.doctorLink}
+						</Link>
+					) : null}
 				</CardContent>
 			</Card>
 		</div>

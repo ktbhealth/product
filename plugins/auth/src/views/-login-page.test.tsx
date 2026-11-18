@@ -21,7 +21,7 @@ vi.mock("@ktb/auth-better/client", () => ({
 	},
 }));
 
-const loaderData = { emailEnabled: false };
+const loaderData = { emailEnabled: false, secretaryLoginEnabled: true };
 
 type DoctorContext = {
 	profiles: { doctorId: number }[];
@@ -56,6 +56,7 @@ const Page = () =>
 	createElement(LoginPage, {
 		locale: "en",
 		emailEnabled: loaderData.emailEnabled,
+		secretaryLoginEnabled: loaderData.secretaryLoginEnabled,
 	}) as ReactElement;
 
 async function fillAndSubmit() {
@@ -312,10 +313,20 @@ describe("sign-in page", () => {
 		});
 	});
 
-	it("links to the resend-verification screen", () => {
+	it("links to the resend-verification and secretary screens", () => {
 		render(createElement(Page));
 		expect(
 			screen.getByRole("link", { name: "Didn't get the verification email?" }).getAttribute("href"),
 		).toBe("/verify-email");
+		expect(screen.getByRole("link", { name: "I am a secretary" }).getAttribute("href")).toBe(
+			"/login/secretary",
+		);
+	});
+
+	it("hides the secretary link when its sign-in flow is disabled", () => {
+		loaderData.secretaryLoginEnabled = false;
+		render(createElement(Page));
+		expect(screen.queryByRole("link", { name: "I am a secretary" })).toBeNull();
+		loaderData.secretaryLoginEnabled = true;
 	});
 });
