@@ -2553,6 +2553,40 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	forms: {
+		submit: {
+			params: [],
+		},
+		notFoundTitle: {
+			params: [],
+		},
+		notFoundDescription: {
+			params: [],
+		},
+		invalidSummary: {
+			params: [
+				{
+					name: "count",
+					cases: ["one", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{count, plural, one {# problem needs attention} other {# problems need attention}}",
+		},
+		chooseOption: {
+			params: [],
+		},
+		addItem: {
+			params: [],
+		},
+		removeItem: {
+			params: [],
+		},
+		submittedPreview: {
+			params: [],
+		},
+	},
 	groups: {
 		title: {
 			params: [],

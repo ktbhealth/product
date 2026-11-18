@@ -782,6 +782,14 @@ export type I18nKey =
 	| "eval.validator.title"
 	| "eval.validator.view"
 	| "eval.validator.voices"
+	| "forms.addItem"
+	| "forms.chooseOption"
+	| "forms.invalidSummary"
+	| "forms.notFoundDescription"
+	| "forms.notFoundTitle"
+	| "forms.removeItem"
+	| "forms.submit"
+	| "forms.submittedPreview"
 	| "groups.addMember"
 	| "groups.cancel"
 	| "groups.colActions"
@@ -2463,6 +2471,19 @@ export interface I18nTypedT {
 	(key: "eval.validator.title"): Effect.Effect<string>;
 	(key: "eval.validator.view"): Effect.Effect<string>;
 	(key: "eval.validator.voices"): Effect.Effect<string>;
+	(key: "forms.addItem"): Effect.Effect<string>;
+	(key: "forms.chooseOption"): Effect.Effect<string>;
+	(
+		key: "forms.invalidSummary",
+		params: {
+			count: number;
+		},
+	): Effect.Effect<string>;
+	(key: "forms.notFoundDescription"): Effect.Effect<string>;
+	(key: "forms.notFoundTitle"): Effect.Effect<string>;
+	(key: "forms.removeItem"): Effect.Effect<string>;
+	(key: "forms.submit"): Effect.Effect<string>;
+	(key: "forms.submittedPreview"): Effect.Effect<string>;
 	(key: "groups.addMember"): Effect.Effect<string>;
 	(key: "groups.cancel"): Effect.Effect<string>;
 	(key: "groups.colActions"): Effect.Effect<string>;
