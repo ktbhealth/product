@@ -170,6 +170,37 @@ describe("capabilityLayer selection", () => {
 		);
 	});
 
+	test("acp-cli builds a spawned-agent layer with defaults and overrides", () => {
+		// Construction only — spawning happens per call at run time.
+		expect(() => capabilityLayer(ctx({ profile: "devin" }), "llm", "acp-cli")).not.toThrow();
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "devin",
+					env: {
+						EVAL_ACP_AGENT_CMD: "claude-agent-acp --verbose",
+						EVAL_ACP_CWD: "/tmp/agent-cwd",
+						EVAL_ACP_TIMEOUT_MS: "45000",
+					},
+				}),
+				"llm",
+				"acp-cli",
+			),
+		).not.toThrow();
+		// Blank/invalid env values fall back to defaults; a blank
+		// agent command is a config error, not a spawn of "".
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "devin",
+					env: { EVAL_ACP_AGENT_CMD: "  ", EVAL_ACP_TIMEOUT_MS: "abc", EVAL_ACP_CWD: "" },
+				}),
+				"llm",
+				"acp-cli",
+			),
+		).toThrow(/EVAL_ACP_AGENT_CMD/);
+	});
+
 	test("faster-whisper builds with default and configured endpoints", () => {
 		expect(() => capabilityLayer(ctx({ profile: "local" }), "asr", "faster-whisper")).not.toThrow();
 		expect(() =>

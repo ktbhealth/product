@@ -99,7 +99,7 @@ export const makeEvalCommand = (ctx: CmdContext) =>
 			),
 		]),
 		Command.withDescription(
-			"Composable eval framework CLI — suite manifests under evals/, adapter profiles stub|local|local-systemone|cloud.",
+			"Composable eval framework CLI — suite manifests under evals/, adapter profiles stub|local*|devin|local-devin|cloud.",
 		),
 	);
 
