@@ -648,6 +648,111 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	agenda: {
+		title: {
+			params: [],
+		},
+		sidebarLabel: {
+			params: [],
+		},
+		newAppointment: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		today: {
+			params: [],
+		},
+		previousWeek: {
+			params: [],
+		},
+		nextWeek: {
+			params: [],
+		},
+		"form.patient": {
+			params: [],
+		},
+		"form.date": {
+			params: [],
+		},
+		"form.time": {
+			params: [],
+		},
+		"form.durationMin": {
+			params: [],
+		},
+		"form.note": {
+			params: [],
+		},
+		"form.notePlaceholder": {
+			params: [],
+		},
+		"form.save": {
+			params: [],
+		},
+		"form.cancel": {
+			params: [],
+		},
+		"form.required": {
+			params: [],
+		},
+		"status.scheduled": {
+			params: [],
+		},
+		"status.confirmed": {
+			params: [],
+		},
+		"status.completed": {
+			params: [],
+		},
+		"status.noShow": {
+			params: [],
+		},
+		"status.cancelled": {
+			params: [],
+		},
+		"actions.confirm": {
+			params: [],
+		},
+		"actions.start": {
+			params: [],
+		},
+		"actions.started": {
+			params: [],
+		},
+		"actions.complete": {
+			params: [],
+		},
+		"actions.noShow": {
+			params: [],
+		},
+		"actions.edit": {
+			params: [],
+		},
+		"actions.cancel": {
+			params: [],
+		},
+		"zk.lockedName": {
+			params: [],
+		},
+		startingSoon: {
+			params: [
+				{
+					name: "minutes",
+				},
+			],
+			template: "Starts in {minutes} min",
+		},
+		durationMin: {
+			params: [
+				{
+					name: "minutes",
+				},
+			],
+			template: "{minutes} min",
+		},
+	},
 	audience: {
 		faq1_a: {
 			params: [],
@@ -3440,6 +3545,28 @@ export const I18N_MANIFEST = {
 		},
 		"titles.consultationCreated": {
 			params: [],
+		},
+		"titles.appointmentReminder": {
+			params: [],
+		},
+		"bodies.appointmentReminder": {
+			params: [
+				{
+					name: "name",
+				},
+				{
+					name: "time",
+				},
+			],
+			template: "{name} — {time}",
+		},
+		"bodies.appointmentReminderZk": {
+			params: [
+				{
+					name: "time",
+				},
+			],
+			template: "Starts at {time}",
 		},
 		"dashboard.consoleActivity": {
 			params: [],
