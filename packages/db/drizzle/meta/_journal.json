@@ -330,6 +330,13 @@
       "when": 1794973487523,
       "tag": "0047_mighty_madame_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794979631331,
+      "tag": "0048_groovy_baron_strucker",
+      "breakpoints": true
     }
   ]
 }
