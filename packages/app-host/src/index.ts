@@ -34,7 +34,11 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
-import { DocumentCollections, makeDocumentCollections } from "@ktb/document-store";
+import {
+	DocumentCollections,
+	DocumentRefTargetsLive,
+	makeDocumentCollections,
+} from "@ktb/document-store";
 import { ViewDefinitions, makeViewDefinitions } from "@ktb/views";
 import { ApiExposures, makeApiExposures } from "@ktb/api";
 import { TriggerDefinitions, makeTriggerDefinitions } from "@ktb/triggers";
@@ -592,6 +596,12 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TriggerDefinitionsLive,
 		FlowDefinitionsLive,
 		WizardDefinitionsLive,
+		// External document-ref target registry (T-149): entity owners
+		// register existence checkers into this shared instance from
+		// their service layers; DocumentStore resolves entity refs
+		// through it. Static composition data like DocumentCollections —
+		// provided unconditionally, consumed via serviceOption.
+		DocumentRefTargetsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),

@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, run, runAs } from "@ktb/server-fns";
+import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
@@ -78,6 +78,7 @@ const HANDLED_TAGS = ["Forbidden", "InvalidPagePath", "DuplicatePagePath", "Page
 export const createPageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
 	.handler(async ({ data }): Promise<PageWire | null> => {
+		await requirePluginEnabled("pages.panel");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -103,6 +104,7 @@ export const createPageFn = createServerFn({ method: "POST" })
 export const updatePageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
 	.handler(async ({ data }): Promise<PageWire | null> => {
+		await requirePluginEnabled("pages.panel");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -127,6 +129,7 @@ export const updatePageFn = createServerFn({ method: "POST" })
 export const deletePageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
 	.handler(async ({ data }): Promise<boolean> => {
+		await requirePluginEnabled("pages.panel");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,

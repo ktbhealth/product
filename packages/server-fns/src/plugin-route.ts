@@ -43,6 +43,33 @@ export const pluginEnabledFn = createServerFn({ method: "GET" })
 	.validator((pluginId: unknown) => decodePluginId(pluginId))
 	.handler(async ({ data: pluginId }) => isPluginEnabled(pluginId));
 
+/**
+ * Raised by `requirePluginEnabled` when the owning plugin's package is
+ * disabled — plugin server fns surface it as a thrown error (the wire
+ * sees a failed call), matching the 404 semantics of the route gates.
+ */
+export class PluginDisabledError extends Error {
+	readonly pluginId: string;
+
+	constructor(pluginId: string) {
+		super(`plugin "${pluginId}" is disabled`);
+		this.name = "PluginDisabledError";
+		this.pluginId = pluginId;
+	}
+}
+
+/**
+ * Server-fn enablement gate (T-149): call `await requirePluginEnabled(
+ * "<pkg>.<concern>")` as the first statement of a plugin server-fn
+ * handler so a disabled plugin's fns fail instead of serving. Uses the
+ * same package-granular `ServerRuntime.pluginEnabled` capability and
+ * the same fail-open-when-unwired contract as the route gates — pass
+ * any plugin id of the owning `plugins/<pkg>` package.
+ */
+export const requirePluginEnabled = async (pluginId: string): Promise<void> => {
+	if (!(await isPluginEnabled(pluginId))) throw new PluginDisabledError(pluginId);
+};
+
 type BeforeLoad = (ctx: unknown) => unknown;
 
 /** Prepend the enabled-state gate to a route's own `beforeLoad`. */

@@ -30,6 +30,22 @@ describe("field builders", () => {
 			onDelete: "cascade",
 		});
 	});
+
+	it("entity ref targets emit entity descriptors and reject cascade", () => {
+		expect(f.ref({ entity: "patients" })).toEqual({
+			kind: "ref",
+			entity: "patients",
+			onDelete: "restrict",
+		});
+		expect(f.ref({ entity: "patients", onDelete: "nullify" })).toEqual({
+			kind: "ref",
+			entity: "patients",
+			onDelete: "nullify",
+		});
+		// document-store never deletes rows of a table it does not own.
+		// @ts-expect-error — wire/contributed defs can still carry cascade
+		expect(() => f.ref({ entity: "patients", onDelete: "cascade" })).toThrow(/cascade/);
+	});
 });
 
 describe("InferField / InferInsert / InferRecord", () => {

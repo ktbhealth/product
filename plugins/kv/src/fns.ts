@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { ensureSessionUser, requirePluginEnabled, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import {
@@ -172,6 +172,7 @@ const toSetInput = (d: Schema.Schema.Type<typeof SetInput>, value: unknown): KvA
 export const kvListFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeList(input ?? {}))
 	.handler(async ({ data }): Promise<KvListWire | null> => {
+		await requirePluginEnabled("kv.admin.services");
 		const user = await ensureSessionUser();
 		const list = await asAdmin(
 			user,
@@ -190,6 +191,7 @@ export const kvListFn = createServerFn({ method: "GET" })
  * or the input is invalid (there is no input — defensive). */
 export const kvNamespacesFn = createServerFn({ method: "GET" }).handler(
 	async (): Promise<readonly KvNamespaceWire[] | null> => {
+		await requirePluginEnabled("kv.admin.services");
 		const user = await ensureSessionUser();
 		const rows = await asAdmin(
 			user,
@@ -210,6 +212,7 @@ export const kvNamespacesFn = createServerFn({ method: "GET" }).handler(
 export const kvGetFn = createServerFn({ method: "GET" })
 	.validator((input: unknown) => decodeTarget(input))
 	.handler(async ({ data }): Promise<KvEntryWire | null> => {
+		await requirePluginEnabled("kv.admin.services");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -237,6 +240,7 @@ export const kvSetFn = createServerFn({ method: "POST" })
 		} catch {
 			return { ok: false, reason: "invalid" };
 		}
+		await requirePluginEnabled("kv.admin.services");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -268,6 +272,7 @@ export const kvSetFn = createServerFn({ method: "POST" })
 export const kvDeleteFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeTarget(input))
 	.handler(async ({ data }): Promise<boolean> => {
+		await requirePluginEnabled("kv.admin.services");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,

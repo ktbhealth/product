@@ -601,6 +601,7 @@
       "name": "@ktb/server-fns",
       "dependencies": {
         "@ktb/auth": "workspace:*",
+        "@ktb/authz": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/interop": "workspace:*",
         "@ktb/observability": "workspace:*",
