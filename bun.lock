@@ -586,6 +586,12 @@
         "vitest": "5.1.0",
       },
     },
+    "packages/seed": {
+      "name": "@ktb/seed",
+      "dependencies": {
+        "@ktb/json-schema": "workspace:*",
+      },
+    },
     "packages/server-fns": {
       "name": "@ktb/server-fns",
       "dependencies": {
@@ -2194,6 +2200,8 @@
     "@ktb/rbac-plugin": ["@ktb/rbac-plugin@workspace:plugins/rbac"],
 
     "@ktb/secretaries": ["@ktb/secretaries@workspace:plugins/secretaries"],
+
+    "@ktb/seed": ["@ktb/seed@workspace:packages/seed"],
 
     "@ktb/server-fns": ["@ktb/server-fns@workspace:packages/server-fns"],
 

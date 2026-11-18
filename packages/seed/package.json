@@ -1,0 +1,11 @@
+{
+	"name": "@ktb/seed",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/json-schema": "workspace:*"
+	}
+}
