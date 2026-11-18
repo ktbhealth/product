@@ -21,7 +21,9 @@ import { Audit } from "@ktb/audit";
 
 import { PatientPortal } from "./index.ts";
 import {
+	patientActivityFacetsFn,
 	patientActivityFn,
+	patientActivityQueryFn,
 	portalDekEnvelopesFn,
 	portalRegisterDeviceFn,
 	portalSessionFn,
@@ -37,9 +39,10 @@ const portal = {
 };
 const audit = {
 	patientList: vi.fn(),
+	patientFacets: vi.fn(),
 };
 const denied = Effect.fail(new Forbidden({ path: "portal.read" }));
-const ACTIVITY_EMPTY = { entries: [], total: 0, limit: 100 };
+const ACTIVITY_EMPTY = { entries: [], total: 0, limit: 100, offset: 0 };
 
 beforeEach(() => {
 	vi.clearAllMocks();
@@ -181,5 +184,83 @@ describe("patientActivityFn", () => {
 
 	it("rejects a malformed patientId on the wire", async () => {
 		await expect(patientActivityFn({ data: { patientId: "x" } })).rejects.toThrow();
+	});
+});
+
+describe("patientActivityQueryFn", () => {
+	const feed = { entries: [{ id: 1 }], total: 9, limit: 50, offset: 50 };
+
+	it("is an empty page for anonymous visitors and without an open record", async () => {
+		mocks.getSessionUser.mockResolvedValue(null);
+		await expect(patientActivityQueryFn({ data: { offset: 50 } })).resolves.toEqual(ACTIVITY_EMPTY);
+		await expect(patientActivityQueryFn({ data: undefined })).resolves.toEqual(ACTIVITY_EMPTY);
+		expect(mocks.runAs).not.toHaveBeenCalled();
+		mocks.getSessionUser.mockResolvedValue(user);
+		mocks.getPatientContext.mockResolvedValue(null);
+		await expect(patientActivityQueryFn({ data: {} })).resolves.toEqual(ACTIVITY_EMPTY);
+		expect(audit.patientList).not.toHaveBeenCalled();
+	});
+
+	it("queries the open record's feed with filters and pagination", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me], active: me });
+		audit.patientList.mockReturnValue(Effect.succeed(feed));
+		const query = {
+			limit: 50,
+			offset: 50,
+			q: "update",
+			actionGroup: "patients",
+			actor: null,
+			targetType: "patient",
+			since: 10,
+			until: 20,
+		};
+		await expect(patientActivityQueryFn({ data: query })).resolves.toEqual(feed);
+		expect(audit.patientList).toHaveBeenCalledWith({ patientId: 1, ...query });
+	});
+
+	it("is an empty page when the read is denied or the audit plugin is absent", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me], active: me });
+		audit.patientList.mockReturnValue(Effect.fail(new Forbidden({ path: "audit.patient" })));
+		await expect(patientActivityQueryFn({ data: {} })).resolves.toEqual(ACTIVITY_EMPTY);
+		mocks.runAs.mockImplementationOnce(
+			(_user: unknown, effect: Effect.Effect<unknown, unknown, PatientPortal>) =>
+				Effect.runPromise(effect.pipe(Effect.provideService(PatientPortal, portal as never))),
+		);
+		await expect(patientActivityQueryFn({ data: {} })).resolves.toEqual(ACTIVITY_EMPTY);
+	});
+});
+
+describe("patientActivityFacetsFn", () => {
+	const facets = { actionGroups: ["patients"], actors: ["staff@x.com"], targetTypes: ["patient"] };
+	const EMPTY_FACETS = { actionGroups: [], actors: [], targetTypes: [] };
+
+	it("is empty for anonymous callers and without an open record", async () => {
+		mocks.getSessionUser.mockResolvedValue(null);
+		await expect(patientActivityFacetsFn()).resolves.toEqual(EMPTY_FACETS);
+		mocks.getSessionUser.mockResolvedValue(user);
+		mocks.getPatientContext.mockResolvedValue(null);
+		await expect(patientActivityFacetsFn()).resolves.toEqual(EMPTY_FACETS);
+	});
+
+	it("returns the open record's facets", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me], active: me });
+		audit.patientFacets.mockReturnValue(Effect.succeed(facets));
+		await expect(patientActivityFacetsFn()).resolves.toEqual(facets);
+		expect(audit.patientFacets).toHaveBeenCalledWith({ patientId: 1 });
+	});
+
+	it("is empty when denied or the audit plugin is absent", async () => {
+		mocks.getSessionUser.mockResolvedValue(user);
+		mocks.getPatientContext.mockResolvedValue({ user, profiles: [me], active: me });
+		audit.patientFacets.mockReturnValue(Effect.fail(new Forbidden({ path: "audit.patient" })));
+		await expect(patientActivityFacetsFn()).resolves.toEqual(EMPTY_FACETS);
+		mocks.runAs.mockImplementationOnce(
+			(_user: unknown, effect: Effect.Effect<unknown, unknown, PatientPortal>) =>
+				Effect.runPromise(effect.pipe(Effect.provideService(PatientPortal, portal as never))),
+		);
+		await expect(patientActivityFacetsFn()).resolves.toEqual(EMPTY_FACETS);
 	});
 });

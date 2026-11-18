@@ -55,7 +55,7 @@ const consultationsLayer = (impl: Record<string, unknown> = {}) =>
 const auditLayer = (impl: Record<string, unknown> = {}) =>
 	Layer.succeed(Audit, {
 		activityAccess: () => Effect.succeed(false),
-		activityList: () => Effect.succeed({ entries: [], total: 0, limit: 200 }),
+		activityList: () => Effect.succeed({ entries: [], total: 0, limit: 200, offset: 0 }),
 		...impl,
 	} as never) as unknown as Layer.Layer<never, never, never>;
 
@@ -401,7 +401,7 @@ describe("clinician.activity guard", () => {
 describe("clinician.activity loader", () => {
 	const l = loader("clinician.doctor.activity");
 	const ACTIVITY_PATH = "/portal/doctor/activity";
-	const EMPTY = { entries: [], total: 0, limit: 200 };
+	const EMPTY = { entries: [], total: 0, limit: 200, offset: 0 };
 
 	it("returns an empty page when the Audit service is absent", async () => {
 		await expect(run(l(ACTIVITY_PATH), { principal: DOCTOR, layer: Layer.empty })).resolves.toEqual(

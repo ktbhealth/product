@@ -535,14 +535,16 @@ describe("patient-portal activity loader", () => {
 			}
 		).loader("/portal/patient/activity");
 
-	const EMPTY = { entries: [], total: 0, limit: 100 };
+	const EMPTY = { entries: [], total: 0, limit: 100, offset: 0 };
 	const openRecord = {
 		user: { id: "ana", email: "ana@ktb.test", name: "Ana" },
 		profiles: [{ patientId: 1, name: "Ana", relation: "self" }],
 		active: { patientId: 1, name: "Ana", relation: "self" },
 	};
 
-	const auditStub = (patientList: (options: { patientId: number; limit?: number }) => unknown) =>
+	const auditStub = (
+		patientList: (options: { patientId: number; limit?: number; offset?: number }) => unknown,
+	) =>
 		Layer.succeed(Audit, {
 			record: () => Effect.void,
 			adminList: () => Effect.die("unused"),
@@ -569,17 +571,18 @@ describe("patient-portal activity loader", () => {
 
 	it("serves the open record's feed through Audit.patientList", async () => {
 		mocks.patientContext.mockResolvedValue(openRecord);
-		const seen: { patientId: number; limit?: number }[] = [];
+		const seen: { patientId: number; limit?: number; offset?: number }[] = [];
 		const layer = auditStub((options) => {
 			seen.push(options);
 			return Effect.succeed({
 				entries: [{ id: 1 }],
 				total: 1,
 				limit: options.limit ?? 100,
+				offset: options.offset ?? 0,
 			});
 		});
 		const result = await Effect.runPromise(loader().pipe(Effect.provide(layer)));
-		expect(result).toEqual({ entries: [{ id: 1 }], total: 1, limit: 100 });
+		expect(result).toEqual({ entries: [{ id: 1 }], total: 1, limit: 100, offset: 0 });
 		expect(seen).toEqual([{ patientId: 1, limit: 100 }]);
 	});
 
