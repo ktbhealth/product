@@ -203,6 +203,14 @@ const DOMAINS = [
 		tables: ["kv_entries"],
 	},
 	{
+		id: "agenda",
+		title: "Agenda",
+		owner: "`plugins/agenda`",
+		description:
+			"Doctor agenda — appointments booked against patients, their lifecycle status, and consultation linkage.",
+		tables: ["appointments"],
+	},
+	{
 		id: "document-store",
 		title: "Document store",
 		owner: "`plugins/document-store`",
