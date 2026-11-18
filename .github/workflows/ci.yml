@@ -34,7 +34,11 @@ jobs:
       - run: bun install --frozen-lockfile
       # Vite+ task runner: ci:* tasks live in vite.config.ts; ci:check and
       # the ci:test shards depend on ci:build (it generates the paraglide
-      # output the tests import).
+      # output the tests import). All ci:* commands run inside ONE step:
+      # every GitHub step changes GITHUB_ACTION, which busts the Vite+
+      # task-cache fingerprint and forces ci:build to re-run. The drift
+      # checks (db schema/migrations, i18n, worker types) need no build;
+      # knip is static analysis.
       - uses: actions/cache@v4
         with:
           path: node_modules/.vite/task-cache
@@ -42,17 +46,14 @@ jobs:
           restore-keys: |
             vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
             vp-task-${{ runner.os }}-
-      - run: bunx vp run ci:check
-      - run: bunx vp run ci:build
-      - run: bunx vp run ci:route-types
-      # Quick generated-file drift checks (no build needed): db schema
-      # aggregator, drizzle/alchemy migrations, wrangler worker types.
-      - run: bunx vp run ci:db-schema
-      - run: bunx vp run ci:db-migrations
-      - run: bunx vp run ci:i18n
-      - run: bunx vp run ci:worker-types
-      # No build needed: knip is static analysis.
-      - run: bunx vp run ci:knip
+      - run: >-
+          bunx vp run ci:check &&
+          bunx vp run ci:route-types &&
+          bunx vp run ci:db-schema &&
+          bunx vp run ci:db-migrations &&
+          bunx vp run ci:i18n &&
+          bunx vp run ci:worker-types &&
+          bunx vp run ci:knip
 
   # The vitest suite (~520 files / ~5k tests, ~7min serial) is split into
   # disjoint shards via `vitest run --shard`. Each shard keeps coverage
@@ -71,10 +72,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { index: 1, count: 4 }
-          - { index: 2, count: 4 }
-          - { index: 3, count: 4 }
-          - { index: 4, count: 4 }
+          - { index: 1, count: 8 }
+          - { index: 2, count: 8 }
+          - { index: 3, count: 8 }
+          - { index: 4, count: 8 }
+          - { index: 5, count: 8 }
+          - { index: 6, count: 8 }
+          - { index: 7, count: 8 }
+          - { index: 8, count: 8 }
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -83,7 +88,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -93,7 +98,7 @@ jobs:
       # *.gen.ts) are committed, and the check job's drift tasks fail the
       # PR if any of them is stale. ci:build here was a ~15-20s vp
       # task-cache hit per shard that produced nothing the tests read.
-      # Each shard only exercises ~1/4 of the suite, so its own coverage
+      # Each shard only exercises ~1/8 of the suite, so its own coverage
       # is far below the global 100% thresholds — zero them here; the
       # coverage-gate job merges all shard blobs and enforces the real
       # thresholds from vitest.config.ts.
@@ -137,7 +142,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -237,13 +242,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: node_modules/.vite/task-cache
           key: vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
@@ -305,7 +310,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -362,7 +367,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
