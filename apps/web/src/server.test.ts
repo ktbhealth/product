@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 	handleThemeQueueBatch: vi.fn(),
 	flushTelemetry: vi.fn(),
 	runScheduledAuditVerification: vi.fn(),
+	runScheduledAgendaReminders: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-start/server", () => ({
@@ -22,6 +23,9 @@ vi.mock("#/lib/theme-jobs.ts", () => ({
 }));
 vi.mock("#/lib/audit-chain.ts", () => ({
 	runScheduledAuditVerification: mocks.runScheduledAuditVerification,
+}));
+vi.mock("#/lib/agenda-reminders.ts", () => ({
+	runScheduledAgendaReminders: mocks.runScheduledAgendaReminders,
 }));
 vi.mock("#/lib/platform.ts", () => ({
 	flushTelemetry: mocks.flushTelemetry,
@@ -94,7 +98,7 @@ describe("worker entry", () => {
 		expect(mocks.handleThemeQueueBatch).not.toHaveBeenCalled();
 	});
 
-	it("runs the scheduled audit-chain verification and flushes telemetry", async () => {
+	it("runs the agenda reminder sweep plus audit verification on the daily cron", async () => {
 		mocks.runScheduledAuditVerification.mockResolvedValue({
 			status: "verified",
 			entries: 3,
@@ -103,10 +107,21 @@ describe("worker entry", () => {
 		const waitUntil = vi.fn();
 		const controller = { scheduledTime: 0, cron: "17 3 * * *", noRetry: vi.fn() };
 		await entry.scheduled(controller as never, {}, { waitUntil } as never);
+		expect(mocks.runScheduledAgendaReminders).toHaveBeenCalledTimes(1);
 		expect(mocks.runScheduledAuditVerification).toHaveBeenCalledTimes(1);
 		expect(waitUntil).toHaveBeenCalledTimes(1);
 		await waitUntil.mock.calls[0]?.[0];
 		expect(mocks.flushTelemetry).toHaveBeenCalled();
+	});
+
+	it("runs only the reminder sweep on the 5-minute cron", async () => {
+		mocks.runScheduledAuditVerification.mockClear();
+		mocks.runScheduledAgendaReminders.mockClear();
+		const waitUntil = vi.fn();
+		const controller = { scheduledTime: 0, cron: "*/5 * * * *", noRetry: vi.fn() };
+		await entry.scheduled(controller as never, {}, { waitUntil } as never);
+		expect(mocks.runScheduledAgendaReminders).toHaveBeenCalledTimes(1);
+		expect(mocks.runScheduledAuditVerification).not.toHaveBeenCalled();
 	});
 });
 
