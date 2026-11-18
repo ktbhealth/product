@@ -18,10 +18,8 @@
 		"effect": "4.1.2"
 	},
 	"devDependencies": {
-		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
-		"@ktb/tenant": "workspace:*",
 		"vitest": "5.1.0"
 	}
 }
