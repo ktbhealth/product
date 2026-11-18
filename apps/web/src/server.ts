@@ -7,6 +7,7 @@ import type { Register } from "@tanstack/react-router";
 import type { RequestHandler } from "@tanstack/react-start/server";
 
 import { runScheduledAuditVerification } from "#/lib/audit-chain.ts";
+import { runScheduledAgendaReminders } from "#/lib/agenda-reminders.ts";
 import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
 import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
 import { flushTelemetry } from "#/lib/platform.ts";
@@ -58,11 +59,16 @@ export default {
 		}
 		ctx?.waitUntil?.(flushTelemetry());
 	},
-	// Daily cron (Alchemy `crons` trigger — see alchemy.run.ts): walks
-	// the tamper-evident audit chain and records a marker row on tamper.
-	// Never fires under `bun run dev`; failures are logged, not thrown.
-	scheduled: async (_controller: ScheduledController, _env: unknown, ctx: ExecutionContext) => {
-		await runScheduledAuditVerification();
+	// Two cron triggers (Alchemy `crons` — see alchemy.run.ts): a 5-minute
+	// sweep that dispatches "about to start" agenda reminders
+	// (lib/agenda-reminders.ts — idempotent via reminderSentAt) and a
+	// daily walk of the tamper-evident audit chain (lib/audit-chain.ts).
+	// The reminder sweep also runs on the daily fire — it is cheap and
+	// idempotent. `scheduled()` never fires under `bun run dev`; the
+	// agenda loaders poke the same sweep so dev reminders stay live.
+	scheduled: async (controller: ScheduledController, _env: unknown, ctx: ExecutionContext) => {
+		await runScheduledAgendaReminders();
+		if (controller.cron === "17 3 * * *") await runScheduledAuditVerification();
 		ctx?.waitUntil?.(flushTelemetry());
 	},
 };

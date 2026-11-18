@@ -9,6 +9,7 @@
  */
 export const PLUGIN_KEYWORDS = [
 	// domains — the lanes of the Domains view; one per plugin namespace
+	"agenda",
 	"ai",
 	"api",
 	"audience",

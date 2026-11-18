@@ -4,6 +4,37 @@ import type { Effect } from "effect";
 
 /** Closed union of every known i18n key ("namespace.key"). */
 export type I18nKey =
+	| "agenda.actions.cancel"
+	| "agenda.actions.complete"
+	| "agenda.actions.confirm"
+	| "agenda.actions.edit"
+	| "agenda.actions.noShow"
+	| "agenda.actions.start"
+	| "agenda.actions.started"
+	| "agenda.durationMin"
+	| "agenda.empty"
+	| "agenda.form.cancel"
+	| "agenda.form.date"
+	| "agenda.form.durationMin"
+	| "agenda.form.note"
+	| "agenda.form.notePlaceholder"
+	| "agenda.form.patient"
+	| "agenda.form.required"
+	| "agenda.form.save"
+	| "agenda.form.time"
+	| "agenda.newAppointment"
+	| "agenda.nextWeek"
+	| "agenda.previousWeek"
+	| "agenda.sidebarLabel"
+	| "agenda.startingSoon"
+	| "agenda.status.cancelled"
+	| "agenda.status.completed"
+	| "agenda.status.confirmed"
+	| "agenda.status.noShow"
+	| "agenda.status.scheduled"
+	| "agenda.title"
+	| "agenda.today"
+	| "agenda.zk.lockedName"
 	| "app.capture_desc"
 	| "app.capture_error_no_audio"
 	| "app.capture_level"
@@ -1061,6 +1092,8 @@ export type I18nKey =
 	| "manager.viewDependencies"
 	| "manager.viewDomains"
 	| "manager.viewHierarchy"
+	| "notifications.bodies.appointmentReminder"
+	| "notifications.bodies.appointmentReminderZk"
 	| "notifications.dashboard.consoleActivity"
 	| "notifications.dashboard.noNotifications"
 	| "notifications.dashboard.unreadNotifications"
@@ -1068,6 +1101,7 @@ export type I18nKey =
 	| "notifications.label"
 	| "notifications.markAllRead"
 	| "notifications.markAsRead"
+	| "notifications.titles.appointmentReminder"
 	| "notifications.titles.consultationCreated"
 	| "notifications.titles.patientCreated"
 	| "notifications.titles.patientDeleted"
@@ -1602,6 +1636,47 @@ export type I18nKey =
 
 /** Per-key parameter shapes — the compile-time half of the contract. */
 export interface I18nTypedT {
+	(key: "agenda.actions.cancel"): Effect.Effect<string>;
+	(key: "agenda.actions.complete"): Effect.Effect<string>;
+	(key: "agenda.actions.confirm"): Effect.Effect<string>;
+	(key: "agenda.actions.edit"): Effect.Effect<string>;
+	(key: "agenda.actions.noShow"): Effect.Effect<string>;
+	(key: "agenda.actions.start"): Effect.Effect<string>;
+	(key: "agenda.actions.started"): Effect.Effect<string>;
+	(
+		key: "agenda.durationMin",
+		params: {
+			minutes: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "agenda.empty"): Effect.Effect<string>;
+	(key: "agenda.form.cancel"): Effect.Effect<string>;
+	(key: "agenda.form.date"): Effect.Effect<string>;
+	(key: "agenda.form.durationMin"): Effect.Effect<string>;
+	(key: "agenda.form.note"): Effect.Effect<string>;
+	(key: "agenda.form.notePlaceholder"): Effect.Effect<string>;
+	(key: "agenda.form.patient"): Effect.Effect<string>;
+	(key: "agenda.form.required"): Effect.Effect<string>;
+	(key: "agenda.form.save"): Effect.Effect<string>;
+	(key: "agenda.form.time"): Effect.Effect<string>;
+	(key: "agenda.newAppointment"): Effect.Effect<string>;
+	(key: "agenda.nextWeek"): Effect.Effect<string>;
+	(key: "agenda.previousWeek"): Effect.Effect<string>;
+	(key: "agenda.sidebarLabel"): Effect.Effect<string>;
+	(
+		key: "agenda.startingSoon",
+		params: {
+			minutes: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "agenda.status.cancelled"): Effect.Effect<string>;
+	(key: "agenda.status.completed"): Effect.Effect<string>;
+	(key: "agenda.status.confirmed"): Effect.Effect<string>;
+	(key: "agenda.status.noShow"): Effect.Effect<string>;
+	(key: "agenda.status.scheduled"): Effect.Effect<string>;
+	(key: "agenda.title"): Effect.Effect<string>;
+	(key: "agenda.today"): Effect.Effect<string>;
+	(key: "agenda.zk.lockedName"): Effect.Effect<string>;
 	(key: "app.capture_desc"): Effect.Effect<string>;
 	(key: "app.capture_error_no_audio"): Effect.Effect<string>;
 	(
@@ -2952,6 +3027,19 @@ export interface I18nTypedT {
 	(key: "manager.viewDependencies"): Effect.Effect<string>;
 	(key: "manager.viewDomains"): Effect.Effect<string>;
 	(key: "manager.viewHierarchy"): Effect.Effect<string>;
+	(
+		key: "notifications.bodies.appointmentReminder",
+		params: {
+			name: unknown;
+			time: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "notifications.bodies.appointmentReminderZk",
+		params: {
+			time: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "notifications.dashboard.consoleActivity"): Effect.Effect<string>;
 	(key: "notifications.dashboard.noNotifications"): Effect.Effect<string>;
 	(key: "notifications.dashboard.unreadNotifications"): Effect.Effect<string>;
@@ -2964,6 +3052,7 @@ export interface I18nTypedT {
 			title: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "notifications.titles.appointmentReminder"): Effect.Effect<string>;
 	(key: "notifications.titles.consultationCreated"): Effect.Effect<string>;
 	(key: "notifications.titles.patientCreated"): Effect.Effect<string>;
 	(key: "notifications.titles.patientDeleted"): Effect.Effect<string>;

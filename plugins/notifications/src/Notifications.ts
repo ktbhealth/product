@@ -11,6 +11,7 @@ import { Event, EventBus } from "@effect-server-utils/cqrs";
 import { getLocale } from "@ktb/server-fns";
 import { PatientCreated, PatientDeleted } from "@ktb/patients/api";
 import { ConsultationCreated } from "@ktb/consultations/api";
+import { AppointmentReminderDue } from "@ktb/agenda/api";
 // Plain db read (clinic_keys via tenantZkOrClosed) — no service edge on
 // vault.services: plugin deps order layers, and nothing here consumes
 // the Vault service.
@@ -185,6 +186,27 @@ const NOTIFICATION_MAP = [
 			kind: "consultation.created",
 			title: t.titles.consultationCreated,
 			body: zk ? undefined : e.source,
+		};
+	}),
+	mapEvent(AppointmentReminderDue, (e, zk) => {
+		const locale = ingestLocale();
+		const t = notificationMessages(locale);
+		const time = e.startsAt.toLocaleTimeString(locale, {
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+		return {
+			userId: e.ownerId,
+			kind: "appointment.reminder",
+			title: t.titles.appointmentReminder,
+			// startsAt is a plaintext scheduling column — metadata the
+			// server may read under ZK. patientName is the stored `v1.`
+			// envelope there, so the ZK body carries only the time.
+			body:
+				zk || e.patientName === null
+					? t.bodies.appointmentReminderZk(time)
+					: t.bodies.appointmentReminder(e.patientName, time),
+			payload: JSON.stringify({ appointmentId: e.id }),
 		};
 	}),
 ];
