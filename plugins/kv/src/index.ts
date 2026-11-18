@@ -74,7 +74,7 @@ export const kvAdminServicesPlugin = definePlugin({
 
 /**
  * Chrome contribution (P-060): the /platform/kv console sidebar entry
- * (System group), same slot as the other admin pages.
+ * (Storage group), same slot as the other admin pages.
  */
 export const kvChromePlugin = definePlugin({
 	id: "kv.chrome",

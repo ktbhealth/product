@@ -10,7 +10,7 @@ import { managerConfig, managerConfigSchema } from "./config.tsx";
 
 /**
  * Plugin manager chrome (P-058): the /platform/plugins sidebar entry in
- * the console.chrome region, "Infrastructure" group. Mirrors ./client.ts; parity
+ * the console.chrome region, "Runtime" group. Mirrors ./client.ts; parity
  * is asserted by apps/web/src/plugins.test.ts.
  */
 export const managerChromePlugin = definePlugin({

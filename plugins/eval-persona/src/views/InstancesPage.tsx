@@ -124,7 +124,7 @@ const evalPickable = (e: EndpointCard) => e.enabled && e.scope === "eval";
 
 /** /platform/eval/instances view: pick personas (or sample randomly),
  * choose the LLM, watch generation progress per item. Endpoint CRUD
- * lives in the AI group's endpoints page — this surface only picks. */
+ * lives in the Intelligence group's endpoints page — this surface only picks. */
 export function InstancesPage({
 	instances: initial,
 	defs,

@@ -531,6 +531,9 @@ export const I18N_MANIFEST = {
 		panel_group_evaluation: {
 			params: [],
 		},
+		panel_group_governance: {
+			params: [],
+		},
 		panel_group_identity: {
 			params: [],
 		},
@@ -5730,6 +5733,7 @@ export const I18N_BASE_CATALOG = {
 	panel_group_console: "Console",
 	panel_group_domain_data: "Domain data",
 	panel_group_evaluation: "Evaluation",
+	panel_group_governance: "Governance",
 	panel_group_identity: "Identity",
 	panel_group_intelligence: "Intelligence",
 	panel_group_presentation: "Presentation",

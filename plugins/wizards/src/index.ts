@@ -70,7 +70,7 @@ export const wizardsServicesPlugin = definePlugin({
 });
 
 /**
- * Console chrome: the /platform/wizards sidebar entry (System group).
+ * Console chrome: the /platform/wizards sidebar entry (Presentation group).
  */
 export const wizardsChromePlugin = definePlugin({
 	id: "wizards.chrome",

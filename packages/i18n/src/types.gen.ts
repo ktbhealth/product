@@ -205,6 +205,7 @@ export type I18nKey =
 	| "app.panel_group_console"
 	| "app.panel_group_domain_data"
 	| "app.panel_group_evaluation"
+	| "app.panel_group_governance"
 	| "app.panel_group_identity"
 	| "app.panel_group_intelligence"
 	| "app.panel_group_presentation"
@@ -1880,6 +1881,7 @@ export interface I18nTypedT {
 	(key: "app.panel_group_console"): Effect.Effect<string>;
 	(key: "app.panel_group_domain_data"): Effect.Effect<string>;
 	(key: "app.panel_group_evaluation"): Effect.Effect<string>;
+	(key: "app.panel_group_governance"): Effect.Effect<string>;
 	(key: "app.panel_group_identity"): Effect.Effect<string>;
 	(key: "app.panel_group_intelligence"): Effect.Effect<string>;
 	(key: "app.panel_group_presentation"): Effect.Effect<string>;

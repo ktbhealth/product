@@ -7,7 +7,7 @@ import { PromptsPanelPage } from "./platform-page.tsx";
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
  * through `@ktb/app-host/client`. Only client-consumed contributions:
- * the AI-group sidebar entry and the serializable panel page
+ * the Intelligence-group sidebar entry and the serializable panel page
  * descriptor. Guard/loader Effects stay server-side. Parity is
  * asserted by apps/web/src/plugins.test.ts.
  */

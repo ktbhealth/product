@@ -40,7 +40,7 @@ export const pagesServicesPlugin = definePlugin({
 
 /**
  * Chrome contribution (P-060): the /platform/pages console sidebar
- * entry (System group) plus the app-header nav component that lists
+ * entry (Presentation group) plus the app-header nav component that lists
  * published pages flagged `showInNav` — fetched at render time via the
  * plugin's public server fn, so nav membership is data, not code.
  */

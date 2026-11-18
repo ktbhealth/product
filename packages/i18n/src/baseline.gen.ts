@@ -1044,6 +1044,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "panel_group_governance",
+		locale: "en",
+		value: "Governance",
+	},
+	{
+		namespace: "app",
 		key: "panel_group_identity",
 		locale: "en",
 		value: "Identity",
@@ -2332,6 +2338,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "panel_group_governance",
+		locale: "es",
+		value: "Gobernanza",
+	},
+	{
+		namespace: "app",
 		key: "panel_group_identity",
 		locale: "es",
 		value: "Identidad",
@@ -3617,6 +3629,12 @@ export const I18N_BASELINE = [
 		key: "panel_group_evaluation",
 		locale: "pt-BR",
 		value: "Avaliação",
+	},
+	{
+		namespace: "app",
+		key: "panel_group_governance",
+		locale: "pt-BR",
+		value: "Governança",
 	},
 	{
 		namespace: "app",

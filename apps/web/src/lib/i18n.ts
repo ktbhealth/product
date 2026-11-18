@@ -125,6 +125,10 @@ const PANEL_GROUPS: Record<string, string> = {
 	Console: "panel_group_console",
 	"Domain data": "panel_group_domain_data",
 	Evaluation: "panel_group_evaluation",
+	// Clinical portals still group the activity feed under "Governance"
+	// (plugins/clinician) — the key stays even though /platform no
+	// longer uses it.
+	Governance: "panel_group_governance",
 	Identity: "panel_group_identity",
 	Intelligence: "panel_group_intelligence",
 	Presentation: "panel_group_presentation",
