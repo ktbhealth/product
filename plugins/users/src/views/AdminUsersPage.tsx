@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -47,8 +47,16 @@ export function AdminUsersPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, userMessages(locale));
 	const router = useRouter();
-	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
+	// `toLocaleString` resolves in the runtime timezone — UTC on the SSR
+	// worker vs the browser's zone — so the text is only emitted on the
+	// client or the server/client markup diverges.
+	const mounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
+	const fmtDate = (d: Date) => (mounted ? d.toLocaleString(locale) : "");
 	const [suspending, setSuspending] = useState<AdminUserRow | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState(false);

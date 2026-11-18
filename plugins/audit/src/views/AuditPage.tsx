@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -215,6 +215,14 @@ export function AuditPage({
 		offset,
 	}));
 	const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+	// `toLocaleString` resolves in the runtime timezone — UTC on the SSR
+	// worker vs the browser's zone — so row timestamps are only emitted
+	// on the client or the server/client markup diverges.
+	const mounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
 	const [facets, setFacets] = useState<AuditFacets | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [failed, setFailed] = useState(false);
@@ -533,7 +541,7 @@ export function AuditPage({
 									shown.map((row) => (
 										<TableRow key={row.id}>
 											<TableCell className="text-xs text-muted-foreground">
-												{fmtDate(row.createdAt, locale)}
+												{mounted ? fmtDate(row.createdAt, locale) : ""}
 											</TableCell>
 											<TableCell className="text-xs">
 												{row.actorEmail ?? row.actorUserId ?? t.systemActor}

@@ -1,5 +1,5 @@
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { PlusIcon, Trash2Icon, UsersIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
@@ -78,8 +78,16 @@ export function AdminGroupsPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, groupMessages(locale));
 	const router = useRouter();
-	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
+	// `toLocaleString` resolves in the runtime timezone — UTC on the SSR
+	// worker vs the browser's zone — so the text is only emitted on the
+	// client or the server/client markup diverges.
+	const mounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
+	const fmtDate = (d: Date) => (mounted ? d.toLocaleString(locale) : "");
 	const [createOpen, setCreateOpen] = useState(false);
 	const [membersFor, setMembersFor] = useState<AdminGroupRow | null>(null);
 	const [deleting, setDeleting] = useState<AdminGroupRow | null>(null);
