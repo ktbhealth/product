@@ -14,6 +14,7 @@ import { DocumentCollections } from "./collection.ts";
 import { f } from "./fields.ts";
 import {
 	COLLECTION_CACHE_TTL_MS,
+	CorruptCollection,
 	DocumentIdempotencyConflict,
 	DocumentStore,
 	DocumentStoreLive,
@@ -642,5 +643,199 @@ describe("DocumentStore hardening (T-127/T-129)", () => {
 		await as(call((s) => s.ensureCollection(recent)));
 		await as(call(() => rewriteSchemaJson("hard.evict-recent", recentV2)));
 		await failWith("DocumentValidationError")(call((s) => s.insert("hard.evict-recent", { b: 1 })));
+	});
+});
+
+// ---------- T-147: corrupt schema_json ----------
+
+const good = defineCollection({
+	name: "t147.good",
+	fields: { title: f.string({ required: true }) },
+});
+const refTarget = defineCollection({
+	name: "t147.target",
+	fields: { label: f.string({ required: true }) },
+});
+/** Ref field aimed at the corrupt collection — write-side resolution
+ * must surface CorruptCollection, not a defect or BrokenReference. */
+const pointsAtCorrupt = defineCollection({
+	name: "t147.pointer",
+	fields: { t: f.ref({ collection: "t147.corrupt" }) },
+});
+/** Entity ref — applyEntityDelete's allDefs scan must skip the
+ * corrupt row instead of dying on it. */
+const pointsAtEntity = defineCollection({
+	name: "t147.entityref",
+	fields: { e: f.ref({ entity: "t147.widgets" }) },
+});
+
+const T147_DEFS = [good, refTarget, pointsAtCorrupt, pointsAtEntity];
+
+describe("DocumentStore corrupt schema_json (T-147)", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+	let db: ReturnType<typeof makeDb>;
+
+	beforeAll(async () => {
+		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: T147_DEFS }),
+		);
+		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+		const now = new Date();
+		// Two corrupt registry rows: one unparseable JSON, one valid
+		// JSON that fails the def shape check. Both are DB-only (no
+		// contributed def) so resolveDef must decode schema_json.
+		await db.insert(documentCollections).values([
+			{
+				name: "t147.corrupt",
+				ownerPluginId: "",
+				schemaJson: "{not json",
+				version: 1,
+				createdAt: now,
+				updatedAt: now,
+			},
+			{
+				name: "t147.corrupt2",
+				ownerPluginId: "",
+				// Parses, but no version/fields — assertCollectionDef rejects.
+				schemaJson: JSON.stringify({ name: "t147.corrupt2" }),
+				version: 1,
+				createdAt: now,
+				updatedAt: now,
+			},
+			{
+				name: "t147.corrupt4",
+				ownerPluginId: "",
+				// A VALID def — but embedded under another collection's
+				// name: decoding it would mis-attribute the row's
+				// records, so the name check fails it as corrupt.
+				schemaJson: JSON.stringify({
+					name: "t147.impostor",
+					version: 1,
+					fields: { a: { kind: "string" } },
+				}),
+				version: 1,
+				createdAt: now,
+				updatedAt: now,
+			},
+		]);
+	});
+
+	afterAll(() => runtime.dispose());
+
+	const as = <A, E>(effect: Effect.Effect<A, E, DocumentStore>) => runtime.runPromise(effect);
+
+	const call = <A, E>(f: (s: DocumentStore["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(DocumentStore, f);
+
+	const failWith =
+		<A>(tag: string) =>
+		(effect: Effect.Effect<A, DocumentStoreError, DocumentStore>) =>
+			runtime.runPromise(Effect.flip(effect)).then((e) => {
+				expect((e as { _tag?: string })._tag).toBe(tag);
+				return e;
+			});
+
+	it("every op on a corrupt collection fails CorruptCollection — no SyntaxError escapes", async () => {
+		for (const name of ["t147.corrupt", "t147.corrupt2", "t147.corrupt4"]) {
+			const err = (await failWith("CorruptCollection")(
+				call((s) => s.find(name)),
+			)) as CorruptCollection;
+			expect(err.name).toBe(name);
+			expect(err.reason.length).toBeGreaterThan(0);
+			await failWith("CorruptCollection")(call((s) => s.get(name, 1)));
+			await failWith("CorruptCollection")(call((s) => s.insert(name, { whatever: 1 })));
+			await failWith("CorruptCollection")(call((s) => s.update(name, 1, { whatever: 1 })));
+			await failWith("CorruptCollection")(call((s) => s.delete(name, 1)));
+			await failWith("CorruptCollection")(call((s) => s.migrateCollection(name)));
+			await failWith("CorruptCollection")(
+				call((s) => s.batch([{ op: "delete", collection: name, id: 1 }])),
+			);
+		}
+	});
+
+	it("a ref targeting a corrupt collection fails typed through checkRefs", async () => {
+		const err = (await failWith("CorruptCollection")(
+			call((s) => s.insert("t147.pointer", { t: 1 })),
+		)) as CorruptCollection;
+		expect(err.name).toBe("t147.corrupt");
+	});
+
+	it("other collections keep working while corrupt rows exist", async () => {
+		// find/insert/update/get on healthy collections.
+		const created = await as(call((s) => s.insert("t147.good", { title: "ok" })));
+		const page = await as(call((s) => s.find("t147.good")));
+		expect(page.rows.some((r) => r.id === created.id)).toBe(true);
+		const updated = await as(call((s) => s.update("t147.good", created.id, { title: "ok2" })));
+		expect(updated.version).toBe(2);
+		// delete on t147.target runs the allDefs ref scan over BOTH
+		// corrupt rows — the pre-T-147 SyntaxError defect path.
+		const target = await as(call((s) => s.insert("t147.target", { label: "t" })));
+		await as(call((s) => s.delete("t147.target", target.id)));
+		expect(await as(call((s) => s.get("t147.target", target.id)))).toBeNull();
+		// batch mixing healthy ops is unaffected.
+		const results = await as(
+			call((s) =>
+				s.batch([
+					{ op: "insert", collection: "t147.good", data: { title: "b1" } },
+					{ op: "insert", collection: "t147.target", data: { label: "b2" } },
+				]),
+			),
+		);
+		expect(results).toHaveLength(2);
+		// applyEntityDelete scans allDefs too — corrupt rows are skipped.
+		await as(call((s) => s.applyEntityDelete("t147.widgets", 1, { unscoped: true })));
+	});
+
+	it("a contributed def sharing a corrupt row's name still works", async () => {
+		// Contributed defs bypass schema_json decode entirely — the
+		// corrupt registry row only breaks DB-only resolution. Uses its
+		// OWN corrupt row (t147.corrupt3) so the shared-db row for
+		// t147.corrupt stays corrupt for the heal test below.
+		const now = new Date();
+		await db.insert(documentCollections).values({
+			name: "t147.corrupt3",
+			ownerPluginId: "",
+			schemaJson: "{also not json",
+			version: 1,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const shadow = defineCollection({
+			name: "t147.corrupt3",
+			fields: { healed: f.string({ required: true }) },
+		});
+		const defsRuntime = ManagedRuntime.make(
+			DocumentStoreLive.pipe(
+				Layer.provide(
+					Layer.merge(
+						Layer.succeed(Db, db),
+						Layer.succeed(DocumentCollections, {
+							collections: [...T147_DEFS, shadow],
+						}),
+					),
+				),
+			),
+		);
+		try {
+			const rec = await defsRuntime.runPromise(
+				Effect.flatMap(DocumentStore, (s) => s.insert("t147.corrupt3", { healed: "yes" })),
+			);
+			expect(rec.data).toMatchObject({ healed: "yes" });
+		} finally {
+			await defsRuntime.dispose();
+		}
+	});
+
+	it("ensureCollection with a newer version heals the corrupt row", async () => {
+		const healed = defineCollection({
+			name: "t147.corrupt",
+			version: 2,
+			fields: { healed: f.string({ required: true }) },
+		});
+		await as(call((s) => s.ensureCollection(healed)));
+		const rec = await as(call((s) => s.insert("t147.corrupt", { healed: "back" })));
+		expect(rec.data).toMatchObject({ healed: "back" });
 	});
 });

@@ -131,6 +131,19 @@ export class UnknownCollection extends Data.TaggedError("UnknownCollection")<{
 	readonly name: string;
 }> {}
 
+/** A `document_collections` row's `schema_json` failed to decode
+ * (T-147): invalid JSON, a shape `assertCollectionDef` rejects, or a
+ * def whose embedded name doesn't match the registry row. The
+ * collection is UNAVAILABLE — every op that resolves it fails this
+ * typed error while other collections keep working; delete/entity-
+ * delete ref scans skip the undecodable def (logged + metered).
+ * `reason` carries the decode/assert message (schema metadata only —
+ * never record payloads). */
+export class CorruptCollection extends Data.TaggedError("CorruptCollection")<{
+	readonly name: string;
+	readonly reason: string;
+}> {}
+
 export class DocumentValidationError extends Data.TaggedError("DocumentValidationError")<{
 	readonly collection: string;
 	readonly issues: readonly string[];
@@ -229,6 +242,7 @@ export class DocumentMigrationError extends Data.TaggedError("DocumentMigrationE
 
 export type DocumentStoreError =
 	| UnknownCollection
+	| CorruptCollection
 	| DocumentValidationError
 	| InvalidDocumentQuery
 	| RecordNotFound
@@ -614,16 +628,32 @@ export const DocumentStoreLive = Layer.effect(
 				return row;
 			});
 
-		const defFromRow = (row: DocumentCollectionRow): DocumentCollection => {
-			const cached = registeredDefs.get(row.name);
-			if (cached !== undefined && cached.schemaJson === row.schemaJson) return cached.def;
-			// schema_json is written by ensureCollection from a
-			// DocumentCollection — a parse failure is corruption, so it
-			// dies as a defect rather than a typed error.
-			const def = JSON.parse(row.schemaJson) as DocumentCollection;
-			cachePut(registeredDefs, row.name, { def, schemaJson: row.schemaJson });
-			return def;
-		};
+		/** Decode a registry row's `schema_json` into its def. T-147:
+		 * corruption is a TYPED failure (`CorruptCollection`), never a
+		 * SyntaxError defect — one malformed row must not take down
+		 * unrelated collections' operations. `assertCollectionDef`
+		 * re-checks the decoded shape (ensureCollection writes only
+		 * asserted defs, so a rejection means the row was corrupted
+		 * out-of-band); the embedded name must match the registry key —
+		 * a mismatch would mis-attribute every record of the row. */
+		const defFromRow = (
+			row: DocumentCollectionRow,
+		): Effect.Effect<DocumentCollection, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const cached = registeredDefs.get(row.name);
+				if (cached !== undefined && cached.schemaJson === row.schemaJson) return cached.def;
+				const corrupt = (reason: string) => new CorruptCollection({ name: row.name, reason });
+				const def = yield* Effect.try({
+					try: () =>
+						assertCollectionDef(JSON.parse(row.schemaJson), "document_collections.schema_json"),
+					catch: (e) => corrupt(String(e)),
+				});
+				if (def.name !== row.name) {
+					return yield* fail(corrupt(`schema_json name ${JSON.stringify(def.name)} != row name`));
+				}
+				cachePut(registeredDefs, row.name, { def, schemaJson: row.schemaJson });
+				return def;
+			});
 
 		/** Resolve a name or def to { def, row | null }. A name unknown
 		 * to BOTH the contributed registry and document_collections
@@ -643,7 +673,7 @@ export const DocumentStoreLive = Layer.effect(
 				const row = yield* rowFor(ref);
 				if (contributedDef !== undefined) return { def: contributedDef, row };
 				if (row === null) return yield* fail(new UnknownCollection({ name: ref }));
-				return { def: defFromRow(row), row };
+				return { def: yield* defFromRow(row), row };
 			});
 
 		const resolveOwner = (ctx: DocumentStoreContext | undefined) =>
@@ -952,12 +982,29 @@ export const DocumentStoreLive = Layer.effect(
 
 		/** Every def the service knows: contributed defs plus
 		 * DB-registered rows (parsed lazily). The delete path scans
-		 * these for `ref` fields pointing at the deleted collection. */
+		 * these for `ref` fields pointing at the deleted collection.
+		 * T-147: a row whose `schema_json` won't decode is SKIPPED —
+		 * its ref fields are unknowable, so its policies can't be
+		 * enforced, but one corrupt registry row must not take down
+		 * delete/entity-delete for every other collection. The skip is
+		 * logged and metered (`kind: "corrupt"`) so the corruption
+		 * stays visible; the corrupt collection's own ops still fail
+		 * `CorruptCollection` through `resolveDef`. */
 		const allDefs = Effect.gen(function* () {
 			const defs = new Map(contributed);
 			const rows = yield* Effect.promise(() => db.select().from(documentCollections));
 			for (const row of rows as DocumentCollectionRow[]) {
-				if (!defs.has(row.name)) defs.set(row.name, defFromRow(row));
+				if (defs.has(row.name)) continue;
+				const decoded = yield* Effect.result(defFromRow(row));
+				if (Result.isFailure(decoded)) {
+					yield* Effect.logWarning(
+						`document-store: skipping corrupt collection "${row.name}" in ref scan`,
+						{ reason: String(decoded.failure) },
+					);
+					yield* recordSafe(tagged(documentStoreRows, { op: "registry", kind: "corrupt" }), 1);
+					continue;
+				}
+				defs.set(row.name, decoded.success);
 			}
 			return [...defs.values()] as readonly DocumentCollection[];
 		});

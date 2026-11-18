@@ -136,7 +136,7 @@ export const telemetryErrors = Metric.counter("ktb_telemetry_errors_total", {
  * instruments. `op` is the bounded method name (ensureCollection,
  * insert, get, find, update, delete, batch, migrateCollection);
  * `outcome` is success|error; `kind` on rows is bounded
- * (scanned|migrated|failed|ops). Collection names, record ids and
+ * (scanned|migrated|failed|ops|corrupt). Collection names, record ids and
  * document payloads stay on spans only — caller-influenced values
  * would multiply metric cardinality. */
 export const documentStoreOps = Metric.counter("ktb_document_store_ops_total", {
