@@ -522,10 +522,28 @@ export const I18N_MANIFEST = {
 		panel_group_account: {
 			params: [],
 		},
+		panel_group_ai_platform: {
+			params: [],
+		},
+		panel_group_clinical_data: {
+			params: [],
+		},
 		panel_group_domains: {
 			params: [],
 		},
+		panel_group_evaluation: {
+			params: [],
+		},
+		panel_group_experience: {
+			params: [],
+		},
 		panel_group_governance: {
+			params: [],
+		},
+		panel_group_infrastructure: {
+			params: [],
+		},
+		panel_group_overview: {
 			params: [],
 		},
 		panel_group_system: {
@@ -5692,6 +5710,12 @@ export const I18N_BASE_CATALOG = {
 	panel_group_governance: "Governance",
 	panel_nav_ops: "Ops",
 	panel_group_system: "System",
+	panel_group_ai_platform: "AI platform",
+	panel_group_clinical_data: "Clinical data",
+	panel_group_evaluation: "Evaluation",
+	panel_group_experience: "Experience",
+	panel_group_infrastructure: "Infrastructure",
+	panel_group_overview: "Overview",
 	persona_label: "View as",
 	persona_doctors: "Doctors",
 	persona_patients: "Patients",

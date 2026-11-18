@@ -10,7 +10,7 @@ import type { Plugin } from "@ktb/kernel";
 import { dashboardChromePlugin, dashboardPanelPlugin, plugins } from "./index.ts";
 
 describe("dashboard plugins", () => {
-	it("declares the ungrouped /platform sidebar chrome entry", () => {
+	it("declares the Overview-grouped /platform sidebar chrome entry", () => {
 		expect(dashboardChromePlugin.id).toBe("dashboard.chrome");
 		expect(dashboardChromePlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
 		expect(dashboardChromePlugin.chrome).toEqual([
@@ -24,6 +24,7 @@ describe("dashboard plugins", () => {
 						label: "Dashboard",
 						icon: LayoutDashboardIcon,
 						exact: true,
+						group: "Overview",
 					},
 				},
 			},

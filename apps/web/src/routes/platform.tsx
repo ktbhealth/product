@@ -84,6 +84,41 @@ const platformInstance = platformEntry?.instance ?? {
 	label: "Platform",
 };
 
+// Sidebar IA order: the systematic grouping (overview → access →
+// clinical data → AI platform → evaluation → experience →
+// infrastructure → governance). Plugin topo order is dep-driven, not
+// IA-driven, so the console pins the sequence by destination; items
+// a plugin contributes that aren't listed keep their topo order at
+// the end.
+const PLATFORM_SIDEBAR_ORDER: readonly string[] = [
+	"/platform",
+	"/platform/users",
+	"/platform/groups",
+	"/platform/roles",
+	"/platform/tenants",
+	"/platform/patients",
+	"/platform/consultations",
+	"/platform/document-store",
+	"/platform/ai/models",
+	"/platform/ai/prompts",
+	"/platform/ai/endpoints",
+	"/platform/ai/agents",
+	"/platform/ai/credentials",
+	"/platform/ai/machines",
+	"/platform/eval/personas",
+	"/platform/eval/instances",
+	"/platform/eval",
+	"/platform/pages",
+	"/platform/theme",
+	"/platform/i18n",
+	"/platform/wizards",
+	"/platform/plugins",
+	"/platform/ops",
+	"/platform/kv",
+	"/platform/audit",
+];
+const sidebarRank = new Map(PLATFORM_SIDEBAR_ORDER.map((to, index) => [to, index]));
+
 // This shell declares the portal.* chrome regions (P-060/P-081);
 // plugins fill them via `chrome` contributions. The dev warning uses
 // the union of all shell regions so app.* contributions aren't false
@@ -201,6 +236,13 @@ function PlatformLayout() {
 					]
 				: [],
 	);
+	// Stable rank sort: listed destinations follow PLATFORM_SIDEBAR_ORDER;
+	// unlisted ones (rank miss) sink to the end keeping topo order.
+	const orderedItems = [...items].sort(
+		(a, b) =>
+			(sidebarRank.get(a.to) ?? Number.MAX_SAFE_INTEGER) -
+			(sidebarRank.get(b.to) ?? Number.MAX_SAFE_INTEGER),
+	);
 	const headerActions = headerEnabled
 		? collectChrome(visiblePlugins, "portal.header.actions", pathname, "platform").flatMap(
 				(entry) =>
@@ -277,7 +319,7 @@ function PlatformLayout() {
 							<PatientsDashboardContext.Provider value={patients}>
 								<PortalShell
 									instance={platformInstance}
-									items={items}
+									items={orderedItems}
 									pathname={pathname}
 									locale={locale}
 									i18n={i18n}

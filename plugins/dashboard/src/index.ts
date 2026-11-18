@@ -43,6 +43,7 @@ export const dashboardChromePlugin = definePlugin({
 					label: "Dashboard",
 					icon: LayoutDashboardIcon,
 					exact: true,
+					group: "Overview",
 				},
 			},
 		},

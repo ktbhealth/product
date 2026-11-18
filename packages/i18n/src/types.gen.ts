@@ -202,8 +202,14 @@ export type I18nKey =
 	| "app.notfound_title"
 	| "app.panel_group_access"
 	| "app.panel_group_account"
+	| "app.panel_group_ai_platform"
+	| "app.panel_group_clinical_data"
 	| "app.panel_group_domains"
+	| "app.panel_group_evaluation"
+	| "app.panel_group_experience"
 	| "app.panel_group_governance"
+	| "app.panel_group_infrastructure"
+	| "app.panel_group_overview"
 	| "app.panel_group_system"
 	| "app.panel_nav_activity"
 	| "app.panel_nav_dashboard"
@@ -1872,8 +1878,14 @@ export interface I18nTypedT {
 	(key: "app.notfound_title"): Effect.Effect<string>;
 	(key: "app.panel_group_access"): Effect.Effect<string>;
 	(key: "app.panel_group_account"): Effect.Effect<string>;
+	(key: "app.panel_group_ai_platform"): Effect.Effect<string>;
+	(key: "app.panel_group_clinical_data"): Effect.Effect<string>;
 	(key: "app.panel_group_domains"): Effect.Effect<string>;
+	(key: "app.panel_group_evaluation"): Effect.Effect<string>;
+	(key: "app.panel_group_experience"): Effect.Effect<string>;
 	(key: "app.panel_group_governance"): Effect.Effect<string>;
+	(key: "app.panel_group_infrastructure"): Effect.Effect<string>;
+	(key: "app.panel_group_overview"): Effect.Effect<string>;
 	(key: "app.panel_group_system"): Effect.Effect<string>;
 	(key: "app.panel_nav_activity"): Effect.Effect<string>;
 	(key: "app.panel_nav_dashboard"): Effect.Effect<string>;

@@ -58,7 +58,7 @@ export const pagesChromePlugin = definePlugin({
 					to: "/platform/pages",
 					label: "Pages",
 					icon: FileTextIcon,
-					group: "System",
+					group: "Experience",
 				},
 			},
 		},

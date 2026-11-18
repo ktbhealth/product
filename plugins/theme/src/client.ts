@@ -70,7 +70,7 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "System" },
+				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Experience" },
 			},
 		},
 	],

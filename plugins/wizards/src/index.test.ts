@@ -82,7 +82,7 @@ describe("wizards plugins", () => {
 		expect(entry?.content.kind).toBe("sidebarItem");
 		if (entry?.content.kind === "sidebarItem") {
 			expect(entry.content.item.to).toBe("/platform/wizards");
-			expect(entry.content.item.group).toBe("System");
+			expect(entry.content.item.group).toBe("Experience");
 		}
 	});
 

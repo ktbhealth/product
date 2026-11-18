@@ -120,10 +120,16 @@ const PANEL_LABELS: Record<string, string> = {
 };
 
 const PANEL_GROUPS: Record<string, string> = {
+	"AI platform": "panel_group_ai_platform",
 	Access: "panel_group_access",
 	Account: "panel_group_account",
+	"Clinical data": "panel_group_clinical_data",
 	Domains: "panel_group_domains",
+	Evaluation: "panel_group_evaluation",
+	Experience: "panel_group_experience",
 	Governance: "panel_group_governance",
+	Infrastructure: "panel_group_infrastructure",
+	Overview: "panel_group_overview",
 	System: "panel_group_system",
 };
 

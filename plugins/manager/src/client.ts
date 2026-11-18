@@ -34,7 +34,7 @@ export const managerChromePlugin = definePlugin({
 					to: "/platform/plugins",
 					label: "Plugins",
 					icon: PuzzleIcon,
-					group: "System",
+					group: "Infrastructure",
 				},
 			},
 		},

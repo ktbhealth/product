@@ -36,7 +36,7 @@ export const plugins: readonly Plugin[] = [
 						to: "/platform/ai/machines",
 						label: "Machines",
 						icon: ServerIcon,
-						group: "AI",
+						group: "AI platform",
 					},
 				},
 			},

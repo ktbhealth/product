@@ -64,7 +64,7 @@ export const aiPromptChromePlugin = definePlugin({
 					to: "/platform/ai/prompts",
 					label: "Prompts",
 					icon: MessageSquareTextIcon,
-					group: "AI",
+					group: "AI platform",
 				},
 			},
 		},

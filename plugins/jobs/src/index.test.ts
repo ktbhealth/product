@@ -49,7 +49,7 @@ describe("ops plugins", () => {
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/ops", label: "Ops", group: "System" },
+				item: { to: "/platform/ops", label: "Ops", group: "Infrastructure" },
 			},
 		});
 		expect(opsPanelPlugin.id).toBe("jobs.panel");

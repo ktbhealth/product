@@ -200,7 +200,7 @@ export const credentialsChromePlugin = definePlugin({
 					to: "/platform/ai/credentials",
 					label: "Credentials",
 					icon: KeyRoundIcon,
-					group: "AI",
+					group: "AI platform",
 				},
 			},
 		},
