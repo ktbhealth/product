@@ -1,14 +1,14 @@
 import { defineConfig } from "vite-plus";
-import {
-	IMPL_IMPORT_PATTERNS,
-	PACKAGE_BOUNDARY_GLOBS,
-	PLATFORM_GLOBALS,
-	PLATFORM_IMPORT_PATTERNS,
-	PORT_GLOBS,
-	PORT_TEST_GLOBS,
-	UI_GLOBS,
-	UI_TEST_GLOBS,
-} from "./tools/arch-policy.mjs";
+import { arch } from "@ktbhealth/workspace/eslint-config-arch";
+
+// ktb architecture rules (`arch/*`) — preset from
+// @ktbhealth/workspace's eslint-config-arch package. The plugin
+// specifier must name the subpath the git-tag dep exposes; the
+// package's default ("eslint-plugin-arch") does not resolve for
+// consumers installed this way.
+const archLint = arch.product({
+	pluginSpecifier: "@ktbhealth/workspace/eslint-plugin-arch",
+});
 
 export default defineConfig({
 	defaultPackage: "./apps/web",
@@ -92,9 +92,6 @@ export default defineConfig({
 			},
 			// Unused-code/dependency gate (knip.json is the config).
 			"ci:knip": { command: "bun run knip" },
-			// Fast smoke test proving the ktb-arch rules still fire
-			// (tools/check-arch.mjs) — no build or lint run needed.
-			"ci:arch": { command: "bun run check:arch" },
 		},
 	},
 
@@ -124,15 +121,19 @@ export default defineConfig({
 		// cannot resolve them; it is checked by `pulumi preview` instead.
 		ignorePatterns: ["infra/oci/pulumi/**"],
 		plugins: ["typescript", "react", "import"],
-		// ktb architecture rules (tools/ktb-arch-plugin.js), enabled per-glob
-		// in the overrides below.
-		jsPlugins: [{ name: "ktb-arch", specifier: "./tools/ktb-arch-plugin.js" }],
+		// ktb architecture rules (`arch/*`) — preset fragment from
+		// @ktbhealth/workspace's eslint-config-arch (see archLint above).
+		jsPlugins: archLint.jsPlugins,
 		options: {
 			typeAware: true,
 			typeCheck: true,
 		},
 		overrides: [
 			{
+				// packages/** import-cycle guard — product-only (not in the
+				// preset). Must precede the preset's PORT_GLOBS override: for
+				// port packages its narrower no-restricted-imports is
+				// superseded by the fuller port-boundary pattern list.
 				files: ["packages/**/*.ts", "packages/**/*.tsx"],
 				rules: {
 					"no-restricted-imports": ["error", { patterns: ["**/apps/**", "@ktb/web"] }],
@@ -140,145 +141,11 @@ export default defineConfig({
 					"import/no-self-import": "error",
 				},
 			},
-			{
-				// Port/domain boundary (tools/arch-policy.mjs is the source of
-				// truth): ports, domain packages and plugins may never reach
-				// into adapter implementations, the deploy target, the
-				// composition root, or runtime/cloud platform APIs
-				// (node:*, bun:*, deno:*, cloudflare:*, workerd:*, process,
-				// Bun, Deno). Provider-named literals (@cf/* model ids,
-				// provider endpoints) are banned by ktb-arch/provider-lockin.
-				// Composition roots (apps/*, infra/*, @ktb/app-host) and
-				// adapters are the edge and exempt by construction.
-				files: PORT_GLOBS,
-				rules: {
-					"no-restricted-imports": [
-						"error",
-						{ patterns: [...IMPL_IMPORT_PATTERNS, ...PLATFORM_IMPORT_PATTERNS] },
-					],
-					"no-restricted-globals": [
-						"error",
-						...PLATFORM_GLOBALS.map((name) => ({
-							name,
-							message: `${name} is runtime-specific; inject config via ports/layers`,
-						})),
-					],
-					"ktb-arch/provider-lockin": "error",
-					// Tenant-scoped tables (declared via tenantTable()) may only
-					// be queried through scopedRepo() — raw drizzle access
-					// bypasses tenant isolation (P-053).
-					"ktb-arch/tenant-scope": "error",
-				},
-			},
-			{
-				// Tests run on Node and may mock/wire impls freely: they keep
-				// the adapter-import bans but are exempt from platform-API
-				// and provider-literal rules.
-				files: PORT_TEST_GLOBS,
-				rules: {
-					"no-restricted-imports": ["error", { patterns: IMPL_IMPORT_PATTERNS }],
-					"no-restricted-globals": "off",
-					"ktb-arch/provider-lockin": "off",
-					// Fixtures seed tenant tables directly — the guard targets
-					// domain code, not test setup.
-					"ktb-arch/tenant-scope": "off",
-				},
-			},
-			{
-				// Package boundary (tools/arch-policy.mjs): a relative
-				// import may not escape the importing package's root —
-				// cross-package references go through `@ktb/<pkg>` export
-				// maps. schema.ts (drizzle-kit CJS resolver, T-143),
-				// *.gen.* aggregations and *.test.* files are exempt
-				// inside the rule.
-				files: PACKAGE_BOUNDARY_GLOBS,
-				rules: {
-					"ktb-arch/package-boundary": "error",
-				},
-			},
-			{
-				// Theme tokens are the only color source: palette
-				// utilities (bg-red-500, text-amber-700…), arbitrary
-				// color values and literal white/black fills bypass the
-				// derived token set and its WCAG foreground pairs.
-				files: UI_GLOBS,
-				rules: {
-					"ktb-arch/no-hardcoded-colors": "error",
-				},
-			},
-			{
-				// Test fixtures may paint freely — the rule targets
-				// shipped UI only.
-				files: UI_TEST_GLOBS,
-				rules: {
-					"ktb-arch/no-hardcoded-colors": "off",
-				},
-			},
-			{
-				// Provider-literal exemptions (T-138): these are deliberate
-				// product surfaces, not port leakage — the theme plugin's
-				// font pipeline fetches fonts.googleapis.com css2 by design
-				// (self-hosted @font-face manifests), and the ai-endpoints
-				// console ships known LLM baseUrls as pickable presets.
-				// Exempted per file; PROVIDER_LITERAL_PATTERNS itself stays
-				// strict for everything else.
-				files: [
-					"plugins/theme/src/assets.ts",
-					"plugins/theme/src/present.ts",
-					"plugins/ai-endpoints/src/views/EndpointsPage.tsx",
-				],
-				rules: {
-					"ktb-arch/provider-lockin": "off",
-				},
-			},
-			{
-				// Plugin entry contract: every plugin must export
-				// `plugins` — an array of `definePlugin({...})` entries —
-				// for host discovery (server index.ts and client.ts alike).
-				files: ["plugins/*/src/index.ts", "plugins/*/src/client.ts"],
-				rules: {
-					"ktb-arch/plugin-contract": "error",
-				},
-			},
-			{
-				// Plugin page routes are gated on plugin enable state
-				// automatically (P-058): modules under each plugin's src/routes
-				// tree must build `Route` via createPluginFileRoute("<pkg>.routes")
-				// from @ktb/server-fns — bare createFileRoute bypasses the
-				// gate. api-routes/** are server endpoints (see below).
-				files: ["plugins/*/src/routes/**/*.{ts,tsx}"],
-				rules: {
-					"ktb-arch/plugin-route-gate": "error",
-				},
-			},
-			{
-				// Plugin API/server routes get the same enabled-state gate
-				// through createPluginApiRoute("<pkg>.routes"), which wraps
-				// server.handlers (server routes never run beforeLoad) and
-				// answers 404 when the plugin is disabled.
-				files: ["plugins/*/src/api-routes/**/*.{ts,tsx}"],
-				rules: {
-					"ktb-arch/plugin-api-route-gate": "error",
-				},
-			},
-			{
-				// Client manifests ship to the browser bundle: value
-				// imports are allowlisted (kernel, UI kit, React/lucide/
-				// router primitives, relative .tsx components) so server
-				// modules (index.ts entries, api/fns/schema, db, cqrs,
-				// server-fns, effect) can never leak into the client graph.
-				files: ["plugins/*/src/client.ts"],
-				rules: {
-					"ktb-arch/client-contract": "error",
-				},
-			},
-			{
-				// Driver descriptors must stay typed against the framework port.
-				files: ["packages/**/*.ts", "plugins/**/*.ts"],
-				rules: {
-					"ktb-arch/driver-contract": "error",
-				},
-			},
+			// Port/domain boundary, package-boundary, UI color tokens,
+			// plugin contract/route gates, client contract and driver
+			// contract — all `arch/*` rules from the eslint-config-arch
+			// preset.
+			...archLint.overrides,
 			{
 				// Deploy-target code consumes ports and domain packages only;
 				// impl adapters are wired exclusively in the composition root
