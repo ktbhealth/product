@@ -274,7 +274,8 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				return createElement(content.component, { key: entry.id, ...chromeProps });
 			default:
 				// sidebarItem/headerAction/footerBlock/note belong to other
-				// shells or footer regions — never rendered in the header.
+				// shells or footer regions, loginTile to the /login picker —
+				// never rendered in the header.
 				return null;
 		}
 	};

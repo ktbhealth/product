@@ -1,3 +1,5 @@
+import { StethoscopeIcon } from "lucide-react";
+
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
 import { SessionMenu } from "./chrome.tsx";
@@ -28,6 +30,20 @@ export const authChromePlugin = definePlugin({
 			id: "session.menu",
 			region: "app.header.session",
 			content: { kind: "component", component: SessionMenu },
+		},
+		// Mirrors authChromePlugin's /login tile (server index.ts).
+		{
+			id: "auth.login.doctor",
+			region: "app.login.tiles",
+			order: 1,
+			content: {
+				kind: "loginTile",
+				to: "/login/doctor",
+				labelKey: "nav_doctor_login",
+				fallback: "Doctor sign in",
+				icon: StethoscopeIcon,
+				requires: ["doctors.services", "clinician.portal"],
+			},
 		},
 	],
 });

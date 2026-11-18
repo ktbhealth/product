@@ -3,7 +3,7 @@ import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { and, asc, eq, ne } from "drizzle-orm";
-import { UserCogIcon } from "lucide-react";
+import { ClipboardListIcon, UserCogIcon } from "lucide-react";
 
 import { DoctorDelegations, type DoctorProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
@@ -324,6 +324,26 @@ export const secretariesChromePlugin = definePlugin({
 					icon: UserCogIcon,
 					group: "Account",
 				},
+			},
+		},
+		// /login picker tile (P-099): the secretary sign-in flow also
+		// needs the doctors package (invite claims via doctorContextFn)
+		// and the clinician portal live — the same gates the route
+		// loader and the old host-side role list applied. The
+		// secretaries package itself needs no `requires` entry: this
+		// contribution only renders while its own plugin is enabled,
+		// which already makes packageLive("secretaries") true.
+		{
+			id: "secretaries.login.tile",
+			region: "app.login.tiles",
+			order: 2,
+			content: {
+				kind: "loginTile",
+				to: "/login/secretary",
+				labelKey: "nav_secretary_login",
+				fallback: "Secretary sign in",
+				icon: ClipboardListIcon,
+				requires: ["doctors.services", "clinician.portal"],
 			},
 		},
 	],
