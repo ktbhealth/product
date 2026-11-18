@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AdminAuditRow } from "../index.ts";
+import type { AdminAuditRow, AuditListQuery, AuditListResult } from "../index.ts";
 import { AuditPage } from "./AuditPage.tsx";
 
 const row = (over: Partial<AdminAuditRow>): AdminAuditRow => ({
@@ -50,7 +50,7 @@ describe("AuditPage", () => {
 	});
 
 	it("renders rows with actor, action, target and tenant fallbacks", () => {
-		render(<AuditPage entries={TWO_ROWS} total={2} locale="en" />);
+		render(<AuditPage entries={TWO_ROWS} total={2} locale="en" showTenant />);
 		expect(screen.getByText("admin@x.com")).toBeTruthy();
 		expect(screen.getByText("users.suspend")).toBeTruthy();
 		expect(screen.getByText("user:u9")).toBeTruthy();
@@ -219,6 +219,7 @@ describe("AuditPage", () => {
 				]}
 				total={2}
 				locale="en"
+				showTenant
 			/>,
 		);
 		// Dot-less action groups under itself; empty targets render "—".
@@ -322,5 +323,347 @@ describe("AuditPage", () => {
 		});
 		expect(screen.queryByText("users.suspend")).toBeNull();
 		expect(screen.getByText("rbac.role.delete")).toBeTruthy();
+	});
+});
+
+describe("AuditPage server mode (onQuery)", () => {
+	const page = (over: Partial<AuditListResult>): AuditListResult => ({
+		entries: TWO_ROWS,
+		total: 5,
+		limit: 2,
+		offset: 0,
+		...over,
+	});
+
+	it("paginates through onQuery and renders the returned page", async () => {
+		const user = userEvent.setup();
+		const onQuery = vi.fn(async (_query: AuditListQuery) =>
+			page({
+				entries: [
+					row({ id: 3, action: "patients.read", actorEmail: "doc@x.com" }),
+					row({ id: 4, action: "groups.update", actorEmail: null, actorUserId: null }),
+				],
+				offset: 2,
+			}),
+		);
+		render(<AuditPage entries={TWO_ROWS} total={5} limit={2} locale="en" onQuery={onQuery} />);
+		expect(screen.getByText("Page 1 of 3")).toBeTruthy();
+		await user.click(screen.getByText("Next"));
+		expect(onQuery).toHaveBeenCalledWith({ limit: 2, offset: 2 });
+		expect(await screen.findByText("patients.read")).toBeTruthy();
+		expect(screen.getByText("Page 2 of 3")).toBeTruthy();
+		// First page is still reachable.
+		await user.click(screen.getByText("Previous"));
+		expect(onQuery).toHaveBeenLastCalledWith({ limit: 2, offset: 0 });
+	});
+
+	it("debounces the search box into a server query at offset 0", async () => {
+		const onQuery = vi.fn(async (_query: AuditListQuery) => page({ total: 1 }));
+		render(<AuditPage entries={TWO_ROWS} total={5} limit={2} locale="en" onQuery={onQuery} />);
+		fireEvent.change(screen.getByLabelText("Search audit entries"), {
+			target: { value: "suspend" },
+		});
+		await vi.waitFor(() => expect(onQuery).toHaveBeenCalled(), { timeout: 2000 });
+		expect(onQuery).toHaveBeenCalledWith({ limit: 2, offset: 0, q: "suspend" });
+	});
+
+	it("maps the date inputs to since/until epoch bounds", async () => {
+		const user = userEvent.setup();
+		const onQuery = vi.fn(async (_query: AuditListQuery) => page({ total: 0, entries: [] }));
+		render(<AuditPage entries={TWO_ROWS} total={5} limit={2} locale="en" onQuery={onQuery} />);
+		await user.type(screen.getByLabelText("From date"), "2026-11-01");
+		await vi.waitFor(() => expect(onQuery).toHaveBeenCalled(), { timeout: 2000 });
+		const call = onQuery.mock.calls.at(-1)?.[0];
+		expect(typeof call?.since).toBe("number");
+	});
+
+	it("drops a stale response that resolves after a newer query", async () => {
+		const user = userEvent.setup();
+		let resolveStale: ((r: AuditListResult) => void) | undefined;
+		const onQuery = vi.fn((query: AuditListQuery) => {
+			if (query.offset === 2) {
+				return new Promise<AuditListResult>((res) => {
+					resolveStale = res;
+				});
+			}
+			return Promise.resolve(
+				page({
+					entries: [row({ id: 9, action: "fresh.action", actorEmail: "new@x.com" })],
+					total: 9,
+					limit: 2,
+					offset: 0,
+				}),
+			);
+		});
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={5}
+				limit={2}
+				locale="en"
+				onQuery={onQuery}
+				onFacets={async () => ({ actionGroups: ["patients"], actors: [], targetTypes: [] })}
+			/>,
+		);
+		await user.click(screen.getByText("Next"));
+		// A filter change fires a newer query while the pager request hangs.
+		await user.click(screen.getByLabelText("All actions"));
+		await user.click(await screen.findByRole("option", { name: "patients" }));
+		expect(await screen.findByText("fresh.action")).toBeTruthy();
+		// The stale page-2 response lands last — it must be dropped.
+		resolveStale!(
+			page({
+				entries: [row({ id: 8, action: "stale.action" })],
+				total: 5,
+				limit: 2,
+				offset: 2,
+			}),
+		);
+		await vi.waitFor(() => expect(screen.queryByText("stale.action")).toBeNull());
+		expect(screen.getByText("fresh.action")).toBeTruthy();
+	});
+
+	it("ignores a stale rejection after a newer query succeeded", async () => {
+		const user = userEvent.setup();
+		let rejectStale: ((e: unknown) => void) | undefined;
+		const onQuery = vi.fn((query: AuditListQuery) => {
+			if (query.offset === 2) {
+				return new Promise<AuditListResult>((_res, rej) => {
+					rejectStale = rej;
+				});
+			}
+			return Promise.resolve(
+				page({
+					entries: [row({ id: 9, action: "fresh.action" })],
+					total: 9,
+					limit: 2,
+					offset: 0,
+				}),
+			);
+		});
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={5}
+				limit={2}
+				locale="en"
+				onQuery={onQuery}
+				onFacets={async () => ({ actionGroups: ["patients"], actors: [], targetTypes: [] })}
+			/>,
+		);
+		await user.click(screen.getByText("Next"));
+		await user.click(screen.getByLabelText("All actions"));
+		await user.click(await screen.findByRole("option", { name: "patients" }));
+		expect(await screen.findByText("fresh.action")).toBeTruthy();
+		rejectStale!(new Error("late failure"));
+		await vi.waitFor(() => expect(screen.queryByText(/Could not load entries/)).toBeNull());
+		expect(screen.getByText("fresh.action")).toBeTruthy();
+	});
+
+	it("shows a load-failed message when onQuery resolves null", async () => {
+		const user = userEvent.setup();
+		const onQuery = vi.fn(async (_query: AuditListQuery) => null);
+		render(<AuditPage entries={TWO_ROWS} total={5} limit={2} locale="en" onQuery={onQuery} />);
+		await user.click(screen.getByText("Next"));
+		expect(await screen.findByText(/Could not load entries/)).toBeTruthy();
+	});
+
+	it("loads facets once and uses them for the dropdown options", async () => {
+		const onFacets = vi.fn(async () => ({
+			actionGroups: ["patients"],
+			actors: ["doc@x.com", null],
+			targetTypes: ["patient", null],
+		}));
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={2}
+				locale="en"
+				onQuery={vi.fn(async () => page({ total: 2 }))}
+				onFacets={onFacets}
+			/>,
+		);
+		expect(onFacets).toHaveBeenCalledTimes(1);
+		// Facet values replaced the entries-derived options — "patients"
+		// is not derivable from TWO_ROWS' actions.
+		const user = userEvent.setup();
+		await user.click(screen.getByLabelText("All actions"));
+		expect(await screen.findByText("patients")).toBeTruthy();
+	});
+
+	it("maps select filters to the query — group, system actor, no-target, to-date", async () => {
+		const user = userEvent.setup();
+		const onQuery = vi.fn(async (_query: AuditListQuery) => page({ total: 1 }));
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={5}
+				limit={2}
+				locale="en"
+				onQuery={onQuery}
+				onFacets={async () => ({
+					actionGroups: ["patients"],
+					actors: ["doc@clinic.com", null],
+					targetTypes: ["patient", null],
+				})}
+			/>,
+		);
+		// Action group.
+		await user.click(screen.getByLabelText("All actions"));
+		await user.click(await screen.findByRole("option", { name: "patients" }));
+		expect(onQuery).toHaveBeenLastCalledWith({ limit: 2, offset: 0, actionGroup: "patients" });
+		// System actor → explicit null (the NULL bucket).
+		await user.click(screen.getByLabelText("All actors"));
+		await user.click(await screen.findByRole("option", { name: "system" }));
+		expect(onQuery).toHaveBeenLastCalledWith({
+			limit: 2,
+			offset: 0,
+			actionGroup: "patients",
+			actor: null,
+		});
+		// "none" target type → explicit null.
+		await user.click(screen.getByLabelText("All target types"));
+		await user.click(await screen.findByRole("option", { name: "none" }));
+		expect(onQuery).toHaveBeenLastCalledWith({
+			limit: 2,
+			offset: 0,
+			actionGroup: "patients",
+			actor: null,
+			targetType: null,
+		});
+		// A concrete actor and target type pass through as strings.
+		await user.click(screen.getByLabelText("All actors"));
+		await user.click(await screen.findByRole("option", { name: "doc@clinic.com" }));
+		expect(onQuery).toHaveBeenLastCalledWith({
+			limit: 2,
+			offset: 0,
+			actionGroup: "patients",
+			actor: "doc@clinic.com",
+			targetType: null,
+		});
+		await user.click(screen.getByLabelText("All target types"));
+		await user.click(await screen.findByRole("option", { name: "patient" }));
+		expect(onQuery).toHaveBeenLastCalledWith({
+			limit: 2,
+			offset: 0,
+			actionGroup: "patients",
+			actor: "doc@clinic.com",
+			targetType: "patient",
+		});
+		// From/to dates → since/until epoch bounds.
+		await user.type(screen.getByLabelText("From date"), "2026-11-01");
+		await user.type(screen.getByLabelText("To date"), "2026-11-30");
+		await vi.waitFor(() => {
+			const call = onQuery.mock.calls.at(-1)?.[0];
+			expect(typeof call?.since).toBe("number");
+			expect(typeof call?.until).toBe("number");
+		});
+	});
+
+	it("shows the failure message when onQuery rejects", async () => {
+		const user = userEvent.setup();
+		const onQuery = vi.fn(async (_query: AuditListQuery): Promise<AuditListResult> => {
+			throw new Error("boom");
+		});
+		render(<AuditPage entries={TWO_ROWS} total={5} limit={2} locale="en" onQuery={onQuery} />);
+		await user.click(screen.getByText("Next"));
+		expect(await screen.findByText(/Could not load entries/)).toBeTruthy();
+	});
+
+	it("detail dialog falls back through actor, target, tenant and hash", async () => {
+		const user = userEvent.setup();
+		const sparse = row({
+			id: 7,
+			actorUserId: "u7",
+			actorEmail: null,
+			action: "orphan.action",
+			targetType: null,
+			targetId: null,
+			detail: '{"sparse":true}',
+			tenantId: 4,
+			prevHash: "abcdef0123456789ffff",
+		});
+		const { unmount } = render(<AuditPage entries={[sparse]} total={1} locale="en" showTenant />);
+		await user.click(screen.getAllByText("JSON")[0]!);
+		expect((await screen.findAllByText("u7")).length).toBeGreaterThan(0);
+		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("#4").length).toBeGreaterThan(0);
+		expect(screen.getByText("abcdef0123456789…")).toBeTruthy();
+		expect(screen.getByText(/"sparse": true/)).toBeTruthy();
+		unmount();
+		// Tenant-less row → "—" tenant; system actor → "system".
+		render(
+			<AuditPage
+				entries={[
+					row({
+						actorUserId: null,
+						actorEmail: null,
+						tenantId: null,
+						detail: '{"x":1}',
+					}),
+				]}
+				total={1}
+				locale="en"
+				showTenant
+			/>,
+		);
+		await user.click(screen.getAllByText("JSON")[0]!);
+		expect((await screen.findAllByText("system")).length).toBeGreaterThan(0);
+	});
+
+	it("resyncs page state when loader props change", () => {
+		const onQuery = vi.fn(async (_query: AuditListQuery) => page({}));
+		const { rerender } = render(
+			<AuditPage entries={TWO_ROWS} total={2} locale="en" onQuery={onQuery} />,
+		);
+		expect(screen.getByText("users.suspend")).toBeTruthy();
+		rerender(
+			<AuditPage
+				entries={[row({ id: 9, action: "patients.merge", actorEmail: "other@x.com" })]}
+				total={1}
+				offset={0}
+				locale="en"
+				onQuery={onQuery}
+			/>,
+		);
+		expect(screen.getByText("patients.merge")).toBeTruthy();
+		expect(screen.queryByText("users.suspend")).toBeNull();
+		rerender(
+			<AuditPage entries={TWO_ROWS} total={2} limit={5} offset={0} locale="en" onQuery={onQuery} />,
+		);
+		expect(screen.getByText("users.suspend")).toBeTruthy();
+	});
+
+	it("ignores a null facets result", async () => {
+		const user = userEvent.setup();
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={2}
+				locale="en"
+				onQuery={vi.fn(async () => page({ total: 2 }))}
+				onFacets={async () => null}
+			/>,
+		);
+		await user.click(screen.getByLabelText("All actions"));
+		expect(await screen.findByText("users")).toBeTruthy();
+	});
+
+	it("keeps entries-derived options when facets fail", async () => {
+		render(
+			<AuditPage
+				entries={TWO_ROWS}
+				total={2}
+				locale="en"
+				onQuery={vi.fn(async () => page({ total: 2 }))}
+				onFacets={async () => {
+					throw new Error("facets down");
+				}}
+			/>,
+		);
+		const user = userEvent.setup();
+		await user.click(screen.getByLabelText("All actors"));
+		// Table cell + select item both carry the actor — at least two.
+		expect((await screen.findAllByText("admin@x.com")).length).toBeGreaterThanOrEqual(2);
 	});
 });

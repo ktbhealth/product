@@ -215,7 +215,7 @@ const clinicalPages = (instance: ClinicalInstanceId): Page[] => {
 			loader: () =>
 				Effect.gen(function* () {
 					const audit = yield* Effect.serviceOption(Audit);
-					const empty: AuditListResult = { entries: [], total: 0, limit: 200 };
+					const empty: AuditListResult = { entries: [], total: 0, limit: 200, offset: 0 };
 					if (Option.isNone(audit)) return empty;
 					return yield* audit.value
 						.activityList()

@@ -334,17 +334,25 @@ export type I18nKey =
 	| "audit.colAction"
 	| "audit.colActor"
 	| "audit.colDetail"
+	| "audit.colHash"
+	| "audit.colId"
 	| "audit.colTarget"
 	| "audit.colTenant"
 	| "audit.colTime"
+	| "audit.dateFrom"
+	| "audit.dateTo"
 	| "audit.detailTitle"
 	| "audit.emptyDescription"
 	| "audit.emptyTitle"
 	| "audit.filteredCount"
+	| "audit.loadFailed"
+	| "audit.nextPage"
 	| "audit.noMatch"
 	| "audit.noTarget"
 	| "audit.noTargetType"
 	| "audit.noTenant"
+	| "audit.pageInfo"
+	| "audit.prevPage"
 	| "audit.searchLabel"
 	| "audit.searchPlaceholder"
 	| "audit.systemActor"
@@ -1925,9 +1933,13 @@ export interface I18nTypedT {
 	(key: "audit.colAction"): Effect.Effect<string>;
 	(key: "audit.colActor"): Effect.Effect<string>;
 	(key: "audit.colDetail"): Effect.Effect<string>;
+	(key: "audit.colHash"): Effect.Effect<string>;
+	(key: "audit.colId"): Effect.Effect<string>;
 	(key: "audit.colTarget"): Effect.Effect<string>;
 	(key: "audit.colTenant"): Effect.Effect<string>;
 	(key: "audit.colTime"): Effect.Effect<string>;
+	(key: "audit.dateFrom"): Effect.Effect<string>;
+	(key: "audit.dateTo"): Effect.Effect<string>;
 	(key: "audit.detailTitle"): Effect.Effect<string>;
 	(key: "audit.emptyDescription"): Effect.Effect<string>;
 	(key: "audit.emptyTitle"): Effect.Effect<string>;
@@ -1938,10 +1950,20 @@ export interface I18nTypedT {
 			total: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "audit.loadFailed"): Effect.Effect<string>;
+	(key: "audit.nextPage"): Effect.Effect<string>;
 	(key: "audit.noMatch"): Effect.Effect<string>;
 	(key: "audit.noTarget"): Effect.Effect<string>;
 	(key: "audit.noTargetType"): Effect.Effect<string>;
 	(key: "audit.noTenant"): Effect.Effect<string>;
+	(
+		key: "audit.pageInfo",
+		params: {
+			current: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "audit.prevPage"): Effect.Effect<string>;
 	(key: "audit.searchLabel"): Effect.Effect<string>;
 	(key: "audit.searchPlaceholder"): Effect.Effect<string>;
 	(key: "audit.systemActor"): Effect.Effect<string>;

@@ -1,10 +1,10 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
-import { auditVerifyFn } from "./fns.ts";
+import { auditAdminFacetsFn, auditAdminListFn, auditVerifyFn } from "./fns.ts";
 import type { AuditListResult } from "./index.ts";
 import { AuditPage } from "./views/AuditPage.tsx";
 
-const EMPTY: AuditListResult = { entries: [], total: 0, limit: 200 };
+const EMPTY: AuditListResult = { entries: [], total: 0, limit: 200, offset: 0 };
 
 /**
  * `panel.pages` component for /platform/audit (T-037): the host
@@ -21,9 +21,14 @@ export function AuditPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPage
 		<AuditPage
 			entries={Array.isArray(d.entries) ? d.entries : EMPTY.entries}
 			total={typeof d.total === "number" ? d.total : 0}
+			limit={typeof d.limit === "number" ? d.limit : undefined}
+			offset={typeof d.offset === "number" ? d.offset : 0}
 			i18n={ctx.i18n}
 			locale={ctx.locale}
 			onVerify={() => auditVerifyFn()}
+			onQuery={(query) => auditAdminListFn({ data: query })}
+			onFacets={() => auditAdminFacetsFn()}
+			showTenant
 		/>
 	);
 }

@@ -1088,6 +1088,38 @@ export const I18N_MANIFEST = {
 		verifyFailed: {
 			params: [],
 		},
+		prevPage: {
+			params: [],
+		},
+		nextPage: {
+			params: [],
+		},
+		pageInfo: {
+			params: [
+				{
+					name: "current",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Page {current} of {total}",
+		},
+		loadFailed: {
+			params: [],
+		},
+		dateFrom: {
+			params: [],
+		},
+		dateTo: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colHash: {
+			params: [],
+		},
 	},
 	auth: {
 		metaTitle: {
