@@ -1092,7 +1092,6 @@
       "name": "@ktb/eval-persona",
       "dependencies": {
         "@ktb/ai-provider": "workspace:*",
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
@@ -1142,7 +1141,6 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1197,7 +1195,6 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/audit": "workspace:*",
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1417,7 +1414,6 @@
         "nuqs": "2.10.2",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@types/react": "^19.2.0",
@@ -1629,7 +1625,6 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/audit": "workspace:*",
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -1713,7 +1708,6 @@
     "plugins/tenant": {
       "name": "@ktb/tenant-plugin",
       "dependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/groups": "workspace:*",
@@ -1850,7 +1844,6 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/vault-keyring": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
@@ -1913,7 +1906,6 @@
         "react": "^19.2.0",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react-dom": "^19.2.0",
