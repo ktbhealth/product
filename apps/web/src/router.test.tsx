@@ -172,10 +172,27 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await waitFor(() => expect(document.body.textContent).toContain("The doctor decides."));
-		// role sign-in links present (anonymous); clinical nav lives
+		// single sign-in CTA → /login (anonymous); clinical nav lives
 		// inside the portal instances, not the marketing header.
-		expect(screen.getByText("I am a doctor")).toBeTruthy();
-		expect(screen.getByText("I am a patient")).toBeTruthy();
+		expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
+		expect(screen.queryByRole("link", { name: "I am a doctor" })).toBeNull();
+		expect(screen.queryByRole("link", { name: "I am a patient" })).toBeNull();
+
+		// /login is the role picker: patient (primary), doctor, secretary.
+		await act(async () => {
+			await router.navigate({ to: "/login" });
+		});
+		await waitFor(() =>
+			expect(screen.getByRole("link", { name: "I am a patient" }).getAttribute("href")).toBe(
+				"/login/patient",
+			),
+		);
+		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe(
+			"/login/doctor",
+		);
+		expect(screen.getByRole("link", { name: "I am a secretary" }).getAttribute("href")).toBe(
+			"/login/secretary",
+		);
 
 		await act(async () => {
 			await router.navigate({ to: "/login/doctor" });
