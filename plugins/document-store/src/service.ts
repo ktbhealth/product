@@ -50,6 +50,7 @@ import {
 	type DocumentRecordRow,
 } from "./schema.ts";
 import { validateDocumentData } from "./validate.ts";
+import { DocumentRefTargets } from "./ref-targets.ts";
 
 /**
  * DocumentStore (P-089) — runtime-validated document store for
@@ -473,6 +474,25 @@ export interface DocumentStoreShape {
 		collection: CollectionRef,
 		ctx?: DocumentStoreContext,
 	) => Effect.Effect<CollectionMigrationReport, DocumentStoreError>;
+	/** Entity-side `onDelete` enforcement (T-149): the entity's owning
+	 * plugin calls this when its typed-table row is deleted (entity
+	 * refs can't cascade — document-store never deletes rows of a
+	 * table it does not own). Scans EVERY collection for `ref` fields
+	 * targeting `entity` and applies each field's `onDelete` policy
+	 * toward `id`: `restrict` (default) fails `DocumentInUse` listing
+	 * `collection.field` paths — the scan completes before any write,
+	 * so a blocked delete never half-applies; `nullify` rewrites the
+	 * field to `null` (best-effort: a patched document that fails
+	 * re-validation is skipped, like document nullify) and all patches
+	 * land in ONE transaction. Scope-bound like `delete`: only
+	 * references inside the caller's visible scope are seen —
+	 * `ctx.unscoped` for system flows. No-op when no collection refs
+	 * the entity. */
+	readonly applyEntityDelete: (
+		entity: string,
+		id: number,
+		ctx?: DocumentStoreContext,
+	) => Effect.Effect<void, DocumentStoreError>;
 }
 
 export class DocumentStore extends Context.Service<DocumentStore, DocumentStoreShape>()(
@@ -538,6 +558,10 @@ export const DocumentStoreLive = Layer.effect(
 		// app-wide core in production, but tests/embedded uses may run
 		// the store without it — writes then simply publish nothing.
 		const eventBus = yield* Effect.serviceOption(EventBus);
+		// Optional external-ref registry (T-149): entity `ref` targets
+		// resolve existence through owner-registered checkers; absent →
+		// document refs only and entity refs fail BrokenReference.
+		const refTargetsOpt = yield* Effect.serviceOption(DocumentRefTargets);
 
 		// Def caches (T-129): contributed defs are static per runtime.
 		// DB collection ROWS are cached with a TTL stamp (cross-isolate
@@ -1136,14 +1160,32 @@ export const DocumentStoreLive = Layer.effect(
 					readonly targetName: string;
 					readonly targetId: number;
 				}
+				interface EntityCheck {
+					readonly field: string;
+					readonly entity: string;
+					readonly targetId: number;
+				}
 				type Pending =
 					| { readonly kind: "broken"; readonly error: DocumentStoreError }
-					| { readonly kind: "db"; readonly check: DbCheck };
+					| { readonly kind: "db"; readonly check: DbCheck }
+					| { readonly kind: "entity"; readonly check: EntityCheck };
 				const pending: Pending[] = [];
 				for (const [field, descriptor] of Object.entries(def.fields)) {
 					if (descriptor.kind !== "ref") continue;
 					const targetId = data[field];
 					if (typeof targetId !== "number") continue;
+					// Entity targets (T-149) resolve through the
+					// DocumentRefTargets registry, not document_records —
+					// batch plan state (rowDeletes/byId) never applies: an
+					// entity row is not a document record.
+					const entityName = descriptor.entity;
+					if (entityName !== undefined) {
+						pending.push({
+							kind: "entity",
+							check: { field, entity: entityName, targetId },
+						});
+						continue;
+					}
 					const targetName = descriptor.collection;
 					if (targetName === undefined) {
 						pending.push({
@@ -1216,9 +1258,58 @@ export const DocumentStoreLive = Layer.effect(
 						Result.isFailure(outcome) ? { error: outcome.failure } : outcome.success,
 					);
 				}
+				// Entity targets (T-149): ONE batched checker call per
+				// entity for ALL referenced ids, cached per batch plan
+				// under an `entity:` key (document-target keys are
+				// collection-row ids — no collision). An absent port or
+				// unregistered entity resolves to the empty set — every
+				// id is broken, same as a missing document target. A
+				// checker failure is a plugin bug → defect (orDie).
+				const idsByEntity = new Map<string, Set<number>>();
+				for (const entry of pending) {
+					if (entry.kind !== "entity") continue;
+					const set = idsByEntity.get(entry.check.entity) ?? new Set<number>();
+					set.add(entry.check.targetId);
+					idsByEntity.set(entry.check.entity, set);
+				}
+				const entityFound = new Map<string, ReadonlySet<number>>();
+				for (const [entity, idSet] of idsByEntity) {
+					const checker = Option.isNone(refTargetsOpt)
+						? undefined
+						: refTargetsOpt.value.get(entity);
+					if (checker === undefined) {
+						entityFound.set(entity, new Set<number>());
+						continue;
+					}
+					const ids = [...idSet].sort((a, b) => a - b);
+					const cacheKey = `entity:${entity}:${ids.join(",")}`;
+					const cached = plan.refCache.get(cacheKey);
+					const found =
+						cached ??
+						(yield* Effect.orDie(
+							checker(ids) as Effect.Effect<ReadonlySet<number>, unknown, never>,
+						));
+					if (cached === undefined) plan.refCache.set(cacheKey, found);
+					entityFound.set(entity, found);
+				}
 				// Phase 3 — fail on the first problem in field order.
 				for (const entry of pending) {
 					if (entry.kind === "broken") return yield* fail(entry.error);
+					if (entry.kind === "entity") {
+						const found = entityFound.get(entry.check.entity);
+						/* v8 ignore next -- every entity entry's target was resolved above */
+						if (found === undefined || !found.has(entry.check.targetId)) {
+							return yield* fail(
+								new BrokenReference({
+									collection: def.name,
+									field: entry.check.field,
+									targetCollection: entry.check.entity,
+									targetId: entry.check.targetId,
+								}),
+							);
+						}
+						continue;
+					}
 					const target = resolved.get(entry.check.targetName);
 					/* v8 ignore next -- every db entry's target was resolved above */
 					if (target === undefined) continue;
@@ -2023,6 +2114,80 @@ export const DocumentStoreLive = Layer.effect(
 				return results;
 			});
 
+		/** Apply an entity row's `onDelete` policies toward a delete
+		 * (T-149) — the standalone counterpart of the ref-policy scan
+		 * inside `planDelete`, run by the entity owner when ITS row is
+		 * deleted. Committed rows only (there is no batch to overlay);
+		 * restrict hits are collected across ALL collections before
+		 * any write so DocumentInUse is atomic, then nullify patches
+		 * materialize in one `tx()`. Only `nullify` patches — a
+		 * `cascade` descriptor on an entity target is rejected at def
+		 * assertion, and any other unexpected policy fails closed as
+		 * restrict. */
+		const applyEntityDeleteEffect = (
+			entity: string,
+			id: number,
+			ctx?: DocumentStoreContext,
+		): Effect.Effect<void, DocumentStoreError> =>
+			Effect.gen(function* () {
+				const ownerId = yield* resolveOwner(ctx);
+				const unscoped = ctx?.unscoped === true;
+				const defs = yield* allDefs;
+				const referencedBy: string[] = [];
+				const nullifies: { row: DocumentRecordRow; data: Record<string, unknown> }[] = [];
+				for (const def of defs) {
+					const entityFields = Object.entries(def.fields).filter(
+						([, d]) => d.kind === "ref" && d.entity === entity,
+					);
+					if (entityFields.length === 0) continue;
+					const collectionRow = yield* rowFor(def.name);
+					if (collectionRow === null) continue;
+					const candidates = yield* scopedRows(collectionRow.id, ownerId, unscoped);
+					for (const r of candidates) {
+						const data = parseData(r.data);
+						const hits = entityFields.filter(([field]) => data[field] === id);
+						if (hits.length === 0) continue;
+						const nullifyFields: string[] = [];
+						for (const [field, descriptor] of hits) {
+							if ((descriptor.onDelete ?? "restrict") === "nullify") {
+								nullifyFields.push(field);
+							} else {
+								referencedBy.push(`${def.name}.${field}`);
+							}
+						}
+						if (nullifyFields.length === 0) continue;
+						const patched = { ...data };
+						for (const field of nullifyFields) patched[field] = null;
+						// Best-effort like document nullify: a patched doc
+						// that fails re-validation is skipped, never
+						// written invalid.
+						const validated = validateDocumentData(def.fields, patched, {
+							partial: true,
+						});
+						if (!validated.ok) continue;
+						nullifies.push({ row: r, data: validated.data });
+					}
+				}
+				if (referencedBy.length > 0) {
+					return yield* fail(new DocumentInUse({ collection: entity, id, referencedBy }));
+				}
+				if (nullifies.length === 0) return;
+				const now = new Date();
+				const ops: TxOp[] = nullifies.map((n) =>
+					db
+						.update(documentRecords)
+						.set({
+							data: JSON.stringify(n.data),
+							// A nullify rewrites the document — bump the row
+							// version like any other write (T-127).
+							version: sql`${documentRecords.version} + 1`,
+							updatedAt: now,
+						})
+						.where(eq(documentRecords.id, n.row.id)),
+				);
+				yield* Effect.promise(() => tx(db, ops as [TxOp, ...TxOp[]]));
+			});
+
 		// ---------- telemetry (T-131) ----------
 
 		/** Collection name for span attributes — plugin-defined and
@@ -2315,6 +2480,13 @@ export const DocumentStoreLive = Layer.effect(
 						);
 						return { collection: def.name, scanned, migrated, failed };
 					}),
+				),
+
+			applyEntityDelete: (entity, id, ctx) =>
+				instrument(
+					"applyEntityDelete",
+					{ "documents.entity": entity },
+					applyEntityDeleteEffect(entity, id, ctx),
 				),
 		});
 	}),

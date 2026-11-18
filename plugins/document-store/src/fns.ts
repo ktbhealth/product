@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { ensureSessionUser, requirePluginEnabled, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
 
 import { DocumentStoreAdmin } from "./admin.ts";
@@ -145,6 +145,7 @@ const saveResult = (error: unknown): SaveDocumentResult => {
  * non-admins (same collapse contract as the page fns). */
 export const listCollectionsFn = createServerFn({ method: "GET" }).handler(
 	async (): Promise<readonly CollectionWire[] | null> => {
+		await requirePluginEnabled("document-store.admin");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -166,6 +167,7 @@ export const listCollectionsFn = createServerFn({ method: "GET" }).handler(
 export const documentsFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeList(input))
 	.handler(async ({ data }): Promise<DocumentsPageWire | null> => {
+		await requirePluginEnabled("document-store.admin");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -188,6 +190,7 @@ export const documentsFn = createServerFn({ method: "POST" })
 export const createDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeCreate(input))
 	.handler(async ({ data }): Promise<SaveDocumentResult> => {
+		await requirePluginEnabled("document-store.admin");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -205,6 +208,7 @@ export const createDocumentFn = createServerFn({ method: "POST" })
 export const updateDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeUpdate(input))
 	.handler(async ({ data }): Promise<SaveDocumentResult> => {
+		await requirePluginEnabled("document-store.admin");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -228,6 +232,7 @@ export type DeleteDocumentResult =
 export const deleteDocumentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeDocumentId(input))
 	.handler(async ({ data }): Promise<DeleteDocumentResult> => {
+		await requirePluginEnabled("document-store.admin");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
@@ -262,6 +267,7 @@ export type MigrateCollectionResult =
 export const migrateCollectionFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeMigrate(input))
 	.handler(async ({ data }): Promise<MigrateCollectionResult> => {
+		await requirePluginEnabled("document-store.admin");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,

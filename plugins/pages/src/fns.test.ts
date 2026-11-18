@@ -1,31 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
-import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
@@ -39,7 +27,6 @@ import {
 	PluginStates,
 	type PluginStatesShape,
 } from "@ktb/platform/plugin-states";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -61,36 +48,12 @@ CREATE TABLE plugin_state (
 // includes them so dep edges and PluginStates resolve like the host.
 const registry = [platformAdminPlugin, platformRoutesPlugin, platformPanelPlugin, ...plugins];
 
-const sessionFor = (email: string | null) =>
-	email === null
-		? null
-		: {
-				user: { id: `id-${email}`, email, name: email },
-				sessionId: "s1",
-				expiresAt: new Date(Date.now() + 3600_000),
-			};
-
 describe("pages fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
-	let auth: ReturnType<typeof Auth.of>;
-
-	const installRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) => {
-		setServerRuntime({
-			run: (effect) => rt.runPromise(effect.pipe(Effect.provideService(Auth, auth))),
-			runAs: (user, effect) =>
-				rt.runPromise(
-					effect.pipe(
-						Effect.provideService(Principal, {
-							userId: user.id,
-							email: user.email,
-						}),
-					),
-				),
-			audioTranscribeModel: "test-model",
-			getLocale: () => "en",
-		});
-	};
+	const auth = stubAuth(() => sessionUser(currentEmail));
+	const installRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
+		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
 		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL + PLUGIN_STATE_DDL));
@@ -107,15 +70,11 @@ describe("pages fns", () => {
 				never
 			>,
 		);
-		auth = Auth.of({
-			getSession: async () => sessionFor(currentEmail) as never,
-			setUserBanned: async () => {},
-		});
 		installRuntime(runtime);
 	});
 
 	afterAll(() => {
-		resetServerRuntime();
+		resetServerFnRuntime();
 		return runtime.dispose();
 	});
 
@@ -127,6 +86,24 @@ describe("pages fns", () => {
 		await expect(deletePageFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 		// Public read works without a session.
 		await expect(navPagesFn()).resolves.toEqual([]);
+	});
+
+	it("rejects admin fns when the plugin package is disabled", async () => {
+		currentEmail = "admin@x.com";
+		installServerFnRuntime(runtime, auth, { pluginEnabled: async () => false });
+		try {
+			await expect(createPageFn({ data: { path: "/x", title: "X", content: "" } })).rejects.toThrow(
+				'plugin "pages.panel" is disabled',
+			);
+			await expect(
+				updatePageFn({ data: { id: 1, path: "/x", title: "X", content: "" } }),
+			).rejects.toThrow('plugin "pages.panel" is disabled');
+			await expect(deletePageFn({ data: { id: 1 } })).rejects.toThrow(
+				'plugin "pages.panel" is disabled',
+			);
+		} finally {
+			installRuntime(runtime);
+		}
 	});
 
 	it("denies non-admin principals", async () => {

@@ -24,6 +24,8 @@ import {
 } from "./collection.ts";
 import {
 	f,
+	type DocumentRefTarget,
+	type EntityRefTarget,
 	type FieldDescriptor,
 	type FieldKind,
 	type Fields,
@@ -31,7 +33,18 @@ import {
 	type InferFields,
 	type InferInsert,
 	type InferRecord,
+	type RefDeletePolicy,
+	type RefTarget,
 } from "./fields.ts";
+import {
+	DocumentRefTargets,
+	DocumentRefTargetsLive,
+	makeDocumentRefTargets,
+	registerRefTarget,
+	registerRefTargetIfPresent,
+	type DocumentRefTargetsShape,
+	type RefTargetExists,
+} from "./ref-targets.ts";
 import {
 	clampLimit,
 	clampOffset,
@@ -134,6 +147,8 @@ export {
 	type DocumentCollection,
 	// field DSL + inference
 	f,
+	type DocumentRefTarget,
+	type EntityRefTarget,
 	type FieldDescriptor,
 	type FieldKind,
 	type Fields,
@@ -141,6 +156,16 @@ export {
 	type InferFields,
 	type InferInsert,
 	type InferRecord,
+	type RefDeletePolicy,
+	type RefTarget,
+	// external ref targets (entity refs, T-149)
+	DocumentRefTargets,
+	DocumentRefTargetsLive,
+	makeDocumentRefTargets,
+	registerRefTarget,
+	registerRefTargetIfPresent,
+	type DocumentRefTargetsShape,
+	type RefTargetExists,
 	// query engine
 	clampLimit,
 	clampOffset,

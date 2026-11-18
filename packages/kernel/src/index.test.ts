@@ -1,7 +1,7 @@
 import { sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 
-import { definePlugin } from "./index.ts";
+import { clientStub, definePlugin } from "./index.ts";
 
 const t = sqliteTable("t", { id: text("id").primaryKey() });
 
@@ -77,5 +77,26 @@ describe("definePlugin", () => {
 	it("rejects multi-concern plugin objects at compile time", () => {
 		// @ts-expect-error — a plugin may declare exactly one contribution kind
 		definePlugin({ id: "x", tables: { t }, chrome: [] });
+	});
+});
+
+describe("clientStub", () => {
+	it("returns the marker spec unchanged", () => {
+		const p = clientStub({
+			id: "x.services",
+			meta: { keywords: ["documents"] },
+			system: true,
+		});
+		expect(p.id).toBe("x.services");
+		expect(p.system).toBe(true);
+	});
+
+	it("rejects contribution fields at compile time", () => {
+		// @ts-expect-error — client markers carry manifest fields only
+		clientStub({ id: "x", chrome: [] });
+		// @ts-expect-error — server data never rides the client bundle
+		clientStub({ id: "x", contributions: [] });
+		// @ts-expect-error — configSchema is server-only
+		clientStub({ id: "x", configSchema: {} });
 	});
 });

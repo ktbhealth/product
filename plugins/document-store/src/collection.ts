@@ -193,6 +193,35 @@ const FIELD_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
  * `FORBIDDEN_PATH_SEGMENTS`. */
 const FORBIDDEN_FIELD_NAMES = FORBIDDEN_PATH_SEGMENTS;
 
+/** Runtime shape check for `kind: "ref"` descriptors (T-149):
+ * `collection` and `entity` are mutually exclusive (a targetless ref
+ * stays legal — writes fail it as "missing target collection"), and
+ * `onDelete` must be a known policy — entity targets additionally
+ * reject `cascade` (document-store never deletes rows of a table it
+ * does not own). */
+const assertRefDescriptor = (descriptor: unknown, collectionName: string, field: string): void => {
+	const d = descriptor as {
+		kind?: unknown;
+		collection?: unknown;
+		entity?: unknown;
+		onDelete?: unknown;
+	};
+	if (d.kind !== "ref") return;
+	const hasCollection = typeof d.collection === "string" && d.collection.length > 0;
+	const hasEntity = typeof d.entity === "string" && d.entity.length > 0;
+	if (hasCollection && hasEntity) {
+		throw new Error(
+			`document collection "${collectionName}": field "${field}" ref needs exactly one of collection/entity`,
+		);
+	}
+	const validPolicies = hasEntity ? ["restrict", "nullify"] : ["restrict", "cascade", "nullify"];
+	if (d.onDelete !== undefined && !validPolicies.includes(d.onDelete as string)) {
+		throw new Error(
+			`document collection "${collectionName}": field "${field}" invalid onDelete ${JSON.stringify(d.onDelete)}`,
+		);
+	}
+};
+
 /** Runtime shape check for a def arriving over the wire (contribution
  * meta or a stored `schema_json` blob). Throws on malformed data —
  * a bad manifest is a packaging bug, not a runtime condition. */
@@ -223,6 +252,7 @@ export const assertCollectionDef = (value: unknown, source: string): DocumentCol
 		) {
 			throw new Error(`document collection "${def.name}": field "${field}" is malformed`);
 		}
+		assertRefDescriptor(descriptor, def.name, field);
 		// `default` arrives as untyped JSON — validate it against the
 		// descriptor now (packaging bug → defect) AND again at write
 		// time in validate.ts for defs that bypass this assertion.

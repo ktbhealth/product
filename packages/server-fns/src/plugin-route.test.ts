@@ -28,9 +28,11 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 import {
+	PluginDisabledError,
 	createPluginApiRoute,
 	createPluginFileRoute,
 	pluginEnabledFn,
+	requirePluginEnabled,
 	resetServerRuntime,
 	setServerRuntime,
 	type ServerRuntime,
@@ -240,5 +242,30 @@ describe("createPluginApiRoute", () => {
 		});
 		await expect(call(handlersOf(route).GET!)).resolves.toMatchObject({ status: 200 });
 		expect(inner).toHaveBeenCalledOnce();
+	});
+});
+
+describe("requirePluginEnabled", () => {
+	it("resolves when no runtime is registered (inert outside the app)", async () => {
+		await expect(requirePluginEnabled("demo.routes")).resolves.toBeUndefined();
+	});
+
+	it("resolves when the runtime has no pluginEnabled capability", async () => {
+		setServerRuntime(stubRuntime());
+		await expect(requirePluginEnabled("demo.routes")).resolves.toBeUndefined();
+	});
+
+	it("resolves when the plugin is enabled", async () => {
+		setServerRuntime(stubRuntime(async () => true));
+		await expect(requirePluginEnabled("demo.routes")).resolves.toBeUndefined();
+	});
+
+	it("throws PluginDisabledError carrying the plugin id when disabled", async () => {
+		setServerRuntime(stubRuntime(async (id) => id !== "demo.routes"));
+		const error = await requirePluginEnabled("demo.routes").catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(PluginDisabledError);
+		expect((error as PluginDisabledError).pluginId).toBe("demo.routes");
+		expect((error as Error).message).toBe('plugin "demo.routes" is disabled');
+		await expect(requirePluginEnabled("other.routes")).resolves.toBeUndefined();
 	});
 });

@@ -3,10 +3,12 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./testing": "./src/testing.ts"
 	},
 	"dependencies": {
 		"@ktb/auth": "workspace:*",
+		"@ktb/authz": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/interop": "workspace:*",
 		"@ktb/observability": "workspace:*",

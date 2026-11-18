@@ -407,8 +407,11 @@ export function DocumentsAdminPage({
 													value={value}
 													onChange={(e) => setInput(name, e.target.value)}
 												/>
-												{descriptor.kind === "ref" && descriptor.collection !== undefined ? (
-													<FieldDescription>→ {descriptor.collection}</FieldDescription>
+												{descriptor.kind === "ref" &&
+												(descriptor.collection !== undefined || descriptor.entity !== undefined) ? (
+													<FieldDescription>
+														→ {descriptor.collection ?? descriptor.entity}
+													</FieldDescription>
 												) : null}
 											</Field>
 										);
