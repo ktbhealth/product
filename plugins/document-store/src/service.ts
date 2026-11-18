@@ -2149,7 +2149,7 @@ export const DocumentStoreLive = Layer.effect(
 						if (hits.length === 0) continue;
 						const nullifyFields: string[] = [];
 						for (const [field, descriptor] of hits) {
-							if ((descriptor.onDelete ?? "restrict") === "nullify") {
+							if (descriptor.onDelete === "nullify") {
 								nullifyFields.push(field);
 							} else {
 								referencedBy.push(`${def.name}.${field}`);

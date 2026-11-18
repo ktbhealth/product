@@ -115,4 +115,22 @@ describe("installServerFnRuntime", () => {
 			await runtime.dispose();
 		}
 	});
+
+	it("defaults getLocale to en and exposes the test transcribe model", async () => {
+		const runtime = ManagedRuntime.make(Layer.empty) as unknown as ManagedRuntime.ManagedRuntime<
+			unknown,
+			never
+		>;
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+		);
+		try {
+			expect(getServerRuntime().getLocale()).toBe("en");
+			expect(getServerRuntime().audioTranscribeModel).toBe("test-model");
+		} finally {
+			resetServerFnRuntime();
+			await runtime.dispose();
+		}
+	});
 });
