@@ -69,7 +69,7 @@ describe("document-store plugins", () => {
 		const item =
 			sidebar !== undefined && sidebar.content.kind === "sidebarItem" ? sidebar.content.item : null;
 		expect(item?.to).toBe("/platform/document-store");
-		expect(item?.group).toBe("Clinical data");
+		expect(item?.group).toBe("Storage");
 	});
 
 	it("declares the collections page and the wildcard browser", () => {
