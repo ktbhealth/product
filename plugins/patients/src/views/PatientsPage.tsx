@@ -14,7 +14,7 @@ import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
-import { Button } from "@ktbhealth/ui/components/button";
+import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -184,14 +184,16 @@ export function PatientsPage({
 							</div>
 							{/* Above the card's stretched link so the actions stay clickable. */}
 							<div className="relative z-10 flex shrink-0 items-center gap-1">
-								<Button
-									variant="ghost"
-									size="icon"
+								{/* Real link, not Button render=: it navigates, so it
+								    keeps link semantics (and avoids the Base UI
+								    nativeButton warning). */}
+								<Link
+									to={portalPath(`/patients/${p.id}/edit`)}
 									aria-label={t.actions.editFor(displayName(p))}
-									render={<Link to={portalPath(`/patients/${p.id}/edit`)} />}
+									className={buttonVariants({ variant: "ghost", size: "icon" })}
 								>
 									<PencilIcon />
-								</Button>
+								</Link>
 								<Button
 									variant="ghost"
 									size="icon"
