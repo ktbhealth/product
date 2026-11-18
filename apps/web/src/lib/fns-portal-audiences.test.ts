@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+
+import { reactStartMock, reactStartServerMock } from "@ktb/server-fns/testing";
 import * as Effect from "effect/Effect";
 
 // portalAudiencesFn + the portalAudienceAllows failure path (fns.ts):
@@ -6,23 +8,8 @@ import * as Effect from "effect/Effect";
 // PortalAudience service — the real registry's audience proofs live in
 // fns.test.ts; this file isolates the wire handler and the catch.
 
-vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => new Headers(),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 const state = vi.hoisted(() => ({
 	user: null as { id: string; email: string; name: string } | null,

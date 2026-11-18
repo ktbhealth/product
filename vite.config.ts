@@ -1,13 +1,17 @@
 import { defineConfig } from "vite-plus";
 import { arch } from "@ktbhealth/workspace/eslint-config-arch";
 
-// ktb architecture rules (`arch/*`) — preset from
-// @ktbhealth/workspace's eslint-config-arch package. The plugin
-// specifier must name the subpath the git-tag dep exposes; the
-// package's default ("eslint-plugin-arch") does not resolve for
-// consumers installed this way.
+// ktb architecture rules (`arch/*`) — local shim at
+// tools/arch-plugin.mjs wraps @ktbhealth/workspace's
+// eslint-plugin-arch bundle and swaps in the plugin-contract rule
+// that accepts `clientStub` in plugins/<pkg>/src/client.ts (T-157;
+// upstream fix pending a new @ktbhealth/workspace tag — see the shim's
+// header). The `arch` plugin id and every `arch/<rule>` override
+// below are unchanged. Once the dep is bumped, restore the
+// "@ktbhealth/workspace/eslint-plugin-arch" specifier and delete the
+// shim.
 const archLint = arch.product({
-	pluginSpecifier: "@ktbhealth/workspace/eslint-plugin-arch",
+	pluginSpecifier: "./tools/arch-plugin.mjs",
 });
 
 export default defineConfig({
@@ -146,6 +150,13 @@ export default defineConfig({
 			// contract — all `arch/*` rules from the eslint-config-arch
 			// preset.
 			...archLint.overrides,
+			{
+				// Provider preset quick-fills name real endpoints by design —
+				// the preset's exemption list still carries the pre-rename
+				// plugins/ai-endpoints path; keep the new one exempt too.
+				files: ["plugins/ai-provider/src/views/EndpointsPage.tsx"],
+				rules: { "arch/provider-lockin": "off" },
+			},
 			{
 				// Deploy-target code consumes ports and domain packages only;
 				// impl adapters are wired exclusively in the composition root

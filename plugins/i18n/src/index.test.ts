@@ -62,7 +62,8 @@ describe("syncBaseline", () => {
 	it("batches existence checks and inserts instead of per-entry queries", async () => {
 		// Count prepared statements: the old per-entry SELECT+INSERT loop
 		// cost ~2 queries per row; the batched sync costs 1 select +
-		// ceil(n/64) inserts + 1 namespaces insert.
+		// ceil(n/9) inserts (D1's 100 bound-param cap ÷ 10 cols/row)
+		// + 1 namespaces insert.
 		const inner = makeD1(I18N_TEST_DDL);
 		let prepares = 0;
 		const counting = {
@@ -82,9 +83,9 @@ describe("syncBaseline", () => {
 		const r1 = await syncBaseline(batchDb, entries);
 		expect(r1.inserted).toBe(150);
 		expect(r1.skipped).toBe(0);
-		// 1 existence select + 3 chunked inserts (150/64 → 3) + 1
-		// revision bump + 1 namespaces insert = 6 statements total.
-		expect(prepares).toBe(6);
+		// 1 existence select + 17 chunked inserts (150/9 → 17) + 1
+		// revision bump + 1 namespaces insert = 20 statements total.
+		expect(prepares).toBe(20);
 		const rows = await batchDb.select().from(i18nMessages);
 		expect(rows.filter((r) => r.namespace === "batch.ns")).toHaveLength(150);
 

@@ -24,7 +24,7 @@ import {
 	reviewItemFn,
 	startRunFn,
 } from "../fns.ts";
-import { evalMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { evalMessages, I18N_NAMESPACE, type EvalMessages } from "../i18n.ts";
 import type {
 	AxisAggregate,
 	CohortItemCard,
@@ -35,6 +35,21 @@ import type {
 
 const stateVariant = (state: string) =>
 	state === "approved" ? "default" : state === "rejected" ? "destructive" : "secondary";
+
+/** WS-G view widening: `runnerBound`/`queueBound` report whether the
+ * run can actually execute (a queued run with no bound runner never
+ * leaves the queue) and `experiment` is the eval-core record when the
+ * server surfaces it. All optional at runtime — older servers omit
+ * them and the UI renders nothing — so this compiles both before and
+ * after the fields land on RunProgress. */
+interface RunProgressView extends RunProgress {
+	readonly runnerBound?: boolean;
+	readonly queueBound?: boolean;
+	readonly experiment?: {
+		readonly profile?: string;
+		readonly manifestHash?: string;
+	} | null;
+}
 
 /** /platform/eval view — step 3 of the pipeline: cohort list →
  * consultation review cards → run progress. The cohort IS the step-2
@@ -56,7 +71,7 @@ export function EvalValidatorPage({
 	const [items, setItems] = useState<readonly CohortItemCard[]>([]);
 	const [runs, setRuns] = useState<readonly RunListItem[]>([]);
 	const [selectedCohort, setSelectedCohort] = useState<number | null>(null);
-	const [run, setRun] = useState<RunProgress | null>(null);
+	const [run, setRun] = useState<RunProgressView | null>(null);
 	const [feedback, setFeedback] = useState<Record<number, string>>({});
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -283,8 +298,12 @@ export function EvalValidatorPage({
 								</Button>
 							)}
 						</CardTitle>
+						{(run.status === "queued" || run.status === "running") && (
+							<RunnerNotice run={run} m={m} />
+						)}
 					</CardHeader>
 					<CardContent>
+						<RunMeta run={run} />
 						<Progress value={run.pct} />
 						<p className="mt-2 text-sm text-muted-foreground">
 							{run.done}/{run.total} {m.samplesOf} — {run.pct}%
@@ -383,6 +402,50 @@ export function EvalValidatorPage({
 			))}
 		</PageContainer>
 	);
+}
+
+/** Execution-availability honesty for live runs: a queued run with
+ * no bound runner never leaves the queue, and a bound runner without
+ * a jobs queue executes inline — both worth a glance before waiting
+ * on the progress bar. Older payloads omit the flags and render
+ * nothing. */
+function RunnerNotice({ run, m }: { run: RunProgressView; m: EvalMessages }) {
+	if (run.runnerBound === false) {
+		return (
+			<div className="mt-1">
+				<Badge variant="destructive">{m.noRunnerBound}</Badge>
+			</div>
+		);
+	}
+	if (run.runnerBound === true && run.queueBound === false) {
+		return (
+			<div className="mt-1">
+				<Badge variant="outline">{m.runnerInline}</Badge>
+			</div>
+		);
+	}
+	return null;
+}
+
+/** Dataset/experiment identity for the run card — the cohort dataset
+ * comes from run.params ({instanceId, itemIds}); the eval-core
+ * experiment record (profile + manifest hash) renders when the server
+ * surfaces it. All muted metadata, English like the rest of the run
+ * card's metric labels. */
+function RunMeta({ run }: { run: RunProgressView }) {
+	const params = run.params as { readonly instanceId?: unknown } | null;
+	const instanceId = typeof params?.instanceId === "number" ? params.instanceId : null;
+	const experiment = run.experiment ?? null;
+	const parts: string[] = [];
+	if (instanceId !== null) parts.push(`dataset eval-instance-${instanceId}`);
+	if (typeof experiment?.profile === "string" && experiment.profile.length > 0) {
+		parts.push(`profile ${experiment.profile}`);
+	}
+	if (typeof experiment?.manifestHash === "string" && experiment.manifestHash.length > 0) {
+		parts.push(`manifest ${experiment.manifestHash.slice(0, 12)}`);
+	}
+	if (parts.length === 0) return null;
+	return <p className="mt-1 text-xs text-muted-foreground">{parts.join(" · ")}</p>;
 }
 
 interface CleanupResult {

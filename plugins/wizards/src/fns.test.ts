@@ -1,33 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
-import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type { Json } from "effect/Schema";
@@ -61,36 +48,13 @@ const DEF: WizardDefinition = {
 	],
 };
 
-const sessionFor = (email: string | null) =>
-	email === null
-		? null
-		: {
-				user: { id: `id-${email}`, email, name: email },
-				sessionId: "s1",
-				expiresAt: new Date(Date.now() + 3600_000),
-			};
-
 describe("wizards fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
-	let auth: ReturnType<typeof Auth.of>;
+	const auth = stubAuth(() => sessionUser(currentEmail));
 
-	const installRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) => {
-		setServerRuntime({
-			run: (effect) => rt.runPromise(effect.pipe(Effect.provideService(Auth, auth))),
-			runAs: (user, effect) =>
-				rt.runPromise(
-					effect.pipe(
-						Effect.provideService(Principal, {
-							userId: user.id,
-							email: user.email,
-						}),
-					),
-				),
-			audioTranscribeModel: "test-model",
-			getLocale: () => "en",
-		});
-	};
+	const installRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
+		installServerFnRuntime(rt, auth);
 
 	beforeAll(() => {
 		const db = makeDb(makeD1(WIZARDS_TEST_DDL));
@@ -108,15 +72,11 @@ describe("wizards fns", () => {
 				never
 			>,
 		);
-		auth = Auth.of({
-			getSession: async () => sessionFor(currentEmail) as never,
-			setUserBanned: async () => {},
-		});
 		installRuntime(runtime);
 	});
 
 	afterAll(() => {
-		resetServerRuntime();
+		resetServerFnRuntime();
 		return runtime.dispose();
 	});
 

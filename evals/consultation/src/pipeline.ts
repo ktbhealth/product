@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import type { JsonObject } from "effect/Schema";
 
-import { applyEdits, EditApplyError, type EditList } from "@ktb/eval-core";
+import { applyEdits, EditApplyError, type EditList, type PromptRef } from "@ktb/eval-core";
 
 import { gateTranscript } from "./anonymize.ts";
 import { fnvHex } from "./generate.ts";
@@ -130,7 +130,12 @@ export const cleanupTranscript = (input: {
 			input: input.raw,
 			outputSchema: "EditList",
 		});
-		input.onRecord?.(record);
+		// Stamp the pack's declared corrector-prompt identity at the
+		// source — every caller (processSample AND the EvalRunner
+		// driver path) gets it; an adapter-stamped `prompt` always
+		// wins (withStagePrompt never overwrites).
+		const stamped = withStagePrompt(CLEANUP_PROMPT)(record);
+		input.onRecord?.(stamped);
 		// Corrupt edit lists are an expected adapter failure (LLMs emit
 		// garbage offsets) — typed failure, never a silent fiber defect.
 		const corrected = yield* Effect.try({
@@ -145,7 +150,7 @@ export const cleanupTranscript = (input: {
 					cause,
 				}),
 		});
-		return { edits, corrected, record };
+		return { edits, corrected, record: stamped };
 	});
 
 // ---------- S7: eval question builders ----------
@@ -172,6 +177,65 @@ export const cleanupQuestions = (edits: EditList): EvalQuestion[] =>
 		text: `Edit at ${op.at}: removed "${op.remove}" → inserted "${op.insert}". Classify.`,
 		options: ["justified_fix", "unnecessary", "harmful"],
 	}));
+
+// ---------- prompt identities (T-135) ----------
+
+/** Fill `prompt` on a stage record when the adapter did not declare
+ * one — the pack's declared contract identity, never overwriting a
+ * richer adapter-stamped ref. */
+export const withStagePrompt =
+	(prompt: PromptRef) =>
+	(r: RunRecord): RunRecord =>
+		r.prompt === undefined ? { ...r, prompt } : r;
+
+/** Canonical judge question set — the hash input for JUDGE_PROMPT.
+ * Covers both entity stages plus one edit-classification question so
+ * a change to ANY question template moves the hash. */
+const CANONICAL_JUDGE_ENTITIES: readonly ExpectedEntity[] = [
+	{ category: "negation", value: "nega" },
+	{ category: "medication", value: "losartana 50 mg" },
+];
+const CANONICAL_JUDGE_EDITS: EditList = {
+	ops: [{ at: 0, remove: "cabeca", insert: "cabeça", kind: "entity", flagged: true }],
+};
+const canonicalJudgeQuestions = (): string =>
+	JSON.stringify([
+		...entityQuestions(CANONICAL_JUDGE_ENTITIES, "asr"),
+		...entityQuestions(CANONICAL_JUDGE_ENTITIES, "corrected"),
+		...cleanupQuestions(CANONICAL_JUDGE_EDITS),
+	]);
+
+/** Cleanup corrector prompt identity. The corrector prompt TEXT is
+ * adapter-owned (each LlmPort.correct implementation builds its own);
+ * the pack owns the envelope contract — role "corrector" +
+ * outputSchema "EditList" — so the hash pins exactly that contract,
+ * nothing more. */
+export const CLEANUP_PROMPT: PromptRef = {
+	name: "eval.consultation/cleanup-corrector",
+	version: 1,
+	hash: fnvHex(JSON.stringify({ role: "corrector", outputSchema: "EditList" })),
+};
+
+/** Judge prompt identity. The pack owns the question text
+ * (entityQuestions/cleanupQuestions); adapters own state
+ * serialization and any instruction wrapper around it. The hash
+ * pins the canonical question set — question-template drift moves
+ * it. */
+export const JUDGE_PROMPT: PromptRef = {
+	name: "eval.consultation/judge-questions",
+	version: 1,
+	hash: fnvHex(canonicalJudgeQuestions()),
+};
+
+/** Run-stage id → declared prompt identity for stages that consume an
+ * LLM prompt. "transcribe" is absent on purpose — ASR takes audio,
+ * not a prompt. eval-cli records these bindings in
+ * Experiment.summary.prompts for the manifest's selected stages;
+ * processSample stamps the same refs onto the stage RunRecords. */
+export const RUN_STAGE_PROMPTS: Readonly<Record<string, PromptRef>> = {
+	cleanup: CLEANUP_PROMPT,
+	judge: JUDGE_PROMPT,
+};
 
 const verdictsFromAnswers = (
 	entities: readonly ExpectedEntity[],
@@ -385,7 +449,7 @@ const stageJudge = (ctx: StageRun) =>
 				questions: asrQs,
 			});
 			ctx.answers.push(...r.answers);
-			ctx.records.push(ctx.tag(r.record));
+			ctx.records.push(ctx.tag(withStagePrompt(JUDGE_PROMPT)(r.record)));
 		}
 		if (corrected !== undefined && correctedQs.length > 0) {
 			const r = yield* ev.judge({
@@ -393,7 +457,7 @@ const stageJudge = (ctx: StageRun) =>
 				questions: correctedQs,
 			});
 			ctx.answers.push(...r.answers);
-			ctx.records.push(ctx.tag(r.record));
+			ctx.records.push(ctx.tag(withStagePrompt(JUDGE_PROMPT)(r.record)));
 		}
 		if (edits !== undefined && editQs.length > 0) {
 			const r = yield* ev.judge({
@@ -401,7 +465,7 @@ const stageJudge = (ctx: StageRun) =>
 				questions: editQs,
 			});
 			ctx.answers.push(...r.answers);
-			ctx.records.push(ctx.tag(r.record));
+			ctx.records.push(ctx.tag(withStagePrompt(JUDGE_PROMPT)(r.record)));
 		}
 	});
 

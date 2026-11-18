@@ -1,16 +1,19 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => new Headers(),
-}));
+import {
+	installServerFnRuntime,
+	resetServerFnRuntime,
+	reactStartServerMock,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
 
-import { Auth } from "@ktb/auth";
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
 import { Permissions } from "@ktb/rbac";
 import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
-import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -30,15 +33,6 @@ const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
 const state = { email: null as string | null, allow: true, enabled: true };
 
 const artifactBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-
-const sessionFor = (email: string | null) =>
-	email === null
-		? null
-		: {
-				user: { id: `id-${email}`, email, name: email },
-				sessionId: "s1",
-				expiresAt: new Date(Date.now() + 3600_000),
-			};
 
 const env = Layer.mergeAll(
 	Layer.succeed(Db, db as unknown as DbClient),
@@ -89,24 +83,13 @@ const seedItem = async () => {
 };
 
 beforeAll(async () => {
-	const auth = Auth.of({
-		setUserBanned: async () => {},
-		getSession: async () => sessionFor(state.email) as never,
-	});
-	setServerRuntime({
-		run: ((effect: Effect.Effect<unknown, unknown, unknown>) =>
-			runtime.runPromise(effect.pipe(Effect.provideService(Auth, auth)))) as ServerRuntime["run"],
-		runAs: ((
-			user: { id: string; email: string },
-			effect: Effect.Effect<unknown, unknown, unknown>,
-		) =>
-			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
-			)) as ServerRuntime["runAs"],
-		audioTranscribeModel: "test-model",
-		getLocale: () => "en",
-		pluginEnabled: async () => state.enabled,
-	});
+	installServerFnRuntime(
+		runtime,
+		stubAuth(() => sessionUser(state.email)),
+		{
+			pluginEnabled: async () => state.enabled,
+		},
+	);
 
 	// Seed a finished run sample carrying an audioUri.
 	const seeded = await seedItem();
@@ -124,7 +107,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
-	resetServerRuntime();
+	resetServerFnRuntime();
 	return runtime.dispose();
 });
 

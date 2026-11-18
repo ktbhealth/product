@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 const mocks = vi.hoisted(() => ({
 	redirectToPortal: vi.fn(async (_subpath: string) => undefined as never),
 }));
@@ -7,20 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../guard.ts", () => ({ redirectToPortal: mocks.redirectToPortal }));
 // Server fns become plain async calls; with no runtime registered the
 // plugin route gate (createPluginFileRoute → pluginEnabledFn) is inert.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((value: unknown) => unknown) | undefined;
-		const api = {
-			validator: (fn: (value: unknown) => unknown) => {
-				validate = fn;
-				return api;
-			},
-			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {

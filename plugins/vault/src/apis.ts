@@ -3,6 +3,9 @@ import {
 	vaultEnableZkFn,
 	vaultEnrollDeviceFn,
 	vaultRevokeDeviceFn,
+	vaultSecretPutFn,
+	vaultSecretRemoveFn,
+	vaultSecretRotateFn,
 } from "./fns.ts";
 import type { VaultApi } from "./views/index.ts";
 
@@ -16,4 +19,7 @@ export const vaultApi: VaultApi = {
 	approve: (input) => vaultApproveDeviceFn({ data: input }),
 	revoke: (clinicKeyId) => vaultRevokeDeviceFn({ data: { clinicKeyId } }),
 	enableZk: () => vaultEnableZkFn(),
+	secretPut: (input) => vaultSecretPutFn({ data: input }),
+	secretRotate: (id) => vaultSecretRotateFn({ data: { id } }),
+	secretRemove: (id) => vaultSecretRemoveFn({ data: { id } }),
 };

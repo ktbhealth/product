@@ -30,16 +30,21 @@ describe("base64url", () => {
 
 	it("rejects impossible lengths", () => {
 		expect(() => b64uToBytes("A")).toThrow(CryptoFormatError);
+		expect(() => b64uToBytes("A")).toThrow(/invalid base64url length/);
 		expect(() => b64uToBytes("ABCDE")).toThrow(CryptoFormatError);
+		expect(() => b64uToBytes("ABCDE")).toThrow(/invalid base64url length/);
 	});
 
 	it("rejects non-alphabet characters", () => {
 		expect(() => b64uToBytes("AA+A")).toThrow(CryptoFormatError);
+		expect(() => b64uToBytes("AA+A")).toThrow(/invalid base64url character/);
 		expect(() => b64uToBytes("AA/A")).toThrow(CryptoFormatError);
+		expect(() => b64uToBytes("AA/A")).toThrow(/invalid base64url character/);
 	});
 
 	it("rejects characters outside the byte range", () => {
 		expect(() => b64uToBytes("AAAĀ")).toThrow(CryptoFormatError);
+		expect(() => b64uToBytes("AAAĀ")).toThrow(/invalid base64url character/);
 	});
 });
 
@@ -52,9 +57,21 @@ describe("hex", () => {
 
 	it("rejects odd length", () => {
 		expect(() => hexToBytes("abc")).toThrow(CryptoFormatError);
+		expect(() => hexToBytes("abc")).toThrow(/invalid hex string/);
 	});
 
 	it("rejects non-hex characters", () => {
 		expect(() => hexToBytes("zz")).toThrow(CryptoFormatError);
+		expect(() => hexToBytes("zz")).toThrow(/invalid hex string/);
+	});
+});
+
+describe("CryptoFormatError", () => {
+	it("carries the CryptoFormatError name", () => {
+		const err = new CryptoFormatError("boom");
+		expect(err).toBeInstanceOf(Error);
+		expect(err.name).toBe("CryptoFormatError");
+		expect(err.message).toBe("boom");
+		expect(err._tag).toBe("CryptoFormatError");
 	});
 });

@@ -37,11 +37,16 @@ export interface BaselineResult {
 	readonly invalid: ReadonlyArray<{ entry: BaselineEntry; error: string }>;
 }
 
-/** Rows per INSERT statement. Each message row binds 10 columns and
- * SQLite/D1 cap bound parameters near 999, so 64 rows (~640 params)
- * stays safely under the ceiling while collapsing the seed into a
- * handful of statements. */
-const INSERT_CHUNK_SIZE = 64;
+/** Bound-parameter ceiling. Plain SQLite allows thousands, but D1
+ * caps bound parameters at 100 per query — the runtime auto-seed runs
+ * against D1, so chunking must satisfy the stricter limit. One row
+ * below the cap leaves margin for driver-level extras. */
+const MAX_BOUND_PARAMETERS = 100;
+/** Columns bound per inserted message row — the keys set in
+ * prepareBaselineEntries (createdAt/updatedAt/draftValue fall back to
+ * column defaults and are not bound). */
+const PARAMS_PER_MESSAGE_ROW = 10;
+const INSERT_CHUNK_SIZE = Math.floor((MAX_BOUND_PARAMETERS - 1) / PARAMS_PER_MESSAGE_ROW);
 
 /** Injective tuple key for the logical message identity — same
  * JSON-tuple trick as runtime.ts `cacheKey` (separator-joined keys
@@ -175,16 +180,20 @@ export const syncBaseline = async (
 	// no revision bump here.
 	const namespaces = [...new Set(entries.map((e) => e.namespace))];
 	if (namespaces.length > 0) {
-		await db
-			.insert(i18nNamespaces)
-			.values(
-				namespaces.map((ns) => ({
-					namespace: ns,
-					pluginId: "",
-					defaultLocale: "en",
-				})),
-			)
-			.onConflictDoNothing();
+		const nsRows = namespaces.map((ns) => ({
+			namespace: ns,
+			pluginId: "",
+			defaultLocale: "en",
+		}));
+		// Same bound-parameter ceiling as the message insert — 3 params
+		// per namespace row.
+		const nsChunk = Math.floor((MAX_BOUND_PARAMETERS - 1) / 3);
+		for (let i = 0; i < nsRows.length; i += nsChunk) {
+			await db
+				.insert(i18nNamespaces)
+				.values(nsRows.slice(i, i + nsChunk))
+				.onConflictDoNothing();
+		}
 	}
 
 	return { inserted, skipped, invalid };

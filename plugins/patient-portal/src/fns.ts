@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 import * as Option from "effect/Option";
 
-import { Audit, type AuditListResult } from "@ktb/audit";
+import { Audit, type AuditFacets, type AuditListQuery, type AuditListResult } from "@ktb/audit";
 import {
 	ensureSessionUser,
 	getPatientContext,
@@ -36,6 +36,34 @@ const decodeDekEnvelopes = Schema.decodeUnknownSync(
 );
 const decodePatientActivity = Schema.decodeUnknownSync(Schema.Struct({ patientId: Schema.Number }));
 
+/** Wire shape of {@link AuditListQuery} — same optionalKey/null-bucket
+ * contract as the audit plugin's list fns. */
+const ActivityQueryInput = Schema.Struct({
+	limit: Schema.optionalKey(Schema.Number),
+	offset: Schema.optionalKey(Schema.Number),
+	actionGroup: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	actor: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	targetType: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	q: Schema.optionalKey(Schema.NullOr(Schema.String)),
+	since: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+	until: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+});
+
+const decodeActivityQuery = Schema.decodeUnknownSync(ActivityQueryInput);
+
+type ActivityQueryWire = Schema.Schema.Type<typeof ActivityQueryInput>;
+
+const toActivityQuery = (data: ActivityQueryWire): AuditListQuery => ({
+	...(data.limit === undefined ? {} : { limit: data.limit }),
+	...(data.offset === undefined ? {} : { offset: data.offset }),
+	...(data.actionGroup === undefined ? {} : { actionGroup: data.actionGroup }),
+	...(data.actor === undefined ? {} : { actor: data.actor }),
+	...(data.targetType === undefined ? {} : { targetType: data.targetType }),
+	...(data.q === undefined ? {} : { q: data.q }),
+	...(data.since === undefined ? {} : { since: data.since }),
+	...(data.until === undefined ? {} : { until: data.until }),
+});
+
 /**
  * Whether a session exists — the legacy `/portal` and
  * `/portal/consultations/$id` routes branch on it so anonymous visitors
@@ -52,6 +80,7 @@ const ACTIVITY_EMPTY: AuditListResult = {
 	entries: [],
 	total: 0,
 	limit: PATIENT_ACTIVITY_LIMIT,
+	offset: 0,
 };
 
 /**
@@ -78,6 +107,60 @@ export const patientActivityFn = createServerFn({ method: "GET" })
 			}),
 		);
 	});
+
+/**
+ * Re-query the open record's access log with filters/pagination —
+ * the /portal/patient/activity table's onQuery callback. Resolves the
+ * active patient server-side (same `getPatientContext` the page
+ * loader uses); no open record, an absent audit plugin and a denied
+ * `PatientAuditAccess` check all collapse to an empty page.
+ */
+export const patientActivityQueryFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeActivityQuery(input ?? {}))
+	.handler(async ({ data }): Promise<AuditListResult> => {
+		const user = await getSessionUser();
+		if (!user) return ACTIVITY_EMPTY;
+		const query = toActivityQuery(data);
+		const context = await getPatientContext();
+		const patientId = context?.active?.patientId ?? null;
+		if (patientId === null) return ACTIVITY_EMPTY;
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const audit = yield* Effect.serviceOption(Audit);
+				if (Option.isNone(audit)) return ACTIVITY_EMPTY;
+				return yield* audit.value
+					.patientList({ patientId, ...query })
+					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(ACTIVITY_EMPTY)));
+			}),
+		);
+	});
+
+const EMPTY_FACETS: AuditFacets = { actionGroups: [], actors: [], targetTypes: [] };
+
+/**
+ * Distinct filter values within the open record's feed — same
+ * fail-closed resolution as {@link patientActivityQueryFn}.
+ */
+export const patientActivityFacetsFn = createServerFn({ method: "POST" }).handler(
+	async (): Promise<AuditFacets> => {
+		const user = await getSessionUser();
+		if (!user) return EMPTY_FACETS;
+		const context = await getPatientContext();
+		const patientId = context?.active?.patientId ?? null;
+		if (patientId === null) return EMPTY_FACETS;
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const audit = yield* Effect.serviceOption(Audit);
+				if (Option.isNone(audit)) return EMPTY_FACETS;
+				return yield* audit.value
+					.patientFacets({ patientId })
+					.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(EMPTY_FACETS)));
+			}),
+		);
+	},
+);
 
 /** Open `patientId` in the portal from now on. Refused (`{ ok: false }`)
  * for a record the user holds no active link to. */

@@ -1088,6 +1088,38 @@ export const I18N_MANIFEST = {
 		verifyFailed: {
 			params: [],
 		},
+		prevPage: {
+			params: [],
+		},
+		nextPage: {
+			params: [],
+		},
+		pageInfo: {
+			params: [
+				{
+					name: "current",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Page {current} of {total}",
+		},
+		loadFailed: {
+			params: [],
+		},
+		dateFrom: {
+			params: [],
+		},
+		dateTo: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colHash: {
+			params: [],
+		},
 	},
 	auth: {
 		metaTitle: {
@@ -3167,6 +3199,92 @@ export const I18N_MANIFEST = {
 			template: 'Delete "{key}"? This cannot be undone.',
 		},
 		deleteConfirm: {
+			params: [],
+		},
+	},
+	machines: {
+		title: {
+			params: [],
+		},
+		desc: {
+			params: [],
+		},
+		add: {
+			params: [],
+		},
+		name: {
+			params: [],
+		},
+		kind: {
+			params: [],
+		},
+		host: {
+			params: [],
+		},
+		port: {
+			params: [],
+		},
+		capabilities: {
+			params: [],
+		},
+		capabilitiesHint: {
+			params: [],
+		},
+		secretRef: {
+			params: [],
+		},
+		healthUrl: {
+			params: [],
+		},
+		status: {
+			params: [],
+		},
+		statusUnknown: {
+			params: [],
+		},
+		statusOnline: {
+			params: [],
+		},
+		statusOffline: {
+			params: [],
+		},
+		statusDraining: {
+			params: [],
+		},
+		lastSeen: {
+			params: [],
+		},
+		lastCheck: {
+			params: [],
+		},
+		check: {
+			params: [],
+		},
+		checkAll: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		confirmDelete: {
+			params: [],
+		},
+		enable: {
+			params: [],
+		},
+		disable: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		actionFailed: {
 			params: [],
 		},
 	},

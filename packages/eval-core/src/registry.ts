@@ -34,7 +34,7 @@ import * as Data from "effect/Data";
  * colliding with other domains' kinds. Each id is also a registered
  * `ContributionKindDescriptor` (see ./kinds.ts) whose slot is
  * "contributions" — eval plugins declare these entries on their
- * manifests and consumers (apps/eval) collect them from the plugin
+ * manifests and consumers (packages/eval-cli) collect them from the plugin
  * graph.
  */
 export const ContributionKind = Schema.Literals([
@@ -86,7 +86,7 @@ export type ConfigValidator = (config: unknown) => ConfigValidation;
  * `meta` (JSON-only), so it rides beside the data on the same
  * object: plugin manifests carry it through `toEvalContribution`
  * (kinds.ts) and domain packs declare it inline on their plain
- * contribution arrays. eval-core never calls it — apps/eval resolve
+ * contribution arrays. eval-core never calls it — packages/eval-cli resolve
  * does, keeping this package domain-blind.
  */
 export interface ContributionWithConfig extends Contribution {

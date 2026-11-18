@@ -52,6 +52,15 @@ export interface AuditMessages {
 	readonly verifyTampered: (brokenAt: number | null) => string;
 	readonly verifyEmpty: string;
 	readonly verifyFailed: string;
+	/** Server-driven pagination + date-range filters + detail metadata. */
+	readonly prevPage: string;
+	readonly nextPage: string;
+	readonly pageInfo: (current: number, total: number) => string;
+	readonly loadFailed: string;
+	readonly dateFrom: string;
+	readonly dateTo: string;
+	readonly colId: string;
+	readonly colHash: string;
 }
 
 const en: AuditMessages = {
@@ -88,6 +97,14 @@ const en: AuditMessages = {
 	verifyTampered: (brokenAt) => `Chain tampered — first broken link at entry #${brokenAt ?? "?"}.`,
 	verifyEmpty: "The audit log is empty — nothing to verify.",
 	verifyFailed: "Verification failed — the request was denied or errored.",
+	prevPage: "Previous",
+	nextPage: "Next",
+	pageInfo: paramMessage("en", "Page {current} of {total}", ["current", "total"]),
+	loadFailed: "Could not load entries — check your connection and retry.",
+	dateFrom: "From date",
+	dateTo: "To date",
+	colId: "ID",
+	colHash: "Chain link",
 };
 
 const ptBR: AuditMessages = {
@@ -125,6 +142,14 @@ const ptBR: AuditMessages = {
 		`Cadeia adulterada — primeiro elo quebrado na entrada #${brokenAt ?? "?"}.`,
 	verifyEmpty: "O log de auditoria está vazio — nada a verificar.",
 	verifyFailed: "A verificação falhou — a solicitação foi negada ou erro.",
+	prevPage: "Anterior",
+	nextPage: "Próxima",
+	pageInfo: paramMessage("pt-BR", "Página {current} de {total}", ["current", "total"]),
+	loadFailed: "Não foi possível carregar as entradas — verifique a conexão e tente novamente.",
+	dateFrom: "Data inicial",
+	dateTo: "Data final",
+	colId: "ID",
+	colHash: "Elo da cadeia",
 };
 
 const es: AuditMessages = {
@@ -162,6 +187,14 @@ const es: AuditMessages = {
 		`Cadena alterada — primer eslabón roto en la entrada #${brokenAt ?? "?"}.`,
 	verifyEmpty: "El registro de auditoría está vacío — nada que verificar.",
 	verifyFailed: "La verificación falló — la solicitud fue denegada o erró.",
+	prevPage: "Anterior",
+	nextPage: "Siguiente",
+	pageInfo: paramMessage("es", "Página {current} de {total}", ["current", "total"]),
+	loadFailed: "No se pudieron cargar las entradas — comprueba la conexión y reintenta.",
+	dateFrom: "Fecha inicial",
+	dateTo: "Fecha final",
+	colId: "ID",
+	colHash: "Eslabón de la cadena",
 };
 
 const CATALOGS: Record<AuditLocale, AuditMessages> = { en, "pt-BR": ptBR, es };

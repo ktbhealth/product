@@ -12,7 +12,7 @@ import { ptBR } from "./locales/pt-BR.ts";
  *
  * Manifests stay pure data; the config SHAPES live here with the
  * domain code that consumes them. Each `consultContributions` entry
- * carries a `validateConfig` built from the helpers below — apps/eval
+ * carries a `validateConfig` built from the helpers below — packages/eval-cli
  * runs it at `eval list`/`eval run` resolution. Validators are
  * effect/Schema decodes with `onExcessProperty: "error"`: unknown
  * config keys are REJECTED so a typo'd manifest cannot silently
@@ -93,7 +93,7 @@ export type WerAboveConfig = typeof WerAboveConfig.Type;
 
 /** AcceptPolicy field names — the only keys a gate `config`/`params`
  * object may carry. Single source for manifest validation AND the
- * CLI flag overrides in apps/eval (policy.ts). */
+ * CLI flag overrides in packages/eval-cli (policy.ts). */
 export const POLICY_FIELDS = [
 	"stage",
 	"maxWer",
@@ -107,7 +107,7 @@ export const POLICY_FIELDS = [
 
 /** Range rules for every numeric AcceptPolicy field — shared by
  * manifest config (decodeAutoAcceptConfig) and CLI flag overrides
- * (apps/eval commands/gate.ts). A gate that out-of-range numbers can
+ * (packages/eval-cli commands/gate.ts). A gate that out-of-range numbers can
  * weaken (negative z collapsing the Wilson bound, target > 1,
  * negative error budgets) is not a gate: every entry point rejects
  * them. */

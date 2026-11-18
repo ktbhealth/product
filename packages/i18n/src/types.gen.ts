@@ -334,17 +334,25 @@ export type I18nKey =
 	| "audit.colAction"
 	| "audit.colActor"
 	| "audit.colDetail"
+	| "audit.colHash"
+	| "audit.colId"
 	| "audit.colTarget"
 	| "audit.colTenant"
 	| "audit.colTime"
+	| "audit.dateFrom"
+	| "audit.dateTo"
 	| "audit.detailTitle"
 	| "audit.emptyDescription"
 	| "audit.emptyTitle"
 	| "audit.filteredCount"
+	| "audit.loadFailed"
+	| "audit.nextPage"
 	| "audit.noMatch"
 	| "audit.noTarget"
 	| "audit.noTargetType"
 	| "audit.noTenant"
+	| "audit.pageInfo"
+	| "audit.prevPage"
 	| "audit.searchLabel"
 	| "audit.searchPlaceholder"
 	| "audit.systemActor"
@@ -956,6 +964,34 @@ export type I18nKey =
 	| "kv.ttlNone"
 	| "kv.ttlSeconds"
 	| "kv.valueHint"
+	| "machines.actionFailed"
+	| "machines.add"
+	| "machines.cancel"
+	| "machines.capabilities"
+	| "machines.capabilitiesHint"
+	| "machines.check"
+	| "machines.checkAll"
+	| "machines.confirmDelete"
+	| "machines.delete"
+	| "machines.desc"
+	| "machines.disable"
+	| "machines.empty"
+	| "machines.enable"
+	| "machines.healthUrl"
+	| "machines.host"
+	| "machines.kind"
+	| "machines.lastCheck"
+	| "machines.lastSeen"
+	| "machines.name"
+	| "machines.port"
+	| "machines.save"
+	| "machines.secretRef"
+	| "machines.status"
+	| "machines.statusDraining"
+	| "machines.statusOffline"
+	| "machines.statusOnline"
+	| "machines.statusUnknown"
+	| "machines.title"
 	| "manager.actionConfigure"
 	| "manager.blockedHint"
 	| "manager.cancel"
@@ -1925,9 +1961,13 @@ export interface I18nTypedT {
 	(key: "audit.colAction"): Effect.Effect<string>;
 	(key: "audit.colActor"): Effect.Effect<string>;
 	(key: "audit.colDetail"): Effect.Effect<string>;
+	(key: "audit.colHash"): Effect.Effect<string>;
+	(key: "audit.colId"): Effect.Effect<string>;
 	(key: "audit.colTarget"): Effect.Effect<string>;
 	(key: "audit.colTenant"): Effect.Effect<string>;
 	(key: "audit.colTime"): Effect.Effect<string>;
+	(key: "audit.dateFrom"): Effect.Effect<string>;
+	(key: "audit.dateTo"): Effect.Effect<string>;
 	(key: "audit.detailTitle"): Effect.Effect<string>;
 	(key: "audit.emptyDescription"): Effect.Effect<string>;
 	(key: "audit.emptyTitle"): Effect.Effect<string>;
@@ -1938,10 +1978,20 @@ export interface I18nTypedT {
 			total: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "audit.loadFailed"): Effect.Effect<string>;
+	(key: "audit.nextPage"): Effect.Effect<string>;
 	(key: "audit.noMatch"): Effect.Effect<string>;
 	(key: "audit.noTarget"): Effect.Effect<string>;
 	(key: "audit.noTargetType"): Effect.Effect<string>;
 	(key: "audit.noTenant"): Effect.Effect<string>;
+	(
+		key: "audit.pageInfo",
+		params: {
+			current: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "audit.prevPage"): Effect.Effect<string>;
 	(key: "audit.searchLabel"): Effect.Effect<string>;
 	(key: "audit.searchPlaceholder"): Effect.Effect<string>;
 	(key: "audit.systemActor"): Effect.Effect<string>;
@@ -2772,6 +2822,34 @@ export interface I18nTypedT {
 	(key: "kv.ttlNone"): Effect.Effect<string>;
 	(key: "kv.ttlSeconds"): Effect.Effect<string>;
 	(key: "kv.valueHint"): Effect.Effect<string>;
+	(key: "machines.actionFailed"): Effect.Effect<string>;
+	(key: "machines.add"): Effect.Effect<string>;
+	(key: "machines.cancel"): Effect.Effect<string>;
+	(key: "machines.capabilities"): Effect.Effect<string>;
+	(key: "machines.capabilitiesHint"): Effect.Effect<string>;
+	(key: "machines.check"): Effect.Effect<string>;
+	(key: "machines.checkAll"): Effect.Effect<string>;
+	(key: "machines.confirmDelete"): Effect.Effect<string>;
+	(key: "machines.delete"): Effect.Effect<string>;
+	(key: "machines.desc"): Effect.Effect<string>;
+	(key: "machines.disable"): Effect.Effect<string>;
+	(key: "machines.empty"): Effect.Effect<string>;
+	(key: "machines.enable"): Effect.Effect<string>;
+	(key: "machines.healthUrl"): Effect.Effect<string>;
+	(key: "machines.host"): Effect.Effect<string>;
+	(key: "machines.kind"): Effect.Effect<string>;
+	(key: "machines.lastCheck"): Effect.Effect<string>;
+	(key: "machines.lastSeen"): Effect.Effect<string>;
+	(key: "machines.name"): Effect.Effect<string>;
+	(key: "machines.port"): Effect.Effect<string>;
+	(key: "machines.save"): Effect.Effect<string>;
+	(key: "machines.secretRef"): Effect.Effect<string>;
+	(key: "machines.status"): Effect.Effect<string>;
+	(key: "machines.statusDraining"): Effect.Effect<string>;
+	(key: "machines.statusOffline"): Effect.Effect<string>;
+	(key: "machines.statusOnline"): Effect.Effect<string>;
+	(key: "machines.statusUnknown"): Effect.Effect<string>;
+	(key: "machines.title"): Effect.Effect<string>;
 	(key: "manager.actionConfigure"): Effect.Effect<string>;
 	(
 		key: "manager.blockedHint",

@@ -2,13 +2,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "cloudflare:workers";
 
-const headers = vi.hoisted(() => ({ current: new Headers() }));
+import { reactStartServerMock, serverFnRequestHeaders } from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 // RECALL_API_KEY must be bound before platform.ts composes the app runtime —
 // the Bot driver selects its provider once, at layer build time. Dynamic
@@ -41,7 +37,7 @@ describe("bots route with recall provider", () => {
 			}),
 		);
 		const cookie = (res.headers.get("set-cookie") ?? "").split(";")[0];
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async (url: string) => {

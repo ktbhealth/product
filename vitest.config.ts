@@ -9,7 +9,8 @@ export default defineConfig({
 		pool: "threads",
 		projects: [
 			"apps/web",
-			"apps/eval",
+			"apps/cli",
+			"apps/jobs-worker",
 			"evals/*/vitest.config.ts",
 			"packages/*",
 			"plugins/*",
@@ -21,7 +22,7 @@ export default defineConfig({
 			reporter: ["text", "html", "json-summary"],
 			include: [
 				"apps/web/src/**",
-				"apps/eval/src/**",
+				"apps/cli/src/**",
 				"evals/*/src/**",
 				"packages/*/src/**",
 				"plugins/*/src/**",

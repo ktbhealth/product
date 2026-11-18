@@ -1,29 +1,18 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+	reactStartMock,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
+
 import { env } from "cloudflare:workers";
 
-const headers = vi.hoisted(() => ({ current: new Headers() }));
-
 vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
+	...reactStartServerMock(),
 	getRequestUrl: () => new URL("http://localhost:3000/secretaries"),
 }));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 // The Email driver is selected once, when platform.ts composes the app:
 // bind the stub first so invite emails are "sent" (logged) and the test
@@ -59,7 +48,7 @@ async function signIn(email: string, password = PASSWORD) {
 }
 
 const as = (cookie: string | null) => {
-	headers.current = cookie === null ? new Headers() : new Headers({ cookie });
+	serverFnRequestHeaders.current = cookie === null ? new Headers() : new Headers({ cookie });
 };
 
 const account = async (email: string) => {

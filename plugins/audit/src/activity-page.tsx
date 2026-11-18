@@ -2,9 +2,10 @@ import type { PageContext } from "@ktb/kernel";
 
 import { auditMessages } from "./i18n.ts";
 import type { AuditListResult } from "./index.ts";
+import { auditActivityFacetsFn, auditActivityListFn } from "./fns.ts";
 import { AuditPage } from "./views/AuditPage.tsx";
 
-const EMPTY: AuditListResult = { entries: [], total: 0, limit: 200 };
+const EMPTY: AuditListResult = { entries: [], total: 0, limit: 200, offset: 0 };
 
 /**
  * `pages` component for /portal/<instance>/activity (P-080): the host
@@ -21,8 +22,12 @@ export function AuditActivityPage({ data, ctx }: { data: unknown; ctx: PageConte
 		<AuditPage
 			entries={Array.isArray(d.entries) ? d.entries : EMPTY.entries}
 			total={typeof d.total === "number" ? d.total : 0}
+			limit={typeof d.limit === "number" ? d.limit : undefined}
+			offset={typeof d.offset === "number" ? d.offset : 0}
 			locale={ctx.locale}
 			title={auditMessages(ctx.locale).activityTitle}
+			onQuery={(query) => auditActivityListFn({ data: query })}
+			onFacets={() => auditActivityFacetsFn()}
 		/>
 	);
 }

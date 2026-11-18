@@ -350,6 +350,7 @@ const ACTIVITY_EMPTY: AuditListResult = {
 	entries: [],
 	total: 0,
 	limit: PATIENT_ACTIVITY_LIMIT,
+	offset: 0,
 };
 
 /**

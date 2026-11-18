@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
+
 const cookie = {
 	value: null as string | null,
 	getThrows: false,
@@ -9,25 +16,10 @@ const cookie = {
 	del: [] as unknown[][],
 };
 
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
+	...reactStartServerMock(),
 	getCookie: () => {
 		if (cookie.getThrows) throw new Error("cookie read failed");
 		return cookie.value;
@@ -46,9 +38,8 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Auth } from "@ktb/auth";
-import { Forbidden, Principal } from "@ktb/authz";
+import { Forbidden } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import {
@@ -132,33 +123,20 @@ const dyingGateRuntime = ManagedRuntime.make(
 	) as Layer.Layer<unknown, never, never>,
 );
 
-const serverRuntime = {
-	run: (effect: Effect.Effect<unknown, unknown, unknown>) => runtime.runPromise(effect as never),
-	runAs: (user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
-		runtime.runPromise(
-			effect.pipe(
-				Effect.provideService(Principal, {
-					userId: user.id,
-					email: user.email,
-				}),
-			) as never,
-		),
-	audioTranscribeModel: "test-model",
-	getLocale: () => "en",
-	pluginEnabled: async () => true,
-};
+const runtimeOverrides = { pluginEnabled: async () => true };
 
 beforeAll(() => {
-	setServerRuntime(serverRuntime as never);
+	installServerFnRuntime(runtime, authStub, runtimeOverrides);
 });
 
 afterAll(async () => {
-	resetServerRuntime();
+	resetServerFnRuntime();
 	await Promise.all([runtime.dispose(), dyingGateRuntime.dispose()]);
 });
 
 const useSession = (key: string | null) => {
-	headers.current = key === null ? new Headers() : new Headers({ cookie: `session=${key}` });
+	serverFnRequestHeaders.current =
+		key === null ? new Headers() : new Headers({ cookie: `session=${key}` });
 };
 
 const previewRowFixture = (id: number): ThemeRow =>
@@ -228,27 +206,13 @@ describe("themeScopeFn", () => {
 	it("treats a failing admin gate as non-admin", async () => {
 		useSession("admin");
 		cookie.value = "12";
-		setServerRuntime({
-			...serverRuntime,
-			runAs: (
-				user: { id: string; email?: string },
-				effect: Effect.Effect<unknown, unknown, unknown>,
-			) =>
-				dyingGateRuntime.runPromise(
-					effect.pipe(
-						Effect.provideService(Principal, {
-							userId: user.id,
-							email: user.email,
-						}),
-					) as never,
-				),
-		} as never);
+		installServerFnRuntime(dyingGateRuntime, authStub, runtimeOverrides);
 		try {
 			const theme = await themeScopeFn({ data: { scope: "session" } });
 			expect(theme?.id).toBe(KTB_DEFAULT_THEME.id);
 			expect(theme?.preview).toBeUndefined();
 		} finally {
-			setServerRuntime(serverRuntime as never);
+			installServerFnRuntime(runtime, authStub, runtimeOverrides);
 			cookie.value = null;
 		}
 	});

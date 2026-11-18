@@ -48,6 +48,7 @@ import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import { Jobs, makeJobs } from "@ktb/jobs-port";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import {
 	evalArtifactsLocalDriver,
@@ -78,6 +79,7 @@ import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
 import { EntityCipher } from "@ktb/crypto/cipher";
 import { passthroughCipherDriver } from "@ktb/crypto-stub";
 import { buildPermissions } from "@ktb/rbac";
+import { vaultKeyringEnvDriver } from "@ktb/vault-keyring";
 import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
@@ -171,6 +173,9 @@ export interface AppEnv extends ObservabilityEnv {
 	/** Socket transport for the SMTP driver — the deploy target injects
 	 * `cloudflare:sockets` connect (workerd) or its node:net stand-in. */
 	readonly SMTP_CONNECT?: unknown;
+	/** Vault KEK (P-098): 32-byte hex/base64 key wrapping per-secret DEKs.
+	 * Absent → vault secret ops fail closed. */
+	readonly VAULT_MASTER_KEY?: string;
 	readonly ANTHROPIC_API_KEY?: string;
 	readonly LLM_API_KEY?: string;
 	readonly OPENAI_API_KEY?: string;
@@ -182,6 +187,14 @@ export interface AppEnv extends ObservabilityEnv {
 	/** Workers AI binding — optional; any object with `run(model, inputs)`. */
 	readonly AI?: {
 		run(model: string, inputs: unknown): Promise<unknown>;
+	};
+	/** Generic jobs queue producer (PL-007) — the same transport the
+	 * ServerRuntime.jobs capability wraps (apps/web lib/platform.ts
+	 * builds that enqueuer from this binding). When bound, the Jobs
+	 * port is composed as an Effect service so plugin layers can
+	 * enqueue kind-dispatched jobs (eval.run, …) via serviceOption. */
+	readonly AUDIO_QUEUE?: {
+		send(body: unknown): Promise<unknown>;
 	};
 }
 
@@ -368,6 +381,9 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// default — always eligible, LAST in the list once real
 		// keyring-backed drivers arrive (first eligible wins).
 		passthroughCipherDriver,
+		// Vault secrets KEK (P-098 C1): eligible only when
+		// VAULT_MASTER_KEY is bound; absent → Secrets fails closed.
+		vaultKeyringEnvDriver,
 		// Eval validator runner (P-081): eligible only when the local
 		// pipeline env is wired (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL);
 		// otherwise no EvalRunner is bound and eval runs stay queued.
@@ -479,7 +495,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		workersAiModel: env.WORKERS_AI_MODEL,
 	};
 	const envAnamnesisEngineLive = layerFor<AnamnesisEngine>(AnamnesisEngine.key, llmConfig);
-	// F2: the ai-endpoints plugin's PlatformLlm capability wins over env
+	// F2: the ai-provider plugin's PlatformLlm capability wins over env
 	// providers when a platform-default endpoint is configured; the
 	// wrapped engine is the (b) env fallback → (c) heuristic path.
 	const AnamnesisEngineLive = Layer.unwrap(
@@ -495,6 +511,16 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// wired; the plugin then leaves run rows `queued` (P-081).
 	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
 	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
+	// PL-007/WS-E: the generic jobs enqueue port as an Effect service —
+	// the same AUDIO_QUEUE transport + job_runs projection the
+	// ServerRuntime.jobs capability wraps (apps/web lib/platform.ts
+	// builds that enqueuer from the same binding). Unbound → no Jobs
+	// service; consumers degrade via Effect.serviceOption.
+	const jobsQueue = env.AUDIO_QUEUE;
+	const JobsLive =
+		jobsQueue === undefined
+			? Layer.empty
+			: Layer.succeed(Jobs, makeJobs({ send: (envelope) => jobsQueue.send(envelope), db }));
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
@@ -599,6 +625,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TelemetryLive,
 		EvalRunnerLive,
 		EvalArtifactsLive,
+		JobsLive,
 		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,

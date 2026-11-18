@@ -8,7 +8,7 @@ import { ClipboardCheckIcon } from "lucide-react";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, tx } from "@ktb/db";
-import { doctors, patients, user as userTable } from "@ktb/db/schema";
+import { consultations, doctors, patients, user as userTable } from "@ktb/db/schema";
 import { EvalArtifacts, EvalRunner, type Persona } from "@ktb/eval-consultation";
 import {
 	EVAL_ACTION,
@@ -17,17 +17,27 @@ import {
 	evalInstanceItem,
 	type EvalInstanceItem,
 } from "@ktb/eval-persona";
+import { Jobs } from "@ktb/jobs-port";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
+import { parseJson } from "./core-map.ts";
 import { EvalValidatorPage } from "./platform-page.tsx";
-import { evalRun, evalRunSample, type EvalRunSample } from "./schema.ts";
+import { EVAL_RUN_JOB_KIND, executeEvalRun, registerEvalRunJobHandler } from "./run-job.ts";
+import { evalRun, evalRunRecord, evalRunSample, type EvalRunSample } from "./schema.ts";
 
-export { evalRun, evalRunSample } from "./schema.ts";
+export { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
+export {
+	datasetPinFor,
+	runRecordFromRow,
+	runRecordRow,
+	runRecordRows,
+	runToExperiment,
+} from "./core-map.ts";
 
 // Re-exported for the plugins that pin the grant spelling through
-// this package (ai-endpoints, credentials) — the canonical
+// this package (ai-provider, credentials) — the canonical
 // definition lives in @ktb/eval-persona, the pipeline's base layer.
 export { EVAL_ACTION, EVAL_RESOURCE };
 
@@ -116,6 +126,15 @@ export interface RunProgress {
 	readonly summary: JsonValue | null;
 	readonly aggregates: readonly AxisAggregate[];
 	readonly samples: readonly RunSampleProgress[];
+	/** Honest capability signals (WS-E): whether an EvalRunner driver
+	 * is bound (runs can execute at all) and whether the jobs queue is
+	 * bound (runs dispatch to the eval.run consumer instead of the
+	 * inline fork). The UI warns before startRun when runnerBound is
+	 * false — a queued run only progresses where a runner exists.
+	 * Optional on the wire: older servers omit them and the view
+	 * degrades to no warning (same contract as RunProgressView). */
+	readonly runnerBound?: boolean;
+	readonly queueBound?: boolean;
 }
 
 /** Run sample + the item's gold script — the diff renders ref vs
@@ -201,15 +220,6 @@ const aggregateByAxis = (
 	});
 };
 
-const parseJson = <T>(raw: string | null, fallback: T): T => {
-	if (raw === null) return fallback;
-	try {
-		return JSON.parse(raw) as T;
-	} catch {
-		return fallback;
-	}
-};
-
 const toItemCard = (row: EvalInstanceItem): CohortItemCard => ({
 	id: row.id,
 	instanceId: row.instanceId,
@@ -293,6 +303,14 @@ export const EvalValidatorLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const runner = yield* Effect.serviceOption(EvalRunner);
+		// WS-E: the generic jobs port — bound by app-host when the
+		// deploy wires a queue transport (AUDIO_QUEUE). Absent →
+		// startRun keeps the inline forkDetach path.
+		const jobs = yield* Effect.serviceOption(Jobs);
+		// Availability signals surfaced on RunProgress — captured once
+		// at layer build, they describe this runtime's capabilities.
+		const runnerBound = Option.isSome(runner);
+		const queueBound = Option.isSome(jobs);
 
 		return EvalValidator.of({
 			listCohorts: Effect.fn("EvalValidator.listCohorts")(function* () {
@@ -388,6 +406,14 @@ export const EvalValidatorLive = Layer.effect(
 								reviewedAt: new Date(),
 							})
 							.where(eq(evalInstanceItem.id, input.itemId)),
+						...(input.decision === "rejected"
+							? [
+									// WS-F: the item's synthetic consultations row
+									// goes with the corpus — its patientId FK
+									// would block the patient delete below.
+									db.delete(consultations).where(eq(consultations.evalItemId, input.itemId)),
+								]
+							: []),
 						...(input.decision === "rejected" && item?.patientId != null
 							? [db.delete(patients).where(eq(patients.id, item.patientId))]
 							: []),
@@ -446,110 +472,45 @@ export const EvalValidatorLive = Layer.effect(
 						),
 					);
 				}
-				// No EvalRunner bound → run stays queued; the local driver
-				// picks it up when present (dev:node).
-				if (Option.isSome(runner) && picked.length > 0) {
-					yield* Effect.promise(() =>
-						db
-							.update(evalRun)
-							.set({ status: "running", startedAt: new Date() })
-							.where(eq(evalRun.id, run.id)),
+				// WS-E: with the jobs queue bound the run is handed to the
+				// eval.run consumer — it flips queued→running and drives
+				// executeEvalRun, which resumes pending samples so a
+				// redelivery after a crash picks up where it stopped.
+				// Without the queue but with a runner, keep the
+				// request-scoped fork (tests + minimal runtimes). Neither
+				// → the row stays honestly queued.
+				if (Option.isSome(jobs) && picked.length > 0) {
+					yield* Effect.tryPromise({
+						try: () => jobs.value.enqueue(EVAL_RUN_JOB_KIND, { runId: run.id }),
+						catch: (error) => error,
+					}).pipe(
+						Effect.catch((error) =>
+							// An enqueue failure must not leave a zombie
+							// "queued" row — fail it, then propagate as a
+							// defect (operational failure, not a domain
+							// denial).
+							Effect.promise(() =>
+								db
+									.update(evalRun)
+									.set({
+										status: "failed",
+										finishedAt: new Date(),
+										summary: JSON.stringify({
+											error: `eval.run enqueue failed: ${String(error)}`,
+										}),
+									})
+									.where(eq(evalRun.id, run.id)),
+							).pipe(Effect.andThen(Effect.die(error))),
+						),
 					);
-					// forkDetach: the run outlives this request's scope — evals
-					// take minutes; progress is polled via `progress`. Final
-					// status lands inside the forked effect.
-					yield* Effect.gen(function* () {
-						yield* runner.value
-							.run({
-								runId: run.id,
-								// The item's own corpus row feeds the runner — the
-								// stored script/turns/voices, never a regeneration.
-								items: picked.map((p) => ({
-									id: p.id,
-									/* v8 ignore next 2 -- `runnable` guarantees script/turns/voices are set */
-									script: p.script!,
-									turns: parseJson(p.turns, []),
-									voices: parseJson(p.voices, {}),
-									patient:
-										p.persona === null
-											? {}
-											: (() => {
-													const persona = parseJson<Persona>(p.persona, {} as Persona);
-													return {
-														...(persona.gender !== undefined
-															? { sex: persona.gender === "m" ? "male" : "female" }
-															: /* v8 ignore next -- enrich always fills gender */ {}),
-														...(persona.ageBand === "adult"
-															? { age: 40 }
-															: persona.ageBand === "elderly"
-																? { age: 70 }
-																: { age: 8 }),
-													};
-												})(),
-								})),
-								onSample: (id, outcome) =>
-									Effect.promise(() =>
-										db
-											.update(evalRunSample)
-											.set({
-												status: outcome.status,
-												result:
-													outcome.result === undefined ? null : JSON.stringify(outcome.result),
-												error: outcome.error ?? null,
-											})
-											.where(
-												and(eq(evalRunSample.runId, run.id), eq(evalRunSample.itemId, Number(id))),
-											),
-									),
-							})
-							.pipe(
-								Effect.catch((error) =>
-									Effect.logWarning("eval runner failed", { error: String(error) }),
-								),
-							);
-						const finished = yield* Effect.promise(() =>
-							db.select().from(evalRunSample).where(eq(evalRunSample.runId, run.id)),
-						);
-						const ok = finished.filter((s) => s.status === "ok");
-						const wers = ok
-							.map((s) => parseJson<{ wer?: number }>(s.result, {}).wer)
-							.filter((w): w is number => typeof w === "number");
-						// Per-stage means — cleanup fidelity (WER after the
-						// corrector) and anamnesis completeness, when the run
-						// exercised those stages.
-						const werAfters = ok
-							.map(
-								(s) =>
-									parseJson<{ cleanup?: { werAfter?: number } }>(s.result, {}).cleanup?.werAfter,
-							)
-							.filter((w): w is number => typeof w === "number");
-						const completeness = ok
-							.map(
-								(s) =>
-									parseJson<{ anamnesis?: { completeness?: number } }>(s.result, {}).anamnesis
-										?.completeness,
-							)
-							.filter((w): w is number => typeof w === "number");
-						const mean = (xs: readonly number[]) =>
-							xs.length ? xs.reduce((a, w) => a + w, 0) / xs.length : null;
-						yield* Effect.promise(() =>
-							db
-								.update(evalRun)
-								.set({
-									status: "done",
-									done: finished.length,
-									summary: JSON.stringify({
-										ok: ok.length,
-										failed: finished.length - ok.length,
-										meanWer: mean(wers),
-										meanWerAfter: mean(werAfters),
-										meanCompleteness: mean(completeness),
-									}),
-									finishedAt: new Date(),
-								})
-								.where(eq(evalRun.id, run.id)),
-						);
-					}).pipe(Effect.forkDetach);
+				} else if (Option.isSome(runner) && picked.length > 0) {
+					// forkDetach: the run outlives this request's scope —
+					// evals take minutes; progress is polled via
+					// `progress`. executeEvalRun re-reads the samples it
+					// just inserted, so the inline path and the queue
+					// path share ONE implementation (and the same
+					// pending-only resume semantics).
+					yield* executeEvalRun(db, runner.value, run.id).pipe(Effect.forkDetach);
 				}
 				return { runId: run.id };
 			}),
@@ -615,6 +576,8 @@ export const EvalValidatorLive = Layer.effect(
 						})),
 					),
 					samples: samples.map((s) => ({ ...s.sample, script: s.script })),
+					runnerBound,
+					queueBound,
 				} satisfies RunProgress;
 			}),
 
@@ -640,8 +603,8 @@ export const EvalValidatorLive = Layer.effect(
 
 // EVAL_VALIDATOR_TEST_DDL lives in ./test-ddl.ts — a top-level
 // `${EVAL_PERSONA_TEST_DDL}` const here would dereference the
-// eval-persona binding mid-cycle (ai-endpoints pins EVAL_* constants
-// from this module, so eval-persona → ai-endpoints → eval-validator
+// eval-persona binding mid-cycle (ai-provider pins EVAL_* constants
+// from this module, so eval-persona → ai-provider → eval-validator
 // → eval-persona is a real import cycle).
 export const evalValidatorTablesPlugin = definePlugin({
 	id: "eval.validator.tables",
@@ -649,7 +612,7 @@ export const evalValidatorTablesPlugin = definePlugin({
 	// run tables FK into eval_instance / eval_instance_item — the
 	// step-2 plugin must land its DDL first.
 	requiredDeps: ["eval.persona.tables"],
-	tables: { evalRun, evalRunSample },
+	tables: { evalRun, evalRunSample, evalRunRecord },
 });
 
 export const evalValidatorServicesPlugin = definePlugin({
@@ -718,6 +681,12 @@ export const evalValidatorRoutesPlugin = definePlugin({
 	meta: { keywords: ["eval", "validator", "routes"] },
 	routes: [physical("/api", "../../../../plugins/eval-validator/src/api-routes")],
 });
+
+// WS-E: populate the shared jobHandlers registry with the eval.run
+// consumer — module scope runs at import time, and app-host's eager
+// plugins/* glob guarantees registration before any queue batch is
+// consumed.
+registerEvalRunJobHandler();
 
 export const plugins: readonly Plugin[] = [
 	evalValidatorTablesPlugin,

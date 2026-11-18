@@ -330,6 +330,55 @@
       "when": 1794973487523,
       "tag": "0047_mighty_madame_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794987804672,
+      "tag": "0048_clever_stardust",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1795005347830,
+      "tag": "0049_ordinary_proudstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1795008087731,
+      "tag": "0050_pink_mister_sinister",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1795008558591,
+      "tag": "0051_aberrant_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1795011565356,
+      "tag": "0052_volatile_morph",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1795011684476,
+      "tag": "0053_foamy_white_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1795014880468,
+      "tag": "0054_first_callisto",
+      "breakpoints": true
     }
   ]
 }

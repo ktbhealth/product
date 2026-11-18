@@ -185,6 +185,11 @@ export interface EvalRunnerOutcome {
 	readonly status: "ok" | "failed";
 	readonly result?: unknown;
 	readonly error?: string;
+	/** Per-stage RunRecords the item produced (tts/asr/cleanup/…)
+	 * — the audit trail the platform persists alongside the outcome.
+	 * Absent = the driver doesn't meter calls; an empty array = it
+	 * ran but emitted none. */
+	readonly records?: readonly RunRecord[];
 }
 
 /**
@@ -291,7 +296,7 @@ export class LlmFactory extends Context.Service<
 /**
  * Platform-default generative endpoint for PRODUCTION surfaces
  * (transcript cleanup, anamnesis extraction) — bound by the
- * ai-endpoints plugin's services layer. `defaultLayer` resolves the
+ * ai-provider plugin's services layer. `defaultLayer` resolves the
  * enabled `scope='platform'` `is_default` endpoint through LlmFactory
  * on every call, so admin changes apply without a restart; `null`
  * means "no platform default configured" and consumers fall back to

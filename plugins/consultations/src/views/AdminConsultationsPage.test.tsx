@@ -65,6 +65,8 @@ const row = (over: Partial<AdminConsultationRow>): AdminConsultationRow => ({
 	anamnesisHash: null,
 	anamnesisVersion: null,
 	blobHash: null,
+	synthetic: false,
+	evalItemId: null,
 	createdAt: new Date("2026-11-01T10:00:00Z"),
 	ownerEmail: "dra@x.com",
 	ownerName: "Dra Ana",

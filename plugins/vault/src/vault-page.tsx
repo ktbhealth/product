@@ -24,6 +24,7 @@ export function VaultClinicPage({ data, ctx }: { data: unknown; ctx: PageContext
 				role: page.role ?? null,
 				zk: page.zk ?? false,
 				devices: page.devices ?? [],
+				secrets: page.secrets ?? [],
 			}}
 			api={vaultApi}
 			keyring={keyring}

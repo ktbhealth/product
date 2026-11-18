@@ -28,6 +28,7 @@ export const PLUGIN_KEYWORDS = [
 	"i18n",
 	"jobs",
 	"kv",
+	"machines",
 	"manager",
 	"notifications",
 	"pages",

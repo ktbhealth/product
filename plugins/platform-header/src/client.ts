@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { clientStub, type Plugin } from "@ktb/kernel";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -9,7 +9,7 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * asserted by apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({
+	clientStub({
 		id: "platform.header",
 		meta: { keywords: ["platform", "ui"] },
 		requiredDeps: ["platform.panel"],

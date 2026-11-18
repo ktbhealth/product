@@ -29,14 +29,14 @@ import type { JsonObject } from "effect/Schema";
  * the pipeline emits one StageMetrics record per produced stage and
  * gates consume all of it, so metrics are not individually
  * dispatched. Gate refs dispatch through the composition root's gate
- * decoders (apps/eval policy.ts). `meta.fn` on a contribution stays a
+ * decoders (packages/eval-cli policy.ts). `meta.fn` on a contribution stays a
  * human/ops pointer, not a callable key.
  *
  * CONFIG EXPRESSIVENESS (P-078): stage/metric/gate/condition entries
  * may carry a `config` JSON object (gates also accept legacy `params`,
  * normalized to `config` at resolution). The config SHAPE is owned by
  * the contribution: each contribution may declare a `validateConfig`
- * function (registry.ts `ContributionWithConfig`) that apps/eval runs
+ * function (registry.ts `ContributionWithConfig`) that packages/eval-cli runs
  * at `eval list`/`eval run` resolution — effect/Schema is not
  * JSON-serializable, so validation is contributor code, never
  * manifest data. Gate entries may instead name an `eval.gatepreset`
@@ -47,7 +47,7 @@ import type { JsonObject } from "effect/Schema";
  *
  * `inputs` (P-077) declares cross-suite composition: refs to other
  * suites' persisted SampleResult artifacts (`{suite, stage?, field?,
- * runId?, datasetVersion?}`). apps/eval resolves them against the
+ * runId?, datasetVersion?}`). packages/eval-cli resolves them against the
  * shared workdir store before the run; the domain runner decides
  * which resolved fields become stage inputs (today: prior `asrText`
  * may replace the transcribe stage — see pipeline.ts
@@ -68,7 +68,7 @@ export type SuiteDataset = typeof SuiteDataset.Type;
 /** One named reference to a registered contribution with optional
  * config (P-078): `config` is a JSON object validated against the
  * contribution's own `validateConfig` at resolution time
- * (apps/eval resolve.ts) — the config SHAPE is contributor-owned,
+ * (packages/eval-cli resolve.ts) — the config SHAPE is contributor-owned,
  * eval-core stays domain-blind. Metric entries use this; stage
  * nodes carry the same field inline (StageNode.config). */
 export const ContributionRef = Schema.Struct({
@@ -135,7 +135,7 @@ export const gateEntryConfig = (entry: SuiteGateEntry): JsonObject | undefined =
 
 /** Declared payload of an `eval.gatepreset` contribution's `meta`
  * (P-078): a named, versioned bundle of gate refs — the same
- * `{id, config}` shape manifests use, pure JSON data. apps/eval
+ * `{id, config}` shape manifests use, pure JSON data. packages/eval-cli
  * validates `meta` against this before expanding. */
 export const GatePresetPayload = Schema.Struct({
 	gates: Schema.Array(ContributionRef),
@@ -181,7 +181,7 @@ export type StageEntry = typeof StageEntry.Type;
 /** Cross-suite input ref (P-077): consume another suite's persisted
  * artifacts as this run's inputs. `suite` is a suite manifest id in
  * the same evals/ tree; `stage`+`field` select the artifact (field
- * defaults from stage — see apps/eval inputs.ts); `runId` pins an
+ * defaults from stage — see packages/eval-cli inputs.ts); `runId` pins an
  * exact prior run (an Experiment id), `datasetVersion` pins the
  * cohort — absent both, the source suite's own dataset pin applies
  * and the newest run wins. */
@@ -218,12 +218,12 @@ export const EvalSuiteManifest = Schema.Struct({
 	/** Optional adapter profile selector — which adapter set resolves
 	 * the suite's ports (e.g. "stub", "local", "cloud"). */
 	adapterProfile: Schema.optionalKey(Schema.String),
-	/** Cross-suite composition refs (P-077) — resolved by apps/eval
+	/** Cross-suite composition refs (P-077) — resolved by packages/eval-cli
 	 * against the shared workdir store before the run. */
 	inputs: Schema.optionalKey(Schema.Array(SuiteInput)),
 	/** Domain-param overrides (P-079) — a partial domain definition
 	 * (`locale`/`templates`/`personas`/`phi`/`params` sections only;
-	 * see DomainOverrides in domain.ts). apps/eval validates the shape
+	 * see DomainOverrides in domain.ts). packages/eval-cli validates the shape
 	 * and merges it over the resolved domain definition; the merged
 	 * `params` record is threaded into the domain pack's
 	 * generate/process call sites as `domainParams`. */

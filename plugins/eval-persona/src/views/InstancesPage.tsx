@@ -4,8 +4,8 @@ import { PlayIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import type { EndpointCard } from "@ktb/ai-endpoints";
-import { listEndpointsFn } from "@ktb/ai-endpoints/fns";
+import type { EndpointCard } from "@ktb/ai-provider";
+import { listEndpointsFn } from "@ktb/ai-provider/fns";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";

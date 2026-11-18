@@ -1,0 +1,67 @@
+name: mutation
+
+# Manual-only mutation testing (Stryker). No push/PR/schedule triggers —
+# a human picks a package and runs its `mutate` script on demand.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: >-
+          Workspace package path containing a stryker.conf.json and a
+          "mutate" script (e.g. packages/crypto).
+        required: true
+        default: packages/crypto
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ inputs.package }}
+  cancel-in-progress: true
+
+jobs:
+  mutate:
+    runs-on: ubuntu-latest
+    # Stryker runs the full mutant suite serially-per-runner; crypto alone
+    # has ~730 mutants. Generous cap for the largest configured package.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - name: Validate package input
+        env:
+          PKG: ${{ inputs.package }}
+        run: |
+          # Reject anything that escapes the workspace or lacks the
+          # mutation-test setup.
+          real="$(realpath -m "$PKG")"
+          case "$real" in
+            "$GITHUB_WORKSPACE"/*) ;;
+            *) echo "::error::package must resolve inside the workspace"; exit 1 ;;
+          esac
+          test -f "$real/stryker.conf.json" || {
+            echo "::error::$PKG has no stryker.conf.json"; exit 1; }
+          jq -e '.scripts.mutate' "$real/package.json" > /dev/null || {
+            echo "::error::$PKG has no \"mutate\" script"; exit 1; }
+      - name: Run mutation tests
+        working-directory: ${{ inputs.package }}
+        run: bun run mutate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ github.run_number }}
+          path: ${{ inputs.package }}/reports/mutation/
+          if-no-files-found: warn
+          retention-days: 14

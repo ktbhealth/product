@@ -13,7 +13,7 @@ import type { ConfigValidator, ContributionKind, ContributionWithConfig } from "
  * meta}` — validated by `toEvalContribution` when a consumer collects
  * entries from the plugin graph.
  *
- * Consumers: `eval-cli` (apps/eval) is the only surface that resolves
+ * Consumers: `eval-cli` (packages/eval-cli) is the only surface that resolves
  * suite refs today; a future in-app eval runner would list itself in
  * `consumers` and collect the same kinds.
  */

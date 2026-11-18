@@ -1,27 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { reactStartMock, reactStartServerMock } from "@ktb/server-fns/testing";
+
 // serverPageMap (fns.ts) merges every server plugin's panel.pages/pages
 // first-wins by path. The real registry has no duplicate page paths, so
 // this file mocks #/lib/platform.ts with two plugins claiming the same
 // console page path and asserts the first contributor's loader wins.
 
-vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => new Headers(),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 const user = { id: "u1", email: "a@x.com", name: "A" };
 vi.mock("#/lib/auth.ts", () => ({

@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "cloudflare:workers";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => new Headers(),
-}));
+import { reactStartServerMock } from "@ktb/server-fns/testing";
+
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 // TURNSTILE_SECRET_KEY must be bound before platform.ts composes the app —
 // the captcha driver is selected once, at layer build time.

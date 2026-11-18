@@ -27,6 +27,7 @@ import {
 	auditTablesPlugin,
 	hasRecentAuditRead,
 	insertAuditEntry,
+	auditListFacets,
 	listAuditEntries,
 	sanitizeAuditDetail,
 	listPatientAuditEntries,
@@ -52,7 +53,7 @@ const DDL = GROUPS_DDL + AUDIT_TEST_DDL;
 // seeded through the D1 shim's exec (the drizzle insert would demand
 // every notNull column of the real table).
 const CONSULTATIONS_DDL = `
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER);
 INSERT INTO consultations (id, patient_id) VALUES (10, 5), (11, 6), (12, NULL);
 `;
 const PATIENT_DDL = GROUPS_DDL + AUDIT_TEST_DDL + CONSULTATIONS_DDL;
@@ -184,12 +185,13 @@ describe("audit repo", () => {
 		// Thenable query stub: `select().from()` is awaited directly for
 		// the count and chained through orderBy/limit for the page.
 		const query = {
-			orderBy: () => ({ limit: async () => [] }),
+			where: () => query,
+			orderBy: () => ({ limit: () => ({ offset: async () => [] }) }),
 			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listAuditEntries(fakeDb);
-		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 	});
 });
 
@@ -233,12 +235,12 @@ describe("listTenantAuditEntries", () => {
 		// `where` fence both queries now chain through.
 		const query = {
 			where: () => query,
-			orderBy: () => ({ limit: async () => [] }),
+			orderBy: () => ({ limit: () => ({ offset: async () => [] }) }),
 			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listTenantAuditEntries(fakeDb, 1);
-		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 	});
 });
 
@@ -493,6 +495,24 @@ describe("AuditLive", () => {
 			_tag: "Forbidden",
 		});
 	});
+
+	it("adminFacets returns the log's distinct filter values, admins only", async () => {
+		const facets = await asUser(
+			"admin-1",
+			call((p) => p.adminFacets()),
+			"admin@x.com",
+		);
+		// Rows recorded by earlier tests in this describe.
+		expect(facets.actionGroups).toEqual(expect.arrayContaining(["delegated", "groups", "system"]));
+		expect(facets.actors).toContain("admin@x.com");
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.adminFacets()),
+				"doc@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
 });
 
 describe("Audit activity feed (P-080)", () => {
@@ -604,6 +624,26 @@ describe("Audit activity feed (P-080)", () => {
 			).rejects.toMatchObject({ _tag: "Forbidden" });
 		}
 	});
+
+	it("activityFacets scopes the dropdown values to the tenant feed", async () => {
+		const facets = await asStaff(
+			call((p) => p.activityFacets()),
+			{
+				perms: permissions(true),
+			},
+		);
+		// Only feed.t1.* rows belong to tenant 1 — the other tenants'
+		// and the global row never leak into the options.
+		expect(facets.actionGroups).toEqual(["feed"]);
+		// Every feed row has NULL target_type — the bucket is one entry.
+		expect(facets.targetTypes).toEqual([null]);
+		await expect(
+			asStaff(
+				call((p) => p.activityFacets()),
+				{ perms: permissions(false) },
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
 });
 
 describe("AuditLive failure isolation", () => {
@@ -639,7 +679,7 @@ describe("audit helper", () => {
 		const seen: unknown[] = [];
 		const stub = {
 			record: (entry: never) => Effect.sync(() => seen.push(entry)),
-			adminList: () => Effect.succeed({ entries: [], total: 0, limit: 200 }),
+			adminList: () => Effect.succeed({ entries: [], total: 0, limit: 200, offset: 0 }),
 		} as unknown as Audit["Service"];
 		await Effect.runPromise(
 			audit({ action: "users.suspend", targetId: "u9" }).pipe(Effect.provideService(Audit, stub)),
@@ -709,7 +749,7 @@ describe("plugins", () => {
 			({ adminList, record: () => Effect.void }) as unknown as Audit["Service"];
 
 		it("returns the listing for admins", async () => {
-			const result: AuditListResult = { entries: [], total: 0, limit: 200 };
+			const result: AuditListResult = { entries: [], total: 0, limit: 200, offset: 0 };
 			expect(
 				await Effect.runPromise(
 					loader().pipe(
@@ -732,7 +772,7 @@ describe("plugins", () => {
 						),
 					),
 				),
-			).toEqual({ entries: [], total: 0, limit: 200 });
+			).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 		});
 	});
 
@@ -812,7 +852,7 @@ describe("listPatientAuditEntries", () => {
 	it("matches nothing for a patient with no rows", async () => {
 		const fresh = await seed();
 		const result = await listPatientAuditEntries(fresh, 42);
-		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 	});
 
 	it("clamps the page limit like the other listings", async () => {
@@ -827,12 +867,12 @@ describe("listPatientAuditEntries", () => {
 		// scope both queries chain through.
 		const query = {
 			where: () => query,
-			orderBy: () => ({ limit: async () => [] }),
+			orderBy: () => ({ limit: () => ({ offset: async () => [] }) }),
 			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listPatientAuditEntries(fakeDb, 5);
-		expect(result).toEqual({ entries: [], total: 0, limit: 200 });
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 	});
 });
 
@@ -903,6 +943,24 @@ describe("Audit patientList (P-086)", () => {
 		expect(seen).toEqual([5]);
 		expect(result.entries.map((e) => e.action)).toEqual(["patients.update"]);
 		expect(result.limit).toBe(10);
+	});
+
+	it("patientFacets applies the same access gate and patient scope", async () => {
+		await expect(asPatient(call((p) => p.patientFacets({ patientId: 5 })))).rejects.toMatchObject({
+			_tag: "Forbidden",
+		});
+		await expect(
+			asPatient(
+				call((p) => p.patientFacets({ patientId: 5 })),
+				access(false),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		const facets = await asPatient(
+			call((p) => p.patientFacets({ patientId: 5 })),
+			access(true),
+		);
+		expect(facets.actionGroups).toEqual(["patients"]);
+		expect(facets.targetTypes).toEqual(["patient"]);
 	});
 });
 
@@ -1259,5 +1317,127 @@ describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 		} finally {
 			await runtime.dispose();
 		}
+	});
+});
+
+describe("audit list filters and facets", () => {
+	const seed = async () => {
+		const db = makeDb(makeD1(DDL));
+		const write = (over: Parameters<typeof insertAuditEntry>[1]) => insertAuditEntry(db, over);
+		await write({
+			action: "users.suspend",
+			actorUserId: "u1",
+			actorEmail: "admin@x.com",
+			targetType: "user",
+			targetId: "9",
+			tenantId: 1,
+		});
+		await write({
+			action: "users.invite",
+			actorUserId: "u2",
+			actorEmail: null,
+			targetType: "user",
+			targetId: "8",
+			tenantId: 1,
+		});
+		await write({
+			action: "patients.read",
+			actorUserId: "u3",
+			actorEmail: "doc@x.com",
+			targetType: "patient",
+			targetId: "5",
+			detail: { refId: "needle-value" },
+			tenantId: 2,
+		});
+		await write({ action: "system.ping", actorUserId: null, actorEmail: null });
+		return db;
+	};
+
+	it("filters by action group (first dot segment)", async () => {
+		const db = await seed();
+		const result = await listAuditEntries(db, { actionGroup: "users" });
+		expect(result.entries.map((e) => e.action).sort()).toEqual(["users.invite", "users.suspend"]);
+		expect(result.total).toBe(2);
+	});
+
+	it("strips LIKE metacharacters from the action group", async () => {
+		const db = await seed();
+		// "users%" would wildcard-match everything unescaped; stripped
+		// to "users" it still scopes to the group.
+		expect((await listAuditEntries(db, { actionGroup: "users%" })).total).toBe(2);
+		// A group that strips to empty adds no condition at all.
+		expect((await listAuditEntries(db, { actionGroup: "%" })).total).toBe(4);
+	});
+
+	it("filters by actor — email, user-id fallback and the NULL bucket", async () => {
+		const db = await seed();
+		expect((await listAuditEntries(db, { actor: "admin@x.com" })).entries[0]?.action).toBe(
+			"users.suspend",
+		);
+		// Email NULL + user id match — the view's actorKey fallback.
+		expect((await listAuditEntries(db, { actor: "u2" })).entries[0]?.action).toBe("users.invite");
+		// Explicit null selects rows with neither email nor user id.
+		const system = await listAuditEntries(db, { actor: null });
+		expect(system.entries.map((e) => e.action)).toEqual(["system.ping"]);
+		expect((await listAuditEntries(db, { actor: "nobody" })).total).toBe(0);
+	});
+
+	it("filters by target type, including the NULL bucket", async () => {
+		const db = await seed();
+		expect((await listAuditEntries(db, { targetType: "user" })).total).toBe(2);
+		const none = await listAuditEntries(db, { targetType: null });
+		expect(none.entries.map((e) => e.action)).toEqual(["system.ping"]);
+	});
+
+	it("filters by free-text q across actor, action, target and detail", async () => {
+		const db = await seed();
+		expect((await listAuditEntries(db, { q: "needle-value" })).entries[0]?.action).toBe(
+			"patients.read",
+		);
+		// LIKE is case-insensitive for ASCII — "ADMIN" finds admin@x.com.
+		expect((await listAuditEntries(db, { q: "ADMIN" })).entries[0]?.action).toBe("users.suspend");
+		expect((await listAuditEntries(db, { q: "patient" })).total).toBe(1);
+		// Null/blank q adds no condition.
+		expect((await listAuditEntries(db, { q: null })).total).toBe(4);
+		expect((await listAuditEntries(db, { q: "   " })).total).toBe(4);
+	});
+
+	it("filters by since/until epoch bounds", async () => {
+		const db = await seed();
+		const now = Date.now();
+		expect((await listAuditEntries(db, { since: now + 60_000 })).total).toBe(0);
+		expect((await listAuditEntries(db, { until: now - 60_000 })).total).toBe(0);
+		expect((await listAuditEntries(db, { since: 0, until: now + 60_000 })).total).toBe(4);
+		// Non-finite bounds are ignored rather than poisoning the query.
+		expect((await listAuditEntries(db, { since: Number.NaN })).total).toBe(4);
+	});
+
+	it("paginates with offset and reports the resolved offset", async () => {
+		const db = await seed();
+		const page = await listAuditEntries(db, { limit: 2, offset: 2 });
+		expect(page.entries).toHaveLength(2);
+		expect(page.offset).toBe(2);
+		expect(page.total).toBe(4);
+		// Negative/NaN offsets clamp to the first page.
+		expect((await listAuditEntries(db, { offset: -5 })).offset).toBe(0);
+		expect((await listAuditEntries(db, { offset: Number.NaN })).offset).toBe(0);
+	});
+
+	it("auditListFacets returns the distinct filter values in scope", async () => {
+		const db = await seed();
+		// A dotless action groups under itself — covers the no-dot split.
+		await db.insert(adminAudit).values({
+			action: "flat",
+			createdAt: new Date(),
+		});
+		const facets = await auditListFacets(db);
+		expect(facets.actionGroups).toEqual(["flat", "patients", "system", "users"]);
+		expect(facets.actors).toHaveLength(4);
+		expect(facets.actors).toContain("admin@x.com");
+		expect(facets.actors).toContain("u2");
+		expect(facets.actors).toContain(null);
+		expect(facets.targetTypes).toHaveLength(3);
+		expect(facets.targetTypes).toContain("user");
+		expect(facets.targetTypes).toContain(null);
 	});
 });

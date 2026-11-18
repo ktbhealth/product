@@ -1,0 +1,217 @@
+import { afterEach, describe, expect, it } from "vitest";
+
+import { Db, makeDb, type DbClient } from "@ktb/db";
+import { makeD1 } from "@ktb/db/testing";
+import { EvalRunner } from "@ktb/eval-consultation";
+import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
+import { jobHandlers } from "@ktb/jobs-port";
+import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
+
+import { EVAL_RUN_JOB_KIND, executeEvalRun, registerEvalRunJobHandler } from "./run-job.ts";
+import { evalRun, evalRunSample } from "./schema.ts";
+import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
+
+/** WS-E: eval.run job kind — payload decode, the DB-driven
+ * executeEvalRun (pending-only resume), and the consumer handler's
+ * ServerRuntime hop. */
+
+const okRunner = (seen?: number[]) =>
+	EvalRunner.of({
+		run: ({ items, onSample }) =>
+			Effect.forEach(
+				items,
+				(item) => {
+					seen?.push(Number(item.id));
+					return onSample(item.id, { status: "ok", result: { wer: 0.1 } });
+				},
+				{ discard: true },
+			),
+	});
+
+/** Seed a cohort instance + N items + a queued run with one sample
+ * per item in the given statuses (default: all pending). */
+const seedRun = async (
+	db: DbClient,
+	input: { readonly statuses?: readonly ("pending" | "ok" | "failed")[] } = {},
+) => {
+	const statuses = input.statuses ?? ["pending"];
+	const [inst] = await db
+		.insert(evalInstance)
+		.values({ name: "cohort", mode: "selected", params: "{}", createdAt: new Date() })
+		.returning();
+	const itemIds: number[] = [];
+	for (let i = 0; i < statuses.length; i++) {
+		const [item] = await db
+			.insert(evalInstanceItem)
+			.values({
+				instanceId: inst!.id,
+				persona: JSON.stringify({ gender: "f", ageBand: "adult" }),
+				script: `script ${i}`,
+				turns: "[]",
+				voices: "{}",
+				scriptMode: "template",
+				status: "done",
+				state: "approved",
+				createdAt: new Date(),
+			})
+			.returning();
+		itemIds.push(item!.id);
+	}
+	const [r] = await db
+		.insert(evalRun)
+		.values({
+			instanceId: inst!.id,
+			params: JSON.stringify({ instanceId: inst!.id, itemIds }),
+			status: "queued",
+			total: itemIds.length,
+			createdAt: new Date(),
+		})
+		.returning();
+	for (const [i, status] of statuses.entries()) {
+		await db.insert(evalRunSample).values({
+			runId: r!.id,
+			itemId: itemIds[i]!,
+			status,
+			result: status === "ok" ? JSON.stringify({ wer: 0.5 }) : null,
+			createdAt: new Date(),
+		});
+	}
+	return { runId: r!.id, itemIds, instanceId: inst!.id };
+};
+
+const runtimes: ManagedRuntime.ManagedRuntime<unknown, never>[] = [];
+
+/** Minimal ServerRuntime whose `run` executes inside a ManagedRuntime
+ * over the given layer — the same shape apps/web wires via
+ * setServerRuntime, minus the request-scoped capabilities the eval
+ * path never touches. */
+const runtimeFor = (layer: Layer.Layer<unknown, never, never>) => {
+	const rt = ManagedRuntime.make(layer);
+	runtimes.push(rt);
+	setServerRuntime({
+		run: ((effect: Effect.Effect<unknown, unknown, unknown>) =>
+			rt.runPromise(effect as Effect.Effect<unknown, unknown, never>)) as ServerRuntime["run"],
+		runAs: ((
+			_user: { id: string; email?: string },
+			effect: Effect.Effect<unknown, unknown, unknown>,
+		) => rt.runPromise(effect as Effect.Effect<unknown, unknown, never>)) as ServerRuntime["runAs"],
+		audioTranscribeModel: "test-model",
+		getLocale: () => "en",
+	});
+	return rt;
+};
+
+const handler = () => {
+	registerEvalRunJobHandler();
+	const reg = jobHandlers[EVAL_RUN_JOB_KIND];
+	if (reg === undefined) throw new Error("eval.run handler not registered");
+	return reg;
+};
+
+const envelope = (runId: number) => ({
+	id: `env-${runId}`,
+	kind: EVAL_RUN_JOB_KIND,
+	payload: { runId },
+});
+
+afterEach(async () => {
+	resetServerRuntime();
+	while (runtimes.length > 0) await runtimes.pop()!.dispose();
+});
+
+describe("eval.run job — executeEvalRun", () => {
+	it("runs a queued run to done: pending samples execute, run flips running→done", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db, { statuses: ["pending", "pending"] });
+		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+		expect(run?.done).toBe(2);
+		expect(run?.startedAt).not.toBeNull();
+		expect(run?.finishedAt).not.toBeNull();
+		expect(run?.experiment).not.toBeNull();
+		const samples = await db.select().from(evalRunSample);
+		expect(samples.map((s) => s.status)).toEqual(["ok", "ok"]);
+	});
+
+	it("resumes after a crash: only pending samples go back through the runner", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId, itemIds } = await seedRun(db, {
+			statuses: ["ok", "pending", "failed"],
+		});
+		const seen: number[] = [];
+		await Effect.runPromise(executeEvalRun(db, okRunner(seen), runId));
+		// The ok/failed samples keep their recorded outcomes — the
+		// runner only saw the pending tail.
+		expect(seen).toEqual([itemIds[1]]);
+		const samples = await db.select().from(evalRunSample);
+		expect(samples.map((s) => s.status)).toEqual(["ok", "ok", "failed"]);
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+	});
+
+	it("a wholesale runner failure lands the run failed, not stuck running", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db);
+		const crashing = EvalRunner.of({ run: () => Effect.fail(new Error("boom")) as never });
+		await Effect.runPromise(executeEvalRun(db, crashing, runId));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("failed");
+		expect(run?.experiment).not.toBeNull();
+	});
+
+	it("a missing/deleted run row is a succeed-no-op", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		await Effect.runPromise(executeEvalRun(db, okRunner(), 9999));
+		expect(await db.select().from(evalRun)).toHaveLength(0);
+	});
+});
+
+describe("eval.run job — consumer handler", () => {
+	it("registers under eval.run and decodes {runId} defensively", () => {
+		const reg = handler();
+		expect(reg.decodePayload!({ runId: 3 })).toEqual({ runId: 3 });
+		// Poison payloads throw → the consumer marks failed + acks.
+		expect(() => reg.decodePayload!({})).toThrow("Missing key");
+		expect(() => reg.decodePayload!({ runId: "x" })).toThrow("Expected number");
+		expect(() => reg.decodePayload!(null)).toThrow("Expected object");
+	});
+
+	it("handle throws when no ServerRuntime is registered", async () => {
+		resetServerRuntime();
+		const reg = handler();
+		await expect(reg.handle({ runId: 1 }, envelope(1))).rejects.toThrow(/app runtime/);
+	});
+
+	it("handle executes the run inside the app runtime", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db);
+		runtimeFor(
+			Layer.mergeAll(
+				Layer.succeed(Db, db as unknown as DbClient),
+				Layer.succeed(EvalRunner, okRunner()),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		const reg = handler();
+		await reg.handle({ runId }, envelope(runId));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+		const samples = await db.select().from(evalRunSample);
+		expect(samples[0]?.status).toBe("ok");
+	});
+
+	it("handle fails the run honestly when no EvalRunner is bound", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db);
+		// Db only — serviceOption(EvalRunner) is None inside the runtime.
+		runtimeFor(Layer.succeed(Db, db as unknown as DbClient) as Layer.Layer<unknown, never, never>);
+		const reg = handler();
+		await reg.handle({ runId }, envelope(runId));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("failed");
+		expect(run?.summary).toContain("EvalRunner");
+	});
+});

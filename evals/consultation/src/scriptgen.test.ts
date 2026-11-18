@@ -171,6 +171,18 @@ describe("anamnesis variant (T-128/T-129)", () => {
 		expect(doctor.text).toMatch(/senhor|Bom dia|vou/i);
 	});
 
+	it("addresses a female doctor as senhora in formal register", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ register: "formal", doctor: { gender: "f", register: "formal" } }),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		// daddr's feminine arm — "Não, senhora." (paddr's "a senhora"
+		// never follows a bare comma).
+		expect(r.script).toMatch(/,\s*senhora\./);
+	});
+
 	it("uses the persona name as the patient tag when present", () => {
 		const r = renderScript({
 			template: TEMPLATE,

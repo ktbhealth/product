@@ -3,7 +3,21 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import { and, asc, count, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	count,
+	desc,
+	eq,
+	gte,
+	inArray,
+	isNull,
+	like,
+	lte,
+	or,
+	sql,
+	type SQL,
+} from "drizzle-orm";
 import { ScrollTextIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
@@ -49,11 +63,45 @@ export interface AuditEntryInput {
 }
 
 export interface AuditListResult {
-	/** Newest-first page of entries (capped by `limit`). */
+	/** Newest-first page of entries (capped by `limit`, offset window). */
 	readonly entries: readonly AdminAuditRow[];
-	/** Total rows in the log — the page renders "latest N of total". */
+	/** Total rows matching the query — the page renders "N of total". */
 	readonly total: number;
 	readonly limit: number;
+	/** Resolved offset the page was read at (clamped >= 0). */
+	readonly offset: number;
+}
+
+/**
+ * Server-side listing filters shared by the admin console, the tenant
+ * activity feed and the patient access log. Every field is optional —
+ * absent means "no filter". `actor`/`targetType` accept an explicit
+ * `null` to select the NULL-column bucket (system actor / no target);
+ * a string matches exactly. `actionGroup` matches the action's first
+ * dot segment ("users" covers "users.suspend"). `q` is a case-insensitive
+ * substring probe across actor, action, target and detail. `since` /
+ * `until` are epoch-millisecond bounds on `created_at` (inclusive).
+ */
+export interface AuditListQuery {
+	readonly limit?: number;
+	readonly offset?: number;
+	readonly actionGroup?: string | null;
+	readonly actor?: string | null;
+	readonly targetType?: string | null;
+	readonly q?: string | null;
+	readonly since?: number | null;
+	readonly until?: number | null;
+}
+
+/** Distinct filter values for the audit UI's dropdowns, scoped by the
+ * same WHERE the listing applies. `actors`/`targetTypes` carry `null`
+ * for the NULL-column bucket (system actor / no target) — the same
+ * semantics {@link AuditListQuery.actor}/{@link AuditListQuery.targetType}
+ * accept. */
+export interface AuditFacets {
+	readonly actionGroups: readonly string[];
+	readonly actors: readonly (string | null)[];
+	readonly targetTypes: readonly (string | null)[];
 }
 
 /** Outcome of walking the tamper-evident audit chain (T-139). */
@@ -378,6 +426,107 @@ const DEFAULT_LIMIT = 200;
 const pageLimit = (limit: number | undefined): number =>
 	Math.min(Math.max(limit ?? DEFAULT_LIMIT, 1), MAX_LIMIT);
 
+/** Shared offset clamp — negative/NaN offsets collapse to the first page. */
+const pageOffset = (offset: number | undefined): number => {
+	if (offset === undefined || !Number.isFinite(offset)) return 0;
+	return Math.max(0, Math.trunc(offset));
+};
+
+/** LIKE metacharacters are stripped from caller-supplied filter text —
+ * audit search is substring probing, not pattern matching, and an
+ * unescaped `%`/`_` would silently widen the match. */
+const likeTerm = (value: string): string => value.replace(/[%_\\]/g, "");
+
+/**
+ * WHERE clause shared by the three audit listings. `undefined` fields
+ * add no condition; explicit `null` on `actor`/`targetType` selects the
+ * NULL bucket. Actor matching mirrors the view's `actorKey` fallback:
+ * the display actor is `actor_email ?? actor_user_id ?? system`, so a
+ * string actor matches the email column OR (email NULL AND user id
+ * equal) — never both-null rows, which only `actor: null` selects.
+ */
+const auditListWhere = (query: AuditListQuery) => {
+	const conditions = [];
+	if (query.actionGroup != null && query.actionGroup !== "") {
+		const group = likeTerm(query.actionGroup);
+		if (group !== "") {
+			conditions.push(or(eq(adminAudit.action, group), like(adminAudit.action, `${group}.%`)));
+		}
+	}
+	if (query.actor !== undefined) {
+		conditions.push(
+			query.actor === null
+				? and(isNull(adminAudit.actorEmail), isNull(adminAudit.actorUserId))
+				: or(
+						eq(adminAudit.actorEmail, query.actor),
+						and(isNull(adminAudit.actorEmail), eq(adminAudit.actorUserId, query.actor)),
+					),
+		);
+	}
+	if (query.targetType !== undefined) {
+		conditions.push(
+			query.targetType === null
+				? isNull(adminAudit.targetType)
+				: eq(adminAudit.targetType, query.targetType),
+		);
+	}
+	if (query.q != null && query.q.trim() !== "") {
+		const term = `%${likeTerm(query.q.trim())}%`;
+		conditions.push(
+			or(
+				like(adminAudit.actorEmail, term),
+				like(adminAudit.actorUserId, term),
+				like(adminAudit.action, term),
+				like(adminAudit.targetId, term),
+				like(adminAudit.detail, term),
+			),
+		);
+	}
+	if (query.since != null && Number.isFinite(query.since)) {
+		conditions.push(gte(adminAudit.createdAt, new Date(query.since)));
+	}
+	if (query.until != null && Number.isFinite(query.until)) {
+		conditions.push(lte(adminAudit.createdAt, new Date(query.until)));
+	}
+	return conditions.length === 0 ? undefined : and(...conditions);
+};
+
+/** First dot segment of an action — the filter group's key. */
+const actionGroupOf = (action: string): string => {
+	const dot = action.indexOf(".");
+	return dot === -1 ? action : action.slice(0, dot);
+};
+
+/**
+ * Distinct filter values under an optional WHERE — feeds the audit
+ * UI's dropdowns so they offer every value in scope, not just the
+ * values on the current page. Actor keys mirror the view's display
+ * fallback (`coalesce(actor_email, actor_user_id)` — email wins when
+ * both are set, NULL when neither is). `selectDistinct` keeps the
+ * scans bounded by the column's own cardinality; action groups are
+ * derived in JS because the first-segment split is not expressible
+ * portably in SQL.
+ */
+export async function auditListFacets(db: DbClient, where?: SQL): Promise<AuditFacets> {
+	const [actions, actors, targets] = await Promise.all([
+		db.selectDistinct({ action: adminAudit.action }).from(adminAudit).where(where),
+		db
+			.selectDistinct({
+				actor: sql<string | null>`coalesce(${adminAudit.actorEmail}, ${adminAudit.actorUserId})`,
+			})
+			.from(adminAudit)
+			.where(where),
+		db.selectDistinct({ targetType: adminAudit.targetType }).from(adminAudit).where(where),
+	]);
+	return {
+		actionGroups: [...new Set(actions.map((r) => actionGroupOf(r.action)))].sort(),
+		actors: actors.map((r) => r.actor).sort((a, b) => String(a).localeCompare(String(b))),
+		targetTypes: targets
+			.map((r) => r.targetType)
+			.sort((a, b) => String(a).localeCompare(String(b))),
+	};
+}
+
 /**
  * Newest-first audit listing for the /platform/audit console. Callers
  * MUST have passed the `PlatformAdmin` gate first — the repo function
@@ -385,18 +534,22 @@ const pageLimit = (limit: number | undefined): number =>
  */
 export async function listAuditEntries(
 	db: DbClient,
-	options: { readonly limit?: number } = {},
+	options: AuditListQuery = {},
 ): Promise<AuditListResult> {
 	const limit = pageLimit(options.limit);
+	const offset = pageOffset(options.offset);
+	const where = auditListWhere(options);
 	const [entries, totals] = await Promise.all([
 		db
 			.select()
 			.from(adminAudit)
+			.where(where)
 			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
-			.limit(limit),
-		db.select({ n: count() }).from(adminAudit),
+			.limit(limit)
+			.offset(offset),
+		db.select({ n: count() }).from(adminAudit).where(where),
 	]);
-	return { entries, total: totals[0]?.n ?? 0, limit };
+	return { entries, total: totals[0]?.n ?? 0, limit, offset };
 }
 
 /**
@@ -412,20 +565,47 @@ export async function listAuditEntries(
 export async function listTenantAuditEntries(
 	db: DbClient,
 	tenantId: number,
-	options: { readonly limit?: number } = {},
+	options: AuditListQuery = {},
 ): Promise<AuditListResult> {
 	const limit = pageLimit(options.limit);
+	const offset = pageOffset(options.offset);
+	const where = and(eq(adminAudit.tenantId, tenantId), auditListWhere(options));
 	const [entries, totals] = await Promise.all([
 		db
 			.select()
 			.from(adminAudit)
-			.where(eq(adminAudit.tenantId, tenantId))
+			.where(where)
 			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
-			.limit(limit),
-		db.select({ n: count() }).from(adminAudit).where(eq(adminAudit.tenantId, tenantId)),
+			.limit(limit)
+			.offset(offset),
+		db.select({ n: count() }).from(adminAudit).where(where),
 	]);
-	return { entries, total: totals[0]?.n ?? 0, limit };
+	return { entries, total: totals[0]?.n ?? 0, limit, offset };
 }
+
+/** Patient-record scope shared by the listing and the facet query
+ * (P-086): `target_id` is TEXT while `consultations.id`/
+ * `detail.patientId` are integers — CAST keeps the comparison
+ * type-exact, and the json_valid CASE guards json_extract against
+ * malformed detail JSON (NULL detail → json_valid NULL → no match). */
+const patientAuditScope = (db: DbClient, patientId: number) =>
+	or(
+		and(eq(adminAudit.targetType, "patient"), eq(adminAudit.targetId, String(patientId))),
+		and(
+			eq(adminAudit.targetType, "consultation"),
+			inArray(
+				adminAudit.targetId,
+				db
+					.select({ id: sql<string>`CAST(${consultations.id} AS TEXT)` })
+					.from(consultations)
+					.where(eq(consultations.patientId, patientId)),
+			),
+		),
+		and(
+			eq(adminAudit.targetType, "consultation"),
+			sql`CASE WHEN json_valid(${adminAudit.detail}) THEN json_extract(${adminAudit.detail}, '$.patientId') END = ${patientId}`,
+		),
+	);
 
 /**
  * Newest-first audit listing scoped to ONE patient record (P-086) —
@@ -445,41 +625,22 @@ export async function listTenantAuditEntries(
 export async function listPatientAuditEntries(
 	db: DbClient,
 	patientId: number,
-	options: { readonly limit?: number } = {},
+	options: AuditListQuery = {},
 ): Promise<AuditListResult> {
 	const limit = pageLimit(options.limit);
-	// `target_id` is TEXT while `consultations.id`/`detail.patientId`
-	// are integers — CAST keeps the comparison type-exact.
-	const scope = or(
-		and(eq(adminAudit.targetType, "patient"), eq(adminAudit.targetId, String(patientId))),
-		and(
-			eq(adminAudit.targetType, "consultation"),
-			inArray(
-				adminAudit.targetId,
-				db
-					.select({ id: sql<string>`CAST(${consultations.id} AS TEXT)` })
-					.from(consultations)
-					.where(eq(consultations.patientId, patientId)),
-			),
-		),
-		and(
-			eq(adminAudit.targetType, "consultation"),
-			// json_extract ERRORS on malformed JSON (unlike a NULL
-			// yield) — the CASE guards it; NULL detail → json_valid
-			// NULL → ELSE branch → no match.
-			sql`CASE WHEN json_valid(${adminAudit.detail}) THEN json_extract(${adminAudit.detail}, '$.patientId') END = ${patientId}`,
-		),
-	);
+	const offset = pageOffset(options.offset);
+	const where = and(patientAuditScope(db, patientId), auditListWhere(options));
 	const [entries, totals] = await Promise.all([
 		db
 			.select()
 			.from(adminAudit)
-			.where(scope)
+			.where(where)
 			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
-			.limit(limit),
-		db.select({ n: count() }).from(adminAudit).where(scope),
+			.limit(limit)
+			.offset(offset),
+		db.select({ n: count() }).from(adminAudit).where(where),
 	]);
-	return { entries, total: totals[0]?.n ?? 0, limit };
+	return { entries, total: totals[0]?.n ?? 0, limit, offset };
 }
 
 /**
@@ -527,27 +688,33 @@ export class Audit extends Context.Service<
 	Audit,
 	{
 		readonly record: (entry: AuditEntryInput) => Effect.Effect<void>;
-		readonly adminList: (options?: {
-			readonly limit?: number;
-		}) => Effect.Effect<AuditListResult, Forbidden>;
+		readonly adminList: (options?: AuditListQuery) => Effect.Effect<AuditListResult, Forbidden>;
 		/** Tamper-evident chain walk over the whole log — platform admins only. */
 		readonly adminVerify: () => Effect.Effect<AuditVerifyResult, Forbidden>;
+		/** Distinct filter values for the admin console's dropdowns. */
+		readonly adminFacets: () => Effect.Effect<AuditFacets, Forbidden>;
 		/** Whether the bound tenant may read its own activity feed —
 		 * false (fail closed) without tenant scope or Permissions. */
 		readonly activityAccess: () => Effect.Effect<boolean>;
 		/** Tenant-scoped newest-first feed; `Forbidden` when
 		 * {@link activityAccess} would be false. */
-		readonly activityList: (options?: {
-			readonly limit?: number;
-		}) => Effect.Effect<AuditListResult, Forbidden>;
+		readonly activityList: (options?: AuditListQuery) => Effect.Effect<AuditListResult, Forbidden>;
+		/** Distinct filter values within the bound tenant's feed. */
+		readonly activityFacets: () => Effect.Effect<AuditFacets, Forbidden>;
 		/** Patient-scoped newest-first feed (P-086): entries naming the
 		 * patient's own record across every tenant. `Forbidden` when the
 		 * optional {@link PatientAuditAccess} port is absent or denies —
 		 * fail closed, never tenant-scoped. */
-		readonly patientList: (options: {
+		readonly patientList: (
+			options: {
+				readonly patientId: number;
+			} & AuditListQuery,
+		) => Effect.Effect<AuditListResult, Forbidden>;
+		/** Distinct filter values within one patient's feed — same
+		 * `PatientAuditAccess` gate as {@link patientList}. */
+		readonly patientFacets: (options: {
 			readonly patientId: number;
-			readonly limit?: number;
-		}) => Effect.Effect<AuditListResult, Forbidden>;
+		}) => Effect.Effect<AuditFacets, Forbidden>;
 	}
 >()("@ktb/audit/Audit") {}
 
@@ -633,7 +800,7 @@ export const AuditLive = Layer.effect(
 					),
 				);
 			}),
-			adminList: Effect.fn("Audit.adminList")(function* (options?: { limit?: number }) {
+			adminList: Effect.fn("Audit.adminList")(function* (options?: AuditListQuery) {
 				yield* platformAdmin.requireAdmin();
 				return yield* Effect.promise(() => listAuditEntries(db, options));
 			}),
@@ -641,20 +808,32 @@ export const AuditLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				return yield* Effect.promise(() => verifyAuditChain(db));
 			}),
+			adminFacets: Effect.fn("Audit.adminFacets")(function* () {
+				yield* platformAdmin.requireAdmin();
+				return yield* Effect.promise(() => auditListFacets(db));
+			}),
 			activityAccess: Effect.fn("Audit.activityAccess")(function* () {
 				return (yield* activityScope) !== null;
 			}),
-			activityList: Effect.fn("Audit.activityList")(function* (options?: { limit?: number }) {
+			activityList: Effect.fn("Audit.activityList")(function* (options?: AuditListQuery) {
 				const scopeId = yield* activityScope;
 				if (scopeId === null) {
 					return yield* Effect.fail(new Forbidden({ path: "rbac.audit.read" }));
 				}
 				return yield* Effect.promise(() => listTenantAuditEntries(db, scopeId, options));
 			}),
-			patientList: Effect.fn("Audit.patientList")(function* (options: {
-				patientId: number;
-				limit?: number;
-			}) {
+			activityFacets: Effect.fn("Audit.activityFacets")(function* () {
+				const scopeId = yield* activityScope;
+				if (scopeId === null) {
+					return yield* Effect.fail(new Forbidden({ path: "rbac.audit.read" }));
+				}
+				return yield* Effect.promise(() => auditListFacets(db, eq(adminAudit.tenantId, scopeId)));
+			}),
+			patientList: Effect.fn("Audit.patientList")(function* (
+				options: {
+					patientId: number;
+				} & AuditListQuery,
+			) {
 				const access = yield* Effect.serviceOption(PatientAuditAccess);
 				if (Option.isNone(access)) {
 					return yield* Effect.fail(new Forbidden({ path: "audit.patient" }));
@@ -663,9 +842,22 @@ export const AuditLive = Layer.effect(
 				if (!allowed) {
 					return yield* Effect.fail(new Forbidden({ path: "audit.patient" }));
 				}
-				return yield* Effect.promise(() =>
-					listPatientAuditEntries(db, options.patientId, { limit: options.limit }),
-				);
+				const { patientId, ...query } = options;
+				return yield* Effect.promise(() => listPatientAuditEntries(db, patientId, query));
+			}),
+			patientFacets: Effect.fn("Audit.patientFacets")(function* (options: { patientId: number }) {
+				const access = yield* Effect.serviceOption(PatientAuditAccess);
+				if (Option.isNone(access)) {
+					return yield* Effect.fail(new Forbidden({ path: "audit.patient" }));
+				}
+				const allowed = yield* access.value.canView(options.patientId);
+				if (!allowed) {
+					return yield* Effect.fail(new Forbidden({ path: "audit.patient" }));
+				}
+				// Same patient scope as listPatientAuditEntries — the facet
+				// dropdowns must never offer values outside the feed.
+				const scope = patientAuditScope(db, options.patientId);
+				return yield* Effect.promise(() => auditListFacets(db, scope));
 			}),
 		});
 	}),
@@ -770,7 +962,7 @@ export const auditPanelPlugin = definePlugin({
 				loader: () =>
 					Effect.gen(function* () {
 						const audit = yield* Audit;
-						const empty: AuditListResult = { entries: [], total: 0, limit: 200 };
+						const empty: AuditListResult = { entries: [], total: 0, limit: 200, offset: 0 };
 						return yield* audit
 							.adminList()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
