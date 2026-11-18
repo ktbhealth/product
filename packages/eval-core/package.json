@@ -5,6 +5,9 @@
 	"exports": {
 		".": "./src/index.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"@ktb/kernel": "workspace:*",
 		"effect": "4.1.2"

@@ -2,6 +2,9 @@
 	"name": "@ktb/captcha-turnstile",
 	"private": true,
 	"type": "module",
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"exports": {
 		".": "./src/index.ts"
 	},

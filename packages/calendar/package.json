@@ -2,6 +2,9 @@
 	"name": "@ktb/calendar",
 	"private": true,
 	"type": "module",
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"exports": {
 		".": "./src/index.ts"
 	},

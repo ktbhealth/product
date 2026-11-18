@@ -5,6 +5,9 @@
 	"exports": {
 		".": "./src/index.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"@ktb/driver-framework": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",
