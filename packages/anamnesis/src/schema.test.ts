@@ -28,6 +28,13 @@ describe("anamnesis schema", () => {
 		expect(Option.isSome(decodeAnamnesisOption(withHistory))).toBe(true);
 	});
 
+	it("accepts every confidence literal", () => {
+		for (const confidence of ["alta", "media", "baixa"] as const) {
+			const input = { ...SAMPLE_ANAMNESIS, hda: { ...section, confidence } };
+			expect(decodeAnamnesis(input).hda.confidence).toBe(confidence);
+		}
+	});
+
 	it("rejects malformed anamnesis", () => {
 		expect(() => decodeAnamnesis({})).toThrow();
 		expect(() => decodeAnamnesis({ ...SAMPLE_ANAMNESIS, hda: { content: 1 } })).toThrow();
