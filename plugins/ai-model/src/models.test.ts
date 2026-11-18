@@ -3,14 +3,23 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Audit } from "@ktb/audit";
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { Tenant, type TenantRole } from "@ktb/tenant";
+import { Tenant, TenantForbidden, type TenantRole } from "@ktb/tenant";
 
-import { AI_MODEL_TEST_DDL, AiModels, AiModelsLive } from "./index.ts";
+import {
+	AI_MODEL_TEST_DDL,
+	aiModelPanelPlugin,
+	AiModels,
+	AiModelsLive,
+	aiModel,
+	ModelError,
+	type ModelCard,
+} from "./index.ts";
 
 const DDL = AI_MODEL_TEST_DDL;
 const TENANT_ID = 7;
@@ -255,5 +264,307 @@ describe("AiModels", () => {
 			asAdmin,
 		);
 		expect(only.map((c) => c.name)).toEqual(["ep5-model"]);
+	});
+
+	it("get returns the card for an existing row", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "get-me", modelId: "g/1" })),
+			asAdmin,
+		);
+		const fetched = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.get(card.id)),
+			asAdmin,
+		);
+		expect(fetched?.name).toBe("get-me");
+		expect(fetched?.capabilities).toEqual([]);
+	});
+
+	it("malformed capabilities JSON parses to [] and non-strings are dropped", async () => {
+		const rt = makeRuntime(db);
+		await db.insert(aiModel).values([
+			{
+				scope: "platform",
+				name: "bad-json",
+				modelId: "x",
+				capabilities: "{oops",
+				createdAt: new Date(),
+			},
+			{
+				scope: "platform",
+				name: "not-array",
+				modelId: "x",
+				capabilities: '{"a":1}',
+				createdAt: new Date(),
+			},
+			{
+				scope: "platform",
+				name: "mixed-caps",
+				modelId: "x",
+				capabilities: '["a",1,"b"]',
+				createdAt: new Date(),
+			},
+		]);
+		const rows = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.list()),
+			asAdmin,
+		);
+		const byName = new Map(rows.map((c) => [c.name, c.capabilities]));
+		expect(byName.get("bad-json")).toEqual([]);
+		expect(byName.get("not-array")).toEqual([]);
+		expect(byName.get("mixed-caps")).toEqual(["a", "b"]);
+	});
+
+	it("tenant scope mismatches fail with tenant-mismatch", async () => {
+		const rt = makeRuntime(db);
+		// Bound tenant (id 7) asking for a different tenant scope.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.list({ scope: "tenant", tenantId: 8 })),
+				asMember,
+			),
+		).rejects.toMatchObject({ reason: "tenant-mismatch" });
+		// No bound tenant at all.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.list({ scope: "tenant", tenantId: TENANT_ID })),
+				{ role: null, email: "nobody@x.com" },
+			),
+		).rejects.toMatchObject({ reason: "tenant-mismatch" });
+	});
+
+	it("scope 'tenant' without a tenantId falls back to platform scope", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) =>
+				m.create({ scope: "tenant", name: "no-tenant-id", modelId: "x" }),
+			),
+			asAdmin,
+		);
+		expect(card.scope).toBe("platform");
+		expect(card.tenantId).toBeNull();
+	});
+
+	it("update rejects empty fields and missing rows", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "guarded", modelId: "g/2" })),
+			asAdmin,
+		);
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.update({ id: card.id, name: "  " })),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.update({ id: card.id, modelId: " " })),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.update({ id: 999_999, name: "x" })),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "not-found" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.remove(999_999)),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "not-found" });
+		// Sparse update — enabled and every other optional field absent.
+		const renamed = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.update({ id: card.id, name: "guarded-2" })),
+			asAdmin,
+		);
+		expect(renamed.name).toBe("guarded-2");
+		expect(renamed.enabled).toBe(true);
+	});
+
+	it("update applies every optional field", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "full-edit", modelId: "f/1" })),
+			asAdmin,
+		);
+		const updated = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) =>
+				m.update({
+					id: card.id,
+					endpointId: 21,
+					name: "full-edit-2",
+					modelId: "f/2",
+					kind: "judge",
+					capabilities: ["judge", "chat"],
+					contextTokens: 4096,
+					costTier: "high",
+					isDefault: true,
+					enabled: false,
+				}),
+			),
+			asAdmin,
+		);
+		expect(updated.endpointId).toBe(21);
+		expect(updated.name).toBe("full-edit-2");
+		expect(updated.modelId).toBe("f/2");
+		expect(updated.kind).toBe("judge");
+		expect(updated.capabilities).toEqual(["judge", "chat"]);
+		expect(updated.contextTokens).toBe(4096);
+		expect(updated.costTier).toBe("high");
+		expect(updated.isDefault).toBe(true);
+		expect(updated.enabled).toBe(false);
+	});
+
+	it("list()/resolveDefault() default to platform scope; misses resolve to null", async () => {
+		const rt = makeRuntime(db);
+		const listed = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.list()),
+			asAdmin,
+		);
+		expect(listed.length).toBeGreaterThan(0);
+		// The flagged platform default wins.
+		const def = await run(
+			rt,
+			Effect.flatMap(AiModels, (m) => m.resolveDefault()),
+			asAdmin,
+		);
+		expect(def?.isDefault).toBe(true);
+		// Endpoint filter that matches nothing → null.
+		expect(
+			await run(
+				rt,
+				Effect.flatMap(AiModels, (m) =>
+					m.resolveDefault({ scope: "platform", endpointId: 424_242 }),
+				),
+				asAdmin,
+			),
+		).toBeNull();
+		// Tenant scope with rows but no flagged default → null.
+		expect(
+			await run(
+				rt,
+				Effect.flatMap(AiModels, (m) => m.resolveDefault({ scope: "tenant", tenantId: TENANT_ID })),
+				asMember,
+			),
+		).toBeNull();
+	});
+
+	it("records audit entries for platform and tenant scopes when Audit is present", async () => {
+		const entries: { action: string; targetType: string; tenantId: number | null }[] = [];
+		const auditStub = {
+			record: (entry: { action: string; targetType: string; tenantId?: number | null }) =>
+				Effect.sync(() => {
+					entries.push({
+						action: entry.action,
+						targetType: entry.targetType,
+						tenantId: entry.tenantId ?? null,
+					});
+				}),
+		} as unknown as Audit["Service"];
+		// serviceOption reads the ambient context — provide Audit per call.
+		const withAudit = <A, E>(effect: Effect.Effect<A, E, AiModels>) =>
+			effect.pipe(Effect.provideService(Audit, auditStub));
+		const rt = makeRuntime(db);
+		const platform = await run(
+			rt,
+			withAudit(
+				Effect.flatMap(AiModels, (m) => m.create({ name: "audit-platform", modelId: "a/1" })),
+			),
+			asAdmin,
+		);
+		await run(
+			rt,
+			withAudit(
+				Effect.flatMap(AiModels, (m) =>
+					m.create({
+						scope: "tenant",
+						tenantId: TENANT_ID,
+						name: "audit-tenant",
+						modelId: "a/2",
+					}),
+				),
+			),
+			asTenantAdmin,
+		);
+		await run(rt, withAudit(Effect.flatMap(AiModels, (m) => m.resolve(platform.id))));
+		const actions = entries.map((e) => e.action);
+		for (const expected of ["ai-model.create", "ai-model.create", "ai-model.resolve"]) {
+			expect(actions).toContain(expected);
+		}
+		// Platform rows record tenantId null; tenant rows record the numeric id.
+		const creates = entries.filter((e) => e.action === "ai-model.create");
+		expect(creates.map((e) => e.tenantId).sort()).toEqual([null, TENANT_ID].sort());
+		await rt.dispose();
+	});
+});
+
+describe("aiModelPanelPlugin page", () => {
+	it("guard mirrors PlatformAdmin and loader lists platform models", async () => {
+		const page = aiModelPanelPlugin.panel!.pages![0]!;
+		expect(page.path).toBe("/platform/ai/models");
+		const rt = makeRuntime(makeDb(makeD1(DDL)));
+		const gate = makePlatformAdminGate(parsePlatformAdminEmails(ADMIN_EMAIL));
+		const provideCaller = <A, E, R>(effect: Effect.Effect<A, E, R>, email: string) =>
+			effect.pipe(
+				Effect.provideService(Principal, { userId: "u1", email }),
+				Effect.provideService(PlatformAdmin, gate),
+				Effect.provideService(Tenant, {
+					id: TENANT_ID,
+					kind: "clinic",
+					slug: "clinic-7",
+					role: "member" as TenantRole,
+				}),
+			);
+		const allowed = await rt.runPromise(
+			provideCaller(page.guard!() as Effect.Effect<boolean>, ADMIN_EMAIL),
+		);
+		expect(allowed).toBe(true);
+		const loaded = await rt.runPromise(
+			provideCaller(page.loader!() as Effect.Effect<readonly ModelCard[]>, ADMIN_EMAIL),
+		);
+		expect(Array.isArray(loaded)).toBe(true);
+		// Non-admin callers: guard denies, loader degrades to [].
+		expect(
+			await rt.runPromise(provideCaller(page.guard!() as Effect.Effect<boolean>, USER_EMAIL)),
+		).toBe(false);
+		expect(
+			await rt.runPromise(
+				provideCaller(page.loader!() as Effect.Effect<readonly ModelCard[]>, USER_EMAIL),
+			),
+		).toEqual([]);
+		await rt.dispose();
+	});
+
+	it("loader collapses ModelError, TenantForbidden and Forbidden to []", async () => {
+		const page = aiModelPanelPlugin.panel!.pages![0]!;
+		const loader = page.loader!() as Effect.Effect<readonly ModelCard[]>;
+		const stub = (err: ModelError | TenantForbidden | Forbidden) =>
+			({ list: () => Effect.fail(err) }) as unknown as AiModels["Service"];
+		for (const err of [
+			new ModelError({ reason: "not-found" }),
+			new TenantForbidden({ path: "ai-model.member", role: null, required: "admin" }),
+			new Forbidden({ path: "platform.admin" }),
+		]) {
+			const out = await Effect.runPromise(loader.pipe(Effect.provideService(AiModels, stub(err))));
+			expect(out).toEqual([]);
+		}
 	});
 });

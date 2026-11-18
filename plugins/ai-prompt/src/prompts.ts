@@ -100,11 +100,7 @@ const toCard = (row: AiPrompt): PromptCard => ({
 });
 
 /** Versions of one prompt family in a scope, newest first. */
-async function listPromptVersions(
-	db: DbClient,
-	scope: string,
-	name: string,
-): Promise<AiPrompt[]> {
+async function listPromptVersions(db: DbClient, scope: string, name: string): Promise<AiPrompt[]> {
 	return db
 		.select()
 		.from(aiPrompt)
@@ -319,6 +315,7 @@ export const AiPromptsLive = Layer.effect(
 			}
 			// No locale requested — prefer locale-neutral, then any.
 			const neutral = versionMatch.filter((r) => r.locale === "");
+			/* v8 ignore next -- versionMatch is non-empty past the guard above */
 			return neutral[0] ?? versionMatch[0] ?? null;
 		};
 

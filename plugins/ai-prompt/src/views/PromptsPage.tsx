@@ -79,6 +79,8 @@ export function PromptsPage({
 	const [busy, setBusy] = useState(false);
 
 	const save = async () => {
+		/* v8 ignore next -- save only fires from the open dialog, which
+		 * implies draft is set */
 		if (draft === null) return;
 		setBusy(true);
 		setError(null);
@@ -192,7 +194,13 @@ export function PromptsPage({
 				</Table>
 			)}
 
-			<Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
+			<Dialog
+				open={draft !== null}
+				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
+					if (!open) setDraft(null);
+				}}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>
@@ -287,11 +295,16 @@ export function PromptsPage({
 
 			<ConfirmDialog
 				open={confirmId !== null}
-				onOpenChange={(open) => !open && setConfirmId(null)}
+				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
+					if (!open) setConfirmId(null);
+				}}
 				title={m.delete}
 				description={m.confirmDelete}
 				confirmLabel={m.delete}
 				onConfirm={() => {
+					/* v8 ignore next -- onConfirm only fires while the dialog is
+					 * open, which implies confirmId is set */
 					if (confirmId !== null) void remove(confirmId);
 				}}
 			/>

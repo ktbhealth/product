@@ -162,7 +162,7 @@ const DOMAINS = [
 		owner: "`plugins/eval-validator`",
 		description:
 			"Eval run tracking — step 3 of the eval pipeline: runs over a generation instance's approved items, per-sample metrics and diffs.",
-		tables: ["eval_run", "eval_run_sample"],
+		tables: ["eval_run", "eval_run_sample", "eval_run_record"],
 	},
 	{
 		id: "ai-endpoints",

@@ -101,6 +101,8 @@ export function ModelsPage({
 	const [busy, setBusy] = useState(false);
 
 	const save = async () => {
+		/* v8 ignore next -- the Save button only renders inside the dialog,
+		 * which is only mounted while draft is set */
 		if (draft === null) return;
 		setBusy(true);
 		setError(null);
@@ -196,7 +198,13 @@ export function ModelsPage({
 				</Table>
 			)}
 
-			<Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
+			<Dialog
+				open={draft !== null}
+				onOpenChange={(open) => {
+					/* v8 ignore next -- controlled dialog only ever reports close */
+					if (!open) setDraft(null);
+				}}
+			>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>{draft?.id === null ? m.add : m.edit}</DialogTitle>
@@ -302,6 +310,8 @@ export function ModelsPage({
 				description={m.confirmDelete}
 				confirmLabel={m.delete}
 				onConfirm={() => {
+					/* v8 ignore next -- onConfirm only fires while the dialog is
+					 * open, which implies confirmId is set */
 					if (confirmId !== null) void remove(confirmId);
 				}}
 			/>
