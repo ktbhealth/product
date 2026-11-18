@@ -72,10 +72,10 @@ const STATUS_LABEL: Record<AgentLinkStatus, keyof AiEndpointMessages> = {
 
 /** Colored liveness dot inside the status badge — one hue per state. */
 const STATUS_DOT: Record<AgentLinkStatus, string> = {
-	waiting: "bg-amber-500",
-	connected: "bg-emerald-500",
-	offline: "bg-zinc-400",
-	expired: "bg-orange-500",
+	waiting: "bg-warning",
+	connected: "bg-success",
+	offline: "bg-muted-foreground",
+	expired: "bg-info",
 	revoked: "bg-destructive",
 };
 

@@ -21,13 +21,13 @@ import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { AdminConsultationRow } from "../queries.ts";
 
 const CONSULTATION_TONE: Record<string, string> = {
-	live: "bg-amber-50 text-amber-700 ring-amber-200",
+	live: "bg-warning/10 text-warning ring-warning/20",
 	done: "bg-primary/10 text-primary ring-primary/20",
 };
 
 const STAT_TONES = {
 	consultations: "bg-primary/10 text-primary",
-	live: "bg-amber-500/10 text-amber-600",
+	live: "bg-warning/10 text-warning",
 } as const;
 
 /** Grid-cell-sized stat card — same markup the dashboard shell uses for

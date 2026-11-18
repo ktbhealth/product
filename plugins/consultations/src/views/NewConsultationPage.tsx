@@ -884,7 +884,7 @@ export function NewConsultationPage({
 						className={`ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs ${
 							consented
 								? "bg-primary/10 text-primary ring-1 ring-primary/20"
-								: "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+								: "bg-warning/10 text-warning ring-1 ring-warning/20"
 						}`}
 					>
 						<Checkbox
@@ -927,11 +927,13 @@ export function NewConsultationPage({
 									onClick={toggleDictation}
 									disabled={!supported || !consented}
 									className={`h-auto gap-3 rounded-full px-6 py-3 text-sm font-semibold ${
-										dictating ? "bg-red-600 text-white hover:bg-red-700" : ""
+										dictating
+											? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+											: ""
 									}`}
 								>
 									<span
-										className={`size-3 rounded-full ${dictating ? "animate-pulse bg-white" : "bg-white/70"}`}
+										className={`size-3 rounded-full ${dictating ? "animate-pulse bg-destructive-foreground" : "bg-destructive-foreground/70"}`}
 									/>
 									{dictating ? nc.stopDictation(fmtElapsed(elapsedSec)) : nc.startDictation}
 								</Button>
@@ -941,12 +943,12 @@ export function NewConsultationPage({
 									</p>
 								) : null}
 								{!consented ? (
-									<Alert className="border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+									<Alert className="border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
 										{nc.consentRequiredDictation}
 									</Alert>
 								) : null}
 								{!supported ? (
-									<p className="text-xs text-amber-600">{nc.unsupportedBrowser}</p>
+									<p className="text-xs text-warning">{nc.unsupportedBrowser}</p>
 								) : null}
 							</div>
 						) : source === "upload" ? (
@@ -976,12 +978,12 @@ export function NewConsultationPage({
 										onClick={toggleRecording}
 										disabled={!supported || !consented}
 										className={`h-auto flex-col items-start rounded-xl p-3 text-left ${
-											recording ? "border-red-300 bg-red-50" : ""
+											recording ? "border-destructive/30 bg-destructive/10" : ""
 										}`}
 									>
 										<span className="flex items-center gap-2 text-sm font-medium">
 											{recording ? (
-												<span className="size-2.5 animate-pulse rounded-full bg-red-600" />
+												<span className="size-2.5 animate-pulse rounded-full bg-destructive" />
 											) : (
 												<span className="size-2.5 rounded-full bg-muted-foreground" />
 											)}
@@ -997,12 +999,12 @@ export function NewConsultationPage({
 										onClick={toggleTabCapture}
 										disabled={!consented}
 										className={`h-auto flex-col items-start rounded-xl p-3 text-left ${
-											tabRecording ? "border-red-300 bg-red-50" : ""
+											tabRecording ? "border-destructive/30 bg-destructive/10" : ""
 										}`}
 									>
 										<span className="flex items-center gap-2 text-sm font-medium">
 											{tabRecording ? (
-												<span className="size-2.5 animate-pulse rounded-full bg-red-600" />
+												<span className="size-2.5 animate-pulse rounded-full bg-destructive" />
 											) : (
 												<span className="size-2.5 rounded-full bg-muted-foreground" />
 											)}
@@ -1014,14 +1016,14 @@ export function NewConsultationPage({
 									</Button>
 								</div>
 								{!consented ? (
-									<Alert className="border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+									<Alert className="border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
 										{nc.consentRequiredRecording}
 									</Alert>
 								) : (
 									<p className="text-[11px] text-muted-foreground">{nc.recordingTip}</p>
 								)}
 								{!supported ? (
-									<p className="text-xs text-amber-600">{nc.unsupportedBrowser}</p>
+									<p className="text-xs text-warning">{nc.unsupportedBrowser}</p>
 								) : null}
 							</>
 						) : (
@@ -1052,7 +1054,7 @@ export function NewConsultationPage({
 								{liveId ? (
 									<p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
 										{liveStatus === "live" ? (
-											<span className="size-2 animate-pulse rounded-full bg-red-600" />
+											<span className="size-2 animate-pulse rounded-full bg-destructive" />
 										) : (
 											<span className="size-2 rounded-full bg-primary" />
 										)}
@@ -1074,8 +1076,8 @@ export function NewConsultationPage({
 								</span>
 							) : null}
 							{live ? (
-								<span className="flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-red-700">
-									<span className="size-2 animate-pulse rounded-full bg-red-600" />
+								<span className="flex items-center gap-1.5 rounded-full bg-destructive/10 px-2.5 py-1 text-destructive">
+									<span className="size-2 animate-pulse rounded-full bg-destructive" />
 									{nc.recordingSpeak}
 								</span>
 							) : null}

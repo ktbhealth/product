@@ -47,6 +47,14 @@
  *   edges — use `@ktb/<pkg>/<subpath>` instead. `schema.ts` is exempt
  *   (drizzle-kit's CJS resolver cannot follow `@ktb/*` specifiers —
  *   T-143), as are `*.gen.*` aggregations and `*.test.*` files.
+ * - `ktb-arch/no-hardcoded-colors` — string literals in UI source may
+ *   not contain hardcoded color utilities: Tailwind palette shades
+ *   (`bg-red-500`, `text-amber-700`, `border-l-amber-400`, incl. variant
+ *   prefixes like `dark:`/`hover:`), arbitrary color values
+ *   (`bg-[#fff]`, `text-[oklch(…)]`) and literal `white`/`black` fills.
+ *   All color must come from theme tokens (`bg-primary`,
+ *   `text-destructive`, `bg-warning/10`, …) so runtime themes and the
+ *   engine's WCAG foreground pairs stay authoritative.
  */
 
 import { PROVIDER_LITERAL_PATTERNS } from "./arch-policy.mjs";
@@ -632,6 +640,52 @@ const packageBoundary = {
 	},
 };
 
+// --- ktb-arch/no-hardcoded-colors -----------------------------------------
+// Matches a hardcoded color utility inside any string: optional variant
+// prefixes (dark:, hover:…), a color-capable utility prefix, then either
+// a palette shade (red-500), an arbitrary color value ([#fff],
+// [oklch(…)]), or literal white/black — with optional /opacity.
+const PALETTE_NAME =
+	"(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)";
+const COLOR_UTILITY_RE = new RegExp(
+	"(?:^|[\\s\"'`{(:])" +
+		"(?:[a-zA-Z-]+:)*" +
+		"(?:bg|text|border(?:-[tblrxyse])?|ring|fill|stroke|from|via|to|divide|outline|decoration|caret|accent|shadow|placeholder)-" +
+		"(?:" +
+		`${PALETTE_NAME}-\\d{2,3}` +
+		"|\\[(?:#|oklch|oklab|rgb|hsl|hwb|lab|lch|color-mix)[^\\]]*\\]" +
+		"|white|black" +
+		")" +
+		"(?:\\/[\\d.]+%?)?" +
+		"(?![\\w-])",
+);
+
+const COLOR_MESSAGE =
+	"hardcoded color utility — use theme tokens (bg-primary, text-foreground, bg-destructive, bg-warning/10, …) so runtime themes and WCAG foreground pairs stay automatic (ktb-arch/no-hardcoded-colors)";
+
+const noHardcodedColors = {
+	create(context) {
+		const check = (node, value) => {
+			if (typeof value !== "string" || !COLOR_UTILITY_RE.test(value)) return;
+			context.report({ node, message: COLOR_MESSAGE });
+		};
+		return {
+			Literal(node) {
+				check(node, node.value);
+			},
+			TemplateLiteral(node) {
+				for (const quasi of node.quasis ?? []) {
+					const cooked = quasi.value?.cooked ?? quasi.value?.raw;
+					if (typeof cooked === "string" && COLOR_UTILITY_RE.test(cooked)) {
+						context.report({ node: quasi, message: COLOR_MESSAGE });
+						return;
+					}
+				}
+			},
+		};
+	},
+};
+
 export default {
 	meta: { name: "ktb-arch" },
 	rules: {
@@ -643,5 +697,6 @@ export default {
 		"plugin-route-gate": pluginRouteGate,
 		"plugin-api-route-gate": pluginApiRouteGate,
 		"package-boundary": packageBoundary,
+		"no-hardcoded-colors": noHardcodedColors,
 	},
 };

@@ -17,7 +17,7 @@ export interface IntegrityBadgeLabels {
 /** Status → badge tone + icon (same ring-tone vocabulary as the record views). */
 const TONES = {
 	verified: "bg-primary/10 text-primary ring-primary/20",
-	tampered: "bg-red-50 text-red-700 ring-red-200",
+	tampered: "bg-destructive/10 text-destructive ring-destructive/20",
 	unversioned: "bg-muted text-muted-foreground ring-border",
 } as const;
 

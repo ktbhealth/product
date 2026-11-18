@@ -52,8 +52,8 @@ function BrowserFrame({ children }: { children: React.ReactNode }) {
 		<div className="overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
 			<div className="flex items-center gap-3 border-b border-border bg-muted/60 px-4 py-2.5">
 				<div className="flex gap-1.5">
-					<span className="size-2.5 rounded-full bg-red-400" />
-					<span className="size-2.5 rounded-full bg-amber-400" />
+					<span className="size-2.5 rounded-full bg-destructive" />
+					<span className="size-2.5 rounded-full bg-warning" />
 					<span className="size-2.5 rounded-full bg-primary" />
 				</div>
 				<div className="mx-auto flex w-full max-w-xs items-center justify-center rounded-md bg-background px-3 py-1 text-[11px] text-muted-foreground">
@@ -90,7 +90,7 @@ function ProductMock({ t }: { readonly t: AudienceMessages }) {
 							<p className="mt-0.5 text-muted-foreground">{t.mock_q2}</p>
 						</div>
 						<div className="flex items-center gap-1.5 pt-1">
-							<span className="size-2 animate-pulse rounded-full bg-red-500" />
+							<span className="size-2 animate-pulse rounded-full bg-destructive" />
 							<span className="text-xs text-muted-foreground">{t.mock_recording}</span>
 						</div>
 					</div>
@@ -117,10 +117,10 @@ function ProductMock({ t }: { readonly t: AudienceMessages }) {
 							<p className="mt-1 text-sm">{t.mock_cc_text}</p>
 							<p className="mt-1 text-[11px] text-muted-foreground">{t.mock_cc_evidence}</p>
 						</div>
-						<div className="rounded-lg border border-border border-l-4 border-l-amber-400 bg-card p-3">
+						<div className="rounded-lg border border-border border-l-4 border-l-warning bg-card p-3">
 							<div className="flex items-center justify-between gap-2">
 								<span className="text-xs font-semibold">{t.mock_meds}</span>
-								<Badge className="bg-amber-50 text-[10px] text-amber-700 ring-1 ring-amber-200 hover:bg-amber-50">
+								<Badge className="bg-warning/10 text-[10px] text-warning ring-1 ring-warning/20 hover:bg-warning/15">
 									{t.mock_conf_med}
 								</Badge>
 							</div>
@@ -239,7 +239,7 @@ export function AudienceLanding({ locale, i18n }: LandingPageProps) {
 	];
 	const anamChips = [
 		{ t: t.mock_cc, c: t.mock_conf_high_short, cls: "border-l-primary" },
-		{ t: t.feat_hpi, c: t.mock_conf_med_short, cls: "border-l-amber-400" },
+		{ t: t.feat_hpi, c: t.mock_conf_med_short, cls: "border-l-warning" },
 	];
 	return (
 		<div className="space-y-24">
@@ -512,7 +512,7 @@ export function AudienceLanding({ locale, i18n }: LandingPageProps) {
 				<div className="relative overflow-hidden rounded-3xl bg-primary px-8 py-14 text-center text-primary-foreground">
 					<div
 						aria-hidden
-						className="absolute -top-24 left-1/2 h-48 w-[36rem] -translate-x-1/2 rounded-full bg-white/10 blur-3xl"
+						className="absolute -top-24 left-1/2 h-48 w-[36rem] -translate-x-1/2 rounded-full bg-primary-foreground/10 blur-3xl"
 					/>
 					<div className="relative">
 						<h2 className="text-2xl font-bold tracking-tight sm:text-3xl">{t.home_cta_title}</h2>

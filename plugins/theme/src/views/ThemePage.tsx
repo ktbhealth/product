@@ -206,6 +206,9 @@ function PaletteStrip({ tokens }: { tokens: ReturnType<typeof deriveThemeTokens>
 		"--border",
 		"--ring",
 		"--destructive",
+		"--success",
+		"--warning",
+		"--info",
 	] as const;
 	return (
 		<div className="flex flex-wrap gap-2">
@@ -544,7 +547,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 								</SelectContent>
 							</Select>
 							{delivery === "google-fonts" ? (
-								<p className="text-xs text-amber-600">{t.fontsGoogleWarning}</p>
+								<p className="text-xs text-warning">{t.fontsGoogleWarning}</p>
 							) : null}
 						</div>
 						<div className="grid grid-cols-3 gap-2">

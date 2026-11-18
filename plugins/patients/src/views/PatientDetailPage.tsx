@@ -274,7 +274,7 @@ export function PatientDetailPage({
 			</div>
 
 			{!locked && !record.birthDate ? (
-				<Alert className="mt-5 border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+				<Alert className="mt-5 border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
 					{t.detail.incomplete}{" "}
 					<Link to={portalPath(`/patients/${id}/edit`)} className="font-medium underline">
 						{t.detail.completeRecord}

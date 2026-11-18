@@ -146,6 +146,24 @@ const runProgramRule = (ruleName, filename, body) => {
 	check("provider-lockin flags provider literals", ctx.reports.length === 2);
 }
 
+// no-hardcoded-colors: palette utilities, arbitrary color values and
+// literal white/black fills are banned; theme tokens pass.
+{
+	const ctx = makeContext("plugins/demo/src/views/x.tsx");
+	const visitor = plugin.rules["no-hardcoded-colors"].create(ctx);
+	visitor.Literal(literal("flex bg-red-50 text-red-700 ring-red-200"));
+	visitor.Literal(literal("dark:hover:bg-amber-200/50"));
+	visitor.Literal(literal("bg-[#fff] text-[oklch(0.5_0.1_200)]"));
+	visitor.Literal(literal("bg-white text-black"));
+	visitor.Literal(literal("flex bg-primary/10 text-foreground border-l-warning"));
+	visitor.Literal(literal("ring-1 ring-border size-4"));
+	visitor.TemplateLiteral({
+		type: "TemplateLiteral",
+		quasis: [{ type: "TemplateElement", value: { cooked: "px-2 bg-emerald-500" } }],
+	});
+	check("no-hardcoded-colors flags palette/arbitrary/white-black", ctx.reports.length === 5);
+}
+
 // client-contract: client.ts manifests may only value-import allowlisted
 // modules; type imports are exempt.
 {
