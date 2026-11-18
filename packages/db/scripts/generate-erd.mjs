@@ -210,6 +210,14 @@ const DOMAINS = [
 			"Runtime data collections — plugins contribute schemas as data (document.collection kind); registry of collections plus JSON document records with tenant/owner fencing.",
 		tables: ["document_collections", "document_records"],
 	},
+	{
+		id: "wizards",
+		title: "Wizards",
+		owner: "`plugins/wizards`",
+		description:
+			"Declarative wizard definitions (steps, conditions, completion targets) and their per-owner run state.",
+		tables: ["wizard_defs", "wizard_runs"],
+	},
 ];
 
 const TABLE_DOMAIN = new Map(DOMAINS.flatMap((d) => d.tables.map((t) => [t, d.id])));

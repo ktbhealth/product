@@ -1504,7 +1504,43 @@ export type I18nKey =
 	| "users.suspendDescription"
 	| "users.suspendTitle"
 	| "users.title"
-	| "users.yes";
+	| "users.yes"
+	| "wizards.abandon"
+	| "wizards.abandonedDescription"
+	| "wizards.abandonedTitle"
+	| "wizards.adminDescription"
+	| "wizards.adminTitle"
+	| "wizards.back"
+	| "wizards.cancel"
+	| "wizards.codeDefsHeading"
+	| "wizards.codeDefsHint"
+	| "wizards.completedDescription"
+	| "wizards.completedTitle"
+	| "wizards.confirmDelete"
+	| "wizards.continueLabel"
+	| "wizards.defsHeading"
+	| "wizards.deleted"
+	| "wizards.deleteLabel"
+	| "wizards.editDef"
+	| "wizards.emptyDefs"
+	| "wizards.fieldDefinition"
+	| "wizards.fieldDescription"
+	| "wizards.fieldKey"
+	| "wizards.fieldPublished"
+	| "wizards.fieldTitle"
+	| "wizards.invalidJson"
+	| "wizards.loading"
+	| "wizards.newDef"
+	| "wizards.notFoundDescription"
+	| "wizards.notFoundTitle"
+	| "wizards.publishedBadge"
+	| "wizards.runError"
+	| "wizards.save"
+	| "wizards.saved"
+	| "wizards.saveFailed"
+	| "wizards.stepProgress"
+	| "wizards.submit"
+	| "wizards.unpublishedBadge";
 
 /** Per-key parameter shapes — the compile-time half of the contract. */
 export interface I18nTypedT {
@@ -3443,6 +3479,48 @@ export interface I18nTypedT {
 	(key: "users.suspendTitle"): Effect.Effect<string>;
 	(key: "users.title"): Effect.Effect<string>;
 	(key: "users.yes"): Effect.Effect<string>;
+	(key: "wizards.abandon"): Effect.Effect<string>;
+	(key: "wizards.abandonedDescription"): Effect.Effect<string>;
+	(key: "wizards.abandonedTitle"): Effect.Effect<string>;
+	(key: "wizards.adminDescription"): Effect.Effect<string>;
+	(key: "wizards.adminTitle"): Effect.Effect<string>;
+	(key: "wizards.back"): Effect.Effect<string>;
+	(key: "wizards.cancel"): Effect.Effect<string>;
+	(key: "wizards.codeDefsHeading"): Effect.Effect<string>;
+	(key: "wizards.codeDefsHint"): Effect.Effect<string>;
+	(key: "wizards.completedDescription"): Effect.Effect<string>;
+	(key: "wizards.completedTitle"): Effect.Effect<string>;
+	(key: "wizards.confirmDelete"): Effect.Effect<string>;
+	(key: "wizards.continueLabel"): Effect.Effect<string>;
+	(key: "wizards.defsHeading"): Effect.Effect<string>;
+	(key: "wizards.deleted"): Effect.Effect<string>;
+	(key: "wizards.deleteLabel"): Effect.Effect<string>;
+	(key: "wizards.editDef"): Effect.Effect<string>;
+	(key: "wizards.emptyDefs"): Effect.Effect<string>;
+	(key: "wizards.fieldDefinition"): Effect.Effect<string>;
+	(key: "wizards.fieldDescription"): Effect.Effect<string>;
+	(key: "wizards.fieldKey"): Effect.Effect<string>;
+	(key: "wizards.fieldPublished"): Effect.Effect<string>;
+	(key: "wizards.fieldTitle"): Effect.Effect<string>;
+	(key: "wizards.invalidJson"): Effect.Effect<string>;
+	(key: "wizards.loading"): Effect.Effect<string>;
+	(key: "wizards.newDef"): Effect.Effect<string>;
+	(key: "wizards.notFoundDescription"): Effect.Effect<string>;
+	(key: "wizards.notFoundTitle"): Effect.Effect<string>;
+	(key: "wizards.publishedBadge"): Effect.Effect<string>;
+	(key: "wizards.runError"): Effect.Effect<string>;
+	(key: "wizards.save"): Effect.Effect<string>;
+	(key: "wizards.saved"): Effect.Effect<string>;
+	(key: "wizards.saveFailed"): Effect.Effect<string>;
+	(
+		key: "wizards.stepProgress",
+		params: {
+			current: unknown;
+			total: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "wizards.submit"): Effect.Effect<string>;
+	(key: "wizards.unpublishedBadge"): Effect.Effect<string>;
 	/** Fallback for keys added to the manifest after this file was
 	 * generated (CI drift check should prevent this). */
 	(key: I18nKey, params?: Record<string, unknown>): Effect.Effect<string>;

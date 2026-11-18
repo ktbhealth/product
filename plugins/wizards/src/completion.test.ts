@@ -71,6 +71,8 @@ describe("runCompletion", () => {
 			find: () => Effect.die("unused"),
 			update: () => Effect.die("unused"),
 			delete: () => Effect.die("unused"),
+			batch: () => Effect.die("unused"),
+			migrateCollection: () => Effect.die("unused"),
 		};
 		const payload = await Effect.runPromise(
 			runCompletion(docCompletion, ctx).pipe(

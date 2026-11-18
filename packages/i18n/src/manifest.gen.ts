@@ -5056,6 +5056,124 @@ export const I18N_MANIFEST = {
 			template: "Showing {shown} of {total}",
 		},
 	},
+	wizards: {
+		notFoundTitle: {
+			params: [],
+		},
+		notFoundDescription: {
+			params: [],
+		},
+		loading: {
+			params: [],
+		},
+		runError: {
+			params: [],
+		},
+		stepProgress: {
+			params: [
+				{
+					name: "current",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "Step {current} of {total}",
+		},
+		back: {
+			params: [],
+		},
+		continueLabel: {
+			params: [],
+		},
+		submit: {
+			params: [],
+		},
+		abandon: {
+			params: [],
+		},
+		completedTitle: {
+			params: [],
+		},
+		completedDescription: {
+			params: [],
+		},
+		abandonedTitle: {
+			params: [],
+		},
+		abandonedDescription: {
+			params: [],
+		},
+		adminTitle: {
+			params: [],
+		},
+		adminDescription: {
+			params: [],
+		},
+		defsHeading: {
+			params: [],
+		},
+		codeDefsHeading: {
+			params: [],
+		},
+		codeDefsHint: {
+			params: [],
+		},
+		emptyDefs: {
+			params: [],
+		},
+		fieldKey: {
+			params: [],
+		},
+		fieldTitle: {
+			params: [],
+		},
+		fieldDescription: {
+			params: [],
+		},
+		fieldDefinition: {
+			params: [],
+		},
+		fieldPublished: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		deleteLabel: {
+			params: [],
+		},
+		newDef: {
+			params: [],
+		},
+		editDef: {
+			params: [],
+		},
+		confirmDelete: {
+			params: [],
+		},
+		invalidJson: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		unpublishedBadge: {
+			params: [],
+		},
+		publishedBadge: {
+			params: [],
+		},
+	},
 } as const;
 export const I18N_BASE_LOCALES = ["en", "es", "pt-BR"] as const;
 export const I18N_BASE_CATALOG = {
