@@ -1,13 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { EventBus, type EventBusShape, makeEventBus } from "@effect-server-utils/cqrs";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { ConsultationsLive } from "@ktb/consultations";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { consultations } from "@ktb/db/schema";
 import { eq } from "drizzle-orm";
-import { PatientsQueriesLive } from "@ktb/patients";
+import { Patients, PatientsQueriesLive } from "@ktb/patients";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant, type Tenant as TenantScope } from "@ktb/tenant";
 import * as Effect from "effect/Effect";
@@ -615,6 +615,56 @@ describe("agenda plugins", () => {
 		const out = await Effect.runPromise(
 			load("/portal/doctor/agenda") as unknown as Effect.Effect<unknown>,
 		);
+		expect(out).toEqual({ appointments: [], patients: [] });
+	});
+
+	const runLoader = (
+		appointments: Record<string, unknown>,
+		patients?: Record<string, unknown>,
+	) => {
+		const page = (agendaPagesPlugin.pages ?? [])[0]!;
+		const load = page.loader! as unknown as Effect.Effect<unknown, unknown, unknown>;
+		let eff = load("/portal/doctor/agenda").pipe(
+			Effect.provideService(Principal, { userId: "u1", email: "d@x.com" }),
+			Effect.provideService(Appointments, appointments as never),
+		);
+		if (patients !== undefined) {
+			eff = eff.pipe(Effect.provideService(Patients, patients as never));
+		}
+		return Effect.runPromise(eff);
+	};
+
+	it("loader aggregates appointments and patient names for a principal", async () => {
+		const out = (await runLoader(
+			{
+				dispatchDueReminders: () => Effect.fail(new Forbidden({ path: "agenda.reminders" })),
+				list: () =>
+					Effect.succeed([
+						{ id: 9, patientId: 1, ownerId: "u1", status: "scheduled", startsAt: new Date() },
+					]),
+			},
+			{ list: () => Effect.succeed([{ id: 1, name: "Paciente Um" }]) },
+		)) as { appointments: unknown[]; patients: { id: number; name: string }[] };
+		expect(out.patients).toEqual([{ id: 1, name: "Paciente Um" }]);
+		expect(out.appointments).toHaveLength(1);
+	});
+
+	it("loader degrades to empty lists on Forbidden and absent Patients", async () => {
+		const out = (await runLoader({
+			dispatchDueReminders: () => Effect.succeed(0),
+			list: () => Effect.fail(new Forbidden({ path: "agenda.list" })),
+		})) as { appointments: unknown[]; patients: unknown[] };
+		expect(out).toEqual({ appointments: [], patients: [] });
+	});
+
+	it("loader empties patients when the patients list is Forbidden", async () => {
+		const out = (await runLoader(
+			{
+				dispatchDueReminders: () => Effect.succeed(0),
+				list: () => Effect.succeed([]),
+			},
+			{ list: () => Effect.fail(new Forbidden({ path: "patients.list" })) },
+		)) as { appointments: unknown[]; patients: unknown[] };
 		expect(out).toEqual({ appointments: [], patients: [] });
 	});
 });

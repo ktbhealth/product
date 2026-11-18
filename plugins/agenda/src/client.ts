@@ -2,7 +2,7 @@ import { CalendarClockIcon } from "lucide-react";
 
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 
-import { AgendaPortalPage } from "./views/index.ts";
+import { AgendaPortalPage } from "./views/AgendaPage.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
