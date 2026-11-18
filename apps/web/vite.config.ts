@@ -1,5 +1,10 @@
 /// <reference types="vitest/config" />
+import { realpathSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { searchForWorkspaceRoot } from "vite";
 
 // @tanstack/router-generator evaluates the virtual route config
 // (src/routes.ts) through jiti, which only enables babel's JSX/TSX
@@ -42,7 +47,30 @@ export default defineConfig(({ command, isPreview }) => {
 	// the local D1 binding. Build/preview are unaffected.
 	const nodeDev =
 		process.env.KTB_DEV_NODE === "1" && command === "serve" && !isPreview && !process.env.VITEST;
+
+	// loro-crdt's `browser` build loads its .wasm via sync XHR from a URL
+	// derived from import.meta.url. Under bun's isolated linker the package
+	// realpath lives in the global package cache — outside the workspace
+	// root — so Vite's fs.allow default 403s the request. Resolve the real
+	// package dir from the plugin that owns the dep and allow it explicitly.
+	const loroPkgDir = (() => {
+		try {
+			const req = createRequire(new URL("../../plugins/i18n/package.json", import.meta.url));
+			return dirname(realpathSync(req.resolve("loro-crdt/package.json")));
+		} catch {
+			return null;
+		}
+	})();
+
 	return {
+		server: {
+			fs: {
+				allow: [
+					searchForWorkspaceRoot(fileURLToPath(new URL(".", import.meta.url))),
+					...(loroPkgDir === null ? [] : [loroPkgDir]),
+				],
+			},
+		},
 		resolve: {
 			tsconfigPaths: true,
 			dedupe: ["react", "react-dom"],
