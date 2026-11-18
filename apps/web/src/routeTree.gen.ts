@@ -18,6 +18,7 @@ import { Route as platformRouteImport } from './routes/platform'
 import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRouteImport } from './../../../plugins/auth/src/routes/reset-password'
 import { Route as verifyEmailRouteImport } from './routes/verify-email'
 import { Route as ApiBotsRouteImport } from './../../../plugins/consultations/src/api-routes/bots'
+import { Route as ApiDocumentsRouteImport } from './../../../plugins/api/src/api-routes/documents'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiJobsRouteImport } from './../../../plugins/jobs/src/api-routes/jobs'
 import { Route as ApiMetricsRouteImport } from './routes/api/metrics'
@@ -47,6 +48,7 @@ import { Route as ApiAiDotbridgeRouteImport } from './../../../plugins/ai-endpoi
 import { Route as ApiAuthDotsplatRouteImport } from './../../../plugins/auth/src/api-routes/auth.$'
 import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consultations/src/api-routes/bots.webhook'
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'
+import { Route as ApiDocumentsDotsplatRouteImport } from './../../../plugins/api/src/api-routes/documents.$'
 import { Route as ApiThemeDotassetsRouteImport } from './../../../plugins/theme/src/api-routes/theme.assets'
 import { Route as ApiThemeDotfontsRouteImport } from './../../../plugins/theme/src/api-routes/theme.fonts'
 import { Route as PatientsIdIndexRouteImport } from './../../../plugins/patients/src/routes/$id/index'
@@ -103,6 +105,11 @@ const verifyEmailRoute = verifyEmailRouteImport.update({
 const ApiBotsRoute = ApiBotsRouteImport.update({
   id: '/api/bots',
   path: '/api/bots',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiDocumentsRoute = ApiDocumentsRouteImport.update({
+  id: '/api/documents',
+  path: '/api/documents',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHealthRoute = ApiHealthRouteImport.update({
@@ -254,6 +261,11 @@ const ApiCdnSplatRoute = ApiCdnSplatRouteImport.update({
   path: '/api/cdn/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDocumentsDotsplatRoute = ApiDocumentsDotsplatRouteImport.update({
+  id: '/$',
+  path: '/$',
+  getParentRoute: () => ApiDocumentsRoute,
+} as any)
 const ApiThemeDotassetsRoute = ApiThemeDotassetsRouteImport.update({
   id: '/api/theme/assets',
   path: '/api/theme/assets',
@@ -321,6 +333,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
+  '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
   '/api/jobs': typeof ApiJobsRoute
   '/api/metrics': typeof ApiMetricsRoute
@@ -350,6 +363,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
+  '/api/documents/$': typeof ApiDocumentsDotsplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
@@ -370,6 +384,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
+  '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
   '/api/jobs': typeof ApiJobsRoute
   '/api/metrics': typeof ApiMetricsRoute
@@ -399,6 +414,7 @@ export interface FileRoutesByTo {
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
+  '/api/documents/$': typeof ApiDocumentsDotsplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
@@ -421,6 +437,7 @@ export interface FileRoutesById {
   '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
+  '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
   '/api/jobs': typeof ApiJobsRoute
   '/api/metrics': typeof ApiMetricsRoute
@@ -450,6 +467,7 @@ export interface FileRoutesById {
   '/api/auth/$': typeof ApiAuthDotsplatRoute
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
+  '/api/documents/$': typeof ApiDocumentsDotsplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
@@ -473,6 +491,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/verify-email'
     | '/api/bots'
+    | '/api/documents'
     | '/api/health'
     | '/api/jobs'
     | '/api/metrics'
@@ -502,6 +521,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
+    | '/api/documents/$'
     | '/api/theme/assets'
     | '/api/theme/fonts'
     | '/patients/$id/edit'
@@ -522,6 +542,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/verify-email'
     | '/api/bots'
+    | '/api/documents'
     | '/api/health'
     | '/api/jobs'
     | '/api/metrics'
@@ -551,6 +572,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
+    | '/api/documents/$'
     | '/api/theme/assets'
     | '/api/theme/fonts'
     | '/patients/$id/edit'
@@ -572,6 +594,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/verify-email'
     | '/api/bots'
+    | '/api/documents'
     | '/api/health'
     | '/api/jobs'
     | '/api/metrics'
@@ -601,6 +624,7 @@ export interface FileRouteTypes {
     | '/api/auth/$'
     | '/api/bots/webhook'
     | '/api/cdn/$'
+    | '/api/documents/$'
     | '/api/theme/assets'
     | '/api/theme/fonts'
     | '/patients/$id/edit'
@@ -623,6 +647,7 @@ export interface RootRouteChildren {
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   verifyEmailRoute: typeof verifyEmailRoute
   ApiBotsRoute: typeof ApiBotsRouteWithChildren
+  ApiDocumentsRoute: typeof ApiDocumentsRouteWithChildren
   ApiHealthRoute: typeof ApiHealthRoute
   ApiJobsRoute: typeof ApiJobsRoute
   ApiMetricsRoute: typeof ApiMetricsRoute
@@ -724,6 +749,13 @@ declare module '@tanstack/react-router' {
       path: '/api/bots'
       fullPath: '/api/bots'
       preLoaderRoute: typeof ApiBotsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/documents': {
+      id: '/api/documents'
+      path: '/api/documents'
+      fullPath: '/api/documents'
+      preLoaderRoute: typeof ApiDocumentsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/health': {
@@ -929,6 +961,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiCdnSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/documents/$': {
+      id: '/api/documents/$'
+      path: '/$'
+      fullPath: '/api/documents/$'
+      preLoaderRoute: typeof ApiDocumentsDotsplatRouteImport
+      parentRoute: typeof ApiDocumentsRoute
+    }
     '/api/theme/assets': {
       id: '/api/theme/assets'
       path: '/api/theme/assets'
@@ -1027,6 +1066,18 @@ const ApiBotsRouteChildren: ApiBotsRouteChildren = {
 const ApiBotsRouteWithChildren =
   ApiBotsRoute._addFileChildren(ApiBotsRouteChildren)
 
+interface ApiDocumentsRouteChildren {
+  ApiDocumentsDotsplatRoute: typeof ApiDocumentsDotsplatRoute
+}
+
+const ApiDocumentsRouteChildren: ApiDocumentsRouteChildren = {
+  ApiDocumentsDotsplatRoute: ApiDocumentsDotsplatRoute,
+}
+
+const ApiDocumentsRouteWithChildren = ApiDocumentsRoute._addFileChildren(
+  ApiDocumentsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   splatRoute: splatRoute,
@@ -1039,6 +1090,7 @@ const rootRouteChildren: RootRouteChildren = {
     DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute,
   verifyEmailRoute: verifyEmailRoute,
   ApiBotsRoute: ApiBotsRouteWithChildren,
+  ApiDocumentsRoute: ApiDocumentsRouteWithChildren,
   ApiHealthRoute: ApiHealthRoute,
   ApiJobsRoute: ApiJobsRoute,
   ApiMetricsRoute: ApiMetricsRoute,

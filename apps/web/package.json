@@ -30,6 +30,7 @@
 		"@ktb/ai-bridge": "workspace:*",
 		"@ktb/ai-endpoints": "workspace:*",
 		"@ktb/anamnesis": "workspace:*",
+		"@ktb/api": "workspace:*",
 		"@ktb/app-host": "workspace:*",
 		"@ktb/audience": "workspace:*",
 		"@ktb/audit": "workspace:*",
