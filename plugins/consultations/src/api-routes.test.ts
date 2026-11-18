@@ -1,13 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -16,7 +16,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
-import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { fhirR4Exporter } from "@ktb/interop-fhir";
@@ -29,7 +28,6 @@ import {
 	createPatient,
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
-import { setServerRuntime } from "@ktb/server-fns";
 import { Tenant } from "@ktb/tenant";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
@@ -153,36 +151,34 @@ const fakeBucket = {
 
 const runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
 
+/** Host-runtime overrides shared by every published runtime variant —
+ * a tenant-bound variant (zk gate tests) swaps the ManagedRuntime in
+ * temporarily via `publishRuntime`. */
+const runtimeOverrides = {
+	audio: fakeBucket,
+	jobs: {
+		enqueue: async (kind: string, payload: unknown, options?: unknown) => {
+			jobsSent.push({ kind, payload, options });
+		},
+	},
+	ai: {
+		run: async () => ({ text: "transcrição do servidor" }),
+	},
+	recordExporters: { "fhir-r4": fhirR4Exporter, openehr: openEhrExporter },
+	pluginEnabled: async () => pluginGate.enabled,
+};
+
 /** Publish a ManagedRuntime as the host runtime — a tenant-bound
  * variant (zk gate tests) swaps this in temporarily. */
-const publishRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, unknown>) =>
-	setServerRuntime({
-		run: (effect) => rt.runPromise(effect),
-		runAs: (user, effect) =>
-			rt.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
-			),
-		audio: fakeBucket,
-		jobs: {
-			enqueue: async (kind: string, payload: unknown, options?: unknown) => {
-				jobsSent.push({ kind, payload, options });
-			},
-		},
-		ai: {
-			run: async () => ({ text: "transcrição do servidor" }),
-		},
-		recordExporters: { "fhir-r4": fhirR4Exporter, openehr: openEhrExporter },
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
-		pluginEnabled: async () => pluginGate.enabled,
-	});
+const publishRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
+	installServerFnRuntime(rt, authStub, runtimeOverrides);
 
 beforeAll(() => {
 	publishRuntime(runtime);
 });
 
 const useSession = (key: string) => {
-	headers.current = new Headers({ cookie: `session=${key}` });
+	serverFnRequestHeaders.current = new Headers({ cookie: `session=${key}` });
 };
 
 describe("plugin enable gate (createPluginApiRoute)", () => {
@@ -229,14 +225,14 @@ describe("GET /api/transcribe", () => {
 		} as never);
 
 	it("rejects unauthenticated requests and missing audio", async () => {
-		const saved = headers.current;
-		headers.current = new Headers();
+		const saved = serverFnRequestHeaders.current;
+		serverFnRequestHeaders.current = new Headers();
 		try {
 			const form = new FormData();
 			form.set("audio", new File([new Uint8Array([1, 2, 3])], "a.wav"));
 			expect((await post(form)).status).toBe(401);
 		} finally {
-			headers.current = saved;
+			serverFnRequestHeaders.current = saved;
 		}
 
 		useSession("owner");
@@ -285,10 +281,10 @@ describe("GET /api/consultations/:id/pdf", () => {
 		expect((await get("99999")).status).toBe(404);
 		expect((await get("abc")).status).toBe(404);
 
-		const saved = headers.current;
-		headers.current = new Headers();
+		const saved = serverFnRequestHeaders.current;
+		serverFnRequestHeaders.current = new Headers();
 		expect((await get("1")).status).toBe(404);
-		headers.current = saved;
+		serverFnRequestHeaders.current = saved;
 
 		// Another user's consultation → service Forbidden → 404.
 		const foreign = (await createConsultation(db, { userId: "u-owner", source: "mic" }))!;
@@ -357,14 +353,14 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 
 	it("rejects unauthenticated upload and download", async () => {
 		useSession("owner");
-		const saved = headers.current;
-		headers.current = new Headers();
+		const saved = serverFnRequestHeaders.current;
+		serverFnRequestHeaders.current = new Headers();
 		try {
 			const up = await post(1, new Uint8Array([1]), "audio/webm");
 			expect(up.status).toBe(401);
 			expect((await get(1)).status).toBe(401);
 		} finally {
-			headers.current = saved;
+			serverFnRequestHeaders.current = saved;
 		}
 	});
 
@@ -569,10 +565,10 @@ describe("GET /api/patients/:id/export", () => {
 	});
 
 	it("answers 404 for anonymous callers, bad ids, missing and foreign patients", async () => {
-		const saved = headers.current;
-		headers.current = new Headers();
+		const saved = serverFnRequestHeaders.current;
+		serverFnRequestHeaders.current = new Headers();
 		expect((await call(String(patientId), "fhir-r4")).status).toBe(404);
-		headers.current = saved;
+		serverFnRequestHeaders.current = saved;
 
 		useSession("owner");
 		expect((await call("abc", "fhir-r4")).status).toBe(404);

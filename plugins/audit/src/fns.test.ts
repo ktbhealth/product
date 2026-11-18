@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -11,16 +13,7 @@ const mocks = vi.hoisted(() => ({
 // Same fake as the sibling plugin fns tests: handlers run as plain
 // async fns; `runAs` executes the Effect for real so the
 // serviceOption/Forbidden branches are exercised.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const api = {
-			validator: () => api,
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (call?: { data?: unknown }) =>
-				h(call ?? {}),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktb/server-fns", () => ({
 	getSessionUser: mocks.getSessionUser,
 	runAs: mocks.runAs,

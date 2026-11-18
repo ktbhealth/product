@@ -1,17 +1,11 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { reactStartMock } from "@ktb/server-fns/testing";
 import type { Json } from "effect/Schema";
 
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const chain = {
-			validator: () => chain,
-			handler: (h: unknown) => h,
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 vi.mock("@tanstack/react-router", () => ({
 	Link: ({ to, children, ...props }: Record<string, unknown>) => (

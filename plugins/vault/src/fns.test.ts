@@ -1,32 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
-import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 import { Tenant, type TenantRole } from "@ktb/tenant";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -55,15 +43,6 @@ import {
 const DDL = `${VAULT_TEST_DDL}
 INSERT INTO groups (id, name, slug, kind) VALUES (7, 'Clinic A', 'clinic-a', 'clinic');
 `;
-
-const sessionFor = (email: string | null) =>
-	email === null
-		? null
-		: {
-				user: { id: `id-${email}`, email, name: email },
-				sessionId: "s1",
-				expiresAt: new Date(Date.now() + 3600_000),
-			};
 
 const TENANT_FOR = (role: TenantRole | null) =>
 	role === null ? null : { id: 7, kind: "clinic", slug: "clinic-a", role };
@@ -94,29 +73,28 @@ describe("vault fns", () => {
 		).pipe(Layer.provideMerge(secretsEnv)) as unknown as Layer.Layer<unknown, never, never>;
 		const services = Layer.mergeAll(servicesLayer(vaultServicesPlugin), secretsLayer);
 		runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
-		const auth = Auth.of({
-			setUserBanned: async () => {},
-			getSession: async () => sessionFor(currentEmail) as never,
-		});
-		setServerRuntime({
-			run: (effect) => runtime.runPromise(effect.pipe(Effect.provideService(Auth, auth))),
-			runAs: (user, effect) =>
-				runtime.runPromise(
-					effect.pipe(
-						Effect.provideService(Principal, {
-							userId: user.id,
-							email: user.email,
-						}),
-						Effect.provideService(Tenant, TENANT_FOR(currentRole)),
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => sessionUser(currentEmail)),
+			{
+				// runAs also binds the request Tenant — TENANT_FOR(currentRole)
+				// is mutable per test, so it cannot be a layer.
+				runAs: (user, effect) =>
+					runtime.runPromise(
+						effect.pipe(
+							Effect.provideService(Principal, {
+								userId: user.id,
+								email: user.email,
+							}),
+							Effect.provideService(Tenant, TENANT_FOR(currentRole)),
+						),
 					),
-				),
-			audioTranscribeModel: "test-model",
-			getLocale: () => "en",
-		});
+			},
+		);
 	});
 
 	afterAll(() => {
-		resetServerRuntime();
+		resetServerFnRuntime();
 		return runtime.dispose();
 	});
 

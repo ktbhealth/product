@@ -44,20 +44,25 @@ interface ServerFnChain {
  * including when the fn is invoked with no arg at all, mirroring how
  * production decodes `undefined` input.
  */
-const createServerFnStub = (_options?: unknown): ServerFnChain => {
+const createServerFnStub = (options?: Record<string, unknown>): ServerFnChain => {
 	let validate: ((x: unknown) => unknown) | undefined;
 	const chain: ServerFnChain = {
 		validator: (v) => {
 			validate = v;
 			return chain;
 		},
-		handler: (h) => async (arg?: { data?: unknown }) =>
-			// The validator always runs — even on a missing arg — so
-			// `fn()` decodes `undefined` exactly like production.
-			h({
-				...(arg ?? {}),
-				data: validate === undefined ? arg?.data : validate(arg?.data),
-			}),
+		handler: (h) => {
+			const call = async (arg?: { data?: unknown }) =>
+				// The validator always runs — even on a missing arg — so
+				// `fn()` decodes `undefined` exactly like production.
+				h({
+					...(arg ?? {}),
+					data: validate === undefined ? arg?.data : validate(arg?.data),
+				});
+			// Real server fns expose their createServerFn options (e.g.
+			// `.method`) on the callable — tests assert on them.
+			return Object.assign(call, options ?? {});
+		},
 	};
 	return chain;
 };
@@ -116,27 +121,42 @@ export const stubAuth = (read: () => Session | null | Promise<Session | null>): 
  *
  * Pair with `resetServerFnRuntime()` in `afterAll`.
  */
-export const installServerFnRuntime = (
-	runtime: ManagedRuntime.ManagedRuntime<unknown, never>,
+export const installServerFnRuntime = <R, E>(
+	runtime: ManagedRuntime.ManagedRuntime<R, E>,
 	auth: AuthShape,
 	overrides: Partial<ServerRuntime> = {},
 ): void => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect.pipe(Effect.provideService(Auth, auth))),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(
-					Effect.provideService(Principal, {
-						userId: user.id,
-						email: user.email,
-						actorId: user.actorId,
-					}),
-				),
-			),
-		audioTranscribeModel: "test-model",
-		getLocale: () => "en",
-		...overrides,
-	});
+	// ManagedRuntime is invariant in its service set — widen once so any
+	// composed runtime is accepted; the effects below only require the
+	// services the runtime itself provides.
+	const rt = runtime as unknown as ManagedRuntime.ManagedRuntime<unknown, never>;
+	// defineProperties (not a spread) so accessor overrides stay lazy —
+	// e.g. a test's `get jobs()` flag probe must re-read on every
+	// `getServerRuntime()` access, not freeze at install time.
+	setServerRuntime(
+		Object.defineProperties(
+			{
+				run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+					rt.runPromise(effect.pipe(Effect.provideService(Auth, auth))),
+				runAs: <A, E>(
+					user: { readonly id: string; readonly email?: string; readonly actorId?: string },
+					effect: Effect.Effect<A, E, unknown>,
+				) =>
+					rt.runPromise(
+						effect.pipe(
+							Effect.provideService(Principal, {
+								userId: user.id,
+								email: user.email,
+								actorId: user.actorId,
+							}),
+						),
+					),
+				audioTranscribeModel: "test-model",
+				getLocale: () => "en",
+			} satisfies ServerRuntime,
+			Object.getOwnPropertyDescriptors(overrides),
+		),
+	);
 };
 
 /** Drop the registered runtime — convenience wrapper for `afterAll`. */

@@ -31,6 +31,8 @@ describe("reactStartMock", () => {
 
 		await expect(fn({ data: 42 })).resolves.toBe("ok");
 		expect(seen).toEqual([{ wrapped: 42 }]);
+		// createServerFn options ride on the callable, like production.
+		expect((fn as unknown as { method: string }).method).toBe("POST");
 	});
 
 	it("passes a bare {} arg and skips validation when no validator ran", async () => {
@@ -110,6 +112,31 @@ describe("installServerFnRuntime", () => {
 			expect(getServerRuntime().getLocale()).toBe("pt-BR");
 			await expect(getServerRuntime().pluginEnabled?.("pkg.on")).resolves.toBe(true);
 			await expect(getServerRuntime().pluginEnabled?.("pkg.off")).resolves.toBe(false);
+		} finally {
+			resetServerFnRuntime();
+			await runtime.dispose();
+		}
+	});
+
+	it("keeps accessor overrides lazy — getters re-read on every access", async () => {
+		const runtime = ManagedRuntime.make(Layer.empty) as unknown as ManagedRuntime.ManagedRuntime<
+			unknown,
+			never
+		>;
+		let flag = false;
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get jobs() {
+					return flag ? { enqueue: async () => ({}) } : undefined;
+				},
+			},
+		);
+		try {
+			expect(getServerRuntime().jobs).toBeUndefined();
+			flag = true;
+			expect(getServerRuntime().jobs).toBeDefined();
 		} finally {
 			resetServerFnRuntime();
 			await runtime.dispose();

@@ -1,25 +1,24 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
+
 const flags = { noBucket: false, noQueue: false };
 const ai = vi.hoisted(() => ({
 	current: undefined as { run: (m: string, i: unknown) => Promise<unknown> } | undefined,
 }));
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
-import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
@@ -30,7 +29,6 @@ import {
 	createPatient,
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
-import { setServerRuntime } from "@ktb/server-fns";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
@@ -144,16 +142,11 @@ const jobs = {
 const runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
 
 const useSession = (key: string) => {
-	headers.current = new Headers({ cookie: `session=${key}` });
+	serverFnRequestHeaders.current = new Headers({ cookie: `session=${key}` });
 };
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
-			),
+	installServerFnRuntime(runtime, authStub, {
 		get audio() {
 			return flags.noBucket ? undefined : fakeBucket;
 		},
@@ -163,8 +156,6 @@ beforeAll(() => {
 		get ai() {
 			return ai.current;
 		},
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
 	});
 	useSession("owner");
 });

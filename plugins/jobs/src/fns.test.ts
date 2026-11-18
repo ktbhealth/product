@@ -1,26 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -28,7 +17,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
-import { Forbidden, Principal } from "@ktb/authz";
+import { Forbidden } from "@ktb/authz";
 import {
 	attachAudioRecord,
 	ConsultationsLive,
@@ -41,7 +30,7 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { PatientsCommandsLive, PatientsQueriesLive } from "@ktb/patients";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { resetServerRuntime, setServerRuntime, type JobsEnqueuer } from "@ktb/server-fns";
+import type { JobsEnqueuer } from "@ktb/server-fns";
 
 import { retryAudioJobFn } from "./fns.ts";
 
@@ -126,30 +115,17 @@ const jobs: JobsEnqueuer = {
 };
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(
-					Effect.provideService(Principal, {
-						userId: user.id,
-						email: user.email,
-					}),
-				),
-			),
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
-		jobs,
-	});
+	installServerFnRuntime(runtime, authStub, { jobs });
 });
 
 afterAll(async () => {
-	resetServerRuntime();
+	resetServerFnRuntime();
 	await runtime.dispose();
 });
 
 const useSession = (key: string | null) => {
-	headers.current = key === null ? new Headers() : new Headers({ cookie: `session=${key}` });
+	serverFnRequestHeaders.current =
+		key === null ? new Headers() : new Headers({ cookie: `session=${key}` });
 };
 
 const audioStatusOf = async (id: number) =>
@@ -250,21 +226,7 @@ describe("retryAudioJobFn", () => {
 		await attachAudioRecord(db, id, { audioKey: "k-noqueue", size: 1 });
 		await failAudioJob(db, id, "boom");
 		// Swap the registry entry for a runtime without the jobs port.
-		resetServerRuntime();
-		setServerRuntime({
-			run: (effect) => runtime.runPromise(effect),
-			runAs: (user, effect) =>
-				runtime.runPromise(
-					effect.pipe(
-						Effect.provideService(Principal, {
-							userId: user.id,
-							email: user.email,
-						}),
-					),
-				),
-			getLocale: () => "en",
-			audioTranscribeModel: "test-model",
-		});
+		installServerFnRuntime(runtime, authStub);
 		try {
 			expect(await retryAudioJobFn({ data: { consultationId: id } })).toEqual({
 				ok: false,
@@ -272,21 +234,7 @@ describe("retryAudioJobFn", () => {
 			});
 			expect(await audioStatusOf(id)).toBe("failed");
 		} finally {
-			setServerRuntime({
-				run: (effect) => runtime.runPromise(effect),
-				runAs: (user, effect) =>
-					runtime.runPromise(
-						effect.pipe(
-							Effect.provideService(Principal, {
-								userId: user.id,
-								email: user.email,
-							}),
-						),
-					),
-				getLocale: () => "en",
-				audioTranscribeModel: "test-model",
-				jobs,
-			});
+			installServerFnRuntime(runtime, authStub, { jobs });
 		}
 	});
 
