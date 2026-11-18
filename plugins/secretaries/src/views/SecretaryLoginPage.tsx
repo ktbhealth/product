@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
+import { ForgotPasswordLink } from "@ktb/auth-plugin/views";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
@@ -162,7 +163,10 @@ export function SecretaryLoginPage({
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="password">{t.password}</Label>
+							<div className="flex items-center justify-between">
+								<Label htmlFor="password">{t.password}</Label>
+								{mode === "in" ? <ForgotPasswordLink>{t.forgotLink}</ForgotPasswordLink> : null}
+							</div>
 							<Input
 								id="password"
 								type="password"

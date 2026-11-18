@@ -37,6 +37,32 @@ export interface AuthMessages {
 	readonly errorPasswordMismatch: string;
 	readonly verifyLink: string;
 	readonly secretaryLink: string;
+	readonly forgotLink: string;
+	/** /forgot-password — asks for the account email and mails a
+	 * single-use reset link. */
+	readonly forgotMetaTitle: string;
+	readonly forgotHeading: string;
+	readonly forgotDesc: string;
+	readonly forgotSubmit: string;
+	/** Neutral confirmation — identical whether or not the address has
+	 * an account, so the page never reveals registrations. */
+	readonly forgotSent: string;
+	/** Shown instead of the form when the deployment cannot send email. */
+	readonly forgotUnavailable: string;
+	/** /reset-password — the emailed link lands here with `?token=`. */
+	readonly resetMetaTitle: string;
+	readonly resetHeading: string;
+	readonly resetDesc: string;
+	readonly newPassword: string;
+	readonly resetSubmit: string;
+	readonly resetDoneHeading: string;
+	readonly resetDoneDesc: string;
+	/** Invalid/expired/absent token — offers a fresh reset request. */
+	readonly resetInvalidHeading: string;
+	readonly resetInvalidDesc: string;
+	readonly resetRequestNew: string;
+	readonly resetError: string;
+	readonly backToSignIn: string;
 }
 
 const en: AuthMessages = {
@@ -59,6 +85,25 @@ const en: AuthMessages = {
 	errorPasswordMismatch: "Passwords do not match.",
 	verifyLink: "Didn't get the verification email?",
 	secretaryLink: "I am a secretary",
+	forgotLink: "Forgot your password?",
+	forgotMetaTitle: "Reset password | KTB Health",
+	forgotHeading: "Reset your password",
+	forgotDesc: "Enter your account email and we will send you a reset link.",
+	forgotSubmit: "Send reset link",
+	forgotSent: "If this address has an account, a reset link is on its way.",
+	forgotUnavailable: "Password reset is not available on this deployment.",
+	resetMetaTitle: "Choose a new password | KTB Health",
+	resetHeading: "Choose a new password",
+	resetDesc: "Enter and confirm your new password.",
+	newPassword: "New password",
+	resetSubmit: "Update password",
+	resetDoneHeading: "Password updated",
+	resetDoneDesc: "Sign in with your new password to continue.",
+	resetInvalidHeading: "Invalid reset link",
+	resetInvalidDesc: "This password reset link is invalid or has expired. Request a new one.",
+	resetRequestNew: "Request a new link",
+	resetError: "Could not update the password. The link may have expired — request a new one.",
+	backToSignIn: "Back to sign in",
 };
 
 const ptBR: AuthMessages = {
@@ -81,6 +126,25 @@ const ptBR: AuthMessages = {
 	errorPasswordMismatch: "As senhas não coincidem.",
 	verifyLink: "Não recebeu o e-mail de verificação?",
 	secretaryLink: "Sou secretária",
+	forgotLink: "Esqueci minha senha",
+	forgotMetaTitle: "Redefinir senha | KTB Health",
+	forgotHeading: "Redefina sua senha",
+	forgotDesc: "Informe o e-mail da sua conta e enviaremos um link para redefinir a senha.",
+	forgotSubmit: "Enviar link de redefinição",
+	forgotSent: "Se este endereço tiver uma conta, um link de redefinição está a caminho.",
+	forgotUnavailable: "A redefinição de senha não está disponível nesta instalação.",
+	resetMetaTitle: "Escolha uma nova senha | KTB Health",
+	resetHeading: "Escolha uma nova senha",
+	resetDesc: "Digite e confirme sua nova senha.",
+	newPassword: "Nova senha",
+	resetSubmit: "Atualizar senha",
+	resetDoneHeading: "Senha atualizada",
+	resetDoneDesc: "Entre com sua nova senha para continuar.",
+	resetInvalidHeading: "Link inválido",
+	resetInvalidDesc: "Este link de redefinição é inválido ou expirou. Peça um novo.",
+	resetRequestNew: "Pedir novo link",
+	resetError: "Não foi possível atualizar a senha. O link pode ter expirado — peça um novo.",
+	backToSignIn: "Voltar para entrar",
 };
 
 const es: AuthMessages = {
@@ -103,6 +167,26 @@ const es: AuthMessages = {
 	errorPasswordMismatch: "Las contraseñas no coinciden.",
 	verifyLink: "¿No recibiste el correo de verificación?",
 	secretaryLink: "Soy secretaria",
+	forgotLink: "Olvidé mi contraseña",
+	forgotMetaTitle: "Restablecer contraseña | KTB Health",
+	forgotHeading: "Restablece tu contraseña",
+	forgotDesc: "Ingresa el correo de tu cuenta y te enviaremos un enlace para restablecerla.",
+	forgotSubmit: "Enviar enlace",
+	forgotSent: "Si esta dirección tiene una cuenta, un enlace de restablecimiento está en camino.",
+	forgotUnavailable: "El restablecimiento de contraseña no está disponible en este despliegue.",
+	resetMetaTitle: "Elige una nueva contraseña | KTB Health",
+	resetHeading: "Elige una nueva contraseña",
+	resetDesc: "Ingresa y confirma tu nueva contraseña.",
+	newPassword: "Nueva contraseña",
+	resetSubmit: "Actualizar contraseña",
+	resetDoneHeading: "Contraseña actualizada",
+	resetDoneDesc: "Inicia sesión con tu nueva contraseña para continuar.",
+	resetInvalidHeading: "Enlace inválido",
+	resetInvalidDesc: "Este enlace de restablecimiento es inválido o expiró. Solicita uno nuevo.",
+	resetRequestNew: "Solicitar un nuevo enlace",
+	resetError:
+		"No se pudo actualizar la contraseña. El enlace pudo haber expirado — solicita uno nuevo.",
+	backToSignIn: "Volver a iniciar sesión",
 };
 
 const CATALOGS: Record<AuthLocale, AuthMessages> = { en, "pt-BR": ptBR, es };

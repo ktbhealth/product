@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as indexRouteImport } from './routes/index'
 import { Route as splatRouteImport } from './routes/$'
 import { Route as captureTestRouteImport } from './routes/capture-test'
+import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRouteImport } from './../../../plugins/auth/src/routes/forgot-password'
 import { Route as loginRouteImport } from './routes/login'
 import { Route as platformRouteImport } from './routes/platform'
+import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRouteImport } from './../../../plugins/auth/src/routes/reset-password'
 import { Route as verifyEmailRouteImport } from './routes/verify-email'
 import { Route as ApiBotsRouteImport } from './../../../plugins/consultations/src/api-routes/bots'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -71,6 +73,12 @@ const captureTestRoute = captureTestRouteImport.update({
   path: '/capture-test',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute =
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRouteImport.update({
+    id: '/forgot-password',
+    path: '/forgot-password',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const loginRoute = loginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -81,6 +89,12 @@ const platformRoute = platformRouteImport.update({
   path: '/platform',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute =
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRouteImport.update({
+    id: '/reset-password',
+    path: '/reset-password',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const verifyEmailRoute = verifyEmailRouteImport.update({
   id: '/verify-email',
   path: '/verify-email',
@@ -301,8 +315,10 @@ export interface FileRoutesByFullPath {
   '/': typeof indexRoute
   '/$': typeof splatRoute
   '/capture-test': typeof captureTestRoute
+  '/forgot-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
   '/login': typeof loginRoute
   '/platform': typeof platformRouteWithChildren
+  '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
@@ -349,7 +365,9 @@ export interface FileRoutesByTo {
   '/': typeof indexRoute
   '/$': typeof splatRoute
   '/capture-test': typeof captureTestRoute
+  '/forgot-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
   '/login': typeof loginRoute
+  '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
@@ -397,8 +415,10 @@ export interface FileRoutesById {
   '/': typeof indexRoute
   '/$': typeof splatRoute
   '/capture-test': typeof captureTestRoute
+  '/forgot-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
   '/login': typeof loginRoute
   '/platform': typeof platformRouteWithChildren
+  '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
@@ -447,8 +467,10 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/capture-test'
+    | '/forgot-password'
     | '/login'
     | '/platform'
+    | '/reset-password'
     | '/verify-email'
     | '/api/bots'
     | '/api/health'
@@ -495,7 +517,9 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/capture-test'
+    | '/forgot-password'
     | '/login'
+    | '/reset-password'
     | '/verify-email'
     | '/api/bots'
     | '/api/health'
@@ -542,8 +566,10 @@ export interface FileRouteTypes {
     | '/'
     | '/$'
     | '/capture-test'
+    | '/forgot-password'
     | '/login'
     | '/platform'
+    | '/reset-password'
     | '/verify-email'
     | '/api/bots'
     | '/api/health'
@@ -591,8 +617,10 @@ export interface RootRouteChildren {
   indexRoute: typeof indexRoute
   splatRoute: typeof splatRoute
   captureTestRoute: typeof captureTestRoute
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
   loginRoute: typeof loginRoute
   platformRoute: typeof platformRouteWithChildren
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
   verifyEmailRoute: typeof verifyEmailRoute
   ApiBotsRoute: typeof ApiBotsRouteWithChildren
   ApiHealthRoute: typeof ApiHealthRoute
@@ -656,6 +684,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof captureTestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forgot-password': {
+      id: '/forgot-password'
+      path: '/forgot-password'
+      fullPath: '/forgot-password'
+      preLoaderRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -668,6 +703,13 @@ declare module '@tanstack/react-router' {
       path: '/platform'
       fullPath: '/platform'
       preLoaderRoute: typeof platformRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reset-password': {
+      id: '/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/verify-email': {
@@ -989,8 +1031,12 @@ const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   splatRoute: splatRoute,
   captureTestRoute: captureTestRoute,
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute:
+    DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute,
   loginRoute: loginRoute,
   platformRoute: platformRouteWithChildren,
+  DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute:
+    DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute,
   verifyEmailRoute: verifyEmailRoute,
   ApiBotsRoute: ApiBotsRouteWithChildren,
   ApiHealthRoute: ApiHealthRoute,

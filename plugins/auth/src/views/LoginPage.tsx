@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
 
 import { authMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { ForgotPasswordLink } from "./ForgotPasswordLink.tsx";
 
 /**
  * Sign-in / create-account page (moved from apps/web/src/routes/login.tsx,
@@ -138,7 +139,10 @@ export function LoginPage({
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="password">{t.password}</Label>
+							<div className="flex items-center justify-between">
+								<Label htmlFor="password">{t.password}</Label>
+								{mode === "in" ? <ForgotPasswordLink>{t.forgotLink}</ForgotPasswordLink> : null}
+							</div>
 							<div className="relative">
 								<Input
 									id="password"

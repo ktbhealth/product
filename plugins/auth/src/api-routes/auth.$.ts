@@ -5,7 +5,12 @@ import { createPluginApiRoute, getServerRuntime, run } from "@ktb/server-fns";
 
 /** better-auth paths that need a bot check: they accept raw credentials
  * or make the server send email to a caller-supplied address. */
-const CREDENTIAL_PATHS = ["/sign-in/email", "/sign-up/email", "/send-verification-email"];
+const CREDENTIAL_PATHS = [
+	"/sign-in/email",
+	"/sign-up/email",
+	"/send-verification-email",
+	"/request-password-reset",
+];
 
 /**
  * The better-auth apiKey plugin mounts session-authenticated

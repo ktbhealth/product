@@ -177,4 +177,25 @@ describe("POST /api/auth/* captcha gate", () => {
 		expect(res.status).toBe(200);
 		expect(verify).toHaveBeenCalledWith(undefined, undefined);
 	});
+
+	it("bot-checks password-reset requests — they mail a caller-supplied address", async () => {
+		const verify = vi.fn(async () => false);
+		captchaBox.current = { verify };
+		const h = handlersOf(Route);
+		const res = await h.POST!({
+			request: post("/request-password-reset", { email: "a@b.com" }),
+		} as never);
+		expect(res.status).toBe(403);
+		expect(await res.json()).toMatchObject({ code: "CAPTCHA_FAILED" });
+		expect(authCalls).toHaveLength(0);
+		verify.mockResolvedValue(true);
+		const ok = await h.POST!({
+			request: post("/request-password-reset", {
+				email: "a@b.com",
+				captchaToken: "tok",
+			}),
+		} as never);
+		expect(ok.status).toBe(200);
+		expect(authCalls).toEqual(["/api/auth/request-password-reset"]);
+	});
 });

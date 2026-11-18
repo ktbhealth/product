@@ -12,6 +12,11 @@ export type I18nKey =
 	| "app.capture_status_requesting"
 	| "app.capture_stop"
 	| "app.capture_title"
+	| "app.email_reset_body"
+	| "app.email_reset_greeting"
+	| "app.email_reset_greeting_anon"
+	| "app.email_reset_ignore"
+	| "app.email_reset_subject"
 	| "app.email_verify_body"
 	| "app.email_verify_greeting"
 	| "app.email_verify_greeting_anon"
@@ -107,6 +112,7 @@ export type I18nKey =
 	| "app.login_email"
 	| "app.login_error_fallback"
 	| "app.login_error_password_mismatch"
+	| "app.login_forgot_password"
 	| "app.login_password"
 	| "app.login_pending"
 	| "app.login_picker_desc"
@@ -347,18 +353,37 @@ export type I18nKey =
 	| "audit.verifyEmpty"
 	| "audit.verifyFailed"
 	| "audit.verifyRunning"
+	| "auth.backToSignIn"
 	| "auth.confirmPassword"
 	| "auth.descIn"
 	| "auth.descUp"
 	| "auth.email"
 	| "auth.errorFallback"
 	| "auth.errorPasswordMismatch"
+	| "auth.forgotDesc"
+	| "auth.forgotHeading"
+	| "auth.forgotLink"
+	| "auth.forgotMetaTitle"
+	| "auth.forgotSent"
+	| "auth.forgotSubmit"
+	| "auth.forgotUnavailable"
 	| "auth.headingIn"
 	| "auth.headingUp"
 	| "auth.hidePassword"
 	| "auth.metaTitle"
+	| "auth.newPassword"
 	| "auth.password"
 	| "auth.pending"
+	| "auth.resetDesc"
+	| "auth.resetDoneDesc"
+	| "auth.resetDoneHeading"
+	| "auth.resetError"
+	| "auth.resetHeading"
+	| "auth.resetInvalidDesc"
+	| "auth.resetInvalidHeading"
+	| "auth.resetMetaTitle"
+	| "auth.resetRequestNew"
+	| "auth.resetSubmit"
 	| "auth.secretaryLink"
 	| "auth.showPassword"
 	| "auth.submitIn"
@@ -1315,6 +1340,7 @@ export type I18nKey =
 	| "secretaries.login.email"
 	| "secretaries.login.errorFallback"
 	| "secretaries.login.errorPasswordMismatch"
+	| "secretaries.login.forgotLink"
 	| "secretaries.login.headingIn"
 	| "secretaries.login.headingUp"
 	| "secretaries.login.metaTitle"
@@ -1493,6 +1519,16 @@ export interface I18nTypedT {
 	(key: "app.capture_status_requesting"): Effect.Effect<string>;
 	(key: "app.capture_stop"): Effect.Effect<string>;
 	(key: "app.capture_title"): Effect.Effect<string>;
+	(key: "app.email_reset_body"): Effect.Effect<string>;
+	(
+		key: "app.email_reset_greeting",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "app.email_reset_greeting_anon"): Effect.Effect<string>;
+	(key: "app.email_reset_ignore"): Effect.Effect<string>;
+	(key: "app.email_reset_subject"): Effect.Effect<string>;
 	(key: "app.email_verify_body"): Effect.Effect<string>;
 	(
 		key: "app.email_verify_greeting",
@@ -1593,6 +1629,7 @@ export interface I18nTypedT {
 	(key: "app.login_email"): Effect.Effect<string>;
 	(key: "app.login_error_fallback"): Effect.Effect<string>;
 	(key: "app.login_error_password_mismatch"): Effect.Effect<string>;
+	(key: "app.login_forgot_password"): Effect.Effect<string>;
 	(key: "app.login_password"): Effect.Effect<string>;
 	(key: "app.login_pending"): Effect.Effect<string>;
 	(key: "app.login_picker_desc"): Effect.Effect<string>;
@@ -1849,18 +1886,37 @@ export interface I18nTypedT {
 	(key: "audit.verifyEmpty"): Effect.Effect<string>;
 	(key: "audit.verifyFailed"): Effect.Effect<string>;
 	(key: "audit.verifyRunning"): Effect.Effect<string>;
+	(key: "auth.backToSignIn"): Effect.Effect<string>;
 	(key: "auth.confirmPassword"): Effect.Effect<string>;
 	(key: "auth.descIn"): Effect.Effect<string>;
 	(key: "auth.descUp"): Effect.Effect<string>;
 	(key: "auth.email"): Effect.Effect<string>;
 	(key: "auth.errorFallback"): Effect.Effect<string>;
 	(key: "auth.errorPasswordMismatch"): Effect.Effect<string>;
+	(key: "auth.forgotDesc"): Effect.Effect<string>;
+	(key: "auth.forgotHeading"): Effect.Effect<string>;
+	(key: "auth.forgotLink"): Effect.Effect<string>;
+	(key: "auth.forgotMetaTitle"): Effect.Effect<string>;
+	(key: "auth.forgotSent"): Effect.Effect<string>;
+	(key: "auth.forgotSubmit"): Effect.Effect<string>;
+	(key: "auth.forgotUnavailable"): Effect.Effect<string>;
 	(key: "auth.headingIn"): Effect.Effect<string>;
 	(key: "auth.headingUp"): Effect.Effect<string>;
 	(key: "auth.hidePassword"): Effect.Effect<string>;
 	(key: "auth.metaTitle"): Effect.Effect<string>;
+	(key: "auth.newPassword"): Effect.Effect<string>;
 	(key: "auth.password"): Effect.Effect<string>;
 	(key: "auth.pending"): Effect.Effect<string>;
+	(key: "auth.resetDesc"): Effect.Effect<string>;
+	(key: "auth.resetDoneDesc"): Effect.Effect<string>;
+	(key: "auth.resetDoneHeading"): Effect.Effect<string>;
+	(key: "auth.resetError"): Effect.Effect<string>;
+	(key: "auth.resetHeading"): Effect.Effect<string>;
+	(key: "auth.resetInvalidDesc"): Effect.Effect<string>;
+	(key: "auth.resetInvalidHeading"): Effect.Effect<string>;
+	(key: "auth.resetMetaTitle"): Effect.Effect<string>;
+	(key: "auth.resetRequestNew"): Effect.Effect<string>;
+	(key: "auth.resetSubmit"): Effect.Effect<string>;
 	(key: "auth.secretaryLink"): Effect.Effect<string>;
 	(key: "auth.showPassword"): Effect.Effect<string>;
 	(key: "auth.submitIn"): Effect.Effect<string>;
@@ -3177,6 +3233,7 @@ export interface I18nTypedT {
 	(key: "secretaries.login.email"): Effect.Effect<string>;
 	(key: "secretaries.login.errorFallback"): Effect.Effect<string>;
 	(key: "secretaries.login.errorPasswordMismatch"): Effect.Effect<string>;
+	(key: "secretaries.login.forgotLink"): Effect.Effect<string>;
 	(key: "secretaries.login.headingIn"): Effect.Effect<string>;
 	(key: "secretaries.login.headingUp"): Effect.Effect<string>;
 	(key: "secretaries.login.metaTitle"): Effect.Effect<string>;

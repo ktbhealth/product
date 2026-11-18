@@ -59,6 +59,7 @@ export interface SecretaryMessages {
 		readonly errorPasswordMismatch: string;
 		readonly verifyLink: string;
 		readonly doctorLink: string;
+		readonly forgotLink: string;
 		/** Shown after sign-in when the account holds no delegation —
 		 * the invite is still pending or was sent to another email. */
 		readonly noDelegation: string;
@@ -108,6 +109,7 @@ const en: SecretaryMessages = {
 		errorPasswordMismatch: "Passwords do not match.",
 		verifyLink: "Didn't get the verification email?",
 		doctorLink: "I am a doctor",
+		forgotLink: "Forgot your password?",
 		noDelegation:
 			"No delegation found for this account — ask the doctor to invite this email address.",
 	},
@@ -156,6 +158,7 @@ const ptBR: SecretaryMessages = {
 		errorPasswordMismatch: "As senhas não coincidem.",
 		verifyLink: "Não recebeu o e-mail de verificação?",
 		doctorLink: "Sou médico",
+		forgotLink: "Esqueci minha senha",
 		noDelegation:
 			"Nenhuma delegação encontrada para esta conta — peça ao médico para convidar este e-mail.",
 	},
@@ -204,6 +207,7 @@ const es: SecretaryMessages = {
 		errorPasswordMismatch: "Las contraseñas no coinciden.",
 		verifyLink: "¿No recibiste el correo de verificación?",
 		doctorLink: "Soy médico",
+		forgotLink: "Olvidé mi contraseña",
 		noDelegation:
 			"No se encontró ninguna delegación para esta cuenta — pide al médico que invite este correo.",
 	},

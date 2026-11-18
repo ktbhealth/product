@@ -6,4 +6,10 @@ export {
 	toSession,
 	toSessionUser,
 } from "./auth.ts";
-export type { Auth, AuthDb, AuthOptions, VerificationEmailInput } from "./auth.ts";
+export type {
+	Auth,
+	AuthDb,
+	AuthOptions,
+	PasswordResetEmailInput,
+	VerificationEmailInput,
+} from "./auth.ts";

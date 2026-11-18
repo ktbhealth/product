@@ -37,6 +37,25 @@ export const I18N_MANIFEST = {
 		capture_title: {
 			params: [],
 		},
+		email_reset_body: {
+			params: [],
+		},
+		email_reset_greeting: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+		},
+		email_reset_greeting_anon: {
+			params: [],
+		},
+		email_reset_ignore: {
+			params: [],
+		},
+		email_reset_subject: {
+			params: [],
+		},
 		email_verify_body: {
 			params: [],
 		},
@@ -324,6 +343,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		login_error_password_mismatch: {
+			params: [],
+		},
+		login_forgot_password: {
 			params: [],
 		},
 		login_password: {
@@ -1123,6 +1145,63 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		secretaryLink: {
+			params: [],
+		},
+		forgotLink: {
+			params: [],
+		},
+		forgotMetaTitle: {
+			params: [],
+		},
+		forgotHeading: {
+			params: [],
+		},
+		forgotDesc: {
+			params: [],
+		},
+		forgotSubmit: {
+			params: [],
+		},
+		forgotSent: {
+			params: [],
+		},
+		forgotUnavailable: {
+			params: [],
+		},
+		resetMetaTitle: {
+			params: [],
+		},
+		resetHeading: {
+			params: [],
+		},
+		resetDesc: {
+			params: [],
+		},
+		newPassword: {
+			params: [],
+		},
+		resetSubmit: {
+			params: [],
+		},
+		resetDoneHeading: {
+			params: [],
+		},
+		resetDoneDesc: {
+			params: [],
+		},
+		resetInvalidHeading: {
+			params: [],
+		},
+		resetInvalidDesc: {
+			params: [],
+		},
+		resetRequestNew: {
+			params: [],
+		},
+		resetError: {
+			params: [],
+		},
+		backToSignIn: {
 			params: [],
 		},
 	},
@@ -4473,6 +4552,9 @@ export const I18N_MANIFEST = {
 		"login.doctorLink": {
 			params: [],
 		},
+		"login.forgotLink": {
+			params: [],
+		},
 		"login.noDelegation": {
 			params: [],
 		},
@@ -4983,6 +5065,7 @@ export const I18N_BASE_CATALOG = {
 	login_pending: "Please wait…",
 	login_error_fallback: "Could not sign in. Please try again.",
 	login_error_password_mismatch: "Passwords do not match.",
+	login_forgot_password: "Forgot your password?",
 	login_picker_meta_title: "Sign in | KTB Health",
 	login_picker_heading: "Sign in",
 	login_picker_desc: "Choose your role to continue.",
@@ -5008,6 +5091,11 @@ export const I18N_BASE_CATALOG = {
 	email_verify_greeting_anon: "Hello.",
 	email_verify_body: "Confirm your email address to finish setting up your KTB Health account:",
 	email_verify_ignore: "If you did not create this account, you can ignore this message.",
+	email_reset_subject: "Reset your password — KTB Health",
+	email_reset_greeting: "Hello, {name}.",
+	email_reset_greeting_anon: "Hello.",
+	email_reset_body: "Reset your KTB Health account password with the link below:",
+	email_reset_ignore: "If you did not request a password reset, you can ignore this message.",
 	home_cta_start: "Start consultation",
 	home_cta_view: "View consultations",
 	home_stats_1: "of the office day with the patient",

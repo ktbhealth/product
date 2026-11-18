@@ -81,4 +81,35 @@ describe("makeAuth", () => {
 			{ email: "b@ktb.test", name: null, url },
 		]);
 	});
+
+	it("leaves password reset disabled when the host supplies no sender", () => {
+		const auth = makeAuth(makeDb(makeD1()));
+		expect(auth.options.emailAndPassword?.sendResetPassword).toBeUndefined();
+	});
+
+	it("delegates reset emails to the host sender and revokes sessions on reset", async () => {
+		const sent: unknown[] = [];
+		const auth = makeAuth(makeDb(makeD1()), {
+			sendPasswordResetEmail: async (input) => {
+				sent.push(input);
+			},
+		});
+		const { emailAndPassword } = auth.options;
+		expect(emailAndPassword?.revokeSessionsOnPasswordReset).toBe(true);
+		const sendReset = emailAndPassword?.sendResetPassword;
+		expect(sendReset).toBeDefined();
+		const url = "http://localhost:3000/api/auth/reset-password/t";
+		await sendReset!({
+			user: { id: "u1", email: "a@ktb.test", name: "Ana" } as never,
+			url,
+		});
+		await sendReset!({
+			user: { id: "u2", email: "b@ktb.test" } as never,
+			url,
+		});
+		expect(sent).toEqual([
+			{ email: "a@ktb.test", name: "Ana", url },
+			{ email: "b@ktb.test", name: null, url },
+		]);
+	});
 });

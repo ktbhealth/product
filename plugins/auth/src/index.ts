@@ -29,9 +29,15 @@ export const authRoutesPlugin = definePlugin({
 	// doctors plugin is absent; the fns then fail at call time).
 	optionalDeps: [doctorsServicesPlugin.id],
 	routes: [
-		// Single-file page route: `route()` resolves the module path
+		// Single-file page routes: `route()` resolves the module path
 		// relative to the host's routes directory, same as physical().
 		route("login/doctor", "../../../../plugins/auth/src/routes/login.tsx"),
+		// Password recovery: every sign-in screen's "forgot password"
+		// link lands on the shared request page; the emailed token link
+		// lands on the reset form (both are credential surface — one
+		// account system serves patients, doctors and secretaries).
+		route("forgot-password", "../../../../plugins/auth/src/routes/forgot-password.tsx"),
+		route("reset-password", "../../../../plugins/auth/src/routes/reset-password.tsx"),
 		// API subtree: every module in src/api-routes/ mounts under the
 		// shared "/api" prefix (auth.$.ts → /api/auth/$).
 		physical("/api", "../../../../plugins/auth/src/api-routes"),

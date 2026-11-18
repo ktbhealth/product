@@ -263,6 +263,23 @@ export const defaultVerificationEmail = (input: {
 	].join("\n"),
 });
 
+/** Default (English) password-reset email — apps override it through
+ * `AppOptions.passwordResetEmail` to localize or brand the copy. */
+export const defaultPasswordResetEmail = (input: {
+	readonly name: string | null;
+	readonly url: string;
+}): EmailContent => ({
+	subject: "Reset your password — KTB Health",
+	text: [
+		input.name ? `Hello, ${input.name}.` : "Hello.",
+		"",
+		"Reset your KTB Health account password with the link below:",
+		input.url,
+		"",
+		"If you did not request a password reset, you can ignore this message.",
+	].join("\n"),
+});
+
 export interface AppOptions {
 	/**
 	 * Optional tenant resolver (P-053): when provided, `runAs` resolves
@@ -277,6 +294,13 @@ export interface AppOptions {
 	 * {@link defaultVerificationEmail}. May be async — apps resolve
 	 * localized copy from the DB i18n catalog at send time (PL-008). */
 	readonly verificationEmail?: (input: {
+		readonly name: string | null;
+		readonly url: string;
+	}) => EmailContent | Promise<EmailContent>;
+	/** Composes the password-reset email. Defaults to
+	 * {@link defaultPasswordResetEmail}. Same async latitude as
+	 * {@link AppOptions.verificationEmail}. */
+	readonly passwordResetEmail?: (input: {
 		readonly name: string | null;
 		readonly url: string;
 	}) => EmailContent | Promise<EmailContent>;
@@ -377,6 +401,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	const EmailLive = layerFor<Email>(Email.key, env);
 	const emailSender = Effect.runSync(Effect.service(Email).pipe(Effect.provide(EmailLive)));
 	const verificationEmail = options?.verificationEmail ?? defaultVerificationEmail;
+	const passwordResetEmail = options?.passwordResetEmail ?? defaultPasswordResetEmail;
 	const auth = makeAuth(db, {
 		secret: env.BETTER_AUTH_SECRET,
 		baseURL: env.BETTER_AUTH_URL,
@@ -393,6 +418,18 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 							});
 						} catch (error) {
 							console.error("verification email failed", error);
+						}
+					},
+					// Same reasoning: the token stays valid, the user can
+					// just request the link again.
+					sendPasswordResetEmail: async ({ email, name, url }) => {
+						try {
+							await emailSender.send({
+								to: email,
+								...(await passwordResetEmail({ name, url })),
+							});
+						} catch (error) {
+							console.error("password reset email failed", error);
 						}
 					},
 				}),

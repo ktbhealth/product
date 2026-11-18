@@ -18,6 +18,7 @@ import {
 	assertAuthConfigured,
 	assertCaptchaConfigured,
 	createApp,
+	defaultPasswordResetEmail,
 	defaultVerificationEmail,
 	isProductionBuild,
 	plugins,
@@ -565,6 +566,76 @@ describe("verification email", () => {
 			expect(info).toHaveBeenCalledWith(expect.stringContaining("[email-stub] to=a@ktb.test"));
 		} finally {
 			await stubbed.runtime.dispose();
+		}
+	});
+});
+
+describe("password reset email", () => {
+	const base = {
+		BETTER_AUTH_SECRET: "test-secret-at-least-32-characters-long!!",
+		BETTER_AUTH_URL: "http://localhost:3000",
+	};
+	const url = "http://localhost:3000/api/auth/reset-password/t?callbackURL=%2Freset-password";
+	const request = (target: ReturnType<typeof createApp>, name?: string) =>
+		target.auth.options.emailAndPassword?.sendResetPassword?.({
+			user: { id: "u1", email: "a@ktb.test", name },
+			url,
+		} as never);
+
+	it("composes the default copy with and without a name", () => {
+		const named = defaultPasswordResetEmail({ name: "Ana", url });
+		expect(named.subject).toContain("KTB Health");
+		expect(named.text).toContain("Hello, Ana.");
+		expect(named.text).toContain(url);
+		expect(defaultPasswordResetEmail({ name: null, url }).text).toMatch(/^Hello\.\n/);
+	});
+
+	it("is disabled when no email driver is configured", () => {
+		expect(app.auth.options.emailAndPassword?.sendResetPassword).toBeUndefined();
+		expect(request(app)).toBeUndefined();
+	});
+
+	it("sends through the provider binding with the configured sender", async () => {
+		const send = vi.fn<(builder: unknown) => Promise<unknown>>(async () => ({}));
+		const withEmail = createApp({
+			...base,
+			DB: makeD1(DDL),
+			EMAIL: { send },
+			EMAIL_FROM: "noreply@ktb.test",
+		});
+		try {
+			expect(withEmail.auth.options.emailAndPassword?.sendResetPassword).toBeDefined();
+			await request(withEmail, "Ana");
+			expect(send).toHaveBeenCalledWith({
+				from: "noreply@ktb.test",
+				to: "a@ktb.test",
+				...defaultPasswordResetEmail({ name: "Ana", url }),
+			});
+		} finally {
+			await withEmail.runtime.dispose();
+		}
+	});
+
+	it("uses the app-supplied copy and survives a failed delivery", async () => {
+		const failure = new Error("sender not verified");
+		const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+		const withEmail = createApp(
+			{
+				...base,
+				DB: makeD1(DDL),
+				EMAIL: { send: async () => Promise.reject(failure) },
+				EMAIL_FROM: "noreply@ktb.test",
+			},
+			{ passwordResetEmail: ({ url: link }) => ({ subject: "Redefina", text: link }) },
+		);
+		try {
+			await expect(request(withEmail)).resolves.toBeUndefined();
+			expect(errors).toHaveBeenCalledWith(
+				"password reset email failed",
+				expect.objectContaining({ name: "EmailSendError", cause: failure }),
+			);
+		} finally {
+			await withEmail.runtime.dispose();
 		}
 	});
 });

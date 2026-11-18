@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useLoaderData } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
+import { ForgotPasswordLink } from "@ktb/auth-plugin/views";
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -157,7 +158,12 @@ function PortalSignInPage() {
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="password">{t("login_password")}</Label>
+							<div className="flex items-center justify-between">
+								<Label htmlFor="password">{t("login_password")}</Label>
+								{mode === "in" ? (
+									<ForgotPasswordLink>{t("login_forgot_password")}</ForgotPasswordLink>
+								) : null}
+							</div>
 							<Input
 								id="password"
 								type="password"

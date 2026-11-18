@@ -73,6 +73,26 @@ const sendVerification = () => {
 	});
 };
 
+const sendReset = () => {
+	const reset = (
+		auth.options as unknown as {
+			emailAndPassword?: {
+				sendResetPassword?: (input: {
+					user: { id: string; email: string; name?: string | null };
+					url: string;
+					token: string;
+				}) => Promise<void>;
+			};
+		}
+	).emailAndPassword?.sendResetPassword;
+	expect(reset).toBeDefined();
+	return reset!({
+		user: { id: "u1", email: "vera@x.com", name: "Vera" },
+		url: "http://localhost:3000/api/auth/reset-password/t?callbackURL=%2Freset-password",
+		token: "t",
+	});
+};
+
 describe("verificationEmail i18n", () => {
 	it("sends English literals when catalog resolution fails", async () => {
 		hoisted.failLocales = true;
@@ -98,6 +118,15 @@ describe("verificationEmail i18n", () => {
 		} finally {
 			hoisted.failLocales = true;
 			hoisted.emptyChain = false;
+		}
+	});
+
+	it("resolves password-reset copy through the same catalog path", async () => {
+		hoisted.failLocales = false;
+		try {
+			await expect(sendReset()).resolves.toBeUndefined();
+		} finally {
+			hoisted.failLocales = true;
 		}
 	});
 

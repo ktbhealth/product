@@ -40,7 +40,7 @@ import {
 
 import { resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
-import { emailCatalogT, verificationEmail } from "./emails.ts";
+import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { portalInstances } from "./registry.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
 import { requestTelemetryContext } from "./telemetry.ts";
@@ -77,38 +77,41 @@ const tenantResolver = makeTenantResolver({
 	selectDefault: (memberships) => (memberships.length === 1 ? memberships[0] : undefined),
 });
 
-// Verification email resolves its copy from the DB `app` namespace at
+// Transactional email resolves its copy from the DB `app` namespace at
 // send time (PL-008): request locale → enabled-locale chain → catalog
 // slice. `run` is defined below — the callback only fires per send,
 // long after module init. A resolution failure falls back to the
-// English literals inside verificationEmail (email must not break
-// sign-up).
+// English literals inside the email composers (email must not break
+// the auth flow it serves).
+const resolveEmailCatalogT = () =>
+	run(
+		Effect.gen(function* () {
+			const database = yield* Db;
+			const enabled = yield* Effect.promise(() => listEnabledLocales(database));
+			// `qps` is a QA pseudo-locale — outbound email must never
+			// ship accented/bracketed copy, so it resolves against the
+			// default locale instead of the request locale.
+			const requested = currentLocale();
+			const chain = resolveRequestLocales(
+				requested === PSEUDO_LOCALE ? DEFAULT_LOCALE : requested,
+				enabled,
+				DEFAULT_LOCALE,
+			);
+			const catalog = yield* catalogSlice(database, {
+				namespaces: ["app"],
+				scopeChain: GLOBAL_SCOPE,
+				locales: chain,
+			});
+			return emailCatalogT(catalog, chain.locales[0] ?? DEFAULT_LOCALE);
+		}),
+	).catch(() => undefined);
+
 const app = createApp(appEnv as unknown as typeof env, {
 	tenantResolver,
-	verificationEmail: async ({ name, url }) => {
-		const t = await run(
-			Effect.gen(function* () {
-				const database = yield* Db;
-				const enabled = yield* Effect.promise(() => listEnabledLocales(database));
-				// `qps` is a QA pseudo-locale — outbound email must never
-				// ship accented/bracketed copy, so it resolves against the
-				// default locale instead of the request locale.
-				const requested = currentLocale();
-				const chain = resolveRequestLocales(
-					requested === PSEUDO_LOCALE ? DEFAULT_LOCALE : requested,
-					enabled,
-					DEFAULT_LOCALE,
-				);
-				const catalog = yield* catalogSlice(database, {
-					namespaces: ["app"],
-					scopeChain: GLOBAL_SCOPE,
-					locales: chain,
-				});
-				return emailCatalogT(catalog, chain.locales[0] ?? DEFAULT_LOCALE);
-			}),
-		).catch(() => undefined);
-		return verificationEmail({ name, url }, t);
-	},
+	verificationEmail: async ({ name, url }) =>
+		verificationEmail({ name, url }, await resolveEmailCatalogT()),
+	passwordResetEmail: async ({ name, url }) =>
+		passwordResetEmail({ name, url }, await resolveEmailCatalogT()),
 });
 
 // T-105: hand the request middleware (start.ts — outside the Effect
