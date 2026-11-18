@@ -79,7 +79,7 @@ export const i18nServicesPlugin = definePlugin({
 });
 
 /** i18n admin service citizen (P-083): panel read/write path.
- * Defined here (not admin.ts) so the ktb-arch plugin-contract rule can
+ * Defined here (not admin.ts) so the arch plugin-contract rule can
  * resolve the `plugins` entry — it only follows same-file consts. */
 export const i18nAdminServicesPlugin = definePlugin({
 	id: "i18n.admin.services",

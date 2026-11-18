@@ -9,7 +9,7 @@ import { TtsPort } from "@ktb/eval-consultation/ports";
  * eval-core contributions (eval.stage/eval.capability kinds on the
  * manifest's `contributions` channel) they provide and which adapter
  * keys implement the port, but they contain NO adapter code.
- * plugins/* sits inside the arch-policy PORT_GLOBS — node:*,
+ * plugins/* sits inside the arch preset's PORT_GLOBS — node:*,
  * process/Bun/Deno, provider literals and adapter-package imports are
  * all banned there — so implementations live in the adapter packages
  * (@ktb/eval-adapter-stub/-local/-cloud), which are the exempt edge.

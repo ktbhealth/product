@@ -62,7 +62,7 @@ export const kvServicesPlugin = definePlugin({
 
 /** kv admin service citizen (P-090 console): platform-admin read/write
  * over every namespace/scope slice — see admin.ts for the scope and
- * TTL semantics. Defined here (not admin.ts) so the ktb-arch
+ * TTL semantics. Defined here (not admin.ts) so the arch
  * plugin-contract rule can resolve the `plugins` entry — it only
  * follows same-file consts (same convention as i18n.admin.services). */
 export const kvAdminServicesPlugin = definePlugin({

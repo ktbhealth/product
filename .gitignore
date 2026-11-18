@@ -31,6 +31,8 @@ data/
 coverage/
 # CI coverage-report payload written by tools/coverage-report.mjs
 coverage-report/
+# CI bundle-size payload written by tools/bundle-budget.mjs
+bundle-size/
 
 # vitest blob reports (.vitest/blob) and attachments
 .vitest/

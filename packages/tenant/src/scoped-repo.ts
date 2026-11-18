@@ -13,7 +13,7 @@ import { Tenant, TenantAccess } from "./context.ts";
  *
  * A table opts in by declaring a `tenantId` column mapped to
  * `tenant_id` (see `tenantTable`/`tenantIdColumn` in `./schema`) and by
- * being queried ONLY through {@link scopedRepo} — `ktb-arch/tenant-scope`
+ * being queried ONLY through {@link scopedRepo} — `arch/tenant-scope`
  * bans raw drizzle access to declared tenant tables outside this
  * factory.
  */
