@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
+import { consultations } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import { EvalRunner } from "@ktb/eval-consultation";
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
@@ -167,6 +169,108 @@ describe("eval.run job — executeEvalRun", () => {
 		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
 		await Effect.runPromise(executeEvalRun(db, okRunner(), 9999));
 		expect(await db.select().from(evalRun)).toHaveLength(0);
+	});
+
+	it("retries a failed run: flips back to running and keeps startedAt", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db);
+		const startedAt = new Date("2026-01-02T03:04:05.000Z");
+		await db
+			.update(evalRun)
+			.set({ status: "failed", startedAt, finishedAt: new Date(), summary: "{}" })
+			.where(eq(evalRun.id, runId));
+		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+		// startedAt ?? new Date() — the retry keeps the original start.
+		expect(run?.startedAt).toEqual(startedAt);
+	});
+
+	it("redelivers a done run idempotently: no pending samples reach the runner", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db, { statuses: ["ok", "ok"] });
+		await db.update(evalRun).set({ status: "done" }).where(eq(evalRun.id, runId));
+		const seen: number[] = [];
+		await Effect.runPromise(executeEvalRun(db, okRunner(seen), runId));
+		// pendingSamples empty → the item load is skipped entirely.
+		expect(seen).toEqual([]);
+		const [run] = await db.select().from(evalRun);
+		expect(run?.status).toBe("done");
+		expect(run?.done).toBe(2);
+		expect(run?.experiment).not.toBeNull();
+	});
+
+	it("writes pipeline outputs back onto the item's synthetic consultations row", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId, itemIds } = await seedRun(db);
+		await db.insert(consultations).values({
+			transcript: "gold script",
+			evalItemId: itemIds[0],
+			createdAt: new Date(),
+		});
+		const rich = EvalRunner.of({
+			run: ({ items, onSample }) =>
+				Effect.forEach(
+					items,
+					(item) =>
+						onSample(item.id, {
+							status: "ok",
+							result: {
+								wer: 0.2,
+								asrText: "asr out",
+								cleanup: { corrected: "cleaned out" },
+								anamnesis: { engine: "acp", json: { filled: 3 } },
+							},
+						}),
+					{ discard: true },
+				),
+		});
+		await Effect.runPromise(executeEvalRun(db, rich, runId));
+		const rows = await db.select().from(consultations);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.audioStatus).toBe("done");
+		expect(rows[0]?.serverTranscript).toBe("asr out");
+		expect(rows[0]?.correctedTranscript).toBe("cleaned out");
+		expect(rows[0]?.engine).toBe("acp");
+		expect(rows[0]?.anamnesis).toBe(JSON.stringify({ filled: 3 }));
+	});
+
+	it("skips the experiment projection when the run row disappears mid-run", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db);
+		// Concurrent delete between the finalize update and the
+		// experiment re-read — the projection must no-op, not throw.
+		const deleting = EvalRunner.of({
+			run: () => Effect.promise(() => db.delete(evalRun).where(eq(evalRun.id, runId))),
+		});
+		await Effect.runPromise(executeEvalRun(db, deleting, runId));
+		expect(await db.select().from(evalRun)).toHaveLength(0);
+	});
+
+	it("pins the dataset from params.instanceId when the instance link is gone", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId, instanceId } = await seedRun(db);
+		// instance_id set-nulls when the cohort instance is deleted —
+		// params.instanceId stays authoritative for the dataset pin.
+		await db.update(evalRun).set({ instanceId: null }).where(eq(evalRun.id, runId));
+		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
+		const [run] = await db.select().from(evalRun);
+		const experiment = JSON.parse(run?.experiment ?? "{}") as {
+			dataset?: { id?: string };
+		};
+		expect(experiment.dataset?.id).toBe(`eval-instance-${instanceId}`);
+	});
+
+	it("falls back to an unknown dataset pin when neither link nor params survive", async () => {
+		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		const { runId } = await seedRun(db);
+		await db.update(evalRun).set({ instanceId: null, params: "{}" }).where(eq(evalRun.id, runId));
+		await Effect.runPromise(executeEvalRun(db, okRunner(), runId));
+		const [run] = await db.select().from(evalRun);
+		const experiment = JSON.parse(run?.experiment ?? "{}") as {
+			dataset?: { id?: string };
+		};
+		expect(experiment.dataset?.id).toBe("eval-instance-unknown");
 	});
 });
 

@@ -166,6 +166,16 @@ describe("defineSuite", () => {
 	});
 });
 
+describe("contribution ref helpers", () => {
+	it("refIdOf/refConfigOf handle bare ids and ref objects", () => {
+		expect(refIdOf("metrics.accuracy")).toBe("metrics.accuracy");
+		expect(refIdOf({ id: "metrics.accuracy", config: { k: 1 } })).toBe("metrics.accuracy");
+		expect(refConfigOf("metrics.accuracy")).toBeUndefined();
+		expect(refConfigOf({ id: "metrics.accuracy" })).toBeUndefined();
+		expect(refConfigOf({ id: "metrics.accuracy", config: { k: 1 } })).toEqual({ k: 1 });
+	});
+});
+
 describe("stage entry helpers", () => {
 	it("stageIdOf/stageIdsOf/stageNodesOf normalize mixed entries", () => {
 		const entries: readonly import("./suite.ts").StageEntry[] = ["a", { id: "b", needs: [] }];

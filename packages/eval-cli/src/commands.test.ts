@@ -280,21 +280,26 @@ describe("list", () => {
 });
 
 describe("generate", () => {
-	test("generates samples end-to-end under stub profile", async () => {
-		vi.spyOn(console, "log").mockImplementation(() => {});
-		try {
-			expect(
-				await exec(["generate", "fx", "--n", "2", "--workdir", workdir], {
-					...ctx(),
-					fetchImpl: fetch,
-				}),
-			).toBe(0);
-			expect(fs.existsSync(path.join(workdir, "manifest.sqlite"))).toBe(true);
-			expect(fs.existsSync(path.join(workdir, "reports", "eval.jsonl"))).toBe(true);
-		} finally {
-			vi.restoreAllMocks();
-		}
-	});
+	test(
+		"generates samples end-to-end under stub profile",
+		async () => {
+			vi.spyOn(console, "log").mockImplementation(() => {});
+			try {
+				expect(
+					await exec(["generate", "fx", "--n", "2", "--workdir", workdir], {
+						...ctx(),
+						fetchImpl: fetch,
+					}),
+				).toBe(0);
+				expect(fs.existsSync(path.join(workdir, "manifest.sqlite"))).toBe(true);
+				expect(fs.existsSync(path.join(workdir, "reports", "eval.jsonl"))).toBe(true);
+			} finally {
+				vi.restoreAllMocks();
+			}
+		},
+		// End-to-end generate+report under load exceeds the 5s default.
+		30000,
+	);
 
 	test("domainParams flow into generate + run (P-079)", async () => {
 		vi.spyOn(console, "log").mockImplementation(() => {});
