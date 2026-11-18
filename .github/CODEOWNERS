@@ -6,16 +6,16 @@
 
 # Quality gates — coverage thresholds live here; lowering them must never
 # slip through unreviewed.
-/vitest.config.ts                @luisfuturist @eccarneiro
-/vitest.*.config.*               @luisfuturist @eccarneiro
-/vitest.workspace.*              @luisfuturist @eccarneiro
-/tools/coverage-report.mjs       @luisfuturist @eccarneiro
+/vitest.config.ts                @luisfuturist
+/vitest.*.config.*               @luisfuturist
+/vitest.workspace.*              @luisfuturist
+/tools/coverage-report.mjs       @luisfuturist
 
 # CI definition — the coverage gate, shard matrix, and required checks are
 # defined here; weakening the workflow is equivalent to weakening the gate.
-/.github/workflows/               @luisfuturist @eccarneiro
+/.github/workflows/               @luisfuturist
 
 # Database migrations — schema drift affects every environment; generated
 # files, but a bad migration still needs eyes.
-/packages/db/alchemy-migrations/  @luisfuturist @eccarneiro
-/packages/db/drizzle/             @luisfuturist @eccarneiro
+/packages/db/alchemy-migrations/  @luisfuturist
+/packages/db/drizzle/             @luisfuturist
