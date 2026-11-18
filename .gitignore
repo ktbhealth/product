@@ -29,6 +29,8 @@ data/
 # alchemy local state
 .alchemy/
 coverage/
+# CI coverage-report payload written by tools/coverage-report.mjs
+coverage-report/
 
 # vitest blob reports (.vitest/blob) and attachments
 .vitest/

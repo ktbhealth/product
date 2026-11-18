@@ -109,6 +109,7 @@ jobs:
           bunx vitest run
           --shard=${{ matrix.index }}/${{ matrix.count }}
           --reporter=default
+          --reporter=github-actions
           --reporter=blob
           --coverage.reporter=text-summary
           --coverage.thresholds.lines=0
@@ -130,6 +131,12 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # actions:read downloads the baseline coverage artifact from the
+    # latest green main run; pull-requests:write posts the sticky comment.
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -150,6 +157,71 @@ jobs:
           path: .vitest/blob
           merge-multiple: true
       - run: bunx vitest --mergeReports
+      # Job summary + coverage-report/ payload (summary copy + parsed
+      # metrics) from the merged json-summary output.
+      - run: bun tools/coverage-report.mjs
+      # Machine-readable baseline for the next PR's sticky-comment delta.
+      # Uploaded on every event so green main runs seed the baseline.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage-report/
+          if-no-files-found: warn
+          retention-days: 14
+      # Browsable HTML coverage report (index.html at the artifact root).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-html
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
+      # Sticky PR comment: diff against the latest green main run's
+      # coverage-summary artifact. continue-on-error because main runs
+      # predating this workflow have no such artifact.
+      - name: Find baseline coverage run on main
+        id: baseline
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.baseline.outputs.run_id != ''
+        continue-on-error: true
+        with:
+          name: coverage-summary
+          path: baseline
+          run-id: ${{ steps.baseline.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Render sticky comment
+        if: github.event_name == 'pull_request'
+        env:
+          BASELINE_RUN_ID: ${{ steps.baseline.outputs.run_id }}
+        run: >-
+          bun tools/coverage-report.mjs --comment
+          --baseline baseline/coverage-summary.json
+      # GITHUB_TOKEN is read-only on fork PRs — skip commenting there.
+      - uses: actions/github-script@v7
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- coverage-report -->';
+            const body = marker + '\n' + fs.readFileSync('coverage-report/comment.md', 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
 
   # Informational only — never gates. Lines-of-code report via tokei,
   # provided by the shared cypera toolbox (9aia/cypera).
