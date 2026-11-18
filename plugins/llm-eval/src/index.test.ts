@@ -15,12 +15,14 @@ describe("llm.eval", () => {
 			stub: "@ktb/eval-adapter-stub",
 			noop: "@ktb/eval-adapter-stub",
 			acp: "@ktb/ai-adapter-acp",
+			"workers-ai": "@ktb/eval-adapter-cloud",
 		});
 		expect(registry.get("eval.capability", "eval").meta?.port).toBe(EvalPort.key);
 		expect(registry.get("eval.capability", "eval").meta?.adapters).toEqual({
 			stub: "@ktb/eval-adapter-stub",
 			jev: "@ktb/eval-adapter-local",
 			systemone: "@ktb/eval-adapter-local",
+			"workers-ai": "@ktb/eval-adapter-cloud",
 		});
 		expect(registry.get("eval.stage", "script_gen").meta?.port).toBe(LlmPort.key);
 		expect(registry.get("eval.stage", "cleanup").meta?.port).toBe(LlmPort.key);

@@ -526,19 +526,17 @@ describe("run/gate/report round-trip", () => {
 		}
 	});
 
-	test("run under the partial cloud profile names the missing caps (T-120)", async () => {
+	test("run under cloud resolves all caps then fails on missing CF env (T-120)", async () => {
 		const err = vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "log").mockImplementation(() => {});
 		try {
+			// cloud now satisfies every run-time cap (asr/llm/eval via
+			// workers-ai) — resolution passes and adapter wiring fails
+			// honestly on the first missing credential instead.
 			expect(await exec(["run", "fx", "--profile", "cloud", "--workdir", workdir])).toBe(1);
 			const msg = err.mock.calls.flat().join(" ");
-			expect(msg).toContain('profile "cloud" cannot satisfy');
-			// cap id → providing plugin id for the capabilities cloud
-			// lacks (llm/eval have no cloud adapter; asr IS satisfied
-			// by workers-ai and tts is not a run-time capability).
-			expect(msg).toContain("llm→llm.eval");
-			expect(msg).toContain("eval→llm.eval");
-			expect(msg).not.toContain("asr→");
+			expect(msg).not.toContain("cannot satisfy");
+			expect(msg).toContain("EVAL_CF_ACCOUNT_ID");
 		} finally {
 			vi.restoreAllMocks();
 		}

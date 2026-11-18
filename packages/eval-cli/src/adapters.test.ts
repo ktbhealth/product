@@ -162,6 +162,12 @@ describe("capabilityLayer selection", () => {
 		expect(() => capabilityLayer(ctx({ profile: "cloud" }), "asr", "workers-ai")).toThrow(
 			/EVAL_CF_ACCOUNT_ID/,
 		);
+		expect(() => capabilityLayer(ctx({ profile: "cloud" }), "llm", "workers-ai")).toThrow(
+			/EVAL_CF_ACCOUNT_ID/,
+		);
+		expect(() => capabilityLayer(ctx({ profile: "cloud" }), "eval", "workers-ai")).toThrow(
+			/EVAL_CF_ACCOUNT_ID/,
+		);
 	});
 
 	test("faster-whisper builds with default and configured endpoints", () => {
@@ -264,6 +270,69 @@ describe("capabilityLayer selection", () => {
 		expect(() => capabilityLayer(ctx({ env: { EVAL_ACP_URL: "" } }), "llm", "acp")).toThrow(
 			/EVAL_ACP_URL/,
 		);
+	});
+
+	test("workers-ai llm/eval layers build from CF env + model pins", () => {
+		const cfEnv = {
+			EVAL_CF_ACCOUNT_ID: "acct",
+			EVAL_CF_API_TOKEN: "tok",
+			EVAL_LLM_MODEL: "@cf/test/llm",
+		};
+		// Both ports construct; the eval judge falls back to
+		// EVAL_LLM_MODEL when EVAL_EVAL_MODEL is unset.
+		expect(() =>
+			capabilityLayer(ctx({ profile: "cloud", env: cfEnv }), "llm", "workers-ai"),
+		).not.toThrow();
+		expect(() =>
+			capabilityLayer(ctx({ profile: "cloud", env: cfEnv }), "eval", "workers-ai"),
+		).not.toThrow();
+		// Optional endpoint + fetchImpl + a dedicated judge model.
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "cloud",
+					env: { ...cfEnv, EVAL_EVAL_MODEL: "@cf/test/judge", EVAL_CF_API_ENDPOINT: "http://ep" },
+					fetchImpl: fetch,
+				}),
+				"eval",
+				"workers-ai",
+			),
+		).not.toThrow();
+		// Empty-string endpoint counts as unset; an empty
+		// EVAL_EVAL_MODEL falls back to EVAL_LLM_MODEL like every
+		// other empty-string env read.
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "cloud",
+					env: { ...cfEnv, EVAL_EVAL_MODEL: "", EVAL_CF_API_ENDPOINT: "" },
+					fetchImpl: fetch,
+				}),
+				"eval",
+				"workers-ai",
+			),
+		).not.toThrow();
+		// Missing model pin is a named env error on both ports.
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "cloud",
+					env: { EVAL_CF_ACCOUNT_ID: "a", EVAL_CF_API_TOKEN: "t" },
+				}),
+				"llm",
+				"workers-ai",
+			),
+		).toThrow(/EVAL_LLM_MODEL/);
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "cloud",
+					env: { EVAL_CF_ACCOUNT_ID: "a", EVAL_CF_API_TOKEN: "t" },
+				}),
+				"eval",
+				"workers-ai",
+			),
+		).toThrow(/EVAL_LLM_MODEL/);
 	});
 
 	test("systemone honours a valid timeout override", () => {

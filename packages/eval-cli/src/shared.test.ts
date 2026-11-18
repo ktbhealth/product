@@ -129,16 +129,21 @@ describe("assertCapabilities", () => {
 				asr: "transcription.asr",
 				tts: "transcription.tts",
 				llm: "llm.eval",
+				eval: "llm.eval",
 			},
 		});
 		const { profile, resolution } = resolveFor(s, "cloud");
-		const err = await runErr(assertCapabilities(s, profile, resolution, ["asr", "tts", "llm"]));
-		// cloud satisfies asr (workers-ai) but has no tts/llm adapters —
-		// the error names the profile and the exact cap→provider pairs.
+		const err = await runErr(
+			assertCapabilities(s, profile, resolution, ["asr", "tts", "llm", "eval"]),
+		);
+		// cloud satisfies asr (workers-ai) + llm/eval (workers-ai chat
+		// models) but has no tts adapter — the error names the profile
+		// and the exact cap→provider pairs that remain missing.
 		expect(err.message).toContain('profile "cloud" cannot satisfy');
 		expect(err.message).toContain("tts→transcription.tts");
-		expect(err.message).toContain("llm→llm.eval");
 		expect(err.message).not.toContain("asr→");
+		expect(err.message).not.toContain("llm→");
+		expect(err.message).not.toContain("eval→");
 	});
 });
 

@@ -26,7 +26,11 @@ import { LlmPort } from "@ktb/eval-consultation/ports";
  * "jev" → @ktb/eval-adapter-local `makeJevEval`,
  * "systemone" → @ktb/eval-adapter-local `makeSystemOneEval` — the
  * TypeSafe `/v1/systemone` wire shape, served locally by OpenJev
- * (`wev serve`), razorback16/openjev or amithgc/local-jev.
+ * ("wev serve"), razorback16/openjev or amithgc/local-jev.
+ * "workers-ai" → @ktb/eval-adapter-cloud `makeWorkersAiLlm` /
+ * `makeWorkersAiEval` — generative Workers AI chat models; the judge
+ * is a generative stand-in (self-reported probabilities, not
+ * calibrated — System One stays the gate-grade judge).
  */
 
 /**
@@ -46,6 +50,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 				stub: "@ktb/eval-adapter-stub",
 				noop: "@ktb/eval-adapter-stub",
 				acp: "@ktb/ai-adapter-acp",
+				"workers-ai": "@ktb/eval-adapter-cloud",
 			},
 		},
 	},
@@ -59,6 +64,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 				stub: "@ktb/eval-adapter-stub",
 				jev: "@ktb/eval-adapter-local",
 				systemone: "@ktb/eval-adapter-local",
+				"workers-ai": "@ktb/eval-adapter-cloud",
 			},
 		},
 	},
