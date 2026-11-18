@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
 import {
 	CalendarSyncError,
+	Calendars,
 	makeCalendarsRegistry,
 	makeMemoryCalendarProvider,
 	nullCalendarsDriver,
@@ -29,6 +33,12 @@ describe("nullCalendarsDriver", () => {
 	it("is always eligible and provides an empty registry", () => {
 		expect(nullCalendarsDriver.port).toBe("@ktb/calendar/Calendars");
 		expect(nullCalendarsDriver.when?.({})).toBeUndefined();
+	});
+
+	it("provides an empty Calendars registry", async () => {
+		const layer = nullCalendarsDriver.provides({}) as Layer.Layer<Calendars>;
+		const registry = await Effect.runPromise(Effect.service(Calendars).pipe(Effect.provide(layer)));
+		expect(registry.providers()).toEqual([]);
 	});
 });
 

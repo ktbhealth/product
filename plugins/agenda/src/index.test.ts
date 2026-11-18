@@ -308,6 +308,52 @@ describe("AppointmentsLive", () => {
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 
+	it("update applies full and sparse patches", async () => {
+		const row = await asUser(
+			"u1",
+			call((p) =>
+				p.create("u1", {
+					patientId: 1,
+					startsAt: new Date(Date.now() + day),
+					durationMin: 30,
+					note: "v1",
+				}),
+			),
+		);
+		// Sparse patch: every optional spread takes its absent side.
+		const sparse = await asUser(
+			"u1",
+			call((p) => p.update("u1", row!.id, { durationMin: 60 })),
+		);
+		expect(sparse?.durationMin).toBe(60);
+		// Full patch: every spread takes its present side, including the
+		// reschedule re-arm of reminderSentAt.
+		const full = await asUser(
+			"u1",
+			call((p) =>
+				p.update("u1", row!.id, {
+					patientId: 2,
+					startsAt: new Date(Date.now() + 2 * day),
+					durationMin: 45,
+					note: "v3",
+				}),
+			),
+		);
+		expect(full).toMatchObject({ patientId: 2, durationMin: 45, note: "v3" });
+		expect(full?.reminderSentAt).toBeNull();
+	});
+
+	it("denies personal-scope create on a tenant-owned patient", async () => {
+		// Patient 4 is tenant 7's record — a personal-scope caller has no
+		// tenant membership covering it, so the owner check fails closed.
+		await expect(
+			asUser(
+				"u1",
+				call((p) => p.create("u1", input(new Date(Date.now() + day), 4))),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
 	it("lists only the caller's agenda", async () => {
 		const rows = await asUser(
 			"u1",
@@ -534,6 +580,25 @@ describe("AppointmentsLive", () => {
 		expect(started?.consultationId).toBeTypeOf("number");
 	});
 
+	it("start denies a null principal and a foreign ownerId", async () => {
+		const row = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(new Date(Date.now() + day)))),
+		);
+		await expect(
+			asUser(
+				null,
+				call((p) => p.start("u1", row!.id)),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.start("u1", row!.id)),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
 	it("dispatchDueReminders claims each due row once and emits AppointmentReminderDue", async () => {
 		const soon = new Date(Date.now() + 5 * 60 * 1000);
 		const row = await asUser(
@@ -553,6 +618,26 @@ describe("AppointmentsLive", () => {
 		expect(first).toBeGreaterThanOrEqual(1);
 		expect(seen.map((e) => e.id)).toContain(row!.id);
 		expect(seen.find((e) => e.id === row!.id)?.patientName).toBe("Ana");
+		// A concurrent pair races the conditional claim — exactly one
+		// fiber wins each row; the loser exercises the !claimed skip.
+		const row2 = await asUser(
+			"u1",
+			call((p) => p.create("u1", input(new Date(Date.now() + 5 * 60 * 1000)))),
+		);
+		const pair = await asUser(
+			null,
+			Effect.forEach([0, 1], () => call((p) => p.dispatchDueReminders()), {
+				concurrency: 2,
+			}),
+		);
+		expect(pair[0]! + pair[1]!).toBe(1);
+		expect(row2).not.toBeNull();
+		// Explicit clock/lead options take the provided side of the defaults.
+		const opted = await asUser(
+			null,
+			call((p) => p.dispatchDueReminders({ now: new Date(), leadMs: 60 * 60 * 1000 })),
+		);
+		expect(opted).toBeGreaterThanOrEqual(0);
 		// Idempotent: nothing left to claim.
 		expect(await asUser(null, sweep)).toBe(0);
 	});
@@ -618,20 +703,17 @@ describe("agenda plugins", () => {
 		expect(out).toEqual({ appointments: [], patients: [] });
 	});
 
-	const runLoader = (
-		appointments: Record<string, unknown>,
-		patients?: Record<string, unknown>,
-	) => {
+	const runLoader = (appointments: Record<string, unknown>, patients?: Record<string, unknown>) => {
 		const page = (agendaPagesPlugin.pages ?? [])[0]!;
-		const load = page.loader! as unknown as Effect.Effect<unknown, unknown, unknown>;
-		let eff = load("/portal/doctor/agenda").pipe(
+		const load = page.loader!;
+		let eff = (load("/portal/doctor/agenda") as Effect.Effect<unknown, unknown, unknown>).pipe(
 			Effect.provideService(Principal, { userId: "u1", email: "d@x.com" }),
 			Effect.provideService(Appointments, appointments as never),
 		);
 		if (patients !== undefined) {
 			eff = eff.pipe(Effect.provideService(Patients, patients as never));
 		}
-		return Effect.runPromise(eff);
+		return Effect.runPromise(eff as Effect.Effect<unknown, unknown, never>);
 	};
 
 	it("loader aggregates appointments and patient names for a principal", async () => {

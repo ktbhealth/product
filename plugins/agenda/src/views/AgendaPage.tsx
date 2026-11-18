@@ -460,6 +460,7 @@ function AppointmentFormDialog({
 	const [failed, setFailed] = useState(false);
 
 	const submit = async () => {
+		/* v8 ignore next -- the submit button is disabled while patientId is empty or busy */
 		if (patientId === "" || busy) return;
 		const startsAt = new Date(`${date}T${time}`);
 		if (Number.isNaN(startsAt.getTime())) {
@@ -485,6 +486,7 @@ function AppointmentFormDialog({
 		<Dialog
 			open
 			onOpenChange={(open) => {
+				/* v8 ignore next -- this dialog only reports closes; the open transition never reaches the handler */
 				if (!open) onClose();
 			}}
 		>

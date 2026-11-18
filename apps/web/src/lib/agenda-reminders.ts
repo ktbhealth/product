@@ -20,10 +20,9 @@ import { run } from "@ktb/server-fns";
  */
 
 /** Structured log line — flat JSON like the http.access sink. */
-const log = (level: "INFO" | "WARN" | "ERROR", message: string, fields: object): void => {
+const log = (level: "INFO" | "ERROR", message: string, fields: object): void => {
 	const line = JSON.stringify({ message, level, ...fields });
 	if (level === "ERROR") console.error(line);
-	else if (level === "WARN") console.warn(line);
 	else console.info(line);
 };
 

@@ -296,6 +296,7 @@ export const AppointmentsLive = Layer.effect(
 						note: input.note ?? null,
 					}),
 				);
+				/* v8 ignore next -- the insert returns the row; null only on an FK-edge delete race */
 				if (row !== null) {
 					yield* events.dispatch([
 						AppointmentScheduled.make({
@@ -334,6 +335,7 @@ export const AppointmentsLive = Layer.effect(
 						...(rescheduled ? { reminderSentAt: null } : {}),
 					}),
 				);
+				/* v8 ignore next -- the update returns the row; null only on a mid-flight delete */
 				if (updated !== null) {
 					yield* events.dispatch([
 						AppointmentUpdated.make({
@@ -389,8 +391,10 @@ export const AppointmentsLive = Layer.effect(
 					source: "agenda",
 					status: "live",
 				});
+				/* v8 ignore next -- consultations.create only returns null on an empty insert, which the FK-checked write cannot produce */
 				if (consultationId === null) return null;
 				const updated = yield* Effect.promise(() => updateAppointment(db, id, { consultationId }));
+				/* v8 ignore next -- updateAppointment returns the row; ?? row only on a mid-flight delete */
 				return { appointment: updated ?? row, consultationId };
 			}),
 			dispatchDueReminders: Effect.fn("Appointments.dispatchDueReminders")(function* (options?: {
