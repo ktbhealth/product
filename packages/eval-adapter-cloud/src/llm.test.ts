@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Schedule from "effect/Schedule";
 import { describe, expect, it } from "vitest";
 
 import { EvalPort, PortError, type EvalQuestion, type TaskEnvelope } from "@ktb/eval-core";
@@ -168,6 +169,143 @@ describe("makeWorkersAiLlm", () => {
 		expect(err).toBeInstanceOf(PortError);
 		expect((err as PortError).message).toContain("500");
 	});
+
+	it("fails typed on a malformed envelope", async () => {
+		const err = await withLlm(makeWorkersAiLlm(opts(fetchJson({ unexpected: true }))), (l) =>
+			l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(PortError);
+		expect((err as PortError).message).toContain("malformed response");
+	});
+
+	it("fails typed when success=true carries no result", async () => {
+		const err = await withLlm(makeWorkersAiLlm(opts(fetchJson({ success: true }))), (l) =>
+			l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain("success=true without result");
+	});
+
+	it("fails typed on empty choices", async () => {
+		const err = await withLlm(
+			makeWorkersAiLlm(opts(fetchJson({ success: true, result: { choices: [] } }))),
+			(l) => l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain("empty choices");
+	});
+
+	it("surfaces provider messages detail on success=false", async () => {
+		const err = await withLlm(
+			makeWorkersAiLlm(opts(fetchJson({ success: false, messages: ["denied by policy"] }))),
+			(l) => l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain("denied by policy");
+	});
+
+	it("serializes non-string provider errors", async () => {
+		const err = await withLlm(
+			makeWorkersAiLlm(opts(fetchJson({ success: false, errors: [{ code: "E1" }] }))),
+			(l) => l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain('"code":"E1"');
+	});
+
+	it("reports bare success=false without detail", async () => {
+		const err = await withLlm(makeWorkersAiLlm(opts(fetchJson({ success: false }))), (l) =>
+			l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toBe("workers-ai returned success=false");
+	});
+
+	it("fails typed on timeout", async () => {
+		const hanging = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;
+		const err = await withLlm(makeWorkersAiLlm(opts(hanging, { timeoutMs: 10 })), (l) =>
+			l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain("timeout after 10ms");
+	});
+
+	it("retries when a schedule is provided", async () => {
+		let calls = 0;
+		const flaky = (() => {
+			calls += 1;
+			return calls < 2
+				? Promise.resolve(new Response("boom", { status: 500 }))
+				: Promise.resolve(
+						new Response(JSON.stringify({ success: true, result: { response: "ok" } })),
+					);
+		}) as unknown as typeof fetch;
+		const r = await withLlm(makeWorkersAiLlm(opts(flaky, { retry: Schedule.recurs(2) })), (l) =>
+			l.generate(env),
+		);
+		expect(calls).toBe(2);
+		expect(r.text).toBe("ok");
+	});
+
+	it("defaults to the global fetch when fetchImpl is absent", async () => {
+		// Point at an unroutable local endpoint — real fetch fails fast.
+		const err = await withLlm(
+			makeWorkersAiLlm({
+				accountId: "a",
+				apiToken: "t",
+				model: "m",
+				endpoint: "http://localhost:1",
+			}),
+			(l) => l.generate(env),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(PortError);
+		expect((err as PortError).message).toMatch(/fetch failed|ECONNREFUSED|network/i);
+	});
+
+	it("maps non-Error fetch throws to PortError", async () => {
+		const throwing = (() => Promise.reject("net down")) as unknown as typeof fetch;
+		const err = await withLlm(makeWorkersAiLlm(opts(throwing)), (l) => l.generate(env)).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain("net down");
+	});
+
+	it("correct tolerates prose around the JSON payload", async () => {
+		const edits = { ops: [{ at: 0, remove: "a", insert: "b", kind: "fix" }] };
+		const r = await withLlm(
+			makeWorkersAiLlm(
+				opts(
+					fetchJson({
+						success: true,
+						result: {
+							response: `Here you go: ${JSON.stringify(edits)} — done`,
+						},
+					}),
+				),
+			),
+			(l) => l.correct({ ...env, role: "corrector", outputSchema: "EditList" }),
+		);
+		expect(r.edits.ops).toHaveLength(1);
+	});
 });
 
 describe("makeWorkersAiEval", () => {
@@ -261,5 +399,47 @@ describe("makeWorkersAiEval", () => {
 			(e: unknown) => e,
 		);
 		expect(err).toBeInstanceOf(PortError);
+	});
+
+	it("accepts a score question without maxScore", async () => {
+		const r = await withEval(
+			makeWorkersAiEval(
+				opts(
+					fetchJson({
+						success: true,
+						result: {
+							response: JSON.stringify([{ id: "s", value: 1, probability: 0.5 }]),
+						},
+					}),
+				),
+			),
+			(l) => l.judge({ state: {}, questions: [{ id: "s", kind: "score", text: "q?" }] }),
+		);
+		expect(r.answers[0]).toEqual({ id: "s", kind: "score", value: 1, probability: 0.5 });
+	});
+
+	it("fails typed on duplicate judge answer ids", async () => {
+		const dup = [verdicts[0], verdicts[0]];
+		const err = await withEval(
+			makeWorkersAiEval(
+				opts(fetchJson({ success: true, result: { response: JSON.stringify(dup) } })),
+			),
+			(l) => l.judge({ state: {}, questions: [questions[0]!] }),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect((err as PortError).message).toContain('duplicate judge answer for question "q1"');
+	});
+
+	it("maps transport failures to the eval port", async () => {
+		const err = await withEval(makeWorkersAiEval(opts(fetchJson({}, { status: 500 }))), (l) =>
+			l.judge({ state: {}, questions }),
+		).then(
+			() => null,
+			(e: unknown) => e,
+		);
+		expect(err).toBeInstanceOf(PortError);
+		expect((err as PortError).port).toBe("eval");
 	});
 });

@@ -106,4 +106,33 @@ describe("admin sign-in page", () => {
 			"/login/doctor",
 		);
 	});
+
+	it("toggles password visibility", () => {
+		render(createElement(Page));
+		const pw = screen.getByLabelText("Password") as HTMLInputElement;
+		expect(pw.type).toBe("password");
+		fireEvent.click(screen.getByRole("button", { name: "Show password" }));
+		expect(pw.type).toBe("text");
+		fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+		expect(pw.type).toBe("password");
+	});
+
+	it("ignores submit while fields are empty", async () => {
+		const { container } = render(createElement(Page));
+		const form = container.querySelector("form")!;
+		await act(async () => {
+			fireEvent.submit(form);
+		});
+		expect(signInEmail).not.toHaveBeenCalled();
+	});
+
+	it("shows fallback message when the auth error has no message", async () => {
+		signInEmail.mockResolvedValue({
+			data: null,
+			error: { message: undefined },
+		} as unknown as AuthResult);
+		render(createElement(Page));
+		await fillAndSubmit();
+		await screen.findByText("Could not sign in. Please try again.");
+	});
 });
