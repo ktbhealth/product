@@ -127,8 +127,12 @@
       "name": "@ktb/eval-consultation",
       "dependencies": {
         "@ktb/eval-core": "workspace:*",
+        "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
         "eta": "^4.6.0",
+      },
+      "devDependencies": {
+        "@types/better-sqlite3": "^9.6.0",
       },
     },
     "infra/ci-hook": {
