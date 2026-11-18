@@ -2345,7 +2345,19 @@ export const DocumentStoreLive = Layer.effect(
 							def.migrations === undefined || def.migrations.length === 0
 								? compileFilterPrefilter(query.filter)
 								: undefined;
-						const rows = yield* scopedRows(row.id, ownerId, unscoped, prefilter);
+						// json_extract/json_type raise "malformed JSON" on
+						// corrupt rows instead of returning NULL, and SQLite
+						// does not guarantee AND/OR operand order — CASE
+						// evaluates lazily, so corrupt rows take ELSE 1 and
+						// reach parseData/matchFilter like before.
+						const rows = yield* scopedRows(
+							row.id,
+							ownerId,
+							unscoped,
+							prefilter === undefined
+								? undefined
+								: sql`CASE WHEN json_valid(${documentRecords.data}) THEN ((${prefilter})) ELSE 1 END`,
+						);
 						// Scan-cost signal (T-131): the visible slice size find
 						// pays for — recorded before the cap check so capped
 						// scans still count. With pushdown this is the
