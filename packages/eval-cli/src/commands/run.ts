@@ -383,6 +383,8 @@ export const makeRunCommand = (ctx: CmdContext) =>
 						const modelAdapters: Record<string, string> = {};
 						for (const c of ["asr", "llm", "eval"] as const) {
 							const key = resolution.adapters[c];
+							/* v8 ignore next -- modelLayer above already threw for any
+							   missing adapter key, so `key` is always defined here */
 							if (key !== undefined) modelAdapters[c] = key;
 						}
 						const engines = new Map<string, EngineIdentity>();
@@ -416,6 +418,8 @@ export const makeRunCommand = (ctx: CmdContext) =>
 								latencyMs: r.latencyMs,
 								datasetVersion,
 								stages: stages.join(","),
+								/* v8 ignore next -- modelAdapters always holds the three
+								   required caps: modelLayer threw for a missing key */
 								...(Object.keys(modelAdapters).length > 0 ? { adapters: modelAdapters } : {}),
 								...(engines.size > 0 ? { engines: [...engines.values()] } : {}),
 								...(prompts.length > 0 ? { prompts } : {}),

@@ -546,7 +546,14 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 			grantFor: (userId) =>
 				rbacGrants
 					.canFor(userId, "platform", "admin")
-					.pipe(Effect.catch(() => Effect.succeed(false))),
+					.pipe(
+						Effect.catch(
+							/* v8 ignore next -- canFor's error channel is never: grant lookups run
+							   on Effect.promise, so DB failures surface as defects (which
+							   Effect.catch skips) rather than typed errors */
+							() => Effect.succeed(false),
+						),
+					),
 		}),
 	);
 	// Runtime plugin enable/config state (P-058): the service is built

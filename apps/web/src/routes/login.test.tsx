@@ -7,6 +7,9 @@ const missingKey = vi.hoisted(() => ({ current: null as string | null }));
 const rootLoaderData = vi.hoisted(() => ({
 	current: { pluginStates: { enabled: [] as string[] } },
 }));
+const tilesOverride = vi.hoisted(() => ({
+	current: null as import("@ktb/kernel").ChromeContribution[] | null,
+}));
 
 // Shared mock factories: Link → plain anchor, route keeps its options.
 // `getRouteApi` returns controllable root loader data — the picker
@@ -21,6 +24,18 @@ vi.mock("@tanstack/react-router", (importOriginal) =>
 		}),
 	),
 );
+// visibleLoginTiles normally only returns loginTile entries — the
+// override lets a test feed a foreign-kind contribution so the
+// page's defensive `kind !== "loginTile"` guard runs.
+vi.mock("#/lib/login-tiles.ts", async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import("#/lib/login-tiles.ts")>();
+	return {
+		...actual,
+		visibleLoginTiles: (...args: Parameters<typeof actual.visibleLoginTiles>) =>
+			tilesOverride.current ?? actual.visibleLoginTiles(...args),
+	};
+});
 
 import { Route } from "./login.tsx";
 import { plugins } from "#/plugins.ts";
@@ -47,6 +62,7 @@ describe("/login role picker", () => {
 	afterEach(() => {
 		cleanup();
 		missingKey.current = null;
+		tilesOverride.current = null;
 	});
 
 	it("sets the page title", () => {
@@ -104,5 +120,18 @@ describe("/login role picker", () => {
 		missingKey.current = "app.nav_secretary_login";
 		render(createElement(Page));
 		expect(screen.getByRole("link", { name: "Secretary sign in" })).toBeTruthy();
+	});
+
+	it("skips non-loginTile contributions defensively", () => {
+		tilesOverride.current = [
+			{
+				id: "odd.link",
+				region: "app.login.tiles",
+				content: { kind: "link", to: "/nowhere", label: "nowhere" },
+			} as never,
+		];
+		render(createElement(Page));
+		expect(screen.queryByRole("link", { name: "nowhere" })).toBeNull();
+		expect(screen.getByText("Sign in")).toBeTruthy();
 	});
 });

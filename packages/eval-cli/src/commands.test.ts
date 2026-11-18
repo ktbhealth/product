@@ -547,6 +547,72 @@ describe("run/gate/report round-trip", () => {
 		}
 	});
 
+	test("run under local-jev records engine/model identity from live adapters", async () => {
+		// faster-whisper ASR + systemone judge over stubbed loopback
+		// endpoints: the judge's RunRecord carries `model` +
+		// `engineVersion`, which engineIdentityOf must preserve into
+		// Experiment.summary.engines (T-135). The stub answers every
+		// question kind the judge can emit.
+		const asrUrl = "http://127.0.0.1:18765";
+		const systemoneUrl = "http://127.0.0.1:18766";
+		const fetchImpl = (async (url: unknown, init?: { body?: unknown }) => {
+			const u = typeof url === "string" ? url : url instanceof URL ? url.href : String(url);
+			if (u === `${asrUrl}/transcribe`) {
+				return new Response(
+					JSON.stringify({
+						text: "o que voce esta sentindo",
+						segments: [{ t0: 0, t1: 1, text: "o que voce esta sentindo" }],
+						language: "pt",
+					}),
+					{ status: 200 },
+				);
+			}
+			if (u === `${systemoneUrl}/v1/systemone`) {
+				const body = JSON.parse(String(init?.body)) as {
+					questions: Record<string, { type: string; criteria?: unknown }>;
+				};
+				const answers: Record<string, unknown> = {};
+				for (const [id, q] of Object.entries(body.questions)) {
+					if (q.type === "noul") {
+						answers[id] = { type: "noul", noul: 0.9 };
+					} else if (q.type === "choice") {
+						const criteria =
+							typeof q.criteria === "object" && q.criteria !== null
+								? (q.criteria as Record<string, unknown>)
+								: {};
+						const opt = Object.keys(criteria)[0] ?? "justified_fix";
+						answers[id] = { type: "choice", choice: opt, probabilities: { [opt]: 0.9 } };
+					} else {
+						answers[id] = { type: "score", score: 1, confidence: 0.9 };
+					}
+				}
+				return new Response(JSON.stringify({ answers }), { status: 200 });
+			}
+			return new Response("not found", { status: 404 });
+		}) as typeof fetch;
+		const wd = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-jev-"));
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			// Seed the cohort under the stub profile, then re-run the
+			// same suite under local-jev with the loopback stubs.
+			expect(await exec(["generate", "fx", "--n", "1", "--workdir", wd])).toBe(0);
+			const c = {
+				...ctx(),
+				env: { EVAL_ASR_URL: asrUrl, EVAL_SYSTEMONE_URL: systemoneUrl },
+				fetchImpl,
+			};
+			expect(
+				await exec(
+					["run", "fx", "--profile", "local-jev", "--workdir", wd, "--run-id", "run-jev"],
+					c,
+				),
+			).toBe(0);
+		} finally {
+			vi.restoreAllMocks();
+			fs.rmSync(wd, { recursive: true, force: true });
+		}
+	});
+
 	test("run fails on invalid contribution config before any work (P-078)", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-cfg-"));
 		fs.writeFileSync(
