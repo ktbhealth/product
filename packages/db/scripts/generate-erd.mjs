@@ -64,7 +64,15 @@ const DOMAINS = [
 		owner: "`plugins/vault`",
 		description:
 			"Zero-knowledge key custody — wrapped clinic keys and per-entity data encryption key grants.",
-		tables: ["clinic_keys", "entity_deks", "portal_keys"],
+		tables: ["clinic_keys", "entity_deks", "portal_keys", "vault_secret"],
+	},
+	{
+		id: "machines",
+		title: "Machines",
+		owner: "`plugins/machines`",
+		description:
+			"Machine registry (P-098) — shells, VMs, GPU nodes and remote endpoints workloads (ACP agents, eval runners, transcription) can be scheduled onto. A registry, not a connection: consumers resolve a card and dial out via their own adapters; auth material lives in the vault (`secretRef` = `vault:<id>`).",
+		tables: ["machine"],
 	},
 	{
 		id: "notifications",
