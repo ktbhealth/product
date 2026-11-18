@@ -64,7 +64,15 @@ const DOMAINS = [
 		owner: "`plugins/vault`",
 		description:
 			"Zero-knowledge key custody — wrapped clinic keys and per-entity data encryption key grants.",
-		tables: ["clinic_keys", "entity_deks", "portal_keys"],
+		tables: ["clinic_keys", "entity_deks", "portal_keys", "vault_secret"],
+	},
+	{
+		id: "machines",
+		title: "Machines",
+		owner: "`plugins/machines`",
+		description:
+			"Platform machine registry — ACP/agent endpoint hosts with health/last-seen tracking.",
+		tables: ["machine"],
 	},
 	{
 		id: "notifications",
