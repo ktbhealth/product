@@ -158,4 +158,38 @@ describe("DocumentStoreLive write events", () => {
 		).rejects.toThrow();
 		expect(seen.length).toBe(before);
 	});
+
+	it("treats dispatch failures as best-effort — the committed write still succeeds", async () => {
+		// A bus whose dispatch dies must not turn a committed DB write
+		// into a reported failure (that would invite duplicate-retry
+		// writes). The event is logged and dropped instead.
+		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: DEFS }),
+			Layer.succeed(EventBus, {
+				dispatch: () => Effect.die(new Error("bus down")),
+			} as never),
+		);
+		const rt = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
+		try {
+			const record = await rt.runPromise(
+				Effect.gen(function* () {
+					const store = yield* DocumentStore;
+					return yield* store.insert("test.events", { title: "committed" }, { ownerId: "user-1" });
+				}),
+			);
+			expect(record.data.title).toBe("committed");
+			// The row really persisted — the write was not rolled back.
+			const got = await rt.runPromise(
+				Effect.gen(function* () {
+					const store = yield* DocumentStore;
+					return yield* store.get("test.events", record.id, { ownerId: "user-1" });
+				}),
+			);
+			expect(got?.data.title).toBe("committed");
+		} finally {
+			await rt.dispose();
+		}
+	});
 });
