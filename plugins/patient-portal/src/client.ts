@@ -1,4 +1,4 @@
-import { HouseIcon } from "lucide-react";
+import { HeartPulseIcon, HouseIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
@@ -72,6 +72,19 @@ export const plugins: readonly Plugin[] = [
 				content: {
 					kind: "sidebarItem",
 					item: { to: "/portal/patient", label: "Home", icon: HouseIcon, exact: true },
+				},
+			},
+			// Mirrors patientPortalChromePlugin's /login tile (server index.ts).
+			{
+				id: "patient-portal.login.tile",
+				region: "app.login.tiles",
+				order: 0,
+				content: {
+					kind: "loginTile",
+					to: "/login/patient",
+					labelKey: "nav_patient_login",
+					fallback: "Patient sign in",
+					icon: HeartPulseIcon,
 				},
 			},
 		],

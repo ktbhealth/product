@@ -9,13 +9,24 @@ describe("auth plugin manifests", () => {
 		expect(authRoutesPlugin.routes).toHaveLength(4);
 	});
 
-	it("auth.chrome is a system plugin contributing the session menu", () => {
+	it("auth.chrome is a system plugin contributing the session menu and the doctor login tile", () => {
 		expect(authChromePlugin.id).toBe("auth.chrome");
 		expect(authChromePlugin.system).toBe(true);
-		expect(authChromePlugin.chrome).toHaveLength(1);
+		expect(authChromePlugin.chrome).toHaveLength(2);
 		expect(authChromePlugin.chrome[0]).toMatchObject({
 			region: "app.header.session",
 			content: { kind: "component" },
+		});
+		expect(authChromePlugin.chrome[1]).toMatchObject({
+			id: "auth.login.doctor",
+			region: "app.login.tiles",
+			order: 1,
+			content: {
+				kind: "loginTile",
+				to: "/login/doctor",
+				labelKey: "nav_doctor_login",
+				requires: ["doctors.services", "clinician.portal"],
+			},
 		});
 	});
 

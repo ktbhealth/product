@@ -124,6 +124,34 @@ describe("collectChrome", () => {
 		expect(ids()).toEqual(["a.plain"]);
 	});
 
+	it("collects loginTile content like any other kind (P-099)", () => {
+		const Icon = () => null;
+		const plugins = [
+			plugin("a", [
+				entry("a.tile", "app.login.tiles", {
+					order: 1,
+					content: {
+						kind: "loginTile",
+						to: "/login/doctor",
+						labelKey: "nav_doctor_login",
+						fallback: "Doctor sign in",
+						icon: Icon,
+						requires: ["doctors.services"],
+					},
+				}),
+				entry("a.other", "app.login.tiles", { order: 0 }),
+			]),
+		];
+		const collected = collectChrome(plugins, "app.login.tiles", "/login");
+		expect(collected.map((e) => e.id)).toEqual(["a.other", "a.tile"]);
+		expect(collected[1]?.content).toMatchObject({
+			kind: "loginTile",
+			to: "/login/doctor",
+			labelKey: "nav_doctor_login",
+			requires: ["doctors.services"],
+		});
+	});
+
 	it("tolerates plugins without a chrome contribution", () => {
 		const plugins = [{ id: "bare" } as Plugin, plugin("a", [entry("a.nav", "app.header.nav")])];
 		expect(collectChrome(plugins, "app.header.nav", "/").map((e) => e.id)).toEqual(["a.nav"]);

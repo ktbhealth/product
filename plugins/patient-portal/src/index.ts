@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { HouseIcon } from "lucide-react";
+import { HeartPulseIcon, HouseIcon } from "lucide-react";
 import { physical } from "@tanstack/virtual-file-routes";
 
 import { Forbidden, Principal } from "@ktb/authz";
@@ -438,6 +438,24 @@ export const patientPortalChromePlugin = definePlugin({
 			content: {
 				kind: "sidebarItem",
 				item: { to: "/portal/patient", label: "Home", icon: HouseIcon, exact: true },
+			},
+		},
+		// /login picker tile (P-099): the patient sign-in flow's gate is
+		// the "patient" PortalInstance's entryEnabled check — package-
+		// granular on pkg "patient-portal". No `requires` needed: this
+		// contribution only renders while patient-portal.chrome is
+		// enabled, which already makes packageLive("patient-portal")
+		// true — the same package the instance belongs to.
+		{
+			id: "patient-portal.login.tile",
+			region: "app.login.tiles",
+			order: 0,
+			content: {
+				kind: "loginTile",
+				to: "/login/patient",
+				labelKey: "nav_patient_login",
+				fallback: "Patient sign in",
+				icon: HeartPulseIcon,
 			},
 		},
 	],

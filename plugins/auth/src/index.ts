@@ -1,3 +1,4 @@
+import { StethoscopeIcon } from "lucide-react";
 import { physical, route } from "@tanstack/virtual-file-routes";
 
 import { doctorsServicesPlugin } from "@ktb/doctors";
@@ -59,6 +60,22 @@ export const authChromePlugin = definePlugin({
 			id: "session.menu",
 			region: "app.header.session",
 			content: { kind: "component", component: SessionMenu },
+		},
+		// /login picker tile (P-099): the doctor sign-in flow needs the
+		// doctors package (profile creation) and the clinician portal
+		// live — same gates the old host-side role list applied.
+		{
+			id: "auth.login.doctor",
+			region: "app.login.tiles",
+			order: 1,
+			content: {
+				kind: "loginTile",
+				to: "/login/doctor",
+				labelKey: "nav_doctor_login",
+				fallback: "Doctor sign in",
+				icon: StethoscopeIcon,
+				requires: ["doctors.services", "clinician.portal"],
+			},
 		},
 	],
 });

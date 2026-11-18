@@ -21,7 +21,8 @@ import { doctorContextFn } from "@ktb/doctors/fns";
 import { PORTAL_AUDIENCE } from "@ktb/portal/rules";
 
 import { appCatalogT, i18nSliceFromHeadMatches, useRootI18nSlice } from "#/lib/i18n.ts";
-import { visibleLoginPortals } from "#/lib/login-roles.ts";
+import { loginTileTargets } from "#/lib/login-tiles.ts";
+import { plugins } from "#/plugins.ts";
 
 const rootApi = getRouteApi("__root__");
 
@@ -45,10 +46,10 @@ export const Route = createFileRoute("/login/patient")({
 // account has no doctor profile.
 function PortalSignInPage() {
 	const { emailEnabled } = useLoaderData({ from: "/login/patient" });
-	// The doctor cross-link follows the /login picker's rule (P-058): no
-	// offer when the clinician portal or the doctors package is off.
+	// The doctor cross-link follows the /login picker's rule (P-058/P-099):
+	// no offer when the doctor sign-in tile is not live.
 	const { pluginStates } = rootApi.useLoaderData();
-	const doctorLogin = visibleLoginPortals(pluginStates).has("doctor");
+	const doctorLogin = loginTileTargets(plugins, pluginStates).has("/login/doctor");
 	const slice = useRootI18nSlice();
 	const appT = appCatalogT(slice);
 	const t = (key: string, params: Record<string, unknown> = {}) => {

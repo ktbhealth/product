@@ -311,7 +311,21 @@ export type ChromeContent =
 			}>;
 	  }
 	| { readonly kind: "footerBlock"; readonly block: LandingFooterBlock }
-	| { readonly kind: "note"; readonly key: string; readonly fallback: string };
+	| { readonly kind: "note"; readonly key: string; readonly fallback: string }
+	/** One tile on the /login role picker (P-099): each sign-in flow's
+	 * owning plugin declares its own entry into the `app.login.tiles`
+	 * region; the host resolves `labelKey` against its `app.*` message
+	 * slice (falling back to `fallback`) and gates the whole flow on
+	 * `requires` — plugin ids checked package-granularly (P-058), the
+	 * same contract `entryEnabled` applies to registry entries. */
+	| {
+			readonly kind: "loginTile";
+			readonly to: string;
+			readonly labelKey: string;
+			readonly fallback: string;
+			readonly icon: ComponentType<{ readonly className?: string }>;
+			readonly requires?: readonly string[];
+	  };
 
 /** One slot filled in a shell-owned region. `region` names the slot
  * (e.g. "app.header.nav", "portal.sidebar") — the host declares the

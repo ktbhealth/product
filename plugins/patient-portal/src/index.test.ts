@@ -515,13 +515,23 @@ describe("patient-portal plugins", () => {
 		expect("loader" in pages[2]!).toBe(true);
 	});
 
-	it("scopes the sidebar entry to the patient instance", () => {
+	it("scopes the sidebar entry to the patient instance and offers the patient login tile", () => {
 		const entries = patientPortalChromePlugin.chrome ?? [];
-		expect(entries).toHaveLength(1);
+		expect(entries).toHaveLength(2);
 		expect(entries[0]).toMatchObject({
 			region: "portal.sidebar",
 			portal: "patient",
 			content: { kind: "sidebarItem", item: { to: "/portal/patient", exact: true } },
+		});
+		expect(entries[1]).toMatchObject({
+			id: "patient-portal.login.tile",
+			region: "app.login.tiles",
+			order: 0,
+			content: {
+				kind: "loginTile",
+				to: "/login/patient",
+				labelKey: "nav_patient_login",
+			},
 		});
 	});
 });

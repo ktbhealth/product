@@ -1,4 +1,4 @@
-import { UserCogIcon } from "lucide-react";
+import { ClipboardListIcon, UserCogIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
@@ -58,6 +58,20 @@ export const plugins: readonly Plugin[] = [
 						icon: UserCogIcon,
 						group: "Account",
 					},
+				},
+			},
+			// Mirrors secretariesChromePlugin's /login tile (server index.ts).
+			{
+				id: "secretaries.login.tile",
+				region: "app.login.tiles",
+				order: 2,
+				content: {
+					kind: "loginTile",
+					to: "/login/secretary",
+					labelKey: "nav_secretary_login",
+					fallback: "Secretary sign in",
+					icon: ClipboardListIcon,
+					requires: ["doctors.services", "clinician.portal"],
 				},
 			},
 		],

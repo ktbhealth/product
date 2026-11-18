@@ -100,9 +100,9 @@ describe("/login role picker", () => {
 		expect(screen.getByRole("link", { name: "I am a secretary" })).toBeTruthy();
 	});
 
-	it("renders the raw key when a translation is missing", () => {
+	it("falls back to the tile's declared English when a translation is missing", () => {
 		missingKey.current = "app.nav_secretary_login";
 		render(createElement(Page));
-		expect(screen.getByRole("link", { name: "nav_secretary_login" })).toBeTruthy();
+		expect(screen.getByRole("link", { name: "Secretary sign in" })).toBeTruthy();
 	});
 });

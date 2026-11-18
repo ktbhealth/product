@@ -117,6 +117,9 @@ export const KNOWN_CHROME_REGIONS: ReadonlySet<string> = new Set([
 	"app.header.session",
 	"app.footer.blocks",
 	"app.footer.note",
+	// /login role-picker tiles (P-099) — plugin-contributed sign-in
+	// entries rendered by the picker route, not by a shell.
+	"app.login.tiles",
 	"portal.sidebar",
 	// Fixed brand slot in PortalShell's SidebarHeader (P-082) —
 	// plugins contribute `component` entries; the instance badge stays

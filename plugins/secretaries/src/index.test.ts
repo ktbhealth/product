@@ -312,7 +312,7 @@ describe("secretaries plugins", () => {
 		expect(secretariesPagesPlugin.pages?.[0]?.loader).toBeDefined();
 	});
 
-	it("links the doctor portal sidebar to the in-portal page", () => {
+	it("links the doctor portal sidebar to the in-portal page and offers the secretary login tile", () => {
 		expect(secretariesChromePlugin.requiredDeps).toEqual(["portal.shell"]);
 		expect(secretariesChromePlugin.chrome).toMatchObject([
 			{
@@ -325,6 +325,17 @@ describe("secretaries plugins", () => {
 						label: "Secretaries",
 						group: "Account",
 					},
+				},
+			},
+			{
+				id: "secretaries.login.tile",
+				region: "app.login.tiles",
+				order: 2,
+				content: {
+					kind: "loginTile",
+					to: "/login/secretary",
+					labelKey: "nav_secretary_login",
+					requires: ["doctors.services", "clinician.portal"],
 				},
 			},
 		]);
