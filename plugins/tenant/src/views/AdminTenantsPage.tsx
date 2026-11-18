@@ -4,6 +4,7 @@ import { UsersIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
@@ -84,7 +85,6 @@ export function AdminTenantsPage({
 	locale?: string;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, tenantMessages(locale));
-	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
 	const [membersFor, setMembersFor] = useState<TenantRow | null>(null);
 	const needle = q.trim().toLowerCase();
@@ -152,7 +152,7 @@ export function AdminTenantsPage({
 											<TableCell>{tenant.kind}</TableCell>
 											<TableCell className="text-right text-xs">{tenant.memberCount}</TableCell>
 											<TableCell className="text-right text-muted-foreground">
-												{fmtDate(tenant.createdAt)}
+												<LocalDateTime value={tenant.createdAt} locale={locale} />
 											</TableCell>
 											<TableCell className="text-right">
 												<Button

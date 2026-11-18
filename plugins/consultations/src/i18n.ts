@@ -69,7 +69,7 @@ export interface ConsultationMessages {
 	readonly detail: {
 		readonly back: string;
 		readonly openPatientRecord: string;
-		readonly consentRecorded: (date: string) => string;
+		readonly consentLabel: string;
 		readonly consentNotRecorded: string;
 		readonly inProgress: string;
 		readonly previousConsultations: (n: number) => string;
@@ -315,7 +315,7 @@ const en: ConsultationMessages = {
 	detail: {
 		back: "Consultations",
 		openPatientRecord: "Open patient record",
-		consentRecorded: paramMessage("en", "Consent ✓ {date}", ["date"]),
+		consentLabel: "Consent ✓",
 		consentNotRecorded: "Consent not recorded",
 		inProgress: "in progress",
 		previousConsultations: paramMessage(
@@ -578,7 +578,7 @@ const ptBR: ConsultationMessages = {
 	detail: {
 		back: "Consultas",
 		openPatientRecord: "Abrir cadastro do paciente",
-		consentRecorded: paramMessage("pt-BR", "Consentimento ✓ {date}", ["date"]),
+		consentLabel: "Consentimento ✓",
 		consentNotRecorded: "Consentimento não registrado",
 		inProgress: "em andamento",
 		previousConsultations: paramMessage(
@@ -845,7 +845,7 @@ const es: ConsultationMessages = {
 	detail: {
 		back: "Consultas",
 		openPatientRecord: "Abrir registro del paciente",
-		consentRecorded: paramMessage("es", "Consentimiento ✓ {date}", ["date"]),
+		consentLabel: "Consentimiento ✓",
 		consentNotRecorded: "Consentimiento no registrado",
 		inProgress: "en curso",
 		previousConsultations: paramMessage(

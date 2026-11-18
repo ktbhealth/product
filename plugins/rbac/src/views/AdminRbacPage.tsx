@@ -4,6 +4,7 @@ import { PlusIcon, PencilIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -155,9 +156,6 @@ export function AdminRbacPage({
 		setUnassigning(null);
 		await run(() => unassignSubjectFn({ data: { id: a.id } }));
 	};
-
-	const fmtDate = (d: Date | string | null) =>
-		d === null ? t.neverExpires : new Date(d).toLocaleString(locale);
 
 	return (
 		<PageContainer className="space-y-8">
@@ -414,7 +412,13 @@ export function AdminRbacPage({
 										<TableCell className="font-mono text-xs">{a.subjectId}</TableCell>
 										<TableCell>{a.roleName}</TableCell>
 										<TableCell className="text-xs">{a.tenantId ?? t.globalTenant}</TableCell>
-										<TableCell className="text-xs">{fmtDate(a.expiresAt)}</TableCell>
+										<TableCell className="text-xs">
+											<LocalDateTime
+												value={a.expiresAt}
+												locale={locale}
+												fallback={a.expiresAt === null ? t.neverExpires : null}
+											/>
+										</TableCell>
 										<TableCell className="text-xs text-muted-foreground">
 											{a.grantedBy ?? "—"}
 										</TableCell>

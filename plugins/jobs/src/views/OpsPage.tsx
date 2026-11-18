@@ -21,17 +21,13 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 import type { AudioStorageStats, QueueDepth } from "@ktb/server-fns";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { retryAudioJobFn } from "../fns.ts";
 import { isAudioRetryable, jobStatusOf, type AudioJobRow } from "../jobs.ts";
 import { opsMessages, type OpsMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 const SEARCH_CLS = "w-56 sm:w-64";
-
-const fmtDate = (value: Date | string, locale: string): string => {
-	const d = value instanceof Date ? value : new Date(value);
-	return Number.isNaN(d.getTime()) ? "" : d.toLocaleString(locale);
-};
 
 const fmtBytes = (bytes: number, locale: string): string => {
 	if (bytes < 1024) return `${bytes} B`;
@@ -227,7 +223,7 @@ export function OpsPage({
 															{job.audioError ?? ""}
 														</TableCell>
 														<TableCell className="text-right text-xs text-muted-foreground">
-															{fmtDate(job.createdAt, locale)}
+															<LocalDateTime value={job.createdAt} locale={locale} fallback="" />
 														</TableCell>
 														<TableCell className="text-right">
 															{isAudioRetryable(job.audioStatus) ? (

@@ -4,6 +4,7 @@ import { ClipboardListIcon, FileHeartIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Alert, AlertDescription, AlertTitle } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -177,9 +178,11 @@ export function PortalPage({
 								<li key={consultation.id} className="flex items-center gap-3 px-4 py-3">
 									<div className="min-w-0 flex-1">
 										<p className="text-sm font-medium">
-											{new Date(consultation.createdAt).toLocaleDateString(locale, {
-												dateStyle: "long",
-											})}
+											<LocalDateTime
+												value={consultation.createdAt}
+												locale={locale}
+												options={{ dateStyle: "long" }}
+											/>
 										</p>
 										<p className="line-clamp-2 text-sm text-muted-foreground">
 											{consultation.chiefComplaint ?? t.consultationUntitled}

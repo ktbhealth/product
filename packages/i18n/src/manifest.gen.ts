@@ -1546,13 +1546,8 @@ export const I18N_MANIFEST = {
 		"detail.openPatientRecord": {
 			params: [],
 		},
-		"detail.consentRecorded": {
-			params: [
-				{
-					name: "date",
-				},
-			],
-			template: "Consent ✓ {date}",
+		"detail.consentLabel": {
+			params: [],
 		},
 		"detail.consentNotRecorded": {
 			params: [],

@@ -26,6 +26,8 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 
+import { LocalDateTime } from "@ktb/views/views";
+
 import type { SecretMeta } from "../secrets.ts";
 import type { VaultSecretKind } from "../schema.ts";
 import { vaultMessages } from "../i18n.ts";
@@ -45,14 +47,6 @@ export interface VaultSecretsApi {
 }
 
 const KINDS: readonly VaultSecretKind[] = ["api-key", "token", "password", "pem", "generic"];
-
-/** Wire dates may arrive as Date or ISO string depending on the fn
- * serializer — normalize before formatting. */
-const fmtDate = (value: Date | string | null | undefined, locale: string) => {
-	if (value === null || value === undefined) return "—";
-	const d = value instanceof Date ? value : new Date(value);
-	return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
-};
 
 /**
  * Server-side secrets manager (P-098 C2): lists SecretMeta rows for
@@ -159,7 +153,11 @@ export function VaultSecretsPanel({
 									<TableCell>{secret.kind}</TableCell>
 									<TableCell>{secret.version}</TableCell>
 									<TableCell className="text-xs text-muted-foreground">
-										{fmtDate(secret.updatedAt ?? secret.createdAt, locale)}
+										<LocalDateTime
+											value={secret.updatedAt ?? secret.createdAt}
+											locale={locale}
+											fallback="—"
+										/>
 									</TableCell>
 									{canManage ? (
 										<TableCell className="text-right">

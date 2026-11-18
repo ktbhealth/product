@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { PageI18nSlice } from "@ktb/kernel";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -14,7 +16,8 @@ import type { ViewMessages } from "../i18n.ts";
 import type { ViewListWire, ViewRecordWire } from "../wire.ts";
 import { FilterBar } from "./FilterBar.tsx";
 import { useViewFilters } from "./use-view-filters.ts";
-import { fieldLabel, formatViewValue, getPath, resolveViewText } from "./view-utils.ts";
+import { ViewValue } from "./ViewValue.tsx";
+import { fieldLabel, getPath, resolveViewText } from "./view-utils.ts";
 
 /**
  * `kind: "cards"` list view — one card per record. The card title
@@ -41,11 +44,11 @@ const titleFieldFor = (wire: ViewListWire): ViewField => {
 	return def.fields.find((f) => f.field === def.cardTitleField) ?? (def.fields[0] as ViewField);
 };
 
-const cardTitle = (wire: ViewListWire, row: ViewRecordWire, locale: string): string => {
+const cardTitle = (wire: ViewListWire, row: ViewRecordWire, locale: string): ReactNode => {
 	const field = titleFieldFor(wire);
 	const value = getPath(row.data, field.field);
 	if (value === undefined || value === null) return `#${row.id}`;
-	return formatViewValue(field, value, { locale, refs: wire.refs });
+	return <ViewValue field={field} value={value} locale={locale} refs={wire.refs} />;
 };
 
 export function CardsView({ wire, messages, locale, i18n, onQuery, busy }: CardsViewProps) {
@@ -91,10 +94,12 @@ export function CardsView({ wire, messages, locale, i18n, onQuery, busy }: Cards
 													{resolveViewText(i18n, fieldLabel(field))}
 												</dt>
 												<dd className="truncate text-right">
-													{formatViewValue(field, getPath(row.data, field.field), {
-														locale,
-														refs: wire.refs,
-													})}
+													<ViewValue
+														field={field}
+														value={getPath(row.data, field.field)}
+														locale={locale}
+														refs={wire.refs}
+													/>
 												</dd>
 											</div>
 										))}

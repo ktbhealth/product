@@ -7,7 +7,8 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/
 
 import type { ViewMessages } from "../i18n.ts";
 import type { ViewDetailWire } from "../wire.ts";
-import { fieldLabel, formatViewValue, getPath, resolveViewText } from "./view-utils.ts";
+import { ViewValue } from "./ViewValue.tsx";
+import { fieldLabel, getPath, resolveViewText } from "./view-utils.ts";
 
 /**
  * Detail mode (`/v/<key>/<docId>`) — a labeled-fields layout over
@@ -59,10 +60,12 @@ export function DetailView({ wire, messages, locale, i18n }: DetailViewProps) {
 										{resolveViewText(i18n, fieldLabel(field))}
 									</dt>
 									<dd className="break-words">
-										{formatViewValue(field, getPath(record.data, field.field), {
-											locale,
-											refs: wire.refs,
-										})}
+										<ViewValue
+											field={field}
+											value={getPath(record.data, field.field)}
+											locale={locale}
+											refs={wire.refs}
+										/>
 									</dd>
 								</div>
 							))}

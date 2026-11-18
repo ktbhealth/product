@@ -6,6 +6,7 @@ import { factContent } from "@ktb/anamnesis";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
@@ -205,7 +206,7 @@ export function ConsultationsPage({
 								<p className="font-semibold">{t.zk.lockedRecord}</p>
 								<p className="mt-0.5 text-sm text-muted-foreground">{t.zk.lockedHint}</p>
 								<p className="mt-0.5 text-xs text-muted-foreground">
-									#{c.id} · {new Date(c.createdAt).toLocaleString()}
+									#{c.id} · <LocalDateTime value={c.createdAt} locale={locale} />
 								</p>
 							</div>
 						</article>
@@ -226,7 +227,7 @@ export function ConsultationsPage({
 										{c.patientName ?? t.list.unlinkedPatient}
 									</Link>
 									<span className="text-xs text-muted-foreground">
-										#{c.id} · {new Date(c.createdAt).toLocaleString()}
+										#{c.id} · <LocalDateTime value={c.createdAt} locale={locale} />
 									</span>
 									{c.patientId ? (
 										<Link
