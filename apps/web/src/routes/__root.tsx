@@ -234,8 +234,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		localeName: (l: string) => localeName(l, slice),
 		setLocale: changeLocale,
 		labels: {
-			doctorLogin: appMessage(slice, "nav_doctor_login", "I am a doctor"),
-			patientLogin: appMessage(slice, "nav_patient_login", "I am a patient"),
+			login: appMessage(slice, "nav_login", "Sign in"),
 			signOut: appMessage(slice, "nav_sign_out", "Sign out"),
 			langMenu: appMessage(slice, "lang_menu_label", "Language"),
 			patientPortal: appMessage(slice, "nav_patient_portal", "Patient portal"),

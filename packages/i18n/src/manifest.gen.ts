@@ -332,6 +332,15 @@ export const I18N_MANIFEST = {
 		login_pending: {
 			params: [],
 		},
+		login_picker_desc: {
+			params: [],
+		},
+		login_picker_heading: {
+			params: [],
+		},
+		login_picker_meta_title: {
+			params: [],
+		},
 		login_submit_in: {
 			params: [],
 		},
@@ -419,6 +428,9 @@ export const I18N_MANIFEST = {
 		nav_doctor_portal: {
 			params: [],
 		},
+		nav_login: {
+			params: [],
+		},
 		nav_my_consultations: {
 			params: [],
 		},
@@ -435,6 +447,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		nav_secretaries: {
+			params: [],
+		},
+		nav_secretary_login: {
 			params: [],
 		},
 		nav_secretary_portal: {
@@ -4931,8 +4946,10 @@ export const I18N_BASE_CATALOG = {
 	meta_title: "KTB Health",
 	meta_description:
 		"KTB Health is a medicine documentation platform: an ambient scribe turns the consultation conversation into a structured anamnesis draft for physician review.",
+	nav_login: "Sign in",
 	nav_doctor_login: "I am a doctor",
 	nav_patient_login: "I am a patient",
+	nav_secretary_login: "I am a secretary",
 	nav_sign_out: "Sign out",
 	nav_switch_doctor: "Switch doctor",
 	nav_secretaries: "Secretaries",
@@ -4966,6 +4983,9 @@ export const I18N_BASE_CATALOG = {
 	login_pending: "Please wait…",
 	login_error_fallback: "Could not sign in. Please try again.",
 	login_error_password_mismatch: "Passwords do not match.",
+	login_picker_meta_title: "Sign in | KTB Health",
+	login_picker_heading: "Sign in",
+	login_picker_desc: "Choose your role to continue.",
 	portal_login_meta_title: "Patient sign in | KTB Health",
 	portal_login_heading_in: "Patient portal",
 	portal_login_heading_up: "Create patient account",

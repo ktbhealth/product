@@ -170,9 +170,11 @@ describe("root document", () => {
 		// theme.brand → app.header.brand (PL-006: brand lives in theme data)
 		expect(html).toContain("KTB Health");
 		expect(html).toContain('href="/"');
-		// auth.chrome → app.header.session (anonymous → role logins)
-		expect(html).toContain('href="/login/doctor"');
-		expect(html).toContain('href="/login/patient"');
+		// auth.chrome → app.header.session (anonymous → single sign-in entry)
+		expect(html).toContain('href="/login"');
+		// One CTA, not the old per-role entries.
+		expect(html).not.toContain('href="/login/patient"');
+		expect(html).not.toContain('href="/login/doctor"');
 	});
 
 	it("renders the plugin footer note through the i18n mapping", () => {
@@ -186,7 +188,7 @@ describe("root document", () => {
 		// The trigger renders the name; the email/sign-out live inside the
 		// portaled dropdown content (covered by plugins/session tests).
 		expect(html).toContain("Ada Lovelace");
-		expect(html).not.toContain('href="/login/doctor"');
+		expect(html).not.toContain('href="/login"');
 	});
 
 	it("keeps domain navigation out of the site header for a doctor account", () => {
@@ -226,7 +228,7 @@ describe("root document", () => {
 		// site.chrome contributes the footer note and the locale toggle.
 		expect(html).not.toContain("documentation tool");
 		// Other plugins' chrome still renders.
-		expect(html).toContain('href="/login/doctor"');
+		expect(html).toContain('href="/login"');
 	});
 
 	it("gives the /platform console the whole viewport", () => {

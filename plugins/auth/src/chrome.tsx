@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { Avatar, AvatarFallback } from "@ktbhealth/ui/components/avatar";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import {
@@ -13,13 +12,11 @@ import {
 
 import type { ChromeProps } from "@ktb/kernel";
 
-const NAV_LINK =
-	"rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground";
-
 /**
  * Session chrome contributed to `app.header.session` (P-060, merged
- * into the auth plugin by P-062): doctor + patient login entries when
- * anonymous (patient is the primary CTA), otherwise the account menu
+ * into the auth plugin by P-062): a single sign-in entry when
+ * anonymous — /login is the role picker that routes the visitor to
+ * the patient, doctor or secretary form — otherwise the account menu
  * (avatar + name/email + portal links + sign out). A patient account
  * (`user.patientOnly`) gets no doctor-side links — only its own
  * consultations. The profile actions (switch doctor, secretaries)
@@ -30,18 +27,13 @@ const NAV_LINK =
  */
 export function SessionMenu({ user, labels, signOut }: ChromeProps) {
 	if (!user) {
+		/* `/login` is a host route outside this plugin's
+		   FileRoutesByPath — a plain anchor keeps the full
+		   navigation (the invite pages do the same). */
 		return (
-			<>
-				<Link to="/login/doctor" className={NAV_LINK}>
-					{labels.doctorLogin ?? "I am a doctor"}
-				</Link>
-				{/* `/login/patient` is a host route outside this plugin's
-				    FileRoutesByPath — a plain anchor keeps the full
-				    navigation (the invite pages do the same). */}
-				<a href="/login/patient" className={buttonVariants({ size: "sm" })}>
-					{labels.patientLogin ?? "I am a patient"}
-				</a>
-			</>
+			<a href="/login" className={buttonVariants({ size: "sm" })}>
+				{labels.login ?? "Sign in"}
+			</a>
 		);
 	}
 	const patientOnly = user.patientOnly === true;

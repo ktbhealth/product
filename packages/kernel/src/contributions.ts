@@ -265,7 +265,7 @@ export interface ChromeUser {
  * plugins cannot import the host's i18n runtime or session helpers, so
  * the shell resolves locale, user, labels and sign-out and hands them
  * down. `labels` carries the host-localized strings plugins need
- * (documented keys: `doctorLogin`, `patientLogin`, `signOut`, `langMenu`,
+ * (documented keys: `login`, `signOut`, `langMenu`,
  * `patientPortal`, `doctorPortal`, `secretaryPortal`, `myConsultations`,
  * `platformConsole`);
  * plugins fall back to their own English literal per key. `signOut`
