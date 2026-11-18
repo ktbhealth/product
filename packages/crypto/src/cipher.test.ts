@@ -29,7 +29,7 @@ describe("defineCipher", () => {
 
 	it("rejects an empty entity name", () => {
 		expect(() => defineCipher({ entity: "  ", fields: [], plaintext: ["id"] })).toThrow(
-			CryptoFormatError,
+			/non-empty string/,
 		);
 		expect(() => defineCipher({ entity: "", fields: [], plaintext: ["id"] })).toThrow(
 			CryptoFormatError,
@@ -41,7 +41,7 @@ describe("defineCipher", () => {
 
 	it("rejects duplicate field names", () => {
 		expect(() => defineCipher({ entity: "e", fields: ["a", "a"], plaintext: [] })).toThrow(
-			CryptoFormatError,
+			/duplicate field names/,
 		);
 		expect(() => defineCipher({ entity: "e", fields: [], plaintext: ["a", "a"] })).toThrow(
 			CryptoFormatError,
@@ -50,7 +50,7 @@ describe("defineCipher", () => {
 
 	it("rejects a field declared both ciphered and plaintext", () => {
 		expect(() => defineCipher({ entity: "e", fields: ["secret"], plaintext: ["secret"] })).toThrow(
-			CryptoFormatError,
+			/both ciphered and plaintext/,
 		);
 	});
 });
@@ -113,7 +113,15 @@ describe("encryptRow / decryptRow", () => {
 	it("rejects undeclared keys (fail closed)", async () => {
 		const dek = await generateDek();
 		await expect(encryptRow(spec, dek, { id: 1, sneaky: "x" })).rejects.toThrow(CryptoFormatError);
+		await expect(encryptRow(spec, dek, { id: 1, sneaky: "x" })).rejects.toThrow(/undeclared field/);
 		await expect(decryptRow(spec, dek, { id: 1, sneaky: "x" })).rejects.toThrow(CryptoFormatError);
+	});
+
+	it("treats explicit undefined cipher fields as null and skips absent ones", async () => {
+		const dek = await generateDek();
+		const dec = await decryptRow(spec, dek, { id: 1, transcript: undefined });
+		expect(dec.transcript).toBeNull();
+		expect("anamnesis" in dec).toBe(false);
 	});
 
 	it("fails decryption with the wrong DEK", async () => {
@@ -129,8 +137,11 @@ describe("encryptRow / decryptRow", () => {
 			decryptRow(spec, dek, { id: 1, transcript: "plaintext-not-envelope" }),
 		).rejects.toThrow(CryptoFormatError);
 		await expect(
+			decryptRow(spec, dek, { id: 1, transcript: "plaintext-not-envelope" }),
+		).rejects.toThrow(/not a v1 AEAD envelope/);
+		await expect(
 			decryptRow(spec, dek, { id: 1, transcript: 42 as unknown as string }),
-		).rejects.toThrow(CryptoFormatError);
+		).rejects.toThrow(/not a string envelope/);
 	});
 });
 
@@ -150,6 +161,10 @@ describe("encryptPatch", () => {
 });
 
 describe("EntityCipher port", () => {
+	it("has a stable service tag", () => {
+		expect(EntityCipher.key).toBe("@ktb/crypto/EntityCipher");
+	});
+
 	it("is a Context service resolvable via serviceOption", async () => {
 		const stub: CipherSpec = defineCipher({ entity: "e", fields: ["s"], plaintext: ["id"] });
 		const passthrough = EntityCipher.of({

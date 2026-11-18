@@ -71,6 +71,8 @@ describe("sign key import/export", () => {
 
 		const importedPriv = await importSignPrivateKey(priv);
 		const importedPub = await importSignPublicKey(pub);
+		expect(importedPriv.extractable).toBe(true);
+		expect(importedPub.extractable).toBe(true);
 		const signature = await sign(importedPriv, "doc");
 		expect(await verify(importedPub, "doc", signature)).toBe(true);
 		// And the original public key verifies the re-imported signature.
