@@ -3,53 +3,44 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { physical } from "@tanstack/virtual-file-routes";
-import { count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { ClipboardCheckIcon } from "lucide-react";
 
 import { Forbidden, Principal } from "@ktb/authz";
-import { Db, tx, type DbClient } from "@ktb/db";
+import { Db, tx } from "@ktb/db";
 import { doctors, patients, user as userTable } from "@ktb/db/schema";
+import { EvalArtifacts, EvalRunner, type Persona } from "@ktb/eval-consultation";
+import {
+	EVAL_ACTION,
+	EVAL_RESOURCE,
+	evalInstance,
+	evalInstanceItem,
+	type EvalInstanceItem,
+} from "@ktb/eval-persona";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
-import {
-	buildScriptPrompt,
-	DEFAULT_MATRIX,
-	enrichPersona,
-	EvalArtifacts,
-	EvalRunner,
-	LlmPort,
-	parseScriptTurns,
-	ptBR,
-	renderScript,
-	rng,
-	sampleMatrix,
-	turnsToScript,
-	voiceFor,
-	type Persona,
-} from "@ktb/eval-consultation";
 
 import { EvalValidatorPage } from "./platform-page.tsx";
-import {
-	evalPersona,
-	evalPersonaBatch,
-	evalRun,
-	evalRunSample,
-	type EvalRunSample,
-} from "./schema.ts";
+import { evalRun, evalRunSample, type EvalRunSample } from "./schema.ts";
 
-export { evalPersona, evalPersonaBatch, evalRun, evalRunSample } from "./schema.ts";
+export { evalRun, evalRunSample } from "./schema.ts";
 
-/** Permission the gate checks — same spelling as the rbac catalog. */
-export const EVAL_RESOURCE = "eval";
-export const EVAL_ACTION = "validator";
+// Re-exported for the plugins that pin the grant spelling through
+// this package (ai-endpoints, credentials) — the canonical
+// definition lives in @ktb/eval-persona, the pipeline's base layer.
+export { EVAL_ACTION, EVAL_RESOURCE };
 
-/** One persona row as the gallery renders it. */
-export interface PersonaCard {
+/** One generated consultation (eval_instance_item) as the review
+ * gallery renders it — the item IS the corpus row now: persona
+ * snapshot + rendered script/turns/voices + synthetic entity links +
+ * generation status + review state live on the same row. */
+export interface CohortItemCard {
 	readonly id: number;
-	readonly batchId: number;
-	readonly persona: Persona;
-	readonly script: string;
+	readonly instanceId: number;
+	readonly personaDefId: number | null;
+	readonly persona: Persona | null;
+	readonly script: string | null;
 	readonly turns: readonly { readonly speaker: string; readonly text: string }[];
 	readonly voices: Record<string, string>;
 	/** Synthetic entity links — the generated patient + doctor rows. */
@@ -57,20 +48,25 @@ export interface PersonaCard {
 	readonly doctorId: number | null;
 	/** llm | template — which script source rendered the dialogue. */
 	readonly scriptMode: string | null;
+	/** pending | generating | done | error — generation status. */
+	readonly status: string;
+	readonly error: string | null;
+	/** under_review | approved | rejected — the review gate. */
 	readonly state: string;
 	readonly feedback: string | null;
 }
 
-/** review | approved | mixed | rejected — DERIVED from persona
- * states at read time (never a stored column: a denormalized batch
- * state would drift the moment a review lands). */
-export type BatchState = "review" | "approved" | "mixed" | "rejected" | "empty";
+/** review | approved | mixed | rejected — DERIVED from item states
+ * at read time (never a stored column: a denormalized cohort state
+ * would drift the moment a review lands). Only GENERATED items
+ * (status='done') count — a pending/error slot isn't reviewable. */
+export type CohortState = "review" | "approved" | "mixed" | "rejected" | "empty";
 
-export const batchStateOf = (p: {
+export const cohortStateOf = (p: {
 	readonly pending: number;
 	readonly approved: number;
 	readonly rejected: number;
-}): BatchState =>
+}): CohortState =>
 	p.pending + p.approved + p.rejected === 0
 		? "empty"
 		: p.pending > 0
@@ -81,13 +77,21 @@ export const batchStateOf = (p: {
 					? "approved"
 					: "rejected";
 
-export interface BatchSummary {
+/** A reviewable cohort = one generation instance (step 2 output)
+ * with its review rollup — the validator never lists personas
+ * without the instance that produced them. */
+export interface CohortSummary {
 	readonly id: number;
-	readonly state: BatchState;
+	readonly name: string;
+	/** Instance generation status: draft | generating | ready | failed. */
+	readonly status: string;
+	readonly state: CohortState;
+	/** Generated items only — pending/error slots aren't corpus. */
 	readonly count: number;
 	readonly approved: number;
 	readonly rejected: number;
 	readonly pending: number;
+	readonly createdBy: string | null;
 	readonly createdAt: Date;
 }
 
@@ -102,7 +106,9 @@ export type JsonValue =
 
 export interface RunProgress {
 	readonly id: number;
-	readonly batchId: number;
+	readonly instanceId: number | null;
+	/** {instanceId, itemIds} — the exact input set the run executed. */
+	readonly params: JsonValue;
 	readonly status: string;
 	readonly total: number;
 	readonly done: number;
@@ -112,10 +118,11 @@ export interface RunProgress {
 	readonly samples: readonly RunSampleProgress[];
 }
 
-/** Run sample + the persona's gold script — the diff renders ref vs
- * ASR hyp, so progress must carry both. */
+/** Run sample + the item's gold script — the diff renders ref vs
+ * ASR hyp, so progress must carry both (null while/after the item
+ * never generated a script). */
 export interface RunSampleProgress extends EvalRunSample {
-	readonly script: string;
+	readonly script: string | null;
 }
 
 /** Mean WER sliced by persona axis — the aggregate answers "where
@@ -134,6 +141,19 @@ export interface AxisAggregate {
 	readonly slices: readonly AxisSlice[];
 }
 
+/** One run row as the history list renders it — status rollup plus
+ * the persisted summary chips (meanWer / meanWerAfter / completeness). */
+export interface RunListItem {
+	readonly id: number;
+	readonly instanceId: number | null;
+	readonly status: string;
+	readonly total: number;
+	readonly done: number;
+	readonly summary: JsonValue | null;
+	readonly createdAt: Date;
+	readonly finishedAt: Date | null;
+}
+
 const AXES = [
 	"region",
 	"ageBand",
@@ -148,7 +168,7 @@ const aggregateByAxis = (
 	samples: readonly {
 		readonly status: string;
 		readonly result: string | null;
-		readonly persona: string;
+		readonly persona: string | null;
 	}[],
 ): readonly AxisAggregate[] => {
 	const enriched = samples.map((s) => ({
@@ -190,119 +210,67 @@ const parseJson = <T>(raw: string | null, fallback: T): T => {
 	}
 };
 
-const toCard = (row: typeof evalPersona.$inferSelect): PersonaCard => ({
+const toItemCard = (row: EvalInstanceItem): CohortItemCard => ({
 	id: row.id,
-	batchId: row.batchId,
-	persona: parseJson(row.persona, {} as Persona),
+	instanceId: row.instanceId,
+	personaDefId: row.personaDefId,
+	persona: row.persona === null ? null : parseJson(row.persona, {} as Persona),
 	script: row.script,
 	turns: parseJson(row.turns, []),
 	voices: parseJson(row.voices, {}),
 	patientId: row.patientId,
 	doctorId: row.doctorId,
 	scriptMode: row.scriptMode,
+	status: row.status,
+	error: row.error,
 	state: row.state,
 	feedback: row.feedback,
 });
 
-/** Representative birth date for an ageBand — synthetic patients get
- * a plausible year, never a real identity. */
-const birthDateFor = (ageBand: string | undefined): string => {
-	const year = new Date().getFullYear();
-	switch (ageBand) {
-		case "child":
-			return `${year - 9}-01-01`;
-		case "elderly":
-			return `${year - 70}-01-01`;
-		default:
-			return `${year - 35}-01-01`;
-	}
-};
+/** An item is runnable when it generated a full corpus row AND the
+ * reviewer approved it — the review gate and the generation gate
+ * compose, neither alone is enough. */
+const runnable = (r: EvalInstanceItem): boolean =>
+	r.state === "approved" && r.status === "done" && r.script !== null;
 
-const FHIR_GENDER: Record<string, string> = { f: "female", m: "male" };
-
-/** Synthetic doctor display names — clearly generated, still human-
- * readable for the validator UI and admin listings. */
-const DOCTOR_TAGS: Readonly<Record<string, readonly string[]>> = {
-	f: ["Dra. Lemos", "Dra. Prado", "Dra. Reis", "Dra. Fontes"],
-	m: ["Dr. Salles", "Dr. Vasco", "Dr. Peña", "Dr. Moura"],
-};
-
-/** Atomic synthetic user+doctor+patient triple for one persona —
- * everything flagged `synthetic`, related only to itself. Shared with
- * the eval lab (eval.persona services) so generated entities carry
- * one shape regardless of which surface produced them. */
-export const insertSyntheticEntities = (
-	db: DbClient,
-	input: {
-		readonly synUserId: string;
-		readonly index: number;
-		readonly persona: Persona;
-	},
-): Promise<{ readonly doctorId: number; readonly patientId: number }> => {
-	const docGender = input.persona.doctor?.gender === "m" ? "m" : "f";
-	const displayName = DOCTOR_TAGS[docGender]![input.index % DOCTOR_TAGS[docGender]!.length]!;
-	return tx(db, [
-		db.insert(userTable).values({
-			id: input.synUserId,
-			name: displayName,
-			email: `${input.synUserId}@eval.ktb`,
-			createdAt: new Date(),
-			updatedAt: new Date(),
-		}),
-		db
-			.insert(doctors)
-			.values({
-				userId: input.synUserId,
-				displayName,
-				/* v8 ignore next -- enrichPersona always fills specialty from the matrix cell */
-				specialty: input.persona.specialty ?? null,
-				synthetic: true,
-				createdAt: new Date(),
-				updatedAt: new Date(),
-			})
-			.returning({ id: doctors.id }),
-		db
-			.insert(patients)
-			.values({
-				ownerId: input.synUserId,
-				/* v8 ignore next -- enrichPersona always fills name/gender from the locale tables */
-				name: input.persona.name ?? "Paciente",
-				/* v8 ignore next -- persona.gender is f|m, both in FHIR_GENDER; "unknown" is schema-defensive */
-				gender: FHIR_GENDER[input.persona.gender ?? "f"] ?? "unknown",
-				birthDate: birthDateFor(input.persona.ageBand),
-				synthetic: true,
-				createdAt: new Date(),
-			})
-			.returning({ id: patients.id }),
-	]).then(([, docRows, patRows]) => ({
-		doctorId: docRows[0]!.id,
-		patientId: patRows[0]!.id,
-	}));
-};
-
-/** The validator surface — generation, review workflow, run tracking.
- * Every mutating method requires the `eval.validator` grant (rbac) so
- * the "different login" is a role, not a second IdP. */
+/** The validator surface — step 3 of the pipeline: cohort curation
+ * (review/approve generated consultations) + eval runs. Every
+ * mutating method requires the `eval.validator` grant (rbac) so the
+ * "different login" is a role, not a second IdP. */
 export class EvalValidator extends Context.Service<
 	EvalValidator,
 	{
-		readonly generate: (input: {
-			readonly count: number;
-			readonly seed?: number;
-			/** Target interview length in minutes — scales the script
-			 * beat list (~4 turns/min); absent renders the full anamnesis. */
-			readonly minutes?: number;
-		}) => Effect.Effect<{ batchId: number }, Forbidden, unknown>;
-		readonly listBatches: () => Effect.Effect<readonly BatchSummary[], Forbidden, unknown>;
-		readonly listPersonas: (
-			batchId: number,
-		) => Effect.Effect<readonly PersonaCard[], Forbidden, unknown>;
+		/** Reviewable cohorts — generation instances with their
+		 * per-state item rollup. */
+		readonly listCohorts: () => Effect.Effect<readonly CohortSummary[], Forbidden, unknown>;
+		/** All items of one cohort — generated AND pending/error, so
+		 * the gallery can show generation status alongside review
+		 * state. */
+		readonly listItems: (
+			cohortId: number,
+		) => Effect.Effect<readonly CohortItemCard[], Forbidden, unknown>;
+		/** Approve/reject one item; rejection deletes the synthetic
+		 * patient + doctor user it generated. */
 		readonly review: (input: {
-			readonly personaId: number;
+			readonly itemId: number;
 			readonly decision: "approved" | "rejected";
 			readonly feedback?: string;
 		}) => Effect.Effect<void, Forbidden, unknown>;
-		readonly startRun: (batchId: number) => Effect.Effect<{ runId: number }, Forbidden, unknown>;
+		/** Start an eval run over the cohort's runnable items (or an
+		 * explicit subset via itemIds). The resolved input set lands on
+		 * run.params — the run replays/audits from its own record. The
+		 * run NEVER regenerates consultations: it scores the corpus
+		 * that already exists on the items. */
+		readonly startRun: (input: {
+			readonly instanceId: number;
+			readonly itemIds?: readonly number[];
+		}) => Effect.Effect<{ runId: number }, Forbidden, unknown>;
+		/** Runs of one cohort, newest first — the history list the page
+		 * renders so a finished run can be reopened (metrics, diffs,
+		 * audio) after the session that started it is gone. */
+		readonly listRuns: (
+			instanceId: number,
+		) => Effect.Effect<readonly RunListItem[], Forbidden, unknown>;
 		readonly progress: (runId: number) => Effect.Effect<RunProgress | null, Forbidden, unknown>;
 		/** Delete a run row — samples cascade via FK. Runs hold no
 		 * assets beyond their rows (audio stays in the artifact root). */
@@ -325,159 +293,62 @@ export const EvalValidatorLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const runner = yield* Effect.serviceOption(EvalRunner);
-		const llm = yield* Effect.serviceOption(LlmPort);
 
 		return EvalValidator.of({
-			generate: Effect.fn("EvalValidator.generate")(function* (input) {
+			listCohorts: Effect.fn("EvalValidator.listCohorts")(function* () {
 				yield* requireValidator();
-				const principal = yield* Principal;
-				const seed = input.seed ?? 100;
-				// Diverse cells come from the domain matrix — never inline
-				// axis tables; enrichPersona/voiceFor keep rng discipline so
-				// the batch replays from (seed, count).
-				const total =
-					DEFAULT_MATRIX.regions.length *
-					DEFAULT_MATRIX.ageBands.length *
-					DEFAULT_MATRIX.registers.length *
-					DEFAULT_MATRIX.specialties.length;
-				const cells = sampleMatrix(
-					DEFAULT_MATRIX,
-					Math.max(1, Math.floor(total / input.count)),
-				).slice(0, input.count);
-				// tx() = one transaction on every dialect: personas land all-or-
-				// nothing, a crash mid-batch leaves at most an empty batch
-				// row (visible, deletable) — never half a cohort.
-				const [batch] = yield* Effect.promise(() =>
-					db
-						.insert(evalPersonaBatch)
-						.values({
-							params: JSON.stringify({
-								count: input.count,
-								seed,
-								minutes: input.minutes ?? null,
-								variant: "anamnesis",
-								locale: "pt-BR",
-							}),
-							createdBy: principal?.email ?? null,
-							createdAt: new Date(),
-						})
-						.returning(),
+				const instances = yield* Effect.promise(() =>
+					db.select().from(evalInstance).orderBy(desc(evalInstance.createdAt)).limit(50),
 				);
-				// Per persona: synthetic user+doctor+patient entities (one
-				// tx() each — atomic, all flagged synthetic, related
-				// ONLY to each other) then the dialogue — LlmPort when a
-				// driver is bound, template otherwise.
-				const rows = yield* Effect.all(
-					cells.map((cell, i) =>
-						Effect.gen(function* () {
-							const rand = rng(seed + i);
-							const persona = enrichPersona(cell, rand);
-							const synUserId = `syn-${batch!.id}-${i}`;
-							const entities = yield* Effect.promise(() =>
-								insertSyntheticEntities(db, { synUserId, index: i, persona }),
-							);
-							const llmTurns = Option.isSome(llm)
-								? yield* llm.value
-										.generate({
-											taskId: `eval-persona-${batch!.id}-${i}`,
-											role: "generator",
-											input: buildScriptPrompt({ persona, minutes: input.minutes }),
-											outputSchema: "ConsultationScript",
-											seed: seed + i,
-										})
-										.pipe(
-											Effect.map((r) => parseScriptTurns(r.text)),
-											// LLM down/unparseable → template keeps the
-											// batch usable; the mode column records which.
-											Effect.catch(() => Effect.succeed(null)),
-										)
-								: null;
-							const rendered =
-								llmTurns !== null
-									? { script: turnsToScript(llmTurns), turns: llmTurns, mode: "llm" }
-									: (() => {
-											const r = renderScript({
-												template: "",
-												persona,
-												seed: seed + i,
-												profile: ptBR,
-												variant: "anamnesis",
-												minutes: input.minutes,
-											});
-											return { script: r.script, turns: r.turns, mode: "template" };
-										})();
-							return { persona, entities, ...rendered, rand };
-						}),
-					),
-					{ concurrency: 3 },
-				);
-				if (rows.length > 0) {
-					yield* Effect.promise(() =>
-						tx(
-							db,
-							rows.map((r) =>
-								db.insert(evalPersona).values({
-									batchId: batch!.id,
-									persona: JSON.stringify(r.persona),
-									script: r.script,
-									turns: JSON.stringify(r.turns),
-									voices: JSON.stringify({
-										doctor: voiceFor(r.persona.doctor?.gender, r.rand),
-										patient: voiceFor(r.persona.gender, r.rand),
-									}),
-									patientId: r.entities.patientId,
-									doctorId: r.entities.doctorId,
-									scriptMode: r.mode,
-									createdAt: new Date(),
-								}),
-							) as [never, ...never[]],
-						),
-					);
-				}
-				return { batchId: batch!.id };
-			}),
-
-			listBatches: Effect.fn("EvalValidator.listBatches")(function* () {
-				yield* requireValidator();
-				const batches = yield* Effect.promise(() =>
-					db.select().from(evalPersonaBatch).orderBy(desc(evalPersonaBatch.createdAt)).limit(50),
-				);
-				// One grouped read for all batches — no N+1.
+				// One grouped read for all cohorts — no N+1. Only generated
+				// items (status='done') count toward the review rollup.
 				const states = yield* Effect.promise(() =>
 					db
-						.select({ batchId: evalPersona.batchId, state: evalPersona.state, n: count() })
-						.from(evalPersona)
-						.groupBy(evalPersona.batchId, evalPersona.state),
+						.select({
+							instanceId: evalInstanceItem.instanceId,
+							state: evalInstanceItem.state,
+							n: count(),
+						})
+						.from(evalInstanceItem)
+						.where(eq(evalInstanceItem.status, "done"))
+						.groupBy(evalInstanceItem.instanceId, evalInstanceItem.state),
 				);
-				const byBatch = new Map<number, Map<string, number>>();
+				const byInstance = new Map<number, Map<string, number>>();
 				for (const st of states) {
-					const m = byBatch.get(st.batchId) ?? new Map<string, number>();
+					const m = byInstance.get(st.instanceId) ?? new Map<string, number>();
 					m.set(st.state, st.n);
-					byBatch.set(st.batchId, m);
+					byInstance.set(st.instanceId, m);
 				}
-				return batches.map((b): BatchSummary => {
-					const byState = byBatch.get(b.id) ?? new Map<string, number>();
+				return instances.map((i): CohortSummary => {
+					const byState = byInstance.get(i.id) ?? new Map<string, number>();
 					const approved = byState.get("approved") ?? 0;
 					const rejected = byState.get("rejected") ?? 0;
 					const pending = byState.get("under_review") ?? 0;
 					return {
-						id: b.id,
-						state: batchStateOf({ pending, approved, rejected }),
+						id: i.id,
+						name: i.name,
+						status: i.status,
+						state: cohortStateOf({ pending, approved, rejected }),
 						count: approved + rejected + pending,
 						approved,
 						rejected,
 						pending,
-						createdAt: b.createdAt,
+						createdBy: i.createdBy,
+						createdAt: i.createdAt,
 					};
 				});
 			}),
 
-			listPersonas: Effect.fn("EvalValidator.listPersonas")(function* (batchId) {
+			listItems: Effect.fn("EvalValidator.listItems")(function* (cohortId) {
 				yield* requireValidator();
 				const rows = yield* Effect.promise(() =>
-					db.select().from(evalPersona).where(eq(evalPersona.batchId, batchId)),
+					db
+						.select()
+						.from(evalInstanceItem)
+						.where(eq(evalInstanceItem.instanceId, cohortId))
+						.orderBy(evalInstanceItem.id),
 				);
-				return rows.map(toCard);
+				return rows.map(toItemCard);
 			}),
 
 			review: Effect.fn("EvalValidator.review")(function* (input) {
@@ -487,35 +358,38 @@ export const EvalValidatorLive = Layer.effect(
 				// the doctor's backing user (which cascades the doctor row
 				// and set-nulls both FK columns here). Approvals keep them
 				// — they're the entities the run exercises.
-				const [personaRow] = yield* Effect.promise(() =>
+				const [item] = yield* Effect.promise(() =>
 					db
-						.select({ patientId: evalPersona.patientId, doctorId: evalPersona.doctorId })
-						.from(evalPersona)
-						.where(eq(evalPersona.id, input.personaId)),
+						.select({
+							patientId: evalInstanceItem.patientId,
+							doctorId: evalInstanceItem.doctorId,
+						})
+						.from(evalInstanceItem)
+						.where(eq(evalInstanceItem.id, input.itemId)),
 				);
 				const doctorRow =
-					input.decision === "rejected" && personaRow?.doctorId != null
+					input.decision === "rejected" && item?.doctorId != null
 						? yield* Effect.promise(() =>
 								db
 									.select({ userId: doctors.userId })
 									.from(doctors)
-									.where(eq(doctors.id, personaRow.doctorId!)),
+									.where(eq(doctors.id, item.doctorId!)),
 							)
 						: [];
 				const synUserId = doctorRow[0]?.userId;
 				yield* Effect.promise(() =>
 					tx(db, [
 						db
-							.update(evalPersona)
+							.update(evalInstanceItem)
 							.set({
 								state: input.decision,
 								feedback: input.feedback ?? null,
 								reviewedBy: principal?.email ?? null,
 								reviewedAt: new Date(),
 							})
-							.where(eq(evalPersona.id, input.personaId)),
-						...(input.decision === "rejected" && personaRow?.patientId != null
-							? [db.delete(patients).where(eq(patients.id, personaRow.patientId))]
+							.where(eq(evalInstanceItem.id, input.itemId)),
+						...(input.decision === "rejected" && item?.patientId != null
+							? [db.delete(patients).where(eq(patients.id, item.patientId))]
 							: []),
 						...(synUserId !== undefined
 							? [db.delete(userTable).where(eq(userTable.id, synUserId))]
@@ -524,36 +398,57 @@ export const EvalValidatorLive = Layer.effect(
 				);
 			}),
 
-			startRun: Effect.fn("EvalValidator.startRun")(function* (batchId) {
+			startRun: Effect.fn("EvalValidator.startRun")(function* (input) {
 				yield* requireValidator();
-				const rows = yield* Effect.promise(() =>
-					db.select().from(evalPersona).where(eq(evalPersona.batchId, batchId)),
+				const principal = yield* Principal;
+				const items = yield* Effect.promise(() =>
+					db
+						.select()
+						.from(evalInstanceItem)
+						.where(
+							input.itemIds === undefined
+								? eq(evalInstanceItem.instanceId, input.instanceId)
+								: and(
+										eq(evalInstanceItem.instanceId, input.instanceId),
+										inArray(evalInstanceItem.id, input.itemIds),
+									),
+						),
 				);
-				const approved = rows.filter((r) => r.state === "approved").map(toCard);
+				const picked = items.filter(runnable);
 				const runRows = yield* Effect.promise(() =>
 					db
 						.insert(evalRun)
 						.values({
-							batchId,
+							instanceId: input.instanceId,
+							// The exact input set — the run replays/audits from
+							// this record even if the cohort is edited/deleted
+							// later (instanceId set-nulls, params stays).
+							params: JSON.stringify({
+								instanceId: input.instanceId,
+								itemIds: picked.map((p) => p.id),
+							}),
 							status: "queued",
-							total: approved.length,
+							total: picked.length,
+							createdBy: principal?.email ?? null,
 							createdAt: new Date(),
 						})
 						.returning(),
 				);
 				const run = runRows[0]!;
-				yield* Effect.promise(() =>
-					db.insert(evalRunSample).values(
-						approved.map((p) => ({
-							runId: run.id,
-							personaId: p.id,
-							createdAt: new Date(),
-						})),
-					),
-				);
+				if (picked.length > 0) {
+					yield* Effect.promise(() =>
+						db.insert(evalRunSample).values(
+							picked.map((p) => ({
+								runId: run.id,
+								itemId: p.id,
+								createdAt: new Date(),
+							})),
+						),
+					);
+				}
 				// No EvalRunner bound → run stays queued; the local driver
 				// picks it up when present (dev:node).
-				if (Option.isSome(runner) && approved.length > 0) {
+				if (Option.isSome(runner) && picked.length > 0) {
 					yield* Effect.promise(() =>
 						db
 							.update(evalRun)
@@ -567,21 +462,30 @@ export const EvalValidatorLive = Layer.effect(
 						yield* runner.value
 							.run({
 								runId: run.id,
-								items: approved.map((p) => ({
+								// The item's own corpus row feeds the runner — the
+								// stored script/turns/voices, never a regeneration.
+								items: picked.map((p) => ({
 									id: p.id,
-									script: p.script,
-									turns: p.turns,
-									voices: p.voices,
-									patient: {
-										...(p.persona.gender !== undefined
-											? { sex: p.persona.gender === "m" ? "male" : "female" }
-											: /* v8 ignore next -- enrich always fills gender */ {}),
-										...(p.persona.ageBand === "adult"
-											? { age: 40 }
-											: p.persona.ageBand === "elderly"
-												? { age: 70 }
-												: { age: 8 }),
-									},
+									/* v8 ignore next 2 -- `runnable` guarantees script/turns/voices are set */
+									script: p.script!,
+									turns: parseJson(p.turns, []),
+									voices: parseJson(p.voices, {}),
+									patient:
+										p.persona === null
+											? {}
+											: (() => {
+													const persona = parseJson<Persona>(p.persona, {} as Persona);
+													return {
+														...(persona.gender !== undefined
+															? { sex: persona.gender === "m" ? "male" : "female" }
+															: /* v8 ignore next -- enrich always fills gender */ {}),
+														...(persona.ageBand === "adult"
+															? { age: 40 }
+															: persona.ageBand === "elderly"
+																? { age: 70 }
+																: { age: 8 }),
+													};
+												})(),
 								})),
 								onSample: (id, outcome) =>
 									Effect.promise(() =>
@@ -593,7 +497,9 @@ export const EvalValidatorLive = Layer.effect(
 													outcome.result === undefined ? null : JSON.stringify(outcome.result),
 												error: outcome.error ?? null,
 											})
-											.where(eq(evalRunSample.personaId, Number(id))),
+											.where(
+												and(eq(evalRunSample.runId, run.id), eq(evalRunSample.itemId, Number(id))),
+											),
 									),
 							})
 							.pipe(
@@ -648,6 +554,27 @@ export const EvalValidatorLive = Layer.effect(
 				return { runId: run.id };
 			}),
 
+			listRuns: Effect.fn("EvalValidator.listRuns")(function* (instanceId) {
+				yield* requireValidator();
+				const rows = yield* Effect.promise(() =>
+					db
+						.select()
+						.from(evalRun)
+						.where(eq(evalRun.instanceId, instanceId))
+						.orderBy(desc(evalRun.id)),
+				);
+				return rows.map((r) => ({
+					id: r.id,
+					instanceId: r.instanceId,
+					status: r.status,
+					total: r.total,
+					done: r.done,
+					summary: parseJson<JsonValue | null>(r.summary, null),
+					createdAt: r.createdAt,
+					finishedAt: r.finishedAt,
+				}));
+			}),
+
 			progress: Effect.fn("EvalValidator.progress")(function* (runId) {
 				yield* requireValidator();
 				const rows = yield* Effect.promise(() =>
@@ -659,16 +586,17 @@ export const EvalValidatorLive = Layer.effect(
 					db
 						.select({
 							sample: evalRunSample,
-							script: evalPersona.script,
-							persona: evalPersona.persona,
+							script: evalInstanceItem.script,
+							persona: evalInstanceItem.persona,
 						})
 						.from(evalRunSample)
-						.innerJoin(evalPersona, eq(evalRunSample.personaId, evalPersona.id))
+						.innerJoin(evalInstanceItem, eq(evalRunSample.itemId, evalInstanceItem.id))
 						.where(eq(evalRunSample.runId, runId)),
 				);
 				return {
 					id: run.id,
-					batchId: run.batchId,
+					instanceId: run.instanceId,
+					params: parseJson<JsonValue>(run.params, {}),
 					status: run.status,
 					total: run.total,
 					done: samples.filter((s) => s.sample.status !== "pending").length,
@@ -710,22 +638,18 @@ export const EvalValidatorLive = Layer.effect(
 	}),
 );
 
-/** DDL mirror of schema.ts for in-memory test databases (same
- * contract as AUDIT_TEST_DDL in plugins/audit). */
-export const EVAL_VALIDATOR_TEST_DDL = `
-CREATE TABLE eval_persona_batch (id INTEGER PRIMARY KEY AUTOINCREMENT, params TEXT NOT NULL, created_by TEXT, created_at INTEGER NOT NULL);
-CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE REFERENCES user(id) ON DELETE cascade, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, tenant_id INTEGER, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE TABLE eval_persona (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NOT NULL REFERENCES eval_persona_batch(id) ON DELETE cascade, persona TEXT NOT NULL, script TEXT NOT NULL, turns TEXT NOT NULL, voices TEXT NOT NULL, patient_id INTEGER REFERENCES patients(id) ON DELETE set null, doctor_id INTEGER REFERENCES doctors(id) ON DELETE set null, script_mode TEXT, state TEXT NOT NULL DEFAULT 'under_review', feedback TEXT, reviewed_by TEXT, reviewed_at INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE eval_run (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NOT NULL REFERENCES eval_persona_batch(id) ON DELETE cascade, status TEXT NOT NULL DEFAULT 'queued', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, summary TEXT, started_at INTEGER, finished_at INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE eval_run_sample (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL REFERENCES eval_run(id) ON DELETE cascade, persona_id INTEGER NOT NULL REFERENCES eval_persona(id) ON DELETE cascade, status TEXT NOT NULL DEFAULT 'pending', result TEXT, error TEXT, created_at INTEGER NOT NULL);
-`;
-
+// EVAL_VALIDATOR_TEST_DDL lives in ./test-ddl.ts — a top-level
+// `${EVAL_PERSONA_TEST_DDL}` const here would dereference the
+// eval-persona binding mid-cycle (ai-endpoints pins EVAL_* constants
+// from this module, so eval-persona → ai-endpoints → eval-validator
+// → eval-persona is a real import cycle).
 export const evalValidatorTablesPlugin = definePlugin({
 	id: "eval.validator.tables",
 	meta: { keywords: ["eval", "validator", "tables"] },
-	tables: { evalPersonaBatch, evalPersona, evalRun, evalRunSample },
+	// run tables FK into eval_instance / eval_instance_item — the
+	// step-2 plugin must land its DDL first.
+	requiredDeps: ["eval.persona.tables"],
+	tables: { evalRun, evalRunSample },
 });
 
 export const evalValidatorServicesPlugin = definePlugin({
@@ -747,7 +671,7 @@ export const evalValidatorChromePlugin = definePlugin({
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/eval",
-					label: "Eval validator",
+					label: "3 · Run eval",
 					icon: ClipboardCheckIcon,
 					group: "Eval",
 				},
@@ -778,8 +702,8 @@ export const evalValidatorPanelPlugin = definePlugin({
 					Effect.gen(function* () {
 						const validator = yield* EvalValidator;
 						return yield* validator
-							.listBatches()
-							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as BatchSummary[])));
+							.listCohorts()
+							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as CohortSummary[])));
 					}),
 			},
 		],

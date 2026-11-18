@@ -31,7 +31,10 @@ export interface PersonaMatrix {
  * prove: regional accent/register, life stage, clinical domain. */
 export const DEFAULT_MATRIX: PersonaMatrix = {
 	regions: ["southeast", "south", "northeast", "north", "central_west"],
-	ageBands: ["child", "adult", "elderly"],
+	// Canonical bands: child 0-12 · teen 13-17 · adult 18-64 ·
+	// elderly 65+. The 13-17 gap needs its own band — teen speech
+	// and pediatric scope are distinct from both child and adult.
+	ageBands: ["child", "teen", "adult", "elderly"],
 	registers: ["formal", "colloquial"],
 	specialties: [
 		"general_practice",
@@ -43,13 +46,28 @@ export const DEFAULT_MATRIX: PersonaMatrix = {
 	],
 };
 
-/** Every cell of the matrix — cartesian product, stable order
- * (region outer → specialty inner). */
+/** Specialty → plausible patient age bands. The raw cartesian
+ * product would emit clinically impossible cells — "pediatric
+ * elderly", "geriatric child", "gynecology child" — and the eval
+ * would then measure generator bugs as transcription failures. */
+const SPECIALTY_AGE_BANDS: Readonly<Record<string, readonly string[]>> = {
+	pediatrics: ["child", "teen"],
+	geriatrics: ["elderly"],
+	gynecology: ["teen", "adult", "elderly"],
+};
+
+/** Every cell of the matrix — cartesian product minus incoherent
+ * specialty×ageBand pairs, stable order (region outer → specialty
+ * inner). */
 export const expandPersonaMatrix = (matrix: PersonaMatrix): Persona[] =>
 	matrix.regions.flatMap((region) =>
 		matrix.ageBands.flatMap((ageBand) =>
 			matrix.registers.flatMap((register) =>
-				matrix.specialties.map((specialty) => ({ region, ageBand, register, specialty })),
+				matrix.specialties
+					.filter((specialty) =>
+						(SPECIALTY_AGE_BANDS[specialty] ?? matrix.ageBands).includes(ageBand),
+					)
+					.map((specialty) => ({ region, ageBand, register, specialty })),
 			),
 		),
 	);
@@ -112,11 +130,18 @@ export const enrichPersona = (
 	const socialClass =
 		cell.socialClass ??
 		(colloquial ? pickR(rand, ["c", "d", "d", "e"]) : pickR(rand, ["a", "b", "b", "c"]));
+	// School-age patients can't hold degrees — "postgraduate, age 9"
+	// is a generator bug, not a test case. child caps at elementary,
+	// teen at secondary; explicit cell values pass through unchanged.
 	const education =
 		cell.education ??
-		(colloquial
-			? pickR(rand, ["elementary", "elementary", "secondary"])
-			: pickR(rand, ["higher", "higher", "postgraduate"]));
+		(cell.ageBand === "child"
+			? "elementary"
+			: cell.ageBand === "teen"
+				? pickR(rand, ["elementary", "secondary"])
+				: colloquial
+					? pickR(rand, ["elementary", "elementary", "secondary"])
+					: pickR(rand, ["higher", "higher", "postgraduate"]));
 	const tags = nameTags?.[gender] ?? NAME_TAGS[gender]!;
 	const name = cell.name ?? pickR(rand, tags);
 	const doctor = cell.doctor ?? {

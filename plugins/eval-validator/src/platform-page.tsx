@@ -1,6 +1,6 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
-import type { BatchSummary } from "./index.ts";
+import type { CohortSummary } from "./index.ts";
 import { EvalValidatorPage as View } from "./views/EvalValidatorPage.tsx";
 
 /**
@@ -13,7 +13,7 @@ import { EvalValidatorPage as View } from "./views/EvalValidatorPage.tsx";
 export function EvalValidatorPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	return (
 		<View
-			batches={Array.isArray(data) ? (data as BatchSummary[]) : []}
+			cohorts={Array.isArray(data) ? (data as CohortSummary[]) : []}
 			i18n={ctx.i18n}
 			locale={ctx.locale}
 		/>

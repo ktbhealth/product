@@ -18,8 +18,20 @@ describe("expandPersonaMatrix", () => {
 
 	it("default matrix covers the diversity axes", () => {
 		const cells = expandPersonaMatrix(DEFAULT_MATRIX);
-		expect(cells).toHaveLength(5 * 3 * 2 * 6);
+		// Per region×register: general_practice 4 + pediatrics 2 +
+		// gynecology 3 + geriatrics 1 + cardiology 4 + psychiatry 4 = 18
+		expect(cells).toHaveLength(5 * 2 * 18);
 		expect(new Set(cells.map((c) => c.region)).size).toBe(5);
+	});
+
+	it("drops clinically impossible specialty×ageBand cells", () => {
+		const cells = expandPersonaMatrix(DEFAULT_MATRIX);
+		for (const c of cells) {
+			if (c.specialty === "pediatrics") expect(["child", "teen"]).toContain(c.ageBand);
+			if (c.specialty === "geriatrics") expect(c.ageBand).toBe("elderly");
+			if (c.specialty === "gynecology") expect(c.ageBand).not.toBe("child");
+		}
+		expect(cells.filter((c) => c.specialty === "pediatrics").length).toBeGreaterThan(0);
 	});
 });
 
@@ -106,6 +118,19 @@ describe("enrichPersona", () => {
 	it("uses caller-supplied name tags when provided", () => {
 		const p = enrichPersona(cell({ gender: "f" }), rng(1), { f: ["Paciente Z"] });
 		expect(p.name).toBe("Paciente Z");
+	});
+
+	it("child patients are always elementary; teens cap at secondary", () => {
+		for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+			for (const register of ["formal", "colloquial"]) {
+				expect(enrichPersona(cell({ ageBand: "child", register }), rng(seed)).education).toBe(
+					"elementary",
+				);
+				expect(["elementary", "secondary"]).toContain(
+					enrichPersona(cell({ ageBand: "teen", register }), rng(seed)).education,
+				);
+			}
+		}
 	});
 });
 

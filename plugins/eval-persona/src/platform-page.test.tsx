@@ -20,9 +20,16 @@ vi.mock("./fns.ts", () => ({
 vi.mock("@ktb/ai-endpoints/fns", () => ({
 	listEndpointsFn: vi.fn<() => Promise<unknown>>(async () => ({ ok: true, data: [] })),
 }));
-vi.mock("@tanstack/react-router", () => ({
-	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
-}));
+vi.mock("@tanstack/react-router", async () => {
+	const React = await import("react");
+	return {
+		useRouter: () => ({ invalidate: vi.fn<() => void>() }),
+		// EvalSteps renders Link — degrade it to a plain anchor outside
+		// a router.
+		Link: ({ to, ...props }: Record<string, unknown>) =>
+			React.createElement("a", { ...props, href: String(to) }, props.children as never),
+	};
+});
 
 import type { PanelPageContext } from "@ktb/kernel";
 
@@ -72,7 +79,6 @@ describe("eval-persona panel wrappers", () => {
 							status: "draft",
 							total: 2,
 							done: 0,
-							batchId: null,
 							createdBy: null,
 							createdAt: new Date(),
 						},

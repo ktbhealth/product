@@ -39,6 +39,7 @@ import {
 	savePersonaDefFn,
 } from "../fns.ts";
 import { evalLabMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { EvalSteps } from "../steps.tsx";
 import type { PersonaDefCard } from "../index.ts";
 
 const GEN_TEMPLATE = "__template__";
@@ -259,6 +260,7 @@ export function PersonasPage({
 
 	return (
 		<PageContainer>
+			<EvalSteps active={1} labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]} />
 			<PageHeader title={m.personasTitle} description={m.personasDesc} />
 			<div className="mb-4 flex justify-end gap-2">
 				<Button variant="outline" onClick={() => void openGenerate()}>

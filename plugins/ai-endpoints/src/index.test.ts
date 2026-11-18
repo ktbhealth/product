@@ -368,19 +368,19 @@ describe("endpoint transport", () => {
 					kind: "acp",
 					baseUrl: "ssh://h",
 					transport: "ssh",
-					agentCmd: "claude agent acp",
+					agentCmd: "claude-agent-acp",
 					sshHost: "me@gpu-box",
 				}),
 			),
 		);
 		const listed = await run(Effect.flatMap(AiEndpoints, (s) => s.list()));
 		expect(listed[0]?.transport).toBe("ssh");
-		expect(listed[0]?.agentCmd).toBe("claude agent acp");
+		expect(listed[0]?.agentCmd).toBe("claude-agent-acp");
 		expect(listed[0]?.sshHost).toBe("me@gpu-box");
 		await run(Effect.flatMap(AiEndpoints, (s) => s.test(ssh)));
 		expect(captured.at(-1)?.transport).toBe("ssh");
 		expect(captured.at(-1)).toMatchObject({
-			agentCmd: "claude agent acp",
+			agentCmd: "claude-agent-acp",
 			sshHost: "me@gpu-box",
 		});
 
@@ -459,7 +459,7 @@ describe("bridge endpoints (F3b)", () => {
 		await rt.dispose();
 	});
 
-	it("createBridgeLink mints a one-shot link storing only the SHA-256", async () => {
+	it("createBridgeLink mints a link storing only the SHA-256", async () => {
 		const { rt, run, db } = make();
 		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(BRIDGE_EP)));
 		const link = await run(Effect.flatMap(AiEndpoints, (s) => s.createBridgeLink(id, "u1")));

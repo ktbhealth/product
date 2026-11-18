@@ -72,13 +72,21 @@ afterEach(() => resetServerRuntime());
 
 describe("handleBridgeUpgrade", () => {
 	it("rejects missing tokens and non-upgrade requests", async () => {
-		const { rt } = await harness();
+		const { db, rt, endpointId } = await harness();
 		expect((await handleBridgeUpgrade(new Request("https://app.test/api/ai/bridge"))).status).toBe(
 			400,
 		);
 		expect((await handleBridgeUpgrade(upgrade(null))).status).toBe(400);
+		// Token validation runs before the upgrade check — an unknown
+		// token reports 401 whatever the request shape.
 		expect(
 			(await handleBridgeUpgrade(new Request("https://app.test/api/ai/bridge?token=t"))).status,
+		).toBe(401);
+		// A non-upgrade request on a valid unused link → 400.
+		const token = await seedLink(db, endpointId);
+		expect(
+			(await handleBridgeUpgrade(new Request(`https://app.test/api/ai/bridge?token=${token}`)))
+				.status,
 		).toBe(400);
 		await rt.dispose();
 	});
@@ -94,19 +102,43 @@ describe("handleBridgeUpgrade", () => {
 			audioTranscribeModel: "test-model",
 			getLocale: () => "en",
 		});
-		expect((await handleBridgeUpgrade(upgrade("t"))).status).toBe(501);
+		const [row] = await db
+			.insert(aiEndpoint)
+			.values({ name: "ep", kind: "acp", baseUrl: null, transport: "ws", createdAt: new Date() })
+			.returning({ id: aiEndpoint.id });
+		const token = mintBridgeToken();
+		await db.insert(aiAgentLink).values({
+			endpointId: row!.id,
+			tokenHash: await sha256Hex(token),
+			createdBy: "u1",
+			expiresAt: new Date(Date.now() + 60_000),
+			createdAt: new Date(),
+		});
+		expect((await handleBridgeUpgrade(upgrade(token))).status).toBe(501);
 		await rt.dispose();
 	});
 
-	it("rejects unknown, used, and expired tokens with distinct statuses", async () => {
+	it("rejects unknown and expired tokens with distinct statuses", async () => {
 		const { db, rt, endpointId } = await harness();
 		expect((await handleBridgeUpgrade(upgrade("never-minted"))).status).toBe(401);
 
-		const used = await seedLink(db, endpointId, { usedAt: new Date() });
-		expect((await handleBridgeUpgrade(upgrade(used))).status).toBe(409);
-
 		const expired = await seedLink(db, endpointId, { expiresAt: new Date(Date.now() - 1) });
 		expect((await handleBridgeUpgrade(upgrade(expired))).status).toBe(410);
+		await rt.dispose();
+	});
+
+	it("allows upgrades on a used link (bearer session), but 409s a plain request on it", async () => {
+		const { db, rt, endpointId, forwards } = await harness();
+		const used = await seedLink(db, endpointId, { usedAt: new Date() });
+		// Reconnect pre-expiry: the upgrade forwards again — used_at is
+		// audit, not a gate.
+		expect((await handleBridgeUpgrade(upgrade(used))).status).toBe(200);
+		expect(forwards).toHaveLength(1);
+		// A non-upgrade HTTP replay reports the consumed link instead.
+		expect(
+			(await handleBridgeUpgrade(new Request(`https://app.test/api/ai/bridge?token=${used}`)))
+				.status,
+		).toBe(409);
 		await rt.dispose();
 	});
 
@@ -134,7 +166,7 @@ describe("handleBridgeUpgrade", () => {
 		await rt.dispose();
 	});
 
-	it("consumes the link atomically and forwards the upgrade to the endpoint's DO", async () => {
+	it("stamps used_at on first upgrade and forwards the upgrade to the endpoint's DO", async () => {
 		const { db, rt, endpointId, forwards } = await harness();
 		const token = await seedLink(db, endpointId);
 		const res = await handleBridgeUpgrade(upgrade(token));
@@ -144,9 +176,13 @@ describe("handleBridgeUpgrade", () => {
 		]);
 		const link = (await db.select().from(aiAgentLink))[0]!;
 		expect(link.usedAt).not.toBeNull();
-		// Replay is rejected — one-shot is enforced before the handoff.
-		expect((await handleBridgeUpgrade(upgrade(token))).status).toBe(409);
-		expect(forwards).toHaveLength(1);
+		// Reconnect (socket drop, CLI retry): the bearer token upgrades
+		// again pre-expiry — and the first-use stamp is not rewritten.
+		const res2 = await handleBridgeUpgrade(upgrade(token));
+		expect(res2.status).toBe(200);
+		expect(forwards).toHaveLength(2);
+		const after = (await db.select().from(aiAgentLink))[0]!;
+		expect(after.usedAt?.getTime()).toBe(link.usedAt!.getTime());
 		await rt.dispose();
 	});
 });

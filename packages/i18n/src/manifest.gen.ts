@@ -2114,6 +2114,15 @@ export const I18N_MANIFEST = {
 		instancesDesc: {
 			params: [],
 		},
+		stepPersonas: {
+			params: [],
+		},
+		stepGenerate: {
+			params: [],
+		},
+		stepRunEval: {
+			params: [],
+		},
 		newPersona: {
 			params: [],
 		},
@@ -2359,7 +2368,13 @@ export const I18N_MANIFEST = {
 		description: {
 			params: [],
 		},
-		generate: {
+		stepPersonas: {
+			params: [],
+		},
+		stepGenerate: {
+			params: [],
+		},
+		stepRunEval: {
 			params: [],
 		},
 		runEval: {
@@ -2383,7 +2398,10 @@ export const I18N_MANIFEST = {
 		rejected: {
 			params: [],
 		},
-		personas: {
+		items: {
+			params: [],
+		},
+		generating: {
 			params: [],
 		},
 		doctor: {
@@ -2404,16 +2422,13 @@ export const I18N_MANIFEST = {
 		samplesOf: {
 			params: [],
 		},
-		emptyBatches: {
+		emptyCohorts: {
 			params: [],
 		},
-		emptyPersonas: {
+		emptyItems: {
 			params: [],
 		},
 		moreTurns: {
-			params: [],
-		},
-		minutesLabel: {
 			params: [],
 		},
 		actionFailed: {

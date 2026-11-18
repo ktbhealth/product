@@ -28,19 +28,21 @@ import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
 import { Permissions } from "@ktb/rbac";
 import { EvalRunner } from "@ktb/eval-consultation";
+import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
 import { resetServerRuntime, setServerRuntime, type ServerRuntime } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { EVAL_VALIDATOR_TEST_DDL, EvalValidatorLive } from "./index.ts";
+import { EvalValidatorLive } from "./index.ts";
+import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 import {
-	generateBatchFn,
-	listBatchesFn,
-	listPersonasFn,
+	listCohortItemsFn,
+	listCohortsFn,
+	listRunsFn,
 	progressFn,
 	deleteRunFn,
-	reviewPersonaFn,
+	reviewItemFn,
 	startRunFn,
 } from "./fns.ts";
 
@@ -55,11 +57,12 @@ const sessionFor = (email: string | null) =>
 
 describe("eval validator fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let db: ReturnType<typeof makeDb>;
 	let currentEmail: string | null = null;
 	let allow = true;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
+		db = makeDb(makeD1(EVAL_VALIDATOR_TEST_DDL));
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(
@@ -115,58 +118,92 @@ describe("eval validator fns", () => {
 		return runtime.dispose();
 	});
 
+	/** A ready cohort with N generated items — the step-2 output the
+	 * validator consumes (the fn tests don't exercise generation). */
+	const seedCohort = async (count: number) => {
+		const [inst] = await db
+			.insert(evalInstance)
+			.values({
+				name: "cohort",
+				mode: "selected",
+				params: "{}",
+				status: "ready",
+				total: count,
+				done: count,
+				createdAt: new Date(),
+			})
+			.returning();
+		const items = await db
+			.insert(evalInstanceItem)
+			.values(
+				Array.from({ length: count }, (_, i) => ({
+					instanceId: inst!.id,
+					persona: JSON.stringify({ name: `p${i}`, gender: "f", ageBand: "adult" }),
+					script: `script ${i}`,
+					turns: "[]",
+					voices: "{}",
+					scriptMode: "template",
+					status: "done",
+					state: "under_review",
+					createdAt: new Date(),
+				})),
+			)
+			.returning({ id: evalInstanceItem.id });
+		return { instanceId: inst!.id, items };
+	};
+
 	it("rejects anonymous callers", async () => {
 		currentEmail = null;
-		await expect(generateBatchFn({ data: { count: 1 } })).rejects.toThrow("unauthenticated");
-		await expect(listBatchesFn({ data: {} })).rejects.toThrow("unauthenticated");
+		await expect(listCohortsFn({ data: {} })).rejects.toThrow("unauthenticated");
+		await expect(startRunFn({ data: { instanceId: 1 } })).rejects.toThrow("unauthenticated");
 	});
 
 	it("returns { ok: false } when the grant is missing", async () => {
 		currentEmail = "v@x.com";
 		allow = false;
-		expect(await generateBatchFn({ data: { count: 1 } })).toEqual({ ok: false });
-		expect(await listBatchesFn({ data: {} })).toEqual({ ok: false });
-		expect(await listPersonasFn({ data: { batchId: 1 } })).toEqual({ ok: false });
-		expect(await reviewPersonaFn({ data: { personaId: 1, decision: "approved" } })).toEqual({
+		expect(await listCohortsFn({ data: {} })).toEqual({ ok: false });
+		expect(await listCohortItemsFn({ data: { cohortId: 1 } })).toEqual({ ok: false });
+		expect(await reviewItemFn({ data: { itemId: 1, decision: "approved" } })).toEqual({
 			ok: false,
 		});
-		expect(await startRunFn({ data: { batchId: 1 } })).toEqual({ ok: false });
+		expect(await startRunFn({ data: { instanceId: 1 } })).toEqual({ ok: false });
+		expect(await listRunsFn({ data: { cohortId: 1 } })).toEqual({ ok: false });
 		expect(await progressFn({ data: { runId: 1 } })).toEqual({ ok: false });
 		expect(await deleteRunFn({ data: { runId: 1 } })).toEqual({ ok: false });
 		allow = true;
 	});
 
-	it("drives the full workflow through the fn surface", async () => {
+	it("drives the review → run workflow through the fn surface", async () => {
 		currentEmail = "v@x.com";
-		const gen = await generateBatchFn({ data: { count: 2, seed: 7 } });
-		expect(gen.ok).toBe(true);
-		if (!gen.ok) return;
-		const batchId = gen.data.batchId;
+		const { instanceId, items } = await seedCohort(2);
 
-		const batches = await listBatchesFn({ data: {} });
-		expect(batches.ok && batches.data.length).toBe(1);
+		const cohorts = await listCohortsFn({ data: {} });
+		expect(cohorts.ok && cohorts.data.some((c) => c.id === instanceId)).toBe(true);
 
-		const personas = await listPersonasFn({ data: { batchId } });
-		expect(personas.ok && personas.data.length).toBe(2);
-		if (!personas.ok) return;
-		expect(personas.data[0]?.persona.gender).toBeDefined();
+		const listed = await listCohortItemsFn({ data: { cohortId: instanceId } });
+		expect(listed.ok && listed.data.length).toBe(2);
+		if (!listed.ok) return;
+		expect(listed.data[0]?.persona?.gender).toBe("f");
 
-		const review = await reviewPersonaFn({
+		const review = await reviewItemFn({
 			data: {
-				personaId: personas.data[0]!.id,
+				itemId: items[0]!.id,
 				decision: "approved",
 				feedback: "looks right",
 			},
 		});
 		expect(review).toEqual({ ok: true, data: null });
 
-		const after = await listPersonasFn({ data: { batchId } });
+		const after = await listCohortItemsFn({ data: { cohortId: instanceId } });
 		expect(after.ok && after.data[0]?.state).toBe("approved");
 		expect(after.ok && after.data[0]?.feedback).toBe("looks right");
 
-		const started = await startRunFn({ data: { batchId } });
+		const started = await startRunFn({ data: { instanceId } });
 		expect(started.ok).toBe(true);
 		if (!started.ok) return;
+
+		const runs = await listRunsFn({ data: { cohortId: instanceId } });
+		expect(runs.ok && runs.data.some((r) => r.id === started.data.runId)).toBe(true);
 
 		const progress = await progressFn({ data: { runId: started.data.runId } });
 		expect(progress.ok).toBe(true);
@@ -179,7 +216,7 @@ describe("eval validator fns", () => {
 		expect(res).toEqual({ ok: true, data: null });
 	});
 
-	it("deleteRunFn denies without the grant and deletes with it", async () => {
+	it("deleteRunFn deletes with the grant", async () => {
 		expect(await deleteRunFn({ data: { runId: 1 } })).toEqual({ ok: true, data: null });
 	});
 });

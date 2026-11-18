@@ -164,7 +164,7 @@ export function EndpointsPage({
 	const [testResult, setTestResult] = useState<Record<number, string>>({});
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	// Bridge connect dialog: the one-shot command is minted on open and
+	// Bridge connect dialog: the bearer command is minted on open and
 	// lives only in this state — status polls while the dialog is up.
 	const [bridge, setBridge] = useState<{
 		readonly id: number;
@@ -257,7 +257,7 @@ export function EndpointsPage({
 		}
 	};
 
-	/** Mint the one-shot link and open the connect dialog — the raw
+	/** Mint the link and open the connect dialog — the raw
 	 * command exists only in component state, never re-fetchable. */
 	const openBridge = async (id: number) => {
 		setCopied(false);
@@ -480,7 +480,7 @@ export function EndpointsPage({
 												<Input
 													value={epForm.agentCmd}
 													onChange={(e) => setEpForm({ ...epForm, agentCmd: e.target.value })}
-													placeholder="claude agent acp"
+													placeholder="claude-agent-acp"
 												/>
 												<p className="mt-1 text-xs text-muted-foreground">{m.agentCmdHint}</p>
 											</Field>

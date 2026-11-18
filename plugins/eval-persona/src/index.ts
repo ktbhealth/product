@@ -8,7 +8,8 @@ import { FlaskConicalIcon, Users2Icon } from "lucide-react";
 
 import { AiEndpoints, type EndpointCard } from "@ktb/ai-endpoints";
 import { Principal, type Forbidden } from "@ktb/authz";
-import { Db, type DbClient } from "@ktb/db";
+import { Db, tx, type DbClient } from "@ktb/db";
+import { doctors, patients, user as userTable } from "@ktb/db/schema";
 import {
 	buildScriptPrompt,
 	DEFAULT_MATRIX,
@@ -24,13 +25,6 @@ import {
 	voiceFor,
 	type Persona,
 } from "@ktb/eval-consultation";
-import {
-	EVAL_ACTION,
-	EVAL_RESOURCE,
-	evalPersona,
-	evalPersonaBatch,
-	insertSyntheticEntities,
-} from "@ktb/eval-validator";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
@@ -44,6 +38,17 @@ import {
 	type EvalInstanceItem,
 	type EvalPersonaDef,
 } from "./schema.ts";
+
+export { evalInstance, evalInstanceItem, evalPersonaDef } from "./schema.ts";
+export type { EvalInstance, EvalInstanceItem, EvalPersonaDef } from "./schema.ts";
+
+/** Permission the gate checks — same spelling as the rbac catalog
+ * (`eval.validator`). Canonical home is this plugin: the eval lab is
+ * the pipeline's base layer (steps 1–2) that step 3 depends on. The
+ * validator plugin re-exports it for consumers that pin the spelling
+ * through @ktb/eval-validator (ai-endpoints, credentials). */
+export const EVAL_RESOURCE = "eval";
+export const EVAL_ACTION = "validator";
 
 // ---------------------------------------------------------------------------
 // DTOs — what the panel pages and fns exchange (plain JSON on the wire).
@@ -69,7 +74,6 @@ export interface InstanceCard {
 	readonly status: string;
 	readonly total: number;
 	readonly done: number;
-	readonly batchId: number | null;
 	readonly createdBy: string | null;
 	readonly createdAt: Date;
 }
@@ -78,10 +82,14 @@ export interface InstanceItemCard {
 	readonly id: number;
 	readonly instanceId: number;
 	readonly personaDefId: number | null;
-	readonly evalPersonaId: number | null;
 	readonly persona: Persona | null;
+	/** Generation status: pending | generating | done | error. */
 	readonly status: string;
 	readonly error: string | null;
+	/** llm | template — which script source rendered the dialogue. */
+	readonly scriptMode: string | null;
+	/** Review gate for step 3: under_review | approved | rejected. */
+	readonly state: string;
 }
 
 export interface InstanceDetail extends InstanceCard {
@@ -119,7 +127,6 @@ const toInstanceCard = (row: EvalInstance, endpointName: string | null): Instanc
 	status: row.status,
 	total: row.total,
 	done: row.done,
-	batchId: row.batchId,
 	createdBy: row.createdBy,
 	createdAt: row.createdAt,
 });
@@ -128,14 +135,15 @@ const toItemCard = (row: EvalInstanceItem): InstanceItemCard => ({
 	id: row.id,
 	instanceId: row.instanceId,
 	personaDefId: row.personaDefId,
-	evalPersonaId: row.evalPersonaId,
 	persona: row.persona === null ? null : parseJson(row.persona, {} as Persona),
 	status: row.status,
 	error: row.error,
+	scriptMode: row.scriptMode,
+	state: row.state,
 });
 
 const AXIS_VALUES: Record<string, readonly string[]> = {
-	ageBand: ["child", "adult", "elderly"],
+	ageBand: ["child", "teen", "adult", "elderly"],
 	socialClass: ["low", "middle", "high"],
 	education: ["primary", "secondary", "higher"],
 	region: ["north", "northeast", "central", "southeast", "south"],
@@ -169,7 +177,7 @@ const generateDefsViaLlm = (
 		const layer = yield* factory.resolve(descriptor).pipe(Effect.catch(() => Effect.succeed(null)));
 		if (layer === null) return [];
 		const llm = yield* LlmPort.pipe(Effect.provide(layer));
-		const prompt = `Generate ${count} diverse synthetic medical consultation personas for pt-BR eval, as a JSON array. Each item: {"name": string, "patientName": string, "gender": "f"|"m", "ageBand": "child"|"adult"|"elderly", "socialClass": "low"|"middle"|"high", "education": "primary"|"secondary"|"higher", "region": "north"|"northeast"|"central"|"southeast"|"south", "register": "colloquial"|"neutral"|"technical", "specialty": "general_practice"|"cardiology"|"dermatology"|"pediatrics", "doctorGender": "f"|"m", "doctorRegister": "neutral"|"technical", "notes": string}. Respond with JSON only, no prose. Seed hint: ${seed}.`;
+		const prompt = `Generate ${count} diverse synthetic medical consultation personas for pt-BR eval, as a JSON array. Each item: {"name": string, "patientName": string, "gender": "f"|"m", "ageBand": "child"|"teen"|"adult"|"elderly", "socialClass": "low"|"middle"|"high", "education": "primary"|"secondary"|"higher", "region": "north"|"northeast"|"central"|"southeast"|"south", "register": "colloquial"|"neutral"|"technical", "specialty": "general_practice"|"cardiology"|"dermatology"|"pediatrics", "doctorGender": "f"|"m", "doctorRegister": "neutral"|"technical", "notes": string}. Respond with JSON only, no prose. Seed hint: ${seed}. Constraints: education must fit ageBand (child: "primary" only; teen: "primary"/"secondary"; never "higher" for minors); pediatrics implies ageBand "child" or "teen".`;
 		const out = yield* llm
 			.generate({
 				taskId: `eval-persona-gen-${seed}`,
@@ -195,15 +203,32 @@ const generateDefsViaLlm = (
 			if (typeof item !== "object" || item === null) continue;
 			const it = item as Record<string, unknown>;
 			const field = (axis: string, key: string) => sanitizeAxis(axis, it[key]);
+			const ageBand = field("ageBand", "ageBand") ?? "adult";
+			const education = field("education", "education");
 			const persona: Persona = {
 				...(typeof it.patientName === "string" ? { name: it.patientName } : {}),
 				...(field("gender", "gender") !== undefined ? { gender: field("gender", "gender") } : {}),
-				ageBand: field("ageBand", "ageBand") ?? "adult",
+				// Coherence clamps — an LLM may pair a child with a
+				// degree, or pediatrics with an elderly band; the eval
+				// measures transcription, not generator bugs.
+				ageBand:
+					field("specialty", "specialty") === "pediatrics" &&
+					ageBand !== "child" &&
+					ageBand !== "teen"
+						? "child"
+						: ageBand,
+				...(education !== undefined
+					? {
+							education:
+								ageBand === "child"
+									? "primary"
+									: ageBand === "teen" && education === "higher"
+										? "secondary"
+										: education,
+						}
+					: {}),
 				...(field("socialClass", "socialClass") !== undefined
 					? { socialClass: field("socialClass", "socialClass") }
-					: {}),
-				...(field("education", "education") !== undefined
-					? { education: field("education", "education") }
 					: {}),
 				region: field("region", "region") ?? "southeast",
 				register: field("register", "register") ?? "neutral",
@@ -229,6 +254,102 @@ const requireGrant = Effect.fn("EvalLab.gate")(function* () {
 	const permissions = yield* Permissions;
 	yield* permissions.requirePermission(EVAL_RESOURCE, EVAL_ACTION);
 });
+
+/** Representative birth date for an ageBand — synthetic patients get
+ * a plausible year, never a real identity. */
+const birthDateFor = (ageBand: string | undefined): string => {
+	const year = new Date().getFullYear();
+	switch (ageBand) {
+		case "child":
+			return `${year - 9}-01-01`;
+		case "teen":
+			return `${year - 15}-01-01`;
+		case "elderly":
+			return `${year - 70}-01-01`;
+		default:
+			return `${year - 35}-01-01`;
+	}
+};
+
+const FHIR_GENDER: Record<string, string> = { f: "female", m: "male" };
+
+/** Synthetic doctor display names — clearly generated, still human-
+ * readable for the validator UI and admin listings. */
+const DOCTOR_TAGS: Readonly<Record<string, readonly string[]>> = {
+	f: ["Dra. Lemos", "Dra. Prado", "Dra. Reis", "Dra. Fontes"],
+	m: ["Dr. Salles", "Dr. Vasco", "Dr. Peña", "Dr. Moura"],
+};
+
+/** Atomic synthetic user+doctor+patient triple for one generated
+ * consultation — everything flagged `synthetic`, related only to
+ * itself. The item row links the ids so rejection (step 3) can clean
+ * them up. */
+export const insertSyntheticEntities = (
+	db: DbClient,
+	input: {
+		readonly synUserId: string;
+		readonly index: number;
+		readonly persona: Persona;
+	},
+): Promise<{ readonly doctorId: number; readonly patientId: number }> => {
+	const docGender = input.persona.doctor?.gender === "m" ? "m" : "f";
+	const displayName = DOCTOR_TAGS[docGender]![input.index % DOCTOR_TAGS[docGender]!.length]!;
+	return tx(db, [
+		db.insert(userTable).values({
+			id: input.synUserId,
+			name: displayName,
+			email: `${input.synUserId}@eval.ktb`,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}),
+		db
+			.insert(doctors)
+			.values({
+				userId: input.synUserId,
+				displayName,
+				/* v8 ignore next -- enrichPersona always fills specialty from the matrix cell */
+				specialty: input.persona.specialty ?? null,
+				synthetic: true,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+			})
+			.returning({ id: doctors.id }),
+		db
+			.insert(patients)
+			.values({
+				ownerId: input.synUserId,
+				/* v8 ignore next -- enrichPersona always fills name/gender from the locale tables */
+				name: input.persona.name ?? "Paciente",
+				/* v8 ignore next -- persona.gender is f|m, both in FHIR_GENDER; "unknown" is schema-defensive */
+				gender: FHIR_GENDER[input.persona.gender ?? "f"] ?? "unknown",
+				birthDate: birthDateFor(input.persona.ageBand),
+				synthetic: true,
+				createdAt: new Date(),
+			})
+			.returning({ id: patients.id }),
+	]).then(([, docRows, patRows]) => ({
+		doctorId: docRows[0]!.id,
+		patientId: patRows[0]!.id,
+	}));
+};
+
+/** Deterministic seeded sample WITHOUT replacement — partial
+ * Fisher-Yates over the shared rng: the same (rows, count, seed)
+ * always picks the same personas, so a random-mode instance replays
+ * exactly from its recorded params. */
+const seededPick = <T>(rows: readonly T[], count: number, seed: number): readonly T[] => {
+	const rand = rng(seed);
+	const pool = [...rows];
+	const out: T[] = [];
+	for (let i = 0; i < Math.min(count, pool.length); i++) {
+		const j = i + Math.floor(rand() * (pool.length - i));
+		const tmp = pool[i]!;
+		pool[i] = pool[j]!;
+		pool[j] = tmp;
+		out.push(pool[i]!);
+	}
+	return out;
+};
 
 // ---------------------------------------------------------------------------
 // EvalPersonas — CRUD of curated persona definitions (the eval setup).
@@ -427,22 +548,16 @@ export const EvalInstancesLive = Layer.effect(
 					Effect.catch(() => Effect.succeed(new Map<number, string>())),
 				);
 
-		// One persona slot: entities + script + eval_persona row.
+		// One corpus slot: entities + script land ON the item row — the
+		// generated consultation IS the item (no parallel persona rows).
 		const generateItem = (
 			instanceId: number,
-			batchId: number,
 			item: EvalInstanceItem,
 			persona: Persona,
 			llmLayer: Layer.Layer<LlmPort> | null,
 			minutes: number | undefined,
 		) =>
 			Effect.gen(function* () {
-				yield* Effect.promise(() =>
-					db
-						.update(evalInstanceItem)
-						.set({ status: "generating", persona: JSON.stringify(persona) })
-						.where(eq(evalInstanceItem.id, item.id)),
-				);
 				const entities = yield* Effect.promise(() =>
 					insertSyntheticEntities(db as DbClient, {
 						synUserId: `syn-inst${instanceId}-${item.id}`,
@@ -464,7 +579,7 @@ export const EvalInstancesLive = Layer.effect(
 								Effect.provide(llmLayer),
 								Effect.map((r) => parseScriptTurns(r.text)),
 								// LLM down/unparseable → template keeps the item
-								// usable; the persona row records the mode.
+								// usable; the item records which mode rendered.
 								Effect.catch(() => Effect.succeed(null)),
 							)
 						: null;
@@ -483,12 +598,11 @@ export const EvalInstancesLive = Layer.effect(
 								return { script: r.script, turns: r.turns, mode: "template" };
 							})();
 				const rand = rng(item.id);
-				const rows = yield* Effect.promise(() =>
+				yield* Effect.promise(() =>
 					db
-						.insert(evalPersona)
-						.values({
-							batchId,
-							persona: JSON.stringify(persona),
+						.update(evalInstanceItem)
+						.set({
+							status: "done",
 							script: rendered.script,
 							turns: JSON.stringify(rendered.turns),
 							voices: JSON.stringify({
@@ -498,19 +612,11 @@ export const EvalInstancesLive = Layer.effect(
 							patientId: entities.patientId,
 							doctorId: entities.doctorId,
 							scriptMode: rendered.mode,
-							createdAt: new Date(),
 						})
-						.returning({ id: evalPersona.id }),
-				);
-				yield* Effect.promise(() =>
-					db
-						.update(evalInstanceItem)
-						.set({ status: "done", evalPersonaId: rows[0]!.id })
 						.where(eq(evalInstanceItem.id, item.id)),
 				);
 			});
 
-		// Detached generation: the whole instance outlives the request.
 		/** Poll-driven generation: one pending item per call, claimed
 		 * atomically (`status='pending'` guard + `claimed_at` stamp) so
 		 * concurrent polls and multiple tabs can't double-process. Work
@@ -526,12 +632,24 @@ export const EvalInstancesLive = Layer.effect(
 			);
 			/* v8 ignore next -- ticks only run for generating instances that exist */
 			if (inst === undefined || inst.status !== "generating") return;
-			// Reclaim stale claims BEFORE the pending scan: without this,
-			// an item orphaned by a killed request stays `generating`
-			// forever and `finalize` never fires. Rows claimed before the
-			// `claimed_at` column existed (NULL) count as stale.
-			yield* Effect.promise(() =>
-				db
+			const params = parseJson<{ seed?: number; count?: number; minutes?: number }>(
+				inst.params,
+				{},
+			);
+			// Init-level failure (reclaim + items scan) is PERSISTENT —
+			// surface it as instance `failed` instead of spinning forever
+			// on `generating` against a broken table.
+			const initFailed = (cause: unknown) =>
+				Effect.promise(() =>
+					db.update(evalInstance).set({ status: "failed" }).where(eq(evalInstance.id, instanceId)),
+				).pipe(Effect.andThen(Effect.fail(cause)));
+			const items = yield* Effect.promise(async () => {
+				// Reclaim stale claims BEFORE the pending scan: without
+				// this, an item orphaned by a killed request stays
+				// `generating` forever and `finalize` never fires. Rows
+				// claimed before the `claimed_at` column existed (NULL)
+				// count as stale.
+				await db
 					.update(evalInstanceItem)
 					.set({ status: "pending", claimedAt: null })
 					.where(
@@ -543,64 +661,13 @@ export const EvalInstancesLive = Layer.effect(
 								lt(evalInstanceItem.claimedAt, new Date(Date.now() - STALE_CLAIM_MS)),
 							),
 						),
-					),
-			);
-			const params = parseJson<{ seed?: number; count?: number; minutes?: number }>(
-				inst.params,
-				{},
-			);
-			if (inst.batchId === null) {
-				// Init-level failure (batch insert/claim) is PERSISTENT —
-				// surface it as instance `failed` instead of spinning
-				// forever on `generating`.
-				const initFailed = (cause: unknown) =>
-					Effect.promise(() =>
-						db
-							.update(evalInstance)
-							.set({ status: "failed" })
-							.where(eq(evalInstance.id, instanceId)),
-					).pipe(Effect.andThen(Effect.fail(cause)));
-				const [batch] = yield* Effect.promise(() =>
-					db
-						.insert(evalPersonaBatch)
-						.values({
-							params: JSON.stringify({
-								instance: instanceId,
-								mode: inst.mode,
-								seed: params.seed ?? null,
-								minutes: params.minutes ?? null,
-								variant: "anamnesis",
-								locale: "pt-BR",
-							}),
-							createdBy: inst.createdBy,
-							createdAt: new Date(),
-						})
-						.returning(),
-				).pipe(Effect.catch(initFailed), Effect.catchDefect(initFailed));
-				// Claim the batch slot atomically; a losing tick removes its
-				// orphan so concurrent first-polls never double batches.
-				const claimed = yield* Effect.promise(() =>
-					db
-						.update(evalInstance)
-						.set({ batchId: batch!.id })
-						.where(and(eq(evalInstance.id, instanceId), isNull(evalInstance.batchId)))
-						.returning({ id: evalInstance.id }),
-				).pipe(Effect.catch(initFailed), Effect.catchDefect(initFailed));
-				/* v8 ignore next 4 -- single-writer SQLite makes the race unreachable in tests */
-				if (claimed.length === 0) {
-					yield* Effect.promise(() =>
-						db.delete(evalPersonaBatch).where(eq(evalPersonaBatch.id, batch!.id)),
 					);
-				}
-				return;
-			}
-			const items = yield* Effect.promise(() =>
-				db
+				return db
 					.select()
 					.from(evalInstanceItem)
 					.where(eq(evalInstanceItem.instanceId, instanceId))
-					.orderBy(evalInstanceItem.id),
-			);
+					.orderBy(evalInstanceItem.id);
+			}).pipe(Effect.catch(initFailed), Effect.catchDefect(initFailed));
 			const pending = items.find((i) => i.status === "pending");
 			if (pending === undefined) {
 				const inFlight = items.some((i) => i.status === "generating");
@@ -644,29 +711,11 @@ export const EvalInstancesLive = Layer.effect(
 							Effect.catch(() => Effect.succeed(null)),
 						)
 					: null;
-			const totalCells =
-				DEFAULT_MATRIX.regions.length *
-				DEFAULT_MATRIX.ageBands.length *
-				DEFAULT_MATRIX.registers.length *
-				DEFAULT_MATRIX.specialties.length;
-			const cells = sampleMatrix(
-				DEFAULT_MATRIX,
-				Math.max(1, Math.floor(totalCells / Math.max(1, items.length))),
-			);
-			const i = items.findIndex((it) => it.id === pending.id);
+			// The persona snapshot lands on the item AT CREATE (both modes
+			// pick from the registry there) — a null snapshot is corrupt
+			// input, not a reason to re-derive personas here.
 			const persona =
-				pending.persona !== null
-					? parseJson<Persona>(pending.persona, {} as Persona)
-					: enrichPersona(
-							/* v8 ignore next -- the matrix always yields cells; index clamp is defensive */
-							cells[i % cells.length] ?? {
-								region: "southeast",
-								ageBand: "adult",
-								register: "colloquial",
-								specialty: "general_practice",
-							},
-							rng(params.seed ?? 100),
-						);
+				pending.persona === null ? null : parseJson<Persona>(pending.persona, {} as Persona);
 			// Per-item failure isolation: typed errors AND defects mark
 			// the item `error` without killing the rest of the run.
 			const recordError = (cause: unknown) =>
@@ -676,19 +725,10 @@ export const EvalInstancesLive = Layer.effect(
 						.set({ status: "error", error: String(cause) })
 						.where(eq(evalInstanceItem.id, pending.id)),
 				);
-			const [batchRow] = yield* Effect.promise(() =>
-				db
-					.select({ batchId: evalInstance.batchId })
-					.from(evalInstance)
-					.where(eq(evalInstance.id, instanceId)),
-			);
-			yield* generateItem(
-				instanceId,
-				batchRow!.batchId!,
-				pending,
-				persona,
-				llmLayer,
-				params.minutes,
+			yield* (
+				persona === null
+					? Effect.fail(new Error("item has no resolved persona — recreate the instance"))
+					: generateItem(instanceId, pending, persona, llmLayer, params.minutes)
 			).pipe(Effect.catch(recordError), Effect.catchDefect(recordError));
 			yield* Effect.promise(() =>
 				db
@@ -725,9 +765,12 @@ export const EvalInstancesLive = Layer.effect(
 		): Promise<
 			{ readonly ok: true; readonly id: number } | { readonly ok: false; readonly reason: string }
 		> => {
+			// Both modes resolve personas UPFRONT from the shared registry —
+			// `eval_persona_def` is the single source of truth for personas
+			// (step 1 owns every write); generation only consumes it.
+			const all = await client.select().from(evalPersonaDef).orderBy(evalPersonaDef.id);
 			if (input.mode === "selected") {
 				const defIds = input.defIds ?? [];
-				const all = await client.select().from(evalPersonaDef);
 				const byId = new Map(all.map((d) => [d.id, d] as const));
 				const picked = defIds.map((id) => byId.get(id)).filter((d) => d !== undefined);
 				if (picked.length === 0) {
@@ -764,7 +807,22 @@ export const EvalInstancesLive = Layer.effect(
 				);
 				return { ok: true, id: inst!.id };
 			}
-			const total = input.count ?? 0;
+			// random mode — a seeded pick from the shared registry, never
+			// new personas: "random sample" means sampling the registry,
+			// not sampling the demographic matrix. count caps the pick
+			// (defaults to the whole registry); params.count records what
+			// was ASKED for so a short registry stays auditable.
+			if (all.length === 0) {
+				return {
+					ok: false,
+					reason: "random mode needs personas — create them on the Personas step first",
+				};
+			}
+			const picked = seededPick(
+				all,
+				Math.min(input.count ?? all.length, all.length),
+				input.seed ?? 100,
+			);
 			const [inst] = await client
 				.insert(evalInstance)
 				.values({
@@ -776,15 +834,17 @@ export const EvalInstancesLive = Layer.effect(
 						...(input.count !== undefined ? { count: input.count } : {}),
 						...(input.minutes !== undefined ? { minutes: input.minutes } : {}),
 					}),
-					total,
+					total: picked.length,
 					createdBy,
 					createdAt: new Date(),
 				})
 				.returning();
-			if (total > 0) {
+			if (picked.length > 0) {
 				await client.insert(evalInstanceItem).values(
-					Array.from({ length: total }, () => ({
+					picked.map((d) => ({
 						instanceId: inst!.id,
+						personaDefId: d.id,
+						persona: d.persona,
 						createdAt: new Date(),
 					})),
 				);
@@ -879,7 +939,9 @@ export const EvalInstancesLive = Layer.effect(
 								},
 								principal?.email ?? null,
 							);
-							/* v8 ignore next -- random mode never reports ok:false */
+							// random mode rejects on an empty registry —
+							// inside the transaction the throw rolls the whole
+							// fan-out back, same as a driver error.
 							if (!r.ok) throw new Error(r.reason);
 							n += 1;
 						}
@@ -934,19 +996,16 @@ const buildPromptFor = (persona: Persona, minutes: number | undefined): string =
 export const EVAL_PERSONA_TEST_DDL = `
 CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE eval_persona_def (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, persona TEXT NOT NULL, notes TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES ai_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, batch_id INTEGER, created_by TEXT, created_at INTEGER NOT NULL);
-CREATE TABLE eval_instance_item (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL REFERENCES eval_instance(id) ON DELETE cascade, persona_def_id INTEGER REFERENCES eval_persona_def(id) ON DELETE set null, eval_persona_id INTEGER REFERENCES eval_persona(id) ON DELETE set null, persona TEXT, status TEXT NOT NULL DEFAULT 'pending', error TEXT, claimed_at INTEGER, created_at INTEGER NOT NULL);
-CREATE TABLE eval_persona_batch (id INTEGER PRIMARY KEY AUTOINCREMENT, params TEXT NOT NULL, created_by TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE eval_instance (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, mode TEXT NOT NULL, endpoint_id INTEGER REFERENCES ai_endpoint(id) ON DELETE set null, params TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL UNIQUE REFERENCES user(id) ON DELETE cascade, display_name TEXT NOT NULL, crm TEXT, specialty TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 CREATE TABLE patients (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, tenant_id INTEGER, name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, synthetic INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER);
-CREATE TABLE eval_persona (id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id INTEGER NOT NULL REFERENCES eval_persona_batch(id) ON DELETE cascade, persona TEXT NOT NULL, script TEXT NOT NULL, turns TEXT NOT NULL, voices TEXT NOT NULL, patient_id INTEGER REFERENCES patients(id) ON DELETE set null, doctor_id INTEGER REFERENCES doctors(id) ON DELETE set null, script_mode TEXT, state TEXT NOT NULL DEFAULT 'under_review', feedback TEXT, reviewed_by TEXT, reviewed_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE eval_instance_item (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER NOT NULL REFERENCES eval_instance(id) ON DELETE cascade, persona_def_id INTEGER REFERENCES eval_persona_def(id) ON DELETE set null, persona TEXT, script TEXT, turns TEXT, voices TEXT, patient_id INTEGER REFERENCES patients(id) ON DELETE set null, doctor_id INTEGER REFERENCES doctors(id) ON DELETE set null, script_mode TEXT, status TEXT NOT NULL DEFAULT 'pending', error TEXT, state TEXT NOT NULL DEFAULT 'under_review', feedback TEXT, reviewed_by TEXT, reviewed_at INTEGER, claimed_at INTEGER, created_at INTEGER NOT NULL);
 `;
 
 export const evalPersonaTablesPlugin = definePlugin({
 	id: "eval.persona.tables",
 	meta: { keywords: ["eval", "persona", "tables"] },
-	requiredDeps: ["eval.validator.tables"],
 	// eval_instance.endpoint_id references ai_endpoint — ordering hint
 	// only; the plugin works standalone (tests supply the table).
 	optionalDeps: ["ai.endpoints.tables"],
@@ -975,7 +1034,7 @@ export const evalPersonaChromePlugin = definePlugin({
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/eval/personas",
-					label: "Personas",
+					label: "1 · Personas",
 					icon: Users2Icon,
 					group: "Eval",
 				},
@@ -988,7 +1047,7 @@ export const evalPersonaChromePlugin = definePlugin({
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/eval/instances",
-					label: "Instances",
+					label: "2 · Generate consultations",
 					icon: FlaskConicalIcon,
 					group: "Eval",
 				},

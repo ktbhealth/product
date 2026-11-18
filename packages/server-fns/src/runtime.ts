@@ -234,6 +234,14 @@ export interface ServerRuntime {
 	 * it. Undefined when unbound (Node dev) — the route answers 501.
 	 */
 	readonly acpBridge?: (endpointId: number, request: Request) => Promise<Response>;
+	/**
+	 * F3b: argv prefix for the `connect` command `createBridgeLinkFn`
+	 * mints — e.g. `bun /abs/repo/packages/ai-bridge/src/cli.ts` in dev
+	 * (the package is unpublished, so `bunx` would 404) or
+	 * `bunx @ktb/ai-bridge` once it ships. The composition root resolves
+	 * it; absent → the fn emits the published-package invocation.
+	 */
+	readonly aiBridgeCli?: string;
 }
 
 let runtime: ServerRuntime | undefined;

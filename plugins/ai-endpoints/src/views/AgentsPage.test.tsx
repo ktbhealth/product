@@ -20,7 +20,7 @@ const fns = vi.hoisted(() => ({
 			ok: true,
 			data: {
 				command:
-					'bunx @ktb/ai-bridge connect https://app.test/api/ai/bridge?token=tok123 --cmd "claude agent acp"',
+					'bun /repo/packages/ai-bridge/src/cli.ts connect https://app.test/api/ai/bridge?token=tok123 --cmd "bunx @agentclientprotocol/claude-agent-acp"',
 				expiresAt: new Date("2026-11-01T10:15:00Z"),
 			},
 		}),

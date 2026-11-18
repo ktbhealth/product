@@ -295,6 +295,34 @@
       "when": 1794917992898,
       "tag": "0042_milky_sinister_six",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1794934259461,
+      "tag": "0043_awesome_kate_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1794934575208,
+      "tag": "0044_slimy_martin_li",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "6",
+      "when": 1794934593773,
+      "tag": "0045_great_vermin",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1794934596991,
+      "tag": "0046_noisy_harry_osborn",
+      "breakpoints": true
     }
   ]
 }

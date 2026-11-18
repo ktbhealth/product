@@ -203,6 +203,22 @@ describe("anamnesis variant (T-128/T-129)", () => {
 		expect(short.turns.at(-1)).toEqual(full.turns.at(-1));
 	});
 
+	it("school-age patients never draw adult occupations or habits", () => {
+		for (const ageBand of ["child", "teen"]) {
+			for (const seed of [1, 2, 3]) {
+				const r = renderScript({
+					template: TEMPLATE,
+					persona: persona({ ageBand }),
+					seed,
+					variant: "anamnesis",
+				});
+				expect(r.script).not.toMatch(
+					/Trabalho|aposentad|dona de casa|fum|cerveja|cigarro|motorista/i,
+				);
+			}
+		}
+	});
+
 	it("clamps tiny and huge minute targets", () => {
 		const persona_ = persona();
 		const tiny = renderScript({
@@ -252,6 +268,55 @@ describe("anamnesis variant (T-128/T-129)", () => {
 			minutes: 1,
 		});
 		expect(r.turns).toHaveLength(4);
+	});
+
+	it("falls back to the adult pools when the locale has no minor pools", () => {
+		const { minorHabits: _mh, minorOccupations: _mo, ...anamnesis } = ptBR.script.anamnesis!;
+		const profile: typeof ptBR = {
+			...ptBR,
+			script: { ...ptBR.script, anamnesis },
+		};
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ ageBand: "child" }),
+			seed: 7,
+			profile,
+			variant: "anamnesis",
+		});
+		expect(r.turns.length).toBeGreaterThan(0);
+	});
+
+	it("colloquial doctor register picks the informal beat variants", () => {
+		const minor = renderScript({
+			template: TEMPLATE,
+			persona: persona({
+				ageBand: "child",
+				doctor: { gender: "m", register: "colloquial" },
+			}),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(minor.script).toContain("estuda onde");
+		const adult = renderScript({
+			template: TEMPLATE,
+			persona: persona({
+				ageBand: "adult",
+				doctor: { gender: "m", register: "colloquial" },
+			}),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(adult.script).toContain("trabalha com o quê");
+	});
+
+	it("inflects doctor-facing address for a female doctor", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ doctor: { gender: "f", register: "formal" } }),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(r.script).toContain("a médica");
 	});
 
 	it("falls back to the short form when the locale has no anamnesis", () => {

@@ -99,10 +99,10 @@ const en: AiEndpointMessages = {
 	transport: "Transport",
 	transportHint: "child/ssh need the Node runtime — this app only drives ws.",
 	agentCmd: "Agent command",
-	agentCmdHint: "Command the Node runtime spawns — e.g. `claude agent acp` or `gemini --acp`.",
+	agentCmdHint: "Command the Node runtime spawns — e.g. `claude-agent-acp` or `gemini --acp`.",
 	sshHost: "SSH host",
 	acpHint:
-		"Connects a local agent over ACP (e.g. Claude Code). No API key needed — run `claude agent acp` and paste the session id.",
+		"Connects a local agent over ACP (e.g. Claude Code). No API key needed — run `claude-agent-acp` and paste the session id.",
 	emptyEndpoints: "No endpoints — generation falls back to the template renderer.",
 	actionFailed: "Action failed — check permissions and try again.",
 	setPlatformDefault: "Set as platform default",
@@ -111,7 +111,7 @@ const en: AiEndpointMessages = {
 	bridgeConnect: "Connect via bridge",
 	bridgeTitle: "Connect agent via bridge",
 	bridgeDesc:
-		"Run this command on the machine that hosts the agent — it mints a one-shot link (shown once, ~15min). The agent command stays local: the server only ever sends frames.",
+		"Run this command on the machine that hosts the agent — it mints a connect link (shown once, valid ~15min). The agent command stays local: the server only ever sends frames.",
 	bridgeCopy: "Copy command",
 	bridgeCopied: "Copied",
 	bridgeWaiting: "waiting for the CLI to connect",
@@ -120,7 +120,7 @@ const en: AiEndpointMessages = {
 	bridgeClose: "Close",
 	agentsTitle: "Agents",
 	agentsDesc:
-		"Bridge links to local agents — mint one-shot connect commands, watch liveness, revoke access.",
+		"Bridge links to local agents — mint connect commands, watch liveness, revoke access.",
 	newAgentLink: "New link",
 	emptyAgentLinks: "No agent links — mint one to connect a local agent through the bridge.",
 	noBridgeEndpoints: "No bridge endpoints — create an acp+ws endpoint first.",
@@ -174,10 +174,10 @@ const ptBR: AiEndpointMessages = {
 	transport: "Transporte",
 	transportHint: "child/ssh precisam do runtime Node — este app só usa ws.",
 	agentCmd: "Comando do agente",
-	agentCmdHint: "Comando que o runtime Node executa — ex.: `claude agent acp` ou `gemini --acp`.",
+	agentCmdHint: "Comando que o runtime Node executa — ex.: `claude-agent-acp` ou `gemini --acp`.",
 	sshHost: "Host SSH",
 	acpHint:
-		"Conecta um agente local via ACP (ex.: Claude Code). Sem API key — rode `claude agent acp` e cole o id de sessão.",
+		"Conecta um agente local via ACP (ex.: Claude Code). Sem API key — rode `claude-agent-acp` e cole o id de sessão.",
 	emptyEndpoints: "Sem endpoints — a geração usa o renderizador de template.",
 	actionFailed: "Ação falhou — verifique permissões e tente de novo.",
 	setPlatformDefault: "Definir como padrão da plataforma",
@@ -186,7 +186,7 @@ const ptBR: AiEndpointMessages = {
 	bridgeConnect: "Conectar via bridge",
 	bridgeTitle: "Conectar agente via bridge",
 	bridgeDesc:
-		"Execute este comando na máquina que hospeda o agente — ele gera um link de uso único (exibido uma vez, ~15min). O comando do agente fica local: o servidor só envia frames.",
+		"Execute este comando na máquina que hospeda o agente — ele gera um link de conexão (exibido uma vez, válido por ~15min). O comando do agente fica local: o servidor só envia frames.",
 	bridgeCopy: "Copiar comando",
 	bridgeCopied: "Copiado",
 	bridgeWaiting: "aguardando a CLI conectar",
@@ -195,7 +195,7 @@ const ptBR: AiEndpointMessages = {
 	bridgeClose: "Fechar",
 	agentsTitle: "Agentes",
 	agentsDesc:
-		"Links de bridge para agentes locais — emita comandos de conexão de uso único, acompanhe a vivacidade, revogue o acesso.",
+		"Links de bridge para agentes locais — emita comandos de conexão, acompanhe a vivacidade, revogue o acesso.",
 	newAgentLink: "Novo link",
 	emptyAgentLinks: "Sem links de agente — emita um para conectar um agente local pela bridge.",
 	noBridgeEndpoints: "Sem endpoints de bridge — crie um endpoint acp+ws primeiro.",
@@ -237,10 +237,10 @@ const es: AiEndpointMessages = {
 	transport: "Transporte",
 	transportHint: "child/ssh necesitan el runtime Node — esta app solo usa ws.",
 	agentCmd: "Comando del agente",
-	agentCmdHint: "Comando que el runtime Node ejecuta — p. ej. `claude agent acp` o `gemini --acp`.",
+	agentCmdHint: "Comando que el runtime Node ejecuta — p. ej. `claude-agent-acp` o `gemini --acp`.",
 	sshHost: "Host SSH",
 	acpHint:
-		"Conecta un agente local vía ACP (p. ej. Claude Code). Sin API key — ejecuta `claude agent acp` y pega el id de sesión.",
+		"Conecta un agente local vía ACP (p. ej. Claude Code). Sin API key — ejecuta `claude-agent-acp` y pega el id de sesión.",
 	secretRefNone: "Ninguna",
 	secretRefCustom: "Env var personalizada",
 	actionFailed: "La acción falló — revisa permisos e intenta de nuevo.",
@@ -250,7 +250,7 @@ const es: AiEndpointMessages = {
 	bridgeConnect: "Conectar vía bridge",
 	bridgeTitle: "Conectar agente vía bridge",
 	bridgeDesc:
-		"Ejecuta este comando en la máquina que hospeda el agente — genera un enlace de un solo uso (se muestra una vez, ~15min). El comando del agente queda local: el servidor solo envía frames.",
+		"Ejecuta este comando en la máquina que hospeda el agente — genera un enlace de conexión (se muestra una vez, válido ~15min). El comando del agente queda local: el servidor solo envía frames.",
 	bridgeCopy: "Copiar comando",
 	bridgeCopied: "Copiado",
 	bridgeWaiting: "esperando que la CLI conecte",
@@ -259,7 +259,7 @@ const es: AiEndpointMessages = {
 	bridgeClose: "Cerrar",
 	agentsTitle: "Agentes",
 	agentsDesc:
-		"Enlaces de bridge a agentes locales — emite comandos de conexión de un solo uso, vigila la actividad, revoca el acceso.",
+		"Enlaces de bridge a agentes locales — emite comandos de conexión, vigila la actividad, revoca el acceso.",
 	newAgentLink: "Nuevo enlace",
 	emptyAgentLinks: "Sin enlaces de agente — emite uno para conectar un agente local por el bridge.",
 	noBridgeEndpoints: "Sin endpoints de bridge — crea un endpoint acp+ws primero.",

@@ -5,7 +5,8 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./schema": "./src/schema.ts",
-		"./fns": "./src/fns.ts"
+		"./fns": "./src/fns.ts",
+		"./steps": "./src/steps.tsx"
 	},
 	"dependencies": {
 		"@ktb/ai-endpoints": "workspace:*",
@@ -13,7 +14,6 @@
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",
-		"@ktb/eval-validator": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",

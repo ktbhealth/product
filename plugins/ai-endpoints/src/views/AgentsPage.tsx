@@ -80,7 +80,7 @@ const STATUS_DOT: Record<AgentLinkStatus, string> = {
 };
 
 /** /platform/ai/agents view (F4): every bridge link joined to its
- * endpoint — mint one-shot connect commands, watch liveness, revoke. */
+ * endpoint — mint connect commands, watch liveness, revoke. */
 export function AgentsPage({
 	links: initial,
 	endpoints,
@@ -98,7 +98,7 @@ export function AgentsPage({
 	const [revokeId, setRevokeId] = useState<number | null>(null);
 	const [copied, setCopied] = useState(false);
 	// New-link dialog: endpointId "" until picked; command null = not
-	// minted yet, "" = mint failed, otherwise the one-shot command.
+	// minted yet, "" = mint failed, otherwise the bearer command.
 	const [linkDialog, setLinkDialog] = useState<{
 		readonly endpointId: string;
 		readonly command: string | null;
@@ -130,7 +130,7 @@ export function AgentsPage({
 		};
 	}, []);
 
-	/** Mint a one-shot link for the picked bridge endpoint — the raw
+	/** Mint a link for the picked bridge endpoint — the raw
 	 * command exists only in dialog state, never re-fetchable. */
 	const mintLink = async () => {
 		/* v8 ignore next -- the Create button only renders while the dialog is open */

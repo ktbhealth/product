@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ensureSessionUser, runAs } from "@ktb/server-fns";
+import { ensureSessionUser, getServerRuntime, runAs } from "@ktb/server-fns";
 import type { LlmEndpointPreset } from "@ktb/eval-consultation";
 
 import {
@@ -141,8 +141,8 @@ export const setPlatformDefaultEndpointFn = createServerFn({ method: "POST" })
 	});
 
 /**
- * Mint a one-shot bridge link (F3b). Returns the FULL `ai-bridge
- * connect` command ONCE — the raw token lives only inside it; the
+ * Mint a bridge link (F3b). Returns the FULL `ai-bridge connect`
+ * command ONCE — the raw token lives only inside it; the
  * table stores SHA-256. SECURITY INVARIANT: the command's `--cmd`
  * part is a suggestion for the local CLI flag, never something the
  * server sends to the agent — the CLI only ever receives frames.
@@ -160,10 +160,18 @@ export const createBridgeLinkFn = createServerFn({ method: "POST" })
 				const s = yield* AiEndpoints;
 				const link = yield* s.createBridgeLink(data.id, user.id);
 				if (link === null) return { ok: true as const, data: null };
+				// The CLI argv prefix comes from the composition root — dev
+				// resolves the repo's cli.ts (the package is unpublished, so
+				// bunx 404s); the bunx fallback is the prod path for the day
+				// it ships. --cmd suggests the ACP adapter package: Claude
+				// Code 2.x has no `claude agent acp` subcommand —
+				// @agentclientprotocol/claude-agent-acp is the adapter, and
+				// bunx needs no install.
+				const cli = getServerRuntime().aiBridgeCli ?? "bunx @ktb/ai-bridge";
 				const command =
-					`bunx @ktb/ai-bridge connect ` +
+					`${cli} connect ` +
 					`${origin}/api/ai/bridge?token=${link.token} ` +
-					`--cmd "claude agent acp"`;
+					`--cmd "bunx @agentclientprotocol/claude-agent-acp"`;
 				return { ok: true as const, data: { command, expiresAt: link.expiresAt } };
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
 		);

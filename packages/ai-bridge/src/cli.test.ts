@@ -78,10 +78,15 @@ const deps = (proc: BridgeProcess, extra: Record<string, unknown> = {}) => ({
 describe("parseArgs", () => {
 	it("parses the canonical connect form", () => {
 		expect(
-			parseArgs(["connect", "https://x/api/ai/bridge?token=t", "--cmd", "claude agent acp"]),
+			parseArgs([
+				"connect",
+				"https://x/api/ai/bridge?token=t",
+				"--cmd",
+				"bunx @agentclientprotocol/claude-agent-acp",
+			]),
 		).toEqual({
 			url: "https://x/api/ai/bridge?token=t",
-			cmd: "claude agent acp",
+			cmd: "bunx @agentclientprotocol/claude-agent-acp",
 			once: false,
 		});
 	});

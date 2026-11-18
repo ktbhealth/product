@@ -46,19 +46,27 @@ export interface ScriptPrescription {
  * specialty, region) mapped to locale content. All randomness stays
  * in scriptgen.ts; this is pure data + tiny render functions.
  */
+/** Slot text with per-gender forms. Plain strings are gender-neutral;
+ * `{m, f}` resolves through `genderText` — `by` picks which gender the
+ * text varies on: "patient" (self-inflections, "sou alérgica") or
+ * "doctor" (honorifics the patient addresses: "não, senhora"). */
+export type GenderedText =
+	| string
+	| { readonly m: string; readonly f: string; readonly by?: "patient" | "doctor" };
+
 export interface ScriptContent {
 	/** register → greeting line. */
-	readonly greeting: Readonly<Record<string, readonly string[]>>;
+	readonly greeting: Readonly<Record<string, readonly GenderedText[]>>;
 	/** specialty → register → chief-complaint line. Must include a
 	 * "general_practice" entry — scriptgen falls back to it for
 	 * unknown specialties. */
 	readonly chiefComplaint: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>>;
 	/** register → allergy question line. */
-	readonly allergyQuestion: Readonly<Record<string, readonly string[]>>;
+	readonly allergyQuestion: Readonly<Record<string, readonly GenderedText[]>>;
 	/** Denial variants — `marker` is the gold negation entity. */
 	readonly allergyDeny: readonly { readonly marker: string; readonly text: string }[];
 	/** Affirmation variants — `med` is the gold medication entity. */
-	readonly allergyAffirm: readonly { readonly med: string; readonly text: string }[];
+	readonly allergyAffirm: readonly { readonly med: string; readonly text: GenderedText }[];
 	/** specialty → prescription candidates. */
 	readonly prescriptions: Readonly<Record<string, readonly ScriptPrescription[]>>;
 	/** register → prescription sentence renderer. */
@@ -124,6 +132,15 @@ export interface AnamnesisDynamics {
 	/** Patient's spoken name fragment for the greeting beat —
 	 * synthetic, never a real identifier. */
 	readonly patientTag: string;
+	/** m | f — the patient's grammatical gender; pt-BR beats
+	 * inflect honorifics and self-references on it. */
+	readonly patientGender: string;
+	/** m | f — the doctor's grammatical gender; patient beats
+	 * inflect "senhor/senhora", "doutor/doutora" on it. */
+	readonly doctorGender: string;
+	/** School-age patient (child/teen) — substance-screening beats
+	 * switch to routine/school questions for minors. */
+	readonly minor: boolean;
 }
 
 /** One dialogue beat: who speaks + text variants. Variants are
@@ -148,17 +165,22 @@ export interface AnamnesisContent {
 	/** onset phrases ("há cinco dias"…). */
 	readonly onsets: readonly string[];
 	/** comorbidity answer variants (arrays of sentences joined). */
-	readonly comorbidSets: readonly string[][];
+	readonly comorbidSets: readonly (readonly GenderedText[])[];
 	/** current-medication pool the patient may report. */
 	readonly medPool: readonly ScriptPrescription[];
 	/** family-history answers. */
-	readonly familyHx: readonly string[];
+	readonly familyHx: readonly GenderedText[];
 	/** habit answers (tobacco/alcohol/exercise). */
 	readonly habits: readonly string[];
 	/** occupation/sleep answers. */
-	readonly occupations: readonly string[];
+	readonly occupations: readonly GenderedText[];
+	/** Life-context pools for school-age patients (child/teen) —
+	 * minors don't have jobs or adult habits; when absent the adult
+	 * pools are used unchanged. */
+	readonly minorOccupations?: readonly GenderedText[];
+	readonly minorHabits?: readonly string[];
 	/** patient worry/question beats answered by reassurance. */
-	readonly patientQuestions: readonly string[];
+	readonly patientQuestions: readonly GenderedText[];
 	/** synthetic patient name tags — NEVER real names. */
 	readonly patientTags: readonly string[];
 }

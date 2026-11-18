@@ -88,7 +88,7 @@ export const resolveNodeAcp = (
 	const agentCmd = d.agentCmd?.trim();
 	if (agentCmd === undefined || agentCmd === "") {
 		return Effect.fail(
-			fail(`acp ${transport} endpoints require agentCmd (e.g. "claude agent acp")`),
+			fail(`acp ${transport} endpoints require agentCmd (e.g. "claude-agent-acp")`),
 		);
 	}
 	if (transport === "ssh") {

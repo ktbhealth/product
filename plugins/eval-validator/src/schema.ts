@@ -3,91 +3,43 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "../../../package
 // Relative imports on purpose: drizzle-kit loads the composed schema
 // through a CJS resolver that cannot follow `@ktb/*` package
 // specifiers — same pattern as plugins/doctors/src/schema.ts.
-import { doctors } from "../../doctors/src/schema.ts";
-import { patients } from "../../patients/src/schema.ts";
+import { evalInstance, evalInstanceItem } from "../../eval-persona/src/schema.ts";
 
 /**
- * Eval validator workflow tables (P-081): the in-app surface for
- * generating persona cohorts, reviewing them, and tracking eval runs.
- * Three tables map the workflow one-to-one:
+ * Eval run tables — step 3 of the linear eval pipeline (personas →
+ * generated consultations → eval runs; steps 1–2 live in
+ * plugins/eval-persona):
  *
- * - `eval_persona_batch` — one "Generate personas" click. `params`
- *   holds the generator input (count, seed, matrix) so a batch is
- *   replayable. `state` gates the next step: personas can only enter
- *   an eval run when their batch is `approved`.
- * - `eval_persona` — one generated patient+doctor pair with its
- *   rendered script and derived voices, awaiting review. Feedback is
- *   the validator's free-text note; it is carried verbatim into the
- *   next generation round as a constraint hint.
- * - `eval_run` / `eval_run_sample` — the eval execution: a run row
- *   tracks progress (`done`/`total`) and each approved sample gets a
- *   row the runner fills with its metrics JSON.
+ * - `eval_run` — one eval execution over a reviewed cohort. The
+ *   cohort is a generation instance's approved items: `instance_id`
+ *   links the run back to it (set null if the instance is deleted —
+ *   the run record survives), while `params` records the resolved
+ *   input set ({itemIds}) so the run is replayable/auditable even
+ *   then. The run NEVER regenerates consultations — the gold script
+ *   on each item is the corpus; the runner synthesizes audio from it,
+ *   ASRs it and scores per-stage metrics.
+ * - `eval_run_sample` — per-item outcome: the runner fills `result`
+ *   with its metrics JSON (wer, cleanup.werAfter, anamnesis
+ *   completeness, diff material, audioUri).
  *
  * Plugin-owned table definitions (P-061): aggregated into the drizzle
  * schema by the generated packages/db/src/schema.gen.ts.
  */
 
-export const evalPersonaBatch = sqliteTable(
-	"eval_persona_batch",
-	{
-		id: integer().primaryKey({ autoIncrement: true }),
-		/** JSON: { count, seed, variant, locale } the batch was made with. */
-		params: text().notNull(),
-		createdBy: text("created_by"),
-		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-	},
-	(table) => [index("eval_persona_batch_created_at_idx").on(table.createdAt)],
-);
-export type EvalPersonaBatch = typeof evalPersonaBatch.$inferSelect;
-
-export const evalPersona = sqliteTable(
-	"eval_persona",
-	{
-		id: integer().primaryKey({ autoIncrement: true }),
-		batchId: integer("batch_id")
-			.notNull()
-			.references(() => evalPersonaBatch.id, { onDelete: "cascade" }),
-		/** JSON: enriched Persona (region/register/gender/class/edu/name/doctor). */
-		persona: text().notNull(),
-		/** Rendered script text (turn-joined). */
-		script: text().notNull(),
-		/** JSON: [{speaker, text}] for per-speaker display. */
-		turns: text().notNull(),
-		/** JSON: {doctor: alias, patient: alias} derived voices. */
-		voices: text().notNull(),
-		/** Synthetic entities created with the persona — the patient
-		 * row and the doctor row (backing a synthetic `user`). Set
-		 * null when the entities are removed on rejection. */
-		patientId: integer("patient_id").references(() => patients.id, {
-			onDelete: "set null",
-		}),
-		doctorId: integer("doctor_id").references(() => doctors.id, {
-			onDelete: "set null",
-		}),
-		/** llm | template — which script source rendered the dialogue. */
-		scriptMode: text("script_mode"),
-		/** under_review | approved | rejected */
-		state: text().notNull().default("under_review"),
-		/** Validator feedback — verbatim, feeds the regen round. */
-		feedback: text(),
-		reviewedBy: text("reviewed_by"),
-		reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
-		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
-	},
-	(table) => [
-		index("eval_persona_batch_idx").on(table.batchId),
-		index("eval_persona_state_idx").on(table.state),
-	],
-);
-export type EvalPersona = typeof evalPersona.$inferSelect;
-
 export const evalRun = sqliteTable(
 	"eval_run",
 	{
 		id: integer().primaryKey({ autoIncrement: true }),
-		batchId: integer("batch_id")
-			.notNull()
-			.references(() => evalPersonaBatch.id, { onDelete: "cascade" }),
+		/** The cohort this run was launched from — the generation
+		 * instance whose approved items were sampled. Nullable +
+		 * set-null: a hand-picked or orphaned run keeps its params. */
+		instanceId: integer("instance_id").references(() => evalInstance.id, {
+			onDelete: "set null",
+		}),
+		/** JSON: {instanceId, itemIds} — the exact input set the run
+		 * executed, recorded at start so the run replays/audits
+		 * independently of later edits to the cohort. */
+		params: text().notNull().default("{}"),
 		/** queued | running | done | failed */
 		status: text().notNull().default("queued"),
 		total: integer().notNull().default(0),
@@ -96,9 +48,10 @@ export const evalRun = sqliteTable(
 		summary: text(),
 		startedAt: integer("started_at", { mode: "timestamp_ms" }),
 		finishedAt: integer("finished_at", { mode: "timestamp_ms" }),
+		createdBy: text("created_by"),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
-	(table) => [index("eval_run_batch_idx").on(table.batchId)],
+	(table) => [index("eval_run_instance_idx").on(table.instanceId)],
 );
 export type EvalRun = typeof evalRun.$inferSelect;
 
@@ -109,9 +62,12 @@ export const evalRunSample = sqliteTable(
 		runId: integer("run_id")
 			.notNull()
 			.references(() => evalRun.id, { onDelete: "cascade" }),
-		personaId: integer("persona_id")
+		/** The generated consultation (eval_instance_item) this sample
+		 * scored — cascades with the item: deleting the corpus removes
+		 * its run evidence too. */
+		itemId: integer("item_id")
 			.notNull()
-			.references(() => evalPersona.id, { onDelete: "cascade" }),
+			.references(() => evalInstanceItem.id, { onDelete: "cascade" }),
 		/** pending | ok | failed */
 		status: text().notNull().default("pending"),
 		/** JSON: asrText, correctedText, metrics, verdicts, conf bands. */
@@ -119,6 +75,6 @@ export const evalRunSample = sqliteTable(
 		error: text(),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},
-	(table) => [uniqueIndex("eval_run_sample_run_persona_idx").on(table.runId, table.personaId)],
+	(table) => [uniqueIndex("eval_run_sample_run_item_idx").on(table.runId, table.itemId)],
 );
 export type EvalRunSample = typeof evalRunSample.$inferSelect;

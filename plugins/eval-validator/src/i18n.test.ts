@@ -10,9 +10,9 @@ describe("eval i18n catalog", () => {
 	});
 
 	it("resolves each catalog and falls back to en on unknown locales", () => {
-		expect(evalMessages("en").title).toBe("Eval validator");
-		expect(evalMessages("pt-BR").title).toBe("Validador de eval");
-		expect(evalMessages("fr").generate).toBe("Generate personas");
+		expect(evalMessages("en").title).toBe("Run eval");
+		expect(evalMessages("pt-BR").title).toBe("Rodar eval");
+		expect(evalMessages("fr").runEval).toBe("Run eval");
 	});
 });
 

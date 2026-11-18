@@ -177,6 +177,40 @@ describe("telemetry request middleware", () => {
 		expect(result.response).toBe("not-a-response");
 	});
 
+	it("skips the correlation echo on 101 upgrade responses (immutable headers)", async () => {
+		// The ACP bridge hands back the DO's 101 — workerd owns its
+		// headers; echoing x-request-id there would kill the socket.
+		// Node's Response can't be constructed at 101, so the test
+		// overrides the instance getter.
+		const upgrade = new Response(null, { status: 200 });
+		Object.defineProperty(upgrade, "status", { value: 101 });
+		const result = await run(new Request("http://localhost/x"), () => ({
+			request: new Request("http://localhost/x"),
+			pathname: "/x",
+			context: {},
+			response: upgrade,
+		}));
+		expect(result.response.status).toBe(101);
+		expect(result.response.headers.get("x-request-id")).toBeNull();
+	});
+
+	it("swallows immutable-header failures on runtime-owned responses", async () => {
+		// A subrequest passthrough (fetch/DO stub response) carries
+		// immutable headers in workerd — Node can't reproduce that, so
+		// the test arms Headers.set to throw the same TypeError.
+		const passthrough = new Response("proxied", { status: 200 });
+		vi.spyOn(passthrough.headers, "set").mockImplementation(() => {
+			throw new TypeError("Can't modify immutable headers.");
+		});
+		const result = await run(new Request("http://localhost/x"), () => ({
+			request: new Request("http://localhost/x"),
+			pathname: "/x",
+			context: {},
+			response: passthrough,
+		}));
+		expect(result.response.status).toBe(200);
+	});
+
 	it("replaces malformed correlation headers with fresh values", async () => {
 		const request = new Request("http://localhost/x", {
 			headers: {

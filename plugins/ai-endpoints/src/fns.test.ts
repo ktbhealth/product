@@ -59,6 +59,7 @@ const sessionFor = (email: string | null) =>
 
 describe("ai-endpoints fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let auth: ReturnType<typeof Auth.of>;
 	let currentEmail: string | null = null;
 	let allow = true;
 	let factoryFails: false | "port" | "raw" = false;
@@ -100,7 +101,7 @@ describe("ai-endpoints fns", () => {
 				never
 			>,
 		);
-		const auth = Auth.of({
+		auth = Auth.of({
 			setUserBanned: async () => {},
 			getSession: async () => sessionFor(currentEmail) as never,
 		});
@@ -121,6 +122,8 @@ describe("ai-endpoints fns", () => {
 				)) as ServerRuntime["runAs"],
 			audioTranscribeModel: "test-model",
 			getLocale: () => "en",
+			// Dev-style argv prefix — the repo's unpublished CLI source.
+			aiBridgeCli: "bun /repo/packages/ai-bridge/src/cli.ts",
 		});
 	});
 
@@ -189,7 +192,7 @@ describe("ai-endpoints fns", () => {
 					kind: "acp",
 					baseUrl: "u2",
 					transport: "ssh",
-					agentCmd: "claude agent acp",
+					agentCmd: "claude-agent-acp",
 					sshHost: "me@gpu-box",
 				},
 			}),
@@ -200,7 +203,7 @@ describe("ai-endpoints fns", () => {
 		const listed = await listEndpointsFn({ data: undefined });
 		expect(listed.ok && listed.data[0]?.kind).toBe("acp");
 		expect(listed.ok && listed.data[0]).toMatchObject({
-			agentCmd: "claude agent acp",
+			agentCmd: "claude-agent-acp",
 			sshHost: "me@gpu-box",
 		});
 
@@ -254,9 +257,9 @@ describe("ai-endpoints fns", () => {
 		const link = await createBridgeLinkFn({ data: { id } });
 		expect(link.ok).toBe(true);
 		if (!link.ok || link.data === null) return;
-		expect(link.data.command).toContain("bunx @ktb/ai-bridge connect ");
+		expect(link.data.command).toContain("bun /repo/packages/ai-bridge/src/cli.ts connect ");
 		expect(link.data.command).toContain("https://app.test/api/ai/bridge?token=");
-		expect(link.data.command).toContain('--cmd "claude agent acp"');
+		expect(link.data.command).toContain('--cmd "bunx @agentclientprotocol/claude-agent-acp"');
 		expect(link.data.expiresAt).toBeInstanceOf(Date);
 
 		// A minted-but-unconsumed link flips the badge to waiting.
@@ -282,6 +285,63 @@ describe("ai-endpoints fns", () => {
 		expect(await endpointBridgeStatusFn({ data: { id: 9999 } })).toEqual({
 			ok: true,
 			data: null,
+		});
+	});
+
+	it("falls back to the published ai-bridge CLI when the runtime has no override", async () => {
+		// Same runtime shape as beforeAll, minus aiBridgeCli — exercises the
+		// `?? "bunx @ktb/ai-bridge"` fallback in the bridge command.
+		setServerRuntime({
+			run: ((effect: Effect.Effect<unknown, unknown, unknown>) =>
+				runtime.runPromise(effect.pipe(Effect.provideService(Auth, auth)))) as ServerRuntime["run"],
+			runAs: ((
+				user: { id: string; email: string },
+				effect: Effect.Effect<unknown, unknown, unknown>,
+			) =>
+				runtime.runPromise(
+					effect.pipe(
+						Effect.provideService(Principal, {
+							userId: user.id,
+							email: user.email,
+						}),
+					),
+				)) as ServerRuntime["runAs"],
+			audioTranscribeModel: "test-model",
+			getLocale: () => "en",
+		});
+
+		currentEmail = "v@x.com";
+		allow = true;
+		const created = await saveEndpointFn({
+			data: { name: "agent2", kind: "acp", transport: "ws", baseUrl: "", enabled: true },
+		});
+		expect(created.ok).toBe(true);
+		if (!created.ok) return;
+
+		const link = await createBridgeLinkFn({ data: { id: created.data.id } });
+		expect(link.ok).toBe(true);
+		if (!link.ok || link.data === null) return;
+		expect(link.data.command.startsWith("bunx @ktb/ai-bridge connect ")).toBe(true);
+
+		// Restore the beforeAll runtime for later tests.
+		setServerRuntime({
+			run: ((effect: Effect.Effect<unknown, unknown, unknown>) =>
+				runtime.runPromise(effect.pipe(Effect.provideService(Auth, auth)))) as ServerRuntime["run"],
+			runAs: ((
+				user: { id: string; email: string },
+				effect: Effect.Effect<unknown, unknown, unknown>,
+			) =>
+				runtime.runPromise(
+					effect.pipe(
+						Effect.provideService(Principal, {
+							userId: user.id,
+							email: user.email,
+						}),
+					),
+				)) as ServerRuntime["runAs"],
+			audioTranscribeModel: "test-model",
+			getLocale: () => "en",
+			aiBridgeCli: "bun /repo/packages/ai-bridge/src/cli.ts",
 		});
 	});
 

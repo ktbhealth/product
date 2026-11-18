@@ -11,9 +11,9 @@
  * frames.
  *
  * SECURITY INVARIANT: the agent command NEVER comes from the server.
- * `--cmd` is a local flag; the server sends only frames. The one-shot
+ * `--cmd` is a local flag; the server sends only frames. The bearer
  * token rides inside <url> (`?token=…`) — minted by the endpoint UI,
- * never stored server-side.
+ * never stored server-side, valid for reconnects until it expires.
  *
  * Node/Bun only. WebSocket is the runtime global (Bun, Node ≥22); the
  * child spawns through `sh -c` so quoting in --cmd works. Reconnects

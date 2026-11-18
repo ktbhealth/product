@@ -11,7 +11,6 @@ import {
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
 } from "@ktb/eval-consultation";
-import { evalPersona } from "@ktb/eval-validator";
 import { Permissions } from "@ktb/rbac";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
@@ -70,7 +69,18 @@ const llmDefJson = JSON.stringify([
 	{ name: "gen-partial", patientName: 42, gender: "x", ageBand: "child", doctorGender: "m" },
 ]);
 
-type FactoryKind = "ok" | "fail" | "bad" | "genfail" | "json" | "broken";
+// Second JSON payload for EvalPersonas.generate — coherent and
+// incoherent axis pairs that exercise the persona coherence clamps
+// (pediatrics vs ageBand, education vs ageBand).
+const llmClampJson = JSON.stringify([
+	{ name: "clamp-peds-adult", specialty: "pediatrics", ageBand: "adult", education: "higher" },
+	{ name: "clamp-peds-child", specialty: "pediatrics", ageBand: "child", education: "primary" },
+	{ name: "clamp-peds-teen", specialty: "pediatrics", ageBand: "teen", education: "secondary" },
+	{ name: "clamp-child", ageBand: "child", education: "higher" },
+	{ name: "clamp-teen", ageBand: "teen", education: "higher" },
+]);
+
+type FactoryKind = "ok" | "fail" | "bad" | "genfail" | "json" | "json2" | "broken";
 
 const factoryLayer = (
 	kind: FactoryKind = "ok",
@@ -100,9 +110,11 @@ const factoryLayer = (
 													}) as never)
 												: kind === "json"
 													? Effect.succeed({ text: llmDefJson, record: {} as never })
-													: kind === "broken"
-														? Effect.succeed({ text: "[{]", record: {} as never })
-														: Effect.succeed({ text: llmScript, record: {} as never }),
+													: kind === "json2"
+														? Effect.succeed({ text: llmClampJson, record: {} as never })
+														: kind === "broken"
+															? Effect.succeed({ text: "[{]", record: {} as never })
+															: Effect.succeed({ text: llmScript, record: {} as never }),
 									correct: () =>
 										Effect.fail({ _tag: "PortError", port: "llm", message: "down" }) as never,
 								}),
@@ -211,6 +223,15 @@ const EP: EndpointInput = {
 	model: "qwen2.5:7b",
 };
 
+// Random-mode instances sample the persona registry — tests driving a
+// random instance seed defs first through this helper.
+const seedDefs = (n: number) =>
+	Effect.forEach(
+		Array.from({ length: n }, (_, i) => i),
+		(i) => Effect.flatMap(EvalPersonas, (s) => s.create({ name: `d${i}`, persona })),
+		{ discard: true },
+	);
+
 describe("EvalPersonas", () => {
 	it("denies everything without the grant", async () => {
 		const { rt, run } = make({ allow: false });
@@ -251,6 +272,7 @@ describe("EvalPersonas", () => {
 describe("EvalInstances", () => {
 	it("creates a random instance and generates with template fallback", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(2));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "lote", mode: "random", count: 2, seed: 7, minutes: 5 }),
@@ -271,10 +293,14 @@ describe("EvalInstances", () => {
 		expect(d?.status).toBe("ready");
 		expect(d?.done).toBe(2);
 		expect(d?.pct).toBe(100);
-		expect(d?.items.every((it) => it.status === "done" && it.evalPersonaId !== null)).toBe(true);
-		// Synthetic entities landed flagged, linked to eval personas.
-		const personas = await db.select().from(evalPersona);
-		expect(personas.every((p) => p.scriptMode === "template" && p.patientId !== null)).toBe(true);
+		expect(
+			d?.items.every(
+				(it) => it.status === "done" && it.scriptMode === "template" && it.state === "under_review",
+			),
+		).toBe(true);
+		// Synthetic entities landed flagged, linked on the item's corpus fields.
+		const items = await db.select().from(evalInstanceItem);
+		expect(items.every((p) => p.scriptMode === "template" && p.patientId !== null)).toBe(true);
 		const pats = await db.select().from(patients);
 		expect(pats.every((p) => p.synthetic)).toBe(true);
 		const docs = await db.select().from(doctors);
@@ -306,15 +332,16 @@ describe("EvalInstances", () => {
 			await new Promise((r) => setTimeout(r, 50));
 		}
 		expect(d?.status).toBe("ready");
-		const personas = await db.select().from(evalPersona);
-		expect(personas[0]?.scriptMode).toBe("llm");
-		expect(personas[0]?.script).toContain("dor de cabeça");
+		const items = await db.select().from(evalInstanceItem);
+		expect(items[0]?.scriptMode).toBe("llm");
+		expect(items[0]?.script).toContain("dor de cabeça");
 		await rt.dispose();
 	});
 
 	it("falls back to template when the endpoint resolve fails", async () => {
 		const { rt, run, db } = make({ factory: "fail" });
 		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.create({ name: "f", mode: "random", count: 1, endpointId: epId }),
@@ -326,13 +353,14 @@ describe("EvalInstances", () => {
 			if (d?.status !== "generating") break;
 			await new Promise((r) => setTimeout(r, 50));
 		}
-		const personas = await db.select().from(evalPersona);
-		expect(personas[0]?.scriptMode).toBe("template");
+		const items = await db.select().from(evalInstanceItem);
+		expect(items[0]?.scriptMode).toBe("template");
 		await rt.dispose();
 	});
 
 	it("falls back to template when the endpoints service errors typed", async () => {
 		const { rt, run, db, d1 } = make({ factory: "ok", endpoints: "fail" });
+		await run(seedDefs(1));
 		// A raw endpoint row satisfies the FK — the stub never reads it.
 		await d1.exec(
 			"INSERT INTO ai_endpoint (name, kind, base_url, scope, created_at) VALUES ('ep', 'openai', 'http://x', 'eval', 1)",
@@ -348,13 +376,14 @@ describe("EvalInstances", () => {
 			if (d?.status !== "generating") break;
 			await new Promise((r) => setTimeout(r, 50));
 		}
-		const personas = await db.select().from(evalPersona);
-		expect(personas[0]?.scriptMode).toBe("template");
+		const items = await db.select().from(evalInstanceItem);
+		expect(items[0]?.scriptMode).toBe("template");
 		await rt.dispose();
 	});
 
 	it("runs standalone without the ai-endpoints plugin bound", async () => {
 		const { rt, run, d1 } = make({ endpoints: false });
+		await run(seedDefs(1));
 		// A raw endpoint row satisfies the FK — nothing resolves it
 		// without the plugin bound.
 		await d1.exec(
@@ -382,6 +411,7 @@ describe("EvalInstances", () => {
 
 	it("falls back to template on unparseable llm output", async () => {
 		const { rt, run, db } = make({ factory: "bad" });
+		await run(seedDefs(1));
 		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
@@ -394,19 +424,21 @@ describe("EvalInstances", () => {
 			if (d?.status !== "generating") break;
 			await new Promise((r) => setTimeout(r, 50));
 		}
-		const personas = await db.select().from(evalPersona);
-		expect(personas[0]?.scriptMode).toBe("template");
+		const items = await db.select().from(evalInstanceItem);
+		expect(items[0]?.scriptMode).toBe("template");
 		await rt.dispose();
 	});
 
 	it("marks items error on per-item defects — the run still completes", async () => {
 		const { rt, run, d1 } = make();
+		await run(seedDefs(2));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "iso", mode: "random", count: 2 })),
 		);
-		// Dropping eval_persona makes every item's persona insert reject —
-		// a defect the per-item isolation converts to an error row.
-		await d1.exec("DROP TABLE eval_persona");
+		// Dropping `patients` makes every item's synthetic-entity
+		// insert reject — a defect the per-item isolation converts to
+		// an error row.
+		await d1.exec("DROP TABLE patients");
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
 		let d;
 		for (let i = 0; i < 50; i++) {
@@ -421,16 +453,17 @@ describe("EvalInstances", () => {
 
 	it("marks the instance failed on catastrophic defects", async () => {
 		const { rt, run, d1 } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "cat", mode: "random", count: 1 })),
 		);
-		await d1.exec("DROP TABLE eval_persona_batch");
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
-		for (let i = 0; i < 50; i++) {
-			const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
-			if (d?.status !== "generating") break;
-			await new Promise((r) => setTimeout(r, 50));
-		}
+		// The items scan is init-level: its defect marks the instance
+		// `failed` — detail still rejects on the missing table, so
+		// rename it back before reading the row.
+		await d1.exec("ALTER TABLE eval_instance_item RENAME TO eval_instance_item_bak");
+		await expect(run(Effect.flatMap(EvalInstances, (s) => s.detail(id)))).rejects.toThrow();
+		await d1.exec("ALTER TABLE eval_instance_item_bak RENAME TO eval_instance_item");
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		expect(d?.status).toBe("failed");
 		await rt.dispose();
@@ -438,6 +471,7 @@ describe("EvalInstances", () => {
 
 	it("list drives generation — polls advance items without detail", async () => {
 		const { rt, run } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "drv", mode: "random", count: 1 })),
 		);
@@ -454,6 +488,7 @@ describe("EvalInstances", () => {
 
 	it("leaves an in-flight item alone — no premature finalize", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "inf", mode: "random", count: 1 })),
 		);
@@ -465,7 +500,7 @@ describe("EvalInstances", () => {
 			.update(evalInstanceItem)
 			.set({ status: "generating", claimedAt: new Date() })
 			.where(eq(evalInstanceItem.id, items[0]!.id));
-		// Tick 1 inits the batch; tick 2 sees the in-flight claim.
+		// The tick sees the in-flight claim and must NOT finalize.
 		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		expect(d?.status).toBe("generating");
@@ -474,6 +509,7 @@ describe("EvalInstances", () => {
 
 	it("reclaims a stale generating claim — the run reaches ready", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "stale", mode: "random", count: 1 })),
 		);
@@ -484,40 +520,45 @@ describe("EvalInstances", () => {
 			.update(evalInstanceItem)
 			.set({ status: "generating", claimedAt: new Date(Date.now() - 120_000) })
 			.where(eq(evalInstanceItem.instanceId, id));
-		// Tick 1 reclaims + inits the batch; tick 2 claims and generates;
-		// tick 3 finalizes.
+		// Tick 1 reclaims the stale claim and generates it; tick 2
+		// finalizes; tick 3 confirms.
 		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		expect(d?.status).toBe("ready");
 		expect(d?.items[0]?.status).toBe("done");
-		expect(d?.items[0]?.evalPersonaId).not.toBeNull();
+		expect(d?.items[0]?.scriptMode).toBe("template");
 		await rt.dispose();
 	});
 
 	it("finalizes ready when an instance has zero items", async () => {
-		const { rt, run } = make();
-		const { id } = await run(
-			Effect.flatMap(EvalInstances, (s) => s.create({ name: "empty", mode: "random" })),
-		);
-		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
-		// Tick 1 inits the batch; tick 2 finalizes the empty item set.
-		await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
-		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		const { rt, run, db } = make();
+		// Zero-item instances can't come from create (random rejects on
+		// an empty registry, selected needs ≥1 def) — seed the row.
+		const [inst] = await db
+			.insert(evalInstance)
+			.values({ name: "empty", mode: "random", params: "{}", createdAt: new Date() })
+			.returning();
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(inst!.id)));
+		// The first poll finalizes the empty item set.
+		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(inst!.id)));
 		expect(d?.status).toBe("ready");
 		await rt.dispose();
 	});
 
 	it("swallows tick defects — polls keep flowing on broken tables", async () => {
 		const { rt, run, d1 } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "cat", mode: "random", count: 1 })),
 		);
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
 		await d1.exec("DROP TABLE eval_instance_item");
-		// First tick inits the batch then returns; the SECOND detail's
-		// tick hits the dropped items table — catchDefect in
-		// tickQuietly swallows it, then detail fails on its own select.
+		// The FIRST detail's tick hits the dropped items table — the
+		// init-level catch marks the instance failed and tickQuietly
+		// swallows the defect; detail then fails on its own select.
+		// The SECOND detail's tick returns early (status `failed`) and
+		// the select still throws.
 		await expect(run(Effect.flatMap(EvalInstances, (s) => s.detail(id)))).rejects.toThrow();
 		await expect(run(Effect.flatMap(EvalInstances, (s) => s.detail(id)))).rejects.toThrow();
 		await rt.dispose();
@@ -525,6 +566,7 @@ describe("EvalInstances", () => {
 
 	it("skips the llm layer for disabled endpoints — template generation", async () => {
 		const { rt, run, db } = make({ factory: "ok" });
+		await run(seedDefs(1));
 		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		await run(Effect.flatMap(AiEndpoints, (s) => s.update({ ...EP, id: epId, enabled: false })));
 		const { id } = await run(
@@ -538,13 +580,14 @@ describe("EvalInstances", () => {
 			if (d?.status !== "generating") break;
 			await new Promise((r) => setTimeout(r, 50));
 		}
-		const personas = await db.select().from(evalPersona);
-		expect(personas[0]?.scriptMode).toBe("template");
+		const items = await db.select().from(evalInstanceItem);
+		expect(items[0]?.scriptMode).toBe("template");
 		await rt.dispose();
 	});
 
 	it("falls back to template when the llm generate call itself fails", async () => {
 		const { rt, run, db } = make({ factory: "genfail" });
+		await run(seedDefs(1));
 		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
@@ -557,13 +600,14 @@ describe("EvalInstances", () => {
 			if (d?.status !== "generating") break;
 			await new Promise((r) => setTimeout(r, 50));
 		}
-		const personas = await db.select().from(evalPersona);
-		expect(personas[0]?.scriptMode).toBe("template");
+		const items = await db.select().from(evalInstanceItem);
+		expect(items[0]?.scriptMode).toBe("template");
 		await rt.dispose();
 	});
 
 	it("detail survives corrupt persona JSON and deleted endpoints", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(1));
 		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) =>
@@ -582,8 +626,48 @@ describe("EvalInstances", () => {
 		await rt.dispose();
 	});
 
+	it("detail renders a null persona snapshot as null", async () => {
+		const { rt, run, db } = make();
+		await run(seedDefs(1));
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "np", mode: "random", count: 1 })),
+		);
+		await db
+			.update(evalInstanceItem)
+			.set({ persona: null })
+			.where(eq(evalInstanceItem.instanceId, id));
+		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		expect(d?.items[0]?.persona).toBeNull();
+		await rt.dispose();
+	});
+
+	it("generates a male doctor for personas with a male doctor", async () => {
+		const { rt, run, db } = make();
+		await run(
+			Effect.flatMap(EvalPersonas, (s) =>
+				s.create({
+					name: "male-doc",
+					persona: { ...persona, doctor: { gender: "m", register: "neutral" } },
+				}),
+			),
+		);
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "md", mode: "random", count: 1 })),
+		);
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
+		for (let i = 0; i < 50; i++) {
+			const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+			if (d?.status !== "generating") break;
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		const docs = await db.select().from(doctors);
+		expect(docs[0]?.displayName).toMatch(/^Dr\./);
+		await rt.dispose();
+	});
+
 	it("removes instances and their items (cascade)", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "del", mode: "random", count: 1 })),
 		);
@@ -595,6 +679,7 @@ describe("EvalInstances", () => {
 
 	it("refuses to remove a generating instance but removes finished ones", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(1));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "busy", mode: "random", count: 1 })),
 		);
@@ -613,6 +698,7 @@ describe("EvalInstances", () => {
 
 	it("start ignores non-draft and unknown instances", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(1));
 		await run(Effect.flatMap(EvalInstances, (s) => s.start(999)));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "x", mode: "random", count: 1 })),
@@ -730,14 +816,15 @@ describe("evalPersonaPanelPlugin", () => {
 });
 
 describe("EvalInstances — edge inputs", () => {
-	it("creates a random instance with no count/endpoint/minutes (defaults)", async () => {
+	it("random mode without a count defaults to the whole registry", async () => {
 		const { rt, run } = make();
+		await run(seedDefs(2));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "bare", mode: "random" })),
 		);
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
-		expect(d?.total).toBe(0);
-		expect(d?.items).toEqual([]);
+		expect(d?.total).toBe(2);
+		expect(d?.items).toHaveLength(2);
 		await rt.dispose();
 	});
 
@@ -799,8 +886,60 @@ describe("EvalInstances — edge inputs", () => {
 		await rt.dispose();
 	});
 
+	it("rejects random mode on an empty persona registry", async () => {
+		const { rt, run } = make();
+		await expect(
+			run(Effect.flatMap(EvalInstances, (s) => s.create({ name: "empty", mode: "random" }))),
+		).rejects.toMatchObject({ _tag: "InstanceRejected" });
+		await rt.dispose();
+	});
+
+	it("birth dates follow the persona age band", async () => {
+		const { rt, run, db } = make();
+		const year = new Date().getFullYear();
+		await run(
+			Effect.forEach(
+				[
+					{ ...persona, ageBand: "teen" },
+					{ ...persona, ageBand: "adult" },
+				],
+				(p) => Effect.flatMap(EvalPersonas, (s) => s.create({ name: p.ageBand, persona: p })),
+				{ discard: true },
+			),
+		);
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "bands", mode: "random", count: 2 })),
+		);
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
+		for (let i = 0; i < 50; i++) {
+			const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+			if (d?.status !== "generating") break;
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		const pats = await db.select().from(patients);
+		const byDate = (a: string | null, b: string | null) => String(a).localeCompare(String(b));
+		expect(pats.map((p) => p.birthDate).sort(byDate)).toEqual(
+			[`${year - 15}-01-01`, `${year - 35}-01-01`].sort(byDate),
+		);
+		await rt.dispose();
+	});
+
+	it("a defect inside tick is swallowed by the poll wrapper", async () => {
+		const { rt, run, d1 } = make();
+		await run(Effect.flatMap(EvalPersonas, (s) => s.create({ name: "d", persona })));
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "defect", mode: "random", count: 1 })),
+		);
+		// Renaming the table makes tick's first select reject — a defect
+		// the quietly wrapper must swallow; detail's own read then fails.
+		await d1.exec("ALTER TABLE eval_instance RENAME TO eval_instance_bak");
+		await expect(run(Effect.flatMap(EvalInstances, (s) => s.detail(id)))).rejects.toThrow();
+		await rt.dispose();
+	});
+
 	it("endpoint without optional fields resolves to a bare descriptor", async () => {
 		const { rt, run } = make({ factory: "ok" });
+		await run(seedDefs(1));
 		const { id: epId } = await run(
 			Effect.flatMap(AiEndpoints, (s) =>
 				s.create({ name: "acp-agent", kind: "acp", baseUrl: "http://agent/rpc" }),
@@ -819,6 +958,40 @@ describe("EvalInstances — edge inputs", () => {
 		}
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
 		expect(d?.status).toBe("ready");
+		await rt.dispose();
+	});
+
+	it("random mode with count 0 creates an instance with no items", async () => {
+		const { rt, run } = make();
+		await run(seedDefs(2));
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "zero", mode: "random", count: 0 })),
+		);
+		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+		expect(d?.total).toBe(0);
+		expect(d?.items).toHaveLength(0);
+		await rt.dispose();
+	});
+
+	it("marks the item error when its persona snapshot is null", async () => {
+		const { rt, run, db } = make();
+		await run(seedDefs(1));
+		const { id } = await run(
+			Effect.flatMap(EvalInstances, (s) => s.create({ name: "nop", mode: "random", count: 1 })),
+		);
+		await db
+			.update(evalInstanceItem)
+			.set({ persona: null })
+			.where(eq(evalInstanceItem.instanceId, id));
+		await run(Effect.flatMap(EvalInstances, (s) => s.start(id)));
+		let d;
+		for (let i = 0; i < 50; i++) {
+			d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(id)));
+			if (d?.status !== "generating") break;
+			await new Promise((r) => setTimeout(r, 50));
+		}
+		expect(d?.items[0]?.status).toBe("error");
+		expect(d?.items[0]?.error).toContain("no resolved persona");
 		await rt.dispose();
 	});
 });
@@ -870,7 +1043,7 @@ describe("EvalPersonas — principal and descriptor edges", () => {
 			await new Promise((r) => setTimeout(r, 50));
 		}
 		expect(status).toBe("ready");
-		const rows = await db.select().from(evalPersona);
+		const rows = await db.select().from(evalInstanceItem);
 		expect(rows[0]?.scriptMode).toBe("llm");
 		// Env-var secret refs travel as names — the adapter edge resolves them.
 		expect(captured[0]?.sessionId).toBe("sess-1");
@@ -974,11 +1147,31 @@ describe("EvalPersonas.generate", () => {
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 		await rt.dispose();
 	});
+
+	it("clamps incoherent llm persona fields to plausible values", async () => {
+		const { rt, run } = make({ factory: "json2" });
+		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		const r = await run(
+			Effect.flatMap(EvalPersonas, (s) => s.generate({ count: 5, endpointId: epId })),
+		);
+		expect(r.created).toBe(5);
+		const listed = await run(Effect.flatMap(EvalPersonas, (s) => s.list()));
+		const byName = new Map(listed.map((d) => [d.name, d.persona] as const));
+		// pediatrics forces a minor band; already-minor bands pass through.
+		expect(byName.get("clamp-peds-adult")?.ageBand).toBe("child");
+		expect(byName.get("clamp-peds-child")?.ageBand).toBe("child");
+		expect(byName.get("clamp-peds-teen")?.ageBand).toBe("teen");
+		// education is clamped to fit the age band.
+		expect(byName.get("clamp-child")?.education).toBe("primary");
+		expect(byName.get("clamp-teen")?.education).toBe("secondary");
+		await rt.dispose();
+	});
 });
 
 describe("EvalInstances.spawn", () => {
 	it("fans out random-mode generator instances with seeded params", async () => {
 		const { rt, run, db } = make();
+		await run(seedDefs(2));
 		const r = await run(
 			Effect.flatMap(EvalInstances, (s) =>
 				s.spawn({ count: 3, defCount: 2, seed: 50, name: "gen" }),
@@ -999,6 +1192,7 @@ describe("EvalInstances.spawn", () => {
 	it("defaults name/defCount/seed and carries the endpoint", async () => {
 		const { rt, run, db } = make();
 		const { id: epId } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(EP)));
+		await run(seedDefs(1));
 		const r = await run(
 			Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 1, endpointId: epId })),
 		);
@@ -1014,6 +1208,7 @@ describe("EvalInstances.spawn", () => {
 		const { rt, run, db, d1 } = make();
 		// Breaking the items table makes every insertInstance fail inside
 		// the transaction — no half-provisioned "generator" rows survive.
+		await run(seedDefs(1));
 		await d1.exec("DROP TABLE eval_instance_item");
 		await expect(
 			run(Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 3, defCount: 2 }))),
@@ -1027,6 +1222,15 @@ describe("EvalInstances.spawn", () => {
 		await expect(
 			run(Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 1 }))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await rt.dispose();
+	});
+
+	it("rejects and rolls back when the persona registry is empty", async () => {
+		const { rt, run, db } = make();
+		await expect(run(Effect.flatMap(EvalInstances, (s) => s.spawn({ count: 1 })))).rejects.toThrow(
+			"random mode needs personas",
+		);
+		expect(await db.select().from(evalInstance)).toHaveLength(0);
 		await rt.dispose();
 	});
 });

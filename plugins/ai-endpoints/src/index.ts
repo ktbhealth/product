@@ -122,7 +122,7 @@ export interface EndpointInput {
 	readonly secretRef?: string;
 	/** ACP transport — 'ws' | 'child' | 'ssh' (null/absent = 'ws'). */
 	readonly transport?: string;
-	/** Agent command for child/ssh transports (e.g. "claude agent acp"). */
+	/** Agent command for child/ssh transports (e.g. "claude-agent-acp"). */
 	readonly agentCmd?: string;
 	/** SSH target (user@host) for the ssh transport. */
 	readonly sshHost?: string;
@@ -242,7 +242,7 @@ export class AiEndpoints extends Context.Service<
 		readonly resolveDefault: (
 			scope?: string,
 		) => Effect.Effect<LlmEndpointDescriptor | null, Forbidden, unknown>;
-		/** Mint a one-shot bridge link (F3b): stores only the SHA-256 of
+		/** Mint a bridge link (F3b): stores only the SHA-256 of
 		 * the raw token; the fn composes the `ai-bridge connect`
 		 * command with the request origin. Null for unknown/disabled/
 		 * non-bridge endpoints. SECURITY INVARIANT: the agent command

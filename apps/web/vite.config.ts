@@ -18,7 +18,20 @@ import { devtools } from "@tanstack/devtools-vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+
+// Per-environment aliasing isn't a `resolve` option (alias only exists at
+// the top level), so environment-pinned specifiers go through `pre`
+// resolveId plugins gated by `applyToEnvironment`.
+const envAlias = (environmentName: string, find: string, subpath: string): Plugin => ({
+	name: `ktb-env-alias-${environmentName}-${find}`,
+	enforce: "pre",
+	applyToEnvironment: (environment) => environment.name === environmentName,
+	resolveId(source, importer) {
+		if (source !== find) return null;
+		return this.resolve(subpath, importer, { skipSelf: true });
+	},
+});
 
 export default defineConfig(({ command, isPreview }) => {
 	// KTB_DEV_NODE=1 (`bun run dev:node`): run the dev server on plain
@@ -65,21 +78,35 @@ export default defineConfig(({ command, isPreview }) => {
 						new URL("./src/lib/use-sync-external-store-shim-with-selector.ts", import.meta.url),
 					),
 				},
-				{
-					// loro-crdt's exports map resolves `browser` under the
-					// worker build — its WASM loader is synchronous XHR,
-					// which workerd doesn't have. The `bundler` entry imports
-					// the .wasm as an ES module; @cloudflare/vite-plugin
-					// serves that as a WebAssembly.Module, which the glue
-					// already special-cases (PL-008 workerd spike).
-					find: /^loro-crdt$/,
-					replacement: "loro-crdt/bundler",
-				},
 			],
 		},
 		// Whisper worker imports this lazily; pre-bundle it at startup so the
 		// dev server doesn't re-optimize (and 504) while the worker is loading.
-		optimizeDeps: { include: ["@huggingface/transformers"] },
+		// platejs chain: same CJS leak as the SSR env below — @platejs/*/dist
+		// internals cross-import each other via deep paths and pull raw CJS
+		// (is-hotkey, lodash/*) that the browser cannot execute, killing
+		// hydration with a SyntaxError. Bundling the whole platejs subtree
+		// lets esbuild interop every transitive CJS dep inside the chunks.
+		optimizeDeps: {
+			include: [
+				"@huggingface/transformers",
+				"@ktbhealth/ui > platejs",
+				"@ktbhealth/ui > platejs/react",
+				"@ktbhealth/ui > @platejs/basic-nodes",
+				"@ktbhealth/ui > @platejs/basic-nodes/react",
+				"@ktbhealth/ui > @platejs/link",
+				"@ktbhealth/ui > @platejs/link/react",
+				"@ktbhealth/ui > @platejs/list",
+				"@ktbhealth/ui > @platejs/list/react",
+			],
+			// loro-crdt: esbuild's optimizer resolves its exports map to the
+			// `bundler` build (browser.development condition), which needs
+			// wasm module wiring vite dev doesn't provide — the chunk ships
+			// uninitialized WASM and kills hydration. Excluding it keeps raw
+			// resolution, where the client-env alias below selects the
+			// self-initializing `browser` build.
+			exclude: ["loro-crdt"],
+		},
 		environments: {
 			ssr: {
 				optimizeDeps: {
@@ -90,7 +117,25 @@ export default defineConfig(({ command, isPreview }) => {
 					// source resolves `react` to the raw CJS build while
 					// react-dom/server uses the bundled one (invalid hook call).
 					// Pre-bundling keeps the first pass complete — no reload.
-					include: ["pdfkit"],
+					//
+					// platejs chain: @ktbhealth/ui's rich-text-editor (pulled into
+					// the SSR graph by plugins/i18n's I18nPage) imports platejs +
+					// @platejs/*, which the crawler misses — is-hotkey leaks into
+					// workerd as raw CJS ("exports is not defined" in the runner
+					// DO). Nested "pkg > dep" specifiers: plate deps are only
+					// reachable through @ktbhealth/ui's nested node_modules under
+					// bun's isolated linker.
+					include: [
+						"pdfkit",
+						"@ktbhealth/ui > platejs",
+						"@ktbhealth/ui > platejs/react",
+						"@ktbhealth/ui > @platejs/basic-nodes",
+						"@ktbhealth/ui > @platejs/basic-nodes/react",
+						"@ktbhealth/ui > @platejs/link",
+						"@ktbhealth/ui > @platejs/link/react",
+						"@ktbhealth/ui > @platejs/list",
+						"@ktbhealth/ui > @platejs/list/react",
+					],
 				},
 			},
 		},
@@ -118,6 +163,14 @@ export default defineConfig(({ command, isPreview }) => {
 							viteEnvironment: { name: "ssr" },
 						}),
 					]),
+			// loro-crdt per-environment builds (comments on the optimizeDeps
+			// `exclude` above): the client env gets the `browser` build —
+			// self-initializing WASM via sync XHR, which the real browser
+			// has; ssr (workerd) gets `bundler` — its .wasm is an ES module
+			// @cloudflare/vite-plugin serves as a WebAssembly.Module, while
+			// `browser`'s sync-XHR loader doesn't exist in workerd (PL-008).
+			envAlias("client", "loro-crdt", "loro-crdt/browser"),
+			envAlias("ssr", "loro-crdt", "loro-crdt/bundler"),
 			devtools(),
 			tailwindcss(),
 			// Custom server entry (src/server.ts) adds the Cloudflare Queue

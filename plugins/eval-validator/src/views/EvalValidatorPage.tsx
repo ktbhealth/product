@@ -7,50 +7,59 @@ import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
-import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Progress } from "@ktbhealth/ui/components/progress";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import { wordDiff } from "@ktb/eval-consultation";
+import { EvalSteps } from "@ktb/eval-persona/steps";
 
 import {
 	deleteRunFn,
-	generateBatchFn,
-	listBatchesFn,
-	listPersonasFn,
+	listCohortItemsFn,
+	listCohortsFn,
+	listRunsFn,
 	progressFn,
-	reviewPersonaFn,
+	reviewItemFn,
 	startRunFn,
 } from "../fns.ts";
 import { evalMessages, I18N_NAMESPACE } from "../i18n.ts";
-import type { AxisAggregate, BatchSummary, PersonaCard, RunProgress } from "../index.ts";
+import type {
+	AxisAggregate,
+	CohortItemCard,
+	CohortSummary,
+	RunListItem,
+	RunProgress,
+} from "../index.ts";
 
 const stateVariant = (state: string) =>
 	state === "approved" ? "default" : state === "rejected" ? "destructive" : "secondary";
 
-/** /platform/eval view (P-081): batch list → persona review cards →
- * run progress. Run polling is effect-scoped — no leaked timers. */
+/** /platform/eval view — step 3 of the pipeline: cohort list →
+ * consultation review cards → run progress. The cohort IS the step-2
+ * generation instance; the run consumes its approved items only,
+ * never regenerating. Run polling is effect-scoped — no leaked
+ * timers. */
 export function EvalValidatorPage({
-	batches: initial,
+	cohorts: initial,
 	i18n,
 	locale,
 }: {
-	batches: readonly BatchSummary[];
+	cohorts: readonly CohortSummary[];
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	locale: string;
 }) {
 	const m = sliceMessages(i18n, I18N_NAMESPACE, evalMessages(locale));
-	const [batches, setBatches] = useState<readonly BatchSummary[]>(initial);
-	const [personas, setPersonas] = useState<readonly PersonaCard[]>([]);
-	const [selectedBatch, setSelectedBatch] = useState<number | null>(null);
+	const [cohorts, setCohorts] = useState<readonly CohortSummary[]>(initial);
+	const [items, setItems] = useState<readonly CohortItemCard[]>([]);
+	const [runs, setRuns] = useState<readonly RunListItem[]>([]);
+	const [selectedCohort, setSelectedCohort] = useState<number | null>(null);
 	const [run, setRun] = useState<RunProgress | null>(null);
 	const [feedback, setFeedback] = useState<Record<number, string>>({});
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [minutes, setMinutes] = useState(15);
 	const [activeRunId, setActiveRunId] = useState<number | null>(null);
 	const mounted = useRef(true);
 	useEffect(() => {
@@ -60,38 +69,24 @@ export function EvalValidatorPage({
 		};
 	}, []);
 
-	const refresh = useCallback(async (batchId: number) => {
-		const list = await listBatchesFn({ data: {} });
-		if (list.ok) setBatches(list.data);
-		const p = await listPersonasFn({ data: { batchId } });
-		if (p.ok) setPersonas(p.data);
+	const refresh = useCallback(async (cohortId: number) => {
+		const list = await listCohortsFn({ data: {} });
+		if (list.ok) setCohorts(list.data);
+		const p = await listCohortItemsFn({ data: { cohortId } });
+		if (p.ok) setItems(p.data);
+		const rr = await listRunsFn({ data: { cohortId } });
+		if (rr.ok) setRuns(rr.data);
 	}, []);
 
-	const generate = async () => {
+	// card.instanceId (not selectedCohort) drives the refresh — the
+	// card knows its own cohort, no null path to defend.
+	const review = async (card: CohortItemCard, decision: "approved" | "rejected") => {
 		setBusy(true);
 		setError(null);
 		try {
-			const r = await generateBatchFn({ data: { count: 6, minutes } });
-			if (r.ok) {
-				setSelectedBatch(r.data.batchId);
-				await refresh(r.data.batchId);
-			} else {
-				setError(m.actionFailed);
-			}
-		} finally {
-			setBusy(false);
-		}
-	};
-
-	// p.batchId (not selectedBatch) drives the refresh — the card knows
-	// its own batch, no null path to defend.
-	const review = async (card: PersonaCard, decision: "approved" | "rejected") => {
-		setBusy(true);
-		setError(null);
-		try {
-			const r = await reviewPersonaFn({
+			const r = await reviewItemFn({
 				data: {
-					personaId: card.id,
+					itemId: card.id,
 					decision,
 					feedback: feedback[card.id] || undefined,
 				},
@@ -100,7 +95,7 @@ export function EvalValidatorPage({
 				setError(m.actionFailed);
 				return;
 			}
-			await refresh(card.batchId);
+			await refresh(card.instanceId);
 		} finally {
 			setBusy(false);
 		}
@@ -122,15 +117,19 @@ export function EvalValidatorPage({
 		setConfirmDelete(false);
 	};
 
-	const startRun = async (batchId: number) => {
+	const startRun = async (instanceId: number) => {
 		setBusy(true);
 		try {
-			const r = await startRunFn({ data: { batchId } });
+			const r = await startRunFn({ data: { instanceId } });
 			if (r.ok) setActiveRunId(r.data.runId);
 		} finally {
 			setBusy(false);
 		}
 	};
+
+	// Reopen a past run — the poll effect self-terminates on done/failed,
+	// so pointing activeRunId at history is safe for both live and old runs.
+	const viewRun = (runId: number) => setActiveRunId(runId);
 
 	// Poll the active run until it leaves `running`/`queued` — effect
 	// cleanup kills the timer on unmount or when a new run starts.
@@ -167,71 +166,95 @@ export function EvalValidatorPage({
 
 	return (
 		<PageContainer>
+			<EvalSteps active={3} labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]} />
 			<PageHeader title={m.title} description={m.description} />
-			<div className="flex items-end gap-2">
-				<div className="grid gap-1">
-					<label htmlFor="eval-minutes" className="text-xs text-muted-foreground">
-						{m.minutesLabel}
-					</label>
-					<Input
-						id="eval-minutes"
-						type="number"
-						min={1}
-						max={60}
-						className="w-24"
-						value={minutes}
-						onChange={(e) => setMinutes(Math.max(1, Number(e.target.value) || 1))}
-					/>
-				</div>
-				<Button onClick={generate} disabled={busy}>
-					{m.generate}
-				</Button>
-			</div>
 			{error !== null && <p className="text-sm text-destructive">{error}</p>}
 
-			{batches.length === 0 && (
+			{cohorts.length === 0 && (
 				<Empty>
 					<EmptyHeader>
 						<EmptyTitle>{m.title}</EmptyTitle>
-						<EmptyDescription>{m.emptyBatches}</EmptyDescription>
+						<EmptyDescription>{m.emptyCohorts}</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)}
 
-			{batches.map((b) => (
-				<Card key={b.id}>
+			{cohorts.map((c) => (
+				<Card key={c.id}>
 					<CardHeader className="flex-row items-center justify-between">
 						<CardTitle>
-							Batch #{b.id} — {b.count} {m.personas}
+							{c.name} #{c.id} — {c.count} {m.items}
 						</CardTitle>
 						<div className="flex items-center gap-2">
+							{c.status !== "ready" && (
+								<Badge variant="outline">
+									{c.status === "generating" ? m.generating : c.status}
+								</Badge>
+							)}
 							<Badge variant="secondary">
-								{b.pending} {m.pending}
+								{c.pending} {m.pending}
 							</Badge>
 							<Badge>
-								{b.approved} {m.approved}
+								{c.approved} {m.approved}
 							</Badge>
 							<Badge variant="destructive">
-								{b.rejected} {m.rejected}
+								{c.rejected} {m.rejected}
 							</Badge>
-							<Badge variant="outline">{b.state}</Badge>
+							<Badge variant="outline">{c.state}</Badge>
 							<Button
 								size="sm"
 								variant="outline"
 								onClick={() => {
-									setSelectedBatch(b.id);
-									void refresh(b.id);
+									setSelectedCohort(c.id);
+									void refresh(c.id);
 								}}
 							>
 								{m.view}
 							</Button>
-							<Button size="sm" disabled={b.approved === 0 || busy} onClick={() => startRun(b.id)}>
+							<Button size="sm" disabled={c.approved === 0 || busy} onClick={() => startRun(c.id)}>
 								{m.runEval}
 							</Button>
 						</div>
 					</CardHeader>
 				</Card>
 			))}
+
+			{selectedCohort !== null && runs.length > 0 && (
+				<Card>
+					<CardHeader>
+						<CardTitle>
+							{m.run}s — {m.stepRunEval}
+						</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-1">
+						{runs.map((r) => {
+							const sum = r.summary as { meanWer?: number } | null;
+							return (
+								<div key={r.id} className="flex items-center gap-2 text-xs">
+									<Badge
+										variant={
+											r.status === "done"
+												? "default"
+												: r.status === "failed"
+													? "destructive"
+													: "secondary"
+										}
+									>
+										{r.status}
+									</Badge>
+									<span>
+										{m.run} #{r.id} — {r.done}/{r.total} {m.samplesOf}
+										{sum?.meanWer !== undefined && ` · mean WER ${sum.meanWer.toFixed(3)}`}
+									</span>
+									<Button size="sm" variant="outline" onClick={() => viewRun(r.id)}>
+										{m.view}
+									</Button>
+								</div>
+							);
+						})}
+					</CardContent>
+				</Card>
+			)}
 
 			{run !== null && (
 				<Card>
@@ -270,7 +293,7 @@ export function EvalValidatorPage({
 						{run.done > 0 && <Aggregates aggregates={run.aggregates} />}
 						{run.samples.map((s) => (
 							<div key={s.id} className="mt-1 text-xs">
-								persona {s.personaId}: {s.status}
+								item {s.itemId}: {s.status}
 								{s.error !== null ? ` — ${s.error}` : ""}
 								{s.status === "ok" && (
 									<audio
@@ -280,36 +303,40 @@ export function EvalValidatorPage({
 										src={`/api/eval/${s.id}/audio`}
 									/>
 								)}
-								{s.result !== null && <SampleResult result={s.result} script={s.script} />}
+								{s.result !== null && s.script !== null && (
+									<SampleResult result={s.result} script={s.script} />
+								)}
 							</div>
 						))}
 					</CardContent>
 				</Card>
 			)}
 
-			{selectedBatch !== null && personas.length === 0 && (
+			{selectedCohort !== null && items.length === 0 && (
 				<Empty>
 					<EmptyHeader>
-						<EmptyDescription>{m.emptyPersonas}</EmptyDescription>
+						<EmptyDescription>{m.emptyItems}</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
 			)}
 
-			{personas.map((p) => (
+			{items.map((p) => (
 				<Card key={p.id}>
 					<CardHeader className="flex-row items-center justify-between">
 						<CardTitle className="text-base">
-							{p.persona.name} — {p.persona.gender} · {p.persona.socialClass} ·{" "}
-							{p.persona.education} · {p.persona.region} · {p.persona.specialty}
+							{p.persona?.name ?? `#${p.id}`} — {p.persona?.gender} · {p.persona?.socialClass} ·{" "}
+							{p.persona?.education} · {p.persona?.region} · {p.persona?.specialty}
 						</CardTitle>
 						<div className="flex items-center gap-2">
+							{p.status !== "done" && <Badge variant="outline">{p.status}</Badge>}
 							{p.scriptMode !== null && <Badge variant="outline">{p.scriptMode}</Badge>}
 							<Badge variant={stateVariant(p.state)}>{p.state}</Badge>
 						</div>
 					</CardHeader>
 					<CardContent>
+						{p.error !== null && <p className="text-xs text-destructive">{p.error}</p>}
 						<p className="text-xs text-muted-foreground">
-							{m.doctor}: {p.persona.doctor?.gender}/{p.persona.doctor?.register} · {m.voices}:{" "}
+							{m.doctor}: {p.persona?.doctor?.gender}/{p.persona?.doctor?.register} · {m.voices}:{" "}
 							{p.voices.doctor} / {p.voices.patient}
 						</p>
 						{(p.patientId !== null || p.doctorId !== null) && (
@@ -320,31 +347,37 @@ export function EvalValidatorPage({
 								patient #{p.patientId ?? "—"} · doctor #{p.doctorId ?? "—"}
 							</p>
 						)}
-						<div className="mt-2 max-h-96 overflow-auto rounded border p-2 text-sm">
-							{p.turns.map((t, i) => (
-								<div key={i}>
-									<strong>{t.speaker}:</strong> {t.text}
-								</div>
-							))}
-						</div>
+						{p.turns.length > 0 && (
+							<div className="mt-2 max-h-96 overflow-auto rounded border p-2 text-sm">
+								{p.turns.map((t, i) => (
+									<div key={i}>
+										<strong>{t.speaker}:</strong> {t.text}
+									</div>
+								))}
+							</div>
+						)}
 						{p.feedback !== null && (
 							<p className="mt-2 text-xs italic">
 								{m.feedback}: {p.feedback}
 							</p>
 						)}
-						<Textarea
-							placeholder={m.feedbackPlaceholder}
-							value={feedback[p.id] ?? ""}
-							onChange={(e) => setFeedback((f) => ({ ...f, [p.id]: e.target.value }))}
-						/>
-						<div className="mt-2 flex gap-2">
-							<Button size="sm" onClick={() => review(p, "approved")}>
-								{m.approve}
-							</Button>
-							<Button size="sm" variant="destructive" onClick={() => review(p, "rejected")}>
-								{m.reject}
-							</Button>
-						</div>
+						{p.status === "done" && (
+							<>
+								<Textarea
+									placeholder={m.feedbackPlaceholder}
+									value={feedback[p.id] ?? ""}
+									onChange={(e) => setFeedback((f) => ({ ...f, [p.id]: e.target.value }))}
+								/>
+								<div className="mt-2 flex gap-2">
+									<Button size="sm" onClick={() => review(p, "approved")}>
+										{m.approve}
+									</Button>
+									<Button size="sm" variant="destructive" onClick={() => review(p, "rejected")}>
+										{m.reject}
+									</Button>
+								</div>
+							</>
+						)}
 					</CardContent>
 				</Card>
 			))}

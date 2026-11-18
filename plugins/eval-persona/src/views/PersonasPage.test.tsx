@@ -29,9 +29,16 @@ const epFns = vi.hoisted(() => ({
 }));
 vi.mock("../fns.ts", () => fns);
 vi.mock("@ktb/ai-endpoints/fns", () => epFns);
-vi.mock("@tanstack/react-router", () => ({
-	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
-}));
+vi.mock("@tanstack/react-router", async () => {
+	const React = await import("react");
+	return {
+		useRouter: () => ({ invalidate: vi.fn<() => void>() }),
+		// EvalSteps renders Link — degrade it to a plain anchor outside
+		// a router.
+		Link: ({ to, ...props }: Record<string, unknown>) =>
+			React.createElement("a", { ...props, href: String(to) }, props.children as never),
+	};
+});
 
 import type { EndpointCard } from "@ktb/ai-endpoints";
 
