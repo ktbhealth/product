@@ -1236,6 +1236,13 @@ export type I18nKey =
 	| "patients.gender.male"
 	| "patients.gender.other"
 	| "patients.gender.unknown"
+	| "patients.intake.allergies"
+	| "patients.intake.chiefComplaint"
+	| "patients.intake.dataUseConsent"
+	| "patients.intake.medications"
+	| "patients.intake.symptomsDuration"
+	| "patients.intake.termsAccepted"
+	| "patients.intake.viewTitle"
 	| "patients.language.de"
 	| "patients.language.en"
 	| "patients.language.es"
@@ -3148,6 +3155,13 @@ export interface I18nTypedT {
 	(key: "patients.gender.male"): Effect.Effect<string>;
 	(key: "patients.gender.other"): Effect.Effect<string>;
 	(key: "patients.gender.unknown"): Effect.Effect<string>;
+	(key: "patients.intake.allergies"): Effect.Effect<string>;
+	(key: "patients.intake.chiefComplaint"): Effect.Effect<string>;
+	(key: "patients.intake.dataUseConsent"): Effect.Effect<string>;
+	(key: "patients.intake.medications"): Effect.Effect<string>;
+	(key: "patients.intake.symptomsDuration"): Effect.Effect<string>;
+	(key: "patients.intake.termsAccepted"): Effect.Effect<string>;
+	(key: "patients.intake.viewTitle"): Effect.Effect<string>;
 	(key: "patients.language.de"): Effect.Effect<string>;
 	(key: "patients.language.en"): Effect.Effect<string>;
 	(key: "patients.language.es"): Effect.Effect<string>;
