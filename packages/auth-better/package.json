@@ -6,6 +6,9 @@
 		".": "./src/index.ts",
 		"./client": "./src/client.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"@better-auth/api-key": "1.7.25",
 		"@ktb/auth": "workspace:*",
@@ -17,8 +20,5 @@
 		"@types/better-sqlite3": "^9.6.0",
 		"@types/node": "^22.10.2",
 		"better-sqlite3": "^13.0.3"
-	},
-	"scripts": {
-		"mutate": "stryker run"
 	}
 }

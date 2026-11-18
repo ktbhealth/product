@@ -2,13 +2,13 @@
 	"name": "@ktb/platform",
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"mutate": "stryker run"
-	},
 	"exports": {
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
 		"./plugin-states": "./src/plugin-states.ts"
+	},
+	"scripts": {
+		"mutate": "stryker run"
 	},
 	"dependencies": {
 		"@ktb/authz": "workspace:*",

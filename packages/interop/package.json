@@ -2,12 +2,12 @@
 	"name": "@ktb/interop",
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"mutate": "stryker run"
-	},
 	"exports": {
 		".": "./src/index.ts",
 		"./testing": "./src/testing.ts"
+	},
+	"scripts": {
+		"mutate": "stryker run"
 	},
 	"dependencies": {
 		"@ktb/anamnesis": "workspace:*"

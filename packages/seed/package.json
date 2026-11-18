@@ -5,10 +5,10 @@
 	"exports": {
 		".": "./src/index.ts"
 	},
-	"dependencies": {
-		"@ktb/json-schema": "workspace:*"
-	},
 	"scripts": {
 		"mutate": "stryker run"
+	},
+	"dependencies": {
+		"@ktb/json-schema": "workspace:*"
 	}
 }
