@@ -1017,10 +1017,8 @@
         "effect": "4.1.2",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
-        "@ktb/tenant": "workspace:*",
         "vitest": "5.1.0",
       },
     },
@@ -1038,7 +1036,6 @@
       "devDependencies": {
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
-        "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "vitest": "5.1.0",
       },
@@ -1621,9 +1618,7 @@
         "effect": "4.1.2",
       },
       "devDependencies": {
-        "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
-        "@ktb/tenant": "workspace:*",
         "vitest": "5.1.0",
       },
     },
@@ -1705,7 +1700,6 @@
       "devDependencies": {
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
-        "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "vitest": "5.1.0",
       },
@@ -1740,7 +1734,6 @@
         "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
-        "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "vitest": "5.1.0",
       },
