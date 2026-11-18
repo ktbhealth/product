@@ -162,7 +162,17 @@ export function SecretaryLoginPage({
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="password">{t.password}</Label>
+							<div className="flex items-center justify-between">
+								<Label htmlFor="password">{t.password}</Label>
+								{mode === "in" ? (
+									<Link
+										to="/forgot-password"
+										className="text-sm text-muted-foreground transition hover:text-foreground"
+									>
+										{t.forgotLink}
+									</Link>
+								) : null}
+							</div>
 							<Input
 								id="password"
 								type="password"

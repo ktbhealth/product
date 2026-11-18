@@ -42,6 +42,41 @@ export const verificationEmail = (
 	};
 };
 
+/**
+ * Password-reset email — same composition contract as
+ * {@link verificationEmail}: DB `app` catalog copy when a slice `t` is
+ * injected, English literals otherwise.
+ */
+export const passwordResetEmail = (
+	input: {
+		readonly name: string | null;
+		readonly url: string;
+	},
+	t?: (key: string, params?: Readonly<Record<string, unknown>>) => string,
+): { subject: string; text: string } => {
+	const msg = (key: string, fallback: string, params?: Record<string, unknown>) => {
+		if (t === undefined) return renderMessage(fallback, params ?? {}, "en");
+		const resolved = t(`app.${key}`, params);
+		return resolved === `app.${key}` ? renderMessage(fallback, params ?? {}, "en") : resolved;
+	};
+	return {
+		subject: msg("email_reset_subject", "Reset your password — KTB Health"),
+		text: [
+			input.name
+				? msg("email_reset_greeting", "Hello, {name}.", { name: input.name })
+				: msg("email_reset_greeting_anon", "Hello."),
+			"",
+			msg("email_reset_body", "Reset your KTB Health account password with the link below:"),
+			input.url,
+			"",
+			msg(
+				"email_reset_ignore",
+				"If you did not request a password reset, you can ignore this message.",
+			),
+		].join("\n"),
+	};
+};
+
 /** Build the catalog `t` for email copy — platform.ts resolves the
  * `app` namespace slice for the request locale and passes this in. */
 export const emailCatalogT = (

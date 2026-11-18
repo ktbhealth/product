@@ -157,7 +157,17 @@ function PortalSignInPage() {
 							/>
 						</div>
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="password">{t("login_password")}</Label>
+							<div className="flex items-center justify-between">
+								<Label htmlFor="password">{t("login_password")}</Label>
+								{mode === "in" ? (
+									<Link
+										to="/forgot-password"
+										className="text-sm text-muted-foreground transition hover:text-foreground"
+									>
+										{t("login_forgot_password")}
+									</Link>
+								) : null}
+							</div>
 							<Input
 								id="password"
 								type="password"

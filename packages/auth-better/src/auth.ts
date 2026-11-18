@@ -15,6 +15,14 @@ export interface VerificationEmailInput {
 	readonly url: string;
 }
 
+/** What the host needs to compose and deliver a password-reset email. */
+export interface PasswordResetEmailInput {
+	readonly email: string;
+	readonly name: string | null;
+	/** Link that validates the token and lands on the reset form. */
+	readonly url: string;
+}
+
 export interface AuthOptions {
 	readonly secret?: string;
 	readonly baseURL?: string;
@@ -25,14 +33,43 @@ export interface AuthOptions {
 	 * `user.emailVerified` themselves.
 	 */
 	readonly sendVerificationEmail?: (input: VerificationEmailInput) => Promise<void>;
+	/**
+	 * Delivers the password-reset link. When absent the
+	 * /request-password-reset endpoint stays disabled — a deployment
+	 * without outbound email cannot recover accounts by mail anyway.
+	 */
+	readonly sendPasswordResetEmail?: (input: PasswordResetEmailInput) => Promise<void>;
 }
 
 export type AuthDb = ReturnType<typeof drizzle>;
 
-export const makeAuth = (db: AuthDb, opts: AuthOptions = {}) =>
-	betterAuth({
+export const makeAuth = (db: AuthDb, opts: AuthOptions = {}) => {
+	const sendPasswordResetEmail = opts.sendPasswordResetEmail;
+	return betterAuth({
 		database: drizzleAdapter(db, { provider: "sqlite" }),
-		emailAndPassword: { enabled: true },
+		emailAndPassword: {
+			enabled: true,
+			// A reset means the old password may be compromised — every
+			// live session dies with it.
+			revokeSessionsOnPasswordReset: true,
+			// Only bound when the host can send email; an absent sender
+			// leaves the endpoint answering RESET_PASSWORD_DISABLED
+			// instead of silently dropping the message.
+			...(sendPasswordResetEmail === undefined
+				? {}
+				: {
+						sendResetPassword: async (data: {
+							user: { email: string; name?: string | null };
+							url: string;
+						}) => {
+							await sendPasswordResetEmail({
+								email: data.user.email,
+								name: data.user.name ?? null,
+								url: data.url,
+							});
+						},
+					}),
+		},
 		emailVerification: {
 			sendOnSignUp: opts.sendVerificationEmail !== undefined,
 			autoSignInAfterVerification: true,
@@ -50,6 +87,7 @@ export const makeAuth = (db: AuthDb, opts: AuthOptions = {}) =>
 			apiKey({ disableKeyHashing: true, enableMetadata: true }),
 		],
 	});
+};
 
 export type Auth = ReturnType<typeof makeAuth>;
 

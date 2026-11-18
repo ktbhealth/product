@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createCatalogT } from "@ktb/i18n";
 
-import { emailCatalogT, verificationEmail } from "./emails.ts";
+import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 
 const url = "http://localhost:3000/api/auth/verify-email?token=t";
 
@@ -47,6 +47,51 @@ describe("verificationEmail", () => {
 		const t = createCatalogT({}, "pt-BR");
 		const mail = verificationEmail({ name: "Ana", url }, (key, params) => t(key, params));
 		expect(mail.subject).toBe("Confirm your email — KTB Health");
+		expect(mail.text).toContain("Hello, Ana.");
+	});
+});
+
+describe("passwordResetEmail", () => {
+	const resetUrl = "http://localhost:3000/api/auth/reset-password/t?callbackURL=%2Freset-password";
+
+	const PT_BR_RESET: Record<string, string> = {
+		"app.email_reset_subject": "Redefina sua senha — KTB Health",
+		"app.email_reset_greeting": "Olá, {name}.",
+		"app.email_reset_greeting_anon": "Olá.",
+		"app.email_reset_body": "Redefina a senha da sua conta KTB Health com o link abaixo:",
+		"app.email_reset_ignore":
+			"Se você não pediu a redefinição de senha, pode ignorar esta mensagem.",
+	};
+
+	it("greets by name and carries the link (English fallback, no catalog)", () => {
+		const mail = passwordResetEmail({ name: "Ana", url: resetUrl });
+		expect(mail.subject).toBe("Reset your password — KTB Health");
+		expect(mail.text.split("\n")).toEqual([
+			"Hello, Ana.",
+			"",
+			"Reset your KTB Health account password with the link below:",
+			resetUrl,
+			"",
+			"If you did not request a password reset, you can ignore this message.",
+		]);
+	});
+
+	it("falls back to an anonymous greeting", () => {
+		expect(passwordResetEmail({ name: null, url: resetUrl }).text).toMatch(/^Hello\.\n/);
+	});
+
+	it("renders catalog copy for the resolved locale", () => {
+		const pt = passwordResetEmail({ name: "Ana", url: resetUrl }, catalogT(PT_BR_RESET, "pt-BR"));
+		expect(pt.subject).toBe("Redefina sua senha — KTB Health");
+		expect(pt.text).toContain("Olá, Ana.");
+	});
+
+	it("falls back to English literals for keys missing from the catalog", () => {
+		const t = createCatalogT({}, "pt-BR");
+		const mail = passwordResetEmail({ name: "Ana", url: resetUrl }, (key, params) =>
+			t(key, params),
+		);
+		expect(mail.subject).toBe("Reset your password — KTB Health");
 		expect(mail.text).toContain("Hello, Ana.");
 	});
 });

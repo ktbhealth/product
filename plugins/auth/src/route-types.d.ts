@@ -26,10 +26,24 @@ declare module "@tanstack/react-router" {
 			preLoaderRoute: AnyRoute;
 			parentRoute: AnyRoute;
 		};
+		"/forgot-password": {
+			id: "/forgot-password";
+			path: "/forgot-password";
+			fullPath: "/forgot-password";
+			preLoaderRoute: AnyRoute;
+			parentRoute: AnyRoute;
+		};
 		"/login/doctor": {
 			id: "/login/doctor";
 			path: "/login/doctor";
 			fullPath: "/login/doctor";
+			preLoaderRoute: AnyRoute;
+			parentRoute: AnyRoute;
+		};
+		"/reset-password": {
+			id: "/reset-password";
+			path: "/reset-password";
+			fullPath: "/reset-password";
 			preLoaderRoute: AnyRoute;
 			parentRoute: AnyRoute;
 		};

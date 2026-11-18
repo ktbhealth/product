@@ -349,8 +349,11 @@ export default defineConfig({
 				// - plugins/auth's login view uses the better-auth client
 				//   SDK (moved from the host's login.tsx in P-062), which is
 				//   inherently impl-bound — same exception the host route
-				//   files had. __root.tsx / platform.tsx keep theirs, as do
-				//   login-patient.tsx / verify-email.tsx (still host routes).
+				//   files had. The forgot/reset-password views are the same
+				//   credential surface: they drive the client SDK's
+				//   requestPasswordReset/resetPassword calls. __root.tsx /
+				//   platform.tsx keep theirs, as do login-patient.tsx /
+				//   verify-email.tsx (still host routes).
 				//   The secretaries plugin's login view is the same case —
 				//   the staff sign-in screen — as is the invites plugin's
 				//   accept page, which signs the new account in.
@@ -368,7 +371,9 @@ export default defineConfig({
 					// auth client the platform layout uses (P-081).
 					"apps/web/src/routes/portal.$instance.$.tsx",
 					"apps/web/src/**/*.test.{ts,tsx}",
+					"plugins/auth/src/views/ForgotPasswordPage.tsx",
 					"plugins/auth/src/views/LoginPage.tsx",
+					"plugins/auth/src/views/ResetPasswordPage.tsx",
 					"plugins/invites/src/views/AcceptInvitePage.tsx",
 					"plugins/secretaries/src/views/SecretaryLoginPage.tsx",
 					"plugins/consultations/src/routes/new.tsx",
