@@ -1,13 +1,20 @@
 /**
- * Query engine for `DocumentStore.find` (P-089) — v1 evaluates filters
+ * Query engine for `DocumentStore.find` (P-089) — evaluates filters
  * in JS over the parsed `data` JSON of rows already fenced by SQL
- * (collection + tenant/owner scope). The tradeoff is deliberate: field
+ * (collection + tenant/owner scope). This JS matcher is the SEMANTIC
+ * SOURCE OF TRUTH: `find` additionally compiles the provably-safe
+ * subset of a filter into a SQL `json_extract` prefilter
+ * (sqlfilter.ts, T-149) that only narrows the rows reaching this
+ * matcher — results are identical either way, and anything SQL can't
+ * express ($regex, deep literals, exotic paths, defs with migrations)
+ * stays fully here. The remaining tradeoff is deliberate: field
  * paths, operators and dotted sorts are schema-driven per collection,
- * so a generic SQL translation would need per-collection index
- * planning; record volumes per collection are expected to be small
- * (specialty packs, intake forms). If a collection outgrows this, the
- * escape hatch is a dedicated table — the DSL boundary stays the same.
- * See README.md ("when NOT to use") for the full decision guide.
+ * so sort/pagination and unexpressible filters still run in JS over
+ * the visible slice; record volumes per collection are expected to be
+ * small (specialty packs, intake forms). If a collection outgrows
+ * this, the escape hatch is a dedicated table — the DSL boundary
+ * stays the same. See README.md ("when NOT to use") for the full
+ * decision guide.
  */
 
 /** Operators recognized inside a field condition object. */
