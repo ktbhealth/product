@@ -121,7 +121,7 @@ const resolveDescriptor = (
 };
 
 /** Provider starter endpoints for the eval lab's endpoint dialog.
- * Hosted-provider URLs live HERE (the adapter edge) — arch-policy's
+ * Hosted-provider URLs live HERE (the adapter edge) — the arch preset's
  * provider-lockin keeps them out of port/domain code. */
 const PRESETS: readonly LlmEndpointPreset[] = [
 	{

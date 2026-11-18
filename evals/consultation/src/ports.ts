@@ -259,7 +259,7 @@ export interface LlmEndpointDescriptor {
 
 /** A starter endpoint for the eval lab's endpoint form — surfaced by
  * the bound adapter so provider endpoints stay in the exempt edge
- * (arch-policy bans provider literals in port/domain code). `label`
+ * (the arch preset bans provider literals in port/domain code). `label`
  * is the UI-facing chip name; the rest pre-fills the form fields. */
 export interface LlmEndpointPreset {
 	readonly label: string;

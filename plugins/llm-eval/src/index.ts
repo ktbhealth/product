@@ -12,8 +12,8 @@ import { LlmPort } from "@ktb/eval-consultation/ports";
  * (generative, ACP-delegated: script_gen + cleanup stages) and
  * EvalPort (typed decision/judge). Adapter implementations stay in the
  * exempt-edge packages (@ktb/eval-adapter-stub/-local/-cloud) because
- * plugins/* is inside arch-policy PORT_GLOBS — the Jev adapter's
- * provider path literal alone would trip ktb-arch/provider-lockin
+ * plugins/* is inside the arch preset's PORT_GLOBS — the Jev adapter's
+ * provider path literal alone would trip arch/provider-lockin
  * here. See plugins/transcription-tts/src/index.ts for the full
  * mechanism.
  *

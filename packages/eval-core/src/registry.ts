@@ -19,7 +19,7 @@ import * as Data from "effect/Data";
  * Contributors (P-074 phase 3): capability plugins under plugins/* are
  * data-only registrars — each declares a `contributions` array on its
  * plugin manifest (P-070). They cannot
- * host adapter code themselves (plugins/* is inside the arch-policy
+ * host adapter code themselves (plugins/* is inside the arch preset
  * PORT_GLOBS: no node:*, provider literals, or adapter imports), so
  * `meta.adapters` maps adapter keys to the exempt-edge packages
  * (@ktb/eval-adapter-stub/-local/-cloud) that implement the port named

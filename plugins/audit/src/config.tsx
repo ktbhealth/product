@@ -7,7 +7,7 @@ import type { PluginConfigSchema } from "@ktb/kernel";
  * the Audit write path, editable from /platform/plugins.
  *
  * NOTE the `.tsx` extension: `src/client.ts` may only value-import
- * relative `.tsx` modules (ktb-arch/client-contract), so the shared
+ * relative `.tsx` modules (arch/client-contract), so the shared
  * isomorphic manifest data lives here even though it contains no JSX —
  * same convention as plugins/manager/src/config.tsx.
  *

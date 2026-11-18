@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   # Everything except the test suite: typecheck/lint (ci:check), build,
-  # generated-file drift checks, knip and the arch smoke test.
+  # generated-file drift checks and knip.
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -51,10 +51,8 @@ jobs:
       - run: bunx vp run ci:db-migrations
       - run: bunx vp run ci:i18n
       - run: bunx vp run ci:worker-types
-      # No build needed: knip is static analysis, check:arch is a fast
-      # smoke test proving the ktb-arch boundary rules still fire.
+      # No build needed: knip is static analysis.
       - run: bunx vp run ci:knip
-      - run: bunx vp run ci:arch
 
   # The vitest suite (~520 files / ~5k tests, ~7min serial) is split into
   # disjoint shards via `vitest run --shard`. Each shard keeps coverage
