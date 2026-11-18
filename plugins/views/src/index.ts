@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { documentStoreServicesPlugin } from "@ktb/document-store";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import { Views, ViewsLive } from "./service.ts";
 import { ViewPage } from "./views/ViewPage.tsx";
@@ -38,12 +39,17 @@ export { FilterBar } from "./views/FilterBar.tsx";
  * the store layer ordered first. `Permissions` (@ktb/rbac) is an
  * OPTIONAL port consumed via `Effect.serviceOption`: defs without a
  * `permission` work with rbac disabled; permission'd defs fail
- * closed.
+ * closed. `rbac.services` is an OPTIONAL dep purely for ordering —
+ * when the rbac plugin is enabled its `Permissions` port is bound
+ * before this layer builds (same contract as flows.services).
+ * `PluginStates` (@ktb/platform) is likewise optional: when bound,
+ * defs owned by disabled plugins resolve as unknown per request.
  */
 export const viewsServicesPlugin = definePlugin({
 	id: "views.services",
 	meta: { keywords: ["views", "services"] },
 	requiredDeps: [documentStoreServicesPlugin.id],
+	optionalDeps: [rbacServicesPlugin.id],
 	services: ViewsLive,
 });
 

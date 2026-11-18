@@ -10,6 +10,8 @@ import {
 	type Fields,
 	type InferInsert,
 } from "@ktb/document-store";
+import { defOwnerEnabled } from "@ktb/kernel";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
 
 import {
@@ -42,11 +44,17 @@ import {
  * Authorization is three-layered like every plugin surface:
  *
  * 1. DEFAULT-DENY exposure: only collections with an `api.expose`
- *    contribution resolve; unknown keys, unexposed collections and
- *    malformed paths collapse to the same 404.
+ *    contribution resolve; unknown keys, unexposed collections,
+ *    exposures owned by DISABLED plugins (runtime `PluginStates`
+ *    enablement, same contract as @ktb/views) and malformed paths
+ *    collapse to the same 404.
  * 2. Method gate: the exposure's `methods` list (default read-only
- *    `["list","get"]`) must publish the requested verb — anything else
- *    is 405.
+ *    `["list","get"]`) must publish the requested verb. A verb the
+ *    exposure does not publish answers the SAME 404 as an unknown
+ *    key — a distinct 405 would let anonymous callers probe which
+ *    collections are exposed. 405 is reserved for method/path-shape
+ *    combos the API never serves (checked BEFORE the exposure lookup
+ *    so it reveals nothing either).
  * 3. Session + permission: `public: true` exposures serve anonymous
  *    `list`/`get`; every other call needs a bound Principal (401
  *    without one) and, when `permission` is declared, the rbac
@@ -139,6 +147,10 @@ export const ApiLive = Layer.effect(
 		// an exposure with a declared `permission` fails closed without
 		// it; exposures without one only need a session.
 		const permissions = yield* Effect.serviceOption(Permissions);
+		// PluginStates is likewise OPTIONAL: when bound, exposures
+		// owned by disabled plugins/packages 404 like unexposed
+		// collections — runtime enablement, same contract as @ktb/views.
+		const pluginStates = yield* Effect.serviceOption(PluginStates);
 
 		const byKey = new Map(registry.exposures.map((def) => [exposureKey(def), def] as const));
 
@@ -218,26 +230,35 @@ export const ApiLive = Layer.effect(
 		return Api.of({
 			handle: (request) =>
 				Effect.gen(function* () {
-					const exposure = byKey.get(request.key);
-					// Unknown key, unexposed collection and malformed paths
-					// all land here — one indistinguishable 404.
-					if (exposure === undefined) {
-						return yield* Effect.fail(notFound("not found"));
-					}
+					// Method/path-shape check FIRST: it is uniform for
+					// every key (exposed or not), so the 405 it produces
+					// leaks no exposure information.
 					const resolved = methodFor(request.method, request.id);
 					if (resolved === null) {
 						return yield* Effect.fail(
 							apiError(405, "method_not_allowed", "method not allowed for this path"),
 						);
 					}
+					const exposure = byKey.get(request.key);
+					// Unknown key, unexposed collection and malformed paths
+					// all land here — one indistinguishable 404.
+					if (exposure === undefined) {
+						return yield* Effect.fail(notFound("not found"));
+					}
+					// A disabled owner is likewise invisible: same 404 as
+					// an unexposed collection, checked before the method
+					// gate so it leaks nothing either way.
+					if (Option.isSome(pluginStates)) {
+						const enabled = yield* pluginStates.value.enabledIds();
+						if (!defOwnerEnabled(registry.ownerIndex, exposure.owner, enabled)) {
+							return yield* Effect.fail(notFound("not found"));
+						}
+					}
+					// A method the exposure does not publish gets the same
+					// 404 — answering 405 here would distinguish exposed
+					// collections from unexposed ones.
 					if (!exposureMethods(exposure).includes(resolved.method)) {
-						return yield* Effect.fail(
-							apiError(
-								405,
-								"method_not_allowed",
-								`method "${resolved.method}" is not exposed for this collection`,
-							),
-						);
+						return yield* Effect.fail(notFound("not found"));
 					}
 					yield* authorize(exposure, resolved.method);
 					// methodFor only resolves id-methods when request.id is a

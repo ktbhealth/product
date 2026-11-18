@@ -1,4 +1,5 @@
 import type { PageI18nSlice } from "@ktb/kernel";
+import { getPath } from "@ktb/dsl";
 
 import type { ViewField, ViewFilter } from "../definition.ts";
 import { filterParam } from "../plan.ts";
@@ -12,25 +13,13 @@ import { filterParam } from "../plan.ts";
 
 const EMPTY_CELL = "—";
 
-/** Dotted-path read over a record's `data` document — same semantics
- * as document-store's query `getPath` (numeric segments index into
- * arrays), mirrored locally so this module stays free of the store's
- * server graph for the client bundle. */
-export const getPath = (data: unknown, path: string): unknown => {
-	let current: unknown = data;
-	for (const segment of path.split(".")) {
-		if (current === null || current === undefined) return undefined;
-		if (Array.isArray(current)) {
-			const index = Number(segment);
-			if (!Number.isInteger(index)) return undefined;
-			current = current[index];
-			continue;
-		}
-		if (typeof current !== "object") return undefined;
-		current = (current as Record<string, unknown>)[segment];
-	}
-	return current;
-};
+/** Dotted-path read over a record's `data` document — @ktb/dsl
+ * `getPath` (numeric segments index into arrays, own-property walk
+ * only). Re-exported so view components keep a single import site;
+ * every path reaching it is def-validated (`isFieldPath` refuses
+ * prototype-polluting segments), so the hardened walk is identical
+ * to the previous local copy on all legal inputs. */
+export { getPath };
 
 const JSON_PREVIEW_MAX = 80;
 

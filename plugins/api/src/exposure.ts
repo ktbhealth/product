@@ -1,10 +1,13 @@
 import * as Context from "effect/Context";
 import type { JsonObject } from "effect/Schema";
 
+import { API_KEY_PATTERN, COLLECTION_NAME_RE, isRecord, PERMISSION_RE } from "@ktb/dsl";
 import {
+	buildDefOwnerIndex,
 	collectKindContributions,
 	GENERIC_CONTRIBUTION_SLOT,
 	type ContributionKindDescriptor,
+	type DefOwnerIndex,
 	type Plugin,
 	type PluginContribution,
 } from "@ktb/kernel";
@@ -31,6 +34,10 @@ import {
  * stay inside that subtree (`/api/documents/<key>`) — arbitrary mount
  * points would need per-exposure routes the kernel's virtual route
  * tree does not support.
+ *
+ * Extension points: `methods` (`API_METHODS`) is a CLOSED union — the
+ * dispatch in ./service.ts is a fixed switch; there is no `hook`
+ * escape hatch, custom verbs need a route contribution instead.
  */
 
 /** The registered contribution kind for API exposures. */
@@ -48,16 +55,9 @@ export const API_EXPOSE_KIND: ContributionKindDescriptor = {
 export const API_BASE_PATH = "/api/documents";
 
 /** URL key charset — the `<key>` segment of `/api/documents/<key>`.
- * Slug-safe so keys round-trip through paths and query strings. */
-export const API_KEY_PATTERN = /^[a-z0-9][a-z0-9._-]{0,99}$/;
-
-/** Same shape document-store collection names use (mirrored — the
- * constant is private to that package). */
-const COLLECTION_NAME_RE = /^[a-z][a-z0-9._-]{0,99}$/;
-
-/** Permission strings use the rbac catalog spelling
- * (`"resource.action"`, e.g. `"patient.read"`, `"audit.read"`). */
-const PERMISSION_RE = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)+$/;
+ * Slug-safe so keys round-trip through paths and query strings.
+ * Re-exported from @ktb/dsl (the shared grammar). */
+export { API_KEY_PATTERN };
 
 /** The CRUD verbs an exposure can publish. `list`/`get` are reads;
  * `create`/`update`/`delete` are writes. */
@@ -96,9 +96,6 @@ export interface ApiExposure {
 	 * manifest omits it. */
 	readonly owner?: string;
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** The URL key an exposure mounts under: the `basePath` tail when
  * present, else the collection name. */
@@ -241,15 +238,25 @@ export const collectApiExposures = (plugins: readonly Plugin[]): readonly ApiExp
  * The ordered exposure registry the composition root provides to the
  * `Api` service — the layer @ktb/app-host merges into `core` next to
  * `makePluginStatesLive(plugins)`/`makeDocumentCollections(plugins)`.
+ *
+ * `ownerIndex` is optional so hand-built registries (tests, tooling)
+ * keep working; `makeApiExposures` always populates it. The Api
+ * service re-checks each exposure's `owner` against
+ * `PluginStates.enabledIds()` per request — a disabled plugin's
+ * exposure answers the same 404 as an unexposed collection.
  */
 export class ApiExposures extends Context.Service<
 	ApiExposures,
-	{ readonly exposures: readonly ApiExposure[] }
+	{
+		readonly exposures: readonly ApiExposure[];
+		readonly ownerIndex?: DefOwnerIndex;
+	}
 >()("@ktb/api/ApiExposures") {}
 
 /** Build the `ApiExposures` service value for a plugin graph. */
 export const makeApiExposures = (
 	plugins: readonly Plugin[],
-): { readonly exposures: readonly ApiExposure[] } => ({
+): { readonly exposures: readonly ApiExposure[]; readonly ownerIndex: DefOwnerIndex } => ({
 	exposures: collectApiExposures(plugins),
+	ownerIndex: buildDefOwnerIndex(plugins),
 });

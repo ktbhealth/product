@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { SeedError } from "./errors.ts";
-import { generateFromPattern } from "./pattern.ts";
+import { generateFromPattern, patternHasUnsafeRepetition } from "./pattern.ts";
 import { makeRng } from "./rng.ts";
 
 /** Generate and assert the REAL RegExp accepts the candidate. */
@@ -124,5 +124,40 @@ describe("generateFromPattern", () => {
 		const a = generateFromPattern("^[A-Z]{2}\\d{4}$", makeRng("same"));
 		const b = generateFromPattern("^[A-Z]{2}\\d{4}$", makeRng("same"));
 		expect(a).toBe(b);
+	});
+});
+
+describe("patternHasUnsafeRepetition", () => {
+	it("flags repeated units whose subtree is ambiguous", () => {
+		for (const p of [
+			"(a|aa)+b", // the classic alternation ReDoS
+			"(a|b)*c",
+			"(a|b)+c",
+			"(a+)+b", // nested quantifier
+			"(a?)+b",
+			"(x|yy){2,}z",
+			"((a|b)c)+d", // ambiguity nested inside groups
+		]) {
+			expect(patternHasUnsafeRepetition(p), p).toBe(true);
+		}
+	});
+
+	it("allows deterministic repetitions and unquantified alternation", () => {
+		for (const p of [
+			"^a+$",
+			"^[a-c]{2,5}$",
+			"^(cat|dog|bird)$", // alternation without repetition — linear
+			"(a|aa)b",
+			"^(ab){2,3}$",
+			"(?:xy)+z",
+			"^\\d{3}-\\d{2}$",
+			"^\\w+$",
+		]) {
+			expect(patternHasUnsafeRepetition(p), p).toBe(false);
+		}
+	});
+
+	it("throws SeedError on patterns the subset parser rejects", () => {
+		expect(() => patternHasUnsafeRepetition("(?=a)b")).toThrow(SeedError);
 	});
 });

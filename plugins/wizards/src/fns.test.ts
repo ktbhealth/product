@@ -34,6 +34,7 @@ import type { Json } from "effect/Schema";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import type { WizardDefinition } from "./definition.ts";
+import { WizardDefinitions } from "./definition.ts";
 import {
 	abandonWizardFn,
 	advanceWizardFn,
@@ -96,6 +97,7 @@ describe("wizards fns", () => {
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(WizardDefinitions, { wizards: [DEF] }),
 		);
 		// env stays ambient too: the admin fns yield PlatformAdmin per
 		// call (defense-in-depth gate inside runAs).

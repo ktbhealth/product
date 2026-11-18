@@ -169,6 +169,34 @@ describe("assertViewDef", () => {
 		).toThrow(/\.label must be a string/);
 	});
 
+	it("rejects fixed filters whose operand violates the operator contract", () => {
+		for (const filter of [
+			{ field: "a", op: "$in", value: "x" }, // needs an array
+			{ field: "a", op: "$nin", value: 5 },
+			{ field: "a", op: "$exists", value: "yes" }, // needs a boolean
+			{ field: "a", op: "$regex", value: 5 }, // needs a string
+			{ field: "a", op: "$regex", value: "(a+)+" }, // unsafe pattern
+		]) {
+			expect(() => assertViewDef({ ...VALID, filters: [filter] }, "c")).toThrow(/operand/);
+		}
+		// Valid fixed operands — including interactive filters, which
+		// carry no operand at def time — still pass.
+		expect(() =>
+			assertViewDef(
+				{
+					...VALID,
+					filters: [
+						{ field: "a", op: "$in", value: [1, 2] },
+						{ field: "b", op: "$exists", value: true },
+						{ field: "c", op: "$regex", value: "^x" },
+						{ field: "d", op: "$in", param: "p" },
+					],
+				},
+				"c",
+			),
+		).not.toThrow();
+	});
+
 	it("rejects malformed sort terms", () => {
 		expect(() => assertViewDef({ ...VALID, sort: "name" as never }, "c")).toThrow(
 			/sort must be an array/,

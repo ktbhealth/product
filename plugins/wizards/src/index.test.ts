@@ -65,6 +65,7 @@ describe("wizards plugins", () => {
 	it("declares the expected dependency edges", () => {
 		expect("requiredDeps" in wizardsTablesPlugin).toBe(false);
 		expect(wizardsServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
+		expect(wizardsServicesPlugin.optionalDeps).toEqual(["rbac.services"]);
 		expect(wizardsChromePlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
 		expect(wizardsRenderPlugin.requiredDeps).toEqual(["wizards.services"]);
 		expect(wizardsPanelPlugin.requiredDeps).toEqual([platformPanelPlugin.id, "wizards.services"]);

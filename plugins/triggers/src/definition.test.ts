@@ -122,6 +122,22 @@ describe("assertTriggerDef", () => {
 		).toMatchObject({ mode: "update", id: "$record.id" });
 	});
 
+	it("rejects prototype-polluting mapping keys", () => {
+		const cw = (mapping: Record<string, string>) =>
+			assertTriggerDef(
+				{
+					...base,
+					action: { kind: "collection-write", collection: "ok.name", mapping, mode: "insert" },
+				},
+				"ctx",
+			);
+		for (const key of ["__proto__", "constructor", "prototype", "a.__proto__.b", "x.constructor"]) {
+			expect(() => cw({ [key]: "$record.data.v" })).toThrow(/forbidden path segment/);
+		}
+		// ordinary keys — including dotted ones — stay legal
+		expect(cw({ note: "$record.data.v", "meta.seen": "1" }).action).toBeDefined();
+	});
+
 	it("validates hook actions", () => {
 		expect(() => assertTriggerDef({ ...base, action: { kind: "hook" } }, "ctx")).toThrow(/hook id/);
 		expect(() =>
@@ -197,7 +213,9 @@ describe("toTriggerDefinition / collectTriggerDefinitions", () => {
 	});
 
 	it("makeTriggerDefinitions builds the service value", () => {
-		expect(makeTriggerDefinitions([plugin("plugin.a", [base])]).triggers).toHaveLength(1);
+		const built = makeTriggerDefinitions([plugin("plugin.a", [base])]);
+		expect(built.triggers).toHaveLength(1);
+		expect(built.ownerIndex?.pkgById.get("plugin.a")).toBeUndefined();
 		expect(makeTriggerDefinitions([]).triggers).toEqual([]);
 	});
 });

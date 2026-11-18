@@ -76,11 +76,25 @@ describe("recordToJson", () => {
 			id: 7,
 			collection: "notes",
 			data: { title: "hi" },
-			ownerId: "u1",
-			tenantId: null,
 			createdAt: "2024-01-02T03:04:05.000Z",
 			updatedAt: "2024-02-03T04:05:06.000Z",
 		});
+	});
+
+	it("omits internal fencing ids (ownerId/tenantId)", () => {
+		const record = {
+			id: 7,
+			collectionId: 2,
+			collection: "notes",
+			data: {},
+			ownerId: "u1",
+			tenantId: 3,
+			createdAt: new Date("2024-01-02T03:04:05.000Z"),
+			updatedAt: new Date("2024-02-03T04:05:06.000Z"),
+		} as unknown as DocumentRecord;
+		const json = recordToJson(record);
+		expect(json).not.toHaveProperty("ownerId");
+		expect(json).not.toHaveProperty("tenantId");
 	});
 });
 

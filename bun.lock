@@ -272,6 +272,7 @@
         "@ktb/email-stub": "workspace:*",
         "@ktb/eval-adapter-local": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
+        "@ktb/flows": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
@@ -279,6 +280,7 @@
         "@ktb/tenant": "workspace:*",
         "@ktb/triggers": "workspace:*",
         "@ktb/views": "workspace:*",
+        "@ktb/wizards": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -401,6 +403,9 @@
         "@ktb/kernel": "workspace:*",
         "effect": "4.1.2",
       },
+    },
+    "packages/dsl": {
+      "name": "@ktb/dsl",
     },
     "packages/email": {
       "name": "@ktb/email",
@@ -666,8 +671,11 @@
       "dependencies": {
         "@ktb/authz": "workspace:*",
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
+        "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@tanstack/react-router": "1.170.46",
         "@tanstack/react-start": "1.169.5",
@@ -906,6 +914,7 @@
         "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
@@ -993,6 +1002,25 @@
       },
       "peerDependencies": {
         "react": "^19.2.0",
+      },
+    },
+    "plugins/flows": {
+      "name": "@ktb/flows",
+      "dependencies": {
+        "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/rbac": "workspace:*",
+        "@ktb/rbac-plugin": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@tanstack/react-start": "1.169.5",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "vitest": "5.1.0",
       },
     },
     "plugins/forms": {
@@ -1585,8 +1613,9 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/kernel": "workspace:*",
-        "@ktb/wizards": "workspace:*",
+        "@ktb/platform": "workspace:*",
         "effect": "4.1.2",
       },
       "devDependencies": {
@@ -1655,9 +1684,12 @@
       "name": "@ktb/views",
       "dependencies": {
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
         "@ktb/rbac": "workspace:*",
+        "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
         "@tanstack/react-router": "1.170.46",
@@ -1682,11 +1714,14 @@
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
         "@ktb/document-store": "workspace:*",
+        "@ktb/dsl": "workspace:*",
         "@ktb/forms": "workspace:*",
         "@ktb/i18n": "workspace:*",
         "@ktb/json-schema": "workspace:*",
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
+        "@ktb/rbac": "workspace:*",
+        "@ktb/rbac-plugin": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.1@react",
         "@tanstack/react-router": "1.170.46",
@@ -2109,6 +2144,8 @@
 
     "@ktb/driver-framework": ["@ktb/driver-framework@workspace:packages/driver-framework"],
 
+    "@ktb/dsl": ["@ktb/dsl@workspace:packages/dsl"],
+
     "@ktb/email": ["@ktb/email@workspace:packages/email"],
 
     "@ktb/email-cloudflare": ["@ktb/email-cloudflare@workspace:packages/email-cloudflare"],
@@ -2132,6 +2169,8 @@
     "@ktb/eval-validator": ["@ktb/eval-validator@workspace:plugins/eval-validator"],
 
     "@ktb/export-pdf": ["@ktb/export-pdf@workspace:packages/export-pdf"],
+
+    "@ktb/flows": ["@ktb/flows@workspace:plugins/flows"],
 
     "@ktb/forms": ["@ktb/forms@workspace:plugins/forms"],
 

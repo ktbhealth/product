@@ -8,8 +8,11 @@
 	"dependencies": {
 		"@ktb/authz": "workspace:*",
 		"@ktb/document-store": "workspace:*",
+		"@ktb/dsl": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/platform": "workspace:*",
 		"@ktb/rbac": "workspace:*",
+		"@ktb/rbac-plugin": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@tanstack/react-router": "1.170.46",
 		"@tanstack/react-start": "1.169.5",

@@ -1,17 +1,24 @@
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
-import { asc, eq } from "drizzle-orm";
+import * as Option from "effect/Option";
+import { and, asc, eq } from "drizzle-orm";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
+import { validate, type ValidationIssue } from "@ktb/json-schema";
+import { defOwnerEnabled } from "@ktb/kernel";
 import { PlatformAdmin } from "@ktb/platform";
+import { PluginStates } from "@ktb/platform/plugin-states";
+import { Permissions, splitPermission } from "@ktb/rbac";
 
 import { runCompletion, type CompletionFailed } from "./completion.ts";
 import {
 	assertWizardDefinition,
 	WIZARD_ID_PATTERN,
+	WizardDefinitions,
 	type WizardDefinition,
 	type WizardStep,
 } from "./definition.ts";
@@ -34,18 +41,40 @@ export type { WizardDefRow, WizardRunRow } from "./schema.ts";
  * Definition resolution at `startRun`: a `wizard_defs` row wins when
  * present (admins are authoritative — the client-supplied definition
  * is ignored); unpublished rows reject with `WizardNotPublished`.
- * Otherwise the client-supplied definition is validated and its `id`
- * must equal the requested key — this is the code-contribution path
- * (`wizard.def` entries are client-registry data the server cannot
- * enumerate, same constraint as `form.def`). Runs snapshot the
- * resolved definition into `definition_json`, so later def edits
- * never mutate an in-flight run.
+ * Otherwise the client-supplied definition is validated, its `id`
+ * must equal the requested key, AND it must deep-equal (canonical
+ * JSON) a def in the `WizardDefinitions` registry — the code-
+ * contribution path. A well-formed but unregistered def is a forgery
+ * attempt (`ForbiddenWizardDefinition`): without this check any user
+ * could snapshot a def whose completion writes arbitrary
+ * document-store collections or invokes arbitrary WizardHooks.
+ * Contributed defs owned by DISABLED plugins are likewise not honored
+ * — runtime `PluginStates` enablement re-checked per `startRun`, same
+ * contract as @ktb/views/@ktb/api (DB-authored `wizard_defs` rows are
+ * admin content and unaffected).
+ * Runs snapshot the resolved definition into `definition_json`, so
+ * later def edits never mutate an in-flight run.
+ *
+ * `def.permission` (optional `"resource.action"`) gates `startRun`
+ * through the OPTIONAL `Permissions` port — a declared permission
+ * fails closed (`WizardPermissionDenied`) when no grant service is
+ * bound, same contract as @ktb/flows.
  *
  * Runs are private to their owner (`owner_id` = bound Principal
  * userId); every run method re-checks ownership inside the service —
- * defense in depth behind the session-gated server fns. Completion
- * failures fail `advance`/`complete` AFTER the answers are persisted,
- * so a retry re-enters the done-state and re-fires the target.
+ * defense in depth behind the session-gated server fns.
+ *
+ * Completion is claim-then-fire: the run's answers/position persist
+ * through an optimistic guarded update (`WizardRunConflict` on a
+ * lost race), then a conditional `active → completing` claim makes
+ * completion single-flight, then `completing → completed` closes the
+ * run. A typed completion failure reverts the claim to `active` so
+ * the next advance/complete retries; a crash mid-completion leaves
+ * `completing`, which `recoverStaleClaim` reverts once the claim is
+ * older than {@link COMPLETION_CLAIM_STALE_MS}. This is at-least-once:
+ * a crash AFTER the side-effect but BEFORE the completed write can
+ * re-fire the target on retry — document-store inserts and hooks
+ * must tolerate that (same honesty contract as flows' hooks).
  */
 
 export class InvalidWizardDefinition extends Data.TaggedError("InvalidWizardDefinition")<{
@@ -83,6 +112,36 @@ export class StepMismatch extends Data.TaggedError("StepMismatch")<{
 	readonly got: string;
 }> {}
 
+/** A client-supplied definition failed the contributed-def registry
+ * check — well-formed but not deep-equal to any `wizard.def`
+ * contribution (forgery attempt). */
+export class ForbiddenWizardDefinition extends Data.TaggedError("ForbiddenWizardDefinition")<{
+	readonly key: string;
+}> {}
+
+/** `def.permission` was declared but the caller lacks the grant — or
+ * no `Permissions` service is bound (fail closed). */
+export class WizardPermissionDenied extends Data.TaggedError("WizardPermissionDenied")<{
+	readonly key: string;
+	readonly permission: string;
+}> {}
+
+/** A concurrent mutation won the optimistic guard — the run's stored
+ * status/position/answers changed between read and write. */
+export class WizardRunConflict extends Data.TaggedError("WizardRunConflict")<{
+	readonly runId: number;
+}> {}
+
+/** The submitted step value failed server-side validation: either the
+ * serialized value exceeds {@link MAX_STEP_VALUE_BYTES} or it violates
+ * the step's JSON schema. `issues` carries the schema violations (or a
+ * single synthetic size issue). */
+export class InvalidStepValue extends Data.TaggedError("InvalidStepValue")<{
+	readonly runId: number;
+	readonly stepId: string;
+	readonly issues: readonly ValidationIssue[];
+}> {}
+
 /** The stored run row can't be parsed/resolved — data corruption,
  * surfaced as a typed failure rather than a defect. */
 export class CorruptWizardRun extends Data.TaggedError("CorruptWizardRun")<{
@@ -99,6 +158,10 @@ export type WizardRunError =
 	| RunForbidden
 	| WizardNotActive
 	| StepMismatch
+	| ForbiddenWizardDefinition
+	| WizardPermissionDenied
+	| WizardRunConflict
+	| InvalidStepValue
 	| CorruptWizardRun
 	| CompletionFailed;
 
@@ -168,12 +231,40 @@ const parseJson = (raw: string): unknown => {
 	}
 };
 
-const parseAnswers = (raw: string): Record<string, unknown> => {
+/** `answers_json` must be a JSON object — anything else is corruption,
+ * not an empty answer set (silently resetting would hide data loss). */
+const parseAnswers = (
+	raw: string,
+	runId: number,
+): Effect.Effect<Record<string, unknown>, CorruptWizardRun> => {
 	const parsed = parseJson(raw);
 	return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-		? (parsed as Record<string, unknown>)
-		: {};
+		? Effect.succeed(parsed as Record<string, unknown>)
+		: Effect.fail(new CorruptWizardRun({ runId, reason: "answers_json is not a JSON object" }));
 };
+
+/** Serialized-size caps — a run's answers ride every view payload and
+ * land in completion writes, so both the per-step value and the merged
+ * answer set are bounded. */
+export const MAX_STEP_VALUE_BYTES = 64 * 1024;
+export const MAX_ANSWERS_BYTES = 256 * 1024;
+
+/** JSON.stringify length, or -1 when the value isn't serializable
+ * (circular refs, BigInt, …) — wire input is always JSON, so -1 means
+ * an internal caller passed something the store couldn't persist. */
+const serializedSize = (value: unknown): number => {
+	try {
+		return JSON.stringify(value)?.length ?? -1;
+	} catch {
+		return -1;
+	}
+};
+
+const sizeIssue = (limit: number): ValidationIssue => ({
+	path: "$",
+	keyword: "maxLength",
+	message: `value exceeds ${limit} bytes serialized`,
+});
 
 const parseDefinition = (
 	raw: string,
@@ -198,6 +289,30 @@ const parseDefinition = (
 				}),
 		});
 	});
+
+/** Canonical JSON for def comparison: object keys sorted recursively
+ * so two structurally identical defs compare equal regardless of key
+ * order (the wire round-trip and manifest authoring order can differ).
+ * `__proto__`-style keys become own data properties, never setter
+ * hits. */
+const canonicalize = (value: unknown): unknown => {
+	if (Array.isArray(value)) return value.map(canonicalize);
+	if (typeof value === "object" && value !== null) {
+		const out: Record<string, unknown> = {};
+		for (const key of Object.keys(value).sort()) {
+			Object.defineProperty(out, key, {
+				value: canonicalize((value as Record<string, unknown>)[key]),
+				enumerable: true,
+				writable: true,
+				configurable: true,
+			});
+		}
+		return out;
+	}
+	return value;
+};
+
+const canonicalJson = (value: unknown): string => JSON.stringify(canonicalize(value));
 
 const parseDefRow = (row: WizardDefRow): Effect.Effect<WizardDefinition, InvalidWizardDefinition> =>
 	Effect.try({
@@ -262,6 +377,18 @@ export const WizardsLive = Layer.effect(
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
 		const requireAdmin = platformAdmin.requireAdmin();
+		// Code-contributed defs — the allowlist client-supplied
+		// definitions must match (see startRun). Provided by app-host
+		// core next to the other *Definitions registries.
+		const contributed = yield* WizardDefinitions;
+		// Permissions is an OPTIONAL port (rbac plugin may be disabled
+		// or ordered later): a def declaring `permission` fails closed
+		// without it — same contract as @ktb/flows.
+		const permissions = yield* Effect.serviceOption(Permissions);
+		// PluginStates is likewise OPTIONAL: when bound, contributed
+		// defs owned by disabled plugins are not honored at startRun —
+		// runtime enablement, same contract as @ktb/views/@ktb/api.
+		const pluginStates = yield* Effect.serviceOption(PluginStates);
 
 		const now = () => new Date();
 
@@ -292,6 +419,29 @@ export const WizardsLive = Layer.effect(
 		/** resolution is narrowed: "invalid" positions already failed
 		 * above as CorruptWizardRun. */
 		type LiveResolution = Exclude<StepResolution, { kind: "invalid" }>;
+
+		/** Parsed definition snapshots keyed by the raw definition_json —
+		 * every run op used to re-parse + re-validate the same immutable
+		 * snapshot. Bounded FIFO; defs are small JSON docs. */
+		const DEFINITION_CACHE_LIMIT = 100;
+		const definitionCache = new Map<string, WizardDefinition>();
+		const parseDefinitionCached = (raw: string, runId: number) =>
+			Effect.suspend(() => {
+				const cached = definitionCache.get(raw);
+				if (cached !== undefined) return Effect.succeed(cached);
+				return parseDefinition(raw, runId).pipe(
+					Effect.map((definition) => {
+						if (definitionCache.size >= DEFINITION_CACHE_LIMIT) {
+							// FIFO eviction — Map iteration is insertion-
+							// ordered; at the cap the map is never empty.
+							definitionCache.delete(definitionCache.keys().next().value as string);
+						}
+						definitionCache.set(raw, definition);
+						return definition;
+					}),
+				);
+			});
+
 		const resolutionOf = (
 			row: WizardRunRow,
 		): Effect.Effect<
@@ -303,8 +453,8 @@ export const WizardsLive = Layer.effect(
 			CorruptWizardRun
 		> =>
 			Effect.gen(function* () {
-				const definition = yield* parseDefinition(row.definitionJson, row.id);
-				const answers = parseAnswers(row.answersJson);
+				const definition = yield* parseDefinitionCached(row.definitionJson, row.id);
+				const answers = yield* parseAnswers(row.answersJson, row.id);
 				const resolution = resolveCurrentStep(definition, {
 					stepIndex: row.stepIndex,
 					answers,
@@ -347,27 +497,87 @@ export const WizardsLive = Layer.effect(
 				};
 			});
 
-		const updateRun = (
+		/** Optimistic-concurrency update: only applies while the row
+		 * still matches the status/position/answers we read. A concurrent
+		 * advance/back/abandon that landed first makes this a no-op →
+		 * `WizardRunConflict` instead of a lost update. */
+		const updateRunGuarded = (
 			row: WizardRunRow,
 			patch: Partial<typeof wizardRuns.$inferInsert>,
-		): Effect.Effect<WizardRunRow> =>
+		): Effect.Effect<WizardRunRow, WizardRunConflict> =>
 			Effect.promise(() =>
 				db
 					.update(wizardRuns)
 					.set({ ...patch, updatedAt: now() })
-					.where(eq(wizardRuns.id, row.id))
+					.where(
+						and(
+							eq(wizardRuns.id, row.id),
+							eq(wizardRuns.status, "active"),
+							eq(wizardRuns.stepIndex, row.stepIndex),
+							eq(wizardRuns.answersJson, row.answersJson),
+						),
+					)
 					.returning(),
 			).pipe(
-				Effect.map(
-					/* v8 ignore next -- update().returning() always yields the row */
-					(rows) => rows[0] ?? row,
-				),
+				Effect.flatMap((rows) => {
+					const updated = rows[0];
+					/* v8 ignore next 3 -- only a concurrent mutation can
+					 * empty the optimistic guard; single effects can't
+					 * interleave mid-update in tests */
+					if (updated === undefined) {
+						return Effect.fail(new WizardRunConflict({ runId: row.id }));
+					}
+					return Effect.succeed(updated);
+				}),
 			);
 
-		/** Persist answers/position, then — when the interpreter reports
-		 * done — fire the completion target and close the run. A
-		 * CompletionFailed leaves the row active at the done position so
-		 * the next advance/complete retries the target. */
+		/** A `completing` claim older than this is presumed crashed —
+		 * the next run op reverts it to `active` so the run isn't
+		 * bricked. Generously above any sane completion duration; the
+		 * cost of a wrong guess is one duplicate completion fire
+		 * (at-least-once, documented on the service). */
+		const COMPLETION_CLAIM_STALE_MS = 5 * 60 * 1000;
+
+		/** Self-healing read: a stale `completing` row (crashed mid-
+		 * completion) reverts to `active` exactly once — the conditional
+		 * update pins the observed `updatedAt` so a fresh claim can't
+		 * be clobbered. Fresh `completing` rows pass through and fail
+		 * the caller's `status !== "active"` check. */
+		const recoverStaleClaim = (row: WizardRunRow): Effect.Effect<WizardRunRow> => {
+			if (row.status !== "completing") return Effect.succeed(row);
+			if (now().getTime() - row.updatedAt.getTime() <= COMPLETION_CLAIM_STALE_MS) {
+				return Effect.succeed(row);
+			}
+			return Effect.promise(() =>
+				db
+					.update(wizardRuns)
+					.set({ status: "active", updatedAt: now() })
+					.where(
+						and(
+							eq(wizardRuns.id, row.id),
+							eq(wizardRuns.status, "completing"),
+							eq(wizardRuns.updatedAt, row.updatedAt),
+						),
+					)
+					.returning(),
+			).pipe(
+				Effect.map((rows) => {
+					const recovered = rows[0];
+					/* v8 ignore next -- a concurrent op may have already
+					 * reverted the claim between our read and update */
+					return recovered ?? row;
+				}),
+			);
+		};
+
+		/** Persist answers/position through the guarded update, then —
+		 * when the interpreter reports done — CLAIM the run
+		 * (`active → completing`, single-flight) BEFORE firing the
+		 * completion target, and close it (`completing → completed`)
+		 * only after the target succeeds. A completion failure reverts
+		 * the claim to `active` so the next advance/complete retries;
+		 * the claim ordering means the status write can't fail after
+		 * the side-effect already fired (no re-fire on write failure). */
 		const finalizeIfDone = (
 			row: WizardRunRow,
 			definition: WizardDefinition,
@@ -375,21 +585,68 @@ export const WizardsLive = Layer.effect(
 			position: number,
 		): Effect.Effect<WizardRunRow, WizardRunError, WizardHooks> =>
 			Effect.gen(function* () {
-				const updated = yield* updateRun(row, {
+				const answersJson = JSON.stringify(answers);
+				const updated = yield* updateRunGuarded(row, {
 					stepIndex: position,
-					answersJson: JSON.stringify(answers),
+					answersJson,
 				});
 				const after = resolveCurrentStep(definition, { stepIndex: position, answers });
 				if (after.kind !== "done") return updated;
-				yield* runCompletion(definition.completion, {
-					run: { id: row.id, key: row.key, ownerId: row.ownerId },
-					definition,
-					answers,
-				});
-				return yield* updateRun(updated, {
-					status: "completed",
-					completedAt: now(),
-				});
+				// Claim: exactly one concurrent finisher flips the row to
+				// 'completing' — the loser sees 0 rows → WizardRunConflict.
+				const claimed = yield* Effect.promise(() =>
+					db
+						.update(wizardRuns)
+						.set({ status: "completing", updatedAt: now() })
+						.where(
+							and(
+								eq(wizardRuns.id, updated.id),
+								eq(wizardRuns.status, "active"),
+								eq(wizardRuns.stepIndex, position),
+								eq(wizardRuns.answersJson, answersJson),
+							),
+						)
+						.returning(),
+				);
+				/* v8 ignore next 3 -- the guarded persist above just wrote
+				 * this exact state while status was 'active'; only a
+				 * concurrent writer (untestable single-threaded) can make
+				 * the claim miss */
+				if (claimed[0] === undefined) {
+					return yield* Effect.fail(new WizardRunConflict({ runId: row.id }));
+				}
+				const fired = yield* Effect.exit(
+					runCompletion(definition.completion, {
+						run: { id: row.id, key: row.key, ownerId: row.ownerId },
+						definition,
+						answers,
+					}),
+				);
+				if (Exit.isFailure(fired)) {
+					// Revert the claim (best-effort) so a retry re-fires —
+					// covers typed failures AND defects.
+					yield* Effect.promise(() =>
+						db
+							.update(wizardRuns)
+							.set({ status: "active", updatedAt: now() })
+							.where(and(eq(wizardRuns.id, updated.id), eq(wizardRuns.status, "completing"))),
+					).pipe(Effect.ignore);
+					return yield* Effect.failCause(fired.cause);
+				}
+				const finished = yield* Effect.promise(() =>
+					db
+						.update(wizardRuns)
+						.set({ status: "completed", completedAt: now(), updatedAt: now() })
+						.where(and(eq(wizardRuns.id, updated.id), eq(wizardRuns.status, "completing")))
+						.returning(),
+				);
+				const finishedRow = finished[0];
+				/* v8 ignore next 3 -- the claim is seconds old here; only a
+				 * stale-claim recovery (5min) could have stolen the row */
+				if (finishedRow === undefined) {
+					return yield* Effect.fail(new WizardRunConflict({ runId: row.id }));
+				}
+				return finishedRow;
 			});
 
 		const toAdminRow = (
@@ -406,6 +663,26 @@ export const WizardsLive = Layer.effect(
 					updatedAt: row.updatedAt,
 				};
 			});
+
+		/** Optional permission gate — checked before the run row is
+		 * written so a denied caller learns nothing. Fails closed when
+		 * the def declares `permission` but no Permissions service is
+		 * bound (rbac plugin disabled/absent). */
+		const authorizeDefinition = (
+			definition: WizardDefinition,
+		): Effect.Effect<void, WizardPermissionDenied> => {
+			const permission = definition.permission;
+			if (permission === undefined) return Effect.void;
+			if (Option.isNone(permissions)) {
+				return Effect.fail(new WizardPermissionDenied({ key: definition.id, permission }));
+			}
+			const { resource, action } = splitPermission(permission);
+			return Effect.flatMap(permissions.value.can(resource, action), (allowed) =>
+				allowed
+					? Effect.void
+					: Effect.fail(new WizardPermissionDenied({ key: definition.id, permission })),
+			);
+		};
 
 		return Wizards.of({
 			publishedDefs: Effect.fn("Wizards.publishedDefs")(function* () {
@@ -553,7 +830,34 @@ export const WizardsLive = Layer.effect(
 							}),
 						);
 					}
+					// The client-supplied def must BE a contributed def —
+					// canonical-JSON deep equality against the server-side
+					// WizardDefinitions registry (key order normalized).
+					// Anything else is a forgery: an arbitrary completion
+					// target (collection write / hook invocation) smuggled
+					// in as "code contribution".
+					const contributedDef = contributed.wizards.find((def) => def.id === input.key);
+					// Runtime enablement: a def owned by a disabled plugin
+					// is not a legitimate contribution — it fails the same
+					// ForbiddenWizardDefinition as an unregistered def.
+					let contributedLive = contributedDef !== undefined;
+					if (contributedDef !== undefined && Option.isSome(pluginStates)) {
+						const enabled = yield* pluginStates.value.enabledIds();
+						contributedLive = defOwnerEnabled(
+							contributed.ownerIndex,
+							contributedDef.owner,
+							enabled,
+						);
+					}
+					if (
+						contributedDef === undefined ||
+						!contributedLive ||
+						canonicalJson(contributedDef) !== canonicalJson(definition)
+					) {
+						return yield* Effect.fail(new ForbiddenWizardDefinition({ key: input.key }));
+					}
 				}
+				yield* authorizeDefinition(definition);
 				const timestamp = now();
 				const rows = yield* Effect.promise(() =>
 					db
@@ -590,11 +894,14 @@ export const WizardsLive = Layer.effect(
 				if (principal?.userId !== row.ownerId) {
 					return null; // missing and not-owned are indistinguishable
 				}
-				return yield* toView(row);
+				// Heal a crashed completion claim on read too — a stale
+				// 'completing' row would otherwise pin the view forever.
+				return yield* toView(yield* recoverStaleClaim(row));
 			}),
 
 			advance: Effect.fn("Wizards.advance")(function* (runId: number, input: AdvanceInput) {
-				const row = yield* loadRun(runId);
+				const loaded = yield* loadRun(runId);
+				const row = yield* recoverStaleClaim(loaded);
 				if (row.status !== "active") {
 					return yield* Effect.fail(new WizardNotActive({ runId, status: row.status }));
 				}
@@ -615,15 +922,65 @@ export const WizardsLive = Layer.effect(
 						}),
 					);
 				}
+				if (input.value !== undefined) {
+					// Bound the payload BEFORE it touches the store: the
+					// serialized value must fit the step-value cap and —
+					// for form steps — satisfy the step's JSON schema
+					// server-side (the client SchemaForm check is UX,
+					// not enforcement).
+					const valueSize = serializedSize(input.value);
+					if (valueSize < 0 || valueSize > MAX_STEP_VALUE_BYTES) {
+						return yield* Effect.fail(
+							new InvalidStepValue({
+								runId,
+								stepId: current.step.id,
+								issues: [sizeIssue(MAX_STEP_VALUE_BYTES)],
+							}),
+						);
+					}
+					if (current.step.kind === "form") {
+						const issues = validate(current.step.schema, input.value);
+						if (issues.length > 0) {
+							return yield* Effect.fail(
+								new InvalidStepValue({ runId, stepId: current.step.id, issues }),
+							);
+						}
+					}
+				}
 				const merged: Record<string, unknown> = { ...answers };
-				if (input.value !== undefined) merged[current.step.id] = input.value;
+				if (input.value !== undefined) {
+					// defineProperty: a "__proto__" step id must become an
+					// own data key, never hit the prototype setter (step
+					// ids in that denylist are already rejected by
+					// assertWizardDefinition — this is belt & suspenders
+					// for defs that skipped assertion).
+					Object.defineProperty(merged, current.step.id, {
+						value: input.value,
+						enumerable: true,
+						writable: true,
+						configurable: true,
+					});
+				}
+				// merged is always re-serializable here — answers came from
+				// answers_json (JSON by construction) and input.value
+				// passed serializedSize above — so only the cap applies.
+				if (serializedSize(merged) > MAX_ANSWERS_BYTES) {
+					return yield* Effect.fail(
+						new InvalidStepValue({
+							runId,
+							stepId: current.step.id,
+							issues: [sizeIssue(MAX_ANSWERS_BYTES)],
+						}),
+					);
+				}
 				const position = current.index + 1;
 				const finished = yield* finalizeIfDone(row, definition, merged, position);
 				return yield* toView(finished);
 			}),
 
 			back: Effect.fn("Wizards.back")(function* (runId: number) {
-				const row = yield* loadRun(runId);
+				const loaded = yield* loadRun(runId);
+				const row = yield* recoverStaleClaim(loaded);
 				if (row.status !== "active") {
 					return yield* Effect.fail(new WizardNotActive({ runId, status: row.status }));
 				}
@@ -633,20 +990,22 @@ export const WizardsLive = Layer.effect(
 				const from = resolution.kind === "step" ? resolution.index : definition.steps.length;
 				const prev = previousVisibleIndex(definition, from, answers);
 				if (prev === null) return yield* toView(row);
-				const updated = yield* updateRun(row, { stepIndex: prev });
+				const updated = yield* updateRunGuarded(row, { stepIndex: prev });
 				return yield* toView(updated);
 			}),
 
 			abandon: Effect.fn("Wizards.abandon")(function* (runId: number) {
-				const row = yield* loadRun(runId);
+				const loaded = yield* loadRun(runId);
+				const row = yield* recoverStaleClaim(loaded);
 				if (row.status !== "active") {
 					return yield* Effect.fail(new WizardNotActive({ runId, status: row.status }));
 				}
-				yield* updateRun(row, { status: "abandoned", completedAt: now() });
+				yield* updateRunGuarded(row, { status: "abandoned", completedAt: now() });
 			}),
 
 			complete: Effect.fn("Wizards.complete")(function* (runId: number) {
-				const row = yield* loadRun(runId);
+				const loaded = yield* loadRun(runId);
+				const row = yield* recoverStaleClaim(loaded);
 				if (row.status !== "active") {
 					return yield* Effect.fail(new WizardNotActive({ runId, status: row.status }));
 				}

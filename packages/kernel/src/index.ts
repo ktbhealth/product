@@ -18,8 +18,15 @@ export type {
 	PluginMeta,
 	PluginRegistry,
 } from "./core.ts";
-export { entryEnabled, packageLive } from "./enabled.ts";
-export type { PackagedPlugin, PluginEntryRef } from "./enabled.ts";
+export {
+	buildDefOwnerIndex,
+	defOwnerEnabled,
+	entryEnabled,
+	packageLive,
+	type DefOwnerIndex,
+	type PackagedPlugin,
+	type PluginEntryRef,
+} from "./enabled.ts";
 export {
 	DEFAULT_PORTAL_ID,
 	KNOWN_CHROME_REGIONS,

@@ -74,6 +74,28 @@ const toIssue = (error: ErrorObject): ValidationIssue => ({
  * collection defs). Boolean schemas bypass the cache. */
 const validatorCache = new WeakMap<object, JsonSchemaValidator>();
 
+/**
+ * String-keyed companion cache for callers whose schema objects are
+ * re-materialized per request (e.g. wizard step schemas arriving as
+ * fresh `JSON.parse` output on every run view — the WeakMap above
+ * misses on every new object identity and ajv recompiles each time).
+ * Two schema documents with identical JSON are semantically identical
+ * — the subset is pure JSON data — so sharing one compiled validator
+ * is safe. Bounded FIFO: schemas are immutable, so eviction only
+ * costs a recompile.
+ */
+const VALIDATOR_CACHE_LIMIT = 100;
+const validatorCacheByJson = new Map<string, JsonSchemaValidator>();
+
+const cacheValidator = (key: string, validator: JsonSchemaValidator): void => {
+	if (validatorCacheByJson.size >= VALIDATOR_CACHE_LIMIT) {
+		// FIFO eviction — Map iteration is insertion-ordered; a map at
+		// the cap is never empty, so the first key always exists.
+		validatorCacheByJson.delete(validatorCacheByJson.keys().next().value as string);
+	}
+	validatorCacheByJson.set(key, validator);
+};
+
 const wrap = (validateFn: ValidateFunction): JsonSchemaValidator => ({
 	validate: (value) => {
 		const valid = validateFn(value);
@@ -99,8 +121,18 @@ export const compileSchema = (schema: unknown): JsonSchemaValidator => {
 	}
 	const cached = validatorCache.get(schema);
 	if (cached !== undefined) return cached;
+	// Schema docs are pure JSON (assertSchema rejected everything
+	// else), so stringify is total here and doubles as the stable
+	// cross-identity cache key.
+	const jsonKey = JSON.stringify(schema);
+	const byJson = validatorCacheByJson.get(jsonKey);
+	if (byJson !== undefined) {
+		validatorCache.set(schema, byJson);
+		return byJson;
+	}
 	const validator = wrap(ajv.compile(schema as SchemaObject));
 	validatorCache.set(schema, validator);
+	cacheValidator(jsonKey, validator);
 	return validator;
 };
 

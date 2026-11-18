@@ -42,18 +42,51 @@ import {
 const notFoundResponse = () => toErrorResponse(apiError(404, "not_found", "not found"));
 
 /** Read + bound the JSON body for create/update. Oversized payloads
- * are rejected on content-length first, then on actual bytes —
- * chunked requests without the header still can't exceed the cap. */
+ * are rejected on content-length first, then the body is STREAMED and
+ * counted in BYTES — a chunked request without the header (or with a
+ * lying one) aborts the moment the running total crosses
+ * API_MAX_BODY_BYTES instead of buffering the whole payload into
+ * memory first. UTF-8 is multi-byte, so bytes — not string length —
+ * are the honest unit. */
 const readJsonBody = async (request: Request): Promise<unknown> => {
 	const declared = Number(request.headers.get("content-length") ?? "0");
 	if (Number.isFinite(declared) && declared > API_MAX_BODY_BYTES) {
 		throw apiError(413, "payload_too_large", "request body too large");
 	}
-	const text = await request.text();
-	const bytes = new TextEncoder().encode(text).byteLength;
-	if (bytes > API_MAX_BODY_BYTES) {
-		throw apiError(413, "payload_too_large", "request body too large");
+	const stream = request.body;
+	if (stream === null) {
+		// No body at all — same failure shape as unparseable JSON.
+		throw apiError(400, "bad_request", "request body must be valid JSON");
 	}
+	const reader = stream.getReader();
+	const chunks: Uint8Array[] = [];
+	let total = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done || value === undefined) break;
+			total += value.byteLength;
+			if (total > API_MAX_BODY_BYTES) {
+				// Stop pulling — the rest of the body is never read.
+				await reader.cancel().catch(
+					/* v8 ignore next -- cancel() resolves on a live stream; the noop only
+					 * swallows a hypothetical rejection */
+					() => {},
+				);
+				throw apiError(413, "payload_too_large", "request body too large");
+			}
+			chunks.push(value);
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	const bytes = new Uint8Array(total);
+	let offset = 0;
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	const text = new TextDecoder().decode(bytes);
 	try {
 		return JSON.parse(text);
 	} catch {

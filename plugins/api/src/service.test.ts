@@ -13,6 +13,7 @@ import {
 	InvalidDocumentQuery,
 	type DocumentStoreShape,
 } from "@ktb/document-store";
+import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -93,7 +94,34 @@ const EXPOSURES: readonly ApiExposure[] = [
 	{ collection: "test.targets", methods: ["create", "delete"] },
 	// Exposed but the collection is unknown to the store.
 	{ collection: "test.ghost" },
+	// Enablement fixtures: plugin.on is enabled, plugin.off disabled
+	// (only when the gated runtime binds PluginStates).
+	{ collection: "test.things", basePath: "/api/documents/onthings", owner: "plugin.on" },
+	{
+		collection: "test.things",
+		basePath: "/api/documents/offthings",
+		owner: "plugin.off",
+	},
+	// Anonymous-read exposure owned by the disabled plugin — the
+	// enablement gate must beat `public: true`.
+	{
+		collection: "test.notes",
+		basePath: "/api/documents/offpub",
+		public: true,
+		owner: "plugin.off",
+	},
 ];
+
+/** PluginStates stub — only `enabledIds` is read by the Api gate. */
+const pluginStatesStub = (enabled: readonly string[]) =>
+	({
+		isEnabled: () => Effect.succeed(true),
+		enabledIds: () => Effect.succeed(new Set(enabled)),
+		config: () => Effect.succeed(null),
+		setEnabled: () => Effect.void,
+		setConfig: () => Effect.void,
+		entries: () => Effect.succeed([]),
+	}) as unknown as PluginStates["Service"];
 
 // Mutable grant switch for the Permissions stub.
 let grantsAllow = true;
@@ -104,7 +132,7 @@ const permissionsStub = Permissions.of({
 		grantsAllow ? Effect.void : Effect.fail({ _tag: "Forbidden", path: "x" } as never),
 } as never);
 
-const buildRuntime = (withPermissions: boolean) => {
+const buildRuntime = (withPermissions: boolean, states?: PluginStates["Service"]) => {
 	const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
 	const storeDeps = Layer.mergeAll(
 		Layer.succeed(Db, db),
@@ -115,6 +143,7 @@ const buildRuntime = (withPermissions: boolean) => {
 		documentStore,
 		Layer.succeed(ApiExposures, { exposures: EXPOSURES }),
 		...(withPermissions ? [Layer.succeed(Permissions, permissionsStub)] : []),
+		...(states === undefined ? [] : [Layer.succeed(PluginStates, states)]),
 	);
 	// DocumentStore is merged out too so tests can seed rows directly.
 	return ManagedRuntime.make(Layer.mergeAll(ApiLive.pipe(Layer.provide(apiDeps)), documentStore));
@@ -123,14 +152,17 @@ const buildRuntime = (withPermissions: boolean) => {
 describe("Api service", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Api | DocumentStore, never>;
 	let runtimeNoRbac: ManagedRuntime.ManagedRuntime<Api | DocumentStore, never>;
+	let runtimeGated: ManagedRuntime.ManagedRuntime<Api | DocumentStore, never>;
 
 	beforeAll(() => {
 		runtime = buildRuntime(true);
 		runtimeNoRbac = buildRuntime(false);
+		// plugin.on enabled, plugin.off (and every other id) disabled.
+		runtimeGated = buildRuntime(true, pluginStatesStub(["plugin.on"]));
 	});
 
 	afterAll(async () => {
-		await Promise.all([runtime.dispose(), runtimeNoRbac.dispose()]);
+		await Promise.all([runtime.dispose(), runtimeNoRbac.dispose(), runtimeGated.dispose()]);
 	});
 
 	const call = (
@@ -230,7 +262,36 @@ describe("Api service", () => {
 		}
 	});
 
-	it("enforces the methods gate (default read-only)", async () => {
+	it("404s exposures owned by disabled plugins — even public ones", async () => {
+		// Same indistinguishable 404 as an unexposed key.
+		await expectApiError(
+			call(runtimeGated, "u1", { key: "offthings", id: null, method: "GET" }),
+			404,
+			"not_found",
+		);
+		await expectApiError(
+			call(runtimeGated, null, { key: "offpub", id: null, method: "GET" }),
+			404,
+			"not_found",
+		);
+		// Enabled-owner and ownerless exposures stay live.
+		const on = await call(runtimeGated, "u1", { key: "onthings", id: null, method: "GET" });
+		expect(on.status).toBe(200);
+		const plain = await call(runtimeGated, "u1", {
+			key: "test.things",
+			id: null,
+			method: "GET",
+		});
+		expect(plain.status).toBe(200);
+		// Without PluginStates bound there is no gate — owner is ignored.
+		const ungated = await call(runtime, "u1", { key: "offthings", id: null, method: "GET" });
+		expect(ungated.status).toBe(200);
+	});
+
+	it("answers 404 for methods an exposure does not publish (no oracle)", async () => {
+		// test.things publishes only list+get — writes get the SAME 404
+		// as an unknown/unexposed key so anonymous callers cannot probe
+		// which collections are exposed.
 		await expectApiError(
 			call(runtime, "u1", {
 				key: "test.things",
@@ -238,14 +299,20 @@ describe("Api service", () => {
 				method: "POST",
 				body: { label: "x" },
 			}),
-			405,
-			"method_not_allowed",
+			404,
+			"not_found",
 		);
 		// delete is not published either (default methods are list+get).
 		await expectApiError(
 			call(runtime, "u1", { key: "test.things", id: 1, method: "DELETE" }),
-			405,
-			"method_not_allowed",
+			404,
+			"not_found",
+		);
+		// The 404 is indistinguishable from a genuinely unknown key.
+		await expectApiError(
+			call(runtime, "u1", { key: "test.secret", id: null, method: "POST", body: {} }),
+			404,
+			"not_found",
 		);
 		// get IS published — a missing record 404s through the store.
 		await expectApiError(

@@ -4,6 +4,7 @@ import type { Json } from "effect/Schema";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import type { WizardDefWire } from "./fns.ts";
 import { WizardsAdminConsolePage } from "./platform-page.tsx";
@@ -55,11 +56,16 @@ export const wizardsTablesPlugin = definePlugin({
  * handlers on — depend on `wizards.services` to order after it.
  * PlatformAdmin is a core infra service (always bound); the dep edge
  * keeps the platform module ordered/discovered like pages.services.
+ * `rbac.services` is an OPTIONAL dep purely for ordering: when the
+ * rbac plugin is enabled its `Permissions` port is bound before this
+ * layer builds, so `permission` gates resolve; when absent they fail
+ * closed (see ./service.ts).
  */
 export const wizardsServicesPlugin = definePlugin({
 	id: "wizards.services",
 	meta: { keywords: ["wizards", "services"] },
 	requiredDeps: [platformAdminPlugin.id],
+	optionalDeps: [rbacServicesPlugin.id],
 	services: WizardsServicesLive,
 });
 

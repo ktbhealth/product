@@ -31,6 +31,7 @@
 		"@ktb/email-stub": "workspace:*",
 		"@ktb/eval-adapter-local": "workspace:*",
 		"@ktb/eval-consultation": "workspace:*",
+		"@ktb/flows": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/observability": "workspace:*",
 		"@ktb/observability-otlp": "workspace:*",
@@ -38,6 +39,7 @@
 		"@ktb/tenant": "workspace:*",
 		"@ktb/triggers": "workspace:*",
 		"@ktb/views": "workspace:*",
+		"@ktb/wizards": "workspace:*",
 		"effect": "4.1.2"
 	},
 	"devDependencies": {

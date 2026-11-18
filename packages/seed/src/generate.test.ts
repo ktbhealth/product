@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { validate, type JsonSchema } from "@ktb/json-schema";
 
-import { generate, generateMany, generateRecord, SeedError } from "./index.ts";
+import { generate, generateMany, generateRecord, MAX_GENERATE_MANY, SeedError } from "./index.ts";
 
 /**
  * Fixture corpus — one schema per subset feature area. Every schema
@@ -398,6 +398,11 @@ describe("generate — error cases", () => {
 		["unsupported pattern lookahead", { type: "string", pattern: "^(?=a)a$" }],
 		["unsupported pattern backref", { type: "string", pattern: "^(a)\\1$" }],
 		["pattern exceeding maxLength", { type: "string", pattern: "^a{40}$", maxLength: 10 }],
+		// Catastrophic-backtracking shapes — rejected BEFORE the
+		// uninterruptible RegExp verify could hang the event loop.
+		["alternation ReDoS", { type: "string", pattern: "(a|aa)+b" }],
+		["nested-quantifier ReDoS", { type: "string", pattern: "(a+)+b" }],
+		["quantified alternation", { type: "string", pattern: "(a|b)*c" }],
 		[
 			"minProperties impossible",
 			{
@@ -870,6 +875,11 @@ describe("generate — depth and assertValid", () => {
 		expect(() => generate({ type: "string", pattern: "([" } as JsonSchema, { seed: 1 })).toThrow(
 			SeedError,
 		);
+		// "*" passes the unsafe-repetition screen but is not a valid
+		// RegExp source — covers the new RegExp() catch in genString.
+		expect(() => generate({ type: "string", pattern: "*" } as JsonSchema, { seed: 1 })).toThrow(
+			SeedError,
+		);
 	});
 });
 
@@ -892,6 +902,11 @@ describe("generateMany / generateRecord", () => {
 	it("generateMany rejects bad counts", () => {
 		expect(() => generateMany({}, -1)).toThrow(SeedError);
 		expect(() => generateMany({}, 1.5)).toThrow(SeedError);
+	});
+
+	it("generateMany caps count at MAX_GENERATE_MANY", () => {
+		expect(generateMany({ type: "integer" }, MAX_GENERATE_MANY).length).toBe(MAX_GENERATE_MANY);
+		expect(() => generateMany({ type: "integer" }, MAX_GENERATE_MANY + 1)).toThrow(SeedError);
 	});
 
 	it("generateRecord throws for non-object schemas", () => {

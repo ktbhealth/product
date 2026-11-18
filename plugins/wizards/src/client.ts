@@ -78,6 +78,10 @@ export const plugins: readonly Plugin[] = [
 		id: "wizards.services",
 		meta: { keywords: ["wizards", "services"] },
 		requiredDeps: ["platform.admin"],
+		// Mirrors wizardsServicesPlugin.optionalDeps (server index.ts) —
+		// literal id: importing @ktb/rbac-plugin would pull the server
+		// graph into the client bundle.
+		optionalDeps: ["rbac.services"],
 	}),
 	wizardsChromePlugin,
 	wizardsRenderPlugin,

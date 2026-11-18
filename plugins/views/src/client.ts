@@ -44,6 +44,10 @@ export const plugins: readonly Plugin[] = [
 		id: "views.services",
 		meta: { keywords: ["views", "services"] },
 		requiredDeps: ["document-store.services"],
+		// Mirrors viewsServicesPlugin.optionalDeps (server index.ts) —
+		// literal id: importing @ktb/rbac-plugin would pull the server
+		// graph into the client bundle.
+		optionalDeps: ["rbac.services"],
 	}),
 	viewsPagesPlugin,
 ];
