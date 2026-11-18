@@ -23,7 +23,7 @@ export const plugins: readonly Plugin[] = [
 		id: "ai.endpoints.services",
 		meta: { keywords: ["ai", "services"] },
 		requiredDeps: ["ai.endpoints.tables"],
-		optionalDeps: ["credentials.services", "vault.secrets"],
+		optionalDeps: ["credentials.services", "vault.secrets", "machines.services"],
 	}),
 	definePlugin({
 		// Mirrors aiEndpointsRoutesPlugin — the /api route subtree is

@@ -45,6 +45,7 @@ const bridgeEp: EndpointCard = {
 	transport: "ws",
 	agentCmd: null,
 	sshHost: null,
+	machineId: null,
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: 60_000,

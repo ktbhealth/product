@@ -22,6 +22,7 @@ import { EVAL_ACTION, EVAL_RESOURCE } from "@ktb/eval-validator";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
+import { Machines, type MachineCard } from "@ktb/machines";
 import { Secrets } from "@ktb/vault";
 
 import { mintBridgeToken, sha256Hex } from "./bridge-token.ts";
@@ -43,6 +44,7 @@ export interface EndpointCard {
 	readonly transport: string | null;
 	readonly agentCmd: string | null;
 	readonly sshHost: string | null;
+	readonly machineId: number | null;
 	readonly scope: string;
 	readonly isDefault: boolean;
 	readonly timeoutMs: number;
@@ -127,6 +129,9 @@ export interface EndpointInput {
 	readonly agentCmd?: string;
 	/** SSH target (user@host) for the ssh transport. */
 	readonly sshHost?: string;
+	/** Machine registry row (plugins/machines) this ACP endpoint runs
+	 * on — descriptor fills sshHost/secretRef defaults from the card. */
+	readonly machineId?: number | null;
 	/** Consuming surface the endpoint belongs to (default "eval"). */
 	readonly scope?: string;
 	readonly isDefault?: boolean;
@@ -147,6 +152,7 @@ const toEndpointCard = (row: AiEndpoint): EndpointCard => ({
 	transport: row.transport,
 	agentCmd: row.agentCmd,
 	sshHost: row.sshHost,
+	machineId: row.machineId,
 	scope: row.scope,
 	isDefault: row.isDefault,
 	timeoutMs: row.timeoutMs,
@@ -168,6 +174,22 @@ const requireGrant = Effect.fn("AiEndpoints.gate")(function* () {
 const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, never, unknown> =>
 	Effect.gen(function* () {
 		const transport = row.transport;
+		// Machine registry defaulting (P-098 D3): an endpoint bound to a
+		// `machine` row inherits sshHost/secretRef when it doesn't spell
+		// its own — explicit endpoint fields always win. `Machines.resolve`
+		// is the ungated server-side read; absent plugin or missing/
+		// disabled machine degrades to the endpoint's own fields.
+		let machine: MachineCard | null = null;
+		if (row.machineId !== null) {
+			const machines = yield* Effect.serviceOption(Machines);
+			if (Option.isSome(machines)) {
+				machine = yield* machines.value
+					.resolve(row.machineId)
+					.pipe(Effect.catch(() => Effect.succeed(null)));
+			}
+		}
+		const sshHost = row.sshHost ?? machine?.host ?? null;
+		const secretRef = row.secretRef ?? machine?.secretRef ?? null;
 		const base: LlmEndpointDescriptor = {
 			kind: row.kind === "acp" ? "acp" : "openai",
 			baseUrl: row.baseUrl ?? "",
@@ -180,10 +202,10 @@ const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, nev
 				? { transport }
 				: {}),
 			...(row.kind === "acp" && row.agentCmd !== null ? { agentCmd: row.agentCmd } : {}),
-			...(row.kind === "acp" && row.sshHost !== null ? { sshHost: row.sshHost } : {}),
+			...(row.kind === "acp" && sshHost !== null ? { sshHost } : {}),
 			timeoutMs: row.timeoutMs,
 		};
-		const ref = row.secretRef;
+		const ref = secretRef;
 		if (ref !== null && ref.startsWith("vault:")) {
 			const secrets = yield* Effect.serviceOption(Secrets);
 			/* v8 ignore next -- soft dep: vault plugin absent */
@@ -307,6 +329,7 @@ export const AiEndpointsLive = Layer.effect(
 			transport: input.transport ?? null,
 			agentCmd: input.agentCmd ?? null,
 			sshHost: input.sshHost ?? null,
+			machineId: input.machineId ?? null,
 			scope: input.scope ?? "eval",
 			isDefault: input.isDefault ?? false,
 			timeoutMs: input.timeoutMs ?? 60_000,
@@ -547,7 +570,7 @@ export const PlatformLlmLive = Layer.effect(
 /** DDL mirror of schema.ts for in-memory test databases (same
  * contract as EVAL_PERSONA_TEST_DDL). */
 export const AI_ENDPOINTS_TEST_DDL = `
-CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE ai_endpoint (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL, base_url TEXT, model TEXT, session_id TEXT, secret_ref TEXT, transport TEXT, agent_cmd TEXT, ssh_host TEXT, machine_id INTEGER, scope TEXT NOT NULL DEFAULT 'eval', is_default INTEGER NOT NULL DEFAULT 0, timeout_ms INTEGER NOT NULL DEFAULT 60000, enabled INTEGER NOT NULL DEFAULT 1, last_seen_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE ai_agent_link (id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id INTEGER NOT NULL REFERENCES ai_endpoint(id) ON DELETE cascade, token_hash TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, revoked_at INTEGER, created_at INTEGER NOT NULL);
 `;
 
@@ -565,7 +588,7 @@ export const aiEndpointsServicesPlugin = definePlugin({
 	// credential:/vault: ref paths resolve through the credentials
 	// and vault stores when those plugins are enabled — absence
 	// just skips them.
-	optionalDeps: ["credentials.services", "vault.secrets"],
+	optionalDeps: ["credentials.services", "vault.secrets", "machines.services"],
 	services: Layer.mergeAll(AiEndpointsLive, PlatformLlmLive),
 });
 

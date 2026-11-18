@@ -35,6 +35,12 @@ export const aiEndpoint = sqliteTable(
 		/** SSH target (user@host) for the ssh transport — agentCmd runs
 		 * on that host. */
 		sshHost: text("ssh_host"),
+		/** Optional `machine` registry row (plugins/machines) this ACP
+		 * endpoint runs on — descriptor resolution fills sshHost/secretRef
+		 * defaults from the card when the endpoint leaves them unset.
+		 * Plain integer, no FK: cross-plugin table references stay soft
+		 * so either plugin can be absent at migrate time. */
+		machineId: integer("machine_id"),
 		/** Consuming surface — e.g. "eval" for the lab's pickers. */
 		scope: text().notNull().default("eval"),
 		/** Preferred endpoint for callers that don't name one. */

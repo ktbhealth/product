@@ -271,6 +271,11 @@ export class Machines extends Context.Service<
 		 * design like `Secrets.resolve`: the machine row id is the
 		 * capability; agents run in system context. Audit-logged. */
 		readonly beat: (id: number) => Effect.Effect<void, MachineError>;
+		/** Server-side capability read for system consumers (ACP/ssh
+		 * adapters resolving an endpoint's `machineId`) — ungated like
+		 * `Secrets.resolve`: the machine id is the capability, user-facing
+		 * surfaces use the gated `get`/`list`. Audit-logged. */
+		readonly resolve: (id: number) => Effect.Effect<MachineCard | null, MachineError>;
 		/** Probe healthUrl (HTTP GET, 5s) or derive heartbeat staleness;
 		 * persists status/lastCheckAt/checkError. */
 		readonly check: (
@@ -484,6 +489,13 @@ export const MachinesLive = Layer.effect(
 					}),
 				);
 				yield* recordAudit("machines.beat", updated);
+			}),
+
+			resolve: Effect.fn("Machines.resolve")(function* (id) {
+				const row = yield* Effect.promise(() => getMachineById(db, id));
+				if (row === null || row.enabled !== 1) return null;
+				yield* recordAudit("machines.resolve", row);
+				return toCardLive(row, now());
 			}),
 
 			check: Effect.fn("Machines.check")(function* (id) {

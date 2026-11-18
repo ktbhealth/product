@@ -50,6 +50,10 @@ const credFns = vi.hoisted(() => ({
 	})),
 }));
 vi.mock("@ktb/credentials/fns", () => credFns);
+const machineFns = vi.hoisted(() => ({
+	machinesListFn: vi.fn<(a?: Arg) => Promise<readonly unknown[]>>(async () => []),
+}));
+vi.mock("@ktb/machines/fns", () => machineFns);
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: vi.fn<() => void>() }),
 }));
@@ -75,6 +79,7 @@ const endpoint: EndpointCard = {
 	transport: null,
 	agentCmd: null,
 	sshHost: null,
+	machineId: null,
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: 60_000,

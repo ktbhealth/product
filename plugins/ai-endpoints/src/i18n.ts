@@ -31,6 +31,8 @@ export interface AiEndpointMessages {
 	readonly agentCmd: string;
 	readonly agentCmdHint: string;
 	readonly sshHost: string;
+	readonly machine: string;
+	readonly machineHint: string;
 	readonly acpHint: string;
 	readonly emptyEndpoints: string;
 	readonly actionFailed: string;
@@ -101,6 +103,8 @@ const en: AiEndpointMessages = {
 	agentCmd: "Agent command",
 	agentCmdHint: "Command the Node runtime spawns — e.g. `claude-agent-acp` or `gemini --acp`.",
 	sshHost: "SSH host",
+	machine: "Machine",
+	machineHint: "Registry machine this agent runs on — fills SSH host and secret ref when unset.",
 	acpHint:
 		"Connects a local agent over ACP (e.g. Claude Code). No API key needed — run `claude-agent-acp` and paste the session id.",
 	emptyEndpoints: "No endpoints — generation falls back to the template renderer.",
@@ -176,6 +180,9 @@ const ptBR: AiEndpointMessages = {
 	agentCmd: "Comando do agente",
 	agentCmdHint: "Comando que o runtime Node executa — ex.: `claude-agent-acp` ou `gemini --acp`.",
 	sshHost: "Host SSH",
+	machine: "Máquina",
+	machineHint:
+		"Máquina registrada onde o agente roda — preenche host SSH e ref de segredo quando vazio.",
 	acpHint:
 		"Conecta um agente local via ACP (ex.: Claude Code). Sem API key — rode `claude-agent-acp` e cole o id de sessão.",
 	emptyEndpoints: "Sem endpoints — a geração usa o renderizador de template.",
@@ -239,6 +246,9 @@ const es: AiEndpointMessages = {
 	agentCmd: "Comando del agente",
 	agentCmdHint: "Comando que el runtime Node ejecuta — p. ej. `claude-agent-acp` o `gemini --acp`.",
 	sshHost: "Host SSH",
+	machine: "Máquina",
+	machineHint:
+		"Máquina registrada donde corre el agente — completa host SSH y ref de secreto cuando está vacío.",
 	acpHint:
 		"Conecta un agente local vía ACP (p. ej. Claude Code). Sin API key — ejecuta `claude-agent-acp` y pega el id de sesión.",
 	secretRefNone: "Ninguna",

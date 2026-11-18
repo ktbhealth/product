@@ -40,6 +40,8 @@ import {
 	setPlatformDefaultEndpointFn,
 	testEndpointFn,
 } from "../fns.ts";
+import { machinesListFn } from "@ktb/machines/fns";
+import type { MachineCard } from "@ktb/machines";
 import { aiEndpointMessages } from "../i18n.ts";
 import type { BridgeStatus, EndpointCard } from "../index.ts";
 
@@ -68,6 +70,7 @@ type EndpointForm = {
 	transport: string;
 	agentCmd: string;
 	sshHost: string;
+	machineId: string;
 	scope: string;
 	isDefault: boolean;
 	timeoutMs: string;
@@ -117,6 +120,7 @@ const ENDPOINT_EMPTY: EndpointForm = {
 	transport: "ws",
 	agentCmd: "",
 	sshHost: "",
+	machineId: "",
 	scope: "eval",
 	isDefault: false,
 	timeoutMs: "60000",
@@ -134,6 +138,7 @@ const endpointFromCard = (e: EndpointCard): EndpointForm => ({
 	transport: e.transport ?? "ws",
 	agentCmd: e.agentCmd ?? "",
 	sshHost: e.sshHost ?? "",
+	machineId: e.machineId !== null ? String(e.machineId) : "",
 	scope: e.scope,
 	isDefault: e.isDefault,
 	timeoutMs: String(e.timeoutMs),
@@ -155,6 +160,9 @@ export function EndpointsPage({
 	const [endpoints, setEndpoints] = useState<readonly EndpointCard[]>(initial);
 	const [epForm, setEpForm] = useState<EndpointForm | null>(null);
 	const [creds, setCreds] = useState<readonly CredentialCard[]>([]);
+	// Machine registry cards for the ACP "run on" picker — lazily loaded
+	// with the dialog like the credentials above.
+	const [machines, setMachines] = useState<readonly MachineCard[]>([]);
 	// Provider starter endpoints declared by the bound adapter — fetched
 	// lazily with the credentials so provider URLs never ship in the
 	// plugin bundle (provider-lockin).
@@ -185,9 +193,15 @@ export function EndpointsPage({
 		setEpForm(f);
 		setSecretCustom(false);
 		void (async () => {
-			const [c, p] = await Promise.all([listCredentialsFn(), listEndpointPresetsFn()]);
+			const [c, p, mc] = await Promise.all([
+				listCredentialsFn(),
+				listEndpointPresetsFn(),
+				// Best-effort: a machines failure just leaves the picker empty.
+				machinesListFn().catch(() => [] as readonly MachineCard[]),
+			]);
 			if (c.ok) setCreds(c.data);
 			if (p.ok) setRemotePresets(p.data);
+			setMachines(mc);
 		})();
 	};
 
@@ -228,6 +242,7 @@ export function EndpointsPage({
 				...(epForm.kind === "acp" && epForm.transport === "ssh" && epForm.sshHost !== ""
 					? { sshHost: epForm.sshHost }
 					: {}),
+				...(epForm.machineId !== "" ? { machineId: Number(epForm.machineId) } : {}),
 				...(epForm.scope !== "" ? { scope: epForm.scope } : {}),
 				isDefault: epForm.isDefault,
 				...(epForm.timeoutMs !== "" ? { timeoutMs: Number(epForm.timeoutMs) } : {}),
@@ -494,6 +509,22 @@ export function EndpointsPage({
 													/>
 												</Field>
 											)}
+											<Field>
+												<FieldLabel>{m.machine}</FieldLabel>
+												<select
+													className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+													value={epForm.machineId}
+													onChange={(e) => setEpForm({ ...epForm, machineId: e.target.value })}
+												>
+													<option value="">—</option>
+													{machines.map((mc) => (
+														<option key={mc.id} value={mc.id}>
+															{mc.name}
+														</option>
+													))}
+												</select>
+												<p className="mt-1 text-xs text-muted-foreground">{m.machineHint}</p>
+											</Field>
 										</div>
 									)}
 								</>

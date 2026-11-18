@@ -12,6 +12,7 @@ import {
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
 } from "@ktb/eval-consultation";
+import { Machines, type MachineCard } from "@ktb/machines";
 import { Permissions } from "@ktb/rbac";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
@@ -119,16 +120,42 @@ const apiKeysLayer = () => {
 	);
 };
 
+const MACHINE_CARD: MachineCard = {
+	id: 7,
+	scope: "platform",
+	tenantId: null,
+	name: "gpu-box",
+	kind: "vm",
+	host: "gpu.internal:2222",
+	port: null,
+	capabilities: [],
+	secretRef: "vault:42",
+	healthUrl: null,
+	status: "online",
+	lastSeenAt: null,
+	lastCheckAt: null,
+	checkError: null,
+	enabled: true,
+	createdAt: new Date(0),
+	updatedAt: null,
+};
+
+/** Machines service stub — only `resolve` is exercised by descriptor
+ * resolution; the rest of the surface is irrelevant here. */
+const machinesLayer = (card: MachineCard | null) =>
+	Layer.succeed(Machines, { resolve: () => Effect.succeed(card) } as never);
+
 const make = (
 	opts: {
 		allow?: boolean;
 		factory?: FactoryKind | "none";
 		credentials?: boolean;
+		machines?: MachineCard | null;
 		captured?: LlmEndpointDescriptor[];
 		presets?: readonly LlmEndpointPreset[];
 	} = {},
 ) => {
-	const { allow = true, factory = "none", credentials = false, captured, presets } = opts;
+	const { allow = true, factory = "none", credentials = false, machines, captured, presets } = opts;
 	const d1 = makeD1(AI_ENDPOINTS_TEST_DDL);
 	const db = makeDb(d1);
 	const layers = Layer.mergeAll(
@@ -136,6 +163,7 @@ const make = (
 		grantLayer(allow),
 		apiKeysLayer(),
 		factory === "none" ? Layer.empty : factoryLayer(factory, captured, presets),
+		...(machines !== undefined ? [machinesLayer(machines)] : []),
 	);
 	const rt = ManagedRuntime.make(
 		Layer.merge(
@@ -420,6 +448,59 @@ describe("endpoint transport", () => {
 		await run(Effect.flatMap(AiEndpoints, (s) => s.test(openai)));
 		expect(captured.at(-1)?.transport).toBeUndefined();
 		await rt.dispose();
+	});
+});
+
+describe("machine-linked endpoints (D3)", () => {
+	const ACP_SSH: EndpointInput = {
+		name: "acp-on-gpu",
+		kind: "acp",
+		baseUrl: "ssh://gpu",
+		transport: "ssh",
+		agentCmd: "claude-agent-acp",
+		machineId: 7,
+	};
+
+	it("fills sshHost from the machine card and persists machineId", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({ factory: "ok", captured, machines: MACHINE_CARD });
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(ACP_SSH)));
+		const listed = await run(Effect.flatMap(AiEndpoints, (s) => s.list()));
+		expect(listed[0]?.machineId).toBe(7);
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(captured.at(-1)).toMatchObject({
+			transport: "ssh",
+			agentCmd: "claude-agent-acp",
+			sshHost: "gpu.internal:2222",
+		});
+		await rt.dispose();
+	});
+
+	it("explicit sshHost wins over the machine card", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({ factory: "ok", captured, machines: MACHINE_CARD });
+		const { id } = await run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...ACP_SSH, sshHost: "me@override" })),
+		);
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(captured.at(-1)?.sshHost).toBe("me@override");
+		await rt.dispose();
+	});
+
+	it("degrades to endpoint fields when the machine is missing or the plugin is absent", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		// Machines bound but resolve() → null (deleted/disabled row).
+		const missing = make({ factory: "ok", captured, machines: null });
+		const { id: a } = await missing.run(Effect.flatMap(AiEndpoints, (s) => s.create(ACP_SSH)));
+		await missing.run(Effect.flatMap(AiEndpoints, (s) => s.test(a)));
+		expect(captured.at(-1)?.sshHost).toBeUndefined();
+		await missing.rt.dispose();
+		// No Machines service bound at all — serviceOption → None.
+		const absent = make({ factory: "ok", captured });
+		const { id: b } = await absent.run(Effect.flatMap(AiEndpoints, (s) => s.create(ACP_SSH)));
+		await absent.run(Effect.flatMap(AiEndpoints, (s) => s.test(b)));
+		expect(captured.at(-1)?.sshHost).toBeUndefined();
+		await absent.rt.dispose();
 	});
 });
 
