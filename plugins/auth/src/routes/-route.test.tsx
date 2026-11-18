@@ -5,9 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
 	loaderData: {
-		current: undefined as { locale: string; emailEnabled: boolean } | undefined,
+		current: undefined as
+			| { locale: string; emailEnabled: boolean; secretaryLoginEnabled: boolean }
+			| undefined,
 	},
 	pageProps: { current: undefined as Record<string, unknown> | undefined },
+	pluginEnabledFn: vi.fn(async (_arg: { data: string }) => true),
 }));
 
 vi.mock("@ktb/server-fns", async (importOriginal) => {
@@ -21,6 +24,7 @@ vi.mock("@ktb/server-fns", async (importOriginal) => {
 			options: opts,
 			useLoaderData: () => mocks.loaderData.current,
 		}),
+		pluginEnabledFn: mocks.pluginEnabledFn,
 	};
 });
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -43,7 +47,7 @@ vi.mock("../views/LoginPage.tsx", () => ({
 
 import { Route } from "./login.tsx";
 
-type LoaderData = { locale: string; emailEnabled: boolean };
+type LoaderData = { locale: string; emailEnabled: boolean; secretaryLoginEnabled: boolean };
 type Opts = {
 	loader: () => Promise<LoaderData>;
 	head: (ctx: { loaderData?: LoaderData }) => { meta: { title: string }[] };
@@ -54,6 +58,7 @@ const opts = (Route as unknown as { options: Opts }).options;
 afterEach(() => {
 	cleanup();
 	vi.clearAllMocks();
+	mocks.pluginEnabledFn.mockResolvedValue(true);
 });
 
 describe("/login route", () => {
@@ -61,26 +66,48 @@ describe("/login route", () => {
 		await expect(opts.loader()).resolves.toEqual({
 			locale: "pt-BR",
 			emailEnabled: true,
+			secretaryLoginEnabled: true,
+		});
+		expect(mocks.pluginEnabledFn).toHaveBeenCalledWith({
+			data: "secretaries.routes",
+		});
+		expect(mocks.pluginEnabledFn).toHaveBeenCalledWith({ data: "doctors.routes" });
+		expect(mocks.pluginEnabledFn).toHaveBeenCalledWith({ data: "clinician.portal" });
+	});
+
+	it("marks the secretary flow unavailable when any of its packages is off", async () => {
+		mocks.pluginEnabledFn.mockImplementation(
+			async ({ data }: { data: string }) => data !== "secretaries.routes",
+		);
+		await expect(opts.loader()).resolves.toEqual({
+			locale: "pt-BR",
+			emailEnabled: true,
+			secretaryLoginEnabled: false,
 		});
 	});
 
 	it("sets the localized document title from loader data", () => {
-		expect(opts.head({ loaderData: { locale: "pt-BR", emailEnabled: true } }).meta[0]!.title).toBe(
-			"Entrar | KTB Health",
-		);
-		expect(opts.head({ loaderData: { locale: "es", emailEnabled: true } }).meta[0]!.title).toBe(
-			"Iniciar sesión | KTB Health",
-		);
+		expect(
+			opts.head({
+				loaderData: { locale: "pt-BR", emailEnabled: true, secretaryLoginEnabled: true },
+			}).meta[0]!.title,
+		).toBe("Entrar | KTB Health");
+		expect(
+			opts.head({
+				loaderData: { locale: "es", emailEnabled: true, secretaryLoginEnabled: true },
+			}).meta[0]!.title,
+		).toBe("Iniciar sesión | KTB Health");
 		// Missing loader data falls back to the base locale.
 		expect(opts.head({}).meta[0]!.title).toBe("Sign in | KTB Health");
 	});
 
 	it("renders LoginPage with the loader data", () => {
-		mocks.loaderData.current = { locale: "es", emailEnabled: false };
+		mocks.loaderData.current = { locale: "es", emailEnabled: false, secretaryLoginEnabled: false };
 		render(createElement(opts.component));
 		expect(mocks.pageProps.current).toEqual({
 			locale: "es",
 			emailEnabled: false,
+			secretaryLoginEnabled: false,
 		});
 	});
 
@@ -90,6 +117,7 @@ describe("/login route", () => {
 		expect(mocks.pageProps.current).toEqual({
 			locale: "en",
 			emailEnabled: false,
+			secretaryLoginEnabled: true,
 		});
 	});
 });

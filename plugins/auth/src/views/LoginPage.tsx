@@ -37,11 +37,15 @@ export function LoginPage({
 
 	locale,
 	emailEnabled,
+	secretaryLoginEnabled,
 }: {
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale: string;
 	readonly emailEnabled: boolean;
+	/** Whether /login/secretary's whole flow is live (P-058) — the
+	 * /login picker's rule, resolved by the route loader. */
+	readonly secretaryLoginEnabled: boolean;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, authMessages(locale));
 	const [mode, setMode] = useState<"in" | "up">("in");
@@ -197,12 +201,14 @@ export function LoginPage({
 					>
 						{t.verifyLink}
 					</Link>
-					<Link
-						to="/login/secretary"
-						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
-					>
-						{t.secretaryLink}
-					</Link>
+					{secretaryLoginEnabled ? (
+						<Link
+							to="/login/secretary"
+							className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
+						>
+							{t.secretaryLink}
+						</Link>
+					) : null}
 				</CardContent>
 			</Card>
 		</div>

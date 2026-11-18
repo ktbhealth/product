@@ -133,10 +133,11 @@ describe("/login/secretary", () => {
 		}
 	).options;
 
-	it("loads the locale and whether email can be sent", async () => {
+	it("loads the locale, the email capability and the doctor-flow availability", async () => {
 		await expect(loginOptions.loader()).resolves.toEqual({
 			locale: "pt-BR",
 			emailEnabled: true,
+			doctorLoginEnabled: true,
 		});
 	});
 
