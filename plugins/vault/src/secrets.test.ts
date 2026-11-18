@@ -21,13 +21,13 @@ const DDL =
 const TENANT_ID = 7;
 const MASTER_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=";
 
-const makeRuntime = (db: DbClient, opts: { keyring?: boolean } = {}) => {
+const makeRuntime = (db: DbClient, opts: { keyring?: Layer.Layer<SecretKeyring> | false } = {}) => {
 	const infra = Layer.mergeAll(
 		Layer.succeed(Db, db),
 		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		...(opts.keyring === false
 			? []
-			: [secretKeyringLive(MASTER_KEY) as Layer.Layer<SecretKeyring>]),
+			: [opts.keyring ?? (secretKeyringLive(MASTER_KEY) as Layer.Layer<SecretKeyring>)]),
 	);
 	return ManagedRuntime.make(SecretsLive.pipe(Layer.provide(infra)));
 };
@@ -291,5 +291,246 @@ describe("Secrets", () => {
 		});
 		// Detail carries ids/metadata only — never the value.
 		expect(JSON.stringify(recorded[0])).not.toContain("s3cr3t-value");
+	});
+
+	it("tenant scope fails closed on null tenant and wrong tenant id", async () => {
+		const rt = makeRuntime(db);
+		// No bound tenant → tenant-mismatch.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.list({ tenantId: TENANT_ID })),
+				{ role: null, email: "nobody@x.com" },
+			),
+		).rejects.toMatchObject({ reason: "tenant-mismatch" });
+		// Bound tenant id differs from the requested scope → mismatch.
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.list({ tenantId: 99 })),
+				{ role: "member", email: "u@x.com" },
+			),
+		).rejects.toMatchObject({ reason: "tenant-mismatch" });
+		await rt.dispose();
+	});
+
+	it("rejects blank-after-trim names and empty values", async () => {
+		const rt = makeRuntime(db);
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.put({ tenantId: null, name: "  ", value: "x" })),
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.put({ tenantId: null, name: "n", value: "" })),
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		await rt.dispose();
+	});
+
+	it("rotate and remove reject unknown ids", async () => {
+		const rt = makeRuntime(db);
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.rotate({ id: 999999 })),
+			),
+		).rejects.toMatchObject({ reason: "not-found" });
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Secrets, (s) => s.remove({ id: 999999 })),
+			),
+		).rejects.toMatchObject({ reason: "not-found" });
+		await rt.dispose();
+	});
+
+	it("replace keeps provider/kind/hint unless overridden", async () => {
+		const rt = makeRuntime(db);
+		const first = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) =>
+				s.put({
+					tenantId: null,
+					name: "meta-secret",
+					value: "v1",
+					provider: "openai",
+					kind: "api-key",
+					hint: "-1",
+				}),
+			),
+		);
+		// Bare upsert — provider/kind/hint fall back to the existing row.
+		const second = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) => s.put({ tenantId: null, name: "meta-secret", value: "v2" })),
+		);
+		expect(second).toMatchObject({
+			id: first.id,
+			provider: "openai",
+			kind: "api-key",
+			hint: "-1",
+			version: 2,
+		});
+		// Explicit overrides win, including hint: null.
+		const third = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) =>
+				s.put({
+					tenantId: null,
+					name: "meta-secret",
+					value: "v3",
+					provider: "anthropic",
+					kind: "token",
+					hint: null,
+				}),
+			),
+		);
+		expect(third).toMatchObject({
+			provider: "anthropic",
+			kind: "token",
+			hint: null,
+			version: 3,
+		});
+		await rt.dispose();
+	});
+
+	it("audits puts across scopes with correct tenant attribution", async () => {
+		const recorded: Array<Record<string, unknown>> = [];
+		const auditStub = {
+			record: (entry: Record<string, unknown>) =>
+				Effect.sync(() => {
+					recorded.push(entry);
+				}),
+		} as never;
+		const rt = makeRuntime(db);
+		const withAudit = <A, E>(eff: Effect.Effect<A, E, Secrets>) =>
+			eff.pipe(Effect.provideService(Audit, auditStub));
+		await run(
+			rt,
+			withAudit(
+				Effect.flatMap(Secrets, (s) => s.put({ tenantId: null, name: "aud-plat", value: "x" })),
+			),
+		);
+		await run(
+			rt,
+			withAudit(
+				Effect.flatMap(Secrets, (s) => s.put({ tenantId: TENANT_ID, name: "aud-ten", value: "x" })),
+			),
+			{ role: "admin", email: "admin@x.com" },
+		);
+		await run(
+			rt,
+			withAudit(
+				Effect.flatMap(Secrets, (s) =>
+					s.put({ tenantId: null, userId: "u1", name: "aud-user", value: "x" }),
+				),
+			),
+			{ userId: "u1", email: "u1@x.com" },
+		);
+		const creates = recorded.filter((e) => e.action === "vault.secret.create");
+		expect(creates).toHaveLength(3);
+		// platform → null tenantId; tenant → 7; user scope → null (NaN-safe).
+		expect(creates.map((e) => e.tenantId).sort()).toEqual([null, null, TENANT_ID].sort());
+		await rt.dispose();
+	});
+
+	it("createdBy is null without a Principal and null-safe on missing userId", async () => {
+		const rt = makeRuntime(db);
+		const tenantAdmin = {
+			id: TENANT_ID,
+			kind: "clinic",
+			slug: "clinic-7",
+			role: "admin",
+		} as const;
+		// Tenant-scope write with NO Principal service at all → the
+		// platform/user authz branches never run, createdBy stays null.
+		await rt.runPromise(
+			Effect.flatMap(Secrets, (s) =>
+				s.put({ tenantId: TENANT_ID, name: "no-principal", value: "x" }),
+			).pipe(Effect.provideService(Tenant, tenantAdmin)),
+		);
+		// Principal present but userId null → createdBy null.
+		await rt.runPromise(
+			Effect.flatMap(Secrets, (s) =>
+				s.put({ tenantId: TENANT_ID, name: "null-uid", value: "x" }),
+			).pipe(
+				Effect.provideService(Tenant, tenantAdmin),
+				Effect.provideService(Principal, { userId: null, email: "x@x.com" } as never),
+			),
+		);
+		const rows = await listSecrets(db, String(TENANT_ID));
+		for (const name of ["no-principal", "null-uid"]) {
+			expect(rows.find((r) => r.name === name)?.createdBy).toBeNull();
+		}
+		await rt.dispose();
+	});
+
+	it("maps keyring failures to decrypt-failed on resolve", async () => {
+		// Seed a real secret, then resolve through runtimes whose
+		// unwrapDek misbehaves.
+		const rt = makeRuntime(db);
+		const meta = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) => s.put({ tenantId: null, name: "dek-fail", value: "s3cr3t" })),
+		);
+		const ref = secretRefFor(meta.id);
+
+		// Non-Error rejection → String(e) detail arm.
+		const stringKeyring = Layer.succeed(SecretKeyring, {
+			wrapDek: async () => "w",
+			unwrapDek: async () => {
+				throw "plain-string-failure";
+			},
+			kekVersion: "test",
+		});
+		const rtString = makeRuntime(db, { keyring: stringKeyring });
+		await expect(
+			run(
+				rtString,
+				Effect.flatMap(Secrets, (s) => s.resolve(ref)),
+			),
+		).rejects.toMatchObject({ reason: "decrypt-failed" });
+
+		// SecretError from the keyring rethrows as-is.
+		const secretKeyring = Layer.succeed(SecretKeyring, {
+			wrapDek: async () => "w",
+			unwrapDek: async () => {
+				throw new SecretError({ reason: "cipher-unavailable" });
+			},
+			kekVersion: "test",
+		});
+		const rtSecret = makeRuntime(db, { keyring: secretKeyring });
+		// open() rethrows SecretError as-is, then tryPromise maps it to
+		// decrypt-failed like any other unwrap failure.
+		await expect(
+			run(
+				rtSecret,
+				Effect.flatMap(Secrets, (s) => s.resolve(ref)),
+			),
+		).rejects.toMatchObject({ reason: "decrypt-failed" });
+
+		// Error instance → message detail arm.
+		const errorKeyring = Layer.succeed(SecretKeyring, {
+			wrapDek: async () => "w",
+			unwrapDek: async () => {
+				throw new Error("unwrap boom");
+			},
+			kekVersion: "test",
+		});
+		const rtError = makeRuntime(db, { keyring: errorKeyring });
+		await expect(
+			run(
+				rtError,
+				Effect.flatMap(Secrets, (s) => s.resolve(ref)),
+			),
+		).rejects.toMatchObject({ reason: "decrypt-failed" });
+		await rt.dispose();
+		await rtString.dispose();
+		await rtSecret.dispose();
+		await rtError.dispose();
 	});
 });

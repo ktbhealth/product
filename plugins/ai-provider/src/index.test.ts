@@ -14,6 +14,7 @@ import {
 } from "@ktb/eval-consultation";
 import { Machines, type MachineCard } from "@ktb/machines";
 import { Permissions } from "@ktb/rbac";
+import { Secrets } from "@ktb/vault";
 import { eq } from "drizzle-orm";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -142,20 +143,33 @@ const MACHINE_CARD: MachineCard = {
 
 /** Machines service stub — only `resolve` is exercised by descriptor
  * resolution; the rest of the surface is irrelevant here. */
-const machinesLayer = (card: MachineCard | null) =>
-	Layer.succeed(Machines, { resolve: () => Effect.succeed(card) } as never);
+const machinesLayer = (card: MachineCard | null | "fail") =>
+	Layer.succeed(Machines, {
+		resolve: () =>
+			card === "fail" ? Effect.fail(new Error("machines down")) : Effect.succeed(card),
+	} as never);
 
 const make = (
 	opts: {
 		allow?: boolean;
 		factory?: FactoryKind | "none";
 		credentials?: boolean;
-		machines?: MachineCard | null;
+		machines?: MachineCard | null | "fail";
 		captured?: LlmEndpointDescriptor[];
 		presets?: readonly LlmEndpointPreset[];
+		/** Vault `Secrets` stub — only `resolve` is exercised. */
+		secrets?: (ref: string) => Effect.Effect<string | null, unknown>;
 	} = {},
 ) => {
-	const { allow = true, factory = "none", credentials = false, machines, captured, presets } = opts;
+	const {
+		allow = true,
+		factory = "none",
+		credentials = false,
+		machines,
+		captured,
+		presets,
+		secrets,
+	} = opts;
 	const d1 = makeD1(AI_ENDPOINTS_TEST_DDL);
 	const db = makeDb(d1);
 	const layers = Layer.mergeAll(
@@ -164,6 +178,9 @@ const make = (
 		apiKeysLayer(),
 		factory === "none" ? Layer.empty : factoryLayer(factory, captured, presets),
 		...(machines !== undefined ? [machinesLayer(machines)] : []),
+		...(secrets !== undefined
+			? [Layer.succeed(Secrets, { resolve: secrets } as never) as Layer.Layer<unknown>]
+			: []),
 	);
 	const rt = ManagedRuntime.make(
 		Layer.merge(
@@ -383,6 +400,29 @@ describe("AiEndpoints.resolve", () => {
 		expect(captured.at(-1)?.apiKey).toBeUndefined();
 		await missing.rt.dispose();
 	});
+
+	it("resolves vault:<id> refs into apiKey through the secrets store", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({
+			factory: "ok",
+			captured,
+			secrets: (ref) =>
+				ref === "vault:42" ? Effect.succeed("sk-vault") : Effect.fail(new Error("secret gone")),
+		});
+		const { id: ok } = await run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...EP, secretRef: "vault:42" })),
+		);
+		const { id: bad } = await run(
+			Effect.flatMap(AiEndpoints, (s) => s.create({ ...EP, name: "O2", secretRef: "vault:99" })),
+		);
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(ok)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(bad)));
+		// Resolved ref becomes apiKey; a failing resolve drops the key.
+		expect(captured.at(-2)?.apiKey).toBe("sk-vault");
+		expect(captured.at(-1)?.apiKey).toBeUndefined();
+		expect(captured.at(-1)?.secretRef).toBeUndefined();
+		await rt.dispose();
+	});
 });
 
 describe("endpoint transport", () => {
@@ -501,6 +541,15 @@ describe("machine-linked endpoints (D3)", () => {
 		await absent.run(Effect.flatMap(AiEndpoints, (s) => s.test(b)));
 		expect(captured.at(-1)?.sshHost).toBeUndefined();
 		await absent.rt.dispose();
+	});
+
+	it("degrades when machines.resolve itself fails", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({ factory: "ok", captured, machines: "fail" });
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(ACP_SSH)));
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(captured.at(-1)?.sshHost).toBeUndefined();
+		await rt.dispose();
 	});
 });
 

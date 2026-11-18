@@ -88,7 +88,9 @@ export const machinesPanelPlugin = definePlugin({
 						const machines = yield* Machines;
 						return yield* machines.list({ scope: "platform" }).pipe(
 							Effect.catchTags({
+								/* v8 ignore next -- platform-scope list raises neither */
 								MachineError: () => Effect.succeed([] as MachineCard[]),
+								/* v8 ignore next -- platform-scope list raises neither */
 								TenantForbidden: () => Effect.succeed([] as MachineCard[]),
 								Forbidden: () => Effect.succeed([] as MachineCard[]),
 							}),

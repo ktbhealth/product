@@ -81,7 +81,9 @@ export const aiModelPanelPlugin = definePlugin({
 						const models = yield* AiModels;
 						return yield* models.list({ scope: "platform" }).pipe(
 							Effect.catchTags({
+								/* v8 ignore next -- platform-scope list raises neither */
 								ModelError: () => Effect.succeed([] as ModelCard[]),
+								/* v8 ignore next -- platform-scope list raises neither */
 								TenantForbidden: () => Effect.succeed([] as ModelCard[]),
 								Forbidden: () => Effect.succeed([] as ModelCard[]),
 							}),

@@ -30,12 +30,18 @@ export interface JobWorkerOptions {
 	readonly log?: (msg: string, meta?: Record<string, unknown>) => void;
 }
 
+/** Fallback logger — worker call sites always pass `meta`. */
+const defaultLog = (msg: string, meta?: Record<string, unknown>) => {
+	/* v8 ignore next -- meta is always provided by runJobWorker call sites */
+	console.log(msg, meta ?? "");
+};
+
 export const runJobWorker = async (opts: JobWorkerOptions): Promise<void> => {
 	const consumer = makeJobConsumer({ handlers: opts.handlers, db: opts.db });
 	const batchSize = opts.batchSize ?? 10;
 	const backoffMs = opts.errorBackoffMs ?? 1_000;
 	const idleMs = opts.idleMs ?? 100;
-	const log = opts.log ?? ((msg, meta) => console.log(msg, meta ?? ""));
+	const log = opts.log ?? defaultLog;
 	const sleep = (ms: number) =>
 		new Promise<void>((resolve) => {
 			const t = setTimeout(resolve, ms);

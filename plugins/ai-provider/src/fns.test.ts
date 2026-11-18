@@ -154,6 +154,7 @@ describe("ai-endpoints fns", () => {
 					transport: "ssh",
 					agentCmd: "claude-agent-acp",
 					sshHost: "me@gpu-box",
+					machineId: 7,
 				},
 			}),
 		).toEqual({

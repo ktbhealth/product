@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { JobMessageLike } from "@ktb/jobs-port";
 
@@ -74,5 +74,64 @@ describe("runJobWorker", () => {
 		};
 		await runJobWorker({ transport, handlers: {}, signal: ac.signal, idleMs: 1 });
 		expect(calls).toBe(3);
+	});
+
+	it("falls back to console.log when no logger is provided", async () => {
+		const ac = new AbortController();
+		const logs: string[] = [];
+		const spy = vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => {
+			logs.push(a.map(String).join(" "));
+		});
+		let calls = 0;
+		const transport: JobWorkerTransport = {
+			receive: async () => {
+				calls++;
+				if (calls === 1) throw new Error("redis down");
+				ac.abort();
+				return [];
+			},
+		};
+		await runJobWorker({
+			transport,
+			handlers: {},
+			signal: ac.signal,
+			errorBackoffMs: 1,
+		});
+		spy.mockRestore();
+		expect(logs.some((l) => l.includes("transport error"))).toBe(true);
+	});
+
+	it("logs and survives consumer dispatch errors", async () => {
+		const ac = new AbortController();
+		const logs: string[] = [];
+		let calls = 0;
+		const transport: JobWorkerTransport = {
+			receive: async () => {
+				calls++;
+				if (calls === 1) {
+					// ack() throwing escapes makeJobConsumer's per-message
+					// handling — the worker must log and keep looping.
+					return [
+						{
+							body: { id: "1", kind: "jobs.ping", payload: {} },
+							ack: () => {
+								throw new Error("ack boom");
+							},
+							retry: () => {},
+						},
+					];
+				}
+				ac.abort();
+				return [];
+			},
+		};
+		await runJobWorker({
+			transport,
+			handlers: { "jobs.ping": { handle: async () => {} } },
+			signal: ac.signal,
+			idleMs: 1,
+			log: (m) => void logs.push(m),
+		});
+		expect(logs.some((l) => l.includes("consumer error"))).toBe(true);
 	});
 });

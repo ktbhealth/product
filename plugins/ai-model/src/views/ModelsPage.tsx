@@ -101,6 +101,7 @@ export function ModelsPage({
 	const [busy, setBusy] = useState(false);
 
 	const save = async () => {
+		/* v8 ignore next -- the Save button only renders while draft is set */
 		if (draft === null) return;
 		setBusy(true);
 		setError(null);
@@ -302,6 +303,7 @@ export function ModelsPage({
 				description={m.confirmDelete}
 				confirmLabel={m.delete}
 				onConfirm={() => {
+					/* v8 ignore next -- onConfirm only fires while the dialog is open */
 					if (confirmId !== null) void remove(confirmId);
 				}}
 			/>

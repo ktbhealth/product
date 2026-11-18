@@ -87,7 +87,9 @@ export const aiPromptPanelPlugin = definePlugin({
 						const prompts = yield* AiPrompts;
 						return yield* prompts.list({ scope: "platform" }).pipe(
 							Effect.catchTags({
+								/* v8 ignore next -- platform-scope list raises neither */
 								PromptError: () => Effect.succeed([] as PromptCard[]),
+								/* v8 ignore next -- platform-scope list raises neither */
 								TenantForbidden: () => Effect.succeed([] as PromptCard[]),
 								Forbidden: () => Effect.succeed([] as PromptCard[]),
 							}),

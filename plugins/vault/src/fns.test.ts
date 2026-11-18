@@ -144,6 +144,7 @@ describe("vault fns", () => {
 		// Read fns degrade instead.
 		expect(await vaultStateFn()).toEqual({ tenantId: null, role: null, zk: false });
 		expect(await vaultDevicesFn()).toEqual([]);
+		expect(await vaultSecretsListFn()).toEqual([]);
 		expect(await vaultEnrollmentFn({ data: { wrapPublicKey: "w" } })).toBeNull();
 		expect(
 			await vaultDekEnvelopesFn({
@@ -309,5 +310,23 @@ describe("vault fns", () => {
 		expect(denied.ok).toBe(false);
 		// List is member-readable (metadata only).
 		expect(Array.isArray(await vaultSecretsListFn())).toBe(true);
+	});
+
+	it("degrades secret fns in personal scope and on service errors", async () => {
+		// Personal scope (no bound tenant): list → [], put → { ok: false }.
+		currentEmail = "user@x.com";
+		currentRole = null;
+		expect(await vaultSecretsListFn()).toEqual([]);
+		expect(await vaultSecretPutFn({ data: { name: "x", value: "y" } })).toEqual({ ok: false });
+
+		// Tenant admin: blank-after-trim name → SecretError → { ok: false }.
+		currentEmail = "admin@x.com";
+		currentRole = "admin";
+		expect(await vaultSecretPutFn({ data: { name: "   ", value: "y" } })).toEqual({
+			ok: false,
+		});
+		// Unknown id → SecretError not-found on rotate/remove.
+		expect(await vaultSecretRotateFn({ data: { id: 999999 } })).toEqual({ ok: false });
+		expect(await vaultSecretRemoveFn({ data: { id: 999999 } })).toEqual({ ok: false });
 	});
 });
