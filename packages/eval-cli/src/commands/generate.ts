@@ -54,6 +54,7 @@ import {
 	manifestHashOf,
 	outcomeMark,
 	resolveFor,
+	scriptTemplatePrompt,
 	selectProfile,
 	sha256Hex,
 	userError,
@@ -167,6 +168,11 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 					try: () => fs.readFileSync(path.join(templateDir, locale, `${templateName}.eta`), "utf8"),
 					catch: userError,
 				});
+				// T-135: the .eta template IS the generation prompt on the
+				// deterministic path — name+version+fnv1a content hash,
+				// recorded on both the DatasetManifest generator block and
+				// the Experiment summary.
+				const templatePrompt = scriptTemplatePrompt(template);
 
 				const datasetVersion = datasetVersionOf(manifest);
 				const runId = optStr(cfg.runId) ?? `gen-${manifest.id}-${Date.now()}`;
@@ -259,6 +265,7 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 									seed,
 									locale,
 									template: templateName,
+									prompts: [templatePrompt],
 									noise,
 									tts: ttsKey,
 									datasetVersion,
@@ -304,6 +311,7 @@ export const makeGenerateCommand = (ctx: CmdContext) =>
 								adapters: { tts: ttsKey },
 								template: templateName,
 								templateHash: sha256Hex(template),
+								prompts: [templatePrompt],
 								...(domainParams !== undefined ? { domainParams } : {}),
 							},
 						};

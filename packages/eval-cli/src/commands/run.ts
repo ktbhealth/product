@@ -60,6 +60,7 @@ import {
 	manifestHashOf,
 	outcomeMark,
 	resolveFor,
+	runStagePrompts,
 	selectProfile,
 	userError,
 	workdirFlag,
@@ -388,6 +389,13 @@ export const makeRunCommand = (ctx: CmdContext) =>
 						for (const v of okValues) {
 							for (const e of v.engines) engines.set(engineKey(e), e);
 						}
+						// T-135: declared prompt identities for the stages
+						// this run actually dispatched — the same refs
+						// processSample stamps onto the stage RunRecords.
+						// Stages without an LLM prompt (transcribe)
+						// contribute nothing; a transcribe-only run
+						// records no `prompts` key at all.
+						const prompts = runStagePrompts(stages);
 						const experiment: Experiment = {
 							id: runId,
 							kind: "run",
@@ -410,6 +418,7 @@ export const makeRunCommand = (ctx: CmdContext) =>
 								stages: stages.join(","),
 								...(Object.keys(modelAdapters).length > 0 ? { adapters: modelAdapters } : {}),
 								...(engines.size > 0 ? { engines: [...engines.values()] } : {}),
+								...(prompts.length > 0 ? { prompts } : {}),
 								...(inputBundles.length > 0
 									? {
 											inputs: inputBundles.map((b) => ({

@@ -39,6 +39,16 @@ export interface ScriptRender {
 	readonly seed: number;
 }
 
+/** Declared prompt-registry identity of the `.eta` script template
+ * (T-135): on the deterministic generation path the template IS the
+ * prompt — eval-cli records name+version+content hash. `version` is
+ * the template-FORMAT version (bump when slot/turn semantics change);
+ * content drift is caught by the hash, not the version. The platform
+ * `ai_prompt` table is the canonical store for PROD prompts; eval
+ * prompts live in the domain pack, versioned with the code. */
+export const SCRIPT_TEMPLATE_PROMPT_NAME = "eval.consultation/script-template";
+export const SCRIPT_TEMPLATE_PROMPT_VERSION = 1;
+
 /** Deterministic PRNG (mulberry32) — same seed → same slot picks.
  * Exported so persona enrichment draws from the same stream
  * discipline as script rendering. */

@@ -913,6 +913,17 @@ describe("stage dispatch", () => {
 				);
 				expect(r.editVerdicts.every((v) => v.classification === "unjudged")).toBe(true);
 			}
+			// T-135: judge never ran → only the cleanup prompt binding.
+			const expNj = await Effect.runPromise(
+				Effect.gen(function* () {
+					const s = yield* EvalStorePort;
+					return yield* s.getExperiment("run-nj");
+				}).pipe(Effect.provide(storeReportLayers(workdir).evalStore)),
+			);
+			const summaryNj = (expNj?.summary ?? {}) as Record<string, unknown>;
+			expect(summaryNj.prompts).toEqual([
+				expect.objectContaining({ name: "eval.consultation/cleanup-corrector" }),
+			]);
 		} finally {
 			vi.restoreAllMocks();
 		}
@@ -940,6 +951,16 @@ describe("stage dispatch", () => {
 				expect(r.correctedText).toBeUndefined();
 				expect(r.edits).toBeUndefined();
 			}
+			// T-135: no LLM stage ran → the experiment records no
+			// `prompts` key at all (absent, never an empty claim).
+			const expAsr = await Effect.runPromise(
+				Effect.gen(function* () {
+					const s = yield* EvalStorePort;
+					return yield* s.getExperiment("run-asr");
+				}).pipe(Effect.provide(storeReportLayers(workdir).evalStore)),
+			);
+			const summaryAsr = (expAsr?.summary ?? {}) as Record<string, unknown>;
+			expect(summaryAsr.prompts).toBeUndefined();
 		} finally {
 			vi.restoreAllMocks();
 		}
@@ -1402,6 +1423,15 @@ describe("market parity (P-076)", () => {
 			expect(ds?.sampleCount).toBe(2);
 			expect(ds?.contentHash).toMatch(/^[0-9a-f]{64}$/);
 			expect(ds?.generator).toMatchObject({ suiteId: "fx", seed: 11 });
+			// T-135: the .eta template IS the generation prompt — its
+			// declared identity + fnv1a content hash ride the manifest.
+			const genPrompts = ds?.generator.prompts as { name: string; hash: string }[] | undefined;
+			expect(genPrompts).toHaveLength(1);
+			expect(genPrompts?.[0]).toMatchObject({
+				name: "eval.consultation/script-template",
+				version: 1,
+			});
+			expect(genPrompts?.[0]?.hash).toMatch(/^[0-9a-f]{8}$/);
 
 			const exp = await withEvalStore<Record<string, unknown> | null>(
 				wd,
@@ -1426,6 +1456,10 @@ describe("market parity (P-076)", () => {
 			});
 			const genSummary = exp?.summary as Record<string, unknown> | undefined;
 			expect(genSummary?.templateHash).toMatch(/^[0-9a-f]{64}$/);
+			// T-135: prompt identity alongside the template hash.
+			expect(genSummary?.prompts).toEqual([
+				expect.objectContaining({ name: "eval.consultation/script-template", version: 1 }),
+			]);
 
 			// Byte-identical regen → same contentHash → idempotent pass.
 			expect(
@@ -1476,6 +1510,15 @@ describe("market parity (P-076)", () => {
 			expect(summaryA.engines).toEqual(
 				expect.arrayContaining([expect.objectContaining({ engine: "stub-asr" })]),
 			);
+			// T-135: declared prompt identities for the dispatched
+			// LLM stages — cleanup corrector + judge questions.
+			expect(summaryA.prompts).toEqual([
+				expect.objectContaining({
+					name: "eval.consultation/cleanup-corrector",
+					version: 1,
+				}),
+				expect.objectContaining({ name: "eval.consultation/judge-questions", version: 1 }),
+			]);
 			expect((expA as { gates: unknown[] }).gates).toHaveLength(2);
 
 			// report --compare renders the markdown diff.

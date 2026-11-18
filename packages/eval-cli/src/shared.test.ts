@@ -23,6 +23,8 @@ import {
 	localeFlag,
 	manifestHashOf,
 	resolveFor,
+	runStagePrompts,
+	scriptTemplatePrompt,
 	selectProfile,
 	sha256Hex,
 	workdirFlag,
@@ -215,6 +217,33 @@ describe("workdirFlag", () => {
 				process.env.EVAL_WORKDIR_ROOTS = prev;
 			}
 		}
+	});
+});
+
+describe("prompt bindings (T-135)", () => {
+	test("scriptTemplatePrompt pins name+version+fnv1a content hash", () => {
+		const a = scriptTemplatePrompt("template-a");
+		expect(a).toEqual({
+			name: "eval.consultation/script-template",
+			version: 1,
+			hash: expect.stringMatching(/^[0-9a-f]{8}$/),
+		});
+		// Content-sensitive: a different template source hashes differently.
+		expect(scriptTemplatePrompt("template-b").hash).not.toBe(a.hash);
+		expect(scriptTemplatePrompt("template-a").hash).toBe(a.hash);
+	});
+
+	test("runStagePrompts maps LLM stages and skips prompt-less ones", () => {
+		const prompts = runStagePrompts(["transcribe", "cleanup", "judge"]);
+		expect(prompts.map((p) => p.name)).toEqual([
+			"eval.consultation/cleanup-corrector",
+			"eval.consultation/judge-questions",
+		]);
+		// Transcribe-only / empty selections record nothing.
+		expect(runStagePrompts(["transcribe"])).toEqual([]);
+		expect(runStagePrompts([])).toEqual([]);
+		// Unknown stage ids contribute nothing rather than throwing.
+		expect(runStagePrompts(["mystery"])).toEqual([]);
 	});
 });
 
