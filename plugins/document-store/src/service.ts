@@ -1813,17 +1813,26 @@ export const DocumentStoreLive = Layer.effect(
 				? Effect.void
 				: Effect.gen(function* () {
 						const depth = yield* DocumentWriteDepth;
-						yield* eventBus.value.dispatch([
-							DocumentRecordWritten.make({
-								collection: record.collection,
-								id: record.id,
-								op,
-								data: record.data as Record<string, Json>,
-								ownerId: record.ownerId,
-								tenantId: record.tenantId,
-								depth,
-							}),
-						]);
+						yield* eventBus.value
+							.dispatch([
+								DocumentRecordWritten.make({
+									collection: record.collection,
+									id: record.id,
+									op,
+									data: record.data as Record<string, Json>,
+									ownerId: record.ownerId,
+									tenantId: record.tenantId,
+									depth,
+								}),
+							])
+							.pipe(
+								Effect.catchCause((cause) =>
+									Effect.logWarning(
+										`document-store write event dispatch failed for ${record.collection}#${record.id}`,
+										{ cause: String(cause) },
+									),
+								),
+							);
 					});
 
 		/** Materialize the plan into drizzle ops and run them in ONE
