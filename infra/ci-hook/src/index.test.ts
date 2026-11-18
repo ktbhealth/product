@@ -518,7 +518,10 @@ describe("repository events → repo-policy dispatch", () => {
 	});
 
 	it("still 200s when the mint returns no token", async () => {
-		vi.stubGlobal("fetch", vi.fn(async () => Response.json({ expires_at: "e" })));
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => Response.json({ expires_at: "e" })),
+		);
 		const res = await post(repoEvent(), "repository", undefined, repoEnv());
 		expect(res.status).toBe(200);
 	});
