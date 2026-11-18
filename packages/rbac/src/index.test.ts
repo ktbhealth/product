@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
@@ -16,6 +16,7 @@ import {
 	GroupMembership,
 	isKnownPermission,
 	permissionKey,
+	PermissionInvalidator,
 	Permissions,
 	PermissionsLive,
 	permissionsService,
@@ -187,6 +188,7 @@ describe("buildPermissions", () => {
 			permissions.requirePermissionFor("u1", "patient", "update").pipe(Effect.flip),
 		);
 		expect(denied).toBeInstanceOf(Forbidden);
+		expect(denied.path).toBe("rbac.patient.update");
 	});
 
 	it("can/requirePermission bind to the Principal and fail closed", async () => {
@@ -218,6 +220,7 @@ describe("buildPermissions", () => {
 		);
 		expect(anon.can).toBe(false);
 		expect(anon.err).toBeInstanceOf(Forbidden);
+		expect(anon.err.path).toBe("rbac.patient.read");
 		await runtime.dispose();
 	});
 
@@ -329,6 +332,229 @@ describe("buildPermissions", () => {
 		const grants = await Effect.runPromise(p.permissionsFor("u1"));
 		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
 	});
+
+	it("returns the same grant set object on a warm cache hit", async () => {
+		const p = buildPermissions(db);
+		const first = await Effect.runPromise(p.permissionsFor("u1"));
+		const second = await Effect.runPromise(p.permissionsFor("u1"));
+		expect(second).toBe(first);
+	});
+
+	it("keeps warm entries across misses below the cache bound", async () => {
+		const p = buildPermissions(db);
+		const first = await Effect.runPromise(p.permissionsFor("u1"));
+		// A distinct user misses and re-caches without evicting u1.
+		await Effect.runPromise(p.permissionsFor("u21"));
+		const second = await Effect.runPromise(p.permissionsFor("u1"));
+		expect(second).toBe(first);
+	});
+
+	it("re-resolves when the epoch bumps without invalidate()", async () => {
+		// External writers bump the epoch directly; the cache must notice
+		// even though cache.clear() never ran.
+		const p = buildPermissions(db);
+		const before = await Effect.runPromise(p.permissionsFor("u25"));
+		expect(before.size).toBe(0);
+		await db.insert(subjectRoles).values({
+			subjectKind: "user",
+			subjectId: "u25",
+			roleId: 1,
+			tenantId: null,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		await bumpEpoch(db);
+		const after = await Effect.runPromise(p.permissionsFor("u25"));
+		expect(after.get(grantKey("patient", "read"))).toBe("allow");
+	});
+
+	it("re-resolves grants as expires_at boundaries pass", async () => {
+		const t0 = Date.now();
+		await db.insert(roles).values({
+			id: 6,
+			name: "auditor3",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
+		await db.insert(rolePermissions).values({
+			roleId: 6,
+			resource: "audit",
+			action: "read",
+			effect: "allow",
+			createdAt: new Date(0),
+		});
+		await db.insert(subjectRoles).values([
+			// Expiries arrive +20s, +10s, +20s: the earliest is neither the
+			// first nor the last row, so first-wins/last-wins mutants on
+			// the notAfter tracking both pick the wrong boundary.
+			{
+				subjectKind: "user",
+				subjectId: "u15",
+				roleId: 3,
+				tenantId: null,
+				grantedBy: "test",
+				expiresAt: new Date(t0 + 20_000),
+				createdAt: new Date(t0),
+			},
+			{
+				subjectKind: "user",
+				subjectId: "u15",
+				roleId: 1,
+				tenantId: null,
+				grantedBy: "test",
+				expiresAt: new Date(t0 + 10_000),
+				createdAt: new Date(t0),
+			},
+			{
+				subjectKind: "user",
+				subjectId: "u15",
+				roleId: 6,
+				tenantId: null,
+				grantedBy: "test",
+				expiresAt: new Date(t0 + 20_000),
+				createdAt: new Date(t0),
+			},
+			{
+				subjectKind: "user",
+				subjectId: "u15",
+				roleId: 2,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(t0),
+			},
+		]);
+		const p = buildPermissions(db);
+		const now = vi.spyOn(Date, "now").mockReturnValue(t0);
+		try {
+			const first = await Effect.runPromise(p.permissionsFor("u15"));
+			expect(first.get(grantKey("patient", "read"))).toBe("allow");
+			expect(first.get(grantKey("consultation", "read"))).toBe("allow");
+			expect(first.get(grantKey("audit", "read"))).toBe("allow");
+			expect(first.get(grantKey("billing", "manage"))).toBe("allow");
+			// Exactly at the earliest expiry: that grant is gone (expires_at
+			// is strict), the later and unexpired grants remain.
+			now.mockReturnValue(t0 + 10_000);
+			const second = await Effect.runPromise(p.permissionsFor("u15"));
+			expect(second.has(grantKey("patient", "read"))).toBe(false);
+			expect(second.get(grantKey("consultation", "read"))).toBe("allow");
+			expect(second.get(grantKey("audit", "read"))).toBe("allow");
+			expect(second.get(grantKey("billing", "manage"))).toBe("allow");
+		} finally {
+			now.mockRestore();
+		}
+	});
+
+	it("keeps tenant-less and tenant-scoped cache keys distinct", async () => {
+		await db.insert(subjectRoles).values({
+			subjectKind: "user",
+			subjectId: "u22",
+			roleId: 2,
+			tenantId: "Stryker was here!",
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db);
+		// The tenant-less resolve caches first; a cache key that reused the
+		// empty-tenant fallback for this tenant id would collide with it.
+		const global = await Effect.runPromise(p.permissionsFor("u22"));
+		expect(global.has(grantKey("billing", "manage"))).toBe(false);
+		const scoped = await Effect.runPromise(p.permissionsFor("u22", "Stryker was here!"));
+		expect(scoped.get(grantKey("billing", "manage"))).toBe("allow");
+	});
+
+	it("does not treat the string 'undefined' as the absent-tenant marker", async () => {
+		await db.insert(subjectRoles).values({
+			subjectKind: "user",
+			subjectId: "u23",
+			roleId: 2,
+			tenantId: "undefined",
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db);
+		const grants = await Effect.runPromise(p.permissionsFor("u23"));
+		expect(grants.has(grantKey("billing", "manage"))).toBe(false);
+	});
+
+	it("does not invent group memberships when the port is absent", async () => {
+		// A group literally named like the mutant's placeholder must not
+		// leak into resolves for users with no membership port wired.
+		await db.insert(subjectRoles).values({
+			subjectKind: "group",
+			subjectId: "Stryker was here",
+			roleId: 1,
+			tenantId: null,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db);
+		const grants = await Effect.runPromise(p.permissionsFor("u24"));
+		expect(grants.has(grantKey("patient", "read"))).toBe(false);
+	});
+
+	it("deny wins regardless of the order grant rows arrive", async () => {
+		await db.insert(roles).values({
+			id: 5,
+			name: "auditor-deny",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
+		await db.insert(rolePermissions).values({
+			roleId: 5,
+			resource: "patient",
+			action: "read",
+			effect: "deny",
+			createdAt: new Date(0),
+		});
+		await db.insert(subjectRoles).values([
+			// u17: deny assignment first, allow second — a last-write-wins
+			// mutant would let the allow overwrite the deny.
+			{
+				subjectKind: "user",
+				subjectId: "u17",
+				roleId: 5,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			{
+				subjectKind: "user",
+				subjectId: "u17",
+				roleId: 1,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			// u18: allow first, deny second — a first-write-wins mutant
+			// keeps the allow.
+			{
+				subjectKind: "user",
+				subjectId: "u18",
+				roleId: 1,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			{
+				subjectKind: "user",
+				subjectId: "u18",
+				roleId: 5,
+				tenantId: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+		]);
+		const p = buildPermissions(db);
+		for (const userId of ["u17", "u18"]) {
+			expect(await Effect.runPromise(p.canFor(userId, "patient", "read"))).toBe(false);
+			const grants = await Effect.runPromise(p.permissionsFor(userId));
+			expect(grants.get(grantKey("patient", "read"))).toBe("deny");
+		}
+	});
 });
 
 describe("permissionsService", () => {
@@ -406,6 +632,24 @@ describe("entity authz seam", () => {
 		await runtime.dispose();
 	});
 
+	it("rbac mode forwards the entity tenantId to Permissions", async () => {
+		const DbLive = Layer.succeed(Db, db);
+		const runtime = ManagedRuntime.make(
+			Layer.merge(DbLive, PermissionsLive.pipe(Layer.provide(DbLive))),
+		);
+		const result = await runtime.runPromise(
+			Effect.gen(function* () {
+				// billing.manage is granted to u1 inside tenant t1 only.
+				yield* requireEntityAccess(entityAuthz("rbac", "billing", "manage", { tenantId: "t1" }));
+				return yield* Effect.flip(
+					requireEntityAccess(entityAuthz("rbac", "billing", "manage", { tenantId: "t2" })),
+				);
+			}).pipe(Effect.provideService(Principal, { userId: "u1" })),
+		);
+		expect(result).toBeInstanceOf(Forbidden);
+		await runtime.dispose();
+	});
+
 	it("static mode delegates to permix rulesFor", async () => {
 		// patient.read static rule: ownerId must equal principal userId.
 		const ok = await Effect.runPromise(
@@ -433,6 +677,20 @@ describe("vocabulary", () => {
 		expect(isKnownPermission("patient", "read")).toBe(true);
 		expect(isKnownPermission("patient", "fly")).toBe(false);
 		expect(isKnownPermission("billing", "manage")).toBe(true);
+	});
+
+	it("grantKey separates resource and action unambiguously", () => {
+		expect(grantKey("patient", "read")).toBe("patient\u001fread");
+		// Concatenation without a separator would collide these pairs.
+		expect(grantKey("ab", "c")).not.toBe(grantKey("a", "bc"));
+	});
+});
+
+describe("service identifiers", () => {
+	it("exposes stable service keys", () => {
+		expect(GroupMembership.key).toBe("@ktb/rbac/GroupMembership");
+		expect(PermissionInvalidator.key).toBe("@ktb/rbac/PermissionInvalidator");
+		expect(Permissions.key).toBe("@ktb/rbac/Permissions");
 	});
 });
 
