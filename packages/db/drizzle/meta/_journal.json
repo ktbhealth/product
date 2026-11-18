@@ -344,6 +344,13 @@
       "when": 1795005347830,
       "tag": "0049_ordinary_proudstar",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1795008087731,
+      "tag": "0050_pink_mister_sinister",
+      "breakpoints": true
     }
   ]
 }

@@ -17,7 +17,9 @@ export const plugins: readonly Plugin[] = [
 		meta: { keywords: ["eval", "credentials", "services"] },
 		// Mirrors credentialsServicesPlugin — the ApiKeys port has
 		// no registry dep; requiredDeps is empty on the server side too.
+		// Vault user-scope secrets are the canonical store (P-098 C3).
 		requiredDeps: [],
+		optionalDeps: ["vault.secrets"],
 	}),
 	definePlugin({
 		id: "credentials.chrome",
