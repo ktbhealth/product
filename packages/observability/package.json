@@ -7,6 +7,9 @@
 		"./client": "./src/client.ts",
 		"./metrics": "./src/metrics.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"@ktb/driver-framework": "workspace:*",
 		"effect": "4.1.2"

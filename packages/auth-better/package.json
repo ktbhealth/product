@@ -17,5 +17,8 @@
 		"@types/better-sqlite3": "^9.6.0",
 		"@types/node": "^22.10.2",
 		"better-sqlite3": "^13.0.3"
+	},
+	"scripts": {
+		"mutate": "stryker run"
 	}
 }

@@ -11,5 +11,8 @@
 	},
 	"devDependencies": {
 		"vitest": "5.1.0"
+	},
+	"scripts": {
+		"mutate": "stryker run"
 	}
 }

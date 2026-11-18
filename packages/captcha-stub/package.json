@@ -2,6 +2,9 @@
 	"name": "@ktb/captcha-stub",
 	"private": true,
 	"type": "module",
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"exports": {
 		".": "./src/index.ts"
 	},

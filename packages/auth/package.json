@@ -11,5 +11,8 @@
 	"devDependencies": {
 		"@ktb/db": "workspace:*",
 		"drizzle-orm": "^0.45.1"
+	},
+	"scripts": {
+		"mutate": "stryker run"
 	}
 }
