@@ -1,4 +1,4 @@
-import { definePlugin, type Plugin } from "@ktb/kernel";
+import { clientStub, type Plugin } from "@ktb/kernel";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -9,6 +9,6 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
  * apps/web/src/plugins.test.ts.
  */
 export const plugins: readonly Plugin[] = [
-	definePlugin({ id: "integrity.tables", meta: { keywords: ["integrity", "tables"] } }),
-	definePlugin({ id: "integrity.services", meta: { keywords: ["integrity", "services"] } }),
+	clientStub({ id: "integrity.tables", meta: { keywords: ["integrity", "tables"] } }),
+	clientStub({ id: "integrity.services", meta: { keywords: ["integrity", "services"] } }),
 ];
