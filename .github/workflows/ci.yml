@@ -215,6 +215,77 @@ jobs:
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
+  # Worker bundle size budget (T-063): fails when the deployable worker
+  # module graph (apps/web/dist/server — JS + WASM, sourcemaps excluded)
+  # exceeds the budget in tools/bundle-budget.mjs. Cloudflare's enforced
+  # limit is 64 MiB UNCOMPRESSED (no compressed-size limit since
+  # 2026-09-04); the budget sits at 48 MiB for ~25% headroom. On PRs the
+  # latest green main run's bundle-size artifact provides the delta.
+  bundle-budget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # actions:read downloads the baseline bundle-size artifact from the
+    # latest green main run.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.vite/task-cache
+          key: vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+            vp-task-${{ runner.os }}-
+      # Produces apps/web/dist/server — the worker bundle this job
+      # measures. Task-cache hit when inputs are unchanged.
+      - run: bunx vp run ci:build
+      # Delta vs the latest green main run's bundle-size artifact.
+      # continue-on-error because main runs predating this workflow have
+      # no such artifact.
+      - name: Find baseline bundle-size run on main
+        id: baseline
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          id=$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+          echo "run_id=$id" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        if: steps.baseline.outputs.run_id != ''
+        continue-on-error: true
+        with:
+          name: bundle-size
+          path: baseline
+          run-id: ${{ steps.baseline.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: >-
+          bun tools/bundle-budget.mjs
+          --baseline baseline/bundle-size.json
+        env:
+          BASELINE_RUN_ID: ${{ steps.baseline.outputs.run_id }}
+      # Machine-readable baseline for the next PR's size delta. Uploaded
+      # on every event so green main runs seed the baseline.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-size
+          path: bundle-size/
+          if-no-files-found: warn
+          retention-days: 14
+
   # Informational only — never gates. Lines-of-code report via tokei,
   # provided by the shared cypera toolbox (9aia/cypera).
   metrics:
