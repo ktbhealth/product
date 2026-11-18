@@ -253,6 +253,39 @@ describe("/platform layout", () => {
 		expect(hrefs.indexOf("/platform/eval/instances")).toBeLessThan(hrefs.indexOf("/platform/eval"));
 	});
 
+	it("keeps ungrouped and unranked sidebar items at the end in topo order", () => {
+		chromeExtra = [
+			{
+				id: "t.sidebar-nogroup",
+				region: "portal.sidebar",
+				content: {
+					kind: "sidebarItem",
+					item: { to: "/platform/aaa-nogroup", label: "NoGroup" },
+				},
+			},
+			{
+				id: "t.sidebar-extra-b",
+				region: "portal.sidebar",
+				content: {
+					kind: "sidebarItem",
+					item: { to: "/platform/yyy-extra", label: "Extra B", group: "Assurance" },
+				},
+			},
+		];
+		render(createElement(component(PlatformRoute)));
+		const hrefs = screen
+			.getAllByRole("link")
+			.map((el) => el.getAttribute("href"))
+			.filter((h): h is string => h !== null && h.startsWith("/platform/"));
+		const audit = hrefs.indexOf("/platform/audit");
+		const ungrouped = hrefs.indexOf("/platform/aaa-nogroup");
+		const extraB = hrefs.indexOf("/platform/yyy-extra");
+		expect(ungrouped).toBeGreaterThanOrEqual(0);
+		expect(extraB).toBeGreaterThanOrEqual(0);
+		// Unranked items sink after the ranked tail of their group.
+		expect(audit).toBeLessThan(extraB);
+	});
+
 	it("marks descendant routes active unless the item is exact", () => {
 		pathname = "/platform/patients";
 		render(createElement(component(PlatformRoute)));
