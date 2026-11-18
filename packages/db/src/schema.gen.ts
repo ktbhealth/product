@@ -5,6 +5,7 @@
 // Relative paths are deliberate: @ktb/db must not depend on plugin
 // packages — see tools/gen-db-schema.mjs.
 export * from "../../../plugins/ai-model/src/schema.ts";
+export * from "../../../plugins/ai-prompt/src/schema.ts";
 export * from "../../../plugins/ai-provider/src/schema.ts";
 export * from "../../../plugins/audit/src/schema.ts";
 export * from "../../../plugins/consultations/src/schema.ts";

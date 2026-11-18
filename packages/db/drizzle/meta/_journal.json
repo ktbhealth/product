@@ -365,6 +365,13 @@
       "when": 1795011565356,
       "tag": "0052_volatile_morph",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1795011684476,
+      "tag": "0053_foamy_white_queen",
+      "breakpoints": true
     }
   ]
 }
