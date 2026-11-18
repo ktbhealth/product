@@ -611,4 +611,24 @@ describe("EvalValidatorPage", () => {
 		expect(screen.getByText(/profile full/)).toBeTruthy();
 		expect(screen.getByText(/manifest 0123456789ab/)).toBeTruthy();
 	});
+
+	it("renders no dataset metadata when params carry no instance id", async () => {
+		fns.progressFn.mockResolvedValue({
+			ok: true,
+			data: {
+				...runProgress,
+				params: { itemIds: [11] },
+				experiment: null,
+			},
+		});
+		fns.startRunFn.mockResolvedValue({ ok: true, data: { runId: 42 } });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		expect(await screen.findByText(/Run #42 — done/)).toBeTruthy();
+		// RunMeta's parts list is empty → the whole line renders null.
+		expect(screen.queryByText(/dataset eval-instance/)).toBeNull();
+		expect(screen.queryByText(/profile /)).toBeNull();
+		expect(screen.queryByText(/manifest /)).toBeNull();
+	});
 });

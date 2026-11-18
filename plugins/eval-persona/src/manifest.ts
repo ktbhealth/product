@@ -29,6 +29,7 @@ const fnv1a = (input: string): string => {
 };
 
 const parseJson = <T>(s: string | null, fallback: T): T => {
+	/* v8 ignore next -- eval_instance.params is NOT NULL; null is defensive only */
 	if (s === null) return fallback;
 	try {
 		return JSON.parse(s) as T;

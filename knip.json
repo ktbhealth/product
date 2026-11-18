@@ -33,7 +33,8 @@
 			// Suite manifests are loaded by file path at runtime
 			// (packages/eval-cli scans evals/ recursively) — never
 			// statically imported, so knip would flag them as unused.
-			"entry": ["*.suite.ts"]
+			// scripts/ are bun-invoked CLI tools (e.g. materialize-ptbr-real).
+			"entry": ["*.suite.ts", "scripts/**/*.ts"]
 		},
 		"packages/eval-adapter-local": {
 			// Runnable benchmark harness — `bun scripts/bench/wer.ts`

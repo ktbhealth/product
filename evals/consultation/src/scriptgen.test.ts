@@ -142,6 +142,22 @@ describe("renderScript", () => {
 	});
 });
 
+describe("anamnesis pt-BR honorifics", () => {
+	it("addresses a female patient as A senhora", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({
+				register: "formal",
+				gender: "f",
+				doctor: { gender: "f", register: "formal" },
+			}),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(r.script).toContain("A senhora");
+	});
+});
+
 describe("anamnesis variant (T-128/T-129)", () => {
 	it("renders a multi-turn dialogue with both speakers and entities", () => {
 		const r = renderScript({

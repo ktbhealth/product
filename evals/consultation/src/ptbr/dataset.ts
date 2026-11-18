@@ -47,7 +47,7 @@ export const ptbrRealAudioUri = (consult: PtbrConsult): string =>
 /** Gold provenance tag — authored content validated by the dataset
  * author (T-042), distinct from "generator" (template path) and
  * "physician:<id>" (phase-2 real consults). */
-export const PTBR_REAL_VALIDATED_BY = "author:ptbr-real@v1";
+const PTBR_REAL_VALIDATED_BY = "author:ptbr-real@v1";
 
 const consultToSample = (consult: PtbrConsult, datasetVersion: string): Sample => {
 	const script = consult.turns.map((t) => t.text).join("\n");
