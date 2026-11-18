@@ -321,6 +321,9 @@ describe("sign-in page", () => {
 		expect(screen.getByRole("link", { name: "I am a secretary" }).getAttribute("href")).toBe(
 			"/login/secretary",
 		);
+		expect(screen.getByRole("link", { name: "Administrator sign in" }).getAttribute("href")).toBe(
+			"/login/admin",
+		);
 	});
 
 	it("hides the secretary link when its sign-in flow is disabled", () => {

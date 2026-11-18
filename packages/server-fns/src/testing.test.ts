@@ -49,6 +49,15 @@ describe("reactStartMock", () => {
 		await expect(fn({ data: "raw" })).resolves.toBe("ok");
 		expect(seen[1]).toEqual({ data: "raw" });
 	});
+
+	it("tolerates createServerFn called without options", async () => {
+		const { createServerFn } = reactStartMock();
+
+		const fn = createServerFn().handler(async () => "ok");
+		await expect(fn()).resolves.toBe("ok");
+		// No options object → nothing rides on the callable.
+		expect((fn as unknown as Record<string, unknown>).method).toBeUndefined();
+	});
 });
 
 describe("reactStartServerMock", () => {
@@ -137,6 +146,24 @@ describe("installServerFnRuntime", () => {
 			expect(getServerRuntime().jobs).toBeUndefined();
 			flag = true;
 			expect(getServerRuntime().jobs).toBeDefined();
+		} finally {
+			resetServerFnRuntime();
+			await runtime.dispose();
+		}
+	});
+
+	it("defaults getLocale to en and exposes the test transcribe model", async () => {
+		const runtime = ManagedRuntime.make(Layer.empty) as unknown as ManagedRuntime.ManagedRuntime<
+			unknown,
+			never
+		>;
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+		);
+		try {
+			expect(getServerRuntime().getLocale()).toBe("en");
+			expect(getServerRuntime().audioTranscribeModel).toBe("test-model");
 		} finally {
 			resetServerFnRuntime();
 			await runtime.dispose();

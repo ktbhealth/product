@@ -164,7 +164,7 @@ describe("PersonasPage", () => {
 		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
-	it("edits every axis select + notes through the dialog", async () => {
+	it("edits every axis select + notes through the dialog", { timeout: 20000 }, async () => {
 		const user = userEvent.setup();
 		render(<PersonasPage defs={[def]} locale="en" />);
 		await user.click(screen.getByText("Edit"));

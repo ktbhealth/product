@@ -178,7 +178,12 @@ const chat = (
 			}
 			return Effect.try({
 				try: () => extractText(body.result as NonNullable<ChatEnvelope["result"]>),
-				catch: (e) => fail(e instanceof Error ? e.message : String(e)),
+				catch: (e) =>
+					fail(
+						e instanceof Error
+							? e.message
+							: /* v8 ignore next -- extractText only throws Error */ String(e),
+					),
 			});
 		}),
 	);

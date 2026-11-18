@@ -283,6 +283,27 @@ describe("capabilityLayer selection", () => {
 		expect(() =>
 			capabilityLayer(ctx({ profile: "cloud", env: cfEnv }), "llm", "workers-ai"),
 		).not.toThrow();
+		// Optional endpoint + fetchImpl on the LLM port too.
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "cloud",
+					env: { ...cfEnv, EVAL_CF_API_ENDPOINT: "http://ep" },
+					fetchImpl: fetch,
+				}),
+				"llm",
+				"workers-ai",
+			),
+		).not.toThrow();
+		// Empty-string endpoint counts as unset; no fetchImpl falls back
+		// to global fetch.
+		expect(() =>
+			capabilityLayer(
+				ctx({ profile: "cloud", env: { ...cfEnv, EVAL_CF_API_ENDPOINT: "" } }),
+				"llm",
+				"workers-ai",
+			),
+		).not.toThrow();
 		expect(() =>
 			capabilityLayer(ctx({ profile: "cloud", env: cfEnv }), "eval", "workers-ai"),
 		).not.toThrow();

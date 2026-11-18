@@ -131,6 +131,28 @@ const entityRefs = defineCollection({
 	},
 });
 
+/** Contributed defs applyEntityDelete must skip: `plainDocs` has no
+ * entity ref fields at all; `orphanRefs` references an entity but is
+ * never registered (no documentCollections row); `corruptibleRefs`
+ * gives the nullify re-validation skip a reachable case. */
+const plainDocs = defineCollection({
+	name: "test.plaindocs",
+	fields: { title: f.string() },
+});
+
+const orphanRefs = defineCollection({
+	name: "test.orphanrefs",
+	fields: { p: f.ref({ entity: "patients" }) },
+});
+
+const corruptibleRefs = defineCollection({
+	name: "test.corruptiblerefs",
+	fields: {
+		p: f.ref({ entity: "patients", onDelete: "nullify" }),
+		n: f.number(),
+	},
+});
+
 const tenantA: TenantValue = { id: 1, kind: "clinic", slug: "a", role: "member" };
 const tenantB: TenantValue = { id: 2, kind: "clinic", slug: "b", role: "member" };
 
@@ -2836,6 +2858,7 @@ describe("DocumentStoreLive telemetry (T-131)", () => {
 describe("DocumentStoreLive entity refs (T-149)", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
 	let bareRuntime: ManagedRuntime.ManagedRuntime<DocumentStore, never>;
+	let db: ReturnType<typeof makeDb>;
 	const refTargets = makeDocumentRefTargets();
 	const entityIds = new Map<string, Set<number>>();
 	const checkerCalls = new Map<string, number>();
@@ -2868,10 +2891,12 @@ describe("DocumentStoreLive entity refs (T-149)", () => {
 				});
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
-			Layer.succeed(DocumentCollections, { collections: [entityRefs] }),
+			Layer.succeed(DocumentCollections, {
+				collections: [entityRefs, plainDocs, orphanRefs, corruptibleRefs],
+			}),
 			Layer.succeed(DocumentRefTargets, refTargets),
 		);
 		runtime = ManagedRuntime.make(DocumentStoreLive.pipe(Layer.provide(deps)));
@@ -2930,6 +2955,25 @@ describe("DocumentStoreLive entity refs (T-149)", () => {
 		);
 		expect(checkerCalls.get("patients")).toBe(1);
 		expect(checkerCalls.get("wards")).toBe(1);
+	});
+
+	it("sorts multi-id entity checks through one batched checker call", async () => {
+		// patient + backup are BOTH entity "patients" refs — one op
+		// yields a two-id check set, exercising the id sort.
+		checkerCalls.set("patients", 0);
+		await as(
+			"u1",
+			call((s) =>
+				s.batch([
+					{
+						op: "insert",
+						collection: entityRefs,
+						data: { label: "multi", patient: 100, backup: 200 },
+					},
+				]),
+			),
+		);
+		expect(checkerCalls.get("patients")).toBe(1);
 	});
 
 	it("entity refs fail BrokenReference when the port is absent", async () => {
@@ -3000,5 +3044,35 @@ describe("DocumentStoreLive entity refs (T-149)", () => {
 			"u1",
 			call((s) => s.applyEntityDelete("wards", 999, { ownerId: "u1" })),
 		);
+	});
+
+	it("applyEntityDelete skips nullify patches that fail re-validation", async () => {
+		// Fresh entity id — earlier cases left entityRefs rows pointing
+		// at 100/200/500 which would fire restrict first.
+		entityIds.get("patients")?.add(700);
+		// Register the collection, then corrupt the stored payload so
+		// the nullified document no longer validates — the best-effort
+		// skip must leave the row untouched.
+		await as(
+			"u1",
+			call((s) => s.ensureCollection(corruptibleRefs)),
+		);
+		const rec = await as(
+			"u1",
+			call((s) => s.insert(corruptibleRefs, { p: 700, n: 5 })),
+		);
+		await db
+			.update(documentRecords)
+			.set({ data: JSON.stringify({ p: 700, n: "bad" }) })
+			.where(eq(documentRecords.id, rec.id));
+		await as(
+			"u1",
+			call((s) => s.applyEntityDelete("patients", 700, { ownerId: "u1" })),
+		);
+		const got = await as(
+			"u1",
+			call((s) => s.get(corruptibleRefs, rec.id)),
+		);
+		expect(got?.data.p).toBe(700);
 	});
 });

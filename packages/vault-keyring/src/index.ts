@@ -38,7 +38,7 @@ export const decodeMasterKey = (raw: string): Uint8Array => {
 	} catch (e) {
 		throw new SecretKeyringError(
 			"malformed",
-			`VAULT_MASTER_KEY is not hex/base64 32-byte key material (${e instanceof Error ? e.message : String(e)})`,
+			`VAULT_MASTER_KEY is not hex/base64 32-byte key material (${e instanceof Error ? e.message : /* v8 ignore next -- b64uToBytes only throws CryptoFormatError (an Error) */ String(e)})`,
 		);
 	}
 };
@@ -71,7 +71,7 @@ export const makeSecretKeyring = async (kekRaw: Uint8Array): Promise<SecretKeyri
 			} catch (e) {
 				throw new SecretKeyringError(
 					"unavailable",
-					`wrap failed: ${e instanceof Error ? e.message : String(e)}`,
+					`wrap failed: ${e instanceof Error ? e.message : /* v8 ignore next -- WebCrypto rejects with Errors */ String(e)}`,
 				);
 			}
 		},
@@ -88,7 +88,7 @@ export const makeSecretKeyring = async (kekRaw: Uint8Array): Promise<SecretKeyri
 				if (e instanceof SecretKeyringError) throw e;
 				throw new SecretKeyringError(
 					"decrypt-failed",
-					`unwrap failed: ${e instanceof Error ? e.message : String(e)}`,
+					`unwrap failed: ${e instanceof Error ? e.message : /* v8 ignore next -- WebCrypto rejects with Errors */ String(e)}`,
 				);
 			}
 		},
@@ -106,7 +106,7 @@ export const secretKeyringLive = (masterKey: string) =>
 				catch: (e) =>
 					e instanceof SecretKeyringError
 						? e
-						: new SecretKeyringError(
+						: /* v8 ignore next -- decode/make only throw SecretKeyringError here */ new SecretKeyringError(
 								"malformed",
 								`VAULT_MASTER_KEY unusable: ${e instanceof Error ? e.message : String(e)}`,
 							),

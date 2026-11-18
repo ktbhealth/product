@@ -30,7 +30,6 @@
 		"lucide-react": "0.544.0"
 	},
 	"devDependencies": {
-		"@ktb/auth": "workspace:*",
 		"@ktb/vault-keyring": "workspace:*",
 		"@types/react": "^19.2.0",
 		"@types/react-dom": "^19.2.0",

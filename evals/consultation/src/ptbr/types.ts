@@ -18,9 +18,9 @@ import type { GoldEntity } from "../schema.ts";
  * ("Paciente Helena"), never real identifiers.
  */
 
-export type PtbrSpeaker = "doctor" | "patient";
+type PtbrSpeaker = "doctor" | "patient";
 
-export interface PtbrTurn {
+interface PtbrTurn {
 	readonly speaker: PtbrSpeaker;
 	readonly text: string;
 }

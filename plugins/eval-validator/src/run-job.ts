@@ -33,7 +33,7 @@ const EvalRunJobPayload = Schema.Struct({ runId: Schema.Number });
  * every path that builds runner items so they can't drift. Callers
  * filter `script !== null` first — `runnable` guaranteed it at insert
  * time, but the corpus row may have been edited since. */
-export const toEvalRunnerItem = (item: EvalInstanceItem): EvalRunnerItem => ({
+const toEvalRunnerItem = (item: EvalInstanceItem): EvalRunnerItem => ({
 	id: item.id,
 	/* v8 ignore next -- callers filter script !== null before mapping */
 	script: item.script!,

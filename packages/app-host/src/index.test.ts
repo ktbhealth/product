@@ -4,7 +4,9 @@ import { CommandBus, QueryBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { makeD1 } from "@ktb/db/testing";
+import { Jobs } from "@ktb/jobs-port";
 import { PluginStates } from "@ktb/platform/plugin-states";
+import { PlatformAdmin } from "@ktb/platform";
 import { pluginDuration, pluginInvocations, tagged } from "@ktb/observability";
 import { AI_ENDPOINTS_TEST_DDL } from "../../../plugins/ai-provider/src/index.ts";
 import {
@@ -28,6 +30,30 @@ const DDL = `
 CREATE TABLE notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, body TEXT, payload TEXT, read_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE plugin_state (plugin_id TEXT PRIMARY KEY NOT NULL, enabled INTEGER DEFAULT true NOT NULL, config TEXT, updated_at INTEGER NOT NULL);
 ${AI_ENDPOINTS_TEST_DDL}
+`;
+
+// job_runs projection for the Jobs-port test — same shape as
+// packages/jobs-port/src/index.test.ts.
+const JOB_RUNS_DDL = `
+CREATE TABLE job_runs (
+	id TEXT PRIMARY KEY,
+	kind TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'queued',
+	payload_ref TEXT,
+	error TEXT,
+	tenant_id INTEGER,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+`;
+
+// RBAC grant tables for the PlatformAdmin grantFor hook — same shape
+// as plugins/rbac/src/index.test.ts.
+const RBAC_DDL = `
+CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE role_permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, resource TEXT NOT NULL, action TEXT NOT NULL, effect TEXT NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
+CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 `;
 
 const env = {
@@ -160,6 +186,76 @@ describe("createApp", () => {
 			.map((c: unknown[]) => String(c[0]))
 			.find((l: string) => l.includes("http.access"));
 		expect(line).toBeDefined();
+	});
+
+	it("binds the Jobs port when AUDIO_QUEUE is configured", async () => {
+		const send = vi.fn(async (_body: unknown) => {});
+		const queueApp = createApp({
+			...env,
+			DB: makeD1(`${DDL}\n${JOB_RUNS_DDL}`),
+			AUDIO_QUEUE: { send },
+		});
+		try {
+			const envelope = await queueApp.run(
+				Effect.flatMap(Jobs, (jobs) =>
+					Effect.promise(() => jobs.enqueue("eval.run", { suite: "fx" })),
+				),
+			);
+			expect(envelope.kind).toBe("eval.run");
+			// The queue send lambda composed at the edge received the envelope.
+			expect(send).toHaveBeenCalledWith(envelope);
+		} finally {
+			await queueApp.runtime.dispose();
+		}
+	});
+
+	it("admits RBAC-granted admins through the PlatformAdmin gate", async () => {
+		const rbacDb = makeD1(`${DDL}\n${RBAC_DDL}`);
+		const rbacApp = createApp({ ...env, DB: rbacDb });
+		try {
+			const isAdmin = (subject: { email?: string | null; userId?: string | null }) =>
+				rbacApp.run(Effect.flatMap(PlatformAdmin, (gate) => gate.isAdmin(subject)));
+			// Allowlisted email short-circuits before any grant lookup.
+			await expect(isAdmin({ email: "admin@x.com" })).resolves.toBe(true);
+			// Unknown email + userId → the grantFor hook resolves grants:
+			// no rows yet → deny.
+			await expect(isAdmin({ email: "nobody@x.com", userId: "u1" })).resolves.toBe(false);
+			// Seed an allow grant on (platform, admin) and bump the
+			// permission epoch so the cached empty grant set re-resolves.
+			await rbacApp.run(
+				Effect.promise(async () => {
+					// Explicit id 900: the rbac plugin's superadmin seed may
+					// already own id 1 when its tables exist.
+					await rbacDb
+						.prepare(
+							"INSERT INTO roles (id, name, created_at, updated_at) VALUES (900, 'it-admin', 0, 0)",
+						)
+						.run();
+					await rbacDb
+						.prepare(
+							"INSERT INTO role_permissions (role_id, resource, action, effect, created_at) VALUES (900, 'platform', 'admin', 'allow', 0)",
+						)
+						.run();
+					await rbacDb
+						.prepare(
+							"INSERT INTO subject_roles (subject_kind, subject_id, role_id, created_at) VALUES ('user', 'u1', 900, 0)",
+						)
+						.run();
+					// Bump the epoch however the seed left it — the cached
+					// empty grant set must re-resolve.
+					await rbacDb
+						.prepare(
+							"INSERT INTO permission_epoch (id, epoch) VALUES (1, 1) ON CONFLICT(id) DO UPDATE SET epoch = epoch + 1",
+						)
+						.run();
+				}),
+			);
+			await expect(isAdmin({ email: "nobody@x.com", userId: "u1" })).resolves.toBe(true);
+			// No userId → no grant lookup, still denied.
+			await expect(isAdmin({ email: "nobody@x.com" })).resolves.toBe(false);
+		} finally {
+			await rbacApp.runtime.dispose();
+		}
 	});
 
 	it("run accepts a telemetry seed with route and traceparent", async () => {

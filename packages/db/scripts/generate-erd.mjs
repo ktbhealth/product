@@ -71,7 +71,7 @@ const DOMAINS = [
 		title: "Machines",
 		owner: "`plugins/machines`",
 		description:
-			"Platform machine registry — ACP/agent endpoint hosts with health/last-seen tracking.",
+			"Machine registry (P-098) — shells, VMs, GPU nodes and remote endpoints workloads (ACP agents, eval runners, transcription) can be scheduled onto. A registry, not a connection: consumers resolve a card and dial out via their own adapters; auth material lives in the vault (`secretRef` = `vault:<id>`).",
 		tables: ["machine"],
 	},
 	{

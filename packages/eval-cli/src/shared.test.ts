@@ -30,6 +30,7 @@ import {
 	workdirFlag,
 } from "./shared.ts";
 import type { LoadedSuite } from "./suites.ts";
+import type { SuiteResolution } from "./resolve.ts";
 import { defineSuite } from "@ktb/eval-core";
 
 const suite = (over: Record<string, unknown> = {}): LoadedSuite => ({
@@ -144,6 +145,30 @@ describe("assertCapabilities", () => {
 		expect(err.message).not.toContain("asr→");
 		expect(err.message).not.toContain("llm→");
 		expect(err.message).not.toContain("eval→");
+	});
+
+	test("formats non-capability refs and provider-less capability refs", async () => {
+		// A needed id can collide with a non-capability ref kind (e.g. a
+		// gate literally named "asr") — the detail line must render the
+		// generic `kind "id"` form, not a cap→provider arrow.
+		const s = suite({ caps: {} });
+		const { profile } = resolveFor(s, "stub");
+		const resolution: SuiteResolution = {
+			resolved: [],
+			unresolved: [
+				{ kind: "eval.gate", id: "asr", reason: "no registered contribution" },
+				// eval.capability unresolved WITHOUT a caps entry — the
+				// provider lookup misses and falls back to the same
+				// generic form.
+				{ kind: "eval.capability", id: "llm", reason: 'profile "stub" selects no adapter' },
+			],
+			adapters: {},
+			gates: [],
+			configErrors: [],
+		};
+		const err = await runErr(assertCapabilities(s, profile, resolution, ["asr", "llm"]));
+		expect(err.message).toContain('eval.gate "asr" (no registered contribution)');
+		expect(err.message).toContain('eval.capability "llm"');
 	});
 });
 

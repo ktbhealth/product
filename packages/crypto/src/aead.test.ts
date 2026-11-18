@@ -107,4 +107,25 @@ describe("AEAD (AES-256-GCM envelope)", () => {
 		expect(await decryptText(key, env, { aad: bytesAad })).toBe("secret");
 		await expect(decryptText(key, env, { aad: new Uint8Array([1, 2, 4]) })).rejects.toThrow();
 	});
+
+	it("binds string AAD into the tag", async () => {
+		const key = await generateDek();
+		const envelope = await encrypt(key, "payload", { aad: "vault-secret:7:openai-key" });
+		expect(await decryptText(key, envelope, { aad: "vault-secret:7:openai-key" })).toBe("payload");
+		// Wrong or missing AAD fails the GCM tag check.
+		await expect(
+			decryptText(key, envelope, { aad: "vault-secret:8:openai-key" }),
+		).rejects.toThrow();
+		await expect(decryptText(key, envelope)).rejects.toThrow();
+	});
+
+	it("binds Uint8Array AAD into the tag", async () => {
+		const key = await generateDek();
+		const aad = crypto.getRandomValues(new Uint8Array(16));
+		const envelope = await encrypt(key, "payload", { aad });
+		expect(await decrypt(key, envelope, { aad })).toEqual(new TextEncoder().encode("payload"));
+		await expect(
+			decrypt(key, envelope, { aad: crypto.getRandomValues(new Uint8Array(16)) }),
+		).rejects.toThrow();
+	});
 });

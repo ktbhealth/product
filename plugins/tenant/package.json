@@ -8,7 +8,6 @@
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
-		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/groups": "workspace:*",

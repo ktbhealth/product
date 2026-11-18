@@ -275,6 +275,19 @@ describe("DocumentsAdminPage", () => {
 		expect((fieldInput("title") as HTMLInputElement).value).toBe("hello");
 	});
 
+	it("shows the entity hint for entity ref fields", async () => {
+		render(
+			<DocumentsAdminPage
+				collection={collection({
+					fields: { owner: { kind: "ref", entity: "patients" } },
+				})}
+				initialPage={pageWire({ rows: [doc({ data: { owner: 7 } })] })}
+			/>,
+		);
+		await userEvent.click(screen.getByLabelText("Edit"));
+		expect(await screen.findByText("→ patients")).toBeDefined();
+	});
+
 	it("shows saveFailed when the fn denies the write", async () => {
 		fns.createDocumentFn.mockResolvedValue({ status: "denied" });
 		render(<DocumentsAdminPage collection={collection()} initialPage={pageWire()} />);
