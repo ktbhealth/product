@@ -46,6 +46,8 @@ export interface EvalMessages {
 	readonly stageError: string;
 	readonly completeness: string;
 	readonly edits: string;
+	readonly noRunnerBound: string;
+	readonly runnerInline: string;
 }
 
 const en: EvalMessages = {
@@ -82,6 +84,9 @@ const en: EvalMessages = {
 	stageError: "stage error",
 	completeness: "completeness",
 	edits: "edits",
+	noRunnerBound:
+		"no eval runner bound — install/configure the local eval drivers (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) or runs stay queued",
+	runnerInline: "runner bound but no jobs queue — runs execute inline",
 };
 
 const ptBR: EvalMessages = {
@@ -118,6 +123,9 @@ const ptBR: EvalMessages = {
 	stageError: "erro no estágio",
 	completeness: "completude",
 	edits: "edições",
+	noRunnerBound:
+		"nenhum runner de eval vinculado — instale/configure os drivers locais de eval (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) ou os runs ficam na fila",
+	runnerInline: "runner vinculado, mas sem fila de jobs — os runs executam inline",
 };
 
 const es: EvalMessages = {
@@ -126,6 +134,9 @@ const es: EvalMessages = {
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Generar consultas",
 	stepRunEval: "3 · Ejecutar eval",
+	noRunnerBound:
+		"no hay runner de eval vinculado — instala/configura los drivers locales de eval (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) o los runs quedan en cola",
+	runnerInline: "runner vinculado pero sin cola de jobs — los runs se ejecutan en línea",
 };
 
 const CATALOGS: Record<EvalLocale, EvalMessages> = { en, "pt-BR": ptBR, es };

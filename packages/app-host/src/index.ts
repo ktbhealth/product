@@ -48,6 +48,7 @@ import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
 import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import { Jobs, makeJobs } from "@ktb/jobs-port";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
 import {
 	evalArtifactsLocalDriver,
@@ -185,6 +186,14 @@ export interface AppEnv extends ObservabilityEnv {
 	/** Workers AI binding — optional; any object with `run(model, inputs)`. */
 	readonly AI?: {
 		run(model: string, inputs: unknown): Promise<unknown>;
+	};
+	/** Generic jobs queue producer (PL-007) — the same transport the
+	 * ServerRuntime.jobs capability wraps (apps/web lib/platform.ts
+	 * builds that enqueuer from this binding). When bound, the Jobs
+	 * port is composed as an Effect service so plugin layers can
+	 * enqueue kind-dispatched jobs (eval.run, …) via serviceOption. */
+	readonly AUDIO_QUEUE?: {
+		send(body: unknown): Promise<unknown>;
 	};
 }
 
@@ -501,6 +510,16 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// wired; the plugin then leaves run rows `queued` (P-081).
 	const EvalRunnerLive = optionalLayerFor<EvalRunner>(EvalRunner.key, env);
 	const EvalArtifactsLive = optionalLayerFor<EvalArtifacts>(EvalArtifacts.key, env);
+	// PL-007/WS-E: the generic jobs enqueue port as an Effect service —
+	// the same AUDIO_QUEUE transport + job_runs projection the
+	// ServerRuntime.jobs capability wraps (apps/web lib/platform.ts
+	// builds that enqueuer from the same binding). Unbound → no Jobs
+	// service; consumers degrade via Effect.serviceOption.
+	const jobsQueue = env.AUDIO_QUEUE;
+	const JobsLive =
+		jobsQueue === undefined
+			? Layer.empty
+			: Layer.succeed(Jobs, makeJobs({ send: (envelope) => jobsQueue.send(envelope), db }));
 	// Entity cipher port (T-140): passthrough until ZK keyring drivers
 	// exist — plugins resolve it via serviceOption like other ports.
 	const EntityCipherLive = layerFor<EntityCipher>(EntityCipher.key, env);
@@ -592,6 +611,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TelemetryLive,
 		EvalRunnerLive,
 		EvalArtifactsLive,
+		JobsLive,
 		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
 
-import { evalRun, evalRunSample } from "./schema.ts";
+import { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
 
 describe("eval validator schema", () => {
 	it("eval_run set-nulls the cohort link and indexes it", () => {
@@ -29,5 +29,19 @@ describe("eval validator schema", () => {
 		expect(tables).toContain(evalRun);
 		expect(tables).toContain(evalInstanceItem);
 		expect(cfg.indexes.map((i) => i.config.name)).toEqual(["eval_run_sample_run_item_idx"]);
+	});
+
+	it("eval_run_record cascades with the run, soft-refs the item, indexes runId", () => {
+		const cfg = getTableConfig(evalRunRecord);
+		expect(cfg.name).toBe("eval_run_record");
+		// Exactly one FK — runId cascade. itemId is deliberately a plain
+		// integer: records outlive corpus edits like run.params does.
+		expect(cfg.foreignKeys).toHaveLength(1);
+		const fk = cfg.foreignKeys[0]!;
+		expect(fk.onDelete).toBe("cascade");
+		expect(fk.reference().foreignTable).toBe(evalRun);
+		expect(cfg.columns.find((c) => c.name === "item_id")).toBeDefined();
+		expect(cfg.columns.find((c) => c.name === "payload")?.notNull).toBe(true);
+		expect(cfg.indexes.map((i) => i.config.name)).toEqual(["eval_run_record_run_idx"]);
 	});
 });

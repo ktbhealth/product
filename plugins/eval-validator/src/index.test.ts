@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { doctors, patients, user as userTable } from "@ktb/db/schema";
+import { consultations, doctors, patients, user as userTable } from "@ktb/db/schema";
 import { Forbidden, Principal } from "@ktb/authz";
 import { EvalArtifacts, EvalRunner } from "@ktb/eval-consultation";
 import { evalInstance, evalInstanceItem } from "@ktb/eval-persona";
+import { Jobs, type JobsEnqueuer } from "@ktb/jobs-port";
 import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -13,7 +14,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import type { CohortSummary } from "./index.ts";
 import { evalValidatorPanelPlugin, EvalValidator, EvalValidatorLive } from "./index.ts";
-import { evalRun, evalRunSample } from "./schema.ts";
+import { evalRun, evalRunRecord, evalRunSample } from "./schema.ts";
 import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 
 const grantLayer = (allow: boolean) =>
@@ -68,6 +69,8 @@ const make = (
 		runner?: "none" | Parameters<typeof runnerLayer>[0];
 		/** Absent = no EvalArtifacts bound; value = driver returning it. */
 		artifacts?: Uint8Array | null | "fail";
+		/** Absent = no Jobs bound; value = enqueuer stub (WS-E). */
+		jobs?: JobsEnqueuer;
 	} = {},
 ) => {
 	const { allow = true, runner } = opts;
@@ -77,6 +80,7 @@ const make = (
 		grantLayer(allow),
 		runner === "none" ? Layer.empty : runnerLayer(runner),
 		"artifacts" in opts ? artifactsLayer(opts.artifacts ?? null) : Layer.empty,
+		opts.jobs === undefined ? Layer.empty : Layer.succeed(Jobs, opts.jobs),
 	);
 	const rt = ManagedRuntime.make(
 		Layer.merge(EvalValidatorLive.pipe(Layer.provide(layers)), layers),
@@ -302,7 +306,7 @@ describe("EvalValidator", () => {
 		await rt.dispose();
 	});
 
-	it("a runner that throws wholesale still finishes the run row", async () => {
+	it("a runner that throws wholesale lands the run as failed, not stuck running", async () => {
 		const { rt, run, db } = make({
 			runner: () => Effect.fail(new Error("runner crashed")) as never,
 		});
@@ -317,7 +321,149 @@ describe("EvalValidator", () => {
 			if (progress?.status === "done" || progress?.status === "failed") break;
 			await new Promise((r) => setTimeout(r, 20));
 		}
+		// The run must terminate honestly — a crashed runner is a failed
+		// run, never an eternal "running" row.
+		expect(progress?.status).toBe("failed");
+		// …and the experiment artifact still lands for audit.
+		const [row] = await db.select().from(evalRun);
+		expect(row?.experiment).not.toBeNull();
+		await rt.dispose();
+	});
+
+	it("runner records persist as eval_run_record rows and the experiment column fills", async () => {
+		const { rt, run, db } = make({
+			runner: ({ items, onSample }) =>
+				Effect.forEach(
+					items,
+					(item) =>
+						onSample(item.id, {
+							status: "ok",
+							result: { wer: 0.05 },
+							records: [
+								{
+									runId: `eval-${item.id}`,
+									taskId: `eval-${item.id}`,
+									stage: "asr",
+									engine: "whisper",
+									model: "large-v3",
+									inputHash: "h",
+									startedAt: 42,
+									sampleId: String(item.id),
+								},
+							],
+						}),
+					{ discard: true },
+				),
+		});
+		const { instanceId, itemIds } = await seedCohort(db, { count: 1 });
+		await run(
+			Effect.flatMap(EvalValidator, (v) => v.review({ itemId: itemIds[0]!, decision: "approved" })),
+		);
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })));
+		let progress = null;
+		for (let i = 0; i < 50; i++) {
+			progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+			if (progress?.status === "done") break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
 		expect(progress?.status).toBe("done");
+		const records = await db.select().from(evalRunRecord);
+		expect(records).toHaveLength(1);
+		expect(records[0]).toMatchObject({
+			runId,
+			itemId: itemIds[0],
+			stage: "asr",
+			engine: "whisper",
+			model: "large-v3",
+			startedAt: 42,
+		});
+		expect(JSON.parse(records[0]!.payload)).toMatchObject({ sampleId: String(itemIds[0]) });
+		const [row] = await db.select().from(evalRun);
+		const experiment = JSON.parse(row?.experiment ?? "{}") as {
+			id: string;
+			kind: string;
+			dataset: { id: string; version: string };
+			summary: { ok: number };
+		};
+		expect(experiment.id).toBe(`eval-run-${runId}`);
+		expect(experiment.kind).toBe("run");
+		// seedCohort writes no manifest → deterministic unknown-version pin.
+		expect(experiment.dataset).toEqual({
+			id: `eval-instance-${instanceId}`,
+			version: "unknown",
+		});
+		expect(experiment.summary.ok).toBe(1);
+		await rt.dispose();
+	});
+
+	it("WS-F: reject deletes the item's consultations row; an ok sample writes pipeline outputs back", async () => {
+		const { rt, run, db } = make();
+		const { instanceId, itemIds } = await seedCohort(db, { count: 2 });
+		for (const [i, id] of itemIds.entries()) {
+			await db.insert(consultations).values({
+				userId: `syn-${id}`,
+				transcript: `gold ${i}`,
+				source: "eval",
+				synthetic: true,
+				evalItemId: id,
+				createdAt: new Date(),
+			});
+		}
+		await run(
+			Effect.flatMap(EvalValidator, (v) => v.review({ itemId: itemIds[0]!, decision: "approved" })),
+		);
+		await run(
+			Effect.flatMap(EvalValidator, (v) => v.review({ itemId: itemIds[1]!, decision: "rejected" })),
+		);
+		// Rejection removed the second item's synthetic consultation.
+		let rows = await db.select().from(consultations);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.evalItemId).toBe(itemIds[0]);
+
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })));
+		for (let i = 0; i < 50; i++) {
+			const p = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+			if (p?.status === "done") break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		// The surviving row carries the pipeline outputs — the default
+		// runner reports asrText = the gold script.
+		const [c] = await db.select().from(consultations);
+		expect(c?.audioStatus).toBe("done");
+		expect(c?.serverTranscript).toBe("script 0");
+		await rt.dispose();
+	});
+
+	it("a stored instance manifest becomes the experiment's dataset pin", async () => {
+		const { rt, run, db } = make();
+		const { instanceId, itemIds } = await seedCohort(db, { count: 1 });
+		const { eq } = await import("drizzle-orm");
+		await db
+			.update(evalInstance)
+			.set({
+				manifest: JSON.stringify({
+					id: `eval-instance-${instanceId}`,
+					version: "v1-abcdef12",
+				}),
+			})
+			.where(eq(evalInstance.id, instanceId));
+		await run(
+			Effect.flatMap(EvalValidator, (v) => v.review({ itemId: itemIds[0]!, decision: "approved" })),
+		);
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })));
+		for (let i = 0; i < 50; i++) {
+			const p = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+			if (p?.status === "done") break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		const [row] = await db.select().from(evalRun);
+		const experiment = JSON.parse(row?.experiment ?? "{}") as {
+			dataset: { id: string; version: string };
+		};
+		expect(experiment.dataset).toEqual({
+			id: `eval-instance-${instanceId}`,
+			version: "v1-abcdef12",
+		});
 		await rt.dispose();
 	});
 
@@ -744,5 +890,88 @@ describe("EvalValidator — run CRUD + patient context", () => {
 			_tag: "Forbidden",
 		});
 		await rt.dispose();
+	});
+});
+
+describe("EvalValidator — WS-E jobs dispatch", () => {
+	const stubJobs = (sent: { kind: string; payload: unknown }[], fail?: Error): JobsEnqueuer => ({
+		enqueue: async (kind, payload) => {
+			if (fail !== undefined) throw fail;
+			sent.push({ kind, payload });
+			return { id: `job-${sent.length}`, kind, payload };
+		},
+	});
+
+	it("jobs bound → startRun enqueues eval.run and the run stays queued", async () => {
+		const sent: { kind: string; payload: unknown }[] = [];
+		const { rt, run, db } = make({ jobs: stubJobs(sent) });
+		const { instanceId, itemIds } = await seedCohort(db, { count: 1 });
+		await run(
+			Effect.flatMap(EvalValidator, (v) => v.review({ itemId: itemIds[0]!, decision: "approved" })),
+		);
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })));
+		expect(sent).toEqual([{ kind: "eval.run", payload: { runId } }]);
+		// The consumer owns execution now — nothing ran inline: the
+		// sample is still pending and the run still queued.
+		const samples = await db.select().from(evalRunSample);
+		expect(samples).toHaveLength(1);
+		expect(samples[0]?.status).toBe("pending");
+		const progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+		expect(progress?.status).toBe("queued");
+		expect(progress?.runnerBound).toBe(true);
+		expect(progress?.queueBound).toBe(true);
+		await rt.dispose();
+	});
+
+	it("an enqueue failure marks the run failed and propagates", async () => {
+		const { rt, run, db } = make({ jobs: stubJobs([], new Error("queue down")) });
+		const { instanceId, itemIds } = await seedCohort(db, { count: 1 });
+		await run(
+			Effect.flatMap(EvalValidator, (v) => v.review({ itemId: itemIds[0]!, decision: "approved" })),
+		);
+		await expect(
+			run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId }))),
+		).rejects.toThrow(/queue down|enqueue failed/);
+		// No zombie "queued" row — the failure is on the record.
+		const [row] = await db.select().from(evalRun);
+		expect(row?.status).toBe("failed");
+		expect(row?.summary).toContain("enqueue failed");
+		await rt.dispose();
+	});
+
+	it("progress reports runnerBound/queueBound for each layer combination", async () => {
+		const seedQueuedRun = async (db: DbClient) => {
+			const { instanceId } = await seedCohort(db, { count: 1 });
+			const [r] = await db
+				.insert(evalRun)
+				.values({ instanceId, createdAt: new Date() })
+				.returning();
+			return r!.id;
+		};
+
+		// Neither bound → honest false/false.
+		const none = make({ runner: "none" });
+		const noneRunId = await seedQueuedRun(none.db);
+		const p1 = await none.run(Effect.flatMap(EvalValidator, (v) => v.progress(noneRunId)));
+		expect(p1?.runnerBound).toBe(false);
+		expect(p1?.queueBound).toBe(false);
+		await none.rt.dispose();
+
+		// Runner only → the inline fork path, queueBound false.
+		const inline = make();
+		const inlineRunId = await seedQueuedRun(inline.db);
+		const p2 = await inline.run(Effect.flatMap(EvalValidator, (v) => v.progress(inlineRunId)));
+		expect(p2?.runnerBound).toBe(true);
+		expect(p2?.queueBound).toBe(false);
+		await inline.rt.dispose();
+
+		// Queue only (no runner) → the run still enqueues; the consumer
+		// reports the missing runner honestly downstream.
+		const queued = make({ runner: "none", jobs: stubJobs([]) });
+		const queuedRunId = await seedQueuedRun(queued.db);
+		const p3 = await queued.run(Effect.flatMap(EvalValidator, (v) => v.progress(queuedRunId)));
+		expect(p3?.runnerBound).toBe(false);
+		expect(p3?.queueBound).toBe(true);
+		await queued.rt.dispose();
 	});
 });

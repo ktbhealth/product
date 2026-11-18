@@ -4,7 +4,7 @@ import { AiEndpoints, AiEndpointsLive, type EndpointInput } from "@ktb/ai-provid
 import { Forbidden, Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { doctors, patients, user as userTable } from "@ktb/db/schema";
+import { consultations, doctors, patients, user as userTable } from "@ktb/db/schema";
 import {
 	LlmFactory,
 	LlmPort,
@@ -307,6 +307,30 @@ describe("EvalInstances", () => {
 		expect(docs.every((doc) => doc.synthetic)).toBe(true);
 		const users = await db.select().from(userTable);
 		expect(users.every((u) => u.email.endsWith("@eval.ktb"))).toBe(true);
+		// WS-F: each item also persists a REAL consultations row —
+		// synthetic=1, source=eval, evalItemId provenance, gold script
+		// as the transcript the run pipeline writes back onto.
+		const consults = await db.select().from(consultations);
+		expect(consults).toHaveLength(2);
+		expect(
+			consults.every(
+				(c) => c.synthetic && c.source === "eval" && c.evalItemId !== null && c.transcript !== "",
+			),
+		).toBe(true);
+		expect(consults.map((c) => c.evalItemId).sort()).toEqual(items.map((i) => i.id).sort());
+		// Finalize wrote the DatasetManifest projection — the cohort's
+		// registry identity eval runs pin as their dataset.
+		const [instRow] = await db.select().from(evalInstance);
+		const manifest = JSON.parse(instRow?.manifest ?? "{}") as {
+			id: string;
+			version: string;
+			sampleCount: number;
+			domain: string;
+		};
+		expect(manifest.id).toBe(`eval-instance-${id}`);
+		expect(manifest.domain).toBe("eval.consultation");
+		expect(manifest.sampleCount).toBe(2);
+		expect(manifest.version).toMatch(/^v2-[0-9a-f]{8}$/);
 		await rt.dispose();
 	});
 
@@ -430,7 +454,7 @@ describe("EvalInstances", () => {
 	});
 
 	it("marks items error on per-item defects — the run still completes", async () => {
-		const { rt, run, d1 } = make();
+		const { rt, run, db, d1 } = make();
 		await run(seedDefs(2));
 		const { id } = await run(
 			Effect.flatMap(EvalInstances, (s) => s.create({ name: "iso", mode: "random", count: 2 })),
@@ -448,6 +472,13 @@ describe("EvalInstances", () => {
 		}
 		expect(d?.status).toBe("failed");
 		expect(d?.items.every((it) => it.status === "error" && it.error !== null)).toBe(true);
+		// A failed instance still records the manifest of the partial
+		// corpus it attempted — sampleCount honestly reports 0 done.
+		const [instRow] = await db.select().from(evalInstance);
+		expect(JSON.parse(instRow?.manifest ?? "{}")).toMatchObject({
+			id: `eval-instance-${id}`,
+			sampleCount: 0,
+		});
 		await rt.dispose();
 	});
 
@@ -543,6 +574,9 @@ describe("EvalInstances", () => {
 		// The first poll finalizes the empty item set.
 		const d = await run(Effect.flatMap(EvalInstances, (s) => s.detail(inst!.id)));
 		expect(d?.status).toBe("ready");
+		// No items → no manifest (nothing to pin).
+		const [row] = await db.select().from(evalInstance);
+		expect(row?.manifest).toBeNull();
 		await rt.dispose();
 	});
 

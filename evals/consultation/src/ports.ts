@@ -185,6 +185,11 @@ export interface EvalRunnerOutcome {
 	readonly status: "ok" | "failed";
 	readonly result?: unknown;
 	readonly error?: string;
+	/** Per-stage RunRecords the item produced (tts/asr/cleanup/…)
+	 * — the audit trail the platform persists alongside the outcome.
+	 * Absent = the driver doesn't meter calls; an empty array = it
+	 * ran but emitted none. */
+	readonly records?: readonly RunRecord[];
 }
 
 /**

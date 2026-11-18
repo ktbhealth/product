@@ -13,7 +13,9 @@ import { EVAL_PERSONA_TEST_DDL } from "@ktb/eval-persona";
  * exactly that and crashed under TDZ when the cycle entered through
  * eval-persona. */
 export const EVAL_VALIDATOR_TEST_DDL = `${EVAL_PERSONA_TEST_DDL}
-CREATE TABLE eval_run (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER REFERENCES eval_instance(id) ON DELETE set null, params TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, summary TEXT, started_at INTEGER, finished_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE eval_run (id INTEGER PRIMARY KEY AUTOINCREMENT, instance_id INTEGER REFERENCES eval_instance(id) ON DELETE set null, params TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued', total INTEGER NOT NULL DEFAULT 0, done INTEGER NOT NULL DEFAULT 0, summary TEXT, experiment TEXT, started_at INTEGER, finished_at INTEGER, created_by TEXT, created_at INTEGER NOT NULL);
 CREATE TABLE eval_run_sample (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL REFERENCES eval_run(id) ON DELETE cascade, item_id INTEGER NOT NULL REFERENCES eval_instance_item(id) ON DELETE cascade, status TEXT NOT NULL DEFAULT 'pending', result TEXT, error TEXT, created_at INTEGER NOT NULL);
 CREATE UNIQUE INDEX eval_run_sample_run_item_idx ON eval_run_sample (run_id, item_id);
+CREATE TABLE eval_run_record (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL REFERENCES eval_run(id) ON DELETE cascade, item_id INTEGER, stage TEXT NOT NULL, engine TEXT NOT NULL, model TEXT, started_at INTEGER, payload TEXT NOT NULL);
+CREATE INDEX eval_run_record_run_idx ON eval_run_record (run_id);
 `;

@@ -75,6 +75,23 @@ export const consultations = sqliteTable(
 		anamnesisHash: text("anamnesis_hash"),
 		anamnesisVersion: integer("anamnesis_version"),
 		blobHash: text("blob_hash"),
+		/**
+		 * Synthetic flag (P-098 WS-F): eval-generated consultations
+		 * (`eval_instance_item` corpus rows) exercise the REAL
+		 * transcription/anamnesis pipeline, so they persist as ordinary
+		 * consultations marked synthetic — same contract as
+		 * patients.synthetic/doctors.synthetic. UI surfaces may filter
+		 * or badge them; analytics must exclude them.
+		 */
+		synthetic: integer({ mode: "boolean" }).notNull().default(false),
+		/**
+		 * Provenance back-pointer to the eval corpus item
+		 * (eval_instance_item.id) — SOFT integer reference, no FK:
+		 * cross-plugin refs stay migration-decoupled, and deleting the
+		 * corpus item must not cascade-delete consultation history.
+		 * NULL on every human-created row.
+		 */
+		evalItemId: integer("eval_item_id"),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [index("consultations_tenant_id_idx").on(table.tenantId)],
