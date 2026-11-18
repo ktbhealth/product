@@ -83,6 +83,11 @@ const asData = (value: unknown): Record<string, unknown> =>
 const HANDLED_TAGS = [
 	"Forbidden",
 	"UnknownCollection",
+	// Corrupt registry rows (T-147) surface as denied/null like an
+	// unknown collection — the console lists the row with empty
+	// fields via listCollections, so the corruption stays visible
+	// without a 500 on every documents call.
+	"CorruptCollection",
 	"RecordNotFound",
 	"InvalidDocumentQuery",
 ] as const;
