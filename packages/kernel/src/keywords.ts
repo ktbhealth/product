@@ -42,6 +42,7 @@ export const PLUGIN_KEYWORDS = [
 	"transcription",
 	"users",
 	"vault",
+	"views",
 	"wizards",
 	// eval/transcription sub-domains
 	"asr",

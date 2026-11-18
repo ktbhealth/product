@@ -35,6 +35,7 @@ import {
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
 import { DocumentCollections, makeDocumentCollections } from "@ktb/document-store";
+import { ViewDefinitions, makeViewDefinitions } from "@ktb/views";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
@@ -520,6 +521,11 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		DocumentCollections,
 		makeDocumentCollections(plugins),
 	);
+	// View-definition registry (view.def contributions): same
+	// composition-time collection as DocumentCollections — the
+	// @ktb/views service layer consumes it via `ViewDefinitions`.
+	// Enablement is likewise ignored: defs are static composition data.
+	const ViewDefinitionsLive = Layer.succeed(ViewDefinitions, makeViewDefinitions(plugins));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -545,6 +551,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		PlatformAdminLive,
 		PluginStatesLive,
 		DocumentCollectionsLive,
+		ViewDefinitionsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),
