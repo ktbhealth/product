@@ -109,6 +109,9 @@ export type I18nKey =
 	| "app.login_error_password_mismatch"
 	| "app.login_password"
 	| "app.login_pending"
+	| "app.login_picker_desc"
+	| "app.login_picker_heading"
+	| "app.login_picker_meta_title"
 	| "app.login_submit_in"
 	| "app.login_submit_up"
 	| "app.login_tab_in"
@@ -138,12 +141,14 @@ export type I18nKey =
 	| "app.nav_consultations"
 	| "app.nav_doctor_login"
 	| "app.nav_doctor_portal"
+	| "app.nav_login"
 	| "app.nav_my_consultations"
 	| "app.nav_patient_login"
 	| "app.nav_patient_portal"
 	| "app.nav_patients"
 	| "app.nav_platform_console"
 	| "app.nav_secretaries"
+	| "app.nav_secretary_login"
 	| "app.nav_secretary_portal"
 	| "app.nav_sign_out"
 	| "app.nav_switch_doctor"
@@ -1590,6 +1595,9 @@ export interface I18nTypedT {
 	(key: "app.login_error_password_mismatch"): Effect.Effect<string>;
 	(key: "app.login_password"): Effect.Effect<string>;
 	(key: "app.login_pending"): Effect.Effect<string>;
+	(key: "app.login_picker_desc"): Effect.Effect<string>;
+	(key: "app.login_picker_heading"): Effect.Effect<string>;
+	(key: "app.login_picker_meta_title"): Effect.Effect<string>;
 	(key: "app.login_submit_in"): Effect.Effect<string>;
 	(key: "app.login_submit_up"): Effect.Effect<string>;
 	(key: "app.login_tab_in"): Effect.Effect<string>;
@@ -1619,12 +1627,14 @@ export interface I18nTypedT {
 	(key: "app.nav_consultations"): Effect.Effect<string>;
 	(key: "app.nav_doctor_login"): Effect.Effect<string>;
 	(key: "app.nav_doctor_portal"): Effect.Effect<string>;
+	(key: "app.nav_login"): Effect.Effect<string>;
 	(key: "app.nav_my_consultations"): Effect.Effect<string>;
 	(key: "app.nav_patient_login"): Effect.Effect<string>;
 	(key: "app.nav_patient_portal"): Effect.Effect<string>;
 	(key: "app.nav_patients"): Effect.Effect<string>;
 	(key: "app.nav_platform_console"): Effect.Effect<string>;
 	(key: "app.nav_secretaries"): Effect.Effect<string>;
+	(key: "app.nav_secretary_login"): Effect.Effect<string>;
 	(key: "app.nav_secretary_portal"): Effect.Effect<string>;
 	(key: "app.nav_sign_out"): Effect.Effect<string>;
 	(key: "app.nav_switch_doctor"): Effect.Effect<string>;

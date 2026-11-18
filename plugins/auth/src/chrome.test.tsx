@@ -23,8 +23,7 @@ const props = (over: Partial<ChromeProps> = {}): ChromeProps => ({
 	localeName: (l) => l,
 	setLocale: vi.fn(),
 	labels: {
-		doctorLogin: "Sou doutor",
-		patientLogin: "Sou paciente",
+		login: "Entrar",
 		signOut: "Sair",
 	},
 	signOut: vi.fn(async () => {}),
@@ -37,21 +36,17 @@ afterEach(() => {
 });
 
 describe("SessionMenu", () => {
-	it("renders localized doctor and patient login entries when anonymous", () => {
+	it("renders a single localized sign-in entry when anonymous", () => {
 		render(<SessionMenu {...props()} />);
-		expect(screen.getByRole("link", { name: "Sou doutor" }).getAttribute("href")).toBe(
-			"/login/doctor",
-		);
-		// The patient login is the primary CTA.
-		expect(screen.getByRole("link", { name: "Sou paciente" }).getAttribute("href")).toBe(
-			"/login/patient",
-		);
+		expect(screen.getByRole("link", { name: "Entrar" }).getAttribute("href")).toBe("/login");
+		// The role choice moved to /login — no per-role entries here.
+		expect(screen.queryByRole("link", { name: "Sou doutor" })).toBeNull();
+		expect(screen.queryByRole("link", { name: "Sou paciente" })).toBeNull();
 	});
 
-	it("falls back to English labels when the host fills none", () => {
+	it("falls back to the English label when the host fills none", () => {
 		render(<SessionMenu {...props({ labels: {} })} />);
-		expect(screen.getByRole("link", { name: "I am a doctor" })).toBeTruthy();
-		expect(screen.getByRole("link", { name: "I am a patient" })).toBeTruthy();
+		expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/login");
 	});
 
 	it("falls back to English labels and a placeholder avatar", async () => {

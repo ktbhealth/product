@@ -18,6 +18,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "nav_login",
+		locale: "en",
+		value: "Sign in",
+	},
+	{
+		namespace: "app",
 		key: "nav_doctor_login",
 		locale: "en",
 		value: "I am a doctor",
@@ -27,6 +33,12 @@ export const I18N_BASELINE = [
 		key: "nav_patient_login",
 		locale: "en",
 		value: "I am a patient",
+	},
+	{
+		namespace: "app",
+		key: "nav_secretary_login",
+		locale: "en",
+		value: "I am a secretary",
 	},
 	{
 		namespace: "app",
@@ -220,6 +232,24 @@ export const I18N_BASELINE = [
 		key: "login_error_password_mismatch",
 		locale: "en",
 		value: "Passwords do not match.",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_meta_title",
+		locale: "en",
+		value: "Sign in | KTB Health",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_heading",
+		locale: "en",
+		value: "Sign in",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_desc",
+		locale: "en",
+		value: "Choose your profile to continue.",
 	},
 	{
 		namespace: "app",
@@ -1210,6 +1240,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "nav_login",
+		locale: "es",
+		value: "Iniciar sesión",
+	},
+	{
+		namespace: "app",
 		key: "nav_doctor_login",
 		locale: "es",
 		value: "Soy médico",
@@ -1219,6 +1255,12 @@ export const I18N_BASELINE = [
 		key: "nav_patient_login",
 		locale: "es",
 		value: "Soy paciente",
+	},
+	{
+		namespace: "app",
+		key: "nav_secretary_login",
+		locale: "es",
+		value: "Soy secretaria",
 	},
 	{
 		namespace: "app",
@@ -1412,6 +1454,24 @@ export const I18N_BASELINE = [
 		key: "login_error_password_mismatch",
 		locale: "es",
 		value: "Las contraseñas no coinciden.",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_meta_title",
+		locale: "es",
+		value: "Iniciar sesión | KTB Health",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_heading",
+		locale: "es",
+		value: "Iniciar sesión",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_desc",
+		locale: "es",
+		value: "Elige tu perfil para continuar.",
 	},
 	{
 		namespace: "app",
@@ -2403,6 +2463,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
+		key: "nav_login",
+		locale: "pt-BR",
+		value: "Entrar",
+	},
+	{
+		namespace: "app",
 		key: "nav_doctor_login",
 		locale: "pt-BR",
 		value: "Sou doutor",
@@ -2412,6 +2478,12 @@ export const I18N_BASELINE = [
 		key: "nav_patient_login",
 		locale: "pt-BR",
 		value: "Sou paciente",
+	},
+	{
+		namespace: "app",
+		key: "nav_secretary_login",
+		locale: "pt-BR",
+		value: "Sou secretária",
 	},
 	{
 		namespace: "app",
@@ -2605,6 +2677,24 @@ export const I18N_BASELINE = [
 		key: "login_error_password_mismatch",
 		locale: "pt-BR",
 		value: "As senhas não coincidem.",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_meta_title",
+		locale: "pt-BR",
+		value: "Entrar | KTB Health",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_heading",
+		locale: "pt-BR",
+		value: "Entrar",
+	},
+	{
+		namespace: "app",
+		key: "login_picker_desc",
+		locale: "pt-BR",
+		value: "Escolha o seu perfil para continuar.",
 	},
 	{
 		namespace: "app",
