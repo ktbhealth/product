@@ -676,6 +676,34 @@
         "effect": "4.1.2",
       },
     },
+    "plugins/ai-model": {
+      "name": "@ktb/ai-model",
+      "dependencies": {
+        "@ktb/audit": "workspace:*",
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/observability": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
     "plugins/ai-provider": {
       "name": "@ktb/ai-provider",
       "dependencies": {
@@ -2168,6 +2196,8 @@
     "@ktb/ai-adapter-openai": ["@ktb/ai-adapter-openai@workspace:packages/ai-adapter-openai"],
 
     "@ktb/ai-bridge": ["@ktb/ai-bridge@workspace:packages/ai-bridge"],
+
+    "@ktb/ai-model": ["@ktb/ai-model@workspace:plugins/ai-model"],
 
     "@ktb/ai-provider": ["@ktb/ai-provider@workspace:plugins/ai-provider"],
 
