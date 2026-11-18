@@ -133,7 +133,7 @@ async function getMachineByName(
 	return rows[0] ?? null;
 }
 
-async function insertMachine(
+export async function insertMachine(
 	db: DbClient,
 	row: {
 		readonly scope: string;

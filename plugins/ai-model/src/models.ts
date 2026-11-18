@@ -84,7 +84,7 @@ const toCard = (row: AiModel): ModelCard => ({
 	updatedAt: row.updatedAt,
 });
 
-async function listModels(db: DbClient, scope: string, endpointId?: number): Promise<AiModel[]> {
+export async function listModels(db: DbClient, scope: string, endpointId?: number): Promise<AiModel[]> {
 	const conditions = [eq(aiModel.scope, scope)];
 	if (endpointId !== undefined) conditions.push(eq(aiModel.endpointId, endpointId));
 	return db
@@ -94,7 +94,7 @@ async function listModels(db: DbClient, scope: string, endpointId?: number): Pro
 		.orderBy(aiModel.name);
 }
 
-async function getModelById(db: DbClient, id: number): Promise<AiModel | null> {
+export async function getModelById(db: DbClient, id: number): Promise<AiModel | null> {
 	const rows = await db.select().from(aiModel).where(eq(aiModel.id, id)).limit(1);
 	return rows[0] ?? null;
 }
@@ -108,7 +108,7 @@ async function getModelByName(db: DbClient, scope: string, name: string): Promis
 	return rows[0] ?? null;
 }
 
-async function insertModel(
+export async function insertModel(
 	db: DbClient,
 	row: {
 		readonly scope: string;
