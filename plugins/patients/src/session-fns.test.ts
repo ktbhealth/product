@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 const mocks = vi.hoisted(() => ({
 	getSessionUser: vi.fn(),
 	getDoctorAccess: vi.fn(),
@@ -9,15 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const chain = {
-			validator: () => chain,
-			handler: (h: (arg?: unknown) => unknown) => async (arg?: unknown) => h(arg ?? {}),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktb/server-fns", () => ({
 	ensureDoctorUser: vi.fn(),
 	getDoctorAccess: mocks.getDoctorAccess,

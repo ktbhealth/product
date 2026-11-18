@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock, reactStartServerMock } from "@ktb/server-fns/testing";
+
 // Edge paths of fns.ts that the signed-in integration tests (fns.test.ts)
 // cannot reach through the real services: Forbidden mapping on the
 // notification mutations, a patients.create that yields nothing, and the
@@ -13,23 +15,8 @@ const hoisted = vi.hoisted(() => ({
 	overrides: {} as { notifications?: unknown; patients?: unknown },
 }));
 
-vi.mock("@tanstack/react-start/server", () => ({
-	getRequestHeaders: () => new Headers(),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("#/lib/auth.ts", () => ({
 	getSessionUser: async () => hoisted.user,
 	ensureSessionUser: async () => {

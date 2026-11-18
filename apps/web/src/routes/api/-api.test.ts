@@ -1,22 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	reactStartMock,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const chain = {
-			validator: () => chain,
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg ?? {}),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 let failCreateConsultation = false;
 vi.mock("@ktb/consultations", async (importOriginal) => {
@@ -80,7 +71,7 @@ async function signIn() {
 	cookie = (res.headers.get("set-cookie") ?? "").split(";")[0];
 	const sess: any = await auth.api.getSession({ headers: new Headers({ cookie }) });
 	userId = sess.user.id;
-	headers.current = new Headers({ cookie });
+	serverFnRequestHeaders.current = new Headers({ cookie });
 }
 
 describe("api routes", () => {
@@ -158,12 +149,12 @@ describe("api routes", () => {
 	});
 
 	it("bots POST requires auth", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		const h = handlersOf(BotsRoute);
 		await expect(
 			h.POST!({ request: post("http://x/api/bots", { meetUrl: "https://m.co/x" }) } as never),
 		).rejects.toThrow("unauthenticated");
-		headers.current = new Headers({ cookie });
+		serverFnRequestHeaders.current = new Headers({ cookie });
 	});
 
 	it("webhook validates, authorizes and appends transcript", async () => {

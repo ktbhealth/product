@@ -1,12 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -17,7 +17,7 @@ import { Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { setServerRuntime } from "@ktb/server-fns";
+import type { ServerRuntime } from "@ktb/server-fns";
 
 import { Route as AssetsRoute } from "./api-routes/theme.assets.ts";
 import { Route as FontsRoute } from "./api-routes/theme.fonts.ts";
@@ -146,8 +146,11 @@ const runtimeThrowDb = ManagedRuntime.make(
 );
 
 const runAsOn =
-	(rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
-	(user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
+	(rt: ManagedRuntime.ManagedRuntime<unknown, never>): ServerRuntime["runAs"] =>
+	<A, E>(
+		user: { readonly id: string; readonly email?: string; readonly actorId?: string },
+		effect: Effect.Effect<A, E, unknown>,
+	) =>
 		rt.runPromise(
 			effect.pipe(
 				Effect.provideService(Principal, {
@@ -155,7 +158,7 @@ const runAsOn =
 					email: user.email,
 				}),
 			) as never,
-		);
+		) as Promise<A>;
 
 afterAll(async () => {
 	await Promise.all([
@@ -206,20 +209,10 @@ const fakeBucket = {
 };
 
 const useSession = (key: string) => {
-	headers.current = new Headers({ cookie: `session=${key}` });
+	serverFnRequestHeaders.current = new Headers({ cookie: `session=${key}` });
 };
 
-const runtimeConfig = {
-	run: (effect: Effect.Effect<unknown, unknown, unknown>) => runtime.runPromise(effect as never),
-	runAs: (user: { id: string; email?: string }, effect: Effect.Effect<unknown, unknown, unknown>) =>
-		runtime.runPromise(
-			effect.pipe(
-				Effect.provideService(Principal, {
-					userId: user.id,
-					email: user.email,
-				}),
-			) as never,
-		),
+const runtimeOverrides: Partial<ServerRuntime> = {
 	themeAssets: fakeBucket,
 	themeJobs: {
 		enqueue: async (kind: string, payload: unknown, options?: unknown) => {
@@ -228,22 +221,22 @@ const runtimeConfig = {
 			return { id: "env-1" };
 		},
 	},
-	audioTranscribeModel: "test-model",
-	getLocale: () => "en",
 	pluginEnabled: async () => true,
 };
 
+const publishRuntime = () => installServerFnRuntime(runtime, authStub, runtimeOverrides);
+
 beforeAll(() => {
-	setServerRuntime(runtimeConfig as never);
+	publishRuntime();
 });
 
 /** Swap the published runtime for edge-case tests; restores base. */
-const withRuntime = async <T>(patch: Record<string, unknown>, fn: () => Promise<T>) => {
-	setServerRuntime({ ...runtimeConfig, ...patch } as never);
+const withRuntime = async <T>(patch: Partial<ServerRuntime>, fn: () => Promise<T>) => {
+	installServerFnRuntime(runtime, authStub, { ...runtimeOverrides, ...patch });
 	try {
 		return await fn();
 	} finally {
-		setServerRuntime(runtimeConfig as never);
+		publishRuntime();
 	}
 };
 
@@ -266,7 +259,7 @@ const png = () =>
 
 describe("POST /api/theme/assets", () => {
 	it("rejects anonymous and non-admin callers", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(401);
 		useSession("plain");
 		expect((await postAsset({ themeId: "1", kind: "favicon" }, png())).status).toBe(403);
@@ -395,7 +388,7 @@ describe("POST /api/theme/fonts", () => {
 		} as never);
 
 	it("rejects anonymous, non-admin, bad JSON and bad bodies", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect((await post({ themeId: 1, family: "Inter" })).status).toBe(401);
 		useSession("plain");
 		expect((await post({ themeId: 1, family: "Inter" })).status).toBe(403);

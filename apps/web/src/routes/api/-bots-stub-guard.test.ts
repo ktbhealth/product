@@ -1,12 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = vi.hoisted(() => ({ current: new Headers() }));
+import { reactStartServerMock, serverFnRequestHeaders } from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 import { auth } from "#/lib/platform.ts";
 import { signUpDoctor } from "#/test/doctor.ts";
@@ -29,7 +25,9 @@ describe("bots route with the stub provider outside dev", () => {
 				body: JSON.stringify({ email: "stubguard@x.com", password: "senha-forte-123" }),
 			}),
 		);
-		headers.current = new Headers({ cookie: (res.headers.get("set-cookie") ?? "").split(";")[0] });
+		serverFnRequestHeaders.current = new Headers({
+			cookie: (res.headers.get("set-cookie") ?? "").split(";")[0],
+		});
 	});
 	afterEach(() => {
 		vi.unstubAllEnvs();

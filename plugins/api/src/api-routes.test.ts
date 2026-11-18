@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Auth } from "@ktb/auth";
-import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import {
@@ -15,7 +14,7 @@ import { Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
-import { setServerRuntime } from "@ktb/server-fns";
+import { installServerFnRuntime } from "@ktb/server-fns/testing";
 
 import { Route as DocumentsRoute } from "./api-routes/documents.ts";
 import { Route as SplatRoute } from "./api-routes/documents.$.ts";
@@ -131,22 +130,9 @@ const call = (
 const authed = { cookie: "session=doc" };
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect: Effect.Effect<unknown, unknown, unknown>) => runtime.runPromise(effect as never),
-		runAs: (
-			user: { id: string; email?: string },
-			effect: Effect.Effect<unknown, unknown, unknown>,
-		) =>
-			runtime.runPromise(
-				effect.pipe(
-					// Principal is what DocumentStore fencing + the Api
-					// permission gate read — same binding app-host's
-					// runAs performs.
-					Effect.provideService(Principal, { userId: user.id, email: user.email }),
-				) as never,
-			),
-		pluginEnabled: async () => true,
-	} as never);
+	// Principal is what DocumentStore fencing + the Api permission gate
+	// read — installServerFnRuntime's runAs binds it like app-host's.
+	installServerFnRuntime(runtime, authStub, { pluginEnabled: async () => true });
 });
 
 afterAll(async () => {

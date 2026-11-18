@@ -1,27 +1,16 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	reactStartMock,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
 vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
+	...reactStartServerMock(),
 	getRequestUrl: () => new URL("http://localhost:3000/consultations/new"),
 }));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import type { Anamnesis, AnamnesisSection } from "@ktb/anamnesis";
 import { newConsultationApi } from "@ktb/consultations/apis";
@@ -63,7 +52,7 @@ async function signUpPatient(email: string, name: string, verified: boolean) {
 }
 
 const as = (cookie: string) => {
-	headers.current = new Headers({ cookie });
+	serverFnRequestHeaders.current = new Headers({ cookie });
 };
 
 /** Portal home through the instance gate + page loader. */
@@ -244,7 +233,7 @@ describe("patient portal, end to end", () => {
 	});
 
 	it("anonymous visitors get nothing", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await sessionFn()).toBeNull();
 		expect(await portalHome()).toEqual({ status: "notfound" });
 		expect(await portalConsultation(consultationId)).toEqual({ status: "notfound" });

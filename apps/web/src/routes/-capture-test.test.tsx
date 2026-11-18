@@ -1,18 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { reactStartMock } from "@ktb/server-fns/testing";
 import { act, type ReactElement } from "react";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const chain = {
-			validator: () => chain,
-			handler: (h: (a?: unknown) => unknown) => async (a?: unknown) => h(a),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 const catalogMiss = vi.hoisted(() => ({ current: false }));
 // Total catalog miss: every `app.*` lookup returns the raw key, so the

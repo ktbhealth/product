@@ -1,12 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import { reactStartServerMock, serverFnRequestHeaders } from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
 import { auth } from "./platform.ts";
 import { ensureSessionUser, getSessionUser } from "./auth.ts";
@@ -31,7 +27,7 @@ async function signInAndGetCookie() {
 describe("auth helpers", () => {
 	beforeAll(async () => {
 		sessionCookie = await signInAndGetCookie();
-		headers.current = new Headers({ cookie: sessionCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: sessionCookie });
 	});
 
 	it("getSessionUser returns the signed-in user", async () => {
@@ -42,15 +38,15 @@ describe("auth helpers", () => {
 	});
 
 	it("getSessionUser returns null without session", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		expect(await getSessionUser()).toBeNull();
 		expect(await getSessionUser(new Headers())).toBeNull();
 	});
 
 	it("ensureSessionUser returns user or throws", async () => {
-		headers.current = new Headers();
+		serverFnRequestHeaders.current = new Headers();
 		await expect(ensureSessionUser()).rejects.toThrow("unauthenticated");
-		headers.current = new Headers({ cookie: sessionCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: sessionCookie });
 		const u = await ensureSessionUser();
 		expect(u.email).toBe("dra@x.com");
 	});
@@ -60,7 +56,7 @@ describe("auth helpers", () => {
 			user: { id: "u1", email: "e@x.com", name: undefined },
 			session: {},
 		} as never);
-		headers.current = new Headers({ cookie: sessionCookie });
+		serverFnRequestHeaders.current = new Headers({ cookie: sessionCookie });
 		const u = await getSessionUser();
 		expect(u?.name).toBeNull();
 		spy.mockRestore();

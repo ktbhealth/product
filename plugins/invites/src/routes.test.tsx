@@ -3,6 +3,8 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 const mocks = vi.hoisted(() => ({
 	invitePreviewFn: vi.fn(),
 	acceptInviteFn: vi.fn(),
@@ -24,22 +26,7 @@ vi.mock("./views/index.ts", () => ({
 }));
 // Server fns become plain async calls; with no runtime registered the
 // plugin route gate (createPluginFileRoute → pluginEnabledFn) is inert.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((value: unknown) => unknown) | undefined;
-		const api = {
-			validator: (fn: (value: unknown) => unknown) => {
-				validate = fn;
-				return api;
-			},
-			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({
-					data: validate === undefined ? call?.data : validate(call?.data),
-				}),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {

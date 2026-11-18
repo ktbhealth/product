@@ -1,34 +1,20 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
-import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
-import { Principal } from "@ktb/authz";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
@@ -53,15 +39,6 @@ CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DE
 CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
 `;
 
-const sessionFor = (email: string | null) =>
-	email === null
-		? null
-		: {
-				user: { id: `id-${email}`, email, name: email },
-				sessionId: "s1",
-				expiresAt: new Date(Date.now() + 3600_000),
-			};
-
 describe("rbac admin fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
@@ -76,28 +53,14 @@ describe("rbac admin fns", () => {
 		runtime = ManagedRuntime.make(
 			services.pipe(Layer.provide(env)) as unknown as Layer.Layer<unknown, never, never>,
 		);
-		const auth = Auth.of({
-			setUserBanned: async () => {},
-			getSession: async () => sessionFor(currentEmail) as never,
-		});
-		setServerRuntime({
-			run: (effect) => runtime.runPromise(effect.pipe(Effect.provideService(Auth, auth))),
-			runAs: (user, effect) =>
-				runtime.runPromise(
-					effect.pipe(
-						Effect.provideService(Principal, {
-							userId: user.id,
-							email: user.email,
-						}),
-					),
-				),
-			audioTranscribeModel: "test-model",
-			getLocale: () => "en",
-		});
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => sessionUser(currentEmail)),
+		);
 	});
 
 	afterAll(() => {
-		resetServerRuntime();
+		resetServerFnRuntime();
 		return runtime.dispose();
 	});
 
