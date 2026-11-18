@@ -30,6 +30,9 @@ data/
 .alchemy/
 coverage/
 
+# vitest blob reports (.vitest/blob) and attachments
+.vitest/
+
 # python bytecode (bench scripts)
 __pycache__/
 *.pyc

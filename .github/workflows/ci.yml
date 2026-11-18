@@ -13,7 +13,9 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  ci:
+  # Everything except the test suite: typecheck/lint (ci:check), build,
+  # generated-file drift checks, knip and the arch smoke test.
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -31,7 +33,8 @@ jobs:
           restore-keys: bun-${{ runner.os }}-
       - run: bun install --frozen-lockfile
       # Vite+ task runner: ci:* tasks live in vite.config.ts; ci:check and
-      # ci:test depend on ci:build (it generates the paraglide output).
+      # the ci:test shards depend on ci:build (it generates the paraglide
+      # output the tests import).
       - uses: actions/cache@v4
         with:
           path: node_modules/.vite/task-cache
@@ -40,7 +43,6 @@ jobs:
             vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
             vp-task-${{ runner.os }}-
       - run: bunx vp run ci:check
-      - run: bunx vp run ci:test
       - run: bunx vp run ci:build
       - run: bunx vp run ci:route-types
       # Quick generated-file drift checks (no build needed): db schema
@@ -53,6 +55,101 @@ jobs:
       # smoke test proving the ktb-arch boundary rules still fire.
       - run: bunx vp run ci:knip
       - run: bunx vp run ci:arch
+
+  # The vitest suite (~520 files / ~5k tests, ~7min serial) is split into
+  # disjoint shards via `vitest run --shard`. Each shard keeps coverage
+  # enabled and adds the blob reporter, which serializes the istanbul
+  # coverage map into `.vitest/blob/blob-<index>-<count>.json`; the
+  # coverage-gate job merges the blobs with `vitest --mergeReports` and
+  # enforces the global 100% thresholds from vitest.config.ts — the same
+  # check an unsharded run performs.
+  test:
+    name: test-shard ${{ matrix.index }}/${{ matrix.count }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      # A failing shard should not cancel the others — the gate job needs
+      # every blob to produce a meaningful merged coverage report.
+      fail-fast: false
+      matrix:
+        include:
+          - { index: 1, count: 3 }
+          - { index: 2, count: 3 }
+          - { index: 3, count: 3 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - uses: actions/cache@v4
+        with:
+          path: node_modules/.vite/task-cache
+          key: vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: |
+            vp-task-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+            vp-task-${{ runner.os }}-
+      # Tests import the paraglide output and routeTree.gen.ts produced by
+      # the build; ci:build is a vp task-cache hit when inputs are
+      # unchanged.
+      - run: bunx vp run ci:build
+      # Each shard only exercises ~1/3 of the suite, so its own coverage
+      # is far below the global 100% thresholds — zero them here; the
+      # coverage-gate job merges all shard blobs and enforces the real
+      # thresholds from vitest.config.ts.
+      - run: >-
+          bunx vitest run
+          --shard=${{ matrix.index }}/${{ matrix.count }}
+          --reporter=default
+          --reporter=blob
+          --coverage.reporter=text-summary
+          --coverage.thresholds.lines=0
+          --coverage.thresholds.functions=0
+          --coverage.thresholds.branches=0
+          --coverage.thresholds.statements=0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vitest-blob-${{ matrix.index }}
+          path: .vitest/blob/
+          if-no-files-found: error
+          retention-days: 1
+
+  # Merges the per-shard blob reports and enforces the 100% coverage
+  # thresholds. `vitest --mergeReports` replays the recorded test files
+  # (no tests re-run) and sums the istanbul coverage maps; the coverage
+  # provider then runs the same threshold check as a normal run.
+  coverage-gate:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+      - run: bun install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vitest-blob-*
+          path: .vitest/blob
+          merge-multiple: true
+      - run: bunx vitest --mergeReports
 
   # Informational only — never gates. Lines-of-code report via tokei,
   # provided by the shared cypera toolbox (9aia/cypera).
