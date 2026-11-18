@@ -13,6 +13,7 @@ import {
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Alert } from "@ktbhealth/ui/components/alert";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -329,7 +330,11 @@ export function PatientDetailPage({
 										to={portalPath(`/consultations/${c.id}`)}
 										className="text-sm font-medium after:absolute after:inset-0 after:content-['']"
 									>
-										{new Date(c.createdAt).toLocaleDateString(locale)}
+										<LocalDateTime
+											value={c.createdAt}
+											locale={locale}
+											options={{ year: "numeric", month: "numeric", day: "numeric" }}
+										/>
 									</Link>
 									<span className="text-xs text-muted-foreground">
 										#{c.id}

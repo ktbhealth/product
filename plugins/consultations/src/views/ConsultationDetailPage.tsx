@@ -23,6 +23,7 @@ import type { ConsultationIntegrityReport } from "../index.ts";
 import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
 import { decryptBlob } from "@ktb/crypto/stream";
+import { LocalDateTime } from "@ktb/views/views";
 
 import {
 	consultationDek,
@@ -254,10 +255,6 @@ export function ConsultationDetailPage({
 			alive = false;
 		};
 	}, [api, c.id, v.anamnesis]);
-	const when = new Date(c.createdAt).toLocaleString(locale, {
-		dateStyle: "long",
-		timeStyle: "short",
-	});
 
 	function copy() {
 		/* v8 ignore next -- copy button only renders when anamnesis exists */
@@ -325,14 +322,24 @@ export function ConsultationDetailPage({
 						)}
 					</h1>
 					<p className="mt-1 text-sm text-muted-foreground">
-						{t.common.consultationId(c.id)} · {when}
+						{t.common.consultationId(c.id)} ·{" "}
+						<LocalDateTime
+							value={c.createdAt}
+							locale={locale}
+							options={{ dateStyle: "long", timeStyle: "short" }}
+						/>
 					</p>
 					<div className="mt-3 flex flex-wrap gap-1.5">
 						<Chip>{sourceLabel(t, c.source)}</Chip>
 						{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
 						{c.consentAt ? (
 							<Chip tone="green">
-								{t.detail.consentRecorded(new Date(c.consentAt).toLocaleDateString(locale))}
+								{t.detail.consentLabel}{" "}
+								<LocalDateTime
+									value={c.consentAt}
+									locale={locale}
+									options={{ year: "numeric", month: "numeric", day: "numeric" }}
+								/>
 							</Chip>
 						) : (
 							<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
@@ -377,8 +384,8 @@ export function ConsultationDetailPage({
 						{history.visits.map((v) => (
 							<li key={v.id}>
 								<span className="text-muted-foreground">
-									{new Date(v.date).toLocaleDateString(locale, { dateStyle: "medium" })} ·{" "}
-									{t.common.consultationId(v.id).toLowerCase()}
+									<LocalDateTime value={v.date} locale={locale} options={{ dateStyle: "medium" }} />{" "}
+									· {t.common.consultationId(v.id).toLowerCase()}
 								</span>
 								{v.chiefComplaint ? <div>{t.detail.complaint(v.chiefComplaint)}</div> : null}
 								{v.plan ? <div>{t.detail.plan(v.plan)}</div> : null}

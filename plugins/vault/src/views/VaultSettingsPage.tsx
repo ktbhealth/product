@@ -26,6 +26,7 @@ import {
 } from "@ktbhealth/ui/components/table";
 
 import type { KeyringService } from "@ktb/crypto/keyring";
+import { LocalDateTime } from "@ktb/views/views";
 
 import type { ClinicKey } from "../index.ts";
 import type { SecretMeta } from "../secrets.ts";
@@ -412,7 +413,7 @@ export function VaultSettingsPage({
 											<TableCell className="text-xs">{device.userId}</TableCell>
 											<TableCell>{statusLabel(t, device.status)}</TableCell>
 											<TableCell className="text-xs text-muted-foreground">
-												{device.createdAt.toLocaleString(locale)}
+												<LocalDateTime value={device.createdAt} locale={locale} />
 											</TableCell>
 											<TableCell className="text-right">
 												{admin &&

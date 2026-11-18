@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 import { ArrowRightIcon, ClipboardListIcon, RadioIcon } from "lucide-react";
 import { useContext, type ReactNode } from "react";
 
@@ -171,7 +172,6 @@ export function ConsultationsDashboardStats({ locale = "en", i18n }: DashboardSl
 export function ConsultationsDashboardSections({ locale = "en", i18n }: DashboardSlotProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const consultations = useContext(ConsultationsDashboardContext);
-	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const recent = consultations.slice(0, 8);
 	return (
 		<>
@@ -238,7 +238,7 @@ export function ConsultationsDashboardSections({ locale = "en", i18n }: Dashboar
 											// in the browser's — suppress the text mismatch.
 											suppressHydrationWarning
 										>
-											{fmtDate(c.createdAt)}
+											<LocalDateTime value={c.createdAt} locale={locale} />
 										</TableCell>
 									</TableRow>
 								))}

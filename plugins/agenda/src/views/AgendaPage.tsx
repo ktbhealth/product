@@ -16,6 +16,7 @@ import {
 import { sliceMessages } from "@ktb/i18n";
 import type { PageContext, PageI18nSlice } from "@ktb/kernel";
 import { isEnvelope } from "@ktb/patients/zk";
+import { LocalDateTime } from "@ktb/views/views";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -212,8 +213,6 @@ export function AgendaPage({
 		}
 	};
 
-	const weekdayFmt = new Intl.DateTimeFormat(locale, { weekday: "short" });
-	const dayFmt = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" });
 	const todayKey = dayKey(new Date());
 	const now = Date.now();
 
@@ -260,7 +259,12 @@ export function AgendaPage({
 									dayKey(day) === todayKey ? "text-primary" : "text-muted-foreground"
 								}`}
 							>
-								{weekdayFmt.format(day)} · {dayFmt.format(day)}
+								<LocalDateTime value={day} locale={locale} options={{ weekday: "short" }} /> ·{" "}
+								<LocalDateTime
+									value={day}
+									locale={locale}
+									options={{ day: "numeric", month: "short" }}
+								/>
 							</h2>
 							<div className="mt-2 space-y-2">
 								{items.map((a) => {

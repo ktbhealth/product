@@ -6,6 +6,7 @@ import type { AnamnesisSectionKey } from "@ktb/anamnesis/types";
 import { portalMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 export interface PortalConsultationView {
 	readonly id: number;
@@ -37,10 +38,6 @@ export function PortalConsultationPage({
 	locale: string;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, portalMessages(locale));
-	const when = new Date(consultation.createdAt).toLocaleString(locale, {
-		dateStyle: "long",
-		timeStyle: "short",
-	});
 	return (
 		<div className="mx-auto flex max-w-2xl flex-col gap-6">
 			<div>
@@ -52,7 +49,13 @@ export function PortalConsultationPage({
 					{t.back}
 				</Link>
 				<h1 className="mt-2 text-2xl font-bold tracking-tight">{t.consultationTitle}</h1>
-				<p className="mt-1 text-sm text-muted-foreground">{when}</p>
+				<p className="mt-1 text-sm text-muted-foreground">
+					<LocalDateTime
+						value={consultation.createdAt}
+						locale={locale}
+						options={{ dateStyle: "long", timeStyle: "short" }}
+					/>
+				</p>
 				<dl className="mt-3 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1 text-sm">
 					<dt className="text-muted-foreground">{t.patient}</dt>
 					<dd>{consultation.patientName}</dd>

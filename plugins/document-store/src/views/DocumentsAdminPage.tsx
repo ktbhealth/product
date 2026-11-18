@@ -4,6 +4,7 @@ import { ArrowLeftIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
 
 import {
 	AlertDialog,
@@ -263,13 +264,25 @@ export function DocumentsAdminPage({
 									onClick={() => setForm(formFrom(collection, row))}
 								>
 									<TableCell className="font-mono text-xs">{row.id}</TableCell>
-									{fields.map(([name, descriptor]) => (
-										<TableCell key={name} className="max-w-48 truncate text-sm">
-											{formatCell(descriptor.kind, row.data[name], locale)}
-										</TableCell>
-									))}
+									{fields.map(([name, descriptor]) => {
+										const value = row.data[name];
+										// Epoch-ms date cells render client-side only —
+										// toLocaleString during SSR picks the worker's
+										// timezone and mismatches hydration.
+										return (
+											<TableCell key={name} className="max-w-48 truncate text-sm">
+												{descriptor.kind === "date" &&
+												typeof value === "number" &&
+												Number.isFinite(value) ? (
+													<LocalDateTime value={value} locale={locale} />
+												) : (
+													formatCell(descriptor.kind, value, locale)
+												)}
+											</TableCell>
+										);
+									})}
 									<TableCell className="whitespace-nowrap text-muted-foreground">
-										{new Date(row.updatedAt).toLocaleString(locale)}
+										<LocalDateTime value={row.updatedAt} locale={locale} />
 									</TableCell>
 									<TableCell>
 										<div

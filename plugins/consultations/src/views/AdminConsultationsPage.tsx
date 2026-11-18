@@ -26,6 +26,7 @@ import type { AdminConsultationRow } from "../index.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { ConsultationPatientOption } from "../platform-page.tsx";
 import type { OwnerOption } from "@ktb/patients";
+import { LocalDateTime } from "@ktb/views/views";
 import { AdminConsultationCreateDialog } from "./AdminConsultationCreateDialog.tsx";
 
 const SEARCH_CLS = "w-56 sm:w-64";
@@ -59,7 +60,6 @@ export function AdminConsultationsPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const router = useRouter();
-	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [toDelete, setToDelete] = useState<AdminConsultationRow | null>(null);
@@ -172,7 +172,7 @@ export function AdminConsultationsPage({
 											<TableCell>{c.ownerName ?? c.ownerEmail ?? "—"}</TableCell>
 											<TableCell className="text-muted-foreground">{c.audioStatus}</TableCell>
 											<TableCell className="text-right text-muted-foreground">
-												{fmtDate(c.createdAt)}
+												<LocalDateTime value={c.createdAt} locale={locale} />
 											</TableCell>
 											<TableCell className="text-right">
 												<Button

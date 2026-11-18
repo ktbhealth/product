@@ -26,6 +26,8 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 
+import { LocalDateTime } from "@ktb/views/views";
+
 import type { MachinesApi } from "../apis.ts";
 import { machineMessages } from "../i18n.ts";
 import type { MachineCard } from "../machines.ts";
@@ -38,12 +40,6 @@ const STATUS_TONE: Record<MachineStatus, string> = {
 	offline: "text-destructive",
 	draining: "text-warning",
 	unknown: "text-muted-foreground",
-};
-
-const fmtDate = (value: Date | string | null | undefined, locale: string) => {
-	if (value === null || value === undefined) return "—";
-	const d = value instanceof Date ? value : new Date(value);
-	return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
 };
 
 type Draft = {
@@ -213,8 +209,12 @@ export function MachinesPage({
 								{row.port !== null ? `:${row.port}` : ""}
 							</TableCell>
 							<TableCell className={STATUS_TONE[row.status]}>{statusLabel(row.status)}</TableCell>
-							<TableCell>{fmtDate(row.lastSeenAt, locale)}</TableCell>
-							<TableCell>{fmtDate(row.lastCheckAt, locale)}</TableCell>
+							<TableCell>
+								<LocalDateTime value={row.lastSeenAt} locale={locale} fallback="—" />
+							</TableCell>
+							<TableCell>
+								<LocalDateTime value={row.lastCheckAt} locale={locale} fallback="—" />
+							</TableCell>
 							<TableCell className="text-right">
 								<div className="flex justify-end gap-1">
 									<Button

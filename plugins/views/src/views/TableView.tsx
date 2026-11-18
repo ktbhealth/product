@@ -14,7 +14,8 @@ import type { ViewMessages } from "../i18n.ts";
 import type { ViewListWire } from "../wire.ts";
 import { FilterBar } from "./FilterBar.tsx";
 import { useViewFilters } from "./use-view-filters.ts";
-import { fieldLabel, formatViewValue, getPath, resolveViewText } from "./view-utils.ts";
+import { ViewValue } from "./ViewValue.tsx";
+import { fieldLabel, getPath, resolveViewText } from "./view-utils.ts";
 
 /**
  * `kind: "table"` list view — columns come straight from the def's
@@ -72,10 +73,10 @@ export function TableView({ wire, messages, locale, i18n, onQuery, busy }: Table
 							{wire.rows.map((row) => (
 								<TableRow key={row.id}>
 									{def.fields.map((field, i) => {
-										const text = formatViewValue(field, getPath(row.data, field.field), {
-											locale,
-											refs: wire.refs,
-										});
+										const value = getPath(row.data, field.field);
+										const cell = (
+											<ViewValue field={field} value={value} locale={locale} refs={wire.refs} />
+										);
 										return (
 											<TableCell key={field.field} className="max-w-48 truncate text-sm">
 												{i === 0 ? (
@@ -83,10 +84,10 @@ export function TableView({ wire, messages, locale, i18n, onQuery, busy }: Table
 														to={`${wire.path}/${row.id}`}
 														className="font-medium text-primary hover:underline"
 													>
-														{text}
+														{cell}
 													</Link>
 												) : (
-													text
+													cell
 												)}
 											</TableCell>
 										);
