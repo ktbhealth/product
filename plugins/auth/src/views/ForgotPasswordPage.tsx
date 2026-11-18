@@ -21,7 +21,7 @@ import { Turnstile } from "@ktbhealth/ui/components/turnstile";
 import { authMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /**
- * /forgot-password — the "Esqueci minha senha" destination every
+ * /forgot-password — the "Forgot your password?" destination every
  * sign-in screen links to. Sends a single-use reset link through
  * better-auth's /request-password-reset; the confirmation is the same
  * whether or not the address has an account, so the page never

@@ -6,6 +6,7 @@
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
 		"./i18n": "./src/i18n.ts",
+		"./views": "./src/views/index.ts",
 		"./api-route": "./src/api-routes/auth.$.ts"
 	},
 	"dependencies": {
