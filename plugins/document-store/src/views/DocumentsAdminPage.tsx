@@ -15,7 +15,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@ktbhealth/ui/components/alert-dialog";
-import { Button } from "@ktbhealth/ui/components/button";
+import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import {
 	Dialog,
@@ -217,10 +217,16 @@ export function DocumentsAdminPage({
 				description={t.description}
 				actions={
 					<div className="flex items-center gap-2">
-						<Button size="sm" variant="ghost" render={<Link to="/platform/document-store" />}>
+						{/* Real link, not Button render=: it navigates, so it
+						    keeps link semantics (and avoids the Base UI
+						    nativeButton warning). */}
+						<Link
+							to="/platform/document-store"
+							className={buttonVariants({ size: "sm", variant: "ghost" })}
+						>
 							<ArrowLeftIcon className="size-4" />
 							{t.back}
-						</Button>
+						</Link>
 						<Button size="sm" onClick={() => setForm(formFrom(collection, null))}>
 							<PlusIcon className="size-4" />
 							{t.newDocument}
