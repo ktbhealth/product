@@ -73,9 +73,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { index: 1, count: 3 }
-          - { index: 2, count: 3 }
-          - { index: 3, count: 3 }
+          - { index: 1, count: 4 }
+          - { index: 2, count: 4 }
+          - { index: 3, count: 4 }
+          - { index: 4, count: 4 }
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
