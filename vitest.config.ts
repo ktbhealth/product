@@ -31,6 +31,7 @@ export default defineConfig({
 				"**/*.d.ts",
 				"**/routeTree.gen.ts",
 				"**/schema.gen.ts",
+				"**/*.gen.ts",
 				"**/worker-configuration.d.ts",
 				"**/generated/**",
 			],
