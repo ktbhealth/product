@@ -147,6 +147,13 @@ export default defineConfig({
 			// preset.
 			...archLint.overrides,
 			{
+				// Provider preset quick-fills name real endpoints by design —
+				// the preset's exemption list still carries the pre-rename
+				// plugins/ai-endpoints path; keep the new one exempt too.
+				files: ["plugins/ai-provider/src/views/EndpointsPage.tsx"],
+				rules: { "arch/provider-lockin": "off" },
+			},
+			{
 				// Deploy-target code consumes ports and domain packages only;
 				// impl adapters are wired exclusively in the composition root
 				// (lib/platform.ts, lib/plugins.ts — excepted below) and in
