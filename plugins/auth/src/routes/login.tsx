@@ -1,4 +1,4 @@
-import { createPluginFileRoute } from "@ktb/server-fns";
+import { createPluginFileRoute, pluginEnabledFn } from "@ktb/server-fns";
 
 import { emailEnabledFn, localeFn } from "../fns.ts";
 import { authMessages } from "../i18n.ts";
@@ -15,12 +15,32 @@ import { LoginPage } from "../views/LoginPage.tsx";
  * always passes.
  */
 export const Route = createPluginFileRoute("auth.routes")("/login/doctor")({
-	loader: async () => ({ locale: await localeFn(), emailEnabled: await emailEnabledFn() }),
+	loader: async () => ({
+		locale: await localeFn(),
+		emailEnabled: await emailEnabledFn(),
+		// The secretary cross-link follows the /login picker's rule
+		// (P-058): the invite route, the delegation domain and the
+		// clinical portal must all be live — package-granular, like the
+		// route gate above.
+		secretaryLoginEnabled: (
+			await Promise.all(
+				["secretaries.routes", "doctors.routes", "clinician.portal"].map((id) =>
+					pluginEnabledFn({ data: id }),
+				),
+			)
+		).every(Boolean),
+	}),
 	head: ({ loaderData }) => ({
 		meta: [{ title: authMessages(loaderData?.locale ?? "en").metaTitle }],
 	}),
 	component: function LoginRoute() {
 		const data = Route.useLoaderData();
-		return <LoginPage locale={data?.locale ?? "en"} emailEnabled={data?.emailEnabled ?? false} />;
+		return (
+			<LoginPage
+				locale={data?.locale ?? "en"}
+				emailEnabled={data?.emailEnabled ?? false}
+				secretaryLoginEnabled={data?.secretaryLoginEnabled ?? true}
+			/>
+		);
 	},
 });

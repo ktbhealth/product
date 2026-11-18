@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useLoaderData } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi, Link, useLoaderData } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
 import { ForgotPasswordLink } from "@ktb/auth-plugin/views";
@@ -21,6 +21,9 @@ import { doctorContextFn } from "@ktb/doctors/fns";
 import { PORTAL_AUDIENCE } from "@ktb/portal/rules";
 
 import { appCatalogT, i18nSliceFromHeadMatches, useRootI18nSlice } from "#/lib/i18n.ts";
+import { visibleLoginPortals } from "#/lib/login-roles.ts";
+
+const rootApi = getRouteApi("__root__");
 
 export const Route = createFileRoute("/login/patient")({
 	head: (ctx) => {
@@ -42,6 +45,10 @@ export const Route = createFileRoute("/login/patient")({
 // account has no doctor profile.
 function PortalSignInPage() {
 	const { emailEnabled } = useLoaderData({ from: "/login/patient" });
+	// The doctor cross-link follows the /login picker's rule (P-058): no
+	// offer when the clinician portal or the doctors package is off.
+	const { pluginStates } = rootApi.useLoaderData();
+	const doctorLogin = visibleLoginPortals(pluginStates).has("doctor");
 	const slice = useRootI18nSlice();
 	const appT = appCatalogT(slice);
 	const t = (key: string, params: Record<string, unknown> = {}) => {
@@ -203,12 +210,14 @@ function PortalSignInPage() {
 									: t("login_submit_up")}
 						</Button>
 					</form>
-					<Link
-						to="/login/doctor"
-						className="mt-4 block text-center text-sm text-muted-foreground transition hover:text-foreground"
-					>
-						{t("portal_login_doctor_link")}
-					</Link>
+					{doctorLogin ? (
+						<Link
+							to="/login/doctor"
+							className="mt-4 block text-center text-sm text-muted-foreground transition hover:text-foreground"
+						>
+							{t("portal_login_doctor_link")}
+						</Link>
+					) : null}
 				</CardContent>
 			</Card>
 		</div>
