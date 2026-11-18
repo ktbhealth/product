@@ -86,7 +86,7 @@ export async function listSecrets(db: DbClient, scope: string): Promise<VaultSec
 		.orderBy(vaultSecret.name);
 }
 
-export async function getSecretByName(
+async function getSecretByName(
 	db: DbClient,
 	scope: string,
 	name: string,
@@ -104,7 +104,7 @@ export async function getSecretById(db: DbClient, id: number): Promise<VaultSecr
 	return rows[0] ?? null;
 }
 
-export async function insertSecret(
+async function insertSecret(
 	db: DbClient,
 	row: {
 		readonly scope: string;
@@ -128,7 +128,7 @@ export async function insertSecret(
 
 /** Replace material columns on an existing row — bumps `version`,
  * stamps `rotated_at` only on explicit rotation. */
-export async function replaceSecretMaterial(
+async function replaceSecretMaterial(
 	db: DbClient,
 	input: {
 		readonly id: number;
@@ -159,7 +159,7 @@ export async function replaceSecretMaterial(
 	return rows[0]!;
 }
 
-export async function deleteSecret(db: DbClient, id: number): Promise<void> {
+async function deleteSecret(db: DbClient, id: number): Promise<void> {
 	await db.delete(vaultSecret).where(eq(vaultSecret.id, id));
 }
 
