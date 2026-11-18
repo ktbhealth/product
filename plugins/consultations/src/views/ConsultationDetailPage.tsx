@@ -272,15 +272,16 @@ export function ConsultationDetailPage({
 	if (locked) {
 		return (
 			<div>
-				<Button
-					variant="ghost"
-					size="sm"
-					className="-ml-2"
-					render={<Link to={portalPath("/consultations")} />}
+				{/* Real link, not Button render=: it navigates, so it
+				    keeps link semantics (and avoids the Base UI
+				    nativeButton warning). */}
+				<Link
+					to={portalPath("/consultations")}
+					className={buttonVariants({ variant: "ghost", size: "sm", className: "-ml-2" })}
 				>
 					<ArrowLeftIcon />
 					{t.detail.back}
-				</Button>
+				</Link>
 				<Empty className="mt-6 border bg-card px-6 py-16">
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
@@ -296,15 +297,16 @@ export function ConsultationDetailPage({
 
 	return (
 		<div>
-			<Button
-				variant="ghost"
-				size="sm"
-				className="-ml-2"
-				render={<Link to={portalPath("/consultations")} />}
+			{/* Real link, not Button render=: it navigates, so it
+			    keeps link semantics (and avoids the Base UI
+			    nativeButton warning). */}
+			<Link
+				to={portalPath("/consultations")}
+				className={buttonVariants({ variant: "ghost", size: "sm", className: "-ml-2" })}
 			>
 				<ArrowLeftIcon />
 				{t.detail.back}
-			</Button>
+			</Link>
 
 			{/* ---------- header ---------- */}
 			<header className="mt-3 flex flex-wrap items-start justify-between gap-4">
