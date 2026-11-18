@@ -19,6 +19,7 @@ export const PLUGIN_KEYWORDS = [
 	"doctors",
 	"documents",
 	"eval",
+	"forms",
 	"groups",
 	"integrity",
 	"invites",
