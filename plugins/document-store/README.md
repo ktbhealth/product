@@ -3,8 +3,11 @@
 Runtime document store for plugin-contributed data collections (P-089).
 Collections are declared as **data** — a `defineCollection` def riding a
 `document.collection` contribution — and records live in
-`document_records` as schema-validated JSON with JS-side `find` queries,
-schema migrations, RBAC gates, batch writes, optimistic concurrency and
+`document_records` as schema-validated JSON. `find` pushes the safe
+subset of a filter into SQL (`json_extract` prefilter, T-149) and
+verifies matches in JS — see `src/sqlfilter.ts` for exactly what
+pushes down and what stays JS-side. Collections also get schema
+migrations, RBAC gates, batch writes, optimistic concurrency and
 idempotency keys. See the module docstrings in `src/service.ts` and
 `src/collection.ts` for the full contract.
 
@@ -17,9 +20,12 @@ structured queries.
 
 **Do NOT use it for:**
 
-- Hot list paths — `find` evaluates filters/sorts in JS over every
-  in-scope row. ~17ms at 1k docs, ~35–45ms at the 10k scan ceiling
-  (measured in `src/benchmark.test.ts`; D1 may be slower).
+- Hot list paths — filters/sorts that can't push to SQL (`$regex`,
+  object literals, exotic paths) still evaluate in JS over every
+  in-scope row: ~17ms at 1k docs, ~22–45ms at the 10k scan ceiling.
+  Scalar filters (`$eq`/`$gt`/`$in`/`$exists`/…) pre-filter in SQL and
+  cost ~10ms at 10k docs (measured in `src/benchmark.test.ts`; D1 may
+  be slower).
 - SQL aggregates/joins, or anything needing DB-level constraints,
   indexes or FK cascades — `unique`/`ref` are application-level scans,
   and declared `indexes` are advisory metadata only (they create no SQL
@@ -123,7 +129,10 @@ const result =
 
 Operators: `$eq $ne $gt $gte $lt $lte $in $nin $exists $regex`, plus
 `$and`/`$or` arrays (may mix with field conditions; implicit AND across
-keys). Missing values sort last; the sort is stable. Filters are
+keys). Scalar conditions on identifier paths compile to a SQL
+`json_extract` prefilter (T-149 — see `src/sqlfilter.ts`); `$regex`,
+object/array literals, array-index paths and defs with `migrations`
+stay JS-side. Missing values sort last; the sort is stable. Filters are
 structurally bounded (`MAX_FILTER_DEPTH` 8, `MAX_FILTER_NODES` 100) and
 `$regex` patterns reject nested quantifiers/quantified alternations
 (ReDoS heuristics) — violations fail `InvalidDocumentQuery` before any

@@ -43,6 +43,7 @@ import {
 	validateSort,
 	type FindQuery,
 } from "./query.ts";
+import { compileFilterPrefilter } from "./sqlfilter.ts";
 import {
 	documentCollections,
 	documentRecords,
@@ -76,21 +77,32 @@ import { DocumentRefTargets } from "./ref-targets.ts";
  * decide WHO may call (PlatformAdmin, audience gates) exactly like
  * every other service.
  *
- * Query evaluation is JS-side over parsed JSON (see query.ts): the v1
- * tradeoff is that `find` scans the collection's in-scope rows. Unique
- * checks and `ref` onDelete policies scan likewise — fine at
- * specialty-pack/intake-form volumes; a hot collection graduates to a
- * dedicated table. SCALE CEILING (T-129, measured by
- * src/benchmark.test.ts on better-sqlite3): `find` scans the whole
- * visible slice in JS — ~17ms at 1k docs, ~35–45ms at the 10k
- * FIND_SCAN_MAX_ROWS ceiling (past that it fails
+ * Query evaluation is JS-side over parsed JSON (see query.ts) with a
+ * safe subset pushed into SQL as a `json_extract` prefilter (T-149,
+ * see sqlfilter.ts): `find` fetches only rows passing the compiled
+ * fragment, then `matchFilter` re-verifies every one — results are
+ * identical, but parse/migrate/match work shrinks to the
+ * SQL-selective slice. Sort/pagination stay JS-side (the missing-
+ * values-last rule and String()-coerced mixed-type ordering don't
+ * map cleanly onto SQLite ORDER BY), and defs declaring `migrations`
+ * skip pushdown entirely because SQL sees stored data while the
+ * matcher sees lazily migrated data. Unique checks and `ref`
+ * onDelete policies still scan in JS — fine at specialty-pack/
+ * intake-form volumes; a hot collection graduates to a dedicated
+ * table. SCALE CEILING (T-129, measured by src/benchmark.test.ts on
+ * better-sqlite3): an UNFILTERABLE find ($regex, object literals, or
+ * no filter) scans the whole visible slice in JS — ~17ms at 1k docs,
+ * ~22–45ms at the 10k FIND_SCAN_MAX_ROWS ceiling (past that it fails
  * `InvalidDocumentQuery` rather than scanning unboundedly; D1 may be
- * slower). Fine for admin consoles, background jobs and moderate
- * per-request reads; NOT for hot paths over big collections. Beyond
- * ~10k visible docs per collection, declare a typed table instead of
- * growing the document store. Declared `indexes` on a collection def
- * are advisory metadata only (stored in schema_json for tooling) —
- * they do NOT create SQL indexes; filtering stays JS-side by design.
+ * slower). A scalar filter like `{kind: $eq, count: $gte}` now costs
+ * ~10ms at 10k docs because SQLite pre-filters to the matching slice
+ * before any JSON parsing. Fine for admin consoles, background jobs
+ * and moderate per-request reads; NOT for hot paths over big
+ * collections. Beyond ~10k visible docs per collection, declare a
+ * typed table instead of growing the document store. Declared
+ * `indexes` on a collection def are advisory metadata only (stored in
+ * schema_json for tooling) — they do NOT create SQL indexes; the
+ * json_extract prefilter is a filter pushdown, not an index.
  *
  * WHEN NOT TO USE (see README.md for the full guide): hot list paths,
  * SQL aggregates/joins, DB-level constraints/FKs/cascades, high-write
@@ -402,7 +414,10 @@ export interface DocumentStoreShape {
 	/** List records inside the caller's visible scope. `filter` uses
 	 * dotted paths with `$eq/$ne/$gt/$gte/$lt/$lte/$in/$nin/$exists/
 	 * $regex` operators plus `$and`/`$or`; evaluation is JS-side over
-	 * parsed JSON (see query.ts for the v1 tradeoff). `limit` clamps to
+	 * parsed JSON (see query.ts for the v1 tradeoff), with a safe
+	 * subset pushed into SQL as a `json_extract` prefilter (T-149,
+	 * see sqlfilter.ts — results are identical either way).
+	 * `limit` clamps to
 	 * [1, 500] (default 100), `offset` to ≥ 0; filters are structurally
 	 * bounded (depth/nodes — see query.ts) and the visible slice is
 	 * capped at FIND_SCAN_MAX_ROWS scanned rows (see README.md for the
@@ -659,11 +674,12 @@ export const DocumentStoreLive = Layer.effect(
 			collectionId: number,
 			ownerId: string,
 			unscoped: boolean,
+			extra?: SQL,
 		): Effect.Effect<DocumentRecordRow[]> =>
 			Effect.gen(function* () {
 				const where = yield* scopeCondition(collectionId, ownerId, unscoped);
 				return (yield* Effect.promise(() =>
-					db.select().from(documentRecords).where(where),
+					db.select().from(documentRecords).where(and(where, extra)),
 				)) as DocumentRecordRow[];
 			});
 
@@ -2314,17 +2330,34 @@ export const DocumentStoreLive = Layer.effect(
 								new InvalidDocumentQuery({ collection: def.name, issues: queryIssues }),
 							);
 						}
-						const rows = yield* scopedRows(row.id, ownerId, unscoped);
+						// SQL pushdown (T-149): the safe subset of the
+						// filter compiles to a json_extract WHERE fragment
+						// so SQLite pre-filters the visible slice. It is
+						// ONLY a superset prefilter — matchFilter below
+						// still runs over every returned row, so results
+						// are identical; untranslatable filters ($regex,
+						// deep literals, exotic paths) simply contribute
+						// no SQL and stay fully JS-side. Skipped entirely
+						// when the def declares migrations: SQL would see
+						// STORED data while matchFilter sees lazily
+						// migrated data — the two could disagree.
+						const prefilter =
+							def.migrations === undefined || def.migrations.length === 0
+								? compileFilterPrefilter(query.filter)
+								: undefined;
+						const rows = yield* scopedRows(row.id, ownerId, unscoped, prefilter);
 						// Scan-cost signal (T-131): the visible slice size find
 						// pays for — recorded before the cap check so capped
-						// scans still count.
+						// scans still count. With pushdown this is the
+						// SQL-prefiltered count, not the raw visible slice.
 						yield* recordSafe(
 							tagged(documentStoreRows, { op: "find", kind: "scanned" }),
 							rows.length,
 						);
-						// Total-scan cap (T-128): find evaluates in JS over the
-						// whole visible slice — past FIND_SCAN_MAX_ROWS the
-						// typed error beats a multi-second scan.
+						// Total-scan cap (T-128): find still evaluates
+						// filter/sort in JS — now over the SQL-prefiltered
+						// slice; past FIND_SCAN_MAX_ROWS the typed error
+						// beats a multi-second scan.
 						if (rows.length > FIND_SCAN_MAX_ROWS) {
 							return yield* fail(
 								new InvalidDocumentQuery({
