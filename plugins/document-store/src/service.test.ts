@@ -802,9 +802,7 @@ describe("DocumentStoreLive", () => {
 		);
 		const res = await as(
 			"u1",
-			call((s) =>
-				s.find(things, { filter: { title: { $eq: "PUSHDOWN-OK" } } }),
-			),
+			call((s) => s.find(things, { filter: { title: { $eq: "PUSHDOWN-OK" } } })),
 		);
 		expect(res.rows.map((r) => r.id)).toEqual([marker.id]);
 	});
