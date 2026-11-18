@@ -34,9 +34,17 @@ const FULL = slice({
 	"app.panel_nav_groups": "Groups",
 	"app.panel_nav_ops": "Ops",
 	"app.panel_nav_plugins": "Plugins",
-	"app.panel_group_access": "Access",
-	"app.panel_group_domains": "Domains",
-	"app.panel_group_system": "System",
+	"app.panel_group_account": "Account",
+	"app.panel_group_assurance": "Assurance",
+	"app.panel_group_console": "Console",
+	"app.panel_group_domain_data": "Domain data",
+	"app.panel_group_evaluation": "Evaluation",
+	"app.panel_group_governance": "Governance",
+	"app.panel_group_identity": "Identity",
+	"app.panel_group_intelligence": "Intelligence",
+	"app.panel_group_presentation": "Presentation",
+	"app.panel_group_runtime": "Runtime",
+	"app.panel_group_storage": "Storage",
 	"app.footer_disclaimer": "Medical disclaimer",
 });
 
@@ -214,7 +222,19 @@ describe("pluginPanelLabel", () => {
 
 describe("pluginPanelGroup", () => {
 	it("localizes known sidebar groups", () => {
-		for (const group of ["Access", "Account", "Domains", "Governance", "System"]) {
+		for (const group of [
+			"Account",
+			"Assurance",
+			"Console",
+			"Domain data",
+			"Evaluation",
+			"Governance",
+			"Identity",
+			"Intelligence",
+			"Presentation",
+			"Runtime",
+			"Storage",
+		]) {
 			expect(pluginPanelGroup(group, FULL)).toBe(group);
 		}
 	});

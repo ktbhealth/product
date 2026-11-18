@@ -655,7 +655,7 @@ export const patientsChromePlugin = definePlugin({
 					to: "/platform/patients",
 					label: "Patients",
 					icon: UsersIcon,
-					group: "Domains",
+					group: "Domain data",
 				},
 			},
 		},

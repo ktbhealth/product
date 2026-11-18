@@ -702,7 +702,7 @@ describe("plugins", () => {
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/audit", label: "Audit log", group: "Governance" },
+				item: { to: "/platform/audit", label: "Audit log", group: "Assurance" },
 			},
 		});
 		expect(auditPanelPlugin.id).toBe("audit.panel");

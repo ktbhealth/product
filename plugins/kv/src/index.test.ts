@@ -41,7 +41,7 @@ describe("kv plugins", () => {
 		expect(kvAdminServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
 	});
 
-	it("declares the console sidebar entry in the System group", () => {
+	it("declares the console sidebar entry in the Storage group", () => {
 		const chrome = kvChromePlugin.chrome ?? [];
 		expect(chrome).toHaveLength(1);
 		const sidebar = chrome[0];
@@ -50,7 +50,7 @@ describe("kv plugins", () => {
 		expect(sidebar?.content.kind).toBe("sidebarItem");
 		if (sidebar?.content.kind !== "sidebarItem") throw new Error("unreachable");
 		expect(sidebar.content.item.to).toBe("/platform/kv");
-		expect(sidebar.content.item.group).toBe("System");
+		expect(sidebar.content.item.group).toBe("Storage");
 	});
 
 	it("declares the admin console page with guard and loader", () => {

@@ -175,7 +175,7 @@ describe("plugins", () => {
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/tenants", label: "Tenants", icon: Building2Icon, group: "Access" },
+				item: { to: "/platform/tenants", label: "Tenants", icon: Building2Icon, group: "Identity" },
 			},
 		});
 		expect(tenantPanelPlugin.id).toBe("tenant.panel");

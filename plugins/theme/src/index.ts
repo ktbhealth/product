@@ -122,7 +122,7 @@ export const themeRoutesPlugin = definePlugin({
 	routes: [physical("/api", "../../../../plugins/theme/src/api-routes")],
 });
 
-/** Sidebar entry under the System group (same mechanism as jobs.chrome). */
+/** Sidebar entry under the Presentation group (same mechanism as jobs.chrome). */
 export const themeChromePlugin = definePlugin({
 	id: "theme.chrome",
 	meta: { keywords: ["theme", "ui"] },
@@ -133,7 +133,7 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "System" },
+				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Presentation" },
 			},
 		},
 	],

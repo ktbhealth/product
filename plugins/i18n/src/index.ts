@@ -102,7 +102,12 @@ export const i18nChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/i18n", label: "Translations", icon: LanguagesIcon, group: "System" },
+				item: {
+					to: "/platform/i18n",
+					label: "Translations",
+					icon: LanguagesIcon,
+					group: "Presentation",
+				},
 			},
 		},
 	],

@@ -267,7 +267,7 @@ export const documentStoreAdminPlugin = definePlugin({
 	services: DocumentStoreAdminLive,
 });
 
-/** Console sidebar entry (System group) for /platform/document-store —
+/** Console sidebar entry (Storage group) for /platform/document-store —
  * same chrome contract as pages.chrome. */
 export const documentStoreChromePlugin = definePlugin({
 	id: "document-store.chrome",
@@ -283,7 +283,7 @@ export const documentStoreChromePlugin = definePlugin({
 					to: "/platform/document-store",
 					label: "Document store",
 					icon: DatabaseIcon,
-					group: "System",
+					group: "Storage",
 				},
 			},
 		},

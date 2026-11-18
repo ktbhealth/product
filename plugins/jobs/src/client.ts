@@ -62,7 +62,7 @@ export const opsChromePlugin = definePlugin({
 					to: "/platform/ops",
 					label: "Ops",
 					icon: ActivityIcon,
-					group: "System",
+					group: "Runtime",
 				},
 			},
 		},

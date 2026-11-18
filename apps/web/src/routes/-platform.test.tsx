@@ -225,6 +225,67 @@ describe("/platform layout", () => {
 		expect(screen.getByTestId("platform-outlet")).toBeTruthy();
 	});
 
+	it("orders sidebar items by the pinned platform IA; unlisted items sink last", () => {
+		chromeExtra = [
+			{
+				id: "t.sidebar-extra",
+				region: "portal.sidebar",
+				content: {
+					kind: "sidebarItem",
+					item: { to: "/platform/zzz-extra", label: "Extra", group: "Governance" },
+				},
+			},
+		];
+		render(createElement(component(PlatformRoute)));
+		const hrefs = screen
+			.getAllByRole("link")
+			.map((el) => el.getAttribute("href"))
+			.filter((h): h is string => h !== null && h.startsWith("/platform/"));
+		// Systematic grouping: access leads the grouped sections, the
+		// unlisted item trails inside the last group; the eval workflow
+		// keeps its 1·2·3 sequence.
+		expect(hrefs[0]).toBe("/platform/users");
+		expect(hrefs.indexOf("/platform/audit")).toBeLessThan(hrefs.indexOf("/platform/zzz-extra"));
+		expect(hrefs.indexOf("/platform/kv")).toBeLessThan(hrefs.indexOf("/platform/zzz-extra"));
+		expect(hrefs.indexOf("/platform/eval/personas")).toBeLessThan(
+			hrefs.indexOf("/platform/eval/instances"),
+		);
+		expect(hrefs.indexOf("/platform/eval/instances")).toBeLessThan(hrefs.indexOf("/platform/eval"));
+	});
+
+	it("keeps ungrouped and unranked sidebar items at the end in topo order", () => {
+		chromeExtra = [
+			{
+				id: "t.sidebar-nogroup",
+				region: "portal.sidebar",
+				content: {
+					kind: "sidebarItem",
+					item: { to: "/platform/aaa-nogroup", label: "NoGroup" },
+				},
+			},
+			{
+				id: "t.sidebar-extra-b",
+				region: "portal.sidebar",
+				content: {
+					kind: "sidebarItem",
+					item: { to: "/platform/yyy-extra", label: "Extra B", group: "Assurance" },
+				},
+			},
+		];
+		render(createElement(component(PlatformRoute)));
+		const hrefs = screen
+			.getAllByRole("link")
+			.map((el) => el.getAttribute("href"))
+			.filter((h): h is string => h !== null && h.startsWith("/platform/"));
+		const audit = hrefs.indexOf("/platform/audit");
+		const ungrouped = hrefs.indexOf("/platform/aaa-nogroup");
+		const extraB = hrefs.indexOf("/platform/yyy-extra");
+		expect(ungrouped).toBeGreaterThanOrEqual(0);
+		expect(extraB).toBeGreaterThanOrEqual(0);
+		// Unranked items sink after the ranked tail of their group.
+		expect(audit).toBeLessThan(extraB);
+	});
+
 	it("marks descendant routes active unless the item is exact", () => {
 		pathname = "/platform/patients";
 		render(createElement(component(PlatformRoute)));

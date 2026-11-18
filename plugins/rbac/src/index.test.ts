@@ -764,7 +764,7 @@ describe("plugins", () => {
 				region: "portal.sidebar",
 				content: {
 					kind: "sidebarItem",
-					item: { to: "/platform/roles", label: "Roles", icon: ShieldCheckIcon, group: "Access" },
+					item: { to: "/platform/roles", label: "Roles", icon: ShieldCheckIcon, group: "Identity" },
 				},
 			},
 		]);

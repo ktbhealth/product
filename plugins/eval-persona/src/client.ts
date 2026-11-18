@@ -7,7 +7,7 @@ import { InstancesPanelPage, PersonasPanelPage } from "./platform-page.tsx";
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
  * through `@ktb/app-host/client`. Only client-consumed contributions:
- * the two Eval-group sidebar entries and serializable panel page
+ * the two Evaluation-group sidebar entries and serializable panel page
  * descriptors. Guard/loader Effects stay server-side. Parity is
  * asserted by apps/web/src/plugins.test.ts.
  */
@@ -41,7 +41,7 @@ export const plugins: readonly Plugin[] = [
 						to: "/platform/eval/personas",
 						label: "1 · Personas",
 						icon: Users2Icon,
-						group: "Eval",
+						group: "Evaluation",
 					},
 				},
 			},
@@ -54,7 +54,7 @@ export const plugins: readonly Plugin[] = [
 						to: "/platform/eval/instances",
 						label: "2 · Generate consultations",
 						icon: FlaskConicalIcon,
-						group: "Eval",
+						group: "Evaluation",
 					},
 				},
 			},
