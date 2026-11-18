@@ -774,11 +774,13 @@ export type I18nKey =
 	| "eval.validator.generating"
 	| "eval.validator.items"
 	| "eval.validator.moreTurns"
+	| "eval.validator.noRunnerBound"
 	| "eval.validator.pending"
 	| "eval.validator.reject"
 	| "eval.validator.rejected"
 	| "eval.validator.run"
 	| "eval.validator.runEval"
+	| "eval.validator.runnerInline"
 	| "eval.validator.samplesOf"
 	| "eval.validator.stageAnamnesis"
 	| "eval.validator.stageCleanup"
@@ -2561,11 +2563,13 @@ export interface I18nTypedT {
 	(key: "eval.validator.generating"): Effect.Effect<string>;
 	(key: "eval.validator.items"): Effect.Effect<string>;
 	(key: "eval.validator.moreTurns"): Effect.Effect<string>;
+	(key: "eval.validator.noRunnerBound"): Effect.Effect<string>;
 	(key: "eval.validator.pending"): Effect.Effect<string>;
 	(key: "eval.validator.reject"): Effect.Effect<string>;
 	(key: "eval.validator.rejected"): Effect.Effect<string>;
 	(key: "eval.validator.run"): Effect.Effect<string>;
 	(key: "eval.validator.runEval"): Effect.Effect<string>;
+	(key: "eval.validator.runnerInline"): Effect.Effect<string>;
 	(key: "eval.validator.samplesOf"): Effect.Effect<string>;
 	(key: "eval.validator.stageAnamnesis"): Effect.Effect<string>;
 	(key: "eval.validator.stageCleanup"): Effect.Effect<string>;

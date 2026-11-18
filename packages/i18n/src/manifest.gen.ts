@@ -2584,6 +2584,12 @@ export const I18N_MANIFEST = {
 		edits: {
 			params: [],
 		},
+		noRunnerBound: {
+			params: [],
+		},
+		runnerInline: {
+			params: [],
+		},
 	},
 	forms: {
 		submit: {

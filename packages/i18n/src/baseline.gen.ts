@@ -14024,6 +14024,19 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "eval.validator",
+		key: "noRunnerBound",
+		locale: "en",
+		value:
+			"no eval runner bound — install/configure the local eval drivers (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) or runs stay queued",
+	},
+	{
+		namespace: "eval.validator",
+		key: "runnerInline",
+		locale: "en",
+		value: "runner bound but no jobs queue — runs execute inline",
+	},
+	{
+		namespace: "eval.validator",
 		key: "title",
 		locale: "pt-BR",
 		value: "Rodar eval",
@@ -14217,6 +14230,19 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "eval.validator",
+		key: "noRunnerBound",
+		locale: "pt-BR",
+		value:
+			"nenhum runner de eval vinculado — instale/configure os drivers locais de eval (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) ou os runs ficam na fila",
+	},
+	{
+		namespace: "eval.validator",
+		key: "runnerInline",
+		locale: "pt-BR",
+		value: "runner vinculado, mas sem fila de jobs — os runs executam inline",
+	},
+	{
+		namespace: "eval.validator",
 		key: "title",
 		locale: "es",
 		value: "Ejecutar eval",
@@ -14407,6 +14433,19 @@ export const I18N_BASELINE = [
 		key: "edits",
 		locale: "es",
 		value: "edits",
+	},
+	{
+		namespace: "eval.validator",
+		key: "noRunnerBound",
+		locale: "es",
+		value:
+			"no hay runner de eval vinculado — instala/configura los drivers locales de eval (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) o los runs quedan en cola",
+	},
+	{
+		namespace: "eval.validator",
+		key: "runnerInline",
+		locale: "es",
+		value: "runner vinculado pero sin cola de jobs — los runs se ejecutan en línea",
 	},
 	{
 		namespace: "forms",
