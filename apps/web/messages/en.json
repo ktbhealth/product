@@ -39,7 +39,7 @@
 	"login_error_password_mismatch": "Passwords do not match.",
 	"login_picker_meta_title": "Sign in | KTB Health",
 	"login_picker_heading": "Sign in",
-	"login_picker_desc": "Choose your profile to continue.",
+	"login_picker_desc": "Choose your role to continue.",
 	"portal_login_meta_title": "Patient sign in | KTB Health",
 	"portal_login_heading_in": "Patient portal",
 	"portal_login_heading_up": "Create patient account",

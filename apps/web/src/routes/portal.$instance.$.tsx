@@ -47,7 +47,8 @@ const pagePath = (instanceId: string, splat: string | undefined): string =>
 export const Route = createFileRoute("/portal/$instance/$")({
 	beforeLoad: async ({ params }) => {
 		// Each portal's anonymous funnel lands on the matching sign-in —
-		// the three contributed instance ids mirror the login paths.
+		// the three contributed instance ids mirror the login paths; any
+		// other id falls back to the /login role picker.
 		const loginPath = ["doctor", "secretary", "patient"].includes(params.instance)
 			? `/login/${params.instance}`
 			: "/login";

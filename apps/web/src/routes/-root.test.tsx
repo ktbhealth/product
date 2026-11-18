@@ -172,6 +172,9 @@ describe("root document", () => {
 		expect(html).toContain('href="/"');
 		// auth.chrome → app.header.session (anonymous → single sign-in entry)
 		expect(html).toContain('href="/login"');
+		// One CTA, not the old per-role entries.
+		expect(html).not.toContain('href="/login/patient"');
+		expect(html).not.toContain('href="/login/doctor"');
 	});
 
 	it("renders the plugin footer note through the i18n mapping", () => {

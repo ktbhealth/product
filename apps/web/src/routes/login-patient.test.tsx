@@ -35,20 +35,9 @@ vi.mock("#/lib/fns.ts", () => ({
 	portalAudiencesFn: mocks.portalAudiencesFn,
 }));
 vi.mock("@ktb/doctors/fns", () => ({ doctorContextFn: mocks.doctorContextFn }));
-vi.mock("#/lib/i18n.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("#/lib/i18n.ts")>();
-	return {
-		...actual,
-		useRootI18nSlice: () => undefined,
-		// Lets a test make one catalog key miss so the page's raw-key
-		// fallback branch runs.
-		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) => {
-			const t = actual.appCatalogT(slice);
-			return (key: string, params?: Record<string, unknown>) =>
-				key === mocks.missingKey.current ? key : t(key, params);
-		},
-	};
-});
+vi.mock("#/lib/i18n.ts", (importOriginal) =>
+	import("./-route-test-mocks.ts").then((m) => m.i18nMock(importOriginal, mocks.missingKey)),
+);
 // The widget needs a site key and Cloudflare's script; the stand-in
 // hands the page a token on demand.
 vi.mock("@ktbhealth/ui/components/turnstile", async () => {
@@ -64,20 +53,11 @@ vi.mock("@ktbhealth/ui/components/turnstile", async () => {
 });
 // Link needs a router context; the page only uses it as a plain anchor.
 // The route keeps its options and reads controllable loader data.
-vi.mock("@tanstack/react-router", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
-	const React = await import("react");
-	return {
-		...actual,
-		Link: ({ to, children, className }: { to: string; children?: unknown; className?: string }) =>
-			React.createElement("a", { href: to, className }, children as never),
-		createFileRoute: () => (opts: Record<string, unknown>) => ({
-			options: opts,
-			useLoaderData: () => mocks.loaderData.current,
-		}),
-		useLoaderData: () => mocks.loaderData.current,
-	};
-});
+vi.mock("@tanstack/react-router", (importOriginal) =>
+	import("./-route-test-mocks.ts").then((m) =>
+		m.routerMock(importOriginal, { useLoaderData: () => mocks.loaderData.current }),
+	),
+);
 
 import { Route } from "./login-patient.tsx";
 

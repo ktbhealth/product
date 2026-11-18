@@ -1,27 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createElement, type ReactElement, type ReactNode } from "react";
+import { createElement, type ReactElement } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 
-vi.mock("#/lib/i18n.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("#/lib/i18n.ts")>();
-	return {
-		...actual,
-		useRootI18nSlice: () => undefined,
-	};
-});
-// Link needs a router context; the page only uses it as a plain anchor.
-// The route keeps its options.
-vi.mock("@tanstack/react-router", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
-	const React = await import("react");
-	return {
-		...actual,
-		Link: ({ to, children, ...props }: { to: string; children?: ReactNode }) =>
-			React.createElement("a", { href: to, ...props }, children),
-		createFileRoute: () => (opts: Record<string, unknown>) => ({ options: opts }),
-	};
-});
+const missingKey = vi.hoisted(() => ({ current: null as string | null }));
+
+// Shared mock factories: Link → plain anchor, route keeps its options.
+vi.mock("#/lib/i18n.ts", (importOriginal) =>
+	import("./-route-test-mocks.ts").then((m) => m.i18nMock(importOriginal, missingKey)),
+);
+vi.mock("@tanstack/react-router", (importOriginal) =>
+	import("./-route-test-mocks.ts").then((m) => m.routerMock(importOriginal)),
+);
 
 import { Route } from "./login.tsx";
 
@@ -38,6 +28,7 @@ const Page = options.component;
 describe("/login role picker", () => {
 	afterEach(() => {
 		cleanup();
+		missingKey.current = null;
 	});
 
 	it("sets the page title", () => {
@@ -56,5 +47,11 @@ describe("/login role picker", () => {
 		expect(screen.getByRole("link", { name: "I am a secretary" }).getAttribute("href")).toBe(
 			"/login/secretary",
 		);
+	});
+
+	it("renders the raw key when a translation is missing", () => {
+		missingKey.current = "app.nav_secretary_login";
+		render(createElement(Page));
+		expect(screen.getByRole("link", { name: "nav_secretary_login" })).toBeTruthy();
 	});
 });

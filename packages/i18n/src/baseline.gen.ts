@@ -249,7 +249,7 @@ export const I18N_BASELINE = [
 		namespace: "app",
 		key: "login_picker_desc",
 		locale: "en",
-		value: "Choose your profile to continue.",
+		value: "Choose your role to continue.",
 	},
 	{
 		namespace: "app",
