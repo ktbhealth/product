@@ -78,6 +78,16 @@ import { validateDocumentData } from "./validate.ts";
  * are advisory metadata only (stored in schema_json for tooling) —
  * they do NOT create SQL indexes; filtering stays JS-side by design.
  *
+ * WHEN NOT TO USE (see README.md for the full guide): hot list paths,
+ * SQL aggregates/joins, DB-level constraints/FKs/cascades, high-write
+ * streams, payloads over MAX_DOCUMENT_BYTES, or collections nearing
+ * FIND_SCAN_MAX_ROWS. Escape hatch: graduate the collection to a typed
+ * drizzle table in the owning plugin's schema.ts (tables ride the
+ * manifest `tables` contribution; `bun run gen:db-schema` regenerates
+ * packages/db/src/schema.gen.ts) — export, backfill, cut over. Same
+ * rule as kv vs documents vs tables: kv = single-key state/TTL,
+ * documents = structured queryable collections, tables = hot paths.
+ *
  * Concurrency + idempotency (T-127): every record carries a `version`
  * (returned on DocumentRecord) bumped by each committed write;
  * `update(..., { expectedVersion })` is the If-Match guard — a stale
@@ -378,7 +388,8 @@ export interface DocumentStoreShape {
 	 * parsed JSON (see query.ts for the v1 tradeoff). `limit` clamps to
 	 * [1, 500] (default 100), `offset` to ≥ 0; filters are structurally
 	 * bounded (depth/nodes — see query.ts) and the visible slice is
-	 * capped at FIND_SCAN_MAX_ROWS scanned rows. */
+	 * capped at FIND_SCAN_MAX_ROWS scanned rows (see README.md for the
+	 * scale-ceiling guidance before putting `find` on a hot path). */
 	readonly find: <F extends Fields>(
 		collection: CollectionRef<F>,
 		query?: FindQuery,

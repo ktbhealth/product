@@ -7,6 +7,7 @@
  * planning; record volumes per collection are expected to be small
  * (specialty packs, intake forms). If a collection outgrows this, the
  * escape hatch is a dedicated table — the DSL boundary stays the same.
+ * See README.md ("when NOT to use") for the full decision guide.
  */
 
 /** Operators recognized inside a field condition object. */
