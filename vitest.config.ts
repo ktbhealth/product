@@ -10,6 +10,7 @@ export default defineConfig({
 		projects: [
 			"apps/web",
 			"apps/cli",
+			"apps/jobs-worker",
 			"evals/*/vitest.config.ts",
 			"packages/*",
 			"plugins/*",

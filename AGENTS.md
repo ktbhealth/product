@@ -60,6 +60,21 @@ clashing with other local mail catchers. If those are taken too, set
 `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT` for `docker compose` and adjust
 `SMTP_URL` accordingly.
 
+## Jobs in dev
+
+Two transports behind the `@ktb/jobs-port` contract (enqueue port +
+kind-dispatched consumer + `job_runs` projection):
+
+- **Production** — Cloudflare Queue bindings (`AUDIO_QUEUE`,
+  `THEME_ASSETS_QUEUE`) consumed by the apps/web worker.
+- **Local** — `docker compose up -d` now includes Redis; run
+  `bun apps/jobs-worker/src/main.ts` (or `REDIS_URL=… bun run worker`
+  from `apps/jobs-worker`) to consume `ktb:jobs`. Producers enqueue via
+  `makeJobs({ send: transport.send, db })` where `transport` is
+  `@ktb/jobs-transport-redis`. `dev:node` keeps its SQLite queue for
+  the audio/theme bindings; the Redis path is for new job kinds
+  (eval runner first).
+
 ## Conventions
 
 - English everywhere (code, comments, commit messages).

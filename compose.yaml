@@ -33,3 +33,21 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  # Redis: local jobs-queue transport (P-098 B2). Producers enqueue onto
+  # the `ktb:jobs` list; `bun apps/jobs-worker/src/main.ts` consumes it.
+  # In-memory only — queued jobs do not survive a restart, same as the
+  # dev:node SQLite queue's best effort. Point producers at it with
+  #   REDIS_URL=redis://localhost:6379
+  # and run the worker alongside `bun run dev`.
+  redis:
+    image: redis:7.4-alpine
+    container_name: ktb-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5

@@ -31,6 +31,18 @@
         "vitest": "5.1.0",
       },
     },
+    "apps/jobs-worker": {
+      "name": "@ktb/app-jobs-worker",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/jobs-port": "workspace:*",
+        "@ktb/jobs-transport-redis": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^22.10.2",
+        "vitest": "5.1.0",
+      },
+    },
     "apps/web": {
       "name": "@ktb/web",
       "dependencies": {
@@ -546,6 +558,13 @@
         "@ktb/db": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
+      },
+    },
+    "packages/jobs-transport-redis": {
+      "name": "@ktb/jobs-transport-redis",
+      "dependencies": {
+        "@ktb/jobs-port": "workspace:*",
+        "redis": "6.3.1",
       },
     },
     "packages/json-schema": {
@@ -2162,6 +2181,8 @@
 
     "@ktb/app-host": ["@ktb/app-host@workspace:packages/app-host"],
 
+    "@ktb/app-jobs-worker": ["@ktb/app-jobs-worker@workspace:apps/jobs-worker"],
+
     "@ktb/audience": ["@ktb/audience@workspace:plugins/audience"],
 
     "@ktb/audit": ["@ktb/audit@workspace:plugins/audit"],
@@ -2267,6 +2288,8 @@
     "@ktb/jobs": ["@ktb/jobs@workspace:plugins/jobs"],
 
     "@ktb/jobs-port": ["@ktb/jobs-port@workspace:packages/jobs-port"],
+
+    "@ktb/jobs-transport-redis": ["@ktb/jobs-transport-redis@workspace:packages/jobs-transport-redis"],
 
     "@ktb/json-schema": ["@ktb/json-schema@workspace:packages/json-schema"],
 

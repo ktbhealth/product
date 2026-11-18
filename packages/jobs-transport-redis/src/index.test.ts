@@ -1,0 +1,80 @@
+import { describe, expect, it } from "vitest";
+
+import type { JobEnvelope } from "@ktb/jobs-port";
+
+import { createRedisJobsTransport, type RedisLike } from "./index.ts";
+
+/** In-memory RedisLike: LPUSH/BRPOP semantics over a string list. */
+const fakeRedis = () => {
+	const list: string[] = [];
+	const client: RedisLike = {
+		lPush: async (_key, value) => {
+			list.unshift(value);
+			return list.length;
+		},
+		brPop: async () => {
+			const v = list.pop();
+			return v === undefined ? null : (["ktb:jobs", v] as const);
+		},
+		quit: async () => "OK",
+	};
+	return { client, list };
+};
+
+const envelope = (id: string): JobEnvelope => ({
+	id,
+	kind: "jobs.ping",
+	payload: { n: 1 },
+});
+
+describe("createRedisJobsTransport", () => {
+	it("send LPUSHes the serialized envelope; receive pops it as a message", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("j1"));
+		const msgs = await t.receive();
+		expect(msgs).toHaveLength(1);
+		expect(msgs[0]?.body).toEqual(envelope("j1"));
+		await t.close();
+	});
+
+	it("receive returns [] when the list is empty", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		expect(await t.receive()).toEqual([]);
+		await t.close();
+	});
+
+	it("retry() re-queues the raw body for redelivery", async () => {
+		const { client, list } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("j2"));
+		const [msg] = await t.receive();
+		msg?.retry();
+		// retry is fire-and-forget — flush microtasks.
+		await new Promise((r) => setTimeout(r, 0));
+		expect(list).toHaveLength(1);
+		const [again] = await t.receive();
+		expect(again?.body).toEqual(envelope("j2"));
+		await t.close();
+	});
+
+	it("malformed JSON surfaces as a string body (consumer marks poison)", async () => {
+		const { client, list } = fakeRedis();
+		list.push("not-json{");
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		const [msg] = await t.receive();
+		expect(msg?.body).toBe("not-json{");
+		await t.close();
+	});
+
+	it("receive(count) drains up to count messages", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("a"));
+		await t.send(envelope("b"));
+		const msgs = await t.receive(5);
+		expect(msgs).toHaveLength(2);
+		await t.close();
+	});
+});
