@@ -1,32 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+	reactStartMock,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 import { act } from "react";
 import { createElement } from "react";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { createRoot, type Root } from "react-dom/client";
 import type { ReactElement } from "react";
 
-const headers = { current: new Headers() };
-
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktbhealth/ui/components/dropdown-menu", async () => {
 	const React = await import("react");
 	const passthrough =
@@ -109,7 +96,7 @@ async function signInRouterUser() {
 			body: JSON.stringify({ email: "router@x.com", password: "senha-forte-123" }),
 		}),
 	);
-	headers.current = new Headers({
+	serverFnRequestHeaders.current = new Headers({
 		cookie: (res.headers.get("set-cookie") ?? "").split(";")[0],
 	});
 	const saved = await saveConsultationFn({
@@ -245,7 +232,7 @@ describe("router integration", () => {
 				body: JSON.stringify({ email: "hist@x.com", password: "senha-forte-123" }),
 			}),
 		);
-		headers.current = new Headers({
+		serverFnRequestHeaders.current = new Headers({
 			cookie: (res.headers.get("set-cookie") ?? "").split(";")[0],
 		});
 		const created = await createPatientFn({
@@ -289,7 +276,7 @@ describe("router integration", () => {
 				body: JSON.stringify({ email: "noname@x.com", password: "senha-forte-123" }),
 			}),
 		);
-		headers.current = new Headers({
+		serverFnRequestHeaders.current = new Headers({
 			cookie: (res.headers.get("set-cookie") ?? "").split(";")[0],
 		});
 		const router = getRouter();

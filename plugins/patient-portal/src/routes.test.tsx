@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 const mocks = vi.hoisted(() => ({
 	portalSessionFn: vi.fn(async () => ({ signedIn: true })),
 }));
@@ -9,20 +11,7 @@ vi.mock("./fns.ts", () => ({
 }));
 // Server fns become plain async calls; with no runtime registered the
 // plugin route gate (createPluginFileRoute → pluginEnabledFn) is inert.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((value: unknown) => unknown) | undefined;
-		const api = {
-			validator: (fn: (value: unknown) => unknown) => {
-				validate = fn;
-				return api;
-			},
-			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 // createFileRoute only captures the options object so the test can
 // invoke beforeLoad directly.
 vi.mock("@tanstack/react-router", async (importOriginal) => {

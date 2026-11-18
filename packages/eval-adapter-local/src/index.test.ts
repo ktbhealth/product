@@ -653,8 +653,13 @@ describe("evalRunnerLocalDriver", () => {
 			),
 		);
 		const layer = makeEvalRunner(ports);
-		const outcomes: { id: number | string; status: string; result?: unknown; error?: string }[] =
-			[];
+		const outcomes: {
+			id: number | string;
+			status: string;
+			result?: unknown;
+			error?: string;
+			records?: readonly RunRecord[];
+		}[] = [];
 		await Effect.runPromise(
 			Effect.flatMap(EvalRunner, (r) =>
 				r.run({
@@ -670,6 +675,7 @@ describe("evalRunnerLocalDriver", () => {
 								status: outcome.status,
 								result: outcome.result,
 								error: outcome.error,
+								records: outcome.records,
 							});
 						}),
 				}),
@@ -680,6 +686,10 @@ describe("evalRunnerLocalDriver", () => {
 		expect(first.audioUri).toBe("file:///work/tts/audio/a.wav");
 		expect(first.asrText).toBe("hello world");
 		expect(first.wer).toBe(0);
+		// WS-D: tts + asr records ride the outcome, tagged per item.
+		const recs = outcomes[0]!.records ?? [];
+		expect(recs.map((r) => r.stage)).toEqual(["asr", "asr"]);
+		expect(recs.every((r) => r.runId === "eval-1" && r.sampleId === "1")).toBe(true);
 	});
 
 	const ttsAsrPorts = (asrText = "hello wrld") =>
@@ -706,14 +716,18 @@ describe("evalRunnerLocalDriver", () => {
 		items: readonly { id: number; script: string; patient?: { sex?: string; age?: number } }[],
 		ambient: Layer.Layer<never>,
 	) => {
-		const outcomes: { status: string; result?: unknown }[] = [];
+		const outcomes: { status: string; result?: unknown; records?: readonly RunRecord[] }[] = [];
 		return Effect.flatMap(EvalRunner, (r) =>
 			r.run({
 				runId: "r1",
 				items,
 				onSample: (_id, outcome) =>
 					Effect.sync(() => {
-						outcomes.push({ status: outcome.status, result: outcome.result });
+						outcomes.push({
+							status: outcome.status,
+							result: outcome.result,
+							records: outcome.records,
+						});
 					}),
 			}),
 		)
@@ -769,6 +783,9 @@ describe("evalRunnerLocalDriver", () => {
 		expect(r.anamnesis.engine).toBe("stub");
 		expect(r.anamnesis.filled).toBe(1);
 		expect(r.anamnesis.completeness).toBe(0.125);
+		// tts + asr + corrector records all surface on the outcome.
+		expect(outcomes[0]?.records).toHaveLength(3);
+		expect(outcomes[0]?.records?.every((x) => x.runId === "eval-1")).toBe(true);
 	});
 
 	it("skips both stages when no ambient ports are bound", async () => {

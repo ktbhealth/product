@@ -1,0 +1,94 @@
+import { beforeAll, describe, expect, it } from "vitest";
+
+import { Principal } from "@ktb/authz";
+import { Db, makeDb } from "@ktb/db";
+import { makeD1 } from "@ktb/db/testing";
+import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
+
+import { AI_MODEL_TEST_DDL, AiModels, AiModelsLive, aiModelPanelPlugin, plugins } from "./index.ts";
+import { plugins as clientPlugins } from "./client.ts";
+
+describe("ai-model plugin manifests", () => {
+	it("declares tables, services, chrome and panel plugins", () => {
+		expect(plugins.map((p) => p.id)).toEqual([
+			"ai.model.tables",
+			"ai.model.services",
+			"ai.model.chrome",
+			"ai.model.panel",
+		]);
+		const tables = plugins.find((p) => p.id === "ai.model.tables")?.tables ?? {};
+		expect(Object.keys(tables)).toEqual(["aiModel"]);
+		const panel = plugins.find((p) => p.id === "ai.model.panel")?.panel?.pages ?? [];
+		expect(panel.map((p) => p.path)).toEqual(["/platform/ai/models"]);
+	});
+
+	it("client mirror matches the server plugin ids and panel path", () => {
+		expect(clientPlugins.map((p) => p.id)).toEqual([
+			"ai.model.tables",
+			"ai.model.services",
+			"ai.model.chrome",
+			"ai.model.panel",
+		]);
+		const chrome = clientPlugins.find((p) => p.id === "ai.model.chrome")?.chrome ?? [];
+		expect(chrome.map((c) => c.id)).toEqual(["ai-model.sidebar"]);
+		const pages = clientPlugins.find((p) => p.id === "ai.model.panel")?.panel?.pages ?? [];
+		expect(pages.map((p) => p.path)).toEqual(["/platform/ai/models"]);
+	});
+});
+
+describe("aiModelPanelPlugin page", () => {
+	const ADMIN = "admin@x.com";
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+
+	const runAs = <A, E>(email: string, effect: Effect.Effect<A, E, unknown>) =>
+		runtime.runPromise(
+			effect.pipe(Effect.provideService(Principal, { userId: `id-${email}`, email } as never)),
+		);
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(AI_MODEL_TEST_DDL));
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(ADMIN))),
+		);
+		runtime = ManagedRuntime.make(
+			Layer.mergeAll(AiModelsLive.pipe(Layer.provide(infra)), infra) as never,
+		);
+		await runAs(
+			ADMIN,
+			Effect.flatMap(AiModels, (m) => m.create({ name: "p1", modelId: "m1" })),
+		);
+	});
+
+	it("declares the models page with an admin guard and loader", () => {
+		const page = aiModelPanelPlugin.panel?.pages[0];
+		expect(page?.id).toBe("ai-models");
+		expect(page?.path).toBe("/platform/ai/models");
+		expect(page?.component).toBeDefined();
+		expect(page?.guard).toBeDefined();
+		expect(page?.loader).toBeDefined();
+	});
+
+	it("guard admits platform admins and denies everyone else", async () => {
+		const page = aiModelPanelPlugin.panel?.pages[0];
+		expect(await runAs(ADMIN, page!.guard!() as Effect.Effect<boolean>)).toBe(true);
+		expect(await runAs("doc@x.com", page!.guard!() as Effect.Effect<boolean>)).toBe(false);
+	});
+
+	it("loader lists platform models for admins and degrades to []", async () => {
+		const page = aiModelPanelPlugin.panel?.pages[0];
+		const rows = (await runAs(
+			ADMIN,
+			page!.loader!() as Effect.Effect<readonly { name: string }[], never, unknown>,
+		)) as readonly { name: string }[];
+		expect(rows.map((r) => r.name)).toContain("p1");
+		const denied = (await runAs(
+			"doc@x.com",
+			page!.loader!() as Effect.Effect<readonly unknown[], never, unknown>,
+		)) as readonly unknown[];
+		expect(denied).toEqual([]);
+	});
+});

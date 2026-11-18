@@ -26,7 +26,7 @@ import * as Layer from "effect/Layer";
 import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
 import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
 import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
-import { makeWorkersAiAsr } from "@ktb/eval-adapter-cloud";
+import { makeWorkersAiAsr, makeWorkersAiEval, makeWorkersAiLlm } from "@ktb/eval-adapter-cloud";
 import {
 	makeJevEval,
 	makeLocalAsr,
@@ -257,6 +257,19 @@ const llmLayer = (ctx: WireContext, key: string) => {
 				engineVersion: fnvHex(acpUrl),
 			});
 		}
+		case "workers-ai": {
+			const accountId = env(ctx, "EVAL_CF_ACCOUNT_ID");
+			const apiToken = env(ctx, "EVAL_CF_API_TOKEN");
+			const model = env(ctx, "EVAL_LLM_MODEL");
+			const endpoint = ctx.env.EVAL_CF_API_ENDPOINT;
+			return makeWorkersAiLlm({
+				accountId,
+				apiToken,
+				model,
+				...(endpoint !== undefined && endpoint !== "" ? { endpoint } : {}),
+				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
+			});
+		}
 		default:
 			return unknownAdapter("llm", key);
 	}
@@ -287,6 +300,25 @@ const evalLayer = (ctx: WireContext, key: string) => {
 				...(timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
 					? { timeoutMs }
 					: {}),
+				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
+			});
+		}
+		case "workers-ai": {
+			const accountId = env(ctx, "EVAL_CF_ACCOUNT_ID");
+			const apiToken = env(ctx, "EVAL_CF_API_TOKEN");
+			// The judge may pin a different (usually cheaper) model than
+			// the generative LLM; falls back to EVAL_LLM_MODEL — one
+			// instruct model can serve both ports. Empty string counts
+			// as unset, same as every other env read here.
+			const evalModel = ctx.env.EVAL_EVAL_MODEL;
+			const model =
+				evalModel !== undefined && evalModel !== "" ? evalModel : env(ctx, "EVAL_LLM_MODEL");
+			const endpoint = ctx.env.EVAL_CF_API_ENDPOINT;
+			return makeWorkersAiEval({
+				accountId,
+				apiToken,
+				model,
+				...(endpoint !== undefined && endpoint !== "" ? { endpoint } : {}),
 				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
 			});
 		}

@@ -38,6 +38,33 @@ const envAlias = (environmentName: string, find: string, subpath: string): Plugi
 	},
 });
 
+// The Whisper ASR worker (packages/transcription-whisper) is browser-only:
+// whisper-worker.ts loads onnxruntime's ~27 MB ort wasm at runtime through
+// the /api/cdn proxy (see its wasmPaths override), never from the bundle.
+// The SSR build still emits the worker chunk — and with it the wasm asset
+// referenced by `new URL("…wasm", import.meta.url)` inside onnxruntime-web —
+// because route modules import the consultations views that pull in
+// @ktb/transcription-whisper. workerd never executes that chunk (the worker
+// is created client-side only), so the emitted wasm is dead weight that
+// would count toward the Worker size limit (tools/bundle-budget.mjs).
+// Drop it — plus the worker chunk itself, which is equally unreachable
+// server-side (workerd has no Worker global; loadWhisper guards on
+// `typeof Worker === "undefined"`) — from the server bundle; the client
+// build keeps its own copies, and scripts/strip-oversized-assets.mjs
+// removes the >25 MB client wasm post-build for the same CDN-fetch reason.
+const BROWSER_ONLY_SSR_ASSETS = /(^|\/)(ort-wasm-[^/]*\.wasm|whisper-worker-[^/]*\.js)$/;
+const dropSsrBrowserOnlyWasm = (): Plugin => ({
+	name: "ktb-drop-ssr-browser-only-wasm",
+	applyToEnvironment: (environment) => environment.name === "ssr",
+	generateBundle(_options, bundle) {
+		for (const [name, item] of Object.entries(bundle)) {
+			if ((item.type === "asset" || item.type === "chunk") && BROWSER_ONLY_SSR_ASSETS.test(name)) {
+				delete bundle[name];
+			}
+		}
+	},
+});
+
 export default defineConfig(({ command, isPreview }) => {
 	// KTB_DEV_NODE=1 (`bun run dev:node`): run the dev server on plain
 	// Node/Bun instead of workerd — no cloudflare plugin, and
@@ -200,6 +227,7 @@ export default defineConfig(({ command, isPreview }) => {
 			envAlias("client", "loro-crdt", "loro-crdt/browser"),
 			envAlias("ssr", "loro-crdt", "loro-crdt/bundler"),
 			devtools(),
+			dropSsrBrowserOnlyWasm(),
 			tailwindcss(),
 			// Custom server entry (src/server.ts) adds the Cloudflare Queue
 			// consumer for async audio transcription alongside the fetch handler.

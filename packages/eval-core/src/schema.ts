@@ -42,6 +42,19 @@ export const EvalAnswer = Schema.Struct({
 });
 export type EvalAnswer = typeof EvalAnswer.Type;
 
+/** Prompt/template identity a generative stage declared or observed
+ * (T-135) — `name` + optional `version` + optional content `hash`.
+ * Domain-blind on purpose: the domain pack owns what a prompt IS
+ * (registry name, version scheme, hash algorithm); eval-core only
+ * carries the triple so Experiment summaries and RunRecords can pin
+ * prompt drift without knowing any domain vocabulary. */
+export const PromptRef = Schema.Struct({
+	name: Schema.String,
+	version: Schema.optionalKey(Schema.Union([Schema.String, Schema.Number])),
+	hash: Schema.optionalKey(Schema.String),
+});
+export type PromptRef = typeof PromptRef.Type;
+
 /** Traceability record appended per pipeline step — ACP session,
  * ASR call, judge request alike. Reproducibility = these fields. */
 export const RunRecord = Schema.Struct({
@@ -74,6 +87,12 @@ export const RunRecord = Schema.Struct({
 	 * linear dispatchers leave both absent. */
 	parents: Schema.optionalKey(Schema.Array(Schema.String)),
 	branch: Schema.optionalKey(Schema.String),
+	/** Prompt identity for stages that consumed an LLM prompt or
+	 * template (T-135) — declared by the domain pack or stamped by the
+	 * adapter, whichever is richer. Absent = the stage used no prompt
+	 * (e.g. ASR over audio) or no identity was available — never
+	 * guessed. */
+	prompt: Schema.optionalKey(PromptRef),
 });
 export type RunRecord = typeof RunRecord.Type;
 

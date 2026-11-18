@@ -428,7 +428,13 @@ describe("EndpointsPage — acp transport", () => {
 	});
 
 	it("restores the stored transport when editing and omits it for openai", async () => {
-		const acp: EndpointCard = { ...endpoint, kind: "acp", model: null, transport: "child" };
+		const acp: EndpointCard = {
+			...endpoint,
+			kind: "acp",
+			model: null,
+			transport: "child",
+			machineId: 7,
+		};
 		const user = userEvent.setup();
 		renderPage([acp]);
 		await user.click(screen.getByText("Edit"));
@@ -438,6 +444,52 @@ describe("EndpointsPage — acp transport", () => {
 			kind: "acp",
 			transport: "child",
 		});
+	});
+
+	it("lists machines for acp endpoints and sends machineId", async () => {
+		const user = userEvent.setup();
+		machineFns.machinesListFn.mockResolvedValueOnce([
+			{ id: 7, name: "gpu-box" },
+			{ id: 9, name: "edge-node" },
+		]);
+		renderPage();
+		await user.click(screen.getByText("New endpoint"));
+		await user.type(screen.getAllByRole("textbox")[0]!, "ACP mach");
+		await user.click(screen.getByLabelText("Kind"));
+		await user.click(await screen.findByRole("option", { name: "acp" }));
+		// Machine picker lives under non-ws transports.
+		await user.click(screen.getByLabelText("Transport"));
+		await user.click(await screen.findByRole("option", { name: "ssh" }));
+		// The machine picker is the only visible native <select> — Radix
+		// Selects render aria-hidden bubble selects for form posts.
+		const picker = () =>
+			[...document.querySelectorAll<HTMLSelectElement>("select")].find(
+				(el) => !el.hasAttribute("aria-hidden"),
+			)!;
+		await waitFor(() => expect(picker().querySelectorAll("option")).toHaveLength(3));
+		await user.selectOptions(picker(), "7");
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(fns.saveEndpointFn).toHaveBeenCalled());
+		expect(fns.saveEndpointFn.mock.calls.at(-1)?.[0]?.data).toMatchObject({
+			kind: "acp",
+			machineId: 7,
+		});
+	});
+
+	it("tolerates a machines list failure — the picker just stays empty", async () => {
+		const user = userEvent.setup();
+		machineFns.machinesListFn.mockRejectedValueOnce(new Error("machines down"));
+		renderPage();
+		await user.click(screen.getByText("New endpoint"));
+		await user.type(screen.getAllByRole("textbox")[0]!, "ACP no-machines");
+		await user.click(screen.getByLabelText("Kind"));
+		await user.click(await screen.findByRole("option", { name: "acp" }));
+		await user.click(screen.getByLabelText("Transport"));
+		await user.click(await screen.findByRole("option", { name: "ssh" }));
+		const picker = [...document.querySelectorAll<HTMLSelectElement>("select")].find(
+			(el) => !el.hasAttribute("aria-hidden"),
+		)!;
+		expect(picker.querySelectorAll("option")).toHaveLength(1);
 	});
 });
 

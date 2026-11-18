@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, getRouteApi, Link } from "@tanstack/react-router";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import {
 	Card,
@@ -7,8 +7,12 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@ktbhealth/ui/components/card";
+import { ClipboardListIcon, HeartPulseIcon, StethoscopeIcon, type LucideIcon } from "lucide-react";
 
 import { appCatalogT, appMessage, i18nSliceFromHeadMatches, useRootI18nSlice } from "#/lib/i18n.ts";
+import { visibleLoginPortals, type LoginPortal } from "#/lib/login-roles.ts";
+
+const rootApi = getRouteApi("__root__");
 
 /**
  * /login — front door role picker. The header's single "Sign in" entry
@@ -29,16 +33,22 @@ export const Route = createFileRoute("/login")({
 	component: LoginPickerPage,
 });
 
-// The patient form stays the primary CTA (default variant), like the
-// old header; the staff roles take the outline treatment.
+// Tiles render for the sign-in flows visibleLoginPortals reports live
+// (P-058) — same rule the other login pages apply to their cross-links.
 const ROLES: readonly {
 	to: "/login/patient" | "/login/doctor" | "/login/secretary";
 	key: string;
-	variant?: "outline";
+	icon: LucideIcon;
+	portal: LoginPortal;
 }[] = [
-	{ to: "/login/patient", key: "nav_patient_login" },
-	{ to: "/login/doctor", key: "nav_doctor_login", variant: "outline" },
-	{ to: "/login/secretary", key: "nav_secretary_login", variant: "outline" },
+	{ to: "/login/patient", key: "nav_patient_login", icon: HeartPulseIcon, portal: "patient" },
+	{ to: "/login/doctor", key: "nav_doctor_login", icon: StethoscopeIcon, portal: "doctor" },
+	{
+		to: "/login/secretary",
+		key: "nav_secretary_login",
+		icon: ClipboardListIcon,
+		portal: "secretary",
+	},
 ];
 
 function LoginPickerPage() {
@@ -49,16 +59,27 @@ function LoginPickerPage() {
 		const resolved = appT(full);
 		return resolved === full ? key : resolved;
 	};
+	const { pluginStates } = rootApi.useLoaderData();
+	const visible = visibleLoginPortals(pluginStates);
+	const roles = ROLES.filter(({ portal }) => visible.has(portal));
 	return (
 		<div className="flex min-h-[60vh] items-center justify-center">
-			<Card className="w-full max-w-sm">
+			<Card className="w-full max-w-md">
 				<CardHeader>
 					<CardTitle>{t("login_picker_heading")}</CardTitle>
 					<CardDescription>{t("login_picker_desc")}</CardDescription>
 				</CardHeader>
-				<CardContent className="flex flex-col gap-2">
-					{ROLES.map(({ to, key, variant }) => (
-						<Link key={to} to={to} className={buttonVariants({ variant, className: "w-full" })}>
+				<CardContent className="grid grid-flow-col auto-cols-fr gap-2">
+					{roles.map(({ to, key, icon: Icon }) => (
+						<Link
+							key={to}
+							to={to}
+							className={buttonVariants({
+								variant: "outline",
+								className: "h-auto flex-col gap-2 px-2 py-4 text-center text-xs whitespace-normal",
+							})}
+						>
+							<Icon className="size-6" />
 							{t(key)}
 						</Link>
 					))}

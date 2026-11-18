@@ -52,6 +52,9 @@ describe("recovery phrase", () => {
 
 	it("rejects wrong length and invalid characters", async () => {
 		await expect(decodeRecoveryPhrase("aaaa-aaaa")).rejects.toThrow(/wrong length/);
+		// "e4" decodes to one byte with a clean leftover-bit window — the
+		// length check must fire, not the truncated-bits guard.
+		await expect(decodeRecoveryPhrase("e4")).rejects.toThrow(/wrong length/);
 		await expect(
 			decodeRecoveryPhrase("xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-xxxx-0"),
 		).rejects.toThrow(/invalid character/);

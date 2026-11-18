@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import * as Effect from "effect/Effect";
 
 const mocks = vi.hoisted(() => ({
@@ -11,20 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 // Same fake as the host's route tests: the handler runs as a plain async fn.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-start/server", () => ({
 	getRequestUrl: () => new URL("https://app.ktb.test/consultations/new"),
 }));
@@ -63,7 +53,7 @@ INSERT INTO patient_access (patient_id, user_id, email, relation, status, source
 CREATE TABLE portal_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, wrap_public_key TEXT NOT NULL, sign_public_key TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0);
 INSERT INTO portal_keys (user_id, wrap_public_key, sign_public_key) VALUES
   ('ana', 'anaDev1', 's1'), ('ana', 'anaDev2', 's2');
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER, transcript TEXT NOT NULL, anamnesis TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER);
 INSERT INTO consultations (id, patient_id, transcript, anamnesis) VALUES
   (10, 1, 'v1.ct', NULL), (11, 1, 'plain', '{}'), (12, 1, 'plain', 'v1.ct');
 -- ZK tenant (group 8) and an unresolvable tenantId (999, fail-closed):

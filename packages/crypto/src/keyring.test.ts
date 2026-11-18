@@ -138,6 +138,10 @@ describe("makeKeyring (memory store)", () => {
 });
 
 describe("Keyring port", () => {
+	it("has a stable service tag", () => {
+		expect(Keyring.key).toBe("@ktb/crypto/Keyring");
+	});
+
 	it("resolves as a Context service", async () => {
 		const keyring = makeKeyring({ store: memoryStore() });
 		const runtime = ManagedRuntime.make((await import("effect/Layer")).succeed(Keyring, keyring));
@@ -161,8 +165,16 @@ describe("idbStore", () => {
 
 	/** Minimal fake IndexedDB: one object store, microtask-fired request
 	 * callbacks (handlers are always assigned synchronously before the
-	 * promise executor settles, so microtasks order correctly). */
+	 * promise executor settles, so microtasks order correctly). `stats`
+	 * records close/createObjectStore/open/transaction calls so tests can
+	 * assert the store lifecycle, not just the row data. */
 	const fakeIndexedDB = (rows = new Map<string, unknown>(), failAt?: string) => {
+		const stats = {
+			closes: 0,
+			created: [] as (string | undefined)[],
+			opens: [] as { name?: unknown; version?: unknown }[],
+			txns: [] as { store: string; mode: string }[],
+		};
 		const makeReq = <T>(get: () => { result: T; error: Error | null; fail?: boolean }) => {
 			const r: Record<string, unknown> = { result: undefined, error: null };
 			queueMicrotask(() => {
@@ -174,35 +186,45 @@ describe("idbStore", () => {
 			return r;
 		};
 		const db = {
-			transaction: (_store: string, mode: string) => ({
-				objectStore: () => ({
-					get: (key: string) =>
-						makeReq(() =>
-							failAt === `get:${mode}`
-								? // error stays null — the request() helper must
-									// synthesize its fallback Error.
-									{ result: undefined, error: null, fail: true }
-								: { result: rows.get(key), error: null },
-						),
-					put: (value: unknown, key: string) =>
-						makeReq(() =>
-							failAt === "put"
-								? { result: undefined, error: new Error("quota"), fail: true }
-								: { result: (rows.set(key, value), undefined), error: null },
-						),
-					delete: (key: string) =>
-						makeReq(() =>
-							failAt === "delete"
-								? { result: undefined, error: new Error("blocked"), fail: true }
-								: { result: (rows.delete(key), undefined), error: null },
-						),
-				}),
-			}),
-			createObjectStore: () => ({}),
-			close: () => {},
+			transaction: (store: string, mode: string) => {
+				stats.txns.push({ store, mode });
+				return {
+					objectStore: () => ({
+						get: (key: string) =>
+							makeReq(() =>
+								failAt === `get:${mode}`
+									? // error stays null — the request() helper must
+										// synthesize its fallback Error.
+										{ result: undefined, error: null, fail: true }
+									: { result: rows.get(key), error: null },
+							),
+						put: (value: unknown, key: string) =>
+							makeReq(() =>
+								failAt === "put"
+									? { result: undefined, error: new Error("quota"), fail: true }
+									: { result: (rows.set(key, value), undefined), error: null },
+							),
+						delete: (key: string) =>
+							makeReq(() =>
+								failAt === "delete"
+									? { result: undefined, error: new Error("blocked"), fail: true }
+									: { result: (rows.delete(key), undefined), error: null },
+							),
+					}),
+				};
+			},
+			createObjectStore: (name?: string) => {
+				stats.created.push(name);
+				return {};
+			},
+			close: () => {
+				stats.closes++;
+			},
 		};
 		return {
-			open: () => {
+			stats,
+			open: (name?: unknown, version?: unknown) => {
+				stats.opens.push({ name, version });
 				const r: Record<string, unknown> = { result: db, error: null };
 				queueMicrotask(() => {
 					if (failAt === "open" || failAt === "open-null") {
@@ -243,6 +265,17 @@ describe("idbStore", () => {
 			await store.save(identity);
 			expect(await store.load()).toBe(identity);
 		});
+		// Lifecycle: every op opens the named DB, creates "device" on
+		// upgrade, and closes the handle — load+save+load = 3 opens/closes.
+		expect(idb.stats.opens.map((o) => o.name)).toEqual([
+			"ktb-keyring",
+			"ktb-keyring",
+			"ktb-keyring",
+		]);
+		expect(idb.stats.opens[0]!.version).toBe(1);
+		expect(idb.stats.created).toContain("device");
+		expect(idb.stats.closes).toBe(3);
+		expect(idb.stats.txns.map((t) => t.mode)).toEqual(["readonly", "readwrite", "readonly"]);
 	});
 
 	it("propagates request and open failures", async () => {
@@ -268,7 +301,8 @@ describe("idbStore", () => {
 
 	it("seals, loads and removes device secrets in IndexedDB (T-146)", async () => {
 		const rows = new Map<string, unknown>();
-		await withFakeIdb(fakeIndexedDB(rows), async () => {
+		const idb = fakeIndexedDB(rows);
+		await withFakeIdb(idb, async () => {
 			const { idbSecretStore } = await import("./keyring.ts");
 			const store = idbSecretStore("test-secrets");
 			expect(await store.load("dev")).toBeNull();
@@ -278,6 +312,24 @@ describe("idbStore", () => {
 			await store.remove("dev");
 			expect(await store.load("dev")).toBeNull();
 		});
+		// 5 ops → 5 opens/closes on the secrets DB; load/save/remove each
+		// close their handle in `finally`.
+		expect(idb.stats.opens.map((o) => o.name)).toEqual([
+			"test-secrets",
+			"test-secrets",
+			"test-secrets",
+			"test-secrets",
+			"test-secrets",
+		]);
+		expect(idb.stats.created).toContain("secrets");
+		expect(idb.stats.closes).toBe(5);
+		expect(idb.stats.txns.map((t) => t.mode)).toEqual([
+			"readonly",
+			"readwrite",
+			"readonly",
+			"readwrite",
+			"readonly",
+		]);
 	});
 
 	it("propagates secrets-store open failures", async () => {
@@ -308,11 +360,19 @@ describe("idbStore", () => {
 
 	it("picks idbStore when indexedDB is defined", async () => {
 		const rows = new Map<string, unknown>();
-		await withFakeIdb(fakeIndexedDB(rows), async () => {
+		const idb = fakeIndexedDB(rows);
+		await withFakeIdb(idb, async () => {
 			const keyring = makeKeyring();
 			const keys = await keyring.deviceKeys();
 			expect(keys.wrapPublicKey).toBeTruthy();
 			expect(rows.has("identity")).toBe(true);
+			// The secrets store defaults to IndexedDB too — a sealed secret
+			// must land in the fake's rows, not a side memory map.
+			await keyring.putSecret("sec", "v");
+			expect(rows.has("sec")).toBe(true);
 		});
+		// The default secrets store is the named IndexedDB, not memory.
+		expect(idb.stats.opens.map((o) => o.name)).toContain("ktb-secrets");
+		expect(idb.stats.created).toContain("secrets");
 	});
 });

@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
 	defineSuite,
 	gateEntryConfig,
+	refConfigOf,
+	refIdOf,
 	stageIdOf,
 	stageIdsOf,
 	stageNodesOf,
@@ -171,6 +173,14 @@ describe("stage entry helpers", () => {
 		expect(stageIdOf(entries[1])).toBe("b");
 		expect(stageIdsOf(entries)).toEqual(["a", "b"]);
 		expect(stageNodesOf(entries)).toEqual([{ id: "a" }, { id: "b", needs: [] }]);
+	});
+
+	it("refIdOf/refConfigOf handle bare ids and ref objects", () => {
+		expect(refIdOf("wer")).toBe("wer");
+		expect(refConfigOf("wer")).toBeUndefined();
+		expect(refIdOf({ id: "cer", config: { strict: true } })).toBe("cer");
+		expect(refConfigOf({ id: "cer", config: { strict: true } })).toEqual({ strict: true });
+		expect(refConfigOf({ id: "cer" })).toBeUndefined();
 	});
 });
 

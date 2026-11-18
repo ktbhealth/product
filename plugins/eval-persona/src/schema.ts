@@ -66,6 +66,11 @@ export const evalInstance = sqliteTable(
 		status: text().notNull().default("draft"),
 		total: integer().notNull().default(0),
 		done: integer().notNull().default(0),
+		/** JSON: eval-core DatasetManifest projected at finalize
+		 * (manifest.ts) — the cohort's registry identity {id, version,
+		 * contentHash} that eval runs pin as their dataset. Null until
+		 * the instance finishes generating. */
+		manifest: text(),
 		createdBy: text("created_by"),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 	},

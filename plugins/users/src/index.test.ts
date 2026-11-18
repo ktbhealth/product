@@ -36,7 +36,7 @@ INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, 
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER);
 CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, synthetic INTEGER NOT NULL DEFAULT 0);
 INSERT INTO patients (owner_id, name, created_at) VALUES ('u2', 'Ana', 0), ('u2', 'Bia', 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER);
 INSERT INTO consultations (user_id, status) VALUES ('u2', 'done'), ('u1', 'live');
 ${AUDIT_TEST_DDL}
 `;
@@ -55,7 +55,7 @@ CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NUL
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u9', 'New', 'new@x.com', 0, NULL, 0, 3000, 3000);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL, name TEXT NOT NULL, created_at INTEGER);
 CREATE TABLE doctors (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, synthetic INTEGER NOT NULL DEFAULT 0);
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, status TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER);
 `),
 		);
 		const [row] = await listAllUsers(empty);

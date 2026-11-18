@@ -14,9 +14,16 @@ import * as Effect from "effect/Effect";
 import { Option } from "effect";
 import { CliError } from "effect/cli";
 
-import type { BatchOutcome, EvalSuiteManifest } from "@ktb/eval-core";
+import type { BatchOutcome, EvalSuiteManifest, PromptRef } from "@ktb/eval-core";
 import { PortError } from "@ktb/eval-core";
-import { ptBR, type LocaleProfile } from "@ktb/eval-consultation";
+import {
+	fnvHex,
+	ptBR,
+	RUN_STAGE_PROMPTS,
+	SCRIPT_TEMPLATE_PROMPT_NAME,
+	SCRIPT_TEMPLATE_PROMPT_VERSION,
+	type LocaleProfile,
+} from "@ktb/eval-consultation";
 
 import { buildRegistry } from "./contributions.ts";
 import type { EffectiveDomain } from "./domains.ts";
@@ -153,18 +160,32 @@ export const resolveFor = (suite: LoadedSuite, profile: string): ResolvedCommand
 });
 
 /** Fail when any of `needed` capability ids is unresolved — the
- * error names every missing ref so one run shows the whole gap. */
+ * error names the profile and every missing cap id WITH its
+ * providing plugin id (`manifest.caps`), so a partial profile like
+ * `cloud` reports exactly which capabilities it cannot satisfy
+ * (T-120) instead of a generic resolution failure. */
 export const assertCapabilities = Effect.fnUntraced(function* (
 	suite: LoadedSuite,
+	profile: string,
 	resolution: SuiteResolution,
 	needed: readonly string[],
 ): Effect.fn.Return<void, CliError.UserError> {
 	const missing = resolution.unresolved.filter((u) => needed.includes(u.id));
 	if (missing.length > 0) {
+		const detail = missing
+			.map((u) => {
+				// eval.capability refs carry the providing plugin id in
+				// manifest.caps — surface it next to the cap id.
+				const provider = u.kind === "eval.capability" ? suite.manifest.caps[u.id] : undefined;
+				return provider !== undefined
+					? `${u.id}→${provider} (${u.reason})`
+					: `${u.kind} "${u.id}" (${u.reason})`;
+			})
+			.join("; ");
 		return yield* userError(
 			new Error(
-				`suite "${suite.manifest.id}" profile resolution incomplete: ` +
-					missing.map((u) => `${u.kind} "${u.id}" (${u.reason})`).join("; "),
+				`suite "${suite.manifest.id}" profile "${profile}" cannot satisfy ` +
+					`required capabilities: ${detail}`,
 			),
 		);
 	}
@@ -217,6 +238,28 @@ export const workdirFlag = Effect.fnUntraced(function* (
 	}
 	return resolved;
 });
+
+/** Prompt identity of the `.eta` script template a generate run used
+ * — on the deterministic path the template IS the generation prompt
+ * (T-135). `hash` is the pack's fnv1a content hash, the same
+ * convention RunRecord.prompt.hash uses for code-owned prompts —
+ * eval prompts live in the domain pack; the platform `ai_prompt`
+ * table is the canonical store for PROD prompts only. */
+export const scriptTemplatePrompt = (template: string): PromptRef => ({
+	name: SCRIPT_TEMPLATE_PROMPT_NAME,
+	version: SCRIPT_TEMPLATE_PROMPT_VERSION,
+	hash: fnvHex(template),
+});
+
+/** Prompt bindings for a validated run-stage selection — stages
+ * without an LLM prompt (transcribe) contribute nothing. Order
+ * follows the selection; duplicates are impossible (runStageSelection
+ * rejects repeats). */
+export const runStagePrompts = (stages: readonly string[]): PromptRef[] =>
+	stages.flatMap((s) => {
+		const p = RUN_STAGE_PROMPTS[s];
+		return p === undefined ? [] : [p];
+	});
 
 /** Human mark for one batch outcome — shared by generate/run so the
  * ok/failed/timeout rendering stays identical. `ok` renders the

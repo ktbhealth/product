@@ -13,7 +13,6 @@
 		"@ktb/audit": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
-		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/observability": "workspace:*",
 		"@ktb/platform": "workspace:*",

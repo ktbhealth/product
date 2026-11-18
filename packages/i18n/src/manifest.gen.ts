@@ -3202,6 +3202,92 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	machines: {
+		title: {
+			params: [],
+		},
+		desc: {
+			params: [],
+		},
+		add: {
+			params: [],
+		},
+		name: {
+			params: [],
+		},
+		kind: {
+			params: [],
+		},
+		host: {
+			params: [],
+		},
+		port: {
+			params: [],
+		},
+		capabilities: {
+			params: [],
+		},
+		capabilitiesHint: {
+			params: [],
+		},
+		secretRef: {
+			params: [],
+		},
+		healthUrl: {
+			params: [],
+		},
+		status: {
+			params: [],
+		},
+		statusUnknown: {
+			params: [],
+		},
+		statusOnline: {
+			params: [],
+		},
+		statusOffline: {
+			params: [],
+		},
+		statusDraining: {
+			params: [],
+		},
+		lastSeen: {
+			params: [],
+		},
+		lastCheck: {
+			params: [],
+		},
+		check: {
+			params: [],
+		},
+		checkAll: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		confirmDelete: {
+			params: [],
+		},
+		enable: {
+			params: [],
+		},
+		disable: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		actionFailed: {
+			params: [],
+		},
+	},
 	manager: {
 		title: {
 			params: [],

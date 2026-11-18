@@ -85,9 +85,11 @@ export interface SuiteResolution {
  *                     serve`, local-jev) via EVAL_SYSTEMONE_URL —
  *                     the `local` profile keeps `jev` so existing
  *                     setups are untouched
- *   cloud           — managed adapters that exist today: Workers AI ASR, R2
- *                     store. Partial by design — capabilities without a cloud
- *                     adapter stay unresolved and commands say so.
+ *   cloud           — managed adapters: Workers AI ASR + LLM/judge,
+ *                     R2 store. Partial by design — transcription.tts
+ *                     has no Workers AI equivalent, so suites
+ *                     declaring it still resolve as unsatisfied and
+ *                     commands name the missing cap.
  */
 const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
 	stub: {
@@ -139,7 +141,14 @@ const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>
 		report: "jsonl",
 		registry: "sqlite-fs",
 	},
-	cloud: { asr: "workers-ai", store: "r2", report: "jsonl", registry: "r2" },
+	cloud: {
+		asr: "workers-ai",
+		llm: "workers-ai",
+		eval: "workers-ai",
+		store: "r2",
+		report: "jsonl",
+		registry: "r2",
+	},
 };
 
 export const knownProfiles = (): readonly string[] => Object.keys(ADAPTER_PROFILES);

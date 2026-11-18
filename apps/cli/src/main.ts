@@ -23,26 +23,34 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 
 import { defaultContext, makeEvalCommand, teardown, VERSION } from "@ktb/eval-cli";
 
-const root = Command.make("ktb", {}, () =>
-	Effect.fail(
-		new CliError.ShowHelp({
-			commandPath: ["ktb"],
-			errors: [new CliError.MissingArgument({ argument: "<command>" })],
-		}),
-	),
+const root = Command.make(
+	"ktb",
+	{},
+	/* v8 ignore next -- entrypoint handler; exercised by the subprocess smoke test */
+	() =>
+		Effect.fail(
+			new CliError.ShowHelp({
+				commandPath: ["ktb"],
+				errors: [new CliError.MissingArgument({ argument: "<command>" })],
+			}),
+		),
 ).pipe(
 	Command.withSubcommands([
 		makeEvalCommand(defaultContext()),
-		Command.make("help", {}, () =>
-			Effect.fail(new CliError.ShowHelp({ commandPath: ["ktb"], errors: [] })),
+		Command.make(
+			"help",
+			{},
+			/* v8 ignore next -- entrypoint handler; exercised by the subprocess smoke test */
+			() => Effect.fail(new CliError.ShowHelp({ commandPath: ["ktb"], errors: [] })),
 		),
 	]),
 	Command.withDescription("KTB platform CLI — command packs: eval (suite runs, gates, reports)."),
 );
 
-/* v8 ignore next 3 -- entrypoint guard: only true when executed directly, never under vitest */
+/* v8 ignore next -- entrypoint guard: only true when executed directly, never under vitest */
 const invokedAs =
 	process.argv[1] === undefined ? "" : pathToFileURL(path.resolve(process.argv[1])).href;
+/* v8 ignore next -- entrypoint: runMain only fires when executed directly */
 if (import.meta.url === invokedAs) {
 	NodeRuntime.runMain(
 		Command.run(root, { version: VERSION }).pipe(Effect.provide(NodeServices.layer)),

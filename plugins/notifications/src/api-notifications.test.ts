@@ -1,23 +1,20 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
-import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { setServerRuntime } from "@ktb/server-fns";
 
 import { insertNotification, NotificationsLive } from "./Notifications.ts";
 import { Route as NotificationsRoute } from "./api-routes/notifications.ts";
@@ -76,19 +73,7 @@ const runtime = ManagedRuntime.make(
 );
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(
-					Effect.provideService(Principal, {
-						userId: user.id,
-						email: user.email,
-					}),
-				),
-			),
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
+	installServerFnRuntime(runtime, authStub, {
 		pluginEnabled: async () => pluginGate.enabled,
 	});
 });
@@ -115,7 +100,7 @@ describe("GET /api/notifications", () => {
 	it("answers 404 when the notifications.routes plugin is disabled", async () => {
 		pluginGate.enabled = false;
 		try {
-			headers.current = new Headers({ cookie: "session=sse" });
+			serverFnRequestHeaders.current = new Headers({ cookie: "session=sse" });
 			const h = handlersOf(NotificationsRoute);
 			const res = await h.GET!({
 				request: new Request("http://x/api/notifications", {
@@ -130,8 +115,8 @@ describe("GET /api/notifications", () => {
 	});
 
 	it("rejects unauthenticated requests", async () => {
-		const saved = headers.current;
-		headers.current = new Headers();
+		const saved = serverFnRequestHeaders.current;
+		serverFnRequestHeaders.current = new Headers();
 		try {
 			const h = handlersOf(NotificationsRoute);
 			const res = await h.GET!({
@@ -139,7 +124,7 @@ describe("GET /api/notifications", () => {
 			} as never);
 			expect(res.status).toBe(401);
 		} finally {
-			headers.current = saved;
+			serverFnRequestHeaders.current = saved;
 		}
 	});
 
@@ -149,7 +134,7 @@ describe("GET /api/notifications", () => {
 			kind: "test.ping",
 			title: "SSE backlog ping",
 		});
-		headers.current = new Headers({ cookie: "session=sse" });
+		serverFnRequestHeaders.current = new Headers({ cookie: "session=sse" });
 		const h = handlersOf(NotificationsRoute);
 		const res = await h.GET!({
 			request: new Request("http://x/api/notifications", {

@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { buildScriptPrompt, parseScriptTurns, turnsFor, turnsToScript } from "./llmscript.ts";
+import {
+	buildScriptPrompt,
+	canonicalScriptPrompt,
+	parseScriptTurns,
+	SCRIPT_GEN_PROMPT,
+	SCRIPT_GEN_PROMPT_NAME,
+	SCRIPT_GEN_PROMPT_VERSION,
+	scriptGenPromptHash,
+	turnsFor,
+	turnsToScript,
+} from "./llmscript.ts";
 import type { Persona } from "./schema.ts";
 
 const persona = (over: Partial<Persona> = {}): Persona => ({
@@ -107,6 +117,29 @@ describe("parseScriptTurns", () => {
 		].join("\n");
 		const turns = parseScriptTurns(text);
 		expect(turns).toHaveLength(6);
+	});
+});
+
+describe("script-gen prompt identity (T-135)", () => {
+	it("declares a stable name/version and a deterministic fnv1a hash", () => {
+		expect(SCRIPT_GEN_PROMPT_NAME).toBe("eval.consultation/script-gen");
+		expect(SCRIPT_GEN_PROMPT_VERSION).toBe(1);
+		expect(SCRIPT_GEN_PROMPT).toEqual({
+			name: SCRIPT_GEN_PROMPT_NAME,
+			version: SCRIPT_GEN_PROMPT_VERSION,
+			hash: scriptGenPromptHash(),
+		});
+		expect(SCRIPT_GEN_PROMPT.hash).toMatch(/^[0-9a-f]{8}$/);
+	});
+
+	it("the canonical prompt pins the static instruction set", () => {
+		const p = canonicalScriptPrompt();
+		expect(p).toContain("FORMATO DE SAÍDA");
+		expect(p).toContain("doctor: texto");
+		expect(p).toContain("ESTRUTURA");
+		// Deterministic — same code, same canonical render, same hash.
+		expect(canonicalScriptPrompt()).toBe(p);
+		expect(scriptGenPromptHash()).toBe(SCRIPT_GEN_PROMPT.hash);
 	});
 });
 

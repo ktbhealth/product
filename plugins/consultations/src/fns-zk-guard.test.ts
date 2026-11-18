@@ -1,6 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
 
 const vaultMocks = vi.hoisted(() => ({
 	vaultDevicesFn: vi.fn(async () => ["dev-1"]),
@@ -8,37 +15,17 @@ const vaultMocks = vi.hoisted(() => ({
 	vaultGrantAccessFn: vi.fn(async () => ({ ok: true })),
 }));
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity, so reusing one object
-	// would make every fn call look like the same request.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((x: unknown) => unknown) | undefined;
-		const chain = {
-			validator: (v: (x: unknown) => unknown) => {
-				validate = v;
-				return chain;
-			},
-			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
-				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktb/vault/fns", () => vaultMocks);
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { resetServerRuntime, setServerRuntime } from "@ktb/server-fns";
 import { Tenant } from "@ktb/tenant";
 
 import { consultationsZkApi } from "./apis.ts";
@@ -60,10 +47,7 @@ const session = {
 const db = makeDb(makeD1(DDL));
 const runtime = ManagedRuntime.make(Layer.succeed(Db, db) as Layer.Layer<unknown>);
 let activeSession: typeof session | null = session;
-const auth = Auth.of({
-	getSession: async () => activeSession as never,
-	setUserBanned: async () => {},
-});
+const auth = stubAuth(() => activeSession);
 
 const historyRowsResult = {
 	count: 1,
@@ -71,13 +55,9 @@ const historyRowsResult = {
 };
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect) =>
-			runtime.runPromise(
-				(effect as Effect.Effect<unknown, unknown, unknown>).pipe(
-					Effect.provideService(Auth, auth),
-				),
-			) as Promise<never>,
+	installServerFnRuntime(runtime, auth, {
+		// runAs binds a fixed Principal + Tenant + Consultations stub —
+		// the request user is always USER in this suite.
 		runAs: (_user, effect) =>
 			runtime.runPromise(
 				(effect as Effect.Effect<unknown, unknown, unknown>).pipe(
@@ -96,12 +76,10 @@ beforeAll(() => {
 					} as never),
 				),
 			) as Promise<never>,
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
 	});
 });
 afterAll(async () => {
-	resetServerRuntime();
+	resetServerFnRuntime();
 	await runtime.dispose();
 });
 

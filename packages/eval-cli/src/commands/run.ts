@@ -60,6 +60,7 @@ import {
 	manifestHashOf,
 	outcomeMark,
 	resolveFor,
+	runStagePrompts,
 	selectProfile,
 	userError,
 	workdirFlag,
@@ -67,12 +68,32 @@ import {
 
 const optStr = Option.getOrUndefined;
 
+/** Engine/model identity observed on a RunRecord — the fields T-135
+ * asks experiments to record (engine + optional model + optional
+ * engineVersion drift signal). */
+type EngineIdentity = {
+	readonly engine: string;
+	readonly model?: string;
+	readonly engineVersion?: string;
+};
+
+const engineIdentityOf = (r: RunRecord): EngineIdentity => ({
+	engine: r.engine,
+	...(r.model !== undefined ? { model: r.model } : {}),
+	...(r.engineVersion !== undefined ? { engineVersion: r.engineVersion } : {}),
+});
+
+const engineKey = (e: EngineIdentity): string => JSON.stringify(e);
+
 interface RunValue {
 	readonly sampleId: string;
 	readonly werAsr: number;
 	/** Absent when the manifest's stage selection stops before
 	 * cleanup — there is no corrected text to score. */
 	readonly werCorrected?: number;
+	/** Distinct engine identities this sample's RunRecords carried —
+	 * aggregated into Experiment.summary.engines (T-135). */
+	readonly engines: readonly EngineIdentity[];
 }
 
 export const makeRunCommand = (ctx: CmdContext) =>
@@ -111,7 +132,7 @@ export const makeRunCommand = (ctx: CmdContext) =>
 					try: () => domainForManifest(domains, manifest),
 					catch: (e) => new UsageError({ message: domainErrorMessage(e) }),
 				});
-				yield* assertCapabilities(suite, resolution, ["asr", "llm", "eval"]);
+				yield* assertCapabilities(suite, profile, resolution, ["asr", "llm", "eval"]);
 				// Contribution config validation (P-078): a manifest
 				// `config` that fails its contribution's declared
 				// validator is a manifest bug — fail before any work,
@@ -297,12 +318,18 @@ export const makeRunCommand = (ctx: CmdContext) =>
 							persisted = collected.length;
 							yield* saveResult(toSampleResult({ sample, runId, run }));
 							yield* saveSample(sampleForPersistence(sample, run));
+							const engines = new Map<string, EngineIdentity>();
+							for (const r of collected) {
+								const id = engineIdentityOf(r);
+								engines.set(engineKey(id), id);
+							}
 							return {
 								sampleId: sample.id,
 								werAsr: run.asrMetrics.wer,
 								...(run.correctedMetrics !== undefined
 									? { werCorrected: run.correctedMetrics.wer }
 									: {}),
+								engines: [...engines.values()],
 							} satisfies RunValue;
 						});
 						return yield* attempt.pipe(
@@ -347,6 +374,28 @@ export const makeRunCommand = (ctx: CmdContext) =>
 						// Cross-suite lineage (P-077): the source runs this
 						// experiment's inputs were materialized from.
 						const derivedFrom = [...new Set(inputBundles.map((b) => b.runId))];
+						// T-135: record the model/prompt-side identity the
+						// run honestly observed — resolved adapter keys per
+						// capability plus the distinct engine/model/
+						// engineVersion triples the stage RunRecords
+						// carried (absent fields stay absent — adapters
+						// without a version signal record none).
+						const modelAdapters: Record<string, string> = {};
+						for (const c of ["asr", "llm", "eval"] as const) {
+							const key = resolution.adapters[c];
+							if (key !== undefined) modelAdapters[c] = key;
+						}
+						const engines = new Map<string, EngineIdentity>();
+						for (const v of okValues) {
+							for (const e of v.engines) engines.set(engineKey(e), e);
+						}
+						// T-135: declared prompt identities for the stages
+						// this run actually dispatched — the same refs
+						// processSample stamps onto the stage RunRecords.
+						// Stages without an LLM prompt (transcribe)
+						// contribute nothing; a transcribe-only run
+						// records no `prompts` key at all.
+						const prompts = runStagePrompts(stages);
 						const experiment: Experiment = {
 							id: runId,
 							kind: "run",
@@ -367,6 +416,9 @@ export const makeRunCommand = (ctx: CmdContext) =>
 								latencyMs: r.latencyMs,
 								datasetVersion,
 								stages: stages.join(","),
+								...(Object.keys(modelAdapters).length > 0 ? { adapters: modelAdapters } : {}),
+								...(engines.size > 0 ? { engines: [...engines.values()] } : {}),
+								...(prompts.length > 0 ? { prompts } : {}),
 								...(inputBundles.length > 0
 									? {
 											inputs: inputBundles.map((b) => ({

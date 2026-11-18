@@ -779,6 +779,36 @@ describe("DocumentStoreLive", () => {
 		}
 	});
 
+	it("find with a pushable filter tolerates corrupt stored payloads", async () => {
+		const coll = await db
+			.select()
+			.from(documentCollections)
+			.where(eq(documentCollections.name, "test.things"));
+		const collectionId = coll[0]!.id;
+		const now = new Date();
+		// json_extract raises "malformed JSON" on this row — the
+		// pushdown prefilter must let it through to parseData/matchFilter
+		// instead of failing the whole query.
+		await db.insert(documentRecords).values({
+			collectionId,
+			data: "{oops",
+			ownerId: "u1",
+			createdAt: now,
+			updatedAt: now,
+		});
+		const marker = await as(
+			"u1",
+			call((s) => s.insert(things, { title: "PUSHDOWN-OK", count: 5 })),
+		);
+		const res = await as(
+			"u1",
+			call((s) =>
+				s.find(things, { filter: { title: { $eq: "PUSHDOWN-OK" } } }),
+			),
+		);
+		expect(res.rows.map((r) => r.id)).toEqual([marker.id]);
+	});
+
 	it("delete scans all contributed defs: default policy, dangling refs, invalid rows", async () => {
 		// Default onDelete (restrict) via the pointer def.
 		const pt = await as(

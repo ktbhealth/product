@@ -9,6 +9,10 @@ import {
 	cleanupTranscript,
 	entityQuestions,
 	cleanupQuestions,
+	CLEANUP_PROMPT,
+	JUDGE_PROMPT,
+	RUN_STAGE_PROMPTS,
+	withStagePrompt,
 	recordAll,
 	saveSample,
 	sampleForPersistence,
@@ -167,6 +171,9 @@ describe("cleanupTranscript", () => {
 	it("delegates through the LlmPort and applies the edit list", async () => {
 		const c = await run(cleanupTranscript({ taskId: "t", raw: "raw" }));
 		expect(c.corrected.startsWith("R")).toBe(true);
+		// T-135: the corrector prompt identity is stamped at the source
+		// so every caller (processSample, EvalRunner) inherits it.
+		expect(c.record.prompt).toEqual(CLEANUP_PROMPT);
 	});
 });
 
@@ -733,6 +740,42 @@ describe("processSample", () => {
 		);
 		expect(err).toBeInstanceOf(PortError);
 		expect(called).toBe(0);
+	});
+});
+
+describe("prompt identities (T-135)", () => {
+	it("declares stable name/version/fnv1a-hash bindings per LLM stage", () => {
+		for (const p of [CLEANUP_PROMPT, JUDGE_PROMPT]) {
+			expect(p.name).toMatch(/^eval\.consultation\//);
+			expect(p.version).toBe(1);
+			expect(p.hash).toMatch(/^[0-9a-f]{8}$/);
+		}
+		expect(CLEANUP_PROMPT.name).toBe("eval.consultation/cleanup-corrector");
+		expect(JUDGE_PROMPT.name).toBe("eval.consultation/judge-questions");
+		// The stage map covers exactly the LLM-consuming run stages —
+		// transcribe takes audio, not a prompt.
+		expect(RUN_STAGE_PROMPTS).toEqual({ cleanup: CLEANUP_PROMPT, judge: JUDGE_PROMPT });
+	});
+
+	it("withStagePrompt fills absent refs and never overwrites adapter-stamped ones", () => {
+		expect(withStagePrompt(CLEANUP_PROMPT)(record).prompt).toEqual(CLEANUP_PROMPT);
+		const stamped = { ...record, prompt: { name: "adapter/judge", version: 2 } };
+		expect(withStagePrompt(JUDGE_PROMPT)(stamped).prompt).toEqual({
+			name: "adapter/judge",
+			version: 2,
+		});
+	});
+
+	it("stamps prompt refs on cleanup and judge records — transcribe stays clean", async () => {
+		const r = await run(processSample({ sample, entities }));
+		// Default pipeline: 1 transcribe + 1 cleanup + 3 judge records,
+		// in dispatch order (the fixture ports all report stage "s").
+		expect(r.records).toHaveLength(5);
+		expect(r.records[0]!.prompt).toBeUndefined();
+		expect(r.records[1]!.prompt).toEqual(CLEANUP_PROMPT);
+		for (const j of r.records.slice(2)) {
+			expect(j.prompt).toEqual(JUDGE_PROMPT);
+		}
 	});
 });
 

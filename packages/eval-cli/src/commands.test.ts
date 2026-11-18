@@ -169,6 +169,9 @@ describe("list", () => {
 			const out = spy.mock.calls.map((c) => String(c[0])).join("\n");
 			expect(out).toContain("fx — ");
 			expect(out).toContain("0 unresolved ref(s)");
+			// T-120: per-profile capability satisfiability — the stub
+			// profile covers every cap the fixture declares.
+			expect(out).toMatch(/caps {2,}stub ok/);
 		} finally {
 			spy.mockRestore();
 		}
@@ -441,6 +444,21 @@ describe("generate", () => {
 		}
 	});
 
+	test("generate under the partial cloud profile names the missing tts cap (T-120)", async () => {
+		const err = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			expect(
+				await exec(["generate", "fx", "--profile", "cloud", "--n", "1", "--workdir", workdir]),
+			).toBe(1);
+			const msg = err.mock.calls.flat().join(" ");
+			expect(msg).toContain('profile "cloud" cannot satisfy');
+			expect(msg).toContain("tts→transcription.tts");
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
 	test("missing template file is a command error (exit 1)", async () => {
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "log").mockImplementation(() => {});
@@ -503,6 +521,22 @@ describe("run/gate/report round-trip", () => {
 		try {
 			expect(await exec(["run", "fx", "--workdir", workdir, "--limit", "0"])).toBe(2);
 			expect(await exec(["run", "fx", "--workdir", workdir, "--concurrency", "x"])).toBe(2);
+		} finally {
+			vi.restoreAllMocks();
+		}
+	});
+
+	test("run under cloud resolves all caps then fails on missing CF env (T-120)", async () => {
+		const err = vi.spyOn(console, "error").mockImplementation(() => {});
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			// cloud now satisfies every run-time cap (asr/llm/eval via
+			// workers-ai) — resolution passes and adapter wiring fails
+			// honestly on the first missing credential instead.
+			expect(await exec(["run", "fx", "--profile", "cloud", "--workdir", workdir])).toBe(1);
+			const msg = err.mock.calls.flat().join(" ");
+			expect(msg).not.toContain("cannot satisfy");
+			expect(msg).toContain("EVAL_CF_ACCOUNT_ID");
 		} finally {
 			vi.restoreAllMocks();
 		}
@@ -877,6 +911,17 @@ describe("stage dispatch", () => {
 				);
 				expect(r.editVerdicts.every((v) => v.classification === "unjudged")).toBe(true);
 			}
+			// T-135: judge never ran → only the cleanup prompt binding.
+			const expNj = await Effect.runPromise(
+				Effect.gen(function* () {
+					const s = yield* EvalStorePort;
+					return yield* s.getExperiment("run-nj");
+				}).pipe(Effect.provide(storeReportLayers(workdir).evalStore)),
+			);
+			const summaryNj = (expNj?.summary ?? {}) as Record<string, unknown>;
+			expect(summaryNj.prompts).toEqual([
+				expect.objectContaining({ name: "eval.consultation/cleanup-corrector" }),
+			]);
 		} finally {
 			vi.restoreAllMocks();
 		}
@@ -904,6 +949,16 @@ describe("stage dispatch", () => {
 				expect(r.correctedText).toBeUndefined();
 				expect(r.edits).toBeUndefined();
 			}
+			// T-135: no LLM stage ran → the experiment records no
+			// `prompts` key at all (absent, never an empty claim).
+			const expAsr = await Effect.runPromise(
+				Effect.gen(function* () {
+					const s = yield* EvalStorePort;
+					return yield* s.getExperiment("run-asr");
+				}).pipe(Effect.provide(storeReportLayers(workdir).evalStore)),
+			);
+			const summaryAsr = (expAsr?.summary ?? {}) as Record<string, unknown>;
+			expect(summaryAsr.prompts).toBeUndefined();
 		} finally {
 			vi.restoreAllMocks();
 		}
@@ -1366,6 +1421,15 @@ describe("market parity (P-076)", () => {
 			expect(ds?.sampleCount).toBe(2);
 			expect(ds?.contentHash).toMatch(/^[0-9a-f]{64}$/);
 			expect(ds?.generator).toMatchObject({ suiteId: "fx", seed: 11 });
+			// T-135: the .eta template IS the generation prompt — its
+			// declared identity + fnv1a content hash ride the manifest.
+			const genPrompts = ds?.generator.prompts as { name: string; hash: string }[] | undefined;
+			expect(genPrompts).toHaveLength(1);
+			expect(genPrompts?.[0]).toMatchObject({
+				name: "eval.consultation/script-template",
+				version: 1,
+			});
+			expect(genPrompts?.[0]?.hash).toMatch(/^[0-9a-f]{8}$/);
 
 			const exp = await withEvalStore<Record<string, unknown> | null>(
 				wd,
@@ -1381,7 +1445,19 @@ describe("market parity (P-076)", () => {
 			});
 			expect(exp?.manifestHash).toMatch(/^[0-9a-f]{64}$/);
 			expect(exp?.gitSha).toMatch(/^[0-9a-f]{40}$/);
-			expect(exp?.summary).toMatchObject({ samples: 2, failed: 0 });
+			expect(exp?.summary).toMatchObject({
+				samples: 2,
+				failed: 0,
+				// T-135: resolved TTS adapter + template identity.
+				adapters: { tts: "stub" },
+				template: "consultation",
+			});
+			const genSummary = exp?.summary as Record<string, unknown> | undefined;
+			expect(genSummary?.templateHash).toMatch(/^[0-9a-f]{64}$/);
+			// T-135: prompt identity alongside the template hash.
+			expect(genSummary?.prompts).toEqual([
+				expect.objectContaining({ name: "eval.consultation/script-template", version: 1 }),
+			]);
 
 			// Byte-identical regen → same contentHash → idempotent pass.
 			expect(
@@ -1427,6 +1503,20 @@ describe("market parity (P-076)", () => {
 			expect(expA).toMatchObject({ kind: "run", suiteId: "fx" });
 			const summaryA = (expA as { summary: Record<string, unknown> }).summary;
 			expect(summaryA.meanWerAsr).toBeTypeOf("number");
+			// T-135: resolved adapter keys + observed engine identities.
+			expect(summaryA.adapters).toEqual({ asr: "stub", llm: "stub", eval: "stub" });
+			expect(summaryA.engines).toEqual(
+				expect.arrayContaining([expect.objectContaining({ engine: "stub-asr" })]),
+			);
+			// T-135: declared prompt identities for the dispatched
+			// LLM stages — cleanup corrector + judge questions.
+			expect(summaryA.prompts).toEqual([
+				expect.objectContaining({
+					name: "eval.consultation/cleanup-corrector",
+					version: 1,
+				}),
+				expect.objectContaining({ name: "eval.consultation/judge-questions", version: 1 }),
+			]);
 			expect((expA as { gates: unknown[] }).gates).toHaveLength(2);
 
 			// report --compare renders the markdown diff.

@@ -23,6 +23,8 @@ import {
 	localeFlag,
 	manifestHashOf,
 	resolveFor,
+	runStagePrompts,
+	scriptTemplatePrompt,
 	selectProfile,
 	sha256Hex,
 	workdirFlag,
@@ -110,15 +112,38 @@ describe("resolveFor", () => {
 describe("assertCapabilities", () => {
 	test("passes when needed caps are resolved", async () => {
 		const s = suite({ caps: { asr: "transcription.asr" } });
-		const { resolution } = resolveFor(s, "stub");
-		await expect(run(assertCapabilities(s, resolution, ["asr"]))).resolves.toBeUndefined();
+		const { profile, resolution } = resolveFor(s, "stub");
+		await expect(run(assertCapabilities(s, profile, resolution, ["asr"]))).resolves.toBeUndefined();
 	});
 
 	test("fails naming every missing ref", async () => {
 		const s = suite({ caps: { ghost: "x" } });
-		const { resolution } = resolveFor(s, "stub");
-		const err = await runErr(assertCapabilities(s, resolution, ["ghost"]));
-		expect(err.message).toMatch(/capability "ghost" \(no registered contribution\)/);
+		const { profile, resolution } = resolveFor(s, "stub");
+		const err = await runErr(assertCapabilities(s, profile, resolution, ["ghost"]));
+		expect(err.message).toMatch(/ghost→x \(no registered contribution\)/);
+	});
+
+	test("names the profile and each missing cap's provider id (T-120)", async () => {
+		const s = suite({
+			caps: {
+				asr: "transcription.asr",
+				tts: "transcription.tts",
+				llm: "llm.eval",
+				eval: "llm.eval",
+			},
+		});
+		const { profile, resolution } = resolveFor(s, "cloud");
+		const err = await runErr(
+			assertCapabilities(s, profile, resolution, ["asr", "tts", "llm", "eval"]),
+		);
+		// cloud satisfies asr (workers-ai) + llm/eval (workers-ai chat
+		// models) but has no tts adapter — the error names the profile
+		// and the exact cap→provider pairs that remain missing.
+		expect(err.message).toContain('profile "cloud" cannot satisfy');
+		expect(err.message).toContain("tts→transcription.tts");
+		expect(err.message).not.toContain("asr→");
+		expect(err.message).not.toContain("llm→");
+		expect(err.message).not.toContain("eval→");
 	});
 });
 
@@ -197,6 +222,33 @@ describe("workdirFlag", () => {
 				process.env.EVAL_WORKDIR_ROOTS = prev;
 			}
 		}
+	});
+});
+
+describe("prompt bindings (T-135)", () => {
+	test("scriptTemplatePrompt pins name+version+fnv1a content hash", () => {
+		const a = scriptTemplatePrompt("template-a");
+		expect(a).toEqual({
+			name: "eval.consultation/script-template",
+			version: 1,
+			hash: expect.stringMatching(/^[0-9a-f]{8}$/),
+		});
+		// Content-sensitive: a different template source hashes differently.
+		expect(scriptTemplatePrompt("template-b").hash).not.toBe(a.hash);
+		expect(scriptTemplatePrompt("template-a").hash).toBe(a.hash);
+	});
+
+	test("runStagePrompts maps LLM stages and skips prompt-less ones", () => {
+		const prompts = runStagePrompts(["transcribe", "cleanup", "judge"]);
+		expect(prompts.map((p) => p.name)).toEqual([
+			"eval.consultation/cleanup-corrector",
+			"eval.consultation/judge-questions",
+		]);
+		// Transcribe-only / empty selections record nothing.
+		expect(runStagePrompts(["transcribe"])).toEqual([]);
+		expect(runStagePrompts([])).toEqual([]);
+		// Unknown stage ids contribute nothing rather than throwing.
+		expect(runStagePrompts(["mystery"])).toEqual([]);
 	});
 });
 

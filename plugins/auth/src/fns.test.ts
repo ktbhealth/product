@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 import * as Effect from "effect/Effect";
 
 const mocks = vi.hoisted(() => ({
@@ -11,15 +13,7 @@ const mocks = vi.hoisted(() => ({
 // Same fake as the other plugins' route tests: the handler runs as a
 // plain async fn; `run` executes the Effect for real against a stub
 // Email service so the `sender !== null` branch is exercised.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const chain = {
-			validator: () => chain,
-			handler: (h: (arg?: unknown) => unknown) => async (arg?: unknown) => h(arg ?? {}),
-		};
-		return chain;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@ktb/server-fns", () => ({
 	getLocale: mocks.getLocale,
 	run: mocks.run,

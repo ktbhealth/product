@@ -13,6 +13,9 @@
  * validation — the pipeline never stalls on a missing driver.
  */
 
+import type { PromptRef } from "@ktb/eval-core";
+
+import { fnvHex } from "./generate.ts";
 import type { Persona } from "./schema.ts";
 import type { ScriptTurn } from "./scriptgen.ts";
 
@@ -122,3 +125,47 @@ export const parseScriptTurns = (text: string): ScriptTurn[] | null => {
  * strip labels anyway, and raw labels would pollute the word diff). */
 export const turnsToScript = (turns: readonly ScriptTurn[]): string =>
 	turns.map((t) => t.text).join("\n");
+
+// ---------- prompt identity (T-135) ----------
+
+/** Declared name/version of the script-generation prompt — the
+ * pack's own registry coordinates. The platform `ai_prompt` table is
+ * the canonical store for PROD prompts; eval prompts live in the
+ * domain pack, versioned with the code (Experiment.gitSha pins the
+ * commit). Bump `version` when the instruction set changes meaning;
+ * `hash` catches ANY drift automatically. */
+export const SCRIPT_GEN_PROMPT_NAME = "eval.consultation/script-gen";
+export const SCRIPT_GEN_PROMPT_VERSION = 1;
+
+/** Fixed persona the content hash renders — pins the prompt TEMPLATE
+ * (every static rule/structure line), not one persona's slot values. */
+const CANONICAL_SCRIPT_PERSONA: Persona = {
+	region: "southeast",
+	ageBand: "adult",
+	register: "colloquial",
+	specialty: "general_practice",
+	gender: "female",
+	socialClass: "c",
+	education: "secondary",
+	name: "Paciente Hash",
+	doctor: { gender: "female", register: "formal" },
+};
+
+/** Canonical render of the generation prompt — deterministic given
+ * the code; the hash input for SCRIPT_GEN_PROMPT. */
+export const canonicalScriptPrompt = (): string =>
+	buildScriptPrompt({ persona: CANONICAL_SCRIPT_PERSONA, minutes: 15 });
+
+/** fnv1a content hash of canonicalScriptPrompt — the pack's
+ * dependency-free hash (same function as Sample.scriptHash). */
+export const scriptGenPromptHash = (): string => fnvHex(canonicalScriptPrompt());
+
+/** PromptRef for the script-generation prompt — stamped on
+ * script_gen RunRecords and recorded in Experiment.summary by
+ * consumers. Honestly labeled: this is the PACK's prompt identity,
+ * resolved offline — no platform ai_prompt row is queried. */
+export const SCRIPT_GEN_PROMPT: PromptRef = {
+	name: SCRIPT_GEN_PROMPT_NAME,
+	version: SCRIPT_GEN_PROMPT_VERSION,
+	hash: scriptGenPromptHash(),
+};

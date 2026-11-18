@@ -1,25 +1,24 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
-const headers = { current: new Headers() };
+import {
+	installServerFnRuntime,
+	reactStartServerMock,
+	serverFnRequestHeaders,
+} from "@ktb/server-fns/testing";
+
 const flags = { noBucket: false, noQueue: false };
 const ai = vi.hoisted(() => ({
 	current: undefined as { run: (m: string, i: unknown) => Promise<unknown> } | undefined,
 }));
 
-vi.mock("@tanstack/react-start/server", () => ({
-	// Fresh Headers per call: @ktb/server-fns memoizes session lookups
-	// per request keyed on the Headers identity.
-	getRequestHeaders: () => new Headers(headers.current),
-}));
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 
-import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
-import { Principal } from "@ktb/authz";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
@@ -30,7 +29,6 @@ import {
 	createPatient,
 } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
-import { setServerRuntime } from "@ktb/server-fns";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
@@ -54,7 +52,7 @@ INSERT INTO "user" VALUES ('u-owner', 'Dra Export', 'export@x.com', 0, NULL, 0, 
 INSERT INTO "user" VALUES ('u-other', 'Dra Other', 'other@x.com', 0, NULL, 0, 0);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, created_at INTEGER NOT NULL, tenant_id INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER);
 `;
 
 const USERS = new Map([
@@ -144,16 +142,11 @@ const jobs = {
 const runtime = ManagedRuntime.make(services as Layer.Layer<unknown, never, never>);
 
 const useSession = (key: string) => {
-	headers.current = new Headers({ cookie: `session=${key}` });
+	serverFnRequestHeaders.current = new Headers({ cookie: `session=${key}` });
 };
 
 beforeAll(() => {
-	setServerRuntime({
-		run: (effect) => runtime.runPromise(effect),
-		runAs: (user, effect) =>
-			runtime.runPromise(
-				effect.pipe(Effect.provideService(Principal, { userId: user.id, email: user.email })),
-			),
+	installServerFnRuntime(runtime, authStub, {
 		get audio() {
 			return flags.noBucket ? undefined : fakeBucket;
 		},
@@ -163,8 +156,6 @@ beforeAll(() => {
 		get ai() {
 			return ai.current;
 		},
-		getLocale: () => "en",
-		audioTranscribeModel: "test-model",
 	});
 	useSession("owner");
 });

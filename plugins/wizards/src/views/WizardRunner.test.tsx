@@ -2,15 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		const chain = {
-			validator: () => chain,
-			handler: (h: unknown) => h,
-		};
-		return chain;
-	},
-}));
+import { reactStartMock } from "@ktb/server-fns/testing";
+
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 vi.mock("../fns.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("../fns.ts")>();

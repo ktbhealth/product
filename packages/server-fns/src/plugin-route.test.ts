@@ -1,22 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { reactStartMock } from "./testing.ts";
 import * as Effect from "effect/Effect";
 
 // Server fns become plain async calls; the runtime registry decides the
 // enabled answer (see setServerRuntime cases below).
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((value: unknown) => unknown) | undefined;
-		const api = {
-			validator: (fn: (value: unknown) => unknown) => {
-				validate = fn;
-				return api;
-			},
-			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({ data: validate === undefined ? call?.data : validate(call?.data) }),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();

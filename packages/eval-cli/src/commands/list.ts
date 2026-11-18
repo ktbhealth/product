@@ -36,7 +36,7 @@ import {
 	type EffectiveDomain,
 } from "../domains.ts";
 import { inputLabel } from "../inputs.ts";
-import { resolveSuite } from "../resolve.ts";
+import { knownProfiles, resolveSuite } from "../resolve.ts";
 import { loadSuites } from "../suites.ts";
 import { userError, workdirFlag } from "../shared.ts";
 import type { CmdContext } from "../context.ts";
@@ -132,6 +132,20 @@ export const makeListCommand = (ctx: CmdContext) =>
 					}
 					yield* Console.log(`  ${counts("eval.capability", Object.keys(manifest.caps).length)}`);
 					if (adapters !== "") yield* Console.log(`  adapters  ${adapters}`);
+					// Per-profile capability satisfiability (T-120): one
+					// line showing which adapter profiles can satisfy
+					// this suite's caps — a partial profile (e.g. cloud)
+					// names exactly which cap ids it lacks.
+					if (Object.keys(manifest.caps).length > 0) {
+						const cells = knownProfiles().map((p) => {
+							const r = resolveSuite(registry, manifest, p);
+							const missing = r.unresolved
+								.filter((u) => u.kind === "eval.capability")
+								.map((u) => u.id);
+							return missing.length === 0 ? `${p} ok` : `${p} missing ${missing.join(",")}`;
+						});
+						yield* Console.log(`  caps      ${cells.join(" · ")}`);
+					}
 					for (const u of res.unresolved) {
 						yield* Console.log(`  ! ${kindLabel(u.kind)} "${u.id}" — ${u.reason}`);
 					}

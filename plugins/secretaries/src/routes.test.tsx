@@ -3,6 +3,8 @@ import { cleanup, render } from "@testing-library/react";
 import { createElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { reactStartMock } from "@ktb/server-fns/testing";
+
 const mocks = vi.hoisted(() => ({
 	sessionUserFn: vi.fn(),
 	listSecretariesFn: vi.fn(),
@@ -41,22 +43,7 @@ vi.mock("./views/index.ts", () => ({
 }));
 // Server fns become plain async calls; with no runtime registered the
 // plugin route gate (createPluginFileRoute → pluginEnabledFn) is inert.
-vi.mock("@tanstack/react-start", () => ({
-	createServerFn: () => {
-		let validate: ((value: unknown) => unknown) | undefined;
-		const api = {
-			validator: (fn: (value: unknown) => unknown) => {
-				validate = fn;
-				return api;
-			},
-			handler: (h: (arg: { data: unknown }) => unknown) => async (call: { data?: unknown }) =>
-				h({
-					data: validate === undefined ? call?.data : validate(call?.data),
-				}),
-		};
-		return api;
-	},
-}));
+vi.mock("@tanstack/react-start", () => reactStartMock());
 vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {
@@ -146,10 +133,11 @@ describe("/login/secretary", () => {
 		}
 	).options;
 
-	it("loads the locale and whether email can be sent", async () => {
+	it("loads the locale, the email capability and the doctor-flow availability", async () => {
 		await expect(loginOptions.loader()).resolves.toEqual({
 			locale: "pt-BR",
 			emailEnabled: true,
+			doctorLoginEnabled: true,
 		});
 	});
 

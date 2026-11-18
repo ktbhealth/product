@@ -24,6 +24,8 @@ describe("eval-persona schema", () => {
 		// the lab audit trail survives.
 		expect(byTable.get(aiEndpoint)).toBe("set null");
 		expect(cfg.columns.find((c) => c.name === "params")?.notNull).toBe(true);
+		// WS-D: finalize writes the DatasetManifest JSON here.
+		expect(cfg.columns.find((c) => c.name === "manifest")?.notNull).toBe(false);
 		expect(cfg.indexes.map((i) => i.config.name)).toEqual(["eval_instance_status_idx"]);
 	});
 
