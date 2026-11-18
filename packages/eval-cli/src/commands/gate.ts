@@ -154,7 +154,7 @@ export const makeGateCommand = (ctx: CmdContext) =>
 					if (decode === undefined) {
 						return yield* userError(
 							new Error(
-								`gate "${gate.id}" is registered but has no runner in apps/eval (policy.ts)`,
+								`gate "${gate.id}" is registered but has no runner in packages/eval-cli (policy.ts)`,
 							),
 						);
 					}

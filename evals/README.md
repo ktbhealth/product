@@ -22,7 +22,7 @@ evals/
   manifest, no `@ktb/kernel` augmentation, no `src/client.ts`. Each
   pack exports its contribution declarations as a plain array
   (`consultContributions` in `src/index.ts`); the composition root
-  (`apps/eval/src/contributions.ts`) appends them to the registry
+  (`packages/eval-cli/src/contributions.ts`) appends them to the registry
   after the capability plugins' manifest contributions.
 - **Suite manifests are pure data** (`defineSuite` from
   `@ktb/eval-core`), one `*.suite.ts` per suite, colocated inside
@@ -31,33 +31,33 @@ evals/
   and is never treated as a suite.
 - **Adding an eval domain** = `evals/<domain>/` (copy the
   consultation shape) + `evals/<domain>/<name>.suite.ts`; zero
-  framework or plugin changes. `apps/eval` wires the pack's
+  framework or plugin changes. `packages/eval-cli` wires the pack's
   contribution array into `ALL_CONTRIBUTIONS` explicitly.
 
 ## Discovery
 
-`apps/eval` (`eval list`, `eval generate|run|gate|report <suite>`)
+`packages/eval-cli` (`eval list`, `eval generate|run|gate|report <suite>`)
 scans `evals/` **recursively** for `*.suite.ts` files
-(`apps/eval/src/suites.ts`), skipping `node_modules` and
+(`packages/eval-cli/src/suites.ts`), skipping `node_modules` and
 dot-directories, re-validating each through `validateManifest`.
 
 ## Runtime
 
-The CLI (`apps/eval/src/cli.ts`) is runtime-agnostic: it uses only
+The CLI (`packages/eval-cli/src/cli.ts`) is runtime-agnostic: it uses only
 `node:*` APIs (fs/path/child_process), `fetch`, and Effect — no
 `Bun.*` globals or `bun:` imports anywhere in the eval packages.
 Bun is the recommended runtime (the `#!/usr/bin/env bun` shebang and
-`bun apps/eval/src/cli.ts …` invocations in the docs), but plain
+`bun packages/eval-cli/src/cli.ts …` invocations in the docs), but plain
 Node works too — Node ≥ 23.6 strips TypeScript types natively:
 
 ```sh
-node apps/eval/src/cli.ts list
-node apps/eval/src/cli.ts generate consult-asr --workdir /tmp/eval-app
-node apps/eval/src/cli.ts run consult-asr --workdir /tmp/eval-app
+node packages/eval-cli/src/cli.ts list
+node packages/eval-cli/src/cli.ts generate consult-asr --workdir /tmp/eval-app
+node packages/eval-cli/src/cli.ts run consult-asr --workdir /tmp/eval-app
 ```
 
 (Older Node needs a TS loader; the suite-manifest dynamic imports in
-`apps/eval/src/suites.ts` rely on type stripping.)
+`packages/eval-cli/src/suites.ts` rely on type stripping.)
 
 ## Composability status
 
@@ -112,7 +112,7 @@ gate scoping is future work.
 
 `inputs` declares refs to other suites' persisted artifacts:
 `{suite, stage?, field?, runId?, datasetVersion?}`. `eval run`
-resolves them (`apps/eval/src/inputs.ts`) against the shared workdir
+resolves them (`packages/eval-cli/src/inputs.ts`) against the shared workdir
 store — `suite` must exist in evals/ (fatal at run, `! input`
 warning + `--strict` failure at `eval list`), `datasetVersion`
 defaults to the source suite's pin, `runId` pins an exact prior run,
@@ -136,7 +136,7 @@ individually dispatched. Metric-level selection is a report-time
 concern.
 
 Gate refs **dispatch** through `GATE_DECODERS` in
-`apps/eval/src/policy.ts`: each gate's `config` decodes to an
+`packages/eval-cli/src/policy.ts`: each gate's `config` decodes to an
 `AcceptPolicy` (CLI flags may override individual fields) and
 `gateRun`/`decideAutoAccept` consume persisted results. `meta.fn` on
 a contribution remains a pointer for humans/ops, not a callable key.
@@ -189,7 +189,7 @@ them. `eval-core` never learns domain vocabulary; a domain without
 a `domain.ts` keeps working through built-in defaults.
 
 **Inheritance.** `extends` resolves child→parent over the discovered
-definitions (`apps/eval/src/domains.ts`): unknown ids, unknown
+definitions (`packages/eval-cli/src/domains.ts`): unknown ids, unknown
 parents, and cycles are resolution errors. Merge semantics:
 
 - contribution lists **union by id** — the child's entry wins on
@@ -202,7 +202,7 @@ parents, and cycles are resolution errors. Merge semantics:
 **Suite overrides.** A manifest may carry `domainParams` (a partial
 `DomainDefinition`-shaped JSON object, validated by
 `validateDomainOverrides` — unknown top-level sections are
-rejected). `apps/eval` merges domain params + suite overrides and
+rejected). `packages/eval-cli` merges domain params + suite overrides and
 threads the result as `domainParams` into `generateDataset`
 (dataset defaults: count/step/seed/noise) and `processSample`
 (`params.entityCategories` filters judged entity categories, etc.).

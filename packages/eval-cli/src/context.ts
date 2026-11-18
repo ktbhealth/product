@@ -2,7 +2,7 @@
  * context.ts — shared command context (P-074 phase 4).
  *
  * `repoRoot`/`evalsDir` are derived from this file's location
- * (apps/eval/src → repo root) so the CLI works from any cwd; tests
+ * (packages/eval-cli/src → repo root) so the CLI works from any cwd; tests
  * and callers may inject explicit dirs instead.
  */
 

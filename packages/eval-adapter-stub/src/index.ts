@@ -109,7 +109,7 @@ const decode = <A>(schema: (u: unknown) => A, value: unknown, op: string) =>
 
 /** Deterministic canned answer for one question — the single
  * implementation shared by this package's judge AND the CLI's stub
- * eval layer (apps/eval adapters.ts), so both produce identical
+ * eval layer (packages/eval-cli adapters.ts), so both produce identical
  * verdict shapes. */
 export const stubAnswerOf = (q: {
 	id: string;

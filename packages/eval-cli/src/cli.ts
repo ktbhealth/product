@@ -30,16 +30,13 @@
  * --enforce, 2 usage error.
  */
 
-import * as path from "node:path";
-import { pathToFileURL } from "node:url";
-
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Cause from "effect/Cause";
 import * as Layer from "effect/Layer";
 import * as Runtime from "effect/Runtime";
 import { Command, CliError } from "effect/cli";
-import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import { NodeServices } from "@effect/platform-node";
 
 import { makeBenchCommand } from "./commands/bench.ts";
 import { makeCalibrateCommand } from "./commands/calibrate.ts";
@@ -50,7 +47,7 @@ import { makeReportCommand } from "./commands/report.ts";
 import { makeRunCommand } from "./commands/run.ts";
 import { defaultContext, type CmdContext } from "./context.ts";
 
-const VERSION = "0.0.0";
+export const VERSION = "0.0.0";
 
 /**
  * Process exit-code policy on top of Runtime.defaultTeardown:
@@ -125,17 +122,3 @@ export const run = (
 			return exitCodeOf(exit);
 		}).pipe(Effect.provide(layer)),
 	);
-
-/* v8 ignore next -- argv[1] is always defined under vitest; the
- * undefined fallback only matters for exotic embedders */
-const invokedAs =
-	process.argv[1] === undefined ? "" : pathToFileURL(path.resolve(process.argv[1])).href;
-/* v8 ignore next 3 -- entrypoint guard: only true when executed directly, never under vitest */
-if (import.meta.url === invokedAs) {
-	NodeRuntime.runMain(
-		Command.run(makeEvalCommand(defaultContext()), { version: VERSION }).pipe(
-			Effect.provide(NodeServices.layer),
-		),
-		{ teardown },
-	);
-}

@@ -14,7 +14,7 @@ import { TtsPort } from "@ktb/eval-consultation/ports";
  * all banned there — so implementations live in the adapter packages
  * (@ktb/eval-adapter-stub/-local/-cloud), which are the exempt edge.
  *
- * Consumption: the eval composition root (apps/eval) collects the
+ * Consumption: the eval composition root (packages/eval-cli) collects the
  * `contributions` entries off the ordered plugin graph, registers each
  * into a `ContributionRegistry` (`registry.register(c)`), and resolves
  * `meta.adapters[key]` to the layer factory exported by that package

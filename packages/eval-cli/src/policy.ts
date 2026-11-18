@@ -8,7 +8,7 @@
  * and is registered on the `eval.gate:auto-accept` contribution as
  * `validateConfig`, so `eval list`/`eval run` resolution validates
  * manifest configs against the same decoder this module consumes.
- * This file is the apps/eval adapter: it lifts the domain decoder's
+ * This file is the packages/eval-cli adapter: it lifts the domain decoder's
  * `Result` failures into `UsageError` (exit 2) and keeps the
  * GATE_DECODERS dispatch table — the ONLY place manifest gate ids
  * become runnable policies.

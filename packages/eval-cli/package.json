@@ -1,9 +1,11 @@
 {
-	"name": "@ktb/app-eval",
+	"name": "@ktb/eval-cli",
 	"private": true,
 	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
 	"scripts": {
-		"eval": "bun src/cli.ts",
 		"test": "vitest run"
 	},
 	"dependencies": {
