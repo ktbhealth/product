@@ -28,8 +28,7 @@ vi.mock("@tanstack/react-router", (importOriginal) =>
 // override lets a test feed a foreign-kind contribution so the
 // page's defensive `kind !== "loginTile"` guard runs.
 vi.mock("#/lib/login-tiles.ts", async (importOriginal) => {
-	const actual =
-		await importOriginal<typeof import("#/lib/login-tiles.ts")>();
+	const actual = await importOriginal<typeof import("#/lib/login-tiles.ts")>();
 	return {
 		...actual,
 		visibleLoginTiles: (...args: Parameters<typeof actual.visibleLoginTiles>) =>

@@ -544,16 +544,14 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		PlatformAdmin,
 		makePlatformAdminGate(parsePlatformAdminEmails(env.PLATFORM_ADMIN_EMAILS), {
 			grantFor: (userId) =>
-				rbacGrants
-					.canFor(userId, "platform", "admin")
-					.pipe(
-						Effect.catch(
-							/* v8 ignore next -- canFor's error channel is never: grant lookups run
+				rbacGrants.canFor(userId, "platform", "admin").pipe(
+					Effect.catch(
+						/* v8 ignore next -- canFor's error channel is never: grant lookups run
 							   on Effect.promise, so DB failures surface as defects (which
 							   Effect.catch skips) rather than typed errors */
-							() => Effect.succeed(false),
-						),
+						() => Effect.succeed(false),
 					),
+				),
 		}),
 	);
 	// Runtime plugin enable/config state (P-058): the service is built
