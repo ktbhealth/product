@@ -11,6 +11,13 @@ import {
 } from "@ktbhealth/ui/components/dialog";
 import { Input } from "@ktbhealth/ui/components/input";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -200,18 +207,22 @@ export function VaultSecretsPanel({
 							placeholder={t.secretProvider}
 							aria-label={t.secretProvider}
 						/>
-						<select
+						<Select
+							items={KINDS.map((kind) => ({ value: kind, label: kind }))}
 							value={form.kind}
-							onChange={(e) => setForm({ ...form, kind: e.target.value as VaultSecretKind })}
-							aria-label={t.secretKind}
-							className="rounded-md border border-border bg-background px-3 py-2 text-sm"
+							onValueChange={(v) => setForm({ ...form, kind: v as VaultSecretKind })}
 						>
-							{KINDS.map((kind) => (
-								<option key={kind} value={kind}>
-									{kind}
-								</option>
-							))}
-						</select>
+							<SelectTrigger aria-label={t.secretKind} className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{KINDS.map((kind) => (
+									<SelectItem key={kind} value={kind}>
+										{kind}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
 						<Input
 							type="password"
 							value={form.value}

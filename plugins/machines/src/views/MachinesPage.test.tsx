@@ -183,7 +183,8 @@ describe("MachinesPage", () => {
 		// name, host, port, healthUrl, capabilities, secretRef (6 inputs)
 		expect(inputs).toHaveLength(6);
 		await user.type(inputs[0]!, "new-box");
-		await user.selectOptions(screen.getByRole("combobox"), "vm");
+		await user.click(screen.getByRole("combobox"));
+		await user.click(await screen.findByRole("option", { name: "vm" }));
 		await user.type(inputs[1]!, "vm.local");
 		await user.type(inputs[2]!, "2222");
 		await user.type(inputs[3]!, "http://vm.local/health");

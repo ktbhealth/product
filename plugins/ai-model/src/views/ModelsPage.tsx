@@ -11,6 +11,13 @@ import {
 } from "@ktbhealth/ui/components/dialog";
 import { Input } from "@ktbhealth/ui/components/input";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -230,17 +237,22 @@ export function ModelsPage({
 							</label>
 							<label className="text-sm">
 								{m.kind}
-								<select
-									className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+								<Select
+									items={KINDS.map((k) => ({ value: k, label: k }))}
 									value={draft.kind}
-									onChange={(e) => setDraft({ ...draft, kind: e.target.value as AiModelKind })}
+									onValueChange={(v) => setDraft({ ...draft, kind: v as AiModelKind })}
 								>
-									{KINDS.map((k) => (
-										<option key={k} value={k}>
-											{k}
-										</option>
-									))}
-								</select>
+									<SelectTrigger className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{KINDS.map((k) => (
+											<SelectItem key={k} value={k}>
+												{k}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
 							</label>
 							<label className="text-sm">
 								{m.capabilities}
