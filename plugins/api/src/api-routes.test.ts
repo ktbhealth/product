@@ -227,6 +227,14 @@ describe("api documents splat route", () => {
 		}
 	});
 
+	it("rejects a missing JSON body with 400", async () => {
+		const res = await call(splatHandlers, "POST", "/api/documents/test.notes", {
+			headers: authed,
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ error: { kind: "bad_request" } });
+	});
+
 	it("rejects bad query params with 400", async () => {
 		const res = await call(splatHandlers, "GET", "/api/documents/test.notes?bogus=1", {
 			headers: authed,
