@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Forbidden, Principal } from "@ktb/authz";
+import { Audit } from "@ktb/audit";
 import { SecretKeyring } from "@ktb/crypto/secret-keyring";
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { groups } from "@ktb/db/schema";
@@ -256,5 +257,39 @@ describe("Secrets", () => {
 			Effect.flatMap(Secrets, (s) => s.resolve(secretRefFor(meta.id))),
 		);
 		expect(value).toBe("sk-user-1");
+	});
+
+	it("audits every resolve with actor attribution and no secret material (C4)", async () => {
+		const recorded: Array<Record<string, unknown>> = [];
+		// Audit resolves via serviceOption at CALL time — provide the
+		// stub on the effect, not in the layer.
+		const auditStub = {
+			record: (entry: Record<string, unknown>) =>
+				Effect.sync(() => {
+					recorded.push(entry);
+				}),
+		} as never;
+		const rt = makeRuntime(db);
+		const meta = await run(
+			rt,
+			Effect.flatMap(Secrets, (s) =>
+				s.put({ tenantId: null, name: "audited", value: "s3cr3t-value" }),
+			),
+		);
+		recorded.length = 0;
+		await run(
+			rt,
+			Effect.flatMap(Secrets, (s) => s.resolve(secretRefFor(meta.id))).pipe(
+				Effect.provideService(Audit, auditStub),
+			),
+		);
+		expect(recorded).toHaveLength(1);
+		expect(recorded[0]).toMatchObject({
+			action: "vault.secret.resolve",
+			targetType: "vault_secret",
+			targetId: meta.id,
+		});
+		// Detail carries ids/metadata only — never the value.
+		expect(JSON.stringify(recorded[0])).not.toContain("s3cr3t-value");
 	});
 });

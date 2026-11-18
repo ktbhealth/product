@@ -8,6 +8,7 @@ import { Forbidden } from "@ktb/authz";
 import { Audit } from "@ktb/audit";
 import { Db, type DbClient } from "@ktb/db";
 import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
+import { makeFixedWindowRateLimiter } from "@ktb/observability";
 import { requireTenantRole, Tenant, TenantForbidden } from "@ktb/tenant";
 
 import { machine, type Machine, type MachineKind, type MachineStatus } from "./schema.ts";
@@ -39,7 +40,7 @@ export const MACHINE_STALE_MS = 120_000;
 const PLATFORM_SCOPE = "platform";
 
 export class MachineError extends Data.TaggedError("MachineError")<{
-	readonly reason: "not-found" | "tenant-mismatch" | "invalid" | "duplicate";
+	readonly reason: "not-found" | "tenant-mismatch" | "invalid" | "duplicate" | "rate-limited";
 	readonly detail?: string;
 }> {}
 
@@ -200,6 +201,25 @@ const requireScopeAccess = (admin: PlatformAdminShape, scope: string, min: "admi
 	});
 };
 
+/** `secretRef` hygiene (P-098 C4): `vault:` refs must be well-formed
+ * (`vault:<positive int>` — same spelling `Secrets.parseSecretRef`
+ * accepts). Other schemes (`env:`, future brokers) pass through
+ * untouched — the registry stores pointers, consumers resolve them. */
+const SECRET_REF_OK = /^vault:\d+$/;
+const requireValidSecretRef = (ref: string | null | undefined): Effect.Effect<void, MachineError> =>
+	ref !== undefined &&
+	ref !== null &&
+	ref !== "" &&
+	ref.startsWith("vault:") &&
+	!SECRET_REF_OK.test(ref)
+		? Effect.fail(
+				new MachineError({
+					reason: "invalid",
+					detail: `malformed vault ref — expected vault:<id>`,
+				}),
+			)
+		: Effect.void;
+
 const scopeFor = (input: {
 	readonly scope: "platform" | "tenant";
 	readonly tenantId?: number | null;
@@ -265,6 +285,9 @@ export class Machines extends Context.Service<
 
 const HEALTH_TIMEOUT_MS = 5_000;
 const CHECK_ERROR_MAX = 200;
+/** Beats per machine per minute — heartbeats run every 10-60s, so 30
+ * leaves headroom while damping a runaway agent into false "online". */
+const BEAT_LIMIT_PER_MIN = 30;
 
 /** HTTP probe for `check` — injectable in tests via globalThis.fetch. */
 const probeHealth = (healthUrl: string): Effect.Effect<{ ok: boolean; error: string | null }> =>
@@ -303,6 +326,9 @@ export const MachinesLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
+		// Per-isolate fixed-window limiter (best-effort, same semantics
+		// as the telemetry edge limiter) — bounds beat spam per machine.
+		const beatLimiter = makeFixedWindowRateLimiter({ windowMs: 60_000 });
 
 		const now = () => Date.now();
 
@@ -376,6 +402,7 @@ export const MachinesLive = Layer.effect(
 					tenantId: input.tenantId ?? null,
 				});
 				yield* requireScopeAccess(platformAdmin, scope, "admin");
+				yield* requireValidSecretRef(input.secretRef);
 				const name = input.name.trim();
 				const host = input.host.trim();
 				if (name === "" || host === "")
@@ -409,6 +436,7 @@ export const MachinesLive = Layer.effect(
 			update: Effect.fn("Machines.update")(function* (input) {
 				const row = yield* requireMachine(input.id);
 				yield* requireWrite(row);
+				yield* requireValidSecretRef(input.secretRef);
 				if (input.name !== undefined && input.name.trim() === "")
 					return yield* Effect.fail(
 						new MachineError({ reason: "invalid", detail: "name is empty" }),
@@ -445,6 +473,10 @@ export const MachinesLive = Layer.effect(
 				const row = yield* Effect.promise(() => getMachineById(db, id));
 				if (row === null) return yield* Effect.fail(new MachineError({ reason: "not-found" }));
 				if (row.status === "draining") return; // draining machines ignore beats
+				if (!beatLimiter.hit(`beat:${row.id}`, BEAT_LIMIT_PER_MIN).allowed)
+					return yield* Effect.fail(
+						new MachineError({ reason: "rate-limited", detail: "beat too frequent" }),
+					);
 				const updated = yield* Effect.promise(() =>
 					updateMachine(db, row.id, {
 						lastSeenAt: new Date(),

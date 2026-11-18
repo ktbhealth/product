@@ -302,6 +302,56 @@ describe("Machines", () => {
 		).rejects.toMatchObject({ reason: "not-found" });
 	});
 
+	it("rejects malformed vault: secretRefs, accepts well-formed and other schemes", async () => {
+		const rt = makeRuntime(db);
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Machines, (m) =>
+					m.create({ name: "bad-ref", host: "h", secretRef: "vault:abc" }),
+				),
+				asAdmin,
+			),
+		).rejects.toMatchObject({ reason: "invalid" });
+		const ok = await run(
+			rt,
+			Effect.flatMap(Machines, (m) =>
+				m.create({ name: "good-ref", host: "h", secretRef: "vault:12" }),
+			),
+			asAdmin,
+		);
+		expect(ok.secretRef).toBe("vault:12");
+		const env = await run(
+			rt,
+			Effect.flatMap(Machines, (m) =>
+				m.create({ name: "env-ref", host: "h", secretRef: "env:MACHINE_TOKEN" }),
+			),
+			asAdmin,
+		);
+		expect(env.secretRef).toBe("env:MACHINE_TOKEN");
+	});
+
+	it("rate-limits beat spam per machine", async () => {
+		const rt = makeRuntime(db);
+		const card = await run(
+			rt,
+			Effect.flatMap(Machines, (m) => m.create({ name: "spam-box", host: "spam.local" })),
+			asAdmin,
+		);
+		for (let i = 0; i < 30; i++) {
+			await run(
+				rt,
+				Effect.flatMap(Machines, (m) => m.beat(card.id)),
+			);
+		}
+		await expect(
+			run(
+				rt,
+				Effect.flatMap(Machines, (m) => m.beat(card.id)),
+			),
+		).rejects.toMatchObject({ reason: "rate-limited" });
+	});
+
 	it("checkAll refreshes every machine in scope", async () => {
 		const rt = makeRuntime(db);
 		// Earlier tests leave machines with healthUrls — stub fetch so

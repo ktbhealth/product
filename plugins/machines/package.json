@@ -15,6 +15,7 @@
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/observability": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/tenant": "workspace:*",

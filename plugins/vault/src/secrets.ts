@@ -41,11 +41,16 @@ export const SECRET_REF_PREFIX = "vault:";
 /** `vault:<id>` ref spelling consumers put in `secretRef` columns. */
 export const secretRefFor = (id: number): string => `${SECRET_REF_PREFIX}${id}`;
 
-/** Parse a `vault:<id>` ref → row id; null for anything else. */
+/** Parse a `vault:<id>` ref → row id; null for anything else.
+ * Canonical spelling only (`vault:` + ASCII digits) — `Number()`
+ * coercion would accept `"vault: 1"`/`"vault:1e3"` and resolve a
+ * different row than the caller spelled (C5 pen-test finding). */
 export const parseSecretRef = (ref: string): number | null => {
 	if (!ref.startsWith(SECRET_REF_PREFIX)) return null;
-	const id = Number(ref.slice(SECRET_REF_PREFIX.length));
-	return Number.isInteger(id) && id > 0 ? id : null;
+	const raw = ref.slice(SECRET_REF_PREFIX.length);
+	if (!/^\d+$/.test(raw)) return null;
+	const id = Number(raw);
+	return Number.isSafeInteger(id) && id > 0 ? id : null;
 };
 
 export class SecretError extends Data.TaggedError("SecretError")<{
