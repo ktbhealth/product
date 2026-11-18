@@ -24,6 +24,15 @@ export interface NotificationMessages {
 		readonly patientCreated: string;
 		readonly patientDeleted: string;
 		readonly consultationCreated: string;
+		readonly appointmentReminder: string;
+	};
+	/** Persisted notification bodies, keyed by event kind. */
+	readonly bodies: {
+		/** "Patient name — 14:30" for plaintext tenants. */
+		readonly appointmentReminder: (name: string, time: string) => string;
+		/** Metadata-only variant under ZK — the patient's `v1.` name
+		 * envelope never lands in the row; only the schedule time. */
+		readonly appointmentReminderZk: (time: string) => string;
 	};
 	/** /platform dashboard slot: the console-activity card contributed
 	 * via portal.dashboard.sections. */
@@ -44,6 +53,11 @@ const en: NotificationMessages = {
 		patientCreated: "Patient created",
 		patientDeleted: "Patient deleted",
 		consultationCreated: "Consultation started",
+		appointmentReminder: "Appointment starting soon",
+	},
+	bodies: {
+		appointmentReminder: paramMessage("en", "{name} — {time}", ["name", "time"]),
+		appointmentReminderZk: paramMessage("en", "Starts at {time}", ["time"]),
 	},
 	dashboard: {
 		consoleActivity: "Console activity",
@@ -62,6 +76,11 @@ const ptBR: NotificationMessages = {
 		patientCreated: "Paciente criado",
 		patientDeleted: "Paciente excluído",
 		consultationCreated: "Consulta iniciada",
+		appointmentReminder: "Consulta prestes a começar",
+	},
+	bodies: {
+		appointmentReminder: paramMessage("pt-BR", "{name} — {time}", ["name", "time"]),
+		appointmentReminderZk: paramMessage("pt-BR", "Começa às {time}", ["time"]),
 	},
 	dashboard: {
 		consoleActivity: "Atividade do console",
@@ -80,6 +99,11 @@ const es: NotificationMessages = {
 		patientCreated: "Paciente creado",
 		patientDeleted: "Paciente eliminado",
 		consultationCreated: "Consulta iniciada",
+		appointmentReminder: "Consulta a punto de comenzar",
+	},
+	bodies: {
+		appointmentReminder: paramMessage("es", "{name} — {time}", ["name", "time"]),
+		appointmentReminderZk: paramMessage("es", "Empieza a las {time}", ["time"]),
 	},
 	dashboard: {
 		consoleActivity: "Actividad de la consola",

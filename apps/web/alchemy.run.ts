@@ -77,12 +77,14 @@ export default Alchemy.Stack(
 			outdir: "dist/client",
 			main: "dist/server/index.js",
 			bundle: false,
-			// Daily audit-chain verification (T-139 follow-up): fires the
-			// worker's `scheduled` handler (src/server.ts → lib/audit-chain.ts)
-			// at 03:17 UTC — off-peak, staggered off the hour. `scheduled()`
-			// never runs under `bun run dev`; use the /platform/audit
-			// "Verify chain" action there.
-			crons: ["17 3 * * *"],
+			// Two cron triggers fire the worker's `scheduled` handler
+			// (src/server.ts): `*/5 * * * *` runs the agenda reminder sweep
+			// (P-008, lib/agenda-reminders.ts — idempotent reminderSentAt
+			// claim) and `17 3 * * *` walks the tamper-evident audit chain
+			// (T-139 follow-up, lib/audit-chain.ts — off-peak, staggered).
+			// `scheduled()` never runs under `bun run dev`; agenda loaders
+			// poke the same sweep and /platform/audit verifies manually.
+			crons: ["17 3 * * *", "*/5 * * * *"],
 			bindings: {
 				DB: db,
 				AI: Cloudflare.Workers.AI(),

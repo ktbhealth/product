@@ -97,6 +97,10 @@ export class Consultations extends Context.Service<
 	{
 		readonly create: (fields: {
 			userId: string;
+			/** Link to a patient the caller may see (patient.read permix or
+			 * tenant membership) — e.g. an agenda appointment opening its
+			 * record. Absent keeps the consultation unlinked. */
+			patientId?: number;
 			transcript?: string;
 			source: string;
 			status?: string;
@@ -302,6 +306,7 @@ export const ConsultationsLive = Layer.effect(
 		return Consultations.of({
 			create: Effect.fn("Consultations.create")(function* (fields: {
 				userId: string;
+				patientId?: number;
 				transcript?: string;
 				source: string;
 				status?: string;
@@ -309,6 +314,9 @@ export const ConsultationsLive = Layer.effect(
 			}) {
 				yield* requirePrincipalUser(fields.userId, "consultation.create");
 				yield* requireCanAs("consultation.create");
+				if (fields.patientId !== undefined) {
+					yield* requireOwnedPatient(fields.patientId, "consultation.create");
+				}
 				const tenant = yield* Tenant;
 				const tenantId = tenantScopeId(tenant);
 				// T-145: bot/live creates carry an empty transcript ("" stays

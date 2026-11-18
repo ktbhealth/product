@@ -47,6 +47,7 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@huggingface/transformers": "^4.3.2",
+        "@ktb/agenda": "workspace:*",
         "@ktb/ai-bridge": "workspace:*",
         "@ktb/ai-endpoints": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
@@ -328,6 +329,13 @@
       "name": "@ktb/bot-recall",
       "dependencies": {
         "@ktb/bot": "workspace:*",
+        "@ktb/driver-framework": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "packages/calendar": {
+      "name": "@ktb/calendar",
+      "dependencies": {
         "@ktb/driver-framework": "workspace:*",
         "effect": "4.1.2",
       },
@@ -628,6 +636,37 @@
       "dependencies": {
         "@huggingface/transformers": "^4.3.2",
         "@ktb/transcription": "workspace:*",
+      },
+    },
+    "plugins/agenda": {
+      "name": "@ktb/agenda",
+      "dependencies": {
+        "@effect-server-utils/cqrs": "0.1.0-beta.10",
+        "@ktb/authz": "workspace:*",
+        "@ktb/clinician": "workspace:*",
+        "@ktb/consultations": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/patients": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
       },
     },
     "plugins/ai-endpoints": {
@@ -1230,6 +1269,7 @@
       "name": "@ktb/notifications",
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
+        "@ktb/agenda": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/consultations": "workspace:*",
         "@ktb/db": "workspace:*",
@@ -2045,6 +2085,8 @@
 
     "@juggle/resize-observer": ["@juggle/resize-observer@3.4.0", "", {}, "sha512-dfLbk+PwWvFzSxwk3n5ySL0hfBog779o8h68wK/7/APo/7cgyWp5jcXockbxdk5kFRkbeXWm4Fbi9FrdN381sA=="],
 
+    "@ktb/agenda": ["@ktb/agenda@workspace:plugins/agenda"],
+
     "@ktb/ai-adapter-acp": ["@ktb/ai-adapter-acp@workspace:packages/ai-adapter-acp"],
 
     "@ktb/ai-adapter-node": ["@ktb/ai-adapter-node@workspace:packages/ai-adapter-node"],
@@ -2080,6 +2122,8 @@
     "@ktb/bot": ["@ktb/bot@workspace:packages/bot"],
 
     "@ktb/bot-recall": ["@ktb/bot-recall@workspace:packages/bot-recall"],
+
+    "@ktb/calendar": ["@ktb/calendar@workspace:packages/calendar"],
 
     "@ktb/captcha": ["@ktb/captcha@workspace:packages/captcha"],
 

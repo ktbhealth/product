@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Command, EventBus, makeEventBus, Query } from "@effect-server-utils/cqrs";
 import { Principal } from "@ktb/authz";
+import { AppointmentReminderDue } from "@ktb/agenda/api";
 import { ConsultationCreated } from "@ktb/consultations/api";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
@@ -181,6 +182,57 @@ describe("NotificationsLive", () => {
 		expect(created.find((r) => r.body === "Ghost")).toBeUndefined();
 		// Exactly the ZK row and the unknown-tenant row are metadata-only.
 		expect(created.filter((r) => r.body === null)).toHaveLength(2);
+	});
+
+	it("ingests AppointmentReminderDue with the appointment payload", async () => {
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const bus = yield* EventBus;
+				yield* bus.dispatch([
+					AppointmentReminderDue.make({
+						id: 40,
+						ownerId: "u1",
+						patientName: "Ana",
+						startsAt: new Date("2030-01-01T10:00:00Z"),
+					}),
+					// ZK tenant rows keep only the schedule metadata — the
+					// `v1.` envelope never lands in the persisted body.
+					AppointmentReminderDue.make({
+						id: 41,
+						ownerId: "u1",
+						patientName: "v1.ciphertext",
+						startsAt: new Date("2030-01-01T11:00:00Z"),
+						tenantId: 8,
+					}),
+					// Null patient name (unknown/deleted link) still notifies,
+					// time-only like the ZK branch.
+					AppointmentReminderDue.make({
+						id: 42,
+						ownerId: "u1",
+						patientName: null,
+						startsAt: new Date("2030-01-01T12:00:00Z"),
+					}),
+				]);
+			}),
+		);
+		const rows = await asUser(
+			"u1",
+			call((n) => n.list("u1")),
+		);
+		const reminders = rows.filter((r) => r.kind === "appointment.reminder");
+		expect(reminders).toHaveLength(3);
+		expect(reminders.every((r) => r.title === "Appointment starting soon")).toBe(true);
+		const plaintext = reminders.find((r) => r.payload?.includes('"appointmentId":40'));
+		expect(plaintext?.body).toContain("Ana");
+		// ZK/unnamed bodies carry the formatted time only — never the
+		// stored envelope nor the (absent) name.
+		const zk = reminders.find((r) => r.payload?.includes('"appointmentId":41'));
+		expect(zk?.body).toBeTruthy();
+		expect(zk?.body).not.toContain("v1.");
+		expect(zk?.body).not.toContain("Ana");
+		const unnamed = reminders.find((r) => r.payload?.includes('"appointmentId":42'));
+		expect(unnamed?.body).toBeTruthy();
+		expect(unnamed?.body).not.toContain("Ana");
 	});
 
 	it("ingests PatientDeleted and ConsultationCreated", async () => {
