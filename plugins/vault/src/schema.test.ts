@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import { clinicKeys, entityDeks, groups, portalKeys, vaultSecret } from "@ktb/db/schema";
 
-import { vaultSecret } from "./schema.ts";
-
 describe("vault schema", () => {
 	it("exposes clinic_keys columns and unique device index", () => {
 		const cfg = getTableConfig(clinicKeys);
