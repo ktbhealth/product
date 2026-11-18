@@ -167,10 +167,26 @@ const DOMAINS = [
 	{
 		id: "ai-endpoints",
 		title: "AI endpoints",
-		owner: "`plugins/ai-endpoints`",
+		owner: "`plugins/ai-provider`",
 		description:
 			"Generative providers (acp/openai) any AI surface binds through AiEndpoints.resolve — scoped per consuming surface with an is_default pick — plus the one-shot ai-bridge connect links.",
 		tables: ["ai_agent_link", "ai_endpoint"],
+	},
+	{
+		id: "ai-model",
+		title: "AI model catalog",
+		owner: "`plugins/ai-model`",
+		description:
+			"Platform model catalog — curated model entries AI surfaces resolve against.",
+		tables: ["ai_model"],
+	},
+	{
+		id: "ai-prompt",
+		title: "AI prompts",
+		owner: "`plugins/ai-prompt`",
+		description:
+			"Versioned prompt registry — named prompts with versioned bodies for AI surfaces.",
+		tables: ["ai_prompt"],
 	},
 	{
 		id: "eval-persona",
