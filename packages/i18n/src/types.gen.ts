@@ -489,8 +489,8 @@ export type I18nKey =
 	| "consultations.detail.anamnesisCopied"
 	| "consultations.detail.back"
 	| "consultations.detail.complaint"
+	| "consultations.detail.consentLabel"
 	| "consultations.detail.consentNotRecorded"
-	| "consultations.detail.consentRecorded"
 	| "consultations.detail.evidence"
 	| "consultations.detail.historyNote"
 	| "consultations.detail.inProgress"
@@ -2217,13 +2217,8 @@ export interface I18nTypedT {
 			text: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.detail.consentLabel"): Effect.Effect<string>;
 	(key: "consultations.detail.consentNotRecorded"): Effect.Effect<string>;
-	(
-		key: "consultations.detail.consentRecorded",
-		params: {
-			date: unknown;
-		},
-	): Effect.Effect<string>;
 	(
 		key: "consultations.detail.evidence",
 		params: {

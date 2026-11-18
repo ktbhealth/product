@@ -232,12 +232,7 @@ export function ConsultationsDashboardSections({ locale = "en", i18n }: Dashboar
 										<TableCell className="max-w-0">
 											<span className="block truncate">{c.ownerName ?? c.ownerEmail ?? "—"}</span>
 										</TableCell>
-										<TableCell
-											className="text-right whitespace-nowrap text-muted-foreground"
-											// SSR renders in the server's timezone, the client
-											// in the browser's — suppress the text mismatch.
-											suppressHydrationWarning
-										>
+										<TableCell className="text-right whitespace-nowrap text-muted-foreground">
 											<LocalDateTime value={c.createdAt} locale={locale} />
 										</TableCell>
 									</TableRow>

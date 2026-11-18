@@ -8231,10 +8231,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
-		key: "detail.consentRecorded",
+		key: "detail.consentLabel",
 		locale: "en",
-		kind: "text",
-		value: "Consent ✓ {date}",
+		value: "Consent ✓",
 	},
 	{
 		namespace: "consultations",
@@ -9495,10 +9494,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
-		key: "detail.consentRecorded",
+		key: "detail.consentLabel",
 		locale: "pt-BR",
-		kind: "text",
-		value: "Consentimento ✓ {date}",
+		value: "Consentimento ✓",
 	},
 	{
 		namespace: "consultations",
@@ -10758,10 +10756,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
-		key: "detail.consentRecorded",
+		key: "detail.consentLabel",
 		locale: "es",
-		kind: "text",
-		value: "Consentimiento ✓ {date}",
+		value: "Consentimiento ✓",
 	},
 	{
 		namespace: "consultations",
