@@ -1,12 +1,12 @@
 import { Link, useRouter } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
-import { Button } from "@ktbhealth/ui/components/button";
+import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
@@ -53,8 +53,16 @@ export function AdminPatientsPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const router = useRouter();
-	const fmtDate = (d: Date) => d.toLocaleString(locale);
 	const [q, setQ] = useState("");
+	// `toLocaleString` resolves in the runtime timezone — UTC on the SSR
+	// worker vs the browser's zone — so the text is only emitted on the
+	// client or the server/client markup diverges.
+	const mounted = useSyncExternalStore(
+		() => () => {},
+		() => true,
+		() => false,
+	);
+	const fmtDate = (d: Date) => (mounted ? d.toLocaleString(locale) : "");
 	const [showSynthetic, setShowSynthetic] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const [toDelete, setToDelete] = useState<{ id: number; name: string } | null>(null);
@@ -168,16 +176,17 @@ export function AdminPatientsPage({
 												</TableCell>
 												<TableCell className="text-right">
 													<div className="flex justify-end gap-1">
-														<Button
-															variant="ghost"
-															size="icon"
+														{/* Real link, not Button render=: it navigates, so it
+														    keeps link semantics (and avoids the Base UI
+														    nativeButton warning). */}
+														<Link
+															to="/patients/$id/edit"
+															params={{ id: String(p.id) }}
 															aria-label={t.actions.editFor(rowName)}
-															render={
-																<Link to="/patients/$id/edit" params={{ id: String(p.id) }} />
-															}
+															className={buttonVariants({ variant: "ghost", size: "icon" })}
 														>
 															<PencilIcon />
-														</Button>
+														</Link>
 														<Button
 															variant="ghost"
 															size="icon"
