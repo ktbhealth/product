@@ -8,13 +8,13 @@
 		"./selector": "./src/selector.ts",
 		"./testing": "./src/testing.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"@ktb/db": "workspace:*",
 		"drizzle-orm": "^0.45.1",
 		"effect": "4.1.2",
 		"permix": "^4.4.1"
-	},
-	"scripts": {
-		"mutate": "stryker run"
 	}
 }
