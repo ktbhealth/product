@@ -558,6 +558,56 @@ describe("EvalValidator", () => {
 		await failing.rt.dispose();
 	});
 
+	it("a null persona cards as null and an unreviewed cohort stays queued", async () => {
+		// Default runner IS bound — but nothing is approved, so the
+		// runnable pick is empty and the runner block is skipped: the
+		// run row keeps status "queued" with total 0.
+		const { rt, run, db } = make();
+		const { instanceId } = await seedCohort(db, {
+			count: 1,
+			items: [{ persona: null }],
+		});
+		const cards = await run(Effect.flatMap(EvalValidator, (v) => v.listItems(instanceId)));
+		expect(cards[0]?.persona).toBeNull();
+		const { runId } = await run(Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })));
+		const [runRow] = await db.select().from(evalRun);
+		expect(runRow?.status).toBe("queued");
+		expect(runRow?.total).toBe(0);
+		const progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+		expect(progress?.status).toBe("queued");
+		expect(progress?.total).toBe(0);
+		await rt.dispose();
+	});
+
+	it("startRun without an email records null createdBy; a null-persona item runs", async () => {
+		const { rt, run, db } = make();
+		const { instanceId } = await seedCohort(db, {
+			count: 1,
+			items: [{ state: "approved", persona: null }],
+		});
+		// Principal without email → createdBy null (the ?? branch).
+		const { runId } = (await rt.runPromise(
+			Effect.provideService(
+				Effect.flatMap(EvalValidator, (v) => v.startRun({ instanceId })),
+				Principal,
+				{ userId: "u2" } as never,
+			) as Effect.Effect<{ runId: number }>,
+		)) as { runId: number };
+		const [runRow] = await db.select().from(evalRun);
+		expect(runRow?.createdBy).toBeNull();
+		// Null persona → the runner receives `patient: {}` (the other
+		// arm of the ternary) and the default runner still finishes.
+		let progress = null;
+		for (let i = 0; i < 50; i++) {
+			progress = await run(Effect.flatMap(EvalValidator, (v) => v.progress(runId)));
+			if (progress?.status === "done") break;
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		expect(progress?.status).toBe("done");
+		expect(progress?.samples[0]?.status).toBe("ok");
+		await rt.dispose();
+	});
+
 	it("panel guard follows the permission, loader yields the cohort list or []", async () => {
 		const allow = make();
 		const page = evalValidatorPanelPlugin.panel!.pages[0]!;

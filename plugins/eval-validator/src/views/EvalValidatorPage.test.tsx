@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +9,10 @@ type Arg = { data?: unknown } | undefined;
 const fns = vi.hoisted(() => ({
 	listCohortsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({ ok: true, data: [] })),
 	listCohortItemsFn: vi.fn<(a?: Arg) => Res<readonly unknown[]>>(async () => ({
+		ok: true,
+		data: [],
+	})),
+	listRunsFn: vi.fn<(a?: Arg) => Res<readonly RunListItem[]>>(async () => ({
 		ok: true,
 		data: [],
 	})),
@@ -28,7 +32,13 @@ vi.mock("@tanstack/react-router", () => ({
 	),
 }));
 
-import type { CohortItemCard, CohortSummary, RunProgress, RunSampleProgress } from "../index.ts";
+import type {
+	CohortItemCard,
+	CohortSummary,
+	RunListItem,
+	RunProgress,
+	RunSampleProgress,
+} from "../index.ts";
 import { EvalValidatorPage } from "./EvalValidatorPage.tsx";
 
 const cohort: CohortSummary = {
@@ -186,10 +196,11 @@ describe("EvalValidatorPage", () => {
 		const user = userEvent.setup();
 		await user.click(screen.getByRole("button", { name: "View" }));
 		await screen.findByText(/Paciente Ana/);
+		await user.type(screen.getByPlaceholderText("feedback (optional)"), "lgtm");
 		await user.click(screen.getByRole("button", { name: "Approve" }));
 		await waitFor(() =>
 			expect(fns.reviewItemFn).toHaveBeenCalledWith({
-				data: { itemId: 11, decision: "approved", feedback: undefined },
+				data: { itemId: 11, decision: "approved", feedback: "lgtm" },
 			}),
 		);
 	});
@@ -404,5 +415,111 @@ describe("EvalValidatorPage", () => {
 		await vi.waitFor(() => expect(fns.progressFn).toHaveBeenCalledTimes(2));
 		expect(await screen.findByText(/Run #42 — done/)).toBeTruthy();
 		vi.useRealTimers();
+	});
+
+	it("renders the run history with status badges and mean WER", async () => {
+		const runRow = (over: Partial<RunListItem>): RunListItem => ({
+			id: 42,
+			instanceId: 1,
+			status: "done",
+			total: 2,
+			done: 2,
+			summary: null,
+			createdAt: new Date("2026-11-10T10:00:00Z"),
+			finishedAt: new Date("2026-11-10T10:05:00Z"),
+			...over,
+		});
+		fns.listCohortItemsFn.mockResolvedValue({ ok: true, data: [item] });
+		fns.listRunsFn.mockResolvedValue({
+			ok: true,
+			data: [
+				runRow({ summary: { meanWer: 0.123 } }),
+				runRow({ id: 43, status: "failed", done: 1, summary: null }),
+				runRow({ id: 44, status: "running", done: 0, summary: {} }),
+			],
+		});
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		expect(await screen.findByText(/Run #42 — 2\/2 samples/)).toBeTruthy();
+		expect(screen.getByText(/mean WER 0\.123/)).toBeTruthy();
+		expect(screen.getByText("failed")).toBeTruthy();
+		expect(screen.getByText("running")).toBeTruthy();
+	});
+
+	it("reopens a past run from its history row", async () => {
+		const runRow: RunListItem = {
+			id: 42,
+			instanceId: 1,
+			status: "done",
+			total: 2,
+			done: 2,
+			summary: null,
+			createdAt: new Date("2026-11-10T10:00:00Z"),
+			finishedAt: new Date("2026-11-10T10:05:00Z"),
+		};
+		fns.listRunsFn.mockResolvedValue({ ok: true, data: [runRow] });
+		fns.progressFn.mockResolvedValue({ ok: true, data: runProgress });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		const row = (await screen.findByText(/Run #42 — 2\/2 samples/)).closest("div");
+		await user.click(within(row as HTMLElement).getByRole("button", { name: "View" }));
+		await waitFor(() => expect(fns.progressFn).toHaveBeenCalledWith({ data: { runId: 42 } }));
+		expect(await screen.findByText(/Run #42 — done/)).toBeTruthy();
+	});
+
+	it("renders the approved state badge variant", async () => {
+		fns.listCohortItemsFn.mockResolvedValue({
+			ok: true,
+			data: [{ ...item, state: "approved" }],
+		});
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		await screen.findByText(/Paciente Ana/);
+		expect(screen.getByText("approved")).toBeTruthy();
+	});
+
+	it("still renders the page when every refresh call is denied", async () => {
+		fns.listCohortsFn.mockResolvedValue({ ok: false });
+		fns.listCohortItemsFn.mockResolvedValue({ ok: false });
+		fns.listRunsFn.mockResolvedValue({ ok: false });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		expect(await screen.findByText(/Select a cohort to review/)).toBeTruthy();
+		expect(screen.getByText(/2 consultations/)).toBeTruthy();
+	});
+
+	it("survives a denied startRunFn", async () => {
+		fns.startRunFn.mockResolvedValue({ ok: false });
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "Run eval" }));
+		await waitFor(() => expect(fns.startRunFn).toHaveBeenCalledWith({ data: { instanceId: 1 } }));
+		expect(screen.getAllByText("Run eval").length).toBeGreaterThan(0);
+	});
+
+	it("shows the raw status for a cohort that is not ready or generating", () => {
+		render(<EvalValidatorPage cohorts={[{ ...cohort, status: "draft" }]} locale="en" />);
+		expect(screen.getByText("draft")).toBeTruthy();
+	});
+
+	it("renders the synthetic ids row with em-dash fallbacks", async () => {
+		fns.listCohortItemsFn.mockResolvedValue({
+			ok: true,
+			data: [
+				{ ...item, id: 20, patientId: null, doctorId: 9 },
+				{ ...item, id: 21, patientId: null, doctorId: null, persona: null },
+			],
+		});
+		render(<EvalValidatorPage cohorts={[cohort]} locale="en" />);
+		const user = userEvent.setup();
+		await user.click(screen.getByRole("button", { name: "View" }));
+		expect(await screen.findByText(/patient #— · doctor #9/)).toBeTruthy();
+		// Both ids null → the synthetic row is skipped entirely.
+		expect(screen.getAllByText(/patient #—/)).toHaveLength(1);
+		expect(screen.getAllByText("synthetic")).toHaveLength(1);
 	});
 });

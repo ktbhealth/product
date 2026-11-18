@@ -270,6 +270,55 @@ describe("anamnesis variant (T-128/T-129)", () => {
 		expect(r.turns).toHaveLength(4);
 	});
 
+	it("falls back to the adult pools when the locale has no minor pools", () => {
+		const { minorHabits: _mh, minorOccupations: _mo, ...anamnesis } = ptBR.script.anamnesis!;
+		const profile: typeof ptBR = {
+			...ptBR,
+			script: { ...ptBR.script, anamnesis },
+		};
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ ageBand: "child" }),
+			seed: 7,
+			profile,
+			variant: "anamnesis",
+		});
+		expect(r.turns.length).toBeGreaterThan(0);
+	});
+
+	it("colloquial doctor register picks the informal beat variants", () => {
+		const minor = renderScript({
+			template: TEMPLATE,
+			persona: persona({
+				ageBand: "child",
+				doctor: { gender: "m", register: "colloquial" },
+			}),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(minor.script).toContain("estuda onde");
+		const adult = renderScript({
+			template: TEMPLATE,
+			persona: persona({
+				ageBand: "adult",
+				doctor: { gender: "m", register: "colloquial" },
+			}),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(adult.script).toContain("trabalha com o quê");
+	});
+
+	it("inflects doctor-facing address for a female doctor", () => {
+		const r = renderScript({
+			template: TEMPLATE,
+			persona: persona({ doctor: { gender: "f", register: "formal" } }),
+			seed: 7,
+			variant: "anamnesis",
+		});
+		expect(r.script).toContain("a médica");
+	});
+
 	it("falls back to the short form when the locale has no anamnesis", () => {
 		const profile: typeof ptBR = {
 			...ptBR,

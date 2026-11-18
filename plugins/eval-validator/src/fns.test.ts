@@ -39,6 +39,7 @@ import { EVAL_VALIDATOR_TEST_DDL } from "./test-ddl.ts";
 import {
 	listCohortItemsFn,
 	listCohortsFn,
+	listRunsFn,
 	progressFn,
 	deleteRunFn,
 	reviewItemFn,
@@ -166,6 +167,7 @@ describe("eval validator fns", () => {
 			ok: false,
 		});
 		expect(await startRunFn({ data: { instanceId: 1 } })).toEqual({ ok: false });
+		expect(await listRunsFn({ data: { cohortId: 1 } })).toEqual({ ok: false });
 		expect(await progressFn({ data: { runId: 1 } })).toEqual({ ok: false });
 		expect(await deleteRunFn({ data: { runId: 1 } })).toEqual({ ok: false });
 		allow = true;
@@ -199,6 +201,9 @@ describe("eval validator fns", () => {
 		const started = await startRunFn({ data: { instanceId } });
 		expect(started.ok).toBe(true);
 		if (!started.ok) return;
+
+		const runs = await listRunsFn({ data: { cohortId: instanceId } });
+		expect(runs.ok && runs.data.some((r) => r.id === started.data.runId)).toBe(true);
 
 		const progress = await progressFn({ data: { runId: started.data.runId } });
 		expect(progress.ok).toBe(true);
