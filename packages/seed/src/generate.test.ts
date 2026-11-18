@@ -875,6 +875,11 @@ describe("generate — depth and assertValid", () => {
 		expect(() => generate({ type: "string", pattern: "([" } as JsonSchema, { seed: 1 })).toThrow(
 			SeedError,
 		);
+		// "*" passes the unsafe-repetition screen but is not a valid
+		// RegExp source — covers the new RegExp() catch in genString.
+		expect(() => generate({ type: "string", pattern: "*" } as JsonSchema, { seed: 1 })).toThrow(
+			SeedError,
+		);
 	});
 });
 

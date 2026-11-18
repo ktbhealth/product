@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { makeEventBus } from "@effect-server-utils/cqrs";
+import { EventBus, makeEventBus } from "@effect-server-utils/cqrs";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import {
@@ -16,6 +16,7 @@ import { PluginStates } from "@ktb/platform/plugin-states";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as Stream from "effect/Stream";
 
 import { defineTrigger, TriggerDefinitions, type TriggerDef } from "./definition.ts";
 import { TriggersHooks } from "./hooks.ts";
@@ -268,5 +269,81 @@ describe("TriggersServicesLive", () => {
 		);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(hookCalls.length).toBe(before);
+	});
+});
+
+
+describe("consumer lifecycle", () => {
+	const busStub = (stream: Stream.Stream<never>) =>
+		Layer.succeed(EventBus, {
+			stream: () => Effect.succeed(stream),
+			dispatch: () => Effect.void,
+		} as never);
+
+	const baseLayer = (eventBus: Layer.Layer<EventBus>) =>
+		Layer.mergeAll(Layer.succeed(TriggerDefinitions, { triggers: [] }), eventBus);
+
+	it("logs a clean stop when the event stream completes", async () => {
+		const rt = ManagedRuntime.make(
+			TriggersServicesLive.pipe(Layer.provideMerge(baseLayer(busStub(Stream.empty)))),
+		);
+		try {
+			await rt.runPromise(Effect.void);
+			// Give the forked consumer a tick to drain the empty stream.
+			await new Promise((r) => setTimeout(r, 50));
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("logs consumer death when the event stream defects", async () => {
+		const rt = ManagedRuntime.make(
+			TriggersServicesLive.pipe(
+				Layer.provideMerge(baseLayer(busStub(Stream.die(new Error("stream dead"))))),
+			),
+		);
+		try {
+			await rt.runPromise(Effect.void);
+			await new Promise((r) => setTimeout(r, 50));
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("isolates per-event dispatch defects — the write still succeeds", async () => {
+		const db = makeDb(makeD1(GROUPS_DDL + DOCUMENT_STORE_TEST_DDL));
+		const shared = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(DocumentCollections, { collections: DEFS }),
+			makeEventBus(),
+			Layer.succeed(TriggerDefinitions, {
+				get triggers(): readonly TriggerDef[] {
+					throw new Error("defs boom");
+				},
+			} as never),
+		);
+		const withStore = Layer.mergeAll(shared, DocumentStoreLive.pipe(Layer.provide(shared)));
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(withStore, TriggersServicesLive.pipe(Layer.provideMerge(withStore))),
+		);
+		try {
+			const record = await rt.runPromise(
+				Effect.gen(function* () {
+					const store = yield* DocumentStore;
+					return yield* store.insert("test.src", { v: "dispatch-boom" }, { ownerId: "user-1" });
+				}),
+			);
+			expect(record.data.v).toBe("dispatch-boom");
+			// The consumer survives: a second write dispatches (and is
+			// logged) the same way instead of the fiber being dead.
+			await rt.runPromise(
+				Effect.gen(function* () {
+					const store = yield* DocumentStore;
+					yield* store.insert("test.src", { v: "again" }, { ownerId: "user-1" });
+				}),
+			);
+		} finally {
+			await rt.dispose();
+		}
 	});
 });

@@ -68,7 +68,11 @@ const readJsonBody = async (request: Request): Promise<unknown> => {
 			total += value.byteLength;
 			if (total > API_MAX_BODY_BYTES) {
 				// Stop pulling — the rest of the body is never read.
-				await reader.cancel().catch(() => {});
+				await reader.cancel().catch(
+					/* v8 ignore next -- cancel() resolves on a live stream; the noop only
+					 * swallows a hypothetical rejection */
+					() => {},
+				);
 				throw apiError(413, "payload_too_large", "request body too large");
 			}
 			chunks.push(value);
