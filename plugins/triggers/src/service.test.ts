@@ -272,7 +272,6 @@ describe("TriggersServicesLive", () => {
 	});
 });
 
-
 describe("consumer lifecycle", () => {
 	const busStub = (stream: Stream.Stream<never>) =>
 		Layer.succeed(EventBus, {
@@ -304,6 +303,29 @@ describe("consumer lifecycle", () => {
 		);
 		try {
 			await rt.runPromise(Effect.void);
+			await new Promise((r) => setTimeout(r, 50));
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("logs dispatch failures per event without killing the consumer", async () => {
+		const event = { id: "evt-1" } as unknown as DocumentRecordWrittenEvent;
+		const bus = Layer.succeed(EventBus, {
+			stream: () => Effect.succeed(Stream.fromIterable([event])),
+			dispatch: () => Effect.void,
+		} as never);
+		const defs = Layer.succeed(TriggerDefinitions, {
+			get triggers(): readonly TriggerDef[] {
+				throw new Error("defs boom");
+			},
+		} as never);
+		const rt = ManagedRuntime.make(
+			TriggersServicesLive.pipe(Layer.provideMerge(Layer.mergeAll(defs, bus))),
+		);
+		try {
+			await rt.runPromise(Effect.void);
+			// Give the forked consumer a tick to drain the one-event stream.
 			await new Promise((r) => setTimeout(r, 50));
 		} finally {
 			await rt.dispose();

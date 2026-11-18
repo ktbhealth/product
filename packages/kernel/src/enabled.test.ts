@@ -71,6 +71,17 @@ describe("buildDefOwnerIndex / defOwnerEnabled", () => {
 		expect(defOwnerEnabled(index, "solo.plugin", new Set())).toBe(false);
 	});
 
+	it("tolerates an index missing the pkg member list — falls back to the owner id", () => {
+		// A hand-built index can stamp pkgById without membersByPkg;
+		// defOwnerEnabled must still answer per-id instead of crashing.
+		const broken = {
+			pkgById: new Map([["x.main", "x.pkg"]]),
+			membersByPkg: new Map<string, readonly string[]>(),
+		};
+		expect(defOwnerEnabled(broken, "x.main", new Set(["x.main"]))).toBe(true);
+		expect(defOwnerEnabled(broken, "x.main", new Set())).toBe(false);
+	});
+
 	it("unattributed or unindexed defs stay live", () => {
 		expect(defOwnerEnabled(index, undefined, new Set())).toBe(true);
 		expect(defOwnerEnabled(undefined, "pkg.x.main", new Set())).toBe(false);
