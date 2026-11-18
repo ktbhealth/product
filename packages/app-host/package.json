@@ -36,6 +36,7 @@
 		"@ktb/observability": "workspace:*",
 		"@ktb/observability-otlp": "workspace:*",
 		"@ktb/platform": "workspace:*",
+		"@ktb/rbac": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktb/triggers": "workspace:*",
 		"@ktb/views": "workspace:*",

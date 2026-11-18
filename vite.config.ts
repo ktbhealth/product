@@ -241,6 +241,8 @@ export default defineConfig({
 					"plugins/auth/src/views/ForgotPasswordPage.tsx",
 					"plugins/auth/src/views/LoginPage.tsx",
 					"plugins/auth/src/views/ResetPasswordPage.tsx",
+					// /login/admin is the same impl-bound sign-in surface.
+					"plugins/auth/src/views/AdminLoginPage.tsx",
 					"plugins/invites/src/views/AcceptInvitePage.tsx",
 					"plugins/secretaries/src/views/SecretaryLoginPage.tsx",
 					"plugins/consultations/src/routes/new.tsx",

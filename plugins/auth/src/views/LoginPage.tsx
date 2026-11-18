@@ -203,6 +203,12 @@ export function LoginPage({
 					>
 						{t.secretaryLink}
 					</Link>
+					<Link
+						to="/login/admin"
+						className="mt-2 block text-center text-sm text-muted-foreground transition hover:text-foreground"
+					>
+						{t.adminLink}
+					</Link>
 				</CardContent>
 			</Card>
 		</div>

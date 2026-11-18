@@ -63,6 +63,43 @@ describe("makePlatformAdminGate", () => {
 			.pipe(Effect.provideService(Principal, { userId: "u1", email: "admin@x.com" }));
 		await expect(Effect.runPromise(effect)).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
+
+	it("grantFor admits a subject whose userId holds the grant", async () => {
+		const seen: string[] = [];
+		const rbacGate = makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"), {
+			grantFor: (userId) => {
+				seen.push(userId);
+				return Effect.succeed(userId === "root");
+			},
+		});
+		// Bare-email subjects carry no userId — grantFor is never consulted.
+		await expect(Effect.runPromise(rbacGate.isAdmin("other@x.com"))).resolves.toBe(false);
+		await expect(Effect.runPromise(rbacGate.isAdmin({ userId: "root" }))).resolves.toBe(true);
+		await expect(
+			Effect.runPromise(rbacGate.isAdmin({ email: "other@x.com", userId: "root" })),
+		).resolves.toBe(true);
+		await expect(Effect.runPromise(rbacGate.isAdmin({ userId: "u2" }))).resolves.toBe(false);
+		expect(seen).toEqual(["root", "root", "u2"]);
+	});
+
+	it("requireAdmin passes via grantFor and prefers actorId under delegation", async () => {
+		const seen: string[] = [];
+		const rbacGate = makePlatformAdminGate(new Set(), {
+			grantFor: (userId) => {
+				seen.push(userId);
+				return Effect.succeed(userId === "account-1");
+			},
+		});
+		const delegated = rbacGate.requireAdmin().pipe(
+			Effect.provideService(Principal, {
+				userId: "doctor-1",
+				actorId: "account-1",
+				email: "doc@x.com",
+			}),
+		);
+		await expect(Effect.runPromise(delegated)).resolves.toBeUndefined();
+		expect(seen).toEqual(["account-1"]);
+	});
 });
 
 describe("plugins", () => {

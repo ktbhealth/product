@@ -39,6 +39,21 @@ old URLs redirect).
 - `cd apps/web && bun run infra:deploy` — deploy to Cloudflare prod
   (needs cuora vault access)
 
+### Platform admin / superadmin
+
+Two ways into `/platform`: the `PLATFORM_ADMIN_EMAILS` env allowlist, or
+the built-in `superadmin` RBAC role — seeded at `rbac.services` layer
+build (`plugins/rbac/src/seed.ts`) with an `allow` grant for every
+`PERMISSION_CATALOG` entry. Assign it to a user under `/platform/roles`
+(subject = the account's `user.id`) and the `PlatformAdmin` gate admits
+them via the `grantFor` hook in `@ktb/app-host`; the `superadmin`
+audience then wildcard-admits every portal instance (`portalAdmits` in
+`plugins/portal`). The seed is create-only: revoked grants stay revoked,
+and a hand-made role squatting the name logs a boot warning instead of
+being repaired. Sign-in surface: `/login/admin` (admin-only, no
+sign-up). Clinical portals with `subject: "doctor"` still need an
+acting doctor profile — superadmin does not impersonate.
+
 ### Email in dev
 
 Outbound email is a driver behind the `@ktb/email` port (see

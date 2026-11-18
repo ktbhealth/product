@@ -15,6 +15,12 @@ import type { PortalInstance } from "@ktb/kernel";
  *   still wait on email verification).
  * - `member` — any authenticated user (the default when an instance
  *   declares no `audience`).
+ * - `superadmin` — the session satisfies the platform-admin gate
+ *   (email allowlist OR an RBAC admin grant). Not an instance rule —
+ *   `portalAdmits` treats it as a wildcard: a superadmin reaches every
+ *   portal, including ones whose own rule they would not otherwise
+ *   satisfy. Clinical portals still bind `subject: "doctor"` loaders,
+ *   which stay empty/denied until impersonation exists.
  */
 export const PORTAL_AUDIENCE = {
 	platformAdmin: "platform-admin",
@@ -23,17 +29,19 @@ export const PORTAL_AUDIENCE = {
 	clinician: "clinician",
 	patient: "patient",
 	member: "member",
+	superadmin: "superadmin",
 } as const;
 
 /** The audience rule an instance declares — `member` when absent. */
 export const instanceAudience = (instance: PortalInstance): string =>
 	instance.audience ?? PORTAL_AUDIENCE.member;
 
-/** Whether `audiences` (rule ids from PortalAudience) admits `instance`. */
+/** Whether `audiences` (rule ids from PortalAudience) admits `instance`.
+ * `superadmin` is a wildcard — it admits every instance. */
 export const portalAdmits = (
 	instance: PortalInstance,
 	audiences: ReadonlySet<string> | readonly string[],
 ): boolean => {
 	const set = audiences instanceof Set ? audiences : new Set(audiences);
-	return set.has(instanceAudience(instance));
+	return set.has(PORTAL_AUDIENCE.superadmin) || set.has(instanceAudience(instance));
 };

@@ -94,7 +94,10 @@ export const UsersLive = Layer.effect(
 				yield* platformAdmin.requireAdmin();
 				const rows = yield* Effect.promise(() => listAllUsers(db));
 				return yield* Effect.forEach(rows, (row) =>
-					Effect.map(platformAdmin.isAdmin(row.email), (isAdmin) => ({ ...row, isAdmin })),
+					Effect.map(platformAdmin.isAdmin({ email: row.email, userId: row.id }), (isAdmin) => ({
+						...row,
+						isAdmin,
+					})),
 				);
 			}),
 			adminSetSuspended: Effect.fn("Users.adminSetSuspended")(function* (userId, suspended) {

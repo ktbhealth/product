@@ -77,6 +77,7 @@ import { stubCaptchaDriver } from "@ktb/captcha-stub";
 import { turnstileCaptchaDriver } from "@ktb/captcha-turnstile";
 import { EntityCipher } from "@ktb/crypto/cipher";
 import { passthroughCipherDriver } from "@ktb/crypto-stub";
+import { buildPermissions } from "@ktb/rbac";
 import { Accounts, ApiKeys, Auth } from "@ktb/auth";
 import { AuthzLive, Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
@@ -504,10 +505,23 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// always eligible); without it plugins fall back to template mode.
 	const LlmFactoryLive = optionalLayerFor<LlmFactory>(LlmFactory.key, env);
 	// Platform admin gate (P-026): env allowlist resolved once here; the
-	// gate fails closed (Forbidden) when the list is unset/empty.
+	// gate fails closed (Forbidden) when the list is unset/empty. The
+	// RBAC hook admits role-based superadmins: an allow grant on
+	// (platform, admin) — e.g. the seeded `superadmin` role — passes the
+	// same gate as an allowlisted email. Resolved WITHOUT group
+	// memberships (the GroupMembership port lives in the rbac plugin's
+	// layer, below this composition point): direct user assignments
+	// only. Grant lookup errors fail closed — a DB hiccup denies admin
+	// rather than 500ing every admin path differently per caller.
+	const rbacGrants = buildPermissions(db);
 	const PlatformAdminLive = Layer.succeed(
 		PlatformAdmin,
-		makePlatformAdminGate(parsePlatformAdminEmails(env.PLATFORM_ADMIN_EMAILS)),
+		makePlatformAdminGate(parsePlatformAdminEmails(env.PLATFORM_ADMIN_EMAILS), {
+			grantFor: (userId) =>
+				rbacGrants
+					.canFor(userId, "platform", "admin")
+					.pipe(Effect.catch(() => Effect.succeed(false))),
+		}),
 	);
 	// Runtime plugin enable/config state (P-058): the service is built
 	// from the discovered registry (ids, dep edges, meta.config schemas)

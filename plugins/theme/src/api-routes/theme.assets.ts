@@ -45,12 +45,12 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 
 const FONT_SLOTS: readonly ThemeFontSlot[] = ["sans", "heading", "mono"];
 
-const isAdmin = (user: { id: string; email?: string }) =>
+const isAdmin = (user: { id: string; actorId: string; email?: string }) =>
 	runAs(
 		user,
 		Effect.gen(function* () {
 			const gate = yield* PlatformAdmin;
-			return yield* gate.isAdmin(user.email);
+			return yield* gate.isAdmin({ email: user.email, userId: user.actorId });
 		}),
 	).catch(() => false);
 
