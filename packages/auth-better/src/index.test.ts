@@ -4,6 +4,14 @@ import { makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makeAuth, toSession, toSessionUser } from "./index.ts";
 
+const DDL = `
+CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL DEFAULT 0, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE session (id TEXT PRIMARY KEY, expires_at INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, ip_address TEXT, user_agent TEXT, user_id TEXT NOT NULL REFERENCES "user"(id));
+CREATE TABLE account (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, provider_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES "user"(id), access_token TEXT, refresh_token TEXT, id_token TEXT, access_token_expires_at INTEGER, refresh_token_expires_at INTEGER, scope TEXT, password TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE verification (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, value TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER, updated_at INTEGER);
+CREATE TABLE apikey (id TEXT PRIMARY KEY, config_id TEXT NOT NULL DEFAULT 'default', name TEXT, start TEXT, reference_id TEXT NOT NULL, prefix TEXT, key TEXT NOT NULL, refill_interval INTEGER, refill_amount INTEGER, last_refill_at INTEGER, enabled INTEGER DEFAULT 1, rate_limit_enabled INTEGER DEFAULT 0, rate_limit_time_window INTEGER, rate_limit_max INTEGER, request_count INTEGER DEFAULT 0, remaining INTEGER, last_request INTEGER, expires_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, permissions TEXT, metadata TEXT);
+`;
+
 describe("toSessionUser", () => {
 	it("converts user record to SessionUser shape", () => {
 		const u = toSessionUser({ id: "u-1", email: "dr@example.com", name: "Dra. Ana" });
@@ -80,6 +88,26 @@ describe("makeAuth", () => {
 			{ email: "a@ktb.test", name: "Ana", url },
 			{ email: "b@ktb.test", name: null, url },
 		]);
+	});
+
+	it("signs the user in when the verification link is opened", async () => {
+		const sent: { url: string }[] = [];
+		const auth = makeAuth(makeDb(makeD1(DDL)), {
+			secret: "test-secret-at-least-32-characters-long",
+			baseURL: "http://localhost:3000",
+			sendVerificationEmail: async (input) => {
+				sent.push(input);
+			},
+		});
+		await auth.api.signUpEmail({
+			body: { email: "verify@x.com", password: "senha-forte-123", name: "Vera" },
+		});
+		expect(sent).toHaveLength(1);
+
+		const res = await auth.handler(new Request(sent[0]!.url));
+		// autoSignInAfterVerification: the verify response carries a
+		// fresh session cookie, not just a redirect.
+		expect(res.headers.get("set-cookie") ?? "").toContain("session_token");
 	});
 
 	it("leaves password reset disabled when the host supplies no sender", () => {

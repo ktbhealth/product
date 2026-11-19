@@ -97,6 +97,18 @@ describe("makeAuthService", () => {
 		expect(u?.banned).toBe(true);
 	});
 
+	it("setUserBanned(false) keeps live sessions", async () => {
+		const { auth, service } = makeStack();
+		const { cookie, userId } = await signUpAndSignIn(auth, "still@x.com");
+		expect(await service.getSession(new Headers({ cookie }))).not.toBeNull();
+
+		// Unbanning an account that was never banned must not touch its
+		// sessions — only the banned→true transition revokes them.
+		await service.setUserBanned(userId, false);
+
+		expect(await service.getSession(new Headers({ cookie }))).not.toBeNull();
+	});
+
 	it("setUserBanned(false) reactivates the user", async () => {
 		const { db, auth, service } = makeStack();
 		const { cookie, userId } = await signUpAndSignIn(auth, "back@x.com");
@@ -111,6 +123,25 @@ describe("makeAuthService", () => {
 		expect(s?.user.email).toBe("back@x.com");
 		// The revoked cookie stays dead.
 		expect(await service.getSession(new Headers({ cookie }))).toBeNull();
+	});
+
+	it("getSession resolves the session when the banned lookup finds no user row", async () => {
+		const db = makeDb(makeD1(DDL));
+		// A session that outlived its user row (no FK cascade enforced)
+		// still resolves — the banned check only rejects on an explicit
+		// `banned === true`, never on a missing row.
+		const auth = {
+			api: {
+				getSession: async () => ({
+					user: { id: "u-ghost", email: "ghost@x.com", name: "Ghost" },
+					session: { id: "s-1", expiresAt: new Date(Date.now() + 3600_000) },
+				}),
+			},
+		};
+		const service = makeAuthService(auth as never, db);
+		const s = await service.getSession(new Headers());
+		expect(s?.user.email).toBe("ghost@x.com");
+		expect(s?.sessionId).toBe("s-1");
 	});
 
 	it("updateUser patches name and normalizes the email", async () => {
@@ -200,9 +231,24 @@ describe("makeAuthService", () => {
 	});
 
 	it("deleteUser on a missing user skips the verification cleanup", async () => {
-		const { service } = makeStack();
+		const { db, service } = makeStack();
+		await db.insert(verificationTable).values({
+			id: "v-keep",
+			identifier: "keep@x.com",
+			value: "token",
+			expiresAt: new Date(Date.now() + 60_000),
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
 		// No user row → no email → the verification delete is skipped;
-		// the call still resolves without throwing.
+		// the call still resolves without throwing and leaves other
+		// addresses' verification rows alone.
 		await expect(service.deleteUser("ghost")).resolves.toBeUndefined();
+		expect(
+			await db
+				.select()
+				.from(verificationTable)
+				.where(eq(verificationTable.identifier, "keep@x.com")),
+		).toHaveLength(1);
 	});
 });

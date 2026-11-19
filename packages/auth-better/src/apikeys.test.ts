@@ -124,12 +124,25 @@ describe("makeApiKeysAdapter", () => {
 			referenceId: userId,
 			metadata: { secret: 42 },
 		});
+		await keys.create({
+			name: "edge-4",
+			referenceId: userId,
+			metadata: { secret: "abcd" },
+		});
+		await keys.create({
+			name: "edge-5",
+			referenceId: userId,
+			metadata: { secret: "abcde" },
+		});
 		const byName = new Map((await keys.list(userId)).map((r) => [r.name, r.metadata]));
 		// A ≤4-char secret would be revealed whole by its own "last 4".
 		expect(JSON.parse(byName.get("short") ?? "{}")).toEqual({});
 		// `list` drops the `secret` key whatever its type; only the
 		// string-secret rows above could ever grow a `secretLast4`.
 		expect(JSON.parse(byName.get("non-string") ?? "{}")).toEqual({});
+		// Exactly 4 chars is still the whole secret — no hint at all.
+		expect(JSON.parse(byName.get("edge-4") ?? "{}")).toEqual({});
+		expect(JSON.parse(byName.get("edge-5") ?? "{}")).toEqual({ secretLast4: "bcde" });
 	});
 
 	it("list survives unparseable or non-object metadata", async () => {
@@ -147,14 +160,18 @@ describe("makeApiKeysAdapter", () => {
 		await insert("l-bad", "not-json");
 		await insert("l-num", "42");
 		await insert("l-arr", '["a","b"]');
+		await insert("l-jsonnull", "null");
+		await insert("l-str", '"abc"');
 		await insert("l-secret", '{"secret":"s","keep":true}');
 		const rows = await keys.list("u1");
-		expect(rows).toHaveLength(5);
+		expect(rows).toHaveLength(7);
 		const byId = new Map(rows.map((r) => [r.id, r.metadata]));
 		expect(byId.get("l-null")).toBeNull();
 		expect(byId.get("l-bad")).toBe("{}");
 		expect(byId.get("l-num")).toBe("{}");
 		expect(byId.get("l-arr")).toBe("{}");
+		expect(byId.get("l-jsonnull")).toBe("{}");
+		expect(byId.get("l-str")).toBe("{}");
 		expect(JSON.parse(byId.get("l-secret") ?? "")).toEqual({ keep: true });
 	});
 
@@ -192,6 +209,33 @@ describe("makeApiKeysAdapter", () => {
 		});
 		await keys.remove("k-x", "u1");
 		expect(await keys.getSecret("k-x", "u1")).toBeNull();
+	});
+
+	it("remove never reaches the endpoint for a key the caller does not own", async () => {
+		const { db } = setup();
+		await db.insert(apikeyTable).values({
+			id: "k-z",
+			referenceId: "u1",
+			key: "key-k-z",
+			metadata: '{"secret":"s"}',
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		// An endpoint that would happily delete by keyId alone — the
+		// ownership guard must stop the call before it gets there.
+		let calls = 0;
+		const auth = {
+			api: {
+				deleteApiKey: async () => {
+					calls++;
+					return {};
+				},
+			},
+		};
+		const keys = makeApiKeysAdapter(auth as never, db);
+		await keys.remove("k-z", "u2");
+		expect(calls).toBe(0);
+		expect(await keys.getSecret("k-z", "u1")).toBe("s");
 	});
 
 	it("remove prefers the plugin endpoint when it accepts the call", async () => {
