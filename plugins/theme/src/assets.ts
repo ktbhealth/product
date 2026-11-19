@@ -12,7 +12,7 @@
  */
 
 import { Schema } from "effect";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { themeAssets, themeDefinitions } from "@ktb/db/schema";
@@ -22,6 +22,7 @@ import type {
 	ThemeBrand,
 	ThemeFontAsset,
 	ThemeFontConfig,
+	ThemeFontFace,
 	ThemeFontSlot,
 } from "./types.ts";
 
@@ -266,7 +267,7 @@ export interface ThemeAssetRow {
 
 export const insertThemeAsset = async (
 	db: DbClient,
-	input: { themeId: number; kind: ThemeAssetKind; r2Key: string | null },
+	input: { themeId: number | null; kind: ThemeAssetKind; r2Key: string | null },
 ): Promise<ThemeAssetRow | null> => {
 	const rows = await db
 		.insert(themeAssets)
@@ -293,6 +294,105 @@ export const listThemeAssets = async (db: DbClient, themeId: number): Promise<Th
 		.from(themeAssets)
 		.where(eq(themeAssets.themeId, themeId))
 		.orderBy(desc(themeAssets.createdAt), desc(themeAssets.id));
+
+// ---------- fonts-catalog assets (themeId NULL) ----------
+//
+// Catalog font uploads (/api/theme/catalog-fonts) are NOT owned by a
+// theme: the row keeps theme_id NULL and carries the family name plus
+// the self-host {@link ThemeFontAsset} manifest inside `variants`
+// (`family` + `fontAsset` keys — the fonts plugin's local adapter reads
+// `family`, the theme managed-font cascade reads `fontAsset`). The
+// file itself needs no processing, so the row lands directly as
+// "ready" — no queue round-trip.
+
+/** Family name stamped on a catalog font asset's variants JSON. */
+export const catalogFontFamilyOf = (variantsJson: string | null): string | null => {
+	if (variantsJson === null) return null;
+	try {
+		const parsed = JSON.parse(variantsJson) as unknown;
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+		const family = (parsed as Record<string, unknown>)["family"];
+		return typeof family === "string" && family.trim() !== "" ? family.trim() : null;
+	} catch {
+		return null;
+	}
+};
+
+/**
+ * Self-host manifest stored under `variants.fontAsset` on catalog
+ * font rows — the {@link ThemeFontAsset} the managed-font cascade
+ * serves for `meta.assetId` lookups whose theme_assets row has no
+ * owning theme. Returns null on absent/malformed payloads.
+ */
+export const catalogFontAssetOf = (variantsJson: string | null): ThemeFontAsset | null => {
+	if (variantsJson === null) return null;
+	try {
+		const parsed = JSON.parse(variantsJson) as unknown;
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+		const fontAsset = (parsed as Record<string, unknown>)["fontAsset"];
+		if (typeof fontAsset !== "object" || fontAsset === null || Array.isArray(fontAsset)) {
+			return null;
+		}
+		const faces = (fontAsset as Record<string, unknown>)["faces"];
+		return Array.isArray(faces) ? (fontAsset as ThemeFontAsset) : null;
+	} catch {
+		return null;
+	}
+};
+
+/** Unowned font rows — theme_id NULL. Two sources feed this set:
+ * fonts-catalog uploads (variants.family set) and theme_assets
+ * orphaned by a theme delete (ON DELETE SET NULL). */
+export const listUnownedFontAssets = async (db: DbClient): Promise<ThemeAssetRow[]> =>
+	db
+		.select()
+		.from(themeAssets)
+		.where(and(isNull(themeAssets.themeId), eq(themeAssets.kind, "font")))
+		.orderBy(desc(themeAssets.id));
+
+/** Hard-delete one asset row — catalog supersede only; R2 cleanup is
+ * the caller's job (keys are content-unique). */
+export const deleteThemeAsset = async (db: DbClient, id: number): Promise<void> => {
+	await db.delete(themeAssets).where(eq(themeAssets.id, id));
+};
+
+/**
+ * Insert a ready catalog font row: theme_id NULL, kind "font", the
+ * serving variants JSON ({family, fontAsset}) the local adapter and
+ * the managed-font cascade resolve. `weight` is the CSS font-weight
+ * stamped on the single @font-face (absent = 400 downstream).
+ */
+export const insertCatalogFontAsset = async (
+	db: DbClient,
+	input: {
+		readonly family: string;
+		readonly weight: number | undefined;
+		readonly r2Key: string;
+		readonly format: string | undefined;
+	},
+): Promise<ThemeAssetRow | null> => {
+	const face: ThemeFontFace = {
+		url: themeAssetUrl(input.r2Key),
+		...(input.weight === undefined ? {} : { weight: input.weight }),
+		...(input.format === undefined ? {} : { format: input.format }),
+	};
+	const variants = {
+		family: input.family,
+		fontAsset: { faces: [face], fallback: null },
+	};
+	const rows = await db
+		.insert(themeAssets)
+		.values({
+			themeId: null,
+			kind: "font",
+			r2Key: input.r2Key,
+			status: "ready",
+			variants: JSON.stringify(variants),
+			createdAt: new Date(),
+		})
+		.returning();
+	return (rows[0] as ThemeAssetRow | undefined) ?? null;
+};
 
 /** Write the job outcome: status + variants JSON (variant map, error
  * text or suggested seeds all ride the same column). */

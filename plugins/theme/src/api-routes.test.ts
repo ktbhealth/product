@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	installServerFnRuntime,
@@ -16,10 +16,14 @@ import { Auth } from "@ktb/auth";
 import { Principal } from "@ktb/authz";
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
+import { themeAssets } from "@ktb/db/schema";
+import { Fonts } from "@ktb/fonts";
+import type { FontFamilySummary, FontProviderSummary } from "@ktb/fonts/types";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import type { ServerRuntime } from "@ktb/server-fns";
 
 import { Route as AssetsRoute } from "./api-routes/theme.assets.ts";
+import { Route as CatalogFontsRoute } from "./api-routes/theme.catalog-fonts.ts";
 import { Route as FontsRoute } from "./api-routes/theme.fonts.ts";
 
 const handlersOf = (r: unknown) =>
@@ -148,6 +152,105 @@ const runtimeThrowDb = ManagedRuntime.make(
 	) as Layer.Layer<unknown, never, never>,
 );
 
+// ---------- fonts-catalog route: Fonts service stub ----------
+
+const fontsState = {
+	providers: [] as FontProviderSummary[],
+	nextProviderId: 1,
+	syncFamilies: [] as FontFamilySummary[],
+	syncFails: false,
+	listFails: false,
+};
+
+const fontProvider = (over: Partial<FontProviderSummary> = {}): FontProviderSummary => ({
+	id: fontsState.nextProviderId++,
+	kind: "local",
+	name: "Local",
+	config: null,
+	enabled: true,
+	familyCount: 0,
+	createdAt: "2025-01-01T00:00:00.000Z",
+	updatedAt: null,
+	...over,
+});
+
+const fontFamily = (over: Partial<FontFamilySummary> = {}): FontFamilySummary => ({
+	id: 1,
+	providerId: 1,
+	family: "Inter",
+	weights: [],
+	status: "ready",
+	meta: { source: "local", assetId: 1 },
+	...over,
+});
+
+const fontsStub = {
+	listProviders: () =>
+		fontsState.listFails
+			? Effect.die(new Error("fonts down"))
+			: Effect.succeed(fontsState.providers),
+	providerKinds: () => Effect.succeed(["local", "googlefonts"]),
+	createProvider: (input: { kind: string; name: string }) =>
+		Effect.sync(() => {
+			const created = fontProvider({ kind: input.kind, name: input.name });
+			fontsState.providers.push(created);
+			return created;
+		}),
+	updateProvider: () => Effect.die(new Error("unused")),
+	setProviderEnabled: () => Effect.void,
+	removeProvider: () => Effect.void,
+	listFamilies: () => Effect.succeed(fontsState.syncFamilies),
+	syncProvider: () =>
+		fontsState.syncFails
+			? Effect.die(new Error("sync boom"))
+			: Effect.succeed(fontsState.syncFamilies),
+} as unknown as Fonts["Service"];
+
+const runtimeCatalog = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Db, db),
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		Layer.succeed(Fonts, fontsStub),
+	) as Layer.Layer<unknown, never, never>,
+);
+
+// Same but the fonts service dies on every call — provider resolution
+// catch path.
+const fontsDownStub = {
+	...fontsStub,
+	listProviders: () => Effect.die(new Error("fonts down")),
+} as unknown as Fonts["Service"];
+
+const runtimeFontsDown = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Db, db),
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		Layer.succeed(Fonts, fontsDownStub),
+	) as Layer.Layer<unknown, never, never>,
+);
+
+// Db whose unowned-asset select yields [] but whose catalog insert
+// returns no row — exercises the asset-null defect path.
+const catalogFakeDb = {
+	select: () => ({
+		from: () => ({
+			where: () => ({ orderBy: async () => [] }),
+		}),
+	}),
+	insert: () => ({ values: () => ({ returning: async () => [] }) }),
+} as unknown as DbClient;
+
+const runtimeCatalogFakeDb = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Db, catalogFakeDb),
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		Layer.succeed(Fonts, fontsStub),
+	) as Layer.Layer<unknown, never, never>,
+);
+
 const runAsOn =
 	(rt: ManagedRuntime.ManagedRuntime<unknown, never>): ServerRuntime["runAs"] =>
 	<A, E>(
@@ -170,6 +273,9 @@ afterAll(async () => {
 		runtimeGateDown.dispose(),
 		runtimeFakeDb.dispose(),
 		runtimeThrowDb.dispose(),
+		runtimeCatalog.dispose(),
+		runtimeFontsDown.dispose(),
+		runtimeCatalogFakeDb.dispose(),
 	]);
 });
 
@@ -177,6 +283,7 @@ afterAll(async () => {
 const bucketStore = new Map<string, { data: Uint8Array; contentType?: string }>();
 const jobsSent: { kind: string; payload: unknown; options?: unknown }[] = [];
 let enqueueFails = false;
+let bucketDeleteFails = false;
 
 const fakeBucket = {
 	put: async (
@@ -208,7 +315,10 @@ const fakeBucket = {
 			body: new Response(bytes).body!,
 		};
 	},
-	delete: async () => {},
+	delete: async (keys: string[]) => {
+		if (bucketDeleteFails) throw new Error("delete boom");
+		for (const key of keys) bucketStore.delete(key);
+	},
 };
 
 const useSession = (key: string) => {
@@ -601,5 +711,256 @@ describe("POST /api/theme/fonts — edge branches", () => {
 		} finally {
 			enqueueFails = false;
 		}
+	});
+});
+
+describe("POST /api/theme/catalog-fonts", () => {
+	const postCatalog = (fields: Record<string, string>, file?: File) => {
+		const form = new FormData();
+		for (const [k, v] of Object.entries(fields)) form.set(k, v);
+		if (file !== undefined) form.set("file", file);
+		return handlersOf(CatalogFontsRoute).POST!({
+			request: new Request("http://x/api/theme/catalog-fonts", {
+				method: "POST",
+				body: form,
+			}),
+		} as never);
+	};
+
+	const woff2 = () =>
+		new File([new Uint8Array([0x77, 0x4f, 0x46, 0x32])], "Inter.woff2", {
+			type: "font/woff2",
+		});
+
+	const withCatalogRuntime = <T>(fn: () => Promise<T>) =>
+		withRuntime({ runAs: runAsOn(runtimeCatalog) }, fn);
+
+	beforeEach(() => {
+		fontsState.providers = [];
+		fontsState.nextProviderId = 1;
+		fontsState.syncFamilies = [];
+		fontsState.syncFails = false;
+		fontsState.listFails = false;
+		bucketStore.clear();
+		jobsSent.length = 0;
+		bucketDeleteFails = false;
+	});
+
+	it("rejects anonymous and non-admin callers", async () => {
+		serverFnRequestHeaders.current = new Headers();
+		expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(401);
+		useSession("plain");
+		expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(403);
+		useSession("admin");
+	});
+
+	it("rejects non-multipart, missing file/family and bad fields", async () => {
+		useSession("admin");
+		const json = await handlersOf(CatalogFontsRoute).POST!({
+			request: new Request("http://x/api/theme/catalog-fonts", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: "{}",
+			}),
+		} as never);
+		expect(json.status).toBe(400);
+		expect((await postCatalog({ family: "Inter" })).status).toBe(400);
+		expect((await postCatalog({}, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", weight: "abc" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", weight: "50" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", weight: "1000" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", providerId: "x" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", providerId: "0" }, woff2())).status).toBe(400);
+		// No content-type header at all → the "" fallback → 400.
+		const noCt = await handlersOf(CatalogFontsRoute).POST!({
+			request: new Request("http://x/api/theme/catalog-fonts", { method: "POST" }),
+		} as never);
+		expect(noCt.status).toBe(400);
+	});
+
+	it("rejects unsupported extensions, MIME mismatches, oversize and empty files", async () => {
+		useSession("admin");
+		const txt = new File([new Uint8Array([1])], "x.txt", { type: "text/plain" });
+		expect((await postCatalog({ family: "Inter" }, txt)).status).toBe(415);
+		const wrongMime = new File([new Uint8Array([1])], "x.woff2", { type: "image/png" });
+		expect((await postCatalog({ family: "Inter" }, wrongMime)).status).toBe(415);
+		const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "big.woff2", {
+			type: "font/woff2",
+		});
+		expect((await postCatalog({ family: "Inter" }, big)).status).toBe(413);
+		const empty = new File([], "e.woff2", { type: "font/woff2" });
+		expect((await postCatalog({ family: "Inter" }, empty)).status).toBe(400);
+		// Dotless name → empty extension → 415.
+		const dotless = new File([new Uint8Array([1])], "fontfile", { type: "font/woff2" });
+		expect((await postCatalog({ family: "Inter" }, dotless)).status).toBe(415);
+	});
+
+	it("503s when the bucket binding or the fonts service is missing", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			await withRuntime({ themeAssets: undefined }, async () => {
+				expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(503);
+			});
+		});
+		// Base runtime has no Fonts service → provider resolution 503s.
+		expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(503);
+	});
+
+	it("403s when the admin gate dies", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeGateDown) }, async () => {
+			expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(403);
+		});
+	});
+
+	it("404s/400s on explicit providerId resolution", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.providers = [
+				fontProvider({ id: 5, kind: "googlefonts", name: "Google" }),
+				fontProvider({ id: 6, kind: "local", name: "Local" }),
+			];
+			expect((await postCatalog({ family: "Inter", providerId: "99" }, woff2())).status).toBe(404);
+			expect((await postCatalog({ family: "Inter", providerId: "5" }, woff2())).status).toBe(400);
+			// Explicit local provider wins over auto-selection.
+			fontsState.syncFamilies = [fontFamily({ providerId: 6 })];
+			const res = await postCatalog({ family: "Inter", providerId: "6" }, woff2());
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as { providerId: number }).providerId).toBe(6);
+		});
+	});
+
+	it("500s when provider resolution itself fails", async () => {
+		useSession("admin");
+		await withRuntime({ runAs: runAsOn(runtimeFontsDown) }, async () => {
+			expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(500);
+		});
+	});
+
+	it("auto-provisions a local provider and syncs the uploaded family", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.syncFamilies = [fontFamily({ providerId: 1, family: "Inter" })];
+			const res = await postCatalog({ family: "Inter", weight: "700" }, woff2());
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				ok: boolean;
+				assetId: number;
+				providerId: number;
+				family: string;
+				status: string;
+			};
+			expect(body).toMatchObject({
+				ok: true,
+				providerId: 1,
+				family: "Inter",
+				status: "ready",
+			});
+			// The local provider was auto-created once.
+			expect(fontsState.providers).toHaveLength(1);
+			expect(fontsState.providers[0]).toMatchObject({ kind: "local", name: "Local" });
+			// No queue round-trip — the row lands ready with the manifest.
+			expect(jobsSent).toHaveLength(0);
+			const rows = await db.select().from(themeAssets);
+			const row = rows.find((r) => r.id === body.assetId);
+			expect(row).toMatchObject({ themeId: null, kind: "font", status: "ready" });
+			const variants = JSON.parse(row!.variants!);
+			expect(variants.family).toBe("Inter");
+			expect(variants.fontAsset.faces[0]).toMatchObject({ weight: 700, format: "woff2" });
+			expect(bucketStore.has(row!.r2Key!)).toBe(true);
+		});
+	});
+
+	it("prefers an enabled local provider and reports pending when sync misses", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.providers = [
+				fontProvider({ id: 3, kind: "local", name: "Disabled Local", enabled: false }),
+				fontProvider({ id: 4, kind: "local", name: "Local" }),
+			];
+			// syncFamilies empty → the family row is absent → "pending".
+			const res = await postCatalog({ family: "Inter" }, woff2());
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { providerId: number; status: string };
+			expect(body.providerId).toBe(4);
+			expect(body.status).toBe("pending");
+		});
+	});
+
+	it("falls back to a disabled local provider when it is the only one", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.providers = [
+				fontProvider({ id: 9, kind: "local", name: "Local", enabled: false }),
+			];
+			fontsState.syncFamilies = [fontFamily({ providerId: 9 })];
+			const res = await postCatalog({ family: "Inter" }, woff2());
+			expect(res.status).toBe(200);
+			expect(((await res.json()) as { providerId: number }).providerId).toBe(9);
+		});
+	});
+
+	it("supersedes prior catalog rows for the same family only", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.providers = [fontProvider({ id: 7 })];
+			fontsState.syncFamilies = [fontFamily({ providerId: 7 })];
+			// Stale catalog row for the same family + a different family +
+			// an unowned row with no family stamp (orphan).
+			const mkStale = async (family: string | null, key: string | null) => {
+				const variants = family === null ? null : JSON.stringify({ family });
+				const rows = await db
+					.insert(themeAssets)
+					.values({
+						themeId: null,
+						kind: "font",
+						r2Key: key,
+						status: "ready",
+						variants,
+						createdAt: new Date(),
+					})
+					.returning();
+				return rows[0]!;
+			};
+			const staleSame = await mkStale("Inter", "theme-assets/catalog/font/old.woff2");
+			const staleNullKey = await mkStale("Inter", null);
+			const staleOther = await mkStale("Other", "theme-assets/catalog/font/other.woff2");
+			await mkStale(null, null);
+			bucketStore.set("theme-assets/catalog/font/old.woff2", {
+				data: new Uint8Array([1]),
+			});
+			bucketStore.set("theme-assets/catalog/font/other.woff2", {
+				data: new Uint8Array([1]),
+			});
+			const res = await postCatalog({ family: "Inter" }, woff2());
+			expect(res.status).toBe(200);
+			// R2 cleanup is best-effort — a failing delete never fails
+			// the upload (the row supersede already committed).
+			bucketDeleteFails = true;
+			const res2 = await postCatalog({ family: "Inter" }, woff2());
+			expect(res2.status).toBe(200);
+			bucketDeleteFails = false;
+			const remaining = await db.select().from(themeAssets);
+			const ids = remaining.map((r) => r.id);
+			expect(ids).not.toContain(staleSame.id);
+			expect(ids).not.toContain(staleNullKey.id);
+			expect(ids).toContain(staleOther.id);
+			// R2 objects for superseded rows are dropped; others survive.
+			expect(bucketStore.has("theme-assets/catalog/font/old.woff2")).toBe(false);
+			expect(bucketStore.has("theme-assets/catalog/font/other.woff2")).toBe(true);
+		});
+	});
+
+	it("500s when the catalog sync fails or the asset insert yields no row", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.providers = [fontProvider({ id: 8 })];
+			fontsState.syncFails = true;
+			expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(500);
+			fontsState.syncFails = false;
+		});
+		await withRuntime({ runAs: runAsOn(runtimeCatalogFakeDb) }, async () => {
+			expect((await postCatalog({ family: "Inter" }, woff2())).status).toBe(500);
+		});
 	});
 });

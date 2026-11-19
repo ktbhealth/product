@@ -4,7 +4,7 @@ import type { FontCatalogFamily } from "@ktb/fonts/catalog";
 import type { DbClient } from "@ktb/db";
 import { themeDefinitions } from "@ktb/db/schema";
 
-import { getThemeAsset } from "./assets.ts";
+import { catalogFontAssetOf, getThemeAsset } from "./assets.ts";
 import { parseThemeFontConfig } from "./present.ts";
 import type { ThemeFontConfig, ThemeFontSlot, ThemeManagedFont } from "./types.ts";
 
@@ -66,10 +66,16 @@ export const matchManagedFonts = (
 };
 
 /**
- * Fill `asset` on non-googlefonts managed fonts: `assetId` →
- * theme_assets row → its theme's `fonts.assets[family]` (the font job
- * writes the self-host manifest there). Any missing link degrades to
- * the bare family name — never throws.
+ * Fill `asset` on non-googlefonts managed fonts. Two storage shapes:
+ *
+ * - Theme-owned assets (`theme_assets.theme_id` set): the manifest
+ *   lives on the owning theme's `fonts.assets[family]` (the font job
+ *   writes it there).
+ * - Fonts-catalog assets (`theme_id` NULL — uploads via
+ *   /api/theme/catalog-fonts): the manifest rides the asset row's own
+ *   `variants.fontAsset`.
+ *
+ * Any missing link degrades to the bare family name — never throws.
  */
 export const loadManagedFontAssets = async (
 	db: DbClient,
@@ -83,8 +89,15 @@ export const loadManagedFontAssets = async (
 		}
 		try {
 			const assetRow = await getThemeAsset(db, font.assetId);
-			if (assetRow === null || assetRow.themeId === null) {
+			if (assetRow === null) {
 				out.push(font);
+				continue;
+			}
+			// Catalog uploads carry no owning theme — the self-host
+			// manifest is stamped on the asset row's variants instead.
+			if (assetRow.themeId === null) {
+				const asset = catalogFontAssetOf(assetRow.variants);
+				out.push(asset === null ? font : { ...font, asset });
 				continue;
 			}
 			const rows = await db

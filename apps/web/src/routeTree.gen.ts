@@ -47,6 +47,7 @@ import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consul
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'
 import { Route as ApiDocumentsDotsplatRouteImport } from './../../../plugins/api/src/api-routes/documents.$'
 import { Route as ApiThemeDotassetsRouteImport } from './../../../plugins/theme/src/api-routes/theme.assets'
+import { Route as ApiThemeDotcatalogFontsRouteImport } from './../../../plugins/theme/src/api-routes/theme.catalog-fonts'
 import { Route as ApiThemeDotfontsRouteImport } from './../../../plugins/theme/src/api-routes/theme.fonts'
 import { Route as PatientsIdIndexRouteImport } from './../../../plugins/patients/src/routes/$id/index'
 import { Route as PatientsIdEditRouteImport } from './../../../plugins/patients/src/routes/$id/edit'
@@ -254,6 +255,11 @@ const ApiThemeDotassetsRoute = ApiThemeDotassetsRouteImport.update({
   path: '/api/theme/assets',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiThemeDotcatalogFontsRoute = ApiThemeDotcatalogFontsRouteImport.update({
+  id: '/api/theme/catalog-fonts',
+  path: '/api/theme/catalog-fonts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiThemeDotfontsRoute = ApiThemeDotfontsRouteImport.update({
   id: '/api/theme/fonts',
   path: '/api/theme/fonts',
@@ -345,6 +351,7 @@ export interface FileRoutesByFullPath {
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/documents/$': typeof ApiDocumentsDotsplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
+  '/api/theme/catalog-fonts': typeof ApiThemeDotcatalogFontsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
@@ -393,6 +400,7 @@ export interface FileRoutesByTo {
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/documents/$': typeof ApiDocumentsDotsplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
+  '/api/theme/catalog-fonts': typeof ApiThemeDotcatalogFontsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
@@ -443,6 +451,7 @@ export interface FileRoutesById {
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/documents/$': typeof ApiDocumentsDotsplatRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
+  '/api/theme/catalog-fonts': typeof ApiThemeDotcatalogFontsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
   '/patients/$id/edit': typeof PatientsIdEditRoute
   '/portal/$instance/$': typeof portalDotinstanceDotsplatRoute
@@ -494,6 +503,7 @@ export interface FileRouteTypes {
     | '/api/cdn/$'
     | '/api/documents/$'
     | '/api/theme/assets'
+    | '/api/theme/catalog-fonts'
     | '/api/theme/fonts'
     | '/patients/$id/edit'
     | '/portal/$instance/$'
@@ -542,6 +552,7 @@ export interface FileRouteTypes {
     | '/api/cdn/$'
     | '/api/documents/$'
     | '/api/theme/assets'
+    | '/api/theme/catalog-fonts'
     | '/api/theme/fonts'
     | '/patients/$id/edit'
     | '/portal/$instance/$'
@@ -591,6 +602,7 @@ export interface FileRouteTypes {
     | '/api/cdn/$'
     | '/api/documents/$'
     | '/api/theme/assets'
+    | '/api/theme/catalog-fonts'
     | '/api/theme/fonts'
     | '/patients/$id/edit'
     | '/portal/$instance/$'
@@ -637,6 +649,7 @@ export interface RootRouteChildren {
   ApiAuthDotsplatRoute: typeof ApiAuthDotsplatRoute
   ApiCdnSplatRoute: typeof ApiCdnSplatRoute
   ApiThemeDotassetsRoute: typeof ApiThemeDotassetsRoute
+  ApiThemeDotcatalogFontsRoute: typeof ApiThemeDotcatalogFontsRoute
   ApiThemeDotfontsRoute: typeof ApiThemeDotfontsRoute
   PatientsIdEditRoute: typeof PatientsIdEditRoute
   portalDotinstanceDotsplatRoute: typeof portalDotinstanceDotsplatRoute
@@ -916,6 +929,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiThemeDotassetsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/theme/catalog-fonts': {
+      id: '/api/theme/catalog-fonts'
+      path: '/api/theme/catalog-fonts'
+      fullPath: '/api/theme/catalog-fonts'
+      preLoaderRoute: typeof ApiThemeDotcatalogFontsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/theme/fonts': {
       id: '/api/theme/fonts'
       path: '/api/theme/fonts'
@@ -1059,6 +1079,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthDotsplatRoute: ApiAuthDotsplatRoute,
   ApiCdnSplatRoute: ApiCdnSplatRoute,
   ApiThemeDotassetsRoute: ApiThemeDotassetsRoute,
+  ApiThemeDotcatalogFontsRoute: ApiThemeDotcatalogFontsRoute,
   ApiThemeDotfontsRoute: ApiThemeDotfontsRoute,
   PatientsIdEditRoute: PatientsIdEditRoute,
   portalDotinstanceDotsplatRoute: portalDotinstanceDotsplatRoute,

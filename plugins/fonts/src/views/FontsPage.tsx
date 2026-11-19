@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { useRouter } from "@tanstack/react-router";
-import { RefreshCwIcon } from "lucide-react";
+import { RefreshCwIcon, UploadIcon } from "lucide-react";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@ktbhealth/ui/components/dialog";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
+import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { SearchInput } from "@ktbhealth/ui/components/search-input";
@@ -60,9 +68,13 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 
 	const [q, setQ] = useState("");
 	const [providerFilter, setProviderFilter] = useState<string>(ALL);
-	const [busy, setBusy] = useState(false);
+	const [busy, setBusy] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [toast, setToast] = useState<ToastData | null>(null);
+	const [uploadOpen, setUploadOpen] = useState(false);
+	const [upFamily, setUpFamily] = useState("");
+	const [upWeight, setUpWeight] = useState("");
+	const [upFile, setUpFile] = useState<File | null>(null);
 
 	const needle = q.trim().toLowerCase();
 	const filtered = families.filter((family) => {
@@ -82,8 +94,8 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 
 	const sync = async () => {
 		/* v8 ignore next -- both sync triggers are disabled while busy or targetless */
-		if (busy || syncTargets.length === 0) return;
-		setBusy(true);
+		if (busy !== null || syncTargets.length === 0) return;
+		setBusy("sync");
 		setNotice(null);
 		try {
 			for (const id of syncTargets) {
@@ -94,7 +106,40 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 		} catch {
 			setNotice(t.syncError);
 		} finally {
-			setBusy(false);
+			setBusy(null);
+		}
+	};
+
+	const openUpload = () => {
+		setUpFamily("");
+		setUpWeight("");
+		setUpFile(null);
+		setUploadOpen(true);
+	};
+
+	/** Catalog upload → theme plugin's /api/theme/catalog-fonts (owns
+	 * the asset bucket + theme_assets rows); the route re-syncs the
+	 * local provider so the family lands here on invalidate. */
+	const upload = async () => {
+		const family = upFamily.trim();
+		/* v8 ignore next -- the submit button is disabled until both are set */
+		if (busy !== null || family === "" || upFile === null) return;
+		setBusy("upload");
+		setNotice(null);
+		try {
+			const form = new FormData();
+			form.set("file", upFile);
+			form.set("family", family);
+			if (upWeight.trim() !== "") form.set("weight", upWeight.trim());
+			const res = await fetch("/api/theme/catalog-fonts", { method: "POST", body: form });
+			if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+			setUploadOpen(false);
+			setToast({ id: Date.now(), text: t.uploadToast });
+			await router.invalidate();
+		} catch {
+			setNotice(t.uploadError);
+		} finally {
+			setBusy(null);
 		}
 	};
 
@@ -104,10 +149,24 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 				title={t.fontsTitle}
 				description={t.fontsDescription}
 				actions={
-					<Button size="sm" onClick={() => void sync()} disabled={busy || syncTargets.length === 0}>
-						{busy ? <Spinner className="size-4" /> : <RefreshCwIcon data-icon="inline-start" />}
-						{busy ? t.syncing : t.sync}
-					</Button>
+					<div className="flex gap-2">
+						<Button size="sm" variant="outline" onClick={openUpload} disabled={busy !== null}>
+							<UploadIcon data-icon="inline-start" />
+							{t.uploadFont}
+						</Button>
+						<Button
+							size="sm"
+							onClick={() => void sync()}
+							disabled={busy !== null || syncTargets.length === 0}
+						>
+							{busy === "sync" ? (
+								<Spinner className="size-4" />
+							) : (
+								<RefreshCwIcon data-icon="inline-start" />
+							)}
+							{busy === "sync" ? t.syncing : t.sync}
+						</Button>
+					</div>
 				}
 			/>
 
@@ -119,10 +178,24 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 						<EmptyTitle>{t.emptyFamilies}</EmptyTitle>
 					</EmptyHeader>
 					<EmptyContent>
-						<Button size="sm" onClick={() => void sync()} disabled={busy || providers.length === 0}>
-							{busy ? <Spinner className="size-4" /> : <RefreshCwIcon data-icon="inline-start" />}
-							{busy ? t.syncing : t.sync}
-						</Button>
+						<div className="flex gap-2">
+							<Button size="sm" variant="outline" onClick={openUpload} disabled={busy !== null}>
+								<UploadIcon data-icon="inline-start" />
+								{t.uploadFont}
+							</Button>
+							<Button
+								size="sm"
+								onClick={() => void sync()}
+								disabled={busy !== null || providers.length === 0}
+							>
+								{busy === "sync" ? (
+									<Spinner className="size-4" />
+								) : (
+									<RefreshCwIcon data-icon="inline-start" />
+								)}
+								{busy === "sync" ? t.syncing : t.sync}
+							</Button>
+						</div>
 					</EmptyContent>
 				</Empty>
 			) : (
@@ -212,6 +285,54 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 					</div>
 				</>
 			)}
+
+			<Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>{t.dialogUploadTitle}</DialogTitle>
+						<DialogDescription>{t.fontsDescription}</DialogDescription>
+					</DialogHeader>
+					<div className="grid gap-3">
+						<label className="text-sm">
+							{t.familyLabel}
+							<Input
+								value={upFamily}
+								onChange={(e) => setUpFamily(e.target.value)}
+								placeholder={t.familyPlaceholder}
+							/>
+						</label>
+						<label className="text-sm">
+							{t.weightLabel}
+							<Input
+								value={upWeight}
+								onChange={(e) => setUpWeight(e.target.value)}
+								placeholder={t.weightPlaceholder}
+								inputMode="numeric"
+							/>
+						</label>
+						<label className="text-sm">
+							{t.fileLabel}
+							<Input
+								type="file"
+								accept=".woff2,.woff,.ttf,.otf"
+								onChange={(e) => setUpFile(e.target.files?.[0] ?? null)}
+							/>
+						</label>
+						<div className="flex gap-2">
+							<Button
+								onClick={() => void upload()}
+								disabled={busy !== null || upFamily.trim() === "" || upFile === null}
+							>
+								{busy === "upload" ? <Spinner className="size-4" /> : null}
+								{busy === "upload" ? t.uploading : t.upload}
+							</Button>
+							<Button variant="outline" onClick={() => setUploadOpen(false)}>
+								{t.cancel}
+							</Button>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
 
 			<Toast toast={toast} onClose={() => setToast(null)} />
 		</PageContainer>
