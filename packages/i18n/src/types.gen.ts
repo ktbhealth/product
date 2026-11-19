@@ -1966,7 +1966,10 @@ export type I18nKey =
 	| "theme.fontsFamiliesLabel"
 	| "theme.fontsGoogle"
 	| "theme.fontsGoogleWarning"
+	| "theme.fontSourceCustom"
+	| "theme.fontSourceLabel"
 	| "theme.fontsSelfHost"
+	| "theme.fontsSourcesLabel"
 	| "theme.fontsTitle"
 	| "theme.galleryAlertFailDesc"
 	| "theme.galleryAlertFailTitle"
@@ -4764,7 +4767,10 @@ export interface I18nTypedT {
 	(key: "theme.fontsFamiliesLabel"): Effect.Effect<string>;
 	(key: "theme.fontsGoogle"): Effect.Effect<string>;
 	(key: "theme.fontsGoogleWarning"): Effect.Effect<string>;
+	(key: "theme.fontSourceCustom"): Effect.Effect<string>;
+	(key: "theme.fontSourceLabel"): Effect.Effect<string>;
 	(key: "theme.fontsSelfHost"): Effect.Effect<string>;
+	(key: "theme.fontsSourcesLabel"): Effect.Effect<string>;
 	(key: "theme.fontsTitle"): Effect.Effect<string>;
 	(key: "theme.galleryAlertFailDesc"): Effect.Effect<string>;
 	(key: "theme.galleryAlertFailTitle"): Effect.Effect<string>;
