@@ -24,28 +24,25 @@ describe("RecallBotProvider", () => {
 		const provider = new RecallBotProvider("test-key");
 		const session = await provider.join("https://meet.example/x", "https://hook.example/");
 		expect(session).toEqual({ botId: "bot-123", provider: "recall" });
-		expect(fetchMock).toHaveBeenCalledWith(
-			"https://api.recall.ai/api/v1/bot",
-			{
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					authorization: "Token test-key",
-				},
-				body: JSON.stringify({
-					meeting_url: "https://meet.example/x",
-					bot_name: "KTB Health",
-					transcription_options: { provider: "default" },
-					realtime_endpoints: [
-						{
-							type: "webhook",
-							url: "https://hook.example/",
-							events: ["transcript.data"],
-						},
-					],
-				}),
+		expect(fetchMock).toHaveBeenCalledWith("https://api.recall.ai/api/v1/bot", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				authorization: "Token test-key",
 			},
-		);
+			body: JSON.stringify({
+				meeting_url: "https://meet.example/x",
+				bot_name: "KTB Health",
+				transcription_options: { provider: "default" },
+				realtime_endpoints: [
+					{
+						type: "webhook",
+						url: "https://hook.example/",
+						events: ["transcript.data"],
+					},
+				],
+			}),
+		});
 	});
 
 	it("throws on non-ok API response", async () => {
@@ -59,9 +56,7 @@ describe("RecallBotProvider", () => {
 
 describe("recallDriver", () => {
 	const buildBot = async (env: RecallDriverEnv): Promise<BotProvider> => {
-		const ctx = await Effect.runPromise(
-			Effect.scoped(Layer.build(recallDriver.provides(env))),
-		);
+		const ctx = await Effect.runPromise(Effect.scoped(Layer.build(recallDriver.provides(env))));
 		return Context.get(ctx, Bot);
 	};
 
@@ -81,9 +76,7 @@ describe("recallDriver", () => {
 	});
 
 	it("binds the API key into the provided provider", async () => {
-		const fetchMock = vi
-			.fn()
-			.mockResolvedValue({ ok: true, json: async () => ({ id: "bot-1" }) });
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "bot-1" }) });
 		vi.stubGlobal("fetch", fetchMock);
 
 		const bot = await buildBot({ RECALL_API_KEY: "k" });
@@ -98,9 +91,7 @@ describe("recallDriver", () => {
 	});
 
 	it("falls back to an empty key when RECALL_API_KEY is missing", async () => {
-		const fetchMock = vi
-			.fn()
-			.mockResolvedValue({ ok: true, json: async () => ({ id: "bot-1" }) });
+		const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ id: "bot-1" }) });
 		vi.stubGlobal("fetch", fetchMock);
 
 		const bot = await buildBot({});
