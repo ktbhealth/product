@@ -131,6 +131,23 @@ describe("PubSubAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("maps a throwing pubsub capability accessor to unavailable", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get pubsub(): never {
+					throw new Error("capability accessor exploded");
+				},
+			},
+		);
+		const result = await asPrincipal(runtime, (a) => a.publish("memory:x", {}), "admin@x.com");
+		expect(result).toEqual({ ok: false, reason: "unavailable" });
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("rejects non-admins with Forbidden on every method", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(

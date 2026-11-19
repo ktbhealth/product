@@ -90,6 +90,48 @@ describe("QueueAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("degrades queues to null when the registry probe rejects", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{ queues: () => Promise.reject(new Error("probe down")) },
+		);
+		const [queues] = await asPrincipal(runtime, (a) => Effect.all([a.queues()]), "admin@x.com");
+		expect(queues).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("degrades queues and enqueue when the server runtime is absent", async () => {
+		const runtime = makeRuntime();
+		// No installServerFnRuntime: getServerRuntime() throws inside both
+		// degradation arms.
+		resetServerFnRuntime();
+		const queues = await asPrincipal(runtime, (a) => a.queues(), "admin@x.com");
+		expect(queues).toBeNull();
+		const result = await asPrincipal(runtime, (a) => a.enqueue("jobs.ping"), "admin@x.com");
+		expect(result).toEqual({ ok: false, reason: "unavailable" });
+		await runtime.dispose();
+	});
+
+	it("degrades jobRuns to null when the projection read fails", async () => {
+		const runtime = ManagedRuntime.make(
+			QueueAdminLive.pipe(
+				Layer.provide(
+					Layer.mergeAll(
+						// No job_runs DDL — the projection read throws.
+						Layer.succeed(Db, makeDb(makeD1())),
+						Layer.succeed(PlatformAdmin, adminGate(true)),
+					),
+				),
+			),
+		);
+		const runs = await asPrincipal(runtime, (a) => a.jobRuns(), "admin@x.com");
+		expect(runs).toBeNull();
+		await runtime.dispose();
+	});
+
 	it("enqueue sends through the runtime jobs port", async () => {
 		const sent: { kind: string; payload: unknown }[] = [];
 		const jobs: JobsEnqueuer = {

@@ -80,6 +80,46 @@ describe("makeInProcessPubSub", () => {
 		expect(recent).toHaveLength(20);
 		expect(recent.at(-1)?.payload).toBe(24);
 	});
+
+	it("unsubscribing one of several listeners keeps the topic live", async () => {
+		const bus = makeInProcessPubSub();
+		const seen: unknown[] = [];
+		const off = await bus.subscribe!("t", () => {});
+		await bus.subscribe!("t", (p) => {
+			seen.push(p);
+		});
+		off();
+		await bus.publish("t", 1);
+		expect(seen).toEqual([1]);
+		expect(bus.topics()).toEqual(["t"]);
+		expect(bus.subscriberCount("t")).toBe(1);
+	});
+
+	it("keeps an unsubscribed topic listed while it has retained history", async () => {
+		const bus = makeInProcessPubSub();
+		await bus.publish("t", "m");
+		const off = await bus.subscribe!("t", () => {});
+		off();
+		// The listeners map drops the empty set, but retained history
+		// keeps the topic in the listing.
+		expect(bus.topics()).toEqual(["t"]);
+		expect(bus.subscriberCount("t")).toBe(0);
+		expect(bus.recentMessages("t")).toHaveLength(1);
+	});
+
+	it("drops a subscribe-only topic from the listing once it has no listeners", async () => {
+		const bus = makeInProcessPubSub();
+		const off = await bus.subscribe!("t", () => {});
+		off();
+		expect(bus.topics()).toEqual([]);
+		expect(bus.listTopics()).toEqual([]);
+	});
+
+	it("honors a custom idPrefix in listed topic ids", async () => {
+		const bus = makeInProcessPubSub({ idPrefix: "probe" });
+		await bus.publish("t", 1);
+		expect(bus.listTopics()[0]?.id).toBe("probe:t");
+	});
 });
 
 describe("mergePubSubSources", () => {

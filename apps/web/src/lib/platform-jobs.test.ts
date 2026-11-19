@@ -153,6 +153,18 @@ describe("platform queue registry (/platform/queue)", () => {
 			expect(queues.find((q) => q.id === "audio")?.depth).toBeNull();
 		},
 	);
+
+	it("names the jobs queue ktb:jobs when JOBS_QUEUE is unset", { timeout: 30_000 }, async () => {
+		const { runtime } = await compose((env) => {
+			env.REDIS_JOBS_QUEUE = {
+				stats: async () => ({ pending: 0, processing: 0, done: 0, failed: 0 }),
+			};
+			// JOBS_QUEUE left unbound → the descriptor falls back to the
+			// transport's default list name.
+		});
+		const queues = await runtime.queues!();
+		expect(queues.find((q) => q.id === "jobs")?.name).toBe("ktb:jobs");
+	});
 });
 
 describe("platform cron registry (/platform/cron)", () => {
@@ -188,6 +200,21 @@ describe("platform cron registry (/platform/cron)", () => {
 			// And the registry now reports the recorded last run.
 			const jobs = await runtime.crons!.list();
 			expect(jobs.find((j) => j.id === "agenda-reminders")?.lastRun?.ok).toBe(true);
+		},
+	);
+
+	it(
+		"keeps the latest projection row when a job has several runs",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime } = await compose(() => {});
+			// Two fires → two cron.agenda-reminders rows; the list join
+			// dedupes by kind and keeps the newest.
+			await runtime.crons!.runNow("agenda-reminders");
+			await runtime.crons!.runNow("agenda-reminders");
+			const jobs = await runtime.crons!.list();
+			const lastRun = jobs.find((j) => j.id === "agenda-reminders")?.lastRun;
+			expect(lastRun?.ok).toBe(true);
 		},
 	);
 
@@ -249,6 +276,30 @@ describe("platform pub/sub (/platform/pubsub)", () => {
 			expect(await runtime.pubsub!.publish("redis:chan", {})).toEqual({
 				ok: false,
 				reason: "unavailable",
+			});
+			// A prefix with no topic name is unknown, not routable.
+			expect(await runtime.pubsub!.publish("memory:", {})).toEqual({
+				ok: false,
+				reason: "unknown-topic",
+			});
+		},
+	);
+
+	it(
+		"reports publish-failed when a bound transport rejects the publish",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime } = await compose((env) => {
+				env.REDIS_PUBSUB = {
+					publish: async () => {
+						throw new Error("redis publish down");
+					},
+					listTopics: async () => [],
+				};
+			});
+			expect(await runtime.pubsub!.publish("redis:chan", {})).toEqual({
+				ok: false,
+				reason: "publish-failed",
 			});
 		},
 	);

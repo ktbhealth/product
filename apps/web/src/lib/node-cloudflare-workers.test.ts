@@ -40,6 +40,8 @@ const loadEnv = async () => {
 
 afterEach(() => {
 	vi.unstubAllEnvs();
+	vi.doUnmock("@ktb/pubsub-transport-redis");
+	vi.doUnmock("@ktb/jobs-transport-redis");
 	for (const key of ENV_KEYS) {
 		if (saved[key] === undefined) delete process.env[key];
 		else process.env[key] = saved[key];
@@ -250,4 +252,102 @@ describe("node-cloudflare-workers env", () => {
 		);
 		rmSync(themeDir, { recursive: true, force: true });
 	}, 45000);
+
+	it("REDIS_JOBS_QUEUE forwards REDIS_URL and JOBS_QUEUE into the transport", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		process.env.REDIS_URL = "redis://10.0.0.9:6380";
+		process.env.JOBS_QUEUE = "ktb:test-jobs";
+		let captured: { url?: string; queue?: string } | undefined;
+		vi.doMock("@ktb/jobs-transport-redis", () => ({
+			createRedisJobsTransport: async (opts: { url?: string; queue?: string }) => {
+				captured = opts;
+				return { stats: async () => ({ pending: 1 }) };
+			},
+		}));
+
+		const env = await loadEnv();
+		await expect(env.REDIS_JOBS_QUEUE.stats()).resolves.toEqual({ pending: 1 });
+		expect(captured).toEqual({ url: "redis://10.0.0.9:6380", queue: "ktb:test-jobs" });
+	});
+
+	it("REDIS_JOBS_QUEUE falls back to the default Redis URL and omits queue", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		delete process.env.REDIS_URL;
+		delete process.env.JOBS_QUEUE;
+		let captured: { url?: string; queue?: string } | undefined;
+		vi.doMock("@ktb/jobs-transport-redis", () => ({
+			createRedisJobsTransport: async (opts: { url?: string; queue?: string }) => {
+				captured = opts;
+				return { stats: async () => null };
+			},
+		}));
+
+		const env = await loadEnv();
+		await expect(env.REDIS_JOBS_QUEUE.stats()).resolves.toBeNull();
+		expect(captured).toEqual({ url: "redis://127.0.0.1:6379" });
+	});
+
+	it("REDIS_PUBSUB publishes, subscribes and lists through the lazy transport", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		delete process.env.REDIS_URL;
+		const published: [string, unknown][] = [];
+		const subscribed: string[] = [];
+		const unsubscribed: string[] = [];
+		let captured: { url?: string } | undefined;
+		vi.doMock("@ktb/pubsub-transport-redis", () => ({
+			createRedisPubSubTransport: async (opts: { url?: string }) => {
+				captured = opts;
+				return {
+					publish: async (topic: string, payload: unknown) => {
+						published.push([topic, payload]);
+					},
+					subscribe: async (topic: string, _handler: (p: unknown) => void) => {
+						subscribed.push(topic);
+						return () => {
+							unsubscribed.push(topic);
+						};
+					},
+					listTopics: async () => [
+						{ id: "redis:t", name: "t", transport: "redis", subscribers: 1 },
+					],
+				};
+			},
+		}));
+
+		const env = await loadEnv();
+		await env.REDIS_PUBSUB.publish("t", { a: 1 });
+		expect(published).toEqual([["t", { a: 1 }]]);
+
+		const off = await env.REDIS_PUBSUB.subscribe("t", () => {});
+		expect(subscribed).toEqual(["t"]);
+		off();
+		expect(unsubscribed).toEqual(["t"]);
+
+		await expect(env.REDIS_PUBSUB.listTopics()).resolves.toEqual([
+			{ id: "redis:t", name: "t", transport: "redis", subscribers: 1 },
+		]);
+		// REDIS_URL unset → the transport resolved the default URL.
+		expect(captured).toEqual({ url: "redis://127.0.0.1:6379" });
+	});
+
+	it("REDIS_PUBSUB.subscribe degrades to a no-op when the transport cannot subscribe", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		vi.doMock("@ktb/pubsub-transport-redis", () => ({
+			createRedisPubSubTransport: async () => ({
+				publish: async () => {},
+				// No subscribe capability — the binding hands back an
+				// inert unsubscribe instead of rejecting.
+				listTopics: async () => [],
+			}),
+		}));
+
+		const env = await loadEnv();
+		const off = await env.REDIS_PUBSUB.subscribe("t", () => {});
+		expect(typeof off).toBe("function");
+		off();
+	});
 });

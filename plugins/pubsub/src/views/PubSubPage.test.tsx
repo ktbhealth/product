@@ -107,4 +107,63 @@ describe("PubSubPage", () => {
 		expect(await screen.findByText("Payload is not valid JSON.")).toBeTruthy();
 		expect(publishPubSubMessageFn).not.toHaveBeenCalled();
 	});
+
+	it("renders empty history and unknown last activity honestly", () => {
+		render(
+			<PubSubPage
+				listing={listing([
+					topic({
+						id: "memory:empty",
+						name: "empty-topic",
+						subscribers: 2,
+						recent: [],
+					}),
+					topic({
+						id: "memory:untimed",
+						name: "untimed-topic",
+						recent: [{ at: undefined as unknown as number, payload: {} }],
+					}),
+				])}
+				locale="en"
+			/>,
+		);
+		// An empty retained history reports no messages and no activity.
+		expect(screen.getByText("No history")).toBeTruthy();
+		expect(screen.getByText("Never")).toBeTruthy();
+		// An undefined timestamp degrades to the unknown marker.
+		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+	});
+
+	it("surfaces every publish outcome, including transport rejections", async () => {
+		publishPubSubMessageFn
+			.mockResolvedValueOnce({ ok: false, reason: "unknown-topic" } as never)
+			.mockResolvedValueOnce({ ok: false, reason: "unavailable" } as never)
+			.mockResolvedValueOnce({ ok: false, reason: "forbidden" } as never)
+			.mockRejectedValueOnce(new Error("transport gone"))
+			.mockResolvedValueOnce({ ok: false, reason: "publish-failed" } as never);
+		render(<PubSubPage listing={listing([topic()])} locale="en" />);
+		openTab("Publish");
+		fireEvent.change(screen.getByPlaceholderText("memory:cron.fires"), {
+			target: { value: "memory:cron.fires" },
+		});
+		const publish = () => fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+		publish();
+		expect(
+			await screen.findByText("Unknown topic id — pick one from the Topics tab."),
+		).toBeTruthy();
+		publish();
+		expect(
+			await screen.findByText("Pub/sub transport unavailable in this environment."),
+		).toBeTruthy();
+		publish();
+		expect(await screen.findByText("Not permitted.")).toBeTruthy();
+		publish();
+		// A rejected wire call collapses to the generic failure copy.
+		expect(await screen.findByText("Publish failed.")).toBeTruthy();
+		publish();
+		// publish-failed maps to the same copy — the pending state clears the
+		// previous message first, so this only resolves once it lands.
+		expect(await screen.findByText("Publish failed.")).toBeTruthy();
+		expect(publishPubSubMessageFn).toHaveBeenCalledTimes(5);
+	});
 });

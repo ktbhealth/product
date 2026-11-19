@@ -17,11 +17,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Forbidden } from "@ktb/authz";
+
 import { QueueAdmin, type EnqueueJobResult } from "./admin.ts";
 import { enqueueJobFn } from "./fns.ts";
 
 let currentEmail: string | null = "admin@x.com";
 let enqueueResult: EnqueueJobResult = { ok: true };
+let denyEnqueue = false;
 const enqueued: { kind: string; payload: unknown }[] = [];
 
 const adminStub = QueueAdmin.of({
@@ -30,7 +33,9 @@ const adminStub = QueueAdmin.of({
 	kinds: () => Effect.succeed(["jobs.ping"]),
 	enqueue: (kind, payload) => {
 		enqueued.push({ kind, payload });
-		return Effect.succeed(enqueueResult);
+		return denyEnqueue
+			? Effect.fail(new Forbidden({ path: "queue.enqueue" }))
+			: Effect.succeed(enqueueResult);
 	},
 });
 
@@ -67,6 +72,17 @@ describe("enqueueJobFn", () => {
 		useSession("admin@x.com");
 		const res = await enqueueJobFn({ data: { kind: "jobs.ping" } });
 		expect(res).toEqual({ ok: true });
+	});
+
+	it("collapses a Forbidden service failure into a forbidden result", async () => {
+		useSession("admin@x.com");
+		denyEnqueue = true;
+		try {
+			const res = await enqueueJobFn({ data: { kind: "jobs.ping" } });
+			expect(res).toEqual({ ok: false, reason: "forbidden" });
+		} finally {
+			denyEnqueue = false;
+		}
 	});
 
 	it("rejects anonymous sessions", async () => {
