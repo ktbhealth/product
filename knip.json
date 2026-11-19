@@ -71,6 +71,13 @@
 			// vi.mock("@tanstack/react-start/server") factory — no static
 			// import for knip to count.
 			"ignoreDependencies": []
+		},
+		"plugins/theme": {
+			// hb-subset/patch-wasm.mjs is a provenance script — run by
+			// hand (`bun hb-subset/patch-wasm.mjs`) to reproduce the
+			// vendored src/hb-subset.wasm byte-identically; never
+			// imported by app code.
+			"entry": ["hb-subset/*.mjs"]
 		}
 	}
 }
