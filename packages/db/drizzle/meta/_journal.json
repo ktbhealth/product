@@ -421,6 +421,13 @@
       "when": 1795105640227,
       "tag": "0060_redundant_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "6",
+      "when": 1795108736751,
+      "tag": "0061_slimy_dreaming_celestial",
+      "breakpoints": true
     }
   ]
 }

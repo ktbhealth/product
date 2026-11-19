@@ -81,6 +81,58 @@ export const subjectRoles = sqliteTable(
 );
 
 /**
+ * Zanzibar-style relation tuples (P-101): the grant graph the
+ * permission resolver reads. `role_permissions`/`subject_roles` stay
+ * the admin-facing store; every write dual-writes here so the two
+ * never drift. Two encodings coexist:
+ *
+ * - role grant: `objectType` = resource ("patient", "platform", …),
+ *   `objectId` = "*" wildcard, `relation` = action ("read",
+ *   "messages.read", …), `subjectKind` = "role",
+ *   `subjectId` = the role NAME (names are unique — tuples survive
+ *   role id changes and read naturally);
+ * - role membership: `objectType` = "role", `objectId` = role name,
+ *   `relation` = "member", subject = the assignee ("user"/"group").
+ *
+ * NO foreign keys — object and subject are polymorphic strings by
+ * design. `tenantId` NULL = global, set = tenant-scoped (same
+ * semantics as `subject_roles.tenant_id`); `effect` "deny" wins at
+ * resolve time. Like `subject_roles`, natural-key uniqueness is
+ * enforced by the write path, not the schema (NULLs are distinct in
+ * SQLite unique indexes).
+ */
+export const relationTuples = sqliteTable(
+	"relation_tuples",
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		objectType: text("object_type").notNull(),
+		objectId: text("object_id").notNull(),
+		relation: text().notNull(),
+		subjectKind: text("subject_kind").notNull(),
+		subjectId: text("subject_id").notNull(),
+		effect: text().notNull(),
+		tenantId: text("tenant_id"),
+		expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
+		grantedBy: text("granted_by"),
+		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+	},
+	(table) => [
+		// Resolution looks tuples up by object; the subject index
+		// serves "what can this subject do" walks. The natural-key
+		// index backs the write path's find-then-write upserts.
+		index("relation_tuples_object_idx").on(table.objectType, table.objectId, table.relation),
+		index("relation_tuples_subject_idx").on(table.subjectKind, table.subjectId),
+		index("relation_tuples_natural_idx").on(
+			table.objectType,
+			table.objectId,
+			table.relation,
+			table.subjectKind,
+			table.subjectId,
+		),
+	],
+);
+
+/**
  * Single-row permission epoch counter (id = 1). Bumped on every write
  * to role_permissions / subject_roles / group-membership-affecting
  * tables; cached grant sets are keyed by it so changes propagate on
@@ -95,3 +147,4 @@ export type Role = typeof roles.$inferSelect;
 export type RolePermission = typeof rolePermissions.$inferSelect;
 export type SubjectRole = typeof subjectRoles.$inferSelect;
 export type PermissionEpoch = typeof permissionEpoch.$inferSelect;
+export type RelationTuple = typeof relationTuples.$inferSelect;
