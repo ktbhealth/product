@@ -137,6 +137,9 @@ describe("DocumentStoreAdminLive", () => {
 			asUser(Effect.flatMap(DocumentStoreAdmin, (a) => a.listDocuments("admin.notes"))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 		await expect(
+			asUser(Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments())),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		await expect(
 			asUser(Effect.flatMap(DocumentStoreAdmin, (a) => a.migrateCollection("admin.notes"))),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
@@ -304,6 +307,56 @@ describe("DocumentStoreAdminLive", () => {
 		await expect(
 			asAdmin(Effect.flatMap(DocumentStoreAdmin, (a) => a.getDocument("admin.notes", created.id))),
 		).resolves.toBeNull();
+	});
+
+	it("browseDocuments pages every collection unscoped with scope metadata", async () => {
+		// Seed one malformed-JSON row directly — the browser must not 500.
+		const coll = await db
+			.select()
+			.from(documentCollections)
+			.where(eq(documentCollections.name, "admin.notes"));
+		const now = new Date();
+		await db.insert(documentRecords).values({
+			collectionId: coll[0]!.id,
+			data: "{corrupt",
+			ownerId: "u7",
+			createdAt: now,
+			updatedAt: now,
+		});
+
+		const all = await asAdmin(Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments()));
+		// admin.notes ×3 (personal, tenant, corrupt) + legacy.thing ×1.
+		expect(all.total).toBe(4);
+		const names = new Set(all.rows.map((r) => r.collection));
+		expect(names.has("admin.notes")).toBe(true);
+		expect(names.has("legacy.thing")).toBe(true);
+
+		const tenantRow = all.rows.find((r) => r.data.title === "tenant-doc")!;
+		expect(tenantRow.tenantId).toBe(1);
+		const personal = all.rows.find((r) => r.data.title === "personal")!;
+		expect(personal.ownerId).toBe("u1");
+		expect(personal.tenantId).toBeNull();
+		// Malformed payload decodes to {} instead of throwing.
+		expect(all.rows.find((r) => r.ownerId === "u7")?.data).toEqual({});
+
+		const filtered = await asAdmin(
+			Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments({ collection: "admin.notes" })),
+		);
+		expect(filtered.total).toBe(3);
+		expect(filtered.rows.every((r) => r.collection === "admin.notes")).toBe(true);
+
+		// Unknown filter → empty page (a filter, not a lookup).
+		await expect(
+			asAdmin(
+				Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments({ collection: "no.such" })),
+			),
+		).resolves.toEqual({ rows: [], total: 0 });
+
+		const paged = await asAdmin(
+			Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments({ limit: 2, offset: 1 })),
+		);
+		expect(paged.rows).toHaveLength(2);
+		expect(paged.total).toBe(4);
 	});
 
 	it("migrateCollection sweeps stored documents unscoped (T-130)", async () => {

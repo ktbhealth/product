@@ -24,6 +24,7 @@ import { f } from "./fields.ts";
 import { DocumentStoreAdmin, DocumentStoreAdminLive } from "./admin.ts";
 import { DocumentStoreLive, DOCUMENT_STORE_TEST_DDL } from "./service.ts";
 import {
+	browseDocumentsFn,
 	createDocumentFn,
 	deleteDocumentFn,
 	documentsFn,
@@ -99,6 +100,7 @@ describe("document-store fns", () => {
 		await expect(documentsFn({ data: { collection: "fns.notes" } })).rejects.toThrow(
 			"unauthenticated",
 		);
+		await expect(browseDocumentsFn({ data: {} })).rejects.toThrow("unauthenticated");
 		await expect(
 			createDocumentFn({ data: { collection: "fns.notes", data: { title: "x" } } }),
 		).rejects.toThrow("unauthenticated");
@@ -114,6 +116,9 @@ describe("document-store fns", () => {
 			await expect(documentsFn({ data: { collection: "fns.notes" } })).rejects.toThrow(
 				'plugin "document-store.admin" is disabled',
 			);
+			await expect(browseDocumentsFn({ data: {} })).rejects.toThrow(
+				'plugin "document-store.admin" is disabled',
+			);
 			await expect(
 				createDocumentFn({ data: { collection: "fns.notes", data: {} } }),
 			).rejects.toThrow('plugin "document-store.admin" is disabled');
@@ -126,6 +131,7 @@ describe("document-store fns", () => {
 		currentEmail = "doc@x.com";
 		await expect(listCollectionsFn()).resolves.toBeNull();
 		await expect(documentsFn({ data: { collection: "fns.notes" } })).resolves.toBeNull();
+		await expect(browseDocumentsFn({ data: {} })).resolves.toBeNull();
 		await expect(
 			createDocumentFn({ data: { collection: "fns.notes", data: { title: "x" } } }),
 		).resolves.toEqual({ status: "denied" });
@@ -221,6 +227,30 @@ describe("document-store fns", () => {
 		});
 	});
 
+	it("browses documents across collections with filter and paging", async () => {
+		currentEmail = "admin@x.com";
+		await createDocumentFn({ data: { collection: "fns.notes", data: { title: "b1" } } });
+		await createDocumentFn({ data: { collection: "fns.uniq", data: { code: "browse-1" } } });
+
+		const all = await browseDocumentsFn({ data: {} });
+		expect(all).not.toBeNull();
+		const collections = new Set(all!.rows.map((r) => r.collection));
+		expect(collections.has("fns.notes")).toBe(true);
+		expect(collections.has("fns.uniq")).toBe(true);
+
+		const filtered = await browseDocumentsFn({ data: { collection: "fns.uniq" } });
+		expect(filtered!.rows.every((r) => r.collection === "fns.uniq")).toBe(true);
+		expect(filtered!.total).toBeGreaterThan(0);
+
+		// Unknown filter → empty page, not an error.
+		const none = await browseDocumentsFn({ data: { collection: "no.such" } });
+		expect(none).toEqual({ rows: [], total: 0 });
+
+		const paged = await browseDocumentsFn({ data: { limit: 1, offset: 0 } });
+		expect(paged!.rows).toHaveLength(1);
+		expect(paged!.total).toBe(all!.total);
+	});
+
 	it("maps unique and ref violations to invalid results", async () => {
 		currentEmail = "admin@x.com";
 		const first = await createDocumentFn({
@@ -288,6 +318,9 @@ describe("document-store fns", () => {
 		).rejects.toBeInstanceOf(Error);
 		await expect(deleteDocumentFn({ data: { id: 1 } } as never)).rejects.toBeInstanceOf(Error);
 		await expect(migrateCollectionFn({ data: {} } as never)).rejects.toBeInstanceOf(Error);
+		await expect(browseDocumentsFn({ data: { limit: "x" } } as never)).rejects.toBeInstanceOf(
+			Error,
+		);
 	});
 
 	it("propagates unexpected service errors instead of mapping them", async () => {
@@ -295,6 +328,7 @@ describe("document-store fns", () => {
 			listCollections: () => Effect.fail({ _tag: "Other" }),
 			getCollection: () => Effect.fail({ _tag: "Other" }),
 			listDocuments: () => Effect.fail({ _tag: "Other" }),
+			browseDocuments: () => Effect.fail({ _tag: "Other" }),
 			getDocument: () => Effect.fail({ _tag: "Other" }),
 			insertDocument: () => Effect.fail({ _tag: "Other" }),
 			updateDocument: () => Effect.fail({ _tag: "Other" }),
@@ -317,6 +351,7 @@ describe("document-store fns", () => {
 			await expect(documentsFn({ data: { collection: "fns.notes" } })).rejects.toMatchObject({
 				_tag: "Other",
 			});
+			await expect(browseDocumentsFn({ data: {} })).rejects.toMatchObject({ _tag: "Other" });
 			await expect(
 				createDocumentFn({ data: { collection: "fns.notes", data: {} } }),
 			).rejects.toMatchObject({ _tag: "Other" });
@@ -340,6 +375,7 @@ describe("document-store fns", () => {
 			listCollections: () => Effect.fail(new Error("plain-boom")),
 			getCollection: () => Effect.fail(new Error("plain-boom")),
 			listDocuments: () => Effect.fail("str-boom" as never),
+			browseDocuments: () => Effect.fail(new Error("plain-boom")),
 			getDocument: () => Effect.fail(new Error("plain-boom")),
 			insertDocument: () => Effect.fail(new Error("plain-boom")),
 			updateDocument: () => Effect.fail(new Error("plain-boom")),
@@ -360,6 +396,7 @@ describe("document-store fns", () => {
 		try {
 			await expect(listCollectionsFn()).rejects.toThrow("plain-boom");
 			await expect(documentsFn({ data: { collection: "fns.notes" } })).rejects.toBe("str-boom");
+			await expect(browseDocumentsFn({ data: {} })).rejects.toThrow("plain-boom");
 			await expect(migrateCollectionFn({ data: { collection: "fns.notes" } })).rejects.toThrow(
 				"plain-boom",
 			);
