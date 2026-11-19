@@ -108,8 +108,20 @@ export interface NamespaceInfo {
 	readonly messageCount: number;
 }
 
+/** Per-namespace translation coverage across locales (global scope). */
+export interface NamespaceCoverage {
+	readonly namespace: string;
+	readonly pluginId: string;
+	readonly defaultLocale: string;
+	/** Distinct message keys present in global scope (any status). */
+	readonly keyCount: number;
+	/** locale code → count of those keys with a published live value. */
+	readonly translated: Readonly<Record<string, number>>;
+}
+
 export interface I18nAdminShape {
 	readonly namespaces: () => Effect.Effect<readonly NamespaceInfo[], Forbidden>;
+	readonly coverage: () => Effect.Effect<readonly NamespaceCoverage[], Forbidden>;
 	readonly locales: () => Effect.Effect<readonly LocaleInfo[], Forbidden>;
 	readonly messages: (filter?: MessageFilter) => Effect.Effect<readonly I18nMessage[], Forbidden>;
 	readonly saveDraft: (

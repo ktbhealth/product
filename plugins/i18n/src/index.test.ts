@@ -718,10 +718,11 @@ describe("constants", () => {
 });
 
 describe("i18nPanelPlugin page", () => {
-	const page = i18nPanelPlugin.panel?.pages[0];
+	const page = i18nPanelPlugin.panel?.pages.find((p) => p.path === "/platform/i18n/messages");
 
 	const fakeAdmin = (over: Partial<I18nAdminShape> = {}): I18nAdminShape => ({
 		namespaces: () => Effect.succeed([]),
+		coverage: () => Effect.succeed([]),
 		locales: () => Effect.succeed([]),
 		messages: () => Effect.succeed([]),
 		saveDraft: () => Effect.void,

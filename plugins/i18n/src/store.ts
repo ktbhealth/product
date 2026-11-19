@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import type { MessageRow, MessageScope } from "@ktb/i18n";
@@ -140,6 +140,9 @@ export interface MessageFilter {
 	readonly scope?: MessageScope;
 	readonly scopeId?: string;
 	readonly status?: "draft" | "published";
+	/** Only rows with a staged draft_value (published rows can carry
+	 * one too — status alone doesn't capture "awaiting publish"). */
+	readonly hasDraft?: boolean;
 }
 
 /** Full rows (draft_value included) for the panel matrix/editor. */
@@ -153,6 +156,7 @@ export const listMessageRows = async (
 	if (filter.scope !== undefined) conds.push(eq(i18nMessages.scope, filter.scope));
 	if (filter.scopeId !== undefined) conds.push(eq(i18nMessages.scopeId, filter.scopeId));
 	if (filter.status !== undefined) conds.push(eq(i18nMessages.status, filter.status));
+	if (filter.hasDraft === true) conds.push(isNotNull(i18nMessages.draftValue));
 	return db
 		.select()
 		.from(i18nMessages)

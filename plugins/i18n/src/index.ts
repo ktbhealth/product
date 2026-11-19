@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { LanguagesIcon } from "lucide-react";
+import { BoxesIcon, FileClockIcon, GlobeIcon, LanguagesIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
 import { auditServicesPlugin } from "@ktb/audit";
@@ -10,7 +10,13 @@ import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import { I18nAdmin } from "./contract.ts";
 import { I18nAdminLive } from "./admin.ts";
-import { I18nPlatformPage } from "./platform-page.tsx";
+import {
+	I18nDraftsPlatformPage,
+	I18nIndexRedirect,
+	I18nLocalesPlatformPage,
+	I18nNamespacesPlatformPage,
+	I18nPlatformPage,
+} from "./platform-page.tsx";
 import { I18nRuntimeLive } from "./runtime.ts";
 import {
 	i18nCrdtUpdates,
@@ -91,30 +97,86 @@ export const i18nAdminServicesPlugin = definePlugin({
 	services: I18nAdminLive,
 });
 
-// Chrome contribution: the console sidebar entry (P-060 region).
+// Chrome contribution: the console sidebar entries (P-060 region).
 export const i18nChromePlugin = definePlugin({
 	id: "i18n.chrome",
 	meta: { keywords: ["i18n", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
-			id: "i18n.sidebar",
+			id: "i18n.sidebar.messages",
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
-					to: "/platform/i18n",
-					label: "Translations",
+					to: "/platform/i18n/messages",
+					label: "Messages",
 					icon: LanguagesIcon,
-					group: "Presentation",
+					group: "Internationalization",
+				},
+			},
+		},
+		{
+			id: "i18n.sidebar.locales",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/i18n/locales",
+					label: "Locales",
+					icon: GlobeIcon,
+					group: "Internationalization",
+				},
+			},
+		},
+		{
+			id: "i18n.sidebar.drafts",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/i18n/drafts",
+					label: "Drafts",
+					icon: FileClockIcon,
+					group: "Internationalization",
+				},
+			},
+		},
+		{
+			id: "i18n.sidebar.namespaces",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/i18n/namespaces",
+					label: "Namespaces",
+					icon: BoxesIcon,
+					group: "Internationalization",
 				},
 			},
 		},
 	],
 });
 
-// Panel (system console) contribution: /platform/i18n is mounted by the
-// platform plugin's physical route subtree; this declares the page.
+/** Read gate shared by every /platform/i18n page: rbac grant OR admin
+ * allowlist — non-readers get a hard 404. */
+const i18nReadGuard = () =>
+	Effect.gen(function* () {
+		const permissionsOpt = yield* Effect.serviceOption(Permissions);
+		if (Option.isSome(permissionsOpt)) {
+			const ok = yield* permissionsOpt.value.can("i18n", "messages.read");
+			if (ok) return true;
+		}
+		const platformAdmin = yield* PlatformAdmin;
+		return yield* platformAdmin.requireAdmin().pipe(
+			Effect.as(true),
+			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+		);
+	});
+
+// Panel (system console) contribution: the /platform/i18n subtree is
+// mounted by the platform plugin's physical route; this declares the
+// pages. /platform/i18n itself redirects to the messages matrix.
 export const i18nPanelPlugin = definePlugin({
 	id: "i18n.panel",
 	meta: { keywords: ["i18n", "ui", "admin"] },
@@ -122,24 +184,16 @@ export const i18nPanelPlugin = definePlugin({
 	panel: {
 		pages: [
 			{
-				id: "i18n.messages",
+				id: "i18n.index",
 				path: "/platform/i18n",
+				component: I18nIndexRedirect,
+				guard: i18nReadGuard,
+			},
+			{
+				id: "i18n.messages",
+				path: "/platform/i18n/messages",
 				component: I18nPlatformPage,
-				// Read gate mirrors the service: rbac grant OR admin
-				// allowlist — non-readers get a hard 404.
-				guard: () =>
-					Effect.gen(function* () {
-						const permissionsOpt = yield* Effect.serviceOption(Permissions);
-						if (Option.isSome(permissionsOpt)) {
-							const ok = yield* permissionsOpt.value.can("i18n", "messages.read");
-							if (ok) return true;
-						}
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
+				guard: i18nReadGuard,
 				loader: () =>
 					Effect.gen(function* () {
 						const admin = yield* I18nAdmin;
@@ -149,6 +203,55 @@ export const i18nPanelPlugin = definePlugin({
 						const empty = { namespaces: [], locales: [] };
 						return yield* Effect.all({
 							namespaces: admin.namespaces(),
+							locales: admin.locales(),
+						}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
+					}),
+			},
+			{
+				id: "i18n.locales",
+				path: "/platform/i18n/locales",
+				component: I18nLocalesPlatformPage,
+				guard: i18nReadGuard,
+				loader: () =>
+					Effect.gen(function* () {
+						const admin = yield* I18nAdmin;
+						const empty = { locales: [] };
+						return yield* admin.locales().pipe(
+							Effect.map((locales) => ({ locales })),
+							Effect.catchTag("Forbidden", () => Effect.succeed(empty)),
+						);
+					}),
+			},
+			{
+				id: "i18n.drafts",
+				path: "/platform/i18n/drafts",
+				component: I18nDraftsPlatformPage,
+				guard: i18nReadGuard,
+				loader: () =>
+					Effect.gen(function* () {
+						const admin = yield* I18nAdmin;
+						const empty = { drafts: [], locales: [] };
+						return yield* Effect.all({
+							// Global scope only — admin.messages forces scope
+							// global for plain read-grant holders; hasDraft
+							// captures staged edits on published rows too.
+							drafts: admin.messages({ hasDraft: true }),
+							locales: admin.locales(),
+						}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
+					}),
+			},
+			{
+				id: "i18n.namespaces",
+				path: "/platform/i18n/namespaces",
+				component: I18nNamespacesPlatformPage,
+				guard: i18nReadGuard,
+				loader: () =>
+					Effect.gen(function* () {
+						const admin = yield* I18nAdmin;
+						const empty = { namespaces: [], coverage: [], locales: [] };
+						return yield* Effect.all({
+							namespaces: admin.namespaces(),
+							coverage: admin.coverage(),
 							locales: admin.locales(),
 						}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(empty)));
 					}),

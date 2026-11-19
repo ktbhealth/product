@@ -86,12 +86,8 @@ describe("I18nPage", () => {
 		expect(await screen.findByText("Oi")).toBeTruthy();
 		expect(screen.getAllByText("draft").length).toBeGreaterThan(0);
 		// qps is pseudo-localized at slice time — it never gets a matrix
-		// column, but the locales row still lists it.
+		// column (locale administration lives on /platform/i18n/locales).
 		expect(screen.queryByRole("columnheader", { name: "Pseudo" })).toBeNull();
-		expect(screen.getByText("Pseudo")).toBeTruthy();
-		// Locales row still lists every locale incl. disabled + pseudo.
-		expect(screen.getByText("Français")).toBeTruthy();
-		expect(screen.getByLabelText("Toggle locale fr")).toBeTruthy();
 	});
 
 	it("shows a page-level error when a fetch-independent action fails", async () => {
@@ -448,17 +444,6 @@ describe("I18nPage", () => {
 		expect(await screen.findByText("missing namespace")).toBeTruthy();
 	});
 
-	it("toggles a locale through i18nSetLocaleFn", async () => {
-		const user = userEvent.setup();
-		render(<I18nPage data={data} />);
-		await screen.findByText("title");
-		await user.click(screen.getByLabelText("Toggle locale fr"));
-		await waitFor(() =>
-			expect(fns.i18nSetLocaleFn).toHaveBeenCalledWith({ data: { code: "fr", enabled: true } }),
-		);
-		expect(await screen.findByText("fr enabled.")).toBeTruthy();
-	});
-
 	it("retargets the dialog to a portal scope with its own scope id", async () => {
 		const user = userEvent.setup();
 		render(<I18nPage data={data} />);
@@ -484,23 +469,6 @@ describe("I18nPage", () => {
 		await user.click(within(dialog).getAllByRole("combobox")[1]!);
 		await user.click(await screen.findByRole("option", { name: "rich" }));
 		expect(within(dialog).getByLabelText("Rich text preview")).toBeTruthy();
-	});
-
-	it("toggles locales both ways and surfaces bare denials", async () => {
-		fns.i18nSetLocaleFn
-			.mockResolvedValueOnce({ ok: false, error: "nope" })
-			.mockResolvedValueOnce({ ok: false });
-		const user = userEvent.setup();
-		render(<I18nPage data={data} />);
-		await screen.findByText("title");
-		await user.click(screen.getByLabelText("Toggle locale fr"));
-		expect(await screen.findByText("nope")).toBeTruthy();
-		// A bare { ok:false } falls back to the generic denial text.
-		await user.click(screen.getByLabelText("Toggle locale en"));
-		expect(await screen.findByText("denied toggling en")).toBeTruthy();
-		// Successful disable reports the new state.
-		await user.click(screen.getByLabelText("Toggle locale en"));
-		expect(await screen.findByText("en disabled.")).toBeTruthy();
 	});
 
 	it("scopes the matrix to tenant rows after entering a scope id", async () => {

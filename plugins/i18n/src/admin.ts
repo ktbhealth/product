@@ -23,6 +23,7 @@ import {
 	validateMessageId,
 	type I18nExportPayload,
 	type MessageId,
+	type NamespaceCoverage,
 	type NamespaceInfo,
 } from "./contract.ts";
 import { replaceDocValue, snapshotUpdate } from "./crdt.ts";
@@ -296,6 +297,63 @@ export const I18nAdminLive = Layer.effect(
 					yield* requirePermission(I18N_READ_ACTION, "i18n.messages.read");
 					const rows = yield* Effect.promise(() => listLocales(db));
 					return rows;
+				}),
+
+			coverage: () =>
+				Effect.gen(function* () {
+					yield* requirePermission(I18N_READ_ACTION, "i18n.messages.read");
+					// Global scope only — same visibility rule as namespaces():
+					// a plain read-grant holder must not see other scopes' copy.
+					const [registered, rows, locs] = yield* Effect.all([
+						Effect.promise(() => db.select().from(i18nNamespaces)),
+						Effect.promise(() => listMessageRows(db, { scope: "global", scopeId: "" })),
+						Effect.promise(() => listLocales(db)),
+					]);
+					const keysByNs = new Map<string, Set<string>>();
+					const translated = new Map<string, Map<string, Set<string>>>();
+					for (const r of rows) {
+						let ks = keysByNs.get(r.namespace);
+						if (ks === undefined) {
+							ks = new Set();
+							keysByNs.set(r.namespace, ks);
+						}
+						ks.add(r.key);
+						// Only published rows serve traffic — staged drafts and
+						// never-published rows don't count as coverage.
+						if (r.status === "published") {
+							let byLocale = translated.get(r.namespace);
+							if (byLocale === undefined) {
+								byLocale = new Map();
+								translated.set(r.namespace, byLocale);
+							}
+							let keys = byLocale.get(r.locale);
+							if (keys === undefined) {
+								keys = new Set();
+								byLocale.set(r.locale, keys);
+							}
+							keys.add(r.key);
+						}
+					}
+					const meta = new Map(registered.map((r) => [r.namespace, r]));
+					const localeCodes = locs.map((l) => l.code);
+					const names = new Set([...meta.keys(), ...keysByNs.keys()]);
+					const out: NamespaceCoverage[] = [];
+					for (const ns of [...names].sort((a, b) => a.localeCompare(b))) {
+						const m = meta.get(ns);
+						const byLocale = translated.get(ns);
+						const translatedRec: Record<string, number> = {};
+						for (const code of localeCodes) {
+							translatedRec[code] = byLocale?.get(code)?.size ?? 0;
+						}
+						out.push({
+							namespace: ns,
+							pluginId: m?.pluginId ?? "",
+							defaultLocale: m?.defaultLocale ?? "en",
+							keyCount: keysByNs.get(ns)?.size ?? 0,
+							translated: translatedRec,
+						});
+					}
+					return out;
 				}),
 
 			messages: (filter = {}) =>

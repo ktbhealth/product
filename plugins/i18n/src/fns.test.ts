@@ -1,7 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { reactStartMock, reactStartServerMock } from "@ktb/server-fns/testing";
-
 const h = vi.hoisted(() => ({
 	user: { current: null as null | { id: string; email: string; name: string } },
 	admin: {
@@ -17,8 +15,23 @@ const h = vi.hoisted(() => ({
 	},
 }));
 
-vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
-vi.mock("@tanstack/react-start", () => reactStartMock());
+vi.mock("@tanstack/react-start/server", () => ({
+	getRequestHeaders: () => new Headers(),
+}));
+vi.mock("@tanstack/react-start", () => ({
+	createServerFn: () => {
+		let validate: ((x: unknown) => unknown) | undefined;
+		const chain = {
+			validator: (v: (x: unknown) => unknown) => {
+				validate = v;
+				return chain;
+			},
+			handler: (h: (arg?: { data?: unknown }) => unknown) => async (arg?: { data?: unknown }) =>
+				h(arg === undefined ? {} : { ...arg, data: validate ? validate(arg.data) : arg.data }),
+		};
+		return chain;
+	},
+}));
 
 // @ktb/auth is not a direct dep of this plugin — stub the session/runAs
 // ports instead of composing the real server runtime.

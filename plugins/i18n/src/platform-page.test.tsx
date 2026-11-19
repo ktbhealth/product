@@ -6,6 +6,7 @@ type FnMock = (arg: { data: unknown }) => Promise<unknown>;
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: vi.fn<() => Promise<void>>(async () => {}) }),
+	useNavigate: () => vi.fn(),
 }));
 
 vi.mock("./fns.ts", () => ({
@@ -37,15 +38,15 @@ describe("I18nPlatformPage", () => {
 				}}
 			/>,
 		);
-		expect(await screen.findByText("Translations")).toBeTruthy();
-		expect(screen.getByText("Locales")).toBeTruthy();
+		expect(await screen.findByText("Messages")).toBeTruthy();
+		expect(screen.getByText("English")).toBeTruthy();
 	});
 
 	it("tolerates missing or malformed loader data", async () => {
 		render(<I18nPlatformPage ctx={ctx} data={null} />);
-		expect(await screen.findByText("Translations")).toBeTruthy();
+		expect(await screen.findByText("Messages")).toBeTruthy();
 		cleanup();
 		render(<I18nPlatformPage ctx={ctx} data={{ namespaces: "nope", locales: 42 }} />);
-		expect(await screen.findByText("Translations")).toBeTruthy();
+		expect(await screen.findByText("Messages")).toBeTruthy();
 	});
 });

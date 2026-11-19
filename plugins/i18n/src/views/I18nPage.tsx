@@ -21,7 +21,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import { Switch } from "@ktbhealth/ui/components/switch";
 import { Input } from "@ktbhealth/ui/components/input";
 import {
 	Table,
@@ -44,7 +43,6 @@ import {
 	i18nNamespaceMessagesFn,
 	i18nPublishFn,
 	i18nSaveDraftFn,
-	i18nSetLocaleFn,
 } from "../fns.ts";
 import {
 	buildCellIndex,
@@ -164,7 +162,6 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		readonly payload: unknown;
 		readonly summary: ImportSummary;
 	} | null>(null);
-	const [localeBusy, setLocaleBusy] = useState<string | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
 	// Message rows are fetched per selected namespace + scope — the
 	// loader only ships namespaces + locales so the table never hits
@@ -286,29 +283,6 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		}
 	};
 
-	/** Locale enable/disable toggle — the loader ships `locales`, so an
-	 * invalidate re-runs the panel loader and the matrix columns +
-	 * locales row refresh from props. */
-	const toggleLocale = async (code: string, enabled: boolean) => {
-		setError(null);
-		setNotice(null);
-		setLocaleBusy(code);
-		try {
-			const res = (await i18nSetLocaleFn({ data: { code, enabled } })) as {
-				ok?: boolean;
-				error?: string;
-			} | null;
-			if (res?.ok === false) {
-				setError(res.error ?? `denied toggling ${code}`);
-				return;
-			}
-			setNotice(`${code} ${enabled ? "enabled" : "disabled"}.`);
-			await router.invalidate();
-		} finally {
-			setLocaleBusy(null);
-		}
-	};
-
 	/** Confirmed import: the file was already parsed + summarized
 	 * client-side; a foreign namespace switches the selector so the
 	 * imported rows are visible (the fetch effect refetches on
@@ -358,7 +332,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	return (
 		<PageContainer>
 			<PageHeader
-				title="Translations"
+				title="Messages"
 				description="DB-canonical UI copy — edits stage as drafts until published."
 			/>
 			<div className="mb-4 flex items-center gap-3">
@@ -468,23 +442,6 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						});
 					}}
 				/>
-			</div>
-			<div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
-				<span className="text-sm text-muted-foreground">Locales</span>
-				{data.locales.map((l) => (
-					<span key={l.code} className="flex items-center gap-2 text-sm">
-						<Switch
-							size="sm"
-							checked={l.enabled}
-							disabled={busy || localeBusy !== null}
-							onCheckedChange={(c) => void toggleLocale(l.code, c === true)}
-							aria-label={`Toggle locale ${l.code}`}
-						/>
-						{l.endonym}
-						<span className="font-mono text-xs text-muted-foreground">{l.code}</span>
-						{!l.enabled && <Badge variant="secondary">disabled</Badge>}
-					</span>
-				))}
 			</div>
 			{error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
 			{notice !== null && <p className="mb-3 text-sm text-muted-foreground">{notice}</p>}
