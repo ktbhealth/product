@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
  * Plugin-owned table definition (P-061): aggregated into the drizzle

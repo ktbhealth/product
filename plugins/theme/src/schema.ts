@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
 /**
  * Plugin-owned table definitions (P-061/P-082): aggregated into the

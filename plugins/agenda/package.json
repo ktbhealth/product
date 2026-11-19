@@ -17,6 +17,7 @@
 		"@ktb/clinician": "workspace:*",
 		"@ktb/consultations": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/groups": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/patients": "workspace:*",

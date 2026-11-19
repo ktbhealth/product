@@ -1,13 +1,10 @@
-import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
-// Relative import on purpose, twice over: `@ktb/groups` already
-// depends on `@ktb/audit` (the Audit service groups mutations record
-// through), so a package-specifier import of `@ktb/groups/schema` here
-// would create a workspace package cycle — and drizzle-kit's CJS
-// resolver cannot follow `@ktb/*` specifiers anyway (T-143). The
-// schema subpath resolves to this same module, so the FK target is
-// identical either way.
-import { groups } from "../../groups/src/schema.ts";
+// Deliberate package cycle: @ktb/groups depends on @ktb/audit (the
+// Audit service groups mutations record through), while this schema's
+// tenant_id FK needs @ktb/groups/schema. The schema subpath is a leaf
+// module (table defs only), so the cycle never reaches service code.
+import { groups } from "@ktb/groups/schema";
 
 /**
  * Platform admin audit log (T-037): one append-only row per

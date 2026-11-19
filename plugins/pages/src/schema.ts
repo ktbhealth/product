@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 import { layouts } from "@ktb/layouts/schema";
 import { richText } from "@ktb/rich-text/schema";
 import { schemas } from "@ktb/schemas/schema";

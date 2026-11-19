@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
 /**
  * Wizard tables: admin-authored wizard DEFINITIONS (`wizard_defs` —

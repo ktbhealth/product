@@ -1,9 +1,6 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-// Relative imports on purpose: drizzle-kit loads the composed schema
-// through a CJS resolver that cannot follow `@ktb/*` package
-// specifiers — same pattern as plugins/doctors/src/schema.ts.
-import { evalInstance, evalInstanceItem } from "../../eval-persona/src/schema.ts";
+import { evalInstance, evalInstanceItem } from "@ktb/eval-persona/schema";
 
 /**
  * Eval run tables — step 3 of the linear eval pipeline (personas →

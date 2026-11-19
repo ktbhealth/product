@@ -1,13 +1,8 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-// Relative imports on purpose: drizzle-kit loads the composed schema
-// through a CJS resolver that cannot follow `@ktb/*` package
-// specifiers, and the generated packages/db/src/schema.gen.ts reaches
-// plugin sources by relative path anyway — keep the FK targets on the
-// same module resolution.
-import { groups } from "../../groups/src/schema.ts";
-import { patients } from "../../patients/src/schema.ts";
-import { consultations } from "../../consultations/src/schema.ts";
+import { groups } from "@ktb/groups/schema";
+import { patients } from "@ktb/patients/schema";
+import { consultations } from "@ktb/consultations/schema";
 
 /**
  * Appointment lifecycle — scheduling is logistics, not clinical state

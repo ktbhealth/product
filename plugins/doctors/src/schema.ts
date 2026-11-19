@@ -1,11 +1,6 @@
-import { integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { integer, sqliteTable, text } from "@ktb/db/table";
 
-// Relative import on purpose: drizzle-kit loads the composed schema
-// through a CJS resolver that cannot follow `@ktb/*` package
-// specifiers, and the generated packages/db/src/schema.gen.ts reaches
-// plugin sources by relative path anyway — keep the FK targets on the
-// same module resolution.
-import { user } from "../../../packages/db/src/auth.ts";
+import { user } from "@ktb/db/auth";
 
 /**
  * Doctor profile — one per user. The row marks the account as a doctor

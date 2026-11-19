@@ -29,6 +29,7 @@
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/export-pdf": "workspace:*",
+		"@ktb/groups": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/integrity": "workspace:*",
 		"@ktb/interop": "workspace:*",
