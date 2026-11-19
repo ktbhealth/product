@@ -14,25 +14,34 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { Forbidden } from "@ktb/authz";
 import { Db, tx, type DbClient } from "@ktb/db";
 import { themeDefinitions } from "@ktb/db/schema";
+import { FontCatalog, type FontCatalogFamily } from "@ktb/fonts/catalog";
+import { FontHooks } from "@ktb/fonts/hooks";
 import { PlatformAdmin } from "@ktb/platform";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
+import { loadManagedFontAssets, matchManagedFonts } from "./managed-fonts.ts";
 import { deriveThemeTokens } from "./palette.ts";
 import { listThemeAssets } from "./assets.ts";
-import { parseThemeBrand, presentTheme, type ThemeDefinitionRow } from "./present.ts";
+import {
+	parseThemeBrand,
+	parseThemeFontConfig,
+	presentTheme,
+	type ThemeDefinitionRow,
+} from "./present.ts";
 import type {
 	ResolvedTheme,
 	ThemeBrand,
 	ThemeFontConfig,
 	ThemeResolveRequest,
 	ThemeAssetSummary,
-	ThemeJsonValue,
 	ThemeSeeds,
 	ThemeSummary,
 } from "./types.ts";
@@ -330,6 +339,64 @@ export const ThemeLive = Layer.effect(
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
 
+		// Optional edge (fonts.services dep): the fonts plugin's open
+		// catalog port — absent it, `fonts.sources` managed references
+		// simply never resolve and free-form families keep working.
+		const fontCatalog = yield* Effect.serviceOption(FontCatalog);
+		// Same optional edge for the change-notification registry: every
+		// committed provider/family mutation clears the cached catalog
+		// snapshot so the next resolve re-reads font_families (the
+		// FontHooks broadcast contract — see plugins/fonts/src/hooks.ts).
+		const fontHooks = yield* Effect.serviceOption(FontHooks);
+		const catalogCache = yield* Ref.make<readonly FontCatalogFamily[] | null>(null);
+		if (Option.isSome(fontHooks)) {
+			fontHooks.value.register("theme.font-catalog", () =>
+				Ref.set(catalogCache, null).pipe(Effect.asVoid),
+			);
+		}
+
+		/** Cached catalog snapshot — branding must never take a page
+		 * down, so read failures degrade to an empty catalog (managed
+		 * sources fall back) and are NOT cached: the next resolve
+		 * retries the read. */
+		const catalogSnapshot = Effect.gen(function* () {
+			if (Option.isNone(fontCatalog)) return [] as readonly FontCatalogFamily[];
+			const hit = yield* Ref.get(catalogCache);
+			if (hit !== null) return hit;
+			const entries = yield* fontCatalog.value
+				.list()
+				.pipe(
+					Effect.catchCause((cause) =>
+						Effect.logWarning("font catalog read failed", cause).pipe(Effect.as(null)),
+					),
+				);
+			if (entries === null) return [] as readonly FontCatalogFamily[];
+			yield* Ref.set(catalogCache, entries);
+			return entries;
+		});
+
+		/** Present a row with the managed-font cascade applied: match
+		 * `fonts.sources` against the catalog snapshot, resolve self-host
+		 * assets, then hand the resolutions to presentTheme. Rows without
+		 * sources skip the catalog read entirely. */
+		const presentRow = (row: ThemeRow) =>
+			Effect.gen(function* () {
+				const fonts = parseThemeFontConfig(row.fonts);
+				if (fonts?.sources === undefined) {
+					return presentTheme(row as ThemeDefinitionRow);
+				}
+				const matched = matchManagedFonts(fonts, yield* catalogSnapshot);
+				if (matched.length === 0) {
+					return presentTheme(row as ThemeDefinitionRow);
+				}
+				const managed = yield* Effect.promise(() => loadManagedFontAssets(db, matched)).pipe(
+					Effect.catchCause((cause) =>
+						Effect.logWarning("managed font asset read failed", cause).pipe(Effect.as(matched)),
+					),
+				);
+				return presentTheme(row as ThemeDefinitionRow, { managed });
+			});
+
 		// Create-only seed: an empty theme_definitions table gets the KTB
 		// default as the main row so resolve() always has brand data on
 		// fresh deploys. Failure is logged, never fatal — branding must
@@ -355,7 +422,7 @@ export const ThemeLive = Layer.effect(
 						),
 					),
 				);
-				if (row !== null) return presentTheme(row as ThemeDefinitionRow);
+				if (row !== null) return yield* presentRow(row);
 			}
 			// Chain missed → the enabled is_main row is the fallback.
 			const main = yield* Effect.promise(() => findMainTheme(db)).pipe(
@@ -367,7 +434,7 @@ export const ThemeLive = Layer.effect(
 			);
 			// No main row either → null; the ui token defaults in
 			// globals.css are the final CSS fallback.
-			return main === null ? null : presentTheme(main as ThemeDefinitionRow);
+			return main === null ? null : yield* presentRow(main);
 		});
 
 		return Theme.of({
@@ -380,7 +447,7 @@ export const ThemeLive = Layer.effect(
 			get: Effect.fn("Theme.get")(function* (id: number) {
 				yield* platformAdmin.requireAdmin();
 				const row = yield* Effect.promise(() => getThemeById(db, id));
-				return row === null ? null : presentTheme(row);
+				return row === null ? null : yield* presentRow(row);
 			}),
 			publish: Effect.fn("Theme.publish")(function* (input: ThemePublishInput) {
 				yield* platformAdmin.requireAdmin();

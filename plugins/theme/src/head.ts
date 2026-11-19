@@ -5,7 +5,6 @@
  * from route `head()` on server and client.
  */
 
-import { fontFaceCss, googleFontLinks } from "./present.ts";
 import type { ResolvedTheme } from "./types.ts";
 
 /** Display name a theme gives the app: brand appName wins, then the
@@ -43,7 +42,10 @@ export const themeHead = (theme: ResolvedTheme): ThemeHead => {
 		typeof ogImage === "string" && ogImage.trim() !== ""
 			? [{ property: "og:image", content: ogImage }]
 			: [];
-	const css = `${theme.styleCss}\n${fontFaceCss(theme.fonts)}`.trim();
+	// styleCss + fontFaceCss are the resolved fields — they already
+	// carry the managed-font cascade (presentTheme merges catalog
+	// resolutions in), so heads never recompute from stored fonts.
+	const css = `${theme.styleCss}\n${theme.fontFaceCss}`.trim();
 	return {
 		meta,
 		links,
@@ -64,4 +66,4 @@ export const themeAssets = (
 };
 
 // googleFontLinks is re-exported for callers building custom heads.
-export { googleFontLinks };
+export { googleFontLinks } from "./present.ts";

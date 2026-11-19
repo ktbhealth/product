@@ -21,6 +21,7 @@ export const themeServicesPlugin = definePlugin({
 	id: "theme.services",
 	meta: { keywords: ["theme", "services"] },
 	requiredDeps: ["platform.admin"],
+	optionalDeps: ["fonts.services"],
 });
 
 export const themeBrandPlugin = definePlugin({
@@ -152,6 +153,8 @@ export type {
 	ResolvedTheme,
 	ThemeBrand,
 	ThemeFontConfig,
+	ThemeFontSource,
+	ThemeManagedFont,
 	ThemeResolveRequest,
 	ThemeScopeKind,
 	ThemeAssetSummary,
