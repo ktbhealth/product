@@ -571,7 +571,7 @@ describe("Audit activity feed (P-080)", () => {
 			},
 		);
 		expect(access).toBe(true);
-		expect(seen).toEqual([["audit", "read", { tenantId: 1 }]]);
+		expect(seen).toEqual([["audit", "read", { tenantId: 1, tenantPolicy: "strict" }]]);
 		const result = await asStaff(
 			call((p) => p.activityList()),
 			{

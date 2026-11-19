@@ -22,6 +22,7 @@
 		"@ktb/rbac": "workspace:*",
 		"@ktb/rbac-plugin": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
+		"@ktb/tenant": "workspace:*",
 		"@ktb/views": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
 		"@tanstack/react-router": "1.170.46",

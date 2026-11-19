@@ -13,6 +13,7 @@ import {
 import { defOwnerEnabled } from "@ktb/kernel";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import {
 	exposureKey,
@@ -168,7 +169,16 @@ export const ApiLive = Layer.effect(
 					return yield* Effect.fail(apiError(403, "forbidden", "permission check unavailable"));
 				}
 				const { resource, action } = splitPermission(exposure.permission);
-				const allowed = yield* permissions.value.can(resource, action);
+				// P-084: exposures serve tenant-scoped document data, so
+				// the grant check binds the ambient tenant under
+				// "strict" — global (tenant_id NULL) grants do not bleed
+				// in. No bound Tenant → tenant-less check, global
+				// grants only.
+				const scopeId = tenantScopeId(yield* Tenant);
+				const allowed = yield* permissions.value.can(resource, action, {
+					tenantId: scopeId ?? undefined,
+					tenantPolicy: "strict",
+				});
 				if (!allowed) {
 					return yield* Effect.fail(apiError(403, "forbidden", "permission denied"));
 				}

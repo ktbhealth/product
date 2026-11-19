@@ -25,6 +25,7 @@ import { makeAuth } from "@ktb/auth-better";
 import { ensureDoctorProfile } from "@ktb/doctors";
 import { assignSubject, createRole, setRolePermission } from "@ktb/rbac-plugin";
 import { roles } from "@ktb/rbac-plugin/schema";
+import { writeRelationTuple } from "@ktb/rbac";
 import { inviteSecretary } from "@ktb/secretaries";
 import type { PatientAccessRelation } from "@ktb/patient-access/schema";
 
@@ -49,12 +50,25 @@ const ensurePatient = async (
 		.select({ id: patients.id })
 		.from(patients)
 		.where(and(eq(patients.ownerId, ownerId), eq(patients.name, fields.name)));
-	if (existing) return existing.id;
-	const [row] = await db
-		.insert(patients)
-		.values({ ownerId, ...fields, createdAt: new Date() })
-		.returning({ id: patients.id });
-	return row!.id;
+	let id = existing?.id;
+	if (id === undefined) {
+		const [row] = await db
+			.insert(patients)
+			.values({ ownerId, ...fields, createdAt: new Date() })
+			.returning({ id: patients.id });
+		id = row!.id;
+	}
+	// T-182: record authz reads the `owner` relation tuple, not
+	// patients.owner_id — upsert it for seeded rows too (rows created
+	// before the tuple write shipped have none).
+	await writeRelationTuple(db, {
+		objectType: "patient",
+		objectId: String(id),
+		relation: "owner",
+		subjectKind: "user",
+		subjectId: ownerId,
+	});
+	return id;
 };
 
 const grantPatientAccess = (

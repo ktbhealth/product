@@ -10,7 +10,8 @@ import { audit } from "@ktb/audit";
 import { Integrity, recordVersion, type IntegrityVerification } from "@ktb/integrity";
 import { Db } from "@ktb/db";
 import { PlatformAdmin } from "@ktb/platform";
-import { Forbidden, Principal, requireCanAs, requirePrincipalUser } from "@ktb/authz";
+import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
+import { Permissions } from "@ktb/rbac";
 import { PatientsQueries } from "@ktb/patients/api";
 import { PortalAccess } from "@ktb/patient-access";
 import { ConsultationAudioUpdated, ConsultationCreated } from "./api.ts";
@@ -259,11 +260,17 @@ export const ConsultationsLive = Layer.effect(
 		// ConsultationAudioUpdated; the handler re-reads the row so stream
 		// consumers always get the full projection, never a partial payload.
 		const liveAudioJobs = yield* PubSub.unbounded<AudioJobRow>();
+		// Record authz resolves relation tuples through the rbac plugin's
+		// Permissions port — the optionalDeps edge orders rbac.services
+		// first; absent → record checks fail closed (Forbidden), the same
+		// deny shape as an unbound principal.
+		const permissionsOption = yield* Effect.serviceOption(Permissions);
+		const permissions = Option.isSome(permissionsOption) ? permissionsOption.value : null;
 		// Patient-link guard for save/attach: a patientId must resolve to
 		// a patient the acting user owns (patients.ownerOf is the
 		// cross-plugin lookup). Foreign or missing ids fail `Forbidden` —
-		// same denial shape as a failed permix check, so callers can't
-		// probe which patient ids exist.
+		// same denial shape as a failed owner-tuple check, so callers
+		// can't probe which patient ids exist.
 		const requireOwnedPatient = (patientId: number, path: string) =>
 			Effect.gen(function* () {
 				const owner = yield* patientQueries["patients.ownerOf"]({ id: patientId });
@@ -277,7 +284,23 @@ export const ConsultationsLive = Layer.effect(
 					}
 					return;
 				}
-				yield* requireCanAs("patient.read", { ownerId: owner.ownerId });
+				// T-182: the personal-patient fence is the `owner` relation
+				// tuple — the same check Patients' row authz runs.
+				if (permissions === null) {
+					return yield* Effect.fail(new Forbidden({ path: `rbac.patient.${patientId}.owner` }));
+				}
+				yield* permissions.requireObject("patient", String(patientId), "owner");
+			});
+		// Patient fence for history reads — the same `owner` tuple as
+		// requireOwnedPatient, but the history contract reports an
+		// invisible patient as null rather than Forbidden. A missing
+		// Permissions port fails closed with the requireObject path.
+		const canReadPatientHistory = (patientId: number) =>
+			Effect.gen(function* () {
+				if (permissions === null) {
+					return yield* Effect.fail(new Forbidden({ path: `rbac.patient.${patientId}.owner` }));
+				}
+				return yield* permissions.canObject("patient", String(patientId), "owner");
 			});
 		// Portal reads authorize through the patient-access plugin's
 		// link port — serviceOption keeps this plugin deployable without
@@ -313,7 +336,9 @@ export const ConsultationsLive = Layer.effect(
 				botId?: string;
 			}) {
 				yield* requirePrincipalUser(fields.userId, "consultation.create");
-				yield* requireCanAs("consultation.create");
+				// No separate create check: the retired permix `create:
+				// true` rule only asserted a bound principal, which
+				// requirePrincipalUser already guarantees.
 				if (fields.patientId !== undefined) {
 					yield* requireOwnedPatient(fields.patientId, "consultation.create");
 				}
@@ -397,7 +422,8 @@ export const ConsultationsLive = Layer.effect(
 				input: SaveConsultationInput,
 			) {
 				yield* requirePrincipalUser(userId, "consultation.create");
-				yield* requireCanAs("consultation.create");
+				// Same as create: requirePrincipalUser covers the retired
+				// permix `create: true` rule.
 				if (input.patientId !== undefined) {
 					yield* requireOwnedPatient(input.patientId, "patient.read");
 				}
@@ -453,7 +479,7 @@ export const ConsultationsLive = Layer.effect(
 				return saved;
 			}),
 			list: Effect.fn("Consultations.list")(function* (userId: string, patientId?: number) {
-				yield* requireCanAs("consultation.read", { userId });
+				yield* requirePrincipalUser(userId, "consultation.read");
 				const scope = yield* consultationScope(userId);
 				return yield* Effect.promise(() => listConsultations(db, patientId, scope));
 			}),
@@ -606,7 +632,7 @@ export const ConsultationsLive = Layer.effect(
 				// Tenant members read tenant-owned rows; personal rows stay
 				// owner-scoped and platform admins read cross-owner either
 				// way (admin detail page).
-				yield* authorizeConsultationRow(platformAdmin, detail, "consultation.read");
+				yield* authorizeConsultationRow(platformAdmin, permissions, detail, "consultation.read");
 				// Sensitive-read audit: detail.patientId joins the row to the
 				// patient-facing feed; tenant_id is row-authoritative so
 				// cross-owner admin reads scope correctly. ids only.
@@ -623,7 +649,7 @@ export const ConsultationsLive = Layer.effect(
 				yield* requirePrincipalUser(userId, "consultation.read");
 				const row = yield* Effect.promise(() => getLiveConsultation(db, id));
 				if (row === null) return null;
-				yield* authorizeConsultationRow(platformAdmin, row, "consultation.read");
+				yield* authorizeConsultationRow(platformAdmin, permissions, row, "consultation.read");
 				return { transcript: row.transcript, status: row.status };
 			}),
 			attachAnamnesis: Effect.fn("Consultations.attachAnamnesis")(function* (
@@ -634,7 +660,7 @@ export const ConsultationsLive = Layer.effect(
 				const owner = yield* Effect.promise(() => consultationOwner(db, input.consultationId));
 				// Missing row → the UPDATE below is a no-op; nothing to authorize.
 				if (owner !== null) {
-					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
 					// T-145: the ROW's tenant governs the cipher rule — the
 					// ambient scope may be personal while the row is
 					// tenant-owned.
@@ -737,7 +763,7 @@ export const ConsultationsLive = Layer.effect(
 				if (row === null) return null;
 				// Same read authz as `get` — the report leaks no content, but
 				// the chain's existence/shape is still record metadata.
-				yield* authorizeConsultationRow(platformAdmin, row, "consultation.read");
+				yield* authorizeConsultationRow(platformAdmin, permissions, row, "consultation.read");
 				const option = yield* Effect.serviceOption(Integrity);
 				const base: IntegrityVerification = Option.isSome(option)
 					? yield* option.value.verify(ANAMNESIS_ENTITY_TYPE, id)
@@ -773,7 +799,7 @@ export const ConsultationsLive = Layer.effect(
 				yield* requirePrincipalUser(userId, "consultation.update");
 				const owner = yield* Effect.promise(() => consultationOwner(db, id));
 				if (owner !== null) {
-					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
 				}
 				const scope = yield* consultationScope(userId);
 				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
@@ -794,7 +820,7 @@ export const ConsultationsLive = Layer.effect(
 				yield* requirePrincipalUser(userId, "consultation.update");
 				const owner = yield* Effect.promise(() => consultationOwner(db, input.consultationId));
 				if (owner !== null) {
-					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
 				}
 				yield* Effect.annotateCurrentSpan({
 					userId,
@@ -834,7 +860,7 @@ export const ConsultationsLive = Layer.effect(
 				yield* requirePrincipalUser(userId, "consultation.update");
 				const owner = yield* Effect.promise(() => consultationOwner(db, consultationId));
 				if (owner !== null) {
-					yield* authorizeConsultationRow(platformAdmin, owner, "consultation.update");
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
 				}
 				yield* Effect.annotateCurrentSpan({ userId, consultationId, audioStatus: status });
 				yield* Effect.promise(() => markAudioRouteStatus(db, consultationId, status));
@@ -859,7 +885,11 @@ export const ConsultationsLive = Layer.effect(
 				userId: string,
 				excludeId?: number,
 			) {
-				yield* requireCanAs("consultation.read", { userId });
+				yield* requirePrincipalUser(userId, "consultation.read");
+				// T-182: the patient fence is the owner tuple — same check
+				// requireOwnedPatient runs, reported as null per the
+				// history contract.
+				if (!(yield* canReadPatientHistory(patientId))) return null;
 				const result = yield* Effect.promise(() =>
 					patientHistory(db, patientId, userId, excludeId),
 				);
@@ -883,7 +913,8 @@ export const ConsultationsLive = Layer.effect(
 				userId: string,
 				excludeId?: number,
 			) {
-				yield* requireCanAs("consultation.read", { userId });
+				yield* requirePrincipalUser(userId, "consultation.read");
+				if (!(yield* canReadPatientHistory(patientId))) return null;
 				const result = yield* Effect.promise(() =>
 					patientHistoryRows(db, patientId, userId, excludeId),
 				);

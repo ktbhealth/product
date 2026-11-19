@@ -104,11 +104,23 @@ export class PermissionInvalidator extends Context.Service<
 
 // ---------- resolution ----------
 
+export type TenantPolicy = "inherit" | "strict";
+
 export interface PermissionOptions {
 	/** Active tenant (P-053 `Tenant.id` is `string | number`; stored
 	 * normalized to text). Undefined = global grants only —
 	 * tenant-scoped grants never leak into a tenant-less context. */
 	readonly tenantId?: string | number;
+	/** How tenant_id NULL (global) grants apply to a tenant-scoped
+	 * check (P-084):
+	 * - "inherit" (default, current behaviour): visible tuples are
+	 *   `tenant_id IS NULL OR tenant_id = tid` — global grants satisfy
+	 *   any tenant check.
+	 * - "strict": visible tuples are `tenant_id = tid` ONLY — global
+	 *   (tenant_id NULL) grants do NOT bleed into a tenant-scoped
+	 *   check. With `tenantId` undefined both policies resolve
+	 *   `tenant_id IS NULL` only. */
+	readonly tenantPolicy?: TenantPolicy;
 }
 
 export interface PermissionsShape {
@@ -189,8 +201,23 @@ interface ObjectCacheEntry {
 	readonly notAfter: number | null;
 }
 
-const keyOf = (userId: string, tenantId: string | undefined): string =>
-	`${userId}${GRANT_SEP}${tenantId ?? ""}`;
+const keyOf = (userId: string, tenantId: string | undefined, tenantPolicy: TenantPolicy): string =>
+	`${userId}${GRANT_SEP}${tenantId ?? ""}${GRANT_SEP}${tenantPolicy}`;
+
+/**
+ * Tenant predicate shared by grant and object-tuple resolution
+ * (P-084). `tid` undefined → `tenant_id IS NULL` under BOTH policies
+ * (tenant-scoped tuples never leak into a tenant-less context).
+ * `tid` set + "inherit" → `tenant_id IS NULL OR = tid` (global grants
+ * satisfy every tenant — the historical bleed). `tid` set + "strict"
+ * → `tenant_id = tid` ONLY (global grants are invisible).
+ */
+const tenantCondFor = (tid: string | undefined, tenantPolicy: TenantPolicy) => {
+	if (tid === undefined) return isNull(relationTuples.tenantId);
+	return tenantPolicy === "strict"
+		? eq(relationTuples.tenantId, tid)
+		: or(isNull(relationTuples.tenantId), eq(relationTuples.tenantId, tid));
+};
 
 /**
  * Build the `Permissions` service over a DbClient. `groupIdsFor`
@@ -215,11 +242,12 @@ export const buildPermissions = (
 		objectId: string,
 		relation: string,
 		tenantId: string | number | undefined,
+		tenantPolicy: TenantPolicy,
 	): Effect.Effect<boolean> =>
 		Effect.gen(function* () {
 			const tid = tenantId === undefined ? undefined : String(tenantId);
 			const epoch = yield* Effect.promise(() => readEpoch(db));
-			const key = `obj${GRANT_SEP}${objectType}${GRANT_SEP}${objectId}${GRANT_SEP}${relation}${GRANT_SEP}${userId}${GRANT_SEP}${tid ?? ""}`;
+			const key = `obj${GRANT_SEP}${objectType}${GRANT_SEP}${objectId}${GRANT_SEP}${relation}${GRANT_SEP}${userId}${GRANT_SEP}${tid ?? ""}${GRANT_SEP}${tenantPolicy}`;
 			const now = Date.now();
 			const hit = objectCache.get(key);
 			if (
@@ -231,14 +259,11 @@ export const buildPermissions = (
 			}
 
 			const groupIds = groupIdsFor === undefined ? [] : yield* groupIdsFor(userId);
-			// Same tenant/expiry scope as grant resolution: tenant_id NULL
-			// is global, set = scoped; absent tenant context sees global
-			// tuples only.
-			// Stryker disable next-line ConditionalExpression: when tid is undefined the or-branch binds eq(tenantId, undefined) as NULL; `tenant_id = NULL` is never true, so `isNull OR (tenant_id = NULL)` is identical to `isNull` in a WHERE clause.
-			const tenantCond =
-				tid === undefined
-					? isNull(relationTuples.tenantId)
-					: or(isNull(relationTuples.tenantId), eq(relationTuples.tenantId, tid));
+			// Same tenant/expiry scope as grant resolution: tenant_id
+			// NULL is global, set = scoped; absent tenant context sees
+			// global tuples only. tenantPolicy selects whether global
+			// tuples also satisfy a tenant-scoped check (P-084).
+			const tenantCond = tenantCondFor(tid, tenantPolicy);
 			const unexpired = or(
 				isNull(relationTuples.expiresAt),
 				gt(relationTuples.expiresAt, new Date(now)),
@@ -339,12 +364,13 @@ export const buildPermissions = (
 	const resolve = Effect.fnUntraced(function* (
 		userId: string,
 		tenantId: string | number | undefined,
+		tenantPolicy: TenantPolicy = "inherit",
 	): Effect.fn.Return<GrantSet> {
 		// Tenant ids are `string | number` (P-053); the column is TEXT,
 		// so normalize once — "1" and 1 address the same grant.
 		const tid = tenantId === undefined ? undefined : String(tenantId);
 		const epoch = yield* Effect.promise(() => readEpoch(db));
-		const key = keyOf(userId, tid);
+		const key = keyOf(userId, tid, tenantPolicy);
 		const hit = cache.get(key);
 		const now = Date.now();
 		if (hit !== undefined && hit.epoch === epoch && (hit.notAfter === null || now < hit.notAfter)) {
@@ -357,7 +383,8 @@ export const buildPermissions = (
 		// Role membership is a member tuple (object_type='role',
 		// relation='member') whose subject is the user or one of their
 		// groups; the member tuple's tenant/expiry scope the assignment
-		// exactly like subject_roles did.
+		// exactly like subject_roles did. tenantPolicy (P-084) decides
+		// whether tenant_id NULL tuples satisfy a tenant-scoped check.
 		// Stryker disable next-line ConditionalExpression,EqualityOperator: with empty groupIds, inArray([]) compiles to `false`, so the pushed (subjectKind='group' AND false) condition is always false and `or(userCond, false)` is identical to userCond alone.
 		const subjectConds = [
 			and(eq(relationTuples.subjectKind, "user"), eq(relationTuples.subjectId, userId)),
@@ -367,11 +394,7 @@ export const buildPermissions = (
 				and(eq(relationTuples.subjectKind, "group"), inArray(relationTuples.subjectId, groupIds)),
 			);
 		}
-		// Stryker disable next-line ConditionalExpression: when tid is undefined the or-branch binds eq(tenantId, undefined) as NULL; `tenant_id = NULL` is never true, so `isNull OR (tenant_id = NULL)` is identical to `isNull` in a WHERE clause.
-		const tenantCond =
-			tid === undefined
-				? isNull(relationTuples.tenantId)
-				: or(isNull(relationTuples.tenantId), eq(relationTuples.tenantId, tid));
+		const tenantCond = tenantCondFor(tid, tenantPolicy);
 		const unexpired = or(
 			isNull(relationTuples.expiresAt),
 			gt(relationTuples.expiresAt, new Date(now)),
@@ -487,17 +510,34 @@ export const buildPermissions = (
 	const permissionsFor: PermissionsShape["permissionsFor"] = (userId, tenantId) =>
 		resolve(userId, tenantId);
 
-	const canFor: PermissionsShape["canFor"] = (userId, resource, action, tenantId) =>
+	/** Winning-allow check against a resolved grant set — shared by
+	 * `canFor` (inherit) and the opts-aware `can`/`requirePermission`. */
+	const grantsAllow = (
+		userId: string,
+		resource: string,
+		action: string,
+		tenantId: string | number | undefined,
+		tenantPolicy: TenantPolicy,
+	): Effect.Effect<boolean> =>
 		Effect.map(
-			resolve(userId, tenantId),
+			resolve(userId, tenantId, tenantPolicy),
 			(grants) => grants.get(grantKey(resource, action)) === "allow",
 		);
+
+	const canFor: PermissionsShape["canFor"] = (userId, resource, action, tenantId) =>
+		grantsAllow(userId, resource, action, tenantId, "inherit");
 
 	const can: PermissionsShape["can"] = (resource, action, opts) =>
 		Effect.flatMap(Principal, (principal) =>
 			principal === null
 				? Effect.succeed(false)
-				: canFor(principal.userId, resource, action, opts?.tenantId),
+				: grantsAllow(
+						principal.userId,
+						resource,
+						action,
+						opts?.tenantId,
+						opts?.tenantPolicy ?? "inherit",
+					),
 		);
 
 	const requirePermissionFor: PermissionsShape["requirePermissionFor"] = (
@@ -506,7 +546,7 @@ export const buildPermissions = (
 		action,
 		tenantId,
 	) =>
-		Effect.flatMap(canFor(userId, resource, action, tenantId), (ok) =>
+		Effect.flatMap(grantsAllow(userId, resource, action, tenantId, "inherit"), (ok) =>
 			ok ? Effect.void : Effect.fail(new Forbidden({ path: `rbac.${resource}.${action}` })),
 		);
 
@@ -514,14 +554,31 @@ export const buildPermissions = (
 		Effect.flatMap(Principal, (principal) =>
 			principal === null
 				? Effect.fail(new Forbidden({ path: `rbac.${resource}.${action}` }))
-				: requirePermissionFor(principal.userId, resource, action, opts?.tenantId),
+				: Effect.flatMap(
+						grantsAllow(
+							principal.userId,
+							resource,
+							action,
+							opts?.tenantId,
+							opts?.tenantPolicy ?? "inherit",
+						),
+						(ok) =>
+							ok ? Effect.void : Effect.fail(new Forbidden({ path: `rbac.${resource}.${action}` })),
+					),
 		);
 
 	const canObject: PermissionsShape["canObject"] = (objectType, objectId, relation, opts) =>
 		Effect.flatMap(Principal, (principal) =>
 			principal === null
 				? Effect.succeed(false)
-				: resolveObject(principal.userId, objectType, objectId, relation, opts?.tenantId),
+				: resolveObject(
+						principal.userId,
+						objectType,
+						objectId,
+						relation,
+						opts?.tenantId,
+						opts?.tenantPolicy ?? "inherit",
+					),
 		);
 
 	const requireObject: PermissionsShape["requireObject"] = (
@@ -535,7 +592,14 @@ export const buildPermissions = (
 			principal === null
 				? Effect.fail(new Forbidden({ path }))
 				: Effect.flatMap(
-						resolveObject(principal.userId, objectType, objectId, relation, opts?.tenantId),
+						resolveObject(
+							principal.userId,
+							objectType,
+							objectId,
+							relation,
+							opts?.tenantId,
+							opts?.tenantPolicy ?? "inherit",
+						),
 						(ok) => (ok ? Effect.void : Effect.fail(new Forbidden({ path }))),
 					),
 		);

@@ -8,6 +8,7 @@ import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { patientAccessServicesPlugin } from "@ktb/patient-access";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import {
 	Patients,
 	patientsServicesPlugin,
@@ -110,11 +111,14 @@ export const consultationsServicesPlugin = definePlugin({
 	// readers, DEK envelopes, grants) that degrade to hidden/failed
 	// features when those plugins are absent. PortalAccess (T-141) is
 	// the same again: the portal* reads gate on the patient-access
-	// plugin's active-link port, absent → fail closed.
+	// plugin's active-link port, absent → fail closed. rbac.services
+	// orders first so the Permissions port record authz consumes is
+	// composed (still optional — absent fails record checks closed).
 	optionalDeps: [
 		auditServicesPlugin.id,
 		integrityServicesPlugin.id,
 		patientAccessServicesPlugin.id,
+		rbacServicesPlugin.id,
 		vaultServicesPlugin.id,
 	],
 	services: Layer.mergeAll(

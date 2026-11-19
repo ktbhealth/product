@@ -38,8 +38,14 @@ import {
 	platformPanelPlugin,
 	type PlatformAdminShape,
 } from "@ktb/platform";
-import { Forbidden, Principal, requireCanAs, requirePrincipalUser } from "@ktb/authz";
-import { deleteRelationTuples, writeRelationTuple } from "@ktb/rbac";
+import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
+import {
+	deleteRelationTuples,
+	Permissions,
+	writeRelationTuple,
+	type PermissionsShape,
+} from "@ktb/rbac";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
 import { tenantIsZk, vaultServicesPlugin } from "@ktb/vault";
 import {
@@ -339,11 +345,17 @@ const tenantRowVisible = (tenantId: number) =>
  * access grant outside the tenant (the creator reaches the row by
  * acting inside the tenant, not from personal scope). Everyone else
  * needs the platform-admin override, which works cross-tenant.
- * Personal rows (`tenant_id` NULL) keep the owner-scoped permix check.
+ * Personal rows (`tenant_id` NULL) keep the owner-scoped check — now a
+ * relation-tuple lookup (T-182): `patient:<id>#owner@user:<caller>`,
+ * the same fence the permix `ownerId === userId` rule enforced, now
+ * also admitting group/role/wildcard `owner` grants. A missing
+ * `Permissions` port (rbac plugin not composed) fails closed with the
+ * same `rbac.<type>.<id>.<relation>` path `requireObject` reports.
  */
 const authorizePatientRow = (
 	platformAdmin: PlatformAdminShape,
-	row: { readonly ownerId: string; readonly tenantId: number | null },
+	permissions: PermissionsShape | null,
+	row: { readonly id: number; readonly tenantId: number | null },
 	action: "patient.read" | "patient.update" | "patient.delete",
 ) =>
 	Effect.gen(function* () {
@@ -354,7 +366,11 @@ const authorizePatientRow = (
 				.pipe(Effect.catchTag("Forbidden", () => Effect.fail(new Forbidden({ path: action }))));
 			return;
 		}
-		yield* orPlatformAdmin(platformAdmin, requireCanAs(action, { ownerId: row.ownerId }));
+		const check =
+			permissions === null
+				? Effect.fail(new Forbidden({ path: `rbac.patient.${row.id}.owner` }))
+				: permissions.requireObject("patient", String(row.id), "owner");
+		yield* orPlatformAdmin(platformAdmin, check);
 	});
 
 const ENVELOPE = /^v1\./;
@@ -448,9 +464,15 @@ export const PatientsLive = Layer.effect(
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
 		const events = yield* EventBus;
+		// Record authz resolves relation tuples through the rbac plugin's
+		// Permissions port — the optionalDeps edge orders rbac.services
+		// first; absent → record checks fail closed (Forbidden), the same
+		// deny shape as an unbound principal.
+		const permissionsOption = yield* Effect.serviceOption(Permissions);
+		const permissions = Option.isSome(permissionsOption) ? permissionsOption.value : null;
 		return Patients.of({
 			list: Effect.fn("Patients.list")(function* (ownerId: string) {
-				yield* requireCanAs("patient.read", { ownerId });
+				yield* requirePrincipalUser(ownerId, "patient.read");
 				const where = yield* patientScope(ownerId);
 				return yield* Effect.promise(() => listPatients(db, ownerId, where));
 			}),
@@ -461,7 +483,7 @@ export const PatientsLive = Layer.effect(
 				// Tenant members read tenant-owned rows; personal rows stay
 				// owner-scoped and platform admins read cross-owner either
 				// way (admin detail/edit pages).
-				yield* authorizePatientRow(platformAdmin, row, "patient.read");
+				yield* authorizePatientRow(platformAdmin, permissions, row, "patient.read");
 				// Sensitive-read audit (P-086 feed): the ROW's tenant_id is
 				// authoritative — a cross-owner admin read must scope to the
 				// record's tenant, not the ambient one. ids only, never fields.
@@ -475,7 +497,9 @@ export const PatientsLive = Layer.effect(
 			}),
 			create: Effect.fn("Patients.create")(function* (ownerId: string, fields: PatientFields) {
 				yield* requirePrincipalUser(ownerId, "patient.create");
-				yield* requireCanAs("patient.create");
+				// No separate create check: the retired permix `create:
+				// true` rule only asserted a bound principal, which
+				// requirePrincipalUser already guarantees.
 				const tenant = yield* Tenant;
 				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
@@ -524,7 +548,7 @@ export const PatientsLive = Layer.effect(
 				yield* requirePrincipalUser(ownerId, "patient.update");
 				const row = yield* Effect.promise(() => getPatient(db, id));
 				if (row === null) return null;
-				yield* authorizePatientRow(platformAdmin, row, "patient.update");
+				yield* authorizePatientRow(platformAdmin, permissions, row, "patient.update");
 				yield* requireCipheredWhenZk(db, row.tenantId, fields, "patient.update");
 				yield* Effect.annotateCurrentSpan({ ownerId, patientId: id });
 				yield* Effect.logInfo("patient update", { ownerId, patientId: id });
@@ -631,9 +655,11 @@ export const PatientsCommandsLive = Command.handlersOf(PatientsCommands, {
 			const db = yield* Db;
 			const events = yield* EventBus;
 			const platformAdmin = yield* PlatformAdmin;
+			const permissionsOption = yield* Effect.serviceOption(Permissions);
+			const permissions = Option.isSome(permissionsOption) ? permissionsOption.value : null;
 			const row = yield* Effect.promise(() => getPatient(db, id));
 			if (row === null) return;
-			yield* authorizePatientRow(platformAdmin, row, "patient.delete");
+			yield* authorizePatientRow(platformAdmin, permissions, row, "patient.delete");
 			yield* Effect.promise(() => deletePatientRow(db, id));
 			yield* events.dispatch([
 				// The row's tenant_id is authoritative — ambient Tenant may
@@ -667,8 +693,10 @@ export const patientsServicesPlugin = definePlugin({
 	// edge is an ordering hint only; absence is legal. Vault is the same
 	// shape: the ZK write gate reads clinic_keys (tenantIsZk) and create
 	// resolves Vault via serviceOption for grantAccess — both degrade
-	// gracefully when the vault plugin is absent.
-	optionalDeps: [auditServicesPlugin.id, vaultServicesPlugin.id],
+	// gracefully when the vault plugin is absent. rbac.services orders
+	// first so the Permissions port record authz consumes is composed
+	// (still optional — absent fails record checks closed).
+	optionalDeps: [auditServicesPlugin.id, vaultServicesPlugin.id, rbacServicesPlugin.id],
 	services: Layer.mergeAll(PatientsLive, PatientsQueriesLive, PatientsCommandsLive),
 });
 

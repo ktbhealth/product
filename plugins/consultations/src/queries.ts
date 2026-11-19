@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
@@ -33,11 +33,17 @@ export async function patientConsultationRows(db: DbClient, patientId: number) {
  * fails `Forbidden` on a foreign one — that check is what keeps a
  * stray cross-owner link from silently surviving (or blocking) the
  * patient delete via the FK. */
-export async function deletePatientConsultations(db: DbClient, patientId: number, scope?: SQL) {
-	const where =
-		scope === undefined
-			? eq(consultations.patientId, patientId)
-			: and(eq(consultations.patientId, patientId), scope);
+export async function deletePatientConsultations(
+	db: DbClient,
+	patientId: number,
+	ids: readonly number[],
+) {
+	// T-182: callers pass the exact rows that passed per-row authz.
+	// Re-deriving visibility from user_id/tenant_id here would diverge
+	// from the tuple check (user_id is attribution only) and could
+	// leave a authorized row behind → FK-blocked patient delete.
+	if (ids.length === 0) return;
+	const where = and(eq(consultations.patientId, patientId), inArray(consultations.id, [...ids]));
 	// Ids first: relation_tuples has no FK, so each deleted row's owner
 	// tuple must be dropped explicitly (P-101).
 	const doomed = await db.select({ id: consultations.id }).from(consultations).where(where);
@@ -127,7 +133,11 @@ export async function listAllConsultations(db: DbClient): Promise<AdminConsultat
  * `tenantId` lets the service apply tenant visibility (P-053). */
 export async function consultationOwner(db: DbClient, id: number) {
 	const rows = await db
-		.select({ userId: consultations.userId, tenantId: consultations.tenantId })
+		.select({
+			id: consultations.id,
+			userId: consultations.userId,
+			tenantId: consultations.tenantId,
+		})
 		.from(consultations)
 		.where(eq(consultations.id, id))
 		.limit(1);
@@ -250,6 +260,7 @@ export async function portalConsultationScope(
 export async function getLiveConsultation(db: DbClient, id: number) {
 	const rows = await db
 		.select({
+			id: consultations.id,
 			transcript: consultations.transcript,
 			status: consultations.status,
 			userId: consultations.userId,

@@ -56,6 +56,8 @@ export const agendaServicesPlugin = definePlugin({
 	meta: { keywords: ["agenda", "services"] },
 	// Mirrors agendaServicesPlugin.requiredDeps (server index.ts).
 	requiredDeps: ["patients.services", "consultations.services"],
+	// Mirrors agendaServicesPlugin.optionalDeps (server index.ts).
+	optionalDeps: ["rbac.services"],
 });
 
 export const agendaPagesPlugin = definePlugin({

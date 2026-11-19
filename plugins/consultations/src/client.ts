@@ -101,6 +101,7 @@ export const plugins: readonly Plugin[] = [
 			"audit.services",
 			"integrity.services",
 			"patient-access.services",
+			"rbac.services",
 			"vault.services",
 		],
 	}),

@@ -114,7 +114,12 @@ describe("Views.allows", () => {
 		const guarded: ViewDef = { ...DEF, id: "g", permission: "patient.read" };
 		const allowed = await Effect.runPromise(makeViews([guarded], store(), permissions(can)));
 		expect(await run(allowed.allows("/v/g"), allowed)).toBe(true);
-		expect(can).toHaveBeenCalledWith("patient", "read");
+		// P-084: tenant-scoped strict check; no Tenant bound in tests →
+		// tenantId undefined (global grants only).
+		expect(can).toHaveBeenCalledWith("patient", "read", {
+			tenantId: undefined,
+			tenantPolicy: "strict",
+		});
 	});
 });
 

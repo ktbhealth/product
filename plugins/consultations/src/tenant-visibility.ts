@@ -3,7 +3,8 @@ import { and, eq, isNotNull, or, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations } from "@ktb/db/schema";
-import { Forbidden, requireCanAs } from "@ktb/authz";
+import { Forbidden } from "@ktb/authz";
+import type { PermissionsShape } from "@ktb/rbac";
 import type { PlatformAdminShape } from "@ktb/platform";
 import { accessibleTenantIds, tenantScopeCondition } from "@ktb/tenant";
 import { tenantIsZk } from "@ktb/vault";
@@ -60,11 +61,17 @@ export const tenantRowVisible = (tenantId: number) =>
  * read/operate it — `userId` stays creator attribution and is NOT an
  * access grant outside the tenant. Everyone else needs the
  * platform-admin override, which works cross-tenant. Personal rows
- * (`tenant_id` NULL) keep the owner-scoped permix check.
+ * (`tenant_id` NULL) keep the owner-scoped check — now a
+ * relation-tuple lookup (T-182): `consultation:<id>#owner@user:<caller>`,
+ * the same fence the permix `userId === principal.userId` rule
+ * enforced. A missing `Permissions` port (rbac plugin not composed)
+ * fails closed with the same `rbac.<type>.<id>.<relation>` path
+ * `requireObject` reports.
  */
 export const authorizeConsultationRow = (
 	platformAdmin: PlatformAdminShape,
-	row: { readonly userId: string | null; readonly tenantId: number | null },
+	permissions: PermissionsShape | null,
+	row: { readonly id: number; readonly tenantId: number | null },
 	action: "consultation.read" | "consultation.update" | "consultation.delete",
 ) =>
 	Effect.gen(function* () {
@@ -75,7 +82,11 @@ export const authorizeConsultationRow = (
 				.pipe(Effect.catchTag("Forbidden", () => Effect.fail(new Forbidden({ path: action }))));
 			return;
 		}
-		yield* orPlatformAdmin(platformAdmin, requireCanAs(action, { userId: row.userId ?? "" }));
+		const check =
+			permissions === null
+				? Effect.fail(new Forbidden({ path: `rbac.consultation.${row.id}.owner` }))
+				: permissions.requireObject("consultation", String(row.id), "owner");
+		yield* orPlatformAdmin(platformAdmin, check);
 	});
 
 const ENVELOPE = /^v1\./;

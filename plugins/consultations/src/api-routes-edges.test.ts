@@ -21,6 +21,7 @@ import { makeEventBus } from "@effect-server-utils/cqrs";
 import { Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
+import { buildPermissions, Permissions } from "@ktb/rbac";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import {
 	PatientsCommandsLive,
@@ -85,6 +86,7 @@ const infra = Layer.mergeAll(
 	Layer.succeed(Db, db),
 	Layer.succeed(Auth, authStub),
 	Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+	Layer.succeed(Permissions, buildPermissions(db)),
 	makeEventBus(),
 );
 

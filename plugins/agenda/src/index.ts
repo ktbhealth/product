@@ -6,6 +6,7 @@ import { consultationsServicesPlugin } from "@ktb/consultations";
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 import { Principal } from "@ktb/authz";
 import { Patients, patientsServicesPlugin, type Patient } from "@ktb/patients";
+import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 
 import { appointments } from "@ktb/db/schema";
 import { AgendaPortalPage, type AgendaListItem } from "./views/index.ts";
@@ -158,8 +159,11 @@ export const agendaServicesPlugin = definePlugin({
 	meta: { keywords: ["agenda", "services"] },
 	// Patient ownership checks ride the patients.ownerOf query; "start
 	// consult" delegates to the Consultations service — both must be
-	// composed first.
+	// composed first. rbac.services orders ahead so the Permissions
+	// port the patient-link tuple check consumes is composed (still
+	// optional — absent fails the check closed).
 	requiredDeps: [patientsServicesPlugin.id, consultationsServicesPlugin.id],
+	optionalDeps: [rbacServicesPlugin.id],
 	services: AppointmentsLive,
 });
 

@@ -7,6 +7,7 @@ import { makeD1 } from "@ktb/db/testing";
 import { patientDocuments, relationTuples, user as userTable } from "@ktb/db/schema";
 import { and, eq } from "drizzle-orm";
 import { Forbidden, Principal } from "@ktb/authz";
+import { buildPermissions, Permissions } from "@ktb/rbac";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -295,6 +296,7 @@ describe("PatientsLive", () => {
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(Permissions, buildPermissions(db)),
 			makeEventBus(),
 		);
 		// Provide the real audit service so adminCreate writes an
@@ -430,7 +432,10 @@ describe("PatientsLive", () => {
 				"u2",
 				call((p) => p.get("u2", created!.id)),
 			),
-		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.read" });
+		).rejects.toMatchObject({
+			_tag: "Forbidden",
+			path: `rbac.patient.${created!.id}.owner`,
+		});
 		await expect(
 			asUser(
 				"u1",
@@ -473,7 +478,10 @@ describe("PatientsLive", () => {
 				"u2",
 				call((p) => p.update("u2", created!.id, fields("Hijack"))),
 			),
-		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.update" });
+		).rejects.toMatchObject({
+			_tag: "Forbidden",
+			path: `rbac.patient.${created!.id}.owner`,
+		});
 		await expect(
 			asUser(
 				null,
@@ -876,6 +884,9 @@ describe("PatientsLive without a stored row", () => {
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, stub),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			// The stub db can't answer relation_tuples — a permissive
+			// Permissions stub keeps the row check on the update path.
+			Layer.succeed(Permissions, Permissions.of({ requireObject: () => Effect.void } as never)),
 			makeEventBus(),
 		);
 		const runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provide(deps)));
@@ -926,7 +937,12 @@ describe("PatientsCommandsLive", () => {
 	it("patients.delete removes the owner's patient, emits patient.deleted and audits (P-080)", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u1", fields("To Delete")))!;
-		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(Permissions, buildPermissions(db)),
+			makeEventBus(),
+			adminGate(),
+		);
 		const deps = Layer.mergeAll(infra, AuditLive.pipe(Layer.provide(infra)));
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
@@ -956,7 +972,12 @@ describe("PatientsCommandsLive", () => {
 	it("patients.delete lets a platform admin remove another owner's patient and audits the row's owner", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u2", fields("Foreign")))!;
-		const infra = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(Permissions, buildPermissions(db)),
+			makeEventBus(),
+			adminGate(),
+		);
 		const deps = Layer.mergeAll(infra, AuditLive.pipe(Layer.provide(infra)));
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
@@ -989,7 +1010,12 @@ describe("PatientsCommandsLive", () => {
 	it("patients.delete still fails Forbidden for a non-admin non-owner", async () => {
 		const db = makeDb(makeD1(DDL));
 		const row = (await createPatient(db, "u2", fields("Foreign 2")))!;
-		const deps = Layer.mergeAll(Layer.succeed(Db, db), makeEventBus(), adminGate());
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(Permissions, buildPermissions(db)),
+			makeEventBus(),
+			adminGate(),
+		);
 		const runtime = ManagedRuntime.make(PatientsCommandsLive.pipe(Layer.provideMerge(deps)));
 		try {
 			await expect(
@@ -1039,6 +1065,7 @@ describe("PatientsLive tenant scope (P-053)", () => {
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(Permissions, buildPermissions(db)),
 			Layer.succeed(EventBus, bus),
 		);
 		runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provide(deps)));
@@ -1227,6 +1254,7 @@ describe("PatientsLive tenant scope (P-053)", () => {
 		const bus = await busRuntime.runPromise(EventBus);
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db2),
+			Layer.succeed(Permissions, buildPermissions(db2)),
 			Layer.succeed(EventBus, bus),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
@@ -1280,6 +1308,7 @@ describe("PatientsLive ZK gate (T-144)", () => {
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(Permissions, buildPermissions(db)),
 			makeEventBus(),
 		);
 		runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provideMerge(deps)));
@@ -1406,5 +1435,41 @@ describe("PatientsLive ZK gate (T-144)", () => {
 				call((p) => p.update("u1", row.id, ciphered())),
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden", path: "patient.update" });
+	});
+});
+
+describe("PatientsLive without the Permissions port", () => {
+	// T-182: record authz resolves owner tuples through @ktb/rbac's
+	// Permissions service — when the rbac plugin isn't composed the
+	// check must fail closed (Forbidden), never allow.
+	it("get/update/delete fail Forbidden on a personal row; create still works", async () => {
+		const db = makeDb(makeD1(DDL));
+		const row = (await createPatient(db, "u1", fields("No Port")))!;
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			makeEventBus(),
+		);
+		const runtime = ManagedRuntime.make(PatientsLive.pipe(Layer.provide(deps)));
+		try {
+			const asUser = <A, E>(effect: Effect.Effect<A, E, Patients>) =>
+				runtime.runPromise(Effect.provideService(effect, Principal, { userId: "u1" }));
+			const call = <A, E>(f: (p: Patients["Service"]) => Effect.Effect<A, E>) =>
+				Effect.flatMap(Patients, f);
+			await expect(asUser(call((p) => p.get("u1", row.id)))).rejects.toMatchObject({
+				_tag: "Forbidden",
+				path: `rbac.patient.${row.id}.owner`,
+			});
+			await expect(
+				asUser(call((p) => p.update("u1", row.id, fields("No Port 2")))),
+			).rejects.toMatchObject({
+				_tag: "Forbidden",
+			});
+			// create carries no record check — the bound principal suffices.
+			const created = await asUser(call((p) => p.create("u1", fields("Still Created"))));
+			expect(created?.name).toBe("Still Created");
+		} finally {
+			await runtime.dispose();
+		}
 	});
 });
