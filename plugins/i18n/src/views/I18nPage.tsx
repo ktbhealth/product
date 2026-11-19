@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { useRouter } from "@tanstack/react-router";
 import { Badge } from "@ktbhealth/ui/components/badge";
@@ -62,6 +63,10 @@ const COMPARE_NONE = "__none__";
  * on an editable text cell can win the race and start inline editing
  * instead (the dialog would otherwise cover the second click). */
 const CELL_OPEN_DELAY_MS = 250;
+
+/** Ref-map key for one matrix cell button — unit-separator join so a
+ * key or locale containing common punctuation can't collide. */
+const cellDomId = (key: string, locale: string): string => `${key}\u001f${locale}`;
 
 /** Param names referenced by a template. `parseMessage` yields the
  * exact signature for well-formed templates; the regex fallback still
@@ -206,6 +211,10 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 	const [cellEdit, setCellEdit] = useState<CellEdit | null>(null);
 	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const cellEditBusy = useRef(false);
+	// Roving-focus grid: exactly one cell button is tabbable; arrows
+	// move DOM focus across key rows × locale columns.
+	const [activeCell, setActiveCell] = useState<{ key: string; locale: string } | null>(null);
+	const cellButtons = useRef(new Map<string, HTMLButtonElement>());
 	// Cancel a pending deferred cell-open on unmount.
 	useEffect(
 		() => () => {
@@ -325,6 +334,70 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		const cell = cellFor(cellIndex, namespace, key, locale, filterScope, fetchScopeId);
 		setCellEdit({ key, locale, value: cell?.draft ?? cell?.live ?? "" });
 		setError(null);
+	};
+
+	/** Roving focus: the requested active cell may point at a
+	 * key/locale that no longer exists after a namespace or scope
+	 * switch — fall back to the first rendered cell so exactly one
+	 * button stays tabbable (and none when the grid is empty). */
+	const firstKey = keys[0];
+	const firstLocale = locales[0]?.code;
+	const active =
+		activeCell !== null &&
+		keys.includes(activeCell.key) &&
+		locales.some((l) => l.code === activeCell.locale)
+			? activeCell
+			: firstKey !== undefined && firstLocale !== undefined
+				? { key: firstKey, locale: firstLocale }
+				: null;
+
+	/** Move roving focus to a cell: update the tabbable marker AND
+	 * move real DOM focus so screen readers and the next keypress
+	 * land on the new cell. */
+	const focusCell = (key: string, locale: string) => {
+		setActiveCell({ key, locale });
+		cellButtons.current.get(cellDomId(key, locale))?.focus();
+	};
+
+	/** Grid keyboard nav on a focused cell button. Enter mirrors a
+	 * click and opens the edit dialog directly — the 250ms deferred
+	 * arm only exists so dblclick can win for inline editing, which
+	 * stays a double-click-only gesture. Arrow keys stop at grid
+	 * edges; this handler never fires while typing (it lives on the
+	 * cell buttons, not a container) and is inert while the dialog or
+	 * an inline edit is open. */
+	const onCellKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, key: string, locale: string) => {
+		if (editing !== null || cellEdit !== null) return;
+		if (e.key === "Enter") {
+			e.preventDefault();
+			open(key, locale);
+			return;
+		}
+		const keyIndex = keys.indexOf(key);
+		const localeIndex = locales.findIndex((l) => l.code === locale);
+		let nextKey = key;
+		let nextLocale = locale;
+		if (e.key === "ArrowRight") {
+			const l = locales[localeIndex + 1];
+			if (l === undefined) return;
+			nextLocale = l.code;
+		} else if (e.key === "ArrowLeft") {
+			const l = locales[localeIndex - 1];
+			if (l === undefined) return;
+			nextLocale = l.code;
+		} else if (e.key === "ArrowDown") {
+			const k = keys[keyIndex + 1];
+			if (k === undefined) return;
+			nextKey = k;
+		} else if (e.key === "ArrowUp") {
+			const k = keys[keyIndex - 1];
+			if (k === undefined) return;
+			nextKey = k;
+		} else {
+			return;
+		}
+		e.preventDefault();
+		focusCell(nextKey, nextLocale);
 	};
 
 	/** Inline commit: same wire call as the dialog's "Save draft" for a
@@ -673,13 +746,26 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 										) : (
 											<button
 												type="button"
-												onClick={() => armCellOpen(key, l.code)}
+												ref={(el) => {
+													const id = cellDomId(key, l.code);
+													if (el === null) cellButtons.current.delete(id);
+													else cellButtons.current.set(id, el);
+												}}
+												tabIndex={
+													active !== null && active.key === key && active.locale === l.code ? 0 : -1
+												}
+												onClick={() => {
+													setActiveCell({ key, locale: l.code });
+													armCellOpen(key, l.code);
+												}}
+												onFocus={() => setActiveCell({ key, locale: l.code })}
+												onKeyDown={(e) => onCellKeyDown(e, key, l.code)}
 												onDoubleClick={
 													cell !== undefined && cell.kind === "text"
 														? () => startCellEdit(key, l.code)
 														: undefined
 												}
-												className="flex w-full items-center gap-2 text-left"
+												className="flex w-full items-center gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
 											>
 												<span className="truncate text-sm">
 													{shown ?? <span className="text-muted-foreground">—</span>}
