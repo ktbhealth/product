@@ -214,6 +214,7 @@ export type I18nKey =
 	| "app.panel_group_site"
 	| "app.panel_group_storage"
 	| "app.panel_nav_activity"
+	| "app.panel_nav_cron"
 	| "app.panel_nav_dashboard"
 	| "app.panel_nav_groups"
 	| "app.panel_nav_ops"
@@ -653,6 +654,39 @@ export type I18nKey =
 	| "consultations.zk.exportLocked"
 	| "consultations.zk.lockedHint"
 	| "consultations.zk.lockedRecord"
+	| "cron.description"
+	| "cron.emptyJobsDescription"
+	| "cron.emptyJobsTitle"
+	| "cron.emptyRunsDescription"
+	| "cron.emptyRunsTitle"
+	| "cron.jColAction"
+	| "cron.jColDescription"
+	| "cron.jColJob"
+	| "cron.jColLastRun"
+	| "cron.jColSchedules"
+	| "cron.jobsDescription"
+	| "cron.jobsTitle"
+	| "cron.lastFailed"
+	| "cron.lastOk"
+	| "cron.neverRan"
+	| "cron.rColError"
+	| "cron.rColId"
+	| "cron.rColJob"
+	| "cron.rColStarted"
+	| "cron.rColStatus"
+	| "cron.runFailed"
+	| "cron.runForbidden"
+	| "cron.running"
+	| "cron.runNow"
+	| "cron.runOk"
+	| "cron.runOkNoSummary"
+	| "cron.runsDescription"
+	| "cron.runsTitle"
+	| "cron.runUnavailable"
+	| "cron.runUnknown"
+	| "cron.title"
+	| "cron.unavailableDescription"
+	| "cron.unavailableTitle"
 	| "dashboard.managePlugins"
 	| "dashboard.registeredPlugins"
 	| "dashboard.stateDisabled"
@@ -2147,6 +2181,7 @@ export interface I18nTypedT {
 	(key: "app.panel_group_site"): Effect.Effect<string>;
 	(key: "app.panel_group_storage"): Effect.Effect<string>;
 	(key: "app.panel_nav_activity"): Effect.Effect<string>;
+	(key: "app.panel_nav_cron"): Effect.Effect<string>;
 	(key: "app.panel_nav_dashboard"): Effect.Effect<string>;
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
@@ -2735,6 +2770,49 @@ export interface I18nTypedT {
 	(key: "consultations.zk.exportLocked"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedHint"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedRecord"): Effect.Effect<string>;
+	(
+		key: "cron.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "cron.emptyJobsDescription"): Effect.Effect<string>;
+	(key: "cron.emptyJobsTitle"): Effect.Effect<string>;
+	(key: "cron.emptyRunsDescription"): Effect.Effect<string>;
+	(key: "cron.emptyRunsTitle"): Effect.Effect<string>;
+	(key: "cron.jColAction"): Effect.Effect<string>;
+	(key: "cron.jColDescription"): Effect.Effect<string>;
+	(key: "cron.jColJob"): Effect.Effect<string>;
+	(key: "cron.jColLastRun"): Effect.Effect<string>;
+	(key: "cron.jColSchedules"): Effect.Effect<string>;
+	(key: "cron.jobsDescription"): Effect.Effect<string>;
+	(key: "cron.jobsTitle"): Effect.Effect<string>;
+	(key: "cron.lastFailed"): Effect.Effect<string>;
+	(key: "cron.lastOk"): Effect.Effect<string>;
+	(key: "cron.neverRan"): Effect.Effect<string>;
+	(key: "cron.rColError"): Effect.Effect<string>;
+	(key: "cron.rColId"): Effect.Effect<string>;
+	(key: "cron.rColJob"): Effect.Effect<string>;
+	(key: "cron.rColStarted"): Effect.Effect<string>;
+	(key: "cron.rColStatus"): Effect.Effect<string>;
+	(key: "cron.runFailed"): Effect.Effect<string>;
+	(key: "cron.runForbidden"): Effect.Effect<string>;
+	(key: "cron.running"): Effect.Effect<string>;
+	(key: "cron.runNow"): Effect.Effect<string>;
+	(
+		key: "cron.runOk",
+		params: {
+			summary: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "cron.runOkNoSummary"): Effect.Effect<string>;
+	(key: "cron.runsDescription"): Effect.Effect<string>;
+	(key: "cron.runsTitle"): Effect.Effect<string>;
+	(key: "cron.runUnavailable"): Effect.Effect<string>;
+	(key: "cron.runUnknown"): Effect.Effect<string>;
+	(key: "cron.title"): Effect.Effect<string>;
+	(key: "cron.unavailableDescription"): Effect.Effect<string>;
+	(key: "cron.unavailableTitle"): Effect.Effect<string>;
 	(key: "dashboard.managePlugins"): Effect.Effect<string>;
 	(key: "dashboard.registeredPlugins"): Effect.Effect<string>;
 	(key: "dashboard.stateDisabled"): Effect.Effect<string>;

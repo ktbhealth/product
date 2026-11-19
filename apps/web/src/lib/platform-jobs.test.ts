@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getJobRun, type JobEnvelope } from "@ktb/jobs-port";
+import { getJobRun, listJobRuns, type JobEnvelope } from "@ktb/jobs-port";
 
 // platform.ts publishes the generic jobs enqueuer (PL-007) on the server
 // runtime when AUDIO_QUEUE is bound — same recompose pattern as
@@ -153,4 +153,54 @@ describe("platform queue registry (/platform/queue)", () => {
 			expect(queues.find((q) => q.id === "audio")?.depth).toBeNull();
 		},
 	);
+});
+
+describe("platform cron registry (/platform/cron)", () => {
+	it(
+		"lists registered jobs with schedules and null lastRun before any fire",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime } = await compose(() => {});
+			const jobs = await runtime.crons!.list();
+			const byId = new Map(jobs.map((j) => [j.id, j]));
+			expect(byId.get("agenda-reminders")?.schedules).toContain("*/5 * * * *");
+			expect(byId.get("agenda-reminders")?.schedules).toContain("17 3 * * *");
+			expect(byId.get("audit-chain-verify")?.schedules).toEqual(["17 3 * * *"]);
+			expect(byId.get("agenda-reminders")?.lastRun).toBeNull();
+		},
+	);
+
+	it(
+		"runNow fires a job through the projected path and records job_runs",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime, platform } = await compose(() => {});
+			expect(await runtime.crons!.runNow("missing-job")).toBeNull();
+			const result = await runtime.crons!.runNow("agenda-reminders");
+			expect(result?.id).toBe("agenda-reminders");
+			expect(result?.ok).toBe(true);
+
+			// The fire was projected into job_runs under kind cron.<id>.
+			const runs = await listJobRuns(platform.db, { kind: "cron.agenda-reminders" });
+			expect(runs.length).toBeGreaterThan(0);
+			expect(runs[0]?.status).toBe("done");
+
+			// And the registry now reports the recorded last run.
+			const jobs = await runtime.crons!.list();
+			expect(jobs.find((j) => j.id === "agenda-reminders")?.lastRun?.ok).toBe(true);
+		},
+	);
+
+	it("dispatches unknown cron expressions as a no-op", { timeout: 30_000 }, async () => {
+		const { runtime } = await compose(() => {});
+		expect(await runtime.crons!.runSchedule("0 0 1 1 *")).toEqual([]);
+	});
+
+	it("runSchedule fires every job bound to the expression", { timeout: 30_000 }, async () => {
+		const { runtime } = await compose(() => {});
+		const results = await runtime.crons!.runSchedule("*/5 * * * *");
+		// Only agenda-reminders binds the 5-minute expression.
+		expect(results.map((r) => r.id)).toEqual(["agenda-reminders"]);
+		expect(results[0]?.ok).toBe(true);
+	});
 });

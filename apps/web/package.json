@@ -39,6 +39,7 @@
 		"@ktb/auth-plugin": "workspace:*",
 		"@ktb/consultations": "workspace:*",
 		"@ktb/credentials": "workspace:*",
+		"@ktb/cron-port": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/db-sqlite": "workspace:*",
 		"@ktb/doctors": "workspace:*",
