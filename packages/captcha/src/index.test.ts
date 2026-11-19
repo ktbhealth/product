@@ -9,6 +9,10 @@ describe("captcha port", () => {
 		const v: CaptchaVerifier = { verify: async () => false };
 		expect(await v.verify("x")).toBe(false);
 	});
+
+	it("exposes the service key used for driver registration", () => {
+		expect(Captcha.key).toBe("@ktb/captcha/Captcha");
+	});
 });
 
 describe("nullCaptchaDriver", () => {
