@@ -13,7 +13,7 @@ import {
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
  * through `@ktb/app-host/client`. Only client-consumed contributions:
- * the panel sidebar entry and page descriptor (id/path/component —
+ * the panel sidebar entries and page descriptors (id/path/component —
  * guard/loader Effects stay server-side). Dep ids are literals:
  * importing ./index.ts would pull the server graph into the client
  * bundle. Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
