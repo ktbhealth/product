@@ -341,6 +341,7 @@ describe("themeHead / themeAssets / themeTitle", () => {
 			brand: { favicon: "   ", ogImage: 42 },
 			fontLinks: [],
 			styleCss: "",
+			fontFaceCss: "",
 			fonts: null,
 		} as unknown as Parameters<typeof themeHead>[0];
 		const head = themeHead(bare);
@@ -351,6 +352,7 @@ describe("themeHead / themeAssets / themeTitle", () => {
 			brand: { favicon: 7 },
 			fontLinks: [],
 			styleCss: "",
+			fontFaceCss: "",
 			fonts: null,
 		} as unknown as Parameters<typeof themeHead>[0];
 		expect(themeHead(nonString).links).toEqual([]);
@@ -359,5 +361,136 @@ describe("themeHead / themeAssets / themeTitle", () => {
 	it("themeTitle prefers brand appName then row appName", () => {
 		expect(themeTitle(themed)).toBe("Acme");
 		expect(themeTitle(null)).toBeNull();
+	});
+});
+
+describe("presentTheme — managed font cascade", () => {
+	const managedRow = (fonts: unknown) => row({ fonts: JSON.stringify(fonts) });
+
+	it("googlefonts managed sources emit catalog-weight stylesheet links and slot names", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "self-host",
+				families: { sans: "Free Sans" },
+				sources: { sans: { providerId: 7, family: "Inter" } },
+			}),
+			{
+				managed: [
+					{
+						providerId: 7,
+						family: "Inter",
+						kind: "googlefonts",
+						weights: [400, 700],
+					},
+				],
+			},
+		);
+		expect(theme.fontLinks).toEqual([
+			"https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap",
+		]);
+		// The managed family wins the slot even though delivery is self-host.
+		expect(theme.styleCss).toContain('"Inter"');
+		expect(theme.styleCss).not.toContain('"Free Sans"');
+		// The stored config round-trips untouched.
+		expect(theme.fonts?.families?.sans).toBe("Free Sans");
+		expect(theme.fonts?.sources?.sans).toEqual({ providerId: 7, family: "Inter" });
+	});
+
+	it("managed googlefonts families are excluded from the free-form link pass", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "google-fonts",
+				families: { sans: "Inter", mono: "Roboto Mono" },
+				weights: [100],
+				sources: { sans: { providerId: 7, family: "Inter" } },
+			}),
+			{
+				managed: [{ providerId: 7, family: "Inter", kind: "googlefonts", weights: [400, 700] }],
+			},
+		);
+		// Inter emits once with catalog weights; Roboto Mono keeps the
+		// theme's google-fonts delivery with theme weights.
+		expect(theme.fontLinks).toHaveLength(2);
+		expect(theme.fontLinks[0]).toContain("Roboto");
+		expect(theme.fontLinks[0]).toContain("wght@100");
+		expect(theme.fontLinks[1]).toContain("Inter:wght@400;700");
+	});
+
+	it("self-host managed sources emit @font-face regardless of delivery", () => {
+		const asset = {
+			faces: [{ url: "/api/theme/assets?key=brand.woff2", weight: 400, format: "woff2" }],
+			fallback: {
+				name: "Brand Sans fallback",
+				local: "Arial",
+				metrics: { sizeAdjust: 100, ascentOverride: 90, descentOverride: 20, lineGapOverride: 0 },
+			},
+		};
+		const theme = presentTheme(
+			managedRow({
+				delivery: "google-fonts",
+				sources: { sans: { providerId: 3, family: "Brand Sans" } },
+			}),
+			{
+				managed: [
+					{
+						providerId: 3,
+						family: "Brand Sans",
+						kind: "local",
+						weights: [],
+						asset,
+					},
+				],
+			},
+		);
+		expect(theme.fontFaceCss).toContain('@font-face{font-family:"Brand Sans"');
+		expect(theme.fontFaceCss).toContain('format("woff2")');
+		expect(theme.fontFaceCss).toContain('font-family:"Brand Sans fallback"');
+		// The metric-matched fallback name lands in the font stack.
+		expect(theme.styleCss).toContain('"Brand Sans fallback"');
+		expect(theme.fontLinks).toEqual([]);
+	});
+
+	it("managed assets win over a same-named stored asset", () => {
+		const stored = { faces: [{ url: "/old.woff2" }] };
+		const managedAsset = { faces: [{ url: "/new.woff2", weight: 700 }] };
+		const theme = presentTheme(
+			managedRow({
+				delivery: "self-host",
+				assets: { "Brand Sans": stored },
+				sources: { sans: { providerId: 3, family: "Brand Sans" } },
+			}),
+			{
+				managed: [
+					{
+						providerId: 3,
+						family: "Brand Sans",
+						kind: "local",
+						weights: [],
+						asset: managedAsset,
+					},
+				],
+			},
+		);
+		expect(theme.fontFaceCss).toContain("/new.woff2");
+		expect(theme.fontFaceCss).not.toContain("/old.woff2");
+	});
+
+	it("managed entries for unreferenced sources are ignored", () => {
+		const theme = presentTheme(managedRow({ delivery: "self-host", families: { sans: "Inter" } }), {
+			managed: [{ providerId: 7, family: "Inter", kind: "googlefonts", weights: [400] }],
+		});
+		expect(theme.fontLinks).toEqual([]);
+		expect(theme.styleCss).toContain('"Inter"');
+	});
+
+	it("managed fonts with empty weights fall back to the default list", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "self-host",
+				sources: { sans: { providerId: 7, family: "Inter" } },
+			}),
+			{ managed: [{ providerId: 7, family: "Inter", kind: "googlefonts", weights: [] }] },
+		);
+		expect(theme.fontLinks[0]).toContain("wght@400;500;600;700");
 	});
 });

@@ -6,6 +6,8 @@
  * the admin UI reuses it for live preview.
  */
 
+import { googleFontCssHref } from "@ktb/fonts/adapters/googlefonts";
+
 import { deriveThemeTokens, themeRadius, tokensToCss } from "./palette.ts";
 import type {
 	ResolvedTheme,
@@ -14,6 +16,8 @@ import type {
 	ThemeFontAssetValue,
 	ThemeFontConfig,
 	ThemeFontFace,
+	ThemeFontSlot,
+	ThemeManagedFont,
 	ThemeSeeds,
 } from "./types.ts";
 
@@ -45,6 +49,11 @@ const parseJson = <T>(text: string | null, fallback: T): T => {
  * are not valid seeds/fonts/brand payloads. */
 const asConfigObject = <T extends object>(value: T | null): T | null =>
 	typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
+
+/** Parse the `theme_definitions.fonts` JSON column; malformed or
+ * non-object payloads degrade to null (same tolerance as seeds/brand). */
+export const parseThemeFontConfig = (raw: string | null): ThemeFontConfig | null =>
+	asConfigObject(parseJson<ThemeFontConfig | null>(raw, null));
 
 /** Parse the `theme_definitions.brand` JSON column; malformed or
  * non-object payloads degrade to null. */
@@ -109,15 +118,22 @@ export const fontCssVars = (fonts: ThemeFontConfig | null): Record<string, strin
 
 /** Google Fonts stylesheet hrefs for a font config — only when the
  * theme opts into `google-fonts` delivery. One css2 URL per distinct
- * family with the configured weights (default 400;500;600;700). */
-export const googleFontLinks = (fonts: ThemeFontConfig | null): readonly string[] => {
+ * family with the configured weights (default 400;500;600;700).
+ * `excludeFamilies` drops managed-cascade families (they emit their
+ * own links with catalog weights — see {@link presentTheme}). */
+export const googleFontLinks = (
+	fonts: ThemeFontConfig | null,
+	options?: { readonly excludeFamilies?: ReadonlySet<string> },
+): readonly string[] => {
 	if (fonts === null || fonts.delivery !== "google-fonts") return [];
 	const families = fonts.families ?? {};
+	const exclude = options?.excludeFamilies;
 	const names = [
 		...new Set(
-			[families.sans, families.heading, families.mono].filter(
-				(f): f is string => typeof f === "string" && f.trim() !== "",
-			),
+			[families.sans, families.heading, families.mono]
+				.filter((f): f is string => typeof f === "string" && f.trim() !== "")
+				.map((f) => f.trim())
+				.filter((f) => exclude === undefined || !exclude.has(f)),
 		),
 	];
 	const weights = (fonts.weights ?? [400, 500, 600, 700])
@@ -126,7 +142,7 @@ export const googleFontLinks = (fonts: ThemeFontConfig | null): readonly string[
 		.join(";");
 	return names.map(
 		(name) =>
-			`https://fonts.googleapis.com/css2?family=${encodeURIComponent(name.trim().replaceAll(" ", "+"))}:wght@${weights}&display=swap`,
+			`https://fonts.googleapis.com/css2?family=${encodeURIComponent(name.replaceAll(" ", "+"))}:wght@${weights}&display=swap`,
 	);
 };
 
@@ -213,6 +229,13 @@ export const fontFaceCss = (fonts: ThemeFontConfig | null): string => {
 	return rules.join("\n");
 };
 
+const FONT_SLOTS: readonly ThemeFontSlot[] = ["sans", "heading", "mono"];
+
+/** Default weight list for managed googlefonts links when neither the
+ * catalog row nor the theme configures weights (mirrors
+ * {@link googleFontLinks}' fallback). */
+const MANAGED_DEFAULT_WEIGHTS = [400, 500, 600, 700] as const;
+
 /**
  * The complete `:root`/`.dark` override block for a resolved theme:
  * derived tokens + radius + font vars (scheme-independent, `:root`
@@ -233,14 +256,90 @@ export const themeStyleCss = (theme: {
  * Present a `theme_definitions` row as a `ResolvedTheme`. Invalid JSON
  * columns degrade to empty config rather than failing the request —
  * a malformed row must never take down a shell.
+ *
+ * `options.managed` carries fonts-catalog resolutions (see
+ * managed-fonts.ts): each entry pins a `fonts.sources.<slot>`
+ * reference to a synced provider family. Resolved managed families
+ * override the slot's free-form name in the font vars, deliver
+ * googlefonts kinds as stylesheet links with catalog weights and
+ * self-host kinds as `@font-face` rules — independent of the theme's
+ * `delivery` field, which keeps governing the unmanaged families.
  */
 export const presentTheme = (
 	row: ThemeDefinitionRow,
-	options?: { readonly preview?: boolean },
+	options?: { readonly preview?: boolean; readonly managed?: readonly ThemeManagedFont[] },
 ): ResolvedTheme => {
 	const seeds = asConfigObject(parseJson<ThemeSeeds | null>(row.seeds, null)) ?? {};
-	const fonts = asConfigObject(parseJson<ThemeFontConfig | null>(row.fonts, null));
+	const fonts = parseThemeFontConfig(row.fonts);
 	const brand = parseThemeBrand(row.brand);
+	const managed = options?.managed ?? [];
+
+	// Slot → managed family name, plus the delivery payloads each
+	// resolved source contributes. Matching is by (providerId, family)
+	// against `fonts.sources` — entries for unreferenced providers are
+	// ignored.
+	const slotNames = new Map<ThemeFontSlot, string>();
+	const managedGoogle: { family: string; weights: readonly number[] }[] = [];
+	const managedGoogleFamilies = new Set<string>();
+	const managedAssets = new Map<string, ThemeFontAsset>();
+	if (fonts?.sources !== undefined && managed.length > 0) {
+		const byRef = new Map(managed.map((m) => [`${m.providerId} ${m.family}`, m]));
+		for (const slot of FONT_SLOTS) {
+			const source = fonts.sources[slot];
+			if (source === null || source === undefined) continue;
+			const m = byRef.get(`${source.providerId} ${source.family.trim()}`);
+			if (m === undefined) continue;
+			slotNames.set(slot, m.family);
+			if (m.kind === "googlefonts") {
+				managedGoogleFamilies.add(m.family);
+				managedGoogle.push({
+					family: m.family,
+					weights: m.weights.length > 0 ? m.weights : MANAGED_DEFAULT_WEIGHTS,
+				});
+			} else if (m.asset != null) {
+				managedAssets.set(m.family, m.asset);
+			}
+		}
+	}
+
+	// Effective config for the font vars: managed names win per slot
+	// and managed assets join `assets` so the metric-matched fallback
+	// face name lands in the family stack. `fonts` itself stays the
+	// stored config — ResolvedTheme.fonts must round-trip through the
+	// editor unchanged.
+	const effectiveFonts: ThemeFontConfig | null =
+		fonts === null
+			? null
+			: {
+					...fonts,
+					families: { ...(fonts.families ?? {}), ...Object.fromEntries(slotNames) },
+					assets: { ...(fonts.assets ?? {}), ...Object.fromEntries(managedAssets) },
+				};
+
+	// Free-form google-fonts links skip managed families — they emit
+	// their own hrefs with the catalog's synced weights below.
+	const fontLinks = [
+		...googleFontLinks(fonts, { excludeFamilies: managedGoogleFamilies }),
+		...managedGoogle.map((m) => googleFontCssHref(m.family, m.weights)),
+	];
+
+	// Self-host faces: the stored config's assets minus families a
+	// managed source now owns (the managed asset wins — it is the
+	// pinned catalog source), then the managed assets themselves,
+	// emitted regardless of `delivery`.
+	const genericAssets =
+		fonts?.assets === undefined
+			? fonts?.assets
+			: Object.fromEntries(
+					Object.entries(fonts.assets).filter(([family]) => !managedAssets.has(family)),
+				);
+	const fontFaceCssOut = [
+		fontFaceCss(fonts === null ? null : { ...fonts, assets: genericAssets }),
+		fontFaceCss({ delivery: "self-host", assets: Object.fromEntries(managedAssets) }),
+	]
+		.filter((css) => css !== "")
+		.join("\n");
+
 	// The stored `tokens` JSON is kept for inspection only — resolution
 	// re-derives from seeds so the palette engine stays authoritative
 	// (see themeStyleCss).
@@ -251,10 +350,10 @@ export const presentTheme = (
 		appName: row.appName ?? brand?.appName ?? null,
 		seeds,
 		tokens: deriveThemeTokens(seeds),
-		styleCss: themeStyleCss({ seeds, fonts }),
+		styleCss: themeStyleCss({ seeds, fonts: effectiveFonts }),
 		fonts,
-		fontLinks: googleFontLinks(fonts),
-		fontFaceCss: fontFaceCss(fonts),
+		fontLinks: [...new Set(fontLinks)],
+		fontFaceCss: fontFaceCssOut,
 		brand,
 		...(options?.preview === true ? { preview: true as const } : {}),
 	};

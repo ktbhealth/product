@@ -12,7 +12,9 @@
 		"./registry": "./src/registry.ts",
 		"./schema": "./src/schema.ts",
 		"./types": "./src/types.ts",
-		"./views": "./src/views/index.ts"
+		"./views": "./src/views/index.ts",
+		"./catalog": "./src/catalog.ts",
+		"./adapters/googlefonts": "./src/adapters/googlefonts.ts"
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",

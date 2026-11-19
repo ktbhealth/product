@@ -26,6 +26,7 @@ import { PlatformAdmin } from "@ktb/platform";
 
 import { localFontProviderAdapter } from "./adapters/local.ts";
 import { googleFontsAdapter } from "./adapters/googlefonts.ts";
+import { FontCatalogLive } from "./catalog.ts";
 import { FontsFamilySynced, FontsProviderChanged } from "./events.ts";
 import { FontHooks, FontHooksLive, type FontHookHandle } from "./hooks.ts";
 import { FontProviders, FontProvidersLive } from "./registry.ts";
@@ -436,10 +437,12 @@ export const FontsLive = Layer.effect(
 );
 
 /** The services-layer export: the Fonts runtime plus the
- * FontProviders/FontHooks registries other plugins consume (the
- * provideMerge chain wires them into FontsLive and re-exports them —
- * same shape as `TriggersServicesLive`/`WizardsServicesLive`). */
+ * FontProviders/FontHooks registries and the open FontCatalog read
+ * port other plugins consume (the provideMerge chain wires them into
+ * FontsLive and re-exports them — same shape as
+ * `TriggersServicesLive`/`WizardsServicesLive`). */
 export const FontsServicesLive = FontsLive.pipe(
 	Layer.provideMerge(FontProvidersLive),
 	Layer.provideMerge(FontHooksLive),
+	Layer.provideMerge(FontCatalogLive),
 );

@@ -3,6 +3,7 @@ import { physical } from "@tanstack/virtual-file-routes";
 import * as Effect from "effect/Effect";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { fontsServicesPlugin } from "@ktb/fonts";
 import { platformHeaderPlugin } from "@ktb/platform-header";
 import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/platform";
 
@@ -20,6 +21,11 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
  * - `theme.services` registers the `Theme` port (theme_definitions
  *   repo + scope fallback chain portal-instance → tenant → platform →
  *   main row → null). Reads are open (public branding); writes are PlatformAdmin.
+ *   `optionalDeps` on fonts.services wires the managed-font cascade:
+ *   `fonts.sources` slot references resolve against the fonts plugin's
+ *   FontCatalog port and FontHooks invalidates the cached snapshot on
+ *   every provider/family mutation — both via serviceOption, so the
+ *   edge degrades cleanly when fonts is absent.
  * - `theme.panel` mounts /platform/theme — the admin editor with scope
  *   picker, seed editors, live preview, contrast report and publish.
  *   Guard 404s non-admins like every console page.
@@ -38,6 +44,7 @@ export const themeServicesPlugin = definePlugin({
 	id: "theme.services",
 	meta: { keywords: ["theme", "services"] },
 	requiredDeps: [platformAdminPlugin.id],
+	optionalDeps: [fontsServicesPlugin.id],
 	services: ThemeLive,
 });
 
@@ -202,8 +209,14 @@ export {
 	fontCssVars,
 	googleFontLinks,
 	fontFaceCss,
+	parseThemeFontConfig,
 } from "./present.ts";
 export type { ThemeDefinitionRow } from "./present.ts";
+export {
+	matchManagedFonts,
+	loadManagedFontAssets,
+	GOOGLE_FONTS_PROVIDER_KIND,
+} from "./managed-fonts.ts";
 export {
 	deriveThemeTokens,
 	tokensToCss,
@@ -233,6 +246,8 @@ export type {
 	ResolvedTheme,
 	ThemeBrand,
 	ThemeFontConfig,
+	ThemeFontSource,
+	ThemeManagedFont,
 	ThemeResolveRequest,
 	ThemeScopeKind,
 	ThemeAssetSummary,

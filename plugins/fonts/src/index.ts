@@ -151,6 +151,8 @@ export {
 export { FontProviders, FontProvidersLive } from "./registry.ts";
 export type { FontCatalogEntry, FontProviderAdapter } from "./registry.ts";
 export { FontHooks, FontHooksLive, UnknownFontHook } from "./hooks.ts";
+export { FontCatalog, FontCatalogLive, listCatalogRows } from "./catalog.ts";
+export type { FontCatalogFamily } from "./catalog.ts";
 export type { FontHookHandle, FontHookHandler, FontHooksService } from "./hooks.ts";
 export {
 	FontsProviderChanged,

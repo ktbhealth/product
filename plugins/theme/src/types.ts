@@ -94,6 +94,38 @@ export interface ThemeFontAsset {
  * supported) or a full {@link ThemeFontAsset} written by the font job. */
 export type ThemeFontAssetValue = string | ThemeFontAsset;
 
+/** Reference to a managed font family in the fonts plugin catalog —
+ * `providerId` is `font_providers.id`, `family` the synced
+ * `font_families.family` name. */
+export interface ThemeFontSource {
+	readonly providerId: number;
+	readonly family: string;
+}
+
+/**
+ * A managed font family resolved against the fonts catalog — the
+ * input `presentTheme` merges into fontLinks/fontFaceCss/font vars.
+ * Built server-side by the theme service (catalog match + self-host
+ * asset lookup); pure data here so presentation stays client-safe.
+ */
+export interface ThemeManagedFont {
+	readonly providerId: number;
+	/** Canonical family name from the catalog row. */
+	readonly family: string;
+	/** Provider adapter kind ("googlefonts", "local", …). */
+	readonly kind: string;
+	/** Weights to deliver — the catalog's synced weights, falling back
+	 * to the theme's `fonts.weights` when the provider lists none. */
+	readonly weights: readonly number[];
+	/** `theme_assets.id` recorded by the provider's catalog `meta`
+	 * (the "local" adapter) — the self-host asset lookup key. */
+	readonly assetId?: number | null;
+	/** Self-host faces resolved from the owning theme's font asset —
+	 * populated for non-googlefonts providers that map to stored
+	 * files; absent means the family name resolves without faces. */
+	readonly asset?: ThemeFontAsset | null;
+}
+
 /** Font delivery config stored on `theme_definitions.fonts`. */
 export interface ThemeFontConfig {
 	readonly delivery: "self-host" | "google-fonts";
@@ -104,6 +136,19 @@ export interface ThemeFontConfig {
 		readonly mono?: string | null;
 	};
 	readonly weights?: readonly number[];
+	/** Managed catalog sources per slot (fonts plugin cascade): pins
+	 * the slot to a synced `font_families` entry (`font_providers.id` +
+	 * family name). Resolution is best-effort — a missing, disabled or
+	 * unready entry falls back to the slot's free-form
+	 * `families.<slot>` name. When a source resolves, the provider's
+	 * adapter kind drives delivery ("googlefonts" → stylesheet link,
+	 * other kinds → self-host asset lookup) regardless of `delivery`,
+	 * which keeps governing the free-form families. */
+	readonly sources?: {
+		readonly sans?: ThemeFontSource | null;
+		readonly heading?: ThemeFontSource | null;
+		readonly mono?: ThemeFontSource | null;
+	};
 	/** Self-hosted font files (Phase 4 asset pipeline): family → URL or
 	 * storage ref. Until files exist the shell skips `@font-face`
 	 * gracefully. */

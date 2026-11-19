@@ -19,6 +19,7 @@
 		"@cf-wasm/photon": "^0.4.0",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/fonts": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/jobs-port": "workspace:*",
 		"@ktb/kernel": "workspace:*",
