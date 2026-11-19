@@ -931,6 +931,45 @@ describe("server fns", () => {
 		}
 	});
 
+	it("appPageDataFn forwards parsed search to the page loader", async () => {
+		serverFnRequestHeaders.current = new Headers();
+		const page: Page = {
+			id: "test.app-search",
+			path: "/test-app-search",
+			component: () => null,
+			loader: (path, search) => Effect.succeed({ path, search }),
+		};
+		const pages = appPages as unknown as Map<
+			string,
+			{ page: Page; pluginId: string; context?: string }
+		>;
+		pages.set(page.path, { page, pluginId: "platform.routes", context: "app" });
+		try {
+			// Struct input: the parsed search record reaches loader arg 2.
+			expect(await appPageDataFn({ data: { path: page.path, search: { q: "x", n: 2 } } })).toEqual({
+				status: "ok",
+				data: { path: "/test-app-search", search: { q: "x", n: 2 } },
+			});
+			// Absent search → undefined second arg.
+			expect(await appPageDataFn({ data: { path: page.path } })).toEqual({
+				status: "ok",
+				data: { path: "/test-app-search", search: undefined },
+			});
+			// Malformed search (non-record) degrades to undefined.
+			expect(await appPageDataFn({ data: { path: page.path, search: "q=x" as never } })).toEqual({
+				status: "ok",
+				data: { path: "/test-app-search", search: undefined },
+			});
+			// Legacy bare-string input keeps working.
+			expect(await appPageDataFn({ data: page.path })).toEqual({
+				status: "ok",
+				data: { path: "/test-app-search", search: undefined },
+			});
+		} finally {
+			pages.delete(page.path);
+		}
+	});
+
 	it("app page data fn reports notfound for a disabled plugin (P-058)", async () => {
 		serverFnRequestHeaders.current = new Headers();
 		const page: Page = {
