@@ -26,6 +26,13 @@ declare module "@tanstack/react-router" {
 			preLoaderRoute: AnyRoute;
 			parentRoute: AnyRoute;
 		};
+		"/api/theme/catalog-fonts": {
+			id: "/api/theme/catalog-fonts";
+			path: "/api/theme/catalog-fonts";
+			fullPath: "/api/theme/catalog-fonts";
+			preLoaderRoute: AnyRoute;
+			parentRoute: AnyRoute;
+		};
 		"/api/theme/fonts": {
 			id: "/api/theme/fonts";
 			path: "/api/theme/fonts";

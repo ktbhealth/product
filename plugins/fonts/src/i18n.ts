@@ -56,6 +56,17 @@ export interface FontMessages {
 	readonly statusReady: string;
 	readonly statusFailed: string;
 	readonly weightsNone: string;
+	readonly uploadFont: string;
+	readonly dialogUploadTitle: string;
+	readonly familyLabel: string;
+	readonly familyPlaceholder: string;
+	readonly weightLabel: string;
+	readonly weightPlaceholder: string;
+	readonly fileLabel: string;
+	readonly upload: string;
+	readonly uploading: string;
+	readonly uploadToast: string;
+	readonly uploadError: string;
 }
 
 const en: FontMessages = {
@@ -102,6 +113,17 @@ const en: FontMessages = {
 	statusReady: "Ready",
 	statusFailed: "Failed",
 	weightsNone: "—",
+	uploadFont: "Upload font",
+	dialogUploadTitle: "Upload font to catalog",
+	familyLabel: "Family name",
+	familyPlaceholder: "e.g. Brand Sans",
+	weightLabel: "Weight (optional)",
+	weightPlaceholder: "400",
+	fileLabel: "Font file",
+	upload: "Upload",
+	uploading: "Uploading…",
+	uploadToast: "Font added to the catalog",
+	uploadError: "Font upload failed",
 };
 
 const ptBR: FontMessages = {
@@ -150,6 +172,17 @@ const ptBR: FontMessages = {
 	statusReady: "Pronto",
 	statusFailed: "Falhou",
 	weightsNone: "—",
+	uploadFont: "Enviar fonte",
+	dialogUploadTitle: "Enviar fonte ao catálogo",
+	familyLabel: "Nome da família",
+	familyPlaceholder: "ex.: Brand Sans",
+	weightLabel: "Peso (opcional)",
+	weightPlaceholder: "400",
+	fileLabel: "Arquivo de fonte",
+	upload: "Enviar",
+	uploading: "Enviando…",
+	uploadToast: "Fonte adicionada ao catálogo",
+	uploadError: "Falha no envio da fonte",
 };
 
 const es: FontMessages = {
@@ -198,6 +231,17 @@ const es: FontMessages = {
 	statusReady: "Listo",
 	statusFailed: "Falló",
 	weightsNone: "—",
+	uploadFont: "Subir fuente",
+	dialogUploadTitle: "Subir fuente al catálogo",
+	familyLabel: "Nombre de la familia",
+	familyPlaceholder: "p. ej. Brand Sans",
+	weightLabel: "Peso (opcional)",
+	weightPlaceholder: "400",
+	fileLabel: "Archivo de fuente",
+	upload: "Subir",
+	uploading: "Subiendo…",
+	uploadToast: "Fuente añadida al catálogo",
+	uploadError: "Error al subir la fuente",
 };
 
 const CATALOGS: Record<FontLocale, FontMessages> = { en, "pt-BR": ptBR, es };

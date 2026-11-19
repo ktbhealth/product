@@ -927,8 +927,12 @@ export type I18nKey =
 	| "fonts.deleteError"
 	| "fonts.deleteProvider"
 	| "fonts.dialogAddTitle"
+	| "fonts.dialogUploadTitle"
 	| "fonts.emptyFamilies"
 	| "fonts.emptyProviders"
+	| "fonts.familyLabel"
+	| "fonts.familyPlaceholder"
+	| "fonts.fileLabel"
 	| "fonts.fontsDescription"
 	| "fonts.fontsTitle"
 	| "fonts.kindLabel"
@@ -947,6 +951,13 @@ export type I18nKey =
 	| "fonts.syncedToast"
 	| "fonts.syncError"
 	| "fonts.syncing"
+	| "fonts.upload"
+	| "fonts.uploadError"
+	| "fonts.uploadFont"
+	| "fonts.uploading"
+	| "fonts.uploadToast"
+	| "fonts.weightLabel"
+	| "fonts.weightPlaceholder"
 	| "fonts.weightsNone"
 	| "forms.addItem"
 	| "forms.chooseOption"
@@ -3364,8 +3375,12 @@ export interface I18nTypedT {
 	(key: "fonts.deleteError"): Effect.Effect<string>;
 	(key: "fonts.deleteProvider"): Effect.Effect<string>;
 	(key: "fonts.dialogAddTitle"): Effect.Effect<string>;
+	(key: "fonts.dialogUploadTitle"): Effect.Effect<string>;
 	(key: "fonts.emptyFamilies"): Effect.Effect<string>;
 	(key: "fonts.emptyProviders"): Effect.Effect<string>;
+	(key: "fonts.familyLabel"): Effect.Effect<string>;
+	(key: "fonts.familyPlaceholder"): Effect.Effect<string>;
+	(key: "fonts.fileLabel"): Effect.Effect<string>;
 	(key: "fonts.fontsDescription"): Effect.Effect<string>;
 	(key: "fonts.fontsTitle"): Effect.Effect<string>;
 	(key: "fonts.kindLabel"): Effect.Effect<string>;
@@ -3384,6 +3399,13 @@ export interface I18nTypedT {
 	(key: "fonts.syncedToast"): Effect.Effect<string>;
 	(key: "fonts.syncError"): Effect.Effect<string>;
 	(key: "fonts.syncing"): Effect.Effect<string>;
+	(key: "fonts.upload"): Effect.Effect<string>;
+	(key: "fonts.uploadError"): Effect.Effect<string>;
+	(key: "fonts.uploadFont"): Effect.Effect<string>;
+	(key: "fonts.uploading"): Effect.Effect<string>;
+	(key: "fonts.uploadToast"): Effect.Effect<string>;
+	(key: "fonts.weightLabel"): Effect.Effect<string>;
+	(key: "fonts.weightPlaceholder"): Effect.Effect<string>;
 	(key: "fonts.weightsNone"): Effect.Effect<string>;
 	(key: "forms.addItem"): Effect.Effect<string>;
 	(key: "forms.chooseOption"): Effect.Effect<string>;
