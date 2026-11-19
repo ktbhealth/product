@@ -1,6 +1,7 @@
 import { LanguageModel } from "effect/ai";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
+import * as Tracer from "effect/Tracer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -39,10 +40,46 @@ const run = (cfg: Parameters<typeof correctTranscript>[0], transcript: string) =
 const ok = (text: string) => Effect.succeed({ text });
 const fakeAi = (impl: WorkersAiBinding["run"]) => ({ run: vi.fn(impl) });
 
+/** Captures log entries emitted through Effect.log* inside the effect. */
+const captureLogs = () => {
+	const entries: { message: unknown; annotations: Record<string, unknown> }[] = [];
+	const logger = Logger.make((options) => {
+		const message: unknown = options.message;
+		entries.push({
+			message,
+			annotations: Array.isArray(message)
+				? ((message[1] as Record<string, unknown> | undefined) ?? {})
+				: {},
+		});
+	});
+	return { entries, logger };
+};
+
+/** Records every span opened while the effect runs. */
+const makeTracer = () => {
+	const spans: Tracer.NativeSpan[] = [];
+	const tracer = Tracer.make({
+		span: (options) => {
+			const span = new Tracer.NativeSpan(options);
+			spans.push(span);
+			return span;
+		},
+	});
+	return { spans, tracer };
+};
+
 beforeEach(() => {
 	mocks.generateText.mockReset();
 	mocks.anthropicLive.mockClear();
 	mocks.openAiLive.mockClear();
+});
+
+describe("CLEANUP_SYSTEM_PROMPT", () => {
+	it("carries the surface-correction contract", () => {
+		expect(CLEANUP_SYSTEM_PROMPT).toContain("PT-BR");
+		expect(CLEANUP_SYSTEM_PROMPT).toContain("Never summarize");
+		expect(CLEANUP_SYSTEM_PROMPT).toContain("verbatim");
+	});
 });
 
 describe("correctTranscript", () => {
@@ -53,8 +90,12 @@ describe("correctTranscript", () => {
 		expect(ai.run).not.toHaveBeenCalled();
 	});
 
-	it("returns null when no provider is configured", async () => {
-		await expect(run({}, "olá")).resolves.toBeNull();
+	it("returns null without logging when no provider is configured", async () => {
+		const { entries, logger } = captureLogs();
+		await expect(
+			Effect.runPromise(correctTranscript({}, "olá").pipe(Effect.provide(Logger.layer([logger])))),
+		).resolves.toBeNull();
+		expect(entries).toHaveLength(0);
 	});
 
 	describe("anthropic", () => {
@@ -89,7 +130,21 @@ describe("correctTranscript", () => {
 
 		it("never fails: provider errors become null", async () => {
 			mocks.generateText.mockReturnValue(Effect.fail(new Error("provider down")));
-			await expect(run({ anthropicApiKey: "ak" }, "texto")).resolves.toBeNull();
+			const { entries, logger } = captureLogs();
+			const { spans, tracer } = makeTracer();
+			await expect(
+				Effect.runPromise(
+					correctTranscript({ anthropicApiKey: "ak" }, "texto").pipe(
+						Effect.provideService(Tracer.Tracer, tracer),
+						Effect.provide(Logger.layer([logger])),
+					),
+				),
+			).resolves.toBeNull();
+			const span = spans.find((s) => s.name === "transcript.cleanup");
+			expect(span?.attributes.get("transcript.engine")).toBe("anthropic");
+			const warn = entries.find((e) => String(e.message).includes("transcript cleanup failed"));
+			expect(warn?.annotations.engine).toBe("anthropic");
+			expect(String(warn?.annotations.error)).toContain("provider down");
 		});
 	});
 
@@ -164,12 +219,21 @@ describe("correctTranscript", () => {
 		});
 
 		it("never fails: binding errors and unknown shapes become null", async () => {
+			const { entries, logger } = captureLogs();
 			await expect(
-				run({ workersAi: fakeAi(async () => Promise.reject(new Error("boom"))) }, "texto"),
+				Effect.runPromise(
+					correctTranscript(
+						{ workersAi: fakeAi(async () => Promise.reject(new Error("boom"))) },
+						"texto",
+					).pipe(Effect.provide(Logger.layer([logger]))),
+				),
 			).resolves.toBeNull();
 			await expect(
 				run({ workersAi: fakeAi(async () => ({ nope: 1 })) }, "texto"),
 			).resolves.toBeNull();
+			const warn = entries.find((e) => String(e.message).includes("transcript cleanup failed"));
+			expect(warn?.annotations.engine).toBe(`workers-ai:${DEFAULT_WORKERS_AI_MODEL}`);
+			expect(String(warn?.annotations.error)).toContain("boom");
 		});
 	});
 });

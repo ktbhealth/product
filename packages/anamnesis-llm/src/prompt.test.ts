@@ -16,7 +16,10 @@ const HISTORY = {
 };
 
 describe("buildPrompt", () => {
-	it("returns the base prompt without history", () => {
+	it("embeds the extraction rules and transcript marker", () => {
+		expect(PROMPT).toContain("clinical documentation assistant");
+		expect(PROMPT).toContain("Respond ONLY with valid JSON");
+		expect(PROMPT).toContain("TRANSCRIPT:\n");
 		expect(buildPrompt()).toBe(PROMPT);
 		expect(buildPrompt(null)).toBe(PROMPT);
 		expect(buildPrompt({ count: 0, visits: [] })).toBe(PROMPT);
@@ -27,7 +30,7 @@ describe("buildPrompt", () => {
 		expect(prompt).toContain("PATIENT HISTORY");
 		expect(prompt).toContain("NOT clinical suggestions");
 		expect(prompt).toContain('- 05/03/2026 (#12): queixa "Dor de cabeça"; conduta "Dipirona"');
-		expect(prompt).toContain("- 20/01/2026 (#9)");
+		expect(prompt).toContain('conduta "Dipirona"\n- 20/01/2026 (#9)');
 		expect(prompt).toContain("TRANSCRIPT:");
 	});
 
@@ -46,6 +49,7 @@ describe("buildPrompt", () => {
 	it("puts demographics before history when both are known", () => {
 		const prompt = buildPrompt(HISTORY, { sex: "female", age: 42 });
 		expect(prompt.indexOf("PATIENT —")).toBeLessThan(prompt.indexOf("PATIENT HISTORY"));
+		expect(prompt).toContain('Never quote it in "evidence".\n\nPATIENT HISTORY');
 		expect(prompt.endsWith("TRANSCRIPT:\n")).toBe(true);
 	});
 });

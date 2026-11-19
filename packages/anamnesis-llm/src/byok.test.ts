@@ -22,10 +22,31 @@ describe("makeByokExtractor (T-146)", () => {
 		expect(extractor.name).toBe("byok");
 		const [url, init] = fetchImpl.mock.calls[0]!;
 		expect(url).toBe("https://llm.x/v1/chat/completions");
-		expect((init?.headers as Record<string, string>).authorization).toBe("Bearer sk-1");
+		expect(init?.method).toBe("POST");
+		const headers = init?.headers as Record<string, string>;
+		expect(headers.authorization).toBe("Bearer sk-1");
+		expect(headers["content-type"]).toBe("application/json");
 		const body = JSON.parse(init?.body as string);
 		expect(body.model).toBe("gpt-4o-mini");
-		expect(body.messages[1].content).toBe("Paciente com dor de cabeça.");
+		expect(body.response_format).toEqual({ type: "json_object" });
+		expect(body.messages).toHaveLength(2);
+		expect(body.messages[0]).toEqual({
+			role: "system",
+			content: expect.stringContaining("clinical documentation assistant"),
+		});
+		expect(body.messages[1]).toEqual({
+			role: "user",
+			content: "Paciente com dor de cabeça.",
+		});
+	});
+
+	it("strips every trailing slash from a custom base URL", async () => {
+		const fetchImpl = vi.fn<typeof fetch>(async () => okResponse(await anamnesisJson()));
+		await makeByokExtractor(
+			{ apiKey: "k", model: "m", baseUrl: "https://llm.x/v1//" },
+			fetchImpl,
+		).extract("t");
+		expect(fetchImpl.mock.calls[0]![0]).toBe("https://llm.x/v1/chat/completions");
 	});
 
 	it("defaults to the OpenAI endpoint", async () => {
@@ -42,12 +63,12 @@ describe("makeByokExtractor (T-146)", () => {
 	});
 
 	it("throws when the completion carries no content", async () => {
-		const fetchImpl = vi.fn<typeof fetch>(
-			async () => new Response(JSON.stringify({ choices: [] })),
-		);
-		await expect(
-			makeByokExtractor({ apiKey: "k", model: "m" }, fetchImpl).extract("t"),
-		).rejects.toThrow("no content");
+		for (const payload of [{ choices: [] }, {}, { choices: [{}] }]) {
+			const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify(payload)));
+			await expect(
+				makeByokExtractor({ apiKey: "k", model: "m" }, fetchImpl).extract("t"),
+			).rejects.toThrow("no content");
+		}
 	});
 
 	it("throws on schema drift so the seam can fall back", async () => {
