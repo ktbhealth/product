@@ -4,31 +4,20 @@ import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
+import {
+	ConfirmAction,
+	TablePage,
+	useServerMutation,
+	viewsMessages,
+	type Column,
+} from "@ktb/views/table";
 
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@ktbhealth/ui/components/alert-dialog";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import {
@@ -67,40 +56,93 @@ type EditorView = "new" | { readonly id: number };
  * Schema text in a monospace textarea (the same pattern the theme and
  * document-store editors use for JSON payloads); "Validate" persists
  * pending edits, then runs the stored schema against `{}` and lists
- * the issues. Deletes go through an AlertDialog confirm. Mutations go
+ * the issues. Deletes go through a ConfirmDialog confirm. Mutations go
  * through the plugin's server fns; the loader re-runs via
  * `router.invalidate()` after writes.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell + `ConfirmAction` for the delete confirm +
+ * `useServerMutation` for the invalidate plumbing. `defineAdminTable`
+ * does not fit — the list swaps the whole page for the editor pane
+ * (no row-navigation model), and the editor's create/validate flow is
+ * bespoke. `deleteSchemaFn` resolves a bare boolean rather than the
+ * `{ ok, data }` envelope, so it is adapted inline.
  */
 export function SchemasAdminPage({ schemas, i18n, locale }: SchemasAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, schemasMessages(locale));
 	const router = useRouter();
 	const [view, setView] = useState<EditorView | null>(null);
-	const [deleteTarget, setDeleteTarget] = useState<SchemaRow | null>(null);
-	const [busy, setBusy] = useState(false);
 	const [toast, setToast] = useState<ToastData | null>(null);
+
+	const del = useServerMutation<{ id: number }>(deleteSchemaFn);
 
 	const showToast = (text: string) => setToast({ id: Date.now(), text });
 
-	const confirmDelete = async () => {
-		/* v8 ignore next -- the confirm action only exists while the dialog is open */
-		if (deleteTarget === null) return;
-		const target = deleteTarget;
-		setBusy(true);
-		setDeleteTarget(null);
-		try {
-			const ok = await deleteSchemaFn({ data: { id: target.id } });
-			if (ok) {
-				await router.invalidate();
-				showToast(t.deleted);
-			} else {
-				showToast(t.deleteFailed);
-			}
-		} catch {
-			showToast(t.deleteFailed);
-		} finally {
-			setBusy(false);
-		}
+	const confirmDelete = async (target: SchemaRow) => {
+		const ok = await del.mutate({ id: target.id });
+		showToast(ok ? t.deleted : t.deleteFailed);
 	};
+
+	const columns: readonly Column<SchemaRow>[] = [
+		{
+			key: "name",
+			header: t.colName,
+			render: (row) => <span className="font-medium">{row.name}</span>,
+		},
+		{
+			key: "description",
+			header: t.colDescription,
+			render: (row) => (
+				<span className="text-muted-foreground">{row.description ?? ""}</span>
+			),
+		},
+		{
+			key: "updatedAt",
+			header: t.colUpdated,
+			render: (row) => (
+				<span className="text-muted-foreground">
+					<LocalDateTime value={row.updatedAt} locale={locale} />
+				</span>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => setView({ id: row.id })}
+						aria-label={t.edit}
+					>
+						<PencilIcon className="size-4" />
+					</Button>
+					<ConfirmAction
+						trigger={(open) => (
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								onClick={open}
+								aria-label={t.delete}
+							>
+								<Trash2Icon className="size-4 text-destructive" />
+							</Button>
+						)}
+						title={t.deleteTitle}
+						description={t.deleteBody(row.name)}
+						confirmLabel={t.deleteConfirm}
+						cancelLabel={t.cancel}
+						variant="destructive"
+						onConfirm={() => confirmDelete(row)}
+					/>
+				</div>
+			),
+		},
+	];
 
 	if (view !== null) {
 		return (
@@ -122,92 +164,30 @@ export function SchemasAdminPage({ schemas, i18n, locale }: SchemasAdminPageProp
 	}
 
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={t.title}
 				description={t.description}
 				actions={
-					<Button size="sm" onClick={() => setView("new")} disabled={busy}>
+					<Button
+						type="button"
+						size="sm"
+						onClick={() => setView("new")}
+						disabled={del.busy}
+					>
 						<PlusIcon className="size-4" />
 						{t.newSchema}
 					</Button>
 				}
 			/>
-			{schemas.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyDescription}</p>
-				</div>
-			) : (
-				<div className="overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colName}</TableHead>
-								<TableHead>{t.colDescription}</TableHead>
-								<TableHead>{t.colUpdated}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{schemas.map((row) => (
-								<TableRow key={row.id}>
-									<TableCell className="font-medium">{row.name}</TableCell>
-									<TableCell className="text-muted-foreground">{row.description ?? ""}</TableCell>
-									<TableCell className="text-muted-foreground">
-										{new Date(row.updatedAt).toLocaleString(locale)}
-									</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end gap-1">
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setView({ id: row.id })}
-												aria-label={t.edit}
-											>
-												<PencilIcon className="size-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setDeleteTarget(row)}
-												aria-label={t.delete}
-											>
-												<Trash2Icon className="size-4 text-destructive" />
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
-
-			<AlertDialog
-				open={deleteTarget !== null}
-				onOpenChange={(open) => {
-					/* v8 ignore next -- the dialog only closes through this callback; opening is controlled by deleteTarget */
-					if (!open) setDeleteTarget(null);
-				}}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{t.deleteTitle}</AlertDialogTitle>
-						<AlertDialogDescription>
-							{deleteTarget === null ? "" : t.deleteBody(deleteTarget.name)}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={busy}>{t.cancel}</AlertDialogCancel>
-						<AlertDialogAction onClick={() => void confirmDelete()} disabled={busy}>
-							{busy ? <Spinner className="size-4" /> : t.deleteConfirm}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<TablePage.Table
+				columns={columns}
+				rows={schemas}
+				locale={locale}
+				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+			/>
 			<Toast toast={toast} onClose={() => setToast(null)} />
-		</PageContainer>
+		</TablePage>
 	);
 }
 

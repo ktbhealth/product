@@ -5,20 +5,11 @@ import { ArrowRightIcon } from "lucide-react";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import { LocalDateTime } from "@ktb/views/views";
+import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import type { CollectionWire, DocumentWire, DocumentsPageWire } from "../wire.ts";
 import { browseDocumentsFn } from "../fns.ts";
@@ -56,6 +47,10 @@ const preview = (value: unknown): string => {
  * — the "Open" action jumps into the collection's own page
  * (/platform/document-store/<name>) where the field-aware editor
  * lives. Mutations stay on that page; this view only lists.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with server-driven pagination kept in local state (the
+ * collection filter refetches page 0 through `browseDocumentsFn`).
  */
 export function AllDocumentsPage({
 	collections,
@@ -97,80 +92,88 @@ export function AllDocumentsPage({
 			<Badge variant="outline">{t.scopeGlobal}</Badge>
 		);
 
+	const columns: Column<DocumentWire>[] = [
+		{
+			key: "id",
+			header: t.colId,
+			render: (row) => <span className="font-mono text-xs">{row.id}</span>,
+		},
+		{
+			key: "collection",
+			header: t.colCollection,
+			render: (row) => <span className="font-mono text-xs">{row.collection}</span>,
+		},
+		{ key: "scope", header: t.colScope, render: scopeBadge },
+		{
+			key: "data",
+			header: t.colData,
+			render: (row) => (
+				<span className="block max-w-64 truncate font-mono text-xs">{preview(row.data)}</span>
+			),
+		},
+		{
+			key: "updatedAt",
+			header: t.colUpdated,
+			render: (row) => (
+				<span className="whitespace-nowrap text-muted-foreground">
+					<LocalDateTime value={row.updatedAt} locale={locale} />
+				</span>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end">
+					{/* Real link — navigates to the collection's
+					    document page (link semantics, no nativeButton). */}
+					<Link
+						to={`/platform/document-store/${row.collection}` as "/"}
+						className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+						aria-label={t.open}
+					>
+						{t.open}
+						<ArrowRightIcon className="size-4" />
+					</Link>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader title={t.documentsTitle} description={t.documentsDescription} />
-			<div className="mt-4 flex flex-wrap items-center gap-2">
-				<NativeSelect
-					aria-label={t.allCollections}
-					value={collection}
-					onChange={(e) => {
-						const name = e.target.value;
-						setCollection(name);
-						void fetchPage(0, name);
-					}}
-				>
-					<NativeSelectOption value="">{t.allCollections}</NativeSelectOption>
-					{collections.map((c) => (
-						<NativeSelectOption key={c.name} value={c.name}>
-							{c.name}
-						</NativeSelectOption>
-					))}
-				</NativeSelect>
-			</div>
-			{loadFailed ? <p className="mt-3 text-sm text-destructive">{t.loadFailed}</p> : null}
-			{page.rows.length === 0 ? (
-				<div className="mt-4 rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyBrowseTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyBrowseDescription}</p>
-				</div>
-			) : (
-				<div className="mt-4 overflow-x-auto rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colId}</TableHead>
-								<TableHead>{t.colCollection}</TableHead>
-								<TableHead>{t.colScope}</TableHead>
-								<TableHead>{t.colData}</TableHead>
-								<TableHead>{t.colUpdated}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{page.rows.map((row) => (
-								<TableRow key={`${row.collection}:${row.id}`}>
-									<TableCell className="font-mono text-xs">{row.id}</TableCell>
-									<TableCell className="font-mono text-xs">{row.collection}</TableCell>
-									<TableCell>{scopeBadge(row)}</TableCell>
-									<TableCell className="max-w-64 truncate font-mono text-xs">
-										{preview(row.data)}
-									</TableCell>
-									<TableCell className="whitespace-nowrap text-muted-foreground">
-										<LocalDateTime value={row.updatedAt} locale={locale} />
-									</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end">
-											{/* Real link — navigates to the collection's
-											    document page (link semantics, no nativeButton). */}
-											<Link
-												to={`/platform/document-store/${row.collection}` as "/"}
-												className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
-												aria-label={t.open}
-											>
-												{t.open}
-												<ArrowRightIcon className="size-4" />
-											</Link>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header title={t.documentsTitle} description={t.documentsDescription} />
+			<TablePage.Toolbar
+				filters={
+					<NativeSelect
+						aria-label={t.allCollections}
+						value={collection}
+						onChange={(e) => {
+							const name = e.target.value;
+							setCollection(name);
+							void fetchPage(0, name);
+						}}
+					>
+						<NativeSelectOption value="">{t.allCollections}</NativeSelectOption>
+						{collections.map((c) => (
+							<NativeSelectOption key={c.name} value={c.name}>
+								{c.name}
+							</NativeSelectOption>
+						))}
+					</NativeSelect>
+				}
+			/>
+			{loadFailed ? <p className="text-sm text-destructive">{t.loadFailed}</p> : null}
+			<TablePage.Table
+				columns={columns}
+				rows={page.rows}
+				rowKey={(row) => `${row.collection}:${row.id}`}
+				empty={{ title: t.emptyBrowseTitle, description: t.emptyBrowseDescription }}
+				locale={locale}
+			/>
 			{page.total > PAGE_SIZE ? (
-				<div className="mt-4 flex items-center justify-between">
+				<TablePage.Footer>
 					<p className="text-sm text-muted-foreground">{t.pageInfo(pageIndex + 1, pageCount)}</p>
 					<div className="flex gap-2">
 						<Button
@@ -190,8 +193,8 @@ export function AllDocumentsPage({
 							{t.nextPage}
 						</Button>
 					</div>
-				</div>
+				</TablePage.Footer>
 			) : null}
-		</PageContainer>
+		</TablePage>
 	);
 }

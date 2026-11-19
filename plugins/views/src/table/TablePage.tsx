@@ -1,4 +1,11 @@
-import { createContext, useContext, useState, type ComponentProps, type ReactNode } from "react";
+import {
+	createContext,
+	useContext,
+	useState,
+	type ComponentProps,
+	type MouseEvent,
+	type ReactNode,
+} from "react";
 
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import { DataToolbar, type DataToolbarResultCount } from "@ktbhealth/ui/components/data-toolbar";
@@ -54,6 +61,12 @@ const ALIGN_CLS = {
 	center: "text-center",
 	right: "text-right",
 } as const;
+
+const INTERACTIVE_SELECTOR =
+	"button, a, input, select, textarea, [role='checkbox'], [role='button'], [role='link']";
+
+const isInteractiveTarget = (target: EventTarget | null): boolean =>
+	target instanceof Element && target.closest(INTERACTIVE_SELECTOR) !== null;
 
 const joinCls = (...parts: readonly (string | undefined)[]): string | undefined => {
 	const cls = parts.filter(Boolean).join(" ");
@@ -150,6 +163,13 @@ export interface TablePageTableProps<Row> {
 	readonly loading?: boolean;
 	/** Trailing actions cell per row (buttons, menus). */
 	readonly rowActions?: (row: Row) => ReactNode;
+	/** Row click handler — fires for clicks that don't land on an
+	 * interactive element (button/a/input/select/textarea or a
+	 * `[role=checkbox]`/`[role=button]` descendant). Rows get
+	 * `cursor-pointer` when set. */
+	readonly onRowClick?: (row: Row, index: number, event: MouseEvent<HTMLTableRowElement>) => void;
+	/** Per-row class hook (e.g. highlight). */
+	readonly rowClassName?: (row: Row, index: number) => string | undefined;
 	readonly selectable?: boolean;
 	/** Controlled selection — omit for internal state. */
 	readonly selected?: ReadonlySet<string>;
@@ -169,6 +189,8 @@ function TablePageTableInner<Row>({
 	isFiltered,
 	loading = false,
 	rowActions,
+	onRowClick,
+	rowClassName,
 	selectable = false,
 	selected,
 	onSelectionChange,
@@ -270,7 +292,20 @@ function TablePageTableInner<Row>({
 							   ?? fallback can never produce a different key */
 							const key = rowKeys[index] ?? keyOf(row, index);
 							return (
-								<TableRow key={key}>
+								<TableRow
+									key={key}
+									className={joinCls(
+										onRowClick !== undefined ? "cursor-pointer" : undefined,
+										rowClassName?.(row, index),
+									)}
+									onClick={
+										onRowClick === undefined
+											? undefined
+											: (event) => {
+													if (!isInteractiveTarget(event.target)) onRowClick(row, index, event);
+												}
+									}
+								>
 									{selectable ? (
 										<TableCell>
 											<Checkbox
