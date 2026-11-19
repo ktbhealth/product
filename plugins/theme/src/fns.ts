@@ -1,8 +1,10 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { FontCatalog, type FontCatalogFamily } from "@ktb/fonts/catalog";
 import { PlatformAdmin } from "@ktb/platform";
 import { run, runAs, ensureSessionUser, getSessionUser } from "@ktb/server-fns";
 
@@ -14,6 +16,7 @@ import {
 	type ResolvedTheme,
 	type ThemeBrand,
 	type ThemeFontConfig,
+	type ThemeFontSourceOption,
 	type ThemeResolveRequest,
 	type ThemeAssetSummary,
 	type ThemeSeeds,
@@ -157,6 +160,51 @@ export const getThemeFn = createServerFn({ method: "GET" })
 			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null as ResolvedTheme | null))),
 		);
 	});
+
+/**
+ * Ready managed font families for the editor's per-slot source
+ * picker — the fonts plugin's open catalog port (theme.services
+ * optionalDeps fonts.services), admin-gated like the rest of the
+ * surface. Degrades to [] when the fonts plugin is absent, when the
+ * gate denies, or when the catalog read fails — the picker simply
+ * hides and free-form families keep working.
+ */
+export const listThemeFontSourcesFn = createServerFn({ method: "GET" }).handler(
+	async (): Promise<readonly ThemeFontSourceOption[]> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const gate = yield* PlatformAdmin;
+				yield* gate.requireAdmin();
+				const catalog = yield* Effect.serviceOption(FontCatalog);
+				if (Option.isNone(catalog)) {
+					return [] as readonly ThemeFontSourceOption[];
+				}
+				const rows = yield* catalog.value
+					.list()
+					.pipe(
+						Effect.catchCause((cause) =>
+							Effect.logWarning("font catalog read failed", cause).pipe(
+								Effect.as([] as readonly FontCatalogFamily[]),
+							),
+						),
+					);
+				return rows
+					.filter((row) => row.status === "ready")
+					.map((row) => ({
+						providerId: row.providerId,
+						providerName: row.providerName,
+						providerKind: row.kind,
+						family: row.family,
+						weights: [...row.weights],
+					}));
+			}).pipe(
+				Effect.catchTag("Forbidden", () => Effect.succeed([] as readonly ThemeFontSourceOption[])),
+			),
+		);
+	},
+);
 
 const PublishInput = Schema.Struct({
 	id: Schema.optional(Schema.Number),

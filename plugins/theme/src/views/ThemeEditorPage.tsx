@@ -53,6 +53,7 @@ import {
 	deleteThemeFn,
 	getThemeFn,
 	listThemeAssetsFn,
+	listThemeFontSourcesFn,
 	publishThemeFn,
 	setThemePreviewFn,
 } from "../fns.ts";
@@ -65,6 +66,8 @@ import type {
 	ThemeAssetSummary,
 	ThemeFontConfig,
 	ThemeFontSlot,
+	ThemeFontSource,
+	ThemeFontSourceOption,
 	ThemeScopeKind,
 	ThemeSeeds,
 	ThemeSummary,
@@ -140,6 +143,15 @@ const IMAGE_KIND_ITEMS = [
 ] as const satisfies readonly Exclude<ThemeAssetKind, "font">[];
 
 const FONT_SLOT_ITEMS = ["sans", "heading", "mono"] as const satisfies readonly ThemeFontSlot[];
+
+/** Select value for "no managed source" — the slot falls back to the
+ * free-form `families.<slot>` name. */
+const CUSTOM_FONT_SOURCE = "custom";
+
+const fontSourceKey = (providerId: number, family: string) => `src:${providerId}:${family}`;
+
+const fontSlotLabel = (slot: ThemeFontSlot, t: ThemeMessages): string =>
+	slot === "sans" ? t.fontSans : slot === "heading" ? t.fontHeading : t.fontMono;
 
 const SCOPE_ITEMS = [
 	"platform",
@@ -334,6 +346,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	const [seeds, setSeeds] = useState<SeedFields>(EMPTY_SEEDS);
 	const [darkSeeds, setDarkSeeds] = useState<SeedFields>(EMPTY_SEEDS);
 	const [fonts, setFonts] = useState<ThemeFontConfig | null>(null);
+	const [fontSources, setFontSources] = useState<readonly ThemeFontSourceOption[]>([]);
 	const [scope, setScope] = useState<ThemeScopeKind>("tenant");
 	const [scopeId, setScopeId] = useState("");
 	const [appName, setAppName] = useState("");
@@ -361,9 +374,16 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 		setLoadState("loading");
 		void (async () => {
 			try {
-				const [th, assetRows] = await Promise.all([
+				const [th, assetRows, sourceRows] = await Promise.all([
 					getThemeFn({ data: { id } }) as Promise<ResolvedTheme | null>,
 					listThemeAssetsFn({ data: { themeId: id } }) as Promise<readonly ThemeAssetSummary[]>,
+					// Managed-source catalog — independent of the theme row;
+					// a failure just hides the picker (free-form families
+					// keep working), same degradation as an absent fonts
+					// plugin.
+					listThemeFontSourcesFn()
+						.then((rows) => rows as readonly ThemeFontSourceOption[])
+						.catch(() => [] as readonly ThemeFontSourceOption[]),
 				]);
 				if (cancelled) return;
 				if (th === null) {
@@ -374,6 +394,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 				setSeeds(seedsToFields(th.seeds));
 				setDarkSeeds(seedsToFields(th.seeds.dark));
 				setFonts(th.fonts);
+				setFontSources(sourceRows);
 				setScope(th.scope);
 				setScopeId(th.scopeId);
 				setAppName(th.appName ?? th.brand?.appName ?? "");
@@ -601,6 +622,14 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 			families: { ...(f?.families ?? {}), [slot]: family === "" ? null : family },
 		}));
 	};
+	const setFontSource = (slot: ThemeFontSlot, source: ThemeFontSource | null) => {
+		mark();
+		setFonts((f) => ({
+			...(f ?? {}),
+			delivery: f?.delivery ?? "self-host",
+			sources: { ...(f?.sources ?? {}), [slot]: source },
+		}));
+	};
 	const setFontWeights = (raw: string) => {
 		mark();
 		const weights = raw
@@ -732,13 +761,100 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 							</Alert>
 						) : null}
 					</div>
+					{fontSources.length > 0 ? (
+						<div className="space-y-1.5">
+							<Label>{t.fontsSourcesLabel}</Label>
+							<div className="space-y-2">
+								{FONT_SLOT_ITEMS.map((slot) => {
+									const slotLabel = fontSlotLabel(slot, t);
+									const current = fonts?.sources?.[slot] ?? null;
+									// A stored source missing from the ready catalog
+									// (provider disabled/removed since publish) still
+									// renders as its own option so the select shows the
+									// binding instead of a blank trigger.
+									const staleSource =
+										current !== null &&
+										!fontSources.some(
+											(o) => o.providerId === current.providerId && o.family === current.family,
+										)
+											? current
+											: null;
+									const items = [
+										...(staleSource === null
+											? []
+											: [
+													{
+														providerId: staleSource.providerId,
+														family: staleSource.family,
+														label: staleSource.family,
+													},
+												]),
+										...fontSources.map((o) => ({
+											providerId: o.providerId,
+											family: o.family,
+											label: `${o.providerName} — ${o.family}`,
+										})),
+									];
+									return (
+										<div key={slot} className="flex items-center gap-3">
+											<Label className="w-24 shrink-0 text-xs">{slotLabel}</Label>
+											<Select
+												value={
+													current === null
+														? CUSTOM_FONT_SOURCE
+														: fontSourceKey(current.providerId, current.family)
+												}
+												onValueChange={(v) => {
+													// The select is controlled and never
+													// cleared — same cast convention as
+													// the scope/delivery selects above.
+													const value = v as string;
+													if (value === CUSTOM_FONT_SOURCE) {
+														setFontSource(slot, null);
+														return;
+													}
+													// The value encodes the source
+													// (`src:<providerId>:<family>`) — the
+													// family may itself contain ":", so
+													// split on the FIRST separator only.
+													const sep = value.indexOf(":", 4);
+													setFontSource(slot, {
+														providerId: Number(value.slice(4, sep)),
+														family: value.slice(sep + 1),
+													});
+												}}
+											>
+												<SelectTrigger
+													className="flex-1"
+													aria-label={`${slotLabel} — ${t.fontSourceLabel}`}
+												>
+													<SelectValue />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value={CUSTOM_FONT_SOURCE}>{t.fontSourceCustom}</SelectItem>
+													{items.map((item) => {
+														const key = fontSourceKey(item.providerId, item.family);
+														return (
+															<SelectItem key={key} value={key}>
+																{item.label}
+															</SelectItem>
+														);
+													})}
+												</SelectContent>
+											</Select>
+										</div>
+									);
+								})}
+							</div>
+						</div>
+					) : null}
 					<div className="space-y-1.5">
 						<Label>{t.fontsFamiliesLabel}</Label>
 						<div className="space-y-2">
 							{FONT_SLOT_ITEMS.map((slot) => (
 								<div key={slot} className="flex items-center gap-3">
 									<Label htmlFor={`font-${slot}`} className="w-24 shrink-0 text-xs">
-										{slot === "sans" ? t.fontSans : slot === "heading" ? t.fontHeading : t.fontMono}
+										{fontSlotLabel(slot, t)}
 									</Label>
 									<Input
 										id={`font-${slot}`}
@@ -1092,9 +1208,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 								] as const
 							).map(([slot, sample]) => (
 								<div key={slot} className="space-y-1">
-									<p className="text-xs text-muted-foreground">
-										{slot === "heading" ? t.fontHeading : slot === "sans" ? t.fontSans : t.fontMono}
-									</p>
+									<p className="text-xs text-muted-foreground">{fontSlotLabel(slot, t)}</p>
 									<p
 										className="text-lg"
 										style={{ fontFamily: fontVars[`--font-${slot === "sans" ? "body" : slot}`] }}

@@ -72,13 +72,19 @@ describe("listCatalogRows", () => {
 		const inter = rows.find((r) => r.family === "Inter")!;
 		expect(inter).toMatchObject({
 			providerId: google.id,
+			providerName: "Google",
 			kind: "googlefonts",
 			weights: [400, 700],
 			status: "ready",
 			meta: { source: "googlefonts" },
 		});
 		const brand = rows.find((r) => r.family === "Brand Sans")!;
-		expect(brand).toMatchObject({ providerId: local.id, kind: "local", weights: [] });
+		expect(brand).toMatchObject({
+			providerId: local.id,
+			providerName: "Local",
+			kind: "local",
+			weights: [],
+		});
 		expect(brand.meta).toEqual({ source: "local", assetId: 42 });
 	});
 

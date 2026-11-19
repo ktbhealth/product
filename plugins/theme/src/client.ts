@@ -154,6 +154,7 @@ export type {
 	ThemeBrand,
 	ThemeFontConfig,
 	ThemeFontSource,
+	ThemeFontSourceOption,
 	ThemeManagedFont,
 	ThemeResolveRequest,
 	ThemeScopeKind,

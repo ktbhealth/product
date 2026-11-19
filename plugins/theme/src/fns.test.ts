@@ -39,6 +39,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Auth } from "@ktb/auth";
 import { Forbidden } from "@ktb/authz";
+import { FontCatalog, type FontCatalogFamily } from "@ktb/fonts/catalog";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
@@ -46,6 +47,7 @@ import {
 	deleteThemeFn,
 	getThemeFn,
 	listThemeAssetsFn,
+	listThemeFontSourcesFn,
 	listThemesFn,
 	publishThemeFn,
 	setThemeEnabledFn,
@@ -141,6 +143,30 @@ const dyingGateRuntime = ManagedRuntime.make(
 	) as Layer.Layer<unknown, never, never>,
 );
 
+// Catalog stand-in for listThemeFontSourcesFn — `entries`/`fail` are
+// re-pointed per test; the default `runtime` deliberately has NO
+// FontCatalog layer so the absent-fonts-plugin edge stays covered.
+const catalogState = {
+	entries: [] as FontCatalogFamily[],
+	fail: false,
+};
+const catalogRuntime = ManagedRuntime.make(
+	Layer.mergeAll(
+		Layer.succeed(Auth, authStub),
+		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		Layer.succeed(Theme, themeStub),
+		Layer.succeed(
+			FontCatalog,
+			FontCatalog.of({
+				list: () =>
+					catalogState.fail
+						? Effect.die(new Error("catalog down"))
+						: Effect.succeed(catalogState.entries),
+			}),
+		),
+	) as Layer.Layer<unknown, never, never>,
+);
+
 const runtimeOverrides = { pluginEnabled: async () => true };
 
 beforeAll(() => {
@@ -149,7 +175,7 @@ beforeAll(() => {
 
 afterAll(async () => {
 	resetServerFnRuntime();
-	await Promise.all([runtime.dispose(), dyingGateRuntime.dispose()]);
+	await Promise.all([runtime.dispose(), dyingGateRuntime.dispose(), catalogRuntime.dispose()]);
 });
 
 const useSession = (key: string | null) => {
@@ -367,6 +393,91 @@ describe("getThemeFn", () => {
 			expect(await getThemeFn({ data: { id: 7 } })).toBeNull();
 		} finally {
 			hooks.get = () => Effect.succeed(null);
+		}
+	});
+});
+
+describe("listThemeFontSourcesFn", () => {
+	const catalogEntry = (over: Partial<FontCatalogFamily> = {}): FontCatalogFamily => ({
+		id: 1,
+		providerId: 7,
+		providerName: "Google",
+		kind: "googlefonts",
+		family: "Inter",
+		weights: [400, 700],
+		status: "ready",
+		meta: null,
+		...over,
+	});
+
+	it("rejects anonymous callers", async () => {
+		useSession(null);
+		await expect(listThemeFontSourcesFn()).rejects.toThrow("unauthenticated");
+	});
+
+	it("returns [] for non-admins and when the fonts plugin is absent", async () => {
+		useSession("plain");
+		expect(await listThemeFontSourcesFn()).toEqual([]);
+		// `runtime` has no FontCatalog layer — the optionalDep edge.
+		useSession("admin");
+		expect(await listThemeFontSourcesFn()).toEqual([]);
+	});
+
+	it("lists ready catalog families with provider names", async () => {
+		useSession("admin");
+		catalogState.entries = [
+			catalogEntry(),
+			catalogEntry({
+				id: 2,
+				providerId: 9,
+				providerName: "Local",
+				kind: "local",
+				family: "Brand Sans",
+				weights: [],
+				status: "pending",
+			}),
+			catalogEntry({
+				id: 3,
+				providerId: 9,
+				providerName: "Local",
+				kind: "local",
+				family: "Ready Sans",
+				weights: [300],
+			}),
+		];
+		installServerFnRuntime(catalogRuntime, authStub, runtimeOverrides);
+		try {
+			expect(await listThemeFontSourcesFn()).toEqual([
+				{
+					providerId: 7,
+					providerName: "Google",
+					providerKind: "googlefonts",
+					family: "Inter",
+					weights: [400, 700],
+				},
+				{
+					providerId: 9,
+					providerName: "Local",
+					providerKind: "local",
+					family: "Ready Sans",
+					weights: [300],
+				},
+			]);
+		} finally {
+			installServerFnRuntime(runtime, authStub, runtimeOverrides);
+			catalogState.entries = [];
+		}
+	});
+
+	it("degrades a failing catalog read to an empty list", async () => {
+		useSession("admin");
+		catalogState.fail = true;
+		installServerFnRuntime(catalogRuntime, authStub, runtimeOverrides);
+		try {
+			expect(await listThemeFontSourcesFn()).toEqual([]);
+		} finally {
+			installServerFnRuntime(runtime, authStub, runtimeOverrides);
+			catalogState.fail = false;
 		}
 	});
 });

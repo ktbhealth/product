@@ -14,6 +14,7 @@ import type { ThemeFontConfig, ThemeManagedFont } from "./types.ts";
 const entry = (over: Partial<FontCatalogFamily> = {}): FontCatalogFamily => ({
 	id: 1,
 	providerId: 7,
+	providerName: "Google",
 	kind: "googlefonts",
 	family: "Inter",
 	weights: [400, 700],
