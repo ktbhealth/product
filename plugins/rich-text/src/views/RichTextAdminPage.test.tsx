@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { StrictMode } from "react";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -166,6 +167,25 @@ describe("RichTextAdminPage", () => {
 		await waitFor(() => expect(fns.deleteRichTextFn).toHaveBeenCalledWith({ data: { id: 5 } }));
 		await screen.findByText("Empty document deleted");
 		await screen.findByText("No documents yet");
+	});
+
+	it("does not delete on StrictMode's dev double-mount", async () => {
+		const user = userEvent.setup();
+		fns.createRichTextFn.mockResolvedValue(
+			docWire({ id: 5, content: [{ type: "p", children: [{ text: "" }] }] }),
+		);
+		fns.deleteRichTextFn.mockResolvedValue(true);
+		render(
+			<StrictMode>
+				<RichTextAdminPage docs={[]} locale="en" />
+			</StrictMode>,
+		);
+		await user.click(screen.getByText("New document"));
+		await screen.findByTestId("rich-text-editor");
+		// Let any pending unmount-flush timers fire — the simulated
+		// unmount must not reach deleteRichTextFn.
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(fns.deleteRichTextFn).not.toHaveBeenCalled();
 	});
 
 	it("toasts deleteFailed when the empty-exit delete fails", async () => {

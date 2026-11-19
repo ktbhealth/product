@@ -270,6 +270,7 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 	const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
 	const exitRef = useRef<() => void>(() => {});
 	const loadCancelledRef = useRef(false);
+	const unmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const tRef = useRef(t);
 	const onExitRef = useRef(onExit);
 	const onToastRef = useRef(onToast);
@@ -435,10 +436,20 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 	});
 
 	// Unmount flush: switching views without pressing Back (e.g. parent
-	// navigation) still persists or deletes the document.
+	// navigation) still persists or deletes the document. The flush is
+	// deferred one tick: React StrictMode's dev double-mount runs this
+	// cleanup and immediately re-runs setup, which cancels the pending
+	// flush — a real unmount never re-mounts, so it still fires.
 	useEffect(() => {
+		if (unmountTimerRef.current !== null) {
+			clearTimeout(unmountTimerRef.current);
+			unmountTimerRef.current = null;
+		}
 		return () => {
-			exitRef.current();
+			unmountTimerRef.current = setTimeout(() => {
+				unmountTimerRef.current = null;
+				exitRef.current();
+			}, 0);
 		};
 	}, []);
 
