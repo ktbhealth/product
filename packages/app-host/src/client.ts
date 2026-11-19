@@ -2,6 +2,7 @@ import { discoverPlugins, orderPlugins } from "@ktb/driver-framework";
 import type { Plugin } from "@ktb/kernel";
 import { plugins as platformClientPlugins } from "@ktb/platform/client";
 
+import { collectBoundaries } from "./boundaries.ts";
 import { collectPages, collectPortals } from "./pages.ts";
 
 /**
@@ -30,7 +31,9 @@ export const plugins: readonly Plugin[] = orderPlugins(
 // Registry-derived collections (P-058/P-059/P-060): pure helpers over the
 // plugin list, re-exported so apps consume one client entry. The page
 // maps are computed once here — the registry is static.
+export * from "./boundaries.ts";
 export * from "./chrome.ts";
+export * from "./login-tiles.ts";
 export * from "./namespaces.ts";
 export * from "./pages.ts";
 export * from "./plugin-state.ts";
@@ -41,3 +44,8 @@ export const { pages, appPages, portalPages } = collectPages(plugins);
 /** Every contributed portal instance (P-081), in topo order — the
  * portal shells and the switcher resolve descriptors from this. */
 export const portalInstances = collectPortals(plugins);
+
+/** Every contributed router boundary (404/error), in topo order —
+ * select the live winner per kind with selectNotFoundBoundary /
+ * selectErrorBoundary once the enabled id set is known. */
+export const boundaryEntries = collectBoundaries(plugins);

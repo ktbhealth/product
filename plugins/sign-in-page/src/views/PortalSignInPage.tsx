@@ -1,7 +1,11 @@
-import { createFileRoute, getRouteApi, Link, useLoaderData } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@ktb/auth-better/client";
 import { ForgotPasswordLink } from "@ktb/auth-plugin/views";
+import { doctorContextFn } from "@ktb/doctors/fns";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageContext } from "@ktb/kernel";
+import { PORTAL_AUDIENCE } from "@ktb/portal/rules";
 import { Alert, AlertDescription } from "@ktbhealth/ui/components/alert";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -16,47 +20,43 @@ import { Label } from "@ktbhealth/ui/components/label";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Turnstile } from "@ktbhealth/ui/components/turnstile";
-import { emailEnabledFn, portalAudiencesFn } from "#/lib/fns.ts";
-import { doctorContextFn } from "@ktb/doctors/fns";
-import { PORTAL_AUDIENCE } from "@ktb/portal/rules";
 
-import { appCatalogT, i18nSliceFromHeadMatches, useRootI18nSlice } from "#/lib/i18n.ts";
-import { loginTileTargets } from "#/lib/login-tiles.ts";
-import { plugins } from "#/plugins.ts";
+import { portalAudiencesFn } from "../fns.ts";
+import { I18N_NAMESPACE, signInMessages } from "../i18n.ts";
+import { loginTileTargets, type LoginTileStates } from "../login-tiles.ts";
 
-const rootApi = getRouteApi("__root__");
+export interface PortalSignInPageProps {
+	/** Page loader payload: `{ emailEnabled }` from the descriptor's
+	 * server-side Effect (null when invoked without one, e.g. tests). */
+	readonly data: unknown;
+	readonly ctx: PageContext;
+}
 
-export const Route = createFileRoute("/login/patient")({
-	head: (ctx) => {
-		// The ROOT match's i18n slice — it already honors `?locale=`;
-		// no per-route i18nRouteFn call needed (that would be a second,
-		// search-blind server roundtrip per navigation).
-		const i18n = i18nSliceFromHeadMatches(ctx?.matches);
-		const title = appCatalogT(i18n)("app.portal_login_meta_title");
-		return { meta: [{ title }] };
-	},
-	loader: async () => ({
-		emailEnabled: await emailEnabledFn(),
-	}),
-	component: PortalSignInPage,
-});
-
-// Patient sign-in. Same accounts as the doctor page — what differs is
-// where it leads (the portal) and what a sign-up creates: a patient
-// account has no doctor profile.
-function PortalSignInPage() {
-	const { emailEnabled } = useLoaderData({ from: "/login/patient" });
-	// The doctor cross-link follows the /login picker's rule (P-058/P-099):
-	// no offer when the doctor sign-in tile is not live.
-	const { pluginStates } = rootApi.useLoaderData();
-	const doctorLogin = loginTileTargets(plugins, pluginStates).has("/login/doctor");
-	const slice = useRootI18nSlice();
-	const appT = appCatalogT(slice);
-	const t = (key: string, params: Record<string, unknown> = {}) => {
-		const full = `app.${key}`;
-		const resolved = appT(full, params);
-		return resolved === full ? key : resolved;
+/**
+ * /login/patient — patient sign-in (moved from the host file route
+ * apps/web/src/routes/login-patient.tsx). Same accounts as the doctor
+ * page — what differs is where it leads (the portal) and what a
+ * sign-up creates: a patient account has no doctor profile.
+ *
+ * Post-sign-in funnel (unchanged from the host route): a staff
+ * account — a doctor/secretary profile and no patient side — does not
+ * satisfy the patient audience, so /portal would 404 it at the gate;
+ * it routes through the same funnel as /login/doctor instead
+ * (/doctors/select for multi-profile accounts, "/" otherwise). The
+ * doctor cross-link follows the /login picker's rule (P-058/P-099):
+ * no offer when the doctor sign-in tile is not live.
+ */
+export function PortalSignInPage({ data, ctx }: PortalSignInPageProps) {
+	const emailEnabled =
+		(data as { emailEnabled?: unknown } | null | undefined)?.emailEnabled !== false;
+	// ctx.pluginStates is the raw enablement snapshot the chrome gates
+	// check `requires` against; when a host omits it, ctx.plugins is
+	// already enabled-filtered, so every registry id counts as live.
+	const states: LoginTileStates = ctx.pluginStates ?? {
+		enabled: ctx.plugins.map((p) => p.id),
 	};
+	const doctorLogin = loginTileTargets(ctx.plugins, states).has("/login/doctor");
+	const t = sliceMessages(ctx.i18n, I18N_NAMESPACE, signInMessages(ctx.locale));
 	const [mode, setMode] = useState<"in" | "up">("in");
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState("");
@@ -70,7 +70,7 @@ function PortalSignInPage() {
 		e.preventDefault();
 		if (!email.trim() || !password || pending) return;
 		if (mode === "up" && confirmPassword !== password) {
-			setError(t("login_error_password_mismatch"));
+			setError(t.errorPasswordMismatch);
 			return;
 		}
 		setPending(true);
@@ -89,7 +89,7 @@ function PortalSignInPage() {
 					);
 		if (res.error) {
 			setPending(false);
-			setError(res.error.message ?? t("login_error_fallback"));
+			setError(res.error.message ?? t.errorFallback);
 			return;
 		}
 		// Signed in: stay pending until the browser navigates away.
@@ -119,12 +119,8 @@ function PortalSignInPage() {
 		<div className="flex min-h-[60vh] items-center justify-center">
 			<Card className="w-full max-w-sm">
 				<CardHeader>
-					<CardTitle>
-						{mode === "in" ? t("portal_login_heading_in") : t("portal_login_heading_up")}
-					</CardTitle>
-					<CardDescription>
-						{mode === "in" ? t("portal_login_desc_in") : t("portal_login_desc_up")}
-					</CardDescription>
+					<CardTitle>{mode === "in" ? t.patientHeadingIn : t.patientHeadingUp}</CardTitle>
+					<CardDescription>{mode === "in" ? t.patientDescIn : t.patientDescUp}</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<Tabs
@@ -137,14 +133,14 @@ function PortalSignInPage() {
 						className="mb-4"
 					>
 						<TabsList className="w-full">
-							<TabsTrigger value="in">{t("login_tab_in")}</TabsTrigger>
-							<TabsTrigger value="up">{t("login_tab_up")}</TabsTrigger>
+							<TabsTrigger value="in">{t.tabIn}</TabsTrigger>
+							<TabsTrigger value="up">{t.tabUp}</TabsTrigger>
 						</TabsList>
 					</Tabs>
 					<form onSubmit={submit} className="flex flex-col gap-4">
 						{mode === "up" ? (
 							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="name">{t("portal_login_name")}</Label>
+								<Label htmlFor="name">{t.name}</Label>
 								<Input
 									id="name"
 									autoComplete="name"
@@ -155,7 +151,7 @@ function PortalSignInPage() {
 							</div>
 						) : null}
 						<div className="flex flex-col gap-1.5">
-							<Label htmlFor="email">{t("login_email")}</Label>
+							<Label htmlFor="email">{t.email}</Label>
 							<Input
 								id="email"
 								type="email"
@@ -167,10 +163,8 @@ function PortalSignInPage() {
 						</div>
 						<div className="flex flex-col gap-1.5">
 							<div className="flex items-center justify-between">
-								<Label htmlFor="password">{t("login_password")}</Label>
-								{mode === "in" ? (
-									<ForgotPasswordLink>{t("login_forgot_password")}</ForgotPasswordLink>
-								) : null}
+								<Label htmlFor="password">{t.password}</Label>
+								{mode === "in" ? <ForgotPasswordLink>{t.forgotPassword}</ForgotPasswordLink> : null}
 							</div>
 							<Input
 								id="password"
@@ -184,7 +178,7 @@ function PortalSignInPage() {
 						</div>
 						{mode === "up" ? (
 							<div className="flex flex-col gap-1.5">
-								<Label htmlFor="confirm-password">{t("login_confirm_password")}</Label>
+								<Label htmlFor="confirm-password">{t.confirmPassword}</Label>
 								<Input
 									id="confirm-password"
 									type="password"
@@ -204,11 +198,7 @@ function PortalSignInPage() {
 						) : null}
 						<Button type="submit" disabled={pending} className="w-full">
 							{pending ? <Spinner /> : null}
-							{pending
-								? t("login_pending")
-								: mode === "in"
-									? t("login_submit_in")
-									: t("login_submit_up")}
+							{pending ? t.pending : mode === "in" ? t.submitIn : t.submitUp}
 						</Button>
 					</form>
 					{doctorLogin ? (
@@ -216,7 +206,7 @@ function PortalSignInPage() {
 							to="/login/doctor"
 							className="mt-4 block text-center text-sm text-muted-foreground transition hover:text-foreground"
 						>
-							{t("portal_login_doctor_link")}
+							{t.doctorLink}
 						</Link>
 					) : null}
 				</CardContent>

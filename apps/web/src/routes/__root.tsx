@@ -13,7 +13,7 @@ import {
 } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { SearchXIcon, TriangleAlertIcon } from "lucide-react";
-import { createElement, useEffect, type ReactNode } from "react";
+import { createElement, useEffect, type ComponentType, type ReactNode } from "react";
 import {
 	appMessage,
 	changeLocale,
@@ -23,11 +23,14 @@ import {
 	useRootI18nSlice,
 } from "#/lib/i18n.ts";
 import {
+	boundaryEntries,
 	collectChrome,
 	enabledIdSet,
 	enabledPlugins,
 	KNOWN_CHROME_REGIONS,
 	portalInstances,
+	selectErrorBoundary,
+	selectNotFoundBoundary,
 	warnUnknownChromeRegions,
 } from "#/lib/registry.ts";
 import { sessionFn, pluginStatesFn, i18nRouteFn } from "#/lib/fns.ts";
@@ -36,7 +39,13 @@ import { themeHead, themeTitle } from "@ktb/theme/head";
 import { ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
 import { plugins } from "#/plugins.ts";
-import type { ChromeContribution, ChromeProps, PageI18nSlice } from "@ktb/kernel";
+import type {
+	BoundaryPageProps,
+	ChromeContribution,
+	ChromeProps,
+	ErrorBoundaryPageProps,
+	PageI18nSlice,
+} from "@ktb/kernel";
 import appCss from "../styles.css?url";
 
 // Chrome regions (P-060): this shell declares the app.* slots; plugins
@@ -127,7 +136,98 @@ function useAppCopy() {
 	return (key: string, fallback = "") => appMessage(slice, key, fallback);
 }
 
-function NotFound() {
+/** Chrome props for shell-level surfaces (header/footer chrome and the
+ * boundary action slots) — same injection RootDocument builds, factored
+ * so boundary pages can render `app.*.actions` contributions without
+ * duplicating the session/theme wiring. */
+function useChromeProps(): ChromeProps {
+	const { user, pluginStates, theme, i18n } = Route.useLoaderData();
+	const slice = i18n as PageI18nSlice | undefined;
+	const activeLocale = i18n?.locale ?? "en";
+	return {
+		user,
+		locale: activeLocale,
+		i18n: slice,
+		plugins: enabledPlugins(plugins, enabledIdSet(pluginStates)),
+		locales: i18n?.enabledLocales ?? ["en"],
+		localeName: (l: string) => localeName(l, slice),
+		setLocale: changeLocale,
+		labels: {
+			login: appMessage(slice, "nav_login", "Sign in"),
+			signOut: appMessage(slice, "nav_sign_out", "Sign out"),
+			langMenu: appMessage(slice, "lang_menu_label", "Language"),
+			patientPortal: appMessage(slice, "nav_patient_portal", "Patient portal"),
+			doctorPortal: appMessage(slice, "nav_doctor_portal", "Doctor portal"),
+			secretaryPortal: appMessage(slice, "nav_secretary_portal", "Secretary portal"),
+			platformConsole: appMessage(slice, "nav_platform_console", "Platform"),
+			myConsultations: appMessage(slice, "nav_my_consultations", "My consultations"),
+			newConsultation: appMessage(slice, "nav_new_consultation", "+ New consultation"),
+		},
+		signOut: async () => {
+			await authClient.signOut();
+			window.location.assign("/");
+		},
+		theme,
+	};
+}
+
+const BOUNDARY_ACTION_LINK =
+	"inline-flex items-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:bg-primary/80";
+
+/** Chrome entries allowed in the boundary CTA slots: links and
+ * components only — the other content kinds belong to shells/pickers. */
+const renderBoundaryAction = (entry: ChromeContribution, chromeProps: ChromeProps): ReactNode => {
+	const { content } = entry;
+	switch (content.kind) {
+		case "link":
+			return (
+				<Link key={entry.id} to={content.to} className={BOUNDARY_ACTION_LINK}>
+					{pluginNavLabel(content.to, content.label, chromeProps.i18n)}
+				</Link>
+			);
+		case "component":
+			return createElement(content.component, { key: entry.id, ...chromeProps });
+		default:
+			return null;
+	}
+};
+
+type BoundaryKind = "notFound" | "error";
+
+/** Selects the live plugin boundary for `kind` and builds the host-
+ * injected props: enabled-filtered page context, the raw plugin-state
+ * snapshot, and the chrome-rendered action nodes for the matching
+ * `app.<kind>.actions` region. Returns `entry: undefined` when no
+ * enabled plugin contributes that boundary — callers fall back to the
+ * built-in surface. */
+function useBoundarySelection(kind: BoundaryKind) {
+	const chromeProps = useChromeProps();
+	const { pluginStates } = Route.useLoaderData();
+	const pathname = useLocation({ select: (l) => l.pathname });
+	const enabled = enabledIdSet(pluginStates);
+	const entry =
+		kind === "notFound"
+			? selectNotFoundBoundary(boundaryEntries, plugins, enabled)
+			: selectErrorBoundary(boundaryEntries, plugins, enabled);
+	const region = kind === "notFound" ? "app.notFound.actions" : "app.error.actions";
+	const actions = collectChrome(chromeProps.plugins, region, pathname, undefined, chromeProps.user)
+		.map((chromeEntry) => renderBoundaryAction(chromeEntry, chromeProps))
+		.filter((node): node is ReactNode => node !== null);
+	return {
+		entry,
+		ctx: {
+			plugins: chromeProps.plugins,
+			locale: chromeProps.locale,
+			user: chromeProps.user,
+			i18n: chromeProps.i18n,
+			pluginStates,
+			pathname,
+		},
+		actions: actions.length > 0 ? actions : undefined,
+	};
+}
+
+function BuiltInNotFound() {
 	const t = useAppCopy();
 	return (
 		<div className="py-24 text-center">
@@ -144,12 +244,30 @@ function NotFound() {
 	);
 }
 
+function NotFound() {
+	const { entry, ctx, actions } = useBoundarySelection("notFound");
+	if (entry !== undefined) {
+		return createElement(entry.component as ComponentType<BoundaryPageProps>, { ctx, actions });
+	}
+	return <BuiltInNotFound />;
+}
+
 /**
  * Root error boundary — friendly localized message, never a stack trace.
  * `reset` re-runs the failed loader; the link offers a way out when the
- * failure is permanent.
+ * failure is permanent. A plugin-contributed `error` boundary replaces
+ * this surface when one is enabled (priority + topo order decide).
  */
-function RootError({ reset }: ErrorComponentProps) {
+function RootError({ error, reset }: ErrorComponentProps) {
+	const { entry, ctx, actions } = useBoundarySelection("error");
+	if (entry !== undefined) {
+		return createElement(entry.component as ComponentType<ErrorBoundaryPageProps>, {
+			ctx,
+			actions,
+			error,
+			reset,
+		});
+	}
 	const t = useAppCopy();
 	return (
 		<div className="py-24 text-center">
@@ -197,7 +315,9 @@ function TelemetryInit() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	const { user, pluginStates, theme, i18n } = Route.useLoaderData();
+	const chromeProps = useChromeProps();
+	const { theme } = Route.useLoaderData();
+	const user = chromeProps.user;
 	// A patient account (no doctor profile to act as) only ever sees the
 	// patient portal: no doctor navigation, nothing that creates or
 	// switches doctor profiles.
@@ -219,41 +339,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			? `${theme.styleCss}\n${theme.fontFaceCss}`.trim()
 			: "";
 	// Enabled-state filter (P-058): disabled plugins contribute nothing
-	// to any chrome region.
-	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
+	// to any chrome region — chromeProps.plugins is already filtered.
+	const visiblePlugins = chromeProps.plugins;
 	// Chrome regions (P-060): the shell owns the slots; plugins fill
 	// them via `chrome` contributions filtered by `when` + pathname.
-	const slice = i18n as PageI18nSlice | undefined;
-	const activeLocale = i18n?.locale ?? "en";
-	const chromeProps: ChromeProps = {
-		user,
-		locale: activeLocale,
-		i18n: slice,
-		plugins: visiblePlugins,
-		locales: i18n?.enabledLocales ?? ["en"],
-		localeName: (l: string) => localeName(l, slice),
-		setLocale: changeLocale,
-		labels: {
-			login: appMessage(slice, "nav_login", "Sign in"),
-			signOut: appMessage(slice, "nav_sign_out", "Sign out"),
-			langMenu: appMessage(slice, "lang_menu_label", "Language"),
-			patientPortal: appMessage(slice, "nav_patient_portal", "Patient portal"),
-			doctorPortal: appMessage(slice, "nav_doctor_portal", "Doctor portal"),
-			secretaryPortal: appMessage(slice, "nav_secretary_portal", "Secretary portal"),
-			platformConsole: appMessage(slice, "nav_platform_console", "Platform"),
-			myConsultations: appMessage(slice, "nav_my_consultations", "My consultations"),
-			newConsultation: appMessage(slice, "nav_new_consultation", "+ New consultation"),
-		},
-		signOut: async () => {
-			await authClient.signOut();
-			window.location.assign("/");
-		},
-		// Resolved theme for brand chrome (PL-006 phase 7) — the
-		// theme.brand contribution renders it; null only when the
-		// loader's theme resolution came back empty (console routes
-		// resolve their own instance theme instead).
-		theme,
-	};
+	const slice = chromeProps.i18n;
+	const activeLocale = chromeProps.locale;
 	const entries = (region: string) =>
 		collectChrome(visiblePlugins, region, pathname, undefined, user);
 	const renderEntry = (entry: ChromeContribution): ReactNode => {

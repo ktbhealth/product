@@ -166,8 +166,9 @@ describe("router integration", () => {
 		expect(screen.queryByRole("link", { name: "I am a patient" })).toBeNull();
 
 		// /login is the role picker: patient (primary), doctor, secretary.
+		// Plugin pages dispatch through the root `/$` splat.
 		await act(async () => {
-			await router.navigate({ to: "/login" });
+			await router.navigate({ to: "/$", params: { _splat: "login" } });
 		});
 		await waitFor(() =>
 			expect(screen.getByRole("link", { name: "I am a patient" }).getAttribute("href")).toBe(
@@ -316,7 +317,7 @@ describe("router integration", () => {
 		await router.load();
 		await renderShell(createElement(RouterProvider, { router }));
 		await act(async () => {
-			await router.navigate({ to: "/capture-test" });
+			await router.navigate({ to: "/$", params: { _splat: "capture-test" } });
 		});
 		await waitFor(() => expect(document.body.textContent).toMatch(/capture|tab|audio/i));
 	});

@@ -32,6 +32,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 			"panel",
 			"pages",
 			"portals",
+			"boundaries",
 		]);
 		for (const kind of FIELD_CONTRIBUTION_KINDS) {
 			expect(kind.slot).toBe(kind.id);

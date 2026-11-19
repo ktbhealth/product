@@ -39,6 +39,18 @@ export const consultationsChromePlugin = definePlugin({
 				},
 			},
 		},
+		// Mirrors consultationsChromePlugin's boundary CTAs (server
+		// index.ts) — the replaceable 404/error surfaces render these.
+		{
+			id: "consultations.notfound.action",
+			region: "app.notFound.actions",
+			content: { kind: "link", to: "/consultations", label: "Consultations" },
+		},
+		{
+			id: "consultations.error.action",
+			region: "app.error.actions",
+			content: { kind: "link", to: "/consultations", label: "Consultations" },
+		},
 		// Mirrors consultationsChromePlugin's dashboard slots (server
 		// index.ts) — same entries, literal dep ids.
 		{

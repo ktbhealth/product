@@ -1,34 +1,25 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { reactStartMock } from "@ktb/server-fns/testing";
+import type { PageContext } from "@ktb/kernel";
 import { act, type ReactElement } from "react";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("@tanstack/react-start", () => reactStartMock());
+import { devCaptureTestPagesPlugin } from "./index.ts";
 
-const catalogMiss = vi.hoisted(() => ({ current: false }));
-// Total catalog miss: every `app.*` lookup returns the raw key, so the
-// page's `resolved === full ? key : resolved` fallback is exercised.
-vi.mock("#/lib/app-catalog.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("#/lib/app-catalog.ts")>();
-	return {
-		...actual,
-		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) =>
-			catalogMiss.current ? (key: string) => key : actual.appCatalogT(slice),
-	};
-});
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-import { Route } from "./capture-test.tsx";
-import { isNotFound } from "@tanstack/react-router";
+const Page = devCaptureTestPagesPlugin.pages?.[0]?.component as () => ReactElement;
 
-const Page = (Route as unknown as { options: { component: () => ReactElement } }).options.component;
-const beforeLoad = (Route as unknown as { options: { beforeLoad: () => void } }).options.beforeLoad;
+const ctx: PageContext = { plugins: [], locale: "en" };
+
+const renderPage = () =>
+	render(createElement(Page, { data: null, ctx } as { data: unknown; ctx: PageContext }));
 
 function makeStream(withAudio = true) {
-	const audioTrack = { label: "tab-audio", readyState: "live", stop: vi.fn() };
-	const videoTrack = { label: "tab-video", readyState: "live", stop: vi.fn() };
+	const audioTrack = { label: "tab-audio", readyState: "live", stop: vi.fn<() => void>() };
+	const videoTrack = { label: "tab-video", readyState: "live", stop: vi.fn<() => void>() };
 	return {
 		getAudioTracks: () => (withAudio ? [audioTrack] : []),
 		getVideoTracks: () => [videoTrack],
@@ -41,67 +32,64 @@ function mockAudioContext() {
 		fftSize: 256,
 		frequencyBinCount: 128,
 		getByteTimeDomainData: (d: Uint8Array) => d.fill(128),
-		connect: vi.fn(),
+		connect: vi.fn<() => void>(),
 	};
 	return {
-		createMediaStreamSource: () => ({ connect: vi.fn() }),
+		createMediaStreamSource: () => ({ connect: vi.fn<() => void>() }),
 		createAnalyser: () => analyser,
-		close: vi.fn(async () => {}),
+		close: vi.fn<() => Promise<void>>(async () => {}),
 	};
 }
 
 function installMedia(stream: unknown) {
+	const getDisplayMedia = vi.fn<() => Promise<unknown>>(async () => stream);
 	vi.stubGlobal(
 		"navigator",
 		Object.assign(Object.create(navigator), {
-			mediaDevices: { getDisplayMedia: vi.fn(async () => stream) },
+			mediaDevices: { getDisplayMedia },
 		}),
 	);
 	vi.stubGlobal(
 		"AudioContext",
-		vi.fn(function (this: unknown) {
+		vi.fn<() => unknown>(function (this: unknown) {
 			return mockAudioContext();
 		}),
 	);
 	vi.stubGlobal(
 		"requestAnimationFrame",
-		vi.fn(() => 1),
+		vi.fn<() => number>(() => 1),
 	);
-	vi.stubGlobal("cancelAnimationFrame", vi.fn());
+	vi.stubGlobal("cancelAnimationFrame", vi.fn<(id: number) => void>());
+	return getDisplayMedia;
 }
 
 afterEach(() => {
 	cleanup();
-	catalogMiss.current = false;
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 });
 
-describe("capture-test", () => {
-	it("is dev-only: beforeLoad 404s outside development", () => {
-		vi.stubEnv("DEV", false);
-		let caught: unknown;
-		try {
-			beforeLoad();
-		} catch (e) {
-			caught = e;
-		}
-		vi.unstubAllEnvs();
-		expect(isNotFound(caught)).toBe(true);
-		expect(() => beforeLoad()).not.toThrow();
+describe("CaptureTestPage", () => {
+	it("renders localized copy for the active locale", () => {
+		renderPage();
+		expect(screen.getByRole("heading", { name: "Spike: tab audio capture" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Start capture" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
 	});
 
-	it("falls back to raw message keys when the catalog misses", () => {
-		catalogMiss.current = true;
-		render(createElement(Page));
-		// t() returns the bare key (no `app.` prefix) on a sentinel hit.
-		expect(screen.getByText("capture_title")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "capture_start" })).toBeTruthy();
+	it("renders pt-BR copy when ctx.locale is pt-BR", () => {
+		render(
+			createElement(Page, {
+				data: null,
+				ctx: { plugins: [], locale: "pt-BR" },
+			} as { data: unknown; ctx: PageContext }),
+		);
+		expect(screen.getByRole("heading", { name: "Spike: captura de áudio da aba" })).toBeTruthy();
 	});
 
 	it("captures tab audio and shows level meter", async () => {
 		installMedia(makeStream());
-		render(createElement(Page));
+		renderPage();
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: /start/i }));
 		});
@@ -112,16 +100,18 @@ describe("capture-test", () => {
 	});
 
 	it("stop before capture is a no-op", async () => {
-		installMedia(makeStream());
-		render(createElement(Page));
+		const getDisplayMedia = installMedia(makeStream());
+		renderPage();
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: /stop/i }));
 		});
+		expect(getDisplayMedia).not.toHaveBeenCalled();
+		expect(screen.queryByText(/capturing/)).toBeNull();
 	});
 
 	it("shows error when share has no audio track", async () => {
 		installMedia(makeStream(false));
-		render(createElement(Page));
+		renderPage();
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: /start/i }));
 		});
@@ -132,10 +122,14 @@ describe("capture-test", () => {
 		vi.stubGlobal(
 			"navigator",
 			Object.assign(Object.create(navigator), {
-				mediaDevices: { getDisplayMedia: vi.fn(async () => Promise.reject(new Error("denied"))) },
+				mediaDevices: {
+					getDisplayMedia: vi.fn<() => Promise<unknown>>(async () =>
+						Promise.reject(new Error("denied")),
+					),
+				},
 			}),
 		);
-		render(createElement(Page));
+		renderPage();
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: /start/i }));
 		});
@@ -146,10 +140,12 @@ describe("capture-test", () => {
 		vi.stubGlobal(
 			"navigator",
 			Object.assign(Object.create(navigator), {
-				mediaDevices: { getDisplayMedia: vi.fn(async () => Promise.reject("nope")) },
+				mediaDevices: {
+					getDisplayMedia: vi.fn<() => Promise<unknown>>(async () => Promise.reject("nope")),
+				},
 			}),
 		);
-		render(createElement(Page));
+		renderPage();
 		await act(async () => {
 			fireEvent.click(screen.getByRole("button", { name: /start/i }));
 		});

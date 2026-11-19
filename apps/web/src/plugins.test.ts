@@ -20,6 +20,7 @@ const clientView = (p: Plugin) => ({
 	pkg: p.pkg ?? null,
 	system: p.system ?? null,
 	meta: p.meta ?? null,
+	priority: p.priority ?? null,
 	requiredDeps: p.requiredDeps ?? [],
 	optionalDeps: p.optionalDeps ?? [],
 	chrome: p.chrome ?? [],
@@ -32,6 +33,9 @@ const clientView = (p: Plugin) => ({
 						id: page.id,
 						path: page.path,
 						component: page.component,
+						validateSearch: page.validateSearch ?? null,
+						beforeLoad: page.beforeLoad ?? null,
+						head: page.head ?? null,
 					})),
 				},
 	pages:
@@ -42,7 +46,14 @@ const clientView = (p: Plugin) => ({
 					path: page.path,
 					component: page.component,
 					context: page.context ?? null,
+					validateSearch: page.validateSearch ?? null,
+					beforeLoad: page.beforeLoad ?? null,
+					head: page.head ?? null,
 				})),
+	boundaries:
+		p.boundaries === undefined
+			? null
+			: p.boundaries.map((boundary) => ({ kind: boundary.kind, component: boundary.component })),
 });
 
 describe("client plugin registry", () => {

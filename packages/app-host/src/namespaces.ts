@@ -105,6 +105,15 @@ export const namespacesForPath = (
 		}
 	}
 
+	// Router boundaries render outside the page winner (404 replaces it,
+	// error can replace any page) — their copy must be in the slice for
+	// every path, enabled plugins only (caller already filtered).
+	for (const plugin of plugins) {
+		if ("boundaries" in plugin && plugin.boundaries !== undefined && plugin.boundaries.length > 0) {
+			namespaces.add(namespaceOf(plugin.id));
+		}
+	}
+
 	return [...namespaces].sort();
 };
 

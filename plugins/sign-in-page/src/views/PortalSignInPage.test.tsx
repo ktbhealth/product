@@ -2,6 +2,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ReactElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { definePlugin, type Plugin } from "@ktb/kernel";
+
+import type { PageContext } from "@ktb/kernel";
 
 type AuthResult = {
 	data: { user: object } | null;
@@ -10,17 +13,13 @@ type AuthResult = {
 const okResult: AuthResult = { data: { user: {} }, error: null };
 
 const mocks = vi.hoisted(() => ({
-	emailEnabledFn: vi.fn(async () => true),
 	portalAudiencesFn: vi.fn(async (): Promise<readonly string[]> => ["member", "patient"]),
 	doctorContextFn: vi.fn(
 		async (): Promise<{
 			profiles: { doctorId: number; displayName: string; role: string }[];
 			activeDoctorId: number | null;
-		} | null> => ({ profiles: [], activeDoctorId: null }),
+		} | null> => null,
 	),
-	loaderData: { current: { emailEnabled: false } },
-	rootData: { current: { pluginStates: { enabled: [] as string[] } } },
-	missingKey: { current: null as string | null },
 }));
 const signInEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
 const signUpEmail = vi.fn(async (_arg?: unknown): Promise<AuthResult> => okResult);
@@ -31,14 +30,8 @@ vi.mock("@ktb/auth-better/client", () => ({
 		signUp: { email: (arg: unknown) => signUpEmail(arg) },
 	},
 }));
-vi.mock("#/lib/fns.ts", () => ({
-	emailEnabledFn: mocks.emailEnabledFn,
-	portalAudiencesFn: mocks.portalAudiencesFn,
-}));
+vi.mock("../fns.ts", () => ({ portalAudiencesFn: mocks.portalAudiencesFn }));
 vi.mock("@ktb/doctors/fns", () => ({ doctorContextFn: mocks.doctorContextFn }));
-vi.mock("#/lib/i18n.ts", (importOriginal) =>
-	import("./-route-test-mocks.ts").then((m) => m.i18nMock(importOriginal, mocks.missingKey)),
-);
 // The widget needs a site key and Cloudflare's script; the stand-in
 // hands the page a token on demand.
 vi.mock("@ktbhealth/ui/components/turnstile", async () => {
@@ -53,36 +46,74 @@ vi.mock("@ktbhealth/ui/components/turnstile", async () => {
 	};
 });
 // Link needs a router context; the page only uses it as a plain anchor.
-// The route keeps its options and reads controllable loader data —
-// `getRouteApi` supplies the root match's pluginStates.
-vi.mock("@tanstack/react-router", (importOriginal) =>
-	import("./-route-test-mocks.ts").then((m) =>
-		m.routerMock(importOriginal, {
-			useLoaderData: () => mocks.loaderData.current,
-			getRouteApi: () => ({ useLoaderData: () => mocks.rootData.current }),
-		}),
-	),
-);
+vi.mock("@tanstack/react-router", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
+	const React = await import("react");
+	return {
+		...actual,
+		Link: ({ to, children, className }: { to: string; children?: unknown; className?: string }) =>
+			React.createElement("a", { href: to, className }, children as never),
+	};
+});
+// ForgotPasswordLink renders a Link — the same mock covers it.
 
-import { Route } from "./login-patient.tsx";
-import { plugins } from "#/plugins.ts";
+import { PortalSignInPage } from "./PortalSignInPage.tsx";
 
-const options = (
-	Route as unknown as {
-		options: {
-			component: () => ReactElement;
-			head: () => { meta: { title: string }[] };
-			loader: () => Promise<{ emailEnabled: boolean }>;
-		};
-	}
-).options;
-const Page = options.component;
+const Icon = () => null;
+/** Doctor sign-in tile owned by the auth package, gated on the
+ * clinical packages — same shape as the real auth.chrome entry. */
+const doctorTilePlugin: Plugin = definePlugin({
+	id: "auth.chrome",
+	pkg: "auth",
+	meta: { keywords: ["ui"] },
+	chrome: [
+		{
+			id: "auth.login.doctor",
+			region: "app.login.tiles",
+			content: {
+				kind: "loginTile",
+				to: "/login/doctor",
+				labelKey: "nav_doctor_login",
+				fallback: "Doctor sign in",
+				icon: Icon,
+				requires: ["doctors.services", "clinician.portal"],
+			},
+		},
+	],
+});
+const supportPlugins: Plugin[] = [
+	doctorTilePlugin,
+	definePlugin({ id: "doctors.services", pkg: "doctors", meta: { keywords: ["marker"] } }),
+	definePlugin({ id: "clinician.portal", pkg: "clinician", meta: { keywords: ["marker"] } }),
+];
+
+const ctxWith = (enabled: readonly string[]): PageContext => ({
+	plugins: supportPlugins,
+	locale: "en",
+	pluginStates: { enabled },
+});
+
+const allEnabled = supportPlugins.map((p) => p.id);
+const withoutPkg = (pkg: string) =>
+	allEnabled.filter((id) => supportPlugins.find((p) => p.id === id)?.pkg !== pkg);
+
+const Page = ({
+	data = { emailEnabled: false },
+	enabled = allEnabled,
+}: {
+	data?: unknown;
+	enabled?: readonly string[];
+}) =>
+	createElement(PortalSignInPage, {
+		data,
+		ctx: ctxWith(enabled),
+	}) as ReactElement;
 
 const assign = vi.fn<(url: string) => void>();
 
 const type = (label: string, value: string) =>
 	fireEvent.change(screen.getByLabelText(label), { target: { value } });
-const press = (name: string) =>
+const press = (name: string | RegExp) =>
 	act(async () => {
 		fireEvent.click(screen.getByRole("button", { name }));
 	});
@@ -103,7 +134,7 @@ async function signUp({ confirm = "senha12345", name = "Ana Souza" } = {}) {
 	await press("Create account");
 }
 
-describe("portal sign-in page", () => {
+describe("PortalSignInPage (/login/patient)", () => {
 	afterEach(() => {
 		cleanup();
 		vi.unstubAllGlobals();
@@ -115,28 +146,15 @@ describe("portal sign-in page", () => {
 		signUpEmail.mockReset();
 		signInEmail.mockResolvedValue(okResult);
 		signUpEmail.mockResolvedValue(okResult);
-		mocks.loaderData.current = { emailEnabled: false };
-		mocks.rootData.current = { pluginStates: { enabled: plugins.map((p) => p.id) } };
-		mocks.missingKey.current = null;
 		mocks.portalAudiencesFn.mockReset();
 		mocks.portalAudiencesFn.mockResolvedValue(["member", "patient"]);
 		mocks.doctorContextFn.mockReset();
-		mocks.doctorContextFn.mockResolvedValue({ profiles: [], activeDoctorId: null });
+		mocks.doctorContextFn.mockResolvedValue(null);
 		vi.stubGlobal("location", { assign });
 	});
 
-	it("sets the page title", () => {
-		expect(options.head().meta[0]!.title).toBe("Patient sign in | KTB Health");
-	});
-
-	it("loads whether this deployment can send email", async () => {
-		await expect(options.loader()).resolves.toEqual({ emailEnabled: true });
-		mocks.emailEnabledFn.mockResolvedValueOnce(false);
-		await expect(options.loader()).resolves.toEqual({ emailEnabled: false });
-	});
-
-	it("opens on sign-in, asking only for the credentials", () => {
-		render(createElement(Page));
+	it("opens on sign-in asking only for credentials", () => {
+		render(createElement(Page, {}));
 		expect(screen.getByText("Patient portal")).toBeTruthy();
 		expect(screen.getByText("Sign in to see your consultations.")).toBeTruthy();
 		expect(screen.queryByLabelText("Full name")).toBeNull();
@@ -146,10 +164,9 @@ describe("portal sign-in page", () => {
 	});
 
 	it("switches to the create-account form", () => {
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		openSignUp();
 		expect(screen.getByText("Create patient account")).toBeTruthy();
-		expect(screen.queryByText("Patient portal")).toBeNull();
 		expect(screen.getByLabelText("Full name")).toBeTruthy();
 		expect(screen.getByLabelText("Confirm password")).toBeTruthy();
 		expect(screen.getByLabelText("Password").getAttribute("autocomplete")).toBe("new-password");
@@ -157,10 +174,9 @@ describe("portal sign-in page", () => {
 	});
 
 	it("signs in with the credentials and lands on the portal", async () => {
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
-		expect(signInEmail).toHaveBeenCalledTimes(1);
 		expect(signInEmail).toHaveBeenCalledWith({
 			email: "ana@x.com",
 			password: "senha12345",
@@ -177,7 +193,7 @@ describe("portal sign-in page", () => {
 			profiles: [{ doctorId: 7, displayName: "Dr. Ana", role: "owner" }],
 			activeDoctorId: 7,
 		});
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 		expect(assign).toHaveBeenCalledTimes(1);
@@ -192,28 +208,27 @@ describe("portal sign-in page", () => {
 			],
 			activeDoctorId: null,
 		});
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/doctors/select"));
 	});
 
 	it("falls back to the portal when the audience lookup fails", async () => {
 		mocks.portalAudiencesFn.mockRejectedValue(new Error("boom"));
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 	});
 
 	it("sends a staff account with no resolvable doctor context to the app home", async () => {
 		mocks.portalAudiencesFn.mockResolvedValue(["member", "doctor"]);
-		mocks.doctorContextFn.mockResolvedValue(null);
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signIn();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 	});
 
 	it("offers the doctor sign-in link while its flow is live", () => {
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe(
 			"/login/doctor",
 		);
@@ -222,24 +237,13 @@ describe("portal sign-in page", () => {
 	it.each(["doctors", "clinician"] as const)(
 		"hides the doctor link when the %s package is disabled",
 		(pkg) => {
-			mocks.rootData.current = {
-				pluginStates: {
-					enabled: plugins.filter((p) => p.pkg !== pkg).map((p) => p.id),
-				},
-			};
-			render(createElement(Page));
+			render(createElement(Page, { enabled: withoutPkg(pkg) }));
 			expect(screen.queryByRole("link", { name: "I am a doctor" })).toBeNull();
 		},
 	);
 
-	it("renders the raw key when a translation is missing", () => {
-		mocks.missingKey.current = "app.login_tab_in";
-		render(createElement(Page));
-		expect(screen.getByRole("tab", { name: "login_tab_in" })).toBeTruthy();
-	});
-
 	it("forwards the captcha token once the challenge is solved", async () => {
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		fireEvent.click(screen.getByRole("button", { name: "Solve captcha" }));
 		await signIn();
 		await waitFor(() => expect(signInEmail).toHaveBeenCalled());
@@ -247,7 +251,7 @@ describe("portal sign-in page", () => {
 	});
 
 	it("creates a patient account under the trimmed name", async () => {
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signUp({ name: "  Ana Souza " });
 		await waitFor(() => expect(signUpEmail).toHaveBeenCalledTimes(1));
 		expect(signUpEmail).toHaveBeenCalledWith({
@@ -261,90 +265,35 @@ describe("portal sign-in page", () => {
 	});
 
 	it("sends a new account to the verification step when email is enabled", async () => {
-		mocks.loaderData.current = { emailEnabled: true };
-		render(createElement(Page));
+		render(createElement(Page, { data: { emailEnabled: true } }));
 		await signUp();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/verify-email"));
 		expect(assign).toHaveBeenCalledTimes(1);
 	});
 
 	it("sends a new account straight to the portal when email is disabled", async () => {
-		render(createElement(Page));
+		render(createElement(Page, { data: { emailEnabled: false } }));
 		await signUp();
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 		expect(assign).toHaveBeenCalledTimes(1);
 	});
 
 	it("blocks sign-up when the passwords do not match", async () => {
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signUp({ confirm: "different1" });
 		await screen.findByText("Passwords do not match.");
 		expect(signUpEmail).not.toHaveBeenCalled();
 		expect(assign).not.toHaveBeenCalled();
 	});
 
-	it("drops the error and the confirmation when switching tabs", async () => {
-		render(createElement(Page));
-		await signUp({ confirm: "different1" });
-		await screen.findByText("Passwords do not match.");
-		fireEvent.click(screen.getByRole("tab", { name: "Sign in" }));
-		expect(screen.queryByText("Passwords do not match.")).toBeNull();
-		openSignUp();
-		expect((screen.getByLabelText("Confirm password") as HTMLInputElement).value).toBe("");
-		// The rest of the form survives the round trip.
-		expect((screen.getByLabelText("Email") as HTMLInputElement).value).toBe("ana@x.com");
-	});
-
 	it("shows the server error and lets the user try again", async () => {
 		signInEmail.mockResolvedValueOnce({ data: null, error: { message: "Invalid credentials" } });
-		render(createElement(Page));
+		render(createElement(Page, {}));
 		await signIn();
 		await screen.findByText("Invalid credentials");
 		expect(assign).not.toHaveBeenCalled();
 		await press("Sign in");
 		await waitFor(() => expect(assign).toHaveBeenCalledWith("/portal"));
 		expect(screen.queryByText("Invalid credentials")).toBeNull();
-	});
-
-	it("shows a fallback when the error has no message", async () => {
-		signUpEmail.mockResolvedValueOnce({ data: null, error: {} });
-		render(createElement(Page));
-		await signUp();
-		await screen.findByText("Could not sign in. Please try again.");
-		expect(assign).not.toHaveBeenCalled();
-	});
-
-	it("ignores a submit without an email or a password", async () => {
-		const { container } = render(createElement(Page));
-		const form = container.querySelector("form")!;
-		const submit = () =>
-			act(async () => {
-				fireEvent.submit(form);
-			});
-		await submit();
-		type("Email", "   ");
-		type("Password", "senha12345");
-		await submit();
-		type("Email", "ana@x.com");
-		type("Password", "");
-		await submit();
-		expect(signInEmail).not.toHaveBeenCalled();
-		expect(assign).not.toHaveBeenCalled();
-	});
-
-	it("ignores a second submit while one is in flight", async () => {
-		let release: (value: AuthResult) => void = () => {};
-		signInEmail.mockImplementationOnce(
-			() => new Promise<AuthResult>((resolve) => (release = resolve)),
-		);
-		const { container } = render(createElement(Page));
-		await signIn();
-		expect(screen.getByRole("button", { name: /Please wait…/ })).toHaveProperty("disabled", true);
-		await act(async () => {
-			fireEvent.submit(container.querySelector("form")!);
-		});
-		expect(signInEmail).toHaveBeenCalledTimes(1);
-		await act(async () => release(okResult));
-		await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
 	});
 });

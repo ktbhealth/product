@@ -659,6 +659,14 @@ export type I18nKey =
 	| "dashboard.stats.plugins"
 	| "dashboard.subtitle"
 	| "dashboard.title"
+	| "dev-capture-test.description"
+	| "dev-capture-test.errorNoAudio"
+	| "dev-capture-test.level"
+	| "dev-capture-test.start"
+	| "dev-capture-test.statusCapturing"
+	| "dev-capture-test.statusRequesting"
+	| "dev-capture-test.stop"
+	| "dev-capture-test.title"
 	| "doctors.choose"
 	| "doctors.current"
 	| "doctors.error"
@@ -716,6 +724,9 @@ export type I18nKey =
 	| "document-store.statusContributed"
 	| "document-store.statusDbOnly"
 	| "document-store.title"
+	| "error-page.body"
+	| "error-page.retry"
+	| "error-page.title"
 	| "eval.credentials.actionFailed"
 	| "eval.credentials.cancel"
 	| "eval.credentials.confirmDelete"
@@ -1159,6 +1170,8 @@ export type I18nKey =
 	| "manager.viewDependencies"
 	| "manager.viewDomains"
 	| "manager.viewHierarchy"
+	| "not-found-page.body"
+	| "not-found-page.title"
 	| "notifications.bodies.appointmentReminder"
 	| "notifications.bodies.appointmentReminderZk"
 	| "notifications.dashboard.consoleActivity"
@@ -1579,6 +1592,27 @@ export type I18nKey =
 	| "secretaries.status.active"
 	| "secretaries.status.invited"
 	| "secretaries.title"
+	| "sign-in-page.confirmPassword"
+	| "sign-in-page.doctorLink"
+	| "sign-in-page.email"
+	| "sign-in-page.errorFallback"
+	| "sign-in-page.errorPasswordMismatch"
+	| "sign-in-page.forgotPassword"
+	| "sign-in-page.name"
+	| "sign-in-page.password"
+	| "sign-in-page.patientDescIn"
+	| "sign-in-page.patientDescUp"
+	| "sign-in-page.patientHeadingIn"
+	| "sign-in-page.patientHeadingUp"
+	| "sign-in-page.patientMetaTitle"
+	| "sign-in-page.pending"
+	| "sign-in-page.pickerDesc"
+	| "sign-in-page.pickerHeading"
+	| "sign-in-page.pickerMetaTitle"
+	| "sign-in-page.submitIn"
+	| "sign-in-page.submitUp"
+	| "sign-in-page.tabIn"
+	| "sign-in-page.tabUp"
 	| "tenant.addMember"
 	| "tenant.cancel"
 	| "tenant.colActions"
@@ -1795,6 +1829,19 @@ export type I18nKey =
 	| "users.suspendTitle"
 	| "users.title"
 	| "users.yes"
+	| "verify-email.continueLabel"
+	| "verify-email.descAnon"
+	| "verify-email.descSigned"
+	| "verify-email.doneDesc"
+	| "verify-email.doneHeading"
+	| "verify-email.emailLabel"
+	| "verify-email.errorFallback"
+	| "verify-email.heading"
+	| "verify-email.metaTitle"
+	| "verify-email.pending"
+	| "verify-email.sent"
+	| "verify-email.submit"
+	| "verify-email.unavailable"
 	| "views.backToView"
 	| "views.emptyDescription"
 	| "views.emptyTitle"
@@ -2685,6 +2732,25 @@ export interface I18nTypedT {
 	(key: "dashboard.stats.plugins"): Effect.Effect<string>;
 	(key: "dashboard.subtitle"): Effect.Effect<string>;
 	(key: "dashboard.title"): Effect.Effect<string>;
+	(key: "dev-capture-test.description"): Effect.Effect<string>;
+	(key: "dev-capture-test.errorNoAudio"): Effect.Effect<string>;
+	(
+		key: "dev-capture-test.level",
+		params: {
+			level: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "dev-capture-test.start"): Effect.Effect<string>;
+	(
+		key: "dev-capture-test.statusCapturing",
+		params: {
+			track: unknown;
+			state: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "dev-capture-test.statusRequesting"): Effect.Effect<string>;
+	(key: "dev-capture-test.stop"): Effect.Effect<string>;
+	(key: "dev-capture-test.title"): Effect.Effect<string>;
 	(key: "doctors.choose"): Effect.Effect<string>;
 	(key: "doctors.current"): Effect.Effect<string>;
 	(key: "doctors.error"): Effect.Effect<string>;
@@ -2758,6 +2824,9 @@ export interface I18nTypedT {
 	(key: "document-store.statusContributed"): Effect.Effect<string>;
 	(key: "document-store.statusDbOnly"): Effect.Effect<string>;
 	(key: "document-store.title"): Effect.Effect<string>;
+	(key: "error-page.body"): Effect.Effect<string>;
+	(key: "error-page.retry"): Effect.Effect<string>;
+	(key: "error-page.title"): Effect.Effect<string>;
 	(key: "eval.credentials.actionFailed"): Effect.Effect<string>;
 	(key: "eval.credentials.cancel"): Effect.Effect<string>;
 	(key: "eval.credentials.confirmDelete"): Effect.Effect<string>;
@@ -3303,6 +3372,8 @@ export interface I18nTypedT {
 	(key: "manager.viewDependencies"): Effect.Effect<string>;
 	(key: "manager.viewDomains"): Effect.Effect<string>;
 	(key: "manager.viewHierarchy"): Effect.Effect<string>;
+	(key: "not-found-page.body"): Effect.Effect<string>;
+	(key: "not-found-page.title"): Effect.Effect<string>;
 	(
 		key: "notifications.bodies.appointmentReminder",
 		params: {
@@ -3859,6 +3930,27 @@ export interface I18nTypedT {
 	(key: "secretaries.status.active"): Effect.Effect<string>;
 	(key: "secretaries.status.invited"): Effect.Effect<string>;
 	(key: "secretaries.title"): Effect.Effect<string>;
+	(key: "sign-in-page.confirmPassword"): Effect.Effect<string>;
+	(key: "sign-in-page.doctorLink"): Effect.Effect<string>;
+	(key: "sign-in-page.email"): Effect.Effect<string>;
+	(key: "sign-in-page.errorFallback"): Effect.Effect<string>;
+	(key: "sign-in-page.errorPasswordMismatch"): Effect.Effect<string>;
+	(key: "sign-in-page.forgotPassword"): Effect.Effect<string>;
+	(key: "sign-in-page.name"): Effect.Effect<string>;
+	(key: "sign-in-page.password"): Effect.Effect<string>;
+	(key: "sign-in-page.patientDescIn"): Effect.Effect<string>;
+	(key: "sign-in-page.patientDescUp"): Effect.Effect<string>;
+	(key: "sign-in-page.patientHeadingIn"): Effect.Effect<string>;
+	(key: "sign-in-page.patientHeadingUp"): Effect.Effect<string>;
+	(key: "sign-in-page.patientMetaTitle"): Effect.Effect<string>;
+	(key: "sign-in-page.pending"): Effect.Effect<string>;
+	(key: "sign-in-page.pickerDesc"): Effect.Effect<string>;
+	(key: "sign-in-page.pickerHeading"): Effect.Effect<string>;
+	(key: "sign-in-page.pickerMetaTitle"): Effect.Effect<string>;
+	(key: "sign-in-page.submitIn"): Effect.Effect<string>;
+	(key: "sign-in-page.submitUp"): Effect.Effect<string>;
+	(key: "sign-in-page.tabIn"): Effect.Effect<string>;
+	(key: "sign-in-page.tabUp"): Effect.Effect<string>;
 	(key: "tenant.addMember"): Effect.Effect<string>;
 	(key: "tenant.cancel"): Effect.Effect<string>;
 	(key: "tenant.colActions"): Effect.Effect<string>;
@@ -4112,6 +4204,29 @@ export interface I18nTypedT {
 	(key: "users.suspendTitle"): Effect.Effect<string>;
 	(key: "users.title"): Effect.Effect<string>;
 	(key: "users.yes"): Effect.Effect<string>;
+	(key: "verify-email.continueLabel"): Effect.Effect<string>;
+	(key: "verify-email.descAnon"): Effect.Effect<string>;
+	(
+		key: "verify-email.descSigned",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "verify-email.doneDesc",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "verify-email.doneHeading"): Effect.Effect<string>;
+	(key: "verify-email.emailLabel"): Effect.Effect<string>;
+	(key: "verify-email.errorFallback"): Effect.Effect<string>;
+	(key: "verify-email.heading"): Effect.Effect<string>;
+	(key: "verify-email.metaTitle"): Effect.Effect<string>;
+	(key: "verify-email.pending"): Effect.Effect<string>;
+	(key: "verify-email.sent"): Effect.Effect<string>;
+	(key: "verify-email.submit"): Effect.Effect<string>;
+	(key: "verify-email.unavailable"): Effect.Effect<string>;
 	(
 		key: "views.backToView",
 		params: {

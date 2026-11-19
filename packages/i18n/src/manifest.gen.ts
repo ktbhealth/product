@@ -2209,6 +2209,45 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	"dev-capture-test": {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		start: {
+			params: [],
+		},
+		stop: {
+			params: [],
+		},
+		statusRequesting: {
+			params: [],
+		},
+		statusCapturing: {
+			params: [
+				{
+					name: "track",
+				},
+				{
+					name: "state",
+				},
+			],
+			template: "capturing · track: {track} | {state}",
+		},
+		errorNoAudio: {
+			params: [],
+		},
+		level: {
+			params: [
+				{
+					name: "level",
+				},
+			],
+			template: "level: {level}%",
+		},
+	},
 	doctors: {
 		selectTitle: {
 			params: [],
@@ -2399,6 +2438,17 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		emptyBrowseDescription: {
+			params: [],
+		},
+	},
+	"error-page": {
+		title: {
+			params: [],
+		},
+		body: {
+			params: [],
+		},
+		retry: {
 			params: [],
 		},
 	},
@@ -3830,6 +3880,14 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		colAvgLoad: {
+			params: [],
+		},
+	},
+	"not-found-page": {
+		title: {
+			params: [],
+		},
+		body: {
 			params: [],
 		},
 	},
@@ -5278,6 +5336,71 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	"sign-in-page": {
+		pickerMetaTitle: {
+			params: [],
+		},
+		pickerHeading: {
+			params: [],
+		},
+		pickerDesc: {
+			params: [],
+		},
+		patientMetaTitle: {
+			params: [],
+		},
+		patientHeadingIn: {
+			params: [],
+		},
+		patientHeadingUp: {
+			params: [],
+		},
+		patientDescIn: {
+			params: [],
+		},
+		patientDescUp: {
+			params: [],
+		},
+		tabIn: {
+			params: [],
+		},
+		tabUp: {
+			params: [],
+		},
+		name: {
+			params: [],
+		},
+		confirmPassword: {
+			params: [],
+		},
+		email: {
+			params: [],
+		},
+		password: {
+			params: [],
+		},
+		forgotPassword: {
+			params: [],
+		},
+		errorPasswordMismatch: {
+			params: [],
+		},
+		errorFallback: {
+			params: [],
+		},
+		pending: {
+			params: [],
+		},
+		submitIn: {
+			params: [],
+		},
+		submitUp: {
+			params: [],
+		},
+		doctorLink: {
+			params: [],
+		},
+	},
 	tenant: {
 		title: {
 			params: [],
@@ -5974,6 +6097,57 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		cannotDeleteAdmin: {
+			params: [],
+		},
+	},
+	"verify-email": {
+		metaTitle: {
+			params: [],
+		},
+		heading: {
+			params: [],
+		},
+		descSigned: {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template: "We sent a verification link to {email}. Open it to confirm your address.",
+		},
+		descAnon: {
+			params: [],
+		},
+		unavailable: {
+			params: [],
+		},
+		doneHeading: {
+			params: [],
+		},
+		doneDesc: {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template: "Your address {email} is confirmed.",
+		},
+		continueLabel: {
+			params: [],
+		},
+		emailLabel: {
+			params: [],
+		},
+		pending: {
+			params: [],
+		},
+		submit: {
+			params: [],
+		},
+		sent: {
+			params: [],
+		},
+		errorFallback: {
 			params: [],
 		},
 	},

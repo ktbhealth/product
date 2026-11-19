@@ -11,12 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as indexRouteImport } from './routes/index'
 import { Route as splatRouteImport } from './routes/$'
-import { Route as captureTestRouteImport } from './routes/capture-test'
 import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRouteImport } from './../../../plugins/auth/src/routes/forgot-password'
-import { Route as loginRouteImport } from './routes/login'
 import { Route as platformRouteImport } from './routes/platform'
 import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRouteImport } from './../../../plugins/auth/src/routes/reset-password'
-import { Route as verifyEmailRouteImport } from './routes/verify-email'
 import { Route as ApiBotsRouteImport } from './../../../plugins/consultations/src/api-routes/bots'
 import { Route as ApiDocumentsRouteImport } from './../../../plugins/api/src/api-routes/documents'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
@@ -33,7 +30,6 @@ import { Route as DoctorsSelectRouteImport } from './../../../plugins/doctors/sr
 import { Route as InviteIndexRouteImport } from './../../../plugins/invites/src/routes/index'
 import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRouteImport } from './../../../plugins/auth/src/routes/login-admin'
 import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRouteImport } from './../../../plugins/auth/src/routes/login'
-import { Route as loginPatientRouteImport } from './routes/login-patient'
 import { Route as DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRouteImport } from './../../../plugins/secretaries/src/routes-login/secretary'
 import { Route as PatientAccessPatientIdRouteImport } from './../../../plugins/patient-access/src/routes/$patientId'
 import { Route as PatientsIndexRouteImport } from './../../../plugins/patients/src/routes/index'
@@ -71,22 +67,12 @@ const splatRoute = splatRouteImport.update({
   path: '/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const captureTestRoute = captureTestRouteImport.update({
-  id: '/capture-test',
-  path: '/capture-test',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute =
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRouteImport.update({
     id: '/forgot-password',
     path: '/forgot-password',
     getParentRoute: () => rootRouteImport,
   } as any)
-const loginRoute = loginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const platformRoute = platformRouteImport.update({
   id: '/platform',
   path: '/platform',
@@ -98,11 +84,6 @@ const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute =
     path: '/reset-password',
     getParentRoute: () => rootRouteImport,
   } as any)
-const verifyEmailRoute = verifyEmailRouteImport.update({
-  id: '/verify-email',
-  path: '/verify-email',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ApiBotsRoute = ApiBotsRouteImport.update({
   id: '/api/bots',
   path: '/api/bots',
@@ -185,11 +166,6 @@ const DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute =
     path: '/login/doctor',
     getParentRoute: () => rootRouteImport,
   } as any)
-const loginPatientRoute = loginPatientRouteImport.update({
-  id: '/login/patient',
-  path: '/login/patient',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute =
   DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRouteImport.update(
     {
@@ -333,12 +309,9 @@ const ApiPatientsDotidDotexportRoute =
 export interface FileRoutesByFullPath {
   '/': typeof indexRoute
   '/$': typeof splatRoute
-  '/capture-test': typeof captureTestRoute
   '/forgot-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
-  '/login': typeof loginRoute
   '/platform': typeof platformRouteWithChildren
   '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
-  '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
@@ -353,7 +326,6 @@ export interface FileRoutesByFullPath {
   '/doctors/select': typeof DoctorsSelectRoute
   '/login/admin': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   '/login/doctor': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
-  '/login/patient': typeof loginPatientRoute
   '/login/secretary': typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
@@ -386,11 +358,8 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof indexRoute
   '/$': typeof splatRoute
-  '/capture-test': typeof captureTestRoute
   '/forgot-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
-  '/login': typeof loginRoute
   '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
-  '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
@@ -405,7 +374,6 @@ export interface FileRoutesByTo {
   '/doctors/select': typeof DoctorsSelectRoute
   '/login/admin': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   '/login/doctor': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
-  '/login/patient': typeof loginPatientRoute
   '/login/secretary': typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
@@ -439,12 +407,9 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof indexRoute
   '/$': typeof splatRoute
-  '/capture-test': typeof captureTestRoute
   '/forgot-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
-  '/login': typeof loginRoute
   '/platform': typeof platformRouteWithChildren
   '/reset-password': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
-  '/verify-email': typeof verifyEmailRoute
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
@@ -459,7 +424,6 @@ export interface FileRoutesById {
   '/doctors/select': typeof DoctorsSelectRoute
   '/login/admin': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   '/login/doctor': typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
-  '/login/patient': typeof loginPatientRoute
   '/login/secretary': typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
   '/patient-access/$patientId': typeof PatientAccessPatientIdRoute
   '/patients/new': typeof PatientsNewRoute
@@ -494,12 +458,9 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$'
-    | '/capture-test'
     | '/forgot-password'
-    | '/login'
     | '/platform'
     | '/reset-password'
-    | '/verify-email'
     | '/api/bots'
     | '/api/documents'
     | '/api/health'
@@ -514,7 +475,6 @@ export interface FileRouteTypes {
     | '/doctors/select'
     | '/login/admin'
     | '/login/doctor'
-    | '/login/patient'
     | '/login/secretary'
     | '/patient-access/$patientId'
     | '/patients/new'
@@ -547,11 +507,8 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/$'
-    | '/capture-test'
     | '/forgot-password'
-    | '/login'
     | '/reset-password'
-    | '/verify-email'
     | '/api/bots'
     | '/api/documents'
     | '/api/health'
@@ -566,7 +523,6 @@ export interface FileRouteTypes {
     | '/doctors/select'
     | '/login/admin'
     | '/login/doctor'
-    | '/login/patient'
     | '/login/secretary'
     | '/patient-access/$patientId'
     | '/patients/new'
@@ -599,12 +555,9 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/$'
-    | '/capture-test'
     | '/forgot-password'
-    | '/login'
     | '/platform'
     | '/reset-password'
-    | '/verify-email'
     | '/api/bots'
     | '/api/documents'
     | '/api/health'
@@ -619,7 +572,6 @@ export interface FileRouteTypes {
     | '/doctors/select'
     | '/login/admin'
     | '/login/doctor'
-    | '/login/patient'
     | '/login/secretary'
     | '/patient-access/$patientId'
     | '/patients/new'
@@ -653,12 +605,9 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   indexRoute: typeof indexRoute
   splatRoute: typeof splatRoute
-  captureTestRoute: typeof captureTestRoute
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute
-  loginRoute: typeof loginRoute
   platformRoute: typeof platformRouteWithChildren
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
-  verifyEmailRoute: typeof verifyEmailRoute
   ApiBotsRoute: typeof ApiBotsRouteWithChildren
   ApiDocumentsRoute: typeof ApiDocumentsRouteWithChildren
   ApiHealthRoute: typeof ApiHealthRoute
@@ -673,7 +622,6 @@ export interface RootRouteChildren {
   DoctorsSelectRoute: typeof DoctorsSelectRoute
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute
-  loginPatientRoute: typeof loginPatientRoute
   DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute: typeof DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute
   PatientAccessPatientIdRoute: typeof PatientAccessPatientIdRoute
   PatientsNewRoute: typeof PatientsNewRoute
@@ -716,25 +664,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof splatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/capture-test': {
-      id: '/capture-test'
-      path: '/capture-test'
-      fullPath: '/capture-test'
-      preLoaderRoute: typeof captureTestRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/forgot-password': {
       id: '/forgot-password'
       path: '/forgot-password'
       fullPath: '/forgot-password'
       preLoaderRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof loginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/platform': {
@@ -749,13 +683,6 @@ declare module '@tanstack/react-router' {
       path: '/reset-password'
       fullPath: '/reset-password'
       preLoaderRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/verify-email': {
-      id: '/verify-email'
-      path: '/verify-email'
-      fullPath: '/verify-email'
-      preLoaderRoute: typeof verifyEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/bots': {
@@ -868,13 +795,6 @@ declare module '@tanstack/react-router' {
       path: '/login/doctor'
       fullPath: '/login/doctor'
       preLoaderRoute: typeof DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login/patient': {
-      id: '/login/patient'
-      path: '/login/patient'
-      fullPath: '/login/patient'
-      preLoaderRoute: typeof loginPatientRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login/secretary': {
@@ -1102,14 +1022,11 @@ const ApiDocumentsRouteWithChildren = ApiDocumentsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   indexRoute: indexRoute,
   splatRoute: splatRoute,
-  captureTestRoute: captureTestRoute,
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute:
     DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute,
-  loginRoute: loginRoute,
   platformRoute: platformRouteWithChildren,
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute:
     DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute,
-  verifyEmailRoute: verifyEmailRoute,
   ApiBotsRoute: ApiBotsRouteWithChildren,
   ApiDocumentsRoute: ApiDocumentsRouteWithChildren,
   ApiHealthRoute: ApiHealthRoute,
@@ -1126,7 +1043,6 @@ const rootRouteChildren: RootRouteChildren = {
     DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginAdminRoute,
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute:
     DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesLoginRoute,
-  loginPatientRoute: loginPatientRoute,
   DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute:
     DotDotDotDotDotDotDotDotPluginsSecretariesSrcRoutesLoginSecretaryRoute,
   PatientAccessPatientIdRoute: PatientAccessPatientIdRoute,

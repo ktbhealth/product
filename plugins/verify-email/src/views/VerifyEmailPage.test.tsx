@@ -3,17 +3,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, type ReactElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
+import type { PageContext } from "@ktb/kernel";
+
 type SessionState = {
 	data: { user: { email: string; emailVerified: boolean } } | null;
 	isPending: boolean;
 };
 type SendResult = { data: object | null; error: { message?: string } | null };
 
-const state: { session: SessionState; account: { patientOnly: boolean } | null } = {
+const state: {
+	session: SessionState;
+	account: { id: string; email: string; patientOnly?: boolean } | null;
+} = {
 	session: { data: null, isPending: false },
 	account: null,
 };
-const catalogMiss = vi.hoisted(() => ({ current: false }));
 const sendVerificationEmail = vi.fn<(arg?: unknown) => Promise<SendResult>>(async () => ({
 	data: {},
 	error: null,
@@ -34,56 +38,40 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 		...actual,
 		Link: ({ to, children, className }: { to: string; children?: unknown; className?: string }) =>
 			React.createElement("a", { href: to, className }, children as never),
-		// The root session, as the root route's loader returns it.
-		useLoaderData: () => ({ user: state.account }),
 	};
 });
 
-// Total catalog miss: every `app.*` lookup returns the raw key, so the
-// page's `resolved === full ? key : resolved` fallback is exercised.
-vi.mock("#/lib/app-catalog.ts", async (importOriginal) => {
-	const actual = await importOriginal<typeof import("#/lib/app-catalog.ts")>();
-	return {
-		...actual,
-		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) =>
-			catalogMiss.current ? (key: string) => key : actual.appCatalogT(slice),
-	};
-});
-
-import { Route } from "./verify-email.tsx";
-
-const options = (
-	Route as unknown as {
-		options: { component: () => ReactElement; head: () => { meta: { title: string }[] } };
-	}
-).options;
-const Page = options.component;
+import { VerifyEmailPage } from "./VerifyEmailPage.tsx";
 
 const SENT = "If this address has an account awaiting verification, a new link is on its way.";
+
+const ctx = (): PageContext => ({
+	plugins: [],
+	locale: "en",
+	user: state.account,
+});
+
+const renderPage = (data: unknown = { emailEnabled: true }) =>
+	render(createElement(VerifyEmailPage, { data, ctx: ctx() }));
 
 const resend = () =>
 	act(async () => {
 		fireEvent.click(screen.getByRole("button", { name: "Resend verification link" }));
 	});
 
-describe("verify-email page", () => {
+describe("VerifyEmailPage", () => {
 	afterEach(cleanup);
 
 	beforeEach(() => {
 		state.session = { data: null, isPending: false };
 		state.account = null;
-		catalogMiss.current = false;
 		sendVerificationEmail.mockClear();
 		sendVerificationEmail.mockResolvedValue({ data: {}, error: null });
 	});
 
-	it("sets the page title", () => {
-		expect(options.head().meta[0]!.title).toBe("Verify email | KTB Health");
-	});
-
 	it("waits for the session before rendering the form", () => {
 		state.session = { data: null, isPending: true };
-		render(createElement(Page));
+		renderPage();
 		expect(screen.queryByRole("button")).toBeNull();
 		expect(screen.queryByText("Verify your email")).toBeNull();
 	});
@@ -93,7 +81,7 @@ describe("verify-email page", () => {
 			data: { user: { email: "dra@x.com", emailVerified: false } },
 			isPending: false,
 		};
-		render(createElement(Page));
+		renderPage();
 		expect(screen.getByText(/We sent a verification link to dra@x.com/)).toBeTruthy();
 		expect(screen.queryByLabelText("Email")).toBeNull();
 		await resend();
@@ -104,17 +92,8 @@ describe("verify-email page", () => {
 		});
 	});
 
-	it("falls back to raw message keys when the catalog misses", () => {
-		catalogMiss.current = true;
-		render(createElement(Page));
-		// t() returns the bare key (no `app.` prefix) on a sentinel hit.
-		expect(screen.getByText("verify_heading")).toBeTruthy();
-		expect(screen.getByLabelText("login_email")).toBeTruthy();
-		expect(screen.getByRole("button", { name: "verify_submit" })).toBeTruthy();
-	});
-
 	it("lets an anonymous visitor type the address", async () => {
-		render(createElement(Page));
+		renderPage();
 		// Empty address: nothing is sent.
 		await act(async () => {
 			fireEvent.submit(screen.getByRole("button", { name: "Resend verification link" }));
@@ -132,7 +111,7 @@ describe("verify-email page", () => {
 			isPending: false,
 		};
 		sendVerificationEmail.mockResolvedValueOnce({ data: null, error: { message: "Too many" } });
-		render(createElement(Page));
+		renderPage();
 		await resend();
 		await waitFor(() => expect(screen.getByText("Too many")).toBeTruthy());
 		expect(screen.queryByText(SENT)).toBeNull();
@@ -152,7 +131,7 @@ describe("verify-email page", () => {
 		sendVerificationEmail.mockImplementationOnce(
 			() => new Promise<SendResult>((resolve) => (release = resolve)),
 		);
-		render(createElement(Page));
+		renderPage();
 		await resend();
 		await act(async () => {
 			fireEvent.submit(screen.getByRole("button", { name: /Please wait…/ }));
@@ -167,24 +146,50 @@ describe("verify-email page", () => {
 			data: { user: { email: "dra@x.com", emailVerified: true } },
 			isPending: false,
 		};
-		render(createElement(Page));
+		renderPage();
 		expect(screen.getByText("Email verified")).toBeTruthy();
 		expect(screen.getByText("Your address dra@x.com is confirmed.")).toBeTruthy();
 		expect(screen.getByRole("link", { name: "Continue" }).getAttribute("href")).toBe("/");
 		expect(screen.queryByRole("button")).toBeNull();
 	});
 
-	it("sends a verified doctor home and a verified patient account to the portal", () => {
+	it("sends a verified patient account to the portal and others home", () => {
 		state.session = {
 			data: { user: { email: "ana@x.com", emailVerified: true } },
 			isPending: false,
 		};
-		state.account = { patientOnly: false };
-		render(createElement(Page));
+		state.account = { id: "u1", email: "ana@x.com", patientOnly: false };
+		renderPage();
 		expect(screen.getByRole("link", { name: "Continue" }).getAttribute("href")).toBe("/");
 		cleanup();
-		state.account = { patientOnly: true };
-		render(createElement(Page));
+		state.account = { id: "u1", email: "ana@x.com", patientOnly: true };
+		renderPage();
 		expect(screen.getByRole("link", { name: "Continue" }).getAttribute("href")).toBe("/portal");
+	});
+
+	it("swaps the form for an unavailable notice when email is disabled", () => {
+		renderPage({ emailEnabled: false });
+		expect(
+			screen.getByText("Email verification is not available on this deployment."),
+		).toBeTruthy();
+		expect(screen.queryByRole("button")).toBeNull();
+		expect(screen.queryByLabelText("Email")).toBeNull();
+	});
+
+	it("resolves copy from the DB catalog slice", () => {
+		const element = createElement(VerifyEmailPage, {
+			data: { emailEnabled: true },
+			ctx: {
+				plugins: [],
+				locale: "en",
+				user: null,
+				i18n: {
+					locale: "en",
+					catalog: { "verify-email.heading": "Confirm your address" },
+				},
+			} satisfies PageContext,
+		});
+		render(element as ReactElement);
+		expect(screen.getByText("Confirm your address")).toBeTruthy();
 	});
 });

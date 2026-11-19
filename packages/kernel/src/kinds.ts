@@ -81,6 +81,9 @@ export const FIELD_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[] = [
 	// Portal instance descriptors (P-081) — collected client-side for
 	// shell/switcher rendering; the server fn re-derives the gate.
 	fieldKind("portals", ["app-host.server", "app-host.client", "plugin-manager"]),
+	// Replaceable router boundaries (404/error) — collected client-side
+	// for rendering; priority+topo select one per kind.
+	fieldKind("boundaries", ["app-host.client", "app-host.server", "plugin-manager"]),
 ];
 
 /**

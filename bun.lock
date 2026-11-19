@@ -1033,6 +1033,24 @@
         "react": "^19.2.0",
       },
     },
+    "plugins/dev-capture-test": {
+      "name": "@ktb/dev-capture-test",
+      "dependencies": {
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "effect": "4.1.2",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
     "plugins/doctors": {
       "name": "@ktb/doctors",
       "dependencies": {
@@ -1090,6 +1108,25 @@
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "better-sqlite3": "^13.0.3",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/error-page": {
+      "name": "@ktb/error-page",
+      "dependencies": {
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+        "lucide-react": "0.544.0",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
         "react-dom": "^19.2.0",
         "vitest": "5.1.0",
       },
@@ -1457,6 +1494,23 @@
       "devDependencies": {
         "@ktb/authz": "workspace:*",
         "@ktb/db": "workspace:*",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/not-found-page": {
+      "name": "@ktb/not-found-page",
+      "dependencies": {
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react-dom": "^19.2.0",
@@ -1953,6 +2007,28 @@
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/verify-email": {
+      "name": "@ktb/verify-email",
+      "dependencies": {
+        "@ktb/auth-better": "workspace:*",
+        "@ktb/email": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+        "@tanstack/react-router": "1.170.46",
+        "effect": "4.1.2",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
       },
       "peerDependencies": {
         "react": "^19.2.0",
@@ -2475,6 +2551,8 @@
 
     "@ktb/db-sqlite": ["@ktb/db-sqlite@workspace:packages/db-sqlite"],
 
+    "@ktb/dev-capture-test": ["@ktb/dev-capture-test@workspace:plugins/dev-capture-test"],
+
     "@ktb/doctors": ["@ktb/doctors@workspace:plugins/doctors"],
 
     "@ktb/document-store": ["@ktb/document-store@workspace:plugins/document-store"],
@@ -2490,6 +2568,8 @@
     "@ktb/email-smtp": ["@ktb/email-smtp@workspace:packages/email-smtp"],
 
     "@ktb/email-stub": ["@ktb/email-stub@workspace:packages/email-stub"],
+
+    "@ktb/error-page": ["@ktb/error-page@workspace:plugins/error-page"],
 
     "@ktb/eval-adapter-cloud": ["@ktb/eval-adapter-cloud@workspace:packages/eval-adapter-cloud"],
 
@@ -2559,6 +2639,8 @@
 
     "@ktb/manager": ["@ktb/manager@workspace:plugins/manager"],
 
+    "@ktb/not-found-page": ["@ktb/not-found-page@workspace:plugins/not-found-page"],
+
     "@ktb/notifications": ["@ktb/notifications@workspace:plugins/notifications"],
 
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
@@ -2620,6 +2702,8 @@
     "@ktb/vault": ["@ktb/vault@workspace:plugins/vault"],
 
     "@ktb/vault-keyring": ["@ktb/vault-keyring@workspace:packages/vault-keyring"],
+
+    "@ktb/verify-email": ["@ktb/verify-email@workspace:plugins/verify-email"],
 
     "@ktb/views": ["@ktb/views@workspace:plugins/views"],
 

@@ -166,6 +166,19 @@ export const consultationsChromePlugin = definePlugin({
 				},
 			},
 		},
+		// Boundary CTAs (P-100): the replaceable 404/error surfaces render
+		// host-collected `app.*.actions` chrome — this plugin owns the
+		// clinical destination they point at.
+		{
+			id: "consultations.notfound.action",
+			region: "app.notFound.actions",
+			content: { kind: "link", to: "/consultations", label: "Consultations" },
+		},
+		{
+			id: "consultations.error.action",
+			region: "app.error.actions",
+			content: { kind: "link", to: "/consultations", label: "Consultations" },
+		},
 		// /platform dashboard slots (T-125): the console landing page is a
 		// generic shell — this plugin contributes its stat cells and the
 		// consultations section through the portal.dashboard.* regions.

@@ -159,7 +159,7 @@ describe("/$ app page dispatcher (P-059)", () => {
 		};
 		render(createElement(opts(Route).component));
 		expect(screen.getByTestId("page").textContent).toBe(
-			'{"rows":2}|{"plugins":[{"id":"plugin-a"}],"locale":"en","user":{"id":"u1","email":"a@x.com","name":"A"}}',
+			'{"rows":2}|{"plugins":[{"id":"plugin-a"}],"locale":"en","user":{"id":"u1","email":"a@x.com","name":"A"},"pluginStates":{"enabled":["plugin-a"]}}',
 		);
 	});
 });
