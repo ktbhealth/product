@@ -25,6 +25,12 @@ describe("hasEmailProvider", () => {
 	});
 });
 
+describe("Email service", () => {
+	it("is keyed under the package identifier", () => {
+		expect(Email.key).toBe("@ktb/email/Email");
+	});
+});
+
 describe("nullEmailDriver", () => {
 	it("is eligible only when no email env is set", () => {
 		expect(nullEmailDriver.id).toBe("email-none");
