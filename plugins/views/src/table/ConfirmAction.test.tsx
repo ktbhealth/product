@@ -49,6 +49,12 @@ describe("ConfirmAction", () => {
 		expect(screen.getByRole("alertdialog")).toBeTruthy();
 	});
 
+	it("renders a non-element trigger as-is", () => {
+		setup({ trigger: "Delete row" });
+		expect(screen.getByText("Delete row")).toBeTruthy();
+		expect(screen.queryByRole("alertdialog")).toBeNull();
+	});
+
 	it("cancel closes without running onConfirm", async () => {
 		const { onConfirm } = setup();
 		fireEvent.click(screen.getByRole("button", { name: "Delete row" }));

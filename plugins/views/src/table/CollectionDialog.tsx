@@ -149,6 +149,8 @@ export function CollectionDialog<Row>({
 	}, [open, reload]);
 
 	const removeRow = async (row: Row) => {
+		/* v8 ignore next -- removeRow only runs from the row confirm action,
+		   which only renders while `remove` is defined */
 		if (remove === undefined) return;
 		setBusy(true);
 		setError(false);

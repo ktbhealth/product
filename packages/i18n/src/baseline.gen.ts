@@ -30143,6 +30143,24 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "views",
+		key: "tableSelectAll",
+		locale: "en",
+		value: "Select all",
+	},
+	{
+		namespace: "views",
+		key: "tableSelectRow",
+		locale: "en",
+		value: "Select row",
+	},
+	{
+		namespace: "views",
+		key: "tableNoMatch",
+		locale: "en",
+		value: "No records match the current filters.",
+	},
+	{
+		namespace: "views",
 		key: "notFoundTitle",
 		locale: "pt-BR",
 		value: "Visualização não encontrada",
@@ -30223,6 +30241,24 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "views",
+		key: "tableSelectAll",
+		locale: "pt-BR",
+		value: "Selecionar tudo",
+	},
+	{
+		namespace: "views",
+		key: "tableSelectRow",
+		locale: "pt-BR",
+		value: "Selecionar linha",
+	},
+	{
+		namespace: "views",
+		key: "tableNoMatch",
+		locale: "pt-BR",
+		value: "Nenhum registro corresponde aos filtros atuais.",
+	},
+	{
+		namespace: "views",
 		key: "notFoundTitle",
 		locale: "es",
 		value: "Vista no encontrada",
@@ -30300,6 +30336,24 @@ export const I18N_BASELINE = [
 		key: "loadFailed",
 		locale: "es",
 		value: "No se pudieron cargar los registros. Inténtalo de nuevo.",
+	},
+	{
+		namespace: "views",
+		key: "tableSelectAll",
+		locale: "es",
+		value: "Seleccionar todo",
+	},
+	{
+		namespace: "views",
+		key: "tableSelectRow",
+		locale: "es",
+		value: "Seleccionar fila",
+	},
+	{
+		namespace: "views",
+		key: "tableNoMatch",
+		locale: "es",
+		value: "Ningún registro coincide con los filtros actuales.",
 	},
 	{
 		namespace: "wizards",

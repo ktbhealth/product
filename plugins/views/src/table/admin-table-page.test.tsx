@@ -303,4 +303,131 @@ describe("adminTablePage", () => {
 		expect(screen.getByRole("status")).toBeTruthy();
 		expect(screen.queryByText("Ana")).toBeNull();
 	});
+
+	it("renders a column render escape hatch with the resolved t", () => {
+		renderPage(
+			baseDef({
+				columns: [
+					{ key: "name", header: (t) => t.colName },
+					{
+						key: "email",
+						header: "Email",
+						render: (t, row) => <em>{`${t.colEmail}:${row.email}`}</em>,
+					},
+				],
+			}),
+		);
+		expect(screen.getByText("Email:ana@x.com")).toBeTruthy();
+		expect(screen.getByText("Email:bob@x.com")).toBeTruthy();
+	});
+
+	it("falls back to default confirm/cancel labels", async () => {
+		const run = vi.fn<(row: Row) => Promise<unknown>>(async () => ({ ok: true }));
+		renderPage(
+			baseDef({
+				rowActions: [
+					{
+						id: "suspend",
+						label: "Suspend",
+						confirm: { title: "Sure?", description: "Think twice." },
+						run,
+					},
+				],
+			}),
+		);
+		fireEvent.click(screen.getAllByRole("button", { name: "Suspend" })[0]!);
+		expect(await screen.findByRole("alertdialog")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+		await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+	});
+
+	it("shows the error line when a row action throws", async () => {
+		const run = vi.fn<(row: Row) => Promise<unknown>>(async () => {
+			throw new Error("boom");
+		});
+		renderPage(
+			baseDef({
+				rowActions: [{ id: "suspend", label: "Suspend", run }],
+			}),
+		);
+		fireEvent.click(screen.getAllByRole("button", { name: "Suspend" })[0]!);
+		expect(await screen.findByText("Action failed. Try again.")).toBeTruthy();
+		expect(invalidate).not.toHaveBeenCalled();
+	});
+
+	it("runs a confirm bulk action on the selected rows", async () => {
+		const run = vi.fn<(rows: readonly Row[]) => Promise<unknown>>(async () => ({ ok: true }));
+		renderPage(
+			baseDef({
+				bulkActions: [
+					{
+						id: "delete",
+						label: "Delete",
+						confirm: { title: "Delete selected?", confirmLabel: "Yes, delete" },
+						run,
+					},
+				],
+			}),
+		);
+		fireEvent.click(screen.getByLabelText("Select row 1"));
+		fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+		expect(await screen.findByRole("alertdialog")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "Yes, delete" }));
+		await waitFor(() => expect(run).toHaveBeenCalledWith([ROWS[0]]));
+		await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
+	});
+
+	it("clears the selection from the bulk bar", () => {
+		renderPage(
+			baseDef({
+				bulkActions: [{ id: "delete", label: "Delete", run: async () => ({ ok: true }) }],
+			}),
+		);
+		fireEvent.click(screen.getByLabelText("Select row 1"));
+		expect(screen.getByText("1 selected")).toBeTruthy();
+		fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+		expect(screen.queryByText("1 selected")).toBeNull();
+	});
+
+	it("renders headerActions without a create button", () => {
+		renderPage(baseDef({ headerActions: <button type="button">Export</button> }));
+		expect(screen.getByRole("button", { name: "Export" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "New user" })).toBeNull();
+	});
+
+	it("falls back to kit empty copy when def.empty is absent", () => {
+		renderPage(baseDef({ empty: undefined }), []);
+		expect(screen.getByText("No records")).toBeTruthy();
+		expect(screen.getByText("No records match this view.")).toBeTruthy();
+	});
+
+	it("uses the kit empty title when only a description override is given", () => {
+		renderPage(baseDef({ empty: { description: (t) => t.emptyDescription } }), []);
+		expect(screen.getByText("No records")).toBeTruthy();
+		expect(screen.getByText("Users appear here once they sign up.")).toBeTruthy();
+	});
+
+	it("renders without search when def.search is absent", () => {
+		renderPage(baseDef({ search: undefined }));
+		expect(screen.queryByPlaceholderText("Search users…")).toBeNull();
+		expect(screen.getByText("Ana")).toBeTruthy();
+	});
+
+	it("defaults the create submit label", async () => {
+		const onSubmit = vi.fn<(values: Record<string, string>) => Promise<unknown>>(async () => ({
+			ok: true,
+		}));
+		renderPage(
+			baseDef({
+				create: {
+					label: "New user",
+					fields: [{ name: "name", label: "Name" }],
+					onSubmit,
+				},
+			}),
+		);
+		fireEvent.click(screen.getByRole("button", { name: "New user" }));
+		await screen.findByRole("dialog");
+		expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+	});
 });

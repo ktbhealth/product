@@ -144,5 +144,9 @@ describe("useServerTableQuery", () => {
 		rerender({ q: "next", page: 1 });
 		expect(result.current.q).toBe("next");
 		expect(result.current.page).toBe(1);
+		// controlled page: setPage reports but does not move state
+		act(() => result.current.setPage(7));
+		expect(result.current.page).toBe(1);
+		expect(onQuery).toHaveBeenLastCalledWith({ q: "next", page: 7, pageSize: 25 });
 	});
 });

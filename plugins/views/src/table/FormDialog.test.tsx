@@ -103,6 +103,27 @@ describe("FormDialog", () => {
 		expect(screen.getByText("Name already taken")).toBeTruthy();
 	});
 
+	it("stays mounted but idle while closed", () => {
+		render(
+			<FormDialog
+				open={false}
+				onOpenChange={vi.fn()}
+				title="New thing"
+				submitLabel="Create"
+				fields={FIELDS}
+				onSubmit={vi.fn()}
+			/>,
+		);
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("ignores submit while busy", async () => {
+		const { onSubmit } = setup({ loading: true });
+		submitForm();
+		await Promise.resolve();
+		expect(onSubmit).not.toHaveBeenCalled();
+	});
+
 	it("cancel button closes via onOpenChange", () => {
 		const { onOpenChange } = setup();
 		fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

@@ -165,6 +165,48 @@ describe("CollectionDialog", () => {
 		await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
 	});
 
+	it("normalizes an ok envelope with non-array data to the empty state", async () => {
+		setup({
+			load: async () => ({ ok: true, data: "oops" }) as unknown as CollectionLoadResult<Row>,
+		});
+		expect(await screen.findByText("No members yet.")).toBeTruthy();
+	});
+
+	it("renders without description or rowKey and honours column width/render", async () => {
+		render(
+			<CollectionDialog
+				open
+				onOpenChange={() => {}}
+				title="Members"
+				columns={[
+					{
+						key: "name",
+						header: "Name",
+						width: 120,
+						render: (row) => <em>{row.name}!</em>,
+					},
+					{ key: "role", header: "Role" },
+				]}
+				load={DEFAULT_LOAD}
+				messages={MESSAGES}
+			/>,
+		);
+		expect(await screen.findByText("Ana!")).toBeTruthy();
+		expect(screen.getByText("Bob!")).toBeTruthy();
+		expect(screen.queryByText("Tenant roster")).toBeNull();
+	});
+
+	it("sets the error line when remove rejects", async () => {
+		const remove = vi.fn<(row: Row) => Promise<unknown>>(async () => {
+			throw new Error("nope");
+		});
+		setup({ remove });
+		await screen.findByText("Ana");
+		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+		fireEvent.click(await screen.findByRole("button", { name: "Yes, remove" }));
+		expect(await screen.findByText("Failed to load.")).toBeTruthy();
+	});
+
 	it("does not load while closed", () => {
 		const load = vi.fn<() => Promise<CollectionLoadResult<Row>>>(async () => ({
 			ok: true,

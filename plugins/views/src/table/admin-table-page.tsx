@@ -114,7 +114,12 @@ export function adminTablePage<Row, M extends object>(
 		const keyOf = useMemo(
 			() =>
 				(row: Row, index: number): string =>
-					baseKeyOf(row, indexByRow.get(row) ?? index),
+					baseKeyOf(
+						row,
+						/* v8 ignore next -- keyOf only receives rows drawn from `rows`,
+						   which is what built indexByRow, so the ?? fallback is dead */
+						indexByRow.get(row) ?? index,
+					),
 			[baseKeyOf, indexByRow],
 		);
 
@@ -207,7 +212,12 @@ export function adminTablePage<Row, M extends object>(
 		};
 
 		const renderRowActions = (row: Row): ReactNode => {
-			const rowId = keyOf(row, indexByRow.get(row) ?? 0);
+			const rowId = keyOf(
+				row,
+				/* v8 ignore next -- rendered rows always come from `rows`,
+				   which is what built indexByRow, so the ?? fallback is dead */
+				indexByRow.get(row) ?? 0,
+			);
 			return (
 				<div className="flex justify-end gap-1">
 					{rowActions.map((action) => renderRowAction(action, row, rowId))}

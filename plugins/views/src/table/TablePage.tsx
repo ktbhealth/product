@@ -57,7 +57,9 @@ const ALIGN_CLS = {
 
 const joinCls = (...parts: readonly (string | undefined)[]): string | undefined => {
 	const cls = parts.filter(Boolean).join(" ");
-	return cls === "" ? undefined : cls;
+	return cls === ""
+		? /* v8 ignore next -- every call site passes a non-empty literal first */ undefined
+		: cls;
 };
 
 export interface TablePageProps {
@@ -264,6 +266,8 @@ function TablePageTableInner<Row>({
 						</TableRow>
 					) : (
 						rows.map((row, index) => {
+							/* v8 ignore next -- rowKeys is mapped from the same rows, so the
+							   ?? fallback can never produce a different key */
 							const key = rowKeys[index] ?? keyOf(row, index);
 							return (
 								<TableRow key={key}>

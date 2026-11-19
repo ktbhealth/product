@@ -5572,6 +5572,15 @@ export const I18N_MANIFEST = {
 		loadFailed: {
 			params: [],
 		},
+		tableSelectAll: {
+			params: [],
+		},
+		tableSelectRow: {
+			params: [],
+		},
+		tableNoMatch: {
+			params: [],
+		},
 	},
 	wizards: {
 		notFoundTitle: {

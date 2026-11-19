@@ -165,4 +165,46 @@ describe("TablePage", () => {
 		expect(container.querySelectorAll(".text-center").length).toBeGreaterThan(0);
 		expect(container.querySelectorAll(".text-right").length).toBeGreaterThan(0);
 	});
+
+	it("falls back to defaultTableRowKey when rowKey is omitted", () => {
+		render(
+			<TablePage>
+				<TablePage.Table columns={COLUMNS} rows={ROWS} />
+			</TablePage>,
+		);
+		expect(screen.getByText("Ana")).toBeTruthy();
+		expect(screen.getByText("Bob")).toBeTruthy();
+	});
+
+	it("applies column width to the header cell", () => {
+		const columns: Column<Row>[] = [{ key: "name", header: "Name", width: 140 }];
+		const { container } = render(
+			<TablePage>
+				<TablePage.Table columns={columns} rows={ROWS} rowKey={(r) => String(r.id)} />
+			</TablePage>,
+		);
+		expect(container.querySelector("th")?.getAttribute("style")).toContain("140px");
+	});
+
+	it("renders the empty state without a description", () => {
+		renderPage({ rows: [], total: 0, empty: { title: "Nothing here" } });
+		expect(screen.getByText("Nothing here")).toBeTruthy();
+		expect(screen.queryByText("Nada que mostrar")).toBeNull();
+	});
+
+	it("deselects a row when its checkbox is toggled off", () => {
+		const onSelectionChange = vi.fn<(keys: ReadonlySet<string>) => void>();
+		renderPage({ selectable: true, onSelectionChange });
+		fireEvent.click(screen.getByLabelText("Seleccionar fila 1"));
+		fireEvent.click(screen.getByLabelText("Seleccionar fila 1"));
+		expect(onSelectionChange).toHaveBeenLastCalledWith(new Set());
+	});
+
+	it("clears the whole selection when select-all is toggled off", () => {
+		const onSelectionChange = vi.fn<(keys: ReadonlySet<string>) => void>();
+		renderPage({ selectable: true, onSelectionChange });
+		fireEvent.click(screen.getByLabelText("Seleccionar todo"));
+		fireEvent.click(screen.getByLabelText("Seleccionar todo"));
+		expect(onSelectionChange).toHaveBeenLastCalledWith(new Set());
+	});
 });
