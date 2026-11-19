@@ -3,7 +3,7 @@ import * as Layer from "effect/Layer";
 import { describe, expect, it, vi } from "vitest";
 
 import { PortError } from "@ktb/eval-core";
-import { ACP_VERSION, LlmPort, type AcpRequest } from "@ktb/eval-consultation";
+import { ACP_VERSION, fnvHex, LlmPort, type AcpRequest } from "@ktb/eval-consultation";
 
 import { evalLlmAcpDriver, makeAcpLlm, type AcpTransport } from "./llm.ts";
 
@@ -49,6 +49,9 @@ describe("makeAcpLlm", () => {
 		expect(r.record.runId).toBe("sess-9");
 		expect(r.record.stage).toBe("script_gen");
 		expect(r.record.inputHash).toMatch(/^[0-9a-f]{8}$/);
+		expect("engineVersion" in r.record).toBe(false);
+		expect(r.record.latencyMs).toBeGreaterThanOrEqual(0);
+		expect(r.record.latencyMs).toBeLessThan(60_000);
 		expect(reqs[0]?.method).toBe("task.submit");
 		expect(reqs[0]?.params.sessionId).toBe("sess-9");
 	});
@@ -106,7 +109,15 @@ describe("makeAcpLlm", () => {
 			{ outputSchema: "ConsultationScript" },
 		);
 		expect(r.text).toBe("Doctor: o que sente? Patient: nada.");
+		expect(r.record.runId).toBe("acp");
 		expect(reqs[0]?.params.envelope.outputSchema).toBe("ConsultationScript");
+	});
+
+	it("hashes the declared input contract including the seed", async () => {
+		const r = await runGenerate(transport([], (r) => respond("ok", r.id)), undefined, {
+			seed: 7,
+		});
+		expect(r.record.inputHash).toBe(fnvHex("t-1:Text:i:7"));
 	});
 
 	it("generate rejects a validated non-string payload (declared EditList)", async () => {
@@ -144,6 +155,7 @@ describe("makeAcpLlm", () => {
 			(e) => e,
 		);
 		expect(err).toBeInstanceOf(PortError);
+		expect(err).toMatchObject({ port: "llm" });
 		expect(err.message).toContain("outputSchema=EditList");
 		expect(called).toBe(0); // transport never reached
 	});
@@ -161,6 +173,7 @@ describe("makeAcpLlm", () => {
 			(e) => e,
 		);
 		expect(err).toBeInstanceOf(PortError);
+		expect(err).toMatchObject({ port: "llm" });
 		expect(err.message).toContain("timeout after 30ms");
 	});
 
@@ -170,6 +183,7 @@ describe("makeAcpLlm", () => {
 			(e) => e,
 		);
 		expect(r).toBeInstanceOf(PortError);
+		expect(r).toMatchObject({ port: "llm" });
 	});
 
 	it("agent errors surface with code+message", async () => {
@@ -255,6 +269,72 @@ describe("evalLlmAcpDriver", () => {
 					EVAL_LLM_TIMEOUT_MS: "not-a-number",
 				}),
 			).toBeDefined();
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("non-positive EVAL_LLM_TIMEOUT_MS values still yield the 60s default", async () => {
+		vi.stubGlobal(
+			"fetch",
+			(async () =>
+				new Response(JSON.stringify({ jsonrpc: "2.0", id: "t-0", result: { payload: "ok" } }), {
+					headers: { "Content-Type": "application/json" },
+				})) as typeof fetch,
+		);
+		try {
+			for (const value of ["0", "-5", "not-a-number"]) {
+				const layer = evalLlmAcpDriver.provides({
+					EVAL_ACP_URL: "http://acp.example",
+					EVAL_LLM_TIMEOUT_MS: value,
+				}) as Layer.Layer<LlmPort>;
+				const out = await Effect.runPromise(
+					Effect.flatMap(LlmPort, (l) => l.generate(env({ taskId: "t-0" }))).pipe(
+						Effect.provide(layer),
+					),
+				);
+				expect(out.text).toBe("ok");
+			}
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("honors a small valid EVAL_LLM_TIMEOUT_MS", async () => {
+		vi.stubGlobal(
+			"fetch",
+			(async () =>
+				new Promise<Response>((resolve) =>
+					setTimeout(
+						() =>
+							resolve(
+								new Response(
+									JSON.stringify({
+										jsonrpc: "2.0",
+										id: "t-s",
+										result: { payload: "ok" },
+									}),
+									{ headers: { "Content-Type": "application/json" } },
+								),
+							),
+						60,
+					),
+				)) as typeof fetch,
+		);
+		try {
+			const layer = evalLlmAcpDriver.provides({
+				EVAL_ACP_URL: "http://acp.example",
+				EVAL_LLM_TIMEOUT_MS: "20",
+			}) as Layer.Layer<LlmPort>;
+			const err = await Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) => l.generate(env({ taskId: "t-s" }))).pipe(
+					Effect.provide(layer),
+				),
+			).then(
+				() => null,
+				(e) => e,
+			);
+			expect(err).toBeInstanceOf(PortError);
 		} finally {
 			vi.unstubAllGlobals();
 		}

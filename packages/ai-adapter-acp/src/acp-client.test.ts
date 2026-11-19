@@ -66,21 +66,40 @@ describe("openAcpSession", () => {
 		const client = await open(rpc);
 		expect(client.sessionId).toBe("s-1");
 		expect(rpc.calls.map((c) => c.method)).toEqual(["initialize", "session/new"]);
-		expect(rpc.calls[0]!.params).toMatchObject({ protocolVersion: 1 });
+		expect(rpc.calls[0]!.params).toMatchObject({
+			protocolVersion: 1,
+			clientCapabilities: {
+				fs: { readTextFile: false, writeTextFile: false },
+				terminal: false,
+			},
+		});
 		expect(rpc.calls[1]!.params).toMatchObject({ cwd: "/w", mcpServers: [] });
+	});
+
+	it("fails when session/new resolves without a result object", async () => {
+		const rpc = scriptedRpc({ results: {} });
+		await expect(open(rpc)).rejects.toMatchObject({
+			_tag: "PortError",
+			port: "llm",
+			message: expect.stringContaining("sessionId"),
+		});
 	});
 
 	it("fails when session/new carries no sessionId", async () => {
 		const rpc = scriptedRpc({ results: { "session/new": {} } });
 		await expect(open(rpc)).rejects.toMatchObject({
 			_tag: "PortError",
+			port: "llm",
 			message: expect.stringContaining("sessionId"),
 		});
 	});
 
 	it("fails when connect fails", async () => {
 		const rpc = scriptedRpc({ connectError: fail("spawn died") });
-		await expect(open(rpc)).rejects.toMatchObject({ message: "spawn died" });
+		await expect(open(rpc)).rejects.toMatchObject({
+			port: "llm",
+			message: "spawn died",
+		});
 	});
 
 	it("accumulates agent_message_chunk text during prompt", async () => {
@@ -105,6 +124,35 @@ describe("openAcpSession", () => {
 					update: { sessionUpdate: "agent_message_chunk", content: { type: "image" } },
 				});
 				notify("session/other", { update: { sessionUpdate: "agent_message_chunk" } });
+				// Every malformed shape must be skipped, not crash or leak:
+				// another method carrying a full chunk payload, a missing
+				// update, a missing content, a non-string text and no params.
+				notify("session/other", {
+					update: {
+						sessionUpdate: "agent_message_chunk",
+						content: { type: "text", text: "BAD" },
+					},
+				});
+				notify("session/update", {});
+				notify("session/update");
+				notify("session/update", {
+					update: { sessionUpdate: "agent_message_chunk" },
+				});
+				notify("session/update", {
+					update: { sessionUpdate: "agent_message_chunk", content: null },
+				});
+				notify("session/update", {
+					update: {
+						sessionUpdate: "agent_message_chunk",
+						content: { type: "text", text: 42 },
+					},
+				});
+				notify("session/update", {
+					update: {
+						sessionUpdate: "agent_thought_chunk",
+						content: { type: "text", text: "think" },
+					},
+				});
 			},
 		});
 		const client = await open(rpc);
