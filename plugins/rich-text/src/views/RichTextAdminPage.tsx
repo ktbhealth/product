@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useRouter } from "@tanstack/react-router";
+import { useLocation, useRouter, useSearch } from "@tanstack/react-router";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
@@ -83,7 +83,16 @@ export function RichTextAdminPage({ docs, plugins = [], i18n, locale }: RichText
 	const router = useRouter();
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const locationKey = useLocation({ select: (l) => l.state.key });
-	const [view, setView] = useState<EditorView | null>(null);
+	// Deep link: /platform/rich-text?doc=<id> opens that document's
+	// editor directly (the pages console's "Manage rich text" link
+	// targets it). Read once — the initializer can't re-run, so later
+	// search changes never hijack the view state.
+	const search = useSearch({ strict: false }) as { doc?: string | number };
+	const [view, setView] = useState<EditorView | null>(() => {
+		const raw = search.doc;
+		const id = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+		return Number.isInteger(id) && id > 0 ? { id } : null;
+	});
 	const lastLocationKeyRef = useRef(locationKey);
 
 	// There is no in-page back affordance: any committed navigation —

@@ -54,6 +54,7 @@ describe("PagesAdminPage", () => {
 					}),
 				]}
 				docs={[]}
+				richTextEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -68,12 +69,12 @@ describe("PagesAdminPage", () => {
 	});
 
 	it("shows the empty state", () => {
-		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="en" />);
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
 	});
 
 	it("localizes copy for other locales", () => {
-		render(<PagesAdminPage pages={[]} docs={[]} locale="pt-BR" />);
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="pt-BR" />);
 		expect(screen.getByText("Páginas")).toBeTruthy();
 		expect(screen.getByText("Nenhuma página personalizada ainda")).toBeTruthy();
 	});
@@ -81,7 +82,7 @@ describe("PagesAdminPage", () => {
 	it("creates a page through the dialog", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockResolvedValue(row({ id: 9 }));
-		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		await user.type(screen.getByLabelText("Path"), "/new");
 		await user.type(screen.getByLabelText("Title"), "New page title");
@@ -113,6 +114,7 @@ describe("PagesAdminPage", () => {
 					{ id: 7, title: "Handbook" },
 					{ id: 8, title: "FAQ" },
 				]}
+				richTextEnabled
 				locale="en"
 			/>,
 		);
@@ -137,6 +139,7 @@ describe("PagesAdminPage", () => {
 			<PagesAdminPage
 				pages={[row({ richTextId: 7 })]}
 				docs={[{ id: 7, title: "Handbook" }]}
+				richTextEnabled
 				locale="en"
 			/>,
 		);
@@ -155,7 +158,7 @@ describe("PagesAdminPage", () => {
 	it("updates an existing page", async () => {
 		const user = userEvent.setup();
 		fns.updatePageFn.mockResolvedValue(row({ title: "Renamed" }));
-		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByLabelText("Edit"));
 		const titleInput = screen.getByLabelText("Title") as HTMLInputElement;
 		expect(titleInput.value).toBe("About");
@@ -176,7 +179,7 @@ describe("PagesAdminPage", () => {
 	it("surfaces a failure message when the fn returns null", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockResolvedValue(null);
-		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		await user.click(screen.getByRole("button", { name: "Create" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -186,7 +189,7 @@ describe("PagesAdminPage", () => {
 	it("surfaces a failure message when the fn throws", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockRejectedValue(new Error("boom"));
-		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		await user.click(screen.getByRole("button", { name: "Create" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -195,7 +198,7 @@ describe("PagesAdminPage", () => {
 	it("deletes a page after confirmation", async () => {
 		const user = userEvent.setup();
 		fns.deletePageFn.mockResolvedValue(true);
-		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		expect(screen.getByText('Delete "/about"? This cannot be undone.')).toBeTruthy();
 		await user.click(screen.getByText("Delete", { selector: "button" }));
@@ -206,7 +209,7 @@ describe("PagesAdminPage", () => {
 	it("reports a failed delete without invalidating", async () => {
 		const user = userEvent.setup();
 		fns.deletePageFn.mockResolvedValue(false);
-		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		fireEvent.click(screen.getByText("Delete", { selector: "button" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -215,7 +218,7 @@ describe("PagesAdminPage", () => {
 	it("surfaces a failure message when delete throws", async () => {
 		const user = userEvent.setup();
 		fns.deletePageFn.mockRejectedValue(new Error("boom"));
-		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		await user.click(screen.getByText("Delete", { selector: "button" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -225,7 +228,7 @@ describe("PagesAdminPage", () => {
 	it("edits sort order and the nav flag, then cancels the dialog", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockResolvedValue(row({ id: 9 }));
-		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByLabelText("Edit"));
 		const order = screen.getByLabelText("Sort order") as HTMLInputElement;
 		expect(order.value).toBe("2");
@@ -241,7 +244,7 @@ describe("PagesAdminPage", () => {
 
 	it("closes the form dialog on Escape", async () => {
 		const user = userEvent.setup();
-		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		expect(screen.getByLabelText("Path")).toBeTruthy();
 		await user.keyboard("{Escape}");
@@ -250,11 +253,49 @@ describe("PagesAdminPage", () => {
 
 	it("closes the delete confirm dialog via its cancel action", async () => {
 		const user = userEvent.setup();
-		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} richTextEnabled={false} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		expect(screen.getByText(/cannot be undone/)).toBeTruthy();
 		await user.click(screen.getByRole("button", { name: "Cancel" }));
 		await waitFor(() => expect(screen.queryByText(/cannot be undone/)).toBeNull());
 		expect(fns.deletePageFn).not.toHaveBeenCalled();
+	});
+
+	it("hides the content-document field when rich text is disabled", async () => {
+		const user = userEvent.setup();
+		render(<PagesAdminPage pages={[]} docs={[]} richTextEnabled={false} locale="en" />);
+		await user.click(screen.getByText("New page"));
+		expect(screen.queryByRole("combobox", { name: "Content document" })).toBeNull();
+		expect(screen.queryByText("Manage documents")).toBeNull();
+	});
+
+	it("deep-links Manage rich text to the selected document's editor", async () => {
+		const user = userEvent.setup();
+		render(
+			<PagesAdminPage
+				pages={[row({ richTextId: 7 })]}
+				docs={[{ id: 7, title: "Handbook" }]}
+				richTextEnabled
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("Edit"));
+		const link = screen.getByText("Manage rich text");
+		expect(link.getAttribute("href")).toBe("/platform/rich-text?doc=7");
+	});
+
+	it("links Manage documents to the console when no document is selected", async () => {
+		const user = userEvent.setup();
+		render(
+			<PagesAdminPage
+				pages={[row({ richTextId: null })]}
+				docs={[{ id: 7, title: "Handbook" }]}
+				richTextEnabled
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("Edit"));
+		const link = screen.getByText("Manage documents");
+		expect(link.getAttribute("href")).toBe("/platform/rich-text");
 	});
 });

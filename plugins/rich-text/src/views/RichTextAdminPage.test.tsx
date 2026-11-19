@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const invalidate = vi.hoisted(() => vi.fn<() => Promise<void>>(async () => {}));
 const location = vi.hoisted(() => ({ key: "k0", pathname: "/platform/rich-text" }));
+const search = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 const fns = vi.hoisted(() => ({
 	createRichTextFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	updateRichTextFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
@@ -26,6 +27,7 @@ vi.mock("@tanstack/react-router", () => ({
 		const loc = { state: { key: location.key }, pathname: location.pathname };
 		return opts?.select === undefined ? loc : opts.select(loc);
 	},
+	useSearch: () => search.current,
 }));
 vi.mock("../fns.ts", () => fns);
 // The real module pulls platejs — stub the editor surface the pane uses.
@@ -149,6 +151,7 @@ afterEach(() => {
 	invalidate.mockResolvedValue(undefined);
 	location.key = "k0";
 	navSeq = 0;
+	search.current = {};
 });
 
 describe("RichTextAdminPage", () => {
@@ -636,5 +639,22 @@ describe("RichTextAdminPage", () => {
 		await screen.findByTestId("rich-text-editor");
 		navigate(view.rerender, <RichTextAdminPage docs={[]} locale="en" />);
 		expect(await screen.findByText("Could not delete the document.")).toBeTruthy();
+	});
+
+	it("opens the editor directly for a ?doc= deep link", async () => {
+		search.current = { doc: "7" };
+		fns.richTextDocFn.mockResolvedValue(docWire({ id: 7, title: "Linked" }));
+		render(<RichTextAdminPage docs={[row({ id: 7, title: "Linked" })]} locale="en" />);
+		await waitFor(() => expect(fns.richTextDocFn).toHaveBeenCalledWith({ data: { id: 7 } }));
+		await screen.findByTestId("rich-text-editor");
+		expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Linked");
+	});
+
+	it("ignores a malformed ?doc= param and shows the list", () => {
+		search.current = { doc: "abc" };
+		render(<RichTextAdminPage docs={[row({})]} locale="en" />);
+		expect(screen.getByText("Doc")).toBeTruthy();
+		expect(screen.queryByTestId("rich-text-editor")).toBeNull();
+		expect(fns.richTextDocFn).not.toHaveBeenCalled();
 	});
 });

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: async () => {} }),
 	useLocation: () => ({ state: { key: "k" } }),
+	useSearch: () => ({}),
 }));
 
 vi.mock("@ktbhealth/ui/components/rich-text-editor", () => ({

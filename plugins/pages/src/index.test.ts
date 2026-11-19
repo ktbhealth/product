@@ -247,15 +247,21 @@ describe("pages page effects", () => {
 		const data = (await asPrincipal(
 			{ userId: "a1", email: "admin@x.com" },
 			loader("/platform/pages"),
-		)) as { pages: readonly { path: string }[]; docs: readonly { id: number }[] };
+		)) as {
+			pages: readonly { path: string }[];
+			docs: readonly { id: number }[];
+			richTextEnabled: boolean;
+		};
 		expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
-		// No RichTexts service in this runtime — the picker is empty.
+		// No RichTexts service in this runtime — the picker is empty
+		// and the console hides the content-document field.
 		expect(data.docs).toEqual([]);
+		expect(data.richTextEnabled).toBe(false);
 		const denied = (await asPrincipal(
 			{ userId: "u1", email: "doc@x.com" },
 			loader("/platform/pages"),
 		)) as { pages: readonly unknown[]; docs: readonly unknown[] };
-		expect(denied).toEqual({ pages: [], docs: [] });
+		expect(denied).toEqual({ pages: [], docs: [], richTextEnabled: false });
 	});
 
 	it("admin page loader surfaces rich-text document options when the service is present", async () => {
@@ -291,9 +297,11 @@ describe("pages page effects", () => {
 			)) as {
 				pages: readonly { path: string }[];
 				docs: readonly { id: number; title: string }[];
+				richTextEnabled: boolean;
 			};
 			expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
 			expect(data.docs).toEqual([{ id: 42, title: "Doc" }]);
+			expect(data.richTextEnabled).toBe(true);
 		} finally {
 			await rt.dispose();
 		}

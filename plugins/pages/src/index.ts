@@ -205,7 +205,11 @@ export const pagesPanelPlugin = definePlugin({
 									Effect.catchTag("Forbidden", () => Effect.succeed([])),
 									Effect.map((list) => list.map((doc) => ({ id: doc.id, title: doc.title }))),
 								);
-						return { pages: rows, docs };
+						// The content-document field is an optional feature:
+						// the console hides it entirely when the rich-text
+						// service is absent (pages still keep any stored
+						// richTextId — the field just isn't editable).
+						return { pages: rows, docs, richTextEnabled: Option.isSome(richTexts) };
 					}),
 			},
 		],

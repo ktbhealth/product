@@ -27,10 +27,20 @@ const asDocs = (data: unknown): readonly RichTextDocRef[] =>
 
 const asData = (
 	data: unknown,
-): { pages: readonly AdminPageRow[]; docs: readonly RichTextDocRef[] } => {
-	if (typeof data !== "object" || data === null) return { pages: [], docs: [] };
-	const d = data as { pages?: unknown; docs?: unknown };
-	return { pages: asRows(d.pages), docs: asDocs(d.docs) };
+): {
+	pages: readonly AdminPageRow[];
+	docs: readonly RichTextDocRef[];
+	richTextEnabled: boolean;
+} => {
+	if (typeof data !== "object" || data === null) {
+		return { pages: [], docs: [], richTextEnabled: false };
+	}
+	const d = data as { pages?: unknown; docs?: unknown; richTextEnabled?: unknown };
+	return {
+		pages: asRows(d.pages),
+		docs: asDocs(d.docs),
+		richTextEnabled: d.richTextEnabled === true,
+	};
 };
 
 /**
@@ -42,10 +52,11 @@ const asData = (
  * every `CustomPages.admin*` method.
  */
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
-	const { pages, docs } = asData(data);
+	const { pages, docs, richTextEnabled } = asData(data);
 	const props: PagesAdminPageProps = {
 		pages,
 		docs,
+		richTextEnabled,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

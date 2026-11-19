@@ -75,6 +75,10 @@ export interface RichTextDocRef {
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
 	readonly docs: readonly RichTextDocRef[];
+	/** False when the rich-text plugin's service is absent — the
+	 * content-document field (picker + manage link) is hidden; stored
+	 * `richTextId` values are preserved untouched. */
+	readonly richTextEnabled: boolean;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -134,7 +138,13 @@ const RICH_TEXT_CONSOLE = "/platform/rich-text" as string;
  * through the plugin's admin-gated server fns; the loader re-runs via
  * `router.invalidate()` after each write.
  */
-export function PagesAdminPage({ pages, docs, i18n, locale }: PagesAdminPageProps) {
+export function PagesAdminPage({
+	pages,
+	docs,
+	richTextEnabled,
+	i18n,
+	locale,
+}: PagesAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, pagesMessages(locale));
 	// Select items for the document picker: "" is the none option —
 	// the same empty-string convention the consultations patient picker
@@ -305,34 +315,40 @@ export function PagesAdminPage({ pages, docs, i18n, locale }: PagesAdminPageProp
 									onChange={(e) => set("title", e.target.value)}
 								/>
 							</Field>
-							<Field>
-								<FieldLabel>{t.fieldContentDoc}</FieldLabel>
-								<Select
-									items={docItems}
-									value={form.richTextId === null ? "" : String(form.richTextId)}
-									onValueChange={(v) => set("richTextId", v === "" ? null : Number(v))}
-								>
-									<SelectTrigger aria-label={t.fieldContentDoc} className="w-full">
-										<SelectValue />
-									</SelectTrigger>
-									<SelectContent>
-										{docItems.map((item) => (
-											<SelectItem key={item.value} value={item.value}>
-												{item.label}
-											</SelectItem>
-										))}
-									</SelectContent>
-								</Select>
-								<FieldDescription>
-									{t.contentDocHint}{" "}
-									<Link
-										to={RICH_TEXT_CONSOLE as "/"}
-										className="underline underline-offset-2 hover:text-foreground"
+							{richTextEnabled ? (
+								<Field>
+									<FieldLabel>{t.fieldContentDoc}</FieldLabel>
+									<Select
+										items={docItems}
+										value={form.richTextId === null ? "" : String(form.richTextId)}
+										onValueChange={(v) => set("richTextId", v === "" ? null : Number(v))}
 									>
-										{t.manageDocs}
-									</Link>
-								</FieldDescription>
-							</Field>
+										<SelectTrigger aria-label={t.fieldContentDoc} className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{docItems.map((item) => (
+												<SelectItem key={item.value} value={item.value}>
+													{item.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<FieldDescription>
+										{t.contentDocHint}{" "}
+										<Link
+											to={
+												(form.richTextId === null
+													? RICH_TEXT_CONSOLE
+													: `${RICH_TEXT_CONSOLE}?doc=${form.richTextId}`) as "/"
+											}
+											className="underline underline-offset-2 hover:text-foreground"
+										>
+											{form.richTextId === null ? t.manageDocs : t.manageDoc}
+										</Link>
+									</FieldDescription>
+								</Field>
+							) : null}
 							<div className="flex flex-wrap gap-6">
 								<label className="flex items-center gap-2 text-sm">
 									<Checkbox

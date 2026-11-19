@@ -3866,6 +3866,9 @@ export const I18N_MANIFEST = {
 		manageDocs: {
 			params: [],
 		},
+		manageDoc: {
+			params: [],
+		},
 		pathHint: {
 			params: [],
 		},
@@ -5377,6 +5380,159 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		headerManage: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		newTheme: {
+			params: [],
+		},
+		noResults: {
+			params: [],
+		},
+		dialogCreateTitle: {
+			params: [],
+		},
+		dialogEditTitle: {
+			params: [],
+		},
+		tabGeneral: {
+			params: [],
+		},
+		tabColors: {
+			params: [],
+		},
+		tabTypography: {
+			params: [],
+		},
+		tabAssets: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		assetsNeedSave: {
+			params: [],
+		},
+		assetsListTitle: {
+			params: [],
+		},
+		assetsEmpty: {
+			params: [],
+		},
+		assetKindLogoLight: {
+			params: [],
+		},
+		assetKindLogoDark: {
+			params: [],
+		},
+		assetKindWordmark: {
+			params: [],
+		},
+		assetKindFavicon: {
+			params: [],
+		},
+		assetKindOgImage: {
+			params: [],
+		},
+		assetKindFont: {
+			params: [],
+		},
+		assetFontUpload: {
+			params: [],
+		},
+		assetStatusPending: {
+			params: [],
+		},
+		assetStatusReady: {
+			params: [],
+		},
+		assetStatusFailed: {
+			params: [],
+		},
+		assetGoogleFamily: {
+			params: [],
+		},
+		assetGoogleSlot: {
+			params: [],
+		},
+		brandRefsTitle: {
+			params: [],
+		},
+		editorBack: {
+			params: [],
+		},
+		editorThemeLabel: {
+			params: [],
+		},
+		editorNotFound: {
+			params: [],
+		},
+		dirtyBadge: {
+			params: [],
+		},
+		tabTokens: {
+			params: [],
+		},
+		tabComponents: {
+			params: [],
+		},
+		tabBlocks: {
+			params: [],
+		},
+		tokensTitle: {
+			params: [],
+		},
+		tokensDescription: {
+			params: [],
+		},
+		componentsTitle: {
+			params: [],
+		},
+		componentsDescription: {
+			params: [],
+		},
+		blocksTitle: {
+			params: [],
+		},
+		blocksDescription: {
+			params: [],
+		},
+		schemeLight: {
+			params: [],
+		},
+		schemeDark: {
+			params: [],
+		},
+		discardedToast: {
+			params: [],
+		},
+		galleryButtons: {
+			params: [],
+		},
+		galleryForms: {
+			params: [],
+		},
+		galleryFeedback: {
+			params: [],
+		},
+		gallerySurfaces: {
+			params: [],
+		},
+		blockStats: {
+			params: [],
+		},
+		blockSettings: {
+			params: [],
+		},
+		blockEmpty: {
+			params: [],
+		},
+		blockTable: {
 			params: [],
 		},
 	},

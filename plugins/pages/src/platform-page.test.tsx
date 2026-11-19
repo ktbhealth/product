@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tanstack/react-router", () => ({
@@ -46,16 +47,24 @@ describe("PagesAdminConsolePage", () => {
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
 	});
 
-	it("narrows loader rows into the admin view", () => {
+	it("narrows loader rows into the admin view", async () => {
+		const user = userEvent.setup();
 		render(
 			<PagesAdminConsolePage
-				data={{ pages: [row({})], docs: [{ id: 7, title: "Doc" }] }}
+				data={{
+					pages: [row({})],
+					docs: [{ id: 7, title: "Doc" }],
+					richTextEnabled: true,
+				}}
 				ctx={ctx}
 			/>,
 		);
 		expect(screen.getByText("/about")).toBeTruthy();
 		expect(screen.getByText("About")).toBeTruthy();
 		expect(screen.getByText("Published")).toBeTruthy();
+		// The flag reaches the view: the content-document field renders.
+		await user.click(screen.getByText("New page"));
+		expect(screen.getByRole("combobox", { name: "Content document" })).toBeTruthy();
 	});
 
 	it("drops malformed rows and docs, and survives non-object data", () => {
