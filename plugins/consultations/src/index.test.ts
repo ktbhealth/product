@@ -8,6 +8,7 @@ import { Db, makeDb } from "@ktb/db";
 import {
 	consultations as consultationsTable,
 	patients as patientsTable,
+	relationTuples as relationTuplesTable,
 	user as userTable,
 } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
@@ -44,6 +45,7 @@ import {
 	consultationsServicesPlugin,
 	consultationsTablesPlugin,
 	createConsultation,
+	deleteConsultationRow,
 	failAudioJob,
 	finishConsultation,
 	listAllConsultations,
@@ -64,6 +66,8 @@ INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, 
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
 CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER);
+CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
 ${RECORD_VERSIONS_TEST_DDL}
 ${VAULT_TEST_DDL}
@@ -186,6 +190,39 @@ describe("consultations repo", () => {
 		expect(row?.patientName).toBe("Repo Paciente");
 		// Newest first.
 		expect(rows[0]?.id).toBeGreaterThanOrEqual(rows.at(-1)?.id ?? 0);
+	});
+
+	describe("relation tuples (P-101)", () => {
+		const ownerTuples = (consultationId: number) =>
+			db
+				.select()
+				.from(relationTuplesTable)
+				.where(
+					and(
+						eq(relationTuplesTable.objectType, "consultation"),
+						eq(relationTuplesTable.objectId, String(consultationId)),
+						eq(relationTuplesTable.relation, "owner"),
+					),
+				);
+
+		it("writes an owner tuple on createConsultation", async () => {
+			const id = await createConsultation(db, { userId: "u1", source: "browser" }, null, "u1");
+			const tuples = await ownerTuples(id!);
+			expect(tuples).toHaveLength(1);
+			expect(tuples[0]).toMatchObject({
+				subjectKind: "user",
+				subjectId: "u1",
+				effect: "allow",
+				grantedBy: "u1",
+			});
+		});
+
+		it("drops the owner tuple on deleteConsultationRow", async () => {
+			const id = await createConsultation(db, { userId: "u1", source: "browser" });
+			expect(await ownerTuples(id!)).toHaveLength(1);
+			await deleteConsultationRow(db, id!);
+			expect(await ownerTuples(id!)).toEqual([]);
+		});
 	});
 });
 

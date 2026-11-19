@@ -4,8 +4,8 @@ import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { VAULT_TEST_DDL } from "@ktb/vault";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { patientDocuments, user as userTable } from "@ktb/db/schema";
-import { eq } from "drizzle-orm";
+import { patientDocuments, relationTuples, user as userTable } from "@ktb/db/schema";
+import { and, eq } from "drizzle-orm";
 import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -54,6 +54,8 @@ INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, 
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u2', 'Dr B', 'b@x.com', 0, NULL, 0, 0, 0);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
+CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
 ${VAULT_TEST_DDL}
 INSERT INTO groups (id, name, slug, kind, zk, created_at, updated_at) VALUES (7, 'Clínica A', 'clinica-a', 'clinic', 0, 0, 0);
@@ -248,6 +250,39 @@ describe("patients repo", () => {
 		expect(byName.get("Admin Bia")?.ownerEmail).toBe("b@x.com");
 		// Newest first.
 		expect(rows[0]?.name).toBe("Admin Bia");
+	});
+
+	describe("relation tuples (P-101)", () => {
+		const ownerTuples = (patientId: number) =>
+			db
+				.select()
+				.from(relationTuples)
+				.where(
+					and(
+						eq(relationTuples.objectType, "patient"),
+						eq(relationTuples.objectId, String(patientId)),
+						eq(relationTuples.relation, "owner"),
+					),
+				);
+
+		it("writes an owner tuple on create", async () => {
+			const p = await createPatient(db, "u1", fields("Tuple Ana"), null, "u1");
+			const tuples = await ownerTuples(p!.id);
+			expect(tuples).toHaveLength(1);
+			expect(tuples[0]).toMatchObject({
+				subjectKind: "user",
+				subjectId: "u1",
+				effect: "allow",
+				grantedBy: "u1",
+			});
+		});
+
+		it("drops the owner tuple on delete", async () => {
+			const p = await createPatient(db, "u2", fields("Tuple Bia"));
+			expect(await ownerTuples(p!.id)).toHaveLength(1);
+			await deletePatientRow(db, p!.id);
+			expect(await ownerTuples(p!.id)).toEqual([]);
+		});
 	});
 });
 

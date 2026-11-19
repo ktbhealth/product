@@ -956,6 +956,8 @@ describe("DocumentStoreLive permissions + guards (T-128)", () => {
 			lastTenantId = opts?.tenantId;
 			return Effect.succeed(grants.has(`${resource}.${action}`));
 		},
+		canObject: () => Effect.succeed(false),
+		requireObject: () => Effect.void,
 		requirePermissionFor: () => Effect.void,
 		requirePermission: () => Effect.void,
 		invalidate: () => Effect.void,

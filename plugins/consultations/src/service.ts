@@ -10,7 +10,7 @@ import { audit } from "@ktb/audit";
 import { Integrity, recordVersion, type IntegrityVerification } from "@ktb/integrity";
 import { Db } from "@ktb/db";
 import { PlatformAdmin } from "@ktb/platform";
-import { Forbidden, requireCanAs, requirePrincipalUser } from "@ktb/authz";
+import { Forbidden, Principal, requireCanAs, requirePrincipalUser } from "@ktb/authz";
 import { PatientsQueries } from "@ktb/patients/api";
 import { PortalAccess } from "@ktb/patient-access";
 import { ConsultationAudioUpdated, ConsultationCreated } from "./api.ts";
@@ -327,7 +327,20 @@ export const ConsultationsLive = Layer.effect(
 					userId: fields.userId,
 					source: fields.source,
 				});
-				const id = yield* Effect.promise(() => createConsultation(db, fields, tenantId));
+				// P-101 owner tuple: subject = fields.userId (already pinned
+				// to principal.userId); grantedBy = the acting principal
+				// (actorId when a delegate signs in on the doctor's behalf).
+				const principal = yield* Principal;
+				const id = yield* Effect.promise(() =>
+					createConsultation(
+						db,
+						fields,
+						tenantId,
+						principal === null
+							? /* v8 ignore next -- unreachable: requirePrincipalUser fails Forbidden on a null principal upstream */ null
+							: (principal.actorId ?? principal.userId),
+					),
+				);
 				if (id !== null) {
 					yield* events.dispatch([
 						ConsultationCreated.make({
@@ -399,8 +412,17 @@ export const ConsultationsLive = Layer.effect(
 				);
 				yield* Effect.annotateCurrentSpan({ userId, engine: input.engine });
 				yield* Effect.logInfo("consultation save", { userId, engine: input.engine });
+				const principal = yield* Principal;
 				const saved = yield* Effect.promise(() =>
-					saveConsultation(db, userId, input, tenantScopeId(tenant)),
+					saveConsultation(
+						db,
+						userId,
+						input,
+						tenantScopeId(tenant),
+						principal === null
+							? /* v8 ignore next -- unreachable: requirePrincipalUser fails Forbidden on a null principal upstream */ null
+							: (principal.actorId ?? principal.userId),
+					),
 				);
 				// T-138 interim integrity: server-side content hash as
 				// version 1 — for ZK writes the client supplied the signed
@@ -517,7 +539,19 @@ export const ConsultationsLive = Layer.effect(
 					userId: fields.userId,
 					source: fields.source,
 				});
-				const id = yield* Effect.promise(() => createConsultation(db, fields, tenantId));
+				// Tuple subject = the TARGET doctor (fields.userId); the
+				// bound principal is the admin actor → grantedBy.
+				const principal = yield* Principal;
+				const id = yield* Effect.promise(() =>
+					createConsultation(
+						db,
+						fields,
+						tenantId,
+						principal === null
+							? /* v8 ignore next -- unreachable: requireAdmin fails Forbidden on a null principal upstream */ null
+							: (principal.actorId ?? principal.userId),
+					),
+				);
 				if (id !== null) {
 					yield* events.dispatch([
 						ConsultationCreated.make({

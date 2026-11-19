@@ -40,9 +40,13 @@ vi.mock("@ktb/server-fns", () => ({
 	runAs: mocks.runAs,
 }));
 /** Minimal DbClient — `deletePatientRow`'s rollback calls
- * `db.delete(table).where(cond)` + `db.batch(stmts)`. */
+ * `db.delete(table).where(cond)` + `db.batch(stmts)`; the P-101 tuple
+ * cleanup then runs `db.delete(relationTuples).where(…).returning()`
+ * (empty result → no epoch bump). */
 const fakeDb = {
-	delete: vi.fn(() => ({ where: vi.fn(() => ({})) })),
+	delete: vi.fn(() => ({
+		where: vi.fn(() => ({ returning: vi.fn(async () => []) })),
+	})),
 	batch: mocks.batch,
 } as unknown as Db["Service"];
 

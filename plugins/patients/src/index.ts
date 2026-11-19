@@ -38,7 +38,8 @@ import {
 	platformPanelPlugin,
 	type PlatformAdminShape,
 } from "@ktb/platform";
-import { Forbidden, requireCanAs, requirePrincipalUser } from "@ktb/authz";
+import { Forbidden, Principal, requireCanAs, requirePrincipalUser } from "@ktb/authz";
+import { deleteRelationTuples, writeRelationTuple } from "@ktb/rbac";
 import { accessibleTenantIds, Tenant, tenantScopeCondition, tenantScopeId } from "@ktb/tenant";
 import { tenantIsZk, vaultServicesPlugin } from "@ktb/vault";
 import {
@@ -227,6 +228,13 @@ export async function deletePatientRow(db: DbClient, id: number) {
 		db.delete(patientDocuments).where(eq(patientDocuments.patientId, id)),
 		db.delete(patients).where(eq(patients.id, id)),
 	]);
+	// P-101: the owner tuple mirrors `patients.owner_id` — it has no FK,
+	// so the row delete must drop it explicitly.
+	await deleteRelationTuples(db, {
+		objectType: "patient",
+		objectId: String(id),
+		relation: "owner",
+	});
 }
 
 export async function createPatient(
@@ -234,6 +242,7 @@ export async function createPatient(
 	ownerId: string,
 	fields: PatientFields,
 	tenantId: number | null = null,
+	grantedBy: string | null = null,
 ) {
 	const { row, identifiers, documents } = splitFields(fields);
 	const [created] = await db
@@ -250,6 +259,21 @@ export async function createPatient(
 			})),
 		);
 	}
+	// P-101: mirror the static permix ownership rule
+	// (`patient.*` → `owner_id === principal.userId`) into
+	// relation_tuples so the ReBAC layer can answer record-level
+	// checks. The tuple is global (tenant_id NULL) — the subject pin
+	// to the owner user id is the fence; row tenant visibility stays
+	// a separate concern. `grantedBy` is the acting principal when the
+	// caller has one (null for system/test writes).
+	await writeRelationTuple(db, {
+		objectType: "patient",
+		objectId: String(created.id),
+		relation: "owner",
+		subjectKind: "user",
+		subjectId: ownerId,
+		grantedBy,
+	});
 	return { ...created, ...identifiers };
 }
 
@@ -456,8 +480,20 @@ export const PatientsLive = Layer.effect(
 				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
 				yield* Effect.logInfo("patient create", { ownerId });
+				// grantedBy = the acting principal (actorId when a delegate
+				// signs in on the doctor's behalf); ownerId is already
+				// pinned to principal.userId by requirePrincipalUser.
+				const principal = yield* Principal;
 				const row = yield* Effect.promise(() =>
-					createPatient(db, ownerId, fields, tenantScopeId(tenant)),
+					createPatient(
+						db,
+						ownerId,
+						fields,
+						tenantScopeId(tenant),
+						principal === null
+							? /* v8 ignore next -- unreachable: requirePrincipalUser fails Forbidden on a null principal upstream */ null
+							: (principal.actorId ?? principal.userId),
+					),
 				);
 				if (row !== null) {
 					yield* events.dispatch([
@@ -523,8 +559,19 @@ export const PatientsLive = Layer.effect(
 				yield* requireCipheredWhenZk(db, tenantScopeId(tenant), fields, "patient.create");
 				yield* Effect.annotateCurrentSpan({ ownerId });
 				yield* Effect.logInfo("patient admin create", { ownerId });
+				// The tuple subject stays the TARGET owner (ownerId); the
+				// bound principal is the admin actor → grantedBy.
+				const principal = yield* Principal;
 				const row = yield* Effect.promise(() =>
-					createPatient(db, ownerId, fields, tenantScopeId(tenant)),
+					createPatient(
+						db,
+						ownerId,
+						fields,
+						tenantScopeId(tenant),
+						principal === null
+							? /* v8 ignore next -- unreachable: requireAdmin fails Forbidden on a null principal upstream */ null
+							: (principal.actorId ?? principal.userId),
+					),
 				);
 				if (row !== null) {
 					yield* events.dispatch([
