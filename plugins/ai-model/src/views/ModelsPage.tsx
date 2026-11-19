@@ -1,7 +1,8 @@
 import { useState } from "react";
 
+import { ConfirmAction, TablePage, viewsMessages, type Column } from "@ktb/views/table";
+
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
 	Dialog,
 	DialogContent,
@@ -17,14 +18,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import type { ModelsApi } from "../apis.ts";
 import { aiModelMessages } from "../i18n.ts";
@@ -90,7 +83,14 @@ const parseCaps = (raw: string): readonly string[] =>
 
 /** /platform/ai/models view: CRUD of the AI model catalog — the
  * registry LLM factories, eval judges and transcription adapters
- * resolve through `AiModels.resolve`. */
+ * resolve through `AiModels.resolve`.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell + `Column` model + `ConfirmAction` for the delete step. The
+ * create/edit dialog stays plugin-local — it mixes Selects,
+ * checkboxes and prefilled drafts that the kit's `FormDialog` cannot
+ * express. Mutations go through the injected `ModelsApi` and update
+ * local state (no router invalidation — unchanged from before). */
 export function ModelsPage({
 	models: initial,
 	api,
@@ -103,7 +103,6 @@ export function ModelsPage({
 	const m = aiModelMessages(locale);
 	const [models, setModels] = useState<readonly ModelCard[]>(initial);
 	const [draft, setDraft] = useState<Draft | null>(null);
-	const [confirmId, setConfirmId] = useState<number | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 
@@ -148,7 +147,6 @@ export function ModelsPage({
 		setError(null);
 		const r = await api.remove(id);
 		setBusy(false);
-		setConfirmId(null);
 		if (r.ok) {
 			setModels((prev) => prev.filter((x) => x.id !== id));
 		} else {
@@ -156,53 +154,70 @@ export function ModelsPage({
 		}
 	};
 
-	return (
-		<div className="space-y-4 p-6">
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-xl font-semibold">{m.title}</h1>
-					<p className="text-sm text-muted-foreground">{m.subtitle}</p>
+	const columns: Column<ModelCard>[] = [
+		{
+			key: "name",
+			header: m.name,
+			render: (model) => <span className="font-medium">{model.name}</span>,
+		},
+		{
+			key: "modelId",
+			header: m.modelId,
+			render: (model) => <span className="font-mono text-xs">{model.modelId}</span>,
+		},
+		{
+			key: "kind",
+			header: m.kind,
+			render: (model) => <span className={KIND_TONE[model.kind]}>{model.kind}</span>,
+		},
+		{
+			key: "endpointId",
+			header: m.endpointId,
+			render: (model) => model.endpointId ?? "—",
+		},
+		{
+			key: "isDefault",
+			header: m.isDefault,
+			render: (model) => (model.isDefault ? "★" : ""),
+		},
+		{
+			key: "enabled",
+			header: m.enabled,
+			render: (model) => (model.enabled ? "✓" : "—"),
+		},
+		{
+			key: "actions",
+			header: "",
+			render: (model) => (
+				<div className="flex gap-2">
+					<Button variant="outline" size="sm" onClick={() => setDraft(draftFrom(model))}>
+						{m.edit}
+					</Button>
+					<ConfirmAction
+						trigger={(open) => (
+							<Button variant="outline" size="sm" onClick={open}>
+								{m.delete}
+							</Button>
+						)}
+						title={m.delete}
+						description={m.confirmDelete}
+						confirmLabel={m.delete}
+						onConfirm={() => remove(model.id)}
+					/>
 				</div>
-				<Button onClick={() => setDraft(emptyDraft)}>{m.add}</Button>
-			</div>
+			),
+		},
+	];
+
+	return (
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
+				title={m.title}
+				description={m.subtitle}
+				actions={<Button onClick={() => setDraft(emptyDraft)}>{m.add}</Button>}
+			/>
 			{error !== null && <p className="text-sm text-destructive">{error}</p>}
-			{models.length === 0 ? (
-				<p className="text-sm text-muted-foreground">{m.empty}</p>
-			) : (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>{m.name}</TableHead>
-							<TableHead>{m.modelId}</TableHead>
-							<TableHead>{m.kind}</TableHead>
-							<TableHead>{m.endpointId}</TableHead>
-							<TableHead>{m.isDefault}</TableHead>
-							<TableHead>{m.enabled}</TableHead>
-							<TableHead />
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{models.map((model) => (
-							<TableRow key={model.id}>
-								<TableCell className="font-medium">{model.name}</TableCell>
-								<TableCell className="font-mono text-xs">{model.modelId}</TableCell>
-								<TableCell className={KIND_TONE[model.kind]}>{model.kind}</TableCell>
-								<TableCell>{model.endpointId ?? "—"}</TableCell>
-								<TableCell>{model.isDefault ? "★" : ""}</TableCell>
-								<TableCell>{model.enabled ? "✓" : "—"}</TableCell>
-								<TableCell className="flex gap-2">
-									<Button variant="outline" size="sm" onClick={() => setDraft(draftFrom(model))}>
-										{m.edit}
-									</Button>
-									<Button variant="outline" size="sm" onClick={() => setConfirmId(model.id)}>
-										{m.delete}
-									</Button>
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			)}
+			<TablePage.Table columns={columns} rows={models} empty={{ title: m.empty }} />
 
 			<Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
 				<DialogContent>
@@ -307,18 +322,6 @@ export function ModelsPage({
 					)}
 				</DialogContent>
 			</Dialog>
-
-			<ConfirmDialog
-				open={confirmId !== null}
-				onOpenChange={(open) => !open && setConfirmId(null)}
-				title={m.delete}
-				description={m.confirmDelete}
-				confirmLabel={m.delete}
-				onConfirm={() => {
-					/* v8 ignore next -- onConfirm only fires while the dialog is open */
-					if (confirmId !== null) void remove(confirmId);
-				}}
-			/>
-		</div>
+		</TablePage>
 	);
 }

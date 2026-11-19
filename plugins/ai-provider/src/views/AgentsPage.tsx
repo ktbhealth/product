@@ -4,7 +4,6 @@ import { CopyIcon, PlusIcon } from "lucide-react";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
 	Dialog,
 	DialogContent,
@@ -12,11 +11,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@ktbhealth/ui/components/dialog";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
 import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Select,
 	SelectContent,
@@ -24,14 +20,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
+
+import { ConfirmAction, TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { createBridgeLinkFn, listAgentLinksFn, revokeAgentLinkFn } from "../fns.ts";
 import { aiEndpointMessages, type AiEndpointMessages } from "../i18n.ts";
@@ -80,7 +70,10 @@ const STATUS_DOT: Record<AgentLinkStatus, string> = {
 };
 
 /** /platform/ai/agents view (F4): every bridge link joined to its
- * endpoint — mint connect commands, watch liveness, revoke. */
+ * endpoint — mint connect commands, watch liveness, revoke. Built on
+ * the shared table kit (`@ktb/views/table`): `TablePage` shell +
+ * `Column` model + `ConfirmAction` for revoke; the mint dialog stays
+ * plugin-local (endpoint picker + one-time command display). */
 export function AgentsPage({
 	links: initial,
 	endpoints,
@@ -95,7 +88,6 @@ export function AgentsPage({
 	const [links, setLinks] = useState<readonly AgentLinkRow[]>(initial);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
-	const [revokeId, setRevokeId] = useState<number | null>(null);
 	const [copied, setCopied] = useState(false);
 	// New-link dialog: endpointId "" until picked; command null = not
 	// minted yet, "" = mint failed, otherwise the bearer command.
@@ -163,7 +155,6 @@ export function AgentsPage({
 		setError(null);
 		const r = await revokeAgentLinkFn({ data: { id } });
 		setBusy(false);
-		setRevokeId(null);
 		if (r.ok) {
 			await refresh();
 			void router.invalidate();
@@ -172,84 +163,97 @@ export function AgentsPage({
 		}
 	};
 
+	const columns: Column<AgentLinkRow>[] = [
+		{
+			key: "endpointName",
+			header: m.colEndpoint,
+			render: (link) => <span className="font-medium">{link.endpointName}</span>,
+		},
+		{
+			key: "status",
+			header: m.colStatus,
+			render: (link) => (
+				<Badge variant={link.status === "revoked" ? "destructive" : "outline"}>
+					<span className={`size-1.5 rounded-full ${STATUS_DOT[link.status]}`} aria-hidden="true" />
+					{m[STATUS_LABEL[link.status]]}
+				</Badge>
+			),
+		},
+		{
+			key: "createdAt",
+			header: m.colCreated,
+			render: (link) => (
+				<span className="text-muted-foreground">{relative(link.createdAt, locale)}</span>
+			),
+		},
+		{
+			key: "expiresAt",
+			header: m.colExpires,
+			render: (link) => (
+				<span className="text-muted-foreground">{relative(link.expiresAt, locale)}</span>
+			),
+		},
+		{
+			key: "usedAt",
+			header: m.colUsed,
+			render: (link) => (
+				<span className="text-muted-foreground">{relative(link.usedAt, locale)}</span>
+			),
+		},
+		{
+			key: "lastSeenAt",
+			header: m.colLastSeen,
+			render: (link) => (
+				<span className="text-muted-foreground">{relative(link.lastSeenAt, locale)}</span>
+			),
+		},
+		{
+			key: "actions",
+			header: "",
+			width: "6rem",
+			render: (link) =>
+				// Terminal states have nothing left to pull.
+				link.status !== "expired" && link.status !== "revoked" ? (
+					<ConfirmAction
+						trigger={(open) => (
+							<Button variant="outline" size="sm" disabled={busy} onClick={open}>
+								{m.revoke}
+							</Button>
+						)}
+						title={m.revokeTitle}
+						description={m.revokeDesc}
+						confirmLabel={m.confirmRevoke}
+						cancelLabel={m.cancel}
+						variant="destructive"
+						onConfirm={() => revoke(link.id)}
+					/>
+				) : null,
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader title={m.agentsTitle} description={m.agentsDesc} />
-			{error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
-			<div className="mb-4 flex justify-end">
-				<Button
-					onClick={() => {
-						setCopied(false);
-						setLinkDialog({ endpointId: "", command: null });
-					}}
-				>
-					<PlusIcon className="mr-1 size-4" />
-					{m.newAgentLink}
-				</Button>
-			</div>
-			{links.length === 0 ? (
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>{m.agentsTitle}</EmptyTitle>
-						<EmptyDescription>{m.emptyAgentLinks}</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			) : (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>{m.colEndpoint}</TableHead>
-							<TableHead>{m.colStatus}</TableHead>
-							<TableHead>{m.colCreated}</TableHead>
-							<TableHead>{m.colExpires}</TableHead>
-							<TableHead>{m.colUsed}</TableHead>
-							<TableHead>{m.colLastSeen}</TableHead>
-							<TableHead className="w-24" />
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{links.map((link) => (
-							<TableRow key={link.id}>
-								<TableCell className="font-medium">{link.endpointName}</TableCell>
-								<TableCell>
-									<Badge variant={link.status === "revoked" ? "destructive" : "outline"}>
-										<span
-											className={`size-1.5 rounded-full ${STATUS_DOT[link.status]}`}
-											aria-hidden="true"
-										/>
-										{m[STATUS_LABEL[link.status]]}
-									</Badge>
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{relative(link.createdAt, locale)}
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{relative(link.expiresAt, locale)}
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{relative(link.usedAt, locale)}
-								</TableCell>
-								<TableCell className="text-muted-foreground">
-									{relative(link.lastSeenAt, locale)}
-								</TableCell>
-								<TableCell>
-									{/* Terminal states have nothing left to pull. */}
-									{link.status !== "expired" && link.status !== "revoked" && (
-										<Button
-											variant="outline"
-											size="sm"
-											disabled={busy}
-											onClick={() => setRevokeId(link.id)}
-										>
-											{m.revoke}
-										</Button>
-									)}
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			)}
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
+				title={m.agentsTitle}
+				description={m.agentsDesc}
+				actions={
+					<Button
+						onClick={() => {
+							setCopied(false);
+							setLinkDialog({ endpointId: "", command: null });
+						}}
+					>
+						<PlusIcon className="mr-1 size-4" />
+						{m.newAgentLink}
+					</Button>
+				}
+			/>
+			{error !== null && <p className="text-sm text-destructive">{error}</p>}
+			<TablePage.Table
+				columns={columns}
+				rows={links}
+				empty={{ title: m.agentsTitle, description: m.emptyAgentLinks }}
+			/>
 
 			<Dialog open={linkDialog !== null} onOpenChange={(open) => !open && setLinkDialog(null)}>
 				<DialogContent className="sm:max-w-lg">
@@ -321,23 +325,6 @@ export function AgentsPage({
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
-			{revokeId !== null && (
-				<ConfirmDialog
-					open
-					variant="destructive"
-					onOpenChange={(open) => {
-						/* v8 ignore next -- mounted only while revoking; only close events fire */
-						if (!open) setRevokeId(null);
-					}}
-					title={m.revokeTitle}
-					description={m.revokeDesc}
-					confirmLabel={m.confirmRevoke}
-					cancelLabel={m.cancel}
-					loading={busy}
-					onConfirm={() => revoke(revokeId)}
-				/>
-			)}
-		</PageContainer>
+		</TablePage>
 	);
 }

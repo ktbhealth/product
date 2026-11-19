@@ -1,7 +1,8 @@
 import { useState } from "react";
 
+import { ConfirmAction, TablePage, viewsMessages, type Column } from "@ktb/views/table";
+
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
 	Dialog,
 	DialogContent,
@@ -10,14 +11,6 @@ import {
 	DialogTitle,
 } from "@ktbhealth/ui/components/dialog";
 import { Input } from "@ktbhealth/ui/components/input";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import type { PromptsApi } from "../apis.ts";
 import { aiPromptMessages } from "../i18n.ts";
@@ -61,7 +54,15 @@ const draftFrom = (p: PromptCard): Draft => ({
 
 /** /platform/ai/prompts view: versioned prompt registry — create
  * appends a new version (history is never mutated); edit fixes the
- * selected version's mutable fields. */
+ * selected version's mutable fields.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell + `Column` model + `ConfirmAction` for the delete step. The
+ * create/edit/new-version dialog stays plugin-local — it mixes a
+ * textarea, checkboxes and prefilled drafts that the kit's
+ * `FormDialog` cannot express. Mutations go through the injected
+ * `PromptsApi` and update local state (no router invalidation —
+ * unchanged from before). */
 export function PromptsPage({
 	prompts: initial,
 	api,
@@ -74,7 +75,6 @@ export function PromptsPage({
 	const m = aiPromptMessages(locale);
 	const [prompts, setPrompts] = useState<readonly PromptCard[]>(initial);
 	const [draft, setDraft] = useState<Draft | null>(null);
-	const [confirmId, setConfirmId] = useState<number | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 
@@ -123,7 +123,6 @@ export function PromptsPage({
 		setError(null);
 		const r = await api.remove(id);
 		setBusy(false);
-		setConfirmId(null);
 		if (r.ok) {
 			setPrompts((prev) => prev.filter((x) => x.id !== id));
 		} else {
@@ -131,67 +130,84 @@ export function PromptsPage({
 		}
 	};
 
-	return (
-		<div className="space-y-4 p-6">
-			<div className="flex items-center justify-between">
-				<div>
-					<h1 className="text-xl font-semibold">{m.title}</h1>
-					<p className="text-sm text-muted-foreground">{m.subtitle}</p>
+	const columns: Column<PromptCard>[] = [
+		{
+			key: "name",
+			header: m.name,
+			render: (p) => <span className="font-medium">{p.name}</span>,
+		},
+		{
+			key: "version",
+			header: m.version,
+			render: (p) => `v${p.version}`,
+		},
+		{
+			key: "locale",
+			header: m.locale,
+			render: (p) => (p.locale === "" ? "—" : p.locale),
+		},
+		{
+			key: "isSystem",
+			header: m.isSystem,
+			render: (p) => (p.isSystem ? "✓" : ""),
+		},
+		{
+			key: "isDefault",
+			header: m.isDefault,
+			render: (p) => (p.isDefault ? "★" : ""),
+		},
+		{
+			key: "enabled",
+			header: m.enabled,
+			render: (p) => (p.enabled ? "✓" : "—"),
+		},
+		{
+			key: "actions",
+			header: "",
+			render: (p) => (
+				<div className="flex gap-2">
+					<Button variant="outline" size="sm" onClick={() => setDraft(draftFrom(p))}>
+						{m.edit}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() =>
+							setDraft({
+								...emptyDraft,
+								name: p.name,
+								locale: p.locale,
+								isSystem: p.isSystem,
+							})
+						}
+					>
+						{m.newVersion}
+					</Button>
+					<ConfirmAction
+						trigger={(open) => (
+							<Button variant="outline" size="sm" onClick={open}>
+								{m.delete}
+							</Button>
+						)}
+						title={m.delete}
+						description={m.confirmDelete}
+						confirmLabel={m.delete}
+						onConfirm={() => remove(p.id)}
+					/>
 				</div>
-				<Button onClick={() => setDraft(emptyDraft)}>{m.add}</Button>
-			</div>
+			),
+		},
+	];
+
+	return (
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
+				title={m.title}
+				description={m.subtitle}
+				actions={<Button onClick={() => setDraft(emptyDraft)}>{m.add}</Button>}
+			/>
 			{error !== null && <p className="text-sm text-destructive">{error}</p>}
-			{prompts.length === 0 ? (
-				<p className="text-sm text-muted-foreground">{m.empty}</p>
-			) : (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>{m.name}</TableHead>
-							<TableHead>{m.version}</TableHead>
-							<TableHead>{m.locale}</TableHead>
-							<TableHead>{m.isSystem}</TableHead>
-							<TableHead>{m.isDefault}</TableHead>
-							<TableHead>{m.enabled}</TableHead>
-							<TableHead />
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{prompts.map((p) => (
-							<TableRow key={p.id}>
-								<TableCell className="font-medium">{p.name}</TableCell>
-								<TableCell>v{p.version}</TableCell>
-								<TableCell>{p.locale === "" ? "—" : p.locale}</TableCell>
-								<TableCell>{p.isSystem ? "✓" : ""}</TableCell>
-								<TableCell>{p.isDefault ? "★" : ""}</TableCell>
-								<TableCell>{p.enabled ? "✓" : "—"}</TableCell>
-								<TableCell className="flex gap-2">
-									<Button variant="outline" size="sm" onClick={() => setDraft(draftFrom(p))}>
-										{m.edit}
-									</Button>
-									<Button
-										variant="outline"
-										size="sm"
-										onClick={() =>
-											setDraft({
-												...emptyDraft,
-												name: p.name,
-												locale: p.locale,
-												isSystem: p.isSystem,
-											})
-										}
-									>
-										{m.newVersion}
-									</Button>
-									<Button variant="outline" size="sm" onClick={() => setConfirmId(p.id)}>
-										{m.delete}
-									</Button>
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			)}
+			<TablePage.Table columns={columns} rows={prompts} empty={{ title: m.empty }} />
 
 			<Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
 				<DialogContent>
@@ -285,18 +301,6 @@ export function PromptsPage({
 					)}
 				</DialogContent>
 			</Dialog>
-
-			<ConfirmDialog
-				open={confirmId !== null}
-				onOpenChange={(open) => !open && setConfirmId(null)}
-				title={m.delete}
-				description={m.confirmDelete}
-				confirmLabel={m.delete}
-				onConfirm={() => {
-					/* v8 ignore next -- onConfirm only fires while the dialog is open */
-					if (confirmId !== null) void remove(confirmId);
-				}}
-			/>
-		</div>
+		</TablePage>
 	);
 }

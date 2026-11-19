@@ -119,18 +119,20 @@ describe("NamespacesPage", () => {
 		render(<NamespacesPage data={data} />);
 		await screen.findByText("patients.messages");
 		const patientsRow = screen.getByText("patients.messages").closest("tr") as HTMLElement;
-		const partialCell = within(patientsRow).getByText("3/4 · 75%").closest("td") as HTMLElement;
+		// The kit cell has no className hook — the tint lives on a wrapper
+		// div inside the td that bleeds into the cell's padding.
+		const partialTint = within(patientsRow).getByText("3/4 · 75%").closest("div") as HTMLElement;
 		// 75% → light warning tint; the bar fills 75% and is warning-colored.
-		expect(partialCell.className).toContain("bg-warning/5");
-		const bar = partialCell.querySelector("span[aria-hidden='true'] span") as HTMLElement;
+		expect(partialTint.className).toContain("bg-warning/5");
+		const bar = partialTint.querySelector("span[aria-hidden='true'] span") as HTMLElement;
 		expect(bar.style.width).toBe("75%");
 		expect(bar.className).toContain("bg-warning");
-		const fullCell = within(patientsRow).getByText("4/4 · 100%").closest("td") as HTMLElement;
-		expect(fullCell.className).not.toContain("bg-warning");
+		const fullTint = within(patientsRow).getByText("4/4 · 100%").closest("div") as HTMLElement;
+		expect(fullTint.className).not.toContain("bg-warning");
 		// Under 50% gets the stronger tint.
 		const coverageRow = screen.getByText("coverage.only").closest("tr") as HTMLElement;
-		const emptyCell = within(coverageRow).getByText("0/2 · 0%").closest("td") as HTMLElement;
-		expect(emptyCell.className).toContain("bg-warning/15");
+		const emptyTint = within(coverageRow).getByText("0/2 · 0%").closest("div") as HTMLElement;
+		expect(emptyTint.className).toContain("bg-warning/15");
 	});
 
 	it("renders dashes for namespaces with zero keys", async () => {

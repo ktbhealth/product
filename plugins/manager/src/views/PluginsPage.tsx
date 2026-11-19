@@ -30,9 +30,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Pagination,
 	PaginationContent,
@@ -46,14 +43,6 @@ import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Switch } from "@ktbhealth/ui/components/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
-import {
 	AlertDialog,
 	AlertDialogAction,
 	AlertDialogCancel,
@@ -64,6 +53,7 @@ import {
 	AlertDialogTitle,
 } from "@ktbhealth/ui/components/alert-dialog";
 import type { Plugin, PluginConfigSchema } from "@ktb/kernel";
+import { SearchInput, TablePage, useServerMutation, type Column } from "@ktb/views/table";
 
 import {
 	configFormFields,
@@ -103,7 +93,13 @@ type RowStatus = "enabled" | "disabled" | "blocked";
 type StatusFilter = "all" | RowStatus;
 
 const PAGE_SIZE = 15;
-const SEARCH_CLS = "w-56 sm:w-64";
+
+/** One rendered table row: the plugin plus its derived runtime state. */
+interface PluginRowData {
+	readonly plugin: Plugin;
+	readonly enabled: boolean;
+	readonly missing: readonly string[];
+}
 
 const statusOf = (enabled: boolean, missing: readonly string[]): RowStatus => {
 	// "Blocked" wins over both: required deps off means the plugin can
@@ -178,7 +174,6 @@ export function PluginsPage({
 	cascadeConfirm = true,
 }: PluginsPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, managerMessages(locale));
-	const router = useRouter();
 	// Screen state in the URL (nuqs): `tab` selects table/map, `q` and
 	// `status` are shared by both panes, `page` paginates the table.
 	const [tab, setTab] = useQueryState(
@@ -196,8 +191,12 @@ export function PluginsPage({
 	const [page, setPage] = useQueryState("page", parseAsIndex.withDefault(0));
 	const [configFor, setConfigFor] = useState<Plugin | null>(null);
 	const [pendingDisable, setPendingDisable] = useState<readonly string[] | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [failed, setFailed] = useState(false);
+	// Enable/disable writes share one mutation slot — busy/error and
+	// router.invalidate() come from the kit; `failed` drives the same
+	// banner the local state used to.
+	const setEnabled = useServerMutation<{ ids: string[]; enabled: boolean }>(setPluginEnabledFn);
+	const busy = setEnabled.busy;
+	const failed = setEnabled.error;
 
 	// Enabled set: the loader's entries cover every registry id; a plugin
 	// missing from the map defaults to enabled (no row = enabled).
@@ -208,7 +207,7 @@ export function PluginsPage({
 		return set;
 	}, [plugins, states]);
 
-	const rows = useMemo(
+	const rows = useMemo<readonly PluginRowData[]>(
 		() =>
 			plugins.map((plugin) => {
 				const enabled = enabledSet.has(plugin.id);
@@ -249,16 +248,9 @@ export function PluginsPage({
 	const paged = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
 
 	const applyEnabled = async (ids: readonly string[], enabled: boolean) => {
-		setBusy(true);
-		setFailed(false);
 		try {
-			const ok = await setPluginEnabledFn({ data: { ids: [...ids], enabled } });
-			if (ok) await router.invalidate();
-			else setFailed(true);
-		} catch {
-			setFailed(true);
+			await setEnabled.mutate({ ids: [...ids], enabled });
 		} finally {
-			setBusy(false);
 			setPendingDisable(null);
 		}
 	};
@@ -290,9 +282,64 @@ export function PluginsPage({
 				? t.statusDisabled
 				: t.statusBlocked;
 
+	const columns: Column<PluginRowData>[] = [
+		{
+			key: "plugin",
+			header: t.colPlugin,
+			render: ({ plugin }) => (
+				<>
+					<div className="font-medium">{pluginDisplayName(plugin)}</div>
+					<div className="text-xs text-muted-foreground">
+						{plugin.id}
+						{plugin.meta?.description ? ` — ${plugin.meta.description}` : ""}
+					</div>
+				</>
+			),
+		},
+		{
+			key: "kind",
+			header: t.colKind,
+			render: ({ plugin }) => {
+				const kinds = contributionKinds(plugin).join(", ");
+				return <span className="text-muted-foreground">{kinds === "" ? "—" : kinds}</span>;
+			},
+		},
+		{
+			key: "status",
+			header: t.colStatus,
+			render: (row) => (
+				<PluginStatusCell
+					plugin={row.plugin}
+					enabled={row.enabled}
+					missing={row.missing}
+					busy={busy}
+					t={t}
+					statusLabel={statusLabel}
+					onToggle={(next) => onToggle(row.plugin, next)}
+				/>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			width: "3rem",
+			render: ({ plugin, enabled }) => (
+				<PluginActionsMenu
+					plugin={plugin}
+					enabled={enabled}
+					busy={busy}
+					t={t}
+					onToggle={(next) => onToggle(plugin, next)}
+					onConfigure={() => setConfigFor(plugin)}
+				/>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader title={t.title} description={t.description} />
+		<TablePage>
+			<TablePage.Header title={t.title} description={t.description} />
 			{failed ? <p className="text-sm text-destructive">{t.configSaveFailed}</p> : null}
 			{rows.length === 0 ? (
 				<p className="text-sm text-muted-foreground">{t.empty}</p>
@@ -303,18 +350,16 @@ export function PluginsPage({
 						<TabsTrigger value="map">{t.tabMap}</TabsTrigger>
 					</TabsList>
 					<TabsContent value="table" className="mt-4">
-						<DataToolbar
+						<TablePage.Toolbar
 							search={
-								<Input
-									type="search"
+								<SearchInput
 									value={q}
-									onChange={(e) => {
-										void setQ(e.target.value);
+									onChange={(value) => {
+										void setQ(value);
 										void setPage(0);
 									}}
 									placeholder={t.searchPlaceholder}
 									aria-label={t.searchLabel}
-									className={SEARCH_CLS}
 								/>
 							}
 							filters={
@@ -349,41 +394,15 @@ export function PluginsPage({
 									: t.filteredCount(filtered.length, rows.length)
 							}
 						/>
-						<div className="overflow-hidden rounded-lg border border-border">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>{t.colPlugin}</TableHead>
-										<TableHead>{t.colKind}</TableHead>
-										<TableHead>{t.colStatus}</TableHead>
-										<TableHead className="w-12 text-right">{t.colActions}</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{paged.length === 0 ? (
-										<TableRow>
-											<TableCell colSpan={4} className="text-xs text-muted-foreground">
-												{t.noResults}
-											</TableCell>
-										</TableRow>
-									) : (
-										paged.map(({ plugin, enabled, missing }) => (
-											<PluginRow
-												key={plugin.id}
-												plugin={plugin}
-												enabled={enabled}
-												missing={missing}
-												busy={busy}
-												t={t}
-												statusLabel={statusLabel}
-												onToggle={(next) => onToggle(plugin, next)}
-												onConfigure={() => setConfigFor(plugin)}
-											/>
-										))
-									)}
-								</TableBody>
-							</Table>
-						</div>
+						<TablePage.Table
+							columns={columns}
+							rows={paged}
+							rowKey={(row) => row.plugin.id}
+							total={filtered.length}
+							isFiltered={q.trim() !== "" || statusFilter !== "all"}
+							noMatch={t.noResults}
+							locale={locale}
+						/>
 						{totalPages > 1 ? (
 							<Pagination className="justify-end">
 								<PaginationContent>
@@ -477,11 +496,13 @@ export function PluginsPage({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</PageContainer>
+		</TablePage>
 	);
 }
 
-function PluginRow({
+/** Status cell content: enable switch + status/system badge + the
+ * blocked/system hints that used to live in the row component. */
+function PluginStatusCell({
 	plugin,
 	enabled,
 	missing,
@@ -489,7 +510,6 @@ function PluginRow({
 	t,
 	statusLabel,
 	onToggle,
-	onConfigure,
 }: {
 	plugin: Plugin;
 	enabled: boolean;
@@ -498,65 +518,76 @@ function PluginRow({
 	t: ReturnType<typeof managerMessages>;
 	statusLabel: (status: RowStatus) => string;
 	onToggle: (enabled: boolean) => void;
-	onConfigure: () => void;
 }) {
 	const status: RowStatus = statusOf(enabled, missing);
 	// `system: true` manifest plugins (P-062) can never be disabled —
 	// the toggle renders locked with a "System" badge and hint.
 	const system = plugin.system === true;
 	const name = pluginDisplayName(plugin);
-	const kinds = contributionKinds(plugin).join(", ");
 	return (
-		<TableRow>
-			<TableCell>
-				<div className="font-medium">{name}</div>
-				<div className="text-xs text-muted-foreground">
-					{plugin.id}
-					{plugin.meta?.description ? ` — ${plugin.meta.description}` : ""}
+		<>
+			<div className="flex items-center gap-2">
+				<Switch
+					checked={enabled}
+					disabled={system || busy}
+					onCheckedChange={onToggle}
+					aria-label={name}
+				/>
+				{system ? (
+					<Badge variant="secondary">{t.statusSystem}</Badge>
+				) : (
+					<Badge variant={status === "enabled" ? "default" : "secondary"}>
+						{statusLabel(status)}
+					</Badge>
+				)}
+			</div>
+			{system ? <div className="mt-1 text-xs text-muted-foreground">{t.systemHint}</div> : null}
+			{missing.length > 0 ? (
+				<div className="mt-1 text-xs text-muted-foreground">
+					{t.blockedHint(missing.join(", "))}
 				</div>
-			</TableCell>
-			<TableCell className="text-muted-foreground">{kinds === "" ? "—" : kinds}</TableCell>
-			<TableCell>
-				<div className="flex items-center gap-2">
-					<Switch
-						checked={enabled}
-						disabled={system || busy}
-						onCheckedChange={onToggle}
-						aria-label={name}
-					/>
-					{system ? (
-						<Badge variant="secondary">{t.statusSystem}</Badge>
-					) : (
-						<Badge variant={status === "enabled" ? "default" : "secondary"}>
-							{statusLabel(status)}
-						</Badge>
-					)}
-				</div>
-				{system ? <div className="mt-1 text-xs text-muted-foreground">{t.systemHint}</div> : null}
-				{missing.length > 0 ? (
-					<div className="mt-1 text-xs text-muted-foreground">
-						{t.blockedHint(missing.join(", "))}
-					</div>
+			) : null}
+		</>
+	);
+}
+
+/** Trailing actions cell: the per-plugin dropdown (configure +
+ * enable/disable shortcut). */
+function PluginActionsMenu({
+	plugin,
+	enabled,
+	busy,
+	t,
+	onToggle,
+	onConfigure,
+}: {
+	plugin: Plugin;
+	enabled: boolean;
+	busy: boolean;
+	t: ReturnType<typeof managerMessages>;
+	onToggle: (enabled: boolean) => void;
+	onConfigure: () => void;
+}) {
+	const name = pluginDisplayName(plugin);
+	// `system: true` plugins can never be disabled — same lock as the
+	// status-cell switch.
+	const system = plugin.system === true;
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={<Button variant="ghost" size="icon" aria-label={t.rowActions(name)} />}
+			>
+				<EllipsisVerticalIcon />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				{plugin.meta?.config ? (
+					<DropdownMenuItem onClick={onConfigure}>{t.actionConfigure}</DropdownMenuItem>
 				) : null}
-			</TableCell>
-			<TableCell className="text-right">
-				<DropdownMenu>
-					<DropdownMenuTrigger
-						render={<Button variant="ghost" size="icon" aria-label={t.rowActions(name)} />}
-					>
-						<EllipsisVerticalIcon />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end">
-						{plugin.meta?.config ? (
-							<DropdownMenuItem onClick={onConfigure}>{t.actionConfigure}</DropdownMenuItem>
-						) : null}
-						<DropdownMenuItem disabled={system || busy} onClick={() => onToggle(!enabled)}>
-							{enabled ? t.disable : t.enable}
-						</DropdownMenuItem>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			</TableCell>
-		</TableRow>
+				<DropdownMenuItem disabled={system || busy} onClick={() => onToggle(!enabled)}>
+					{enabled ? t.disable : t.enable}
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }
 

@@ -5,6 +5,7 @@ import { ExternalLinkIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -29,8 +30,6 @@ import {
 } from "@ktbhealth/ui/components/alert-dialog";
 import { Field, FieldDescription, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Select,
 	SelectContent,
@@ -39,14 +38,6 @@ import {
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import { createPageFn, deletePageFn, updatePageFn } from "../fns.ts";
 import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
@@ -160,6 +151,12 @@ const SCHEMAS_CONSOLE = "/platform/schemas" as string;
  * descriptor; `showInNav` pages join the app-header nav. Mutations go
  * through the plugin's admin-gated server fns; the loader re-runs via
  * `router.invalidate()` after each write.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with a `Column` model for the row badges/actions. The
+ * create/edit dialog and delete confirm stay plugin-local — the kit's
+ * `FormDialog`/`ConfirmAction` cannot express the conditional
+ * rich-text/schema pickers and the untyped console links.
  */
 export function PagesAdminPage({
 	pages,
@@ -237,9 +234,75 @@ export function PagesAdminPage({
 		}
 	};
 
+	const columns: Column<AdminPageRow>[] = [
+		{
+			key: "path",
+			header: t.colPath,
+			render: (row) => <span className="font-mono text-xs">{row.path}</span>,
+		},
+		{ key: "title", header: t.colTitle },
+		{
+			key: "status",
+			header: t.colStatus,
+			render: (row) => (
+				<Badge variant={row.published ? "default" : "secondary"}>
+					{row.published ? t.statusPublished : t.statusDraft}
+				</Badge>
+			),
+		},
+		{
+			key: "nav",
+			header: t.colNav,
+			render: (row) => (
+				<Badge variant={row.showInNav ? "default" : "outline"}>
+					{row.showInNav ? t.navShown : t.navHidden}
+				</Badge>
+			),
+		},
+		{
+			key: "sortOrder",
+			header: t.colOrder,
+			render: (row) => <span className="text-muted-foreground">{row.sortOrder}</span>,
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end gap-1">
+					{row.published ? (
+						<Link
+							to={row.path as "/"}
+							className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+							aria-label={t.view}
+						>
+							<ExternalLinkIcon className="size-4" />
+						</Link>
+					) : null}
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setForm(formFrom(row))}
+						aria-label={t.edit}
+					>
+						<PencilIcon className="size-4" />
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setDeleteTarget(row)}
+						aria-label={t.delete}
+					>
+						<Trash2Icon className="size-4 text-destructive" />
+					</Button>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={t.title}
 				description={t.description}
 				actions={
@@ -250,75 +313,13 @@ export function PagesAdminPage({
 				}
 			/>
 			{failed ? <p className="text-sm text-destructive">{t.saveFailed}</p> : null}
-			{pages.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyDescription}</p>
-				</div>
-			) : (
-				<div className="overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colPath}</TableHead>
-								<TableHead>{t.colTitle}</TableHead>
-								<TableHead>{t.colStatus}</TableHead>
-								<TableHead>{t.colNav}</TableHead>
-								<TableHead>{t.colOrder}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{pages.map((row) => (
-								<TableRow key={row.id}>
-									<TableCell className="font-mono text-xs">{row.path}</TableCell>
-									<TableCell>{row.title}</TableCell>
-									<TableCell>
-										<Badge variant={row.published ? "default" : "secondary"}>
-											{row.published ? t.statusPublished : t.statusDraft}
-										</Badge>
-									</TableCell>
-									<TableCell>
-										<Badge variant={row.showInNav ? "default" : "outline"}>
-											{row.showInNav ? t.navShown : t.navHidden}
-										</Badge>
-									</TableCell>
-									<TableCell className="text-muted-foreground">{row.sortOrder}</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end gap-1">
-											{row.published ? (
-												<Link
-													to={row.path as "/"}
-													className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-													aria-label={t.view}
-												>
-													<ExternalLinkIcon className="size-4" />
-												</Link>
-											) : null}
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setForm(formFrom(row))}
-												aria-label={t.edit}
-											>
-												<PencilIcon className="size-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setDeleteTarget(row)}
-												aria-label={t.delete}
-											>
-												<Trash2Icon className="size-4 text-destructive" />
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
+			<TablePage.Table
+				columns={columns}
+				rows={pages}
+				rowKey={(row) => String(row.id)}
+				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+				locale={locale}
+			/>
 
 			<Dialog open={form !== null} onOpenChange={(open) => !open && setForm(null)}>
 				<DialogContent>
@@ -466,6 +467,6 @@ export function PagesAdminPage({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</PageContainer>
+		</TablePage>
 	);
 }
