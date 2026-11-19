@@ -80,6 +80,18 @@ describe("WizardsAdminPage", () => {
 		expect(screen.getByText("Draft · DB")).toBeTruthy();
 	});
 
+	it("falls back to the plugin owner for untitled shadowed defs without a locale", () => {
+		const shadowBare: WizardDefinition = {
+			id: "intake",
+			steps: [{ kind: "info", id: "s" }],
+			// no owner, no title — the shadowed map hits both fallbacks
+		};
+		render(<WizardsAdminPage defs={[row({})]} codeDefs={[shadowBare]} />);
+		expect(screen.getByText("Draft · DB")).toBeTruthy();
+		// db key + code-def id + title fallback all render the id
+		expect(screen.getAllByText("intake").length).toBeGreaterThan(0);
+	});
+
 	it("falls back to ids for untitled code defs and lists shadowed-only sets", () => {
 		const bare: WizardDefinition = {
 			id: "bare-wiz",

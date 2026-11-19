@@ -213,6 +213,16 @@ describe("AdminUsersPage", () => {
 		expect(fns.createUserFn).not.toHaveBeenCalled();
 	});
 
+	it("closes the create dialog on Escape via onOpenChange", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Create user" }));
+		await screen.findByLabelText("Password");
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByLabelText("Password")).toBeNull());
+		expect(fns.createUserFn).not.toHaveBeenCalled();
+	});
+
 	it("edits a user through the dialog", async () => {
 		const user = userEvent.setup();
 		render(<AdminUsersPage users={[row({})]} />);
@@ -257,6 +267,16 @@ describe("AdminUsersPage", () => {
 		render(<AdminUsersPage users={[row({})]} />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		expect(fns.updateUserFn).not.toHaveBeenCalled();
+	});
+
+	it("closes the edit dialog on Escape via onOpenChange", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await screen.findByRole("button", { name: "Save changes" });
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull());
 		expect(fns.updateUserFn).not.toHaveBeenCalled();
 	});
 

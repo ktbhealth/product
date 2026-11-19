@@ -26,6 +26,11 @@ export interface Column<Row> {
 	readonly value?: (row: Row) => unknown;
 	/** Escape hatch — wins over `format` when present. */
 	readonly render?: (row: Row, value: unknown) => ReactNode;
+	/** Per-cell class hook merged onto the `TableCell` after the
+	 * default `text-sm`/alignment classes. A string applies to every
+	 * row; the function form resolves per row (and receives the
+	 * resolved value) for cases like heatmap tints. */
+	readonly cellClassName?: string | ((row: Row, value: unknown) => string | undefined);
 }
 
 /** Alias matching the `TablePage.Table` prop name. */
@@ -85,3 +90,15 @@ export function TableCellValue({
  * extractor wins, else a dotted-path read of `key`. */
 export const columnValue = <Row,>(column: Column<Row>, row: Row): unknown =>
 	column.value !== undefined ? column.value(row) : getPath(row, column.key);
+
+/** Resolve a column's per-cell class for a row: the string form
+ * applies as-is, the function form is invoked with the row and its
+ * resolved value. */
+export const columnCellClassName = <Row,>(
+	column: Column<Row>,
+	row: Row,
+	value: unknown,
+): string | undefined =>
+	typeof column.cellClassName === "function"
+		? column.cellClassName(row, value)
+		: column.cellClassName;

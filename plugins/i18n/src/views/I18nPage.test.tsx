@@ -495,4 +495,15 @@ describe("I18nPage", () => {
 		await user.click(await screen.findByRole("option", { name: "portal" }));
 		expect(screen.getByPlaceholderText("portal instance id")).toBeTruthy();
 	});
+
+	it("hides the compare picker when no other enabled locale exists", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={{ ...data, locales: data.locales.filter((l) => l.code === "en") }} />);
+		await screen.findByText("title");
+		await openCell(user, "title");
+		const dialog = await screen.findByRole("dialog");
+		// `others` is empty — the default-compare fallback yields "" and
+		// the whole picker stays unmounted.
+		expect(within(dialog).queryByText("Compare with")).toBeNull();
+	});
 });

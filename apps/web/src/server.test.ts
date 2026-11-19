@@ -5,8 +5,7 @@ const mocks = vi.hoisted(() => ({
 	handleAudioQueueBatch: vi.fn(),
 	handleThemeQueueBatch: vi.fn(),
 	flushTelemetry: vi.fn(),
-	runScheduledAuditVerification: vi.fn(),
-	runScheduledAgendaReminders: vi.fn(),
+	runScheduledCron: vi.fn(),
 }));
 
 vi.mock("@tanstack/react-start/server", () => ({
@@ -21,14 +20,9 @@ vi.mock("#/lib/audio-jobs.ts", () => ({
 vi.mock("#/lib/theme-jobs.ts", () => ({
 	handleThemeQueueBatch: mocks.handleThemeQueueBatch,
 }));
-vi.mock("#/lib/audit-chain.ts", () => ({
-	runScheduledAuditVerification: mocks.runScheduledAuditVerification,
-}));
-vi.mock("#/lib/agenda-reminders.ts", () => ({
-	runScheduledAgendaReminders: mocks.runScheduledAgendaReminders,
-}));
 vi.mock("#/lib/platform.ts", () => ({
 	flushTelemetry: mocks.flushTelemetry,
+	runScheduledCron: mocks.runScheduledCron,
 }));
 
 import entry, { createServerEntry } from "./server.ts";
@@ -98,30 +92,23 @@ describe("worker entry", () => {
 		expect(mocks.handleThemeQueueBatch).not.toHaveBeenCalled();
 	});
 
-	it("runs the agenda reminder sweep plus audit verification on the daily cron", async () => {
-		mocks.runScheduledAuditVerification.mockResolvedValue({
-			status: "verified",
-			entries: 3,
-			brokenAt: null,
-		});
+	it("dispatches the fired cron expression through the registry", async () => {
+		mocks.runScheduledCron.mockResolvedValue([]);
 		const waitUntil = vi.fn();
 		const controller = { scheduledTime: 0, cron: "17 3 * * *", noRetry: vi.fn() };
 		await entry.scheduled(controller as never, {}, { waitUntil } as never);
-		expect(mocks.runScheduledAgendaReminders).toHaveBeenCalledTimes(1);
-		expect(mocks.runScheduledAuditVerification).toHaveBeenCalledTimes(1);
+		expect(mocks.runScheduledCron).toHaveBeenCalledWith("17 3 * * *");
 		expect(waitUntil).toHaveBeenCalledTimes(1);
 		await waitUntil.mock.calls[0]?.[0];
 		expect(mocks.flushTelemetry).toHaveBeenCalled();
 	});
 
-	it("runs only the reminder sweep on the 5-minute cron", async () => {
-		mocks.runScheduledAuditVerification.mockClear();
-		mocks.runScheduledAgendaReminders.mockClear();
-		const waitUntil = vi.fn();
+	it("forwards the 5-minute expression unchanged", async () => {
+		mocks.runScheduledCron.mockClear();
+		mocks.runScheduledCron.mockResolvedValue([]);
 		const controller = { scheduledTime: 0, cron: "*/5 * * * *", noRetry: vi.fn() };
-		await entry.scheduled(controller as never, {}, { waitUntil } as never);
-		expect(mocks.runScheduledAgendaReminders).toHaveBeenCalledTimes(1);
-		expect(mocks.runScheduledAuditVerification).not.toHaveBeenCalled();
+		await entry.scheduled(controller as never, {}, { waitUntil: vi.fn() } as never);
+		expect(mocks.runScheduledCron).toHaveBeenCalledWith("*/5 * * * *");
 	});
 });
 

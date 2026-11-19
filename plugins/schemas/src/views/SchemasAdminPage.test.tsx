@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -255,5 +255,95 @@ describe("SchemasAdminPage", () => {
 		const dialog = await screen.findByRole("alertdialog");
 		await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 		expect(fns.deleteSchemaFn).not.toHaveBeenCalled();
+	});
+
+	it("renders a null description and falls back to English without a locale", async () => {
+		render(<SchemasAdminPage schemas={[row({ description: null })]} />);
+		expect(screen.getByText("page-search")).toBeTruthy();
+		// The empty-string fallback renders a cell span, not the name.
+		expect(screen.getByText("Schemas")).toBeTruthy();
+	});
+
+	it("dismisses a list-view toast", async () => {
+		fns.deleteSchemaFn.mockResolvedValue(true);
+		const user = userEvent.setup();
+		render(<SchemasAdminPage schemas={[row()]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Delete" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+		await screen.findByText("Schema deleted");
+		await user.click(screen.getByLabelText("Dismiss notification"));
+		await waitFor(() => expect(screen.queryByText("Schema deleted")).toBeNull());
+	});
+
+	it("dismisses an editor-view toast", async () => {
+		fns.schemaDocFn.mockResolvedValue(docWire());
+		fns.updateSchemaFn.mockResolvedValue(null);
+		const user = userEvent.setup();
+		render(<SchemasAdminPage schemas={[row()]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await screen.findByDisplayValue("page-search");
+		await user.click(screen.getByRole("button", { name: "Save" }));
+		await screen.findByText("Could not save the schema.");
+		await user.click(screen.getByLabelText("Dismiss notification"));
+		await waitFor(() => expect(screen.queryByText("Could not save the schema.")).toBeNull());
+	});
+
+	it("fills a null doc description and edits the field inputs", async () => {
+		fns.schemaDocFn.mockResolvedValue(docWire({ description: null }));
+		fns.updateSchemaFn.mockResolvedValue(docWire());
+		const user = userEvent.setup();
+		render(<SchemasAdminPage schemas={[row()]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await screen.findByDisplayValue("page-search");
+		const description = screen.getByLabelText("Description") as HTMLInputElement;
+		expect(description.value).toBe("");
+		await user.type(description, "docs");
+		const schemaBody = screen.getByLabelText("JSON Schema") as HTMLTextAreaElement;
+		fireEvent.change(schemaBody, { target: { value: '{"type":"string"}' } });
+		expect(schemaBody.value).toBe('{"type":"string"}');
+		await user.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() =>
+			expect(fns.updateSchemaFn).toHaveBeenCalledWith({
+				data: {
+					id: 1,
+					name: "page-search",
+					description: "docs",
+					schema: '{"type":"string"}',
+				},
+			}),
+		);
+	});
+
+	it("ignores a doc fetch that resolves after the pane unmounts", async () => {
+		let resolveDoc!: (doc: unknown) => void;
+		fns.schemaDocFn.mockReturnValue(
+			new Promise((resolve) => {
+				resolveDoc = resolve;
+			}),
+		);
+		const user = userEvent.setup();
+		const { unmount } = render(<SchemasAdminPage schemas={[row()]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await waitFor(() => expect(fns.schemaDocFn).toHaveBeenCalled());
+		unmount();
+		resolveDoc(docWire());
+		await Promise.resolve();
+	});
+
+	it("ignores a doc fetch that rejects after the pane unmounts", async () => {
+		let rejectDoc!: (error: unknown) => void;
+		fns.schemaDocFn.mockReturnValue(
+			new Promise((_, reject) => {
+				rejectDoc = reject;
+			}),
+		);
+		const user = userEvent.setup();
+		const { unmount } = render(<SchemasAdminPage schemas={[row()]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await waitFor(() => expect(fns.schemaDocFn).toHaveBeenCalled());
+		unmount();
+		rejectDoc(new Error("boom"));
+		await Promise.resolve();
 	});
 });

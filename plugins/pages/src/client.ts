@@ -78,7 +78,7 @@ export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["pages.services"],
-	optionalDeps: ["rich-text.services"],
+	optionalDeps: ["rich-text.services", "layouts.services"],
 	pages: [
 		{
 			id: "pages.custom",
@@ -93,7 +93,7 @@ export const pagesPanelPlugin = definePlugin({
 	id: "pages.panel",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["platform.panel", "pages.services"],
-	optionalDeps: ["rich-text.services", "schemas.services"],
+	optionalDeps: ["rich-text.services", "schemas.services", "layouts.services"],
 	panel: {
 		pages: [
 			{
@@ -117,7 +117,7 @@ export const plugins: readonly Plugin[] = [
 		id: "pages.services",
 		meta: { keywords: ["pages", "services"] },
 		requiredDeps: ["platform.admin"],
-		optionalDeps: ["rich-text.services", "schemas.services"],
+		optionalDeps: ["rich-text.services", "schemas.services", "layouts.services"],
 	}),
 	pagesChromePlugin,
 	pagesRenderPlugin,

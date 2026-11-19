@@ -64,12 +64,15 @@ export type CustomPageError =
  * `richTextId` (the @ktb/rich-text document this page renders) defaults
  * to null — the page then renders with no body. `searchSchemaId` (the
  * @ktb/schemas row whose JSON Schema validates the page's URL search
- * params) follows the same contract. */
+ * params) and `layoutId` (the @ktb/layouts row whose ordered sections
+ * compose the page body instead of the single document) follow the
+ * same contract. */
 export interface CustomPageInput {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId?: number | null;
 	readonly searchSchemaId?: number | null;
+	readonly layoutId?: number | null;
 	readonly published?: boolean;
 	readonly showInNav?: boolean;
 	readonly sortOrder?: number;
@@ -121,6 +124,9 @@ const normalizeRichTextId = (value: number | null | undefined) =>
 
 const normalizeSearchSchemaId = (value: number | null | undefined) =>
 	normalizeOptionalId(value, "searchSchemaId");
+
+const normalizeLayoutId = (value: number | null | undefined) =>
+	normalizeOptionalId(value, "layoutId");
 
 /** Top-level search-param key an issue path blames — the segment
  * before the first "." or "[" ("filter.tag" → "filter"). "$" and
@@ -255,6 +261,7 @@ export const CustomPagesLive = Layer.effect(
 				if (existing.length > 0) return yield* new DuplicatePagePath({ path });
 				const richTextId = yield* normalizeRichTextId(input.richTextId);
 				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
+				const layoutId = yield* normalizeLayoutId(input.layoutId);
 				const rows = yield* Effect.promise(() =>
 					db
 						.insert(customPage)
@@ -263,6 +270,7 @@ export const CustomPagesLive = Layer.effect(
 							title: input.title,
 							richTextId,
 							searchSchemaId,
+							layoutId,
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
@@ -290,6 +298,7 @@ export const CustomPagesLive = Layer.effect(
 				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
 				const richTextId = yield* normalizeRichTextId(input.richTextId);
 				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
+				const layoutId = yield* normalizeLayoutId(input.layoutId);
 				const rows = yield* Effect.promise(() =>
 					db
 						.update(customPage)
@@ -298,6 +307,7 @@ export const CustomPagesLive = Layer.effect(
 							title: input.title,
 							richTextId,
 							searchSchemaId,
+							layoutId,
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
@@ -382,6 +392,7 @@ CREATE TABLE custom_pages (
 	title TEXT NOT NULL,
 	rich_text_id INTEGER,
 	search_schema_id INTEGER,
+	layout_id INTEGER,
 	published INTEGER NOT NULL DEFAULT 0,
 	show_in_nav INTEGER NOT NULL DEFAULT 0,
 	sort_order INTEGER NOT NULL DEFAULT 0,

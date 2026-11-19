@@ -531,6 +531,54 @@ export interface PanelPlugin extends PluginBase, ForbiddenContributions<"panel">
 	};
 }
 
+/** Props the host injects into an element kind's `renderer` (P-102):
+ * `value` is exactly what the kind's server-side `ElementKinds`
+ * descriptor `resolve`d for the stored ref — the renderer never sees
+ * refs, services or plugin internals, so any layout/template surface
+ * can mount it uniformly. */
+export interface ElementKindRendererProps {
+	readonly value: unknown;
+}
+
+/** Props the host injects into an element kind's `editor`: the current
+ * payload plus the change sink. The editor is a controlled-by-callback
+ * component — it never sees refs, services or persistence; the
+ * consumer owns loading/saving the value. */
+export interface ElementKindEditorProps {
+	readonly value: unknown;
+	readonly onChange: (value: unknown) => void;
+}
+
+/** One managed-content kind contributed via `elementKinds` (P-102):
+ * the client-consumed half of the kind contract — identity (`kind` is
+ * the stable string consumers store alongside the ref, e.g.
+ * `"rich-text"`), display `label`, optional `icon`, and the React
+ * `renderer`/`editor` components a layout mounts for it. Server-side
+ * behavior (ref resolution, lifecycle hooks) is NOT declared here —
+ * the owning plugin registers an `ElementKindDescriptor` into the
+ * `ElementKinds` service at layer build (see @ktb/platform
+ * `element-kinds`), keeping plugins decoupled: consumers depend on the
+ * registry, never on another plugin's internals. `renderer`/`editor`
+ * are optional — a kind may be render-only or editor-less. */
+export interface ElementKind {
+	readonly kind: string;
+	readonly label: string;
+	readonly icon?: ComponentType<{ readonly className?: string }>;
+	readonly renderer?: ComponentType<ElementKindRendererProps>;
+	readonly editor?: ComponentType<ElementKindEditorProps>;
+}
+
+/** Element-kind contribution (P-102): the managed-content kinds a
+ * plugin ships. Carried on BOTH registries like `panel`/`pages` — the
+ * client manifest supplies `renderer`/`editor` components, the server
+ * manifest keeps parity; the server descriptor (resolve/hooks) lives
+ * in the plugin's service layer, registered via `serviceOption` at
+ * build time. `kind` strings must be unique across plugins — the
+ * `ElementKinds` registry dies on duplicates. */
+export interface ElementKindsPlugin extends PluginBase, ForbiddenContributions<"elementKinds"> {
+	readonly elementKinds: ReadonlyArray<ElementKind>;
+}
+
 /** Generic page contribution (P-059): plugin-declared pages at
  * arbitrary absolute paths, dispatched by the host's splat routes —
  * the generalization of `panel.pages` beyond /platform. `context`
@@ -553,4 +601,5 @@ export type Plugin =
 	| PanelPlugin
 	| PagesPlugin
 	| PortalsPlugin
-	| BoundariesPlugin;
+	| BoundariesPlugin
+	| ElementKindsPlugin;

@@ -98,6 +98,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 				);
 
 	const createTheme = async () => {
+		/* v8 ignore next -- every createTheme caller renders disabled while busy !== null */
 		if (busy !== null) return;
 		setBusy("create");
 		setNotice(null);
@@ -160,6 +161,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	};
 
 	const confirmDelete = async () => {
+		/* v8 ignore next -- ConfirmDialog only fires onConfirm while open, and open === deleting !== null */
 		if (deleting === null) return;
 		setBusy(`delete-${deleting.id}`);
 		setNotice(null);
@@ -335,6 +337,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 			<ConfirmDialog
 				open={deleting !== null}
 				onOpenChange={(open) => {
+					/* v8 ignore next -- the controlled dialog has no trigger, so it only ever reports closes */
 					if (!open) setDeleting(null);
 				}}
 				title={t.deleteTheme}

@@ -14,6 +14,10 @@ import type { FontFamilySummary, FontProviderSummary } from "./types.ts";
  */
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
+/** Flip to make the Fonts stub fail Forbidden — covers the list fns'
+ * degrade-to-[] contract. */
+const flags = vi.hoisted(() => ({ failForbidden: false }));
+
 const calls: { method: string; args: unknown[] }[] = [];
 const provider: FontProviderSummary = {
 	id: 1,
@@ -36,15 +40,21 @@ const family: FontFamilySummary = {
 
 vi.mock("@ktb/server-fns", async () => {
 	const Effect = await import("effect/Effect");
+	const { Forbidden } = await import("@ktb/authz");
 	const { Fonts } = await import("./service.ts");
+
+	const forbidden = Effect.fail(new Forbidden({ path: "fonts.list" }));
 
 	const fontsStub = Fonts.of({
 		listProviders: () =>
-			Effect.sync(() => {
-				calls.push({ method: "listProviders", args: [] });
-				return [provider];
-			}),
-		providerKinds: () => Effect.succeed(["googlefonts", "local"]),
+			flags.failForbidden
+				? forbidden
+				: Effect.sync(() => {
+						calls.push({ method: "listProviders", args: [] });
+						return [provider];
+					}),
+		providerKinds: () =>
+			flags.failForbidden ? forbidden : Effect.succeed(["googlefonts", "local"]),
 		createProvider: (input) =>
 			Effect.sync(() => {
 				calls.push({ method: "createProvider", args: [input] });
@@ -64,10 +74,12 @@ vi.mock("@ktb/server-fns", async () => {
 				calls.push({ method: "removeProvider", args: [id] });
 			}),
 		listFamilies: (providerId) =>
-			Effect.sync(() => {
-				calls.push({ method: "listFamilies", args: [providerId] });
-				return [family];
-			}),
+			flags.failForbidden
+				? forbidden
+				: Effect.sync(() => {
+						calls.push({ method: "listFamilies", args: [providerId] });
+						return [family];
+					}),
 		syncProvider: (id) =>
 			Effect.sync(() => {
 				calls.push({ method: "syncProvider", args: [id] });
@@ -150,5 +162,34 @@ describe("fonts server fns", () => {
 		const result = await syncFontProviderFn({ data: { id: 3 } });
 		expect(result).toEqual([family]);
 		expect(calls.at(-1)).toEqual({ method: "syncProvider", args: [3] });
+	});
+
+	it("createFontProviderFn forwards an explicit config", async () => {
+		await createFontProviderFn({
+			data: { kind: "local", name: "Configured", config: { a: 1 } },
+		});
+		expect(calls.at(-1)).toEqual({
+			method: "createProvider",
+			args: [{ kind: "local", name: "Configured", config: { a: 1 } }],
+		});
+	});
+
+	it("updateFontProviderFn forwards a config-only patch", async () => {
+		await updateFontProviderFn({ data: { id: 4, config: { x: true } } });
+		expect(calls.at(-1)).toEqual({
+			method: "updateProvider",
+			args: [4, { config: { x: true } }],
+		});
+	});
+
+	it("list fns degrade to [] when the service denies the session", async () => {
+		flags.failForbidden = true;
+		try {
+			expect(await listFontProvidersFn()).toEqual([]);
+			expect(await listFontProviderKindsFn()).toEqual([]);
+			expect(await listFontFamiliesFn({ data: {} })).toEqual([]);
+		} finally {
+			flags.failForbidden = false;
+		}
 	});
 });

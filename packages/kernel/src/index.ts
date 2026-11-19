@@ -40,6 +40,7 @@ export {
 export {
 	collectContributions,
 	collectKindContributions,
+	ELEMENT_KINDS_KIND,
 	FIELD_CONTRIBUTION_KINDS,
 	GENERIC_CONTRIBUTION_SLOT,
 	pluginContributionKinds,
@@ -61,6 +62,10 @@ export type {
 	BoundaryContribution,
 	BoundaryPageProps,
 	ChromeWhen,
+	ElementKind,
+	ElementKindEditorProps,
+	ElementKindsPlugin,
+	ElementKindRendererProps,
 	ErrorBoundaryPageProps,
 	LandingFooterBlock,
 	LandingLink,

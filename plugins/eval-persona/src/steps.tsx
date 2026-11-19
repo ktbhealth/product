@@ -18,12 +18,14 @@ export type EvalStep = 1 | 2 | 3;
 export function EvalSteps({
 	active,
 	labels,
+	ariaLabel,
 }: {
 	readonly active: EvalStep;
 	readonly labels: readonly [string, string, string];
+	readonly ariaLabel: string;
 }) {
 	return (
-		<nav aria-label="Eval pipeline" className="flex flex-wrap items-center gap-1 text-sm">
+		<nav aria-label={ariaLabel} className="flex flex-wrap items-center gap-1 text-sm">
 			{STEP_TO.map((to, i) => {
 				const step = (i + 1) as EvalStep;
 				const done = step < active;

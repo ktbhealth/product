@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 
-import { PSEUDO_LOCALE } from "@ktb/i18n";
+import { PSEUDO_LOCALE, sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import {
@@ -22,6 +23,7 @@ import { SearchInput, TablePage, useTableQuery, type Column } from "@ktb/views/t
 
 import type { LocaleInfo, NamespaceCoverage, NamespaceInfo } from "../contract.ts";
 import { i18nMissingKeysFn } from "../fns.ts";
+import { i18nAdminMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 export interface NamespacesPageData {
 	readonly namespaces: readonly NamespaceInfo[];
@@ -105,11 +107,15 @@ const matchesNamespace = (row: NamespaceRow, needle: string): boolean =>
 export function NamespacesPage({
 	data,
 	locale = "en",
+	i18n,
 }: {
 	data: NamespacesPageData;
 	/** Active UI locale, injected by the host via the panel page ctx. */
 	locale?: string;
+	/** Resolved DB-catalog slice — absent on surfaces without it. */
+	i18n?: PageI18nSlice;
 }) {
+	const m = sliceMessages(i18n, I18N_NAMESPACE, i18nAdminMessages(locale));
 	// qps is pseudo-localized at slice time — it has no stored rows,
 	// so it would render as an all-"missing" column. Keep it out,
 	// same as the messages matrix.
@@ -198,7 +204,7 @@ export function NamespacesPage({
 				if (r?.ok === true && Array.isArray(r.keys)) {
 					setMissingState({ status: "ready", keys: r.keys as readonly string[] });
 				} else {
-					setMissingState({ status: "error", error: r?.error ?? "denied" });
+					setMissingState({ status: "error", error: r?.error ?? m.common.denied });
 				}
 			},
 		);
@@ -207,13 +213,13 @@ export function NamespacesPage({
 	const columns: readonly Column<NamespaceRow>[] = [
 		{
 			key: "namespace",
-			header: "Namespace",
+			header: m.namespaces.colNamespace,
 			render: (row) => (
 				<span className="inline-flex items-center gap-2 font-mono text-xs">
 					{row.namespace}
 					{row.manifestDrift === "yes" && (
 						<Badge variant="secondary" className="font-sans text-warning">
-							contract changed
+							{m.namespaces.driftBadge}
 						</Badge>
 					)}
 				</span>
@@ -221,7 +227,7 @@ export function NamespacesPage({
 		},
 		{
 			key: "pluginId",
-			header: "Plugin",
+			header: m.namespaces.colPlugin,
 			render: (row) =>
 				row.pluginId === "" ? (
 					"—"
@@ -231,7 +237,7 @@ export function NamespacesPage({
 		},
 		{
 			key: "defaultLocale",
-			header: "Default locale",
+			header: m.namespaces.colDefaultLocale,
 			render: (row) =>
 				row.defaultLocale === "" ? (
 					<span className="text-muted-foreground">—</span>
@@ -239,7 +245,7 @@ export function NamespacesPage({
 					<span className="font-mono text-xs">{row.defaultLocale}</span>
 				),
 		},
-		{ key: "keyCount", header: "Keys" },
+		{ key: "keyCount", header: m.namespaces.colKeys },
 		...locales.map((l): Column<NamespaceRow> => ({
 			key: `coverage.${l.code}`,
 			header: l.endonym,
@@ -266,7 +272,9 @@ export function NamespacesPage({
 								{translated}/{row.keyCount} · {pct}%
 							</span>
 							{missing > 0 && (
-								<span className="text-xs text-muted-foreground">· {missing} missing</span>
+								<span className="text-xs text-muted-foreground">
+									{m.namespaces.cellMissing(missing)}
+								</span>
 							)}
 						</span>
 					</>
@@ -280,7 +288,7 @@ export function NamespacesPage({
 								type="button"
 								onClick={() => openMissing(row, l)}
 								className="block w-full cursor-pointer text-left"
-								aria-label={`Show ${missing} missing ${row.namespace} keys for ${l.endonym}`}
+								aria-label={m.namespaces.showMissing(missing, row.namespace, l.endonym)}
 							>
 								{content}
 							</button>
@@ -295,17 +303,11 @@ export function NamespacesPage({
 
 	return (
 		<TablePage messages={viewsMessages(locale)}>
-			<TablePage.Header
-				title="Namespaces"
-				description="Registered message namespaces and per-locale translation coverage (global scope)."
-			/>
+			<TablePage.Header title={m.namespaces.title} description={m.namespaces.description} />
 			{rows.length > 0 && (
 				<p className="text-sm text-muted-foreground">
-					{rows.length} {rows.length === 1 ? "namespace" : "namespaces"} · {summary.totalKeys}{" "}
-					{summary.totalKeys === 1 ? "key" : "keys"} · {summary.incompleteLocales}{" "}
-					{summary.incompleteLocales === 1 ? "locale" : "locales"} below full coverage
-					{summary.drifted > 0 &&
-						` · ${summary.drifted} ${summary.drifted === 1 ? "namespace" : "namespaces"} with contract drift`}
+					{m.namespaces.summary(rows.length, summary.totalKeys, summary.incompleteLocales)}
+					{summary.drifted > 0 && ` · ${m.namespaces.summaryDrift(summary.drifted)}`}
 				</p>
 			)}
 			{rows.length > 0 && (
@@ -314,8 +316,8 @@ export function NamespacesPage({
 						<SearchInput
 							value={query.q}
 							onChange={query.setQ}
-							placeholder="Filter namespaces"
-							aria-label="Filter namespaces"
+							placeholder={m.namespaces.search}
+							aria-label={m.namespaces.search}
 						/>
 					}
 					filters={
@@ -324,18 +326,18 @@ export function NamespacesPage({
 								<Checkbox
 									checked={incompleteOnly}
 									onCheckedChange={(v) => setIncompleteOnly(v === true)}
-									aria-label="Below 100% only"
+									aria-label={m.namespaces.filterIncomplete}
 								/>
-								Below 100% only
+								{m.namespaces.filterIncomplete}
 							</label>
 							<Select value={sort} onValueChange={(v) => setSort(String(v) as SortMode)}>
 								<SelectTrigger className="w-44">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="name">Sort: name</SelectItem>
-									<SelectItem value="worst">Sort: worst coverage</SelectItem>
-									<SelectItem value="keys">Sort: most keys</SelectItem>
+									<SelectItem value="name">{m.namespaces.sortName}</SelectItem>
+									<SelectItem value="worst">{m.namespaces.sortWorst}</SelectItem>
+									<SelectItem value="keys">{m.namespaces.sortKeys}</SelectItem>
 								</SelectContent>
 							</Select>
 						</>
@@ -348,13 +350,14 @@ export function NamespacesPage({
 				rowKey={(r) => r.namespace}
 				total={rows.length}
 				isFiltered={rows.length > 0 && (query.isFiltered || incompleteOnly)}
-				empty={{ title: "No namespaces registered." }}
-				noMatch="No namespaces match the current filters."
+				empty={{ title: m.namespaces.empty }}
+				noMatch={m.namespaces.noMatch}
 				locale={locale}
 			/>
 			<Dialog
 				open={missingFor !== null}
 				onOpenChange={(o) => {
+					/* v8 ignore else -- open is controlled by missingFor; only close events fire */
 					if (!o) {
 						missingSeq.current += 1;
 						setMissingFor(null);
@@ -367,18 +370,18 @@ export function NamespacesPage({
 							{missingFor !== null ? `${missingFor.namespace} · ${missingFor.locale}` : ""}
 						</DialogTitle>
 						<DialogDescription>
-							{missingFor !== null ? `Keys with no published ${missingFor.localeLabel} value.` : ""}
+							{missingFor !== null ? m.namespaces.missingDesc(missingFor.localeLabel) : ""}
 						</DialogDescription>
 					</DialogHeader>
 					{missingState.status === "loading" && (
-						<p className="text-sm text-muted-foreground">Loading…</p>
+						<p className="text-sm text-muted-foreground">{m.common.loading}</p>
 					)}
 					{missingState.status === "error" && (
 						<p className="text-sm text-destructive">{missingState.error}</p>
 					)}
 					{missingState.status === "ready" &&
 						(missingState.keys.length === 0 ? (
-							<p className="text-sm text-muted-foreground">All keys translated.</p>
+							<p className="text-sm text-muted-foreground">{m.namespaces.allTranslated}</p>
 						) : (
 							<ul className="max-h-80 overflow-y-auto rounded-md border font-mono text-xs">
 								{missingState.keys.map((key) => (

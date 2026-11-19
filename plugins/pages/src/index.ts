@@ -8,6 +8,8 @@ import { richTextServicesPlugin } from "@ktb/rich-text";
 import { RichTexts } from "@ktb/rich-text/service";
 import { schemasServicesPlugin } from "@ktb/schemas";
 import { Schemas } from "@ktb/schemas/service";
+import { layoutsServicesPlugin } from "@ktb/layouts";
+import { Layouts } from "@ktb/layouts/service";
 
 import { CustomNavLinks } from "./chrome.tsx";
 import { PagesAdminConsolePage } from "./platform-page.tsx";
@@ -46,7 +48,10 @@ export const pagesServicesPlugin = definePlugin({
 	// registry before this layer when both are installed.
 	// Optional edge: the schemas registry feeds validatedSearch the
 	// same way — absent it, search params pass through unchecked.
-	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id],
+	// Optional edge: the layouts registry feeds the page-body layout
+	// picker and resolveForPage — absent it, layoutId stays stored but
+	// uneditable and pages render their single bound document.
+	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id, layoutsServicesPlugin.id],
 	services: CustomPagesLive,
 });
 
@@ -129,10 +134,11 @@ export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [pagesServicesPlugin.id],
-	// Optional edge: page bodies live in @ktb/rich-text documents. When
-	// the plugin (or its service layer) is absent the loader degrades to
-	// `content: null` instead of failing the page.
-	optionalDeps: [richTextServicesPlugin.id],
+	// Optional edges: page bodies live in @ktb/rich-text documents and
+	// layout-bound pages resolve sections through @ktb/layouts. When a
+	// plugin (or its service layer) is absent the loader degrades to
+	// `content: null` / the single-document path instead of failing.
+	optionalDeps: [richTextServicesPlugin.id, layoutsServicesPlugin.id],
 	pages: [
 		{
 			id: "pages.custom",
@@ -171,7 +177,21 @@ export const pagesRenderPlugin = definePlugin({
 						page.searchSchemaId === null
 							? undefined
 							: yield* pages.validatedSearch(path, search ?? {});
-					return { ...page, content, search: validatedSearch };
+					// Layout-bound pages compose their body from the
+					// layout's ordered sections instead of the single
+					// document: `resolveForPage` returns the sections with
+					// each slot's rich-text content resolved (null when the
+					// layout row is missing → the view falls back to the
+					// single-doc path). Absent the Layouts service the
+					// field stays unset and the page renders as before.
+					let layoutSections: readonly unknown[] | null = null;
+					if (page.layoutId !== null) {
+						const layoutsService = yield* Effect.serviceOption(Layouts);
+						if (Option.isSome(layoutsService)) {
+							layoutSections = yield* layoutsService.value.resolveForPage(page.layoutId);
+						}
+					}
+					return { ...page, content, layoutSections, search: validatedSearch };
 				}),
 		},
 	],
@@ -188,9 +208,10 @@ export const pagesPanelPlugin = definePlugin({
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, pagesServicesPlugin.id],
 	// Optional edge: the console's document picker lists @ktb/rich-text
-	// documents and its search-schema picker lists @ktb/schemas rows;
-	// absent either service the picker is simply empty.
-	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id],
+	// documents, its search-schema picker lists @ktb/schemas rows and
+	// its layout picker lists @ktb/layouts rows; absent any service the
+	// picker is simply empty.
+	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id, layoutsServicesPlugin.id],
 	panel: {
 		pages: [
 			{
@@ -243,12 +264,31 @@ export const pagesPanelPlugin = definePlugin({
 										})),
 									),
 								);
+						// The layout picker mirrors the schema picker: meta
+						// only (id + name + description), empty without the
+						// layouts service — stored `layoutId` values are
+						// preserved untouched either way.
+						const layoutService = yield* Effect.serviceOption(Layouts);
+						const layoutList = Option.isNone(layoutService)
+							? []
+							: yield* layoutService.value.adminList().pipe(
+									Effect.catchTag("Forbidden", () => Effect.succeed([])),
+									Effect.map((list) =>
+										list.map((layout) => ({
+											id: layout.id,
+											name: layout.name,
+											description: layout.description,
+										})),
+									),
+								);
 						return {
 							pages: rows,
 							docs,
 							richTextEnabled: Option.isSome(richTexts),
 							schemas: schemaList,
 							searchSchemaEnabled: Option.isSome(schemaService),
+							layouts: layoutList,
+							layoutEnabled: Option.isSome(layoutService),
 						};
 					}),
 			},

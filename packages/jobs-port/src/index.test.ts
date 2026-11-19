@@ -151,13 +151,25 @@ describe("job_runs repo helpers", () => {
 		await insertJobRun(db, { id: "a", kind: "k1", status: "done" }, 1);
 		await insertJobRun(db, { id: "b", kind: "k2", status: "failed", tenantId: 7 }, 2);
 		await insertJobRun(db, { id: "c", kind: "k1", status: "queued" }, 3);
+		await insertJobRun(db, { id: "d", kind: "cron.a", status: "done" }, 4);
+		await insertJobRun(db, { id: "e", kind: "cron.b", status: "failed" }, 5);
 
 		const all = await listJobRuns(db);
-		expect(all.map((r) => r.id)).toEqual(["c", "b", "a"]); // newest first
+		expect(all.map((r) => r.id)).toEqual(["e", "d", "c", "b", "a"]); // newest first
 
 		expect((await listJobRuns(db, { kind: "k1" })).map((r) => r.id)).toEqual(["c", "a"]);
-		expect((await listJobRuns(db, { status: "failed" })).map((r) => r.id)).toEqual(["b"]);
-		expect((await listJobRuns(db, { tenantId: null })).map((r) => r.id)).toEqual(["c", "a"]);
+		// Prefix match selects every cron.* row regardless of the id suffix.
+		expect((await listJobRuns(db, { kindPrefix: "cron." })).map((r) => r.id)).toEqual(["e", "d"]);
+		expect(
+			(await listJobRuns(db, { kindPrefix: "cron.", status: "done" })).map((r) => r.id),
+		).toEqual(["d"]);
+		expect((await listJobRuns(db, { status: "failed" })).map((r) => r.id)).toEqual(["e", "b"]);
+		expect((await listJobRuns(db, { tenantId: null })).map((r) => r.id)).toEqual([
+			"e",
+			"d",
+			"c",
+			"a",
+		]);
 		expect((await listJobRuns(db, { tenantId: 7 })).map((r) => r.id)).toEqual(["b"]);
 		expect(
 			(await listJobRuns(db, { kind: "k1", status: "queued", tenantId: null, limit: 1 })).map(

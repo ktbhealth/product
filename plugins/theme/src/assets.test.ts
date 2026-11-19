@@ -23,6 +23,7 @@ import {
 	isBrandAssetKind,
 	isImageAssetKind,
 	isThemeAssetKind,
+	listThemeAssets,
 	parseGoogleFontsCss,
 	planImageVariants,
 	primaryVariantName,
@@ -365,6 +366,25 @@ describe("theme_assets repo helpers", () => {
 			[themeId],
 		);
 		expect(JSON.parse(stored[0]!.fonts).families.sans).toBe("Inter");
+	});
+
+	it("listThemeAssets returns one theme's rows newest first", async () => {
+		const { db, d1 } = makeTestDb();
+		const themeId = await seedTheme({ db, d1 });
+		await seedTheme({ db, d1 });
+		const otherId = (
+			await all<{ id: number }>(d1, `SELECT id FROM theme_definitions ORDER BY id DESC LIMIT 1`)
+		)[0]!.id;
+		const a = await insertThemeAsset(db, {
+			themeId,
+			kind: "favicon",
+			r2Key: `${THEME_ASSETS_PREFIX}${themeId}/favicon/a.png`,
+		});
+		const b = await insertThemeAsset(db, { themeId, kind: "font", r2Key: null });
+		await insertThemeAsset(db, { themeId: otherId, kind: "favicon", r2Key: "k3" });
+		const rows = await listThemeAssets(db, themeId);
+		expect(rows.map((r) => r.id)).toEqual([b!.id, a!.id]);
+		expect(rows.every((r) => r.themeId === themeId)).toBe(true);
 	});
 
 	it("returns null when the theme row is gone", async () => {

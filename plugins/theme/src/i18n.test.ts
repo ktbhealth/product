@@ -18,6 +18,16 @@ const leaves = (node: unknown): string[] =>
 			? Object.values(node).flatMap(leaves)
 			: [];
 
+const functionsOf = (
+	node: unknown,
+	out: Array<(...args: unknown[]) => unknown> = [],
+): Array<(...args: unknown[]) => unknown> => {
+	if (typeof node === "function") out.push(node as (...args: unknown[]) => unknown);
+	else if (node !== null && typeof node === "object")
+		for (const value of Object.values(node)) functionsOf(value, out);
+	return out;
+};
+
 describe("theme catalogs", () => {
 	it("resolves known locales and falls back to the base locale", () => {
 		expect(isThemeLocale("pt-BR")).toBe(true);
@@ -39,6 +49,18 @@ describe("theme catalogs", () => {
 			const catalog = themeMessages(locale);
 			expect(leaves(catalog).every((s) => s.trim() !== "")).toBe(true);
 			expect(Object.keys(catalog as ThemeMessages).sort()).toEqual(baseKeys);
+		}
+	});
+
+	it("every catalog function returns copy in every locale", () => {
+		for (const locale of THEME_LOCALES) {
+			const fns = functionsOf(themeMessages(locale));
+			expect(fns.length).toBeGreaterThan(0);
+			for (const fn of fns) {
+				for (const args of [["dark"], [3, 12], ["radius-md"]]) {
+					expect(typeof fn(...args)).toBe("string");
+				}
+			}
 		}
 	});
 });

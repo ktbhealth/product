@@ -3,14 +3,17 @@ import { RichTextView } from "@ktb/rich-text/views";
 
 /** Wire shape the wildcard loader returns — the published
  * `custom_pages` row plus `content`, the resolved rich-text document
- * value (Plate node array) or null. Only the rendered fields are
- * required; the rest (id, flags, timestamps) rides along unused.
- * `search` is the loader-cleaned URL search record — present only on
- * schema-bound pages (`searchSchemaId` set), absent otherwise. */
+ * value (Plate node array) or null, and `layoutSections`, the resolved
+ * layout sections (ordered `{id, title, content}` records) or null.
+ * Only the rendered fields are required; the rest (id, flags,
+ * timestamps) rides along unused. `search` is the loader-cleaned URL
+ * search record — present only on schema-bound pages
+ * (`searchSchemaId` set), absent otherwise. */
 export interface CustomPageData {
 	readonly path?: unknown;
 	readonly title?: unknown;
 	readonly content?: unknown;
+	readonly layoutSections?: unknown;
 	readonly search?: unknown;
 }
 
@@ -22,11 +25,38 @@ const asSearchRecord = (value: unknown): Record<string, unknown> | null =>
 		? (value as Record<string, unknown>)
 		: null;
 
+/** One resolved layout section as the loader emits it — `title` is
+ * required, `content` is the slot's rich-text value (the loader only
+ * emits resolved sections, so it is always present; anything else is
+ * treated as an empty body). */
+interface LayoutSectionView {
+	readonly title: string;
+	readonly content: unknown;
+}
+
+/** Layout sections are an array (possibly empty) when the page binds a
+ * layout; null/absent/malformed means "no layout" → the single-doc
+ * path. An empty array still wins over `content`: a layout-bound page
+ * with no resolvable slots renders an empty body, not the fallback
+ * document. */
+const asLayoutSections = (value: unknown): readonly LayoutSectionView[] | null => {
+	if (!Array.isArray(value)) return null;
+	return value
+		.filter(
+			(section): section is LayoutSectionView & { title: string } =>
+				typeof section === "object" &&
+				section !== null &&
+				typeof (section as LayoutSectionView).title === "string",
+		)
+		.map((section) => ({ title: section.title, content: section.content ?? null }));
+};
+
 const asPage = (
 	data: unknown,
 ): {
 	title: string;
 	content: unknown;
+	layoutSections: readonly LayoutSectionView[] | null;
 	search: Record<string, unknown> | null;
 } | null => {
 	if (typeof data !== "object" || data === null) return null;
@@ -38,6 +68,7 @@ const asPage = (
 	return {
 		title: d.title,
 		content: d.content ?? null,
+		layoutSections: asLayoutSections(d.layoutSections),
 		search: asSearchRecord(d.search),
 	};
 };
@@ -45,10 +76,13 @@ const asPage = (
 /**
  * `pages` component for DB-stored custom pages (T-083): every custom
  * page renders through this single component — the wildcard descriptor
- * at "/*" supplies per-path `data` from the loader. The body is the
- * rich-text document referenced by the row (`@ktb/rich-text`), rendered
- * by `RichTextView`; `ctx.locale` is available but the page body is
- * user-authored content, so there is no plugin copy to localize.
+ * at "/*" supplies per-path `data` from the loader. The body is either
+ * the layout's ordered sections (each a title + the rich-text document
+ * bound to its slot, resolved by `Layouts.resolveForPage`) when the
+ * row binds a `layoutId`, or the single rich-text document referenced
+ * by the row — both rendered by `RichTextView`; `ctx.locale` is
+ * available but the page body is user-authored content, so there is no
+ * plugin copy to localize.
  *
  * When the row binds a `searchSchemaId`, the loader has already
  * validated the URL search through `CustomPages.validatedSearch` —
@@ -66,9 +100,22 @@ export function CustomPageView({ data }: { data: unknown; ctx: PageContext }) {
 			data-validated-search={page.search === null ? undefined : JSON.stringify(page.search)}
 		>
 			<h1 className="text-3xl font-bold tracking-tight">{page.title}</h1>
-			<div className="mt-6">
-				<RichTextView value={page.content} />
-			</div>
+			{page.layoutSections !== null ? (
+				<div className="mt-6 flex flex-col gap-8">
+					{page.layoutSections.map((section, index) => (
+						<section key={index}>
+							<h2 className="text-xl font-semibold tracking-tight">{section.title}</h2>
+							<div className="mt-3">
+								<RichTextView value={section.content} />
+							</div>
+						</section>
+					))}
+				</div>
+			) : (
+				<div className="mt-6">
+					<RichTextView value={page.content} />
+				</div>
+			)}
 		</article>
 	);
 }

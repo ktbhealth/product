@@ -73,6 +73,17 @@ describe("PortalShell", () => {
 		expect(container.querySelector('a[href="/platform/users"]')).not.toBeNull();
 	});
 
+	it("anchors breadcrumbs at the deepest active sidebar item", () => {
+		renderShell({
+			items: [...items, { to: "/platform/users/admins", label: "Admins" }],
+			pathname: "/platform/users/admins/u9",
+		});
+		// Both "Users" and "Admins" match — the sort picks the longest
+		// `to` as the anchor and the trailing segment becomes the leaf.
+		expect(screen.getAllByText("Admins").length).toBeGreaterThan(0);
+		expect(screen.getByText("U9")).toBeDefined();
+	});
+
 	it("uses 'overview' leaf on the instance index", () => {
 		renderShell({ pathname: "/platform" });
 		expect(screen.getByText("Overview")).toBeDefined();
@@ -80,7 +91,7 @@ describe("PortalShell", () => {
 
 	it("falls back to the last path segment for unmatched routes", () => {
 		renderShell({ pathname: "/platform/unknown-thing" });
-		expect(screen.getByText("unknown-thing")).toBeDefined();
+		expect(screen.getByText("Unknown-thing")).toBeDefined();
 	});
 
 	it("falls back to 'overview' when the path has no segments", () => {

@@ -16,6 +16,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import {
 	plugins,
 	richTextChromePlugin,
+	richTextElementsPlugin,
 	richTextPanelPlugin,
 	richTextServicesPlugin,
 	richTextTablesPlugin,
@@ -24,12 +25,13 @@ import { richText } from "./schema.ts";
 import { RichTextsLive, RICH_TEXT_TEST_DDL } from "./service.ts";
 
 describe("rich-text plugins", () => {
-	it("exposes the four single-concern plugins", () => {
+	it("exposes the five single-concern plugins", () => {
 		expect(plugins.map((p) => p.id)).toEqual([
 			"rich-text.tables",
 			"rich-text.services",
 			"rich-text.chrome",
 			"rich-text.panel",
+			"rich-text.elements",
 		]);
 		expect(richTextTablesPlugin.tables?.richText).toBeDefined();
 		expect(richTextServicesPlugin.services).toBeDefined();
@@ -49,6 +51,17 @@ describe("rich-text plugins", () => {
 				: ({ to: "", group: "" } as { to: string; group: string });
 		expect(item.to).toBe("/platform/rich-text");
 		expect(item.group).toBe("Site");
+	});
+
+	it("declares the rich-text element kind with renderer and editor (P-102)", () => {
+		const kinds = richTextElementsPlugin.elementKinds ?? [];
+		expect(kinds).toHaveLength(1);
+		const kind = kinds[0]!;
+		expect(kind.kind).toBe("rich-text");
+		expect(kind.label).toBe("Rich text");
+		expect(kind.renderer).toBeTypeOf("function");
+		expect(kind.editor).toBeTypeOf("function");
+		expect(kind.icon).toBeDefined();
 	});
 
 	it("declares the admin console page with guard and loader", () => {

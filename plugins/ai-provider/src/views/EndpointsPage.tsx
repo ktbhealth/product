@@ -363,8 +363,8 @@ export function EndpointsPage({
 										<span className="font-medium">{e.name}</span>
 										<Badge variant="outline">{e.kind}</Badge>
 										<Badge variant="outline">{e.scope}</Badge>
-										{e.isDefault && <Badge variant="secondary">default</Badge>}
-										{!e.enabled && <Badge variant="secondary">off</Badge>}
+										{e.isDefault && <Badge variant="secondary">{m.badgeDefault}</Badge>}
+										{!e.enabled && <Badge variant="secondary">{m.badgeOff}</Badge>}
 										{isBridgeCard(e) && <Badge variant="outline">{m.bridgeBadge}</Badge>}
 									</div>
 									<p className="mt-1 truncate text-sm text-muted-foreground">

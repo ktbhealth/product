@@ -81,6 +81,7 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 		providerFilter === ALL ? providers.map((p) => p.id) : [Number(providerFilter)];
 
 	const sync = async () => {
+		/* v8 ignore next -- both sync triggers are disabled while busy or targetless */
 		if (busy || syncTargets.length === 0) return;
 		setBusy(true);
 		setNotice(null);

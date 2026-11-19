@@ -45,6 +45,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { Route } from "./$.tsx";
 
 type Opts = {
+	loaderDeps: (a: { search: Record<string, unknown> }) => {
+		search: Record<string, unknown>;
+	};
 	loader: (a?: {
 		params: { _splat?: string };
 		deps?: { search?: Record<string, unknown> };
@@ -70,6 +73,10 @@ afterEach(() => {
 });
 
 describe("/$ app page dispatcher (P-059)", () => {
+	it("passes the parsed search through loaderDeps", () => {
+		expect(opts(Route).loaderDeps({ search: { page: "2" } })).toEqual({ search: { page: "2" } });
+	});
+
 	it("throws notFound when no plugin owns the path", async () => {
 		await expect(
 			opts(Route).loader({ params: { _splat: "nope" }, deps: {} }),

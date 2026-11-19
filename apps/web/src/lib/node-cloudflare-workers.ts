@@ -5,6 +5,8 @@ import process from "node:process";
 import { makeSqliteDatabase } from "@ktb/db-sqlite";
 import { connect as nodeSocketConnect } from "@ktb/email-smtp/node-connect";
 import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
+import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
+import { createRedisPubSubTransport } from "@ktb/pubsub-transport-redis";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
 import { loadDevVars } from "./dev-vars.ts";
@@ -87,6 +89,11 @@ const ENV_KEYS = [
 	// (see ServerRuntime.aiBridgeCli); platform.ts auto-resolves the
 	// repo's cli.ts under vite dev, this is the explicit escape hatch.
 	"AI_BRIDGE_CLI",
+	// Redis jobs transport (dev:node): REDIS_URL/JOBS_QUEUE configure the
+	// ktb:jobs list apps/jobs-worker consumes; platform.ts turns them
+	// into the queue-registry entry behind /platform/queue.
+	"REDIS_URL",
+	"JOBS_QUEUE",
 	// Every ObservabilityEnv key — telemetryConfigFromEnv reads them off
 	// the worker env, so dev:node must forward the full canonical list
 	// (single source in @ktb/observability, pinned by its tests).
@@ -155,6 +162,65 @@ env.THEME_ASSETS_QUEUE = makeLocalQueue({
 		return handleThemeQueueBatch;
 	},
 });
+
+// Redis jobs queue probe (dev:node only): apps/jobs-worker consumes the
+// ktb:jobs list off Redis; LLEN gives the pending backlog for the
+// /platform queue registry. The transport connects lazily on the first
+// stats call so an absent Redis never blocks boot, and a failed connect
+// resolves null — the registry's honest "unavailable" state, same
+// contract as the other probes. This file is never bundled for workerd
+// (the cloudflare:workers alias only applies under KTB_DEV_NODE), so
+// the node Redis client is safe to import here.
+let redisJobsTransport: ReturnType<typeof createRedisJobsTransport> | undefined;
+const redisJobsQueue = () => {
+	redisJobsTransport ??= createRedisJobsTransport({
+		url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+		...(process.env.JOBS_QUEUE !== undefined ? { queue: process.env.JOBS_QUEUE } : {}),
+	}).catch((error: unknown) => {
+		// Let the next stats call retry instead of caching the failure.
+		redisJobsTransport = undefined;
+		throw error;
+	});
+	return redisJobsTransport;
+};
+env.REDIS_JOBS_QUEUE = {
+	stats: async () => {
+		try {
+			return await (await redisJobsQueue()).stats();
+		} catch {
+			return null;
+		}
+	},
+};
+
+// Redis pub/sub stand-in (dev:node only): PUBSUB CHANNELS/NUMSUB give the
+// /platform/pubsub console real cross-process topics — the same Redis
+// instance apps/jobs-worker (or any second process) can publish to.
+// Connects lazily on first use so an absent Redis never blocks boot;
+// a failed connect rejects the call, which platform.ts collapses to the
+// honest "unavailable" state. Never bundled for workerd.
+let redisPubSubTransport: ReturnType<typeof createRedisPubSubTransport> | undefined;
+const redisPubSub = () => {
+	redisPubSubTransport ??= createRedisPubSubTransport({
+		url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+	}).catch((error: unknown) => {
+		// Let the next call retry instead of caching the failure.
+		redisPubSubTransport = undefined;
+		throw error;
+	});
+	return redisPubSubTransport;
+};
+env.REDIS_PUBSUB = {
+	publish: async (topic: string, payload: unknown) => {
+		await (await redisPubSub()).publish(topic, payload);
+	},
+	subscribe: async (topic: string, handler: (payload: unknown) => void | Promise<void>) => {
+		const transport = await redisPubSub();
+		if (transport.subscribe === undefined) return () => {};
+		return transport.subscribe(topic, handler);
+	},
+	listTopics: async () => (await redisPubSub()).listTopics(),
+};
 
 // AI: platform.ts runs resolveAi(env) itself (AI_STUB > AI_BASE_URL >
 // env.AI). Resolve the stand-in here too so env.AI carries it for any

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -184,6 +184,43 @@ describe("I18nPage keyboard navigation", () => {
 		// Vertical nav still works.
 		await user.keyboard("{ArrowDown}");
 		expect(document.activeElement).toBe(await cellButton("beta"));
+	});
+
+	it("ignores grid keys on cell buttons while the edit dialog is open", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		const alphaEn = await cellButton("alpha");
+		const alphaPt = await cellButton("alpha", "pt-BR");
+		alphaEn.focus();
+		await user.keyboard("{Enter}");
+		await screen.findByRole("dialog");
+		// The grid stays mounted behind the dialog — a synthetic keydown
+		// on another cell button must not move focus or open anything.
+		fireEvent.keyDown(alphaPt, { key: "ArrowRight" });
+		expect(document.activeElement).not.toBe(alphaPt);
+		expect(screen.getByRole("dialog")).toBeTruthy();
+	});
+
+	it("ignores grid keys on cell buttons while an inline edit is open", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		const alphaEn = await cellButton("alpha");
+		await user.dblClick(alphaEn);
+		const input = await screen.findByRole("textbox", { name: "Edit alpha in en" });
+		const betaPt = await cellButton("beta", "pt-BR");
+		fireEvent.keyDown(betaPt, { key: "ArrowLeft" });
+		expect(document.activeElement).toBe(input);
+		expect(screen.getByRole("textbox", { name: "Edit alpha in en" })).toBeTruthy();
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("ignores keys that are not arrows or Enter", async () => {
+		render(<I18nPage data={data} />);
+		const alphaEn = await cellButton("alpha");
+		alphaEn.focus();
+		fireEvent.keyDown(alphaEn, { key: "x" });
+		expect(document.activeElement).toBe(alphaEn);
+		expect(screen.queryByRole("dialog")).toBeNull();
 	});
 
 	it("resets tabbable focus gracefully when the scope empties the grid", async () => {

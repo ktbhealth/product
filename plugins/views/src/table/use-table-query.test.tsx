@@ -98,6 +98,43 @@ describe("useTableQuery — client mode", () => {
 		act(() => result.current.toggleSelection("2"));
 		expect(result.current.selectedRows.map((r) => r.id)).toEqual([2]);
 	});
+
+	it("supports controlled query state via query/onQuery", () => {
+		const onQuery = vi.fn<(next: { q: string }) => void>();
+		const { result, rerender } = renderHook(
+			({ q }: { q: string }) =>
+				useTableQuery({
+					rows: ROWS,
+					rowKey,
+					search: { keys: ["name"] },
+					query: { q },
+					onQuery,
+				}),
+			{ initialProps: { q: "ana" } },
+		);
+		// the controlled q drives filtering
+		expect(result.current.q).toBe("ana");
+		expect(result.current.rows.map((r) => r.id)).toEqual([1]);
+		act(() => result.current.setQ("bob"));
+		// controlled: state does not move until the prop updates
+		expect(result.current.q).toBe("ana");
+		expect(result.current.rows.map((r) => r.id)).toEqual([1]);
+		expect(onQuery).toHaveBeenCalledWith({ q: "bob" });
+		rerender({ q: "bob" });
+		expect(result.current.q).toBe("bob");
+		expect(result.current.rows.map((r) => r.id)).toEqual([2]);
+	});
+
+	it("reports through onQuery while staying uncontrolled without query", () => {
+		const onQuery = vi.fn<(next: { q: string }) => void>();
+		const { result } = renderHook(() =>
+			useTableQuery({ rows: ROWS, rowKey, search: { keys: ["name"] }, onQuery }),
+		);
+		act(() => result.current.setQ("cid"));
+		expect(result.current.q).toBe("cid");
+		expect(result.current.rows.map((r) => r.id)).toEqual([3]);
+		expect(onQuery).toHaveBeenCalledWith({ q: "cid" });
+	});
 });
 
 describe("defaultTableRowKey", () => {

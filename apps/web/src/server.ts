@@ -6,11 +6,9 @@ import {
 import type { Register } from "@tanstack/react-router";
 import type { RequestHandler } from "@tanstack/react-start/server";
 
-import { runScheduledAuditVerification } from "#/lib/audit-chain.ts";
-import { runScheduledAgendaReminders } from "#/lib/agenda-reminders.ts";
 import { handleAudioQueueBatch } from "#/lib/audio-jobs.ts";
 import { handleThemeQueueBatch } from "#/lib/theme-jobs.ts";
-import { flushTelemetry } from "#/lib/platform.ts";
+import { flushTelemetry, runScheduledCron } from "#/lib/platform.ts";
 
 // F3b: re-export the AcpBridge Durable Object class — the Alchemy
 // `ACP_BRIDGE` binding points at this worker's `AcpBridge` export.
@@ -59,16 +57,15 @@ export default {
 		}
 		ctx?.waitUntil?.(flushTelemetry());
 	},
-	// Two cron triggers (Alchemy `crons` — see alchemy.run.ts): a 5-minute
-	// sweep that dispatches "about to start" agenda reminders
-	// (lib/agenda-reminders.ts — idempotent via reminderSentAt) and a
-	// daily walk of the tamper-evident audit chain (lib/audit-chain.ts).
-	// The reminder sweep also runs on the daily fire — it is cheap and
-	// idempotent. `scheduled()` never fires under `bun run dev`; the
-	// agenda loaders poke the same sweep so dev reminders stay live.
+	// Cron triggers (Alchemy `crons` — see alchemy.run.ts, provisioned
+	// from lib/cron-jobs.ts CRON_SCHEDULES) fire this handler once per
+	// expression; the registry in lib/platform.ts dispatches every job
+	// bound to the fired expression and projects each run into
+	// job_runs. `scheduled()` never fires under `bun run dev`; the
+	// agenda loaders poke the reminder sweep and /platform/cron offers
+	// a manual "run now" for every registered job.
 	scheduled: async (controller: ScheduledController, _env: unknown, ctx: ExecutionContext) => {
-		await runScheduledAgendaReminders();
-		if (controller.cron === "17 3 * * *") await runScheduledAuditVerification();
+		await runScheduledCron(controller.cron);
 		ctx?.waitUntil?.(flushTelemetry());
 	},
 };

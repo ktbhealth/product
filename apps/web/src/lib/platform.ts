@@ -21,7 +21,19 @@ import {
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { makeJobs } from "@ktb/jobs-port";
+import { makeJobs, registerJobHandler, upsertJobRun, listJobRuns } from "@ktb/jobs-port";
+import type { JobRecord, JobStatus } from "@ktb/jobs-port";
+import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
+import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
+import {
+	makeInProcessPubSub,
+	mergePubSubSources,
+	type PubSubBus,
+	type PubSubTopicSource,
+} from "@ktb/pubsub-port";
+import { APP_CRON_JOBS } from "./cron-jobs.ts";
+import { runScheduledAgendaReminders } from "./agenda-reminders.ts";
+import { runScheduledAuditVerification } from "./audit-chain.ts";
 import { currentLocale } from "./locale-context.ts";
 import {
 	GLOBAL_SCOPE,
@@ -213,6 +225,13 @@ const jobs =
 		? undefined
 		: makeJobs({ send: (envelope) => jobsQueue.send(envelope), db });
 
+// The /platform/queue console's smoke kind: jobs-worker registers
+// jobs.ping for the Redis transport; the web consumer needs its own
+// registration or console enqueues would land as "unknown job kind".
+// Registered unconditionally — the registry is per-process and a
+// no-op handler is harmless when AUDIO_QUEUE is unbound.
+registerJobHandler("jobs.ping", { handle: async () => {} });
+
 // PL-006 phase 4: theme asset uploads ride a DEDICATED queue
 // (ktb-theme-assets) — image derivatives and font downloads never
 // contend with transcription. Same jobs-port shape: job_runs projection
@@ -224,6 +243,164 @@ const themeJobs =
 	themeJobsQueue === undefined
 		? undefined
 		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
+
+// Queue registry for /platform/queue (PL-007 follow-up): every queue
+// transport this deployment binds. A stats() probe marks the dev:node
+// SQLite stand-in ("sqlite"); the workerd Queue binding has none ->
+// "cloudflare-queue" with null depth (managed in the Cloudflare
+// dashboard). dev:node additionally publishes REDIS_JOBS_QUEUE — the
+// ktb:jobs list apps/jobs-worker drains — as a "redis"/"jobs-worker"
+// entry. Unbound queues are omitted rather than listed as fake rows.
+const envRecord = env as unknown as Record<string, unknown>;
+const boundQueueTransport = (binding: unknown): "cloudflare-queue" | "sqlite" =>
+	(binding as { stats?: unknown } | undefined)?.stats === undefined ? "cloudflare-queue" : "sqlite";
+const themeQueueStats = (
+	env.THEME_ASSETS_QUEUE as { stats?: () => Promise<QueueDepth> } | undefined
+)?.stats;
+const redisJobsQueue = envRecord.REDIS_JOBS_QUEUE as
+	| { stats?: () => Promise<QueueDepth | null> }
+	| undefined;
+const queueDescriptors: (QueueDescriptor | undefined)[] = [
+	env.AUDIO_QUEUE === undefined
+		? undefined
+		: {
+				id: "audio",
+				name: "ktb-transcription",
+				transport: boundQueueTransport(env.AUDIO_QUEUE),
+				consumer: "in-app" as const,
+				stats: queueDepthProbe,
+			},
+	env.THEME_ASSETS_QUEUE === undefined
+		? undefined
+		: {
+				id: "theme-assets",
+				name: "ktb-theme-assets",
+				transport: boundQueueTransport(env.THEME_ASSETS_QUEUE),
+				consumer: "in-app" as const,
+				stats: themeQueueStats,
+			},
+	redisJobsQueue?.stats === undefined
+		? undefined
+		: {
+				id: "jobs",
+				name: envRecord.JOBS_QUEUE?.toString() ?? "ktb:jobs",
+				transport: "redis" as const,
+				consumer: "jobs-worker" as const,
+				stats: redisJobsQueue.stats,
+			},
+];
+const queueRegistry = makeQueueRegistry(queueDescriptors.filter((d) => d !== undefined));
+
+// Pub/sub for /platform/pubsub: the in-process bus is always bound (it
+// is the zero-dependency default transport — one instance per isolate);
+// dev:node additionally publishes REDIS_PUBSUB, a lazy Redis pub/sub
+// transport whose PUBSUB CHANNELS/NUMSUB enumeration surfaces real
+// cross-process topics. Sources merge dynamically at query time —
+// topics appear when first published/subscribed, never from a static
+// list that could drift. Plugin code reaches publish/list through the
+// `pubsub` ServerRuntime capability below; adapters stay at this edge.
+const memoryPubSub = makeInProcessPubSub();
+const redisPubSub = envRecord.REDIS_PUBSUB as
+	| (PubSubBus & { listTopics?: PubSubTopicSource["list"] })
+	| undefined;
+const pubsubSources: PubSubTopicSource[] = [
+	{ id: "memory", list: async () => memoryPubSub.listTopics() },
+	...(redisPubSub?.listTopics === undefined ? [] : [{ id: "redis", list: redisPubSub.listTopics }]),
+];
+const pubSubTopics = mergePubSubSources(pubsubSources);
+
+// Cron registry for /platform/cron + the worker's `scheduled` handler:
+// every scheduled job declared in lib/cron-jobs.ts gets a fire routine
+// here. Each fire is projected into job_runs under kind `cron.<id>`
+// (two-phase: processing → done/failed) so the console reads lifecycle
+// through the same transport-agnostic projection as queues. Projection
+// writes are best-effort — a bookkeeping miss must never fail or retry
+// the sweep itself, so failures are logged and swallowed.
+const projectCronRun =
+	(jobId: string, fire: () => Promise<CronRunOutcome>) => async (): Promise<CronRunOutcome> => {
+		const id = crypto.randomUUID();
+		const kind = `cron.${jobId}`;
+		const write = (status: JobStatus, error?: string | null) =>
+			upsertJobRun(db, { id, kind, status, error: error ?? null }).catch((e: unknown) => {
+				console.error("cron projection write failed", { kind, status, error: String(e) });
+			});
+		await write("processing");
+		// Real producer for the /platform/pubsub console: every cron fire
+		// also lands on the in-process `cron.fires` topic, so the page
+		// shows live traffic instead of an empty registry. Fire-and-
+		// forget — a bus failure must never affect the sweep.
+		const announce = (outcome: CronRunOutcome) =>
+			void memoryPubSub
+				.publish("cron.fires", { jobId, ok: outcome.ok, summary: outcome.summary ?? null })
+				.catch(
+					/* v8 ignore next -- the in-process publish promise never rejects: listener failures are caught inside the bus */
+					() => {},
+				);
+		try {
+			const outcome = await fire();
+			await write(outcome.ok ? "done" : "failed", outcome.error);
+			announce(outcome);
+			return outcome;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			await write("failed", message);
+			const outcome: CronRunOutcome = { ok: false, error: message };
+			announce(outcome);
+			return outcome;
+		}
+	};
+
+const cronRunners: Record<string, () => Promise<CronRunOutcome>> = {
+	"agenda-reminders": async () => {
+		const count = await runScheduledAgendaReminders();
+		return count === null
+			? { ok: false, error: "reminder sweep failed" }
+			: { ok: true, summary: `${count} reminder${count === 1 ? "" : "s"} dispatched` };
+	},
+	"audit-chain-verify": async () => {
+		const result = await runScheduledAuditVerification();
+		if (result === null) return { ok: false, error: "audit chain verification failed" };
+		return {
+			ok: true,
+			summary:
+				result.status === "tampered"
+					? `chain tampered at entry ${result.brokenAt}`
+					: `chain verified (${result.entries} entries)`,
+		};
+	},
+};
+
+const cronRegistry = makeCronRegistry(
+	APP_CRON_JOBS.map((meta): CronDescriptor => ({
+		id: meta.id,
+		schedules: meta.schedules,
+		description: meta.description,
+		run: projectCronRun(
+			meta.id,
+			cronRunners[meta.id] ?? (async () => ({ ok: false, error: "no runner registered" })),
+		),
+	})),
+);
+
+/**
+ * `scheduled()` entry point (src/server.ts): fire every cron job bound
+ * to the controller's cron expression through the registry — same code
+ * path as the console's "run now", including the job_runs projection.
+ * Unknown expressions are a no-op.
+ */
+export const runScheduledCron = (schedule: string) => cronRegistry.dispatch(schedule);
+
+/** Latest `cron.<id>` projection row per registered job — one bounded
+ * prefix read, grouped client-side. Null rows mean "never ran or the
+ * projection is unreadable"; the console renders that honestly. */
+const cronLastRuns = async () => {
+	const runs = await listJobRuns(db, { kindPrefix: "cron.", limit: 500 }).catch(() => null);
+	const latest = new Map<string, JobRecord>();
+	for (const run of runs ?? []) {
+		if (!latest.has(run.kind)) latest.set(run.kind, run);
+	}
+	return latest;
+};
 
 /**
  * Request scope chain for the i18n capability (PL-008): the same
@@ -334,6 +511,78 @@ setServerRuntime({
 		typeof queueDepthProbe === "function" ? () => queueDepthProbe().catch(() => null) : undefined,
 	audioStorageStats:
 		audioBucketLister === undefined ? undefined : () => audioStorageStats(audioBucketLister),
+	queues: () => queueRegistry.list(),
+	// Cron registry capability: `list` joins each job with its latest
+	// `cron.<id>` projection row; `runNow`/`runSchedule` fire through
+	// the same projected path the worker's `scheduled` handler uses.
+	crons: {
+		list: async () => {
+			const latest = await cronLastRuns();
+			return cronRegistry.list().map((job) => {
+				const row = latest.get(`cron.${job.id}`);
+				return {
+					...job,
+					lastRun:
+						row === undefined
+							? null
+							: {
+									id: row.id,
+									ok: row.status === "done",
+									running: row.status === "processing",
+									error: row.error,
+									startedAt: row.createdAt,
+									finishedAt: row.updatedAt,
+								},
+				};
+			});
+		},
+		runNow: async (id) => {
+			const result = await cronRegistry.runById(id);
+			return result === null
+				? null
+				: {
+						id: result.id,
+						ok: result.outcome.ok,
+						summary: result.outcome.summary,
+						error: result.outcome.error,
+					};
+		},
+		runSchedule: async (schedule) =>
+			(await cronRegistry.dispatch(schedule)).map((r) => ({
+				id: r.id,
+				ok: r.outcome.ok,
+				summary: r.outcome.summary,
+				error: r.outcome.error,
+			})),
+	},
+	// Pub/sub capability: `topics` merges the in-process bus's known
+	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
+	// `publish` routes by the console-facing id prefix — `memory:` to
+	// the in-process bus, `redis:` to the Redis transport. Payloads
+	// must be JSON-serializable; transports serialize them.
+	pubsub: {
+		topics: () => pubSubTopics.list(),
+		publish: async (topicId, payload) => {
+			const sep = topicId.indexOf(":");
+			const prefix = sep === -1 ? "" : topicId.slice(0, sep);
+			const name = sep === -1 ? topicId : topicId.slice(sep + 1);
+			try {
+				if (name === "") return { ok: false, reason: "unknown-topic" };
+				if (prefix === "memory") {
+					await memoryPubSub.publish(name, payload);
+					return { ok: true };
+				}
+				if (prefix === "redis") {
+					if (redisPubSub === undefined) return { ok: false, reason: "unavailable" };
+					await redisPubSub.publish(name, payload);
+					return { ok: true };
+				}
+				return { ok: false, reason: "unknown-topic" };
+			} catch {
+				return { ok: false, reason: "publish-failed" };
+			}
+		},
+	},
 	ai: aiBinding,
 	audioTranscribeModel,
 	recordExporters,

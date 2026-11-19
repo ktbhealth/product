@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import * as Effect from "effect/Effect";
 
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 
 import { fontsChromePlugin, fontsPanelPlugin, fontsServicesPlugin, plugins } from "./index.ts";
@@ -97,5 +97,29 @@ describe("fonts panel guard + loaders", () => {
 			),
 		);
 		expect(data).toEqual({ providers: [], families: [] });
+	});
+
+	it("loaders degrade to empty payloads when the service denies", async () => {
+		const forbidden = Effect.fail(new Forbidden({ path: "fonts.list" }));
+		const deniedStub = Fonts.of({
+			listProviders: () => forbidden,
+			providerKinds: () => forbidden,
+			createProvider: () => forbidden,
+			updateProvider: () => forbidden,
+			setProviderEnabled: () => forbidden,
+			removeProvider: () => forbidden,
+			listFamilies: () => forbidden,
+			syncProvider: () => forbidden,
+		});
+		const provide = <A, E>(effect: Effect.Effect<A, E, Fonts>) =>
+			effect.pipe(Effect.provideService(Fonts, deniedStub));
+		expect(await Effect.runPromise(provide(providersLoader()))).toEqual({
+			providers: [],
+			kinds: [],
+		});
+		expect(await Effect.runPromise(provide(catalogLoader()))).toEqual({
+			providers: [],
+			families: [],
+		});
 	});
 });

@@ -12,6 +12,7 @@ import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "
 
 import { FontsFamilySynced, FontsProviderChanged } from "./events.ts";
 import { FontHooks, type FontHookHandle } from "./hooks.ts";
+import { FontProviders } from "./registry.ts";
 import {
 	countFamiliesByProvider,
 	deleteProviderRow,
@@ -167,6 +168,57 @@ describe("fonts repo helpers", () => {
 		expect(counts.get(p2!.id)).toBe(1);
 	});
 
+	it("updateProviderRow serializes a config-only patch; missing enabled rows return null", async () => {
+		const { db } = makeTestDb();
+		const row = await insertProviderRow(db, { kind: "a", name: "A", config: null });
+		const patched = await updateProviderRow(db, row!.id, { config: { b: 2 } });
+		expect(JSON.parse(patched!.config!)).toEqual({ b: 2 });
+		expect(patched!.name).toBe("A");
+		expect(await setProviderEnabledRow(db, 9999, false)).toBeNull();
+	});
+
+	it("insert helpers return null when the driver yields no row", async () => {
+		const emptyDb = {
+			insert: () => ({ values: () => ({ returning: async () => [] }) }),
+		} as unknown as DbClient;
+		expect(await insertProviderRow(emptyDb, { kind: "a", name: "A", config: null })).toBeNull();
+		expect(
+			await insertFamilyRow(emptyDb, {
+				providerId: 1,
+				family: "F",
+				weights: null,
+				meta: null,
+			}),
+		).toBeNull();
+	});
+
+	it("updateFamilyRow clears weights and stores meta JSON", async () => {
+		const { db } = makeTestDb();
+		const provider = await insertProviderRow(db, {
+			kind: "a",
+			name: "A",
+			config: null,
+		});
+		const fam = await insertFamilyRow(db, {
+			providerId: provider!.id,
+			family: "F",
+			weights: [400],
+			meta: null,
+		});
+		await updateFamilyRow(db, fam!.id, { weights: null, meta: { m: 1 } });
+		const row = await findFamilyRow(db, provider!.id, "F");
+		expect(row!.weights).toBeNull();
+		expect(JSON.parse(row!.meta!)).toEqual({ m: 1 });
+	});
+
+	it("summarizeProvider reports a null updatedAt", async () => {
+		const { db, d1 } = makeTestDb();
+		const row = await insertProviderRow(db, { kind: "a", name: "A", config: null });
+		await run(d1, `UPDATE font_providers SET updated_at = NULL WHERE id = ?`, [row!.id]);
+		const found = await findProviderRow(db, row!.id);
+		expect(summarizeProvider(found!, 0).updatedAt).toBeNull();
+	});
+
 	it("deleteProviderRow removes the row and cascades families", async () => {
 		const { db, d1 } = makeTestDb();
 		const provider = await insertProviderRow(db, { kind: "a", name: "A", config: null });
@@ -240,7 +292,7 @@ const asUser = <A, E>(
 ) => effect.pipe(Effect.provideService(Principal, user));
 
 describe("FontsLive", () => {
-	let runtime: ManagedRuntime.ManagedRuntime<Fonts | EventBus | FontHooks, never>;
+	let runtime: ManagedRuntime.ManagedRuntime<Fonts | EventBus | FontHooks | FontProviders, never>;
 	let db: DbClient;
 	let d1: SqlDatabase;
 	let bus: EventBusShape;
@@ -453,5 +505,128 @@ describe("FontsLive", () => {
 
 	it("syncProvider dies for missing provider", async () => {
 		await expect(admin((f) => f.syncProvider(424242))).rejects.toThrow(/font provider not found/);
+	});
+
+	it("setProviderEnabled on a missing provider is a quiet no-op", async () => {
+		hookHandles.length = 0;
+		await admin((f) => f.setProviderEnabled(424242, false));
+		expect(hookHandles).toEqual([]);
+	});
+
+	it("syncProvider dies when the row's kind has no registered adapter", async () => {
+		const row = await insertProviderRow(db, {
+			kind: "unregistered",
+			name: "X",
+			config: null,
+		});
+		await expect(admin((f) => f.syncProvider(row!.id))).rejects.toThrow(
+			/unknown font provider kind/,
+		);
+	});
+
+	it("syncProvider skips blank family names and nulls absent weights/meta", async () => {
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const providers = yield* FontProviders;
+				providers.register({
+					kind: "testkit",
+					list: () =>
+						Effect.succeed([
+							{ family: "   " },
+							{ family: "Kit Sans" },
+							{ family: "Kit Mono", weights: [400], meta: { hint: "m" } },
+						]),
+				});
+			}),
+		);
+		const provider = await admin((f) => f.createProvider({ kind: "testkit", name: "Kit" }));
+		const families = await admin((f) => f.syncProvider(provider.id));
+		expect(families.map((fam) => fam.family).sort()).toEqual(["Kit Mono", "Kit Sans"]);
+		const sans = families.find((fam) => fam.family === "Kit Sans");
+		expect(sans?.weights).toEqual([]);
+		expect(sans?.meta).toBeNull();
+		const mono = families.find((fam) => fam.family === "Kit Mono");
+		expect(mono?.weights).toEqual([400]);
+		expect(mono?.meta).toEqual({ hint: "m" });
+	});
+});
+
+describe("FontsLive — optional event bus and driver edges", () => {
+	const gate = makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"));
+
+	it("mutations are a no-op publish when no EventBus is bound", async () => {
+		const { db } = makeTestDb();
+		const infra = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(PlatformAdmin, gate));
+		const rt = ManagedRuntime.make(FontsServicesLive.pipe(Layer.provide(infra)));
+		try {
+			const provider = await rt.runPromise(
+				asUser(
+					ADMIN,
+					withFonts((f) => f.createProvider({ kind: "local", name: "Bus-free" })),
+				),
+			);
+			expect(provider.name).toBe("Bus-free");
+			// family.synced publish is also a no-op without a bus.
+			const families = await rt.runPromise(
+				asUser(
+					ADMIN,
+					withFonts((f) => f.syncProvider(provider.id)),
+				),
+			);
+			expect(families).toEqual([]);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("a failing dispatch is logged and never fails the write", async () => {
+		const { db } = makeTestDb();
+		const deadBus = {
+			dispatch: () => Effect.die(new Error("bus down")),
+		} as unknown as EventBusShape;
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, gate),
+			Layer.succeed(EventBus, deadBus),
+		);
+		const rt = ManagedRuntime.make(FontsServicesLive.pipe(Layer.provide(infra)));
+		try {
+			const provider = await rt.runPromise(
+				asUser(
+					ADMIN,
+					withFonts((f) => f.createProvider({ kind: "local", name: "Dead bus" })),
+				),
+			);
+			expect(provider.name).toBe("Dead bus");
+			const families = await rt.runPromise(
+				asUser(
+					ADMIN,
+					withFonts((f) => f.syncProvider(provider.id)),
+				),
+			);
+			expect(families).toEqual([]);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("createProvider dies when the insert returns no row", async () => {
+		const emptyDb = {
+			insert: () => ({ values: () => ({ returning: async () => [] }) }),
+		} as unknown as DbClient;
+		const infra = Layer.mergeAll(Layer.succeed(Db, emptyDb), Layer.succeed(PlatformAdmin, gate));
+		const rt = ManagedRuntime.make(FontsServicesLive.pipe(Layer.provide(infra)));
+		try {
+			await expect(
+				rt.runPromise(
+					asUser(
+						ADMIN,
+						withFonts((f) => f.createProvider({ kind: "local", name: "X" })),
+					),
+				),
+			).rejects.toThrow(/no row/);
+		} finally {
+			await rt.dispose();
+		}
 	});
 });

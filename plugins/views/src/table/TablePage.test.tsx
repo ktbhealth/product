@@ -229,4 +229,108 @@ describe("TablePage", () => {
 		expect(rows[0]?.className).toContain("row-active");
 		expect(rows[1]?.className).not.toContain("row-active");
 	});
+	it("keeps selection controlled when `selected` is provided", () => {
+		const onSelectionChange = vi.fn<(keys: ReadonlySet<string>) => void>();
+		renderPage({ selectable: true, selected: new Set(["1"]), onSelectionChange });
+		fireEvent.click(screen.getByLabelText("Seleccionar fila 1"));
+		expect(onSelectionChange).toHaveBeenCalledWith(new Set());
+		// controlled: internal state untouched, row stays checked via prop
+		expect(screen.getByLabelText("Seleccionar fila 1")).toBeTruthy();
+	});
+
+	it("renders rowActionsHeader in the trailing header cell", () => {
+		renderPage({
+			rowActions: (row) => <button type="button">Edit {row.name}</button>,
+			rowActionsHeader: "Actions",
+		});
+		expect(screen.getByText("Actions")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Edit Ana" })).toBeTruthy();
+	});
+
+	it("creates the trailing column from rowActionsHeader alone", () => {
+		const { container } = renderPage({ rowActionsHeader: "Ops" });
+		expect(screen.getByText("Ops")).toBeTruthy();
+		// header cell exists but body cells render empty
+		const headerCells = container.querySelectorAll("thead th");
+		expect(headerCells.length).toBe(COLUMNS.length + 1);
+		const bodyCells = container.querySelectorAll("tbody tr td");
+		expect(bodyCells.length).toBe(ROWS.length * (COLUMNS.length + 1));
+	});
+
+	it("renders empty-state media inside the Empty", () => {
+		renderPage({
+			rows: [],
+			total: 0,
+			empty: { title: "Nothing", media: <span data-testid="empty-media">icon</span> },
+		});
+		expect(screen.getByTestId("empty-media")).toBeTruthy();
+		expect(screen.getByText("Nothing")).toBeTruthy();
+	});
+
+	it("disables a row checkbox via selectionDisabled", () => {
+		renderPage({
+			selectable: true,
+			selectionDisabled: (row) => row.id === 2,
+		});
+		const disabledBox = screen.getByLabelText("Seleccionar fila 2");
+		const enabledBox = screen.getByLabelText("Seleccionar fila 1");
+		expect(disabledBox.getAttribute("aria-disabled")).toBe("true");
+		expect(enabledBox.getAttribute("aria-disabled")).not.toBe("true");
+	});
+
+	it("disables the select-all checkbox via selectAllDisabled", () => {
+		renderPage({ selectable: true, selectAllDisabled: true });
+		const selectAll = screen.getByLabelText("Seleccionar todo");
+		expect(selectAll.getAttribute("aria-disabled")).toBe("true");
+	});
+
+	it("honours ariaLabels overrides for selection checkboxes", () => {
+		renderPage({
+			selectable: true,
+			ariaLabels: {
+				selectAll: "Select all rows",
+				selectRow: (key) => `Pick ${key}`,
+			},
+		});
+		expect(screen.getByLabelText("Select all rows")).toBeTruthy();
+		expect(screen.getByLabelText("Pick 1")).toBeTruthy();
+		expect(screen.getByLabelText("Pick 2")).toBeTruthy();
+	});
+
+	it("falls back to catalog row labels when ariaLabels only overrides selectAll", () => {
+		renderPage({ selectable: true, ariaLabels: { selectAll: "Select all rows" } });
+		expect(screen.getByLabelText("Select all rows")).toBeTruthy();
+		expect(screen.getByLabelText("Seleccionar fila 1")).toBeTruthy();
+	});
+
+	it("applies a static cellClassName to every cell of the column", () => {
+		const columns: Column<Row>[] = [{ key: "name", header: "Name", cellClassName: "font-bold" }];
+		const { container } = render(
+			<TablePage>
+				<TablePage.Table columns={columns} rows={ROWS} rowKey={(r) => String(r.id)} />
+			</TablePage>,
+		);
+		const cells = container.querySelectorAll("tbody td");
+		expect(cells.length).toBe(ROWS.length);
+		for (const cell of cells) expect(cell.className).toContain("font-bold");
+	});
+
+	it("applies a per-row cellClassName function (heatmap tint)", () => {
+		const columns: Column<Row>[] = [
+			{
+				key: "active",
+				header: "Active",
+				format: "boolean",
+				cellClassName: (row, value) => (value === true ? `tint-${row.id}` : undefined),
+			},
+		];
+		const { container } = render(
+			<TablePage>
+				<TablePage.Table columns={columns} rows={ROWS} rowKey={(r) => String(r.id)} />
+			</TablePage>,
+		);
+		const cells = container.querySelectorAll("tbody td");
+		expect(cells[0]?.className).toContain("tint-1");
+		expect(cells[1]?.className).not.toContain("tint-2");
+	});
 });

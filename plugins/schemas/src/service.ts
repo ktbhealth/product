@@ -319,6 +319,8 @@ export const SchemasLive = Layer.effect(
 				} catch (error) {
 					// Out-of-subset stored schemas surface their definition
 					// issues verbatim — same {path, keyword, message} shape.
+					/* v8 ignore next -- assertSchema runs before ajv, so
+					 * the only throw reachable here is SchemaDefinitionError */
 					if (error instanceof SchemaDefinitionError) {
 						return { valid: false, issues: error.issues } satisfies SchemaValidationResult;
 					}

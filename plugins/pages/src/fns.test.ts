@@ -196,6 +196,9 @@ describe("pages fns", () => {
 		await expect(
 			createPageFn({ data: { path: "/x", title: "X", searchSchemaId: "nope" } } as never),
 		).rejects.toBeInstanceOf(Error);
+		await expect(
+			createPageFn({ data: { path: "/x", title: "X", layoutId: "nope" } } as never),
+		).rejects.toBeInstanceOf(Error);
 	});
 
 	it("navPagesFn returns [] while the render plugin is disabled", async () => {

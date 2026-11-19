@@ -5,6 +5,7 @@ import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
 import { Button } from "@ktbhealth/ui/components/button";
+import { ButtonGroup } from "@ktbhealth/ui/components/button-group";
 import {
 	Popover,
 	PopoverContent,
@@ -21,7 +22,8 @@ import {
 
 import { listThemesFn, setThemePreviewFn } from "../fns.ts";
 import { themeMessages, I18N_NAMESPACE } from "../i18n.ts";
-import type { ThemeScopeKind, ThemeSummary } from "../types.ts";
+import type { ThemeColorScheme, ThemeScopeKind, ThemeSummary } from "../types.ts";
+import { applyColorScheme, COLOR_SCHEMES, readColorScheme } from "../scheme.ts";
 
 const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
 	platform: "platform",
@@ -53,6 +55,11 @@ export function ThemeHeaderAction({
 	const t = sliceMessages(i18n, I18N_NAMESPACE, themeMessages(locale));
 	const [themes, setThemes] = useState<readonly ThemeSummary[] | null>(null);
 	const [busy, setBusy] = useState<number | "off" | null>(null);
+	const [scheme, setScheme] = useState<ThemeColorScheme>("system");
+
+	useEffect(() => {
+		setScheme(readColorScheme());
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -129,6 +136,26 @@ export function ThemeHeaderAction({
 								</Button>
 							</div>
 						))}
+					</div>
+					<div className="border-t border-border px-3 py-2">
+						<div className="mb-1.5 text-xs text-muted-foreground">{t.schemeLabel}</div>
+						<ButtonGroup className="w-full">
+							{COLOR_SCHEMES.map((s) => (
+								<Button
+									key={s}
+									type="button"
+									size="sm"
+									variant={scheme === s ? "secondary" : "outline"}
+									className="flex-1"
+									onClick={() => {
+										setScheme(s);
+										applyColorScheme(s);
+									}}
+								>
+									{s === "light" ? t.schemeLight : s === "dark" ? t.schemeDark : t.schemeSystem}
+								</Button>
+							))}
+						</ButtonGroup>
 					</div>
 					<div className="border-t border-border p-2">
 						{/* Panel pages dispatch through the /platform/$ splat —

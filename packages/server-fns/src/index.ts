@@ -18,7 +18,18 @@ export {
 	run,
 	runAs,
 	setServerRuntime,
+	type CronJobInfo,
+	type CronRunInfo,
+	type CronRunResult,
+	type PubSubMessageInfo,
+	type PubSubPublishResult,
+	type PubSubTopicInfo,
+	type PubSubTopicsResult,
+	type PubSubTransport,
+	type QueueConsumer,
 	type QueueDepth,
+	type QueueInfo,
+	type QueueTransport,
 	type ServerRuntime,
 } from "./runtime.ts";
 export {

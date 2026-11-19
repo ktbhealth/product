@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,6 +93,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	cleanup();
+	vi.unstubAllGlobals();
 });
 
 describe("ThemePage — list", () => {
@@ -104,6 +105,11 @@ describe("ThemePage — list", () => {
 		).toBeTruthy();
 		await user.click(screen.getAllByRole("button", { name: "New theme" })[0]!);
 		await waitFor(() => expect(fns.publishThemeFn).toHaveBeenCalled());
+		// Wait for the busy flag to clear before re-clicking.
+		await waitFor(() => expect(fns.navigate).toHaveBeenCalled());
+		// The empty-state body offers the same action a second time.
+		await user.click(screen.getAllByRole("button", { name: "New theme" })[1]!);
+		await waitFor(() => expect(fns.publishThemeFn).toHaveBeenCalledTimes(2));
 		expect(fns.publishThemeFn).toHaveBeenCalledWith({
 			data: expect.objectContaining({ scope: "tenant", seeds: {} }),
 		});
@@ -162,6 +168,36 @@ describe("ThemePage — list", () => {
 		expect(screen.getByText("Empty theme discarded.")).toBeTruthy();
 		expect(sessionStorage.getItem("ktb-theme-discarded")).toBeNull();
 	});
+
+	it("dismisses the discarded-draft toast", async () => {
+		sessionStorage.setItem("ktb-theme-discarded", "1");
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getByRole("button", { name: "Dismiss notification" }));
+		expect(screen.queryByText("Empty theme discarded.")).toBeNull();
+	});
+
+	it("ignores further create clicks while a publish is in flight", async () => {
+		// Never settles — the busy flag stays up for the whole test.
+		fns.publishThemeFn.mockReturnValue(new Promise<ThemeSummary>(() => {}));
+		renderPage(null);
+		const buttons = screen.getAllByRole("button", { name: "New theme" });
+		fireEvent.click(buttons[0]!);
+		await waitFor(() => expect(fns.publishThemeFn).toHaveBeenCalledTimes(1));
+		// Both buttons disable while busy; a raw DOM click still reaches
+		// the handler and the busy guard drops it.
+		fireEvent.click(buttons[0]!);
+		fireEvent.click(buttons[1]!);
+		expect(fns.publishThemeFn).toHaveBeenCalledTimes(1);
+	});
+
+	it("surfaces a notice when creating a draft fails", async () => {
+		fns.publishThemeFn.mockRejectedValueOnce(new Error("nope"));
+		const user = userEvent.setup();
+		renderPage(null);
+		await user.click(screen.getAllByRole("button", { name: "New theme" })[0]!);
+		await waitFor(() => expect(screen.getByText("Publish failed")).toBeTruthy());
+	});
 });
 
 describe("ThemePage — main row and row actions", () => {
@@ -180,6 +216,34 @@ describe("ThemePage — main row and row actions", () => {
 		await waitFor(() => expect(fns.setThemeMainFn).toHaveBeenCalledWith({ data: { id: 2 } }));
 		expect(screen.getByText("Main theme updated")).toBeTruthy();
 		expect(fns.invalidate).toHaveBeenCalled();
+	});
+
+	it("surfaces a notice when Set main fails", async () => {
+		fns.setThemeMainFn.mockRejectedValueOnce(new Error("nope"));
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getAllByRole("button", { name: "Set main" })[0]!);
+		await waitFor(() => expect(screen.getByText("Publish failed")).toBeTruthy());
+	});
+
+	it("previews a theme through the server fn and reloads", async () => {
+		let resolvePreview!: (value: { readonly ok: boolean }) => void;
+		fns.setThemePreviewFn.mockReturnValue(
+			new Promise<{ readonly ok: boolean }>((resolve) => {
+				resolvePreview = resolve;
+			}),
+		);
+		const reload = vi.fn<() => void>();
+		vi.stubGlobal("location", { reload });
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getAllByRole("button", { name: "Preview" })[0]!);
+		expect(fns.setThemePreviewFn).toHaveBeenCalledWith({ data: { themeId: 1 } });
+		// The busy row swaps label + spinner while the fn is in flight
+		// (the Spinner's own aria-label joins the accessible name).
+		expect(await screen.findByText("Previewing…")).toBeTruthy();
+		await act(async () => resolvePreview({ ok: true }));
+		expect(reload).toHaveBeenCalled();
 	});
 
 	it("confirms before deleting and calls deleteThemeFn", async () => {

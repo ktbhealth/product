@@ -293,4 +293,48 @@ describe("DraftsPage", () => {
 		expect(fns.i18nDiscardDraftFn).not.toHaveBeenCalled();
 		expect(screen.getByRole("button", { name: "Discard 2 selected" })).toBeTruthy();
 	});
+
+	it("unchecking a row checkbox removes it from the selection", async () => {
+		const user = userEvent.setup();
+		render(<DraftsPage data={data} />);
+		await screen.findByText("patients");
+		const rowBox = screen.getByRole("checkbox", { name: "Select patients.title (pt-BR)" });
+		await user.click(rowBox);
+		expect(screen.getByRole("button", { name: "Publish 1 selected" })).toBeTruthy();
+		await user.click(rowBox);
+		expect(rowBox.getAttribute("aria-checked")).toBe("false");
+		expect(screen.queryByRole("button", { name: /selected/ })).toBeNull();
+	});
+
+	it("renders the raw locale code and an empty draft for sparse rows", async () => {
+		render(
+			<DraftsPage
+				data={{
+					locales: data.locales,
+					drafts: [msg({ locale: "de", draftValue: null })],
+				}}
+			/>,
+		);
+		await screen.findByText("patients");
+		// "de" is not in data.locales — no endonym, so the raw code
+		// renders in place of it plus the usual code suffix.
+		expect(screen.getAllByText("de")).toHaveLength(2);
+	});
+
+	it("bulk publish reports all-failed without invalidating the router", async () => {
+		// First failure carries no message (bare denial → fallback text);
+		// the second one must NOT overwrite the first recorded error.
+		fns.i18nPublishFn
+			.mockResolvedValueOnce({ ok: false })
+			.mockResolvedValueOnce({ ok: false, error: "later" });
+		const user = userEvent.setup();
+		render(<DraftsPage data={data} />);
+		await screen.findByText("patients");
+		await user.click(screen.getByRole("checkbox", { name: "Select all visible drafts" }));
+		await user.click(screen.getByRole("button", { name: "Publish 2 selected" }));
+		expect(await screen.findByText("Published 0, failed 2 — denied.")).toBeTruthy();
+		expect(fns.i18nPublishFn).toHaveBeenCalledTimes(2);
+		expect(router.invalidate).not.toHaveBeenCalled();
+		expect(screen.queryByRole("button", { name: /selected/ })).toBeNull();
+	});
 });
