@@ -49,6 +49,8 @@ export interface ThemeMessages {
 	readonly fontSans: string;
 	readonly fontHeading: string;
 	readonly fontMono: string;
+	readonly fontPreviewLabel: string;
+	readonly fontPreviewText: string;
 	readonly brandTitle: string;
 	readonly brandAppName: string;
 	readonly previewTitle: string;
@@ -251,6 +253,8 @@ const en: ThemeMessages = {
 	fontSans: "Sans",
 	fontHeading: "Heading",
 	fontMono: "Mono",
+	fontPreviewLabel: "Font preview",
+	fontPreviewText: "The quick brown fox jumps over the lazy dog",
 	brandTitle: "Brand",
 	brandAppName: "Brand app name",
 	previewTitle: "Live preview",
@@ -455,6 +459,8 @@ const ptBR: ThemeMessages = {
 	fontSans: "Sans",
 	fontHeading: "Títulos",
 	fontMono: "Mono",
+	fontPreviewLabel: "Pré-visualização de fontes",
+	fontPreviewText: "A rápida raposa marrom salta sobre o cão preguiçoso",
 	brandTitle: "Marca",
 	brandAppName: "Nome do app na marca",
 	previewTitle: "Pré-visualização ao vivo",
@@ -660,6 +666,8 @@ const es: ThemeMessages = {
 	fontSans: "Sans",
 	fontHeading: "Títulos",
 	fontMono: "Mono",
+	fontPreviewLabel: "Vista previa de fuentes",
+	fontPreviewText: "El veloz murciélago hindú comía feliz cardillo y kiwi",
 	brandTitle: "Marca",
 	brandAppName: "Nombre de la app en la marca",
 	previewTitle: "Vista previa en vivo",

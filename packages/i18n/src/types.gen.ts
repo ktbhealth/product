@@ -2005,6 +2005,8 @@ export type I18nKey =
 	| "theme.enable"
 	| "theme.fontHeading"
 	| "theme.fontMono"
+	| "theme.fontPreviewLabel"
+	| "theme.fontPreviewText"
 	| "theme.fontSampleHeading"
 	| "theme.fontSampleMono"
 	| "theme.fontSampleSans"
@@ -4879,6 +4881,8 @@ export interface I18nTypedT {
 	(key: "theme.enable"): Effect.Effect<string>;
 	(key: "theme.fontHeading"): Effect.Effect<string>;
 	(key: "theme.fontMono"): Effect.Effect<string>;
+	(key: "theme.fontPreviewLabel"): Effect.Effect<string>;
+	(key: "theme.fontPreviewText"): Effect.Effect<string>;
 	(key: "theme.fontSampleHeading"): Effect.Effect<string>;
 	(key: "theme.fontSampleMono"): Effect.Effect<string>;
 	(key: "theme.fontSampleSans"): Effect.Effect<string>;

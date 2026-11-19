@@ -6704,6 +6704,12 @@ export const I18N_MANIFEST = {
 		fontMono: {
 			params: [],
 		},
+		fontPreviewLabel: {
+			params: [],
+		},
+		fontPreviewText: {
+			params: [],
+		},
 		brandTitle: {
 			params: [],
 		},

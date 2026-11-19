@@ -794,6 +794,157 @@ describe("ThemeEditorPage — managed font sources", () => {
 	});
 });
 
+describe("ThemeEditorPage — font preview specimens", () => {
+	const SOURCES: ThemeFontSourceOption[] = [
+		{
+			providerId: 7,
+			providerName: "Google",
+			providerKind: "googlefonts",
+			family: "Inter",
+			weights: [400, 700],
+		},
+		{
+			providerId: 9,
+			providerName: "Local",
+			providerKind: "local",
+			family: "Brand Sans",
+			weights: [],
+		},
+	];
+
+	it("renders per-slot specimens, stylesheet links and a weight switcher", async () => {
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					delivery: "google-fonts",
+					families: { sans: "Inter" },
+					weights: [400, 700],
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		expect(screen.getByText("Font preview")).toBeTruthy();
+		const specimens = screen.getAllByText("Aa Bb Cc 123") as HTMLElement[];
+		expect(specimens).toHaveLength(3);
+		expect(specimens[0]!.style.fontFamily).toContain("Inter");
+		expect(specimens[0]!.style.fontWeight).toBe("400");
+		// Heading inherits the sans family (fontCssVars fallback); mono
+		// keeps its default monospace stack and still shows the sentence.
+		expect(specimens[1]!.style.fontFamily).toContain("Inter");
+		expect(specimens[2]!.style.fontFamily).toContain("monospace");
+		expect(screen.getAllByText("The quick brown fox jumps over the lazy dog")).toHaveLength(3);
+		// The effective family name is shown under each slot label —
+		// sans and heading both resolve to Inter.
+		expect(screen.getAllByText("Inter")).toHaveLength(2);
+
+		const link = document.querySelector('link[rel="stylesheet"]');
+		expect(link?.getAttribute("href")).toBe(
+			"https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap",
+		);
+
+		// Weight switcher: picking 700 restyles only that slot's specimen.
+		await user.click(screen.getByRole("button", { name: "Sans 700" }));
+		expect(specimens[0]!.style.fontWeight).toBe("700");
+		expect(specimens[1]!.style.fontWeight).toBe("400");
+	});
+
+	it("falls back to the first weight when the preferred one is unavailable", async () => {
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					delivery: "self-host",
+					families: { sans: "Inter" },
+					weights: [500, 700],
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		const specimens = screen.getAllByText("Aa Bb Cc 123") as HTMLElement[];
+		// No 400 in the list — the first configured weight is the default.
+		expect(specimens[0]!.style.fontWeight).toBe("500");
+		expect(screen.getByRole("button", { name: "Sans 500" })).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "Sans 400" })).toBeNull();
+
+		// Selecting 700 then narrowing weights to [400] invalidates the
+		// selection — the specimen falls back to the new preferred weight
+		// and the single-weight slot hides the switcher.
+		await user.click(screen.getByRole("button", { name: "Sans 700" }));
+		expect(specimens[0]!.style.fontWeight).toBe("700");
+		fireEvent.change(screen.getByLabelText(/Weights/), { target: { value: "400" } });
+		expect(specimens[0]!.style.fontWeight).toBe("400");
+		expect(screen.queryByRole("button", { name: "Sans 700" })).toBeNull();
+	});
+
+	it("renders specimens with inherit fonts when the theme has none", async () => {
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		const specimens = screen.getAllByText("Aa Bb Cc 123") as HTMLElement[];
+		expect(specimens).toHaveLength(3);
+		for (const el of specimens) {
+			expect(el.style.fontFamily).toBe("");
+			expect(el.style.fontWeight).toBe("400");
+		}
+		// Default weight stack still offers the switcher.
+		expect(screen.getByRole("button", { name: "Sans 500" })).toBeTruthy();
+		expect(document.querySelector("style[data-font-preview]")).toBeNull();
+		expect(document.querySelector('link[rel="stylesheet"]')).toBeNull();
+	});
+
+	it("previews managed sources: googlefonts links and local family names", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue(SOURCES);
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					delivery: "self-host",
+					families: { sans: "Custom Sans" },
+					sources: {
+						sans: { providerId: 7, family: "Inter" },
+						mono: { providerId: 9, family: "Brand Sans" },
+					},
+				},
+				fontFaceCss: '@font-face{font-family:"Brand Sans";src:url("/local.woff2");}',
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		// Managed family names win over the free-form inputs — heading
+		// inherits the managed sans family.
+		expect(screen.getAllByText("Inter")).toHaveLength(2);
+		expect(screen.getByText("Brand Sans")).toBeTruthy();
+		const specimens = screen.getAllByText("Aa Bb Cc 123") as HTMLElement[];
+		expect(specimens[0]!.style.fontFamily).toContain("Inter");
+		expect(specimens[2]!.style.fontFamily).toContain("Brand Sans");
+		expect(specimens[2]!.style.fontFamily).toContain("monospace");
+
+		// googlefonts managed source emits its catalog-weight link even
+		// under self-host delivery; the local source emits none.
+		const links = [...document.querySelectorAll('link[rel="stylesheet"]')].map((l) =>
+			l.getAttribute("href"),
+		);
+		expect(links).toEqual([
+			"https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap",
+		]);
+
+		// The persisted row's resolved @font-face rules are injected.
+		const style = document.querySelector("style[data-font-preview]");
+		expect(style?.innerHTML).toContain("local.woff2");
+	});
+});
+
 describe("ThemeEditorPage — assets section", () => {
 	const fileInputs = () => document.querySelectorAll<HTMLInputElement>('input[type="file"]');
 

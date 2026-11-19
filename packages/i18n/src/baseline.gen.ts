@@ -35447,6 +35447,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "theme",
+		key: "fontPreviewLabel",
+		locale: "en",
+		value: "Font preview",
+	},
+	{
+		namespace: "theme",
+		key: "fontPreviewText",
+		locale: "en",
+		value: "The quick brown fox jumps over the lazy dog",
+	},
+	{
+		namespace: "theme",
 		key: "brandTitle",
 		locale: "en",
 		value: "Brand",
@@ -36611,6 +36623,18 @@ export const I18N_BASELINE = [
 		key: "fontMono",
 		locale: "pt-BR",
 		value: "Mono",
+	},
+	{
+		namespace: "theme",
+		key: "fontPreviewLabel",
+		locale: "pt-BR",
+		value: "Pré-visualização de fontes",
+	},
+	{
+		namespace: "theme",
+		key: "fontPreviewText",
+		locale: "pt-BR",
+		value: "A rápida raposa marrom salta sobre o cão preguiçoso",
 	},
 	{
 		namespace: "theme",
@@ -37779,6 +37803,18 @@ export const I18N_BASELINE = [
 		key: "fontMono",
 		locale: "es",
 		value: "Mono",
+	},
+	{
+		namespace: "theme",
+		key: "fontPreviewLabel",
+		locale: "es",
+		value: "Vista previa de fuentes",
+	},
+	{
+		namespace: "theme",
+		key: "fontPreviewText",
+		locale: "es",
+		value: "El veloz murciélago hindú comía feliz cardillo y kiwi",
 	},
 	{
 		namespace: "theme",
