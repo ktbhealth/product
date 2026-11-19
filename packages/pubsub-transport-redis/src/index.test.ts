@@ -23,24 +23,51 @@ describe("createRedisPubSubTransport", () => {
 		expect(sent).toEqual([["ktb:events", '{"a":1}']]);
 	});
 
-	it("lists channels with NUMSUB subscriber counts", async () => {
+	it("lists channels with per-channel NUMSUB subscriber counts", async () => {
+		const numsubCalls: string[][] = [];
 		const transport = await createRedisPubSubTransport({
 			client: fakeClient({
 				pubSubChannels: async () => ["ktb:events", "ktb:signals"],
-				pubSubNumSub: async (...channels) => [channels[0], 3],
+				// Plain-object reply — the node-redis v6 shape.
+				pubSubNumSub: async (...channels) => {
+					numsubCalls.push([...channels]);
+					return { "ktb:events": 3, "ktb:signals": 0 };
+				},
 			}),
 		});
 		const topics = await transport.listTopics();
+		// One batched NUMSUB call for all channels.
+		expect(numsubCalls).toEqual([["ktb:events", "ktb:signals"]]);
 		expect(topics).toEqual([
 			{ id: "redis:ktb:events", name: "ktb:events", transport: "redis", subscribers: 3 },
-			{ id: "redis:ktb:signals", name: "ktb:signals", transport: "redis", subscribers: 3 },
+			{ id: "redis:ktb:signals", name: "ktb:signals", transport: "redis", subscribers: 0 },
 		]);
 	});
 
-	it("reports null subscribers and empty list when probes are absent or fail", async () => {
+	it("parses array and Map NUMSUB replies too", async () => {
+		const arrayClient = await createRedisPubSubTransport({
+			client: fakeClient({
+				pubSubChannels: async () => ["c"],
+				pubSubNumSub: async () => ["c", 7],
+			}),
+		});
+		expect((await arrayClient.listTopics())[0]?.subscribers).toBe(7);
+
+		const mapClient = await createRedisPubSubTransport({
+			client: fakeClient({
+				pubSubChannels: async () => ["c"],
+				pubSubNumSub: async () => new Map([["c", 4]]),
+			}),
+		});
+		expect((await mapClient.listTopics())[0]?.subscribers).toBe(4);
+	});
+
+	it("reports null subscribers and rejects channel-list failures honestly", async () => {
 		const noProbes = await createRedisPubSubTransport({ client: fakeClient() });
 		expect(await noProbes.listTopics()).toEqual([]);
 
+		// PUBSUB CHANNELS failure must REJECT — the merge layer turns it
+		// into a degraded source, never a fake empty channel set.
 		const failing = await createRedisPubSubTransport({
 			client: fakeClient({
 				pubSubChannels: async () => {
@@ -48,7 +75,7 @@ describe("createRedisPubSubTransport", () => {
 				},
 			}),
 		});
-		expect(await failing.listTopics()).toEqual([]);
+		await expect(failing.listTopics()).rejects.toThrow("redis down");
 
 		const numsubFails = await createRedisPubSubTransport({
 			client: fakeClient({
@@ -61,23 +88,31 @@ describe("createRedisPubSubTransport", () => {
 		expect((await numsubFails.listTopics())[0]?.subscribers).toBeNull();
 	});
 
-	it("subscribe delivers parsed payloads when the client supports it", async () => {
-		let listener: ((message: string, channel: string) => void) | undefined;
+	it("subscribe delivers parsed payloads and unsubscribes per listener", async () => {
+		const listeners = new Map<string, (message: string, channel: string) => void>();
+		const unsubs: [string, unknown][] = [];
 		const transport = await createRedisPubSubTransport({
 			client: fakeClient({
-				sSubscribe: async (_channel, l) => {
-					listener = l;
+				subscribe: async (channel, listener) => {
+					listeners.set(channel, listener);
 				},
-				sUnsubscribe: async () => {},
+				unsubscribe: async (channel, listener) => {
+					unsubs.push([channel, listener]);
+				},
 			}),
 		});
 		const seen: unknown[] = [];
 		const off = await transport.subscribe!("chan", (p) => {
 			seen.push(p);
 		});
-		listener?.('{"x":2}', "chan");
+		listeners.get("chan")?.('{"x":2}', "chan");
 		await new Promise((r) => setTimeout(r, 0));
 		expect(seen).toEqual([{ x: 2 }]);
-		expect(typeof off).toBe("function");
+		off();
+		await new Promise((r) => setTimeout(r, 0));
+		// Unsubscribe carries the SAME listener — other subscribers on
+		// the channel are untouched.
+		expect(unsubs).toHaveLength(1);
+		expect(unsubs[0]?.[0]).toBe("chan");
 	});
 });

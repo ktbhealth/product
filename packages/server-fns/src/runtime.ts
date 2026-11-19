@@ -183,6 +183,15 @@ export interface PubSubPublishResult {
 	readonly reason?: "forbidden" | "unknown-topic" | "unavailable" | "publish-failed";
 }
 
+/** One merged topic enumeration: surviving topics plus the ids of
+ * sources whose probe failed — a bound-but-down transport is reported
+ * honestly instead of silently vanishing into an empty list.
+ * Structural mirror of `PubSubTopicListing` in @ktb/pubsub-port. */
+export interface PubSubTopicsResult {
+	readonly topics: readonly PubSubTopicInfo[];
+	readonly degraded: readonly string[];
+}
+
 /**
  * Minimal paginated listing slice — the real R2Bucket satisfies this
  * (its `list` returns R2Objects, a superset of the shape below). Used
@@ -299,7 +308,7 @@ export interface ServerRuntime {
 	 * `memory:<name>` hits the in-process bus, `redis:<channel>` the
 	 * Redis transport. Undefined when no pub/sub transport is bound. */
 	readonly pubsub?: {
-		readonly topics: () => Promise<readonly PubSubTopicInfo[]>;
+		readonly topics: () => Promise<PubSubTopicsResult>;
 		readonly publish: (topicId: string, payload: unknown) => Promise<PubSubPublishResult>;
 	};
 	/** Workers AI binding (or host-resolved stand-in) for transcription;

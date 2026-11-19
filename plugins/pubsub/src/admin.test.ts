@@ -7,7 +7,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { installServerFnRuntime, resetServerFnRuntime, stubAuth } from "@ktb/server-fns/testing";
-import type { PubSubPublishResult, PubSubTopicInfo } from "@ktb/server-fns";
+import type { PubSubPublishResult, PubSubTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
 
 import { PubSubAdmin, PubSubAdminLive } from "./admin.ts";
 
@@ -47,7 +47,7 @@ describe("PubSubAdminLive", () => {
 			stubAuth(() => null),
 			{
 				pubsub: {
-					topics: async () => [TOPIC],
+					topics: async () => ({ topics: [TOPIC], degraded: [] }),
 					publish: async (topicId, payload) => {
 						publishCalls.push([topicId, payload]);
 						return { ok: true };
@@ -55,8 +55,8 @@ describe("PubSubAdminLive", () => {
 				},
 			},
 		);
-		const topics = await asPrincipal(runtime, (a) => a.topics(), "admin@x.com");
-		expect(topics).toEqual([TOPIC]);
+		const listing = await asPrincipal(runtime, (a) => a.topics(), "admin@x.com");
+		expect(listing).toEqual({ topics: [TOPIC], degraded: [] });
 		const result = await asPrincipal(
 			runtime,
 			(a) => a.publish("memory:cron.fires", { ping: true }),
@@ -94,7 +94,7 @@ describe("PubSubAdminLive", () => {
 			stubAuth(() => null),
 			{
 				pubsub: {
-					topics: async () => [],
+					topics: async (): Promise<PubSubTopicsResult> => ({ topics: [], degraded: [] }),
 					publish: async () => results.shift() ?? { ok: true },
 				},
 			},
@@ -114,7 +114,7 @@ describe("PubSubAdminLive", () => {
 			stubAuth(() => null),
 			{
 				pubsub: {
-					topics: async () => {
+					topics: async (): Promise<PubSubTopicsResult> => {
 						throw new Error("sources gone");
 					},
 					publish: async () => {

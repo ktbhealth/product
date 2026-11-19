@@ -89,24 +89,33 @@ describe("mergePubSubSources", () => {
 		transport: "redis",
 		subscribers: null,
 	});
+	const source = (id: string, topics: PubSubTopicInfo[]) => ({
+		id,
+		list: async () => topics,
+	});
 
 	it("merges sources and keeps the first id on collisions", async () => {
 		const merged = mergePubSubSources([
-			{ list: async () => [topic("a"), topic("dup")] },
-			{ list: async () => [topic("dup"), topic("b")] },
+			source("a", [topic("t1"), topic("dup")]),
+			source("b", [topic("dup"), topic("t2")]),
 		]);
-		expect((await merged.list()).map((t) => t.id)).toEqual(["a", "dup", "b"]);
+		const listing = await merged.list();
+		expect(listing.topics.map((t) => t.id)).toEqual(["t1", "dup", "t2"]);
+		expect(listing.degraded).toEqual([]);
 	});
 
-	it("collapses a failing source to an empty list", async () => {
+	it("reports a failing source as degraded instead of dropping it silently", async () => {
 		const merged = mergePubSubSources([
 			{
+				id: "broken",
 				list: async () => {
 					throw new Error("down");
 				},
 			},
-			{ list: async () => [topic("ok")] },
+			source("ok", [topic("t")]),
 		]);
-		expect((await merged.list()).map((t) => t.id)).toEqual(["ok"]);
+		const listing = await merged.list();
+		expect(listing.topics.map((t) => t.id)).toEqual(["t"]);
+		expect(listing.degraded).toEqual(["broken"]);
 	});
 });

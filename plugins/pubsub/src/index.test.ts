@@ -90,9 +90,10 @@ describe("pubsub panel page loader", () => {
 		subscribers: 1,
 		recent: [{ at: 1700000000000, payload: { jobId: "agenda-reminders", ok: true } }],
 	};
+	const LISTING = { topics: [TOPIC], degraded: [] as string[] };
 	const adminStub = (overrides: Partial<PubSubAdmin["Service"]> = {}) =>
 		({
-			topics: () => Effect.succeed([TOPIC]),
+			topics: () => Effect.succeed(LISTING),
 			publish: () => Effect.succeed({ ok: true as const }),
 			...overrides,
 		}) as unknown as PubSubAdmin["Service"];
@@ -101,7 +102,7 @@ describe("pubsub panel page loader", () => {
 		const result = await Effect.runPromise(
 			loader().pipe(Effect.provideService(PubSubAdmin, adminStub())),
 		);
-		expect(result).toEqual({ topics: [TOPIC] });
+		expect(result).toEqual({ topics: LISTING });
 	});
 
 	it("collapses Forbidden to null", async () => {

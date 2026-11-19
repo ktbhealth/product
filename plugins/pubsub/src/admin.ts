@@ -4,14 +4,20 @@ import * as Layer from "effect/Layer";
 
 import type { Forbidden } from "@ktb/authz";
 import { PlatformAdmin } from "@ktb/platform";
-import { getServerRuntime, type PubSubPublishResult, type PubSubTopicInfo } from "@ktb/server-fns";
+import {
+	getServerRuntime,
+	type PubSubPublishResult,
+	type PubSubTopicsResult,
+} from "@ktb/server-fns";
 
 /**
  * Pub/sub console port: the read/publish side of /platform/pubsub.
  *
  * - `topics`: every topic the bound transports enumerate — the
  *   in-process bus's known topics plus Redis PUBSUB CHANNELS when the
- *   deployment binds it. Null when the runtime cannot report.
+ *   deployment binds it — plus the ids of sources whose probe failed
+ *   (`degraded`), so a bound-but-down transport renders honestly.
+ *   Null when the runtime cannot report at all.
  * - `publish`: route a JSON payload to a topic by its console-facing
  *   id (`memory:<name>` / `redis:<channel>`). Honest result reasons —
  *   never a thrown wire error for expected cases.
@@ -24,7 +30,7 @@ export type { PubSubPublishResult } from "@ktb/server-fns";
 export class PubSubAdmin extends Context.Service<
 	PubSubAdmin,
 	{
-		readonly topics: () => Effect.Effect<readonly PubSubTopicInfo[] | null, Forbidden>;
+		readonly topics: () => Effect.Effect<PubSubTopicsResult | null, Forbidden>;
 		readonly publish: (
 			topicId: string,
 			payload: unknown,
@@ -40,7 +46,7 @@ export const PubSubAdminLive = Layer.effect(
 			topics: () =>
 				platformAdmin.requireAdmin().pipe(
 					Effect.andThen(
-						Effect.promise(async (): Promise<readonly PubSubTopicInfo[] | null> => {
+						Effect.promise(async (): Promise<PubSubTopicsResult | null> => {
 							try {
 								const capability = getServerRuntime().pubsub;
 								return capability === undefined ? null : await capability.topics();

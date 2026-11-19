@@ -27060,6 +27060,19 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pubsub",
+		key: "degradedTitle",
+		locale: "en",
+		value: "Degraded sources",
+	},
+	{
+		namespace: "pubsub",
+		key: "degradedDescription",
+		locale: "en",
+		kind: "text",
+		value: "{sources} could not be read — the topic list may be incomplete.",
+	},
+	{
+		namespace: "pubsub",
 		key: "publishTitle",
 		locale: "en",
 		value: "Publish",
@@ -27244,6 +27257,19 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pubsub",
+		key: "degradedTitle",
+		locale: "pt-BR",
+		value: "Fontes degradadas",
+	},
+	{
+		namespace: "pubsub",
+		key: "degradedDescription",
+		locale: "pt-BR",
+		kind: "text",
+		value: "{sources} não puderam ser lidas — a lista de tópicos pode estar incompleta.",
+	},
+	{
+		namespace: "pubsub",
 		key: "publishTitle",
 		locale: "pt-BR",
 		value: "Publicar",
@@ -27425,6 +27451,19 @@ export const I18N_BASELINE = [
 		key: "unavailableDescription",
 		locale: "es",
 		value: "Esta señal no se puede leer en el entorno actual.",
+	},
+	{
+		namespace: "pubsub",
+		key: "degradedTitle",
+		locale: "es",
+		value: "Fuentes degradadas",
+	},
+	{
+		namespace: "pubsub",
+		key: "degradedDescription",
+		locale: "es",
+		kind: "text",
+		value: "{sources} no se pudieron leer — la lista de temas puede estar incompleta.",
 	},
 	{
 		namespace: "pubsub",

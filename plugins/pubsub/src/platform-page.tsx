@@ -1,12 +1,13 @@
 import type { PanelPageContext } from "@ktb/kernel";
-import type { PubSubTopicInfo } from "@ktb/server-fns";
+import type { PubSubTopicsResult } from "@ktb/server-fns";
 
 import { PubSubPage } from "./views/PubSubPage.tsx";
 
 /** Loader payload for /platform/pubsub — null when the topic sources
- * cannot be read (the view renders the unavailable state). */
+ * cannot be read at all (the view renders the unavailable state);
+ * `degraded` lists bound sources whose probe failed. */
 export interface PubSubPageData {
-	readonly topics: readonly PubSubTopicInfo[] | null;
+	readonly topics: PubSubTopicsResult | null;
 }
 
 /**
@@ -18,5 +19,5 @@ export interface PubSubPageData {
  */
 export function PubSubPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<PubSubPageData>;
-	return <PubSubPage topics={d.topics ?? null} i18n={ctx.i18n} locale={ctx.locale} />;
+	return <PubSubPage listing={d.topics ?? null} i18n={ctx.i18n} locale={ctx.locale} />;
 }

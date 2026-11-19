@@ -7,9 +7,12 @@ import type { PanelPageContext } from "@ktb/kernel";
 import { PubSubPlatformPage } from "./platform-page.tsx";
 
 vi.mock("./views/PubSubPage.tsx", () => ({
-	PubSubPage: ({ topics, locale }: { topics: unknown; locale: string }) => (
+	PubSubPage: ({ listing, locale }: { listing: unknown; locale: string }) => (
 		<div data-testid="pubsub-page">
-			{locale}:{Array.isArray(topics) ? topics.length : "null"}
+			{locale}:
+			{listing !== null && typeof listing === "object" && "topics" in listing
+				? (listing as { topics: unknown[] }).topics.length
+				: "null"}
 		</div>
 	),
 }));
@@ -20,7 +23,12 @@ afterEach(cleanup);
 
 describe("PubSubPlatformPage", () => {
 	it("narrows loader data into view props", () => {
-		render(<PubSubPlatformPage data={{ topics: [{ id: "memory:x" }] }} ctx={ctx("pt-BR")} />);
+		render(
+			<PubSubPlatformPage
+				data={{ topics: { topics: [{ id: "memory:x" }], degraded: [] } }}
+				ctx={ctx("pt-BR")}
+			/>,
+		);
 		expect(screen.getByTestId("pubsub-page").textContent).toBe("pt-BR:1");
 	});
 

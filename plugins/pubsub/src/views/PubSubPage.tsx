@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import type { PubSubTopicInfo } from "@ktb/server-fns";
+import type { PubSubTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Input } from "@ktbhealth/ui/components/input";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
@@ -23,12 +23,15 @@ import type { PubSubPublishResult } from "../admin.ts";
 /**
  * /platform/pubsub — the Concurrency console page. Two sections:
  * topics (every channel the bound transports enumerate, with honest
- * subscriber/history states) and publish (a manual JSON publish to a
- * topic id). Every signal degrades to the unavailable state.
+ * subscriber/history states plus a degraded-source banner) and
+ * publish (a manual JSON publish to a topic id). Every signal
+ * degrades to the unavailable state.
  */
 
 interface PubSubPageProps {
-	readonly topics: readonly PubSubTopicInfo[] | null;
+	/** Merged topic listing; null when the sources cannot be read at
+	 * all. `degraded` names bound sources whose probe failed. */
+	readonly listing: PubSubTopicsResult | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	readonly i18n?: PageI18nSlice;
 	readonly locale: string;
@@ -66,18 +69,28 @@ const publishMessage = (result: PubSubPublishResult, m: PubSubMessages): string 
 };
 
 function TopicsSection({
-	topics,
+	listing,
 	locale,
 	m,
 }: {
-	topics: readonly PubSubTopicInfo[] | null;
+	listing: PubSubTopicsResult | null;
 	locale: string;
 	m: PubSubMessages;
 }) {
+	const topics = listing?.topics ?? null;
 	return (
 		<section>
 			<h2 className="text-sm font-semibold">{m.topicsTitle}</h2>
 			<p className="text-muted-foreground mb-3 text-xs">{m.topicsDescription}</p>
+			{listing !== null && listing.degraded.length > 0 && (
+				<div className="border-warning/30 bg-warning/10 mb-3 rounded-md border px-4 py-3 text-sm text-warning">
+					<span className="font-medium">{m.degradedTitle}</span>
+					<span className="text-muted-foreground">
+						{" — "}
+						{m.degradedDescription(listing.degraded.join(", "))}
+					</span>
+				</div>
+			)}
 			{topics === null ? (
 				<Unavailable m={m} />
 			) : topics.length === 0 ? (
@@ -118,7 +131,11 @@ function TopicsSection({
 												: topic.recent.length}
 									</TableCell>
 									<TableCell className="text-xs whitespace-nowrap">
-										{last === null ? (
+										{topic.recent === undefined ? (
+											// No retained history — activity is unknown,
+											// not "never".
+											<span className="text-muted-foreground">{m.subscribersUnknown}</span>
+										) : last === null ? (
 											<span className="text-muted-foreground">{m.neverActive}</span>
 										) : (
 											fmt(last, locale)
@@ -153,7 +170,9 @@ function PublishSection({ m }: { m: PubSubMessages }) {
 		}
 		setState({ pending: true, message: null, ok: false });
 		try {
-			const result = await publishPubSubMessageFn({ data: { topicId: topicId.trim(), payload } });
+			const result = await publishPubSubMessageFn({
+				data: { topicId: topicId.trim(), payload },
+			});
 			setState({ pending: false, message: publishMessage(result, m), ok: result.ok });
 		} catch {
 			setState({ pending: false, message: m.publishFailed, ok: false });
@@ -202,14 +221,15 @@ function PublishSection({ m }: { m: PubSubMessages }) {
 	);
 }
 
-export function PubSubPage({ topics, i18n, locale }: PubSubPageProps) {
+export function PubSubPage({ listing, i18n, locale }: PubSubPageProps) {
 	const m = sliceMessages(i18n, I18N_NAMESPACE, pubSubMessages(locale));
+	const count = listing?.topics.length ?? null;
 	return (
 		<div className="mx-auto flex max-w-5xl flex-col gap-8 p-6">
 			<header>
 				<h1 className="text-2xl font-semibold tracking-tight">{m.title}</h1>
 				<p className="text-muted-foreground mt-1 text-sm">
-					{topics === null ? m.unavailableDescription : m.description(topics.length)}
+					{count === null ? m.unavailableDescription : m.description(count)}
 				</p>
 			</header>
 			<Tabs defaultValue="topics">
@@ -218,7 +238,7 @@ export function PubSubPage({ topics, i18n, locale }: PubSubPageProps) {
 					<TabsTrigger value="publish">{m.publishTitle}</TabsTrigger>
 				</TabsList>
 				<TabsContent value="topics">
-					<TopicsSection topics={topics} locale={locale} m={m} />
+					<TopicsSection listing={listing} locale={locale} m={m} />
 				</TabsContent>
 				<TabsContent value="publish">
 					<PublishSection m={m} />

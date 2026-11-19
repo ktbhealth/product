@@ -4994,6 +4994,17 @@ export const I18N_MANIFEST = {
 		unavailableDescription: {
 			params: [],
 		},
+		degradedTitle: {
+			params: [],
+		},
+		degradedDescription: {
+			params: [
+				{
+					name: "sources",
+				},
+			],
+			template: "{sources} could not be read — the topic list may be incomplete.",
+		},
 		publishTitle: {
 			params: [],
 		},

@@ -37,6 +37,8 @@ export interface PubSubMessages {
 	readonly emptyTopicsDescription: string;
 	readonly unavailableTitle: string;
 	readonly unavailableDescription: string;
+	readonly degradedTitle: string;
+	readonly degradedDescription: (sources: string) => string;
 	readonly publishTitle: string;
 	readonly publishDescription: string;
 	readonly pTopic: string;
@@ -76,6 +78,12 @@ const en: PubSubMessages = {
 		"Topics appear here when a transport first publishes or subscribes to a channel.",
 	unavailableTitle: "Signal unavailable",
 	unavailableDescription: "This signal cannot be read in the current environment.",
+	degradedTitle: "Degraded sources",
+	degradedDescription: paramMessage(
+		"en",
+		"{sources} could not be read — the topic list may be incomplete.",
+		["sources"],
+	),
 	publishTitle: "Publish",
 	publishDescription: "Send a JSON payload to a topic by its console id.",
 	pTopic: "Topic",
@@ -115,6 +123,12 @@ const ptBR: PubSubMessages = {
 		"Tópicos aparecem aqui quando um transporte publica ou assina um canal pela primeira vez.",
 	unavailableTitle: "Sinal indisponível",
 	unavailableDescription: "Este sinal não pode ser lido no ambiente atual.",
+	degradedTitle: "Fontes degradadas",
+	degradedDescription: paramMessage(
+		"pt-BR",
+		"{sources} não puderam ser lidas — a lista de tópicos pode estar incompleta.",
+		["sources"],
+	),
 	publishTitle: "Publicar",
 	publishDescription: "Envie um payload JSON a um tópico pelo id do console.",
 	pTopic: "Tópico",
@@ -154,6 +168,12 @@ const es: PubSubMessages = {
 		"Los temas aparecen aquí cuando un transporte publica o se suscribe a un canal por primera vez.",
 	unavailableTitle: "Señal no disponible",
 	unavailableDescription: "Esta señal no se puede leer en el entorno actual.",
+	degradedTitle: "Fuentes degradadas",
+	degradedDescription: paramMessage(
+		"es",
+		"{sources} no se pudieron leer — la lista de temas puede estar incompleta.",
+		["sources"],
+	),
 	publishTitle: "Publicar",
 	publishDescription: "Envía un payload JSON a un tema por su id del console.",
 	pTopic: "Tema",

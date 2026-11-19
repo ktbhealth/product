@@ -211,12 +211,12 @@ describe("platform pub/sub (/platform/pubsub)", () => {
 		expect(runtime.pubsub).toBeDefined();
 
 		// No traffic yet — the in-process bus knows no topics.
-		expect(await runtime.pubsub!.topics()).toEqual([]);
+		expect(await runtime.pubsub!.topics()).toEqual({ topics: [], degraded: [] });
 
 		// A cron fire is a real producer: cron.fires appears with
 		// its retained payload.
 		await runtime.crons!.runNow("agenda-reminders");
-		const topics = await runtime.pubsub!.topics();
+		const { topics } = await runtime.pubsub!.topics();
 		const fires = topics.find((t) => t.id === "memory:cron.fires");
 		expect(fires).toMatchObject({
 			name: "cron.fires",
@@ -232,7 +232,7 @@ describe("platform pub/sub (/platform/pubsub)", () => {
 		expect(await runtime.pubsub!.publish("memory:cron.fires", { ping: true })).toEqual({
 			ok: true,
 		});
-		const after = (await runtime.pubsub!.topics()).find((t) => t.id === "memory:cron.fires");
+		const after = (await runtime.pubsub!.topics()).topics.find((t) => t.id === "memory:cron.fires");
 		expect(after?.recent?.at(-1)?.payload).toEqual({ ping: true });
 	});
 
@@ -270,7 +270,8 @@ describe("platform pub/sub (/platform/pubsub)", () => {
 				],
 			};
 		});
-		const topics = await runtime.pubsub!.topics();
+		const { topics, degraded } = await runtime.pubsub!.topics();
+		expect(degraded).toEqual([]);
 		expect(topics.map((t) => t.id)).toContain("redis:ktb:events");
 		expect(await runtime.pubsub!.publish("redis:ktb:events", { e: 1 })).toEqual({ ok: true });
 		expect(published).toEqual([["ktb:events", { e: 1 }]]);
@@ -288,7 +289,11 @@ describe("platform pub/sub (/platform/pubsub)", () => {
 					},
 				};
 			});
-			await expect(runtime.pubsub!.topics()).resolves.toEqual([]);
+			// The failing Redis source is reported degraded, not dropped.
+			await expect(runtime.pubsub!.topics()).resolves.toEqual({
+				topics: [],
+				degraded: ["redis"],
+			});
 		},
 	);
 });

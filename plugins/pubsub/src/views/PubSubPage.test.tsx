@@ -10,7 +10,7 @@ vi.mock("../fns.ts", () => ({
 		publishPubSubMessageFn(arg),
 }));
 
-import type { PubSubTopicInfo } from "@ktb/server-fns";
+import type { PubSubTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
 
 import { PubSubPage } from "./PubSubPage.tsx";
 
@@ -21,6 +21,11 @@ const topic = (over: Partial<PubSubTopicInfo> = {}): PubSubTopicInfo => ({
 	subscribers: 1,
 	recent: [{ at: 1700000000000, payload: { jobId: "agenda-reminders", ok: true } }],
 	...over,
+});
+
+const listing = (topics: PubSubTopicInfo[], degraded: string[] = []): PubSubTopicsResult => ({
+	topics,
+	degraded,
 });
 
 const openTab = (name: string) => {
@@ -34,7 +39,7 @@ afterEach(() => {
 
 describe("PubSubPage", () => {
 	it("renders the topics table with data", () => {
-		render(<PubSubPage topics={[topic()]} locale="en" />);
+		render(<PubSubPage listing={listing([topic()])} locale="en" />);
 		expect(screen.getByRole("heading", { name: "Pub/sub" })).toBeTruthy();
 		expect(screen.getByText("cron.fires")).toBeTruthy();
 		expect(screen.getByText("memory:cron.fires")).toBeTruthy();
@@ -46,7 +51,7 @@ describe("PubSubPage", () => {
 	it("renders honest states for null subscribers, missing history and empty topics", () => {
 		render(
 			<PubSubPage
-				topics={[
+				listing={listing([
 					topic({
 						id: "redis:ktb:events",
 						name: "ktb:events",
@@ -54,7 +59,7 @@ describe("PubSubPage", () => {
 						subscribers: null,
 						recent: undefined,
 					}),
-				]}
+				])}
 				locale="en"
 			/>,
 		);
@@ -62,17 +67,23 @@ describe("PubSubPage", () => {
 		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
 	});
 
+	it("renders a degraded-source banner naming the failed transports", () => {
+		render(<PubSubPage listing={listing([], ["redis"])} locale="en" />);
+		expect(screen.getByText("Degraded sources")).toBeTruthy();
+		expect(screen.getByText(/redis could not be read/)).toBeTruthy();
+	});
+
 	it("renders unavailable and empty states", () => {
-		const { unmount } = render(<PubSubPage topics={null} locale="en" />);
+		const { unmount } = render(<PubSubPage listing={null} locale="en" />);
 		expect(screen.getByText("Signal unavailable")).toBeTruthy();
 		unmount();
-		render(<PubSubPage topics={[]} locale="en" />);
+		render(<PubSubPage listing={listing([])} locale="en" />);
 		expect(screen.getByText(/No topics yet/)).toBeTruthy();
 	});
 
 	it("publishes a valid JSON payload", async () => {
 		publishPubSubMessageFn.mockResolvedValueOnce({ ok: true } as never);
-		render(<PubSubPage topics={[topic()]} locale="en" />);
+		render(<PubSubPage listing={listing([topic()])} locale="en" />);
 		openTab("Publish");
 		fireEvent.change(screen.getByPlaceholderText("memory:cron.fires"), {
 			target: { value: "memory:cron.fires" },
@@ -85,7 +96,7 @@ describe("PubSubPage", () => {
 	});
 
 	it("rejects invalid JSON without calling the server fn", async () => {
-		render(<PubSubPage topics={[topic()]} locale="en" />);
+		render(<PubSubPage listing={listing([topic()])} locale="en" />);
 		openTab("Publish");
 		fireEvent.change(screen.getByPlaceholderText("memory:cron.fires"), {
 			target: { value: "memory:x" },

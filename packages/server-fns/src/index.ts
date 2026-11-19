@@ -24,6 +24,7 @@ export {
 	type PubSubMessageInfo,
 	type PubSubPublishResult,
 	type PubSubTopicInfo,
+	type PubSubTopicsResult,
 	type PubSubTransport,
 	type QueueConsumer,
 	type QueueDepth,

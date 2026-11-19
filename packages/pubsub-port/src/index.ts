@@ -49,22 +49,41 @@ export interface PubSubMessageInfo {
 	readonly payload: unknown;
 }
 
-/** A transport-side topic enumerator the composition root merges. */
+/** A transport-side topic enumerator the composition root merges.
+ * `id` namespaces the source for degraded reporting (`memory`,
+ * `redis`, …) — it is NOT the topic-id prefix (topics carry their
+ * own `transport:`/`source:` namespacing in `PubSubTopicInfo.id`). */
 export interface PubSubTopicSource {
+	readonly id: string;
 	readonly list: () => Promise<readonly PubSubTopicInfo[]>;
 }
 
-/** Fan-out several sources into one — the first source wins on `id`
- * collisions (sources are expected to namespace their ids). */
-export const mergePubSubSources = (sources: readonly PubSubTopicSource[]): PubSubTopicSource => ({
+/** One merged enumeration: surviving topics plus the ids of sources
+ * whose probe failed — a bound-but-down transport is reported
+ * honestly instead of silently vanishing into an empty list. */
+export interface PubSubTopicListing {
+	readonly topics: readonly PubSubTopicInfo[];
+	readonly degraded: readonly string[];
+}
+
+/** Fan-out several sources into one listing — the first source wins
+ * on topic `id` collisions; a throwing source lands in `degraded`. */
+export const mergePubSubSources = (
+	sources: readonly PubSubTopicSource[],
+): { readonly list: () => Promise<PubSubTopicListing> } => ({
 	list: async () => {
 		const seen = new Map<string, PubSubTopicInfo>();
+		const degraded: string[] = [];
 		for (const source of sources) {
-			for (const topic of await source.list().catch(() => [])) {
-				if (!seen.has(topic.id)) seen.set(topic.id, topic);
+			try {
+				for (const topic of await source.list()) {
+					if (!seen.has(topic.id)) seen.set(topic.id, topic);
+				}
+			} catch {
+				degraded.push(source.id);
 			}
 		}
-		return [...seen.values()];
+		return { topics: [...seen.values()], degraded };
 	},
 });
 
@@ -135,19 +154,25 @@ export const makeInProcessPubSub = (
 			listeners.set(topic, set);
 			return () => {
 				set.delete(handler);
-				if (set.size === 0) listeners.delete(topic);
+				if (set.size === 0) {
+					listeners.delete(topic);
+					// A subscribe-only topic with no retained history has
+					// nothing left to report — drop it from the listing.
+					if (!recent.has(topic)) known.delete(topic);
+				}
 			};
 		},
 		topics: () => [...known].sort(),
 		subscriberCount: (topic) => listeners.get(topic)?.size ?? 0,
-		recentMessages: (topic) => recent.get(topic) ?? [],
+		// Defensive copies — consumers must not mutate retained history.
+		recentMessages: (topic) => [...(recent.get(topic) ?? [])],
 		listTopics: () =>
 			[...known].sort().map((name) => ({
 				id: `${prefix}:${name}`,
 				name,
 				transport: "in-process" as const,
 				subscribers: listeners.get(name)?.size ?? 0,
-				recent: recent.get(name) ?? [],
+				recent: [...(recent.get(name) ?? [])],
 			})),
 	};
 };

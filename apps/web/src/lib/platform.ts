@@ -304,8 +304,8 @@ const redisPubSub = envRecord.REDIS_PUBSUB as
 	| (PubSubBus & { listTopics?: PubSubTopicSource["list"] })
 	| undefined;
 const pubsubSources: PubSubTopicSource[] = [
-	{ list: async () => memoryPubSub.listTopics() },
-	...(redisPubSub?.listTopics === undefined ? [] : [{ list: redisPubSub.listTopics }]),
+	{ id: "memory", list: async () => memoryPubSub.listTopics() },
+	...(redisPubSub?.listTopics === undefined ? [] : [{ id: "redis", list: redisPubSub.listTopics }]),
 ];
 const pubSubTopics = mergePubSubSources(pubsubSources);
 
@@ -564,6 +564,7 @@ setServerRuntime({
 			const prefix = sep === -1 ? "" : topicId.slice(0, sep);
 			const name = sep === -1 ? topicId : topicId.slice(sep + 1);
 			try {
+				if (name === "") return { ok: false, reason: "unknown-topic" };
 				if (prefix === "memory") {
 					await memoryPubSub.publish(name, payload);
 					return { ok: true };
