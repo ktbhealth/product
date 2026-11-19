@@ -24,11 +24,7 @@ import { googleFontCssHref } from "@ktb/fonts/adapters/googlefonts";
 import { fontCssVars, fontFaceCss } from "./present.ts";
 import type { ThemeFontConfig, ThemeFontSlot, ThemeFontSourceOption } from "./types.ts";
 
-export const FONT_PREVIEW_SLOTS = [
-	"sans",
-	"heading",
-	"mono",
-] as const satisfies readonly ThemeFontSlot[];
+const FONT_PREVIEW_SLOTS = ["sans", "heading", "mono"] as const satisfies readonly ThemeFontSlot[];
 
 /** Provider adapter kind whose families deliver as a Google Fonts
  * stylesheet link — same constant managed-fonts.ts matches on. */
@@ -39,7 +35,7 @@ const GOOGLE_FONTS_KIND = "googlefonts";
 const DEFAULT_WEIGHTS: readonly number[] = [400, 500, 600, 700];
 
 /** One slot's specimen inputs. */
-export interface FontPreviewSlot {
+interface FontPreviewSlot {
 	readonly slot: ThemeFontSlot;
 	/** Effective family name for display — managed catalog family wins
 	 * over the free-form `families.<slot>`; null when neither is set. */
