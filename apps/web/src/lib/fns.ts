@@ -379,9 +379,16 @@ const portalAudienceAllows = async (
  * deployable unit): a fully disabled package's pages 404 exactly like
  * unregistered paths. Page `guard` runs before `loader`; `false` or a
  * failure hides the page. Pages without a loader get
- * `{ status: "ok", data: null }`.
+ * `{ status: "ok", data: null }`. `search` is the request's parsed
+ * URL search params — forwarded to `loader` as its optional second
+ * argument (app pages use it for schema-driven param cleaning);
+ * portal dispatch passes none.
  */
-const pageData = async (path: string, shell: PageShell): Promise<PageDataResult> => {
+const pageData = async (
+	path: string,
+	shell: PageShell,
+	search?: Record<string, unknown>,
+): Promise<PageDataResult> => {
 	// findPage resolves exact paths first, then the longest matching
 	// "/*" wildcard subtree — DB-backed pages (custom-pages plugin)
 	// register one wildcard descriptor that serves every path its
@@ -440,7 +447,13 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
 	const serverPage = serverPageMap().get(entry.page.path);
 	const page = entry.page;
 	const guard = page.guard ?? serverPage?.guard;
-	const loader = page.loader ?? serverPage?.loader;
+	// Widened view of the loader union: `Page.loader` takes an optional
+	// search record, `PanelPage.loader` declares path only — both are
+	// invoked with `(path, search)`; single-param loaders ignore the
+	// extra argument at runtime.
+	const loader:
+		| ((path: string, search?: Record<string, unknown>) => Effect.Effect<unknown, unknown, unknown>)
+		| undefined = page.loader ?? serverPage?.loader;
 	// Page-level guard (feature flags / entitlements) runs before the
 	// loader; `false` — or a failure — hides the page exactly like an
 	// unknown path.
@@ -449,7 +462,7 @@ const pageData = async (path: string, shell: PageShell): Promise<PageDataResult>
 		if (!allowed) return { status: "notfound" };
 	}
 	if (loader === undefined) return { status: "ok", data: null };
-	return { status: "ok", data: await runEffect(loader(path)) };
+	return { status: "ok", data: await runEffect(loader(path, search)) };
 };
 
 /**
@@ -524,11 +537,36 @@ export const consoleDeniedFn = createServerFn({ method: "GET" }).handler(async (
 /**
  * Loader data for app-shell pages contributed via `pages` (P-059):
  * same dispatch as `portalPageDataFn` but session-optional — public
- * pages run their Effects without a bound Principal.
+ * pages run their Effects without a bound Principal. The input is
+ * either the bare path string (legacy callers) or
+ * `{ path, search }` — `search` is the route's parsed URL search,
+ * forwarded to the page loader's optional second argument. Malformed
+ * or absent search degrades to `undefined`, never a decode failure.
  */
+const AppPageDataInput = Schema.Union([
+	Schema.String,
+	Schema.Struct({
+		path: Schema.String,
+		search: Schema.optionalKey(Schema.Unknown),
+	}),
+]);
+
+const decodeAppPageData = Schema.decodeUnknownSync(AppPageDataInput);
+
+/** Plain-object search records only — arrays, null and primitives
+ * are "malformed" wire input and degrade to `undefined`. */
+const asSearchRecord = (value: unknown): Record<string, unknown> | undefined =>
+	typeof value === "object" && value !== null && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: undefined;
+
 export const appPageDataFn = createServerFn({ method: "GET" })
-	.validator((input: unknown) => Schema.decodeUnknownSync(Schema.String)(input))
-	.handler(async ({ data: path }): Promise<PageDataResult> => pageData(path, "app"));
+	.validator((input: unknown) => decodeAppPageData(input))
+	.handler(async ({ data: input }): Promise<PageDataResult> => {
+		const path = typeof input === "string" ? input : input.path;
+		const search = typeof input === "string" ? undefined : asSearchRecord(input.search);
+		return pageData(path, "app", search);
+	});
 
 // ---------- plugin manager (P-058) ----------
 // Plugin-state server functions are owned by the manager plugin — its

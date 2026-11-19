@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
 import { Schema } from "effect";
-import type { Json } from "effect/Schema";
 
 import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server-fns";
 import { PlatformAdmin } from "@ktb/platform";
@@ -192,56 +191,3 @@ export const navPagesFn = createServerFn({ method: "GET" }).handler(
 		);
 	},
 );
-
-/** Wire shape of {@link validatePageSearchFn}: the cleaned search
- * params — identical to the input when the page declares no schema,
- * the schemas plugin is absent, or validation fails (passthrough).
- * `Json` keeps the payload inside TanStack's serializable contract
- * (same convention as RichTextDocWire.content). */
-export interface PageSearchWire {
-	readonly search: Record<string, Json>;
-}
-
-const PageSearchInput = Schema.Struct({
-	path: Schema.String,
-	search: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-});
-const decodePageSearch = Schema.decodeUnknownSync(PageSearchInput);
-
-/** Public search-param validation for DB pages (T-083 + schemas):
- * the custom-page view calls this with the raw URL search; the
- * service resolves the page's bound `searchSchemaId` and strips
- * params the schema flags. Session-optional like `navPagesFn` —
- * published pages are public — and gated on `pages.render` so a
- * disabled plugin can't leak validation. Every failure mode
- * collapses to the raw passthrough: rendering must never break on a
- * schema problem. */
-export const validatePageSearchFn = createServerFn({ method: "POST" })
-	.validator((input: unknown) => decodePageSearch(input))
-	.handler(async ({ data }): Promise<PageSearchWire> => {
-		const passthrough: PageSearchWire = {
-			search: (data.search ?? {}) as Record<string, Json>,
-		};
-		const enabled = await run(
-			Effect.gen(function* () {
-				const states = yield* PluginStates;
-				return yield* states.isEnabled("pages.render");
-			}),
-		);
-		if (!enabled) return passthrough;
-		try {
-			return await run(
-				Effect.gen(function* () {
-					const pages = yield* CustomPages;
-					const search = yield* pages.validatedSearch(data.path, data.search ?? {});
-					// The service deals in `unknown` values; the wire type
-					// narrows to `Json` — URL search params are JSON-safe
-					// by construction (strings/arrays/objects from the
-					// query string).
-					return { search: search as Record<string, Json> };
-				}),
-			);
-		} catch {
-			return passthrough;
-		}
-	});

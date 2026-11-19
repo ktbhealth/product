@@ -132,12 +132,20 @@ export interface PanelPage {
  * the custom-pages plugin's "/*" backed by a DB lookup). `guard` and
  * `loader` receive the REQUESTED path so the descriptor can resolve
  * which entity the path names; signatures taking no argument remain
- * valid (the argument is simply ignored). */
+ * valid (the argument is simply ignored). `loader` may also declare an
+ * optional second `search` parameter receiving the request's parsed
+ * URL search params (undefined when the host route supplies none) —
+ * pages that validate URL params (e.g. schema-bound custom pages)
+ * clean them inside the loader so SSR and client navigations share
+ * the result; `(path) =>` loaders stay valid and simply ignore it. */
 export interface Page {
 	readonly id: string;
 	readonly path: string;
 	readonly component: ComponentType<{ data: unknown; ctx: PageContext }>;
-	readonly loader?: (path: string) => Effect.Effect<unknown, unknown, unknown>;
+	readonly loader?: (
+		path: string,
+		search?: Record<string, unknown>,
+	) => Effect.Effect<unknown, unknown, unknown>;
 	readonly guard?: (path: string) => Effect.Effect<boolean, unknown, unknown>;
 	readonly context?: "app" | "portal";
 }

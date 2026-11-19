@@ -20,7 +20,11 @@ const rootApi = getRouteApi("__root__");
 // `ctx.plugins` is the enabled-filtered client registry (P-058),
 // `ctx.user` the session user or null.
 export const Route = createFileRoute("/$")({
-	loader: async ({ params }) => {
+	// `loaderDeps` carries the parsed search into the loader: query
+	// changes re-run it, so schema-bound pages re-validate their params
+	// inside the page Effect (SSR and client navigations alike).
+	loaderDeps: ({ search }) => ({ search }),
+	loader: async ({ params, deps }) => {
 		const path = `/${params._splat ?? ""}`;
 		// findPage: exact descriptors win; "/*" wildcards (DB-backed
 		// pages) resolve by longest matching base.
@@ -31,7 +35,7 @@ export const Route = createFileRoute("/$")({
 		// with the same package-granular contract).
 		const states = await pluginStatesFn();
 		if (!entryEnabled(plugins, enabledIdSet(states), entry)) throw notFound();
-		const result = await appPageDataFn({ data: path });
+		const result = await appPageDataFn({ data: { path, search: deps.search } });
 		if (result.status === "notfound") throw notFound();
 		return { data: result.data, pluginStates: states };
 	},

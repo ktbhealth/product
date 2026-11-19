@@ -118,9 +118,12 @@ export const pagesChromePlugin = definePlugin({
  * Wildcard page descriptor: claims every app path no exact descriptor
  * or file route owns. `guard` resolves the request path against the
  * published-page table (false → the host 404s exactly like an unknown
- * path); `loader` returns the row as `data`. Both receive the request
- * path — the kernel contract for wildcard pages. The component is
- * shared by every custom page; per-page content arrives via `data`.
+ * path); `loader` returns the row as `data` plus `search` — the URL
+ * params cleaned against the page's bound `searchSchemaId` schema
+ * (absent for unbound pages). Both receive the request path — the
+ * kernel contract for wildcard pages — and the loader also gets the
+ * parsed search. The component is shared by every custom page;
+ * per-page content arrives via `data`.
  */
 export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
@@ -141,7 +144,7 @@ export const pagesRenderPlugin = definePlugin({
 					const pages = yield* CustomPages;
 					return (yield* pages.publishedByPath(path)) !== null;
 				}),
-			loader: (path) =>
+			loader: (path, search?) =>
 				Effect.gen(function* () {
 					const pages = yield* CustomPages;
 					const page = yield* pages.publishedByPath(path);
@@ -158,7 +161,17 @@ export const pagesRenderPlugin = definePlugin({
 							content = doc?.content ?? null;
 						}
 					}
-					return { ...page, content };
+					// Schema-bound pages get their URL search cleaned inside
+					// the loader chain — SSR and client navigations share the
+					// result via `data.search`. Unbound pages omit the field.
+					// `validatedSearch` is an infallible passthrough: no bound
+					// schema, absent Schemas service or a validation failure
+					// all degrade to the raw params, never a broken page.
+					const validatedSearch =
+						page.searchSchemaId === null
+							? undefined
+							: yield* pages.validatedSearch(path, search ?? {});
+					return { ...page, content, search: validatedSearch };
 				}),
 		},
 	],

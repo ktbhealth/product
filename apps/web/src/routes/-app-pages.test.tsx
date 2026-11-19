@@ -45,7 +45,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 import { Route } from "./$.tsx";
 
 type Opts = {
-	loader: (a?: { params: { _splat?: string } }) => Promise<unknown>;
+	loader: (a?: {
+		params: { _splat?: string };
+		deps?: { search?: Record<string, unknown> };
+	}) => Promise<unknown>;
 	component: () => ReactElement | null;
 };
 const opts = (r: unknown) => (r as { options: Opts }).options;
@@ -68,7 +71,9 @@ afterEach(() => {
 
 describe("/$ app page dispatcher (P-059)", () => {
 	it("throws notFound when no plugin owns the path", async () => {
-		await expect(opts(Route).loader({ params: { _splat: "nope" } })).rejects.toMatchObject({
+		await expect(
+			opts(Route).loader({ params: { _splat: "nope" }, deps: {} }),
+		).rejects.toMatchObject({
 			isNotFound: true,
 		});
 		expect(mocks.appPageDataFn).not.toHaveBeenCalled();
@@ -77,7 +82,9 @@ describe("/$ app page dispatcher (P-059)", () => {
 	it("throws notFound when the owning plugin is disabled (P-058)", async () => {
 		entry("/about");
 		mocks.pluginStatesFn.mockResolvedValue({ enabled: [] });
-		await expect(opts(Route).loader({ params: { _splat: "about" } })).rejects.toMatchObject({
+		await expect(
+			opts(Route).loader({ params: { _splat: "about" }, deps: {} }),
+		).rejects.toMatchObject({
 			isNotFound: true,
 		});
 		expect(mocks.appPageDataFn).not.toHaveBeenCalled();
@@ -86,16 +93,20 @@ describe("/$ app page dispatcher (P-059)", () => {
 	it("throws notFound when the page's guard denies", async () => {
 		entry("/about");
 		mocks.appPageDataFn.mockResolvedValue({ status: "notfound" });
-		await expect(opts(Route).loader({ params: { _splat: "about" } })).rejects.toMatchObject({
+		await expect(
+			opts(Route).loader({ params: { _splat: "about" }, deps: {} }),
+		).rejects.toMatchObject({
 			isNotFound: true,
 		});
-		expect(mocks.appPageDataFn).toHaveBeenCalledWith({ data: "/about" });
+		expect(mocks.appPageDataFn).toHaveBeenCalledWith({
+			data: { path: "/about", search: undefined },
+		});
 	});
 
 	it("returns the loader Effect's data", async () => {
 		entry("/about");
 		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: { rows: 2 } });
-		await expect(opts(Route).loader({ params: { _splat: "about" } })).resolves.toEqual({
+		await expect(opts(Route).loader({ params: { _splat: "about" }, deps: {} })).resolves.toEqual({
 			data: { rows: 2 },
 			pluginStates: { enabled: ["plugin-a"] },
 		});
@@ -104,12 +115,26 @@ describe("/$ app page dispatcher (P-059)", () => {
 	it("resolves nested splat paths against the registry", async () => {
 		entry("/docs/guide");
 		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: null });
-		await opts(Route).loader({ params: { _splat: "docs/guide" } });
-		expect(mocks.appPageDataFn).toHaveBeenCalledWith({ data: "/docs/guide" });
+		await opts(Route).loader({ params: { _splat: "docs/guide" }, deps: {} });
+		expect(mocks.appPageDataFn).toHaveBeenCalledWith({
+			data: { path: "/docs/guide", search: undefined },
+		});
+	});
+
+	it("forwards the parsed search to the page data fn", async () => {
+		entry("/search-page");
+		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: null });
+		await opts(Route).loader({
+			params: { _splat: "search-page" },
+			deps: { search: { q: "x", page: "2" } },
+		});
+		expect(mocks.appPageDataFn).toHaveBeenCalledWith({
+			data: { path: "/search-page", search: { q: "x", page: "2" } },
+		});
 	});
 
 	it("404s an empty splat (the index route owns /)", async () => {
-		await expect(opts(Route).loader({ params: {} })).rejects.toMatchObject({
+		await expect(opts(Route).loader({ params: {}, deps: {} })).rejects.toMatchObject({
 			isNotFound: true,
 		});
 	});
