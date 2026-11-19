@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { insertAuditEntry } from "@ktb/audit";
 import type { DbClient } from "@ktb/db";
 import { relationTuples } from "@ktb/db/schema";
-import { bumpEpoch, PERMISSION_CATALOG, rolePermissions, roles, splitPermission } from "@ktb/rbac";
+import { bumpEpoch, PERMISSION_CATALOG, roles, splitPermission } from "@ktb/rbac";
 
 /**
  * Built-in superadmin role: a role named `superadmin` carrying an
@@ -14,8 +14,8 @@ import { bumpEpoch, PERMISSION_CATALOG, rolePermissions, roles, splitPermission 
  * on.
  *
  * The seed runs at service-layer build and is create-only: it inserts
- * the role plus its full grant set (role_permissions AND the P-101
- * relation_tuples mirror) when the name is absent, then bumps the
+ * the role plus its full grant set as relation_tuples rows (the only
+ * grant store since T-183) when the name is absent, then bumps the
  * permission epoch and writes a system-actor audit row.
  * An existing `superadmin` role is left untouched — grants an admin
  * revoked stay revoked. The result distinguishes the two "exists"
@@ -63,14 +63,8 @@ export async function ensureSuperadminRole(db: DbClient): Promise<SuperadminSeed
 	/* v8 ignore next -- losing the insert race means the other boot owns the seed */
 	if (roleId === undefined) return "exists";
 	const now = new Date();
-	await db.insert(rolePermissions).values(
-		PERMISSION_CATALOG.map((key) => {
-			const { resource, action } = splitPermission(key);
-			return { roleId, resource, action, effect: "allow", createdAt: now };
-		}),
-	);
-	// P-101 dual-write: the same grants as relation tuples keyed on
-	// the role NAME (objectId "*" wildcard, relation = action).
+	// Grants are relation tuples keyed on the role NAME (objectId "*"
+	// wildcard, relation = action) — the only grant store.
 	await db.insert(relationTuples).values(
 		PERMISSION_CATALOG.map((key) => {
 			const { resource, action } = splitPermission(key);

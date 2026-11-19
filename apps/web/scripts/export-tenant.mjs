@@ -104,7 +104,8 @@ if (!args.local) {
 /**
  * Tables carrying tenant-scoped data. `column` is matched against the
  * tenant id; `text: true` marks columns whose tenant id is stored as
- * TEXT (subject_roles) and needs a quoted comparison.
+ * TEXT (relation_tuples.tenant_id — the RBAC assignment scope since
+ * T-183 dropped subject_roles) and needs a quoted comparison.
  *
  * PL-007 F2 adds `clinic_keys` + `entity_deks` — append them here when
  * that schema lands (wrapped key material is ciphertext too, and MUST
@@ -117,7 +118,7 @@ const TENANT_TABLES = [
 	{ table: "consultations", column: "tenant_id" },
 	{ table: "admin_audit", column: "tenant_id" },
 	{ table: "job_runs", column: "tenant_id" },
-	{ table: "subject_roles", column: "tenant_id", text: true },
+	{ table: "relation_tuples", column: "tenant_id", text: true },
 ];
 
 const sql = (q) => {
