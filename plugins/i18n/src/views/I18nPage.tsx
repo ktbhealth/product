@@ -54,6 +54,41 @@ import {
 	type MessageScope,
 } from "./i18n-page-utils.ts";
 
+/** Sentinel Select value for the compare picker's "None" option —
+ * locale codes can't collide with it. */
+const COMPARE_NONE = "__none__";
+
+/** Single-click opens the cell dialog after a beat so a double-click
+ * on an editable text cell can win the race and start inline editing
+ * instead (the dialog would otherwise cover the second click). */
+const CELL_OPEN_DELAY_MS = 250;
+
+/** Param names referenced by a template. `parseMessage` yields the
+ * exact signature for well-formed templates; the regex fallback still
+ * lints drafts mid-edit that don't parse yet (the preview surfaces
+ * the parse error separately). */
+const extractParamNames = (template: string): ReadonlySet<string> => {
+	const parsed = parseMessage("text", template);
+	if (parsed.ok) return new Set(parsed.message.params.map((p) => p.name));
+	const names = new Set<string>();
+	for (const m of template.matchAll(/\{(\w+)(?=[,}])/g)) {
+		if (m[1] !== undefined) names.add(m[1]);
+	}
+	return names;
+};
+
+interface CellEdit {
+	readonly key: string;
+	readonly locale: string;
+	readonly value: string;
+}
+
+interface ParamLint {
+	readonly extra: readonly string[];
+	readonly missing: readonly string[];
+	readonly label: string;
+}
+
 export interface I18nPageData {
 	readonly namespaces: readonly NamespaceInfo[];
 	readonly locales: readonly LocaleInfo[];
@@ -143,6 +178,7 @@ function MessagePreview({
  * portal need a scope id (exact match — an empty id would only match
  * rows literally keyed "", so the fetch waits for input). A cell edits
  * through a dialog — save stages `draft_value`, publish moves it live.
+ * Text-kind cells also edit inline on double-click.
  */
 export function I18nPage({ data }: { data: I18nPageData }) {
 	const router = useRouter();
@@ -163,6 +199,20 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		readonly summary: ImportSummary;
 	} | null>(null);
 	const fileRef = useRef<HTMLInputElement>(null);
+	// Locale picked in the edit dialog's "Compare with" select — ""
+	// hides the reference panel.
+	const [compareLocale, setCompareLocale] = useState("");
+	// Inline matrix edit in flight (text cells only).
+	const [cellEdit, setCellEdit] = useState<CellEdit | null>(null);
+	const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const cellEditBusy = useRef(false);
+	// Cancel a pending deferred cell-open on unmount.
+	useEffect(
+		() => () => {
+			if (openTimer.current !== null) clearTimeout(openTimer.current);
+		},
+		[],
+	);
 	// Message rows are fetched per selected namespace + scope — the
 	// loader only ships namespaces + locales so the table never hits
 	// the wire wholesale.
@@ -245,6 +295,77 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		// The dialog's scope-id input mirrors the cell's scope id.
 		setScopeId(fetchScopeId);
 		setError(null);
+		setCellEdit(null);
+		// Compare picker defaults to the namespace default locale when
+		// it's another enabled locale, else the first available one.
+		const others = locales.filter((l) => l.code !== locale);
+		const defaultLocale = data.namespaces.find((n) => n.namespace === namespace)?.defaultLocale;
+		setCompareLocale(
+			defaultLocale !== undefined && others.some((l) => l.code === defaultLocale)
+				? defaultLocale
+				: (others[0]?.code ?? ""),
+		);
+	};
+
+	/** Single click arms a deferred dialog open; a double-click on an
+	 * editable text cell cancels it and enters inline edit instead. */
+	const armCellOpen = (key: string, locale: string) => {
+		if (openTimer.current !== null) clearTimeout(openTimer.current);
+		openTimer.current = setTimeout(() => {
+			openTimer.current = null;
+			open(key, locale);
+		}, CELL_OPEN_DELAY_MS);
+	};
+
+	const startCellEdit = (key: string, locale: string) => {
+		if (openTimer.current !== null) {
+			clearTimeout(openTimer.current);
+			openTimer.current = null;
+		}
+		const cell = cellFor(cellIndex, namespace, key, locale, filterScope, fetchScopeId);
+		setCellEdit({ key, locale, value: cell?.draft ?? cell?.live ?? "" });
+		setError(null);
+	};
+
+	/** Inline commit: same wire call as the dialog's "Save draft" for a
+	 * plain text value — stages `draft_value`, nothing goes live. */
+	const commitCellEdit = () => {
+		const cur = cellEdit;
+		if (cur === null || cellEditBusy.current) return;
+		const cell = cellFor(cellIndex, namespace, cur.key, cur.locale, filterScope, fetchScopeId);
+		// An unchanged value would stage a redundant draft — just close.
+		if (cur.value === (cell?.draft ?? cell?.live ?? "")) {
+			setCellEdit(null);
+			return;
+		}
+		cellEditBusy.current = true;
+		setBusy(true);
+		setError(null);
+		void (async () => {
+			try {
+				const res = (await i18nSaveDraftFn({
+					data: {
+						namespace,
+						key: cur.key,
+						locale: cur.locale,
+						scope: filterScope,
+						scopeId: fetchScopeId,
+						value: cur.value,
+						kind: "text",
+					},
+				})) as { ok?: boolean; error?: string } | null;
+				if (res !== null && typeof res === "object" && res.ok === false) {
+					setError(res.error ?? "denied");
+					return;
+				}
+				setCellEdit(null);
+				await router.invalidate();
+				await refresh();
+			} finally {
+				cellEditBusy.current = false;
+				setBusy(false);
+			}
+		})();
 	};
 
 	/** Re-target the dialog at another scope's cell for the same
@@ -316,6 +437,66 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 			setBusy(false);
 		}
 	};
+
+	// Locales the compare picker can offer — every enabled non-qps
+	// locale except the one being edited.
+	const compareOptions = useMemo(
+		() => (editing === null ? [] : locales.filter((l) => l.code !== editing.locale)),
+		[editing, locales],
+	);
+	const compareCell =
+		editing !== null && compareLocale !== ""
+			? cellFor(
+					cellIndex,
+					editing.namespace,
+					editing.key,
+					compareLocale,
+					editing.scope,
+					editing.scopeId,
+				)
+			: undefined;
+	const compareShown = compareCell?.draft ?? compareCell?.live ?? null;
+	const compareInfo =
+		compareLocale === "" ? undefined : locales.find((l) => l.code === compareLocale);
+
+	/** Param lint: draft params vs the row's LIVE value (same
+	 * namespace/key/locale/scope). Never-published rows carry an empty
+	 * live value — fall back to the namespace default locale's live
+	 * value, else skip. Non-blocking: warnings never gate saving. */
+	const paramLint = useMemo((): ParamLint | null => {
+		if (editing === null) return null;
+		const live = editing.cell?.live;
+		let reference: string | null = null;
+		let label = "live value";
+		if (live !== undefined && live !== "") {
+			reference = live;
+		} else {
+			const defaultLocale = data.namespaces.find(
+				(n) => n.namespace === editing.namespace,
+			)?.defaultLocale;
+			if (defaultLocale !== undefined && defaultLocale !== "" && defaultLocale !== editing.locale) {
+				const defCell = cellFor(
+					cellIndex,
+					editing.namespace,
+					editing.key,
+					defaultLocale,
+					editing.scope,
+					editing.scopeId,
+				);
+				if (defCell !== undefined && defCell.live !== "") {
+					reference = defCell.live;
+					label = `${defaultLocale} live value`;
+				}
+			}
+		}
+		if (reference === null) return null;
+		const draftParams = extractParamNames(draft);
+		const refParams = extractParamNames(reference);
+		const extra = [...draftParams].filter((p) => !refParams.has(p)).sort();
+		const missing = [...refParams].filter((p) => !draftParams.has(p)).sort();
+		if (extra.length === 0 && missing.length === 0) return null;
+		return { extra, missing, label };
+	}, [editing, draft, cellIndex, data.namespaces]);
 
 	const dirty = editing !== null && isDraftDirty(draft, editing.cell);
 
@@ -461,21 +642,54 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 							{locales.map((l) => {
 								const cell = cellFor(cellIndex, namespace, key, l.code, filterScope, fetchScopeId);
 								const shown = cell?.draft ?? cell?.live;
+								const activeEdit =
+									cellEdit !== null && cellEdit.key === key && cellEdit.locale === l.code
+										? cellEdit
+										: null;
 								return (
 									<TableCell key={l.code}>
-										<button
-											type="button"
-											onClick={() => open(key, l.code)}
-											className="flex w-full items-center gap-2 text-left"
-										>
-											<span className="truncate text-sm">
-												{shown ?? <span className="text-muted-foreground">—</span>}
-											</span>
-											{cell?.draft != null && cell.draft !== "" && (
-												<Badge variant="secondary">draft</Badge>
-											)}
-											{cell === undefined && <Badge variant="outline">missing</Badge>}
-										</button>
+										{activeEdit !== null ? (
+											<Input
+												autoFocus
+												disabled={busy}
+												value={activeEdit.value}
+												aria-label={`Edit ${key} in ${l.code}`}
+												className="h-7 font-mono text-xs"
+												onChange={(e) => setCellEdit({ ...activeEdit, value: e.target.value })}
+												onClick={(e) => e.stopPropagation()}
+												onDoubleClick={(e) => e.stopPropagation()}
+												onKeyDown={(e) => {
+													if (e.key === "Enter") {
+														e.preventDefault();
+														commitCellEdit();
+													} else if (e.key === "Escape") {
+														e.preventDefault();
+														e.stopPropagation();
+														if (!cellEditBusy.current) setCellEdit(null);
+													}
+												}}
+												onBlur={commitCellEdit}
+											/>
+										) : (
+											<button
+												type="button"
+												onClick={() => armCellOpen(key, l.code)}
+												onDoubleClick={
+													cell !== undefined && cell.kind === "text"
+														? () => startCellEdit(key, l.code)
+														: undefined
+												}
+												className="flex w-full items-center gap-2 text-left"
+											>
+												<span className="truncate text-sm">
+													{shown ?? <span className="text-muted-foreground">—</span>}
+												</span>
+												{cell?.draft != null && cell.draft !== "" && (
+													<Badge variant="secondary">draft</Badge>
+												)}
+												{cell === undefined && <Badge variant="outline">missing</Badge>}
+											</button>
+										)}
 									</TableCell>
 								);
 							})}
@@ -552,6 +766,30 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								<SelectItem value="rich">rich</SelectItem>
 							</SelectContent>
 						</Select>
+						{editing !== null && compareOptions.length > 0 && (
+							<>
+								<span className="text-xs text-muted-foreground">Compare with</span>
+								<Select
+									value={compareLocale === "" ? COMPARE_NONE : compareLocale}
+									onValueChange={(v) => {
+										const next = String(v);
+										setCompareLocale(next === COMPARE_NONE ? "" : next);
+									}}
+								>
+									<SelectTrigger aria-label="Compare with" className="w-36">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value={COMPARE_NONE}>None</SelectItem>
+										{compareOptions.map((l) => (
+											<SelectItem key={l.code} value={l.code}>
+												{l.endonym}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</>
+						)}
 					</div>
 					{kind === "rich" ? (
 						<RichTextEditor
@@ -569,6 +807,31 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						/>
 					)}
 					<MessagePreview template={draft} kind={kind} locale={editing?.locale ?? "en"} />
+					{editing !== null && compareLocale !== "" && compareInfo !== undefined && (
+						<div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2">
+							<p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+								{compareInfo.endonym} ({compareLocale})
+								{compareCell?.draft != null && compareCell.draft !== "" && (
+									<Badge variant="secondary">draft</Badge>
+								)}
+							</p>
+							{compareShown !== null && compareShown !== "" ? (
+								<p className="whitespace-pre-wrap text-sm">{compareShown}</p>
+							) : (
+								<p className="text-sm text-muted-foreground">No translation for {compareLocale}.</p>
+							)}
+						</div>
+					)}
+					{paramLint !== null && (
+						<p className="text-sm text-warning">
+							Param mismatch vs {paramLint.label}:{" "}
+							{paramLint.extra.length > 0 &&
+								`extra: ${paramLint.extra.map((p) => `{${p}}`).join(", ")}`}
+							{paramLint.extra.length > 0 && paramLint.missing.length > 0 && " · "}
+							{paramLint.missing.length > 0 &&
+								`missing: ${paramLint.missing.map((p) => `{${p}}`).join(", ")}`}
+						</p>
+					)}
 					{error !== null && <p className="text-sm text-destructive">{error}</p>}
 					<div className="flex justify-end gap-2">
 						{editing?.cell?.draft != null && editing.cell.draft !== "" && (
