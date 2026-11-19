@@ -68,6 +68,7 @@ import {
 	publishThemeFn,
 	setThemePreviewFn,
 } from "../fns.ts";
+import { fontPreviewModel } from "../font-preview.ts";
 import { themeMessages, type ThemeMessages } from "../i18n.ts";
 import { contrastReport, deriveThemeTokens, themeRadius, type ContrastPair } from "../palette.ts";
 import { fontCssVars } from "../present.ts";
@@ -578,6 +579,26 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	const lightReport = useMemo(() => contrastReport(previewTokens, "light"), [previewTokens]);
 	const darkReport = useMemo(() => contrastReport(previewTokens, "dark"), [previewTokens]);
 	const fontVars = useMemo(() => fontCssVars(fonts), [fonts]);
+	// Live per-slot specimens for the Typography tab: the draft fonts
+	// config resolved against the managed-source catalog, plus the
+	// stylesheet links / @font-face CSS that make the fonts actually
+	// load in the editor (managed self-host faces come from the
+	// persisted row's resolved fontFaceCss — unpublished picks fall
+	// back honestly until publish).
+	const fontPreview = useMemo(
+		() =>
+			fontPreviewModel(fonts, fontSources, {
+				faceCss: theme?.fontFaceCss ?? "",
+				delivery: theme?.fonts?.delivery ?? null,
+			}),
+		[fonts, fontSources, theme],
+	);
+	const [previewWeights, setPreviewWeights] = useState<Partial<Record<ThemeFontSlot, number>>>({});
+	const slotPreviewWeight = (slot: ThemeFontSlot, weights: readonly number[]): number => {
+		const selected = previewWeights[slot];
+		if (selected !== undefined && weights.includes(selected)) return selected;
+		return weights.includes(400) ? 400 : weights[0];
+	};
 	const schemeStyle = useMemo<CSSProperties>(
 		() =>
 			({
@@ -979,6 +1000,69 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 							placeholder="400, 500, 600, 700"
 							className="w-48 font-mono text-xs"
 						/>
+					</div>
+					<div className="space-y-1.5">
+						<Label className="text-xs">{t.fontPreviewLabel}</Label>
+						<div className="space-y-3 rounded-lg border border-border p-3">
+							{fontPreview.slots.map((sp) => {
+								const weight = slotPreviewWeight(sp.slot, sp.weights);
+								const slotLabel = fontSlotLabel(sp.slot, t);
+								return (
+									<div key={sp.slot} className="flex items-start gap-3">
+										<div className="w-24 shrink-0 space-y-0.5 pt-1">
+											<p className="text-xs text-muted-foreground">{slotLabel}</p>
+											{sp.family !== null ? (
+												<p className="truncate font-mono text-[10px] text-muted-foreground">
+													{sp.family}
+												</p>
+											) : null}
+										</div>
+										<div className="min-w-0 flex-1 space-y-0.5">
+											<p
+												className="text-lg leading-8"
+												style={{
+													fontFamily: sp.fontFamily === "" ? undefined : sp.fontFamily,
+													fontWeight: weight,
+												}}
+											>
+												Aa Bb Cc 123
+											</p>
+											<p
+												className="truncate text-xs"
+												style={{
+													fontFamily: sp.fontFamily === "" ? undefined : sp.fontFamily,
+													fontWeight: weight,
+												}}
+											>
+												{t.fontPreviewText}
+											</p>
+											{sp.weights.length > 1 ? (
+												<div className="flex flex-wrap gap-1 pt-1">
+													{sp.weights.map((w) => (
+														<button
+															key={w}
+															type="button"
+															aria-label={`${slotLabel} ${w}`}
+															aria-pressed={w === weight}
+															onClick={() =>
+																setPreviewWeights((prev) => ({ ...prev, [sp.slot]: w }))
+															}
+															className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] transition-colors ${
+																w === weight
+																	? "bg-muted text-foreground"
+																	: "text-muted-foreground hover:text-foreground"
+															}`}
+														>
+															{w}
+														</button>
+													))}
+												</div>
+											) : null}
+										</div>
+									</div>
+								);
+							})}
+						</div>
 					</div>
 				</CardContent>
 			</Card>
@@ -1669,6 +1753,17 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 
 	return (
 		<PageContainer className="max-w-none">
+			{/* Draft font delivery for the live specimens — rendered at the
+			 * page root so the Tokens/Components tabs' samples pick the
+			 * fonts up too. Links cover googlefonts delivery; the style
+			 * block carries self-host @font-face rules (persisted managed
+			 * faces + any stored-asset gap the persisted row missed). */}
+			{fontPreview.links.map((href) => (
+				<link key={href} rel="stylesheet" href={href} />
+			))}
+			{fontPreview.faceCss !== "" ? (
+				<style data-font-preview="" dangerouslySetInnerHTML={{ __html: fontPreview.faceCss }} />
+			) : null}
 			<div className="flex flex-wrap items-center gap-3">
 				<div className="min-w-0">
 					<h1 className="truncate text-lg font-semibold">
