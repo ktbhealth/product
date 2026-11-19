@@ -1,5 +1,6 @@
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
+import { LegacyPortalLoginPage, legacyPortalLoginBeforeLoad } from "./legacy-redirect.tsx";
 import { patientSignInHead, signInPickerHead } from "./page-head.tsx";
 import { LoginPickerPage } from "./views/LoginPickerPage.tsx";
 import { PortalSignInPage } from "./views/PortalSignInPage.tsx";
@@ -9,8 +10,9 @@ import { PortalSignInPage } from "./views/PortalSignInPage.tsx";
  * through `@ktb/app-host/client` (import.meta.glob on
  * `plugins/<name>/src/client.ts`). Carries the client-consumed page
  * fields only: id/path/component/context plus the isomorphic `head`
- * hooks (same function references as the server manifest — the parity
- * test compares them). The patient page's `loader` Effect stays
+ * and `beforeLoad` hooks (same function references as the server
+ * manifest — the parity test compares them). The patient page's
+ * `loader` Effect stays
  * server-side in ./index.ts and must never reach the client bundle.
  * Keep in sync — parity is asserted by apps/web/src/plugins.test.ts.
  */
@@ -31,6 +33,13 @@ export const signInPagesPlugin = definePlugin({
 			context: "app",
 			component: PortalSignInPage,
 			head: patientSignInHead,
+		},
+		{
+			id: "sign-in-page.portal-login-legacy",
+			path: "/portal/login",
+			context: "app",
+			component: LegacyPortalLoginPage,
+			beforeLoad: legacyPortalLoginBeforeLoad,
 		},
 	],
 });

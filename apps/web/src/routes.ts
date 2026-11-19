@@ -15,7 +15,7 @@ import { plugins as patientsPlugins } from "@ktb/patients";
 import { plugins as platformPlugins } from "@ktb/platform";
 import { plugins as secretariesPlugins } from "@ktb/secretaries";
 import { plugins as themePlugins } from "@ktb/theme";
-import { index, physical, rootRoute, route } from "@tanstack/virtual-file-routes";
+import { physical, rootRoute, route } from "@tanstack/virtual-file-routes";
 
 // Route-tree composition runs under jiti during typegen, where
 // import.meta.glob (used by @ktb/app-host plugin discovery) is unavailable —
@@ -46,17 +46,13 @@ const routePlugins = [
 // runtime through @ktb/server-fns; plugins that still wire host server
 // functions keep route modules under src/routes/**.
 export const routes = rootRoute("__root.tsx", [
-	index("index.tsx"),
 	...routePlugins.flatMap((p) => p.routes ?? []),
-	// /portal/login stays as a legacy redirect for access emails
-	// already sent; /login, /login/patient, /verify-email and
-	// /capture-test are plugin `pages` dispatched by the root splat.
-	route("portal/login", "portal-login.tsx"),
-	// Namespaced portal instances (P-081): /portal/<instanceId>/* —
-	// patient-portal's physical /portal routes outrank this splat.
-	route("portal/$instance/$", "portal.$instance.$.tsx"),
 	physical("/api", "api"),
-	// Root splat (P-059): dispatches plugin-contributed `pages` at
-	// arbitrary app paths; static routes above keep match priority.
+	// Root splat (route collapse): the single plugin-page dispatcher —
+	// "/" renders the landing picker, "/platform*" the console shell,
+	// "/portal/<instance>/*" the namespaced portal shell, and any other
+	// path an app-shell page descriptor. /portal/login lives on as a
+	// sign-in-page descriptor (legacy redirect). Static routes above
+	// keep match priority.
 	route("$", "$.tsx"),
 ]);

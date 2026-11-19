@@ -1,7 +1,5 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import { physical, route } from "@tanstack/virtual-file-routes";
-
 import { Forbidden, Principal } from "@ktb/authz";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
@@ -106,17 +104,16 @@ export const platformAdminPlugin = definePlugin({
 	system: true,
 });
 
-// Route subtree composed into the host's virtualRouteConfig. `platform.tsx`
-// is the console layout; `physical("", "platform")` mounts every module
-// under the host's routes/platform/ directory as a child of the layout —
-// feature plugins (e.g. patients) contribute console pages by dropping
-// route modules there plus a `portal.sidebar` chrome entry, without being able to
-// import apps (arch lint).
+// Dep anchor for the console route surface. The /platform* subtree used
+// to be a physical mount (platform.tsx layout + routes/platform/
+// dispatchers); the route collapse moved console dispatch into the
+// host's root `/$` splat, so this plugin now only orders dependents —
+// feature plugins still contribute console pages via `panel.pages`
+// descriptors plus `portal.sidebar` chrome entries.
 export const platformRoutesPlugin = definePlugin({
 	id: "platform.routes",
 	meta: { keywords: ["platform", "routes"] },
 	system: true,
-	routes: [route("platform", "platform.tsx", [physical("", "platform")])],
 });
 
 export const platformPanelPlugin = definePlugin({

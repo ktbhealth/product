@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { Email } from "@ktb/email";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
+import { LegacyPortalLoginPage, legacyPortalLoginBeforeLoad } from "./legacy-redirect.tsx";
 import { patientSignInHead, signInPickerHead } from "./page-head.tsx";
 import { LoginPickerPage } from "./views/LoginPickerPage.tsx";
 import { PortalSignInPage } from "./views/PortalSignInPage.tsx";
@@ -45,6 +46,13 @@ export const signInPagesPlugin = definePlugin({
 					emailEnabled: sender !== null,
 				})),
 			head: patientSignInHead,
+		},
+		{
+			id: "sign-in-page.portal-login-legacy",
+			path: "/portal/login",
+			context: "app",
+			component: LegacyPortalLoginPage,
+			beforeLoad: legacyPortalLoginBeforeLoad,
 		},
 	],
 });

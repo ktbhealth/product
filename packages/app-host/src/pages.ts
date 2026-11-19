@@ -87,15 +87,27 @@ const devWarn = (message: string): void => {
  * claim a path wins; duplicates are skipped with a dev warning (the
  * kernel contract asks plugins for unique paths — this is the
  * runtime backstop, same role `orderPlugins` plays for dep edges).
- * An app-context page claiming a portal path is a contract violation:
- * warned and ignored (portal paths are portal by definition). A
- * portal-context page outside portal paths is warned and ignored too —
- * no dispatcher reaches it.
+ * An app-context page claiming a portal-routed path is a contract
+ * violation: warned and ignored. A portal-context page outside
+ * portal-routed paths is warned and ignored too — no dispatcher
+ * reaches it.
+ *
+ * "Portal-routed" is instance-aware (route collapse): `/platform*`
+ * always routes to the console, but `/portal/<id>…` only dispatches
+ * to a portal shell when `<id>` is a contributed instance — the root
+ * splat falls unknown ids through to app pages, so plugins may own
+ * paths like "/portal/login" (legacy redirects) as app context.
  */
 export const collectPages = (registry: readonly Plugin[]): PageRegistry => {
 	const pages = new Map<string, PageEntry>();
 	const appPages = new Map<string, PageEntry>();
 	const portalPages = new Map<string, PageEntry>();
+	const instanceIds = new Set(collectPortals(registry).map((e) => e.instance.id));
+	const portalRouted = (path: string): boolean => {
+		if (path === PLATFORM_ROOT || path.startsWith(`${PLATFORM_ROOT}/`)) return true;
+		const id = portalInstanceIdForPath(path);
+		return id !== undefined && instanceIds.has(id);
+	};
 	const add = (plugin: Plugin, page: Page, context: PageShell) => {
 		if (pages.has(page.path)) {
 			devWarn(
@@ -118,14 +130,14 @@ export const collectPages = (registry: readonly Plugin[]): PageRegistry => {
 		// live under /platform today, the platform instance.
 		for (const page of plugin.panel?.pages ?? []) add(plugin, page, "portal");
 		for (const page of plugin.pages ?? []) {
-			const context = page.context ?? defaultPageContext(page.path);
-			if (context === "app" && isPortalPath(page.path)) {
+			const context = page.context ?? (portalRouted(page.path) ? "portal" : "app");
+			if (context === "app" && portalRouted(page.path)) {
 				devWarn(
 					`[pages] "${plugin.id}" claims portal path "${page.path}" as app context — ignored`,
 				);
 				continue;
 			}
-			if (context === "portal" && !isPortalPath(page.path)) {
+			if (context === "portal" && !portalRouted(page.path)) {
 				devWarn(
 					`[pages] "${plugin.id}" marks "${page.path}" as portal but it is not under a portal instance — ignored`,
 				);

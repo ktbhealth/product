@@ -1,12 +1,15 @@
-import { createFileRoute, getRouteApi, Link } from "@tanstack/react-router";
+import { createElement } from "react";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import { plugins } from "#/plugins.ts";
 import { enabledIdSet, enabledPlugins } from "#/lib/registry.ts";
-import { validateAudienceSearch } from "@ktb/audience";
 
-// A plugin may own the whole landing page (`landing.page`); the first
-// contribution in topo order wins. The audience plugin (P-056) owns it —
-// the fallback only renders if no landing plugin is registered.
+const rootApi = getRouteApi("__root__");
+
+// Landing dispatch (was routes/index.tsx): a plugin may own the whole
+// landing page (`landing.page`); the first ENABLED contribution in
+// topo order wins (P-058). The audience plugin (P-056) owns it — the
+// fallback only renders if no landing plugin is registered.
 function MissingLanding() {
 	// Brand comes from the resolved theme (PL-006 phase 7) — the
 	// built-in KTB default keeps `appName` populated with zero rows.
@@ -23,11 +26,7 @@ function MissingLanding() {
 	);
 }
 
-const rootApi = getRouteApi("__root__");
-
-function Landing() {
-	// Enabled-state filter (P-058): the first ENABLED landing plugin in
-	// topo order wins; a disabled one is skipped like it never existed.
+export function Landing() {
 	const { pluginStates, i18n } = rootApi.useLoaderData();
 	const Page = enabledPlugins(plugins, enabledIdSet(pluginStates)).find(
 		(p) => p.landing !== undefined,
@@ -37,12 +36,6 @@ function Landing() {
 	return Page === undefined ? (
 		<MissingLanding />
 	) : (
-		<Page locale={i18n?.locale ?? "en"} i18n={i18n} />
+		createElement(Page, { locale: i18n?.locale ?? "en", i18n })
 	);
 }
-
-export const Route = createFileRoute("/")({
-	component: Landing,
-	// ?audience=doctors|patients|developers|business — unknown or missing → doctors.
-	validateSearch: validateAudienceSearch,
-});

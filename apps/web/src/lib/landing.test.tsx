@@ -4,10 +4,11 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-	plugins: [] as unknown[],
-	audiencePlugins: [] as unknown[],
+	plugins: null as unknown[] | null,
+	realPlugins: [] as { id: string }[],
 	disabledIds: [] as string[],
 	theme: { appName: "KTB Health" } as unknown,
+	i18n: undefined as unknown,
 }));
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
@@ -26,10 +27,11 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 				// phase 7) — tests vary it to cover the no-theme path.
 				theme: state.theme,
 				pluginStates: {
-					enabled: (state.plugins as { id: string }[])
-						.map((p) => p.id)
+					enabled: (state.plugins ?? state.realPlugins)
+						.map((p) => (p as { id: string }).id)
 						.filter((id) => !state.disabledIds.includes(id)),
 				},
+				i18n: state.i18n,
 			}),
 		}),
 		useSearch: (opts: { strict: false; select: (s: Record<string, unknown>) => unknown }) =>
@@ -41,14 +43,14 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
-// The audience plugin is the only landing contribution — the host test
-// wires the real plugin object without loading the whole registry.
-vi.mock("#/plugins.ts", async () => {
-	const { plugins } = await import("@ktb/audience");
-	state.audiencePlugins = [...plugins];
+// Default to the REAL client registry (the audience plugin's landing
+// page is a real contribution); tests narrow it via state.plugins.
+vi.mock("#/plugins.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("#/plugins.ts")>();
+	state.realPlugins = [...actual.plugins];
 	return {
 		get plugins() {
-			return state.plugins;
+			return state.plugins ?? state.realPlugins;
 		},
 	};
 });
@@ -64,40 +66,41 @@ vi.mock("@ktbhealth/ui/components/select", () => ({
 		createElement("li", { "data-value": value }, children),
 }));
 
-import { Route } from "./index.tsx";
-
-type Opts = {
-	component: unknown;
-	validateSearch: (s: Record<string, unknown>) => { audience: string };
-};
-const opts = (Route as unknown as { options: Opts }).options;
-const Landing = opts.component as () => ReactNode;
+import { Landing } from "./landing.tsx";
 
 afterEach(() => {
 	cleanup();
-	state.plugins = [];
+	state.plugins = null;
 	state.disabledIds = [];
 	state.theme = { appName: "KTB Health" };
+	state.i18n = undefined;
 });
 
-describe("landing route", () => {
-	it("validates ?audience with doctors as the fallback", () => {
-		expect(opts.validateSearch({ audience: "patients" })).toEqual({ audience: "patients" });
-		expect(opts.validateSearch({ audience: "x" })).toEqual({ audience: "doctors" });
-		expect(opts.validateSearch({})).toEqual({ audience: "doctors" });
-	});
-
+describe("Landing dispatch", () => {
 	it("renders the audience plugin's landing page", () => {
-		state.plugins = state.audiencePlugins;
 		render(createElement(Landing));
 		expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
 			"The doctor decides. KTB Health records.",
 		);
 	});
 
+	it("passes the root i18n slice to the landing page", () => {
+		state.i18n = { locale: "pt-BR" };
+		state.plugins = [
+			{
+				id: "test.landing",
+				landing: {
+					page: ({ locale, i18n }: { locale: string; i18n?: { locale: string } }) =>
+						createElement("p", { "data-testid": "landing-locale" }, `${locale}|${i18n?.locale}`),
+				},
+			},
+		];
+		render(createElement(Landing));
+		expect(screen.getByTestId("landing-locale").textContent).toBe("pt-BR|pt-BR");
+	});
+
 	it("skips a disabled landing plugin and renders the fallback (P-058)", () => {
-		state.plugins = state.audiencePlugins;
-		state.disabledIds = (state.audiencePlugins as { id: string }[]).map((p) => p.id);
+		state.disabledIds = ["audience.landing"];
 		render(createElement(Landing));
 		expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("KTB Health");
 	});

@@ -139,6 +139,64 @@ describe("collectPages", () => {
 		}
 	});
 
+	it("routes /portal/<id> pages by contributed instance, not path shape", () => {
+		const reg = collectPages([
+			{
+				id: "clinician.portal",
+				portals: [{ id: "clinician", basePath: "/portal/clinician", label: "C" }],
+			},
+			pagePlugin("sign-in.pages", [
+				// Unknown instance id → falls through to the app shell
+				// (legacy redirect descriptors live here).
+				{ id: "legacy", path: "/portal/login", component: Page, context: "app" },
+				{ id: "c.page", path: "/portal/clinician/home", component: Page },
+			]),
+		]);
+		expect(reg.appPages.get("/portal/login")?.pluginId).toBe("sign-in.pages");
+		expect(reg.portalPages.get("/portal/clinician/home")?.pluginId).toBe("sign-in.pages");
+		expect(reg.appPages.has("/portal/clinician/home")).toBe(false);
+	});
+
+	it("ignores app-context pages claiming a known portal instance path", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const reg = collectPages([
+				{
+					id: "clinician.portal",
+					portals: [{ id: "clinician", basePath: "/portal/clinician", label: "C" }],
+				},
+				pagePlugin("bad", [
+					{
+						id: "bad",
+						path: "/portal/clinician/secret",
+						component: Page,
+						context: "app",
+					},
+				]),
+			]);
+			expect(reg.pages.size).toBe(0);
+			expect(warn).toHaveBeenCalledOnce();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("ignores portal-context pages under unknown /portal instance ids", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const reg = collectPages([
+				pagePlugin("odd", [
+					{ id: "odd", path: "/portal/ghost/home", component: Page, context: "portal" },
+				]),
+			]);
+			expect(reg.pages.size).toBe(0);
+			expect(reg.portalPages.has("/portal/ghost/home")).toBe(false);
+			expect(warn).toHaveBeenCalledOnce();
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
 	it("ignores console-context pages outside /platform (unreachable)", () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {

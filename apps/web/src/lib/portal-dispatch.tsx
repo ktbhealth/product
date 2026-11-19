@@ -1,0 +1,211 @@
+import { createElement } from "react";
+import { getRouteApi, notFound, useLocation } from "@tanstack/react-router";
+
+import { authClient } from "@ktb/auth-better/client";
+import { platformHeaderPlugin } from "@ktb/platform-header";
+import { PortalShell } from "@ktb/portal/views";
+import { portalAdmits } from "@ktb/portal/rules";
+import { themeScopeFn } from "@ktb/theme/fns";
+import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
+import type { ResolvedTheme } from "@ktb/theme/types";
+
+import { pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
+import { requireSession } from "#/lib/guard.ts";
+import { portalChromeProps } from "#/lib/chrome-props.ts";
+import { pluginPanelGroup, pluginPanelLabel } from "#/lib/i18n.ts";
+import {
+	collectChrome,
+	enabledIdSet,
+	enabledPlugins,
+	entryEnabled,
+	findPage,
+	findPortalInstance,
+	portalInstances,
+	portalPages,
+} from "#/lib/registry.ts";
+import { plugins } from "#/plugins.ts";
+
+const rootApi = getRouteApi("__root__");
+const headerEnabled = plugins.some((p) => p.id === platformHeaderPlugin.id);
+
+/**
+ * Namespaced portal dispatch (was routes/portal.$instance.$.tsx):
+ * `/portal/<instanceId>/*` resolves the contributed `portals`
+ * instance by id, 404s when no plugin declares it, when its owner
+ * plugin is disabled (P-058) or when the portalPageDataFn
+ * audience/page gate denies, then renders the contributed page
+ * inside PortalShell with the instance's portal.* chrome. Session is
+ * required — portal audiences never include anonymous. Unknown
+ * instance ids never reach this module: dispatch-target.ts falls
+ * them through to app pages.
+ */
+export const portalBeforeLoad = async (instanceId: string) => {
+	// Each portal's anonymous funnel lands on the matching sign-in —
+	// the three contributed instance ids mirror the login paths; any
+	// other id falls back to the /login role picker.
+	const loginPath = ["doctor", "secretary", "patient"].includes(instanceId)
+		? `/login/${instanceId}`
+		: "/login";
+	await requireSession(loginPath);
+};
+
+export const portalLoader = async ({
+	params,
+	instanceId,
+}: {
+	params: { _splat?: string };
+	instanceId: string;
+}) => {
+	const path = `/${params._splat ?? ""}`;
+	const entry = findPortalInstance(portalInstances, instanceId);
+	if (entry === undefined) throw notFound();
+	const pageEntry = findPage(portalPages, path);
+	if (pageEntry === undefined) throw notFound();
+	const [states, audiences, result, theme] = await Promise.all([
+		pluginStatesFn(),
+		portalAudiencesFn(),
+		portalPageDataFn({ data: path }),
+		// Instance → tenant → platform fallback (P-082).
+		themeScopeFn({ data: { scope: "portal-instance", id: instanceId } }),
+	]);
+	const enabled = enabledIdSet(states);
+	// Package-granular gates (P-058): both the page's package and the
+	// portal instance's package must be live — same contract as the
+	// server-side pageData/CQRS gates.
+	if (!entryEnabled(plugins, enabled, pageEntry) || !entryEnabled(plugins, enabled, entry)) {
+		throw notFound();
+	}
+	if (result.status === "notfound") throw notFound();
+	return { path, instanceId, data: result.data, audiences, pluginStates: states, theme };
+};
+
+export interface PortalLoaderData {
+	path: string;
+	instanceId: string;
+	data: unknown;
+	audiences: readonly string[];
+	pluginStates: { enabled: readonly string[] };
+	theme: ResolvedTheme | null;
+}
+
+export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderData }) {
+	const { path, instanceId, data, audiences, pluginStates, theme } = loaderData;
+	const pathname = useLocation({ select: (l) => l.pathname });
+	const { user, i18n } = rootApi.useLoaderData();
+	const locale = i18n?.locale ?? "en";
+	const entry = findPortalInstance(portalInstances, instanceId);
+	const pageEntry = findPage(portalPages, path);
+	if (entry === undefined || pageEntry === undefined) return null;
+	const instance = entry.instance;
+	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
+	const items = collectChrome(
+		visiblePlugins,
+		"portal.sidebar",
+		pathname,
+		instance.id,
+		user,
+	).flatMap((chromeEntry) =>
+		chromeEntry.content.kind === "sidebarItem"
+			? [
+					{
+						...chromeEntry.content.item,
+						label: pluginPanelLabel(
+							chromeEntry.content.item.to,
+							chromeEntry.content.item.label,
+							i18n,
+						),
+						...(chromeEntry.content.item.group !== undefined
+							? { group: pluginPanelGroup(chromeEntry.content.item.group, i18n) }
+							: {}),
+					},
+				]
+			: [],
+	);
+	const headerActions = headerEnabled
+		? collectChrome(visiblePlugins, "portal.header.actions", pathname, instance.id).flatMap(
+				(chromeEntry) =>
+					chromeEntry.content.kind === "headerAction"
+						? [
+								createElement(chromeEntry.content.component, {
+									key: chromeEntry.content.id,
+									locale,
+									i18n,
+								}),
+							]
+						: [],
+			)
+		: undefined;
+	const switchablePortals = portalInstances
+		.filter((e) => portalAdmits(e.instance, audiences))
+		.map((e) => e.instance);
+	// Brand slot (P-082/PL-006): theme brand mark + `portal.brand`
+	// chrome components scoped to THIS instance. The built-in KTB
+	// default keeps brand data present with zero theme rows; an
+	// empty slot renders only for brand-less themes.
+	const chromeProps = portalChromeProps(
+		user,
+		locale,
+		visiblePlugins,
+		async () => {
+			await authClient.signOut();
+			window.location.assign("/");
+		},
+		theme,
+		i18n,
+		// A pinned portal locale (PL-008) leaves the picker a single
+		// option — effectively hidden, since the cookie can't win.
+		instance.locale === undefined ? undefined : [instance.locale],
+	);
+	const brandComponents = collectChrome(
+		visiblePlugins,
+		"portal.brand",
+		pathname,
+		instance.id,
+	).flatMap((chromeEntry) =>
+		chromeEntry.content.kind === "component"
+			? [
+					createElement(chromeEntry.content.component, {
+						key: chromeEntry.id,
+						...chromeProps,
+					}),
+				]
+			: [],
+	);
+	const hasThemeBrand =
+		theme !== null && theme !== undefined && (theme.brand !== null || (theme.appName ?? "") !== "");
+	const brand =
+		hasThemeBrand || brandComponents.length > 0 ? (
+			<>
+				{hasThemeBrand ? <ThemeBrandMark theme={theme} /> : null}
+				{brandComponents}
+			</>
+		) : undefined;
+	const themeCss =
+		theme !== null && theme !== undefined ? `${theme.styleCss}\n${theme.fontFaceCss}`.trim() : null;
+	return (
+		<PortalShell
+			instance={instance}
+			items={items}
+			pathname={pathname}
+			locale={locale}
+			i18n={i18n}
+			userEmail={user?.email}
+			headerActions={headerActions}
+			brand={brand}
+			banner={
+				theme?.preview === true ? <ThemePreviewBanner locale={locale} i18n={i18n} /> : undefined
+			}
+			themeCss={themeCss}
+			portals={switchablePortals}
+			onSignOut={async () => {
+				await authClient.signOut();
+				window.location.assign("/");
+			}}
+		>
+			{createElement(pageEntry.page.component, {
+				data,
+				ctx: { plugins, locale, user, i18n },
+			})}
+		</PortalShell>
+	);
+}

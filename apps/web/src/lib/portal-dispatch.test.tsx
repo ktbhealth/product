@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createElement, type ReactElement } from "react";
+import { createElement } from "react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 const getSessionUserFn = vi.fn(
@@ -19,7 +19,6 @@ const portalPageDataFn = vi.fn(
 	}),
 );
 const signOut = vi.fn(async () => {});
-const navigate = vi.fn();
 
 vi.mock("@ktb/auth-better/client", () => ({ authClient: { signOut: () => signOut() } }));
 
@@ -28,6 +27,13 @@ vi.mock("#/lib/fns.ts", () => ({
 	pluginStatesFn: () => pluginStatesFn(),
 	portalAudiencesFn: () => portalAudiencesFn(),
 	portalPageDataFn: (arg: { data: string }) => portalPageDataFn(arg.data),
+	appPageDataFn: vi.fn(),
+	platformAdminFn: vi.fn(async () => true),
+	consoleDeniedFn: vi.fn(async (): Promise<string[]> => []),
+	listMyNotificationsFn: vi.fn(async () => []),
+	countMyUnreadNotificationsFn: vi.fn(async () => 0),
+	markMyNotificationsReadFn: vi.fn(),
+	markAllMyNotificationsReadFn: vi.fn(),
 	i18nRouteFn: vi.fn(async () => undefined),
 }));
 // Theme resolution is a server fn — stub it so the loader stays pure.
@@ -60,13 +66,9 @@ vi.mock("#/lib/registry.ts", async (importOriginal) => {
 	};
 });
 
-let instance = "doctor";
-let splat: string | undefined = "test";
 let pathname = "/portal/doctor/test";
-let loaderData: unknown = {
-	path: "/portal/doctor/test",
-	data: null,
-	audiences: [],
+let rootData: { user: unknown; pluginStates: { enabled: string[] }; i18n?: unknown } = {
+	user: { id: "u1", email: "doc@x.com", name: "Dra" },
 	pluginStates: { enabled: [] },
 };
 let chromeExtra: { id: string; region: string; content: Record<string, unknown> }[] = [];
@@ -91,22 +93,13 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@tanstack/react-router")>();
 	return {
 		...actual,
-		createFileRoute: () => (opts: Record<string, unknown>) => ({
-			options: opts,
-			useLoaderData: () => loaderData,
-			useParams: () => ({ instance, _splat: splat }),
-		}),
 		useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) => {
 			const loc = { pathname };
 			return opts?.select ? opts.select(loc) : loc;
 		},
 		getRouteApi: () => ({
-			useLoaderData: () => ({
-				user: { id: "u1", email: "doc@x.com", name: "Dra" },
-				pluginStates: { enabled: plugins.map((p) => p.id) },
-			}),
+			useLoaderData: () => rootData,
 		}),
-		useNavigate: () => navigate,
 		Link: (props: Record<string, unknown>) => {
 			const { to, children, ...rest } = props;
 			return createElement("a", { href: to as string, ...rest }, children as never);
@@ -114,41 +107,13 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 	};
 });
 
-import { Route as PortalInstanceRoute } from "./portal.$instance.$.tsx";
+import { portalBeforeLoad, portalLoader, PortalInstanceShell } from "./portal-dispatch.tsx";
 import { KTB_DEFAULT_THEME } from "@ktb/theme/default-theme";
 import { portalPages } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 import type { PanelPage } from "@ktb/kernel";
 
-const component = (route: unknown) =>
-	(route as { options: { component: () => ReactElement } }).options.component;
-const beforeLoad = (route: unknown) =>
-	(
-		route as {
-			options: {
-				beforeLoad?: (arg: { params: { instance: string; _splat?: string } }) => Promise<unknown>;
-			};
-		}
-	).options.beforeLoad;
-const loader = (route: unknown) =>
-	(
-		route as {
-			options: {
-				loader: (arg: { params: { instance: string; _splat?: string } }) => Promise<unknown>;
-			};
-		}
-	).options.loader;
-const head = (route: unknown) =>
-	(
-		route as {
-			options: {
-				head?: (ctx?: { loaderData?: { theme?: unknown } }) => {
-					meta: Record<string, unknown>[];
-					links: Record<string, unknown>[];
-				};
-			};
-		}
-	).options.head;
+const ALL_ENABLED = { enabled: plugins.map((p) => p.id) };
 
 const TEST_PAGE: PanelPage = {
 	id: "test.widget",
@@ -173,28 +138,37 @@ const registerPage = (page: PanelPage = TEST_PAGE) => {
 	return () => pages.delete(page.path);
 };
 
+const baseLoaderData = {
+	path: "/portal/doctor/test",
+	instanceId: "doctor",
+	data: null,
+	audiences: [] as string[],
+	pluginStates: ALL_ENABLED,
+	theme: null,
+};
+
+const shell = (overrides: Record<string, unknown> = {}) =>
+	createElement(PortalInstanceShell, {
+		loaderData: { ...baseLoaderData, ...overrides } as never,
+	});
+
 afterEach(() => {
 	cleanup();
 	vi.unstubAllGlobals();
 	chromeExtra = [];
 	signOut.mockClear();
-	navigate.mockClear();
-	instance = "doctor";
-	splat = "test";
 	pathname = "/portal/doctor/test";
 	getSessionUserFn.mockReset().mockResolvedValue({ id: "u1", email: "doc@x.com", name: "Dra" });
-	pluginStatesFn.mockReset().mockResolvedValue({ enabled: plugins.map((p) => p.id) });
+	pluginStatesFn.mockReset().mockResolvedValue(ALL_ENABLED);
 	portalAudiencesFn.mockReset().mockResolvedValue([]);
 	portalPageDataFn.mockReset().mockResolvedValue({ status: "ok", data: null });
-	loaderData = {
-		path: "/portal/doctor/test",
-		data: null,
-		audiences: [],
-		pluginStates: { enabled: plugins.map((p) => p.id) },
+	rootData = {
+		user: { id: "u1", email: "doc@x.com", name: "Dra" },
+		pluginStates: ALL_ENABLED,
 	};
 });
 
-describe("/portal/$instance/$ beforeLoad", () => {
+describe("portalBeforeLoad", () => {
 	it.each([
 		["doctor", "/login/doctor"],
 		["secretary", "/login/secretary"],
@@ -202,33 +176,34 @@ describe("/portal/$instance/$ beforeLoad", () => {
 		["ghost", "/login"],
 	] as const)("redirects anonymous /portal/%s visitors to %s", async (instance, login) => {
 		getSessionUserFn.mockResolvedValue(null);
-		const caught = await beforeLoad(PortalInstanceRoute)!({
-			params: { instance, _splat: "x" },
-		}).catch((e: unknown) => e);
+		const caught = await portalBeforeLoad(instance).catch((e: unknown) => e);
 		expect(caught).toMatchObject({ status: 307, options: { href: login } });
 	});
 
 	it("passes for signed-in users", async () => {
-		await expect(
-			beforeLoad(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "x" } }),
-		).resolves.toBeUndefined();
+		await expect(portalBeforeLoad("doctor")).resolves.toBeUndefined();
 	});
 });
 
-describe("/portal/$instance/$ loader", () => {
+describe("portalLoader", () => {
 	it("404s unknown instance ids", async () => {
 		await expect(
-			loader(PortalInstanceRoute)!({ params: { instance: "ghost", _splat: "x" } }),
+			portalLoader({ params: { _splat: "portal/ghost/x" }, instanceId: "ghost" }),
 		).rejects.toMatchObject({ isNotFound: true });
+	});
+
+	it("404s a missing splat — the root path owns no portal page", async () => {
+		await expect(portalLoader({ params: {}, instanceId: "doctor" })).rejects.toMatchObject({
+			isNotFound: true,
+		});
 	});
 
 	it("404s paths no portal page owns", async () => {
 		const unregister = registerPage();
 		try {
 			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "nope" } }),
+				portalLoader({ params: { _splat: "portal/doctor/nope" }, instanceId: "doctor" }),
 			).rejects.toMatchObject({ isNotFound: true });
-			expect(portalPageDataFn).not.toHaveBeenCalled();
 		} finally {
 			unregister();
 		}
@@ -247,7 +222,7 @@ describe("/portal/$instance/$ loader", () => {
 				enabled: plugins.filter((p) => !clinicianIds.includes(p.id)).map((p) => p.id),
 			});
 			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "test" } }),
+				portalLoader({ params: { _splat: "portal/doctor/test" }, instanceId: "doctor" }),
 			).rejects.toMatchObject({ isNotFound: true });
 		} finally {
 			unregister();
@@ -263,8 +238,9 @@ describe("/portal/$instance/$ loader", () => {
 			pluginStatesFn.mockResolvedValue({
 				enabled: plugins.filter((p) => p.id !== "clinician.portal").map((p) => p.id),
 			});
-			const res = (await loader(PortalInstanceRoute)!({
-				params: { instance: "doctor", _splat: "test" },
+			const res = (await portalLoader({
+				params: { _splat: "portal/doctor/test" },
+				instanceId: "doctor",
 			})) as { path: string };
 			expect(res.path).toBe("/portal/doctor/test");
 		} finally {
@@ -277,26 +253,20 @@ describe("/portal/$instance/$ loader", () => {
 		try {
 			portalPageDataFn.mockResolvedValue({ status: "notfound" });
 			await expect(
-				loader(PortalInstanceRoute)!({ params: { instance: "doctor", _splat: "test" } }),
+				portalLoader({ params: { _splat: "portal/doctor/test" }, instanceId: "doctor" }),
 			).rejects.toMatchObject({ isNotFound: true });
 		} finally {
 			unregister();
 		}
 	});
 
-	it("resolves the bare instance root and empty splat to the instance path", async () => {
+	it("resolves the bare instance root to the instance path", async () => {
 		const unregister = registerPage();
 		try {
 			portalPageDataFn.mockResolvedValue({ status: "ok", data: { view: "home" } });
-			// Bare root (no splat) and empty splat both resolve to the
-			// instance path — the real doctor home page.
-			const bare = (await loader(PortalInstanceRoute)!({
-				params: { instance: "doctor" },
-			})) as { path: string };
-			expect(bare.path).toBe("/portal/doctor");
-			// Empty splat resolves to /portal/doctor — the real home page.
-			const res = (await loader(PortalInstanceRoute)!({
-				params: { instance: "doctor", _splat: "" },
+			const res = (await portalLoader({
+				params: { _splat: "portal/doctor" },
+				instanceId: "doctor",
 			})) as { path: string; data: unknown };
 			expect(res.path).toBe("/portal/doctor");
 			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/doctor");
@@ -305,17 +275,19 @@ describe("/portal/$instance/$ loader", () => {
 		}
 	});
 
-	it("returns path, data, audiences and plugin states on success", async () => {
+	it("returns path, instance id, data, audiences and plugin states on success", async () => {
 		const unregister = registerPage();
 		try {
 			portalAudiencesFn.mockResolvedValue(["doctor"]);
 			pluginStatesFn.mockResolvedValue({ enabled: ["clinician.portal", "clinician.pages"] });
 			portalPageDataFn.mockResolvedValue({ status: "ok", data: { rows: [1] } });
-			const res = (await loader(PortalInstanceRoute)!({
-				params: { instance: "doctor", _splat: "test" },
+			const res = (await portalLoader({
+				params: { _splat: "portal/doctor/test" },
+				instanceId: "doctor",
 			})) as Record<string, unknown>;
 			expect(res).toEqual({
 				path: "/portal/doctor/test",
+				instanceId: "doctor",
 				data: { rows: [1] },
 				audiences: ["doctor"],
 				pluginStates: { enabled: ["clinician.portal", "clinician.pages"] },
@@ -326,34 +298,13 @@ describe("/portal/$instance/$ loader", () => {
 			unregister();
 		}
 	});
-
-	it("head emits no theme tags without a resolved theme", () => {
-		const h = head(PortalInstanceRoute)!;
-		expect(h({ loaderData: { theme: null } })).toEqual({});
-		expect(h({ loaderData: {} })).toEqual({});
-		expect(h({})).toEqual({});
-	});
-
-	it("head projects title and favicon links from the resolved theme", () => {
-		const out = head(PortalInstanceRoute)!({ loaderData: { theme: KTB_DEFAULT_THEME } });
-		expect(out.meta).toContainEqual({ title: "KTB Health" });
-		expect(out.links).toContainEqual({ rel: "icon", href: "/brand/logo-mark.png" });
-	});
-
-	it("head omits the title tag when the theme names nothing", () => {
-		const theme = { ...KTB_DEFAULT_THEME, brand: null, appName: null };
-		expect(head(PortalInstanceRoute)!({ loaderData: { theme } })).toEqual({
-			meta: [],
-			links: [],
-		});
-	});
 });
 
-describe("/portal/$instance/$ component", () => {
+describe("PortalInstanceShell", () => {
 	it("renders the contributed page inside PortalShell", () => {
 		const unregister = registerPage();
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(shell());
 			expect(screen.getByTestId("portal-page").textContent).toBe("CLINICIAN PAGE");
 			expect(screen.getAllByText("Doctor").length).toBeGreaterThan(0);
 		} finally {
@@ -363,26 +314,32 @@ describe("/portal/$instance/$ component", () => {
 
 	it("pins the locale picker to the instance locale when one is declared", () => {
 		const unregister = registerPage(PINNED_PAGE);
-		instance = "clinician-pt";
-		splat = "test";
 		pathname = "/portal/clinician-pt/test";
-		loaderData = {
-			path: "/portal/clinician-pt/test",
-			data: null,
-			audiences: [],
-			pluginStates: { enabled: plugins.map((p) => p.id) },
+		rootData = {
+			user: { id: "u1", email: "doc@x.com", name: "Dra" },
+			pluginStates: ALL_ENABLED,
+			i18n: { locale: "en", catalog: {} },
 		};
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(
+				shell({
+					path: "/portal/clinician-pt/test",
+					instanceId: "clinician-pt",
+				}),
+			);
 			expect(screen.getByTestId("portal-page-pt").textContent).toBe("PT PAGE");
 		} finally {
 			unregister();
 		}
 	});
 
-	it("returns null when the instance or page is unknown", () => {
-		instance = "ghost";
-		const { container } = render(createElement(component(PortalInstanceRoute)));
+	it("returns null when the instance is unknown", () => {
+		const { container } = render(shell({ instanceId: "ghost" }));
+		expect(container.innerHTML).toBe("");
+	});
+
+	it("returns null when the page path resolves no descriptor", () => {
+		const { container } = render(shell({ path: "/portal/doctor/nope" }));
 		expect(container.innerHTML).toBe("");
 	});
 
@@ -419,7 +376,7 @@ describe("/portal/$instance/$ component", () => {
 			},
 		];
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(shell());
 			expect(screen.getAllByText("Test Page").length).toBeGreaterThan(0);
 			expect(screen.getAllByText("Care").length).toBeGreaterThan(0);
 			expect(screen.getByText("HDR-ACTION")).toBeTruthy();
@@ -430,14 +387,12 @@ describe("/portal/$instance/$ component", () => {
 
 	it("shows the portal switcher when more than one instance admits the user", () => {
 		const unregister = registerPage();
-		loaderData = {
-			path: "/portal/doctor/test",
-			data: null,
-			audiences: ["doctor", "platform-admin", "member"],
-			pluginStates: { enabled: plugins.map((p) => p.id) },
-		};
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(
+				shell({
+					audiences: ["doctor", "platform-admin", "member"],
+				}),
+			);
 			expect(screen.getByLabelText("Switch portal")).toBeTruthy();
 		} finally {
 			unregister();
@@ -446,7 +401,7 @@ describe("/portal/$instance/$ component", () => {
 
 	it("omits header actions when the platform header plugin is absent", async () => {
 		// headerEnabled is a module-level registry check — re-import the
-		// route with the header plugin filtered out of #/plugins.ts.
+		// module with the header plugin filtered out of #/plugins.ts.
 		vi.resetModules();
 		vi.doMock("#/plugins.ts", async (importOriginal) => {
 			const actual = await importOriginal<typeof import("#/plugins.ts")>();
@@ -456,8 +411,8 @@ describe("/portal/$instance/$ component", () => {
 			};
 		});
 		try {
-			const [{ Route: R }, { portalPages: freshPages }] = await Promise.all([
-				import("./portal.$instance.$.tsx"),
+			const [{ PortalInstanceShell: FreshShell }, { portalPages: freshPages }] = await Promise.all([
+				import("./portal-dispatch.tsx"),
 				import("#/lib/registry.ts"),
 			]);
 			const pages = freshPages as unknown as Map<string, { page: PanelPage; pluginId: string }>;
@@ -474,9 +429,16 @@ describe("/portal/$instance/$ component", () => {
 				},
 			];
 			render(
-				createElement(
-					(R as unknown as { options: { component: () => ReactElement } }).options.component,
-				),
+				createElement(FreshShell, {
+					loaderData: {
+						path: "/portal/doctor/test",
+						instanceId: "doctor",
+						data: null,
+						audiences: [],
+						pluginStates: { enabled: plugins.map((p) => p.id) },
+						theme: null,
+					} as never,
+				}),
 			);
 			expect(screen.getByTestId("portal-page")).toBeTruthy();
 			expect(screen.queryByText("HDR-ACTION")).toBeNull();
@@ -492,7 +454,7 @@ describe("/portal/$instance/$ component", () => {
 		const assign = vi.fn();
 		vi.stubGlobal("location", { assign });
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(shell());
 			fireEvent.click(screen.getByTitle("Sign out"));
 			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 			expect(signOut).toHaveBeenCalledOnce();
@@ -501,19 +463,10 @@ describe("/portal/$instance/$ component", () => {
 		}
 	});
 
-	const themedLoaderData = (theme: unknown) => ({
-		path: "/portal/doctor/test",
-		data: null,
-		audiences: [],
-		pluginStates: { enabled: plugins.map((p) => p.id) },
-		theme,
-	});
-
 	it("renders the theme brand mark, style block and preview banner", () => {
 		const unregister = registerPage();
-		loaderData = themedLoaderData({ ...KTB_DEFAULT_THEME, preview: true });
 		try {
-			const { container } = render(createElement(component(PortalInstanceRoute)));
+			const { container } = render(shell({ theme: { ...KTB_DEFAULT_THEME, preview: true } }));
 			expect(screen.getByText("Theme preview active")).toBeTruthy();
 			expect(container.querySelector("style")).not.toBeNull();
 			expect(container.querySelector('img[src="/brand/logo-horizontal.svg"]')).not.toBeNull();
@@ -524,9 +477,8 @@ describe("/portal/$instance/$ component", () => {
 
 	it("falls back to the row appName for brand when brand json is empty", () => {
 		const unregister = registerPage();
-		loaderData = themedLoaderData({ ...KTB_DEFAULT_THEME, brand: null, appName: "Acme Health" });
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(shell({ theme: { ...KTB_DEFAULT_THEME, brand: null, appName: "Acme Health" } }));
 			expect(screen.getByText("Acme Health")).toBeTruthy();
 		} finally {
 			unregister();
@@ -535,9 +487,10 @@ describe("/portal/$instance/$ component", () => {
 
 	it("renders no brand slot for a brand-less theme but still emits theme css", () => {
 		const unregister = registerPage();
-		loaderData = themedLoaderData({ ...KTB_DEFAULT_THEME, brand: null, appName: null });
 		try {
-			const { container } = render(createElement(component(PortalInstanceRoute)));
+			const { container } = render(
+				shell({ theme: { ...KTB_DEFAULT_THEME, brand: null, appName: null } }),
+			);
 			expect(container.querySelector("style")).not.toBeNull();
 			expect(container.querySelector('img[src^="/brand/"]')).toBeNull();
 			expect(screen.queryByText("Theme preview active")).toBeNull();
@@ -575,7 +528,7 @@ describe("/portal/$instance/$ component", () => {
 		const assign = vi.fn();
 		vi.stubGlobal("location", { assign });
 		try {
-			render(createElement(component(PortalInstanceRoute)));
+			render(shell());
 			fireEvent.click(screen.getByTestId("brand-signout"));
 			await waitFor(() => expect(assign).toHaveBeenCalledWith("/"));
 			expect(signOut).toHaveBeenCalledOnce();

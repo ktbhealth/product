@@ -16,7 +16,17 @@ const mocks = vi.hoisted(() => ({
 	>(),
 	loaderData: { current: undefined as unknown },
 	params: { current: {} as { _splat?: string } },
-	rootData: { current: { user: null as unknown, pluginStates: { enabled: [] as string[] } } },
+	rootData: {
+		current: {
+			user: null as unknown,
+			pluginStates: { enabled: [] as string[] },
+			i18n: undefined as { locale: string } | undefined,
+		} as {
+			user: unknown;
+			pluginStates: { enabled: string[] };
+			i18n?: { locale: string };
+		},
+	},
 }));
 
 vi.mock("#/lib/fns.ts", () => ({
@@ -44,6 +54,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 import { Route } from "./$.tsx";
+import { appBeforeLoad } from "#/lib/app-dispatch.tsx";
 
 type Opts = {
 	loaderDeps: (a: { search: Record<string, unknown> }) => {
@@ -133,6 +144,7 @@ describe("/$ app page dispatcher (P-059)", () => {
 		entry("/about");
 		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: { rows: 2 } });
 		await expect(opts(Route).loader({ params: { _splat: "about" }, deps: {} })).resolves.toEqual({
+			kind: "app",
 			data: { rows: 2 },
 			pluginStates: { enabled: ["plugin-a"] },
 		});
@@ -159,15 +171,19 @@ describe("/$ app page dispatcher (P-059)", () => {
 		});
 	});
 
-	it("404s an empty splat (the index route owns /)", async () => {
-		await expect(opts(Route).loader({ params: {}, deps: {} })).rejects.toMatchObject({
-			isNotFound: true,
+	it("resolves an empty splat to the landing target", async () => {
+		await expect(opts(Route).loader({ params: {}, deps: {} })).resolves.toEqual({
+			kind: "landing",
 		});
 	});
 
 	it("renders nothing when the path resolves no page", () => {
 		mocks.params.current = {};
-		mocks.loaderData.current = { data: null, pluginStates: { enabled: [] } };
+		mocks.loaderData.current = {
+			kind: "app",
+			data: null,
+			pluginStates: { enabled: [] },
+		};
 		const { container } = render(createElement(opts(Route).component));
 		expect(container.innerHTML).toBe("");
 	});
@@ -176,6 +192,7 @@ describe("/$ app page dispatcher (P-059)", () => {
 		entry("/about");
 		mocks.params.current = { _splat: "about" };
 		mocks.loaderData.current = {
+			kind: "app",
 			data: { rows: 2 },
 			pluginStates: { enabled: ["plugin-a"] },
 		};
@@ -187,6 +204,23 @@ describe("/$ app page dispatcher (P-059)", () => {
 		expect(screen.getByTestId("page").textContent).toBe(
 			'{"rows":2}|{"plugins":[{"id":"plugin-a"}],"locale":"en","user":{"id":"u1","email":"a@x.com","name":"A"},"pluginStates":{"enabled":["plugin-a"]}}',
 		);
+	});
+
+	it("renders the contributed component with the root i18n locale", () => {
+		entry("/about");
+		mocks.params.current = { _splat: "about" };
+		mocks.loaderData.current = {
+			kind: "app",
+			data: null,
+			pluginStates: { enabled: ["plugin-a"] },
+		};
+		mocks.rootData.current = {
+			user: null,
+			pluginStates: { enabled: ["plugin-a"] },
+			i18n: { locale: "pt-BR" },
+		};
+		render(createElement(opts(Route).component));
+		expect(screen.getByTestId("page").textContent).toContain('"locale":"pt-BR"');
 	});
 
 	it("runs the page beforeLoad hook with route facts", async () => {
@@ -207,8 +241,22 @@ describe("/$ app page dispatcher (P-059)", () => {
 		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
 	});
 
+	it("treats a missing splat as the root path", async () => {
+		// The dispatcher routes "/" to landing before appBeforeLoad runs,
+		// so exercise the fallback directly.
+		await expect(appBeforeLoad({ ...hookArgs, params: {} })).resolves.toBeUndefined();
+	});
+
 	it("ignores non-object beforeLoad results", async () => {
 		entry("/about", "plugin-a", { beforeLoad: async () => "nope" });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
+	});
+
+	it("ignores undefined and null beforeLoad results", async () => {
+		entry("/about", "plugin-a", { beforeLoad: async () => undefined });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
+		mocks.pages.clear();
+		entry("/about", "plugin-a", { beforeLoad: async () => null });
 		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
 	});
 
@@ -218,6 +266,13 @@ describe("/$ app page dispatcher (P-059)", () => {
 		});
 		await expect(opts(Route).beforeLoad?.(hookArgs)).rejects.toEqual({
 			__redirect: { href: "/login", replace: true },
+		});
+	});
+
+	it("defaults replace to false on a beforeLoad redirect", async () => {
+		entry("/about", "plugin-a", { beforeLoad: async () => ({ redirectTo: "/login" }) });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).rejects.toEqual({
+			__redirect: { href: "/login", replace: false },
 		});
 	});
 

@@ -103,12 +103,14 @@ describe("makePlatformAdminGate", () => {
 });
 
 describe("plugins", () => {
-	it("declares the gate marker, routes and panel plugins — all system", () => {
+	it("declares the gate marker, routes dep anchor and panel plugins — all system", () => {
 		expect(platformAdminPlugin.id).toBe("platform.admin");
 		expect(platformAdminPlugin.system).toBe(true);
 		expect(platformRoutesPlugin.id).toBe("platform.routes");
 		expect(platformRoutesPlugin.system).toBe(true);
-		expect(platformRoutesPlugin.routes).toHaveLength(1);
+		// Route collapse: the /platform* subtree dispatches through the
+		// host's root `/$` splat — the plugin is a dep anchor only.
+		expect("routes" in platformRoutesPlugin).toBe(false);
 		expect(platformPanelPlugin.id).toBe("platform.panel");
 		expect(platformPanelPlugin.system).toBe(true);
 		expect(platformPanelPlugin.requiredDeps).toEqual(["platform.routes"]);
