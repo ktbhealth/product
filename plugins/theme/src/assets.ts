@@ -21,11 +21,12 @@ import type {
 	ThemeAssetKind,
 	ThemeBrand,
 	ThemeFontAsset,
+	ThemeFontAxis,
 	ThemeFontConfig,
 	ThemeFontFace,
 	ThemeFontSlot,
 } from "./types.ts";
-import type { FontWeightAxis } from "./font-variations.ts";
+import type { FontVariationAxis, FontWeightAxis } from "./font-variations.ts";
 
 // ---------- kinds, keys, serving URLs ----------
 
@@ -96,6 +97,42 @@ export const FONT_UPLOAD_EXTENSIONS = ["woff2", "woff", "ttf", "otf"] as const;
 // ---------- catalog font weights ----------
 
 const isCatalogWeight = (n: number): boolean => Number.isInteger(n) && n >= 100 && n <= 900;
+
+/** Registered fvar axis tags are 4 printable-ASCII bytes. */
+const FONT_AXIS_TAG = /^[\x20-\x7E]{4}$/;
+
+/** Same bound as the fvar parser — keeps stored manifests small. */
+const MAX_FONT_AXES = 32;
+
+/**
+ * Sanitize parser-supplied (or hand-edited) `fvar` axes for storage:
+ * well-formed 4-char tag, finite min ≤ default ≤ max, first record
+ * per tag wins, `wght` dropped (weightAxis owns it), capped at
+ * {@link MAX_FONT_AXES}. Returns [] for absent/malformed input.
+ */
+const sanitizeFontAxes = (input: readonly FontVariationAxis[] | undefined): ThemeFontAxis[] => {
+	if (!Array.isArray(input)) return [];
+	const seen = new Set<string>();
+	const out: ThemeFontAxis[] = [];
+	for (const axis of input) {
+		if (out.length >= MAX_FONT_AXES) break;
+		if (typeof axis !== "object" || axis === null) continue;
+		const { tag, min, default: def, max } = axis;
+		if (typeof tag !== "string" || !FONT_AXIS_TAG.test(tag) || tag === "wght") continue;
+		if (seen.has(tag)) continue;
+		if (
+			!Number.isFinite(min) ||
+			!Number.isFinite(def) ||
+			!Number.isFinite(max) ||
+			!(min <= def && def <= max)
+		) {
+			continue;
+		}
+		seen.add(tag);
+		out.push({ tag, min, default: def, max });
+	}
+	return out;
+};
 
 /**
  * Parse a catalog-upload weight field into a sorted, deduped CSS
@@ -467,7 +504,10 @@ export const deleteThemeAsset = async (db: DbClient, id: number): Promise<void> 
  * which is harmless for static fonts. Variable fonts (an `fvar`
  * `wght` axis parsed by font-variations.ts) instead emit ONE face
  * with a `weightRange` (`font-weight:min max`) plus `variable`/
- * `weightAxis`/`unicodeRange` stamps on the variants JSON.
+ * `weightAxis`/`unicodeRange` stamps on the variants JSON. Non-`wght`
+ * `fvar` axes (`axes` input — wdth/opsz/slnt/ital/custom) are
+ * sanitized, stamped on variants and copied onto every emitted face;
+ * `variable` is set when EITHER axis kind is present.
  */
 export const insertCatalogFontAsset = async (
 	db: DbClient,
@@ -483,6 +523,10 @@ export const insertCatalogFontAsset = async (
 		/** `unicode-range` descriptor derived from the font's cmap —
 		 * stamped on every face so browsers skip unneeded downloads. */
 		readonly unicodeRange?: string | undefined;
+		/** Non-`wght` `fvar` axes (wdth/opsz/slnt/ital/custom) —
+		 * sanitized, stamped on variants and every emitted face.
+		 * `wght` entries are ignored (weightAxis owns that axis). */
+		readonly axes?: readonly FontVariationAxis[] | undefined;
 	},
 ): Promise<ThemeAssetRow | null> => {
 	const weights =
@@ -510,6 +554,8 @@ export const insertCatalogFontAsset = async (
 		typeof input.unicodeRange === "string" && input.unicodeRange.trim() !== ""
 			? input.unicodeRange.trim()
 			: undefined;
+	const axes = sanitizeFontAxes(input.axes);
+	const axisFaces = axes.length === 0 ? {} : { axes };
 	const format = input.format === undefined ? {} : { format: input.format };
 	const faces: ThemeFontFace[] =
 		weightAxis !== undefined
@@ -518,6 +564,7 @@ export const insertCatalogFontAsset = async (
 						url,
 						weightRange: [weightAxis.min, weightAxis.max],
 						...(unicodeRange === undefined ? {} : { unicodeRange }),
+						...axisFaces,
 						...format,
 					},
 				]
@@ -526,6 +573,7 @@ export const insertCatalogFontAsset = async (
 						{
 							url,
 							...(unicodeRange === undefined ? {} : { unicodeRange }),
+							...axisFaces,
 							...format,
 						},
 					]
@@ -533,12 +581,15 @@ export const insertCatalogFontAsset = async (
 						url,
 						weight,
 						...(unicodeRange === undefined ? {} : { unicodeRange }),
+						...axisFaces,
 						...format,
 					}));
 	const variants = {
 		family: input.family,
 		...(weights.length === 0 ? {} : { weights }),
-		...(weightAxis === undefined ? {} : { variable: true, weightAxis }),
+		...(weightAxis === undefined && axes.length === 0 ? {} : { variable: true }),
+		...(weightAxis === undefined ? {} : { weightAxis }),
+		...(axes.length === 0 ? {} : { axes }),
 		...(unicodeRange === undefined ? {} : { unicodeRange }),
 		fontAsset: { faces, fallback: null },
 	};

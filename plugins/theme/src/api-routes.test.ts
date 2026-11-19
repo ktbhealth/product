@@ -1003,11 +1003,12 @@ describe("POST /api/theme/catalog-fonts", () => {
 		});
 	});
 
-	it("stamps weightAxis/unicodeRange on variable-font uploads", async () => {
+	it("stamps weightAxis/axes/unicodeRange on variable-font uploads", async () => {
 		useSession("admin");
 		await withCatalogRuntime(async () => {
 			fontsState.syncFamilies = [fontFamily({ providerId: 1, family: "VarSans" })];
-			// Minimal TTF: fvar wght axis (100/400/900) + cmap format 12.
+			// Minimal TTF: fvar wght (100/400/900) + wdth (75/100/125)
+			// axes + cmap format 12.
 			const u16 = (v: number) => [(v >> 8) & 0xff, v & 0xff];
 			const u32 = (v: number) => [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
 			const i32 = (v: number) => u32(v | 0);
@@ -1018,7 +1019,7 @@ describe("POST /api/theme/catalog-fonts", () => {
 				...u16(0),
 				...u16(16),
 				...u16(0),
-				...u16(1),
+				...u16(2),
 				...u16(20),
 				...u16(0),
 				...u16(0),
@@ -1026,6 +1027,12 @@ describe("POST /api/theme/catalog-fonts", () => {
 				...fixed(100),
 				...fixed(400),
 				...fixed(900),
+				...u16(0),
+				...u16(256),
+				...tag("wdth"),
+				...fixed(75),
+				...fixed(100),
+				...fixed(125),
 				...u16(0),
 				...u16(256),
 			];
@@ -1073,11 +1080,13 @@ describe("POST /api/theme/catalog-fonts", () => {
 			const variants = JSON.parse(row!.variants!);
 			expect(variants.variable).toBe(true);
 			expect(variants.weightAxis).toEqual({ min: 100, default: 400, max: 900 });
+			expect(variants.axes).toEqual([{ tag: "wdth", min: 75, default: 100, max: 125 }]);
 			expect(variants.unicodeRange).toBe("U+0020-007E");
 			expect(variants.fontAsset.faces).toEqual([
 				{
 					url: expect.stringContaining("/api/theme/assets?key="),
 					weightRange: [100, 900],
+					axes: [{ tag: "wdth", min: 75, default: 100, max: 125 }],
 					unicodeRange: "U+0020-007E",
 					format: "truetype",
 				},

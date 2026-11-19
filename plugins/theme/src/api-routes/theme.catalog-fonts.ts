@@ -43,8 +43,10 @@ import {
  * "Inter_700", else 400 downstream), `providerId` (optional — must
  * name a "local" provider; absent = first enabled local provider,
  * auto-created as "Local" when none exists). The uploaded bytes are
- * probed for an `fvar` wght axis (variable fonts emit one ranged
- * @font-face) and a cmap (unicode-range download hint).
+ * probed for an `fvar` table (the `wght` axis turns the upload into
+ * a variable font with one ranged @font-face; other axes are stamped
+ * as `axes` metadata — `wdth` becomes `font-stretch` at present time)
+ * and a cmap (unicode-range download hint).
  *
  * PlatformAdmin only — same gate as every theme write.
  */
@@ -191,8 +193,9 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				const effectiveWeights = weights ?? (hinted === undefined ? undefined : [hinted]);
 
 				// Probe the file itself: an `fvar` wght axis turns the
-				// upload into a variable font (single ranged @font-face)
-				// and the cmap yields a unicode-range download hint.
+				// upload into a variable font (single ranged @font-face),
+				// other fvar axes ride `axes` metadata and the cmap
+				// yields a unicode-range download hint.
 				// Never fatal — unparseable fonts keep discrete weights.
 				// Lazy import: font-variations pulls font-metrics →
 				// brotli-dec.wasm, whose eager instantiation breaks under
@@ -251,6 +254,7 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 								format: fontFormatForExt(ext),
 								weightAxis: variation?.weightAxis,
 								unicodeRange: variation?.unicodeRange,
+								axes: variation?.axes,
 							}),
 						);
 						if (asset === null) {

@@ -42,6 +42,15 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 		? (value as Record<string, unknown>)
 		: null;
 
+// Type alias (not interface) so the object shape carries an implicit
+// index signature and stays assignable to effect's `Json` meta type.
+type FontAxisMeta = {
+	readonly tag: string;
+	readonly min: number;
+	readonly default: number;
+	readonly max: number;
+};
+
 /** Theme-owned font rows have no variation metadata — only catalog
  * uploads (variantInfoOf) carry it. */
 interface ResolvedFamilies {
@@ -49,6 +58,7 @@ interface ResolvedFamilies {
 	readonly weights?: number[];
 	readonly variable?: boolean;
 	readonly weightAxis?: { min: number; default: number; max: number };
+	readonly axes?: FontAxisMeta[];
 	readonly unicodeRange?: string;
 }
 
@@ -99,11 +109,57 @@ const asWeightAxis = (
 const asUnicodeRange = (value: unknown): string | undefined =>
 	typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 
+/** Registered fvar axis tags are 4 printable-ASCII bytes. */
+const FONT_AXIS_TAG = /^[\x20-\x7E]{4}$/;
+
+/** Same bound the theme plugin applies when stamping variants. */
+const MAX_FONT_AXES = 32;
+
+/**
+ * Non-`wght` `fvar` axes stamped on catalog variants by the theme
+ * plugin's font pipeline — validated like {@link asWeightAxis}:
+ * well-formed tag, finite min ≤ default ≤ max, first per tag, capped.
+ * `wght` entries are dropped (weightAxis owns that axis).
+ */
+const asAxes = (value: unknown): FontAxisMeta[] | undefined => {
+	if (!Array.isArray(value)) return undefined;
+	const seen = new Set<string>();
+	const out: FontAxisMeta[] = [];
+	for (const item of value) {
+		if (out.length >= MAX_FONT_AXES) break;
+		const axis = asRecord(item);
+		if (axis === null) continue;
+		const tag = axis["tag"];
+		const min = axis["min"];
+		const def = axis["default"];
+		const max = axis["max"];
+		if (
+			typeof tag !== "string" ||
+			!FONT_AXIS_TAG.test(tag) ||
+			tag === "wght" ||
+			seen.has(tag) ||
+			typeof min !== "number" ||
+			typeof def !== "number" ||
+			typeof max !== "number" ||
+			!Number.isFinite(min) ||
+			!Number.isFinite(def) ||
+			!Number.isFinite(max) ||
+			!(min <= def && def <= max)
+		) {
+			continue;
+		}
+		seen.add(tag);
+		out.push({ tag, min, default: def, max });
+	}
+	return out.length === 0 ? undefined : out;
+};
+
 /**
  * Catalog-upload rows (theme_assets.theme_id NULL) stamp `family` plus
  * an optional `weights` array — mirrored from the @font-face weights —
  * on their variants JSON. Variable-font uploads additionally stamp
- * `variable`/`weightAxis` (the fvar wght range) and `unicodeRange`
+ * `variable`/`weightAxis` (the fvar wght range), `axes` (the other
+ * fvar axes — wdth/opsz/slnt/ital/custom) and `unicodeRange`
  * (cmap-derived); the axis reports `[min, max]` as the family's
  * weights and rides `meta` so consumers can distinguish a ranged face
  * from discrete weights. Rows written before weights existed fall
@@ -117,14 +173,16 @@ const variantInfoOf = (
 	weights?: number[];
 	variable?: boolean;
 	weightAxis?: { min: number; default: number; max: number };
+	axes?: FontAxisMeta[];
 	unicodeRange?: string;
 } | null => {
 	const variants = asRecord(parseJson(variantsJson));
 	const family = variants?.["family"];
 	if (variants === null || typeof family !== "string" || family.trim() === "") return null;
 	const weightAxis = asWeightAxis(variants["weightAxis"]);
+	const axes = asAxes(variants["axes"]);
 	const unicodeRange = asUnicodeRange(variants["unicodeRange"]);
-	const variable = variants["variable"] === true || weightAxis !== undefined;
+	const variable = variants["variable"] === true || weightAxis !== undefined || axes !== undefined;
 	const explicit = asWeightList(variants["weights"]);
 	// A variable font's "weights" are its axis endpoints — more honest
 	// than the discrete list (which is absent for pure variable uploads).
@@ -136,6 +194,7 @@ const variantInfoOf = (
 		...(weights === undefined ? {} : { weights }),
 		...(variable ? { variable: true } : {}),
 		...(weightAxis === undefined ? {} : { weightAxis }),
+		...(axes === undefined ? {} : { axes }),
 		...(unicodeRange === undefined ? {} : { unicodeRange }),
 	};
 };
@@ -178,6 +237,7 @@ export const localFontProviderAdapter: FontProviderAdapter = {
 								...(direct.weights === undefined ? {} : { weights: direct.weights }),
 								...(direct.variable === true ? { variable: true } : {}),
 								...(direct.weightAxis === undefined ? {} : { weightAxis: direct.weightAxis }),
+								...(direct.axes === undefined ? {} : { axes: direct.axes }),
 								...(direct.unicodeRange === undefined ? {} : { unicodeRange: direct.unicodeRange }),
 							}
 						: fontFamiliesOf(row.themeFonts);
@@ -191,6 +251,7 @@ export const localFontProviderAdapter: FontProviderAdapter = {
 							assetId: row.assetId,
 							...(resolved.variable === true ? { variable: true } : {}),
 							...(resolved.weightAxis === undefined ? {} : { weightAxis: resolved.weightAxis }),
+							...(resolved.axes === undefined ? {} : { axes: resolved.axes }),
 							...(resolved.unicodeRange === undefined
 								? {}
 								: { unicodeRange: resolved.unicodeRange }),

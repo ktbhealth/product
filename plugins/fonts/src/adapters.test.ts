@@ -217,6 +217,67 @@ describe("local adapter", () => {
 		expect(bad?.meta?.["weightAxis"]).toBeUndefined();
 	});
 
+	it("propagates non-wght fvar axes into meta; axes imply variable", async () => {
+		const { db, d1 } = makeTestDb();
+		const addAsset = (variants: string) =>
+			run(
+				d1,
+				`INSERT INTO theme_assets (theme_id, kind, status, variants, created_at)
+				 VALUES (NULL, 'font', 'ready', ?, 0)`,
+				[variants],
+			);
+		// wdth + opsz axes, no wght/weightAxis — still variable.
+		await addAsset(
+			'{"family":"Wide","axes":[{"tag":"wdth","min":75,"default":100,"max":125},{"tag":"opsz","min":6,"default":14,"max":72}],"fontAsset":{"faces":[]}}',
+		);
+		// Explicit variable:false does not veto axis-implied variability.
+		await addAsset(
+			'{"family":"AxesOnly","variable":false,"axes":[{"tag":"slnt","min":-12,"default":0,"max":0}],"fontAsset":{"faces":[]}}',
+		);
+		// Every malformed axis is dropped → no axes, no variable flag.
+		await addAsset(
+			'{"family":"BadAxes","axes":[{"tag":"wght","min":1,"default":2,"max":3},{"tag":"bad","min":1,"default":2,"max":3},{"tag":"wdth","min":9,"default":1,"max":2},5,"x",{"tag":"opsz","min":"s","default":1,"max":2},{"tag":"ital","min":0,"default":1,"max":0}],"fontAsset":{"faces":[]}}',
+		);
+		// Non-array axes value is ignored.
+		await addAsset('{"family":"AxesStr","axes":"nope","fontAsset":{"faces":[]}}');
+		// Axis list is capped at 32 entries.
+		const many = JSON.stringify({
+			family: "Many",
+			axes: Array.from({ length: 40 }, (_, i) => ({
+				tag: `A${i.toString(16).padStart(3, "0")}`,
+				min: 0,
+				default: 1,
+				max: 2,
+			})),
+			fontAsset: { faces: [] },
+		});
+		await addAsset(many);
+
+		const entries = await Effect.runPromise(
+			localFontProviderAdapter.list().pipe(Effect.provideService(Db, db)),
+		);
+		const byFamily = new Map(entries.map((e) => [e.family, e]));
+		expect(byFamily.get("Wide")?.meta).toMatchObject({
+			variable: true,
+			axes: [
+				{ tag: "wdth", min: 75, default: 100, max: 125 },
+				{ tag: "opsz", min: 6, default: 14, max: 72 },
+			],
+		});
+		expect(byFamily.get("AxesOnly")?.meta).toMatchObject({
+			variable: true,
+			axes: [{ tag: "slnt", min: -12, default: 0, max: 0 }],
+		});
+		const bad = byFamily.get("BadAxes");
+		expect(bad?.meta?.["axes"]).toBeUndefined();
+		expect(bad?.meta?.["variable"]).toBeUndefined();
+		expect(byFamily.get("AxesStr")?.meta?.["axes"]).toBeUndefined();
+		expect(byFamily.get("AxesStr")?.meta?.["variable"]).toBeUndefined();
+		const capped = byFamily.get("Many")?.meta?.["axes"];
+		expect(Array.isArray(capped)).toBe(true);
+		expect((capped as unknown[]).length).toBe(32);
+	});
+
 	it("skips corrupt/blank rows and falls back to theme fonts (slots, assets, weights)", async () => {
 		const { db, d1 } = makeTestDb();
 		const insertTheme = async (fonts: string | null) =>

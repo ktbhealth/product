@@ -54,6 +54,22 @@ export type ThemeAssetKind =
 /** Font slot a self-hosted family fills. */
 export type ThemeFontSlot = "sans" | "heading" | "mono";
 
+/**
+ * One non-`wght` OpenType `fvar` variation axis recorded on a font
+ * face — `wdth` (percentages), `opsz`, `slnt` (degrees), `ital`
+ * (0–1) or a custom 4-byte tag, with min/default/max in the axis's
+ * own units. `wght` never appears here: {@link ThemeFontFace.weightRange}
+ * carries it. Only `wdth` has an `@font-face` descriptor
+ * (`font-stretch`); the rest apply via `font-variation-settings` on
+ * the element — stored here so consumers can emit them.
+ */
+export interface ThemeFontAxis {
+	readonly tag: string;
+	readonly min: number;
+	readonly default: number;
+	readonly max: number;
+}
+
 /** One `@font-face` src entry inside a font asset. */
 export interface ThemeFontFace {
 	/** Serving URL (same-origin /api/theme/assets?key=…). */
@@ -68,6 +84,13 @@ export interface ThemeFontFace {
 	 * the font's cmap — browsers skip downloading the face for text it
 	 * cannot render. The dependency-free stand-in for font subsetting. */
 	readonly unicodeRange?: string;
+	/** Non-`wght` `fvar` axes of a variable font (see
+	 * {@link ThemeFontAxis}). `present.ts` turns a `wdth` entry into
+	 * the `font-stretch` descriptor; the remaining axes have no
+	 * `@font-face` descriptor and are kept for element-level
+	 * `font-variation-settings` use. Stored JSON is untrusted —
+	 * consumers revalidate before emitting CSS. */
+	readonly axes?: readonly ThemeFontAxis[];
 	/** Hint for the `format()` descriptor — "woff2" | "woff" | "truetype" | "opentype". */
 	readonly format?: string;
 }
