@@ -185,9 +185,12 @@ export const syncBaseline = async (
 			pluginId: "",
 			defaultLocale: "en",
 		}));
-		// Same bound-parameter ceiling as the message insert — 3 params
-		// per namespace row.
-		const nsChunk = Math.floor((MAX_BOUND_PARAMETERS - 1) / 3);
+		// Same bound-parameter ceiling as the message insert — 4 params
+		// per namespace row: drizzle binds the manifest_hash column
+		// default ("") explicitly alongside namespace/pluginId/
+		// defaultLocale (created_at stays a SQL expression). At 3 the
+		// chunk overshot D1's 100-param cap once ~25 namespaces seeded.
+		const nsChunk = Math.floor((MAX_BOUND_PARAMETERS - 1) / 4);
 		for (let i = 0; i < nsRows.length; i += nsChunk) {
 			await db
 				.insert(i18nNamespaces)

@@ -6,6 +6,9 @@
 		".": "./src/index.ts",
 		"./schema": "./src/schema.ts"
 	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
 	"dependencies": {
 		"@ktb/audit": "workspace:*",
 		"@ktb/authz": "workspace:*",

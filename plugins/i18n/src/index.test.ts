@@ -294,6 +294,62 @@ describe("store", () => {
 		expect(ns.length).toBeGreaterThan(0);
 	});
 
+	it("listMessageRows hasDraft returns only rows with a staged draft_value", async () => {
+		// Published rows CAN carry a staged draft_value (awaiting
+		// publish), and never-published draft rows always have one —
+		// status alone can't express "has pending copy".
+		await db.insert(i18nMessages).values([
+			{
+				namespace: "draftns",
+				key: "pub-staged",
+				locale: "en",
+				scope: "global",
+				scopeId: "",
+				kind: "text",
+				value: "live copy",
+				draftValue: "staged copy",
+				status: "published",
+				params: [],
+				version: 2,
+			},
+			{
+				namespace: "draftns",
+				key: "pub-clean",
+				locale: "en",
+				scope: "global",
+				scopeId: "",
+				kind: "text",
+				value: "live only",
+				status: "published",
+				params: [],
+				version: 1,
+			},
+			{
+				namespace: "draftns",
+				key: "never-pub",
+				locale: "en",
+				scope: "global",
+				scopeId: "",
+				kind: "text",
+				value: "",
+				draftValue: "staged only",
+				status: "draft",
+				params: [],
+				version: 1,
+			},
+		]);
+		const rows = await listMessageRows(db, { namespace: "draftns", hasDraft: true });
+		expect(rows.map((r) => r.key).sort()).toEqual(["never-pub", "pub-staged"]);
+		// Combines with other filters: hasDraft + status narrows to the
+		// published row still awaiting publish.
+		const publishedStaged = await listMessageRows(db, {
+			namespace: "draftns",
+			hasDraft: true,
+			status: "published",
+		});
+		expect(publishedStaged.map((r) => r.key)).toEqual(["pub-staged"]);
+	});
+
 	it("catalogStamp reads r0 before the first revision bump", async () => {
 		const fresh = makeDb(makeD1(I18N_TEST_DDL));
 		expect(await catalogStamp(fresh)).toBe("r0");
