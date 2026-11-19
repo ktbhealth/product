@@ -102,7 +102,7 @@ export interface LocaleInfo {
 
 /** Read input for I18nAdmin.missingKeys — global scope is implied
  * (the key universe is coverage()'s: distinct global keys). */
-export interface MissingKeysInput {
+interface MissingKeysInput {
 	readonly namespace: string;
 	readonly locale: string;
 }

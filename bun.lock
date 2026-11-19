@@ -1511,7 +1511,6 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1703,10 +1702,8 @@
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
         "lucide-react": "0.544.0",
-        "platejs": "53.5.2",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
@@ -1734,7 +1731,6 @@
         "lucide-react": "0.544.0",
       },
       "devDependencies": {
-        "@ktb/auth": "workspace:*",
         "@types/react": "^19.2.0",
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
