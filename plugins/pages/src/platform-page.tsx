@@ -1,5 +1,6 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
+import { collectProvidedPages } from "./provided-pages.ts";
 import type {
 	AdminPageRow,
 	LayoutRef,
@@ -110,8 +111,17 @@ const asData = (
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const { pages, docs, richTextEnabled, schemas, searchSchemaEnabled, layouts, layoutEnabled } =
 		asData(data);
+	// Plugin-contributed pages (P-104): the console lists every reachable
+	// descriptor alongside the custom_pages rows, read-only. Enabled
+	// state comes from ctx.pluginStates (package-granular, same gate the
+	// dispatchers apply); absent it every descriptor is listed.
+	const providedPages = collectProvidedPages(
+		ctx.plugins,
+		ctx.pluginStates === undefined ? undefined : new Set(ctx.pluginStates.enabled),
+	);
 	const props: PagesAdminPageProps = {
 		pages,
+		providedPages,
 		docs,
 		richTextEnabled,
 		schemas,

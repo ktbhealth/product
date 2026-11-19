@@ -74,6 +74,36 @@ describe("PagesAdminPage", () => {
 		expect(screen.getByLabelText("View").getAttribute("href")).toBe("/about");
 	});
 
+	it("lists plugin-provided pages read-only with a Provided by badge", () => {
+		render(
+			<PagesAdminPage
+				pages={[row({})]}
+				providedPages={[
+					{
+						pageId: "audit.admin",
+						path: "/platform/audit",
+						pluginId: "audit.panel",
+						context: "portal",
+					},
+				]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
+				locale="en"
+			/>,
+		);
+		expect(screen.getByText("/platform/audit")).toBeTruthy();
+		expect(screen.getByText("audit.admin")).toBeTruthy();
+		expect(screen.getByText("audit.panel")).toBeTruthy();
+		expect(screen.getByText("Custom")).toBeTruthy();
+		// Plugin rows carry no row actions — only the custom row's edit/delete.
+		expect(screen.getAllByLabelText("Edit")).toHaveLength(1);
+		expect(screen.getAllByLabelText("Delete")).toHaveLength(1);
+	});
+
 	it("shows the empty state", () => {
 		render(
 			<PagesAdminPage

@@ -1382,6 +1382,7 @@ export type I18nKey =
 	| "pages.colNav"
 	| "pages.colOrder"
 	| "pages.colPath"
+	| "pages.colProvided"
 	| "pages.colStatus"
 	| "pages.colTitle"
 	| "pages.contentDocHint"
@@ -1413,6 +1414,7 @@ export type I18nKey =
 	| "pages.navShown"
 	| "pages.newPage"
 	| "pages.pathHint"
+	| "pages.providedCustom"
 	| "pages.save"
 	| "pages.saveFailed"
 	| "pages.saving"
@@ -4108,6 +4110,7 @@ export interface I18nTypedT {
 	(key: "pages.colNav"): Effect.Effect<string>;
 	(key: "pages.colOrder"): Effect.Effect<string>;
 	(key: "pages.colPath"): Effect.Effect<string>;
+	(key: "pages.colProvided"): Effect.Effect<string>;
 	(key: "pages.colStatus"): Effect.Effect<string>;
 	(key: "pages.colTitle"): Effect.Effect<string>;
 	(key: "pages.contentDocHint"): Effect.Effect<string>;
@@ -4144,6 +4147,7 @@ export interface I18nTypedT {
 	(key: "pages.navShown"): Effect.Effect<string>;
 	(key: "pages.newPage"): Effect.Effect<string>;
 	(key: "pages.pathHint"): Effect.Effect<string>;
+	(key: "pages.providedCustom"): Effect.Effect<string>;
 	(key: "pages.save"): Effect.Effect<string>;
 	(key: "pages.saveFailed"): Effect.Effect<string>;
 	(key: "pages.saving"): Effect.Effect<string>;

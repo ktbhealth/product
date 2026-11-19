@@ -41,6 +41,7 @@ import { Spinner } from "@ktbhealth/ui/components/spinner";
 
 import { createPageFn, deletePageFn, updatePageFn } from "../fns.ts";
 import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
+import type { ProvidedPageRef } from "../provided-pages.ts";
 
 /** Row shape the panel loader hands down — the `custom_pages` record
  * narrowed to the fields the console edits (timestamps unused).
@@ -85,6 +86,9 @@ export interface LayoutRef {
 
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
+	/** Plugin-contributed page descriptors (P-104) — rendered as
+	 * read-only rows tagged with their owning plugin id. */
+	readonly providedPages?: readonly ProvidedPageRef[];
 	readonly docs: readonly RichTextDocRef[];
 	/** False when the rich-text plugin's service is absent — the
 	 * content-document field (picker + manage link) is hidden; stored
@@ -146,6 +150,15 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 				sortOrder: String(row.sortOrder),
 			};
 
+/** Table row: a `custom_pages` record (editable) or a plugin page
+ * descriptor (read-only, P-104). */
+type PagesTableRow =
+	| ({ readonly kind: "custom" } & AdminPageRow)
+	| ({ readonly kind: "plugin" } & ProvidedPageRef);
+
+const isPluginRow = (row: PagesTableRow): row is { readonly kind: "plugin" } & ProvidedPageRef =>
+	row.kind === "plugin";
+
 const toInput = (form: FormState) => ({
 	path: form.path,
 	title: form.title,
@@ -185,6 +198,7 @@ const LAYOUTS_CONSOLE = "/platform/layouts" as string;
  */
 export function PagesAdminPage({
 	pages,
+	providedPages = [],
 	docs,
 	richTextEnabled,
 	schemas,
@@ -266,69 +280,101 @@ export function PagesAdminPage({
 		}
 	};
 
-	const columns: Column<AdminPageRow>[] = [
+	const rows: readonly PagesTableRow[] = [
+		...pages.map((row) => ({ ...row, kind: "custom" as const })),
+		...providedPages.map((ref) => ({ ...ref, kind: "plugin" as const })),
+	];
+
+	const columns: Column<PagesTableRow>[] = [
 		{
 			key: "path",
 			header: t.colPath,
 			render: (row) => <span className="font-mono text-xs">{row.path}</span>,
 		},
-		{ key: "title", header: t.colTitle },
+		{
+			key: "title",
+			header: t.colTitle,
+			render: (row) =>
+				isPluginRow(row) ? <span className="text-muted-foreground">{row.pageId}</span> : row.title,
+		},
+		{
+			key: "provided",
+			header: t.colProvided,
+			render: (row) =>
+				isPluginRow(row) ? (
+					<Badge variant="secondary">{row.pluginId}</Badge>
+				) : (
+					<Badge variant="outline">{t.providedCustom}</Badge>
+				),
+		},
 		{
 			key: "status",
 			header: t.colStatus,
-			render: (row) => (
-				<Badge variant={row.published ? "default" : "secondary"}>
-					{row.published ? t.statusPublished : t.statusDraft}
-				</Badge>
-			),
+			render: (row) =>
+				isPluginRow(row) ? (
+					<span className="text-muted-foreground">—</span>
+				) : (
+					<Badge variant={row.published ? "default" : "secondary"}>
+						{row.published ? t.statusPublished : t.statusDraft}
+					</Badge>
+				),
 		},
 		{
 			key: "nav",
 			header: t.colNav,
-			render: (row) => (
-				<Badge variant={row.showInNav ? "default" : "outline"}>
-					{row.showInNav ? t.navShown : t.navHidden}
-				</Badge>
-			),
+			render: (row) =>
+				isPluginRow(row) ? (
+					<span className="text-muted-foreground">—</span>
+				) : (
+					<Badge variant={row.showInNav ? "default" : "outline"}>
+						{row.showInNav ? t.navShown : t.navHidden}
+					</Badge>
+				),
 		},
 		{
 			key: "sortOrder",
 			header: t.colOrder,
-			render: (row) => <span className="text-muted-foreground">{row.sortOrder}</span>,
+			render: (row) =>
+				isPluginRow(row) ? (
+					<span className="text-muted-foreground">—</span>
+				) : (
+					<span className="text-muted-foreground">{row.sortOrder}</span>
+				),
 		},
 		{
 			key: "actions",
 			header: t.colActions,
 			align: "right",
-			render: (row) => (
-				<div className="flex items-center justify-end gap-1">
-					{row.published ? (
-						<Link
-							to={row.path as "/"}
-							className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-							aria-label={t.view}
+			render: (row) =>
+				isPluginRow(row) ? null : (
+					<div className="flex items-center justify-end gap-1">
+						{row.published ? (
+							<Link
+								to={row.path as "/"}
+								className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+								aria-label={t.view}
+							>
+								<ExternalLinkIcon className="size-4" />
+							</Link>
+						) : null}
+						<Button
+							size="sm"
+							variant="ghost"
+							onClick={() => setForm(formFrom(row))}
+							aria-label={t.edit}
 						>
-							<ExternalLinkIcon className="size-4" />
-						</Link>
-					) : null}
-					<Button
-						size="sm"
-						variant="ghost"
-						onClick={() => setForm(formFrom(row))}
-						aria-label={t.edit}
-					>
-						<PencilIcon className="size-4" />
-					</Button>
-					<Button
-						size="sm"
-						variant="ghost"
-						onClick={() => setDeleteTarget(row)}
-						aria-label={t.delete}
-					>
-						<Trash2Icon className="size-4 text-destructive" />
-					</Button>
-				</div>
-			),
+							<PencilIcon className="size-4" />
+						</Button>
+						<Button
+							size="sm"
+							variant="ghost"
+							onClick={() => setDeleteTarget(row)}
+							aria-label={t.delete}
+						>
+							<Trash2Icon className="size-4 text-destructive" />
+						</Button>
+					</div>
+				),
 		},
 	];
 
@@ -347,8 +393,8 @@ export function PagesAdminPage({
 			{failed ? <p className="text-sm text-destructive">{t.saveFailed}</p> : null}
 			<TablePage.Table
 				columns={columns}
-				rows={pages}
-				rowKey={(row) => String(row.id)}
+				rows={rows}
+				rowKey={(row) => (row.kind === "plugin" ? `plugin:${row.path}` : `custom:${row.id}`)}
 				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
 				locale={locale}
 			/>

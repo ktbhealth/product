@@ -25290,6 +25290,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
+		key: "colProvided",
+		locale: "en",
+		value: "Provided by",
+	},
+	{
+		namespace: "pages",
 		key: "colStatus",
 		locale: "en",
 		value: "Status",
@@ -25335,6 +25341,12 @@ export const I18N_BASELINE = [
 		key: "navHidden",
 		locale: "en",
 		value: "Hidden",
+	},
+	{
+		namespace: "pages",
+		key: "providedCustom",
+		locale: "en",
+		value: "Custom",
 	},
 	{
 		namespace: "pages",
@@ -25563,6 +25575,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
+		key: "colProvided",
+		locale: "pt-BR",
+		value: "Fornecido por",
+	},
+	{
+		namespace: "pages",
 		key: "colStatus",
 		locale: "pt-BR",
 		value: "Status",
@@ -25608,6 +25626,12 @@ export const I18N_BASELINE = [
 		key: "navHidden",
 		locale: "pt-BR",
 		value: "Oculta",
+	},
+	{
+		namespace: "pages",
+		key: "providedCustom",
+		locale: "pt-BR",
+		value: "Personalizada",
 	},
 	{
 		namespace: "pages",
@@ -25836,6 +25860,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
+		key: "colProvided",
+		locale: "es",
+		value: "Proporcionado por",
+	},
+	{
+		namespace: "pages",
 		key: "colStatus",
 		locale: "es",
 		value: "Estado",
@@ -25881,6 +25911,12 @@ export const I18N_BASELINE = [
 		key: "navHidden",
 		locale: "es",
 		value: "Oculta",
+	},
+	{
+		namespace: "pages",
+		key: "providedCustom",
+		locale: "es",
+		value: "Personalizada",
 	},
 	{
 		namespace: "pages",
