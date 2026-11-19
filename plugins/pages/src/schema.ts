@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { layouts } from "@ktb/layouts/schema";
 import { richText } from "@ktb/rich-text/schema";
 import { schemas } from "@ktb/schemas/schema";
 
@@ -12,6 +13,9 @@ import { schemas } from "@ktb/schemas/schema";
  * renders with no body. `searchSchemaId` references a `schemas` row
  * (@ktb/schemas) whose JSON Schema validates the page's URL search
  * params at render time — null means params pass through unchecked.
+ * `layoutId` references a `layouts` row (@ktb/layouts) whose ordered
+ * sections compose the page body instead of the single bound document
+ * — null means the page renders `richTextId`'s document as before.
  * `published` gates public visibility (drafts
  * 404); `showInNav` + `sortOrder` drive the optional app-header nav
  * listing.
@@ -28,6 +32,7 @@ export const customPage = sqliteTable(
 		title: text().notNull(),
 		richTextId: integer("rich_text_id").references(() => richText.id),
 		searchSchemaId: integer("search_schema_id").references(() => schemas.id),
+		layoutId: integer("layout_id").references(() => layouts.id),
 		published: integer({ mode: "boolean" }).notNull().default(false),
 		showInNav: integer("show_in_nav", { mode: "boolean" }).notNull().default(false),
 		sortOrder: integer("sort_order").notNull().default(0),

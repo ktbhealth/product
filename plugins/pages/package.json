@@ -13,6 +13,7 @@
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/layouts": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/rich-text": "workspace:*",
 		"@ktb/schemas": "workspace:*",

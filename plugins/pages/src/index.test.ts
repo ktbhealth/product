@@ -25,6 +25,8 @@ import { RichTexts } from "@ktb/rich-text/service";
 import { richTextServicesPlugin } from "@ktb/rich-text";
 import { Schemas } from "@ktb/schemas/service";
 import { schemasServicesPlugin } from "@ktb/schemas";
+import { Layouts } from "@ktb/layouts/service";
+import { layoutsServicesPlugin } from "@ktb/layouts";
 
 import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPagesLive } from "./service.ts";
@@ -44,15 +46,20 @@ describe("pages plugins", () => {
 		expect(pagesServicesPlugin.optionalDeps).toEqual([
 			richTextServicesPlugin.id,
 			schemasServicesPlugin.id,
+			layoutsServicesPlugin.id,
 		]);
 		// The render plugin's guard/loader resolve rich-text content and
-		// call CustomPages.validatedSearch — the Schemas edge lives on
-		// pages.services (where the serviceOption is built), so
-		// pages.render keeps just the rich-text edge.
-		expect(pagesRenderPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
+		// layout sections, and call CustomPages.validatedSearch — the
+		// Schemas edge lives on pages.services (where the serviceOption
+		// is built), so pages.render keeps the rich-text and layouts edges.
+		expect(pagesRenderPlugin.optionalDeps).toEqual([
+			richTextServicesPlugin.id,
+			layoutsServicesPlugin.id,
+		]);
 		expect(pagesPanelPlugin.optionalDeps).toEqual([
 			richTextServicesPlugin.id,
 			schemasServicesPlugin.id,
+			layoutsServicesPlugin.id,
 		]);
 	});
 
@@ -269,6 +276,8 @@ describe("pages page effects", () => {
 			richTextEnabled: boolean;
 			schemas: readonly { id: number }[];
 			searchSchemaEnabled: boolean;
+			layouts: readonly { id: number }[];
+			layoutEnabled: boolean;
 		};
 		expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
 		// No RichTexts service in this runtime — the picker is empty
@@ -279,16 +288,26 @@ describe("pages page effects", () => {
 		// empty and the console hides that field too.
 		expect(data.schemas).toEqual([]);
 		expect(data.searchSchemaEnabled).toBe(false);
+		// No Layouts service either — the layout picker is empty and
+		// the console hides that field too.
+		expect(data.layouts).toEqual([]);
+		expect(data.layoutEnabled).toBe(false);
 		const denied = (await asPrincipal(
 			{ userId: "u1", email: "doc@x.com" },
 			loader("/platform/pages"),
-		)) as { pages: readonly unknown[]; docs: readonly unknown[] };
+		)) as {
+			pages: readonly unknown[];
+			docs: readonly unknown[];
+			layouts: readonly unknown[];
+		};
 		expect(denied).toEqual({
 			pages: [],
 			docs: [],
 			richTextEnabled: false,
 			schemas: [],
 			searchSchemaEnabled: false,
+			layouts: [],
+			layoutEnabled: false,
 		});
 	});
 
@@ -446,6 +465,121 @@ describe("pages page effects", () => {
 		} finally {
 			await rt.dispose();
 		}
+	});
+
+	it("admin page loader surfaces layout options when the service is present", async () => {
+		const layouts = Layouts.of({
+			adminList: () =>
+				Effect.succeed([
+					{
+						id: 5,
+						name: "Landing",
+						description: "Landing body",
+						sectionCount: 2,
+						createdAt: new Date(0),
+						updatedAt: new Date(0),
+					},
+				]),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+			resolveForPage: () => Effect.succeed([]),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(Layouts, layouts),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
+			const data = (await asPrincipalIn(
+				rt,
+				{ userId: "a1", email: "admin@x.com" },
+				loader("/platform/pages"),
+			)) as {
+				layouts: readonly { id: number; name: string; description: string | null }[];
+				layoutEnabled: boolean;
+			};
+			expect(data.layouts).toEqual([{ id: 5, name: "Landing", description: "Landing body" }]);
+			expect(data.layoutEnabled).toBe(true);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("wildcard loader resolves layout sections when the Layouts service is present", async () => {
+		const now = new Date();
+		await sharedDb.insert(customPage).values({
+			path: "/pub-layout",
+			title: "PubLayout",
+			richTextId: null,
+			searchSchemaId: null,
+			layoutId: 5,
+			published: true,
+			showInNav: false,
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const value = [{ type: "p", children: [{ text: "Section" }] }];
+		const layouts = Layer.succeed(
+			Layouts,
+			Layouts.of({
+				adminList: () => Effect.succeed([]),
+				adminGet: () => Effect.succeed(null),
+				adminCreate: () => Effect.succeed(null),
+				adminUpdate: () => Effect.die("unused"),
+				adminRemove: () => Effect.die("unused"),
+				getById: () => Effect.succeed(null),
+				resolveForPage: (layoutId: number) =>
+					Effect.succeed(
+						layoutId === 5
+							? [
+									{ id: "s1", title: "Hero", content: value },
+									{ id: "s2", title: "Body", content: value },
+								]
+							: null,
+					),
+			}),
+		);
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(CustomPagesLive.pipe(Layer.provide(deps)), deps, layouts) as Layer.Layer<
+				unknown,
+				never,
+				never
+			>,
+		);
+		try {
+			const loader = pagesRenderPlugin.pages![0]!.loader!;
+			const row = (await asPrincipalIn(rt, null, loader("/pub-layout"))) as {
+				layoutSections?: readonly { title: string; content: unknown }[] | null;
+			} | null;
+			expect(row?.layoutSections).toEqual([
+				{ id: "s1", title: "Hero", content: value },
+				{ id: "s2", title: "Body", content: value },
+			]);
+			// Unbound pages carry no layout sections (null → single-doc path).
+			const unbound = (await asPrincipalIn(rt, null, loader("/pub"))) as {
+				layoutSections?: unknown;
+			} | null;
+			expect(unbound?.layoutSections).toBeNull();
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("wildcard loader leaves layoutSections null when the Layouts service is absent", async () => {
+		// The shared runtime has no Layouts layer — the field stays null
+		// and the page renders its single document as before.
+		const loader = pagesRenderPlugin.pages![0]!.loader!;
+		const row = (await asPrincipal(null, loader("/pub-layout"))) as {
+			layoutSections?: unknown;
+		} | null;
+		expect(row?.layoutSections).toBeNull();
 	});
 
 	it("wildcard loader passes search through when the Schemas service is absent", async () => {

@@ -217,6 +217,7 @@ export type I18nKey =
 	| "app.panel_nav_cron"
 	| "app.panel_nav_dashboard"
 	| "app.panel_nav_groups"
+	| "app.panel_nav_layouts"
 	| "app.panel_nav_ops"
 	| "app.panel_nav_plugins"
 	| "app.panel_nav_pubsub"
@@ -1101,6 +1102,37 @@ export type I18nKey =
 	| "kv.ttlNone"
 	| "kv.ttlSeconds"
 	| "kv.valueHint"
+	| "layouts.cancel"
+	| "layouts.colActions"
+	| "layouts.colDescription"
+	| "layouts.colName"
+	| "layouts.colSections"
+	| "layouts.colUpdated"
+	| "layouts.configHint"
+	| "layouts.create"
+	| "layouts.delete"
+	| "layouts.deleteBody"
+	| "layouts.deleteConfirm"
+	| "layouts.deleted"
+	| "layouts.deleteFailed"
+	| "layouts.deleteTitle"
+	| "layouts.description"
+	| "layouts.edit"
+	| "layouts.emptyDescription"
+	| "layouts.emptyTitle"
+	| "layouts.fieldConfig"
+	| "layouts.fieldDescription"
+	| "layouts.fieldName"
+	| "layouts.loadFailed"
+	| "layouts.namePlaceholder"
+	| "layouts.newLayout"
+	| "layouts.noSections"
+	| "layouts.save"
+	| "layouts.saved"
+	| "layouts.saveFailed"
+	| "layouts.saving"
+	| "layouts.sectionsPreview"
+	| "layouts.title"
 	| "machines.actionFailed"
 	| "machines.add"
 	| "machines.cancel"
@@ -1230,14 +1262,18 @@ export type I18nKey =
 	| "pages.emptyDescription"
 	| "pages.emptyTitle"
 	| "pages.fieldContentDoc"
+	| "pages.fieldLayout"
 	| "pages.fieldPath"
 	| "pages.fieldPublished"
 	| "pages.fieldSearchSchema"
 	| "pages.fieldShowInNav"
 	| "pages.fieldSortOrder"
 	| "pages.fieldTitle"
+	| "pages.layoutHint"
+	| "pages.layoutNone"
 	| "pages.manageDoc"
 	| "pages.manageDocs"
+	| "pages.manageLayouts"
 	| "pages.manageSchemas"
 	| "pages.navHidden"
 	| "pages.navShown"
@@ -2218,6 +2254,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_cron"): Effect.Effect<string>;
 	(key: "app.panel_nav_dashboard"): Effect.Effect<string>;
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
+	(key: "app.panel_nav_layouts"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
 	(key: "app.panel_nav_pubsub"): Effect.Effect<string>;
@@ -3348,6 +3385,42 @@ export interface I18nTypedT {
 	(key: "kv.ttlNone"): Effect.Effect<string>;
 	(key: "kv.ttlSeconds"): Effect.Effect<string>;
 	(key: "kv.valueHint"): Effect.Effect<string>;
+	(key: "layouts.cancel"): Effect.Effect<string>;
+	(key: "layouts.colActions"): Effect.Effect<string>;
+	(key: "layouts.colDescription"): Effect.Effect<string>;
+	(key: "layouts.colName"): Effect.Effect<string>;
+	(key: "layouts.colSections"): Effect.Effect<string>;
+	(key: "layouts.colUpdated"): Effect.Effect<string>;
+	(key: "layouts.configHint"): Effect.Effect<string>;
+	(key: "layouts.create"): Effect.Effect<string>;
+	(key: "layouts.delete"): Effect.Effect<string>;
+	(
+		key: "layouts.deleteBody",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "layouts.deleteConfirm"): Effect.Effect<string>;
+	(key: "layouts.deleted"): Effect.Effect<string>;
+	(key: "layouts.deleteFailed"): Effect.Effect<string>;
+	(key: "layouts.deleteTitle"): Effect.Effect<string>;
+	(key: "layouts.description"): Effect.Effect<string>;
+	(key: "layouts.edit"): Effect.Effect<string>;
+	(key: "layouts.emptyDescription"): Effect.Effect<string>;
+	(key: "layouts.emptyTitle"): Effect.Effect<string>;
+	(key: "layouts.fieldConfig"): Effect.Effect<string>;
+	(key: "layouts.fieldDescription"): Effect.Effect<string>;
+	(key: "layouts.fieldName"): Effect.Effect<string>;
+	(key: "layouts.loadFailed"): Effect.Effect<string>;
+	(key: "layouts.namePlaceholder"): Effect.Effect<string>;
+	(key: "layouts.newLayout"): Effect.Effect<string>;
+	(key: "layouts.noSections"): Effect.Effect<string>;
+	(key: "layouts.save"): Effect.Effect<string>;
+	(key: "layouts.saved"): Effect.Effect<string>;
+	(key: "layouts.saveFailed"): Effect.Effect<string>;
+	(key: "layouts.saving"): Effect.Effect<string>;
+	(key: "layouts.sectionsPreview"): Effect.Effect<string>;
+	(key: "layouts.title"): Effect.Effect<string>;
 	(key: "machines.actionFailed"): Effect.Effect<string>;
 	(key: "machines.add"): Effect.Effect<string>;
 	(key: "machines.cancel"): Effect.Effect<string>;
@@ -3534,14 +3607,18 @@ export interface I18nTypedT {
 	(key: "pages.emptyDescription"): Effect.Effect<string>;
 	(key: "pages.emptyTitle"): Effect.Effect<string>;
 	(key: "pages.fieldContentDoc"): Effect.Effect<string>;
+	(key: "pages.fieldLayout"): Effect.Effect<string>;
 	(key: "pages.fieldPath"): Effect.Effect<string>;
 	(key: "pages.fieldPublished"): Effect.Effect<string>;
 	(key: "pages.fieldSearchSchema"): Effect.Effect<string>;
 	(key: "pages.fieldShowInNav"): Effect.Effect<string>;
 	(key: "pages.fieldSortOrder"): Effect.Effect<string>;
 	(key: "pages.fieldTitle"): Effect.Effect<string>;
+	(key: "pages.layoutHint"): Effect.Effect<string>;
+	(key: "pages.layoutNone"): Effect.Effect<string>;
 	(key: "pages.manageDoc"): Effect.Effect<string>;
 	(key: "pages.manageDocs"): Effect.Effect<string>;
+	(key: "pages.manageLayouts"): Effect.Effect<string>;
 	(key: "pages.manageSchemas"): Effect.Effect<string>;
 	(key: "pages.navHidden"): Effect.Effect<string>;
 	(key: "pages.navShown"): Effect.Effect<string>;

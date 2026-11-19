@@ -55,6 +55,10 @@ export interface PagesMessages {
 	readonly searchSchemaNone: string;
 	readonly searchSchemaHint: string;
 	readonly manageSchemas: string;
+	readonly fieldLayout: string;
+	readonly layoutNone: string;
+	readonly layoutHint: string;
+	readonly manageLayouts: string;
 	readonly pathHint: string;
 	readonly deleteTitle: string;
 	readonly deleteBody: (path: string) => string;
@@ -100,6 +104,11 @@ const en: PagesMessages = {
 	searchSchemaHint:
 		"URL search params are validated against the selected schema; invalid params are dropped.",
 	manageSchemas: "Manage schemas",
+	fieldLayout: "Layout",
+	layoutNone: "No layout",
+	layoutHint:
+		"The page body renders the selected layout's ordered sections instead of the content document.",
+	manageLayouts: "Manage layouts",
 	pathHint: "Starts with / — e.g. /about. /platform paths are reserved.",
 	deleteTitle: "Delete page",
 	deleteBody: paramMessage("en", 'Delete "{path}"? This cannot be undone.', ["path"]),
@@ -145,6 +154,11 @@ const ptBR: PagesMessages = {
 	searchSchemaHint:
 		"Os parâmetros de busca da URL são validados pelo esquema selecionado; parâmetros inválidos são removidos.",
 	manageSchemas: "Gerenciar esquemas",
+	fieldLayout: "Layout",
+	layoutNone: "Nenhum layout",
+	layoutHint:
+		"O corpo da página exibe as seções ordenadas do layout selecionado em vez do documento de conteúdo.",
+	manageLayouts: "Gerenciar layouts",
 	pathHint: "Começa com / — ex.: /sobre. Caminhos /platform são reservados.",
 	deleteTitle: "Excluir página",
 	deleteBody: paramMessage("pt-BR", 'Excluir "{path}"? Esta ação não pode ser desfeita.', ["path"]),
@@ -190,6 +204,11 @@ const es: PagesMessages = {
 	searchSchemaHint:
 		"Los parámetros de búsqueda de la URL se validan con el esquema seleccionado; los inválidos se eliminan.",
 	manageSchemas: "Gestionar esquemas",
+	fieldLayout: "Layout",
+	layoutNone: "Ningún layout",
+	layoutHint:
+		"El cuerpo de la página muestra las secciones ordenadas del layout seleccionado en lugar del documento de contenido.",
+	manageLayouts: "Gestionar layouts",
 	pathHint: "Empieza con / — p. ej. /acerca. Las rutas /platform están reservadas.",
 	deleteTitle: "Eliminar página",
 	deleteBody: paramMessage("es", '¿Eliminar "{path}"? Esta acción no se puede deshacer.', ["path"]),
