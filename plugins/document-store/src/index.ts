@@ -1,11 +1,16 @@
-import { DatabaseIcon } from "lucide-react";
+import { DatabaseIcon, FileTextIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import * as Effect from "effect/Effect";
 
-import { DocumentStoreAdmin, DocumentStoreAdminLive, type AdminCollectionInfo } from "./admin.ts";
+import {
+	DocumentStoreAdmin,
+	DocumentStoreAdminLive,
+	type AdminCollectionInfo,
+	type BrowseDocumentsOptions,
+} from "./admin.ts";
 import {
 	collectDocumentCollections,
 	defineCollection,
@@ -119,6 +124,7 @@ import {
 	collectionNameFromPath,
 	DocumentStoreCollectionPage,
 	DocumentStoreCollectionsPage,
+	DocumentStoreDocumentsPage,
 } from "./platform-page.tsx";
 
 // Write events on the app EventBus (insert/update/remove) — consumed
@@ -130,6 +136,7 @@ export {
 	DocumentStoreAdmin,
 	DocumentStoreAdminLive,
 	type AdminCollectionInfo,
+	type BrowseDocumentsOptions,
 	// collection declarations (data on the generic contributions channel)
 	assertCollectionDef,
 	collectDocumentCollections,
@@ -267,22 +274,36 @@ export const documentStoreAdminPlugin = definePlugin({
 	services: DocumentStoreAdminLive,
 });
 
-/** Console sidebar entry (Storage group) for /platform/document-store —
- * same chrome contract as pages.chrome. */
+/** Console sidebar entries (Storage group): the collections index
+ * and the cross-collection documents browser — same chrome contract
+ * as pages.chrome. */
 export const documentStoreChromePlugin = definePlugin({
 	id: "document-store.chrome",
 	meta: { keywords: ["documents", "ui"] },
 	requiredDeps: [platformPanelPlugin.id],
 	chrome: [
 		{
-			id: "document-store.sidebar",
+			id: "document-store.sidebar.collections",
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/document-store",
-					label: "Document store",
+					label: "Collections",
 					icon: DatabaseIcon,
+					group: "Storage",
+				},
+			},
+		},
+		{
+			id: "document-store.sidebar.documents",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/documents",
+					label: "Documents",
+					icon: FileTextIcon,
 					group: "Storage",
 				},
 			},
@@ -302,7 +323,8 @@ const adminGuard = () =>
 		);
 	});
 
-/** Console pages: the collections index plus a wildcard browser for
+/** Console pages: the collections index, the cross-collection
+ * documents browser (/platform/documents) plus a wildcard browser for
  * /platform/document-store/<name> — `panel.pages` paths are exact, but
  * the host dispatcher resolves "/*" wildcards by longest base (same
  * mechanism the custom-pages plugin uses on the app shell), so one
@@ -326,6 +348,27 @@ export const documentStorePanelPlugin = definePlugin({
 							.listCollections()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
 						return infos.map(toCollectionWire);
+					}),
+			},
+			{
+				id: "document-store.documents",
+				path: "/platform/documents",
+				component: DocumentStoreDocumentsPage,
+				guard: (_path) => adminGuard(),
+				loader: (_path) =>
+					Effect.gen(function* () {
+						const admin = yield* DocumentStoreAdmin;
+						const empty = { collections: [], page: { rows: [], total: 0 } };
+						return yield* Effect.all({
+							collections: admin.listCollections(),
+							page: admin.browseDocuments({ limit: DOCUMENTS_PAGE_SIZE }),
+						}).pipe(
+							Effect.map(({ collections, page }) => ({
+								collections: collections.map(toCollectionWire),
+								page: toDocumentsPageWire(page),
+							})),
+							Effect.catchTag("Forbidden", () => Effect.succeed(empty)),
+						);
 					}),
 			},
 			{

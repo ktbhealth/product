@@ -1,6 +1,7 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
 import type { CollectionWire, DocumentsPageWire } from "./fns.ts";
+import { AllDocumentsPage } from "./views/AllDocumentsPage.tsx";
 import { CollectionsAdminPage } from "./views/CollectionsAdminPage.tsx";
 import { DocumentsAdminPage } from "./views/DocumentsAdminPage.tsx";
 
@@ -61,6 +62,52 @@ export function DocumentStoreCollectionsPage({
 }) {
 	return (
 		<CollectionsAdminPage collections={asCollections(data)} i18n={ctx.i18n} locale={ctx.locale} />
+	);
+}
+
+interface DocumentsIndexData {
+	readonly collections: readonly CollectionWire[] | null;
+	readonly page: DocumentsPageWire | null;
+}
+
+const asDocumentsIndexData = (data: unknown): DocumentsIndexData => {
+	if (typeof data !== "object" || data === null) {
+		return { collections: null, page: null };
+	}
+	const d = data as { collections?: unknown; page?: unknown };
+	const page =
+		typeof d.page === "object" &&
+		d.page !== null &&
+		Array.isArray((d.page as DocumentsPageWire).rows)
+			? (d.page as DocumentsPageWire)
+			: null;
+	return {
+		collections: Array.isArray(d.collections) ? asCollections(d.collections) : null,
+		page,
+	};
+};
+
+/**
+ * `panel.pages` component for /platform/documents: the cross-collection
+ * browser. The loader returns the collections list (filter options)
+ * plus the first unfiltered documents page.
+ */
+export function DocumentStoreDocumentsPage({
+	data,
+	ctx,
+}: {
+	data: unknown;
+	ctx: PanelPageContext;
+}) {
+	const { collections, page } = asDocumentsIndexData(data);
+	if (collections === null || page === null) return null;
+	return (
+		<AllDocumentsPage
+			collections={collections}
+			initialPage={page}
+			i18n={ctx.i18n}
+			locale={ctx.locale}
+		/>
 	);
 }
 

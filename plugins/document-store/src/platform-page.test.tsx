@@ -15,6 +15,7 @@ vi.mock("./fns.ts", () => ({
 	createDocumentFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	updateDocumentFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	documentsFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
+	browseDocumentsFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	deleteDocumentFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 }));
 
@@ -24,6 +25,7 @@ import {
 	collectionNameFromPath,
 	DocumentStoreCollectionPage,
 	DocumentStoreCollectionsPage,
+	DocumentStoreDocumentsPage,
 } from "./platform-page.tsx";
 import type { CollectionWire, DocumentWire, DocumentsPageWire } from "./wire.ts";
 
@@ -85,6 +87,36 @@ describe("DocumentStoreCollectionsPage", () => {
 		unmount();
 		render(<DocumentStoreCollectionsPage data="junk" ctx={ctx} />);
 		expect(screen.getByText("No collections yet")).toBeDefined();
+	});
+});
+
+describe("DocumentStoreDocumentsPage", () => {
+	it("renders the cross-collection browser", () => {
+		render(
+			<DocumentStoreDocumentsPage
+				data={{
+					collections: [collection()],
+					page: page({ rows: [doc({ collection: "test.notes" })] }),
+				}}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByText("Documents")).toBeDefined();
+		expect(screen.getAllByText("test.notes").length).toBeGreaterThan(0);
+	});
+
+	it("renders nothing on malformed loader data", () => {
+		for (const bad of [
+			null,
+			42,
+			"x",
+			{ collections: null, page: null },
+			{ collections: [], page: "x" },
+		]) {
+			const { container } = render(<DocumentStoreDocumentsPage data={bad} ctx={ctx} />);
+			expect(container.innerHTML).toBe("");
+			cleanup();
+		}
 	});
 });
 

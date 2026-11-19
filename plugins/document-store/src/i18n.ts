@@ -61,6 +61,17 @@ export interface DocumentStoreMessages {
 	readonly invalidNumber: string;
 	readonly invalidDate: string;
 	readonly loadFailed: string;
+	readonly documentsTitle: string;
+	readonly documentsDescription: string;
+	readonly colCollection: string;
+	readonly colScope: string;
+	readonly colData: string;
+	readonly scopeGlobal: string;
+	readonly scopeTenant: (id: number) => string;
+	readonly scopeOwner: (id: string) => string;
+	readonly allCollections: string;
+	readonly emptyBrowseTitle: string;
+	readonly emptyBrowseDescription: string;
 }
 
 const en: DocumentStoreMessages = {
@@ -108,6 +119,18 @@ const en: DocumentStoreMessages = {
 	invalidNumber: "Invalid number",
 	invalidDate: "Invalid date",
 	loadFailed: "Could not load documents. Try again.",
+	documentsTitle: "Documents",
+	documentsDescription: "Browse stored documents across every collection.",
+	colCollection: "Collection",
+	colScope: "Scope",
+	colData: "Data",
+	scopeGlobal: "Global",
+	scopeTenant: (id) => `Tenant #${id}`,
+	scopeOwner: (id) => `User ${id}`,
+	allCollections: "All collections",
+	emptyBrowseTitle: "No documents",
+	emptyBrowseDescription:
+		"Documents appear here once collections hold records — open a collection to add one.",
 };
 
 const ptBR: DocumentStoreMessages = {
@@ -158,6 +181,18 @@ const ptBR: DocumentStoreMessages = {
 	invalidNumber: "Número inválido",
 	invalidDate: "Data inválida",
 	loadFailed: "Não foi possível carregar os documentos. Tente novamente.",
+	documentsTitle: "Documentos",
+	documentsDescription: "Navegue pelos documentos armazenados em todas as coleções.",
+	colCollection: "Coleção",
+	colScope: "Escopo",
+	colData: "Dados",
+	scopeGlobal: "Global",
+	scopeTenant: (id) => `Tenant #${id}`,
+	scopeOwner: (id) => `Usuário ${id}`,
+	allCollections: "Todas as coleções",
+	emptyBrowseTitle: "Nenhum documento",
+	emptyBrowseDescription:
+		"Os documentos aparecem aqui quando as coleções têm registros — abra uma coleção para adicionar um.",
 };
 
 const es: DocumentStoreMessages = {
@@ -210,6 +245,18 @@ const es: DocumentStoreMessages = {
 	invalidNumber: "Número no válido",
 	invalidDate: "Fecha no válida",
 	loadFailed: "No se pudieron cargar los documentos. Inténtalo de nuevo.",
+	documentsTitle: "Documentos",
+	documentsDescription: "Explora los documentos almacenados en todas las colecciones.",
+	colCollection: "Colección",
+	colScope: "Ámbito",
+	colData: "Datos",
+	scopeGlobal: "Global",
+	scopeTenant: (id) => `Tenant #${id}`,
+	scopeOwner: (id) => `Usuario ${id}`,
+	allCollections: "Todas las colecciones",
+	emptyBrowseTitle: "Sin documentos",
+	emptyBrowseDescription:
+		"Los documentos aparecen aquí cuando las colecciones tienen registros; abre una colección para añadir uno.",
 };
 
 const CATALOGS: Record<DocumentStoreLocale, DocumentStoreMessages> = {

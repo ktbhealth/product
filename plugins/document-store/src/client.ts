@@ -1,8 +1,12 @@
-import { DatabaseIcon } from "lucide-react";
+import { DatabaseIcon, FileTextIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { DocumentStoreCollectionPage, DocumentStoreCollectionsPage } from "./platform-page.tsx";
+import {
+	DocumentStoreCollectionPage,
+	DocumentStoreCollectionsPage,
+	DocumentStoreDocumentsPage,
+} from "./platform-page.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -21,14 +25,27 @@ export const documentStoreChromePlugin = definePlugin({
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
-			id: "document-store.sidebar",
+			id: "document-store.sidebar.collections",
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
 					to: "/platform/document-store",
-					label: "Document store",
+					label: "Collections",
 					icon: DatabaseIcon,
+					group: "Storage",
+				},
+			},
+		},
+		{
+			id: "document-store.sidebar.documents",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/documents",
+					label: "Documents",
+					icon: FileTextIcon,
 					group: "Storage",
 				},
 			},
@@ -46,6 +63,11 @@ export const documentStorePanelPlugin = definePlugin({
 				id: "document-store.collections",
 				path: "/platform/document-store",
 				component: DocumentStoreCollectionsPage,
+			},
+			{
+				id: "document-store.documents",
+				path: "/platform/documents",
+				component: DocumentStoreDocumentsPage,
 			},
 			{
 				id: "document-store.collection",

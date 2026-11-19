@@ -663,15 +663,19 @@ export type I18nKey =
 	| "doctors.roleSecretary"
 	| "doctors.selectDescription"
 	| "doctors.selectTitle"
+	| "document-store.allCollections"
 	| "document-store.back"
 	| "document-store.badgeUnregistered"
 	| "document-store.cancel"
 	| "document-store.colActions"
+	| "document-store.colCollection"
+	| "document-store.colData"
 	| "document-store.colFields"
 	| "document-store.colId"
 	| "document-store.colName"
 	| "document-store.colOwner"
 	| "document-store.colRecords"
+	| "document-store.colScope"
 	| "document-store.colStatus"
 	| "document-store.colUpdated"
 	| "document-store.colVersion"
@@ -682,8 +686,12 @@ export type I18nKey =
 	| "document-store.deleteInUse"
 	| "document-store.deleteTitle"
 	| "document-store.description"
+	| "document-store.documentsDescription"
+	| "document-store.documentsTitle"
 	| "document-store.edit"
 	| "document-store.editDocument"
+	| "document-store.emptyBrowseDescription"
+	| "document-store.emptyBrowseTitle"
 	| "document-store.emptyCollectionsDescription"
 	| "document-store.emptyCollectionsTitle"
 	| "document-store.emptyDocumentsDescription"
@@ -701,6 +709,7 @@ export type I18nKey =
 	| "document-store.save"
 	| "document-store.saveFailed"
 	| "document-store.saving"
+	| "document-store.scopeGlobal"
 	| "document-store.statusContributed"
 	| "document-store.statusDbOnly"
 	| "document-store.title"
@@ -2488,15 +2497,19 @@ export interface I18nTypedT {
 	(key: "doctors.roleSecretary"): Effect.Effect<string>;
 	(key: "doctors.selectDescription"): Effect.Effect<string>;
 	(key: "doctors.selectTitle"): Effect.Effect<string>;
+	(key: "document-store.allCollections"): Effect.Effect<string>;
 	(key: "document-store.back"): Effect.Effect<string>;
 	(key: "document-store.badgeUnregistered"): Effect.Effect<string>;
 	(key: "document-store.cancel"): Effect.Effect<string>;
 	(key: "document-store.colActions"): Effect.Effect<string>;
+	(key: "document-store.colCollection"): Effect.Effect<string>;
+	(key: "document-store.colData"): Effect.Effect<string>;
 	(key: "document-store.colFields"): Effect.Effect<string>;
 	(key: "document-store.colId"): Effect.Effect<string>;
 	(key: "document-store.colName"): Effect.Effect<string>;
 	(key: "document-store.colOwner"): Effect.Effect<string>;
 	(key: "document-store.colRecords"): Effect.Effect<string>;
+	(key: "document-store.colScope"): Effect.Effect<string>;
 	(key: "document-store.colStatus"): Effect.Effect<string>;
 	(key: "document-store.colUpdated"): Effect.Effect<string>;
 	(key: "document-store.colVersion"): Effect.Effect<string>;
@@ -2517,8 +2530,12 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "document-store.deleteTitle"): Effect.Effect<string>;
 	(key: "document-store.description"): Effect.Effect<string>;
+	(key: "document-store.documentsDescription"): Effect.Effect<string>;
+	(key: "document-store.documentsTitle"): Effect.Effect<string>;
 	(key: "document-store.edit"): Effect.Effect<string>;
 	(key: "document-store.editDocument"): Effect.Effect<string>;
+	(key: "document-store.emptyBrowseDescription"): Effect.Effect<string>;
+	(key: "document-store.emptyBrowseTitle"): Effect.Effect<string>;
 	(key: "document-store.emptyCollectionsDescription"): Effect.Effect<string>;
 	(key: "document-store.emptyCollectionsTitle"): Effect.Effect<string>;
 	(key: "document-store.emptyDocumentsDescription"): Effect.Effect<string>;
@@ -2542,6 +2559,7 @@ export interface I18nTypedT {
 	(key: "document-store.save"): Effect.Effect<string>;
 	(key: "document-store.saveFailed"): Effect.Effect<string>;
 	(key: "document-store.saving"): Effect.Effect<string>;
+	(key: "document-store.scopeGlobal"): Effect.Effect<string>;
 	(key: "document-store.statusContributed"): Effect.Effect<string>;
 	(key: "document-store.statusDbOnly"): Effect.Effect<string>;
 	(key: "document-store.title"): Effect.Effect<string>;

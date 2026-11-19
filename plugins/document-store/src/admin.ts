@@ -1,7 +1,7 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { asc, count, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, type SQL } from "drizzle-orm";
 
 import { Forbidden } from "@ktb/authz";
 import { Db } from "@ktb/db";
@@ -10,7 +10,7 @@ import { PlatformAdmin } from "@ktb/platform";
 import { assertCollectionDef, DocumentCollections, type DocumentCollection } from "./collection.ts";
 import type { Fields } from "./fields.ts";
 import { documentCollections, documentRecords } from "./schema.ts";
-import type { FindQuery } from "./query.ts";
+import { clampLimit, clampOffset, type FindQuery } from "./query.ts";
 import {
 	DocumentStore,
 	type CollectionMigrationReport,
@@ -58,6 +58,15 @@ export interface AdminCollectionInfo {
 	readonly hasMigrations: boolean;
 }
 
+/** Options for {@link DocumentStoreAdmin.browseDocuments} — the
+ * cross-collection console browser. `limit`/`offset` clamp through
+ * the same bounds `find` uses (query.ts). */
+export interface BrowseDocumentsOptions {
+	readonly collection?: string;
+	readonly limit?: number;
+	readonly offset?: number;
+}
+
 export class DocumentStoreAdmin extends Context.Service<
 	DocumentStoreAdmin,
 	{
@@ -77,6 +86,17 @@ export class DocumentStoreAdmin extends Context.Service<
 		readonly listDocuments: (
 			collection: string,
 			query?: FindQuery,
+		) => Effect.Effect<FindResult, Forbidden | DocumentStoreError>;
+		/** Cross-collection document browser (the /platform/documents
+		 * console): SQL-paged rows across every collection, newest
+		 * `updated_at` first, optionally narrowed to one collection
+		 * name. Returns STORED rows — `data` is the persisted JSON
+		 * payload without lazy migration or field re-validation (the
+		 * per-collection page is the write surface). An unknown
+		 * `collection` filter yields an empty page rather than
+		 * UnknownCollection — it is a filter, not a lookup. */
+		readonly browseDocuments: (
+			options?: BrowseDocumentsOptions,
 		) => Effect.Effect<FindResult, Forbidden | DocumentStoreError>;
 		/** One document by id across all scopes — null when missing. */
 		readonly getDocument: (
@@ -126,6 +146,21 @@ const defFromSchemaJson = (schemaJson: string): DocumentCollection | null => {
 };
 
 type CollectionDbRow = typeof documentCollections.$inferSelect;
+
+/** Decode a stored `data` payload for the browse listing — the
+ * service only writes valid JSON objects, but a hand-edited or
+ * pre-migration row shouldn't 500 the console (mirrors KvAdmin's
+ * decodeValue). */
+const parseStoredData = (raw: string): DocumentRecord["data"] => {
+	try {
+		const value: unknown = JSON.parse(raw);
+		return (
+			typeof value === "object" && value !== null && !Array.isArray(value) ? value : {}
+		) as DocumentRecord["data"];
+	} catch {
+		return {} as DocumentRecord["data"];
+	}
+};
 
 export const DocumentStoreAdminLive = Layer.effect(
 	DocumentStoreAdmin,
@@ -232,6 +267,68 @@ export const DocumentStoreAdminLive = Layer.effect(
 				Effect.gen(function* () {
 					yield* requireAdmin;
 					return yield* store.find(collection, query, UNSCOPED);
+				}),
+
+			browseDocuments: (options) =>
+				Effect.gen(function* () {
+					yield* requireAdmin;
+					const limit = clampLimit(options?.limit);
+					const offset = clampOffset(options?.offset);
+					const name = options?.collection;
+					const conds: (SQL | undefined)[] = [];
+					if (name !== undefined && name !== "") {
+						conds.push(eq(documentCollections.name, name));
+					}
+					const where = and(...conds);
+					const [rows, totals] = yield* Effect.all([
+						Effect.promise(() =>
+							db
+								.select({
+									id: documentRecords.id,
+									collectionId: documentRecords.collectionId,
+									collection: documentCollections.name,
+									data: documentRecords.data,
+									schemaVersion: documentRecords.schemaVersion,
+									version: documentRecords.version,
+									ownerId: documentRecords.ownerId,
+									tenantId: documentRecords.tenantId,
+									createdAt: documentRecords.createdAt,
+									updatedAt: documentRecords.updatedAt,
+								})
+								.from(documentRecords)
+								.innerJoin(
+									documentCollections,
+									eq(documentRecords.collectionId, documentCollections.id),
+								)
+								.where(where)
+								.orderBy(desc(documentRecords.updatedAt), desc(documentRecords.id))
+								.limit(limit)
+								.offset(offset),
+						),
+						Effect.promise(() =>
+							db
+								.select({ n: count() })
+								.from(documentRecords)
+								.innerJoin(
+									documentCollections,
+									eq(documentRecords.collectionId, documentCollections.id),
+								)
+								.where(where),
+						),
+					]);
+					const records: DocumentRecord[] = rows.map((row) => ({
+						id: row.id,
+						collectionId: row.collectionId,
+						collection: row.collection,
+						data: parseStoredData(row.data),
+						schemaVersion: row.schemaVersion,
+						version: row.version,
+						ownerId: row.ownerId,
+						tenantId: row.tenantId,
+						createdAt: row.createdAt,
+						updatedAt: row.updatedAt,
+					}));
+					return { rows: records, total: totals[0]?.n ?? 0 };
 				}),
 
 			getDocument: (collection, id) =>

@@ -1,8 +1,14 @@
-import { LanguagesIcon } from "lucide-react";
+import { BoxesIcon, FileClockIcon, GlobeIcon, LanguagesIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { I18nPlatformPage } from "./platform-page.tsx";
+import {
+	I18nDraftsPlatformPage,
+	I18nIndexRedirect,
+	I18nLocalesPlatformPage,
+	I18nNamespacesPlatformPage,
+	I18nPlatformPage,
+} from "./platform-page.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -18,15 +24,54 @@ export const i18nChromePlugin = definePlugin({
 	requiredDeps: ["platform.panel"],
 	chrome: [
 		{
-			id: "i18n.sidebar",
+			id: "i18n.sidebar.messages",
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
 				item: {
-					to: "/platform/i18n",
-					label: "Translations",
+					to: "/platform/i18n/messages",
+					label: "Messages",
 					icon: LanguagesIcon,
-					group: "Presentation",
+					group: "Internationalization",
+				},
+			},
+		},
+		{
+			id: "i18n.sidebar.locales",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/i18n/locales",
+					label: "Locales",
+					icon: GlobeIcon,
+					group: "Internationalization",
+				},
+			},
+		},
+		{
+			id: "i18n.sidebar.drafts",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/i18n/drafts",
+					label: "Drafts",
+					icon: FileClockIcon,
+					group: "Internationalization",
+				},
+			},
+		},
+		{
+			id: "i18n.sidebar.namespaces",
+			region: "portal.sidebar",
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: "/platform/i18n/namespaces",
+					label: "Namespaces",
+					icon: BoxesIcon,
+					group: "Internationalization",
 				},
 			},
 		},
@@ -38,7 +83,25 @@ export const i18nPanelPlugin = definePlugin({
 	meta: { keywords: ["i18n", "ui", "admin"] },
 	requiredDeps: ["platform.panel", "i18n.admin.services"],
 	panel: {
-		pages: [{ id: "i18n.messages", path: "/platform/i18n", component: I18nPlatformPage }],
+		pages: [
+			{ id: "i18n.index", path: "/platform/i18n", component: I18nIndexRedirect },
+			{ id: "i18n.messages", path: "/platform/i18n/messages", component: I18nPlatformPage },
+			{
+				id: "i18n.locales",
+				path: "/platform/i18n/locales",
+				component: I18nLocalesPlatformPage,
+			},
+			{
+				id: "i18n.drafts",
+				path: "/platform/i18n/drafts",
+				component: I18nDraftsPlatformPage,
+			},
+			{
+				id: "i18n.namespaces",
+				path: "/platform/i18n/namespaces",
+				component: I18nNamespacesPlatformPage,
+			},
+		],
 	},
 });
 

@@ -59,23 +59,27 @@ describe("document-store plugins", () => {
 		]);
 	});
 
-	it("declares the console sidebar entry", () => {
+	it("declares the console sidebar entries", () => {
 		const chrome = documentStoreChromePlugin.chrome ?? [];
-		expect(chrome).toHaveLength(1);
-		const sidebar = chrome[0];
-		expect(sidebar?.id).toBe("document-store.sidebar");
-		expect(sidebar?.region).toBe("portal.sidebar");
-		expect(sidebar?.content.kind).toBe("sidebarItem");
-		const item =
-			sidebar !== undefined && sidebar.content.kind === "sidebarItem" ? sidebar.content.item : null;
-		expect(item?.to).toBe("/platform/document-store");
-		expect(item?.group).toBe("Storage");
+		expect(chrome).toHaveLength(2);
+		const itemOf = (c: (typeof chrome)[number]) =>
+			c.content.kind === "sidebarItem" ? c.content.item : null;
+		expect(chrome[0]?.id).toBe("document-store.sidebar.collections");
+		expect(chrome[0]?.region).toBe("portal.sidebar");
+		expect(itemOf(chrome[0]!)?.to).toBe("/platform/document-store");
+		expect(itemOf(chrome[0]!)?.label).toBe("Collections");
+		expect(itemOf(chrome[0]!)?.group).toBe("Storage");
+		expect(chrome[1]?.id).toBe("document-store.sidebar.documents");
+		expect(itemOf(chrome[1]!)?.to).toBe("/platform/documents");
+		expect(itemOf(chrome[1]!)?.label).toBe("Documents");
+		expect(itemOf(chrome[1]!)?.group).toBe("Storage");
 	});
 
-	it("declares the collections page and the wildcard browser", () => {
+	it("declares the collections, documents and wildcard pages", () => {
 		const pages = documentStorePanelPlugin.panel?.pages ?? [];
 		expect(pages.map((p) => p.path)).toEqual([
 			"/platform/document-store",
+			"/platform/documents",
 			"/platform/document-store/*",
 		]);
 		for (const page of pages) {
@@ -112,7 +116,8 @@ describe("document-store page effects", () => {
 
 	const pages = documentStorePanelPlugin.panel!.pages!;
 	const collectionsPage = pages[0]!;
-	const browserPage = pages[1]!;
+	const documentsPage = pages[1]!;
+	const browserPage = pages[2]!;
 
 	const asPrincipal = <A, E>(
 		principal: { userId: string; email?: string } | null,
@@ -155,6 +160,43 @@ describe("document-store page effects", () => {
 			collectionsPage.loader!("/platform/document-store"),
 		)) as readonly unknown[];
 		expect(denied).toEqual([]);
+	});
+
+	it("documents guard allows admins and denies everyone else", async () => {
+		await expect(
+			asPrincipal(
+				{ userId: "a1", email: "admin@x.com" },
+				documentsPage.guard!("/platform/documents"),
+			),
+		).resolves.toBe(true);
+		await expect(
+			asPrincipal(
+				{ userId: "u1", email: "doc@x.com" },
+				documentsPage.guard!("/platform/documents"),
+			),
+		).resolves.toBe(false);
+		await expect(asPrincipal(null, documentsPage.guard!("/platform/documents"))).resolves.toBe(
+			false,
+		);
+	});
+
+	it("documents loader returns collections plus the first page", async () => {
+		const data = (await asPrincipal(
+			{ userId: "a1", email: "admin@x.com" },
+			documentsPage.loader!("/platform/documents"),
+		)) as {
+			collections: readonly { name: string }[];
+			page: { rows: unknown[]; total: number };
+		};
+		expect(data.collections.map((c) => c.name)).toEqual(["idx.notes"]);
+		expect(data.page).toEqual({ rows: [], total: 0 });
+
+		// Non-admin → the Forbidden-safe empty payload.
+		const denied = (await asPrincipal(
+			{ userId: "u1", email: "doc@x.com" },
+			documentsPage.loader!("/platform/documents"),
+		)) as { collections: unknown[]; page: { rows: unknown[]; total: number } };
+		expect(denied).toEqual({ collections: [], page: { rows: [], total: 0 } });
 	});
 
 	it("browser guard 404s bad paths, unknown collections and non-admins", async () => {
@@ -230,6 +272,7 @@ describe("document-store page effects with a failing admin service", () => {
 				name.startsWith("stub.")
 					? Effect.succeed({ ...info, name })
 					: Effect.fail({ _tag: "Forbidden" } as never),
+			browseDocuments: () => Effect.fail({ _tag: "Forbidden" } as never),
 			listDocuments: (collection: string) =>
 				Effect.fail({
 					_tag: collection.endsWith("forbidden")
@@ -257,11 +300,21 @@ describe("document-store page effects with a failing admin service", () => {
 	afterAll(() => runtime.dispose());
 
 	const pages = documentStorePanelPlugin.panel!.pages!;
-	const browserPage = pages[1]!;
+	const documentsPage = pages[1]!;
+	const browserPage = pages[2]!;
 	const admin = { userId: "a1", email: "admin@x.com" };
 
 	const asPrincipal = <A, E>(effect: Effect.Effect<A, E, unknown>) =>
 		runtime.runPromise(Effect.provideService(effect, Principal, admin));
+
+	it("documents loader degrades when browseDocuments is denied", async () => {
+		// listCollections succeeds but browseDocuments is Forbidden →
+		// the whole loader collapses to the empty payload.
+		await expect(asPrincipal(documentsPage.loader!("/platform/documents"))).resolves.toEqual({
+			collections: [],
+			page: { rows: [], total: 0 },
+		});
+	});
 
 	it("browser guard returns false when getCollection is denied", async () => {
 		// adminGuard passes (admin email) but the service denies the read.

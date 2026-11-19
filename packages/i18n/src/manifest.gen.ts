@@ -2365,6 +2365,33 @@ export const I18N_MANIFEST = {
 		loadFailed: {
 			params: [],
 		},
+		documentsTitle: {
+			params: [],
+		},
+		documentsDescription: {
+			params: [],
+		},
+		colCollection: {
+			params: [],
+		},
+		colScope: {
+			params: [],
+		},
+		colData: {
+			params: [],
+		},
+		scopeGlobal: {
+			params: [],
+		},
+		allCollections: {
+			params: [],
+		},
+		emptyBrowseTitle: {
+			params: [],
+		},
+		emptyBrowseDescription: {
+			params: [],
+		},
 	},
 	"eval.persona": {
 		personasTitle: {

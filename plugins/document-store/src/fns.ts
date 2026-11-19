@@ -64,9 +64,15 @@ const UpdateInput = Schema.Struct({
 	 * stored row `version` equals this — mismatch fails the save. */
 	expectedVersion: Schema.optionalKey(Schema.Number),
 });
+const BrowseInput = Schema.Struct({
+	collection: Schema.optionalKey(Schema.String),
+	limit: Schema.optionalKey(Schema.Number),
+	offset: Schema.optionalKey(Schema.Number),
+});
 const MigrateInput = Schema.Struct({ collection: Schema.String });
 
 const decodeList = Schema.decodeUnknownSync(ListInput);
+const decodeBrowse = Schema.decodeUnknownSync(BrowseInput);
 const decodeDocumentId = Schema.decodeUnknownSync(DocumentIdInput);
 const decodeCreate = Schema.decodeUnknownSync(CreateInput);
 const decodeUpdate = Schema.decodeUnknownSync(UpdateInput);
@@ -179,6 +185,30 @@ export const documentsFn = createServerFn({ method: "POST" })
 			Effect.gen(function* () {
 				const admin = yield* DocumentStoreAdmin;
 				const result = yield* admin.listDocuments(data.collection, {
+					...(data.limit === undefined ? {} : { limit: data.limit }),
+					...(data.offset === undefined ? {} : { offset: data.offset }),
+				});
+				return toDocumentsPageWire(result);
+			}),
+		).catch((error: unknown) => {
+			if (isHandled(error)) return null;
+			throw error;
+		});
+	});
+
+/** Cross-collection document browser for the /platform/documents
+ * console — `null` for non-admins like `documentsFn`. */
+export const browseDocumentsFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeBrowse(input))
+	.handler(async ({ data }): Promise<DocumentsPageWire | null> => {
+		await requirePluginEnabled("document-store.admin");
+		const user = await ensureSessionUser();
+		return asAdmin(
+			user,
+			Effect.gen(function* () {
+				const admin = yield* DocumentStoreAdmin;
+				const result = yield* admin.browseDocuments({
+					...(data.collection === undefined ? {} : { collection: data.collection }),
 					...(data.limit === undefined ? {} : { limit: data.limit }),
 					...(data.offset === undefined ? {} : { offset: data.offset }),
 				});
