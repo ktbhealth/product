@@ -40,6 +40,37 @@ export const pagesChromePlugin = definePlugin({
 			region: "app.header.nav",
 			content: { kind: "component", component: CustomNavLinks },
 		},
+		// Mirrors the dialogAction entries in ./index.ts — the delete
+		// dialog collects them from the client registry via
+		// collectChrome(plugins, "rich-text.delete.actions", ...).
+		{
+			id: "pages.delete-action-unlink",
+			region: "rich-text.delete.actions",
+			content: {
+				kind: "dialogAction",
+				action: {
+					id: "pages.unlink-unpublish",
+					owner: "pages",
+					label: "Unlink & unpublish pages",
+					description: "Pages keep their settings but lose the document and return to draft.",
+					destructive: false,
+				},
+			},
+		},
+		{
+			id: "pages.delete-action-delete",
+			region: "rich-text.delete.actions",
+			content: {
+				kind: "dialogAction",
+				action: {
+					id: "pages.delete-pages",
+					owner: "pages",
+					label: "Delete pages too",
+					description: "Permanently deletes every page using this document.",
+					destructive: true,
+				},
+			},
+		},
 	],
 });
 
@@ -86,6 +117,7 @@ export const plugins: readonly Plugin[] = [
 		id: "pages.services",
 		meta: { keywords: ["pages", "services"] },
 		requiredDeps: ["platform.admin"],
+		optionalDeps: ["rich-text.services"],
 	}),
 	pagesChromePlugin,
 	pagesRenderPlugin,
