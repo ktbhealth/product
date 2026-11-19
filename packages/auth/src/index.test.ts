@@ -1,9 +1,14 @@
 import * as Context from "effect/Context";
 import { describe, expect, it } from "vitest";
 
-import { Auth, type Session } from "./index.ts";
+import { ApiKeys, Auth, type Session } from "./index.ts";
 
 describe("auth port", () => {
+	it("declares stable service keys", () => {
+		expect(Auth.key).toBe("@ktb/auth/Auth");
+		expect(ApiKeys.key).toBe("@ktb/auth/ApiKeys");
+	});
+
 	it("Auth service tag can be provided in an Effect context", async () => {
 		expect(Auth).toBeDefined();
 

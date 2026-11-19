@@ -100,6 +100,7 @@ export const PATIENT_PROFILE_COOKIE = "ktb_patient";
 /** The profile id selected through `cookieName`, or null when the cookie
  * is absent or not a positive integer. */
 export const profileIdFromHeaders = (headers: Headers, cookieName: string): number | null => {
+	// Stryker disable next-line StringLiteral: any fallback without "=" is skipped by the eq === -1 guard, so the result is always null — same as ""
 	for (const pair of (headers.get("cookie") ?? "").split(";")) {
 		const eq = pair.indexOf("=");
 		if (eq === -1 || pair.slice(0, eq).trim() !== cookieName) continue;

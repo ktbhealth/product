@@ -22,6 +22,11 @@ describe("profile ports", () => {
 		expect(DoctorDelegations.key).toBe("@ktb/auth/DoctorDelegations");
 		expect(PatientProfiles.key).toBe("@ktb/auth/PatientProfiles");
 	});
+
+	it("declare stable cookie names", () => {
+		expect(DOCTOR_PROFILE_COOKIE).toBe("ktb_doctor");
+		expect(PATIENT_PROFILE_COOKIE).toBe("ktb_patient");
+	});
 });
 
 describe("profileIdFromHeaders", () => {
@@ -38,6 +43,22 @@ describe("profileIdFromHeaders", () => {
 		expect(profileIdFromHeaders(cookie("flag; other=1"), DOCTOR_PROFILE_COOKIE)).toBeNull();
 		// A name that merely ends with the cookie name is a different cookie.
 		expect(profileIdFromHeaders(cookie("x_ktb_doctor=3"), DOCTOR_PROFILE_COOKIE)).toBeNull();
+	});
+
+	it("finds the cookie past pairs without a value or a match", () => {
+		expect(profileIdFromHeaders(cookie("ktb_doctor; ktb_doctor=5"), DOCTOR_PROFILE_COOKIE)).toBe(5);
+		expect(profileIdFromHeaders(cookie("junk; ktb_doctor=5"), DOCTOR_PROFILE_COOKIE)).toBe(5);
+		expect(profileIdFromHeaders(cookie("a=1; ktb_doctor=5"), DOCTOR_PROFILE_COOKIE)).toBe(5);
+		// A valueless cookie whose name is the target plus one char must
+		// still be skipped: slice(0, -1) would otherwise match the name.
+		expect(profileIdFromHeaders(cookie("ktb_doctorx; ktb_doctor=5"), DOCTOR_PROFILE_COOKIE)).toBe(
+			5,
+		);
+	});
+
+	it("trims whitespace around the selected id", () => {
+		expect(profileIdFromHeaders(cookie("ktb_doctor= 12 "), DOCTOR_PROFILE_COOKIE)).toBe(12);
+		expect(profileIdFromHeaders(cookie("other=1; ktb_doctor=\t7"), DOCTOR_PROFILE_COOKIE)).toBe(7);
 	});
 
 	it("rejects values that are not positive integers", () => {
@@ -115,6 +136,11 @@ describe("resolveDoctorProfile", () => {
 	it("defaults to the user's own profile", () => {
 		expect(resolveDoctorProfile([own, a, b], null)).toBe(own);
 		expect(resolveDoctorProfile([own, a], 99)).toBe(own);
+	});
+
+	it("prefers the owner's profile even when it is not first", () => {
+		expect(resolveDoctorProfile([a, own], null)).toBe(own);
+		expect(resolveDoctorProfile([a, b, own], 99)).toBe(own);
 	});
 
 	it("defaults to the first delegated profile", () => {
