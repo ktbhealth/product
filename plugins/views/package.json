@@ -5,7 +5,8 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./fns": "./src/fns.ts",
-		"./views": "./src/views/LocalDateTime.tsx"
+		"./views": "./src/views/LocalDateTime.tsx",
+		"./table": "./src/table/index.ts"
 	},
 	"dependencies": {
 		"@ktb/document-store": "workspace:*",
