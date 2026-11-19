@@ -39,6 +39,11 @@ export interface ViewMessages {
 	readonly backToView: (title: string) => string;
 	/** Refetch failure on filter/pagination changes. */
 	readonly loadFailed: string;
+	/** Admin table kit (`src/table/`) — selection checkboxes and the
+	 * filtered-empty fallback row. */
+	readonly tableSelectAll: string;
+	readonly tableSelectRow: string;
+	readonly tableNoMatch: string;
 }
 
 const en: ViewMessages = {
@@ -55,6 +60,9 @@ const en: ViewMessages = {
 	emptyDescription: "No records match this view.",
 	backToView: paramMessage("en", "Back to {title}", ["title"]),
 	loadFailed: "Could not load records. Try again.",
+	tableSelectAll: "Select all",
+	tableSelectRow: "Select row",
+	tableNoMatch: "No records match the current filters.",
 };
 
 const ptBR: ViewMessages = {
@@ -71,6 +79,9 @@ const ptBR: ViewMessages = {
 	emptyDescription: "Nenhum registro corresponde a esta visualização.",
 	backToView: paramMessage("pt-BR", "Voltar para {title}", ["title"]),
 	loadFailed: "Não foi possível carregar os registros. Tente novamente.",
+	tableSelectAll: "Selecionar tudo",
+	tableSelectRow: "Selecionar linha",
+	tableNoMatch: "Nenhum registro corresponde aos filtros atuais.",
 };
 
 const es: ViewMessages = {
@@ -87,6 +98,9 @@ const es: ViewMessages = {
 	emptyDescription: "Ningún registro coincide con esta vista.",
 	backToView: paramMessage("es", "Volver a {title}", ["title"]),
 	loadFailed: "No se pudieron cargar los registros. Inténtalo de nuevo.",
+	tableSelectAll: "Seleccionar todo",
+	tableSelectRow: "Seleccionar fila",
+	tableNoMatch: "Ningún registro coincide con los filtros actuales.",
 };
 
 const CATALOGS: Record<ViewsLocale, ViewMessages> = { en, "pt-BR": ptBR, es };

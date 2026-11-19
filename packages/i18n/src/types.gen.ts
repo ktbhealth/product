@@ -1761,6 +1761,9 @@ export type I18nKey =
 	| "views.recordNotFoundDescription"
 	| "views.recordNotFoundTitle"
 	| "views.resetFilters"
+	| "views.tableNoMatch"
+	| "views.tableSelectAll"
+	| "views.tableSelectRow"
 	| "wizards.abandon"
 	| "wizards.abandonedDescription"
 	| "wizards.abandonedTitle"
@@ -4039,6 +4042,9 @@ export interface I18nTypedT {
 	(key: "views.recordNotFoundDescription"): Effect.Effect<string>;
 	(key: "views.recordNotFoundTitle"): Effect.Effect<string>;
 	(key: "views.resetFilters"): Effect.Effect<string>;
+	(key: "views.tableNoMatch"): Effect.Effect<string>;
+	(key: "views.tableSelectAll"): Effect.Effect<string>;
+	(key: "views.tableSelectRow"): Effect.Effect<string>;
 	(key: "wizards.abandon"): Effect.Effect<string>;
 	(key: "wizards.abandonedDescription"): Effect.Effect<string>;
 	(key: "wizards.abandonedTitle"): Effect.Effect<string>;
