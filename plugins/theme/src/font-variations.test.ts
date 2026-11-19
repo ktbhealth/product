@@ -231,6 +231,12 @@ describe("parseFontVariations — fvar", () => {
 		expect(info?.weightAxis).toBeUndefined();
 	});
 
+	it("clamps the wght axis to the CSS font-weight domain (1–1000)", async () => {
+		const font = ttf(table("fvar", fvarTable([{ tag: "wght", min: -50, def: 400, max: 1500 }])));
+		const info = await parseFontVariations(font);
+		expect(info?.weightAxis).toEqual({ min: 1, default: 400, max: 1000 });
+	});
+
 	it("treats truncated/malformed fvar tables as variable without axes", async () => {
 		// fvar shorter than its 16-byte header.
 		const tiny = ttf(table("fvar", [1, 0, 0]));

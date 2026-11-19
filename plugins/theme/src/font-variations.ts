@@ -50,7 +50,9 @@ export interface FontVariationInfo {
 const viewOf = (bytes: Uint8Array): DataView =>
 	new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-/** Fetch one sfnt table's raw bytes for any supported container. */
+/** Fetch one sfnt table's raw bytes for any supported container.
+ * WOFF2 never reaches here — its single Brotli stream is decoded
+ * once by the caller ({@link parseFontVariations}). */
 const tableBytes = async (
 	bytes: Uint8Array,
 	tag: string,
@@ -60,12 +62,6 @@ const tableBytes = async (
 	if (bytes.byteLength < 12) return null;
 	const head4 = String.fromCharCode(...Array.from({ length: 4 }, (_, i) => bytes[i]!));
 	try {
-		if (head4 === WOFF2_TAG) {
-			const decoded = await woff2Tables(bytes);
-			if (decoded === null) return null;
-			const t = decoded.tables.get(tag);
-			return t === undefined ? null : decoded.data.subarray(t.offset, t.offset + t.length);
-		}
 		if (head4 === WOFF_TAG) return await woffTable(bytes, tag);
 		if (SFNT_SIGNATURES.has(head4) || format === "ttf" || format === "otf") {
 			const rec = findTable(bytes, tag);
@@ -122,7 +118,12 @@ const parseFvar = (
 			min <= def &&
 			def <= max
 		) {
-			weightAxis = { min, default: def, max };
+			// CSS font-weight accepts 1–1000 — clamp rather than trust
+			// the fvar bytes blindly (the monotonic clamp preserves
+			// min <= default <= max). insertCatalogFontAsset applies
+			// the same rule to its own input.
+			const clamp = (n: number): number => Math.min(1000, Math.max(1, n));
+			weightAxis = { min: clamp(min), default: clamp(def), max: clamp(max) };
 		}
 	}
 	return { variable: true, ...(weightAxis === undefined ? {} : { weightAxis }) };
@@ -225,8 +226,7 @@ const MAX_UNICODE_RANGE_BYTES = 2048;
  * only — supplementary-plane glyphs simply stay uncovered, matching
  * what a BMP-only descriptor could ever express).
  */
-const parseCmap = async (bytes: Uint8Array, format?: string): Promise<string | undefined> => {
-	const cmap = await tableBytes(bytes, "cmap", format);
+const parseCmap = (cmap: Uint8Array | null): string | undefined => {
 	if (cmap === null) return undefined;
 	const v = viewOf(cmap);
 	const sub = pickCmapSubtable(v, cmap);
@@ -267,13 +267,29 @@ export const parseFontVariations = async (
 			format === "woff" ||
 			format === "woff2";
 		if (!recognized) return null;
-		const [fvar, unicodeRange] = await Promise.all([
-			tableBytes(bytes, "fvar", format),
-			parseCmap(bytes, format),
-		]);
+		let fvar: Uint8Array | null;
+		let cmap: Uint8Array | null;
+		if (head4 === WOFF2_TAG) {
+			// WOFF2 stores every table in one Brotli stream — decode
+			// once and slice both probes out of the shared payload.
+			const decoded = await woff2Tables(bytes);
+			const slice = (tag: string): Uint8Array | null => {
+				if (decoded === null) return null;
+				const t = decoded.tables.get(tag);
+				return t === undefined ? null : decoded.data.subarray(t.offset, t.offset + t.length);
+			};
+			fvar = slice("fvar");
+			cmap = slice("cmap");
+		} else {
+			[fvar, cmap] = await Promise.all([
+				tableBytes(bytes, "fvar", format),
+				tableBytes(bytes, "cmap", format),
+			]);
+		}
 		// unicode-range applies to static fonts too — return whatever
 		// the cmap probe found even without an fvar table.
 		const variation = parseFvar(fvar);
+		const unicodeRange = parseCmap(cmap);
 		return {
 			variable: variation.variable,
 			...(variation.weightAxis === undefined ? {} : { weightAxis: variation.weightAxis }),
