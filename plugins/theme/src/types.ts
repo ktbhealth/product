@@ -82,7 +82,9 @@ export interface ThemeFontFace {
 	readonly weightRange?: readonly [number, number];
 	/** `unicode-range` descriptor value ("U+0020-007E, …") derived from
 	 * the font's cmap — browsers skip downloading the face for text it
-	 * cannot render. The dependency-free stand-in for font subsetting. */
+	 * cannot render. Catalog fonts additionally get a real subset
+	 * sibling (font-subset.ts) whose faces carry disjoint latin /
+	 * complement ranges. */
 	readonly unicodeRange?: string;
 	/** Non-`wght` `fvar` axes of a variable font (see
 	 * {@link ThemeFontAxis}). `present.ts` turns a `wdth` entry into

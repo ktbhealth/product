@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -952,6 +955,42 @@ describe("POST /api/theme/catalog-fonts", () => {
 		});
 	});
 
+	it("stores a latin subset sibling and emits disjoint faces for TTF uploads", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.providers = [fontProvider({ id: 7 })];
+			fontsState.syncFamilies = [fontFamily({ providerId: 7 })];
+			// Real TTF (0x00010000 sfnt) — exercises the full subset
+			// pipeline: cmap coverage → HarfBuzz WASM → sibling R2 object.
+			const ttfBytes = readFileSync(
+				fileURLToPath(new URL("./testdata/katex-size3.ttf", import.meta.url)),
+			);
+			const file = new File([ttfBytes], "KaTeX_Size3-Regular.ttf", {
+				type: "font/ttf",
+			});
+			const res = await postCatalog({ family: "KaTeX", weight: "400" }, file);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { assetId: number };
+			const row = (await db.select().from(themeAssets)).find((r) => r.id === body.assetId);
+			const variants = JSON.parse(row!.variants!);
+			expect(variants.subsetKey).toMatch(/-latin\.ttf$/);
+			// The subset object landed in R2, smaller than the upload.
+			const subsetKey = variants.subsetKey as string;
+			expect(bucketStore.has(subsetKey)).toBe(true);
+			expect(bucketStore.get(subsetKey)!.data.byteLength).toBeLessThan(ttfBytes.byteLength);
+			// Two disjoint faces for the single weight: latin subset +
+			// full font with the complement range.
+			const faces = variants.fontAsset.faces;
+			expect(faces).toHaveLength(2);
+			expect(faces[0].url).toContain(encodeURIComponent(subsetKey));
+			expect(faces[0].unicodeRange).toBeDefined();
+			expect(faces[0].format).toBe("truetype");
+			expect(faces[1].url).toContain(encodeURIComponent(row!.r2Key!));
+			expect(faces[1].unicodeRange).toBeDefined();
+			expect(faces[1].unicodeRange).not.toBe(faces[0].unicodeRange);
+		});
+	});
+
 	it("supersedes prior catalog rows for the same family only", async () => {
 		useSession("admin");
 		await withCatalogRuntime(async () => {
@@ -959,8 +998,14 @@ describe("POST /api/theme/catalog-fonts", () => {
 			fontsState.syncFamilies = [fontFamily({ providerId: 7 })];
 			// Stale catalog row for the same family + a different family +
 			// an unowned row with no family stamp (orphan).
-			const mkStale = async (family: string | null, key: string | null) => {
-				const variants = family === null ? null : JSON.stringify({ family });
+			const mkStale = async (family: string | null, key: string | null, subsetKey?: string) => {
+				const variants =
+					family === null
+						? null
+						: JSON.stringify({
+								family,
+								...(subsetKey === undefined ? {} : { subsetKey }),
+							});
 				const rows = await db
 					.insert(themeAssets)
 					.values({
@@ -974,11 +1019,18 @@ describe("POST /api/theme/catalog-fonts", () => {
 					.returning();
 				return rows[0]!;
 			};
-			const staleSame = await mkStale("Inter", "theme-assets/catalog/font/old.woff2");
+			const staleSame = await mkStale(
+				"Inter",
+				"theme-assets/catalog/font/old.woff2",
+				"theme-assets/catalog/font/old-latin.ttf",
+			);
 			const staleNullKey = await mkStale("Inter", null);
 			const staleOther = await mkStale("Other", "theme-assets/catalog/font/other.woff2");
 			await mkStale(null, null);
 			bucketStore.set("theme-assets/catalog/font/old.woff2", {
+				data: new Uint8Array([1]),
+			});
+			bucketStore.set("theme-assets/catalog/font/old-latin.ttf", {
 				data: new Uint8Array([1]),
 			});
 			bucketStore.set("theme-assets/catalog/font/other.woff2", {
@@ -997,8 +1049,10 @@ describe("POST /api/theme/catalog-fonts", () => {
 			expect(ids).not.toContain(staleSame.id);
 			expect(ids).not.toContain(staleNullKey.id);
 			expect(ids).toContain(staleOther.id);
-			// R2 objects for superseded rows are dropped; others survive.
+			// R2 objects for superseded rows are dropped — including the
+			// latin-subset sibling recorded on variants.subsetKey.
 			expect(bucketStore.has("theme-assets/catalog/font/old.woff2")).toBe(false);
+			expect(bucketStore.has("theme-assets/catalog/font/old-latin.ttf")).toBe(false);
 			expect(bucketStore.has("theme-assets/catalog/font/other.woff2")).toBe(true);
 		});
 	});

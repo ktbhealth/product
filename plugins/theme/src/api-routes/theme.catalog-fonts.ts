@@ -10,6 +10,7 @@ import {
 	FONT_UPLOAD_EXTENSIONS,
 	THEME_ASSETS_PREFIX,
 	catalogFontFamilyOf,
+	catalogFontSubsetKeyOf,
 	contentTypeForKey,
 	deleteThemeAsset,
 	fontFormatForExt,
@@ -202,6 +203,14 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				// vite-plus's client-consumer test pipeline (apps/web).
 				const { parseFontVariations } = await import("../font-variations.ts");
 				const variation = await parseFontVariations(new Uint8Array(bytes), ext);
+				// Real font subsetting (latin charset) — same lazy-import
+				// rationale as font-variations (hb-subset.wasm), and just as
+				// non-fatal: null keeps the unicode-range-only path.
+				const { subsetCatalogFont } = await import("../font-subset.ts");
+				const subsetPlan = await subsetCatalogFont({
+					bytes: new Uint8Array(bytes),
+					variation,
+				});
 
 				const { themeAssets: bucket } = getServerRuntime();
 				if (!bucket) {
@@ -226,6 +235,18 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 					httpMetadata: { contentType: contentTypeForKey(key) },
 				});
 
+				// Subset sibling (latin charset only) — stored next to the
+				// original; insertCatalogFontAsset emits the disjoint
+				// subset/full @font-face pair when present.
+				let subsetKey: string | null = null;
+				if (subsetPlan !== null) {
+					const stem = key.slice(0, key.length - ext.length - 1);
+					subsetKey = `${stem}-latin.${subsetPlan.ext}`;
+					await bucket.put(subsetKey, subsetPlan.data, {
+						httpMetadata: { contentType: contentTypeForKey(subsetKey) },
+					});
+				}
+
 				// One runAs: supersede prior catalog rows for this family
 				// (R2 objects are content-unique — best-effort delete),
 				// record the ready asset, then re-sync the provider so
@@ -238,11 +259,14 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 						const unowned = yield* Effect.promise(() => listUnownedFontAssets(db));
 						for (const stale of unowned) {
 							if (catalogFontFamilyOf(stale.variants) !== family) continue;
-							const staleKey = stale.r2Key;
-							if (staleKey !== null) {
-								// R2 cleanup is best-effort — the row delete
-								// below is the authoritative supersede.
-								yield* Effect.promise(() => bucket.delete([staleKey]).catch(() => undefined));
+							// R2 cleanup is best-effort — the row delete
+							// below is the authoritative supersede. The
+							// subset sibling key rides variants.subsetKey.
+							const staleKeys = [stale.r2Key, catalogFontSubsetKeyOf(stale.variants)].filter(
+								(k): k is string => k !== null,
+							);
+							if (staleKeys.length > 0) {
+								yield* Effect.promise(() => bucket.delete(staleKeys).catch(() => undefined));
 							}
 							yield* Effect.promise(() => deleteThemeAsset(db, stale.id));
 						}
@@ -255,6 +279,15 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 								weightAxis: variation?.weightAxis,
 								unicodeRange: variation?.unicodeRange,
 								axes: variation?.axes,
+								subset:
+									subsetPlan === null || subsetKey === null
+										? undefined
+										: {
+												r2Key: subsetKey,
+												format: subsetPlan.format,
+												unicodeRange: subsetPlan.unicodeRange,
+												fullUnicodeRange: subsetPlan.fullUnicodeRange,
+											},
 							}),
 						);
 						if (asset === null) {

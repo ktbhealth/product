@@ -12,6 +12,7 @@ import {
 	THEME_FONT_JOB_KIND,
 	catalogFontAssetOf,
 	catalogFontFamilyOf,
+	catalogFontSubsetKeyOf,
 	completeThemeAsset,
 	contentTypeForKey,
 	decodeThemeAssetJob,
@@ -464,6 +465,13 @@ describe("catalog font assets (theme_id NULL)", () => {
 		expect(catalogFontFamilyOf("{}")).toBeNull();
 		expect(catalogFontFamilyOf('{"family":"  "}')).toBeNull();
 		expect(catalogFontFamilyOf('{"family":" Inter "}')).toBe("Inter");
+		expect(catalogFontSubsetKeyOf(null)).toBeNull();
+		expect(catalogFontSubsetKeyOf("not json")).toBeNull();
+		expect(catalogFontSubsetKeyOf("[1,2]")).toBeNull();
+		expect(catalogFontSubsetKeyOf("{}")).toBeNull();
+		expect(catalogFontSubsetKeyOf('{"subsetKey":""}')).toBeNull();
+		expect(catalogFontSubsetKeyOf('{"subsetKey":5}')).toBeNull();
+		expect(catalogFontSubsetKeyOf('{"subsetKey":"k-latin.ttf"}')).toBe("k-latin.ttf");
 		expect(catalogFontAssetOf(null)).toBeNull();
 		expect(catalogFontAssetOf("not json")).toBeNull();
 		expect(catalogFontAssetOf("5")).toBeNull();
@@ -730,6 +738,116 @@ describe("catalog font assets (theme_id NULL)", () => {
 		expect(variants.axes).toHaveLength(32);
 		expect(variants.axes[0].tag).toBe("A000");
 		expect(variants.axes[31].tag).toBe("A01f");
+	});
+
+	it("insertCatalogFontAsset emits disjoint subset/full faces per weight", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Sub",
+			weights: [400, 700],
+			r2Key: "full.woff2",
+			format: "woff2",
+			unicodeRange: "U+0020-04FF",
+			subset: {
+				r2Key: "full-latin.ttf",
+				format: "truetype",
+				unicodeRange: "U+0020-007E",
+				fullUnicodeRange: "U+0080-04FF",
+			},
+		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.subsetKey).toBe("full-latin.ttf");
+		// Per weight: latin subset face first, then the full font with
+		// only the complementary coverage — disjoint unicode-ranges.
+		expect(variants.fontAsset.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=full-latin.ttf",
+				weight: 400,
+				unicodeRange: "U+0020-007E",
+				format: "truetype",
+			},
+			{
+				url: "/api/theme/assets?key=full.woff2",
+				weight: 400,
+				unicodeRange: "U+0080-04FF",
+				format: "woff2",
+			},
+			{
+				url: "/api/theme/assets?key=full-latin.ttf",
+				weight: 700,
+				unicodeRange: "U+0020-007E",
+				format: "truetype",
+			},
+			{
+				url: "/api/theme/assets?key=full.woff2",
+				weight: 700,
+				unicodeRange: "U+0080-04FF",
+				format: "woff2",
+			},
+		]);
+	});
+
+	it("insertCatalogFontAsset drops the full face when the subset covers all", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "LatinOnly",
+			weights: undefined,
+			r2Key: "l.ttf",
+			format: undefined,
+			subset: {
+				r2Key: "l-latin.ttf",
+				format: undefined,
+				unicodeRange: "U+0020-007E",
+				fullUnicodeRange: undefined,
+			},
+		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.subsetKey).toBe("l-latin.ttf");
+		expect(variants.fontAsset.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=l-latin.ttf",
+				unicodeRange: "U+0020-007E",
+			},
+		]);
+		// Blank format/complement strings sanitize to absent just like
+		// undefined — the subset face still wins.
+		const blanked = await insertCatalogFontAsset(db, {
+			family: "BlankSub",
+			weights: undefined,
+			r2Key: "b.ttf",
+			format: undefined,
+			subset: {
+				r2Key: "b-latin.otf",
+				format: "  ",
+				unicodeRange: "U+0020-007E",
+				fullUnicodeRange: "   ",
+			},
+		});
+		expect(catalogFontAssetOf(blanked!.variants)!.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=b-latin.otf",
+				unicodeRange: "U+0020-007E",
+			},
+		]);
+	});
+
+	it("insertCatalogFontAsset ignores malformed subset payloads", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "BadSub",
+			weights: [400],
+			r2Key: "f.ttf",
+			format: undefined,
+			subset: {
+				r2Key: "",
+				format: "truetype",
+				unicodeRange: "U+0020-007E",
+				fullUnicodeRange: "   ",
+			},
+		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.subsetKey).toBeUndefined();
+		expect(variants.fontAsset.faces).toEqual([{ url: "/api/theme/assets?key=f.ttf", weight: 400 }]);
 	});
 
 	it("insertCatalogFontAsset returns null when the insert yields no row", async () => {
