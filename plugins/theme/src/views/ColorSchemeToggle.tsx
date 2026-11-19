@@ -50,9 +50,7 @@ export function ColorSchemeToggle({
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				render={
-					<Button variant="ghost" size="icon" aria-label={`${t.schemeLabel}: ${label}`} />
-				}
+				render={<Button variant="ghost" size="icon" aria-label={`${t.schemeLabel}: ${label}`} />}
 			>
 				<Icon className="size-4" />
 			</DropdownMenuTrigger>
