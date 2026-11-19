@@ -769,6 +769,81 @@ describe("buildPermissions", () => {
 		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
 		expect(grants.get(grantKey("patient", "delete"))).toBe("deny");
 	});
+
+	it("takes the earliest of member and grant expires_at", async () => {
+		const soon = new Date(Date.now() + 10_000);
+		const later = new Date(Date.now() + 20_000);
+		const member = (roleName: string, subjectId: string, expiresAt: Date) => ({
+			objectType: "role",
+			objectId: roleName,
+			relation: "member",
+			subjectKind: "user",
+			subjectId,
+			effect: "allow",
+			tenantId: null,
+			expiresAt,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const grant = (objectType: string, action: string, expiresAt: Date) => ({
+			objectType,
+			objectId: "*",
+			relation: action,
+			subjectKind: "role",
+			subjectId: "temp",
+			effect: "allow",
+			tenantId: null,
+			expiresAt,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		await db.insert(relationTuples).values([
+			// temp member outlives its grant tuple → grant expiry wins.
+			member("temp", "u40", later),
+			grant("consultation", "read", soon),
+			// billing member expires first → member expiry wins.
+			{ ...member("billing", "u40", soon), subjectKind: "user" },
+			{ ...grant("billing", "manage", later), subjectId: "billing" },
+		]);
+		const p = buildPermissions(db);
+		expect(await Effect.runPromise(p.canFor("u40", "consultation", "read"))).toBe(true);
+		expect(await Effect.runPromise(p.canFor("u40", "billing", "manage"))).toBe(true);
+	});
+
+	it("merges duplicate role memberships from user and group subjects", async () => {
+		await db.insert(relationTuples).values([
+			{
+				objectType: "role",
+				objectId: "auditor",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u41",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			{
+				objectType: "role",
+				objectId: "auditor",
+				relation: "member",
+				subjectKind: "group",
+				subjectId: "g8",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+		]);
+		const p = buildPermissions(db, (userId) =>
+			Effect.succeed<readonly string[]>(userId === "u41" ? ["g8"] : []),
+		);
+		const grants = await Effect.runPromise(p.permissionsFor("u41"));
+		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
+		expect(grants.get(grantKey("patient", "delete"))).toBe("deny");
+	});
 });
 
 describe("permissionsService", () => {

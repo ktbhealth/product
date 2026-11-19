@@ -87,6 +87,18 @@ const fakeDb = (opts: {
 				}),
 			}),
 		}),
+		update: () => ({
+			set: () => ({
+				where: () => ({
+					// Empty result simulates an UPDATE that matched no row
+					// (the defensive `rows[0] ?? null` path).
+					returning: async () => [],
+				}),
+			}),
+		}),
+		delete: () => ({
+			where: async () => [],
+		}),
 	} as unknown as DbClient;
 };
 
@@ -293,6 +305,59 @@ describe("rbac repo", () => {
 		// …member tuples in object_id.
 		const member = tuples.find((t) => t.subjectId === "u-rename" && t.relation === "member");
 		expect(member?.objectId).toBe("new-name");
+
+		// Re-"renaming" to the same name is a no-op: the row comes back
+		// and no tuple rewrite runs.
+		const same = await updateRole(db, { id: role.id, name: "new-name" });
+		expect(same?.name).toBe("new-name");
+	});
+
+	it("tolerates missing rows and dangling role ids", async () => {
+		// deleteRole on a nonexistent id: no role row → no tuple sweep.
+		await deleteRole(db, 999);
+
+		// The dangling-roleId paths below need rows real FK enforcement
+		// would reject, so they run against the stub driver: the repo
+		// fns still resolve — role_permissions writes land, tuple
+		// writes/reads keyed on the role NAME are skipped.
+
+		// setRolePermission: getRole → [] → role_permissions insert
+		// still runs, the grant-tuple upsert is skipped.
+		await expect(
+			setRolePermission(fakeDb({ selects: [[]] }), {
+				roleId: 999,
+				resource: "ghost",
+				action: "read",
+				effect: "allow",
+			}),
+		).resolves.toBeUndefined();
+
+		// revokeRolePermission: delete runs, getRole → [] → early
+		// return before the tuple delete.
+		await expect(
+			revokeRolePermission(fakeDb({ selects: [[]] }), {
+				roleId: 999,
+				resource: "ghost",
+				action: "read",
+			}),
+		).resolves.toBeUndefined();
+
+		// unassignSubject: the subject_roles row exists but its
+		// roleId dangles — row deleted, member-tuple sweep skipped.
+		// getSubjectRole → [row], getRole → [].
+		const assignment = {
+			id: 7,
+			subjectKind: "user",
+			subjectId: "u-dangling",
+			roleId: 999,
+			tenantId: null,
+			grantedBy: null,
+			expiresAt: null,
+			createdAt: new Date(0),
+		};
+		await expect(
+			unassignSubject(fakeDb({ selects: [[assignment], []] }), 7),
+		).resolves.toBeUndefined();
 	});
 
 	it("groupIdsForUser reads group_members without importing groups", async () => {
@@ -338,6 +403,24 @@ describe("rbac repo — empty-driver paths", () => {
 			subjectKind: "user",
 			subjectId: "u",
 			roleId: 1,
+		});
+		expect(result).toBeNull();
+	});
+
+	it("updateRole returns null when UPDATE ... RETURNING yields no row", async () => {
+		const role = {
+			id: 1,
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		};
+		// Name patch → getRole consumes [role]; the UPDATE itself
+		// returns no rows (row vanished between read and write).
+		const result = await updateRole(fakeDb({ selects: [[role]] }), {
+			id: 1,
+			name: "renamed",
 		});
 		expect(result).toBeNull();
 	});
@@ -690,6 +773,28 @@ describe("rbac services — empty-driver paths", () => {
 					),
 				),
 			).rejects.toMatchObject({ _tag: "Forbidden" });
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("superadmin seed failure logs a warning and the layer still builds", async () => {
+		// A Db whose selects reject simulates a deployment whose schema
+		// predates the rbac tables — the seed is best-effort: the
+		// catchCause logs a warning and layer build continues.
+		const brokenDb = {
+			select: () => ({
+				from: () => ({
+					where: async () => {
+						throw new Error("no such table: roles");
+					},
+				}),
+			}),
+		} as unknown as DbClient;
+		const rt = runtimeFor(brokenDb);
+		try {
+			// Building the runtime runs the seed effect; it must not fail.
+			await expect(rt.runPromise(Effect.void)).resolves.toBeUndefined();
 		} finally {
 			await rt.dispose();
 		}

@@ -285,6 +285,7 @@ export const buildPermissions = (
 		}[] = [];
 		for (const row of grantRows) {
 			if (row.subjectKind === "role") {
+				// v8 ignore next -- grant role subjects are drawn from membersByRole keys, so get() never misses
 				for (const member of membersByRole.get(row.subjectId) ?? []) {
 					rows.push({
 						resource: row.resource,
