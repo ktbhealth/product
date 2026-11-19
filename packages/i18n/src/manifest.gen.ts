@@ -2237,6 +2237,9 @@ export const I18N_MANIFEST = {
 		lastFailed: {
 			params: [],
 		},
+		lastRunning: {
+			params: [],
+		},
 		runNow: {
 			params: [],
 		},

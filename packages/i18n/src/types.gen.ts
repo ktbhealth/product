@@ -668,6 +668,7 @@ export type I18nKey =
 	| "cron.jobsTitle"
 	| "cron.lastFailed"
 	| "cron.lastOk"
+	| "cron.lastRunning"
 	| "cron.neverRan"
 	| "cron.rColError"
 	| "cron.rColId"
@@ -2789,6 +2790,7 @@ export interface I18nTypedT {
 	(key: "cron.jobsTitle"): Effect.Effect<string>;
 	(key: "cron.lastFailed"): Effect.Effect<string>;
 	(key: "cron.lastOk"): Effect.Effect<string>;
+	(key: "cron.lastRunning"): Effect.Effect<string>;
 	(key: "cron.neverRan"): Effect.Effect<string>;
 	(key: "cron.rColError"): Effect.Effect<string>;
 	(key: "cron.rColId"): Effect.Effect<string>;

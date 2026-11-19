@@ -12230,6 +12230,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "cron",
+		key: "lastRunning",
+		locale: "en",
+		value: "Running",
+	},
+	{
+		namespace: "cron",
 		key: "runNow",
 		locale: "en",
 		value: "Run now",
@@ -12428,6 +12434,12 @@ export const I18N_BASELINE = [
 		key: "lastFailed",
 		locale: "pt-BR",
 		value: "Falhou",
+	},
+	{
+		namespace: "cron",
+		key: "lastRunning",
+		locale: "pt-BR",
+		value: "Executando",
 	},
 	{
 		namespace: "cron",
@@ -12630,6 +12642,12 @@ export const I18N_BASELINE = [
 		key: "lastFailed",
 		locale: "es",
 		value: "Falló",
+	},
+	{
+		namespace: "cron",
+		key: "lastRunning",
+		locale: "es",
+		value: "Ejecutando",
 	},
 	{
 		namespace: "cron",
