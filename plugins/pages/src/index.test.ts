@@ -511,6 +511,43 @@ describe("pages page effects", () => {
 		}
 	});
 
+	it("admin page loader degrades the layout picker to empty on Forbidden", async () => {
+		// A present-but-denying Layouts service: the loader's
+		// `catchTag("Forbidden")` arm keeps the picker empty while the
+		// flag still reports the service as installed.
+		const layouts = Layouts.of({
+			adminList: () => Effect.fail(new Forbidden({ path: "platform.admin" })),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+			resolveForPage: () => Effect.succeed([]),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(Layouts, layouts),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
+			const data = (await asPrincipalIn(
+				rt,
+				{ userId: "a1", email: "admin@x.com" },
+				loader("/platform/pages"),
+			)) as {
+				layouts: readonly unknown[];
+				layoutEnabled: boolean;
+			};
+			expect(data.layouts).toEqual([]);
+			expect(data.layoutEnabled).toBe(true);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
 	it("wildcard loader resolves layout sections when the Layouts service is present", async () => {
 		const now = new Date();
 		await sharedDb.insert(customPage).values({

@@ -278,6 +278,24 @@ describe("LayoutsLive", () => {
 		).resolves.toBeNull();
 	});
 
+	it("toMeta degrades a corrupt stored config to sectionCount 0", async () => {
+		// Stored JSON that fails the contract still lists — `toMeta`'s
+		// `?.sections.length ?? 0` arm resolves the count to 0 instead
+		// of breaking the row.
+		const now = new Date();
+		await db
+			.insert(layouts)
+			.values({ name: "corrupt-meta", config: "{oops", createdAt: now, updatedAt: now });
+		const rows = await admin((p) => p.adminList());
+		const meta = rows.find((r) => r.name === "corrupt-meta")!;
+		expect(meta.sectionCount).toBe(0);
+		const doc = await asUser(
+			null,
+			call((p) => p.getById(meta.id)),
+		);
+		expect(doc!.sectionCount).toBe(0);
+	});
+
 	it("adminCreate resolves null when the insert returning is empty", async () => {
 		// A SqlDatabase whose statements always yield zero rows: the
 		// INSERT ... RETURNING comes back empty, so adminCreate's

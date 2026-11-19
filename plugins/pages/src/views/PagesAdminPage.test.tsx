@@ -98,6 +98,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 			/>,
 		);
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();

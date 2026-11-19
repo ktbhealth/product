@@ -55,7 +55,12 @@ describe("PagesAdminConsolePage", () => {
 					pages: [row({})],
 					docs: [{ id: 7, title: "Doc" }],
 					richTextEnabled: true,
-					layouts: [{ id: 5, name: "Landing", description: null }, { nope: true }, "x"],
+					layouts: [
+						{ id: 5, name: "Landing", description: null },
+						{ id: 6, name: "BadDesc", description: 42 },
+						{ nope: true },
+						"x",
+					],
 					layoutEnabled: true,
 				}}
 				ctx={ctx}
@@ -68,7 +73,13 @@ describe("PagesAdminConsolePage", () => {
 		// fields render (malformed layout entries are dropped).
 		await user.click(screen.getByText("New page"));
 		expect(screen.getByRole("combobox", { name: "Content document" })).toBeTruthy();
-		expect(screen.getByRole("combobox", { name: "Layout" })).toBeTruthy();
+		const layoutPicker = screen.getByRole("combobox", { name: "Layout" });
+		expect(layoutPicker).toBeTruthy();
+		// Only the well-formed layout row survives the narrowing filter —
+		// a non-string/non-null description drops the entry.
+		await user.click(layoutPicker);
+		expect(await screen.findByRole("option", { name: "Landing" })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: "BadDesc" })).toBeNull();
 	});
 
 	it("drops malformed rows and docs, and survives non-object data", () => {
