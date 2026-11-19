@@ -234,6 +234,14 @@ describe("PortalSignInPage (/login/patient)", () => {
 		);
 	});
 
+	it("derives the doctor link from ctx.plugins when pluginStates is omitted", () => {
+		const { pluginStates: _dropped, ...ctx } = ctxWith(allEnabled);
+		render(createElement(PortalSignInPage, { data: { emailEnabled: false }, ctx }) as ReactElement);
+		expect(screen.getByRole("link", { name: "I am a doctor" }).getAttribute("href")).toBe(
+			"/login/doctor",
+		);
+	});
+
 	it.each(["doctors", "clinician"] as const)(
 		"hides the doctor link when the %s package is disabled",
 		(pkg) => {

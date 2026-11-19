@@ -116,6 +116,15 @@ describe("visibleLoginTiles", () => {
 		expect(visibleLoginTiles(plugins, states).map((e) => e.id)).not.toContain("chrome.doctor");
 	});
 
+	it("resolves `requires` per-id for unstamped plugins", () => {
+		const plugins = [
+			chromePlugin("a.chrome", "a", [tile("x", "/login/x", { requires: ["plain.plugin"] })]),
+			markerPlugin("plain.plugin", undefined),
+		];
+		expect(visibleLoginTiles(plugins, allEnabled(plugins))).toHaveLength(1);
+		expect(visibleLoginTiles(plugins, { enabled: ["a.chrome"] })).toEqual([]);
+	});
+
 	it("fails closed on unknown `requires` ids", () => {
 		const plugins = [
 			chromePlugin("a.chrome", "a", [tile("x", "/login/x", { requires: ["ghost.plugin"] })]),

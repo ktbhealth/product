@@ -106,4 +106,11 @@ describe("LoginPickerPage", () => {
 		expect(screen.queryByRole("link", { name: "patient sign in" })).toBeNull();
 		expect(screen.getByRole("link", { name: "doctor sign in" })).toBeTruthy();
 	});
+
+	it("derives live tiles from ctx.plugins when pluginStates is omitted", () => {
+		const { pluginStates: _dropped, ...ctx } = ctxWith(allEnabled);
+		render(createElement(LoginPickerPage, { data: null, ctx }));
+		expect(screen.getByRole("link", { name: "patient sign in" })).toBeTruthy();
+		expect(screen.getByRole("link", { name: "doctor sign in" })).toBeTruthy();
+	});
 });

@@ -82,9 +82,8 @@ export const loginTileTargets = (
 	states: LoginTileStates,
 ): ReadonlySet<string> =>
 	new Set(
-		visibleLoginTiles(plugins, states).flatMap((entry) =>
-			entry.content.kind === "loginTile"
-				? [entry.content.to]
-				: /* unreachable — visibleLoginTiles already filters to loginTile entries */ [],
+		visibleLoginTiles(plugins, states).map(
+			(entry) =>
+				(entry.content as Extract<ChromeContribution["content"], { kind: "loginTile" }>).to,
 		),
 	);
