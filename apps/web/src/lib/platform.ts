@@ -21,8 +21,13 @@ import {
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { makeJobs, registerJobHandler } from "@ktb/jobs-port";
+import { makeJobs, registerJobHandler, upsertJobRun, listJobRuns } from "@ktb/jobs-port";
+import type { JobRecord, JobStatus } from "@ktb/jobs-port";
+import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
 import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
+import { APP_CRON_JOBS } from "./cron-jobs.ts";
+import { runScheduledAgendaReminders } from "./agenda-reminders.ts";
+import { runScheduledAuditVerification } from "./audit-chain.ts";
 import { currentLocale } from "./locale-context.ts";
 import {
 	GLOBAL_SCOPE,
@@ -280,6 +285,85 @@ const queueDescriptors: (QueueDescriptor | undefined)[] = [
 ];
 const queueRegistry = makeQueueRegistry(queueDescriptors.filter((d) => d !== undefined));
 
+// Cron registry for /platform/cron + the worker's `scheduled` handler:
+// every scheduled job declared in lib/cron-jobs.ts gets a fire routine
+// here. Each fire is projected into job_runs under kind `cron.<id>`
+// (two-phase: processing → done/failed) so the console reads lifecycle
+// through the same transport-agnostic projection as queues. Projection
+// writes are best-effort — a bookkeeping miss must never fail or retry
+// the sweep itself, so failures are logged and swallowed.
+const projectCronRun =
+	(jobId: string, fire: () => Promise<CronRunOutcome>) => async (): Promise<CronRunOutcome> => {
+		const id = crypto.randomUUID();
+		const kind = `cron.${jobId}`;
+		const write = (status: JobStatus, error?: string | null) =>
+			upsertJobRun(db, { id, kind, status, error: error ?? null }).catch((e: unknown) => {
+				console.error("cron projection write failed", { kind, status, error: String(e) });
+			});
+		await write("processing");
+		try {
+			const outcome = await fire();
+			await write(outcome.ok ? "done" : "failed", outcome.error);
+			return outcome;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			await write("failed", message);
+			return { ok: false, error: message };
+		}
+	};
+
+const cronRunners: Record<string, () => Promise<CronRunOutcome>> = {
+	"agenda-reminders": async () => {
+		const count = await runScheduledAgendaReminders();
+		return count === null
+			? { ok: false, error: "reminder sweep failed" }
+			: { ok: true, summary: `${count} reminder${count === 1 ? "" : "s"} dispatched` };
+	},
+	"audit-chain-verify": async () => {
+		const result = await runScheduledAuditVerification();
+		if (result === null) return { ok: false, error: "audit chain verification failed" };
+		return {
+			ok: true,
+			summary:
+				result.status === "tampered"
+					? `chain tampered at entry ${result.brokenAt}`
+					: `chain verified (${result.entries} entries)`,
+		};
+	},
+};
+
+const cronRegistry = makeCronRegistry(
+	APP_CRON_JOBS.map((meta): CronDescriptor => ({
+		id: meta.id,
+		schedules: meta.schedules,
+		description: meta.description,
+		run: projectCronRun(
+			meta.id,
+			cronRunners[meta.id] ?? (async () => ({ ok: false, error: "no runner registered" })),
+		),
+	})),
+);
+
+/**
+ * `scheduled()` entry point (src/server.ts): fire every cron job bound
+ * to the controller's cron expression through the registry — same code
+ * path as the console's "run now", including the job_runs projection.
+ * Unknown expressions are a no-op.
+ */
+export const runScheduledCron = (schedule: string) => cronRegistry.dispatch(schedule);
+
+/** Latest `cron.<id>` projection row per registered job — one bounded
+ * prefix read, grouped client-side. Null rows mean "never ran or the
+ * projection is unreadable"; the console renders that honestly. */
+const cronLastRuns = async () => {
+	const runs = await listJobRuns(db, { kindPrefix: "cron.", limit: 500 }).catch(() => null);
+	const latest = new Map<string, JobRecord>();
+	for (const run of runs ?? []) {
+		if (!latest.has(run.kind)) latest.set(run.kind, run);
+	}
+	return latest;
+};
+
 /**
  * Request scope chain for the i18n capability (PL-008): the same
  * pipeline `i18nRouteFn` uses — tenant headers + session account →
@@ -390,6 +474,49 @@ setServerRuntime({
 	audioStorageStats:
 		audioBucketLister === undefined ? undefined : () => audioStorageStats(audioBucketLister),
 	queues: () => queueRegistry.list(),
+	// Cron registry capability: `list` joins each job with its latest
+	// `cron.<id>` projection row; `runNow`/`runSchedule` fire through
+	// the same projected path the worker's `scheduled` handler uses.
+	crons: {
+		list: async () => {
+			const latest = await cronLastRuns();
+			return cronRegistry.list().map((job) => {
+				const row = latest.get(`cron.${job.id}`);
+				return {
+					...job,
+					lastRun:
+						row === undefined
+							? null
+							: {
+									id: row.id,
+									ok: row.status === "done",
+									running: row.status === "processing",
+									error: row.error,
+									startedAt: row.createdAt,
+									finishedAt: row.updatedAt,
+								},
+				};
+			});
+		},
+		runNow: async (id) => {
+			const result = await cronRegistry.runById(id);
+			return result === null
+				? null
+				: {
+						id: result.id,
+						ok: result.outcome.ok,
+						summary: result.outcome.summary,
+						error: result.outcome.error,
+					};
+		},
+		runSchedule: async (schedule) =>
+			(await cronRegistry.dispatch(schedule)).map((r) => ({
+				id: r.id,
+				ok: r.outcome.ok,
+				summary: r.outcome.summary,
+				error: r.outcome.error,
+			})),
+	},
 	ai: aiBinding,
 	audioTranscribeModel,
 	recordExporters,

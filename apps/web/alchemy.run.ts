@@ -4,6 +4,8 @@ import * as Effect from "effect/Effect";
 import * as Redacted from "effect/Redacted";
 import { deploySqlDatabase, deployWorker } from "@ktb/infra-cloudflare";
 
+import { CRON_SCHEDULES } from "./src/lib/cron-jobs.ts";
+
 export default Alchemy.Stack(
 	"ktb-web",
 	{
@@ -77,14 +79,14 @@ export default Alchemy.Stack(
 			outdir: "dist/client",
 			main: "dist/server/index.js",
 			bundle: false,
-			// Two cron triggers fire the worker's `scheduled` handler
-			// (src/server.ts): `*/5 * * * *` runs the agenda reminder sweep
-			// (P-008, lib/agenda-reminders.ts — idempotent reminderSentAt
-			// claim) and `17 3 * * *` walks the tamper-evident audit chain
-			// (T-139 follow-up, lib/audit-chain.ts — off-peak, staggered).
-			// `scheduled()` never runs under `bun run dev`; agenda loaders
-			// poke the same sweep and /platform/audit verifies manually.
-			crons: ["17 3 * * *", "*/5 * * * *"],
+			// Cron triggers fire the worker's `scheduled` handler
+			// (src/server.ts), which dispatches through the registry in
+			// lib/platform.ts. The expression set is DERIVED from
+			// lib/cron-jobs.ts — the same metadata the runtime registry
+			// reads — so adding a schedule to a job provisions the
+			// trigger automatically. `scheduled()` never runs under
+			// `bun run dev`; /platform/cron covers manual runs.
+			crons: [...CRON_SCHEDULES],
 			bindings: {
 				DB: db,
 				AI: Cloudflare.Workers.AI(),

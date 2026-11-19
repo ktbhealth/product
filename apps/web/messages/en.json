@@ -178,6 +178,7 @@
 	"panel_group_site": "Site",
 	"panel_group_storage": "Storage",
 	"panel_nav_activity": "Activity",
+	"panel_nav_cron": "Cronjobs",
 	"panel_nav_dashboard": "Dashboard",
 	"panel_nav_groups": "Groups",
 	"panel_nav_ops": "Ops",

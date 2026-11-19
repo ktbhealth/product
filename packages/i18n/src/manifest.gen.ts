@@ -558,6 +558,9 @@ export const I18N_MANIFEST = {
 		panel_nav_activity: {
 			params: [],
 		},
+		panel_nav_cron: {
+			params: [],
+		},
 		panel_nav_dashboard: {
 			params: [],
 		},
@@ -2186,6 +2189,123 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		actionFailed: {
+			params: [],
+		},
+	},
+	cron: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{{n} scheduled job registered.} other{{n} scheduled jobs registered.}}",
+		},
+		jobsTitle: {
+			params: [],
+		},
+		jobsDescription: {
+			params: [],
+		},
+		jColJob: {
+			params: [],
+		},
+		jColSchedules: {
+			params: [],
+		},
+		jColDescription: {
+			params: [],
+		},
+		jColLastRun: {
+			params: [],
+		},
+		jColAction: {
+			params: [],
+		},
+		neverRan: {
+			params: [],
+		},
+		lastOk: {
+			params: [],
+		},
+		lastFailed: {
+			params: [],
+		},
+		lastRunning: {
+			params: [],
+		},
+		runNow: {
+			params: [],
+		},
+		running: {
+			params: [],
+		},
+		runOk: {
+			params: [
+				{
+					name: "summary",
+				},
+			],
+			template: "Run finished — {summary}",
+		},
+		runOkNoSummary: {
+			params: [],
+		},
+		runUnknown: {
+			params: [],
+		},
+		runUnavailable: {
+			params: [],
+		},
+		runForbidden: {
+			params: [],
+		},
+		runFailed: {
+			params: [],
+		},
+		emptyJobsTitle: {
+			params: [],
+		},
+		emptyJobsDescription: {
+			params: [],
+		},
+		unavailableTitle: {
+			params: [],
+		},
+		unavailableDescription: {
+			params: [],
+		},
+		runsTitle: {
+			params: [],
+		},
+		runsDescription: {
+			params: [],
+		},
+		rColId: {
+			params: [],
+		},
+		rColJob: {
+			params: [],
+		},
+		rColStatus: {
+			params: [],
+		},
+		rColError: {
+			params: [],
+		},
+		rColStarted: {
+			params: [],
+		},
+		emptyRunsTitle: {
+			params: [],
+		},
+		emptyRunsDescription: {
 			params: [],
 		},
 	},
@@ -6538,6 +6658,7 @@ export const I18N_BASE_CATALOG = {
 	panel_group_site: "Site",
 	panel_group_storage: "Storage",
 	panel_nav_activity: "Activity",
+	panel_nav_cron: "Cronjobs",
 	panel_nav_dashboard: "Dashboard",
 	panel_nav_groups: "Groups",
 	panel_nav_ops: "Ops",

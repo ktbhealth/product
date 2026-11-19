@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
-import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, like, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { jobRuns } from "@ktb/db/schema";
@@ -138,6 +138,11 @@ export const getJobRun = async (db: DbClient, id: string): Promise<JobRecord | n
 
 export interface JobRunFilter {
 	readonly kind?: string;
+	/** Prefix match on kind — e.g. "cron." selects every scheduled-job
+	 * projection row regardless of the job id suffix. LIKE semantics:
+	 * `%`/`_` inside the prefix act as wildcards, so callers must pass
+	 * constant, wildcard-free prefixes (never user input). */
+	readonly kindPrefix?: string;
 	readonly status?: JobStatus;
 	/** undefined = any scope; null = personal scope only; number = that tenant. */
 	readonly tenantId?: number | null;
@@ -151,6 +156,7 @@ export const listJobRuns = async (
 ): Promise<JobRecord[]> => {
 	const conditions: SQL[] = [];
 	if (filter.kind !== undefined) conditions.push(eq(jobRuns.kind, filter.kind));
+	if (filter.kindPrefix !== undefined) conditions.push(like(jobRuns.kind, `${filter.kindPrefix}%`));
 	if (filter.status !== undefined) conditions.push(eq(jobRuns.status, filter.status));
 	if (filter.tenantId !== undefined) {
 		conditions.push(

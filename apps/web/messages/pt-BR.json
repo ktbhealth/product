@@ -178,6 +178,7 @@
 	"panel_group_site": "Site",
 	"panel_group_storage": "Armazenamento",
 	"panel_nav_activity": "Atividade",
+	"panel_nav_cron": "Tarefas agendadas",
 	"panel_nav_dashboard": "Painel",
 	"panel_nav_groups": "Grupos",
 	"panel_nav_ops": "Operações",

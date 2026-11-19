@@ -114,6 +114,41 @@ export interface QueueInfo {
 	readonly depth: QueueDepth | null;
 }
 
+/** One recorded cron fire — projected into `job_runs` under kind
+ * `cron.<jobId>`; this is the console-facing slice of that row.
+ * `ok` derives from the row status (done = success); `startedAt` /
+ * `finishedAt` are the row's created/updated epochs. */
+export interface CronRunInfo {
+	readonly id: string;
+	readonly ok: boolean;
+	/** True while the latest row is still `processing` — an isolate
+	 * death mid-fire can leave one stuck; the console renders it
+	 * neutrally rather than as a failure. */
+	readonly running: boolean;
+	readonly error?: string | null;
+	readonly startedAt: number;
+	readonly finishedAt: number;
+}
+
+/** One registered cron job as the /platform/cron console sees it. */
+export interface CronJobInfo {
+	readonly id: string;
+	readonly schedules: readonly string[];
+	readonly description?: string;
+	/** Latest recorded fire; null when the job has never run (or the
+	 * projection is unreadable — the page renders that honestly). */
+	readonly lastRun: CronRunInfo | null;
+}
+
+/** Outcome of a manual "run now" — mirrors @ktb/cron-port's
+ * CronRunOutcome plus the fired job id. */
+export interface CronRunResult {
+	readonly id: string;
+	readonly ok: boolean;
+	readonly summary?: string;
+	readonly error?: string;
+}
+
 /**
  * Minimal paginated listing slice — the real R2Bucket satisfies this
  * (its `list` returns R2Objects, a superset of the shape below). Used
@@ -213,6 +248,17 @@ export interface ServerRuntime {
 	 * deployment binds, with best-effort depth. Undefined outside the
 	 * composed app; an empty list means no queues are bound. */
 	readonly queues?: () => Promise<readonly QueueInfo[]>;
+	/** Cron registry capability (PL-007 follow-up): the scheduled-job
+	 * registry the worker's `scheduled` handler dispatches through.
+	 * `list` joins each job with its latest `cron.<id>` job_runs row;
+	 * `runNow` fires one job by id (console trigger — same code path
+	 * as a cron fire, including projection); `runSchedule` fires every
+	 * job bound to a cron expression (the `scheduled()` entry). */
+	readonly crons?: {
+		readonly list: () => Promise<readonly CronJobInfo[]>;
+		readonly runNow: (id: string) => Promise<CronRunResult | null>;
+		readonly runSchedule: (schedule: string) => Promise<readonly CronRunResult[]>;
+	};
 	/** Workers AI binding (or host-resolved stand-in) for transcription;
 	 * undefined when unbound. */
 	readonly ai?: AiRunner;
