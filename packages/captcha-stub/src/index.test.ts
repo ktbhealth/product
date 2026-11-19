@@ -15,6 +15,7 @@ describe("stub captcha verifier", () => {
 		expect(await v.verify("")).toBe(true);
 		expect(await v.verify(STUB_CAPTCHA_TOKEN)).toBe(true);
 		expect(await v.verify("real-looking-token")).toBe(false);
+		expect(STUB_CAPTCHA_TOKEN).toBe("ktb-captcha-stub");
 	});
 });
 
