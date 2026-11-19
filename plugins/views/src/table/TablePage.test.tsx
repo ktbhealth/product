@@ -229,4 +229,12 @@ describe("TablePage", () => {
 		expect(rows[0]?.className).toContain("row-active");
 		expect(rows[1]?.className).not.toContain("row-active");
 	});
+	it("keeps selection controlled when `selected` is provided", () => {
+		const onSelectionChange = vi.fn<(keys: ReadonlySet<string>) => void>();
+		renderPage({ selectable: true, selected: new Set(["1"]), onSelectionChange });
+		fireEvent.click(screen.getByLabelText("Seleccionar fila 1"));
+		expect(onSelectionChange).toHaveBeenCalledWith(new Set());
+		// controlled: internal state untouched, row stays checked via prop
+		expect(screen.getByLabelText("Seleccionar fila 1")).toBeTruthy();
+	});
 });

@@ -4,8 +4,6 @@ export * from "./ConfirmAction.tsx";
 export * from "./FormDialog.tsx";
 export * from "./SearchInput.tsx";
 export * from "./TablePage.tsx";
-export * from "./admin-table-page.tsx";
 export * from "./columns.tsx";
-export * from "./define-admin-table.ts";
 export * from "./use-server-mutation.ts";
 export * from "./use-table-query.ts";

@@ -28,10 +28,10 @@ import { DeletePatientDialog } from "./DeletePatientDialog.tsx";
  * shell + `useTableQuery` client-side search with the same
  * name/owner predicate as before, plus the synthetic-rows toggle in
  * the toolbar's `filters` slot (the pool is filtered before the query
- * so search never sees hidden synthetic rows). `defineAdminTable`
- * does not fit — the name cell mixes a router `Link`, a ZK opaque
- * label and a conditional badge, and the create/delete flows are
- * plugin-local dialogs.
+ * so search never sees hidden synthetic rows). The primitives are
+ * used rather than a declarative def — the name cell mixes a router
+ * `Link`, a ZK opaque label and a conditional badge, and the
+ * create/delete flows are plugin-local dialogs.
  */
 export function AdminPatientsPage({
 	patients,
