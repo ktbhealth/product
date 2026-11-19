@@ -1641,6 +1641,7 @@ export type I18nKey =
 	| "theme.assetUploaded"
 	| "theme.assetUploadError"
 	| "theme.assetUploading"
+	| "theme.badgeMain"
 	| "theme.bannerExit"
 	| "theme.bannerText"
 	| "theme.blockEmpty"
@@ -1668,6 +1669,9 @@ export type I18nKey =
 	| "theme.contrastTitle"
 	| "theme.darkDescription"
 	| "theme.darkTitle"
+	| "theme.deleteConfirm"
+	| "theme.deleteError"
+	| "theme.deleteTheme"
 	| "theme.dialogCreateTitle"
 	| "theme.dialogEditTitle"
 	| "theme.dirtyBadge"
@@ -1697,6 +1701,7 @@ export type I18nKey =
 	| "theme.headerManage"
 	| "theme.headerPreview"
 	| "theme.listTitle"
+	| "theme.mainSet"
 	| "theme.newTheme"
 	| "theme.noResults"
 	| "theme.pageDescription"
@@ -1728,6 +1733,7 @@ export type I18nKey =
 	| "theme.seedsDescription"
 	| "theme.seedSecondary"
 	| "theme.seedsTitle"
+	| "theme.setMain"
 	| "theme.tabAssets"
 	| "theme.tabBlocks"
 	| "theme.tabColors"
@@ -3928,6 +3934,7 @@ export interface I18nTypedT {
 	(key: "theme.assetUploaded"): Effect.Effect<string>;
 	(key: "theme.assetUploadError"): Effect.Effect<string>;
 	(key: "theme.assetUploading"): Effect.Effect<string>;
+	(key: "theme.badgeMain"): Effect.Effect<string>;
 	(key: "theme.bannerExit"): Effect.Effect<string>;
 	(key: "theme.bannerText"): Effect.Effect<string>;
 	(key: "theme.blockEmpty"): Effect.Effect<string>;
@@ -3955,6 +3962,9 @@ export interface I18nTypedT {
 	(key: "theme.contrastTitle"): Effect.Effect<string>;
 	(key: "theme.darkDescription"): Effect.Effect<string>;
 	(key: "theme.darkTitle"): Effect.Effect<string>;
+	(key: "theme.deleteConfirm"): Effect.Effect<string>;
+	(key: "theme.deleteError"): Effect.Effect<string>;
+	(key: "theme.deleteTheme"): Effect.Effect<string>;
 	(key: "theme.dialogCreateTitle"): Effect.Effect<string>;
 	(key: "theme.dialogEditTitle"): Effect.Effect<string>;
 	(key: "theme.dirtyBadge"): Effect.Effect<string>;
@@ -3984,6 +3994,7 @@ export interface I18nTypedT {
 	(key: "theme.headerManage"): Effect.Effect<string>;
 	(key: "theme.headerPreview"): Effect.Effect<string>;
 	(key: "theme.listTitle"): Effect.Effect<string>;
+	(key: "theme.mainSet"): Effect.Effect<string>;
 	(key: "theme.newTheme"): Effect.Effect<string>;
 	(key: "theme.noResults"): Effect.Effect<string>;
 	(key: "theme.pageDescription"): Effect.Effect<string>;
@@ -4015,6 +4026,7 @@ export interface I18nTypedT {
 	(key: "theme.seedsDescription"): Effect.Effect<string>;
 	(key: "theme.seedSecondary"): Effect.Effect<string>;
 	(key: "theme.seedsTitle"): Effect.Effect<string>;
+	(key: "theme.setMain"): Effect.Effect<string>;
 	(key: "theme.tabAssets"): Effect.Effect<string>;
 	(key: "theme.tabBlocks"): Effect.Effect<string>;
 	(key: "theme.tabColors"): Effect.Effect<string>;

@@ -29724,6 +29724,42 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "theme",
+		key: "badgeMain",
+		locale: "en",
+		value: "Main",
+	},
+	{
+		namespace: "theme",
+		key: "setMain",
+		locale: "en",
+		value: "Set main",
+	},
+	{
+		namespace: "theme",
+		key: "mainSet",
+		locale: "en",
+		value: "Main theme updated",
+	},
+	{
+		namespace: "theme",
+		key: "deleteTheme",
+		locale: "en",
+		value: "Delete",
+	},
+	{
+		namespace: "theme",
+		key: "deleteConfirm",
+		locale: "en",
+		value: "Delete this theme? This cannot be undone.",
+	},
+	{
+		namespace: "theme",
+		key: "deleteError",
+		locale: "en",
+		value: "Could not delete theme",
+	},
+	{
+		namespace: "theme",
 		key: "assetTodo",
 		locale: "en",
 		value:
@@ -30486,6 +30522,42 @@ export const I18N_BASELINE = [
 		key: "disable",
 		locale: "pt-BR",
 		value: "Desativar",
+	},
+	{
+		namespace: "theme",
+		key: "badgeMain",
+		locale: "pt-BR",
+		value: "Principal",
+	},
+	{
+		namespace: "theme",
+		key: "setMain",
+		locale: "pt-BR",
+		value: "Definir como principal",
+	},
+	{
+		namespace: "theme",
+		key: "mainSet",
+		locale: "pt-BR",
+		value: "Tema principal atualizado",
+	},
+	{
+		namespace: "theme",
+		key: "deleteTheme",
+		locale: "pt-BR",
+		value: "Excluir",
+	},
+	{
+		namespace: "theme",
+		key: "deleteConfirm",
+		locale: "pt-BR",
+		value: "Excluir este tema? Esta ação não pode ser desfeita.",
+	},
+	{
+		namespace: "theme",
+		key: "deleteError",
+		locale: "pt-BR",
+		value: "Não foi possível excluir o tema",
 	},
 	{
 		namespace: "theme",
@@ -31252,6 +31324,42 @@ export const I18N_BASELINE = [
 		key: "disable",
 		locale: "es",
 		value: "Desactivar",
+	},
+	{
+		namespace: "theme",
+		key: "badgeMain",
+		locale: "es",
+		value: "Principal",
+	},
+	{
+		namespace: "theme",
+		key: "setMain",
+		locale: "es",
+		value: "Establecer como principal",
+	},
+	{
+		namespace: "theme",
+		key: "mainSet",
+		locale: "es",
+		value: "Tema principal actualizado",
+	},
+	{
+		namespace: "theme",
+		key: "deleteTheme",
+		locale: "es",
+		value: "Eliminar",
+	},
+	{
+		namespace: "theme",
+		key: "deleteConfirm",
+		locale: "es",
+		value: "¿Eliminar este tema? Esta acción no se puede deshacer.",
+	},
+	{
+		namespace: "theme",
+		key: "deleteError",
+		locale: "es",
+		value: "No se pudo eliminar el tema",
 	},
 	{
 		namespace: "theme",

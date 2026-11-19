@@ -5562,6 +5562,24 @@ export const I18N_MANIFEST = {
 		disable: {
 			params: [],
 		},
+		badgeMain: {
+			params: [],
+		},
+		setMain: {
+			params: [],
+		},
+		mainSet: {
+			params: [],
+		},
+		deleteTheme: {
+			params: [],
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteError: {
+			params: [],
+		},
 		assetTodo: {
 			params: [],
 		},

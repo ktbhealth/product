@@ -203,6 +203,30 @@ const DOMAINS = [
 		tables: ["theme_assets", "theme_definitions"],
 	},
 	{
+		id: "fonts",
+		title: "Fonts",
+		owner: "`plugins/fonts`",
+		description:
+			"Font provider registry — adapter-backed providers (local uploads, Google Fonts, extensible kinds) with synced family catalogs that cascade into theme font slots via hooks and events.",
+		tables: ["font_families", "font_providers"],
+	},
+	{
+		id: "rich-text",
+		title: "Rich text",
+		owner: "`plugins/rich-text`",
+		description:
+			"Reusable rich-text documents — titled content rows referenced by custom pages and other plugins.",
+		tables: ["rich_text"],
+	},
+	{
+		id: "schemas",
+		title: "Schemas",
+		owner: "`plugins/schemas`",
+		description:
+			"JSON Schema registry — named schemas used to validate plugin page params and other structured payloads.",
+		tables: ["schemas"],
+	},
+	{
 		id: "i18n",
 		title: "Internationalization",
 		owner: "`plugins/i18n` + `packages/i18n`",
