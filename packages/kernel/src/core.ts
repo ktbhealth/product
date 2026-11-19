@@ -126,7 +126,8 @@ type ContributionField =
 	| "chrome"
 	| "panel"
 	| "pages"
-	| "portals";
+	| "portals"
+	| "elementKinds";
 
 /** Marks every contribution field EXCEPT `K` as forbidden (`?: never`). */
 export type ForbiddenContributions<K extends ContributionField> = {

@@ -8,7 +8,10 @@ import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/pl
 import { RichTextAdminConsolePage } from "./platform-page.tsx";
 import { richText } from "./schema.ts";
 import { RichTextDeleteHooksLive } from "./delete-hooks.ts";
+import { RichTextElementKindLive } from "./element-kind.ts";
 import { RichTexts, RichTextsLive } from "./service.ts";
+import { RichTextView } from "./views/RichTextView.tsx";
+import { RichTextElementEditor } from "./views/RichTextElementEditor.tsx";
 
 /**
  * Rich-text plugin: admin-authored documents stored in the `rich_text`
@@ -32,7 +35,14 @@ export const richTextServicesPlugin = definePlugin({
 	// PlatformAdmin gate — the dep edge keeps the platform module
 	// ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
-	services: Layer.merge(RichTextsLive, RichTextDeleteHooksLive),
+	// RichTextElementKindLive registers the "rich-text" descriptor into
+	// the shared ElementKinds registry at build time; provideMerge wires
+	// the sibling RichTexts/RichTextDeleteHooks services it resolves
+	// refs and lifecycle hooks through (merge alone does NOT feed
+	// siblings into each other's requirements).
+	services: RichTextElementKindLive.pipe(
+		Layer.provideMerge(Layer.merge(RichTextsLive, RichTextDeleteHooksLive)),
+	),
 });
 
 /**
@@ -104,6 +114,29 @@ export const richTextPanelPlugin = definePlugin({
 	},
 });
 
+/**
+ * Element-kind contribution (P-102): `"rich-text"` is the first
+ * citizen of the managed-content registry — `RichTextView` renders
+ * resolved payloads platejs-free, `RichTextElementEditor` adapts the
+ * Plate editor to the kind's `{ value, onChange }` contract. The
+ * server half (resolve/hooks) registers via `RichTextElementKindLive`
+ * in rich-text.services — consumers never import this plugin's
+ * internals, they go through `ElementKinds`.
+ */
+export const richTextElementsPlugin = definePlugin({
+	id: "rich-text.elements",
+	meta: { keywords: ["rich-text", "ui"] },
+	elementKinds: [
+		{
+			kind: "rich-text",
+			label: "Rich text",
+			icon: PenLineIcon,
+			renderer: RichTextView,
+			editor: RichTextElementEditor,
+		},
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
@@ -111,6 +144,7 @@ export const plugins: readonly Plugin[] = [
 	richTextServicesPlugin,
 	richTextChromePlugin,
 	richTextPanelPlugin,
+	richTextElementsPlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -121,5 +155,6 @@ declare module "@ktb/kernel" {
 		"rich-text.services": true;
 		"rich-text.chrome": true;
 		"rich-text.panel": true;
+		"rich-text.elements": true;
 	}
 }
