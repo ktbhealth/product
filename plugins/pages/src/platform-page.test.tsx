@@ -55,6 +55,8 @@ describe("PagesAdminConsolePage", () => {
 					pages: [row({})],
 					docs: [{ id: 7, title: "Doc" }],
 					richTextEnabled: true,
+					layouts: [{ id: 5, name: "Landing", description: null }, { nope: true }, "x"],
+					layoutEnabled: true,
 				}}
 				ctx={ctx}
 			/>,
@@ -62,9 +64,11 @@ describe("PagesAdminConsolePage", () => {
 		expect(screen.getByText("/about")).toBeTruthy();
 		expect(screen.getByText("About")).toBeTruthy();
 		expect(screen.getByText("Published")).toBeTruthy();
-		// The flag reaches the view: the content-document field renders.
+		// The flags reach the view: the content-document and layout
+		// fields render (malformed layout entries are dropped).
 		await user.click(screen.getByText("New page"));
 		expect(screen.getByRole("combobox", { name: "Content document" })).toBeTruthy();
+		expect(screen.getByRole("combobox", { name: "Layout" })).toBeTruthy();
 	});
 
 	it("drops malformed rows and docs, and survives non-object data", () => {

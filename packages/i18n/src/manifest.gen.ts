@@ -561,6 +561,9 @@ export const I18N_MANIFEST = {
 		panel_nav_groups: {
 			params: [],
 		},
+		panel_nav_layouts: {
+			params: [],
+		},
 		panel_nav_ops: {
 			params: [],
 		},
@@ -3508,6 +3511,106 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	layouts: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newLayout: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colDescription: {
+			params: [],
+		},
+		colSections: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		fieldName: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		fieldDescription: {
+			params: [],
+		},
+		fieldConfig: {
+			params: [],
+		},
+		configHint: {
+			params: [],
+		},
+		sectionsPreview: {
+			params: [],
+		},
+		noSections: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: 'Delete "{name}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+	},
 	machines: {
 		title: {
 			params: [],
@@ -4007,6 +4110,18 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		manageSchemas: {
+			params: [],
+		},
+		fieldLayout: {
+			params: [],
+		},
+		layoutNone: {
+			params: [],
+		},
+		layoutHint: {
+			params: [],
+		},
+		manageLayouts: {
 			params: [],
 		},
 		pathHint: {
@@ -6368,6 +6483,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_activity: "Activity",
 	panel_nav_dashboard: "Dashboard",
 	panel_nav_groups: "Groups",
+	panel_nav_layouts: "Layouts",
 	panel_nav_ops: "Ops",
 	panel_nav_plugins: "Plugins",
 	panel_nav_rich_text: "Rich text",

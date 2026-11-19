@@ -45,13 +45,16 @@ import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
 /** Row shape the panel loader hands down — the `custom_pages` record
  * narrowed to the fields the console edits (timestamps unused).
  * `richTextId` references the @ktb/rich-text document rendered as the
- * page body (null = no document). */
+ * page body (null = no document); `layoutId` references the
+ * @ktb/layouts row whose sections compose the body instead (null =
+ * single-document render). */
 export interface AdminPageRow {
 	readonly id: number;
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId: number | null;
 	readonly searchSchemaId: number | null;
+	readonly layoutId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: number;
@@ -72,6 +75,14 @@ export interface SchemaRef {
 	readonly description: string | null;
 }
 
+/** Picker option for the layout select — the loader maps
+ * `Layouts.adminList()` meta down to id + name + description. */
+export interface LayoutRef {
+	readonly id: number;
+	readonly name: string;
+	readonly description: string | null;
+}
+
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
 	readonly docs: readonly RichTextDocRef[];
@@ -85,6 +96,12 @@ export interface PagesAdminPageProps {
 	 * search-schema field is hidden; stored `searchSchemaId` values
 	 * are preserved untouched. */
 	readonly searchSchemaEnabled: boolean;
+	/** Layout picker options for the layout field. */
+	readonly layouts: readonly LayoutRef[];
+	/** False when the layouts plugin's service is absent — the layout
+	 * field is hidden; stored `layoutId` values are preserved
+	 * untouched. */
+	readonly layoutEnabled: boolean;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -96,6 +113,7 @@ interface FormState {
 	readonly title: string;
 	readonly richTextId: number | null;
 	readonly searchSchemaId: number | null;
+	readonly layoutId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: string;
@@ -107,6 +125,7 @@ const EMPTY_FORM: FormState = {
 	title: "",
 	richTextId: null,
 	searchSchemaId: null,
+	layoutId: null,
 	published: false,
 	showInNav: false,
 	sortOrder: "0",
@@ -121,6 +140,7 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 				title: row.title,
 				richTextId: row.richTextId,
 				searchSchemaId: row.searchSchemaId,
+				layoutId: row.layoutId,
 				published: row.published,
 				showInNav: row.showInNav,
 				sortOrder: String(row.sortOrder),
@@ -131,6 +151,7 @@ const toInput = (form: FormState) => ({
 	title: form.title,
 	richTextId: form.richTextId,
 	searchSchemaId: form.searchSchemaId,
+	layoutId: form.layoutId,
 	published: form.published,
 	showInNav: form.showInNav,
 	sortOrder: Number(form.sortOrder) || 0,
@@ -144,6 +165,10 @@ const RICH_TEXT_CONSOLE = "/platform/rich-text" as string;
 /** Console route owned by the @ktb/schemas plugin — same untyped-route
  * cast as RICH_TEXT_CONSOLE. */
 const SCHEMAS_CONSOLE = "/platform/schemas" as string;
+
+/** Console route owned by the @ktb/layouts plugin — same untyped-route
+ * cast as RICH_TEXT_CONSOLE. */
+const LAYOUTS_CONSOLE = "/platform/layouts" as string;
 
 /**
  * /platform/pages console view (T-083): CRUD over the `custom_pages`
@@ -164,6 +189,8 @@ export function PagesAdminPage({
 	richTextEnabled,
 	schemas,
 	searchSchemaEnabled,
+	layouts,
+	layoutEnabled,
 	i18n,
 	locale,
 }: PagesAdminPageProps) {
@@ -179,6 +206,11 @@ export function PagesAdminPage({
 	const schemaItems = [
 		{ value: "", label: t.searchSchemaNone },
 		...schemas.map((schema) => ({ value: String(schema.id), label: schema.name })),
+	];
+	// Same "" = none convention for the layout picker.
+	const layoutItems = [
+		{ value: "", label: t.layoutNone },
+		...layouts.map((layout) => ({ value: String(layout.id), label: layout.name })),
 	];
 	const router = useRouter();
 	const [form, setForm] = useState<FormState | null>(null);
@@ -406,6 +438,36 @@ export function PagesAdminPage({
 											className="underline underline-offset-2 hover:text-foreground"
 										>
 											{t.manageSchemas}
+										</Link>
+									</FieldDescription>
+								</Field>
+							) : null}
+							{layoutEnabled ? (
+								<Field>
+									<FieldLabel>{t.fieldLayout}</FieldLabel>
+									<Select
+										items={layoutItems}
+										value={form.layoutId === null ? "" : String(form.layoutId)}
+										onValueChange={(v) => set("layoutId", v === "" ? null : Number(v))}
+									>
+										<SelectTrigger aria-label={t.fieldLayout} className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{layoutItems.map((item) => (
+												<SelectItem key={item.value} value={item.value}>
+													{item.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<FieldDescription>
+										{t.layoutHint}{" "}
+										<Link
+											to={LAYOUTS_CONSOLE as "/"}
+											className="underline underline-offset-2 hover:text-foreground"
+										>
+											{t.manageLayouts}
 										</Link>
 									</FieldDescription>
 								</Field>
