@@ -320,7 +320,7 @@ function EnqueueSection({ kinds, m }: { kinds: readonly string[] | null; m: Queu
 								value={kind}
 								onValueChange={(v) => setKind(v ?? "")}
 							>
-								<SelectTrigger size="sm">
+								<SelectTrigger aria-label={m.enqueueKind} size="sm">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
