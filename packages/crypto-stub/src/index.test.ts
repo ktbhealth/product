@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import * as Effect from "effect/Effect";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -36,9 +36,15 @@ describe("passthrough EntityCipher", () => {
 	it("still enforces the spec contract — undeclared keys throw", async () => {
 		const c = makePassthroughCipher();
 		const dek = null as unknown as CryptoKey;
-		await expect(c.encryptRow(spec, dek, { id: 1, sneaky: "x" })).rejects.toThrow(
-			CryptoFormatError,
+		const err = await c.encryptRow(spec, dek, { id: 1, sneaky: "x" }).then(
+			() => {
+				throw new Error("expected CryptoFormatError");
+			},
+			(e: unknown) => e,
 		);
+		expect(err).toBeInstanceOf(CryptoFormatError);
+		expect((err as Error).message).toContain("cipher spec patient");
+		expect((err as Error).message).toContain('undeclared field "sneaky"');
 	});
 
 	it("is bound through EntityCipherStubLive", async () => {
@@ -84,5 +90,39 @@ describe("stub keyring (T-141)", () => {
 		expect(stubKeyringDriver.port).toBe(Keyring.key);
 		expect(stubKeyringDriver.when?.({})).toBe(true);
 		expect(stubKeyringDriver.provides({})).toBe(KeyringStubLive);
+	});
+
+	it("never touches IndexedDB — the store is memory even when indexedDB exists", async () => {
+		const openCalls: string[] = [];
+		vi.stubGlobal("indexedDB", {
+			open: (name: string) => {
+				openCalls.push(name);
+				throw new Error("indexedDB must not be touched by the stub keyring");
+			},
+		});
+		vi.resetModules();
+		try {
+			const [mod, { Keyring: FreshKeyring }, Effect, ManagedRuntime] = await Promise.all([
+				import("./index.ts"),
+				import("@ktb/crypto/keyring"),
+				import("effect/Effect"),
+				import("effect/ManagedRuntime"),
+			]);
+			const runtime = ManagedRuntime.make(mod.KeyringStubLive);
+			await runtime.runPromise(
+				Effect.flatMap(FreshKeyring, (k) =>
+					Effect.promise(async () => {
+						const keys = await k.deviceKeys();
+						expect(keys.wrapPublicKey).toBeTruthy();
+						await k.getSecret("absent");
+					}),
+				),
+			);
+			await runtime.dispose();
+		} finally {
+			vi.unstubAllGlobals();
+			vi.resetModules();
+		}
+		expect(openCalls).toEqual([]);
 	});
 });
