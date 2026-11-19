@@ -124,6 +124,22 @@ describe("makeAuthService", () => {
 		expect(u).toMatchObject({ name: "Ana Souza", email: "ana@x.com" });
 	});
 
+	it("updateUser resets emailVerified only when the email changes", async () => {
+		const { db, auth, service } = makeStack();
+		const { userId } = await signUpAndSignIn(auth, "verified@x.com");
+		await db.update(userTable).set({ emailVerified: true }).where(eq(userTable.id, userId));
+
+		// A name-only save (same email) keeps the flag.
+		expect(await service.updateUser(userId, { email: "verified@x.com" })).toEqual({ ok: true });
+		let [u] = await db.select().from(userTable).where(eq(userTable.id, userId));
+		expect(u?.emailVerified).toBe(true);
+
+		// A new address was never verified — the flag resets with it.
+		expect(await service.updateUser(userId, { email: "moved@x.com" })).toEqual({ ok: true });
+		[u] = await db.select().from(userTable).where(eq(userTable.id, userId));
+		expect(u).toMatchObject({ email: "moved@x.com", emailVerified: false });
+	});
+
 	it("updateUser reports exists when another account holds the email", async () => {
 		const { auth, service } = makeStack();
 		const { userId } = await signUpAndSignIn(auth, "one@x.com");
