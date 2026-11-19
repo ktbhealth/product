@@ -62,11 +62,9 @@ type EditorView = "new" | { readonly id: number };
  *
  * Built on the shared table kit (`@ktb/views/table`): `TablePage`
  * shell + `ConfirmAction` for the delete confirm +
- * `useServerMutation` for the invalidate plumbing. `defineAdminTable`
- * does not fit — the list swaps the whole page for the editor pane
- * (no row-navigation model), and the editor's create/validate flow is
- * bespoke. `deleteSchemaFn` resolves a bare boolean rather than the
- * `{ ok, data }` envelope, so it is adapted inline.
+ * `useServerMutation` for the invalidate plumbing — the list swaps
+ * the whole page for the editor pane (no row-navigation model), and
+ * the editor's create/validate flow is bespoke.
  */
 export function SchemasAdminPage({ schemas, i18n, locale }: SchemasAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, schemasMessages(locale));

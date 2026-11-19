@@ -67,10 +67,10 @@ const roleItems = (t: TenantMessages) =>
  * plugin's server fns; the loader re-runs on `router.invalidate()`.
  *
  * Built on the shared table kit (`@ktb/views/table`): `TablePage`
- * shell + `useTableQuery` client-side search. `defineAdminTable` does
- * not fit — the row action opens the members dialog rather than
- * running a mutation, and the empty state replaces the whole table
- * block (toolbar included) instead of rendering inside it.
+ * shell + `useTableQuery` client-side search — the row action opens
+ * the members dialog rather than running a mutation, and the empty
+ * state replaces the whole table block (toolbar included) instead of
+ * rendering inside it.
  */
 export function AdminTenantsPage({
 	tenants,
