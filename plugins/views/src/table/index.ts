@@ -1,3 +1,4 @@
+export { viewsMessages } from "../i18n.ts";
 export * from "./CollectionDialog.tsx";
 export * from "./ConfirmAction.tsx";
 export * from "./FormDialog.tsx";

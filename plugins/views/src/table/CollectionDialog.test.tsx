@@ -42,11 +42,13 @@ const DEFAULT_LOAD = async (): Promise<CollectionLoadResult<Row>> => ({
 const setup = ({
 	load = DEFAULT_LOAD,
 	remove,
+	removeDescription,
 	addForm,
 	open = true,
 }: {
 	load?: () => Promise<CollectionLoadResult<Row>>;
 	remove?: (row: Row) => Promise<unknown>;
+	removeDescription?: (row: Row) => ReactNode;
 	addForm?: (ctx: { reload: () => Promise<void>; busy: boolean; error: boolean }) => ReactNode;
 	open?: boolean;
 } = {}) => {
@@ -60,6 +62,7 @@ const setup = ({
 			rowKey={(row) => String(row.id)}
 			load={load}
 			remove={remove}
+			removeDescription={removeDescription}
 			addForm={addForm}
 			messages={MESSAGES}
 		/>,
@@ -122,6 +125,14 @@ describe("CollectionDialog", () => {
 		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
 		fireEvent.click(await screen.findByRole("button", { name: "Yes, remove" }));
 		expect(await screen.findByText("Failed to load.")).toBeTruthy();
+	});
+
+	it("renders a per-row remove description in the confirm dialog", async () => {
+		const remove = vi.fn<(row: Row) => Promise<unknown>>(async () => ({ ok: true }));
+		setup({ remove, removeDescription: (row) => `Remove ${row.name} for good?` });
+		await screen.findByText("Ana");
+		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+		expect(await screen.findByText("Remove Ana for good?")).toBeTruthy();
 	});
 
 	it("cancel on the confirm dialog does not call remove", async () => {
