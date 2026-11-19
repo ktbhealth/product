@@ -33,6 +33,7 @@ export interface PagesMessages {
 	readonly emptyDescription: string;
 	readonly colPath: string;
 	readonly colTitle: string;
+	readonly colProvided: string;
 	readonly colStatus: string;
 	readonly colNav: string;
 	readonly colOrder: string;
@@ -41,6 +42,7 @@ export interface PagesMessages {
 	readonly statusDraft: string;
 	readonly navShown: string;
 	readonly navHidden: string;
+	readonly providedCustom: string;
 	readonly fieldPath: string;
 	readonly fieldTitle: string;
 	readonly fieldContentDoc: string;
@@ -81,6 +83,7 @@ const en: PagesMessages = {
 	emptyDescription: "Create your first page to publish it on the site.",
 	colPath: "Path",
 	colTitle: "Title",
+	colProvided: "Provided by",
 	colStatus: "Status",
 	colNav: "Nav",
 	colOrder: "Order",
@@ -89,6 +92,7 @@ const en: PagesMessages = {
 	statusDraft: "Draft",
 	navShown: "Shown",
 	navHidden: "Hidden",
+	providedCustom: "Custom",
 	fieldPath: "Path",
 	fieldTitle: "Title",
 	fieldContentDoc: "Content document",
@@ -131,6 +135,7 @@ const ptBR: PagesMessages = {
 	emptyDescription: "Crie sua primeira página para publicá-la no site.",
 	colPath: "Caminho",
 	colTitle: "Título",
+	colProvided: "Fornecido por",
 	colStatus: "Status",
 	colNav: "Nav",
 	colOrder: "Ordem",
@@ -139,6 +144,7 @@ const ptBR: PagesMessages = {
 	statusDraft: "Rascunho",
 	navShown: "Visível",
 	navHidden: "Oculta",
+	providedCustom: "Personalizada",
 	fieldPath: "Caminho",
 	fieldTitle: "Título",
 	fieldContentDoc: "Documento de conteúdo",
@@ -181,6 +187,7 @@ const es: PagesMessages = {
 	emptyDescription: "Crea tu primera página para publicarla en el sitio.",
 	colPath: "Ruta",
 	colTitle: "Título",
+	colProvided: "Proporcionado por",
 	colStatus: "Estado",
 	colNav: "Nav",
 	colOrder: "Orden",
@@ -189,6 +196,7 @@ const es: PagesMessages = {
 	statusDraft: "Borrador",
 	navShown: "Visible",
 	navHidden: "Oculta",
+	providedCustom: "Personalizada",
 	fieldPath: "Ruta",
 	fieldTitle: "Título",
 	fieldContentDoc: "Documento de contenido",

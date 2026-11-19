@@ -4789,6 +4789,9 @@ export const I18N_MANIFEST = {
 		colTitle: {
 			params: [],
 		},
+		colProvided: {
+			params: [],
+		},
 		colStatus: {
 			params: [],
 		},
@@ -4811,6 +4814,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		navHidden: {
+			params: [],
+		},
+		providedCustom: {
 			params: [],
 		},
 		fieldPath: {

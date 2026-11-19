@@ -282,7 +282,7 @@ export function PlatformShell({ loaderData }: { loaderData: PlatformLoaderData }
 					data: pageData,
 					// ctx.plugins is the FULL discovered registry — the
 					// /platform/plugins manager needs disabled plugins too.
-					ctx: { plugins, locale, user, i18n },
+					ctx: { plugins, locale, user, i18n, pluginStates },
 				});
 	return (
 		<JobsDataContext.Provider value={jobsFromAudioRows(audioJobs as never, locale)}>

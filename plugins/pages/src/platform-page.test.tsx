@@ -102,6 +102,32 @@ describe("PagesAdminConsolePage", () => {
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
 	});
 
+	it("lists enabled plugin-contributed pages alongside custom rows", () => {
+		const Page_ = () => null;
+		const contributing = {
+			id: "audit.panel",
+			pages: [{ id: "audit.admin", path: "/platform/audit", component: Page_ }],
+		} as unknown as PanelPageContext["plugins"][number];
+		const disabled = {
+			id: "off.pages",
+			pages: [{ id: "off.x", path: "/off", component: Page_ }],
+		} as unknown as PanelPageContext["plugins"][number];
+		render(
+			<PagesAdminConsolePage
+				data={{ pages: [row({})] }}
+				ctx={{
+					plugins: [contributing, disabled],
+					locale: "en",
+					pluginStates: { enabled: ["audit.panel"] },
+				}}
+			/>,
+		);
+		expect(screen.getByText("/platform/audit")).toBeTruthy();
+		expect(screen.getByText("audit.panel")).toBeTruthy();
+		// The disabled plugin's descriptor is filtered out.
+		expect(screen.queryByText("/off")).toBeNull();
+	});
+
 	it("narrows the schema picker options and drops malformed entries", async () => {
 		const user = userEvent.setup();
 		render(
