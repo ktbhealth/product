@@ -29,6 +29,7 @@ const row = (over: Partial<AdminPageRow> = {}): AdminPageRow => ({
 	title: "About",
 	richTextId: null,
 	searchSchemaId: null,
+	layoutId: null,
 	published: true,
 	showInNav: true,
 	sortOrder: 2,
@@ -58,6 +59,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -79,6 +82,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -106,6 +111,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="pt-BR"
 			/>,
 		);
@@ -123,6 +130,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -139,6 +148,7 @@ describe("PagesAdminPage", () => {
 					title: "New page title",
 					richTextId: null,
 					searchSchemaId: null,
+					layoutId: null,
 					published: true,
 					showInNav: false,
 					sortOrder: 0,
@@ -161,6 +171,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -188,6 +200,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -213,6 +227,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -243,6 +259,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -262,6 +280,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -280,6 +300,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -300,6 +322,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -318,6 +342,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -337,6 +363,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -362,6 +390,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -380,6 +410,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -399,6 +431,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -416,6 +450,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -433,6 +469,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -450,6 +488,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[]}
 				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -471,6 +511,8 @@ describe("PagesAdminPage", () => {
 					{ id: 4, name: "Sort", description: null },
 				]}
 				searchSchemaEnabled
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -497,6 +539,8 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[{ id: 3, name: "Filters", description: null }]}
 				searchSchemaEnabled
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
@@ -521,11 +565,109 @@ describe("PagesAdminPage", () => {
 				richTextEnabled={false}
 				schemas={[{ id: 3, name: "Filters", description: null }]}
 				searchSchemaEnabled
+				layouts={[]}
+				layoutEnabled={false}
 				locale="en"
 			/>,
 		);
 		await user.click(screen.getByLabelText("Edit"));
 		const link = screen.getByText("Manage schemas");
 		expect(link.getAttribute("href")).toBe("/platform/schemas");
+	});
+
+	it("hides the layout field when layouts are disabled", async () => {
+		const user = userEvent.setup();
+		render(
+			<PagesAdminPage
+				pages={[row({ layoutId: 5 })]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("Edit"));
+		expect(screen.queryByText("Manage layouts")).toBeNull();
+		expect(screen.queryByRole("combobox", { name: "Layout" })).toBeNull();
+	});
+
+	it("links a page to a layout through the picker", async () => {
+		const user = userEvent.setup();
+		fns.createPageFn.mockResolvedValue(row({ id: 9 }));
+		render(
+			<PagesAdminPage
+				pages={[]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[
+					{ id: 5, name: "Landing", description: "Landing body" },
+					{ id: 6, name: "Docs", description: null },
+				]}
+				layoutEnabled
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByText("New page"));
+		await user.type(screen.getByLabelText("Path"), "/layout");
+		await user.type(screen.getByLabelText("Title"), "Layout page");
+		await user.click(screen.getByRole("combobox", { name: "Layout" }));
+		await user.click(await screen.findByRole("option", { name: "Landing" }));
+		await user.click(screen.getByRole("button", { name: "Create" }));
+		await waitFor(() =>
+			expect(fns.createPageFn).toHaveBeenCalledWith({
+				data: expect.objectContaining({ layoutId: 5 }),
+			}),
+		);
+	});
+
+	it("editing a layout-linked page keeps its layoutId and offers a none option", async () => {
+		const user = userEvent.setup();
+		fns.updatePageFn.mockResolvedValue(row({ layoutId: null }));
+		render(
+			<PagesAdminPage
+				pages={[row({ layoutId: 5 })]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[{ id: 5, name: "Landing", description: null }]}
+				layoutEnabled
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("Edit"));
+		await user.click(screen.getByRole("combobox", { name: "Layout" }));
+		// "No layout" clears the link → layoutId null on save.
+		await user.click(await screen.findByRole("option", { name: "No layout" }));
+		await user.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() =>
+			expect(fns.updatePageFn).toHaveBeenCalledWith({
+				data: expect.objectContaining({ id: 1, layoutId: null }),
+			}),
+		);
+	});
+
+	it("deep-links Manage layouts to the layouts console", async () => {
+		const user = userEvent.setup();
+		render(
+			<PagesAdminPage
+				pages={[row({ layoutId: 5 })]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[{ id: 5, name: "Landing", description: null }]}
+				layoutEnabled
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("Edit"));
+		const link = screen.getByText("Manage layouts");
+		expect(link.getAttribute("href")).toBe("/platform/layouts");
 	});
 });

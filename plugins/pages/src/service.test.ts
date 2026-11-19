@@ -99,6 +99,7 @@ describe("CustomPagesLive", () => {
 		expect(row!.sortOrder).toBe(0);
 		expect(row!.richTextId).toBeNull();
 		expect(row!.searchSchemaId).toBeNull();
+		expect(row!.layoutId).toBeNull();
 	});
 
 	it("adminCreate honors explicit flags and normalized paths", async () => {
@@ -156,6 +157,29 @@ describe("CustomPagesLive", () => {
 		expect(absent.richTextId).toBeNull();
 	});
 
+	it("adminCreate/adminUpdate reject non-positive or non-integer layoutId", async () => {
+		for (const bad of [0, -3, 1.5]) {
+			await expect(
+				admin((p) => p.adminCreate(input({ path: `/bad-layout-${bad}`, layoutId: bad }))),
+			).rejects.toBeInstanceOf(InvalidPageInput);
+		}
+		const target = await admin((p) => p.adminCreate(input({ path: "/layout-target" })));
+		await expect(
+			admin((p) => p.adminUpdate(target!.id, input({ path: "/layout-target", layoutId: 0 }))),
+		).rejects.toBeInstanceOf(InvalidPageInput);
+		// Explicit null clears the reference; absent also resolves null.
+		const linked = await admin((p) =>
+			p.adminCreate(input({ path: "/layout-linked", layoutId: 9 })),
+		);
+		expect(linked!.layoutId).toBe(9);
+		const cleared = await admin((p) =>
+			p.adminUpdate(linked!.id, input({ path: "/layout-linked", layoutId: null })),
+		);
+		expect(cleared.layoutId).toBeNull();
+		const absent = await admin((p) => p.adminUpdate(linked!.id, input({ path: "/layout-linked" })));
+		expect(absent.layoutId).toBeNull();
+	});
+
 	it("adminCreate/adminUpdate reject non-positive or non-integer searchSchemaId", async () => {
 		for (const bad of [0, -3, 1.5]) {
 			await expect(
@@ -184,10 +208,13 @@ describe("CustomPagesLive", () => {
 		await admin((p) => p.adminCreate(input({ path: "/zzz", title: "Z", sortOrder: 0 })));
 		const rows = await admin((p) => p.adminList());
 		// sortOrder asc, then path asc: the sortOrder-0 rows (/about,
-		// /rt-linked, /rt-target, /schema-linked, /schema-target, /zzz)
-		// come before /aaa(1) and /team(2).
+		// /layout-linked, /layout-target, /rt-linked, /rt-target,
+		// /schema-linked, /schema-target, /zzz) come before /aaa(1)
+		// and /team(2).
 		expect(rows.map((r) => r.path)).toEqual([
 			"/about",
+			"/layout-linked",
+			"/layout-target",
 			"/rt-linked",
 			"/rt-target",
 			"/schema-linked",
@@ -206,6 +233,7 @@ describe("CustomPagesLive", () => {
 				title: "Renamed",
 				richTextId: 7,
 				searchSchemaId: 11,
+				layoutId: 13,
 				published: true,
 				showInNav: true,
 				sortOrder: 5,
@@ -216,6 +244,7 @@ describe("CustomPagesLive", () => {
 		expect(updated.title).toBe("Renamed");
 		expect(updated.richTextId).toBe(7);
 		expect(updated.searchSchemaId).toBe(11);
+		expect(updated.layoutId).toBe(13);
 		expect(updated.published).toBe(true);
 		expect(updated.showInNav).toBe(true);
 		expect(updated.sortOrder).toBe(5);

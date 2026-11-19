@@ -2,6 +2,7 @@ import type { PanelPageContext } from "@ktb/kernel";
 
 import type {
 	AdminPageRow,
+	LayoutRef,
 	PagesAdminPageProps,
 	RichTextDocRef,
 	SchemaRef,
@@ -43,6 +44,19 @@ const asSchemas = (data: unknown): readonly SchemaRef[] =>
 			)
 		: [];
 
+const asLayouts = (data: unknown): readonly LayoutRef[] =>
+	Array.isArray(data)
+		? data.filter(
+				(layout): layout is LayoutRef =>
+					typeof layout === "object" &&
+					layout !== null &&
+					typeof (layout as LayoutRef).id === "number" &&
+					typeof (layout as LayoutRef).name === "string" &&
+					((layout as LayoutRef).description === null ||
+						typeof (layout as LayoutRef).description === "string"),
+			)
+		: [];
+
 const asData = (
 	data: unknown,
 ): {
@@ -51,6 +65,8 @@ const asData = (
 	richTextEnabled: boolean;
 	schemas: readonly SchemaRef[];
 	searchSchemaEnabled: boolean;
+	layouts: readonly LayoutRef[];
+	layoutEnabled: boolean;
 } => {
 	if (typeof data !== "object" || data === null) {
 		return {
@@ -59,6 +75,8 @@ const asData = (
 			richTextEnabled: false,
 			schemas: [],
 			searchSchemaEnabled: false,
+			layouts: [],
+			layoutEnabled: false,
 		};
 	}
 	const d = data as {
@@ -67,6 +85,8 @@ const asData = (
 		richTextEnabled?: unknown;
 		schemas?: unknown;
 		searchSchemaEnabled?: unknown;
+		layouts?: unknown;
+		layoutEnabled?: unknown;
 	};
 	return {
 		pages: asRows(d.pages),
@@ -74,6 +94,8 @@ const asData = (
 		richTextEnabled: d.richTextEnabled === true,
 		schemas: asSchemas(d.schemas),
 		searchSchemaEnabled: d.searchSchemaEnabled === true,
+		layouts: asLayouts(d.layouts),
+		layoutEnabled: d.layoutEnabled === true,
 	};
 };
 
@@ -86,13 +108,16 @@ const asData = (
  * every `CustomPages.admin*` method.
  */
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
-	const { pages, docs, richTextEnabled, schemas, searchSchemaEnabled } = asData(data);
+	const { pages, docs, richTextEnabled, schemas, searchSchemaEnabled, layouts, layoutEnabled } =
+		asData(data);
 	const props: PagesAdminPageProps = {
 		pages,
 		docs,
 		richTextEnabled,
 		schemas,
 		searchSchemaEnabled,
+		layouts,
+		layoutEnabled,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

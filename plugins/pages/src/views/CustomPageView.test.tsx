@@ -93,4 +93,77 @@ describe("CustomPageView", () => {
 		);
 		expect(container.querySelector("article")?.getAttribute("data-validated-search")).toBeNull();
 	});
+
+	it("renders layout sections instead of the single document when present", () => {
+		const { container } = render(
+			<CustomPageView
+				data={{
+					path: "/layout",
+					title: "Layout page",
+					content: DOC,
+					layoutSections: [
+						{ id: "s1", title: "Hero", content: DOC },
+						{ id: "s2", title: "Body", content: [{ type: "p", children: [{ text: "Second" }] }] },
+					],
+				}}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByText("Hero")).toBeTruthy();
+		expect(screen.getByText("Body")).toBeTruthy();
+		// Both section bodies render through RichTextView; the single
+		// `content` document is NOT rendered in layout mode.
+		const views = screen.getAllByTestId("rich-text-view");
+		expect(views).toHaveLength(2);
+		expect(views[0]!.textContent).toBe(JSON.stringify(DOC));
+		expect(container.querySelectorAll("section")).toHaveLength(2);
+	});
+
+	it("renders an empty body for a layout with no resolved sections", () => {
+		render(
+			<CustomPageView
+				data={{ path: "/layout", title: "Empty layout", content: DOC, layoutSections: [] }}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByText("Empty layout")).toBeTruthy();
+		// Empty array still wins over `content` — no fallback doc.
+		expect(screen.queryByTestId("rich-text-view")).toBeNull();
+	});
+
+	it("falls back to the single document when layoutSections is null or malformed", () => {
+		render(
+			<CustomPageView
+				data={{ path: "/x", title: "T", content: DOC, layoutSections: null }}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByTestId("rich-text-view").textContent).toBe(JSON.stringify(DOC));
+		cleanup();
+		render(
+			<CustomPageView
+				data={{ path: "/x", title: "T", content: DOC, layoutSections: "bad" }}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByTestId("rich-text-view").textContent).toBe(JSON.stringify(DOC));
+		cleanup();
+		// Sections missing a string title are dropped.
+		render(
+			<CustomPageView
+				data={{
+					path: "/x",
+					title: "T",
+					content: DOC,
+					layoutSections: [
+						{ title: 42, content: DOC },
+						{ title: "Ok", content: DOC },
+					],
+				}}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByText("Ok")).toBeTruthy();
+		expect(screen.getAllByTestId("rich-text-view")).toHaveLength(1);
+	});
 });
