@@ -148,6 +148,12 @@ const sfntFlavor = (bytes: Uint8Array): { readonly ext: "ttf" | "otf" } | null =
 const WOFF_HEADER_BYTES = 44;
 const WOFF_RECORD_BYTES = 20;
 
+/** Cap on the reconstructed sfnt — a hostile WOFF can claim
+ * origLength values that would allocate gigabytes (zlib-bomb style).
+ * Real catalog fonts stay far below this; over-cap degrades to
+ * "keep the full font". */
+const MAX_WOFF_SFNT_BYTES = 64 * 1024 * 1024;
+
 const inflate = async (raw: Uint8Array): Promise<Uint8Array | null> => {
 	if (typeof DecompressionStream === "undefined") return null;
 	try {
@@ -210,6 +216,7 @@ const woffToSfnt = async (bytes: Uint8Array): Promise<Uint8Array | null> => {
 		cursor = (cursor + 3) & ~3;
 		offsets.push(cursor);
 		cursor += r.origLength;
+		if (cursor > MAX_WOFF_SFNT_BYTES) return null;
 	}
 	const out = new Uint8Array(cursor);
 	const ov = new DataView(out.buffer);
@@ -306,7 +313,15 @@ export const subsetCatalogFont = async (input: {
 	if (complement.length > 0 && complementCss === undefined) return null;
 
 	const runSubset = input.subsetFont ?? subsetFontBytes;
-	const subset = runSubset(sfnt, latinSubsetCodepoints());
+	// The subsetter resolves/instantiates the wasm lazily — a module
+	// shape it rejects throws before its own guards run. Same degrade
+	// contract as every other failure here: keep the full font.
+	let subset: Uint8Array | null;
+	try {
+		subset = runSubset(sfnt, latinSubsetCodepoints());
+	} catch {
+		return null;
+	}
 	if (subset === null) return null;
 	// Only worth a second R2 object when the subset actually shrinks
 	// the payload relative to what was uploaded.

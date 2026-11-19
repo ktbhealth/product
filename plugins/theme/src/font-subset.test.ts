@@ -294,6 +294,16 @@ describe("subsetCatalogFont", () => {
 			},
 		]);
 		expect(await subsetCatalogFont({ bytes: short, variation })).toBeNull();
+		// Claimed uncompressed size beyond the sfnt cap — a zlib-bomb
+		// style header must not trigger a giant allocation.
+		const bomb = await woff(0x00010000, [
+			{
+				tag: "cmap",
+				data: new Uint8Array(64).fill(1),
+				origLengthOverride: 128 * 1024 * 1024,
+			},
+		]);
+		expect(await subsetCatalogFont({ bytes: bomb, variation })).toBeNull();
 		// Unpacked sfnt flavor is not a recognized sfnt signature.
 		const badFlavor = await woff(0xdeadbeef, [{ tag: "cmap", data: new Uint8Array([1, 2, 3, 4]) }]);
 		expect(await subsetCatalogFont({ bytes: badFlavor, variation })).toBeNull();
@@ -355,6 +365,17 @@ describe("subsetCatalogFont", () => {
 				bytes: fixtureTtf,
 				variation,
 				subsetFont: () => new Uint8Array([1, 2, 3]),
+			}),
+		).toBeNull();
+		// A throwing subsetter (e.g. wasm module resolution failure)
+		// degrades the same way.
+		expect(
+			await subsetCatalogFont({
+				bytes: fixtureTtf,
+				variation,
+				subsetFont: () => {
+					throw new Error("wasm unavailable");
+				},
 			}),
 		).toBeNull();
 	});
