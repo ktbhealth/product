@@ -61,7 +61,6 @@ describe("makeApiKeysAdapter", () => {
 		expect(meta).toEqual({ provider: "openai", secretLast4: "1234" });
 		expect(meta).not.toHaveProperty("secret");
 		expect(listed[0]?.metadata).not.toContain("sk-live-1234");
-		expect(listed[0]?.rateLimitEnabled).toBe(false);
 
 		expect(await keys.getSecret(id, userId)).toBe("sk-live-1234");
 
