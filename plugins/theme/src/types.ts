@@ -60,6 +60,14 @@ export interface ThemeFontFace {
 	readonly url: string;
 	/** CSS font-weight; absent = 400. */
 	readonly weight?: number;
+	/** CSS font-weight RANGE (`"min max"`) for variable fonts — emits
+	 * `font-weight:min max` on the @font-face and takes precedence over
+	 * `weight`. One ranged face replaces the per-weight face list. */
+	readonly weightRange?: readonly [number, number];
+	/** `unicode-range` descriptor value ("U+0020-007E, …") derived from
+	 * the font's cmap — browsers skip downloading the face for text it
+	 * cannot render. The dependency-free stand-in for font subsetting. */
+	readonly unicodeRange?: string;
 	/** Hint for the `format()` descriptor — "woff2" | "woff" | "truetype" | "opentype". */
 	readonly format?: string;
 }

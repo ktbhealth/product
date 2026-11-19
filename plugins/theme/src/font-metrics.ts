@@ -39,14 +39,16 @@ const u32 = (v: DataView, o: number) => v.getUint32(o);
 const text = (v: DataView, o: number, n: number) =>
 	String.fromCharCode(...Array.from({ length: n }, (_, i) => v.getUint8(o + i)));
 
-interface TableRecord {
+export interface TableRecord {
 	readonly tag: string;
 	readonly offset: number;
 	readonly length: number;
 }
 
-/** Locate `tag` inside an sfnt table directory; null when absent. */
-const findTable = (bytes: Uint8Array, tag: string): TableRecord | null => {
+/** Locate `tag` inside an sfnt table directory; null when absent.
+ * Exported for the variation/cmap parser (font-variations.ts) which
+ * reads non-metric tables (fvar, cmap) out of the same containers. */
+export const findTable = (bytes: Uint8Array, tag: string): TableRecord | null => {
 	/* v8 ignore next -- callers only reach here with >= 12-byte inputs */
 	if (bytes.byteLength < 12) return null;
 	const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -87,7 +89,9 @@ const WOFF_HEADER_BYTES = 44;
 const WOFF_RECORD_BYTES = 20;
 const WOFF_SIGNATURE = 0x774f4646; // "wOFF"
 
-const woffTable = async (bytes: Uint8Array, tag: string): Promise<Uint8Array | null> => {
+/** Read one table out of a WOFF container (raw or zlib-inflated via
+ * DecompressionStream). Exported for font-variations.ts. */
+export const woffTable = async (bytes: Uint8Array, tag: string): Promise<Uint8Array | null> => {
 	if (bytes.byteLength < WOFF_HEADER_BYTES) return null;
 	const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	// woffMetrics only calls this after the wOFF magic check — the
@@ -216,14 +220,21 @@ const readBase128 = (v: DataView, pos: number, end: number): readonly [number, n
 	return null;
 };
 
+/** Decompressed WOFF2 payload plus the byte range of every
+ * non-transformed table inside it. Transformed tables are skipped —
+ * their stored bytes are not the raw sfnt table. */
+export interface Woff2TableData {
+	readonly data: Uint8Array;
+	readonly tables: ReadonlyMap<string, { readonly offset: number; readonly length: number }>;
+}
+
 /**
- * Read head/hhea/OS/2 fields out of a WOFF2 container. The whole sfnt
- * payload is a single Brotli stream; the directory only stores per-table
- * lengths, so table offsets are accumulated in directory order. Only
- * glyf/loca/hmtx have defined transforms — the metric tables are always
- * stored verbatim, and a transformed metric table is treated as absent.
+ * Decode a WOFF2 container into its concatenated sfnt table bytes and
+ * per-table offsets (cumulative sums in directory order). Returns null
+ * on any structural corruption, bad Brotli stream or size mismatch.
+ * Shared by the metric parser and the variation/cmap parser.
  */
-const woff2Metrics = async (bytes: Uint8Array): Promise<FontMetrics | null> => {
+export const woff2Tables = async (bytes: Uint8Array): Promise<Woff2TableData | null> => {
 	if (bytes.byteLength < WOFF2_HEADER_BYTES) return null;
 	const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	const numTables = u16(v, 12);
@@ -258,9 +269,7 @@ const woff2Metrics = async (bytes: Uint8Array): Promise<FontMetrics | null> => {
 			pos = transformLength[1];
 			length = transformLength[0];
 		}
-		if (!transformed && (tag === "head" || tag === "hhea" || tag === "OS/2")) {
-			wanted.set(tag, { offset: dataLength, length });
-		}
+		if (!transformed) wanted.set(tag, { offset: dataLength, length });
 		dataLength += length;
 	}
 	if (pos + compressedSize > bytes.byteLength) return null;
@@ -274,6 +283,21 @@ const woff2Metrics = async (bytes: Uint8Array): Promise<FontMetrics | null> => {
 	// The decompressed block is exactly the concatenated (possibly
 	// transformed) table data — a size mismatch means a corrupt font.
 	if (decompressed.byteLength !== dataLength) return null;
+	// Offsets are cumulative sums of non-negative lengths, so every
+	// recorded table lies inside the verified decompressed block.
+	return { data: decompressed, tables: wanted };
+};
+
+/**
+ * Read head/hhea/OS/2 fields out of a WOFF2 container via
+ * {@link woff2Tables}. Only glyf/loca/hmtx have defined transforms —
+ * the metric tables are always stored verbatim, and a transformed
+ * metric table is treated as absent.
+ */
+const woff2Metrics = async (bytes: Uint8Array): Promise<FontMetrics | null> => {
+	const decoded = await woff2Tables(bytes);
+	if (decoded === null) return null;
+	const { data: decompressed, tables: wanted } = decoded;
 	// Offsets are cumulative sums of non-negative lengths, so every
 	// recorded table lies inside the verified decompressed block.
 	const slice = (tag: string): Uint8Array | null => {

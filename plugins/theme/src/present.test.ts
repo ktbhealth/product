@@ -209,6 +209,44 @@ describe("fonts", () => {
 		expect(rules[3]).toContain('format("truetype")'); // inferred from .ttf
 	});
 
+	it("fontFaceCss emits weight ranges and unicode-range for variable fonts", () => {
+		const css = fontFaceCss({
+			delivery: "self-host",
+			assets: {
+				Var: {
+					faces: [
+						{
+							url: "/api/theme/assets?key=var.woff2",
+							weightRange: [100, 900],
+							unicodeRange: "U+0020-007E, U+00C0-00FF",
+							format: "woff2",
+						},
+						// Malformed range falls back to discrete weight.
+						{ url: "/b.woff2", weightRange: [900, 100] as never, weight: 400 },
+						// weightRange wins over weight when both are sane.
+						{ url: "/c.woff2", weightRange: [200, 800], weight: 400 },
+					],
+				},
+				// unicode-range values outside the descriptor alphabet are
+				// dropped (stored JSON is untrusted input).
+				Evil: {
+					faces: [
+						{ url: "/e.woff2", unicodeRange: "U+0041;}body{display:none" },
+						{ url: "/f.woff2", unicodeRange: "not-a-range" },
+					],
+				},
+			},
+		});
+		const rules = css.split("\n");
+		expect(rules[0]).toContain("font-weight:100 900");
+		expect(rules[0]).toContain("unicode-range:U+0020-007E, U+00C0-00FF");
+		expect(rules[1]).toContain("font-weight:400");
+		expect(rules[1]).not.toContain("font-weight:900 100");
+		expect(rules[2]).toContain("font-weight:200 800");
+		expect(rules[3]).not.toContain("unicode-range");
+		expect(rules[4]).not.toContain("unicode-range");
+	});
+
 	it("fontFaceCss skips fallbacks without a usable local() name", () => {
 		const css = fontFaceCss({
 			delivery: "self-host",

@@ -170,6 +170,53 @@ describe("local adapter", () => {
 		expect(byFamily.get("Bare")?.weights).toBeUndefined();
 	});
 
+	it("reports variable fonts: axis endpoints as weights + meta fields", async () => {
+		const { db, d1 } = makeTestDb();
+		const addAsset = (variants: string) =>
+			run(
+				d1,
+				`INSERT INTO theme_assets (theme_id, kind, status, variants, created_at)
+				 VALUES (NULL, 'font', 'ready', ?, 0)`,
+				[variants],
+			);
+		// Pure variable upload: no discrete weights — the wght axis
+		// endpoints stand in and ride meta for consumers.
+		await addAsset(
+			'{"family":"VarSans","variable":true,"weightAxis":{"min":100,"default":400,"max":900},"unicodeRange":"U+0020-007E","fontAsset":{"faces":[{"url":"u","weightRange":[100,900]}],"fallback":null}}',
+		);
+		// Explicit weights still win over the axis endpoints.
+		await addAsset(
+			'{"family":"VarExplicit","weights":[400],"weightAxis":{"min":100,"default":400,"max":900},"fontAsset":{"faces":[]}}',
+		);
+		// Malformed axis → no variable flags, face-weight fallback.
+		await addAsset(
+			'{"family":"BadAxis","variable":"yes","weightAxis":{"min":9,"default":1,"max":2},"unicodeRange":"  ","fontAsset":{"faces":[{"url":"u","weight":300}]}}',
+		);
+
+		const entries = await Effect.runPromise(
+			localFontProviderAdapter.list().pipe(Effect.provideService(Db, db)),
+		);
+		const byFamily = new Map(entries.map((e) => [e.family, e]));
+		const variable = byFamily.get("VarSans");
+		expect(variable?.weights).toEqual([100, 900]);
+		expect(variable?.meta).toMatchObject({
+			source: "local",
+			variable: true,
+			weightAxis: { min: 100, default: 400, max: 900 },
+			unicodeRange: "U+0020-007E",
+		});
+		expect(byFamily.get("VarExplicit")?.weights).toEqual([400]);
+		expect(byFamily.get("VarExplicit")?.meta).toMatchObject({
+			variable: true,
+			weightAxis: { min: 100, default: 400, max: 900 },
+		});
+		const bad = byFamily.get("BadAxis");
+		expect(bad?.weights).toEqual([300]);
+		expect(bad?.meta).toEqual({ source: "local", assetId: bad?.meta?.["assetId"] });
+		expect(bad?.meta?.["variable"]).toBeUndefined();
+		expect(bad?.meta?.["weightAxis"]).toBeUndefined();
+	});
+
 	it("skips corrupt/blank rows and falls back to theme fonts (slots, assets, weights)", async () => {
 		const { db, d1 } = makeTestDb();
 		const insertTheme = async (fonts: string | null) =>
