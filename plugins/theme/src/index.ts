@@ -10,6 +10,7 @@ import { ThemePlatformPage } from "./platform-page.tsx";
 import { Theme, ThemeLive } from "./theme.ts";
 import { ThemeEditorPage } from "./views/ThemeEditorPage.tsx";
 import { ThemeAppBrand } from "./views/ThemeAppBrand.tsx";
+import { ColorSchemeToggle } from "./views/ColorSchemeToggle.tsx";
 import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
 
 /**
@@ -100,6 +101,13 @@ export const themeHeaderPlugin = definePlugin({
 			// `headerAction` kind is portal-shell chrome); the host
 			// injects ChromeProps, which supplies `locale`.
 			content: { kind: "component", component: ThemeHeaderAction },
+		},
+		{
+			id: "theme.color-scheme",
+			region: "app.header.actions",
+			// Light|dark|system toggle for every session — the admin
+			// preview popover carries the same control for console users.
+			content: { kind: "component", component: ColorSchemeToggle },
 		},
 		{
 			id: "theme.portal-header-action",

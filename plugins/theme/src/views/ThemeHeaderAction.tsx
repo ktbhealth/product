@@ -22,12 +22,8 @@ import {
 
 import { listThemesFn, setThemePreviewFn } from "../fns.ts";
 import { themeMessages, I18N_NAMESPACE } from "../i18n.ts";
-import {
-	THEME_SCHEME_COOKIE,
-	type ThemeColorScheme,
-	type ThemeScopeKind,
-	type ThemeSummary,
-} from "../types.ts";
+import type { ThemeColorScheme, ThemeScopeKind, ThemeSummary } from "../types.ts";
+import { applyColorScheme, COLOR_SCHEMES, readColorScheme } from "../scheme.ts";
 
 const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
 	platform: "platform",
@@ -49,28 +45,6 @@ const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
  * independently re-checks PlatformAdmin, so this component never
  * exposes preview controls to non-admins.
  */
-const SCHEMES = ["light", "dark", "system"] as const;
-
-const readScheme = (): ThemeColorScheme => {
-	if (typeof document === "undefined") return "system";
-	for (const part of document.cookie.split(";")) {
-		const i = part.indexOf("=");
-		if (part.slice(0, i).trim() === THEME_SCHEME_COOKIE) {
-			const v = part.slice(i + 1).trim();
-			if (v === "light" || v === "dark" || v === "system") return v;
-		}
-	}
-	return "system";
-};
-
-const applyScheme = (next: ThemeColorScheme) => {
-	document.cookie = `${THEME_SCHEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
-	const dark =
-		next === "dark" ||
-		(next === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-	document.documentElement.classList.toggle("dark", dark);
-};
-
 export function ThemeHeaderAction({
 	i18n,
 	locale = "en",
@@ -84,7 +58,7 @@ export function ThemeHeaderAction({
 	const [scheme, setScheme] = useState<ThemeColorScheme>("system");
 
 	useEffect(() => {
-		setScheme(readScheme());
+		setScheme(readColorScheme());
 	}, []);
 
 	useEffect(() => {
@@ -166,7 +140,7 @@ export function ThemeHeaderAction({
 					<div className="border-t border-border px-3 py-2">
 						<div className="mb-1.5 text-xs text-muted-foreground">{t.schemeLabel}</div>
 						<ButtonGroup className="w-full">
-							{SCHEMES.map((s) => (
+							{COLOR_SCHEMES.map((s) => (
 								<Button
 									key={s}
 									type="button"
@@ -175,7 +149,7 @@ export function ThemeHeaderAction({
 									className="flex-1"
 									onClick={() => {
 										setScheme(s);
-										applyScheme(s);
+										applyColorScheme(s);
 									}}
 								>
 									{s === "light" ? t.schemeLight : s === "dark" ? t.schemeDark : t.schemeSystem}
