@@ -113,4 +113,10 @@ describe("LoginPickerPage", () => {
 		expect(screen.getByRole("link", { name: "patient sign in" })).toBeTruthy();
 		expect(screen.getByRole("link", { name: "doctor sign in" })).toBeTruthy();
 	});
+
+	it("falls back to baseline copy when ctx.i18n is absent", () => {
+		const { i18n: _dropped, ...ctx } = ctxWith(allEnabled);
+		render(createElement(LoginPickerPage, { data: null, ctx }));
+		expect(screen.getByRole("link", { name: "patient sign in" })).toBeTruthy();
+	});
 });

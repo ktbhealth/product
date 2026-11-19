@@ -294,6 +294,40 @@ describe("PortalSignInPage (/login/patient)", () => {
 		expect(assign).not.toHaveBeenCalled();
 	});
 
+	it("ignores submit with missing credentials or while pending", async () => {
+		const { container } = render(createElement(Page, {}));
+		const form = container.querySelector("form")!;
+		await press("Sign in");
+		expect(signInEmail).not.toHaveBeenCalled();
+		type("Email", "ana@x.com");
+		await press("Sign in");
+		expect(signInEmail).not.toHaveBeenCalled();
+		type("Password", "senha12345");
+		let resolveSignIn: ((value: AuthResult) => void) | undefined;
+		signInEmail.mockImplementationOnce(
+			() =>
+				new Promise<AuthResult>((resolve) => {
+					resolveSignIn = resolve;
+				}),
+		);
+		await press("Sign in");
+		// The pending button is disabled; submit the form directly so the
+		// in-flight guard inside `submit` is what rejects the second try.
+		await act(async () => {
+			fireEvent.submit(form);
+		});
+		expect(signInEmail).toHaveBeenCalledTimes(1);
+		resolveSignIn?.(okResult);
+	});
+
+	it("shows the fallback message when the auth error carries none", async () => {
+		signInEmail.mockResolvedValueOnce({ data: null, error: {} });
+		render(createElement(Page, {}));
+		await signIn();
+		await screen.findByText("Could not sign in. Please try again.");
+		expect(assign).not.toHaveBeenCalled();
+	});
+
 	it("shows the server error and lets the user try again", async () => {
 		signInEmail.mockResolvedValueOnce({ data: null, error: { message: "Invalid credentials" } });
 		render(createElement(Page, {}));

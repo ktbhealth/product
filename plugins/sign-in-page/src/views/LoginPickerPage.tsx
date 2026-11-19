@@ -8,7 +8,7 @@ import {
 	CardTitle,
 } from "@ktbhealth/ui/components/card";
 import { createCatalogT, sliceMessages } from "@ktb/i18n";
-import type { PageContext } from "@ktb/kernel";
+import type { ChromeContribution, PageContext } from "@ktb/kernel";
 
 import { I18N_NAMESPACE, signInMessages } from "../i18n.ts";
 import { visibleLoginTiles, type LoginTileStates } from "../login-tiles.ts";
@@ -62,8 +62,13 @@ export function LoginPickerPage({ ctx }: LoginPickerPageProps) {
 				</CardHeader>
 				<CardContent className="grid grid-flow-col auto-cols-fr gap-2">
 					{tiles.map((entry) => {
-						if (entry.content.kind !== "loginTile") return null;
-						const { to, labelKey, fallback, icon: Icon } = entry.content;
+						// visibleLoginTiles already filters to loginTile entries.
+						const {
+							to,
+							labelKey,
+							fallback,
+							icon: Icon,
+						} = entry.content as Extract<ChromeContribution["content"], { kind: "loginTile" }>;
 						return (
 							<Link
 								key={entry.id}
