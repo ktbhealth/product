@@ -27,8 +27,14 @@ import {
 } from "@ktbhealth/ui/components/alert-dialog";
 import { Field, FieldDescription, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
 import { SearchInput } from "@ktbhealth/ui/components/search-input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
@@ -414,22 +420,30 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 					query.setQ(prefix);
 				}}
 			>
-				<NativeSelect
-					aria-label={t.allNamespaces}
+				<Select
+					items={[
+						{ value: "", label: t.allNamespaces },
+						...namespaces.map((ns) => ({ value: ns.namespace, label: ns.namespace })),
+					]}
 					value={namespace}
-					onChange={(e) => {
-						const ns = e.target.value;
+					onValueChange={(v) => {
+						const ns = v as string;
 						setNamespace(ns);
 						void load(1, ns, prefix);
 					}}
 				>
-					<NativeSelectOption value="">{t.allNamespaces}</NativeSelectOption>
-					{namespaces.map((ns) => (
-						<NativeSelectOption key={ns.namespace} value={ns.namespace}>
-							{ns.namespace}
-						</NativeSelectOption>
-					))}
-				</NativeSelect>
+					<SelectTrigger aria-label={t.allNamespaces} size="sm">
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="">{t.allNamespaces}</SelectItem>
+						{namespaces.map((ns) => (
+							<SelectItem key={ns.namespace} value={ns.namespace}>
+								{ns.namespace}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 				<SearchInput
 					value={prefix}
 					onChange={(e) => setPrefix(e.target.value)}
@@ -537,17 +551,26 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 							<div className="grid grid-cols-2 gap-3">
 								<Field>
 									<FieldLabel htmlFor="kv-ttl">{t.fieldTtl}</FieldLabel>
-									<NativeSelect
-										id="kv-ttl"
+									<Select
+										items={[
+											...(form.mode === "edit" ? [{ value: "keep", label: t.ttlKeep }] : []),
+											{ value: "none", label: t.ttlNone },
+											{ value: "custom", label: t.ttlCustom },
+										]}
 										value={form.ttlMode}
-										onChange={(e) => patchForm({ ttlMode: e.target.value as TtlMode })}
+										onValueChange={(v) => patchForm({ ttlMode: v as TtlMode })}
 									>
-										{form.mode === "edit" ? (
-											<NativeSelectOption value="keep">{t.ttlKeep}</NativeSelectOption>
-										) : null}
-										<NativeSelectOption value="none">{t.ttlNone}</NativeSelectOption>
-										<NativeSelectOption value="custom">{t.ttlCustom}</NativeSelectOption>
-									</NativeSelect>
+										<SelectTrigger id="kv-ttl">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{form.mode === "edit" ? (
+												<SelectItem value="keep">{t.ttlKeep}</SelectItem>
+											) : null}
+											<SelectItem value="none">{t.ttlNone}</SelectItem>
+											<SelectItem value="custom">{t.ttlCustom}</SelectItem>
+										</SelectContent>
+									</Select>
 								</Field>
 								{form.ttlMode === "custom" ? (
 									<Field>

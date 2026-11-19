@@ -19,8 +19,14 @@ import {
 	FieldSet,
 } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
 import { RadioGroup, RadioGroupItem } from "@ktbhealth/ui/components/radio-group";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import { Switch } from "@ktbhealth/ui/components/switch";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 import { PlusIcon, Trash2Icon } from "lucide-react";
@@ -423,25 +429,34 @@ const ScalarControl = ({
 					/>
 				);
 			}
+			const placeholder = ui?.placeholder ?? scope.messages.chooseOption;
+			const options = values.map((option, index) => ({
+				value: encodeOption(option),
+				label: optionLabel(option, ui),
+				key: index,
+			}));
 			return (
-				<NativeSelect
-					{...a11y}
+				<Select
+					items={[{ value: "", label: placeholder }, ...options]}
+					disabled={scope.disabled || undefined}
 					required={required || undefined}
 					value={value === undefined || value === null ? "" : encodeOption(value)}
-					onChange={(event) => {
-						const raw = event.target.value;
-						onChange(raw === "" ? undefined : decodeOption(raw));
-					}}
+					onValueChange={(next) =>
+						onChange(next === "" || next === null ? undefined : decodeOption(next))
+					}
 				>
-					<NativeSelectOption value="">
-						{ui?.placeholder ?? scope.messages.chooseOption}
-					</NativeSelectOption>
-					{values.map((option, index) => (
-						<NativeSelectOption key={index} value={encodeOption(option)}>
-							{optionLabel(option, ui)}
-						</NativeSelectOption>
-					))}
-				</NativeSelect>
+					<SelectTrigger {...a11y}>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="">{placeholder}</SelectItem>
+						{options.map((option) => (
+							<SelectItem key={option.key} value={option.value}>
+								{option.label}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
 			);
 		}
 		case "radio": {
