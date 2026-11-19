@@ -1437,7 +1437,6 @@ export type I18nKey =
 	| "rbac.unassign"
 	| "rbac.unassignDescription"
 	| "rbac.unassignTitle"
-	| "rich-text.back"
 	| "rich-text.cancel"
 	| "rich-text.colActions"
 	| "rich-text.colTitle"
@@ -3555,7 +3554,6 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "rbac.unassignTitle"): Effect.Effect<string>;
-	(key: "rich-text.back"): Effect.Effect<string>;
 	(key: "rich-text.cancel"): Effect.Effect<string>;
 	(key: "rich-text.colActions"): Effect.Effect<string>;
 	(key: "rich-text.colTitle"): Effect.Effect<string>;

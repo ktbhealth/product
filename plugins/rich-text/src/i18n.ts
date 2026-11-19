@@ -27,7 +27,6 @@ export interface RichTextMessages {
 	readonly save: string;
 	readonly cancel: string;
 	readonly create: string;
-	readonly back: string;
 	readonly saving: string;
 	readonly saved: string;
 	readonly emptyTitle: string;
@@ -57,7 +56,6 @@ const en: RichTextMessages = {
 	save: "Save",
 	cancel: "Cancel",
 	create: "Create",
-	back: "Back",
 	saving: "Saving…",
 	saved: "Saved",
 	emptyTitle: "No documents yet",
@@ -87,7 +85,6 @@ const ptBR: RichTextMessages = {
 	save: "Salvar",
 	cancel: "Cancelar",
 	create: "Criar",
-	back: "Voltar",
 	saving: "Salvando…",
 	saved: "Salvo",
 	emptyTitle: "Nenhum documento ainda",
@@ -119,7 +116,6 @@ const es: RichTextMessages = {
 	save: "Guardar",
 	cancel: "Cancelar",
 	create: "Crear",
-	back: "Volver",
 	saving: "Guardando…",
 	saved: "Guardado",
 	emptyTitle: "Aún no hay documentos",

@@ -4841,9 +4841,6 @@ export const I18N_MANIFEST = {
 		create: {
 			params: [],
 		},
-		back: {
-			params: [],
-		},
 		saving: {
 			params: [],
 		},

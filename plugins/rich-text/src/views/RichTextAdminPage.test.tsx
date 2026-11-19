@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const invalidate = vi.hoisted(() => vi.fn<() => Promise<void>>(async () => {}));
+const location = vi.hoisted(() => ({ key: "k0" }));
 const fns = vi.hoisted(() => ({
 	createRichTextFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	updateRichTextFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
@@ -18,6 +19,10 @@ const editor = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate }),
+	useLocation: (opts?: { select?: (l: { state: { key: string } }) => unknown }) => {
+		const loc = { state: { key: location.key } };
+		return opts?.select === undefined ? loc : opts.select(loc);
+	},
 }));
 vi.mock("../fns.ts", () => fns);
 // The real module pulls platejs — stub the editor surface the pane uses.
@@ -50,6 +55,14 @@ const docWire = (over: Record<string, unknown> = {}) => ({
 	...over,
 });
 
+let navSeq = 0;
+/** Commit a router navigation: bumps the mocked location key; the page
+ * under test then returns to the list (the pane's unmount flush runs). */
+const navigate = (rerender: (ui: React.ReactElement) => void, ui: React.ReactElement) => {
+	location.key = `k${++navSeq}`;
+	rerender(ui);
+};
+
 const changeEditor = (html: string) => {
 	act(() => {
 		editor.props?.onChange?.(html);
@@ -61,6 +74,8 @@ afterEach(() => {
 	vi.clearAllMocks();
 	editor.props = null;
 	invalidate.mockResolvedValue(undefined);
+	location.key = "k0";
+	navSeq = 0;
 });
 
 describe("RichTextAdminPage", () => {
@@ -133,18 +148,18 @@ describe("RichTextAdminPage", () => {
 		expect(JSON.parse(call.data.value)).toEqual([{ type: "p", children: [{ text: "<p>hi</p>" }] }]);
 	});
 
-	it("flushes a pending title edit on Back without deleting", async () => {
+	it("flushes a pending title edit on navigation without deleting", async () => {
 		const user = userEvent.setup();
 		fns.createRichTextFn.mockResolvedValue(docWire({ id: 5 }));
 		// Give the created doc some content so exit doesn't take the
 		// empty-delete path.
 		fns.updateRichTextFn.mockResolvedValue(docWire({ id: 5 }));
-		render(<RichTextAdminPage docs={[]} locale="en" />);
+		const view = render(<RichTextAdminPage docs={[]} locale="en" />);
 		await user.click(screen.getByText("New document"));
 		await screen.findByTestId("rich-text-editor");
 		changeEditor("<p>content</p>");
 		await user.type(screen.getByLabelText("Title"), "T");
-		await user.click(screen.getByText("Back"));
+		navigate(view.rerender, <RichTextAdminPage docs={[]} locale="en" />);
 		await waitFor(() =>
 			expect(fns.updateRichTextFn).toHaveBeenCalledWith({
 				data: expect.objectContaining({ id: 5, title: "DocT" }),
@@ -160,10 +175,10 @@ describe("RichTextAdminPage", () => {
 			docWire({ id: 5, content: [{ type: "p", children: [{ text: "" }] }] }),
 		);
 		fns.deleteRichTextFn.mockResolvedValue(true);
-		render(<RichTextAdminPage docs={[]} locale="en" />);
+		const view = render(<RichTextAdminPage docs={[]} locale="en" />);
 		await user.click(screen.getByText("New document"));
 		await screen.findByTestId("rich-text-editor");
-		await user.click(screen.getByText("Back"));
+		navigate(view.rerender, <RichTextAdminPage docs={[]} locale="en" />);
 		await waitFor(() => expect(fns.deleteRichTextFn).toHaveBeenCalledWith({ data: { id: 5 } }));
 		await screen.findByText("Empty document deleted");
 		await screen.findByText("No documents yet");
@@ -194,10 +209,10 @@ describe("RichTextAdminPage", () => {
 			docWire({ id: 5, content: [{ type: "p", children: [{ text: "" }] }] }),
 		);
 		fns.deleteRichTextFn.mockResolvedValue(false);
-		render(<RichTextAdminPage docs={[]} locale="en" />);
+		const view = render(<RichTextAdminPage docs={[]} locale="en" />);
 		await user.click(screen.getByText("New document"));
 		await screen.findByTestId("rich-text-editor");
-		await user.click(screen.getByText("Back"));
+		navigate(view.rerender, <RichTextAdminPage docs={[]} locale="en" />);
 		expect(await screen.findByText("Could not delete the document.")).toBeTruthy();
 	});
 
@@ -300,9 +315,9 @@ describe("RichTextAdminPage", () => {
 	it("exits without saving or deleting while the doc is still loading", async () => {
 		const user = userEvent.setup();
 		fns.richTextDocFn.mockReturnValue(new Promise(() => {}));
-		render(<RichTextAdminPage docs={[row({})]} locale="en" />);
+		const view = render(<RichTextAdminPage docs={[row({})]} locale="en" />);
 		await user.click(screen.getByLabelText("Edit"));
-		await user.click(screen.getByText("Back"));
+		navigate(view.rerender, <RichTextAdminPage docs={[row({})]} locale="en" />);
 		await waitFor(() => expect(screen.queryByTestId("rich-text-editor")).toBeNull());
 		expect(fns.deleteRichTextFn).not.toHaveBeenCalled();
 		expect(fns.updateRichTextFn).not.toHaveBeenCalled();

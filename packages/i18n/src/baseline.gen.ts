@@ -26284,12 +26284,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "rich-text",
-		key: "back",
-		locale: "en",
-		value: "Back",
-	},
-	{
-		namespace: "rich-text",
 		key: "saving",
 		locale: "en",
 		value: "Saving…",
@@ -26447,12 +26441,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "rich-text",
-		key: "back",
-		locale: "pt-BR",
-		value: "Voltar",
-	},
-	{
-		namespace: "rich-text",
 		key: "saving",
 		locale: "pt-BR",
 		value: "Salvando…",
@@ -26607,12 +26595,6 @@ export const I18N_BASELINE = [
 		key: "create",
 		locale: "es",
 		value: "Crear",
-	},
-	{
-		namespace: "rich-text",
-		key: "back",
-		locale: "es",
-		value: "Volver",
 	},
 	{
 		namespace: "rich-text",

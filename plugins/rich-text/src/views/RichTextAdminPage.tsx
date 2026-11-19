@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
+import { useLocation, useRouter } from "@tanstack/react-router";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
@@ -86,7 +86,19 @@ const asValue = (content: unknown): unknown =>
 export function RichTextAdminPage({ docs, i18n, locale }: RichTextAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, richTextMessages(locale));
 	const router = useRouter();
+	const locationKey = useLocation({ select: (l) => l.state.key });
 	const [view, setView] = useState<EditorView | null>(null);
+	const lastLocationKeyRef = useRef(locationKey);
+
+	// There is no in-page back affordance: any committed navigation —
+	// sidebar re-click, browser back, a different console page — returns
+	// to the list. The editor pane's unmount flush persists or
+	// deletes-when-empty on the way out.
+	useEffect(() => {
+		if (lastLocationKeyRef.current === locationKey) return;
+		lastLocationKeyRef.current = locationKey;
+		setView(null);
+	}, [locationKey]);
 	const [deleteTarget, setDeleteTarget] = useState<RichTextDocRow | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [toast, setToast] = useState<ToastData | null>(null);
@@ -244,7 +256,7 @@ interface PaneProps {
  * exchanges sanitized HTML; we convert to the Plate value once per
  * change (`htmlToRichText`) and keep it in a ref for saving/empty
  * checks. Saves are debounced (~800ms) through a serialized promise
- * queue; leaving (Back button or unmount) flushes pending saves — and
+ * queue; leaving (any navigation or unmount) flushes pending saves — and
  * deletes the row instead when the document is empty.
  */
 function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
@@ -379,7 +391,7 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 	};
 
 	/** Leave the editor: flush pending saves, or delete the row when the
-	 * document is empty. Guarded by `didExitRef` so Back + unmount can't
+	 * document is empty. Guarded by `didExitRef` so repeated exits can't
 	 * double-run it. */
 	const exitDoc = async () => {
 		if (didExitRef.current) return;
@@ -435,7 +447,7 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 		};
 	});
 
-	// Unmount flush: switching views without pressing Back (e.g. parent
+	// Unmount flush: leaving the route without an explicit exit (e.g. parent
 	// navigation) still persists or deletes the document. The flush is
 	// deferred one tick: React StrictMode's dev double-mount runs this
 	// cleanup and immediately re-runs setup, which cancels the pending
@@ -456,9 +468,6 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 	if (status === "loading" || docHtml === null) {
 		return (
 			<div className="flex items-center gap-3 py-16">
-				<Button variant="outline" size="sm" onClick={() => void exitDoc()}>
-					{t.back}
-				</Button>
 				<Spinner className="size-6" />
 			</div>
 		);
@@ -467,9 +476,6 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex flex-wrap items-center gap-2">
-				<Button variant="outline" size="sm" onClick={() => void exitDoc()}>
-					{t.back}
-				</Button>
 				<Input
 					value={title}
 					onChange={(e) => handleTitle(e.target.value)}
