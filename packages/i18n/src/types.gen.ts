@@ -218,6 +218,7 @@ export type I18nKey =
 	| "app.panel_nav_ops"
 	| "app.panel_nav_plugins"
 	| "app.panel_nav_rich_text"
+	| "app.panel_nav_schemas"
 	| "app.panel_nav_users"
 	| "app.persona_business"
 	| "app.persona_developers"
@@ -1152,11 +1153,13 @@ export type I18nKey =
 	| "pages.fieldContentDoc"
 	| "pages.fieldPath"
 	| "pages.fieldPublished"
+	| "pages.fieldSearchSchema"
 	| "pages.fieldShowInNav"
 	| "pages.fieldSortOrder"
 	| "pages.fieldTitle"
 	| "pages.manageDoc"
 	| "pages.manageDocs"
+	| "pages.manageSchemas"
 	| "pages.navHidden"
 	| "pages.navShown"
 	| "pages.newPage"
@@ -1164,6 +1167,8 @@ export type I18nKey =
 	| "pages.save"
 	| "pages.saveFailed"
 	| "pages.saving"
+	| "pages.searchSchemaHint"
+	| "pages.searchSchemaNone"
 	| "pages.statusDraft"
 	| "pages.statusPublished"
 	| "pages.title"
@@ -1467,6 +1472,37 @@ export type I18nKey =
 	| "rich-text.saving"
 	| "rich-text.title"
 	| "rich-text.untitled"
+	| "schemas.cancel"
+	| "schemas.colActions"
+	| "schemas.colDescription"
+	| "schemas.colName"
+	| "schemas.colUpdated"
+	| "schemas.create"
+	| "schemas.delete"
+	| "schemas.deleteBody"
+	| "schemas.deleteConfirm"
+	| "schemas.deleted"
+	| "schemas.deleteFailed"
+	| "schemas.deleteTitle"
+	| "schemas.description"
+	| "schemas.edit"
+	| "schemas.emptyDescription"
+	| "schemas.emptyTitle"
+	| "schemas.fieldDescription"
+	| "schemas.fieldName"
+	| "schemas.fieldSchema"
+	| "schemas.loadFailed"
+	| "schemas.namePlaceholder"
+	| "schemas.newSchema"
+	| "schemas.save"
+	| "schemas.saved"
+	| "schemas.saveFailed"
+	| "schemas.saving"
+	| "schemas.title"
+	| "schemas.validate"
+	| "schemas.validating"
+	| "schemas.validationFailed"
+	| "schemas.validationValid"
 	| "secretaries.description"
 	| "secretaries.emailLabel"
 	| "secretaries.emptyDescription"
@@ -2009,6 +2045,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
 	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
+	(key: "app.panel_nav_schemas"): Effect.Effect<string>;
 	(key: "app.panel_nav_users"): Effect.Effect<string>;
 	(key: "app.persona_business"): Effect.Effect<string>;
 	(key: "app.persona_developers"): Effect.Effect<string>;
@@ -3236,11 +3273,13 @@ export interface I18nTypedT {
 	(key: "pages.fieldContentDoc"): Effect.Effect<string>;
 	(key: "pages.fieldPath"): Effect.Effect<string>;
 	(key: "pages.fieldPublished"): Effect.Effect<string>;
+	(key: "pages.fieldSearchSchema"): Effect.Effect<string>;
 	(key: "pages.fieldShowInNav"): Effect.Effect<string>;
 	(key: "pages.fieldSortOrder"): Effect.Effect<string>;
 	(key: "pages.fieldTitle"): Effect.Effect<string>;
 	(key: "pages.manageDoc"): Effect.Effect<string>;
 	(key: "pages.manageDocs"): Effect.Effect<string>;
+	(key: "pages.manageSchemas"): Effect.Effect<string>;
 	(key: "pages.navHidden"): Effect.Effect<string>;
 	(key: "pages.navShown"): Effect.Effect<string>;
 	(key: "pages.newPage"): Effect.Effect<string>;
@@ -3248,6 +3287,8 @@ export interface I18nTypedT {
 	(key: "pages.save"): Effect.Effect<string>;
 	(key: "pages.saveFailed"): Effect.Effect<string>;
 	(key: "pages.saving"): Effect.Effect<string>;
+	(key: "pages.searchSchemaHint"): Effect.Effect<string>;
+	(key: "pages.searchSchemaNone"): Effect.Effect<string>;
 	(key: "pages.statusDraft"): Effect.Effect<string>;
 	(key: "pages.statusPublished"): Effect.Effect<string>;
 	(key: "pages.title"): Effect.Effect<string>;
@@ -3644,6 +3685,42 @@ export interface I18nTypedT {
 	(key: "rich-text.saving"): Effect.Effect<string>;
 	(key: "rich-text.title"): Effect.Effect<string>;
 	(key: "rich-text.untitled"): Effect.Effect<string>;
+	(key: "schemas.cancel"): Effect.Effect<string>;
+	(key: "schemas.colActions"): Effect.Effect<string>;
+	(key: "schemas.colDescription"): Effect.Effect<string>;
+	(key: "schemas.colName"): Effect.Effect<string>;
+	(key: "schemas.colUpdated"): Effect.Effect<string>;
+	(key: "schemas.create"): Effect.Effect<string>;
+	(key: "schemas.delete"): Effect.Effect<string>;
+	(
+		key: "schemas.deleteBody",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "schemas.deleteConfirm"): Effect.Effect<string>;
+	(key: "schemas.deleted"): Effect.Effect<string>;
+	(key: "schemas.deleteFailed"): Effect.Effect<string>;
+	(key: "schemas.deleteTitle"): Effect.Effect<string>;
+	(key: "schemas.description"): Effect.Effect<string>;
+	(key: "schemas.edit"): Effect.Effect<string>;
+	(key: "schemas.emptyDescription"): Effect.Effect<string>;
+	(key: "schemas.emptyTitle"): Effect.Effect<string>;
+	(key: "schemas.fieldDescription"): Effect.Effect<string>;
+	(key: "schemas.fieldName"): Effect.Effect<string>;
+	(key: "schemas.fieldSchema"): Effect.Effect<string>;
+	(key: "schemas.loadFailed"): Effect.Effect<string>;
+	(key: "schemas.namePlaceholder"): Effect.Effect<string>;
+	(key: "schemas.newSchema"): Effect.Effect<string>;
+	(key: "schemas.save"): Effect.Effect<string>;
+	(key: "schemas.saved"): Effect.Effect<string>;
+	(key: "schemas.saveFailed"): Effect.Effect<string>;
+	(key: "schemas.saving"): Effect.Effect<string>;
+	(key: "schemas.title"): Effect.Effect<string>;
+	(key: "schemas.validate"): Effect.Effect<string>;
+	(key: "schemas.validating"): Effect.Effect<string>;
+	(key: "schemas.validationFailed"): Effect.Effect<string>;
+	(key: "schemas.validationValid"): Effect.Effect<string>;
 	(key: "secretaries.description"): Effect.Effect<string>;
 	(key: "secretaries.emailLabel"): Effect.Effect<string>;
 	(key: "secretaries.emptyDescription"): Effect.Effect<string>;

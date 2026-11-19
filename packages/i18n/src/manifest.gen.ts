@@ -570,6 +570,9 @@ export const I18N_MANIFEST = {
 		panel_nav_rich_text: {
 			params: [],
 		},
+		panel_nav_schemas: {
+			params: [],
+		},
 		panel_nav_users: {
 			params: [],
 		},
@@ -3869,6 +3872,18 @@ export const I18N_MANIFEST = {
 		manageDoc: {
 			params: [],
 		},
+		fieldSearchSchema: {
+			params: [],
+		},
+		searchSchemaNone: {
+			params: [],
+		},
+		searchSchemaHint: {
+			params: [],
+		},
+		manageSchemas: {
+			params: [],
+		},
 		pathHint: {
 			params: [],
 		},
@@ -4910,6 +4925,106 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		saveFailed: {
+			params: [],
+		},
+	},
+	schemas: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newSchema: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colDescription: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		fieldName: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		fieldDescription: {
+			params: [],
+		},
+		fieldSchema: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: 'Delete "{name}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		validate: {
+			params: [],
+		},
+		validating: {
+			params: [],
+		},
+		validationValid: {
+			params: [],
+		},
+		validationFailed: {
 			params: [],
 		},
 	},
@@ -6098,6 +6213,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_ops: "Ops",
 	panel_nav_plugins: "Plugins",
 	panel_nav_rich_text: "Rich text",
+	panel_nav_schemas: "Schemas",
 	panel_nav_users: "Users",
 	persona_business: "Business",
 	persona_developers: "Developers",

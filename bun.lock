@@ -1475,6 +1475,7 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/rich-text": "workspace:*",
+        "@ktb/schemas": "workspace:*",
         "@ktb/server-fns": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
         "@tanstack/react-router": "1.170.46",
@@ -1677,6 +1678,34 @@
         "effect": "4.1.2",
         "lucide-react": "0.544.0",
         "platejs": "53.5.2",
+      },
+      "devDependencies": {
+        "@ktb/auth": "workspace:*",
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/schemas": {
+      "name": "@ktb/schemas",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/json-schema": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
       },
       "devDependencies": {
         "@ktb/auth": "workspace:*",
@@ -2520,6 +2549,8 @@
     "@ktb/rbac-plugin": ["@ktb/rbac-plugin@workspace:plugins/rbac"],
 
     "@ktb/rich-text": ["@ktb/rich-text@workspace:plugins/rich-text"],
+
+    "@ktb/schemas": ["@ktb/schemas@workspace:plugins/schemas"],
 
     "@ktb/secretaries": ["@ktb/secretaries@workspace:plugins/secretaries"],
 

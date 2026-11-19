@@ -13,6 +13,7 @@ import {
 	type RichTextDeleteHook,
 	type RichTextReferencerItem,
 } from "@ktb/rich-text/delete-hooks";
+import { Schemas } from "@ktb/schemas/service";
 
 import { customPage, type CustomPage } from "./schema.ts";
 
@@ -61,11 +62,14 @@ export type CustomPageError =
 
 /** Admin-facing write payload; booleans/order default when absent and
  * `richTextId` (the @ktb/rich-text document this page renders) defaults
- * to null — the page then renders with no body. */
+ * to null — the page then renders with no body. `searchSchemaId` (the
+ * @ktb/schemas row whose JSON Schema validates the page's URL search
+ * params) follows the same contract. */
 export interface CustomPageInput {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId?: number | null;
+	readonly searchSchemaId?: number | null;
 	readonly published?: boolean;
 	readonly showInNav?: boolean;
 	readonly sortOrder?: number;
@@ -99,17 +103,49 @@ const normalizeRequestPath = (path: string): string => {
 	return trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed;
 };
 
-/** Optional document reference: absent/undefined resolves to null;
- * anything that is not a positive integer is an `InvalidPageInput`
- * (defensive — the wire schema already types it `number | null`). */
-const normalizeRichTextId = (
+/** Optional id reference: absent/undefined resolves to null; anything
+ * that is not a positive integer is an `InvalidPageInput` (defensive —
+ * the wire schema already types it `number | null`). */
+const normalizeOptionalId = (
 	value: number | null | undefined,
+	field: string,
 ): Effect.Effect<number | null, InvalidPageInput> =>
 	value === undefined || value === null
 		? Effect.succeed(null)
 		: Number.isInteger(value) && value > 0
 			? Effect.succeed(value)
-			: Effect.fail(new InvalidPageInput({ field: "richTextId", value }));
+			: Effect.fail(new InvalidPageInput({ field, value }));
+
+const normalizeRichTextId = (value: number | null | undefined) =>
+	normalizeOptionalId(value, "richTextId");
+
+const normalizeSearchSchemaId = (value: number | null | undefined) =>
+	normalizeOptionalId(value, "searchSchemaId");
+
+/** Top-level search-param key an issue path blames — the segment
+ * before the first "." or "[" ("filter.tag" → "filter"). "$" and
+ * malformed/empty paths blame no single param and are ignored. */
+const issueTopLevelKey = (issuePath: string): string | null => {
+	if (issuePath === "" || issuePath === "$") return null;
+	const end = issuePath.search(/[.[]/);
+	const key = end === -1 ? issuePath : issuePath.slice(0, end);
+	return key === "" ? null : key;
+};
+
+/** Drop every top-level param blamed by at least one validation issue;
+ * params the issues don't name pass through untouched. */
+const cleanSearchParams = (
+	search: Record<string, unknown>,
+	issues: readonly { readonly path: string }[],
+): Record<string, unknown> => {
+	const blamed = new Set<string>();
+	for (const issue of issues) {
+		const key = issueTopLevelKey(issue.path);
+		if (key !== null) blamed.add(key);
+	}
+	if (blamed.size === 0) return search;
+	return Object.fromEntries(Object.entries(search).filter(([key]) => !blamed.has(key)));
+};
 
 export class CustomPages extends Context.Service<
 	CustomPages,
@@ -133,6 +169,15 @@ export class CustomPages extends Context.Service<
 		/** Published pages flagged for nav, ordered for display — public
 		 * read used by the app-header chrome component. */
 		readonly navList: () => Effect.Effect<readonly CustomPage[]>;
+		/** Validate `search` against the published page's bound
+		 * `searchSchemaId` schema and return the cleaned params.
+		 * Infallible passthrough: missing/unpublished page, no bound
+		 * schema, absent Schemas service or a validation failure all
+		 * return `search` unchanged. */
+		readonly validatedSearch: (
+			path: string,
+			search: Record<string, unknown>,
+		) => Effect.Effect<Record<string, unknown>>;
 	}
 >()("@ktb/pages/CustomPages") {}
 
@@ -182,6 +227,11 @@ export const CustomPagesLive = Layer.effect(
 		if (Option.isSome(deleteHooks)) {
 			yield* deleteHooks.value.register(pagesRichTextDeleteHook(db));
 		}
+		// Optional edge: the schemas plugin's registry is absent when it
+		// (or its service layer) is not installed — validatedSearch then
+		// passes params through unchecked. The `optionalDeps` edge on
+		// pages.services keeps the registry built first when present.
+		const schemaService = yield* Effect.serviceOption(Schemas);
 
 		const requireAdmin = platformAdmin.requireAdmin();
 
@@ -204,6 +254,7 @@ export const CustomPagesLive = Layer.effect(
 				);
 				if (existing.length > 0) return yield* new DuplicatePagePath({ path });
 				const richTextId = yield* normalizeRichTextId(input.richTextId);
+				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
 				const rows = yield* Effect.promise(() =>
 					db
 						.insert(customPage)
@@ -211,6 +262,7 @@ export const CustomPagesLive = Layer.effect(
 							path,
 							title: input.title,
 							richTextId,
+							searchSchemaId,
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
@@ -237,6 +289,7 @@ export const CustomPagesLive = Layer.effect(
 				);
 				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
 				const richTextId = yield* normalizeRichTextId(input.richTextId);
+				const searchSchemaId = yield* normalizeSearchSchemaId(input.searchSchemaId);
 				const rows = yield* Effect.promise(() =>
 					db
 						.update(customPage)
@@ -244,6 +297,7 @@ export const CustomPagesLive = Layer.effect(
 							path,
 							title: input.title,
 							richTextId,
+							searchSchemaId,
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
@@ -284,6 +338,34 @@ export const CustomPagesLive = Layer.effect(
 						.orderBy(asc(customPage.sortOrder), asc(customPage.title)),
 				);
 			}),
+			validatedSearch: Effect.fn("CustomPages.validatedSearch")(function* (
+				path: string,
+				search: Record<string, unknown>,
+			) {
+				const rows = yield* Effect.promise(() =>
+					db
+						.select({ searchSchemaId: customPage.searchSchemaId })
+						.from(customPage)
+						.where(
+							and(eq(customPage.path, normalizeRequestPath(path)), eq(customPage.published, true)),
+						)
+						.limit(1),
+				);
+				const schemaId = rows[0]?.searchSchemaId ?? null;
+				if (schemaId === null || Option.isNone(schemaService)) return search;
+				const result = yield* schemaService.value
+					.validate(schemaId, search)
+					.pipe(
+						Effect.catch((error) =>
+							Effect.logWarning(
+								"CustomPages.validatedSearch: schema validation failed; passing search through",
+								{ path, schemaId, error },
+							).pipe(Effect.as(null)),
+						),
+					);
+				if (result === null || result.valid) return search;
+				return cleanSearchParams(search, result.issues);
+			}),
 		});
 	}),
 );
@@ -299,6 +381,7 @@ CREATE TABLE custom_pages (
 	path TEXT NOT NULL,
 	title TEXT NOT NULL,
 	rich_text_id INTEGER,
+	search_schema_id INTEGER,
 	published INTEGER NOT NULL DEFAULT 0,
 	show_in_nav INTEGER NOT NULL DEFAULT 0,
 	sort_order INTEGER NOT NULL DEFAULT 0,

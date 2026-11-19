@@ -31,9 +31,19 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Schemas } from "@ktb/schemas/service";
+import { Principal } from "@ktb/authz";
+
 import { plugins } from "./index.ts";
+import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPages, CustomPagesLive } from "./service.ts";
-import { createPageFn, deletePageFn, navPagesFn, updatePageFn } from "./fns.ts";
+import {
+	createPageFn,
+	deletePageFn,
+	navPagesFn,
+	updatePageFn,
+	validatePageSearchFn,
+} from "./fns.ts";
 
 const PLUGIN_STATE_DDL = `
 CREATE TABLE plugin_state (
@@ -120,6 +130,7 @@ describe("pages fns", () => {
 				path: "/hello",
 				title: "Hello",
 				richTextId: 4,
+				searchSchemaId: 6,
 				published: true,
 				showInNav: true,
 				sortOrder: 3,
@@ -129,6 +140,7 @@ describe("pages fns", () => {
 			path: "/hello",
 			title: "Hello",
 			richTextId: 4,
+			searchSchemaId: 6,
 			published: true,
 			showInNav: true,
 			sortOrder: 3,
@@ -187,6 +199,9 @@ describe("pages fns", () => {
 		await expect(deletePageFn({ data: { id: "1" } } as never)).rejects.toBeInstanceOf(Error);
 		await expect(
 			createPageFn({ data: { path: "/x", title: "X", richTextId: "nope" } } as never),
+		).rejects.toBeInstanceOf(Error);
+		await expect(
+			createPageFn({ data: { path: "/x", title: "X", searchSchemaId: "nope" } } as never),
 		).rejects.toBeInstanceOf(Error);
 	});
 
@@ -303,6 +318,123 @@ describe("pages fns", () => {
 			).rejects.toBeInstanceOf(Error);
 			const deleteError = await deletePageFn({ data: { id: 1 } }).catch((error: unknown) => error);
 			expect(deleteError).toBe("plain delete failure");
+		} finally {
+			installRuntime(runtime);
+			await rt.dispose();
+		}
+	});
+
+	it("validatePageSearchFn passes params through when no schema is bound or the service is absent", async () => {
+		currentEmail = null;
+		// The shared runtime has no Schemas layer — even a page bound to
+		// a schema passes its params through unchecked.
+		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		void db;
+		await expect(
+			validatePageSearchFn({ data: { path: "/anything", search: { q: "x" } } }),
+		).resolves.toEqual({ search: { q: "x" } });
+		await expect(validatePageSearchFn({ data: { path: "/anything" } })).resolves.toEqual({
+			search: {},
+		});
+	});
+
+	it("validatePageSearchFn cleans params through the Schemas service when present", async () => {
+		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL + PLUGIN_STATE_DDL));
+		const env = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		const states = makePluginStatesLive(registry);
+		const schemas = Layer.succeed(
+			Schemas,
+			Schemas.of({
+				adminList: () => Effect.succeed([]),
+				adminGet: () => Effect.succeed(null),
+				adminCreate: () => Effect.succeed(null),
+				adminUpdate: () => Effect.die("unused"),
+				adminRemove: () => Effect.die("unused"),
+				getById: () => Effect.succeed(null),
+				validate: (schemaId: number, data: unknown) =>
+					Effect.succeed(
+						schemaId === 3 && typeof data === "object" && data !== null && "bad" in data
+							? {
+									valid: false,
+									issues: [{ path: "bad.deep", keyword: "type", message: "no" }],
+								}
+							: { valid: true, issues: [] },
+					),
+			}),
+		);
+		// Schemas must be provided INTO CustomPagesLive: validatedSearch
+		// resolves Effect.serviceOption at layer-build time, so a
+		// sibling merge would leave the option None.
+		const customPages = CustomPagesLive.pipe(Layer.provide(Layer.mergeAll(env, schemas)));
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(states.pipe(Layer.provide(env)), customPages, env) as Layer.Layer<
+				unknown,
+				never,
+				never
+			>,
+		);
+		installRuntime(rt);
+		currentEmail = "admin@x.com";
+		try {
+			// Seed a published page bound to schema 3 plus an unbound one.
+			const now = new Date();
+			await db.insert(customPage).values([
+				{
+					path: "/bound",
+					title: "Bound",
+					searchSchemaId: 3,
+					published: true,
+					showInNav: false,
+					sortOrder: 0,
+					createdAt: now,
+					updatedAt: now,
+				},
+				{
+					path: "/unbound",
+					title: "Unbound",
+					searchSchemaId: null,
+					published: true,
+					showInNav: false,
+					sortOrder: 0,
+					createdAt: now,
+					updatedAt: now,
+				},
+			]);
+			// Bound page: "bad" is stripped, "q" survives.
+			await expect(
+				validatePageSearchFn({
+					data: { path: "/bound", search: { q: "x", bad: { deep: 1 } } },
+				}),
+			).resolves.toEqual({ search: { q: "x" } });
+			// Unbound page: passthrough.
+			await expect(
+				validatePageSearchFn({
+					data: { path: "/unbound", search: { bad: 1 } },
+				}),
+			).resolves.toEqual({ search: { bad: 1 } });
+			// Unpublished/missing path: passthrough.
+			await expect(
+				validatePageSearchFn({ data: { path: "/missing", search: { bad: 1 } } }),
+			).resolves.toEqual({ search: { bad: 1 } });
+			// Disabled render plugin: passthrough.
+			await rt.runPromise(
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					yield* states.setEnabled(["pages.render"], false);
+				}),
+			);
+			await expect(
+				validatePageSearchFn({ data: { path: "/bound", search: { bad: 1 } } }),
+			).resolves.toEqual({ search: { bad: 1 } });
+			await rt.runPromise(
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					yield* states.setEnabled(["pages.render"], true);
+				}),
+			);
 		} finally {
 			installRuntime(runtime);
 			await rt.dispose();
