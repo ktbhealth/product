@@ -12,7 +12,7 @@ const rootApi = getRouteApi("__root__");
 const pagePath = (splat: string | undefined): string => `/${splat ?? ""}`;
 
 const hookParams = (params: unknown): Readonly<Record<string, string | undefined>> =>
-	(params ?? {}) as Readonly<Record<string, string | undefined>>;
+	params as Readonly<Record<string, string | undefined>>;
 
 const hookSearch = (search: unknown): Readonly<Record<string, unknown>> =>
 	(typeof search === "object" && search !== null && !Array.isArray(search)
@@ -93,14 +93,16 @@ export const Route = createFileRoute("/$")({
 		const states = await pluginStatesFn();
 		if (!entryEnabled(plugins, enabledIdSet(states), entry)) throw notFound();
 		const hasSearch = deps.search !== undefined;
-		const rawSearch = hasSearch ? hookSearch(deps.search) : undefined;
-		const search = hasSearch
-			? (entry.page.validateSearch?.({
-					search: rawSearch ?? {},
+		let search: Readonly<Record<string, unknown>> | undefined;
+		if (hasSearch) {
+			const parsed = hookSearch(deps.search);
+			search =
+				entry.page.validateSearch?.({
+					search: parsed,
 					path,
 					params: hookParams(params),
-				}) ?? rawSearch)
-			: undefined;
+				}) ?? parsed;
+		}
 		const result = await appPageDataFn({ data: { path, search } });
 		if (result.status === "notfound") throw notFound();
 		return { data: result.data, pluginStates: states };
