@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { BoxesIcon } from "lucide-react";
 
 import { audit, auditServicesPlugin } from "@ktb/audit";
@@ -16,7 +16,7 @@ import { Query } from "@effect-server-utils/cqrs";
 
 import { GroupsQueries } from "./api.ts";
 import { GroupsPlatformPage } from "./platform-page.tsx";
-import { groupMembers, groups } from "@ktb/db/schema";
+import { groupMembers, groups, relationTuples } from "@ktb/db/schema";
 
 export type Group = typeof groups.$inferSelect;
 export type GroupMember = typeof groupMembers.$inferSelect;
@@ -93,7 +93,21 @@ export async function listGroups(db: DbClient): Promise<AdminGroupRow[]> {
  */
 export async function deleteGroup(db: DbClient, id: number): Promise<boolean> {
 	const rows = await db.delete(groups).where(eq(groups.id, id)).returning({ id: groups.id });
-	return rows.length > 0;
+	const deleted = rows.length > 0;
+	if (deleted) {
+		// P-101: the group's member tuples go with it — group_members
+		// rows cascade via FK, relation_tuples has no FK by design.
+		await db
+			.delete(relationTuples)
+			.where(
+				and(
+					eq(relationTuples.objectType, "group"),
+					eq(relationTuples.objectId, String(id)),
+					eq(relationTuples.relation, "member"),
+				),
+			);
+	}
+	return deleted;
 }
 
 export async function getGroup(db: DbClient, id: number): Promise<Group | null> {
@@ -109,6 +123,82 @@ async function countGroupMembers(db: DbClient, groupId: number): Promise<number>
 	return rows[0]?.n ?? 0;
 }
 
+// ---------- relation tuples (P-101 dual-write) ----------
+
+/**
+ * P-101: `relation_tuples` mirrors group membership as a
+ * Zanzibar-style graph (object_type='group', relation='member',
+ * subject = the member) so the permission resolver can walk it.
+ * Group member tuples are always global (tenant_id NULL),
+ * non-expiring `allow` grants — `member_kind` maps 1:1 onto
+ * `subject_kind` ("user"/"patient"/"group" all pass through; tuples
+ * are polymorphic strings, not the subject_roles enum). The group's
+ * `role` column is deliberately NOT mirrored: tuples encode
+ * membership only, not the caller-defined role label.
+ * Natural-key uniqueness is enforced by this find-then-write (NULLs
+ * are distinct in SQLite unique indexes — same caveat as
+ * plugins/rbac's upsertRelationTuple).
+ */
+async function upsertGroupMemberTuple(
+	db: DbClient,
+	input: { groupId: number; memberKind: string; memberId: string },
+): Promise<void> {
+	const objectId = String(input.groupId);
+	const rows = await db
+		.select({ id: relationTuples.id })
+		.from(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, "group"),
+				eq(relationTuples.objectId, objectId),
+				eq(relationTuples.relation, "member"),
+				eq(relationTuples.subjectKind, input.memberKind),
+				eq(relationTuples.subjectId, input.memberId),
+				isNull(relationTuples.tenantId),
+			),
+		);
+	const existing = rows[0];
+	if (existing !== undefined) {
+		// Re-adding an existing membership refreshes the canonical
+		// grant fields in place (mirrors rbac's upsertRelationTuple).
+		await db
+			.update(relationTuples)
+			.set({ effect: "allow", expiresAt: null, grantedBy: null })
+			.where(eq(relationTuples.id, existing.id));
+	} else {
+		await db.insert(relationTuples).values({
+			objectType: "group",
+			objectId,
+			relation: "member",
+			subjectKind: input.memberKind,
+			subjectId: input.memberId,
+			effect: "allow",
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: null,
+			createdAt: new Date(),
+		});
+	}
+}
+
+async function deleteGroupMemberTuple(
+	db: DbClient,
+	input: { groupId: number; memberKind: string; memberId: string },
+): Promise<void> {
+	await db
+		.delete(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, "group"),
+				eq(relationTuples.objectId, String(input.groupId)),
+				eq(relationTuples.relation, "member"),
+				eq(relationTuples.subjectKind, input.memberKind),
+				eq(relationTuples.subjectId, input.memberId),
+				isNull(relationTuples.tenantId),
+			),
+		);
+}
+
 export async function addMember(db: DbClient, input: AddGroupMemberInput) {
 	const rows = await db
 		.insert(groupMembers)
@@ -120,7 +210,11 @@ export async function addMember(db: DbClient, input: AddGroupMemberInput) {
 			createdAt: new Date(),
 		})
 		.returning();
-	return rows[0] ?? null;
+	const row = rows[0] ?? null;
+	if (row !== null) {
+		await upsertGroupMemberTuple(db, input);
+	}
+	return row;
 }
 
 export async function findMembership(
@@ -154,12 +248,17 @@ export async function removeMember(db: DbClient, input: RemoveGroupMemberInput) 
 				eq(groupMembers.memberId, input.memberId),
 			),
 		);
+	await deleteGroupMemberTuple(db, input);
 	return existing;
 }
 
 /**
  * Updates the `role` column of an existing membership; returns the
  * updated row, or null when no such membership exists.
+ *
+ * No tuple write: member tuples encode (group, member) membership
+ * only — the `role` label is not part of the tuple shape, so a role
+ * change leaves relation_tuples untouched.
  */
 export async function updateMemberRole(db: DbClient, input: UpdateGroupMemberRoleInput) {
 	const existing = await findMembership(db, input.groupId, input.memberKind, input.memberId);

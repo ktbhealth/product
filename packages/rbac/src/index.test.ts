@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import {
 	buildPermissions,
 	bumpEpoch,
+	deleteRelationTuples,
 	entityAuthz,
 	grantKey,
 	GroupMembership,
@@ -24,6 +25,7 @@ import {
 	requireEntityAccess,
 	splitPermission,
 	subjectRoles,
+	writeRelationTuple,
 } from "./index.ts";
 import { relationTuples, rolePermissions, roles } from "@ktb/db/schema";
 
@@ -990,5 +992,541 @@ describe("schema round-trip", () => {
 		const rows = await db.select().from(subjectRoles).where(eq(subjectRoles.subjectId, "u1"));
 		expect(rows).toHaveLength(2);
 		expect(rows.map((r) => r.roleId).sort((a, b) => a - b)).toEqual([1, 2]);
+	});
+});
+
+describe("canObject / requireObject", () => {
+	let db: DbClient;
+	let permissions: ReturnType<typeof buildPermissions>;
+
+	const tuple = (
+		over: Partial<{
+			objectType: string;
+			objectId: string;
+			relation: string;
+			subjectKind: string;
+			subjectId: string;
+			effect: string;
+			tenantId: string | null;
+			expiresAt: Date | null;
+			grantedBy: string | null;
+		}>,
+	) => ({
+		objectType: "doc",
+		objectId: "*",
+		relation: "read",
+		subjectKind: "user",
+		subjectId: "u1",
+		effect: "allow",
+		tenantId: null,
+		expiresAt: null,
+		grantedBy: null,
+		createdAt: new Date(0),
+		...over,
+	});
+
+	beforeAll(async () => {
+		db = makeDb(makeD1(DDL));
+		await db.insert(relationTuples).values([
+			// Direct user allow on a specific object.
+			tuple({ objectType: "patient", objectId: "p1", relation: "read", subjectId: "u1" }),
+			// Wildcard grant: every patient readable by u2.
+			tuple({ objectType: "patient", objectId: "*", relation: "read", subjectId: "u2" }),
+			// Deny beats allow for u3 on note n1.
+			tuple({ objectType: "note", objectId: "n1", relation: "read", subjectId: "u3" }),
+			tuple({
+				objectType: "note",
+				objectId: "n1",
+				relation: "read",
+				subjectId: "u3",
+				effect: "deny",
+			}),
+			// Group subject: g9 readers via the port.
+			tuple({
+				objectType: "report",
+				objectId: "r1",
+				relation: "read",
+				subjectKind: "group",
+				subjectId: "g9",
+			}),
+			// Role subject: editor members write doc d9.
+			tuple({
+				objectType: "role",
+				objectId: "editor",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u6",
+			}),
+			tuple({
+				objectType: "doc",
+				objectId: "d9",
+				relation: "write",
+				subjectKind: "role",
+				subjectId: "editor",
+			}),
+			// Nested role→role: team ← squad ← u7.
+			tuple({
+				objectType: "role",
+				objectId: "squad",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u7",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "team",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "squad",
+			}),
+			tuple({
+				objectType: "vault",
+				objectId: "v1",
+				relation: "open",
+				subjectKind: "role",
+				subjectId: "team",
+			}),
+			// Cycle: cycA ↔ cycB, with u9 reachable through the cycle.
+			tuple({
+				objectType: "role",
+				objectId: "cycA",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "cycB",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "cycB",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "cycA",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "cycB",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u9",
+			}),
+			tuple({
+				objectType: "lock",
+				objectId: "l1",
+				relation: "pick",
+				subjectKind: "role",
+				subjectId: "cycA",
+			}),
+			// Tenant-scoped tuple: only visible inside t1.
+			tuple({
+				objectType: "billing",
+				objectId: "inv1",
+				relation: "pay",
+				subjectId: "u10",
+				tenantId: "t1",
+			}),
+			// Expired tuple.
+			tuple({
+				objectType: "archive",
+				objectId: "a1",
+				relation: "read",
+				subjectId: "u11",
+				expiresAt: new Date(Date.now() - 1000),
+			}),
+			// Live tuple with a future expiry.
+			tuple({
+				objectType: "temp",
+				objectId: "t1",
+				relation: "use",
+				subjectId: "u12",
+				expiresAt: new Date(Date.now() + 60_000),
+			}),
+			// Corrupt effect counts as deny even alongside an allow.
+			tuple({ objectType: "weird", objectId: "w1", relation: "x", subjectId: "u13" }),
+			tuple({
+				objectType: "weird",
+				objectId: "w1",
+				relation: "x",
+				subjectId: "u13",
+				effect: "bogus",
+			}),
+			// Unknown subject kind never reaches.
+			tuple({
+				objectType: "alien",
+				objectId: "al1",
+				relation: "read",
+				subjectKind: "robot",
+				subjectId: "u14",
+			}),
+			// Role chain deeper than the depth cap: deep0←deep1←deep2←
+			// deep3←deep4←u22 — deep4 sits at depth 4 and is cut off.
+			tuple({
+				objectType: "deep",
+				objectId: "d1",
+				relation: "x",
+				subjectKind: "role",
+				subjectId: "deep0",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "deep0",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "deep1",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "deep1",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "deep2",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "deep2",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "deep3",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "deep3",
+				relation: "member",
+				subjectKind: "role",
+				subjectId: "deep4",
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "deep4",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u22",
+			}),
+			// Expiring grant (+10s) over an expiring member (+20s): the
+			// member expiry is later, exercising the notAfter min both ways.
+			tuple({
+				objectType: "note",
+				objectId: "n3",
+				relation: "read",
+				subjectKind: "role",
+				subjectId: "expRole",
+				expiresAt: new Date(Date.now() + 10_000),
+			}),
+			tuple({
+				objectType: "role",
+				objectId: "expRole",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u21",
+				expiresAt: new Date(Date.now() + 20_000),
+			}),
+		]);
+		permissions = buildPermissions(db, (userId) =>
+			Effect.succeed<readonly string[]>(userId === "u5" ? ["g9"] : []),
+		);
+	});
+
+	const can = (
+		userId: string,
+		objectType: string,
+		objectId: string,
+		relation: string,
+		tenantId?: string,
+	) =>
+		Effect.runPromise(
+			permissions
+				.canObject(objectType, objectId, relation, { tenantId })
+				.pipe(Effect.provideService(Principal, { userId })),
+		);
+
+	it("allows a direct user tuple on the specific object only", async () => {
+		expect(await can("u1", "patient", "p1", "read")).toBe(true);
+		// Second identical check hits the object cache.
+		expect(await can("u1", "patient", "p1", "read")).toBe(true);
+		// The specific-object tuple does not leak to other ids.
+		expect(await can("u1", "patient", "p2", "read")).toBe(false);
+		// u4 holds no patient tuples at all.
+		expect(await can("u4", "patient", "p1", "read")).toBe(false);
+	});
+
+	it("wildcard object_id tuples apply to every object of the type", async () => {
+		expect(await can("u2", "patient", "p9", "read")).toBe(true);
+		expect(await can("u2", "patient", "anything", "read")).toBe(true);
+		// …but only for the granted relation.
+		expect(await can("u2", "patient", "p9", "write")).toBe(false);
+	});
+
+	it("deny wins over allow for the same (object, relation)", async () => {
+		expect(await can("u3", "note", "n1", "read")).toBe(false);
+	});
+
+	it("resolves group subjects through the GroupMembership port", async () => {
+		expect(await can("u5", "report", "r1", "read")).toBe(true);
+		// u6 is not in g9.
+		expect(await can("u6", "report", "r1", "read")).toBe(false);
+	});
+
+	it("expands role subjects through member tuples", async () => {
+		expect(await can("u6", "doc", "d9", "write")).toBe(true);
+		expect(await can("u7", "doc", "d9", "write")).toBe(false);
+	});
+
+	it("expands nested role→role member chains", async () => {
+		expect(await can("u7", "vault", "v1", "open")).toBe(true);
+	});
+
+	it("terminates on member-tuple cycles", async () => {
+		expect(await can("u9", "lock", "l1", "pick")).toBe(true);
+		expect(await can("u10x", "lock", "l1", "pick")).toBe(false);
+	});
+
+	it("scopes tuples by tenant like grant resolution", async () => {
+		expect(await can("u10", "billing", "inv1", "pay", "t1")).toBe(true);
+		expect(await can("u10", "billing", "inv1", "pay")).toBe(false);
+		expect(await can("u10", "billing", "inv1", "pay", "t2")).toBe(false);
+	});
+
+	it("honours expires_at", async () => {
+		expect(await can("u11", "archive", "a1", "read")).toBe(false);
+		expect(await can("u12", "temp", "t1", "use")).toBe(true);
+	});
+
+	it("treats corrupt effects as deny", async () => {
+		expect(await can("u13", "weird", "w1", "x")).toBe(false);
+	});
+
+	it("never reaches unknown subject kinds", async () => {
+		expect(await can("u14", "alien", "al1", "read")).toBe(false);
+	});
+
+	it("cuts role expansion at the depth cap", async () => {
+		// deep0 expands 4 times (deep0→deep1→deep2→deep3→deep4);
+		// deep4 sits at depth 4 and is never expanded, so u22 — a
+		// member of deep4 — is unreachable.
+		expect(await can("u22", "deep", "d1", "x")).toBe(false);
+		// The expiring role grant still resolves while live.
+		expect(await can("u21", "note", "n3", "read")).toBe(true);
+	});
+
+	it("re-resolves object checks after an epoch bump", async () => {
+		const p = buildPermissions(db);
+		const asUser = (objectId: string) =>
+			Effect.runPromise(
+				p
+					.canObject("patient", objectId, "read")
+					.pipe(Effect.provideService(Principal, { userId: "u20" })),
+			);
+		expect(await asUser("px-epoch")).toBe(false);
+		await writeRelationTuple(db, {
+			objectType: "patient",
+			objectId: "px-epoch",
+			relation: "read",
+			subjectKind: "user",
+			subjectId: "u20",
+		});
+		expect(await asUser("px-epoch")).toBe(true);
+	});
+
+	it("re-resolves object checks once a cached expiry passes", async () => {
+		const t0 = Date.now();
+		await writeRelationTuple(db, {
+			objectType: "temp",
+			objectId: "t2",
+			relation: "use",
+			subjectKind: "user",
+			subjectId: "u23",
+			expiresAt: new Date(t0 + 5_000),
+		});
+		const p = buildPermissions(db);
+		const check = () =>
+			Effect.runPromise(
+				p.canObject("temp", "t2", "use").pipe(Effect.provideService(Principal, { userId: "u23" })),
+			);
+		const now = vi.spyOn(Date, "now").mockReturnValue(t0);
+		try {
+			expect(await check()).toBe(true);
+			// Warm hit while the expiry is still in the future.
+			expect(await check()).toBe(true);
+			// Exactly at expires_at the grant is gone — the cached entry's
+			// notAfter boundary forces a re-resolve.
+			now.mockReturnValue(t0 + 5_000);
+			expect(await check()).toBe(false);
+		} finally {
+			now.mockRestore();
+		}
+	});
+
+	it("clears the object cache once it reaches the bound", async () => {
+		const p = buildPermissions(db);
+		for (let i = 0; i < 1001; i++) {
+			await Effect.runPromise(
+				p
+					.canObject("patient", `bulk-${i}`, "read")
+					.pipe(Effect.provideService(Principal, { userId: "u1" })),
+			);
+		}
+		// Entries were evicted wholesale; resolution still works.
+		expect(
+			await Effect.runPromise(
+				p
+					.canObject("patient", "p1", "read")
+					.pipe(Effect.provideService(Principal, { userId: "u1" })),
+			),
+		).toBe(true);
+	});
+
+	it("fails closed with no Principal", async () => {
+		const result = await Effect.runPromise(
+			Effect.gen(function* () {
+				const p = buildPermissions(db);
+				return {
+					can: yield* p.canObject("patient", "p1", "read"),
+					err: yield* Effect.flip(p.requireObject("patient", "p1", "read")),
+				};
+			}),
+		);
+		expect(result.can).toBe(false);
+		expect(result.err).toBeInstanceOf(Forbidden);
+		expect(result.err.path).toBe("rbac.patient.p1.read");
+	});
+
+	it("requireObject succeeds on allow and fails Forbidden on deny", async () => {
+		// u1 holds patient.p1.read → requireObject resolves.
+		await Effect.runPromise(
+			buildPermissions(db)
+				.requireObject("patient", "p1", "read")
+				.pipe(Effect.provideService(Principal, { userId: "u1" })),
+		);
+		// u3's note.n1.read is denied → Forbidden with the object path.
+		const denied = await Effect.runPromise(
+			Effect.flip(
+				buildPermissions(db)
+					.requireObject("note", "n1", "read")
+					.pipe(Effect.provideService(Principal, { userId: "u3" })),
+			),
+		);
+		expect(denied).toBeInstanceOf(Forbidden);
+		expect(denied.path).toBe("rbac.note.n1.read");
+	});
+});
+
+describe("relation tuple writes", () => {
+	let db: DbClient;
+
+	beforeAll(async () => {
+		db = makeDb(makeD1(DDL));
+	});
+
+	it("writeRelationTuple inserts then upserts by natural key and bumps the epoch", async () => {
+		const before = await readEpoch(db);
+		await writeRelationTuple(db, {
+			objectType: "patient",
+			objectId: "px",
+			relation: "owner",
+			subjectKind: "user",
+			subjectId: "owner-1",
+		});
+		expect(await readEpoch(db)).toBe(before + 1);
+		let rows = await db.select().from(relationTuples).where(eq(relationTuples.objectId, "px"));
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.effect).toBe("allow");
+		expect(rows[0]?.tenantId).toBeNull();
+		expect(rows[0]?.expiresAt).toBeNull();
+		expect(rows[0]?.grantedBy).toBeNull();
+		const firstId = rows[0]?.id;
+
+		// Same natural key → update in place, no duplicate row.
+		// (tenantId is part of the key, so it stays null here.)
+		await writeRelationTuple(db, {
+			objectType: "patient",
+			objectId: "px",
+			relation: "owner",
+			subjectKind: "user",
+			subjectId: "owner-1",
+			effect: "deny",
+			expiresAt: new Date(1_700_000_000_000),
+			grantedBy: "admin",
+		});
+		expect(await readEpoch(db)).toBe(before + 2);
+		rows = await db.select().from(relationTuples).where(eq(relationTuples.objectId, "px"));
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.id).toBe(firstId);
+		expect(rows[0]?.effect).toBe("deny");
+		expect(rows[0]?.tenantId).toBeNull();
+		expect(rows[0]?.grantedBy).toBe("admin");
+		expect(rows[0]?.expiresAt?.getTime()).toBe(1_700_000_000_000);
+	});
+
+	it("writeRelationTuple treats NULL tenant as a distinct natural key", async () => {
+		await writeRelationTuple(db, {
+			objectType: "patient",
+			objectId: "py",
+			relation: "read",
+			subjectKind: "group",
+			subjectId: "g1",
+		});
+		await writeRelationTuple(db, {
+			objectType: "patient",
+			objectId: "py",
+			relation: "read",
+			subjectKind: "group",
+			subjectId: "g1",
+			tenantId: "t1",
+		});
+		const rows = await db.select().from(relationTuples).where(eq(relationTuples.objectId, "py"));
+		expect(rows).toHaveLength(2);
+	});
+
+	it("deleteRelationTuples filters and returns the count", async () => {
+		const epochBefore = await readEpoch(db);
+		// tenantId: null matches only global rows.
+		const globalDeleted = await deleteRelationTuples(db, {
+			objectType: "patient",
+			objectId: "py",
+			subjectId: "g1",
+			tenantId: null,
+		});
+		expect(globalDeleted).toBe(1);
+		expect(await readEpoch(db)).toBe(epochBefore + 1);
+		// tenantId: "t1" matches the tenant-scoped row.
+		expect(
+			await deleteRelationTuples(db, {
+				objectType: "patient",
+				objectId: "py",
+				tenantId: "t1",
+			}),
+		).toBe(1);
+		// tenantId omitted = any tenant; objectId omitted = any object.
+		await writeRelationTuple(db, {
+			objectType: "note",
+			objectId: "n-del",
+			relation: "read",
+			subjectKind: "user",
+			subjectId: "gone",
+		});
+		await writeRelationTuple(db, {
+			objectType: "note",
+			objectId: "n-del",
+			relation: "read",
+			subjectKind: "user",
+			subjectId: "gone",
+			tenantId: "t9",
+		});
+		expect(
+			await deleteRelationTuples(db, {
+				objectType: "note",
+				relation: "read",
+				subjectKind: "user",
+				subjectId: "gone",
+			}),
+		).toBe(2);
+	});
+
+	it("deleteRelationTuples does not bump the epoch on zero matches", async () => {
+		const epochBefore = await readEpoch(db);
+		const count = await deleteRelationTuples(db, {
+			objectType: "patient",
+			objectId: "does-not-exist",
+		});
+		expect(count).toBe(0);
+		expect(await readEpoch(db)).toBe(epochBefore);
 	});
 });

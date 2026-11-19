@@ -2,9 +2,33 @@ import { and, eq, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations } from "@ktb/db/schema";
+import { deleteRelationTuples, writeRelationTuple } from "@ktb/rbac";
 import { tenantIsZk } from "@ktb/vault";
 
 import { serializeAnamnesis, type SaveConsultationInput } from "./shared.ts";
+
+/**
+ * P-101: mirror the static permix ownership rule (`consultation.*` →
+ * `user_id === principal.userId`) into `relation_tuples` as a global
+ * (tenant_id NULL) `owner` grant — the subject pin to the recording
+ * doctor's user id is the fence; row tenant visibility stays a
+ * separate concern. `grantedBy` is the acting principal when the
+ * caller has one (null for system/test writes).
+ */
+const writeOwnerTuple = (
+	db: DbClient,
+	consultationId: number,
+	ownerId: string,
+	grantedBy: string | null,
+) =>
+	writeRelationTuple(db, {
+		objectType: "consultation",
+		objectId: String(consultationId),
+		relation: "owner",
+		subjectKind: "user",
+		subjectId: ownerId,
+		grantedBy,
+	});
 
 export async function createConsultation(
 	db: DbClient,
@@ -17,6 +41,7 @@ export async function createConsultation(
 		botId?: string;
 	},
 	tenantId: number | null = null,
+	grantedBy: string | null = null,
 ) {
 	const rows = await db
 		.insert(consultations)
@@ -31,7 +56,9 @@ export async function createConsultation(
 			createdAt: new Date(),
 		})
 		.returning({ id: consultations.id });
-	return rows[0]?.id ?? null;
+	const id = rows[0]?.id ?? null;
+	if (id !== null) await writeOwnerTuple(db, id, fields.userId, grantedBy);
+	return id;
 }
 
 /**
@@ -49,6 +76,12 @@ export async function deleteConsultationRow(db: DbClient, id: number) {
 	// audio key (null when the consultation has no recording).
 	if (rows.length === 0) return undefined;
 	await db.delete(consultations).where(eq(consultations.id, id));
+	// P-101: relation_tuples has no FK — drop the owner tuple with the row.
+	await deleteRelationTuples(db, {
+		objectType: "consultation",
+		objectId: String(id),
+		relation: "owner",
+	});
 	return rows[0]!.audioKey;
 }
 
@@ -126,6 +159,7 @@ export async function saveConsultation(
 	userId: string,
 	data: SaveConsultationInput,
 	tenantId: number | null = null,
+	grantedBy: string | null = null,
 ) {
 	const rows = await db
 		.insert(consultations)
@@ -139,7 +173,9 @@ export async function saveConsultation(
 			createdAt: new Date(),
 		})
 		.returning({ id: consultations.id });
-	return { id: rows[0]!.id };
+	const id = rows[0]!.id;
+	await writeOwnerTuple(db, id, userId, grantedBy);
+	return { id };
 }
 
 export async function recordConsent(db: DbClient, id: number, scope?: SQL) {

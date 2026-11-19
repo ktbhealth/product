@@ -34,14 +34,18 @@ vi.mock("@ktb/server-fns", () => ({
 }));
 /** Minimal DbClient — `deleteConsultationRow`'s rollback reads the
  * audio key then deletes: `db.select().from().where().limit()` +
- * `db.delete().where()`. */
+ * `db.delete().where()`; the P-101 tuple cleanup then runs
+ * `db.delete(relationTuples).where(…).returning()` on the same
+ * thenable-with-returning shape (empty result → no epoch bump). */
+const whereResult = () =>
+	Object.assign(Promise.resolve(undefined), { returning: vi.fn(async () => []) });
 const fakeDb = {
 	select: vi.fn(() => ({
 		from: vi.fn(() => ({
 			where: vi.fn(() => ({ limit: vi.fn(async () => [{ audioKey: null }]) })),
 		})),
 	})),
-	delete: vi.fn(() => ({ where: vi.fn(async () => undefined) })),
+	delete: vi.fn(() => ({ where: vi.fn(whereResult) })),
 } as unknown as Db["Service"];
 
 import { Consultations } from "./index.ts";

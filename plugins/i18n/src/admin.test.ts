@@ -81,6 +81,8 @@ const globalOnlyPermissions: PermissionsShape = {
 	permissionsFor: () => Effect.succeed(new Map()),
 	canFor: () => Effect.succeed(true),
 	can: () => Effect.succeed(true),
+	canObject: () => Effect.succeed(true),
+	requireObject: () => Effect.void,
 	requirePermissionFor: (_u, _r, _a, tenantId) =>
 		tenantId === undefined
 			? Effect.void

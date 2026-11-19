@@ -145,6 +145,27 @@ export interface PermissionsShape {
 		action: string,
 		opts?: PermissionOptions,
 	) => Effect.Effect<void, Forbidden>;
+	/** Object-level ReBAC check bound to the Principal: does the current
+	 * principal hold `relation` on (objectType, objectId)? Matches tuples
+	 * with object_id = objectId OR '*' (wildcard grants apply to every
+	 * object of the type). Userset subjects expand: 'user' compares to
+	 * principal.userId, 'group' via the GroupMembership port, 'role'
+	 * recursively through member tuples (depth cap 4, visited-set cycle
+	 * guard). Deny wins; tenant_id NULL-or-match and expires_at honored
+	 * like grant resolution. Fails closed (false) with no Principal. */
+	readonly canObject: (
+		objectType: string,
+		objectId: string,
+		relation: string,
+		opts?: PermissionOptions,
+	) => Effect.Effect<boolean>;
+	/** canObject + Forbidden(`rbac.<objectType>.<objectId>.<relation>`), bound to Principal. */
+	readonly requireObject: (
+		objectType: string,
+		objectId: string,
+		relation: string,
+		opts?: PermissionOptions,
+	) => Effect.Effect<void, Forbidden>;
 	/** Bump the epoch and clear the local cache — call after any write
 	 * to role_permissions / subject_roles / relation_tuples /
 	 * membership tables. */
@@ -162,6 +183,14 @@ interface CacheEntry {
 	readonly notAfter: number | null;
 }
 
+interface ObjectCacheEntry {
+	readonly epoch: number;
+	readonly result: boolean;
+	/** Earliest tuple/member expiry (ms) seen during the check —
+	 * re-resolve once it passes so `expires_at` is honoured on hits. */
+	readonly notAfter: number | null;
+}
+
 const keyOf = (userId: string, tenantId: string | undefined): string =>
 	`${userId}${GRANT_SEP}${tenantId ?? ""}`;
 
@@ -176,6 +205,138 @@ export const buildPermissions = (
 	groupIdsFor?: (userId: string) => Effect.Effect<readonly string[]>,
 ): PermissionsShape => {
 	const cache = new Map<string, CacheEntry>();
+	const objectCache = new Map<string, ObjectCacheEntry>();
+
+	/** Max role→role member hops when expanding 'role' subjects in an
+	 * object check (cycles are also cut by the visited set). */
+	const MAX_ROLE_DEPTH = 4;
+
+	const resolveObject = (
+		userId: string,
+		objectType: string,
+		objectId: string,
+		relation: string,
+		tenantId: string | number | undefined,
+	): Effect.Effect<boolean> =>
+		Effect.gen(function* () {
+			const tid = tenantId === undefined ? undefined : String(tenantId);
+			const epoch = yield* Effect.promise(() => readEpoch(db));
+			const key = `obj${GRANT_SEP}${objectType}${GRANT_SEP}${objectId}${GRANT_SEP}${relation}${GRANT_SEP}${userId}${GRANT_SEP}${tid ?? ""}`;
+			const now = Date.now();
+			const hit = objectCache.get(key);
+			if (
+				hit !== undefined &&
+				hit.epoch === epoch &&
+				(hit.notAfter === null || now < hit.notAfter)
+			) {
+				return hit.result;
+			}
+
+			const groupIds = groupIdsFor === undefined ? [] : yield* groupIdsFor(userId);
+			// Same tenant/expiry scope as grant resolution: tenant_id NULL
+			// is global, set = scoped; absent tenant context sees global
+			// tuples only.
+			// Stryker disable next-line ConditionalExpression: when tid is undefined the or-branch binds eq(tenantId, undefined) as NULL; `tenant_id = NULL` is never true, so `isNull OR (tenant_id = NULL)` is identical to `isNull` in a WHERE clause.
+			const tenantCond =
+				tid === undefined
+					? isNull(relationTuples.tenantId)
+					: or(isNull(relationTuples.tenantId), eq(relationTuples.tenantId, tid));
+			const unexpired = or(
+				isNull(relationTuples.expiresAt),
+				gt(relationTuples.expiresAt, new Date(now)),
+			);
+			let notAfter: number | null = null;
+			const noteExpiry = (expiresAt: Date | null) => {
+				const exp = expiresAt === null ? null : expiresAt.getTime();
+				// Stryker disable next-line EqualityOperator: exp === notAfter would assign the identical value — notAfter only ever stores the minimum expiry.
+				if (exp !== null && (notAfter === null || exp < notAfter)) notAfter = exp;
+			};
+
+			// Does `subject` (a tuple subject: user / group / role)
+			// reach the principal? 'role' subjects expand through member
+			// tuples (object_type='role', object_id=<role name>,
+			// relation='member'); nested roles recurse up to
+			// MAX_ROLE_DEPTH hops with a visited set for cycles.
+			// Member-tuple effect is ignored — membership is binary,
+			// matching grant resolution.
+			const subjectReaches = (
+				subjectKind: string,
+				subjectId: string,
+				depth: number,
+				visited: Set<string>,
+			): Effect.Effect<boolean> =>
+				Effect.gen(function* () {
+					if (subjectKind === "user") return subjectId === userId;
+					if (subjectKind === "group") return groupIds.includes(subjectId);
+					if (subjectKind !== "role") return false;
+					if (depth >= MAX_ROLE_DEPTH) return false;
+					const visitKey = `role${GRANT_SEP}${subjectId}`;
+					if (visited.has(visitKey)) return false;
+					visited.add(visitKey);
+					const memberRows = yield* Effect.promise(() =>
+						db
+							.select({
+								subjectKind: relationTuples.subjectKind,
+								subjectId: relationTuples.subjectId,
+								expiresAt: relationTuples.expiresAt,
+							})
+							.from(relationTuples)
+							.where(
+								and(
+									eq(relationTuples.objectType, "role"),
+									eq(relationTuples.objectId, subjectId),
+									eq(relationTuples.relation, "member"),
+									tenantCond,
+									unexpired,
+								),
+							),
+					);
+					for (const member of memberRows) {
+						noteExpiry(member.expiresAt);
+						if (yield* subjectReaches(member.subjectKind, member.subjectId, depth + 1, visited)) {
+							return true;
+						}
+					}
+					return false;
+				});
+
+			const tupleRows = yield* Effect.promise(() =>
+				db
+					.select({
+						subjectKind: relationTuples.subjectKind,
+						subjectId: relationTuples.subjectId,
+						effect: relationTuples.effect,
+						expiresAt: relationTuples.expiresAt,
+					})
+					.from(relationTuples)
+					.where(
+						and(
+							eq(relationTuples.objectType, objectType),
+							eq(relationTuples.relation, relation),
+							or(eq(relationTuples.objectId, objectId), eq(relationTuples.objectId, "*")),
+							tenantCond,
+							unexpired,
+						),
+					),
+			);
+
+			let reachedAllow = false;
+			let reachedDeny = false;
+			const visited = new Set<string>();
+			for (const row of tupleRows) {
+				noteExpiry(row.expiresAt);
+				if (!(yield* subjectReaches(row.subjectKind, row.subjectId, 0, visited))) continue;
+				// Fail closed like grants: only the literal "allow"
+				// grants; "deny" or corrupt effects deny.
+				if (row.effect === "allow") reachedAllow = true;
+				else reachedDeny = true;
+			}
+			const result = reachedAllow && !reachedDeny;
+			// Stryker disable next-line ConditionalExpression,EqualityOperator,CallExpression: CACHE_LIMIT only bounds memory — every hit revalidates epoch and notAfter, so when or whether objectCache.clear() runs cannot change any result.
+			if (objectCache.size >= CACHE_LIMIT) objectCache.clear();
+			objectCache.set(key, { epoch, result, notAfter });
+			return result;
+		});
 
 	const resolve = Effect.fnUntraced(function* (
 		userId: string,
@@ -358,6 +519,30 @@ export const buildPermissions = (
 				: requirePermissionFor(principal.userId, resource, action, opts?.tenantId),
 		);
 
+	const canObject: PermissionsShape["canObject"] = (objectType, objectId, relation, opts) =>
+		Effect.flatMap(Principal, (principal) =>
+			principal === null
+				? Effect.succeed(false)
+				: resolveObject(principal.userId, objectType, objectId, relation, opts?.tenantId),
+		);
+
+	const requireObject: PermissionsShape["requireObject"] = (
+		objectType,
+		objectId,
+		relation,
+		opts,
+	) => {
+		const path = `rbac.${objectType}.${objectId}.${relation}`;
+		return Effect.flatMap(Principal, (principal) =>
+			principal === null
+				? Effect.fail(new Forbidden({ path }))
+				: Effect.flatMap(
+						resolveObject(principal.userId, objectType, objectId, relation, opts?.tenantId),
+						(ok) => (ok ? Effect.void : Effect.fail(new Forbidden({ path }))),
+					),
+		);
+	};
+
 	const invalidate: PermissionsShape["invalidate"] = () =>
 		// Stryker disable next-line ArrowFunction: bumpEpoch already invalidates every cached entry through the epoch check on read — cache.clear() is redundant.
 		Effect.promise(() => bumpEpoch(db)).pipe(Effect.tap(() => Effect.sync(() => cache.clear())));
@@ -368,6 +553,8 @@ export const buildPermissions = (
 		can,
 		requirePermissionFor,
 		requirePermission,
+		canObject,
+		requireObject,
 		invalidate,
 	};
 };
@@ -389,6 +576,125 @@ export const permissionsService = Effect.gen(function* () {
 });
 
 export const PermissionsLive = Layer.effect(Permissions, permissionsService);
+
+// ---------- relation tuple writes ----------
+
+/** Tenant predicate for tuple natural-key matching: NULL tenantId
+ * matches only NULL rows (SQL `=` never matches NULL, so global
+ * tuples are checked separately). */
+const tupleTenant = (tenantId: string | null) =>
+	tenantId === null
+		? sql`${relationTuples.tenantId} is null`
+		: eq(relationTuples.tenantId, tenantId);
+
+/** Tuple fields accepted by `writeRelationTuple` — every optional
+ * field defaults to the "global, never expires, system-granted"
+ * shape (`effect` "allow", `tenantId`/`expiresAt`/`grantedBy` null). */
+export interface RelationTupleWrite {
+	readonly objectType: string;
+	readonly objectId: string;
+	readonly relation: string;
+	readonly subjectKind: "user" | "group" | "role";
+	readonly subjectId: string;
+	readonly effect?: "allow" | "deny";
+	readonly tenantId?: string | null;
+	readonly expiresAt?: Date | null;
+	readonly grantedBy?: string | null;
+}
+
+/**
+ * Upsert a `relation_tuples` row by its natural key
+ * (object_type, object_id, relation, subject_kind, subject_id,
+ * tenant_id — NULL-safe). On a hit the mutable fields
+ * (effect/expires_at/granted_by/tenant_id) are updated in place; on a
+ * miss the row is inserted. Bumps the permission epoch so every
+ * cached grant/object resolution re-reads. Uniqueness is enforced
+ * here, not by the schema (SQLite treats NULLs as distinct).
+ */
+export const writeRelationTuple = async (
+	db: DbClient,
+	tuple: RelationTupleWrite,
+): Promise<void> => {
+	const tenantId = tuple.tenantId ?? null;
+	const effect = tuple.effect ?? "allow";
+	const expiresAt = tuple.expiresAt ?? null;
+	const grantedBy = tuple.grantedBy ?? null;
+	const rows = await db
+		.select({ id: relationTuples.id })
+		.from(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, tuple.objectType),
+				eq(relationTuples.objectId, tuple.objectId),
+				eq(relationTuples.relation, tuple.relation),
+				eq(relationTuples.subjectKind, tuple.subjectKind),
+				eq(relationTuples.subjectId, tuple.subjectId),
+				tupleTenant(tenantId),
+			),
+		);
+	const existing = rows[0];
+	if (existing !== undefined) {
+		await db
+			.update(relationTuples)
+			.set({ effect, expiresAt, grantedBy, tenantId })
+			.where(eq(relationTuples.id, existing.id));
+	} else {
+		await db.insert(relationTuples).values({
+			objectType: tuple.objectType,
+			objectId: tuple.objectId,
+			relation: tuple.relation,
+			subjectKind: tuple.subjectKind,
+			subjectId: tuple.subjectId,
+			effect,
+			tenantId,
+			expiresAt,
+			grantedBy,
+			createdAt: new Date(),
+		});
+	}
+	await bumpEpoch(db);
+};
+
+/**
+ * Delete `relation_tuples` rows matching the given fields — every
+ * field is optional except `objectType`; `objectId` omitted matches
+ * every object id of the type. `tenantId` semantics: `undefined`
+ * matches any tenant (the field is skipped), `null` matches only
+ * global (tenant_id IS NULL) rows, a string matches that tenant.
+ * Returns the number of deleted rows and bumps the permission epoch
+ * only when at least one row was removed.
+ */
+export const deleteRelationTuples = async (
+	db: DbClient,
+	match: {
+		readonly objectType: string;
+		readonly objectId?: string;
+		readonly relation?: string;
+		readonly subjectKind?: string;
+		readonly subjectId?: string;
+		readonly tenantId?: string | null;
+	},
+): Promise<number> => {
+	const conds = [eq(relationTuples.objectType, match.objectType)];
+	if (match.objectId !== undefined) conds.push(eq(relationTuples.objectId, match.objectId));
+	if (match.relation !== undefined) conds.push(eq(relationTuples.relation, match.relation));
+	if (match.subjectKind !== undefined)
+		conds.push(eq(relationTuples.subjectKind, match.subjectKind));
+	if (match.subjectId !== undefined) conds.push(eq(relationTuples.subjectId, match.subjectId));
+	if (match.tenantId !== undefined) {
+		conds.push(
+			match.tenantId === null
+				? sql`${relationTuples.tenantId} is null`
+				: eq(relationTuples.tenantId, match.tenantId),
+		);
+	}
+	const rows = await db
+		.delete(relationTuples)
+		.where(and(...conds))
+		.returning({ id: relationTuples.id });
+	if (rows.length > 0) await bumpEpoch(db);
+	return rows.length;
+};
 
 // ---------- entity authz seam ----------
 

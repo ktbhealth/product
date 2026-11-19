@@ -3,6 +3,7 @@ import { and, desc, eq, isNotNull, type SQL } from "drizzle-orm";
 import type { DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
 import { decodeAnamnesisOption } from "@ktb/anamnesis/schema";
+import { deleteRelationTuples } from "@ktb/rbac";
 
 import {
 	parseStored,
@@ -33,13 +34,22 @@ export async function patientConsultationRows(db: DbClient, patientId: number) {
  * stray cross-owner link from silently surviving (or blocking) the
  * patient delete via the FK. */
 export async function deletePatientConsultations(db: DbClient, patientId: number, scope?: SQL) {
-	await db
-		.delete(consultations)
-		.where(
-			scope === undefined
-				? eq(consultations.patientId, patientId)
-				: and(eq(consultations.patientId, patientId), scope),
-		);
+	const where =
+		scope === undefined
+			? eq(consultations.patientId, patientId)
+			: and(eq(consultations.patientId, patientId), scope);
+	// Ids first: relation_tuples has no FK, so each deleted row's owner
+	// tuple must be dropped explicitly (P-101).
+	const doomed = await db.select({ id: consultations.id }).from(consultations).where(where);
+	if (doomed.length === 0) return;
+	await db.delete(consultations).where(where);
+	for (const row of doomed) {
+		await deleteRelationTuples(db, {
+			objectType: "consultation",
+			objectId: String(row.id),
+			relation: "owner",
+		});
+	}
 }
 
 export async function listConsultations(

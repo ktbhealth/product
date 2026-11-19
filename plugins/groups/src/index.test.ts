@@ -15,7 +15,11 @@ import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "
 import { PermissionInvalidator } from "@ktb/rbac";
 
 import { GroupsQueries } from "./api.ts";
-import { groups as groupsTable } from "@ktb/db/schema";
+import {
+	groupMembers as groupMembersTable,
+	groups as groupsTable,
+	relationTuples as relationTuplesTable,
+} from "@ktb/db/schema";
 import {
 	addMember,
 	createGroup,
@@ -43,6 +47,10 @@ INSERT INTO groups (name, slug, kind, meta, created_at, updated_at) VALUES
   ('Org B', 'org-b', 'org', NULL, 2000, 2000);
 CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
 CREATE UNIQUE INDEX group_members_group_member_idx ON group_members (group_id, member_kind, member_id);
+CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
+CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
+CREATE INDEX relation_tuples_subject_idx ON relation_tuples (subject_kind, subject_id);
+CREATE INDEX relation_tuples_natural_idx ON relation_tuples (object_type, object_id, relation, subject_kind, subject_id);
 INSERT INTO group_members (group_id, member_kind, member_id, role, created_at) VALUES
   (1, 'user', 'u1', 'admin', 1000),
   (1, 'user', 'u2', NULL, 1000),
@@ -165,6 +173,107 @@ describe("groups repo", () => {
 		expect(await deleteGroup(db, 2)).toBe(true);
 		expect(await getGroup(db, 2)).toBeNull();
 		expect(await deleteGroup(db, 999)).toBe(false);
+	});
+
+	it("mirrors membership writes into relation_tuples (P-101)", async () => {
+		const group = (await createGroup(db, {
+			name: "Tuples",
+			slug: "tuples",
+			kind: "cohort",
+		}))!;
+		const tuplesFor = async () =>
+			(await db.select().from(relationTuplesTable)).filter(
+				(t) => t.objectType === "group" && t.objectId === String(group.id),
+			);
+
+		// Members seeded in DDL predate the dual-write — mutations below
+		// are what create tuples.
+		await addMember(db, {
+			groupId: group.id,
+			memberKind: "user",
+			memberId: "tu1",
+			role: "admin",
+		});
+		await addMember(db, { groupId: group.id, memberKind: "patient", memberId: "tp1" });
+		let tuples = await tuplesFor();
+		expect(tuples).toHaveLength(2);
+		expect(tuples.find((t) => t.subjectId === "tu1")).toMatchObject({
+			objectType: "group",
+			objectId: String(group.id),
+			relation: "member",
+			subjectKind: "user",
+			effect: "allow",
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: null,
+		});
+		expect(tuples.find((t) => t.subjectId === "tp1")?.subjectKind).toBe("patient");
+
+		// Role changes don't touch tuples — `role` isn't part of the
+		// tuple encoding.
+		await updateMemberRole(db, {
+			groupId: group.id,
+			memberKind: "user",
+			memberId: "tu1",
+			role: "lead",
+		});
+		expect(await tuplesFor()).toHaveLength(2);
+
+		await removeMember(db, {
+			groupId: group.id,
+			memberKind: "patient",
+			memberId: "tp1",
+		});
+		tuples = await tuplesFor();
+		expect(tuples.map((t) => t.subjectId)).toEqual(["tu1"]);
+
+		// deleteGroup sweeps every member tuple for the object.
+		expect(await deleteGroup(db, group.id)).toBe(true);
+		expect(await tuplesFor()).toHaveLength(0);
+	});
+
+	it("re-adding a member refreshes an existing tuple instead of duplicating (P-101)", async () => {
+		const group = (await createGroup(db, {
+			name: "Readd",
+			slug: "readd",
+			kind: "cohort",
+		}))!;
+		const member = (await addMember(db, {
+			groupId: group.id,
+			memberKind: "user",
+			memberId: "ru1",
+		}))!;
+		const tuplesFor = async () =>
+			(await db.select().from(relationTuplesTable)).filter(
+				(t) => t.objectType === "group" && t.objectId === String(group.id),
+			);
+		const [tuple] = await tuplesFor();
+		expect(tuple).toBeDefined();
+
+		// The member row can be lost without tuple cleanup (a cascade or
+		// partial write skips removeMember) — re-adding must then UPDATE
+		// the surviving tuple in place, never INSERT a duplicate. Poison
+		// a grant field first so the refresh is observable.
+		await db.delete(groupMembersTable).where(eq(groupMembersTable.id, member.id));
+		await db
+			.update(relationTuplesTable)
+			.set({ expiresAt: new Date(12345), grantedBy: "stale" })
+			.where(eq(relationTuplesTable.id, tuple.id));
+
+		const readded = await addMember(db, {
+			groupId: group.id,
+			memberKind: "user",
+			memberId: "ru1",
+		});
+		expect(readded).not.toBeNull();
+		const tuples = await tuplesFor();
+		expect(tuples).toHaveLength(1);
+		expect(tuples[0]).toMatchObject({
+			id: tuple.id,
+			effect: "allow",
+			expiresAt: null,
+			grantedBy: null,
+		});
 	});
 });
 
