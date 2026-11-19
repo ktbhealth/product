@@ -36,6 +36,8 @@ const coverage: readonly NamespaceCoverage[] = [
 		defaultLocale: "en",
 		keyCount: 4,
 		translated: { en: 4, "pt-BR": 3 },
+		manifestHash: "0123abcd",
+		manifestDrift: "no",
 	},
 	// Coverage-only row: no manifest entry.
 	{
@@ -44,6 +46,8 @@ const coverage: readonly NamespaceCoverage[] = [
 		defaultLocale: "en",
 		keyCount: 2,
 		translated: { en: 2 },
+		manifestHash: "",
+		manifestDrift: "unrecorded",
 	},
 ];
 
@@ -107,6 +111,33 @@ describe("NamespacesPage", () => {
 		// patients.messages is missing 1 pt-BR key).
 		expect(
 			await screen.findByText("4 namespaces · 11 keys · 2 locales below full coverage"),
+		).toBeTruthy();
+	});
+
+	it("shows a contract-drift badge only on drifted rows and counts them in the summary", async () => {
+		const driftedCoverage: readonly NamespaceCoverage[] = [
+			{
+				namespace: "patients.messages",
+				pluginId: "patients.services",
+				defaultLocale: "en",
+				keyCount: 4,
+				translated: { en: 4, "pt-BR": 3 },
+				manifestHash: "ffff0000",
+				manifestDrift: "yes",
+			},
+			coverage[1],
+		];
+		render(<NamespacesPage data={{ namespaces, coverage: driftedCoverage, locales }} />);
+		await screen.findByText("patients.messages");
+		const patientsRow = screen.getByText("patients.messages").closest("tr") as HTMLElement;
+		expect(within(patientsRow).getByText("contract changed")).toBeTruthy();
+		// coverage.only is "unrecorded" — no badge.
+		const orphanRow = screen.getByText("coverage.only").closest("tr") as HTMLElement;
+		expect(within(orphanRow).queryByText("contract changed")).toBeNull();
+		expect(
+			await screen.findByText(
+				"4 namespaces · 11 keys · 2 locales below full coverage · 1 namespace with contract drift",
+			),
 		).toBeTruthy();
 	});
 

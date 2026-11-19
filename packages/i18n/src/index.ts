@@ -40,4 +40,5 @@ export { I18n, bindNamespace, type I18nShape, type TParams } from "./service.ts"
 // can code-split/lazy-load it.
 export { LOCALE_META } from "./locales.ts";
 export { I18N_BASE_CATALOG, I18N_BASE_LOCALES, I18N_MANIFEST } from "./manifest.gen.ts";
+export { i18nManifestHash } from "./manifest.ts";
 export type { I18nKey, I18nTypedT } from "./types.gen.ts";

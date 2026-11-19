@@ -1,7 +1,7 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
-import { parseMessage } from "@ktb/i18n";
+import { i18nManifestHash, parseMessage } from "@ktb/i18n";
 
 import { MAX_MESSAGE_VALUE_LENGTH, validateMessageId } from "./contract.ts";
 import { i18nMessages, i18nNamespaces } from "./schema.ts";
@@ -184,18 +184,30 @@ export const syncBaseline = async (
 			namespace: ns,
 			pluginId: "",
 			defaultLocale: "en",
+			// Snapshot the code-side contract at registration: drift checks
+			// compare this against the live I18N_MANIFEST. "" for
+			// namespaces absent from the manifest (DB-only copy). On
+			// conflict only manifest_hash refreshes (excluded value) —
+			// pluginId/defaultLocale stay as first registered, and a
+			// baseline re-import is the ops path that clears drift.
+			// Runtime seed only reaches this on an empty namespaces
+			// table, so the update arm never fires there.
+			manifestHash: i18nManifestHash(ns) ?? "",
 		}));
 		// Same bound-parameter ceiling as the message insert — 4 params
-		// per namespace row: drizzle binds the manifest_hash column
-		// default ("") explicitly alongside namespace/pluginId/
-		// defaultLocale (created_at stays a SQL expression). At 3 the
-		// chunk overshot D1's 100-param cap once ~25 namespaces seeded.
+		// per namespace row: drizzle binds namespace/pluginId/
+		// defaultLocale/manifest_hash explicitly (created_at stays a SQL
+		// expression). At 3 the chunk overshot D1's 100-param cap once
+		// ~25 namespaces seeded.
 		const nsChunk = Math.floor((MAX_BOUND_PARAMETERS - 1) / 4);
 		for (let i = 0; i < nsRows.length; i += nsChunk) {
 			await db
 				.insert(i18nNamespaces)
 				.values(nsRows.slice(i, i + nsChunk))
-				.onConflictDoNothing();
+				.onConflictDoUpdate({
+					target: i18nNamespaces.namespace,
+					set: { manifestHash: sql`excluded.manifest_hash` },
+				});
 		}
 	}
 

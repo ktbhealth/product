@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 
 import { PSEUDO_LOCALE } from "@ktb/i18n";
+import { Badge } from "@ktbhealth/ui/components/badge";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
@@ -26,6 +27,7 @@ interface NamespaceRow {
 	readonly defaultLocale: string;
 	readonly keyCount: number;
 	readonly translated: Readonly<Record<string, number>> | undefined;
+	readonly manifestDrift: NamespaceCoverage["manifestDrift"];
 }
 
 /**
@@ -35,7 +37,8 @@ interface NamespaceRow {
  * two lists can disagree (a namespace may have rows but no manifest
  * entry, or vice versa), so rows are the union of both, sorted by
  * namespace name; coverage rows win on pluginId/defaultLocale when
- * the manifest side is missing.
+ * the manifest side is missing. Rows also carry the manifest-drift
+ * verdict from coverage(): "yes" renders a warning badge.
  */
 export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 	// qps is pseudo-localized at slice time — it has no stored rows,
@@ -59,6 +62,7 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 				defaultLocale: ns?.defaultLocale ?? cov?.defaultLocale ?? "",
 				keyCount: cov?.keyCount ?? ns?.messageCount ?? 0,
 				translated: cov?.translated,
+				manifestDrift: cov?.manifestDrift ?? "unrecorded",
 			};
 		});
 	}, [data.namespaces, data.coverage]);
@@ -73,7 +77,8 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 				return (r.translated?.[l.code] ?? 0) < r.keyCount;
 			}),
 		).length;
-		return { totalKeys, incompleteLocales };
+		const drifted = rows.filter((r) => r.manifestDrift === "yes").length;
+		return { totalKeys, incompleteLocales, drifted };
 	}, [rows, locales]);
 
 	return (
@@ -87,6 +92,8 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 					{rows.length} {rows.length === 1 ? "namespace" : "namespaces"} · {summary.totalKeys}{" "}
 					{summary.totalKeys === 1 ? "key" : "keys"} · {summary.incompleteLocales}{" "}
 					{summary.incompleteLocales === 1 ? "locale" : "locales"} below full coverage
+					{summary.drifted > 0 &&
+						` · ${summary.drifted} ${summary.drifted === 1 ? "namespace" : "namespaces"} with contract drift`}
 				</p>
 			)}
 			<Table>
@@ -104,7 +111,16 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 				<TableBody>
 					{rows.map((row) => (
 						<TableRow key={row.namespace}>
-							<TableCell className="font-mono text-xs">{row.namespace}</TableCell>
+							<TableCell className="font-mono text-xs">
+								<span className="inline-flex items-center gap-2">
+									{row.namespace}
+									{row.manifestDrift === "yes" && (
+										<Badge variant="secondary" className="font-sans text-warning">
+											contract changed
+										</Badge>
+									)}
+								</span>
+							</TableCell>
 							<TableCell className="text-xs text-muted-foreground">
 								{row.pluginId === "" ? "—" : row.pluginId}
 							</TableCell>
