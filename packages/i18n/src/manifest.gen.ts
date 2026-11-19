@@ -4885,6 +4885,15 @@ export const I18N_MANIFEST = {
 		deleteConfirm: {
 			params: [],
 		},
+		deleteUsedBy: {
+			params: [],
+		},
+		deleteActionPrompt: {
+			params: [],
+		},
+		deleteInUse: {
+			params: [],
+		},
 		deletedEmpty: {
 			params: [],
 		},

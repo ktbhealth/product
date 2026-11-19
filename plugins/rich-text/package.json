@@ -7,7 +7,8 @@
 		"./schema": "./src/schema.ts",
 		"./service": "./src/service.ts",
 		"./fns": "./src/fns.ts",
-		"./views": "./src/views/index.ts"
+		"./views": "./src/views/index.ts",
+		"./delete-hooks": "./src/delete-hooks.ts"
 	},
 	"dependencies": {
 		"@ktb/authz": "workspace:*",

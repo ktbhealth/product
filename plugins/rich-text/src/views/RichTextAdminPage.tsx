@@ -3,19 +3,9 @@ import { useLocation, useRouter } from "@tanstack/react-router";
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
-import type { PageI18nSlice } from "@ktb/kernel";
+import type { PageI18nSlice, Plugin } from "@ktb/kernel";
 
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@ktbhealth/ui/components/alert-dialog";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
@@ -39,12 +29,14 @@ import {
 	createRichTextFn,
 	deleteRichTextFn,
 	richTextDocFn,
+	richTextUsageFn,
 	updateRichTextFn,
 	type RichTextDocWire,
 	type RichTextMetaWire,
 } from "../fns.ts";
 import { I18N_NAMESPACE, richTextMessages, type RichTextMessages } from "../i18n.ts";
 import { isRichTextEmpty } from "../value.ts";
+import { RichTextDeleteDialog } from "./delete-dialog.tsx";
 
 /** List row the panel loader hands down — the `rich_text` meta narrowed
  * to id/title/updatedAt (ISO string). */
@@ -52,6 +44,9 @@ export type RichTextDocRow = RichTextMetaWire;
 
 export interface RichTextAdminPageProps {
 	readonly docs: readonly RichTextDocRow[];
+	/** Discovered plugin registry — feeds the delete dialog's
+	 * `dialogAction` chrome collection. */
+	readonly plugins?: readonly Plugin[];
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -83,9 +78,10 @@ const asValue = (content: unknown): unknown =>
  * through the plugin's server fns; the loader re-runs via
  * `router.invalidate()` after writes.
  */
-export function RichTextAdminPage({ docs, i18n, locale }: RichTextAdminPageProps) {
+export function RichTextAdminPage({ docs, plugins = [], i18n, locale }: RichTextAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, richTextMessages(locale));
 	const router = useRouter();
+	const pathname = useLocation({ select: (l) => l.pathname });
 	const locationKey = useLocation({ select: (l) => l.state.key });
 	const [view, setView] = useState<EditorView | null>(null);
 	const lastLocationKeyRef = useRef(locationKey);
@@ -122,19 +118,25 @@ export function RichTextAdminPage({ docs, i18n, locale }: RichTextAdminPageProps
 		}
 	};
 
-	const remove = async () => {
-		/* v8 ignore next -- the delete action only exists while the confirm dialog is open */
+	const confirmDelete = async (actionId: string | null) => {
+		/* v8 ignore next -- the confirm action only exists while the dialog is open */
 		if (deleteTarget === null) return;
 		setBusy(true);
+		setDeleteTarget(null);
 		try {
-			const ok = await deleteRichTextFn({ data: { id: deleteTarget.id } });
-			if (ok) await router.invalidate();
-			else showToast(t.deleteFailed);
+			const ok = await deleteRichTextFn({
+				data: actionId === null ? { id: deleteTarget.id } : { id: deleteTarget.id, actionId },
+			});
+			if (ok) {
+				await router.invalidate();
+				showToast(t.deleted);
+			} else {
+				showToast(t.deleteFailed);
+			}
 		} catch {
 			showToast(t.deleteFailed);
 		} finally {
 			setBusy(false);
-			setDeleteTarget(null);
 		}
 	};
 
@@ -145,6 +147,8 @@ export function RichTextAdminPage({ docs, i18n, locale }: RichTextAdminPageProps
 					key={view.id}
 					id={view.id}
 					initial={view.initial}
+					plugins={plugins}
+					pathname={pathname}
 					t={t}
 					onExit={() => {
 						setView(null);
@@ -218,25 +222,15 @@ export function RichTextAdminPage({ docs, i18n, locale }: RichTextAdminPageProps
 				</div>
 			)}
 
-			<AlertDialog
-				open={deleteTarget !== null}
-				onOpenChange={(open) => !open && setDeleteTarget(null)}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{t.deleteTitle}</AlertDialogTitle>
-						<AlertDialogDescription>
-							{deleteTarget === null ? "" : t.deleteBody(deleteTarget.title)}
-						</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel disabled={busy}>{t.cancel}</AlertDialogCancel>
-						<AlertDialogAction onClick={() => void remove()} disabled={busy}>
-							{busy ? <Spinner className="size-4" /> : t.deleteConfirm}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
+			<RichTextDeleteDialog
+				doc={deleteTarget}
+				plugins={plugins}
+				pathname={pathname}
+				t={t}
+				busy={busy}
+				onConfirm={(actionId) => void confirmDelete(actionId)}
+				onCancel={() => setDeleteTarget(null)}
+			/>
 			<Toast toast={toast} onClose={() => setToast(null)} />
 		</PageContainer>
 	);
@@ -246,6 +240,8 @@ interface PaneProps {
 	readonly id: number;
 	/** Full document when just created — skips the `richTextDocFn` fetch. */
 	readonly initial?: RichTextDocWire;
+	readonly plugins: readonly Plugin[];
+	readonly pathname: string;
 	readonly t: RichTextMessages;
 	readonly onExit: () => void;
 	readonly onToast: (text: string) => void;
@@ -259,7 +255,7 @@ interface PaneProps {
  * queue; leaving (any navigation or unmount) flushes pending saves — and
  * deletes the row instead when the document is empty.
  */
-function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
+function RichTextEditorPane({ id, initial, plugins, pathname, t, onExit, onToast }: PaneProps) {
 	const [status, setStatus] = useState<"loading" | "ready">(
 		initial === undefined ? "loading" : "ready",
 	);
@@ -271,6 +267,9 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 		initial === undefined ? null : richTextToHtml(asValue(initial.content) as never),
 	);
 	const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
+	// Toolbar delete now routes through the shared referencer-aware
+	// dialog instead of deleting immediately.
+	const [deleteDoc, setDeleteDoc] = useState<{ id: number; title: string } | null>(null);
 
 	const titleRef = useRef(title);
 	const valueRef = useRef<unknown>(asValue(initial?.content));
@@ -405,11 +404,26 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 		if (isRichTextEmpty(valueRef.current)) {
 			// Drain any in-flight save first so it can't resurrect the row.
 			await saveQueueRef.current;
+			// Referenced docs can't be deleted — the FK on referencers is
+			// the backstop — so ask the hooks first and surface a clear
+			// reason instead of a bare delete failure. A usage-fn failure
+			// falls through to the delete attempt: the FK still protects
+			// referencers, preserving the pre-hook behavior.
+			let referenced = false;
 			try {
-				const ok = await deleteRichTextFn({ data: { id } });
-				onToastRef.current(ok ? tRef.current.deletedEmpty : tRef.current.deleteFailed);
+				referenced = (await richTextUsageFn({ data: { id } })).length > 0;
 			} catch {
-				onToastRef.current(tRef.current.deleteFailed);
+				// fall through — the FK backstop decides
+			}
+			if (referenced) {
+				onToastRef.current(tRef.current.deleteInUse);
+			} else {
+				try {
+					const ok = await deleteRichTextFn({ data: { id } });
+					onToastRef.current(ok ? tRef.current.deletedEmpty : tRef.current.deleteFailed);
+				} catch {
+					onToastRef.current(tRef.current.deleteFailed);
+				}
 			}
 			onExitRef.current();
 			return;
@@ -418,15 +432,21 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 		await saveQueueRef.current;
 		onExitRef.current();
 	};
-	/** Explicit delete from the editor toolbar — deletes regardless of
-	 * content (unlike exit-with-empty). */
-	const removeDoc = async () => {
+	/** Toolbar delete opens the shared referencer-aware dialog; the
+	 * actual delete runs on confirm (regardless of content, unlike
+	 * exit-with-empty). `didExitRef` is only claimed once the delete is
+	 * confirmed — cancelling the dialog must not block a later exit. */
+	const confirmDeleteDoc = async (actionId: string | null) => {
+		setDeleteDoc(null);
+		/* v8 ignore next -- the dialog closes on confirm; a second confirm can't arrive */
 		if (didExitRef.current) return;
 		didExitRef.current = true;
 		clearTimers();
 		await saveQueueRef.current;
 		try {
-			const ok = await deleteRichTextFn({ data: { id } });
+			const ok = await deleteRichTextFn({
+				data: actionId === null ? { id } : { id, actionId },
+			});
 			if (ok) {
 				onToastRef.current(tRef.current.deleted);
 				onExitRef.current();
@@ -490,7 +510,7 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 					variant="ghost"
 					size="sm"
 					className="ml-auto"
-					onClick={() => void removeDoc()}
+					onClick={() => setDeleteDoc({ id, title: titleRef.current })}
 					aria-label={t.delete}
 				>
 					<Trash2Icon className="size-4 text-destructive" />
@@ -502,6 +522,15 @@ function RichTextEditorPane({ id, initial, t, onExit, onToast }: PaneProps) {
 				onChange={handleChange}
 				placeholder={t.fieldContent}
 				aria-label={t.fieldContent}
+			/>
+			<RichTextDeleteDialog
+				doc={deleteDoc}
+				plugins={plugins}
+				pathname={pathname}
+				t={t}
+				busy={false}
+				onConfirm={(actionId) => void confirmDeleteDoc(actionId)}
+				onCancel={() => setDeleteDoc(null)}
 			/>
 		</div>
 	);

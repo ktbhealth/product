@@ -325,6 +325,25 @@ export type ChromeContent =
 			readonly fallback: string;
 			readonly icon: ComponentType<{ readonly className?: string }>;
 			readonly requires?: readonly string[];
+	  }
+	/** A destructive/confirm action a plugin offers inside another
+	 * plugin's confirmation dialog (e.g. "unlink & unpublish" vs
+	 * "delete referents" when deleting a shared document). `owner`
+	 * names the plugin-side hook that executes the action — the host
+	 * dialog only enables actions whose owner reported referents.
+	 * `id` is the action identifier the owner's cleanup hook receives;
+	 * `destructive` marks irreversible choices (styled/emphasized by
+	 * the dialog). Labels are English literals like other chrome
+	 * payloads — the contributing plugin owns the copy. */
+	| {
+			readonly kind: "dialogAction";
+			readonly action: {
+				readonly id: string;
+				readonly owner: string;
+				readonly label: string;
+				readonly description?: string;
+				readonly destructive?: boolean;
+			};
 	  };
 
 /** One slot filled in a shell-owned region. `region` names the slot

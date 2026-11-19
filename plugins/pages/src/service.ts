@@ -2,11 +2,17 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { and, asc, eq, ne } from "drizzle-orm";
 
 import { Forbidden } from "@ktb/authz";
-import { Db } from "@ktb/db";
+import { Db, type DbClient } from "@ktb/db";
 import { PlatformAdmin } from "@ktb/platform";
+import {
+	RichTextDeleteHooks,
+	type RichTextDeleteHook,
+	type RichTextReferencerItem,
+} from "@ktb/rich-text/delete-hooks";
 
 import { customPage, type CustomPage } from "./schema.ts";
 
@@ -130,11 +136,52 @@ export class CustomPages extends Context.Service<
 	}
 >()("@ktb/pages/CustomPages") {}
 
+/**
+ * Rich-text delete-hook participation: this plugin owns
+ * `custom_pages.rich_text_id`, so it reports referencing pages to the
+ * delete dialog (`usage`) and executes the admin's choice (`cleanup`).
+ * "pages.unlink-unpublish" keeps every page as an unpublished draft
+ * with no document; "pages.delete-pages" removes the rows outright.
+ * Action ids owned by other plugins are a silent no-op so one dialog
+ * choice can cascade through several hooks.
+ */
+export const pagesRichTextDeleteHook = (db: DbClient): RichTextDeleteHook => ({
+	id: "pages",
+	usage: (docId) =>
+		Effect.promise(() =>
+			db
+				.select({ id: customPage.id, title: customPage.title, path: customPage.path })
+				.from(customPage)
+				.where(eq(customPage.richTextId, docId)),
+		).pipe(Effect.map((rows): readonly RichTextReferencerItem[] => rows)),
+	cleanup: (docId, actionId) =>
+		actionId === "pages.unlink-unpublish"
+			? Effect.promise(() =>
+					db
+						.update(customPage)
+						.set({ richTextId: null, published: false, updatedAt: new Date() })
+						.where(eq(customPage.richTextId, docId)),
+				).pipe(Effect.asVoid)
+			: actionId === "pages.delete-pages"
+				? Effect.promise(() => db.delete(customPage).where(eq(customPage.richTextId, docId))).pipe(
+						Effect.asVoid,
+					)
+				: Effect.void,
+});
+
 export const CustomPagesLive = Layer.effect(
 	CustomPages,
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
+		// Optional edge: the rich-text plugin's delete-hook registry is
+		// absent when rich-text (or its service layer) is not installed —
+		// pages then simply register nothing. The `optionalDeps` edge on
+		// pages.services keeps the registry built first when present.
+		const deleteHooks = yield* Effect.serviceOption(RichTextDeleteHooks);
+		if (Option.isSome(deleteHooks)) {
+			yield* deleteHooks.value.register(pagesRichTextDeleteHook(db));
+		}
 
 		const requireAdmin = platformAdmin.requireAdmin();
 

@@ -130,6 +130,9 @@ export const KNOWN_CHROME_REGIONS: ReadonlySet<string> = new Set([
 	// landing view is the shell that declares and renders them.
 	"portal.dashboard.stats",
 	"portal.dashboard.sections",
+	// Delete-confirmation dialog actions (rich-text plugin) — collected
+	// by the owning view itself, not by a shell.
+	"rich-text.delete.actions",
 ]);
 
 /** Dev-only warning for chrome contributions aimed at undeclared

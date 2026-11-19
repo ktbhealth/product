@@ -26363,6 +26363,25 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "rich-text",
+		key: "deleteUsedBy",
+		locale: "en",
+		value: "Referenced by",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteActionPrompt",
+		locale: "en",
+		value: "Choose what happens to the references:",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteInUse",
+		locale: "en",
+		value:
+			"This document is referenced elsewhere — unlink or delete the referents before deleting it.",
+	},
+	{
+		namespace: "rich-text",
 		key: "deletedEmpty",
 		locale: "en",
 		value: "Empty document deleted",
@@ -26520,6 +26539,25 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "rich-text",
+		key: "deleteUsedBy",
+		locale: "pt-BR",
+		value: "Referenciado por",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteActionPrompt",
+		locale: "pt-BR",
+		value: "Escolha o que acontece com as referências:",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteInUse",
+		locale: "pt-BR",
+		value:
+			"Este documento é referenciado em outro lugar — remova ou exclua as referências antes de excluí-lo.",
+	},
+	{
+		namespace: "rich-text",
 		key: "deletedEmpty",
 		locale: "pt-BR",
 		value: "Documento vazio excluído",
@@ -26674,6 +26712,25 @@ export const I18N_BASELINE = [
 		key: "deleteConfirm",
 		locale: "es",
 		value: "Eliminar",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteUsedBy",
+		locale: "es",
+		value: "Referenciado por",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteActionPrompt",
+		locale: "es",
+		value: "Elige qué ocurre con las referencias:",
+	},
+	{
+		namespace: "rich-text",
+		key: "deleteInUse",
+		locale: "es",
+		value:
+			"Este documento está referenciado en otro lugar — desvincula o elimina las referencias antes de eliminarlo.",
 	},
 	{
 		namespace: "rich-text",

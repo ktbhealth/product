@@ -1443,12 +1443,15 @@ export type I18nKey =
 	| "rich-text.colUpdated"
 	| "rich-text.create"
 	| "rich-text.delete"
+	| "rich-text.deleteActionPrompt"
 	| "rich-text.deleteBody"
 	| "rich-text.deleteConfirm"
 	| "rich-text.deleted"
 	| "rich-text.deletedEmpty"
 	| "rich-text.deleteFailed"
+	| "rich-text.deleteInUse"
 	| "rich-text.deleteTitle"
+	| "rich-text.deleteUsedBy"
 	| "rich-text.description"
 	| "rich-text.edit"
 	| "rich-text.emptyDescription"
@@ -3560,6 +3563,7 @@ export interface I18nTypedT {
 	(key: "rich-text.colUpdated"): Effect.Effect<string>;
 	(key: "rich-text.create"): Effect.Effect<string>;
 	(key: "rich-text.delete"): Effect.Effect<string>;
+	(key: "rich-text.deleteActionPrompt"): Effect.Effect<string>;
 	(
 		key: "rich-text.deleteBody",
 		params: {
@@ -3570,7 +3574,9 @@ export interface I18nTypedT {
 	(key: "rich-text.deleted"): Effect.Effect<string>;
 	(key: "rich-text.deletedEmpty"): Effect.Effect<string>;
 	(key: "rich-text.deleteFailed"): Effect.Effect<string>;
+	(key: "rich-text.deleteInUse"): Effect.Effect<string>;
 	(key: "rich-text.deleteTitle"): Effect.Effect<string>;
+	(key: "rich-text.deleteUsedBy"): Effect.Effect<string>;
 	(key: "rich-text.description"): Effect.Effect<string>;
 	(key: "rich-text.edit"): Effect.Effect<string>;
 	(key: "rich-text.emptyDescription"): Effect.Effect<string>;

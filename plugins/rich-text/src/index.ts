@@ -1,11 +1,13 @@
 import { PenLineIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 
 import { RichTextAdminConsolePage } from "./platform-page.tsx";
 import { richText } from "./schema.ts";
+import { RichTextDeleteHooksLive } from "./delete-hooks.ts";
 import { RichTexts, RichTextsLive } from "./service.ts";
 
 /**
@@ -30,7 +32,7 @@ export const richTextServicesPlugin = definePlugin({
 	// PlatformAdmin gate — the dep edge keeps the platform module
 	// ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
-	services: RichTextsLive,
+	services: Layer.merge(RichTextsLive, RichTextDeleteHooksLive),
 });
 
 /**

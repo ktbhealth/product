@@ -25,6 +25,7 @@ const asRows = (data: unknown): readonly RichTextDocRow[] =>
 export function RichTextAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const props: RichTextAdminPageProps = {
 		docs: asRows(data),
+		plugins: ctx.plugins,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

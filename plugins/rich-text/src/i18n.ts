@@ -40,6 +40,9 @@ export interface RichTextMessages {
 	readonly deleteTitle: string;
 	readonly deleteBody: (title: string) => string;
 	readonly deleteConfirm: string;
+	readonly deleteUsedBy: string;
+	readonly deleteActionPrompt: string;
+	readonly deleteInUse: string;
 	readonly deletedEmpty: string;
 	readonly deleted: string;
 	readonly deleteFailed: string;
@@ -69,6 +72,10 @@ const en: RichTextMessages = {
 	deleteTitle: "Delete document",
 	deleteBody: paramMessage("en", 'Delete "{title}"? This cannot be undone.', ["title"]),
 	deleteConfirm: "Delete",
+	deleteUsedBy: "Referenced by",
+	deleteActionPrompt: "Choose what happens to the references:",
+	deleteInUse:
+		"This document is referenced elsewhere — unlink or delete the referents before deleting it.",
 	deletedEmpty: "Empty document deleted",
 	deleted: "Document deleted",
 	deleteFailed: "Could not delete the document.",
@@ -100,6 +107,10 @@ const ptBR: RichTextMessages = {
 		"title",
 	]),
 	deleteConfirm: "Excluir",
+	deleteUsedBy: "Referenciado por",
+	deleteActionPrompt: "Escolha o que acontece com as referências:",
+	deleteInUse:
+		"Este documento é referenciado em outro lugar — remova ou exclua as referências antes de excluí-lo.",
 	deletedEmpty: "Documento vazio excluído",
 	deleted: "Documento excluído",
 	deleteFailed: "Não foi possível excluir o documento.",
@@ -131,6 +142,10 @@ const es: RichTextMessages = {
 		"title",
 	]),
 	deleteConfirm: "Eliminar",
+	deleteUsedBy: "Referenciado por",
+	deleteActionPrompt: "Elige qué ocurre con las referencias:",
+	deleteInUse:
+		"Este documento está referenciado en otro lugar — desvincula o elimina las referencias antes de eliminarlo.",
 	deletedEmpty: "Documento vacío eliminado",
 	deleted: "Documento eliminado",
 	deleteFailed: "No se pudo eliminar el documento.",

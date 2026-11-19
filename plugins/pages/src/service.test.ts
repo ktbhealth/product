@@ -4,6 +4,7 @@ import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import { RichTextDeleteHooks, type RichTextDeleteHook } from "@ktb/rich-text/delete-hooks";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -17,8 +18,11 @@ import {
 	InvalidPagePath,
 	PageNotFound,
 	normalizePagePath,
+	pagesRichTextDeleteHook,
 	type CustomPageInput,
 } from "./service.ts";
+
+import { customPage } from "./schema.ts";
 
 describe("normalizePagePath", () => {
 	it("accepts and canonicalizes valid paths", () => {
@@ -373,5 +377,145 @@ describe("CustomPagesLive", () => {
 		// sortOrder 1 rows come before /team (sortOrder 2); ties by title.
 		expect(paths.indexOf("/nav-a")).toBeLessThan(paths.indexOf("/nav-b"));
 		expect(paths.indexOf("/nav-b")).toBeLessThan(paths.indexOf("/team"));
+	});
+});
+
+describe("pagesRichTextDeleteHook", () => {
+	let db: ReturnType<typeof makeDb>;
+	let hook: RichTextDeleteHook;
+	const now = new Date();
+
+	const insertPage = (over: Partial<typeof customPage.$inferInsert> = {}) =>
+		db.insert(customPage).values({
+			path: "/x",
+			title: "X",
+			published: false,
+			showInNav: false,
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+			...over,
+		});
+
+	const allPages = () => db.select().from(customPage);
+
+	beforeAll(() => {
+		db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		hook = pagesRichTextDeleteHook(db);
+	});
+
+	it("has the 'pages' id and usage returns only referencing rows", async () => {
+		expect(hook.id).toBe("pages");
+		await insertPage({ path: "/a", title: "A", richTextId: 7 });
+		await insertPage({ path: "/b", title: "B", richTextId: 7 });
+		await insertPage({ path: "/c", title: "C", richTextId: 8 });
+		await insertPage({ path: "/d", title: "D", richTextId: null });
+		const items = await Effect.runPromise(hook.usage(7));
+		expect(items).toHaveLength(2);
+		expect(items.map((i) => i.path ?? "").sort((a, b) => a.localeCompare(b))).toEqual(["/a", "/b"]);
+		expect(items.map((i) => i.title).sort((a, b) => a.localeCompare(b))).toEqual(["A", "B"]);
+		// Unreferenced doc → empty; ids are the page row ids.
+		expect(await Effect.runPromise(hook.usage(999))).toEqual([]);
+		const ids = items.map((i) => i.id);
+		const rows = await allPages();
+		expect(ids.sort((a, b) => a - b)).toEqual(
+			rows
+				.filter((r) => r.richTextId === 7)
+				.map((r) => r.id)
+				.sort((a, b) => a - b),
+		);
+	});
+
+	it("cleanup 'pages.unlink-unpublish' unlinks and unpublishes, preserving the rest", async () => {
+		await insertPage({
+			path: "/u1",
+			title: "U1",
+			richTextId: 9,
+			published: true,
+			showInNav: true,
+			sortOrder: 3,
+		});
+		await insertPage({ path: "/u2", title: "U2", richTextId: 9, published: true });
+		await insertPage({ path: "/keep", title: "Keep", richTextId: 10, published: true });
+		await Effect.runPromise(hook.cleanup(9, "pages.unlink-unpublish"));
+		const rows = await allPages();
+		const u1 = rows.find((r) => r.path === "/u1")!;
+		expect(u1.richTextId).toBeNull();
+		expect(u1.published).toBe(false);
+		// Untouched fields survive.
+		expect(u1.title).toBe("U1");
+		expect(u1.path).toBe("/u1");
+		expect(u1.showInNav).toBe(true);
+		expect(u1.sortOrder).toBe(3);
+		const u2 = rows.find((r) => r.path === "/u2")!;
+		expect(u2.richTextId).toBeNull();
+		expect(u2.published).toBe(false);
+		// Other documents are unaffected.
+		const keep = rows.find((r) => r.path === "/keep")!;
+		expect(keep.richTextId).toBe(10);
+		expect(keep.published).toBe(true);
+	});
+
+	it("cleanup 'pages.delete-pages' removes referencing pages only", async () => {
+		await insertPage({ path: "/del-1", richTextId: 11 });
+		await insertPage({ path: "/del-2", richTextId: 11 });
+		await insertPage({ path: "/del-keep", richTextId: 12 });
+		await Effect.runPromise(hook.cleanup(11, "pages.delete-pages"));
+		const paths = (await allPages()).map((r) => r.path);
+		expect(paths).not.toContain("/del-1");
+		expect(paths).not.toContain("/del-2");
+		expect(paths).toContain("/del-keep");
+	});
+
+	it("cleanup no-ops on foreign action ids and unreferenced docs", async () => {
+		await insertPage({ path: "/noop", richTextId: 13, published: true });
+		await Effect.runPromise(hook.cleanup(13, "other.plugin.action"));
+		await Effect.runPromise(hook.cleanup(999, "pages.delete-pages"));
+		await Effect.runPromise(hook.cleanup(999, "pages.unlink-unpublish"));
+		const row = (await allPages()).find((r) => r.path === "/noop")!;
+		expect(row.richTextId).toBe(13);
+		expect(row.published).toBe(true);
+	});
+
+	it("CustomPagesLive registers the hook when the registry is provided", async () => {
+		let captured: RichTextDeleteHook | undefined;
+		const hooks = RichTextDeleteHooks.of({
+			register: (h) => {
+				captured = h;
+				return Effect.void;
+			},
+			usage: () => Effect.succeed([]),
+			cleanup: () => Effect.void,
+		});
+		const deps = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(RichTextDeleteHooks, hooks),
+		);
+		const rt = ManagedRuntime.make(CustomPagesLive.pipe(Layer.provide(deps)));
+		try {
+			// Building the layer runs the registration.
+			await rt.runPromise(Effect.flatMap(CustomPages, (p) => p.navList()));
+			expect(captured?.id).toBe("pages");
+			// The registered hook is live against the same db.
+			await insertPage({ path: "/reg", title: "Reg", richTextId: 21 });
+			expect(await Effect.runPromise(captured!.usage(21))).toHaveLength(1);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("CustomPagesLive builds without the registry (serviceOption → None)", async () => {
+		const deps = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		const rt = ManagedRuntime.make(CustomPagesLive.pipe(Layer.provide(deps)));
+		try {
+			const rows = await rt.runPromise(Effect.flatMap(CustomPages, (p) => p.navList()));
+			expect(Array.isArray(rows)).toBe(true);
+		} finally {
+			await rt.dispose();
+		}
 	});
 });

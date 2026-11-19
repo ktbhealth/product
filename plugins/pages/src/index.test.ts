@@ -22,6 +22,7 @@ import {
 	plugins,
 } from "./index.ts";
 import { RichTexts } from "@ktb/rich-text/service";
+import { richTextServicesPlugin } from "@ktb/rich-text";
 
 import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPagesLive } from "./service.ts";
@@ -38,17 +39,41 @@ describe("pages plugins", () => {
 		expect(pagesTablesPlugin.tables?.customPage).toBeDefined();
 		expect(pagesServicesPlugin.services).toBeDefined();
 		expect(pagesServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
+		expect(pagesServicesPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
 	});
 
 	it("declares the console sidebar entry and the app nav component", () => {
 		const chrome = pagesChromePlugin.chrome ?? [];
-		expect(chrome).toHaveLength(2);
+		expect(chrome).toHaveLength(4);
 		const sidebar = chrome.find((c) => c.id === "pages.sidebar");
 		expect(sidebar?.region).toBe("portal.sidebar");
 		expect(sidebar?.content.kind).toBe("sidebarItem");
 		const nav = chrome.find((c) => c.id === "pages.nav");
 		expect(nav?.region).toBe("app.header.nav");
 		expect(nav?.content.kind).toBe("component");
+	});
+
+	it("delete dialog actions carry the exact action ids the hook owns", () => {
+		const chrome = pagesChromePlugin.chrome ?? [];
+		const actions = chrome
+			.filter((c) => c.region === "rich-text.delete.actions")
+			.map((c) => (c.content.kind === "dialogAction" ? c.content.action : null));
+		expect(actions).toEqual([
+			{
+				id: "pages.unlink-unpublish",
+				owner: "pages",
+				label: "Unlink & unpublish pages",
+				description: "Pages keep their settings but lose the document and return to draft.",
+				destructive: false,
+			},
+			{
+				id: "pages.delete-pages",
+				owner: "pages",
+				label: "Delete pages too",
+				description: "Permanently deletes every page using this document.",
+				destructive: true,
+			},
+		]);
 	});
 
 	it("declares the wildcard app page and the admin console page", () => {

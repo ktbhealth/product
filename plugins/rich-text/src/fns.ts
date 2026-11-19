@@ -9,6 +9,7 @@ import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
 import { RichTexts, type RichTextDoc, type RichTextMeta } from "./service.ts";
+import { RichTextDeleteHooks, type RichTextUsageOwner } from "./delete-hooks.ts";
 
 // Rich-text server functions: admin CRUD is PlatformAdmin-gated (the
 // /platform layout already 404s non-admins; the service re-checks inside
@@ -19,7 +20,10 @@ import { RichTexts, type RichTextDoc, type RichTextMeta } from "./service.ts";
 // Handled domain failures (Forbidden / RichTextNotFound /
 // InvalidRichTextValue) collapse to null/false/[] — the same "not
 // visible / not saved" contract the other plugin fns use; other errors
-// still propagate.
+// still propagate. Hook errors (`RichTextDeleteHooks.usage/cleanup`)
+// are `unknown` and deliberately NOT in HANDLED_TAGS: a hidden
+// referencer is worse than a failed dialog, so they propagate to the
+// client, which already try/catches.
 
 /** Serializable document — `content` is the parsed Plate value and
  * `updatedAt` an ISO string so list UIs can format it client-side. */
@@ -36,6 +40,11 @@ export interface RichTextMetaWire {
 	readonly title: string;
 	readonly updatedAt: string;
 }
+
+/** Referencers of a document grouped by owning plugin — drives the
+ * delete dialog's extended confirm. Already serializable (ids, titles
+ * and optional paths only). */
+export type RichTextUsageWire = readonly RichTextUsageOwner[];
 
 const toDocWire = (row: RichTextDoc): RichTextDocWire => ({
 	id: row.id,
@@ -71,10 +80,17 @@ const UpdateInput = Schema.Struct({
 	value: Schema.optionalKey(Schema.String),
 });
 const IdInput = Schema.Struct({ id: Schema.Number });
+const DeleteInput = Schema.Struct({
+	id: Schema.Number,
+	// Present when the admin picked a referencer action in the delete
+	// dialog — the hooks' cleanup runs before the row is removed.
+	actionId: Schema.optionalKey(Schema.String),
+});
 
 const decodeCreate = Schema.decodeUnknownSync(CreateInput);
 const decodeUpdate = Schema.decodeUnknownSync(UpdateInput);
 const decodeId = Schema.decodeUnknownSync(IdInput);
+const decodeDelete = Schema.decodeUnknownSync(DeleteInput);
 
 const HANDLED_TAGS = ["Forbidden", "RichTextNotFound", "InvalidRichTextValue"] as const;
 
@@ -124,15 +140,42 @@ export const updateRichTextFn = createServerFn({ method: "POST" })
 		});
 	});
 
-/** Delete a document by id; `false` for non-admins and missing rows. */
-export const deleteRichTextFn = createServerFn({ method: "POST" })
+/** Referencers of a document grouped by owning plugin — feeds the
+ * delete dialog's extended confirm. Handled failures collapse to an
+ * empty list; hook errors propagate (see the header comment). */
+export const richTextUsageFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeId(input))
+	.handler(async ({ data }): Promise<RichTextUsageWire> => {
+		await requirePluginEnabled("rich-text.panel");
+		const user = await ensureSessionUser();
+		return asAdmin(
+			user,
+			Effect.gen(function* () {
+				const hooks = yield* RichTextDeleteHooks;
+				return yield* hooks.usage(data.id);
+			}),
+		).catch((error: unknown) => {
+			if (isHandled(error)) return [] as RichTextUsageWire;
+			throw error;
+		});
+	});
+
+/** Delete a document by id; `false` for non-admins and missing rows.
+ * When `actionId` is present the referencer hooks' `cleanup` runs
+ * FIRST (a failed cleanup aborts before the row is touched); without
+ * it the behavior is the plain delete. */
+export const deleteRichTextFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeDelete(input))
 	.handler(async ({ data }): Promise<boolean> => {
 		await requirePluginEnabled("rich-text.panel");
 		const user = await ensureSessionUser();
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
+				if (data.actionId !== undefined) {
+					const hooks = yield* RichTextDeleteHooks;
+					yield* hooks.cleanup(data.id, data.actionId);
+				}
 				const richTexts = yield* RichTexts;
 				yield* richTexts.adminRemove(data.id);
 				return true;

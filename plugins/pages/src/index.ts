@@ -38,6 +38,11 @@ export const pagesServicesPlugin = definePlugin({
 	// PlatformAdmin gate — the dep edge keeps the platform module
 	// ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
+	// Optional edge: the delete-hook registry lives in rich-text's
+	// service layer — when it is absent CustomPagesLive simply skips
+	// registration (Effect.serviceOption), but ordering must put the
+	// registry before this layer when both are installed.
+	optionalDeps: [richTextServicesPlugin.id],
 	services: CustomPagesLive,
 });
 
@@ -69,6 +74,38 @@ export const pagesChromePlugin = definePlugin({
 			id: "pages.nav",
 			region: "app.header.nav",
 			content: { kind: "component", component: CustomNavLinks },
+		},
+		// Rich-text delete dialog actions (region owned by
+		// @ktb/rich-text): offered when the document being deleted is
+		// referenced by pages. `action.id`/`owner` are the contract the
+		// pages delete hook's cleanup switch keys on — keep them exact.
+		{
+			id: "pages.delete-action-unlink",
+			region: "rich-text.delete.actions",
+			content: {
+				kind: "dialogAction",
+				action: {
+					id: "pages.unlink-unpublish",
+					owner: "pages",
+					label: "Unlink & unpublish pages",
+					description: "Pages keep their settings but lose the document and return to draft.",
+					destructive: false,
+				},
+			},
+		},
+		{
+			id: "pages.delete-action-delete",
+			region: "rich-text.delete.actions",
+			content: {
+				kind: "dialogAction",
+				action: {
+					id: "pages.delete-pages",
+					owner: "pages",
+					label: "Delete pages too",
+					description: "Permanently deletes every page using this document.",
+					destructive: true,
+				},
+			},
 		},
 	],
 });

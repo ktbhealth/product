@@ -36,8 +36,10 @@ import {
 	deleteRichTextFn,
 	listRichTextDocsFn,
 	richTextDocFn,
+	richTextUsageFn,
 	updateRichTextFn,
 } from "./fns.ts";
+import { RichTextDeleteHooks, RichTextDeleteHooksLive } from "./delete-hooks.ts";
 import { plugins } from "./index.ts";
 import { RichTexts, RichTextsLive, RICH_TEXT_TEST_DDL } from "./service.ts";
 
@@ -71,11 +73,12 @@ describe("rich-text fns", () => {
 		const states = makePluginStatesLive(registry);
 		const richTexts = RichTextsLive.pipe(Layer.provide(env));
 		runtime = ManagedRuntime.make(
-			Layer.mergeAll(states.pipe(Layer.provide(env)), richTexts, env) as Layer.Layer<
-				unknown,
-				never,
-				never
-			>,
+			Layer.mergeAll(
+				states.pipe(Layer.provide(env)),
+				richTexts,
+				RichTextDeleteHooksLive,
+				env,
+			) as Layer.Layer<unknown, never, never>,
 		);
 		installRuntime(runtime);
 	});
@@ -89,6 +92,7 @@ describe("rich-text fns", () => {
 		currentEmail = null;
 		await expect(createRichTextFn({ data: {} })).rejects.toThrow("unauthenticated");
 		await expect(deleteRichTextFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
+		await expect(richTextUsageFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 		await expect(listRichTextDocsFn()).rejects.toThrow("unauthenticated");
 		// Public read works without a session.
 		await expect(richTextDocFn({ data: { id: 1 } })).resolves.toBeNull();
@@ -107,6 +111,9 @@ describe("rich-text fns", () => {
 			await expect(deleteRichTextFn({ data: { id: 1 } })).rejects.toThrow(
 				'plugin "rich-text.panel" is disabled',
 			);
+			await expect(richTextUsageFn({ data: { id: 1 } })).rejects.toThrow(
+				'plugin "rich-text.panel" is disabled',
+			);
 			await expect(listRichTextDocsFn()).rejects.toThrow('plugin "rich-text.panel" is disabled');
 		} finally {
 			installRuntime(runtime);
@@ -118,6 +125,7 @@ describe("rich-text fns", () => {
 		await expect(createRichTextFn({ data: {} })).resolves.toBeNull();
 		await expect(updateRichTextFn({ data: { id: 1, title: "x" } })).resolves.toBeNull();
 		await expect(deleteRichTextFn({ data: { id: 1 } })).resolves.toBe(false);
+		await expect(richTextUsageFn({ data: { id: 1 } })).resolves.toEqual([]);
 		await expect(listRichTextDocsFn()).resolves.toEqual([]);
 	});
 
@@ -290,5 +298,91 @@ describe("rich-text fns", () => {
 			installRuntime(runtime);
 			await rt.dispose();
 		}
+	});
+	it("richTextUsageFn returns referencers grouped by owner", async () => {
+		currentEmail = "admin@x.com";
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const hooks = yield* RichTextDeleteHooks;
+				yield* hooks.register({
+					id: "pages",
+					usage: () => Effect.succeed([{ id: 3, title: "Home", path: "/" }]),
+					cleanup: () => Effect.void,
+				});
+				yield* hooks.register({
+					id: "empty",
+					usage: () => Effect.succeed([]),
+					cleanup: () => Effect.void,
+				});
+			}),
+		);
+		await expect(richTextUsageFn({ data: { id: 1 } })).resolves.toEqual([
+			{ id: "pages", items: [{ id: 3, title: "Home", path: "/" }] },
+		]);
+	});
+
+	it("deleteRichTextFn runs hook cleanup BEFORE removing when actionId is present", async () => {
+		currentEmail = "admin@x.com";
+		const created = await createRichTextFn({ data: { title: "Cascade" } });
+		const seen: string[] = [];
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const hooks = yield* RichTextDeleteHooks;
+				const richTexts = yield* RichTexts;
+				yield* hooks.register({
+					id: "probe",
+					usage: () => Effect.succeed([]),
+					cleanup: (docId, actionId) =>
+						Effect.gen(function* () {
+							// The row must still exist at cleanup time — proof
+							// the hook ran before adminRemove.
+							const row = yield* richTexts.getById(docId);
+							seen.push(`${actionId}:${row === null ? "gone" : "present"}`);
+						}),
+				});
+			}),
+		);
+		expect(await deleteRichTextFn({ data: { id: created!.id, actionId: "probe.act" } })).toBe(true);
+		expect(seen).toEqual(["probe.act:present"]);
+		await expect(richTextDocFn({ data: { id: created!.id } })).resolves.toBeNull();
+	});
+
+	it("deleteRichTextFn aborts before removing when cleanup fails", async () => {
+		currentEmail = "admin@x.com";
+		const created = await createRichTextFn({ data: { title: "Blocked" } });
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const hooks = yield* RichTextDeleteHooks;
+				yield* hooks.register({
+					id: "failer",
+					usage: () => Effect.succeed([]),
+					cleanup: () => Effect.fail(new Error("cleanup boom")),
+				});
+			}),
+		);
+		await expect(
+			deleteRichTextFn({ data: { id: created!.id, actionId: "failer.act" } }),
+		).rejects.toThrow("cleanup boom");
+		// The row survives — cleanup ran before adminRemove.
+		await expect(richTextDocFn({ data: { id: created!.id } })).resolves.toMatchObject({
+			id: created!.id,
+		});
+		// Plain deletes (no actionId) skip cleanup entirely.
+		expect(await deleteRichTextFn({ data: { id: created!.id } })).toBe(true);
+	});
+
+	it("richTextUsageFn propagates hook failures (hidden referencers are worse)", async () => {
+		currentEmail = "admin@x.com";
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const hooks = yield* RichTextDeleteHooks;
+				yield* hooks.register({
+					id: "bad",
+					usage: () => Effect.fail(new Error("usage boom")),
+					cleanup: () => Effect.void,
+				});
+			}),
+		);
+		await expect(richTextUsageFn({ data: { id: 1 } })).rejects.toThrow("usage boom");
 	});
 });
