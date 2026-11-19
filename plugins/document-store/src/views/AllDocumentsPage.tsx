@@ -9,7 +9,13 @@ import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
-import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 
 import type { CollectionWire, DocumentWire, DocumentsPageWire } from "../wire.ts";
 import { browseDocumentsFn } from "../fns.ts";
@@ -146,22 +152,30 @@ export function AllDocumentsPage({
 			<TablePage.Header title={t.documentsTitle} description={t.documentsDescription} />
 			<TablePage.Toolbar
 				filters={
-					<NativeSelect
-						aria-label={t.allCollections}
+					<Select
+						items={[
+							{ value: "", label: t.allCollections },
+							...collections.map((c) => ({ value: c.name, label: c.name })),
+						]}
 						value={collection}
-						onChange={(e) => {
-							const name = e.target.value;
+						onValueChange={(v) => {
+							const name = v ?? "";
 							setCollection(name);
 							void fetchPage(0, name);
 						}}
 					>
-						<NativeSelectOption value="">{t.allCollections}</NativeSelectOption>
-						{collections.map((c) => (
-							<NativeSelectOption key={c.name} value={c.name}>
-								{c.name}
-							</NativeSelectOption>
-						))}
-					</NativeSelect>
+						<SelectTrigger aria-label={t.allCollections} size="sm">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="">{t.allCollections}</SelectItem>
+							{collections.map((c) => (
+								<SelectItem key={c.name} value={c.name}>
+									{c.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				}
 			/>
 			{loadFailed ? <p className="text-sm text-destructive">{t.loadFailed}</p> : null}

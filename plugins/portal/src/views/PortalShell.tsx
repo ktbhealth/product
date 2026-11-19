@@ -13,7 +13,13 @@ import {
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
-import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import {
 	Sidebar,
 	SidebarContent,
@@ -214,22 +220,25 @@ export function PortalShell({
 					</div>
 					{portals !== undefined && portals.length > 1 ? (
 						<div className="px-2 pb-2">
-							<NativeSelect
-								size="sm"
-								aria-label={t.switcherLabel}
-								className="w-full"
+							<Select
+								items={portals.map((p) => ({ value: p.id, label: p.label }))}
 								value={instance.id}
-								onChange={(e) => {
-									const target = portals.find((p) => p.id === e.target.value);
+								onValueChange={(v) => {
+									const target = portals.find((p) => p.id === v);
 									if (target !== undefined) void navigate({ to: target.basePath });
 								}}
 							>
-								{portals.map((p) => (
-									<NativeSelectOption key={p.id} value={p.id}>
-										{p.label}
-									</NativeSelectOption>
-								))}
-							</NativeSelect>
+								<SelectTrigger aria-label={t.switcherLabel} size="sm" className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{portals.map((p) => (
+										<SelectItem key={p.id} value={p.id}>
+											{p.label}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</div>
 					) : null}
 				</SidebarFooter>

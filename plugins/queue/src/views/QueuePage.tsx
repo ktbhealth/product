@@ -7,6 +7,13 @@ import type { QueueInfo } from "@ktb/server-fns";
 import { Button } from "@ktbhealth/ui/components/button";
 import { JobStatus as JobStatusBadge } from "@ktbhealth/ui/components/job-status";
 import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -184,32 +191,46 @@ function RunsSection({
 			) : (
 				<>
 					<div className="mb-3 flex flex-wrap items-center gap-2">
-						<select
-							aria-label={m.filterKind}
-							className="border-input bg-background rounded-md border px-2 py-1 text-sm"
+						<Select
+							items={[
+								{ value: "", label: m.kindAll },
+								...kindOptions.map((k) => ({ value: k, label: k })),
+							]}
 							value={kindFilter}
-							onChange={(e) => setKindFilter(e.target.value)}
+							onValueChange={(v) => setKindFilter(v ?? "")}
 						>
-							<option value="">{m.kindAll}</option>
-							{kindOptions.map((k) => (
-								<option key={k} value={k}>
-									{k}
-								</option>
-							))}
-						</select>
-						<select
-							aria-label={m.filterStatus}
-							className="border-input bg-background rounded-md border px-2 py-1 text-sm"
+							<SelectTrigger aria-label={m.filterKind} size="sm">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="">{m.kindAll}</SelectItem>
+								{kindOptions.map((k) => (
+									<SelectItem key={k} value={k}>
+										{k}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+						<Select
+							items={[
+								{ value: "", label: m.statusAll },
+								...STATUS_VALUES.map((s) => ({ value: s, label: m[statusKey(s)] })),
+							]}
 							value={statusFilter}
-							onChange={(e) => setStatusFilter(e.target.value as "" | JobStatus)}
+							onValueChange={(v) => setStatusFilter((v ?? "") as "" | JobStatus)}
 						>
-							<option value="">{m.statusAll}</option>
-							{STATUS_VALUES.map((s) => (
-								<option key={s} value={s}>
-									{m[statusKey(s)]}
-								</option>
-							))}
-						</select>
+							<SelectTrigger aria-label={m.filterStatus} size="sm">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="">{m.statusAll}</SelectItem>
+								{STATUS_VALUES.map((s) => (
+									<SelectItem key={s} value={s}>
+										{m[statusKey(s)]}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
 					</div>
 					{filtered.length === 0 ? (
 						<div className="border-border text-muted-foreground rounded-md border px-4 py-6 text-sm">
@@ -291,18 +312,26 @@ function EnqueueSection({ kinds, m }: { kinds: readonly string[] | null; m: Queu
 					<div className="flex flex-wrap items-end gap-2">
 						<label className="flex flex-col gap-1 text-sm">
 							<span className="text-muted-foreground">{m.enqueueKind}</span>
-							<select
-								className="border-input bg-background rounded-md border px-2 py-1 text-sm"
+							<Select
+								items={[
+									{ value: "", label: m.selectKind },
+									...kinds.map((k) => ({ value: k, label: k })),
+								]}
 								value={kind}
-								onChange={(e) => setKind(e.target.value)}
+								onValueChange={(v) => setKind(v ?? "")}
 							>
-								<option value="">{m.selectKind}</option>
-								{kinds.map((k) => (
-									<option key={k} value={k}>
-										{k}
-									</option>
-								))}
-							</select>
+								<SelectTrigger size="sm">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="">{m.selectKind}</SelectItem>
+									{kinds.map((k) => (
+										<SelectItem key={k} value={k}>
+											{k}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
 						</label>
 						<label className="flex min-w-64 flex-1 flex-col gap-1 text-sm">
 							<span className="text-muted-foreground">{m.payloadLabel}</span>
