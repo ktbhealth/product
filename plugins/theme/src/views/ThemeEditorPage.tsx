@@ -17,10 +17,13 @@ import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import { ColorPicker } from "@ktbhealth/ui/components/color-picker";
 import {
 	Combobox,
+	ComboboxCollection,
 	ComboboxContent,
 	ComboboxEmpty,
+	ComboboxGroup,
 	ComboboxInput,
 	ComboboxItem,
+	ComboboxLabel,
 	ComboboxList,
 } from "@ktbhealth/ui/components/combobox";
 import {
@@ -171,6 +174,16 @@ interface FontSourcePick {
 	readonly source: ThemeFontSource | null;
 }
 
+/** One section of the picker — the leading group holds `custom` plus
+ * any stale binding (no provider heading); each catalog group is keyed
+ * by provider name. `label` is null when the heading would only repeat
+ * the "Provider — Family" row labels (single-provider catalog). */
+interface FontSourcePickGroup {
+	readonly key: string;
+	readonly label: string | null;
+	readonly items: readonly FontSourcePick[];
+}
+
 const fontSourceOptionLabel = (o: ThemeFontSourceOption): string =>
 	o.weights.length === 0
 		? `${o.providerName} — ${o.family}`
@@ -195,7 +208,7 @@ function ManagedSourcePicker({
 	t: ThemeMessages;
 	onSelect: (source: ThemeFontSource | null) => void;
 }) {
-	const items = useMemo<readonly FontSourcePick[]>(() => {
+	const items = useMemo<readonly FontSourcePickGroup[]>(() => {
 		// A stored source missing from the ready catalog (provider
 		// disabled/removed since publish) still renders as its own
 		// option so the picker shows the binding instead of a blank input.
@@ -215,19 +228,49 @@ function ManagedSourcePicker({
 							source: stale,
 						},
 					];
-		return [
-			{
-				key: CUSTOM_FONT_SOURCE,
-				label: t.fontSourceCustom,
-				search: t.fontSourceCustom.toLowerCase(),
-				source: null,
-			},
-			...stalePick,
-			...sources.map((o) => ({
+		// Cluster catalog picks under provider headings — sorted by
+		// provider then family so same-provider families scan together
+		// regardless of catalog order.
+		const sorted = [...sources].sort(
+			(a, b) =>
+				a.providerName.localeCompare(b.providerName) ||
+				a.providerId - b.providerId ||
+				a.family.localeCompare(b.family),
+		);
+		const providerCount = new Set(sorted.map((o) => o.providerName)).size;
+		const byProvider = new Map<string, FontSourcePick[]>();
+		for (const o of sorted) {
+			const pick: FontSourcePick = {
 				key: fontSourceKey(o.providerId, o.family),
 				label: fontSourceOptionLabel(o),
 				search: [o.providerName, o.family, ...o.weights.map(String)].join(" ").toLowerCase(),
 				source: { providerId: o.providerId, family: o.family },
+			};
+			const group = byProvider.get(o.providerName);
+			if (group === undefined) {
+				byProvider.set(o.providerName, [pick]);
+			} else {
+				group.push(pick);
+			}
+		}
+		return [
+			{
+				key: "custom",
+				label: null,
+				items: [
+					{
+						key: CUSTOM_FONT_SOURCE,
+						label: t.fontSourceCustom,
+						search: t.fontSourceCustom.toLowerCase(),
+						source: null,
+					},
+					...stalePick,
+				],
+			},
+			...[...byProvider.entries()].map(([providerName, picks]) => ({
+				key: `provider:${providerName}`,
+				label: providerCount > 1 ? providerName : null,
+				items: picks,
 			})),
 		];
 	}, [current, sources, t]);
@@ -236,7 +279,7 @@ function ManagedSourcePicker({
 		current === null ? CUSTOM_FONT_SOURCE : fontSourceKey(current.providerId, current.family);
 	// `custom` is always an item and a non-null `current` is either in the
 	// catalog or injected above as the stale pick — the lookup cannot miss.
-	const selected = items.find((item) => item.key === selectedKey)!;
+	const selected = items.flatMap((group) => group.items).find((item) => item.key === selectedKey)!;
 
 	return (
 		<Combobox
@@ -256,10 +299,17 @@ function ManagedSourcePicker({
 			<ComboboxContent>
 				<ComboboxEmpty>{t.fontSourceNoResults}</ComboboxEmpty>
 				<ComboboxList>
-					{(item: FontSourcePick) => (
-						<ComboboxItem key={item.key} value={item}>
-							{item.label}
-						</ComboboxItem>
+					{(group: FontSourcePickGroup) => (
+						<ComboboxGroup key={group.key} items={group.items}>
+							{group.label === null ? null : <ComboboxLabel>{group.label}</ComboboxLabel>}
+							<ComboboxCollection>
+								{(item: FontSourcePick) => (
+									<ComboboxItem key={item.key} value={item}>
+										{item.label}
+									</ComboboxItem>
+								)}
+							</ComboboxCollection>
+						</ComboboxGroup>
 					)}
 				</ComboboxList>
 			</ComboboxContent>
