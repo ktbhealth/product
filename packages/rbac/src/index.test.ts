@@ -624,6 +624,67 @@ describe("buildPermissions", () => {
 		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
 		expect(grants.get(grantKey("patient", "delete"))).toBe("deny");
 	});
+
+	it("tenantPolicy strict hides global grants from tenant-scoped checks", async () => {
+		// Direct grant tuples: u50 global (tenant_id NULL), u51 pinned
+		// to t1. Role-derived grant tuples are always global in this
+		// fixture, so direct tuples are the clean probe.
+		await db.insert(relationTuples).values([
+			{
+				objectType: "vault",
+				objectId: "*",
+				relation: "open",
+				subjectKind: "user",
+				subjectId: "u50",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			{
+				objectType: "vault",
+				objectId: "*",
+				relation: "open",
+				subjectKind: "user",
+				subjectId: "u51",
+				effect: "allow",
+				tenantId: "t1",
+				expiresAt: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+		]);
+		const p = buildPermissions(db);
+		const can = (
+			userId: string,
+			opts?: { tenantId?: string; tenantPolicy?: "inherit" | "strict" },
+		) =>
+			Effect.runPromise(
+				p.can("vault", "open", opts).pipe(Effect.provideService(Principal, { userId })),
+			);
+		// inherit (default and explicit): global grants bleed into t1.
+		expect(await can("u50", { tenantId: "t1" })).toBe(true);
+		expect(await can("u50", { tenantId: "t1", tenantPolicy: "inherit" })).toBe(true);
+		expect(await can("u51", { tenantId: "t1" })).toBe(true);
+		// strict: only tenant_id = tid tuples are visible.
+		expect(await can("u50", { tenantId: "t1", tenantPolicy: "strict" })).toBe(false);
+		expect(await can("u51", { tenantId: "t1", tenantPolicy: "strict" })).toBe(true);
+		expect(await can("u51", { tenantId: "t2", tenantPolicy: "strict" })).toBe(false);
+		// No tenant context: both policies see NULL tuples only.
+		expect(await can("u50", { tenantPolicy: "strict" })).toBe(true);
+		expect(await can("u51", { tenantPolicy: "strict" })).toBe(false);
+		// requirePermission honours the policy too.
+		const denied = await Effect.runPromise(
+			Effect.flip(
+				p
+					.requirePermission("vault", "open", { tenantId: "t1", tenantPolicy: "strict" })
+					.pipe(Effect.provideService(Principal, { userId: "u50" })),
+			),
+		);
+		expect(denied).toBeInstanceOf(Forbidden);
+		expect(denied.path).toBe("rbac.vault.open");
+	});
 });
 
 describe("permissionsService", () => {
@@ -1064,6 +1125,38 @@ describe("canObject / requireObject", () => {
 		expect(await can("u10", "billing", "inv1", "pay", "t1")).toBe(true);
 		expect(await can("u10", "billing", "inv1", "pay")).toBe(false);
 		expect(await can("u10", "billing", "inv1", "pay", "t2")).toBe(false);
+	});
+
+	it("tenantPolicy strict hides global tuples from tenant-scoped object checks", async () => {
+		await db.insert(relationTuples).values([
+			tuple({ objectType: "doc", objectId: "sd1", relation: "read", subjectId: "u60" }),
+			tuple({
+				objectType: "doc",
+				objectId: "sd1",
+				relation: "read",
+				subjectId: "u61",
+				tenantId: "t1",
+			}),
+		]);
+		const check = (
+			userId: string,
+			opts?: { tenantId?: string; tenantPolicy?: "inherit" | "strict" },
+		) =>
+			Effect.runPromise(
+				permissions
+					.canObject("doc", "sd1", "read", opts)
+					.pipe(Effect.provideService(Principal, { userId })),
+			);
+		// inherit: the global tuple bleeds into t1.
+		expect(await check("u60", { tenantId: "t1" })).toBe(true);
+		expect(await check("u61", { tenantId: "t1" })).toBe(true);
+		// strict: only tenant_id = tid tuples are visible.
+		expect(await check("u60", { tenantId: "t1", tenantPolicy: "strict" })).toBe(false);
+		expect(await check("u61", { tenantId: "t1", tenantPolicy: "strict" })).toBe(true);
+		expect(await check("u61", { tenantId: "t2", tenantPolicy: "strict" })).toBe(false);
+		// Tenant-less checks see NULL tuples under both policies.
+		expect(await check("u60", { tenantPolicy: "strict" })).toBe(true);
+		expect(await check("u61", { tenantPolicy: "strict" })).toBe(false);
 	});
 
 	it("honours expires_at", async () => {

@@ -760,8 +760,10 @@ export const DocumentStoreLive = Layer.effect(
 
 		/** Ambient tenant id for tenant-scoped grant lookups (P-084):
 		 * the record's own tenant isn't known before the fetch, so every
-		 * check binds the ambient `Tenant` — global grants always
-		 * satisfy, tenant-pinned grants only inside their tenant.
+		 * check binds the ambient `Tenant`. `tenantPolicy: "strict"` —
+		 * collection permissions guard tenant clinical data, so global
+		 * (tenant_id NULL) grants must NOT bleed into a tenant-scoped
+		 * check: only grants pinned to the ambient tenant satisfy.
 		 * Personal/system scope resolves `undefined` → global grants
 		 * only (rbac treats an absent tenantId as tenant_id NULL). */
 		const grantTenantId = Effect.map(Tenant, (t) => {
@@ -782,7 +784,8 @@ export const DocumentStoreLive = Layer.effect(
 				const list = typeof spec === "string" ? [spec] : spec;
 				for (const entry of list) {
 					const { resource, action } = splitPermission(entry);
-					if (yield* permissions.can(resource, action, { tenantId })) return true;
+					if (yield* permissions.can(resource, action, { tenantId, tenantPolicy: "strict" }))
+						return true;
 				}
 				return false;
 			});

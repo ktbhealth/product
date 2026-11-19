@@ -13,6 +13,7 @@ import {
 } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import { Forbidden, Principal } from "@ktb/authz";
+import { buildPermissions, deleteRelationTuples, Permissions, writeRelationTuple } from "@ktb/rbac";
 import {
 	Patients,
 	patientsServicesPlugin,
@@ -85,6 +86,10 @@ const liveDeps = (
 	const infra = Layer.mergeAll(
 		Layer.succeed(Db, db),
 		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		// T-182: record authz resolves owner tuples through the real
+		// Permissions port over the test db (relation_tuples +
+		// permission_epoch are in the DDL).
+		Layer.succeed(Permissions, buildPermissions(db)),
 		eventBus,
 	);
 	return Layer.mergeAll(
@@ -102,6 +107,19 @@ const liveDeps = (
 		Layer.mergeAll(PatientsQueriesLive, PatientsCommandsLive).pipe(Layer.provide(infra)),
 	);
 };
+
+/** T-182: raw patient inserts bypass createPatient's tuple write —
+ * mirror the `patient:<id>#owner@user:<ownerId>` grant so record
+ * authz (requireObject/canObject) sees the same ownership the
+ * owner_id column claims. */
+const grantPatientOwner = (db: ReturnType<typeof makeDb>, id: number, ownerId: string) =>
+	writeRelationTuple(db, {
+		objectType: "patient",
+		objectId: String(id),
+		relation: "owner",
+		subjectKind: "user",
+		subjectId: ownerId,
+	});
 
 describe("consultations repo", () => {
 	let db: ReturnType<typeof makeDb>;
@@ -614,6 +632,14 @@ describe("ConsultationsLive", () => {
 			.update(consultationsTable)
 			.set({ userId: null })
 			.where(eq(consultationsTable.id, id!));
+		// T-182: ownership is the relation tuple, not the user_id column —
+		// revoke it so the row is genuinely unowned (a stale tuple would
+		// still admit u1, which is the intended ReBAC semantic).
+		await deleteRelationTuples(testDb, {
+			objectType: "consultation",
+			objectId: String(id),
+			relation: "owner",
+		});
 		await expect(
 			asUser(
 				"u1",
@@ -1510,6 +1536,7 @@ describe("Consultations.history", () => {
 			.values({ ownerId: "u1", name: "Maria", createdAt: new Date() })
 			.returning({ id: patientsTable.id });
 		patientId = p!.id;
+		await grantPatientOwner(testDb, patientId, "u1");
 		await testDb.insert(userTable).values({
 			id: "u2",
 			name: "Dr B",
@@ -1537,6 +1564,7 @@ describe("Consultations.history", () => {
 			.insert(patientsTable)
 			.values({ ownerId: "u1", name: "Outra", createdAt: new Date() })
 			.returning({ id: patientsTable.id });
+		await grantPatientOwner(testDb, other!.id, "u1");
 		await addConsultation({ patientId: other!.id, anamnesis: doc("QO", "CO") });
 	});
 
@@ -1609,6 +1637,7 @@ describe("Consultations.history", () => {
 			.insert(patientsTable)
 			.values({ ownerId: "u1", name: "Sem docs", createdAt: new Date() })
 			.returning({ id: patientsTable.id });
+		await grantPatientOwner(testDb, p2!.id, "u1");
 		await addConsultation({ patientId: p2!.id }); // no anamnesis
 		await addConsultation({
 			patientId: p2!.id,
@@ -1630,6 +1659,7 @@ describe("Consultations.history", () => {
 			.insert(patientsTable)
 			.values({ ownerId: "u1", name: "JSON quebrado", createdAt: new Date() })
 			.returning({ id: patientsTable.id });
+		await grantPatientOwner(testDb, p3!.id, "u1");
 		await addConsultation({ patientId: p3!.id, anamnesis: "{not-json" });
 		const h = await asUser(
 			"u1",
@@ -1651,6 +1681,8 @@ describe("Consultations.history", () => {
 			.insert(patientsTable)
 			.values({ ownerId: "u1", name: "Audit Rows", createdAt: new Date() })
 			.returning({ id: patientsTable.id });
+		await grantPatientOwner(testDb, p4!.id, "u1");
+		await grantPatientOwner(testDb, p5!.id, "u1");
 		await addConsultation({ patientId: p4!.id, anamnesis: doc("QA", "CA") });
 		await addConsultation({ patientId: p5!.id, anamnesis: doc("QB", "CB") });
 		await asUser(
@@ -1742,6 +1774,8 @@ describe("patientId ownership on save/attach", () => {
 			.returning({ id: patientsTable.id });
 		ownPatient = own!.id;
 		foreignPatient = foreign!.id;
+		await grantPatientOwner(testDb, ownPatient, "u1");
+		await grantPatientOwner(testDb, foreignPatient, "u2");
 	});
 
 	afterAll(() => runtime.dispose());
@@ -2398,6 +2432,7 @@ describe("ConsultationsLive tenant scope (P-053)", () => {
 				.values({ ownerId: "u1", name: "ZK Patient", createdAt: new Date() })
 				.returning({ id: patientsTable.id })
 		)[0]!;
+		await grantPatientOwner(testDb, patient.id, "u1");
 		const saved = await asTenant(
 			"u1",
 			TENANT_ZK,

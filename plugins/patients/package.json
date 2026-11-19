@@ -28,6 +28,7 @@
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/rbac": "workspace:*",
+		"@ktb/rbac-plugin": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/tenant": "workspace:*",
 		"@ktb/vault": "workspace:*",

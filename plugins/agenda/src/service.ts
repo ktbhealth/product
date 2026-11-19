@@ -4,7 +4,9 @@ import * as Layer from "effect/Layer";
 import { and, asc, eq, gte, isNotNull, isNull, lte, or, inArray, type SQL } from "drizzle-orm";
 
 import { EventBus, Query } from "@effect-server-utils/cqrs";
-import { Forbidden, Principal, requireCanAs, requirePrincipalUser } from "@ktb/authz";
+import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
+import { Permissions } from "@ktb/rbac";
+import { Option } from "effect";
 import { Consultations } from "@ktb/consultations";
 import { Db, type DbClient } from "@ktb/db";
 import { appointments, patients } from "@ktb/db/schema";
@@ -243,11 +245,17 @@ export const AppointmentsLive = Layer.effect(
 		const events = yield* EventBus;
 		const patientQueries = yield* Query.dispatcher(PatientsQueries);
 		const consultations = yield* Consultations;
+		// Patient-link checks resolve owner tuples through the rbac
+		// plugin's Permissions port — the optionalDeps edge orders
+		// rbac.services first; absent → the check fails closed
+		// (Forbidden), the same deny shape as an unbound principal.
+		const permissionsOption = yield* Effect.serviceOption(Permissions);
+		const permissions = Option.isSome(permissionsOption) ? permissionsOption.value : null;
 
 		// Patient-link guard: a patientId must resolve to a patient the
 		// acting principal may see — same contract as consultations'
 		// requireOwnedPatient (tenant members link tenant patients,
-		// personal patients pass patient.read permix).
+		// personal patients pass the `owner` relation-tuple check).
 		const requireOwnedPatient = (patientId: number, path: string) =>
 			Effect.gen(function* () {
 				const owner = yield* patientQueries["patients.ownerOf"]({ id: patientId });
@@ -258,7 +266,10 @@ export const AppointmentsLive = Layer.effect(
 					}
 					return;
 				}
-				yield* requireCanAs("patient.read", { ownerId: owner.ownerId });
+				if (permissions === null) {
+					return yield* Effect.fail(new Forbidden({ path: `rbac.patient.${patientId}.owner` }));
+				}
+				yield* permissions.requireObject("patient", String(patientId), "owner");
 			});
 
 		return Appointments.of({

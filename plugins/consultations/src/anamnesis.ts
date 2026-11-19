@@ -77,6 +77,7 @@ export async function attachAnamnesis(db: DbClient, data: AttachAnamnesisInput, 
 export async function anamnesisIntegrityHead(db: DbClient, id: number) {
 	const rows = await db
 		.select({
+			id: consultations.id,
 			userId: consultations.userId,
 			tenantId: consultations.tenantId,
 			anamnesisHash: consultations.anamnesisHash,

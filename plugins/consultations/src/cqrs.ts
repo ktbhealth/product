@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 
-import { Forbidden, Principal, requireCanAs } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
+import { Permissions } from "@ktb/rbac";
+import { Option } from "effect";
 import { Db } from "@ktb/db";
 import { PlatformAdmin } from "@ktb/platform";
 import {
@@ -76,7 +78,9 @@ export const PatientRecordConsultationsLive = Query.handlersOf(PatientRecordCons
 					}));
 			}
 			// Same gate as Consultations.list — owner + tenant scoped read.
-			yield* requireCanAs("consultation.read", { userId: principal.userId });
+			// (The retired permix self-check `consultation.read` on
+			// { userId: principal.userId } was tautological — the row
+			// scope below is the real fence.)
 			const scope = yield* consultationScope(principal.userId);
 			const rows = yield* Effect.promise(() => listConsultations(db, patientId, scope));
 			return rows.map((r) => ({
@@ -111,19 +115,28 @@ export const PatientDeleteCascadeLive = Command.handlersOf(PatientCascadeCommand
 			// Platform admins skip the per-row owner check — they act
 			// cross-owner; `patients.delete` applies the same override.
 			const admin = yield* isPlatformAdmin(platformAdmin);
+			// Record authz resolves owner tuples through the rbac plugin's
+			// Permissions port — optional like the service layer's; absent
+			// fails the per-row check closed (Forbidden).
+			const permissionsOption = yield* Effect.serviceOption(Permissions);
+			const permissions = Option.isSome(permissionsOption) ? permissionsOption.value : null;
 			for (const row of rows) {
 				// Tenant members pass on tenant-owned rows; personal rows
 				// keep the per-row owner check (admin already skipped).
 				if (!admin) {
-					yield* authorizeConsultationRow(platformAdmin, row, "consultation.delete");
+					yield* authorizeConsultationRow(platformAdmin, permissions, row, "consultation.delete");
 				}
 			}
-			// Every row passed the per-row authz above, so all survivors
-			// are visible to the caller — the delete is fenced to the
-			// same scope (own personal rows + accessible tenants).
-			// Admins act cross-owner: every linked consultation goes.
-			const scope = admin ? undefined : yield* consultationScope(principal.userId);
-			yield* Effect.promise(() => deletePatientConsultations(db, patientId, scope));
+			// Every row passed the per-row authz above — delete exactly
+			// those ids. Admins act cross-owner, so the scanned set is
+			// already the full linked set either way.
+			yield* Effect.promise(() =>
+				deletePatientConsultations(
+					db,
+					patientId,
+					rows.map((r) => r.id),
+				),
+			);
 			yield* patientCommands["patients.delete"]({ id: patientId });
 			// The `patients.delete` command handler records the audit row
 			// for EVERY patient delete (owner and admin alike — P-080);

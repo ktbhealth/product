@@ -113,17 +113,17 @@ export const I18nAdminLive = Layer.effect(
 		 * tenant-pinned rbac lookup:
 		 *
 		 * - `tenant`: the grant check passes `tenantId: scopeId` to
-		 *   rbac, whose grant resolution is `tenant_id IS NULL OR
-		 *   tenant_id = scopeId` — so a GLOBAL grant (tenant_id NULL)
-		 *   satisfies tenant-scoped checks and global i18n grant
-		 *   holders CAN write any tenant's copy, while tenant-pinned
-		 *   grants stay isolated to their own tenant. The scopeId
-		 *   itself is not re-validated against a tenant directory —
-		 *   none is reachable from this layer — but the grant lookup
-		 *   fails closed: a scopeId with no matching tenant grant
-		 *   resolves Forbidden. (Whether global grants SHOULD imply
-		 *   tenant write access is a product decision — flagged for
-		 *   review; the orAdmin fallback below is unaffected.)
+		 *   rbac with `tenantPolicy: "inherit"` (P-084) — resolution is
+		 *   `tenant_id IS NULL OR tenant_id = scopeId`, so a GLOBAL
+		 *   grant (tenant_id NULL) satisfies tenant-scoped checks and
+		 *   global i18n grant holders CAN write any tenant's copy,
+		 *   while tenant-pinned grants stay isolated to their own
+		 *   tenant. The bleed is CONFIRMED-INTENDED here (product
+		 *   decision): i18n copy is platform-managed, not tenant
+		 *   clinical data. The scopeId itself is not re-validated
+		 *   against a tenant directory — none is reachable from this
+		 *   layer — but the grant lookup fails closed: a scopeId with
+		 *   no matching tenant grant resolves Forbidden.
 		 * - `portal`: portal instance ids live in the app-host chrome
 		 *   registry (`findPortalInstance`), which plugins cannot
 		 *   import (arch lint) and which has no rbac tenant analogue —
@@ -137,6 +137,9 @@ export const I18nAdminLive = Layer.effect(
 				if (scope === "tenant" && Option.isSome(permissionsOpt)) {
 					const check = permissionsOpt.value.requirePermission(I18N_RESOURCE, action, {
 						tenantId: scopeId,
+						// Explicit "inherit": documents the confirmed-intended
+						// global-grant bleed into tenant scopes (see above).
+						tenantPolicy: "inherit",
 					});
 					return yield* orAdmin(platformAdmin, check);
 				}

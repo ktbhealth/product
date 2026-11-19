@@ -749,13 +749,25 @@ export const AuditLive = Layer.effect(
 		/** Shared scope resolution for the staff feed: the bound tenant's
 		 * `groups.id` when `audit.read` is granted on it, else null. Read
 		 * per call — `Tenant` is request-scoped and `Permissions` may be
-		 * absent entirely (rbac plugin disabled). */
+		 * absent entirely (rbac plugin disabled).
+		 *
+		 * `tenantPolicy: "strict"` (P-084): audit.read must NOT bleed —
+		 * only grants pinned to THIS tenant satisfy the check, global
+		 * (tenant_id NULL) grants do not. CONSEQUENCE: the seeded
+		 * `superadmin` role's grants are tenant_id NULL, so superadmin
+		 * holders LOSE cross-tenant audit feed access under strict —
+		 * intended tightening (they keep /platform admin audit via
+		 * `adminList`/`adminFacets`, which are PlatformAdmin-gated, not
+		 * tenant-scoped). */
 		const activityScope = Effect.gen(function* () {
 			const scopeId = tenantScopeId(yield* Tenant);
 			if (scopeId === null) return null;
 			const permissions = yield* Effect.serviceOption(Permissions);
 			if (Option.isNone(permissions)) return null;
-			const allowed = yield* permissions.value.can("audit", "read", { tenantId: scopeId });
+			const allowed = yield* permissions.value.can("audit", "read", {
+				tenantId: scopeId,
+				tenantPolicy: "strict",
+			});
 			return allowed ? scopeId : null;
 		});
 		return Audit.of({

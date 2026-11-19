@@ -9,6 +9,7 @@ import { DocumentStore } from "@ktb/document-store";
 import { defOwnerEnabled } from "@ktb/kernel";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { FlowDefinitions, type FlowDef } from "./definition.ts";
 import { FlowsHooks, FlowsHooksLive, type FlowHookHandle } from "./hooks.ts";
@@ -226,9 +227,20 @@ export const FlowsLive = Layer.effect(
 				return Effect.fail(new FlowPermissionDenied({ flow: def.id, permission }));
 			}
 			const { resource, action } = splitPermission(permission);
-			return Effect.flatMap(permissions.value.can(resource, action), (allowed) =>
-				allowed ? Effect.void : Effect.fail(new FlowPermissionDenied({ flow: def.id, permission })),
-			);
+			// P-084: flows govern tenant-scoped document records, so the
+			// grant check binds the ambient tenant under "strict" —
+			// global (tenant_id NULL) grants do not bleed in. No bound
+			// Tenant → tenant-less check, global grants only.
+			return Effect.gen(function* () {
+				const scopeId = tenantScopeId(yield* Tenant);
+				const allowed = yield* permissions.value.can(resource, action, {
+					tenantId: scopeId ?? undefined,
+					tenantPolicy: "strict",
+				});
+				if (!allowed) {
+					return yield* Effect.fail(new FlowPermissionDenied({ flow: def.id, permission }));
+				}
+			});
 		};
 
 		const getRecord = (

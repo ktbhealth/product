@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
+import { buildPermissions, Permissions, writeRelationTuple } from "@ktb/rbac";
 import { PatientCascadeCommands, PatientRecordConsultationsQueries } from "@ktb/patients/api";
 import { patients as patientsTable } from "@ktb/db/schema";
 import { PatientsCommandsLive, PatientsQueriesLive } from "@ktb/patients";
@@ -80,6 +81,7 @@ describe("patient record query and delete cascade", () => {
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(Permissions, buildPermissions(db)),
 			makeEventBus(),
 		);
 		const deps = Layer.mergeAll(
@@ -101,6 +103,17 @@ describe("patient record query and delete cascade", () => {
 			.returning({ id: patientsTable.id });
 		ana = a!.id;
 		bia = b!.id;
+		// T-182: record authz reads owner tuples, not owner_id — the raw
+		// inserts above bypass createPatient's tuple write, so mirror it.
+		for (const id of [ana, bia]) {
+			await writeRelationTuple(db, {
+				objectType: "patient",
+				objectId: String(id),
+				relation: "owner",
+				subjectKind: "user",
+				subjectId: "u1",
+			});
+		}
 
 		// Ana: one consultation with stored audio, one without.
 		const withAudio = (await createConsultation(db, { userId: "u1", source: "browser" }))!;

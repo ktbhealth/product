@@ -5,6 +5,7 @@ import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Forbidden, Principal } from "@ktb/authz";
+import { buildPermissions, deleteRelationTuples, Permissions } from "@ktb/rbac";
 import { createPatient, PatientsCommandsLive, PatientsQueriesLive } from "@ktb/patients";
 import { validatePatient } from "@ktb/patients/record";
 import { patients as patientsTable } from "@ktb/db/schema";
@@ -112,6 +113,7 @@ describe("patients.* CQRS surface", () => {
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(Permissions, buildPermissions(db)),
 			makeEventBus(),
 		);
 		// P-080: the `patients.delete` command handler owns the audit write
@@ -214,7 +216,15 @@ describe("patients.* CQRS surface", () => {
 
 		it("fails Forbidden on ownerless consultation rows", async () => {
 			const patient = (await createPatient(db, "u1", fields("Cascade Ownerless")))!;
-			await linkedConsultation(patient.id, null);
+			const orphan = await linkedConsultation(patient.id, null);
+			// T-182: ownership is the relation tuple — linkedConsultation
+			// writes one for u1 at create; revoke it so the row is
+			// genuinely unowned (user_id is attribution only now).
+			await deleteRelationTuples(db, {
+				objectType: "consultation",
+				objectId: String(orphan),
+				relation: "owner",
+			});
 			await expect(deleteCascade(patient.id, "u1")).rejects.toBeInstanceOf(Forbidden);
 		});
 

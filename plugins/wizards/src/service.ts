@@ -13,6 +13,7 @@ import { defOwnerEnabled } from "@ktb/kernel";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { runCompletion, type CompletionFailed } from "./completion.ts";
 import {
@@ -677,11 +678,20 @@ export const WizardsLive = Layer.effect(
 				return Effect.fail(new WizardPermissionDenied({ key: definition.id, permission }));
 			}
 			const { resource, action } = splitPermission(permission);
-			return Effect.flatMap(permissions.value.can(resource, action), (allowed) =>
-				allowed
-					? Effect.void
-					: Effect.fail(new WizardPermissionDenied({ key: definition.id, permission })),
-			);
+			// P-084: wizard runs write tenant-scoped document data, so the
+			// grant check binds the ambient tenant under "strict" —
+			// global (tenant_id NULL) grants do not bleed in. No bound
+			// Tenant → tenant-less check, global grants only.
+			return Effect.gen(function* () {
+				const scopeId = tenantScopeId(yield* Tenant);
+				const allowed = yield* permissions.value.can(resource, action, {
+					tenantId: scopeId ?? undefined,
+					tenantPolicy: "strict",
+				});
+				if (!allowed) {
+					return yield* Effect.fail(new WizardPermissionDenied({ key: definition.id, permission }));
+				}
+			});
 		};
 
 		return Wizards.of({

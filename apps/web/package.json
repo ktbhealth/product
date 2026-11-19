@@ -68,6 +68,7 @@
 		"@ktb/pubsub-port": "workspace:*",
 		"@ktb/pubsub-transport-redis": "workspace:*",
 		"@ktb/queues-port": "workspace:*",
+		"@ktb/rbac": "workspace:*",
 		"@ktb/rbac-plugin": "workspace:*",
 		"@ktb/secretaries": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

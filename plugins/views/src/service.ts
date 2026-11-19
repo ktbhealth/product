@@ -7,6 +7,7 @@ import { DocumentStore, type DocumentRecord, type DocumentStoreError } from "@kt
 import { defOwnerEnabled } from "@ktb/kernel";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import { Permissions, splitPermission } from "@ktb/rbac";
+import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import {
 	parseViewPath,
@@ -108,7 +109,18 @@ export const ViewsLive = Layer.effect(
 			if (def.permission === undefined) return Effect.succeed(true);
 			if (Option.isNone(permissions)) return Effect.succeed(false);
 			const { resource, action } = splitPermission(def.permission);
-			return permissions.value.can(resource, action);
+			// P-084: views serve tenant-scoped document data, so the
+			// grant check binds the ambient tenant under "strict" —
+			// global (tenant_id NULL) grants do not bleed in. No bound
+			// Tenant (personal/system scope) → tenant-less check,
+			// global grants only.
+			return Effect.gen(function* () {
+				const scopeId = tenantScopeId(yield* Tenant);
+				return yield* permissions.value.can(resource, action, {
+					tenantId: scopeId ?? undefined,
+					tenantPolicy: "strict",
+				});
+			});
 		};
 
 		/** Resolve def + permission for a path; null when either fails. */

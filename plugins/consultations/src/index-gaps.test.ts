@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
+import { buildPermissions, Permissions } from "@ktb/rbac";
 import { PatientsCommandsLive, PatientsQueriesLive } from "@ktb/patients";
 import { makeEventBus } from "@effect-server-utils/cqrs";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
@@ -39,6 +40,7 @@ const liveDeps = (db: ReturnType<typeof makeDb>) => {
 	const infra = Layer.mergeAll(
 		Layer.succeed(Db, db),
 		Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		Layer.succeed(Permissions, buildPermissions(db)),
 		makeEventBus(),
 	);
 	return Layer.mergeAll(

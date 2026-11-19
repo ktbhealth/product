@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { EventBus, type EventBusShape, makeEventBus } from "@effect-server-utils/cqrs";
 import { Forbidden, Principal } from "@ktb/authz";
+import { buildPermissions, Permissions } from "@ktb/rbac";
 import { ConsultationsLive } from "@ktb/consultations";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
@@ -57,6 +58,13 @@ CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type 
 ${AGENDA_TEST_DDL}
 INSERT INTO patients (id, owner_id, name) VALUES (1, 'u1', 'Ana'), (2, 'u1', 'Bia'), (3, 'u2', 'Other Doc Patient'), (4, 'u1', 'Shared Pat');
 UPDATE patients SET tenant_id = 7 WHERE id = 4;
+-- T-182: personal-patient record authz resolves owner tuples — the raw
+-- inserts above bypass createPatient's tuple write, so mirror it.
+-- Patient 4 is tenant-owned: membership governs, no tuple needed.
+INSERT INTO relation_tuples (object_type, object_id, relation, subject_kind, subject_id, effect, created_at) VALUES
+('patient', '1', 'owner', 'user', 'u1', 'allow', 0),
+('patient', '2', 'owner', 'user', 'u1', 'allow', 0),
+('patient', '3', 'owner', 'user', 'u2', 'allow', 0);
 `;
 
 const day = 24 * 60 * 60 * 1000;
@@ -209,6 +217,7 @@ describe("AppointmentsLive", () => {
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(Permissions, buildPermissions(db)),
 			Layer.succeed(EventBus, bus),
 		);
 		const queries = PatientsQueriesLive.pipe(Layer.provide(infra));
