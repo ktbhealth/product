@@ -217,10 +217,78 @@ describe("parseFontVariations — fvar", () => {
 		expect(info?.unicodeRange).toBeUndefined();
 	});
 
-	it("marks fonts with fvar but no wght axis variable without a weightAxis", async () => {
+	it("marks fonts with fvar but no wght axis variable, reporting other axes", async () => {
 		const font = ttf(table("fvar", fvarTable([{ tag: "wdth", min: 50, def: 100, max: 200 }])));
 		const info = await parseFontVariations(font);
-		expect(info).toEqual({ variable: true });
+		expect(info).toEqual({
+			variable: true,
+			axes: [{ tag: "wdth", min: 50, default: 100, max: 200 }],
+		});
+	});
+
+	it("collects every non-wght axis in table order, wght excluded", async () => {
+		const font = ttf(
+			table(
+				"fvar",
+				fvarTable([
+					{ tag: "wght", min: 100, def: 400, max: 900 },
+					{ tag: "wdth", min: 75, def: 100, max: 125 },
+					{ tag: "opsz", min: 6, def: 14, max: 72 },
+					{ tag: "slnt", min: -12, def: 0, max: 0 },
+					{ tag: "ital", min: 0, def: 0, max: 1 },
+					{ tag: "XOPQ", min: 100, def: 400, max: 900 },
+				]),
+			),
+		);
+		const info = await parseFontVariations(font);
+		expect(info?.weightAxis).toEqual({ min: 100, default: 400, max: 900 });
+		expect(info?.axes).toEqual([
+			{ tag: "wdth", min: 75, default: 100, max: 125 },
+			{ tag: "opsz", min: 6, default: 14, max: 72 },
+			{ tag: "slnt", min: -12, default: 0, max: 0 },
+			{ tag: "ital", min: 0, default: 0, max: 1 },
+			{ tag: "XOPQ", min: 100, default: 400, max: 900 },
+		]);
+	});
+
+	it("keeps fractional axis values unclamped and drops malformed/duplicate axes", async () => {
+		const font = ttf(
+			table(
+				"fvar",
+				fvarTable([
+					// Inverted bounds → dropped.
+					{ tag: "XXXX", min: 100, def: 50, max: 900 },
+					// First record per tag wins.
+					{ tag: "wdth", min: 50, def: 100, max: 200 },
+					{ tag: "wdth", min: 60, def: 100, max: 210 },
+					// Negative/huge values are NOT clamped (only wght is);
+					// 30000 stays inside the Fixed 16.16 int32 range.
+					{ tag: "opsz", min: -5, def: 0.5, max: 30000 },
+				]),
+			),
+		);
+		const info = await parseFontVariations(font);
+		expect(info?.axes).toEqual([
+			{ tag: "wdth", min: 50, default: 100, max: 200 },
+			{ tag: "opsz", min: -5, default: 0.5, max: 30000 },
+		]);
+	});
+
+	it("caps reported axes at 32 records", async () => {
+		const axes: AxisSpec[] = [];
+		for (let i = 0; i < 40; i++) {
+			// Distinct 4-char tags: 'AX' + two hex digits.
+			axes.push({
+				tag: `A${i.toString(16).padStart(3, "0")}`,
+				min: 0,
+				def: 1,
+				max: 2,
+			});
+		}
+		const info = await parseFontVariations(ttf(table("fvar", fvarTable(axes))));
+		expect(info?.axes).toHaveLength(32);
+		expect(info?.axes?.[0]?.tag).toBe("A000");
+		expect(info?.axes?.[31]?.tag).toBe("A01f");
 	});
 
 	it("rejects a wght axis with inverted bounds", async () => {

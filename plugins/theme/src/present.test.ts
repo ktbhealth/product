@@ -247,6 +247,63 @@ describe("fonts", () => {
 		expect(rules[4]).not.toContain("unicode-range");
 	});
 
+	it("fontFaceCss emits font-stretch for wdth axes and nothing for other axes", () => {
+		const css = fontFaceCss({
+			delivery: "self-host",
+			assets: {
+				Var: {
+					faces: [
+						{
+							url: "/a.woff2",
+							weightRange: [100, 900],
+							axes: [
+								{ tag: "wdth", min: 75, default: 100, max: 125 },
+								// Non-wdth axes have no @font-face descriptor —
+								// stored for element-level font-variation-settings.
+								{ tag: "opsz", min: 6, default: 14, max: 72 },
+								{ tag: "slnt", min: -12, default: 0, max: 0 },
+							],
+						},
+						// Pinned wdth (min === max) collapses to one value.
+						{ url: "/b.woff2", axes: [{ tag: "wdth", min: 80, default: 80, max: 80 }] },
+						// Malformed/inverted/out-of-domain values → no descriptor.
+						{ url: "/c.woff2", axes: [{ tag: "wdth", min: 125, default: 100, max: 75 }] },
+						{ url: "/d.woff2", axes: [{ tag: "wdth", min: -5, default: 100, max: 125 }] },
+						{
+							url: "/e.woff2",
+							axes: [{ tag: "wdth", min: "wide", default: 100, max: 125 }] as never,
+						},
+						// Non-finite / out-of-domain / sub-rounding endpoints.
+						{ url: "/h.woff2", axes: [{ tag: "wdth", min: Infinity, default: 100, max: 125 }] },
+						{ url: "/i.woff2", axes: [{ tag: "wdth", min: 0.00001, default: 100, max: 125 }] },
+						{ url: "/j.woff2", axes: [{ tag: "wdth", min: 20000, default: 100, max: 125 }] },
+						// Case-sensitive tag + non-object entries are ignored.
+						{
+							url: "/f.woff2",
+							axes: [
+								"junk",
+								null,
+								{ tag: "WDTH", min: 75, default: 100, max: 125 },
+								{ tag: "opsz", min: 6, default: 14, max: 72 },
+							] as never,
+						},
+						// axes not an array → nothing.
+						{ url: "/g.woff2", axes: "nope" as never },
+					],
+				},
+			},
+		});
+		const rules = css.split("\n");
+		expect(rules[0]).toContain("font-weight:100 900");
+		expect(rules[0]).toContain("font-stretch:75% 125%");
+		expect(rules[0]).not.toContain("font-variation-settings");
+		expect(rules[1]).toContain("font-stretch:80%");
+		expect(rules[1]).not.toContain("font-stretch:80% 80%");
+		for (let i = 2; i <= 9; i++) {
+			expect(rules[i]).not.toContain("font-stretch");
+		}
+	});
+
 	it("fontFaceCss skips fallbacks without a usable local() name", () => {
 		const css = fontFaceCss({
 			delivery: "self-host",

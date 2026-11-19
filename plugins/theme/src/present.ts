@@ -170,6 +170,48 @@ const extOfUrl = (url: string): string => {
 
 const escapeCssString = (value: string): string => value.replaceAll('"', "");
 
+/**
+ * Sanity-check one axis endpoint for CSS emission: a positive,
+ * reasonably bounded percentage/number rendered with at most 4
+ * decimals (the fvar parser's own precision — keeps `String(n)` out
+ * of exponent notation). Returns null for anything unfit.
+ */
+const cssAxisNumber = (value: unknown): string | null => {
+	if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 10000) {
+		return null;
+	}
+	const rounded = Math.round(value * 10000) / 10000;
+	return rounded > 0 ? String(rounded) : null;
+};
+
+/**
+ * `font-stretch` descriptor from a face's `axes` metadata. `wdth`
+ * axis values ARE percentages, and the descriptor accepts
+ * `<percentage>{1,2}` — two ascending values declare the variable
+ * range, a single value pins the face. It is the ONLY non-wght axis
+ * with an `@font-face` descriptor: `opsz`/`slnt`/`ital`/custom axes
+ * apply via `font-variation-settings` on the element and are
+ * deliberately never emitted here (single values only — a range
+ * would be invalid CSS). Stored axes are untrusted JSON, so every
+ * field is revalidated.
+ */
+const fontStretchDescriptor = (axes: ThemeFontFace["axes"]): string => {
+	if (!Array.isArray(axes)) return "";
+	for (const axis of axes) {
+		if (typeof axis !== "object" || axis === null) continue;
+		const candidate = axis as { tag?: unknown; min?: unknown; max?: unknown };
+		if (candidate.tag !== "wdth") continue;
+		const min = cssAxisNumber(candidate.min);
+		const max = cssAxisNumber(candidate.max);
+		if (min === null || max === null) return "";
+		const lo = Number(min);
+		const hi = Number(max);
+		if (lo > hi) return "";
+		return lo === hi ? `;font-stretch:${min}%` : `;font-stretch:${min}% ${max}%`;
+	}
+	return "";
+};
+
 /** local() src list for a fallback face — family name plus the
  * `Regular`/`-Regular` spellings local() matching tries (fontaine). */
 const localSrc = (local: string): string => {
@@ -228,8 +270,9 @@ export const fontFaceCss = (fonts: ThemeFontConfig | null): string => {
 					.every((part) => /^U\+[0-9A-Fa-f?]{1,6}(-[0-9A-Fa-f?]{1,6})?$/.test(part.trim()))
 					? `;unicode-range:${face.unicodeRange}`
 					: "";
+			const fontStretch = fontStretchDescriptor(face.axes);
 			rules.push(
-				`@font-face{font-family:"${fam}";src:url("${url}") format("${format}");font-display:swap${weight}${unicodeRange};}`,
+				`@font-face{font-family:"${fam}";src:url("${url}") format("${format}");font-display:swap${weight}${fontStretch}${unicodeRange};}`,
 			);
 		}
 		// Metric-matched local() fallback — emitted once per family,

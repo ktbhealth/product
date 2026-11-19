@@ -4,10 +4,12 @@
  * `parseFontVariations` reads two sfnt tables out of the same
  * containers `parseFontMetrics` accepts (bare TTF/OTF, WOFF, WOFF2):
  *
- * - `fvar` — the variation axes. Only the `wght` (weight) axis is
- *   consumed: its min/default/max become a CSS `font-weight` range
- *   (`font-weight: 100 900`) on the emitted `@font-face` instead of
- *   discrete weights. Presence of `fvar` marks the font `variable`.
+ * - `fvar` — the variation axes. The `wght` (weight) axis is consumed
+ *   as a CSS `font-weight` range (`font-weight: 100 900`) on the
+ *   emitted `@font-face` instead of discrete weights; every OTHER
+ *   axis (`wdth`, `opsz`, `slnt`, `ital`, custom tags) is reported
+ *   verbatim in `axes` so callers can stamp it on the font manifest.
+ *   Presence of `fvar` marks the font `variable`.
  * - `cmap` — character coverage, collapsed into `unicode-range`
  *   descriptor text so browsers skip downloading the face for text it
  *   cannot render (the practical, dependency-free stand-in for real
@@ -37,11 +39,32 @@ export interface FontWeightAxis {
 	readonly max: number;
 }
 
+/**
+ * One non-`wght` `fvar` axis, values in the axis's own units
+ * (fvar Fixed 16.16 → Number, 4-decimal rounded — `wdth` reads as
+ * percentages, `slnt` as degrees, `opsz`/`ital`/custom as-is).
+ * `wght` never appears here — {@link FontVariationInfo.weightAxis}
+ * owns it.
+ */
+export interface FontVariationAxis {
+	readonly tag: string;
+	readonly min: number;
+	readonly default: number;
+	readonly max: number;
+}
+
+/** Cap on reported non-wght axes — real fonts carry a handful; the
+ * bound keeps a hostile fvar from bloating the stored manifest. */
+const MAX_FVAR_AXES = 32;
+
 export interface FontVariationInfo {
 	/** True when the font carries an `fvar` table (any axes). */
 	readonly variable: boolean;
 	/** `wght` axis range when present and sane; absent otherwise. */
 	readonly weightAxis?: FontWeightAxis;
+	/** Every other well-formed `fvar` axis (first record per tag
+	 * wins), in table order. Absent when the font has none. */
+	readonly axes?: readonly FontVariationAxis[];
 	/** Ready-to-emit `unicode-range` descriptor value ("U+0020-007E,
 	 * U+00C0-00FF"), or absent when coverage is unknown/unwieldy. */
 	readonly unicodeRange?: string;
@@ -78,14 +101,19 @@ const tableBytes = async (
 const round4 = (n: number): number => Math.round(n * 10000) / 10000;
 
 /**
- * Parse the `fvar` table: header counts + axis records. Only the
- * `wght` axis is kept — its Fixed values convert to CSS font-weight
- * numbers. Returns null when the table is absent/truncated/malformed
- * or carries no usable wght axis.
+ * Parse the `fvar` table: header counts + axis records. `wght`
+ * becomes the CSS-clamped {@link FontWeightAxis}; every other sane
+ * axis is kept verbatim in `axes` (duplicate tags: first wins).
+ * Returns null-safe partials when the table is absent/truncated —
+ * an unreadable fvar still marks the font variable.
  */
 const parseFvar = (
 	bytes: Uint8Array | null,
-): { variable: boolean; weightAxis?: FontWeightAxis } => {
+): {
+	variable: boolean;
+	weightAxis?: FontWeightAxis;
+	axes?: FontVariationAxis[];
+} => {
 	if (bytes === null) return { variable: false };
 	// An fvar table too short for its header is still an fvar table —
 	// the font IS variable, we just can't read the axes.
@@ -98,6 +126,7 @@ const parseFvar = (
 		return { variable: true };
 	}
 	let weightAxis: FontWeightAxis | undefined;
+	const axes = new Map<string, FontVariationAxis>();
 	for (let i = 0; i < axisCount; i++) {
 		const o = axesOffset + i * axisSize;
 		const tag = String.fromCharCode(
@@ -106,27 +135,35 @@ const parseFvar = (
 			v.getUint8(o + 2),
 			v.getUint8(o + 3),
 		);
-		if (tag !== "wght") continue;
 		// Fixed 16.16 signed values at +4/+8/+12.
 		const min = round4(i32(v, o + 4) / 65536);
 		const def = round4(i32(v, o + 8) / 65536);
 		const max = round4(i32(v, o + 12) / 65536);
-		if (
+		const sane =
 			Number.isFinite(min) &&
 			Number.isFinite(def) &&
 			Number.isFinite(max) &&
 			min <= def &&
-			def <= max
-		) {
+			def <= max;
+		if (tag === "wght") {
+			if (!sane) continue;
 			// CSS font-weight accepts 1–1000 — clamp rather than trust
 			// the fvar bytes blindly (the monotonic clamp preserves
 			// min <= default <= max). insertCatalogFontAsset applies
 			// the same rule to its own input.
 			const clamp = (n: number): number => Math.min(1000, Math.max(1, n));
 			weightAxis = { min: clamp(min), default: clamp(def), max: clamp(max) };
+			continue;
+		}
+		if (sane && axes.size < MAX_FVAR_AXES && !axes.has(tag)) {
+			axes.set(tag, { tag, min, default: def, max });
 		}
 	}
-	return { variable: true, ...(weightAxis === undefined ? {} : { weightAxis }) };
+	return {
+		variable: true,
+		...(weightAxis === undefined ? {} : { weightAxis }),
+		...(axes.size === 0 ? {} : { axes: [...axes.values()] }),
+	};
 };
 
 interface CmapSubtable {
@@ -293,6 +330,7 @@ export const parseFontVariations = async (
 		return {
 			variable: variation.variable,
 			...(variation.weightAxis === undefined ? {} : { weightAxis: variation.weightAxis }),
+			...(variation.axes === undefined ? {} : { axes: variation.axes }),
 			...(unicodeRange === undefined ? {} : { unicodeRange }),
 		};
 	} catch {

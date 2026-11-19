@@ -651,6 +651,87 @@ describe("catalog font assets (theme_id NULL)", () => {
 		});
 	});
 
+	it("insertCatalogFontAsset sanitizes and stamps non-wght axes on variants + faces", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Wide",
+			weights: [400, 700],
+			r2Key: "w.woff2",
+			format: "woff2",
+			axes: [
+				{ tag: "wdth", min: 75, default: 100, max: 125 },
+				{ tag: "opsz", min: 6, default: 14, max: 72 },
+				// Dropped: wght (weightAxis owns it), malformed tag,
+				// duplicate tag, non-finite/inverted bounds, non-objects.
+				{ tag: "wght", min: 100, default: 400, max: 900 },
+				{ tag: "toolong", min: 1, default: 1, max: 2 },
+				{ tag: "wdth", min: 1, default: 1, max: 2 },
+				{ tag: "XXXX", min: 5, default: 1, max: 9 },
+				{ tag: "YYYY", min: Number.NaN, default: 1, max: 9 },
+				{ tag: "ZZZZ", min: 1, default: Number.POSITIVE_INFINITY, max: 9 },
+				{ tag: "WWWW", min: 1, default: 2, max: Number.NEGATIVE_INFINITY },
+				{ tag: "AAA1", min: 1, default: 9, max: 5 },
+				null as never,
+				"junk" as never,
+			],
+		});
+		const variants = JSON.parse(asset!.variants!);
+		// Axes alone mark the font variable — no weightAxis needed.
+		expect(variants.variable).toBe(true);
+		expect(variants.weightAxis).toBeUndefined();
+		expect(variants.axes).toEqual([
+			{ tag: "wdth", min: 75, default: 100, max: 125 },
+			{ tag: "opsz", min: 6, default: 14, max: 72 },
+		]);
+		const faces = catalogFontAssetOf(asset!.variants)!.faces;
+		expect(faces).toHaveLength(2);
+		expect(faces.every((f) => f.axes?.length === 2)).toBe(true);
+		expect(faces[0]!.axes?.[0]).toEqual({ tag: "wdth", min: 75, default: 100, max: 125 });
+	});
+
+	it("insertCatalogFontAsset combines weightAxis with axes on the ranged face", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Both",
+			weights: undefined,
+			r2Key: "b.woff2",
+			format: "woff2",
+			weightAxis: { min: 100, default: 400, max: 900 },
+			axes: [{ tag: "wdth", min: 75, default: 100, max: 125 }],
+		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.variable).toBe(true);
+		expect(variants.weightAxis).toEqual({ min: 100, default: 400, max: 900 });
+		expect(variants.axes).toEqual([{ tag: "wdth", min: 75, default: 100, max: 125 }]);
+		expect(variants.fontAsset.faces[0]).toEqual({
+			url: "/api/theme/assets?key=b.woff2",
+			weightRange: [100, 900],
+			axes: [{ tag: "wdth", min: 75, default: 100, max: 125 }],
+			format: "woff2",
+		});
+	});
+
+	it("insertCatalogFontAsset caps stamped axes at 32", async () => {
+		const { db } = makeTestDb();
+		const axes = Array.from({ length: 40 }, (_, i) => ({
+			tag: `A${i.toString(16).padStart(3, "0")}`,
+			min: 0,
+			default: 1,
+			max: 2,
+		}));
+		const asset = await insertCatalogFontAsset(db, {
+			family: "ManyAxes",
+			weights: undefined,
+			r2Key: "m.woff2",
+			format: undefined,
+			axes,
+		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.axes).toHaveLength(32);
+		expect(variants.axes[0].tag).toBe("A000");
+		expect(variants.axes[31].tag).toBe("A01f");
+	});
+
 	it("insertCatalogFontAsset returns null when the insert yields no row", async () => {
 		const emptyInsert = {
 			insert: () => ({ values: () => ({ returning: async () => [] }) }),

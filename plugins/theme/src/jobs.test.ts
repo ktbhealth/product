@@ -514,7 +514,7 @@ describe("processThemeFontJob — upload source", () => {
 			...f16(0),
 			...f16(16),
 			...f16(0),
-			...f16(1),
+			...f16(2), // axisCount: wght + wdth
 			...f16(20),
 			...f16(0),
 			...f16(0),
@@ -522,6 +522,12 @@ describe("processThemeFontJob — upload source", () => {
 			...fixed(100),
 			...fixed(400),
 			...fixed(900),
+			...f16(0),
+			...f16(256),
+			...ftag("wdth"),
+			...fixed(75),
+			...fixed(100),
+			...fixed(125),
 			...f16(0),
 			...f16(256),
 		]);
@@ -564,12 +570,20 @@ describe("processThemeFontJob — upload source", () => {
 		const fonts = JSON.parse(theme.fonts!) as {
 			assets: Record<
 				string,
-				{ faces: { weightRange?: number[]; unicodeRange?: string; weight?: number }[] }
+				{
+					faces: {
+						weightRange?: number[];
+						unicodeRange?: string;
+						weight?: number;
+						axes?: { tag: string; min: number; default: number; max: number }[];
+					}[];
+				}
 			>;
 		};
 		expect(fonts.assets.Var.faces[0]).toMatchObject({
 			weightRange: [100, 900],
 			unicodeRange: "U+0020-007E",
+			axes: [{ tag: "wdth", min: 75, default: 100, max: 125 }],
 		});
 	});
 

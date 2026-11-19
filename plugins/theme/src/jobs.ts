@@ -415,7 +415,8 @@ export async function processThemeFontJob(
 		const ext = extOfKey(payload.key) || payload.format;
 		metrics = await parseFontMetrics(bytes, ext);
 		// Same probe as the catalog upload: fvar wght → ranged face,
-		// cmap → unicode-range download hint.
+		// other fvar axes → face.axes (present.ts turns wdth into
+		// font-stretch), cmap → unicode-range download hint.
 		const variation = await parseFontVariations(bytes, ext);
 		faces.push({
 			url: themeAssetUrl(payload.key),
@@ -423,6 +424,7 @@ export async function processThemeFontJob(
 			...(variation?.weightAxis === undefined
 				? {}
 				: { weightRange: [variation.weightAxis.min, variation.weightAxis.max] as const }),
+			...(variation?.axes === undefined ? {} : { axes: variation.axes }),
 			...(variation?.unicodeRange === undefined ? {} : { unicodeRange: variation.unicodeRange }),
 		});
 	} else {
