@@ -248,10 +248,11 @@ export default defineConfig({
 					"apps/web/src/lib/node-cloudflare-workers.ts",
 					"apps/web/src/plugins.ts",
 					"apps/web/src/routes/__root.tsx",
-					"apps/web/src/routes/platform.tsx",
-					// Namespaced portal shells sign out through the same
-					// auth client the platform layout uses (P-081).
-					"apps/web/src/routes/portal.$instance.$.tsx",
+					// Console + namespaced portal shells sign out through
+					// the same auth client and wire host server fns the
+					// platform layout used to (P-081, route collapse).
+					"apps/web/src/lib/platform-dispatch.tsx",
+					"apps/web/src/lib/portal-dispatch.tsx",
 					"apps/web/src/**/*.test.{ts,tsx}",
 					"plugins/auth/src/views/ForgotPasswordPage.tsx",
 					"plugins/auth/src/views/LoginPage.tsx",

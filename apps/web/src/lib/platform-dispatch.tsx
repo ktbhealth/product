@@ -1,11 +1,5 @@
 import { createElement } from "react";
-import {
-	createFileRoute,
-	getRouteApi,
-	notFound,
-	Outlet,
-	useLocation,
-} from "@tanstack/react-router";
+import { getRouteApi, notFound, useLocation } from "@tanstack/react-router";
 
 import { authClient } from "@ktb/auth-better/client";
 import { platformHeaderPlugin } from "@ktb/platform-header";
@@ -23,7 +17,6 @@ import {
 	type NotificationsActions,
 } from "@ktb/notifications/context";
 import { themeScopeFn } from "@ktb/theme/fns";
-import { themeHead, themeTitle } from "@ktb/theme/head";
 import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
 
@@ -36,6 +29,7 @@ import {
 	platformAdminFn,
 	pluginStatesFn,
 	portalAudiencesFn,
+	portalPageDataFn,
 } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
 import { portalChromeProps } from "#/lib/chrome-props.ts";
@@ -44,39 +38,28 @@ import {
 	collectChrome,
 	enabledIdSet,
 	enabledPlugins,
-	findPortalInstance,
+	findPage,
 	KNOWN_CHROME_REGIONS,
 	packageLive,
 	portalInstances,
+	portalPages,
 	warnUnknownChromeRegions,
+	entryEnabled,
+	findPortalInstance,
 } from "#/lib/registry.ts";
 import { plugins } from "#/plugins.ts";
 
-// /platform portal shell (P-031/P-081): the platform admin console is the
-// default portal instance — the root route drops its marketing chrome on
-// /platform* and this layout owns the full viewport. The chrome itself
-// (sidebar, breadcrumb header, sign-out, portal switcher) is the
-// @ktb/portal PortalShell view; this route keeps the admin gate and
-// injects the instance's aggregated portal.* chrome items. The gate is
-// server-side — non-admins get a hard 404, never just hidden nav.
-//
-// Header widgets: when the platform.header extension-point plugin is
-// registered, every plugin's `portal.header.actions` chrome render on the right
-// side of the top bar. The jobs feed is provided through
-// JobsDataContext, fed by the `consultations.audioJobs` CQRS query
-// (dispatched by adminListAudioJobsFn — the jobs plugin never reaches
-// into consultations tables); the notifications feed is seeded through
-// NotificationsDataContext, kept live by the header action's
-// /api/notifications EventSource, and gets mark-read actions through
-// NotificationsActionsContext (only when the notifications backend is
-// registered). Plugins without header actions are unaffected.
+const rootApi = getRouteApi("__root__");
+
+// /platform console dispatch (was routes/platform.tsx layout +
+// platform/index.tsx + platform/$.tsx): the platform admin console is
+// the default portal instance. The gate is server-side — non-admins
+// get a hard 404, never just hidden nav. Header widgets, dashboard
+// feeds and sidebar chrome behave exactly as the layout route did.
 const headerEnabled = plugins.some((p) => p.id === platformHeaderPlugin.id);
 const hasJobsPlugin = plugins.some((p) => p.id === "jobs.header");
 const hasNotificationsPlugin = plugins.some((p) => p.id === "notifications.services");
 
-// The "platform" instance descriptor (P-081) — contributed by
-// platform.portal; absent only in degenerate registries, where the
-// shell falls back to a barebones instance.
 const platformEntry = findPortalInstance(portalInstances, "platform");
 const platformInstance = platformEntry?.instance ?? {
 	id: "platform",
@@ -128,80 +111,51 @@ const sidebarRank = new Map(PLATFORM_SIDEBAR_ORDER.map((to, index) => [to, index
 // positives.
 if (import.meta.env.DEV) warnUnknownChromeRegions(plugins, KNOWN_CHROME_REGIONS);
 
-export const Route = createFileRoute("/platform")({
-	beforeLoad: async () => {
-		await requireSession("/login/doctor");
-		if (!(await platformAdminFn())) throw notFound();
-	},
-	loader: async () => {
-		// Enabled-state gate (P-058): skip feeds whose plugin package is
-		// fully disabled — the CQRS/service calls would fail or return
-		// data for a plugin the admin turned off. Audience rules (P-081)
-		// feed the shell's portal switcher. The theme resolves
-		// portal-instance ("platform") → tenant → platform (P-082).
-		const [pluginStates, audiences, theme] = await Promise.all([
-			pluginStatesFn(),
-			portalAudiencesFn(),
-			themeScopeFn({ data: { scope: "portal-instance", id: "platform" } }),
-		]);
-		const enabled = enabledIdSet(pluginStates);
-		return {
-			// Package-granular gates (P-058): skip feeds whose plugin
-			// package is fully disabled — the same contract the CQRS
-			// dispatch gate applies to the fns below.
-			audioJobs:
-				hasJobsPlugin && packageLive(plugins, enabled, "consultations")
-					? await adminListAudioJobsFn()
-					: [],
-			notifications:
-				hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
-					? await listMyNotificationsFn()
-					: [],
-			// Dashboard slot feeds (T-125): the domain plugins' contributed
-			// portal.dashboard.* components read these through their
-			// contexts — empty arrays when the package is off.
-			consultations: packageLive(plugins, enabled, "consultations")
-				? await adminListConsultationsFn()
-				: [],
-			patients: packageLive(plugins, enabled, "patients") ? await adminListPatientsFn() : [],
-			// Exact unread count for the dashboard's console-activity card —
-			// the notifications feed above is capped, so it cannot be
-			// derived client-side.
-			unreadCount:
-				hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
-					? await countMyUnreadNotificationsFn()
-					: undefined,
-			audiences,
-			theme,
-			// Guard-filtered sidebar: page paths whose guard denies this
-			// user — items pointing there would just 404.
-			deniedPaths: await consoleDeniedFn(),
-		};
-	},
-	// Theme head projection (P-082): favicon/OG/font links + title from
-	// the resolved instance theme. The `:root`/`.dark` style block is
-	// NOT emitted here — PortalShell owns the single style emitter via
-	// `themeCss`, so console pages never double-inject.
-	head: (ctx) => {
-		const theme = ((ctx?.loaderData as { theme?: ResolvedTheme | null } | undefined)?.theme ??
-			null) as ResolvedTheme | null;
-		if (theme === null) return {};
-		const head = themeHead(theme);
-		const title = themeTitle(theme);
-		return {
-			meta: [...(title !== null ? [{ title }] : []), ...head.meta],
-			links: [...head.links],
-		};
-	},
-	component: PlatformLayout,
-});
+export const platformBeforeLoad = async () => {
+	await requireSession("/login/doctor");
+	if (!(await platformAdminFn())) throw notFound();
+};
 
-const rootApi = getRouteApi("__root__");
-
-function PlatformLayout() {
-	const pathname = useLocation({ select: (l) => l.pathname });
-	const { user, pluginStates, i18n } = rootApi.useLoaderData();
-	const {
+export const platformLoader = async ({ params }: { params: { _splat?: string } }) => {
+	const path = `/${params._splat ?? ""}`;
+	// findPage: exact descriptors win; "/*" wildcards (DB-backed
+	// pages) resolve by longest matching base.
+	const pageEntry = findPage(portalPages, path);
+	if (pageEntry === undefined) throw notFound();
+	const [pluginStates, audiences, theme, deniedPaths, pageResult] = await Promise.all([
+		pluginStatesFn(),
+		portalAudiencesFn(),
+		// Instance → tenant → platform fallback (P-082).
+		themeScopeFn({ data: { scope: "portal-instance", id: "platform" } }),
+		consoleDeniedFn(),
+		portalPageDataFn({ data: path }),
+	]);
+	const enabled = enabledIdSet(pluginStates);
+	// Package-granular gates (P-058): the page's package must be live —
+	// same contract as the server-side pageData/CQRS gates.
+	if (!entryEnabled(plugins, enabled, pageEntry)) throw notFound();
+	if (pageResult.status === "notfound") throw notFound();
+	// Enabled-state gate (P-058): skip feeds whose plugin package is
+	// fully disabled — the CQRS/service calls would fail or return
+	// data for a plugin the admin turned off.
+	const [audioJobs, notifications, consultations, patients, unreadCount] = await Promise.all([
+		hasJobsPlugin && packageLive(plugins, enabled, "consultations")
+			? adminListAudioJobsFn()
+			: Promise.resolve([]),
+		hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
+			? listMyNotificationsFn()
+			: Promise.resolve([]),
+		packageLive(plugins, enabled, "consultations")
+			? adminListConsultationsFn()
+			: Promise.resolve([]),
+		packageLive(plugins, enabled, "patients") ? adminListPatientsFn() : Promise.resolve([]),
+		hasNotificationsPlugin && packageLive(plugins, enabled, "notifications")
+			? countMyUnreadNotificationsFn()
+			: Promise.resolve(undefined),
+	]);
+	return {
+		path,
+		pageData: pageResult.data,
 		audioJobs,
 		notifications,
 		consultations,
@@ -210,21 +164,42 @@ function PlatformLayout() {
 		audiences,
 		theme,
 		deniedPaths,
-	} = Route.useLoaderData();
+		pluginStates,
+	};
+};
+
+export interface PlatformLoaderData {
+	path: string;
+	pageData: unknown;
+	audioJobs: unknown;
+	notifications: unknown;
+	consultations: unknown;
+	patients: unknown;
+	unreadCount: number | undefined;
+	audiences: readonly string[];
+	theme: ResolvedTheme | null;
+	deniedPaths: readonly string[];
+	pluginStates: { enabled: readonly string[] };
+}
+
+export function PlatformShell({ loaderData }: { loaderData: PlatformLoaderData }) {
+	const pathname = useLocation({ select: (l) => l.pathname });
+	const { user, pluginStates, i18n } = rootApi.useLoaderData();
+	const {
+		path,
+		pageData,
+		audioJobs,
+		notifications,
+		consultations,
+		patients,
+		unreadCount,
+		audiences,
+		theme,
+		deniedPaths,
+	} = loaderData;
 	const locale = i18n?.locale ?? "en";
-	// Enabled-state filter (P-058): disabled plugins contribute no
-	// sidebar items or header actions.
 	const visiblePlugins = enabledPlugins(plugins, enabledIdSet(pluginStates));
-	// Guard filter: sidebar items pointing at pages whose guard denied
-	// this user are hidden — a menu of 404s is worse than a short menu.
-	// Items without a matching guarded page are never denied.
 	const denied = new Set(deniedPaths);
-	// Sidebar/header chrome comes from `chrome` contributions into the
-	// portal.* regions (P-060/P-081), scoped to the "platform" instance
-	// and filtered by `when` against the pathname. Sidebar labels/groups
-	// are plugin-declared English strings; the host maps the known
-	// destinations/groups to localized chrome (same mechanism as the
-	// landing nav's pluginNavLabel).
 	const items = collectChrome(visiblePlugins, "portal.sidebar", pathname, "platform", user).flatMap(
 		(entry) =>
 			entry.content.kind === "sidebarItem" && !denied.has(entry.content.item.to)
@@ -239,8 +214,6 @@ function PlatformLayout() {
 					]
 				: [],
 	);
-	// Stable rank sort: listed destinations follow PLATFORM_SIDEBAR_ORDER;
-	// unlisted ones (rank miss) sink to the end keeping topo order.
 	const orderedItems = [...items].sort(
 		(a, b) =>
 			(sidebarRank.get(a.to) ?? Number.MAX_SAFE_INTEGER) -
@@ -260,11 +233,6 @@ function PlatformLayout() {
 						: [],
 			)
 		: undefined;
-	// Brand slot (P-082/PL-006): resolved theme's brand mark plus any
-	// `portal.brand` chrome components scoped to this instance. The
-	// theme resolves to the built-in KTB default when no row matches,
-	// so brand data is always present; PortalShell renders an empty
-	// slot only if a theme carries no brand at all.
 	const chromeProps = portalChromeProps(
 		user,
 		locale,
@@ -295,31 +263,34 @@ function PlatformLayout() {
 				{brandComponents}
 			</>
 		) : undefined;
-	// PortalShell owns the single theme style emitter (P-082).
 	const themeCss =
 		theme !== null && theme !== undefined ? `${theme.styleCss}\n${theme.fontFaceCss}`.trim() : null;
-	// Portal switcher (P-081): every instance whose audience rule the
-	// session satisfies — the shell hides the picker below two.
 	const switchablePortals = portalInstances
 		.filter((e) => portalAdmits(e.instance, audiences))
 		.map((e) => e.instance);
-	// Host-injected write path for the notifications popover — plugins
-	// never import server fns; the context stays null when the
-	// notifications backend isn't registered so the UI hides the
-	// affordances instead of offering dead buttons.
 	const notificationActions: NotificationsActions | null = hasNotificationsPlugin
 		? {
 				markRead: (ids) => markMyNotificationsReadFn({ data: [...ids] }),
 				markAllRead: () => markAllMyNotificationsReadFn(),
 			}
 		: null;
+	const pageEntry = findPage(portalPages, path);
+	const page =
+		pageEntry === undefined
+			? null
+			: createElement(pageEntry.page.component, {
+					data: pageData,
+					// ctx.plugins is the FULL discovered registry — the
+					// /platform/plugins manager needs disabled plugins too.
+					ctx: { plugins, locale, user, i18n },
+				});
 	return (
-		<JobsDataContext.Provider value={jobsFromAudioRows(audioJobs, locale)}>
-			<NotificationsDataContext.Provider value={notifications}>
+		<JobsDataContext.Provider value={jobsFromAudioRows(audioJobs as never, locale)}>
+			<NotificationsDataContext.Provider value={notifications as never}>
 				<NotificationsUnreadContext.Provider value={unreadCount}>
 					<NotificationsActionsContext.Provider value={notificationActions}>
-						<ConsultationsDashboardContext.Provider value={consultations}>
-							<PatientsDashboardContext.Provider value={patients}>
+						<ConsultationsDashboardContext.Provider value={consultations as never}>
+							<PatientsDashboardContext.Provider value={patients as never}>
 								<PortalShell
 									instance={platformInstance}
 									items={orderedItems}
@@ -341,7 +312,7 @@ function PlatformLayout() {
 										window.location.assign("/");
 									}}
 								>
-									<Outlet />
+									{page}
 								</PortalShell>
 							</PatientsDashboardContext.Provider>
 						</ConsultationsDashboardContext.Provider>
