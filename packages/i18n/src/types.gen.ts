@@ -2013,6 +2013,8 @@ export type I18nKey =
 	| "theme.fontsGoogleWarning"
 	| "theme.fontSourceCustom"
 	| "theme.fontSourceLabel"
+	| "theme.fontSourceNoResults"
+	| "theme.fontSourceSearchPlaceholder"
 	| "theme.fontsSelfHost"
 	| "theme.fontsSourcesLabel"
 	| "theme.fontsTitle"
@@ -4883,6 +4885,8 @@ export interface I18nTypedT {
 	(key: "theme.fontsGoogleWarning"): Effect.Effect<string>;
 	(key: "theme.fontSourceCustom"): Effect.Effect<string>;
 	(key: "theme.fontSourceLabel"): Effect.Effect<string>;
+	(key: "theme.fontSourceNoResults"): Effect.Effect<string>;
+	(key: "theme.fontSourceSearchPlaceholder"): Effect.Effect<string>;
 	(key: "theme.fontsSelfHost"): Effect.Effect<string>;
 	(key: "theme.fontsSourcesLabel"): Effect.Effect<string>;
 	(key: "theme.fontsTitle"): Effect.Effect<string>;

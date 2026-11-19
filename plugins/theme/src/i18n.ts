@@ -44,6 +44,8 @@ export interface ThemeMessages {
 	readonly fontsSourcesLabel: string;
 	readonly fontSourceLabel: string;
 	readonly fontSourceCustom: string;
+	readonly fontSourceSearchPlaceholder: string;
+	readonly fontSourceNoResults: string;
 	readonly fontSans: string;
 	readonly fontHeading: string;
 	readonly fontMono: string;
@@ -244,6 +246,8 @@ const en: ThemeMessages = {
 	fontsSourcesLabel: "Managed sources",
 	fontSourceLabel: "Managed source",
 	fontSourceCustom: "Custom (free-form)",
+	fontSourceSearchPlaceholder: "Search provider or family…",
+	fontSourceNoResults: "No fonts match your search.",
 	fontSans: "Sans",
 	fontHeading: "Heading",
 	fontMono: "Mono",
@@ -446,6 +450,8 @@ const ptBR: ThemeMessages = {
 	fontsSourcesLabel: "Fontes gerenciadas",
 	fontSourceLabel: "Fonte gerenciada",
 	fontSourceCustom: "Personalizada (texto livre)",
+	fontSourceSearchPlaceholder: "Buscar provedor ou família…",
+	fontSourceNoResults: "Nenhuma fonte corresponde à busca.",
 	fontSans: "Sans",
 	fontHeading: "Títulos",
 	fontMono: "Mono",
@@ -649,6 +655,8 @@ const es: ThemeMessages = {
 	fontsSourcesLabel: "Fuentes gestionadas",
 	fontSourceLabel: "Fuente gestionada",
 	fontSourceCustom: "Personalizada (texto libre)",
+	fontSourceSearchPlaceholder: "Buscar proveedor o familia…",
+	fontSourceNoResults: "Ninguna fuente coincide con la búsqueda.",
 	fontSans: "Sans",
 	fontHeading: "Títulos",
 	fontMono: "Mono",

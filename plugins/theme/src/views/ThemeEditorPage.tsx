@@ -16,6 +16,14 @@ import {
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
 import { ColorPicker } from "@ktbhealth/ui/components/color-picker";
 import {
+	Combobox,
+	ComboboxContent,
+	ComboboxEmpty,
+	ComboboxInput,
+	ComboboxItem,
+	ComboboxList,
+} from "@ktbhealth/ui/components/combobox";
+import {
 	Empty,
 	EmptyContent,
 	EmptyDescription,
@@ -152,6 +160,112 @@ const fontSourceKey = (providerId: number, family: string) => `src:${providerId}
 
 const fontSlotLabel = (slot: ThemeFontSlot, t: ThemeMessages): string =>
 	slot === "sans" ? t.fontSans : slot === "heading" ? t.fontHeading : t.fontMono;
+
+/** One row in the managed-source picker. `key` keeps the picker's
+ * `src:<providerId>:<family>` value encoding; `search` is the lowercase
+ * haystack the combobox filter matches (provider, family, weights). */
+interface FontSourcePick {
+	readonly key: string;
+	readonly label: string;
+	readonly search: string;
+	readonly source: ThemeFontSource | null;
+}
+
+const fontSourceOptionLabel = (o: ThemeFontSourceOption): string =>
+	o.weights.length === 0
+		? `${o.providerName} — ${o.family}`
+		: `${o.providerName} — ${o.family} (${o.weights.join(", ")})`;
+
+/**
+ * Searchable managed-source picker for one font slot — the ui Combobox
+ * (Base UI) so the catalog stays usable with dozens of families across
+ * providers. The input doubles as trigger and filter; `custom` clears
+ * the slot's binding back to the free-form family name.
+ */
+function ManagedSourcePicker({
+	slotLabel,
+	current,
+	sources,
+	t,
+	onSelect,
+}: {
+	slotLabel: string;
+	current: ThemeFontSource | null;
+	sources: readonly ThemeFontSourceOption[];
+	t: ThemeMessages;
+	onSelect: (source: ThemeFontSource | null) => void;
+}) {
+	const items = useMemo<readonly FontSourcePick[]>(() => {
+		// A stored source missing from the ready catalog (provider
+		// disabled/removed since publish) still renders as its own
+		// option so the picker shows the binding instead of a blank input.
+		const stale =
+			current !== null &&
+			!sources.some((o) => o.providerId === current.providerId && o.family === current.family)
+				? current
+				: null;
+		const stalePick: FontSourcePick[] =
+			stale === null
+				? []
+				: [
+						{
+							key: fontSourceKey(stale.providerId, stale.family),
+							label: stale.family,
+							search: stale.family.toLowerCase(),
+							source: stale,
+						},
+					];
+		return [
+			{
+				key: CUSTOM_FONT_SOURCE,
+				label: t.fontSourceCustom,
+				search: t.fontSourceCustom.toLowerCase(),
+				source: null,
+			},
+			...stalePick,
+			...sources.map((o) => ({
+				key: fontSourceKey(o.providerId, o.family),
+				label: fontSourceOptionLabel(o),
+				search: [o.providerName, o.family, ...o.weights.map(String)].join(" ").toLowerCase(),
+				source: { providerId: o.providerId, family: o.family },
+			})),
+		];
+	}, [current, sources, t]);
+
+	const selectedKey =
+		current === null ? CUSTOM_FONT_SOURCE : fontSourceKey(current.providerId, current.family);
+	// `custom` is always an item and a non-null `current` is either in the
+	// catalog or injected above as the stale pick — the lookup cannot miss.
+	const selected = items.find((item) => item.key === selectedKey)!;
+
+	return (
+		<Combobox
+			items={items}
+			value={selected}
+			onValueChange={(item: FontSourcePick | null) => onSelect(item?.source ?? null)}
+			itemToStringLabel={(item: FontSourcePick) => item.label}
+			isItemEqualToValue={(a: FontSourcePick, b: FontSourcePick) => a.key === b.key}
+			filter={(item: FontSourcePick, query: string) => item.search.includes(query.toLowerCase())}
+			autoHighlight
+		>
+			<ComboboxInput
+				className="w-full"
+				placeholder={t.fontSourceSearchPlaceholder}
+				aria-label={`${slotLabel} — ${t.fontSourceLabel}`}
+			/>
+			<ComboboxContent>
+				<ComboboxEmpty>{t.fontSourceNoResults}</ComboboxEmpty>
+				<ComboboxList>
+					{(item: FontSourcePick) => (
+						<ComboboxItem key={item.key} value={item}>
+							{item.label}
+						</ComboboxItem>
+					)}
+				</ComboboxList>
+			</ComboboxContent>
+		</Combobox>
+	);
+}
 
 const SCOPE_ITEMS = [
 	"platform",
@@ -767,81 +881,18 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 							<div className="space-y-2">
 								{FONT_SLOT_ITEMS.map((slot) => {
 									const slotLabel = fontSlotLabel(slot, t);
-									const current = fonts?.sources?.[slot] ?? null;
-									// A stored source missing from the ready catalog
-									// (provider disabled/removed since publish) still
-									// renders as its own option so the select shows the
-									// binding instead of a blank trigger.
-									const staleSource =
-										current !== null &&
-										!fontSources.some(
-											(o) => o.providerId === current.providerId && o.family === current.family,
-										)
-											? current
-											: null;
-									const items = [
-										...(staleSource === null
-											? []
-											: [
-													{
-														providerId: staleSource.providerId,
-														family: staleSource.family,
-														label: staleSource.family,
-													},
-												]),
-										...fontSources.map((o) => ({
-											providerId: o.providerId,
-											family: o.family,
-											label: `${o.providerName} — ${o.family}`,
-										})),
-									];
 									return (
 										<div key={slot} className="flex items-center gap-3">
 											<Label className="w-24 shrink-0 text-xs">{slotLabel}</Label>
-											<Select
-												value={
-													current === null
-														? CUSTOM_FONT_SOURCE
-														: fontSourceKey(current.providerId, current.family)
-												}
-												onValueChange={(v) => {
-													// The select is controlled and never
-													// cleared — same cast convention as
-													// the scope/delivery selects above.
-													const value = v as string;
-													if (value === CUSTOM_FONT_SOURCE) {
-														setFontSource(slot, null);
-														return;
-													}
-													// The value encodes the source
-													// (`src:<providerId>:<family>`) — the
-													// family may itself contain ":", so
-													// split on the FIRST separator only.
-													const sep = value.indexOf(":", 4);
-													setFontSource(slot, {
-														providerId: Number(value.slice(4, sep)),
-														family: value.slice(sep + 1),
-													});
-												}}
-											>
-												<SelectTrigger
-													className="flex-1"
-													aria-label={`${slotLabel} — ${t.fontSourceLabel}`}
-												>
-													<SelectValue />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value={CUSTOM_FONT_SOURCE}>{t.fontSourceCustom}</SelectItem>
-													{items.map((item) => {
-														const key = fontSourceKey(item.providerId, item.family);
-														return (
-															<SelectItem key={key} value={key}>
-																{item.label}
-															</SelectItem>
-														);
-													})}
-												</SelectContent>
-											</Select>
+											<div className="min-w-0 flex-1">
+												<ManagedSourcePicker
+													slotLabel={slotLabel}
+													current={fonts?.sources?.[slot] ?? null}
+													sources={fontSources}
+													t={t}
+													onSelect={(source) => setFontSource(slot, source)}
+												/>
+											</div>
 										</div>
 									);
 								})}
