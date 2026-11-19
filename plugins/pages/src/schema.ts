@@ -1,5 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
 import { richText } from "@ktb/rich-text/schema";
+import { schemas } from "@ktb/schemas/schema";
 
 /**
  * Custom pages (T-083): admin-authored, DB-stored pages rendered by
@@ -8,7 +9,10 @@ import { richText } from "@ktb/rich-text/schema";
  * table at request time. The page body is not stored here: `richTextId`
  * references a `rich_text` document (@ktb/rich-text) whose parsed value
  * the wildcard loader resolves at request time — null means the page
- * renders with no body. `published` gates public visibility (drafts
+ * renders with no body. `searchSchemaId` references a `schemas` row
+ * (@ktb/schemas) whose JSON Schema validates the page's URL search
+ * params at render time — null means params pass through unchecked.
+ * `published` gates public visibility (drafts
  * 404); `showInNav` + `sortOrder` drive the optional app-header nav
  * listing.
  *
@@ -23,6 +27,7 @@ export const customPage = sqliteTable(
 		path: text().notNull(),
 		title: text().notNull(),
 		richTextId: integer("rich_text_id").references(() => richText.id),
+		searchSchemaId: integer("search_schema_id").references(() => schemas.id),
 		published: integer({ mode: "boolean" }).notNull().default(false),
 		showInNav: integer("show_in_nav", { mode: "boolean" }).notNull().default(false),
 		sortOrder: integer("sort_order").notNull().default(0),

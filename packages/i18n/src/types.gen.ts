@@ -220,6 +220,7 @@ export type I18nKey =
 	| "app.panel_nav_plugins"
 	| "app.panel_nav_queue"
 	| "app.panel_nav_rich_text"
+	| "app.panel_nav_schemas"
 	| "app.panel_nav_users"
 	| "app.persona_business"
 	| "app.persona_developers"
@@ -849,6 +850,47 @@ export type I18nKey =
 	| "eval.validator.title"
 	| "eval.validator.view"
 	| "eval.validator.voices"
+	| "fonts.addProvider"
+	| "fonts.allProviders"
+	| "fonts.cancel"
+	| "fonts.colActions"
+	| "fonts.colEnabled"
+	| "fonts.colFamilies"
+	| "fonts.colFamily"
+	| "fonts.colKind"
+	| "fonts.colName"
+	| "fonts.colProvider"
+	| "fonts.colStatus"
+	| "fonts.colUpdated"
+	| "fonts.colWeights"
+	| "fonts.create"
+	| "fonts.createError"
+	| "fonts.creating"
+	| "fonts.deleteConfirm"
+	| "fonts.deleteError"
+	| "fonts.deleteProvider"
+	| "fonts.dialogAddTitle"
+	| "fonts.emptyFamilies"
+	| "fonts.emptyProviders"
+	| "fonts.fontsDescription"
+	| "fonts.fontsTitle"
+	| "fonts.kindLabel"
+	| "fonts.nameLabel"
+	| "fonts.namePlaceholder"
+	| "fonts.noResults"
+	| "fonts.providerFilterLabel"
+	| "fonts.providersDescription"
+	| "fonts.providersTitle"
+	| "fonts.searchLabel"
+	| "fonts.searchPlaceholder"
+	| "fonts.statusFailed"
+	| "fonts.statusPending"
+	| "fonts.statusReady"
+	| "fonts.sync"
+	| "fonts.syncedToast"
+	| "fonts.syncError"
+	| "fonts.syncing"
+	| "fonts.weightsNone"
 	| "forms.addItem"
 	| "forms.chooseOption"
 	| "forms.invalidSummary"
@@ -1154,11 +1196,13 @@ export type I18nKey =
 	| "pages.fieldContentDoc"
 	| "pages.fieldPath"
 	| "pages.fieldPublished"
+	| "pages.fieldSearchSchema"
 	| "pages.fieldShowInNav"
 	| "pages.fieldSortOrder"
 	| "pages.fieldTitle"
 	| "pages.manageDoc"
 	| "pages.manageDocs"
+	| "pages.manageSchemas"
 	| "pages.navHidden"
 	| "pages.navShown"
 	| "pages.newPage"
@@ -1166,6 +1210,8 @@ export type I18nKey =
 	| "pages.save"
 	| "pages.saveFailed"
 	| "pages.saving"
+	| "pages.searchSchemaHint"
+	| "pages.searchSchemaNone"
 	| "pages.statusDraft"
 	| "pages.statusPublished"
 	| "pages.title"
@@ -1521,6 +1567,37 @@ export type I18nKey =
 	| "rich-text.saving"
 	| "rich-text.title"
 	| "rich-text.untitled"
+	| "schemas.cancel"
+	| "schemas.colActions"
+	| "schemas.colDescription"
+	| "schemas.colName"
+	| "schemas.colUpdated"
+	| "schemas.create"
+	| "schemas.delete"
+	| "schemas.deleteBody"
+	| "schemas.deleteConfirm"
+	| "schemas.deleted"
+	| "schemas.deleteFailed"
+	| "schemas.deleteTitle"
+	| "schemas.description"
+	| "schemas.edit"
+	| "schemas.emptyDescription"
+	| "schemas.emptyTitle"
+	| "schemas.fieldDescription"
+	| "schemas.fieldName"
+	| "schemas.fieldSchema"
+	| "schemas.loadFailed"
+	| "schemas.namePlaceholder"
+	| "schemas.newSchema"
+	| "schemas.save"
+	| "schemas.saved"
+	| "schemas.saveFailed"
+	| "schemas.saving"
+	| "schemas.title"
+	| "schemas.validate"
+	| "schemas.validating"
+	| "schemas.validationFailed"
+	| "schemas.validationValid"
 	| "secretaries.description"
 	| "secretaries.emailLabel"
 	| "secretaries.emptyDescription"
@@ -1592,10 +1669,25 @@ export type I18nKey =
 	| "theme.assetFileLabel"
 	| "theme.assetFontFamily"
 	| "theme.assetFontSlot"
+	| "theme.assetFontUpload"
 	| "theme.assetGoogleError"
+	| "theme.assetGoogleFamily"
 	| "theme.assetGoogleFetch"
 	| "theme.assetGoogleFetching"
+	| "theme.assetGoogleSlot"
+	| "theme.assetKindFavicon"
+	| "theme.assetKindFont"
 	| "theme.assetKindLabel"
+	| "theme.assetKindLogoDark"
+	| "theme.assetKindLogoLight"
+	| "theme.assetKindOgImage"
+	| "theme.assetKindWordmark"
+	| "theme.assetsEmpty"
+	| "theme.assetsListTitle"
+	| "theme.assetsNeedSave"
+	| "theme.assetStatusFailed"
+	| "theme.assetStatusPending"
+	| "theme.assetStatusReady"
 	| "theme.assetsTitle"
 	| "theme.assetThemeLabel"
 	| "theme.assetTodo"
@@ -1603,16 +1695,27 @@ export type I18nKey =
 	| "theme.assetUploaded"
 	| "theme.assetUploadError"
 	| "theme.assetUploading"
+	| "theme.badgeMain"
 	| "theme.bannerExit"
 	| "theme.bannerText"
+	| "theme.blockEmpty"
+	| "theme.blocksDescription"
+	| "theme.blockSettings"
+	| "theme.blockStats"
+	| "theme.blocksTitle"
+	| "theme.blockTable"
 	| "theme.brandAppName"
+	| "theme.brandRefsTitle"
 	| "theme.brandTitle"
+	| "theme.cancel"
 	| "theme.colActions"
 	| "theme.colEnabled"
 	| "theme.colName"
 	| "theme.colScope"
 	| "theme.colScopeId"
 	| "theme.colVersion"
+	| "theme.componentsDescription"
+	| "theme.componentsTitle"
 	| "theme.contrastDark"
 	| "theme.contrastFail"
 	| "theme.contrastLight"
@@ -1620,8 +1723,18 @@ export type I18nKey =
 	| "theme.contrastTitle"
 	| "theme.darkDescription"
 	| "theme.darkTitle"
+	| "theme.deleteConfirm"
+	| "theme.deleteError"
+	| "theme.deleteTheme"
+	| "theme.dialogCreateTitle"
+	| "theme.dialogEditTitle"
+	| "theme.dirtyBadge"
 	| "theme.disable"
+	| "theme.discardedToast"
 	| "theme.edit"
+	| "theme.editorBack"
+	| "theme.editorNotFound"
+	| "theme.editorThemeLabel"
 	| "theme.emptyList"
 	| "theme.enable"
 	| "theme.fontHeading"
@@ -1633,11 +1746,18 @@ export type I18nKey =
 	| "theme.fontsGoogleWarning"
 	| "theme.fontsSelfHost"
 	| "theme.fontsTitle"
+	| "theme.galleryButtons"
+	| "theme.galleryFeedback"
+	| "theme.galleryForms"
+	| "theme.gallerySurfaces"
 	| "theme.headerEmpty"
 	| "theme.headerLabel"
 	| "theme.headerManage"
 	| "theme.headerPreview"
 	| "theme.listTitle"
+	| "theme.mainSet"
+	| "theme.newTheme"
+	| "theme.noResults"
 	| "theme.pageDescription"
 	| "theme.pageTitle"
 	| "theme.previewAction"
@@ -1648,12 +1768,18 @@ export type I18nKey =
 	| "theme.published"
 	| "theme.publishError"
 	| "theme.publishing"
+	| "theme.schemeDark"
+	| "theme.schemeLabel"
+	| "theme.schemeLight"
+	| "theme.schemeSystem"
 	| "theme.scopeIdLabel"
 	| "theme.scopeIdPlaceholder"
 	| "theme.scopeLabel"
 	| "theme.scopePlatform"
 	| "theme.scopePortalInstance"
 	| "theme.scopeTenant"
+	| "theme.searchLabel"
+	| "theme.searchPlaceholder"
 	| "theme.seedAccent"
 	| "theme.seedBackground"
 	| "theme.seedDestructive"
@@ -1663,6 +1789,16 @@ export type I18nKey =
 	| "theme.seedsDescription"
 	| "theme.seedSecondary"
 	| "theme.seedsTitle"
+	| "theme.setMain"
+	| "theme.tabAssets"
+	| "theme.tabBlocks"
+	| "theme.tabColors"
+	| "theme.tabComponents"
+	| "theme.tabGeneral"
+	| "theme.tabTokens"
+	| "theme.tabTypography"
+	| "theme.tokensDescription"
+	| "theme.tokensTitle"
 	| "users.cancel"
 	| "users.cannotDeleteAdmin"
 	| "users.colActions"
@@ -1728,6 +1864,9 @@ export type I18nKey =
 	| "views.recordNotFoundDescription"
 	| "views.recordNotFoundTitle"
 	| "views.resetFilters"
+	| "views.tableNoMatch"
+	| "views.tableSelectAll"
+	| "views.tableSelectRow"
 	| "wizards.abandon"
 	| "wizards.abandonedDescription"
 	| "wizards.abandonedTitle"
@@ -2014,6 +2153,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
 	(key: "app.panel_nav_queue"): Effect.Effect<string>;
 	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
+	(key: "app.panel_nav_schemas"): Effect.Effect<string>;
 	(key: "app.panel_nav_users"): Effect.Effect<string>;
 	(key: "app.persona_business"): Effect.Effect<string>;
 	(key: "app.persona_developers"): Effect.Effect<string>;
@@ -2808,6 +2948,47 @@ export interface I18nTypedT {
 	(key: "eval.validator.title"): Effect.Effect<string>;
 	(key: "eval.validator.view"): Effect.Effect<string>;
 	(key: "eval.validator.voices"): Effect.Effect<string>;
+	(key: "fonts.addProvider"): Effect.Effect<string>;
+	(key: "fonts.allProviders"): Effect.Effect<string>;
+	(key: "fonts.cancel"): Effect.Effect<string>;
+	(key: "fonts.colActions"): Effect.Effect<string>;
+	(key: "fonts.colEnabled"): Effect.Effect<string>;
+	(key: "fonts.colFamilies"): Effect.Effect<string>;
+	(key: "fonts.colFamily"): Effect.Effect<string>;
+	(key: "fonts.colKind"): Effect.Effect<string>;
+	(key: "fonts.colName"): Effect.Effect<string>;
+	(key: "fonts.colProvider"): Effect.Effect<string>;
+	(key: "fonts.colStatus"): Effect.Effect<string>;
+	(key: "fonts.colUpdated"): Effect.Effect<string>;
+	(key: "fonts.colWeights"): Effect.Effect<string>;
+	(key: "fonts.create"): Effect.Effect<string>;
+	(key: "fonts.createError"): Effect.Effect<string>;
+	(key: "fonts.creating"): Effect.Effect<string>;
+	(key: "fonts.deleteConfirm"): Effect.Effect<string>;
+	(key: "fonts.deleteError"): Effect.Effect<string>;
+	(key: "fonts.deleteProvider"): Effect.Effect<string>;
+	(key: "fonts.dialogAddTitle"): Effect.Effect<string>;
+	(key: "fonts.emptyFamilies"): Effect.Effect<string>;
+	(key: "fonts.emptyProviders"): Effect.Effect<string>;
+	(key: "fonts.fontsDescription"): Effect.Effect<string>;
+	(key: "fonts.fontsTitle"): Effect.Effect<string>;
+	(key: "fonts.kindLabel"): Effect.Effect<string>;
+	(key: "fonts.nameLabel"): Effect.Effect<string>;
+	(key: "fonts.namePlaceholder"): Effect.Effect<string>;
+	(key: "fonts.noResults"): Effect.Effect<string>;
+	(key: "fonts.providerFilterLabel"): Effect.Effect<string>;
+	(key: "fonts.providersDescription"): Effect.Effect<string>;
+	(key: "fonts.providersTitle"): Effect.Effect<string>;
+	(key: "fonts.searchLabel"): Effect.Effect<string>;
+	(key: "fonts.searchPlaceholder"): Effect.Effect<string>;
+	(key: "fonts.statusFailed"): Effect.Effect<string>;
+	(key: "fonts.statusPending"): Effect.Effect<string>;
+	(key: "fonts.statusReady"): Effect.Effect<string>;
+	(key: "fonts.sync"): Effect.Effect<string>;
+	(key: "fonts.syncedToast"): Effect.Effect<string>;
+	(key: "fonts.syncError"): Effect.Effect<string>;
+	(key: "fonts.syncing"): Effect.Effect<string>;
+	(key: "fonts.weightsNone"): Effect.Effect<string>;
 	(key: "forms.addItem"): Effect.Effect<string>;
 	(key: "forms.chooseOption"): Effect.Effect<string>;
 	(
@@ -3241,11 +3422,13 @@ export interface I18nTypedT {
 	(key: "pages.fieldContentDoc"): Effect.Effect<string>;
 	(key: "pages.fieldPath"): Effect.Effect<string>;
 	(key: "pages.fieldPublished"): Effect.Effect<string>;
+	(key: "pages.fieldSearchSchema"): Effect.Effect<string>;
 	(key: "pages.fieldShowInNav"): Effect.Effect<string>;
 	(key: "pages.fieldSortOrder"): Effect.Effect<string>;
 	(key: "pages.fieldTitle"): Effect.Effect<string>;
 	(key: "pages.manageDoc"): Effect.Effect<string>;
 	(key: "pages.manageDocs"): Effect.Effect<string>;
+	(key: "pages.manageSchemas"): Effect.Effect<string>;
 	(key: "pages.navHidden"): Effect.Effect<string>;
 	(key: "pages.navShown"): Effect.Effect<string>;
 	(key: "pages.newPage"): Effect.Effect<string>;
@@ -3253,6 +3436,8 @@ export interface I18nTypedT {
 	(key: "pages.save"): Effect.Effect<string>;
 	(key: "pages.saveFailed"): Effect.Effect<string>;
 	(key: "pages.saving"): Effect.Effect<string>;
+	(key: "pages.searchSchemaHint"): Effect.Effect<string>;
+	(key: "pages.searchSchemaNone"): Effect.Effect<string>;
 	(key: "pages.statusDraft"): Effect.Effect<string>;
 	(key: "pages.statusPublished"): Effect.Effect<string>;
 	(key: "pages.title"): Effect.Effect<string>;
@@ -3706,6 +3891,42 @@ export interface I18nTypedT {
 	(key: "rich-text.saving"): Effect.Effect<string>;
 	(key: "rich-text.title"): Effect.Effect<string>;
 	(key: "rich-text.untitled"): Effect.Effect<string>;
+	(key: "schemas.cancel"): Effect.Effect<string>;
+	(key: "schemas.colActions"): Effect.Effect<string>;
+	(key: "schemas.colDescription"): Effect.Effect<string>;
+	(key: "schemas.colName"): Effect.Effect<string>;
+	(key: "schemas.colUpdated"): Effect.Effect<string>;
+	(key: "schemas.create"): Effect.Effect<string>;
+	(key: "schemas.delete"): Effect.Effect<string>;
+	(
+		key: "schemas.deleteBody",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "schemas.deleteConfirm"): Effect.Effect<string>;
+	(key: "schemas.deleted"): Effect.Effect<string>;
+	(key: "schemas.deleteFailed"): Effect.Effect<string>;
+	(key: "schemas.deleteTitle"): Effect.Effect<string>;
+	(key: "schemas.description"): Effect.Effect<string>;
+	(key: "schemas.edit"): Effect.Effect<string>;
+	(key: "schemas.emptyDescription"): Effect.Effect<string>;
+	(key: "schemas.emptyTitle"): Effect.Effect<string>;
+	(key: "schemas.fieldDescription"): Effect.Effect<string>;
+	(key: "schemas.fieldName"): Effect.Effect<string>;
+	(key: "schemas.fieldSchema"): Effect.Effect<string>;
+	(key: "schemas.loadFailed"): Effect.Effect<string>;
+	(key: "schemas.namePlaceholder"): Effect.Effect<string>;
+	(key: "schemas.newSchema"): Effect.Effect<string>;
+	(key: "schemas.save"): Effect.Effect<string>;
+	(key: "schemas.saved"): Effect.Effect<string>;
+	(key: "schemas.saveFailed"): Effect.Effect<string>;
+	(key: "schemas.saving"): Effect.Effect<string>;
+	(key: "schemas.title"): Effect.Effect<string>;
+	(key: "schemas.validate"): Effect.Effect<string>;
+	(key: "schemas.validating"): Effect.Effect<string>;
+	(key: "schemas.validationFailed"): Effect.Effect<string>;
+	(key: "schemas.validationValid"): Effect.Effect<string>;
 	(key: "secretaries.description"): Effect.Effect<string>;
 	(key: "secretaries.emailLabel"): Effect.Effect<string>;
 	(key: "secretaries.emptyDescription"): Effect.Effect<string>;
@@ -3805,10 +4026,25 @@ export interface I18nTypedT {
 	(key: "theme.assetFileLabel"): Effect.Effect<string>;
 	(key: "theme.assetFontFamily"): Effect.Effect<string>;
 	(key: "theme.assetFontSlot"): Effect.Effect<string>;
+	(key: "theme.assetFontUpload"): Effect.Effect<string>;
 	(key: "theme.assetGoogleError"): Effect.Effect<string>;
+	(key: "theme.assetGoogleFamily"): Effect.Effect<string>;
 	(key: "theme.assetGoogleFetch"): Effect.Effect<string>;
 	(key: "theme.assetGoogleFetching"): Effect.Effect<string>;
+	(key: "theme.assetGoogleSlot"): Effect.Effect<string>;
+	(key: "theme.assetKindFavicon"): Effect.Effect<string>;
+	(key: "theme.assetKindFont"): Effect.Effect<string>;
 	(key: "theme.assetKindLabel"): Effect.Effect<string>;
+	(key: "theme.assetKindLogoDark"): Effect.Effect<string>;
+	(key: "theme.assetKindLogoLight"): Effect.Effect<string>;
+	(key: "theme.assetKindOgImage"): Effect.Effect<string>;
+	(key: "theme.assetKindWordmark"): Effect.Effect<string>;
+	(key: "theme.assetsEmpty"): Effect.Effect<string>;
+	(key: "theme.assetsListTitle"): Effect.Effect<string>;
+	(key: "theme.assetsNeedSave"): Effect.Effect<string>;
+	(key: "theme.assetStatusFailed"): Effect.Effect<string>;
+	(key: "theme.assetStatusPending"): Effect.Effect<string>;
+	(key: "theme.assetStatusReady"): Effect.Effect<string>;
 	(key: "theme.assetsTitle"): Effect.Effect<string>;
 	(key: "theme.assetThemeLabel"): Effect.Effect<string>;
 	(key: "theme.assetTodo"): Effect.Effect<string>;
@@ -3816,16 +4052,27 @@ export interface I18nTypedT {
 	(key: "theme.assetUploaded"): Effect.Effect<string>;
 	(key: "theme.assetUploadError"): Effect.Effect<string>;
 	(key: "theme.assetUploading"): Effect.Effect<string>;
+	(key: "theme.badgeMain"): Effect.Effect<string>;
 	(key: "theme.bannerExit"): Effect.Effect<string>;
 	(key: "theme.bannerText"): Effect.Effect<string>;
+	(key: "theme.blockEmpty"): Effect.Effect<string>;
+	(key: "theme.blocksDescription"): Effect.Effect<string>;
+	(key: "theme.blockSettings"): Effect.Effect<string>;
+	(key: "theme.blockStats"): Effect.Effect<string>;
+	(key: "theme.blocksTitle"): Effect.Effect<string>;
+	(key: "theme.blockTable"): Effect.Effect<string>;
 	(key: "theme.brandAppName"): Effect.Effect<string>;
+	(key: "theme.brandRefsTitle"): Effect.Effect<string>;
 	(key: "theme.brandTitle"): Effect.Effect<string>;
+	(key: "theme.cancel"): Effect.Effect<string>;
 	(key: "theme.colActions"): Effect.Effect<string>;
 	(key: "theme.colEnabled"): Effect.Effect<string>;
 	(key: "theme.colName"): Effect.Effect<string>;
 	(key: "theme.colScope"): Effect.Effect<string>;
 	(key: "theme.colScopeId"): Effect.Effect<string>;
 	(key: "theme.colVersion"): Effect.Effect<string>;
+	(key: "theme.componentsDescription"): Effect.Effect<string>;
+	(key: "theme.componentsTitle"): Effect.Effect<string>;
 	(key: "theme.contrastDark"): Effect.Effect<string>;
 	(key: "theme.contrastFail"): Effect.Effect<string>;
 	(key: "theme.contrastLight"): Effect.Effect<string>;
@@ -3833,8 +4080,18 @@ export interface I18nTypedT {
 	(key: "theme.contrastTitle"): Effect.Effect<string>;
 	(key: "theme.darkDescription"): Effect.Effect<string>;
 	(key: "theme.darkTitle"): Effect.Effect<string>;
+	(key: "theme.deleteConfirm"): Effect.Effect<string>;
+	(key: "theme.deleteError"): Effect.Effect<string>;
+	(key: "theme.deleteTheme"): Effect.Effect<string>;
+	(key: "theme.dialogCreateTitle"): Effect.Effect<string>;
+	(key: "theme.dialogEditTitle"): Effect.Effect<string>;
+	(key: "theme.dirtyBadge"): Effect.Effect<string>;
 	(key: "theme.disable"): Effect.Effect<string>;
+	(key: "theme.discardedToast"): Effect.Effect<string>;
 	(key: "theme.edit"): Effect.Effect<string>;
+	(key: "theme.editorBack"): Effect.Effect<string>;
+	(key: "theme.editorNotFound"): Effect.Effect<string>;
+	(key: "theme.editorThemeLabel"): Effect.Effect<string>;
 	(key: "theme.emptyList"): Effect.Effect<string>;
 	(key: "theme.enable"): Effect.Effect<string>;
 	(key: "theme.fontHeading"): Effect.Effect<string>;
@@ -3846,11 +4103,18 @@ export interface I18nTypedT {
 	(key: "theme.fontsGoogleWarning"): Effect.Effect<string>;
 	(key: "theme.fontsSelfHost"): Effect.Effect<string>;
 	(key: "theme.fontsTitle"): Effect.Effect<string>;
+	(key: "theme.galleryButtons"): Effect.Effect<string>;
+	(key: "theme.galleryFeedback"): Effect.Effect<string>;
+	(key: "theme.galleryForms"): Effect.Effect<string>;
+	(key: "theme.gallerySurfaces"): Effect.Effect<string>;
 	(key: "theme.headerEmpty"): Effect.Effect<string>;
 	(key: "theme.headerLabel"): Effect.Effect<string>;
 	(key: "theme.headerManage"): Effect.Effect<string>;
 	(key: "theme.headerPreview"): Effect.Effect<string>;
 	(key: "theme.listTitle"): Effect.Effect<string>;
+	(key: "theme.mainSet"): Effect.Effect<string>;
+	(key: "theme.newTheme"): Effect.Effect<string>;
+	(key: "theme.noResults"): Effect.Effect<string>;
 	(key: "theme.pageDescription"): Effect.Effect<string>;
 	(key: "theme.pageTitle"): Effect.Effect<string>;
 	(key: "theme.previewAction"): Effect.Effect<string>;
@@ -3861,12 +4125,18 @@ export interface I18nTypedT {
 	(key: "theme.published"): Effect.Effect<string>;
 	(key: "theme.publishError"): Effect.Effect<string>;
 	(key: "theme.publishing"): Effect.Effect<string>;
+	(key: "theme.schemeDark"): Effect.Effect<string>;
+	(key: "theme.schemeLabel"): Effect.Effect<string>;
+	(key: "theme.schemeLight"): Effect.Effect<string>;
+	(key: "theme.schemeSystem"): Effect.Effect<string>;
 	(key: "theme.scopeIdLabel"): Effect.Effect<string>;
 	(key: "theme.scopeIdPlaceholder"): Effect.Effect<string>;
 	(key: "theme.scopeLabel"): Effect.Effect<string>;
 	(key: "theme.scopePlatform"): Effect.Effect<string>;
 	(key: "theme.scopePortalInstance"): Effect.Effect<string>;
 	(key: "theme.scopeTenant"): Effect.Effect<string>;
+	(key: "theme.searchLabel"): Effect.Effect<string>;
+	(key: "theme.searchPlaceholder"): Effect.Effect<string>;
 	(key: "theme.seedAccent"): Effect.Effect<string>;
 	(key: "theme.seedBackground"): Effect.Effect<string>;
 	(key: "theme.seedDestructive"): Effect.Effect<string>;
@@ -3876,6 +4146,16 @@ export interface I18nTypedT {
 	(key: "theme.seedsDescription"): Effect.Effect<string>;
 	(key: "theme.seedSecondary"): Effect.Effect<string>;
 	(key: "theme.seedsTitle"): Effect.Effect<string>;
+	(key: "theme.setMain"): Effect.Effect<string>;
+	(key: "theme.tabAssets"): Effect.Effect<string>;
+	(key: "theme.tabBlocks"): Effect.Effect<string>;
+	(key: "theme.tabColors"): Effect.Effect<string>;
+	(key: "theme.tabComponents"): Effect.Effect<string>;
+	(key: "theme.tabGeneral"): Effect.Effect<string>;
+	(key: "theme.tabTokens"): Effect.Effect<string>;
+	(key: "theme.tabTypography"): Effect.Effect<string>;
+	(key: "theme.tokensDescription"): Effect.Effect<string>;
+	(key: "theme.tokensTitle"): Effect.Effect<string>;
 	(key: "users.cancel"): Effect.Effect<string>;
 	(key: "users.cannotDeleteAdmin"): Effect.Effect<string>;
 	(key: "users.colActions"): Effect.Effect<string>;
@@ -3973,6 +4253,9 @@ export interface I18nTypedT {
 	(key: "views.recordNotFoundDescription"): Effect.Effect<string>;
 	(key: "views.recordNotFoundTitle"): Effect.Effect<string>;
 	(key: "views.resetFilters"): Effect.Effect<string>;
+	(key: "views.tableNoMatch"): Effect.Effect<string>;
+	(key: "views.tableSelectAll"): Effect.Effect<string>;
+	(key: "views.tableSelectRow"): Effect.Effect<string>;
 	(key: "wizards.abandon"): Effect.Effect<string>;
 	(key: "wizards.abandonedDescription"): Effect.Effect<string>;
 	(key: "wizards.abandonedTitle"): Effect.Effect<string>;

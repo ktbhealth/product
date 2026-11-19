@@ -1,6 +1,11 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
-import type { AdminPageRow, PagesAdminPageProps, RichTextDocRef } from "./views/PagesAdminPage.tsx";
+import type {
+	AdminPageRow,
+	PagesAdminPageProps,
+	RichTextDocRef,
+	SchemaRef,
+} from "./views/PagesAdminPage.tsx";
 import { PagesAdminPage } from "./views/PagesAdminPage.tsx";
 
 const asRows = (data: unknown): readonly AdminPageRow[] =>
@@ -25,21 +30,50 @@ const asDocs = (data: unknown): readonly RichTextDocRef[] =>
 			)
 		: [];
 
+const asSchemas = (data: unknown): readonly SchemaRef[] =>
+	Array.isArray(data)
+		? data.filter(
+				(schema): schema is SchemaRef =>
+					typeof schema === "object" &&
+					schema !== null &&
+					typeof (schema as SchemaRef).id === "number" &&
+					typeof (schema as SchemaRef).name === "string" &&
+					((schema as SchemaRef).description === null ||
+						typeof (schema as SchemaRef).description === "string"),
+			)
+		: [];
+
 const asData = (
 	data: unknown,
 ): {
 	pages: readonly AdminPageRow[];
 	docs: readonly RichTextDocRef[];
 	richTextEnabled: boolean;
+	schemas: readonly SchemaRef[];
+	searchSchemaEnabled: boolean;
 } => {
 	if (typeof data !== "object" || data === null) {
-		return { pages: [], docs: [], richTextEnabled: false };
+		return {
+			pages: [],
+			docs: [],
+			richTextEnabled: false,
+			schemas: [],
+			searchSchemaEnabled: false,
+		};
 	}
-	const d = data as { pages?: unknown; docs?: unknown; richTextEnabled?: unknown };
+	const d = data as {
+		pages?: unknown;
+		docs?: unknown;
+		richTextEnabled?: unknown;
+		schemas?: unknown;
+		searchSchemaEnabled?: unknown;
+	};
 	return {
 		pages: asRows(d.pages),
 		docs: asDocs(d.docs),
 		richTextEnabled: d.richTextEnabled === true,
+		schemas: asSchemas(d.schemas),
+		searchSchemaEnabled: d.searchSchemaEnabled === true,
 	};
 };
 
@@ -52,11 +86,13 @@ const asData = (
  * every `CustomPages.admin*` method.
  */
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
-	const { pages, docs, richTextEnabled } = asData(data);
+	const { pages, docs, richTextEnabled, schemas, searchSchemaEnabled } = asData(data);
 	const props: PagesAdminPageProps = {
 		pages,
 		docs,
 		richTextEnabled,
+		schemas,
+		searchSchemaEnabled,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

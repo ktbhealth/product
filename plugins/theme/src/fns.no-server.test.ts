@@ -40,9 +40,13 @@ vi.mock("@ktb/server-fns", async () => {
 				scopeId: input.scopeId,
 				appName: null,
 				enabled: true,
+				isMain: false,
 				version: 1,
 			}),
 		setEnabled: () => Effect.void,
+		setMain: () => Effect.void,
+		remove: () => Effect.void,
+		listAssets: () => Effect.succeed([]),
 		previewRow: () => Effect.succeed(null),
 	});
 	const adminGate = {

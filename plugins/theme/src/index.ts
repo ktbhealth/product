@@ -8,7 +8,9 @@ import { platformAdminPlugin, platformPanelPlugin, PlatformAdmin } from "@ktb/pl
 
 import { ThemePlatformPage } from "./platform-page.tsx";
 import { Theme, ThemeLive } from "./theme.ts";
+import { ThemeEditorPage } from "./views/ThemeEditorPage.tsx";
 import { ThemeAppBrand } from "./views/ThemeAppBrand.tsx";
+import { ColorSchemeToggle } from "./views/ColorSchemeToggle.tsx";
 import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
 
 /**
@@ -17,7 +19,7 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
  *
  * - `theme.services` registers the `Theme` port (theme_definitions
  *   repo + scope fallback chain portal-instance → tenant → platform →
- *   null). Reads are open (public branding); writes are PlatformAdmin.
+ *   main row → null). Reads are open (public branding); writes are PlatformAdmin.
  * - `theme.panel` mounts /platform/theme — the admin editor with scope
  *   picker, seed editors, live preview, contrast report and publish.
  *   Guard 404s non-admins like every console page.
@@ -39,6 +41,27 @@ export const themeServicesPlugin = definePlugin({
 	services: ThemeLive,
 });
 
+// Hard 404 for non-admins — same contract as the /platform layout
+// guard; every service/fn call re-checks anyway. Shared by the list
+// page and the editor page.
+const themePanelGuard = () =>
+	Effect.gen(function* () {
+		const platformAdmin = yield* PlatformAdmin;
+		return yield* platformAdmin.requireAdmin().pipe(
+			Effect.as(true),
+			Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+		);
+	});
+
+// Admin-gated inside the service; a Forbidden here means the guard
+// raced a revoked session — degrade to an empty list rather than
+// failing the page.
+const themePanelLoader = () =>
+	Effect.gen(function* () {
+		const theme = yield* Theme;
+		return yield* theme.list().pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
+	}).pipe(Effect.map((themes) => ({ themes })));
+
 export const themePanelPlugin = definePlugin({
 	id: "theme.panel",
 	meta: { keywords: ["theme", "ui"] },
@@ -49,24 +72,15 @@ export const themePanelPlugin = definePlugin({
 				id: "theme.admin",
 				path: "/platform/theme",
 				component: ThemePlatformPage,
-				// Hard 404 for non-admins — same contract as the /platform
-				// layout guard; every service/fn call re-checks anyway.
-				guard: () =>
-					Effect.gen(function* () {
-						const platformAdmin = yield* PlatformAdmin;
-						return yield* platformAdmin.requireAdmin().pipe(
-							Effect.as(true),
-							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
-						);
-					}),
-				loader: () =>
-					Effect.gen(function* () {
-						const theme = yield* Theme;
-						// Admin-gated inside the service; a Forbidden here means
-						// the guard raced a revoked session — degrade to an
-						// empty list rather than failing the page.
-						return yield* theme.list().pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
-					}).pipe(Effect.map((themes) => ({ themes }))),
+				guard: themePanelGuard,
+				loader: themePanelLoader,
+			},
+			{
+				id: "theme.editor",
+				path: "/platform/theme/editor",
+				component: ThemeEditorPage,
+				guard: themePanelGuard,
+				loader: themePanelLoader,
 			},
 		],
 	},
@@ -87,6 +101,24 @@ export const themeHeaderPlugin = definePlugin({
 			// `headerAction` kind is portal-shell chrome); the host
 			// injects ChromeProps, which supplies `locale`.
 			content: { kind: "component", component: ThemeHeaderAction },
+		},
+		{
+			id: "theme.color-scheme",
+			region: "app.header.actions",
+			// Light|dark|system toggle for every session — the admin
+			// preview popover carries the same control for console users.
+			content: { kind: "component", component: ColorSchemeToggle },
+		},
+		{
+			id: "theme.portal-header-action",
+			region: "portal.header.actions",
+			// Same preview/switch popover inside the portal console
+			// header — `headerAction` entries receive {locale, i18n}.
+			content: {
+				kind: "headerAction",
+				id: "theme.preview",
+				component: ThemeHeaderAction,
+			},
 		},
 	],
 });
@@ -122,7 +154,7 @@ export const themeRoutesPlugin = definePlugin({
 	routes: [physical("/api", "../../../../plugins/theme/src/api-routes")],
 });
 
-/** Sidebar entry under the Presentation group (same mechanism as jobs.chrome). */
+/** Sidebar entry under the System group (same mechanism as jobs.chrome). */
 export const themeChromePlugin = definePlugin({
 	id: "theme.chrome",
 	meta: { keywords: ["theme", "ui"] },
@@ -133,7 +165,7 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Presentation" },
+				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Site" },
 			},
 		},
 	],
@@ -152,7 +184,17 @@ export const plugins: readonly Plugin[] = [
 
 export { Theme, ThemeLive } from "./theme.ts";
 export { KTB_DEFAULT_THEME } from "./default-theme.ts";
-export { findTheme, getThemeById, listThemes, upsertTheme, setThemeEnabled } from "./theme.ts";
+export {
+	findTheme,
+	getThemeById,
+	listThemes,
+	findMainTheme,
+	setThemeMain,
+	seedDefaultTheme,
+	upsertTheme,
+	setThemeEnabled,
+	deleteTheme,
+} from "./theme.ts";
 export type { ThemeRow, ThemePublishInput } from "./theme.ts";
 export {
 	presentTheme,
@@ -193,6 +235,7 @@ export type {
 	ThemeFontConfig,
 	ThemeResolveRequest,
 	ThemeScopeKind,
+	ThemeAssetSummary,
 	ThemeSeeds,
 	ThemeSummary,
 	ThemeTokens,
@@ -202,8 +245,11 @@ export {
 	themeScopeFn,
 	listThemesFn,
 	getThemeFn,
+	listThemeAssetsFn,
 	publishThemeFn,
 	setThemeEnabledFn,
+	setThemeMainFn,
+	deleteThemeFn,
 	setThemePreviewFn,
 } from "./fns.ts";
 export { themeMessages, isThemeLocale, THEME_LOCALES } from "./i18n.ts";

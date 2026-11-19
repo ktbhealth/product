@@ -190,6 +190,8 @@ describe("AdminGroupsPage", () => {
 				data: { groupId: 1, memberKind: "group", memberId: "u2", role: null },
 			}),
 		);
+		// Successful member mutations invalidate the router (memberCount refresh).
+		expect(invalidate).toHaveBeenCalled();
 
 		// Remove u1 through the confirm dialog, then cancel the next one.
 		const u1Row = screen.getByText("u1").closest("tr")!;

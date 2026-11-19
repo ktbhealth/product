@@ -5,6 +5,7 @@ import { ExternalLinkIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -29,8 +30,6 @@ import {
 } from "@ktbhealth/ui/components/alert-dialog";
 import { Field, FieldDescription, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Select,
 	SelectContent,
@@ -39,14 +38,6 @@ import {
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import { createPageFn, deletePageFn, updatePageFn } from "../fns.ts";
 import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
@@ -60,6 +51,7 @@ export interface AdminPageRow {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId: number | null;
+	readonly searchSchemaId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: number;
@@ -72,6 +64,14 @@ export interface RichTextDocRef {
 	readonly title: string;
 }
 
+/** Picker option for the search-schema select — the loader maps
+ * `Schemas.adminList()` meta down to id + name + description. */
+export interface SchemaRef {
+	readonly id: number;
+	readonly name: string;
+	readonly description: string | null;
+}
+
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
 	readonly docs: readonly RichTextDocRef[];
@@ -79,6 +79,12 @@ export interface PagesAdminPageProps {
 	 * content-document field (picker + manage link) is hidden; stored
 	 * `richTextId` values are preserved untouched. */
 	readonly richTextEnabled: boolean;
+	/** Schema picker options for the search-schema field. */
+	readonly schemas: readonly SchemaRef[];
+	/** False when the schemas plugin's service is absent — the
+	 * search-schema field is hidden; stored `searchSchemaId` values
+	 * are preserved untouched. */
+	readonly searchSchemaEnabled: boolean;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -89,6 +95,7 @@ interface FormState {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId: number | null;
+	readonly searchSchemaId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: string;
@@ -99,6 +106,7 @@ const EMPTY_FORM: FormState = {
 	path: "",
 	title: "",
 	richTextId: null,
+	searchSchemaId: null,
 	published: false,
 	showInNav: false,
 	sortOrder: "0",
@@ -112,6 +120,7 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 				path: row.path,
 				title: row.title,
 				richTextId: row.richTextId,
+				searchSchemaId: row.searchSchemaId,
 				published: row.published,
 				showInNav: row.showInNav,
 				sortOrder: String(row.sortOrder),
@@ -121,6 +130,7 @@ const toInput = (form: FormState) => ({
 	path: form.path,
 	title: form.title,
 	richTextId: form.richTextId,
+	searchSchemaId: form.searchSchemaId,
 	published: form.published,
 	showInNav: form.showInNav,
 	sortOrder: Number(form.sortOrder) || 0,
@@ -131,17 +141,29 @@ const toInput = (form: FormState) => ({
  * for page paths. */
 const RICH_TEXT_CONSOLE = "/platform/rich-text" as string;
 
+/** Console route owned by the @ktb/schemas plugin — same untyped-route
+ * cast as RICH_TEXT_CONSOLE. */
+const SCHEMAS_CONSOLE = "/platform/schemas" as string;
+
 /**
  * /platform/pages console view (T-083): CRUD over the `custom_pages`
  * table. Published pages render publicly through the wildcard `pages`
  * descriptor; `showInNav` pages join the app-header nav. Mutations go
  * through the plugin's admin-gated server fns; the loader re-runs via
  * `router.invalidate()` after each write.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with a `Column` model for the row badges/actions. The
+ * create/edit dialog and delete confirm stay plugin-local — the kit's
+ * `FormDialog`/`ConfirmAction` cannot express the conditional
+ * rich-text/schema pickers and the untyped console links.
  */
 export function PagesAdminPage({
 	pages,
 	docs,
 	richTextEnabled,
+	schemas,
+	searchSchemaEnabled,
 	i18n,
 	locale,
 }: PagesAdminPageProps) {
@@ -152,6 +174,11 @@ export function PagesAdminPage({
 	const docItems = [
 		{ value: "", label: t.contentDocNone },
 		...docs.map((doc) => ({ value: String(doc.id), label: doc.title })),
+	];
+	// Same "" = none convention for the search-schema picker.
+	const schemaItems = [
+		{ value: "", label: t.searchSchemaNone },
+		...schemas.map((schema) => ({ value: String(schema.id), label: schema.name })),
 	];
 	const router = useRouter();
 	const [form, setForm] = useState<FormState | null>(null);
@@ -207,9 +234,75 @@ export function PagesAdminPage({
 		}
 	};
 
+	const columns: Column<AdminPageRow>[] = [
+		{
+			key: "path",
+			header: t.colPath,
+			render: (row) => <span className="font-mono text-xs">{row.path}</span>,
+		},
+		{ key: "title", header: t.colTitle },
+		{
+			key: "status",
+			header: t.colStatus,
+			render: (row) => (
+				<Badge variant={row.published ? "default" : "secondary"}>
+					{row.published ? t.statusPublished : t.statusDraft}
+				</Badge>
+			),
+		},
+		{
+			key: "nav",
+			header: t.colNav,
+			render: (row) => (
+				<Badge variant={row.showInNav ? "default" : "outline"}>
+					{row.showInNav ? t.navShown : t.navHidden}
+				</Badge>
+			),
+		},
+		{
+			key: "sortOrder",
+			header: t.colOrder,
+			render: (row) => <span className="text-muted-foreground">{row.sortOrder}</span>,
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end gap-1">
+					{row.published ? (
+						<Link
+							to={row.path as "/"}
+							className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+							aria-label={t.view}
+						>
+							<ExternalLinkIcon className="size-4" />
+						</Link>
+					) : null}
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setForm(formFrom(row))}
+						aria-label={t.edit}
+					>
+						<PencilIcon className="size-4" />
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setDeleteTarget(row)}
+						aria-label={t.delete}
+					>
+						<Trash2Icon className="size-4 text-destructive" />
+					</Button>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={t.title}
 				description={t.description}
 				actions={
@@ -220,75 +313,13 @@ export function PagesAdminPage({
 				}
 			/>
 			{failed ? <p className="text-sm text-destructive">{t.saveFailed}</p> : null}
-			{pages.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyDescription}</p>
-				</div>
-			) : (
-				<div className="overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colPath}</TableHead>
-								<TableHead>{t.colTitle}</TableHead>
-								<TableHead>{t.colStatus}</TableHead>
-								<TableHead>{t.colNav}</TableHead>
-								<TableHead>{t.colOrder}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{pages.map((row) => (
-								<TableRow key={row.id}>
-									<TableCell className="font-mono text-xs">{row.path}</TableCell>
-									<TableCell>{row.title}</TableCell>
-									<TableCell>
-										<Badge variant={row.published ? "default" : "secondary"}>
-											{row.published ? t.statusPublished : t.statusDraft}
-										</Badge>
-									</TableCell>
-									<TableCell>
-										<Badge variant={row.showInNav ? "default" : "outline"}>
-											{row.showInNav ? t.navShown : t.navHidden}
-										</Badge>
-									</TableCell>
-									<TableCell className="text-muted-foreground">{row.sortOrder}</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end gap-1">
-											{row.published ? (
-												<Link
-													to={row.path as "/"}
-													className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
-													aria-label={t.view}
-												>
-													<ExternalLinkIcon className="size-4" />
-												</Link>
-											) : null}
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setForm(formFrom(row))}
-												aria-label={t.edit}
-											>
-												<PencilIcon className="size-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setDeleteTarget(row)}
-												aria-label={t.delete}
-											>
-												<Trash2Icon className="size-4 text-destructive" />
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
+			<TablePage.Table
+				columns={columns}
+				rows={pages}
+				rowKey={(row) => String(row.id)}
+				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+				locale={locale}
+			/>
 
 			<Dialog open={form !== null} onOpenChange={(open) => !open && setForm(null)}>
 				<DialogContent>
@@ -345,6 +376,36 @@ export function PagesAdminPage({
 											className="underline underline-offset-2 hover:text-foreground"
 										>
 											{form.richTextId === null ? t.manageDocs : t.manageDoc}
+										</Link>
+									</FieldDescription>
+								</Field>
+							) : null}
+							{searchSchemaEnabled ? (
+								<Field>
+									<FieldLabel>{t.fieldSearchSchema}</FieldLabel>
+									<Select
+										items={schemaItems}
+										value={form.searchSchemaId === null ? "" : String(form.searchSchemaId)}
+										onValueChange={(v) => set("searchSchemaId", v === "" ? null : Number(v))}
+									>
+										<SelectTrigger aria-label={t.fieldSearchSchema} className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{schemaItems.map((item) => (
+												<SelectItem key={item.value} value={item.value}>
+													{item.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<FieldDescription>
+										{t.searchSchemaHint}{" "}
+										<Link
+											to={SCHEMAS_CONSOLE as "/"}
+											className="underline underline-offset-2 hover:text-foreground"
+										>
+											{t.manageSchemas}
 										</Link>
 									</FieldDescription>
 								</Field>
@@ -406,6 +467,6 @@ export function PagesAdminPage({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</PageContainer>
+		</TablePage>
 	);
 }

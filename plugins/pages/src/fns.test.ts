@@ -31,7 +31,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
+import { Principal } from "@ktb/authz";
+
 import { plugins } from "./index.ts";
+import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPages, CustomPagesLive } from "./service.ts";
 import { createPageFn, deletePageFn, navPagesFn, updatePageFn } from "./fns.ts";
 
@@ -120,6 +123,7 @@ describe("pages fns", () => {
 				path: "/hello",
 				title: "Hello",
 				richTextId: 4,
+				searchSchemaId: 6,
 				published: true,
 				showInNav: true,
 				sortOrder: 3,
@@ -129,6 +133,7 @@ describe("pages fns", () => {
 			path: "/hello",
 			title: "Hello",
 			richTextId: 4,
+			searchSchemaId: 6,
 			published: true,
 			showInNav: true,
 			sortOrder: 3,
@@ -187,6 +192,9 @@ describe("pages fns", () => {
 		await expect(deletePageFn({ data: { id: "1" } } as never)).rejects.toBeInstanceOf(Error);
 		await expect(
 			createPageFn({ data: { path: "/x", title: "X", richTextId: "nope" } } as never),
+		).rejects.toBeInstanceOf(Error);
+		await expect(
+			createPageFn({ data: { path: "/x", title: "X", searchSchemaId: "nope" } } as never),
 		).rejects.toBeInstanceOf(Error);
 	});
 

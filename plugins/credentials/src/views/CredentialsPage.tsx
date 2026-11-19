@@ -3,9 +3,9 @@ import { KeyRoundIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
-import { Card, CardContent } from "@ktbhealth/ui/components/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@ktbhealth/ui/components/dialog";
 import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
@@ -23,6 +23,16 @@ import type { CredentialCard } from "../index.ts";
 
 const PROVIDERS = ["openai", "anthropic", "gemini", "acp", "other"] as const;
 
+/**
+ * Credentials console view — platform-admin list of outbound provider
+ * secrets (masked on the wire). Built on the shared table kit
+ * (`@ktb/views/table`): `TablePage` shell + `Column` model. Mutations
+ * stay on the plugin's server fns with a local `refresh()` (the page
+ * owns its row state, so `useServerMutation`'s router invalidation
+ * does not apply); the delete keeps its two-step inline confirm and
+ * the create dialog keeps its provider Select + password field that
+ * `FormDialog` cannot express.
+ */
 export function CredentialsPage({
 	creds: initial,
 	i18n,
@@ -77,56 +87,72 @@ export function CredentialsPage({
 		await refresh();
 	};
 
+	const columns: Column<CredentialCard>[] = [
+		{
+			key: "name",
+			header: m.name,
+			render: (c) => (
+				<span className="flex items-center gap-2">
+					<KeyRoundIcon className="size-4 text-muted-foreground" />
+					<span className="font-medium">{c.name}</span>
+					<span className="text-xs text-muted-foreground">{c.masked}</span>
+				</span>
+			),
+		},
+		{
+			key: "provider",
+			header: m.provider,
+			render: (c) => <Badge variant="outline">{c.provider}</Badge>,
+		},
+	];
+
+	const rowActions = (c: CredentialCard) =>
+		confirmId === c.id ? (
+			<Button
+				type="button"
+				size="sm"
+				variant="destructive"
+				disabled={busy}
+				onClick={() => remove(c.id)}
+			>
+				{m.confirmDelete}
+			</Button>
+		) : (
+			<Button
+				type="button"
+				size="icon-sm"
+				variant="outline"
+				aria-label={m.delete}
+				onClick={() => setConfirmId(c.id)}
+			>
+				<Trash2Icon className="size-4" />
+			</Button>
+		);
+
 	return (
-		<div className="mx-auto w-full max-w-4xl space-y-6 px-4 py-6 sm:px-6">
-			<div>
-				<h1 className="font-heading text-2xl font-semibold tracking-tight">{m.title}</h1>
-				<p className="text-sm text-muted-foreground">{m.desc}</p>
-			</div>
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
+				title={m.title}
+				description={m.desc}
+				actions={
+					<Button
+						type="button"
+						onClick={() => setForm({ name: "", provider: "openai", secret: "" })}
+					>
+						<PlusIcon className="mr-1 size-4" />
+						{m.newCred}
+					</Button>
+				}
+			/>
 			{error !== null && <p className="text-sm text-destructive">{error}</p>}
-			<div className="flex justify-end">
-				<Button onClick={() => setForm({ name: "", provider: "openai", secret: "" })}>
-					<PlusIcon className="mr-1 size-4" />
-					{m.newCred}
-				</Button>
-			</div>
-			{creds.length === 0 ? (
-				<p className="text-sm text-muted-foreground">{m.empty}</p>
-			) : (
-				<div className="grid gap-3">
-					{creds.map((c) => (
-						<Card key={c.id} size="sm">
-							<CardContent className="flex items-center justify-between py-3">
-								<div className="flex items-center gap-2">
-									<KeyRoundIcon className="size-4 text-muted-foreground" />
-									<span className="font-medium">{c.name}</span>
-									<Badge variant="outline">{c.provider}</Badge>
-									<span className="text-xs text-muted-foreground">{c.masked}</span>
-								</div>
-								{confirmId === c.id ? (
-									<Button
-										size="sm"
-										variant="destructive"
-										disabled={busy}
-										onClick={() => remove(c.id)}
-									>
-										{m.confirmDelete}
-									</Button>
-								) : (
-									<Button
-										size="icon-sm"
-										variant="outline"
-										aria-label={m.delete}
-										onClick={() => setConfirmId(c.id)}
-									>
-										<Trash2Icon className="size-4" />
-									</Button>
-								)}
-							</CardContent>
-						</Card>
-					))}
-				</div>
-			)}
+			<TablePage.Table
+				columns={columns}
+				rows={creds}
+				rowKey={(c) => c.id}
+				empty={{ title: m.empty }}
+				locale={locale}
+				rowActions={rowActions}
+			/>
 			<Dialog open={form !== null} onOpenChange={(open) => !open && setForm(null)}>
 				<DialogContent className="sm:max-w-md">
 					<DialogHeader>
@@ -182,6 +208,6 @@ export function CredentialsPage({
 					)}
 				</DialogContent>
 			</Dialog>
-		</div>
+		</TablePage>
 	);
 }

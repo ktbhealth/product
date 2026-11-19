@@ -53,6 +53,17 @@ const fieldKind = (
 	ordering: "topo" | "declared" = "topo",
 ): ContributionKindDescriptor => ({ id, slot: id, consumers, ordering });
 
+/** Element-kind manifest entries (P-102): the client-consumed
+ * `kind`/`label`/`icon`/`renderer`/`editor` payloads layouts and future
+ * templates mount. Server-side resolution/lifecycle lives in the
+ * `ElementKinds` service registry (@ktb/platform `element-kinds`),
+ * populated by each kind owner's service layer — this descriptor only
+ * covers the manifest channel. */
+export const ELEMENT_KINDS_KIND: ContributionKindDescriptor = fieldKind("elementKinds", [
+	"app-host.client",
+	"plugin-manager",
+]);
+
 /**
  * The built-in kinds — one per dedicated Plugin union field, in
  * declaration order. These are the kinds the app host's surfaces
@@ -81,6 +92,9 @@ export const FIELD_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[] = [
 	// Portal instance descriptors (P-081) — collected client-side for
 	// shell/switcher rendering; the server fn re-derives the gate.
 	fieldKind("portals", ["app-host.server", "app-host.client", "plugin-manager"]),
+	// Managed-content element kinds (P-102) — client-consumed renderer/
+	// editor manifests; server behavior registers via ElementKinds.
+	ELEMENT_KINDS_KIND,
 ];
 
 /**

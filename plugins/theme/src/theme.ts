@@ -1,9 +1,10 @@
 /**
  * Theme domain port + repo (P-082): `theme_definitions` rows resolved
  * per request scope with the fallback chain
- * portal-instance → tenant → platform → built-in KTB default (PL-006
- * phase 7 — brand lives in theme data even with zero rows; the ui
- * token defaults in globals.css remain the final CSS fallback).
+ * portal-instance → tenant → platform → main row → null (PL-006
+ * phase 7 — the ui token defaults in globals.css are the final CSS
+ * fallback; the KTB brand ships as a seeded main row on empty
+ * databases, so fresh deploys still resolve real theme data).
  *
  * Reads are open — branding is public information and anonymous app
  * pages need it — while every write/list path requires the
@@ -16,19 +17,22 @@ import * as Layer from "effect/Layer";
 import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { Forbidden } from "@ktb/authz";
-import { Db, type DbClient } from "@ktb/db";
+import { Db, tx, type DbClient } from "@ktb/db";
 import { themeDefinitions } from "@ktb/db/schema";
 import { PlatformAdmin } from "@ktb/platform";
 import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import { deriveThemeTokens } from "./palette.ts";
-import { presentTheme, type ThemeDefinitionRow } from "./present.ts";
+import { listThemeAssets } from "./assets.ts";
+import { parseThemeBrand, presentTheme, type ThemeDefinitionRow } from "./present.ts";
 import type {
 	ResolvedTheme,
 	ThemeBrand,
 	ThemeFontConfig,
 	ThemeResolveRequest,
+	ThemeAssetSummary,
+	ThemeJsonValue,
 	ThemeSeeds,
 	ThemeSummary,
 } from "./types.ts";
@@ -71,7 +75,39 @@ export async function listThemes(db: DbClient): Promise<ThemeRow[]> {
 		.orderBy(asc(themeDefinitions.scope), asc(themeDefinitions.scopeId));
 }
 
+/** First ENABLED row flagged is_main — resolve()'s last fallback
+ * before giving up (lowest id wins if the invariant is ever broken). */
+export async function findMainTheme(db: DbClient): Promise<ThemeRow | null> {
+	const rows = await db
+		.select()
+		.from(themeDefinitions)
+		.where(and(eq(themeDefinitions.isMain, true), eq(themeDefinitions.enabled, true)))
+		.orderBy(asc(themeDefinitions.id))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/**
+ * Swap the main flag to `id` atomically — clears is_main on every row,
+ * then sets it on the target. `tx()` batches atomically on every
+ * dialect (D1 batch / better-sqlite3 transaction).
+ */
+export async function setThemeMain(db: DbClient, id: number): Promise<void> {
+	const now = new Date();
+	await tx(db, [
+		db
+			.update(themeDefinitions)
+			.set({ isMain: false, updatedAt: now })
+			.where(eq(themeDefinitions.isMain, true)),
+		db
+			.update(themeDefinitions)
+			.set({ isMain: true, updatedAt: now })
+			.where(eq(themeDefinitions.id, id)),
+	]);
+}
+
 export interface ThemePublishInput {
+	readonly id?: number;
 	readonly scope: string;
 	readonly scopeId: string;
 	readonly appName?: string | null;
@@ -86,6 +122,8 @@ const tokensJson = (seeds: ThemeSeeds): string => JSON.stringify(deriveThemeToke
  * Insert or update the (scope, scopeId) row — publish is an upsert so
  * re-publishing bumps `version` instead of duplicating. `tokens` is
  * derived here for inspection; readers re-derive from seeds anyway.
+ * `is_main` is never touched: new rows default to false, updates keep
+ * the stored flag — only setThemeMain may move it.
  */
 export async function upsertTheme(
 	db: DbClient,
@@ -93,22 +131,30 @@ export async function upsertTheme(
 	existingId?: number,
 ): Promise<ThemeRow | null> {
 	const now = new Date();
-	const values = {
+	const base = {
 		scope: input.scope,
 		scopeId: input.scopeId,
-		appName: input.appName ?? null,
 		seeds: JSON.stringify(input.seeds),
 		tokens: tokensJson(input.seeds),
-		fonts: input.fonts === undefined || input.fonts === null ? null : JSON.stringify(input.fonts),
-		brand: input.brand === undefined || input.brand === null ? null : JSON.stringify(input.brand),
 		updatedAt: now,
 	};
 	if (existingId !== undefined) {
 		const rows = await db
 			.update(themeDefinitions)
 			// version bumps on every publish — informational, never a
-			// concurrency token (upsert is keyed by natural scope).
-			.set({ ...values, version: sql`${themeDefinitions.version} + 1` })
+			// concurrency token (upsert is keyed by natural scope). Undefined
+			// optional columns preserve the stored value; explicit null clears.
+			.set({
+				...base,
+				...(input.appName !== undefined ? { appName: input.appName } : {}),
+				...(input.fonts !== undefined
+					? { fonts: input.fonts === null ? null : JSON.stringify(input.fonts) }
+					: {}),
+				...(input.brand !== undefined
+					? { brand: input.brand === null ? null : JSON.stringify(input.brand) }
+					: {}),
+				version: sql`${themeDefinitions.version} + 1`,
+			})
 			.where(eq(themeDefinitions.id, existingId))
 			.returning();
 		return rows[0] ?? null;
@@ -117,7 +163,14 @@ export async function upsertTheme(
 		.insert(themeDefinitions)
 		// New themes publish enabled; updates keep the stored flag —
 		// re-publishing a disabled theme must not silently re-enable it.
-		.values({ ...values, enabled: true, createdAt: now })
+		.values({
+			...base,
+			appName: input.appName ?? null,
+			fonts: input.fonts === undefined || input.fonts === null ? null : JSON.stringify(input.fonts),
+			brand: input.brand === undefined || input.brand === null ? null : JSON.stringify(input.brand),
+			enabled: true,
+			createdAt: now,
+		})
 		.returning();
 	return rows[0] ?? null;
 }
@@ -127,6 +180,43 @@ export async function setThemeEnabled(db: DbClient, id: number, enabled: boolean
 		.update(themeDefinitions)
 		.set({ enabled, updatedAt: new Date() })
 		.where(eq(themeDefinitions.id, id));
+}
+
+/** Hard-delete a definition row — theme_assets.theme_id goes null via
+ * its ON DELETE SET NULL foreign key. The service guards the main row
+ * before calling this. */
+export async function deleteTheme(db: DbClient, id: number): Promise<void> {
+	await db.delete(themeDefinitions).where(eq(themeDefinitions.id, id));
+}
+
+/**
+ * Create-only seed (rbac seed.ts precedent): when the table is EMPTY,
+ * insert the KTB default as a real platform row flagged is_main —
+ * the resolve() fallback that replaced the old runtime constant.
+ * Returns true when a row was inserted. onConflictDoNothing covers a
+ * concurrent boot racing the same seed; the caller logs-and-swallows
+ * any failure so seeding never breaks boot.
+ */
+export async function seedDefaultTheme(db: DbClient): Promise<boolean> {
+	const existing = await db.select({ id: themeDefinitions.id }).from(themeDefinitions).limit(1);
+	if (existing.length > 0) return false;
+	const now = new Date();
+	await db
+		.insert(themeDefinitions)
+		.values({
+			scope: "platform",
+			scopeId: "",
+			appName: KTB_DEFAULT_THEME.appName,
+			seeds: JSON.stringify(KTB_DEFAULT_THEME.seeds),
+			tokens: tokensJson(KTB_DEFAULT_THEME.seeds),
+			fonts: KTB_DEFAULT_THEME.fonts === null ? null : JSON.stringify(KTB_DEFAULT_THEME.fonts),
+			brand: KTB_DEFAULT_THEME.brand === null ? null : JSON.stringify(KTB_DEFAULT_THEME.brand),
+			enabled: true,
+			isMain: true,
+			createdAt: now,
+		})
+		.onConflictDoNothing();
+	return true;
 }
 
 // ---------- scope → candidate chain ----------
@@ -163,23 +253,32 @@ export const themeCandidates = (
  * Theme port — Effect service, swappable in tests.
  *
  * - `resolve` never fails on missing themes — an unmatched chain
- *   returns the built-in KTB default (`KTB_DEFAULT_THEME`, id 0) so
- *   every shell always has brand/tokens/fonts — and tolerates
- *   per-scope read failures by falling through the chain: branding
- *   must never take a page down.
- * - `list`/`get`/`publish`/`setEnabled` are PlatformAdmin-gated
- *   (defense in depth; the /platform/theme page guard 404s first).
+ *   falls back to the enabled `is_main` row, then returns null so the
+ *   ui token defaults in globals.css apply — and tolerates per-scope
+ *   read failures by falling through the chain: branding must never
+ *   take a page down.
+ * - `list`/`get`/`publish`/`setEnabled`/`setMain`/`remove` are
+ *   PlatformAdmin-gated (defense in depth; the /platform/theme page
+ *   guard 404s first).
  */
 export class Theme extends Context.Service<
 	Theme,
 	{
-		readonly resolve: (request?: ThemeResolveRequest) => Effect.Effect<ResolvedTheme>;
+		readonly resolve: (request?: ThemeResolveRequest) => Effect.Effect<ResolvedTheme | null>;
 		readonly list: () => Effect.Effect<ThemeSummary[], Forbidden>;
 		/** Full presented theme by id — the admin editor loads seeds,
 		 * fonts and brand through this. Admin-gated. */
 		readonly get: (id: number) => Effect.Effect<ResolvedTheme | null, Forbidden>;
 		readonly publish: (input: ThemePublishInput) => Effect.Effect<ThemeSummary, Forbidden>;
 		readonly setEnabled: (id: number, enabled: boolean) => Effect.Effect<void, Forbidden>;
+		/** Move the is_main flag to `id` — exactly one row stays main.
+		 * Admin-gated. */
+		readonly setMain: (id: number) => Effect.Effect<void, Forbidden>;
+		/** Hard-delete a theme definition (e.g. an untouched auto-created
+		 * editor draft). Admin-gated; the main row cannot be deleted. */
+		readonly remove: (id: number) => Effect.Effect<void, Forbidden>;
+		/** Upload/processing rows for one theme — admin editor asset tab. */
+		readonly listAssets: (themeId: number) => Effect.Effect<ThemeAssetSummary[], Forbidden>;
 		/** Raw row for the admin preview path — ignores `enabled` so a
 		 * draft/disabled theme can be previewed; admin-gated. */
 		readonly previewRow: (id: number) => Effect.Effect<ThemeRow | null, Forbidden>;
@@ -192,14 +291,54 @@ const summarize = (row: ThemeRow): ThemeSummary => ({
 	scopeId: row.scopeId,
 	appName: row.appName,
 	enabled: row.enabled,
+	isMain: row.isMain,
 	version: row.version,
+	brand: parseThemeBrand(row.brand),
 });
+
+const summarizeAsset = (row: {
+	id: number;
+	themeId: number | null;
+	kind: string;
+	status: string;
+	r2Key: string | null;
+	variants: string | null;
+	createdAt: Date;
+}): ThemeAssetSummary => {
+	let variants: ThemeAssetSummary["variants"] = null;
+	if (row.variants !== null) {
+		try {
+			variants = JSON.parse(row.variants) as ThemeAssetSummary["variants"];
+		} catch {
+			variants = null;
+		}
+	}
+	return {
+		id: row.id,
+		themeId: row.themeId,
+		kind: row.kind as ThemeAssetSummary["kind"],
+		status: row.status,
+		r2Key: row.r2Key,
+		variants,
+		createdAt: row.createdAt.toISOString(),
+	};
+};
 
 export const ThemeLive = Layer.effect(
 	Theme,
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
+
+		// Create-only seed: an empty theme_definitions table gets the KTB
+		// default as the main row so resolve() always has brand data on
+		// fresh deploys. Failure is logged, never fatal — branding must
+		// not take boot down (rbac seed.ts precedent).
+		yield* Effect.promise(() => seedDefaultTheme(db)).pipe(
+			Effect.catchCause((cause) =>
+				Effect.logWarning("theme default seed failed", cause).pipe(Effect.as(false)),
+			),
+		);
 
 		const resolve = Effect.fn("Theme.resolve")(function* (
 			request: ThemeResolveRequest = { scope: "session" },
@@ -218,11 +357,17 @@ export const ThemeLive = Layer.effect(
 				);
 				if (row !== null) return presentTheme(row as ThemeDefinitionRow);
 			}
-			// No row anywhere in the chain → the built-in KTB default.
-			// Returning a theme (never null) keeps brand/favicon/title
-			// theme-driven on fresh deploys and when the theme plugin is
-			// disabled (service layers always compose — P-058).
-			return KTB_DEFAULT_THEME;
+			// Chain missed → the enabled is_main row is the fallback.
+			const main = yield* Effect.promise(() => findMainTheme(db)).pipe(
+				Effect.catchCause((cause) =>
+					Effect.logWarning("theme main read failed", cause).pipe(
+						Effect.as(null as ThemeRow | null),
+					),
+				),
+			);
+			// No main row either → null; the ui token defaults in
+			// globals.css are the final CSS fallback.
+			return main === null ? null : presentTheme(main as ThemeDefinitionRow);
 		});
 
 		return Theme.of({
@@ -239,6 +384,19 @@ export const ThemeLive = Layer.effect(
 			}),
 			publish: Effect.fn("Theme.publish")(function* (input: ThemePublishInput) {
 				yield* platformAdmin.requireAdmin();
+				// Editor publishes carry the row id — update that row
+				// directly so scope moves are allowed; missing rows die.
+				if (input.id !== undefined) {
+					const existing = yield* Effect.promise(() => getThemeById(db, input.id!));
+					if (existing === null) {
+						return yield* Effect.die(new Error("theme not found"));
+					}
+					const row = yield* Effect.promise(() => upsertTheme(db, input, input.id));
+					if (row === null) {
+						return yield* Effect.die(new Error("theme upsert returned no row"));
+					}
+					return summarize(row);
+				}
 				// Existing row for this scope wins the update path — upsert
 				// by natural key, not by client-supplied id.
 				const existing = yield* Effect.promise(() => findThemeAny(db, input.scope, input.scopeId));
@@ -251,6 +409,27 @@ export const ThemeLive = Layer.effect(
 			setEnabled: Effect.fn("Theme.setEnabled")(function* (id: number, enabled: boolean) {
 				yield* platformAdmin.requireAdmin();
 				yield* Effect.promise(() => setThemeEnabled(db, id, enabled));
+			}),
+			setMain: Effect.fn("Theme.setMain")(function* (id: number) {
+				yield* platformAdmin.requireAdmin();
+				const existing = yield* Effect.promise(() => getThemeById(db, id));
+				if (existing === null) {
+					return yield* Effect.die(new Error("theme not found"));
+				}
+				yield* Effect.promise(() => setThemeMain(db, id));
+			}),
+			remove: Effect.fn("Theme.remove")(function* (id: number) {
+				yield* platformAdmin.requireAdmin();
+				const row = yield* Effect.promise(() => getThemeById(db, id));
+				if (row?.isMain === true) {
+					return yield* Effect.die(new Error("cannot delete the main theme"));
+				}
+				yield* Effect.promise(() => deleteTheme(db, id));
+			}),
+			listAssets: Effect.fn("Theme.listAssets")(function* (themeId: number) {
+				yield* platformAdmin.requireAdmin();
+				const rows = yield* Effect.promise(() => listThemeAssets(db, themeId));
+				return rows.map(summarizeAsset);
 			}),
 			previewRow: Effect.fn("Theme.previewRow")(function* (id: number) {
 				yield* platformAdmin.requireAdmin();

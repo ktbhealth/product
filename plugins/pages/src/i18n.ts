@@ -51,6 +51,10 @@ export interface PagesMessages {
 	readonly contentDocHint: string;
 	readonly manageDocs: string;
 	readonly manageDoc: string;
+	readonly fieldSearchSchema: string;
+	readonly searchSchemaNone: string;
+	readonly searchSchemaHint: string;
+	readonly manageSchemas: string;
 	readonly pathHint: string;
 	readonly deleteTitle: string;
 	readonly deleteBody: (path: string) => string;
@@ -91,6 +95,11 @@ const en: PagesMessages = {
 	contentDocHint: "The page renders the selected rich-text document.",
 	manageDocs: "Manage documents",
 	manageDoc: "Manage rich text",
+	fieldSearchSchema: "Search schema",
+	searchSchemaNone: "No schema",
+	searchSchemaHint:
+		"URL search params are validated against the selected schema; invalid params are dropped.",
+	manageSchemas: "Manage schemas",
 	pathHint: "Starts with / — e.g. /about. /platform paths are reserved.",
 	deleteTitle: "Delete page",
 	deleteBody: paramMessage("en", 'Delete "{path}"? This cannot be undone.', ["path"]),
@@ -131,6 +140,11 @@ const ptBR: PagesMessages = {
 	contentDocHint: "A página exibe o documento de texto rico selecionado.",
 	manageDocs: "Gerenciar documentos",
 	manageDoc: "Gerenciar texto rico",
+	fieldSearchSchema: "Esquema de busca",
+	searchSchemaNone: "Nenhum esquema",
+	searchSchemaHint:
+		"Os parâmetros de busca da URL são validados pelo esquema selecionado; parâmetros inválidos são removidos.",
+	manageSchemas: "Gerenciar esquemas",
 	pathHint: "Começa com / — ex.: /sobre. Caminhos /platform são reservados.",
 	deleteTitle: "Excluir página",
 	deleteBody: paramMessage("pt-BR", 'Excluir "{path}"? Esta ação não pode ser desfeita.', ["path"]),
@@ -171,6 +185,11 @@ const es: PagesMessages = {
 	contentDocHint: "La página muestra el documento de texto enriquecido seleccionado.",
 	manageDocs: "Gestionar documentos",
 	manageDoc: "Gestionar texto enriquecido",
+	fieldSearchSchema: "Esquema de búsqueda",
+	searchSchemaNone: "Ningún esquema",
+	searchSchemaHint:
+		"Los parámetros de búsqueda de la URL se validan con el esquema seleccionado; los inválidos se eliminan.",
+	manageSchemas: "Gestionar esquemas",
 	pathHint: "Empieza con / — p. ej. /acerca. Las rutas /platform están reservadas.",
 	deleteTitle: "Eliminar página",
 	deleteBody: paramMessage("es", '¿Eliminar "{path}"? Esta acción no se puede deshacer.', ["path"]),

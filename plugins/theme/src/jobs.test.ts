@@ -74,6 +74,7 @@ CREATE TABLE theme_definitions (
 	fonts text,
 	brand text,
 	enabled integer DEFAULT true NOT NULL,
+	is_main integer DEFAULT false NOT NULL,
 	version integer DEFAULT 1 NOT NULL,
 	created_at integer NOT NULL,
 	updated_at integer

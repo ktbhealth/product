@@ -70,6 +70,12 @@ export interface ThemeMessages {
 	readonly edit: string;
 	readonly enable: string;
 	readonly disable: string;
+	readonly badgeMain: string;
+	readonly setMain: string;
+	readonly mainSet: string;
+	readonly deleteTheme: string;
+	readonly deleteConfirm: string;
+	readonly deleteError: string;
 	readonly assetTodo: string;
 	readonly assetsTitle: string;
 	readonly assetThemeLabel: string;
@@ -90,6 +96,60 @@ export interface ThemeMessages {
 	readonly headerEmpty: string;
 	readonly headerPreview: string;
 	readonly headerManage: string;
+	readonly schemeLabel: string;
+	readonly schemeSystem: string;
+	readonly searchPlaceholder: string;
+	readonly searchLabel: string;
+	readonly newTheme: string;
+	readonly filteredCount: (shown: number, total: number) => string;
+	readonly noResults: string;
+	readonly dialogCreateTitle: string;
+	readonly dialogEditTitle: string;
+	readonly tabGeneral: string;
+	readonly tabColors: string;
+	readonly tabTypography: string;
+	readonly tabAssets: string;
+	readonly cancel: string;
+	readonly assetsNeedSave: string;
+	readonly assetsListTitle: string;
+	readonly assetsEmpty: string;
+	readonly assetKindLogoLight: string;
+	readonly assetKindLogoDark: string;
+	readonly assetKindWordmark: string;
+	readonly assetKindFavicon: string;
+	readonly assetKindOgImage: string;
+	readonly assetKindFont: string;
+	readonly assetFontUpload: string;
+	readonly assetStatusPending: string;
+	readonly assetStatusReady: string;
+	readonly assetStatusFailed: string;
+	readonly assetGoogleFamily: string;
+	readonly assetGoogleSlot: string;
+	readonly brandRefsTitle: string;
+	readonly editorBack: string;
+	readonly editorThemeLabel: string;
+	readonly editorNotFound: string;
+	readonly dirtyBadge: string;
+	readonly tabTokens: string;
+	readonly tabComponents: string;
+	readonly tabBlocks: string;
+	readonly tokensTitle: string;
+	readonly tokensDescription: string;
+	readonly componentsTitle: string;
+	readonly componentsDescription: string;
+	readonly blocksTitle: string;
+	readonly blocksDescription: string;
+	readonly schemeLight: string;
+	readonly schemeDark: string;
+	readonly discardedToast: string;
+	readonly galleryButtons: string;
+	readonly galleryForms: string;
+	readonly galleryFeedback: string;
+	readonly gallerySurfaces: string;
+	readonly blockStats: string;
+	readonly blockSettings: string;
+	readonly blockEmpty: string;
+	readonly blockTable: string;
 }
 
 const en: ThemeMessages = {
@@ -151,6 +211,12 @@ const en: ThemeMessages = {
 	edit: "Edit",
 	enable: "Enable",
 	disable: "Disable",
+	badgeMain: "Main",
+	setMain: "Set main",
+	mainSet: "Main theme updated",
+	deleteTheme: "Delete",
+	deleteConfirm: "Delete this theme? This cannot be undone.",
+	deleteError: "Could not delete theme",
 	assetTodo:
 		"Asset uploads (logo, favicon, fonts) arrive with the async pipeline — manage URLs in the brand fields for now.",
 	assetsTitle: "Asset uploads",
@@ -172,6 +238,60 @@ const en: ThemeMessages = {
 	headerEmpty: "No themes defined yet.",
 	headerPreview: "Preview",
 	headerManage: "Manage themes",
+	schemeLabel: "Appearance",
+	schemeSystem: "System",
+	searchPlaceholder: "Search by name, scope or id…",
+	searchLabel: "Search themes",
+	newTheme: "New theme",
+	filteredCount: (shown, total) => `${shown} of ${total} themes`,
+	noResults: "No themes match the search.",
+	dialogCreateTitle: "New theme",
+	dialogEditTitle: "Edit theme",
+	tabGeneral: "General",
+	tabColors: "Colors",
+	tabTypography: "Typography",
+	tabAssets: "Brand & assets",
+	cancel: "Cancel",
+	assetsNeedSave: "Save the theme once to enable asset uploads.",
+	assetsListTitle: "Uploaded assets",
+	assetsEmpty: "No assets uploaded yet.",
+	assetKindLogoLight: "Logo (light)",
+	assetKindLogoDark: "Logo (dark)",
+	assetKindWordmark: "Wordmark",
+	assetKindFavicon: "Favicon",
+	assetKindOgImage: "OG image",
+	assetKindFont: "Font file",
+	assetFontUpload: "Upload font",
+	assetStatusPending: "Pending",
+	assetStatusReady: "Ready",
+	assetStatusFailed: "Failed",
+	assetGoogleFamily: "Google Fonts family",
+	assetGoogleSlot: "Google font slot",
+	brandRefsTitle: "Current brand references",
+	editorBack: "Back to themes",
+	editorThemeLabel: "Theme",
+	editorNotFound: "Theme not found — it may have been deleted.",
+	dirtyBadge: "Unsaved changes",
+	tabTokens: "Tokens",
+	tabComponents: "Components",
+	tabBlocks: "Blocks",
+	tokensTitle: "Design tokens",
+	tokensDescription: "Derived CSS custom properties for both schemes.",
+	componentsTitle: "Components",
+	componentsDescription: "Design-system components rendered with the draft theme.",
+	blocksTitle: "Blocks",
+	blocksDescription: "Composed blocks rendered with the draft theme.",
+	schemeLight: "Light",
+	schemeDark: "Dark",
+	discardedToast: "Empty theme discarded.",
+	galleryButtons: "Buttons",
+	galleryForms: "Form controls",
+	galleryFeedback: "Feedback & data",
+	gallerySurfaces: "Surfaces",
+	blockStats: "Stats",
+	blockSettings: "Settings",
+	blockEmpty: "Empty state",
+	blockTable: "Records",
 };
 
 const ptBR: ThemeMessages = {
@@ -233,6 +353,12 @@ const ptBR: ThemeMessages = {
 	edit: "Editar",
 	enable: "Ativar",
 	disable: "Desativar",
+	badgeMain: "Principal",
+	setMain: "Definir como principal",
+	mainSet: "Tema principal atualizado",
+	deleteTheme: "Excluir",
+	deleteConfirm: "Excluir este tema? Esta ação não pode ser desfeita.",
+	deleteError: "Não foi possível excluir o tema",
 	assetTodo:
 		"Uploads de assets (logo, favicon, fontes) chegam com o pipeline assíncrono — gerencie URLs nos campos de marca por enquanto.",
 	assetsTitle: "Uploads de assets",
@@ -254,6 +380,60 @@ const ptBR: ThemeMessages = {
 	headerEmpty: "Nenhum tema definido ainda.",
 	headerPreview: "Pré-visualizar",
 	headerManage: "Gerenciar temas",
+	schemeLabel: "Aparência",
+	schemeSystem: "Sistema",
+	searchPlaceholder: "Buscar por nome, escopo ou id…",
+	searchLabel: "Buscar temas",
+	newTheme: "Novo tema",
+	filteredCount: (shown, total) => `${shown} de ${total} temas`,
+	noResults: "Nenhum tema corresponde à busca.",
+	dialogCreateTitle: "Novo tema",
+	dialogEditTitle: "Editar tema",
+	tabGeneral: "Geral",
+	tabColors: "Cores",
+	tabTypography: "Tipografia",
+	tabAssets: "Marca e assets",
+	cancel: "Cancelar",
+	assetsNeedSave: "Salve o tema uma vez para habilitar uploads de assets.",
+	assetsListTitle: "Assets enviados",
+	assetsEmpty: "Nenhum asset enviado ainda.",
+	assetKindLogoLight: "Logo (claro)",
+	assetKindLogoDark: "Logo (escuro)",
+	assetKindWordmark: "Wordmark",
+	assetKindFavicon: "Favicon",
+	assetKindOgImage: "Imagem OG",
+	assetKindFont: "Arquivo de fonte",
+	assetFontUpload: "Enviar fonte",
+	assetStatusPending: "Pendente",
+	assetStatusReady: "Pronto",
+	assetStatusFailed: "Falhou",
+	assetGoogleFamily: "Família do Google Fonts",
+	assetGoogleSlot: "Slot do Google Fonts",
+	brandRefsTitle: "Referências de marca atuais",
+	editorBack: "Voltar aos temas",
+	editorThemeLabel: "Tema",
+	editorNotFound: "Tema não encontrado — pode ter sido excluído.",
+	dirtyBadge: "Alterações não salvas",
+	tabTokens: "Tokens",
+	tabComponents: "Componentes",
+	tabBlocks: "Blocos",
+	tokensTitle: "Tokens de design",
+	tokensDescription: "Propriedades CSS personalizadas derivadas para os dois esquemas.",
+	componentsTitle: "Componentes",
+	componentsDescription: "Componentes do design system renderizados com o tema em rascunho.",
+	blocksTitle: "Blocos",
+	blocksDescription: "Blocos compostos renderizados com o tema em rascunho.",
+	schemeLight: "Claro",
+	schemeDark: "Escuro",
+	discardedToast: "Tema vazio descartado.",
+	galleryButtons: "Botões",
+	galleryForms: "Controles de formulário",
+	galleryFeedback: "Feedback e dados",
+	gallerySurfaces: "Superfícies",
+	blockStats: "Indicadores",
+	blockSettings: "Configurações",
+	blockEmpty: "Estado vazio",
+	blockTable: "Registros",
 };
 
 const es: ThemeMessages = {
@@ -317,6 +497,12 @@ const es: ThemeMessages = {
 	edit: "Editar",
 	enable: "Activar",
 	disable: "Desactivar",
+	badgeMain: "Principal",
+	setMain: "Establecer como principal",
+	mainSet: "Tema principal actualizado",
+	deleteTheme: "Eliminar",
+	deleteConfirm: "¿Eliminar este tema? Esta acción no se puede deshacer.",
+	deleteError: "No se pudo eliminar el tema",
 	assetTodo:
 		"Las subidas de assets (logo, favicon, fuentes) llegan con el pipeline asíncrono — gestione URLs en los campos de marca por ahora.",
 	assetsTitle: "Subidas de assets",
@@ -338,6 +524,60 @@ const es: ThemeMessages = {
 	headerEmpty: "Aún no hay temas definidos.",
 	headerPreview: "Vista previa",
 	headerManage: "Gestionar temas",
+	schemeLabel: "Apariencia",
+	schemeSystem: "Sistema",
+	searchPlaceholder: "Buscar por nombre, ámbito o id…",
+	searchLabel: "Buscar temas",
+	newTheme: "Nuevo tema",
+	filteredCount: (shown, total) => `${shown} de ${total} temas`,
+	noResults: "Ningún tema coincide con la búsqueda.",
+	dialogCreateTitle: "Nuevo tema",
+	dialogEditTitle: "Editar tema",
+	tabGeneral: "General",
+	tabColors: "Colores",
+	tabTypography: "Tipografía",
+	tabAssets: "Marca y assets",
+	cancel: "Cancelar",
+	assetsNeedSave: "Guarde el tema una vez para habilitar las subidas de assets.",
+	assetsListTitle: "Assets subidos",
+	assetsEmpty: "Aún no hay assets subidos.",
+	assetKindLogoLight: "Logo (claro)",
+	assetKindLogoDark: "Logo (oscuro)",
+	assetKindWordmark: "Wordmark",
+	assetKindFavicon: "Favicon",
+	assetKindOgImage: "Imagen OG",
+	assetKindFont: "Archivo de fuente",
+	assetFontUpload: "Subir fuente",
+	assetStatusPending: "Pendiente",
+	assetStatusReady: "Listo",
+	assetStatusFailed: "Falló",
+	assetGoogleFamily: "Familia de Google Fonts",
+	assetGoogleSlot: "Espacio de Google Fonts",
+	brandRefsTitle: "Referencias de marca actuales",
+	editorBack: "Volver a los temas",
+	editorThemeLabel: "Tema",
+	editorNotFound: "Tema no encontrado — puede que haya sido eliminado.",
+	dirtyBadge: "Cambios sin guardar",
+	tabTokens: "Tokens",
+	tabComponents: "Componentes",
+	tabBlocks: "Bloques",
+	tokensTitle: "Tokens de diseño",
+	tokensDescription: "Propiedades CSS personalizadas derivadas para ambos esquemas.",
+	componentsTitle: "Componentes",
+	componentsDescription: "Componentes del design system renderizados con el tema en borrador.",
+	blocksTitle: "Bloques",
+	blocksDescription: "Bloques compuestos renderizados con el tema en borrador.",
+	schemeLight: "Claro",
+	schemeDark: "Oscuro",
+	discardedToast: "Tema vacío descartado.",
+	galleryButtons: "Botones",
+	galleryForms: "Controles de formulario",
+	galleryFeedback: "Comentarios y datos",
+	gallerySurfaces: "Superficies",
+	blockStats: "Indicadores",
+	blockSettings: "Ajustes",
+	blockEmpty: "Estado vacío",
+	blockTable: "Registros",
 };
 
 const CATALOGS: Record<ThemeLocale, ThemeMessages> = { en, "pt-BR": ptBR, es };

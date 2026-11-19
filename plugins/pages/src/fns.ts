@@ -26,6 +26,7 @@ export interface PageWire {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId: number | null;
+	readonly searchSchemaId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: number;
@@ -36,6 +37,7 @@ const toWire = (row: CustomPage): PageWire => ({
 	path: row.path,
 	title: row.title,
 	richTextId: row.richTextId,
+	searchSchemaId: row.searchSchemaId,
 	published: row.published,
 	showInNav: row.showInNav,
 	sortOrder: row.sortOrder,
@@ -59,6 +61,7 @@ const PageFields = {
 	path: Schema.String,
 	title: Schema.String,
 	richTextId: Schema.optionalKey(Schema.NullishOr(Schema.Number)),
+	searchSchemaId: Schema.optionalKey(Schema.NullishOr(Schema.Number)),
 	published: Schema.optionalKey(Schema.Boolean),
 	showInNav: Schema.optionalKey(Schema.Boolean),
 	sortOrder: Schema.optionalKey(Schema.Number),

@@ -158,7 +158,34 @@ export interface ThemeSummary {
 	readonly scopeId: string;
 	readonly appName: string | null;
 	readonly enabled: boolean;
+	/** The single resolve() fallback row — hidden from "Set main"/
+	 * "Delete" actions in the admin list. */
+	readonly isMain: boolean;
 	readonly version: number;
+	readonly brand?: ThemeBrand | null;
+}
+
+/** JSON value shape stored in `theme_assets.variants` — kept as a
+ * recursive union so server-fn serialization stays type-safe. */
+export type ThemeJsonValue =
+	| null
+	| boolean
+	| number
+	| string
+	| readonly ThemeJsonValue[]
+	| { readonly [key: string]: ThemeJsonValue };
+
+/** Admin-facing theme_assets row — upload/processing status for the
+ * editor's Assets tab. `variants` is the parsed job payload (variant
+ * map, dominantColor/suggestedSeeds or { error }). */
+export interface ThemeAssetSummary {
+	readonly id: number;
+	readonly themeId: number | null;
+	readonly kind: ThemeAssetKind;
+	readonly status: string;
+	readonly r2Key: string | null;
+	readonly variants: ThemeJsonValue;
+	readonly createdAt: string;
 }
 
 /** Cookie carrying the admin theme preview selection (P-082/PL-006):
@@ -169,3 +196,10 @@ export const THEME_PREVIEW_COOKIE = "ktb-theme-preview";
 /** Preview cookie lifetime — long enough for an admin session, short
  * enough that a forgotten preview self-expires. */
 export const THEME_PREVIEW_MAX_AGE = 60 * 60 * 8;
+
+/** Color-scheme preference cookie — NOT httpOnly: the document head
+ * script and the theme-switch popover read/write it client-side. */
+export const THEME_SCHEME_COOKIE = "ktb-color-scheme";
+
+/** Values the scheme toggle cycles through; absent cookie = "system". */
+export type ThemeColorScheme = "light" | "dark" | "system";

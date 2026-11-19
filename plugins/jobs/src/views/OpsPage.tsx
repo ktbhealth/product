@@ -1,33 +1,27 @@
-import { useRouter } from "@tanstack/react-router";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import {
+	ConfirmAction,
+	SearchInput,
+	TablePage,
+	useServerMutation,
+	useTableQuery,
+	type Column,
+} from "@ktb/views/table";
 
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
-import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
-import { Input } from "@ktbhealth/ui/components/input";
 import { JobStatus, type JobStatusValue } from "@ktbhealth/ui/components/job-status";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 import type { AudioStorageStats, QueueDepth } from "@ktb/server-fns";
 import { LocalDateTime } from "@ktb/views/views";
 
 import { retryAudioJobFn } from "../fns.ts";
 import { isAudioRetryable, jobStatusOf, type AudioJobRow } from "../jobs.ts";
 import { opsMessages, type OpsMessages, I18N_NAMESPACE } from "../i18n.ts";
-
-const SEARCH_CLS = "w-56 sm:w-64";
 
 const fmtBytes = (bytes: number, locale: string): string => {
 	if (bytes < 1024) return `${bytes} B`;
@@ -99,6 +93,12 @@ function Unavailable({ t }: { t: OpsMessages }) {
  * queue only — prod reports unavailable), audio bucket storage stats,
  * and a webhook section that reports its missing delivery log instead
  * of faking data. Dense/utilitarian by design (system console).
+ *
+ * The jobs section uses the shared table kit (`@ktb/views/table`):
+ * `useTableQuery` predicate search, `TablePage.Table` columns and
+ * `ConfirmAction` + `useServerMutation` for the retry flow. The queue,
+ * storage and webhook sections are signal cards, not tables, and stay
+ * plugin-local.
  */
 export function OpsPage({
 	jobs,
@@ -118,42 +118,83 @@ export function OpsPage({
 	locale?: string;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, opsMessages(locale));
-	const router = useRouter();
-	const [q, setQ] = useState("");
-	const [retrying, setRetrying] = useState<AudioJobRow | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState(false);
 
 	const jobRows = useMemo(
 		() => (jobs ?? []).filter((j) => jobStatusOf(j.audioStatus) !== null),
 		[jobs],
 	);
-	const needle = q.trim().toLowerCase();
-	const shown = useMemo(() => {
-		if (needle === "") return jobRows;
-		return jobRows.filter((job) =>
-			[job.patientName ?? "", String(job.id), job.audioError ?? ""]
-				.join(" ")
-				.toLowerCase()
-				.includes(needle),
-		);
-	}, [jobRows, needle]);
+	const query = useTableQuery<AudioJobRow>({
+		rows: jobRows,
+		search: {
+			predicate: (job, needle) =>
+				[job.patientName ?? "", String(job.id), job.audioError ?? ""]
+					.join(" ")
+					.toLowerCase()
+					.includes(needle),
+		},
+	});
+	const retry = useServerMutation<{ consultationId: number }>(retryAudioJobFn);
 
-	const confirmRetry = async (job: AudioJobRow) => {
-		setRetrying(null);
-		setBusy(true);
-		setError(false);
-		try {
-			const res = await retryAudioJobFn({ data: { consultationId: job.id } });
-			if (!res.ok) {
-				setError(true);
-				return;
-			}
-			await router.invalidate();
-		} finally {
-			setBusy(false);
-		}
-	};
+	const jobColumns: Column<AudioJobRow>[] = [
+		{
+			key: "id",
+			header: t.colConsultation,
+			width: "5rem",
+			render: (job) => <span className="font-mono text-xs">#{job.id}</span>,
+		},
+		{
+			key: "patientName",
+			header: t.colPatient,
+			render: (job) => <span className="text-xs">{job.patientName ?? t.noPatient}</span>,
+		},
+		{
+			key: "status",
+			header: t.colStatus,
+			render: (job) => {
+				const badge = jobStatusOf(job.audioStatus) as JobStatusValue;
+				return <JobStatus status={badge} label={statusLabel(t, job.audioStatus)} />;
+			},
+		},
+		{
+			key: "error",
+			header: t.colError,
+			render: (job) => (
+				<span className="block max-w-56 truncate text-xs text-muted-foreground">
+					{job.audioError ?? ""}
+				</span>
+			),
+		},
+		{
+			key: "createdAt",
+			header: t.colCreated,
+			align: "right",
+			render: (job) => (
+				<span className="text-xs text-muted-foreground">
+					<LocalDateTime value={job.createdAt} locale={locale} fallback="" />
+				</span>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (job) =>
+				isAudioRetryable(job.audioStatus) ? (
+					<ConfirmAction
+						trigger={(open) => (
+							<Button type="button" variant="ghost" size="sm" disabled={retry.busy} onClick={open}>
+								{t.retry}
+							</Button>
+						)}
+						title={t.retryTitle}
+						description={t.retryDescription(`#${job.id}`)}
+						confirmLabel={t.retryConfirm}
+						cancelLabel={t.cancel}
+						onConfirm={() => retry.mutate({ consultationId: job.id })}
+					/>
+				) : null,
+		},
+	];
 
 	return (
 		<PageContainer>
@@ -174,77 +215,27 @@ export function OpsPage({
 						</Empty>
 					) : (
 						<>
-							<DataToolbar
+							<TablePage.Toolbar
 								search={
-									<Input
-										type="search"
-										value={q}
-										onChange={(e) => setQ(e.target.value)}
+									<SearchInput
+										value={query.q}
+										onChange={query.setQ}
 										placeholder={t.searchPlaceholder}
 										aria-label={t.searchLabel}
-										className={SEARCH_CLS}
 									/>
 								}
-								resultCount={needle === "" ? undefined : `${shown.length}/${jobRows.length}`}
+								resultCount={query.isFiltered ? `${query.shown}/${query.total}` : undefined}
 							/>
-							{error ? <p className="mb-2 text-xs text-destructive">{t.retryError}</p> : null}
-							<div className="overflow-hidden rounded-lg border border-border">
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead className="w-20">{t.colConsultation}</TableHead>
-											<TableHead>{t.colPatient}</TableHead>
-											<TableHead>{t.colStatus}</TableHead>
-											<TableHead>{t.colError}</TableHead>
-											<TableHead className="text-right">{t.colCreated}</TableHead>
-											<TableHead className="text-right">{t.colActions}</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{shown.length === 0 ? (
-											<TableRow>
-												<TableCell colSpan={6} className="text-xs text-muted-foreground">
-													{t.noMatch}
-												</TableCell>
-											</TableRow>
-										) : (
-											shown.map((job) => {
-												const badge = jobStatusOf(job.audioStatus) as JobStatusValue;
-												return (
-													<TableRow key={job.id}>
-														<TableCell className="font-mono text-xs">#{job.id}</TableCell>
-														<TableCell className="text-xs">
-															{job.patientName ?? t.noPatient}
-														</TableCell>
-														<TableCell>
-															<JobStatus status={badge} label={statusLabel(t, job.audioStatus)} />
-														</TableCell>
-														<TableCell className="max-w-56 truncate text-xs text-muted-foreground">
-															{job.audioError ?? ""}
-														</TableCell>
-														<TableCell className="text-right text-xs text-muted-foreground">
-															<LocalDateTime value={job.createdAt} locale={locale} fallback="" />
-														</TableCell>
-														<TableCell className="text-right">
-															{isAudioRetryable(job.audioStatus) ? (
-																<Button
-																	type="button"
-																	variant="ghost"
-																	size="sm"
-																	disabled={busy}
-																	onClick={() => setRetrying(job)}
-																>
-																	{t.retry}
-																</Button>
-															) : null}
-														</TableCell>
-													</TableRow>
-												);
-											})
-										)}
-									</TableBody>
-								</Table>
-							</div>
+							{retry.error ? <p className="mb-2 text-xs text-destructive">{t.retryError}</p> : null}
+							<TablePage.Table
+								columns={jobColumns}
+								rows={query.rows}
+								rowKey={(job) => String(job.id)}
+								total={jobRows.length}
+								isFiltered={query.isFiltered}
+								noMatch={t.noMatch}
+								locale={locale}
+							/>
 						</>
 					)}
 				</OpsSection>
@@ -293,21 +284,6 @@ export function OpsPage({
 					<p className="text-xs text-muted-foreground">{t.webhooksUnavailable}</p>
 				</OpsSection>
 			</div>
-			{retrying !== null ? (
-				<ConfirmDialog
-					open
-					onOpenChange={(open) => {
-						/* v8 ignore next -- mounted only while retrying; only close events fire */
-						if (!open) setRetrying(null);
-					}}
-					title={t.retryTitle}
-					description={t.retryDescription(`#${retrying.id}`)}
-					confirmLabel={t.retryConfirm}
-					cancelLabel={t.cancel}
-					loading={busy}
-					onConfirm={() => confirmRetry(retrying)}
-				/>
-			) : null}
 		</PageContainer>
 	);
 }

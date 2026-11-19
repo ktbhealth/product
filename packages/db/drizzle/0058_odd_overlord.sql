@@ -1,0 +1,1 @@
+ALTER TABLE `theme_definitions` ADD `is_main` integer DEFAULT false NOT NULL;

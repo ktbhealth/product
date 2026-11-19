@@ -2,8 +2,10 @@ import { PaletteIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
+import { ThemeEditorPage } from "./views/ThemeEditorPage.tsx";
 import { ThemePlatformPage } from "./platform-page.tsx";
 import { ThemeAppBrand } from "./views/ThemeAppBrand.tsx";
+import { ColorSchemeToggle } from "./views/ColorSchemeToggle.tsx";
 import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
 
 /**
@@ -39,7 +41,10 @@ export const themePanelPlugin = definePlugin({
 	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["platform.panel", "theme.services"],
 	panel: {
-		pages: [{ id: "theme.admin", path: "/platform/theme", component: ThemePlatformPage }],
+		pages: [
+			{ id: "theme.admin", path: "/platform/theme", component: ThemePlatformPage },
+			{ id: "theme.editor", path: "/platform/theme/editor", component: ThemeEditorPage },
+		],
 	},
 });
 
@@ -57,6 +62,24 @@ export const themeHeaderPlugin = definePlugin({
 			// injects ChromeProps, which supplies `locale`.
 			content: { kind: "component", component: ThemeHeaderAction },
 		},
+		{
+			id: "theme.color-scheme",
+			region: "app.header.actions",
+			// Light|dark|system toggle for every session — the admin
+			// preview popover carries the same control for console users.
+			content: { kind: "component", component: ColorSchemeToggle },
+		},
+		{
+			id: "theme.portal-header-action",
+			region: "portal.header.actions",
+			// Same preview/switch popover inside the portal console
+			// header — `headerAction` entries receive {locale, i18n}.
+			content: {
+				kind: "headerAction",
+				id: "theme.preview",
+				component: ThemeHeaderAction,
+			},
+		},
 	],
 });
 
@@ -70,7 +93,7 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Presentation" },
+				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Site" },
 			},
 		},
 	],
@@ -131,6 +154,7 @@ export type {
 	ThemeFontConfig,
 	ThemeResolveRequest,
 	ThemeScopeKind,
+	ThemeAssetSummary,
 	ThemeSeeds,
 	ThemeSummary,
 	ThemeTokens,

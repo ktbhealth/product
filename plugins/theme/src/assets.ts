@@ -12,7 +12,7 @@
  */
 
 import { Schema } from "effect";
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { themeAssets, themeDefinitions } from "@ktb/db/schema";
@@ -261,6 +261,7 @@ export interface ThemeAssetRow {
 	readonly r2Key: string | null;
 	readonly status: string;
 	readonly variants: string | null;
+	readonly createdAt: Date;
 }
 
 export const insertThemeAsset = async (
@@ -284,6 +285,14 @@ export const getThemeAsset = async (db: DbClient, id: number): Promise<ThemeAsse
 	const rows = await db.select().from(themeAssets).where(eq(themeAssets.id, id)).limit(1);
 	return (rows[0] as ThemeAssetRow | undefined) ?? null;
 };
+
+/** Upload rows for one theme, newest first — the admin editor's asset tab. */
+export const listThemeAssets = async (db: DbClient, themeId: number): Promise<ThemeAssetRow[]> =>
+	db
+		.select()
+		.from(themeAssets)
+		.where(eq(themeAssets.themeId, themeId))
+		.orderBy(desc(themeAssets.createdAt), desc(themeAssets.id));
 
 /** Write the job outcome: status + variants JSON (variant map, error
  * text or suggested seeds all ride the same column). */

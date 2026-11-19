@@ -6,6 +6,8 @@ import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { richTextServicesPlugin } from "@ktb/rich-text";
 import { RichTexts } from "@ktb/rich-text/service";
+import { schemasServicesPlugin } from "@ktb/schemas";
+import { Schemas } from "@ktb/schemas/service";
 
 import { CustomNavLinks } from "./chrome.tsx";
 import { PagesAdminConsolePage } from "./platform-page.tsx";
@@ -42,7 +44,9 @@ export const pagesServicesPlugin = definePlugin({
 	// service layer — when it is absent CustomPagesLive simply skips
 	// registration (Effect.serviceOption), but ordering must put the
 	// registry before this layer when both are installed.
-	optionalDeps: [richTextServicesPlugin.id],
+	// Optional edge: the schemas registry feeds validatedSearch the
+	// same way — absent it, search params pass through unchecked.
+	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id],
 	services: CustomPagesLive,
 });
 
@@ -114,9 +118,12 @@ export const pagesChromePlugin = definePlugin({
  * Wildcard page descriptor: claims every app path no exact descriptor
  * or file route owns. `guard` resolves the request path against the
  * published-page table (false → the host 404s exactly like an unknown
- * path); `loader` returns the row as `data`. Both receive the request
- * path — the kernel contract for wildcard pages. The component is
- * shared by every custom page; per-page content arrives via `data`.
+ * path); `loader` returns the row as `data` plus `search` — the URL
+ * params cleaned against the page's bound `searchSchemaId` schema
+ * (absent for unbound pages). Both receive the request path — the
+ * kernel contract for wildcard pages — and the loader also gets the
+ * parsed search. The component is shared by every custom page;
+ * per-page content arrives via `data`.
  */
 export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
@@ -137,7 +144,7 @@ export const pagesRenderPlugin = definePlugin({
 					const pages = yield* CustomPages;
 					return (yield* pages.publishedByPath(path)) !== null;
 				}),
-			loader: (path) =>
+			loader: (path, search?) =>
 				Effect.gen(function* () {
 					const pages = yield* CustomPages;
 					const page = yield* pages.publishedByPath(path);
@@ -154,7 +161,17 @@ export const pagesRenderPlugin = definePlugin({
 							content = doc?.content ?? null;
 						}
 					}
-					return { ...page, content };
+					// Schema-bound pages get their URL search cleaned inside
+					// the loader chain — SSR and client navigations share the
+					// result via `data.search`. Unbound pages omit the field.
+					// `validatedSearch` is an infallible passthrough: no bound
+					// schema, absent Schemas service or a validation failure
+					// all degrade to the raw params, never a broken page.
+					const validatedSearch =
+						page.searchSchemaId === null
+							? undefined
+							: yield* pages.validatedSearch(path, search ?? {});
+					return { ...page, content, search: validatedSearch };
 				}),
 		},
 	],
@@ -171,8 +188,9 @@ export const pagesPanelPlugin = definePlugin({
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, pagesServicesPlugin.id],
 	// Optional edge: the console's document picker lists @ktb/rich-text
-	// documents; absent the service the picker is simply empty.
-	optionalDeps: [richTextServicesPlugin.id],
+	// documents and its search-schema picker lists @ktb/schemas rows;
+	// absent either service the picker is simply empty.
+	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id],
 	panel: {
 		pages: [
 			{
@@ -209,7 +227,29 @@ export const pagesPanelPlugin = definePlugin({
 						// the console hides it entirely when the rich-text
 						// service is absent (pages still keep any stored
 						// richTextId — the field just isn't editable).
-						return { pages: rows, docs, richTextEnabled: Option.isSome(richTexts) };
+						// The search-schema picker mirrors it: meta only
+						// (id + name + description), empty without the
+						// schemas service.
+						const schemaService = yield* Effect.serviceOption(Schemas);
+						const schemaList = Option.isNone(schemaService)
+							? []
+							: yield* schemaService.value.adminList().pipe(
+									Effect.catchTag("Forbidden", () => Effect.succeed([])),
+									Effect.map((list) =>
+										list.map((schema) => ({
+											id: schema.id,
+											name: schema.name,
+											description: schema.description,
+										})),
+									),
+								);
+						return {
+							pages: rows,
+							docs,
+							richTextEnabled: Option.isSome(richTexts),
+							schemas: schemaList,
+							searchSchemaEnabled: Option.isSome(schemaService),
+						};
 					}),
 			},
 		],

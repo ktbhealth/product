@@ -46,6 +46,11 @@ const parseJson = <T>(text: string | null, fallback: T): T => {
 const asConfigObject = <T extends object>(value: T | null): T | null =>
 	typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
 
+/** Parse the `theme_definitions.brand` JSON column; malformed or
+ * non-object payloads degrade to null. */
+export const parseThemeBrand = (raw: string | null): ThemeBrand | null =>
+	asConfigObject(parseJson<ThemeBrand | null>(raw, null));
+
 const FONT_FALLBACKS = {
 	sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
 	heading: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -235,7 +240,7 @@ export const presentTheme = (
 ): ResolvedTheme => {
 	const seeds = asConfigObject(parseJson<ThemeSeeds | null>(row.seeds, null)) ?? {};
 	const fonts = asConfigObject(parseJson<ThemeFontConfig | null>(row.fonts, null));
-	const brand = asConfigObject(parseJson<ThemeBrand | null>(row.brand, null));
+	const brand = parseThemeBrand(row.brand);
 	// The stored `tokens` JSON is kept for inspection only — resolution
 	// re-derives from seeds so the palette engine stays authoritative
 	// (see themeStyleCss).

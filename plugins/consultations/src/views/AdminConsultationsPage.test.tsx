@@ -91,6 +91,11 @@ describe("AdminConsultationsPage", () => {
 		expect(screen.getByText("No consultations")).toBeTruthy();
 	});
 
+	it("hides the search toolbar when there are no consultations", () => {
+		render(<AdminConsultationsPage owners={OWNERS} patients={PATIENTS} consultations={[]} />);
+		expect(screen.queryByLabelText("Search consultations")).toBeNull();
+	});
+
 	it("renders the dense table with owner and patient fields", () => {
 		render(
 			<AdminConsultationsPage

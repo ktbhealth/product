@@ -52,6 +52,11 @@ describe("AdminUsersPage", () => {
 		expect(screen.getByText("No users")).toBeTruthy();
 	});
 
+	it("hides the search toolbar when there are no users", () => {
+		render(<AdminUsersPage users={[]} />);
+		expect(screen.queryByLabelText("Search users")).toBeNull();
+	});
+
 	it("renders user rows with counts and admin flag", () => {
 		render(
 			<AdminUsersPage

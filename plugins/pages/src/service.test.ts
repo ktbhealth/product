@@ -1,10 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { RichTextDeleteHooks, type RichTextDeleteHook } from "@ktb/rich-text/delete-hooks";
+import { Schemas } from "@ktb/schemas/service";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -97,6 +98,7 @@ describe("CustomPagesLive", () => {
 		expect(row!.showInNav).toBe(false);
 		expect(row!.sortOrder).toBe(0);
 		expect(row!.richTextId).toBeNull();
+		expect(row!.searchSchemaId).toBeNull();
 	});
 
 	it("adminCreate honors explicit flags and normalized paths", async () => {
@@ -109,6 +111,7 @@ describe("CustomPagesLive", () => {
 					showInNav: true,
 					sortOrder: 2,
 					richTextId: 42,
+					searchSchemaId: 7,
 				}),
 			),
 		);
@@ -117,6 +120,7 @@ describe("CustomPagesLive", () => {
 		expect(row!.showInNav).toBe(true);
 		expect(row!.sortOrder).toBe(2);
 		expect(row!.richTextId).toBe(42);
+		expect(row!.searchSchemaId).toBe(7);
 	});
 
 	it("adminCreate rejects invalid and duplicate paths", async () => {
@@ -152,16 +156,42 @@ describe("CustomPagesLive", () => {
 		expect(absent.richTextId).toBeNull();
 	});
 
+	it("adminCreate/adminUpdate reject non-positive or non-integer searchSchemaId", async () => {
+		for (const bad of [0, -3, 1.5]) {
+			await expect(
+				admin((p) => p.adminCreate(input({ path: `/bad-schema-${bad}`, searchSchemaId: bad }))),
+			).rejects.toBeInstanceOf(InvalidPageInput);
+		}
+		const target = await admin((p) => p.adminCreate(input({ path: "/schema-target" })));
+		await expect(
+			admin((p) => p.adminUpdate(target!.id, input({ path: "/schema-target", searchSchemaId: 0 }))),
+		).rejects.toBeInstanceOf(InvalidPageInput);
+		// Explicit null clears the reference; absent also resolves null.
+		const linked = await admin((p) =>
+			p.adminCreate(input({ path: "/schema-linked", searchSchemaId: 9 })),
+		);
+		expect(linked!.searchSchemaId).toBe(9);
+		const cleared = await admin((p) =>
+			p.adminUpdate(linked!.id, input({ path: "/schema-linked", searchSchemaId: null })),
+		);
+		expect(cleared.searchSchemaId).toBeNull();
+		const absent = await admin((p) => p.adminUpdate(linked!.id, input({ path: "/schema-linked" })));
+		expect(absent.searchSchemaId).toBeNull();
+	});
+
 	it("adminList returns every page ordered by sortOrder then path", async () => {
 		await admin((p) => p.adminCreate(input({ path: "/aaa", title: "A", sortOrder: 1 })));
 		await admin((p) => p.adminCreate(input({ path: "/zzz", title: "Z", sortOrder: 0 })));
 		const rows = await admin((p) => p.adminList());
 		// sortOrder asc, then path asc: the sortOrder-0 rows (/about,
-		// /rt-linked, /rt-target, /zzz) come before /aaa(1) and /team(2).
+		// /rt-linked, /rt-target, /schema-linked, /schema-target, /zzz)
+		// come before /aaa(1) and /team(2).
 		expect(rows.map((r) => r.path)).toEqual([
 			"/about",
 			"/rt-linked",
 			"/rt-target",
+			"/schema-linked",
+			"/schema-target",
 			"/zzz",
 			"/aaa",
 			"/team",
@@ -175,6 +205,7 @@ describe("CustomPagesLive", () => {
 				path: "/renamed/",
 				title: "Renamed",
 				richTextId: 7,
+				searchSchemaId: 11,
 				published: true,
 				showInNav: true,
 				sortOrder: 5,
@@ -184,6 +215,7 @@ describe("CustomPagesLive", () => {
 		expect(updated.path).toBe("/renamed");
 		expect(updated.title).toBe("Renamed");
 		expect(updated.richTextId).toBe(7);
+		expect(updated.searchSchemaId).toBe(11);
 		expect(updated.published).toBe(true);
 		expect(updated.showInNav).toBe(true);
 		expect(updated.sortOrder).toBe(5);
@@ -377,6 +409,204 @@ describe("CustomPagesLive", () => {
 		// sortOrder 1 rows come before /team (sortOrder 2); ties by title.
 		expect(paths.indexOf("/nav-a")).toBeLessThan(paths.indexOf("/nav-b"));
 		expect(paths.indexOf("/nav-b")).toBeLessThan(paths.indexOf("/team"));
+	});
+});
+
+describe("CustomPages.validatedSearch", () => {
+	const depsFor = (schemasLayer?: Layer.Layer<Schemas>) => {
+		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		const base = Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		const all = schemasLayer === undefined ? base : Layer.mergeAll(base, schemasLayer);
+		return { db, layer: CustomPagesLive.pipe(Layer.provide(all)) };
+	};
+
+	// `validate` is typed loosely on purpose: stubs exercise failure and
+	// malformed-issue shapes the real service's `never` error channel
+	// would not admit.
+	const schemasStub = (validate: unknown) =>
+		Layer.succeed(
+			Schemas,
+			Schemas.of({
+				adminList: () => Effect.succeed([]),
+				adminGet: () => Effect.succeed(null),
+				adminCreate: () => Effect.succeed(null),
+				adminUpdate: () => Effect.die("unused"),
+				adminRemove: () => Effect.die("unused"),
+				getById: () => Effect.succeed(null),
+				validate: validate as Schemas["Service"]["validate"],
+			}),
+		);
+
+	const seed = async (db: ReturnType<typeof makeDb>) => {
+		const now = new Date();
+		await db.insert(customPage).values([
+			{
+				path: "/search",
+				title: "Search",
+				searchSchemaId: 3,
+				published: true,
+				showInNav: false,
+				sortOrder: 0,
+				createdAt: now,
+				updatedAt: now,
+			},
+			{
+				path: "/plain",
+				title: "Plain",
+				searchSchemaId: null,
+				published: true,
+				showInNav: false,
+				sortOrder: 0,
+				createdAt: now,
+				updatedAt: now,
+			},
+			{
+				path: "/draft-search",
+				title: "Draft",
+				searchSchemaId: 3,
+				published: false,
+				showInNav: false,
+				sortOrder: 0,
+				createdAt: now,
+				updatedAt: now,
+			},
+		]);
+	};
+
+	it("passes search through when the page binds no schema", async () => {
+		const { db, layer } = depsFor();
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/plain", { anything: "goes" })),
+			);
+			expect(out).toEqual({ anything: "goes" });
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("passes search through for missing or unpublished pages", async () => {
+		const validate = vi.fn(() => Effect.succeed({ valid: false, issues: [] }));
+		const { db, layer } = depsFor(schemasStub(validate));
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const missing = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/missing", { a: 1 })),
+			);
+			const draft = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/draft-search/", { a: 1 })),
+			);
+			expect(missing).toEqual({ a: 1 });
+			expect(draft).toEqual({ a: 1 });
+			expect(validate).not.toHaveBeenCalled();
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("passes search through when the Schemas service is absent", async () => {
+		const { db, layer } = depsFor();
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", { q: "x" })),
+			);
+			expect(out).toEqual({ q: "x" });
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("returns the input unchanged when validation passes", async () => {
+		const validate = vi.fn(() => Effect.succeed({ valid: true, issues: [] }));
+		const { db, layer } = depsFor(schemasStub(validate));
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const search = { q: "x", page: "2" };
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", search)),
+			);
+			expect(out).toEqual(search);
+			expect(validate).toHaveBeenCalledWith(3, search);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("strips top-level keys blamed by issue paths, preserving the rest", async () => {
+		const validate = vi.fn(() =>
+			Effect.succeed({
+				valid: false,
+				issues: [
+					{ path: "filter.tag", keyword: "type", message: "bad" },
+					{ path: "items[0].id", keyword: "type", message: "bad" },
+					{ path: "$", keyword: "type", message: "root" },
+					{ path: "", keyword: "type", message: "empty" },
+				],
+			}),
+		);
+		const { db, layer } = depsFor(schemasStub(validate));
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) =>
+					p.validatedSearch("/search", {
+						filter: { tag: 1 },
+						items: [{ id: "x" }],
+						q: "keep",
+					}),
+				),
+			);
+			// "filter.tag" blames "filter", "items[0].id" blames "items";
+			// "$"/"" blame nothing — "q" survives untouched.
+			expect(out).toEqual({ q: "keep" });
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("keeps every param when issues name no top-level key", async () => {
+		const validate = vi.fn(() =>
+			Effect.succeed({
+				valid: false,
+				issues: [{ path: "$", keyword: "type", message: "root" }],
+			}),
+		);
+		const { db, layer } = depsFor(schemasStub(validate));
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", { a: 1, b: 2 })),
+			);
+			expect(out).toEqual({ a: 1, b: 2 });
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("passes search through when the validate effect fails", async () => {
+		const validate = vi.fn(() => Effect.fail(new Error("schema exploded")));
+		const { db, layer } = depsFor(schemasStub(validate));
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", { q: "x" })),
+			);
+			expect(out).toEqual({ q: "x" });
+		} finally {
+			await rt.dispose();
+		}
 	});
 });
 

@@ -23,6 +23,8 @@ import {
 } from "./index.ts";
 import { RichTexts } from "@ktb/rich-text/service";
 import { richTextServicesPlugin } from "@ktb/rich-text";
+import { Schemas } from "@ktb/schemas/service";
+import { schemasServicesPlugin } from "@ktb/schemas";
 
 import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPagesLive } from "./service.ts";
@@ -39,7 +41,19 @@ describe("pages plugins", () => {
 		expect(pagesTablesPlugin.tables?.customPage).toBeDefined();
 		expect(pagesServicesPlugin.services).toBeDefined();
 		expect(pagesServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
-		expect(pagesServicesPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
+		expect(pagesServicesPlugin.optionalDeps).toEqual([
+			richTextServicesPlugin.id,
+			schemasServicesPlugin.id,
+		]);
+		// The render plugin's guard/loader resolve rich-text content and
+		// call CustomPages.validatedSearch — the Schemas edge lives on
+		// pages.services (where the serviceOption is built), so
+		// pages.render keeps just the rich-text edge.
+		expect(pagesRenderPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
+		expect(pagesPanelPlugin.optionalDeps).toEqual([
+			richTextServicesPlugin.id,
+			schemasServicesPlugin.id,
+		]);
 	});
 
 	it("declares the console sidebar entry and the app nav component", () => {
@@ -97,6 +111,7 @@ describe("pages page effects", () => {
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
 	let deps: ReturnType<typeof makeDeps>;
+	let sharedDb: ReturnType<typeof makeDb>;
 
 	const asPrincipal = <A, E>(
 		principal: { userId: string; email?: string } | null,
@@ -119,6 +134,7 @@ describe("pages page effects", () => {
 
 	beforeAll(async () => {
 		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		sharedDb = db;
 		deps = makeDeps(db);
 		// Merge `deps` into the runtime too: the admin page guard yields
 		// PlatformAdmin directly, not just through CustomPages.
@@ -251,17 +267,29 @@ describe("pages page effects", () => {
 			pages: readonly { path: string }[];
 			docs: readonly { id: number }[];
 			richTextEnabled: boolean;
+			schemas: readonly { id: number }[];
+			searchSchemaEnabled: boolean;
 		};
 		expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
 		// No RichTexts service in this runtime — the picker is empty
 		// and the console hides the content-document field.
 		expect(data.docs).toEqual([]);
 		expect(data.richTextEnabled).toBe(false);
+		// No Schemas service either — the search-schema picker is
+		// empty and the console hides that field too.
+		expect(data.schemas).toEqual([]);
+		expect(data.searchSchemaEnabled).toBe(false);
 		const denied = (await asPrincipal(
 			{ userId: "u1", email: "doc@x.com" },
 			loader("/platform/pages"),
 		)) as { pages: readonly unknown[]; docs: readonly unknown[] };
-		expect(denied).toEqual({ pages: [], docs: [], richTextEnabled: false });
+		expect(denied).toEqual({
+			pages: [],
+			docs: [],
+			richTextEnabled: false,
+			schemas: [],
+			searchSchemaEnabled: false,
+		});
 	});
 
 	it("admin page loader surfaces rich-text document options when the service is present", async () => {
@@ -305,5 +333,128 @@ describe("pages page effects", () => {
 		} finally {
 			await rt.dispose();
 		}
+	});
+
+	it("admin page loader surfaces search-schema options when the service is present", async () => {
+		const schemas = Schemas.of({
+			adminList: () =>
+				Effect.succeed([
+					{
+						id: 3,
+						name: "Filters",
+						description: "Query params",
+						createdAt: new Date(0),
+						updatedAt: new Date(0),
+					},
+				]),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+			validate: () => Effect.succeed({ valid: true, issues: [] }),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(Schemas, schemas),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
+			const data = (await asPrincipalIn(
+				rt,
+				{ userId: "a1", email: "admin@x.com" },
+				loader("/platform/pages"),
+			)) as {
+				schemas: readonly { id: number; name: string; description: string | null }[];
+				searchSchemaEnabled: boolean;
+			};
+			expect(data.schemas).toEqual([{ id: 3, name: "Filters", description: "Query params" }]);
+			expect(data.searchSchemaEnabled).toBe(true);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("wildcard loader cleans search params for schema-bound pages when Schemas is present", async () => {
+		// Schema-bound published page; inserted last so the earlier
+		// adminList-order assertions are unaffected.
+		const now = new Date();
+		await sharedDb.insert(customPage).values({
+			path: "/pub-search",
+			title: "PubSearch",
+			richTextId: null,
+			searchSchemaId: 7,
+			published: true,
+			showInNav: false,
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const schemas = Layer.succeed(
+			Schemas,
+			Schemas.of({
+				adminList: () => Effect.succeed([]),
+				adminGet: () => Effect.succeed(null),
+				adminCreate: () => Effect.succeed(null),
+				adminUpdate: () => Effect.die("unused"),
+				adminRemove: () => Effect.die("unused"),
+				getById: () => Effect.succeed(null),
+				// Schema 7 rejects any payload carrying a "bad" key.
+				validate: (_schemaId: number, data: unknown) =>
+					Effect.succeed(
+						typeof data === "object" && data !== null && "bad" in data
+							? {
+									valid: false,
+									issues: [{ path: "bad.deep", keyword: "type", message: "no" }],
+								}
+							: { valid: true, issues: [] },
+					),
+			}),
+		);
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				// Schemas must be provided INTO CustomPagesLive:
+				// validatedSearch resolves Effect.serviceOption at
+				// layer-build time.
+				CustomPagesLive.pipe(Layer.provide(Layer.mergeAll(deps, schemas))),
+				deps,
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesRenderPlugin.pages![0]!.loader!;
+			// "bad" is stripped, "q" survives — same cleaning the retired
+			// client-side fn produced, now inside the loader.
+			const cleaned = (await asPrincipalIn(
+				rt,
+				null,
+				loader("/pub-search", { q: "x", bad: { deep: 1 } }),
+			)) as { search?: Record<string, unknown> } | null;
+			expect(cleaned?.search).toEqual({ q: "x" });
+			// No search argument → empty cleaned record, field still set.
+			const empty = (await asPrincipalIn(rt, null, loader("/pub-search"))) as {
+				search?: Record<string, unknown>;
+			} | null;
+			expect(empty?.search).toEqual({});
+			// Unbound page: no `search` field at all.
+			const unbound = (await asPrincipalIn(rt, null, loader("/pub", { bad: 1 }))) as {
+				search?: unknown;
+			} | null;
+			expect(unbound?.search).toBeUndefined();
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("wildcard loader passes search through when the Schemas service is absent", async () => {
+		// The shared runtime has no Schemas layer — validatedSearch
+		// degrades to the raw params.
+		const loader = pagesRenderPlugin.pages![0]!.loader!;
+		const row = (await asPrincipal(null, loader("/pub-search", { bad: 1 }))) as {
+			search?: Record<string, unknown>;
+		} | null;
+		expect(row?.search).toEqual({ bad: 1 });
 	});
 });

@@ -3,6 +3,7 @@ import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { TablePage, useServerTableQuery, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
@@ -27,18 +28,8 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
 import { NativeSelect, NativeSelectOption } from "@ktbhealth/ui/components/native-select";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { SearchInput } from "@ktbhealth/ui/components/search-input";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import {
@@ -142,6 +133,15 @@ const emptyForm = (namespace: string): FormState => ({
  * on edits so concurrent writes surface as conflicts instead of silent
  * overwrites. The loader seeds the first page; filters/pagination
  * refetch via `kvListFn`.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with a dynamic `Column` model, `useServerTableQuery` mapping
+ * the `{ q, page }` pair onto `load`, and `TablePage.Footer`
+ * pagination. The namespace select + prefix search stay a bespoke
+ * filter form (prefix applies on submit, not per keystroke), and the
+ * create/edit/delete dialogs stay plugin-local — the kit's
+ * `FormDialog`/`ConfirmAction` cannot express the TTL modes, CAS
+ * version guard and inline conflict errors.
  */
 export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, kvMessages(locale));
@@ -198,6 +198,18 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 			setLoading(false);
 		}
 	};
+
+	/* Server-side query state: `prefix` plays the `q` role (applied on
+	 * form submit via `setQ`) and `page` is controlled — both funnel
+	 * into `load`, which owns the actual fetch and state updates. */
+	const query = useServerTableQuery({
+		q: prefix,
+		page,
+		pageSize: PAGE_SIZE,
+		onQuery: (next) => {
+			void load(next.page, namespace, next.q);
+		},
+	});
 
 	const closeFormDialog = () => {
 		setForm(null);
@@ -291,9 +303,91 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 						? t.saveFailed
 						: null;
 
+	const columns: Column<KvEntryWire>[] = [
+		{
+			key: "key",
+			header: t.colKey,
+			render: (row) => <span className="font-mono text-xs">{row.key}</span>,
+		},
+		{
+			key: "namespace",
+			header: t.colNamespace,
+			render: (row) => <span className="font-mono text-xs">{row.namespace}</span>,
+		},
+		{
+			key: "scope",
+			header: t.colScope,
+			render: (row) =>
+				row.tenantId !== null ? (
+					<Badge variant="secondary">{t.scopeTenant(row.tenantId)}</Badge>
+				) : row.ownerId !== null ? (
+					<Badge variant="outline">{t.scopeOwner(row.ownerId)}</Badge>
+				) : (
+					<Badge variant="outline">{t.scopeGlobal}</Badge>
+				),
+		},
+		{
+			key: "value",
+			header: t.colValue,
+			render: (row) => (
+				<span className="block max-w-64 truncate font-mono text-xs">{preview(row.value)}</span>
+			),
+		},
+		{
+			key: "expiry",
+			header: t.colExpiry,
+			render: (row) =>
+				row.expired ? (
+					<Badge variant="destructive">{t.statusExpired}</Badge>
+				) : row.expiresAt === null ? (
+					<Badge variant="secondary">{t.statusNoExpiry}</Badge>
+				) : (
+					<Badge variant="outline" title={new Date(row.expiresAt).toISOString()}>
+						{t.expiresIn(remainingMs(row.expiresAt))}
+					</Badge>
+				),
+		},
+		{
+			key: "version",
+			header: t.colVersion,
+			render: (row) => <span className="text-muted-foreground">{row.version}</span>,
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end gap-1">
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => {
+							setForm(formFromRow(row));
+							setFormError(null);
+						}}
+						aria-label={t.edit}
+					>
+						<PencilIcon className="size-4" />
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => {
+							setDeleteTarget(row);
+							setActionFailed(false);
+						}}
+						aria-label={t.delete}
+					>
+						<Trash2Icon className="size-4 text-destructive" />
+					</Button>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={t.title}
 				description={t.description}
 				actions={
@@ -314,10 +408,10 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 				</div>
 			) : null}
 			<form
-				className="mt-4 flex flex-wrap items-center gap-2"
+				className="flex flex-wrap items-center gap-2"
 				onSubmit={(e) => {
 					e.preventDefault();
-					void load(1, namespace, prefix);
+					query.setQ(prefix);
 				}}
 			>
 				<NativeSelect
@@ -344,9 +438,21 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 					className="w-full max-w-xs"
 				/>
 			</form>
-			{loadFailed ? <p className="mt-3 text-sm text-destructive">{t.loadFailed}</p> : null}
-			{actionFailed ? <p className="mt-3 text-sm text-destructive">{t.saveFailed}</p> : null}
-			<div className="mt-4 flex items-center justify-between gap-2">
+			{loadFailed ? <p className="text-sm text-destructive">{t.loadFailed}</p> : null}
+			{actionFailed ? <p className="text-sm text-destructive">{t.saveFailed}</p> : null}
+			{/* A failed reload with no rows keeps prior behavior: error
+			    text only, no table and no empty state. */}
+			{loadFailed && items.length === 0 ? null : (
+				<TablePage.Table
+					columns={columns}
+					rows={items}
+					rowKey={(row) => JSON.stringify([row.namespace, row.key, row.tenantId, row.ownerId])}
+					loading={loading}
+					empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+					locale={locale}
+				/>
+			)}
+			<TablePage.Footer>
 				<p className="text-sm text-muted-foreground">{t.totalCount(total)}</p>
 				<div className="flex items-center gap-2">
 					<span className="text-sm text-muted-foreground">{t.pageInfo(page, pages)}</span>
@@ -354,7 +460,7 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 						size="sm"
 						variant="outline"
 						disabled={page <= 1 || loading}
-						onClick={() => void load(page - 1, namespace, prefix)}
+						onClick={() => query.setPage(page - 1)}
 					>
 						{t.previous}
 					</Button>
@@ -362,92 +468,12 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 						size="sm"
 						variant="outline"
 						disabled={page >= pages || loading}
-						onClick={() => void load(page + 1, namespace, prefix)}
+						onClick={() => query.setPage(page + 1)}
 					>
 						{t.next}
 					</Button>
 				</div>
-			</div>
-			{items.length === 0 && !loadFailed ? (
-				<div className="mt-4 rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyDescription}</p>
-				</div>
-			) : items.length > 0 ? (
-				<div className="mt-4 overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colKey}</TableHead>
-								<TableHead>{t.colNamespace}</TableHead>
-								<TableHead>{t.colScope}</TableHead>
-								<TableHead>{t.colValue}</TableHead>
-								<TableHead>{t.colExpiry}</TableHead>
-								<TableHead>{t.colVersion}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{items.map((row) => (
-								<TableRow key={JSON.stringify([row.namespace, row.key, row.tenantId, row.ownerId])}>
-									<TableCell className="font-mono text-xs">{row.key}</TableCell>
-									<TableCell className="font-mono text-xs">{row.namespace}</TableCell>
-									<TableCell>
-										{row.tenantId !== null ? (
-											<Badge variant="secondary">{t.scopeTenant(row.tenantId)}</Badge>
-										) : row.ownerId !== null ? (
-											<Badge variant="outline">{t.scopeOwner(row.ownerId)}</Badge>
-										) : (
-											<Badge variant="outline">{t.scopeGlobal}</Badge>
-										)}
-									</TableCell>
-									<TableCell className="max-w-64 truncate font-mono text-xs">
-										{preview(row.value)}
-									</TableCell>
-									<TableCell>
-										{row.expired ? (
-											<Badge variant="destructive">{t.statusExpired}</Badge>
-										) : row.expiresAt === null ? (
-											<Badge variant="secondary">{t.statusNoExpiry}</Badge>
-										) : (
-											<Badge variant="outline" title={new Date(row.expiresAt).toISOString()}>
-												{t.expiresIn(remainingMs(row.expiresAt))}
-											</Badge>
-										)}
-									</TableCell>
-									<TableCell className="text-muted-foreground">{row.version}</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end gap-1">
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => {
-													setForm(formFromRow(row));
-													setFormError(null);
-												}}
-												aria-label={t.edit}
-											>
-												<PencilIcon className="size-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => {
-													setDeleteTarget(row);
-													setActionFailed(false);
-												}}
-												aria-label={t.delete}
-											>
-												<Trash2Icon className="size-4 text-destructive" />
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			) : null}
+			</TablePage.Footer>
 
 			<Dialog open={form !== null} onOpenChange={(open) => !open && closeFormDialog()}>
 				<DialogContent>
@@ -583,6 +609,6 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</PageContainer>
+		</TablePage>
 	);
 }

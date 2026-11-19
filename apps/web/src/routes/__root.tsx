@@ -314,6 +314,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		<html lang={activeLocale}>
 			<head>
 				<HeadContent />
+				{/* Color-scheme bootstrap: reads the ktb-color-scheme
+				    cookie before paint and toggles .dark on <html>; the
+				    media-query listener re-reads the cookie so "system"
+				    follows OS changes live. */}
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `(function(){var read=function(){var s="system";document.cookie.split(";").forEach(function(p){var i=p.indexOf("=");if(p.slice(0,i).trim()==="ktb-color-scheme")s=p.slice(i+1)});return s};var apply=function(){var s=read();var d=s==="dark"||(s==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d)};apply();window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change",apply)})();`,
+					}}
+				/>
 			</head>
 			<body className="flex min-h-screen flex-col bg-background text-foreground antialiased">
 				<TooltipProvider>

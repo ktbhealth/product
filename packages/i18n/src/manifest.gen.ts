@@ -576,6 +576,9 @@ export const I18N_MANIFEST = {
 		panel_nav_rich_text: {
 			params: [],
 		},
+		panel_nav_schemas: {
+			params: [],
+		},
 		panel_nav_users: {
 			params: [],
 		},
@@ -2769,6 +2772,131 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	fonts: {
+		providersTitle: {
+			params: [],
+		},
+		providersDescription: {
+			params: [],
+		},
+		fontsTitle: {
+			params: [],
+		},
+		fontsDescription: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colKind: {
+			params: [],
+		},
+		colEnabled: {
+			params: [],
+		},
+		colFamilies: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		colFamily: {
+			params: [],
+		},
+		colProvider: {
+			params: [],
+		},
+		colWeights: {
+			params: [],
+		},
+		colStatus: {
+			params: [],
+		},
+		addProvider: {
+			params: [],
+		},
+		dialogAddTitle: {
+			params: [],
+		},
+		nameLabel: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		kindLabel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		creating: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		createError: {
+			params: [],
+		},
+		sync: {
+			params: [],
+		},
+		syncing: {
+			params: [],
+		},
+		syncedToast: {
+			params: [],
+		},
+		syncError: {
+			params: [],
+		},
+		deleteProvider: {
+			params: [],
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteError: {
+			params: [],
+		},
+		emptyProviders: {
+			params: [],
+		},
+		emptyFamilies: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		noResults: {
+			params: [],
+		},
+		allProviders: {
+			params: [],
+		},
+		providerFilterLabel: {
+			params: [],
+		},
+		statusPending: {
+			params: [],
+		},
+		statusReady: {
+			params: [],
+		},
+		statusFailed: {
+			params: [],
+		},
+		weightsNone: {
+			params: [],
+		},
+	},
 	forms: {
 		submit: {
 			params: [],
@@ -3873,6 +4001,18 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		manageDoc: {
+			params: [],
+		},
+		fieldSearchSchema: {
+			params: [],
+		},
+		searchSchemaNone: {
+			params: [],
+		},
+		searchSchemaHint: {
+			params: [],
+		},
+		manageSchemas: {
 			params: [],
 		},
 		pathHint: {
@@ -5084,6 +5224,106 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	schemas: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newSchema: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colDescription: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		fieldName: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		fieldDescription: {
+			params: [],
+		},
+		fieldSchema: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: 'Delete "{name}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		validate: {
+			params: [],
+		},
+		validating: {
+			params: [],
+		},
+		validationValid: {
+			params: [],
+		},
+		validationFailed: {
+			params: [],
+		},
+	},
 	secretaries: {
 		title: {
 			params: [],
@@ -5493,6 +5733,24 @@ export const I18N_MANIFEST = {
 		disable: {
 			params: [],
 		},
+		badgeMain: {
+			params: [],
+		},
+		setMain: {
+			params: [],
+		},
+		mainSet: {
+			params: [],
+		},
+		deleteTheme: {
+			params: [],
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteError: {
+			params: [],
+		},
 		assetTodo: {
 			params: [],
 		},
@@ -5551,6 +5809,165 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		headerManage: {
+			params: [],
+		},
+		schemeLabel: {
+			params: [],
+		},
+		schemeSystem: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		newTheme: {
+			params: [],
+		},
+		noResults: {
+			params: [],
+		},
+		dialogCreateTitle: {
+			params: [],
+		},
+		dialogEditTitle: {
+			params: [],
+		},
+		tabGeneral: {
+			params: [],
+		},
+		tabColors: {
+			params: [],
+		},
+		tabTypography: {
+			params: [],
+		},
+		tabAssets: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		assetsNeedSave: {
+			params: [],
+		},
+		assetsListTitle: {
+			params: [],
+		},
+		assetsEmpty: {
+			params: [],
+		},
+		assetKindLogoLight: {
+			params: [],
+		},
+		assetKindLogoDark: {
+			params: [],
+		},
+		assetKindWordmark: {
+			params: [],
+		},
+		assetKindFavicon: {
+			params: [],
+		},
+		assetKindOgImage: {
+			params: [],
+		},
+		assetKindFont: {
+			params: [],
+		},
+		assetFontUpload: {
+			params: [],
+		},
+		assetStatusPending: {
+			params: [],
+		},
+		assetStatusReady: {
+			params: [],
+		},
+		assetStatusFailed: {
+			params: [],
+		},
+		assetGoogleFamily: {
+			params: [],
+		},
+		assetGoogleSlot: {
+			params: [],
+		},
+		brandRefsTitle: {
+			params: [],
+		},
+		editorBack: {
+			params: [],
+		},
+		editorThemeLabel: {
+			params: [],
+		},
+		editorNotFound: {
+			params: [],
+		},
+		dirtyBadge: {
+			params: [],
+		},
+		tabTokens: {
+			params: [],
+		},
+		tabComponents: {
+			params: [],
+		},
+		tabBlocks: {
+			params: [],
+		},
+		tokensTitle: {
+			params: [],
+		},
+		tokensDescription: {
+			params: [],
+		},
+		componentsTitle: {
+			params: [],
+		},
+		componentsDescription: {
+			params: [],
+		},
+		blocksTitle: {
+			params: [],
+		},
+		blocksDescription: {
+			params: [],
+		},
+		schemeLight: {
+			params: [],
+		},
+		schemeDark: {
+			params: [],
+		},
+		discardedToast: {
+			params: [],
+		},
+		galleryButtons: {
+			params: [],
+		},
+		galleryForms: {
+			params: [],
+		},
+		galleryFeedback: {
+			params: [],
+		},
+		gallerySurfaces: {
+			params: [],
+		},
+		blockStats: {
+			params: [],
+		},
+		blockSettings: {
+			params: [],
+		},
+		blockEmpty: {
+			params: [],
+		},
+		blockTable: {
 			params: [],
 		},
 	},
@@ -5788,6 +6205,15 @@ export const I18N_MANIFEST = {
 			template: "Back to {title}",
 		},
 		loadFailed: {
+			params: [],
+		},
+		tableSelectAll: {
+			params: [],
+		},
+		tableSelectRow: {
+			params: [],
+		},
+		tableNoMatch: {
 			params: [],
 		},
 	},
@@ -6118,6 +6544,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_plugins: "Plugins",
 	panel_nav_queue: "Queue",
 	panel_nav_rich_text: "Rich text",
+	panel_nav_schemas: "Schemas",
 	panel_nav_users: "Users",
 	persona_business: "Business",
 	persona_developers: "Developers",

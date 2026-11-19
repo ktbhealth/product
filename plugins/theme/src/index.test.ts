@@ -108,6 +108,9 @@ describe("theme.panel page loader", () => {
 			get: () => Effect.succeed(null),
 			publish: () => Effect.succeed({} as never),
 			setEnabled: () => Effect.void,
+			setMain: () => Effect.void,
+			remove: () => Effect.void,
+			listAssets: () => Effect.succeed([]),
 			previewRow: () => Effect.succeed(null),
 		}) as Theme["Service"];
 
@@ -119,6 +122,7 @@ describe("theme.panel page loader", () => {
 				scopeId: "",
 				appName: "P",
 				enabled: true,
+				isMain: false,
 				version: 1,
 			},
 		];

@@ -4,24 +4,12 @@ import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import { LocalDateTime } from "@ktb/views/views";
+import { viewsMessages } from "@ktb/views";
+import { SearchInput, TablePage, useTableQuery, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
-import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
-import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import { patientDeleteApi } from "../apis.ts";
 import type { AdminPatientRow, OwnerOption } from "../index.ts";
@@ -30,13 +18,20 @@ import { isCipheredPatient } from "../zk.ts";
 import { AdminPatientCreateDialog } from "./AdminPatientCreateDialog.tsx";
 import { DeletePatientDialog } from "./DeletePatientDialog.tsx";
 
-const SEARCH_CLS = "w-56 sm:w-64";
-
 /**
  * /platform/patients console view — cross-owner patient CRUD for
  * platform admins. Dense/utilitarian by design (system console).
  * Edit reuses the owner-facing form (admin override in the service);
  * delete runs the same cascade dialog as the doctor surface.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell + `useTableQuery` client-side search with the same
+ * name/owner predicate as before, plus the synthetic-rows toggle in
+ * the toolbar's `filters` slot (the pool is filtered before the query
+ * so search never sees hidden synthetic rows). The primitives are
+ * used rather than a declarative def — the name cell mixes a router
+ * `Link`, a ZK opaque label and a conditional badge, and the
+ * create/delete flows are plugin-local dialogs.
  */
 export function AdminPatientsPage({
 	patients,
@@ -54,23 +49,108 @@ export function AdminPatientsPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, patientMessages(locale));
 	const router = useRouter();
-	const [q, setQ] = useState("");
 	const [showSynthetic, setShowSynthetic] = useState(false);
 	const [creating, setCreating] = useState(false);
 	const [toDelete, setToDelete] = useState<{ id: number; name: string } | null>(null);
-	const needle = q.trim().toLowerCase();
-	const shown = useMemo(() => {
-		// Synthetic rows (eval validator cohorts) stay hidden unless the
-		// admin asks for them — real records are the default view.
-		const pool = showSynthetic ? patients : patients.filter((p) => !p.synthetic);
-		if (needle === "") return pool;
-		return pool.filter((p) =>
-			[p.name, p.ownerName, p.ownerEmail].filter(Boolean).join(" ").toLowerCase().includes(needle),
-		);
-	}, [patients, needle, showSynthetic]);
+
+	// Synthetic rows (eval validator cohorts) stay hidden unless the
+	// admin asks for them — real records are the default view. The pool
+	// is filtered BEFORE the query so the search needle only ever sees
+	// visible rows.
+	const pool = useMemo(
+		() => (showSynthetic ? patients : patients.filter((p) => !p.synthetic)),
+		[patients, showSynthetic],
+	);
+
+	const query = useTableQuery<AdminPatientRow>({
+		rows: pool,
+		search: {
+			predicate: (p, needle) =>
+				[p.name, p.ownerName, p.ownerEmail]
+					.filter(Boolean)
+					.join(" ")
+					.toLowerCase()
+					.includes(needle),
+		},
+	});
+
+	const columns: Column<AdminPatientRow>[] = [
+		{
+			key: "id",
+			header: t.admin.colId,
+			width: "3.5rem",
+			render: (p) => <span className="text-xs text-muted-foreground">{p.id}</span>,
+		},
+		{
+			key: "name",
+			header: t.admin.colName,
+			render: (p) => (
+				<span className="font-medium">
+					{isCipheredPatient(p) ? (
+						// ZK row (T-144): the console has no keys —
+						// the envelope stays opaque.
+						<span className="text-muted-foreground">{t.zk.lockedRecord}</span>
+					) : (
+						<Link to="/patients/$id" params={{ id: String(p.id) }} className="hover:underline">
+							{p.name}
+						</Link>
+					)}
+					{p.synthetic === true && (
+						<Badge variant="outline" className="ml-2">
+							{t.admin.syntheticBadge}
+						</Badge>
+					)}
+				</span>
+			),
+		},
+		{
+			key: "ownerName",
+			header: t.admin.colOwner,
+			value: (p) => p.ownerName ?? p.ownerEmail,
+		},
+		{
+			key: "ownerId",
+			header: t.admin.colOwnerId,
+			render: (p) => <span className="text-xs text-muted-foreground">{p.ownerId}</span>,
+		},
+		{ key: "createdAt", header: t.admin.colCreated, align: "right", format: "datetime" },
+		{
+			key: "actions",
+			header: t.admin.colActions,
+			align: "right",
+			width: "6rem",
+			render: (p) => {
+				const rowName = isCipheredPatient(p) ? t.zk.lockedRecord : p.name;
+				return (
+					<div className="flex justify-end gap-1">
+						{/* Real link, not Button render=: it navigates, so it
+						    keeps link semantics (and avoids the Base UI
+						    nativeButton warning). */}
+						<Link
+							to="/patients/$id/edit"
+							params={{ id: String(p.id) }}
+							aria-label={t.actions.editFor(rowName)}
+							className={buttonVariants({ variant: "ghost", size: "icon" })}
+						>
+							<PencilIcon />
+						</Link>
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label={t.actions.deleteFor(rowName)}
+							onClick={() => setToDelete({ id: p.id, name: rowName })}
+						>
+							<Trash2Icon />
+						</Button>
+					</div>
+				);
+			},
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
 				title={t.admin.title}
 				description={patients.length === 0 ? t.admin.none : t.admin.count(patients.length)}
 				actions={
@@ -80,124 +160,42 @@ export function AdminPatientsPage({
 					</Button>
 				}
 			/>
-			{patients.length === 0 ? (
-				<Empty className="border">
-					<EmptyHeader>
-						<EmptyTitle>{t.admin.emptyTitle}</EmptyTitle>
-						<EmptyDescription>{t.admin.emptyDescription}</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			) : (
-				<>
-					<DataToolbar
-						search={
-							<div className="flex items-center gap-3">
-								<Input
-									type="search"
-									value={q}
-									onChange={(e) => setQ(e.target.value)}
-									placeholder={t.admin.searchPlaceholder}
-									aria-label={t.admin.searchLabel}
-									className={SEARCH_CLS}
-								/>
-								<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-									<Checkbox
-										checked={showSynthetic}
-										onCheckedChange={(v) => setShowSynthetic(v === true)}
-									/>
-									{t.admin.showSynthetic}
-								</label>
-							</div>
-						}
-						resultCount={
-							needle === "" ? undefined : t.admin.filteredCount(shown.length, patients.length)
-						}
-					/>
-					<div className="overflow-hidden rounded-lg border border-border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="w-14">{t.admin.colId}</TableHead>
-									<TableHead>{t.admin.colName}</TableHead>
-									<TableHead>{t.admin.colOwner}</TableHead>
-									<TableHead>{t.admin.colOwnerId}</TableHead>
-									<TableHead className="text-right">{t.admin.colCreated}</TableHead>
-									<TableHead className="w-24 text-right">{t.admin.colActions}</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{shown.length === 0 ? (
-									<TableRow>
-										<TableCell colSpan={6} className="text-xs text-muted-foreground">
-											{t.admin.noMatch}
-										</TableCell>
-									</TableRow>
-								) : (
-									shown.map((p) => {
-										// ZK rows (T-144): the console holds no keys — every
-										// surface (name, aria labels, delete dialog) uses the
-										// opaque label, never the envelope.
-										const rowName = isCipheredPatient(p) ? t.zk.lockedRecord : p.name;
-										return (
-											<TableRow key={p.id}>
-												<TableCell className="text-xs text-muted-foreground">{p.id}</TableCell>
-												<TableCell className="font-medium">
-													{isCipheredPatient(p) ? (
-														// ZK row (T-144): the console has no keys —
-														// the envelope stays opaque.
-														<span className="text-muted-foreground">{t.zk.lockedRecord}</span>
-													) : (
-														<Link
-															to="/patients/$id"
-															params={{ id: String(p.id) }}
-															className="hover:underline"
-														>
-															{p.name}
-														</Link>
-													)}
-													{p.synthetic === true && (
-														<Badge variant="outline" className="ml-2">
-															{t.admin.syntheticBadge}
-														</Badge>
-													)}
-												</TableCell>
-												<TableCell>{p.ownerName ?? p.ownerEmail ?? "—"}</TableCell>
-												<TableCell className="text-xs text-muted-foreground">{p.ownerId}</TableCell>
-												<TableCell className="text-right text-muted-foreground">
-													<LocalDateTime value={p.createdAt} locale={locale} />
-												</TableCell>
-												<TableCell className="text-right">
-													<div className="flex justify-end gap-1">
-														{/* Real link, not Button render=: it navigates, so it
-														    keeps link semantics (and avoids the Base UI
-														    nativeButton warning). */}
-														<Link
-															to="/patients/$id/edit"
-															params={{ id: String(p.id) }}
-															aria-label={t.actions.editFor(rowName)}
-															className={buttonVariants({ variant: "ghost", size: "icon" })}
-														>
-															<PencilIcon />
-														</Link>
-														<Button
-															variant="ghost"
-															size="icon"
-															aria-label={t.actions.deleteFor(rowName)}
-															onClick={() => setToDelete({ id: p.id, name: rowName })}
-														>
-															<Trash2Icon />
-														</Button>
-													</div>
-												</TableCell>
-											</TableRow>
-										);
-									})
-								)}
-							</TableBody>
-						</Table>
-					</div>
-				</>
+			{patients.length === 0 ? null : (
+				<TablePage.Toolbar
+					search={
+						<SearchInput
+							value={query.q}
+							onChange={query.setQ}
+							placeholder={t.admin.searchPlaceholder}
+							aria-label={t.admin.searchLabel}
+						/>
+					}
+					filters={
+						<label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+							<Checkbox
+								checked={showSynthetic}
+								onCheckedChange={(v) => setShowSynthetic(v === true)}
+							/>
+							{t.admin.showSynthetic}
+						</label>
+					}
+					resultCount={
+						query.isFiltered ? t.admin.filteredCount(query.shown, patients.length) : undefined
+					}
+				/>
 			)}
+			<TablePage.Table
+				columns={columns}
+				rows={query.rows}
+				// `total` stays the FULL patient count (synthetic included)
+				// so a pool emptied only by the synthetic toggle still gets
+				// the filtered-empty `noMatch` row, exactly like before.
+				total={patients.length}
+				isFiltered={query.isFiltered}
+				empty={{ title: t.admin.emptyTitle, description: t.admin.emptyDescription }}
+				noMatch={t.admin.noMatch}
+				locale={locale}
+			/>
 			{creating ? (
 				<AdminPatientCreateDialog
 					owners={owners}
@@ -217,6 +215,6 @@ export function AdminPatientsPage({
 					void router.invalidate();
 				}}
 			/>
-		</PageContainer>
+		</TablePage>
 	);
 }
