@@ -2,6 +2,7 @@ import { PaletteIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
+import { ThemeEditorPage } from "./views/ThemeEditorPage.tsx";
 import { ThemePlatformPage } from "./platform-page.tsx";
 import { ThemeAppBrand } from "./views/ThemeAppBrand.tsx";
 import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
@@ -39,7 +40,10 @@ export const themePanelPlugin = definePlugin({
 	meta: { keywords: ["theme", "ui"] },
 	requiredDeps: ["platform.panel", "theme.services"],
 	panel: {
-		pages: [{ id: "theme.admin", path: "/platform/theme", component: ThemePlatformPage }],
+		pages: [
+			{ id: "theme.admin", path: "/platform/theme", component: ThemePlatformPage },
+			{ id: "theme.editor", path: "/platform/theme/editor", component: ThemeEditorPage },
+		],
 	},
 });
 
@@ -70,7 +74,7 @@ export const themeChromePlugin = definePlugin({
 			region: "portal.sidebar",
 			content: {
 				kind: "sidebarItem",
-				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Presentation" },
+				item: { to: "/platform/theme", label: "Theme", icon: PaletteIcon, group: "Site" },
 			},
 		},
 	],
@@ -131,6 +135,7 @@ export type {
 	ThemeFontConfig,
 	ThemeResolveRequest,
 	ThemeScopeKind,
+	ThemeAssetSummary,
 	ThemeSeeds,
 	ThemeSummary,
 	ThemeTokens,

@@ -6,6 +6,7 @@ const fns = vi.hoisted(() => ({
 	getThemeFn: vi.fn(),
 	publishThemeFn: vi.fn(),
 	setThemeEnabledFn: vi.fn(),
+	deleteThemeFn: vi.fn(),
 	setThemePreviewFn: vi.fn(),
 }));
 
@@ -13,11 +14,13 @@ vi.mock("./fns.ts", () => ({
 	getThemeFn: fns.getThemeFn,
 	publishThemeFn: fns.publishThemeFn,
 	setThemeEnabledFn: fns.setThemeEnabledFn,
+	deleteThemeFn: fns.deleteThemeFn,
 	setThemePreviewFn: fns.setThemePreviewFn,
 }));
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate: vi.fn() }),
+	useNavigate: () => vi.fn(),
 }));
 
 import type { PanelPageContext } from "@ktb/kernel";

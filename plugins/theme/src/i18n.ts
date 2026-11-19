@@ -90,6 +90,58 @@ export interface ThemeMessages {
 	readonly headerEmpty: string;
 	readonly headerPreview: string;
 	readonly headerManage: string;
+	readonly searchPlaceholder: string;
+	readonly searchLabel: string;
+	readonly newTheme: string;
+	readonly filteredCount: (shown: number, total: number) => string;
+	readonly noResults: string;
+	readonly dialogCreateTitle: string;
+	readonly dialogEditTitle: string;
+	readonly tabGeneral: string;
+	readonly tabColors: string;
+	readonly tabTypography: string;
+	readonly tabAssets: string;
+	readonly cancel: string;
+	readonly assetsNeedSave: string;
+	readonly assetsListTitle: string;
+	readonly assetsEmpty: string;
+	readonly assetKindLogoLight: string;
+	readonly assetKindLogoDark: string;
+	readonly assetKindWordmark: string;
+	readonly assetKindFavicon: string;
+	readonly assetKindOgImage: string;
+	readonly assetKindFont: string;
+	readonly assetFontUpload: string;
+	readonly assetStatusPending: string;
+	readonly assetStatusReady: string;
+	readonly assetStatusFailed: string;
+	readonly assetGoogleFamily: string;
+	readonly assetGoogleSlot: string;
+	readonly brandRefsTitle: string;
+	readonly editorBack: string;
+	readonly editorThemeLabel: string;
+	readonly editorNotFound: string;
+	readonly dirtyBadge: string;
+	readonly tabTokens: string;
+	readonly tabComponents: string;
+	readonly tabBlocks: string;
+	readonly tokensTitle: string;
+	readonly tokensDescription: string;
+	readonly componentsTitle: string;
+	readonly componentsDescription: string;
+	readonly blocksTitle: string;
+	readonly blocksDescription: string;
+	readonly schemeLight: string;
+	readonly schemeDark: string;
+	readonly discardedToast: string;
+	readonly galleryButtons: string;
+	readonly galleryForms: string;
+	readonly galleryFeedback: string;
+	readonly gallerySurfaces: string;
+	readonly blockStats: string;
+	readonly blockSettings: string;
+	readonly blockEmpty: string;
+	readonly blockTable: string;
 }
 
 const en: ThemeMessages = {
@@ -172,6 +224,58 @@ const en: ThemeMessages = {
 	headerEmpty: "No themes defined yet.",
 	headerPreview: "Preview",
 	headerManage: "Manage themes",
+	searchPlaceholder: "Search by name, scope or id…",
+	searchLabel: "Search themes",
+	newTheme: "New theme",
+	filteredCount: (shown, total) => `${shown} of ${total} themes`,
+	noResults: "No themes match the search.",
+	dialogCreateTitle: "New theme",
+	dialogEditTitle: "Edit theme",
+	tabGeneral: "General",
+	tabColors: "Colors",
+	tabTypography: "Typography",
+	tabAssets: "Brand & assets",
+	cancel: "Cancel",
+	assetsNeedSave: "Save the theme once to enable asset uploads.",
+	assetsListTitle: "Uploaded assets",
+	assetsEmpty: "No assets uploaded yet.",
+	assetKindLogoLight: "Logo (light)",
+	assetKindLogoDark: "Logo (dark)",
+	assetKindWordmark: "Wordmark",
+	assetKindFavicon: "Favicon",
+	assetKindOgImage: "OG image",
+	assetKindFont: "Font file",
+	assetFontUpload: "Upload font",
+	assetStatusPending: "Pending",
+	assetStatusReady: "Ready",
+	assetStatusFailed: "Failed",
+	assetGoogleFamily: "Google Fonts family",
+	assetGoogleSlot: "Google font slot",
+	brandRefsTitle: "Current brand references",
+	editorBack: "Back to themes",
+	editorThemeLabel: "Theme",
+	editorNotFound: "Theme not found — it may have been deleted.",
+	dirtyBadge: "Unsaved changes",
+	tabTokens: "Tokens",
+	tabComponents: "Components",
+	tabBlocks: "Blocks",
+	tokensTitle: "Design tokens",
+	tokensDescription: "Derived CSS custom properties for both schemes.",
+	componentsTitle: "Components",
+	componentsDescription: "Design-system components rendered with the draft theme.",
+	blocksTitle: "Blocks",
+	blocksDescription: "Composed blocks rendered with the draft theme.",
+	schemeLight: "Light",
+	schemeDark: "Dark",
+	discardedToast: "Empty theme discarded.",
+	galleryButtons: "Buttons",
+	galleryForms: "Form controls",
+	galleryFeedback: "Feedback & data",
+	gallerySurfaces: "Surfaces",
+	blockStats: "Stats",
+	blockSettings: "Settings",
+	blockEmpty: "Empty state",
+	blockTable: "Records",
 };
 
 const ptBR: ThemeMessages = {
@@ -254,6 +358,58 @@ const ptBR: ThemeMessages = {
 	headerEmpty: "Nenhum tema definido ainda.",
 	headerPreview: "Pré-visualizar",
 	headerManage: "Gerenciar temas",
+	searchPlaceholder: "Buscar por nome, escopo ou id…",
+	searchLabel: "Buscar temas",
+	newTheme: "Novo tema",
+	filteredCount: (shown, total) => `${shown} de ${total} temas`,
+	noResults: "Nenhum tema corresponde à busca.",
+	dialogCreateTitle: "Novo tema",
+	dialogEditTitle: "Editar tema",
+	tabGeneral: "Geral",
+	tabColors: "Cores",
+	tabTypography: "Tipografia",
+	tabAssets: "Marca e assets",
+	cancel: "Cancelar",
+	assetsNeedSave: "Salve o tema uma vez para habilitar uploads de assets.",
+	assetsListTitle: "Assets enviados",
+	assetsEmpty: "Nenhum asset enviado ainda.",
+	assetKindLogoLight: "Logo (claro)",
+	assetKindLogoDark: "Logo (escuro)",
+	assetKindWordmark: "Wordmark",
+	assetKindFavicon: "Favicon",
+	assetKindOgImage: "Imagem OG",
+	assetKindFont: "Arquivo de fonte",
+	assetFontUpload: "Enviar fonte",
+	assetStatusPending: "Pendente",
+	assetStatusReady: "Pronto",
+	assetStatusFailed: "Falhou",
+	assetGoogleFamily: "Família do Google Fonts",
+	assetGoogleSlot: "Slot do Google Fonts",
+	brandRefsTitle: "Referências de marca atuais",
+	editorBack: "Voltar aos temas",
+	editorThemeLabel: "Tema",
+	editorNotFound: "Tema não encontrado — pode ter sido excluído.",
+	dirtyBadge: "Alterações não salvas",
+	tabTokens: "Tokens",
+	tabComponents: "Componentes",
+	tabBlocks: "Blocos",
+	tokensTitle: "Tokens de design",
+	tokensDescription: "Propriedades CSS personalizadas derivadas para os dois esquemas.",
+	componentsTitle: "Componentes",
+	componentsDescription: "Componentes do design system renderizados com o tema em rascunho.",
+	blocksTitle: "Blocos",
+	blocksDescription: "Blocos compostos renderizados com o tema em rascunho.",
+	schemeLight: "Claro",
+	schemeDark: "Escuro",
+	discardedToast: "Tema vazio descartado.",
+	galleryButtons: "Botões",
+	galleryForms: "Controles de formulário",
+	galleryFeedback: "Feedback e dados",
+	gallerySurfaces: "Superfícies",
+	blockStats: "Indicadores",
+	blockSettings: "Configurações",
+	blockEmpty: "Estado vazio",
+	blockTable: "Registros",
 };
 
 const es: ThemeMessages = {
@@ -338,6 +494,58 @@ const es: ThemeMessages = {
 	headerEmpty: "Aún no hay temas definidos.",
 	headerPreview: "Vista previa",
 	headerManage: "Gestionar temas",
+	searchPlaceholder: "Buscar por nombre, ámbito o id…",
+	searchLabel: "Buscar temas",
+	newTheme: "Nuevo tema",
+	filteredCount: (shown, total) => `${shown} de ${total} temas`,
+	noResults: "Ningún tema coincide con la búsqueda.",
+	dialogCreateTitle: "Nuevo tema",
+	dialogEditTitle: "Editar tema",
+	tabGeneral: "General",
+	tabColors: "Colores",
+	tabTypography: "Tipografía",
+	tabAssets: "Marca y assets",
+	cancel: "Cancelar",
+	assetsNeedSave: "Guarde el tema una vez para habilitar las subidas de assets.",
+	assetsListTitle: "Assets subidos",
+	assetsEmpty: "Aún no hay assets subidos.",
+	assetKindLogoLight: "Logo (claro)",
+	assetKindLogoDark: "Logo (oscuro)",
+	assetKindWordmark: "Wordmark",
+	assetKindFavicon: "Favicon",
+	assetKindOgImage: "Imagen OG",
+	assetKindFont: "Archivo de fuente",
+	assetFontUpload: "Subir fuente",
+	assetStatusPending: "Pendiente",
+	assetStatusReady: "Listo",
+	assetStatusFailed: "Falló",
+	assetGoogleFamily: "Familia de Google Fonts",
+	assetGoogleSlot: "Espacio de Google Fonts",
+	brandRefsTitle: "Referencias de marca actuales",
+	editorBack: "Volver a los temas",
+	editorThemeLabel: "Tema",
+	editorNotFound: "Tema no encontrado — puede que haya sido eliminado.",
+	dirtyBadge: "Cambios sin guardar",
+	tabTokens: "Tokens",
+	tabComponents: "Componentes",
+	tabBlocks: "Bloques",
+	tokensTitle: "Tokens de diseño",
+	tokensDescription: "Propiedades CSS personalizadas derivadas para ambos esquemas.",
+	componentsTitle: "Componentes",
+	componentsDescription: "Componentes del design system renderizados con el tema en borrador.",
+	blocksTitle: "Bloques",
+	blocksDescription: "Bloques compuestos renderizados con el tema en borrador.",
+	schemeLight: "Claro",
+	schemeDark: "Oscuro",
+	discardedToast: "Tema vacío descartado.",
+	galleryButtons: "Botones",
+	galleryForms: "Controles de formulario",
+	galleryFeedback: "Comentarios y datos",
+	gallerySurfaces: "Superficies",
+	blockStats: "Indicadores",
+	blockSettings: "Ajustes",
+	blockEmpty: "Estado vacío",
+	blockTable: "Registros",
 };
 
 const CATALOGS: Record<ThemeLocale, ThemeMessages> = { en, "pt-BR": ptBR, es };

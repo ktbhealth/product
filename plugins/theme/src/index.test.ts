@@ -108,6 +108,8 @@ describe("theme.panel page loader", () => {
 			get: () => Effect.succeed(null),
 			publish: () => Effect.succeed({} as never),
 			setEnabled: () => Effect.void,
+			remove: () => Effect.void,
+			listAssets: () => Effect.succeed([]),
 			previewRow: () => Effect.succeed(null),
 		}) as Theme["Service"];
 

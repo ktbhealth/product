@@ -159,6 +159,30 @@ export interface ThemeSummary {
 	readonly appName: string | null;
 	readonly enabled: boolean;
 	readonly version: number;
+	readonly brand?: ThemeBrand | null;
+}
+
+/** JSON value shape stored in `theme_assets.variants` — kept as a
+ * recursive union so server-fn serialization stays type-safe. */
+export type ThemeJsonValue =
+	| null
+	| boolean
+	| number
+	| string
+	| readonly ThemeJsonValue[]
+	| { readonly [key: string]: ThemeJsonValue };
+
+/** Admin-facing theme_assets row — upload/processing status for the
+ * editor's Assets tab. `variants` is the parsed job payload (variant
+ * map, dominantColor/suggestedSeeds or { error }). */
+export interface ThemeAssetSummary {
+	readonly id: number;
+	readonly themeId: number | null;
+	readonly kind: ThemeAssetKind;
+	readonly status: string;
+	readonly r2Key: string | null;
+	readonly variants: ThemeJsonValue;
+	readonly createdAt: string;
 }
 
 /** Cookie carrying the admin theme preview selection (P-082/PL-006):

@@ -43,6 +43,8 @@ vi.mock("@ktb/server-fns", async () => {
 				version: 1,
 			}),
 		setEnabled: () => Effect.void,
+		remove: () => Effect.void,
+		listAssets: () => Effect.succeed([]),
 		previewRow: () => Effect.succeed(null),
 	});
 	const adminGate = {
