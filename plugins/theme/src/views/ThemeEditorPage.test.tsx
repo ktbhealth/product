@@ -652,6 +652,119 @@ describe("ThemeEditorPage — managed font sources", () => {
 		expect(await screen.findByText("No fonts match your search.")).toBeTruthy();
 	});
 
+	it("groups catalog families under provider headings, sorted by provider and family", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue([
+			{
+				providerId: 9,
+				providerName: "Local",
+				providerKind: "local",
+				family: "Beta Sans",
+				weights: [],
+			},
+			{
+				providerId: 7,
+				providerName: "Google",
+				providerKind: "googlefonts",
+				family: "Zeta",
+				weights: [400],
+			},
+			{
+				providerId: 8,
+				providerName: "Google",
+				providerKind: "googlefonts",
+				family: "Alpha",
+				weights: [],
+			},
+			{
+				providerId: 7,
+				providerName: "Google",
+				providerKind: "googlefonts",
+				family: "Omega",
+				weights: [],
+			},
+		]);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		await user.click(screen.getByRole("combobox", { name: "Sans — Managed source" }));
+		await screen.findByRole("option", { name: "Local — Beta Sans" });
+
+		// One heading per provider, alphabetical; the custom group stays
+		// unlabeled on top.
+		const headings = [...document.querySelectorAll('[data-slot="combobox-label"]')].map(
+			(el) => el.textContent,
+		);
+		expect(headings).toEqual(["Google", "Local"]);
+
+		// Options follow the grouped order: custom first, then Google
+		// families sorted by provider id then family, then Local.
+		const options = screen
+			.getAllByRole("option")
+			.map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+		expect(options).toEqual([
+			"Custom (free-form)",
+			"Google — Omega",
+			"Google — Zeta (400)",
+			"Google — Alpha",
+			"Local — Beta Sans",
+		]);
+	});
+
+	it("omits provider headings when the catalog has a single provider", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue([
+			{
+				providerId: 7,
+				providerName: "Google",
+				providerKind: "googlefonts",
+				family: "Roboto",
+				weights: [],
+			},
+			{
+				providerId: 7,
+				providerName: "Google",
+				providerKind: "googlefonts",
+				family: "Inter",
+				weights: [400],
+			},
+		]);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		await user.click(screen.getByRole("combobox", { name: "Sans — Managed source" }));
+		await screen.findByRole("option", { name: "Google — Inter (400)" });
+		expect(document.querySelectorAll('[data-slot="combobox-label"]')).toHaveLength(0);
+		const options = screen
+			.getAllByRole("option")
+			.map((el) => el.textContent?.replace(/\s+/g, " ").trim());
+		expect(options).toEqual(["Custom (free-form)", "Google — Inter (400)", "Google — Roboto"]);
+	});
+
+	it("filters across provider groups and hides emptied headings", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue(SOURCES);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		const picker = screen.getByRole("combobox", { name: "Sans — Managed source" });
+		await user.click(picker);
+		await screen.findByRole("option", { name: "Google — Inter (400, 700)" });
+
+		// A provider-name query keeps only that group's heading.
+		await user.clear(picker);
+		await user.type(picker, "google");
+		await waitFor(() =>
+			expect(
+				[...document.querySelectorAll('[data-slot="combobox-label"]')].map((el) => el.textContent),
+			).toEqual(["Google"]),
+		);
+		expect(screen.queryByRole("option", { name: "Local — Brand Sans" })).toBeNull();
+	});
+
 	it("binds a managed source while fonts is still null", async () => {
 		// Picking a source before any font config exists exercises the
 		// `f ?? {}` / `f?.sources ?? {}` arms of setFontSource.
