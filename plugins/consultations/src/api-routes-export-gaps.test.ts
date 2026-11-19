@@ -21,6 +21,8 @@ import { Route as ExportRoute } from "./api-routes/patients.$id.export.ts";
 
 const authStub = Auth.of({
 	setUserBanned: async () => {},
+	updateUser: async () => ({ ok: true as const }),
+	deleteUser: async () => {},
 	getSession: async (h: Headers) =>
 		/session=owner/.test(h.get("cookie") ?? "")
 			? {

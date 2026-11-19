@@ -83,3 +83,73 @@ export const createUserFn = createServerFn({ method: "POST" })
 			),
 		);
 	});
+
+const UpdateUserInput = Schema.Struct({
+	userId: Schema.NonEmptyString,
+	name: Schema.NonEmptyString,
+	email: Schema.NonEmptyString,
+});
+
+const decodeUpdateUser = Schema.decodeUnknownSync(UpdateUserInput);
+
+type UpdateUserResult =
+	| { readonly ok: true; readonly data: null }
+	| { readonly ok: false; readonly error?: "exists" };
+
+/**
+ * Update a user's name and sign-in email (platform admins only — the
+ * service re-checks the gate). "exists" means the email is already
+ * taken; a denied gate collapses to the bare `{ ok: false }`.
+ */
+export const updateUserFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeUpdateUser(input))
+	.handler(async ({ data }): Promise<UpdateUserResult> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.scoped(
+				Effect.gen(function* () {
+					const users = yield* Users;
+					const res = yield* users.adminUpdate(data.userId, {
+						name: data.name,
+						email: data.email,
+					});
+					if (!res.ok) return { ok: false as const, error: res.error };
+					return { ok: true as const, data: null };
+				}),
+			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});
+
+const DeleteUserInput = Schema.Struct({
+	userId: Schema.NonEmptyString,
+});
+
+const decodeDeleteUser = Schema.decodeUnknownSync(DeleteUserInput);
+
+type DeleteUserResult =
+	| { readonly ok: true; readonly data: null }
+	| { readonly ok: false; readonly error?: "is_admin" };
+
+/**
+ * Permanently delete a user account (platform admins only — the
+ * service re-checks the gate). Admin targets are refused with
+ * "is_admin" so the console cannot delete itself; a denied gate
+ * collapses to the bare `{ ok: false }`.
+ */
+export const deleteUserFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeDeleteUser(input))
+	.handler(async ({ data }): Promise<DeleteUserResult> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.scoped(
+				Effect.gen(function* () {
+					const users = yield* Users;
+					const res = yield* users.adminDelete(data.userId);
+					if (!res.ok) return { ok: false as const, error: res.error };
+					return { ok: true as const, data: null };
+				}),
+			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
+		);
+	});

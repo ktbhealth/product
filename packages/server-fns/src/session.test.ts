@@ -40,6 +40,8 @@ const authShape: AuthShape = {
 		return sessionResult;
 	},
 	setUserBanned: async () => {},
+	updateUser: async () => ({ ok: true as const }),
+	deleteUser: async () => {},
 };
 
 const runtime: ServerRuntime = {

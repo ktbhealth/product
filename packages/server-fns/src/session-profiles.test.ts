@@ -87,6 +87,8 @@ const AuthStub = (user: typeof sec | null) =>
 				return user === null ? null : { user, sessionId: "s1", expiresAt: new Date(0) };
 			},
 			setUserBanned: async () => {},
+			updateUser: async () => ({ ok: true as const }),
+			deleteUser: async () => {},
 		}),
 	);
 

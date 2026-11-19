@@ -104,11 +104,14 @@ export const sessionUser = (email: string | null): Session | null =>
 /**
  * `Auth` shape stub backed by a reader — typically
  * `stubAuth(() => sessionUser(currentEmail))` where `currentEmail` is a
- * `let` the test mutates between cases. `setUserBanned` is a no-op.
+ * `let` the test mutates between cases. `setUserBanned`, `updateUser`
+ * and `deleteUser` are no-ops.
  */
 export const stubAuth = (read: () => Session | null | Promise<Session | null>): AuthShape => ({
 	getSession: async () => read(),
 	setUserBanned: async () => {},
+	updateUser: async () => ({ ok: true as const }),
+	deleteUser: async () => {},
 });
 
 /**

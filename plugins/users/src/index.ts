@@ -93,6 +93,30 @@ export class Users extends Context.Service<
 			| { readonly ok: false; readonly error: "exists" | "invalid_password" },
 			Forbidden
 		>;
+		/**
+		 * Update a user's name/sign-in email — platform admins only.
+		 * Delegates to the Auth port; "exists" means another account
+		 * already holds the email.
+		 */
+		readonly adminUpdate: (
+			userId: string,
+			input: { readonly name: string; readonly email: string },
+		) => Effect.Effect<
+			{ readonly ok: true } | { readonly ok: false; readonly error: "exists" },
+			Forbidden
+		>;
+		/**
+		 * Permanently delete a user account — platform admins only.
+		 * Refuses targets that currently hold the admin gate ("is_admin")
+		 * so the console cannot lock itself out; deletes are otherwise
+		 * idempotent (a missing user is a no-op success).
+		 */
+		readonly adminDelete: (
+			userId: string,
+		) => Effect.Effect<
+			{ readonly ok: true } | { readonly ok: false; readonly error: "is_admin" },
+			Forbidden
+		>;
 	}
 >()("@ktb/users/Users") {}
 
@@ -141,6 +165,45 @@ export const UsersLive = Layer.effect(
 					targetId: created.userId,
 				});
 				return { ok: true as const, userId: created.userId };
+			}),
+			adminUpdate: Effect.fn("Users.adminUpdate")(function* (userId, input) {
+				// Same platform gate as adminList — profile edits are a
+				// cross-owner, platform-level action.
+				yield* platformAdmin.requireAdmin();
+				const result = yield* Effect.promise(() => auth.updateUser(userId, input));
+				if (!result.ok) return { ok: false as const, error: result.error };
+				// T-037: ids only — the new email never reaches the log.
+				yield* audit({
+					action: "users.update",
+					targetType: "user",
+					targetId: userId,
+				});
+				return { ok: true as const };
+			}),
+			adminDelete: Effect.fn("Users.adminDelete")(function* (userId) {
+				yield* platformAdmin.requireAdmin();
+				// Admin targets are undeletable here: removing the last
+				// admin (or your own account mid-session) would strand
+				// the console. The gate check needs the target's email,
+				// so look the row up first — a missing row skips the
+				// check and the port delete no-ops.
+				const rows = yield* Effect.promise(() =>
+					db.select({ email: users.email }).from(users).where(eq(users.id, userId)).limit(1),
+				);
+				const target = rows[0];
+				if (
+					target !== undefined &&
+					(yield* platformAdmin.isAdmin({ email: target.email, userId }))
+				) {
+					return { ok: false as const, error: "is_admin" as const };
+				}
+				yield* Effect.promise(() => auth.deleteUser(userId));
+				yield* audit({
+					action: "users.delete",
+					targetType: "user",
+					targetId: userId,
+				});
+				return { ok: true as const };
 			}),
 		});
 	}),

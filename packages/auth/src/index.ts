@@ -24,7 +24,31 @@ export interface AuthShape {
 	 * adapters map it onto their own user/session storage.
 	 */
 	setUserBanned(userId: string, banned: boolean): Promise<void>;
+	/**
+	 * Admin profile update (platform console): patches `name`/`email`.
+	 * The email is normalized (trim + lowercase) like sign-up; reports
+	 * "exists" when another account already holds it. Absent fields are
+	 * left untouched; an empty patch is a no-op success.
+	 */
+	updateUser(
+		userId: string,
+		fields: { readonly name?: string; readonly email?: string },
+	): Promise<UpdateUserResult>;
+	/**
+	 * Admin account deletion (platform console): removes the user row
+	 * plus every auth-owned row that points at it — sessions, credential
+	 * and OAuth accounts, verification tokens, managed API keys. Domain
+	 * data keyed by the user id is NOT touched (plugins own their own
+	 * lifecycle); callers warn about that separately.
+	 */
+	deleteUser(userId: string): Promise<void>;
 }
+
+/** Why an admin user update was rejected. */
+export type UpdateUserRejection = "exists";
+export type UpdateUserResult =
+	| { readonly ok: true }
+	| { readonly ok: false; readonly error: UpdateUserRejection };
 
 /** Auth port: request → session. Impl lives in @ktb/auth-better. */
 export class Auth extends Context.Service<Auth, AuthShape>()("@ktb/auth/Auth") {}
