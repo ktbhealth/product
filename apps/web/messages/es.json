@@ -183,6 +183,7 @@
 	"panel_nav_groups": "Grupos",
 	"panel_nav_ops": "Operaciones",
 	"panel_nav_plugins": "Plugins",
+	"panel_nav_pubsub": "Pub/sub",
 	"panel_nav_queue": "Cola",
 	"panel_nav_rich_text": "Texto enriquecido",
 	"panel_nav_schemas": "Esquemas",

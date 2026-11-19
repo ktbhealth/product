@@ -114,6 +114,7 @@ const PANEL_LABELS: Record<string, string> = {
 	"/platform/plugins": "panel_nav_plugins",
 	"/platform/queue": "panel_nav_queue",
 	"/platform/cron": "panel_nav_cron",
+	"/platform/pubsub": "panel_nav_pubsub",
 	"/platform/rich-text": "panel_nav_rich_text",
 	"/platform/schemas": "panel_nav_schemas",
 	"/portal/doctor/activity": "panel_nav_activity",

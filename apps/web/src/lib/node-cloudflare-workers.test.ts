@@ -85,6 +85,20 @@ describe("node-cloudflare-workers env", () => {
 		await expect(env.REDIS_JOBS_QUEUE.stats()).resolves.toBeNull();
 	});
 
+	it("exposes the REDIS_PUBSUB stand-in with lazy connect semantics", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		// Unreachable Redis: the transport connects lazily, so the
+		// binding exists at boot and calls reject (platform.ts collapses
+		// them to the honest unavailable state).
+		process.env.REDIS_URL = "redis://127.0.0.1:1";
+		const env = await loadEnv();
+		expect(typeof env.REDIS_PUBSUB?.publish).toBe("function");
+		expect(typeof env.REDIS_PUBSUB?.subscribe).toBe("function");
+		expect(typeof env.REDIS_PUBSUB?.listTopics).toBe("function");
+		await expect(env.REDIS_PUBSUB.listTopics()).rejects.toThrow();
+	});
+
 	it("forwards plain config keys and resolves AI_STUB into env.AI", async () => {
 		process.env.DATABASE_URL = ":memory:";
 		process.env.KTB_DEV_QUEUE_DB = ":memory:";

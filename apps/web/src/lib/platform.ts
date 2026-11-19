@@ -25,6 +25,12 @@ import { makeJobs, registerJobHandler, upsertJobRun, listJobRuns } from "@ktb/jo
 import type { JobRecord, JobStatus } from "@ktb/jobs-port";
 import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
 import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
+import {
+	makeInProcessPubSub,
+	mergePubSubSources,
+	type PubSubBus,
+	type PubSubTopicSource,
+} from "@ktb/pubsub-port";
 import { APP_CRON_JOBS } from "./cron-jobs.ts";
 import { runScheduledAgendaReminders } from "./agenda-reminders.ts";
 import { runScheduledAuditVerification } from "./audit-chain.ts";
@@ -285,6 +291,24 @@ const queueDescriptors: (QueueDescriptor | undefined)[] = [
 ];
 const queueRegistry = makeQueueRegistry(queueDescriptors.filter((d) => d !== undefined));
 
+// Pub/sub for /platform/pubsub: the in-process bus is always bound (it
+// is the zero-dependency default transport — one instance per isolate);
+// dev:node additionally publishes REDIS_PUBSUB, a lazy Redis pub/sub
+// transport whose PUBSUB CHANNELS/NUMSUB enumeration surfaces real
+// cross-process topics. Sources merge dynamically at query time —
+// topics appear when first published/subscribed, never from a static
+// list that could drift. Plugin code reaches publish/list through the
+// `pubsub` ServerRuntime capability below; adapters stay at this edge.
+const memoryPubSub = makeInProcessPubSub();
+const redisPubSub = envRecord.REDIS_PUBSUB as
+	| (PubSubBus & { listTopics?: PubSubTopicSource["list"] })
+	| undefined;
+const pubsubSources: PubSubTopicSource[] = [
+	{ list: async () => memoryPubSub.listTopics() },
+	...(redisPubSub?.listTopics === undefined ? [] : [{ list: redisPubSub.listTopics }]),
+];
+const pubSubTopics = mergePubSubSources(pubsubSources);
+
 // Cron registry for /platform/cron + the worker's `scheduled` handler:
 // every scheduled job declared in lib/cron-jobs.ts gets a fire routine
 // here. Each fire is projected into job_runs under kind `cron.<id>`
@@ -301,14 +325,25 @@ const projectCronRun =
 				console.error("cron projection write failed", { kind, status, error: String(e) });
 			});
 		await write("processing");
+		// Real producer for the /platform/pubsub console: every cron fire
+		// also lands on the in-process `cron.fires` topic, so the page
+		// shows live traffic instead of an empty registry. Fire-and-
+		// forget — a bus failure must never affect the sweep.
+		const announce = (outcome: CronRunOutcome) =>
+			void memoryPubSub
+				.publish("cron.fires", { jobId, ok: outcome.ok, summary: outcome.summary ?? null })
+				.catch(() => {});
 		try {
 			const outcome = await fire();
 			await write(outcome.ok ? "done" : "failed", outcome.error);
+			announce(outcome);
 			return outcome;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			await write("failed", message);
-			return { ok: false, error: message };
+			const outcome: CronRunOutcome = { ok: false, error: message };
+			announce(outcome);
+			return outcome;
 		}
 	};
 
@@ -516,6 +551,33 @@ setServerRuntime({
 				summary: r.outcome.summary,
 				error: r.outcome.error,
 			})),
+	},
+	// Pub/sub capability: `topics` merges the in-process bus's known
+	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
+	// `publish` routes by the console-facing id prefix — `memory:` to
+	// the in-process bus, `redis:` to the Redis transport. Payloads
+	// must be JSON-serializable; transports serialize them.
+	pubsub: {
+		topics: () => pubSubTopics.list(),
+		publish: async (topicId, payload) => {
+			const sep = topicId.indexOf(":");
+			const prefix = sep === -1 ? "" : topicId.slice(0, sep);
+			const name = sep === -1 ? topicId : topicId.slice(sep + 1);
+			try {
+				if (prefix === "memory") {
+					await memoryPubSub.publish(name, payload);
+					return { ok: true };
+				}
+				if (prefix === "redis") {
+					if (redisPubSub === undefined) return { ok: false, reason: "unavailable" };
+					await redisPubSub.publish(name, payload);
+					return { ok: true };
+				}
+				return { ok: false, reason: "unknown-topic" };
+			} catch {
+				return { ok: false, reason: "publish-failed" };
+			}
+		},
 	},
 	ai: aiBinding,
 	audioTranscribeModel,

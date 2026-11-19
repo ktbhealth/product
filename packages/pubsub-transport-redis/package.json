@@ -1,0 +1,12 @@
+{
+	"name": "@ktb/pubsub-transport-redis",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/pubsub-port": "workspace:*",
+		"redis": "6.3.1"
+	}
+}

@@ -219,6 +219,7 @@ export type I18nKey =
 	| "app.panel_nav_groups"
 	| "app.panel_nav_ops"
 	| "app.panel_nav_plugins"
+	| "app.panel_nav_pubsub"
 	| "app.panel_nav_queue"
 	| "app.panel_nav_rich_text"
 	| "app.panel_nav_schemas"
@@ -1476,6 +1477,36 @@ export type I18nKey =
 	| "portal.signOut"
 	| "portal.switcherLabel"
 	| "portal.userFallback"
+	| "pubsub.description"
+	| "pubsub.emptyTopicsDescription"
+	| "pubsub.emptyTopicsTitle"
+	| "pubsub.invalidJson"
+	| "pubsub.neverActive"
+	| "pubsub.noRecent"
+	| "pubsub.pPayload"
+	| "pubsub.pPayloadHint"
+	| "pubsub.pTopic"
+	| "pubsub.pTopicPlaceholder"
+	| "pubsub.publish"
+	| "pubsub.publishDescription"
+	| "pubsub.publishFailed"
+	| "pubsub.publishForbidden"
+	| "pubsub.publishing"
+	| "pubsub.publishOk"
+	| "pubsub.publishTitle"
+	| "pubsub.publishUnavailable"
+	| "pubsub.publishUnknown"
+	| "pubsub.subscribersUnknown"
+	| "pubsub.tColLastActivity"
+	| "pubsub.tColRecent"
+	| "pubsub.tColSubscribers"
+	| "pubsub.tColTopic"
+	| "pubsub.tColTransport"
+	| "pubsub.title"
+	| "pubsub.topicsDescription"
+	| "pubsub.topicsTitle"
+	| "pubsub.unavailableDescription"
+	| "pubsub.unavailableTitle"
 	| "queue.consumerExternal"
 	| "queue.consumerInApp"
 	| "queue.consumerJobsWorker"
@@ -2187,6 +2218,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
+	(key: "app.panel_nav_pubsub"): Effect.Effect<string>;
 	(key: "app.panel_nav_queue"): Effect.Effect<string>;
 	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
 	(key: "app.panel_nav_schemas"): Effect.Effect<string>;
@@ -3824,6 +3856,41 @@ export interface I18nTypedT {
 	(key: "portal.signOut"): Effect.Effect<string>;
 	(key: "portal.switcherLabel"): Effect.Effect<string>;
 	(key: "portal.userFallback"): Effect.Effect<string>;
+	(
+		key: "pubsub.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "pubsub.emptyTopicsDescription"): Effect.Effect<string>;
+	(key: "pubsub.emptyTopicsTitle"): Effect.Effect<string>;
+	(key: "pubsub.invalidJson"): Effect.Effect<string>;
+	(key: "pubsub.neverActive"): Effect.Effect<string>;
+	(key: "pubsub.noRecent"): Effect.Effect<string>;
+	(key: "pubsub.pPayload"): Effect.Effect<string>;
+	(key: "pubsub.pPayloadHint"): Effect.Effect<string>;
+	(key: "pubsub.pTopic"): Effect.Effect<string>;
+	(key: "pubsub.pTopicPlaceholder"): Effect.Effect<string>;
+	(key: "pubsub.publish"): Effect.Effect<string>;
+	(key: "pubsub.publishDescription"): Effect.Effect<string>;
+	(key: "pubsub.publishFailed"): Effect.Effect<string>;
+	(key: "pubsub.publishForbidden"): Effect.Effect<string>;
+	(key: "pubsub.publishing"): Effect.Effect<string>;
+	(key: "pubsub.publishOk"): Effect.Effect<string>;
+	(key: "pubsub.publishTitle"): Effect.Effect<string>;
+	(key: "pubsub.publishUnavailable"): Effect.Effect<string>;
+	(key: "pubsub.publishUnknown"): Effect.Effect<string>;
+	(key: "pubsub.subscribersUnknown"): Effect.Effect<string>;
+	(key: "pubsub.tColLastActivity"): Effect.Effect<string>;
+	(key: "pubsub.tColRecent"): Effect.Effect<string>;
+	(key: "pubsub.tColSubscribers"): Effect.Effect<string>;
+	(key: "pubsub.tColTopic"): Effect.Effect<string>;
+	(key: "pubsub.tColTransport"): Effect.Effect<string>;
+	(key: "pubsub.title"): Effect.Effect<string>;
+	(key: "pubsub.topicsDescription"): Effect.Effect<string>;
+	(key: "pubsub.topicsTitle"): Effect.Effect<string>;
+	(key: "pubsub.unavailableDescription"): Effect.Effect<string>;
+	(key: "pubsub.unavailableTitle"): Effect.Effect<string>;
 	(key: "queue.consumerExternal"): Effect.Effect<string>;
 	(key: "queue.consumerInApp"): Effect.Effect<string>;
 	(key: "queue.consumerJobsWorker"): Effect.Effect<string>;
