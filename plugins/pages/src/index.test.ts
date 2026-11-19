@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
@@ -456,5 +456,94 @@ describe("pages page effects", () => {
 			search?: Record<string, unknown>;
 		} | null;
 		expect(row?.search).toEqual({ bad: 1 });
+	});
+
+	it("wildcard loader resolves null content when the referenced document is missing", async () => {
+		// richTextId points at a document the RichTexts service does not
+		// have — `doc?.content ?? null` degrades the body to null.
+		const now = new Date();
+		await sharedDb.insert(customPage).values({
+			path: "/pub-missing-doc",
+			title: "MissingDoc",
+			richTextId: 99,
+			published: true,
+			showInNav: false,
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const richTexts = RichTexts.of({
+			adminList: () => Effect.succeed([]),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(RichTexts, richTexts),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesRenderPlugin.pages![0]!.loader!;
+			const row = (await asPrincipalIn(rt, null, loader("/pub-missing-doc"))) as {
+				content?: unknown;
+			} | null;
+			expect(row?.content).toBeNull();
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("admin page loader empties pickers whose adminList is Forbidden", async () => {
+		const richTexts = RichTexts.of({
+			adminList: () => Effect.fail(new Forbidden({ path: "rich-text.adminList" })),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+		});
+		const schemas = Schemas.of({
+			adminList: () => Effect.fail(new Forbidden({ path: "schemas.adminList" })),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+			validate: () => Effect.succeed({ valid: true, issues: [] }),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(RichTexts, richTexts),
+				Layer.succeed(Schemas, schemas),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
+			const data = (await asPrincipalIn(
+				rt,
+				{ userId: "a1", email: "admin@x.com" },
+				loader("/platform/pages"),
+			)) as {
+				docs: readonly unknown[];
+				richTextEnabled: boolean;
+				schemas: readonly unknown[];
+				searchSchemaEnabled: boolean;
+			};
+			// The services are present (the fields stay enabled) but their
+			// Forbidden adminList degrades each picker to empty.
+			expect(data.docs).toEqual([]);
+			expect(data.richTextEnabled).toBe(true);
+			expect(data.schemas).toEqual([]);
+			expect(data.searchSchemaEnabled).toBe(true);
+		} finally {
+			await rt.dispose();
+		}
 	});
 });

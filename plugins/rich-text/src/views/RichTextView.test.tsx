@@ -62,6 +62,70 @@ describe("RichTextView", () => {
 		expect(container.querySelectorAll("a")).toHaveLength(1);
 	});
 
+	it("unwraps anchors with non-string or blank hrefs to their children", () => {
+		const { container } = render(
+			<RichTextView
+				value={doc([
+					{ type: "p", children: [{ type: "a", url: 42, children: [{ text: "numeric" }] }] },
+					{ type: "p", children: [{ type: "a", url: "   ", children: [{ text: "blank" }] }] },
+					{ type: "p", children: [{ type: "a", children: [{ text: "missing" }] }] },
+					{
+						type: "p",
+						children: [
+							{ type: "a", url: `https://${"x".repeat(2100)}`, children: [{ text: "long" }] },
+						],
+					},
+				])}
+			/>,
+		);
+		for (const label of ["numeric", "blank", "missing", "long"]) {
+			expect(screen.getByText(label)).toBeTruthy();
+			expect(screen.getByText(label).closest("a")).toBeNull();
+		}
+		expect(container.querySelectorAll("a")).toHaveLength(0);
+	});
+
+	it("renders top-level anchors and childless inline elements", () => {
+		const { container } = render(
+			<RichTextView
+				value={doc([
+					{ type: "a", url: "https://example.com", children: [{ text: "top link" }] },
+					{ type: "p", children: [{ type: "mention" }, { text: " after" }] },
+				])}
+			/>,
+		);
+		const link = screen.getByText("top link").closest("a");
+		expect(link?.getAttribute("href")).toBe("https://example.com");
+		expect(link?.closest("p")).toBeTruthy();
+		expect(screen.getByText("after")).toBeTruthy();
+		expect(container.querySelectorAll("a")).toHaveLength(1);
+	});
+
+	it("skips non-object children and renders unknown blocks by shape", () => {
+		const { container } = render(
+			<RichTextView
+				value={doc([
+					{
+						type: "p",
+						children: [null, "raw", { text: "kept" }],
+					},
+					// Unknown block with only inline children → <p>.
+					{ type: "callout", children: [{ text: "inline only" }] },
+					// Unknown block with no children at all → empty <p>.
+					{ type: "divider" },
+					{ type: "section", children: [] },
+					// Non-object top-level nodes are skipped entirely.
+					null,
+					"junk",
+				])}
+			/>,
+		);
+		expect(screen.getByText("kept")).toBeTruthy();
+		expect(screen.getByText("inline only").closest("p")).toBeTruthy();
+		// The two childless unknown blocks still render empty <p>s.
+		expect(container.querySelectorAll("p").length).toBeGreaterThanOrEqual(4);
+	});
+
 	it("unwraps unknown inline elements to their children", () => {
 		render(
 			<RichTextView

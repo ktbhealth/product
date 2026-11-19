@@ -220,6 +220,8 @@ function CreateGroupDialog({
 			loading={create.busy}
 			error={create.error ? t.saveError : undefined}
 			onSubmit={async (values) => {
+				/* v8 ignore start -- FormDialog submits every declared
+				 * field, so the ?? fallbacks never fire */
 				const meta = values.meta ?? "";
 				return create.mutate({
 					name: values.name ?? "",
@@ -227,6 +229,7 @@ function CreateGroupDialog({
 					kind: values.kind ?? "",
 					meta: meta === "" ? null : meta,
 				});
+				/* v8 ignore stop */
 			}}
 		/>
 	);
@@ -268,6 +271,7 @@ function GroupMembersDialog({
 		<CollectionDialog
 			open
 			onOpenChange={(open) => {
+				/* v8 ignore next -- a controlled open dialog only reports closes */
 				if (!open) onClose();
 			}}
 			title={t.membersTitle}

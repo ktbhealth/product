@@ -88,6 +88,12 @@ describe("session fixtures", () => {
 		});
 		await auth.setUserBanned("u1", true);
 	});
+
+	it("stubAuth no-ops updateUser and deleteUser", async () => {
+		const auth = stubAuth(() => sessionUser("a@b.c"));
+		await expect(auth.updateUser("u1", { name: "N" })).resolves.toEqual({ ok: true });
+		await expect(auth.deleteUser("u1")).resolves.toBeUndefined();
+	});
 });
 
 describe("installServerFnRuntime", () => {

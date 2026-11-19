@@ -896,4 +896,87 @@ describe("i18nPanelPlugin page", () => {
 		const out = await Effect.runPromise(loader!().pipe(Effect.provideService(I18nAdmin, admin)));
 		expect(out).toEqual({ namespaces: [], locales: [] });
 	});
+
+	it("locales loader returns locales and degrades to empty on Forbidden", async () => {
+		const loader = i18nPanelPlugin.panel?.pages.find(
+			(p) => p.path === "/platform/i18n/locales",
+		)?.loader;
+		expect(loader).toBeDefined();
+		const admin = fakeAdmin({
+			locales: () =>
+				Effect.succeed([{ code: "en", endonym: "English", fallbacks: [], enabled: true }]),
+		});
+		const out = await Effect.runPromise(loader!().pipe(Effect.provideService(I18nAdmin, admin)));
+		expect(out.locales).toHaveLength(1);
+		const deniedAdmin = fakeAdmin({
+			locales: () => Effect.fail(new Forbidden({ path: "i18n.locales" })),
+		});
+		const denied = await Effect.runPromise(
+			loader!().pipe(Effect.provideService(I18nAdmin, deniedAdmin)),
+		);
+		expect(denied).toEqual({ locales: [] });
+	});
+
+	it("drafts loader returns drafts + locales and degrades to empty on Forbidden", async () => {
+		const loader = i18nPanelPlugin.panel?.pages.find(
+			(p) => p.path === "/platform/i18n/drafts",
+		)?.loader;
+		expect(loader).toBeDefined();
+		const admin = fakeAdmin({
+			messages: (input) => {
+				expect(input).toEqual({ hasDraft: true });
+				return Effect.succeed([{ key: "title" }] as never);
+			},
+			locales: () =>
+				Effect.succeed([{ code: "en", endonym: "English", fallbacks: [], enabled: true }]),
+		});
+		const out = await Effect.runPromise(loader!().pipe(Effect.provideService(I18nAdmin, admin)));
+		expect(out.drafts).toHaveLength(1);
+		expect(out.locales).toHaveLength(1);
+		const deniedAdmin = fakeAdmin({
+			messages: () => Effect.fail(new Forbidden({ path: "i18n.messages" })),
+		});
+		const denied = await Effect.runPromise(
+			loader!().pipe(Effect.provideService(I18nAdmin, deniedAdmin)),
+		);
+		expect(denied).toEqual({ drafts: [], locales: [] });
+	});
+
+	it("namespaces loader returns namespaces + coverage + locales and degrades on Forbidden", async () => {
+		const loader = i18nPanelPlugin.panel?.pages.find(
+			(p) => p.path === "/platform/i18n/namespaces",
+		)?.loader;
+		expect(loader).toBeDefined();
+		const admin = fakeAdmin({
+			namespaces: () =>
+				Effect.succeed([
+					{ namespace: "app", pluginId: "app", defaultLocale: "en", messageCount: 1 },
+				]),
+			coverage: () =>
+				Effect.succeed([
+					{
+						namespace: "app",
+						pluginId: "app",
+						defaultLocale: "en",
+						keyCount: 1,
+						translated: { en: 1 },
+						manifestHash: "",
+						manifestDrift: "unrecorded",
+					},
+				]),
+			locales: () =>
+				Effect.succeed([{ code: "en", endonym: "English", fallbacks: [], enabled: true }]),
+		});
+		const out = await Effect.runPromise(loader!().pipe(Effect.provideService(I18nAdmin, admin)));
+		expect(out.namespaces).toHaveLength(1);
+		expect(out.coverage).toHaveLength(1);
+		expect(out.locales).toHaveLength(1);
+		const deniedAdmin = fakeAdmin({
+			coverage: () => Effect.fail(new Forbidden({ path: "i18n.coverage" })),
+		});
+		const denied = await Effect.runPromise(
+			loader!().pipe(Effect.provideService(I18nAdmin, deniedAdmin)),
+		);
+		expect(denied).toEqual({ namespaces: [], coverage: [], locales: [] });
+	});
 });

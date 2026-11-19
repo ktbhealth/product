@@ -117,6 +117,20 @@ describe("I18nPage compare-with-locale", () => {
 		// `broken` only has an en row — pt-BR comparison is absent.
 		expect(await within(dialog).findByText("No translation for pt-BR.")).toBeTruthy();
 	});
+
+	it("switches the comparison to an explicitly picked locale", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		await openCell(user, "title");
+		const dialog = await screen.findByRole("dialog");
+		await within(dialog).findByText("Português (pt-BR)");
+		// Re-picking the locale through the select exercises the
+		// non-"None" arm of the picker.
+		await user.click(within(dialog).getByRole("combobox", { name: "Compare with" }));
+		await user.click(await screen.findByRole("option", { name: "Português" }));
+		expect(within(dialog).getByText("Português (pt-BR)")).toBeTruthy();
+	});
 });
 
 describe("I18nPage param lint", () => {
@@ -133,6 +147,45 @@ describe("I18nPage param lint", () => {
 		expect(await within(dialog).findByText(/Param mismatch/)).toBeTruthy();
 		expect(within(dialog).getByText(/missing: \{count\}/)).toBeTruthy();
 		expect(within(dialog).queryByText(/extra:/)).toBeNull();
+	});
+
+	it("lints params out of a broken draft via the regex fallback", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		await openCell(user, "title");
+		const dialog = await screen.findByRole("dialog");
+		const area = within(dialog).getByRole("textbox");
+		// The template doesn't parse, but the fallback regex still sees
+		// {count} — flagged extra vs the param-less live value.
+		fireEvent.change(area, { target: { value: "{count} {oops" } });
+		expect(await within(dialog).findByText(/Param mismatch/)).toBeTruthy();
+		expect(within(dialog).getByText(/extra: \{count\}/)).toBeTruthy();
+	});
+
+	it("skips lint when the default-locale cell is missing or also empty", async () => {
+		const user = userEvent.setup();
+		fns.i18nNamespaceMessagesFn.mockResolvedValue([
+			// pt-BR-only key with an empty live value — there is no en
+			// cell at all to lint against.
+			msg({ key: "ptonly", locale: "pt-BR", value: "" }),
+			// Both locales carry an empty live value — the default-locale
+			// cell exists but can't serve as the lint reference.
+			msg({ key: "emptylive", value: "" }),
+			msg({ key: "emptylive", locale: "pt-BR", value: "" }),
+		]);
+		render(<I18nPage data={data} />);
+		await screen.findByText("ptonly");
+		const ptonlyRow = screen.getByText("ptonly").closest("tr")!;
+		await user.click(within(ptonlyRow).getAllByRole("button")[1]!);
+		let dialog = await screen.findByRole("dialog");
+		expect(within(dialog).queryByText(/Param mismatch/)).toBeNull();
+		await user.keyboard("{Escape}");
+		await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+		const emptyRow = screen.getByText("emptylive").closest("tr")!;
+		await user.click(within(emptyRow).getAllByRole("button")[1]!);
+		dialog = await screen.findByRole("dialog");
+		expect(within(dialog).queryByText(/Param mismatch/)).toBeNull();
 	});
 });
 
@@ -220,5 +273,124 @@ describe("I18nPage inline cell editing", () => {
 		const dialog = await screen.findByRole("dialog");
 		expect(within(dialog).getByLabelText("Message rich text")).toBeTruthy();
 		expect(screen.queryByRole("textbox", { name: "Edit rich in en" })).toBeNull();
+	});
+
+	it("enters inline edit on a raw double-click with no armed open timer", async () => {
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		const cell = await cellButton("title");
+		// No preceding click — there is no deferred dialog open to cancel.
+		fireEvent.doubleClick(cell);
+		expect(await screen.findByRole("textbox", { name: "Edit title in en" })).toBeTruthy();
+		expect(screen.queryByRole("dialog")).toBeNull();
+	});
+
+	it("seeds the inline editor with the pending draft and ignores its own dblclick", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		const cell = await cellButton("title", "pt-BR");
+		await user.dblClick(cell);
+		const input = (await screen.findByRole("textbox", {
+			name: "Edit title in pt-BR",
+		})) as HTMLInputElement;
+		expect(input.value).toBe("Oi");
+		// A double-click inside the input just stops propagation.
+		fireEvent.doubleClick(input);
+		expect(screen.queryByRole("dialog")).toBeNull();
+		expect(screen.getByRole("textbox", { name: "Edit title in pt-BR" })).toBeTruthy();
+	});
+
+	it("Enter on an unchanged inline value just closes the editor", async () => {
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		const cell = await cellButton("title");
+		await user.dblClick(cell);
+		await screen.findByRole("textbox", { name: "Edit title in en" });
+		await user.keyboard("{Enter}");
+		expect(fns.i18nSaveDraftFn).not.toHaveBeenCalled();
+		expect(screen.queryByRole("textbox", { name: "Edit title in en" })).toBeNull();
+	});
+
+	it("ignores a second commit and Escape while a commit is in flight", async () => {
+		let resolveSave: (v: unknown) => void = () => {};
+		fns.i18nSaveDraftFn.mockImplementationOnce(
+			() =>
+				new Promise((resolve) => {
+					resolveSave = resolve;
+				}),
+		);
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		const cell = await cellButton("title");
+		await user.dblClick(cell);
+		const input = (await screen.findByRole("textbox", {
+			name: "Edit title in en",
+		})) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "changed" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+		await waitFor(() => expect(fns.i18nSaveDraftFn).toHaveBeenCalledTimes(1));
+		// Mid-commit: a second Enter hits the busy guard, Escape does
+		// not cancel the edit.
+		fireEvent.keyDown(input, { key: "Enter" });
+		fireEvent.keyDown(input, { key: "Escape" });
+		expect(fns.i18nSaveDraftFn).toHaveBeenCalledTimes(1);
+		expect(screen.getByRole("textbox", { name: "Edit title in en" })).toBeTruthy();
+		resolveSave({ ok: true });
+		await waitFor(() =>
+			expect(screen.queryByRole("textbox", { name: "Edit title in en" })).toBeNull(),
+		);
+	});
+
+	it("surfaces inline-commit failures at page level", async () => {
+		fns.i18nSaveDraftFn
+			.mockResolvedValueOnce({ ok: false, error: "inline denied" })
+			.mockResolvedValueOnce({ ok: false });
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		const cell = await cellButton("title");
+		await user.dblClick(cell);
+		const input = (await screen.findByRole("textbox", {
+			name: "Edit title in en",
+		})) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "x" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+		expect(await screen.findByText("inline denied")).toBeTruthy();
+		// The editor stays open on failure; a bare { ok:false } falls
+		// back to the generic denial text.
+		fireEvent.keyDown(input, { key: "Enter" });
+		expect(await screen.findByText("denied")).toBeTruthy();
+	});
+
+	it("treats a null or non-object wire result as a successful commit", async () => {
+		fns.i18nSaveDraftFn.mockResolvedValueOnce(null).mockResolvedValueOnce(42);
+		const user = userEvent.setup();
+		render(<I18nPage data={data} />);
+		await screen.findByText("title");
+		const cell = await cellButton("title");
+		await user.dblClick(cell);
+		const input = (await screen.findByRole("textbox", {
+			name: "Edit title in en",
+		})) as HTMLInputElement;
+		fireEvent.change(input, { target: { value: "x" } });
+		fireEvent.keyDown(input, { key: "Enter" });
+		await waitFor(() =>
+			expect(screen.queryByRole("textbox", { name: "Edit title in en" })).toBeNull(),
+		);
+		expect(screen.queryByText("denied")).toBeNull();
+		// A non-object result (e.g. a bare number) is not a failure
+		// either — the editor closes the same way.
+		await user.dblClick(await cellButton("title"));
+		const second = (await screen.findByRole("textbox", {
+			name: "Edit title in en",
+		})) as HTMLInputElement;
+		fireEvent.change(second, { target: { value: "y" } });
+		fireEvent.keyDown(second, { key: "Enter" });
+		await waitFor(() =>
+			expect(screen.queryByRole("textbox", { name: "Edit title in en" })).toBeNull(),
+		);
 	});
 });

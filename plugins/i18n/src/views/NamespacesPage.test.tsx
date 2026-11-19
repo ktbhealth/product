@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -184,6 +184,36 @@ describe("NamespacesPage", () => {
 		expect(await screen.findByText("No namespaces registered.")).toBeTruthy();
 	});
 
+	it("falls back to empty strings and zero keys for sparse coverage rows", async () => {
+		// Coverage rows with fields missing entirely — the row-level
+		// `?? ""` / `?? 0` fallbacks kick in (DB-only orphans should be
+		// impossible, but the union tolerates them).
+		const sparse = [
+			{
+				namespace: "sparse.cov",
+				keyCount: 2,
+				translated: { en: 0 },
+				manifestHash: "",
+				manifestDrift: "unrecorded",
+			},
+			{
+				namespace: "nokeys.cov",
+				pluginId: "x",
+				defaultLocale: "en",
+				translated: {},
+				manifestHash: "",
+				manifestDrift: "unrecorded",
+			},
+		] as unknown as readonly NamespaceCoverage[];
+		render(<NamespacesPage data={{ namespaces: [], coverage: sparse, locales }} />);
+		const sparseRow = (await screen.findByText("sparse.cov")).closest("tr") as HTMLElement;
+		// Missing pluginId + defaultLocale render as dashes.
+		expect(within(sparseRow).getAllByText("—").length).toBeGreaterThanOrEqual(2);
+		const nokeysRow = (await screen.findByText("nokeys.cov")).closest("tr") as HTMLElement;
+		// Missing keyCount → 0 keys → every coverage cell is a dash.
+		expect(within(nokeysRow).getAllByText("—").length).toBe(2);
+	});
+
 	describe("missing-keys drill-down", () => {
 		it("opens a dialog on a coverage-cell click, fetches and lists missing keys", async () => {
 			const user = userEvent.setup();
@@ -256,6 +286,62 @@ describe("NamespacesPage", () => {
 			const dialog = await screen.findByRole("dialog");
 			expect(await within(dialog).findByText("All keys translated.")).toBeTruthy();
 		});
+
+		it("closes the dialog and bumps the stale-response sequence", async () => {
+			const user = userEvent.setup();
+			render(<NamespacesPage data={data} />);
+			await screen.findByText("coverage.only");
+			const row = screen.getByText("coverage.only").closest("tr") as HTMLElement;
+			await user.click(
+				within(row).getAllByRole("button", { name: /missing coverage\.only keys/ })[0]!,
+			);
+			expect(await screen.findByRole("dialog")).toBeTruthy();
+			await user.keyboard("{Escape}");
+			expect(screen.queryByRole("dialog")).toBeNull();
+		});
+
+		it("discards a stale response resolved after the dialog moved on", async () => {
+			const user = userEvent.setup();
+			let resolveFirst: (v: unknown) => void = () => {};
+			fns.i18nMissingKeysFn
+				.mockImplementationOnce(
+					() =>
+						new Promise((resolve) => {
+							resolveFirst = resolve;
+						}),
+				)
+				.mockResolvedValueOnce({ ok: true, keys: ["fresh-key"] });
+			render(<NamespacesPage data={data} />);
+			await screen.findByText("patients.messages");
+			// First open stays in flight; closing the dialog bumps the
+			// response sequence so its late resolution is discarded.
+			const patientsRow = screen.getByText("patients.messages").closest("tr") as HTMLElement;
+			await user.click(
+				within(patientsRow).getByRole("button", {
+					name: "Show 1 missing patients.messages keys for Português",
+				}),
+			);
+			expect(await screen.findByRole("dialog")).toBeTruthy();
+			await user.keyboard("{Escape}");
+			await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+			// A second cell opens a new dialog that resolves first.
+			const coverageRow = screen.getByText("coverage.only").closest("tr") as HTMLElement;
+			await user.click(
+				within(coverageRow).getByRole("button", {
+					name: "Show 2 missing coverage.only keys for Português",
+				}),
+			);
+			const dialog = await screen.findByRole("dialog");
+			expect(within(dialog).getByText("coverage.only · pt-BR")).toBeTruthy();
+			expect(await within(dialog).findByText("fresh-key")).toBeTruthy();
+			// The stale first response must not overwrite the newer state.
+			resolveFirst({ ok: true, keys: ["stale-key"] });
+			// Flush the stale .then — it must hit the seq guard instead of
+			// overwriting the newer dialog's state.
+			await new Promise((r) => setTimeout(r, 0));
+			expect(within(dialog).queryByText("stale-key")).toBeNull();
+			expect(within(dialog).getByText("coverage.only · pt-BR")).toBeTruthy();
+		});
 	});
 
 	describe("toolbar", () => {
@@ -301,6 +387,42 @@ describe("NamespacesPage", () => {
 				"coverage.only",
 				"empty.ns",
 			]);
+		});
+
+		it("breaks most-keys ties by namespace name", async () => {
+			const user = userEvent.setup();
+			const tie: NamespacesPageData = {
+				namespaces: [
+					{ namespace: "b.ns", pluginId: "x", defaultLocale: "en", messageCount: 3 },
+					{ namespace: "a.ns", pluginId: "x", defaultLocale: "en", messageCount: 3 },
+				],
+				coverage: [
+					{
+						namespace: "b.ns",
+						pluginId: "x",
+						defaultLocale: "en",
+						keyCount: 3,
+						translated: { en: 3 },
+						manifestHash: "",
+						manifestDrift: "no",
+					},
+					{
+						namespace: "a.ns",
+						pluginId: "x",
+						defaultLocale: "en",
+						keyCount: 3,
+						translated: { en: 3 },
+						manifestHash: "",
+						manifestDrift: "no",
+					},
+				],
+				locales,
+			};
+			render(<NamespacesPage data={tie} />);
+			await screen.findByText("a.ns");
+			await user.click(screen.getByRole("combobox"));
+			await user.click(await screen.findByRole("option", { name: "Sort: most keys" }));
+			expect(renderedNamespaces()).toEqual(["a.ns", "b.ns"]);
 		});
 
 		it("reorders rows by worst coverage", async () => {

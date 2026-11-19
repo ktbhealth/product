@@ -79,6 +79,7 @@ const extractParamNames = (template: string): ReadonlySet<string> => {
 	if (parsed.ok) return new Set(parsed.message.params.map((p) => p.name));
 	const names = new Set<string>();
 	for (const m of template.matchAll(/\{(\w+)(?=[,}])/g)) {
+		/* v8 ignore else -- \w+ is a required capture: a match always yields m[1] */
 		if (m[1] !== undefined) names.add(m[1]);
 	}
 	return names;
@@ -347,7 +348,14 @@ export function I18nPage({
 			openTimer.current = null;
 		}
 		const cell = cellFor(cellIndex, namespace, key, locale, filterScope, fetchScopeId);
-		setCellEdit({ key, locale, value: cell?.draft ?? cell?.live ?? "" });
+		setCellEdit({
+			key,
+			locale,
+			// onDoubleClick only binds when a text cell exists, and live
+			// is a required column — the "" arm is just type glue.
+			/* v8 ignore next -- cell + live always set */
+			value: cell?.draft ?? cell?.live ?? "",
+		});
 		setError(null);
 	};
 
@@ -422,6 +430,9 @@ export function I18nPage({
 		if (cur === null || cellEditBusy.current) return;
 		const cell = cellFor(cellIndex, namespace, cur.key, cur.locale, filterScope, fetchScopeId);
 		// An unchanged value would stage a redundant draft — just close.
+		// The edited cell is always in the index (the input renders off
+		// it) and live is a required column — "" is type glue only.
+		/* v8 ignore next -- the "" arm only fires without a cell */
 		if (cur.value === (cell?.draft ?? cell?.live ?? "")) {
 			setCellEdit(null);
 			return;

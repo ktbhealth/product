@@ -1,4 +1,21 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// A mutable stand-in lets one seed test exercise the null fonts/brand
+// arms of seedDefaultTheme without disturbing the real KTB default
+// every other test relies on.
+const defaultThemeOverride = vi.hoisted(() => ({
+	current: undefined as import("./types.ts").ResolvedTheme | undefined,
+}));
+
+vi.mock("./default-theme.ts", async (importOriginal) => {
+	const original = await importOriginal<typeof import("./default-theme.ts")>();
+	return {
+		...original,
+		get KTB_DEFAULT_THEME() {
+			return defaultThemeOverride.current ?? original.KTB_DEFAULT_THEME;
+		},
+	};
+});
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -25,6 +42,7 @@ import {
 	type ThemePublishInput,
 	type ThemeRow,
 } from "./theme.ts";
+import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import type { ThemeSeeds, ThemeSummary } from "./types.ts";
 
 const DDL = `
@@ -42,6 +60,16 @@ CREATE TABLE theme_definitions (
 	version integer DEFAULT 1 NOT NULL,
 	created_at integer NOT NULL,
 	updated_at integer
+);
+CREATE TABLE theme_assets (
+	id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	theme_id integer,
+	kind text NOT NULL,
+	r2_key text,
+	status text DEFAULT 'pending' NOT NULL,
+	variants text,
+	created_at integer NOT NULL,
+	FOREIGN KEY (theme_id) REFERENCES theme_definitions(id) ON UPDATE no action ON DELETE set null
 );
 `;
 
@@ -97,6 +125,29 @@ const insertRow = async (
 	const rows = await all<{ id: number }>(
 		d1,
 		`SELECT id FROM theme_definitions ORDER BY id DESC LIMIT 1`,
+	);
+	return rows[0]!.id;
+};
+
+const insertAsset = async (
+	d1: SqlDatabase,
+	row: {
+		themeId: number | null;
+		kind: string;
+		r2Key?: string | null;
+		status?: string;
+		variants?: string | null;
+	},
+): Promise<number> => {
+	await run(
+		d1,
+		`INSERT INTO theme_assets (theme_id, kind, r2_key, status, variants, created_at)
+		 VALUES (?, ?, ?, ?, ?, 0)`,
+		[row.themeId, row.kind, row.r2Key ?? null, row.status ?? "pending", row.variants ?? null],
+	);
+	const rows = await all<{ id: number }>(
+		d1,
+		`SELECT id FROM theme_assets ORDER BY id DESC LIMIT 1`,
 	);
 	return rows[0]!.id;
 };
@@ -190,6 +241,20 @@ describe("theme repo helpers", () => {
 		expect(JSON.parse(rows[0]!.brand!)).toBeDefined();
 	});
 
+	it("stores null fonts/brand when the default theme omits them", async () => {
+		defaultThemeOverride.current = { ...KTB_DEFAULT_THEME, fonts: null, brand: null };
+		try {
+			const { db } = makeTestDb();
+			expect(await seedDefaultTheme(db)).toBe(true);
+			const rows = await listThemes(db);
+			expect(rows).toHaveLength(1);
+			expect(rows[0]!.fonts).toBeNull();
+			expect(rows[0]!.brand).toBeNull();
+		} finally {
+			defaultThemeOverride.current = undefined;
+		}
+	});
+
 	it("upsertTheme inserts enabled rows and bumps version on update", async () => {
 		const { db } = makeTestDb();
 		const seeds: ThemeSeeds = { primary: "#2563eb", radius: "0.6rem" };
@@ -224,6 +289,16 @@ describe("theme repo helpers", () => {
 		expect(updated?.version).toBe(3);
 		expect(updated!.fonts).toBeNull();
 		expect(updated!.brand).toBeNull();
+	});
+
+	it("upsertTheme serializes defined fonts/brand on the update path", async () => {
+		const { db } = makeTestDb();
+		const created = await upsertTheme(db, publishInput({ seeds: {} }));
+		const fonts = { delivery: "google-fonts" as const, families: { sans: "Inter" } };
+		const brand = { appName: "Acme", wordmark: "/w.svg" };
+		const updated = await upsertTheme(db, publishInput({ seeds: {}, fonts, brand }), created!.id);
+		expect(JSON.parse(updated!.fonts!)).toEqual(fonts);
+		expect(JSON.parse(updated!.brand!)).toEqual(brand);
 	});
 
 	it("upsertTheme returns null when the write yields no row", async () => {
@@ -627,6 +702,32 @@ describe("ThemeLive admin surface", () => {
 		).rejects.toThrow();
 	});
 
+	it("publish by id dies when the update returns no row", async () => {
+		// select() finds the row but the update yields nothing — e.g. a
+		// concurrent delete between the two statements.
+		const vanishingDb = {
+			select: () => ({
+				from: () => ({ where: () => ({ limit: async () => [{ id: 4 }] }) }),
+			}),
+			update: () => ({
+				set: () => ({ where: () => ({ returning: async () => [] }) }),
+			}),
+		} as unknown as DbClient;
+		const rt = makeRuntime(vanishingDb);
+		try {
+			await expect(
+				rt.runPromise(
+					asUser(
+						ADMIN,
+						withTheme((t) => t.publish({ id: 4, scope: "platform", scopeId: "", seeds: {} })),
+					),
+				),
+			).rejects.toThrow("theme upsert returned no row");
+		} finally {
+			await rt.dispose();
+		}
+	});
+
 	it("remove deletes the row for admins and denies non-admins", async () => {
 		const id = await insertRow(d1, { scope: "platform", appName: "Doomed" });
 		await runtime.runPromise(
@@ -657,6 +758,40 @@ describe("ThemeLive admin surface", () => {
 			),
 		).rejects.toThrow("cannot delete the main theme");
 		expect(await getThemeById(db, id)).not.toBeNull();
+	});
+
+	it("listAssets summarizes upload rows for admins and denies non-admins", async () => {
+		const themeId = await insertRow(d1, { scope: "platform" });
+		const a = await insertAsset(d1, { themeId, kind: "favicon", r2Key: "k1" });
+		const b = await insertAsset(d1, {
+			themeId,
+			kind: "font",
+			status: "failed",
+			variants: JSON.stringify({ error: "boom" }),
+		});
+		const c = await insertAsset(d1, { themeId, kind: "font", variants: "{oops" });
+		await insertAsset(d1, { themeId: null, kind: "favicon" });
+		const rows = await runtime.runPromise(
+			asUser(
+				ADMIN,
+				withTheme((t) => t.listAssets(themeId)),
+			),
+		);
+		// Newest first (created_at ties break on id desc).
+		expect(rows.map((r) => r.id)).toEqual([c, b, a]);
+		expect(rows[0]?.variants).toBeNull(); // invalid JSON degrades to null
+		expect(rows[1]?.variants).toEqual({ error: "boom" });
+		expect(rows[2]?.variants).toBeNull(); // absent column
+		expect(rows[2]?.r2Key).toBe("k1");
+		expect(rows[2]?.createdAt).toBe(new Date(0).toISOString());
+		await expect(
+			runtime.runPromise(
+				asUser(
+					PLAIN,
+					withTheme((t) => t.listAssets(themeId)),
+				),
+			),
+		).rejects.toThrowError(Forbidden);
 	});
 
 	it("previewRow returns disabled rows for admins", async () => {

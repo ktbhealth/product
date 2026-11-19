@@ -198,4 +198,11 @@ describe("makeAuthService", () => {
 			await db.select().from(verificationTable).where(eq(verificationTable.identifier, userEmail)),
 		).toHaveLength(0);
 	});
+
+	it("deleteUser on a missing user skips the verification cleanup", async () => {
+		const { service } = makeStack();
+		// No user row → no email → the verification delete is skipped;
+		// the call still resolves without throwing.
+		await expect(service.deleteUser("ghost")).resolves.toBeUndefined();
+	});
 });

@@ -195,6 +195,11 @@ describe("KvAdminPage", () => {
 		expect(screen.getByText("alpha · 1")).toBeTruthy();
 	});
 
+	it("defaults the table chrome locale to en when none is passed", () => {
+		render(<KvAdminPage data={data([], 0, [])} />);
+		expect(screen.getByText("No entries found")).toBeTruthy();
+	});
+
 	it("shows the load error when the list fn fails or returns null", async () => {
 		fns.kvListFn.mockResolvedValue(null);
 		fns.kvNamespacesFn.mockResolvedValue(null);

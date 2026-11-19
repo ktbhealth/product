@@ -641,6 +641,126 @@ describe("RichTextAdminPage", () => {
 		expect(await screen.findByText("Could not delete the document.")).toBeTruthy();
 	});
 
+	it("renders the untitled fallback for a document with an empty title", () => {
+		render(<RichTextAdminPage docs={[row({ title: "" })]} locale="en" />);
+		expect(screen.getByText("Untitled")).toBeTruthy();
+	});
+
+	it("defaults the table chrome locale to en when none is passed", () => {
+		render(<RichTextAdminPage docs={[]} />);
+		expect(screen.getByText("No documents yet")).toBeTruthy();
+	});
+
+	it("toasts saveFailed when the create fn throws", async () => {
+		const user = userEvent.setup();
+		fns.createRichTextFn.mockRejectedValue(new Error("boom"));
+		render(<RichTextAdminPage docs={[]} locale="en" />);
+		await user.click(screen.getByText("New document"));
+		await screen.findByText("Could not save the document.");
+		expect(screen.queryByTestId("rich-text-editor")).toBeNull();
+	});
+
+	it("dismisses a list toast via its close button", async () => {
+		const user = userEvent.setup();
+		fns.createRichTextFn.mockResolvedValue(null);
+		render(<RichTextAdminPage docs={[]} locale="en" />);
+		await user.click(screen.getByText("New document"));
+		await screen.findByText("Could not save the document.");
+		await user.click(screen.getByLabelText("Dismiss notification"));
+		await waitFor(() => expect(screen.queryByText("Could not save the document.")).toBeNull());
+	});
+
+	it("dismisses an editor toast via its close button", async () => {
+		const user = userEvent.setup();
+		fns.createRichTextFn.mockResolvedValue(docWire({ id: 5 }));
+		fns.updateRichTextFn.mockResolvedValue(null);
+		render(<RichTextAdminPage docs={[]} locale="en" />);
+		await user.click(screen.getByText("New document"));
+		await screen.findByTestId("rich-text-editor");
+		changeEditor("<p>hi</p>");
+		await screen.findByText("Could not save the document.", undefined, { timeout: 3000 });
+		await user.click(screen.getByLabelText("Dismiss notification"));
+		await waitFor(() => expect(screen.queryByText("Could not save the document.")).toBeNull());
+	});
+
+	it("ignores a late doc resolution after leaving the loading editor", async () => {
+		const user = userEvent.setup();
+		let resolveDoc: (doc: unknown) => void = () => {};
+		fns.richTextDocFn.mockReturnValue(
+			new Promise((resolve) => {
+				resolveDoc = resolve;
+			}),
+		);
+		const view = render(<RichTextAdminPage docs={[row({})]} locale="en" />);
+		await user.click(screen.getByLabelText("Edit"));
+		navigate(view.rerender, <RichTextAdminPage docs={[row({})]} locale="en" />);
+		// Resolve after the pane unmounted — the cancelled load must not
+		// setState or toast.
+		await act(async () => {
+			resolveDoc(docWire());
+		});
+		expect(screen.queryByTestId("rich-text-editor")).toBeNull();
+		expect(screen.queryByText("Could not load the document.")).toBeNull();
+	});
+
+	it("ignores a late doc rejection after leaving the loading editor", async () => {
+		const user = userEvent.setup();
+		let rejectDoc: (error: unknown) => void = () => {};
+		fns.richTextDocFn.mockReturnValue(
+			new Promise((_, reject) => {
+				rejectDoc = reject;
+			}),
+		);
+		const view = render(<RichTextAdminPage docs={[row({})]} locale="en" />);
+		await user.click(screen.getByLabelText("Edit"));
+		navigate(view.rerender, <RichTextAdminPage docs={[row({})]} locale="en" />);
+		await act(async () => {
+			rejectDoc(new Error("late boom"));
+		});
+		expect(screen.queryByText("Could not load the document.")).toBeNull();
+	});
+
+	it("shows the saving indicator while a save is in flight", async () => {
+		const user = userEvent.setup();
+		fns.createRichTextFn.mockResolvedValue(docWire({ id: 5 }));
+		let resolveSave: (doc: unknown) => void = () => {};
+		fns.updateRichTextFn.mockReturnValue(
+			new Promise((resolve) => {
+				resolveSave = resolve;
+			}),
+		);
+		render(<RichTextAdminPage docs={[]} locale="en" />);
+		await user.click(screen.getByText("New document"));
+		await screen.findByTestId("rich-text-editor");
+		changeEditor("<p>hi</p>");
+		await waitFor(() => expect(fns.updateRichTextFn).toHaveBeenCalled(), { timeout: 3000 });
+		expect(await screen.findByText("Saving…")).toBeTruthy();
+		await act(async () => {
+			resolveSave(docWire({ id: 5 }));
+		});
+	});
+
+	it("clears the pending saved timer when a second save lands", async () => {
+		const user = userEvent.setup();
+		fns.createRichTextFn.mockResolvedValue(docWire({ id: 5 }));
+		fns.updateRichTextFn.mockResolvedValue(docWire({ id: 5 }));
+		render(<RichTextAdminPage docs={[]} locale="en" />);
+		await user.click(screen.getByText("New document"));
+		await screen.findByTestId("rich-text-editor");
+		changeEditor("<p>one</p>");
+		await waitFor(() => expect(fns.updateRichTextFn).toHaveBeenCalledTimes(1), {
+			timeout: 3000,
+		});
+		// The first save armed the "Saved" indicator; a second save
+		// completing inside its 2s window must clear and re-arm it.
+		await screen.findByText("Saved");
+		changeEditor("<p>two</p>");
+		await waitFor(() => expect(fns.updateRichTextFn).toHaveBeenCalledTimes(2), {
+			timeout: 3000,
+		});
+		await screen.findByText("Saved");
+	});
+
 	it("opens the editor directly for a ?doc= deep link", async () => {
 		search.current = { doc: "7" };
 		fns.richTextDocFn.mockResolvedValue(docWire({ id: 7, title: "Linked" }));
@@ -648,6 +768,14 @@ describe("RichTextAdminPage", () => {
 		await waitFor(() => expect(fns.richTextDocFn).toHaveBeenCalledWith({ data: { id: 7 } }));
 		await screen.findByTestId("rich-text-editor");
 		expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Linked");
+	});
+
+	it("opens the editor directly for a numeric ?doc= deep link", async () => {
+		search.current = { doc: 7 };
+		fns.richTextDocFn.mockResolvedValue(docWire({ id: 7, title: "Linked" }));
+		render(<RichTextAdminPage docs={[row({ id: 7, title: "Linked" })]} locale="en" />);
+		await waitFor(() => expect(fns.richTextDocFn).toHaveBeenCalledWith({ data: { id: 7 } }));
+		await screen.findByTestId("rich-text-editor");
 	});
 
 	it("ignores a malformed ?doc= param and shows the list", () => {

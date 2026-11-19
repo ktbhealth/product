@@ -105,6 +105,45 @@ describe("AllDocumentsPage", () => {
 		);
 	});
 
+	it("paginates backwards through browseDocumentsFn", async () => {
+		fns.browseDocumentsFn.mockResolvedValue(pageWire({ rows: [doc({ id: 26 })], total: 250 }));
+		render(<AllDocumentsPage collections={[]} initialPage={pageWire({ rows: [], total: 250 })} />);
+		fireEvent.click(screen.getByText("Next"));
+		await waitFor(() =>
+			expect(fns.browseDocumentsFn).toHaveBeenCalledWith({ data: { limit: 25, offset: 25 } }),
+		);
+		fireEvent.click(screen.getByText("Previous"));
+		await waitFor(() =>
+			expect(fns.browseDocumentsFn).toHaveBeenNthCalledWith(2, {
+				data: { limit: 25, offset: 0 },
+			}),
+		);
+	});
+
+	it("previews undefined, unserializable and oversized payloads", () => {
+		const circular: Record<string, unknown> = {};
+		circular.self = circular;
+		render(
+			<AllDocumentsPage
+				collections={[]}
+				initialPage={pageWire({
+					rows: [
+						doc({ id: 1, data: undefined as unknown as DocumentWire["data"] }),
+						doc({ id: 2, data: circular as DocumentWire["data"] }),
+						doc({ id: 3, data: { title: "x".repeat(200) } }),
+					],
+					total: 3,
+				})}
+			/>,
+		);
+		// JSON.stringify(undefined) is undefined → String(value) fallback.
+		expect(screen.getByText("undefined")).toBeTruthy();
+		// Circular data throws inside stringify → catch → String(value).
+		expect(screen.getByText("[object Object]")).toBeTruthy();
+		// The oversized payload truncates at PREVIEW_LENGTH with an ellipsis.
+		expect(screen.getByText((text) => text.endsWith("…"))).toBeTruthy();
+	});
+
 	it("shows the empty state and the load-failed message", async () => {
 		const { unmount } = render(
 			<AllDocumentsPage collections={[]} initialPage={pageWire({ rows: [], total: 0 })} />,

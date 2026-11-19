@@ -181,6 +181,7 @@ export function RichTextDeleteDialog({
 												type="button"
 												aria-pressed={selected}
 												onClick={() => {
+													/* v8 ignore next -- action buttons only render while a doc is open, so docId is never null here */
 													if (docId !== null) setSelected({ docId, id: action.id });
 												}}
 												className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${

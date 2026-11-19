@@ -281,6 +281,7 @@ function RichTextEditorPane({ id, initial, plugins, pathname, t, onExit, onToast
 	const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+	/* v8 ignore next -- the mount effect always replaces this stub before the deferred flush can call it */
 	const exitRef = useRef<() => void>(() => {});
 	const loadCancelledRef = useRef(false);
 	const unmountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

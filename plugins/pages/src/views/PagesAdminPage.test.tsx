@@ -85,6 +85,19 @@ describe("PagesAdminPage", () => {
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
 	});
 
+	it("defaults the table chrome locale to en when none is passed", () => {
+		render(
+			<PagesAdminPage
+				pages={[]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+			/>,
+		);
+		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+	});
+
 	it("localizes copy for other locales", () => {
 		render(
 			<PagesAdminPage

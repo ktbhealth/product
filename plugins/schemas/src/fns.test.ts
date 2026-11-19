@@ -226,6 +226,29 @@ describe("schemas fns", () => {
 		});
 	});
 
+	it("validateSchemaFn returns the empty result while the panel plugin is disabled", async () => {
+		currentEmail = null;
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const states = yield* PluginStates;
+				yield* states.setEnabled(["schemas.panel"], false);
+			}),
+		);
+		try {
+			await expect(validateSchemaFn({ data: { schemaId: 1, data: {} } })).resolves.toEqual({
+				valid: false,
+				issues: [],
+			});
+		} finally {
+			await runtime.runPromise(
+				Effect.gen(function* () {
+					const states = yield* PluginStates;
+					yield* states.setEnabled(["schemas.panel"], true);
+				}),
+			);
+		}
+	});
+
 	it("propagates unexpected service errors instead of mapping them", async () => {
 		const stubSchemas = Schemas.of({
 			adminList: () => Effect.fail({ _tag: "Other" }),
@@ -288,7 +311,15 @@ describe("schemas fns", () => {
 			adminUpdate: () => Effect.fail(new Error("plain update failure")),
 			adminRemove: () => Effect.fail("plain delete failure"),
 			getById: () => Effect.succeed(null),
-			validate: () => Effect.succeed({ valid: false, issues: [] }),
+			// schemaId 1 fails with a handled domain error, schemaId 2
+			// with an untranslatable one — the fn's catch collapses the
+			// first to EMPTY_RESULT and rethrows the second.
+			validate: (id: number) =>
+				id === 1
+					? Effect.fail({ _tag: "SchemaNotFound" })
+					: id === 2
+						? Effect.fail(new Error("plain validate failure"))
+						: Effect.succeed({ valid: false, issues: [] }),
 		} as unknown as Schemas["Service"]);
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
@@ -317,12 +348,16 @@ describe("schemas fns", () => {
 				(error: unknown) => error,
 			);
 			expect(deleteError).toBe("plain delete failure");
-			// Public validate degrades handled failures to the empty result.
+			// Public validate degrades handled failures to the empty
+			// result and rethrows untranslatable ones.
 			currentEmail = null;
 			await expect(validateSchemaFn({ data: { schemaId: 1, data: {} } })).resolves.toEqual({
 				valid: false,
 				issues: [],
 			});
+			await expect(validateSchemaFn({ data: { schemaId: 2, data: {} } })).rejects.toBeInstanceOf(
+				Error,
+			);
 		} finally {
 			installRuntime(runtime);
 			await rt.dispose();

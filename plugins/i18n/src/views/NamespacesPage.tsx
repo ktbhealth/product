@@ -357,6 +357,7 @@ export function NamespacesPage({
 			<Dialog
 				open={missingFor !== null}
 				onOpenChange={(o) => {
+					/* v8 ignore else -- open is controlled by missingFor; only close events fire */
 					if (!o) {
 						missingSeq.current += 1;
 						setMissingFor(null);

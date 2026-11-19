@@ -112,6 +112,9 @@ describe("I18nDraftsPlatformPage", () => {
 		cleanup();
 		render(<I18nDraftsPlatformPage ctx={ctx} data={{ drafts: "nope", locales: 42 }} />);
 		expect(await screen.findByText("No pending drafts.")).toBeTruthy();
+		cleanup();
+		render(<I18nDraftsPlatformPage ctx={ctx} data={null} />);
+		expect(await screen.findByText("No pending drafts.")).toBeTruthy();
 	});
 });
 
@@ -147,6 +150,9 @@ describe("I18nNamespacesPlatformPage", () => {
 				data={{ namespaces: 1, coverage: "x", locales: null }}
 			/>,
 		);
+		expect(await screen.findByText("No namespaces registered.")).toBeTruthy();
+		cleanup();
+		render(<I18nNamespacesPlatformPage ctx={ctx} data={null} />);
 		expect(await screen.findByText("No namespaces registered.")).toBeTruthy();
 	});
 });

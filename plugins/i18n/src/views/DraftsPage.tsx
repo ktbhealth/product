@@ -156,6 +156,7 @@ export function DraftsPage({
 	/** Sequential bulk action over the currently visible selection. */
 	const runBulk = async (action: "publish" | "discard") => {
 		const rows = drafts.filter((row) => selected.has(rowId(row)));
+		/* v8 ignore next -- runBulk only fires while a visible row is selected */
 		if (rows.length === 0) return;
 		setError(null);
 		setNotice(null);
@@ -179,7 +180,14 @@ export function DraftsPage({
 			setNotice(
 				failed === 0
 					? m.drafts.bulkOk(verb, ok)
-					: m.drafts.bulkPartial(verb, ok, failed, firstError !== null ? ` — ${firstError}` : ""),
+					: m.drafts.bulkPartial(
+							verb,
+							ok,
+							failed,
+							firstError !== null
+								? ` — ${firstError}`
+								: /* v8 ignore next -- a failure always records firstError */ "",
+						),
 			);
 			if (ok > 0) await router.invalidate();
 			setSelected(new Set());
