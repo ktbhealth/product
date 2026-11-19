@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { fontMessages, isFontLocale, FONTS_LOCALES, I18N_NAMESPACE } from "./i18n.ts";
+import {
+	fontMessages,
+	i18nMessagesFor,
+	isFontLocale,
+	FONTS_LOCALES,
+	I18N_NAMESPACE,
+} from "./i18n.ts";
 
 describe("fonts i18n", () => {
 	it("covers every declared locale with the full key set", () => {
@@ -24,7 +30,17 @@ describe("fonts i18n", () => {
 		expect(fontMessages("fr")).toEqual(fontMessages("en"));
 	});
 
+	it("resolves function-valued messages per locale", () => {
+		for (const locale of FONTS_LOCALES) {
+			expect(fontMessages(locale).filteredCount(2, 9)).toContain("2");
+		}
+	});
+
 	it("declares the fonts namespace for baseline import", () => {
 		expect(I18N_NAMESPACE).toBe("fonts");
+		for (const locale of FONTS_LOCALES) {
+			expect(i18nMessagesFor(locale)).toBe(fontMessages(locale));
+		}
+		expect(i18nMessagesFor("fr")).toBe(fontMessages("en"));
 	});
 });

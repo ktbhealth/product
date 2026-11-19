@@ -30,6 +30,12 @@ describe("document-store i18n", () => {
 		expect(documentStoreMessages("es").deleteBody("7")).toContain("7");
 		expect(documentStoreMessages("en").pageInfo(2, 9)).toContain("2");
 		expect(documentStoreMessages("en").deleteInUse("a.b")).toContain("a.b");
+		expect(documentStoreMessages("en").scopeTenant(3)).toContain("3");
+		expect(documentStoreMessages("en").scopeOwner("u1")).toContain("u1");
+		expect(documentStoreMessages("pt-BR").scopeTenant(3)).toContain("3");
+		expect(documentStoreMessages("pt-BR").scopeOwner("u1")).toContain("u1");
+		expect(documentStoreMessages("es").scopeTenant(3)).toContain("3");
+		expect(documentStoreMessages("es").scopeOwner("u1")).toContain("u1");
 	});
 
 	it("isDocumentStoreLocale matches declared locales only", () => {
