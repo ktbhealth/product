@@ -192,9 +192,7 @@ describe("WebSpeechTranscriber with mocked browser SpeechRecognition", () => {
 			length: 1,
 			get 0() {
 				alternativeReads += 1;
-				return alternativeReads === 1
-					? { transcript: "olá", confidence: 0.9 }
-					: undefined;
+				return alternativeReads === 1 ? { transcript: "olá", confidence: 0.9 } : undefined;
 			},
 		};
 		currentInstance!.onresult!({
