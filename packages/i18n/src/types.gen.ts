@@ -203,7 +203,6 @@ export type I18nKey =
 	| "app.panel_group_account"
 	| "app.panel_group_assurance"
 	| "app.panel_group_console"
-	| "app.panel_group_content"
 	| "app.panel_group_domain_data"
 	| "app.panel_group_evaluation"
 	| "app.panel_group_governance"
@@ -211,6 +210,7 @@ export type I18nKey =
 	| "app.panel_group_intelligence"
 	| "app.panel_group_presentation"
 	| "app.panel_group_runtime"
+	| "app.panel_group_site"
 	| "app.panel_group_storage"
 	| "app.panel_nav_activity"
 	| "app.panel_nav_dashboard"
@@ -1994,7 +1994,6 @@ export interface I18nTypedT {
 	(key: "app.panel_group_account"): Effect.Effect<string>;
 	(key: "app.panel_group_assurance"): Effect.Effect<string>;
 	(key: "app.panel_group_console"): Effect.Effect<string>;
-	(key: "app.panel_group_content"): Effect.Effect<string>;
 	(key: "app.panel_group_domain_data"): Effect.Effect<string>;
 	(key: "app.panel_group_evaluation"): Effect.Effect<string>;
 	(key: "app.panel_group_governance"): Effect.Effect<string>;
@@ -2002,6 +2001,7 @@ export interface I18nTypedT {
 	(key: "app.panel_group_intelligence"): Effect.Effect<string>;
 	(key: "app.panel_group_presentation"): Effect.Effect<string>;
 	(key: "app.panel_group_runtime"): Effect.Effect<string>;
+	(key: "app.panel_group_site"): Effect.Effect<string>;
 	(key: "app.panel_group_storage"): Effect.Effect<string>;
 	(key: "app.panel_nav_activity"): Effect.Effect<string>;
 	(key: "app.panel_nav_dashboard"): Effect.Effect<string>;

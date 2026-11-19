@@ -124,7 +124,6 @@ const PANEL_GROUPS: Record<string, string> = {
 	Account: "panel_group_account",
 	Assurance: "panel_group_assurance",
 	Console: "panel_group_console",
-	Content: "panel_group_content",
 	"Domain data": "panel_group_domain_data",
 	Evaluation: "panel_group_evaluation",
 	// Clinical portals still group the activity feed under "Governance"
@@ -135,6 +134,7 @@ const PANEL_GROUPS: Record<string, string> = {
 	Intelligence: "panel_group_intelligence",
 	Presentation: "panel_group_presentation",
 	Runtime: "panel_group_runtime",
+	Site: "panel_group_site",
 	Storage: "panel_group_storage",
 };
 

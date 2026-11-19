@@ -525,9 +525,6 @@ export const I18N_MANIFEST = {
 		panel_group_console: {
 			params: [],
 		},
-		panel_group_content: {
-			params: [],
-		},
 		panel_group_domain_data: {
 			params: [],
 		},
@@ -547,6 +544,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		panel_group_runtime: {
+			params: [],
+		},
+		panel_group_site: {
 			params: [],
 		},
 		panel_group_storage: {
@@ -6083,7 +6083,6 @@ export const I18N_BASE_CATALOG = {
 	panel_group_account: "Account",
 	panel_group_assurance: "Assurance",
 	panel_group_console: "Console",
-	panel_group_content: "Content",
 	panel_group_domain_data: "Domain data",
 	panel_group_evaluation: "Evaluation",
 	panel_group_governance: "Governance",
@@ -6091,6 +6090,7 @@ export const I18N_BASE_CATALOG = {
 	panel_group_intelligence: "Intelligence",
 	panel_group_presentation: "Presentation",
 	panel_group_runtime: "Runtime",
+	panel_group_site: "Site",
 	panel_group_storage: "Storage",
 	panel_nav_activity: "Activity",
 	panel_nav_dashboard: "Dashboard",

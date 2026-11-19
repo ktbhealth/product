@@ -48,7 +48,7 @@ describe("rich-text plugins", () => {
 				? sidebar.content.item
 				: ({ to: "", group: "" } as { to: string; group: string });
 		expect(item.to).toBe("/platform/rich-text");
-		expect(item.group).toBe("Content");
+		expect(item.group).toBe("Site");
 	});
 
 	it("declares the admin console page with guard and loader", () => {

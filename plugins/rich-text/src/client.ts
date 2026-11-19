@@ -28,7 +28,7 @@ export const richTextChromePlugin = definePlugin({
 					to: "/platform/rich-text",
 					label: "Rich text",
 					icon: PenLineIcon,
-					group: "Content",
+					group: "Site",
 				},
 			},
 		},

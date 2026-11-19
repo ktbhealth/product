@@ -1032,12 +1032,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "panel_group_content",
-		locale: "en",
-		value: "Content",
-	},
-	{
-		namespace: "app",
 		key: "panel_group_domain_data",
 		locale: "en",
 		value: "Domain data",
@@ -1077,6 +1071,12 @@ export const I18N_BASELINE = [
 		key: "panel_group_runtime",
 		locale: "en",
 		value: "Runtime",
+	},
+	{
+		namespace: "app",
+		key: "panel_group_site",
+		locale: "en",
+		value: "Site",
 	},
 	{
 		namespace: "app",
@@ -2338,12 +2338,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "panel_group_content",
-		locale: "es",
-		value: "Contenido",
-	},
-	{
-		namespace: "app",
 		key: "panel_group_domain_data",
 		locale: "es",
 		value: "Datos clínicos",
@@ -2383,6 +2377,12 @@ export const I18N_BASELINE = [
 		key: "panel_group_runtime",
 		locale: "es",
 		value: "Runtime",
+	},
+	{
+		namespace: "app",
+		key: "panel_group_site",
+		locale: "es",
+		value: "Sitio",
 	},
 	{
 		namespace: "app",
@@ -3644,12 +3644,6 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "app",
-		key: "panel_group_content",
-		locale: "pt-BR",
-		value: "Conteúdo",
-	},
-	{
-		namespace: "app",
 		key: "panel_group_domain_data",
 		locale: "pt-BR",
 		value: "Dados clínicos",
@@ -3689,6 +3683,12 @@ export const I18N_BASELINE = [
 		key: "panel_group_runtime",
 		locale: "pt-BR",
 		value: "Runtime",
+	},
+	{
+		namespace: "app",
+		key: "panel_group_site",
+		locale: "pt-BR",
+		value: "Site",
 	},
 	{
 		namespace: "app",

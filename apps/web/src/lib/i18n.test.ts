@@ -233,6 +233,7 @@ describe("pluginPanelGroup", () => {
 			"Intelligence",
 			"Presentation",
 			"Runtime",
+			"Site",
 			"Storage",
 		]) {
 			expect(pluginPanelGroup(group, FULL)).toBe(group);
