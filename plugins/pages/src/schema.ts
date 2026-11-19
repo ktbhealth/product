@@ -1,14 +1,16 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { richText } from "@ktb/rich-text/schema";
 
 /**
  * Custom pages (T-083): admin-authored, DB-stored pages rendered by
  * this plugin through the generic `pages` contribution — one "/*"
  * wildcard descriptor whose guard/loader resolve `path` against this
- * table at request time. `content` is a markdown subset (headings,
- * lists, paragraphs, inline bold/italic/code/links — no raw HTML); the
- * renderer is plugin-side, so the column stays plain text. `published`
- * gates public visibility (drafts 404); `showInNav` + `sortOrder` drive
- * the optional app-header nav listing.
+ * table at request time. The page body is not stored here: `richTextId`
+ * references a `rich_text` document (@ktb/rich-text) whose parsed value
+ * the wildcard loader resolves at request time — null means the page
+ * renders with no body. `published` gates public visibility (drafts
+ * 404); `showInNav` + `sortOrder` drive the optional app-header nav
+ * listing.
  *
  * Plugin-owned table definition (P-061): aggregated into the drizzle
  * schema by the generated packages/db/src/schema.gen.ts — consumers
@@ -20,7 +22,7 @@ export const customPage = sqliteTable(
 		id: integer().primaryKey({ autoIncrement: true }),
 		path: text().notNull(),
 		title: text().notNull(),
-		content: text().notNull(),
+		richTextId: integer("rich_text_id").references(() => richText.id),
 		published: integer({ mode: "boolean" }).notNull().default(false),
 		showInNav: integer("show_in_nav", { mode: "boolean" }).notNull().default(false),
 		sortOrder: integer("sort_order").notNull().default(0),

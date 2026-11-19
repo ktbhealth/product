@@ -525,6 +525,9 @@ export const I18N_MANIFEST = {
 		panel_group_console: {
 			params: [],
 		},
+		panel_group_content: {
+			params: [],
+		},
 		panel_group_domain_data: {
 			params: [],
 		},
@@ -562,6 +565,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		panel_nav_plugins: {
+			params: [],
+		},
+		panel_nav_rich_text: {
 			params: [],
 		},
 		panel_nav_users: {
@@ -3836,7 +3842,7 @@ export const I18N_MANIFEST = {
 		fieldTitle: {
 			params: [],
 		},
-		fieldContent: {
+		fieldContentDoc: {
 			params: [],
 		},
 		fieldPublished: {
@@ -3848,7 +3854,13 @@ export const I18N_MANIFEST = {
 		fieldSortOrder: {
 			params: [],
 		},
-		contentHint: {
+		contentDocNone: {
+			params: [],
+		},
+		contentDocHint: {
+			params: [],
+		},
+		manageDocs: {
 			params: [],
 		},
 		pathHint: {
@@ -4798,6 +4810,94 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		selectRole: {
+			params: [],
+		},
+	},
+	"rich-text": {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newDoc: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		back: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		colTitle: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		fieldTitle: {
+			params: [],
+		},
+		fieldContent: {
+			params: [],
+		},
+		untitled: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "title",
+				},
+			],
+			template: 'Delete "{title}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deletedEmpty: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+		saveFailed: {
 			params: [],
 		},
 	},
@@ -5753,6 +5853,7 @@ export const I18N_BASE_CATALOG = {
 	panel_group_account: "Account",
 	panel_group_assurance: "Assurance",
 	panel_group_console: "Console",
+	panel_group_content: "Content",
 	panel_group_domain_data: "Domain data",
 	panel_group_evaluation: "Evaluation",
 	panel_group_governance: "Governance",
@@ -5766,6 +5867,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_groups: "Groups",
 	panel_nav_ops: "Ops",
 	panel_nav_plugins: "Plugins",
+	panel_nav_rich_text: "Rich text",
 	panel_nav_users: "Users",
 	persona_business: "Business",
 	persona_developers: "Developers",

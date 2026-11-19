@@ -80,7 +80,7 @@ describe("pages fns", () => {
 
 	it("rejects anonymous admin callers but serves the public nav", async () => {
 		currentEmail = null;
-		await expect(createPageFn({ data: { path: "/x", title: "X", content: "" } })).rejects.toThrow(
+		await expect(createPageFn({ data: { path: "/x", title: "X" } })).rejects.toThrow(
 			"unauthenticated",
 		);
 		await expect(deletePageFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
@@ -92,12 +92,12 @@ describe("pages fns", () => {
 		currentEmail = "admin@x.com";
 		installServerFnRuntime(runtime, auth, { pluginEnabled: async () => false });
 		try {
-			await expect(createPageFn({ data: { path: "/x", title: "X", content: "" } })).rejects.toThrow(
+			await expect(createPageFn({ data: { path: "/x", title: "X" } })).rejects.toThrow(
 				'plugin "pages.panel" is disabled',
 			);
-			await expect(
-				updatePageFn({ data: { id: 1, path: "/x", title: "X", content: "" } }),
-			).rejects.toThrow('plugin "pages.panel" is disabled');
+			await expect(updatePageFn({ data: { id: 1, path: "/x", title: "X" } })).rejects.toThrow(
+				'plugin "pages.panel" is disabled',
+			);
 			await expect(deletePageFn({ data: { id: 1 } })).rejects.toThrow(
 				'plugin "pages.panel" is disabled',
 			);
@@ -108,12 +108,8 @@ describe("pages fns", () => {
 
 	it("denies non-admin principals", async () => {
 		currentEmail = "doc@x.com";
-		await expect(
-			createPageFn({ data: { path: "/x", title: "X", content: "" } }),
-		).resolves.toBeNull();
-		await expect(
-			updatePageFn({ data: { id: 1, path: "/x", title: "X", content: "" } }),
-		).resolves.toBeNull();
+		await expect(createPageFn({ data: { path: "/x", title: "X" } })).resolves.toBeNull();
+		await expect(updatePageFn({ data: { id: 1, path: "/x", title: "X" } })).resolves.toBeNull();
 		await expect(deletePageFn({ data: { id: 1 } })).resolves.toBe(false);
 	});
 
@@ -123,7 +119,7 @@ describe("pages fns", () => {
 			data: {
 				path: "/hello",
 				title: "Hello",
-				content: "# Hi",
+				richTextId: 4,
 				published: true,
 				showInNav: true,
 				sortOrder: 3,
@@ -132,6 +128,7 @@ describe("pages fns", () => {
 		expect(created).toMatchObject({
 			path: "/hello",
 			title: "Hello",
+			richTextId: 4,
 			published: true,
 			showInNav: true,
 			sortOrder: 3,
@@ -139,20 +136,16 @@ describe("pages fns", () => {
 		expect(created).not.toHaveProperty("createdAt");
 
 		// Duplicate path → handled failure → null.
-		await expect(
-			createPageFn({ data: { path: "/hello", title: "Dup", content: "" } }),
-		).resolves.toBeNull();
+		await expect(createPageFn({ data: { path: "/hello", title: "Dup" } })).resolves.toBeNull();
 		// Invalid path → null.
-		await expect(
-			createPageFn({ data: { path: "bad", title: "Bad", content: "" } }),
-		).resolves.toBeNull();
+		await expect(createPageFn({ data: { path: "bad", title: "Bad" } })).resolves.toBeNull();
 
 		const updated = await updatePageFn({
 			data: {
 				id: created!.id,
 				path: "/hello/",
 				title: "Hello!",
-				content: "bye",
+				richTextId: 4,
 				published: false,
 				showInNav: false,
 			},
@@ -162,12 +155,10 @@ describe("pages fns", () => {
 			path: "/hello",
 			title: "Hello!",
 		});
-		await expect(
-			updatePageFn({ data: { id: 999, path: "/x", title: "X", content: "" } }),
-		).resolves.toBeNull();
+		await expect(updatePageFn({ data: { id: 999, path: "/x", title: "X" } })).resolves.toBeNull();
 		await expect(
 			updatePageFn({
-				data: { id: created!.id, path: "/platform/x", title: "X", content: "" },
+				data: { id: created!.id, path: "/platform/x", title: "X" },
 			}),
 		).resolves.toBeNull();
 
@@ -177,7 +168,6 @@ describe("pages fns", () => {
 				id: created!.id,
 				path: "/hello",
 				title: "Hello",
-				content: "",
 				published: true,
 				showInNav: true,
 				sortOrder: 3,
@@ -195,6 +185,9 @@ describe("pages fns", () => {
 		await expect(createPageFn({ data: { path: 1 } } as never)).rejects.toBeInstanceOf(Error);
 		await expect(updatePageFn({ data: { path: "/x" } } as never)).rejects.toBeInstanceOf(Error);
 		await expect(deletePageFn({ data: { id: "1" } } as never)).rejects.toBeInstanceOf(Error);
+		await expect(
+			createPageFn({ data: { path: "/x", title: "X", richTextId: "nope" } } as never),
+		).rejects.toBeInstanceOf(Error);
 	});
 
 	it("navPagesFn returns [] while the render plugin is disabled", async () => {
@@ -203,7 +196,6 @@ describe("pages fns", () => {
 			data: {
 				path: "/nav",
 				title: "Nav",
-				content: "",
 				published: true,
 				showInNav: true,
 			},
@@ -256,12 +248,12 @@ describe("pages fns", () => {
 		try {
 			// The stub fails with an untranslatable tag — the fns' catch
 			// blocks only map the handled domain errors, so it propagates.
-			await expect(
-				createPageFn({ data: { path: "/x", title: "X", content: "" } }),
-			).rejects.toMatchObject({ _tag: "Other" });
-			await expect(
-				updatePageFn({ data: { id: 1, path: "/x", title: "X", content: "" } }),
-			).rejects.toMatchObject({ _tag: "Other" });
+			await expect(createPageFn({ data: { path: "/x", title: "X" } })).rejects.toMatchObject({
+				_tag: "Other",
+			});
+			await expect(updatePageFn({ data: { id: 1, path: "/x", title: "X" } })).rejects.toMatchObject(
+				{ _tag: "Other" },
+			);
 			await expect(deletePageFn({ data: { id: 1 } })).rejects.toMatchObject({
 				_tag: "Other",
 			});
@@ -302,14 +294,12 @@ describe("pages fns", () => {
 		installRuntime(rt);
 		currentEmail = "admin@x.com";
 		try {
+			await expect(createPageFn({ data: { path: "/x", title: "X" } })).resolves.toBeNull();
+			await expect(createPageFn({ data: { path: "/fail", title: "X" } })).rejects.toBeInstanceOf(
+				Error,
+			);
 			await expect(
-				createPageFn({ data: { path: "/x", title: "X", content: "" } }),
-			).resolves.toBeNull();
-			await expect(
-				createPageFn({ data: { path: "/fail", title: "X", content: "" } }),
-			).rejects.toBeInstanceOf(Error);
-			await expect(
-				updatePageFn({ data: { id: 1, path: "/x", title: "X", content: "" } }),
+				updatePageFn({ data: { id: 1, path: "/x", title: "X" } }),
 			).rejects.toBeInstanceOf(Error);
 			const deleteError = await deletePageFn({ data: { id: 1 } }).catch((error: unknown) => error);
 			expect(deleteError).toBe("plain delete failure");

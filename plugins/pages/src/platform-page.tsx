@@ -1,6 +1,6 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
-import type { AdminPageRow, PagesAdminPageProps } from "./views/PagesAdminPage.tsx";
+import type { AdminPageRow, PagesAdminPageProps, RichTextDocRef } from "./views/PagesAdminPage.tsx";
 import { PagesAdminPage } from "./views/PagesAdminPage.tsx";
 
 const asRows = (data: unknown): readonly AdminPageRow[] =>
@@ -14,16 +14,38 @@ const asRows = (data: unknown): readonly AdminPageRow[] =>
 			)
 		: [];
 
+const asDocs = (data: unknown): readonly RichTextDocRef[] =>
+	Array.isArray(data)
+		? data.filter(
+				(doc): doc is RichTextDocRef =>
+					typeof doc === "object" &&
+					doc !== null &&
+					typeof (doc as RichTextDocRef).id === "number" &&
+					typeof (doc as RichTextDocRef).title === "string",
+			)
+		: [];
+
+const asData = (
+	data: unknown,
+): { pages: readonly AdminPageRow[]; docs: readonly RichTextDocRef[] } => {
+	if (typeof data !== "object" || data === null) return { pages: [], docs: [] };
+	const d = data as { pages?: unknown; docs?: unknown };
+	return { pages: asRows(d.pages), docs: asDocs(d.docs) };
+};
+
 /**
  * `panel.pages` component for /platform/pages (T-083): the host
- * dispatcher hands the loader Effect's result (every `custom_pages`
- * row, drafts included) as `data`; this wrapper narrows it into the
- * view's props. The admin gate already ran in the page `guard` and
- * inside every `CustomPages.admin*` method.
+ * dispatcher hands the loader Effect's result (`{ pages, docs }` — every
+ * `custom_pages` row, drafts included, plus the rich-text document
+ * picker options) as `data`; this wrapper narrows it into the view's
+ * props. The admin gate already ran in the page `guard` and inside
+ * every `CustomPages.admin*` method.
  */
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
+	const { pages, docs } = asData(data);
 	const props: PagesAdminPageProps = {
-		pages: asRows(data),
+		pages,
+		docs,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

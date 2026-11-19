@@ -28,7 +28,7 @@ const row = (over: Record<string, unknown> = {}) => ({
 	id: 1,
 	path: "/about",
 	title: "About",
-	content: "body",
+	richTextId: 7,
 	published: true,
 	showInNav: false,
 	sortOrder: 0,
@@ -47,17 +47,34 @@ describe("PagesAdminConsolePage", () => {
 	});
 
 	it("narrows loader rows into the admin view", () => {
-		render(<PagesAdminConsolePage data={[row({})]} ctx={ctx} />);
+		render(
+			<PagesAdminConsolePage
+				data={{ pages: [row({})], docs: [{ id: 7, title: "Doc" }] }}
+				ctx={ctx}
+			/>,
+		);
 		expect(screen.getByText("/about")).toBeTruthy();
 		expect(screen.getByText("About")).toBeTruthy();
 		expect(screen.getByText("Published")).toBeTruthy();
 	});
 
-	it("drops malformed rows and survives non-array data", () => {
-		render(<PagesAdminConsolePage data={[row({}), { nope: true }, "x", null]} ctx={ctx} />);
+	it("drops malformed rows and docs, and survives non-object data", () => {
+		render(
+			<PagesAdminConsolePage
+				data={{
+					pages: [row({}), { nope: true }, "x", null],
+					docs: [{ id: 7, title: "Doc" }, { nope: true }, "x"],
+				}}
+				ctx={ctx}
+			/>,
+		);
 		expect(screen.getAllByText("/about")).toHaveLength(1);
 		cleanup();
 		render(<PagesAdminConsolePage data="garbage" ctx={ctx} />);
+		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+		cleanup();
+		// A bare array (the pre-docs loader shape) narrows to empty.
+		render(<PagesAdminConsolePage data={[row({})]} ctx={ctx} />);
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
 	});
 });

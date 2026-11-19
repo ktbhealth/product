@@ -13,6 +13,7 @@ import {
 	CustomPages,
 	CustomPagesLive,
 	DuplicatePagePath,
+	InvalidPageInput,
 	InvalidPagePath,
 	PageNotFound,
 	normalizePagePath,
@@ -81,7 +82,6 @@ describe("CustomPagesLive", () => {
 	const input = (over: Partial<CustomPageInput> = {}): CustomPageInput => ({
 		path: "/about",
 		title: "About",
-		content: "# Hello",
 		...over,
 	});
 
@@ -92,6 +92,7 @@ describe("CustomPagesLive", () => {
 		expect(row!.published).toBe(false);
 		expect(row!.showInNav).toBe(false);
 		expect(row!.sortOrder).toBe(0);
+		expect(row!.richTextId).toBeNull();
 	});
 
 	it("adminCreate honors explicit flags and normalized paths", async () => {
@@ -103,6 +104,7 @@ describe("CustomPagesLive", () => {
 					published: true,
 					showInNav: true,
 					sortOrder: 2,
+					richTextId: 42,
 				}),
 			),
 		);
@@ -110,6 +112,7 @@ describe("CustomPagesLive", () => {
 		expect(row!.published).toBe(true);
 		expect(row!.showInNav).toBe(true);
 		expect(row!.sortOrder).toBe(2);
+		expect(row!.richTextId).toBe(42);
 	});
 
 	it("adminCreate rejects invalid and duplicate paths", async () => {
@@ -124,12 +127,41 @@ describe("CustomPagesLive", () => {
 		);
 	});
 
+	it("adminCreate/adminUpdate reject non-positive or non-integer richTextId", async () => {
+		for (const bad of [0, -3, 1.5]) {
+			await expect(
+				admin((p) => p.adminCreate(input({ path: `/bad-${bad}`, richTextId: bad }))),
+			).rejects.toBeInstanceOf(InvalidPageInput);
+		}
+		const target = await admin((p) => p.adminCreate(input({ path: "/rt-target" })));
+		await expect(
+			admin((p) => p.adminUpdate(target!.id, input({ path: "/rt-target", richTextId: 0 }))),
+		).rejects.toBeInstanceOf(InvalidPageInput);
+		// Explicit null clears the reference; absent also resolves null.
+		const linked = await admin((p) => p.adminCreate(input({ path: "/rt-linked", richTextId: 9 })));
+		expect(linked!.richTextId).toBe(9);
+		const cleared = await admin((p) =>
+			p.adminUpdate(linked!.id, input({ path: "/rt-linked", richTextId: null })),
+		);
+		expect(cleared.richTextId).toBeNull();
+		const absent = await admin((p) => p.adminUpdate(linked!.id, input({ path: "/rt-linked" })));
+		expect(absent.richTextId).toBeNull();
+	});
+
 	it("adminList returns every page ordered by sortOrder then path", async () => {
 		await admin((p) => p.adminCreate(input({ path: "/aaa", title: "A", sortOrder: 1 })));
 		await admin((p) => p.adminCreate(input({ path: "/zzz", title: "Z", sortOrder: 0 })));
 		const rows = await admin((p) => p.adminList());
-		// sortOrder asc, then path asc: /about(0), /zzz(0), /aaa(1), /team(2).
-		expect(rows.map((r) => r.path)).toEqual(["/about", "/zzz", "/aaa", "/team"]);
+		// sortOrder asc, then path asc: the sortOrder-0 rows (/about,
+		// /rt-linked, /rt-target, /zzz) come before /aaa(1) and /team(2).
+		expect(rows.map((r) => r.path)).toEqual([
+			"/about",
+			"/rt-linked",
+			"/rt-target",
+			"/zzz",
+			"/aaa",
+			"/team",
+		]);
 	});
 
 	it("adminUpdate rewrites fields, bumps updatedAt and keeps the id", async () => {
@@ -138,7 +170,7 @@ describe("CustomPagesLive", () => {
 			p.adminUpdate(created!.id, {
 				path: "/renamed/",
 				title: "Renamed",
-				content: "new body",
+				richTextId: 7,
 				published: true,
 				showInNav: true,
 				sortOrder: 5,
@@ -147,7 +179,7 @@ describe("CustomPagesLive", () => {
 		expect(updated.id).toBe(created!.id);
 		expect(updated.path).toBe("/renamed");
 		expect(updated.title).toBe("Renamed");
-		expect(updated.content).toBe("new body");
+		expect(updated.richTextId).toBe(7);
 		expect(updated.published).toBe(true);
 		expect(updated.showInNav).toBe(true);
 		expect(updated.sortOrder).toBe(5);

@@ -43,11 +43,13 @@ export interface PagesMessages {
 	readonly navHidden: string;
 	readonly fieldPath: string;
 	readonly fieldTitle: string;
-	readonly fieldContent: string;
+	readonly fieldContentDoc: string;
 	readonly fieldPublished: string;
 	readonly fieldShowInNav: string;
 	readonly fieldSortOrder: string;
-	readonly contentHint: string;
+	readonly contentDocNone: string;
+	readonly contentDocHint: string;
+	readonly manageDocs: string;
 	readonly pathHint: string;
 	readonly deleteTitle: string;
 	readonly deleteBody: (path: string) => string;
@@ -80,11 +82,13 @@ const en: PagesMessages = {
 	navHidden: "Hidden",
 	fieldPath: "Path",
 	fieldTitle: "Title",
-	fieldContent: "Content (Markdown)",
+	fieldContentDoc: "Content document",
 	fieldPublished: "Published",
 	fieldShowInNav: "Show in navigation",
 	fieldSortOrder: "Sort order",
-	contentHint: "Supports headings, lists, bold, italic, code and links.",
+	contentDocNone: "No document",
+	contentDocHint: "The page renders the selected rich-text document.",
+	manageDocs: "Manage documents",
 	pathHint: "Starts with / — e.g. /about. /platform paths are reserved.",
 	deleteTitle: "Delete page",
 	deleteBody: paramMessage("en", 'Delete "{path}"? This cannot be undone.', ["path"]),
@@ -117,11 +121,13 @@ const ptBR: PagesMessages = {
 	navHidden: "Oculta",
 	fieldPath: "Caminho",
 	fieldTitle: "Título",
-	fieldContent: "Conteúdo (Markdown)",
+	fieldContentDoc: "Documento de conteúdo",
 	fieldPublished: "Publicada",
 	fieldShowInNav: "Mostrar na navegação",
 	fieldSortOrder: "Ordem de exibição",
-	contentHint: "Suporta títulos, listas, negrito, itálico, código e links.",
+	contentDocNone: "Nenhum documento",
+	contentDocHint: "A página exibe o documento de texto rico selecionado.",
+	manageDocs: "Gerenciar documentos",
 	pathHint: "Começa com / — ex.: /sobre. Caminhos /platform são reservados.",
 	deleteTitle: "Excluir página",
 	deleteBody: paramMessage("pt-BR", 'Excluir "{path}"? Esta ação não pode ser desfeita.', ["path"]),
@@ -154,11 +160,13 @@ const es: PagesMessages = {
 	navHidden: "Oculta",
 	fieldPath: "Ruta",
 	fieldTitle: "Título",
-	fieldContent: "Contenido (Markdown)",
+	fieldContentDoc: "Documento de contenido",
 	fieldPublished: "Publicada",
 	fieldShowInNav: "Mostrar en la navegación",
 	fieldSortOrder: "Orden de visualización",
-	contentHint: "Admite encabezados, listas, negrita, cursiva, código y enlaces.",
+	contentDocNone: "Ningún documento",
+	contentDocHint: "La página muestra el documento de texto enriquecido seleccionado.",
+	manageDocs: "Gestionar documentos",
 	pathHint: "Empieza con / — p. ej. /acerca. Las rutas /platform están reservadas.",
 	deleteTitle: "Eliminar página",
 	deleteBody: paramMessage("es", '¿Eliminar "{path}"? Esta acción no se puede deshacer.', ["path"]),

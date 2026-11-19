@@ -47,6 +47,7 @@ export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["pages.services"],
+	optionalDeps: ["rich-text.services"],
 	pages: [
 		{
 			id: "pages.custom",
@@ -61,6 +62,7 @@ export const pagesPanelPlugin = definePlugin({
 	id: "pages.panel",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: ["platform.panel", "pages.services"],
+	optionalDeps: ["rich-text.services"],
 	panel: {
 		pages: [
 			{

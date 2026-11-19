@@ -386,6 +386,13 @@
       "when": 1795022941914,
       "tag": "0055_colorful_mattie_franklin",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1795050794492,
+      "tag": "0056_fluffy_silverclaw",
+      "breakpoints": true
     }
   ]
 }

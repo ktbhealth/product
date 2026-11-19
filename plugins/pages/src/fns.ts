@@ -25,7 +25,7 @@ export interface PageWire {
 	readonly id: number;
 	readonly path: string;
 	readonly title: string;
-	readonly content: string;
+	readonly richTextId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: number;
@@ -35,7 +35,7 @@ const toWire = (row: CustomPage): PageWire => ({
 	id: row.id,
 	path: row.path,
 	title: row.title,
-	content: row.content,
+	richTextId: row.richTextId,
 	published: row.published,
 	showInNav: row.showInNav,
 	sortOrder: row.sortOrder,
@@ -58,7 +58,7 @@ const asAdmin = <A, E>(
 const PageFields = {
 	path: Schema.String,
 	title: Schema.String,
-	content: Schema.String,
+	richTextId: Schema.optionalKey(Schema.NullishOr(Schema.Number)),
 	published: Schema.optionalKey(Schema.Boolean),
 	showInNav: Schema.optionalKey(Schema.Boolean),
 	sortOrder: Schema.optionalKey(Schema.Number),
@@ -71,7 +71,13 @@ const decodeCreate = Schema.decodeUnknownSync(PageCreateInput);
 const decodeUpdate = Schema.decodeUnknownSync(PageUpdateInput);
 const decodeId = Schema.decodeUnknownSync(PageIdInput);
 
-const HANDLED_TAGS = ["Forbidden", "InvalidPagePath", "DuplicatePagePath", "PageNotFound"] as const;
+const HANDLED_TAGS = [
+	"Forbidden",
+	"InvalidPagePath",
+	"DuplicatePagePath",
+	"PageNotFound",
+	"InvalidPageInput",
+] as const;
 
 /** Create a page; `null` for non-admins and handled domain failures
  * (invalid/duplicate path), same contract as the manager fns. */

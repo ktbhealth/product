@@ -27,7 +27,7 @@ const row = (over: Partial<AdminPageRow> = {}): AdminPageRow => ({
 	id: 1,
 	path: "/about",
 	title: "About",
-	content: "body",
+	richTextId: null,
 	published: true,
 	showInNav: true,
 	sortOrder: 2,
@@ -53,6 +53,7 @@ describe("PagesAdminPage", () => {
 						showInNav: false,
 					}),
 				]}
+				docs={[]}
 				locale="en"
 			/>,
 		);
@@ -67,12 +68,12 @@ describe("PagesAdminPage", () => {
 	});
 
 	it("shows the empty state", () => {
-		render(<PagesAdminPage pages={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
 	});
 
 	it("localizes copy for other locales", () => {
-		render(<PagesAdminPage pages={[]} locale="pt-BR" />);
+		render(<PagesAdminPage pages={[]} docs={[]} locale="pt-BR" />);
 		expect(screen.getByText("Páginas")).toBeTruthy();
 		expect(screen.getByText("Nenhuma página personalizada ainda")).toBeTruthy();
 	});
@@ -80,11 +81,10 @@ describe("PagesAdminPage", () => {
 	it("creates a page through the dialog", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockResolvedValue(row({ id: 9 }));
-		render(<PagesAdminPage pages={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		await user.type(screen.getByLabelText("Path"), "/new");
 		await user.type(screen.getByLabelText("Title"), "New page title");
-		await user.type(screen.getByLabelText("Content (Markdown)"), "# Hi");
 		// First checkbox is "Published" (DOM order: published, showInNav).
 		await user.click(screen.getAllByRole("checkbox")[0]!);
 		await user.click(screen.getByRole("button", { name: "Create" }));
@@ -93,7 +93,7 @@ describe("PagesAdminPage", () => {
 				data: {
 					path: "/new",
 					title: "New page title",
-					content: "# Hi",
+					richTextId: null,
 					published: true,
 					showInNav: false,
 					sortOrder: 0,
@@ -103,10 +103,59 @@ describe("PagesAdminPage", () => {
 		await waitFor(() => expect(invalidate).toHaveBeenCalled());
 	});
 
+	it("links a page to a rich-text document through the picker", async () => {
+		const user = userEvent.setup();
+		fns.createPageFn.mockResolvedValue(row({ id: 9 }));
+		render(
+			<PagesAdminPage
+				pages={[]}
+				docs={[
+					{ id: 7, title: "Handbook" },
+					{ id: 8, title: "FAQ" },
+				]}
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByText("New page"));
+		await user.type(screen.getByLabelText("Path"), "/guide");
+		await user.type(screen.getByLabelText("Title"), "Guide");
+		// The document field is a Select: combobox trigger + listbox options.
+		await user.click(screen.getByRole("combobox", { name: "Content document" }));
+		await user.click(await screen.findByRole("option", { name: "Handbook" }));
+		await user.click(screen.getByRole("button", { name: "Create" }));
+		await waitFor(() =>
+			expect(fns.createPageFn).toHaveBeenCalledWith({
+				data: expect.objectContaining({ richTextId: 7 }),
+			}),
+		);
+	});
+
+	it("editing a linked page keeps its richTextId and offers a none option", async () => {
+		const user = userEvent.setup();
+		fns.updatePageFn.mockResolvedValue(row({ richTextId: null }));
+		render(
+			<PagesAdminPage
+				pages={[row({ richTextId: 7 })]}
+				docs={[{ id: 7, title: "Handbook" }]}
+				locale="en"
+			/>,
+		);
+		await user.click(screen.getByLabelText("Edit"));
+		await user.click(screen.getByRole("combobox", { name: "Content document" }));
+		// "No document" clears the link → richTextId null on save.
+		await user.click(await screen.findByRole("option", { name: "No document" }));
+		await user.click(screen.getByRole("button", { name: "Save" }));
+		await waitFor(() =>
+			expect(fns.updatePageFn).toHaveBeenCalledWith({
+				data: expect.objectContaining({ id: 1, richTextId: null }),
+			}),
+		);
+	});
+
 	it("updates an existing page", async () => {
 		const user = userEvent.setup();
 		fns.updatePageFn.mockResolvedValue(row({ title: "Renamed" }));
-		render(<PagesAdminPage pages={[row({})]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
 		await user.click(screen.getByLabelText("Edit"));
 		const titleInput = screen.getByLabelText("Title") as HTMLInputElement;
 		expect(titleInput.value).toBe("About");
@@ -127,7 +176,7 @@ describe("PagesAdminPage", () => {
 	it("surfaces a failure message when the fn returns null", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockResolvedValue(null);
-		render(<PagesAdminPage pages={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		await user.click(screen.getByRole("button", { name: "Create" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -137,7 +186,7 @@ describe("PagesAdminPage", () => {
 	it("surfaces a failure message when the fn throws", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockRejectedValue(new Error("boom"));
-		render(<PagesAdminPage pages={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		await user.click(screen.getByRole("button", { name: "Create" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -146,7 +195,7 @@ describe("PagesAdminPage", () => {
 	it("deletes a page after confirmation", async () => {
 		const user = userEvent.setup();
 		fns.deletePageFn.mockResolvedValue(true);
-		render(<PagesAdminPage pages={[row({})]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		expect(screen.getByText('Delete "/about"? This cannot be undone.')).toBeTruthy();
 		await user.click(screen.getByText("Delete", { selector: "button" }));
@@ -157,7 +206,7 @@ describe("PagesAdminPage", () => {
 	it("reports a failed delete without invalidating", async () => {
 		const user = userEvent.setup();
 		fns.deletePageFn.mockResolvedValue(false);
-		render(<PagesAdminPage pages={[row({})]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		fireEvent.click(screen.getByText("Delete", { selector: "button" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -166,7 +215,7 @@ describe("PagesAdminPage", () => {
 	it("surfaces a failure message when delete throws", async () => {
 		const user = userEvent.setup();
 		fns.deletePageFn.mockRejectedValue(new Error("boom"));
-		render(<PagesAdminPage pages={[row({})]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		await user.click(screen.getByText("Delete", { selector: "button" }));
 		await waitFor(() => expect(screen.getByText(/Could not save/)).toBeTruthy());
@@ -176,7 +225,7 @@ describe("PagesAdminPage", () => {
 	it("edits sort order and the nav flag, then cancels the dialog", async () => {
 		const user = userEvent.setup();
 		fns.createPageFn.mockResolvedValue(row({ id: 9 }));
-		render(<PagesAdminPage pages={[row({})]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
 		await user.click(screen.getByLabelText("Edit"));
 		const order = screen.getByLabelText("Sort order") as HTMLInputElement;
 		expect(order.value).toBe("2");
@@ -192,7 +241,7 @@ describe("PagesAdminPage", () => {
 
 	it("closes the form dialog on Escape", async () => {
 		const user = userEvent.setup();
-		render(<PagesAdminPage pages={[]} locale="en" />);
+		render(<PagesAdminPage pages={[]} docs={[]} locale="en" />);
 		await user.click(screen.getByText("New page"));
 		expect(screen.getByLabelText("Path")).toBeTruthy();
 		await user.keyboard("{Escape}");
@@ -201,7 +250,7 @@ describe("PagesAdminPage", () => {
 
 	it("closes the delete confirm dialog via its cancel action", async () => {
 		const user = userEvent.setup();
-		render(<PagesAdminPage pages={[row({})]} locale="en" />);
+		render(<PagesAdminPage pages={[row({})]} docs={[]} locale="en" />);
 		await user.click(screen.getByLabelText("Delete"));
 		expect(screen.getByText(/cannot be undone/)).toBeTruthy();
 		await user.click(screen.getByRole("button", { name: "Cancel" }));

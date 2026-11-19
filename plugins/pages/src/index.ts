@@ -1,8 +1,11 @@
 import { FileTextIcon } from "lucide-react";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { richTextServicesPlugin } from "@ktb/rich-text";
+import { RichTexts } from "@ktb/rich-text/service";
 
 import { CustomNavLinks } from "./chrome.tsx";
 import { PagesAdminConsolePage } from "./platform-page.tsx";
@@ -15,11 +18,11 @@ import { CustomPageView } from "./views/CustomPageView.tsx";
  * `custom_pages` table and rendered through the generic `pages`
  * contribution — the P-059 mechanism built for exactly this. One
  * "/*" wildcard descriptor serves every unpublished path: its `guard`
- * 404s paths with no published row and its `loader` returns the row,
- * so DB pages need no code and no route files. `publishedByPath` /
- * `navList` are public reads (anonymous visitors render published
- * pages); every admin method re-checks PlatformAdmin inside the
- * service.
+ * 404s paths with no published row and its `loader` returns the row
+ * plus the resolved rich-text `content`, so DB pages need no code and
+ * no route files. `publishedByPath` / `navList` are public reads
+ * (anonymous visitors render published pages); every admin method
+ * re-checks PlatformAdmin inside the service.
  */
 
 export const pagesTablesPlugin = definePlugin({
@@ -82,6 +85,10 @@ export const pagesRenderPlugin = definePlugin({
 	id: "pages.render",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [pagesServicesPlugin.id],
+	// Optional edge: page bodies live in @ktb/rich-text documents. When
+	// the plugin (or its service layer) is absent the loader degrades to
+	// `content: null` instead of failing the page.
+	optionalDeps: [richTextServicesPlugin.id],
 	pages: [
 		{
 			id: "pages.custom",
@@ -96,7 +103,21 @@ export const pagesRenderPlugin = definePlugin({
 			loader: (path) =>
 				Effect.gen(function* () {
 					const pages = yield* CustomPages;
-					return yield* pages.publishedByPath(path);
+					const page = yield* pages.publishedByPath(path);
+					if (page === null) return null;
+					// Resolve the referenced rich-text document into `content`
+					// (the parsed Plate value array, or null). Pages without a
+					// document — and hosts without the rich-text service —
+					// render an empty body.
+					let content: unknown = null;
+					if (page.richTextId !== null) {
+						const richTexts = yield* Effect.serviceOption(RichTexts);
+						if (Option.isSome(richTexts)) {
+							const doc = yield* richTexts.value.getById(page.richTextId);
+							content = doc?.content ?? null;
+						}
+					}
+					return { ...page, content };
 				}),
 		},
 	],
@@ -112,6 +133,9 @@ export const pagesPanelPlugin = definePlugin({
 	id: "pages.panel",
 	meta: { keywords: ["pages", "ui"] },
 	requiredDeps: [platformPanelPlugin.id, pagesServicesPlugin.id],
+	// Optional edge: the console's document picker lists @ktb/rich-text
+	// documents; absent the service the picker is simply empty.
+	optionalDeps: [richTextServicesPlugin.id],
 	panel: {
 		pages: [
 			{
@@ -131,9 +155,20 @@ export const pagesPanelPlugin = definePlugin({
 				loader: (_path) =>
 					Effect.gen(function* () {
 						const pages = yield* CustomPages;
-						return yield* pages
+						const rows = yield* pages
 							.adminList()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));
+						// Document picker options: meta only (id + title) — the
+						// admin page never needs the stored Plate value. Both
+						// lists degrade to empty on Forbidden / missing service.
+						const richTexts = yield* Effect.serviceOption(RichTexts);
+						const docs = Option.isNone(richTexts)
+							? []
+							: yield* richTexts.value.adminList().pipe(
+									Effect.catchTag("Forbidden", () => Effect.succeed([])),
+									Effect.map((list) => list.map((doc) => ({ id: doc.id, title: doc.title }))),
+								);
+						return { pages: rows, docs };
 					}),
 			},
 		],

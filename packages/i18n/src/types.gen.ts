@@ -203,6 +203,7 @@ export type I18nKey =
 	| "app.panel_group_account"
 	| "app.panel_group_assurance"
 	| "app.panel_group_console"
+	| "app.panel_group_content"
 	| "app.panel_group_domain_data"
 	| "app.panel_group_evaluation"
 	| "app.panel_group_governance"
@@ -216,6 +217,7 @@ export type I18nKey =
 	| "app.panel_nav_groups"
 	| "app.panel_nav_ops"
 	| "app.panel_nav_plugins"
+	| "app.panel_nav_rich_text"
 	| "app.panel_nav_users"
 	| "app.persona_business"
 	| "app.persona_developers"
@@ -1135,7 +1137,8 @@ export type I18nKey =
 	| "pages.colPath"
 	| "pages.colStatus"
 	| "pages.colTitle"
-	| "pages.contentHint"
+	| "pages.contentDocHint"
+	| "pages.contentDocNone"
 	| "pages.create"
 	| "pages.delete"
 	| "pages.deleteBody"
@@ -1145,12 +1148,13 @@ export type I18nKey =
 	| "pages.edit"
 	| "pages.emptyDescription"
 	| "pages.emptyTitle"
-	| "pages.fieldContent"
+	| "pages.fieldContentDoc"
 	| "pages.fieldPath"
 	| "pages.fieldPublished"
 	| "pages.fieldShowInNav"
 	| "pages.fieldSortOrder"
 	| "pages.fieldTitle"
+	| "pages.manageDocs"
 	| "pages.navHidden"
 	| "pages.navShown"
 	| "pages.newPage"
@@ -1432,6 +1436,33 @@ export type I18nKey =
 	| "rbac.unassign"
 	| "rbac.unassignDescription"
 	| "rbac.unassignTitle"
+	| "rich-text.back"
+	| "rich-text.cancel"
+	| "rich-text.colActions"
+	| "rich-text.colTitle"
+	| "rich-text.colUpdated"
+	| "rich-text.create"
+	| "rich-text.delete"
+	| "rich-text.deleteBody"
+	| "rich-text.deleteConfirm"
+	| "rich-text.deleted"
+	| "rich-text.deletedEmpty"
+	| "rich-text.deleteFailed"
+	| "rich-text.deleteTitle"
+	| "rich-text.description"
+	| "rich-text.edit"
+	| "rich-text.emptyDescription"
+	| "rich-text.emptyTitle"
+	| "rich-text.fieldContent"
+	| "rich-text.fieldTitle"
+	| "rich-text.loadFailed"
+	| "rich-text.newDoc"
+	| "rich-text.save"
+	| "rich-text.saved"
+	| "rich-text.saveFailed"
+	| "rich-text.saving"
+	| "rich-text.title"
+	| "rich-text.untitled"
 	| "secretaries.description"
 	| "secretaries.emailLabel"
 	| "secretaries.emptyDescription"
@@ -1888,6 +1919,7 @@ export interface I18nTypedT {
 	(key: "app.panel_group_account"): Effect.Effect<string>;
 	(key: "app.panel_group_assurance"): Effect.Effect<string>;
 	(key: "app.panel_group_console"): Effect.Effect<string>;
+	(key: "app.panel_group_content"): Effect.Effect<string>;
 	(key: "app.panel_group_domain_data"): Effect.Effect<string>;
 	(key: "app.panel_group_evaluation"): Effect.Effect<string>;
 	(key: "app.panel_group_governance"): Effect.Effect<string>;
@@ -1901,6 +1933,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
+	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
 	(key: "app.panel_nav_users"): Effect.Effect<string>;
 	(key: "app.persona_business"): Effect.Effect<string>;
 	(key: "app.persona_developers"): Effect.Effect<string>;
@@ -3108,7 +3141,8 @@ export interface I18nTypedT {
 	(key: "pages.colPath"): Effect.Effect<string>;
 	(key: "pages.colStatus"): Effect.Effect<string>;
 	(key: "pages.colTitle"): Effect.Effect<string>;
-	(key: "pages.contentHint"): Effect.Effect<string>;
+	(key: "pages.contentDocHint"): Effect.Effect<string>;
+	(key: "pages.contentDocNone"): Effect.Effect<string>;
 	(key: "pages.create"): Effect.Effect<string>;
 	(key: "pages.delete"): Effect.Effect<string>;
 	(
@@ -3123,12 +3157,13 @@ export interface I18nTypedT {
 	(key: "pages.edit"): Effect.Effect<string>;
 	(key: "pages.emptyDescription"): Effect.Effect<string>;
 	(key: "pages.emptyTitle"): Effect.Effect<string>;
-	(key: "pages.fieldContent"): Effect.Effect<string>;
+	(key: "pages.fieldContentDoc"): Effect.Effect<string>;
 	(key: "pages.fieldPath"): Effect.Effect<string>;
 	(key: "pages.fieldPublished"): Effect.Effect<string>;
 	(key: "pages.fieldShowInNav"): Effect.Effect<string>;
 	(key: "pages.fieldSortOrder"): Effect.Effect<string>;
 	(key: "pages.fieldTitle"): Effect.Effect<string>;
+	(key: "pages.manageDocs"): Effect.Effect<string>;
 	(key: "pages.navHidden"): Effect.Effect<string>;
 	(key: "pages.navShown"): Effect.Effect<string>;
 	(key: "pages.newPage"): Effect.Effect<string>;
@@ -3498,6 +3533,38 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "rbac.unassignTitle"): Effect.Effect<string>;
+	(key: "rich-text.back"): Effect.Effect<string>;
+	(key: "rich-text.cancel"): Effect.Effect<string>;
+	(key: "rich-text.colActions"): Effect.Effect<string>;
+	(key: "rich-text.colTitle"): Effect.Effect<string>;
+	(key: "rich-text.colUpdated"): Effect.Effect<string>;
+	(key: "rich-text.create"): Effect.Effect<string>;
+	(key: "rich-text.delete"): Effect.Effect<string>;
+	(
+		key: "rich-text.deleteBody",
+		params: {
+			title: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "rich-text.deleteConfirm"): Effect.Effect<string>;
+	(key: "rich-text.deleted"): Effect.Effect<string>;
+	(key: "rich-text.deletedEmpty"): Effect.Effect<string>;
+	(key: "rich-text.deleteFailed"): Effect.Effect<string>;
+	(key: "rich-text.deleteTitle"): Effect.Effect<string>;
+	(key: "rich-text.description"): Effect.Effect<string>;
+	(key: "rich-text.edit"): Effect.Effect<string>;
+	(key: "rich-text.emptyDescription"): Effect.Effect<string>;
+	(key: "rich-text.emptyTitle"): Effect.Effect<string>;
+	(key: "rich-text.fieldContent"): Effect.Effect<string>;
+	(key: "rich-text.fieldTitle"): Effect.Effect<string>;
+	(key: "rich-text.loadFailed"): Effect.Effect<string>;
+	(key: "rich-text.newDoc"): Effect.Effect<string>;
+	(key: "rich-text.save"): Effect.Effect<string>;
+	(key: "rich-text.saved"): Effect.Effect<string>;
+	(key: "rich-text.saveFailed"): Effect.Effect<string>;
+	(key: "rich-text.saving"): Effect.Effect<string>;
+	(key: "rich-text.title"): Effect.Effect<string>;
+	(key: "rich-text.untitled"): Effect.Effect<string>;
 	(key: "secretaries.description"): Effect.Effect<string>;
 	(key: "secretaries.emailLabel"): Effect.Effect<string>;
 	(key: "secretaries.emptyDescription"): Effect.Effect<string>;

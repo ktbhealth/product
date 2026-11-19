@@ -31,6 +31,13 @@ import { Field, FieldDescription, FieldLabel } from "@ktbhealth/ui/components/fi
 import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import {
 	Table,
@@ -40,25 +47,34 @@ import {
 	TableHeader,
 	TableRow,
 } from "@ktbhealth/ui/components/table";
-import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import { createPageFn, deletePageFn, updatePageFn } from "../fns.ts";
 import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 /** Row shape the panel loader hands down — the `custom_pages` record
- * narrowed to the fields the console edits (timestamps unused). */
+ * narrowed to the fields the console edits (timestamps unused).
+ * `richTextId` references the @ktb/rich-text document rendered as the
+ * page body (null = no document). */
 export interface AdminPageRow {
 	readonly id: number;
 	readonly path: string;
 	readonly title: string;
-	readonly content: string;
+	readonly richTextId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: number;
 }
 
+/** Picker option for the content-document select — the loader maps
+ * `RichTexts.adminList()` meta down to id + title. */
+export interface RichTextDocRef {
+	readonly id: number;
+	readonly title: string;
+}
+
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
+	readonly docs: readonly RichTextDocRef[];
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -68,7 +84,7 @@ interface FormState {
 	readonly id: number | null;
 	readonly path: string;
 	readonly title: string;
-	readonly content: string;
+	readonly richTextId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: string;
@@ -78,7 +94,7 @@ const EMPTY_FORM: FormState = {
 	id: null,
 	path: "",
 	title: "",
-	content: "",
+	richTextId: null,
 	published: false,
 	showInNav: false,
 	sortOrder: "0",
@@ -91,7 +107,7 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 				id: row.id,
 				path: row.path,
 				title: row.title,
-				content: row.content,
+				richTextId: row.richTextId,
 				published: row.published,
 				showInNav: row.showInNav,
 				sortOrder: String(row.sortOrder),
@@ -100,11 +116,16 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 const toInput = (form: FormState) => ({
 	path: form.path,
 	title: form.title,
-	content: form.content,
+	richTextId: form.richTextId,
 	published: form.published,
 	showInNav: form.showInNav,
 	sortOrder: Number(form.sortOrder) || 0,
 });
+
+/** Console route owned by the @ktb/rich-text plugin — not part of the
+ * typed route tree, so the Link target is cast like chrome.tsx does
+ * for page paths. */
+const RICH_TEXT_CONSOLE = "/platform/rich-text" as string;
 
 /**
  * /platform/pages console view (T-083): CRUD over the `custom_pages`
@@ -113,8 +134,15 @@ const toInput = (form: FormState) => ({
  * through the plugin's admin-gated server fns; the loader re-runs via
  * `router.invalidate()` after each write.
  */
-export function PagesAdminPage({ pages, i18n, locale }: PagesAdminPageProps) {
+export function PagesAdminPage({ pages, docs, i18n, locale }: PagesAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, pagesMessages(locale));
+	// Select items for the document picker: "" is the none option —
+	// the same empty-string convention the consultations patient picker
+	// uses (onValueChange maps "" back to null).
+	const docItems = [
+		{ value: "", label: t.contentDocNone },
+		...docs.map((doc) => ({ value: String(doc.id), label: doc.title })),
+	];
 	const router = useRouter();
 	const [form, setForm] = useState<FormState | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<AdminPageRow | null>(null);
@@ -278,14 +306,32 @@ export function PagesAdminPage({ pages, i18n, locale }: PagesAdminPageProps) {
 								/>
 							</Field>
 							<Field>
-								<FieldLabel htmlFor="cp-content">{t.fieldContent}</FieldLabel>
-								<Textarea
-									id="cp-content"
-									value={form.content}
-									onChange={(e) => set("content", e.target.value)}
-									rows={10}
-								/>
-								<FieldDescription>{t.contentHint}</FieldDescription>
+								<FieldLabel>{t.fieldContentDoc}</FieldLabel>
+								<Select
+									items={docItems}
+									value={form.richTextId === null ? "" : String(form.richTextId)}
+									onValueChange={(v) => set("richTextId", v === "" ? null : Number(v))}
+								>
+									<SelectTrigger aria-label={t.fieldContentDoc} className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{docItems.map((item) => (
+											<SelectItem key={item.value} value={item.value}>
+												{item.label}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<FieldDescription>
+									{t.contentDocHint}{" "}
+									<Link
+										to={RICH_TEXT_CONSOLE as "/"}
+										className="underline underline-offset-2 hover:text-foreground"
+									>
+										{t.manageDocs}
+									</Link>
+								</FieldDescription>
 							</Field>
 							<div className="flex flex-wrap gap-6">
 								<label className="flex items-center gap-2 text-sm">

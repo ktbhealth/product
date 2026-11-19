@@ -39,13 +39,27 @@ export class PageNotFound extends Data.TaggedError("PageNotFound")<{
 	readonly id: number;
 }> {}
 
-export type CustomPageError = Forbidden | InvalidPagePath | DuplicatePagePath | PageNotFound;
+/** `richTextId` is not a positive integer — same handled-failure
+ * contract as `InvalidPagePath` (admin fns map it to `null`). */
+export class InvalidPageInput extends Data.TaggedError("InvalidPageInput")<{
+	readonly field: string;
+	readonly value: unknown;
+}> {}
 
-/** Admin-facing write payload; booleans/order default when absent. */
+export type CustomPageError =
+	| Forbidden
+	| InvalidPagePath
+	| DuplicatePagePath
+	| PageNotFound
+	| InvalidPageInput;
+
+/** Admin-facing write payload; booleans/order default when absent and
+ * `richTextId` (the @ktb/rich-text document this page renders) defaults
+ * to null — the page then renders with no body. */
 export interface CustomPageInput {
 	readonly path: string;
 	readonly title: string;
-	readonly content: string;
+	readonly richTextId?: number | null;
 	readonly published?: boolean;
 	readonly showInNav?: boolean;
 	readonly sortOrder?: number;
@@ -78,6 +92,18 @@ const normalizeRequestPath = (path: string): string => {
 	const trimmed = path.trim();
 	return trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed;
 };
+
+/** Optional document reference: absent/undefined resolves to null;
+ * anything that is not a positive integer is an `InvalidPageInput`
+ * (defensive — the wire schema already types it `number | null`). */
+const normalizeRichTextId = (
+	value: number | null | undefined,
+): Effect.Effect<number | null, InvalidPageInput> =>
+	value === undefined || value === null
+		? Effect.succeed(null)
+		: Number.isInteger(value) && value > 0
+			? Effect.succeed(value)
+			: Effect.fail(new InvalidPageInput({ field: "richTextId", value }));
 
 export class CustomPages extends Context.Service<
 	CustomPages,
@@ -130,13 +156,14 @@ export const CustomPagesLive = Layer.effect(
 					db.select({ id: customPage.id }).from(customPage).where(byPath(path)).limit(1),
 				);
 				if (existing.length > 0) return yield* new DuplicatePagePath({ path });
+				const richTextId = yield* normalizeRichTextId(input.richTextId);
 				const rows = yield* Effect.promise(() =>
 					db
 						.insert(customPage)
 						.values({
 							path,
 							title: input.title,
-							content: input.content,
+							richTextId,
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
@@ -162,13 +189,14 @@ export const CustomPagesLive = Layer.effect(
 						.limit(1),
 				);
 				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
+				const richTextId = yield* normalizeRichTextId(input.richTextId);
 				const rows = yield* Effect.promise(() =>
 					db
 						.update(customPage)
 						.set({
 							path,
 							title: input.title,
-							content: input.content,
+							richTextId,
 							published: input.published ?? false,
 							showInNav: input.showInNav ?? false,
 							sortOrder: input.sortOrder ?? 0,
@@ -223,7 +251,7 @@ CREATE TABLE custom_pages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	path TEXT NOT NULL,
 	title TEXT NOT NULL,
-	content TEXT NOT NULL,
+	rich_text_id INTEGER,
 	published INTEGER NOT NULL DEFAULT 0,
 	show_in_nav INTEGER NOT NULL DEFAULT 0,
 	sort_order INTEGER NOT NULL DEFAULT 0,

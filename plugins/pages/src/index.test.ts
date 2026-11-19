@@ -21,6 +21,8 @@ import {
 	pagesTablesPlugin,
 	plugins,
 } from "./index.ts";
+import { RichTexts } from "@ktb/rich-text/service";
+
 import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPagesLive } from "./service.ts";
 
@@ -64,6 +66,12 @@ describe("pages plugins", () => {
 
 describe("pages page effects", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	const makeDeps = (db: ReturnType<typeof makeDb>) =>
+		Layer.merge(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+	let deps: ReturnType<typeof makeDeps>;
 
 	const asPrincipal = <A, E>(
 		principal: { userId: string; email?: string } | null,
@@ -73,12 +81,20 @@ describe("pages page effects", () => {
 			Effect.provideService(effect, Principal, principal) as Effect.Effect<A, E, never>,
 		);
 
+	// Same principal provisioning for the auxiliary runtimes that add
+	// the RichTexts stub on top of the shared deps.
+	const asPrincipalIn = <A, E>(
+		rt: ManagedRuntime.ManagedRuntime<unknown, never>,
+		principal: { userId: string; email?: string } | null,
+		effect: Effect.Effect<A, E, unknown>,
+	) =>
+		rt.runPromise(
+			Effect.provideService(effect, Principal, principal) as Effect.Effect<A, E, never>,
+		);
+
 	beforeAll(async () => {
 		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
-		const deps = Layer.merge(
-			Layer.succeed(Db, db),
-			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
-		);
+		deps = makeDeps(db);
 		// Merge `deps` into the runtime too: the admin page guard yields
 		// PlatformAdmin directly, not just through CustomPages.
 		runtime = ManagedRuntime.make(
@@ -93,7 +109,7 @@ describe("pages page effects", () => {
 			{
 				path: "/pub",
 				title: "Pub",
-				content: "published body",
+				richTextId: 42,
 				published: true,
 				showInNav: true,
 				sortOrder: 0,
@@ -103,8 +119,18 @@ describe("pages page effects", () => {
 			{
 				path: "/draft",
 				title: "Draft",
-				content: "draft body",
+				richTextId: null,
 				published: false,
+				showInNav: false,
+				sortOrder: 0,
+				createdAt: now,
+				updatedAt: now,
+			},
+			{
+				path: "/pub-bare",
+				title: "PubBare",
+				richTextId: null,
+				published: true,
 				showInNav: false,
 				sortOrder: 0,
 				createdAt: now,
@@ -122,13 +148,62 @@ describe("pages page effects", () => {
 		await expect(asPrincipal(null, guard("/missing"))).resolves.toBe(false);
 	});
 
-	it("wildcard loader returns the published row for the request path", async () => {
+	it("wildcard loader returns the published row with null content when the rich-text service is absent", async () => {
 		const loader = pagesRenderPlugin.pages![0]!.loader!;
 		const row = (await asPrincipal(null, loader("/pub/"))) as {
 			title?: string;
+			content?: unknown;
+			richTextId?: number | null;
 		} | null;
 		expect(row?.title).toBe("Pub");
+		expect(row?.richTextId).toBe(42);
+		expect(row?.content).toBeNull();
 		await expect(asPrincipal(null, loader("/draft"))).resolves.toBeNull();
+	});
+
+	it("wildcard loader resolves the referenced document when the rich-text service is present", async () => {
+		const value = [{ type: "p", children: [{ text: "Hello" }] }];
+		const richTexts = RichTexts.of({
+			adminList: () =>
+				Effect.succeed([{ id: 42, title: "Doc", createdAt: new Date(0), updatedAt: new Date(0) }]),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: (id: number) =>
+				Effect.succeed(
+					id === 42
+						? {
+								id: 42,
+								title: "Doc",
+								createdAt: new Date(0),
+								updatedAt: new Date(0),
+								content: value,
+							}
+						: null,
+				),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(RichTexts, richTexts),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesRenderPlugin.pages![0]!.loader!;
+			const row = (await asPrincipalIn(rt, null, loader("/pub"))) as {
+				content?: unknown;
+			} | null;
+			expect(row?.content).toEqual(value);
+			// A published page without a document reference resolves null.
+			const bare = (await asPrincipalIn(rt, null, loader("/pub-bare"))) as {
+				content?: unknown;
+			} | null;
+			expect(bare?.content).toBeNull();
+		} finally {
+			await rt.dispose();
+		}
 	});
 
 	it("admin page guard allows admins and denies everyone else", async () => {
@@ -142,17 +217,60 @@ describe("pages page effects", () => {
 		await expect(asPrincipal(null, guard("/platform/pages"))).resolves.toBe(false);
 	});
 
-	it("admin page loader lists rows for admins and empties for others", async () => {
+	it("admin page loader lists rows and docs for admins, empties for others", async () => {
 		const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
-		const rows = (await asPrincipal(
+		const data = (await asPrincipal(
 			{ userId: "a1", email: "admin@x.com" },
 			loader("/platform/pages"),
-		)) as readonly { path: string }[];
-		expect(rows.map((r) => r.path)).toEqual(["/draft", "/pub"]);
+		)) as { pages: readonly { path: string }[]; docs: readonly { id: number }[] };
+		expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
+		// No RichTexts service in this runtime — the picker is empty.
+		expect(data.docs).toEqual([]);
 		const denied = (await asPrincipal(
 			{ userId: "u1", email: "doc@x.com" },
 			loader("/platform/pages"),
-		)) as readonly unknown[];
-		expect(denied).toEqual([]);
+		)) as { pages: readonly unknown[]; docs: readonly unknown[] };
+		expect(denied).toEqual({ pages: [], docs: [] });
+	});
+
+	it("admin page loader surfaces rich-text document options when the service is present", async () => {
+		const richTexts = RichTexts.of({
+			adminList: () =>
+				Effect.succeed([
+					{
+						id: 42,
+						title: "Doc",
+						createdAt: new Date(0),
+						updatedAt: new Date(0),
+					},
+				]),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(RichTexts, richTexts),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
+			const data = (await asPrincipalIn(
+				rt,
+				{ userId: "a1", email: "admin@x.com" },
+				loader("/platform/pages"),
+			)) as {
+				pages: readonly { path: string }[];
+				docs: readonly { id: number; title: string }[];
+			};
+			expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
+			expect(data.docs).toEqual([{ id: 42, title: "Doc" }]);
+		} finally {
+			await rt.dispose();
+		}
 	});
 });

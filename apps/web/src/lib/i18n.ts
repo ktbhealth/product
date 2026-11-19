@@ -112,6 +112,7 @@ const PANEL_LABELS: Record<string, string> = {
 	"/platform/groups": "panel_nav_groups",
 	"/platform/ops": "panel_nav_ops",
 	"/platform/plugins": "panel_nav_plugins",
+	"/platform/rich-text": "panel_nav_rich_text",
 	"/portal/doctor/activity": "panel_nav_activity",
 	"/portal/secretary/activity": "panel_nav_activity",
 	"/portal/doctor/switch-doctor": "nav_switch_doctor",
@@ -123,6 +124,7 @@ const PANEL_GROUPS: Record<string, string> = {
 	Account: "panel_group_account",
 	Assurance: "panel_group_assurance",
 	Console: "panel_group_console",
+	Content: "panel_group_content",
 	"Domain data": "panel_group_domain_data",
 	Evaluation: "panel_group_evaluation",
 	// Clinical portals still group the activity feed under "Governance"
