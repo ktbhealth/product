@@ -154,6 +154,46 @@ describe("root route", () => {
 		expect(html).toContain("/consultations");
 		expect(html).not.toContain("boom");
 	});
+
+	it("falls back to the built-in surfaces when no boundary plugin is enabled", () => {
+		state.pluginStates = { enabled: [] };
+		const nf = renderToStaticMarkup(opts.notFoundComponent());
+		expect(nf).toContain("Page not found");
+		expect(nf).toContain("/consultations");
+		const err = renderToStaticMarkup(
+			opts.errorComponent({ error: new Error("boom"), reset: vi.fn() }),
+		);
+		expect(err).toContain("Something went wrong");
+		expect(err).toContain("Try again");
+	});
+
+	it("ignores non-link/component entries in the boundary action regions", () => {
+		const Marker = () => createElement("span", null, "BOUNDARY-COMPONENT");
+		state.chromeExtra = [
+			{
+				id: "t.nf-note",
+				region: "app.notFound.actions",
+				content: { kind: "note", key: "x", fallback: "y" },
+			},
+			{
+				id: "t.err-note",
+				region: "app.error.actions",
+				content: { kind: "note", key: "x", fallback: "y" },
+			},
+			{
+				id: "t.nf-comp",
+				region: "app.notFound.actions",
+				content: { kind: "component", component: Marker },
+			},
+		];
+		const nf = renderToStaticMarkup(opts.notFoundComponent());
+		expect(nf).toContain("BOUNDARY-COMPONENT");
+		expect(nf).not.toContain(">y<");
+		const err = renderToStaticMarkup(
+			opts.errorComponent({ error: new Error("boom"), reset: vi.fn() }),
+		);
+		expect(err).not.toContain(">y<");
+	});
 });
 
 describe("root document", () => {
