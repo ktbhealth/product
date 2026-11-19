@@ -282,6 +282,64 @@ export async function deleteRole(db: DbClient, id: number): Promise<void> {
 		);
 }
 
+/**
+ * T-188 grant mirrors: strict `tenantPolicy` resolution hides
+ * `tenant_id NULL` tuples, so a role's global grant catalog must
+ * exist pinned to every tenant the role has member tuples in. Mirrors
+ * are DERIVED state — `pinRoleGrantMirrors` inserts the missing
+ * (natural-key) copies after membership writes, and the grant write
+ * paths (`setRolePermission` / `revokeRolePermission`) delete-then-
+ * repin the affected grant so a revoked or re-effected grant can
+ * never linger pinned. Migration 0064 backfills the same rule for
+ * pre-existing data; mirrors are never edited directly through the
+ * admin surface. `grant` narrows the sync to one (resource, action)
+ * pair — omit it to mirror the role's whole catalog.
+ */
+const pinRoleGrantMirrors = (
+	db: DbClient,
+	roleName: string,
+	grant?: { readonly resource: string; readonly action: string },
+) =>
+	db.run(sql`
+		INSERT INTO relation_tuples (object_type, object_id, relation, subject_kind, subject_id, effect, tenant_id, expires_at, granted_by, created_at)
+		SELECT g.object_type, g.object_id, g.relation, g.subject_kind, g.subject_id, g.effect, m.tenant_id, g.expires_at, g.granted_by, g.created_at
+		FROM relation_tuples g
+		JOIN (
+			SELECT DISTINCT object_id AS role_name, tenant_id
+			FROM relation_tuples
+			WHERE object_type = 'role' AND relation = 'member' AND tenant_id IS NOT NULL
+		) m ON m.role_name = g.subject_id
+		WHERE g.object_id = '*' AND g.subject_kind = 'role' AND g.subject_id = ${roleName}
+			AND g.tenant_id IS NULL
+			${grant === undefined ? sql`` : sql`AND g.object_type = ${grant.resource} AND g.relation = ${grant.action}`}
+		AND NOT EXISTS (
+			SELECT 1 FROM relation_tuples x
+			WHERE x.object_type = g.object_type AND x.object_id = g.object_id
+				AND x.relation = g.relation AND x.subject_kind = g.subject_kind
+				AND x.subject_id = g.subject_id AND x.tenant_id = m.tenant_id
+		)`);
+
+/** Drop the tenant-pinned mirrors of one (resource, action) grant of
+ * `roleName` — callers either re-derive via {@link pinRoleGrantMirrors}
+ * or leave them gone after a revoke. */
+const deleteGrantMirrors = (
+	db: DbClient,
+	roleName: string,
+	grant: { readonly resource: string; readonly action: string },
+) =>
+	db
+		.delete(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, grant.resource),
+				eq(relationTuples.objectId, "*"),
+				eq(relationTuples.relation, grant.action),
+				eq(relationTuples.subjectKind, "role"),
+				eq(relationTuples.subjectId, roleName),
+				sql`${relationTuples.tenantId} is not null`,
+			),
+		);
+
 export async function setRolePermission(
 	db: DbClient,
 	input: { roleId: number; resource: string; action: string; effect: PermissionEffect },
@@ -301,6 +359,10 @@ export async function setRolePermission(
 		expiresAt: null,
 		grantedBy: null,
 	});
+	// Re-pin this grant's tenant mirrors: effect/expires changes must
+	// propagate and member tenants missing the mirror get it (T-188).
+	await deleteGrantMirrors(db, role.name, input);
+	await pinRoleGrantMirrors(db, role.name, input);
 }
 
 export async function revokeRolePermission(
@@ -308,7 +370,8 @@ export async function revokeRolePermission(
 	input: { roleId: number; resource: string; action: string },
 ): Promise<void> {
 	// Drop the grant tuple (role name lookup needed — tuples key on
-	// name, not id).
+	// name, not id) plus its tenant-pinned mirrors — a revoked grant
+	// must not linger under strict tenantPolicy (T-188).
 	const role = await getRole(db, input.roleId);
 	if (role === null) return;
 	await db
@@ -323,6 +386,7 @@ export async function revokeRolePermission(
 				sql`${relationTuples.tenantId} is null`,
 			),
 		);
+	await deleteGrantMirrors(db, role.name, input);
 }
 
 const normalizeExpiresAt = (input: Date | string | number | null | undefined): Date | null => {
@@ -466,6 +530,11 @@ export async function assignSubject(
 		tuple = rows[0];
 	}
 	if (tuple === undefined) return null;
+	// T-188: a tenant-pinned membership needs the role's grant catalog
+	// mirrored to that tenant — strict tenantPolicy hides the global
+	// (tenant_id NULL) grant tuples. Global (NULL tenant) assignments
+	// create no tenant scope, so they pin nothing.
+	if (tenantId !== null) await pinRoleGrantMirrors(db, role.name);
 	return {
 		id: tuple.id,
 		subjectKind: input.subjectKind,

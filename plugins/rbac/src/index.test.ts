@@ -298,6 +298,101 @@ describe("rbac repo", () => {
 		).toBe(false);
 	});
 
+	it("pins grant mirrors to member tenants and keeps them in sync (T-188)", async () => {
+		const role = (await createRole(db, { name: "tenant-auditor" }))!;
+		const grantRows = async () =>
+			(await db.select().from(relationTuplesTable)).filter(
+				(t) => t.objectId === "*" && t.subjectId === "tenant-auditor",
+			);
+
+		await setRolePermission(db, {
+			roleId: role.id,
+			resource: "audit",
+			action: "read",
+			effect: "allow",
+		});
+		// No members yet → the global grant exists alone, unpinned.
+		expect(await grantRows()).toHaveLength(1);
+
+		// A GLOBAL assignment creates no tenant scope → still unpinned.
+		await assignSubject(db, {
+			subjectKind: "user",
+			subjectId: "u-global",
+			roleId: role.id,
+		});
+		expect((await grantRows()).every((t) => t.tenantId === null)).toBe(true);
+
+		// A tenant-pinned assignment mirrors the whole catalog grant
+		// onto that tenant — strict tenantPolicy hides the NULL tuple.
+		await assignSubject(db, {
+			subjectKind: "user",
+			subjectId: "u-t7",
+			roleId: role.id,
+			tenantId: 7,
+		});
+		let grants = await grantRows();
+		expect(grants).toHaveLength(2);
+		expect(grants.find((t) => t.tenantId === "7")).toMatchObject({
+			objectType: "audit",
+			relation: "read",
+			subjectKind: "role",
+			effect: "allow",
+		});
+
+		// A second tenant member pins the same grant there too, and
+		// re-assigning an existing triple does not duplicate mirrors.
+		await assignSubject(db, {
+			subjectKind: "group",
+			subjectId: "g-b",
+			roleId: role.id,
+			tenantId: "clinic-b",
+		});
+		await assignSubject(db, {
+			subjectKind: "user",
+			subjectId: "u-t7",
+			roleId: role.id,
+			tenantId: 7,
+		});
+		grants = await grantRows();
+		expect(grants.filter((t) => t.tenantId === "7")).toHaveLength(1);
+		expect(grants.filter((t) => t.tenantId === "clinic-b")).toHaveLength(1);
+
+		// A permission granted AFTER membership mirrors immediately.
+		await setRolePermission(db, {
+			roleId: role.id,
+			resource: "patient",
+			action: "read",
+			effect: "allow",
+		});
+		grants = await grantRows();
+		expect(grants.filter((t) => t.objectType === "patient" && t.tenantId !== null)).toHaveLength(2);
+
+		// Flipping the effect rewrites the mirrors, not just the global.
+		await setRolePermission(db, {
+			roleId: role.id,
+			resource: "audit",
+			action: "read",
+			effect: "deny",
+		});
+		grants = await grantRows();
+		expect(grants.filter((t) => t.effect === "deny")).toHaveLength(3);
+
+		// Revoking drops the global grant AND every pinned mirror.
+		await revokeRolePermission(db, {
+			roleId: role.id,
+			resource: "audit",
+			action: "read",
+		});
+		grants = await grantRows();
+		expect(grants.some((t) => t.objectType === "audit")).toBe(false);
+		expect(grants.filter((t) => t.tenantId === "7")).toHaveLength(1); // patient.read mirror stays
+
+		// Sweep the role (member + grant + mirror tuples) so later
+		// tests in this shared-db describe see a clean tuple table.
+		await deleteRole(db, role.id);
+		expect(await grantRows()).toHaveLength(0);
+	});
+
 	it("updateRole rename rewrites tuple role references (P-101)", async () => {
 		const role = (await createRole(db, { name: "old-name" }))!;
 		await setRolePermission(db, {
