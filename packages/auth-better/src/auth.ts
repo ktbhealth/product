@@ -154,7 +154,7 @@ export const makeAuthService = (auth: Auth, db: AuthDb): AuthShape => ({
 		}
 	},
 	updateUser: async (userId, fields): Promise<UpdateUserResult> => {
-		const patch: { name?: string; email?: string } = {};
+		const patch: { name?: string; email?: string; emailVerified?: boolean } = {};
 		if (fields.name !== undefined) patch.name = fields.name;
 		if (fields.email !== undefined) {
 			const normalized = fields.email.trim().toLowerCase();
@@ -167,7 +167,18 @@ export const makeAuthService = (auth: Auth, db: AuthDb): AuthShape => ({
 				.where(and(eq(userTable.email, normalized), ne(userTable.id, userId)))
 				.limit(1);
 			if (clash.length > 0) return { ok: false, error: "exists" };
-			patch.email = normalized;
+			const current = await db
+				.select({ email: userTable.email })
+				.from(userTable)
+				.where(eq(userTable.id, userId))
+				.limit(1);
+			// A new address was never verified — the flag belongs to the
+			// old one and resets with the change. An unchanged email is
+			// left alone so a name-only save keeps the flag.
+			if (current[0] !== undefined && current[0].email !== normalized) {
+				patch.email = normalized;
+				patch.emailVerified = false;
+			}
 		}
 		if (patch.name === undefined && patch.email === undefined) return { ok: true };
 		await db.update(userTable).set(patch).where(eq(userTable.id, userId));

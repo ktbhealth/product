@@ -27,8 +27,10 @@ export interface AuthShape {
 	/**
 	 * Admin profile update (platform console): patches `name`/`email`.
 	 * The email is normalized (trim + lowercase) like sign-up; reports
-	 * "exists" when another account already holds it. Absent fields are
-	 * left untouched; an empty patch is a no-op success.
+	 * "exists" when another account already holds it. Changing the
+	 * email resets `emailVerified` — the flag belongs to the old
+	 * address. Absent fields are left untouched; an empty patch is a
+	 * no-op success.
 	 */
 	updateUser(
 		userId: string,
