@@ -1,0 +1,20 @@
+{
+	"name": "@ktb/not-found-page",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./i18n": "./src/i18n.ts"
+	},
+	"dependencies": {
+		"@ktb/i18n": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"lucide-react": "0.544.0"
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.0"
+	},
+	"peerDependencies": {
+		"react": "^19.2.0"
+	}
+}

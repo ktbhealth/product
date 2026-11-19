@@ -1,0 +1,21 @@
+{
+	"name": "@ktb/dev-capture-test",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/i18n": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"effect": "4.1.2",
+		"react": "^19.2.0"
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.0",
+		"vitest": "5.1.0"
+	},
+	"peerDependencies": {
+		"react": "^19.2.0"
+	}
+}

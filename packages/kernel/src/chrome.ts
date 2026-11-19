@@ -117,6 +117,11 @@ export const KNOWN_CHROME_REGIONS: ReadonlySet<string> = new Set([
 	"app.header.session",
 	"app.footer.blocks",
 	"app.footer.note",
+	// Router boundary CTA slots — fallback pages render whatever
+	// feature plugins contribute here; boundary plugins never
+	// hardcode feature destinations.
+	"app.notFound.actions",
+	"app.error.actions",
 	// /login role-picker tiles (P-099) — plugin-contributed sign-in
 	// entries rendered by the picker route, not by a shell.
 	"app.login.tiles",

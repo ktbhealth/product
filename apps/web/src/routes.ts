@@ -48,17 +48,13 @@ const routePlugins = [
 export const routes = rootRoute("__root.tsx", [
 	index("index.tsx"),
 	...routePlugins.flatMap((p) => p.routes ?? []),
-	route("capture-test", "capture-test.tsx"),
-	// /login is the front-door role picker (patient/doctor/secretary);
 	// /portal/login stays as a legacy redirect for access emails
-	// already sent.
-	route("login", "login.tsx"),
-	route("login/patient", "login-patient.tsx"),
+	// already sent; /login, /login/patient, /verify-email and
+	// /capture-test are plugin `pages` dispatched by the root splat.
 	route("portal/login", "portal-login.tsx"),
 	// Namespaced portal instances (P-081): /portal/<instanceId>/* —
 	// patient-portal's physical /portal routes outrank this splat.
 	route("portal/$instance/$", "portal.$instance.$.tsx"),
-	route("verify-email", "verify-email.tsx"),
 	physical("/api", "api"),
 	// Root splat (P-059): dispatches plugin-contributed `pages` at
 	// arbitrary app paths; static routes above keep match priority.

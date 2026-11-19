@@ -20,6 +20,13 @@ export interface PluginRegistry {}
 
 export type PluginId = Extract<keyof PluginRegistry, string>;
 
+/** Selection priority for single-slot contributions (boundaries first):
+ * `high` beats `medium` beats `low`; ties resolve by plugin topo order.
+ * Absent means `medium`. This is intentionally NOT a general ordering
+ * mechanism — it exists so replaceable surfaces (404/error pages) can
+ * be overridden without conflicts. */
+export type PluginPriority = "low" | "medium" | "high";
+
 /** Declarative config contract on `PluginBase.meta.config` (P-058): a
  * JSON Schema document (draft 2020-12) — plain serializable JSON, safe
  * on BOTH the server and client registries. It is the projection of the
@@ -109,6 +116,9 @@ export interface PluginBase {
 	 * client mirror declares it too so the manager UI can render the
 	 * locked state (parity is asserted by apps/web plugins.test.ts). */
 	readonly system?: boolean;
+	/** Selection priority for single-slot contributions (boundaries first).
+	 * Higher wins; ties break by plugin topo order. Absent = "medium". */
+	readonly priority?: PluginPriority;
 	/** Generic contribution entries for kinds without a dedicated typed
 	 * field (P-070). Each entry names a registered kind id; consumers
 	 * opt in by collecting only the kinds they know (see
@@ -127,6 +137,7 @@ type ContributionField =
 	| "panel"
 	| "pages"
 	| "portals"
+	| "boundaries"
 	| "elementKinds";
 
 /** Marks every contribution field EXCEPT `K` as forbidden (`?: never`). */

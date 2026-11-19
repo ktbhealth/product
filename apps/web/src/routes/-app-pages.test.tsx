@@ -39,6 +39,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 			useParams: () => mocks.params.current,
 		}),
 		getRouteApi: () => ({ useLoaderData: () => mocks.rootData.current }),
+		redirect: (o: unknown) => ({ __redirect: o }),
 	};
 });
 
@@ -48,6 +49,13 @@ type Opts = {
 	loaderDeps: (a: { search: Record<string, unknown> }) => {
 		search: Record<string, unknown>;
 	};
+	beforeLoad?: (a: {
+		params: { _splat?: string };
+		search: Record<string, unknown>;
+		location: { pathname: string; searchStr: string; href: string };
+		context: unknown;
+	}) => Promise<unknown>;
+	head?: (a: unknown) => unknown;
 	loader: (a?: {
 		params: { _splat?: string };
 		deps?: { search?: Record<string, unknown> };
@@ -59,9 +67,20 @@ const opts = (r: unknown) => (r as { options: Opts }).options;
 const Page = ({ data, ctx }: { data: unknown; ctx: unknown }) =>
 	createElement("p", { "data-testid": "page" }, `${JSON.stringify(data)}|${JSON.stringify(ctx)}`);
 
-const entry = (path: string, pluginId = "plugin-a") => {
-	mocks.pages.set(path, { page: { component: Page }, pluginId, context: "app" });
+const entry = (path: string, pluginId = "plugin-a", page: Record<string, unknown> = {}) => {
+	mocks.pages.set(path, {
+		page: { component: Page, ...page },
+		pluginId,
+		context: "app",
+	});
 	mocks.pluginStatesFn.mockResolvedValue({ enabled: [pluginId] });
+};
+
+const hookArgs = {
+	params: { _splat: "about" },
+	search: { q: "1" },
+	location: { pathname: "/about", searchStr: "?q=1", href: "/about?q=1" },
+	context: { user: null },
 };
 
 afterEach(() => {
@@ -166,7 +185,145 @@ describe("/$ app page dispatcher (P-059)", () => {
 		};
 		render(createElement(opts(Route).component));
 		expect(screen.getByTestId("page").textContent).toBe(
-			'{"rows":2}|{"plugins":[{"id":"plugin-a"}],"locale":"en","user":{"id":"u1","email":"a@x.com","name":"A"}}',
+			'{"rows":2}|{"plugins":[{"id":"plugin-a"}],"locale":"en","user":{"id":"u1","email":"a@x.com","name":"A"},"pluginStates":{"enabled":["plugin-a"]}}',
 		);
+	});
+
+	it("runs the page beforeLoad hook with route facts", async () => {
+		const beforeLoad = vi.fn(async () => ({ theme: "x" }));
+		entry("/about", "plugin-a", { beforeLoad });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toEqual({ theme: "x" });
+		expect(beforeLoad).toHaveBeenCalledWith({
+			path: "/about",
+			params: { _splat: "about" },
+			search: { q: "1" },
+			location: { pathname: "/about", searchStr: "?q=1", href: "/about?q=1" },
+			context: { user: null },
+		});
+	});
+
+	it("no-ops beforeLoad when the page declares no hook", async () => {
+		entry("/about");
+		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
+	});
+
+	it("ignores non-object beforeLoad results", async () => {
+		entry("/about", "plugin-a", { beforeLoad: async () => "nope" });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).resolves.toBeUndefined();
+	});
+
+	it("translates a beforeLoad redirect into a router redirect", async () => {
+		entry("/about", "plugin-a", {
+			beforeLoad: async () => ({ redirectTo: "/login", replace: true }),
+		});
+		await expect(opts(Route).beforeLoad?.(hookArgs)).rejects.toEqual({
+			__redirect: { href: "/login", replace: true },
+		});
+	});
+
+	it("translates a beforeLoad notFound into router notFound", async () => {
+		entry("/about", "plugin-a", { beforeLoad: async () => ({ notFound: true }) });
+		await expect(opts(Route).beforeLoad?.(hookArgs)).rejects.toMatchObject({
+			isNotFound: true,
+		});
+	});
+
+	it("runs the page head hook with route facts and drops undefined search values", () => {
+		const head = vi.fn(() => ({ meta: [] }));
+		entry("/about", "plugin-a", { head });
+		opts(Route).head?.({
+			params: { _splat: "about" },
+			match: { search: { a: undefined, b: "2" }, pathname: "/about" },
+			loaderData: undefined,
+			matches: [],
+		});
+		expect(head).toHaveBeenCalledWith(
+			expect.objectContaining({
+				path: "/about",
+				params: { _splat: "about" },
+				search: { a: undefined, b: "2" },
+				location: { pathname: "/about", searchStr: "?b=2", href: "/about?b=2" },
+			}),
+		);
+	});
+
+	it("falls back to the concrete path when head has no match", () => {
+		const head = vi.fn(() => ({ meta: [] }));
+		entry("/about", "plugin-a", { head });
+		opts(Route).head?.({ params: { _splat: "about" } });
+		expect(head).toHaveBeenCalledWith(
+			expect.objectContaining({
+				location: { pathname: "/about", searchStr: "", href: "/about" },
+			}),
+		);
+	});
+
+	it("returns an empty head when the page declares no hook", () => {
+		entry("/about");
+		expect(
+			opts(Route).head?.({
+				params: { _splat: "about" },
+				match: { search: {}, pathname: "/about" },
+				loaderData: undefined,
+				matches: [],
+			}),
+		).toEqual({});
+	});
+
+	it("returns an empty head when the hook returns undefined", () => {
+		entry("/about", "plugin-a", { head: () => undefined });
+		expect(
+			opts(Route).head?.({
+				params: { _splat: "about" },
+				match: { search: {}, pathname: "/about" },
+				loaderData: undefined,
+				matches: [],
+			}),
+		).toEqual({});
+	});
+
+	it("coerces non-object search deps to an empty record", async () => {
+		for (const search of [null, [], "x"]) {
+			entry("/about");
+			mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: null });
+			await opts(Route).loader({
+				params: { _splat: "about" },
+				deps: { search: search as unknown as Record<string, unknown> },
+			});
+			expect(mocks.appPageDataFn).toHaveBeenCalledWith({
+				data: { path: "/about", search: {} },
+			});
+			mocks.pages.clear();
+			vi.clearAllMocks();
+		}
+	});
+
+	it("lets validateSearch transform the parsed search", async () => {
+		entry("/about", "plugin-a", {
+			validateSearch: ({ search }: { search: Record<string, unknown> }) => ({
+				...search,
+				extra: "1",
+			}),
+		});
+		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: null });
+		await opts(Route).loader({
+			params: { _splat: "about" },
+			deps: { search: { q: "x" } },
+		});
+		expect(mocks.appPageDataFn).toHaveBeenCalledWith({
+			data: { path: "/about", search: { q: "x", extra: "1" } },
+		});
+	});
+
+	it("keeps the parsed search when validateSearch returns undefined", async () => {
+		entry("/about", "plugin-a", { validateSearch: () => undefined });
+		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: null });
+		await opts(Route).loader({
+			params: { _splat: "about" },
+			deps: { search: { q: "x" } },
+		});
+		expect(mocks.appPageDataFn).toHaveBeenCalledWith({
+			data: { path: "/about", search: { q: "x" } },
+		});
 	});
 });

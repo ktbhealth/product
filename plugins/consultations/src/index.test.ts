@@ -1857,6 +1857,8 @@ describe("plugins", () => {
 		expect(consultationsChromePlugin.requiredDeps).toEqual([platformPanelPlugin.id]);
 		expect(consultationsChromePlugin.chrome.map((c) => c.region)).toEqual([
 			"portal.sidebar",
+			"app.notFound.actions",
+			"app.error.actions",
 			"portal.dashboard.stats",
 			"portal.dashboard.sections",
 		]);

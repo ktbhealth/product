@@ -1,26 +1,35 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { appCatalogT, useRootI18nSlice } from "#/lib/i18n.ts";
 
-export const Route = createFileRoute("/capture-test")({
-	// Dev-only spike (T-012): the Playwright e2e boots `vp dev`, so the
-	// guard passes locally and compiles to a hard 404 in production
-	// builds. The route stays registered so routeTree.gen.ts is stable.
-	beforeLoad: () => {
-		if (!import.meta.env.DEV) throw notFound();
-	},
-	component: CaptureTest,
-});
+import type { PageBeforeLoad, PageContext } from "@ktb/kernel";
 
-/** Spike: proves that tab audio (e.g. a WhatsApp Web call) is capturable. */
-function CaptureTest() {
-	const slice = useRootI18nSlice();
-	const appT = appCatalogT(slice);
-	const t = (key: string, params: Record<string, unknown> = {}) => {
-		const full = `app.${key}`;
-		const resolved = appT(full, params);
-		return resolved === full ? key : resolved;
-	};
+import { devCaptureTestMessages } from "./i18n.ts";
+
+/**
+ * Dev-only gate for `/capture-test`, ported from the host route's
+ * `beforeLoad` (apps/web/src/routes/capture-test.tsx): the Playwright
+ * e2e boots `vp dev`, so the check passes locally and fails closed to
+ * not-found in production builds. `import.meta.env.DEV` is a Vite
+ * compile-time constant in BOTH the SSR and client bundles — the hook
+ * runs on both dispatchers (the root `/$` splat invokes it on server
+ * renders and client navigations alike), so the page never mounts
+ * outside development. Lives in this client-safe module so
+ * ./client.ts can share the exact same reference (parity is asserted
+ * by apps/web/src/plugins.test.ts).
+ */
+export const devCaptureTestBeforeLoad: PageBeforeLoad = () =>
+	import.meta.env.DEV ? undefined : { notFound: true };
+
+/**
+ * `/capture-test` — dev-only spike (T-012) proving that tab audio
+ * (e.g. a WhatsApp Web call) is capturable via getDisplayMedia. Ported
+ * verbatim from the host route apps/web/src/routes/capture-test.tsx;
+ * copy now resolves from this plugin's i18n catalog (`ctx.locale`)
+ * instead of the host's `app.*` Paraglide slice. The descriptor's
+ * `beforeLoad`/`guard` keep it dev-only — this component assumes it
+ * only ever mounts under `import.meta.env.DEV`.
+ */
+export const CaptureTestPage = ({ ctx }: { data: unknown; ctx: PageContext }) => {
+	const messages = devCaptureTestMessages(ctx.locale);
 	const [level, setLevel] = useState(0);
 	const [status, setStatus] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -32,7 +41,7 @@ function CaptureTest() {
 
 	async function start() {
 		setError(null);
-		setStatus(t("capture_status_requesting"));
+		setStatus(messages.statusRequesting);
 		try {
 			const stream = await navigator.mediaDevices.getDisplayMedia({
 				video: true,
@@ -41,23 +50,18 @@ function CaptureTest() {
 			for (const track of stream.getVideoTracks()) track.stop();
 			const audioTrack = stream.getAudioTracks()[0];
 			if (!audioTrack) {
-				setError(t("capture_error_no_audio"));
+				setError(messages.errorNoAudio);
 				return;
 			}
 			refs.current.stream = stream;
-			const ctx = new AudioContext();
-			refs.current.ctx = ctx;
-			const src = ctx.createMediaStreamSource(stream);
-			const analyser = ctx.createAnalyser();
+			const audioCtx = new AudioContext();
+			refs.current.ctx = audioCtx;
+			const src = audioCtx.createMediaStreamSource(stream);
+			const analyser = audioCtx.createAnalyser();
 			analyser.fftSize = 256;
 			src.connect(analyser);
 			const data = new Uint8Array(analyser.frequencyBinCount);
-			setStatus(
-				t("capture_status_capturing", {
-					track: audioTrack.label,
-					state: audioTrack.readyState,
-				}),
-			);
+			setStatus(messages.statusCapturing(audioTrack.label, audioTrack.readyState));
 
 			const tick = () => {
 				analyser.getByteTimeDomainData(data);
@@ -82,22 +86,22 @@ function CaptureTest() {
 
 	return (
 		<div>
-			<h1 className="text-2xl font-bold">{t("capture_title")}</h1>
-			<p className="mt-2 text-sm text-muted-foreground">{t("capture_desc")}</p>
+			<h1 className="text-2xl font-bold">{messages.title}</h1>
+			<p className="mt-2 text-sm text-muted-foreground">{messages.description}</p>
 			<div className="mt-6 flex gap-2">
 				<button
 					type="button"
 					onClick={start}
 					className="rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/80"
 				>
-					{t("capture_start")}
+					{messages.start}
 				</button>
 				<button
 					type="button"
 					onClick={stop}
 					className="rounded-lg border border-border px-4 py-2 text-sm"
 				>
-					{t("capture_stop")}
+					{messages.stop}
 				</button>
 			</div>
 			{status ? <p className="mt-3 text-xs text-muted-foreground">{status}</p> : null}
@@ -109,8 +113,8 @@ function CaptureTest() {
 				/>
 			</div>
 			<p className="mt-1 text-xs text-muted-foreground">
-				{t("capture_level", { level: (level * 100).toFixed(1) })}
+				{messages.level((level * 100).toFixed(1))}
 			</p>
 		</div>
 	);
-}
+};

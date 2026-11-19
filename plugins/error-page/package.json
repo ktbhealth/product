@@ -1,0 +1,24 @@
+{
+	"name": "@ktb/error-page",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/i18n": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"@ktbhealth/ui": "github:ktbhealth/ui#v0.3.2@react",
+		"lucide-react": "0.544.0",
+		"react": "^19.2.0"
+	},
+	"devDependencies": {
+		"@types/react": "^19.2.0",
+		"@types/react-dom": "^19.2.0",
+		"react-dom": "^19.2.0",
+		"vitest": "5.1.0"
+	},
+	"peerDependencies": {
+		"react": "^19.2.0"
+	}
+}

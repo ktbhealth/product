@@ -236,8 +236,8 @@ export default defineConfig({
 				//   files had. The forgot/reset-password views are the same
 				//   credential surface: they drive the client SDK's
 				//   requestPasswordReset/resetPassword calls. __root.tsx /
-				//   platform.tsx keep theirs, as do login-patient.tsx /
-				//   verify-email.tsx (still host routes).
+				//   platform.tsx keep theirs. The sign-in-page and
+				//   verify-email plugins carry the same credential surfaces.
 				//   The secretaries plugin's login view is the same case —
 				//   the staff sign-in screen — as is the invites plugin's
 				//   accept page, which signs the new account in.
@@ -247,8 +247,6 @@ export default defineConfig({
 					"apps/web/src/lib/registry.ts",
 					"apps/web/src/lib/node-cloudflare-workers.ts",
 					"apps/web/src/plugins.ts",
-					"apps/web/src/routes/login-patient.tsx",
-					"apps/web/src/routes/verify-email.tsx",
 					"apps/web/src/routes/__root.tsx",
 					"apps/web/src/routes/platform.tsx",
 					// Namespaced portal shells sign out through the same
@@ -262,6 +260,9 @@ export default defineConfig({
 					"plugins/auth/src/views/AdminLoginPage.tsx",
 					"plugins/invites/src/views/AcceptInvitePage.tsx",
 					"plugins/secretaries/src/views/SecretaryLoginPage.tsx",
+					// Plugin-owned sign-in/verify surfaces (P-099 pages).
+					"plugins/sign-in-page/src/views/PortalSignInPage.tsx",
+					"plugins/verify-email/src/views/VerifyEmailPage.tsx",
 					"plugins/consultations/src/routes/new.tsx",
 					"plugins/consultations/src/backend.ts",
 					"plugins/consultations/src/whisper-prefetch.ts",

@@ -32,6 +32,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 			"panel",
 			"pages",
 			"portals",
+			"boundaries",
 			"elementKinds",
 		]);
 		for (const kind of FIELD_CONTRIBUTION_KINDS) {

@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { VirtualRouteNode } from "@tanstack/virtual-file-routes";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type * as Effect from "effect/Effect";
@@ -76,6 +76,12 @@ export interface PageContext {
 	 * surfaces without it (views keep their code catalogs as
 	 * fallback). */
 	readonly i18n?: PageI18nSlice;
+	/** Enabled plugin-id set for surfaces that must evaluate
+	 * plugin-contributed chrome gates (e.g. the /login tile picker).
+	 * `plugins` stays the registry the host chose for the surface
+	 * (enabled-filtered on app pages, full on console pages); this is
+	 * the raw enablement snapshot those gates check `requires` against. */
+	readonly pluginStates?: { readonly enabled: readonly string[] };
 }
 
 /** Host-injected context handed to every panel page component — the
@@ -84,6 +90,75 @@ export interface PageContext {
  * UI locale so views resolve their own localized copy. Same payload
  * as `PageContext` (P-059 unified the two). */
 export interface PanelPageContext extends PageContext {}
+
+/** Route facts every page lifecycle hook receives. `path` is the
+ * resolved request path (for wildcard descriptors, the concrete path —
+ * not the `/*` key); `search` is the parsed search object; `params`
+ * are route params; `location` mirrors TanStack's location shape;
+ * `context` is the host router context when available. */
+export interface PageHookContext {
+	readonly path: string;
+	readonly params: Readonly<Record<string, string | undefined>>;
+	readonly search: Readonly<Record<string, unknown>>;
+	readonly location: {
+		readonly pathname: string;
+		readonly searchStr: string;
+		readonly href: string;
+	};
+	readonly context?: unknown;
+}
+
+/** Page-level search validation. The host calls this after resolving
+ * the winning descriptor because one splat route cannot declare a
+ * different TanStack `validateSearch` per page. Return the validated
+ * search object, or void to keep the input. */
+export type PageValidateSearch = (input: {
+	readonly search: Readonly<Record<string, unknown>>;
+	readonly path: string;
+	readonly params: Readonly<Record<string, string | undefined>>;
+}) => Readonly<Record<string, unknown>> | void;
+
+/** Control result a page `beforeLoad` may return: redirect, explicit
+ * not-found, or a context object merged into route context. Throwing
+ * is also allowed — hosts pass thrown values through unchanged. */
+export type PageBeforeLoadResult =
+	| { readonly redirectTo: string; readonly replace?: boolean }
+	| { readonly notFound: true }
+	| Readonly<Record<string, unknown>>
+	| void;
+
+export type PageBeforeLoad = (
+	ctx: PageHookContext,
+) => PageBeforeLoadResult | Promise<PageBeforeLoadResult>;
+
+/** Minimal head payload a page hook may return. The host merges it
+ * with shell/route metadata; adapter code casts to TanStack's head
+ * types so kernel stays router-neutral. */
+export interface PageHeadContent {
+	readonly meta?: ReadonlyArray<Record<string, unknown>>;
+	readonly links?: ReadonlyArray<Record<string, unknown>>;
+	readonly scripts?: ReadonlyArray<Record<string, unknown>>;
+	readonly styles?: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface PageHeadContext extends PageHookContext {
+	readonly loaderData?: unknown;
+	readonly matches?: readonly unknown[];
+	/** Route-scoped i18n slice when the host resolved one before head
+	 * generation (usually from the root match's loader data). */
+	readonly i18n?: PageI18nSlice;
+}
+
+export type PageHead = (ctx: PageHeadContext) => PageHeadContent | void;
+
+/** Shared optional lifecycle hooks for page descriptors. Plain
+ * isomorphic functions only — they run on server and client
+ * dispatchers; `guard`/`loader` remain server-only Effects. */
+export interface PageLifecycle {
+	readonly validateSearch?: PageValidateSearch;
+	readonly beforeLoad?: PageBeforeLoad;
+	readonly head?: PageHead;
+}
 
 /** A console page contributed via `panel.pages` (P-050): the host
  * mounts a generic dispatcher at `path` under /platform, runs `loader`
@@ -100,7 +175,7 @@ export interface PanelPageContext extends PageContext {}
  * Hard authorization stays inside the loader/service layer.
  * `guard`/`loader` receive the request path — exact-path pages ignore
  * it; wildcard pages (see `Page.path`) need it to resolve their data. */
-export interface PanelPage {
+export interface PanelPage extends PageLifecycle {
 	readonly id: string;
 	readonly path: string;
 	readonly component: ComponentType<{ data: unknown; ctx: PanelPageContext }>;
@@ -138,7 +213,7 @@ export interface PanelPage {
  * pages that validate URL params (e.g. schema-bound custom pages)
  * clean them inside the loader so SSR and client navigations share
  * the result; `(path) =>` loaders stay valid and simply ignore it. */
-export interface Page {
+export interface Page extends PageLifecycle {
 	readonly id: string;
 	readonly path: string;
 	readonly component: ComponentType<{ data: unknown; ctx: PageContext }>;
@@ -148,6 +223,50 @@ export interface Page {
 	) => Effect.Effect<unknown, unknown, unknown>;
 	readonly guard?: (path: string) => Effect.Effect<boolean, unknown, unknown>;
 	readonly context?: "app" | "portal";
+}
+
+/** Host-injected context for router boundary pages (404/error): the
+ * page context plus the pathname that triggered the boundary. */
+export interface BoundaryContext extends PageContext {
+	readonly pathname: string;
+}
+
+/** Props the host injects into a contributed not-found page. `actions`
+ * are host-rendered chrome nodes collected from the
+ * `app.notFound.actions` region, so the boundary plugin never
+ * hardcodes feature links. */
+export interface BoundaryPageProps {
+	readonly ctx: BoundaryContext;
+	readonly actions?: ReactNode;
+}
+
+/** Props the host injects into a contributed error page. */
+export interface ErrorBoundaryPageProps extends BoundaryPageProps {
+	readonly error: unknown;
+	readonly reset: () => void;
+}
+
+/** One router-boundary contribution. `notFound` renders when no route
+ * matches; `error` renders when a route loader/component throws. The
+ * host adapts TanStack's ErrorComponentProps into these framework-
+ * neutral props. */
+export type BoundaryContribution =
+	| {
+			readonly kind: "notFound";
+			readonly component: ComponentType<BoundaryPageProps>;
+	  }
+	| {
+			readonly kind: "error";
+			readonly component: ComponentType<ErrorBoundaryPageProps>;
+	  };
+
+/** Replaceable router-boundary pages (404/error). Multiple plugins may
+ * contribute boundaries; for each kind the host selects the
+ * highest-`priority` enabled contribution, ties breaking by plugin topo
+ * order. These are normal plugins — not system — so a better third-
+ * party boundary can replace ours with `priority: "high"` or disable it. */
+export interface BoundariesPlugin extends PluginBase, ForbiddenContributions<"boundaries"> {
+	readonly boundaries: readonly BoundaryContribution[];
 }
 
 /** Dependency anchor only — no dedicated contribution field (generic
@@ -482,4 +601,5 @@ export type Plugin =
 	| PanelPlugin
 	| PagesPlugin
 	| PortalsPlugin
+	| BoundariesPlugin
 	| ElementKindsPlugin;
