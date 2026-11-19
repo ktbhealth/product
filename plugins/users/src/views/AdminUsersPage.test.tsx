@@ -218,10 +218,12 @@ describe("AdminUsersPage", () => {
 		expect(email.value).toBe("d@x.com");
 		await user.clear(name);
 		await user.type(name, "Dra Two");
+		await user.clear(email);
+		await user.type(email, "dra@x.com");
 		await user.click(screen.getByRole("button", { name: "Save changes" }));
 		await waitFor(() =>
 			expect(fns.updateUserFn).toHaveBeenCalledWith({
-				data: { userId: "u1", name: "Dra Two", email: "d@x.com" },
+				data: { userId: "u1", name: "Dra Two", email: "dra@x.com" },
 			}),
 		);
 		await waitFor(() => expect(invalidate).toHaveBeenCalled());
