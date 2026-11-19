@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { Query } from "@effect-server-utils/cqrs";
 
 import { adminAudit, AUDIT_TEST_DDL, AuditLive } from "@ktb/audit";
-import { Auth } from "@ktb/auth";
+import { Accounts, Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { Forbidden, Principal } from "@ktb/authz";
@@ -82,12 +82,20 @@ describe("UsersLive", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Users, never>;
 	let db: ReturnType<typeof makeDb>;
 	const setUserBanned = vi.fn(async (_userId: string, _banned: boolean) => {});
+	const createVerified = vi.fn(
+		async (
+			_input: unknown,
+		): Promise<
+			{ ok: true; userId: string } | { ok: false; error: "exists" | "invalid_password" }
+		> => ({ ok: true, userId: "u9" }),
+	);
 
 	beforeAll(() => {
 		db = makeDb(makeD1(DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(Auth, { getSession: async () => null, setUserBanned }),
+			Layer.succeed(Accounts, { createVerified }),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
 		// The audit plugin is optional — provide the real AuditLive over
@@ -178,6 +186,66 @@ describe("UsersLive", () => {
 				targetId: "u3",
 			});
 		}
+	});
+
+	it("adminCreate delegates to the Accounts port and audits the create", async () => {
+		createVerified.mockClear();
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminCreate({ email: "New@X.com ", name: "New", password: "s3cret-pass" })),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: true, userId: "u9" });
+		expect(createVerified).toHaveBeenCalledWith({
+			email: "New@X.com ",
+			name: "New",
+			password: "s3cret-pass",
+		});
+		const rows = await db.select().from(adminAudit);
+		const created = rows.find((r) => r.action === "users.create");
+		expect(created).toMatchObject({
+			actorUserId: "u1",
+			actorEmail: "admin@x.com",
+			targetType: "user",
+			targetId: "u9",
+		});
+	});
+
+	it("adminCreate surfaces port rejections without auditing", async () => {
+		createVerified.mockResolvedValueOnce({ ok: false, error: "exists" });
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminCreate({ email: "doc@x.com", name: "Doc", password: "s3cret-pass" })),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: false, error: "exists" });
+		createVerified.mockResolvedValueOnce({ ok: false, error: "invalid_password" });
+		const res2 = await asUser(
+			"u1",
+			call((p) => p.adminCreate({ email: "n@x.com", name: "N", password: "x" })),
+			"admin@x.com",
+		);
+		expect(res2).toEqual({ ok: false, error: "invalid_password" });
+		const rows = await db.select().from(adminAudit);
+		expect(rows.filter((r) => r.action === "users.create")).toHaveLength(1);
+	});
+
+	it("adminCreate fails Forbidden for non-admin email and null principal", async () => {
+		createVerified.mockClear();
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.adminCreate({ email: "n@x.com", name: "N", password: "s3cret-pass" })),
+				"doc@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "platform.admin" });
+		await expect(
+			asUser(
+				null,
+				call((p) => p.adminCreate({ email: "n@x.com", name: "N", password: "s3cret-pass" })),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		expect(createVerified).not.toHaveBeenCalled();
 	});
 
 	it("adminSetSuspended fails Forbidden for non-admin email and null principal", async () => {

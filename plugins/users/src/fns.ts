@@ -41,3 +41,45 @@ export const setUserSuspendedFn = createServerFn({ method: "POST" })
 			).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const }))),
 		);
 	});
+
+const CreateUserInput = Schema.Struct({
+	email: Schema.NonEmptyString,
+	name: Schema.NonEmptyString,
+	password: Schema.NonEmptyString,
+});
+
+const decodeCreateUser = Schema.decodeUnknownSync(CreateUserInput);
+
+type CreateUserResult =
+	| { readonly ok: true; readonly data: { readonly userId: string } }
+	| {
+			readonly ok: false;
+			readonly error?: "exists" | "invalid_password";
+	  };
+
+/**
+ * Create a user account from the /platform console (platform admins
+ * only — the service re-checks the gate). Account-port rejections map
+ * to `error` codes the form renders; a denied gate collapses to the
+ * bare `{ ok: false }` like the other admin fns.
+ */
+export const createUserFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeCreateUser(input))
+	.handler(async ({ data }): Promise<CreateUserResult> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.scoped(
+				Effect.gen(function* () {
+					const users = yield* Users;
+					const created = yield* users.adminCreate(data);
+					if (!created.ok) return { ok: false as const, error: created.error };
+					return { ok: true as const, data: { userId: created.userId } };
+				}),
+			).pipe(
+				Effect.catchTag("Forbidden", () =>
+					Effect.succeed({ ok: false as const } as CreateUserResult),
+				),
+			),
+		);
+	});

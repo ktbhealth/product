@@ -11,7 +11,7 @@ import {
 vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
-import { Auth } from "@ktb/auth";
+import { Accounts, Auth } from "@ktb/auth";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
@@ -19,7 +19,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { usersServicesPlugin } from "./index.ts";
-import { setUserSuspendedFn } from "./fns.ts";
+import { createUserFn, setUserSuspendedFn } from "./fns.ts";
 
 const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -35,6 +35,10 @@ describe("users admin fns", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
 	let currentEmail: string | null = null;
 	const setUserBanned = vi.fn(async (_userId: string, _banned: boolean) => {});
+	const createVerified = vi.fn(async (_input: unknown) => ({
+		ok: true as const,
+		userId: "u9",
+	}));
 	const authShape = {
 		getSession: async () => sessionUser(currentEmail),
 		setUserBanned,
@@ -45,6 +49,7 @@ describe("users admin fns", () => {
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(Auth, authShape),
+			Layer.succeed(Accounts, { createVerified }),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
 		const services = usersServicesPlugin.services as Layer.Layer<unknown, unknown, unknown>;
@@ -73,6 +78,46 @@ describe("users admin fns", () => {
 			ok: false,
 		});
 		expect(setUserBanned).not.toHaveBeenCalled();
+	});
+
+	it("creates a user for platform admins", async () => {
+		currentEmail = "admin@x.com";
+		createVerified.mockClear();
+		expect(
+			await createUserFn({
+				data: { name: "New", email: "new@x.com", password: "s3cret-pass" },
+			}),
+		).toEqual({ ok: true, data: { userId: "u9" } });
+		expect(createVerified).toHaveBeenCalledWith({
+			name: "New",
+			email: "new@x.com",
+			password: "s3cret-pass",
+		});
+	});
+
+	it("surfaces account rejections and denies non-admins on create", async () => {
+		currentEmail = "admin@x.com";
+		createVerified.mockResolvedValueOnce({ ok: false, error: "exists" } as never);
+		expect(
+			await createUserFn({
+				data: { name: "New", email: "doc@x.com", password: "s3cret-pass" },
+			}),
+		).toEqual({ ok: false, error: "exists" });
+		currentEmail = "user@x.com";
+		createVerified.mockClear();
+		expect(
+			await createUserFn({
+				data: { name: "New", email: "new@x.com", password: "s3cret-pass" },
+			}),
+		).toEqual({ ok: false });
+		expect(createVerified).not.toHaveBeenCalled();
+	});
+
+	it("rejects anonymous create callers", async () => {
+		currentEmail = null;
+		await expect(
+			createUserFn({ data: { name: "New", email: "new@x.com", password: "s3cret-pass" } }),
+		).rejects.toThrow("unauthenticated");
 	});
 
 	it("suspends and reactivates a user for platform admins", async () => {

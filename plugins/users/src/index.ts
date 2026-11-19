@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import { count, desc, eq } from "drizzle-orm";
 import { UserCogIcon } from "lucide-react";
 
-import { Auth } from "@ktb/auth";
+import { Accounts, Auth } from "@ktb/auth";
 import { audit, auditServicesPlugin } from "@ktb/audit";
 import { Db, type DbClient } from "@ktb/db";
 import { consultations, doctors, patients, user as users } from "@ktb/db/schema";
@@ -78,6 +78,21 @@ export class Users extends Context.Service<
 			userId: string,
 			suspended: boolean,
 		) => Effect.Effect<void, Forbidden>;
+		/**
+		 * Create a credential account — platform admins only. The account
+		 * starts email-verified (the admin vouches for the address) with
+		 * the admin-chosen password; port rejections surface as
+		 * "exists"/"invalid_password" for the form to render.
+		 */
+		readonly adminCreate: (input: {
+			readonly email: string;
+			readonly name: string;
+			readonly password: string;
+		}) => Effect.Effect<
+			| { readonly ok: true; readonly userId: string }
+			| { readonly ok: false; readonly error: "exists" | "invalid_password" },
+			Forbidden
+		>;
 	}
 >()("@ktb/users/Users") {}
 
@@ -86,6 +101,7 @@ export const UsersLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const auth = yield* Auth;
+		const accounts = yield* Accounts;
 		const platformAdmin = yield* PlatformAdmin;
 		return Users.of({
 			adminList: Effect.fn("Users.adminList")(function* () {
@@ -111,6 +127,20 @@ export const UsersLive = Layer.effect(
 					targetType: "user",
 					targetId: userId,
 				});
+			}),
+			adminCreate: Effect.fn("Users.adminCreate")(function* (input) {
+				// Same platform gate as adminList — account creation is a
+				// cross-owner, platform-level action.
+				yield* platformAdmin.requireAdmin();
+				const created = yield* Effect.promise(() => accounts.createVerified(input));
+				if (!created.ok) return { ok: false as const, error: created.error };
+				// T-037: ids only — the password never reaches the log.
+				yield* audit({
+					action: "users.create",
+					targetType: "user",
+					targetId: created.userId,
+				});
+				return { ok: true as const, userId: created.userId };
 			}),
 		});
 	}),

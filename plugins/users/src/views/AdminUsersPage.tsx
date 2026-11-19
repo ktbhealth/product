@@ -1,5 +1,6 @@
 import { useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { PlusIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -25,6 +26,7 @@ import {
 import type { AdminUserRow } from "../index.ts";
 import { setUserSuspendedFn } from "../fns.ts";
 import { userMessages, I18N_NAMESPACE } from "../i18n.ts";
+import { AdminUserCreateDialog } from "./AdminUserCreateDialog.tsx";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 
@@ -49,6 +51,7 @@ export function AdminUsersPage({
 	const t = sliceMessages(i18n, I18N_NAMESPACE, userMessages(locale));
 	const router = useRouter();
 	const [q, setQ] = useState("");
+	const [creating, setCreating] = useState(false);
 	const [suspending, setSuspending] = useState<AdminUserRow | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState(false);
@@ -77,6 +80,12 @@ export function AdminUsersPage({
 			<PageHeader
 				title={t.title}
 				description={users.length === 0 ? t.none : t.count(users.length)}
+				actions={
+					<Button size="sm" onClick={() => setCreating(true)}>
+						<PlusIcon />
+						{t.createUser}
+					</Button>
+				}
 			/>
 			{error ? <p className="text-xs text-destructive">{t.saveError}</p> : null}
 			{users.length === 0 ? (
@@ -183,6 +192,7 @@ export function AdminUsersPage({
 					</div>
 				</>
 			)}
+			{creating ? <AdminUserCreateDialog t={t} onClose={() => setCreating(false)} /> : null}
 			{suspending !== null ? (
 				<ConfirmDialog
 					open

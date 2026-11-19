@@ -5488,6 +5488,33 @@ export const I18N_MANIFEST = {
 			],
 			template: "Showing {shown} of {total}",
 		},
+		createUser: {
+			params: [],
+		},
+		createTitle: {
+			params: [],
+		},
+		createDescription: {
+			params: [],
+		},
+		fieldName: {
+			params: [],
+		},
+		fieldEmail: {
+			params: [],
+		},
+		fieldPassword: {
+			params: [],
+		},
+		createExists: {
+			params: [],
+		},
+		createInvalidPassword: {
+			params: [],
+		},
+		createFailed: {
+			params: [],
+		},
 	},
 	views: {
 		notFoundTitle: {

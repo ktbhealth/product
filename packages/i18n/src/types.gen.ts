@@ -1617,8 +1617,17 @@ export type I18nKey =
 	| "users.colStatus"
 	| "users.colVerified"
 	| "users.count"
+	| "users.createDescription"
+	| "users.createExists"
+	| "users.createFailed"
+	| "users.createInvalidPassword"
+	| "users.createTitle"
+	| "users.createUser"
 	| "users.emptyDescription"
 	| "users.emptyTitle"
+	| "users.fieldEmail"
+	| "users.fieldName"
+	| "users.fieldPassword"
 	| "users.filteredCount"
 	| "users.no"
 	| "users.noMatch"
@@ -3752,8 +3761,17 @@ export interface I18nTypedT {
 			n: number;
 		},
 	): Effect.Effect<string>;
+	(key: "users.createDescription"): Effect.Effect<string>;
+	(key: "users.createExists"): Effect.Effect<string>;
+	(key: "users.createFailed"): Effect.Effect<string>;
+	(key: "users.createInvalidPassword"): Effect.Effect<string>;
+	(key: "users.createTitle"): Effect.Effect<string>;
+	(key: "users.createUser"): Effect.Effect<string>;
 	(key: "users.emptyDescription"): Effect.Effect<string>;
 	(key: "users.emptyTitle"): Effect.Effect<string>;
+	(key: "users.fieldEmail"): Effect.Effect<string>;
+	(key: "users.fieldName"): Effect.Effect<string>;
+	(key: "users.fieldPassword"): Effect.Effect<string>;
 	(
 		key: "users.filteredCount",
 		params: {

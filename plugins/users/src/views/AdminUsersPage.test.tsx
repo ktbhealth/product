@@ -11,6 +11,7 @@ vi.mock("@tanstack/react-router", () => ({
 type FnMock = (arg: { data: unknown }) => Promise<{ ok: boolean; data?: unknown }>;
 const fns = vi.hoisted(() => ({
 	setUserSuspendedFn: vi.fn<FnMock>(async () => ({ ok: true, data: null })),
+	createUserFn: vi.fn<FnMock>(async () => ({ ok: true, data: { userId: "u9" } })),
 }));
 vi.mock("../fns.ts", () => fns);
 
@@ -37,6 +38,7 @@ afterEach(cleanup);
 beforeEach(() => {
 	vi.clearAllMocks();
 	fns.setUserSuspendedFn.mockResolvedValue({ ok: true, data: null });
+	fns.createUserFn.mockResolvedValue({ ok: true, data: { userId: "u9" } });
 });
 
 describe("AdminUsersPage", () => {
@@ -148,6 +150,58 @@ describe("AdminUsersPage", () => {
 		await waitFor(() =>
 			expect(screen.getByText("Could not update the user. Try again.")).toBeTruthy(),
 		);
+	});
+
+	it("creates a user through the dialog", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Create user" }));
+		await user.type(screen.getByLabelText("Name"), "New Person");
+		await user.type(screen.getByLabelText("Email"), "new@x.com");
+		await user.type(screen.getByLabelText("Password"), "s3cret-pass");
+		await user.click(screen.getAllByRole("button", { name: "Create user" }).at(-1)!);
+		await waitFor(() =>
+			expect(fns.createUserFn).toHaveBeenCalledWith({
+				data: { name: "New Person", email: "new@x.com", password: "s3cret-pass" },
+			}),
+		);
+		await waitFor(() => expect(invalidate).toHaveBeenCalled());
+	});
+
+	it("shows the exists error when the email is taken", async () => {
+		const user = userEvent.setup();
+		fns.createUserFn.mockResolvedValueOnce({ ok: false, error: "exists" } as never);
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Create user" }));
+		await user.type(screen.getByLabelText("Name"), "New Person");
+		await user.type(screen.getByLabelText("Email"), "d@x.com");
+		await user.type(screen.getByLabelText("Password"), "s3cret-pass");
+		await user.click(screen.getAllByRole("button", { name: "Create user" }).at(-1)!);
+		expect(await screen.findByText("A user with this email already exists.")).toBeTruthy();
+	});
+
+	it("shows the invalid-password and generic create errors", async () => {
+		const user = userEvent.setup();
+		fns.createUserFn.mockResolvedValueOnce({ ok: false, error: "invalid_password" } as never);
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Create user" }));
+		await user.type(screen.getByLabelText("Name"), "New Person");
+		await user.type(screen.getByLabelText("Email"), "new@x.com");
+		await user.type(screen.getByLabelText("Password"), "short");
+		await user.click(screen.getAllByRole("button", { name: "Create user" }).at(-1)!);
+		expect(await screen.findByText("The password does not meet the requirements.")).toBeTruthy();
+
+		fns.createUserFn.mockResolvedValueOnce({ ok: false } as never);
+		await user.click(screen.getAllByRole("button", { name: "Create user" }).at(-1)!);
+		expect(await screen.findByText("Could not create the user. Try again.")).toBeTruthy();
+	});
+
+	it("cancelling the create dialog does not call the fn", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Create user" }));
+		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		expect(fns.createUserFn).not.toHaveBeenCalled();
 	});
 
 	it("localizes the suspend copy", async () => {

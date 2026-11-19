@@ -51,6 +51,15 @@ export interface UserMessages {
 	readonly searchLabel: string;
 	readonly noMatch: string;
 	readonly filteredCount: (shown: number, total: number) => string;
+	readonly createUser: string;
+	readonly createTitle: string;
+	readonly createDescription: string;
+	readonly fieldName: string;
+	readonly fieldEmail: string;
+	readonly fieldPassword: string;
+	readonly createExists: string;
+	readonly createInvalidPassword: string;
+	readonly createFailed: string;
 }
 
 const en: UserMessages = {
@@ -92,6 +101,16 @@ const en: UserMessages = {
 	searchLabel: "Search users",
 	noMatch: "No users match the search.",
 	filteredCount: paramMessage("en", "Showing {shown} of {total}", ["shown", "total"]),
+	createUser: "Create user",
+	createTitle: "New user",
+	createDescription:
+		"Create a sign-in account. The email starts verified; share the password with the user.",
+	fieldName: "Name",
+	fieldEmail: "Email",
+	fieldPassword: "Password",
+	createExists: "A user with this email already exists.",
+	createInvalidPassword: "The password does not meet the requirements.",
+	createFailed: "Could not create the user. Try again.",
 };
 
 const ptBR: UserMessages = {
@@ -135,6 +154,16 @@ const ptBR: UserMessages = {
 	searchLabel: "Buscar usuários",
 	noMatch: "Nenhum usuário corresponde à busca.",
 	filteredCount: paramMessage("pt-BR", "Exibindo {shown} de {total}", ["shown", "total"]),
+	createUser: "Criar usuário",
+	createTitle: "Novo usuário",
+	createDescription:
+		"Crie uma conta de acesso. O e-mail já começa verificado; compartilhe a senha com o usuário.",
+	fieldName: "Nome",
+	fieldEmail: "E-mail",
+	fieldPassword: "Senha",
+	createExists: "Já existe um usuário com este e-mail.",
+	createInvalidPassword: "A senha não atende aos requisitos.",
+	createFailed: "Não foi possível criar o usuário. Tente novamente.",
 };
 
 const es: UserMessages = {
@@ -178,6 +207,16 @@ const es: UserMessages = {
 	searchLabel: "Buscar usuarios",
 	noMatch: "Ningún usuario coincide con la búsqueda.",
 	filteredCount: paramMessage("es", "Mostrando {shown} de {total}", ["shown", "total"]),
+	createUser: "Crear usuario",
+	createTitle: "Nuevo usuario",
+	createDescription:
+		"Cree una cuenta de acceso. El correo empieza verificado; comparta la contraseña con el usuario.",
+	fieldName: "Nombre",
+	fieldEmail: "Correo electrónico",
+	fieldPassword: "Contraseña",
+	createExists: "Ya existe un usuario con este correo.",
+	createInvalidPassword: "La contraseña no cumple los requisitos.",
+	createFailed: "No se pudo crear el usuario. Inténtelo de nuevo.",
 };
 
 const CATALOGS: Record<UserLocale, UserMessages> = { en, "pt-BR": ptBR, es };
