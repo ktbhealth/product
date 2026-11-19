@@ -409,11 +409,72 @@ describe("presentTheme — managed font cascade", () => {
 			},
 		);
 		// Inter emits once with catalog weights; Roboto Mono keeps the
-		// theme's google-fonts delivery with theme weights.
+		// theme's google-fonts delivery with theme weights. Links follow
+		// slot priority — the managed sans link precedes the mono one.
 		expect(theme.fontLinks).toHaveLength(2);
-		expect(theme.fontLinks[0]).toContain("Roboto");
-		expect(theme.fontLinks[0]).toContain("wght@100");
-		expect(theme.fontLinks[1]).toContain("Inter:wght@400;700");
+		expect(theme.fontLinks[0]).toContain("Inter:wght@400;700");
+		expect(theme.fontLinks[1]).toContain("Roboto");
+		expect(theme.fontLinks[1]).toContain("wght@100");
+	});
+
+	it("orders fontLinks by slot priority with managed sources first per slot", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "google-fonts",
+				families: { sans: "Free Sans", heading: "Head Font", mono: "Mono Font" },
+				weights: [400],
+				sources: { heading: { providerId: 7, family: "Managed Head" } },
+			}),
+			{
+				managed: [
+					{
+						providerId: 7,
+						family: "Managed Head",
+						kind: "googlefonts",
+						weights: [600],
+					},
+				],
+			},
+		);
+		// Slot order beats managed/free-form grouping: sans free-form,
+		// then the heading slot's managed link followed by its distinct
+		// free-form family, then mono.
+		expect(theme.fontLinks).toEqual([
+			"https://fonts.googleapis.com/css2?family=Free+Sans:wght@400&display=swap",
+			"https://fonts.googleapis.com/css2?family=Managed+Head:wght@600&display=swap",
+			"https://fonts.googleapis.com/css2?family=Head+Font:wght@400&display=swap",
+			"https://fonts.googleapis.com/css2?family=Mono+Font:wght@400&display=swap",
+		]);
+	});
+
+	it("dedupes fontLinks by family keeping the first (highest-priority) slot", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "google-fonts",
+				families: { sans: "Inter", heading: "Inter", mono: "JetBrains Mono" },
+			}),
+		);
+		expect(theme.fontLinks).toHaveLength(2);
+		expect(theme.fontLinks[0]).toContain("Inter");
+		expect(theme.fontLinks[1]).toContain("JetBrains");
+	});
+
+	it("keeps both links when a managed source and a free-form name differ per slot", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "google-fonts",
+				families: { sans: "Free Sans" },
+				sources: { sans: { providerId: 7, family: "Inter" } },
+			}),
+			{
+				managed: [{ providerId: 7, family: "Inter", kind: "googlefonts", weights: [400] }],
+			},
+		);
+		// Managed Inter leads its slot; the distinct free-form family
+		// still emits (same as the pre-merge behavior, reordered).
+		expect(theme.fontLinks).toHaveLength(2);
+		expect(theme.fontLinks[0]).toContain("Inter:wght@400");
+		expect(theme.fontLinks[1]).toContain("Free+Sans");
 	});
 
 	it("self-host managed sources emit @font-face regardless of delivery", () => {

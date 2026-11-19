@@ -15,6 +15,8 @@ import {
 	fontFormatForExt,
 	insertCatalogFontAsset,
 	listUnownedFontAssets,
+	parseFontWeightList,
+	weightFromFileName,
 } from "../assets.ts";
 
 /**
@@ -35,10 +37,12 @@ import {
  * variants.fontAsset — no owning theme required.
  *
  * Multipart fields: `file` (woff2/woff/ttf/otf, ≤10MB), `family`
- * (required), `weight` (optional CSS font-weight 100–900, default
- * 400 downstream), `providerId` (optional — must name a "local"
- * provider; absent = first enabled local provider, auto-created as
- * "Local" when none exists).
+ * (required), `weight`/`weights` (optional CSS font-weight list —
+ * single value, comma/space separated list or inclusive range like
+ * "400,700" or "400-700"; absent → filename hint like "Inter-Bold"/
+ * "Inter_700", else 400 downstream), `providerId` (optional — must
+ * name a "local" provider; absent = first enabled local provider,
+ * auto-created as "Local" when none exists).
  *
  * PlatformAdmin only — same gate as every theme write.
  */
@@ -132,14 +136,22 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				if (family === "") {
 					return Response.json({ error: "font family required" }, { status: 400 });
 				}
-				const weightRaw = formField(form, "weight");
-				let weight: number | undefined;
-				if (weightRaw !== "") {
-					const parsed = Number(weightRaw);
-					if (!Number.isInteger(parsed) || parsed < 100 || parsed > 900) {
-						return Response.json({ error: "invalid weight" }, { status: 400 });
+				// `weight` and `weights` are aliases; both accept the
+				// list syntax ("400,700", "400-700") and merge.
+				const weightFields = [formField(form, "weight"), formField(form, "weights")].filter(
+					(v) => v !== "",
+				);
+				let weights: number[] | undefined;
+				if (weightFields.length > 0) {
+					const parsed = new Set<number>();
+					for (const field of weightFields) {
+						const list = parseFontWeightList(field);
+						if (list === null) {
+							return Response.json({ error: "invalid weight" }, { status: 400 });
+						}
+						for (const w of list) parsed.add(w);
 					}
-					weight = parsed;
+					weights = [...parsed].sort((a, b) => a - b);
 				}
 				const providerRaw = formField(form, "providerId");
 				let providerId: number | null = null;
@@ -170,6 +182,11 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				if (mime !== "" && mime !== "application/octet-stream" && !mime.startsWith("font/")) {
 					return Response.json({ error: "unsupported content type" }, { status: 415 });
 				}
+
+				// No explicit weight → filename hint ("Inter-Bold",
+				// "Inter_700"); still nothing → single weightless face.
+				const hinted = weights === undefined ? weightFromFileName(name) : undefined;
+				const effectiveWeights = weights ?? (hinted === undefined ? undefined : [hinted]);
 
 				const { themeAssets: bucket } = getServerRuntime();
 				if (!bucket) {
@@ -217,7 +234,7 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 						const asset = yield* Effect.promise(() =>
 							insertCatalogFontAsset(db, {
 								family,
-								weight,
+								weights: effectiveWeights,
 								r2Key: key,
 								format: fontFormatForExt(ext),
 							}),

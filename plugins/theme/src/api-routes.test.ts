@@ -769,6 +769,9 @@ describe("POST /api/theme/catalog-fonts", () => {
 		expect((await postCatalog({ family: "Inter", weight: "abc" }, woff2())).status).toBe(400);
 		expect((await postCatalog({ family: "Inter", weight: "50" }, woff2())).status).toBe(400);
 		expect((await postCatalog({ family: "Inter", weight: "1000" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", weight: "400-abc" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", weight: "700-400" }, woff2())).status).toBe(400);
+		expect((await postCatalog({ family: "Inter", weights: "bold" }, woff2())).status).toBe(400);
 		expect((await postCatalog({ family: "Inter", providerId: "x" }, woff2())).status).toBe(400);
 		expect((await postCatalog({ family: "Inter", providerId: "0" }, woff2())).status).toBe(400);
 		// No content-type header at all → the "" fallback → 400.
@@ -868,6 +871,55 @@ describe("POST /api/theme/catalog-fonts", () => {
 			expect(variants.family).toBe("Inter");
 			expect(variants.fontAsset.faces[0]).toMatchObject({ weight: 700, format: "woff2" });
 			expect(bucketStore.has(row!.r2Key!)).toBe(true);
+		});
+	});
+
+	it("accepts weight lists/ranges and mirrors them into variants.weights", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.syncFamilies = [fontFamily({ providerId: 1, family: "Inter" })];
+			const res = await postCatalog({ family: "Inter", weight: "700,400" }, woff2());
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { assetId: number };
+			const row = (await db.select().from(themeAssets)).find((r) => r.id === body.assetId);
+			const variants = JSON.parse(row!.variants!);
+			expect(variants.weights).toEqual([400, 700]);
+			expect(variants.fontAsset.faces.map((f: { weight?: number }) => f.weight)).toEqual([
+				400, 700,
+			]);
+		});
+	});
+
+	it("expands weight ranges and merges the weights alias", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.syncFamilies = [fontFamily({ providerId: 1, family: "Inter" })];
+			const res = await postCatalog(
+				{ family: "Inter", weight: "400-600", weights: "800" },
+				woff2(),
+			);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { assetId: number };
+			const row = (await db.select().from(themeAssets)).find((r) => r.id === body.assetId);
+			const variants = JSON.parse(row!.variants!);
+			expect(variants.weights).toEqual([400, 500, 600, 800]);
+		});
+	});
+
+	it("derives the weight from the file name when no weight field is sent", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.syncFamilies = [fontFamily({ providerId: 1, family: "Inter" })];
+			const bold = new File([new Uint8Array([0x77, 0x4f, 0x46, 0x32])], "Inter-Bold.woff2", {
+				type: "font/woff2",
+			});
+			const res = await postCatalog({ family: "Inter" }, bold);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { assetId: number };
+			const row = (await db.select().from(themeAssets)).find((r) => r.id === body.assetId);
+			const variants = JSON.parse(row!.variants!);
+			expect(variants.weights).toEqual([700]);
+			expect(variants.fontAsset.faces[0]).toMatchObject({ weight: 700 });
 		});
 	});
 

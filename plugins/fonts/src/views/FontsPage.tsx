@@ -307,7 +307,6 @@ export function FontsPage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 								value={upWeight}
 								onChange={(e) => setUpWeight(e.target.value)}
 								placeholder={t.weightPlaceholder}
-								inputMode="numeric"
 							/>
 						</label>
 						<label className="text-sm">

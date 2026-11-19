@@ -92,6 +92,105 @@ export const fontFormatForExt = (ext: string): string | undefined => FORMATS[ext
 export const IMAGE_UPLOAD_EXTENSIONS = ["png", "jpg", "jpeg", "webp"] as const;
 export const FONT_UPLOAD_EXTENSIONS = ["woff2", "woff", "ttf", "otf"] as const;
 
+// ---------- catalog font weights ----------
+
+const isCatalogWeight = (n: number): boolean => Number.isInteger(n) && n >= 100 && n <= 900;
+
+/**
+ * Parse a catalog-upload weight field into a sorted, deduped CSS
+ * font-weight list. Accepts single values ("700"), comma/semicolon/
+ * whitespace separated lists ("400,700", "400 700") and inclusive
+ * ranges ("400-700" → 400;500;600;700 — ranges step by 100 so a
+ * variable-font span stays a practical css2 `wght@` list). Returns
+ * null on any malformed token, out-of-range value or descending
+ * range — the route turns that into a 400.
+ */
+export const parseFontWeightList = (raw: string): readonly number[] | null => {
+	const text = raw.trim();
+	if (text === "") return null;
+	const weights = new Set<number>();
+	const token = /(\d{1,3})\s*(?:[-–—]\s*(\d{1,3}))?/y;
+	let pos = 0;
+	let saw = false;
+	while (pos < text.length) {
+		const sep = /^[\s,;]+/.exec(text.slice(pos));
+		if (sep !== null) {
+			pos += sep[0].length;
+			continue;
+		}
+		token.lastIndex = pos;
+		const match = token.exec(text);
+		if (match === null) return null;
+		pos = token.lastIndex;
+		saw = true;
+		const lo = Number(match[1]);
+		const hi = match[2] === undefined ? lo : Number(match[2]);
+		if (!isCatalogWeight(lo) || !isCatalogWeight(hi) || hi < lo) return null;
+		if (match[2] === undefined) {
+			weights.add(lo);
+		} else {
+			for (let w = lo; w <= hi; w += 100) weights.add(w);
+		}
+	}
+	if (!saw) return null;
+	return [...weights].sort((a, b) => a - b);
+};
+
+/** Style-word → CSS weight for filename hints (longest phrases
+ * first so "semi bold"/"extra bold" win over "bold"). */
+const FONT_WEIGHT_PHRASES: readonly (readonly [string, number])[] = [
+	["extra light", 200],
+	["ultra light", 200],
+	["semi bold", 600],
+	["demi bold", 600],
+	["extra bold", 800],
+	["ultra bold", 800],
+	["extralight", 200],
+	["ultralight", 200],
+	["semibold", 600],
+	["extrabold", 800],
+	["ultrabold", 800],
+	["thin", 100],
+	["light", 300],
+	["regular", 400],
+	["normal", 400],
+	["book", 400],
+	["medium", 500],
+	["bold", 700],
+	["black", 900],
+	["heavy", 900],
+];
+
+/**
+ * Best-effort weight hint from an uploaded file name — "Inter-Bold",
+ * "Inter_700", "roboto-medium.woff2". CamelCase and separator runs are
+ * normalized to spaces first so "SemiBold" reads as "semi bold". A
+ * standalone 3+-digit token in the 100–900 range wins over style
+ * words; returns undefined when nothing plausible is found (variable
+ * fonts like "Inter-VariableFont_wdth,wght" correctly yield nothing —
+ * the admin should pass an explicit range for those).
+ */
+export const weightFromFileName = (fileName: string): number | undefined => {
+	const dot = fileName.lastIndexOf(".");
+	const stem = (dot === -1 ? fileName : fileName.slice(0, dot))
+		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+	const tokens = stem
+		.toLowerCase()
+		.split(/[^a-z0-9]+/)
+		.filter((t) => t !== "");
+	for (const token of tokens) {
+		if (!/^\d+$/.test(token)) continue;
+		const n = Number(token);
+		if (isCatalogWeight(n)) return n;
+	}
+	const normalized = ` ${tokens.join(" ")} `;
+	for (const [phrase, weight] of FONT_WEIGHT_PHRASES) {
+		if (normalized.includes(` ${phrase} `)) return weight;
+	}
+	return undefined;
+};
+
 // ---------- image variant planning (pure) ----------
 
 export interface VariantTemplate {
@@ -358,27 +457,45 @@ export const deleteThemeAsset = async (db: DbClient, id: number): Promise<void> 
 
 /**
  * Insert a ready catalog font row: theme_id NULL, kind "font", the
- * serving variants JSON ({family, fontAsset}) the local adapter and
- * the managed-font cascade resolve. `weight` is the CSS font-weight
- * stamped on the single @font-face (absent = 400 downstream).
+ * serving variants JSON ({family, weights?, fontAsset}) the local
+ * adapter and the managed-font cascade resolve. `weights` is the CSS
+ * font-weight list stamped on the @font-face rules AND mirrored at
+ * `variants.weights` so the fonts catalog sync can populate
+ * `font_families.weights` (absent/empty = 400 downstream). One face
+ * is emitted per weight — all pointing at the same uploaded file,
+ * which is correct for variable fonts and harmless for static ones.
  */
 export const insertCatalogFontAsset = async (
 	db: DbClient,
 	input: {
 		readonly family: string;
-		readonly weight: number | undefined;
+		readonly weights: readonly number[] | undefined;
 		readonly r2Key: string;
 		readonly format: string | undefined;
 	},
 ): Promise<ThemeAssetRow | null> => {
-	const face: ThemeFontFace = {
-		url: themeAssetUrl(input.r2Key),
-		...(input.weight === undefined ? {} : { weight: input.weight }),
-		...(input.format === undefined ? {} : { format: input.format }),
-	};
+	const weights =
+		input.weights === undefined
+			? []
+			: [...new Set(input.weights.filter(isCatalogWeight))].sort((a, b) => a - b);
+	const url = themeAssetUrl(input.r2Key);
+	const faces: ThemeFontFace[] =
+		weights.length === 0
+			? [
+					{
+						url,
+						...(input.format === undefined ? {} : { format: input.format }),
+					},
+				]
+			: weights.map((weight) => ({
+					url,
+					weight,
+					...(input.format === undefined ? {} : { format: input.format }),
+				}));
 	const variants = {
 		family: input.family,
-		fontAsset: { faces: [face], fallback: null },
+		...(weights.length === 0 ? {} : { weights }),
+		fontAsset: { faces, fallback: null },
 	};
 	const rows = await db
 		.insert(themeAssets)
