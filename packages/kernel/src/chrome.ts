@@ -31,6 +31,7 @@ export const chromeWhenMatches = (
 	if (when === undefined) return true;
 	if (when.exceptPaths?.some((p) => pathMatches(p, pathname))) return false;
 	if (
+		// Stryker disable next-line ConditionalExpression: `count < undefined` is always false, so replacing `!== undefined` with `true` cannot change the outcome
 		when.minDoctorProfiles !== undefined &&
 		(user?.doctorProfiles ?? 0) < when.minDoctorProfiles
 	) {
@@ -71,6 +72,7 @@ export const collectChrome = (
 ): ChromeContribution[] => {
 	const ranked: Ranked[] = [];
 	plugins.forEach((plugin, pluginIndex) => {
+		// Stryker disable next-line ArrayDeclaration: a non-empty fallback would iterate a bare string whose `.region` is undefined and never equals `region` — output identical
 		(plugin.chrome ?? []).forEach((entry, entryIndex) => {
 			if (
 				entry.region === region &&
@@ -84,7 +86,9 @@ export const collectChrome = (
 	ranked.sort(
 		(a, b) =>
 			(a.entry.order ?? Number.POSITIVE_INFINITY) - (b.entry.order ?? Number.POSITIVE_INFINITY) ||
+			// Stryker disable next-line ArithmeticOperator: pluginIndex/entryIndex are non-negative forEach positions and `ranked` is already sorted by them; `+` never yields a negative cross-plugin result, so V8 TimSort output is unchanged (verified exhaustively over the reachable input domain)
 			a.pluginIndex - b.pluginIndex ||
+			// Stryker disable next-line ArithmeticOperator: same as above — entryIndex is a non-negative array position on pre-sorted input
 			a.entryIndex - b.entryIndex,
 	);
 	return ranked.map((r) => r.entry);

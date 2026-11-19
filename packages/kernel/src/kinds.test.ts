@@ -40,6 +40,29 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 			expect(kind.consumers.length).toBeGreaterThan(0);
 		}
 	});
+
+	it("pins each kind's consumers and ordering contract", () => {
+		const byId = new Map(FIELD_CONTRIBUTION_KINDS.map((k) => [k.id, k]));
+		const consumers = (id: string) => byId.get(id)?.consumers;
+		expect(consumers("tables")).toEqual(["app-host.server", "plugin-manager"]);
+		expect(consumers("services")).toEqual(["app-host.server", "plugin-manager"]);
+		expect(consumers("routes")).toEqual(["app.routes", "plugin-manager"]);
+		expect(consumers("landing")).toEqual(["app-host.client", "app.routes"]);
+		expect(consumers("chrome")).toEqual(["app-host.client", "app.routes"]);
+		expect(consumers("panel")).toEqual(["app-host.server", "app-host.client", "plugin-manager"]);
+		expect(consumers("pages")).toEqual(["app-host.server", "app-host.client", "app.routes"]);
+		expect(consumers("portals")).toEqual(["app-host.server", "app-host.client", "plugin-manager"]);
+		expect(consumers("boundaries")).toEqual([
+			"app-host.client",
+			"app-host.server",
+			"plugin-manager",
+		]);
+		expect(consumers("elementKinds")).toEqual(["app-host.client", "plugin-manager"]);
+		// Only chrome declares payload-level ordering; everything else is topo.
+		for (const kind of FIELD_CONTRIBUTION_KINDS) {
+			expect(kind.ordering).toBe(kind.id === "chrome" ? "declared" : "topo");
+		}
+	});
 });
 
 describe("collectKindContributions", () => {
@@ -106,12 +129,13 @@ describe("collectKindContributions", () => {
 
 describe("theme contribution kinds (P-082)", () => {
 	it("registers theme.tokens and theme.brand on the generic channel", () => {
+		expect(GENERIC_CONTRIBUTION_SLOT).toBe("contributions");
 		expect(THEME_TOKENS_KIND.id).toBe("theme.tokens");
 		expect(THEME_BRAND_KIND.id).toBe("theme.brand");
 		for (const kind of [THEME_TOKENS_KIND, THEME_BRAND_KIND]) {
 			expect(kind.slot).toBe(GENERIC_CONTRIBUTION_SLOT);
 			expect(kind.ordering).toBe("topo");
-			expect(kind.consumers).toContain("app-host.server");
+			expect(kind.consumers).toEqual(["app-host.server", "app-host.client", "app.routes"]);
 		}
 		expect(THEME_CONTRIBUTION_KINDS).toEqual([THEME_TOKENS_KIND, THEME_BRAND_KIND]);
 	});
