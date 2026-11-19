@@ -3,8 +3,6 @@ import type { PageI18nSlice } from "@ktb/kernel";
 
 import { appCatalogT } from "./app-catalog.ts";
 
-export { appCatalogT } from "./app-catalog.ts";
-
 /**
  * Host i18n helpers (PL-008 Phase 5 — Paraglide retired). Locale
  * persistence stays the `ktb-locale` cookie; copy resolves from the

@@ -1,5 +1,7 @@
 import { createElement, type ReactNode } from "react";
 
+import { appCatalogT } from "../lib/app-catalog.ts";
+
 /**
  * Shared `vi.mock` factories for bare route-component tests — no router
  * context exists, so `Link` renders as a plain anchor and
@@ -43,8 +45,8 @@ export const i18nMock = async (
 	return {
 		...actual,
 		useRootI18nSlice: () => undefined,
-		appCatalogT: (slice: Parameters<typeof actual.appCatalogT>[0]) => {
-			const t = actual.appCatalogT(slice);
+		appCatalogT: (slice: Parameters<typeof appCatalogT>[0]) => {
+			const t = appCatalogT(slice);
 			return (key: string, params?: Record<string, unknown>) =>
 				key === missingKey?.current ? key : t(key, params);
 		},
