@@ -197,7 +197,7 @@ function RunsSection({
 								...kindOptions.map((k) => ({ value: k, label: k })),
 							]}
 							value={kindFilter}
-							onValueChange={(v) => setKindFilter(v ?? "")}
+							onValueChange={(v) => setKindFilter(v as string)}
 						>
 							<SelectTrigger aria-label={m.filterKind} size="sm">
 								<SelectValue />
@@ -217,7 +217,7 @@ function RunsSection({
 								...STATUS_VALUES.map((s) => ({ value: s, label: m[statusKey(s)] })),
 							]}
 							value={statusFilter}
-							onValueChange={(v) => setStatusFilter((v ?? "") as "" | JobStatus)}
+							onValueChange={(v) => setStatusFilter(v as "" | JobStatus)}
 						>
 							<SelectTrigger aria-label={m.filterStatus} size="sm">
 								<SelectValue />
@@ -318,7 +318,7 @@ function EnqueueSection({ kinds, m }: { kinds: readonly string[] | null; m: Queu
 									...kinds.map((k) => ({ value: k, label: k })),
 								]}
 								value={kind}
-								onValueChange={(v) => setKind(v ?? "")}
+								onValueChange={(v) => setKind(v as string)}
 							>
 								<SelectTrigger aria-label={m.enqueueKind} size="sm">
 									<SelectValue />

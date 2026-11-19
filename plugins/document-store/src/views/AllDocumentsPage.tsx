@@ -159,7 +159,7 @@ export function AllDocumentsPage({
 						]}
 						value={collection}
 						onValueChange={(v) => {
-							const name = v ?? "";
+							const name = v as string;
 							setCollection(name);
 							void fetchPage(0, name);
 						}}

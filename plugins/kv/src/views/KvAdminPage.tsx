@@ -427,7 +427,7 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 					]}
 					value={namespace}
 					onValueChange={(v) => {
-						const ns = v ?? "";
+						const ns = v as string;
 						setNamespace(ns);
 						void load(1, ns, prefix);
 					}}
@@ -558,7 +558,7 @@ export function KvAdminPage({ data, i18n, locale }: KvAdminPageProps) {
 											{ value: "custom", label: t.ttlCustom },
 										]}
 										value={form.ttlMode}
-										onValueChange={(v) => patchForm({ ttlMode: (v ?? "none") as TtlMode })}
+										onValueChange={(v) => patchForm({ ttlMode: v as TtlMode })}
 									>
 										<SelectTrigger id="kv-ttl">
 											<SelectValue />
