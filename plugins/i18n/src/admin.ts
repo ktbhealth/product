@@ -8,7 +8,7 @@ import { Forbidden, Principal } from "@ktb/authz";
 import { Db } from "@ktb/db";
 import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
-import { parseMessage, PSEUDO_LOCALE, type MessageParam } from "@ktb/i18n";
+import { i18nManifestHash, parseMessage, PSEUDO_LOCALE, type MessageParam } from "@ktb/i18n";
 
 import {
 	I18nAdmin,
@@ -345,12 +345,26 @@ export const I18nAdminLive = Layer.effect(
 						for (const code of localeCodes) {
 							translatedRec[code] = byLocale?.get(code)?.size ?? 0;
 						}
+						// Manifest drift: the stored hash was snapshotted at
+						// baseline (re)import; compare it to the live
+						// I18N_MANIFEST contract. "" or a namespace with no
+						// manifest entry means drift is not applicable.
+						const manifestHash = m?.manifestHash ?? "";
+						const currentHash = i18nManifestHash(ns);
+						const manifestDrift: NamespaceCoverage["manifestDrift"] =
+							currentHash === null || manifestHash === ""
+								? "unrecorded"
+								: manifestHash === currentHash
+									? "no"
+									: "yes";
 						out.push({
 							namespace: ns,
 							pluginId: m?.pluginId ?? "",
 							defaultLocale: m?.defaultLocale ?? "en",
 							keyCount: keysByNs.get(ns)?.size ?? 0,
 							translated: translatedRec,
+							manifestHash,
+							manifestDrift,
 						});
 					}
 					return out;

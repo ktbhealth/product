@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
@@ -7,6 +8,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Forbidden } from "@ktb/authz";
+import { i18nManifestHash } from "@ktb/i18n";
 import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
 
@@ -22,6 +24,10 @@ import { I18nRuntimeLive } from "./runtime.ts";
  * i18n_locales is seeded by I18nRuntimeLive at layer build:
  * en, pt-BR, es enabled + qps disabled — qps is still a locale ROW,
  * so coverage's `translated` record carries an entry for it.
+ *
+ * Manifest-drift fixtures reuse REAL I18N_MANIFEST namespace names
+ * (app, agenda, audit): drift compares i18n_namespaces.manifest_hash
+ * against i18nManifestHash(ns) computed live.
  */
 
 let db: DbClient;
@@ -107,7 +113,26 @@ beforeAll(async () => {
 		{ namespace: "cov.reg", pluginId: "cov-plugin", defaultLocale: "pt-BR" },
 		{ namespace: "cov.empty", pluginId: "", defaultLocale: "en" },
 		{ namespace: "cov.scoped", pluginId: "scoped-plugin", defaultLocale: "en" },
+		// Manifest-drift fixtures — all three names exist in
+		// I18N_MANIFEST, exercising each manifestDrift verdict:
+		//   app   — stored hash predates the current contract
+		//   agenda — stored hash matches the live manifest
+		//   audit — registered before hash recording ("")
+		{ namespace: "app", pluginId: "", defaultLocale: "en" },
+		{ namespace: "agenda", pluginId: "", defaultLocale: "en" },
+		{ namespace: "audit", pluginId: "", defaultLocale: "en" },
 	]);
+	// Stored hashes are written post-insert so the fixtures can embed
+	// i18nManifestHash("agenda") — the CURRENT contract hash.
+	await db
+		.update(i18nNamespaces)
+		.set({ manifestHash: "00000000" })
+		.where(eq(i18nNamespaces.namespace, "app"));
+	await db
+		.update(i18nNamespaces)
+		.set({ manifestHash: i18nManifestHash("agenda") ?? "" })
+		.where(eq(i18nNamespaces.namespace, "agenda"));
+	// audit keeps the column default "" — the unrecorded case.
 	await db.insert(i18nMessages).values([
 		// cov.reg: 4 distinct keys across locales/statuses.
 		COV_MSG("cov.reg", "a", "en", { value: "A" }),
@@ -189,6 +214,32 @@ describe("I18nAdmin coverage", () => {
 		expect(scoped?.keyCount).toBe(0);
 		// Unregistered namespace with ONLY tenant rows never appears.
 		expect(out.find((n) => n.namespace === "cov.tenant-only")).toBeUndefined();
+	});
+
+	it("reports manifestDrift yes when the stored hash is stale", async () => {
+		const out = await runCoverage(makeRuntime());
+		const cov = out.find((n) => n.namespace === "app");
+		expect(cov).toBeDefined();
+		expect(cov?.manifestHash).toBe("00000000");
+		expect(cov?.manifestDrift).toBe("yes");
+	});
+
+	it("reports manifestDrift no when the stored hash matches the manifest", async () => {
+		const out = await runCoverage(makeRuntime());
+		const cov = out.find((n) => n.namespace === "agenda");
+		expect(cov).toBeDefined();
+		expect(cov?.manifestHash).toBe(i18nManifestHash("agenda"));
+		expect(cov?.manifestDrift).toBe("no");
+	});
+
+	it("reports manifestDrift unrecorded for empty hash and manifest-less namespaces", async () => {
+		const out = await runCoverage(makeRuntime());
+		// In the manifest but never hash-recorded.
+		expect(out.find((n) => n.namespace === "audit")?.manifestDrift).toBe("unrecorded");
+		// cov.* fixtures aren't in I18N_MANIFEST — DB-only orphans.
+		expect(out.find((n) => n.namespace === "cov.reg")?.manifestDrift).toBe("unrecorded");
+		expect(out.find((n) => n.namespace === "cov.orphan")?.manifestDrift).toBe("unrecorded");
+		expect(out.find((n) => n.namespace === "cov.empty")?.manifestDrift).toBe("unrecorded");
 	});
 
 	it("fails Forbidden without a read grant or the admin gate", async () => {

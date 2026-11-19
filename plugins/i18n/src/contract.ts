@@ -117,6 +117,16 @@ export interface NamespaceCoverage {
 	readonly keyCount: number;
 	/** locale code → count of those keys with a published live value. */
 	readonly translated: Readonly<Record<string, number>>;
+	/** manifest_hash recorded at baseline (re)import — "" when the
+	 * namespace was never registered through syncBaseline or predates
+	 * hash recording. */
+	readonly manifestHash: string;
+	/** Contract drift vs the live I18N_MANIFEST:
+	 * - "yes" — a hash was recorded and no longer matches the manifest;
+	 * - "no" — recorded hash matches the current manifest;
+	 * - "unrecorded" — no stored hash, or the namespace has no manifest
+	 *   entry at all (DB-only orphan: drift is not applicable). */
+	readonly manifestDrift: "yes" | "no" | "unrecorded";
 }
 
 export interface I18nAdminShape {

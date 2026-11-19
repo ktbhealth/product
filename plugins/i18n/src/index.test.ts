@@ -8,7 +8,13 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { Forbidden } from "@ktb/authz";
-import { GLOBAL_SCOPE, localeChain, type LocaleChain, type ScopeChain } from "@ktb/i18n";
+import {
+	GLOBAL_SCOPE,
+	i18nManifestHash,
+	localeChain,
+	type LocaleChain,
+	type ScopeChain,
+} from "@ktb/i18n";
 import { PlatformAdmin } from "@ktb/platform";
 import { Permissions } from "@ktb/rbac";
 
@@ -127,6 +133,23 @@ describe("syncBaseline", () => {
 			.where(and(eq(i18nMessages.namespace, "dup.ns"), eq(i18nMessages.key, "k")));
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.value).toBe("first");
+	});
+
+	it("refreshes manifest_hash on re-sync, preserving pluginId/defaultLocale", async () => {
+		// "app" was registered by the first syncBaseline test — corrupt
+		// its stored hash, then re-sync: the upsert arm must restore the
+		// live I18N_MANIFEST hash (the ops path that clears drift).
+		await db
+			.update(i18nNamespaces)
+			.set({ manifestHash: "stalehash", pluginId: "kept.plugin", defaultLocale: "pt-BR" })
+			.where(eq(i18nNamespaces.namespace, "app"));
+		await syncBaseline(db, [
+			{ namespace: "app", key: "title", locale: "en", value: "Hello {name}" },
+		]);
+		const [row] = await db.select().from(i18nNamespaces).where(eq(i18nNamespaces.namespace, "app"));
+		expect(row?.manifestHash).toBe(i18nManifestHash("app") ?? "");
+		expect(row?.pluginId).toBe("kept.plugin");
+		expect(row?.defaultLocale).toBe("pt-BR");
 	});
 });
 

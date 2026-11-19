@@ -129,6 +129,8 @@ describe("I18nNamespacesPlatformPage", () => {
 							defaultLocale: "en",
 							keyCount: 2,
 							translated: { en: 2 },
+							manifestHash: "",
+							manifestDrift: "unrecorded",
 						},
 					],
 					locales: [{ code: "en", endonym: "English", fallbacks: [], enabled: true }],
