@@ -98,6 +98,7 @@ export const EXPORT_FORMATS = ["fhir-r4", "openehr"] as const;
 export type ExportFormat = (typeof EXPORT_FORMATS)[number];
 
 export const isExportFormat = (value: unknown): value is ExportFormat =>
+	// Stryker disable next-line ConditionalExpression: EXPORT_FORMATS holds only strings, so includes() already returns false for every non-string — the typeof guard cannot change the result (verified by probe over strings, objects, null/undefined, symbols, boxed strings).
 	typeof value === "string" && (EXPORT_FORMATS as readonly string[]).includes(value);
 
 /** A standard-specific serializer of the clinical record. */
