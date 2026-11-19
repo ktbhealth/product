@@ -3101,6 +3101,39 @@ export const I18N_MANIFEST = {
 		weightsNone: {
 			params: [],
 		},
+		uploadFont: {
+			params: [],
+		},
+		dialogUploadTitle: {
+			params: [],
+		},
+		familyLabel: {
+			params: [],
+		},
+		familyPlaceholder: {
+			params: [],
+		},
+		weightLabel: {
+			params: [],
+		},
+		weightPlaceholder: {
+			params: [],
+		},
+		fileLabel: {
+			params: [],
+		},
+		upload: {
+			params: [],
+		},
+		uploading: {
+			params: [],
+		},
+		uploadToast: {
+			params: [],
+		},
+		uploadError: {
+			params: [],
+		},
 	},
 	forms: {
 		submit: {
