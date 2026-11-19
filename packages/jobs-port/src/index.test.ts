@@ -12,6 +12,7 @@ import {
 	insertJobRun,
 	JobEnvelopeSchema,
 	JobRecordSchema,
+	JobStatusSchema,
 	Jobs,
 	JobsLive,
 	listJobRuns,
@@ -21,6 +22,7 @@ import {
 	registerJobHandler,
 	upsertJobRun,
 	type JobEnvelope,
+	type JobRecord,
 	type JobMessageLike,
 	type JobRegistration,
 } from "./index.ts";
@@ -99,6 +101,14 @@ describe("envelope + record schemas", () => {
 		expect(decodeRecord(row)).toEqual(row);
 		expect(() => decodeRecord({ ...row, status: "bogus" })).toThrow('Expected "queued"');
 	});
+
+	it("JobStatusSchema accepts exactly the four job statuses", () => {
+		const decode = Schema.decodeUnknownSync(JobStatusSchema);
+		for (const status of ["queued", "processing", "done", "failed"] as const) {
+			expect(decode(status)).toBe(status);
+		}
+		expect(() => decode("bogus")).toThrow();
+	});
 });
 
 describe("job_runs repo helpers", () => {
@@ -156,6 +166,7 @@ describe("job_runs repo helpers", () => {
 
 		const all = await listJobRuns(db);
 		expect(all.map((r) => r.id)).toEqual(["e", "d", "c", "b", "a"]); // newest first
+		expect((await listJobRuns(db, { limit: 2 })).map((r) => r.id)).toEqual(["e", "d"]);
 
 		expect((await listJobRuns(db, { kind: "k1" })).map((r) => r.id)).toEqual(["c", "a"]);
 		// Prefix match selects every cron.* row regardless of the id suffix.
@@ -243,6 +254,24 @@ describe("makeJobs (enqueue port)", () => {
 		});
 	});
 
+	it("writes tenantId on the failure mark when the projection row is gone", async () => {
+		const { sql, db } = makeTestDb();
+		const jobs = makeJobs({
+			send: async () => {
+				// Remove the queued row mid-flight so the failure mark inserts fresh.
+				await sql.exec("DELETE FROM job_runs");
+				throw new Error("queue down");
+			},
+			db,
+			newId: () => "env-gone",
+		});
+		await expect(jobs.enqueue("k", {}, { tenantId: 4 })).rejects.toThrow("queue down");
+		expect(await getJobRun(db, "env-gone")).toMatchObject({
+			status: "failed",
+			tenantId: 4,
+		});
+	});
+
 	it("propagates projection insert failures before anything is sent", async () => {
 		const send = vi.fn<(envelope: JobEnvelope) => Promise<unknown>>(async () => ({}));
 		const jobs = makeJobs({ send, db: {} as DbClient });
@@ -275,6 +304,10 @@ describe("makeJobs (enqueue port)", () => {
 });
 
 describe("JobsLive layer", () => {
+	it("exposes the stable service key", () => {
+		expect(Jobs.key).toBe("@ktb/jobs-port/Jobs");
+	});
+
 	it("provides the Jobs service to Effect programs", async () => {
 		const sent: JobEnvelope[] = [];
 		const program = Effect.gen(function* () {
@@ -346,6 +379,25 @@ describe("makeJobConsumer", () => {
 			createdAt: 42,
 			updatedAt: 42,
 		});
+	});
+
+	it("marks the run processing while the handler runs", async () => {
+		const { db } = makeTestDb();
+		let seen: JobRecord | null = null;
+		const consumer = makeJobConsumer({
+			handlers: {
+				"test.ping": {
+					handle: async () => {
+						seen = await getJobRun(db, "env-1");
+					},
+				},
+			},
+			db,
+		});
+		const log: string[] = [];
+		await consumer([msg(envelope(), log)]);
+		expect(log).toEqual(["ack"]);
+		expect(seen).toMatchObject({ kind: "test.ping", status: "processing" });
 	});
 
 	it("passes the raw payload when no decodePayload is registered", async () => {
@@ -458,22 +510,26 @@ describe("makeJobConsumer", () => {
 	});
 
 	it("runs without a db (no projection) and survives projection failures", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const consumer = makeJobConsumer({
 			handlers: { "test.ping": { handle: async () => {} } },
 		});
 		const log: string[] = [];
 		await consumer([msg(envelope(), log)]);
 		expect(log).toEqual(["ack"]);
+		expect(warn).not.toHaveBeenCalled();
 
 		// A db whose writes always fail must not break delivery.
-		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const broken = makeJobConsumer({
 			handlers: { "test.ping": { handle: async () => {} } },
 			db: {} as never,
 		});
 		await broken([msg(envelope({ id: "x" }), log)]);
 		expect(log).toEqual(["ack", "ack"]);
-		expect(warn).toHaveBeenCalled();
+		expect(warn).toHaveBeenCalledWith(
+			"job_runs projection write failed",
+			expect.objectContaining({ id: "x" }),
+		);
 		warn.mockRestore();
 	});
 });

@@ -166,7 +166,10 @@ export const listJobRuns = async (
 	const rows = await db
 		.select()
 		.from(jobRuns)
-		.where(conditions.length === 0 ? undefined : and(...conditions))
+		.where(
+			// Stryker disable next-line ConditionalExpression: and() with zero conditions returns undefined — identical to the empty-conditions branch
+			conditions.length === 0 ? undefined : and(...conditions),
+		)
 		.orderBy(desc(jobRuns.createdAt), desc(jobRuns.id))
 		.limit(filter.limit ?? 100);
 	return rows.map(toRecord);
@@ -213,6 +216,7 @@ export const makeJobs = (deps: JobsDeps): JobsEnqueuer => ({
 		try {
 			await deps.send(envelope);
 		} catch (error) {
+			// Stryker disable next-line ConditionalExpression: with no db bound the upsert rejects on undefined.insert and is swallowed by .catch(() => {}) below — same observable behavior
 			if (deps.db !== undefined) {
 				// Best-effort: the send already failed — a projection write
 				// failure must not mask the original error.
@@ -324,6 +328,7 @@ export interface JobConsumerDeps {
 export const makeJobConsumer = (deps: JobConsumerDeps) => {
 	const normalize = deps.normalize ?? decodeJobEnvelope;
 	const newId = deps.newId ?? (() => crypto.randomUUID());
+	// Stryker disable next-line ArrowFunction: now() -> undefined makes upsertJobRun fall back to its `now = Date.now()` default parameter — identical timestamps
 	const now = deps.now ?? (() => Date.now());
 	const mark = async (run: JobRunWrite): Promise<void> => {
 		if (deps.db === undefined) return;
