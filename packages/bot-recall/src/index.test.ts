@@ -56,7 +56,9 @@ describe("RecallBotProvider", () => {
 
 describe("recallDriver", () => {
 	const buildBot = async (env: RecallDriverEnv): Promise<BotProvider> => {
-		const ctx = await Effect.runPromise(Effect.scoped(Layer.build(recallDriver.provides(env))));
+		const ctx = await Effect.runPromise(
+			Effect.scoped(Layer.build(recallDriver.provides(env) as Layer.Layer<Bot>)),
+		);
 		return Context.get(ctx, Bot);
 	};
 
