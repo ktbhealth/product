@@ -26,6 +26,13 @@ describe("isRichTextEmpty", () => {
 		expect(isRichTextEmpty([{ type: "p" }])).toBe(true);
 	});
 
+	it("ignores non-object nodes in the tree", () => {
+		expect(isRichTextEmpty(["str", null, 42])).toBe(true);
+		expect(isRichTextEmpty(["str", { type: "p", children: [null, "x", { text: "hi" }] }])).toBe(
+			false,
+		);
+	});
+
 	it("detects text anywhere in the tree", () => {
 		expect(isRichTextEmpty([{ type: "p", children: [{ text: "hi" }] }])).toBe(false);
 		expect(

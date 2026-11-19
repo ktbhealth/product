@@ -51,6 +51,7 @@ const safeHref = (url: unknown): string | null => {
 /** Text leaf → React node with marks applied (bold outermost, matching
  * the editor's serializer order: underline, then italic, then bold). */
 const markedText = (node: RichTextNode): ReactNode => {
+	/* v8 ignore next -- both call sites guard typeof node.text === "string" */
 	let content: ReactNode = node.text ?? "";
 	if (node.underline) content = <u>{content}</u>;
 	if (node.italic) content = <em>{content}</em>;
@@ -149,8 +150,10 @@ const buildListRun = (items: RichTextNode[]): HtmlList[] => {
 			// Attach to the nearest open ancestor list, or to the root.
 			let attached = false;
 			for (let i = stack.length - 1; i >= 0; i--) {
+				/* v8 ignore next -- the pop loop leaves only entries shallower than depth */
 				if (stack[i]!.depth < depth) {
 					const parentItem = stack[i]!.list.items[stack[i]!.list.items.length - 1];
+					/* v8 ignore next -- every stacked list gets an item pushed right after creation */
 					if (parentItem) {
 						parentItem.sub.push(list);
 						attached = true;
@@ -248,6 +251,7 @@ const renderBlock = (node: RichTextNode | undefined, key: number): ReactNode => 
 		);
 	}
 	// Unknown block-level element: render each child as its own block.
+	/* v8 ignore next -- hasOnlyInlineChildren above returned false, so children is a non-empty array */
 	return (node.children ?? [])
 		.filter((child): child is RichTextNode => !!child && typeof child === "object")
 		.map((child, i) => renderBlock(child, i));

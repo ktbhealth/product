@@ -162,6 +162,41 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("collapses an unreadable job_runs projection to null", async () => {
+		// No job_runs DDL — the projection read throws and the console
+		// degrades to the unavailable state instead of failing the page.
+		const runtime = ManagedRuntime.make(
+			CronAdminLive.pipe(
+				Layer.provide(
+					Layer.mergeAll(
+						Layer.succeed(Db, makeDb(makeD1())),
+						Layer.succeed(PlatformAdmin, adminGate(true)),
+					),
+				),
+			),
+		);
+		const runs = await asPrincipal(runtime, (a) => a.runs(), "admin@x.com");
+		expect(runs).toBeNull();
+		await runtime.dispose();
+	});
+
+	it("maps a throwing crons capability accessor to unavailable", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get crons(): never {
+					throw new Error("registry accessor exploded");
+				},
+			},
+		);
+		const result = await asPrincipal(runtime, (a) => a.runNow("agenda-reminders"), "admin@x.com");
+		expect(result).toEqual({ ok: false, reason: "unavailable" });
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("rejects non-admins with Forbidden on every method", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(

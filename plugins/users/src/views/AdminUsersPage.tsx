@@ -245,6 +245,7 @@ export function AdminUsersPage({
 				<AlertDialog
 					open
 					onOpenChange={(open) => {
+						/* v8 ignore next -- mounted only while deleting; only close events fire */
 						if (!open) {
 							setDeleting(null);
 							setDeleteError(null);

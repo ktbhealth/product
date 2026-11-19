@@ -91,6 +91,7 @@ export function FontProvidersPage({ data, ctx }: { data: unknown; ctx: PanelPage
 
 	const openDialog = () => {
 		setDraftName("");
+		/* v8 ignore next -- every openDialog trigger disables when kinds is empty */
 		setDraftKind(kinds[0] ?? "");
 		setDialogOpen(true);
 	};
@@ -321,6 +322,7 @@ export function FontProvidersPage({ data, ctx }: { data: unknown; ctx: PanelPage
 				<ConfirmDialog
 					open
 					onOpenChange={(open) => {
+						/* v8 ignore next -- mounted only while confirmDelete; only close events fire */
 						if (!open) setConfirmDelete(null);
 					}}
 					title={t.deleteProvider}

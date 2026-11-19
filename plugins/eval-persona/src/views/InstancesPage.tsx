@@ -282,7 +282,11 @@ export function InstancesPage({
 
 	return (
 		<PageContainer>
-			<EvalSteps active={2} labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]} />
+			<EvalSteps
+				active={2}
+				labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]}
+				ariaLabel={m.pipelineAria}
+			/>
 			<PageHeader title={m.instancesTitle} description={m.instancesDesc} />
 			{error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
 

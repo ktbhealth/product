@@ -6,6 +6,7 @@ const h = vi.hoisted(() => ({
 		namespaces: vi.fn<I18nAdminShape["namespaces"]>(),
 		locales: vi.fn<I18nAdminShape["locales"]>(),
 		messages: vi.fn<I18nAdminShape["messages"]>(),
+		missingKeys: vi.fn<I18nAdminShape["missingKeys"]>(),
 		saveDraft: vi.fn<I18nAdminShape["saveDraft"]>(),
 		publish: vi.fn<I18nAdminShape["publish"]>(),
 		discardDraft: vi.fn<I18nAdminShape["discardDraft"]>(),
@@ -56,6 +57,7 @@ import {
 	i18nDiscardDraftFn,
 	i18nExportFn,
 	i18nImportFn,
+	i18nMissingKeysFn,
 	i18nNamespaceMessagesFn,
 	i18nPublishFn,
 	i18nSaveDraftFn,
@@ -72,6 +74,7 @@ beforeEach(() => {
 	h.admin.namespaces.mockReset().mockImplementation(() => ok([]));
 	h.admin.locales.mockReset().mockImplementation(() => ok([]));
 	h.admin.messages.mockReset().mockImplementation(() => ok([]));
+	h.admin.missingKeys.mockReset().mockImplementation(() => ok([]));
 	h.admin.saveDraft.mockReset().mockImplementation(() => ok(undefined));
 	h.admin.publish.mockReset().mockImplementation(() => ok(undefined));
 	h.admin.discardDraft.mockReset().mockImplementation(() => ok(undefined));
@@ -124,6 +127,38 @@ describe("i18n fns", () => {
 		await expect(i18nNamespaceMessagesFn({ data: { namespace: "app" } })).rejects.toThrow(
 			"db down",
 		);
+	});
+
+	it("returns sorted missing keys for a namespace + locale", async () => {
+		h.admin.missingKeys.mockReturnValue(ok(["a.title", "b.sub"]));
+		await expect(
+			i18nMissingKeysFn({ data: { namespace: "app", locale: "pt-BR" } }),
+		).resolves.toEqual({ ok: true, keys: ["a.title", "b.sub"] });
+		expect(h.admin.missingKeys).toHaveBeenCalledWith({
+			namespace: "app",
+			locale: "pt-BR",
+		});
+	});
+
+	it("maps missing-keys validation + forbidden failures to ok:false", async () => {
+		h.admin.missingKeys
+			.mockReturnValueOnce(Effect.fail(new I18nValidationError({ error: "unknown locale" })))
+			.mockReturnValueOnce(denied());
+		await expect(i18nMissingKeysFn({ data: { namespace: "app", locale: "zz" } })).resolves.toEqual({
+			ok: false,
+			error: "unknown locale",
+		});
+		await expect(i18nMissingKeysFn({ data: { namespace: "app", locale: "zz" } })).resolves.toEqual({
+			ok: false,
+		});
+	});
+
+	it("rejects malformed missing-keys input at the validator", async () => {
+		await expect(i18nMissingKeysFn({ data: { namespace: "app" } })).rejects.toThrow("Missing key");
+		await expect(i18nMissingKeysFn({ data: { namespace: "", locale: "en" } })).rejects.toThrow(
+			"length of at least 1",
+		);
+		expect(h.admin.missingKeys).not.toHaveBeenCalled();
 	});
 
 	it("fetches namespace messages with scope filter", async () => {

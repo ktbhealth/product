@@ -1,6 +1,26 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createRedisPubSubTransport, type RedisPubSubLike } from "./index.ts";
+
+// The real client path (no injected `client`) is exercised through a
+// `redis` module mock — createClient returns whatever the test set as
+// `socket.client`, so `connect()`/url resolution run for real.
+const socket = vi.hoisted(() => ({
+	createdUrls: [] as (string | undefined)[],
+	client: null as (RedisPubSubLike & { connect(): Promise<unknown> }) | null,
+}));
+
+vi.mock("redis", () => ({
+	createClient: (opts: { url?: string }) => {
+		socket.createdUrls.push(opts.url);
+		return socket.client;
+	},
+}));
+
+afterEach(() => {
+	socket.client = null;
+	socket.createdUrls = [];
+});
 
 const fakeClient = (over: Partial<RedisPubSubLike> = {}): RedisPubSubLike => ({
 	publish: async () => 0,
@@ -114,5 +134,143 @@ describe("createRedisPubSubTransport", () => {
 		// the channel are untouched.
 		expect(unsubs).toHaveLength(1);
 		expect(unsubs[0]?.[0]).toBe("chan");
+	});
+
+	it("connects a real client from the url option, defaulting to localhost", async () => {
+		const quit = vi.fn<() => Promise<void>>(async () => {});
+		const connect = vi.fn<() => Promise<void>>(async () => {});
+		socket.client = { publish: async () => 0, quit, connect } as never;
+
+		const fallback = await createRedisPubSubTransport();
+		await createRedisPubSubTransport({ url: "redis://10.0.0.9:6380" });
+		expect(socket.createdUrls).toEqual(["redis://127.0.0.1:6379", "redis://10.0.0.9:6380"]);
+		expect(connect).toHaveBeenCalledTimes(2);
+
+		await fallback.close();
+		expect(quit).toHaveBeenCalledOnce();
+	});
+
+	it("serializes an undefined payload as null", async () => {
+		const sent: [string, string][] = [];
+		const transport = await createRedisPubSubTransport({
+			client: fakeClient({
+				publish: async (channel, message) => {
+					sent.push([channel, message]);
+					return 0;
+				},
+			}),
+		});
+		await transport.publish("chan", undefined);
+		expect(sent).toEqual([["chan", "null"]]);
+	});
+
+	it("delivers the raw message when the payload is not JSON", async () => {
+		const listeners = new Map<string, (message: string, channel: string) => void>();
+		const transport = await createRedisPubSubTransport({
+			client: fakeClient({
+				subscribe: async (channel, listener) => {
+					listeners.set(channel, listener);
+				},
+			}),
+		});
+		const seen: unknown[] = [];
+		await transport.subscribe!("chan", (p) => {
+			seen.push(p);
+		});
+		listeners.get("chan")?.("not json", "chan");
+		await new Promise((r) => setTimeout(r, 0));
+		expect(seen).toEqual(["not json"]);
+	});
+
+	it("logs handler rejections and swallows raw-fallback rejections", async () => {
+		const listeners = new Map<string, (message: string, channel: string) => void>();
+		const transport = await createRedisPubSubTransport({
+			client: fakeClient({
+				subscribe: async (channel, listener) => {
+					listeners.set(channel, listener);
+				},
+			}),
+		});
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			await transport.subscribe!("chan", async () => {
+				throw new Error("handler exploded");
+			});
+			// Valid JSON → parsed payload reaches the handler; its
+			// rejection is logged.
+			listeners.get("chan")?.('{"x":1}', "chan");
+			// Non-JSON → the handler is retried with the raw string; that
+			// rejection is swallowed (already logged once per message).
+			listeners.get("chan")?.("raw", "chan");
+			await new Promise((r) => setTimeout(r, 0));
+			expect(errorSpy).toHaveBeenCalledWith("redis pubsub handler failed", {
+				topic: "chan",
+				error: expect.stringContaining("handler exploded"),
+			});
+		} finally {
+			errorSpy.mockRestore();
+		}
+	});
+
+	it("swallows unsubscribe failures and tolerates clients without unsubscribe", async () => {
+		const unsubCalls: string[] = [];
+		const rejecting = await createRedisPubSubTransport({
+			client: fakeClient({
+				subscribe: async () => {},
+				unsubscribe: async (channel) => {
+					unsubCalls.push(channel);
+					throw new Error("unsub down");
+				},
+			}),
+		});
+		const off1 = await rejecting.subscribe!("chan", () => {});
+		off1();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(unsubCalls).toEqual(["chan"]);
+
+		const noUnsub = await createRedisPubSubTransport({
+			client: fakeClient({ subscribe: async () => {} }),
+		});
+		const off2 = await noUnsub.subscribe!("chan", () => {});
+		expect(() => off2()).not.toThrow();
+	});
+
+	it("listTopics tolerates empty channel sets, absent NUMSUB and junk entries", async () => {
+		// Empty channel list → the NUMSUB probe is skipped entirely.
+		const noChannels = await createRedisPubSubTransport({
+			client: fakeClient({
+				pubSubChannels: async () => [],
+				pubSubNumSub: async () => {
+					throw new Error("must not be called");
+				},
+			}),
+		});
+		expect(await noChannels.listTopics()).toEqual([]);
+
+		// CHANNELS without a NUMSUB capability → subscribers honestly null.
+		const noNumSub = await createRedisPubSubTransport({
+			client: fakeClient({ pubSubChannels: async () => ["c"] }),
+		});
+		expect((await noNumSub.listTopics())[0]?.subscribers).toBeNull();
+
+		// Junk NUMSUB entries — non-string/unknown channels and
+		// non-finite counts are ignored, leaving subscribers null.
+		const junk = await createRedisPubSubTransport({
+			client: fakeClient({
+				pubSubChannels: async () => ["c"],
+				pubSubNumSub: async () => [42, "x", "other", 9, "c", "not-a-count"] as unknown as string[],
+			}),
+		});
+		expect((await junk.listTopics())[0]?.subscribers).toBeNull();
+
+		// A degenerate NUMSUB reply (null/scalar, not array/Map/object)
+		// parses to an empty count map → subscribers null.
+		const degenerate = await createRedisPubSubTransport({
+			client: fakeClient({
+				pubSubChannels: async () => ["c"],
+				pubSubNumSub: async () => null as unknown as string[],
+			}),
+		});
+		expect((await degenerate.listTopics())[0]?.subscribers).toBeNull();
 	});
 });

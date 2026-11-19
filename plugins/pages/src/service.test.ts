@@ -603,6 +603,34 @@ describe("CustomPages.validatedSearch", () => {
 		}
 	});
 
+	it("blames bare top-level keys and ignores paths that start with a segment", async () => {
+		// "plain" has no "." or "[" — the whole path is the key.
+		// "[0]"/".deep" start with a segment → empty key → ignored.
+		const validate = vi.fn(() =>
+			Effect.succeed({
+				valid: false,
+				issues: [
+					{ path: "plain", keyword: "type", message: "bad" },
+					{ path: "[0]", keyword: "type", message: "bad" },
+					{ path: ".deep", keyword: "type", message: "bad" },
+				],
+			}),
+		);
+		const { db, layer } = depsFor(schemasStub(validate));
+		await seed(db);
+		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(CustomPages, (p) =>
+					p.validatedSearch("/search", { plain: "drop", q: "keep" }),
+				),
+			);
+			expect(out).toEqual({ q: "keep" });
+		} finally {
+			await rt.dispose();
+		}
+	});
+
 	it("keeps every param when issues name no top-level key", async () => {
 		const validate = vi.fn(() =>
 			Effect.succeed({

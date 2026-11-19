@@ -55,7 +55,12 @@ describe("PagesAdminConsolePage", () => {
 					pages: [row({})],
 					docs: [{ id: 7, title: "Doc" }],
 					richTextEnabled: true,
-					layouts: [{ id: 5, name: "Landing", description: null }, { nope: true }, "x"],
+					layouts: [
+						{ id: 5, name: "Landing", description: null },
+						{ id: 6, name: "BadDesc", description: 42 },
+						{ nope: true },
+						"x",
+					],
 					layoutEnabled: true,
 				}}
 				ctx={ctx}
@@ -68,7 +73,13 @@ describe("PagesAdminConsolePage", () => {
 		// fields render (malformed layout entries are dropped).
 		await user.click(screen.getByText("New page"));
 		expect(screen.getByRole("combobox", { name: "Content document" })).toBeTruthy();
-		expect(screen.getByRole("combobox", { name: "Layout" })).toBeTruthy();
+		const layoutPicker = screen.getByRole("combobox", { name: "Layout" });
+		expect(layoutPicker).toBeTruthy();
+		// Only the well-formed layout row survives the narrowing filter —
+		// a non-string/non-null description drops the entry.
+		await user.click(layoutPicker);
+		expect(await screen.findByRole("option", { name: "Landing" })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: "BadDesc" })).toBeNull();
 	});
 
 	it("drops malformed rows and docs, and survives non-object data", () => {
@@ -89,5 +100,34 @@ describe("PagesAdminConsolePage", () => {
 		// A bare array (the pre-docs loader shape) narrows to empty.
 		render(<PagesAdminConsolePage data={[row({})]} ctx={ctx} />);
 		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+	});
+
+	it("narrows the schema picker options and drops malformed entries", async () => {
+		const user = userEvent.setup();
+		render(
+			<PagesAdminConsolePage
+				data={{
+					pages: [],
+					schemas: [
+						{ id: 3, name: "Filters", description: "Query params" },
+						{ id: 4, name: "Sort", description: null },
+						{ id: 5, name: "Bad", description: 42 },
+						{ id: "x", name: "BadId" },
+						{ id: 6 },
+						"nope",
+						null,
+					],
+					searchSchemaEnabled: true,
+				}}
+				ctx={ctx}
+			/>,
+		);
+		await user.click(screen.getByText("New page"));
+		await user.click(screen.getByRole("combobox", { name: "Search schema" }));
+		// Only well-formed schema rows survive the narrowing filter.
+		expect(await screen.findByRole("option", { name: "Filters" })).toBeTruthy();
+		expect(screen.getByRole("option", { name: "Sort" })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: "Bad" })).toBeNull();
+		expect(screen.queryByRole("option", { name: "BadId" })).toBeNull();
 	});
 });

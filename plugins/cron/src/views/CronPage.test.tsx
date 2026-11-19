@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const runCronJobFn = vi.fn<(_arg?: { data?: { id: string } }) => Promise<{ ok: true }>>(
@@ -89,5 +89,102 @@ describe("CronPage", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Run now" }));
 		expect(runCronJobFn).toHaveBeenCalledWith({ data: { id: "agenda-reminders" } });
 		expect(await screen.findByText(/3 reminders/)).toBeTruthy();
+	});
+
+	it("renders every last-run signal and missing timestamps honestly", () => {
+		render(
+			<CronPage
+				jobs={[
+					job({ id: "no-desc", description: undefined }),
+					job({
+						id: "running-job",
+						lastRun: {
+							id: "r1",
+							ok: false,
+							running: true,
+							error: null,
+							startedAt: 1700000000000,
+							finishedAt: 0,
+						},
+					}),
+					job({
+						id: "failed-job",
+						lastRun: {
+							id: "r2",
+							ok: false,
+							running: false,
+							error: "walk exploded",
+							startedAt: 1700000000000,
+							finishedAt: 0,
+						},
+					}),
+					job({
+						id: "untimed-job",
+						lastRun: {
+							id: "r3",
+							ok: true,
+							running: false,
+							startedAt: null as unknown as number,
+							finishedAt: 0,
+						},
+					}),
+				]}
+				runs={[
+					run({ id: "run-err", kind: "cron.audit", error: "boom" }),
+					run({ id: "run-untimed", kind: "other.kind", createdAt: undefined }),
+				]}
+				locale="en"
+			/>,
+		);
+		expect(screen.getByText("Running")).toBeTruthy();
+		expect(screen.getByText("Failed")).toBeTruthy();
+		expect(screen.getByText("walk exploded")).toBeTruthy();
+		// Missing description and the null startedAt render as dashes.
+		expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+		openTab("Run history");
+		expect(screen.getByText("boom")).toBeTruthy();
+		// A non-cron.* kind keeps its full kind string.
+		expect(screen.getByText("other.kind")).toBeTruthy();
+		// The undefined createdAt degrades to the dash marker.
+		expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+	});
+
+	it("surfaces every runNow outcome, including dispatch rejections", async () => {
+		runCronJobFn
+			.mockResolvedValueOnce({ ok: true, summary: "3 reminders" } as never)
+			.mockResolvedValueOnce({ ok: true } as never)
+			.mockResolvedValueOnce({ ok: false, reason: "unknown-job" } as never)
+			.mockResolvedValueOnce({ ok: false, reason: "unavailable" } as never)
+			.mockResolvedValueOnce({ ok: false, reason: "forbidden" } as never)
+			.mockResolvedValueOnce({
+				ok: false,
+				reason: "run-failed",
+				error: "walk failed",
+			} as never)
+			.mockResolvedValueOnce({ ok: false, reason: "run-failed" } as never)
+			.mockRejectedValueOnce(new Error("wire exploded"));
+		const ids = [
+			"ok-summary",
+			"ok-plain",
+			"unknown",
+			"unavailable",
+			"forbidden",
+			"failed-error",
+			"failed-plain",
+			"rejected",
+		];
+		render(<CronPage jobs={ids.map((id) => job({ id }))} runs={[]} locale="en" />);
+		for (const btn of screen.getAllByRole("button", { name: "Run now" })) {
+			fireEvent.click(btn);
+		}
+		expect(await screen.findByText(/3 reminders/)).toBeTruthy();
+		expect(await screen.findByText("Run finished.")).toBeTruthy();
+		expect(await screen.findByText("Unknown job id.")).toBeTruthy();
+		expect(await screen.findByText("Cron runner unavailable in this environment.")).toBeTruthy();
+		expect(await screen.findByText("Not permitted.")).toBeTruthy();
+		expect(await screen.findByText("Run failed. walk failed")).toBeTruthy();
+		// The error-less run-failed outcome and the rejected dispatch both
+		// collapse to the bare failure copy.
+		await waitFor(() => expect(screen.getAllByText("Run failed.")).toHaveLength(2));
 	});
 });

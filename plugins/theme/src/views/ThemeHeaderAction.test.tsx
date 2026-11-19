@@ -61,6 +61,8 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	fns.listThemesFn.mockReset();
 	fns.setThemePreviewFn.mockReset();
+	document.documentElement.classList.remove("dark");
+	document.cookie = "ktb-color-scheme=; path=/; max-age=0";
 });
 
 describe("ThemeHeaderAction", () => {
@@ -134,5 +136,20 @@ describe("ThemeHeaderAction", () => {
 		expect(await screen.findByRole("button", { name: "Previewing…" })).toBeTruthy();
 		await act(async () => pending.resolve({ ok: true }));
 		expect(reload).toHaveBeenCalled();
+	});
+
+	it("switches the color scheme from the popover button group", async () => {
+		fns.listThemesFn.mockResolvedValue(THEMES);
+		const user = userEvent.setup();
+		render(<ThemeHeaderAction locale="en" />);
+		await user.click(await screen.findByRole("button", { name: "Theme" }));
+
+		await user.click(await screen.findByRole("button", { name: "Dark" }));
+		expect(document.documentElement.classList.contains("dark")).toBe(true);
+		expect(document.cookie).toContain("ktb-color-scheme=dark");
+
+		await user.click(screen.getByRole("button", { name: "Light" }));
+		expect(document.documentElement.classList.contains("dark")).toBe(false);
+		expect(document.cookie).toContain("ktb-color-scheme=light");
 	});
 });

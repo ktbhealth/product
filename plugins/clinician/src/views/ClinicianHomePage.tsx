@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
 import { ClipboardListIcon, UsersIcon } from "lucide-react";
 
+import { sliceMessages } from "@ktb/i18n";
 import type { PageContext } from "@ktb/kernel";
 
+import { clinicianMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { usePortalInstanceId } from "./portal-base.ts";
 
 /** Clinical portal landing (P-081): the instance index — a directory of
@@ -13,14 +15,12 @@ import { usePortalInstanceId } from "./portal-base.ts";
  * mounts under /portal/doctor and /portal/secretary — links resolve the
  * current instance from the live pathname. */
 export function ClinicianHomePage({ ctx }: { data: unknown; ctx: PageContext }) {
-	void ctx;
+	const t = sliceMessages(ctx.i18n, I18N_NAMESPACE, clinicianMessages(ctx.locale)).home;
 	const instance = usePortalInstanceId();
 	return (
 		<div className="mx-auto max-w-3xl p-6">
-			<h1 className="text-2xl font-bold tracking-tight">Clinician workspace</h1>
-			<p className="mt-1 text-sm text-muted-foreground">
-				Patients and consultations for the doctor you act as.
-			</p>
+			<h1 className="text-2xl font-bold tracking-tight">{t.title}</h1>
+			<p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
 			<div className="mt-6 grid gap-4 sm:grid-cols-2">
 				<Link
 					to="/portal/$instance/$"
@@ -31,10 +31,8 @@ export function ClinicianHomePage({ ctx }: { data: unknown; ctx: PageContext }) 
 						<UsersIcon className="size-5" />
 					</span>
 					<span>
-						<span className="block font-semibold">Patients</span>
-						<span className="block text-sm text-muted-foreground">
-							Records, demographics and deletion.
-						</span>
+						<span className="block font-semibold">{t.patientsTitle}</span>
+						<span className="block text-sm text-muted-foreground">{t.patientsDesc}</span>
 					</span>
 				</Link>
 				<Link
@@ -46,10 +44,8 @@ export function ClinicianHomePage({ ctx }: { data: unknown; ctx: PageContext }) 
 						<ClipboardListIcon className="size-5" />
 					</span>
 					<span>
-						<span className="block font-semibold">Consultations</span>
-						<span className="block text-sm text-muted-foreground">
-							Visit notes, transcripts and anamnesis.
-						</span>
+						<span className="block font-semibold">{t.consultationsTitle}</span>
+						<span className="block text-sm text-muted-foreground">{t.consultationsDesc}</span>
 					</span>
 				</Link>
 			</div>

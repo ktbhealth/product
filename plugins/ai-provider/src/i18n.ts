@@ -21,6 +21,8 @@ export interface AiEndpointMessages {
 	readonly secretRefCustom: string;
 	readonly scopeLabel: string;
 	readonly isDefaultLabel: string;
+	readonly badgeDefault: string;
+	readonly badgeOff: string;
 	readonly timeoutMs: string;
 	readonly enabled: string;
 	readonly test: string;
@@ -93,6 +95,8 @@ const en: AiEndpointMessages = {
 	secretRefCustom: "Custom env var",
 	scopeLabel: "Scope",
 	isDefaultLabel: "Default endpoint",
+	badgeDefault: "default",
+	badgeOff: "off",
 	timeoutMs: "Timeout (ms)",
 	enabled: "Enabled",
 	test: "Test",
@@ -170,6 +174,8 @@ const ptBR: AiEndpointMessages = {
 	secretRefCustom: "Env var personalizada",
 	scopeLabel: "Escopo",
 	isDefaultLabel: "Endpoint padrão",
+	badgeDefault: "padrão",
+	badgeOff: "desligado",
 	timeoutMs: "Timeout (ms)",
 	enabled: "Ativo",
 	test: "Testar",
@@ -240,6 +246,8 @@ const es: AiEndpointMessages = {
 	name: "Nombre",
 	scopeLabel: "Ámbito",
 	isDefaultLabel: "Endpoint predeterminado",
+	badgeDefault: "predeterminado",
+	badgeOff: "desactivado",
 	test: "Probar",
 	transport: "Transporte",
 	transportHint: "child/ssh necesitan el runtime Node — esta app solo usa ws.",

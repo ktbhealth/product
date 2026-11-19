@@ -451,6 +451,12 @@ export type I18nKey =
 	| "auth.tabIn"
 	| "auth.tabUp"
 	| "auth.verifyLink"
+	| "clinician.home.consultationsDesc"
+	| "clinician.home.consultationsTitle"
+	| "clinician.home.patientsDesc"
+	| "clinician.home.patientsTitle"
+	| "clinician.home.subtitle"
+	| "clinician.home.title"
 	| "consultations.admin.cancel"
 	| "consultations.admin.colActions"
 	| "consultations.admin.colAudio"
@@ -832,6 +838,7 @@ export type I18nKey =
 	| "eval.persona.personaPurpose"
 	| "eval.persona.personasDesc"
 	| "eval.persona.personasTitle"
+	| "eval.persona.pipelineAria"
 	| "eval.persona.randomize"
 	| "eval.persona.region"
 	| "eval.persona.register"
@@ -871,12 +878,14 @@ export type I18nKey =
 	| "eval.validator.moreTurns"
 	| "eval.validator.noRunnerBound"
 	| "eval.validator.pending"
+	| "eval.validator.pipelineAria"
 	| "eval.validator.reject"
 	| "eval.validator.rejected"
 	| "eval.validator.run"
 	| "eval.validator.runEval"
 	| "eval.validator.runnerInline"
 	| "eval.validator.samplesOf"
+	| "eval.validator.sections"
 	| "eval.validator.stageAnamnesis"
 	| "eval.validator.stageCleanup"
 	| "eval.validator.stageError"
@@ -981,6 +990,107 @@ export type I18nKey =
 	| "groups.searchPlaceholder"
 	| "groups.slugPlaceholder"
 	| "groups.title"
+	| "i18n.admin.common.cancel"
+	| "i18n.admin.common.denied"
+	| "i18n.admin.common.disabled"
+	| "i18n.admin.common.discard"
+	| "i18n.admin.common.draft"
+	| "i18n.admin.common.global"
+	| "i18n.admin.common.loading"
+	| "i18n.admin.common.missing"
+	| "i18n.admin.common.portal"
+	| "i18n.admin.common.publish"
+	| "i18n.admin.common.tenant"
+	| "i18n.admin.drafts.bulkOk"
+	| "i18n.admin.drafts.bulkPartial"
+	| "i18n.admin.drafts.colDraft"
+	| "i18n.admin.drafts.colKey"
+	| "i18n.admin.drafts.colLive"
+	| "i18n.admin.drafts.colLocale"
+	| "i18n.admin.drafts.colScope"
+	| "i18n.admin.drafts.colUpdated"
+	| "i18n.admin.drafts.description"
+	| "i18n.admin.drafts.discardDesc"
+	| "i18n.admin.drafts.discardSelected"
+	| "i18n.admin.drafts.discardTitle"
+	| "i18n.admin.drafts.empty"
+	| "i18n.admin.drafts.filter"
+	| "i18n.admin.drafts.noMatch"
+	| "i18n.admin.drafts.noticeDiscarded"
+	| "i18n.admin.drafts.noticePublished"
+	| "i18n.admin.drafts.publishSelected"
+	| "i18n.admin.drafts.selectAll"
+	| "i18n.admin.drafts.selectRow"
+	| "i18n.admin.drafts.title"
+	| "i18n.admin.drafts.verbDiscarded"
+	| "i18n.admin.drafts.verbPublished"
+	| "i18n.admin.locales.colCode"
+	| "i18n.admin.locales.colEnabled"
+	| "i18n.admin.locales.colFallbacks"
+	| "i18n.admin.locales.colLocale"
+	| "i18n.admin.locales.description"
+	| "i18n.admin.locales.empty"
+	| "i18n.admin.locales.noticeDisabled"
+	| "i18n.admin.locales.noticeEnabled"
+	| "i18n.admin.locales.title"
+	| "i18n.admin.locales.toggle"
+	| "i18n.admin.locales.toggleDenied"
+	| "i18n.admin.messages.colKey"
+	| "i18n.admin.messages.compareEmpty"
+	| "i18n.admin.messages.compareNone"
+	| "i18n.admin.messages.compareWith"
+	| "i18n.admin.messages.description"
+	| "i18n.admin.messages.discardConfirm"
+	| "i18n.admin.messages.discardDesc"
+	| "i18n.admin.messages.discardDraft"
+	| "i18n.admin.messages.discardKeep"
+	| "i18n.admin.messages.discardTitle"
+	| "i18n.admin.messages.draftPending"
+	| "i18n.admin.messages.editCell"
+	| "i18n.admin.messages.editorRichAria"
+	| "i18n.admin.messages.emptyEnterScopeId"
+	| "i18n.admin.messages.emptyNone"
+	| "i18n.admin.messages.exportBtn"
+	| "i18n.admin.messages.exportDenied"
+	| "i18n.admin.messages.importBtn"
+	| "i18n.admin.messages.importConfirm"
+	| "i18n.admin.messages.importDenied"
+	| "i18n.admin.messages.importDesc"
+	| "i18n.admin.messages.importNotice"
+	| "i18n.admin.messages.importTitle"
+	| "i18n.admin.messages.invalidJson"
+	| "i18n.admin.messages.kindRich"
+	| "i18n.admin.messages.kindText"
+	| "i18n.admin.messages.lintExtra"
+	| "i18n.admin.messages.lintLiveValue"
+	| "i18n.admin.messages.lintLocaleLive"
+	| "i18n.admin.messages.lintMissing"
+	| "i18n.admin.messages.paramMismatch"
+	| "i18n.admin.messages.previewRichAria"
+	| "i18n.admin.messages.saveDraft"
+	| "i18n.admin.messages.scopeIdPortal"
+	| "i18n.admin.messages.scopeIdTenant"
+	| "i18n.admin.messages.title"
+	| "i18n.admin.namespaces.allTranslated"
+	| "i18n.admin.namespaces.cellMissing"
+	| "i18n.admin.namespaces.colDefaultLocale"
+	| "i18n.admin.namespaces.colKeys"
+	| "i18n.admin.namespaces.colNamespace"
+	| "i18n.admin.namespaces.colPlugin"
+	| "i18n.admin.namespaces.description"
+	| "i18n.admin.namespaces.driftBadge"
+	| "i18n.admin.namespaces.empty"
+	| "i18n.admin.namespaces.filterIncomplete"
+	| "i18n.admin.namespaces.missingDesc"
+	| "i18n.admin.namespaces.noMatch"
+	| "i18n.admin.namespaces.search"
+	| "i18n.admin.namespaces.showMissing"
+	| "i18n.admin.namespaces.sortKeys"
+	| "i18n.admin.namespaces.sortName"
+	| "i18n.admin.namespaces.sortWorst"
+	| "i18n.admin.namespaces.summary"
+	| "i18n.admin.namespaces.summaryDrift"
+	| "i18n.admin.namespaces.title"
 	| "invites.confirmPassword"
 	| "invites.createdSignIn"
 	| "invites.createdTitle"
@@ -1813,13 +1923,18 @@ export type I18nKey =
 	| "theme.brandTitle"
 	| "theme.cancel"
 	| "theme.colActions"
+	| "theme.colColor"
 	| "theme.colEnabled"
 	| "theme.colName"
 	| "theme.colScope"
 	| "theme.colScopeId"
+	| "theme.colStatus"
 	| "theme.colVersion"
 	| "theme.componentsDescription"
 	| "theme.componentsTitle"
+	| "theme.contrastColMin"
+	| "theme.contrastColPairing"
+	| "theme.contrastColRatio"
 	| "theme.contrastDark"
 	| "theme.contrastFail"
 	| "theme.contrastLight"
@@ -1843,6 +1958,9 @@ export type I18nKey =
 	| "theme.enable"
 	| "theme.fontHeading"
 	| "theme.fontMono"
+	| "theme.fontSampleHeading"
+	| "theme.fontSampleMono"
+	| "theme.fontSampleSans"
 	| "theme.fontSans"
 	| "theme.fontsDeliveryLabel"
 	| "theme.fontsFamiliesLabel"
@@ -1850,10 +1968,51 @@ export type I18nKey =
 	| "theme.fontsGoogleWarning"
 	| "theme.fontsSelfHost"
 	| "theme.fontsTitle"
+	| "theme.galleryAlertFailDesc"
+	| "theme.galleryAlertFailTitle"
+	| "theme.galleryAlertOkDesc"
+	| "theme.galleryAlertOkTitle"
+	| "theme.galleryBtnDefault"
+	| "theme.galleryBtnDestructive"
+	| "theme.galleryBtnDisabled"
+	| "theme.galleryBtnGhost"
+	| "theme.galleryBtnLarge"
+	| "theme.galleryBtnLink"
+	| "theme.galleryBtnOutline"
+	| "theme.galleryBtnSecondary"
+	| "theme.galleryBtnSmall"
 	| "theme.galleryButtons"
+	| "theme.galleryEmptyDesc"
+	| "theme.galleryEmptyTitle"
 	| "theme.galleryFeedback"
 	| "theme.galleryForms"
+	| "theme.galleryInputLabel"
+	| "theme.galleryInputPlaceholder"
+	| "theme.galleryOptionA"
+	| "theme.galleryOptionB"
+	| "theme.galleryOptionOne"
+	| "theme.galleryOptionTwo"
+	| "theme.gallerySelectLabel"
+	| "theme.gallerySettingsDesc"
+	| "theme.gallerySettingsDescValue"
+	| "theme.gallerySettingsEnabled"
+	| "theme.gallerySettingsHighContrast"
+	| "theme.gallerySettingsName"
+	| "theme.gallerySettingsReset"
+	| "theme.gallerySettingsSave"
+	| "theme.galleryStatActive"
+	| "theme.galleryStatAssets"
+	| "theme.galleryStatContrast"
+	| "theme.galleryStatusDraft"
+	| "theme.galleryStatusReady"
+	| "theme.gallerySurfaceMuted"
+	| "theme.gallerySurfaceRole"
 	| "theme.gallerySurfaces"
+	| "theme.gallerySurfaceTeam"
+	| "theme.gallerySwitchMarketing"
+	| "theme.gallerySwitchNotifications"
+	| "theme.galleryTextareaLabel"
+	| "theme.galleryTextareaPlaceholder"
 	| "theme.headerEmpty"
 	| "theme.headerLabel"
 	| "theme.headerManage"
@@ -1872,6 +2031,7 @@ export type I18nKey =
 	| "theme.published"
 	| "theme.publishError"
 	| "theme.publishing"
+	| "theme.radiusCurrent"
 	| "theme.schemeDark"
 	| "theme.schemeLabel"
 	| "theme.schemeLight"
@@ -1901,6 +2061,10 @@ export type I18nKey =
 	| "theme.tabGeneral"
 	| "theme.tabTokens"
 	| "theme.tabTypography"
+	| "theme.tokenColSwatch"
+	| "theme.tokenColToken"
+	| "theme.tokenColValue"
+	| "theme.tokenRefTitle"
 	| "theme.tokensDescription"
 	| "theme.tokensTitle"
 	| "users.cancel"
@@ -2510,6 +2674,12 @@ export interface I18nTypedT {
 	(key: "auth.tabIn"): Effect.Effect<string>;
 	(key: "auth.tabUp"): Effect.Effect<string>;
 	(key: "auth.verifyLink"): Effect.Effect<string>;
+	(key: "clinician.home.consultationsDesc"): Effect.Effect<string>;
+	(key: "clinician.home.consultationsTitle"): Effect.Effect<string>;
+	(key: "clinician.home.patientsDesc"): Effect.Effect<string>;
+	(key: "clinician.home.patientsTitle"): Effect.Effect<string>;
+	(key: "clinician.home.subtitle"): Effect.Effect<string>;
+	(key: "clinician.home.title"): Effect.Effect<string>;
 	(key: "consultations.admin.cancel"): Effect.Effect<string>;
 	(key: "consultations.admin.colActions"): Effect.Effect<string>;
 	(key: "consultations.admin.colAudio"): Effect.Effect<string>;
@@ -3044,6 +3214,7 @@ export interface I18nTypedT {
 	(key: "eval.persona.personaPurpose"): Effect.Effect<string>;
 	(key: "eval.persona.personasDesc"): Effect.Effect<string>;
 	(key: "eval.persona.personasTitle"): Effect.Effect<string>;
+	(key: "eval.persona.pipelineAria"): Effect.Effect<string>;
 	(key: "eval.persona.randomize"): Effect.Effect<string>;
 	(key: "eval.persona.region"): Effect.Effect<string>;
 	(key: "eval.persona.register"): Effect.Effect<string>;
@@ -3083,12 +3254,14 @@ export interface I18nTypedT {
 	(key: "eval.validator.moreTurns"): Effect.Effect<string>;
 	(key: "eval.validator.noRunnerBound"): Effect.Effect<string>;
 	(key: "eval.validator.pending"): Effect.Effect<string>;
+	(key: "eval.validator.pipelineAria"): Effect.Effect<string>;
 	(key: "eval.validator.reject"): Effect.Effect<string>;
 	(key: "eval.validator.rejected"): Effect.Effect<string>;
 	(key: "eval.validator.run"): Effect.Effect<string>;
 	(key: "eval.validator.runEval"): Effect.Effect<string>;
 	(key: "eval.validator.runnerInline"): Effect.Effect<string>;
 	(key: "eval.validator.samplesOf"): Effect.Effect<string>;
+	(key: "eval.validator.sections"): Effect.Effect<string>;
 	(key: "eval.validator.stageAnamnesis"): Effect.Effect<string>;
 	(key: "eval.validator.stageCleanup"): Effect.Effect<string>;
 	(key: "eval.validator.stageError"): Effect.Effect<string>;
@@ -3219,6 +3392,255 @@ export interface I18nTypedT {
 	(key: "groups.searchPlaceholder"): Effect.Effect<string>;
 	(key: "groups.slugPlaceholder"): Effect.Effect<string>;
 	(key: "groups.title"): Effect.Effect<string>;
+	(key: "i18n.admin.common.cancel"): Effect.Effect<string>;
+	(key: "i18n.admin.common.denied"): Effect.Effect<string>;
+	(key: "i18n.admin.common.disabled"): Effect.Effect<string>;
+	(key: "i18n.admin.common.discard"): Effect.Effect<string>;
+	(key: "i18n.admin.common.draft"): Effect.Effect<string>;
+	(key: "i18n.admin.common.global"): Effect.Effect<string>;
+	(key: "i18n.admin.common.loading"): Effect.Effect<string>;
+	(key: "i18n.admin.common.missing"): Effect.Effect<string>;
+	(key: "i18n.admin.common.portal"): Effect.Effect<string>;
+	(key: "i18n.admin.common.publish"): Effect.Effect<string>;
+	(key: "i18n.admin.common.tenant"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.bulkOk",
+		params: {
+			verb: unknown;
+			count: number;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.bulkPartial",
+		params: {
+			verb: unknown;
+			ok: unknown;
+			failed: unknown;
+			errorSuffix: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.colDraft"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.colKey"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.colLive"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.colLocale"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.colScope"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.colUpdated"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.description"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.discardDesc"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.discardSelected",
+		params: {
+			count: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.discardTitle",
+		params: {
+			count: number;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.empty"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.filter"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.noMatch"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.noticeDiscarded",
+		params: {
+			label: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.noticePublished",
+		params: {
+			label: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.publishSelected",
+		params: {
+			count: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.selectAll"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.drafts.selectRow",
+		params: {
+			label: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.title"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.verbDiscarded"): Effect.Effect<string>;
+	(key: "i18n.admin.drafts.verbPublished"): Effect.Effect<string>;
+	(key: "i18n.admin.locales.colCode"): Effect.Effect<string>;
+	(key: "i18n.admin.locales.colEnabled"): Effect.Effect<string>;
+	(key: "i18n.admin.locales.colFallbacks"): Effect.Effect<string>;
+	(key: "i18n.admin.locales.colLocale"): Effect.Effect<string>;
+	(key: "i18n.admin.locales.description"): Effect.Effect<string>;
+	(key: "i18n.admin.locales.empty"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.locales.noticeDisabled",
+		params: {
+			code: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.locales.noticeEnabled",
+		params: {
+			code: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.locales.title"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.locales.toggle",
+		params: {
+			code: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.locales.toggleDenied",
+		params: {
+			code: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.colKey"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.compareEmpty",
+		params: {
+			locale: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.compareNone"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.compareWith"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.description"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.discardConfirm"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.discardDesc"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.discardDraft"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.discardKeep"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.discardTitle"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.draftPending"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.editCell",
+		params: {
+			key: unknown;
+			locale: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.editorRichAria"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.emptyEnterScopeId",
+		params: {
+			scope: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.emptyNone"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.exportBtn"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.exportDenied"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.importBtn"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.importConfirm"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.importDenied"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.importDesc",
+		params: {
+			locales: unknown;
+			keys: unknown;
+			entries: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.importNotice",
+		params: {
+			entries: unknown;
+			namespace: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.importTitle",
+		params: {
+			namespace: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.invalidJson"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.kindRich"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.kindText"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.lintExtra",
+		params: {
+			params: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.lintLiveValue"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.lintLocaleLive",
+		params: {
+			locale: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.lintMissing",
+		params: {
+			params: unknown;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.messages.paramMismatch",
+		params: {
+			label: unknown;
+			detail: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.messages.previewRichAria"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.saveDraft"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.scopeIdPortal"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.scopeIdTenant"): Effect.Effect<string>;
+	(key: "i18n.admin.messages.title"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.allTranslated"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.namespaces.cellMissing",
+		params: {
+			count: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.colDefaultLocale"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.colKeys"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.colNamespace"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.colPlugin"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.description"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.driftBadge"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.empty"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.filterIncomplete"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.namespaces.missingDesc",
+		params: {
+			locale: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.noMatch"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.search"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.namespaces.showMissing",
+		params: {
+			count: unknown;
+			namespace: unknown;
+			locale: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.sortKeys"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.sortName"): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.sortWorst"): Effect.Effect<string>;
+	(
+		key: "i18n.admin.namespaces.summary",
+		params: {
+			namespaces: number;
+			keys: number;
+			locales: number;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "i18n.admin.namespaces.summaryDrift",
+		params: {
+			namespaces: number;
+		},
+	): Effect.Effect<string>;
+	(key: "i18n.admin.namespaces.title"): Effect.Effect<string>;
 	(key: "invites.confirmPassword"): Effect.Effect<string>;
 	(key: "invites.createdSignIn"): Effect.Effect<string>;
 	(key: "invites.createdTitle"): Effect.Effect<string>;
@@ -4299,13 +4721,18 @@ export interface I18nTypedT {
 	(key: "theme.brandTitle"): Effect.Effect<string>;
 	(key: "theme.cancel"): Effect.Effect<string>;
 	(key: "theme.colActions"): Effect.Effect<string>;
+	(key: "theme.colColor"): Effect.Effect<string>;
 	(key: "theme.colEnabled"): Effect.Effect<string>;
 	(key: "theme.colName"): Effect.Effect<string>;
 	(key: "theme.colScope"): Effect.Effect<string>;
 	(key: "theme.colScopeId"): Effect.Effect<string>;
+	(key: "theme.colStatus"): Effect.Effect<string>;
 	(key: "theme.colVersion"): Effect.Effect<string>;
 	(key: "theme.componentsDescription"): Effect.Effect<string>;
 	(key: "theme.componentsTitle"): Effect.Effect<string>;
+	(key: "theme.contrastColMin"): Effect.Effect<string>;
+	(key: "theme.contrastColPairing"): Effect.Effect<string>;
+	(key: "theme.contrastColRatio"): Effect.Effect<string>;
 	(key: "theme.contrastDark"): Effect.Effect<string>;
 	(key: "theme.contrastFail"): Effect.Effect<string>;
 	(key: "theme.contrastLight"): Effect.Effect<string>;
@@ -4329,6 +4756,9 @@ export interface I18nTypedT {
 	(key: "theme.enable"): Effect.Effect<string>;
 	(key: "theme.fontHeading"): Effect.Effect<string>;
 	(key: "theme.fontMono"): Effect.Effect<string>;
+	(key: "theme.fontSampleHeading"): Effect.Effect<string>;
+	(key: "theme.fontSampleMono"): Effect.Effect<string>;
+	(key: "theme.fontSampleSans"): Effect.Effect<string>;
 	(key: "theme.fontSans"): Effect.Effect<string>;
 	(key: "theme.fontsDeliveryLabel"): Effect.Effect<string>;
 	(key: "theme.fontsFamiliesLabel"): Effect.Effect<string>;
@@ -4336,10 +4766,51 @@ export interface I18nTypedT {
 	(key: "theme.fontsGoogleWarning"): Effect.Effect<string>;
 	(key: "theme.fontsSelfHost"): Effect.Effect<string>;
 	(key: "theme.fontsTitle"): Effect.Effect<string>;
+	(key: "theme.galleryAlertFailDesc"): Effect.Effect<string>;
+	(key: "theme.galleryAlertFailTitle"): Effect.Effect<string>;
+	(key: "theme.galleryAlertOkDesc"): Effect.Effect<string>;
+	(key: "theme.galleryAlertOkTitle"): Effect.Effect<string>;
+	(key: "theme.galleryBtnDefault"): Effect.Effect<string>;
+	(key: "theme.galleryBtnDestructive"): Effect.Effect<string>;
+	(key: "theme.galleryBtnDisabled"): Effect.Effect<string>;
+	(key: "theme.galleryBtnGhost"): Effect.Effect<string>;
+	(key: "theme.galleryBtnLarge"): Effect.Effect<string>;
+	(key: "theme.galleryBtnLink"): Effect.Effect<string>;
+	(key: "theme.galleryBtnOutline"): Effect.Effect<string>;
+	(key: "theme.galleryBtnSecondary"): Effect.Effect<string>;
+	(key: "theme.galleryBtnSmall"): Effect.Effect<string>;
 	(key: "theme.galleryButtons"): Effect.Effect<string>;
+	(key: "theme.galleryEmptyDesc"): Effect.Effect<string>;
+	(key: "theme.galleryEmptyTitle"): Effect.Effect<string>;
 	(key: "theme.galleryFeedback"): Effect.Effect<string>;
 	(key: "theme.galleryForms"): Effect.Effect<string>;
+	(key: "theme.galleryInputLabel"): Effect.Effect<string>;
+	(key: "theme.galleryInputPlaceholder"): Effect.Effect<string>;
+	(key: "theme.galleryOptionA"): Effect.Effect<string>;
+	(key: "theme.galleryOptionB"): Effect.Effect<string>;
+	(key: "theme.galleryOptionOne"): Effect.Effect<string>;
+	(key: "theme.galleryOptionTwo"): Effect.Effect<string>;
+	(key: "theme.gallerySelectLabel"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsDesc"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsDescValue"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsEnabled"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsHighContrast"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsName"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsReset"): Effect.Effect<string>;
+	(key: "theme.gallerySettingsSave"): Effect.Effect<string>;
+	(key: "theme.galleryStatActive"): Effect.Effect<string>;
+	(key: "theme.galleryStatAssets"): Effect.Effect<string>;
+	(key: "theme.galleryStatContrast"): Effect.Effect<string>;
+	(key: "theme.galleryStatusDraft"): Effect.Effect<string>;
+	(key: "theme.galleryStatusReady"): Effect.Effect<string>;
+	(key: "theme.gallerySurfaceMuted"): Effect.Effect<string>;
+	(key: "theme.gallerySurfaceRole"): Effect.Effect<string>;
 	(key: "theme.gallerySurfaces"): Effect.Effect<string>;
+	(key: "theme.gallerySurfaceTeam"): Effect.Effect<string>;
+	(key: "theme.gallerySwitchMarketing"): Effect.Effect<string>;
+	(key: "theme.gallerySwitchNotifications"): Effect.Effect<string>;
+	(key: "theme.galleryTextareaLabel"): Effect.Effect<string>;
+	(key: "theme.galleryTextareaPlaceholder"): Effect.Effect<string>;
 	(key: "theme.headerEmpty"): Effect.Effect<string>;
 	(key: "theme.headerLabel"): Effect.Effect<string>;
 	(key: "theme.headerManage"): Effect.Effect<string>;
@@ -4358,6 +4829,7 @@ export interface I18nTypedT {
 	(key: "theme.published"): Effect.Effect<string>;
 	(key: "theme.publishError"): Effect.Effect<string>;
 	(key: "theme.publishing"): Effect.Effect<string>;
+	(key: "theme.radiusCurrent"): Effect.Effect<string>;
 	(key: "theme.schemeDark"): Effect.Effect<string>;
 	(key: "theme.schemeLabel"): Effect.Effect<string>;
 	(key: "theme.schemeLight"): Effect.Effect<string>;
@@ -4387,6 +4859,10 @@ export interface I18nTypedT {
 	(key: "theme.tabGeneral"): Effect.Effect<string>;
 	(key: "theme.tabTokens"): Effect.Effect<string>;
 	(key: "theme.tabTypography"): Effect.Effect<string>;
+	(key: "theme.tokenColSwatch"): Effect.Effect<string>;
+	(key: "theme.tokenColToken"): Effect.Effect<string>;
+	(key: "theme.tokenColValue"): Effect.Effect<string>;
+	(key: "theme.tokenRefTitle"): Effect.Effect<string>;
 	(key: "theme.tokensDescription"): Effect.Effect<string>;
 	(key: "theme.tokensTitle"): Effect.Effect<string>;
 	(key: "users.cancel"): Effect.Effect<string>;

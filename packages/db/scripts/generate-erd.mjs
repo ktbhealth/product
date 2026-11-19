@@ -227,6 +227,14 @@ const DOMAINS = [
 		tables: ["schemas"],
 	},
 	{
+		id: "layouts",
+		title: "Layouts",
+		owner: "`plugins/layouts`",
+		description:
+			"Page-body layouts — named section compositions referenced by custom pages via `custom_pages.layout_id`.",
+		tables: ["layouts"],
+	},
+	{
 		id: "i18n",
 		title: "Internationalization",
 		owner: "`plugins/i18n` + `packages/i18n`",

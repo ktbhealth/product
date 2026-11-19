@@ -166,4 +166,22 @@ describe("CustomPageView", () => {
 		expect(screen.getByText("Ok")).toBeTruthy();
 		expect(screen.getAllByTestId("rich-text-view")).toHaveLength(1);
 	});
+
+	it("maps a section missing content to a null body", () => {
+		render(
+			<CustomPageView
+				data={{
+					path: "/x",
+					title: "T",
+					content: DOC,
+					layoutSections: [{ title: "Slot" }],
+				}}
+				ctx={ctx}
+			/>,
+		);
+		expect(screen.getByText("Slot")).toBeTruthy();
+		// `content ?? null` — the slot renders through RichTextView with
+		// a null body rather than `undefined`.
+		expect(screen.getByTestId("rich-text-view").textContent).toBe("null");
+	});
 });

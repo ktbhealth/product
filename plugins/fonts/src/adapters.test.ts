@@ -132,4 +132,46 @@ describe("local adapter", () => {
 		);
 		expect(entries).toEqual([]);
 	});
+
+	it("skips corrupt/blank rows and falls back to theme fonts (slots, assets, weights)", async () => {
+		const { db, d1 } = makeTestDb();
+		const insertTheme = async (fonts: string | null) =>
+			(
+				await d1
+					.prepare(
+						`INSERT INTO theme_definitions (scope, scope_id, seeds, tokens, fonts, created_at)
+						 VALUES ('platform', '', '{}', '{}', ?, 0) RETURNING id`,
+					)
+					.bind(fonts)
+					.all<{ id: number }>()
+			).results[0]!.id;
+		const addAsset = (themeId: number, variants: string | null) =>
+			run(
+				d1,
+				`INSERT INTO theme_assets (theme_id, kind, status, variants, created_at)
+				 VALUES (?, 'font', 'ready', ?, 0)`,
+				[themeId, variants],
+			);
+
+		// Corrupt fonts JSON → parseJson catch → fontFamiliesOf returns [].
+		const themeA = await insertTheme("{bad");
+		// Slot families + blank slots + assets keys (incl. a blank key) +
+		// non-array weights → weights stay off the entry.
+		const themeB = await insertTheme(
+			'{"families":{"sans":"Kit Sans","heading":"  ","mono":""},"weights":"nope","assets":{"Cousine":{}," ":{}}}',
+		);
+		// NULL fonts → fontFamiliesOf returns [].
+		const themeC = await insertTheme(null);
+
+		await addAsset(themeA, "{bad"); // corrupt variants → fallback → corrupt fonts
+		await addAsset(themeB, null); // variants absent → theme-fonts path
+		await addAsset(themeC, '{"family":42}'); // non-string family → fallback → null fonts
+		await addAsset(themeB, '{"family":"  "}'); // blank family → fallback → dedupe
+
+		const entries = await Effect.runPromise(
+			localFontProviderAdapter.list().pipe(Effect.provideService(Db, db)),
+		);
+		expect(entries.map((e) => e.family).sort()).toEqual(["Cousine", "Kit Sans"]);
+		expect(entries.every((e) => e.weights === undefined)).toBe(true);
+	});
 });

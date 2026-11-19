@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Principal } from "@ktb/authz";
-import { Db, makeDb } from "@ktb/db";
+import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant } from "@ktb/tenant";
@@ -357,6 +357,69 @@ describe("DocumentStoreAdminLive", () => {
 		);
 		expect(paged.rows).toHaveLength(2);
 		expect(paged.total).toBe(4);
+	});
+
+	it("browseDocuments decodes non-object stored JSON to {}", async () => {
+		// A hand-edited row whose `data` parses fine but is not an
+		// object — parseStoredData's `: {}` arm handles it without a 500.
+		const coll = await db
+			.select()
+			.from(documentCollections)
+			.where(eq(documentCollections.name, "admin.notes"));
+		const now = new Date();
+		await db.insert(documentRecords).values({
+			collectionId: coll[0]!.id,
+			data: "[1,2]",
+			ownerId: "u8",
+			createdAt: now,
+			updatedAt: now,
+		});
+		const all = await asAdmin(Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments()));
+		expect(all.rows.find((r) => r.ownerId === "u8")?.data).toEqual({});
+	});
+
+	it("browseDocuments resolves total 0 when the count query yields no rows", async () => {
+		// A driver whose every statement returns zero rows — defensive:
+		// count() selects always yield a row on a real database, so the
+		// `totals[0]?.n ?? 0` fallback only runs against a broken one.
+		const emptyStatement: SqlStatement = {
+			bind: () => emptyStatement,
+			first: async <T = unknown>() => null as T | null,
+			run: async () => ({ success: true, results: [], meta: {} }),
+			all: async <T = unknown>() => ({
+				success: true,
+				results: [] as T[],
+				meta: {},
+			}),
+			raw: async <T = unknown[]>() => [] as unknown as T[],
+		};
+		const emptySql: SqlDatabase = {
+			prepare: () => emptyStatement,
+			dump: async () => new ArrayBuffer(0),
+			batch: async () => [],
+			exec: async () => ({ count: 0, duration: 0 }),
+		};
+		const emptyDeps = Layer.mergeAll(
+			Layer.succeed(Db, makeDb(emptySql)),
+			Layer.succeed(DocumentCollections, { collections: DEFS }),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		const emptyStoreLive = DocumentStoreLive.pipe(Layer.provide(emptyDeps));
+		const rt = ManagedRuntime.make(
+			DocumentStoreAdminLive.pipe(
+				Layer.provide(Layer.mergeAll(emptyStoreLive, emptyDeps)),
+			) as Layer.Layer<DocumentStoreAdmin, never, never>,
+		);
+		try {
+			const out = await rt.runPromise(
+				Effect.flatMap(DocumentStoreAdmin, (a) => a.browseDocuments()).pipe(
+					Effect.provideService(Principal, { userId: "admin1", email: "admin@x.com" }),
+				),
+			);
+			expect(out).toEqual({ rows: [], total: 0 });
+		} finally {
+			await rt.dispose();
+		}
 	});
 
 	it("migrateCollection sweeps stored documents unscoped (T-130)", async () => {

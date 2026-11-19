@@ -11,6 +11,7 @@
 		"@ktb/audit": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/consultations": "workspace:*",
+		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/patients": "workspace:*",
 		"@ktb/portal": "workspace:*",

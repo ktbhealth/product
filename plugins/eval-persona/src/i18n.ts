@@ -16,6 +16,7 @@ export interface EvalLabMessages {
 	readonly stepPersonas: string;
 	readonly stepGenerate: string;
 	readonly stepRunEval: string;
+	readonly pipelineAria: string;
 	readonly newPersona: string;
 	readonly newInstance: string;
 	readonly edit: string;
@@ -85,6 +86,7 @@ const en: EvalLabMessages = {
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Generate consultations",
 	stepRunEval: "3 · Run eval",
+	pipelineAria: "Eval pipeline",
 	newPersona: "New persona",
 	newInstance: "New instance",
 	edit: "Edit",
@@ -180,6 +182,7 @@ const ptBR: EvalLabMessages = {
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Gerar consultas",
 	stepRunEval: "3 · Rodar eval",
+	pipelineAria: "Pipeline de eval",
 	newPersona: "Nova persona",
 	newInstance: "Nova instância",
 	edit: "Editar",
@@ -267,8 +270,7 @@ const ptBR: EvalLabMessages = {
 };
 
 const es: EvalLabMessages = {
-	...ptBR,
-	...en,
+	personasTitle: "Personas",
 	personasDesc: "Definiciones de personas — la configuración que cada instancia selecciona.",
 	personaPurpose:
 		"Una persona es un perfil reutilizable de paciente + médico. Las instancias eligen personas para generar consultas sintéticas.",
@@ -307,9 +309,11 @@ const es: EvalLabMessages = {
 		pediatrics: "Pediatría",
 	},
 	instancesTitle: "Instancias",
+	instancesDesc: "Ejecuciones de generación: elige personas o muestrea al azar, luego genera.",
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Generar consultas",
 	stepRunEval: "3 · Ejecutar eval",
+	pipelineAria: "Pipeline de eval",
 	newPersona: "Nueva persona",
 	newInstance: "Nueva instancia",
 	edit: "Editar",
@@ -319,11 +323,45 @@ const es: EvalLabMessages = {
 	save: "Guardar",
 	create: "Crear",
 	name: "Nombre",
+	patient: "Paciente",
+	doctor: "Médico",
+	axes: "Ejes",
+	notes: "Notas",
+	gender: "Género",
+	ageBand: "Rango de edad",
+	socialClass: "Clase social",
+	education: "Educación",
+	region: "Región",
+	register: "Registro",
+	specialty: "Especialidad",
+	doctorGender: "Género del médico",
+	doctorRegister: "Registro del médico",
 	emptyDefs: "Sin personas todavía — crea la configuración primero.",
 	emptyInstances: "Sin instancias todavía.",
+	mode: "Modo",
+	modeSelected: "Personas seleccionadas",
+	modeRandom: "Muestra aleatoria",
+	count: "Cantidad",
+	seed: "Semilla",
+	minutes: "Duración de la entrevista (min)",
+	endpoint: "Endpoint",
+	endpointTemplate: "Template (determinista, sin LLM)",
 	start: "Generar",
 	openDetail: "Abrir",
+	items: "elementos",
+	distribution: "Distribución de la cohorte",
+	reviewHint: "Las personas generadas esperan revisión en Eval validator.",
 	actionFailed: "La acción falló — revisa permisos e intenta de nuevo.",
+	statusDraft: "borrador",
+	statusGenerating: "generando",
+	statusReady: "lista",
+	statusFailed: "fallida",
+	statusPending: "pendiente",
+	statusDone: "hecho",
+	statusError: "error",
+	female: "femenino",
+	male: "masculino",
+	generators: "Generadores",
 };
 
 export const evalLabMessages = (locale: string): EvalLabMessages =>

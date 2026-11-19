@@ -19,6 +19,7 @@ export interface EvalMessages {
 	readonly stepPersonas: string;
 	readonly stepGenerate: string;
 	readonly stepRunEval: string;
+	readonly pipelineAria: string;
 	readonly runEval: string;
 	readonly view: string;
 	readonly approve: string;
@@ -46,6 +47,7 @@ export interface EvalMessages {
 	readonly stageError: string;
 	readonly completeness: string;
 	readonly edits: string;
+	readonly sections: string;
 	readonly noRunnerBound: string;
 	readonly runnerInline: string;
 }
@@ -57,6 +59,7 @@ const en: EvalMessages = {
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Generate consultations",
 	stepRunEval: "3 · Run eval",
+	pipelineAria: "Eval pipeline",
 	runEval: "Run eval",
 	view: "View",
 	approve: "Approve",
@@ -84,6 +87,7 @@ const en: EvalMessages = {
 	stageError: "stage error",
 	completeness: "completeness",
 	edits: "edits",
+	sections: "sections",
 	noRunnerBound:
 		"no eval runner bound — install/configure the local eval drivers (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) or runs stay queued",
 	runnerInline: "runner bound but no jobs queue — runs execute inline",
@@ -97,6 +101,7 @@ const ptBR: EvalMessages = {
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Gerar consultas",
 	stepRunEval: "3 · Rodar eval",
+	pipelineAria: "Pipeline de eval",
 	runEval: "Rodar eval",
 	view: "Ver",
 	approve: "Aprovar",
@@ -109,7 +114,8 @@ const ptBR: EvalMessages = {
 	doctor: "Médico",
 	voices: "vozes",
 	feedbackPlaceholder: "feedback (opcional)",
-	run: "Run",
+	feedback: "Feedback",
+	run: "Rodar",
 	samplesOf: "amostras",
 	emptyCohorts: "Nenhuma coorte ainda — gere consultas na etapa 2 primeiro.",
 	emptyItems: "Selecione uma coorte para revisar as consultas.",
@@ -123,17 +129,48 @@ const ptBR: EvalMessages = {
 	stageError: "erro no estágio",
 	completeness: "completude",
 	edits: "edições",
+	sections: "seções",
 	noRunnerBound:
 		"nenhum runner de eval vinculado — instale/configure os drivers locais de eval (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) ou os runs ficam na fila",
 	runnerInline: "runner vinculado, mas sem fila de jobs — os runs executam inline",
 };
 
 const es: EvalMessages = {
-	...en,
 	title: "Ejecutar eval",
+	description:
+		"Revisa las consultas generadas de una cohorte, apruebalas, luego ejecuta el eval e inspecciona las métricas por etapa.",
 	stepPersonas: "1 · Personas",
 	stepGenerate: "2 · Generar consultas",
 	stepRunEval: "3 · Ejecutar eval",
+	pipelineAria: "Pipeline de eval",
+	runEval: "Ejecutar eval",
+	view: "Ver",
+	approve: "Aprobar",
+	reject: "Rechazar",
+	pending: "pendiente",
+	approved: "aprobada",
+	rejected: "rechazada",
+	items: "consultas",
+	generating: "generando",
+	doctor: "Médico",
+	voices: "voces",
+	feedbackPlaceholder: "feedback (opcional)",
+	feedback: "Feedback",
+	run: "Ejecutar",
+	samplesOf: "muestras",
+	emptyCohorts: "Aún no hay cohortes — genera consultas en el paso 2 primero.",
+	emptyItems: "Selecciona una cohorte para revisar sus consultas.",
+	moreTurns: "turnos más",
+	actionFailed: "La acción falló — revisa tus permisos e intenta de nuevo.",
+	synthetic: "sintético",
+	deleteRun: "Eliminar run",
+	confirmDelete: "Confirmar eliminación",
+	stageCleanup: "limpieza",
+	stageAnamnesis: "anamnesis",
+	stageError: "error de etapa",
+	completeness: "completitud",
+	edits: "ediciones",
+	sections: "secciones",
 	noRunnerBound:
 		"no hay runner de eval vinculado — instala/configura los drivers locales de eval (EVAL_RUNNER_DIR + EVAL_ASR_BASE_URL) o los runs quedan en cola",
 	runnerInline: "runner vinculado pero sin cola de jobs — los runs se ejecutan en línea",

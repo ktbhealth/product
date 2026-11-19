@@ -45,6 +45,7 @@ import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import {
 	deleteThemeFn,
 	getThemeFn,
+	listThemeAssetsFn,
 	listThemesFn,
 	publishThemeFn,
 	setThemeEnabledFn,
@@ -54,7 +55,12 @@ import {
 } from "./fns.ts";
 import { presentTheme, type ThemeDefinitionRow } from "./present.ts";
 import { Theme, type ThemePublishInput, type ThemeRow } from "./theme.ts";
-import type { ResolvedTheme, ThemeResolveRequest, ThemeSummary } from "./types.ts";
+import type {
+	ResolvedTheme,
+	ThemeAssetSummary,
+	ThemeResolveRequest,
+	ThemeSummary,
+} from "./types.ts";
 
 const USERS = new Map([
 	["admin", { id: "u-admin", email: "admin@x.com", name: "Admin" }],
@@ -96,7 +102,8 @@ const hooks = {
 	setEnabled: (_id: number, _enabled: boolean): Effect.Effect<void, Forbidden> => Effect.void,
 	setMain: (_id: number): Effect.Effect<void, Forbidden> => Effect.void,
 	remove: (_id: number): Effect.Effect<void, Forbidden> => Effect.void,
-	listAssets: (_themeId: number): Effect.Effect<never[], Forbidden> => Effect.succeed([]),
+	listAssets: (_themeId: number): Effect.Effect<ThemeAssetSummary[], Forbidden> =>
+		Effect.succeed([]),
 	previewRow: (_id: number): Effect.Effect<ThemeRow | null, Forbidden> => Effect.succeed(null),
 };
 
@@ -286,6 +293,48 @@ describe("listThemesFn", () => {
 	});
 });
 
+describe("listThemeAssetsFn", () => {
+	it("rejects anonymous callers", async () => {
+		useSession(null);
+		await expect(listThemeAssetsFn({ data: { themeId: 1 } })).rejects.toThrow("unauthenticated");
+	});
+
+	it("returns asset summaries for signed-in users", async () => {
+		useSession("plain");
+		const asset: ThemeAssetSummary = {
+			id: 5,
+			themeId: 2,
+			kind: "favicon",
+			status: "ready",
+			r2Key: "theme-assets/2/favicon/x.png",
+			variants: { files: {} },
+			createdAt: new Date(0).toISOString(),
+		};
+		hooks.listAssets = (themeId) => Effect.succeed(themeId === 2 ? [asset] : []);
+		try {
+			expect(await listThemeAssetsFn({ data: { themeId: 2 } })).toEqual([asset]);
+			expect(await listThemeAssetsFn({ data: { themeId: 3 } })).toEqual([]);
+		} finally {
+			hooks.listAssets = () => Effect.succeed([]);
+		}
+	});
+
+	it("degrades Forbidden to an empty list", async () => {
+		useSession("plain");
+		hooks.listAssets = () => Effect.fail(new Forbidden({ path: "theme.listAssets" }));
+		try {
+			expect(await listThemeAssetsFn({ data: { themeId: 2 } })).toEqual([]);
+		} finally {
+			hooks.listAssets = () => Effect.succeed([]);
+		}
+	});
+
+	it("rejects invalid payloads", async () => {
+		useSession("admin");
+		await expect(listThemeAssetsFn({ data: { themeId: "x" } })).rejects.toThrow();
+	});
+});
+
 describe("getThemeFn", () => {
 	it("rejects anonymous callers", async () => {
 		useSession(null);
@@ -361,6 +410,23 @@ describe("publishThemeFn", () => {
 			// id passes through for editor publishes.
 			await publishThemeFn({ data: { id: 9, scope: "platform", seeds: {} } });
 			expect(seen[2]?.id).toBe(9);
+			// Defined fonts/brand pass through untouched; explicit null
+			// clears the stored columns on update.
+			await publishThemeFn({
+				data: {
+					scope: "platform",
+					seeds: {},
+					fonts: { delivery: "google-fonts" },
+					brand: { appName: "Acme" },
+				},
+			});
+			expect(seen[3]?.fonts).toEqual({ delivery: "google-fonts" });
+			expect(seen[3]?.brand).toEqual({ appName: "Acme" });
+			await publishThemeFn({
+				data: { scope: "platform", seeds: {}, fonts: null, brand: null },
+			});
+			expect(seen[4]?.fonts).toBeNull();
+			expect(seen[4]?.brand).toBeNull();
 		} finally {
 			hooks.publish = (input) =>
 				Effect.succeed({

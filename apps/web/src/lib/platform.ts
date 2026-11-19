@@ -332,7 +332,10 @@ const projectCronRun =
 		const announce = (outcome: CronRunOutcome) =>
 			void memoryPubSub
 				.publish("cron.fires", { jobId, ok: outcome.ok, summary: outcome.summary ?? null })
-				.catch(() => {});
+				.catch(
+					/* v8 ignore next -- the in-process publish promise never rejects: listener failures are caught inside the bus */
+					() => {},
+				);
 		try {
 			const outcome = await fire();
 			await write(outcome.ok ? "done" : "failed", outcome.error);
