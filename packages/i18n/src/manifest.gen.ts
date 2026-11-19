@@ -3411,6 +3411,9 @@ export const I18N_MANIFEST = {
 		secretRef: {
 			params: [],
 		},
+		secretRefHint: {
+			params: [],
+		},
 		healthUrl: {
 			params: [],
 		},

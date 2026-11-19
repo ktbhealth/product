@@ -18702,7 +18702,7 @@ export const I18N_BASELINE = [
 		namespace: "machines",
 		key: "secretRefHint",
 		locale: "en",
-		value: "vault:<id> — auth material stays in the vault",
+		value: "vault:`id` — auth material stays in the vault",
 	},
 	{
 		namespace: "machines",
@@ -18877,7 +18877,7 @@ export const I18N_BASELINE = [
 		namespace: "machines",
 		key: "secretRefHint",
 		locale: "pt-BR",
-		value: "vault:<id> — o material de auth fica no vault",
+		value: "vault:`id` — o material de auth fica no vault",
 	},
 	{
 		namespace: "machines",
@@ -19052,7 +19052,7 @@ export const I18N_BASELINE = [
 		namespace: "machines",
 		key: "secretRefHint",
 		locale: "es",
-		value: "vault:<id> — el material de auth queda en el vault",
+		value: "vault:`id` — el material de auth queda en el vault",
 	},
 	{
 		namespace: "machines",

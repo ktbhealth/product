@@ -1043,6 +1043,7 @@ export type I18nKey =
 	| "machines.port"
 	| "machines.save"
 	| "machines.secretRef"
+	| "machines.secretRefHint"
 	| "machines.status"
 	| "machines.statusDraining"
 	| "machines.statusOffline"
@@ -3004,6 +3005,7 @@ export interface I18nTypedT {
 	(key: "machines.port"): Effect.Effect<string>;
 	(key: "machines.save"): Effect.Effect<string>;
 	(key: "machines.secretRef"): Effect.Effect<string>;
+	(key: "machines.secretRefHint"): Effect.Effect<string>;
 	(key: "machines.status"): Effect.Effect<string>;
 	(key: "machines.statusDraining"): Effect.Effect<string>;
 	(key: "machines.statusOffline"): Effect.Effect<string>;
