@@ -16,26 +16,50 @@ import {
 	Permissions,
 	PERMISSION_CATALOG,
 	splitPermission,
-	subjectRoles,
-	rolePermissions,
 	roles,
 	permissionEpoch,
 	type PermissionEffect,
 	type Role,
-	type RolePermission,
 	type SubjectKind,
-	type SubjectRole,
 } from "@ktb/rbac";
 import { Command, Query } from "@effect-server-utils/cqrs";
 
-import { relationTuples } from "@ktb/db/schema";
+import { relationTuples, type RelationTuple } from "@ktb/db/schema";
 import { RbacCommands, RbacQueries } from "./api.ts";
 import { RbacPlatformPage } from "./platform-page.tsx";
 import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";
 
 // ---------- row shapes ----------
 
-export type { Role, RolePermission, SubjectRole };
+export type { Role };
+
+/** Grant row shape kept for the admin wire (`RolePermissionRow` in
+ * api.ts): tuples carry no `role_id`, so the row is projected back —
+ * `id` is the tuple id, `resource`/`action` the tuple's
+ * object_type/relation. */
+export interface RolePermission {
+	readonly id: number;
+	readonly roleId: number;
+	readonly resource: string;
+	readonly action: string;
+	readonly effect: PermissionEffect;
+	readonly createdAt: Date;
+}
+
+/** Assignment row shape (`SubjectRoleRow` in api.ts): a member tuple
+ * projected back — `id` is the tuple id (`unassignSubject` deletes by
+ * it), `roleId` resolves through the `roles` table by name (0 when the
+ * role exists only as tuples). */
+export interface SubjectRole {
+	readonly id: number;
+	readonly subjectKind: SubjectKind;
+	readonly subjectId: string;
+	readonly roleId: number;
+	readonly tenantId: string | null;
+	readonly grantedBy: string | null;
+	readonly expiresAt: Date | null;
+	readonly createdAt: Date;
+}
 
 export interface AssignmentRow extends SubjectRole {
 	readonly roleName: string;
@@ -83,8 +107,44 @@ const toRoleRow = (r: Role) => ({
 	createdAt: r.createdAt,
 });
 
+/** Role names that exist only as tuples — direct `relation_tuples`
+ * writes (scripts, other plugins) can create grant/member tuples
+ * naming a role with no `roles` row. Grant tuples count only in the
+ * admin shape (`object_id = '*'`); entity-level role subjects
+ * (`object_id = <entity>`) are not role definitions. */
+async function tupleOnlyRoleNames(db: DbClient, known: ReadonlySet<string>): Promise<string[]> {
+	const grants = await db
+		.select({ subjectId: relationTuples.subjectId })
+		.from(relationTuples)
+		.where(and(eq(relationTuples.subjectKind, "role"), eq(relationTuples.objectId, "*")));
+	const members = await db
+		.select({ objectId: relationTuples.objectId })
+		.from(relationTuples)
+		.where(and(eq(relationTuples.objectType, "role"), eq(relationTuples.relation, "member")));
+	const names = new Set<string>();
+	for (const g of grants) names.add(g.subjectId);
+	for (const m of members) names.add(m.objectId);
+	return [...names].filter((n) => !known.has(n)).sort();
+}
+
 export async function listRoles(db: DbClient): Promise<Role[]> {
-	return db.select().from(roles).orderBy(roles.name);
+	const rows = await db.select().from(roles).orderBy(roles.name);
+	// Union in tuple-only roles: they have no metadata, so they get a
+	// synthetic negative id (real ids are positive autoincrement) —
+	// sorted names keep the mapping deterministic across calls, and
+	// commands on them fail closed (getRole → null).
+	const missing = await tupleOnlyRoleNames(db, new Set(rows.map((r) => r.name)));
+	return [
+		...rows,
+		...missing.map((name, i) => ({
+			id: -(i + 1),
+			name,
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		})),
+	];
 }
 
 export async function getRole(db: DbClient, id: number): Promise<Role | null> {
@@ -92,17 +152,54 @@ export async function getRole(db: DbClient, id: number): Promise<Role | null> {
 	return rows[0] ?? null;
 }
 
-export async function listRolePermissions(db: DbClient, roleId: number) {
-	return db.select().from(rolePermissions).where(eq(rolePermissions.roleId, roleId));
+export async function listRolePermissions(db: DbClient, roleId: number): Promise<RolePermission[]> {
+	const role = await getRole(db, roleId);
+	if (role === null) return [];
+	// Grant tuples for the role: (<resource>,'*',<action>,'role',<name>),
+	// global scope only — tenant-scoped grant tuples are not part of
+	// the admin grant set (the write path never creates them).
+	const rows = await db
+		.select()
+		.from(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.subjectKind, "role"),
+				eq(relationTuples.subjectId, role.name),
+				eq(relationTuples.objectId, "*"),
+				sql`${relationTuples.tenantId} is null`,
+			),
+		)
+		.orderBy(relationTuples.id);
+	return rows.map((t) => ({
+		id: t.id,
+		roleId,
+		resource: t.objectType,
+		action: t.relation,
+		effect: t.effect as PermissionEffect,
+		createdAt: t.createdAt,
+	}));
 }
 
 export async function listAssignments(db: DbClient): Promise<AssignmentRow[]> {
+	// Member tuples ARE the assignments; the roles table only supplies
+	// roleId (0 for tuple-only roles — roleName carries the identity).
 	const rows = await db
-		.select({ assignment: subjectRoles, roleName: roles.name })
-		.from(subjectRoles)
-		.innerJoin(roles, eq(roles.id, subjectRoles.roleId))
-		.orderBy(desc(subjectRoles.id));
-	return rows.map((r) => ({ ...r.assignment, roleName: r.roleName }));
+		.select({ tuple: relationTuples, roleId: roles.id })
+		.from(relationTuples)
+		.leftJoin(roles, eq(roles.name, relationTuples.objectId))
+		.where(and(eq(relationTuples.objectType, "role"), eq(relationTuples.relation, "member")))
+		.orderBy(desc(relationTuples.id));
+	return rows.map(({ tuple: t, roleId }) => ({
+		id: t.id,
+		subjectKind: t.subjectKind as SubjectKind,
+		subjectId: t.subjectId,
+		roleId: roleId ?? 0,
+		roleName: t.objectId,
+		tenantId: t.tenantId,
+		grantedBy: t.grantedBy,
+		expiresAt: t.expiresAt,
+		createdAt: t.createdAt,
+	}));
 }
 
 export async function createRole(
@@ -189,53 +286,29 @@ export async function setRolePermission(
 	db: DbClient,
 	input: { roleId: number; resource: string; action: string; effect: PermissionEffect },
 ): Promise<void> {
-	// P-101: grant tuples key on the role NAME — resolve it once for
-	// both writes. A missing role leaves a dangling role_permissions
-	// row (resolves to nothing) and no tuple, matching prior semantics.
+	// Grant tuples key on the role NAME — resolve it once. A missing
+	// role writes nothing (the command layer rejects it upstream).
 	const role = await getRole(db, input.roleId);
-	await db
-		.insert(rolePermissions)
-		.values({
-			roleId: input.roleId,
-			resource: input.resource,
-			action: input.action,
-			effect: input.effect,
-			createdAt: new Date(),
-		})
-		.onConflictDoUpdate({
-			target: [rolePermissions.roleId, rolePermissions.resource, rolePermissions.action],
-			set: { effect: input.effect },
-		});
-	if (role !== null) {
-		await upsertRelationTuple(db, {
-			objectType: input.resource,
-			objectId: "*",
-			relation: input.action,
-			subjectKind: "role",
-			subjectId: role.name,
-			effect: input.effect,
-			tenantId: null,
-			expiresAt: null,
-			grantedBy: null,
-		});
-	}
+	if (role === null) return;
+	await upsertRelationTuple(db, {
+		objectType: input.resource,
+		objectId: "*",
+		relation: input.action,
+		subjectKind: "role",
+		subjectId: role.name,
+		effect: input.effect,
+		tenantId: null,
+		expiresAt: null,
+		grantedBy: null,
+	});
 }
 
 export async function revokeRolePermission(
 	db: DbClient,
 	input: { roleId: number; resource: string; action: string },
 ): Promise<void> {
-	await db
-		.delete(rolePermissions)
-		.where(
-			and(
-				eq(rolePermissions.roleId, input.roleId),
-				eq(rolePermissions.resource, input.resource),
-				eq(rolePermissions.action, input.action),
-			),
-		);
-	// P-101: drop the mirrored grant tuple (role name lookup needed —
-	// tuples key on name, not id).
+	// Drop the grant tuple (role name lookup needed — tuples key on
+	// name, not id).
 	const role = await getRole(db, input.roleId);
 	if (role === null) return;
 	await db
@@ -258,54 +331,50 @@ const normalizeExpiresAt = (input: Date | string | number | null | undefined): D
 	return Number.isNaN(d.getTime()) ? null : d;
 };
 
-/** Find an existing assignment for the same (subject, role, tenant)
+/** Find the member tuple for the same (role, subject, tenant)
  * triple — tenant NULL matches only NULL (SQL `=` never matches NULL,
  * so global grants are checked separately). */
-async function findAssignment(
+async function findMemberTuple(
 	db: DbClient,
 	input: {
+		roleName: string;
 		subjectKind: SubjectKind;
 		subjectId: string;
-		roleId: number;
-		tenantId?: string | number | null;
+		tenantId: string | null;
 	},
-): Promise<SubjectRole | null> {
-	// TEXT column; P-053 tenant ids are string|number — normalize.
-	const tenantId = input.tenantId == null ? null : String(input.tenantId);
+): Promise<RelationTuple | null> {
 	const rows = await db
 		.select()
-		.from(subjectRoles)
+		.from(relationTuples)
 		.where(
 			and(
-				eq(subjectRoles.subjectKind, input.subjectKind),
-				eq(subjectRoles.subjectId, input.subjectId),
-				eq(subjectRoles.roleId, input.roleId),
-				tenantId === null
-					? sql`${subjectRoles.tenantId} is null`
-					: eq(subjectRoles.tenantId, tenantId),
+				eq(relationTuples.objectType, "role"),
+				eq(relationTuples.objectId, input.roleName),
+				eq(relationTuples.relation, "member"),
+				eq(relationTuples.subjectKind, input.subjectKind),
+				eq(relationTuples.subjectId, input.subjectId),
+				tupleTenant(input.tenantId),
 			),
 		);
 	return rows[0] ?? null;
 }
 
-// ---------- relation tuples (P-101 dual-write) ----------
+// ---------- relation tuples (the only grant store, P-101) ----------
 
-/** Tenant predicate shared by tuple reads/writes — mirrors
- * `findAssignment`: NULL tenantId matches only NULL rows (SQL `=`
- * never matches NULL, so global tuples are checked separately). */
+/** Tenant predicate shared by tuple reads/writes: NULL tenantId
+ * matches only NULL rows (SQL `=` never matches NULL, so global
+ * tuples are checked separately). */
 const tupleTenant = (tenantId: string | null) =>
 	tenantId === null
 		? sql`${relationTuples.tenantId} is null`
 		: eq(relationTuples.tenantId, tenantId);
 
 /**
- * P-101: `relation_tuples` is the Zanzibar-style grant graph the
- * permission resolver reads; `role_permissions`/`subject_roles` stay
- * the admin-facing store. Every repo write mirrors its change here so
- * ALL callers — CQRS handlers, server fns, seeds, scripts — stay in
- * sync. Natural-key uniqueness is enforced by this find-then-write
- * (tenant_id NULLs are distinct in SQLite — same caveat as
- * `subject_roles`; see schema.ts).
+ * Upsert a grant/member tuple by its natural key
+ * (object_type, object_id, relation, subject_kind, subject_id,
+ * tenant_id — NULL-safe). Natural-key uniqueness is enforced by this
+ * find-then-write (tenant_id NULLs are distinct in SQLite — same
+ * caveat the dropped `subject_roles` table had).
  */
 async function upsertRelationTuple(
 	db: DbClient,
@@ -356,80 +425,100 @@ export async function assignSubject(
 		grantedBy?: string | null;
 	},
 ): Promise<AssignmentRow | null> {
+	// Member tuples key on the role NAME — resolve it once; a missing
+	// role assigns nothing (the command layer rejects it upstream).
+	const role = await getRole(db, input.roleId);
+	if (role === null) return null;
 	const expiresAt = normalizeExpiresAt(input.expiresAt);
-	const existing = await findAssignment(db, input);
-	let row: SubjectRole | undefined;
+	// TEXT column; P-053 tenant ids are string|number — normalize.
+	const tenantId = input.tenantId == null ? null : String(input.tenantId);
+	const existing = await findMemberTuple(db, {
+		roleName: role.name,
+		subjectKind: input.subjectKind,
+		subjectId: input.subjectId,
+		tenantId,
+	});
+	let tuple: RelationTuple | undefined;
 	if (existing !== null) {
 		// Re-assigning the same triple refreshes expiry/granter in place.
 		const rows = await db
-			.update(subjectRoles)
+			.update(relationTuples)
 			.set({ expiresAt, grantedBy: input.grantedBy ?? existing.grantedBy })
-			.where(eq(subjectRoles.id, existing.id))
+			.where(eq(relationTuples.id, existing.id))
 			.returning();
-		row = rows[0];
+		tuple = rows[0];
 	} else {
 		const rows = await db
-			.insert(subjectRoles)
+			.insert(relationTuples)
 			.values({
+				objectType: "role",
+				objectId: role.name,
+				relation: "member",
 				subjectKind: input.subjectKind,
 				subjectId: input.subjectId,
-				roleId: input.roleId,
-				tenantId: input.tenantId == null ? null : String(input.tenantId),
-				grantedBy: input.grantedBy ?? null,
+				effect: "allow",
+				tenantId,
 				expiresAt,
+				grantedBy: input.grantedBy ?? null,
 				createdAt: new Date(),
 			})
 			.returning();
-		row = rows[0];
+		tuple = rows[0];
 	}
-	if (row === undefined) return null;
-	const role = await getRole(db, row.roleId);
-	if (role !== null) {
-		// P-101: mirror the assignment as a member tuple keyed on the
-		// role NAME; row fields already reflect the refreshed
-		// expiry/granter, so re-assigns update the tuple in place.
-		await upsertRelationTuple(db, {
-			objectType: "role",
-			objectId: role.name,
-			relation: "member",
-			subjectKind: row.subjectKind,
-			subjectId: row.subjectId,
-			effect: "allow",
-			tenantId: row.tenantId,
-			expiresAt: row.expiresAt,
-			grantedBy: row.grantedBy,
-		});
-	}
-	return { ...row, roleName: role?.name ?? "" };
+	if (tuple === undefined) return null;
+	return {
+		id: tuple.id,
+		subjectKind: input.subjectKind,
+		subjectId: input.subjectId,
+		roleId: role.id,
+		roleName: role.name,
+		tenantId: tuple.tenantId,
+		grantedBy: tuple.grantedBy,
+		expiresAt: tuple.expiresAt,
+		createdAt: tuple.createdAt,
+	};
 }
 
 export async function unassignSubject(db: DbClient, id: number): Promise<void> {
-	// P-101: read the row first — the member tuple keys on role NAME
-	// and subject/tenant, none of which the bare id carries.
-	const row = await getSubjectRole(db, id);
-	await db.delete(subjectRoles).where(eq(subjectRoles.id, id));
-	if (row === null) return;
-	const role = await getRole(db, row.roleId);
-	if (role === null) return;
+	// `id` is the member tuple's id — drop it directly. The audit path
+	// reads the row beforehand via getSubjectRole.
 	await db
 		.delete(relationTuples)
 		.where(
 			and(
+				eq(relationTuples.id, id),
 				eq(relationTuples.objectType, "role"),
-				eq(relationTuples.objectId, role.name),
 				eq(relationTuples.relation, "member"),
-				eq(relationTuples.subjectKind, row.subjectKind),
-				eq(relationTuples.subjectId, row.subjectId),
-				tupleTenant(row.tenantId),
 			),
 		);
 }
 
-/** Single assignment lookup by row id — the audit path reads the row
- * before `unassignSubject` deletes it. */
+/** Single assignment lookup by member-tuple id — the audit path reads
+ * the row before `unassignSubject` deletes it. */
 export async function getSubjectRole(db: DbClient, id: number): Promise<SubjectRole | null> {
-	const rows = await db.select().from(subjectRoles).where(eq(subjectRoles.id, id));
-	return rows[0] ?? null;
+	const rows = await db
+		.select()
+		.from(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.id, id),
+				eq(relationTuples.objectType, "role"),
+				eq(relationTuples.relation, "member"),
+			),
+		);
+	const t = rows[0];
+	if (t === undefined) return null;
+	const roleRows = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, t.objectId));
+	return {
+		id: t.id,
+		subjectKind: t.subjectKind as SubjectKind,
+		subjectId: t.subjectId,
+		roleId: roleRows[0]?.id ?? 0,
+		tenantId: t.tenantId,
+		grantedBy: t.grantedBy,
+		expiresAt: t.expiresAt,
+		createdAt: t.createdAt,
+	};
 }
 
 /**
@@ -744,8 +833,6 @@ export const rbacTablesPlugin = definePlugin({
 	meta: { keywords: ["rbac", "tables"] },
 	tables: {
 		roles,
-		rolePermissions,
-		subjectRoles,
 		relationTuples,
 		permissionEpoch,
 	},

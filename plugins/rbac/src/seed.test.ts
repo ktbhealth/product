@@ -7,23 +7,12 @@ import { AUDIT_TEST_DDL, adminAudit } from "@ktb/audit";
 import { makeDb } from "@ktb/db";
 import { relationTuples } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
-import {
-	buildPermissions,
-	PERMISSION_CATALOG,
-	readEpoch,
-	rolePermissions,
-	roles,
-	subjectRoles,
-	splitPermission,
-} from "@ktb/rbac";
+import { buildPermissions, PERMISSION_CATALOG, readEpoch, roles, splitPermission } from "@ktb/rbac";
 
 import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";
 
 const DDL = `
 CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE role_permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, resource TEXT NOT NULL, action TEXT NOT NULL, effect TEXT NOT NULL, created_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX role_permissions_role_resource_action_idx ON role_permissions (role_id, resource, action);
-CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
@@ -32,34 +21,16 @@ ${AUDIT_TEST_DDL}
 const freshDb = () => makeDb(makeD1(DDL));
 
 describe("ensureSuperadminRole", () => {
-	it("creates the role with an allow grant for every catalog permission", async () => {
+	it("creates the role with an allow grant tuple for every catalog permission", async () => {
 		const db = freshDb();
 		expect(await ensureSuperadminRole(db)).toBe("created");
 
 		const roleRows = await db.select().from(roles).where(eq(roles.name, SUPERADMIN_ROLE_NAME));
 		expect(roleRows).toHaveLength(1);
-		const roleId = roleRows[0]!.id;
 		expect(JSON.parse(roleRows[0]!.meta!)).toEqual({ system: true });
 
-		const grants = await db
-			.select()
-			.from(rolePermissions)
-			.where(eq(rolePermissions.roleId, roleId));
-		expect(grants).toHaveLength(PERMISSION_CATALOG.length);
-		for (const grant of grants) expect(grant.effect).toBe("allow");
-		// Every catalog key is covered exactly once, under its split
-		// resource/action spelling.
-		const covered = new Set(grants.map((g) => `${g.resource} ${g.action}`));
-		const expected = new Set(
-			PERMISSION_CATALOG.map((key) => {
-				const { resource, action } = splitPermission(key);
-				return `${resource} ${action}`;
-			}),
-		);
-		expect(covered).toEqual(expected);
-
-		// P-101 dual-write: one grant tuple per catalog permission,
-		// keyed on the role name with the "*" object wildcard.
+		// Grants are relation tuples keyed on the role NAME with the
+		// "*" object wildcard — the only grant store.
 		const tuples = await db
 			.select()
 			.from(relationTuples)
@@ -73,6 +44,16 @@ describe("ensureSuperadminRole", () => {
 				tenantId: null,
 			});
 		}
+		// Every catalog key is covered exactly once, under its split
+		// resource/action spelling.
+		const covered = new Set(tuples.map((t) => `${t.objectType} ${t.relation}`));
+		const expected = new Set(
+			PERMISSION_CATALOG.map((key) => {
+				const { resource, action } = splitPermission(key);
+				return `${resource} ${action}`;
+			}),
+		);
+		expect(covered).toEqual(expected);
 	});
 
 	it("writes a system-actor audit row on creation", async () => {
@@ -102,22 +83,21 @@ describe("ensureSuperadminRole", () => {
 	it("is a no-op when the role already exists — revoked grants stay revoked", async () => {
 		const db = freshDb();
 		await ensureSuperadminRole(db);
-		const role = (await db.select().from(roles).where(eq(roles.name, SUPERADMIN_ROLE_NAME)))[0]!;
 		// Simulate an admin revoking one grant and re-running the seed.
 		const [first] = await db
 			.select()
-			.from(rolePermissions)
-			.where(eq(rolePermissions.roleId, role.id));
-		await db.delete(rolePermissions).where(eq(rolePermissions.id, first!.id));
+			.from(relationTuples)
+			.where(eq(relationTuples.subjectId, SUPERADMIN_ROLE_NAME));
+		await db.delete(relationTuples).where(eq(relationTuples.id, first!.id));
 		const epochBefore = await readEpoch(db);
 
 		expect(await ensureSuperadminRole(db)).toBe("exists");
 		expect(await readEpoch(db)).toBe(epochBefore);
-		const grants = await db
+		const tuples = await db
 			.select()
-			.from(rolePermissions)
-			.where(eq(rolePermissions.roleId, role.id));
-		expect(grants).toHaveLength(PERMISSION_CATALOG.length - 1);
+			.from(relationTuples)
+			.where(eq(relationTuples.subjectId, SUPERADMIN_ROLE_NAME));
+		expect(tuples).toHaveLength(PERMISSION_CATALOG.length - 1);
 	});
 
 	it("reports 'custom' for a pre-existing hand-made role and leaves it untouched", async () => {
@@ -130,29 +110,18 @@ describe("ensureSuperadminRole", () => {
 			updatedAt: new Date(0),
 		});
 		expect(await ensureSuperadminRole(db)).toBe("custom");
-		const grants = await db
+		const tuples = await db
 			.select()
-			.from(rolePermissions)
-			.innerJoin(roles, eq(rolePermissions.roleId, roles.id))
-			.where(eq(roles.name, SUPERADMIN_ROLE_NAME));
-		expect(grants).toHaveLength(0);
+			.from(relationTuples)
+			.where(eq(relationTuples.subjectId, SUPERADMIN_ROLE_NAME));
+		expect(tuples).toHaveLength(0);
 	});
 
 	it("the seeded role resolves platform.admin for an assigned user", async () => {
 		const db = freshDb();
 		await ensureSuperadminRole(db);
-		const role = (await db.select().from(roles).where(eq(roles.name, SUPERADMIN_ROLE_NAME)))[0]!;
-		await db.insert(subjectRoles).values({
-			subjectKind: "user",
-			subjectId: "root",
-			roleId: role.id,
-			tenantId: null,
-			grantedBy: null,
-			expiresAt: null,
-			createdAt: new Date(),
-		});
-		// Resolution reads relation_tuples (P-101): mirror the member
-		// tuple assignSubject would have dual-written for this row.
+		// Resolution reads relation_tuples: the member tuple
+		// assignSubject would have written for this assignment.
 		await db.insert(relationTuples).values({
 			objectType: "role",
 			objectId: SUPERADMIN_ROLE_NAME,

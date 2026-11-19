@@ -48,11 +48,10 @@ CREATE TABLE job_runs (
 `;
 
 // RBAC grant tables for the PlatformAdmin grantFor hook — same shape
-// as plugins/rbac/src/index.test.ts.
+// as plugins/rbac/src/index.test.ts (role_permissions/subject_roles
+// were dropped in T-183; relation_tuples is the only grant store).
 const RBAC_DDL = `
 CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE role_permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, resource TEXT NOT NULL, action TEXT NOT NULL, effect TEXT NOT NULL, created_at INTEGER NOT NULL);
-CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 `;
@@ -232,20 +231,11 @@ describe("createApp", () => {
 							"INSERT INTO roles (id, name, created_at, updated_at) VALUES (900, 'it-admin', 0, 0)",
 						)
 						.run();
-					await rbacDb
-						.prepare(
-							"INSERT INTO role_permissions (role_id, resource, action, effect, created_at) VALUES (900, 'platform', 'admin', 'allow', 0)",
-						)
-						.run();
-					await rbacDb
-						.prepare(
-							"INSERT INTO subject_roles (subject_kind, subject_id, role_id, created_at) VALUES ('user', 'u1', 900, 0)",
-						)
-						.run();
-					// P-101: resolution reads relation_tuples — mirror the
-					// grant (role subject, wildcard object) and the
-					// membership (role object, 'member' relation) tuples
-					// the plugin write path would have dual-written.
+					// Resolution reads relation_tuples (the only grant
+					// store since T-183): the grant tuple (role subject,
+					// wildcard object) and the membership tuple (role
+					// object, 'member' relation) are all that is needed —
+					// the roles row above is metadata only.
 					await rbacDb
 						.prepare(
 							"INSERT INTO relation_tuples (object_type, object_id, relation, subject_kind, subject_id, effect, created_at) VALUES ('platform', '*', 'admin', 'role', 'it-admin', 'allow', 0)",

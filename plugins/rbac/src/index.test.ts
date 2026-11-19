@@ -17,6 +17,7 @@ import {
 	createRole,
 	deleteRole,
 	getRole,
+	getSubjectRole,
 	groupIdsForUser,
 	listAssignments,
 	listRolePermissions,
@@ -37,10 +38,6 @@ import { RbacCommands, RbacQueries } from "./api.ts";
 
 const DDL = `
 CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE role_permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, resource TEXT NOT NULL, action TEXT NOT NULL, effect TEXT NOT NULL, created_at INTEGER NOT NULL);
-CREATE UNIQUE INDEX role_permissions_role_resource_action_idx ON role_permissions (role_id, resource, action);
-CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
-CREATE INDEX subject_roles_subject_idx ON subject_roles (subject_kind, subject_id);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
@@ -60,21 +57,40 @@ const adminGate = makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))
 
 /** A DbClient stub for the defensive empty-RETURNING paths real
  * drivers never produce: `selects` is a queue of row arrays consumed
- * by `where()`/`orderBy()` terminals in call order, `insertRows` is
- * what `insert(...).values(...).returning()` resolves with. The same
- * `values()` also answers `onConflictDoUpdate` (epoch bumps). */
+ * one-per-query by ANY terminal (where/orderBy/join) in call order —
+ * the returned thenable stays chainable so `where().orderBy()` and
+ * `leftJoin().orderBy()` shapes all resolve the same next entry.
+ * `insertRows` is what `insert(...).values(...).returning()` resolves
+ * with. The same `values()` also answers `onConflictDoUpdate` (epoch
+ * bumps) and `onConflictDoNothing` (the superadmin seed). */
 const fakeDb = (opts: {
 	readonly selects?: readonly unknown[][];
 	readonly insertRows?: readonly unknown[];
 }): DbClient => {
 	const selects = [...(opts.selects ?? [])];
+	// Lazy thenable: the FIRST await (or terminal call) consumes one
+	// queued row array; chained builder methods return the same node
+	// so a query consumes exactly one entry however it is terminated.
+	const node = (): unknown => {
+		let taken = false;
+		const take = () => {
+			if (taken) return Promise.resolve([]);
+			taken = true;
+			return Promise.resolve(selects.shift() ?? []);
+		};
+		const self = {
+			then: (onFulfilled?: (v: unknown) => unknown, onRejected?: (e: unknown) => unknown) =>
+				take().then(onFulfilled, onRejected),
+			where: () => self,
+			orderBy: () => self,
+			innerJoin: () => self,
+			leftJoin: () => self,
+		};
+		return self;
+	};
 	return {
 		select: () => ({
-			from: () => ({
-				where: async () => selects.shift() ?? [],
-				orderBy: async () => selects.shift() ?? [],
-				innerJoin: () => ({ orderBy: async () => selects.shift() ?? [] }),
-			}),
+			from: () => node(),
 		}),
 		insert: () => ({
 			values: () => ({
@@ -89,11 +105,12 @@ const fakeDb = (opts: {
 		}),
 		update: () => ({
 			set: () => ({
-				where: () => ({
-					// Empty result simulates an UPDATE that matched no row
-					// (the defensive `rows[0] ?? null` path).
-					returning: async () => [],
-				}),
+				where: () =>
+					Object.assign(Promise.resolve([]), {
+						// Empty result simulates an UPDATE that matched no row
+						// (the defensive `rows[0] ?? null` path).
+						returning: async () => [],
+					}),
 			}),
 		}),
 		delete: () => ({
@@ -154,8 +171,8 @@ describe("rbac repo", () => {
 		expect(perms).toHaveLength(1);
 		expect(perms[0]?.effect).toBe("deny");
 
-		// P-101: the grant tuple mirrors the permission keyed on the
-		// role NAME with the "*" object wildcard.
+		// Grant tuples ARE the permission store: (<resource>,'*',
+		// <action>,'role',<name>) with the "*" object wildcard.
 		let tuples = await db.select().from(relationTuplesTable);
 		const grant = tuples.find(
 			(t) =>
@@ -233,8 +250,8 @@ describe("rbac repo", () => {
 		expect(a2?.expiresAt).toBeInstanceOf(Date);
 		expect(a2?.grantedBy).toBe("admin2");
 
-		// P-101: the member tuple mirrors the refreshed assignment —
-		// role NAME in object_id, assignee in subject_*, tenant NULL.
+		// The member tuple IS the assignment — role NAME in object_id,
+		// assignee in subject_*, tenant NULL.
 		const tuples = await db.select().from(relationTuplesTable);
 		const member = tuples.find(
 			(t) => t.objectId === "auditor" && t.subjectId === "u1" && t.relation === "member",
@@ -318,11 +335,9 @@ describe("rbac repo", () => {
 
 		// The dangling-roleId paths below need rows real FK enforcement
 		// would reject, so they run against the stub driver: the repo
-		// fns still resolve — role_permissions writes land, tuple
-		// writes/reads keyed on the role NAME are skipped.
+		// fns resolve the role first and write nothing when it is gone.
 
-		// setRolePermission: getRole → [] → role_permissions insert
-		// still runs, the grant-tuple upsert is skipped.
+		// setRolePermission: getRole → [] → early return, no tuple write.
 		await expect(
 			setRolePermission(fakeDb({ selects: [[]] }), {
 				roleId: 999,
@@ -332,8 +347,8 @@ describe("rbac repo", () => {
 			}),
 		).resolves.toBeUndefined();
 
-		// revokeRolePermission: delete runs, getRole → [] → early
-		// return before the tuple delete.
+		// revokeRolePermission: getRole → [] → early return before the
+		// tuple delete.
 		await expect(
 			revokeRolePermission(fakeDb({ selects: [[]] }), {
 				roleId: 999,
@@ -342,22 +357,8 @@ describe("rbac repo", () => {
 			}),
 		).resolves.toBeUndefined();
 
-		// unassignSubject: the subject_roles row exists but its
-		// roleId dangles — row deleted, member-tuple sweep skipped.
-		// getSubjectRole → [row], getRole → [].
-		const assignment = {
-			id: 7,
-			subjectKind: "user",
-			subjectId: "u-dangling",
-			roleId: 999,
-			tenantId: null,
-			grantedBy: null,
-			expiresAt: null,
-			createdAt: new Date(0),
-		};
-		await expect(
-			unassignSubject(fakeDb({ selects: [[assignment], []] }), 7),
-		).resolves.toBeUndefined();
+		// unassignSubject deletes the member tuple by id — no reads.
+		await expect(unassignSubject(fakeDb({}), 7)).resolves.toBeUndefined();
 	});
 
 	it("groupIdsForUser reads group_members without importing groups", async () => {
@@ -391,6 +392,60 @@ describe("rbac repo", () => {
 		expect(a2?.grantedBy).toBe("first");
 		expect(a2?.expiresAt).toBeNull();
 	});
+
+	it("surfaces tuple-only roles and projects tuples into wire rows", async () => {
+		// A role that exists only as tuples (no `roles` row) — e.g. a
+		// direct relation_tuples write: member tuple + wildcard grant.
+		await db.insert(relationTuplesTable).values([
+			{
+				objectType: "role",
+				objectId: "phantom",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u-phantom",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: null,
+				createdAt: new Date(0),
+			},
+			{
+				objectType: "patient",
+				objectId: "*",
+				relation: "read",
+				subjectKind: "role",
+				subjectId: "phantom",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: null,
+				createdAt: new Date(0),
+			},
+		]);
+		const all = await listRoles(db);
+		const phantom = all.find((r) => r.name === "phantom");
+		// Synthetic negative id — real role ids are positive.
+		expect(phantom?.id).toBeLessThan(0);
+		expect(phantom?.description).toBeNull();
+
+		// Assignments project member tuples; tuple-only roles report
+		// roleId 0 (roleName carries the identity).
+		const assignments = await listAssignments(db);
+		const pa = assignments.find((a) => a.roleName === "phantom");
+		expect(pa).toMatchObject({ subjectId: "u-phantom", roleId: 0, roleName: "phantom" });
+
+		// getSubjectRole reads the member tuple back by id.
+		const row = await getSubjectRole(db, pa!.id);
+		expect(row).toMatchObject({
+			subjectKind: "user",
+			subjectId: "u-phantom",
+			roleId: 0,
+			tenantId: null,
+		});
+
+		// Unknown role → empty permission list.
+		expect(await listRolePermissions(db, 999)).toEqual([]);
+	});
 });
 
 describe("rbac repo — empty-driver paths", () => {
@@ -399,12 +454,35 @@ describe("rbac repo — empty-driver paths", () => {
 	});
 
 	it("assignSubject returns null when the insert RETURNING yields no row", async () => {
-		const result = await assignSubject(fakeDb({ selects: [[]] }), {
+		const role = {
+			id: 1,
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		};
+		// getRole → [role], findMemberTuple → [], insert RETURNING → [].
+		const result = await assignSubject(fakeDb({ selects: [[role], []] }), {
 			subjectKind: "user",
 			subjectId: "u",
 			roleId: 1,
 		});
 		expect(result).toBeNull();
+	});
+
+	it("assignSubject returns null for a missing role", async () => {
+		// getRole → [] → early return before any tuple write.
+		const result = await assignSubject(fakeDb({ selects: [[]] }), {
+			subjectKind: "user",
+			subjectId: "u",
+			roleId: 999,
+		});
+		expect(result).toBeNull();
+	});
+
+	it("getSubjectRole returns null for a missing member tuple", async () => {
+		expect(await getSubjectRole(fakeDb({}), 42)).toBeNull();
 	});
 
 	it("updateRole returns null when UPDATE ... RETURNING yields no row", async () => {
@@ -425,23 +503,36 @@ describe("rbac repo — empty-driver paths", () => {
 		expect(result).toBeNull();
 	});
 
-	it("assignSubject reports an empty roleName when the role row is gone", async () => {
-		const row = {
+	it("assignSubject refreshes an existing member tuple in place", async () => {
+		const role = {
 			id: 1,
+			name: "auditor",
+			description: null,
+			meta: null,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		};
+		const existing = {
+			id: 9,
+			objectType: "role",
+			objectId: "auditor",
+			relation: "member",
 			subjectKind: "user",
 			subjectId: "u-ghost",
-			roleId: 999,
+			effect: "allow",
 			tenantId: null,
-			grantedBy: null,
 			expiresAt: null,
+			grantedBy: "first",
 			createdAt: new Date(0),
 		};
-		const result = await assignSubject(fakeDb({ selects: [[], []], insertRows: [[row]] }), {
+		// getRole → [role], findMemberTuple → [existing], UPDATE
+		// RETURNING → [] (row vanished) → null.
+		const result = await assignSubject(fakeDb({ selects: [[role], [existing]] }), {
 			subjectKind: "user",
 			subjectId: "u-ghost",
-			roleId: 999,
+			roleId: 1,
 		});
-		expect(result?.roleName).toBe("");
+		expect(result).toBeNull();
 	});
 });
 
@@ -906,11 +997,11 @@ describe("rbac panel loader", () => {
 			createdAt: new Date(0),
 			updatedAt: new Date(0),
 		};
-		// rbac.roles → [role], rbac.assignments → [], rbac.role → null.
-		// Leading row: the superadmin seed's existence probe at layer
-		// build (role present → no-op).
+		// rbac.roles → [role] + two tuple-name probes, rbac.assignments
+		// → [], rbac.role → null. Leading row: the superadmin seed's
+		// existence probe at layer build (role present → no-op).
 		const env = Layer.mergeAll(
-			Layer.succeed(Db, fakeDb({ selects: [[{ id: 1 }], [role], [], []] })),
+			Layer.succeed(Db, fakeDb({ selects: [[{ id: 1 }], [role], [], [], [], []] })),
 			Layer.succeed(PlatformAdmin, adminGate),
 		);
 		const rt = ManagedRuntime.make(
@@ -940,8 +1031,6 @@ describe("plugins", () => {
 		expect(rbacTablesPlugin.tables).toBeDefined();
 		expect(Object.keys(rbacTablesPlugin.tables ?? {})).toEqual([
 			"roles",
-			"rolePermissions",
-			"subjectRoles",
 			"relationTuples",
 			"permissionEpoch",
 		]);

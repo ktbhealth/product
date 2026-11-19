@@ -9,16 +9,16 @@ import { Db, type DbClient } from "@ktb/db";
 
 import { permissionEpoch, relationTuples } from "@ktb/db/schema";
 
-export { permissionEpoch, rolePermissions, roles, subjectRoles } from "@ktb/db/schema";
-export type { Role, RolePermission, SubjectRole } from "@ktb/db/schema";
+export { permissionEpoch, roles } from "@ktb/db/schema";
+export type { Role } from "@ktb/db/schema";
 export * from "./vocabulary.ts";
 
 // ---------- vocabulary-facing types ----------
 
-/** Grant effect stored in `role_permissions.effect`. */
+/** Grant effect stored in `relation_tuples.effect`. */
 export type PermissionEffect = "allow" | "deny";
 
-/** Assignment subject kinds stored in `subject_roles.subject_kind`. */
+/** Assignment subject kinds stored in `relation_tuples.subject_kind`. */
 export type SubjectKind = "user" | "group";
 
 /**
@@ -58,8 +58,7 @@ export async function readEpoch(db: DbClient): Promise<number> {
 
 /**
  * Bump the permission epoch — call after EVERY write to
- * `role_permissions`, `subject_roles`, `relation_tuples` (P-101), or
- * any group-membership table.
+ * `relation_tuples` (P-101) or any group-membership table.
  * Cached grant sets key on the epoch, so the next resolve sees fresh
  * data without explicit cache purging.
  */
@@ -167,8 +166,7 @@ export interface PermissionsShape {
 		opts?: PermissionOptions,
 	) => Effect.Effect<void, Forbidden>;
 	/** Bump the epoch and clear the local cache — call after any write
-	 * to role_permissions / subject_roles / relation_tuples /
-	 * membership tables. */
+	 * to relation_tuples / membership tables. */
 	readonly invalidate: () => Effect.Effect<void>;
 }
 
@@ -354,9 +352,9 @@ export const buildPermissions = (
 		}
 
 		const groupIds = groupIdsFor === undefined ? [] : yield* groupIdsFor(userId);
-		// P-101: resolution reads the relation_tuples graph, not the
-		// admin-facing role_permissions/subject_roles tables. Role
-		// membership is a member tuple (object_type='role',
+		// P-101: resolution reads the relation_tuples graph — the only
+		// grant store since T-183 dropped role_permissions/subject_roles.
+		// Role membership is a member tuple (object_type='role',
 		// relation='member') whose subject is the user or one of their
 		// groups; the member tuple's tenant/expiry scope the assignment
 		// exactly like subject_roles did.
