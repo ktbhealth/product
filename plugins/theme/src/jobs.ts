@@ -41,6 +41,7 @@ import {
 	parseFontMetrics,
 	type FontMetrics,
 } from "./font-metrics.ts";
+import { parseFontVariations } from "./font-variations.ts";
 import type { ThemeFontAsset, ThemeFontFace, ThemeFontSlot } from "./types.ts";
 
 /**
@@ -413,9 +414,16 @@ export async function processThemeFontJob(
 		const bytes = new Uint8Array(await object.arrayBuffer());
 		const ext = extOfKey(payload.key) || payload.format;
 		metrics = await parseFontMetrics(bytes, ext);
+		// Same probe as the catalog upload: fvar wght → ranged face,
+		// cmap → unicode-range download hint.
+		const variation = await parseFontVariations(bytes, ext);
 		faces.push({
 			url: themeAssetUrl(payload.key),
 			format: fontFormatForExt(ext) ?? payload.format,
+			...(variation?.weightAxis === undefined
+				? {}
+				: { weightRange: [variation.weightAxis.min, variation.weightAxis.max] as const }),
+			...(variation?.unicodeRange === undefined ? {} : { unicodeRange: variation.unicodeRange }),
 		});
 	} else {
 		// Google Fonts: woff2 per configured weight (latin subset) + one

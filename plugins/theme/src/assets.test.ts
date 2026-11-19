@@ -556,6 +556,101 @@ describe("catalog font assets (theme_id NULL)", () => {
 		]);
 	});
 
+	it("insertCatalogFontAsset emits a ranged face + variation stamps for variable fonts", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Var Sans",
+			weights: undefined,
+			r2Key: "var.woff2",
+			format: "woff2",
+			weightAxis: { min: 100, default: 400, max: 900 },
+			unicodeRange: "U+0020-007E, U+00C0-00FF",
+		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.variable).toBe(true);
+		expect(variants.weightAxis).toEqual({ min: 100, default: 400, max: 900 });
+		expect(variants.unicodeRange).toBe("U+0020-007E, U+00C0-00FF");
+		expect(variants.fontAsset.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=var.woff2",
+				weightRange: [100, 900],
+				unicodeRange: "U+0020-007E, U+00C0-00FF",
+				format: "woff2",
+			},
+		]);
+	});
+
+	it("insertCatalogFontAsset drops malformed axes and stamps unicodeRange on static faces", async () => {
+		const { db } = makeTestDb();
+		const bad = await insertCatalogFontAsset(db, {
+			family: "BadAxis",
+			weights: [400],
+			r2Key: "b.ttf",
+			format: undefined,
+			weightAxis: { min: 900, default: 100, max: 400 },
+		});
+		const badVariants = JSON.parse(bad!.variants!);
+		expect(badVariants.variable).toBeUndefined();
+		expect(badVariants.fontAsset.faces[0].weight).toBe(400);
+
+		const nonFinite = await insertCatalogFontAsset(db, {
+			family: "NanAxis",
+			weights: undefined,
+			r2Key: "n.ttf",
+			format: undefined,
+			weightAxis: { min: Number.NaN, default: 400, max: 900 },
+		});
+		expect(JSON.parse(nonFinite!.variants!).variable).toBeUndefined();
+
+		// Static font: unicodeRange lands on every emitted face.
+		const staticFont = await insertCatalogFontAsset(db, {
+			family: "Static",
+			weights: [400, 700],
+			r2Key: "s.woff2",
+			format: "woff2",
+			unicodeRange: "U+0000-00FF",
+		});
+		const faces = catalogFontAssetOf(staticFont!.variants)!.faces;
+		expect(faces).toHaveLength(2);
+		expect(faces.every((f) => f.unicodeRange === "U+0000-00FF")).toBe(true);
+		// Blank unicodeRange is ignored.
+		const blank = await insertCatalogFontAsset(db, {
+			family: "Blank",
+			weights: undefined,
+			r2Key: "x",
+			format: undefined,
+			unicodeRange: "   ",
+		});
+		expect(JSON.parse(blank!.variants!).unicodeRange).toBeUndefined();
+
+		// Variable font without a cmap hint → ranged face, no
+		// unicodeRange key anywhere.
+		const noRange = await insertCatalogFontAsset(db, {
+			family: "VarNoRange",
+			weights: undefined,
+			r2Key: "v2.woff2",
+			format: "woff2",
+			weightAxis: { min: 100, default: 400, max: 900 },
+		});
+		expect(catalogFontAssetOf(noRange!.variants)!.faces[0]).toEqual({
+			url: "/api/theme/assets?key=v2.woff2",
+			weightRange: [100, 900],
+			format: "woff2",
+		});
+		// Weightless static font still picks up the unicode hint.
+		const weightless = await insertCatalogFontAsset(db, {
+			family: "Weightless",
+			weights: undefined,
+			r2Key: "w.ttf",
+			format: undefined,
+			unicodeRange: "U+0000-007F",
+		});
+		expect(catalogFontAssetOf(weightless!.variants)!.faces[0]).toEqual({
+			url: "/api/theme/assets?key=w.ttf",
+			unicodeRange: "U+0000-007F",
+		});
+	});
+
 	it("insertCatalogFontAsset returns null when the insert yields no row", async () => {
 		const emptyInsert = {
 			insert: () => ({ values: () => ({ returning: async () => [] }) }),

@@ -42,7 +42,9 @@ import {
  * "400,700" or "400-700"; absent → filename hint like "Inter-Bold"/
  * "Inter_700", else 400 downstream), `providerId` (optional — must
  * name a "local" provider; absent = first enabled local provider,
- * auto-created as "Local" when none exists).
+ * auto-created as "Local" when none exists). The uploaded bytes are
+ * probed for an `fvar` wght axis (variable fonts emit one ranged
+ * @font-face) and a cmap (unicode-range download hint).
  *
  * PlatformAdmin only — same gate as every theme write.
  */
@@ -188,6 +190,16 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				const hinted = weights === undefined ? weightFromFileName(name) : undefined;
 				const effectiveWeights = weights ?? (hinted === undefined ? undefined : [hinted]);
 
+				// Probe the file itself: an `fvar` wght axis turns the
+				// upload into a variable font (single ranged @font-face)
+				// and the cmap yields a unicode-range download hint.
+				// Never fatal — unparseable fonts keep discrete weights.
+				// Lazy import: font-variations pulls font-metrics →
+				// brotli-dec.wasm, whose eager instantiation breaks under
+				// vite-plus's client-consumer test pipeline (apps/web).
+				const { parseFontVariations } = await import("../font-variations.ts");
+				const variation = await parseFontVariations(new Uint8Array(bytes), ext);
+
 				const { themeAssets: bucket } = getServerRuntime();
 				if (!bucket) {
 					return Response.json({ error: "theme asset storage not configured" }, { status: 503 });
@@ -237,6 +249,8 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 								weights: effectiveWeights,
 								r2Key: key,
 								format: fontFormatForExt(ext),
+								weightAxis: variation?.weightAxis,
+								unicodeRange: variation?.unicodeRange,
 							}),
 						);
 						if (asset === null) {

@@ -506,6 +506,73 @@ describe("processThemeFontJob — upload source", () => {
 		expect(fonts.assets.Raw.faces[0]!.url).toContain("raw.bin");
 	});
 
+	it("stamps weightRange/unicodeRange on variable-font uploads", async () => {
+		const { db, themeId, deps } = await makeDeps();
+		const fixed = (n: number) => f32(Math.round(n * 65536));
+		const ffvar = ftable("fvar", [
+			...f16(1),
+			...f16(0),
+			...f16(16),
+			...f16(0),
+			...f16(1),
+			...f16(20),
+			...f16(0),
+			...f16(0),
+			...ftag("wght"),
+			...fixed(100),
+			...fixed(400),
+			...fixed(900),
+			...f16(0),
+			...f16(256),
+		]);
+		const fcmap = ftable("cmap", [
+			...f16(0),
+			...f16(1),
+			...f16(3),
+			...f16(10),
+			...f32(12),
+			...f16(12),
+			...f16(0),
+			...f32(28),
+			...f32(0),
+			...f32(1),
+			...f32(0x20),
+			...f32(0x7e),
+			...f32(0),
+		]);
+		const varTtf = buildSfnt([fhead, fhhea, fos2, ffvar, fcmap]);
+		const d = {
+			...deps,
+			bucket: makeBucket({
+				"theme-assets/1/font/var.ttf": { data: varTtf },
+			}).bucket,
+		};
+		const asset = await seedAsset(db, themeId, "font");
+		await processThemeFontJob(
+			{
+				assetId: asset.id,
+				themeId,
+				family: "Var",
+				slot: "sans",
+				source: "upload",
+				key: "theme-assets/1/font/var.ttf",
+				format: "ttf",
+			},
+			d,
+		);
+		const theme = (await db.select().from(themeDefinitions))[0]!;
+		const fonts = JSON.parse(theme.fonts!) as {
+			assets: Record<
+				string,
+				{ faces: { weightRange?: number[]; unicodeRange?: string; weight?: number }[] }
+			>;
+		};
+		expect(fonts.assets.Var.faces[0]).toMatchObject({
+			weightRange: [100, 900],
+			unicodeRange: "U+0020-007E",
+		});
+	});
+
 	it("marks failed without storage, on done/missing rows and on a deleted theme", async () => {
 		const { db, themeId, deps } = await makeDeps();
 		const d = {

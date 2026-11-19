@@ -1003,6 +1003,88 @@ describe("POST /api/theme/catalog-fonts", () => {
 		});
 	});
 
+	it("stamps weightAxis/unicodeRange on variable-font uploads", async () => {
+		useSession("admin");
+		await withCatalogRuntime(async () => {
+			fontsState.syncFamilies = [fontFamily({ providerId: 1, family: "VarSans" })];
+			// Minimal TTF: fvar wght axis (100/400/900) + cmap format 12.
+			const u16 = (v: number) => [(v >> 8) & 0xff, v & 0xff];
+			const u32 = (v: number) => [(v >>> 24) & 0xff, (v >>> 16) & 0xff, (v >>> 8) & 0xff, v & 0xff];
+			const i32 = (v: number) => u32(v | 0);
+			const tag = (s: string) => Array.from(s, (c) => c.charCodeAt(0));
+			const fixed = (n: number) => i32(Math.round(n * 65536));
+			const fvar = [
+				...u16(1),
+				...u16(0),
+				...u16(16),
+				...u16(0),
+				...u16(1),
+				...u16(20),
+				...u16(0),
+				...u16(0),
+				...tag("wght"),
+				...fixed(100),
+				...fixed(400),
+				...fixed(900),
+				...u16(0),
+				...u16(256),
+			];
+			const cmap = [
+				...u16(0),
+				...u16(1),
+				...u16(3),
+				...u16(10),
+				...u32(12),
+				...u16(12),
+				...u16(0),
+				...u32(16 + 12),
+				...u32(0),
+				...u32(1),
+				...u32(0x20),
+				...u32(0x7e),
+				...u32(0),
+			];
+			const tables = [
+				{ name: tag("fvar"), data: fvar },
+				{ name: tag("cmap"), data: cmap },
+			];
+			let offset = 12 + tables.length * 16;
+			const records: number[] = [];
+			const body: number[] = [];
+			for (const t of tables) {
+				records.push(...t.name, ...u32(0), ...u32(offset), ...u32(t.data.length));
+				body.push(...t.data);
+				offset += t.data.length;
+			}
+			const ttf = new Uint8Array([
+				...tag("true"),
+				...u16(tables.length),
+				...u16(0),
+				...u16(0),
+				...u16(0),
+				...records,
+				...body,
+			]);
+			const file = new File([ttf], "VarSans.ttf", { type: "font/ttf" });
+			const res = await postCatalog({ family: "VarSans" }, file);
+			expect(res.status).toBe(200);
+			const bodyJson = (await res.json()) as { assetId: number };
+			const row = (await db.select().from(themeAssets)).find((r) => r.id === bodyJson.assetId);
+			const variants = JSON.parse(row!.variants!);
+			expect(variants.variable).toBe(true);
+			expect(variants.weightAxis).toEqual({ min: 100, default: 400, max: 900 });
+			expect(variants.unicodeRange).toBe("U+0020-007E");
+			expect(variants.fontAsset.faces).toEqual([
+				{
+					url: expect.stringContaining("/api/theme/assets?key="),
+					weightRange: [100, 900],
+					unicodeRange: "U+0020-007E",
+					format: "truetype",
+				},
+			]);
+		});
+	});
+
 	it("500s when the catalog sync fails or the asset insert yields no row", async () => {
 		useSession("admin");
 		await withCatalogRuntime(async () => {

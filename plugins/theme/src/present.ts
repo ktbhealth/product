@@ -203,12 +203,33 @@ export const fontFaceCss = (fonts: ThemeFontConfig | null): string => {
 			if (typeof face.url !== "string" || face.url.trim() === "") continue;
 			const url = face.url.trim();
 			const format = face.format ?? FONT_FORMATS[extOfUrl(url)] ?? "woff2";
+			// Variable fonts carry a weight RANGE (`font-weight:min max`);
+			// it wins over the discrete `weight` descriptor.
+			const range = face.weightRange;
 			const weight =
-				typeof face.weight === "number" && Number.isInteger(face.weight)
-					? `;font-weight:${face.weight}`
+				Array.isArray(range) &&
+				range.length === 2 &&
+				typeof range[0] === "number" &&
+				typeof range[1] === "number" &&
+				Number.isFinite(range[0]) &&
+				Number.isFinite(range[1]) &&
+				range[0] <= range[1]
+					? `;font-weight:${range[0]} ${range[1]}`
+					: typeof face.weight === "number" && Number.isInteger(face.weight)
+						? `;font-weight:${face.weight}`
+						: "";
+			// unicode-range comes from our own cmap parser but the value
+			// rides stored JSON — allowlist the descriptor alphabet so a
+			// hand-edited row cannot inject CSS.
+			const unicodeRange =
+				typeof face.unicodeRange === "string" &&
+				face.unicodeRange
+					.split(",")
+					.every((part) => /^U\+[0-9A-Fa-f?]{1,6}(-[0-9A-Fa-f?]{1,6})?$/.test(part.trim()))
+					? `;unicode-range:${face.unicodeRange}`
 					: "";
 			rules.push(
-				`@font-face{font-family:"${fam}";src:url("${url}") format("${format}");font-display:swap${weight};}`,
+				`@font-face{font-family:"${fam}";src:url("${url}") format("${format}");font-display:swap${weight}${unicodeRange};}`,
 			);
 		}
 		// Metric-matched local() fallback — emitted once per family,

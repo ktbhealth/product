@@ -25,6 +25,7 @@ import type {
 	ThemeFontFace,
 	ThemeFontSlot,
 } from "./types.ts";
+import type { FontWeightAxis } from "./font-variations.ts";
 
 // ---------- kinds, keys, serving URLs ----------
 
@@ -463,7 +464,10 @@ export const deleteThemeAsset = async (db: DbClient, id: number): Promise<void> 
  * `variants.weights` so the fonts catalog sync can populate
  * `font_families.weights` (absent/empty = 400 downstream). One face
  * is emitted per weight — all pointing at the same uploaded file,
- * which is correct for variable fonts and harmless for static ones.
+ * which is harmless for static fonts. Variable fonts (an `fvar`
+ * `wght` axis parsed by font-variations.ts) instead emit ONE face
+ * with a `weightRange` (`font-weight:min max`) plus `variable`/
+ * `weightAxis`/`unicodeRange` stamps on the variants JSON.
  */
 export const insertCatalogFontAsset = async (
 	db: DbClient,
@@ -472,6 +476,13 @@ export const insertCatalogFontAsset = async (
 		readonly weights: readonly number[] | undefined;
 		readonly r2Key: string;
 		readonly format: string | undefined;
+		/** `fvar` wght axis bounds (variable fonts) — when present and
+		 * sane, faces emit a single `font-weight:min max` range instead
+		 * of discrete weights and the axis is stamped on variants. */
+		readonly weightAxis?: FontWeightAxis | undefined;
+		/** `unicode-range` descriptor derived from the font's cmap —
+		 * stamped on every face so browsers skip unneeded downloads. */
+		readonly unicodeRange?: string | undefined;
 	},
 ): Promise<ThemeAssetRow | null> => {
 	const weights =
@@ -479,22 +490,56 @@ export const insertCatalogFontAsset = async (
 			? []
 			: [...new Set(input.weights.filter(isCatalogWeight))].sort((a, b) => a - b);
 	const url = themeAssetUrl(input.r2Key);
+	// Sanitize the axis: finite numbers, CSS font-weight accepts 1–1000;
+	// clamp rather than trust the fvar bytes blindly.
+	const axis = input.weightAxis;
+	const weightAxis =
+		axis !== undefined &&
+		Number.isFinite(axis.min) &&
+		Number.isFinite(axis.default) &&
+		Number.isFinite(axis.max) &&
+		axis.min <= axis.default &&
+		axis.default <= axis.max
+			? {
+					min: Math.min(1000, Math.max(1, axis.min)),
+					default: Math.min(1000, Math.max(1, axis.default)),
+					max: Math.min(1000, Math.max(1, axis.max)),
+				}
+			: undefined;
+	const unicodeRange =
+		typeof input.unicodeRange === "string" && input.unicodeRange.trim() !== ""
+			? input.unicodeRange.trim()
+			: undefined;
+	const format = input.format === undefined ? {} : { format: input.format };
 	const faces: ThemeFontFace[] =
-		weights.length === 0
+		weightAxis !== undefined
 			? [
 					{
 						url,
-						...(input.format === undefined ? {} : { format: input.format }),
+						weightRange: [weightAxis.min, weightAxis.max],
+						...(unicodeRange === undefined ? {} : { unicodeRange }),
+						...format,
 					},
 				]
-			: weights.map((weight) => ({
-					url,
-					weight,
-					...(input.format === undefined ? {} : { format: input.format }),
-				}));
+			: weights.length === 0
+				? [
+						{
+							url,
+							...(unicodeRange === undefined ? {} : { unicodeRange }),
+							...format,
+						},
+					]
+				: weights.map((weight) => ({
+						url,
+						weight,
+						...(unicodeRange === undefined ? {} : { unicodeRange }),
+						...format,
+					}));
 	const variants = {
 		family: input.family,
 		...(weights.length === 0 ? {} : { weights }),
+		...(weightAxis === undefined ? {} : { variable: true, weightAxis }),
+		...(unicodeRange === undefined ? {} : { unicodeRange }),
 		fontAsset: { faces, fallback: null },
 	};
 	const rows = await db

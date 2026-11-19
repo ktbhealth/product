@@ -42,7 +42,17 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 		? (value as Record<string, unknown>)
 		: null;
 
-const fontFamiliesOf = (fontsJson: string | null): { families: string[]; weights?: number[] } => {
+/** Theme-owned font rows have no variation metadata — only catalog
+ * uploads (variantInfoOf) carry it. */
+interface ResolvedFamilies {
+	readonly families: string[];
+	readonly weights?: number[];
+	readonly variable?: boolean;
+	readonly weightAxis?: { min: number; default: number; max: number };
+	readonly unicodeRange?: string;
+}
+
+const fontFamiliesOf = (fontsJson: string | null): ResolvedFamilies => {
 	const fonts = asRecord(parseJson(fontsJson)) as ThemeFontsJson | null;
 	if (fonts === null) return { families: [] };
 	const names = new Set<string>();
@@ -69,30 +79,74 @@ const asWeightList = (value: unknown): number[] | undefined => {
 	return weights.length === 0 ? undefined : weights;
 };
 
+const asWeightAxis = (
+	value: unknown,
+): { min: number; default: number; max: number } | undefined => {
+	const axis = asRecord(value);
+	if (axis === null) return undefined;
+	const { min, default: def, max } = axis;
+	if (
+		typeof min !== "number" ||
+		typeof def !== "number" ||
+		typeof max !== "number" ||
+		!(min <= def && def <= max)
+	) {
+		return undefined;
+	}
+	return { min, default: def, max };
+};
+
+const asUnicodeRange = (value: unknown): string | undefined =>
+	typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+
 /**
  * Catalog-upload rows (theme_assets.theme_id NULL) stamp `family` plus
  * an optional `weights` array — mirrored from the @font-face weights —
- * on their variants JSON. Rows written before weights existed fall
+ * on their variants JSON. Variable-font uploads additionally stamp
+ * `variable`/`weightAxis` (the fvar wght range) and `unicodeRange`
+ * (cmap-derived); the axis reports `[min, max]` as the family's
+ * weights and rides `meta` so consumers can distinguish a ranged face
+ * from discrete weights. Rows written before weights existed fall
  * back to collecting the per-face `weight` descriptors, so older
  * single-weight uploads still report their weight to the catalog.
  */
 const variantInfoOf = (
 	variantsJson: string | null,
-): { family: string; weights?: number[] } | null => {
+): {
+	family: string;
+	weights?: number[];
+	variable?: boolean;
+	weightAxis?: { min: number; default: number; max: number };
+	unicodeRange?: string;
+} | null => {
 	const variants = asRecord(parseJson(variantsJson));
 	const family = variants?.["family"];
 	if (variants === null || typeof family !== "string" || family.trim() === "") return null;
+	const weightAxis = asWeightAxis(variants["weightAxis"]);
+	const unicodeRange = asUnicodeRange(variants["unicodeRange"]);
+	const variable = variants["variable"] === true || weightAxis !== undefined;
 	const explicit = asWeightList(variants["weights"]);
-	if (explicit !== undefined) return { family: family.trim(), weights: explicit };
-	const fontAsset = asRecord(variants["fontAsset"]);
-	const faces = fontAsset?.["faces"];
-	const faceWeights = Array.isArray(faces)
-		? asWeightList(faces.map((face) => asRecord(face)?.["weight"]))
-		: undefined;
+	// A variable font's "weights" are its axis endpoints — more honest
+	// than the discrete list (which is absent for pure variable uploads).
+	const axisWeights =
+		weightAxis === undefined ? undefined : [weightAxis.min, weightAxis.max].sort((a, b) => a - b);
+	const weights = explicit ?? axisWeights ?? faceWeightsOf(variants);
 	return {
 		family: family.trim(),
-		...(faceWeights === undefined ? {} : { weights: faceWeights }),
+		...(weights === undefined ? {} : { weights }),
+		...(variable ? { variable: true } : {}),
+		...(weightAxis === undefined ? {} : { weightAxis }),
+		...(unicodeRange === undefined ? {} : { unicodeRange }),
 	};
+};
+
+/** Pre-`weights` rows: collect per-face `weight` descriptors. */
+const faceWeightsOf = (variants: Record<string, unknown>): number[] | undefined => {
+	const fontAsset = asRecord(variants["fontAsset"]);
+	const faces = fontAsset?.["faces"];
+	return Array.isArray(faces)
+		? asWeightList(faces.map((face) => asRecord(face)?.["weight"]))
+		: undefined;
 };
 
 export const localFontProviderAdapter: FontProviderAdapter = {
@@ -117,11 +171,14 @@ export const localFontProviderAdapter: FontProviderAdapter = {
 			const byFamily = new Map<string, FontCatalogEntry>();
 			for (const row of rows) {
 				const direct = variantInfoOf(row.variants);
-				const resolved =
+				const resolved: ResolvedFamilies =
 					direct !== null
 						? {
 								families: [direct.family],
 								...(direct.weights === undefined ? {} : { weights: direct.weights }),
+								...(direct.variable === true ? { variable: true } : {}),
+								...(direct.weightAxis === undefined ? {} : { weightAxis: direct.weightAxis }),
+								...(direct.unicodeRange === undefined ? {} : { unicodeRange: direct.unicodeRange }),
 							}
 						: fontFamiliesOf(row.themeFonts);
 				for (const family of resolved.families) {
@@ -129,7 +186,15 @@ export const localFontProviderAdapter: FontProviderAdapter = {
 					byFamily.set(family, {
 						family,
 						...(resolved.weights === undefined ? {} : { weights: resolved.weights }),
-						meta: { source: "local", assetId: row.assetId },
+						meta: {
+							source: "local",
+							assetId: row.assetId,
+							...(resolved.variable === true ? { variable: true } : {}),
+							...(resolved.weightAxis === undefined ? {} : { weightAxis: resolved.weightAxis }),
+							...(resolved.unicodeRange === undefined
+								? {}
+								: { unicodeRange: resolved.unicodeRange }),
+						},
 					});
 				}
 			}
