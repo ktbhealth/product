@@ -848,6 +848,47 @@ export type I18nKey =
 	| "eval.validator.title"
 	| "eval.validator.view"
 	| "eval.validator.voices"
+	| "fonts.addProvider"
+	| "fonts.allProviders"
+	| "fonts.cancel"
+	| "fonts.colActions"
+	| "fonts.colEnabled"
+	| "fonts.colFamilies"
+	| "fonts.colFamily"
+	| "fonts.colKind"
+	| "fonts.colName"
+	| "fonts.colProvider"
+	| "fonts.colStatus"
+	| "fonts.colUpdated"
+	| "fonts.colWeights"
+	| "fonts.create"
+	| "fonts.createError"
+	| "fonts.creating"
+	| "fonts.deleteConfirm"
+	| "fonts.deleteError"
+	| "fonts.deleteProvider"
+	| "fonts.dialogAddTitle"
+	| "fonts.emptyFamilies"
+	| "fonts.emptyProviders"
+	| "fonts.fontsDescription"
+	| "fonts.fontsTitle"
+	| "fonts.kindLabel"
+	| "fonts.nameLabel"
+	| "fonts.namePlaceholder"
+	| "fonts.noResults"
+	| "fonts.providerFilterLabel"
+	| "fonts.providersDescription"
+	| "fonts.providersTitle"
+	| "fonts.searchLabel"
+	| "fonts.searchPlaceholder"
+	| "fonts.statusFailed"
+	| "fonts.statusPending"
+	| "fonts.statusReady"
+	| "fonts.sync"
+	| "fonts.syncedToast"
+	| "fonts.syncError"
+	| "fonts.syncing"
+	| "fonts.weightsNone"
 	| "forms.addItem"
 	| "forms.chooseOption"
 	| "forms.invalidSummary"
@@ -2840,6 +2881,47 @@ export interface I18nTypedT {
 	(key: "eval.validator.title"): Effect.Effect<string>;
 	(key: "eval.validator.view"): Effect.Effect<string>;
 	(key: "eval.validator.voices"): Effect.Effect<string>;
+	(key: "fonts.addProvider"): Effect.Effect<string>;
+	(key: "fonts.allProviders"): Effect.Effect<string>;
+	(key: "fonts.cancel"): Effect.Effect<string>;
+	(key: "fonts.colActions"): Effect.Effect<string>;
+	(key: "fonts.colEnabled"): Effect.Effect<string>;
+	(key: "fonts.colFamilies"): Effect.Effect<string>;
+	(key: "fonts.colFamily"): Effect.Effect<string>;
+	(key: "fonts.colKind"): Effect.Effect<string>;
+	(key: "fonts.colName"): Effect.Effect<string>;
+	(key: "fonts.colProvider"): Effect.Effect<string>;
+	(key: "fonts.colStatus"): Effect.Effect<string>;
+	(key: "fonts.colUpdated"): Effect.Effect<string>;
+	(key: "fonts.colWeights"): Effect.Effect<string>;
+	(key: "fonts.create"): Effect.Effect<string>;
+	(key: "fonts.createError"): Effect.Effect<string>;
+	(key: "fonts.creating"): Effect.Effect<string>;
+	(key: "fonts.deleteConfirm"): Effect.Effect<string>;
+	(key: "fonts.deleteError"): Effect.Effect<string>;
+	(key: "fonts.deleteProvider"): Effect.Effect<string>;
+	(key: "fonts.dialogAddTitle"): Effect.Effect<string>;
+	(key: "fonts.emptyFamilies"): Effect.Effect<string>;
+	(key: "fonts.emptyProviders"): Effect.Effect<string>;
+	(key: "fonts.fontsDescription"): Effect.Effect<string>;
+	(key: "fonts.fontsTitle"): Effect.Effect<string>;
+	(key: "fonts.kindLabel"): Effect.Effect<string>;
+	(key: "fonts.nameLabel"): Effect.Effect<string>;
+	(key: "fonts.namePlaceholder"): Effect.Effect<string>;
+	(key: "fonts.noResults"): Effect.Effect<string>;
+	(key: "fonts.providerFilterLabel"): Effect.Effect<string>;
+	(key: "fonts.providersDescription"): Effect.Effect<string>;
+	(key: "fonts.providersTitle"): Effect.Effect<string>;
+	(key: "fonts.searchLabel"): Effect.Effect<string>;
+	(key: "fonts.searchPlaceholder"): Effect.Effect<string>;
+	(key: "fonts.statusFailed"): Effect.Effect<string>;
+	(key: "fonts.statusPending"): Effect.Effect<string>;
+	(key: "fonts.statusReady"): Effect.Effect<string>;
+	(key: "fonts.sync"): Effect.Effect<string>;
+	(key: "fonts.syncedToast"): Effect.Effect<string>;
+	(key: "fonts.syncError"): Effect.Effect<string>;
+	(key: "fonts.syncing"): Effect.Effect<string>;
+	(key: "fonts.weightsNone"): Effect.Effect<string>;
 	(key: "forms.addItem"): Effect.Effect<string>;
 	(key: "forms.chooseOption"): Effect.Effect<string>;
 	(
