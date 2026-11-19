@@ -90,6 +90,108 @@ export interface AudioStorageStats {
 	readonly truncated: boolean;
 }
 
+/** Transport family a bound queue belongs to — structural mirror of
+ * `QueueTransport` in @ktb/queues-port (declared here so plugin code
+ * needs no new dependency). */
+export type QueueTransport = "cloudflare-queue" | "redis" | "sqlite" | "unknown";
+
+/** Who drains a bound queue — structural mirror of `QueueConsumer` in
+ * @ktb/queues-port. */
+export type QueueConsumer = "in-app" | "jobs-worker" | "external" | "none";
+
+/**
+ * One queue as the /platform/queue console sees it — identity plus
+ * best-effort broker depth. `depth` is null when the transport cannot
+ * report it (prod Cloudflare Queues have no query API); the page
+ * renders the honest unavailable state, never a fabricated zero.
+ * Structural mirror of `QueueInfo` in @ktb/queues-port.
+ */
+export interface QueueInfo {
+	readonly id: string;
+	readonly name: string;
+	readonly transport: QueueTransport;
+	readonly consumer: QueueConsumer;
+	readonly depth: QueueDepth | null;
+}
+
+/** One recorded cron fire — projected into `job_runs` under kind
+ * `cron.<jobId>`; this is the console-facing slice of that row.
+ * `ok` derives from the row status (done = success); `startedAt` /
+ * `finishedAt` are the row's created/updated epochs. */
+export interface CronRunInfo {
+	readonly id: string;
+	readonly ok: boolean;
+	/** True while the latest row is still `processing` — an isolate
+	 * death mid-fire can leave one stuck; the console renders it
+	 * neutrally rather than as a failure. */
+	readonly running: boolean;
+	readonly error?: string | null;
+	readonly startedAt: number;
+	readonly finishedAt: number;
+}
+
+/** One registered cron job as the /platform/cron console sees it. */
+export interface CronJobInfo {
+	readonly id: string;
+	readonly schedules: readonly string[];
+	readonly description?: string;
+	/** Latest recorded fire; null when the job has never run (or the
+	 * projection is unreadable — the page renders that honestly). */
+	readonly lastRun: CronRunInfo | null;
+}
+
+/** Outcome of a manual "run now" — mirrors @ktb/cron-port's
+ * CronRunOutcome plus the fired job id. */
+export interface CronRunResult {
+	readonly id: string;
+	readonly ok: boolean;
+	readonly summary?: string;
+	readonly error?: string;
+}
+
+/** Transport family a pub/sub topic source belongs to — structural
+ * mirror of `PubSubTransport` in @ktb/pubsub-port (declared here so
+ * plugin code needs no new dependency). */
+export type PubSubTransport = "in-process" | "redis" | "unknown";
+
+/** One retained message on an introspectable topic. */
+export interface PubSubMessageInfo {
+	readonly at: number;
+	readonly payload: unknown;
+}
+
+/**
+ * One pub/sub topic as the /platform/pubsub console sees it — identity
+ * plus best-effort subscriber count and (when the transport retains
+ * history) recent payloads. `subscribers` is null and `recent`
+ * undefined when the transport cannot report them; the page renders
+ * the honest unavailable state, never a fabricated zero.
+ * Structural mirror of `PubSubTopicInfo` in @ktb/pubsub-port.
+ */
+export interface PubSubTopicInfo {
+	readonly id: string;
+	readonly name: string;
+	readonly transport: PubSubTransport;
+	readonly subscribers: number | null;
+	readonly recent?: readonly PubSubMessageInfo[];
+}
+
+/** Outcome of a manual publish — honest failure reasons, never a
+ * thrown wire error for expected cases. */
+export interface PubSubPublishResult {
+	readonly ok: boolean;
+	readonly reason?: "forbidden" | "unknown-topic" | "unavailable" | "publish-failed";
+}
+
+/** One merged topic enumeration: surviving topics plus the ids of
+ * sources whose probe failed — a bound-but-down transport is reported
+ * honestly instead of silently vanishing into an empty list.
+ * Structural mirror of `PubSubTopicListing` in @ktb/pubsub-port. */
+export interface PubSubTopicsResult {
+	readonly topics: readonly PubSubTopicInfo[];
+	readonly degraded: readonly string[];
+}
+
 /**
  * Minimal paginated listing slice — the real R2Bucket satisfies this
  * (its `list` returns R2Objects, a superset of the shape below). Used
@@ -185,6 +287,30 @@ export interface ServerRuntime {
 	/** Audio bucket aggregate stats (object count + bytes, capped
 	 * pagination); undefined when no bucket binding is published. */
 	readonly audioStorageStats?: () => Promise<AudioStorageStats | null>;
+	/** Queue registry probe (PL-007 follow-up): every transport the
+	 * deployment binds, with best-effort depth. Undefined outside the
+	 * composed app; an empty list means no queues are bound. */
+	readonly queues?: () => Promise<readonly QueueInfo[]>;
+	/** Cron registry capability (PL-007 follow-up): the scheduled-job
+	 * registry the worker's `scheduled` handler dispatches through.
+	 * `list` joins each job with its latest `cron.<id>` job_runs row;
+	 * `runNow` fires one job by id (console trigger — same code path
+	 * as a cron fire, including projection); `runSchedule` fires every
+	 * job bound to a cron expression (the `scheduled()` entry). */
+	readonly crons?: {
+		readonly list: () => Promise<readonly CronJobInfo[]>;
+		readonly runNow: (id: string) => Promise<CronRunResult | null>;
+		readonly runSchedule: (schedule: string) => Promise<readonly CronRunResult[]>;
+	};
+	/** Pub/sub capability: `topics` merges every bound transport's
+	 * channel enumeration (in-process bus + Redis channels); `publish`
+	 * routes a JSON payload to a topic by its console-facing id —
+	 * `memory:<name>` hits the in-process bus, `redis:<channel>` the
+	 * Redis transport. Undefined when no pub/sub transport is bound. */
+	readonly pubsub?: {
+		readonly topics: () => Promise<PubSubTopicsResult>;
+		readonly publish: (topicId: string, payload: unknown) => Promise<PubSubPublishResult>;
+	};
 	/** Workers AI binding (or host-resolved stand-in) for transcription;
 	 * undefined when unbound. */
 	readonly ai?: AiRunner;

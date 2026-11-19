@@ -39,6 +39,7 @@ export {
 export {
 	collectContributions,
 	collectKindContributions,
+	ELEMENT_KINDS_KIND,
 	FIELD_CONTRIBUTION_KINDS,
 	GENERIC_CONTRIBUTION_SLOT,
 	pluginContributionKinds,
@@ -56,6 +57,10 @@ export type {
 	ChromeProps,
 	ChromeUser,
 	ChromeWhen,
+	ElementKind,
+	ElementKindEditorProps,
+	ElementKindsPlugin,
+	ElementKindRendererProps,
 	LandingFooterBlock,
 	LandingLink,
 	LandingPageProps,

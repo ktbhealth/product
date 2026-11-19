@@ -202,6 +202,7 @@ export type I18nKey =
 	| "app.notfound_title"
 	| "app.panel_group_account"
 	| "app.panel_group_assurance"
+	| "app.panel_group_concurrency"
 	| "app.panel_group_console"
 	| "app.panel_group_domain_data"
 	| "app.panel_group_evaluation"
@@ -213,10 +214,13 @@ export type I18nKey =
 	| "app.panel_group_site"
 	| "app.panel_group_storage"
 	| "app.panel_nav_activity"
+	| "app.panel_nav_cron"
 	| "app.panel_nav_dashboard"
 	| "app.panel_nav_groups"
 	| "app.panel_nav_ops"
 	| "app.panel_nav_plugins"
+	| "app.panel_nav_pubsub"
+	| "app.panel_nav_queue"
 	| "app.panel_nav_rich_text"
 	| "app.panel_nav_schemas"
 	| "app.panel_nav_users"
@@ -657,6 +661,40 @@ export type I18nKey =
 	| "consultations.zk.exportLocked"
 	| "consultations.zk.lockedHint"
 	| "consultations.zk.lockedRecord"
+	| "cron.description"
+	| "cron.emptyJobsDescription"
+	| "cron.emptyJobsTitle"
+	| "cron.emptyRunsDescription"
+	| "cron.emptyRunsTitle"
+	| "cron.jColAction"
+	| "cron.jColDescription"
+	| "cron.jColJob"
+	| "cron.jColLastRun"
+	| "cron.jColSchedules"
+	| "cron.jobsDescription"
+	| "cron.jobsTitle"
+	| "cron.lastFailed"
+	| "cron.lastOk"
+	| "cron.lastRunning"
+	| "cron.neverRan"
+	| "cron.rColError"
+	| "cron.rColId"
+	| "cron.rColJob"
+	| "cron.rColStarted"
+	| "cron.rColStatus"
+	| "cron.runFailed"
+	| "cron.runForbidden"
+	| "cron.running"
+	| "cron.runNow"
+	| "cron.runOk"
+	| "cron.runOkNoSummary"
+	| "cron.runsDescription"
+	| "cron.runsTitle"
+	| "cron.runUnavailable"
+	| "cron.runUnknown"
+	| "cron.title"
+	| "cron.unavailableDescription"
+	| "cron.unavailableTitle"
 	| "dashboard.managePlugins"
 	| "dashboard.registeredPlugins"
 	| "dashboard.stateDisabled"
@@ -1549,6 +1587,90 @@ export type I18nKey =
 	| "portal.signOut"
 	| "portal.switcherLabel"
 	| "portal.userFallback"
+	| "pubsub.degradedDescription"
+	| "pubsub.degradedTitle"
+	| "pubsub.description"
+	| "pubsub.emptyTopicsDescription"
+	| "pubsub.emptyTopicsTitle"
+	| "pubsub.invalidJson"
+	| "pubsub.neverActive"
+	| "pubsub.noRecent"
+	| "pubsub.pPayload"
+	| "pubsub.pPayloadHint"
+	| "pubsub.pTopic"
+	| "pubsub.pTopicPlaceholder"
+	| "pubsub.publish"
+	| "pubsub.publishDescription"
+	| "pubsub.publishFailed"
+	| "pubsub.publishForbidden"
+	| "pubsub.publishing"
+	| "pubsub.publishOk"
+	| "pubsub.publishTitle"
+	| "pubsub.publishUnavailable"
+	| "pubsub.publishUnknown"
+	| "pubsub.subscribersUnknown"
+	| "pubsub.tColLastActivity"
+	| "pubsub.tColRecent"
+	| "pubsub.tColSubscribers"
+	| "pubsub.tColTopic"
+	| "pubsub.tColTransport"
+	| "pubsub.title"
+	| "pubsub.topicsDescription"
+	| "pubsub.topicsTitle"
+	| "pubsub.unavailableDescription"
+	| "pubsub.unavailableTitle"
+	| "queue.consumerExternal"
+	| "queue.consumerInApp"
+	| "queue.consumerJobsWorker"
+	| "queue.consumerNone"
+	| "queue.description"
+	| "queue.emptyQueuesDescription"
+	| "queue.emptyQueuesTitle"
+	| "queue.emptyRunsDescription"
+	| "queue.emptyRunsTitle"
+	| "queue.enqueueDescription"
+	| "queue.enqueueError"
+	| "queue.enqueueKind"
+	| "queue.enqueueSubmit"
+	| "queue.enqueueSuccess"
+	| "queue.enqueueTitle"
+	| "queue.filterKind"
+	| "queue.filterStatus"
+	| "queue.kindAll"
+	| "queue.noKinds"
+	| "queue.noMatch"
+	| "queue.payloadInvalid"
+	| "queue.payloadLabel"
+	| "queue.qColConsumer"
+	| "queue.qColDone"
+	| "queue.qColFailed"
+	| "queue.qColPending"
+	| "queue.qColProcessing"
+	| "queue.qColQueue"
+	| "queue.qColTransport"
+	| "queue.queuesDescription"
+	| "queue.queuesTitle"
+	| "queue.rColCreated"
+	| "queue.rColError"
+	| "queue.rColId"
+	| "queue.rColKind"
+	| "queue.rColPayloadRef"
+	| "queue.rColStatus"
+	| "queue.runsDescription"
+	| "queue.runsTitle"
+	| "queue.selectKind"
+	| "queue.statusAll"
+	| "queue.statusDone"
+	| "queue.statusFailed"
+	| "queue.statusProcessing"
+	| "queue.statusQueued"
+	| "queue.title"
+	| "queue.transportCloudflare"
+	| "queue.transportRedis"
+	| "queue.transportSqlite"
+	| "queue.transportUnknown"
+	| "queue.unavailableDescription"
+	| "queue.unavailableTitle"
 	| "rbac.assignmentsEmpty"
 	| "rbac.assignmentsTitle"
 	| "rbac.assignSubject"
@@ -2245,6 +2367,7 @@ export interface I18nTypedT {
 	(key: "app.notfound_title"): Effect.Effect<string>;
 	(key: "app.panel_group_account"): Effect.Effect<string>;
 	(key: "app.panel_group_assurance"): Effect.Effect<string>;
+	(key: "app.panel_group_concurrency"): Effect.Effect<string>;
 	(key: "app.panel_group_console"): Effect.Effect<string>;
 	(key: "app.panel_group_domain_data"): Effect.Effect<string>;
 	(key: "app.panel_group_evaluation"): Effect.Effect<string>;
@@ -2256,10 +2379,13 @@ export interface I18nTypedT {
 	(key: "app.panel_group_site"): Effect.Effect<string>;
 	(key: "app.panel_group_storage"): Effect.Effect<string>;
 	(key: "app.panel_nav_activity"): Effect.Effect<string>;
+	(key: "app.panel_nav_cron"): Effect.Effect<string>;
 	(key: "app.panel_nav_dashboard"): Effect.Effect<string>;
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
+	(key: "app.panel_nav_pubsub"): Effect.Effect<string>;
+	(key: "app.panel_nav_queue"): Effect.Effect<string>;
 	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
 	(key: "app.panel_nav_schemas"): Effect.Effect<string>;
 	(key: "app.panel_nav_users"): Effect.Effect<string>;
@@ -2849,6 +2975,50 @@ export interface I18nTypedT {
 	(key: "consultations.zk.exportLocked"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedHint"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedRecord"): Effect.Effect<string>;
+	(
+		key: "cron.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "cron.emptyJobsDescription"): Effect.Effect<string>;
+	(key: "cron.emptyJobsTitle"): Effect.Effect<string>;
+	(key: "cron.emptyRunsDescription"): Effect.Effect<string>;
+	(key: "cron.emptyRunsTitle"): Effect.Effect<string>;
+	(key: "cron.jColAction"): Effect.Effect<string>;
+	(key: "cron.jColDescription"): Effect.Effect<string>;
+	(key: "cron.jColJob"): Effect.Effect<string>;
+	(key: "cron.jColLastRun"): Effect.Effect<string>;
+	(key: "cron.jColSchedules"): Effect.Effect<string>;
+	(key: "cron.jobsDescription"): Effect.Effect<string>;
+	(key: "cron.jobsTitle"): Effect.Effect<string>;
+	(key: "cron.lastFailed"): Effect.Effect<string>;
+	(key: "cron.lastOk"): Effect.Effect<string>;
+	(key: "cron.lastRunning"): Effect.Effect<string>;
+	(key: "cron.neverRan"): Effect.Effect<string>;
+	(key: "cron.rColError"): Effect.Effect<string>;
+	(key: "cron.rColId"): Effect.Effect<string>;
+	(key: "cron.rColJob"): Effect.Effect<string>;
+	(key: "cron.rColStarted"): Effect.Effect<string>;
+	(key: "cron.rColStatus"): Effect.Effect<string>;
+	(key: "cron.runFailed"): Effect.Effect<string>;
+	(key: "cron.runForbidden"): Effect.Effect<string>;
+	(key: "cron.running"): Effect.Effect<string>;
+	(key: "cron.runNow"): Effect.Effect<string>;
+	(
+		key: "cron.runOk",
+		params: {
+			summary: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "cron.runOkNoSummary"): Effect.Effect<string>;
+	(key: "cron.runsDescription"): Effect.Effect<string>;
+	(key: "cron.runsTitle"): Effect.Effect<string>;
+	(key: "cron.runUnavailable"): Effect.Effect<string>;
+	(key: "cron.runUnknown"): Effect.Effect<string>;
+	(key: "cron.title"): Effect.Effect<string>;
+	(key: "cron.unavailableDescription"): Effect.Effect<string>;
+	(key: "cron.unavailableTitle"): Effect.Effect<string>;
 	(key: "dashboard.managePlugins"): Effect.Effect<string>;
 	(key: "dashboard.registeredPlugins"): Effect.Effect<string>;
 	(key: "dashboard.stateDisabled"): Effect.Effect<string>;
@@ -4110,6 +4280,105 @@ export interface I18nTypedT {
 	(key: "portal.signOut"): Effect.Effect<string>;
 	(key: "portal.switcherLabel"): Effect.Effect<string>;
 	(key: "portal.userFallback"): Effect.Effect<string>;
+	(
+		key: "pubsub.degradedDescription",
+		params: {
+			sources: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "pubsub.degradedTitle"): Effect.Effect<string>;
+	(
+		key: "pubsub.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "pubsub.emptyTopicsDescription"): Effect.Effect<string>;
+	(key: "pubsub.emptyTopicsTitle"): Effect.Effect<string>;
+	(key: "pubsub.invalidJson"): Effect.Effect<string>;
+	(key: "pubsub.neverActive"): Effect.Effect<string>;
+	(key: "pubsub.noRecent"): Effect.Effect<string>;
+	(key: "pubsub.pPayload"): Effect.Effect<string>;
+	(key: "pubsub.pPayloadHint"): Effect.Effect<string>;
+	(key: "pubsub.pTopic"): Effect.Effect<string>;
+	(key: "pubsub.pTopicPlaceholder"): Effect.Effect<string>;
+	(key: "pubsub.publish"): Effect.Effect<string>;
+	(key: "pubsub.publishDescription"): Effect.Effect<string>;
+	(key: "pubsub.publishFailed"): Effect.Effect<string>;
+	(key: "pubsub.publishForbidden"): Effect.Effect<string>;
+	(key: "pubsub.publishing"): Effect.Effect<string>;
+	(key: "pubsub.publishOk"): Effect.Effect<string>;
+	(key: "pubsub.publishTitle"): Effect.Effect<string>;
+	(key: "pubsub.publishUnavailable"): Effect.Effect<string>;
+	(key: "pubsub.publishUnknown"): Effect.Effect<string>;
+	(key: "pubsub.subscribersUnknown"): Effect.Effect<string>;
+	(key: "pubsub.tColLastActivity"): Effect.Effect<string>;
+	(key: "pubsub.tColRecent"): Effect.Effect<string>;
+	(key: "pubsub.tColSubscribers"): Effect.Effect<string>;
+	(key: "pubsub.tColTopic"): Effect.Effect<string>;
+	(key: "pubsub.tColTransport"): Effect.Effect<string>;
+	(key: "pubsub.title"): Effect.Effect<string>;
+	(key: "pubsub.topicsDescription"): Effect.Effect<string>;
+	(key: "pubsub.topicsTitle"): Effect.Effect<string>;
+	(key: "pubsub.unavailableDescription"): Effect.Effect<string>;
+	(key: "pubsub.unavailableTitle"): Effect.Effect<string>;
+	(key: "queue.consumerExternal"): Effect.Effect<string>;
+	(key: "queue.consumerInApp"): Effect.Effect<string>;
+	(key: "queue.consumerJobsWorker"): Effect.Effect<string>;
+	(key: "queue.consumerNone"): Effect.Effect<string>;
+	(
+		key: "queue.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "queue.emptyQueuesDescription"): Effect.Effect<string>;
+	(key: "queue.emptyQueuesTitle"): Effect.Effect<string>;
+	(key: "queue.emptyRunsDescription"): Effect.Effect<string>;
+	(key: "queue.emptyRunsTitle"): Effect.Effect<string>;
+	(key: "queue.enqueueDescription"): Effect.Effect<string>;
+	(key: "queue.enqueueError"): Effect.Effect<string>;
+	(key: "queue.enqueueKind"): Effect.Effect<string>;
+	(key: "queue.enqueueSubmit"): Effect.Effect<string>;
+	(key: "queue.enqueueSuccess"): Effect.Effect<string>;
+	(key: "queue.enqueueTitle"): Effect.Effect<string>;
+	(key: "queue.filterKind"): Effect.Effect<string>;
+	(key: "queue.filterStatus"): Effect.Effect<string>;
+	(key: "queue.kindAll"): Effect.Effect<string>;
+	(key: "queue.noKinds"): Effect.Effect<string>;
+	(key: "queue.noMatch"): Effect.Effect<string>;
+	(key: "queue.payloadInvalid"): Effect.Effect<string>;
+	(key: "queue.payloadLabel"): Effect.Effect<string>;
+	(key: "queue.qColConsumer"): Effect.Effect<string>;
+	(key: "queue.qColDone"): Effect.Effect<string>;
+	(key: "queue.qColFailed"): Effect.Effect<string>;
+	(key: "queue.qColPending"): Effect.Effect<string>;
+	(key: "queue.qColProcessing"): Effect.Effect<string>;
+	(key: "queue.qColQueue"): Effect.Effect<string>;
+	(key: "queue.qColTransport"): Effect.Effect<string>;
+	(key: "queue.queuesDescription"): Effect.Effect<string>;
+	(key: "queue.queuesTitle"): Effect.Effect<string>;
+	(key: "queue.rColCreated"): Effect.Effect<string>;
+	(key: "queue.rColError"): Effect.Effect<string>;
+	(key: "queue.rColId"): Effect.Effect<string>;
+	(key: "queue.rColKind"): Effect.Effect<string>;
+	(key: "queue.rColPayloadRef"): Effect.Effect<string>;
+	(key: "queue.rColStatus"): Effect.Effect<string>;
+	(key: "queue.runsDescription"): Effect.Effect<string>;
+	(key: "queue.runsTitle"): Effect.Effect<string>;
+	(key: "queue.selectKind"): Effect.Effect<string>;
+	(key: "queue.statusAll"): Effect.Effect<string>;
+	(key: "queue.statusDone"): Effect.Effect<string>;
+	(key: "queue.statusFailed"): Effect.Effect<string>;
+	(key: "queue.statusProcessing"): Effect.Effect<string>;
+	(key: "queue.statusQueued"): Effect.Effect<string>;
+	(key: "queue.title"): Effect.Effect<string>;
+	(key: "queue.transportCloudflare"): Effect.Effect<string>;
+	(key: "queue.transportRedis"): Effect.Effect<string>;
+	(key: "queue.transportSqlite"): Effect.Effect<string>;
+	(key: "queue.transportUnknown"): Effect.Effect<string>;
+	(key: "queue.unavailableDescription"): Effect.Effect<string>;
+	(key: "queue.unavailableTitle"): Effect.Effect<string>;
 	(key: "rbac.assignmentsEmpty"): Effect.Effect<string>;
 	(key: "rbac.assignmentsTitle"): Effect.Effect<string>;
 	(key: "rbac.assignSubject"): Effect.Effect<string>;

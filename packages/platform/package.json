@@ -5,7 +5,8 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
-		"./plugin-states": "./src/plugin-states.ts"
+		"./plugin-states": "./src/plugin-states.ts",
+		"./element-kinds": "./src/element-kinds.ts"
 	},
 	"scripts": {
 		"mutate": "stryker run"
