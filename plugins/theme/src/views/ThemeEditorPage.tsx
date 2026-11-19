@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { ArrowLeftIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useRouter, useSearch } from "@tanstack/react-router";
 
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Alert, AlertDescription, AlertTitle } from "@ktbhealth/ui/components/alert";
@@ -15,6 +14,7 @@ import {
 	CardTitle,
 } from "@ktbhealth/ui/components/card";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
+import { ColorPicker } from "@ktbhealth/ui/components/color-picker";
 import {
 	Empty,
 	EmptyContent,
@@ -26,6 +26,7 @@ import { Input } from "@ktbhealth/ui/components/input";
 import { Label } from "@ktbhealth/ui/components/label";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { Progress } from "@ktbhealth/ui/components/progress";
+import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 import {
 	Select,
 	SelectContent,
@@ -74,6 +75,7 @@ export interface ThemeEditorPageData {
 }
 
 type EditorTab = "tokens" | "components" | "blocks";
+type SettingsSection = "general" | "colors" | "typography" | "assets";
 type Scheme = "light" | "dark";
 
 interface SeedFields {
@@ -168,12 +170,10 @@ function SeedInputs({
 	fields,
 	onChange,
 	labels,
-	idPrefix,
 }: {
 	fields: SeedFields;
 	onChange: (next: SeedFields) => void;
 	labels: readonly [string, string, string, string, string, string, string];
-	idPrefix: string;
 }) {
 	const keys = [
 		"primary",
@@ -188,16 +188,22 @@ function SeedInputs({
 		<div className="space-y-2">
 			{keys.map((key, i) => (
 				<div key={key} className="flex items-center gap-3">
-					<Label htmlFor={`${idPrefix}-${key}`} className="w-24 shrink-0 text-xs">
-						{labels[i]}
-					</Label>
-					<Input
-						id={`${idPrefix}-${key}`}
-						value={fields[key]}
-						onChange={(e) => onChange({ ...fields, [key]: e.target.value })}
-						placeholder={key === "radius" ? "0.45rem" : "oklch(…) / #rrggbb"}
-						className="font-mono text-xs"
-					/>
+					<Label className="w-24 shrink-0 text-xs">{labels[i]}</Label>
+					{key === "radius" ? (
+						<Input
+							value={fields[key]}
+							onChange={(e) => onChange({ ...fields, [key]: e.target.value })}
+							placeholder="0.45rem"
+							className="font-mono text-xs"
+						/>
+					) : (
+						<ColorPicker
+							value={fields[key]}
+							onChange={(v) => onChange({ ...fields, [key]: v })}
+							placeholder="oklch(…) / #rrggbb"
+							className="flex-1"
+						/>
+					)}
 				</div>
 			))}
 		</div>
@@ -292,32 +298,6 @@ const variantInfo = (variants: unknown): { dominantColor?: string; error?: strin
 const assetStatusVariant = (status: string): "default" | "secondary" | "destructive" =>
 	status === "ready" ? "default" : status === "failed" ? "destructive" : "secondary";
 
-function EditorSection({
-	id,
-	title,
-	description,
-	children,
-	sectionRef,
-}: {
-	id: string;
-	title: string;
-	description?: string;
-	children: ReactNode;
-	sectionRef?: (el: HTMLElement | null) => void;
-}) {
-	return (
-		<section id={id} ref={sectionRef} className="scroll-mt-6 space-y-4">
-			<div className="space-y-1">
-				<h2 className="text-base font-semibold">{title}</h2>
-				{description !== undefined && description !== "" ? (
-					<p className="text-sm text-muted-foreground">{description}</p>
-				) : null}
-			</div>
-			{children}
-		</section>
-	);
-}
-
 /**
  * `/platform/theme/editor?id=<n>[&fresh=1]` — dedicated theme editor.
  * Left sidebar navigates the three main tabs (Tokens / Components /
@@ -334,7 +314,6 @@ function EditorSection({
 export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	const t = themeMessages(ctx.locale);
 	const router = useRouter();
-	const navigate = useNavigate();
 	const search = useSearch({ strict: false }) as { id?: string | number; fresh?: string };
 	const id = Number(search.id);
 	const fresh = String(search.fresh ?? "") === "1";
@@ -351,6 +330,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	const [appName, setAppName] = useState("");
 	const [assets, setAssets] = useState<readonly ThemeAssetSummary[]>([]);
 	const [tab, setTab] = useState<EditorTab>("tokens");
+	const [section, setSection] = useState<SettingsSection>("general");
 	const [scheme, setScheme] = useState<Scheme>("light");
 	const [touched, setTouched] = useState(false);
 	const [saving, setSaving] = useState(false);
@@ -434,20 +414,31 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	const scopeLabel = (s: ThemeScopeKind): string =>
 		s === "platform" ? t.scopePlatform : s === "tenant" ? t.scopeTenant : t.scopePortalInstance;
 
-	const goBack = async () => {
-		// Untouched auto-created draft → delete the empty row and let the
-		// list page toast about it. Touched or pre-existing themes stay.
-		if (fresh && !touched && theme !== null) {
-			try {
-				await deleteThemeFn({ data: { id: theme.id } });
-				sessionStorage.setItem("ktb-theme-discarded", "1");
-			} catch {
-				// Deletion failed — still leave; the row is harmless.
-			}
-		}
-		await router.invalidate();
-		void navigate({ to: "/platform/theme" } as never);
-	};
+	// Leaving the editor by any route (breadcrumb, sidebar, browser
+	// back) discards an untouched auto-created draft — same rule the
+	// old Back button enforced. The microtask defers past StrictMode's
+	// dev-only effect replay so only a real unmount deletes.
+	const touchedRef = useRef(touched);
+	const themeRef = useRef(theme);
+	const aliveRef = useRef(true);
+	useEffect(() => {
+		touchedRef.current = touched;
+		themeRef.current = theme;
+	});
+	useEffect(() => {
+		aliveRef.current = true;
+		return () => {
+			aliveRef.current = false;
+			queueMicrotask(() => {
+				if (aliveRef.current || !fresh || touchedRef.current || themeRef.current === null) {
+					return;
+				}
+				void deleteThemeFn({ data: { id: themeRef.current.id } })
+					.then(() => sessionStorage.setItem("ktb-theme-discarded", "1"))
+					.catch(() => {});
+			});
+		};
+	}, [fresh]);
 
 	const publish = async () => {
 		if (theme === null || saving) return;
@@ -608,374 +599,400 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 		}));
 	};
 
-	const renderSettings = () => (
-		<div className="space-y-6">
-			<EditorSection id="section-general" title={t.tabGeneral}>
-				<Card>
-					<CardContent className="space-y-4 pt-6">
-						<div className="space-y-1.5">
-							<Label htmlFor="ed-scope">{t.scopeLabel}</Label>
-							<Select
-								value={scope}
-								onValueChange={(v) => {
-									mark();
-									setScope(v as ThemeScopeKind);
-								}}
-							>
-								<SelectTrigger id="ed-scope" className="w-full">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{SCOPE_ITEMS.map((s) => (
-										<SelectItem key={s} value={s}>
-											{scopeLabel(s)}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="ed-scope-id">{t.scopeIdLabel}</Label>
-							<Input
-								id="ed-scope-id"
-								value={scopeId}
-								disabled={scope === "platform"}
-								onChange={(e) => {
-									mark();
-									setScopeId(e.target.value);
-								}}
-								placeholder={t.scopeIdPlaceholder}
-							/>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="ed-app-name">{t.appNameLabel}</Label>
-							<Input
-								id="ed-app-name"
-								value={appName}
-								onChange={(e) => {
-									mark();
-									setAppName(e.target.value);
-								}}
-								placeholder={t.appNamePlaceholder}
-							/>
-						</div>
-					</CardContent>
-				</Card>
-			</EditorSection>
-
-			<EditorSection id="section-colors" title={t.tabColors} description={t.seedsDescription}>
-				<div className="space-y-4">
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-sm">{t.seedsTitle}</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<SeedInputs
-								idPrefix="seed-light"
-								fields={seeds}
-								labels={seedLabels}
-								onChange={(next) => {
-									mark();
-									setSeeds(next);
-								}}
-							/>
-						</CardContent>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-sm">{t.darkTitle}</CardTitle>
-							<CardDescription className="text-xs">{t.darkDescription}</CardDescription>
-						</CardHeader>
-						<CardContent>
-							<SeedInputs
-								idPrefix="seed-dark"
-								fields={darkSeeds}
-								labels={seedLabels}
-								onChange={(next) => {
-									mark();
-									setDarkSeeds(next);
-								}}
-							/>
-						</CardContent>
-					</Card>
-				</div>
-			</EditorSection>
-
-			<EditorSection id="section-typography" title={t.fontsTitle}>
-				<Card>
-					<CardContent className="space-y-4 pt-6">
-						<div className="space-y-1.5">
-							<Label>{t.fontsDeliveryLabel}</Label>
-							<Select
-								value={fonts?.delivery ?? "self-host"}
-								onValueChange={(v) => setFontDelivery(v as "self-host" | "google-fonts")}
-							>
-								<SelectTrigger className="w-full sm:w-72">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="self-host">{t.fontsSelfHost}</SelectItem>
-									<SelectItem value="google-fonts">{t.fontsGoogle}</SelectItem>
-								</SelectContent>
-							</Select>
-							{fonts?.delivery === "google-fonts" ? (
-								<Alert>
-									<AlertTitle className="text-xs">{t.fontsGoogleWarning}</AlertTitle>
-								</Alert>
-							) : null}
-						</div>
-						<div className="space-y-1.5">
-							<Label>{t.fontsFamiliesLabel}</Label>
-							<div className="space-y-2">
-								{FONT_SLOT_ITEMS.map((slot) => (
-									<div key={slot} className="flex items-center gap-3">
-										<Label htmlFor={`font-${slot}`} className="w-24 shrink-0 text-xs">
-											{slot === "sans"
-												? t.fontSans
-												: slot === "heading"
-													? t.fontHeading
-													: t.fontMono}
-										</Label>
-										<Input
-											id={`font-${slot}`}
-											value={fonts?.families?.[slot] ?? ""}
-											onChange={(e) => setFontFamilySlot(slot, e.target.value)}
-											placeholder="Inter, system-ui, sans-serif"
-											className="font-mono text-xs"
-										/>
-									</div>
+	const renderGeneralSection = () => (
+		<TabsContent value="general" className="mt-0 min-w-0 space-y-4 pr-3">
+			<Card>
+				<CardContent className="space-y-4 pt-6">
+					<div className="space-y-1.5">
+						<Label htmlFor="ed-scope">{t.scopeLabel}</Label>
+						<Select
+							value={scope}
+							onValueChange={(v) => {
+								mark();
+								setScope(v as ThemeScopeKind);
+							}}
+						>
+							<SelectTrigger id="ed-scope" className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{SCOPE_ITEMS.map((s) => (
+									<SelectItem key={s} value={s}>
+										{scopeLabel(s)}
+									</SelectItem>
 								))}
-							</div>
-						</div>
-						<div className="space-y-1.5">
-							<Label htmlFor="font-weights" className="text-xs">
-								Weights (comma-separated)
-							</Label>
-							<Input
-								id="font-weights"
-								defaultValue={(fonts?.weights ?? []).join(", ")}
-								onChange={(e) => setFontWeights(e.target.value)}
-								placeholder="400, 500, 600, 700"
-								className="w-48 font-mono text-xs"
-							/>
-						</div>
+							</SelectContent>
+						</Select>
+					</div>
+					<div className="space-y-1.5">
+						<Label htmlFor="ed-scope-id">{t.scopeIdLabel}</Label>
+						<Input
+							id="ed-scope-id"
+							value={scopeId}
+							disabled={scope === "platform"}
+							onChange={(e) => {
+								mark();
+								setScopeId(e.target.value);
+							}}
+							placeholder={t.scopeIdPlaceholder}
+						/>
+					</div>
+					<div className="space-y-1.5">
+						<Label htmlFor="ed-app-name">{t.appNameLabel}</Label>
+						<Input
+							id="ed-app-name"
+							value={appName}
+							onChange={(e) => {
+								mark();
+								setAppName(e.target.value);
+							}}
+							placeholder={t.appNamePlaceholder}
+						/>
+					</div>
+				</CardContent>
+			</Card>
+		</TabsContent>
+	);
+
+	const renderColorsSection = () => (
+		<TabsContent value="colors" className="mt-0 min-w-0 space-y-4 pr-3">
+			<p className="text-sm text-muted-foreground">{t.seedsDescription}</p>
+			<div className="space-y-4">
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm">{t.seedsTitle}</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<SeedInputs
+							fields={seeds}
+							labels={seedLabels}
+							onChange={(next) => {
+								mark();
+								setSeeds(next);
+							}}
+						/>
 					</CardContent>
 				</Card>
-			</EditorSection>
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm">{t.darkTitle}</CardTitle>
+						<CardDescription className="text-xs">{t.darkDescription}</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<SeedInputs
+							fields={darkSeeds}
+							labels={seedLabels}
+							onChange={(next) => {
+								mark();
+								setDarkSeeds(next);
+							}}
+						/>
+					</CardContent>
+				</Card>
+			</div>
+		</TabsContent>
+	);
 
-			<EditorSection id="section-assets" title={t.assetsTitle} description={t.assetsNeedSave}>
-				<div className="space-y-4">
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-sm">{t.tabAssets}</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							{IMAGE_KIND_ITEMS.map((kind) => {
-								const file = assetFiles[kind] ?? null;
-								const current =
-									kind === "logo-light"
-										? brand?.logoLight
-										: kind === "logo-dark"
-											? brand?.logoDark
-											: kind === "wordmark"
-												? brand?.wordmark
-												: kind === "favicon"
-													? brand?.favicon
-													: brand?.ogImage;
-								return (
-									<div key={kind} className="space-y-1.5">
-										<Label className="text-xs">{t[ASSET_KIND_LABEL_KEYS[kind]]}</Label>
-										<div className="flex items-center gap-2">
-											<Input
-												type="file"
-												accept="image/*"
-												className="h-8 text-xs"
-												onChange={(e) => {
-													setAssetFiles((prev) => ({
-														...prev,
-														[kind]: e.target.files?.[0] ?? null,
-													}));
-												}}
-											/>
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={file === null || busy !== null}
-												onClick={() => {
-													if (file !== null) {
-														void uploadAsset(kind, file).then((ok) => {
-															if (ok) {
-																setAssetFiles((prev) => ({ ...prev, [kind]: null }));
-															}
-														});
-													}
-												}}
-											>
-												{busy === `upload-${kind}` ? <Spinner className="size-3.5" /> : null}
-												{t.assetUpload}
-											</Button>
-										</div>
-										{current !== null && current !== undefined && current !== "" ? (
-											<p className="truncate font-mono text-[10px] text-muted-foreground">
-												{current}
-											</p>
-										) : null}
-									</div>
-								);
-							})}
-							<Separator />
-							<div className="space-y-1.5">
-								<Label className="text-xs">{t.assetFontUpload}</Label>
-								<div className="space-y-2">
+	const renderTypographySection = () => (
+		<TabsContent value="typography" className="mt-0 min-w-0 space-y-4 pr-3">
+			<Card>
+				<CardContent className="space-y-4 pt-6">
+					<div className="space-y-1.5">
+						<Label>{t.fontsDeliveryLabel}</Label>
+						<Select
+							value={fonts?.delivery ?? "self-host"}
+							onValueChange={(v) => setFontDelivery(v as "self-host" | "google-fonts")}
+						>
+							<SelectTrigger className="w-full sm:w-72">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="self-host">{t.fontsSelfHost}</SelectItem>
+								<SelectItem value="google-fonts">{t.fontsGoogle}</SelectItem>
+							</SelectContent>
+						</Select>
+						{fonts?.delivery === "google-fonts" ? (
+							<Alert>
+								<AlertTitle className="text-xs">{t.fontsGoogleWarning}</AlertTitle>
+							</Alert>
+						) : null}
+					</div>
+					<div className="space-y-1.5">
+						<Label>{t.fontsFamiliesLabel}</Label>
+						<div className="space-y-2">
+							{FONT_SLOT_ITEMS.map((slot) => (
+								<div key={slot} className="flex items-center gap-3">
+									<Label htmlFor={`font-${slot}`} className="w-24 shrink-0 text-xs">
+										{slot === "sans" ? t.fontSans : slot === "heading" ? t.fontHeading : t.fontMono}
+									</Label>
 									<Input
-										value={fontFamily}
-										onChange={(e) => setFontFamily(e.target.value)}
-										placeholder={t.assetFontFamily}
-										className="h-8 text-xs"
+										id={`font-${slot}`}
+										value={fonts?.families?.[slot] ?? ""}
+										onChange={(e) => setFontFamilySlot(slot, e.target.value)}
+										placeholder="Inter, system-ui, sans-serif"
+										className="font-mono text-xs"
 									/>
-									<Select value={fontSlot} onValueChange={(v) => setFontSlot(v as ThemeFontSlot)}>
-										<SelectTrigger className="h-8 text-xs">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{FONT_SLOT_ITEMS.map((s) => (
-												<SelectItem key={s} value={s}>
-													{s}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
+								</div>
+							))}
+						</div>
+					</div>
+					<div className="space-y-1.5">
+						<Label htmlFor="font-weights" className="text-xs">
+							Weights (comma-separated)
+						</Label>
+						<Input
+							id="font-weights"
+							defaultValue={(fonts?.weights ?? []).join(", ")}
+							onChange={(e) => setFontWeights(e.target.value)}
+							placeholder="400, 500, 600, 700"
+							className="w-48 font-mono text-xs"
+						/>
+					</div>
+				</CardContent>
+			</Card>
+		</TabsContent>
+	);
+
+	const renderAssetsSection = () => (
+		<TabsContent value="assets" className="mt-0 min-w-0 space-y-4 pr-3">
+			<p className="text-sm text-muted-foreground">{t.assetsNeedSave}</p>
+			<div className="space-y-4">
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm">{t.tabAssets}</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{IMAGE_KIND_ITEMS.map((kind) => {
+							const file = assetFiles[kind] ?? null;
+							const current =
+								kind === "logo-light"
+									? brand?.logoLight
+									: kind === "logo-dark"
+										? brand?.logoDark
+										: kind === "wordmark"
+											? brand?.wordmark
+											: kind === "favicon"
+												? brand?.favicon
+												: brand?.ogImage;
+							return (
+								<div key={kind} className="space-y-1.5">
+									<Label className="text-xs">{t[ASSET_KIND_LABEL_KEYS[kind]]}</Label>
 									<div className="flex items-center gap-2">
 										<Input
 											type="file"
-											accept=".woff2,.woff,.ttf,.otf"
+											accept="image/*"
 											className="h-8 text-xs"
-											onChange={(e) => setFontFile(e.target.files?.[0] ?? null)}
+											onChange={(e) => {
+												setAssetFiles((prev) => ({
+													...prev,
+													[kind]: e.target.files?.[0] ?? null,
+												}));
+											}}
 										/>
 										<Button
 											variant="outline"
 											size="sm"
-											disabled={fontFile === null || busy !== null}
+											disabled={file === null || busy !== null}
 											onClick={() => {
-												if (fontFile !== null) {
-													void uploadAsset("font", fontFile, fontFamily, fontSlot).then((ok) => {
-														if (ok) setFontFile(null);
+												if (file !== null) {
+													void uploadAsset(kind, file).then((ok) => {
+														if (ok) {
+															setAssetFiles((prev) => ({ ...prev, [kind]: null }));
+														}
 													});
 												}
 											}}
 										>
-											{busy === "upload-font" ? <Spinner className="size-3.5" /> : null}
-											{t.assetFontUpload}
+											{busy === `upload-${kind}` ? <Spinner className="size-3.5" /> : null}
+											{t.assetUpload}
 										</Button>
 									</div>
+									{current !== null && current !== undefined && current !== "" ? (
+										<p className="truncate font-mono text-[10px] text-muted-foreground">
+											{current}
+										</p>
+									) : null}
 								</div>
-							</div>
-							<Separator />
-							<div className="space-y-1.5">
-								<Label className="text-xs">{t.assetGoogleFetch}</Label>
-								<div className="space-y-2">
+							);
+						})}
+						<Separator />
+						<div className="space-y-1.5">
+							<Label className="text-xs">{t.assetFontUpload}</Label>
+							<div className="space-y-2">
+								<Input
+									value={fontFamily}
+									onChange={(e) => setFontFamily(e.target.value)}
+									placeholder={t.assetFontFamily}
+									className="h-8 text-xs"
+								/>
+								<Select value={fontSlot} onValueChange={(v) => setFontSlot(v as ThemeFontSlot)}>
+									<SelectTrigger className="h-8 text-xs">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{FONT_SLOT_ITEMS.map((s) => (
+											<SelectItem key={s} value={s}>
+												{s}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+								<div className="flex items-center gap-2">
 									<Input
-										value={googleFamily}
-										onChange={(e) => setGoogleFamily(e.target.value)}
-										placeholder={t.assetGoogleFamily}
+										type="file"
+										accept=".woff2,.woff,.ttf,.otf"
 										className="h-8 text-xs"
+										onChange={(e) => setFontFile(e.target.files?.[0] ?? null)}
 									/>
-									<Select
-										value={googleSlot}
-										onValueChange={(v) => setGoogleSlot(v as ThemeFontSlot)}
-									>
-										<SelectTrigger className="h-8 text-xs">
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											{FONT_SLOT_ITEMS.map((s) => (
-												<SelectItem key={s} value={s}>
-													{s}
-												</SelectItem>
-											))}
-										</SelectContent>
-									</Select>
 									<Button
 										variant="outline"
 										size="sm"
-										disabled={googleFamily.trim() === "" || busy !== null}
-										onClick={() => void fetchGoogleFont()}
+										disabled={fontFile === null || busy !== null}
+										onClick={() => {
+											if (fontFile !== null) {
+												void uploadAsset("font", fontFile, fontFamily, fontSlot).then((ok) => {
+													if (ok) setFontFile(null);
+												});
+											}
+										}}
 									>
-										{busy === "google-fetch" ? <Spinner className="size-3.5" /> : null}
-										{t.assetGoogleFetch}
+										{busy === "upload-font" ? <Spinner className="size-3.5" /> : null}
+										{t.assetFontUpload}
 									</Button>
 								</div>
 							</div>
-						</CardContent>
-					</Card>
-					<Card>
-						<CardHeader>
-							<CardTitle className="text-sm">{t.assetsListTitle}</CardTitle>
-						</CardHeader>
-						<CardContent className="space-y-4">
-							{brandRefs.length > 0 ? (
-								<section className="space-y-1">
-									<h3 className="text-xs font-medium text-muted-foreground">{t.brandRefsTitle}</h3>
-									<dl className="space-y-1">
-										{brandRefs.map((ref) => (
-											<div key={ref.label} className="flex gap-2 text-xs">
-												<dt className="w-28 shrink-0 text-muted-foreground">{ref.label}</dt>
-												<dd className="truncate font-mono">{ref.value}</dd>
-											</div>
+						</div>
+						<Separator />
+						<div className="space-y-1.5">
+							<Label className="text-xs">{t.assetGoogleFetch}</Label>
+							<div className="space-y-2">
+								<Input
+									value={googleFamily}
+									onChange={(e) => setGoogleFamily(e.target.value)}
+									placeholder={t.assetGoogleFamily}
+									className="h-8 text-xs"
+								/>
+								<Select value={googleSlot} onValueChange={(v) => setGoogleSlot(v as ThemeFontSlot)}>
+									<SelectTrigger className="h-8 text-xs">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{FONT_SLOT_ITEMS.map((s) => (
+											<SelectItem key={s} value={s}>
+												{s}
+											</SelectItem>
 										))}
-									</dl>
-								</section>
-							) : null}
-							{assets.length === 0 ? (
-								<p className="text-sm text-muted-foreground">{t.assetsEmpty}</p>
-							) : (
-								<Table>
-									<TableHeader>
-										<TableRow>
-											<TableHead>{t.assetKindLabel}</TableHead>
-											<TableHead>Status</TableHead>
-											<TableHead className="text-right">Color</TableHead>
-										</TableRow>
-									</TableHeader>
-									<TableBody>
-										{assets.map((a) => {
-											const info = variantInfo(a.variants);
-											return (
-												<TableRow key={a.id}>
-													<TableCell className="text-xs">
-														{t[ASSET_KIND_LABEL_KEYS[a.kind]]}
-													</TableCell>
-													<TableCell>
-														<Badge variant={assetStatusVariant(a.status)}>
-															{a.status === "ready"
-																? t.assetStatusReady
-																: a.status === "failed"
-																	? t.assetStatusFailed
-																	: t.assetStatusPending}
-														</Badge>
-														{info.error !== undefined ? (
-															<span className="ml-2 text-xs text-destructive">{info.error}</span>
-														) : null}
-													</TableCell>
-													<TableCell className="text-right">
-														{info.dominantColor !== undefined ? (
-															<span
-																className="inline-block size-4 rounded border border-border align-middle"
-																style={{ background: info.dominantColor }}
-															/>
-														) : null}
-													</TableCell>
-												</TableRow>
-											);
-										})}
-									</TableBody>
-								</Table>
-							)}
-						</CardContent>
-					</Card>
-				</div>
-			</EditorSection>
-		</div>
+									</SelectContent>
+								</Select>
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={googleFamily.trim() === "" || busy !== null}
+									onClick={() => void fetchGoogleFont()}
+								>
+									{busy === "google-fetch" ? <Spinner className="size-3.5" /> : null}
+									{t.assetGoogleFetch}
+								</Button>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+				<Card>
+					<CardHeader>
+						<CardTitle className="text-sm">{t.assetsListTitle}</CardTitle>
+					</CardHeader>
+					<CardContent className="space-y-4">
+						{brandRefs.length > 0 ? (
+							<section className="space-y-1">
+								<h3 className="text-xs font-medium text-muted-foreground">{t.brandRefsTitle}</h3>
+								<dl className="space-y-1">
+									{brandRefs.map((ref) => (
+										<div key={ref.label} className="flex gap-2 text-xs">
+											<dt className="w-28 shrink-0 text-muted-foreground">{ref.label}</dt>
+											<dd className="truncate font-mono">{ref.value}</dd>
+										</div>
+									))}
+								</dl>
+							</section>
+						) : null}
+						{assets.length === 0 ? (
+							<p className="text-sm text-muted-foreground">{t.assetsEmpty}</p>
+						) : (
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead>{t.assetKindLabel}</TableHead>
+										<TableHead>Status</TableHead>
+										<TableHead className="text-right">Color</TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{assets.map((a) => {
+										const info = variantInfo(a.variants);
+										return (
+											<TableRow key={a.id}>
+												<TableCell className="text-xs">
+													{t[ASSET_KIND_LABEL_KEYS[a.kind]]}
+												</TableCell>
+												<TableCell>
+													<Badge variant={assetStatusVariant(a.status)}>
+														{a.status === "ready"
+															? t.assetStatusReady
+															: a.status === "failed"
+																? t.assetStatusFailed
+																: t.assetStatusPending}
+													</Badge>
+													{info.error !== undefined ? (
+														<span className="ml-2 text-xs text-destructive">{info.error}</span>
+													) : null}
+												</TableCell>
+												<TableCell className="text-right">
+													{info.dominantColor !== undefined ? (
+														<span
+															className="inline-block size-4 rounded border border-border align-middle"
+															style={{ background: info.dominantColor }}
+														/>
+													) : null}
+												</TableCell>
+											</TableRow>
+										);
+									})}
+								</TableBody>
+							</Table>
+						)}
+					</CardContent>
+				</Card>
+			</div>
+		</TabsContent>
+	);
+
+	const renderSettings = () => (
+		<Tabs
+			value={section}
+			onValueChange={(v) => setSection(v as SettingsSection)}
+			className="flex min-h-0 min-w-0 flex-1 flex-col gap-3"
+		>
+			<TabsList className="grid h-8 w-full shrink-0 grid-cols-4 gap-1">
+				<TabsTrigger value="general" className="min-w-0 truncate px-1">
+					{t.tabGeneral}
+				</TabsTrigger>
+				<TabsTrigger value="colors" className="min-w-0 truncate px-1">
+					{t.tabColors}
+				</TabsTrigger>
+				<TabsTrigger value="typography" className="min-w-0 truncate px-1">
+					{t.tabTypography}
+				</TabsTrigger>
+				<TabsTrigger value="assets" className="min-w-0 truncate px-1">
+					{t.tabAssets}
+				</TabsTrigger>
+			</TabsList>
+			<ScrollArea className="h-[62dvh] min-h-0 w-full min-w-0 lg:h-[calc(100dvh-12rem)]">
+				{renderGeneralSection()}
+				{renderColorsSection()}
+				{renderTypographySection()}
+				{renderAssetsSection()}
+			</ScrollArea>
+		</Tabs>
 	);
 
 	const isColorValue = (v: string) => /^(#|oklch|oklab|rgb|rgba|hsl|hsla|color\()/.test(v.trim());
@@ -1394,12 +1411,6 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	if (loadState === "missing") {
 		return (
 			<PageContainer className="max-w-none">
-				<div className="flex items-center gap-3">
-					<Button variant="ghost" size="sm" onClick={() => void goBack()}>
-						<ArrowLeftIcon className="size-4" />
-						{t.editorBack}
-					</Button>
-				</div>
 				<Empty>
 					<EmptyHeader>
 						<EmptyTitle>{t.editorNotFound}</EmptyTitle>
@@ -1424,10 +1435,6 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 	return (
 		<PageContainer className="max-w-none">
 			<div className="flex flex-wrap items-center gap-3">
-				<Button variant="ghost" size="sm" onClick={() => void goBack()}>
-					<ArrowLeftIcon className="size-4" />
-					{t.editorBack}
-				</Button>
 				<div className="min-w-0">
 					<h1 className="truncate text-lg font-semibold">
 						{t.editorThemeLabel}: {appName !== "" ? appName : theme.scopeId || `#${theme.id}`}
@@ -1453,7 +1460,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 			{notice !== null ? <p className="text-sm text-muted-foreground">{notice}</p> : null}
 
 			<div className="grid gap-6 lg:grid-cols-[340px_minmax(0,1fr)]">
-				<aside className="space-y-4 lg:sticky lg:top-6 lg:max-h-[calc(100dvh-9rem)] lg:overflow-y-auto lg:pr-1">
+				<aside className="min-w-0 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-9rem)] lg:max-w-[340px] lg:flex-col">
 					{renderSettings()}
 				</aside>
 

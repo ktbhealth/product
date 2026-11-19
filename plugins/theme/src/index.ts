@@ -101,6 +101,17 @@ export const themeHeaderPlugin = definePlugin({
 			// injects ChromeProps, which supplies `locale`.
 			content: { kind: "component", component: ThemeHeaderAction },
 		},
+		{
+			id: "theme.portal-header-action",
+			region: "portal.header.actions",
+			// Same preview/switch popover inside the portal console
+			// header — `headerAction` entries receive {locale, i18n}.
+			content: {
+				kind: "headerAction",
+				id: "theme.preview",
+				component: ThemeHeaderAction,
+			},
+		},
 	],
 });
 
