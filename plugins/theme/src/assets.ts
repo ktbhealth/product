@@ -647,9 +647,7 @@ export const insertCatalogFontAsset = async (
 				}))
 			: weights.length === 0
 				? sources.map((s) => ({ ...s, ...axisFaces }))
-				: weights.flatMap((weight) =>
-						sources.map((s) => ({ ...s, weight, ...axisFaces })),
-					);
+				: weights.flatMap((weight) => sources.map((s) => ({ ...s, weight, ...axisFaces })));
 	const variants = {
 		family: input.family,
 		...(weights.length === 0 ? {} : { weights }),
