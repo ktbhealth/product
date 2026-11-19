@@ -654,6 +654,55 @@ describe("AppointmentsLive", () => {
 	});
 });
 
+// ---------- service without the Permissions port ----------
+
+describe("AppointmentsLive without the Permissions port", () => {
+	// T-182: the patient-link guard resolves owner tuples through
+	// @ktb/rbac's Permissions service — when the rbac plugin isn't
+	// composed the check must fail closed (Forbidden), never allow.
+	let runtime: ManagedRuntime.ManagedRuntime<Appointments, never>;
+	let db: ReturnType<typeof makeDb>;
+	let bus: EventBusShape;
+
+	beforeAll(async () => {
+		db = makeDb(makeD1(DDL));
+		const busRuntime = ManagedRuntime.make(makeEventBus());
+		bus = await busRuntime.runPromise(EventBus);
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(EventBus, bus),
+		);
+		const queries = PatientsQueriesLive.pipe(Layer.provide(infra));
+		const consults = ConsultationsLive.pipe(Layer.provideMerge(queries), Layer.provideMerge(infra));
+		const services = AppointmentsLive.pipe(
+			Layer.provideMerge(consults),
+			Layer.provideMerge(queries),
+			Layer.provideMerge(infra),
+		);
+		runtime = ManagedRuntime.make(services);
+	});
+
+	afterAll(() => runtime.dispose());
+
+	it("create fails Forbidden on a personal patient when the port is absent", async () => {
+		// Patient 1 is u1's personal record — patients.ownerOf resolves
+		// it, but with no Permissions service the owner-tuple check
+		// fails closed before requireObject ever runs.
+		await expect(
+			runtime.runPromise(
+				Effect.provideService(
+					Effect.flatMap(Appointments, (p) =>
+						p.create("u1", { patientId: 1, startsAt: new Date(Date.now() + day) }),
+					),
+					Principal,
+					{ userId: "u1" },
+				),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "rbac.patient.1.owner" });
+	});
+});
+
 // ---------- plugin manifests ----------
 
 describe("agenda plugins", () => {

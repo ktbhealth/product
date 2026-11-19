@@ -31,6 +31,8 @@ import {
 } from "@ktb/platform";
 import { PortalAccess } from "@ktb/patient-access";
 import { ConsultationAudioUpdated, ConsultationsQueries } from "./api.ts";
+import { patientHistory, patientHistoryRows } from "./anamnesis.ts";
+import { deletePatientConsultations } from "./queries.ts";
 import {
 	Consultations,
 	ConsultationsLive,
@@ -1670,6 +1672,30 @@ describe("Consultations.history", () => {
 		expect(h?.visits[0]?.plan).toBeNull();
 	});
 
+	it("returns null when the owner tuple and owner_id disagree", async () => {
+		// Divergent state (e.g. ownership transferred without dropping
+		// the tuple): canReadPatientHistory admits via the tuple, then
+		// patientHistoryRows' owner_id fence reports the patient as not
+		// visible — null result, and no sensitive-read audit entry.
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u2", name: "Divergente", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		await grantPatientOwner(testDb, p!.id, "u1");
+		expect(
+			await asUser(
+				"u1",
+				Effect.flatMap(Consultations, (c) => c.history(p!.id, "u1")),
+			),
+		).toBeNull();
+		expect(
+			await asUser(
+				"u1",
+				Effect.flatMap(Consultations, (c) => c.historyRows(p!.id, "u1")),
+			),
+		).toBeNull();
+	});
+
 	it("audits history reads on the patient target (P-086)", async () => {
 		// Two fresh patients: identical `.read` emissions coalesce inside
 		// Audit.record (P-087 D3), so each via gets its own target.
@@ -1717,6 +1743,42 @@ describe("Consultations.history", () => {
 				(r) => r.action === "consultations.history.read" && r.targetId === "99999",
 			),
 		).toHaveLength(0);
+	});
+
+	it("patientHistory* return null for missing or foreign-owned patients", async () => {
+		// anamnesis.ts owner fence: the patients.owner_id column decides —
+		// a missing row and another doctor's patient both yield null.
+		expect(await patientHistoryRows(testDb, 99999, "u1")).toBeNull();
+		const [foreign] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u2", name: "De Outro", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		expect(await patientHistoryRows(testDb, foreign!.id, "u1")).toBeNull();
+		expect(await patientHistory(testDb, foreign!.id, "u1")).toBeNull();
+		expect(await patientHistory(testDb, 99999, "u1")).toBeNull();
+	});
+
+	it("deletePatientConsultations no-ops when the resolved rows are already gone", async () => {
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Cascade Retry", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		const id = (await createConsultation(testDb, { userId: "u1", source: "browser" }))!;
+		await testDb
+			.update(consultationsTable)
+			.set({ patientId: p!.id })
+			.where(eq(consultationsTable.id, id));
+		await deletePatientConsultations(testDb, p!.id, [id]);
+		expect(
+			await testDb
+				.select({ id: consultationsTable.id })
+				.from(consultationsTable)
+				.where(eq(consultationsTable.id, id)),
+		).toHaveLength(0);
+		// A retried cascade (or a concurrent delete) re-resolves the same
+		// ids but finds the rows already gone — the doomed scan comes
+		// back empty and the helper must return without touching tuples.
+		await deletePatientConsultations(testDb, p!.id, [id]);
 	});
 });
 
@@ -2646,5 +2708,79 @@ describe("ConsultationsLive portal reads (T-141)", () => {
 		expect(await run((c) => c.portalScope(ids.ids.noPatient))).toBeNull();
 		expect(await run((c) => c.portalScope(ids.ids.other))).toBeNull();
 		expect(await run((c) => c.portalScope(99999))).toBeNull();
+	});
+});
+
+describe("ConsultationsLive without the Permissions port", () => {
+	// T-182: record authz resolves owner tuples through @ktb/rbac's
+	// Permissions service — when the rbac plugin isn't composed the
+	// checks must fail closed (Forbidden), never allow.
+	let runtime: ManagedRuntime.ManagedRuntime<Consultations, never>;
+	let testDb: ReturnType<typeof makeDb>;
+	let patientId = 0;
+
+	const asUser = <A, E>(userId: string | null, effect: Effect.Effect<A, E, Consultations>) =>
+		runtime.runPromise(
+			Effect.provideService(effect, Principal, userId === null ? null : { userId }),
+		);
+	const call = <A, E>(f: (c: Consultations["Service"]) => Effect.Effect<A, E>) =>
+		Effect.flatMap(Consultations, f);
+
+	beforeAll(async () => {
+		testDb = makeDb(makeD1(DDL));
+		const infra = Layer.mergeAll(
+			Layer.succeed(Db, testDb),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			makeEventBus(),
+		);
+		runtime = ManagedRuntime.make(
+			ConsultationsLive.pipe(
+				Layer.provideMerge(
+					Layer.mergeAll(
+						infra,
+						Layer.mergeAll(PatientsQueriesLive, PatientsCommandsLive).pipe(Layer.provide(infra)),
+					),
+				),
+			),
+		);
+		const [p] = await testDb
+			.insert(patientsTable)
+			.values({ ownerId: "u1", name: "Sem RBAC", createdAt: new Date() })
+			.returning({ id: patientsTable.id });
+		patientId = p!.id;
+	});
+
+	afterAll(() => runtime.dispose());
+
+	it("create fails Forbidden when linking a personal patient", async () => {
+		// patients.ownerOf resolves the row, but with no Permissions
+		// service the owner-tuple check fails closed.
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.create({ userId: "u1", patientId, source: "browser" })),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden", path: `rbac.patient.${patientId}.owner` });
+	});
+
+	it("history and historyRows fail Forbidden instead of reporting null", async () => {
+		// The absent port denies the patient fence outright — the
+		// null-on-invisible contract only applies once the tuple check
+		// can actually run.
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.history(patientId, "u1")),
+			),
+		).rejects.toMatchObject({
+			_tag: "Forbidden",
+			path: `rbac.patient.${patientId}.owner`,
+		});
+		await expect(
+			asUser(
+				"u1",
+				call((c) => c.historyRows(patientId, "u1")),
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 });

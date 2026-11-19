@@ -201,5 +201,55 @@ describe("patient record query and delete cascade", () => {
 					expect(res).toEqual({ consultations: 1, audioKeys: [] });
 				});
 		});
+
+		it("fails Forbidden on a personal row when the Permissions port is absent", async () => {
+			// T-182: the per-row authz resolves owner tuples through
+			// @ktb/rbac's Permissions service — with the rbac plugin not
+			// composed the check must fail closed, never allow.
+			const [p] = await db
+				.insert(patientsTable)
+				.values({ ownerId: "u1", name: "Sem RBAC", createdAt: new Date() })
+				.returning({ id: patientsTable.id });
+			const cid = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await db
+				.update(consultationsTable)
+				.set({ patientId: p!.id })
+				.where(eq(consultationsTable.id, cid));
+
+			const infra = Layer.mergeAll(
+				Layer.succeed(Db, db),
+				Layer.succeed(
+					PlatformAdmin,
+					makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+				),
+				makeEventBus(),
+			);
+			const deps = Layer.mergeAll(
+				infra,
+				Layer.mergeAll(PatientsQueriesLive, PatientsCommandsLive).pipe(Layer.provide(infra)),
+			);
+			const bare = ManagedRuntime.make(
+				Layer.mergeAll(PatientRecordConsultationsLive, PatientDeleteCascadeLive).pipe(
+					Layer.provide(deps),
+				),
+			) as unknown as ManagedRuntime.ManagedRuntime<Registered, never>;
+			try {
+				await expect(
+					bare.runPromise(
+						asUser(
+							Effect.scoped(
+								Effect.gen(function* () {
+									const commands = yield* Command.dispatcher(PatientCascadeCommands);
+									return yield* commands["patients.deleteCascade"]({ patientId: p!.id });
+								}),
+							) as Effect.Effect<unknown, unknown, Registered>,
+							"u1",
+						),
+					),
+				).rejects.toMatchObject({ _tag: "Forbidden" });
+			} finally {
+				await bare.dispose();
+			}
+		});
 	});
 });
