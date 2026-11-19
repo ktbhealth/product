@@ -100,3 +100,57 @@ describe("platform theme-jobs enqueuer (PL-006 phase 4)", () => {
 		expect(runtime.themeJobs).toBeUndefined();
 	});
 });
+
+describe("platform queue registry (/platform/queue)", () => {
+	it("lists bound queues with honest depth per transport", { timeout: 30_000 }, async () => {
+		const { runtime } = await compose((env) => {
+			env.AUDIO_QUEUE = {
+				send: async () => ({}),
+				stats: async () => ({ pending: 2, processing: 1, done: 40, failed: 3 }),
+			};
+			env.THEME_ASSETS_QUEUE = { send: async () => ({}) };
+			env.REDIS_JOBS_QUEUE = {
+				stats: async () => ({ pending: 5, processing: 0, done: 0, failed: 1 }),
+			};
+			env.JOBS_QUEUE = "ktb:jobs-test";
+		});
+
+		const queues = await runtime.queues!();
+		const byId = new Map(queues.map((q) => [q.id, q]));
+		// stats-bearing dev binding -> sqlite transport with real depth
+		expect(byId.get("audio")).toMatchObject({
+			transport: "sqlite",
+			consumer: "in-app",
+			depth: { pending: 2, processing: 1, done: 40, failed: 3 },
+		});
+		// stats-less binding -> cloudflare-queue with null depth
+		expect(byId.get("theme-assets")).toMatchObject({
+			transport: "cloudflare-queue",
+			depth: null,
+		});
+		// dev:node Redis probe -> redis/jobs-worker
+		expect(byId.get("jobs")).toMatchObject({
+			name: "ktb:jobs-test",
+			transport: "redis",
+			consumer: "jobs-worker",
+			depth: { pending: 5 },
+		});
+	});
+
+	it(
+		"collapses a failing depth probe to null instead of rejecting",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime } = await compose((env) => {
+				env.AUDIO_QUEUE = {
+					send: async () => ({}),
+					stats: async () => {
+						throw new Error("db gone");
+					},
+				};
+			});
+			const queues = await runtime.queues!();
+			expect(queues.find((q) => q.id === "audio")?.depth).toBeNull();
+		},
+	);
+});

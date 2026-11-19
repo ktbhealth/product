@@ -24,6 +24,7 @@ const fakeRedis = () => {
 			const v = list.pop();
 			return v === undefined ? null : (["ktb:jobs", v] as const);
 		},
+		lLen: async () => list.length,
 		quit: async () => "OK",
 	};
 	return { client, list };
@@ -96,6 +97,20 @@ describe("createRedisJobsTransport", () => {
 		await t.close();
 	});
 
+	it("stats() reports the pending backlog via LLEN", async () => {
+		const { client } = fakeRedis();
+		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });
+		await t.send(envelope("s1"));
+		await t.send(envelope("s2"));
+		expect(await t.stats()).toEqual({
+			pending: 2,
+			processing: 0,
+			done: 0,
+			failed: 0,
+		});
+		await t.close();
+	});
+
 	it("retry() swallows requeue failures", async () => {
 		const entries: string[] = [JSON.stringify(envelope("poison"))];
 		const client: RedisLike = {
@@ -103,6 +118,7 @@ describe("createRedisJobsTransport", () => {
 				throw new Error("redis down");
 			},
 			brPop: async () => (entries.length === 0 ? null : (["ktb:jobs", entries.pop()!] as const)),
+			lLen: async () => entries.length,
 			quit: async () => "OK",
 		};
 		const t = await createRedisJobsTransport({ client, blockSeconds: 0 });

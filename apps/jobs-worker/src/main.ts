@@ -12,11 +12,15 @@
  *   REDIS_URL    — default redis://127.0.0.1:6379
  *   JOBS_QUEUE   — list key, default ktb:jobs (must match producers)
  *   JOBS_BATCH   — messages per poll, default 10
+ *   DATABASE_URL — job_runs projection store (default: the dev:node app
+ *     db at apps/web/data/app.db so the /platform queue console sees
+ *     Redis-consumed runs); JOBS_DB=off disables the projection.
  */
 
 import { jobHandlers } from "@ktb/jobs-port";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
 
+import { openWorkerDb } from "./db.ts";
 import { registerWorkerHandlers } from "./handlers.ts";
 import { runJobWorker } from "./worker.ts";
 
@@ -33,10 +37,14 @@ for (const sig of ["SIGINT", "SIGTERM"] as const) {
 }
 
 console.log("jobs worker: consuming", process.env.JOBS_QUEUE ?? "ktb:jobs");
-await runJobWorker({
-	transport,
-	handlers: jobHandlers,
-	batchSize: process.env.JOBS_BATCH !== undefined ? Number(process.env.JOBS_BATCH) : 10,
-	signal: ac.signal,
-});
-await transport.close();
+try {
+	await runJobWorker({
+		transport,
+		handlers: jobHandlers,
+		db: openWorkerDb(),
+		batchSize: process.env.JOBS_BATCH !== undefined ? Number(process.env.JOBS_BATCH) : 10,
+		signal: ac.signal,
+	});
+} finally {
+	await transport.close();
+}

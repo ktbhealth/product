@@ -90,6 +90,30 @@ export interface AudioStorageStats {
 	readonly truncated: boolean;
 }
 
+/** Transport family a bound queue belongs to — structural mirror of
+ * `QueueTransport` in @ktb/queues-port (declared here so plugin code
+ * needs no new dependency). */
+export type QueueTransport = "cloudflare-queue" | "redis" | "sqlite" | "unknown";
+
+/** Who drains a bound queue — structural mirror of `QueueConsumer` in
+ * @ktb/queues-port. */
+export type QueueConsumer = "in-app" | "jobs-worker" | "external" | "none";
+
+/**
+ * One queue as the /platform/queue console sees it — identity plus
+ * best-effort broker depth. `depth` is null when the transport cannot
+ * report it (prod Cloudflare Queues have no query API); the page
+ * renders the honest unavailable state, never a fabricated zero.
+ * Structural mirror of `QueueInfo` in @ktb/queues-port.
+ */
+export interface QueueInfo {
+	readonly id: string;
+	readonly name: string;
+	readonly transport: QueueTransport;
+	readonly consumer: QueueConsumer;
+	readonly depth: QueueDepth | null;
+}
+
 /**
  * Minimal paginated listing slice — the real R2Bucket satisfies this
  * (its `list` returns R2Objects, a superset of the shape below). Used
@@ -185,6 +209,10 @@ export interface ServerRuntime {
 	/** Audio bucket aggregate stats (object count + bytes, capped
 	 * pagination); undefined when no bucket binding is published. */
 	readonly audioStorageStats?: () => Promise<AudioStorageStats | null>;
+	/** Queue registry probe (PL-007 follow-up): every transport the
+	 * deployment binds, with best-effort depth. Undefined outside the
+	 * composed app; an empty list means no queues are bound. */
+	readonly queues?: () => Promise<readonly QueueInfo[]>;
 	/** Workers AI binding (or host-resolved stand-in) for transcription;
 	 * undefined when unbound. */
 	readonly ai?: AiRunner;

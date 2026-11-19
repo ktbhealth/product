@@ -22,6 +22,8 @@ const ENV_KEYS = [
 	"KTB_DEV_THEME_QUEUE_DB",
 	"AI_STUB",
 	"AI_BASE_URL",
+	"REDIS_URL",
+	"JOBS_QUEUE",
 	"BETTER_AUTH_SECRET",
 ] as const;
 
@@ -70,6 +72,17 @@ describe("node-cloudflare-workers env", () => {
 		await env.AUDIO_BUCKET.put("k.bin", new Uint8Array([1, 2]));
 		const object = await env.AUDIO_BUCKET.get("k.bin");
 		expect(object.size).toBe(2);
+	});
+
+	it("REDIS_JOBS_QUEUE.stats() resolves null when Redis is unreachable", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		// Point at a port nothing listens on — the lazy connect must
+		// fail soft (null), never reject or block boot.
+		process.env.REDIS_URL = "redis://127.0.0.1:1";
+		const env = await loadEnv();
+		expect(typeof env.REDIS_JOBS_QUEUE?.stats).toBe("function");
+		await expect(env.REDIS_JOBS_QUEUE.stats()).resolves.toBeNull();
 	});
 
 	it("forwards plain config keys and resolves AI_STUB into env.AI", async () => {

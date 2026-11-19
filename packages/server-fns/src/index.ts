@@ -18,7 +18,10 @@ export {
 	run,
 	runAs,
 	setServerRuntime,
+	type QueueConsumer,
 	type QueueDepth,
+	type QueueInfo,
+	type QueueTransport,
 	type ServerRuntime,
 } from "./runtime.ts";
 export {

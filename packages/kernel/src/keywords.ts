@@ -39,6 +39,7 @@ export const PLUGIN_KEYWORDS = [
 	"patients",
 	"platform",
 	"portal",
+	"queue",
 	"rbac",
 	"rich-text",
 	"schemas",
