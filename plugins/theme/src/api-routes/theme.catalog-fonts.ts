@@ -18,7 +18,6 @@ import {
 	parseFontWeightList,
 	weightFromFileName,
 } from "../assets.ts";
-import { parseFontVariations } from "../font-variations.ts";
 
 /**
  * POST /api/theme/catalog-fonts — fonts-catalog font upload.
@@ -195,6 +194,10 @@ export const Route = createPluginApiRoute("theme.routes")("/api/theme/catalog-fo
 				// upload into a variable font (single ranged @font-face)
 				// and the cmap yields a unicode-range download hint.
 				// Never fatal — unparseable fonts keep discrete weights.
+				// Lazy import: font-variations pulls font-metrics →
+				// brotli-dec.wasm, whose eager instantiation breaks under
+				// vite-plus's client-consumer test pipeline (apps/web).
+				const { parseFontVariations } = await import("../font-variations.ts");
 				const variation = await parseFontVariations(new Uint8Array(bytes), ext);
 
 				const { themeAssets: bucket } = getServerRuntime();
