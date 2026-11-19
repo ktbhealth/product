@@ -802,6 +802,7 @@ describe("i18nPanelPlugin page", () => {
 	const fakeAdmin = (over: Partial<I18nAdminShape> = {}): I18nAdminShape => ({
 		namespaces: () => Effect.succeed([]),
 		coverage: () => Effect.succeed([]),
+		missingKeys: () => Effect.succeed([]),
 		locales: () => Effect.succeed([]),
 		messages: () => Effect.succeed([]),
 		saveDraft: () => Effect.void,

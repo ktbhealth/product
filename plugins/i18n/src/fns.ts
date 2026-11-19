@@ -109,6 +109,33 @@ export const i18nNamespaceMessagesFn = createServerFn({ method: "GET" })
 		),
 	);
 
+/** Missing-keys drill-down input: namespace + locale; global scope
+ * is implied (mirrors coverage()'s key universe). */
+const MissingKeysInput = Schema.Struct({
+	namespace: Schema.NonEmptyString.check(Schema.isMaxLength(MAX_MESSAGE_FIELD_LENGTH)),
+	locale: MessageField,
+});
+const decodeMissingKeys = Schema.decodeUnknownSync(MissingKeysInput);
+
+/**
+ * Sorted global-scope keys for ONE namespace that have no published
+ * value in the given locale — the "N missing" drill-down behind
+ * NamespaceCoverage.translated. Denied → { ok: false }.
+ */
+export const i18nMissingKeysFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeMissingKeys(input))
+	.handler(({ data }) =>
+		withAdmin((admin) =>
+			admin.missingKeys({ namespace: data.namespace, locale: data.locale }).pipe(
+				Effect.map((keys) => ({ ok: true as const, keys })),
+				Effect.catchTag("I18nValidationError", (e) =>
+					Effect.succeed({ ok: false as const, error: e.error }),
+				),
+				Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false as const })),
+			),
+		),
+	);
+
 export const i18nSaveDraftFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => decodeSaveDraft(input))
 	.handler(({ data }) =>

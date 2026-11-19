@@ -1,9 +1,25 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { PSEUDO_LOCALE } from "@ktb/i18n";
 import { Badge } from "@ktbhealth/ui/components/badge";
+import { Checkbox } from "@ktbhealth/ui/components/checkbox";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "@ktbhealth/ui/components/dialog";
+import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import {
 	Table,
 	TableBody,
@@ -14,6 +30,7 @@ import {
 } from "@ktbhealth/ui/components/table";
 
 import type { LocaleInfo, NamespaceCoverage, NamespaceInfo } from "../contract.ts";
+import { i18nMissingKeysFn } from "../fns.ts";
 
 export interface NamespacesPageData {
 	readonly namespaces: readonly NamespaceInfo[];
@@ -30,6 +47,42 @@ interface NamespaceRow {
 	readonly manifestDrift: NamespaceCoverage["manifestDrift"];
 }
 
+type SortMode = "name" | "worst" | "keys";
+
+/** Which namespace+locale cell opened the missing-keys dialog. */
+interface MissingTarget {
+	readonly namespace: string;
+	readonly locale: string;
+	readonly localeLabel: string;
+}
+
+type MissingState =
+	| { readonly status: "loading" }
+	| { readonly status: "error"; readonly error: string }
+	| { readonly status: "ready"; readonly keys: readonly string[] };
+
+const pctOf = (translated: number, keyCount: number): number =>
+	Math.round((translated / keyCount) * 100);
+
+/** A row is incomplete when at least one enabled locale is below
+ * full coverage — the same notion the summary's per-locale count
+ * uses, rolled up to the row. Zero-key rows have nothing to
+ * translate, so they count as complete. */
+const isIncomplete = (row: NamespaceRow, locales: readonly LocaleInfo[]): boolean =>
+	row.keyCount > 0 && locales.some((l) => (row.translated?.[l.code] ?? 0) < row.keyCount);
+
+/** Worst per-locale coverage on the row (0–100); zero-key rows
+ * sort as fully covered. */
+const worstPct = (row: NamespaceRow, locales: readonly LocaleInfo[]): number => {
+	if (row.keyCount === 0) return 100;
+	return Math.min(...locales.map((l) => pctOf(row.translated?.[l.code] ?? 0, row.keyCount)));
+};
+
+/** Heatmap tint for a coverage cell — subtle warning washes only;
+ * full coverage stays untinted. */
+const cellTint = (pct: number): string =>
+	pct < 50 ? "bg-warning/15" : pct < 100 ? "bg-warning/5" : "";
+
 /**
  * /platform/i18n/namespaces — per-namespace translation coverage
  * (global scope). Read-only: namespaces come from the plugin
@@ -39,6 +92,11 @@ interface NamespaceRow {
  * namespace name; coverage rows win on pluginId/defaultLocale when
  * the manifest side is missing. Rows also carry the manifest-drift
  * verdict from coverage(): "yes" renders a warning badge.
+ *
+ * Coverage cells with missing keys are clickable: the dialog lists
+ * the exact missing key names via i18nMissingKeysFn. A toolbar
+ * filters by namespace substring, hides fully-covered rows, and
+ * re-sorts by name / worst coverage / key count.
  */
 export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 	// qps is pseudo-localized at slice time — it has no stored rows,
@@ -67,6 +125,15 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 		});
 	}, [data.namespaces, data.coverage]);
 
+	const [filter, setFilter] = useState("");
+	const [incompleteOnly, setIncompleteOnly] = useState(false);
+	const [sort, setSort] = useState<SortMode>("name");
+	const [missingFor, setMissingFor] = useState<MissingTarget | null>(null);
+	const [missingState, setMissingState] = useState<MissingState>({ status: "loading" });
+	// Stale-response guard: a second cell click while the first fetch
+	// is in flight must not overwrite the newer dialog's state.
+	const missingSeq = useRef(0);
+
 	const summary = useMemo(() => {
 		const totalKeys = rows.reduce((acc, r) => acc + r.keyCount, 0);
 		// A locale counts as incomplete when at least one namespace
@@ -80,6 +147,49 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 		const drifted = rows.filter((r) => r.manifestDrift === "yes").length;
 		return { totalKeys, incompleteLocales, drifted };
 	}, [rows, locales]);
+
+	const visibleRows = useMemo(() => {
+		const needle = filter.trim().toLowerCase();
+		let list = rows;
+		if (needle !== "") {
+			list = list.filter((r) => r.namespace.toLowerCase().includes(needle));
+		}
+		if (incompleteOnly) {
+			list = list.filter((r) => isIncomplete(r, locales));
+		}
+		if (sort === "name") return list;
+		const sorted = [...list];
+		if (sort === "worst") {
+			sorted.sort(
+				(a, b) =>
+					worstPct(a, locales) - worstPct(b, locales) || a.namespace.localeCompare(b.namespace),
+			);
+		} else {
+			sorted.sort((a, b) => b.keyCount - a.keyCount || a.namespace.localeCompare(b.namespace));
+		}
+		return sorted;
+	}, [rows, locales, filter, incompleteOnly, sort]);
+
+	const openMissing = (row: NamespaceRow, locale: LocaleInfo) => {
+		setMissingFor({
+			namespace: row.namespace,
+			locale: locale.code,
+			localeLabel: locale.endonym,
+		});
+		setMissingState({ status: "loading" });
+		const seq = ++missingSeq.current;
+		void i18nMissingKeysFn({ data: { namespace: row.namespace, locale: locale.code } }).then(
+			(res) => {
+				if (missingSeq.current !== seq) return;
+				const r = res as { ok?: boolean; keys?: unknown; error?: string } | null;
+				if (r?.ok === true && Array.isArray(r.keys)) {
+					setMissingState({ status: "ready", keys: r.keys as readonly string[] });
+				} else {
+					setMissingState({ status: "error", error: r?.error ?? "denied" });
+				}
+			},
+		);
+	};
 
 	return (
 		<PageContainer>
@@ -96,6 +206,34 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 						` · ${summary.drifted} ${summary.drifted === 1 ? "namespace" : "namespaces"} with contract drift`}
 				</p>
 			)}
+			{rows.length > 0 && (
+				<div className="mb-3 flex flex-wrap items-center gap-3">
+					<Input
+						value={filter}
+						onChange={(e) => setFilter(e.target.value)}
+						placeholder="Filter namespaces"
+						className="w-56"
+					/>
+					<label className="flex items-center gap-2 text-sm">
+						<Checkbox
+							checked={incompleteOnly}
+							onCheckedChange={(v) => setIncompleteOnly(v === true)}
+							aria-label="Below 100% only"
+						/>
+						Below 100% only
+					</label>
+					<Select value={sort} onValueChange={(v) => setSort(String(v) as SortMode)}>
+						<SelectTrigger className="w-44">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="name">Sort: name</SelectItem>
+							<SelectItem value="worst">Sort: worst coverage</SelectItem>
+							<SelectItem value="keys">Sort: most keys</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
+			)}
 			<Table>
 				<TableHeader>
 					<TableRow>
@@ -109,7 +247,7 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 					</TableRow>
 				</TableHeader>
 				<TableBody>
-					{rows.map((row) => (
+					{visibleRows.map((row) => (
 						<TableRow key={row.namespace}>
 							<TableCell className="font-mono text-xs">
 								<span className="inline-flex items-center gap-2">
@@ -141,23 +279,55 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 									);
 								}
 								const translated = row.translated?.[l.code] ?? 0;
-								const pct = Math.round((translated / row.keyCount) * 100);
+								const pct = pctOf(translated, row.keyCount);
 								const missing = row.keyCount - translated;
-								return (
-									<TableCell key={l.code}>
-										<div className="flex flex-col">
+								const content = (
+									<>
+										<span
+											className="mb-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
+											aria-hidden="true"
+										>
+											<span
+												className={`block h-full rounded-full ${pct === 100 ? "bg-success" : "bg-warning"}`}
+												style={{ width: `${pct}%` }}
+											/>
+										</span>
+										<span className="flex flex-col">
 											<span className={pct === 100 ? "text-sm" : "text-sm text-warning"}>
 												{translated}/{row.keyCount} · {pct}%
 											</span>
 											{missing > 0 && (
 												<span className="text-xs text-muted-foreground">· {missing} missing</span>
 											)}
-										</div>
+										</span>
+									</>
+								);
+								return (
+									<TableCell key={l.code} className={cellTint(pct)}>
+										{missing > 0 ? (
+											<button
+												type="button"
+												onClick={() => openMissing(row, l)}
+												className="block w-full cursor-pointer text-left"
+												aria-label={`Show ${missing} missing ${row.namespace} keys for ${l.endonym}`}
+											>
+												{content}
+											</button>
+										) : (
+											content
+										)}
 									</TableCell>
 								);
 							})}
 						</TableRow>
 					))}
+					{visibleRows.length === 0 && rows.length > 0 && (
+						<TableRow>
+							<TableCell colSpan={4 + locales.length} className="text-center text-muted-foreground">
+								No namespaces match the current filters.
+							</TableCell>
+						</TableRow>
+					)}
 					{rows.length === 0 && (
 						<TableRow>
 							<TableCell colSpan={4 + locales.length} className="text-center text-muted-foreground">
@@ -167,6 +337,44 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 					)}
 				</TableBody>
 			</Table>
+			<Dialog
+				open={missingFor !== null}
+				onOpenChange={(o) => {
+					if (!o) {
+						missingSeq.current += 1;
+						setMissingFor(null);
+					}
+				}}
+			>
+				<DialogContent className="sm:max-w-lg">
+					<DialogHeader>
+						<DialogTitle className="font-mono text-sm">
+							{missingFor !== null ? `${missingFor.namespace} · ${missingFor.locale}` : ""}
+						</DialogTitle>
+						<DialogDescription>
+							{missingFor !== null ? `Keys with no published ${missingFor.localeLabel} value.` : ""}
+						</DialogDescription>
+					</DialogHeader>
+					{missingState.status === "loading" && (
+						<p className="text-sm text-muted-foreground">Loading…</p>
+					)}
+					{missingState.status === "error" && (
+						<p className="text-sm text-destructive">{missingState.error}</p>
+					)}
+					{missingState.status === "ready" &&
+						(missingState.keys.length === 0 ? (
+							<p className="text-sm text-muted-foreground">All keys translated.</p>
+						) : (
+							<ul className="max-h-80 overflow-y-auto rounded-md border font-mono text-xs">
+								{missingState.keys.map((key) => (
+									<li key={key} className="border-b px-3 py-1.5 last:border-b-0">
+										{key}
+									</li>
+								))}
+							</ul>
+						))}
+				</DialogContent>
+			</Dialog>
 		</PageContainer>
 	);
 }

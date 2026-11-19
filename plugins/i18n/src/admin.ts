@@ -17,6 +17,7 @@ import {
 	I18N_LOCALES_ACTION,
 	I18N_READ_ACTION,
 	I18N_RESOURCE,
+	MAX_MESSAGE_FIELD_LENGTH,
 	MAX_MESSAGE_VALUE_LENGTH,
 	MESSAGE_ID_FORBIDDEN_RE,
 	RICH_FORBIDDEN_RE,
@@ -368,6 +369,53 @@ export const I18nAdminLive = Layer.effect(
 						});
 					}
 					return out;
+				}),
+
+			missingKeys: (input) =>
+				Effect.gen(function* () {
+					yield* requirePermission(I18N_READ_ACTION, "i18n.messages.read");
+					// Same id hygiene as validateMessageId's field checks —
+					// namespace/locale are wire input, not trusted PK
+					// material. Scope is fixed to global (coverage's
+					// universe), so no scope/scopeId fields apply.
+					for (const [field, value] of [
+						["namespace", input.namespace],
+						["locale", input.locale],
+					] as const) {
+						if (
+							value === "" ||
+							MESSAGE_ID_FORBIDDEN_RE.test(value) ||
+							value.length > MAX_MESSAGE_FIELD_LENGTH
+						) {
+							return yield* Effect.fail(
+								new I18nValidationError({
+									error: `${field} must be non-empty, free of whitespace/control characters, and at most ${MAX_MESSAGE_FIELD_LENGTH} characters`,
+								}),
+							);
+						}
+					}
+					// Global scope only — identical visibility rule to
+					// coverage(): tenant/portal rows never enter the
+					// key universe or the translated set.
+					const rows = yield* Effect.promise(() =>
+						listMessageRows(db, {
+							namespace: input.namespace,
+							scope: "global",
+							scopeId: "",
+						}),
+					);
+					const keys = new Set<string>();
+					const translated = new Set<string>();
+					for (const r of rows) {
+						keys.add(r.key);
+						// coverage() counts a key as translated when a
+						// published row exists for the locale — drafts
+						// (status "draft") and other locales don't.
+						if (r.locale === input.locale && r.status === "published") {
+							translated.add(r.key);
+						}
+					}
+					return [...keys].filter((k) => !translated.has(k)).sort();
 				}),
 
 			messages: (filter = {}) =>
