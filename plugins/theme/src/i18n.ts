@@ -150,6 +150,62 @@ export interface ThemeMessages {
 	readonly blockSettings: string;
 	readonly blockEmpty: string;
 	readonly blockTable: string;
+	readonly colStatus: string;
+	readonly colColor: string;
+	readonly contrastColPairing: string;
+	readonly contrastColRatio: string;
+	readonly contrastColMin: string;
+	readonly tokenRefTitle: string;
+	readonly tokenRefDesc: (scheme: string) => string;
+	readonly tokenColToken: string;
+	readonly tokenColValue: string;
+	readonly tokenColSwatch: string;
+	readonly radiusTitle: (radius: string) => string;
+	readonly radiusCurrent: string;
+	readonly galleryBtnDefault: string;
+	readonly galleryBtnSecondary: string;
+	readonly galleryBtnOutline: string;
+	readonly galleryBtnGhost: string;
+	readonly galleryBtnDestructive: string;
+	readonly galleryBtnLink: string;
+	readonly galleryBtnSmall: string;
+	readonly galleryBtnLarge: string;
+	readonly galleryBtnDisabled: string;
+	readonly galleryInputLabel: string;
+	readonly galleryInputPlaceholder: string;
+	readonly galleryTextareaLabel: string;
+	readonly galleryTextareaPlaceholder: string;
+	readonly gallerySelectLabel: string;
+	readonly galleryOptionA: string;
+	readonly galleryOptionB: string;
+	readonly galleryOptionOne: string;
+	readonly galleryOptionTwo: string;
+	readonly gallerySwitchNotifications: string;
+	readonly gallerySwitchMarketing: string;
+	readonly galleryAlertOkTitle: string;
+	readonly galleryAlertOkDesc: string;
+	readonly galleryAlertFailTitle: string;
+	readonly galleryAlertFailDesc: string;
+	readonly gallerySurfaceTeam: string;
+	readonly gallerySurfaceRole: string;
+	readonly gallerySurfaceMuted: string;
+	readonly galleryStatActive: string;
+	readonly galleryStatAssets: string;
+	readonly galleryStatContrast: string;
+	readonly gallerySettingsName: string;
+	readonly gallerySettingsDesc: string;
+	readonly gallerySettingsDescValue: string;
+	readonly gallerySettingsEnabled: string;
+	readonly gallerySettingsHighContrast: string;
+	readonly gallerySettingsSave: string;
+	readonly gallerySettingsReset: string;
+	readonly galleryEmptyTitle: string;
+	readonly galleryEmptyDesc: string;
+	readonly galleryStatusReady: string;
+	readonly galleryStatusDraft: string;
+	readonly fontSampleHeading: string;
+	readonly fontSampleSans: string;
+	readonly fontSampleMono: string;
 }
 
 const en: ThemeMessages = {
@@ -292,6 +348,63 @@ const en: ThemeMessages = {
 	blockSettings: "Settings",
 	blockEmpty: "Empty state",
 	blockTable: "Records",
+	colStatus: "Status",
+	colColor: "Color",
+	contrastColPairing: "Pairing",
+	contrastColRatio: "Ratio",
+	contrastColMin: "Min",
+	tokenRefTitle: "Token reference",
+	tokenRefDesc: (scheme) => `${scheme} custom properties`,
+	tokenColToken: "Token",
+	tokenColValue: "Value",
+	tokenColSwatch: "Swatch",
+	radiusTitle: (radius) => `Radius — ${radius}`,
+	radiusCurrent: "theme",
+	galleryBtnDefault: "Default",
+	galleryBtnSecondary: "Secondary",
+	galleryBtnOutline: "Outline",
+	galleryBtnGhost: "Ghost",
+	galleryBtnDestructive: "Destructive",
+	galleryBtnLink: "Link",
+	galleryBtnSmall: "Small",
+	galleryBtnLarge: "Large",
+	galleryBtnDisabled: "Disabled",
+	galleryInputLabel: "Input",
+	galleryInputPlaceholder: "Placeholder text",
+	galleryTextareaLabel: "Textarea",
+	galleryTextareaPlaceholder: "Longer content…",
+	gallerySelectLabel: "Native select styled control",
+	galleryOptionA: "Option A",
+	galleryOptionB: "Option B",
+	galleryOptionOne: "Option one",
+	galleryOptionTwo: "Option two",
+	gallerySwitchNotifications: "Notifications",
+	gallerySwitchMarketing: "Marketing emails",
+	galleryAlertOkTitle: "Heads up",
+	galleryAlertOkDesc: "Your changes were applied to the draft theme.",
+	galleryAlertFailTitle: "Something failed",
+	galleryAlertFailDesc: "Contrast ratio is below AA for this pairing.",
+	gallerySurfaceTeam: "Platform team",
+	gallerySurfaceRole: "Admin",
+	gallerySurfaceMuted:
+		"Muted surface — cards, separators and muted fills pick up the draft tokens.",
+	galleryStatActive: "Active themes",
+	galleryStatAssets: "Assets ready",
+	galleryStatContrast: "Contrast failures",
+	gallerySettingsName: "Display name",
+	gallerySettingsDesc: "Description",
+	gallerySettingsDescValue: "White-label theme for the platform shell.",
+	gallerySettingsEnabled: "Enabled",
+	gallerySettingsHighContrast: "High contrast",
+	gallerySettingsSave: "Save changes",
+	gallerySettingsReset: "Reset",
+	galleryEmptyTitle: "No themes yet",
+	galleryEmptyDesc: "Create a theme to start customizing the platform shell.",
+	galleryStatusReady: "Ready",
+	galleryStatusDraft: "Draft",
+	fontSampleHeading: "Aa — Display heading",
+	fontSampleSans: "Aa — Body text, buttons and inputs",
+	fontSampleMono: "Aa — Code and identifiers",
 };
 
 const ptBR: ThemeMessages = {
@@ -434,6 +547,63 @@ const ptBR: ThemeMessages = {
 	blockSettings: "Configurações",
 	blockEmpty: "Estado vazio",
 	blockTable: "Registros",
+	colStatus: "Status",
+	colColor: "Cor",
+	contrastColPairing: "Par",
+	contrastColRatio: "Razão",
+	contrastColMin: "Mín",
+	tokenRefTitle: "Referência de tokens",
+	tokenRefDesc: (scheme) => `propriedades customizadas — ${scheme}`,
+	tokenColToken: "Token",
+	tokenColValue: "Valor",
+	tokenColSwatch: "Amostra",
+	radiusTitle: (radius) => `Raio — ${radius}`,
+	radiusCurrent: "tema",
+	galleryBtnDefault: "Padrão",
+	galleryBtnSecondary: "Secundário",
+	galleryBtnOutline: "Contorno",
+	galleryBtnGhost: "Fantasma",
+	galleryBtnDestructive: "Destrutivo",
+	galleryBtnLink: "Link",
+	galleryBtnSmall: "Pequeno",
+	galleryBtnLarge: "Grande",
+	galleryBtnDisabled: "Desativado",
+	galleryInputLabel: "Campo de texto",
+	galleryInputPlaceholder: "Texto de placeholder",
+	galleryTextareaLabel: "Área de texto",
+	galleryTextareaPlaceholder: "Conteúdo mais longo…",
+	gallerySelectLabel: "Controle de seleção nativo estilizado",
+	galleryOptionA: "Opção A",
+	galleryOptionB: "Opção B",
+	galleryOptionOne: "Opção um",
+	galleryOptionTwo: "Opção dois",
+	gallerySwitchNotifications: "Notificações",
+	gallerySwitchMarketing: "E-mails de marketing",
+	galleryAlertOkTitle: "Atenção",
+	galleryAlertOkDesc: "Suas alterações foram aplicadas ao tema em rascunho.",
+	galleryAlertFailTitle: "Algo falhou",
+	galleryAlertFailDesc: "A razão de contraste está abaixo de AA para este par.",
+	gallerySurfaceTeam: "Equipe da plataforma",
+	gallerySurfaceRole: "Admin",
+	gallerySurfaceMuted:
+		"Superfície suave — cards, separadores e preenchimentos suaves usam os tokens do rascunho.",
+	galleryStatActive: "Temas ativos",
+	galleryStatAssets: "Assets prontos",
+	galleryStatContrast: "Falhas de contraste",
+	gallerySettingsName: "Nome de exibição",
+	gallerySettingsDesc: "Descrição",
+	gallerySettingsDescValue: "Tema white-label para o shell da plataforma.",
+	gallerySettingsEnabled: "Ativado",
+	gallerySettingsHighContrast: "Alto contraste",
+	gallerySettingsSave: "Salvar alterações",
+	gallerySettingsReset: "Redefinir",
+	galleryEmptyTitle: "Nenhum tema ainda",
+	galleryEmptyDesc: "Crie um tema para começar a personalizar o shell da plataforma.",
+	galleryStatusReady: "Pronto",
+	galleryStatusDraft: "Rascunho",
+	fontSampleHeading: "Aa — Título de destaque",
+	fontSampleSans: "Aa — Texto de corpo, botões e campos",
+	fontSampleMono: "Aa — Código e identificadores",
 };
 
 const es: ThemeMessages = {
@@ -578,6 +748,63 @@ const es: ThemeMessages = {
 	blockSettings: "Ajustes",
 	blockEmpty: "Estado vacío",
 	blockTable: "Registros",
+	colStatus: "Estado",
+	colColor: "Color",
+	contrastColPairing: "Par",
+	contrastColRatio: "Ratio",
+	contrastColMin: "Mín",
+	tokenRefTitle: "Referencia de tokens",
+	tokenRefDesc: (scheme) => `propiedades personalizadas — ${scheme}`,
+	tokenColToken: "Token",
+	tokenColValue: "Valor",
+	tokenColSwatch: "Muestra",
+	radiusTitle: (radius) => `Radio — ${radius}`,
+	radiusCurrent: "tema",
+	galleryBtnDefault: "Predeterminado",
+	galleryBtnSecondary: "Secundario",
+	galleryBtnOutline: "Contorno",
+	galleryBtnGhost: "Fantasma",
+	galleryBtnDestructive: "Destructivo",
+	galleryBtnLink: "Enlace",
+	galleryBtnSmall: "Pequeño",
+	galleryBtnLarge: "Grande",
+	galleryBtnDisabled: "Desactivado",
+	galleryInputLabel: "Campo de texto",
+	galleryInputPlaceholder: "Texto de placeholder",
+	galleryTextareaLabel: "Área de texto",
+	galleryTextareaPlaceholder: "Contenido más largo…",
+	gallerySelectLabel: "Control de selección nativo estilizado",
+	galleryOptionA: "Opción A",
+	galleryOptionB: "Opción B",
+	galleryOptionOne: "Opción uno",
+	galleryOptionTwo: "Opción dos",
+	gallerySwitchNotifications: "Notificaciones",
+	gallerySwitchMarketing: "Correos de marketing",
+	galleryAlertOkTitle: "Atención",
+	galleryAlertOkDesc: "Tus cambios se aplicaron al tema en borrador.",
+	galleryAlertFailTitle: "Algo falló",
+	galleryAlertFailDesc: "La razón de contraste está por debajo de AA para este par.",
+	gallerySurfaceTeam: "Equipo de la plataforma",
+	gallerySurfaceRole: "Admin",
+	gallerySurfaceMuted:
+		"Superficie atenuada — las tarjetas, separadores y rellenos toman los tokens del borrador.",
+	galleryStatActive: "Temas activos",
+	galleryStatAssets: "Assets listos",
+	galleryStatContrast: "Fallos de contraste",
+	gallerySettingsName: "Nombre visible",
+	gallerySettingsDesc: "Descripción",
+	gallerySettingsDescValue: "Tema white-label para el shell de la plataforma.",
+	gallerySettingsEnabled: "Activado",
+	gallerySettingsHighContrast: "Alto contraste",
+	gallerySettingsSave: "Guardar cambios",
+	gallerySettingsReset: "Restablecer",
+	galleryEmptyTitle: "Aún no hay temas",
+	galleryEmptyDesc: "Crea un tema para empezar a personalizar el shell de la plataforma.",
+	galleryStatusReady: "Listo",
+	galleryStatusDraft: "Borrador",
+	fontSampleHeading: "Aa — Título destacado",
+	fontSampleSans: "Aa — Texto de cuerpo, botones y campos",
+	fontSampleMono: "Aa — Código e identificadores",
 };
 
 const CATALOGS: Record<ThemeLocale, ThemeMessages> = { en, "pt-BR": ptBR, es };

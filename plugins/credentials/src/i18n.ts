@@ -38,12 +38,14 @@ const en: CredMessages = {
 };
 
 const ptBR: CredMessages = {
-	...en,
 	title: "Credenciais",
 	desc: "Segredos de saída para provedores de IA — guardados aqui, referenciados pelos endpoints, nunca exibidos de novo.",
 	newCred: "Nova credencial",
+	name: "Nome",
 	provider: "Provedor",
 	secret: "Segredo",
+	save: "Salvar",
+	cancel: "Cancelar",
 	delete: "Excluir",
 	confirmDelete: "Confirmar exclusão",
 	empty: "Nenhuma credencial ainda — crie uma para usar nos endpoints.",
@@ -51,9 +53,18 @@ const ptBR: CredMessages = {
 };
 
 const es: CredMessages = {
-	...ptBR,
-	...en,
+	title: "Credenciales",
 	desc: "Secretos de salida para proveedores de IA — guardados aquí, referenciados por endpoints, nunca mostrados de nuevo.",
+	newCred: "Nueva credencial",
+	name: "Nombre",
+	provider: "Proveedor",
+	secret: "Secreto",
+	save: "Guardar",
+	cancel: "Cancelar",
+	delete: "Eliminar",
+	confirmDelete: "Confirmar eliminación",
+	empty: "Sin credenciales todavía — crea una para usar en endpoints.",
+	actionFailed: "La acción falló",
 };
 
 export const credMessages = (locale: string): CredMessages =>

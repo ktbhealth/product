@@ -24,7 +24,7 @@ const EMPTY_NAMESPACES: NamespacesPageData = { namespaces: [], coverage: [], loc
  * narrow it into each view's props. Guard/loader run server-side in
  * ./index.ts under the session principal.
  */
-export function I18nPlatformPage({ data }: { data: unknown; ctx: PanelPageContext }) {
+export function I18nPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<I18nPageData>;
 	return (
 		<I18nPage
@@ -32,6 +32,8 @@ export function I18nPlatformPage({ data }: { data: unknown; ctx: PanelPageContex
 				namespaces: Array.isArray(d.namespaces) ? d.namespaces : EMPTY.namespaces,
 				locales: Array.isArray(d.locales) ? d.locales : EMPTY.locales,
 			}}
+			locale={ctx.locale}
+			i18n={ctx.i18n}
 		/>
 	);
 }
@@ -42,6 +44,7 @@ export function I18nLocalesPlatformPage({ data, ctx }: { data: unknown; ctx: Pan
 		<LocalesPage
 			data={{ locales: Array.isArray(d.locales) ? d.locales : EMPTY_LOCALES.locales }}
 			locale={ctx.locale}
+			i18n={ctx.i18n}
 		/>
 	);
 }
@@ -55,6 +58,7 @@ export function I18nDraftsPlatformPage({ data, ctx }: { data: unknown; ctx: Pane
 				locales: Array.isArray(d.locales) ? d.locales : EMPTY_DRAFTS.locales,
 			}}
 			locale={ctx.locale}
+			i18n={ctx.i18n}
 		/>
 	);
 }
@@ -75,6 +79,7 @@ export function I18nNamespacesPlatformPage({
 				locales: Array.isArray(d.locales) ? d.locales : EMPTY_NAMESPACES.locales,
 			}}
 			locale={ctx.locale}
+			i18n={ctx.i18n}
 		/>
 	);
 }

@@ -119,9 +119,9 @@ const ptBR: TenantMessages = {
 	removeMember: "Remover",
 	removeMemberTitle: "Remover membro",
 	removeMemberDescription: paramMessage("pt-BR", "Remover {memberId} deste tenant?", ["memberId"]),
-	roleOwner: "owner",
+	roleOwner: "proprietário",
 	roleAdmin: "admin",
-	roleMember: "member",
+	roleMember: "membro",
 	saveError: "Falha ao salvar",
 	cancel: "Cancelar",
 };
@@ -157,9 +157,9 @@ const es: TenantMessages = {
 	removeMember: "Eliminar",
 	removeMemberTitle: "Eliminar miembro",
 	removeMemberDescription: paramMessage("es", "¿Eliminar {memberId} de este tenant?", ["memberId"]),
-	roleOwner: "owner",
+	roleOwner: "propietario",
 	roleAdmin: "admin",
-	roleMember: "member",
+	roleMember: "miembro",
 	saveError: "Error al guardar",
 	cancel: "Cancelar",
 };

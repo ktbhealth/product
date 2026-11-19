@@ -181,7 +181,11 @@ export function EvalValidatorPage({
 
 	return (
 		<PageContainer>
-			<EvalSteps active={3} labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]} />
+			<EvalSteps
+				active={3}
+				labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]}
+				ariaLabel={m.pipelineAria}
+			/>
 			<PageHeader title={m.title} description={m.description} />
 			{error !== null && <p className="text-sm text-destructive">{error}</p>}
 
@@ -323,7 +327,7 @@ export function EvalValidatorPage({
 									/>
 								)}
 								{s.result !== null && s.script !== null && (
-									<SampleResult result={s.result} script={s.script} />
+									<SampleResult result={s.result} script={s.script} m={m} />
 								)}
 							</div>
 						))}
@@ -497,7 +501,7 @@ function SummaryLine({ summary }: { summary: unknown }) {
  * WER/CER + gold↔ASR diff, then the cleanup stage (edits, WER delta,
  * corrected-vs-gold diff) and the anamnesis stage (engine +
  * section completeness) when the run exercised them. */
-function SampleResult({ result, script }: { result: string; script: string }) {
+function SampleResult({ result, script, m }: { result: string; script: string; m: EvalMessages }) {
 	let parsed: SampleResultJson;
 	try {
 		parsed = JSON.parse(result) as SampleResultJson;
@@ -513,13 +517,13 @@ function SampleResult({ result, script }: { result: string; script: string }) {
 			{parsed.asrText !== undefined && <DiffBlock refText={script} hypText={parsed.asrText} />}
 			{c !== undefined && (
 				<div className="mt-2 border-t pt-1">
-					<Badge variant="outline">cleanup</Badge>{" "}
+					<Badge variant="outline">{m.stageCleanup}</Badge>{" "}
 					{c.error !== undefined ? (
 						<span className="text-destructive">{c.error}</span>
 					) : (
 						<>
 							<span>
-								{c.edits ?? 0} edits — WER→{c.werAfter?.toFixed(3) ?? "—"}
+								{c.edits ?? 0} {m.edits} — WER→{c.werAfter?.toFixed(3) ?? "—"}
 							</span>
 							{c.corrected !== undefined && <DiffBlock refText={script} hypText={c.corrected} />}
 						</>
@@ -528,12 +532,12 @@ function SampleResult({ result, script }: { result: string; script: string }) {
 			)}
 			{a !== undefined && (
 				<div className="mt-2 border-t pt-1">
-					<Badge variant="outline">anamnesis</Badge>{" "}
+					<Badge variant="outline">{m.stageAnamnesis}</Badge>{" "}
 					{a.error !== undefined ? (
 						<span className="text-destructive">{a.error}</span>
 					) : (
 						<span>
-							{a.engine ?? "—"} — {a.filled ?? 0}/{a.sections ?? 8} sections (
+							{a.engine ?? "—"} — {a.filled ?? 0}/{a.sections ?? 8} {m.sections} (
 							{Math.round((a.completeness ?? 0) * 100)}%)
 						</span>
 					)}

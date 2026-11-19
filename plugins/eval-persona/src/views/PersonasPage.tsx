@@ -260,7 +260,11 @@ export function PersonasPage({
 
 	return (
 		<PageContainer>
-			<EvalSteps active={1} labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]} />
+			<EvalSteps
+				active={1}
+				labels={[m.stepPersonas, m.stepGenerate, m.stepRunEval]}
+				ariaLabel={m.pipelineAria}
+			/>
 			<PageHeader title={m.personasTitle} description={m.personasDesc} />
 			<div className="mb-4 flex justify-end gap-2">
 				<Button variant="outline" onClick={() => void openGenerate()}>

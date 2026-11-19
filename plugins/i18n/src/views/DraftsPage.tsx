@@ -4,6 +4,8 @@ import { useRouter } from "@tanstack/react-router";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
+import { sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 import { viewsMessages } from "@ktb/views";
 import {
 	ConfirmAction,
@@ -16,6 +18,7 @@ import {
 import { i18nDiscardDraftFn, i18nPublishFn } from "../fns.ts";
 import type { I18nMessage } from "../schema.ts";
 import type { LocaleInfo } from "../contract.ts";
+import { i18nAdminMessages, I18N_NAMESPACE } from "../i18n.ts";
 
 export interface DraftsPageData {
 	readonly drafts: readonly I18nMessage[];
@@ -36,8 +39,8 @@ const messageRef = (m: I18nMessage) => ({
 });
 
 /** Compact scope label — global rows carry no scope id. */
-const scopeLabel = (m: I18nMessage): string =>
-	m.scope === "global" ? "global" : `${m.scope}:${m.scopeId}`;
+const scopeLabel = (m: I18nMessage, global: string): string =>
+	m.scope === "global" ? global : `${m.scope}:${m.scopeId}`;
 
 /** Server-fn result shape shared by publish and discard. */
 type FnResult = { ok?: boolean; error?: string } | null;
@@ -66,12 +69,16 @@ const matchesDraft = (m: I18nMessage, needle: string): boolean =>
 export function DraftsPage({
 	data,
 	locale = "en",
+	i18n,
 }: {
 	data: DraftsPageData;
 	/** Active UI locale, injected by the host via the panel page ctx. */
 	locale?: string;
+	/** Resolved DB-catalog slice — absent on surfaces without it. */
+	i18n?: PageI18nSlice;
 }) {
 	const router = useRouter();
+	const m = sliceMessages(i18n, I18N_NAMESPACE, i18nAdminMessages(locale));
 	const [busy, setBusy] = useState<string | null>(null);
 	const [bulkBusy, setBulkBusy] = useState<"publish" | "discard" | null>(null);
 	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
@@ -124,20 +131,22 @@ export function DraftsPage({
 		});
 	};
 
-	const run = async (m: I18nMessage, action: "publish" | "discard") => {
-		const label = `${m.namespace}.${m.key} (${m.locale})`;
+	const run = async (row: I18nMessage, action: "publish" | "discard") => {
+		const label = `${row.namespace}.${row.key} (${row.locale})`;
 		setError(null);
 		setNotice(null);
-		setBusy(rowId(m));
+		setBusy(rowId(row));
 		try {
 			const res = (await (action === "publish"
-				? i18nPublishFn({ data: messageRef(m) })
-				: i18nDiscardDraftFn({ data: messageRef(m) }))) as FnResult;
+				? i18nPublishFn({ data: messageRef(row) })
+				: i18nDiscardDraftFn({ data: messageRef(row) }))) as FnResult;
 			if (res?.ok === false) {
-				setError(res.error ?? "denied");
+				setError(res.error ?? m.common.denied);
 				return;
 			}
-			setNotice(`${action === "publish" ? "Published" : "Discarded draft for"} ${label}.`);
+			setNotice(
+				action === "publish" ? m.drafts.noticePublished(label) : m.drafts.noticeDiscarded(label),
+			);
 			await router.invalidate();
 		} finally {
 			setBusy(null);
@@ -146,31 +155,31 @@ export function DraftsPage({
 
 	/** Sequential bulk action over the currently visible selection. */
 	const runBulk = async (action: "publish" | "discard") => {
-		const rows = drafts.filter((m) => selected.has(rowId(m)));
+		const rows = drafts.filter((row) => selected.has(rowId(row)));
 		if (rows.length === 0) return;
 		setError(null);
 		setNotice(null);
 		setBulkBusy(action);
 		try {
-			const verb = action === "publish" ? "Published" : "Discarded";
+			const verb = action === "publish" ? m.drafts.verbPublished : m.drafts.verbDiscarded;
 			let ok = 0;
 			let failed = 0;
 			let firstError: string | null = null;
-			for (const m of rows) {
+			for (const row of rows) {
 				const res = (await (action === "publish"
-					? i18nPublishFn({ data: messageRef(m) })
-					: i18nDiscardDraftFn({ data: messageRef(m) }))) as FnResult;
+					? i18nPublishFn({ data: messageRef(row) })
+					: i18nDiscardDraftFn({ data: messageRef(row) }))) as FnResult;
 				if (res?.ok === false) {
 					failed += 1;
-					firstError ??= res.error ?? "denied";
+					firstError ??= res.error ?? m.common.denied;
 				} else {
 					ok += 1;
 				}
 			}
 			setNotice(
 				failed === 0
-					? `${verb} ${ok} draft${ok === 1 ? "" : "s"}.`
-					: `${verb} ${ok}, failed ${failed}${firstError !== null ? ` — ${firstError}` : ""}.`,
+					? m.drafts.bulkOk(verb, ok)
+					: m.drafts.bulkPartial(verb, ok, failed, firstError !== null ? ` — ${firstError}` : ""),
 			);
 			if (ok > 0) await router.invalidate();
 			setSelected(new Set());
@@ -187,18 +196,18 @@ export function DraftsPage({
 					checked={allVisibleSelected}
 					indeterminate={someVisibleSelected}
 					disabled={controlsDisabled || drafts.length === 0}
-					aria-label="Select all visible drafts"
+					aria-label={m.drafts.selectAll}
 					onCheckedChange={(v) => toggleAllVisible(v === true)}
 				/>
 			),
 			width: "2.5rem",
-			render: (m) => {
-				const rid = rowId(m);
+			render: (row) => {
+				const rid = rowId(row);
 				return (
 					<Checkbox
 						checked={selected.has(rid)}
 						disabled={controlsDisabled}
-						aria-label={`Select ${m.namespace}.${m.key} (${m.locale})`}
+						aria-label={m.drafts.selectRow(`${row.namespace}.${row.key} (${row.locale})`)}
 						onCheckedChange={(v) => toggleRow(rid, v === true)}
 					/>
 				);
@@ -206,14 +215,14 @@ export function DraftsPage({
 		},
 		{
 			key: "key",
-			header: "Key",
-			render: (m) => (
+			header: m.drafts.colKey,
+			render: (row) => (
 				<span>
-					<span className="text-muted-foreground">{m.namespace}</span>
-					<span className="font-mono text-xs">.{m.key}</span>
-					{m.kind === "rich" && (
+					<span className="text-muted-foreground">{row.namespace}</span>
+					<span className="font-mono text-xs">.{row.key}</span>
+					{row.kind === "rich" && (
 						<Badge variant="secondary" className="ml-2">
-							rich
+							{m.messages.kindRich}
 						</Badge>
 					)}
 				</span>
@@ -221,59 +230,61 @@ export function DraftsPage({
 		},
 		{
 			key: "locale",
-			header: "Locale",
-			render: (m) => (
+			header: m.drafts.colLocale,
+			render: (row) => (
 				<span>
-					{localeEndonym.get(m.locale) ?? m.locale}
-					<span className="ml-1 font-mono text-xs text-muted-foreground">{m.locale}</span>
+					{localeEndonym.get(row.locale) ?? row.locale}
+					<span className="ml-1 font-mono text-xs text-muted-foreground">{row.locale}</span>
 				</span>
 			),
 		},
 		{
 			key: "scope",
-			header: "Scope",
-			render: (m) => <span className="font-mono text-xs">{scopeLabel(m)}</span>,
+			header: m.drafts.colScope,
+			render: (row) => (
+				<span className="font-mono text-xs">{scopeLabel(row, m.common.global)}</span>
+			),
 		},
 		{
 			key: "value",
-			header: "Live",
-			render: (m) =>
-				m.value !== "" ? (
-					<span className="block max-w-48 truncate text-sm">{m.value}</span>
+			header: m.drafts.colLive,
+			render: (row) =>
+				row.value !== "" ? (
+					<span className="block max-w-48 truncate text-sm">{row.value}</span>
 				) : (
 					<span className="text-muted-foreground">—</span>
 				),
 		},
 		{
 			key: "draftValue",
-			header: "Draft",
-			render: (m) => (
-				<span className="block max-w-48 truncate font-medium text-sm">{m.draftValue ?? ""}</span>
+			header: m.drafts.colDraft,
+			render: (row) => (
+				<span className="block max-w-48 truncate font-medium text-sm">{row.draftValue ?? ""}</span>
 			),
 		},
 		{
 			key: "updatedAt",
-			header: "Updated",
-			render: (m) => (
-				<span className="text-xs text-muted-foreground">{m.updatedAt.toLocaleDateString()}</span>
+			header: m.drafts.colUpdated,
+			render: (row) => (
+				<span className="text-xs text-muted-foreground">{row.updatedAt.toLocaleDateString()}</span>
 			),
 		},
 	];
 
-	const rowActions = (m: I18nMessage) => {
+	const rowActions = (row: I18nMessage) => {
 		const disabled = controlsDisabled;
 		return (
 			<div className="flex gap-2">
-				<Button size="sm" disabled={disabled} onClick={() => void run(m, "publish")}>
-					Publish
+				<Button size="sm" disabled={disabled} onClick={() => void run(row, "publish")}>
+					{m.common.publish}
 				</Button>
 				<Button
 					variant="outline"
 					size="sm"
 					disabled={disabled}
-					onClick={() => void run(m, "discard")}
+					onClick={() => void run(row, "discard")}
 				>
-					Discard
+					{m.common.discard}
 				</Button>
 			</div>
 		);
@@ -281,10 +292,7 @@ export function DraftsPage({
 
 	return (
 		<TablePage messages={viewsMessages(locale)}>
-			<TablePage.Header
-				title="Pending drafts"
-				description="Staged edits awaiting publish — nothing here is live yet."
-			/>
+			<TablePage.Header title={m.drafts.title} description={m.drafts.description} />
 			{error !== null && <p className="text-sm text-destructive">{error}</p>}
 			{notice !== null && <p className="text-sm text-muted-foreground">{notice}</p>}
 			<TablePage.Toolbar
@@ -292,26 +300,26 @@ export function DraftsPage({
 					<SearchInput
 						value={query.q}
 						onChange={query.setQ}
-						placeholder="Filter by namespace.key"
-						aria-label="Filter by namespace.key"
+						placeholder={m.drafts.filter}
+						aria-label={m.drafts.filter}
 					/>
 				}
 				actions={
 					selectedCount > 0 ? (
 						<>
 							<Button size="sm" disabled={controlsDisabled} onClick={() => void runBulk("publish")}>
-								Publish {selectedCount} selected
+								{m.drafts.publishSelected(selectedCount)}
 							</Button>
 							<ConfirmAction
 								trigger={(open) => (
 									<Button variant="outline" size="sm" disabled={controlsDisabled} onClick={open}>
-										Discard {selectedCount} selected
+										{m.drafts.discardSelected(selectedCount)}
 									</Button>
 								)}
-								title={`Discard ${selectedCount} draft${selectedCount === 1 ? "" : "s"}?`}
-								description="The selected drafts will be permanently discarded — never-published messages are deleted."
-								confirmLabel="Discard"
-								cancelLabel="Cancel"
+								title={m.drafts.discardTitle(selectedCount)}
+								description={m.drafts.discardDesc}
+								confirmLabel={m.common.discard}
+								cancelLabel={m.common.cancel}
 								variant="destructive"
 								onConfirm={() => runBulk("discard")}
 							/>
@@ -325,8 +333,8 @@ export function DraftsPage({
 				rowKey={rowId}
 				total={data.drafts.length}
 				isFiltered={query.isFiltered}
-				empty={{ title: "No pending drafts." }}
-				noMatch="No pending drafts."
+				empty={{ title: m.drafts.empty }}
+				noMatch={m.drafts.noMatch}
 				locale={locale}
 				rowActions={rowActions}
 			/>

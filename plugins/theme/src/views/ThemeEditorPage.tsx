@@ -215,11 +215,13 @@ function ContrastTable({
 	title,
 	passLabel,
 	failLabel,
+	t,
 }: {
 	report: readonly ContrastPair[];
 	title: string;
 	passLabel: string;
 	failLabel: string;
+	t: ThemeMessages;
 }) {
 	return (
 		<div className="overflow-hidden rounded-lg border border-border">
@@ -229,9 +231,9 @@ function ContrastTable({
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Pairing</TableHead>
-						<TableHead className="text-right">Ratio</TableHead>
-						<TableHead className="text-right">Min</TableHead>
+						<TableHead>{t.contrastColPairing}</TableHead>
+						<TableHead className="text-right">{t.contrastColRatio}</TableHead>
+						<TableHead className="text-right">{t.contrastColMin}</TableHead>
 						<TableHead className="text-right">AA</TableHead>
 					</TableRow>
 				</TableHeader>
@@ -922,8 +924,8 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 								<TableHeader>
 									<TableRow>
 										<TableHead>{t.assetKindLabel}</TableHead>
-										<TableHead>Status</TableHead>
-										<TableHead className="text-right">Color</TableHead>
+										<TableHead>{t.colStatus}</TableHead>
+										<TableHead className="text-right">{t.colColor}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -1050,12 +1052,14 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 								title={t.contrastLight}
 								passLabel={t.contrastPass}
 								failLabel={t.contrastFail}
+								t={t}
 							/>
 							<ContrastTable
 								report={darkReport}
 								title={t.contrastDark}
 								passLabel={t.contrastPass}
 								failLabel={t.contrastFail}
+								t={t}
 							/>
 						</CardContent>
 					</Card>
@@ -1067,9 +1071,9 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 						<CardContent className="space-y-4">
 							{(
 								[
-									["heading", "Aa — Display heading"],
-									["sans", "Aa — Body text, buttons and inputs"],
-									["mono", "Aa — Code and identifiers"],
+									["heading", t.fontSampleHeading],
+									["sans", t.fontSampleSans],
+									["mono", t.fontSampleMono],
 								] as const
 							).map(([slot, sample]) => (
 								<div key={slot} className="space-y-1">
@@ -1090,7 +1094,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-sm">Radius — {radius}</CardTitle>
+						<CardTitle className="text-sm">{t.radiusTitle(radius)}</CardTitle>
 					</CardHeader>
 					<CardContent className="flex flex-wrap items-end gap-4">
 						{["4px", "8px", radius, "1rem", "50%"].map((r) => (
@@ -1101,7 +1105,7 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 								/>
 								<span className="font-mono text-[10px] text-muted-foreground">{r}</span>
 								<span className="font-mono text-[10px] text-muted-foreground">
-									{r === radius ? "theme" : ""}
+									{r === radius ? t.radiusCurrent : ""}
 								</span>
 							</div>
 						))}
@@ -1110,9 +1114,9 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 
 				<Card>
 					<CardHeader>
-						<CardTitle className="text-sm">Token reference</CardTitle>
+						<CardTitle className="text-sm">{t.tokenRefTitle}</CardTitle>
 						<CardDescription className="text-xs">
-							{scheme === "light" ? t.schemeLight : t.schemeDark} custom properties
+							{t.tokenRefDesc(scheme === "light" ? t.schemeLight : t.schemeDark)}
 						</CardDescription>
 					</CardHeader>
 					<CardContent>
@@ -1120,9 +1124,9 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 							<Table>
 								<TableHeader>
 									<TableRow>
-										<TableHead>Token</TableHead>
-										<TableHead>Value</TableHead>
-										<TableHead className="w-12 text-right">Swatch</TableHead>
+										<TableHead>{t.tokenColToken}</TableHead>
+										<TableHead>{t.tokenColValue}</TableHead>
+										<TableHead className="w-12 text-right">{t.tokenColSwatch}</TableHead>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -1182,15 +1186,15 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 						<CardTitle className="text-sm">{t.galleryButtons}</CardTitle>
 					</CardHeader>
 					<CardContent className="flex flex-wrap items-center gap-2">
-						<Button>Default</Button>
-						<Button variant="secondary">Secondary</Button>
-						<Button variant="outline">Outline</Button>
-						<Button variant="ghost">Ghost</Button>
-						<Button variant="destructive">Destructive</Button>
-						<Button variant="link">Link</Button>
-						<Button size="sm">Small</Button>
-						<Button size="lg">Large</Button>
-						<Button disabled>Disabled</Button>
+						<Button>{t.galleryBtnDefault}</Button>
+						<Button variant="secondary">{t.galleryBtnSecondary}</Button>
+						<Button variant="outline">{t.galleryBtnOutline}</Button>
+						<Button variant="ghost">{t.galleryBtnGhost}</Button>
+						<Button variant="destructive">{t.galleryBtnDestructive}</Button>
+						<Button variant="link">{t.galleryBtnLink}</Button>
+						<Button size="sm">{t.galleryBtnSmall}</Button>
+						<Button size="lg">{t.galleryBtnLarge}</Button>
+						<Button disabled>{t.galleryBtnDisabled}</Button>
 					</CardContent>
 				</Card>
 
@@ -1200,39 +1204,39 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 					</CardHeader>
 					<CardContent className="grid max-w-2xl gap-4">
 						<div className="space-y-1.5">
-							<Label htmlFor="g-input">Input</Label>
-							<Input id="g-input" placeholder="Placeholder text" />
+							<Label htmlFor="g-input">{t.galleryInputLabel}</Label>
+							<Input id="g-input" placeholder={t.galleryInputPlaceholder} />
 						</div>
 						<div className="space-y-1.5">
-							<Label htmlFor="g-textarea">Textarea</Label>
-							<Textarea id="g-textarea" placeholder="Longer content…" rows={3} />
+							<Label htmlFor="g-textarea">{t.galleryTextareaLabel}</Label>
+							<Textarea id="g-textarea" placeholder={t.galleryTextareaPlaceholder} rows={3} />
 						</div>
 						<div className="space-y-1.5">
-							<Label>Native select styled control</Label>
+							<Label>{t.gallerySelectLabel}</Label>
 							<Select defaultValue="a">
 								<SelectTrigger className="w-full sm:w-64">
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="a">Option A</SelectItem>
-									<SelectItem value="b">Option B</SelectItem>
+									<SelectItem value="a">{t.galleryOptionA}</SelectItem>
+									<SelectItem value="b">{t.galleryOptionB}</SelectItem>
 								</SelectContent>
 							</Select>
 						</div>
 						<div className="flex items-center gap-6">
 							<label className="flex items-center gap-2 text-sm">
-								<Checkbox defaultChecked /> Option one
+								<Checkbox defaultChecked /> {t.galleryOptionOne}
 							</label>
 							<label className="flex items-center gap-2 text-sm">
-								<Checkbox /> Option two
+								<Checkbox /> {t.galleryOptionTwo}
 							</label>
 						</div>
 						<div className="flex items-center gap-6">
 							<label className="flex items-center gap-2 text-sm">
-								<Switch defaultChecked /> Notifications
+								<Switch defaultChecked /> {t.gallerySwitchNotifications}
 							</label>
 							<label className="flex items-center gap-2 text-sm">
-								<Switch /> Marketing emails
+								<Switch /> {t.gallerySwitchMarketing}
 							</label>
 						</div>
 					</CardContent>
@@ -1244,18 +1248,18 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 					</CardHeader>
 					<CardContent className="grid max-w-2xl gap-4">
 						<Alert>
-							<AlertTitle>Heads up</AlertTitle>
-							<AlertDescription>Your changes were applied to the draft theme.</AlertDescription>
+							<AlertTitle>{t.galleryAlertOkTitle}</AlertTitle>
+							<AlertDescription>{t.galleryAlertOkDesc}</AlertDescription>
 						</Alert>
 						<Alert variant="destructive">
-							<AlertTitle>Something failed</AlertTitle>
-							<AlertDescription>Contrast ratio is below AA for this pairing.</AlertDescription>
+							<AlertTitle>{t.galleryAlertFailTitle}</AlertTitle>
+							<AlertDescription>{t.galleryAlertFailDesc}</AlertDescription>
 						</Alert>
 						<div className="flex flex-wrap gap-2">
-							<Badge>Default</Badge>
-							<Badge variant="secondary">Secondary</Badge>
-							<Badge variant="outline">Outline</Badge>
-							<Badge variant="destructive">Destructive</Badge>
+							<Badge>{t.galleryBtnDefault}</Badge>
+							<Badge variant="secondary">{t.galleryBtnSecondary}</Badge>
+							<Badge variant="outline">{t.galleryBtnOutline}</Badge>
+							<Badge variant="destructive">{t.galleryBtnDestructive}</Badge>
 						</div>
 						<div className="space-y-1.5">
 							<Progress value={64} />
@@ -1274,15 +1278,15 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 							</Avatar>
 							<div>
 								<p className="text-sm font-medium">KTB Health</p>
-								<p className="text-xs text-muted-foreground">Platform team</p>
+								<p className="text-xs text-muted-foreground">{t.gallerySurfaceTeam}</p>
 							</div>
 							<Badge variant="secondary" className="ml-auto">
-								Admin
+								{t.gallerySurfaceRole}
 							</Badge>
 						</div>
 						<Separator />
 						<div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-							Muted surface — cards, separators and muted fills pick up the draft tokens.
+							{t.gallerySurfaceMuted}
 						</div>
 					</CardContent>
 				</Card>
@@ -1303,9 +1307,9 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 					</CardHeader>
 					<CardContent className="grid gap-4 sm:grid-cols-3">
 						{[
-							["Active themes", "12", "+2"],
-							["Assets ready", "48", "+8"],
-							["Contrast failures", "3", "-1"],
+							[t.galleryStatActive, "12", "+2"],
+							[t.galleryStatAssets, "48", "+8"],
+							[t.galleryStatContrast, "3", "-1"],
 						].map(([label, value, delta]) => (
 							<div key={label} className="rounded-lg border border-border p-4">
 								<p className="text-xs text-muted-foreground">{label}</p>
@@ -1324,29 +1328,25 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 					</CardHeader>
 					<CardContent className="max-w-xl space-y-4">
 						<div className="space-y-1.5">
-							<Label htmlFor="b-name">Display name</Label>
+							<Label htmlFor="b-name">{t.gallerySettingsName}</Label>
 							<Input id="b-name" defaultValue={appName || "KTB Health"} />
 						</div>
 						<div className="space-y-1.5">
-							<Label htmlFor="b-desc">Description</Label>
-							<Textarea
-								id="b-desc"
-								defaultValue="White-label theme for the platform shell."
-								rows={2}
-							/>
+							<Label htmlFor="b-desc">{t.gallerySettingsDesc}</Label>
+							<Textarea id="b-desc" defaultValue={t.gallerySettingsDescValue} rows={2} />
 						</div>
 						<div className="flex items-center gap-6">
 							<label className="flex items-center gap-2 text-sm">
-								<Switch defaultChecked /> Enabled
+								<Switch defaultChecked /> {t.gallerySettingsEnabled}
 							</label>
 							<label className="flex items-center gap-2 text-sm">
-								<Checkbox defaultChecked /> High contrast
+								<Checkbox defaultChecked /> {t.gallerySettingsHighContrast}
 							</label>
 						</div>
 						<div className="flex gap-2">
-							<Button size="sm">Save changes</Button>
+							<Button size="sm">{t.gallerySettingsSave}</Button>
 							<Button size="sm" variant="outline">
-								Reset
+								{t.gallerySettingsReset}
 							</Button>
 						</div>
 					</CardContent>
@@ -1359,13 +1359,11 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 					<CardContent>
 						<Empty className="border">
 							<EmptyHeader>
-								<EmptyTitle>No themes yet</EmptyTitle>
-								<EmptyDescription>
-									Create a theme to start customizing the platform shell.
-								</EmptyDescription>
+								<EmptyTitle>{t.galleryEmptyTitle}</EmptyTitle>
+								<EmptyDescription>{t.galleryEmptyDesc}</EmptyDescription>
 							</EmptyHeader>
 							<EmptyContent>
-								<Button size="sm">New theme</Button>
+								<Button size="sm">{t.newTheme}</Button>
 							</EmptyContent>
 						</Empty>
 					</CardContent>
@@ -1379,24 +1377,26 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Name</TableHead>
-									<TableHead>Scope</TableHead>
-									<TableHead className="text-right">Version</TableHead>
-									<TableHead className="text-right">Status</TableHead>
+									<TableHead>{t.colName}</TableHead>
+									<TableHead>{t.colScope}</TableHead>
+									<TableHead className="text-right">{t.colVersion}</TableHead>
+									<TableHead className="text-right">{t.colStatus}</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
 								{[
-									["KTB default", "platform", "3", "Ready"],
-									["Acme brand", "tenant", "1", "Draft"],
-									["Clinic portal", "portal-instance", "7", "Ready"],
+									["KTB default", "platform", "3", t.galleryStatusReady],
+									["Acme brand", "tenant", "1", t.galleryStatusDraft],
+									["Clinic portal", "portal-instance", "7", t.galleryStatusReady],
 								].map(([name, sc, version, status]) => (
 									<TableRow key={name}>
 										<TableCell className="text-sm">{name}</TableCell>
 										<TableCell className="text-sm text-muted-foreground">{sc}</TableCell>
 										<TableCell className="text-right font-mono text-xs">v{version}</TableCell>
 										<TableCell className="text-right">
-											<Badge variant={status === "Ready" ? "default" : "secondary"}>{status}</Badge>
+											<Badge variant={status === t.galleryStatusReady ? "default" : "secondary"}>
+												{status}
+											</Badge>
 										</TableCell>
 									</TableRow>
 								))}

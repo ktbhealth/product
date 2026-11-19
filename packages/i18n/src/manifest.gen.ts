@@ -1390,6 +1390,26 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	clinician: {
+		"home.title": {
+			params: [],
+		},
+		"home.subtitle": {
+			params: [],
+		},
+		"home.patientsTitle": {
+			params: [],
+		},
+		"home.patientsDesc": {
+			params: [],
+		},
+		"home.consultationsTitle": {
+			params: [],
+		},
+		"home.consultationsDesc": {
+			params: [],
+		},
+	},
 	consultations: {
 		"sources.browser": {
 			params: [],
@@ -2424,6 +2444,9 @@ export const I18N_MANIFEST = {
 		stepRunEval: {
 			params: [],
 		},
+		pipelineAria: {
+			params: [],
+		},
 		newPersona: {
 			params: [],
 		},
@@ -2678,6 +2701,9 @@ export const I18N_MANIFEST = {
 		stepRunEval: {
 			params: [],
 		},
+		pipelineAria: {
+			params: [],
+		},
 		runEval: {
 			params: [],
 		},
@@ -2757,6 +2783,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		edits: {
+			params: [],
+		},
+		sections: {
 			params: [],
 		},
 		noRunnerBound: {
@@ -3084,6 +3113,500 @@ export const I18N_MANIFEST = {
 			template: "Delete “{name}”? This removes the group and all of its memberships.",
 		},
 		confirmDelete: {
+			params: [],
+		},
+	},
+	"i18n.admin": {
+		"common.global": {
+			params: [],
+		},
+		"common.tenant": {
+			params: [],
+		},
+		"common.portal": {
+			params: [],
+		},
+		"common.draft": {
+			params: [],
+		},
+		"common.missing": {
+			params: [],
+		},
+		"common.disabled": {
+			params: [],
+		},
+		"common.loading": {
+			params: [],
+		},
+		"common.denied": {
+			params: [],
+		},
+		"common.cancel": {
+			params: [],
+		},
+		"common.publish": {
+			params: [],
+		},
+		"common.discard": {
+			params: [],
+		},
+		"messages.title": {
+			params: [],
+		},
+		"messages.description": {
+			params: [],
+		},
+		"messages.exportBtn": {
+			params: [],
+		},
+		"messages.importBtn": {
+			params: [],
+		},
+		"messages.colKey": {
+			params: [],
+		},
+		"messages.scopeIdPortal": {
+			params: [],
+		},
+		"messages.scopeIdTenant": {
+			params: [],
+		},
+		"messages.emptyEnterScopeId": {
+			params: [
+				{
+					name: "scope",
+				},
+			],
+			template: "Enter a {scope} id to load scoped messages.",
+		},
+		"messages.emptyNone": {
+			params: [],
+		},
+		"messages.editCell": {
+			params: [
+				{
+					name: "key",
+				},
+				{
+					name: "locale",
+				},
+			],
+			template: "Edit {key} in {locale}",
+		},
+		"messages.kindText": {
+			params: [],
+		},
+		"messages.kindRich": {
+			params: [],
+		},
+		"messages.draftPending": {
+			params: [],
+		},
+		"messages.compareWith": {
+			params: [],
+		},
+		"messages.compareNone": {
+			params: [],
+		},
+		"messages.compareEmpty": {
+			params: [
+				{
+					name: "locale",
+				},
+			],
+			template: "No translation for {locale}.",
+		},
+		"messages.editorRichAria": {
+			params: [],
+		},
+		"messages.previewRichAria": {
+			params: [],
+		},
+		"messages.lintLiveValue": {
+			params: [],
+		},
+		"messages.lintLocaleLive": {
+			params: [
+				{
+					name: "locale",
+				},
+			],
+			template: "{locale} live value",
+		},
+		"messages.paramMismatch": {
+			params: [
+				{
+					name: "label",
+				},
+				{
+					name: "detail",
+				},
+			],
+			template: "Param mismatch vs {label}: {detail}",
+		},
+		"messages.lintExtra": {
+			params: [
+				{
+					name: "params",
+				},
+			],
+			template: "extra: {params}",
+		},
+		"messages.lintMissing": {
+			params: [
+				{
+					name: "params",
+				},
+			],
+			template: "missing: {params}",
+		},
+		"messages.discardDraft": {
+			params: [],
+		},
+		"messages.saveDraft": {
+			params: [],
+		},
+		"messages.discardTitle": {
+			params: [],
+		},
+		"messages.discardDesc": {
+			params: [],
+		},
+		"messages.discardConfirm": {
+			params: [],
+		},
+		"messages.discardKeep": {
+			params: [],
+		},
+		"messages.importTitle": {
+			params: [
+				{
+					name: "namespace",
+				},
+			],
+			template: 'Import into "{namespace}"?',
+		},
+		"messages.importDesc": {
+			params: [
+				{
+					name: "locales",
+				},
+				{
+					name: "keys",
+				},
+				{
+					name: "entries",
+				},
+			],
+			template:
+				"{locales} locales · {keys} keys · {entries} entries. Matching keys land as drafts — nothing goes live.",
+		},
+		"messages.importConfirm": {
+			params: [],
+		},
+		"messages.importNotice": {
+			params: [
+				{
+					name: "entries",
+				},
+				{
+					name: "namespace",
+				},
+			],
+			template: "Imported {entries} entries into {namespace}.",
+		},
+		"messages.exportDenied": {
+			params: [],
+		},
+		"messages.importDenied": {
+			params: [],
+		},
+		"messages.invalidJson": {
+			params: [],
+		},
+		"locales.title": {
+			params: [],
+		},
+		"locales.description": {
+			params: [],
+		},
+		"locales.colLocale": {
+			params: [],
+		},
+		"locales.colCode": {
+			params: [],
+		},
+		"locales.colFallbacks": {
+			params: [],
+		},
+		"locales.colEnabled": {
+			params: [],
+		},
+		"locales.toggle": {
+			params: [
+				{
+					name: "code",
+				},
+			],
+			template: "Toggle locale {code}",
+		},
+		"locales.empty": {
+			params: [],
+		},
+		"locales.noticeEnabled": {
+			params: [
+				{
+					name: "code",
+				},
+			],
+			template: "{code} enabled.",
+		},
+		"locales.noticeDisabled": {
+			params: [
+				{
+					name: "code",
+				},
+			],
+			template: "{code} disabled.",
+		},
+		"locales.toggleDenied": {
+			params: [
+				{
+					name: "code",
+				},
+			],
+			template: "denied toggling {code}",
+		},
+		"drafts.title": {
+			params: [],
+		},
+		"drafts.description": {
+			params: [],
+		},
+		"drafts.filter": {
+			params: [],
+		},
+		"drafts.selectAll": {
+			params: [],
+		},
+		"drafts.selectRow": {
+			params: [
+				{
+					name: "label",
+				},
+			],
+			template: "Select {label}",
+		},
+		"drafts.colKey": {
+			params: [],
+		},
+		"drafts.colLocale": {
+			params: [],
+		},
+		"drafts.colScope": {
+			params: [],
+		},
+		"drafts.colLive": {
+			params: [],
+		},
+		"drafts.colDraft": {
+			params: [],
+		},
+		"drafts.colUpdated": {
+			params: [],
+		},
+		"drafts.publishSelected": {
+			params: [
+				{
+					name: "count",
+				},
+			],
+			template: "Publish {count} selected",
+		},
+		"drafts.discardSelected": {
+			params: [
+				{
+					name: "count",
+				},
+			],
+			template: "Discard {count} selected",
+		},
+		"drafts.discardTitle": {
+			params: [
+				{
+					name: "count",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "Discard {count, plural, =1{{count} draft} other{{count} drafts}}?",
+		},
+		"drafts.discardDesc": {
+			params: [],
+		},
+		"drafts.empty": {
+			params: [],
+		},
+		"drafts.noMatch": {
+			params: [],
+		},
+		"drafts.noticePublished": {
+			params: [
+				{
+					name: "label",
+				},
+			],
+			template: "Published {label}.",
+		},
+		"drafts.noticeDiscarded": {
+			params: [
+				{
+					name: "label",
+				},
+			],
+			template: "Discarded draft for {label}.",
+		},
+		"drafts.bulkOk": {
+			params: [
+				{
+					name: "verb",
+				},
+				{
+					name: "count",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{verb} {count, plural, =1{{count} draft} other{{count} drafts}}.",
+		},
+		"drafts.bulkPartial": {
+			params: [
+				{
+					name: "verb",
+				},
+				{
+					name: "ok",
+				},
+				{
+					name: "failed",
+				},
+				{
+					name: "errorSuffix",
+				},
+			],
+			template: "{verb} {ok}, failed {failed}{errorSuffix}.",
+		},
+		"drafts.verbPublished": {
+			params: [],
+		},
+		"drafts.verbDiscarded": {
+			params: [],
+		},
+		"namespaces.title": {
+			params: [],
+		},
+		"namespaces.description": {
+			params: [],
+		},
+		"namespaces.summary": {
+			params: [
+				{
+					name: "namespaces",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+				{
+					name: "keys",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+				{
+					name: "locales",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{namespaces, plural, =1{{namespaces} namespace} other{{namespaces} namespaces}} · {keys, plural, =1{{keys} key} other{{keys} keys}} · {locales, plural, =1{{locales} locale} other{{locales} locales}} below full coverage",
+		},
+		"namespaces.summaryDrift": {
+			params: [
+				{
+					name: "namespaces",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{namespaces, plural, =1{{namespaces} namespace} other{{namespaces} namespaces}} with contract drift",
+		},
+		"namespaces.search": {
+			params: [],
+		},
+		"namespaces.filterIncomplete": {
+			params: [],
+		},
+		"namespaces.sortName": {
+			params: [],
+		},
+		"namespaces.sortWorst": {
+			params: [],
+		},
+		"namespaces.sortKeys": {
+			params: [],
+		},
+		"namespaces.colNamespace": {
+			params: [],
+		},
+		"namespaces.colPlugin": {
+			params: [],
+		},
+		"namespaces.colDefaultLocale": {
+			params: [],
+		},
+		"namespaces.colKeys": {
+			params: [],
+		},
+		"namespaces.driftBadge": {
+			params: [],
+		},
+		"namespaces.cellMissing": {
+			params: [
+				{
+					name: "count",
+				},
+			],
+			template: "· {count} missing",
+		},
+		"namespaces.showMissing": {
+			params: [
+				{
+					name: "count",
+				},
+				{
+					name: "namespace",
+				},
+				{
+					name: "locale",
+				},
+			],
+			template: "Show {count} missing {namespace} keys for {locale}",
+		},
+		"namespaces.empty": {
+			params: [],
+		},
+		"namespaces.noMatch": {
+			params: [],
+		},
+		"namespaces.missingDesc": {
+			params: [
+				{
+					name: "locale",
+				},
+			],
+			template: "Keys with no published {locale} value.",
+		},
+		"namespaces.allTranslated": {
 			params: [],
 		},
 	},
@@ -5797,6 +6320,168 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		blockTable: {
+			params: [],
+		},
+		colStatus: {
+			params: [],
+		},
+		colColor: {
+			params: [],
+		},
+		contrastColPairing: {
+			params: [],
+		},
+		contrastColRatio: {
+			params: [],
+		},
+		contrastColMin: {
+			params: [],
+		},
+		tokenRefTitle: {
+			params: [],
+		},
+		tokenColToken: {
+			params: [],
+		},
+		tokenColValue: {
+			params: [],
+		},
+		tokenColSwatch: {
+			params: [],
+		},
+		radiusCurrent: {
+			params: [],
+		},
+		galleryBtnDefault: {
+			params: [],
+		},
+		galleryBtnSecondary: {
+			params: [],
+		},
+		galleryBtnOutline: {
+			params: [],
+		},
+		galleryBtnGhost: {
+			params: [],
+		},
+		galleryBtnDestructive: {
+			params: [],
+		},
+		galleryBtnLink: {
+			params: [],
+		},
+		galleryBtnSmall: {
+			params: [],
+		},
+		galleryBtnLarge: {
+			params: [],
+		},
+		galleryBtnDisabled: {
+			params: [],
+		},
+		galleryInputLabel: {
+			params: [],
+		},
+		galleryInputPlaceholder: {
+			params: [],
+		},
+		galleryTextareaLabel: {
+			params: [],
+		},
+		galleryTextareaPlaceholder: {
+			params: [],
+		},
+		gallerySelectLabel: {
+			params: [],
+		},
+		galleryOptionA: {
+			params: [],
+		},
+		galleryOptionB: {
+			params: [],
+		},
+		galleryOptionOne: {
+			params: [],
+		},
+		galleryOptionTwo: {
+			params: [],
+		},
+		gallerySwitchNotifications: {
+			params: [],
+		},
+		gallerySwitchMarketing: {
+			params: [],
+		},
+		galleryAlertOkTitle: {
+			params: [],
+		},
+		galleryAlertOkDesc: {
+			params: [],
+		},
+		galleryAlertFailTitle: {
+			params: [],
+		},
+		galleryAlertFailDesc: {
+			params: [],
+		},
+		gallerySurfaceTeam: {
+			params: [],
+		},
+		gallerySurfaceRole: {
+			params: [],
+		},
+		gallerySurfaceMuted: {
+			params: [],
+		},
+		galleryStatActive: {
+			params: [],
+		},
+		galleryStatAssets: {
+			params: [],
+		},
+		galleryStatContrast: {
+			params: [],
+		},
+		gallerySettingsName: {
+			params: [],
+		},
+		gallerySettingsDesc: {
+			params: [],
+		},
+		gallerySettingsDescValue: {
+			params: [],
+		},
+		gallerySettingsEnabled: {
+			params: [],
+		},
+		gallerySettingsHighContrast: {
+			params: [],
+		},
+		gallerySettingsSave: {
+			params: [],
+		},
+		gallerySettingsReset: {
+			params: [],
+		},
+		galleryEmptyTitle: {
+			params: [],
+		},
+		galleryEmptyDesc: {
+			params: [],
+		},
+		galleryStatusReady: {
+			params: [],
+		},
+		galleryStatusDraft: {
+			params: [],
+		},
+		fontSampleHeading: {
+			params: [],
+		},
+		fontSampleSans: {
+			params: [],
+		},
+		fontSampleMono: {
 			params: [],
 		},
 	},

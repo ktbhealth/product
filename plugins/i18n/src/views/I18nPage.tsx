@@ -33,7 +33,8 @@ import {
 } from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
-import { PSEUDO_LOCALE, parseMessage, renderMessage } from "@ktb/i18n";
+import { PSEUDO_LOCALE, parseMessage, renderMessage, sliceMessages } from "@ktb/i18n";
+import type { PageI18nSlice } from "@ktb/kernel";
 
 import type { I18nMessage } from "../schema.ts";
 import type { LocaleInfo, NamespaceInfo } from "../contract.ts";
@@ -54,6 +55,7 @@ import {
 	type ImportSummary,
 	type MessageScope,
 } from "./i18n-page-utils.ts";
+import { i18nAdminMessages, I18N_NAMESPACE, type I18nAdminMessages } from "../i18n.ts";
 
 /** Sentinel Select value for the compare picker's "None" option —
  * locale codes can't collide with it. */
@@ -141,13 +143,15 @@ function MessagePreview({
 	template,
 	kind,
 	locale,
+	previewLabel,
 }: {
 	readonly template: string;
 	readonly kind: "text" | "rich";
 	readonly locale: string;
+	readonly previewLabel: string;
 }) {
 	if (kind === "rich") {
-		return <RichTextEditor value={template} disabled aria-label="Rich text preview" />;
+		return <RichTextEditor value={template} disabled aria-label={previewLabel} />;
 	}
 	const parsed = parseMessage("text", template);
 	if (!parsed.ok) {
@@ -185,8 +189,19 @@ function MessagePreview({
  * through a dialog — save stages `draft_value`, publish moves it live.
  * Text-kind cells also edit inline on double-click.
  */
-export function I18nPage({ data }: { data: I18nPageData }) {
+export function I18nPage({
+	data,
+	locale = "en",
+	i18n,
+}: {
+	data: I18nPageData;
+	/** Active UI locale, injected by the host via the panel page ctx. */
+	locale?: string;
+	/** Resolved DB-catalog slice — absent on surfaces without it. */
+	i18n?: PageI18nSlice;
+}) {
 	const router = useRouter();
+	const m = sliceMessages(i18n, I18N_NAMESPACE, i18nAdminMessages(locale));
 	const [namespace, setNamespace] = useState(data.namespaces[0]?.namespace ?? "");
 	const [filterScope, setFilterScope] = useState<MessageScope>("global");
 	const [filterScopeId, setFilterScopeId] = useState("");
@@ -428,7 +443,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					},
 				})) as { ok?: boolean; error?: string } | null;
 				if (res !== null && typeof res === "object" && res.ok === false) {
-					setError(res.error ?? "denied");
+					setError(res.error ?? m.common.denied);
 					return;
 				}
 				setCellEdit(null);
@@ -466,7 +481,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		try {
 			const res = (await op()) as { ok?: boolean; error?: string } | null;
 			if (res !== null && typeof res === "object" && res.ok === false) {
-				setError(res.error ?? "denied");
+				setError(res.error ?? m.common.denied);
 				return;
 			}
 			setEditing(null);
@@ -494,11 +509,11 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 				imported?: number;
 			} | null;
 			if (res?.ok === false) {
-				setError(res.error ?? "import denied");
+				setError(res.error ?? m.messages.importDenied);
 				return;
 			}
 			const target = pending.summary.namespace;
-			setNotice(`Imported ${res?.imported ?? pending.summary.entryCount} entries into ${target}.`);
+			setNotice(m.messages.importNotice(res?.imported ?? pending.summary.entryCount, target));
 			setPendingImport(null);
 			await router.invalidate();
 			if (target === namespace) {
@@ -540,7 +555,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 		if (editing === null) return null;
 		const live = editing.cell?.live;
 		let reference: string | null = null;
-		let label = "live value";
+		let label = m.messages.lintLiveValue;
 		if (live !== undefined && live !== "") {
 			reference = live;
 		} else {
@@ -558,7 +573,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 				);
 				if (defCell !== undefined && defCell.live !== "") {
 					reference = defCell.live;
-					label = `${defaultLocale} live value`;
+					label = m.messages.lintLocaleLive(defaultLocale);
 				}
 			}
 		}
@@ -585,10 +600,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 
 	return (
 		<PageContainer>
-			<PageHeader
-				title="Messages"
-				description="DB-canonical UI copy — edits stage as drafts until published."
-			/>
+			<PageHeader title={m.messages.title} description={m.messages.description} />
 			<div className="mb-4 flex items-center gap-3">
 				<Select value={namespace} onValueChange={(v) => setNamespace(String(v))}>
 					<SelectTrigger className="w-64">
@@ -615,16 +627,18 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						<SelectValue />
 					</SelectTrigger>
 					<SelectContent>
-						<SelectItem value="global">global</SelectItem>
-						<SelectItem value="tenant">tenant</SelectItem>
-						<SelectItem value="portal">portal</SelectItem>
+						<SelectItem value="global">{m.common.global}</SelectItem>
+						<SelectItem value="tenant">{m.common.tenant}</SelectItem>
+						<SelectItem value="portal">{m.common.portal}</SelectItem>
 					</SelectContent>
 				</Select>
 				{filterScope !== "global" && (
 					<Input
 						value={filterScopeId}
 						onChange={(e) => setFilterScopeId(e.target.value)}
-						placeholder={filterScope === "portal" ? "portal instance id" : "tenant id"}
+						placeholder={
+							filterScope === "portal" ? m.messages.scopeIdPortal : m.messages.scopeIdTenant
+						}
 						className="w-44"
 					/>
 				)}
@@ -638,7 +652,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 							try {
 								const payload = await i18nExportFn({ data: namespace });
 								if (payload === null || typeof payload !== "object" || !("namespace" in payload)) {
-									setError("export denied");
+									setError(m.messages.exportDenied);
 									return;
 								}
 								const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -655,7 +669,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						})()
 					}
 				>
-					Export
+					{m.messages.exportBtn}
 				</Button>
 				<Button
 					variant="outline"
@@ -663,7 +677,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					disabled={busy}
 					onClick={() => fileRef.current?.click()}
 				>
-					Import
+					{m.messages.importBtn}
 				</Button>
 				<input
 					ref={fileRef}
@@ -681,7 +695,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 							try {
 								payload = JSON.parse(text);
 							} catch {
-								setError("invalid JSON file");
+								setError(m.messages.invalidJson);
 								return;
 							}
 							// Preview before the wire call — the confirm dialog
@@ -702,7 +716,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 			<Table>
 				<TableHeader>
 					<TableRow>
-						<TableHead>Key</TableHead>
+						<TableHead>{m.messages.colKey}</TableHead>
 						{locales.map((l) => (
 							<TableHead key={l.code}>{l.endonym}</TableHead>
 						))}
@@ -726,7 +740,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 												autoFocus
 												disabled={busy}
 												value={activeEdit.value}
-												aria-label={`Edit ${key} in ${l.code}`}
+												aria-label={m.messages.editCell(key, l.code)}
 												className="h-7 font-mono text-xs"
 												onChange={(e) => setCellEdit({ ...activeEdit, value: e.target.value })}
 												onClick={(e) => e.stopPropagation()}
@@ -771,9 +785,9 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 													{shown ?? <span className="text-muted-foreground">—</span>}
 												</span>
 												{cell?.draft != null && cell.draft !== "" && (
-													<Badge variant="secondary">draft</Badge>
+													<Badge variant="secondary">{m.common.draft}</Badge>
 												)}
-												{cell === undefined && <Badge variant="outline">missing</Badge>}
+												{cell === undefined && <Badge variant="outline">{m.common.missing}</Badge>}
 											</button>
 										)}
 									</TableCell>
@@ -785,10 +799,10 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						<TableRow>
 							<TableCell colSpan={locales.length + 1} className="text-center text-muted-foreground">
 								{loading
-									? "Loading…"
+									? m.common.loading
 									: !scopeReady
-										? `Enter a ${filterScope} id to load scoped messages.`
-										: "No messages in this namespace yet."}
+										? m.messages.emptyEnterScopeId(filterScope)
+										: m.messages.emptyNone}
 							</TableCell>
 						</TableRow>
 					)}
@@ -814,7 +828,9 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 						<DialogDescription>
 							{editing?.locale} · {editing?.scope}
 							{editing !== null && editing.scopeId !== "" && `:${editing.scopeId}`} · {kind}
-							{editing?.cell?.draft != null && editing.cell.draft !== "" && " · draft pending"}
+							{editing?.cell?.draft != null &&
+								editing.cell.draft !== "" &&
+								` · ${m.messages.draftPending}`}
 						</DialogDescription>
 					</DialogHeader>
 					<div className="flex items-center gap-2">
@@ -829,9 +845,9 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="global">global</SelectItem>
-								<SelectItem value="tenant">tenant</SelectItem>
-								<SelectItem value="portal">portal</SelectItem>
+								<SelectItem value="global">{m.common.global}</SelectItem>
+								<SelectItem value="tenant">{m.common.tenant}</SelectItem>
+								<SelectItem value="portal">{m.common.portal}</SelectItem>
 							</SelectContent>
 						</Select>
 						{editing !== null && editing.scope !== "global" && (
@@ -839,7 +855,9 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								value={scopeId}
 								onChange={(e) => setScopeId(e.target.value)}
 								onBlur={() => retarget(editing.scope, scopeId)}
-								placeholder={editing.scope === "portal" ? "portal instance id" : "tenant id"}
+								placeholder={
+									editing.scope === "portal" ? m.messages.scopeIdPortal : m.messages.scopeIdTenant
+								}
 								className="w-40"
 							/>
 						)}
@@ -848,13 +866,13 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								<SelectItem value="text">text</SelectItem>
-								<SelectItem value="rich">rich</SelectItem>
+								<SelectItem value="text">{m.messages.kindText}</SelectItem>
+								<SelectItem value="rich">{m.messages.kindRich}</SelectItem>
 							</SelectContent>
 						</Select>
 						{editing !== null && compareOptions.length > 0 && (
 							<>
-								<span className="text-xs text-muted-foreground">Compare with</span>
+								<span className="text-xs text-muted-foreground">{m.messages.compareWith}</span>
 								<Select
 									value={compareLocale === "" ? COMPARE_NONE : compareLocale}
 									onValueChange={(v) => {
@@ -862,11 +880,11 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 										setCompareLocale(next === COMPARE_NONE ? "" : next);
 									}}
 								>
-									<SelectTrigger aria-label="Compare with" className="w-36">
+									<SelectTrigger aria-label={m.messages.compareWith} className="w-36">
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
-										<SelectItem value={COMPARE_NONE}>None</SelectItem>
+										<SelectItem value={COMPARE_NONE}>{m.messages.compareNone}</SelectItem>
 										{compareOptions.map((l) => (
 											<SelectItem key={l.code} value={l.code}>
 												{l.endonym}
@@ -882,7 +900,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 							value={draft}
 							/* v8 ignore next -- Plate's editor internals can't be driven in jsdom */
 							onChange={(html) => setDraft(html)}
-							aria-label="Message rich text"
+							aria-label={m.messages.editorRichAria}
 						/>
 					) : (
 						<Textarea
@@ -892,30 +910,42 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 							className="font-mono text-sm"
 						/>
 					)}
-					<MessagePreview template={draft} kind={kind} locale={editing?.locale ?? "en"} />
+					<MessagePreview
+						template={draft}
+						kind={kind}
+						locale={editing?.locale ?? "en"}
+						previewLabel={m.messages.previewRichAria}
+					/>
 					{editing !== null && compareLocale !== "" && compareInfo !== undefined && (
 						<div className="space-y-1 rounded-md border bg-muted/30 px-3 py-2">
 							<p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 								{compareInfo.endonym} ({compareLocale})
 								{compareCell?.draft != null && compareCell.draft !== "" && (
-									<Badge variant="secondary">draft</Badge>
+									<Badge variant="secondary">{m.common.draft}</Badge>
 								)}
 							</p>
 							{compareShown !== null && compareShown !== "" ? (
 								<p className="whitespace-pre-wrap text-sm">{compareShown}</p>
 							) : (
-								<p className="text-sm text-muted-foreground">No translation for {compareLocale}.</p>
+								<p className="text-sm text-muted-foreground">
+									{m.messages.compareEmpty(compareLocale)}
+								</p>
 							)}
 						</div>
 					)}
 					{paramLint !== null && (
 						<p className="text-sm text-warning">
-							Param mismatch vs {paramLint.label}:{" "}
-							{paramLint.extra.length > 0 &&
-								`extra: ${paramLint.extra.map((p) => `{${p}}`).join(", ")}`}
-							{paramLint.extra.length > 0 && paramLint.missing.length > 0 && " · "}
-							{paramLint.missing.length > 0 &&
-								`missing: ${paramLint.missing.map((p) => `{${p}}`).join(", ")}`}
+							{m.messages.paramMismatch(
+								paramLint.label,
+								[
+									paramLint.extra.length > 0 &&
+										m.messages.lintExtra(paramLint.extra.map((p) => `{${p}}`).join(", ")),
+									paramLint.missing.length > 0 &&
+										m.messages.lintMissing(paramLint.missing.map((p) => `{${p}}`).join(", ")),
+								]
+									.filter(Boolean)
+									.join(" · "),
+							)}
 						</p>
 					)}
 					{error !== null && <p className="text-sm text-destructive">{error}</p>}
@@ -926,7 +956,7 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								disabled={busy}
 								onClick={() => id && void run(() => i18nDiscardDraftFn({ data: id }))}
 							>
-								Discard draft
+								{m.messages.discardDraft}
 							</Button>
 						)}
 						<Button
@@ -941,14 +971,14 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 								)
 							}
 						>
-							Save draft
+							{m.messages.saveDraft}
 						</Button>
 						{editing?.cell?.draft != null && editing.cell.draft !== "" && (
 							<Button
 								disabled={busy}
 								onClick={() => id && void run(() => i18nPublishFn({ data: id }))}
 							>
-								Publish
+								{m.common.publish}
 							</Button>
 						)}
 					</div>
@@ -958,10 +988,10 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 			<ConfirmDialog
 				open={confirmDiscard}
 				onOpenChange={setConfirmDiscard}
-				title="Discard unsaved changes?"
-				description="The edits in this dialog haven't been saved as a draft."
-				confirmLabel="Discard"
-				cancelLabel="Keep editing"
+				title={m.messages.discardTitle}
+				description={m.messages.discardDesc}
+				confirmLabel={m.messages.discardConfirm}
+				cancelLabel={m.messages.discardKeep}
 				variant="destructive"
 				onConfirm={() => setEditing(null)}
 			/>
@@ -972,14 +1002,18 @@ export function I18nPage({ data }: { data: I18nPageData }) {
 					/* v8 ignore next -- mounted only while pendingImport; only close events fire */
 					if (!o) setPendingImport(null);
 				}}
-				title={`Import into "${pendingImport?.summary.namespace ?? ""}"?`}
+				title={m.messages.importTitle(pendingImport?.summary.namespace ?? "")}
 				description={
 					pendingImport === null
 						? undefined
-						: `${pendingImport.summary.localeCount} locales · ${pendingImport.summary.keyCount} keys · ${pendingImport.summary.entryCount} entries. Matching keys land as drafts — nothing goes live.`
+						: m.messages.importDesc(
+								pendingImport.summary.localeCount,
+								pendingImport.summary.keyCount,
+								pendingImport.summary.entryCount,
+							)
 				}
-				confirmLabel="Import"
-				cancelLabel="Cancel"
+				confirmLabel={m.messages.importConfirm}
+				cancelLabel={m.common.cancel}
 				loading={busy}
 				onConfirm={confirmImport}
 			/>

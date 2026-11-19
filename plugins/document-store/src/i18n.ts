@@ -134,7 +134,7 @@ const en: DocumentStoreMessages = {
 };
 
 const ptBR: DocumentStoreMessages = {
-	title: "Document store",
+	title: "Repositório de documentos",
 	description: "Navegue pelas coleções de dados de runtime e gerencie seus documentos.",
 	colName: "Coleção",
 	colOwner: "Proprietário",
@@ -196,7 +196,7 @@ const ptBR: DocumentStoreMessages = {
 };
 
 const es: DocumentStoreMessages = {
-	title: "Document store",
+	title: "Almacén de documentos",
 	description: "Explora las colecciones de datos en tiempo de ejecución y gestiona sus documentos.",
 	colName: "Colección",
 	colOwner: "Propietario",
