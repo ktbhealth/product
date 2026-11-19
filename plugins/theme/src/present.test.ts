@@ -483,6 +483,38 @@ describe("presentTheme — managed font cascade", () => {
 		expect(theme.styleCss).toContain('"Inter"');
 	});
 
+	it("a declared source with no matching managed entry keeps the free-form family", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "self-host",
+				families: { sans: "Free Sans" },
+				sources: { sans: { providerId: 7, family: "Inter" } },
+			}),
+			// The catalog matched a different provider/family — the
+			// (providerId, family) lookup misses and the slot falls back.
+			{
+				managed: [{ providerId: 9, family: "Other", kind: "googlefonts", weights: [400] }],
+			},
+		);
+		expect(theme.fontLinks).toEqual([]);
+		expect(theme.styleCss).toContain('"Free Sans"');
+	});
+
+	it("self-host managed sources without a resolved asset keep the bare family", () => {
+		const theme = presentTheme(
+			managedRow({
+				delivery: "self-host",
+				sources: { sans: { providerId: 3, family: "Brand Sans" } },
+			}),
+			// kind "local" but asset resolution found nothing — the slot
+			// name still applies, no @font-face is emitted.
+			{ managed: [{ providerId: 3, family: "Brand Sans", kind: "local", weights: [] }] },
+		);
+		expect(theme.styleCss).toContain('"Brand Sans"');
+		expect(theme.fontFaceCss).toBe("");
+		expect(theme.fontLinks).toEqual([]);
+	});
+
 	it("managed fonts with empty weights fall back to the default list", () => {
 		const theme = presentTheme(
 			managedRow({

@@ -17,6 +17,29 @@ vi.mock("./default-theme.ts", async (importOriginal) => {
 	};
 });
 
+// Same stand-in pattern for the managed-font asset loader: one test
+// forces the promise to reject so ThemeLive's catchCause fallback is
+// exercised; every other test calls through to the real implementation.
+const managedAssetsOverride = vi.hoisted(() => ({
+	current: undefined as
+		| ((
+				db: DbClient,
+				managed: readonly import("./types.ts").ThemeManagedFont[],
+		  ) => Promise<readonly import("./types.ts").ThemeManagedFont[]>)
+		| undefined,
+}));
+
+vi.mock("./managed-fonts.ts", async (importOriginal) => {
+	const original = await importOriginal<typeof import("./managed-fonts.ts")>();
+	return {
+		...original,
+		loadManagedFontAssets: (
+			db: DbClient,
+			managed: readonly import("./types.ts").ThemeManagedFont[],
+		) => (managedAssetsOverride.current ?? original.loadManagedFontAssets)(db, managed),
+	};
+});
+
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -847,13 +870,21 @@ describe("ThemeLive managed fonts", () => {
 	) => {
 		// A mutable stand-in lets tests simulate a re-sync; the real
 		// FontHooks registry proves the invalidation wiring end to end.
-		const state = { entries };
+		// `fail` makes list() die so the catalogSnapshot catchCause
+		// fallback is exercised.
+		const state = { entries, fail: false };
 		const hooksRuntime = ManagedRuntime.make(FontHooksLive);
 		const hooks = await hooksRuntime.runPromise(FontHooks);
 		const infra = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
-			Layer.succeed(FontCatalog, FontCatalog.of({ list: () => Effect.succeed(state.entries) })),
+			Layer.succeed(
+				FontCatalog,
+				FontCatalog.of({
+					list: () =>
+						state.fail ? Effect.die(new Error("catalog read boom")) : Effect.succeed(state.entries),
+				}),
+			),
 			Layer.succeed(FontHooks, hooks),
 		);
 		const runtime = ManagedRuntime.make(
@@ -945,6 +976,66 @@ describe("ThemeLive managed fonts", () => {
 			expect(theme?.fontLinks).toEqual([]);
 			expect(theme?.styleCss).toContain('"Brand Sans"');
 		} finally {
+			await runtime.dispose();
+			await hooksRuntime.dispose();
+		}
+	});
+
+	it("degrades to free-form resolution when the catalog read fails", async () => {
+		const { db, d1 } = makeTestDb();
+		const { runtime, hooksRuntime, state } = await makeCascadeRuntime(db, d1, [catalogEntry()]);
+		try {
+			state.fail = true;
+			await insertRow(d1, {
+				scope: "platform",
+				fonts: JSON.stringify({
+					delivery: "google-fonts",
+					families: { sans: "Inter" },
+					sources: { sans: { providerId: 7, family: "Inter" } },
+				}),
+			});
+			const theme = await runtime.runPromise(withTheme((t) => t.resolve()));
+			// The managed source never resolves — the free-form family
+			// and its google-fonts delivery take over instead.
+			expect(theme?.fontLinks).toEqual([
+				"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap",
+			]);
+			expect(theme?.styleCss).toContain('"Inter"');
+		} finally {
+			await runtime.dispose();
+			await hooksRuntime.dispose();
+		}
+	});
+
+	it("falls back to the matched fonts when the asset read rejects", async () => {
+		const { db, d1 } = makeTestDb();
+		const { runtime, hooksRuntime, state } = await makeCascadeRuntime(db, d1, []);
+		try {
+			managedAssetsOverride.current = () => Promise.reject(new Error("asset read boom"));
+			await insertRow(d1, {
+				scope: "platform",
+				fonts: JSON.stringify({
+					delivery: "self-host",
+					sources: { sans: { providerId: 4, family: "Brand Sans" } },
+				}),
+			});
+			state.entries = [
+				catalogEntry({
+					id: 2,
+					providerId: 4,
+					kind: "local",
+					family: "Brand Sans",
+					weights: [],
+					meta: { source: "local", assetId: 1 },
+				}),
+			];
+			const theme = await runtime.runPromise(withTheme((t) => t.resolve()));
+			// The slot name still applies (matched fonts pass through
+			// unresolved) but no @font-face is emitted.
+			expect(theme?.styleCss).toContain('"Brand Sans"');
+			expect(theme?.fontFaceCss).toBe("");
+		} finally {
+			managedAssetsOverride.current = undefined;
 			await runtime.dispose();
 			await hooksRuntime.dispose();
 		}

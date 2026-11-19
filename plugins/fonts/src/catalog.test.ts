@@ -86,6 +86,32 @@ describe("listCatalogRows", () => {
 		const { db } = makeTestDb();
 		expect(await listCatalogRows(db)).toEqual([]);
 	});
+
+	it("degrades malformed weights/meta JSON to empty values", async () => {
+		const { db, d1 } = makeTestDb();
+		const google = await insertProviderRow(db, {
+			kind: "googlefonts",
+			name: "Google",
+			config: null,
+		});
+		// insertFamilyRow always JSON.stringifies — malformed payloads
+		// can only arrive via a hand-edited row, so insert raw.
+		await d1
+			.prepare(
+				`INSERT INTO font_families (provider_id, family, weights, status, meta, created_at)
+				 VALUES (?, 'Broken', 'not json{', 'ready', '{oops', 0)`,
+			)
+			.bind(google!.id)
+			.run();
+		const rows = await listCatalogRows(db);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({
+			family: "Broken",
+			weights: [],
+			meta: null,
+			status: "ready",
+		});
+	});
 });
 
 describe("FontCatalogLive", () => {

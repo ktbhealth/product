@@ -184,4 +184,42 @@ describe("loadManagedFontAssets", () => {
 		];
 		expect(await loadManagedFontAssets(db, withAsset)).toEqual(withAsset);
 	});
+
+	it("degrades per family when the asset lookup throws", async () => {
+		// theme_assets exists but theme_definitions does not: the asset
+		// row resolves, then the owner-theme select throws — the
+		// per-family catch must pass the font through untouched.
+		const d1 = makeD1(`
+			CREATE TABLE theme_assets (
+				id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+				theme_id integer,
+				kind text NOT NULL,
+				r2_key text,
+				status text DEFAULT 'pending' NOT NULL,
+				variants text,
+				created_at integer NOT NULL
+			);
+		`);
+		const db = makeDb(d1);
+		await d1
+			.prepare(
+				`INSERT INTO theme_assets (theme_id, kind, status, created_at) VALUES (1, 'font', 'ready', 0)`,
+			)
+			.run();
+		const managed: ThemeManagedFont[] = [
+			{ providerId: 2, family: "Brand Sans", kind: "local", weights: [], assetId: 1 },
+		];
+		expect(await loadManagedFontAssets(db, managed)).toEqual(managed);
+	});
+
+	it("degrades when the asset's owning theme row is gone", async () => {
+		const { db, d1 } = makeTestDb();
+		// theme_id 999 has no theme_definitions row — the owner select
+		// returns empty and the font passes through without an asset.
+		await insertFontAsset(d1, 999);
+		const managed: ThemeManagedFont[] = [
+			{ providerId: 2, family: "Brand Sans", kind: "local", weights: [], assetId: 1 },
+		];
+		expect(await loadManagedFontAssets(db, managed)).toEqual(managed);
+	});
 });
