@@ -10,20 +10,25 @@ import {
 	THEME_ASSETS_PREFIX,
 	THEME_ASSET_JOB_KIND,
 	THEME_FONT_JOB_KIND,
+	catalogFontAssetOf,
+	catalogFontFamilyOf,
 	completeThemeAsset,
 	contentTypeForKey,
 	decodeThemeAssetJob,
 	decodeThemeFontJob,
 	dominantColorHex,
+	deleteThemeAsset,
 	extOfKey,
 	fontFormatForExt,
 	getThemeAsset,
 	googleFontsCssUrl,
+	insertCatalogFontAsset,
 	insertThemeAsset,
 	isBrandAssetKind,
 	isImageAssetKind,
 	isThemeAssetKind,
 	listThemeAssets,
+	listUnownedFontAssets,
 	parseGoogleFontsCss,
 	planImageVariants,
 	primaryVariantName,
@@ -396,6 +401,117 @@ describe("theme_assets repo helpers", () => {
 				asset: { faces: [], fallback: null },
 			}),
 		).toBeNull();
+	});
+});
+
+describe("catalog font assets (theme_id NULL)", () => {
+	it("catalogFontFamilyOf/catalogFontAssetOf parse the variants contract", () => {
+		expect(catalogFontFamilyOf(null)).toBeNull();
+		expect(catalogFontFamilyOf("not json")).toBeNull();
+		expect(catalogFontFamilyOf("[1,2]")).toBeNull();
+		expect(catalogFontFamilyOf("{}")).toBeNull();
+		expect(catalogFontFamilyOf('{"family":"  "}')).toBeNull();
+		expect(catalogFontFamilyOf('{"family":" Inter "}')).toBe("Inter");
+		expect(catalogFontAssetOf(null)).toBeNull();
+		expect(catalogFontAssetOf("not json")).toBeNull();
+		expect(catalogFontAssetOf("5")).toBeNull();
+		expect(catalogFontAssetOf("[1,2]")).toBeNull();
+		expect(catalogFontAssetOf("{}")).toBeNull();
+		expect(catalogFontAssetOf('{"fontAsset":{}}')).toBeNull();
+		expect(catalogFontAssetOf('{"fontAsset":{"faces":"x"}}')).toBeNull();
+		expect(
+			catalogFontAssetOf(
+				JSON.stringify({
+					family: "Inter",
+					fontAsset: { faces: [{ url: "u", weight: 400 }], fallback: null },
+				}),
+			),
+		).toEqual({ faces: [{ url: "u", weight: 400 }], fallback: null });
+	});
+
+	it("insertCatalogFontAsset writes a ready unowned row with the manifest", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Brand Sans",
+			weight: 600,
+			r2Key: `${THEME_ASSETS_PREFIX}catalog/font/u.woff2`,
+			format: "woff2",
+		});
+		expect(asset).toMatchObject({ themeId: null, kind: "font", status: "ready" });
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.family).toBe("Brand Sans");
+		expect(variants.fontAsset.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=theme-assets%2Fcatalog%2Ffont%2Fu.woff2",
+				weight: 600,
+				format: "woff2",
+			},
+		]);
+		expect(catalogFontFamilyOf(asset!.variants)).toBe("Brand Sans");
+		expect(catalogFontAssetOf(asset!.variants)?.faces).toHaveLength(1);
+	});
+
+	it("omits weight/format when not provided", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Plain",
+			weight: undefined,
+			r2Key: "k.ttf",
+			format: undefined,
+		});
+		const face = catalogFontAssetOf(asset!.variants)!.faces[0]!;
+		expect(face).toEqual({ url: "/api/theme/assets?key=k.ttf" });
+	});
+
+	it("insertCatalogFontAsset returns null when the insert yields no row", async () => {
+		const emptyInsert = {
+			insert: () => ({ values: () => ({ returning: async () => [] }) }),
+		} as unknown as DbClient;
+		expect(
+			await insertCatalogFontAsset(emptyInsert, {
+				family: "X",
+				weight: undefined,
+				r2Key: "k",
+				format: undefined,
+			}),
+		).toBeNull();
+	});
+
+	it("listUnownedFontAssets returns only theme_id NULL font rows, newest first", async () => {
+		const { db, d1 } = makeTestDb();
+		const themeId = await seedTheme({ db, d1 });
+		await insertThemeAsset(db, { themeId, kind: "font", r2Key: "owned.woff2" });
+		await insertThemeAsset(db, { themeId, kind: "favicon", r2Key: null });
+		const cat = await insertCatalogFontAsset(db, {
+			family: "A",
+			weight: undefined,
+			r2Key: "a.woff2",
+			format: "woff2",
+		});
+		// Orphaned theme font row (theme deleted → theme_id NULL, no
+		// family stamp) — listed but never family-matched.
+		await run(
+			d1,
+			`INSERT INTO theme_assets (theme_id, kind, status, created_at) VALUES (NULL, 'font', 'ready', 0)`,
+		);
+		const rows = await listUnownedFontAssets(db);
+		expect(rows).toHaveLength(2);
+		expect(rows.every((r) => r.themeId === null && r.kind === "font")).toBe(true);
+		expect(rows.map((r) => r.id)).toContain(cat!.id);
+		// Newest first — the raw orphan insert lands after the catalog row.
+		expect(rows[0]!.id).toBeGreaterThan(rows[1]!.id);
+	});
+
+	it("deleteThemeAsset removes the row", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Doomed",
+			weight: undefined,
+			r2Key: "d.woff2",
+			format: "woff2",
+		});
+		await deleteThemeAsset(db, asset!.id);
+		expect(await getThemeAsset(db, asset!.id)).toBeNull();
 	});
 });
 

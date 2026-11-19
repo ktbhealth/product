@@ -212,6 +212,35 @@ describe("loadManagedFontAssets", () => {
 		expect(await loadManagedFontAssets(db, managed)).toEqual(managed);
 	});
 
+	it("resolves catalog assets (theme_id NULL) from variants.fontAsset", async () => {
+		const { db, d1 } = makeTestDb();
+		const fontAsset = {
+			faces: [{ url: "/api/theme/assets?key=catalog.woff2", weight: 700, format: "woff2" }],
+			fallback: null,
+		};
+		await d1
+			.prepare(
+				`INSERT INTO theme_assets (theme_id, kind, status, variants, created_at)
+				 VALUES (NULL, 'font', 'ready', ?, 0)`,
+			)
+			.bind(JSON.stringify({ family: "Catalog Sans", fontAsset }))
+			.run();
+		// A second unowned row WITHOUT the manifest degrades to bare.
+		await d1
+			.prepare(
+				`INSERT INTO theme_assets (theme_id, kind, status, created_at)
+				 VALUES (NULL, 'font', 'ready', 0)`,
+			)
+			.run();
+		const managed: ThemeManagedFont[] = [
+			{ providerId: 2, family: "Catalog Sans", kind: "local", weights: [], assetId: 1 },
+			{ providerId: 2, family: "Orphan", kind: "local", weights: [], assetId: 2 },
+		];
+		const out = await loadManagedFontAssets(db, managed);
+		expect(out[0]?.asset).toEqual(fontAsset);
+		expect(out[1]).toEqual(managed[1]);
+	});
+
 	it("degrades when the asset's owning theme row is gone", async () => {
 		const { db, d1 } = makeTestDb();
 		// theme_id 999 has no theme_definitions row — the owner select
