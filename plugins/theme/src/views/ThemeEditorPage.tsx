@@ -1475,4 +1475,3 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 		</PageContainer>
 	);
 }
-
