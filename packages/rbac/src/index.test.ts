@@ -25,7 +25,7 @@ import {
 	splitPermission,
 	subjectRoles,
 } from "./index.ts";
-import { rolePermissions, roles } from "@ktb/db/schema";
+import { relationTuples, rolePermissions, roles } from "@ktb/db/schema";
 
 const DDL = `
 CREATE TABLE roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, description TEXT, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -33,8 +33,68 @@ CREATE TABLE role_permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, role_id INT
 CREATE UNIQUE INDEX role_permissions_role_resource_action_idx ON role_permissions (role_id, resource, action);
 CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
 CREATE INDEX subject_roles_subject_idx ON subject_roles (subject_kind, subject_id);
+CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
+CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
+CREATE INDEX relation_tuples_subject_idx ON relation_tuples (subject_kind, subject_id);
+CREATE INDEX relation_tuples_natural_idx ON relation_tuples (object_type, object_id, relation, subject_kind, subject_id);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 `;
+
+/**
+ * Test-local port of the P-101 migration backfill (0060): rebuild
+ * `relation_tuples` from the admin-facing role_permissions /
+ * subject_roles tables so resolution — which reads tuples — sees the
+ * same grants the seeds wrote. Delete-then-insert keeps it idempotent
+ * across the incremental mutations tests perform mid-suite.
+ */
+const mirrorTuples = async (db: DbClient) => {
+	const roleRows = await db.select({ id: roles.id, name: roles.name }).from(roles);
+	const nameById = new Map(roleRows.map((r) => [r.id, r.name]));
+	const grantRows = await db.select().from(rolePermissions);
+	const memberRows = await db.select().from(subjectRoles);
+	const tuples = [
+		...grantRows.flatMap((g) => {
+			const roleName = nameById.get(g.roleId);
+			return roleName === undefined
+				? []
+				: [
+						{
+							objectType: g.resource,
+							objectId: "*",
+							relation: g.action,
+							subjectKind: "role",
+							subjectId: roleName,
+							effect: g.effect,
+							tenantId: null,
+							expiresAt: null,
+							grantedBy: null,
+							createdAt: g.createdAt,
+						},
+					];
+		}),
+		...memberRows.flatMap((m) => {
+			const roleName = nameById.get(m.roleId);
+			return roleName === undefined
+				? []
+				: [
+						{
+							objectType: "role",
+							objectId: roleName,
+							relation: "member",
+							subjectKind: m.subjectKind,
+							subjectId: m.subjectId,
+							effect: "allow",
+							tenantId: m.tenantId,
+							expiresAt: m.expiresAt,
+							grantedBy: m.grantedBy,
+							createdAt: m.createdAt,
+						},
+					];
+		}),
+	];
+	await db.delete(relationTuples);
+	if (tuples.length > 0) await db.insert(relationTuples).values(tuples);
+};
 
 const seed = async (db: DbClient) => {
 	await db.insert(roles).values([
@@ -123,6 +183,7 @@ const seed = async (db: DbClient) => {
 			createdAt: new Date(0),
 		},
 	]);
+	await mirrorTuples(db);
 };
 
 describe("permission epoch", () => {
@@ -237,6 +298,7 @@ describe("buildPermissions", () => {
 			grantedBy: "test",
 			createdAt: new Date(0),
 		});
+		await mirrorTuples(db);
 		await Effect.runPromise(p.invalidate());
 		const after = await Effect.runPromise(p.permissionsFor("u9"));
 		expect(after.get(grantKey("patient", "read"))).toBe("allow");
@@ -287,6 +349,7 @@ describe("buildPermissions", () => {
 				createdAt: new Date(0),
 			},
 		]);
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		const grants = await Effect.runPromise(p.permissionsFor("u5"));
 		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
@@ -316,6 +379,7 @@ describe("buildPermissions", () => {
 				createdAt: new Date(0),
 			},
 		]);
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		const grants = await Effect.runPromise(p.permissionsFor("u6"));
 		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
@@ -363,6 +427,7 @@ describe("buildPermissions", () => {
 			grantedBy: "test",
 			createdAt: new Date(0),
 		});
+		await mirrorTuples(db);
 		await bumpEpoch(db);
 		const after = await Effect.runPromise(p.permissionsFor("u25"));
 		expect(after.get(grantKey("patient", "read"))).toBe("allow");
@@ -425,6 +490,7 @@ describe("buildPermissions", () => {
 				createdAt: new Date(t0),
 			},
 		]);
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		const now = vi.spyOn(Date, "now").mockReturnValue(t0);
 		try {
@@ -455,6 +521,7 @@ describe("buildPermissions", () => {
 			grantedBy: "test",
 			createdAt: new Date(0),
 		});
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		// The tenant-less resolve caches first; a cache key that reused the
 		// empty-tenant fallback for this tenant id would collide with it.
@@ -473,6 +540,7 @@ describe("buildPermissions", () => {
 			grantedBy: "test",
 			createdAt: new Date(0),
 		});
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		const grants = await Effect.runPromise(p.permissionsFor("u23"));
 		expect(grants.has(grantKey("billing", "manage"))).toBe(false);
@@ -489,6 +557,7 @@ describe("buildPermissions", () => {
 			grantedBy: "test",
 			createdAt: new Date(0),
 		});
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		const grants = await Effect.runPromise(p.permissionsFor("u24"));
 		expect(grants.has(grantKey("patient", "read"))).toBe(false);
@@ -548,12 +617,157 @@ describe("buildPermissions", () => {
 				createdAt: new Date(0),
 			},
 		]);
+		await mirrorTuples(db);
 		const p = buildPermissions(db);
 		for (const userId of ["u17", "u18"]) {
 			expect(await Effect.runPromise(p.canFor(userId, "patient", "read"))).toBe(false);
 			const grants = await Effect.runPromise(p.permissionsFor(userId));
 			expect(grants.get(grantKey("patient", "read"))).toBe("deny");
 		}
+	});
+
+	it("resolves direct user grant tuples (P-101 forward-compat)", async () => {
+		// No role involved: a grant tuple addressed straight at the user.
+		await db.insert(relationTuples).values({
+			objectType: "billing",
+			objectId: "*",
+			relation: "manage",
+			subjectKind: "user",
+			subjectId: "u30",
+			effect: "allow",
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db);
+		const grants = await Effect.runPromise(p.permissionsFor("u30"));
+		expect(grants.get(grantKey("billing", "manage"))).toBe("allow");
+	});
+
+	it("resolves direct group grant tuples through the port", async () => {
+		await db.insert(relationTuples).values({
+			objectType: "audit",
+			objectId: "*",
+			relation: "read",
+			subjectKind: "group",
+			subjectId: "gd1",
+			effect: "allow",
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db, (userId) =>
+			Effect.succeed<readonly string[]>(userId === "u31" ? ["gd1"] : []),
+		);
+		expect(await Effect.runPromise(p.canFor("u31", "audit", "read"))).toBe(true);
+		// u32 is not in gd1 — the group grant must not leak.
+		expect(await Effect.runPromise(p.canFor("u32", "audit", "read"))).toBe(false);
+	});
+
+	it("deny via a role grant beats allow via a direct grant", async () => {
+		await db.insert(relationTuples).values([
+			// u33 is a member of auditor (which denies patient.delete)…
+			{
+				objectType: "role",
+				objectId: "auditor",
+				relation: "member",
+				subjectKind: "user",
+				subjectId: "u33",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+			// …and also holds a direct allow on the same (resource, action).
+			{
+				objectType: "patient",
+				objectId: "*",
+				relation: "delete",
+				subjectKind: "user",
+				subjectId: "u33",
+				effect: "allow",
+				tenantId: null,
+				expiresAt: null,
+				grantedBy: "test",
+				createdAt: new Date(0),
+			},
+		]);
+		const p = buildPermissions(db);
+		const grants = await Effect.runPromise(p.permissionsFor("u33"));
+		expect(grants.get(grantKey("patient", "delete"))).toBe("deny");
+		expect(await Effect.runPromise(p.canFor("u33", "patient", "delete"))).toBe(false);
+		// The role's allow on patient.read still applies alongside.
+		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
+	});
+
+	it("scopes member tuples by tenant like subject_roles did", async () => {
+		await db.insert(relationTuples).values({
+			objectType: "role",
+			objectId: "billing",
+			relation: "member",
+			subjectKind: "user",
+			subjectId: "u34",
+			effect: "allow",
+			tenantId: "t9",
+			expiresAt: null,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db);
+		// No tenant context and a different tenant both see nothing.
+		expect(
+			(await Effect.runPromise(p.permissionsFor("u34"))).has(grantKey("billing", "manage")),
+		).toBe(false);
+		expect(
+			(await Effect.runPromise(p.permissionsFor("u34", "tX"))).has(grantKey("billing", "manage")),
+		).toBe(false);
+		// The matching tenant resolves the role's global grant tuple.
+		expect(
+			(await Effect.runPromise(p.permissionsFor("u34", "t9"))).get(grantKey("billing", "manage")),
+		).toBe("allow");
+	});
+
+	it("excludes expired member tuples at resolve time", async () => {
+		await db.insert(relationTuples).values({
+			objectType: "role",
+			objectId: "auditor",
+			relation: "member",
+			subjectKind: "user",
+			subjectId: "u35",
+			effect: "allow",
+			tenantId: null,
+			expiresAt: new Date(Date.now() - 1000),
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db);
+		expect((await Effect.runPromise(p.permissionsFor("u35"))).size).toBe(0);
+	});
+
+	it("resolves role grants derived through group membership tuples", async () => {
+		// g7 holds a member tuple to auditor; u36 reaches it only via
+		// the GroupMembership port — no tuples name u36 directly.
+		await db.insert(relationTuples).values({
+			objectType: "role",
+			objectId: "auditor",
+			relation: "member",
+			subjectKind: "group",
+			subjectId: "g7",
+			effect: "allow",
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: "test",
+			createdAt: new Date(0),
+		});
+		const p = buildPermissions(db, (userId) =>
+			Effect.succeed<readonly string[]>(userId === "u36" ? ["g7"] : []),
+		);
+		const grants = await Effect.runPromise(p.permissionsFor("u36"));
+		expect(grants.get(grantKey("patient", "read"))).toBe("allow");
+		expect(grants.get(grantKey("patient", "delete"))).toBe("deny");
 	});
 });
 

@@ -138,8 +138,8 @@ const DOMAINS = [
 		title: "RBAC",
 		owner: "`packages/rbac` + `plugins/rbac`",
 		description:
-			"Roles, role-permission grants and subject (user/group) role assignments, with an epoch for cache invalidation.",
-		tables: ["permission_epoch", "role_permissions", "roles", "subject_roles"],
+			"Roles, role-permission grants and subject (user/group) role assignments, their P-101 relation_tuples mirror, and an epoch for cache invalidation.",
+		tables: ["permission_epoch", "relation_tuples", "role_permissions", "roles", "subject_roles"],
 	},
 	{
 		id: "platform",

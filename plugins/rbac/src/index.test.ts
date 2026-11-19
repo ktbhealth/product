@@ -32,7 +32,7 @@ import {
 	updateRole,
 	type AdminRbacPageData,
 } from "./index.ts";
-import { roles as rolesTable } from "@ktb/db/schema";
+import { relationTuples as relationTuplesTable, roles as rolesTable } from "@ktb/db/schema";
 import { RbacCommands, RbacQueries } from "./api.ts";
 
 const DDL = `
@@ -42,6 +42,10 @@ CREATE UNIQUE INDEX role_permissions_role_resource_action_idx ON role_permission
 CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
 CREATE INDEX subject_roles_subject_idx ON subject_roles (subject_kind, subject_id);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
+CREATE INDEX relation_tuples_object_idx ON relation_tuples (object_type, object_id, relation);
+CREATE INDEX relation_tuples_subject_idx ON relation_tuples (subject_kind, subject_id);
+CREATE INDEX relation_tuples_natural_idx ON relation_tuples (object_type, object_id, relation, subject_kind, subject_id);
 CREATE TABLE groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, slug TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, meta TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, zk INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE group_members (id INTEGER PRIMARY KEY AUTOINCREMENT, group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE, member_kind TEXT NOT NULL, member_id TEXT NOT NULL, role TEXT, created_at INTEGER NOT NULL);
 INSERT INTO groups (id, name, slug, kind, meta, created_at, updated_at) VALUES (7, 'Clinic', 'clinic', 'clinic', NULL, 1, 1);
@@ -138,18 +142,57 @@ describe("rbac repo", () => {
 		expect(perms).toHaveLength(1);
 		expect(perms[0]?.effect).toBe("deny");
 
+		// P-101: the grant tuple mirrors the permission keyed on the
+		// role NAME with the "*" object wildcard.
+		let tuples = await db.select().from(relationTuplesTable);
+		const grant = tuples.find(
+			(t) =>
+				t.objectType === "billing" &&
+				t.objectId === "*" &&
+				t.relation === "manage" &&
+				t.subjectKind === "role" &&
+				t.subjectId === "billing",
+		);
+		expect(grant).toMatchObject({ effect: "deny", tenantId: null });
+
 		await revokeRolePermission(db, {
 			roleId: role.id,
 			resource: "billing",
 			action: "manage",
 		});
 		expect(await listRolePermissions(db, role.id)).toHaveLength(0);
+		tuples = await db.select().from(relationTuplesTable);
+		expect(
+			tuples.some(
+				(t) =>
+					t.objectType === "billing" &&
+					t.relation === "manage" &&
+					t.subjectKind === "role" &&
+					t.subjectId === "billing",
+			),
+		).toBe(false);
 		// Revoking a missing grant is a no-op.
 		await revokeRolePermission(db, {
 			roleId: role.id,
 			resource: "billing",
 			action: "manage",
 		});
+
+		// deleteRole drops every tuple shape carrying the role name.
+		await setRolePermission(db, {
+			roleId: role.id,
+			resource: "billing",
+			action: "read",
+			effect: "allow",
+		});
+		await assignSubject(db, {
+			subjectKind: "user",
+			subjectId: "u-billing",
+			roleId: role.id,
+		});
+		await deleteRole(db, role.id);
+		tuples = await db.select().from(relationTuplesTable);
+		expect(tuples.some((t) => t.subjectId === "billing" || t.objectId === "billing")).toBe(false);
 	});
 
 	it("assignSubject inserts, refreshes and scopes by tenant", async () => {
@@ -178,6 +221,21 @@ describe("rbac repo", () => {
 		expect(a2?.expiresAt).toBeInstanceOf(Date);
 		expect(a2?.grantedBy).toBe("admin2");
 
+		// P-101: the member tuple mirrors the refreshed assignment —
+		// role NAME in object_id, assignee in subject_*, tenant NULL.
+		const tuples = await db.select().from(relationTuplesTable);
+		const member = tuples.find(
+			(t) => t.objectId === "auditor" && t.subjectId === "u1" && t.relation === "member",
+		);
+		expect(member).toMatchObject({
+			objectType: "role",
+			subjectKind: "user",
+			effect: "allow",
+			tenantId: null,
+			grantedBy: "admin2",
+		});
+		expect(member?.expiresAt).toBeInstanceOf(Date);
+
 		// Numeric tenant id normalizes to the TEXT column.
 		const a3 = await assignSubject(db, {
 			subjectKind: "group",
@@ -202,6 +260,39 @@ describe("rbac repo", () => {
 
 		await unassignSubject(db, a1!.id);
 		expect((await listAssignments(db)).some((a) => a.id === a1!.id)).toBe(false);
+		// The member tuple went with it.
+		const afterUnassign = await db.select().from(relationTuplesTable);
+		expect(
+			afterUnassign.some(
+				(t) => t.objectId === "auditor" && t.subjectId === "u1" && t.relation === "member",
+			),
+		).toBe(false);
+	});
+
+	it("updateRole rename rewrites tuple role references (P-101)", async () => {
+		const role = (await createRole(db, { name: "old-name" }))!;
+		await setRolePermission(db, {
+			roleId: role.id,
+			resource: "patient",
+			action: "read",
+			effect: "allow",
+		});
+		await assignSubject(db, {
+			subjectKind: "user",
+			subjectId: "u-rename",
+			roleId: role.id,
+		});
+		const renamed = await updateRole(db, { id: role.id, name: "new-name" });
+		expect(renamed?.name).toBe("new-name");
+		const tuples = await db.select().from(relationTuplesTable);
+		// Grant tuples carry the role name in subject_id…
+		const grant = tuples.find(
+			(t) => t.objectType === "patient" && t.relation === "read" && t.subjectKind === "role",
+		);
+		expect(grant?.subjectId).toBe("new-name");
+		// …member tuples in object_id.
+		const member = tuples.find((t) => t.subjectId === "u-rename" && t.relation === "member");
+		expect(member?.objectId).toBe("new-name");
 	});
 
 	it("groupIdsForUser reads group_members without importing groups", async () => {
@@ -746,6 +837,7 @@ describe("plugins", () => {
 			"roles",
 			"rolePermissions",
 			"subjectRoles",
+			"relationTuples",
 			"permissionEpoch",
 		]);
 		expect(rbacServicesPlugin.id).toBe("rbac.services");

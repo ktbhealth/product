@@ -7,7 +7,7 @@ import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { Forbidden, Principal, requireCanAs } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 
-import { permissionEpoch, rolePermissions, subjectRoles } from "@ktb/db/schema";
+import { permissionEpoch, relationTuples } from "@ktb/db/schema";
 
 export { permissionEpoch, rolePermissions, roles, subjectRoles } from "@ktb/db/schema";
 export type { Role, RolePermission, SubjectRole } from "@ktb/db/schema";
@@ -36,6 +36,13 @@ const GRANT_SEP = "\u001f";
 export const grantKey = (resource: string, action: string): string =>
 	`${resource}${GRANT_SEP}${action}`;
 
+/** Earliest of two nullable expiry timestamps (NULL = never expires). */
+const earliestExpiry = (a: Date | null, b: Date | null): Date | null => {
+	if (a === null) return b;
+	if (b === null) return a;
+	return a.getTime() <= b.getTime() ? a : b;
+};
+
 // ---------- permission epoch ----------
 
 const EPOCH_ROW_ID = 1;
@@ -51,7 +58,8 @@ export async function readEpoch(db: DbClient): Promise<number> {
 
 /**
  * Bump the permission epoch — call after EVERY write to
- * `role_permissions`, `subject_roles`, or any group-membership table.
+ * `role_permissions`, `subject_roles`, `relation_tuples` (P-101), or
+ * any group-membership table.
  * Cached grant sets key on the epoch, so the next resolve sees fresh
  * data without explicit cache purging.
  */
@@ -138,7 +146,8 @@ export interface PermissionsShape {
 		opts?: PermissionOptions,
 	) => Effect.Effect<void, Forbidden>;
 	/** Bump the epoch and clear the local cache — call after any write
-	 * to role_permissions / subject_roles / membership tables. */
+	 * to role_permissions / subject_roles / relation_tuples /
+	 * membership tables. */
 	readonly invalidate: () => Effect.Effect<void>;
 }
 
@@ -184,38 +193,115 @@ export const buildPermissions = (
 		}
 
 		const groupIds = groupIdsFor === undefined ? [] : yield* groupIdsFor(userId);
-		const subjectConds = [
-			and(eq(subjectRoles.subjectKind, "user"), eq(subjectRoles.subjectId, userId)),
-		];
+		// P-101: resolution reads the relation_tuples graph, not the
+		// admin-facing role_permissions/subject_roles tables. Role
+		// membership is a member tuple (object_type='role',
+		// relation='member') whose subject is the user or one of their
+		// groups; the member tuple's tenant/expiry scope the assignment
+		// exactly like subject_roles did.
 		// Stryker disable next-line ConditionalExpression,EqualityOperator: with empty groupIds, inArray([]) compiles to `false`, so the pushed (subjectKind='group' AND false) condition is always false and `or(userCond, false)` is identical to userCond alone.
+		const subjectConds = [
+			and(eq(relationTuples.subjectKind, "user"), eq(relationTuples.subjectId, userId)),
+		];
 		if (groupIds.length > 0) {
 			subjectConds.push(
-				and(eq(subjectRoles.subjectKind, "group"), inArray(subjectRoles.subjectId, groupIds)),
+				and(eq(relationTuples.subjectKind, "group"), inArray(relationTuples.subjectId, groupIds)),
 			);
 		}
+		// Stryker disable next-line ConditionalExpression: when tid is undefined the or-branch binds eq(tenantId, undefined) as NULL; `tenant_id = NULL` is never true, so `isNull OR (tenant_id = NULL)` is identical to `isNull` in a WHERE clause.
 		const tenantCond =
-			// Stryker disable next-line ConditionalExpression: when tid is undefined the or-branch binds eq(tenantId, undefined) as NULL; `tenant_id = NULL` is never true, so `isNull OR (tenant_id = NULL)` is identical to `isNull` in a WHERE clause.
 			tid === undefined
-				? isNull(subjectRoles.tenantId)
-				: or(isNull(subjectRoles.tenantId), eq(subjectRoles.tenantId, tid));
-		const rows = yield* Effect.promise(() =>
+				? isNull(relationTuples.tenantId)
+				: or(isNull(relationTuples.tenantId), eq(relationTuples.tenantId, tid));
+		const unexpired = or(
+			isNull(relationTuples.expiresAt),
+			gt(relationTuples.expiresAt, new Date(now)),
+		);
+		const memberRows = yield* Effect.promise(() =>
 			db
 				.select({
-					resource: rolePermissions.resource,
-					action: rolePermissions.action,
-					effect: rolePermissions.effect,
-					expiresAt: subjectRoles.expiresAt,
+					roleName: relationTuples.objectId,
+					expiresAt: relationTuples.expiresAt,
 				})
-				.from(subjectRoles)
-				.innerJoin(rolePermissions, eq(rolePermissions.roleId, subjectRoles.roleId))
+				.from(relationTuples)
 				.where(
 					and(
+						eq(relationTuples.objectType, "role"),
+						eq(relationTuples.relation, "member"),
 						or(...subjectConds),
 						tenantCond,
-						or(isNull(subjectRoles.expiresAt), gt(subjectRoles.expiresAt, new Date(now))),
+						unexpired,
 					),
 				),
 		);
+
+		// Grant tuples carry the (resource, action, effect) triple:
+		// object_id='*' wildcard, relation=action, subject_kind='role'
+		// with the role NAME for role-derived grants — plus direct
+		// 'user'/'group' subjects for forward-compatible direct grants.
+		const membersByRole = new Map<string, typeof memberRows>();
+		for (const member of memberRows) {
+			const list = membersByRole.get(member.roleName);
+			if (list === undefined) membersByRole.set(member.roleName, [member]);
+			else list.push(member);
+		}
+		const grantSubjectConds = [...subjectConds];
+		// Stryker disable next-line ConditionalExpression,EqualityOperator: with no member tuples, inArray([]) compiles to `false`, so the pushed (subjectKind='role' AND false) condition is always false and `or(...conds, false)` is identical to the subject conds alone.
+		if (membersByRole.size > 0) {
+			grantSubjectConds.push(
+				and(
+					eq(relationTuples.subjectKind, "role"),
+					inArray(relationTuples.subjectId, [...membersByRole.keys()]),
+				),
+			);
+		}
+		const grantRows = yield* Effect.promise(() =>
+			db
+				.select({
+					resource: relationTuples.objectType,
+					action: relationTuples.relation,
+					effect: relationTuples.effect,
+					expiresAt: relationTuples.expiresAt,
+					subjectKind: relationTuples.subjectKind,
+					subjectId: relationTuples.subjectId,
+				})
+				.from(relationTuples)
+				.where(
+					and(eq(relationTuples.objectId, "*"), or(...grantSubjectConds), tenantCond, unexpired),
+				),
+		);
+
+		// Merge role-derived and direct grants into rows shaped like the
+		// old subject_roles ⋈ role_permissions join. A role grant's
+		// effective expiry is the earliest of the member tuple's and the
+		// grant tuple's expires_at (grant tuples carry NULL today; the
+		// min is defensive). Deny wins across ALL sources in the loop
+		// below regardless of which source produced the row.
+		const rows: {
+			resource: string;
+			action: string;
+			effect: string;
+			expiresAt: Date | null;
+		}[] = [];
+		for (const row of grantRows) {
+			if (row.subjectKind === "role") {
+				for (const member of membersByRole.get(row.subjectId) ?? []) {
+					rows.push({
+						resource: row.resource,
+						action: row.action,
+						effect: row.effect,
+						expiresAt: earliestExpiry(member.expiresAt, row.expiresAt),
+					});
+				}
+			} else {
+				rows.push({
+					resource: row.resource,
+					action: row.action,
+					effect: row.effect,
+					expiresAt: row.expiresAt,
+				});
+			}
+		}
 
 		const grants = new Map<string, PermissionEffect>();
 		let notAfter: number | null = null;

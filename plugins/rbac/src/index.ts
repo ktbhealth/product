@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, or, sql } from "drizzle-orm";
 import { ShieldCheckIcon } from "lucide-react";
 
 import { Forbidden, Principal } from "@ktb/authz";
@@ -28,6 +28,7 @@ import {
 } from "@ktb/rbac";
 import { Command, Query } from "@effect-server-utils/cqrs";
 
+import { relationTuples } from "@ktb/db/schema";
 import { RbacCommands, RbacQueries } from "./api.ts";
 import { RbacPlatformPage } from "./platform-page.tsx";
 import { ensureSuperadminRole, SUPERADMIN_ROLE_NAME } from "./seed.ts";
@@ -130,18 +131,68 @@ export async function updateRole(
 	if (input.description !== undefined) patch.description = input.description;
 	if (input.meta !== undefined) patch.meta = input.meta;
 	if (Object.keys(patch).length === 0) return getRole(db, input.id);
+	// P-101: tuples key on the role NAME — a rename must rewrite both
+	// tuple shapes (grant tuples carry it in subject_id, member tuples
+	// in object_id), so the previous name is needed up front.
+	let previousName: string | null = null;
+	if (input.name !== undefined) {
+		const existing = await getRole(db, input.id);
+		if (existing === null) return null;
+		previousName = existing.name;
+	}
 	const rows = await db.update(roles).set(patch).where(eq(roles.id, input.id)).returning();
-	return rows[0] ?? null;
+	const row = rows[0] ?? null;
+	if (
+		row !== null &&
+		previousName !== null &&
+		input.name !== undefined &&
+		input.name !== previousName
+	) {
+		const newName = input.name;
+		await db
+			.update(relationTuples)
+			.set({ subjectId: newName })
+			.where(
+				and(eq(relationTuples.subjectKind, "role"), eq(relationTuples.subjectId, previousName)),
+			);
+		await db
+			.update(relationTuples)
+			.set({ objectId: newName })
+			.where(
+				and(
+					eq(relationTuples.objectType, "role"),
+					eq(relationTuples.objectId, previousName),
+					eq(relationTuples.relation, "member"),
+				),
+			);
+	}
+	return row;
 }
 
 export async function deleteRole(db: DbClient, id: number): Promise<void> {
+	// P-101: resolve the name first — tuples carry it polymorphically
+	// (grant tuples in subject_id, member tuples in object_id).
+	const role = await getRole(db, id);
 	await db.delete(roles).where(eq(roles.id, id));
+	if (role === null) return;
+	await db
+		.delete(relationTuples)
+		.where(
+			or(
+				and(eq(relationTuples.subjectKind, "role"), eq(relationTuples.subjectId, role.name)),
+				and(eq(relationTuples.objectType, "role"), eq(relationTuples.objectId, role.name)),
+			),
+		);
 }
 
 export async function setRolePermission(
 	db: DbClient,
 	input: { roleId: number; resource: string; action: string; effect: PermissionEffect },
 ): Promise<void> {
+	// P-101: grant tuples key on the role NAME — resolve it once for
+	// both writes. A missing role leaves a dangling role_permissions
+	// row (resolves to nothing) and no tuple, matching prior semantics.
+	const role = await getRole(db, input.roleId);
 	await db
 		.insert(rolePermissions)
 		.values({
@@ -155,6 +206,19 @@ export async function setRolePermission(
 			target: [rolePermissions.roleId, rolePermissions.resource, rolePermissions.action],
 			set: { effect: input.effect },
 		});
+	if (role !== null) {
+		await upsertRelationTuple(db, {
+			objectType: input.resource,
+			objectId: "*",
+			relation: input.action,
+			subjectKind: "role",
+			subjectId: role.name,
+			effect: input.effect,
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: null,
+		});
+	}
 }
 
 export async function revokeRolePermission(
@@ -168,6 +232,22 @@ export async function revokeRolePermission(
 				eq(rolePermissions.roleId, input.roleId),
 				eq(rolePermissions.resource, input.resource),
 				eq(rolePermissions.action, input.action),
+			),
+		);
+	// P-101: drop the mirrored grant tuple (role name lookup needed —
+	// tuples key on name, not id).
+	const role = await getRole(db, input.roleId);
+	if (role === null) return;
+	await db
+		.delete(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, input.resource),
+				eq(relationTuples.objectId, "*"),
+				eq(relationTuples.relation, input.action),
+				eq(relationTuples.subjectKind, "role"),
+				eq(relationTuples.subjectId, role.name),
+				sql`${relationTuples.tenantId} is null`,
 			),
 		);
 }
@@ -206,6 +286,63 @@ async function findAssignment(
 			),
 		);
 	return rows[0] ?? null;
+}
+
+// ---------- relation tuples (P-101 dual-write) ----------
+
+/** Tenant predicate shared by tuple reads/writes — mirrors
+ * `findAssignment`: NULL tenantId matches only NULL rows (SQL `=`
+ * never matches NULL, so global tuples are checked separately). */
+const tupleTenant = (tenantId: string | null) =>
+	tenantId === null
+		? sql`${relationTuples.tenantId} is null`
+		: eq(relationTuples.tenantId, tenantId);
+
+/**
+ * P-101: `relation_tuples` is the Zanzibar-style grant graph the
+ * permission resolver reads; `role_permissions`/`subject_roles` stay
+ * the admin-facing store. Every repo write mirrors its change here so
+ * ALL callers — CQRS handlers, server fns, seeds, scripts — stay in
+ * sync. Natural-key uniqueness is enforced by this find-then-write
+ * (tenant_id NULLs are distinct in SQLite — same caveat as
+ * `subject_roles`; see schema.ts).
+ */
+async function upsertRelationTuple(
+	db: DbClient,
+	tuple: {
+		objectType: string;
+		objectId: string;
+		relation: string;
+		subjectKind: string;
+		subjectId: string;
+		effect: PermissionEffect;
+		tenantId: string | null;
+		expiresAt: Date | null;
+		grantedBy: string | null;
+	},
+): Promise<void> {
+	const rows = await db
+		.select({ id: relationTuples.id })
+		.from(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, tuple.objectType),
+				eq(relationTuples.objectId, tuple.objectId),
+				eq(relationTuples.relation, tuple.relation),
+				eq(relationTuples.subjectKind, tuple.subjectKind),
+				eq(relationTuples.subjectId, tuple.subjectId),
+				tupleTenant(tuple.tenantId),
+			),
+		);
+	const existing = rows[0];
+	if (existing !== undefined) {
+		await db
+			.update(relationTuples)
+			.set({ effect: tuple.effect, expiresAt: tuple.expiresAt, grantedBy: tuple.grantedBy })
+			.where(eq(relationTuples.id, existing.id));
+	} else {
+		await db.insert(relationTuples).values({ ...tuple, createdAt: new Date() });
+	}
 }
 
 export async function assignSubject(
@@ -247,11 +384,45 @@ export async function assignSubject(
 	}
 	if (row === undefined) return null;
 	const role = await getRole(db, row.roleId);
+	if (role !== null) {
+		// P-101: mirror the assignment as a member tuple keyed on the
+		// role NAME; row fields already reflect the refreshed
+		// expiry/granter, so re-assigns update the tuple in place.
+		await upsertRelationTuple(db, {
+			objectType: "role",
+			objectId: role.name,
+			relation: "member",
+			subjectKind: row.subjectKind,
+			subjectId: row.subjectId,
+			effect: "allow",
+			tenantId: row.tenantId,
+			expiresAt: row.expiresAt,
+			grantedBy: row.grantedBy,
+		});
+	}
 	return { ...row, roleName: role?.name ?? "" };
 }
 
 export async function unassignSubject(db: DbClient, id: number): Promise<void> {
+	// P-101: read the row first — the member tuple keys on role NAME
+	// and subject/tenant, none of which the bare id carries.
+	const row = await getSubjectRole(db, id);
 	await db.delete(subjectRoles).where(eq(subjectRoles.id, id));
+	if (row === null) return;
+	const role = await getRole(db, row.roleId);
+	if (role === null) return;
+	await db
+		.delete(relationTuples)
+		.where(
+			and(
+				eq(relationTuples.objectType, "role"),
+				eq(relationTuples.objectId, role.name),
+				eq(relationTuples.relation, "member"),
+				eq(relationTuples.subjectKind, row.subjectKind),
+				eq(relationTuples.subjectId, row.subjectId),
+				tupleTenant(row.tenantId),
+			),
+		);
 }
 
 /** Single assignment lookup by row id — the audit path reads the row
@@ -575,6 +746,7 @@ export const rbacTablesPlugin = definePlugin({
 		roles,
 		rolePermissions,
 		subjectRoles,
+		relationTuples,
 		permissionEpoch,
 	},
 });

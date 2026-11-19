@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 
 import { AUDIT_TEST_DDL, adminAudit } from "@ktb/audit";
 import { makeDb } from "@ktb/db";
+import { relationTuples } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import {
 	buildPermissions,
@@ -24,6 +25,7 @@ CREATE TABLE role_permissions (id INTEGER PRIMARY KEY AUTOINCREMENT, role_id INT
 CREATE UNIQUE INDEX role_permissions_role_resource_action_idx ON role_permissions (role_id, resource, action);
 CREATE TABLE subject_roles (id INTEGER PRIMARY KEY AUTOINCREMENT, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE, tenant_id TEXT, granted_by TEXT, expires_at INTEGER, created_at INTEGER NOT NULL);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
 `;
 
@@ -55,6 +57,22 @@ describe("ensureSuperadminRole", () => {
 			}),
 		);
 		expect(covered).toEqual(expected);
+
+		// P-101 dual-write: one grant tuple per catalog permission,
+		// keyed on the role name with the "*" object wildcard.
+		const tuples = await db
+			.select()
+			.from(relationTuples)
+			.where(eq(relationTuples.subjectId, SUPERADMIN_ROLE_NAME));
+		expect(tuples).toHaveLength(PERMISSION_CATALOG.length);
+		for (const tuple of tuples) {
+			expect(tuple).toMatchObject({
+				objectId: "*",
+				subjectKind: "role",
+				effect: "allow",
+				tenantId: null,
+			});
+		}
 	});
 
 	it("writes a system-actor audit row on creation", async () => {
@@ -131,6 +149,20 @@ describe("ensureSuperadminRole", () => {
 			tenantId: null,
 			grantedBy: null,
 			expiresAt: null,
+			createdAt: new Date(),
+		});
+		// Resolution reads relation_tuples (P-101): mirror the member
+		// tuple assignSubject would have dual-written for this row.
+		await db.insert(relationTuples).values({
+			objectType: "role",
+			objectId: SUPERADMIN_ROLE_NAME,
+			relation: "member",
+			subjectKind: "user",
+			subjectId: "root",
+			effect: "allow",
+			tenantId: null,
+			expiresAt: null,
+			grantedBy: null,
 			createdAt: new Date(),
 		});
 		const permissions = buildPermissions(db);
