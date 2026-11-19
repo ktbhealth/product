@@ -5518,6 +5518,44 @@ export const I18N_MANIFEST = {
 		createFailed: {
 			params: [],
 		},
+		editUser: {
+			params: [],
+		},
+		editTitle: {
+			params: [],
+		},
+		editDescription: {
+			params: [],
+		},
+		saveChanges: {
+			params: [],
+		},
+		editExists: {
+			params: [],
+		},
+		deleteUser: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteDescription: {
+			params: [
+				{
+					name: "email",
+				},
+			],
+			template: "Permanently delete {email}? This signs them out everywhere and cannot be undone.",
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		cannotDeleteAdmin: {
+			params: [],
+		},
 	},
 	views: {
 		notFoundTitle: {

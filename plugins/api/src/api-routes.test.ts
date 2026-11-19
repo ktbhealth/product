@@ -64,6 +64,8 @@ const USERS = new Map([["doc", { id: "u-doc", email: "doc@x.com", name: "Doc" }]
 /** Cookie "session=<key>" authenticates as USERS[key]; else anonymous. */
 const authStub = Auth.of({
 	setUserBanned: async () => {},
+	updateUser: async () => ({ ok: true as const }),
+	deleteUser: async () => {},
 	getSession: async (h: Headers) => {
 		const key = /session=([^;]+)/.exec(h.get("cookie") ?? "")?.[1];
 		const user = key ? USERS.get(key) : undefined;

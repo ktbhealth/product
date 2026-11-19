@@ -61,6 +61,8 @@ const USERS = new Map([
 
 const authStub = Auth.of({
 	setUserBanned: async () => {},
+	updateUser: async () => ({ ok: true as const }),
+	deleteUser: async () => {},
 	getSession: async (h: Headers) => {
 		const key = /session=([^;]+)/.exec(h.get("cookie") ?? "")?.[1];
 		const user = key ? USERS.get(key) : undefined;

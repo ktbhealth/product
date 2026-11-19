@@ -19,7 +19,7 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { usersServicesPlugin } from "./index.ts";
-import { createUserFn, setUserSuspendedFn } from "./fns.ts";
+import { createUserFn, deleteUserFn, setUserSuspendedFn, updateUserFn } from "./fns.ts";
 
 const DDL = `
 CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, email_verified INTEGER NOT NULL, image TEXT, banned INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
@@ -39,9 +39,18 @@ describe("users admin fns", () => {
 		ok: true as const,
 		userId: "u9",
 	}));
+	const updateUser = vi.fn(
+		async (
+			_userId: string,
+			_fields: unknown,
+		): Promise<{ ok: true } | { ok: false; error: "exists" }> => ({ ok: true }),
+	);
+	const deleteUser = vi.fn(async (_userId: string) => {});
 	const authShape = {
 		getSession: async () => sessionUser(currentEmail),
 		setUserBanned,
+		updateUser,
+		deleteUser,
 	};
 
 	beforeAll(async () => {
@@ -133,5 +142,58 @@ describe("users admin fns", () => {
 			data: null,
 		});
 		expect(setUserBanned).toHaveBeenCalledWith("u2", false);
+	});
+
+	it("rejects anonymous callers on update/delete", async () => {
+		currentEmail = null;
+		await expect(
+			updateUserFn({ data: { userId: "u2", name: "D", email: "d@x.com" } }),
+		).rejects.toThrow("unauthenticated");
+		await expect(deleteUserFn({ data: { userId: "u2" } })).rejects.toThrow("unauthenticated");
+	});
+
+	it("denies non-admin principals on update/delete", async () => {
+		currentEmail = "user@x.com";
+		updateUser.mockClear();
+		deleteUser.mockClear();
+		expect(await updateUserFn({ data: { userId: "u2", name: "D", email: "d@x.com" } })).toEqual({
+			ok: false,
+		});
+		expect(await deleteUserFn({ data: { userId: "u2" } })).toEqual({ ok: false });
+		expect(updateUser).not.toHaveBeenCalled();
+		expect(deleteUser).not.toHaveBeenCalled();
+	});
+
+	it("updates a user for platform admins", async () => {
+		currentEmail = "admin@x.com";
+		updateUser.mockClear();
+		expect(
+			await updateUserFn({ data: { userId: "u2", name: "Doc Two", email: "doc2@x.com" } }),
+		).toEqual({ ok: true, data: null });
+		expect(updateUser).toHaveBeenCalledWith("u2", { name: "Doc Two", email: "doc2@x.com" });
+	});
+
+	it("maps the exists rejection on update", async () => {
+		currentEmail = "admin@x.com";
+		updateUser.mockResolvedValueOnce({ ok: false, error: "exists" });
+		expect(
+			await updateUserFn({ data: { userId: "u2", name: "Doc", email: "taken@x.com" } }),
+		).toEqual({ ok: false, error: "exists" });
+	});
+
+	it("deletes a user for platform admins", async () => {
+		currentEmail = "admin@x.com";
+		deleteUser.mockClear();
+		expect(await deleteUserFn({ data: { userId: "u2" } })).toEqual({ ok: true, data: null });
+		expect(deleteUser).toHaveBeenCalledWith("u2");
+	});
+
+	it("maps the is_admin rejection on delete", async () => {
+		currentEmail = "admin@x.com";
+		// u1 is the admin account — the service refuses admin targets.
+		expect(await deleteUserFn({ data: { userId: "u1" } })).toEqual({
+			ok: false,
+			error: "is_admin",
+		});
 	});
 });

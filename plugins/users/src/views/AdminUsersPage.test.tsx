@@ -12,6 +12,8 @@ type FnMock = (arg: { data: unknown }) => Promise<{ ok: boolean; data?: unknown 
 const fns = vi.hoisted(() => ({
 	setUserSuspendedFn: vi.fn<FnMock>(async () => ({ ok: true, data: null })),
 	createUserFn: vi.fn<FnMock>(async () => ({ ok: true, data: { userId: "u9" } })),
+	updateUserFn: vi.fn<FnMock>(async () => ({ ok: true, data: null })),
+	deleteUserFn: vi.fn<FnMock>(async () => ({ ok: true, data: null })),
 }));
 vi.mock("../fns.ts", () => fns);
 
@@ -39,6 +41,8 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	fns.setUserSuspendedFn.mockResolvedValue({ ok: true, data: null });
 	fns.createUserFn.mockResolvedValue({ ok: true, data: { userId: "u9" } });
+	fns.updateUserFn.mockResolvedValue({ ok: true, data: null });
+	fns.deleteUserFn.mockResolvedValue({ ok: true, data: null });
 });
 
 describe("AdminUsersPage", () => {
@@ -202,6 +206,94 @@ describe("AdminUsersPage", () => {
 		await user.click(screen.getByRole("button", { name: "Create user" }));
 		await user.click(screen.getByRole("button", { name: "Cancel" }));
 		expect(fns.createUserFn).not.toHaveBeenCalled();
+	});
+
+	it("edits a user through the dialog", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		const name = screen.getByLabelText("Name") as HTMLInputElement;
+		const email = screen.getByLabelText("Email") as HTMLInputElement;
+		expect(name.value).toBe("Dra");
+		expect(email.value).toBe("d@x.com");
+		await user.clear(name);
+		await user.type(name, "Dra Two");
+		await user.click(screen.getByRole("button", { name: "Save changes" }));
+		await waitFor(() =>
+			expect(fns.updateUserFn).toHaveBeenCalledWith({
+				data: { userId: "u1", name: "Dra Two", email: "d@x.com" },
+			}),
+		);
+		await waitFor(() => expect(invalidate).toHaveBeenCalled());
+	});
+
+	it("shows the exists error when the edited email is taken", async () => {
+		const user = userEvent.setup();
+		fns.updateUserFn.mockResolvedValueOnce({ ok: false, error: "exists" } as never);
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await user.click(screen.getByRole("button", { name: "Save changes" }));
+		expect(await screen.findByText("A user with this email already exists.")).toBeTruthy();
+	});
+
+	it("shows the generic error when the update fn is denied", async () => {
+		const user = userEvent.setup();
+		fns.updateUserFn.mockResolvedValueOnce({ ok: false } as never);
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await user.click(screen.getByRole("button", { name: "Save changes" }));
+		expect(await screen.findByText("Could not update the user. Try again.")).toBeTruthy();
+	});
+
+	it("cancelling the edit dialog does not call the fn", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Edit" }));
+		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		expect(fns.updateUserFn).not.toHaveBeenCalled();
+	});
+
+	it("deletes a user through the alert dialog", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Delete" }));
+		const dialog = await screen.findByRole("alertdialog");
+		expect(within(dialog).getByText("Delete user")).toBeTruthy();
+		expect(within(dialog).getByText(/Permanently delete d@x\.com/)).toBeTruthy();
+		expect(fns.deleteUserFn).not.toHaveBeenCalled();
+		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+		await waitFor(() => expect(fns.deleteUserFn).toHaveBeenCalledWith({ data: { userId: "u1" } }));
+		await waitFor(() => expect(invalidate).toHaveBeenCalled());
+	});
+
+	it("keeps the delete dialog open and explains when the target is an admin", async () => {
+		const user = userEvent.setup();
+		fns.deleteUserFn.mockResolvedValueOnce({ ok: false, error: "is_admin" } as never);
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Delete" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+		expect(await within(dialog).findByText("Admin users cannot be deleted here.")).toBeTruthy();
+		expect(invalidate).not.toHaveBeenCalled();
+	});
+
+	it("shows the generic error when the delete fn fails", async () => {
+		const user = userEvent.setup();
+		fns.deleteUserFn.mockResolvedValueOnce({ ok: false } as never);
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Delete" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+		expect(await within(dialog).findByText("Could not delete the user. Try again.")).toBeTruthy();
+	});
+
+	it("cancelling the delete dialog does not call the fn", async () => {
+		const user = userEvent.setup();
+		render(<AdminUsersPage users={[row({})]} />);
+		await user.click(screen.getByRole("button", { name: "Delete" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+		expect(fns.deleteUserFn).not.toHaveBeenCalled();
 	});
 
 	it("localizes the suspend copy", async () => {

@@ -89,12 +89,24 @@ describe("UsersLive", () => {
 			{ ok: true; userId: string } | { ok: false; error: "exists" | "invalid_password" }
 		> => ({ ok: true, userId: "u9" }),
 	);
+	const updateUser = vi.fn(
+		async (
+			_userId: string,
+			_fields: unknown,
+		): Promise<{ ok: true } | { ok: false; error: "exists" }> => ({ ok: true }),
+	);
+	const deleteUser = vi.fn(async (_userId: string) => {});
 
 	beforeAll(() => {
 		db = makeDb(makeD1(DDL));
 		const deps = Layer.mergeAll(
 			Layer.succeed(Db, db),
-			Layer.succeed(Auth, { getSession: async () => null, setUserBanned }),
+			Layer.succeed(Auth, {
+				getSession: async () => null,
+				setUserBanned,
+				updateUser,
+				deleteUser,
+			}),
 			Layer.succeed(Accounts, { createVerified }),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
@@ -264,6 +276,93 @@ describe("UsersLive", () => {
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
 		expect(setUserBanned).not.toHaveBeenCalled();
+	});
+
+	it("adminUpdate delegates to the Auth port and writes an audit row", async () => {
+		updateUser.mockClear();
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminUpdate("u2", { name: "Doc Two", email: "doc2@x.com" })),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: true });
+		expect(updateUser).toHaveBeenCalledWith("u2", { name: "Doc Two", email: "doc2@x.com" });
+		const rows = await db.select().from(adminAudit);
+		const row = rows.find((r) => r.action === "users.update" && r.targetId === "u2")!;
+		expect(row).toMatchObject({ actorUserId: "u1", targetType: "user" });
+	});
+
+	it("adminUpdate surfaces the port's exists rejection without auditing", async () => {
+		updateUser.mockResolvedValueOnce({ ok: false, error: "exists" });
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminUpdate("u2", { name: "Doc", email: "taken@x.com" })),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: false, error: "exists" });
+		const rows = await db.select().from(adminAudit);
+		expect(rows.filter((r) => r.action === "users.update" && r.targetId === "u2")).toHaveLength(1);
+	});
+
+	it("adminUpdate fails Forbidden for non-admin principals", async () => {
+		updateUser.mockClear();
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.adminUpdate("u1", { name: "X", email: "x@x.com" })),
+				"doc@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		expect(updateUser).not.toHaveBeenCalled();
+	});
+
+	it("adminDelete delegates to the Auth port and writes an audit row", async () => {
+		deleteUser.mockClear();
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminDelete("u2")),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: true });
+		expect(deleteUser).toHaveBeenCalledWith("u2");
+		const rows = await db.select().from(adminAudit);
+		const row = rows.find((r) => r.action === "users.delete" && r.targetId === "u2")!;
+		expect(row).toMatchObject({ actorUserId: "u1", targetType: "user" });
+	});
+
+	it("adminDelete refuses targets that hold the admin gate", async () => {
+		deleteUser.mockClear();
+		// u1 is admin@x.com — allowlisted by the test gate.
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminDelete("u1")),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: false, error: "is_admin" });
+		expect(deleteUser).not.toHaveBeenCalled();
+	});
+
+	it("adminDelete is a no-op success for a missing user", async () => {
+		deleteUser.mockClear();
+		const res = await asUser(
+			"u1",
+			call((p) => p.adminDelete("ghost")),
+			"admin@x.com",
+		);
+		expect(res).toEqual({ ok: true });
+		expect(deleteUser).toHaveBeenCalledWith("ghost");
+	});
+
+	it("adminDelete fails Forbidden for non-admin principals", async () => {
+		deleteUser.mockClear();
+		await expect(
+			asUser(
+				"u2",
+				call((p) => p.adminDelete("u1")),
+				"doc@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
+		expect(deleteUser).not.toHaveBeenCalled();
 	});
 });
 

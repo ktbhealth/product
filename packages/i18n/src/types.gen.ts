@@ -1607,6 +1607,7 @@ export type I18nKey =
 	| "theme.seedSecondary"
 	| "theme.seedsTitle"
 	| "users.cancel"
+	| "users.cannotDeleteAdmin"
 	| "users.colActions"
 	| "users.colConsultations"
 	| "users.colCreated"
@@ -1624,6 +1625,15 @@ export type I18nKey =
 	| "users.createInvalidPassword"
 	| "users.createTitle"
 	| "users.createUser"
+	| "users.deleteConfirm"
+	| "users.deleteDescription"
+	| "users.deleteFailed"
+	| "users.deleteTitle"
+	| "users.deleteUser"
+	| "users.editDescription"
+	| "users.editExists"
+	| "users.editTitle"
+	| "users.editUser"
 	| "users.emptyDescription"
 	| "users.emptyTitle"
 	| "users.fieldEmail"
@@ -1636,6 +1646,7 @@ export type I18nKey =
 	| "users.reactivate"
 	| "users.roleAdmin"
 	| "users.roleUser"
+	| "users.saveChanges"
 	| "users.saveError"
 	| "users.searchLabel"
 	| "users.searchPlaceholder"
@@ -3747,6 +3758,7 @@ export interface I18nTypedT {
 	(key: "theme.seedSecondary"): Effect.Effect<string>;
 	(key: "theme.seedsTitle"): Effect.Effect<string>;
 	(key: "users.cancel"): Effect.Effect<string>;
+	(key: "users.cannotDeleteAdmin"): Effect.Effect<string>;
 	(key: "users.colActions"): Effect.Effect<string>;
 	(key: "users.colConsultations"): Effect.Effect<string>;
 	(key: "users.colCreated"): Effect.Effect<string>;
@@ -3769,6 +3781,20 @@ export interface I18nTypedT {
 	(key: "users.createInvalidPassword"): Effect.Effect<string>;
 	(key: "users.createTitle"): Effect.Effect<string>;
 	(key: "users.createUser"): Effect.Effect<string>;
+	(key: "users.deleteConfirm"): Effect.Effect<string>;
+	(
+		key: "users.deleteDescription",
+		params: {
+			email: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "users.deleteFailed"): Effect.Effect<string>;
+	(key: "users.deleteTitle"): Effect.Effect<string>;
+	(key: "users.deleteUser"): Effect.Effect<string>;
+	(key: "users.editDescription"): Effect.Effect<string>;
+	(key: "users.editExists"): Effect.Effect<string>;
+	(key: "users.editTitle"): Effect.Effect<string>;
+	(key: "users.editUser"): Effect.Effect<string>;
 	(key: "users.emptyDescription"): Effect.Effect<string>;
 	(key: "users.emptyTitle"): Effect.Effect<string>;
 	(key: "users.fieldEmail"): Effect.Effect<string>;
@@ -3787,6 +3813,7 @@ export interface I18nTypedT {
 	(key: "users.reactivate"): Effect.Effect<string>;
 	(key: "users.roleAdmin"): Effect.Effect<string>;
 	(key: "users.roleUser"): Effect.Effect<string>;
+	(key: "users.saveChanges"): Effect.Effect<string>;
 	(key: "users.saveError"): Effect.Effect<string>;
 	(key: "users.searchLabel"): Effect.Effect<string>;
 	(key: "users.searchPlaceholder"): Effect.Effect<string>;

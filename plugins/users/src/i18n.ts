@@ -60,6 +60,17 @@ export interface UserMessages {
 	readonly createExists: string;
 	readonly createInvalidPassword: string;
 	readonly createFailed: string;
+	readonly editUser: string;
+	readonly editTitle: string;
+	readonly editDescription: string;
+	readonly saveChanges: string;
+	readonly editExists: string;
+	readonly deleteUser: string;
+	readonly deleteTitle: string;
+	readonly deleteDescription: (email: string) => string;
+	readonly deleteConfirm: string;
+	readonly deleteFailed: string;
+	readonly cannotDeleteAdmin: string;
 }
 
 const en: UserMessages = {
@@ -111,6 +122,21 @@ const en: UserMessages = {
 	createExists: "A user with this email already exists.",
 	createInvalidPassword: "The password does not meet the requirements.",
 	createFailed: "Could not create the user. Try again.",
+	editUser: "Edit",
+	editTitle: "Edit user",
+	editDescription: "Update the user's name and sign-in email.",
+	saveChanges: "Save changes",
+	editExists: "A user with this email already exists.",
+	deleteUser: "Delete",
+	deleteTitle: "Delete user",
+	deleteDescription: paramMessage(
+		"en",
+		"Permanently delete {email}? This signs them out everywhere and cannot be undone.",
+		["email"],
+	),
+	deleteConfirm: "Delete",
+	deleteFailed: "Could not delete the user. Try again.",
+	cannotDeleteAdmin: "Admin users cannot be deleted here.",
 };
 
 const ptBR: UserMessages = {
@@ -164,6 +190,21 @@ const ptBR: UserMessages = {
 	createExists: "Já existe um usuário com este e-mail.",
 	createInvalidPassword: "A senha não atende aos requisitos.",
 	createFailed: "Não foi possível criar o usuário. Tente novamente.",
+	editUser: "Editar",
+	editTitle: "Editar usuário",
+	editDescription: "Atualize o nome e o e-mail de acesso do usuário.",
+	saveChanges: "Salvar alterações",
+	editExists: "Já existe um usuário com este e-mail.",
+	deleteUser: "Excluir",
+	deleteTitle: "Excluir usuário",
+	deleteDescription: paramMessage(
+		"pt-BR",
+		"Excluir {email} permanentemente? Isso encerra todas as sessões e não pode ser desfeito.",
+		["email"],
+	),
+	deleteConfirm: "Excluir",
+	deleteFailed: "Não foi possível excluir o usuário. Tente novamente.",
+	cannotDeleteAdmin: "Usuários administradores não podem ser excluídos aqui.",
 };
 
 const es: UserMessages = {
@@ -217,6 +258,21 @@ const es: UserMessages = {
 	createExists: "Ya existe un usuario con este correo.",
 	createInvalidPassword: "La contraseña no cumple los requisitos.",
 	createFailed: "No se pudo crear el usuario. Inténtelo de nuevo.",
+	editUser: "Editar",
+	editTitle: "Editar usuario",
+	editDescription: "Actualice el nombre y el correo de acceso del usuario.",
+	saveChanges: "Guardar cambios",
+	editExists: "Ya existe un usuario con este correo.",
+	deleteUser: "Eliminar",
+	deleteTitle: "Eliminar usuario",
+	deleteDescription: paramMessage(
+		"es",
+		"¿Eliminar {email} permanentemente? Esto cierra todas sus sesiones y no se puede deshacer.",
+		["email"],
+	),
+	deleteConfirm: "Eliminar",
+	deleteFailed: "No se pudo eliminar el usuario. Inténtelo de nuevo.",
+	cannotDeleteAdmin: "Los usuarios administradores no se pueden eliminar aquí.",
 };
 
 const CATALOGS: Record<UserLocale, UserMessages> = { en, "pt-BR": ptBR, es };

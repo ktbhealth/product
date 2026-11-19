@@ -1,11 +1,24 @@
 import { betterAuth } from "better-auth";
 import { apiKey } from "@better-auth/api-key";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
-import type { AccountsShape, ApiKeysShape, AuthShape, Session, SessionUser } from "@ktb/auth";
-import { apikey as apikeyTable, session as sessionTable, user as userTable } from "@ktb/db/schema";
+import type {
+	AccountsShape,
+	ApiKeysShape,
+	AuthShape,
+	Session,
+	SessionUser,
+	UpdateUserResult,
+} from "@ktb/auth";
+import {
+	account as accountTable,
+	apikey as apikeyTable,
+	session as sessionTable,
+	user as userTable,
+	verification as verificationTable,
+} from "@ktb/db/schema";
 
 /** What the host needs to compose and deliver a verification email. */
 export interface VerificationEmailInput {
@@ -139,6 +152,45 @@ export const makeAuthService = (auth: Auth, db: AuthDb): AuthShape => ({
 			// better-auth would otherwise keep refreshing.
 			await db.delete(sessionTable).where(eq(sessionTable.userId, userId));
 		}
+	},
+	updateUser: async (userId, fields): Promise<UpdateUserResult> => {
+		const patch: { name?: string; email?: string } = {};
+		if (fields.name !== undefined) patch.name = fields.name;
+		if (fields.email !== undefined) {
+			const normalized = fields.email.trim().toLowerCase();
+			// The `user.email` unique index would also catch this, but a
+			// pre-check maps the conflict to "exists" instead of a raw
+			// constraint error.
+			const clash = await db
+				.select({ id: userTable.id })
+				.from(userTable)
+				.where(and(eq(userTable.email, normalized), ne(userTable.id, userId)))
+				.limit(1);
+			if (clash.length > 0) return { ok: false, error: "exists" };
+			patch.email = normalized;
+		}
+		if (patch.name === undefined && patch.email === undefined) return { ok: true };
+		await db.update(userTable).set(patch).where(eq(userTable.id, userId));
+		return { ok: true };
+	},
+	deleteUser: async (userId) => {
+		const rows = await db
+			.select({ email: userTable.email })
+			.from(userTable)
+			.where(eq(userTable.id, userId))
+			.limit(1);
+		const email = rows[0]?.email;
+		// Explicit deletes rather than relying on the FK cascades:
+		// session/account declare onDelete cascade, but apikey and
+		// verification have no user FK at all — apikey.referenceId is a
+		// bare text column and verification.identifier holds the email.
+		await db.delete(sessionTable).where(eq(sessionTable.userId, userId));
+		await db.delete(accountTable).where(eq(accountTable.userId, userId));
+		await db.delete(apikeyTable).where(eq(apikeyTable.referenceId, userId));
+		if (email !== undefined) {
+			await db.delete(verificationTable).where(eq(verificationTable.identifier, email));
+		}
+		await db.delete(userTable).where(eq(userTable.id, userId));
 	},
 });
 

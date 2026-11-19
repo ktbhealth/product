@@ -25,7 +25,12 @@ import { attachAnamnesisFn } from "./fns.ts";
 const runtime = ManagedRuntime.make(
 	Layer.succeed(
 		Auth,
-		Auth.of({ getSession: async () => null, setUserBanned: async () => {} }),
+		Auth.of({
+			getSession: async () => null,
+			setUserBanned: async () => {},
+			updateUser: async () => ({ ok: true as const }),
+			deleteUser: async () => {},
+		}),
 	) as Layer.Layer<unknown>,
 );
 

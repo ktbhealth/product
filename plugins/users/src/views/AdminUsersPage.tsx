@@ -6,6 +6,15 @@ import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import { LocalDateTime } from "@ktb/views/views";
 
+import {
+	AlertDialog,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@ktbhealth/ui/components/alert-dialog";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
@@ -24,16 +33,18 @@ import {
 } from "@ktbhealth/ui/components/table";
 
 import type { AdminUserRow } from "../index.ts";
-import { setUserSuspendedFn } from "../fns.ts";
+import { deleteUserFn, setUserSuspendedFn } from "../fns.ts";
 import { userMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { AdminUserCreateDialog } from "./AdminUserCreateDialog.tsx";
+import { AdminUserEditDialog } from "./AdminUserEditDialog.tsx";
 
 const SEARCH_CLS = "w-56 sm:w-64";
 
 /**
  * /platform/users console view — cross-owner user listing for platform
  * admins. Dense/utilitarian by design (system console). Suspend goes
- * through a destructive ConfirmDialog; reactivate is a plain action.
+ * through a destructive ConfirmDialog; delete goes through an
+ * AlertDialog; edit opens a dialog. Reactivate is a plain action.
  * Mutations go through the plugin's server fns; the loader re-runs on
  * `router.invalidate()`.
  */
@@ -53,6 +64,9 @@ export function AdminUsersPage({
 	const [q, setQ] = useState("");
 	const [creating, setCreating] = useState(false);
 	const [suspending, setSuspending] = useState<AdminUserRow | null>(null);
+	const [editing, setEditing] = useState<AdminUserRow | null>(null);
+	const [deleting, setDeleting] = useState<AdminUserRow | null>(null);
+	const [deleteError, setDeleteError] = useState<string | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState(false);
 	const needle = q.trim().toLowerCase();
@@ -69,6 +83,22 @@ export function AdminUsersPage({
 		try {
 			const res = await setUserSuspendedFn({ data: { userId: user.id, suspended } });
 			if (!res.ok) setError(true);
+			await router.invalidate();
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	const removeUser = async (user: AdminUserRow) => {
+		setBusy(true);
+		setDeleteError(null);
+		try {
+			const res = await deleteUserFn({ data: { userId: user.id } });
+			if (!res.ok) {
+				setDeleteError(res.error === "is_admin" ? t.cannotDeleteAdmin : t.deleteFailed);
+				return;
+			}
+			setDeleting(null);
 			await router.invalidate();
 		} finally {
 			setBusy(false);
@@ -162,27 +192,51 @@ export function AdminUsersPage({
 												<LocalDateTime value={u.createdAt} locale={locale} />
 											</TableCell>
 											<TableCell className="text-right">
-												{u.banned ? (
+												<div className="flex items-center justify-end gap-1">
 													<Button
 														type="button"
 														variant="ghost"
 														size="sm"
 														disabled={busy}
-														onClick={() => void setSuspended(u, false)}
+														onClick={() => setEditing(u)}
 													>
-														{t.reactivate}
+														{t.editUser}
 													</Button>
-												) : (
+													{u.banned ? (
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															disabled={busy}
+															onClick={() => void setSuspended(u, false)}
+														>
+															{t.reactivate}
+														</Button>
+													) : (
+														<Button
+															type="button"
+															variant="ghost"
+															size="sm"
+															disabled={busy}
+															onClick={() => setSuspending(u)}
+														>
+															{t.suspend}
+														</Button>
+													)}
 													<Button
 														type="button"
 														variant="ghost"
 														size="sm"
+														className="text-destructive hover:text-destructive"
 														disabled={busy}
-														onClick={() => setSuspending(u)}
+														onClick={() => {
+															setDeleteError(null);
+															setDeleting(u);
+														}}
 													>
-														{t.suspend}
+														{t.deleteUser}
 													</Button>
-												)}
+												</div>
 											</TableCell>
 										</TableRow>
 									))
@@ -211,6 +265,41 @@ export function AdminUsersPage({
 						setSuspending(null);
 					}}
 				/>
+			) : null}
+			{editing !== null ? (
+				<AdminUserEditDialog t={t} user={editing} onClose={() => setEditing(null)} />
+			) : null}
+			{deleting !== null ? (
+				<AlertDialog
+					open
+					onOpenChange={(open) => {
+						if (!open) {
+							setDeleting(null);
+							setDeleteError(null);
+						}
+					}}
+				>
+					<AlertDialogContent>
+						<AlertDialogHeader>
+							<AlertDialogTitle>{t.deleteTitle}</AlertDialogTitle>
+							<AlertDialogDescription>{t.deleteDescription(deleting.email)}</AlertDialogDescription>
+						</AlertDialogHeader>
+						{deleteError !== null ? (
+							<p className="text-sm text-destructive">{deleteError}</p>
+						) : null}
+						<AlertDialogFooter>
+							<AlertDialogCancel disabled={busy}>{t.cancel}</AlertDialogCancel>
+							<Button
+								type="button"
+								variant="destructive"
+								disabled={busy}
+								onClick={() => void removeUser(deleting)}
+							>
+								{t.deleteConfirm}
+							</Button>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 			) : null}
 		</PageContainer>
 	);
