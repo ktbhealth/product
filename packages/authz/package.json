@@ -9,7 +9,6 @@
 		"mutate": "stryker run"
 	},
 	"dependencies": {
-		"effect": "4.1.2",
-		"permix": "^4.4.1"
+		"effect": "4.1.2"
 	}
 }

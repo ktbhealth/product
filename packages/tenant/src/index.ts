@@ -16,7 +16,7 @@ import type { TenantSelector } from "./selector.ts";
  * @ktb/tenant — generic request-scoped tenancy for kernel apps (P-053).
  *
  * The package owns the *mechanics* of tenancy; apps own the *data*:
- * tenant kinds, the role→action matrix, selector transport and the
+ * tenant kinds, the role ranking, selector transport and the
  * membership store are all app-supplied behind the ports below.
  *
  * Three `tenant_id` states, never two: `NULL` = personal row, a value =
@@ -28,7 +28,7 @@ import type { TenantSelector } from "./selector.ts";
  * Module layout: `./context` holds the request-scoped references and
  * errors, `./selector` the dependency-free header transport, this entry
  * point the resolution ports, `./scoped-repo` the query factory,
- * `./authz` the permix matrix builder, `./rls` the Postgres policies
+ * `./authz` the tenant role rank assertions, `./rls` the Postgres policies
  * and `./testing` the per-engine isolation harness.
  */
 
@@ -186,11 +186,7 @@ export {
 	TENANT_ROLE_RANK,
 	TenantForbidden,
 	requireTenantRole,
-	tenantAuthz,
 	tenantRoleAtLeast,
-	type RoleActionMatrix,
-	type RoleGrantNode,
-	type TenantRoleGrant,
 } from "./authz.ts";
 export {
 	applyTenantRls,

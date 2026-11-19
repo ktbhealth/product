@@ -910,7 +910,7 @@ describe("server fns", () => {
 				status: "notfound",
 			});
 			// Signed-in callers get the same result — effects then run
-			// under runAs (Principal + Authz bound) instead of run.
+			// under runAs (Principal bound) instead of run.
 			serverFnRequestHeaders.current = new Headers({ cookie });
 			expect(await appPageDataFn({ data: page.path })).toEqual({
 				status: "ok",

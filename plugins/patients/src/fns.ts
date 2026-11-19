@@ -153,7 +153,7 @@ export const localeFn = createServerFn({ method: "GET" }).handler(() => getLocal
 
 // ---------- patients ----------
 // All domain calls go through `runAs(user, …)`: the service enforces
-// ownership via the bound Principal — no handler-level requireCan.
+// ownership via the bound Principal — no handler-level permission checks.
 
 export const listPatientsFn = createServerFn({ method: "GET" }).handler(async () => {
 	const user = await getDoctorUser();

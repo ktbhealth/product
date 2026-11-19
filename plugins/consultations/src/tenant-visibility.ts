@@ -63,7 +63,7 @@ export const tenantRowVisible = (tenantId: number) =>
  * platform-admin override, which works cross-tenant. Personal rows
  * (`tenant_id` NULL) keep the owner-scoped check — now a
  * relation-tuple lookup (T-182): `consultation:<id>#owner@user:<caller>`,
- * the same fence the permix `userId === principal.userId` rule
+ * the same fence the retired permix `userId === principal.userId` rule
  * enforced. A missing `Permissions` port (rbac plugin not composed)
  * fails closed with the same `rbac.<type>.<id>.<relation>` path
  * `requireObject` reports.

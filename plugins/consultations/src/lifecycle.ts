@@ -8,7 +8,7 @@ import { tenantIsZk } from "@ktb/vault";
 import { serializeAnamnesis, type SaveConsultationInput } from "./shared.ts";
 
 /**
- * P-101: mirror the static permix ownership rule (`consultation.*` →
+ * P-101: mirror the retired permix ownership rule (`consultation.*` →
  * `user_id === principal.userId`) into `relation_tuples` as a global
  * (tenant_id NULL) `owner` grant — the subject pin to the recording
  * doctor's user id is the fence; row tenant visibility stays a

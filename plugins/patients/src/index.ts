@@ -265,7 +265,7 @@ export async function createPatient(
 			})),
 		);
 	}
-	// P-101: mirror the static permix ownership rule
+	// P-101: mirror the retired permix ownership rule
 	// (`patient.*` → `owner_id === principal.userId`) into
 	// relation_tuples so the ReBAC layer can answer record-level
 	// checks. The tuple is global (tenant_id NULL) — the subject pin
@@ -347,7 +347,7 @@ const tenantRowVisible = (tenantId: number) =>
  * needs the platform-admin override, which works cross-tenant.
  * Personal rows (`tenant_id` NULL) keep the owner-scoped check — now a
  * relation-tuple lookup (T-182): `patient:<id>#owner@user:<caller>`,
- * the same fence the permix `ownerId === userId` rule enforced, now
+ * the same fence the retired permix `ownerId === userId` rule enforced, now
  * also admitting group/role/wildcard `owner` grants. A missing
  * `Permissions` port (rbac plugin not composed) fails closed with the
  * same `rbac.<type>.<id>.<relation>` path `requireObject` reports.
@@ -414,7 +414,7 @@ const requireCipheredWhenZk = Effect.fn("Patients.requireCipheredWhenZk")(functi
  *
  * Every method enforces authorization against the request `Principal`
  * (@ktb/authz): `ownerId` must be the bound principal's userId and the
- * permix rule for the action must pass against the row's real owner. With
+ * permission check for the action must pass against the row's real owner. With
  * no principal (system context) all methods fail `Forbidden` — there is
  * no unauthenticated patient access. `adminList` is the exception: it
  * requires the `PlatformAdmin` env-allowlist gate instead of ownership.

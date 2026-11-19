@@ -255,7 +255,7 @@ export interface AiRunner {
 export interface ServerRuntime {
 	/** Run an Effect program against the composed app runtime (system paths). */
 	readonly run: <A, E>(effect: Effect.Effect<A, E, unknown>) => Promise<A>;
-	/** Run an Effect program as an authenticated user (Principal + Authz +
+	/** Run an Effect program as an authenticated user (Principal +
 	 * resolved Tenant bound). `tenantSelector` is the opaque request
 	 * selector forwarded to the app's TenantResolver — omit for the
 	 * resolver's default path. `user.actorId` marks delegated access:
