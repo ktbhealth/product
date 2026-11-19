@@ -9,7 +9,8 @@ import { plugins as clientPlugins } from "./plugins.ts";
  * must mirror the server registry (@ktb/app-host → plugins/<name>/src/index.ts)
  * on everything the browser can observe: plugin ids in topo order, dep
  * edges, and the client-consumed contributions (chrome entries,
- * landing.page, panel.pages and pages id+path+component+context).
+ * landing.page, panel.pages, pages id+path+component+context, and
+ * elementKinds kind/label/icon/renderer/editor).
  * Server-only fields (tables, services, routes, page loader/guard)
  * are excluded — they must never reach the client bundle.
  */
@@ -43,6 +44,13 @@ const clientView = (p: Plugin) => ({
 					component: page.component,
 					context: page.context ?? null,
 				})),
+	elementKinds: (p.elementKinds ?? []).map((kind) => ({
+		kind: kind.kind,
+		label: kind.label,
+		icon: kind.icon ?? null,
+		renderer: kind.renderer ?? null,
+		editor: kind.editor ?? null,
+	})),
 });
 
 describe("client plugin registry", () => {

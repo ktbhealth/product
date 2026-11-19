@@ -34,6 +34,7 @@ import {
 	plugins as platformPlugins,
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
+import { ElementKindsLive } from "@ktb/platform/element-kinds";
 import {
 	DocumentCollections,
 	DocumentRefTargetsLive,
@@ -648,6 +649,11 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// through it. Static composition data like DocumentCollections —
 		// provided unconditionally, consumed via serviceOption.
 		DocumentRefTargetsLive,
+		// Element-kind registry (P-102): kind owners (rich-text today)
+		// register their server descriptor at layer build; consumers
+		// resolve refs through it. Same unconditional-provide /
+		// serviceOption-consume contract as DocumentRefTargetsLive.
+		ElementKindsLive,
 		// Cross-plugin event bus — plugins publish/subscribe via EventBus
 		// inside their service layers (CQRS event surface).
 		makeEventBus(),

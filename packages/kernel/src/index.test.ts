@@ -74,6 +74,17 @@ describe("definePlugin", () => {
 		).toBe("/a");
 	});
 
+	it("carries elementKinds contributions (P-102)", () => {
+		const Renderer = () => null;
+		const Editor = () => null;
+		const p = definePlugin({
+			id: "x",
+			elementKinds: [{ kind: "rich-text", label: "Rich text", renderer: Renderer, editor: Editor }],
+		});
+		expect("elementKinds" in p && p.elementKinds[0]?.kind).toBe("rich-text");
+		expect("elementKinds" in p && p.elementKinds[0]?.renderer).toBe(Renderer);
+	});
+
 	it("rejects multi-concern plugin objects at compile time", () => {
 		// @ts-expect-error — a plugin may declare exactly one contribution kind
 		definePlugin({ id: "x", tables: { t }, chrome: [] });
