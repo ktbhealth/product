@@ -33,10 +33,14 @@ describe("rulesFor", () => {
 		const readOk = await Effect.runPromise(
 			can("consultation.read", { userId: "u2" }).pipe(Effect.provide(AuthzLive("u1"))),
 		);
+		const updateOk = await Effect.runPromise(
+			can("consultation.update", { userId: "u2" }).pipe(Effect.provide(AuthzLive("u1"))),
+		);
 		const deleteOk = await Effect.runPromise(
 			can("consultation.delete", { userId: "u2" }).pipe(Effect.provide(AuthzLive("u1"))),
 		);
 		expect(readOk).toBe(false);
+		expect(updateOk).toBe(false);
 		expect(deleteOk).toBe(false);
 	});
 
@@ -99,6 +103,7 @@ describe("requireCan", () => {
 			expect.unreachable();
 		} catch (e) {
 			expect((e as Forbidden).path).toBe("consultation.delete");
+			expect((e as Forbidden)._tag).toBe("Forbidden");
 		}
 
 		try {
@@ -119,6 +124,10 @@ describe("rulesFor shape", () => {
 });
 
 describe("Principal", () => {
+	it("is registered under its package-scoped key", () => {
+		expect(Principal.key).toBe("@ktb/authz/Principal");
+	});
+
 	it("defaults to null outside a request context", async () => {
 		await expect(Effect.runPromise(Effect.service(Principal))).resolves.toBeNull();
 	});
@@ -156,8 +165,10 @@ describe("canAs / requireCanAs", () => {
 		);
 		await expect(
 			asUser("u1", requireCanAs("patient.read", { ownerId: "u2" })),
-		).rejects.toThrowError(Forbidden);
-		await expect(Effect.runPromise(requireCanAs("patient.create"))).rejects.toThrowError(Forbidden);
+		).rejects.toMatchObject({ path: "patient.read" });
+		await expect(Effect.runPromise(requireCanAs("patient.create"))).rejects.toMatchObject({
+			path: "patient.create",
+		});
 	});
 });
 
