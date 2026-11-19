@@ -70,6 +70,12 @@ export interface ThemeMessages {
 	readonly edit: string;
 	readonly enable: string;
 	readonly disable: string;
+	readonly badgeMain: string;
+	readonly setMain: string;
+	readonly mainSet: string;
+	readonly deleteTheme: string;
+	readonly deleteConfirm: string;
+	readonly deleteError: string;
 	readonly assetTodo: string;
 	readonly assetsTitle: string;
 	readonly assetThemeLabel: string;
@@ -203,6 +209,12 @@ const en: ThemeMessages = {
 	edit: "Edit",
 	enable: "Enable",
 	disable: "Disable",
+	badgeMain: "Main",
+	setMain: "Set main",
+	mainSet: "Main theme updated",
+	deleteTheme: "Delete",
+	deleteConfirm: "Delete this theme? This cannot be undone.",
+	deleteError: "Could not delete theme",
 	assetTodo:
 		"Asset uploads (logo, favicon, fonts) arrive with the async pipeline — manage URLs in the brand fields for now.",
 	assetsTitle: "Asset uploads",
@@ -337,6 +349,12 @@ const ptBR: ThemeMessages = {
 	edit: "Editar",
 	enable: "Ativar",
 	disable: "Desativar",
+	badgeMain: "Principal",
+	setMain: "Definir como principal",
+	mainSet: "Tema principal atualizado",
+	deleteTheme: "Excluir",
+	deleteConfirm: "Excluir este tema? Esta ação não pode ser desfeita.",
+	deleteError: "Não foi possível excluir o tema",
 	assetTodo:
 		"Uploads de assets (logo, favicon, fontes) chegam com o pipeline assíncrono — gerencie URLs nos campos de marca por enquanto.",
 	assetsTitle: "Uploads de assets",
@@ -473,6 +491,12 @@ const es: ThemeMessages = {
 	edit: "Editar",
 	enable: "Activar",
 	disable: "Desactivar",
+	badgeMain: "Principal",
+	setMain: "Establecer como principal",
+	mainSet: "Tema principal actualizado",
+	deleteTheme: "Eliminar",
+	deleteConfirm: "¿Eliminar este tema? Esta acción no se puede deshacer.",
+	deleteError: "No se pudo eliminar el tema",
 	assetTodo:
 		"Las subidas de assets (logo, favicon, fuentes) llegan con el pipeline asíncrono — gestione URLs en los campos de marca por ahora.",
 	assetsTitle: "Subidas de assets",

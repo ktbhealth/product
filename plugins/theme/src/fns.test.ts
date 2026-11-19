@@ -48,6 +48,7 @@ import {
 	listThemesFn,
 	publishThemeFn,
 	setThemeEnabledFn,
+	setThemeMainFn,
 	setThemePreviewFn,
 	themeScopeFn,
 } from "./fns.ts";
@@ -78,7 +79,7 @@ const authStub = Auth.of({
 
 // Mutable service hooks — each test re-points the behavior it needs.
 const hooks = {
-	resolve: (_request?: ThemeResolveRequest): Effect.Effect<ResolvedTheme> =>
+	resolve: (_request?: ThemeResolveRequest): Effect.Effect<ResolvedTheme | null> =>
 		Effect.succeed(KTB_DEFAULT_THEME),
 	list: (): Effect.Effect<ThemeSummary[], Forbidden> => Effect.succeed([]),
 	get: (_id: number): Effect.Effect<ResolvedTheme | null, Forbidden> => Effect.succeed(null),
@@ -89,9 +90,11 @@ const hooks = {
 			scopeId: input.scopeId,
 			appName: input.appName ?? null,
 			enabled: true,
+			isMain: false,
 			version: 1,
 		}),
 	setEnabled: (_id: number, _enabled: boolean): Effect.Effect<void, Forbidden> => Effect.void,
+	setMain: (_id: number): Effect.Effect<void, Forbidden> => Effect.void,
 	remove: (_id: number): Effect.Effect<void, Forbidden> => Effect.void,
 	listAssets: (_themeId: number): Effect.Effect<never[], Forbidden> => Effect.succeed([]),
 	previewRow: (_id: number): Effect.Effect<ThemeRow | null, Forbidden> => Effect.succeed(null),
@@ -103,6 +106,7 @@ const themeStub = Theme.of({
 	get: (id) => hooks.get(id),
 	publish: (input) => hooks.publish(input),
 	setEnabled: (id, enabled) => hooks.setEnabled(id, enabled),
+	setMain: (id) => hooks.setMain(id),
 	remove: (id) => hooks.remove(id),
 	listAssets: (themeId) => hooks.listAssets(themeId),
 	previewRow: (id) => hooks.previewRow(id),
@@ -260,6 +264,7 @@ describe("listThemesFn", () => {
 					scopeId: "",
 					appName: "P",
 					enabled: true,
+					isMain: false,
 					version: 2,
 				},
 			]);
@@ -329,6 +334,7 @@ describe("publishThemeFn", () => {
 				scopeId: input.scopeId,
 				appName: input.appName ?? null,
 				enabled: true,
+				isMain: false,
 				version: 1,
 			});
 		};
@@ -363,6 +369,7 @@ describe("publishThemeFn", () => {
 					scopeId: input.scopeId,
 					appName: input.appName ?? null,
 					enabled: true,
+					isMain: false,
 					version: 1,
 				});
 		}
@@ -393,6 +400,29 @@ describe("setThemeEnabledFn", () => {
 		} finally {
 			hooks.setEnabled = () => Effect.void;
 		}
+	});
+});
+
+describe("setThemeMainFn", () => {
+	it("sets the main flag by id and returns ok", async () => {
+		useSession("admin");
+		const seen: number[] = [];
+		hooks.setMain = (id) => {
+			seen.push(id);
+			return Effect.void;
+		};
+		try {
+			expect(await setThemeMainFn({ data: { id: 8 } })).toEqual({ ok: true });
+			expect(seen).toEqual([8]);
+			await expect(setThemeMainFn({ data: { id: "x" } })).rejects.toThrow();
+		} finally {
+			hooks.setMain = () => Effect.void;
+		}
+	});
+
+	it("rejects anonymous callers", async () => {
+		useSession(null);
+		await expect(setThemeMainFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 	});
 });
 

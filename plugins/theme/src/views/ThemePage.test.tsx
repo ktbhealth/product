@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fns = vi.hoisted(() => ({
 	publishThemeFn: vi.fn(),
 	setThemeEnabledFn: vi.fn(),
+	setThemeMainFn: vi.fn(),
+	deleteThemeFn: vi.fn(),
 	setThemePreviewFn: vi.fn(),
 	invalidate: vi.fn(),
 	navigate: vi.fn(),
@@ -14,6 +16,8 @@ const fns = vi.hoisted(() => ({
 vi.mock("../fns.ts", () => ({
 	publishThemeFn: fns.publishThemeFn,
 	setThemeEnabledFn: fns.setThemeEnabledFn,
+	setThemeMainFn: fns.setThemeMainFn,
+	deleteThemeFn: fns.deleteThemeFn,
 	setThemePreviewFn: fns.setThemePreviewFn,
 }));
 
@@ -38,12 +42,21 @@ const summary = (over: Partial<ThemeSummary>): ThemeSummary => ({
 	scopeId: "acme",
 	appName: "Acme",
 	enabled: true,
+	isMain: false,
 	version: 2,
 	...over,
 });
 
 const THEMES: ThemeSummary[] = [
-	summary({ id: 1, scope: "platform", scopeId: "", appName: "Plat", enabled: true, version: 3 }),
+	summary({
+		id: 1,
+		scope: "platform",
+		scopeId: "",
+		appName: "Plat",
+		enabled: true,
+		isMain: true,
+		version: 3,
+	}),
 	summary({ id: 2, scope: "tenant", scopeId: "", appName: "Tenant Wide", enabled: false }),
 	summary({ id: 3, scope: "tenant", scopeId: "t-1", appName: null, enabled: true }),
 	summary({
@@ -70,6 +83,8 @@ beforeEach(() => {
 		}),
 	);
 	fns.setThemeEnabledFn.mockReset().mockResolvedValue(undefined);
+	fns.setThemeMainFn.mockReset().mockResolvedValue({ ok: true });
+	fns.deleteThemeFn.mockReset().mockResolvedValue({ ok: true });
 	fns.setThemePreviewFn.mockReset().mockResolvedValue({ ok: true });
 	fns.invalidate.mockReset().mockResolvedValue(undefined);
 	fns.navigate.mockReset().mockResolvedValue(undefined);
@@ -146,5 +161,45 @@ describe("ThemePage — list", () => {
 		renderPage();
 		expect(screen.getByText("Empty theme discarded.")).toBeTruthy();
 		expect(sessionStorage.getItem("ktb-theme-discarded")).toBeNull();
+	});
+});
+
+describe("ThemePage — main row and row actions", () => {
+	it("badges the main row and hides its Set main/Delete actions", () => {
+		renderPage();
+		expect(screen.getByText("Main")).toBeTruthy();
+		// 4 themes, 1 main → 3 Set main + 3 Delete buttons.
+		expect(screen.getAllByRole("button", { name: "Set main" })).toHaveLength(3);
+		expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(3);
+	});
+
+	it("calls setThemeMainFn and invalidates on Set main", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getAllByRole("button", { name: "Set main" })[0]!);
+		await waitFor(() => expect(fns.setThemeMainFn).toHaveBeenCalledWith({ data: { id: 2 } }));
+		expect(screen.getByText("Main theme updated")).toBeTruthy();
+		expect(fns.invalidate).toHaveBeenCalled();
+	});
+
+	it("confirms before deleting and calls deleteThemeFn", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+		const dialog = await screen.findByRole("alertdialog");
+		expect(within(dialog).getByText("Delete this theme? This cannot be undone.")).toBeTruthy();
+		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+		await waitFor(() => expect(fns.deleteThemeFn).toHaveBeenCalledWith({ data: { id: 2 } }));
+		expect(fns.invalidate).toHaveBeenCalled();
+	});
+
+	it("surfaces a notice when the delete fails", async () => {
+		fns.deleteThemeFn.mockRejectedValueOnce(new Error("cannot delete the main theme"));
+		const user = userEvent.setup();
+		renderPage();
+		await user.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+		await waitFor(() => expect(screen.getByText("Could not delete theme")).toBeTruthy());
 	});
 });

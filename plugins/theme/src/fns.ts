@@ -213,6 +213,19 @@ export const setThemeEnabledFn = createServerFn({ method: "POST" })
 		return { ok: true };
 	});
 
+/** Move the is_main flag to `id` — the admin "Set main" row action.
+ * Admin-gated inside the service. */
+export const setThemeMainFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeGet(input))
+	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
+		const user = await ensureSessionUser();
+		await runAs(
+			user,
+			Effect.flatMap(Theme, (t) => t.setMain(data.id)),
+		);
+		return { ok: true };
+	});
+
 /** Hard-delete a theme row — the editor discards untouched auto-created
  * drafts through this. Admin-gated inside the service. */
 export const deleteThemeFn = createServerFn({ method: "POST" })

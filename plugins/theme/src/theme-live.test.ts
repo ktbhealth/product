@@ -10,13 +10,15 @@ import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { Tenant } from "@ktb/tenant";
 
-import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import {
 	deleteTheme,
+	findMainTheme,
 	findTheme,
 	getThemeById,
 	listThemes,
+	seedDefaultTheme,
 	setThemeEnabled,
+	setThemeMain,
 	Theme,
 	ThemeLive,
 	upsertTheme,
@@ -36,6 +38,7 @@ CREATE TABLE theme_definitions (
 	fonts text,
 	brand text,
 	enabled integer DEFAULT true NOT NULL,
+	is_main integer DEFAULT false NOT NULL,
 	version integer DEFAULT 1 NOT NULL,
 	created_at integer NOT NULL,
 	updated_at integer
@@ -69,6 +72,7 @@ const insertRow = async (
 		appName?: string | null;
 		seeds?: string;
 		enabled?: boolean;
+		isMain?: boolean;
 		version?: number;
 		fonts?: string | null;
 		brand?: string | null;
@@ -76,8 +80,8 @@ const insertRow = async (
 ): Promise<number> => {
 	await run(
 		d1,
-		`INSERT INTO theme_definitions (scope, scope_id, app_name, seeds, tokens, fonts, brand, enabled, version, created_at)
-		 VALUES (?, ?, ?, ?, '{}', ?, ?, ?, ?, 0)`,
+		`INSERT INTO theme_definitions (scope, scope_id, app_name, seeds, tokens, fonts, brand, enabled, is_main, version, created_at)
+		 VALUES (?, ?, ?, ?, '{}', ?, ?, ?, ?, ?, 0)`,
 		[
 			row.scope,
 			row.scopeId ?? "",
@@ -86,6 +90,7 @@ const insertRow = async (
 			row.fonts ?? null,
 			row.brand ?? null,
 			row.enabled === false ? 0 : 1,
+			row.isMain === true ? 1 : 0,
 			row.version ?? 1,
 		],
 	);
@@ -139,6 +144,52 @@ describe("theme repo helpers", () => {
 		]);
 	});
 
+	it("findMainTheme returns the enabled is_main row only", async () => {
+		const { db, d1 } = makeTestDb();
+		const mainId = await insertRow(d1, { scope: "platform", scopeId: "m", isMain: true });
+		await insertRow(d1, { scope: "tenant", scopeId: "1", isMain: true, enabled: false });
+		await insertRow(d1, { scope: "tenant", scopeId: "2" });
+		expect((await findMainTheme(db))?.id).toBe(mainId);
+		await setThemeEnabled(db, mainId, false);
+		expect(await findMainTheme(db)).toBeNull();
+	});
+
+	it("setThemeMain moves the flag atomically", async () => {
+		const { db, d1 } = makeTestDb();
+		const a = await insertRow(d1, { scope: "platform", scopeId: "a", isMain: true });
+		const b = await insertRow(d1, { scope: "tenant", scopeId: "b" });
+		await setThemeMain(db, b);
+		expect((await getThemeById(db, a))?.isMain).toBe(false);
+		expect((await getThemeById(db, b))?.isMain).toBe(true);
+		// Exactly one main row remains.
+		const mains = await all<{ id: number }>(
+			d1,
+			`SELECT id FROM theme_definitions WHERE is_main = 1`,
+		);
+		expect(mains.map((r) => r.id)).toEqual([b]);
+	});
+
+	it("seedDefaultTheme inserts the KTB main row only on an empty table", async () => {
+		const { db } = makeTestDb();
+		expect(await seedDefaultTheme(db)).toBe(true);
+		expect(await seedDefaultTheme(db)).toBe(false);
+		const rows = await listThemes(db);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({
+			scope: "platform",
+			scopeId: "",
+			appName: "KTB Health",
+			enabled: true,
+			isMain: true,
+		});
+		expect(JSON.parse(rows[0]!.seeds)).toEqual({
+			primary: "oklch(0.55 0.11 259.02)",
+			dark: { primary: "oklch(0.62 0.19 259.76)" },
+		});
+		expect(JSON.parse(rows[0]!.fonts!)).toBeDefined();
+		expect(JSON.parse(rows[0]!.brand!)).toBeDefined();
+	});
+
 	it("upsertTheme inserts enabled rows and bumps version on update", async () => {
 		const { db } = makeTestDb();
 		const seeds: ThemeSeeds = { primary: "#2563eb", radius: "0.6rem" };
@@ -151,6 +202,7 @@ describe("theme repo helpers", () => {
 		expect(created).toMatchObject({
 			scope: "platform",
 			enabled: true,
+			isMain: false,
 			version: 1,
 		});
 		expect(JSON.parse(created!.seeds)).toEqual(seeds);
@@ -230,21 +282,62 @@ const withTheme = <A, E>(effect: (theme: Theme["Service"]) => Effect.Effect<A, E
 		return yield* effect(theme);
 	});
 
+/** Build the layer (runs the create-only seed), then clear the table
+ * so each test owns its rows — the seed itself is covered separately. */
+const freshServiceDb = async () => {
+	const { db, d1 } = makeTestDb();
+	const runtime = makeRuntime(db);
+	await runtime.runPromise(withTheme(() => Effect.void));
+	await run(d1, "DELETE FROM theme_definitions");
+	return { db, d1, runtime };
+};
+
+describe("ThemeLive seed", () => {
+	it("seeds the KTB default as the main row on an empty database", async () => {
+		const { db, d1 } = makeTestDb();
+		const runtime = makeRuntime(db);
+		try {
+			const theme = await runtime.runPromise(withTheme((t) => t.resolve()));
+			expect(theme?.appName).toBe("KTB Health");
+			expect(theme?.scope).toBe("platform");
+			const rows = await all<{ scope: string; is_main: number; enabled: number }>(
+				d1,
+				`SELECT scope, is_main, enabled FROM theme_definitions`,
+			);
+			expect(rows).toEqual([{ scope: "platform", is_main: 1, enabled: 1 }]);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("does not reseed when rows already exist", async () => {
+		const { db, d1 } = makeTestDb();
+		await insertRow(d1, { scope: "tenant", scopeId: "1" });
+		const runtime = makeRuntime(db);
+		try {
+			await runtime.runPromise(withTheme((t) => t.resolve()));
+			const count = await all<{ n: number }>(d1, `SELECT COUNT(*) AS n FROM theme_definitions`);
+			expect(count[0]!.n).toBe(1);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+});
+
 describe("ThemeLive.resolve", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Theme, never>;
 	let db: DbClient;
 	let d1: SqlDatabase;
 
-	beforeAll(() => {
-		({ db, d1 } = makeTestDb());
-		runtime = makeRuntime(db);
+	beforeAll(async () => {
+		({ db, d1, runtime } = await freshServiceDb());
 	});
 
 	afterAll(() => runtime.dispose());
 
-	it("returns the built-in KTB default when no row matches", async () => {
+	it("returns null when no row matches and no main row exists", async () => {
 		const theme = await runtime.runPromise(withTheme((t) => t.resolve()));
-		expect(theme).toEqual(KTB_DEFAULT_THEME);
+		expect(theme).toBeNull();
 	});
 
 	it("resolves tenant → platform for session scope", async () => {
@@ -263,9 +356,9 @@ describe("ThemeLive.resolve", () => {
 				} as never),
 			),
 		);
-		expect(theme.id).toBe(tenantId);
-		expect(theme.scope).toBe("tenant");
-		expect(theme.appName).toBe("Tenant Co");
+		expect(theme?.id).toBe(tenantId);
+		expect(theme?.scope).toBe("tenant");
+		expect(theme?.appName).toBe("Tenant Co");
 	});
 
 	it("falls through to platform when the tenant row is absent", async () => {
@@ -274,8 +367,8 @@ describe("ThemeLive.resolve", () => {
 			appName: "Platform Co",
 		});
 		const theme = await runtime.runPromise(withTheme((t) => t.resolve({ scope: "session" })));
-		expect(theme.id).toBe(platformId);
-		expect(theme.scope).toBe("platform");
+		expect(theme?.id).toBe(platformId);
+		expect(theme?.scope).toBe("platform");
 	});
 
 	it("portal-instance scope tries instance → tenant → platform", async () => {
@@ -287,23 +380,41 @@ describe("ThemeLive.resolve", () => {
 		const theme = await runtime.runPromise(
 			withTheme((t) => t.resolve({ scope: "portal-instance", id: "inst-1" })),
 		);
-		expect(theme.id).toBe(instId);
+		expect(theme?.id).toBe(instId);
 		// Unknown instance falls back to platform (tenant unbound → skipped).
 		const fallback = await runtime.runPromise(
 			withTheme((t) => t.resolve({ scope: "portal-instance", id: "nope" })),
 		);
-		expect(fallback.scope).toBe("platform");
+		expect(fallback?.scope).toBe("platform");
+	});
+
+	it("falls back to the enabled is_main row when the chain misses", async () => {
+		// Clear accumulated rows so the scope chain genuinely misses.
+		await run(d1, "DELETE FROM theme_definitions");
+		const mainId = await insertRow(d1, {
+			scope: "tenant",
+			scopeId: "77",
+			appName: "Main Co",
+			isMain: true,
+		});
+		const theme = await runtime.runPromise(withTheme((t) => t.resolve()));
+		expect(theme?.id).toBe(mainId);
+		expect(theme?.appName).toBe("Main Co");
+		// A disabled main row is skipped → null.
+		await setThemeEnabled(db, mainId, false);
+		expect(await runtime.runPromise(withTheme((t) => t.resolve()))).toBeNull();
 	});
 });
 
 describe("ThemeLive resolve read failure", () => {
 	it("tolerates per-scope read failures and falls through the chain", async () => {
-		// Db without theme_definitions → every candidate read rejects.
+		// Db without theme_definitions → every candidate read rejects;
+		// the seed fails too (logged, swallowed) and resolve → null.
 		const brokenDb = makeDb(makeD1("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)"));
 		const runtime = makeRuntime(brokenDb);
 		try {
 			const theme = await runtime.runPromise(withTheme((t) => t.resolve()));
-			expect(theme).toEqual(KTB_DEFAULT_THEME);
+			expect(theme).toBeNull();
 		} finally {
 			await runtime.dispose();
 		}
@@ -315,9 +426,8 @@ describe("ThemeLive admin surface", () => {
 	let db: DbClient;
 	let d1: SqlDatabase;
 
-	beforeAll(() => {
-		({ db, d1 } = makeTestDb());
-		runtime = makeRuntime(db);
+	beforeAll(async () => {
+		({ db, d1, runtime } = await freshServiceDb());
 	});
 
 	afterAll(() => runtime.dispose());
@@ -334,6 +444,7 @@ describe("ThemeLive admin surface", () => {
 		expect(rows[0]).toMatchObject({
 			scope: "platform",
 			appName: "Plat",
+			isMain: false,
 			version: 3,
 		});
 		await expect(
@@ -393,7 +504,7 @@ describe("ThemeLive admin surface", () => {
 				),
 			),
 		);
-		expect(first).toMatchObject({ scope: "tenant", scopeId: "11", version: 1 });
+		expect(first).toMatchObject({ scope: "tenant", scopeId: "11", version: 1, isMain: false });
 		const second = await runtime.runPromise(
 			asUser(
 				ADMIN,
@@ -453,6 +564,35 @@ describe("ThemeLive admin surface", () => {
 		).rejects.toThrowError(Forbidden);
 	});
 
+	it("setMain swaps the flag for admins and denies non-admins", async () => {
+		const a = await insertRow(d1, { scope: "platform", scopeId: "ma", isMain: true });
+		const b = await insertRow(d1, { scope: "tenant", scopeId: "mb" });
+		await runtime.runPromise(
+			asUser(
+				ADMIN,
+				withTheme((t) => t.setMain(b)),
+			),
+		);
+		expect((await getThemeById(db, a))?.isMain).toBe(false);
+		expect((await getThemeById(db, b))?.isMain).toBe(true);
+		await expect(
+			runtime.runPromise(
+				asUser(
+					PLAIN,
+					withTheme((t) => t.setMain(a)),
+				),
+			),
+		).rejects.toThrowError(Forbidden);
+		await expect(
+			runtime.runPromise(
+				asUser(
+					ADMIN,
+					withTheme((t) => t.setMain(999)),
+				),
+			),
+		).rejects.toThrow();
+	});
+
 	it("publish by id updates that row and can move scopes", async () => {
 		const id = await insertRow(d1, { scope: "platform", appName: "Old" });
 		const summary = await runtime.runPromise(
@@ -504,6 +644,19 @@ describe("ThemeLive admin surface", () => {
 				),
 			),
 		).rejects.toThrowError(Forbidden);
+	});
+
+	it("remove refuses the main row", async () => {
+		const id = await insertRow(d1, { scope: "tenant", scopeId: "main", isMain: true });
+		await expect(
+			runtime.runPromise(
+				asUser(
+					ADMIN,
+					withTheme((t) => t.remove(id)),
+				),
+			),
+		).rejects.toThrow("cannot delete the main theme");
+		expect(await getThemeById(db, id)).not.toBeNull();
 	});
 
 	it("previewRow returns disabled rows for admins", async () => {
