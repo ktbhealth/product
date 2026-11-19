@@ -35381,6 +35381,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "theme",
+		key: "fontSourceSearchPlaceholder",
+		locale: "en",
+		value: "Search provider or family…",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceNoResults",
+		locale: "en",
+		value: "No fonts match your search.",
+	},
+	{
+		namespace: "theme",
 		key: "fontSans",
 		locale: "en",
 		value: "Sans",
@@ -36533,6 +36545,18 @@ export const I18N_BASELINE = [
 		key: "fontSourceCustom",
 		locale: "pt-BR",
 		value: "Personalizada (texto livre)",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceSearchPlaceholder",
+		locale: "pt-BR",
+		value: "Buscar provedor ou família…",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceNoResults",
+		locale: "pt-BR",
+		value: "Nenhuma fonte corresponde à busca.",
 	},
 	{
 		namespace: "theme",
@@ -37689,6 +37713,18 @@ export const I18N_BASELINE = [
 		key: "fontSourceCustom",
 		locale: "es",
 		value: "Personalizada (texto libre)",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceSearchPlaceholder",
+		locale: "es",
+		value: "Buscar proveedor o familia…",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceNoResults",
+		locale: "es",
+		value: "Ninguna fuente coincide con la búsqueda.",
 	},
 	{
 		namespace: "theme",

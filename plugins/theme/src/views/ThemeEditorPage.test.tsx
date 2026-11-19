@@ -584,7 +584,7 @@ describe("ThemeEditorPage — managed font sources", () => {
 
 		await user.click(screen.getByRole("combobox", { name: "Sans — Managed source" }));
 		expect(await screen.findByRole("option", { name: "Local — Brand Sans" })).toBeTruthy();
-		await user.click(await screen.findByRole("option", { name: "Google — Inter" }));
+		await user.click(await screen.findByRole("option", { name: "Google — Inter (400, 700)" }));
 		expect(screen.getByText("Unsaved changes")).toBeTruthy();
 
 		// The free-form family input keeps working next to the binding.
@@ -619,6 +619,37 @@ describe("ThemeEditorPage — managed font sources", () => {
 				}),
 			}),
 		);
+	});
+
+	it("filters catalog families by provider, family and weights", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue(SOURCES);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		const picker = screen.getByRole("combobox", { name: "Sans — Managed source" });
+		await user.click(picker);
+		expect(await screen.findByRole("option", { name: "Google — Inter (400, 700)" })).toBeTruthy();
+		expect(screen.getByRole("option", { name: "Local — Brand Sans" })).toBeTruthy();
+
+		// Provider name matches — clear the selected label first so the
+		// typed query replaces it instead of appending.
+		await user.clear(picker);
+		await user.type(picker, "local");
+		expect(screen.queryByRole("option", { name: /Google — Inter/ })).toBeNull();
+		expect(screen.getByRole("option", { name: "Local — Brand Sans" })).toBeTruthy();
+
+		// Weights match too — Inter is the only family carrying 700.
+		await user.clear(picker);
+		await user.type(picker, "700");
+		expect(screen.getByRole("option", { name: "Google — Inter (400, 700)" })).toBeTruthy();
+		expect(screen.queryByRole("option", { name: "Local — Brand Sans" })).toBeNull();
+
+		// No match surfaces the empty state.
+		await user.clear(picker);
+		await user.type(picker, "zzz");
+		expect(await screen.findByText("No fonts match your search.")).toBeTruthy();
 	});
 
 	it("binds a managed source while fonts is still null", async () => {

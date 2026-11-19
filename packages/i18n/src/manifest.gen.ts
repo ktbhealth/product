@@ -6683,6 +6683,12 @@ export const I18N_MANIFEST = {
 		fontSourceCustom: {
 			params: [],
 		},
+		fontSourceSearchPlaceholder: {
+			params: [],
+		},
+		fontSourceNoResults: {
+			params: [],
+		},
 		fontSans: {
 			params: [],
 		},
