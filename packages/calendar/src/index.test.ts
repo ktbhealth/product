@@ -29,8 +29,23 @@ describe("makeCalendarsRegistry", () => {
 	});
 });
 
+describe("CalendarSyncError", () => {
+	it("carries name, message and optional provider", () => {
+		const error = new CalendarSyncError("boom", { provider: "google" });
+		expect(error.name).toBe("CalendarSyncError");
+		expect(error.message).toBe("boom");
+		expect(error.provider).toBe("google");
+	});
+
+	it("allows omitting options entirely", () => {
+		const error = new CalendarSyncError("boom");
+		expect(error.provider).toBeUndefined();
+	});
+});
+
 describe("nullCalendarsDriver", () => {
 	it("is always eligible and provides an empty registry", () => {
+		expect(nullCalendarsDriver.id).toBe("calendar-none");
 		expect(nullCalendarsDriver.port).toBe("@ktb/calendar/Calendars");
 		expect(nullCalendarsDriver.when?.({})).toBeUndefined();
 	});
@@ -51,6 +66,8 @@ describe("memory calendar", () => {
 		expect(event.calendarId).toBe("primary");
 		expect(event.status).toBe("confirmed");
 		expect(cal.provider).toBe("memory");
+		expect(event.id).toMatch(/^memory-evt-\d+$/);
+		expect(Number.isNaN(event.updatedAt?.getTime())).toBe(false);
 
 		expect(await cal.listEvents("primary")).toEqual([event]);
 		expect(await cal.listEvents("other")).toEqual([]);
@@ -59,6 +76,7 @@ describe("memory calendar", () => {
 		const updated = await cal.updateEvent("primary", event.id, moved);
 		expect(updated.startsAt).toEqual(moved.startsAt);
 		expect(updated.id).toBe(event.id);
+		expect(await cal.listEvents("primary")).toEqual([updated]);
 
 		await cal.cancelEvent("primary", event.id);
 		expect(await cal.listEvents("primary")).toEqual([]);
@@ -66,9 +84,10 @@ describe("memory calendar", () => {
 
 	it("fails updates on unknown events", async () => {
 		const cal = await connect();
-		await expect(cal.updateEvent("primary", "nope", draft)).rejects.toBeInstanceOf(
-			CalendarSyncError,
-		);
+		const error = await cal.updateEvent("primary", "nope", draft).catch((e) => e);
+		expect(error).toBeInstanceOf(CalendarSyncError);
+		expect(error.message).toContain("nope");
+		expect(error.provider).toBe("memory");
 	});
 
 	it("returns a fresh sync token per sync call", async () => {
@@ -78,7 +97,17 @@ describe("memory calendar", () => {
 		const second = await cal.syncEvents("primary", first.nextSyncToken);
 		expect(first.events).toHaveLength(1);
 		expect(first.deletedIds).toEqual([]);
-		expect(second.nextSyncToken).not.toBe(first.nextSyncToken);
+		expect(first.nextSyncToken).toBe("1");
+		expect(second.nextSyncToken).toBe("2");
+	});
+
+	it("assigns unique increasing event ids", async () => {
+		const cal = await connect();
+		const a = await cal.createEvent("primary", draft);
+		const b = await cal.createEvent("primary", draft);
+		expect(a.id).toMatch(/^memory-evt-\d+$/);
+		expect(b.id).toMatch(/^memory-evt-\d+$/);
+		expect(b.id).not.toBe(a.id);
 	});
 
 	it("isolates connections like separate accounts", async () => {
