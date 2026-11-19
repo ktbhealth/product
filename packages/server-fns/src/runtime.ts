@@ -149,6 +149,49 @@ export interface CronRunResult {
 	readonly error?: string;
 }
 
+/** Transport family a pub/sub topic source belongs to — structural
+ * mirror of `PubSubTransport` in @ktb/pubsub-port (declared here so
+ * plugin code needs no new dependency). */
+export type PubSubTransport = "in-process" | "redis" | "unknown";
+
+/** One retained message on an introspectable topic. */
+export interface PubSubMessageInfo {
+	readonly at: number;
+	readonly payload: unknown;
+}
+
+/**
+ * One pub/sub topic as the /platform/pubsub console sees it — identity
+ * plus best-effort subscriber count and (when the transport retains
+ * history) recent payloads. `subscribers` is null and `recent`
+ * undefined when the transport cannot report them; the page renders
+ * the honest unavailable state, never a fabricated zero.
+ * Structural mirror of `PubSubTopicInfo` in @ktb/pubsub-port.
+ */
+export interface PubSubTopicInfo {
+	readonly id: string;
+	readonly name: string;
+	readonly transport: PubSubTransport;
+	readonly subscribers: number | null;
+	readonly recent?: readonly PubSubMessageInfo[];
+}
+
+/** Outcome of a manual publish — honest failure reasons, never a
+ * thrown wire error for expected cases. */
+export interface PubSubPublishResult {
+	readonly ok: boolean;
+	readonly reason?: "forbidden" | "unknown-topic" | "unavailable" | "publish-failed";
+}
+
+/** One merged topic enumeration: surviving topics plus the ids of
+ * sources whose probe failed — a bound-but-down transport is reported
+ * honestly instead of silently vanishing into an empty list.
+ * Structural mirror of `PubSubTopicListing` in @ktb/pubsub-port. */
+export interface PubSubTopicsResult {
+	readonly topics: readonly PubSubTopicInfo[];
+	readonly degraded: readonly string[];
+}
+
 /**
  * Minimal paginated listing slice — the real R2Bucket satisfies this
  * (its `list` returns R2Objects, a superset of the shape below). Used
@@ -258,6 +301,15 @@ export interface ServerRuntime {
 		readonly list: () => Promise<readonly CronJobInfo[]>;
 		readonly runNow: (id: string) => Promise<CronRunResult | null>;
 		readonly runSchedule: (schedule: string) => Promise<readonly CronRunResult[]>;
+	};
+	/** Pub/sub capability: `topics` merges every bound transport's
+	 * channel enumeration (in-process bus + Redis channels); `publish`
+	 * routes a JSON payload to a topic by its console-facing id —
+	 * `memory:<name>` hits the in-process bus, `redis:<channel>` the
+	 * Redis transport. Undefined when no pub/sub transport is bound. */
+	readonly pubsub?: {
+		readonly topics: () => Promise<PubSubTopicsResult>;
+		readonly publish: (topicId: string, payload: unknown) => Promise<PubSubPublishResult>;
 	};
 	/** Workers AI binding (or host-resolved stand-in) for transcription;
 	 * undefined when unbound. */

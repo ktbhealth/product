@@ -204,3 +204,96 @@ describe("platform cron registry (/platform/cron)", () => {
 		expect(results[0]?.ok).toBe(true);
 	});
 });
+
+describe("platform pub/sub (/platform/pubsub)", () => {
+	it("lists in-process topics and routes memory publishes", { timeout: 30_000 }, async () => {
+		const { runtime } = await compose(() => {});
+		expect(runtime.pubsub).toBeDefined();
+
+		// No traffic yet — the in-process bus knows no topics.
+		expect(await runtime.pubsub!.topics()).toEqual({ topics: [], degraded: [] });
+
+		// A cron fire is a real producer: cron.fires appears with
+		// its retained payload.
+		await runtime.crons!.runNow("agenda-reminders");
+		const { topics } = await runtime.pubsub!.topics();
+		const fires = topics.find((t) => t.id === "memory:cron.fires");
+		expect(fires).toMatchObject({
+			name: "cron.fires",
+			transport: "in-process",
+			subscribers: 0,
+		});
+		expect(fires?.recent?.at(-1)?.payload).toMatchObject({
+			jobId: "agenda-reminders",
+			ok: true,
+		});
+
+		// Manual publish lands on the same topic and is retained.
+		expect(await runtime.pubsub!.publish("memory:cron.fires", { ping: true })).toEqual({
+			ok: true,
+		});
+		const after = (await runtime.pubsub!.topics()).topics.find((t) => t.id === "memory:cron.fires");
+		expect(after?.recent?.at(-1)?.payload).toEqual({ ping: true });
+	});
+
+	it(
+		"returns honest publish failures for unknown and unbound topics",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime } = await compose(() => {});
+			expect(await runtime.pubsub!.publish("bogus", {})).toEqual({
+				ok: false,
+				reason: "unknown-topic",
+			});
+			// redis: prefix without a bound REDIS_PUBSUB transport.
+			expect(await runtime.pubsub!.publish("redis:chan", {})).toEqual({
+				ok: false,
+				reason: "unavailable",
+			});
+		},
+	);
+
+	it("merges a bound Redis pub/sub source into the topic list", { timeout: 30_000 }, async () => {
+		const published: [string, unknown][] = [];
+		const { runtime } = await compose((env) => {
+			env.REDIS_PUBSUB = {
+				publish: async (topic: string, payload: unknown) => {
+					published.push([topic, payload]);
+				},
+				listTopics: async () => [
+					{
+						id: "redis:ktb:events",
+						name: "ktb:events",
+						transport: "redis",
+						subscribers: 2,
+					},
+				],
+			};
+		});
+		const { topics, degraded } = await runtime.pubsub!.topics();
+		expect(degraded).toEqual([]);
+		expect(topics.map((t) => t.id)).toContain("redis:ktb:events");
+		expect(await runtime.pubsub!.publish("redis:ktb:events", { e: 1 })).toEqual({ ok: true });
+		expect(published).toEqual([["ktb:events", { e: 1 }]]);
+	});
+
+	it(
+		"collapses a failing Redis source instead of rejecting topics()",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime } = await compose((env) => {
+				env.REDIS_PUBSUB = {
+					publish: async () => {},
+					listTopics: async () => {
+						throw new Error("redis down");
+					},
+				};
+			});
+			// The failing Redis source is reported degraded, not dropped.
+			await expect(runtime.pubsub!.topics()).resolves.toEqual({
+				topics: [],
+				degraded: ["redis"],
+			});
+		},
+	);
+});

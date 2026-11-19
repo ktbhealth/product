@@ -116,6 +116,7 @@ const PLATFORM_SIDEBAR_ORDER: readonly string[] = [
 	"/platform/ops",
 	"/platform/queue",
 	"/platform/cron",
+	"/platform/pubsub",
 	"/platform/ai/machines",
 	"/platform/audit",
 ];

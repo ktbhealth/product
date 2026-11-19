@@ -6,6 +6,7 @@ import { makeSqliteDatabase } from "@ktb/db-sqlite";
 import { connect as nodeSocketConnect } from "@ktb/email-smtp/node-connect";
 import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
 import { createRedisJobsTransport } from "@ktb/jobs-transport-redis";
+import { createRedisPubSubTransport } from "@ktb/pubsub-transport-redis";
 
 import { resolveAi, type AiEnv } from "./ai.ts";
 import { loadDevVars } from "./dev-vars.ts";
@@ -190,6 +191,35 @@ env.REDIS_JOBS_QUEUE = {
 			return null;
 		}
 	},
+};
+
+// Redis pub/sub stand-in (dev:node only): PUBSUB CHANNELS/NUMSUB give the
+// /platform/pubsub console real cross-process topics — the same Redis
+// instance apps/jobs-worker (or any second process) can publish to.
+// Connects lazily on first use so an absent Redis never blocks boot;
+// a failed connect rejects the call, which platform.ts collapses to the
+// honest "unavailable" state. Never bundled for workerd.
+let redisPubSubTransport: ReturnType<typeof createRedisPubSubTransport> | undefined;
+const redisPubSub = () => {
+	redisPubSubTransport ??= createRedisPubSubTransport({
+		url: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+	}).catch((error: unknown) => {
+		// Let the next call retry instead of caching the failure.
+		redisPubSubTransport = undefined;
+		throw error;
+	});
+	return redisPubSubTransport;
+};
+env.REDIS_PUBSUB = {
+	publish: async (topic: string, payload: unknown) => {
+		await (await redisPubSub()).publish(topic, payload);
+	},
+	subscribe: async (topic: string, handler: (payload: unknown) => void | Promise<void>) => {
+		const transport = await redisPubSub();
+		if (transport.subscribe === undefined) return () => {};
+		return transport.subscribe(topic, handler);
+	},
+	listTopics: async () => (await redisPubSub()).listTopics(),
 };
 
 // AI: platform.ts runs resolveAi(env) itself (AI_STUB > AI_BASE_URL >

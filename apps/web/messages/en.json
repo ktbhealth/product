@@ -183,6 +183,7 @@
 	"panel_nav_groups": "Groups",
 	"panel_nav_ops": "Ops",
 	"panel_nav_plugins": "Plugins",
+	"panel_nav_pubsub": "Pubsub",
 	"panel_nav_queue": "Queue",
 	"panel_nav_rich_text": "Rich text",
 	"panel_nav_schemas": "Schemas",

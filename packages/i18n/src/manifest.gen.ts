@@ -573,6 +573,9 @@ export const I18N_MANIFEST = {
 		panel_nav_plugins: {
 			params: [],
 		},
+		panel_nav_pubsub: {
+			params: [],
+		},
 		panel_nav_queue: {
 			params: [],
 		},
@@ -4934,6 +4937,117 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	pubsub: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template:
+				"{n, plural, =1{{n} topic across bound transports.} other{{n} topics across bound transports.}}",
+		},
+		topicsTitle: {
+			params: [],
+		},
+		topicsDescription: {
+			params: [],
+		},
+		tColTopic: {
+			params: [],
+		},
+		tColTransport: {
+			params: [],
+		},
+		tColSubscribers: {
+			params: [],
+		},
+		tColRecent: {
+			params: [],
+		},
+		tColLastActivity: {
+			params: [],
+		},
+		subscribersUnknown: {
+			params: [],
+		},
+		noRecent: {
+			params: [],
+		},
+		neverActive: {
+			params: [],
+		},
+		emptyTopicsTitle: {
+			params: [],
+		},
+		emptyTopicsDescription: {
+			params: [],
+		},
+		unavailableTitle: {
+			params: [],
+		},
+		unavailableDescription: {
+			params: [],
+		},
+		degradedTitle: {
+			params: [],
+		},
+		degradedDescription: {
+			params: [
+				{
+					name: "sources",
+				},
+			],
+			template: "{sources} could not be read — the topic list may be incomplete.",
+		},
+		publishTitle: {
+			params: [],
+		},
+		publishDescription: {
+			params: [],
+		},
+		pTopic: {
+			params: [],
+		},
+		pTopicPlaceholder: {
+			params: [],
+		},
+		pPayload: {
+			params: [],
+		},
+		pPayloadHint: {
+			params: [],
+		},
+		publish: {
+			params: [],
+		},
+		publishing: {
+			params: [],
+		},
+		publishOk: {
+			params: [],
+		},
+		publishUnknown: {
+			params: [],
+		},
+		publishUnavailable: {
+			params: [],
+		},
+		publishForbidden: {
+			params: [],
+		},
+		publishFailed: {
+			params: [],
+		},
+		invalidJson: {
+			params: [],
+		},
+	},
 	queue: {
 		title: {
 			params: [],
@@ -6663,6 +6777,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_groups: "Groups",
 	panel_nav_ops: "Ops",
 	panel_nav_plugins: "Plugins",
+	panel_nav_pubsub: "Pubsub",
 	panel_nav_queue: "Queue",
 	panel_nav_rich_text: "Rich text",
 	panel_nav_schemas: "Schemas",
