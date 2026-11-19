@@ -5,6 +5,7 @@ import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
 import { Button } from "@ktbhealth/ui/components/button";
+import { ButtonGroup } from "@ktbhealth/ui/components/button-group";
 import {
 	Popover,
 	PopoverContent,
@@ -21,7 +22,12 @@ import {
 
 import { listThemesFn, setThemePreviewFn } from "../fns.ts";
 import { themeMessages, I18N_NAMESPACE } from "../i18n.ts";
-import type { ThemeScopeKind, ThemeSummary } from "../types.ts";
+import {
+	THEME_SCHEME_COOKIE,
+	type ThemeColorScheme,
+	type ThemeScopeKind,
+	type ThemeSummary,
+} from "../types.ts";
 
 const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
 	platform: "platform",
@@ -43,6 +49,28 @@ const SCOPE_LABEL: Record<ThemeScopeKind, string> = {
  * independently re-checks PlatformAdmin, so this component never
  * exposes preview controls to non-admins.
  */
+const SCHEMES = ["light", "dark", "system"] as const;
+
+const readScheme = (): ThemeColorScheme => {
+	if (typeof document === "undefined") return "system";
+	for (const part of document.cookie.split(";")) {
+		const i = part.indexOf("=");
+		if (part.slice(0, i).trim() === THEME_SCHEME_COOKIE) {
+			const v = part.slice(i + 1).trim();
+			if (v === "light" || v === "dark" || v === "system") return v;
+		}
+	}
+	return "system";
+};
+
+const applyScheme = (next: ThemeColorScheme) => {
+	document.cookie = `${THEME_SCHEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`;
+	const dark =
+		next === "dark" ||
+		(next === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+	document.documentElement.classList.toggle("dark", dark);
+};
+
 export function ThemeHeaderAction({
 	i18n,
 	locale = "en",
@@ -53,6 +81,11 @@ export function ThemeHeaderAction({
 	const t = sliceMessages(i18n, I18N_NAMESPACE, themeMessages(locale));
 	const [themes, setThemes] = useState<readonly ThemeSummary[] | null>(null);
 	const [busy, setBusy] = useState<number | "off" | null>(null);
+	const [scheme, setScheme] = useState<ThemeColorScheme>("system");
+
+	useEffect(() => {
+		setScheme(readScheme());
+	}, []);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -129,6 +162,26 @@ export function ThemeHeaderAction({
 								</Button>
 							</div>
 						))}
+					</div>
+					<div className="border-t border-border px-3 py-2">
+						<div className="mb-1.5 text-xs text-muted-foreground">{t.schemeLabel}</div>
+						<ButtonGroup className="w-full">
+							{SCHEMES.map((s) => (
+								<Button
+									key={s}
+									type="button"
+									size="sm"
+									variant={scheme === s ? "secondary" : "outline"}
+									className="flex-1"
+									onClick={() => {
+										setScheme(s);
+										applyScheme(s);
+									}}
+								>
+									{s === "light" ? t.schemeLight : s === "dark" ? t.schemeDark : t.schemeSystem}
+								</Button>
+							))}
+						</ButtonGroup>
 					</div>
 					<div className="border-t border-border p-2">
 						{/* Panel pages dispatch through the /platform/$ splat —

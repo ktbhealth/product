@@ -12,6 +12,7 @@ import { Tenant } from "@ktb/tenant";
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import {
+	deleteTheme,
 	findTheme,
 	getThemeById,
 	listThemes,
@@ -157,9 +158,18 @@ describe("theme repo helpers", () => {
 		expect(JSON.parse(created!.fonts!)).toEqual(fonts);
 		expect(JSON.parse(created!.brand!)).toEqual(brand);
 
-		const updated = await upsertTheme(db, publishInput({ seeds: {} }), created!.id);
-		expect(updated?.version).toBe(2);
-		// Nullish fonts/brand serialize to SQL NULL.
+		// Undefined optional columns preserve stored fonts/brand on update.
+		const preserved = await upsertTheme(db, publishInput({ seeds: {} }), created!.id);
+		expect(preserved?.version).toBe(2);
+		expect(JSON.parse(preserved!.fonts!)).toEqual(fonts);
+		expect(JSON.parse(preserved!.brand!)).toEqual(brand);
+		// Explicit null clears them.
+		const updated = await upsertTheme(
+			db,
+			publishInput({ seeds: {}, fonts: null, brand: null }),
+			created!.id,
+		);
+		expect(updated?.version).toBe(3);
 		expect(updated!.fonts).toBeNull();
 		expect(updated!.brand).toBeNull();
 	});
@@ -184,6 +194,15 @@ describe("theme repo helpers", () => {
 		expect((await getThemeById(db, id))?.enabled).toBe(false);
 		await setThemeEnabled(db, id, true);
 		expect((await getThemeById(db, id))?.enabled).toBe(true);
+	});
+
+	it("deleteTheme removes the row", async () => {
+		const { db, d1 } = makeTestDb();
+		const id = await insertRow(d1, { scope: "platform" });
+		await deleteTheme(db, id);
+		expect(await getThemeById(db, id)).toBeNull();
+		// Deleting a missing id is a no-op.
+		await deleteTheme(db, 999);
 	});
 });
 
@@ -429,6 +448,59 @@ describe("ThemeLive admin surface", () => {
 				asUser(
 					PLAIN,
 					withTheme((t) => t.setEnabled(id, true)),
+				),
+			),
+		).rejects.toThrowError(Forbidden);
+	});
+
+	it("publish by id updates that row and can move scopes", async () => {
+		const id = await insertRow(d1, { scope: "platform", appName: "Old" });
+		const summary = await runtime.runPromise(
+			asUser(
+				ADMIN,
+				withTheme((t) =>
+					t.publish({
+						id,
+						scope: "tenant",
+						scopeId: "42",
+						appName: "Moved",
+						seeds: { primary: "#123456" },
+					}),
+				),
+			),
+		);
+		expect(summary).toMatchObject({ id, scope: "tenant", scopeId: "42", appName: "Moved" });
+		const row = (await getThemeById(db, id))!;
+		expect(row.scope).toBe("tenant");
+		expect(row.scopeId).toBe("42");
+		expect(row.version).toBe(2);
+	});
+
+	it("publish by id dies when the row is gone", async () => {
+		await expect(
+			runtime.runPromise(
+				asUser(
+					ADMIN,
+					withTheme((t) => t.publish({ id: 999, scope: "platform", scopeId: "", seeds: {} })),
+				),
+			),
+		).rejects.toThrow();
+	});
+
+	it("remove deletes the row for admins and denies non-admins", async () => {
+		const id = await insertRow(d1, { scope: "platform", appName: "Doomed" });
+		await runtime.runPromise(
+			asUser(
+				ADMIN,
+				withTheme((t) => t.remove(id)),
+			),
+		);
+		expect(await getThemeById(db, id)).toBeNull();
+		await expect(
+			runtime.runPromise(
+				asUser(
+					PLAIN,
+					withTheme((t) => t.remove(1)),
 				),
 			),
 		).rejects.toThrowError(Forbidden);

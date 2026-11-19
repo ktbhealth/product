@@ -1,6 +1,6 @@
-import type { ComponentType, ReactNode } from "react";
+import { Fragment, type ComponentType, type ReactNode } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowLeftIcon, LogOutIcon } from "lucide-react";
+import { LogOutIcon } from "lucide-react";
 
 import {
 	Breadcrumb,
@@ -122,13 +122,33 @@ export function PortalShell({
 	const orderedGroups = [...groups.entries()].sort(
 		([a], [b]) => Number(a !== "") - Number(b !== ""),
 	);
-	const current = items.find((i) => isItemActive(pathname, i));
-	// Breadcrumb leaf: the matched sidebar item's label (the plugin
-	// provides it via portal.sidebar chrome), else the last path segment.
-	const leaf =
-		pathname === instance.basePath
-			? t.overview
-			: (current?.label ?? pathname.split("/").filter(Boolean).at(-1) ?? t.overview);
+	// Breadcrumb trail: instance root → deepest matching sidebar item →
+	// remaining path segments (humanized). The last crumb renders as the
+	// current page; everything before it links.
+	const anchor = items
+		.filter((i) => isItemActive(pathname, i) && i.to !== instance.basePath)
+		.sort((a, b) => b.to.length - a.to.length)[0];
+	const crumbs: { label: string; to?: string }[] = [
+		{ label: instance.label, to: instance.basePath },
+	];
+	if (pathname === instance.basePath) {
+		crumbs.push({ label: t.overview });
+	} else {
+		const base = anchor?.to ?? instance.basePath;
+		if (anchor !== undefined) {
+			crumbs.push({ label: anchor.label, to: anchor.to });
+		}
+		const rest = pathname.slice(base.length).split("/").filter(Boolean);
+		if (rest.length === 0 && anchor === undefined) {
+			crumbs.push({ label: t.overview });
+		}
+		rest.forEach((seg, i) => {
+			crumbs.push({
+				label: seg.charAt(0).toUpperCase() + seg.slice(1),
+				to: `${base}/${rest.slice(0, i + 1).join("/")}`,
+			});
+		});
+	}
 	return (
 		<SidebarProvider className="h-dvh min-h-0">
 			{/* Exactly one theme style block per portal page (P-082):
@@ -219,27 +239,21 @@ export function PortalShell({
 				<header className="flex h-11 shrink-0 items-center gap-3 border-b border-border px-4">
 					<Breadcrumb className="text-xs">
 						<BreadcrumbList>
-							<BreadcrumbItem>
-								<BreadcrumbLink render={<Link to={instance.basePath} />}>
-									{instance.label}
-								</BreadcrumbLink>
-							</BreadcrumbItem>
-							<BreadcrumbSeparator />
-							<BreadcrumbItem>
-								<BreadcrumbPage>{leaf}</BreadcrumbPage>
-							</BreadcrumbItem>
+							{crumbs.map((crumb, i) => (
+								<Fragment key={crumb.to ?? crumb.label}>
+									{i > 0 ? <BreadcrumbSeparator /> : null}
+									<BreadcrumbItem>
+										{crumb.to !== undefined && i < crumbs.length - 1 ? (
+											<BreadcrumbLink render={<Link to={crumb.to} />}>{crumb.label}</BreadcrumbLink>
+										) : (
+											<BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+										)}
+									</BreadcrumbItem>
+								</Fragment>
+							))}
 						</BreadcrumbList>
 					</Breadcrumb>
-					<div className="ml-auto flex items-center gap-2">
-						{headerActions}
-						<Link
-							to="/"
-							className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-muted hover:text-foreground"
-						>
-							<ArrowLeftIcon className="size-3" />
-							{t.backToApp}
-						</Link>
-					</div>
+					<div className="ml-auto flex items-center gap-2">{headerActions}</div>
 				</header>
 				<main className="min-h-0 flex-1 overflow-auto p-4">{children}</main>
 			</div>

@@ -15,6 +15,7 @@ import {
 	type ThemeBrand,
 	type ThemeFontConfig,
 	type ThemeResolveRequest,
+	type ThemeAssetSummary,
 	type ThemeSeeds,
 	type ThemeSummary,
 } from "./types.ts";
@@ -124,6 +125,24 @@ export const listThemesFn = createServerFn({ method: "GET" }).handler(
 const GetInput = Schema.Struct({ id: Schema.Number });
 const decodeGet = Schema.decodeUnknownSync(GetInput);
 
+const AssetsInput = Schema.Struct({ themeId: Schema.Number });
+const decodeAssets = Schema.decodeUnknownSync(AssetsInput);
+
+/** Upload rows for one theme — the editor's Assets tab. Non-admins
+ * get an empty list (the service gate denies). */
+export const listThemeAssetsFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodeAssets(input))
+	.handler(async ({ data }): Promise<readonly ThemeAssetSummary[]> => {
+		const user = await ensureSessionUser();
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const theme = yield* Theme;
+				return yield* theme.listAssets(data.themeId);
+			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed([] as ThemeAssetSummary[]))),
+		);
+	});
+
 /** Full theme by id for the admin editor — seeds/fonts/brand +
  * derived tokens. Non-admins get null (the service gate denies). */
 export const getThemeFn = createServerFn({ method: "GET" })
@@ -162,14 +181,16 @@ export const publishThemeFn = createServerFn({ method: "POST" })
 			Effect.gen(function* () {
 				const theme = yield* Theme;
 				return yield* theme.publish({
+					id: data.id,
 					scope: data.scope,
 					scopeId: data.scopeId ?? "",
-					appName: data.appName ?? null,
+					appName: data.appName,
 					// Wire payloads are untyped JSON at the boundary; the
-					// palette engine parses/tolerates every field.
+					// palette engine parses/tolerates every field. Undefined
+					// optional columns preserve stored values on update.
 					seeds: data.seeds as ThemeSeeds,
-					fonts: (data.fonts ?? null) as ThemeFontConfig | null,
-					brand: (data.brand ?? null) as ThemeBrand | null,
+					fonts: data.fonts === undefined ? undefined : (data.fonts as ThemeFontConfig | null),
+					brand: data.brand === undefined ? undefined : (data.brand as ThemeBrand | null),
 				});
 			}),
 		);
@@ -188,6 +209,19 @@ export const setThemeEnabledFn = createServerFn({ method: "POST" })
 		await runAs(
 			user,
 			Effect.flatMap(Theme, (t) => t.setEnabled(data.id, data.enabled)),
+		);
+		return { ok: true };
+	});
+
+/** Hard-delete a theme row — the editor discards untouched auto-created
+ * drafts through this. Admin-gated inside the service. */
+export const deleteThemeFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeGet(input))
+	.handler(async ({ data }): Promise<{ readonly ok: boolean }> => {
+		const user = await ensureSessionUser();
+		await runAs(
+			user,
+			Effect.flatMap(Theme, (t) => t.remove(data.id)),
 		);
 		return { ok: true };
 	});

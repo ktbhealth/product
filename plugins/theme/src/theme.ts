@@ -23,12 +23,15 @@ import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import { deriveThemeTokens } from "./palette.ts";
-import { presentTheme, type ThemeDefinitionRow } from "./present.ts";
+import { listThemeAssets } from "./assets.ts";
+import { parseThemeBrand, presentTheme, type ThemeDefinitionRow } from "./present.ts";
 import type {
 	ResolvedTheme,
 	ThemeBrand,
 	ThemeFontConfig,
 	ThemeResolveRequest,
+	ThemeAssetSummary,
+	ThemeJsonValue,
 	ThemeSeeds,
 	ThemeSummary,
 } from "./types.ts";
@@ -72,6 +75,7 @@ export async function listThemes(db: DbClient): Promise<ThemeRow[]> {
 }
 
 export interface ThemePublishInput {
+	readonly id?: number;
 	readonly scope: string;
 	readonly scopeId: string;
 	readonly appName?: string | null;
@@ -93,22 +97,30 @@ export async function upsertTheme(
 	existingId?: number,
 ): Promise<ThemeRow | null> {
 	const now = new Date();
-	const values = {
+	const base = {
 		scope: input.scope,
 		scopeId: input.scopeId,
-		appName: input.appName ?? null,
 		seeds: JSON.stringify(input.seeds),
 		tokens: tokensJson(input.seeds),
-		fonts: input.fonts === undefined || input.fonts === null ? null : JSON.stringify(input.fonts),
-		brand: input.brand === undefined || input.brand === null ? null : JSON.stringify(input.brand),
 		updatedAt: now,
 	};
 	if (existingId !== undefined) {
 		const rows = await db
 			.update(themeDefinitions)
 			// version bumps on every publish — informational, never a
-			// concurrency token (upsert is keyed by natural scope).
-			.set({ ...values, version: sql`${themeDefinitions.version} + 1` })
+			// concurrency token (upsert is keyed by natural scope). Undefined
+			// optional columns preserve the stored value; explicit null clears.
+			.set({
+				...base,
+				...(input.appName !== undefined ? { appName: input.appName } : {}),
+				...(input.fonts !== undefined
+					? { fonts: input.fonts === null ? null : JSON.stringify(input.fonts) }
+					: {}),
+				...(input.brand !== undefined
+					? { brand: input.brand === null ? null : JSON.stringify(input.brand) }
+					: {}),
+				version: sql`${themeDefinitions.version} + 1`,
+			})
 			.where(eq(themeDefinitions.id, existingId))
 			.returning();
 		return rows[0] ?? null;
@@ -117,7 +129,14 @@ export async function upsertTheme(
 		.insert(themeDefinitions)
 		// New themes publish enabled; updates keep the stored flag —
 		// re-publishing a disabled theme must not silently re-enable it.
-		.values({ ...values, enabled: true, createdAt: now })
+		.values({
+			...base,
+			appName: input.appName ?? null,
+			fonts: input.fonts === undefined || input.fonts === null ? null : JSON.stringify(input.fonts),
+			brand: input.brand === undefined || input.brand === null ? null : JSON.stringify(input.brand),
+			enabled: true,
+			createdAt: now,
+		})
 		.returning();
 	return rows[0] ?? null;
 }
@@ -127,6 +146,12 @@ export async function setThemeEnabled(db: DbClient, id: number, enabled: boolean
 		.update(themeDefinitions)
 		.set({ enabled, updatedAt: new Date() })
 		.where(eq(themeDefinitions.id, id));
+}
+
+/** Hard-delete a definition row — theme_assets.theme_id goes null via
+ * its ON DELETE SET NULL foreign key. */
+export async function deleteTheme(db: DbClient, id: number): Promise<void> {
+	await db.delete(themeDefinitions).where(eq(themeDefinitions.id, id));
 }
 
 // ---------- scope → candidate chain ----------
@@ -180,6 +205,11 @@ export class Theme extends Context.Service<
 		readonly get: (id: number) => Effect.Effect<ResolvedTheme | null, Forbidden>;
 		readonly publish: (input: ThemePublishInput) => Effect.Effect<ThemeSummary, Forbidden>;
 		readonly setEnabled: (id: number, enabled: boolean) => Effect.Effect<void, Forbidden>;
+		/** Hard-delete a theme definition (e.g. an untouched auto-created
+		 * editor draft). Admin-gated. */
+		readonly remove: (id: number) => Effect.Effect<void, Forbidden>;
+		/** Upload/processing rows for one theme — admin editor asset tab. */
+		readonly listAssets: (themeId: number) => Effect.Effect<ThemeAssetSummary[], Forbidden>;
 		/** Raw row for the admin preview path — ignores `enabled` so a
 		 * draft/disabled theme can be previewed; admin-gated. */
 		readonly previewRow: (id: number) => Effect.Effect<ThemeRow | null, Forbidden>;
@@ -193,7 +223,36 @@ const summarize = (row: ThemeRow): ThemeSummary => ({
 	appName: row.appName,
 	enabled: row.enabled,
 	version: row.version,
+	brand: parseThemeBrand(row.brand),
 });
+
+const summarizeAsset = (row: {
+	id: number;
+	themeId: number | null;
+	kind: string;
+	status: string;
+	r2Key: string | null;
+	variants: string | null;
+	createdAt: Date;
+}): ThemeAssetSummary => {
+	let variants: ThemeAssetSummary["variants"] = null;
+	if (row.variants !== null) {
+		try {
+			variants = JSON.parse(row.variants) as ThemeAssetSummary["variants"];
+		} catch {
+			variants = null;
+		}
+	}
+	return {
+		id: row.id,
+		themeId: row.themeId,
+		kind: row.kind as ThemeAssetSummary["kind"],
+		status: row.status,
+		r2Key: row.r2Key,
+		variants,
+		createdAt: row.createdAt.toISOString(),
+	};
+};
 
 export const ThemeLive = Layer.effect(
 	Theme,
@@ -239,6 +298,19 @@ export const ThemeLive = Layer.effect(
 			}),
 			publish: Effect.fn("Theme.publish")(function* (input: ThemePublishInput) {
 				yield* platformAdmin.requireAdmin();
+				// Editor publishes carry the row id — update that row
+				// directly so scope moves are allowed; missing rows die.
+				if (input.id !== undefined) {
+					const existing = yield* Effect.promise(() => getThemeById(db, input.id!));
+					if (existing === null) {
+						return yield* Effect.die(new Error("theme not found"));
+					}
+					const row = yield* Effect.promise(() => upsertTheme(db, input, input.id));
+					if (row === null) {
+						return yield* Effect.die(new Error("theme upsert returned no row"));
+					}
+					return summarize(row);
+				}
 				// Existing row for this scope wins the update path — upsert
 				// by natural key, not by client-supplied id.
 				const existing = yield* Effect.promise(() => findThemeAny(db, input.scope, input.scopeId));
@@ -251,6 +323,15 @@ export const ThemeLive = Layer.effect(
 			setEnabled: Effect.fn("Theme.setEnabled")(function* (id: number, enabled: boolean) {
 				yield* platformAdmin.requireAdmin();
 				yield* Effect.promise(() => setThemeEnabled(db, id, enabled));
+			}),
+			remove: Effect.fn("Theme.remove")(function* (id: number) {
+				yield* platformAdmin.requireAdmin();
+				yield* Effect.promise(() => deleteTheme(db, id));
+			}),
+			listAssets: Effect.fn("Theme.listAssets")(function* (themeId: number) {
+				yield* platformAdmin.requireAdmin();
+				const rows = yield* Effect.promise(() => listThemeAssets(db, themeId));
+				return rows.map(summarizeAsset);
 			}),
 			previewRow: Effect.fn("Theme.previewRow")(function* (id: number) {
 				yield* platformAdmin.requireAdmin();

@@ -43,6 +43,7 @@ import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "
 
 import { KTB_DEFAULT_THEME } from "./default-theme.ts";
 import {
+	deleteThemeFn,
 	getThemeFn,
 	listThemesFn,
 	publishThemeFn,
@@ -89,6 +90,8 @@ const hooks = {
 			version: 1,
 		}),
 	setEnabled: (_id: number, _enabled: boolean): Effect.Effect<void, Forbidden> => Effect.void,
+	remove: (_id: number): Effect.Effect<void, Forbidden> => Effect.void,
+	listAssets: (_themeId: number): Effect.Effect<never[], Forbidden> => Effect.succeed([]),
 	previewRow: (_id: number): Effect.Effect<ThemeRow | null, Forbidden> => Effect.succeed(null),
 };
 
@@ -98,6 +101,8 @@ const themeStub = Theme.of({
 	get: (id) => hooks.get(id),
 	publish: (input) => hooks.publish(input),
 	setEnabled: (id, enabled) => hooks.setEnabled(id, enabled),
+	remove: (id) => hooks.remove(id),
+	listAssets: (themeId) => hooks.listAssets(themeId),
 	previewRow: (id) => hooks.previewRow(id),
 });
 
@@ -337,14 +342,17 @@ describe("publishThemeFn", () => {
 			expect(seen[0]).toEqual({
 				scope: "tenant",
 				scopeId: "t-1",
-				appName: null,
+				appName: undefined,
 				seeds: { primary: "#123456" },
-				fonts: null,
-				brand: null,
+				fonts: undefined,
+				brand: undefined,
 			});
 			// scopeId is optional on the wire → defaults to "".
 			await publishThemeFn({ data: { scope: "platform", seeds: {} } });
 			expect(seen[1]?.scopeId).toBe("");
+			// id passes through for editor publishes.
+			await publishThemeFn({ data: { id: 9, scope: "platform", seeds: {} } });
+			expect(seen[2]?.id).toBe(9);
 		} finally {
 			hooks.publish = (input) =>
 				Effect.succeed({
@@ -383,6 +391,29 @@ describe("setThemeEnabledFn", () => {
 		} finally {
 			hooks.setEnabled = () => Effect.void;
 		}
+	});
+});
+
+describe("deleteThemeFn", () => {
+	it("removes by id and returns ok", async () => {
+		useSession("admin");
+		const seen: number[] = [];
+		hooks.remove = (id) => {
+			seen.push(id);
+			return Effect.void;
+		};
+		try {
+			expect(await deleteThemeFn({ data: { id: 6 } })).toEqual({ ok: true });
+			expect(seen).toEqual([6]);
+			await expect(deleteThemeFn({ data: { id: "x" } })).rejects.toThrow();
+		} finally {
+			hooks.remove = () => Effect.void;
+		}
+	});
+
+	it("rejects anonymous callers", async () => {
+		useSession(null);
+		await expect(deleteThemeFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
 	});
 });
 
