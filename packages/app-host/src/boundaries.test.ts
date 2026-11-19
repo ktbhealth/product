@@ -21,11 +21,13 @@ describe("collectBoundaries", () => {
 			boundaryPlugin("a.boundaries", [notFound], { pkg: "a", priority: "low" }),
 			{ id: "b.marker" },
 			boundaryPlugin("b.boundaries", [notFound, error], { pkg: "b", priority: "high" }),
+			boundaryPlugin("c.boundaries", [error]),
 		]);
 		expect(entries.map((e) => [e.pluginId, e.pkg, e.priority, e.kind])).toEqual([
 			["a.boundaries", "a", "low", "notFound"],
 			["b.boundaries", "b", "high", "notFound"],
 			["b.boundaries", "b", "high", "error"],
+			["c.boundaries", undefined, undefined, "error"],
 		]);
 	});
 });
