@@ -1,11 +1,6 @@
 import { useState } from "react";
 
-import {
-	ConfirmAction,
-	TablePage,
-	viewsMessages,
-	type Column,
-} from "@ktb/views/table";
+import { ConfirmAction, TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Button } from "@ktbhealth/ui/components/button";
 import {
@@ -179,23 +174,17 @@ export function MachinesPage({
 		{
 			key: "status",
 			header: m.status,
-			render: (row) => (
-				<span className={STATUS_TONE[row.status]}>{statusLabel(row.status)}</span>
-			),
+			render: (row) => <span className={STATUS_TONE[row.status]}>{statusLabel(row.status)}</span>,
 		},
 		{
 			key: "lastSeen",
 			header: m.lastSeen,
-			render: (row) => (
-				<LocalDateTime value={row.lastSeenAt} locale={locale} fallback="—" />
-			),
+			render: (row) => <LocalDateTime value={row.lastSeenAt} locale={locale} fallback="—" />,
 		},
 		{
 			key: "lastCheck",
 			header: m.lastCheck,
-			render: (row) => (
-				<LocalDateTime value={row.lastCheckAt} locale={locale} fallback="—" />
-			),
+			render: (row) => <LocalDateTime value={row.lastCheckAt} locale={locale} fallback="—" />,
 		},
 		{
 			key: "actions",
@@ -223,13 +212,7 @@ export function MachinesPage({
 					</Button>
 					<ConfirmAction
 						trigger={(open) => (
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								disabled={busy}
-								onClick={open}
-							>
+							<Button type="button" variant="ghost" size="sm" disabled={busy} onClick={open}>
 								{m.delete}
 							</Button>
 						)}

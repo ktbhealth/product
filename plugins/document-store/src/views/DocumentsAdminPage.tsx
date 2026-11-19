@@ -225,9 +225,7 @@ export function DocumentsAdminPage({
 				// timezone and mismatches hydration.
 				return (
 					<span className="block max-w-48 truncate">
-						{descriptor.kind === "date" &&
-						typeof value === "number" &&
-						Number.isFinite(value) ? (
+						{descriptor.kind === "date" && typeof value === "number" && Number.isFinite(value) ? (
 							<LocalDateTime value={value} locale={locale} />
 						) : (
 							formatCell(descriptor.kind, value, locale)
@@ -250,10 +248,7 @@ export function DocumentsAdminPage({
 			header: t.colActions,
 			align: "right",
 			render: (row) => (
-				<div
-					className="flex items-center justify-end gap-1"
-					onClick={(e) => e.stopPropagation()}
-				>
+				<div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
 					<Button
 						size="sm"
 						variant="ghost"

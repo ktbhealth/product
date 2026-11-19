@@ -182,13 +182,7 @@ export function OpsPage({
 				isAudioRetryable(job.audioStatus) ? (
 					<ConfirmAction
 						trigger={(open) => (
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								disabled={retry.busy}
-								onClick={open}
-							>
+							<Button type="button" variant="ghost" size="sm" disabled={retry.busy} onClick={open}>
 								{t.retry}
 							</Button>
 						)}
@@ -230,13 +224,9 @@ export function OpsPage({
 										aria-label={t.searchLabel}
 									/>
 								}
-								resultCount={
-									query.isFiltered ? `${query.shown}/${query.total}` : undefined
-								}
+								resultCount={query.isFiltered ? `${query.shown}/${query.total}` : undefined}
 							/>
-							{retry.error ? (
-								<p className="mb-2 text-xs text-destructive">{t.retryError}</p>
-							) : null}
+							{retry.error ? <p className="mb-2 text-xs text-destructive">{t.retryError}</p> : null}
 							<TablePage.Table
 								columns={jobColumns}
 								rows={query.rows}

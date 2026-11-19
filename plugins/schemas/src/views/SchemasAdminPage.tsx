@@ -92,9 +92,7 @@ export function SchemasAdminPage({ schemas, i18n, locale }: SchemasAdminPageProp
 		{
 			key: "description",
 			header: t.colDescription,
-			render: (row) => (
-				<span className="text-muted-foreground">{row.description ?? ""}</span>
-			),
+			render: (row) => <span className="text-muted-foreground">{row.description ?? ""}</span>,
 		},
 		{
 			key: "updatedAt",
@@ -122,13 +120,7 @@ export function SchemasAdminPage({ schemas, i18n, locale }: SchemasAdminPageProp
 					</Button>
 					<ConfirmAction
 						trigger={(open) => (
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								onClick={open}
-								aria-label={t.delete}
-							>
+							<Button type="button" variant="ghost" size="sm" onClick={open} aria-label={t.delete}>
 								<Trash2Icon className="size-4 text-destructive" />
 							</Button>
 						)}
@@ -169,12 +161,7 @@ export function SchemasAdminPage({ schemas, i18n, locale }: SchemasAdminPageProp
 				title={t.title}
 				description={t.description}
 				actions={
-					<Button
-						type="button"
-						size="sm"
-						onClick={() => setView("new")}
-						disabled={del.busy}
-					>
+					<Button type="button" size="sm" onClick={() => setView("new")} disabled={del.busy}>
 						<PlusIcon className="size-4" />
 						{t.newSchema}
 					</Button>

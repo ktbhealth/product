@@ -225,9 +225,7 @@ export function AdminUsersPage({
 							aria-label={t.searchLabel}
 						/>
 					}
-					resultCount={
-						query.isFiltered ? t.filteredCount(query.shown, query.total) : undefined
-					}
+					resultCount={query.isFiltered ? t.filteredCount(query.shown, query.total) : undefined}
 				/>
 			)}
 			<TablePage.Table

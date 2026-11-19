@@ -135,7 +135,10 @@ export function CredentialsPage({
 				title={m.title}
 				description={m.desc}
 				actions={
-					<Button type="button" onClick={() => setForm({ name: "", provider: "openai", secret: "" })}>
+					<Button
+						type="button"
+						onClick={() => setForm({ name: "", provider: "openai", secret: "" })}
+					>
 						<PlusIcon className="mr-1 size-4" />
 						{m.newCred}
 					</Button>
