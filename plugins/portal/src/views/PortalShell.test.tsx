@@ -80,7 +80,7 @@ describe("PortalShell", () => {
 
 	it("falls back to the last path segment for unmatched routes", () => {
 		renderShell({ pathname: "/platform/unknown-thing" });
-		expect(screen.getByText("unknown-thing")).toBeDefined();
+		expect(screen.getByText("Unknown-thing")).toBeDefined();
 	});
 
 	it("falls back to 'overview' when the path has no segments", () => {

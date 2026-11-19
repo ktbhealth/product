@@ -1715,7 +1715,9 @@ export type I18nKey =
 	| "theme.publishError"
 	| "theme.publishing"
 	| "theme.schemeDark"
+	| "theme.schemeLabel"
 	| "theme.schemeLight"
+	| "theme.schemeSystem"
 	| "theme.scopeIdLabel"
 	| "theme.scopeIdPlaceholder"
 	| "theme.scopeLabel"
@@ -4011,7 +4013,9 @@ export interface I18nTypedT {
 	(key: "theme.publishError"): Effect.Effect<string>;
 	(key: "theme.publishing"): Effect.Effect<string>;
 	(key: "theme.schemeDark"): Effect.Effect<string>;
+	(key: "theme.schemeLabel"): Effect.Effect<string>;
 	(key: "theme.schemeLight"): Effect.Effect<string>;
+	(key: "theme.schemeSystem"): Effect.Effect<string>;
 	(key: "theme.scopeIdLabel"): Effect.Effect<string>;
 	(key: "theme.scopeIdPlaceholder"): Effect.Effect<string>;
 	(key: "theme.scopeLabel"): Effect.Effect<string>;

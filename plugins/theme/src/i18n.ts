@@ -96,6 +96,8 @@ export interface ThemeMessages {
 	readonly headerEmpty: string;
 	readonly headerPreview: string;
 	readonly headerManage: string;
+	readonly schemeLabel: string;
+	readonly schemeSystem: string;
 	readonly searchPlaceholder: string;
 	readonly searchLabel: string;
 	readonly newTheme: string;
@@ -236,6 +238,8 @@ const en: ThemeMessages = {
 	headerEmpty: "No themes defined yet.",
 	headerPreview: "Preview",
 	headerManage: "Manage themes",
+	schemeLabel: "Appearance",
+	schemeSystem: "System",
 	searchPlaceholder: "Search by name, scope or id…",
 	searchLabel: "Search themes",
 	newTheme: "New theme",
@@ -376,6 +380,8 @@ const ptBR: ThemeMessages = {
 	headerEmpty: "Nenhum tema definido ainda.",
 	headerPreview: "Pré-visualizar",
 	headerManage: "Gerenciar temas",
+	schemeLabel: "Aparência",
+	schemeSystem: "Sistema",
 	searchPlaceholder: "Buscar por nome, escopo ou id…",
 	searchLabel: "Buscar temas",
 	newTheme: "Novo tema",
@@ -518,6 +524,8 @@ const es: ThemeMessages = {
 	headerEmpty: "Aún no hay temas definidos.",
 	headerPreview: "Vista previa",
 	headerManage: "Gestionar temas",
+	schemeLabel: "Apariencia",
+	schemeSystem: "Sistema",
 	searchPlaceholder: "Buscar por nombre, ámbito o id…",
 	searchLabel: "Buscar temas",
 	newTheme: "Nuevo tema",

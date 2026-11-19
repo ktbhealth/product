@@ -196,3 +196,10 @@ export const THEME_PREVIEW_COOKIE = "ktb-theme-preview";
 /** Preview cookie lifetime — long enough for an admin session, short
  * enough that a forgotten preview self-expires. */
 export const THEME_PREVIEW_MAX_AGE = 60 * 60 * 8;
+
+/** Color-scheme preference cookie — NOT httpOnly: the document head
+ * script and the theme-switch popover read/write it client-side. */
+export const THEME_SCHEME_COOKIE = "ktb-color-scheme";
+
+/** Values the scheme toggle cycles through; absent cookie = "system". */
+export type ThemeColorScheme = "light" | "dark" | "system";

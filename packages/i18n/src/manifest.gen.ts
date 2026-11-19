@@ -5640,6 +5640,12 @@ export const I18N_MANIFEST = {
 		headerManage: {
 			params: [],
 		},
+		schemeLabel: {
+			params: [],
+		},
+		schemeSystem: {
+			params: [],
+		},
 		searchPlaceholder: {
 			params: [],
 		},

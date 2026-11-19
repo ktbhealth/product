@@ -29881,6 +29881,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "theme",
+		key: "schemeLabel",
+		locale: "en",
+		value: "Appearance",
+	},
+	{
+		namespace: "theme",
+		key: "schemeSystem",
+		locale: "en",
+		value: "System",
+	},
+	{
+		namespace: "theme",
 		key: "searchPlaceholder",
 		locale: "en",
 		value: "Search by name, scope or id…",
@@ -30679,6 +30691,18 @@ export const I18N_BASELINE = [
 		key: "headerManage",
 		locale: "pt-BR",
 		value: "Gerenciar temas",
+	},
+	{
+		namespace: "theme",
+		key: "schemeLabel",
+		locale: "pt-BR",
+		value: "Aparência",
+	},
+	{
+		namespace: "theme",
+		key: "schemeSystem",
+		locale: "pt-BR",
+		value: "Sistema",
 	},
 	{
 		namespace: "theme",
@@ -31481,6 +31505,18 @@ export const I18N_BASELINE = [
 		key: "headerManage",
 		locale: "es",
 		value: "Gestionar temas",
+	},
+	{
+		namespace: "theme",
+		key: "schemeLabel",
+		locale: "es",
+		value: "Apariencia",
+	},
+	{
+		namespace: "theme",
+		key: "schemeSystem",
+		locale: "es",
+		value: "Sistema",
 	},
 	{
 		namespace: "theme",
