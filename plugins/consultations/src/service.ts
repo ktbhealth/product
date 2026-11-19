@@ -98,8 +98,8 @@ export class Consultations extends Context.Service<
 	{
 		readonly create: (fields: {
 			userId: string;
-			/** Link to a patient the caller may see (patient.read permix or
-			 * tenant membership) — e.g. an agenda appointment opening its
+			/** Link to a patient the caller may see (patient.read permission
+			 * check or tenant membership) — e.g. an agenda appointment opening its
 			 * record. Absent keeps the consultation unlinked. */
 			patientId?: number;
 			transcript?: string;

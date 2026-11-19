@@ -116,9 +116,8 @@ export const STREAM_BACKLOG = 50;
  *
  * Notifications are strictly per-user: every method requires the bound
  * `Principal` to be `userId` (`requirePrincipalUser` only — there is no
- * entity to permix-check and no cross-user read, so `requireCanAs` adds
- * nothing). With no principal (system context) all methods fail
- * `Forbidden`. `stream` replays the recent persisted backlog, then fans
+ * entity to permission-check and no cross-user read). With no principal
+ * (system context) all methods fail `Forbidden`. `stream` replays the recent persisted backlog, then fans
  * out live inserts AND read-state updates for that user — every
  * connected tab/device converges on the same rows by id.
  */

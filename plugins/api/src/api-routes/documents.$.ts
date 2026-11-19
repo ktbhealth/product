@@ -28,7 +28,7 @@ import {
  * service so it stays unit-testable without Request/Response.
  *
  * Session handling mirrors the page/server-fn contract: a signed-in
- * user runs under `runAs` (Principal + Authz + resolved Tenant bound —
+ * user runs under `runAs` (Principal + resolved Tenant bound —
  * DocumentStore row fencing applies); an anonymous request runs under
  * `run` and only reaches exposures marked `public: true` for
  * list/get — the service fails everything else 401/403.

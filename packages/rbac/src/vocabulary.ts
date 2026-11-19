@@ -1,17 +1,17 @@
 /**
  * Permission vocabulary (P-054): the flat `(resource, action)` catalog
  * role grants are validated against. The proposal calls for a generated
- * catalog derived from the app's permix `Def` plus an explicit
- * `platformActions` list — full codegen is deferred; this module is the
- * typed constants stand-in, kept in sync with `@ktb/authz`'s `Def`
- * (patient.*, consultation.*) by hand until the generator lands.
+ * catalog plus an explicit `platformActions` list — full codegen is
+ * deferred; this module is the typed constants stand-in, kept in sync
+ * with the entity actions the domain services check by hand until the
+ * generator lands.
  *
- * Entries are `"resource.action"` strings — the same spelling permix
- * paths and `Permissions.can(resource, action)` calls use, so the
- * static and rbac authz modes share one vocabulary.
+ * Entries are `"resource.action"` strings — the same spelling
+ * `Permissions.can(resource, action)` and `requireObject`/`canObject`
+ * checks use.
  */
 
-/** Actions the platform layer owns, outside any entity permix Def. */
+/** Actions the platform layer owns, outside any entity vocabulary. */
 export const PLATFORM_ACTIONS = [
 	"platform.admin",
 	"billing.manage",
@@ -27,7 +27,7 @@ export const PLATFORM_ACTIONS = [
 	"i18n.locales.manage",
 ] as const;
 
-/** Entity actions mirrored from the permix `Def` in @ktb/authz. */
+/** Entity actions the domain services check (patients, consultations). */
 export const ENTITY_ACTIONS = [
 	"patient.create",
 	"patient.read",

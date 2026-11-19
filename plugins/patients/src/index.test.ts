@@ -426,7 +426,7 @@ describe("PatientsLive", () => {
 			"u1",
 			call((p) => p.create("u1", fields("Private"))),
 		);
-		// u2's own principal, reading u1's row → permix denies on the real owner.
+		// u2's own principal, reading u1's row → the permission check denies on the real owner.
 		await expect(
 			asUser(
 				"u2",

@@ -163,7 +163,7 @@ export interface PageLifecycle {
 /** A console page contributed via `panel.pages` (P-050): the host
  * mounts a generic dispatcher at `path` under /platform, runs `loader`
  * as an Effect under the session principal (`runAs` binds Principal +
- * AuthzLive — authz stays inside the domain services), and renders
+ * Tenant — authz stays inside the domain services), and renders
  * `component` with the result as `data`. `loader` runs on every
  * navigation, like a route loader; pages without one get `data: null`.
  * `path` is the full route path — "/platform" itself or any nested

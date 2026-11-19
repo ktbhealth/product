@@ -336,7 +336,7 @@ describe("ConsultationsLive", () => {
 		});
 	});
 
-	it("list/get/getLive are owner-scoped via permix", async () => {
+	it("list/get/getLive are owner-scoped via relation tuples", async () => {
 		const id = await asUser(
 			"u1",
 			call((c) => c.create({ userId: "u1", transcript: "live text", source: "mic" })),
@@ -681,7 +681,7 @@ describe("ConsultationsLive", () => {
 			call((c) => c.recordConsent(id!, "u1")),
 		);
 
-		// Cross-user mutation → Forbidden (owner lookup + permix update rule).
+		// Cross-user mutation → Forbidden (owner lookup + update permission check).
 		await expect(
 			asUser(
 				"u2",

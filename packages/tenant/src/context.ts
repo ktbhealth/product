@@ -12,8 +12,8 @@ import type { TenantSelector } from "./selector.ts";
  */
 
 /** Built-in tenant roles, ranked owner > admin > member. Apps may store
- * additional role strings in their directory, but authz grants are
- * expressed against these three — see `tenantAuthz`. */
+ * additional role strings in their directory, but role assertions are
+ * expressed against these three — see `requireTenantRole`. */
 export type TenantRole = "owner" | "admin" | "member";
 
 /** A tenant as stored/looked up — identity without request role. */
@@ -79,7 +79,7 @@ const normalizeTenantId = (id: string | number): string | number =>
  * (P-053 phase D). Binds {@link TenantAccess} to `[id]` so scoped
  * reads/writes fence to that tenant plus personal rows; `Tenant`
  * itself stays `null` because a system flow has no acting member or
- * role — `tenantAuthz` denies tenant-gated actions either way, and
+ * role — `requireTenantRole` denies tenant-gated actions either way, and
  * create-path stamping (`tenantIdOf`) is only meaningful where a full
  * `Tenant` was resolved. A `null`/`undefined` id is personal scope —
  * pre-tenancy messages keep working unchanged.

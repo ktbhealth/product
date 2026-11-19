@@ -82,7 +82,7 @@ import { passthroughCipherDriver } from "@ktb/crypto-stub";
 import { buildPermissions } from "@ktb/rbac";
 import { vaultKeyringEnvDriver } from "@ktb/vault-keyring";
 import { Accounts, ApiKeys, Auth } from "@ktb/auth";
-import { AuthzLive, Principal } from "@ktb/authz";
+import { Principal } from "@ktb/authz";
 import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector } from "@ktb/tenant";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { LlmConfig } from "@ktb/anamnesis-llm/services";
@@ -667,10 +667,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// group statically. `declaredIn` makes a group whose handlers were
 	// never registered fail at boot instead of on first dispatch.
 	//
-	// Middleware cannot widen the error channel, so authz cannot live
-	// here — handlers keep their own `requireCanAs` checks. What the bus
-	// boundary CAN own uniformly is observability: commands log at info,
-	// queries at debug, failures at warning.
+	// Middleware cannot widen the error channel, so authorization cannot
+	// live here — handlers keep their own `requirePermission` checks.
+	// What the bus boundary CAN own uniformly is observability: commands
+	// log at info, queries at debug, failures at warning.
 	const busMiddleware: ReadonlyArray<Middleware.Middleware> = [
 		(dispatch, { tag, side }) =>
 			(payload) =>
@@ -887,11 +887,11 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		);
 
 	/**
-	 * Run an Effect program as an authenticated user: binds `Principal`,
-	 * the user's `Authz` rules and the resolved `Tenant` for the duration
-	 * of the effect, so domain services enforce authorization and tenant
-	 * scoping themselves (defense in depth — handlers no longer need
-	 * per-call `requireCan`/`scopedRepo` bypasses).
+	 * Run an Effect program as an authenticated user: binds `Principal`
+	 * and the resolved `Tenant` for the duration of the effect, so domain
+	 * services enforce authorization and tenant scoping themselves
+	 * (defense in depth — handlers no longer need per-call
+	 * `requirePermission`/`scopedRepo` bypasses).
 	 *
 	 * `tenantSelector` is the opaque selector the route layer extracted
 	 * from the request (see `tenantSelectorFromHeaders` in @ktb/tenant);
@@ -902,7 +902,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	 * the pre-tenancy behavior.
 	 *
 	 * `user.actorId` marks delegated access (a secretary acting as the
-	 * doctor `user.id`): authz and data scope bind to `user.id`, the
+	 * doctor `user.id`): permissions and data scope bind to `user.id`, the
 	 * actor is carried on `Principal.actorId`, and the tenant resolves
 	 * for the actor — memberships belong to the person signed in. The
 	 * caller is trusted to have validated the delegation, exactly as it
@@ -928,7 +928,6 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 							...(actorId === user.id ? {} : { actorId }),
 						}),
 						Effect.provideService(Tenant, tenant),
-						Effect.provide(AuthzLive(user.id)),
 					),
 					{
 						requestId: newRequestId(),

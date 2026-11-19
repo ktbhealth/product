@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 
-import { Forbidden, Principal, requireCanAs } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 
 import { permissionEpoch, relationTuples } from "@ktb/db/schema";
@@ -757,71 +757,3 @@ export const deleteRelationTuples = async (
 	if (rows.length > 0) await bumpEpoch(db);
 	return rows.length;
 };
-
-// ---------- entity authz seam ----------
-
-/** Per-entity authz mode (P-054): `static` keeps today's permix
- * `rulesFor` behaviour; `rbac` lets dynamic role grants decide
- * (allow grants minus deny grants). Default is `static` — adoption is
- * per-entity and explicit. */
-export type EntityAuthzMode = "static" | "rbac";
-
-/** Descriptor an entity exposes to its guards. `resource`/`action`
- * name the permix path in static mode (`patient.read`) and the flat
- * grant in rbac mode — same vocabulary, one spelling. Discriminated
- * on `mode` so `requireEntityAccess` only demands `Permissions` in
- * the environment for rbac-mode entities. */
-export interface StaticEntityAuthz {
-	readonly mode: "static";
-	readonly resource: string;
-	readonly action: string;
-}
-
-export interface RbacEntityAuthz {
-	readonly mode: "rbac";
-	readonly resource: string;
-	readonly action: string;
-	readonly tenantId?: string | number;
-}
-
-export type EntityAuthz = StaticEntityAuthz | RbacEntityAuthz;
-
-export const entityAuthz = <M extends EntityAuthzMode>(
-	mode: M,
-	resource: string,
-	action: string,
-	opts?: { readonly tenantId?: string | number },
-): Extract<EntityAuthz, { readonly mode: M }> =>
-	({ mode, resource, action, tenantId: opts?.tenantId }) as Extract<
-		EntityAuthz,
-		{ readonly mode: M }
-	>;
-
-/**
- * Guard consumed by entity services: `static` delegates to the permix
- * `requireCanAs` path (unchanged behaviour, entity arg forwarded);
- * `rbac` resolves dynamic grants through `Permissions` (deny wins,
- * tenant-filtered, `expires_at` honoured). Requires `Permissions` in
- * the environment only in rbac mode — static callers never pull the
- * rbac layer in.
- */
-export function requireEntityAccess(
-	authz: StaticEntityAuthz,
-	entity?: unknown,
-): Effect.Effect<void, Forbidden, never>;
-export function requireEntityAccess(
-	authz: RbacEntityAuthz,
-	entity?: unknown,
-): Effect.Effect<void, Forbidden, Permissions>;
-export function requireEntityAccess(
-	authz: EntityAuthz,
-	entity?: unknown,
-): Effect.Effect<void, Forbidden, Permissions> {
-	return authz.mode === "rbac"
-		? Effect.flatMap(Permissions, (permissions) =>
-				permissions.requirePermission(authz.resource, authz.action, {
-					tenantId: authz.tenantId,
-				}),
-			)
-		: requireCanAs(`${authz.resource}.${authz.action}` as never, entity as never);
-}

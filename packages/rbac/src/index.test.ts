@@ -12,7 +12,6 @@ import {
 	buildPermissions,
 	bumpEpoch,
 	deleteRelationTuples,
-	entityAuthz,
 	grantKey,
 	GroupMembership,
 	isKnownPermission,
@@ -22,7 +21,6 @@ import {
 	PermissionsLive,
 	permissionsService,
 	readEpoch,
-	requireEntityAccess,
 	splitPermission,
 	writeRelationTuple,
 } from "./index.ts";
@@ -736,66 +734,6 @@ describe("permissionsService", () => {
 		const shape = await Effect.runPromise(permissionsService.pipe(Effect.provideService(Db, db)));
 		const grants = await Effect.runPromise(shape.permissionsFor("u1", "t1"));
 		expect(grants.get(grantKey("billing", "manage"))).toBe("allow");
-	});
-});
-
-describe("entity authz seam", () => {
-	let db: DbClient;
-
-	beforeAll(async () => {
-		db = makeDb(makeD1(DDL));
-		await seed(db);
-	});
-
-	it("rbac mode checks dynamic grants through Permissions", async () => {
-		const DbLive = Layer.succeed(Db, db);
-		const runtime = ManagedRuntime.make(
-			Layer.merge(DbLive, PermissionsLive.pipe(Layer.provide(DbLive))),
-		);
-		const result = await runtime.runPromise(
-			Effect.gen(function* () {
-				yield* requireEntityAccess(entityAuthz("rbac", "patient", "read"));
-				return yield* Effect.flip(requireEntityAccess(entityAuthz("rbac", "patient", "update")));
-			}).pipe(Effect.provideService(Principal, { userId: "u1" })),
-		);
-		expect(result).toBeInstanceOf(Forbidden);
-		await runtime.dispose();
-	});
-
-	it("rbac mode forwards the entity tenantId to Permissions", async () => {
-		const DbLive = Layer.succeed(Db, db);
-		const runtime = ManagedRuntime.make(
-			Layer.merge(DbLive, PermissionsLive.pipe(Layer.provide(DbLive))),
-		);
-		const result = await runtime.runPromise(
-			Effect.gen(function* () {
-				// billing.manage is granted to u1 inside tenant t1 only.
-				yield* requireEntityAccess(entityAuthz("rbac", "billing", "manage", { tenantId: "t1" }));
-				return yield* Effect.flip(
-					requireEntityAccess(entityAuthz("rbac", "billing", "manage", { tenantId: "t2" })),
-				);
-			}).pipe(Effect.provideService(Principal, { userId: "u1" })),
-		);
-		expect(result).toBeInstanceOf(Forbidden);
-		await runtime.dispose();
-	});
-
-	it("static mode delegates to permix rulesFor", async () => {
-		// patient.read static rule: ownerId must equal principal userId.
-		const ok = await Effect.runPromise(
-			requireEntityAccess(entityAuthz("static", "patient", "read"), {
-				ownerId: "u1",
-			}).pipe(Effect.provideService(Principal, { userId: "u1" })),
-		);
-		expect(ok).toBeUndefined();
-		const err = await Effect.runPromise(
-			Effect.flip(
-				requireEntityAccess(entityAuthz("static", "patient", "read"), {
-					ownerId: "someone-else",
-				}).pipe(Effect.provideService(Principal, { userId: "u1" })),
-			),
-		);
-		expect(err).toBeInstanceOf(Forbidden);
 	});
 });
 
