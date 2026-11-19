@@ -126,6 +126,21 @@ export interface ThemeManagedFont {
 	readonly asset?: ThemeFontAsset | null;
 }
 
+/**
+ * One pickable managed font family for the editor's per-slot source
+ * picker — a READY `font_families` catalog row joined with its
+ * provider's display name and adapter kind. Wire DTO only; the
+ * catalog itself lives in the fonts plugin.
+ */
+export interface ThemeFontSourceOption {
+	readonly providerId: number;
+	readonly providerName: string;
+	/** Provider adapter kind ("googlefonts", "local", …). */
+	readonly providerKind: string;
+	readonly family: string;
+	readonly weights: readonly number[];
+}
+
 /** Font delivery config stored on `theme_definitions.fonts`. */
 export interface ThemeFontConfig {
 	readonly delivery: "self-host" | "google-fonts";

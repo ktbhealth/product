@@ -247,6 +247,7 @@ export type {
 	ThemeBrand,
 	ThemeFontConfig,
 	ThemeFontSource,
+	ThemeFontSourceOption,
 	ThemeManagedFont,
 	ThemeResolveRequest,
 	ThemeScopeKind,
@@ -266,6 +267,7 @@ export {
 	setThemeMainFn,
 	deleteThemeFn,
 	setThemePreviewFn,
+	listThemeFontSourcesFn,
 } from "./fns.ts";
 export { themeMessages, isThemeLocale, THEME_LOCALES } from "./i18n.ts";
 export type { ThemeMessages, ThemeLocale } from "./i18n.ts";

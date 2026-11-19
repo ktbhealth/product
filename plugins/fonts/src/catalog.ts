@@ -27,6 +27,9 @@ import type { FontFamilyStatus } from "./types.ts";
 export interface FontCatalogFamily {
 	readonly id: number;
 	readonly providerId: number;
+	/** Owning provider's display name (`font_providers.name`) — lets
+	 * pickers label a family "Provider — Family" unambiguously. */
+	readonly providerName: string;
 	/** Provider adapter kind ("local", "googlefonts", …) — drives how
 	 * a consumer delivers the family (stylesheet link vs self-host). */
 	readonly kind: string;
@@ -57,9 +60,14 @@ const asWeights = (raw: string | null): readonly number[] => {
 	return Array.isArray(value) ? value.filter((w): w is number => typeof w === "number") : [];
 };
 
-const toEntry = (row: typeof fontFamilies.$inferSelect, kind: string): FontCatalogFamily => ({
+const toEntry = (
+	row: typeof fontFamilies.$inferSelect,
+	kind: string,
+	providerName: string,
+): FontCatalogFamily => ({
 	id: row.id,
 	providerId: row.providerId,
+	providerName,
 	kind,
 	family: row.family,
 	weights: asWeights(row.weights),
@@ -76,12 +84,12 @@ const toEntry = (row: typeof fontFamilies.$inferSelect, kind: string): FontCatal
  */
 export async function listCatalogRows(db: DbClient): Promise<readonly FontCatalogFamily[]> {
 	const rows = await db
-		.select({ family: fontFamilies, kind: fontProviders.kind })
+		.select({ family: fontFamilies, kind: fontProviders.kind, providerName: fontProviders.name })
 		.from(fontFamilies)
 		.innerJoin(fontProviders, eq(fontFamilies.providerId, fontProviders.id))
 		.where(eq(fontProviders.enabled, true))
 		.orderBy(asc(fontFamilies.family));
-	return rows.map((r) => toEntry(r.family, r.kind));
+	return rows.map((r) => toEntry(r.family, r.kind, r.providerName));
 }
 
 export class FontCatalog extends Context.Service<

@@ -41,6 +41,9 @@ export interface ThemeMessages {
 	readonly fontsGoogle: string;
 	readonly fontsGoogleWarning: string;
 	readonly fontsFamiliesLabel: string;
+	readonly fontsSourcesLabel: string;
+	readonly fontSourceLabel: string;
+	readonly fontSourceCustom: string;
 	readonly fontSans: string;
 	readonly fontHeading: string;
 	readonly fontMono: string;
@@ -238,6 +241,9 @@ const en: ThemeMessages = {
 	fontsGoogleWarning:
 		"Google Fonts sends visitor requests to Google — conflicts with on-prem deployments.",
 	fontsFamiliesLabel: "Font families",
+	fontsSourcesLabel: "Managed sources",
+	fontSourceLabel: "Managed source",
+	fontSourceCustom: "Custom (free-form)",
 	fontSans: "Sans",
 	fontHeading: "Heading",
 	fontMono: "Mono",
@@ -437,6 +443,9 @@ const ptBR: ThemeMessages = {
 	fontsGoogleWarning:
 		"O Google Fonts envia requisições de visitantes ao Google — conflita com implantações on-prem.",
 	fontsFamiliesLabel: "Famílias de fontes",
+	fontsSourcesLabel: "Fontes gerenciadas",
+	fontSourceLabel: "Fonte gerenciada",
+	fontSourceCustom: "Personalizada (texto livre)",
 	fontSans: "Sans",
 	fontHeading: "Títulos",
 	fontMono: "Mono",
@@ -637,6 +646,9 @@ const es: ThemeMessages = {
 	fontsGoogleWarning:
 		"Google Fonts envía solicitudes de visitantes a Google — entra en conflicto con despliegues on-prem.",
 	fontsFamiliesLabel: "Familias de fuentes",
+	fontsSourcesLabel: "Fuentes gestionadas",
+	fontSourceLabel: "Fuente gestionada",
+	fontSourceCustom: "Personalizada (texto libre)",
 	fontSans: "Sans",
 	fontHeading: "Títulos",
 	fontMono: "Mono",
