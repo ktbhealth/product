@@ -12,7 +12,7 @@ import { i18nManifestHash } from "@ktb/i18n";
 import { PlatformAdmin, type PlatformAdminShape } from "@ktb/platform";
 import { Permissions, type PermissionsShape } from "@ktb/rbac";
 
-import { I18nAdmin, I18nAdminLive } from "./admin.ts";
+import { I18nAdmin, I18nAdminLive, I18nValidationError } from "./admin.ts";
 import { I18N_TEST_DDL, i18nMessages, i18nNamespaces } from "./index.ts";
 import { I18nRuntimeLive } from "./runtime.ts";
 
@@ -97,6 +97,18 @@ const runCoverage = (rt: ManagedRuntime.ManagedRuntime<I18nAdmin, never>) =>
 		Effect.gen(function* () {
 			const admin = yield* I18nAdmin;
 			return yield* admin.coverage();
+		}),
+	);
+
+const runMissingKeys = (
+	rt: ManagedRuntime.ManagedRuntime<I18nAdmin, never>,
+	namespace: string,
+	locale: string,
+) =>
+	rt.runPromise(
+		Effect.gen(function* () {
+			const admin = yield* I18nAdmin;
+			return yield* admin.missingKeys({ namespace, locale });
 		}),
 	);
 
@@ -257,5 +269,66 @@ describe("I18nAdmin coverage", () => {
 		const rt = makeRuntimeWithPermissions(readPermissions, denyGate);
 		const out = await runCoverage(rt);
 		expect(out.find((n) => n.namespace === "cov.reg")?.keyCount).toBe(4);
+	});
+});
+
+/**
+ * missingKeys reuses fixture cov.reg: keys a,b,c,d — published en a,b,d
+ * (c draft-only); published pt-BR a only (b draft); es/qps nothing.
+ * cov.scoped has ONLY tenant-scope rows → empty universe.
+ */
+describe("I18nAdmin missingKeys", () => {
+	it("returns sorted keys lacking a published value for the locale", async () => {
+		const rt = makeRuntime();
+		// pt-BR published: a → missing b, c, d (b's pt-BR row is a
+		// staged draft, c has no pt-BR row at all).
+		expect(await runMissingKeys(rt, "cov.reg", "pt-BR")).toEqual(["b", "c", "d"]);
+		// en published: a, b, d → only the draft-only c is missing.
+		expect(await runMissingKeys(rt, "cov.reg", "en")).toEqual(["c"]);
+		// es has no published rows → every key missing.
+		expect(await runMissingKeys(rt, "cov.reg", "es")).toEqual(["a", "b", "c", "d"]);
+	});
+
+	it("is per-locale — other locales' rows don't mark a key translated", async () => {
+		const rt = makeRuntime();
+		// a is published in en and pt-BR but missing in es.
+		expect(await runMissingKeys(rt, "cov.reg", "es")).toContain("a");
+		expect(await runMissingKeys(rt, "cov.reg", "en")).not.toContain("a");
+	});
+
+	it("excludes non-global rows — tenant/portal copy never fills gaps", async () => {
+		const rt = makeRuntime();
+		// cov.scoped's only row is tenant-scope: no global keys at all.
+		expect(await runMissingKeys(rt, "cov.scoped", "en")).toEqual([]);
+		expect(await runMissingKeys(rt, "cov.tenant-only", "en")).toEqual([]);
+		// Unknown namespace → empty list, not an error.
+		expect(await runMissingKeys(rt, "cov.nonexistent", "en")).toEqual([]);
+	});
+
+	it("fails Forbidden without a read grant or the admin gate", async () => {
+		const rt = makeRuntime(denyGate);
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.missingKeys({ namespace: "cov.reg", locale: "en" }).pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(Forbidden);
+	});
+
+	it("succeeds for a plain read-grant holder without the admin gate", async () => {
+		const rt = makeRuntimeWithPermissions(readPermissions, denyGate);
+		expect(await runMissingKeys(rt, "cov.reg", "en")).toEqual(["c"]);
+	});
+
+	it("rejects malformed namespace/locale ids with I18nValidationError", async () => {
+		const rt = makeRuntime();
+		const err = await rt.runPromise(
+			Effect.gen(function* () {
+				const admin = yield* I18nAdmin;
+				return yield* admin.missingKeys({ namespace: "bad ns", locale: "en" }).pipe(Effect.flip);
+			}),
+		);
+		expect(err).toBeInstanceOf(I18nValidationError);
 	});
 });

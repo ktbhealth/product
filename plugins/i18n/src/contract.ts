@@ -100,6 +100,13 @@ export interface LocaleInfo {
 	readonly enabled: boolean;
 }
 
+/** Read input for I18nAdmin.missingKeys — global scope is implied
+ * (the key universe is coverage()'s: distinct global keys). */
+export interface MissingKeysInput {
+	readonly namespace: string;
+	readonly locale: string;
+}
+
 export interface NamespaceInfo {
 	readonly namespace: string;
 	readonly pluginId: string;
@@ -132,6 +139,13 @@ export interface NamespaceCoverage {
 export interface I18nAdminShape {
 	readonly namespaces: () => Effect.Effect<readonly NamespaceInfo[], Forbidden>;
 	readonly coverage: () => Effect.Effect<readonly NamespaceCoverage[], Forbidden>;
+	/** Sorted global-scope keys for the namespace that have NO
+	 * published row for the locale — the "N missing" drill-down behind
+	 * NamespaceCoverage.translated. Same key universe and
+	 * published-only predicate as coverage(). */
+	readonly missingKeys: (
+		input: MissingKeysInput,
+	) => Effect.Effect<readonly string[], Forbidden | I18nValidationError>;
 	readonly locales: () => Effect.Effect<readonly LocaleInfo[], Forbidden>;
 	readonly messages: (filter?: MessageFilter) => Effect.Effect<readonly I18nMessage[], Forbidden>;
 	readonly saveDraft: (
