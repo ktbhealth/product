@@ -2766,6 +2766,131 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	fonts: {
+		providersTitle: {
+			params: [],
+		},
+		providersDescription: {
+			params: [],
+		},
+		fontsTitle: {
+			params: [],
+		},
+		fontsDescription: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colKind: {
+			params: [],
+		},
+		colEnabled: {
+			params: [],
+		},
+		colFamilies: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		colFamily: {
+			params: [],
+		},
+		colProvider: {
+			params: [],
+		},
+		colWeights: {
+			params: [],
+		},
+		colStatus: {
+			params: [],
+		},
+		addProvider: {
+			params: [],
+		},
+		dialogAddTitle: {
+			params: [],
+		},
+		nameLabel: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		kindLabel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		creating: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		createError: {
+			params: [],
+		},
+		sync: {
+			params: [],
+		},
+		syncing: {
+			params: [],
+		},
+		syncedToast: {
+			params: [],
+		},
+		syncError: {
+			params: [],
+		},
+		deleteProvider: {
+			params: [],
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteError: {
+			params: [],
+		},
+		emptyProviders: {
+			params: [],
+		},
+		emptyFamilies: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		searchLabel: {
+			params: [],
+		},
+		noResults: {
+			params: [],
+		},
+		allProviders: {
+			params: [],
+		},
+		providerFilterLabel: {
+			params: [],
+		},
+		statusPending: {
+			params: [],
+		},
+		statusReady: {
+			params: [],
+		},
+		statusFailed: {
+			params: [],
+		},
+		weightsNone: {
+			params: [],
+		},
+	},
 	forms: {
 		submit: {
 			params: [],
@@ -5435,6 +5560,24 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		disable: {
+			params: [],
+		},
+		badgeMain: {
+			params: [],
+		},
+		setMain: {
+			params: [],
+		},
+		mainSet: {
+			params: [],
+		},
+		deleteTheme: {
+			params: [],
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteError: {
 			params: [],
 		},
 		assetTodo: {

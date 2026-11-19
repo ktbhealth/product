@@ -18,7 +18,7 @@ import { ThemeHeaderAction } from "./views/ThemeHeaderAction.tsx";
  *
  * - `theme.services` registers the `Theme` port (theme_definitions
  *   repo + scope fallback chain portal-instance → tenant → platform →
- *   null). Reads are open (public branding); writes are PlatformAdmin.
+ *   main row → null). Reads are open (public branding); writes are PlatformAdmin.
  * - `theme.panel` mounts /platform/theme — the admin editor with scope
  *   picker, seed editors, live preview, contrast report and publish.
  *   Guard 404s non-admins like every console page.
@@ -169,6 +169,9 @@ export {
 	findTheme,
 	getThemeById,
 	listThemes,
+	findMainTheme,
+	setThemeMain,
+	seedDefaultTheme,
 	upsertTheme,
 	setThemeEnabled,
 	deleteTheme,
@@ -226,6 +229,7 @@ export {
 	listThemeAssetsFn,
 	publishThemeFn,
 	setThemeEnabledFn,
+	setThemeMainFn,
 	deleteThemeFn,
 	setThemePreviewFn,
 } from "./fns.ts";

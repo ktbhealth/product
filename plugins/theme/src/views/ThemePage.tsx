@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
-import { PencilIcon, PlusIcon } from "lucide-react";
+import { PencilIcon, PlusIcon, StarIcon, Trash2Icon } from "lucide-react";
 
+import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
+import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
@@ -21,7 +23,13 @@ import {
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import type { PanelPageContext } from "@ktb/kernel";
 
-import { publishThemeFn, setThemeEnabledFn, setThemePreviewFn } from "../fns.ts";
+import {
+	deleteThemeFn,
+	publishThemeFn,
+	setThemeEnabledFn,
+	setThemeMainFn,
+	setThemePreviewFn,
+} from "../fns.ts";
 import { themeMessages, type ThemeMessages } from "../i18n.ts";
 import type { ThemeScopeKind, ThemeSummary } from "../types.ts";
 
@@ -40,7 +48,9 @@ const scopeLabel = (scope: ThemeScopeKind, t: ThemeMessages): string =>
 			: t.scopePortalInstance;
 
 /**
- * `/platform/theme` admin page — list-only view of defined themes.
+ * `/platform/theme` admin page — list view of defined themes with
+ * Preview / Set main / Edit / Delete row actions. The main row
+ * (resolve()'s last fallback) carries a badge and cannot be deleted.
  * "New theme" auto-creates a draft row (tenant scope, generated
  * scopeId) and navigates to `/platform/theme/editor`; the editor
  * deletes untouched drafts on the way out, flagging the discard via
@@ -55,6 +65,7 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	const [q, setQ] = useState("");
 	const [busy, setBusy] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
+	const [deleting, setDeleting] = useState<ThemeSummary | null>(null);
 	// The editor sets this flag when it deletes an untouched draft —
 	// read once at mount (lazy init keeps this out of an effect).
 	const [toast, setToast] = useState<ToastData | null>(() => {
@@ -129,6 +140,38 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 		try {
 			await setThemePreviewFn({ data: { themeId: theme.id } });
 			window.location.reload();
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const setMain = async (theme: ThemeSummary) => {
+		setBusy(`main-${theme.id}`);
+		setNotice(null);
+		try {
+			await setThemeMainFn({ data: { id: theme.id } });
+			setNotice(t.mainSet);
+			await router.invalidate();
+		} catch {
+			setNotice(t.publishError);
+		} finally {
+			setBusy(null);
+		}
+	};
+
+	const confirmDelete = async () => {
+		if (deleting === null) return;
+		setBusy(`delete-${deleting.id}`);
+		setNotice(null);
+		try {
+			await deleteThemeFn({ data: { id: deleting.id } });
+			setDeleting(null);
+			await router.invalidate();
+		} catch {
+			// Surface the failure (e.g. the main-row guard) instead of
+			// silently closing — the dialog stays open for a retry.
+			setNotice(t.deleteError);
+			throw new Error(t.deleteError);
 		} finally {
 			setBusy(null);
 		}
@@ -212,7 +255,12 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 											<TableCell className="font-mono text-xs text-muted-foreground">
 												{theme.scopeId === "" ? "—" : theme.scopeId}
 											</TableCell>
-											<TableCell className="text-sm">{brandNameOf(theme) ?? "—"}</TableCell>
+											<TableCell className="text-sm">
+												<span className="inline-flex items-center gap-1.5">
+													{brandNameOf(theme) ?? "—"}
+													{theme.isMain ? <Badge variant="secondary">{t.badgeMain}</Badge> : null}
+												</span>
+											</TableCell>
 											<TableCell>
 												<Switch
 													checked={theme.enabled}
@@ -230,15 +278,6 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 													<Button
 														variant="ghost"
 														size="sm"
-														onClick={() => editTheme(theme)}
-														disabled={busy !== null}
-													>
-														<PencilIcon className="size-3.5" />
-														{t.edit}
-													</Button>
-													<Button
-														variant="ghost"
-														size="sm"
 														onClick={() => void preview(theme)}
 														disabled={busy !== null}
 													>
@@ -247,6 +286,41 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 														) : null}
 														{busy === `preview-${theme.id}` ? t.previewing : t.previewAction}
 													</Button>
+													{theme.isMain ? null : (
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => void setMain(theme)}
+															disabled={busy !== null}
+														>
+															{busy === `main-${theme.id}` ? (
+																<Spinner className="size-3.5" />
+															) : (
+																<StarIcon className="size-3.5" />
+															)}
+															{t.setMain}
+														</Button>
+													)}
+													<Button
+														variant="ghost"
+														size="sm"
+														onClick={() => editTheme(theme)}
+														disabled={busy !== null}
+													>
+														<PencilIcon className="size-3.5" />
+														{t.edit}
+													</Button>
+													{theme.isMain ? null : (
+														<Button
+															variant="ghost"
+															size="sm"
+															onClick={() => setDeleting(theme)}
+															disabled={busy !== null}
+														>
+															<Trash2Icon className="size-3.5" />
+															{t.deleteTheme}
+														</Button>
+													)}
 												</div>
 											</TableCell>
 										</TableRow>
@@ -257,6 +331,20 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 					</div>
 				</>
 			)}
+
+			<ConfirmDialog
+				open={deleting !== null}
+				onOpenChange={(open) => {
+					if (!open) setDeleting(null);
+				}}
+				title={t.deleteTheme}
+				description={t.deleteConfirm}
+				confirmLabel={t.deleteTheme}
+				cancelLabel={t.cancel}
+				variant="destructive"
+				loading={deleting !== null && busy === `delete-${deleting.id}`}
+				onConfirm={confirmDelete}
+			/>
 
 			<Toast toast={toast} onClose={() => setToast(null)} />
 		</PageContainer>

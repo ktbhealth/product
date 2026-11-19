@@ -12,7 +12,8 @@ import { integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/sr
  * of truth), font config, brand asset refs and the enabled flag.
  * `scope` is "platform" | "tenant" | "portal-instance"; `scope_id` is
  * "" for platform, the tenant id (groups.id) for tenant, and the
- * portal instance id for portal-instance.
+ * portal instance id for portal-instance. `is_main` marks the single
+ * fallback row resolve() uses after the scope chain misses.
  *
  * `theme_assets` — Phase 4 stub: the async upload/derivative pipeline
  * (R2 + dedicated queue) fills this; v1 rows may reference external
@@ -34,6 +35,10 @@ export const themeDefinitions = sqliteTable(
 		/** JSON ThemeBrand | null — asset refs (URLs until Phase 4). */
 		brand: text(),
 		enabled: integer({ mode: "boolean" }).notNull().default(true),
+		/** Exactly one row may carry is_main=1 — the resolve() fallback
+		 * after the scope chain misses. Set only via setThemeMain (the
+		 * admin "Set main" action); publish/upsert never touches it. */
+		isMain: integer("is_main", { mode: "boolean" }).notNull().default(false),
 		version: integer().notNull().default(1),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp" }),

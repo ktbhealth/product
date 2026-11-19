@@ -22,6 +22,7 @@ export const PLUGIN_KEYWORDS = [
 	"documents",
 	"eval",
 	"flows",
+	"fonts",
 	"forms",
 	"groups",
 	"integrity",

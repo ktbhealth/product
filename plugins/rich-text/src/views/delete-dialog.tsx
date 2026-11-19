@@ -18,7 +18,7 @@ import { richTextUsageFn, type RichTextUsageWire } from "../fns.ts";
 import type { RichTextMessages } from "../i18n.ts";
 
 /** The document pending deletion — `null` keeps the dialog closed. */
-export interface DeleteDialogDoc {
+interface DeleteDialogDoc {
 	readonly id: number;
 	readonly title: string;
 }

@@ -22,6 +22,7 @@ const summary = (over: Partial<ThemeSummary>): ThemeSummary => ({
 	scopeId: "",
 	appName: null,
 	enabled: true,
+	isMain: false,
 	version: 1,
 	...over,
 });

@@ -400,6 +400,20 @@
       "when": 1795064364464,
       "tag": "0057_smart_nicolaos",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1795067185103,
+      "tag": "0058_odd_overlord",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1795071662265,
+      "tag": "0059_wild_demogoblin",
+      "breakpoints": true
     }
   ]
 }

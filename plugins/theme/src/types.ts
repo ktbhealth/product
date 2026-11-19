@@ -158,6 +158,9 @@ export interface ThemeSummary {
 	readonly scopeId: string;
 	readonly appName: string | null;
 	readonly enabled: boolean;
+	/** The single resolve() fallback row — hidden from "Set main"/
+	 * "Delete" actions in the admin list. */
+	readonly isMain: boolean;
 	readonly version: number;
 	readonly brand?: ThemeBrand | null;
 }

@@ -154,7 +154,13 @@ export default defineConfig({
 				// Provider preset quick-fills name real endpoints by design —
 				// the preset's exemption list still carries the pre-rename
 				// plugins/ai-endpoints path; keep the new one exempt too.
-				files: ["plugins/ai-provider/src/views/EndpointsPage.tsx"],
+				files: [
+					"plugins/ai-provider/src/views/EndpointsPage.tsx",
+					// fonts plugin's googlefonts adapter builds the css2
+					// URL by design — same deliberate-endpoint class as
+					// theme's font pipeline.
+					"plugins/fonts/src/adapters/googlefonts.ts",
+				],
 				rules: { "arch/provider-lockin": "off" },
 			},
 			{
