@@ -21,7 +21,8 @@ import {
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { makeJobs } from "@ktb/jobs-port";
+import { makeJobs, registerJobHandler } from "@ktb/jobs-port";
+import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
 import { currentLocale } from "./locale-context.ts";
 import {
 	GLOBAL_SCOPE,
@@ -213,6 +214,13 @@ const jobs =
 		? undefined
 		: makeJobs({ send: (envelope) => jobsQueue.send(envelope), db });
 
+// The /platform/queue console's smoke kind: jobs-worker registers
+// jobs.ping for the Redis transport; the web consumer needs its own
+// registration or console enqueues would land as "unknown job kind".
+// Registered unconditionally — the registry is per-process and a
+// no-op handler is harmless when AUDIO_QUEUE is unbound.
+registerJobHandler("jobs.ping", { handle: async () => {} });
+
 // PL-006 phase 4: theme asset uploads ride a DEDICATED queue
 // (ktb-theme-assets) — image derivatives and font downloads never
 // contend with transcription. Same jobs-port shape: job_runs projection
@@ -224,6 +232,53 @@ const themeJobs =
 	themeJobsQueue === undefined
 		? undefined
 		: makeJobs({ send: (envelope) => themeJobsQueue.send(envelope), db });
+
+// Queue registry for /platform/queue (PL-007 follow-up): every queue
+// transport this deployment binds. A stats() probe marks the dev:node
+// SQLite stand-in ("sqlite"); the workerd Queue binding has none ->
+// "cloudflare-queue" with null depth (managed in the Cloudflare
+// dashboard). dev:node additionally publishes REDIS_JOBS_QUEUE — the
+// ktb:jobs list apps/jobs-worker drains — as a "redis"/"jobs-worker"
+// entry. Unbound queues are omitted rather than listed as fake rows.
+const envRecord = env as unknown as Record<string, unknown>;
+const boundQueueTransport = (binding: unknown): "cloudflare-queue" | "sqlite" =>
+	(binding as { stats?: unknown } | undefined)?.stats === undefined ? "cloudflare-queue" : "sqlite";
+const themeQueueStats = (
+	env.THEME_ASSETS_QUEUE as { stats?: () => Promise<QueueDepth> } | undefined
+)?.stats;
+const redisJobsQueue = envRecord.REDIS_JOBS_QUEUE as
+	| { stats?: () => Promise<QueueDepth | null> }
+	| undefined;
+const queueDescriptors: (QueueDescriptor | undefined)[] = [
+	env.AUDIO_QUEUE === undefined
+		? undefined
+		: {
+				id: "audio",
+				name: "ktb-transcription",
+				transport: boundQueueTransport(env.AUDIO_QUEUE),
+				consumer: "in-app" as const,
+				stats: queueDepthProbe,
+			},
+	env.THEME_ASSETS_QUEUE === undefined
+		? undefined
+		: {
+				id: "theme-assets",
+				name: "ktb-theme-assets",
+				transport: boundQueueTransport(env.THEME_ASSETS_QUEUE),
+				consumer: "in-app" as const,
+				stats: themeQueueStats,
+			},
+	redisJobsQueue?.stats === undefined
+		? undefined
+		: {
+				id: "jobs",
+				name: envRecord.JOBS_QUEUE?.toString() ?? "ktb:jobs",
+				transport: "redis" as const,
+				consumer: "jobs-worker" as const,
+				stats: redisJobsQueue.stats,
+			},
+];
+const queueRegistry = makeQueueRegistry(queueDescriptors.filter((d) => d !== undefined));
 
 /**
  * Request scope chain for the i18n capability (PL-008): the same
@@ -334,6 +389,7 @@ setServerRuntime({
 		typeof queueDepthProbe === "function" ? () => queueDepthProbe().catch(() => null) : undefined,
 	audioStorageStats:
 		audioBucketLister === undefined ? undefined : () => audioStorageStats(audioBucketLister),
+	queues: () => queueRegistry.list(),
 	ai: aiBinding,
 	audioTranscribeModel,
 	recordExporters,

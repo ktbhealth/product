@@ -522,6 +522,9 @@ export const I18N_MANIFEST = {
 		panel_group_assurance: {
 			params: [],
 		},
+		panel_group_concurrency: {
+			params: [],
+		},
 		panel_group_console: {
 			params: [],
 		},
@@ -565,6 +568,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		panel_nav_plugins: {
+			params: [],
+		},
+		panel_nav_queue: {
 			params: [],
 		},
 		panel_nav_rich_text: {
@@ -4668,6 +4674,171 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	queue: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} job run tracked.} other{{n} job runs tracked.}}",
+		},
+		queuesTitle: {
+			params: [],
+		},
+		queuesDescription: {
+			params: [],
+		},
+		qColQueue: {
+			params: [],
+		},
+		qColTransport: {
+			params: [],
+		},
+		qColConsumer: {
+			params: [],
+		},
+		qColPending: {
+			params: [],
+		},
+		qColProcessing: {
+			params: [],
+		},
+		qColDone: {
+			params: [],
+		},
+		qColFailed: {
+			params: [],
+		},
+		transportCloudflare: {
+			params: [],
+		},
+		transportRedis: {
+			params: [],
+		},
+		transportSqlite: {
+			params: [],
+		},
+		transportUnknown: {
+			params: [],
+		},
+		consumerInApp: {
+			params: [],
+		},
+		consumerJobsWorker: {
+			params: [],
+		},
+		consumerExternal: {
+			params: [],
+		},
+		consumerNone: {
+			params: [],
+		},
+		emptyQueuesTitle: {
+			params: [],
+		},
+		emptyQueuesDescription: {
+			params: [],
+		},
+		unavailableTitle: {
+			params: [],
+		},
+		unavailableDescription: {
+			params: [],
+		},
+		runsTitle: {
+			params: [],
+		},
+		runsDescription: {
+			params: [],
+		},
+		rColId: {
+			params: [],
+		},
+		rColKind: {
+			params: [],
+		},
+		rColStatus: {
+			params: [],
+		},
+		rColError: {
+			params: [],
+		},
+		rColCreated: {
+			params: [],
+		},
+		rColPayloadRef: {
+			params: [],
+		},
+		filterKind: {
+			params: [],
+		},
+		filterStatus: {
+			params: [],
+		},
+		kindAll: {
+			params: [],
+		},
+		statusAll: {
+			params: [],
+		},
+		statusQueued: {
+			params: [],
+		},
+		statusProcessing: {
+			params: [],
+		},
+		statusDone: {
+			params: [],
+		},
+		statusFailed: {
+			params: [],
+		},
+		emptyRunsTitle: {
+			params: [],
+		},
+		emptyRunsDescription: {
+			params: [],
+		},
+		noMatch: {
+			params: [],
+		},
+		enqueueTitle: {
+			params: [],
+		},
+		enqueueDescription: {
+			params: [],
+		},
+		enqueueKind: {
+			params: [],
+		},
+		selectKind: {
+			params: [],
+		},
+		payloadLabel: {
+			params: [],
+		},
+		enqueueSubmit: {
+			params: [],
+		},
+		enqueueSuccess: {
+			params: [],
+		},
+		enqueueError: {
+			params: [],
+		},
+		payloadInvalid: {
+			params: [],
+		},
+		noKinds: {
+			params: [],
+		},
+	},
 	rbac: {
 		title: {
 			params: [],
@@ -5382,159 +5553,6 @@ export const I18N_MANIFEST = {
 		headerManage: {
 			params: [],
 		},
-		searchPlaceholder: {
-			params: [],
-		},
-		searchLabel: {
-			params: [],
-		},
-		newTheme: {
-			params: [],
-		},
-		noResults: {
-			params: [],
-		},
-		dialogCreateTitle: {
-			params: [],
-		},
-		dialogEditTitle: {
-			params: [],
-		},
-		tabGeneral: {
-			params: [],
-		},
-		tabColors: {
-			params: [],
-		},
-		tabTypography: {
-			params: [],
-		},
-		tabAssets: {
-			params: [],
-		},
-		cancel: {
-			params: [],
-		},
-		assetsNeedSave: {
-			params: [],
-		},
-		assetsListTitle: {
-			params: [],
-		},
-		assetsEmpty: {
-			params: [],
-		},
-		assetKindLogoLight: {
-			params: [],
-		},
-		assetKindLogoDark: {
-			params: [],
-		},
-		assetKindWordmark: {
-			params: [],
-		},
-		assetKindFavicon: {
-			params: [],
-		},
-		assetKindOgImage: {
-			params: [],
-		},
-		assetKindFont: {
-			params: [],
-		},
-		assetFontUpload: {
-			params: [],
-		},
-		assetStatusPending: {
-			params: [],
-		},
-		assetStatusReady: {
-			params: [],
-		},
-		assetStatusFailed: {
-			params: [],
-		},
-		assetGoogleFamily: {
-			params: [],
-		},
-		assetGoogleSlot: {
-			params: [],
-		},
-		brandRefsTitle: {
-			params: [],
-		},
-		editorBack: {
-			params: [],
-		},
-		editorThemeLabel: {
-			params: [],
-		},
-		editorNotFound: {
-			params: [],
-		},
-		dirtyBadge: {
-			params: [],
-		},
-		tabTokens: {
-			params: [],
-		},
-		tabComponents: {
-			params: [],
-		},
-		tabBlocks: {
-			params: [],
-		},
-		tokensTitle: {
-			params: [],
-		},
-		tokensDescription: {
-			params: [],
-		},
-		componentsTitle: {
-			params: [],
-		},
-		componentsDescription: {
-			params: [],
-		},
-		blocksTitle: {
-			params: [],
-		},
-		blocksDescription: {
-			params: [],
-		},
-		schemeLight: {
-			params: [],
-		},
-		schemeDark: {
-			params: [],
-		},
-		discardedToast: {
-			params: [],
-		},
-		galleryButtons: {
-			params: [],
-		},
-		galleryForms: {
-			params: [],
-		},
-		galleryFeedback: {
-			params: [],
-		},
-		gallerySurfaces: {
-			params: [],
-		},
-		blockStats: {
-			params: [],
-		},
-		blockSettings: {
-			params: [],
-		},
-		blockEmpty: {
-			params: [],
-		},
-		blockTable: {
-			params: [],
-		},
 	},
 	users: {
 		title: {
@@ -6082,6 +6100,7 @@ export const I18N_BASE_CATALOG = {
 	notfound_title: "Page not found",
 	panel_group_account: "Account",
 	panel_group_assurance: "Assurance",
+	panel_group_concurrency: "Concurrency",
 	panel_group_console: "Console",
 	panel_group_domain_data: "Domain data",
 	panel_group_evaluation: "Evaluation",
@@ -6097,6 +6116,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_groups: "Groups",
 	panel_nav_ops: "Ops",
 	panel_nav_plugins: "Plugins",
+	panel_nav_queue: "Queue",
 	panel_nav_rich_text: "Rich text",
 	panel_nav_users: "Users",
 	persona_business: "Business",

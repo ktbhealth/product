@@ -7,6 +7,7 @@
 	},
 	"dependencies": {
 		"@ktb/jobs-port": "workspace:*",
+		"@ktb/queues-port": "workspace:*",
 		"redis": "6.3.1"
 	}
 }

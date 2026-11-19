@@ -112,6 +112,7 @@ const PANEL_LABELS: Record<string, string> = {
 	"/platform/groups": "panel_nav_groups",
 	"/platform/ops": "panel_nav_ops",
 	"/platform/plugins": "panel_nav_plugins",
+	"/platform/queue": "panel_nav_queue",
 	"/platform/rich-text": "panel_nav_rich_text",
 	"/portal/doctor/activity": "panel_nav_activity",
 	"/portal/secretary/activity": "panel_nav_activity",
@@ -123,6 +124,7 @@ const PANEL_LABELS: Record<string, string> = {
 const PANEL_GROUPS: Record<string, string> = {
 	Account: "panel_group_account",
 	Assurance: "panel_group_assurance",
+	Concurrency: "panel_group_concurrency",
 	Console: "panel_group_console",
 	"Domain data": "panel_group_domain_data",
 	Evaluation: "panel_group_evaluation",

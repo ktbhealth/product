@@ -202,6 +202,7 @@ export type I18nKey =
 	| "app.notfound_title"
 	| "app.panel_group_account"
 	| "app.panel_group_assurance"
+	| "app.panel_group_concurrency"
 	| "app.panel_group_console"
 	| "app.panel_group_domain_data"
 	| "app.panel_group_evaluation"
@@ -217,6 +218,7 @@ export type I18nKey =
 	| "app.panel_nav_groups"
 	| "app.panel_nav_ops"
 	| "app.panel_nav_plugins"
+	| "app.panel_nav_queue"
 	| "app.panel_nav_rich_text"
 	| "app.panel_nav_users"
 	| "app.persona_business"
@@ -1393,6 +1395,58 @@ export type I18nKey =
 	| "portal.signOut"
 	| "portal.switcherLabel"
 	| "portal.userFallback"
+	| "queue.consumerExternal"
+	| "queue.consumerInApp"
+	| "queue.consumerJobsWorker"
+	| "queue.consumerNone"
+	| "queue.description"
+	| "queue.emptyQueuesDescription"
+	| "queue.emptyQueuesTitle"
+	| "queue.emptyRunsDescription"
+	| "queue.emptyRunsTitle"
+	| "queue.enqueueDescription"
+	| "queue.enqueueError"
+	| "queue.enqueueKind"
+	| "queue.enqueueSubmit"
+	| "queue.enqueueSuccess"
+	| "queue.enqueueTitle"
+	| "queue.filterKind"
+	| "queue.filterStatus"
+	| "queue.kindAll"
+	| "queue.noKinds"
+	| "queue.noMatch"
+	| "queue.payloadInvalid"
+	| "queue.payloadLabel"
+	| "queue.qColConsumer"
+	| "queue.qColDone"
+	| "queue.qColFailed"
+	| "queue.qColPending"
+	| "queue.qColProcessing"
+	| "queue.qColQueue"
+	| "queue.qColTransport"
+	| "queue.queuesDescription"
+	| "queue.queuesTitle"
+	| "queue.rColCreated"
+	| "queue.rColError"
+	| "queue.rColId"
+	| "queue.rColKind"
+	| "queue.rColPayloadRef"
+	| "queue.rColStatus"
+	| "queue.runsDescription"
+	| "queue.runsTitle"
+	| "queue.selectKind"
+	| "queue.statusAll"
+	| "queue.statusDone"
+	| "queue.statusFailed"
+	| "queue.statusProcessing"
+	| "queue.statusQueued"
+	| "queue.title"
+	| "queue.transportCloudflare"
+	| "queue.transportRedis"
+	| "queue.transportSqlite"
+	| "queue.transportUnknown"
+	| "queue.unavailableDescription"
+	| "queue.unavailableTitle"
 	| "rbac.assignmentsEmpty"
 	| "rbac.assignmentsTitle"
 	| "rbac.assignSubject"
@@ -1538,25 +1592,10 @@ export type I18nKey =
 	| "theme.assetFileLabel"
 	| "theme.assetFontFamily"
 	| "theme.assetFontSlot"
-	| "theme.assetFontUpload"
 	| "theme.assetGoogleError"
-	| "theme.assetGoogleFamily"
 	| "theme.assetGoogleFetch"
 	| "theme.assetGoogleFetching"
-	| "theme.assetGoogleSlot"
-	| "theme.assetKindFavicon"
-	| "theme.assetKindFont"
 	| "theme.assetKindLabel"
-	| "theme.assetKindLogoDark"
-	| "theme.assetKindLogoLight"
-	| "theme.assetKindOgImage"
-	| "theme.assetKindWordmark"
-	| "theme.assetsEmpty"
-	| "theme.assetsListTitle"
-	| "theme.assetsNeedSave"
-	| "theme.assetStatusFailed"
-	| "theme.assetStatusPending"
-	| "theme.assetStatusReady"
 	| "theme.assetsTitle"
 	| "theme.assetThemeLabel"
 	| "theme.assetTodo"
@@ -1566,24 +1605,14 @@ export type I18nKey =
 	| "theme.assetUploading"
 	| "theme.bannerExit"
 	| "theme.bannerText"
-	| "theme.blockEmpty"
-	| "theme.blocksDescription"
-	| "theme.blockSettings"
-	| "theme.blockStats"
-	| "theme.blocksTitle"
-	| "theme.blockTable"
 	| "theme.brandAppName"
-	| "theme.brandRefsTitle"
 	| "theme.brandTitle"
-	| "theme.cancel"
 	| "theme.colActions"
 	| "theme.colEnabled"
 	| "theme.colName"
 	| "theme.colScope"
 	| "theme.colScopeId"
 	| "theme.colVersion"
-	| "theme.componentsDescription"
-	| "theme.componentsTitle"
 	| "theme.contrastDark"
 	| "theme.contrastFail"
 	| "theme.contrastLight"
@@ -1591,15 +1620,8 @@ export type I18nKey =
 	| "theme.contrastTitle"
 	| "theme.darkDescription"
 	| "theme.darkTitle"
-	| "theme.dialogCreateTitle"
-	| "theme.dialogEditTitle"
-	| "theme.dirtyBadge"
 	| "theme.disable"
-	| "theme.discardedToast"
 	| "theme.edit"
-	| "theme.editorBack"
-	| "theme.editorNotFound"
-	| "theme.editorThemeLabel"
 	| "theme.emptyList"
 	| "theme.enable"
 	| "theme.fontHeading"
@@ -1611,17 +1633,11 @@ export type I18nKey =
 	| "theme.fontsGoogleWarning"
 	| "theme.fontsSelfHost"
 	| "theme.fontsTitle"
-	| "theme.galleryButtons"
-	| "theme.galleryFeedback"
-	| "theme.galleryForms"
-	| "theme.gallerySurfaces"
 	| "theme.headerEmpty"
 	| "theme.headerLabel"
 	| "theme.headerManage"
 	| "theme.headerPreview"
 	| "theme.listTitle"
-	| "theme.newTheme"
-	| "theme.noResults"
 	| "theme.pageDescription"
 	| "theme.pageTitle"
 	| "theme.previewAction"
@@ -1632,16 +1648,12 @@ export type I18nKey =
 	| "theme.published"
 	| "theme.publishError"
 	| "theme.publishing"
-	| "theme.schemeDark"
-	| "theme.schemeLight"
 	| "theme.scopeIdLabel"
 	| "theme.scopeIdPlaceholder"
 	| "theme.scopeLabel"
 	| "theme.scopePlatform"
 	| "theme.scopePortalInstance"
 	| "theme.scopeTenant"
-	| "theme.searchLabel"
-	| "theme.searchPlaceholder"
 	| "theme.seedAccent"
 	| "theme.seedBackground"
 	| "theme.seedDestructive"
@@ -1651,15 +1663,6 @@ export type I18nKey =
 	| "theme.seedsDescription"
 	| "theme.seedSecondary"
 	| "theme.seedsTitle"
-	| "theme.tabAssets"
-	| "theme.tabBlocks"
-	| "theme.tabColors"
-	| "theme.tabComponents"
-	| "theme.tabGeneral"
-	| "theme.tabTokens"
-	| "theme.tabTypography"
-	| "theme.tokensDescription"
-	| "theme.tokensTitle"
 	| "users.cancel"
 	| "users.cannotDeleteAdmin"
 	| "users.colActions"
@@ -1993,6 +1996,7 @@ export interface I18nTypedT {
 	(key: "app.notfound_title"): Effect.Effect<string>;
 	(key: "app.panel_group_account"): Effect.Effect<string>;
 	(key: "app.panel_group_assurance"): Effect.Effect<string>;
+	(key: "app.panel_group_concurrency"): Effect.Effect<string>;
 	(key: "app.panel_group_console"): Effect.Effect<string>;
 	(key: "app.panel_group_domain_data"): Effect.Effect<string>;
 	(key: "app.panel_group_evaluation"): Effect.Effect<string>;
@@ -2008,6 +2012,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_groups"): Effect.Effect<string>;
 	(key: "app.panel_nav_ops"): Effect.Effect<string>;
 	(key: "app.panel_nav_plugins"): Effect.Effect<string>;
+	(key: "app.panel_nav_queue"): Effect.Effect<string>;
 	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
 	(key: "app.panel_nav_users"): Effect.Effect<string>;
 	(key: "app.persona_business"): Effect.Effect<string>;
@@ -3554,6 +3559,63 @@ export interface I18nTypedT {
 	(key: "portal.signOut"): Effect.Effect<string>;
 	(key: "portal.switcherLabel"): Effect.Effect<string>;
 	(key: "portal.userFallback"): Effect.Effect<string>;
+	(key: "queue.consumerExternal"): Effect.Effect<string>;
+	(key: "queue.consumerInApp"): Effect.Effect<string>;
+	(key: "queue.consumerJobsWorker"): Effect.Effect<string>;
+	(key: "queue.consumerNone"): Effect.Effect<string>;
+	(
+		key: "queue.description",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "queue.emptyQueuesDescription"): Effect.Effect<string>;
+	(key: "queue.emptyQueuesTitle"): Effect.Effect<string>;
+	(key: "queue.emptyRunsDescription"): Effect.Effect<string>;
+	(key: "queue.emptyRunsTitle"): Effect.Effect<string>;
+	(key: "queue.enqueueDescription"): Effect.Effect<string>;
+	(key: "queue.enqueueError"): Effect.Effect<string>;
+	(key: "queue.enqueueKind"): Effect.Effect<string>;
+	(key: "queue.enqueueSubmit"): Effect.Effect<string>;
+	(key: "queue.enqueueSuccess"): Effect.Effect<string>;
+	(key: "queue.enqueueTitle"): Effect.Effect<string>;
+	(key: "queue.filterKind"): Effect.Effect<string>;
+	(key: "queue.filterStatus"): Effect.Effect<string>;
+	(key: "queue.kindAll"): Effect.Effect<string>;
+	(key: "queue.noKinds"): Effect.Effect<string>;
+	(key: "queue.noMatch"): Effect.Effect<string>;
+	(key: "queue.payloadInvalid"): Effect.Effect<string>;
+	(key: "queue.payloadLabel"): Effect.Effect<string>;
+	(key: "queue.qColConsumer"): Effect.Effect<string>;
+	(key: "queue.qColDone"): Effect.Effect<string>;
+	(key: "queue.qColFailed"): Effect.Effect<string>;
+	(key: "queue.qColPending"): Effect.Effect<string>;
+	(key: "queue.qColProcessing"): Effect.Effect<string>;
+	(key: "queue.qColQueue"): Effect.Effect<string>;
+	(key: "queue.qColTransport"): Effect.Effect<string>;
+	(key: "queue.queuesDescription"): Effect.Effect<string>;
+	(key: "queue.queuesTitle"): Effect.Effect<string>;
+	(key: "queue.rColCreated"): Effect.Effect<string>;
+	(key: "queue.rColError"): Effect.Effect<string>;
+	(key: "queue.rColId"): Effect.Effect<string>;
+	(key: "queue.rColKind"): Effect.Effect<string>;
+	(key: "queue.rColPayloadRef"): Effect.Effect<string>;
+	(key: "queue.rColStatus"): Effect.Effect<string>;
+	(key: "queue.runsDescription"): Effect.Effect<string>;
+	(key: "queue.runsTitle"): Effect.Effect<string>;
+	(key: "queue.selectKind"): Effect.Effect<string>;
+	(key: "queue.statusAll"): Effect.Effect<string>;
+	(key: "queue.statusDone"): Effect.Effect<string>;
+	(key: "queue.statusFailed"): Effect.Effect<string>;
+	(key: "queue.statusProcessing"): Effect.Effect<string>;
+	(key: "queue.statusQueued"): Effect.Effect<string>;
+	(key: "queue.title"): Effect.Effect<string>;
+	(key: "queue.transportCloudflare"): Effect.Effect<string>;
+	(key: "queue.transportRedis"): Effect.Effect<string>;
+	(key: "queue.transportSqlite"): Effect.Effect<string>;
+	(key: "queue.transportUnknown"): Effect.Effect<string>;
+	(key: "queue.unavailableDescription"): Effect.Effect<string>;
+	(key: "queue.unavailableTitle"): Effect.Effect<string>;
 	(key: "rbac.assignmentsEmpty"): Effect.Effect<string>;
 	(key: "rbac.assignmentsTitle"): Effect.Effect<string>;
 	(key: "rbac.assignSubject"): Effect.Effect<string>;
@@ -3743,25 +3805,10 @@ export interface I18nTypedT {
 	(key: "theme.assetFileLabel"): Effect.Effect<string>;
 	(key: "theme.assetFontFamily"): Effect.Effect<string>;
 	(key: "theme.assetFontSlot"): Effect.Effect<string>;
-	(key: "theme.assetFontUpload"): Effect.Effect<string>;
 	(key: "theme.assetGoogleError"): Effect.Effect<string>;
-	(key: "theme.assetGoogleFamily"): Effect.Effect<string>;
 	(key: "theme.assetGoogleFetch"): Effect.Effect<string>;
 	(key: "theme.assetGoogleFetching"): Effect.Effect<string>;
-	(key: "theme.assetGoogleSlot"): Effect.Effect<string>;
-	(key: "theme.assetKindFavicon"): Effect.Effect<string>;
-	(key: "theme.assetKindFont"): Effect.Effect<string>;
 	(key: "theme.assetKindLabel"): Effect.Effect<string>;
-	(key: "theme.assetKindLogoDark"): Effect.Effect<string>;
-	(key: "theme.assetKindLogoLight"): Effect.Effect<string>;
-	(key: "theme.assetKindOgImage"): Effect.Effect<string>;
-	(key: "theme.assetKindWordmark"): Effect.Effect<string>;
-	(key: "theme.assetsEmpty"): Effect.Effect<string>;
-	(key: "theme.assetsListTitle"): Effect.Effect<string>;
-	(key: "theme.assetsNeedSave"): Effect.Effect<string>;
-	(key: "theme.assetStatusFailed"): Effect.Effect<string>;
-	(key: "theme.assetStatusPending"): Effect.Effect<string>;
-	(key: "theme.assetStatusReady"): Effect.Effect<string>;
 	(key: "theme.assetsTitle"): Effect.Effect<string>;
 	(key: "theme.assetThemeLabel"): Effect.Effect<string>;
 	(key: "theme.assetTodo"): Effect.Effect<string>;
@@ -3771,24 +3818,14 @@ export interface I18nTypedT {
 	(key: "theme.assetUploading"): Effect.Effect<string>;
 	(key: "theme.bannerExit"): Effect.Effect<string>;
 	(key: "theme.bannerText"): Effect.Effect<string>;
-	(key: "theme.blockEmpty"): Effect.Effect<string>;
-	(key: "theme.blocksDescription"): Effect.Effect<string>;
-	(key: "theme.blockSettings"): Effect.Effect<string>;
-	(key: "theme.blockStats"): Effect.Effect<string>;
-	(key: "theme.blocksTitle"): Effect.Effect<string>;
-	(key: "theme.blockTable"): Effect.Effect<string>;
 	(key: "theme.brandAppName"): Effect.Effect<string>;
-	(key: "theme.brandRefsTitle"): Effect.Effect<string>;
 	(key: "theme.brandTitle"): Effect.Effect<string>;
-	(key: "theme.cancel"): Effect.Effect<string>;
 	(key: "theme.colActions"): Effect.Effect<string>;
 	(key: "theme.colEnabled"): Effect.Effect<string>;
 	(key: "theme.colName"): Effect.Effect<string>;
 	(key: "theme.colScope"): Effect.Effect<string>;
 	(key: "theme.colScopeId"): Effect.Effect<string>;
 	(key: "theme.colVersion"): Effect.Effect<string>;
-	(key: "theme.componentsDescription"): Effect.Effect<string>;
-	(key: "theme.componentsTitle"): Effect.Effect<string>;
 	(key: "theme.contrastDark"): Effect.Effect<string>;
 	(key: "theme.contrastFail"): Effect.Effect<string>;
 	(key: "theme.contrastLight"): Effect.Effect<string>;
@@ -3796,15 +3833,8 @@ export interface I18nTypedT {
 	(key: "theme.contrastTitle"): Effect.Effect<string>;
 	(key: "theme.darkDescription"): Effect.Effect<string>;
 	(key: "theme.darkTitle"): Effect.Effect<string>;
-	(key: "theme.dialogCreateTitle"): Effect.Effect<string>;
-	(key: "theme.dialogEditTitle"): Effect.Effect<string>;
-	(key: "theme.dirtyBadge"): Effect.Effect<string>;
 	(key: "theme.disable"): Effect.Effect<string>;
-	(key: "theme.discardedToast"): Effect.Effect<string>;
 	(key: "theme.edit"): Effect.Effect<string>;
-	(key: "theme.editorBack"): Effect.Effect<string>;
-	(key: "theme.editorNotFound"): Effect.Effect<string>;
-	(key: "theme.editorThemeLabel"): Effect.Effect<string>;
 	(key: "theme.emptyList"): Effect.Effect<string>;
 	(key: "theme.enable"): Effect.Effect<string>;
 	(key: "theme.fontHeading"): Effect.Effect<string>;
@@ -3816,17 +3846,11 @@ export interface I18nTypedT {
 	(key: "theme.fontsGoogleWarning"): Effect.Effect<string>;
 	(key: "theme.fontsSelfHost"): Effect.Effect<string>;
 	(key: "theme.fontsTitle"): Effect.Effect<string>;
-	(key: "theme.galleryButtons"): Effect.Effect<string>;
-	(key: "theme.galleryFeedback"): Effect.Effect<string>;
-	(key: "theme.galleryForms"): Effect.Effect<string>;
-	(key: "theme.gallerySurfaces"): Effect.Effect<string>;
 	(key: "theme.headerEmpty"): Effect.Effect<string>;
 	(key: "theme.headerLabel"): Effect.Effect<string>;
 	(key: "theme.headerManage"): Effect.Effect<string>;
 	(key: "theme.headerPreview"): Effect.Effect<string>;
 	(key: "theme.listTitle"): Effect.Effect<string>;
-	(key: "theme.newTheme"): Effect.Effect<string>;
-	(key: "theme.noResults"): Effect.Effect<string>;
 	(key: "theme.pageDescription"): Effect.Effect<string>;
 	(key: "theme.pageTitle"): Effect.Effect<string>;
 	(key: "theme.previewAction"): Effect.Effect<string>;
@@ -3837,16 +3861,12 @@ export interface I18nTypedT {
 	(key: "theme.published"): Effect.Effect<string>;
 	(key: "theme.publishError"): Effect.Effect<string>;
 	(key: "theme.publishing"): Effect.Effect<string>;
-	(key: "theme.schemeDark"): Effect.Effect<string>;
-	(key: "theme.schemeLight"): Effect.Effect<string>;
 	(key: "theme.scopeIdLabel"): Effect.Effect<string>;
 	(key: "theme.scopeIdPlaceholder"): Effect.Effect<string>;
 	(key: "theme.scopeLabel"): Effect.Effect<string>;
 	(key: "theme.scopePlatform"): Effect.Effect<string>;
 	(key: "theme.scopePortalInstance"): Effect.Effect<string>;
 	(key: "theme.scopeTenant"): Effect.Effect<string>;
-	(key: "theme.searchLabel"): Effect.Effect<string>;
-	(key: "theme.searchPlaceholder"): Effect.Effect<string>;
 	(key: "theme.seedAccent"): Effect.Effect<string>;
 	(key: "theme.seedBackground"): Effect.Effect<string>;
 	(key: "theme.seedDestructive"): Effect.Effect<string>;
@@ -3856,15 +3876,6 @@ export interface I18nTypedT {
 	(key: "theme.seedsDescription"): Effect.Effect<string>;
 	(key: "theme.seedSecondary"): Effect.Effect<string>;
 	(key: "theme.seedsTitle"): Effect.Effect<string>;
-	(key: "theme.tabAssets"): Effect.Effect<string>;
-	(key: "theme.tabBlocks"): Effect.Effect<string>;
-	(key: "theme.tabColors"): Effect.Effect<string>;
-	(key: "theme.tabComponents"): Effect.Effect<string>;
-	(key: "theme.tabGeneral"): Effect.Effect<string>;
-	(key: "theme.tabTokens"): Effect.Effect<string>;
-	(key: "theme.tabTypography"): Effect.Effect<string>;
-	(key: "theme.tokensDescription"): Effect.Effect<string>;
-	(key: "theme.tokensTitle"): Effect.Effect<string>;
 	(key: "users.cancel"): Effect.Effect<string>;
 	(key: "users.cannotDeleteAdmin"): Effect.Effect<string>;
 	(key: "users.colActions"): Effect.Effect<string>;

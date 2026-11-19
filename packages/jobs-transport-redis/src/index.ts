@@ -20,11 +20,13 @@
 import { createClient, type RedisClientType } from "redis";
 
 import type { JobEnvelope, JobMessageLike } from "@ktb/jobs-port";
+import type { QueueDepthStats } from "@ktb/queues-port";
 
 /** Minimal client surface the transport needs — injectable for tests. */
 export interface RedisLike {
 	lPush(key: string, value: string): Promise<unknown>;
 	brPop(key: string, timeoutSeconds: number): Promise<readonly [string, string] | null>;
+	lLen(key: string): Promise<number>;
 	quit(): Promise<unknown>;
 }
 
@@ -44,6 +46,11 @@ export interface RedisJobsTransport {
 	readonly send: (envelope: JobEnvelope) => Promise<void>;
 	/** Pop up to `count` envelopes as JobMessageLike batch (BRPOP loop). */
 	readonly receive: (count?: number) => Promise<readonly JobMessageLike[]>;
+	/** Depth probe for the /platform queue registry: LLEN reports the
+	 * pending backlog; processing/done/failed have no broker-side
+	 * meaning on a plain list (BRPOP pops before handling), so they
+	 * report 0 — job_runs carries the lifecycle truth. */
+	readonly stats: () => Promise<QueueDepthStats>;
 	readonly close: () => Promise<void>;
 }
 
@@ -88,6 +95,10 @@ export const createRedisJobsTransport = async (
 	return {
 		send,
 		receive,
+		stats: async () => {
+			const pending = await client.lLen(queue);
+			return { pending, processing: 0, done: 0, failed: 0 };
+		},
 		close: async () => {
 			await client.quit();
 		},
