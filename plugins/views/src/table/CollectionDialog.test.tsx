@@ -1,12 +1,21 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const invalidate = vi.hoisted(() => vi.fn<() => Promise<void>>(async () => {}));
+
+vi.mock("@tanstack/react-router", () => ({
+	useRouter: () => ({ invalidate }),
+}));
 
 import type { Column } from "./columns.tsx";
 import { CollectionDialog, type CollectionLoadResult } from "./CollectionDialog.tsx";
 
 afterEach(cleanup);
+beforeEach(() => {
+	invalidate.mockClear();
+});
 
 interface Row {
 	id: number;
@@ -42,14 +51,18 @@ const DEFAULT_LOAD = async (): Promise<CollectionLoadResult<Row>> => ({
 const setup = ({
 	load = DEFAULT_LOAD,
 	remove,
+	removeTitle,
 	removeDescription,
 	addForm,
+	refreshOnMutation,
 	open = true,
 }: {
 	load?: () => Promise<CollectionLoadResult<Row>>;
 	remove?: (row: Row) => Promise<unknown>;
+	removeTitle?: (row: Row) => ReactNode;
 	removeDescription?: (row: Row) => ReactNode;
 	addForm?: (ctx: { reload: () => Promise<void>; busy: boolean; error: boolean }) => ReactNode;
+	refreshOnMutation?: boolean;
 	open?: boolean;
 } = {}) => {
 	render(
@@ -62,8 +75,10 @@ const setup = ({
 			rowKey={(row) => String(row.id)}
 			load={load}
 			remove={remove}
+			removeTitle={removeTitle}
 			removeDescription={removeDescription}
 			addForm={addForm}
+			refreshOnMutation={refreshOnMutation}
 			messages={MESSAGES}
 		/>,
 	);
@@ -133,6 +148,71 @@ describe("CollectionDialog", () => {
 		await screen.findByText("Ana");
 		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
 		expect(await screen.findByText("Remove Ana for good?")).toBeTruthy();
+	});
+
+	it("renders a per-row remove title in the confirm dialog", async () => {
+		const remove = vi.fn<(row: Row) => Promise<unknown>>(async () => ({ ok: true }));
+		setup({ remove, removeTitle: (row) => `Remove ${row.name}?` });
+		await screen.findByText("Ana");
+		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+		expect(await screen.findByText("Remove Ana?")).toBeTruthy();
+	});
+
+	it("does not invalidate the router on remove by default", async () => {
+		const remove = vi.fn<(row: Row) => Promise<unknown>>(async () => ({ ok: true }));
+		setup({ remove });
+		await screen.findByText("Ana");
+		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+		fireEvent.click(await screen.findByRole("button", { name: "Yes, remove" }));
+		await waitFor(() => expect(remove).toHaveBeenCalled());
+		expect(invalidate).not.toHaveBeenCalled();
+	});
+
+	it("invalidates the router after a successful remove when refreshOnMutation", async () => {
+		const load = vi.fn<() => Promise<CollectionLoadResult<Row>>>(async () => ({
+			ok: true,
+			data: ROWS,
+		}));
+		const remove = vi.fn<(row: Row) => Promise<unknown>>(async () => ({ ok: true }));
+		setup({ load, remove, refreshOnMutation: true });
+		await screen.findByText("Ana");
+		expect(invalidate).not.toHaveBeenCalled();
+		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+		fireEvent.click(await screen.findByRole("button", { name: "Yes, remove" }));
+		await waitFor(() => expect(remove).toHaveBeenCalledWith(ROWS[0]));
+		await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+		expect(invalidate).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not invalidate the router on failed remove even with refreshOnMutation", async () => {
+		const remove = vi.fn<(row: Row) => Promise<unknown>>(async () => ({ ok: false }));
+		setup({ remove, refreshOnMutation: true });
+		await screen.findByText("Ana");
+		fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+		fireEvent.click(await screen.findByRole("button", { name: "Yes, remove" }));
+		expect(await screen.findByText("Failed to load.")).toBeTruthy();
+		expect(invalidate).not.toHaveBeenCalled();
+	});
+
+	it("invalidates the router via addForm reload when refreshOnMutation", async () => {
+		const load = vi.fn<() => Promise<CollectionLoadResult<Row>>>(async () => ({
+			ok: true,
+			data: ROWS,
+		}));
+		setup({
+			load,
+			refreshOnMutation: true,
+			addForm: (ctx) => (
+				<button type="button" onClick={() => void ctx.reload()}>
+					Reload list
+				</button>
+			),
+		});
+		await screen.findByText("Ana");
+		expect(invalidate).not.toHaveBeenCalled();
+		fireEvent.click(screen.getByRole("button", { name: "Reload list" }));
+		await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+		expect(invalidate).toHaveBeenCalledTimes(1);
 	});
 
 	it("cancel on the confirm dialog does not call remove", async () => {

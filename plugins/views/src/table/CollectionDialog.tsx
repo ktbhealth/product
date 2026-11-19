@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
+import { useRouter } from "@tanstack/react-router";
 import { Button } from "@ktbhealth/ui/components/button";
 import {
 	Dialog,
@@ -59,7 +60,8 @@ const DEFAULT_MESSAGES: CollectionDialogMessages = {
 
 /** Context handed to the `addForm` render prop. */
 export interface CollectionDialogAddContext {
-	/** Re-runs `load` — call after a successful add. */
+	/** Re-runs `load` — call after a successful add. Also invalidates
+	 * the router when the dialog's `refreshOnMutation` is set. */
 	readonly reload: () => Promise<void>;
 	readonly busy: boolean;
 	readonly error: boolean;
@@ -79,10 +81,20 @@ export interface CollectionDialogProps<Row> {
 	readonly load: () => Promise<CollectionLoadResult<Row>>;
 	/** Per-row remove mutation; omit to hide the actions column. */
 	readonly remove?: (row: Row) => Promise<unknown>;
+	/** Per-row title for the remove confirm dialog — overrides
+	 * `messages.removeTitle` (symmetric to `removeDescription`). */
+	readonly removeTitle?: (row: Row) => ReactNode;
 	/** Per-row description for the remove confirm dialog. */
 	readonly removeDescription?: (row: Row) => ReactNode;
 	/** Add-form render prop — receives `{ reload, busy, error }`. */
 	readonly addForm?: (ctx: CollectionDialogAddContext) => ReactNode;
+	/**
+	 * When `true`, a successful add (`ctx.reload()`) or remove also
+	 * calls `router.invalidate()` so page loaders re-run — the
+	 * `useServerMutation` pattern for mutations that affect data
+	 * outside the dialog's own `load`. Defaults to `false`.
+	 */
+	readonly refreshOnMutation?: boolean;
 	/** Partial copy overrides merged over the English defaults. */
 	readonly messages?: Partial<CollectionDialogMessages>;
 	readonly className?: string;
@@ -111,13 +123,16 @@ export function CollectionDialog<Row>({
 	locale,
 	load,
 	remove,
+	removeTitle,
 	removeDescription,
 	addForm,
+	refreshOnMutation = false,
 	messages,
 	className,
 }: CollectionDialogProps<Row>) {
 	const m = { ...DEFAULT_MESSAGES, ...messages };
 	const keyOf = rowKey ?? defaultTableRowKey;
+	const router = useRouter();
 	const [rows, setRows] = useState<readonly Row[] | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState(false);
@@ -151,6 +166,16 @@ export function CollectionDialog<Row>({
 		if (open) void reload();
 	}, [open, reload]);
 
+	// Mutation-driven refresh: re-runs `load` and, when
+	// `refreshOnMutation` is set, invalidates the router so page
+	// loaders pick up the change — mirrors `useServerMutation`.
+	// The open effect uses plain `reload` so opening the dialog
+	// never triggers an invalidate.
+	const refresh = useCallback(async () => {
+		await reload();
+		if (refreshOnMutation) await router.invalidate();
+	}, [reload, refreshOnMutation, router]);
+
 	const removeRow = async (row: Row) => {
 		/* v8 ignore next -- removeRow only runs from the row confirm action,
 		   which only renders while `remove` is defined */
@@ -160,7 +185,7 @@ export function CollectionDialog<Row>({
 		try {
 			const res = await remove(row);
 			if (isOkResult(res)) {
-				await reload();
+				await refresh();
 			} else {
 				setError(true);
 			}
@@ -171,7 +196,7 @@ export function CollectionDialog<Row>({
 		}
 	};
 
-	const addContext: CollectionDialogAddContext = { reload, busy, error };
+	const addContext: CollectionDialogAddContext = { reload: refresh, busy, error };
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
@@ -233,7 +258,7 @@ export function CollectionDialog<Row>({
 																{m.remove}
 															</Button>
 														}
-														title={m.removeTitle}
+														title={removeTitle?.(row) ?? m.removeTitle}
 														description={removeDescription?.(row)}
 														confirmLabel={m.removeConfirm}
 														cancelLabel={m.cancel}

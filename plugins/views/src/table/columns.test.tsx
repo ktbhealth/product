@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { columnValue, TableCellValue, type Column } from "./columns.tsx";
+import { columnCellClassName, columnValue, TableCellValue, type Column } from "./columns.tsx";
 
 afterEach(cleanup);
 
@@ -83,5 +83,31 @@ describe("columnValue", () => {
 		};
 		expect(columnValue(column, { nested: { deep: "v" } })).toBe("v");
 		expect(columnValue(column, { nested: {} })).toBeUndefined();
+	});
+});
+
+describe("columnCellClassName", () => {
+	it("returns undefined when cellClassName is absent", () => {
+		const column: Column<{ a: number }> = { key: "a", header: "A" };
+		expect(columnCellClassName(column, { a: 1 }, 1)).toBeUndefined();
+	});
+
+	it("returns the static string form as-is", () => {
+		const column: Column<{ a: number }> = {
+			key: "a",
+			header: "A",
+			cellClassName: "bg-warning/20",
+		};
+		expect(columnCellClassName(column, { a: 1 }, 1)).toBe("bg-warning/20");
+	});
+
+	it("invokes the function form with the row and resolved value", () => {
+		const cellClassName = vi.fn<(row: { a: number }, value: unknown) => string | undefined>(
+			(row, value) => (value === 1 ? `row-${row.a}` : undefined),
+		);
+		const column: Column<{ a: number }> = { key: "a", header: "A", cellClassName };
+		expect(columnCellClassName(column, { a: 7 }, 1)).toBe("row-7");
+		expect(cellClassName).toHaveBeenCalledWith({ a: 7 }, 1);
+		expect(columnCellClassName(column, { a: 7 }, 2)).toBeUndefined();
 	});
 });

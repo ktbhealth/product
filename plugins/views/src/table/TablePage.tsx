@@ -23,7 +23,7 @@ import {
 } from "@ktbhealth/ui/components/table";
 
 import { viewsMessages, type ViewMessages } from "../i18n.ts";
-import { columnValue, TableCellValue, type Column } from "./columns.tsx";
+import { columnCellClassName, columnValue, TableCellValue, type Column } from "./columns.tsx";
 import { defaultTableRowKey } from "./use-table-query.ts";
 
 /**
@@ -140,6 +140,9 @@ function TablePageToolbar({
 export interface TablePageTableEmpty {
 	readonly title: ReactNode;
 	readonly description?: ReactNode;
+	/** Optional media/icon node rendered above the title — typically an
+	 * `<EmptyMedia variant="icon">` from `@ktbhealth/ui`. */
+	readonly media?: ReactNode;
 }
 
 export interface TablePageTableProps<Row> {
@@ -163,6 +166,21 @@ export interface TablePageTableProps<Row> {
 	readonly loading?: boolean;
 	/** Trailing actions cell per row (buttons, menus). */
 	readonly rowActions?: (row: Row) => ReactNode;
+	/** Content for the trailing header cell — rendered whenever the
+	 * actions column exists (i.e. `rowActions` or this is set). */
+	readonly rowActionsHeader?: ReactNode;
+	/** Per-row selection gate — return `true` to disable that row's
+	 * checkbox (e.g. while a mutation is in flight). Receives the row
+	 * and its resolved key. */
+	readonly selectionDisabled?: (row: Row, key: string) => boolean;
+	/** Disables the header select-all checkbox. */
+	readonly selectAllDisabled?: boolean;
+	/** Aria-label overrides for the selection checkboxes; fall back to
+	 * the catalog's `tableSelectAll`/`tableSelectRow` messages. */
+	readonly ariaLabels?: {
+		readonly selectAll?: string;
+		readonly selectRow?: (key: string) => string;
+	};
 	/** Row click handler — fires for clicks that don't land on an
 	 * interactive element (button/a/input/select/textarea or a
 	 * `[role=checkbox]`/`[role=button]` descendant). Rows get
@@ -189,6 +207,10 @@ function TablePageTableInner<Row>({
 	isFiltered,
 	loading = false,
 	rowActions,
+	rowActionsHeader,
+	selectionDisabled,
+	selectAllDisabled,
+	ariaLabels,
 	onRowClick,
 	rowClassName,
 	selectable = false,
@@ -224,7 +246,10 @@ function TablePageTableInner<Row>({
 		emitSelection(allSelected ? new Set<string>() : new Set(rowKeys));
 	};
 
-	const colCount = columns.length + (selectable ? 1 : 0) + (rowActions !== undefined ? 1 : 0);
+	// The trailing column exists when either the row-actions renderer
+	// or a header label is provided.
+	const hasActionsCol = rowActions !== undefined || rowActionsHeader !== undefined;
+	const colCount = columns.length + (selectable ? 1 : 0) + (hasActionsCol ? 1 : 0);
 	// Filtered-empty: no rows but the unfiltered total (or an active
 	// filter) says records exist — show `noMatch` instead of `empty`.
 	const filteredEmpty = rows.length === 0 && (isFiltered === true || (total ?? rows.length) > 0);
@@ -233,6 +258,7 @@ function TablePageTableInner<Row>({
 		const description = empty === undefined ? messages.emptyDescription : empty.description;
 		return (
 			<Empty className={joinCls("border", className)}>
+				{empty?.media}
 				<EmptyHeader>
 					<EmptyTitle>{empty?.title ?? messages.emptyTitle}</EmptyTitle>
 					{description !== undefined && description !== null ? (
@@ -254,7 +280,8 @@ function TablePageTableInner<Row>({
 									checked={allSelected}
 									indeterminate={someSelected}
 									onCheckedChange={toggleAll}
-									aria-label={messages.tableSelectAll}
+									disabled={selectAllDisabled}
+									aria-label={ariaLabels?.selectAll ?? messages.tableSelectAll}
 								/>
 							</TableHead>
 						) : null}
@@ -267,7 +294,7 @@ function TablePageTableInner<Row>({
 								{column.header}
 							</TableHead>
 						))}
-						{rowActions !== undefined ? <TableHead /> : null}
+						{hasActionsCol ? <TableHead>{rowActionsHeader}</TableHead> : null}
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -311,7 +338,10 @@ function TablePageTableInner<Row>({
 											<Checkbox
 												checked={selectedSet.has(key)}
 												onCheckedChange={() => toggleRow(key)}
-												aria-label={`${messages.tableSelectRow} ${key}`}
+												disabled={selectionDisabled?.(row, key) === true}
+												aria-label={
+													ariaLabels?.selectRow?.(key) ?? `${messages.tableSelectRow} ${key}`
+												}
 											/>
 										</TableCell>
 									) : null}
@@ -323,6 +353,7 @@ function TablePageTableInner<Row>({
 												className={joinCls(
 													"text-sm",
 													column.align === undefined ? undefined : ALIGN_CLS[column.align],
+													columnCellClassName(column, row, value),
 												)}
 											>
 												{column.render !== undefined ? (
@@ -333,8 +364,8 @@ function TablePageTableInner<Row>({
 											</TableCell>
 										);
 									})}
-									{rowActions !== undefined ? (
-										<TableCell className="text-right">{rowActions(row)}</TableCell>
+									{hasActionsCol ? (
+										<TableCell className="text-right">{rowActions?.(row)}</TableCell>
 									) : null}
 								</TableRow>
 							);

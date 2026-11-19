@@ -5,9 +5,11 @@ import { getPath, viewScalarText } from "../views/view-utils.ts";
 /**
  * Query-state hooks for the admin table kit.
  *
- * - {@link useTableQuery} — client-side mode: owns the search string,
- *   filters `rows` in memory (case-insensitive substring over dotted
- *   keys, or a caller predicate) and tracks row selection.
+ * - {@link useTableQuery} — client-side mode: owns the search string
+ *   (controlled via `query`/`onQuery` when the caller keeps `q` in
+ *   URL or shared state), filters `rows` in memory (case-insensitive
+ *   substring over dotted keys, or a caller predicate) and tracks
+ *   row selection.
  * - {@link useServerTableQuery} — server-side mode: holds the
  *   controlled/uncontrolled `{ q, page }` pair and reports changes
  *   through `onQuery` so the page can refetch; no filtering happens
@@ -32,6 +34,12 @@ export interface UseTableQueryOptions<Row> {
 	readonly rows: readonly Row[];
 	readonly rowKey?: (row: Row, index: number) => string;
 	readonly search?: TableQuerySearch<Row>;
+	/** Controlled search state — when `query` is provided, `q` reads
+	 * from `query.q` and `setQ` reports through `onQuery` instead of
+	 * updating internal state (same contract as `useServerTableQuery`). */
+	readonly query?: { readonly q: string };
+	/** Called on every `setQ` with the next query state. */
+	readonly onQuery?: (next: { readonly q: string }) => void;
 }
 
 export interface TableQuery<Row> {
@@ -56,9 +64,12 @@ export function useTableQuery<Row>({
 	rows,
 	rowKey,
 	search,
+	query,
+	onQuery,
 }: UseTableQueryOptions<Row>): TableQuery<Row> {
 	const keyOf = rowKey ?? defaultTableRowKey;
-	const [q, setQState] = useState("");
+	const [qState, setQState] = useState("");
+	const q = query?.q ?? qState;
 	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
 	const needle = q.trim().toLowerCase();
@@ -82,7 +93,13 @@ export function useTableQuery<Row>({
 		[rows, selected, keyOf],
 	);
 
-	const setQ = useCallback((value: string) => setQState(value), []);
+	const setQ = useCallback(
+		(value: string) => {
+			if (query === undefined) setQState(value);
+			onQuery?.({ q: value });
+		},
+		[query, onQuery],
+	);
 
 	const toggleSelection = useCallback((key: string) => {
 		setSelected((prev) => {

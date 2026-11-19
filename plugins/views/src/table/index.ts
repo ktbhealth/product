@@ -2,6 +2,7 @@ export { viewsMessages } from "../i18n.ts";
 export * from "./CollectionDialog.tsx";
 export * from "./ConfirmAction.tsx";
 export * from "./FormDialog.tsx";
+export * from "./Pagination.tsx";
 export * from "./SearchInput.tsx";
 export * from "./TablePage.tsx";
 export * from "./columns.tsx";

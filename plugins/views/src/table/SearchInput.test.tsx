@@ -34,4 +34,35 @@ describe("SearchInput", () => {
 		expect(input.className).toContain("extra-cls");
 		expect(input.className).toContain("w-56");
 	});
+
+	it("lets className override the default width", () => {
+		const { container } = render(
+			<SearchInput value="" onChange={() => {}} className="w-72 sm:w-80" />,
+		);
+		const input = container.querySelector("input") as HTMLInputElement;
+		expect(input.className).toContain("w-72");
+		expect(input.className).toContain("sm:w-80");
+		expect(input.className).not.toContain("w-56");
+		expect(input.className).not.toContain("sm:w-64");
+	});
+
+	it("renders no form wrapper without onSubmit", () => {
+		const { container } = render(<SearchInput value="" onChange={() => {}} />);
+		expect(container.querySelector("form")).toBeNull();
+	});
+
+	it("wraps in a form and fires onSubmit with the value on submit", () => {
+		const onSubmit = vi.fn<(value: string) => void>();
+		const onChange = vi.fn<(value: string) => void>();
+		const { container } = render(
+			<SearchInput value="ana" onChange={onChange} onSubmit={onSubmit} aria-label="Search" />,
+		);
+		const form = container.querySelector("form");
+		expect(form).not.toBeNull();
+		expect(form!.className).toContain("contents");
+		fireEvent.submit(form!);
+		expect(onSubmit).toHaveBeenCalledTimes(1);
+		expect(onSubmit).toHaveBeenCalledWith("ana");
+		expect(onChange).not.toHaveBeenCalled();
+	});
 });
