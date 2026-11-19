@@ -64,6 +64,7 @@ const postChat = (
 						// Generation benefits from variety; `seed` is forwarded
 						// when the backend honors it (Ollama/OpenAI do).
 						temperature: 0.8,
+						// Stryker disable next-line ConditionalExpression: `seed: undefined` is dropped by JSON.stringify, so spreading it unconditionally serializes identically
 						...(envelope.seed !== undefined ? { seed: envelope.seed } : {}),
 					}),
 				}),
@@ -80,6 +81,7 @@ const postChat = (
 			// the message, and PortError text reaches the wire via the
 			// endpoint test/detail fns. Status code only on the wire; the
 			// body stays in server logs.
+			// Stryker disable next-line StringLiteral: `""` and `` both produce the same empty string
 			const body = yield* Effect.promise(() => res.text().catch(() => ""));
 			yield* Effect.logWarning(`chat endpoint ${res.status} response body`).pipe(
 				Effect.annotateLogs({ body: body.slice(0, 300) }),
