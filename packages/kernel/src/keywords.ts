@@ -40,6 +40,7 @@ export const PLUGIN_KEYWORDS = [
 	"portal",
 	"rbac",
 	"rich-text",
+	"schemas",
 	"secretaries",
 	"site",
 	"tenant",

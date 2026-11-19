@@ -60,6 +60,7 @@ export interface AdminPageRow {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId: number | null;
+	readonly searchSchemaId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: number;
@@ -72,6 +73,14 @@ export interface RichTextDocRef {
 	readonly title: string;
 }
 
+/** Picker option for the search-schema select — the loader maps
+ * `Schemas.adminList()` meta down to id + name + description. */
+export interface SchemaRef {
+	readonly id: number;
+	readonly name: string;
+	readonly description: string | null;
+}
+
 export interface PagesAdminPageProps {
 	readonly pages: readonly AdminPageRow[];
 	readonly docs: readonly RichTextDocRef[];
@@ -79,6 +88,12 @@ export interface PagesAdminPageProps {
 	 * content-document field (picker + manage link) is hidden; stored
 	 * `richTextId` values are preserved untouched. */
 	readonly richTextEnabled: boolean;
+	/** Schema picker options for the search-schema field. */
+	readonly schemas: readonly SchemaRef[];
+	/** False when the schemas plugin's service is absent — the
+	 * search-schema field is hidden; stored `searchSchemaId` values
+	 * are preserved untouched. */
+	readonly searchSchemaEnabled: boolean;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -89,6 +104,7 @@ interface FormState {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId: number | null;
+	readonly searchSchemaId: number | null;
 	readonly published: boolean;
 	readonly showInNav: boolean;
 	readonly sortOrder: string;
@@ -99,6 +115,7 @@ const EMPTY_FORM: FormState = {
 	path: "",
 	title: "",
 	richTextId: null,
+	searchSchemaId: null,
 	published: false,
 	showInNav: false,
 	sortOrder: "0",
@@ -112,6 +129,7 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 				path: row.path,
 				title: row.title,
 				richTextId: row.richTextId,
+				searchSchemaId: row.searchSchemaId,
 				published: row.published,
 				showInNav: row.showInNav,
 				sortOrder: String(row.sortOrder),
@@ -121,6 +139,7 @@ const toInput = (form: FormState) => ({
 	path: form.path,
 	title: form.title,
 	richTextId: form.richTextId,
+	searchSchemaId: form.searchSchemaId,
 	published: form.published,
 	showInNav: form.showInNav,
 	sortOrder: Number(form.sortOrder) || 0,
@@ -130,6 +149,10 @@ const toInput = (form: FormState) => ({
  * typed route tree, so the Link target is cast like chrome.tsx does
  * for page paths. */
 const RICH_TEXT_CONSOLE = "/platform/rich-text" as string;
+
+/** Console route owned by the @ktb/schemas plugin — same untyped-route
+ * cast as RICH_TEXT_CONSOLE. */
+const SCHEMAS_CONSOLE = "/platform/schemas" as string;
 
 /**
  * /platform/pages console view (T-083): CRUD over the `custom_pages`
@@ -142,6 +165,8 @@ export function PagesAdminPage({
 	pages,
 	docs,
 	richTextEnabled,
+	schemas,
+	searchSchemaEnabled,
 	i18n,
 	locale,
 }: PagesAdminPageProps) {
@@ -152,6 +177,11 @@ export function PagesAdminPage({
 	const docItems = [
 		{ value: "", label: t.contentDocNone },
 		...docs.map((doc) => ({ value: String(doc.id), label: doc.title })),
+	];
+	// Same "" = none convention for the search-schema picker.
+	const schemaItems = [
+		{ value: "", label: t.searchSchemaNone },
+		...schemas.map((schema) => ({ value: String(schema.id), label: schema.name })),
 	];
 	const router = useRouter();
 	const [form, setForm] = useState<FormState | null>(null);
@@ -345,6 +375,36 @@ export function PagesAdminPage({
 											className="underline underline-offset-2 hover:text-foreground"
 										>
 											{form.richTextId === null ? t.manageDocs : t.manageDoc}
+										</Link>
+									</FieldDescription>
+								</Field>
+							) : null}
+							{searchSchemaEnabled ? (
+								<Field>
+									<FieldLabel>{t.fieldSearchSchema}</FieldLabel>
+									<Select
+										items={schemaItems}
+										value={form.searchSchemaId === null ? "" : String(form.searchSchemaId)}
+										onValueChange={(v) => set("searchSchemaId", v === "" ? null : Number(v))}
+									>
+										<SelectTrigger aria-label={t.fieldSearchSchema} className="w-full">
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											{schemaItems.map((item) => (
+												<SelectItem key={item.value} value={item.value}>
+													{item.label}
+												</SelectItem>
+											))}
+										</SelectContent>
+									</Select>
+									<FieldDescription>
+										{t.searchSchemaHint}{" "}
+										<Link
+											to={SCHEMAS_CONSOLE as "/"}
+											className="underline underline-offset-2 hover:text-foreground"
+										>
+											{t.manageSchemas}
 										</Link>
 									</FieldDescription>
 								</Field>

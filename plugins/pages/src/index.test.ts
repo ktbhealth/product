@@ -23,6 +23,8 @@ import {
 } from "./index.ts";
 import { RichTexts } from "@ktb/rich-text/service";
 import { richTextServicesPlugin } from "@ktb/rich-text";
+import { Schemas } from "@ktb/schemas/service";
+import { schemasServicesPlugin } from "@ktb/schemas";
 
 import { customPage } from "./schema.ts";
 import { CUSTOM_PAGES_TEST_DDL, CustomPagesLive } from "./service.ts";
@@ -39,7 +41,18 @@ describe("pages plugins", () => {
 		expect(pagesTablesPlugin.tables?.customPage).toBeDefined();
 		expect(pagesServicesPlugin.services).toBeDefined();
 		expect(pagesServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
-		expect(pagesServicesPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
+		expect(pagesServicesPlugin.optionalDeps).toEqual([
+			richTextServicesPlugin.id,
+			schemasServicesPlugin.id,
+		]);
+		// The render plugin's guard/loader stay rich-text only — search
+		// validation moved to a pages-owned server fn, so pages.render
+		// keeps just the rich-text edge.
+		expect(pagesRenderPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
+		expect(pagesPanelPlugin.optionalDeps).toEqual([
+			richTextServicesPlugin.id,
+			schemasServicesPlugin.id,
+		]);
 	});
 
 	it("declares the console sidebar entry and the app nav component", () => {
@@ -251,17 +264,29 @@ describe("pages page effects", () => {
 			pages: readonly { path: string }[];
 			docs: readonly { id: number }[];
 			richTextEnabled: boolean;
+			schemas: readonly { id: number }[];
+			searchSchemaEnabled: boolean;
 		};
 		expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
 		// No RichTexts service in this runtime — the picker is empty
 		// and the console hides the content-document field.
 		expect(data.docs).toEqual([]);
 		expect(data.richTextEnabled).toBe(false);
+		// No Schemas service either — the search-schema picker is
+		// empty and the console hides that field too.
+		expect(data.schemas).toEqual([]);
+		expect(data.searchSchemaEnabled).toBe(false);
 		const denied = (await asPrincipal(
 			{ userId: "u1", email: "doc@x.com" },
 			loader("/platform/pages"),
 		)) as { pages: readonly unknown[]; docs: readonly unknown[] };
-		expect(denied).toEqual({ pages: [], docs: [], richTextEnabled: false });
+		expect(denied).toEqual({
+			pages: [],
+			docs: [],
+			richTextEnabled: false,
+			schemas: [],
+			searchSchemaEnabled: false,
+		});
 	});
 
 	it("admin page loader surfaces rich-text document options when the service is present", async () => {
@@ -302,6 +327,49 @@ describe("pages page effects", () => {
 			expect(data.pages.map((r) => r.path)).toEqual(["/draft", "/pub", "/pub-bare"]);
 			expect(data.docs).toEqual([{ id: 42, title: "Doc" }]);
 			expect(data.richTextEnabled).toBe(true);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("admin page loader surfaces search-schema options when the service is present", async () => {
+		const schemas = Schemas.of({
+			adminList: () =>
+				Effect.succeed([
+					{
+						id: 3,
+						name: "Filters",
+						description: "Query params",
+						createdAt: new Date(0),
+						updatedAt: new Date(0),
+					},
+				]),
+			adminGet: () => Effect.succeed(null),
+			adminCreate: () => Effect.succeed(null),
+			adminUpdate: () => Effect.die("unused"),
+			adminRemove: () => Effect.die("unused"),
+			getById: () => Effect.succeed(null),
+			validate: () => Effect.succeed({ valid: true, issues: [] }),
+		});
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				CustomPagesLive.pipe(Layer.provide(deps)),
+				deps,
+				Layer.succeed(Schemas, schemas),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		try {
+			const loader = pagesPanelPlugin.panel!.pages![0]!.loader!;
+			const data = (await asPrincipalIn(
+				rt,
+				{ userId: "a1", email: "admin@x.com" },
+				loader("/platform/pages"),
+			)) as {
+				schemas: readonly { id: number; name: string; description: string | null }[];
+				searchSchemaEnabled: boolean;
+			};
+			expect(data.schemas).toEqual([{ id: 3, name: "Filters", description: "Query params" }]);
+			expect(data.searchSchemaEnabled).toBe(true);
 		} finally {
 			await rt.dispose();
 		}
