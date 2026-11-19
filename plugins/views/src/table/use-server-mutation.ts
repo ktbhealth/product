@@ -8,10 +8,11 @@ import { useRouter } from "@tanstack/react-router";
  * `Admin*Page` views.
  *
  * `fn` is a server-fn-shaped call: it receives `{ data: input }` and
- * resolves a result envelope. `{ ok: true }` invalidates the router
- * (re-running loaders) and resolves `true`; `{ ok: false }`, a
- * non-envelope value, or a thrown error sets `error` and resolves
- * `false`. `error` resets on every call.
+ * resolves a result. `true` or any `{ ok: true, ... }` envelope
+ * invalidates the router (re-running loaders) and resolves `true`;
+ * anything else — `{ ok: false }`, `false`, a non-envelope value —
+ * or a thrown error sets `error` and resolves `false`. `error`
+ * resets on every call.
  */
 
 export interface ServerMutationOk<O> {
@@ -31,8 +32,8 @@ export interface ServerMutation<I> {
 	readonly mutate: (input: I) => Promise<boolean>;
 }
 
-export function useServerMutation<I, O = unknown>(
-	fn: (args: { data: I }) => Promise<ServerMutationResult<O>>,
+export function useServerMutation<I>(
+	fn: (args: { data: I }) => Promise<unknown>,
 ): ServerMutation<I> {
 	const router = useRouter();
 	const [busy, setBusy] = useState(false);
@@ -44,7 +45,10 @@ export function useServerMutation<I, O = unknown>(
 			setError(false);
 			try {
 				const res = await fn({ data: input });
-				if (res !== null && typeof res === "object" && (res as { ok?: unknown }).ok === true) {
+				if (
+					res === true ||
+					(res !== null && typeof res === "object" && (res as { ok?: unknown }).ok === true)
+				) {
 					await router.invalidate();
 					return true;
 				}

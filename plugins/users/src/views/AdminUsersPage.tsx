@@ -1,10 +1,18 @@
 import { useRouter } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { PlusIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import { LocalDateTime } from "@ktb/views/views";
+import { viewsMessages } from "@ktb/views";
+import {
+	ConfirmAction,
+	SearchInput,
+	TablePage,
+	useServerMutation,
+	useTableQuery,
+	type Column,
+} from "@ktb/views/table";
 
 import {
 	AlertDialog,
@@ -17,20 +25,6 @@ import {
 } from "@ktbhealth/ui/components/alert-dialog";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
-import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
-import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import type { AdminUserRow } from "../index.ts";
 import { deleteUserFn, setUserSuspendedFn } from "../fns.ts";
@@ -38,15 +32,20 @@ import { userMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { AdminUserCreateDialog } from "./AdminUserCreateDialog.tsx";
 import { AdminUserEditDialog } from "./AdminUserEditDialog.tsx";
 
-const SEARCH_CLS = "w-56 sm:w-64";
-
 /**
  * /platform/users console view — cross-owner user listing for platform
  * admins. Dense/utilitarian by design (system console). Suspend goes
- * through a destructive ConfirmDialog; delete goes through an
- * AlertDialog; edit opens a dialog. Reactivate is a plain action.
- * Mutations go through the plugin's server fns; the loader re-runs on
+ * through a destructive ConfirmAction; delete goes through an
+ * AlertDialog (kept open on failure so the reason renders inline);
+ * edit opens a dialog. Reactivate is a plain action. Mutations go
+ * through the plugin's server fns; the loader re-runs on
  * `router.invalidate()`.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell, `useTableQuery` client-side search and `useServerMutation`
+ * for the suspend/reactivate envelope. The create/edit/delete dialogs
+ * stay plugin-local — the kit's `FormDialog`/`ConfirmAction` cannot
+ * express their per-field error mapping and inline delete errors.
  */
 export function AdminUsersPage({
 	users,
@@ -61,36 +60,22 @@ export function AdminUsersPage({
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, userMessages(locale));
 	const router = useRouter();
-	const [q, setQ] = useState("");
 	const [creating, setCreating] = useState(false);
-	const [suspending, setSuspending] = useState<AdminUserRow | null>(null);
 	const [editing, setEditing] = useState<AdminUserRow | null>(null);
 	const [deleting, setDeleting] = useState<AdminUserRow | null>(null);
 	const [deleteError, setDeleteError] = useState<string | null>(null);
-	const [busy, setBusy] = useState(false);
-	const [error, setError] = useState(false);
-	const needle = q.trim().toLowerCase();
-	const shown = useMemo(() => {
-		if (needle === "") return users;
-		return users.filter((u) =>
-			[u.name, u.email].filter(Boolean).join(" ").toLowerCase().includes(needle),
-		);
-	}, [users, needle]);
+	const [deleteBusy, setDeleteBusy] = useState(false);
 
-	const setSuspended = async (user: AdminUserRow, suspended: boolean) => {
-		setBusy(true);
-		setError(false);
-		try {
-			const res = await setUserSuspendedFn({ data: { userId: user.id, suspended } });
-			if (!res.ok) setError(true);
-			await router.invalidate();
-		} finally {
-			setBusy(false);
-		}
-	};
+	const suspend = useServerMutation<{ userId: string; suspended: boolean }>(setUserSuspendedFn);
+	const busy = suspend.busy || deleteBusy;
+
+	const query = useTableQuery<AdminUserRow>({
+		rows: users,
+		search: { keys: ["name", "email"] },
+	});
 
 	const removeUser = async (user: AdminUserRow) => {
-		setBusy(true);
+		setDeleteBusy(true);
 		setDeleteError(null);
 		try {
 			const res = await deleteUserFn({ data: { userId: user.id } });
@@ -101,13 +86,125 @@ export function AdminUsersPage({
 			setDeleting(null);
 			await router.invalidate();
 		} finally {
-			setBusy(false);
+			setDeleteBusy(false);
 		}
 	};
 
+	const suspendAction = (u: AdminUserRow) =>
+		u.banned ? (
+			<Button
+				type="button"
+				variant="ghost"
+				size="sm"
+				disabled={busy}
+				onClick={() => void suspend.mutate({ userId: u.id, suspended: false })}
+			>
+				{t.reactivate}
+			</Button>
+		) : (
+			<ConfirmAction
+				trigger={(open) => (
+					<Button type="button" variant="ghost" size="sm" disabled={busy} onClick={open}>
+						{t.suspend}
+					</Button>
+				)}
+				title={t.suspendTitle}
+				description={t.suspendDescription(u.email)}
+				confirmLabel={t.suspendConfirm}
+				cancelLabel={t.cancel}
+				variant="destructive"
+				onConfirm={() => suspend.mutate({ userId: u.id, suspended: true })}
+			/>
+		);
+
+	const columns: Column<AdminUserRow>[] = [
+		{
+			key: "id",
+			header: t.colId,
+			width: "3.5rem",
+			render: (u) => <span className="text-xs text-muted-foreground">{u.id}</span>,
+		},
+		{
+			key: "name",
+			header: t.colName,
+			render: (u) => <span className="font-medium">{u.name}</span>,
+		},
+		{ key: "email", header: t.colEmail },
+		{
+			key: "emailVerified",
+			header: t.colVerified,
+			render: (u) => (u.emailVerified ? t.yes : t.no),
+		},
+		{
+			key: "patientCount",
+			header: t.colPatients,
+			align: "right",
+			render: (u) => <span className="text-xs">{u.patientCount}</span>,
+		},
+		{
+			key: "consultationCount",
+			header: t.colConsultations,
+			align: "right",
+			render: (u) => <span className="text-xs">{u.consultationCount}</span>,
+		},
+		{
+			key: "isAdmin",
+			header: t.colRole,
+			render: (u) =>
+				u.isAdmin ? (
+					<span className="text-xs font-semibold text-foreground">{t.roleAdmin}</span>
+				) : (
+					<span className="text-muted-foreground">{t.roleUser}</span>
+				),
+		},
+		{
+			key: "banned",
+			header: t.colStatus,
+			render: (u) =>
+				u.banned ? (
+					<Badge variant="destructive">{t.statusSuspended}</Badge>
+				) : (
+					<span className="text-muted-foreground">{t.statusActive}</span>
+				),
+		},
+		{ key: "createdAt", header: t.colCreated, align: "right", format: "datetime" },
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (u) => (
+				<div className="flex items-center justify-end gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						disabled={busy}
+						onClick={() => setEditing(u)}
+					>
+						{t.editUser}
+					</Button>
+					{suspendAction(u)}
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="text-destructive hover:text-destructive"
+						disabled={busy}
+						onClick={() => {
+							setDeleteError(null);
+							setDeleting(u);
+						}}
+					>
+						{t.deleteUser}
+					</Button>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
 				title={t.title}
 				description={users.length === 0 ? t.none : t.count(users.length)}
 				actions={
@@ -117,155 +214,30 @@ export function AdminUsersPage({
 					</Button>
 				}
 			/>
-			{error ? <p className="text-xs text-destructive">{t.saveError}</p> : null}
-			{users.length === 0 ? (
-				<Empty className="border">
-					<EmptyHeader>
-						<EmptyTitle>{t.emptyTitle}</EmptyTitle>
-						<EmptyDescription>{t.emptyDescription}</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			) : (
-				<>
-					<DataToolbar
-						search={
-							<Input
-								type="search"
-								value={q}
-								onChange={(e) => setQ(e.target.value)}
-								placeholder={t.searchPlaceholder}
-								aria-label={t.searchLabel}
-								className={SEARCH_CLS}
-							/>
-						}
-						resultCount={needle === "" ? undefined : t.filteredCount(shown.length, users.length)}
-					/>
-					<div className="overflow-hidden rounded-lg border border-border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="w-14">{t.colId}</TableHead>
-									<TableHead>{t.colName}</TableHead>
-									<TableHead>{t.colEmail}</TableHead>
-									<TableHead>{t.colVerified}</TableHead>
-									<TableHead className="text-right">{t.colPatients}</TableHead>
-									<TableHead className="text-right">{t.colConsultations}</TableHead>
-									<TableHead>{t.colRole}</TableHead>
-									<TableHead>{t.colStatus}</TableHead>
-									<TableHead className="text-right">{t.colCreated}</TableHead>
-									<TableHead className="text-right">{t.colActions}</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{shown.length === 0 ? (
-									<TableRow>
-										<TableCell colSpan={10} className="text-xs text-muted-foreground">
-											{t.noMatch}
-										</TableCell>
-									</TableRow>
-								) : (
-									shown.map((u) => (
-										<TableRow key={u.id}>
-											<TableCell className="text-xs text-muted-foreground">{u.id}</TableCell>
-											<TableCell className="font-medium">{u.name}</TableCell>
-											<TableCell>{u.email}</TableCell>
-											<TableCell>{u.emailVerified ? t.yes : t.no}</TableCell>
-											<TableCell className="text-right text-xs">{u.patientCount}</TableCell>
-											<TableCell className="text-right text-xs">{u.consultationCount}</TableCell>
-											<TableCell>
-												{u.isAdmin ? (
-													<span className="text-xs font-semibold text-foreground">
-														{t.roleAdmin}
-													</span>
-												) : (
-													<span className="text-muted-foreground">{t.roleUser}</span>
-												)}
-											</TableCell>
-											<TableCell>
-												{u.banned ? (
-													<Badge variant="destructive">{t.statusSuspended}</Badge>
-												) : (
-													<span className="text-muted-foreground">{t.statusActive}</span>
-												)}
-											</TableCell>
-											<TableCell className="text-right text-muted-foreground">
-												<LocalDateTime value={u.createdAt} locale={locale} />
-											</TableCell>
-											<TableCell className="text-right">
-												<div className="flex items-center justify-end gap-1">
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														disabled={busy}
-														onClick={() => setEditing(u)}
-													>
-														{t.editUser}
-													</Button>
-													{u.banned ? (
-														<Button
-															type="button"
-															variant="ghost"
-															size="sm"
-															disabled={busy}
-															onClick={() => void setSuspended(u, false)}
-														>
-															{t.reactivate}
-														</Button>
-													) : (
-														<Button
-															type="button"
-															variant="ghost"
-															size="sm"
-															disabled={busy}
-															onClick={() => setSuspending(u)}
-														>
-															{t.suspend}
-														</Button>
-													)}
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														className="text-destructive hover:text-destructive"
-														disabled={busy}
-														onClick={() => {
-															setDeleteError(null);
-															setDeleting(u);
-														}}
-													>
-														{t.deleteUser}
-													</Button>
-												</div>
-											</TableCell>
-										</TableRow>
-									))
-								)}
-							</TableBody>
-						</Table>
-					</div>
-				</>
-			)}
-			{creating ? <AdminUserCreateDialog t={t} onClose={() => setCreating(false)} /> : null}
-			{suspending !== null ? (
-				<ConfirmDialog
-					open
-					onOpenChange={(open) => {
-						/* v8 ignore next -- mounted only while suspending; only close events fire */
-						if (!open) setSuspending(null);
-					}}
-					title={t.suspendTitle}
-					description={t.suspendDescription(suspending.email)}
-					confirmLabel={t.suspendConfirm}
-					cancelLabel={t.cancel}
-					variant="destructive"
-					loading={busy}
-					onConfirm={async () => {
-						await setSuspended(suspending, true);
-						setSuspending(null);
-					}}
+			{suspend.error ? <p className="text-xs text-destructive">{t.saveError}</p> : null}
+			{users.length === 0 ? null : (
+				<TablePage.Toolbar
+					search={
+						<SearchInput
+							value={query.q}
+							onChange={query.setQ}
+							placeholder={t.searchPlaceholder}
+							aria-label={t.searchLabel}
+						/>
+					}
+					resultCount={query.isFiltered ? t.filteredCount(query.shown, query.total) : undefined}
 				/>
-			) : null}
+			)}
+			<TablePage.Table
+				columns={columns}
+				rows={query.rows}
+				total={query.total}
+				isFiltered={users.length > 0 && query.isFiltered}
+				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+				noMatch={t.noMatch}
+				locale={locale}
+			/>
+			{creating ? <AdminUserCreateDialog t={t} onClose={() => setCreating(false)} /> : null}
 			{editing !== null ? (
 				<AdminUserEditDialog t={t} user={editing} onClose={() => setEditing(null)} />
 			) : null}
@@ -301,6 +273,6 @@ export function AdminUsersPage({
 					</AlertDialogContent>
 				</AlertDialog>
 			) : null}
-		</PageContainer>
+		</TablePage>
 	);
 }

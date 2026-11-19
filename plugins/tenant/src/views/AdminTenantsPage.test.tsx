@@ -188,6 +188,34 @@ describe("AdminTenantsPage", () => {
 		expect(fns.removeTenantMemberFn).toHaveBeenCalledTimes(1);
 	});
 
+	it("confirms removal per member row through the kit ConfirmAction", async () => {
+		const user = userEvent.setup();
+		fns.listTenantMembersFn.mockResolvedValue({
+			ok: true,
+			data: [
+				member({ id: 1, memberId: "u1", role: "admin" }),
+				member({ id: 2, memberId: "u2", role: "member" }),
+			],
+		});
+		render(<AdminTenantsPage tenants={TWO_TENANTS} />);
+		await user.click(screen.getAllByRole("button", { name: "Members" })[0]!);
+		await screen.findByText("u2");
+
+		// Each row owns its confirm dialog — the copy names that row's
+		// member id, and confirming closes the dialog.
+		const u2Row = screen.getByText("u2").closest("tr")!;
+		await user.click(within(u2Row).getByRole("button", { name: "Remove" }));
+		const dialog = await screen.findByRole("alertdialog");
+		expect(within(dialog).getByText("Remove u2 from this tenant?")).toBeTruthy();
+		await user.click(within(dialog).getByRole("button", { name: "Remove" }));
+		await waitFor(() =>
+			expect(fns.removeTenantMemberFn).toHaveBeenCalledWith({
+				data: { tenantId: 1, memberId: "u2" },
+			}),
+		);
+		await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+	});
+
 	it("shows the empty and error states of the members dialog", async () => {
 		const user = userEvent.setup();
 		render(<AdminTenantsPage tenants={TWO_TENANTS} />);

@@ -4,18 +4,14 @@ import { useRouter } from "@tanstack/react-router";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Checkbox } from "@ktbhealth/ui/components/checkbox";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
-import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import { viewsMessages } from "@ktb/views";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
+	ConfirmAction,
+	SearchInput,
+	TablePage,
+	useTableQuery,
+	type Column,
+} from "@ktb/views/table";
 
 import { i18nDiscardDraftFn, i18nPublishFn } from "../fns.ts";
 import type { I18nMessage } from "../schema.ts";
@@ -46,6 +42,11 @@ const scopeLabel = (m: I18nMessage): string =>
 /** Server-fn result shape shared by publish and discard. */
 type FnResult = { ok?: boolean; error?: string } | null;
 
+/** `namespace.key` substring predicate for `useTableQuery` — module-level
+ * so the `search` config object stays referentially stable. */
+const matchesDraft = (m: I18nMessage, needle: string): boolean =>
+	`${m.namespace}.${m.key}`.toLowerCase().includes(needle);
+
 /**
  * /platform/i18n/drafts — every row with a staged `draft_value` across
  * global scope. Drafts are edits awaiting publish: rows with
@@ -53,14 +54,27 @@ type FnResult = { ok?: boolean; error?: string } | null;
  * `status: "draft"` rows were never published, so `value` is empty and
  * the draft is the only copy. Publish promotes the draft, Discard drops
  * it (for never-published rows that deletes the message entirely).
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell, `SearchInput` + `useTableQuery` filter, `Column` model, and
+ * `ConfirmAction` for the bulk discard. Row selection stays a custom
+ * leading column — the kit's `selectable` checkboxes have no `disabled`
+ * prop, and this page disables them while a mutation is in flight.
+ * Mutations stay manual: the kit's `useServerMutation` only reports a
+ * boolean and these flows surface the server's `error` string verbatim.
  */
-export function DraftsPage({ data }: { data: DraftsPageData }) {
+export function DraftsPage({
+	data,
+	locale = "en",
+}: {
+	data: DraftsPageData;
+	/** Active UI locale, injected by the host via the panel page ctx. */
+	locale?: string;
+}) {
 	const router = useRouter();
-	const [filter, setFilter] = useState("");
 	const [busy, setBusy] = useState<string | null>(null);
 	const [bulkBusy, setBulkBusy] = useState<"publish" | "discard" | null>(null);
 	const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
-	const [confirmBulkDiscard, setConfirmBulkDiscard] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 
@@ -69,11 +83,13 @@ export function DraftsPage({ data }: { data: DraftsPageData }) {
 		[data.locales],
 	);
 
-	const drafts = useMemo(() => {
-		const needle = filter.trim().toLowerCase();
-		if (needle === "") return data.drafts;
-		return data.drafts.filter((m) => `${m.namespace}.${m.key}`.toLowerCase().includes(needle));
-	}, [data.drafts, filter]);
+	const search = useMemo(() => ({ predicate: matchesDraft }), []);
+	const query = useTableQuery<I18nMessage>({
+		rows: data.drafts,
+		rowKey: rowId,
+		search,
+	});
+	const drafts = query.rows;
 
 	// Selection is keyed by composite row id; counts only consider rows
 	// still visible so stale ids (filtered out or refreshed away) don't
@@ -163,140 +179,157 @@ export function DraftsPage({ data }: { data: DraftsPageData }) {
 		}
 	};
 
+	const columns: Column<I18nMessage>[] = [
+		{
+			key: "select",
+			header: (
+				<Checkbox
+					checked={allVisibleSelected}
+					indeterminate={someVisibleSelected}
+					disabled={controlsDisabled || drafts.length === 0}
+					aria-label="Select all visible drafts"
+					onCheckedChange={(v) => toggleAllVisible(v === true)}
+				/>
+			),
+			width: "2.5rem",
+			render: (m) => {
+				const rid = rowId(m);
+				return (
+					<Checkbox
+						checked={selected.has(rid)}
+						disabled={controlsDisabled}
+						aria-label={`Select ${m.namespace}.${m.key} (${m.locale})`}
+						onCheckedChange={(v) => toggleRow(rid, v === true)}
+					/>
+				);
+			},
+		},
+		{
+			key: "key",
+			header: "Key",
+			render: (m) => (
+				<span>
+					<span className="text-muted-foreground">{m.namespace}</span>
+					<span className="font-mono text-xs">.{m.key}</span>
+					{m.kind === "rich" && (
+						<Badge variant="secondary" className="ml-2">
+							rich
+						</Badge>
+					)}
+				</span>
+			),
+		},
+		{
+			key: "locale",
+			header: "Locale",
+			render: (m) => (
+				<span>
+					{localeEndonym.get(m.locale) ?? m.locale}
+					<span className="ml-1 font-mono text-xs text-muted-foreground">{m.locale}</span>
+				</span>
+			),
+		},
+		{
+			key: "scope",
+			header: "Scope",
+			render: (m) => <span className="font-mono text-xs">{scopeLabel(m)}</span>,
+		},
+		{
+			key: "value",
+			header: "Live",
+			render: (m) =>
+				m.value !== "" ? (
+					<span className="block max-w-48 truncate text-sm">{m.value}</span>
+				) : (
+					<span className="text-muted-foreground">—</span>
+				),
+		},
+		{
+			key: "draftValue",
+			header: "Draft",
+			render: (m) => (
+				<span className="block max-w-48 truncate font-medium text-sm">{m.draftValue ?? ""}</span>
+			),
+		},
+		{
+			key: "updatedAt",
+			header: "Updated",
+			render: (m) => (
+				<span className="text-xs text-muted-foreground">{m.updatedAt.toLocaleDateString()}</span>
+			),
+		},
+	];
+
+	const rowActions = (m: I18nMessage) => {
+		const disabled = controlsDisabled;
+		return (
+			<div className="flex gap-2">
+				<Button size="sm" disabled={disabled} onClick={() => void run(m, "publish")}>
+					Publish
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={disabled}
+					onClick={() => void run(m, "discard")}
+				>
+					Discard
+				</Button>
+			</div>
+		);
+	};
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
 				title="Pending drafts"
 				description="Staged edits awaiting publish — nothing here is live yet."
 			/>
-			{error !== null && <p className="mb-3 text-sm text-destructive">{error}</p>}
-			{notice !== null && <p className="mb-3 text-sm text-muted-foreground">{notice}</p>}
-			<div className="mb-4 flex items-center gap-3">
-				<Input
-					value={filter}
-					onChange={(e) => setFilter(e.target.value)}
-					placeholder="Filter by namespace.key"
-					className="w-64"
-				/>
-				{selectedCount > 0 && (
-					<>
-						<Button size="sm" disabled={controlsDisabled} onClick={() => void runBulk("publish")}>
-							Publish {selectedCount} selected
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							disabled={controlsDisabled}
-							onClick={() => setConfirmBulkDiscard(true)}
-						>
-							Discard {selectedCount} selected
-						</Button>
-					</>
-				)}
-			</div>
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead className="w-10">
-							<Checkbox
-								checked={allVisibleSelected}
-								indeterminate={someVisibleSelected}
-								disabled={controlsDisabled || drafts.length === 0}
-								aria-label="Select all visible drafts"
-								onCheckedChange={(v) => toggleAllVisible(v === true)}
+			{error !== null && <p className="text-sm text-destructive">{error}</p>}
+			{notice !== null && <p className="text-sm text-muted-foreground">{notice}</p>}
+			<TablePage.Toolbar
+				search={
+					<SearchInput
+						value={query.q}
+						onChange={query.setQ}
+						placeholder="Filter by namespace.key"
+						aria-label="Filter by namespace.key"
+					/>
+				}
+				actions={
+					selectedCount > 0 ? (
+						<>
+							<Button size="sm" disabled={controlsDisabled} onClick={() => void runBulk("publish")}>
+								Publish {selectedCount} selected
+							</Button>
+							<ConfirmAction
+								trigger={(open) => (
+									<Button variant="outline" size="sm" disabled={controlsDisabled} onClick={open}>
+										Discard {selectedCount} selected
+									</Button>
+								)}
+								title={`Discard ${selectedCount} draft${selectedCount === 1 ? "" : "s"}?`}
+								description="The selected drafts will be permanently discarded — never-published messages are deleted."
+								confirmLabel="Discard"
+								cancelLabel="Cancel"
+								variant="destructive"
+								onConfirm={() => runBulk("discard")}
 							/>
-						</TableHead>
-						<TableHead>Key</TableHead>
-						<TableHead>Locale</TableHead>
-						<TableHead>Scope</TableHead>
-						<TableHead>Live</TableHead>
-						<TableHead>Draft</TableHead>
-						<TableHead>Updated</TableHead>
-						<TableHead className="w-40" />
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{drafts.map((m) => {
-						const rid = rowId(m);
-						const disabled = controlsDisabled;
-						return (
-							<TableRow key={rid}>
-								<TableCell>
-									<Checkbox
-										checked={selected.has(rid)}
-										disabled={disabled}
-										aria-label={`Select ${m.namespace}.${m.key} (${m.locale})`}
-										onCheckedChange={(v) => toggleRow(rid, v === true)}
-									/>
-								</TableCell>
-								<TableCell>
-									<span className="text-muted-foreground">{m.namespace}</span>
-									<span className="font-mono text-xs">.{m.key}</span>
-									{m.kind === "rich" && (
-										<Badge variant="secondary" className="ml-2">
-											rich
-										</Badge>
-									)}
-								</TableCell>
-								<TableCell>
-									<span>{localeEndonym.get(m.locale) ?? m.locale}</span>
-									<span className="ml-1 font-mono text-xs text-muted-foreground">{m.locale}</span>
-								</TableCell>
-								<TableCell className="font-mono text-xs">{scopeLabel(m)}</TableCell>
-								<TableCell>
-									{m.value !== "" ? (
-										<span className="block max-w-48 truncate text-sm">{m.value}</span>
-									) : (
-										<span className="text-muted-foreground">—</span>
-									)}
-								</TableCell>
-								<TableCell>
-									<span className="block max-w-48 truncate font-medium text-sm">
-										{m.draftValue ?? ""}
-									</span>
-								</TableCell>
-								<TableCell className="text-xs text-muted-foreground">
-									{m.updatedAt.toLocaleDateString()}
-								</TableCell>
-								<TableCell>
-									<div className="flex gap-2">
-										<Button size="sm" disabled={disabled} onClick={() => void run(m, "publish")}>
-											Publish
-										</Button>
-										<Button
-											variant="outline"
-											size="sm"
-											disabled={disabled}
-											onClick={() => void run(m, "discard")}
-										>
-											Discard
-										</Button>
-									</div>
-								</TableCell>
-							</TableRow>
-						);
-					})}
-					{drafts.length === 0 && (
-						<TableRow>
-							<TableCell colSpan={8} className="text-center text-muted-foreground">
-								No pending drafts.
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
-
-			<ConfirmDialog
-				open={confirmBulkDiscard}
-				onOpenChange={setConfirmBulkDiscard}
-				title={`Discard ${selectedCount} draft${selectedCount === 1 ? "" : "s"}?`}
-				description="The selected drafts will be permanently discarded — never-published messages are deleted."
-				confirmLabel="Discard"
-				cancelLabel="Cancel"
-				variant="destructive"
-				loading={bulkBusy === "discard"}
-				onConfirm={() => runBulk("discard")}
+						</>
+					) : undefined
+				}
 			/>
-		</PageContainer>
+			<TablePage.Table
+				columns={columns}
+				rows={drafts}
+				rowKey={rowId}
+				total={data.drafts.length}
+				isFiltered={query.isFiltered}
+				empty={{ title: "No pending drafts." }}
+				noMatch="No pending drafts."
+				locale={locale}
+				rowActions={rowActions}
+			/>
+		</TablePage>
 	);
 }

@@ -10,9 +10,6 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@ktbhealth/ui/components/dialog";
-import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Select,
 	SelectContent,
@@ -20,14 +17,8 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
+import { viewsMessages } from "@ktb/views";
+import { SearchInput, TablePage, useTableQuery, type Column } from "@ktb/views/table";
 
 import type { LocaleInfo, NamespaceCoverage, NamespaceInfo } from "../contract.ts";
 import { i18nMissingKeysFn } from "../fns.ts";
@@ -83,6 +74,11 @@ const worstPct = (row: NamespaceRow, locales: readonly LocaleInfo[]): number => 
 const cellTint = (pct: number): string =>
 	pct < 50 ? "bg-warning/15" : pct < 100 ? "bg-warning/5" : "";
 
+/** Namespace-substring predicate for `useTableQuery` — module-level so
+ * the `search` config object stays referentially stable. */
+const matchesNamespace = (row: NamespaceRow, needle: string): boolean =>
+	row.namespace.toLowerCase().includes(needle);
+
 /**
  * /platform/i18n/namespaces — per-namespace translation coverage
  * (global scope). Read-only: namespaces come from the plugin
@@ -97,8 +93,23 @@ const cellTint = (pct: number): string =>
  * the exact missing key names via i18nMissingKeysFn. A toolbar
  * filters by namespace substring, hides fully-covered rows, and
  * re-sorts by name / worst coverage / key count.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell, `SearchInput` + `useTableQuery` substring search, `Column`
+ * model with per-locale coverage columns. The heatmap tint wraps the
+ * cell content (`-m-2 p-2` bleeds into the kit cell's padding) because
+ * `Column` has no per-cell className hook. The missing-keys dialog
+ * stays plugin-local — the kit's dialogs model forms/collections,
+ * not a fetched key list.
  */
-export function NamespacesPage({ data }: { data: NamespacesPageData }) {
+export function NamespacesPage({
+	data,
+	locale = "en",
+}: {
+	data: NamespacesPageData;
+	/** Active UI locale, injected by the host via the panel page ctx. */
+	locale?: string;
+}) {
 	// qps is pseudo-localized at slice time — it has no stored rows,
 	// so it would render as an all-"missing" column. Keep it out,
 	// same as the messages matrix.
@@ -125,7 +136,6 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 		});
 	}, [data.namespaces, data.coverage]);
 
-	const [filter, setFilter] = useState("");
 	const [incompleteOnly, setIncompleteOnly] = useState(false);
 	const [sort, setSort] = useState<SortMode>("name");
 	const [missingFor, setMissingFor] = useState<MissingTarget | null>(null);
@@ -133,6 +143,13 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 	// Stale-response guard: a second cell click while the first fetch
 	// is in flight must not overwrite the newer dialog's state.
 	const missingSeq = useRef(0);
+
+	const search = useMemo(() => ({ predicate: matchesNamespace }), []);
+	const query = useTableQuery<NamespaceRow>({
+		rows,
+		rowKey: (r) => r.namespace,
+		search,
+	});
 
 	const summary = useMemo(() => {
 		const totalKeys = rows.reduce((acc, r) => acc + r.keyCount, 0);
@@ -149,11 +166,7 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 	}, [rows, locales]);
 
 	const visibleRows = useMemo(() => {
-		const needle = filter.trim().toLowerCase();
-		let list = rows;
-		if (needle !== "") {
-			list = list.filter((r) => r.namespace.toLowerCase().includes(needle));
-		}
+		let list = query.rows;
 		if (incompleteOnly) {
 			list = list.filter((r) => isIncomplete(r, locales));
 		}
@@ -168,7 +181,7 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 			sorted.sort((a, b) => b.keyCount - a.keyCount || a.namespace.localeCompare(b.namespace));
 		}
 		return sorted;
-	}, [rows, locales, filter, incompleteOnly, sort]);
+	}, [query.rows, locales, incompleteOnly, sort]);
 
 	const openMissing = (row: NamespaceRow, locale: LocaleInfo) => {
 		setMissingFor({
@@ -191,14 +204,103 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 		);
 	};
 
+	const columns: readonly Column<NamespaceRow>[] = [
+		{
+			key: "namespace",
+			header: "Namespace",
+			render: (row) => (
+				<span className="inline-flex items-center gap-2 font-mono text-xs">
+					{row.namespace}
+					{row.manifestDrift === "yes" && (
+						<Badge variant="secondary" className="font-sans text-warning">
+							contract changed
+						</Badge>
+					)}
+				</span>
+			),
+		},
+		{
+			key: "pluginId",
+			header: "Plugin",
+			render: (row) =>
+				row.pluginId === "" ? (
+					"—"
+				) : (
+					<span className="text-xs text-muted-foreground">{row.pluginId}</span>
+				),
+		},
+		{
+			key: "defaultLocale",
+			header: "Default locale",
+			render: (row) =>
+				row.defaultLocale === "" ? (
+					<span className="text-muted-foreground">—</span>
+				) : (
+					<span className="font-mono text-xs">{row.defaultLocale}</span>
+				),
+		},
+		{ key: "keyCount", header: "Keys" },
+		...locales.map((l): Column<NamespaceRow> => ({
+			key: `coverage.${l.code}`,
+			header: l.endonym,
+			render: (row) => {
+				if (row.keyCount === 0) {
+					return <span className="text-muted-foreground">—</span>;
+				}
+				const translated = row.translated?.[l.code] ?? 0;
+				const pct = pctOf(translated, row.keyCount);
+				const missing = row.keyCount - translated;
+				const content = (
+					<>
+						<span
+							className="mb-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
+							aria-hidden="true"
+						>
+							<span
+								className={`block h-full rounded-full ${pct === 100 ? "bg-success" : "bg-warning"}`}
+								style={{ width: `${pct}%` }}
+							/>
+						</span>
+						<span className="flex flex-col">
+							<span className={pct === 100 ? "text-sm" : "text-sm text-warning"}>
+								{translated}/{row.keyCount} · {pct}%
+							</span>
+							{missing > 0 && (
+								<span className="text-xs text-muted-foreground">· {missing} missing</span>
+							)}
+						</span>
+					</>
+				);
+				return (
+					// The kit cell pads p-2; the negative margin + matching
+					// padding reproduces the old td-level heatmap tint.
+					<div className={`-m-2 p-2 ${cellTint(pct)}`}>
+						{missing > 0 ? (
+							<button
+								type="button"
+								onClick={() => openMissing(row, l)}
+								className="block w-full cursor-pointer text-left"
+								aria-label={`Show ${missing} missing ${row.namespace} keys for ${l.endonym}`}
+							>
+								{content}
+							</button>
+						) : (
+							content
+						)}
+					</div>
+				);
+			},
+		})),
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
 				title="Namespaces"
 				description="Registered message namespaces and per-locale translation coverage (global scope)."
 			/>
 			{rows.length > 0 && (
-				<p className="mb-3 text-sm text-muted-foreground">
+				<p className="text-sm text-muted-foreground">
 					{rows.length} {rows.length === 1 ? "namespace" : "namespaces"} · {summary.totalKeys}{" "}
 					{summary.totalKeys === 1 ? "key" : "keys"} · {summary.incompleteLocales}{" "}
 					{summary.incompleteLocales === 1 ? "locale" : "locales"} below full coverage
@@ -207,136 +309,49 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 				</p>
 			)}
 			{rows.length > 0 && (
-				<div className="mb-3 flex flex-wrap items-center gap-3">
-					<Input
-						value={filter}
-						onChange={(e) => setFilter(e.target.value)}
-						placeholder="Filter namespaces"
-						className="w-56"
-					/>
-					<label className="flex items-center gap-2 text-sm">
-						<Checkbox
-							checked={incompleteOnly}
-							onCheckedChange={(v) => setIncompleteOnly(v === true)}
-							aria-label="Below 100% only"
+				<TablePage.Toolbar
+					search={
+						<SearchInput
+							value={query.q}
+							onChange={query.setQ}
+							placeholder="Filter namespaces"
+							aria-label="Filter namespaces"
 						/>
-						Below 100% only
-					</label>
-					<Select value={sort} onValueChange={(v) => setSort(String(v) as SortMode)}>
-						<SelectTrigger className="w-44">
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="name">Sort: name</SelectItem>
-							<SelectItem value="worst">Sort: worst coverage</SelectItem>
-							<SelectItem value="keys">Sort: most keys</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
+					}
+					filters={
+						<>
+							<label className="flex items-center gap-2 text-sm">
+								<Checkbox
+									checked={incompleteOnly}
+									onCheckedChange={(v) => setIncompleteOnly(v === true)}
+									aria-label="Below 100% only"
+								/>
+								Below 100% only
+							</label>
+							<Select value={sort} onValueChange={(v) => setSort(String(v) as SortMode)}>
+								<SelectTrigger className="w-44">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="name">Sort: name</SelectItem>
+									<SelectItem value="worst">Sort: worst coverage</SelectItem>
+									<SelectItem value="keys">Sort: most keys</SelectItem>
+								</SelectContent>
+							</Select>
+						</>
+					}
+				/>
 			)}
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Namespace</TableHead>
-						<TableHead>Plugin</TableHead>
-						<TableHead>Default locale</TableHead>
-						<TableHead>Keys</TableHead>
-						{locales.map((l) => (
-							<TableHead key={l.code}>{l.endonym}</TableHead>
-						))}
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{visibleRows.map((row) => (
-						<TableRow key={row.namespace}>
-							<TableCell className="font-mono text-xs">
-								<span className="inline-flex items-center gap-2">
-									{row.namespace}
-									{row.manifestDrift === "yes" && (
-										<Badge variant="secondary" className="font-sans text-warning">
-											contract changed
-										</Badge>
-									)}
-								</span>
-							</TableCell>
-							<TableCell className="text-xs text-muted-foreground">
-								{row.pluginId === "" ? "—" : row.pluginId}
-							</TableCell>
-							<TableCell className="font-mono text-xs">
-								{row.defaultLocale === "" ? (
-									<span className="text-muted-foreground">—</span>
-								) : (
-									row.defaultLocale
-								)}
-							</TableCell>
-							<TableCell>{row.keyCount}</TableCell>
-							{locales.map((l) => {
-								if (row.keyCount === 0) {
-									return (
-										<TableCell key={l.code}>
-											<span className="text-muted-foreground">—</span>
-										</TableCell>
-									);
-								}
-								const translated = row.translated?.[l.code] ?? 0;
-								const pct = pctOf(translated, row.keyCount);
-								const missing = row.keyCount - translated;
-								const content = (
-									<>
-										<span
-											className="mb-1 block h-1 w-full overflow-hidden rounded-full bg-muted"
-											aria-hidden="true"
-										>
-											<span
-												className={`block h-full rounded-full ${pct === 100 ? "bg-success" : "bg-warning"}`}
-												style={{ width: `${pct}%` }}
-											/>
-										</span>
-										<span className="flex flex-col">
-											<span className={pct === 100 ? "text-sm" : "text-sm text-warning"}>
-												{translated}/{row.keyCount} · {pct}%
-											</span>
-											{missing > 0 && (
-												<span className="text-xs text-muted-foreground">· {missing} missing</span>
-											)}
-										</span>
-									</>
-								);
-								return (
-									<TableCell key={l.code} className={cellTint(pct)}>
-										{missing > 0 ? (
-											<button
-												type="button"
-												onClick={() => openMissing(row, l)}
-												className="block w-full cursor-pointer text-left"
-												aria-label={`Show ${missing} missing ${row.namespace} keys for ${l.endonym}`}
-											>
-												{content}
-											</button>
-										) : (
-											content
-										)}
-									</TableCell>
-								);
-							})}
-						</TableRow>
-					))}
-					{visibleRows.length === 0 && rows.length > 0 && (
-						<TableRow>
-							<TableCell colSpan={4 + locales.length} className="text-center text-muted-foreground">
-								No namespaces match the current filters.
-							</TableCell>
-						</TableRow>
-					)}
-					{rows.length === 0 && (
-						<TableRow>
-							<TableCell colSpan={4 + locales.length} className="text-center text-muted-foreground">
-								No namespaces registered.
-							</TableCell>
-						</TableRow>
-					)}
-				</TableBody>
-			</Table>
+			<TablePage.Table
+				columns={columns}
+				rows={visibleRows}
+				rowKey={(r) => r.namespace}
+				total={rows.length}
+				isFiltered={rows.length > 0 && (query.isFiltered || incompleteOnly)}
+				empty={{ title: "No namespaces registered." }}
+				noMatch="No namespaces match the current filters."
+				locale={locale}
+			/>
 			<Dialog
 				open={missingFor !== null}
 				onOpenChange={(o) => {
@@ -375,6 +390,6 @@ export function NamespacesPage({ data }: { data: NamespacesPageData }) {
 						))}
 				</DialogContent>
 			</Dialog>
-		</PageContainer>
+		</TablePage>
 	);
 }

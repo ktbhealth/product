@@ -3,18 +3,9 @@ import { ArrowRightIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Badge } from "@ktbhealth/ui/components/badge";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import type { CollectionWire } from "../fns.ts";
 import { documentStoreMessages, I18N_NAMESPACE } from "../i18n.ts";
@@ -31,69 +22,80 @@ export interface CollectionsAdminPageProps {
  * `document.collection` def plus DB-registered rows, with owner,
  * version, field count and record count. Rows link into the
  * collection's document browser (/platform/document-store/<name>).
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with a `Column` model; the kit's empty state replaces the
+ * old dashed placeholder.
  */
 export function CollectionsAdminPage({ collections, i18n, locale }: CollectionsAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, documentStoreMessages(locale));
+
+	const columns: Column<CollectionWire>[] = [
+		{
+			key: "name",
+			header: t.colName,
+			render: (row) => <span className="font-mono text-xs">{row.name}</span>,
+		},
+		{
+			key: "owner",
+			header: t.colOwner,
+			render: (row) => (
+				<span className="text-muted-foreground">{row.owner === "" ? t.none : row.owner}</span>
+			),
+		},
+		{
+			key: "version",
+			header: t.colVersion,
+			render: (row) => <span className="text-muted-foreground">{row.version}</span>,
+		},
+		{
+			key: "fields",
+			header: t.colFields,
+			align: "right",
+			value: (row) => Object.keys(row.fields).length,
+		},
+		{ key: "recordCount", header: t.colRecords, align: "right" },
+		{
+			key: "status",
+			header: t.colStatus,
+			render: (row) => (
+				<div className="flex flex-wrap items-center gap-1">
+					<Badge variant={row.contributed ? "default" : "secondary"}>
+						{row.contributed ? t.statusContributed : t.statusDbOnly}
+					</Badge>
+					{row.registered ? null : <Badge variant="outline">{t.badgeUnregistered}</Badge>}
+				</div>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end">
+					<Link
+						to={`/platform/document-store/${row.name}` as "/"}
+						className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
+						aria-label={t.open}
+					>
+						{t.open}
+						<ArrowRightIcon className="size-4" />
+					</Link>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader title={t.title} description={t.description} />
-			{collections.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyCollectionsTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyCollectionsDescription}</p>
-				</div>
-			) : (
-				<div className="overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colName}</TableHead>
-								<TableHead>{t.colOwner}</TableHead>
-								<TableHead>{t.colVersion}</TableHead>
-								<TableHead className="text-right">{t.colFields}</TableHead>
-								<TableHead className="text-right">{t.colRecords}</TableHead>
-								<TableHead>{t.colStatus}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{collections.map((row) => (
-								<TableRow key={row.name}>
-									<TableCell className="font-mono text-xs">{row.name}</TableCell>
-									<TableCell className="text-muted-foreground">
-										{row.owner === "" ? t.none : row.owner}
-									</TableCell>
-									<TableCell className="text-muted-foreground">{row.version}</TableCell>
-									<TableCell className="text-right">{Object.keys(row.fields).length}</TableCell>
-									<TableCell className="text-right">{row.recordCount}</TableCell>
-									<TableCell>
-										<div className="flex flex-wrap items-center gap-1">
-											<Badge variant={row.contributed ? "default" : "secondary"}>
-												{row.contributed ? t.statusContributed : t.statusDbOnly}
-											</Badge>
-											{row.registered ? null : (
-												<Badge variant="outline">{t.badgeUnregistered}</Badge>
-											)}
-										</div>
-									</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end">
-											<Link
-												to={`/platform/document-store/${row.name}` as "/"}
-												className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted hover:text-foreground"
-												aria-label={t.open}
-											>
-												{t.open}
-												<ArrowRightIcon className="size-4" />
-											</Link>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
-		</PageContainer>
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header title={t.title} description={t.description} />
+			<TablePage.Table
+				columns={columns}
+				rows={collections}
+				rowKey={(row) => row.name}
+				empty={{ title: t.emptyCollectionsTitle, description: t.emptyCollectionsDescription }}
+				locale={locale}
+			/>
+		</TablePage>
 	);
 }

@@ -3,6 +3,7 @@ import { useRouter } from "@tanstack/react-router";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { ConfirmAction, TablePage, viewsMessages, type Column } from "@ktb/views/table";
 import type { WizardDefinition } from "../definition.ts";
 import {
 	adminDeleteWizardDefFn,
@@ -23,28 +24,8 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@ktbhealth/ui/components/dialog";
-import {
-	AlertDialog,
-	AlertDialogAction,
-	AlertDialogCancel,
-	AlertDialogContent,
-	AlertDialogDescription,
-	AlertDialogFooter,
-	AlertDialogHeader,
-	AlertDialogTitle,
-} from "@ktbhealth/ui/components/alert-dialog";
 import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 export interface WizardsAdminPageProps {
@@ -82,18 +63,32 @@ const formFrom = (row: WizardDefWire): FormState => ({
 	published: row.published,
 });
 
+/** Normalized row for the code-defs table — `visibleCodeDefs` and
+ * DB-shadowed defs share one table, distinguished by `shadowed`. */
+interface CodeDefRow {
+	readonly id: string;
+	readonly title: string;
+	readonly owner: string;
+	readonly shadowed: boolean;
+}
+
 /**
  * /platform/wizards console view: list + JSON editor + publish toggle
  * over the `wizard_defs` table. Code-contributed `wizard.def` entries
  * are listed read-only — they are managed in plugin source, not here.
  * Mutations go through the admin-gated server fns; the loader re-runs
  * via `router.invalidate()` after each write.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with a `Column` model per table and `ConfirmAction` for the
+ * delete confirm. The JSON editor dialog stays plugin-local — the
+ * kit's `FormDialog` cannot express the parsed-definition payload,
+ * the inline JSON error and the published checkbox.
  */
 export function WizardsAdminPage({ defs, codeDefs, i18n, locale }: WizardsAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, wizardsMessages(locale));
 	const router = useRouter();
 	const [form, setForm] = useState<FormState | null>(null);
-	const [deleteTarget, setDeleteTarget] = useState<WizardDefWire | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [failed, setFailed] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
@@ -161,14 +156,10 @@ export function WizardsAdminPage({ defs, codeDefs, i18n, locale }: WizardsAdminP
 		}
 	};
 
-	const remove = async () => {
-		/* v8 ignore next -- remove() is only reachable from the confirm
-		 * dialog, which exists only while deleteTarget !== null */
-		if (deleteTarget === null) return;
+	const remove = async (row: WizardDefWire) => {
 		setBusy(true);
 		try {
-			await adminDeleteWizardDefFn({ data: { key: deleteTarget.key } });
-			setDeleteTarget(null);
+			await adminDeleteWizardDefFn({ data: { key: row.key } });
 			setNotice(t.deleted);
 			await router.invalidate();
 		} finally {
@@ -176,9 +167,98 @@ export function WizardsAdminPage({ defs, codeDefs, i18n, locale }: WizardsAdminP
 		}
 	};
 
+	const defColumns: Column<WizardDefWire>[] = [
+		{
+			key: "key",
+			header: t.fieldKey,
+			render: (row) => <span className="font-mono text-xs">{row.key}</span>,
+		},
+		{ key: "title", header: t.fieldTitle },
+		{
+			key: "published",
+			header: t.fieldPublished,
+			render: (row) => (
+				<Badge variant={row.published ? "default" : "secondary"}>
+					{row.published ? t.publishedBadge : t.unpublishedBadge}
+				</Badge>
+			),
+		},
+		{
+			key: "actions",
+			header: t.editDef,
+			align: "right",
+			render: (row) => (
+				<div className="flex justify-end gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={busy}
+						onClick={() => setForm(formFrom(row))}
+					>
+						{t.editDef}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						disabled={busy}
+						onClick={() => void togglePublished(row)}
+					>
+						{row.published ? t.unpublishedBadge : t.publishedBadge}
+					</Button>
+					<ConfirmAction
+						trigger={(open) => (
+							<Button variant="ghost" size="sm" disabled={busy} onClick={open}>
+								{t.deleteLabel}
+							</Button>
+						)}
+						title={row.key}
+						description={t.confirmDelete}
+						confirmLabel={t.deleteLabel}
+						cancelLabel={t.cancel}
+						onConfirm={() => remove(row)}
+					/>
+				</div>
+			),
+		},
+	];
+
+	const codeRows: CodeDefRow[] = [
+		...visibleCodeDefs.map((def) => ({
+			id: def.id,
+			title: def.title ?? def.id,
+			owner: def.owner ?? "plugin",
+			shadowed: false,
+		})),
+		...shadowed.map((def) => ({
+			id: def.id,
+			title: def.title ?? def.id,
+			owner: def.owner ?? "plugin",
+			shadowed: true,
+		})),
+	];
+
+	const codeColumns: Column<CodeDefRow>[] = [
+		{
+			key: "id",
+			header: t.fieldKey,
+			render: (row) => <span className="font-mono text-xs">{row.id}</span>,
+		},
+		{ key: "title", header: t.fieldTitle },
+		{
+			key: "published",
+			header: t.fieldPublished,
+			render: (row) =>
+				row.shadowed ? (
+					<Badge variant="secondary">{t.unpublishedBadge} · DB</Badge>
+				) : (
+					<Badge variant="outline">{row.owner}</Badge>
+				),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={t.adminTitle}
 				description={t.adminDescription}
 				actions={<Button onClick={() => setForm(EMPTY_FORM)}>{t.newDef}</Button>}
@@ -197,99 +277,25 @@ export function WizardsAdminPage({ defs, codeDefs, i18n, locale }: WizardsAdminP
 
 			<section className="flex flex-col gap-2">
 				<h2 className="text-lg font-medium">{t.defsHeading}</h2>
-				{defs.length === 0 ? (
-					<p className="text-sm text-muted-foreground">{t.emptyDefs}</p>
-				) : (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.fieldKey}</TableHead>
-								<TableHead>{t.fieldTitle}</TableHead>
-								<TableHead>{t.fieldPublished}</TableHead>
-								<TableHead className="text-right">{t.editDef}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{defs.map((row) => (
-								<TableRow key={row.key}>
-									<TableCell className="font-mono text-xs">{row.key}</TableCell>
-									<TableCell>{row.title}</TableCell>
-									<TableCell>
-										<Badge variant={row.published ? "default" : "secondary"}>
-											{row.published ? t.publishedBadge : t.unpublishedBadge}
-										</Badge>
-									</TableCell>
-									<TableCell className="text-right">
-										<div className="flex justify-end gap-2">
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={busy}
-												onClick={() => setForm(formFrom(row))}
-											>
-												{t.editDef}
-											</Button>
-											<Button
-												variant="outline"
-												size="sm"
-												disabled={busy}
-												onClick={() => void togglePublished(row)}
-											>
-												{row.published ? t.unpublishedBadge : t.publishedBadge}
-											</Button>
-											<Button
-												variant="ghost"
-												size="sm"
-												disabled={busy}
-												onClick={() => setDeleteTarget(row)}
-											>
-												{t.deleteLabel}
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				)}
+				<TablePage.Table
+					columns={defColumns}
+					rows={defs}
+					rowKey={(row) => row.key}
+					empty={{ title: t.emptyDefs }}
+					locale={locale}
+				/>
 			</section>
 
 			<section className="flex flex-col gap-2">
 				<h2 className="text-lg font-medium">{t.codeDefsHeading}</h2>
 				<p className="text-sm text-muted-foreground">{t.codeDefsHint}</p>
-				{visibleCodeDefs.length === 0 && shadowed.length === 0 ? (
-					<p className="text-sm text-muted-foreground">{t.emptyDefs}</p>
-				) : (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.fieldKey}</TableHead>
-								<TableHead>{t.fieldTitle}</TableHead>
-								<TableHead>{t.fieldPublished}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{visibleCodeDefs.map((def) => (
-								<TableRow key={def.id}>
-									<TableCell className="font-mono text-xs">{def.id}</TableCell>
-									<TableCell>{def.title ?? def.id}</TableCell>
-									<TableCell>
-										<Badge variant="outline">{def.owner ?? "plugin"}</Badge>
-									</TableCell>
-								</TableRow>
-							))}
-							{shadowed.map((def) => (
-								<TableRow key={`shadow-${def.id}`} className="opacity-60">
-									<TableCell className="font-mono text-xs">{def.id}</TableCell>
-									<TableCell>{def.title ?? def.id}</TableCell>
-									<TableCell>
-										<Badge variant="secondary">{t.unpublishedBadge} · DB</Badge>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				)}
+				<TablePage.Table
+					columns={codeColumns}
+					rows={codeRows}
+					rowClassName={(row) => (row.shadowed ? "opacity-60" : undefined)}
+					empty={{ title: t.emptyDefs }}
+					locale={locale}
+				/>
 			</section>
 
 			<Dialog open={form !== null} onOpenChange={(open) => !open && setForm(null)}>
@@ -349,24 +355,6 @@ export function WizardsAdminPage({ defs, codeDefs, i18n, locale }: WizardsAdminP
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
-			<AlertDialog
-				open={deleteTarget !== null}
-				onOpenChange={(open) => !open && setDeleteTarget(null)}
-			>
-				<AlertDialogContent>
-					<AlertDialogHeader>
-						<AlertDialogTitle>{deleteTarget?.key}</AlertDialogTitle>
-						<AlertDialogDescription>{t.confirmDelete}</AlertDialogDescription>
-					</AlertDialogHeader>
-					<AlertDialogFooter>
-						<AlertDialogCancel>{t.cancel}</AlertDialogCancel>
-						<AlertDialogAction disabled={busy} onClick={() => void remove()}>
-							{t.deleteLabel}
-						</AlertDialogAction>
-					</AlertDialogFooter>
-				</AlertDialogContent>
-			</AlertDialog>
-		</PageContainer>
+		</TablePage>
 	);
 }

@@ -4,21 +4,14 @@ import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice, Plugin } from "@ktb/kernel";
+import { LocalDateTime } from "@ktb/views/views";
+import { TablePage, useServerMutation, viewsMessages, type Column } from "@ktb/views/table";
 
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Input } from "@ktbhealth/ui/components/input";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 import {
 	RichTextEditor,
 	htmlToRichText,
@@ -77,6 +70,13 @@ const asValue = (content: unknown): unknown =>
  * an empty document deletes the row instead of saving it. Mutations go
  * through the plugin's server fns; the loader re-runs via
  * `router.invalidate()` after writes.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell + `Column` model for the document list and `useServerMutation`
+ * for the delete envelope. The editor pane and the referencer-aware
+ * delete dialog stay plugin-local — the kit's `FormDialog`/
+ * `ConfirmAction` cannot express the debounced autosave flush or the
+ * usage-report action picker.
  */
 export function RichTextAdminPage({ docs, plugins = [], i18n, locale }: RichTextAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, richTextMessages(locale));
@@ -107,6 +107,8 @@ export function RichTextAdminPage({ docs, plugins = [], i18n, locale }: RichText
 	const [deleteTarget, setDeleteTarget] = useState<RichTextDocRow | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [toast, setToast] = useState<ToastData | null>(null);
+	const del = useServerMutation<{ id: number; actionId?: string }>(deleteRichTextFn);
+	const anyBusy = busy || del.busy;
 
 	const showToast = (text: string) => setToast({ id: Date.now(), text });
 
@@ -130,23 +132,14 @@ export function RichTextAdminPage({ docs, plugins = [], i18n, locale }: RichText
 	const confirmDelete = async (actionId: string | null) => {
 		/* v8 ignore next -- the confirm action only exists while the dialog is open */
 		if (deleteTarget === null) return;
-		setBusy(true);
+		const target = deleteTarget;
 		setDeleteTarget(null);
-		try {
-			const ok = await deleteRichTextFn({
-				data: actionId === null ? { id: deleteTarget.id } : { id: deleteTarget.id, actionId },
-			});
-			if (ok) {
-				await router.invalidate();
-				showToast(t.deleted);
-			} else {
-				showToast(t.deleteFailed);
-			}
-		} catch {
-			showToast(t.deleteFailed);
-		} finally {
-			setBusy(false);
-		}
+		// `mutate` invalidates the router on success and resolves the
+		// outcome — failures (false or a throw) toast instead.
+		const ok = await del.mutate(
+			actionId === null ? { id: target.id } : { id: target.id, actionId },
+		);
+		showToast(ok ? t.deleted : t.deleteFailed);
 	};
 
 	if (view !== null) {
@@ -170,78 +163,78 @@ export function RichTextAdminPage({ docs, plugins = [], i18n, locale }: RichText
 		);
 	}
 
+	const columns: Column<RichTextDocRow>[] = [
+		{
+			key: "title",
+			header: t.colTitle,
+			render: (row) => row.title || t.untitled,
+		},
+		{
+			key: "updatedAt",
+			header: t.colUpdated,
+			render: (row) => (
+				<span className="text-muted-foreground">
+					<LocalDateTime value={row.updatedAt} locale={locale} />
+				</span>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end gap-1">
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setView({ id: row.id })}
+						aria-label={t.edit}
+					>
+						<PencilIcon className="size-4" />
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setDeleteTarget(row)}
+						aria-label={t.delete}
+					>
+						<Trash2Icon className="size-4 text-destructive" />
+					</Button>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={t.title}
 				description={t.description}
 				actions={
-					<Button size="sm" onClick={() => void create()} disabled={busy}>
+					<Button size="sm" onClick={() => void create()} disabled={anyBusy}>
 						<PlusIcon className="size-4" />
 						{t.newDoc}
 					</Button>
 				}
 			/>
-			{docs.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyDescription}</p>
-				</div>
-			) : (
-				<div className="overflow-hidden rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colTitle}</TableHead>
-								<TableHead>{t.colUpdated}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{docs.map((row) => (
-								<TableRow key={row.id}>
-									<TableCell>{row.title || t.untitled}</TableCell>
-									<TableCell className="text-muted-foreground">
-										{new Date(row.updatedAt).toLocaleString(locale)}
-									</TableCell>
-									<TableCell>
-										<div className="flex items-center justify-end gap-1">
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setView({ id: row.id })}
-												aria-label={t.edit}
-											>
-												<PencilIcon className="size-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setDeleteTarget(row)}
-												aria-label={t.delete}
-											>
-												<Trash2Icon className="size-4 text-destructive" />
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
+			<TablePage.Table
+				columns={columns}
+				rows={docs}
+				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+				locale={locale}
+			/>
 
 			<RichTextDeleteDialog
 				doc={deleteTarget}
 				plugins={plugins}
 				pathname={pathname}
 				t={t}
-				busy={busy}
+				busy={anyBusy}
 				onConfirm={(actionId) => void confirmDelete(actionId)}
 				onCancel={() => setDeleteTarget(null)}
 			/>
 			<Toast toast={toast} onClose={() => setToast(null)} />
-		</PageContainer>
+		</TablePage>
 	);
 }
 

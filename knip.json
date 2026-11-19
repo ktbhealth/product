@@ -53,6 +53,17 @@
 			// deps are intentionally not declared on @ktb/infra-oci.
 			"ignore": ["pulumi/**"]
 		},
+		"plugins/groups": {
+			// No static source import remains after the @ktb/views/table
+			// migration, but tests vi.mock("@tanstack/react-router") for
+			// the kit's useServerMutation — the dep must stay resolvable.
+			"ignoreDependencies": ["@tanstack/react-router"]
+		},
+		"plugins/rbac": {
+			// Same as plugins/groups — kept for test-time vi.mock of the
+			// kit's router usage.
+			"ignoreDependencies": ["@tanstack/react-router"]
+		},
 		"plugins/notifications": {
 			// Only referenced by generated src/route-types.d.ts
 			// (`import type {} from "@tanstack/react-start"` / `AnyRoute`

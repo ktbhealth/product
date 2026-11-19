@@ -1,7 +1,8 @@
 import { useState } from "react";
 
+import { ConfirmAction, TablePage, viewsMessages, type Column } from "@ktb/views/table";
+
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
 	Dialog,
 	DialogContent,
@@ -17,14 +18,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import { LocalDateTime } from "@ktb/views/views";
 
@@ -83,6 +76,13 @@ const draftToInput = (d: Draft) => ({
  * Machine registry view (P-098 D1/D2): platform-admin CRUD + health
  * probes over `Machines`. Registry only — no execution; `secretRef`
  * stays a `vault:` pointer and never carries material.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage` shell
+ * and `Column` model; delete goes through `ConfirmAction`. Mutations
+ * stay on the injected `MachinesApi` (not server fns) and refresh via
+ * `checkAll`, so `useServerMutation`/`useTableQuery` do not apply — the
+ * create dialog keeps its Select/hint fields that `FormDialog` cannot
+ * express.
  */
 export function MachinesPage({
 	machines,
@@ -97,7 +97,6 @@ export function MachinesPage({
 	const [rows, setRows] = useState<readonly MachineCard[]>(machines);
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [draft, setDraft] = useState<Draft>(emptyDraft);
-	const [pendingDelete, setPendingDelete] = useState<MachineCard | null>(null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -147,106 +146,118 @@ export function MachinesPage({
 		await refresh();
 	};
 
-	const remove = async () => {
-		/* v8 ignore next -- onConfirm only fires while the dialog is open */
-		if (pendingDelete === null) return;
-		const ok = await run(() => api.remove(pendingDelete.id));
-		setPendingDelete(null);
+	const remove = async (row: MachineCard) => {
+		const ok = await run(() => api.remove(row.id));
 		if (ok) await refresh();
 	};
 
-	return (
-		<div className="space-y-4 p-6">
-			<div className="flex items-start justify-between gap-4">
+	const columns: Column<MachineCard>[] = [
+		{
+			key: "name",
+			header: m.name,
+			render: (row) => (
 				<div>
-					<h1 className="text-xl font-semibold">{m.title}</h1>
-					<p className="text-sm text-muted-foreground">{m.desc}</p>
-				</div>
-				<div className="flex gap-2">
-					<Button variant="outline" size="sm" disabled={busy} onClick={() => void refresh()}>
-						{m.checkAll}
-					</Button>
-					<Button size="sm" onClick={() => setDialogOpen(true)}>
-						{m.add}
-					</Button>
-				</div>
-			</div>
-
-			{error !== null && <p className="text-sm text-destructive">{error}</p>}
-
-			<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>{m.name}</TableHead>
-						<TableHead>{m.kind}</TableHead>
-						<TableHead>{m.host}</TableHead>
-						<TableHead>{m.status}</TableHead>
-						<TableHead>{m.lastSeen}</TableHead>
-						<TableHead>{m.lastCheck}</TableHead>
-						<TableHead className="text-right">{m.check}</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{rows.length === 0 && (
-						<TableRow>
-							<TableCell colSpan={7} className="text-center text-muted-foreground">
-								{m.empty}
-							</TableCell>
-						</TableRow>
+					<div className="font-medium">{row.name}</div>
+					{row.secretRef !== null && (
+						<div className="text-xs text-muted-foreground">{row.secretRef}</div>
 					)}
-					{rows.map((row) => (
-						<TableRow key={row.id}>
-							<TableCell>
-								<div className="font-medium">{row.name}</div>
-								{row.secretRef !== null && (
-									<div className="text-xs text-muted-foreground">{row.secretRef}</div>
-								)}
-								{!row.enabled && <div className="text-xs text-warning">{m.disable}</div>}
-							</TableCell>
-							<TableCell>{row.kind}</TableCell>
-							<TableCell>
-								{row.host}
-								{row.port !== null ? `:${row.port}` : ""}
-							</TableCell>
-							<TableCell className={STATUS_TONE[row.status]}>{statusLabel(row.status)}</TableCell>
-							<TableCell>
-								<LocalDateTime value={row.lastSeenAt} locale={locale} fallback="—" />
-							</TableCell>
-							<TableCell>
-								<LocalDateTime value={row.lastCheckAt} locale={locale} fallback="—" />
-							</TableCell>
-							<TableCell className="text-right">
-								<div className="flex justify-end gap-1">
-									<Button
-										variant="ghost"
-										size="sm"
-										disabled={busy}
-										onClick={() => void check(row.id)}
-									>
-										{m.check}
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										disabled={busy}
-										onClick={() => void toggle(row)}
-									>
-										{row.enabled ? m.disable : m.enable}
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										disabled={busy}
-										onClick={() => setPendingDelete(row)}
-									>
-										{m.delete}
-									</Button>
-								</div>
-							</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-			</Table>
+					{!row.enabled && <div className="text-xs text-warning">{m.disable}</div>}
+				</div>
+			),
+		},
+		{ key: "kind", header: m.kind },
+		{
+			key: "host",
+			header: m.host,
+			render: (row) => `${row.host}${row.port !== null ? `:${row.port}` : ""}`,
+		},
+		{
+			key: "status",
+			header: m.status,
+			render: (row) => <span className={STATUS_TONE[row.status]}>{statusLabel(row.status)}</span>,
+		},
+		{
+			key: "lastSeen",
+			header: m.lastSeen,
+			render: (row) => <LocalDateTime value={row.lastSeenAt} locale={locale} fallback="—" />,
+		},
+		{
+			key: "lastCheck",
+			header: m.lastCheck,
+			render: (row) => <LocalDateTime value={row.lastCheckAt} locale={locale} fallback="—" />,
+		},
+		{
+			key: "actions",
+			header: m.check,
+			align: "right",
+			render: (row) => (
+				<div className="flex justify-end gap-1">
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						disabled={busy}
+						onClick={() => void check(row.id)}
+					>
+						{m.check}
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						disabled={busy}
+						onClick={() => void toggle(row)}
+					>
+						{row.enabled ? m.disable : m.enable}
+					</Button>
+					<ConfirmAction
+						trigger={(open) => (
+							<Button type="button" variant="ghost" size="sm" disabled={busy} onClick={open}>
+								{m.delete}
+							</Button>
+						)}
+						title={m.delete}
+						description={m.confirmDelete}
+						confirmLabel={m.delete}
+						cancelLabel={m.cancel}
+						variant="destructive"
+						onConfirm={() => remove(row)}
+					/>
+				</div>
+			),
+		},
+	];
+
+	return (
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
+				title={m.title}
+				description={m.desc}
+				actions={
+					<>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={busy}
+							onClick={() => void refresh()}
+						>
+							{m.checkAll}
+						</Button>
+						<Button type="button" size="sm" onClick={() => setDialogOpen(true)}>
+							{m.add}
+						</Button>
+					</>
+				}
+			/>
+			{error !== null && <p className="text-sm text-destructive">{error}</p>}
+			<TablePage.Table
+				columns={columns}
+				rows={rows}
+				rowKey={(row) => String(row.id)}
+				empty={{ title: m.empty }}
+				locale={locale}
+			/>
 
 			<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
 				<DialogContent>
@@ -321,21 +332,6 @@ export function MachinesPage({
 					</div>
 				</DialogContent>
 			</Dialog>
-
-			<ConfirmDialog
-				open={pendingDelete !== null}
-				onOpenChange={(open) => {
-					/* v8 ignore next -- onOpenChange only fires on close here */
-					if (!open) setPendingDelete(null);
-				}}
-				title={m.delete}
-				description={m.confirmDelete}
-				confirmLabel={m.delete}
-				cancelLabel={m.cancel}
-				variant="destructive"
-				loading={busy}
-				onConfirm={() => void remove()}
-			/>
-		</div>
+		</TablePage>
 	);
 }

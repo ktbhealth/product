@@ -79,6 +79,8 @@ export interface CollectionDialogProps<Row> {
 	readonly load: () => Promise<CollectionLoadResult<Row>>;
 	/** Per-row remove mutation; omit to hide the actions column. */
 	readonly remove?: (row: Row) => Promise<unknown>;
+	/** Per-row description for the remove confirm dialog. */
+	readonly removeDescription?: (row: Row) => ReactNode;
 	/** Add-form render prop — receives `{ reload, busy, error }`. */
 	readonly addForm?: (ctx: CollectionDialogAddContext) => ReactNode;
 	/** Partial copy overrides merged over the English defaults. */
@@ -109,6 +111,7 @@ export function CollectionDialog<Row>({
 	locale,
 	load,
 	remove,
+	removeDescription,
 	addForm,
 	messages,
 	className,
@@ -231,6 +234,7 @@ export function CollectionDialog<Row>({
 															</Button>
 														}
 														title={m.removeTitle}
+														description={removeDescription?.(row)}
 														confirmLabel={m.removeConfirm}
 														cancelLabel={m.cancel}
 														variant="destructive"

@@ -207,4 +207,26 @@ describe("TablePage", () => {
 		fireEvent.click(screen.getByLabelText("Seleccionar todo"));
 		expect(onSelectionChange).toHaveBeenLastCalledWith(new Set());
 	});
+
+	it("fires onRowClick for plain cell clicks and skips interactive targets", () => {
+		const onRowClick = vi.fn();
+		renderPage({
+			onRowClick,
+			rowActions: (row) => <button type="button">act-{row.id}</button>,
+		});
+		fireEvent.click(screen.getByText("Ana"));
+		expect(onRowClick).toHaveBeenCalledTimes(1);
+		expect(onRowClick.mock.calls[0]?.[0]).toMatchObject({ id: 1 });
+		fireEvent.click(screen.getByText("act-2"));
+		expect(onRowClick).toHaveBeenCalledTimes(1);
+	});
+
+	it("applies rowClassName per row", () => {
+		const { container } = renderPage({
+			rowClassName: (row) => (row.active ? "row-active" : undefined),
+		});
+		const rows = container.querySelectorAll("tbody tr");
+		expect(rows[0]?.className).toContain("row-active");
+		expect(rows[1]?.className).not.toContain("row-active");
+	});
 });

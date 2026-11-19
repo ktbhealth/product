@@ -1,13 +1,19 @@
 import { useRouter } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { UsersIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import { LocalDateTime } from "@ktb/views/views";
+import { viewsMessages } from "@ktb/views";
+import {
+	ConfirmAction,
+	SearchInput,
+	TablePage,
+	useTableQuery,
+	type Column,
+} from "@ktb/views/table";
 
 import { Button } from "@ktbhealth/ui/components/button";
-import { ConfirmDialog } from "@ktbhealth/ui/components/confirm-dialog";
 import {
 	Dialog,
 	DialogContent,
@@ -17,10 +23,6 @@ import {
 } from "@ktbhealth/ui/components/dialog";
 import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { DataToolbar } from "@ktbhealth/ui/components/data-toolbar";
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@ktbhealth/ui/components/empty";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Select,
 	SelectContent,
@@ -28,14 +30,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 
 import type { TenantMember, TenantRow } from "../index.ts";
 import {
@@ -46,7 +40,6 @@ import {
 } from "../fns.ts";
 import { tenantMessages, type TenantMessages, I18N_NAMESPACE } from "../i18n.ts";
 
-const SEARCH_CLS = "w-56 sm:w-64";
 const inputCls =
 	"h-8 rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
@@ -72,6 +65,12 @@ const roleItems = (t: TenantMessages) =>
  * and roles only (group CRUD lives on /platform/groups). Dense/
  * utilitarian by design (system console). Mutations go through the
  * plugin's server fns; the loader re-runs on `router.invalidate()`.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell + `useTableQuery` client-side search. `defineAdminTable` does
+ * not fit — the row action opens the members dialog rather than
+ * running a mutation, and the empty state replaces the whole table
+ * block (toolbar included) instead of rendering inside it.
  */
 export function AdminTenantsPage({
 	tenants,
@@ -85,93 +84,83 @@ export function AdminTenantsPage({
 	locale?: string;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, tenantMessages(locale));
-	const [q, setQ] = useState("");
 	const [membersFor, setMembersFor] = useState<TenantRow | null>(null);
-	const needle = q.trim().toLowerCase();
-	const shown = useMemo(() => {
-		if (needle === "") return tenants;
-		return tenants.filter((tenant) =>
-			[tenant.name, tenant.slug].filter(Boolean).join(" ").toLowerCase().includes(needle),
-		);
-	}, [tenants, needle]);
+
+	// Same predicate as before: case-insensitive substring over the
+	// name + slug pair.
+	const query = useTableQuery<TenantRow>({
+		rows: tenants,
+		search: {
+			predicate: (tenant, needle) =>
+				[tenant.name, tenant.slug].filter(Boolean).join(" ").toLowerCase().includes(needle),
+		},
+	});
+
+	const columns: readonly Column<TenantRow>[] = [
+		{
+			key: "id",
+			header: t.colId,
+			width: "3.5rem",
+			render: (tenant) => <span className="text-xs text-muted-foreground">{tenant.id}</span>,
+		},
+		{
+			key: "name",
+			header: t.colName,
+			render: (tenant) => <span className="font-medium">{tenant.name}</span>,
+		},
+		{
+			key: "slug",
+			header: t.colSlug,
+			render: (tenant) => <span className="text-xs">{tenant.slug}</span>,
+		},
+		{ key: "kind", header: t.colKind },
+		{
+			key: "memberCount",
+			header: t.colMembers,
+			align: "right",
+			render: (tenant) => <span className="text-xs">{tenant.memberCount}</span>,
+		},
+		{ key: "createdAt", header: t.colCreated, align: "right", format: "datetime" },
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (tenant) => (
+				<Button type="button" variant="ghost" size="sm" onClick={() => setMembersFor(tenant)}>
+					<UsersIcon className="size-3.5" /> {t.colMembers}
+				</Button>
+			),
+		},
+	];
 
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
 				title={t.title}
 				description={tenants.length === 0 ? t.none : t.count(tenants.length)}
 			/>
-			{tenants.length === 0 ? (
-				<Empty className="border">
-					<EmptyHeader>
-						<EmptyTitle>{t.emptyTitle}</EmptyTitle>
-						<EmptyDescription>{t.emptyDescription}</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			) : (
-				<>
-					<DataToolbar
-						search={
-							<Input
-								type="search"
-								value={q}
-								onChange={(e) => setQ(e.target.value)}
-								placeholder={t.searchPlaceholder}
-								aria-label={t.searchLabel}
-								className={SEARCH_CLS}
-							/>
-						}
-						resultCount={needle === "" ? undefined : t.filteredCount(shown.length, tenants.length)}
-					/>
-					<div className="overflow-hidden rounded-lg border border-border">
-						<Table>
-							<TableHeader>
-								<TableRow>
-									<TableHead className="w-14">{t.colId}</TableHead>
-									<TableHead>{t.colName}</TableHead>
-									<TableHead>{t.colSlug}</TableHead>
-									<TableHead>{t.colKind}</TableHead>
-									<TableHead className="text-right">{t.colMembers}</TableHead>
-									<TableHead className="text-right">{t.colCreated}</TableHead>
-									<TableHead className="text-right">{t.colActions}</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{shown.length === 0 ? (
-									<TableRow>
-										<TableCell colSpan={7} className="text-xs text-muted-foreground">
-											{t.noMatch}
-										</TableCell>
-									</TableRow>
-								) : (
-									shown.map((tenant) => (
-										<TableRow key={tenant.id}>
-											<TableCell className="text-xs text-muted-foreground">{tenant.id}</TableCell>
-											<TableCell className="font-medium">{tenant.name}</TableCell>
-											<TableCell className="text-xs">{tenant.slug}</TableCell>
-											<TableCell>{tenant.kind}</TableCell>
-											<TableCell className="text-right text-xs">{tenant.memberCount}</TableCell>
-											<TableCell className="text-right text-muted-foreground">
-												<LocalDateTime value={tenant.createdAt} locale={locale} />
-											</TableCell>
-											<TableCell className="text-right">
-												<Button
-													type="button"
-													variant="ghost"
-													size="sm"
-													onClick={() => setMembersFor(tenant)}
-												>
-													<UsersIcon className="size-3.5" /> {t.colMembers}
-												</Button>
-											</TableCell>
-										</TableRow>
-									))
-								)}
-							</TableBody>
-						</Table>
-					</div>
-				</>
+			{tenants.length === 0 ? null : (
+				<TablePage.Toolbar
+					search={
+						<SearchInput
+							value={query.q}
+							onChange={query.setQ}
+							placeholder={t.searchPlaceholder}
+							aria-label={t.searchLabel}
+						/>
+					}
+					resultCount={query.isFiltered ? t.filteredCount(query.shown, query.total) : undefined}
+				/>
 			)}
+			<TablePage.Table
+				columns={columns}
+				rows={query.rows}
+				total={query.total}
+				isFiltered={query.isFiltered}
+				locale={locale}
+				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+				noMatch={t.noMatch}
+			/>
 			{membersFor !== null ? (
 				<TenantMembersDialog
 					key={membersFor.id}
@@ -180,12 +169,20 @@ export function AdminTenantsPage({
 					onClose={() => setMembersFor(null)}
 				/>
 			) : null}
-		</PageContainer>
+		</TablePage>
 	);
 }
 
 /** Members dialog — lists user memberships, adds users, changes roles,
- * removes memberships for one tenant. */
+ * removes memberships for one tenant.
+ *
+ * `CollectionDialog` does not fit: its confirm copy is static (no
+ * per-row description like `removeMemberDescription(memberId)`), its
+ * column `render` receives no `{ busy, error, reload }` context (the
+ * role `<Select>` needs `busy`), and `remove` never calls
+ * `router.invalidate()`. The dialog therefore composes kit primitives
+ * directly: `TablePage.Table` for the member list and `ConfirmAction`
+ * for the destructive remove. */
 function TenantMembersDialog({
 	tenant,
 	t,
@@ -201,7 +198,6 @@ function TenantMembersDialog({
 	const [busy, setBusy] = useState(false);
 	const [memberId, setMemberId] = useState("");
 	const [role, setRole] = useState<TenantRoleValue>("member");
-	const [removing, setRemoving] = useState<TenantMember | null>(null);
 
 	const load = useCallback(async () => {
 		const res = await listTenantMembersFn({ data: { tenantId: tenant.id } });
@@ -258,7 +254,6 @@ function TenantMembersDialog({
 	};
 
 	const confirmRemove = async (target: TenantMember) => {
-		setRemoving(null);
 		await run(async () => {
 			const res = await removeTenantMemberFn({
 				data: { tenantId: tenant.id, memberId: target.memberId },
@@ -268,141 +263,128 @@ function TenantMembersDialog({
 		});
 	};
 
-	return (
-		<>
-			<Dialog open onOpenChange={(open) => !open && onClose()}>
-				<DialogContent className="max-w-lg">
-					<DialogHeader>
-						<DialogTitle>{t.membersTitle}</DialogTitle>
-						<DialogDescription>
-							{tenant.name} · {tenant.slug}
-						</DialogDescription>
-					</DialogHeader>
-					{error ? <p className="text-xs text-destructive">{t.saveError}</p> : null}
-					{members === null ? (
-						<p className="text-xs text-muted-foreground">{t.membersLoading}</p>
-					) : members.length === 0 ? (
-						<p className="text-xs text-muted-foreground">{t.membersEmpty}</p>
-					) : (
-						<div className="max-h-64 overflow-y-auto rounded-lg border border-border">
-							<Table>
-								<TableHeader>
-									<TableRow>
-										<TableHead>{t.colMember}</TableHead>
-										<TableHead>{t.colRole}</TableHead>
-										<TableHead className="text-right">{t.colActions}</TableHead>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{members.map((m) => {
-										// Free-form stored roles outside the built-in
-										// set stay selectable-as-current but are not
-										// offered as new values.
-										const items =
-											m.role !== null && !isTenantRole(m.role)
-												? [...roleItems(t), { value: m.role, label: m.role }]
-												: roleItems(t);
-										return (
-											<TableRow key={m.id}>
-												<TableCell className="font-mono text-xs">{m.memberId}</TableCell>
-												<TableCell>
-													<Select
-														items={items}
-														value={m.role ?? "member"}
-														onValueChange={(v) => void changeRole(m, v as string)}
-														disabled={busy}
-													>
-														<SelectTrigger
-															aria-label={`${t.colRole} ${m.memberId}`}
-															className="h-7 w-28 text-xs"
-														>
-															<SelectValue />
-														</SelectTrigger>
-														<SelectContent>
-															{items.map((item) => (
-																<SelectItem key={item.value} value={item.value}>
-																	{item.label}
-																</SelectItem>
-															))}
-														</SelectContent>
-													</Select>
-												</TableCell>
-												<TableCell className="text-right">
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														disabled={busy}
-														onClick={() => setRemoving(m)}
-													>
-														{t.removeMember}
-													</Button>
-												</TableCell>
-											</TableRow>
-										);
-									})}
-								</TableBody>
-							</Table>
-						</div>
-					)}
-					<form
-						className="flex flex-wrap items-end gap-2"
-						onSubmit={(e) => {
-							e.preventDefault();
-							void addMember();
-						}}
+	const memberColumns: readonly Column<TenantMember>[] = [
+		{
+			key: "memberId",
+			header: t.colMember,
+			render: (m) => <span className="font-mono text-xs">{m.memberId}</span>,
+		},
+		{
+			key: "role",
+			header: t.colRole,
+			render: (m) => {
+				// Free-form stored roles outside the built-in
+				// set stay selectable-as-current but are not
+				// offered as new values.
+				const items =
+					m.role !== null && !isTenantRole(m.role)
+						? [...roleItems(t), { value: m.role, label: m.role }]
+						: roleItems(t);
+				return (
+					<Select
+						items={items}
+						value={m.role ?? "member"}
+						onValueChange={(v) => void changeRole(m, v as string)}
+						disabled={busy}
 					>
-						<Field className="min-w-40 flex-1">
-							<FieldLabel htmlFor="member-id">{t.colMember}</FieldLabel>
-							<Input
-								id="member-id"
-								className={inputCls}
-								placeholder={t.memberIdPlaceholder}
-								value={memberId}
-								onChange={(e) => setMemberId(e.target.value)}
-							/>
-						</Field>
-						<Field className="w-32">
-							<FieldLabel htmlFor="member-role">{t.colRole}</FieldLabel>
-							<Select
-								items={roleItems(t)}
-								value={role}
-								onValueChange={(v) => setRole(v as TenantRoleValue)}
-							>
-								<SelectTrigger id="member-role" aria-label={t.colRole} className="h-8 text-xs">
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									{roleItems(t).map((item) => (
-										<SelectItem key={item.value} value={item.value}>
-											{item.label}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-						<Button type="submit" size="sm" disabled={busy}>
-							{t.addMember}
+						<SelectTrigger aria-label={`${t.colRole} ${m.memberId}`} className="h-7 w-28 text-xs">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{items.map((item) => (
+								<SelectItem key={item.value} value={item.value}>
+									{item.label}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				);
+			},
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (m) => (
+				<ConfirmAction
+					trigger={
+						<Button type="button" variant="ghost" size="sm" disabled={busy}>
+							{t.removeMember}
 						</Button>
-					</form>
-				</DialogContent>
-			</Dialog>
-			{removing !== null ? (
-				<ConfirmDialog
-					open
-					onOpenChange={(open) => {
-						/* v8 ignore next -- mounted only while removing; only close events fire */
-						if (!open) setRemoving(null);
-					}}
+					}
 					title={t.removeMemberTitle}
-					description={t.removeMemberDescription(removing.memberId)}
+					description={t.removeMemberDescription(m.memberId)}
 					confirmLabel={t.removeMember}
 					cancelLabel={t.cancel}
 					variant="destructive"
-					loading={busy}
-					onConfirm={() => confirmRemove(removing)}
+					onConfirm={() => confirmRemove(m)}
 				/>
-			) : null}
-		</>
+			),
+		},
+	];
+
+	return (
+		<Dialog open onOpenChange={(open) => !open && onClose()}>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>{t.membersTitle}</DialogTitle>
+					<DialogDescription>
+						{tenant.name} · {tenant.slug}
+					</DialogDescription>
+				</DialogHeader>
+				{error ? <p className="text-xs text-destructive">{t.saveError}</p> : null}
+				{members === null ? (
+					<p className="text-xs text-muted-foreground">{t.membersLoading}</p>
+				) : members.length === 0 ? (
+					<p className="text-xs text-muted-foreground">{t.membersEmpty}</p>
+				) : (
+					<TablePage.Table
+						className="max-h-64 overflow-y-auto"
+						columns={memberColumns}
+						rows={members}
+					/>
+				)}
+				<form
+					className="flex flex-wrap items-end gap-2"
+					onSubmit={(e) => {
+						e.preventDefault();
+						void addMember();
+					}}
+				>
+					<Field className="min-w-40 flex-1">
+						<FieldLabel htmlFor="member-id">{t.colMember}</FieldLabel>
+						<Input
+							id="member-id"
+							className={inputCls}
+							placeholder={t.memberIdPlaceholder}
+							value={memberId}
+							onChange={(e) => setMemberId(e.target.value)}
+						/>
+					</Field>
+					<Field className="w-32">
+						<FieldLabel htmlFor="member-role">{t.colRole}</FieldLabel>
+						<Select
+							items={roleItems(t)}
+							value={role}
+							onValueChange={(v) => setRole(v as TenantRoleValue)}
+						>
+							<SelectTrigger id="member-role" aria-label={t.colRole} className="h-8 text-xs">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{roleItems(t).map((item) => (
+									<SelectItem key={item.value} value={item.value}>
+										{item.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</Field>
+					<Button type="submit" size="sm" disabled={busy}>
+						{t.addMember}
+					</Button>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 }

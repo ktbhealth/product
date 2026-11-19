@@ -5,6 +5,7 @@ import { ArrowLeftIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import { LocalDateTime } from "@ktb/views/views";
+import { TablePage, viewsMessages, type Column } from "@ktb/views/table";
 
 import {
 	AlertDialog,
@@ -28,8 +29,6 @@ import {
 } from "@ktbhealth/ui/components/dialog";
 import { Field, FieldDescription, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
-import { PageContainer } from "@ktbhealth/ui/components/page-container";
-import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import {
 	Select,
 	SelectContent,
@@ -38,14 +37,6 @@ import {
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@ktbhealth/ui/components/table";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
 
 import type {
@@ -112,6 +103,13 @@ export const reasonMessage = (
  * (scalar kinds get real inputs; json/array get a JSON textarea; ref
  * is an id input). Mutations go through the admin-gated server fns;
  * validation issues from the store are rendered verbatim.
+ *
+ * Built on the shared table kit (`@ktb/views/table`): `TablePage`
+ * shell with a dynamic `Column` model and `TablePage.Footer`
+ * pagination. The kit table has no per-row click hook, so row-click
+ * editing is preserved with a delegated handler on the wrapper —
+ * clicks on interactive elements (buttons, links, inputs) are
+ * ignored, and the actions cell keeps its own stopPropagation.
  */
 export function DocumentsAdminPage({
 	collection,
@@ -211,9 +209,73 @@ export function DocumentsAdminPage({
 		}
 	};
 
+	const columns: Column<DocumentWire>[] = [
+		{
+			key: "id",
+			header: t.colId,
+			render: (row) => <span className="font-mono text-xs">{row.id}</span>,
+		},
+		...fields.map(([name, descriptor]): Column<DocumentWire> => ({
+			key: `field:${name}`,
+			header: name,
+			render: (row) => {
+				const value = row.data[name];
+				// Epoch-ms date cells render client-side only —
+				// toLocaleString during SSR picks the worker's
+				// timezone and mismatches hydration.
+				return (
+					<span className="block max-w-48 truncate">
+						{descriptor.kind === "date" && typeof value === "number" && Number.isFinite(value) ? (
+							<LocalDateTime value={value} locale={locale} />
+						) : (
+							formatCell(descriptor.kind, value, locale)
+						)}
+					</span>
+				);
+			},
+		})),
+		{
+			key: "updatedAt",
+			header: t.colUpdated,
+			render: (row) => (
+				<span className="whitespace-nowrap text-muted-foreground">
+					<LocalDateTime value={row.updatedAt} locale={locale} />
+				</span>
+			),
+		},
+		{
+			key: "actions",
+			header: t.colActions,
+			align: "right",
+			render: (row) => (
+				<div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => setForm(formFrom(collection, row))}
+						aria-label={t.edit}
+					>
+						<PencilIcon className="size-4" />
+					</Button>
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => {
+							setDeleteError(null);
+							setDeleteTarget(row);
+						}}
+						aria-label={t.delete}
+					>
+						<Trash2Icon className="size-4 text-destructive" />
+					</Button>
+				</div>
+			),
+		},
+	];
+
 	return (
-		<PageContainer>
-			<PageHeader
+		<TablePage messages={viewsMessages(locale ?? "en")}>
+			<TablePage.Header
 				title={collection.name}
 				description={t.description}
 				actions={
@@ -236,88 +298,16 @@ export function DocumentsAdminPage({
 				}
 			/>
 			{loadFailed ? <p className="text-sm text-destructive">{t.loadFailed}</p> : null}
-			{page.rows.length === 0 ? (
-				<div className="rounded-lg border border-dashed border-border px-6 py-10 text-center">
-					<p className="text-sm font-medium">{t.emptyDocumentsTitle}</p>
-					<p className="mt-1 text-sm text-muted-foreground">{t.emptyDocumentsDescription}</p>
-				</div>
-			) : (
-				<div className="overflow-x-auto rounded-lg border border-border">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>{t.colId}</TableHead>
-								{fields.map(([name]) => (
-									<TableHead key={name} className="whitespace-nowrap">
-										{name}
-									</TableHead>
-								))}
-								<TableHead>{t.colUpdated}</TableHead>
-								<TableHead className="text-right">{t.colActions}</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{page.rows.map((row) => (
-								<TableRow
-									key={row.id}
-									className="cursor-pointer"
-									onClick={() => setForm(formFrom(collection, row))}
-								>
-									<TableCell className="font-mono text-xs">{row.id}</TableCell>
-									{fields.map(([name, descriptor]) => {
-										const value = row.data[name];
-										// Epoch-ms date cells render client-side only —
-										// toLocaleString during SSR picks the worker's
-										// timezone and mismatches hydration.
-										return (
-											<TableCell key={name} className="max-w-48 truncate text-sm">
-												{descriptor.kind === "date" &&
-												typeof value === "number" &&
-												Number.isFinite(value) ? (
-													<LocalDateTime value={value} locale={locale} />
-												) : (
-													formatCell(descriptor.kind, value, locale)
-												)}
-											</TableCell>
-										);
-									})}
-									<TableCell className="whitespace-nowrap text-muted-foreground">
-										<LocalDateTime value={row.updatedAt} locale={locale} />
-									</TableCell>
-									<TableCell>
-										<div
-											className="flex items-center justify-end gap-1"
-											onClick={(e) => e.stopPropagation()}
-										>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => setForm(formFrom(collection, row))}
-												aria-label={t.edit}
-											>
-												<PencilIcon className="size-4" />
-											</Button>
-											<Button
-												size="sm"
-												variant="ghost"
-												onClick={() => {
-													setDeleteError(null);
-													setDeleteTarget(row);
-												}}
-												aria-label={t.delete}
-											>
-												<Trash2Icon className="size-4 text-destructive" />
-											</Button>
-										</div>
-									</TableCell>
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				</div>
-			)}
+			<TablePage.Table
+				columns={columns}
+				rows={page.rows}
+				rowKey={(row) => String(row.id)}
+				onRowClick={(row) => setForm(formFrom(collection, row))}
+				empty={{ title: t.emptyDocumentsTitle, description: t.emptyDocumentsDescription }}
+				locale={locale}
+			/>
 			{page.total > PAGE_SIZE ? (
-				<div className="mt-4 flex items-center justify-between">
+				<TablePage.Footer>
 					<p className="text-sm text-muted-foreground">{t.pageInfo(pageIndex + 1, pageCount)}</p>
 					<div className="flex gap-2">
 						<Button
@@ -337,7 +327,7 @@ export function DocumentsAdminPage({
 							{t.nextPage}
 						</Button>
 					</div>
-				</div>
+				</TablePage.Footer>
 			) : null}
 
 			<Dialog open={form !== null} onOpenChange={(open) => !open && setForm(null)}>
@@ -486,6 +476,6 @@ export function DocumentsAdminPage({
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
-		</PageContainer>
+		</TablePage>
 	);
 }

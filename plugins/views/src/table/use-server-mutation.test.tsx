@@ -26,7 +26,7 @@ describe("useServerMutation", () => {
 		const fn = vi.fn<(args: { data: Input }) => Promise<ServerMutationResult<Output>>>(
 			async () => ({ ok: true, data: { id: "u1" } }),
 		);
-		const { result } = renderHook(() => useServerMutation<Input, Output>(fn));
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
 		let ok: boolean | undefined;
 		await act(async () => {
 			ok = await result.current.mutate({ userId: "u1" });
@@ -42,7 +42,7 @@ describe("useServerMutation", () => {
 		const fn = vi.fn<(args: { data: Input }) => Promise<ServerMutationResult<Output>>>(
 			async () => ({ ok: false }),
 		);
-		const { result } = renderHook(() => useServerMutation<Input, Output>(fn));
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
 		let ok: boolean | undefined;
 		await act(async () => {
 			ok = await result.current.mutate({ userId: "u1" });
@@ -91,7 +91,7 @@ describe("useServerMutation", () => {
 			)
 			.mockResolvedValueOnce({ ok: false })
 			.mockResolvedValueOnce({ ok: true, data: { id: "u3" } });
-		const { result } = renderHook(() => useServerMutation<Input, Output>(fn));
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
 
 		let pending: Promise<boolean> | undefined;
 		await act(async () => {
@@ -116,5 +116,38 @@ describe("useServerMutation", () => {
 		});
 		expect(result.current.error).toBe(false);
 		expect(result.current.busy).toBe(false);
+	});
+});
+
+describe("useServerMutation loose results", () => {
+	it("treats bare true and { ok: true, ...extra } as success", async () => {
+		const fn = vi
+			.fn<(args: { data: Input }) => Promise<unknown>>()
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce({ ok: true, orphanedAudio: ["a1"] });
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
+		await act(async () => {
+			expect(await result.current.mutate({ userId: "u1" })).toBe(true);
+		});
+		await act(async () => {
+			expect(await result.current.mutate({ userId: "u2" })).toBe(true);
+		});
+		expect(invalidate).toHaveBeenCalledTimes(2);
+	});
+
+	it("treats bare false and non-envelope values as failure", async () => {
+		const fn = vi
+			.fn<(args: { data: Input }) => Promise<unknown>>()
+			.mockResolvedValueOnce(false)
+			.mockResolvedValueOnce(undefined);
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
+		await act(async () => {
+			expect(await result.current.mutate({ userId: "u1" })).toBe(false);
+		});
+		await act(async () => {
+			expect(await result.current.mutate({ userId: "u2" })).toBe(false);
+		});
+		expect(result.current.error).toBe(true);
+		expect(invalidate).not.toHaveBeenCalled();
 	});
 });

@@ -36,14 +36,17 @@ export function I18nPlatformPage({ data }: { data: unknown; ctx: PanelPageContex
 	);
 }
 
-export function I18nLocalesPlatformPage({ data }: { data: unknown; ctx: PanelPageContext }) {
+export function I18nLocalesPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<LocalesPageData>;
 	return (
-		<LocalesPage data={{ locales: Array.isArray(d.locales) ? d.locales : EMPTY_LOCALES.locales }} />
+		<LocalesPage
+			data={{ locales: Array.isArray(d.locales) ? d.locales : EMPTY_LOCALES.locales }}
+			locale={ctx.locale}
+		/>
 	);
 }
 
-export function I18nDraftsPlatformPage({ data }: { data: unknown; ctx: PanelPageContext }) {
+export function I18nDraftsPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<DraftsPageData>;
 	return (
 		<DraftsPage
@@ -51,11 +54,18 @@ export function I18nDraftsPlatformPage({ data }: { data: unknown; ctx: PanelPage
 				drafts: Array.isArray(d.drafts) ? d.drafts : EMPTY_DRAFTS.drafts,
 				locales: Array.isArray(d.locales) ? d.locales : EMPTY_DRAFTS.locales,
 			}}
+			locale={ctx.locale}
 		/>
 	);
 }
 
-export function I18nNamespacesPlatformPage({ data }: { data: unknown; ctx: PanelPageContext }) {
+export function I18nNamespacesPlatformPage({
+	data,
+	ctx,
+}: {
+	data: unknown;
+	ctx: PanelPageContext;
+}) {
 	const d = (data ?? {}) as Partial<NamespacesPageData>;
 	return (
 		<NamespacesPage
@@ -64,6 +74,7 @@ export function I18nNamespacesPlatformPage({ data }: { data: unknown; ctx: Panel
 				coverage: Array.isArray(d.coverage) ? d.coverage : EMPTY_NAMESPACES.coverage,
 				locales: Array.isArray(d.locales) ? d.locales : EMPTY_NAMESPACES.locales,
 			}}
+			locale={ctx.locale}
 		/>
 	);
 }
