@@ -169,6 +169,7 @@ export const collectKindContributions = (
 	const out: CollectedContribution[] = [];
 	plugins.forEach((plugin, pluginIndex) => {
 		if (kind.slot === GENERIC_CONTRIBUTION_SLOT) {
+			// Stryker disable next-line ArrayDeclaration: a non-empty fallback would iterate a bare string whose `.kind` is undefined and never equals `kind.id` — output identical
 			(plugin.contributions ?? []).forEach((entry, entryIndex) => {
 				if (entry.kind === kind.id) {
 					out.push({ kind: kind.id, plugin, pluginIndex, entryIndex, payload: entry });

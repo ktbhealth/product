@@ -5,6 +5,7 @@ import {
 	chromePortal,
 	chromeWhenMatches,
 	collectChrome,
+	KNOWN_CHROME_REGIONS,
 	unknownChromeRegions,
 	warnUnknownChromeRegions,
 } from "./chrome.ts";
@@ -49,6 +50,23 @@ describe("chromeWhenMatches", () => {
 		expect(chromeWhenMatches(when, "/platform/groups")).toBe(true);
 		expect(chromeWhenMatches(when, "/platform/users")).toBe(false);
 		expect(chromeWhenMatches(when, "/platform/users/42")).toBe(true);
+	});
+
+	it("excludes when ANY exceptPaths entry matches, not all of them", () => {
+		const when = {
+			paths: ["/platform/*"],
+			exceptPaths: ["/platform/users", "/platform/groups"],
+		};
+		expect(chromeWhenMatches(when, "/platform/users")).toBe(false);
+		expect(chromeWhenMatches(when, "/platform/groups")).toBe(false);
+		expect(chromeWhenMatches(when, "/platform/roles")).toBe(true);
+	});
+
+	it("admits when ANY paths entry matches, not all of them", () => {
+		const when = { paths: ["/platform", "/admin"] };
+		expect(chromeWhenMatches(when, "/platform")).toBe(true);
+		expect(chromeWhenMatches(when, "/admin")).toBe(true);
+		expect(chromeWhenMatches(when, "/other")).toBe(false);
 	});
 
 	it("gates on minDoctorProfiles against the session user", () => {
@@ -153,6 +171,22 @@ describe("collectChrome", () => {
 		});
 	});
 
+	it("scopes portal-tagged entries to the requested portal instance", () => {
+		const plugins = [
+			plugin("a", [
+				entry("a.doc", "portal.sidebar", { portal: "doctor" }),
+				entry("a.plat", "portal.sidebar"), // untagged → platform
+				entry("a.clinic", "portal.sidebar", { portal: "clinic" }),
+			]),
+		];
+		const ids = (portal?: string) =>
+			collectChrome(plugins, "portal.sidebar", "/", portal).map((e) => e.id);
+		expect(ids("doctor")).toEqual(["a.doc"]);
+		expect(ids("platform")).toEqual(["a.plat"]);
+		// No portal arg → every instance's entries collect, in entry order.
+		expect(ids()).toEqual(["a.doc", "a.plat", "a.clinic"]);
+	});
+
 	it("tolerates plugins without a chrome contribution", () => {
 		const plugins = [{ id: "bare" } as Plugin, plugin("a", [entry("a.nav", "app.header.nav")])];
 		expect(collectChrome(plugins, "app.header.nav", "/").map((e) => e.id)).toEqual(["a.nav"]);
@@ -183,6 +217,35 @@ describe("unknownChromeRegions", () => {
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(warn).toHaveBeenCalledWith(expect.stringContaining("bogus"));
 		warn.mockRestore();
+	});
+});
+
+describe("KNOWN_CHROME_REGIONS", () => {
+	it("declares exactly the regions the first-party shells render", () => {
+		expect([...KNOWN_CHROME_REGIONS].sort()).toEqual(
+			[
+				"app.header.brand",
+				"app.header.nav",
+				"app.header.actions",
+				"app.header.session",
+				"app.footer.blocks",
+				"app.footer.note",
+				"app.notFound.actions",
+				"app.error.actions",
+				"app.login.tiles",
+				"portal.sidebar",
+				"portal.brand",
+				"portal.header.actions",
+				"portal.dashboard.stats",
+				"portal.dashboard.sections",
+				"rich-text.delete.actions",
+			].sort(),
+		);
+	});
+
+	it("does not flag contributions aimed at declared regions", () => {
+		const plugins = [plugin("a", [entry("a.1", "app.header.nav"), entry("a.2", "portal.sidebar")])];
+		expect(unknownChromeRegions(plugins, KNOWN_CHROME_REGIONS)).toEqual([]);
 	});
 });
 

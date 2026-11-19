@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { Plugin } from "./contributions.ts";
-import { buildDefOwnerIndex, defOwnerEnabled, entryEnabled, packageLive } from "./enabled.ts";
+import {
+	buildDefOwnerIndex,
+	defOwnerEnabled,
+	entryEnabled,
+	packageLive,
+	type DefOwnerIndex,
+} from "./enabled.ts";
 
 describe("packageLive", () => {
 	// Membership resolves through the stamped `pkg`, NOT the id —
@@ -49,6 +55,20 @@ describe("entryEnabled", () => {
 			false,
 		);
 	});
+
+	it("checks only the entry's own id — unstamped entries are not a package", () => {
+		// `pkg: undefined` must NOT behave like a shared package key:
+		// another unstamped plugin being enabled must not leak through.
+		const unstamped = [{ id: "platform.routes" }, { id: "other.unstamped" }];
+		expect(
+			entryEnabled(unstamped, new Set(["platform.routes"]), { pluginId: "ghost.unstamped" }),
+		).toBe(false);
+		expect(
+			entryEnabled(unstamped, new Set(["platform.routes", "other.unstamped"]), {
+				pluginId: "other.unstamped",
+			}),
+		).toBe(true);
+	});
 });
 
 describe("buildDefOwnerIndex / defOwnerEnabled", () => {
@@ -71,6 +91,13 @@ describe("buildDefOwnerIndex / defOwnerEnabled", () => {
 		expect(defOwnerEnabled(index, "solo.plugin", new Set())).toBe(false);
 	});
 
+	it("indexes pkg membership from stamped plugins only", () => {
+		expect(index.membersByPkg.get("pkg.x")).toEqual(["pkg.x.main", "pkg.x.extra"]);
+		// Unstamped plugins are not package members — no stray key.
+		expect([...index.membersByPkg.keys()]).toEqual(["pkg.x"]);
+		expect(index.pkgById.has("solo.plugin")).toBe(true);
+	});
+
 	it("tolerates an index missing the pkg member list — falls back to the owner id", () => {
 		// A hand-built index can stamp pkgById without membersByPkg;
 		// defOwnerEnabled must still answer per-id instead of crashing.
@@ -86,5 +113,17 @@ describe("buildDefOwnerIndex / defOwnerEnabled", () => {
 		expect(defOwnerEnabled(index, undefined, new Set())).toBe(true);
 		expect(defOwnerEnabled(undefined, "pkg.x.main", new Set())).toBe(false);
 		expect(defOwnerEnabled(undefined, "pkg.x.main", new Set(["pkg.x.main"]))).toBe(true);
+	});
+
+	it("never consults membersByPkg for unstamped owners", () => {
+		// pkgById maps the owner to `undefined` (unstamped plugin), so the
+		// per-id check must answer directly — even if a hand-built index
+		// carries a stray `undefined` member-list key.
+		const weird = {
+			pkgById: new Map<string, string | undefined>([["o", undefined]]),
+			membersByPkg: new Map<unknown, readonly string[]>([[undefined, ["enabled.other"]]]),
+		} as unknown as DefOwnerIndex;
+		expect(defOwnerEnabled(weird, "o", new Set(["enabled.other"]))).toBe(false);
+		expect(defOwnerEnabled(weird, "o", new Set(["o"]))).toBe(true);
 	});
 });
