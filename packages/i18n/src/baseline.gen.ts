@@ -16820,7 +16820,7 @@ export const I18N_BASELINE = [
 		namespace: "fonts",
 		key: "weightPlaceholder",
 		locale: "en",
-		value: "400",
+		value: "400, 700",
 	},
 	{
 		namespace: "fonts",
@@ -17133,7 +17133,7 @@ export const I18N_BASELINE = [
 		namespace: "fonts",
 		key: "weightPlaceholder",
 		locale: "pt-BR",
-		value: "400",
+		value: "400, 700",
 	},
 	{
 		namespace: "fonts",
@@ -17446,7 +17446,7 @@ export const I18N_BASELINE = [
 		namespace: "fonts",
 		key: "weightPlaceholder",
 		locale: "es",
-		value: "400",
+		value: "400, 700",
 	},
 	{
 		namespace: "fonts",

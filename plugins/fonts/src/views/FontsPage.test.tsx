@@ -169,7 +169,7 @@ describe("FontsPage — catalog upload", () => {
 		const submit = screen.getByRole("button", { name: "Upload" });
 		expect(submit).toHaveProperty("disabled", true);
 		await user.type(screen.getByPlaceholderText("e.g. Brand Sans"), "Brand Sans");
-		await user.type(screen.getByPlaceholderText("400"), "700");
+		await user.type(screen.getByPlaceholderText("400, 700"), "700");
 		const file = new File([new Uint8Array([1, 2])], "brand.woff2", { type: "font/woff2" });
 		await user.upload(document.querySelector('input[type="file"]')!, file);
 		await user.click(submit);

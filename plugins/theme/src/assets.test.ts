@@ -29,6 +29,7 @@ import {
 	isThemeAssetKind,
 	listThemeAssets,
 	listUnownedFontAssets,
+	parseFontWeightList,
 	parseGoogleFontsCss,
 	planImageVariants,
 	primaryVariantName,
@@ -36,6 +37,7 @@ import {
 	suggestedSeedsFromColor,
 	themeAssetUrl,
 	upsertThemeFontAsset,
+	weightFromFileName,
 } from "./assets.ts";
 import type { ThemeFontAsset } from "./types.ts";
 
@@ -404,6 +406,56 @@ describe("theme_assets repo helpers", () => {
 	});
 });
 
+describe("catalog font weight parsing", () => {
+	it("parseFontWeightList handles singles, lists, ranges and separators", () => {
+		expect(parseFontWeightList("700")).toEqual([700]);
+		expect(parseFontWeightList("400,700")).toEqual([400, 700]);
+		expect(parseFontWeightList("700, 400,700")).toEqual([400, 700]);
+		expect(parseFontWeightList("400 700")).toEqual([400, 700]);
+		expect(parseFontWeightList("400;500;600")).toEqual([400, 500, 600]);
+		expect(parseFontWeightList("400-700")).toEqual([400, 500, 600, 700]);
+		expect(parseFontWeightList("100–400")).toEqual([100, 200, 300, 400]); // en dash
+		expect(parseFontWeightList("400-750")).toEqual([400, 500, 600, 700]); // steps of 100
+		expect(parseFontWeightList("450-650")).toEqual([450, 550, 650]);
+		expect(parseFontWeightList("400 - 700")).toEqual([400, 500, 600, 700]); // spaces ok
+	});
+
+	it("parseFontWeightList rejects malformed and out-of-range input", () => {
+		expect(parseFontWeightList("")).toBeNull();
+		expect(parseFontWeightList("   ")).toBeNull();
+		expect(parseFontWeightList("abc")).toBeNull();
+		expect(parseFontWeightList("50")).toBeNull();
+		expect(parseFontWeightList("1000")).toBeNull();
+		expect(parseFontWeightList("700-400")).toBeNull(); // descending range
+		expect(parseFontWeightList("400-abc")).toBeNull();
+		expect(parseFontWeightList("-400")).toBeNull();
+		expect(parseFontWeightList("400x")).toBeNull();
+		expect(parseFontWeightList("400,,700")).toEqual([400, 700]); // empty segments skip
+		expect(parseFontWeightList(" , ; ")).toBeNull(); // separators only
+	});
+
+	it("weightFromFileName reads numeric and style-word hints", () => {
+		expect(weightFromFileName("Inter-Bold.woff2")).toBe(700);
+		expect(weightFromFileName("Inter_700.ttf")).toBe(700);
+		expect(weightFromFileName("roboto-medium.woff")).toBe(500);
+		expect(weightFromFileName("Family-SemiBold.otf")).toBe(600);
+		expect(weightFromFileName("Family-ExtraLight.woff2")).toBe(200);
+		expect(weightFromFileName("Family-Black")).toBe(900);
+		expect(weightFromFileName("Family-Thin")).toBe(100);
+		// Numeric token wins over a contradictory style word.
+		expect(weightFromFileName("Odd-300-Bold.woff2")).toBe(300);
+		// Out-of-range digits are not weights; falls through to style.
+		expect(weightFromFileName("Font-50-Bold.woff2")).toBe(700);
+	});
+
+	it("weightFromFileName returns undefined for ambiguous names", () => {
+		expect(weightFromFileName("Inter.woff2")).toBeUndefined();
+		expect(weightFromFileName("Inter-VariableFont_wdth,wght.woff2")).toBeUndefined();
+		expect(weightFromFileName("Font400")).toBeUndefined(); // digits fused to letters
+		expect(weightFromFileName("noext")).toBeUndefined();
+	});
+});
+
 describe("catalog font assets (theme_id NULL)", () => {
 	it("catalogFontFamilyOf/catalogFontAssetOf parse the variants contract", () => {
 		expect(catalogFontFamilyOf(null)).toBeNull();
@@ -433,13 +485,14 @@ describe("catalog font assets (theme_id NULL)", () => {
 		const { db } = makeTestDb();
 		const asset = await insertCatalogFontAsset(db, {
 			family: "Brand Sans",
-			weight: 600,
+			weights: [600],
 			r2Key: `${THEME_ASSETS_PREFIX}catalog/font/u.woff2`,
 			format: "woff2",
 		});
 		expect(asset).toMatchObject({ themeId: null, kind: "font", status: "ready" });
 		const variants = JSON.parse(asset!.variants!);
 		expect(variants.family).toBe("Brand Sans");
+		expect(variants.weights).toEqual([600]);
 		expect(variants.fontAsset.faces).toEqual([
 			{
 				url: "/api/theme/assets?key=theme-assets%2Fcatalog%2Ffont%2Fu.woff2",
@@ -451,16 +504,56 @@ describe("catalog font assets (theme_id NULL)", () => {
 		expect(catalogFontAssetOf(asset!.variants)?.faces).toHaveLength(1);
 	});
 
-	it("omits weight/format when not provided", async () => {
+	it("insertCatalogFontAsset emits one face per weight, sorted and deduped", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "Var",
+			weights: [700, 400, 700, 50],
+			r2Key: "v.woff2",
+			format: "woff2",
+		});
+		const variants = JSON.parse(asset!.variants!);
+		// Out-of-range weights are filtered; the rest sort + dedupe.
+		expect(variants.weights).toEqual([400, 700]);
+		expect(variants.fontAsset.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=v.woff2",
+				weight: 400,
+				format: "woff2",
+			},
+			{
+				url: "/api/theme/assets?key=v.woff2",
+				weight: 700,
+				format: "woff2",
+			},
+		]);
+	});
+
+	it("omits weights/weight/format when not provided", async () => {
 		const { db } = makeTestDb();
 		const asset = await insertCatalogFontAsset(db, {
 			family: "Plain",
-			weight: undefined,
+			weights: undefined,
 			r2Key: "k.ttf",
 			format: undefined,
 		});
+		const variants = JSON.parse(asset!.variants!);
+		expect(variants.weights).toBeUndefined();
 		const face = catalogFontAssetOf(asset!.variants)!.faces[0]!;
 		expect(face).toEqual({ url: "/api/theme/assets?key=k.ttf" });
+	});
+
+	it("omits format on weighted faces when not provided", async () => {
+		const { db } = makeTestDb();
+		const asset = await insertCatalogFontAsset(db, {
+			family: "NoFormat",
+			weights: [400],
+			r2Key: "k.bin",
+			format: undefined,
+		});
+		expect(catalogFontAssetOf(asset!.variants)!.faces).toEqual([
+			{ url: "/api/theme/assets?key=k.bin", weight: 400 },
+		]);
 	});
 
 	it("insertCatalogFontAsset returns null when the insert yields no row", async () => {
@@ -470,7 +563,7 @@ describe("catalog font assets (theme_id NULL)", () => {
 		expect(
 			await insertCatalogFontAsset(emptyInsert, {
 				family: "X",
-				weight: undefined,
+				weights: undefined,
 				r2Key: "k",
 				format: undefined,
 			}),
@@ -484,7 +577,7 @@ describe("catalog font assets (theme_id NULL)", () => {
 		await insertThemeAsset(db, { themeId, kind: "favicon", r2Key: null });
 		const cat = await insertCatalogFontAsset(db, {
 			family: "A",
-			weight: undefined,
+			weights: undefined,
 			r2Key: "a.woff2",
 			format: "woff2",
 		});
@@ -506,7 +599,7 @@ describe("catalog font assets (theme_id NULL)", () => {
 		const { db } = makeTestDb();
 		const asset = await insertCatalogFontAsset(db, {
 			family: "Doomed",
-			weight: undefined,
+			weights: undefined,
 			r2Key: "d.woff2",
 			format: "woff2",
 		});

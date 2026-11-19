@@ -133,6 +133,43 @@ describe("local adapter", () => {
 		expect(entries).toEqual([]);
 	});
 
+	it("reads weights from catalog variants (explicit array, then face fallback)", async () => {
+		const { db, d1 } = makeTestDb();
+		const addAsset = (variants: string) =>
+			run(
+				d1,
+				`INSERT INTO theme_assets (theme_id, kind, status, variants, created_at)
+				 VALUES (NULL, 'font', 'ready', ?, 0)`,
+				[variants],
+			);
+		// Multi-weight catalog upload: explicit weights array wins.
+		await addAsset(
+			'{"family":"Inter","weights":[700,400],"fontAsset":{"faces":[{"url":"u","weight":400},{"url":"u","weight":700}],"fallback":null}}',
+		);
+		// Pre-weights row: the per-face descriptors still report weights.
+		await addAsset(
+			'{"family":"Legacy","fontAsset":{"faces":[{"url":"u","weight":600}],"fallback":null}}',
+		);
+		// Weightless row stays weightless.
+		await addAsset('{"family":"Plain","fontAsset":{"faces":[{"url":"u"}],"fallback":null}}');
+		// Malformed weights array falls back to the faces.
+		await addAsset(
+			'{"family":"Odd","weights":"nope","fontAsset":{"faces":[{"url":"u","weight":300}],"fallback":null}}',
+		);
+		// Malformed weights + weightless faces → no weights.
+		await addAsset('{"family":"Bare","weights":["x"],"fontAsset":{"faces":[{"url":"u"}]}}');
+
+		const entries = await Effect.runPromise(
+			localFontProviderAdapter.list().pipe(Effect.provideService(Db, db)),
+		);
+		const byFamily = new Map(entries.map((e) => [e.family, e]));
+		expect(byFamily.get("Inter")?.weights).toEqual([400, 700]);
+		expect(byFamily.get("Legacy")?.weights).toEqual([600]);
+		expect(byFamily.get("Plain")?.weights).toBeUndefined();
+		expect(byFamily.get("Odd")?.weights).toEqual([300]);
+		expect(byFamily.get("Bare")?.weights).toBeUndefined();
+	});
+
 	it("skips corrupt/blank rows and falls back to theme fonts (slots, assets, weights)", async () => {
 		const { db, d1 } = makeTestDb();
 		const insertTheme = async (fonts: string | null) =>

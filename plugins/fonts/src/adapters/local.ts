@@ -61,10 +61,38 @@ const fontFamiliesOf = (fontsJson: string | null): { families: string[]; weights
 	return { families: [...names], ...(weights === undefined ? {} : { weights }) };
 };
 
-const variantFamilyOf = (variantsJson: string | null): string | null => {
+const asWeightList = (value: unknown): number[] | undefined => {
+	if (!Array.isArray(value)) return undefined;
+	const weights = [
+		...new Set(value.filter((w): w is number => typeof w === "number" && Number.isInteger(w))),
+	].sort((a, b) => a - b);
+	return weights.length === 0 ? undefined : weights;
+};
+
+/**
+ * Catalog-upload rows (theme_assets.theme_id NULL) stamp `family` plus
+ * an optional `weights` array — mirrored from the @font-face weights —
+ * on their variants JSON. Rows written before weights existed fall
+ * back to collecting the per-face `weight` descriptors, so older
+ * single-weight uploads still report their weight to the catalog.
+ */
+const variantInfoOf = (
+	variantsJson: string | null,
+): { family: string; weights?: number[] } | null => {
 	const variants = asRecord(parseJson(variantsJson));
 	const family = variants?.["family"];
-	return typeof family === "string" && family.trim() !== "" ? family.trim() : null;
+	if (variants === null || typeof family !== "string" || family.trim() === "") return null;
+	const explicit = asWeightList(variants["weights"]);
+	if (explicit !== undefined) return { family: family.trim(), weights: explicit };
+	const fontAsset = asRecord(variants["fontAsset"]);
+	const faces = fontAsset?.["faces"];
+	const faceWeights = Array.isArray(faces)
+		? asWeightList(faces.map((face) => asRecord(face)?.["weight"]))
+		: undefined;
+	return {
+		family: family.trim(),
+		...(faceWeights === undefined ? {} : { weights: faceWeights }),
+	};
 };
 
 export const localFontProviderAdapter: FontProviderAdapter = {
@@ -88,10 +116,13 @@ export const localFontProviderAdapter: FontProviderAdapter = {
 			// Dedupe by family — several assets can serve one family.
 			const byFamily = new Map<string, FontCatalogEntry>();
 			for (const row of rows) {
-				const direct = variantFamilyOf(row.variants);
+				const direct = variantInfoOf(row.variants);
 				const resolved =
 					direct !== null
-						? { families: [direct], weights: undefined }
+						? {
+								families: [direct.family],
+								...(direct.weights === undefined ? {} : { weights: direct.weights }),
+							}
 						: fontFamiliesOf(row.themeFonts);
 				for (const family of resolved.families) {
 					if (byFamily.has(family)) continue;

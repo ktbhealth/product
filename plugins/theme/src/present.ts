@@ -118,33 +118,32 @@ export const fontCssVars = (fonts: ThemeFontConfig | null): Record<string, strin
 
 /** Google Fonts stylesheet hrefs for a font config — only when the
  * theme opts into `google-fonts` delivery. One css2 URL per distinct
- * family with the configured weights (default 400;500;600;700).
- * `excludeFamilies` drops managed-cascade families (they emit their
- * own links with catalog weights — see {@link presentTheme}). */
-export const googleFontLinks = (
-	fonts: ThemeFontConfig | null,
-	options?: { readonly excludeFamilies?: ReadonlySet<string> },
-): readonly string[] => {
+ * family with the configured weights (default 400;500;600;700), in
+ * slot order (sans → heading → mono). Managed-cascade families are
+ * merged separately by {@link presentTheme}. */
+export const googleFontLinks = (fonts: ThemeFontConfig | null): readonly string[] => {
 	if (fonts === null || fonts.delivery !== "google-fonts") return [];
 	const families = fonts.families ?? {};
-	const exclude = options?.excludeFamilies;
 	const names = [
 		...new Set(
 			[families.sans, families.heading, families.mono]
 				.filter((f): f is string => typeof f === "string" && f.trim() !== "")
-				.map((f) => f.trim())
-				.filter((f) => exclude === undefined || !exclude.has(f)),
+				.map((f) => f.trim()),
 		),
 	];
 	const weights = (fonts.weights ?? [400, 500, 600, 700])
 		.filter((w) => Number.isInteger(w) && w >= 100 && w <= 900)
 		.sort((a, b) => a - b)
 		.join(";");
-	return names.map(
-		(name) =>
-			`https://fonts.googleapis.com/css2?family=${encodeURIComponent(name.replaceAll(" ", "+"))}:wght@${weights}&display=swap`,
-	);
+	return names.map((name) => googleFontHref(name, weights));
 };
+
+/** css2 stylesheet href for a family + precomputed `wght@` list —
+ * shared by {@link googleFontLinks} and the managed-cascade merge in
+ * {@link presentTheme}. Space encoding matches googleFontCssHref
+ * (encode first, then %20 → +) so multi-word families resolve. */
+const googleFontHref = (name: string, weights: string): string =>
+	`https://fonts.googleapis.com/css2?family=${encodeURIComponent(name.trim()).replaceAll("%20", "+")}:wght@${weights}&display=swap`;
 
 const FONT_FORMATS: Readonly<Record<string, string>> = {
 	woff2: "woff2",
@@ -279,7 +278,10 @@ export const presentTheme = (
 	// against `fonts.sources` — entries for unreferenced providers are
 	// ignored.
 	const slotNames = new Map<ThemeFontSlot, string>();
-	const managedGoogle: { family: string; weights: readonly number[] }[] = [];
+	const managedGoogleBySlot = new Map<
+		ThemeFontSlot,
+		{ family: string; weights: readonly number[] }
+	>();
 	const managedGoogleFamilies = new Set<string>();
 	const managedAssets = new Map<string, ThemeFontAsset>();
 	if (fonts?.sources !== undefined && managed.length > 0) {
@@ -292,7 +294,7 @@ export const presentTheme = (
 			slotNames.set(slot, m.family);
 			if (m.kind === "googlefonts") {
 				managedGoogleFamilies.add(m.family);
-				managedGoogle.push({
+				managedGoogleBySlot.set(slot, {
 					family: m.family,
 					weights: m.weights.length > 0 ? m.weights : MANAGED_DEFAULT_WEIGHTS,
 				});
@@ -316,12 +318,41 @@ export const presentTheme = (
 					assets: { ...(fonts.assets ?? {}), ...Object.fromEntries(managedAssets) },
 				};
 
-	// Free-form google-fonts links skip managed families — they emit
-	// their own hrefs with the catalog's synced weights below.
-	const fontLinks = [
-		...googleFontLinks(fonts, { excludeFamilies: managedGoogleFamilies }),
-		...managedGoogle.map((m) => googleFontCssHref(m.family, m.weights)),
-	];
+	// Slot-priority merge (sans → heading → mono): a managed
+	// googlefonts source emits its catalog-weight link for its slot
+	// first; the slot's free-form family follows when delivery opts
+	// into google-fonts and the name isn't claimed by a managed
+	// source (managedGoogleFamilies — managed wins same-family
+	// duplicates). Dedupe is by family, first occurrence wins; with
+	// no managed sources this reduces to googleFontLinks' order.
+	const fontLinks: string[] = [];
+	const linkedFamilies = new Set<string>();
+	const link = (family: string, href: string) => {
+		const key = family.trim();
+		if (key === "" || linkedFamilies.has(key)) return;
+		linkedFamilies.add(key);
+		fontLinks.push(href);
+	};
+	const freeWeightParam = (fonts?.weights ?? [400, 500, 600, 700])
+		.filter((w) => Number.isInteger(w) && w >= 100 && w <= 900)
+		.sort((a, b) => a - b)
+		.join(";");
+	const freeFamilies = fonts?.families ?? {};
+	for (const slot of FONT_SLOTS) {
+		const managedEntry = managedGoogleBySlot.get(slot);
+		if (managedEntry !== undefined) {
+			link(managedEntry.family, googleFontCssHref(managedEntry.family, managedEntry.weights));
+		}
+		if (fonts?.delivery === "google-fonts") {
+			const name = freeFamilies[slot];
+			if (typeof name === "string") {
+				const trimmed = name.trim();
+				if (trimmed !== "" && !managedGoogleFamilies.has(trimmed)) {
+					link(trimmed, googleFontHref(trimmed, freeWeightParam));
+				}
+			}
+		}
+	}
 
 	// Self-host faces: the stored config's assets minus families a
 	// managed source now owns (the managed asset wins — it is the
@@ -352,7 +383,7 @@ export const presentTheme = (
 		tokens: deriveThemeTokens(seeds),
 		styleCss: themeStyleCss({ seeds, fonts: effectiveFonts }),
 		fonts,
-		fontLinks: [...new Set(fontLinks)],
+		fontLinks,
 		fontFaceCss: fontFaceCssOut,
 		brand,
 		...(options?.preview === true ? { preview: true as const } : {}),
