@@ -59,17 +59,22 @@ export const collectProvidedPages = (
 	enabled?: ReadonlySet<string>,
 ): readonly ProvidedPageRef[] => {
 	const instanceIds = portalInstanceIds(plugins);
-	const byPath = new Map<string, ProvidedPageRef>();
+	// Dedupe runs over the FULL registry like collectPages — a disabled
+	// plugin earlier in topo order still shadows later claims on the
+	// same path (dispatch 404s on the winner's enable gate), so the
+	// enabled filter applies to winners only, after the fact.
+	const byPath = new Map<string, ProvidedPageRef & { readonly pkg?: string }>();
 	const add = (plugin: Plugin, pageId: string, path: string, context: "app" | "portal") => {
 		if (byPath.has(path)) return;
-		byPath.set(path, { pageId, path, pluginId: plugin.id, context });
+		byPath.set(path, {
+			pageId,
+			path,
+			pluginId: plugin.id,
+			...(plugin.pkg === undefined ? {} : { pkg: plugin.pkg }),
+			context,
+		});
 	};
 	for (const plugin of plugins) {
-		if (
-			enabled !== undefined &&
-			!entryEnabled(plugins, enabled, { pluginId: plugin.id, pkg: plugin.pkg })
-		)
-			continue;
 		// panel.pages are portal pages by definition (P-050).
 		if ("panel" in plugin && plugin.panel?.pages) {
 			for (const page of plugin.panel.pages) add(plugin, page.id, page.path, "portal");
@@ -85,5 +90,12 @@ export const collectProvidedPages = (
 			}
 		}
 	}
-	return [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path));
+	return [...byPath.values()]
+		.filter(
+			(ref) =>
+				enabled === undefined ||
+				entryEnabled(plugins, enabled, { pluginId: ref.pluginId, pkg: ref.pkg }),
+		)
+		.map(({ pkg: _pkg, ...ref }) => ref)
+		.sort((a, b) => a.path.localeCompare(b.path));
 };

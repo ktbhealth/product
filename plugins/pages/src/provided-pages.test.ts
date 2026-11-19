@@ -79,6 +79,17 @@ describe("collectProvidedPages", () => {
 		expect(collectProvidedPages(plugins).map((r) => r.pageId)).toEqual(["ok.x"]);
 	});
 
+	it("dedupes before the enabled filter — a disabled claimant still shadows", () => {
+		const plugins = [
+			plugin("off.first", [page("off.first", "/dup")]),
+			plugin("on.second", [page("on.second", "/dup")]),
+		];
+		// collectPages lets the disabled winner claim the path and the
+		// dispatcher 404s — the enabled plugin's descriptor is shadowed,
+		// so nothing is listed.
+		expect(collectProvidedPages(plugins, new Set(["on.second"]))).toEqual([]);
+	});
+
 	it("filters disabled plugins when the enabled set is provided", () => {
 		const plugins = [
 			plugin("on.pages", [page("on.x", "/on")]),
