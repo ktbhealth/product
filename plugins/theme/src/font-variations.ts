@@ -30,7 +30,13 @@ const i32 = (v: DataView, o: number) => v.getInt32(o);
 
 const WOFF2_TAG = "wOF2";
 const WOFF_TAG = "wOFF";
-const SFNT_SIGNATURES = new Set(["true", "typ1", "OTTO"]);
+// "true", "typ1", "OTTO" (CFF) and 0x00010000 — the version tag most
+// real-world TTFs carry (a bare NUL-prefixed string reads oddly but is
+// just four bytes).
+const SFNT_SIGNATURES = new Set(["true", "typ1", "OTTO", "\u0000\u0001\u0000\u0000"]);
+/** `format` hints arrive both as upload extensions ("ttf") and as
+ * fontFormatForExt descriptors ("truetype"/"opentype"). */
+const SFNT_FORMATS = new Set(["ttf", "otf", "truetype", "opentype"]);
 
 /** `wght` axis bounds in CSS font-weight units (fvar Fixed 16.16). */
 export interface FontWeightAxis {
@@ -68,6 +74,12 @@ export interface FontVariationInfo {
 	/** Ready-to-emit `unicode-range` descriptor value ("U+0020-007E,
 	 * U+00C0-00FF"), or absent when coverage is unknown/unwieldy. */
 	readonly unicodeRange?: string;
+	/** Merged cmap coverage as sorted codepoint ranges — present
+	 * whenever the descriptor fit the range cap (the same condition
+	 * as {@link unicodeRange}, minus the serialized-length cap), so
+	 * the font-subset pipeline can compute latin/full complements
+	 * even when the full descriptor itself was too long to emit. */
+	readonly coverageRanges?: readonly (readonly [number, number])[];
 }
 
 const viewOf = (bytes: Uint8Array): DataView =>
@@ -86,7 +98,7 @@ const tableBytes = async (
 	const head4 = String.fromCharCode(...Array.from({ length: 4 }, (_, i) => bytes[i]!));
 	try {
 		if (head4 === WOFF_TAG) return await woffTable(bytes, tag);
-		if (SFNT_SIGNATURES.has(head4) || format === "ttf" || format === "otf") {
+		if (SFNT_SIGNATURES.has(head4) || (format !== undefined && SFNT_FORMATS.has(format))) {
 			const rec = findTable(bytes, tag);
 			if (rec === null) return null;
 			if (rec.offset + rec.length > bytes.byteLength) return null;
@@ -249,8 +261,10 @@ const mergeRanges = (ranges: [number, number][]): [number, number][] | null => {
 
 const hex = (n: number): string => n.toString(16).toUpperCase().padStart(4, "0");
 
-/** Serialize merged ranges as a `unicode-range` descriptor value. */
-const rangesToUnicodeRange = (ranges: readonly [number, number][]): string =>
+/** Serialize merged ranges as a `unicode-range` descriptor value.
+ * Exported for font-subset.ts, which serializes the latin intersection
+ * and full-coverage complement for the subset/full @font-face pair. */
+export const rangesToUnicodeRange = (ranges: readonly (readonly [number, number])[]): string =>
 	ranges
 		.map(([start, stop]) => (start === stop ? `U+${hex(start)}` : `U+${hex(start)}-${hex(stop)}`))
 		.join(", ");
@@ -263,7 +277,9 @@ const MAX_UNICODE_RANGE_BYTES = 2048;
  * only — supplementary-plane glyphs simply stay uncovered, matching
  * what a BMP-only descriptor could ever express).
  */
-const parseCmap = (cmap: Uint8Array | null): string | undefined => {
+const parseCmap = (
+	cmap: Uint8Array | null,
+): { css: string; ranges: readonly [number, number][] } | undefined => {
 	if (cmap === null) return undefined;
 	const v = viewOf(cmap);
 	const sub = pickCmapSubtable(v, cmap);
@@ -277,8 +293,9 @@ const parseCmap = (cmap: Uint8Array | null): string | undefined => {
 	if (merged === null) return undefined;
 	const css = rangesToUnicodeRange(merged);
 	// Pathological fonts can still produce a huge descriptor — beyond
-	// this cap the hint costs more than it saves, so emit nothing.
-	return css.length <= MAX_UNICODE_RANGE_BYTES ? css : undefined;
+	// this cap the hint costs more than it saves, so emit nothing. The
+	// ranges themselves stay useful for the subset pipeline.
+	return { css: css.length <= MAX_UNICODE_RANGE_BYTES ? css : "", ranges: merged };
 };
 
 /**
@@ -299,10 +316,8 @@ export const parseFontVariations = async (
 			SFNT_SIGNATURES.has(head4) ||
 			head4 === WOFF_TAG ||
 			head4 === WOFF2_TAG ||
-			format === "ttf" ||
-			format === "otf" ||
-			format === "woff" ||
-			format === "woff2";
+			(format !== undefined &&
+				(SFNT_FORMATS.has(format) || format === "woff" || format === "woff2"));
 		if (!recognized) return null;
 		let fvar: Uint8Array | null;
 		let cmap: Uint8Array | null;
@@ -326,12 +341,14 @@ export const parseFontVariations = async (
 		// unicode-range applies to static fonts too — return whatever
 		// the cmap probe found even without an fvar table.
 		const variation = parseFvar(fvar);
-		const unicodeRange = parseCmap(cmap);
+		const cmapInfo = parseCmap(cmap);
+		const unicodeRange = cmapInfo !== undefined && cmapInfo.css !== "" ? cmapInfo.css : undefined;
 		return {
 			variable: variation.variable,
 			...(variation.weightAxis === undefined ? {} : { weightAxis: variation.weightAxis }),
 			...(variation.axes === undefined ? {} : { axes: variation.axes }),
 			...(unicodeRange === undefined ? {} : { unicodeRange }),
+			...(cmapInfo === undefined ? {} : { coverageRanges: cmapInfo.ranges }),
 		};
 	} catch {
 		// v8 ignore next -- defensive: every inner parser already

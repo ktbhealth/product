@@ -602,7 +602,24 @@ describe("parseFontVariations — cmap", () => {
 		// cmap present, fvar absent → static font with a unicode hint.
 		const staticWoff2 = woff2([{ name: "cmap", stored: cmap12([[0x30, 0x39]]) }]);
 		const info = await parseFontVariations(staticWoff2);
-		expect(info).toEqual({ variable: false, unicodeRange: "U+0030-0039" });
+		expect(info).toEqual({
+			variable: false,
+			unicodeRange: "U+0030-0039",
+			coverageRanges: [[0x30, 0x39]],
+		});
+	});
+
+	it("recognizes the 0x00010000 sfnt version and truetype/opentype hints", async () => {
+		// Most real-world TTFs carry version tag 0x00010000, not "true".
+		const font = buildSfnt("\u0000\u0001\u0000\u0000", [table("cmap", cmap12([[0x41, 0x5a]]))]);
+		const info = await parseFontVariations(font);
+		expect(info?.unicodeRange).toBe("U+0041-005A");
+		expect(info?.coverageRanges).toEqual([[0x41, 0x5a]]);
+		// fontFormatForExt descriptors ("truetype"/"opentype") qualify
+		// even when the signature bytes are unrecognized.
+		const hinted = buildSfnt("zzzz", [table("cmap", cmap12([[0x41, 0x5a]]))]);
+		expect((await parseFontVariations(hinted, "truetype"))?.unicodeRange).toBe("U+0041-005A");
+		expect((await parseFontVariations(hinted, "opentype"))?.unicodeRange).toBe("U+0041-005A");
 	});
 
 	it("returns a bare result for WOFF2 containers that fail to decode", async () => {

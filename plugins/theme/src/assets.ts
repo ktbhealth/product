@@ -455,6 +455,21 @@ export const catalogFontFamilyOf = (variantsJson: string | null): string | null 
 	}
 };
 
+/** R2 key of the latin-subset sibling recorded as `variants.subsetKey`
+ * on catalog font rows — lets the supersede path delete it alongside
+ * the primary object. Null when absent/malformed. */
+export const catalogFontSubsetKeyOf = (variantsJson: string | null): string | null => {
+	if (variantsJson === null) return null;
+	try {
+		const parsed = JSON.parse(variantsJson) as unknown;
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+		const key = (parsed as Record<string, unknown>)["subsetKey"];
+		return typeof key === "string" && key !== "" ? key : null;
+	} catch {
+		return null;
+	}
+};
+
 /**
  * Self-host manifest stored under `variants.fontAsset` on catalog
  * font rows — the {@link ThemeFontAsset} the managed-font cascade
@@ -527,6 +542,21 @@ export const insertCatalogFontAsset = async (
 		 * sanitized, stamped on variants and every emitted face.
 		 * `wght` entries are ignored (weightAxis owns that axis). */
 		readonly axes?: readonly FontVariationAxis[] | undefined;
+		/** Real font subset produced by font-subset.ts: a sibling R2
+		 * object covering only the latin charset. When present, each
+		 * weight emits a SUBSET face (latin unicode-range) plus — only
+		 * when `fullUnicodeRange` is set — a FULL face carrying the
+		 * complementary coverage, so the two faces stay disjoint. The
+		 * subset key is stamped as `variants.subsetKey` for supersede
+		 * cleanup. */
+		readonly subset?:
+			| {
+					readonly r2Key: string;
+					readonly format: string | undefined;
+					readonly unicodeRange: string;
+					readonly fullUnicodeRange: string | undefined;
+			  }
+			| undefined;
 	},
 ): Promise<ThemeAssetRow | null> => {
 	const weights =
@@ -557,33 +587,69 @@ export const insertCatalogFontAsset = async (
 	const axes = sanitizeFontAxes(input.axes);
 	const axisFaces = axes.length === 0 ? {} : { axes };
 	const format = input.format === undefined ? {} : { format: input.format };
+	// Real-subset sibling (font-subset.ts): sanitize like the other
+	// stored-JSON-adjacent inputs — a malformed subset payload degrades
+	// to the full-font-only face list rather than emitting bad CSS.
+	const rawSubset = input.subset;
+	const subset =
+		rawSubset !== undefined &&
+		typeof rawSubset.r2Key === "string" &&
+		rawSubset.r2Key !== "" &&
+		typeof rawSubset.unicodeRange === "string" &&
+		rawSubset.unicodeRange.trim() !== ""
+			? {
+					url: themeAssetUrl(rawSubset.r2Key),
+					format:
+						typeof rawSubset.format === "string" && rawSubset.format.trim() !== ""
+							? rawSubset.format.trim()
+							: undefined,
+					unicodeRange: rawSubset.unicodeRange.trim(),
+					fullUnicodeRange:
+						typeof rawSubset.fullUnicodeRange === "string" &&
+						rawSubset.fullUnicodeRange.trim() !== ""
+							? rawSubset.fullUnicodeRange.trim()
+							: undefined,
+					r2Key: rawSubset.r2Key,
+				}
+			: undefined;
+	// Disjoint @font-face sources per weight: the latin subset face
+	// first, then the full font carrying only the complementary
+	// coverage (dropped entirely when the subset covers everything).
+	const sources: {
+		readonly url: string;
+		readonly format?: string;
+		readonly unicodeRange?: string;
+	}[] =
+		subset === undefined
+			? [{ url, ...(unicodeRange === undefined ? {} : { unicodeRange }), ...format }]
+			: [
+					{
+						url: subset.url,
+						...(subset.format === undefined ? {} : { format: subset.format }),
+						unicodeRange: subset.unicodeRange,
+					},
+					...(subset.fullUnicodeRange === undefined
+						? []
+						: [
+								{
+									url,
+									...format,
+									unicodeRange: subset.fullUnicodeRange,
+								},
+							]),
+				];
 	const faces: ThemeFontFace[] =
 		weightAxis !== undefined
-			? [
-					{
-						url,
-						weightRange: [weightAxis.min, weightAxis.max],
-						...(unicodeRange === undefined ? {} : { unicodeRange }),
-						...axisFaces,
-						...format,
-					},
-				]
+			? sources.map((s) => ({
+					...s,
+					weightRange: [weightAxis.min, weightAxis.max] as const,
+					...axisFaces,
+				}))
 			: weights.length === 0
-				? [
-						{
-							url,
-							...(unicodeRange === undefined ? {} : { unicodeRange }),
-							...axisFaces,
-							...format,
-						},
-					]
-				: weights.map((weight) => ({
-						url,
-						weight,
-						...(unicodeRange === undefined ? {} : { unicodeRange }),
-						...axisFaces,
-						...format,
-					}));
+				? sources.map((s) => ({ ...s, ...axisFaces }))
+				: weights.flatMap((weight) =>
+						sources.map((s) => ({ ...s, weight, ...axisFaces })),
+					);
 	const variants = {
 		family: input.family,
 		...(weights.length === 0 ? {} : { weights }),
@@ -591,6 +657,7 @@ export const insertCatalogFontAsset = async (
 		...(weightAxis === undefined ? {} : { weightAxis }),
 		...(axes.length === 0 ? {} : { axes }),
 		...(unicodeRange === undefined ? {} : { unicodeRange }),
+		...(subset === undefined ? {} : { subsetKey: subset.r2Key }),
 		fontAsset: { faces, fallback: null },
 	};
 	const rows = await db
