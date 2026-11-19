@@ -144,10 +144,88 @@ describe("useServerMutation loose results", () => {
 		await act(async () => {
 			expect(await result.current.mutate({ userId: "u1" })).toBe(false);
 		});
+		expect(result.current.failure).toBe(false);
 		await act(async () => {
 			expect(await result.current.mutate({ userId: "u2" })).toBe(false);
 		});
 		expect(result.current.error).toBe(true);
+		expect(result.current.failure).toBeUndefined();
 		expect(invalidate).not.toHaveBeenCalled();
+	});
+});
+
+describe("useServerMutation failure payload", () => {
+	it("exposes the resolved failing value on `failure`", async () => {
+		const failing = { ok: false as const, error: "denied by policy" };
+		const fn = vi.fn<(args: { data: Input }) => Promise<unknown>>(async () => failing);
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
+		let ok: boolean | undefined;
+		await act(async () => {
+			ok = await result.current.mutate({ userId: "u1" });
+		});
+		expect(ok).toBe(false);
+		expect(result.current.error).toBe(true);
+		expect(result.current.failure).toBe(failing);
+	});
+
+	it("exposes thrown errors on `failure` and clears it on the next call", async () => {
+		const boom = new Error("boom");
+		const fn = vi
+			.fn<(args: { data: Input }) => Promise<unknown>>()
+			.mockRejectedValueOnce(boom)
+			.mockResolvedValueOnce({ ok: true, data: { id: "u2" } });
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
+		await act(async () => {
+			expect(await result.current.mutate({ userId: "u1" })).toBe(false);
+		});
+		expect(result.current.error).toBe(true);
+		expect(result.current.failure).toBe(boom);
+		// a subsequent call clears failure before resolving
+		await act(async () => {
+			expect(await result.current.mutate({ userId: "u2" })).toBe(true);
+		});
+		expect(result.current.error).toBe(false);
+		expect(result.current.failure).toBeUndefined();
+		expect(invalidate).toHaveBeenCalledTimes(1);
+	});
+
+	it("clears `failure` at the start of each call", async () => {
+		let rejectFn: (e: unknown) => void = () => {};
+		let resolveFn: (v: unknown) => void = () => {};
+		const fn = vi
+			.fn<(args: { data: Input }) => Promise<unknown>>()
+			.mockImplementationOnce(
+				() =>
+					new Promise<unknown>((_res, rej) => {
+						rejectFn = rej;
+					}),
+			)
+			.mockImplementationOnce(
+				() =>
+					new Promise<unknown>((res) => {
+						resolveFn = res;
+					}),
+			);
+		const { result } = renderHook(() => useServerMutation<Input>(fn));
+		let pending: Promise<boolean> | undefined;
+		await act(async () => {
+			pending = result.current.mutate({ userId: "u1" });
+		});
+		await act(async () => {
+			rejectFn(new Error("late"));
+			await pending;
+		});
+		expect(result.current.failure).toBeInstanceOf(Error);
+		// in-flight call resets failure before the new result lands
+		let pending2: Promise<boolean> | undefined;
+		await act(async () => {
+			pending2 = result.current.mutate({ userId: "u2" });
+		});
+		expect(result.current.failure).toBeUndefined();
+		await act(async () => {
+			resolveFn({ ok: false });
+			await pending2;
+		});
+		expect(result.current.failure).toEqual({ ok: false });
 	});
 });
