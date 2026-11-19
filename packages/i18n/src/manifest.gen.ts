@@ -6641,6 +6641,15 @@ export const I18N_MANIFEST = {
 		fontsFamiliesLabel: {
 			params: [],
 		},
+		fontsSourcesLabel: {
+			params: [],
+		},
+		fontSourceLabel: {
+			params: [],
+		},
+		fontSourceCustom: {
+			params: [],
+		},
 		fontSans: {
 			params: [],
 		},

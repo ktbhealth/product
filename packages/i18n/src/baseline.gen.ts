@@ -35165,6 +35165,24 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "theme",
+		key: "fontsSourcesLabel",
+		locale: "en",
+		value: "Managed sources",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceLabel",
+		locale: "en",
+		value: "Managed source",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceCustom",
+		locale: "en",
+		value: "Custom (free-form)",
+	},
+	{
+		namespace: "theme",
 		key: "fontSans",
 		locale: "en",
 		value: "Sans",
@@ -36299,6 +36317,24 @@ export const I18N_BASELINE = [
 		key: "fontsFamiliesLabel",
 		locale: "pt-BR",
 		value: "Famílias de fontes",
+	},
+	{
+		namespace: "theme",
+		key: "fontsSourcesLabel",
+		locale: "pt-BR",
+		value: "Fontes gerenciadas",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceLabel",
+		locale: "pt-BR",
+		value: "Fonte gerenciada",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceCustom",
+		locale: "pt-BR",
+		value: "Personalizada (texto livre)",
 	},
 	{
 		namespace: "theme",
@@ -37437,6 +37473,24 @@ export const I18N_BASELINE = [
 		key: "fontsFamiliesLabel",
 		locale: "es",
 		value: "Familias de fuentes",
+	},
+	{
+		namespace: "theme",
+		key: "fontsSourcesLabel",
+		locale: "es",
+		value: "Fuentes gestionadas",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceLabel",
+		locale: "es",
+		value: "Fuente gestionada",
+	},
+	{
+		namespace: "theme",
+		key: "fontSourceCustom",
+		locale: "es",
+		value: "Personalizada (texto libre)",
 	},
 	{
 		namespace: "theme",

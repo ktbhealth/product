@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fns = vi.hoisted(() => ({
 	getThemeFn: vi.fn(),
 	listThemeAssetsFn: vi.fn(),
+	listThemeFontSourcesFn: vi.fn(),
 	publishThemeFn: vi.fn(),
 	setThemePreviewFn: vi.fn(),
 	deleteThemeFn: vi.fn(),
@@ -17,6 +18,7 @@ const fns = vi.hoisted(() => ({
 vi.mock("../fns.ts", () => ({
 	getThemeFn: fns.getThemeFn,
 	listThemeAssetsFn: fns.listThemeAssetsFn,
+	listThemeFontSourcesFn: fns.listThemeFontSourcesFn,
 	publishThemeFn: fns.publishThemeFn,
 	setThemePreviewFn: fns.setThemePreviewFn,
 	deleteThemeFn: fns.deleteThemeFn,
@@ -29,7 +31,12 @@ vi.mock("@tanstack/react-router", () => ({
 
 import type { PanelPageContext } from "@ktb/kernel";
 
-import type { ResolvedTheme, ThemeAssetSummary, ThemeSummary } from "../types.ts";
+import type {
+	ResolvedTheme,
+	ThemeAssetSummary,
+	ThemeFontSourceOption,
+	ThemeSummary,
+} from "../types.ts";
 import { ThemeEditorPage } from "./ThemeEditorPage.tsx";
 
 const ctx = {
@@ -123,6 +130,7 @@ const loaded = async () => {
 beforeEach(() => {
 	fns.getThemeFn.mockReset().mockResolvedValue(theme());
 	fns.listThemeAssetsFn.mockReset().mockResolvedValue(ASSETS);
+	fns.listThemeFontSourcesFn.mockReset().mockResolvedValue([]);
 	fns.publishThemeFn.mockReset().mockResolvedValue(summary());
 	fns.setThemePreviewFn.mockReset().mockResolvedValue({ ok: true });
 	fns.deleteThemeFn.mockReset().mockResolvedValue({ ok: true });
@@ -504,6 +512,137 @@ describe("ThemeEditorPage — typography section", () => {
 					fonts: expect.objectContaining({
 						delivery: "self-host",
 						weights: [500, 600],
+					}),
+				}),
+			}),
+		);
+	});
+});
+
+describe("ThemeEditorPage — managed font sources", () => {
+	const SOURCES: ThemeFontSourceOption[] = [
+		{
+			providerId: 7,
+			providerName: "Google",
+			providerKind: "googlefonts",
+			family: "Inter",
+			weights: [400, 700],
+		},
+		{
+			providerId: 9,
+			providerName: "Local",
+			providerKind: "local",
+			family: "Brand Sans",
+			weights: [],
+		},
+	];
+
+	it("hides the picker when the catalog is empty or fails to load", async () => {
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+		expect(screen.queryByText("Managed sources")).toBeNull();
+		// Only the delivery select remains.
+		expect(screen.getAllByRole("combobox")).toHaveLength(1);
+
+		cleanup();
+		fns.listThemeFontSourcesFn.mockRejectedValue(new Error("catalog down"));
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+		expect(screen.queryByText("Managed sources")).toBeNull();
+	});
+
+	it("binds a slot to a catalog family, keeps stale sources and clears back to custom", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue(SOURCES);
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					delivery: "self-host",
+					families: { sans: "Inter" },
+					// `heading`'s source lost its catalog row (provider
+					// disabled/removed) — it must still render as an option;
+					// `mono`'s source IS cataloged and shows the provider label.
+					sources: {
+						heading: { providerId: 1, family: "Gone" },
+						mono: { providerId: 9, family: "Brand Sans" },
+					},
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		// The stale heading source renders as its own option; cataloged
+		// entries are labeled "Provider — Family".
+		await user.click(screen.getByRole("combobox", { name: "Heading — Managed source" }));
+		expect(await screen.findByRole("option", { name: "Gone" })).toBeTruthy();
+		await user.keyboard("{Escape}");
+
+		await user.click(screen.getByRole("combobox", { name: "Sans — Managed source" }));
+		expect(await screen.findByRole("option", { name: "Local — Brand Sans" })).toBeTruthy();
+		await user.click(await screen.findByRole("option", { name: "Google — Inter" }));
+		expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+		// The free-form family input keeps working next to the binding.
+		await user.type(screen.getByLabelText("Mono"), "JetBrains Mono");
+
+		await user.click(screen.getByRole("button", { name: "Publish theme" }));
+		await waitFor(() =>
+			expect(fns.publishThemeFn).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					fonts: expect.objectContaining({
+						sources: expect.objectContaining({
+							sans: { providerId: 7, family: "Inter" },
+							heading: { providerId: 1, family: "Gone" },
+							mono: { providerId: 9, family: "Brand Sans" },
+						}),
+						families: expect.objectContaining({ mono: "JetBrains Mono" }),
+					}),
+				}),
+			}),
+		);
+
+		// Switching back to custom clears the slot's binding.
+		await user.click(screen.getByRole("combobox", { name: "Sans — Managed source" }));
+		await user.click(await screen.findByRole("option", { name: "Custom (free-form)" }));
+		await user.click(screen.getByRole("button", { name: "Publish theme" }));
+		await waitFor(() =>
+			expect(fns.publishThemeFn).toHaveBeenLastCalledWith({
+				data: expect.objectContaining({
+					fonts: expect.objectContaining({
+						sources: expect.objectContaining({ sans: null }),
+					}),
+				}),
+			}),
+		);
+	});
+
+	it("binds a managed source while fonts is still null", async () => {
+		// Picking a source before any font config exists exercises the
+		// `f ?? {}` / `f?.sources ?? {}` arms of setFontSource.
+		fns.listThemeFontSourcesFn.mockResolvedValue(SOURCES);
+		fns.getThemeFn.mockResolvedValue(theme({ fonts: null }));
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		await user.click(screen.getByRole("combobox", { name: "Sans — Managed source" }));
+		await user.click(await screen.findByRole("option", { name: "Local — Brand Sans" }));
+
+		await user.click(screen.getByRole("button", { name: "Publish theme" }));
+		await waitFor(() =>
+			expect(fns.publishThemeFn).toHaveBeenCalledWith({
+				data: expect.objectContaining({
+					fonts: expect.objectContaining({
+						delivery: "self-host",
+						sources: expect.objectContaining({
+							sans: { providerId: 9, family: "Brand Sans" },
+						}),
 					}),
 				}),
 			}),
