@@ -64,6 +64,15 @@ export const ELEMENT_KINDS_KIND: ContributionKindDescriptor = fieldKind("element
 	"plugin-manager",
 ]);
 
+/** Request-middleware stages (PL-015/P-110): the dedicated `middleware`
+ * Plugin field. Server-only — stage handlers are Effects and never
+ * reach the client registry, so the only consumers are the app-host
+ * request pipeline and the plugin-manager kinds column. */
+export const MIDDLEWARE_KIND: ContributionKindDescriptor = fieldKind("middleware", [
+	"app-host.server",
+	"plugin-manager",
+]);
+
 /**
  * The built-in kinds — one per dedicated Plugin union field, in
  * declaration order. These are the kinds the app host's surfaces
@@ -98,6 +107,9 @@ export const FIELD_CONTRIBUTION_KINDS: readonly ContributionKindDescriptor[] = [
 	// Managed-content element kinds (P-102) — client-consumed renderer/
 	// editor manifests; server behavior registers via ElementKinds.
 	ELEMENT_KINDS_KIND,
+	// Ordered request-middleware stages (PL-015/P-110) — server-only:
+	// handlers are Effects, so no client consumer exists.
+	MIDDLEWARE_KIND,
 ];
 
 /**

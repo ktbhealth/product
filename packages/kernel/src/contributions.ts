@@ -6,6 +6,7 @@ import type * as Layer from "effect/Layer";
 import type { JsonSchemaObject } from "@ktb/json-schema";
 
 import type { ForbiddenContributions, PluginBase } from "./core.ts";
+import type { MiddlewareStage } from "./middleware.ts";
 
 /** One entry in a plugin's portal sidebar. `icon` is any
  * component accepting `className` (lucide icons qualify); the host
@@ -625,6 +626,16 @@ export interface PagesPlugin extends PluginBase, ForbiddenContributions<"pages">
 	readonly pages: ReadonlyArray<Page>;
 }
 
+/** Ordered request-middleware stages (PL-015 / P-110): handlers the
+ * host edge runs per request, in `order`, before the matched page's
+ * `guard`/`loader`. `scope` binds a stage to route keys, dispatch
+ * contexts and/or path globs; see ./middleware.ts for the contract,
+ * verdicts and the pure ordering/matching helpers. Server-only —
+ * client manifests never declare this field (handlers are Effects). */
+export interface MiddlewarePlugin extends PluginBase, ForbiddenContributions<"middleware"> {
+	readonly middleware: ReadonlyArray<MiddlewareStage>;
+}
+
 export type Plugin =
 	| MarkerPlugin
 	| TablesPlugin
@@ -636,4 +647,5 @@ export type Plugin =
 	| PagesPlugin
 	| PortalsPlugin
 	| BoundariesPlugin
-	| ElementKindsPlugin;
+	| ElementKindsPlugin
+	| MiddlewarePlugin;
