@@ -1381,6 +1381,31 @@ export type I18nKey =
 	| "manager.viewDependencies"
 	| "manager.viewDomains"
 	| "manager.viewHierarchy"
+	| "middleware.chainEmpty"
+	| "middleware.colChain"
+	| "middleware.colContext"
+	| "middleware.colEnabled"
+	| "middleware.colId"
+	| "middleware.colOrder"
+	| "middleware.colOrigin"
+	| "middleware.colPlugin"
+	| "middleware.colRoute"
+	| "middleware.colScope"
+	| "middleware.description"
+	| "middleware.disabled"
+	| "middleware.enabled"
+	| "middleware.originBuiltin"
+	| "middleware.originPlugin"
+	| "middleware.routeCount"
+	| "middleware.routesDescription"
+	| "middleware.routesTitle"
+	| "middleware.scopeAll"
+	| "middleware.stageCount"
+	| "middleware.stagesDescription"
+	| "middleware.stagesTitle"
+	| "middleware.title"
+	| "middleware.unavailableDescription"
+	| "middleware.unavailableTitle"
 	| "not-found-page.body"
 	| "not-found-page.title"
 	| "notifications.bodies.appointmentReminder"
@@ -4150,6 +4175,41 @@ export interface I18nTypedT {
 	(key: "manager.viewDependencies"): Effect.Effect<string>;
 	(key: "manager.viewDomains"): Effect.Effect<string>;
 	(key: "manager.viewHierarchy"): Effect.Effect<string>;
+	(key: "middleware.chainEmpty"): Effect.Effect<string>;
+	(key: "middleware.colChain"): Effect.Effect<string>;
+	(key: "middleware.colContext"): Effect.Effect<string>;
+	(key: "middleware.colEnabled"): Effect.Effect<string>;
+	(key: "middleware.colId"): Effect.Effect<string>;
+	(key: "middleware.colOrder"): Effect.Effect<string>;
+	(key: "middleware.colOrigin"): Effect.Effect<string>;
+	(key: "middleware.colPlugin"): Effect.Effect<string>;
+	(key: "middleware.colRoute"): Effect.Effect<string>;
+	(key: "middleware.colScope"): Effect.Effect<string>;
+	(key: "middleware.description"): Effect.Effect<string>;
+	(key: "middleware.disabled"): Effect.Effect<string>;
+	(key: "middleware.enabled"): Effect.Effect<string>;
+	(key: "middleware.originBuiltin"): Effect.Effect<string>;
+	(key: "middleware.originPlugin"): Effect.Effect<string>;
+	(
+		key: "middleware.routeCount",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "middleware.routesDescription"): Effect.Effect<string>;
+	(key: "middleware.routesTitle"): Effect.Effect<string>;
+	(key: "middleware.scopeAll"): Effect.Effect<string>;
+	(
+		key: "middleware.stageCount",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
+	(key: "middleware.stagesDescription"): Effect.Effect<string>;
+	(key: "middleware.stagesTitle"): Effect.Effect<string>;
+	(key: "middleware.title"): Effect.Effect<string>;
+	(key: "middleware.unavailableDescription"): Effect.Effect<string>;
+	(key: "middleware.unavailableTitle"): Effect.Effect<string>;
 	(key: "not-found-page.body"): Effect.Effect<string>;
 	(key: "not-found-page.title"): Effect.Effect<string>;
 	(

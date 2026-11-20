@@ -1614,6 +1614,23 @@
         "react": "^19.2.0",
       },
     },
+    "plugins/middleware": {
+      "name": "@ktb/middleware",
+      "dependencies": {
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
     "plugins/not-found-page": {
       "name": "@ktb/not-found-page",
       "dependencies": {
@@ -2864,6 +2881,8 @@
     "@ktb/machines": ["@ktb/machines@workspace:plugins/machines"],
 
     "@ktb/manager": ["@ktb/manager@workspace:plugins/manager"],
+
+    "@ktb/middleware": ["@ktb/middleware@workspace:plugins/middleware"],
 
     "@ktb/not-found-page": ["@ktb/not-found-page@workspace:plugins/not-found-page"],
 

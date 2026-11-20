@@ -4740,6 +4740,97 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	middleware: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		stagesTitle: {
+			params: [],
+		},
+		stagesDescription: {
+			params: [],
+		},
+		colOrder: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colPlugin: {
+			params: [],
+		},
+		colOrigin: {
+			params: [],
+		},
+		colScope: {
+			params: [],
+		},
+		colEnabled: {
+			params: [],
+		},
+		originBuiltin: {
+			params: [],
+		},
+		originPlugin: {
+			params: [],
+		},
+		scopeAll: {
+			params: [],
+		},
+		enabled: {
+			params: [],
+		},
+		disabled: {
+			params: [],
+		},
+		routesTitle: {
+			params: [],
+		},
+		routesDescription: {
+			params: [],
+		},
+		colRoute: {
+			params: [],
+		},
+		colContext: {
+			params: [],
+		},
+		colChain: {
+			params: [],
+		},
+		chainEmpty: {
+			params: [],
+		},
+		unavailableTitle: {
+			params: [],
+		},
+		unavailableDescription: {
+			params: [],
+		},
+		stageCount: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} stage} other{{n} stages}}",
+		},
+		routeCount: {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} route} other{{n} routes}}",
+		},
+	},
 	"not-found-page": {
 		title: {
 			params: [],
