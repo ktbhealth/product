@@ -5,10 +5,15 @@ import { describe, expect, it } from "vitest";
 
 import { findTable } from "./font-metrics.ts";
 import { LATIN_SUBSET_RANGES, latinSubsetCodepoints, subsetCatalogFont } from "./font-subset.ts";
-import type { FontVariationInfo } from "./font-variations.ts";
+import { parseFontVariations, type FontVariationInfo } from "./font-variations.ts";
 
 const fixtureTtf = new Uint8Array(
 	readFileSync(fileURLToPath(new URL("./testdata/katex-size3.ttf", import.meta.url))),
+);
+// Roboto Variable (wght + wdth axes, glyf/gvar outlines) — upstream
+// hb-subset-wasm test fixture, Apache-2.0. Covers only U+0041-0043.
+const fixtureVariableTtf = new Uint8Array(
+	readFileSync(fileURLToPath(new URL("./testdata/Roboto-Variable.ABC.ttf", import.meta.url))),
 );
 
 const staticVariation = (
@@ -107,6 +112,23 @@ const fixtureWoff = async (): Promise<Uint8Array> => {
 	);
 };
 
+/** Minimal sfnt directory carrying the given table tags — enough for
+ * sfntFlavor/findTable; table payloads are never dereferenced. Inputs
+ * must also list "head" and "cmap" to pass the directory guard. */
+const fakeSfnt = (tags: readonly string[], size = 512): Uint8Array => {
+	const out = new Uint8Array(size);
+	const v = new DataView(out.buffer);
+	out.set([0, 1, 0, 0], 0); // 0x00010000 → "ttf" flavor
+	v.setUint16(4, tags.length);
+	for (let i = 0; i < tags.length; i++) {
+		const o = 12 + i * 16;
+		for (let c = 0; c < 4; c++) out[o + c] = tags[i]!.charCodeAt(c);
+		v.setUint32(o + 8, size);
+		v.setUint32(o + 12, 0);
+	}
+	return out;
+};
+
 describe("latinSubsetCodepoints", () => {
 	it("expands the latin ranges into a sorted flat list", () => {
 		const cps = latinSubsetCodepoints();
@@ -125,14 +147,8 @@ describe("latinSubsetCodepoints", () => {
 });
 
 describe("subsetCatalogFont", () => {
-	it("returns null without variation info, for variable fonts and empty coverage", async () => {
+	it("returns null without variation info and for empty coverage", async () => {
 		expect(await subsetCatalogFont({ bytes: fixtureTtf, variation: null })).toBeNull();
-		expect(
-			await subsetCatalogFont({
-				bytes: fixtureTtf,
-				variation: { variable: true, coverageRanges: [[0x20, 0x7e]] },
-			}),
-		).toBeNull();
 		expect(
 			await subsetCatalogFont({ bytes: fixtureTtf, variation: { variable: false } }),
 		).toBeNull();
@@ -378,5 +394,83 @@ describe("subsetCatalogFont", () => {
 				},
 			}),
 		).toBeNull();
+	});
+
+	it("subsets a real variable font when fvar/gvar survive", async () => {
+		const variation = await parseFontVariations(fixtureVariableTtf);
+		expect(variation?.variable).toBe(true);
+		const plan = await subsetCatalogFont({ bytes: fixtureVariableTtf, variation });
+		expect(plan).not.toBeNull();
+		expect(plan!.data.byteLength).toBeLessThan(fixtureVariableTtf.byteLength);
+		expect(plan!.ext).toBe("ttf");
+		// The subset provably kept the variation machinery — the
+		// @font-face weightRange/axes descriptors stay honest.
+		expect(findTable(plan!.data, "fvar")).not.toBeNull();
+		expect(findTable(plan!.data, "gvar")).not.toBeNull();
+		const reparsed = await parseFontVariations(plan!.data);
+		expect(reparsed?.variable).toBe(true);
+		expect(reparsed?.weightAxis).toEqual(variation!.weightAxis);
+		expect(reparsed?.axes).toEqual(variation!.axes);
+	});
+
+	it("subsets variable fonts wrapped in WOFF", async () => {
+		const woffBytes = await woff(
+			0x00010000,
+			sfntTables(fixtureVariableTtf).map((t) => ({ tag: t.tag, data: t.data })),
+		);
+		const variation = await parseFontVariations(woffBytes, "woff");
+		const plan = await subsetCatalogFont({ bytes: woffBytes, variation });
+		expect(plan).not.toBeNull();
+		expect(findTable(plan!.data, "fvar")).not.toBeNull();
+		expect(findTable(plan!.data, "gvar")).not.toBeNull();
+	});
+
+	it("keeps the subset when the input carries no gvar/CFF2", async () => {
+		// fvar-only variable font (no outline-variation tables) — only
+		// the fvar record must survive.
+		const input = fakeSfnt(["head", "cmap", "fvar"]);
+		const plan = await subsetCatalogFont({
+			bytes: input,
+			variation: { variable: true, coverageRanges: [[0x20, 0x7e]] },
+			subsetFont: () => fakeSfnt(["head", "cmap", "fvar"], 128),
+		});
+		expect(plan).not.toBeNull();
+		expect(plan!.unicodeRange).toBe("U+0020-007E");
+	});
+
+	it("rejects variable subsets that drop fvar, gvar or CFF2", async () => {
+		const variation = { variable: true, coverageRanges: [[0x20, 0x7e]] } as const;
+		// Output lost fvar entirely → static font under a variable
+		// descriptor.
+		expect(
+			await subsetCatalogFont({
+				bytes: fakeSfnt(["head", "cmap", "fvar"]),
+				variation,
+				subsetFont: () => fakeSfnt(["head", "cmap"], 128),
+			}),
+		).toBeNull();
+		// TrueType-outline variable font whose subset lost gvar.
+		expect(
+			await subsetCatalogFont({
+				bytes: fakeSfnt(["head", "cmap", "fvar", "gvar"]),
+				variation,
+				subsetFont: () => fakeSfnt(["head", "cmap", "fvar"], 128),
+			}),
+		).toBeNull();
+		// CFF2-outline variable font whose subset lost CFF2.
+		expect(
+			await subsetCatalogFont({
+				bytes: fakeSfnt(["head", "cmap", "fvar", "CFF2"]),
+				variation,
+				subsetFont: () => fakeSfnt(["head", "cmap", "fvar"], 128),
+			}),
+		).toBeNull();
+		// CFF2 retained alongside fvar → accepted.
+		const plan = await subsetCatalogFont({
+			bytes: fakeSfnt(["head", "cmap", "fvar", "CFF2"]),
+			variation,
+			subsetFont: () => fakeSfnt(["head", "cmap", "fvar", "CFF2"], 128),
+		});
+		expect(plan).not.toBeNull();
 	});
 });
