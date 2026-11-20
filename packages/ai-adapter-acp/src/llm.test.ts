@@ -114,9 +114,13 @@ describe("makeAcpLlm", () => {
 	});
 
 	it("hashes the declared input contract including the seed", async () => {
-		const r = await runGenerate(transport([], (r) => respond("ok", r.id)), undefined, {
-			seed: 7,
-		});
+		const r = await runGenerate(
+			transport([], (r) => respond("ok", r.id)),
+			undefined,
+			{
+				seed: 7,
+			},
+		);
 		expect(r.record.inputHash).toBe(fnvHex("t-1:Text:i:7"));
 	});
 

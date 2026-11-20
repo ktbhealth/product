@@ -77,10 +77,7 @@ describe("makeHttpAcpTransport", () => {
 		});
 		const t = makeHttpAcpTransport("http://acp.local", fetchImpl);
 		await Effect.runPromise(
-			Effect.flip(t(REQUEST)).pipe(
-				Effect.withLogger(capture),
-				Effect.provide(Logger.layer([])),
-			),
+			Effect.flip(t(REQUEST)).pipe(Effect.withLogger(capture), Effect.provide(Logger.layer([]))),
 		);
 		expect(logs).toHaveLength(1);
 		expect(String(logs[0]!.message)).toContain("acp endpoint 502 response body");

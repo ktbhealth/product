@@ -255,8 +255,7 @@ describe("makeBridgeAcpLlm", () => {
 										notifications: [],
 										response: {
 											id: wire.id,
-											result:
-												wire.method === "session/new" ? { sessionId: "s-b" } : {},
+											result: wire.method === "session/new" ? { sessionId: "s-b" } : {},
 										},
 									}),
 									{ status: 200 },
