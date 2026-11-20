@@ -463,6 +463,13 @@
       "when": 1795140541879,
       "tag": "0066_dear_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1795144239821,
+      "tag": "0067_cold_roland_deschain",
+      "breakpoints": true
     }
   ]
 }

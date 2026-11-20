@@ -17,6 +17,7 @@ export * from "../../../plugins/eval-validator/src/schema.ts";
 export * from "../../../plugins/fonts/src/schema.ts";
 export * from "../../../plugins/groups/src/schema.ts";
 export * from "../../../plugins/i18n/src/schema.ts";
+export * from "../../../plugins/image/src/schema.ts";
 export * from "../../../plugins/integrity/src/schema.ts";
 export * from "../../../plugins/invites/src/schema.ts";
 export * from "../../../plugins/kv/src/schema.ts";

@@ -27,6 +27,7 @@
 	"r2_buckets": [
 		{ "binding": "AUDIO_BUCKET", "bucket_name": "ktb-audio" },
 		{ "binding": "THEME_ASSETS_BUCKET", "bucket_name": "ktb-theme-assets" },
+		{ "binding": "IMAGES_BUCKET", "bucket_name": "ktb-images" },
 	],
 	"queues": {
 		"producers": [

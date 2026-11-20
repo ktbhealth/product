@@ -273,6 +273,9 @@ export interface ServerRuntime {
 	/** Theme asset object storage (R2) for brand images/fonts — the
 	 * same store shape as `audio`; undefined when unbound (P-082). */
 	readonly themeAssets?: AudioStore;
+	/** Media-library object storage (R2) for site images (P-111) — the
+	 * same store shape as `audio`; undefined when unbound. */
+	readonly images?: AudioStore;
 	/** Generic job enqueue port bound to the DEDICATED theme-assets
 	 * queue (PL-006 phase 4 — decided over sharing the transcription
 	 * transport). Undefined when unbound. */

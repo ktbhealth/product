@@ -219,6 +219,14 @@ const DOMAINS = [
 		tables: ["rich_text"],
 	},
 	{
+		id: "images",
+		title: "Images",
+		owner: "`plugins/image`",
+		description:
+			"Managed media library — uploaded image metadata (title, alt text, mime, size, intrinsic dimensions, object-storage key) referenced by the site builder's `image` element kind and future referencers; bytes live in the bound bucket, rows make them reachable at `/api/images/:id`.",
+		tables: ["images"],
+	},
+	{
 		id: "schemas",
 		title: "Schemas",
 		owner: "`plugins/schemas`",
