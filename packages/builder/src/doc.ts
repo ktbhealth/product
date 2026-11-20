@@ -97,6 +97,8 @@ export const migrateBuilderDoc = (
 	// version would otherwise spin through undefined steps.
 	while (current.version < currentVersion && current.version <= migrations.length) {
 		const step = migrations[current.version - 1];
+		/* v8 ignore next -- the `version <= migrations.length` guard keeps
+		 * the index in range; the check only satisfies noUncheckedIndexedAccess. */
 		if (step === undefined) break;
 		current = { version: current.version + 1, data: step(current.data) };
 	}

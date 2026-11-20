@@ -205,6 +205,26 @@ describe("editor loader", () => {
 			await expect(
 				runAs(rt, ADMIN, layoutDescriptor().loader!("/platform/layouts/3/edit")),
 			).resolves.toBeNull();
+			// Page edit path with no Pages service in the layer at all.
+			await expect(
+				runAs(rt, ADMIN, pageDescriptor().loader!("/platform/pages/7/edit")),
+			).resolves.toBeNull();
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("returns null when the layout row is missing", async () => {
+		const rt = makeRuntime(
+			Layer.succeed(
+				Layouts,
+				layoutsStub(() => Effect.succeed(null)),
+			),
+		);
+		try {
+			await expect(
+				runAs(rt, ADMIN, layoutDescriptor().loader!("/platform/layouts/3/edit")),
+			).resolves.toBeNull();
 		} finally {
 			await rt.dispose();
 		}

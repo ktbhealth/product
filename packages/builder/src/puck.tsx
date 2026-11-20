@@ -60,13 +60,19 @@ export const collectElementKinds = (plugins: readonly Plugin[]): readonly Elemen
 /* Field generation                                                    */
 /* ------------------------------------------------------------------ */
 
-const propTitle = (name: string, schema: JsonSchema): string =>
-	typeof schema === "object" && schema !== null ? (schema.title ?? name) : name;
+const propTitle = (name: string, schema: JsonSchema): string => {
+	/* v8 ignore next -- fieldForProp only reaches this for object schemas;
+	 * the fallback satisfies the boolean arm of the JsonSchema union. */
+	if (typeof schema !== "object" || schema === null) return name;
+	return schema.title ?? name;
+};
 
 /** Select options only when every enum/const value is a string —
  * Puck select fields are string-valued; mixed enums degrade to the
  * JSON field instead of coercing silently. */
 const stringOptions = (schema: JsonSchema): readonly string[] | null => {
+	/* v8 ignore next -- JsonSchema admits boolean|object; null can only
+	 * arrive via an untyped manifest payload and typeof rejects it anyway. */
 	if (typeof schema !== "object" || schema === null) return null;
 	const values = schema.enum ?? (schema.const !== undefined ? [schema.const] : undefined);
 	if (values === undefined) return null;
@@ -198,6 +204,7 @@ const makeRender = (
 ): ComponentType<Record<string, unknown>> => {
 	const Renderer = kind.renderer as ComponentType<{ value: unknown }> | undefined;
 	const Wrapped = (props: Record<string, unknown>) => {
+		/* v8 ignore next -- toPuckConfig skips renderer-less kinds before makeRender */
 		if (Renderer === undefined) return null;
 		const value = mode === "wrapped" ? props.value : stripInternals(props);
 		return <Renderer value={value} />;

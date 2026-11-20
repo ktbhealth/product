@@ -204,6 +204,8 @@ export const pagesRenderPlugin = definePlugin({
 								layoutSections = yield* layoutsService.value.resolveForPage(page.layoutId);
 							}
 						}
+					} else {
+						// Unbound page — layoutSections/layoutBuilderJson stay null.
 					}
 					return {
 						...page,

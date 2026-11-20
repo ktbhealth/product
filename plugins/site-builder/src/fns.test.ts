@@ -149,6 +149,27 @@ describe("site-builder fns", () => {
 		}
 	});
 
+	it("returns null when the layout row is missing", async () => {
+		currentEmail = "admin@x.com";
+		const missingLayouts = ManagedRuntime.make(
+			Layer.mergeAll(
+				Layer.succeed(
+					PlatformAdmin,
+					makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+				),
+				Layer.succeed(Pages, pagesStub as never),
+				Layer.succeed(Layouts, { adminGet: () => Effect.succeed(null) } as never),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		installServerFnRuntime(missingLayouts, auth);
+		try {
+			await expect(builderDocumentFn({ data: { kind: "layout", id: 99 } })).resolves.toBeNull();
+		} finally {
+			installServerFnRuntime(runtime, auth);
+			await missingLayouts.dispose();
+		}
+	});
+
 	it("rejects malformed builderJson without touching the service", async () => {
 		currentEmail = "admin@x.com";
 		saved.page = undefined;
@@ -179,6 +200,42 @@ describe("site-builder fns", () => {
 			saveBuilderDocumentFn({ data: { kind: "layout", id: 3, builderJson: payload } }),
 		).resolves.toBe(true);
 		expect(parseBuilderDoc(saved.layout ?? null)?.version).toBe(1);
+	});
+
+	it("rethrows unhandled service failures instead of collapsing them", async () => {
+		currentEmail = "admin@x.com";
+		const boom = { _tag: "Unexpected", message: "db exploded" };
+		const failing = ManagedRuntime.make(
+			Layer.mergeAll(
+				Layer.succeed(
+					PlatformAdmin,
+					makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+				),
+				Layer.succeed(Pages, {
+					adminGet: () => Effect.fail(boom),
+					adminSetBuilderJson: () => Effect.fail(boom),
+				} as never),
+				Layer.succeed(Layouts, layoutsStub as never),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		installServerFnRuntime(failing, auth);
+		try {
+			const loadErr = await builderDocumentFn({ data: { kind: "page", id: 7 } }).then(
+				() => null,
+				(error: unknown) => error,
+			);
+			expect(loadErr).not.toBeNull();
+			const saveErr = await saveBuilderDocumentFn({
+				data: { kind: "page", id: 7, builderJson: '{"version":1,"data":{}}' },
+			}).then(
+				() => null,
+				(error: unknown) => error,
+			);
+			expect(saveErr).not.toBeNull();
+		} finally {
+			installServerFnRuntime(runtime, auth);
+			await failing.dispose();
+		}
 	});
 
 	it("collapses service InvalidBuilderDoc failures to false", async () => {

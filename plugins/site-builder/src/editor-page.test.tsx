@@ -23,6 +23,7 @@ vi.hoisted(() => {
 });
 
 import type { PanelPageContext } from "@ktb/kernel";
+import { builderDocFromData, serializeBuilderDoc } from "@ktb/builder";
 
 // The editor calls saveBuilderDocumentFn on publish — stub the fn
 // module so tests never touch the server-fn runtime.
@@ -47,7 +48,14 @@ const wire = {
 
 describe("SiteBuilderEditorPage", () => {
 	it("renders the not-found state for malformed loader data", () => {
-		for (const data of [null, "x", { kind: "page" }, { kind: "page", id: "7", title: "t" }]) {
+		for (const data of [
+			null,
+			"x",
+			{ kind: "bogus", id: 1, title: "t" },
+			{ kind: "page" },
+			{ kind: "page", id: "7", title: "t" },
+			{ kind: "page", id: 7 },
+		]) {
 			const { container, unmount } = render(<SiteBuilderEditorPage data={data} ctx={ctx()} />);
 			expect(container.textContent).toContain("Nothing to edit here.");
 			unmount();
@@ -71,5 +79,14 @@ describe("SiteBuilderEditorPage", () => {
 			/>,
 		);
 		expect(screen.getAllByText("Landing").length).toBeGreaterThan(0);
+	});
+
+	it("opens a stored builder document", () => {
+		const builderJson = serializeBuilderDoc(
+			builderDocFromData({ root: { props: {} }, content: [], zones: {} }),
+		);
+		render(<SiteBuilderEditorPage data={{ ...wire, builderJson }} ctx={ctx()} />);
+		expect(screen.getAllByText("About").length).toBeGreaterThan(0);
+		expect(screen.getByText("Publish to save changes")).toBeDefined();
 	});
 });

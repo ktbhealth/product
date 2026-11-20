@@ -564,6 +564,18 @@ describe("pages page effects", () => {
 			createdAt: now,
 			updatedAt: now,
 		});
+		await sharedDb.insert(page).values({
+			path: "/pub-unbuilt-layout",
+			title: "PubUnbuiltLayout",
+			richTextId: null,
+			searchSchemaId: null,
+			layoutId: 6,
+			published: true,
+			showInNav: false,
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+		});
 		const value = [{ type: "p", children: [{ text: "Section" }] }];
 		const layouts = Layer.succeed(
 			Layouts,
@@ -574,7 +586,23 @@ describe("pages page effects", () => {
 				adminUpdate: () => Effect.die("unused"),
 				adminRemove: () => Effect.die("unused"),
 				adminSetBuilderJson: () => Effect.die("unused"),
-				getById: () => Effect.succeed(null),
+				// id 5: no layout row → null doc; id 6: row exists but was
+				// never built → builderJson null (both take the legacy path).
+				getById: (id: number) =>
+					Effect.succeed(
+						id === 6
+							? {
+									id: 6,
+									name: "Unbuilt",
+									description: null,
+									sectionCount: 0,
+									createdAt: new Date(0),
+									updatedAt: new Date(0),
+									config: '{"sections":[]}',
+									builderJson: null,
+								}
+							: null,
+					),
 				resolveForPage: (layoutId: number) =>
 					Effect.succeed(
 						layoutId === 5
@@ -582,7 +610,9 @@ describe("pages page effects", () => {
 									{ id: "s1", title: "Hero", content: value },
 									{ id: "s2", title: "Body", content: value },
 								]
-							: null,
+							: layoutId === 6
+								? []
+								: null,
 					),
 			}),
 		);
@@ -607,6 +637,73 @@ describe("pages page effects", () => {
 				layoutSections?: unknown;
 			} | null;
 			expect(unbound?.layoutSections).toBeNull();
+			// A layout row without builderJson still resolves legacy slots.
+			const unbuilt = (await asPrincipalIn(rt, null, loader("/pub-unbuilt-layout"))) as {
+				layoutSections?: unknown;
+				layoutBuilderJson?: string | null;
+			} | null;
+			expect(unbuilt?.layoutBuilderJson).toBeNull();
+			expect(unbuilt?.layoutSections).toEqual([]);
+		} finally {
+			await rt.dispose();
+		}
+	});
+
+	it("wildcard loader prefers a layout builder document over legacy section slots", async () => {
+		// PL-014: a layout authored in the site builder stores builderJson —
+		// the page loader must skip resolveForPage entirely.
+		const now = new Date();
+		await sharedDb.insert(page).values({
+			path: "/pub-built-layout",
+			title: "PubBuiltLayout",
+			richTextId: null,
+			searchSchemaId: null,
+			layoutId: 5,
+			published: true,
+			showInNav: false,
+			sortOrder: 0,
+			createdAt: now,
+			updatedAt: now,
+		});
+		const builderJson = '{"version":1,"data":{"content":[]}}';
+		const layouts = Layer.succeed(
+			Layouts,
+			Layouts.of({
+				adminList: () => Effect.succeed([]),
+				adminGet: () => Effect.succeed(null),
+				adminCreate: () => Effect.succeed(null),
+				adminUpdate: () => Effect.die("unused"),
+				adminRemove: () => Effect.die("unused"),
+				adminSetBuilderJson: () => Effect.die("unused"),
+				getById: () =>
+					Effect.succeed({
+						id: 5,
+						name: "Built",
+						description: null,
+						sectionCount: 0,
+						createdAt: now,
+						updatedAt: now,
+						config: '{"sections":[]}',
+						builderJson,
+					}),
+				resolveForPage: () => Effect.die("must not resolve legacy slots"),
+			}),
+		);
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(PagesLive.pipe(Layer.provide(deps)), deps, layouts) as Layer.Layer<
+				unknown,
+				never,
+				never
+			>,
+		);
+		try {
+			const loader = pagesRenderPlugin.pages![0]!.loader!;
+			const row = (await asPrincipalIn(rt, null, loader("/pub-built-layout"))) as {
+				layoutSections?: unknown;
+				layoutBuilderJson?: string | null;
+			} | null;
+			expect(row?.layoutBuilderJson).toBe(builderJson);
+			expect(row?.layoutSections).toBeNull();
 		} finally {
 			await rt.dispose();
 		}
