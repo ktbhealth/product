@@ -709,7 +709,11 @@ describe("font-variation-settings emission", () => {
 			fontVariationCss({
 				delivery: "self-host",
 				families: { sans: "Missing" },
-				assets: { Other: { faces: [{ url: "/o.woff2", axes: [{ tag: "slnt", min: -9, default: 0, max: 0 }] }] } },
+				assets: {
+					Other: {
+						faces: [{ url: "/o.woff2", axes: [{ tag: "slnt", min: -9, default: 0, max: 0 }] }],
+					},
+				},
 			}),
 		).toBe("");
 		// Bare-string assets carry no face metadata.
@@ -763,8 +767,7 @@ describe("font-variation-settings emission", () => {
 
 	it("skips axes owned by other CSS mechanisms and degenerate/malformed entries", () => {
 		const css = fontVariationCss(
-			assetWithAxes(
-				[
+			assetWithAxes([
 				// Owned by font-weight/font-stretch/font-optical-sizing/font-style.
 				{ tag: "wght", min: 100, default: 400, max: 900 },
 				{ tag: "wdth", min: 75, default: 100, max: 125 },
@@ -791,8 +794,7 @@ describe("font-variation-settings emission", () => {
 				// The survivors (the second slnt is dropped — dup tag).
 				{ tag: "slnt", min: -9, default: -3.25, max: 0 },
 				{ tag: "GRAD", min: 0, default: 0.00001, max: 1 },
-			] as never,
-			),
+			] as never),
 		);
 		const rules = css.split("\n");
 		expect(rules).toHaveLength(3);
@@ -835,9 +837,7 @@ describe("font-variation-settings emission", () => {
 		expect(fontVariationSettingsForSlot(fonts, "heading")).toBe("'slnt' -2");
 		expect(fontVariationSettingsForSlot(fonts, "mono")).toBe("'slnt' -2");
 		// Slot without a configured family → "".
-		expect(
-			fontVariationSettingsForSlot({ delivery: "self-host" }, "mono"),
-		).toBe("");
+		expect(fontVariationSettingsForSlot({ delivery: "self-host" }, "mono")).toBe("");
 	});
 
 	it("themeStyleCss appends the rules after the token blocks", () => {
