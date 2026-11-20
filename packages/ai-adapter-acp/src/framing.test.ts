@@ -46,4 +46,42 @@ describe("makeFrameExtractor", () => {
 		const enc = new TextEncoder();
 		expect(drain([enc.encode('{"a":1}\n')])).toEqual(['{"a":1}']);
 	});
+
+	it("returns null until a newline arrives", () => {
+		const f = makeFrameExtractor();
+		f.push('{"a":1');
+		expect(f.next()).toBeNull();
+		f.push("}\n");
+		const frame = f.next();
+		expect(frame).not.toBeNull();
+		expect(decodeFrame(frame!)).toBe('{"a":1}');
+	});
+
+	it("returns null while a Content-Length header is incomplete", () => {
+		const f = makeFrameExtractor();
+		f.push("Content-Length: 9");
+		expect(f.next()).toBeNull();
+	});
+
+	it("returns null until the Content-Length body is complete", () => {
+		const f = makeFrameExtractor();
+		f.push('Content-Length: 9\r\n\r\n{"a":');
+		expect(f.next()).toBeNull();
+		f.push('"b"}');
+		const frame = f.next();
+		expect(frame).not.toBeNull();
+		expect(decodeFrame(frame!)).toBe('{"a":"b"}');
+	});
+
+	it("accepts Content-Length without whitespace after the colon", () => {
+		expect(drain(["Content-Length:9\r\n\r\n123456789"])).toEqual(["123456789"]);
+	});
+
+	it("returns an empty frame for a zero Content-Length body", () => {
+		const f = makeFrameExtractor();
+		f.push("Content-Length: 0\r\n\r\n");
+		const frame = f.next();
+		expect(frame).not.toBeNull();
+		expect(decodeFrame(frame!)).toBe("");
+	});
 });

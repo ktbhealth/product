@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 
-import { LlmPort } from "@ktb/eval-consultation";
+import { fnvHex, LlmPort } from "@ktb/eval-consultation";
 
 import { makeBridgeAcpLlm, makeBridgeRpc, type BridgeNamespace } from "./bridge.ts";
 
@@ -34,10 +34,14 @@ const fakeNs = (
 	},
 ) => {
 	const wires: Wire[] = [];
+	const urls: string[] = [];
+	const inits: (RequestInit | undefined)[] = [];
 	const ns: BridgeNamespace = {
 		idFromName: (name: string) => name,
 		get: (id: unknown) => ({
-			fetch: async (_url: unknown, init?: RequestInit) => {
+			fetch: async (url: unknown, init?: RequestInit) => {
+				urls.push(String(url));
+				inits.push(init);
 				const wire = JSON.parse(String((init as { body: string }).body)) as Wire;
 				wires.push(wire);
 				const reply = handler(wire);
@@ -49,7 +53,7 @@ const fakeNs = (
 			},
 		}),
 	};
-	return { ns, wires };
+	return { ns, wires, urls, inits };
 };
 
 const ok = (result: unknown = {}) => ({ response: { result } });
@@ -57,7 +61,7 @@ const tick = () => new Promise((r) => setTimeout(r, 10));
 
 describe("makeBridgeRpc", () => {
 	it("forwards requests over the DO and replays buffered notifications", async () => {
-		const { ns, wires } = fakeNs(() => ({
+		const { ns, wires, urls, inits } = fakeNs(() => ({
 			response: { result: { answer: 42 } },
 			notifications: [chunk("hey")],
 		}));
@@ -69,10 +73,26 @@ describe("makeBridgeRpc", () => {
 		});
 		const out = await Effect.runPromise(rpc.request("initialize", { v: 1 }));
 		expect(out).toEqual({ answer: 42 });
-		expect(wires[0]).toMatchObject({ method: "initialize", params: { v: 1 } });
+		expect(wires[0]).toMatchObject({
+			jsonrpc: "2.0",
+			method: "initialize",
+			params: { v: 1 },
+		});
 		expect(wires[0]!.id).toMatch(/^req-/);
+		expect(urls[0]).toBe("https://acp-bridge.internal/rpc");
+		expect(inits[0]?.method).toBe("POST");
+		expect(inits[0]?.headers).toEqual({ "Content-Type": "application/json" });
 		expect(seen).toHaveLength(1);
 		expect(seen[0]!.method).toBe("session/update");
+	});
+
+	it("correlates request ids sequentially", async () => {
+		const { ns, wires } = fakeNs(() => ok());
+		const rpc = makeBridgeRpc({ ns, name: "e" });
+		await Effect.runPromise(rpc.request("a"));
+		await Effect.runPromise(rpc.request("b"));
+		expect(wires[0]!.id).toBe("req-1");
+		expect(wires[1]!.id).toBe("req-2");
 	});
 
 	it("sends notifications fire-and-forget", async () => {
@@ -80,7 +100,11 @@ describe("makeBridgeRpc", () => {
 		const rpc = makeBridgeRpc({ ns, name: "ep-1" });
 		rpc.notify("session/cancel", { sessionId: "s" });
 		await tick();
-		expect(wires[0]).toMatchObject({ method: "session/cancel", params: { sessionId: "s" } });
+		expect(wires[0]).toMatchObject({
+			jsonrpc: "2.0",
+			method: "session/cancel",
+			params: { sessionId: "s" },
+		});
 		expect(wires[0]!.id).toBeUndefined();
 		// A dead socket on a notification must not throw.
 		const dead = makeBridgeRpc({
@@ -106,6 +130,16 @@ describe("makeBridgeRpc", () => {
 		const mismatch = fakeNs(() => ({}));
 		const rpc2 = makeBridgeRpc({ ns: mismatch.ns, name: "e" });
 		await expect(Effect.runPromise(rpc2.request("x"))).rejects.toMatchObject({
+			port: "llm",
+			message: expect.stringContaining("id mismatch"),
+		});
+		// A response correlated to a different id → id mismatch too.
+		const wrongId = fakeNs(() => ({
+			body: JSON.stringify({ response: { id: "req-999", result: {} } }),
+		}));
+		const rpc3 = makeBridgeRpc({ ns: wrongId.ns, name: "e" });
+		await expect(Effect.runPromise(rpc3.request("x"))).rejects.toMatchObject({
+			port: "llm",
 			message: expect.stringContaining("id mismatch"),
 		});
 	});
@@ -162,8 +196,15 @@ describe("makeBridgeRpc", () => {
 			response: { result: "ok" },
 			notifications: [{ method: "session/update", params: {} }, { params: {} }],
 		}));
-		const rpc2 = makeBridgeRpc({ ns: noisy.ns, name: "e" });
+		const seen: { method: string; params: unknown }[] = [];
+		const rpc2 = makeBridgeRpc({
+			ns: noisy.ns,
+			name: "e",
+			onNotification: (m, p) => seen.push({ method: m, params: p }),
+		});
 		await expect(Effect.runPromise(rpc2.request("x"))).resolves.toBe("ok");
+		// The methodless frame is skipped; only the real notification lands.
+		expect(seen).toEqual([{ method: "session/update", params: {} }]);
 	});
 
 	it("replays notifications on session/new (agent hello during setup)", async () => {
@@ -195,7 +236,41 @@ describe("makeBridgeAcpLlm", () => {
 		);
 		expect(out.text).toBe("hello bridge");
 		expect(out.record.engine).toBe("acp-bridge");
+		// engineVersion defaults to a stable hash of the endpoint id.
+		expect(out.record.engineVersion).toBe(fnvHex("bridge:9"));
 		expect(wires.map((w) => w.method)).toEqual(["initialize", "session/new", "session/prompt"]);
+	});
+
+	it("times out a hung DO request using the configured timeoutMs", async () => {
+		const ns: BridgeNamespace = {
+			idFromName: (n: string) => n,
+			get: () => ({
+				fetch: (_url: unknown, init?: RequestInit) =>
+					new Promise<Response>((resolve) =>
+						setTimeout(() => {
+							const wire = JSON.parse(String((init as { body: string }).body)) as Wire;
+							resolve(
+								new Response(
+									JSON.stringify({
+										notifications: [],
+										response: {
+											id: wire.id,
+											result: wire.method === "session/new" ? { sessionId: "s-b" } : {},
+										},
+									}),
+									{ status: 200 },
+								),
+							);
+						}, 50),
+					),
+			}),
+		};
+		const layer = makeBridgeAcpLlm({ ns, endpointId: 9, timeoutMs: 10 });
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) => l.generate(env)).pipe(Effect.provide(layer)),
+			),
+		).rejects.toMatchObject({ message: expect.stringContaining("timeout") });
 	});
 
 	it("forwards sessionId/cwd/timeoutMs/egress into the session layer", async () => {
