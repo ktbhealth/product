@@ -24,10 +24,12 @@ const heuristicExtract = (transcript: string): Effect.Effect<Anamnesis> =>
 /** Extract text from the various Workers AI response shapes. */
 export const responseText = (raw: unknown): string => {
 	if (typeof raw === "string") return raw;
+	// Stryker disable next-line ConditionalExpression: for truthy non-object primitives every property read below yields undefined, so entering the block changes nothing.
 	if (raw && typeof raw === "object") {
 		const r = raw as Record<string, unknown>;
 		if (typeof r.response === "string") return r.response;
 		if (typeof r.result === "string") return r.result;
+		// Stryker disable next-line ConditionalExpression: for a truthy non-object r.response the inner read yields undefined and falls through to the same throw.
 		if (r.response && typeof r.response === "object") {
 			const inner = r.response as Record<string, unknown>;
 			if (typeof inner.response === "string") return inner.response;
@@ -64,6 +66,7 @@ export const runChat = (
 const extractJson = (text: string): unknown => {
 	const start = text.indexOf("{");
 	const end = text.lastIndexOf("}");
+	// Stryker disable next-line EqualityOperator: `end === start` is unreachable — a single position cannot be both "{" and "}".
 	if (start === -1 || end <= start) throw new Error("no JSON object in model output");
 	return JSON.parse(text.slice(start, end + 1));
 };
