@@ -6,7 +6,8 @@
 		".": "./src/index.ts",
 		"./client": "./src/client.ts",
 		"./plugin-states": "./src/plugin-states.ts",
-		"./element-kinds": "./src/element-kinds.ts"
+		"./element-kinds": "./src/element-kinds.ts",
+		"./routes": "./src/routes.ts"
 	},
 	"scripts": {
 		"mutate": "stryker run"

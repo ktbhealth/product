@@ -11,6 +11,7 @@ import { Forbidden, Principal } from "@ktb/authz";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
+import { routeContribution } from "@ktb/platform/routes";
 import { portalShellPlugin } from "@ktb/portal";
 import { physical } from "@tanstack/virtual-file-routes";
 
@@ -145,6 +146,9 @@ export const doctorsRoutesPlugin = definePlugin({
 	id: "doctors.routes",
 	meta: { keywords: ["doctors", "routes"] },
 	routes: [physical("/doctors", "../../../../plugins/doctors/src/routes")],
+	// Route-registry def (PL-011) for the file-route subtree above —
+	// the portal chooser pages self-register from their descriptors.
+	contributions: [routeContribution("doctors.select", { path: "/doctors/select" })],
 });
 
 /** The clinical portals the profile chooser is mounted in — doctor
@@ -238,5 +242,13 @@ declare module "@ktb/kernel" {
 		"doctors.routes": true;
 		"doctors.pages": true;
 		"doctors.chrome": true;
+	}
+}
+
+// Route-registry key (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"doctors.select": "/doctors/select";
 	}
 }

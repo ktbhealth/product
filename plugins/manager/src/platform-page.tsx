@@ -4,6 +4,7 @@ import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
 import type { PluginStateEntry } from "@ktb/platform/plugin-states";
 
 import { PluginsPage } from "./views/PluginsPage.tsx";
+import { RoutesPage, type RouteRow } from "./views/RoutesPage.tsx";
 
 interface ManagerPageData {
 	states: readonly PluginStateEntry[];
@@ -42,4 +43,22 @@ export function ManagerPage({ data, ctx }: { data: unknown; ctx: PanelPageContex
 			/>
 		</NuqsAdapter>
 	);
+}
+
+const asRouteRows = (data: unknown): readonly RouteRow[] =>
+	Array.isArray(data)
+		? data.filter(
+				(row): row is RouteRow =>
+					typeof row === "object" &&
+					row !== null &&
+					typeof (row as RouteRow).key === "string" &&
+					typeof (row as RouteRow).path === "string",
+			)
+		: [];
+
+/** `panel.pages` component for /platform/routes (PL-011 phase 3):
+ * read-only table of the route registry — the loader returns the
+ * serializable `RouteDefinition` list, this wrapper narrows it. */
+export function RoutesAdminPage({ data }: { data: unknown; ctx: PanelPageContext }) {
+	return <RoutesPage routes={asRouteRows(data)} />;
 }

@@ -15,6 +15,7 @@
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
 		"@tanstack/react-router": "1.170.46",

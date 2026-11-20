@@ -4,6 +4,9 @@ import * as Option from "effect/Option";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+// Side-effect type import: pulls @ktb/platform/routes into the program
+// so the `declare module` RouteRegistry augmentation below resolves.
+import type {} from "@ktb/platform/routes";
 import { richTextServicesPlugin } from "@ktb/rich-text";
 import { RichTexts } from "@ktb/rich-text/service";
 import { schemasServicesPlugin } from "@ktb/schemas";
@@ -143,6 +146,9 @@ export const pagesRenderPlugin = definePlugin({
 		{
 			id: "pages.db",
 			path: "/*",
+			// Route-registry key (PL-011): every custom-page slug resolves
+			// through `Routes.match(path)` → "pages.custom".
+			routeKey: "pages.custom",
 			context: "app",
 			component: PageView,
 			guard: (path) =>
@@ -217,6 +223,7 @@ export const pagesPanelPlugin = definePlugin({
 			{
 				id: "pages.admin",
 				path: "/platform/pages",
+				routeKey: "pages.admin",
 				component: PagesAdminConsolePage,
 				// Path arg unused — the admin page is exact-path — but the
 				// kernel signature passes the request path.
@@ -315,5 +322,15 @@ declare module "@ktb/kernel" {
 		"pages.chrome": true;
 		"pages.render": true;
 		"pages.panel": true;
+	}
+}
+
+// Route-registry keys (PL-011): the path literal must match the page
+// descriptor's `path`/`routeKey` above — `Routes.route()` types params
+// off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"pages.admin": "/platform/pages";
+		"pages.custom": "/*";
 	}
 }

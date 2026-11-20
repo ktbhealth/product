@@ -12,6 +12,7 @@ import { doctors, user } from "@ktb/db/schema";
 import { doctorsServicesPlugin } from "@ktb/doctors";
 import { invitesServicesPlugin } from "@ktb/invites";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { routeContribution } from "@ktb/platform/routes";
 import { portalShellPlugin } from "@ktb/portal";
 import { physical, route } from "@tanstack/virtual-file-routes";
 
@@ -263,6 +264,13 @@ export const secretariesRoutesPlugin = definePlugin({
 		// host's /login redirect route.
 		route("login/secretary", "../../../../plugins/secretaries/src/routes-login/secretary.tsx"),
 	],
+	// Route-registry defs (PL-011) for the file routes above — the
+	// portal pages self-register from their descriptors.
+	contributions: [
+		routeContribution("secretaries.index", { path: "/secretaries" }),
+		routeContribution("secretaries.login", { path: "/secretaries/login" }),
+		routeContribution("secretaries.sign-in", { path: "/login/secretary" }),
+	],
 });
 
 /**
@@ -368,5 +376,15 @@ declare module "@ktb/kernel" {
 		"secretaries.routes": true;
 		"secretaries.pages": true;
 		"secretaries.chrome": true;
+	}
+}
+
+// Route-registry keys (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"secretaries.index": "/secretaries";
+		"secretaries.login": "/secretaries/login";
+		"secretaries.sign-in": "/login/secretary";
 	}
 }

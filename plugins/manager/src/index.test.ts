@@ -4,6 +4,7 @@ import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { makePluginStatesLive, PluginStates } from "@ktb/platform/plugin-states";
+import { collectRouteDefinitions, makeRoutes, Routes } from "@ktb/platform/routes";
 import { Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -89,6 +90,64 @@ describe("manager page loader", () => {
 					},
 				],
 			});
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("fails Forbidden for a non-admin principal", async () => {
+		const runtime = runtimeFor("admin@x.com");
+		try {
+			await expect(
+				runtime.runPromise(
+					loader().pipe(Effect.provideService(Principal, { userId: "u2", email: "user@x.com" })),
+				),
+			).rejects.toMatchObject({ _tag: "Forbidden" });
+		} finally {
+			await runtime.dispose();
+		}
+	});
+});
+
+describe("manager routes page loader", () => {
+	const loader = managerPanelPlugin.panel!.pages![1]!.loader!;
+
+	const runtimeFor = (adminEmail?: string) =>
+		ManagedRuntime.make(
+			Layer.mergeAll(
+				Layer.succeed(Routes, makeRoutes(collectRouteDefinitions(plugins))),
+				Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails(adminEmail))),
+			),
+		);
+
+	it("declares the read-only /platform/routes page", () => {
+		expect(managerPanelPlugin.panel?.pages?.[1]).toMatchObject({
+			id: "manager.routes",
+			path: "/platform/routes",
+			routeKey: "manager.routes",
+		});
+	});
+
+	it("returns the registered route defs for an admin principal", async () => {
+		const runtime = runtimeFor("admin@x.com");
+		try {
+			const data = await runtime.runPromise(
+				loader().pipe(Effect.provideService(Principal, { userId: "u1", email: "admin@x.com" })),
+			);
+			expect(data).toEqual([
+				{
+					key: "manager.panel/manager.plugins",
+					path: "/platform/plugins",
+					context: "portal",
+					pluginId: "manager.panel",
+				},
+				{
+					key: "manager.routes",
+					path: "/platform/routes",
+					context: "portal",
+					pluginId: "manager.panel",
+				},
+			]);
 		} finally {
 			await runtime.dispose();
 		}

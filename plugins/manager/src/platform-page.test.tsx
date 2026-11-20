@@ -14,13 +14,22 @@ vi.mock("./views/PluginsPage.tsx", () => ({
 		return null;
 	},
 }));
+const routesSeen = vi.hoisted(() => ({
+	last: undefined as { routes?: readonly unknown[] } | undefined,
+}));
+vi.mock("./views/RoutesPage.tsx", () => ({
+	RoutesPage: (props: { routes: readonly unknown[] }) => {
+		routesSeen.last = props;
+		return null;
+	},
+}));
 // No router in this suite — the real adapter needs TanStack Router
 // context; passthrough keeps the test about prop derivation only.
 vi.mock("nuqs/adapters/tanstack-router", () => ({
 	NuqsAdapter: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-import { ManagerPage } from "./platform-page.tsx";
+import { ManagerPage, RoutesAdminPage } from "./platform-page.tsx";
 
 const ctx: PanelPageContext = {
 	plugins: [],
@@ -40,6 +49,7 @@ const renderPage = (states: readonly PluginStateEntry[]) =>
 afterEach(() => {
 	cleanup();
 	seen.last = undefined;
+	routesSeen.last = undefined;
 });
 
 describe("ManagerPage", () => {
@@ -62,5 +72,32 @@ describe("ManagerPage", () => {
 			expect(seen.last?.cascadeConfirm).toBe(true);
 			cleanup();
 		}
+	});
+});
+
+describe("RoutesAdminPage", () => {
+	const row = { key: "patients.detail", path: "/patients/:id", pluginId: "patients.routes" };
+
+	it("passes well-formed route rows through to the view", () => {
+		render(<RoutesAdminPage data={[row]} ctx={ctx} />);
+		expect(routesSeen.last?.routes).toEqual([row]);
+	});
+
+	it("drops malformed rows and non-array data", () => {
+		for (const data of [
+			undefined,
+			{ routes: [row] },
+			"nope",
+			[null, 42, "x", {}, { key: "k" }, { path: "/p" }, { key: 1, path: "/p" }],
+		]) {
+			render(<RoutesAdminPage data={data} ctx={ctx} />);
+			expect(routesSeen.last?.routes).toEqual([]);
+			cleanup();
+		}
+	});
+
+	it("keeps valid rows and drops invalid ones in a mixed list", () => {
+		render(<RoutesAdminPage data={[row, { key: "bad" }, null]} ctx={ctx} />);
+		expect(routesSeen.last?.routes).toEqual([row]);
 	});
 });

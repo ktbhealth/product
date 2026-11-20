@@ -3,6 +3,7 @@ import { physical, route } from "@tanstack/virtual-file-routes";
 
 import { doctorsServicesPlugin } from "@ktb/doctors";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { routeContribution } from "@ktb/platform/routes";
 
 import { SessionMenu } from "./chrome.tsx";
 
@@ -45,6 +46,14 @@ export const authRoutesPlugin = definePlugin({
 		// API subtree: every module in src/api-routes/ mounts under the
 		// shared "/api" prefix (auth.$.ts → /api/auth/$).
 		physical("/api", "../../../../plugins/auth/src/api-routes"),
+	],
+	// Route-registry defs (PL-011) for the page routes above — the
+	// /login/* and recovery paths the sign-in chrome links to.
+	contributions: [
+		routeContribution("auth.login.doctor", { path: "/login/doctor" }),
+		routeContribution("auth.login.admin", { path: "/login/admin" }),
+		routeContribution("auth.forgot-password", { path: "/forgot-password" }),
+		routeContribution("auth.reset-password", { path: "/reset-password" }),
 	],
 });
 
@@ -93,5 +102,16 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"auth.routes": true;
 		"auth.chrome": true;
+	}
+}
+
+// Route-registry keys (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"auth.login.doctor": "/login/doctor";
+		"auth.login.admin": "/login/admin";
+		"auth.forgot-password": "/forgot-password";
+		"auth.reset-password": "/reset-password";
 	}
 }

@@ -10,6 +10,7 @@ import { Accounts, DoctorProfiles, PatientProfiles } from "@ktb/auth";
 import { Db, type DbClient } from "@ktb/db";
 import { user } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { routeContribution } from "@ktb/platform/routes";
 
 import { inviteTokens, type InviteKind, type InviteToken } from "./schema.ts";
 
@@ -246,6 +247,8 @@ export const invitesRoutesPlugin = definePlugin({
 	id: "invites.routes",
 	meta: { keywords: ["invites", "routes"] },
 	routes: [physical("/invite", "../../../../plugins/invites/src/routes")],
+	// Route-registry def (PL-011) for the file-route subtree above.
+	contributions: [routeContribution("invites.index", { path: "/invite" })],
 });
 
 /** Single-concern plugins contributed by this module — the host
@@ -263,5 +266,13 @@ declare module "@ktb/kernel" {
 		"invites.tables": true;
 		"invites.services": true;
 		"invites.routes": true;
+	}
+}
+
+// Route-registry key (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"invites.index": "/invite";
 	}
 }
