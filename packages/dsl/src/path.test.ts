@@ -20,6 +20,22 @@ describe("getPath", () => {
 		expect(getPath(undefined, "a.b")).toBeUndefined();
 	});
 
+	it("indexes arrays only by canonical integer segments", () => {
+		// "01"/"" coerce to valid indices; own array props like "length"
+		// or "NaN" must not resolve through the numeric-index path.
+		expect(getPath(data, "step.items.01")).toBe("b");
+		expect(getPath(data, "step.items.")).toBe("a");
+		expect(getPath(data, "step.items.length")).toBeUndefined();
+		const quirky = ["a"] as unknown as Record<string, unknown>;
+		quirky.NaN = "nan";
+		expect(getPath({ items: quirky }, "items.NaN")).toBeUndefined();
+	});
+
+	it("does not read properties off primitives", () => {
+		expect(getPath({ s: "abc" }, "s.length")).toBeUndefined();
+		expect(getPath({ n: 3 }, "n.toString")).toBeUndefined();
+	});
+
 	it("never walks the prototype chain", () => {
 		// Inherited members must not resolve — own-property walk only.
 		expect(getPath(data, "constructor.name")).toBeUndefined();
@@ -43,6 +59,26 @@ describe("setPath", () => {
 		const root: Record<string, unknown> = {};
 		setPath(root, "items.0.name", "x");
 		expect(root).toEqual({ items: [{ name: "x" }] });
+	});
+
+	it("creates arrays only when the next segment is all digits", () => {
+		const root: Record<string, unknown> = {};
+		setPath(root, "a.10.b", 1);
+		expect(Array.isArray(root.a)).toBe(true);
+		expect((root.a as unknown[])[10]).toEqual({ b: 1 });
+		const root2: Record<string, unknown> = {};
+		setPath(root2, "c.1x.d", 2);
+		setPath(root2, "e.x1.f", 3);
+		expect(root2.c).toEqual({ "1x": { d: 2 } });
+		expect(root2.e).toEqual({ x1: { f: 3 } });
+	});
+
+	it("creates empty arrays without placeholder elements", () => {
+		const root: Record<string, unknown> = {};
+		setPath(root, "a.5.b", 1);
+		expect(Array.isArray(root.a)).toBe(true);
+		expect((root.a as unknown[])[0]).toBeUndefined();
+		expect((root.a as unknown[])[5]).toEqual({ b: 1 });
 	});
 
 	it("keeps existing object/array subtrees", () => {
@@ -84,11 +120,19 @@ describe("resolvePath", () => {
 		expect(resolvePath("$bogus.path", scope)).toBeUndefined();
 		expect(resolvePath(42, scope)).toBeUndefined();
 		expect(resolvePath(null, scope)).toBeUndefined();
+		expect(resolvePath({ toString: () => "$record.id" }, scope)).toBeUndefined();
+	});
+
+	it("requires the template to span the whole string", () => {
+		expect(resolvePath("costs $record.id", scope)).toBeUndefined();
+		expect(resolvePath("$record.id\nextra", scope)).toBeUndefined();
 	});
 
 	it("never resolves through the prototype chain", () => {
 		expect(resolvePath("$constructor.name", scope)).toBeUndefined();
 		expect(resolvePath("$record.__proto__.x", scope)).toBeUndefined();
+		const inherited = Object.create({ record: { id: 9 } }) as object;
+		expect(resolvePath("$record.id", inherited)).toBeUndefined();
 	});
 
 	it("returns undefined for unresolvable paths", () => {

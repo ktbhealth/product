@@ -49,6 +49,8 @@ describe("grammar patterns", () => {
 		expect(COLLECTION_NAME_RE.test("1abc")).toBe(false);
 		expect(COLLECTION_NAME_RE.test("Abc")).toBe(false);
 		expect(COLLECTION_NAME_RE.test("")).toBe(false);
+		expect(COLLECTION_NAME_RE.test("abc!")).toBe(false);
+		expect(COLLECTION_NAME_RE.test("a".repeat(101))).toBe(false);
 	});
 
 	it("PERMISSION_RE", () => {
@@ -57,6 +59,9 @@ describe("grammar patterns", () => {
 		expect(PERMISSION_RE.test("nodot")).toBe(false);
 		expect(PERMISSION_RE.test("a..")).toBe(false);
 		expect(PERMISSION_RE.test("")).toBe(false);
+		expect(PERMISSION_RE.test("a.b!")).toBe(false);
+		expect(PERMISSION_RE.test("!a.b")).toBe(false);
+		expect(PERMISSION_RE.test("a.b c.d")).toBe(false);
 	});
 
 	it("HOOK_ID_RE", () => {

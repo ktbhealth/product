@@ -88,6 +88,9 @@ export const assertCondition = (value: unknown, context: string, depth = 0): Con
 	if (typeof path !== "string" || path.length === 0) {
 		throw new Error(`${context}: condition needs a non-empty "path"`);
 	}
+	// Stryker disable next-line ConditionalExpression: CONDITION_OPS only
+	// holds strings, so Set.has() is false for any non-string op and
+	// `!has(op)` already rejects it — the typeof disjunct is redundant.
 	if (op !== undefined && (typeof op !== "string" || !CONDITION_OPS.has(op as ConditionOp))) {
 		throw new Error(`${context}: condition op ${JSON.stringify(op)} is not supported`);
 	}
