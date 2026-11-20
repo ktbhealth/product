@@ -263,6 +263,20 @@ describe("platformLoader", () => {
 		);
 	});
 
+	it("surfaces a middleware redirect verdict as a router redirect", async () => {
+		portalPageDataFn.mockResolvedValue({
+			status: "redirect",
+			to: "/login/doctor",
+		} as never);
+		const err = await platformLoader({ params: { _splat: "platform/patients" } }).catch(
+			(e: unknown) => e,
+		);
+		// redirect({ href }) surfaces as a 307 Response in the loader.
+		expect(err).toBeInstanceOf(Response);
+		expect((err as Response).status).toBe(307);
+		expect((err as Response).headers.get("location")).toBe("/login/doctor");
+	});
+
 	it("skips feeds whose plugin package is fully disabled (P-058)", async () => {
 		// Package granularity (P-058): a package is off only when EVERY
 		// stamped member id is disabled — the bare "notifications"

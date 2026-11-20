@@ -34,6 +34,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 			"portals",
 			"boundaries",
 			"elementKinds",
+			"middleware",
 		]);
 		for (const kind of FIELD_CONTRIBUTION_KINDS) {
 			expect(kind.slot).toBe(kind.id);
@@ -58,6 +59,7 @@ describe("FIELD_CONTRIBUTION_KINDS", () => {
 			"plugin-manager",
 		]);
 		expect(consumers("elementKinds")).toEqual(["app-host.client", "plugin-manager"]);
+		expect(consumers("middleware")).toEqual(["app-host.server", "plugin-manager"]);
 		// Only chrome declares payload-level ordering; everything else is topo.
 		for (const kind of FIELD_CONTRIBUTION_KINDS) {
 			expect(kind.ordering).toBe(kind.id === "chrome" ? "declared" : "topo");

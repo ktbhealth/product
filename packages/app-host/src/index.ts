@@ -28,6 +28,13 @@ import { otlpTelemetryDriver } from "@ktb/observability-otlp";
 import { telemetryConsoleDriver } from "@ktb/observability";
 import type { Plugin } from "@ktb/kernel";
 import {
+	collectMiddlewareStages,
+	type MiddlewareRouteInfo,
+	type MiddlewareStage,
+} from "@ktb/kernel";
+import { collectPages } from "./pages.ts";
+import { MiddlewareStages, makeMiddlewareStages } from "@ktb/platform/middleware";
+import {
 	makePlatformAdminGate,
 	parsePlatformAdminEmails,
 	PlatformAdmin,
@@ -329,6 +336,16 @@ export interface AppOptions {
 		readonly name: string | null;
 		readonly url: string;
 	}) => EmailContent | Promise<EmailContent>;
+	/**
+	 * Host built-in request-middleware stages (PL-015/P-110): the
+	 * app-edge gates that are composition-root concerns (session
+	 * principal, plugin enablement, portal audience) and therefore
+	 * cannot be plugin contributions. They join the collected
+	 * plugin-contributed stages for BOTH the request pipeline and the
+	 * MiddlewareStages admin view — pass the same list the dispatch
+	 * edge executes so the inspector reflects reality.
+	 */
+	readonly middleware?: readonly MiddlewareStage[];
 }
 
 /**
@@ -613,13 +630,32 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// each contributed def's owner against PluginStates.enabledIds()
 	// at startRun, so toggles apply without a layer rebuild.
 	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
-	// Route registry (PL-011/P-106): explicit `route` contributions plus
-	// defs derived from every panel.pages/pages descriptor, collected
-	// once from the ordered registry — same composition-time contract
-	// as the definition registries above (enablement is NOT filtered;
-	// dispatch gates own it). `Routes.route(key, params)` /
-	// `Routes.match(path)` serve loaders, server fns and middleware.
 	const RoutesLive = Layer.succeed(Routes, makeRoutes(collectRouteDefinitions(plugins)));
+	// Request-middleware registry (PL-015/P-110): the serializable view
+	// behind /platform/middleware — collected stage metadata (handlers
+	// stripped) in effective order plus the page-route projection the
+	// per-route chain inspector resolves against. Enablement is NOT
+	// baked in: stages() re-checks PluginStates per call, same
+	// contract as the other *.def registries. Built-in stages arrive
+	// via AppOptions (they are app-edge concerns, not plugin
+	// contributions).
+	const middlewareRoutes: readonly MiddlewareRouteInfo[] = [
+		...collectPages(plugins).pages.entries(),
+	].map(([path, entry]) => ({
+		path,
+		/* v8 ignore next -- collectPages always stamps context; the
+		   optional field only exists for test-injected entries. */
+		context: entry.context ?? "app",
+		routeKey: entry.page.path,
+	}));
+	const MiddlewareStagesLive = Layer.succeed(
+		MiddlewareStages,
+		makeMiddlewareStages({
+			plugins,
+			stages: collectMiddlewareStages(plugins, options?.middleware ?? []),
+			routes: middlewareRoutes,
+		}),
+	);
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -652,6 +688,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		FlowDefinitionsLive,
 		WizardDefinitionsLive,
 		RoutesLive,
+		MiddlewareStagesLive,
 		// External document-ref target registry (T-149): entity owners
 		// register existence checkers into this shared instance from
 		// their service layers; DocumentStore resolves entity refs

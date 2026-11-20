@@ -138,7 +138,8 @@ type ContributionField =
 	| "pages"
 	| "portals"
 	| "boundaries"
-	| "elementKinds";
+	| "elementKinds"
+	| "middleware";
 
 /** Marks every contribution field EXCEPT `K` as forbidden (`?: never`). */
 export type ForbiddenContributions<K extends ContributionField> = {

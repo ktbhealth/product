@@ -18,6 +18,7 @@ vi.mock("#/lib/auth.ts", () => ({
 
 vi.mock("#/lib/platform.ts", async () => {
 	const Effect = await import("effect/Effect");
+	const kernel = await import("@ktb/kernel");
 	const { PluginStates } = await import("@ktb/platform/plugin-states");
 	const states = {
 		isEnabled: () => Effect.succeed(true),
@@ -49,6 +50,20 @@ vi.mock("#/lib/platform.ts", async () => {
 				panel: { pages: [page("first.page", "first")] },
 			},
 			{ id: "second.routes", panel: { pages: [page("second.page", "second")] } },
+			// PL-015: a plugin-contributed middleware stage scoped to the
+			// redirect probe path — proves pageData surfaces redirect
+			// verdicts. Scoped tight so the dup-path test stays unaffected.
+			{
+				id: "redir.middleware",
+				middleware: [
+					{
+						id: "test.redirect",
+						order: 5,
+						scope: { path: "/platform/redirect-me" },
+						handler: () => Effect.succeed(kernel.middlewareRedirect("/login")),
+					},
+				],
+			},
 		] as never,
 	};
 });
@@ -74,6 +89,28 @@ describe("serverPageMap duplicate paths", () => {
 			expect(await portalPageDataFn({ data: path })).toEqual({
 				status: "ok",
 				data: "first",
+			});
+		} finally {
+			pages.delete(path);
+		}
+	});
+
+	it("surfaces a plugin middleware redirect verdict from pageData", async () => {
+		const path = "/platform/redirect-me";
+		const pages = portalPages as unknown as Map<
+			string,
+			{ page: PanelPage; pluginId: string; context?: string }
+		>;
+		pages.set(path, {
+			page: { id: "test.redir", path, component: () => null } as PanelPage,
+			pluginId: "platform.routes",
+		});
+		try {
+			// The scoped plugin stage (order 5) runs before the built-ins
+			// and short-circuits the chain with a redirect verdict.
+			expect(await portalPageDataFn({ data: path })).toEqual({
+				status: "redirect",
+				to: "/login",
 			});
 		} finally {
 			pages.delete(path);

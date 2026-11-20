@@ -140,6 +140,14 @@ describe("/$ app page dispatcher (P-059)", () => {
 		});
 	});
 
+	it("translates a middleware redirect verdict into a router redirect", async () => {
+		entry("/about");
+		mocks.appPageDataFn.mockResolvedValue({ status: "redirect", to: "/login" });
+		await expect(opts(Route).loader({ params: { _splat: "about" }, deps: {} })).rejects.toEqual({
+			__redirect: { href: "/login" },
+		});
+	});
+
 	it("returns the loader Effect's data", async () => {
 		entry("/about");
 		mocks.appPageDataFn.mockResolvedValue({ status: "ok", data: { rows: 2 } });
