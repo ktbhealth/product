@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Metric from "effect/Metric";
+import * as Tracer from "effect/Tracer";
 
 import { Auth, type AuthShape, type Session } from "@ktb/auth";
 import {
@@ -32,10 +33,17 @@ const session: Session = {
 let sessionResult: Session | null = session;
 let sessionError: unknown;
 let sessionCalls = 0;
+/** Runs inside `Auth.getSession` — tests use it to advance a mocked
+ * clock mid-load so the recorded duration is deterministic. */
+let onSessionLoad: (() => void) | undefined;
+/** When set, `runtime.run` provides it as the `Tracer` service so tests
+ * can observe the spans `loadSessionUser` emits. */
+let testTracer: Tracer.Tracer | undefined;
 
 const authShape: AuthShape = {
 	getSession: async () => {
 		sessionCalls += 1;
+		onSessionLoad?.();
 		if (sessionError !== undefined) throw sessionError;
 		return sessionResult;
 	},
@@ -47,7 +55,8 @@ const authShape: AuthShape = {
 const runtime: ServerRuntime = {
 	run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
 		Effect.runPromise(
-			effect.pipe(Effect.provideService(Auth, authShape)) as Effect.Effect<A, E, never>,
+			(testTracer === undefined ? effect : effect.pipe(Effect.provideService(Tracer.Tracer, testTracer)))
+				.pipe(Effect.provideService(Auth, authShape)) as Effect.Effect<A, E, never>,
 		),
 	runAs: <A, E>(_user: { readonly id: string }, effect: Effect.Effect<A, E, unknown>) =>
 		Effect.runPromise(effect as Effect.Effect<A, E, never>),
@@ -61,6 +70,8 @@ beforeEach(() => {
 	sessionResult = session;
 	sessionError = undefined;
 	sessionCalls = 0;
+	onSessionLoad = undefined;
+	testTracer = undefined;
 	requestHeaders.current = new Headers();
 });
 
@@ -138,6 +149,41 @@ describe("session lookup telemetry", () => {
 		await getSessionUser(new Headers());
 		expect(await lookupCount("session", "load")).toBe(loadBefore + 2);
 	});
+
+	it("records the load wall time on the duration histogram", async () => {
+		const durationSum = async () => {
+			const state = await Effect.runPromise(
+				Metric.value(tagged(sessionContextLoadDuration, { context: "session" })),
+			);
+			return "sum" in state ? state.sum : 0;
+		};
+		const before = await durationSum();
+		let now = 1_000_000;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+		onSessionLoad = () => {
+			now += 40;
+		};
+		try {
+			await getSessionUser(new Headers());
+		} finally {
+			clock.mockRestore();
+			onSessionLoad = undefined;
+		}
+		expect(await durationSum() - before).toBe(40);
+	});
+
+	it("traces the session lookup as Auth.getSession", async () => {
+		const spans: Tracer.NativeSpan[] = [];
+		testTracer = Tracer.make({
+			span: (options) => {
+				const span = new Tracer.NativeSpan(options);
+				spans.push(span);
+				return span;
+			},
+		});
+		await getSessionUser(new Headers());
+		expect(spans.map((span) => span.name)).toContain("Auth.getSession");
+	});
 });
 
 describe("ensureSessionUser", () => {
@@ -150,6 +196,7 @@ describe("ensureSessionUser", () => {
 		const error = await ensureSessionUser(new Headers()).catch((e: unknown) => e);
 		expect(error).toBeInstanceOf(UnauthenticatedError);
 		expect((error as UnauthenticatedError).status).toBe(401);
+		expect((error as Error).name).toBe("UnauthenticatedError");
 		expect((error as Error).message).toBe("unauthenticated");
 	});
 });

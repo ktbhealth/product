@@ -58,9 +58,44 @@ describe("reactStartMock", () => {
 		// No options object → nothing rides on the callable.
 		expect((fn as unknown as Record<string, unknown>).method).toBeUndefined();
 	});
+
+	it("preserves sibling arg fields alongside the validated data", async () => {
+		const { createServerFn } = reactStartMock();
+
+		const seen: unknown[] = [];
+		const fn = createServerFn({ method: "POST" })
+			.validator((input: unknown) => ({ wrapped: input }))
+			.handler(async (arg) => {
+				seen.push(arg);
+				return "ok";
+			});
+
+		await fn({ data: 1, context: "ctx" } as { data?: unknown });
+		expect(seen).toEqual([{ data: { wrapped: 1 }, context: "ctx" }]);
+	});
+
+	it("runs the validator on undefined input when invoked without an arg", async () => {
+		const { createServerFn } = reactStartMock();
+
+		const seen: unknown[] = [];
+		const fn = createServerFn({ method: "POST" })
+			.validator((input: unknown) => input ?? "fallback")
+			.handler(async (arg) => {
+				seen.push(arg?.data);
+				return "ok";
+			});
+
+		await expect(fn()).resolves.toBe("ok");
+		expect(seen).toEqual(["fallback"]);
+	});
 });
 
 describe("reactStartServerMock", () => {
+	it("starts from an empty Headers instance", () => {
+		expect(serverFnRequestHeaders.current).toBeInstanceOf(Headers);
+		expect(reactStartServerMock().getRequestHeaders().get("cookie")).toBeNull();
+	});
+
 	it("returns fresh Headers copies seeded from serverFnRequestHeaders", () => {
 		const { getRequestHeaders } = reactStartServerMock();
 
@@ -79,6 +114,8 @@ describe("session fixtures", () => {
 		expect(sessionUser(null)).toBeNull();
 		const session = sessionUser("doc@x.com");
 		expect(session?.user).toMatchObject({ id: "id-doc@x.com", email: "doc@x.com" });
+		expect(session?.sessionId).toBe("s1");
+		expect(session?.expiresAt.getTime()).toBeGreaterThan(Date.now());
 	});
 
 	it("stubAuth resolves through the reader and no-ops setUserBanned", async () => {
@@ -174,5 +211,16 @@ describe("installServerFnRuntime", () => {
 			resetServerFnRuntime();
 			await runtime.dispose();
 		}
+	});
+
+	it("resetServerFnRuntime drops the registered runtime", async () => {
+		const runtime = ManagedRuntime.make(Layer.empty) as unknown as ManagedRuntime.ManagedRuntime<
+			unknown,
+			never
+		>;
+		installServerFnRuntime(runtime, stubAuth(() => null));
+		resetServerFnRuntime();
+		expect(() => getServerRuntime()).toThrow("runtime not initialized");
+		await runtime.dispose();
 	});
 });

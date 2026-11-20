@@ -184,6 +184,7 @@ const withApiGate = (
 ): Record<string, unknown> => {
 	const server = options?.server;
 	const handlers = server?.handlers;
+	// Stryker disable next-line ConditionalExpression: handlers is server?.handlers, so server === undefined implies handlers === undefined — the second disjunct alone gives the same result (verified: mutant passes the full suite)
 	if (server === undefined || handlers === undefined) return { ...options };
 	return {
 		...options,

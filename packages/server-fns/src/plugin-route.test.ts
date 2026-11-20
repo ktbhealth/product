@@ -62,6 +62,10 @@ describe("pluginEnabledFn", () => {
 		await expect(pluginEnabledFn({ data: "demo.routes" })).resolves.toBe(false);
 		await expect(pluginEnabledFn({ data: "other.routes" })).resolves.toBe(true);
 	});
+
+	it("is a GET server fn", () => {
+		expect((pluginEnabledFn as unknown as { method?: string }).method).toBe("GET");
+	});
 });
 
 describe("createPluginFileRoute", () => {
@@ -101,6 +105,12 @@ describe("createPluginFileRoute", () => {
 		const userBeforeLoad = vi.fn(async () => "ok");
 		const route = createRoute("demo.routes")("/demo")({ beforeLoad: userBeforeLoad });
 		await expect(beforeLoadOf(route)({})).resolves.toBe("ok");
+	});
+
+	it("gates routes declared without options", async () => {
+		setServerRuntime(stubRuntime(async () => true));
+		const route = createRoute("demo.routes")("/demo")();
+		await expect(beforeLoadOf(route)({})).resolves.toBeUndefined();
 	});
 });
 
@@ -232,6 +242,34 @@ describe("createPluginApiRoute", () => {
 		await expect(call(handlersOf(route).GET!)).resolves.toMatchObject({ status: 200 });
 		expect(inner).toHaveBeenCalledOnce();
 	});
+
+	it("passes routes declared without options through", () => {
+		setServerRuntime(stubRuntime(async () => false));
+		const route = createApiRoute("demo.routes")("/api/demo")();
+		expect(route.options).toEqual({});
+	});
+
+	it("passes server options without handlers through unchanged", () => {
+		setServerRuntime(stubRuntime(async () => false));
+		const component = () => null;
+		const route = createApiRoute("demo.routes")("/api/demo")({
+			component,
+			server: { prefix: "/api" },
+		});
+		expect(route.options.component).toBe(component);
+		expect(route.options.server).toEqual({ prefix: "/api" });
+	});
+
+	it("leaves null, undefined and non-handler entries untouched", () => {
+		setServerRuntime(stubRuntime(async () => false));
+		const route = createApiRoute("demo.routes")("/api/demo")({
+			server: { handlers: { GET: null, POST: undefined, PUT: 42 } },
+		});
+		const handlers = handlersOf(route);
+		expect(handlers.GET).toBeNull();
+		expect(handlers.POST).toBeUndefined();
+		expect(handlers.PUT).toBe(42);
+	});
 });
 
 describe("requirePluginEnabled", () => {
@@ -254,6 +292,7 @@ describe("requirePluginEnabled", () => {
 		const error = await requirePluginEnabled("demo.routes").catch((e: unknown) => e);
 		expect(error).toBeInstanceOf(PluginDisabledError);
 		expect((error as PluginDisabledError).pluginId).toBe("demo.routes");
+		expect((error as Error).name).toBe("PluginDisabledError");
 		expect((error as Error).message).toBe('plugin "demo.routes" is disabled');
 		await expect(requirePluginEnabled("other.routes")).resolves.toBeUndefined();
 	});

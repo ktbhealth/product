@@ -66,4 +66,30 @@ describe("audioStorageStats", () => {
 		};
 		expect(await audioStorageStats(bucket)).toBeNull();
 	});
+
+	it("requests pages with limit 1000 and the returned cursor", async () => {
+		const calls: unknown[] = [];
+		const bucket: AudioObjectLister = {
+			list: async (options) => {
+				calls.push(options);
+				return calls.length === 1
+					? { objects: [{ key: "a", size: 1 }], truncated: true, cursor: "c1" }
+					: { objects: [], truncated: false };
+			},
+		};
+		await audioStorageStats(bucket);
+		expect(calls).toEqual([
+			{ limit: 1000, cursor: undefined },
+			{ limit: 1000, cursor: "c1" },
+		]);
+	});
+
+	it("propagates errors raised while reading bucket.list", async () => {
+		const bucket = Object.defineProperty({}, "list", {
+			get() {
+				throw new Error("no list");
+			},
+		}) as AudioObjectLister;
+		await expect(audioStorageStats(bucket)).rejects.toThrow("no list");
+	});
 });
