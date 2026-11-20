@@ -55,6 +55,8 @@ describe("SiteBuilderEditorPage", () => {
 			{ kind: "page" },
 			{ kind: "page", id: "7", title: "t" },
 			{ kind: "page", id: 7 },
+			{ kind: "page", id: 7, title: "t", subtitle: {} },
+			{ kind: "page", id: 7, title: "t", builderJson: 42 },
 		]) {
 			const { container, unmount } = render(<SiteBuilderEditorPage data={data} ctx={ctx()} />);
 			expect(container.textContent).toContain("Nothing to edit here.");
@@ -85,6 +87,13 @@ describe("SiteBuilderEditorPage", () => {
 		const builderJson = serializeBuilderDoc(
 			builderDocFromData({ root: { props: {} }, content: [], zones: {} }),
 		);
+		render(<SiteBuilderEditorPage data={{ ...wire, builderJson }} ctx={ctx()} />);
+		expect(screen.getAllByText("About").length).toBeGreaterThan(0);
+		expect(screen.getByText("Publish to save changes")).toBeDefined();
+	});
+
+	it("falls back to an empty document for malformed Puck data", () => {
+		const builderJson = serializeBuilderDoc(builderDocFromData({ content: [{}] }));
 		render(<SiteBuilderEditorPage data={{ ...wire, builderJson }} ctx={ctx()} />);
 		expect(screen.getAllByText("About").length).toBeGreaterThan(0);
 		expect(screen.getByText("Publish to save changes")).toBeDefined();

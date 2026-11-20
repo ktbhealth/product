@@ -21,8 +21,9 @@
  * `data` shape changes incompatibly and append a migration step. */
 export const BUILDER_DOC_VERSION = 1;
 
-/** The stored wrapper: schema `version` plus the opaque Puck `Data`
- * payload (`root`/`content`/`zones` — validated by Puck at render). */
+/** The stored wrapper: schema `version` plus the Puck `Data` payload
+ * (`root`/`content`/`zones` — normalized by {@link normalizeBuilderData}
+ * before Puck consumes it). */
 export interface BuilderDoc {
 	readonly version: number;
 	readonly data: unknown;
@@ -63,6 +64,29 @@ export const parseBuilderDoc = (raw: string | null | undefined): BuilderDoc | nu
 /** Serialize a doc for storage. The output is always re-parseable by
  * {@link parseBuilderDoc} — kept symmetric so tests can round-trip. */
 export const serializeBuilderDoc = (doc: BuilderDoc): string => JSON.stringify(doc);
+
+const isComponentData = (value: unknown): boolean =>
+	isRecord(value) && typeof value.type === "string" && isRecord(value.props);
+
+const isZoneMap = (value: unknown): boolean =>
+	isRecord(value) &&
+	Object.values(value).every((zone) => Array.isArray(zone) && zone.every(isComponentData));
+
+/** Normalize an opaque `data` payload into the minimal shape Puck's
+ * `<Render>`/`<Puck>` can consume: `root`/`content`/`zones` records with
+ * component entries carrying `type` + `props`. Missing containers
+ * default to empty; malformed containers return null so callers can
+ * treat the document as absent instead of crashing the renderer. */
+export const normalizeBuilderData = (data: unknown): Record<string, unknown> | null => {
+	if (!isRecord(data)) return null;
+	const root = data.root === undefined ? {} : data.root;
+	if (!isRecord(root) || ("props" in root && !isRecord(root.props))) return null;
+	const content = data.content === undefined ? [] : data.content;
+	if (!Array.isArray(content) || !content.every(isComponentData)) return null;
+	const zones = data.zones === undefined ? {} : data.zones;
+	if (!isZoneMap(zones)) return null;
+	return { ...data, root, content, zones };
+};
 
 /** Fresh empty Puck `Data` — the seed the editor opens for rows with
  * no stored document. Shape matches what `<Puck>`/`<Render>` expect

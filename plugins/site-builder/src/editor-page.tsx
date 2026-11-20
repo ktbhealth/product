@@ -7,6 +7,7 @@ import {
 	builderDocFromData,
 	emptyBuilderData,
 	migrateBuilderDoc,
+	normalizeBuilderData,
 	parseBuilderDoc,
 	serializeBuilderDoc,
 	toPuckConfig,
@@ -36,10 +37,28 @@ import { I18N_NAMESPACE, siteBuilderMessages, type SiteBuilderMessages } from ".
 
 const asData = (data: unknown): BuilderDocumentWire | null => {
 	if (typeof data !== "object" || data === null) return null;
-	const d = data as BuilderDocumentWire;
+	const d = data as {
+		readonly kind?: unknown;
+		readonly id?: unknown;
+		readonly title?: unknown;
+		readonly subtitle?: unknown;
+		readonly builderJson?: unknown;
+	};
 	if ((d.kind !== "page" && d.kind !== "layout") || typeof d.id !== "number") return null;
 	if (typeof d.title !== "string") return null;
-	return d;
+	if (d.subtitle !== null && d.subtitle !== undefined && typeof d.subtitle !== "string") {
+		return null;
+	}
+	if (d.builderJson !== null && d.builderJson !== undefined && typeof d.builderJson !== "string") {
+		return null;
+	}
+	return {
+		kind: d.kind === "page" ? "page" : "layout",
+		id: d.id as number,
+		title: d.title as string,
+		subtitle: typeof d.subtitle === "string" ? d.subtitle : null,
+		builderJson: typeof d.builderJson === "string" ? d.builderJson : null,
+	};
 };
 
 /** Stored `builderJson` → initial Puck `Data`: parse the versioned
@@ -47,7 +66,8 @@ const asData = (data: unknown): BuilderDocumentWire | null => {
 const initialData = (builderJson: string | null): Data => {
 	const doc = parseBuilderDoc(builderJson);
 	if (doc === null) return emptyBuilderData() as Data;
-	return migrateBuilderDoc(doc).data as Data;
+	const data = normalizeBuilderData(migrateBuilderDoc(doc).data);
+	return (data as Data | null) ?? (emptyBuilderData() as Data);
 };
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -65,27 +85,19 @@ const saveLabel = (state: SaveState, t: SiteBuilderMessages): string => {
 	}
 };
 
-export function SiteBuilderEditorPage({
-	data,
+function SiteBuilderEditor({
+	doc,
 	ctx,
+	t,
 }: {
-	readonly data: unknown;
+	readonly doc: BuilderDocumentWire;
 	readonly ctx: PanelPageContext;
+	readonly t: SiteBuilderMessages;
 }) {
-	const t = sliceMessages(ctx.i18n, I18N_NAMESPACE, siteBuilderMessages(ctx.locale));
-	const doc = asData(data);
 	const elementKinds = useMemo(() => collectElementKinds(ctx.plugins), [ctx.plugins]);
 	const config = useMemo(() => toPuckConfig(elementKinds), [elementKinds]);
-	const [initial] = useState<Data>(() => initialData(doc?.builderJson ?? null));
+	const [initial] = useState<Data>(() => initialData(doc.builderJson));
 	const [saveState, setSaveState] = useState<SaveState>("idle");
-
-	if (doc === null) {
-		return (
-			<PageContainer>
-				<p className="text-sm text-muted-foreground">{t.notFound}</p>
-			</PageContainer>
-		);
-	}
 
 	const onPublish = (next: Data) => {
 		setSaveState("saving");
@@ -126,4 +138,23 @@ export function SiteBuilderEditorPage({
 			</div>
 		</div>
 	);
+}
+
+export function SiteBuilderEditorPage({
+	data,
+	ctx,
+}: {
+	readonly data: unknown;
+	readonly ctx: PanelPageContext;
+}) {
+	const t = sliceMessages(ctx.i18n, I18N_NAMESPACE, siteBuilderMessages(ctx.locale));
+	const doc = asData(data);
+	if (doc === null) {
+		return (
+			<PageContainer>
+				<p className="text-sm text-muted-foreground">{t.notFound}</p>
+			</PageContainer>
+		);
+	}
+	return <SiteBuilderEditor key={`${doc.kind}:${doc.id}`} doc={doc} ctx={ctx} t={t} />;
 }

@@ -282,6 +282,14 @@ describe("BuilderDocument", () => {
 		expect(bad.container.innerHTML).toBe("");
 	});
 
+	it("returns null for malformed Puck data instead of crashing Render", () => {
+		const malformed = serializeBuilderDoc(builderDocFromData({ content: [{}] }));
+		const { container } = render(
+			<BuilderDocument builderJson={malformed} elementKinds={[headingKind]} />,
+		);
+		expect(container.innerHTML).toBe("");
+	});
+
 	it("is SSR-safe (renderToString)", () => {
 		const html = renderToString(
 			<BuilderDocument builderJson={json} elementKinds={[headingKind]} />,

@@ -5,6 +5,7 @@ import {
 	BUILDER_DOC_VERSION,
 	emptyBuilderData,
 	migrateBuilderDoc,
+	normalizeBuilderData,
 	parseBuilderDoc,
 	serializeBuilderDoc,
 } from "./doc.ts";
@@ -82,5 +83,30 @@ describe("migrateBuilderDoc", () => {
 		const doc = { version: 1, data: {} };
 		const migrated = migrateBuilderDoc(doc, [], 3);
 		expect(migrated.version).toBe(1);
+	});
+});
+
+describe("normalizeBuilderData", () => {
+	it("defaults missing containers and preserves component props", () => {
+		expect(
+			normalizeBuilderData({
+				content: [{ type: "heading", props: { id: "h1", text: "Hi" } }],
+			}),
+		).toEqual({
+			root: {},
+			content: [{ type: "heading", props: { id: "h1", text: "Hi" } }],
+			zones: {},
+		});
+	});
+
+	it("returns null for malformed containers and component entries", () => {
+		expect(normalizeBuilderData(null)).toBeNull();
+		expect(normalizeBuilderData({ root: null })).toBeNull();
+		expect(normalizeBuilderData({ root: { props: null } })).toBeNull();
+		expect(normalizeBuilderData({ content: {} })).toBeNull();
+		expect(normalizeBuilderData({ content: [{ type: "heading" }] })).toBeNull();
+		expect(normalizeBuilderData({ content: [{ type: "heading", props: null }] })).toBeNull();
+		expect(normalizeBuilderData({ zones: { "c:z": {} } })).toBeNull();
+		expect(normalizeBuilderData({ zones: [] })).toBeNull();
 	});
 });

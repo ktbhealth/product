@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import { Schema } from "effect";
 
 import { Layouts } from "@ktb/layouts/service";
@@ -78,8 +79,9 @@ export const builderDocumentFn = createServerFn({ method: "GET" })
 			user,
 			Effect.gen(function* () {
 				if (data.kind === "page") {
-					const pages = yield* Pages;
-					const row = yield* pages.adminGet(data.id);
+					const pages = yield* Effect.serviceOption(Pages);
+					if (Option.isNone(pages)) return null;
+					const row = yield* pages.value.adminGet(data.id);
 					if (row === null) return null;
 					return {
 						kind: "page" as const,
@@ -89,8 +91,9 @@ export const builderDocumentFn = createServerFn({ method: "GET" })
 						builderJson: row.builderJson,
 					};
 				}
-				const layouts = yield* Layouts;
-				const doc = yield* layouts.adminGet(data.id);
+				const layouts = yield* Effect.serviceOption(Layouts);
+				if (Option.isNone(layouts)) return null;
+				const doc = yield* layouts.value.adminGet(data.id);
 				if (doc === null) return null;
 				return {
 					kind: "layout" as const,
@@ -126,11 +129,13 @@ export const saveBuilderDocumentFn = createServerFn({ method: "POST" })
 			user,
 			Effect.gen(function* () {
 				if (data.kind === "page") {
-					const pages = yield* Pages;
-					yield* pages.adminSetBuilderJson(data.id, canonical);
+					const pages = yield* Effect.serviceOption(Pages);
+					if (Option.isNone(pages)) return false;
+					yield* pages.value.adminSetBuilderJson(data.id, canonical);
 				} else {
-					const layouts = yield* Layouts;
-					yield* layouts.adminSetBuilderJson(data.id, canonical);
+					const layouts = yield* Effect.serviceOption(Layouts);
+					if (Option.isNone(layouts)) return false;
+					yield* layouts.value.adminSetBuilderJson(data.id, canonical);
 				}
 				return true;
 			}),

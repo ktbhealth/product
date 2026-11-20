@@ -170,6 +170,29 @@ describe("site-builder fns", () => {
 		}
 	});
 
+	it("degrades to null/false when the optional entity services are absent", async () => {
+		currentEmail = "admin@x.com";
+		const withoutServices = ManagedRuntime.make(
+			Layer.succeed(
+				PlatformAdmin,
+				makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		installServerFnRuntime(withoutServices, auth);
+		try {
+			await expect(builderDocumentFn({ data: { kind: "page", id: 7 } })).resolves.toBeNull();
+			await expect(builderDocumentFn({ data: { kind: "layout", id: 3 } })).resolves.toBeNull();
+			await expect(
+				saveBuilderDocumentFn({
+					data: { kind: "page", id: 7, builderJson: '{"version":1,"data":{}}' },
+				}),
+			).resolves.toBe(false);
+		} finally {
+			installServerFnRuntime(runtime, auth);
+			await withoutServices.dispose();
+		}
+	});
+
 	it("rejects malformed builderJson without touching the service", async () => {
 		currentEmail = "admin@x.com";
 		saved.page = undefined;

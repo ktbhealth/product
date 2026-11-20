@@ -11,7 +11,7 @@ import {
 } from "@ktb/kernel";
 import type { JsonSchema, JsonSchemaObject } from "@ktb/json-schema";
 
-import { migrateBuilderDoc, parseBuilderDoc } from "./doc.ts";
+import { migrateBuilderDoc, normalizeBuilderData, parseBuilderDoc } from "./doc.ts";
 
 /**
  * Registry → Puck adapter (PL-014 / P-109): compiles the client
@@ -275,8 +275,9 @@ export const BuilderDocument = ({
 	const config = useMemo(() => toPuckConfig(elementKinds), [elementKinds]);
 	const doc = useMemo(() => {
 		const parsed = parseBuilderDoc(builderJson);
-		return parsed === null ? null : migrateBuilderDoc(parsed);
+		if (parsed === null) return null;
+		return normalizeBuilderData(migrateBuilderDoc(parsed).data) as Data | null;
 	}, [builderJson]);
 	if (doc === null) return null;
-	return <Render config={config} data={doc.data as Data} />;
+	return <Render config={config} data={doc} />;
 };

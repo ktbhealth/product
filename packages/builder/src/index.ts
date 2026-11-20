@@ -4,6 +4,7 @@ export {
 	builderDocFromData,
 	emptyBuilderData,
 	migrateBuilderDoc,
+	normalizeBuilderData,
 	parseBuilderDoc,
 	serializeBuilderDoc,
 	type BuilderDoc,
