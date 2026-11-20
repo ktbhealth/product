@@ -1,6 +1,6 @@
 import type { PanelPageContext } from "@ktb/kernel";
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo } from "@ktb/server-fns";
+import type { CronJobInfo, ScheduledJobInfo } from "@ktb/server-fns";
 
 import { CronPage } from "./views/CronPage.tsx";
 
@@ -9,6 +9,8 @@ import { CronPage } from "./views/CronPage.tsx";
 export interface CronPageData {
 	readonly jobs: readonly CronJobInfo[] | null;
 	readonly runs: readonly JobRecord[] | null;
+	readonly schedules: readonly ScheduledJobInfo[] | null;
+	readonly scheduleKinds: readonly string[] | null;
 }
 
 /**
@@ -21,6 +23,13 @@ export interface CronPageData {
 export function CronPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<CronPageData>;
 	return (
-		<CronPage jobs={d.jobs ?? null} runs={d.runs ?? null} i18n={ctx.i18n} locale={ctx.locale} />
+		<CronPage
+			jobs={d.jobs ?? null}
+			runs={d.runs ?? null}
+			schedules={d.schedules ?? null}
+			scheduleKinds={d.scheduleKinds ?? null}
+			i18n={ctx.i18n}
+			locale={ctx.locale}
+		/>
 	);
 }

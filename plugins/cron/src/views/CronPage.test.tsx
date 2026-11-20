@@ -7,8 +7,22 @@ const runCronJobFn = vi.fn<(_arg?: { data?: { id: string } }) => Promise<{ ok: t
 		ok: true as const,
 	}),
 );
+const scheduleFns = vi.hoisted(() => ({
+	createScheduleFn: vi.fn(async () => ({ ok: true as const, job: {} })),
+	updateScheduleFn: vi.fn(async () => ({ ok: true as const, job: {} })),
+	deleteScheduleFn: vi.fn(async () => ({ ok: true as const })),
+	runScheduleFn: vi.fn(async () => ({ ok: true as const })),
+	invalidate: vi.fn(),
+}));
 vi.mock("../fns.ts", () => ({
 	runCronJobFn: (arg?: { data?: { id: string } }) => runCronJobFn(arg),
+	createScheduleFn: scheduleFns.createScheduleFn,
+	updateScheduleFn: scheduleFns.updateScheduleFn,
+	deleteScheduleFn: scheduleFns.deleteScheduleFn,
+	runScheduleFn: scheduleFns.runScheduleFn,
+}));
+vi.mock("@tanstack/react-router", () => ({
+	useRouter: () => ({ invalidate: scheduleFns.invalidate }),
 }));
 
 import type { JobRecord } from "@ktb/jobs-port";

@@ -1,11 +1,21 @@
 import { useState } from "react";
+import { useRouter } from "@tanstack/react-router";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo } from "@ktb/server-fns";
+import type { CronJobInfo, ScheduledJobInfo } from "@ktb/server-fns";
 import { Button } from "@ktbhealth/ui/components/button";
+import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
+import { Input } from "@ktbhealth/ui/components/input";
 import { JobStatus as JobStatusBadge } from "@ktbhealth/ui/components/job-status";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@ktbhealth/ui/components/select";
 import {
 	Table,
 	TableBody,
@@ -15,8 +25,15 @@ import {
 	TableRow,
 } from "@ktbhealth/ui/components/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
+import { Textarea } from "@ktbhealth/ui/components/textarea";
 
-import { runCronJobFn } from "../fns.ts";
+import {
+	createScheduleFn,
+	deleteScheduleFn,
+	runCronJobFn,
+	runScheduleFn,
+	updateScheduleFn,
+} from "../fns.ts";
 import { cronMessages, I18N_NAMESPACE, type CronMessages } from "../i18n.ts";
 import type { CronRunNowResult } from "../admin.ts";
 
@@ -31,6 +48,8 @@ import type { CronRunNowResult } from "../admin.ts";
 interface CronPageProps {
 	readonly jobs: readonly CronJobInfo[] | null;
 	readonly runs: readonly JobRecord[] | null;
+	readonly schedules?: readonly ScheduledJobInfo[] | null;
+	readonly scheduleKinds?: readonly string[] | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	readonly i18n?: PageI18nSlice;
 	readonly locale: string;
@@ -243,7 +262,308 @@ function RunsSection({
 	);
 }
 
-export function CronPage({ jobs, runs, i18n, locale }: CronPageProps) {
+type ScheduleAction = "create" | "pause" | "resume" | "delete" | "run";
+
+const statusLabel = (status: ScheduledJobInfo["status"], m: CronMessages) =>
+	status === "active" ? m.statusActive : status === "paused" ? m.statusPaused : m.statusDone;
+
+function SchedulesSection({
+	schedules,
+	kinds,
+	locale,
+	m,
+}: {
+	schedules: readonly ScheduledJobInfo[] | null;
+	kinds: readonly string[] | null;
+	locale: string;
+	m: CronMessages;
+}) {
+	const router = useRouter();
+	const [kind, setKind] = useState("");
+	const [mode, setMode] = useState<"cron" | "once">("cron");
+	const [cronExpr, setCronExpr] = useState("");
+	const [runAt, setRunAt] = useState("");
+	const [paramsRaw, setParamsRaw] = useState("");
+	const [busy, setBusy] = useState<ScheduleAction | null>(null);
+	const [rowBusy, setRowBusy] = useState<string | null>(null);
+	const [message, setMessage] = useState<{ text: string; ok: boolean } | null>(null);
+
+	const say = (text: string, ok: boolean) => setMessage({ text, ok });
+	const refresh = () => void router.invalidate();
+
+	const submitCreate = async () => {
+		setBusy("create");
+		setMessage(null);
+		let params: unknown;
+		if (paramsRaw.trim() !== "") {
+			try {
+				params = JSON.parse(paramsRaw) as unknown;
+			} catch {
+				setBusy(null);
+				say(m.schedInvalid, false);
+				return;
+			}
+		}
+		const runAtMs = mode === "once" && runAt !== "" ? new Date(runAt).getTime() : null;
+		try {
+			const result = await createScheduleFn({
+				data: {
+					kind: kind.trim(),
+					...(params !== undefined ? { params } : {}),
+					cronExpr: mode === "cron" ? cronExpr.trim() : null,
+					runAt: runAtMs,
+				},
+			});
+			setBusy(null);
+			if (result.ok) {
+				say(m.schedCreated, true);
+				setKind("");
+				setCronExpr("");
+				setRunAt("");
+				setParamsRaw("");
+				refresh();
+			} else {
+				say(result.reason === "invalid" ? m.schedInvalid : m.schedFailed, false);
+			}
+		} catch {
+			setBusy(null);
+			say(m.schedFailed, false);
+		}
+	};
+
+	const act = async (job: ScheduledJobInfo, action: "pause" | "resume" | "delete" | "run") => {
+		setRowBusy(`${action}:${job.id}`);
+		setMessage(null);
+		try {
+			if (action === "delete") {
+				const result = await deleteScheduleFn({ data: { id: job.id } });
+				setRowBusy(null);
+				if (result.ok) {
+					say(m.schedDeleted, true);
+					refresh();
+				} else {
+					say(m.schedFailed, false);
+				}
+				return;
+			}
+			if (action === "run") {
+				const result = await runScheduleFn({ data: { id: job.id } });
+				setRowBusy(null);
+				say(runNowMessage(result, m), result.ok);
+				refresh();
+				return;
+			}
+			const result = await updateScheduleFn({
+				data: {
+					id: job.id,
+					patch: { status: action === "pause" ? "paused" : "active" },
+				},
+			});
+			setRowBusy(null);
+			if (result.ok) {
+				say(m.schedUpdated, true);
+				refresh();
+			} else {
+				say(result.reason === "invalid" ? m.schedInvalid : m.schedFailed, false);
+			}
+		} catch {
+			setRowBusy(null);
+			say(m.schedFailed, false);
+		}
+	};
+
+	return (
+		<section>
+			<h2 className="text-sm font-semibold">{m.schedulesTitle}</h2>
+			<p className="text-muted-foreground mb-3 text-xs">{m.schedulesDescription}</p>
+			{schedules === null ? (
+				<Unavailable m={m} />
+			) : (
+				<>
+					{schedules.length === 0 ? (
+						<div className="border-border text-muted-foreground mb-4 rounded-md border px-4 py-6 text-sm">
+							{m.emptySchedulesTitle} — {m.emptySchedulesDescription}
+						</div>
+					) : (
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>{m.sColKind}</TableHead>
+									<TableHead>{m.sColSchedule}</TableHead>
+									<TableHead>{m.sColNextRun}</TableHead>
+									<TableHead>{m.sColLastRun}</TableHead>
+									<TableHead>{m.sColStatus}</TableHead>
+									<TableHead className="text-right">{m.sColAction}</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{schedules.map((job) => (
+									<TableRow key={job.id}>
+										<TableCell className="font-medium">{job.kind}</TableCell>
+										<TableCell>
+											{job.cronExpr !== null ? (
+												<code className="text-xs">{job.cronExpr}</code>
+											) : (
+												<span className="text-xs">{fmt(job.runAt, locale)}</span>
+											)}
+										</TableCell>
+										<TableCell className="text-xs whitespace-nowrap">
+											{fmt(job.nextRunAt, locale)}
+										</TableCell>
+										<TableCell className="text-xs whitespace-nowrap">
+											{job.lastRunAt === null ? (
+												<span className="text-muted-foreground">{m.neverRan}</span>
+											) : (
+												fmt(job.lastRunAt, locale)
+											)}
+										</TableCell>
+										<TableCell>
+											<span
+												className={
+													job.status === "active" ? "text-success" : "text-muted-foreground"
+												}
+											>
+												{statusLabel(job.status, m)}
+											</span>
+										</TableCell>
+										<TableCell className="text-right">
+											<div className="flex justify-end gap-1">
+												{job.status === "active" && (
+													<>
+														<Button
+															size="sm"
+															variant="outline"
+															disabled={rowBusy !== null}
+															onClick={() => void act(job, "run")}
+														>
+															{m.runNow}
+														</Button>
+														<Button
+															size="sm"
+															variant="outline"
+															disabled={rowBusy !== null}
+															onClick={() => void act(job, "pause")}
+														>
+															{m.actPause}
+														</Button>
+													</>
+												)}
+												{job.status === "paused" && (
+													<Button
+														size="sm"
+														variant="outline"
+														disabled={rowBusy !== null}
+														onClick={() => void act(job, "resume")}
+													>
+														{m.actResume}
+													</Button>
+												)}
+												<Button
+													size="sm"
+													variant="outline"
+													disabled={rowBusy !== null}
+													onClick={() => void act(job, "delete")}
+												>
+													{m.actDelete}
+												</Button>
+											</div>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					)}
+					<div className="border-border mt-4 max-w-2xl rounded-md border p-4">
+						<h3 className="text-sm font-semibold">{m.newScheduleTitle}</h3>
+						<div className="mt-3 grid gap-3">
+							<Field>
+								<FieldLabel htmlFor="sched-kind">{m.fKind}</FieldLabel>
+								<Input
+									id="sched-kind"
+									list="sched-kinds"
+									value={kind}
+									onChange={(e) => setKind(e.target.value)}
+									placeholder={m.fKindPlaceholder}
+								/>
+								<datalist id="sched-kinds">
+									{(kinds ?? []).map((k) => (
+										<option key={k} value={k} />
+									))}
+								</datalist>
+							</Field>
+							<Field>
+								<FieldLabel>{m.fModeRecurring}</FieldLabel>
+								<Select value={mode} onValueChange={(v) => setMode(v === "once" ? "once" : "cron")}>
+									<SelectTrigger className="w-full">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="cron">{m.fModeRecurring}</SelectItem>
+										<SelectItem value="once">{m.fModeOnce}</SelectItem>
+									</SelectContent>
+								</Select>
+							</Field>
+							{mode === "cron" ? (
+								<Field>
+									<FieldLabel htmlFor="sched-cron">{m.fCronExpr}</FieldLabel>
+									<Input
+										id="sched-cron"
+										value={cronExpr}
+										onChange={(e) => setCronExpr(e.target.value)}
+										placeholder={m.fCronExprPlaceholder}
+									/>
+								</Field>
+							) : (
+								<Field>
+									<FieldLabel htmlFor="sched-runat">{m.fRunAt}</FieldLabel>
+									<Input
+										id="sched-runat"
+										type="datetime-local"
+										value={runAt}
+										onChange={(e) => setRunAt(e.target.value)}
+									/>
+								</Field>
+							)}
+							<Field>
+								<FieldLabel htmlFor="sched-params">{m.fParams}</FieldLabel>
+								<Textarea
+									id="sched-params"
+									value={paramsRaw}
+									onChange={(e) => setParamsRaw(e.target.value)}
+									placeholder={m.fParamsPlaceholder}
+									rows={2}
+								/>
+							</Field>
+							<div className="flex items-center gap-3">
+								<Button
+									size="sm"
+									disabled={busy !== null || kind.trim() === ""}
+									onClick={() => void submitCreate()}
+								>
+									{busy === "create" ? m.fCreating : m.fCreate}
+								</Button>
+								{message !== null && (
+									<span className={`text-xs ${message.ok ? "text-success" : "text-destructive"}`}>
+										{message.text}
+									</span>
+								)}
+							</div>
+						</div>
+					</div>
+				</>
+			)}
+		</section>
+	);
+}
+
+export function CronPage({
+	jobs,
+	runs,
+	schedules = null,
+	scheduleKinds = null,
+	i18n,
+	locale,
+}: CronPageProps) {
 	const m = sliceMessages(i18n, I18N_NAMESPACE, cronMessages(locale));
 	return (
 		<div className="mx-auto flex max-w-5xl flex-col gap-8 p-6">
@@ -256,10 +576,14 @@ export function CronPage({ jobs, runs, i18n, locale }: CronPageProps) {
 			<Tabs defaultValue="jobs">
 				<TabsList>
 					<TabsTrigger value="jobs">{m.jobsTitle}</TabsTrigger>
+					<TabsTrigger value="schedules">{m.schedulesTab}</TabsTrigger>
 					<TabsTrigger value="runs">{m.runsTitle}</TabsTrigger>
 				</TabsList>
 				<TabsContent value="jobs">
 					<JobsSection jobs={jobs} locale={locale} m={m} />
+				</TabsContent>
+				<TabsContent value="schedules">
+					<SchedulesSection schedules={schedules} kinds={scheduleKinds} locale={locale} m={m} />
 				</TabsContent>
 				<TabsContent value="runs">
 					<RunsSection runs={runs} locale={locale} m={m} />

@@ -77,10 +77,16 @@ export const cronPanelPlugin = definePlugin({
 						// state, never a fabricated empty list.
 						const section = <A>(effect: Effect.Effect<A, Forbidden>) =>
 							effect.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null as A | null)));
-						const [jobs, runs] = yield* Effect.all([section(admin.jobs()), section(admin.runs())], {
-							concurrency: "unbounded",
-						});
-						return { jobs, runs };
+						const [jobs, runs, schedules, scheduleKinds] = yield* Effect.all(
+							[
+								section(admin.jobs()),
+								section(admin.runs()),
+								section(admin.schedules()),
+								section(admin.scheduleKinds()),
+							],
+							{ concurrency: "unbounded" },
+						);
+						return { jobs, runs, schedules, scheduleKinds };
 					}),
 			},
 		],

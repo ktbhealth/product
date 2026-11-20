@@ -361,6 +361,70 @@ export interface SchedulerSweepResult {
 }
 
 /**
+ * Fire one active row immediately (console "run now"): claims it with
+ * the same lease semantics as the sweep — the schedule still advances
+ * (recurring rows recompute `nextRunAt` from now, one-offs flip to
+ * done) so an early manual fire never double-fires the occurrence.
+ * Returns null when the row is missing, not active, or mid-claim.
+ * Dispatch errors are captured on the result — the schedule already
+ * advanced, so they surface as data, not throws.
+ */
+export const runScheduledJobNow = async (
+	db: DbClient,
+	id: string,
+	dispatch: ScheduledJobDispatch,
+	options: ClaimDueOptions = {},
+): Promise<{ readonly job: ScheduledJob; readonly error: string | null } | null> => {
+	const now = options.now ?? Date.now();
+	const leaseMs = options.leaseMs ?? 5 * 60_000;
+	const existing = await getScheduledJob(db, id);
+	if (existing === null || existing.status !== "active") return null;
+	if (existing.claimedUntil !== null && existing.claimedUntil > now) return null;
+	const isRecurring = existing.cronExpr !== null;
+	let nextRunAt: number | null = null;
+	if (isRecurring) {
+		try {
+			nextRunAt = nextRunAfter(existing.cronExpr as string, now);
+		} catch {
+			nextRunAt = null;
+		}
+	}
+	if (isRecurring && nextRunAt === null) {
+		await db
+			.update(scheduledJobs)
+			.set({ status: "done", updatedAt: now })
+			.where(eq(scheduledJobs.id, id));
+		return null;
+	}
+	const rows = await db
+		.update(scheduledJobs)
+		.set({
+			claimedUntil: now + leaseMs,
+			nextRunAt: isRecurring ? (nextRunAt as number) : existing.nextRunAt,
+			lastRunAt: now,
+			status: isRecurring ? "active" : "done",
+			updatedAt: now,
+		})
+		.where(
+			and(
+				eq(scheduledJobs.id, id),
+				eq(scheduledJobs.status, "active"),
+				or(isNull(scheduledJobs.claimedUntil), lt(scheduledJobs.claimedUntil, now)),
+			),
+		)
+		.returning();
+	const row = rows[0];
+	if (row === undefined) return null;
+	const job = toRecord(row);
+	try {
+		await dispatch(job);
+		return { job, error: null };
+	} catch (error) {
+		return { job, error: error instanceof Error ? error.message : String(error) };
+	}
+};
+
+/**
  * One heartbeat pass: claim due rows, dispatch each. A dispatch
  * failure does NOT release the claim — the schedule already advanced
  * (a recurring row fires again at its next occurrence; a one-off is

@@ -6,7 +6,18 @@ import type { Forbidden } from "@ktb/authz";
 import { Db } from "@ktb/db";
 import { listJobRuns, type JobRecord } from "@ktb/jobs-port";
 import { PlatformAdmin } from "@ktb/platform";
-import { getServerRuntime, type CronJobInfo, type CronRunResult } from "@ktb/server-fns";
+import {
+	getServerRuntime,
+	type CronJobInfo,
+	type CronRunResult,
+	type ScheduleDeleteResult,
+	type ScheduleWriteResult,
+	type ScheduledJobCreateInput,
+	type ScheduledJobInfo,
+	type ScheduledJobUpdateInput,
+} from "@ktb/server-fns";
+
+export type { ScheduleDeleteResult, ScheduleWriteResult };
 
 /**
  * Cron console port: the read/run side of /platform/cron.
@@ -36,6 +47,20 @@ export class CronAdmin extends Context.Service<
 		readonly jobs: () => Effect.Effect<readonly CronJobInfo[] | null, Forbidden>;
 		readonly runs: () => Effect.Effect<readonly JobRecord[] | null, Forbidden>;
 		readonly runNow: (id: string) => Effect.Effect<CronRunNowResult, Forbidden>;
+		/** Runtime scheduler rows (scheduled_jobs) — null when the
+		 * capability is absent; mutation results carry their own
+		 * honest failure reasons. */
+		readonly schedules: () => Effect.Effect<readonly ScheduledJobInfo[] | null, Forbidden>;
+		readonly scheduleKinds: () => Effect.Effect<readonly string[] | null, Forbidden>;
+		readonly createSchedule: (
+			input: ScheduledJobCreateInput,
+		) => Effect.Effect<ScheduleWriteResult, Forbidden>;
+		readonly updateSchedule: (
+			id: string,
+			patch: ScheduledJobUpdateInput,
+		) => Effect.Effect<ScheduleWriteResult, Forbidden>;
+		readonly deleteSchedule: (id: string) => Effect.Effect<ScheduleDeleteResult, Forbidden>;
+		readonly runScheduleNow: (id: string) => Effect.Effect<CronRunNowResult, Forbidden>;
 	}
 >()("@ktb/cron/CronAdmin") {}
 
@@ -91,6 +116,94 @@ export const CronAdminLive = Layer.effect(
 							} catch {
 								return { ok: false, reason: "run-failed", error: "dispatch failed" };
 							}
+							if (result === null) return { ok: false, reason: "unknown-job" };
+							return result.ok
+								? { ok: true, summary: result.summary }
+								: { ok: false, reason: "run-failed", error: result.error };
+						}),
+					),
+				),
+			schedules: () =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<readonly ScheduledJobInfo[] | null> => {
+							try {
+								const capability = getServerRuntime().schedules;
+								return capability === undefined ? null : await capability.list();
+							} catch {
+								return null;
+							}
+						}),
+					),
+				),
+			scheduleKinds: () =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<readonly string[] | null> => {
+							try {
+								const read = getServerRuntime().jobKinds;
+								return read === undefined ? null : read();
+							} catch {
+								return null;
+							}
+						}),
+					),
+				),
+			createSchedule: (input) =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<ScheduleWriteResult> => {
+							try {
+								const capability = getServerRuntime().schedules;
+								if (capability === undefined) return { ok: false, reason: "unavailable" };
+								return await capability.create(input);
+							} catch {
+								return { ok: false, reason: "unavailable" };
+							}
+						}),
+					),
+				),
+			updateSchedule: (id, patch) =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<ScheduleWriteResult> => {
+							try {
+								const capability = getServerRuntime().schedules;
+								if (capability === undefined) return { ok: false, reason: "unavailable" };
+								return await capability.update(id, patch);
+							} catch {
+								return { ok: false, reason: "unavailable" };
+							}
+						}),
+					),
+				),
+			deleteSchedule: (id) =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<ScheduleDeleteResult> => {
+							try {
+								const capability = getServerRuntime().schedules;
+								if (capability === undefined) return { ok: false, reason: "unavailable" };
+								return await capability.remove(id);
+							} catch {
+								return { ok: false, reason: "unavailable" };
+							}
+						}),
+					),
+				),
+			runScheduleNow: (id) =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<CronRunNowResult> => {
+							let capability: NonNullable<ReturnType<typeof getServerRuntime>["schedules"]>;
+							try {
+								const found = getServerRuntime().schedules;
+								if (found === undefined) return { ok: false, reason: "unavailable" };
+								capability = found;
+							} catch {
+								return { ok: false, reason: "unavailable" };
+							}
+							const result = await capability.runNow(id).catch(() => null);
 							if (result === null) return { ok: false, reason: "unknown-job" };
 							return result.ok
 								? { ok: true, summary: result.summary }
