@@ -83,6 +83,7 @@ export const refIdOf = (entry: string | ContributionRef): string =>
 
 /** The declared config of a ref entry — `undefined` for bare ids. */
 export const refConfigOf = (entry: string | ContributionRef): JsonObject | undefined =>
+	// Stryker disable next-line ConditionalExpression,StringLiteral: `entry.config` on a string primitive is undefined — identical to the string branch (probe-verified).
 	typeof entry === "string" ? undefined : entry.config;
 
 /** One gate invocation — EITHER a registered gate id (`id`, with

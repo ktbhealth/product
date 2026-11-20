@@ -59,4 +59,10 @@ describe("toEvalContribution", () => {
 		const c = toEvalContribution({ ...entry(), validateConfig } as PluginContribution);
 		expect(c?.validateConfig).toBe(validateConfig);
 	});
+
+	it("omits the validateConfig key entirely when the entry declares none", () => {
+		const c = toEvalContribution(entry());
+		expect(c).toBeDefined();
+		expect("validateConfig" in (c ?? {})).toBe(false);
+	});
 });

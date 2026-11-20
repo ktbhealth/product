@@ -72,13 +72,30 @@ describe("buildStagePlan", () => {
 	});
 
 	it("rejects dependency cycles", () => {
-		expect(() =>
+		try {
 			buildStagePlan([
 				{ id: "a", needs: ["c"] },
 				{ id: "b", needs: ["a"] },
 				{ id: "c", needs: ["b"] },
-			]),
-		).toThrowError(/dependency cycle/);
+			]);
+			expect.unreachable("should have thrown");
+		} catch (e) {
+			expect(e).toBeInstanceOf(StageGraphError);
+			expect(e).toMatchObject({ _tag: "StageGraphError" });
+			expect((e as StageGraphError).message).toBe("stage graph has a dependency cycle");
+			// The detail names the stuck nodes — the cycle diagnostic.
+			expect((e as StageGraphError).detail).toBe("stuck: a, b, c");
+		}
+	});
+
+	it("errors without detail omit the key entirely", () => {
+		try {
+			buildStagePlan(["a", "a"]);
+			expect.unreachable("should have thrown");
+		} catch (e) {
+			expect(e).toMatchObject({ _tag: "StageGraphError" });
+			expect("detail" in (e as object)).toBe(false);
+		}
 	});
 });
 
@@ -223,7 +240,13 @@ describe("runStageGraph", () => {
 			}),
 		);
 		expect(outcomes[0]!.status).toBe("failed");
-		expect(outcomes[0]!.error).toBeInstanceOf(UnknownConditionError);
+		const err = outcomes[0]!.error;
+		expect(err).toBeInstanceOf(UnknownConditionError);
+		expect(err).toMatchObject({
+			_tag: "UnknownConditionError",
+			condition: "ghost",
+			stage: "a",
+		});
 	});
 
 	it("a throwing condition evaluator surfaces as a BatchDefect outcome", async () => {
@@ -240,6 +263,9 @@ describe("runStageGraph", () => {
 		);
 		expect(outcomes[0]!.status).toBe("failed");
 		expect(outcomes[0]!.error).toBeInstanceOf(BatchDefect);
+		expect(outcomes[0]!.error).toMatchObject({ _tag: "BatchDefect" });
+		expect((outcomes[0]!.error as BatchDefect).message).toContain("eval boom");
+		expect((outcomes[0]!.error as BatchDefect).defect).toBeInstanceOf(Error);
 	});
 
 	it("a step defect becomes a BatchDefect outcome, not a crash", async () => {
@@ -251,8 +277,65 @@ describe("runStageGraph", () => {
 		);
 		expect(outcomes[0]!.status).toBe("failed");
 		expect(outcomes[0]!.error).toBeInstanceOf(BatchDefect);
+		expect(outcomes[0]!.error).toMatchObject({ _tag: "BatchDefect" });
+		expect((outcomes[0]!.error as BatchDefect).message).toContain("defect");
 		// "b" depends on "a" (linear default) → skipped.
 		expect(outcomes[1]!.status).toBe("skipped");
+	});
+
+	it("a typed step failure surfaces the typed error, not a BatchDefect", async () => {
+		const failure = new Error("boom");
+		const outcomes = await Effect.runPromise(
+			runStageGraph({
+				entries: ["a", { id: "b", needs: [] }],
+				run: (n) => (n.id === "a" ? Effect.fail(failure) : Effect.succeed("ok")),
+			}),
+		);
+		expect(outcomes[0]!.status).toBe("failed");
+		expect(outcomes[0]!.error).toBe(failure);
+		expect(outcomes[0]!.error).not.toBeInstanceOf(BatchDefect);
+	});
+
+	it("honors the concurrency bound within a level", async () => {
+		let inFlight = 0;
+		let maxInFlight = 0;
+		const outcomes = await Effect.runPromise(
+			runStageGraph({
+				entries: [
+					{ id: "a", needs: [] },
+					{ id: "b", needs: [] },
+					{ id: "c", needs: [] },
+					{ id: "d", needs: [] },
+				],
+				concurrency: 2,
+				run: (n) =>
+					Effect.gen(function* () {
+						inFlight++;
+						maxInFlight = Math.max(maxInFlight, inFlight);
+						yield* Effect.sleep("30 millis");
+						inFlight--;
+						return n.id;
+					}),
+			}),
+		);
+		expect(outcomes.every((o) => o.status === "ok")).toBe(true);
+		expect(maxInFlight).toBe(2);
+	});
+
+	it("a skipped OPTIONAL dependency still blocks its dependents", async () => {
+		const outcomes = await Effect.runPromise(
+			runStageGraph({
+				entries: [
+					{ id: "a", when: { condition: "never" } },
+					{ id: "b", needs: ["a"], optional: true },
+					{ id: "c", needs: ["b"] },
+				],
+				run: () => Effect.succeed("x"),
+				conditions: builtinConditions,
+			}),
+		);
+		expect(statuses(outcomes)).toEqual({ a: "skipped", b: "skipped", c: "skipped" });
+		expect(outcomes[2]!.reason).toBe('dependency "b" skipped');
 	});
 });
 
@@ -279,6 +362,15 @@ describe("builtinConditions", () => {
 		expect(builtinConditions.nonempty!({ ...ctx, params: {} })).toBe(false);
 		expect(builtinConditions.nonempty!({ ...ctx, params: { key: 42 } })).toBe(false);
 		expect(builtinConditions.nonempty!({ ...ctx, params: undefined })).toBe(false);
+		// A non-string key is rejected even if outputs holds that exact
+		// (non-string) key — stage ids are always strings.
+		const numericOutputs = new Map<unknown, unknown>([[42, "x"]]);
+		expect(
+			builtinConditions.nonempty!({
+				params: { key: 42 },
+				outputs: numericOutputs as never,
+			}),
+		).toBe(false);
 	});
 
 	it("always/never are constant", () => {
@@ -298,6 +390,10 @@ describe("builtinConditionContributions (P-078)", () => {
 			"eval.condition:always",
 			"eval.condition:never",
 		]);
+		for (const c of builtinConditionContributions) {
+			expect(c.version).toBe("1");
+			expect(c.meta).toEqual({ builtin: true });
+		}
 	});
 
 	it("nonempty requires a string key param and rejects unknown keys", () => {
@@ -307,9 +403,23 @@ describe("builtinConditionContributions (P-078)", () => {
 			error: 'condition param "key" must be a non-empty string',
 		});
 		expect(v({ key: "stage" })).toEqual({ ok: true, config: { key: "stage" } });
-		expect(v({ key: 1 })).toMatchObject({ ok: false });
-		expect(v({ key: "s", extra: 1 })).toMatchObject({ ok: false });
+		expect(v({ key: 1 })).toEqual({
+			ok: false,
+			error: 'condition param "key" must be a non-empty string',
+		});
+		// An empty-string key is just as invalid as a missing one.
+		expect(v({ key: "" })).toEqual({
+			ok: false,
+			error: 'condition param "key" must be a non-empty string',
+		});
+		expect(v({ key: "s", extra: 1 })).toEqual({
+			ok: false,
+			error: 'unknown condition param "extra" (known: key)',
+		});
 		expect(v("nope")).toEqual({ ok: false, error: "condition params must be a JSON object" });
+		expect(v(null)).toEqual({ ok: false, error: "condition params must be a JSON object" });
+		// Arrays are not JSON objects for params purposes.
+		expect(v([1, 2])).toEqual({ ok: false, error: "condition params must be a JSON object" });
 	});
 
 	it("always/never reject any declared params", () => {
@@ -317,7 +427,10 @@ describe("builtinConditionContributions (P-078)", () => {
 			const v = validator(id);
 			expect(v(undefined)).toEqual({ ok: true, config: {} });
 			expect(v({})).toEqual({ ok: true, config: {} });
-			expect(v({ anything: 1 })).toMatchObject({ ok: false });
+			expect(v({ anything: 1 })).toEqual({
+				ok: false,
+				error: 'unknown condition param "anything" (known: none)',
+			});
 		}
 	});
 });

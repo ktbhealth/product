@@ -19,6 +19,16 @@ describe("runBatch — resilience", () => {
 		expect(r.ok).toEqual(["v-a", "v-b", "v-c"]);
 		expect(r.failed).toEqual([]);
 		expect(r.outcomes.every((o) => o.status === "ok" && o.attempts === 1)).toBe(true);
+		// Latency is a measured duration — finite, non-negative, and on
+		// the order of the step itself (a `Date.now() + start` mutant
+		// would report ~2×epoch milliseconds).
+		for (const o of r.outcomes) {
+			expect(Number.isFinite(o.latencyMs)).toBe(true);
+			expect(o.latencyMs).toBeGreaterThanOrEqual(0);
+			expect(o.latencyMs).toBeLessThan(60_000);
+		}
+		expect(Number.isFinite(r.latencyMs)).toBe(true);
+		expect(r.latencyMs).toBeLessThan(60_000);
 	});
 
 	it("isolates failures — one error never aborts siblings", async () => {
@@ -50,6 +60,7 @@ describe("runBatch — resilience", () => {
 		expect(bad.status).toBe("failed");
 		expect(bad.error).toBeInstanceOf(BatchDefect);
 		expect(bad.error?.message).toBe("kaput");
+		expect(bad.error?._tag).toBe("BatchDefect");
 		// Defects bypass the retry schedule — they are not typed errors.
 		expect(bad.attempts).toBe(1);
 	});
