@@ -509,6 +509,145 @@ describe("makeJobConsumer", () => {
 		expect(rows[0]!.status).toBe("done");
 	});
 
+	it("bounds same-kind concurrency and overlaps different kinds", async () => {
+		const { db } = makeTestDb();
+		const inflight = new Map<string, number>();
+		const maxSeen = new Map<string, number>();
+		const track = (kind: string) => async (): Promise<void> => {
+			const cur = (inflight.get(kind) ?? 0) + 1;
+			inflight.set(kind, cur);
+			maxSeen.set(kind, Math.max(maxSeen.get(kind) ?? 0, cur));
+			await new Promise((resolve) => setTimeout(resolve, 5));
+			inflight.set(kind, cur - 1);
+		};
+		const consumer = makeJobConsumer({
+			handlers: {
+				"a.one": { handle: track("a.one"), concurrency: 2 },
+				"b.two": { handle: track("b.two") },
+				"c.three": { handle: track("c.three") },
+			},
+			db,
+		});
+		const log: string[] = [];
+		await consumer([
+			msg(envelope({ id: "a1", kind: "a.one" }), log),
+			msg(envelope({ id: "a2", kind: "a.one" }), log),
+			msg(envelope({ id: "a3", kind: "a.one" }), log),
+			msg(envelope({ id: "b1", kind: "b.two" }), log),
+			msg(envelope({ id: "c1", kind: "c.three" }), log),
+			msg(envelope({ id: "c2", kind: "c.three" }), log),
+		]);
+		// a.one peaks at its declared limit of 2; default kinds stay serial.
+		expect(maxSeen.get("a.one")).toBe(2);
+		expect(maxSeen.get("b.two")).toBe(1);
+		expect(maxSeen.get("c.three")).toBe(1);
+		expect(log.filter((e) => e === "ack")).toHaveLength(6);
+	});
+
+	it("acks as exhausted once attempts reach the ceiling", async () => {
+		const { db } = makeTestDb();
+		const consumer = makeJobConsumer({
+			handlers: {
+				"test.ping": {
+					handle: async () => {
+						throw new Error("boom");
+					},
+				},
+				"test.strict": {
+					maxAttempts: 2,
+					handle: async () => {
+						throw new Error("boom");
+					},
+				},
+			},
+			db,
+		});
+		const log: string[] = [];
+		const attempt = (id: string, kind: string, attempts: number): JobMessageLike => ({
+			body: envelope({ id, kind }),
+			attempts,
+			ack: () => log.push("ack"),
+			retry: () => log.push("retry"),
+		});
+		await consumer([
+			attempt("early", "test.ping", 2), // below default ceiling (5) → retry
+			attempt("last", "test.ping", 5), // at ceiling → ack exhausted
+			attempt("strict", "test.strict", 2), // kind override → ack exhausted
+		]);
+		// Kinds overlap — assert the outcome multiset, not ordering.
+		expect([...log].sort()).toEqual(["ack", "ack", "retry"]);
+		expect(await getJobRun(db, "early")).toMatchObject({ status: "failed", error: "Error: boom" });
+		expect(await getJobRun(db, "last")).toMatchObject({
+			status: "failed",
+			error: "attempts exhausted (5/5): Error: boom",
+		});
+		expect(await getJobRun(db, "strict")).toMatchObject({
+			status: "failed",
+			error: "attempts exhausted (2/2): Error: boom",
+		});
+	});
+
+	it("honors a consumer-level maxAttempts override", async () => {
+		const consumer = makeJobConsumer({
+			handlers: {
+				"test.ping": {
+					handle: async () => {
+						throw new Error("boom");
+					},
+				},
+			},
+			maxAttempts: 3,
+		});
+		const log: string[] = [];
+		await consumer([
+			{
+				body: envelope(),
+				attempts: 3,
+				ack: () => log.push("ack"),
+				retry: () => log.push("retry"),
+			},
+		]);
+		expect(log).toEqual(["ack"]);
+	});
+
+	it("skips redelivery for idempotent kinds whose run is already done", async () => {
+		const { db } = makeTestDb();
+		await insertJobRun(db, { id: "env-done", kind: "test.ping", status: "done" });
+		await insertJobRun(db, { id: "env-failed", kind: "test.ping", status: "failed" });
+		const handle = vi.fn<(payload: unknown, envelope: JobEnvelope) => Promise<void>>(
+			async () => {},
+		);
+		const consumer = makeJobConsumer({
+			handlers: { "test.ping": { handle, idempotent: true } },
+			db,
+		});
+		const log: string[] = [];
+		await consumer([
+			msg(envelope({ id: "env-done" }), log),
+			msg(envelope({ id: "env-failed" }), log),
+			msg(envelope({ id: "env-new" }), log),
+		]);
+		// The done row is acked untouched; failed and absent rows dispatch.
+		expect(log).toEqual(["ack", "ack", "ack"]);
+		expect(handle).toHaveBeenCalledTimes(2);
+	});
+
+	it("still dispatches idempotent kinds when the projection read fails", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		const handle = vi.fn<(payload: unknown, envelope: JobEnvelope) => Promise<void>>(
+			async () => {},
+		);
+		const consumer = makeJobConsumer({
+			handlers: { "test.ping": { handle, idempotent: true } },
+			db: {} as never,
+		});
+		const log: string[] = [];
+		await consumer([msg(envelope(), log)]);
+		expect(log).toEqual(["ack"]);
+		expect(handle).toHaveBeenCalledTimes(1);
+		warn.mockRestore();
+	});
+
 	it("runs without a db (no projection) and survives projection failures", async () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		const consumer = makeJobConsumer({
