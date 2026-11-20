@@ -469,6 +469,55 @@ describe("listThemeFontSourcesFn", () => {
 		}
 	});
 
+	it("exposes validated catalog meta.axes on source options", async () => {
+		useSession("admin");
+		catalogState.entries = [
+			catalogEntry({
+				kind: "local",
+				providerName: "Local",
+				family: "Var Sans",
+				meta: {
+					assetId: 12,
+					axes: [
+						{ tag: "slnt", min: -9, default: -2, max: 0 },
+						// wght is owned by weightAxis — dropped.
+						{ tag: "wght", min: 100, default: 400, max: 900 },
+						{ tag: "opsz", min: 6, default: 14, max: 72 },
+						{ tag: "bad", min: 0, default: 1, max: 2 },
+						{ tag: "XXXX", min: "x", default: 1, max: 2 },
+					],
+				},
+			}),
+			catalogEntry({ id: 2, family: "Static Sans", meta: { axes: "nope" } }),
+		];
+		installServerFnRuntime(catalogRuntime, authStub, runtimeOverrides);
+		try {
+			expect(await listThemeFontSourcesFn()).toEqual([
+				{
+					providerId: 7,
+					providerName: "Local",
+					providerKind: "local",
+					family: "Var Sans",
+					weights: [400, 700],
+					axes: [
+						{ tag: "slnt", min: -9, default: -2, max: 0 },
+						{ tag: "opsz", min: 6, default: 14, max: 72 },
+					],
+				},
+				{
+					providerId: 7,
+					providerName: "Google",
+					providerKind: "googlefonts",
+					family: "Static Sans",
+					weights: [400, 700],
+				},
+			]);
+		} finally {
+			installServerFnRuntime(runtime, authStub, runtimeOverrides);
+			catalogState.entries = [];
+		}
+	});
+
 	it("degrades a failing catalog read to an empty list", async () => {
 		useSession("admin");
 		catalogState.fail = true;

@@ -21,8 +21,20 @@
 
 import { googleFontCssHref } from "@ktb/fonts/adapters/googlefonts";
 
-import { fontCssVars, fontFaceCss, fontVariationSettingsForSlot } from "./present.ts";
-import type { ThemeFontConfig, ThemeFontSlot, ThemeFontSourceOption } from "./types.ts";
+import {
+	fontAxesForFamily,
+	fontCssVars,
+	fontFaceCss,
+	fontVariationSettingsForAxes,
+	pinnableFontAxes,
+	themeFontAxes,
+} from "./present.ts";
+import type {
+	ThemeFontAxis,
+	ThemeFontConfig,
+	ThemeFontSlot,
+	ThemeFontSourceOption,
+} from "./types.ts";
 
 const FONT_PREVIEW_SLOTS = ["sans", "heading", "mono"] as const satisfies readonly ThemeFontSlot[];
 
@@ -42,10 +54,15 @@ interface FontPreviewSlot {
 	readonly family: string | null;
 	/** CSS font-family stack for the specimen ("" = inherit the page). */
 	readonly fontFamily: string;
-	/** `font-variation-settings` value pinning the family's non-wght/
-	 * non-wdth fvar axes at their defaults ("" = none — specimens
-	 * apply it inline since they sit outside the emitted slot rules). */
+	/** `font-variation-settings` value for the slot — stored-asset
+	 * axis defaults merged with the slot's `axisSettings` pins and
+	 * managed catalog `meta.axes` ("" = none — specimens apply it
+	 * inline since they sit outside the emitted slot rules). */
 	readonly fontVariationSettings: string;
+	/** Pinnable variable-font axes of the slot's resolved family —
+	 * drives the editor's per-axis pin inputs (empty = static font
+	 * or unknown metadata). */
+	readonly axes: readonly ThemeFontAxis[];
 	/** Candidate weights for the specimen weight switcher. */
 	readonly weights: readonly number[];
 }
@@ -66,6 +83,17 @@ export interface FontPreviewPersisted {
 	readonly faceCss?: string;
 	readonly delivery?: ThemeFontConfig["delivery"] | null;
 }
+
+/** Union two axis lists by tag — first list wins on duplicates
+ * (stored asset faces precede catalog meta, mirroring publish). */
+const mergeAxes = (
+	primary: readonly ThemeFontAxis[],
+	extra: readonly ThemeFontAxis[],
+): ThemeFontAxis[] => {
+	if (extra.length === 0) return [...primary];
+	const seen = new Set(primary.map((axis) => axis.tag));
+	return [...primary, ...extra.filter((axis) => !seen.has(axis.tag))];
+};
 
 /** Sorted, deduped, range-checked weight list; empty input falls back
  * to the default stack (same tolerance as googleFontLinks). */
@@ -122,6 +150,21 @@ export const fontPreviewModel = (
 	const vars = fontCssVars(effectiveFonts);
 	const freeWeights = previewWeights(fonts?.weights);
 
+	// Managed catalog `meta.axes` by family — the same fvar data the
+	// server stamps onto resolved self-host faces, available client-side
+	// through the source options so specimens AND pin inputs see the
+	// axes before publish. Stored `fonts.assets` axes take precedence
+	// per tag (they are what publish emits for unmanaged families).
+	const managedAxesByFamily = new Map<string, ThemeFontAxis[]>();
+	for (const option of matches.values()) {
+		const axes = pinnableFontAxes(themeFontAxes(option.axes));
+		if (axes.length === 0) continue;
+		managedAxesByFamily.set(
+			option.family,
+			mergeAxes(managedAxesByFamily.get(option.family) ?? [], axes),
+		);
+	}
+
 	// Resolved weights per slot: catalog weights win, then the theme's
 	// `fonts.weights`, then the default stack — the same precedence
 	// matchManagedFonts + presentTheme apply.
@@ -145,17 +188,26 @@ export const fontPreviewModel = (
 		const families = effectiveFonts?.families;
 		const free =
 			(families?.[slot] ?? (slot === "heading" ? families?.sans : undefined))?.trim() ?? "";
+		const family = option?.family ?? (free === "" ? null : free);
+		// Axes of the resolved family: stored self-host asset faces
+		// first, then catalog meta.axes for managed families (which may
+		// also inherit another slot's managed family — e.g. heading
+		// falling back to a managed sans).
+		const axes =
+			family === null
+				? []
+				: mergeAxes(fontAxesForFamily(fonts, family), managedAxesByFamily.get(family) ?? []);
 		return {
 			slot,
-			family: option?.family ?? (free === "" ? null : free),
+			family,
 			// `--font-body` mirrors `--font-sans` (fontCssVars alias) —
 			// same lookup the Tokens-tab specimens use.
 			fontFamily: vars[slot === "sans" ? "--font-body" : `--font-${slot}`] ?? "",
-			// Same slot→family→axes resolution the emitted style block
-			// uses; managed catalog faces resolve server-side so their
-			// axes stay "" here until publish (same honesty rule as
-			// faceCss above).
-			fontVariationSettings: fontVariationSettingsForSlot(effectiveFonts, slot),
+			// Same slot→family→axes→pins resolution the emitted style
+			// block uses, computed from the union above so managed
+			// catalog axes apply before publish too.
+			fontVariationSettings: fontVariationSettingsForAxes(axes, fonts?.axisSettings?.[slot]),
+			axes,
 			weights,
 		};
 	});

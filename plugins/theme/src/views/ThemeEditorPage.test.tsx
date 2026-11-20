@@ -34,6 +34,7 @@ import type { PanelPageContext } from "@ktb/kernel";
 import type {
 	ResolvedTheme,
 	ThemeAssetSummary,
+	ThemeFontConfig,
 	ThemeFontSourceOption,
 	ThemeSummary,
 } from "../types.ts";
@@ -526,6 +527,97 @@ describe("ThemeEditorPage — typography section", () => {
 		expect(specimens[0]!.style.fontVariationSettings).toBe('"slnt" -2');
 		expect(specimens[1]!.style.fontVariationSettings).toBe('"slnt" -2');
 		expect(specimens[2]!.style.fontVariationSettings).toBe("");
+	});
+
+	it("pins variable-font axes per slot and publishes axisSettings", async () => {
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					delivery: "self-host",
+					families: { sans: "Var Sans" },
+					assets: {
+						"Var Sans": {
+							faces: [
+								{
+									url: "/v.woff2",
+									axes: [
+										{ tag: "slnt", min: -9, default: -2, max: 0 },
+										{ tag: "opsz", min: 6, default: 14, max: 72 },
+									],
+								},
+							],
+						},
+					},
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		// Per-slot pin inputs for the axes the resolved font declares
+		// (heading inherits the sans family → its own inputs; mono has
+		// no family → none).
+		const slnt = screen.getByLabelText("Sans slnt") as HTMLInputElement;
+		const opsz = screen.getByLabelText("Sans opsz") as HTMLInputElement;
+		expect(slnt.placeholder).toBe("-2");
+		expect(opsz.placeholder).toBe("14");
+		expect(screen.getByLabelText("Heading slnt")).toBeTruthy();
+		expect(screen.queryByLabelText("Mono slnt")).toBeNull();
+		// Sans + heading (inherits the family) both show the caption.
+		expect(screen.getAllByText("Variable axes")).toHaveLength(2);
+
+		await user.type(slnt, "-5");
+		// The live specimen picks the pin up immediately.
+		const specimens = (await screen.findAllByText("Aa Bb Cc 123")) as HTMLElement[];
+		expect(specimens[0]!.style.fontVariationSettings).toBe('"slnt" -5');
+
+		// Clearing the only pin drops the slot map (and axisSettings).
+		await user.clear(slnt);
+		await user.type(opsz, "20");
+		await user.click(screen.getByRole("button", { name: "Publish theme" }));
+		await waitFor(() => expect(fns.publishThemeFn).toHaveBeenCalled());
+		const fonts = fns.publishThemeFn.mock.calls[0]![0].data.fonts;
+		expect(fonts.axisSettings).toEqual({ sans: { opsz: 20 } });
+	});
+
+	it("shows axis inputs for managed sources with catalog axes", async () => {
+		fns.listThemeFontSourcesFn.mockResolvedValue([
+			{
+				providerId: 9,
+				providerName: "Local",
+				providerKind: "local",
+				family: "Brand Sans",
+				weights: [],
+				axes: [{ tag: "slnt", min: -9, default: -2, max: 0 }],
+			},
+		]);
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					// No `delivery` — stored JSON may predate the field; the
+					// pin setter must default it back to self-host.
+					sources: { sans: { providerId: 9, family: "Brand Sans" } },
+				} as ThemeFontConfig,
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+
+		const slnt = screen.getByLabelText("Sans slnt") as HTMLInputElement;
+		expect(slnt.placeholder).toBe("-2");
+		await user.type(slnt, "-3");
+		const specimens = (await screen.findAllByText("Aa Bb Cc 123")) as HTMLElement[];
+		expect(specimens[0]!.style.fontVariationSettings).toBe('"slnt" -3');
+
+		await user.click(screen.getByRole("button", { name: "Publish theme" }));
+		await waitFor(() => expect(fns.publishThemeFn).toHaveBeenCalled());
+		const fonts = fns.publishThemeFn.mock.calls[0]![0].data.fonts;
+		expect(fonts.axisSettings).toEqual({ sans: { slnt: -3 } });
+		expect(fonts.delivery).toBe("self-host");
 	});
 
 	it("builds font weights from scratch when the theme has none", async () => {

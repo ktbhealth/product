@@ -2107,6 +2107,7 @@ export type I18nKey =
 	| "theme.editorThemeLabel"
 	| "theme.emptyList"
 	| "theme.enable"
+	| "theme.fontAxesLabel"
 	| "theme.fontHeading"
 	| "theme.fontMono"
 	| "theme.fontPreviewLabel"
@@ -5117,6 +5118,7 @@ export interface I18nTypedT {
 	(key: "theme.editorThemeLabel"): Effect.Effect<string>;
 	(key: "theme.emptyList"): Effect.Effect<string>;
 	(key: "theme.enable"): Effect.Effect<string>;
+	(key: "theme.fontAxesLabel"): Effect.Effect<string>;
 	(key: "theme.fontHeading"): Effect.Effect<string>;
 	(key: "theme.fontMono"): Effect.Effect<string>;
 	(key: "theme.fontPreviewLabel"): Effect.Effect<string>;

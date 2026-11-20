@@ -318,6 +318,51 @@ function ManagedSourcePicker({
 	);
 }
 
+/**
+ * Single variable-font axis pin — a compact numeric input for one
+ * `axisSettings.<slot>.<tag>` value. Local text state keeps
+ * intermediate keystrokes ("-", "1.") editable while every parseable
+ * number commits immediately; empty text clears the pin. The effect
+ * re-syncs the draft when the committed value changes externally
+ * (theme reload).
+ */
+function AxisValueInput({
+	value,
+	onValue,
+	...rest
+}: {
+	readonly value: number | undefined;
+	readonly onValue: (value: number | undefined) => void;
+	readonly "aria-label"?: string;
+	readonly className?: string;
+	readonly placeholder?: string;
+}) {
+	const [text, setText] = useState(value === undefined ? "" : String(value));
+	const committed = useRef(value);
+	useEffect(() => {
+		if (value === committed.current) return;
+		committed.current = value;
+		setText(value === undefined ? "" : String(value));
+	}, [value]);
+	return (
+		<Input
+			{...rest}
+			value={text}
+			onChange={(e) => {
+				const raw = e.target.value;
+				setText(raw);
+				const trimmed = raw.trim();
+				if (trimmed === "") {
+					onValue(undefined);
+					return;
+				}
+				const parsed = Number(trimmed);
+				if (Number.isFinite(parsed)) onValue(parsed);
+			}}
+		/>
+	);
+}
+
 const SCOPE_ITEMS = [
 	"platform",
 	"tenant",
@@ -815,6 +860,36 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 			sources: { ...(f?.sources ?? {}), [slot]: source },
 		}));
 	};
+	// Pin/unpin one variable-font axis value for a slot — empty input
+	// clears the tag; empty slot maps are dropped so the stored JSON
+	// stays tidy (axisSettings rides fonts verbatim to publish).
+	const setFontAxisPin = (slot: ThemeFontSlot, tag: string, value: number | undefined) => {
+		mark();
+		setFonts((f) => {
+			// Pin inputs only render once a fonts draft exists (axes come
+			// from stored assets or catalog sources), so `f` is never null
+			// here — unlike the family/source setters above.
+			/* v8 ignore next -- unreachable: no axis input renders without a fonts draft */
+			const draft = (f ?? { delivery: "self-host" }) as ThemeFontConfig;
+			const axisSettings = { ...(draft.axisSettings ?? {}) };
+			const slotPins = { ...(axisSettings[slot] ?? {}) };
+			if (value === undefined) {
+				delete slotPins[tag];
+			} else {
+				slotPins[tag] = value;
+			}
+			if (Object.keys(slotPins).length === 0) {
+				delete axisSettings[slot];
+			} else {
+				axisSettings[slot] = slotPins;
+			}
+			return {
+				...draft,
+				delivery: draft.delivery ?? "self-host",
+				axisSettings: Object.keys(axisSettings).length === 0 ? undefined : axisSettings,
+			};
+		});
+	};
 	const setFontWeights = (raw: string) => {
 		mark();
 		const weights = raw
@@ -973,20 +1048,52 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 					<div className="space-y-1.5">
 						<Label>{t.fontsFamiliesLabel}</Label>
 						<div className="space-y-2">
-							{FONT_SLOT_ITEMS.map((slot) => (
-								<div key={slot} className="flex items-center gap-3">
-									<Label htmlFor={`font-${slot}`} className="w-24 shrink-0 text-xs">
-										{fontSlotLabel(slot, t)}
-									</Label>
-									<Input
-										id={`font-${slot}`}
-										value={fonts?.families?.[slot] ?? ""}
-										onChange={(e) => setFontFamilySlot(slot, e.target.value)}
-										placeholder="Inter, system-ui, sans-serif"
-										className="font-mono text-xs"
-									/>
-								</div>
-							))}
+							{fontPreview.slots.map((sp) => {
+								const slot = sp.slot;
+								const slotLabel = fontSlotLabel(slot, t);
+								// Pinnable axes of the slot's resolved family —
+								// stored asset faces ∪ managed catalog meta.axes
+								// resolved client-side by font-preview.
+								const axes = sp.axes;
+								return (
+									<div key={slot} className="space-y-1">
+										<div className="flex items-center gap-3">
+											<Label htmlFor={`font-${slot}`} className="w-24 shrink-0 text-xs">
+												{slotLabel}
+											</Label>
+											<Input
+												id={`font-${slot}`}
+												value={fonts?.families?.[slot] ?? ""}
+												onChange={(e) => setFontFamilySlot(slot, e.target.value)}
+												placeholder="Inter, system-ui, sans-serif"
+												className="font-mono text-xs"
+											/>
+										</div>
+										{axes.length > 0 ? (
+											<div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-[6.75rem]">
+												<span className="text-[10px] text-muted-foreground">{t.fontAxesLabel}</span>
+												{axes.map((axis) => (
+													<span key={axis.tag} className="inline-flex items-center gap-1">
+														<span
+															className="font-mono text-[10px] text-muted-foreground"
+															title={`${axis.min} – ${axis.max}`}
+														>
+															{axis.tag}
+														</span>
+														<AxisValueInput
+															aria-label={`${slotLabel} ${axis.tag}`}
+															value={fonts?.axisSettings?.[slot]?.[axis.tag]}
+															onValue={(n) => setFontAxisPin(slot, axis.tag, n)}
+															placeholder={String(axis.default)}
+															className="h-7 w-16 px-1.5 font-mono text-[11px]"
+														/>
+													</span>
+												))}
+											</div>
+										) : null}
+									</div>
+								);
+							})}
 						</div>
 					</div>
 					<div className="space-y-1.5">
