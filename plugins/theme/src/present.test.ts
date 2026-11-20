@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
 	fontFaceCss,
 	fontCssVars,
+	fontVariationCss,
+	fontVariationSettingsForSlot,
 	googleFontLinks,
 	presentTheme,
 	themeStyleCss,
 } from "./present.ts";
 import type { ThemeDefinitionRow } from "./present.ts";
+import type { ThemeFontConfig, ThemeFontFace } from "./types.ts";
 import { themeHead, themeAssets, themeTitle } from "./head.ts";
 
 const row = (overrides: Partial<ThemeDefinitionRow> = {}): ThemeDefinitionRow => ({
@@ -680,5 +683,227 @@ describe("presentTheme — managed font cascade", () => {
 			{ managed: [{ providerId: 7, family: "Inter", kind: "googlefonts", weights: [] }] },
 		);
 		expect(theme.fontLinks[0]).toContain("wght@400;500;600;700");
+	});
+});
+
+describe("font-variation-settings emission", () => {
+	const assetWithAxes = (axes: ThemeFontFace["axes"]): ThemeFontConfig => ({
+		delivery: "self-host" as const,
+		families: { sans: "Var Sans", mono: "Var Mono" },
+		assets: {
+			"Var Sans": { faces: [{ url: "/s.woff2", weightRange: [100, 900] as const, axes }] },
+			"Var Mono": {
+				faces: [
+					{ url: "/m1.woff2", axes },
+					// Subset sibling carries the same axes — dup tags collapse.
+					{ url: "/m2.woff2", axes },
+				],
+			},
+		},
+	});
+
+	it("returns empty output without config, families or axes", () => {
+		expect(fontVariationCss(null)).toBe("");
+		expect(fontVariationCss({ delivery: "self-host" })).toBe("");
+		expect(
+			fontVariationCss({
+				delivery: "self-host",
+				families: { sans: "Missing" },
+				assets: {
+					Other: {
+						faces: [{ url: "/o.woff2", axes: [{ tag: "slnt", min: -9, default: 0, max: 0 }] }],
+					},
+				},
+			}),
+		).toBe("");
+		// Bare-string assets carry no face metadata.
+		expect(
+			fontVariationCss({
+				delivery: "self-host",
+				families: { sans: "Plain" },
+				assets: { Plain: "/p.woff2" },
+			}),
+		).toBe("");
+		// Non-string / blank family names are skipped.
+		expect(
+			fontVariationCss({
+				delivery: "self-host",
+				families: { sans: 42 as never, heading: "   ", mono: null },
+			}),
+		).toBe("");
+	});
+
+	it("pins slnt and custom axes at their fvar defaults per slot", () => {
+		const css = fontVariationCss(
+			assetWithAxes([
+				{ tag: "slnt", min: -12, default: -4.5, max: 0 },
+				{ tag: "XOPQ", min: 27, default: 88, max: 175 },
+			]),
+		);
+		const rules = css.split("\n");
+		// heading falls back to the sans family → same settings, own selectors.
+		expect(rules).toEqual([
+			"html,body,.font-sans,.font-body,.font-geist{font-variation-settings:'slnt' -4.5, 'XOPQ' 88;}",
+			"h1,h2,h3,h4,h5,h6,.font-heading{font-variation-settings:'slnt' -4.5, 'XOPQ' 88;}",
+			"code,pre,.font-mono,.font-geist-mono{font-variation-settings:'slnt' -4.5, 'XOPQ' 88;}",
+		]);
+	});
+
+	it("emits only the sans rule when heading/mono have no family", () => {
+		const css = fontVariationCss({
+			delivery: "self-host",
+			families: { sans: "Var Sans" },
+			assets: {
+				"Var Sans": {
+					faces: [{ url: "/s.woff2", axes: [{ tag: "slnt", min: -9, default: 0, max: 9 }] }],
+				},
+			},
+		});
+		// heading inherits the sans family name, so it still emits; mono
+		// has no family → skipped.
+		expect(css.split("\n")).toHaveLength(2);
+		expect(css).not.toContain("font-mono");
+	});
+
+	it("skips axes owned by other CSS mechanisms and degenerate/malformed entries", () => {
+		const css = fontVariationCss(
+			assetWithAxes([
+				// Owned by font-weight/font-stretch/font-optical-sizing/font-style.
+				{ tag: "wght", min: 100, default: 400, max: 900 },
+				{ tag: "wdth", min: 75, default: 100, max: 125 },
+				{ tag: "opsz", min: 6, default: 14, max: 72 },
+				{ tag: "ital", min: 0, default: 0, max: 1 },
+				// Degenerate (cannot vary) and inverted ranges.
+				{ tag: "slnt", min: 0, default: 0, max: 0 },
+				{ tag: "XXXX", min: 10, default: 5, max: 1 },
+				// Malformed: non-number bounds, non-finite, huge default.
+				{ tag: "YYYY", min: "a", default: 1, max: 2 },
+				{ tag: "ZZZZ", min: 0, default: NaN, max: 2 },
+				{ tag: "WWWW", min: 0, default: Infinity, max: 2 },
+				{ tag: "VVVV", min: 0, default: 2e6, max: 3e6 },
+				// Duplicate tag — first valid wins (the -3 entry below
+				// is skipped by `seen`).
+				{ tag: "slnt", min: -9, default: -3, max: 0 },
+				{ tag: "slnt", min: -9, default: 9, max: 9 },
+				// Junk entries and bad tags.
+				"junk",
+				null,
+				{ tag: "sl", min: 0, default: 1, max: 2 },
+				{ tag: "toolong", min: 0, default: 1, max: 2 },
+				{ tag: 7, min: 0, default: 1, max: 2 },
+				// The survivors (the second slnt is dropped — dup tag).
+				{ tag: "slnt", min: -9, default: -3.25, max: 0 },
+				{ tag: "GRAD", min: 0, default: 0.00001, max: 1 },
+			] as never),
+		);
+		const rules = css.split("\n");
+		expect(rules).toHaveLength(3);
+		for (const rule of rules) {
+			expect(rule).toContain("'slnt' -3");
+			expect(rule).toContain("'GRAD' 0");
+			expect(rule).not.toContain("wght");
+			expect(rule).not.toContain("wdth");
+			expect(rule).not.toContain("opsz");
+			expect(rule).not.toContain("ital");
+			expect(rule).not.toContain("XXXX");
+			expect(rule).not.toContain("YYYY");
+			expect(rule).not.toContain("ZZZZ");
+			expect(rule).not.toContain("WWWW");
+			expect(rule).not.toContain("VVVV");
+		}
+	});
+
+	it("returns empty when axes metadata is unusable", () => {
+		const fonts = {
+			delivery: "self-host" as const,
+			families: { sans: "Var" },
+			assets: {
+				Var: {
+					faces: [
+						{ url: "/a.woff2", axes: "nope" as never },
+						{ url: "/b.woff2" },
+						{ url: "/c.woff2", axes: [{ tag: "opsz", min: 6, default: 14, max: 72 }] },
+					],
+				},
+			},
+		};
+		expect(fontVariationCss(fonts)).toBe("");
+	});
+
+	it("fontVariationSettingsForSlot resolves per slot with heading fallback", () => {
+		const fonts = assetWithAxes([{ tag: "slnt", min: -9, default: -2, max: 0 }]);
+		expect(fontVariationSettingsForSlot(null, "sans")).toBe("");
+		expect(fontVariationSettingsForSlot(fonts, "sans")).toBe("'slnt' -2");
+		expect(fontVariationSettingsForSlot(fonts, "heading")).toBe("'slnt' -2");
+		expect(fontVariationSettingsForSlot(fonts, "mono")).toBe("'slnt' -2");
+		// Slot without a configured family → "".
+		expect(fontVariationSettingsForSlot({ delivery: "self-host" }, "mono")).toBe("");
+	});
+
+	it("themeStyleCss appends the rules after the token blocks", () => {
+		const css = themeStyleCss({
+			seeds: { primary: "#2563eb" },
+			fonts: assetWithAxes([{ tag: "slnt", min: -9, default: 0, max: 9 }]),
+		});
+		const lines = css.split("\n");
+		expect(lines[0]).toContain(":root{");
+		expect(lines[1]).toContain(".dark{");
+		expect(lines[2]).toContain("font-variation-settings:'slnt' 0");
+		expect(css).not.toContain("font-variation-settings:normal");
+	});
+
+	it("flows through presentTheme, including managed self-host assets", () => {
+		const fontsJson = {
+			delivery: "self-host",
+			families: { sans: "Var Sans" },
+			assets: {
+				"Var Sans": {
+					faces: [
+						{
+							url: "/s.woff2",
+							weightRange: [100, 900],
+							axes: [{ tag: "slnt", min: -9, default: -1, max: 0 }],
+						},
+					],
+				},
+			},
+		};
+		const theme = presentTheme(row({ fonts: JSON.stringify(fontsJson) }));
+		expect(theme.styleCss).toContain("font-variation-settings:'slnt' -1");
+		expect(theme.styleCss).toContain(".font-sans");
+		// The @font-face block stays descriptor-only.
+		expect(theme.fontFaceCss).toContain("font-weight:100 900");
+		expect(theme.fontFaceCss).not.toContain("font-variation-settings");
+
+		// Managed "local" source: axes on the resolved asset reach the
+		// slot rules even though the family name isn't in fonts.assets.
+		const managed = presentTheme(
+			row({
+				fonts: JSON.stringify({
+					delivery: "self-host",
+					sources: { mono: { providerId: 3, family: "Brand Mono" } },
+				}),
+			}),
+			{
+				managed: [
+					{
+						providerId: 3,
+						family: "Brand Mono",
+						kind: "local",
+						weights: [],
+						asset: {
+							faces: [
+								{
+									url: "/m.woff2",
+									axes: [{ tag: "XTRA", min: 0, default: 400, max: 800 }],
+								},
+							],
+						},
+					},
+				],
+			},
+		);
+		expect(managed.styleCss).toContain("font-variation-settings:'XTRA' 400");
+		expect(managed.styleCss).toContain(".font-mono");
 	});
 });

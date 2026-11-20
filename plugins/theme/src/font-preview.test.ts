@@ -240,3 +240,45 @@ describe("fontPreviewModel", () => {
 		expect(model.links).toEqual([googleFontCssHref("Inter", [400, 700])]);
 	});
 });
+
+describe("fontVariationSettings", () => {
+	it("resolves per-slot axis defaults from stored self-host assets", () => {
+		const fonts: ThemeFontConfig = {
+			delivery: "self-host",
+			families: { sans: "Var Sans", mono: "Var Mono" },
+			assets: {
+				"Var Sans": {
+					faces: [
+						{
+							url: "/v.woff2",
+							axes: [
+								{ tag: "slnt", min: -9, default: -2, max: 0 },
+								// opsz stays browser-managed — never emitted.
+								{ tag: "opsz", min: 6, default: 14, max: 72 },
+							],
+						},
+					],
+				},
+			},
+		};
+		const model = fontPreviewModel(fonts, []);
+		expect(slot(model, "sans").fontVariationSettings).toBe("'slnt' -2");
+		// Heading falls back to the sans family → same settings.
+		expect(slot(model, "heading").fontVariationSettings).toBe("'slnt' -2");
+		// Mono family has no stored asset → nothing.
+		expect(slot(model, "mono").fontVariationSettings).toBe("");
+	});
+
+	it("is empty for managed sources and unset slots", () => {
+		const model = fontPreviewModel(
+			{
+				delivery: "self-host",
+				sources: { sans: { providerId: 7, family: "Inter" } },
+			},
+			SOURCES,
+		);
+		// Managed catalog faces resolve server-side — no client axes.
+		expect(slot(model, "sans").fontVariationSettings).toBe("");
+		expect(slot(model, "mono").fontVariationSettings).toBe("");
+	});
+});

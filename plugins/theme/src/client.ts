@@ -146,6 +146,8 @@ export {
 	fontCssVars,
 	googleFontLinks,
 	fontFaceCss,
+	fontVariationCss,
+	fontVariationSettingsForSlot,
 } from "./present.ts";
 export { themeHead, themeAssets, themeTitle } from "./head.ts";
 export type { ThemeHead } from "./head.ts";

@@ -71,7 +71,7 @@ import {
 import { fontPreviewModel } from "../font-preview.ts";
 import { themeMessages, type ThemeMessages } from "../i18n.ts";
 import { contrastReport, deriveThemeTokens, themeRadius, type ContrastPair } from "../palette.ts";
-import { fontCssVars } from "../present.ts";
+import { fontCssVars, fontVariationSettingsForSlot } from "../present.ts";
 import type {
 	ResolvedTheme,
 	ThemeAssetKind,
@@ -1023,6 +1023,8 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 												style={{
 													fontFamily: sp.fontFamily === "" ? undefined : sp.fontFamily,
 													fontWeight: weight,
+													fontVariationSettings:
+														sp.fontVariationSettings === "" ? undefined : sp.fontVariationSettings,
 												}}
 											>
 												Aa Bb Cc 123
@@ -1032,6 +1034,8 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 												style={{
 													fontFamily: sp.fontFamily === "" ? undefined : sp.fontFamily,
 													fontWeight: weight,
+													fontVariationSettings:
+														sp.fontVariationSettings === "" ? undefined : sp.fontVariationSettings,
 												}}
 											>
 												{t.fontPreviewText}
@@ -1396,7 +1400,10 @@ export function ThemeEditorPage({ ctx }: { ctx: PanelPageContext }) {
 									<p className="text-xs text-muted-foreground">{fontSlotLabel(slot, t)}</p>
 									<p
 										className="text-lg"
-										style={{ fontFamily: fontVars[`--font-${slot === "sans" ? "body" : slot}`] }}
+										style={{
+											fontFamily: fontVars[`--font-${slot === "sans" ? "body" : slot}`],
+											fontVariationSettings: fontVariationSettingsForSlot(fonts, slot) || undefined,
+										}}
 									>
 										{sample}
 									</p>

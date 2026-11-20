@@ -21,7 +21,7 @@
 
 import { googleFontCssHref } from "@ktb/fonts/adapters/googlefonts";
 
-import { fontCssVars, fontFaceCss } from "./present.ts";
+import { fontCssVars, fontFaceCss, fontVariationSettingsForSlot } from "./present.ts";
 import type { ThemeFontConfig, ThemeFontSlot, ThemeFontSourceOption } from "./types.ts";
 
 const FONT_PREVIEW_SLOTS = ["sans", "heading", "mono"] as const satisfies readonly ThemeFontSlot[];
@@ -42,6 +42,10 @@ interface FontPreviewSlot {
 	readonly family: string | null;
 	/** CSS font-family stack for the specimen ("" = inherit the page). */
 	readonly fontFamily: string;
+	/** `font-variation-settings` value pinning the family's non-wght/
+	 * non-wdth fvar axes at their defaults ("" = none — specimens
+	 * apply it inline since they sit outside the emitted slot rules). */
+	readonly fontVariationSettings: string;
 	/** Candidate weights for the specimen weight switcher. */
 	readonly weights: readonly number[];
 }
@@ -147,6 +151,11 @@ export const fontPreviewModel = (
 			// `--font-body` mirrors `--font-sans` (fontCssVars alias) —
 			// same lookup the Tokens-tab specimens use.
 			fontFamily: vars[slot === "sans" ? "--font-body" : `--font-${slot}`] ?? "",
+			// Same slot→family→axes resolution the emitted style block
+			// uses; managed catalog faces resolve server-side so their
+			// axes stay "" here until publish (same honesty rule as
+			// faceCss above).
+			fontVariationSettings: fontVariationSettingsForSlot(effectiveFonts, slot),
 			weights,
 		};
 	});

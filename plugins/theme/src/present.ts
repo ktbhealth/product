@@ -14,6 +14,7 @@ import type {
 	ThemeBrand,
 	ThemeFontAsset,
 	ThemeFontAssetValue,
+	ThemeFontAxis,
 	ThemeFontConfig,
 	ThemeFontFace,
 	ThemeFontSlot,
@@ -212,6 +213,152 @@ const fontStretchDescriptor = (axes: ThemeFontFace["axes"]): string => {
 	return "";
 };
 
+/** Registered fvar axis tags are 4 alphanumeric chars; anything else
+ * is dropped rather than risk emitting an invalid `font-variation-settings`
+ * <string> (stored axes are untrusted JSON). */
+const FONT_AXIS_TAG = /^[A-Za-z0-9]{4}$/;
+
+/**
+ * Axes owned by other CSS font mechanisms — never pinned through
+ * `font-variation-settings`:
+ * - `wght` → the `font-weight` descriptor/range on `@font-face`
+ * - `wdth` → the `font-stretch` descriptor on `@font-face`
+ * - `opsz` → `font-optical-sizing: auto` (the default) already applies
+ *   it per element; pinning the fvar default would DISABLE that auto
+ *   behavior
+ * - `ital` → `font-style` matching drives it; pinning the fvar default
+ *   would break `font-style: italic` (and `normal`) on the family
+ */
+const FVS_OWNED_TAGS: ReadonlySet<string> = new Set(["wght", "wdth", "opsz", "ital"]);
+
+/**
+ * Serialize one axis value for `font-variation-settings` — the fvar
+ * parser's 4-decimal precision, exponent-free (CSS <number> has no
+ * exponent notation). Values beyond ±1e6 are treated as corrupt.
+ */
+const fvsNumber = (value: number): string | null => {
+	// Values beyond ±1e6 are treated as corrupt; the 4-decimal round
+	// (the fvar parser's own precision) keeps String() out of exponent
+	// notation, which CSS <number> rejects. -0 serializes as "0".
+	if (Math.abs(value) > 1e6) return null;
+	return String(Math.round(value * 10000) / 10000);
+};
+
+/**
+ * `font-variation-settings` value (`'slnt' -5, 'XOPQ' 88`) for one
+ * font's axis list. Policy: every remaining axis (`slnt` + custom
+ * tags) is pinned at its fvar DEFAULT so the font renders at its
+ * designed default rather than trusting whatever the browser would
+ * pick. Degenerate axes (`min === max` — cannot vary), unowned-tag
+ * axes, malformed entries and duplicate tags (first wins) are
+ * skipped; an empty result means "emit nothing".
+ */
+const variationSettingsValue = (axes: readonly ThemeFontAxis[]): string => {
+	// Callers pass a flattened, array-checked axis list (untrusted
+	// stored JSON is revalidated entry-by-entry below).
+	const seen = new Set<string>();
+	const parts: string[] = [];
+	for (const axis of axes) {
+		if (typeof axis !== "object" || axis === null) continue;
+		const candidate = axis as {
+			tag?: unknown;
+			min?: unknown;
+			default?: unknown;
+			max?: unknown;
+		};
+		const tag = candidate.tag;
+		if (
+			typeof tag !== "string" ||
+			!FONT_AXIS_TAG.test(tag) ||
+			FVS_OWNED_TAGS.has(tag) ||
+			seen.has(tag)
+		) {
+			continue;
+		}
+		const { min, default: def, max } = candidate;
+		if (
+			typeof min !== "number" ||
+			typeof def !== "number" ||
+			typeof max !== "number" ||
+			!Number.isFinite(min) ||
+			!Number.isFinite(def) ||
+			!Number.isFinite(max) ||
+			!(min <= def && def <= max) ||
+			min === max
+		) {
+			continue;
+		}
+		const value = fvsNumber(def);
+		if (value === null) continue;
+		seen.add(tag);
+		parts.push(`'${tag}' ${value}`);
+	}
+	return parts.join(", ");
+};
+
+/** `font-variation-settings` value for a family name — merges the
+ * axes stamped on every face of its self-host asset (subset pairs
+ * carry identical axes; duplicate tags collapse first-wins inside
+ * {@link variationSettingsValue}). Bare-string assets and families
+ * without stored faces yield "". */
+const familyVariationSettings = (fonts: ThemeFontConfig, family: string): string => {
+	const value = fonts.assets?.[family];
+	if (value === undefined) return "";
+	const axes = assetFaces(value).flatMap((face) => (Array.isArray(face.axes) ? face.axes : []));
+	return variationSettingsValue(axes);
+};
+
+/** Selectors each font slot's family stack applies to — the base
+ * layer in `@ktbhealth/ui` globals.css (`html`/`body`/`h1`–`h6`/
+ * `code,pre`) plus the `font-*` utilities Tailwind generates from the
+ * `--font-*` theme keys (`font-sans`/`font-body`/`font-geist` for
+ * sans, `font-heading`, `font-mono`/`font-geist-mono`). The emitted
+ * rules are unlayered so they win over the layered base/utility
+ * declarations; `font-variation-settings` inherits, so covering
+ * these sites covers every default application. */
+const FONT_SLOT_VS_SELECTORS: Record<ThemeFontSlot, string> = {
+	sans: "html,body,.font-sans,.font-body,.font-geist",
+	heading: "h1,h2,h3,h4,h5,h6,.font-heading",
+	mono: "code,pre,.font-mono,.font-geist-mono",
+};
+
+/**
+ * `font-variation-settings` rules for a font config — one rule per
+ * slot whose effective family carries non-degenerate axes. `heading`
+ * falls back to the sans family exactly like {@link fontCssVars}.
+ * Emitted only for self-host assets: google-fonts delivery has no
+ * per-face axis metadata, and `font-variation-settings` on an element
+ * using a static font is noise.
+ */
+export const fontVariationCss = (fonts: ThemeFontConfig | null): string => {
+	if (fonts === null) return "";
+	const families = fonts.families ?? {};
+	const rules: string[] = [];
+	for (const slot of FONT_SLOTS) {
+		const family = slot === "heading" ? (families.heading ?? families.sans) : families[slot];
+		if (typeof family !== "string" || family.trim() === "") continue;
+		const settings = familyVariationSettings(fonts, family.trim());
+		if (settings === "") continue;
+		rules.push(`${FONT_SLOT_VS_SELECTORS[slot]}{font-variation-settings:${settings};}`);
+	}
+	return rules.join("\n");
+};
+
+/** `font-variation-settings` value for one slot — the same resolution
+ * {@link fontVariationCss} applies, exposed for live previews
+ * (editor specimens style elements inline, outside the emitted
+ * rules). */
+export const fontVariationSettingsForSlot = (
+	fonts: ThemeFontConfig | null,
+	slot: ThemeFontSlot,
+): string => {
+	if (fonts === null) return "";
+	const families = fonts.families ?? {};
+	const family = slot === "heading" ? (families.heading ?? families.sans) : families[slot];
+	if (typeof family !== "string" || family.trim() === "") return "";
+	return familyVariationSettings(fonts, family.trim());
+};
+
 /** local() src list for a fallback face — family name plus the
  * `Regular`/`-Regular` spellings local() matching tries (fontaine). */
 const localSrc = (local: string): string => {
@@ -302,18 +449,25 @@ const MANAGED_DEFAULT_WEIGHTS = [400, 500, 600, 700] as const;
 /**
  * The complete `:root`/`.dark` override block for a resolved theme:
  * derived tokens + radius + font vars (scheme-independent, `:root`
- * only). Stored `tokens` JSON on the row is ignored — seeds are the
- * source of truth so the palette engine can never drift from stored
- * output.
+ * only) plus the per-slot `font-variation-settings` element rules
+ * non-wght/non-wdth font axes need. Stored `tokens` JSON on the row
+ * is ignored — seeds are the source of truth so the palette engine
+ * can never drift from stored output.
  */
 export const themeStyleCss = (theme: {
 	readonly seeds: ThemeSeeds;
 	readonly fonts: ThemeFontConfig | null;
-}): string =>
-	tokensToCss(deriveThemeTokens(theme.seeds), {
+}): string => {
+	const base = tokensToCss(deriveThemeTokens(theme.seeds), {
 		"--radius": themeRadius(theme.seeds),
 		...fontCssVars(theme.fonts),
 	});
+	// Per-slot font-variation-settings rules ride the same style block —
+	// they are element rules, not custom properties, so they append
+	// after the :root/.dark token blocks.
+	const variation = fontVariationCss(theme.fonts);
+	return variation === "" ? base : `${base}\n${variation}`;
+};
 
 /**
  * Present a `theme_definitions` row as a `ResolvedTheme`. Invalid JSON

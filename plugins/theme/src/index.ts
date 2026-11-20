@@ -209,6 +209,8 @@ export {
 	fontCssVars,
 	googleFontLinks,
 	fontFaceCss,
+	fontVariationCss,
+	fontVariationSettingsForSlot,
 	parseThemeFontConfig,
 } from "./present.ts";
 export type { ThemeDefinitionRow } from "./present.ts";

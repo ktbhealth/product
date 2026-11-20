@@ -494,6 +494,40 @@ describe("ThemeEditorPage — typography section", () => {
 		expect(await screen.findByText(/Google Fonts sends visitor requests/)).toBeTruthy();
 	});
 
+	it("pins stored fvar axis defaults on the font specimens", async () => {
+		fns.getThemeFn.mockResolvedValue(
+			theme({
+				fonts: {
+					delivery: "self-host",
+					families: { sans: "Var Sans" },
+					assets: {
+						"Var Sans": {
+							faces: [
+								{
+									url: "/v.woff2",
+									axes: [{ tag: "slnt", min: -9, default: -2, max: 0 }],
+								},
+							],
+						},
+					},
+				},
+			}),
+		);
+		const user = userEvent.setup();
+		renderEditor();
+		await loaded();
+		await user.click(screen.getByRole("tab", { name: "Typography" }));
+		// One specimen per slot (sans, heading, mono); heading inherits
+		// the sans family so it carries the same settings, mono has no
+		// family and gets none.
+		const specimens = (await screen.findAllByText("Aa Bb Cc 123")) as HTMLElement[];
+		expect(specimens).toHaveLength(3);
+		// jsdom serializes the custom property with double quotes.
+		expect(specimens[0]!.style.fontVariationSettings).toBe('"slnt" -2');
+		expect(specimens[1]!.style.fontVariationSettings).toBe('"slnt" -2');
+		expect(specimens[2]!.style.fontVariationSettings).toBe("");
+	});
+
 	it("builds font weights from scratch when the theme has none", async () => {
 		// Typing weights while fonts is null exercises the `f ?? {}` /
 		// `f?.x ?? default` arms of setFontWeights.
