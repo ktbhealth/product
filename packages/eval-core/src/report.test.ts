@@ -38,4 +38,30 @@ describe("renderRunMarkdown", () => {
 		expect(renderRunMarkdown("none", [record()])).toContain("no records");
 		expect(renderRunMarkdown("none", [])).toContain("no records");
 	});
+
+	it("renders the exact document shape", () => {
+		const md = renderRunMarkdown("r1", [
+			record({
+				sampleId: "s1",
+				stage: "asr",
+				engine: "eng",
+				model: "m",
+				latencyMs: 5,
+				estCostUsd: 0.01,
+			}),
+			record({ sampleId: "s2", stage: "judge", engine: "jev" }),
+		]);
+		expect(md).toBe(
+			[
+				"# run r1",
+				"",
+				"| sample | stage | engine | model | latency ms | est cost $ |",
+				"|---|---|---|---|---|---|",
+				"| s1 | asr | eng | m | 5 | 0.01 |",
+				"| s2 | judge | jev | - | - | - |",
+				"",
+			].join("\n"),
+		);
+		expect(renderRunMarkdown("none", [])).toBe("# run none\n\nno records\n");
+	});
 });

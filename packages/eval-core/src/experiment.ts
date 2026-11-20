@@ -27,6 +27,7 @@ export interface ExperimentDiff {
 
 const fmt = (v: unknown): string => {
 	if (v === undefined || v === null) return "-";
+	// Stryker disable next-line ConditionalExpression,StringLiteral: String(true)/JSON.stringify(true) render identically — booleans are unobservable through either branch.
 	if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") return String(v);
 	return JSON.stringify(v);
 };

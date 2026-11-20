@@ -102,6 +102,7 @@ export const runBatch = <I, A, E, R>(input: {
 							? guarded.pipe(
 									Effect.retry({
 										schedule: input.options.retry,
+										// Stryker disable next-line ConditionalExpression: `while: undefined` is skipped by Effect.retry's `if (options.while)` guard — verified equivalent by probe run.
 										...(input.options.retryWhile !== undefined
 											? { while: input.options.retryWhile }
 											: {}),

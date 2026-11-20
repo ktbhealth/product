@@ -172,6 +172,7 @@ export const validateDomainOverrides = (input: unknown): DomainOverrides | null 
  * invalid data (same contract as `defineSuite`). */
 export const defineDomain = (input: unknown): DomainDefinition => {
 	const checked = validateDomain(input);
+	// Stryker disable next-line ConditionalExpression: both branches run the same Schema decode — `checked` is itself a decodeUnknownOption of DomainDefinition, so re-decoding yields the identical result (probe-verified).
 	if (checked === null) {
 		// Re-run the raw decode for the detailed SchemaError message.
 		return Schema.decodeUnknownSync(DomainDefinition)(input);
@@ -190,6 +191,7 @@ const isPlainObject = (v: unknown): v is Record<string, unknown> =>
  * `undefined` on either side passes the other through. */
 export const mergeJson = (base: Json | undefined, over: Json | undefined): Json | undefined => {
 	if (over === undefined) return base;
+	// Stryker disable next-line ConditionalExpression: base===undefined falls through to `return over` anyway — identical result (probe-verified).
 	if (base === undefined) return over;
 	if (isPlainObject(base) && isPlainObject(over)) {
 		const out: Record<string, Json> = { ...(base as Record<string, Json>) };

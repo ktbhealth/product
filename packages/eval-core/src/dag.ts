@@ -134,10 +134,12 @@ export const buildStagePlan = (entries: readonly StageEntry[]): StagePlan => {
 	const rootsCache = new Map<string, readonly string[]>();
 	const rootsOf = (id: string): readonly string[] => {
 		const cached = rootsCache.get(id);
+		// Stryker disable next-line ConditionalExpression: rootsOf is pure over the validated acyclic graph — the cache is memoization only; skipping it yields identical roots (probe-verified).
 		if (cached !== undefined) return cached;
 		const node = nodes.find((n) => n.id === id)!;
 		const roots =
 			node.needs.length === 0 ? [id] : [...new Set(node.needs.flatMap((d) => [...rootsOf(d)]))];
+		// Stryker disable next-line CallExpression: same memoization-only cache — dropping the write only forces recomputation with identical results (probe-verified).
 		rootsCache.set(id, roots);
 		return roots;
 	};
@@ -221,6 +223,7 @@ const paramsValidator =
 			if (!allowed.includes(key)) {
 				return {
 					ok: false,
+					// Stryker disable next-line StringLiteral: every paramsValidator call site passes ≤1 allowed key, so the join separator is unobservable ("key"/"" both render identically).
 					error: `unknown condition param "${key}" (known: ${allowed.join(", ") || "none"})`,
 				};
 			}

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
 	defineSuite,
+	GatePresetPayload,
 	gateEntryConfig,
 	refConfigOf,
 	refIdOf,
@@ -111,6 +112,14 @@ describe("defineSuite", () => {
 		);
 	});
 
+	it("rejects malformed dataset pins", () => {
+		expect(() => defineSuite({ ...valid, dataset: {} })).toThrowError(Schema.SchemaError);
+		expect(() => defineSuite({ ...valid, dataset: { id: "d" } })).toThrowError(Schema.SchemaError);
+		expect(() => defineSuite({ ...valid, dataset: { id: "d", version: 1 } })).toThrowError(
+			Schema.SchemaError,
+		);
+	});
+
 	it("accepts metric ref objects, stage config, and gate presets (P-078)", () => {
 		const m = defineSuite({
 			...valid,
@@ -150,6 +159,28 @@ describe("defineSuite", () => {
 		// config on a preset entry.
 		expect(() => defineSuite({ ...valid, gates: [{ preset: "p", config: {} }] })).toThrowError(
 			Schema.SchemaError,
+		);
+		// legacy params on a preset entry — same rule as config.
+		expect(() => defineSuite({ ...valid, gates: [{ preset: "p", params: {} }] })).toThrowError(
+			Schema.SchemaError,
+		);
+	});
+
+	it("gate filter failures carry actionable messages", () => {
+		expect(() => defineSuite({ ...valid, gates: [{ config: {} }] })).toThrowError(
+			/exactly one of `id` or `preset`/,
+		);
+		expect(() => defineSuite({ ...valid, gates: [{ id: "g", preset: "p" }] })).toThrowError(
+			/exactly one of `id` or `preset`/,
+		);
+		expect(() =>
+			defineSuite({ ...valid, gates: [{ id: "g", config: {}, params: {} }] }),
+		).toThrowError(/cannot set both `config` and legacy `params`/);
+		expect(() => defineSuite({ ...valid, gates: [{ id: "g", overrides: {} }] })).toThrowError(
+			/`overrides` is only valid on a `preset` gate entry/,
+		);
+		expect(() => defineSuite({ ...valid, gates: [{ preset: "p", config: {} }] })).toThrowError(
+			/`config`\/`params` belong on `id` gate entries/,
 		);
 	});
 
@@ -203,6 +234,24 @@ describe("gateEntryConfig", () => {
 		// defensively if a hand-built entry bypasses decoding.
 		expect(gateEntryConfig({ id: "g", config: { a: 1 }, params: { b: 2 } })).toEqual({ a: 1 });
 		expect(gateEntryConfig({ preset: "p", overrides: { g: {} } })).toBeUndefined();
+		// Hand-built preset entries carrying config/params still yield
+		// undefined — preset configs live in the preset payload.
+		expect(
+			gateEntryConfig({ preset: "p", config: { a: 1 }, overrides: {} } as never),
+		).toBeUndefined();
+	});
+});
+
+describe("GatePresetPayload", () => {
+	it("decodes a gates ref list and rejects bad shapes", () => {
+		const d = Schema.decodeUnknownSync(GatePresetPayload);
+		expect(d({ gates: [{ id: "g1", config: { x: 1 } }, { id: "g2" }] }).gates).toEqual([
+			{ id: "g1", config: { x: 1 } },
+			{ id: "g2" },
+		]);
+		expect(() => d({})).toThrowError(Schema.SchemaError);
+		expect(() => d({ gates: "g1" })).toThrowError(Schema.SchemaError);
+		expect(() => d({ gates: [{ config: {} }] })).toThrowError(Schema.SchemaError);
 	});
 });
 

@@ -1,16 +1,47 @@
+import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+	Contribution,
+	ContributionKind,
 	ContributionRegistry,
 	DuplicateContributionError,
 	UnknownContributionError,
-	type Contribution,
+	type Contribution as ContributionType,
 } from "./registry.ts";
 
-const stage = (id: string, version = "1.0.0"): Contribution => ({
+const stage = (id: string, version = "1.0.0"): ContributionType => ({
 	kind: "eval.stage",
 	id,
 	version,
+});
+
+describe("contribution schemas", () => {
+	it("ContributionKind decodes each registered kind and rejects others", () => {
+		const d = Schema.decodeUnknownSync(ContributionKind);
+		for (const kind of [
+			"eval.stage",
+			"eval.metric",
+			"eval.gate",
+			"eval.gatepreset",
+			"eval.condition",
+			"eval.capability",
+		] as const) {
+			expect(d(kind)).toBe(kind);
+		}
+		expect(() => d("eval.bogus")).toThrowError(Schema.SchemaError);
+		expect(() => d("")).toThrowError(Schema.SchemaError);
+	});
+
+	it("Contribution decodes kind/id/version/meta and rejects bad shapes", () => {
+		const d = Schema.decodeUnknownSync(Contribution);
+		const c = d({ kind: "eval.stage", id: "asr", version: "1", meta: { port: "p" } });
+		expect(c).toEqual({ kind: "eval.stage", id: "asr", version: "1", meta: { port: "p" } });
+		expect(d({ kind: "eval.stage", id: "asr", version: "1" }).meta).toBeUndefined();
+		expect(() => d({ kind: "eval.bogus", id: "x", version: "1" })).toThrowError(Schema.SchemaError);
+		expect(() => d({ kind: "eval.stage", id: "x" })).toThrowError(Schema.SchemaError);
+		expect(() => d({ kind: "eval.stage", version: "1" })).toThrowError(Schema.SchemaError);
+	});
 });
 
 describe("ContributionRegistry", () => {
@@ -33,18 +64,29 @@ describe("ContributionRegistry", () => {
 	it("throws DuplicateContributionError on re-register", () => {
 		const r = new ContributionRegistry();
 		r.register(stage("asr"));
-		expect(() => r.register(stage("asr", "9.9.9"))).toThrowError(DuplicateContributionError);
-		expect(() => r.register(stage("asr", "9.9.9"))).toThrowError(
-			expect.objectContaining({ kind: "eval.stage", id: "asr", version: "9.9.9" }),
-		);
+		try {
+			r.register(stage("asr", "9.9.9"));
+			expect.unreachable("should have thrown");
+		} catch (e) {
+			expect(e).toBeInstanceOf(DuplicateContributionError);
+			expect(e).toMatchObject({
+				_tag: "DuplicateContributionError",
+				kind: "eval.stage",
+				id: "asr",
+				version: "9.9.9",
+			});
+		}
 	});
 
 	it("throws UnknownContributionError on missing lookup", () => {
 		const r = new ContributionRegistry();
-		expect(() => r.get("eval.gate", "nope")).toThrowError(UnknownContributionError);
-		expect(() => r.get("eval.gate", "nope")).toThrowError(
-			expect.objectContaining({ kind: "eval.gate", id: "nope" }),
-		);
+		try {
+			r.get("eval.gate", "nope");
+			expect.unreachable("should have thrown");
+		} catch (e) {
+			expect(e).toBeInstanceOf(UnknownContributionError);
+			expect(e).toMatchObject({ _tag: "UnknownContributionError", kind: "eval.gate", id: "nope" });
+		}
 		expect(r.has("eval.gate", "nope")).toBe(false);
 	});
 

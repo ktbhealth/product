@@ -22,6 +22,15 @@ describe("wilsonLowerBound", () => {
 	it("is monotonic in successes", () => {
 		expect(wilsonLowerBound(10, 100)).toBeLessThan(wilsonLowerBound(50, 100));
 	});
+
+	it("matches the Wilson formula exactly", () => {
+		// 19/20 at z=1.96: p=0.95, z²=3.8416 — a `z/z` (=1) mutant
+		// would report ~0.876 instead of ~0.764.
+		expect(wilsonLowerBound(19, 20)).toBeCloseTo(0.7639, 3);
+		expect(wilsonLowerBound(1900, 2000)).toBeCloseTo(0.9396, 3);
+		// A custom z must actually be used (z=0 collapses the bound to p).
+		expect(wilsonLowerBound(19, 20, 0)).toBeCloseTo(0.95, 5);
+	});
 });
 
 describe("calibrate", () => {
@@ -38,5 +47,28 @@ describe("calibrate", () => {
 		expect(v.precision).toBe(0);
 		expect(v.lowerBound).toBe(0);
 		expect(v.passes).toBe(false);
+	});
+
+	it("reports the point precision and sample counts", () => {
+		const v = calibrate(segs(7, 3), { target: 0.5, minN: 5 });
+		expect(v.n).toBe(10);
+		expect(v.successes).toBe(7);
+		expect(v.precision).toBeCloseTo(0.7, 5);
+	});
+
+	it("passes at the exact boundaries — n === minN and lowerBound === target", () => {
+		// `>` mutants on either comparison must fail here.
+		const segs10 = segs(10, 0);
+		const lb = calibrate(segs10, { target: 0, minN: 10 }).lowerBound;
+		expect(lb).toBeGreaterThan(0);
+		const v = calibrate(segs10, { target: lb, minN: 10 });
+		expect(v.passes).toBe(true);
+	});
+
+	it("fails when n < minN even if the floor clears the target", () => {
+		// The sample-size gate is independent of the precision gate.
+		const segs10 = segs(10, 0);
+		const lb = calibrate(segs10, { target: 0, minN: 10 }).lowerBound;
+		expect(calibrate(segs10, { target: lb, minN: 11 }).passes).toBe(false);
 	});
 });
