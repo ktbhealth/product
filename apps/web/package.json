@@ -71,6 +71,7 @@
 		"@ktb/queues-port": "workspace:*",
 		"@ktb/rbac": "workspace:*",
 		"@ktb/rbac-plugin": "workspace:*",
+		"@ktb/scheduler-do": "workspace:*",
 		"@ktb/scheduler-port": "workspace:*",
 		"@ktb/secretaries": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
