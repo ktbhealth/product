@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 // Puck's dnd-kit deps touch ResizeObserver/matchMedia at import time —
 // hoisted so the stubs exist before editor-page.tsx evaluates.
@@ -34,6 +34,13 @@ vi.mock("./fns.ts", () => ({
 import { SiteBuilderEditorPage } from "./editor-page.tsx";
 
 afterEach(cleanup);
+
+// Puck mounts a 500ms loader setTimeout per editor instance with no
+// cleanup — let it fire while jsdom is still alive or vitest reports an
+// unhandled `window is not defined` after teardown.
+afterAll(async () => {
+	await new Promise((resolve) => setTimeout(resolve, 600));
+});
 
 const ctx = (plugins: readonly unknown[] = []): PanelPageContext =>
 	({ plugins, locale: "en" }) as unknown as PanelPageContext;
