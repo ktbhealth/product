@@ -67,6 +67,7 @@ interface Token {
 /** Find the `}` matching the `{` at `start`, honoring nested braces. */
 const matchBrace = (src: string, start: number): number => {
 	let depth = 0;
+	// Stryker disable next-line EqualityOperator: i == src.length reads src[i] === undefined, which is neither "{" nor "}" — the extra iteration is a no-op (probe-verified identical over a template battery + fuzz).
 	for (let i = start; i < src.length; i++) {
 		if (src[i] === "{") depth++;
 		else if (src[i] === "}") {
@@ -101,6 +102,7 @@ const parseCases = (src: string): Array<{ key: string; body: string }> | null =>
 	const cases: Array<{ key: string; body: string }> = [];
 	let i = 0;
 	while (i < src.length) {
+		// Stryker disable next-line ConditionalExpression, EqualityOperator: at i == src.length, src[i] is undefined and /\s/.test(undefined) is false, so widening the bound changes nothing (probe-verified identical).
 		while (i < src.length && /\s/.test(src[i]!)) i++;
 		// case key: keyword or =N
 		const m = /^(=\d+|[A-Za-z_]+)\s*/.exec(src.slice(i));
@@ -128,8 +130,10 @@ const tokenize = (template: string): Token[] | { error: string } => {
 	let i = 0;
 	let textStart = 0;
 	const pushText = (end: number) => {
+		// Stryker disable next-line ConditionalExpression, EqualityOperator: end >= textStart always holds here, so the mutants only push an empty text token — a no-op for render/signature/pseudo consumers (probe-verified identical).
 		if (end > textStart) tokens.push({ kind: "text", text: template.slice(textStart, end) });
 	};
+	// Stryker disable next-line EqualityOperator: i == template.length reads undefined !== "{", so the loop exits one iteration later with no effect (probe-verified identical).
 	while (i < template.length) {
 		if (template[i] !== "{") {
 			i++;
@@ -150,7 +154,19 @@ const tokenize = (template: string): Token[] | { error: string } => {
 			if (parts.length !== 2) return { error: `formatter '${second}' takes no extra args` };
 			tokens.push({ kind: "param", name, hint: second as ParamHint });
 		} else if (second === "plural" || second === "select") {
-			const rest = inner.slice(inner.indexOf(second) + second.length).replace(/^\s*,\s*/, "");
+			// Search after the first comma: the param name may itself
+			// contain the keyword ("selection", "plural_count").
+			// Stryker disable Regex: `rest` always begins with the separator (whitespace + the comma that ended the type segment), so the leftmost \s*,\s* match is at index 0 with or without the ^ anchor (probe-verified identical). Per-node granularity also spares this literal's killed sibling mutants — unavoidable.
+			const rest = inner
+				.slice(
+					inner.indexOf(
+						second,
+						// Stryker disable next-line ArithmeticOperator: searching from commaIdx-1 vs commaIdx+1 can only differ for a keyword starting on the comma itself — impossible, since "," is not a keyword char and keyword[1] would have to be "," (probe-verified identical over a battery + 4k fuzz inputs).
+						inner.indexOf(",") + 1,
+					) + second.length,
+				)
+				.replace(/^\s*,\s*/, "");
+			// Stryker restore Regex
 			const cases = parseCases(rest);
 			if (!cases) return { error: `bad ${second} cases for '${name}'` };
 			tokens.push({ kind: "param", name, plural: second === "plural", cases });
@@ -177,6 +193,7 @@ const collectSignature = (tokens: readonly Token[]): MessageParam[] | { error: s
 	const seen = new Set<string>();
 	const visit = (toks: readonly Token[], depth: number): string | null => {
 		for (const t of toks) {
+			// Stryker disable next-line LogicalOperator, ConditionalExpression: tokenize only ever builds {kind:"text"} (no name) and {kind:"param",name} tokens, so `kind !== "param"` and `name === undefined` coincide — &&/false variants skip exactly the same tokens (probe-verified identical).
 			if (t.kind !== "param" || t.name === undefined) continue;
 			if (!seen.has(t.name)) {
 				seen.add(t.name);
@@ -269,9 +286,13 @@ const formatParam = (value: unknown, hint: ParamHint | undefined, locale: string
 					: safeString(value);
 			case "list":
 				return Array.isArray(value)
-					? new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).format(
-							value.map(safeString),
-						)
+					? new Intl.ListFormat(
+							locale,
+							/* Stryker disable next-line ObjectLiteral: {} resolves to the ECMA-402 defaults style:"long", type:"conjunction" — identical options (verified via resolvedOptions()). */ {
+								style: "long",
+								type: "conjunction",
+							},
+						).format(value.map(safeString))
 					: safeString(value);
 			default: {
 				if (typeof value !== "object") return safeString(value);
@@ -311,11 +332,12 @@ const renderTokens = (
 				try {
 					const exact = t.cases.find((c) => c.key === `=${value}`);
 					key = exact?.key ?? new Intl.PluralRules(locale).select(value);
-				} catch {
+				} catch /* Stryker disable next-line BlockStatement: when PluralRules throws, the key assignment never completed so key is already undefined — the catch body is a no-op (probe-verified identical). */ {
 					// Exotic locale — fall back to the select/other path.
 					key = undefined;
 				}
 			} else {
+				// Stryker disable next-line StringLiteral: "Stryker was here!" contains spaces/punctuation, which no case key ([A-Za-z_]+ or =N) can equal — it misses every case exactly like "" and hits the same `other` fallback (probe-verified identical).
 				key = safeString(value ?? "");
 			}
 			// `other` is the required ICU fallback when no case matches.
@@ -328,7 +350,7 @@ const renderTokens = (
 					if (t.plural && typeof value === "number") {
 						try {
 							innerPound = new Intl.NumberFormat(locale).format(value);
-						} catch {
+						} catch /* Stryker disable next-line BlockStatement: innerPound is declared undefined and only assigned on success, so emptying the catch leaves it undefined either way (probe-verified identical). */ {
 							innerPound = undefined;
 						}
 					}

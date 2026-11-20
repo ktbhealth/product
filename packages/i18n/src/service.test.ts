@@ -20,6 +20,12 @@ const fakeI18n = (seen: string[]): I18nShape => ({
 	paramsFor: () => Effect.succeed([]),
 });
 
+describe("I18n", () => {
+	it("exposes a stable service key", () => {
+		expect(I18n.key).toBe("@ktb/i18n/I18n");
+	});
+});
+
 describe("bindNamespace", () => {
 	it("prefixes keys with the bound namespace and forwards params", async () => {
 		const seen: string[] = [];

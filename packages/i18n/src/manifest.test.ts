@@ -28,4 +28,24 @@ describe("i18nManifestHash", () => {
 		expect(i18nManifestHash("")).toBeNull();
 		expect(i18nManifestHash("not.a.namespace")).toBeNull();
 	});
+
+	it("matches an independently computed FNV-1a hash of the canonical contract", () => {
+		// Recompute the documented canonical form + FNV-1a independently:
+		// sorted keys → [key, sorted param names], JSON, FNV-1a 32-bit.
+		const fnv1a = (input: string): string => {
+			let h = 0x811c9dc5;
+			for (let i = 0; i < input.length; i++) {
+				h ^= input.charCodeAt(i);
+				h = Math.imul(h, 0x01000193);
+			}
+			return (h >>> 0).toString(16).padStart(8, "0");
+		};
+		type Entry = Record<string, { params: readonly { name: string }[] }>;
+		for (const [ns, entry] of Object.entries(I18N_MANIFEST as Record<string, Entry>)) {
+			const canonical = Object.keys(entry)
+				.sort()
+				.map((key) => [key, entry[key]!.params.map((p) => p.name).sort()]);
+			expect(i18nManifestHash(ns), ns).toBe(fnv1a(JSON.stringify(canonical)));
+		}
+	});
 });

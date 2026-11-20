@@ -222,6 +222,18 @@ describe("resolveMessage", () => {
 		expect(hit2.template).toBe("V2");
 	});
 
+	it("portal scope falls back to the global row when portal and tenant miss", () => {
+		const idx = indexMessages([row({ value: "global" })]);
+		const r = resolveMessage(idx, {
+			namespace: "app",
+			key: "title",
+			scopeChain: portalScope("t1", "p1"),
+			locales: localeChain(["en"], "en"),
+		});
+		expect(r.template).toBe("global");
+		expect(r.source).toMatchObject({ kind: "hit", scope: "global" });
+	});
+
 	it("tenant scope without tenant row falls to global", () => {
 		const idx = indexMessages([row({ value: "global" })]);
 		const r = resolveMessage(idx, {

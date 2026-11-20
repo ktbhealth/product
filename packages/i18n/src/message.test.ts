@@ -1,12 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	isParametrizedMessage,
 	paramMessage,
 	parseMessage,
+	PSEUDO_LOCALE,
 	pseudoLocalize,
 	paramSignature,
 	renderMessage,
 	validateAgainstSignature,
+	zipArgs,
 } from "./message.ts";
 
 /** Wrap `{leaf}` in `depth` nested select case bodies. */
@@ -60,8 +62,24 @@ describe("parseMessage", () => {
 	});
 
 	it("rejects markup in text kind", () => {
-		const r = parseMessage("text", "Click <a href='#'>here</a>");
+		for (const tpl of [
+			"Click <a href='#'>here</a>",
+			"line<br>break",
+			"<img src=x>",
+			"<p>never closed",
+		]) {
+			expect(parseMessage("text", tpl).ok, tpl).toBe(false);
+		}
+	});
+
+	it("reports the markup violation for text kind", () => {
+		const r = parseMessage("text", "<b>x</b>");
 		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.error).toContain("markup");
+	});
+
+	it("allows javascript: text in text kind — only tags are banned", () => {
+		expect(parseMessage("text", "Avoid javascript: URLs").ok).toBe(true);
 	});
 
 	it("allows markup-free rich kind through parse", () => {
@@ -145,9 +163,18 @@ describe("parseMessage", () => {
 			'<a href="javascript:alert(1)">x</a>',
 			'<div onclick="steal()">x</div>',
 			"<embed src=x><object data=x></object><style>body{}</style>",
+			"< script src=x>",
+			"<div onclick = 'steal()'>x</div>",
+			'<a href="javascript :alert(1)">x</a>',
 		]) {
 			expect(parseMessage("rich", tpl).ok, tpl).toBe(false);
 		}
+	});
+
+	it("reports the forbidden-markup violation for rich kind", () => {
+		const r = parseMessage("rich", "<script>x</script>");
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.error).toContain("forbidden");
 	});
 
 	it("still accepts legitimate rich HTML", () => {
@@ -158,6 +185,72 @@ describe("parseMessage", () => {
 		]) {
 			expect(parseMessage("rich", tpl).ok, tpl).toBe(true);
 		}
+	});
+
+	it("reports specific syntax error details", () => {
+		const error = (tpl: string): string => {
+			const r = parseMessage("text", tpl);
+			expect(r.ok).toBe(false);
+			return r.ok ? "" : r.error;
+		};
+		expect(error("{}")).toContain("empty");
+		expect(error("{1bad}")).toContain("bad param name");
+		expect(error("{n, number, extra}")).toContain("extra args");
+		expect(error("{x, frobnicate}")).toContain("unknown param type");
+		expect(error("{n, plural, !!!{x} other {y}}")).toContain("bad plural cases");
+		expect(error("x".repeat(10_001))).toContain("10000");
+	});
+
+	it("reports the full invalid param name, braces and commas included", () => {
+		const r = parseMessage("text", "{na{x,y}me, number}");
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.error).toBe("bad param name 'na{x,y}me'");
+	});
+
+	it("rejects case keys that are not followed by a body brace", () => {
+		const r = parseMessage("text", "{n,select,a{x}b,c{d}e,f{g}}");
+		expect(r.ok).toBe(false);
+		if (!r.ok) expect(r.error).toContain("bad select cases");
+	});
+
+	it("rejects garbage before a case key instead of skipping ahead", () => {
+		// The case-key regex is anchored: "####{" is not a valid key, so
+		// the whole case list must be rejected — not scanned forward.
+		expect(parseMessage("text", "{n, plural, ####{one {a} other {b}}}").ok).toBe(false);
+	});
+
+	it("rejects param names that only prefix-match the name regex", () => {
+		expect(parseMessage("text", "{abc!}").ok).toBe(false);
+		expect(parseMessage("text", "{na-me}").ok).toBe(false);
+	});
+
+	it("parses multi-digit exact plural keys", () => {
+		const r = parseMessage("text", "{n, plural, =10 {ten} other {x}}");
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.message.params[0]?.cases).toContain("=10");
+	});
+
+	it("parses params whose names contain the plural/select keywords", () => {
+		for (const tpl of [
+			"{selection, select, a{x} other{y}}",
+			"{plural_count, plural, one {a} other {b}}",
+			"{select, select, a{x} other{y}}",
+			// The keyword must be found after the first comma — a name
+			// carrying it at index >= 1 must not be mistaken for it.
+			"{xselect, select, a{x} other{y}}",
+			"{splural, plural, one {a} other {b}}",
+			"{my_select, select, a{x} other{y}}",
+		]) {
+			expect(parseMessage("text", tpl).ok, tpl).toBe(true);
+		}
+	});
+
+	it("marks plural params with plural:true and leaves select unmarked", () => {
+		const p = parseMessage("text", "{n, plural, one {a} other {b}}");
+		const s = parseMessage("text", "{r, select, a {x} other {y}}");
+		expect(p.ok && s.ok).toBe(true);
+		if (p.ok) expect(p.message.params[0]?.plural).toBe(true);
+		if (s.ok) expect(s.message.params[0]?.plural).toBeUndefined();
 	});
 });
 
@@ -177,6 +270,12 @@ describe("paramSignature", () => {
 	it("returns an error for too-deep nesting", () => {
 		const sig = paramSignature(nestSelect(9));
 		expect(Array.isArray(sig)).toBe(false);
+	});
+
+	it("collects nested params from every case, not just the first", () => {
+		const sig = paramSignature("{a,select,x{{y}} other{{secret}}}");
+		expect(Array.isArray(sig)).toBe(true);
+		if (Array.isArray(sig)) expect(sig.map((p) => p.name)).toEqual(["a", "y", "secret"]);
 	});
 });
 
@@ -330,6 +429,83 @@ describe("renderMessage", () => {
 		expect(() => renderMessage(nestSelect(9), params, "en")).not.toThrow();
 		expect(renderMessage(nestSelect(2), params, "en")).toBe("L");
 	});
+
+	it("renders null params as empty", () => {
+		expect(renderMessage("{v}", { v: null }, "en")).toBe("");
+		expect(renderMessage("[{v}]", { v: null }, "en")).toBe("[]");
+	});
+
+	it("falls back to safeString for non-number values with number hint", () => {
+		expect(renderMessage("{n, number}", { n: "abc" }, "en")).toBe("abc");
+		expect(renderMessage("{n, number}", { n: true }, "en")).toBe("true");
+	});
+
+	it("formats date/datetime/list hints via Intl with exact output", () => {
+		const d = new Date(2024, 0, 15, 10, 30);
+		expect(renderMessage("{d, date}", { d }, "en")).toBe("Jan 15, 2024");
+		expect(renderMessage("{d, datetime}", { d }, "en")).toBe("Jan 15, 2024, 10:30 AM");
+		expect(renderMessage("{items, list}", { items: ["a", "b", "c"] }, "en")).toBe("a, b, and c");
+	});
+
+	it("formats the relative hint against the current time", () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(2024, 0, 15, 10, 30));
+		try {
+			const d = new Date(2024, 0, 15, 12, 30);
+			expect(renderMessage("{d, relative}", { d }, "en")).toBe("in 7,200 seconds");
+			// numeric:"auto" renders a zero offset as "now" — the
+			// default numeric mode would say "in 0 seconds".
+			const now = new Date(2024, 0, 15, 10, 30);
+			expect(renderMessage("{d, relative}", { d: now }, "en")).toBe("now");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps select on the exact-key path even for number values", () => {
+		// safeString(1) is "1" — no case key can be "1", so the other
+		// case wins and `#` stays literal (select has no pound).
+		const tpl = "{n, select, one{# ONE} other{# OTH}}";
+		expect(renderMessage(tpl, { n: 1 }, "en")).toBe("# OTH");
+		expect(renderMessage(tpl, { n: 2 }, "en")).toBe("# OTH");
+	});
+
+	it("does not treat string values as plural numbers for =N keys", () => {
+		const tpl = "{n, plural, =2 {two} other {# items}}";
+		expect(renderMessage(tpl, { n: "2" }, "en")).toBe("# items");
+		expect(renderMessage(tpl, { n: 2 }, "en")).toBe("two");
+	});
+
+	it("renders empty when no case matches and there is no other", () => {
+		expect(renderMessage("{r, select, a {A}}", { r: "x" }, "en")).toBe("");
+	});
+
+	it("truncates rendering past the nesting cap", () => {
+		const params: Record<string, unknown> = { leaf: "L" };
+		for (let i = 0; i < 9; i++) params[`p${i}`] = "a";
+		expect(renderMessage(nestSelect(9), params, "en")).toBe("");
+	});
+
+	it("formats hinted params under qps even when Intl rejects the tag", () => {
+		const Original = Intl.NumberFormat;
+		const Stub = function (this: unknown, ...args: unknown[]) {
+			if (args[0] === "qps") throw new RangeError("invalid locale");
+			return new (Original as new (...a: unknown[]) => object)(...args);
+		};
+		(Intl as { NumberFormat: unknown }).NumberFormat = Stub;
+		try {
+			expect(renderMessage("{n, number}", { n: 1234.5 }, "qps")).toBe("1,234.5");
+		} finally {
+			(Intl as { NumberFormat: unknown }).NumberFormat = Original;
+		}
+	});
+});
+
+describe("zipArgs", () => {
+	it("maps positional args to names and ignores extras", () => {
+		expect(zipArgs(["a", "b"], [1])).toEqual({ a: 1, b: undefined });
+		expect(zipArgs(["a"], [1, 2])).toEqual({ a: 1 });
+	});
 });
 
 describe("paramMessage", () => {
@@ -391,17 +567,30 @@ describe("validateAgainstSignature", () => {
 
 	it("flags missing param", () => {
 		const issues = validateAgainstSignature("Hi {name}", expected);
-		expect(issues.some((i) => i.detail.includes("amount"))).toBe(true);
+		const issue = issues.find((i) => i.detail.includes("amount"));
+		expect(issue?.code).toBe("param_mismatch");
 	});
 
 	it("flags hint mismatch", () => {
-		const issues = validateAgainstSignature("{amount}", expected);
-		expect(issues.some((i) => i.detail.includes("hint"))).toBe(true);
+		const issues = validateAgainstSignature("{amount}", [
+			{ name: "amount", hint: "number" as const },
+		]);
+		expect(issues).toEqual([
+			{
+				code: "param_mismatch",
+				detail: "param '{amount}' hint 'none' != 'number'",
+			},
+		]);
 	});
 
 	it("flags hint mismatch when only the template declares a hint", () => {
 		const issues = validateAgainstSignature("{n, number}", [{ name: "n" }]);
-		expect(issues.some((i) => i.code === "param_mismatch" && i.detail.includes("hint"))).toBe(true);
+		expect(issues).toEqual([
+			{
+				code: "param_mismatch",
+				detail: "param '{n}' hint 'number' != 'none'",
+			},
+		]);
 	});
 
 	it("flags params that only appear inside case bodies", () => {
@@ -467,9 +656,51 @@ describe("pseudoLocalize", () => {
 		expect(out.startsWith("⟦")).toBe(true);
 	});
 
+	it("joins token and fallback fragments with no separator", () => {
+		// Exact output: any separator spliced between tokens or between
+		// fallback brace-span parts would show up here.
+		expect(pseudoLocalize("a {n} b")).toBe("⟦á {n} b···⟧");
+		expect(pseudoLocalize("{a!}")).toBe("⟦{a!}··⟧");
+	});
+
 	it("does not stack-overflow on deeply nested or oversized input", () => {
 		expect(() => pseudoLocalize(nestSelect(50))).not.toThrow();
 		expect(pseudoLocalize(nestSelect(50)).startsWith("⟦")).toBe(true);
 		expect(() => pseudoLocalize("x".repeat(50_000))).not.toThrow();
+	});
+
+	it("exposes the qps pseudo-locale tag", () => {
+		expect(PSEUDO_LOCALE).toBe("qps");
+	});
+
+	it("accents every vowel, upper and lower case", () => {
+		const out = pseudoLocalize("aeiou AEIOU");
+		for (const ch of "áéíóúÁÉÍÓÚ") expect(out).toContain(ch);
+	});
+
+	it("produces deterministic padded output for plain text", () => {
+		expect(pseudoLocalize("ab")).toBe("⟦áb·⟧");
+	});
+
+	it("preserves formatter hints and the select keyword", () => {
+		expect(pseudoLocalize("Total {n, number}")).toContain("{n, number}");
+		expect(pseudoLocalize("{r, select, a {A} other {O}}")).toContain(", select,");
+	});
+
+	it("separates plural cases with a space", () => {
+		expect(pseudoLocalize("{n, plural, one {X} other {Y}}")).toContain("one{X} other{Y}");
+	});
+
+	it("emits case bodies verbatim past the nesting cap", () => {
+		let tpl = "apple";
+		for (let i = 0; i < 9; i++) tpl = `{p${i},select,a{${tpl}} other{x}}`;
+		const out = pseudoLocalize(tpl);
+		expect(out).toContain("apple");
+		expect(out).not.toContain("ápple");
+	});
+
+	it("keeps brace spans verbatim in unparseable templates", () => {
+		expect(pseudoLocalize("{a!}")).toContain("{a!}");
+		expect(pseudoLocalize("Hello {!!!}")).toContain("Hélló");
 	});
 });

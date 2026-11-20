@@ -86,7 +86,9 @@ export const resolveRequestLocales = (
 	enabled: readonly EnabledLocale[],
 	defaultLocale: string,
 ): LocaleChain => {
+	// Stryker disable next-line ConditionalExpression: enabled.find(l => l.code === undefined) always yields undefined (code is a string), so skipping the ternary's short-circuit is identical (probe-verified).
 	const row = requested === undefined ? undefined : enabled.find((l) => l.code === requested);
+	// Stryker disable next-line ArrayDeclaration: localeChain appends defaultLocale and dedupes, so [] and [defaultLocale] produce the same locales (probe-verified).
 	if (row === undefined) return localeChain([defaultLocale], defaultLocale);
 	return localeChain([row.code, ...row.fallbacks], defaultLocale);
 };
@@ -153,6 +155,7 @@ export const resolveRow = (
 	}
 	// Hand-built chains may omit the default locale — probe it last
 	// across every scope so the documented fallback still holds.
+	// Stryker disable next-line ConditionalExpression: when defaultLocale is already in locales, the extra probe only re-checks (scope, defaultLocale) pairs the main loop already missed — same hit/miss outcome (probe-verified identical).
 	if (!input.locales.locales.includes(input.locales.defaultLocale)) {
 		for (const { scope, scopeId } of input.scopeChain.scopes) {
 			const row = index.get(
