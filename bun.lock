@@ -95,6 +95,7 @@
         "@ktb/queues-port": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/rbac-plugin": "workspace:*",
+        "@ktb/scheduler-do": "workspace:*",
         "@ktb/scheduler-port": "workspace:*",
         "@ktb/secretaries": "workspace:*",
         "@ktb/server-fns": "workspace:*",
@@ -680,6 +681,14 @@
         "@types/better-sqlite3": "^9.6.0",
         "better-sqlite3": "^13.0.3",
         "vitest": "5.1.0",
+      },
+    },
+    "packages/scheduler-do": {
+      "name": "@ktb/scheduler-do",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/jobs-port": "workspace:*",
+        "@ktb/scheduler-port": "workspace:*",
       },
     },
     "packages/scheduler-port": {
@@ -3026,6 +3035,8 @@
     "@ktb/rbac-plugin": ["@ktb/rbac-plugin@workspace:plugins/rbac"],
 
     "@ktb/rich-text": ["@ktb/rich-text@workspace:plugins/rich-text"],
+
+    "@ktb/scheduler-do": ["@ktb/scheduler-do@workspace:packages/scheduler-do"],
 
     "@ktb/scheduler-port": ["@ktb/scheduler-port@workspace:packages/scheduler-port"],
 

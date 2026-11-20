@@ -43,6 +43,12 @@ export default Alchemy.Stack(
 		// exported as `AcpBridge` from the worker entry (src/server.ts).
 		const acpBridge = Cloudflare.DurableObject("AcpBridge");
 
+		// Scheduler DO (P-094): alarm-precision backstop for one-off
+		// scheduled_jobs run_at times. Exported as `SchedulerDo` from the
+		// worker entry (src/server.ts); the * * * * * heartbeat remains
+		// the sweep of record — this only tightens one-off timing.
+		const schedulerDo = Cloudflare.DurableObject("SchedulerDo");
+
 		// Theme brand assets + font files (P-082/PL-006 phase 4): private
 		// bucket served only through the worker's /api/theme/assets route;
 		// dedicated queue (decided over sharing ktb-transcription) so image
@@ -95,6 +101,7 @@ export default Alchemy.Stack(
 				DB: db,
 				AI: Cloudflare.Workers.AI(),
 				ACP_BRIDGE: acpBridge,
+				SCHEDULER: schedulerDo,
 				AUDIO_BUCKET: audioBucket,
 				AUDIO_QUEUE: transcriptionQueue,
 				THEME_ASSETS_BUCKET: themeAssetsBucket,

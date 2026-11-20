@@ -43,6 +43,7 @@ import {
 	type ScheduledJob,
 	type ScheduledJobDispatch,
 } from "@ktb/scheduler-port";
+import { notifySchedulerDo, type SchedulerDoNamespace } from "@ktb/scheduler-do";
 import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
 import {
 	makeInProcessPubSub,
@@ -569,6 +570,25 @@ const acpBridgeNs = env.ACP_BRIDGE as unknown as
 	  }
 	| undefined;
 
+// P-094: the SchedulerDo durable-object namespace — precision backstop
+// for one-off scheduled_jobs run_at times. The * * * * * heartbeat
+// sweeps at minute granularity; the DO's alarm fires the same sweep at
+// the exact instant. Absent binding (dev without DO) degrades to
+// heartbeat-only timing.
+const schedulerDoNs = env.SCHEDULER as unknown as SchedulerDoNamespace | undefined;
+
+/** Mirror a scheduled_jobs row's timing state into the DO: active
+ * one-offs arm an alarm at runAt; everything else clears the entry.
+ * Fire-and-forget safe — notifySchedulerDo swallows DO failures and
+ * the heartbeat backstops any missed notification. */
+const syncSchedulerDo = async (job: ScheduledJob | null, id: string): Promise<void> => {
+	if (job !== null && job.status === "active" && job.runAt !== null) {
+		await notifySchedulerDo(schedulerDoNs, "/schedule", { id, runAt: job.runAt });
+	} else {
+		await notifySchedulerDo(schedulerDoNs, "/unschedule", { id });
+	}
+};
+
 // F3b: argv prefix for the `connect` command createBridgeLinkFn mints
 // (see lib/ai-bridge-cli.ts — unpublished package, dev resolves the
 // repo source, prod the published bunx path). import.meta.env is a
@@ -663,7 +683,9 @@ setServerRuntime({
 		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
 		create: async (input) => {
 			try {
-				return { ok: true as const, job: toScheduleInfo(await insertScheduledJob(db, input)) };
+				const job = await insertScheduledJob(db, input);
+				await syncSchedulerDo(job, job.id);
+				return { ok: true as const, job: toScheduleInfo(job) };
 			} catch (error) {
 				return error instanceof InvalidScheduleError
 					? { ok: false as const, reason: "invalid" as const, error: error.message }
@@ -673,21 +695,27 @@ setServerRuntime({
 		update: async (id, patch) => {
 			try {
 				const job = await updateScheduledJob(db, id, patch);
-				return job === null
-					? { ok: false as const, reason: "not-found" as const }
-					: { ok: true as const, job: toScheduleInfo(job) };
+				if (job === null) {
+					return { ok: false as const, reason: "not-found" as const };
+				}
+				await syncSchedulerDo(job, id);
+				return { ok: true as const, job: toScheduleInfo(job) };
 			} catch (error) {
 				return error instanceof InvalidScheduleError
 					? { ok: false as const, reason: "invalid" as const, error: error.message }
 					: { ok: false as const, reason: "unavailable" as const, error: String(error) };
 			}
 		},
-		remove: async (id) =>
-			(await deleteScheduledJob(db, id))
-				? { ok: true as const }
-				: { ok: false as const, reason: "not-found" as const },
+		remove: async (id) => {
+			const removed = await deleteScheduledJob(db, id);
+			if (removed) await syncSchedulerDo(null, id);
+			return removed ? { ok: true as const } : { ok: false as const, reason: "not-found" as const };
+		},
 		runNow: async (id) => {
 			const result = await runScheduledJobNow(db, id, dispatchScheduledJob);
+			// The claim already advanced the schedule — mirror the new
+			// state so a fired one-off clears its DO alarm entry.
+			if (result !== null) await syncSchedulerDo(result.job, id);
 			return result === null
 				? null
 				: {

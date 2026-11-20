@@ -13,6 +13,10 @@ import { flushTelemetry, runScheduledCron } from "#/lib/platform.ts";
 // F3b: re-export the AcpBridge Durable Object class — the Alchemy
 // `ACP_BRIDGE` binding points at this worker's `AcpBridge` export.
 export { AcpBridge } from "@ktb/ai-bridge";
+// P-094: the SchedulerDo Durable Object class — alarm-precision
+// backstop for one-off scheduled_jobs run_at times. Bound as
+// `SCHEDULER` in the Alchemy stack / wrangler.jsonc.
+export { SchedulerDo } from "@ktb/scheduler-do";
 
 const fetch = createStartHandler(defaultStreamHandler);
 
