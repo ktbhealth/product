@@ -602,6 +602,7 @@
     "packages/kernel": {
       "name": "@ktb/kernel",
       "devDependencies": {
+        "@ktb/json-schema": "workspace:*",
         "@tanstack/virtual-file-routes": "1.162.0",
         "@types/react": "^19.2.0",
         "drizzle-orm": "^0.45.4",
@@ -928,6 +929,29 @@
         "@types/react-dom": "^19.2.0",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
+      },
+    },
+    "plugins/builder-blocks": {
+      "name": "@ktb/builder-blocks",
+      "dependencies": {
+        "@ktb/i18n": "workspace:*",
+        "@ktb/json-schema": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "vitest": "5.1.0",
       },
       "peerDependencies": {
         "react": "^19.2.0",
@@ -2676,6 +2700,8 @@
     "@ktb/bot": ["@ktb/bot@workspace:packages/bot"],
 
     "@ktb/bot-recall": ["@ktb/bot-recall@workspace:packages/bot-recall"],
+
+    "@ktb/builder-blocks": ["@ktb/builder-blocks@workspace:plugins/builder-blocks"],
 
     "@ktb/calendar": ["@ktb/calendar@workspace:packages/calendar"],
 
