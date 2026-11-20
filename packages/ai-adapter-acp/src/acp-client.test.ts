@@ -134,7 +134,7 @@ describe("openAcpSession", () => {
 					},
 				});
 				notify("session/update", {});
-				notify("session/update");
+				notify("session/update", undefined);
 				notify("session/update", {
 					update: { sessionUpdate: "agent_message_chunk" },
 				});

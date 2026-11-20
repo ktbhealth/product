@@ -61,7 +61,7 @@ const tick = () => new Promise((r) => setTimeout(r, 10));
 
 describe("makeBridgeRpc", () => {
 	it("forwards requests over the DO and replays buffered notifications", async () => {
-		const { ns, wires } = fakeNs(() => ({
+		const { ns, wires, urls, inits } = fakeNs(() => ({
 			response: { result: { answer: 42 } },
 			notifications: [chunk("hey")],
 		}));

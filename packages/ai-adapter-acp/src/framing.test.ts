@@ -49,7 +49,7 @@ describe("makeFrameExtractor", () => {
 
 	it("returns null until a newline arrives", () => {
 		const f = makeFrameExtractor();
-		f.push('{"a":1}');
+		f.push('{"a":1');
 		expect(f.next()).toBeNull();
 		f.push("}\n");
 		const frame = f.next();
