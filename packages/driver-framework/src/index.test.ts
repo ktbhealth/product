@@ -41,13 +41,17 @@ describe("discoverPlugins", () => {
 			"../../../plugins/auth/src/client.ts": { plugins: [p("session.menu")] },
 			"@ktb/platform": { plugins: [p("platform.routes")] },
 			"./local.ts": { plugins: [p("local.plugin")] },
+			"plugins/standalone/src/index.ts": { plugins: [p("standalone.plugin")] },
 		});
 		expect(plugins.map((x) => [x.id, x.pkg])).toEqual([
 			["patients.services", "patients"],
 			["session.menu", "auth"],
 			["platform.routes", undefined],
 			["local.plugin", undefined],
+			["standalone.plugin", "standalone"],
 		]);
+		expect(plugins[2]).not.toHaveProperty("pkg");
+		expect(plugins[3]).not.toHaveProperty("pkg");
 	});
 
 	it("throws when a module does not export a plugins array", () => {
@@ -67,6 +71,23 @@ describe("discoverPlugins", () => {
 			'plugin module "./mixed.ts" exports a value that is not a Plugin',
 		);
 	});
+
+	it("rejects null and function plugin values even when they carry an id", () => {
+		expect(() => discoverPlugins({ "./null-plugin.ts": { plugins: [null] } })).toThrow(
+			'plugin module "./null-plugin.ts" exports a value that is not a Plugin',
+		);
+		const fn = Object.assign(() => {}, { id: "fn.plugin" });
+		expect(() => discoverPlugins({ "./fn.ts": { plugins: [fn] } })).toThrow(
+			'plugin module "./fn.ts" exports a value that is not a Plugin',
+		);
+	});
+
+	it("rejects module values that are not objects even if they carry plugins", () => {
+		const fn = Object.assign(() => {}, { plugins: [p("fn.plugin")] });
+		expect(() => discoverPlugins({ "./fn-module.ts": fn })).toThrow(
+			'plugin module "./fn-module.ts" must export `plugins` as a Plugin array',
+		);
+	});
 });
 
 describe("orderPlugins", () => {
@@ -83,6 +104,11 @@ describe("orderPlugins", () => {
 	it("ignores optionalDeps that resolve to no plugin", () => {
 		const ordered = orderPlugins([p("a", undefined, ["ghost"]), p("b")]);
 		expect(ordered.map((x) => x.id)).toContain("a");
+	});
+
+	it("does not treat a missing optionalDeps as a dep on every registered id", () => {
+		const ordered = orderPlugins([p("a"), p("Stryker was here", undefined, [])]);
+		expect(ordered.map((x) => x.id)).toEqual(["a", "Stryker was here"]);
 	});
 
 	it("throws on unknown requiredDep", () => {

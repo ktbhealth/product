@@ -54,6 +54,12 @@ describe("resolveDriver", () => {
 		expect(resolveDriver(drivers, "p1", {})?.id).toBe("first");
 	});
 
+	it("ignores enabled drivers registered for other ports", () => {
+		const drivers = [make("other-port", "p2"), make("target", "p1")];
+		expect(resolveDriver(drivers, "p1", {})?.id).toBe("target");
+		expect(resolveDriver(drivers, "p2", {})?.id).toBe("other-port");
+	});
+
 	it("skips disabled drivers to the next eligible one", () => {
 		const drivers = [
 			make("off", "p1", () => false),
