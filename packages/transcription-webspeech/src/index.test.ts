@@ -108,6 +108,8 @@ describe("WebSpeechTranscriber with mocked browser SpeechRecognition", () => {
 		expect(currentInstance).not.toBeNull();
 		expect(currentInstance!.start).toHaveBeenCalled();
 		expect(currentInstance!.lang).toBe("pt-BR");
+		expect(currentInstance!.continuous).toBe(true);
+		expect(currentInstance!.interimResults).toBe(true);
 
 		// Partial event
 		currentInstance!.onresult!({
@@ -163,6 +165,42 @@ describe("WebSpeechTranscriber with mocked browser SpeechRecognition", () => {
 			{ type: "error", message: "speech recognition error" },
 			{ type: "end" },
 		]);
+	});
+
+	it("tolerates a missing confidence alternative on final results", () => {
+		let currentInstance: MockSpeechRecognition | null = null;
+		class MockCtor extends MockSpeechRecognition {
+			constructor() {
+				super();
+				currentInstance = this;
+			}
+		}
+
+		// @ts-expect-error test mock
+		globalThis.window = { SpeechRecognition: MockCtor };
+
+		const t = new WebSpeechTranscriber();
+		const events: unknown[] = [];
+		t.start((ev) => events.push(ev));
+
+		// `result[0]` is read twice (transcript, then confidence); a
+		// result whose first alternative disappears between reads must
+		// still emit the final event with an undefined confidence.
+		let alternativeReads = 0;
+		const unstableResult = {
+			isFinal: true,
+			length: 1,
+			get 0() {
+				alternativeReads += 1;
+				return alternativeReads === 1 ? { transcript: "olá", confidence: 0.9 } : undefined;
+			},
+		};
+		currentInstance!.onresult!({
+			resultIndex: 0,
+			results: [unstableResult],
+		});
+
+		expect(events).toEqual([{ type: "final", text: "olá", confidence: undefined }]);
 	});
 });
 
