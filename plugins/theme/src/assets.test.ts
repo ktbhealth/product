@@ -12,7 +12,7 @@ import {
 	THEME_FONT_JOB_KIND,
 	catalogFontAssetOf,
 	catalogFontFamilyOf,
-	catalogFontSubsetKeyOf,
+	catalogFontSubsetKeysOf,
 	completeThemeAsset,
 	contentTypeForKey,
 	decodeThemeAssetJob,
@@ -465,13 +465,23 @@ describe("catalog font assets (theme_id NULL)", () => {
 		expect(catalogFontFamilyOf("{}")).toBeNull();
 		expect(catalogFontFamilyOf('{"family":"  "}')).toBeNull();
 		expect(catalogFontFamilyOf('{"family":" Inter "}')).toBe("Inter");
-		expect(catalogFontSubsetKeyOf(null)).toBeNull();
-		expect(catalogFontSubsetKeyOf("not json")).toBeNull();
-		expect(catalogFontSubsetKeyOf("[1,2]")).toBeNull();
-		expect(catalogFontSubsetKeyOf("{}")).toBeNull();
-		expect(catalogFontSubsetKeyOf('{"subsetKey":""}')).toBeNull();
-		expect(catalogFontSubsetKeyOf('{"subsetKey":5}')).toBeNull();
-		expect(catalogFontSubsetKeyOf('{"subsetKey":"k-latin.ttf"}')).toBe("k-latin.ttf");
+		expect(catalogFontSubsetKeysOf(null)).toEqual([]);
+		expect(catalogFontSubsetKeysOf("not json")).toEqual([]);
+		expect(catalogFontSubsetKeysOf("[1,2]")).toEqual([]);
+		expect(catalogFontSubsetKeysOf("{}")).toEqual([]);
+		expect(catalogFontSubsetKeysOf('{"subsetKeys":"k"}')).toEqual([]);
+		expect(catalogFontSubsetKeysOf('{"subsetKeys":["",5,null,"a.ttf","b.ttf","a.ttf"]}')).toEqual([
+			"a.ttf",
+			"b.ttf",
+		]);
+		// Legacy singular key from the latin-only era.
+		expect(catalogFontSubsetKeysOf('{"subsetKey":"k-latin.ttf"}')).toEqual(["k-latin.ttf"]);
+		expect(catalogFontSubsetKeysOf('{"subsetKey":""}')).toEqual([]);
+		expect(catalogFontSubsetKeysOf('{"subsetKey":5}')).toEqual([]);
+		// Both present → union, deduped.
+		expect(catalogFontSubsetKeysOf('{"subsetKeys":["a.ttf"],"subsetKey":"a.ttf"}')).toEqual([
+			"a.ttf",
+		]);
 		expect(catalogFontAssetOf(null)).toBeNull();
 		expect(catalogFontAssetOf("not json")).toBeNull();
 		expect(catalogFontAssetOf("5")).toBeNull();
@@ -748,22 +758,35 @@ describe("catalog font assets (theme_id NULL)", () => {
 			r2Key: "full.woff2",
 			format: "woff2",
 			unicodeRange: "U+0020-04FF",
-			subset: {
-				r2Key: "full-latin.ttf",
-				format: "truetype",
-				unicodeRange: "U+0020-007E",
-				fullUnicodeRange: "U+0080-04FF",
-			},
+			subsets: [
+				{
+					r2Key: "full-latin.ttf",
+					format: "truetype",
+					unicodeRange: "U+0020-007E",
+				},
+				{
+					r2Key: "full-cyrillic.ttf",
+					format: "truetype",
+					unicodeRange: "U+0400-045F",
+				},
+			],
+			subsetFullUnicodeRange: "U+0080-04FF",
 		});
 		const variants = JSON.parse(asset!.variants!);
-		expect(variants.subsetKey).toBe("full-latin.ttf");
-		// Per weight: latin subset face first, then the full font with
-		// only the complementary coverage — disjoint unicode-ranges.
+		expect(variants.subsetKeys).toEqual(["full-latin.ttf", "full-cyrillic.ttf"]);
+		// Per weight: one face per charset subset, then the full font
+		// with only the complementary coverage — all disjoint.
 		expect(variants.fontAsset.faces).toEqual([
 			{
 				url: "/api/theme/assets?key=full-latin.ttf",
 				weight: 400,
 				unicodeRange: "U+0020-007E",
+				format: "truetype",
+			},
+			{
+				url: "/api/theme/assets?key=full-cyrillic.ttf",
+				weight: 400,
+				unicodeRange: "U+0400-045F",
 				format: "truetype",
 			},
 			{
@@ -776,6 +799,12 @@ describe("catalog font assets (theme_id NULL)", () => {
 				url: "/api/theme/assets?key=full-latin.ttf",
 				weight: 700,
 				unicodeRange: "U+0020-007E",
+				format: "truetype",
+			},
+			{
+				url: "/api/theme/assets?key=full-cyrillic.ttf",
+				weight: 700,
+				unicodeRange: "U+0400-045F",
 				format: "truetype",
 			},
 			{
@@ -787,22 +816,23 @@ describe("catalog font assets (theme_id NULL)", () => {
 		]);
 	});
 
-	it("insertCatalogFontAsset drops the full face when the subset covers all", async () => {
+	it("insertCatalogFontAsset drops the full face when subsets cover all", async () => {
 		const { db } = makeTestDb();
 		const asset = await insertCatalogFontAsset(db, {
 			family: "LatinOnly",
 			weights: undefined,
 			r2Key: "l.ttf",
 			format: undefined,
-			subset: {
-				r2Key: "l-latin.ttf",
-				format: undefined,
-				unicodeRange: "U+0020-007E",
-				fullUnicodeRange: undefined,
-			},
+			subsets: [
+				{
+					r2Key: "l-latin.ttf",
+					format: undefined,
+					unicodeRange: "U+0020-007E",
+				},
+			],
 		});
 		const variants = JSON.parse(asset!.variants!);
-		expect(variants.subsetKey).toBe("l-latin.ttf");
+		expect(variants.subsetKeys).toEqual(["l-latin.ttf"]);
 		expect(variants.fontAsset.faces).toEqual([
 			{
 				url: "/api/theme/assets?key=l-latin.ttf",
@@ -810,18 +840,20 @@ describe("catalog font assets (theme_id NULL)", () => {
 			},
 		]);
 		// Blank format/complement strings sanitize to absent just like
-		// undefined — the subset face still wins.
+		// undefined — the subset faces still win.
 		const blanked = await insertCatalogFontAsset(db, {
 			family: "BlankSub",
 			weights: undefined,
 			r2Key: "b.ttf",
 			format: undefined,
-			subset: {
-				r2Key: "b-latin.otf",
-				format: "  ",
-				unicodeRange: "U+0020-007E",
-				fullUnicodeRange: "   ",
-			},
+			subsets: [
+				{
+					r2Key: "b-latin.otf",
+					format: "  ",
+					unicodeRange: "U+0020-007E",
+				},
+			],
+			subsetFullUnicodeRange: "   ",
 		});
 		expect(catalogFontAssetOf(blanked!.variants)!.faces).toEqual([
 			{
@@ -838,16 +870,52 @@ describe("catalog font assets (theme_id NULL)", () => {
 			weights: [400],
 			r2Key: "f.ttf",
 			format: undefined,
-			subset: {
-				r2Key: "",
-				format: "truetype",
-				unicodeRange: "U+0020-007E",
-				fullUnicodeRange: "   ",
-			},
+			subsets: [
+				{
+					r2Key: "",
+					format: "truetype",
+					unicodeRange: "U+0020-007E",
+				},
+				// Valid entry survives alongside the dropped one.
+				{
+					r2Key: "f-cyrillic.ttf",
+					format: "truetype",
+					unicodeRange: "U+0400-045F",
+				},
+			],
+			subsetFullUnicodeRange: "U+0460-04FF",
 		});
 		const variants = JSON.parse(asset!.variants!);
-		expect(variants.subsetKey).toBeUndefined();
-		expect(variants.fontAsset.faces).toEqual([{ url: "/api/theme/assets?key=f.ttf", weight: 400 }]);
+		expect(variants.subsetKeys).toEqual(["f-cyrillic.ttf"]);
+		expect(variants.fontAsset.faces).toEqual([
+			{
+				url: "/api/theme/assets?key=f-cyrillic.ttf",
+				weight: 400,
+				unicodeRange: "U+0400-045F",
+				format: "truetype",
+			},
+			{
+				url: "/api/theme/assets?key=f.ttf",
+				weight: 400,
+				unicodeRange: "U+0460-04FF",
+			},
+		]);
+		// Every entry malformed → full-font-only faces, no subsetKeys.
+		const allBad = await insertCatalogFontAsset(db, {
+			family: "AllBad",
+			weights: [400],
+			r2Key: "g.ttf",
+			format: undefined,
+			subsets: [
+				{ r2Key: "", format: "truetype", unicodeRange: "U+0020-007E" },
+				{ r2Key: "g.ttf", format: "truetype", unicodeRange: "  " },
+			],
+		});
+		const allBadVariants = JSON.parse(allBad!.variants!);
+		expect(allBadVariants.subsetKeys).toBeUndefined();
+		expect(allBadVariants.fontAsset.faces).toEqual([
+			{ url: "/api/theme/assets?key=g.ttf", weight: 400 },
+		]);
 	});
 
 	it("insertCatalogFontAsset returns null when the insert yields no row", async () => {
