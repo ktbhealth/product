@@ -14,6 +14,7 @@ import {
 	InvalidScheduleError,
 	listScheduledJobs,
 	nextRunAfter,
+	runScheduledJobNow,
 	runSchedulerSweep,
 	updateScheduledJob,
 	type ScheduledJob,
@@ -202,6 +203,57 @@ describe("claimDueScheduledJobs", () => {
 		// nextRunAt was already advanced past `now`, so it stays put.
 		const later = await claimDueScheduledJobs(db, { now: T0 + 120_000 });
 		expect(later.map((j) => j.id)).toEqual([recurring.id]);
+	});
+});
+
+describe("runScheduledJobNow", () => {
+	it("fires an active row early, advancing the schedule", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", cronExpr: "*/5 * * * *" }, T0);
+		const fired: string[] = [];
+		const result = await runScheduledJobNow(db, job.id, async (j) => void fired.push(j.id), {
+			now: T0 + 60_000,
+		});
+		expect(result?.error).toBeNull();
+		expect(fired).toEqual([job.id]);
+		const after = await getScheduledJob(db, job.id);
+		// Recurring: next occurrence recomputed from the manual fire —
+		// next */5 boundary after T0+60s is T0+5min, not +6min.
+		expect(after?.nextRunAt).toBe(T0 + 5 * 60_000);
+		expect(after?.lastRunAt).toBe(T0 + 60_000);
+	});
+
+	it("marks a one-off done and captures dispatch errors", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		const result = await runScheduledJobNow(
+			db,
+			job.id,
+			async () => {
+				throw new Error("dispatch boom");
+			},
+			{ now: T0 },
+		);
+		expect(result?.error).toBe("dispatch boom");
+		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
+	});
+
+	it("returns null for missing, paused or mid-claim rows", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		expect(await runScheduledJobNow(db, "nope", async () => {}, { now: T0 })).toBeNull();
+		await updateScheduledJob(db, job.id, { status: "paused" }, T0);
+		expect(await runScheduledJobNow(db, job.id, async () => {}, { now: T0 })).toBeNull();
+		// Mid-claim on a recurring row (stays active after the claim).
+		const recurring = await insertScheduledJob(db, { kind: "r", cronExpr: "* * * * *" }, T0);
+		await db
+			.update(scheduledJobs)
+			.set({ nextRunAt: T0 - 1 })
+			.where(eq(scheduledJobs.id, recurring.id));
+		await claimDueScheduledJobs(db, { now: T0, leaseMs: 60_000 });
+		expect(
+			await runScheduledJobNow(db, recurring.id, async () => {}, { now: T0 + 30_000 }),
+		).toBeNull();
 	});
 });
 

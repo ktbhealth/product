@@ -149,6 +149,71 @@ export interface CronRunResult {
 	readonly error?: string;
 }
 
+/** JSON-serializable payload — the shape `scheduled_jobs.params`
+ * carries across the server-fn boundary (strict mode rejects
+ * `unknown` in responses). */
+export type JsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly JsonValue[]
+	| { readonly [key: string]: JsonValue };
+
+/** Lifecycle of a runtime schedule row — structural mirror of
+ * `ScheduledJobStatus` in @ktb/scheduler-port. */
+export type ScheduledJobStatus = "active" | "paused" | "done";
+
+/** One `scheduled_jobs` row as the /platform/cron console sees it —
+ * structural mirror of `ScheduledJob` in @ktb/scheduler-port (params
+ * arrives decoded). */
+export interface ScheduledJobInfo {
+	readonly id: string;
+	readonly kind: string;
+	readonly params: JsonValue | null;
+	readonly cronExpr: string | null;
+	readonly runAt: number | null;
+	readonly nextRunAt: number;
+	readonly lastRunAt: number | null;
+	readonly status: ScheduledJobStatus;
+	readonly tenantId: number | null;
+	readonly createdBy: string | null;
+	readonly createdAt: number;
+	readonly updatedAt: number;
+}
+
+/** Fields accepted when creating a schedule — exactly one of
+ * `cronExpr`/`runAt` (validated server-side). */
+export interface ScheduledJobCreateInput {
+	readonly kind: string;
+	readonly params?: unknown;
+	readonly cronExpr?: string | null;
+	readonly runAt?: number | null;
+	readonly tenantId?: number | null;
+	readonly createdBy?: string | null;
+}
+
+/** Mutable schedule fields — schedule changes recompute nextRunAt. */
+export interface ScheduledJobUpdateInput {
+	readonly params?: unknown;
+	readonly cronExpr?: string | null;
+	readonly runAt?: number | null;
+	readonly status?: ScheduledJobStatus;
+}
+
+/** Honest write outcome — `invalid` carries the validation message. */
+export type ScheduleWriteResult =
+	| { readonly ok: true; readonly job: ScheduledJobInfo }
+	| {
+			readonly ok: false;
+			readonly reason: "invalid" | "unavailable" | "not-found";
+			readonly error?: string;
+	  };
+
+export type ScheduleDeleteResult =
+	| { readonly ok: true }
+	| { readonly ok: false; readonly reason: "unavailable" | "not-found" };
+
 /** Transport family a pub/sub topic source belongs to — structural
  * mirror of `PubSubTransport` in @ktb/pubsub-port (declared here so
  * plugin code needs no new dependency). */
@@ -305,6 +370,23 @@ export interface ServerRuntime {
 		readonly runNow: (id: string) => Promise<CronRunResult | null>;
 		readonly runSchedule: (schedule: string) => Promise<readonly CronRunResult[]>;
 	};
+	/** Runtime scheduler capability (P-094): the `scheduled_jobs`
+	 * table behind /platform/cron's dynamic-schedules section. `list`
+	 * reads every row; `create`/`update` validate the schedule fields
+	 * server-side; `runNow` claims and dispatches one row immediately
+	 * (the schedule still advances — no double-fire). Undefined outside
+	 * the composed app. */
+	readonly schedules?: {
+		readonly list: () => Promise<readonly ScheduledJobInfo[]>;
+		readonly create: (input: ScheduledJobCreateInput) => Promise<ScheduleWriteResult>;
+		readonly update: (id: string, patch: ScheduledJobUpdateInput) => Promise<ScheduleWriteResult>;
+		readonly remove: (id: string) => Promise<ScheduleDeleteResult>;
+		readonly runNow: (id: string) => Promise<CronRunResult | null>;
+	};
+	/** Registered job kinds the scheduler can dispatch — the kind
+	 * picker's source of truth (jobHandlers registry keys). Undefined
+	 * outside the composed app. */
+	readonly jobKinds?: () => readonly string[];
 	/** Pub/sub capability: `topics` merges every bound transport's
 	 * channel enumeration (in-process bus + Redis channels); `publish`
 	 * routes a JSON payload to a topic by its console-facing id —

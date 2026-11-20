@@ -30,6 +30,13 @@ export {
 	type QueueDepth,
 	type QueueInfo,
 	type QueueTransport,
+	type JsonValue,
+	type ScheduleDeleteResult,
+	type ScheduleWriteResult,
+	type ScheduledJobCreateInput,
+	type ScheduledJobInfo,
+	type ScheduledJobStatus,
+	type ScheduledJobUpdateInput,
 	type ServerRuntime,
 } from "./runtime.ts";
 export {

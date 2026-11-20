@@ -55,6 +55,40 @@ export interface CronMessages {
 	readonly rColStarted: string;
 	readonly emptyRunsTitle: string;
 	readonly emptyRunsDescription: string;
+	readonly schedulesTab: string;
+	readonly schedulesTitle: string;
+	readonly schedulesDescription: string;
+	readonly sColKind: string;
+	readonly sColSchedule: string;
+	readonly sColNextRun: string;
+	readonly sColLastRun: string;
+	readonly sColStatus: string;
+	readonly sColAction: string;
+	readonly statusActive: string;
+	readonly statusPaused: string;
+	readonly statusDone: string;
+	readonly emptySchedulesTitle: string;
+	readonly emptySchedulesDescription: string;
+	readonly newScheduleTitle: string;
+	readonly fKind: string;
+	readonly fKindPlaceholder: string;
+	readonly fModeRecurring: string;
+	readonly fModeOnce: string;
+	readonly fCronExpr: string;
+	readonly fCronExprPlaceholder: string;
+	readonly fRunAt: string;
+	readonly fParams: string;
+	readonly fParamsPlaceholder: string;
+	readonly fCreate: string;
+	readonly fCreating: string;
+	readonly actPause: string;
+	readonly actResume: string;
+	readonly actDelete: string;
+	readonly schedCreated: string;
+	readonly schedUpdated: string;
+	readonly schedDeleted: string;
+	readonly schedFailed: string;
+	readonly schedInvalid: string;
 }
 
 const en: CronMessages = {
@@ -97,6 +131,42 @@ const en: CronMessages = {
 	rColStarted: "Started",
 	emptyRunsTitle: "No cron runs recorded",
 	emptyRunsDescription: "Scheduled fires and manual runs will appear here once recorded.",
+	schedulesTab: "Dynamic",
+	schedulesTitle: "Dynamic schedules",
+	schedulesDescription:
+		"Runtime-managed scheduled_jobs rows — created here, fired by the every-minute heartbeat and dispatched through the jobs queue.",
+	sColKind: "Kind",
+	sColSchedule: "Schedule",
+	sColNextRun: "Next run",
+	sColLastRun: "Last run",
+	sColStatus: "Status",
+	sColAction: "Action",
+	statusActive: "Active",
+	statusPaused: "Paused",
+	statusDone: "Done",
+	emptySchedulesTitle: "No dynamic schedules",
+	emptySchedulesDescription:
+		"Create one below — it fires on the next heartbeat after its time comes due.",
+	newScheduleTitle: "New schedule",
+	fKind: "Job kind",
+	fKindPlaceholder: "e.g. agenda.reminders",
+	fModeRecurring: "Recurring (cron)",
+	fModeOnce: "One-off (date & time)",
+	fCronExpr: "Cron expression (UTC, 5 fields)",
+	fCronExprPlaceholder: "*/15 * * * *",
+	fRunAt: "Run at",
+	fParams: "Params (JSON, optional)",
+	fParamsPlaceholder: '{"key": "value"}',
+	fCreate: "Create schedule",
+	fCreating: "Creating…",
+	actPause: "Pause",
+	actResume: "Resume",
+	actDelete: "Delete",
+	schedCreated: "Schedule created.",
+	schedUpdated: "Schedule updated.",
+	schedDeleted: "Schedule deleted.",
+	schedFailed: "Schedule operation failed.",
+	schedInvalid: "Invalid schedule — check the kind and timing fields.",
 };
 
 const ptBR: CronMessages = {
@@ -139,6 +209,42 @@ const ptBR: CronMessages = {
 	rColStarted: "Iniciada em",
 	emptyRunsTitle: "Nenhuma execução cron registrada",
 	emptyRunsDescription: "Disparos agendados e execuções manuais aparecerão aqui quando gravados.",
+	schedulesTab: "Dinâmicas",
+	schedulesTitle: "Agendamentos dinâmicos",
+	schedulesDescription:
+		"Linhas scheduled_jobs gerenciadas em tempo de execução — criadas aqui, disparadas pelo heartbeat de um minuto e enfileiradas via jobs.",
+	sColKind: "Tipo",
+	sColSchedule: "Agendamento",
+	sColNextRun: "Próxima execução",
+	sColLastRun: "Última execução",
+	sColStatus: "Status",
+	sColAction: "Ação",
+	statusActive: "Ativa",
+	statusPaused: "Pausada",
+	statusDone: "Concluída",
+	emptySchedulesTitle: "Nenhum agendamento dinâmico",
+	emptySchedulesDescription:
+		"Crie um abaixo — ele dispara no próximo heartbeat após o horário vencer.",
+	newScheduleTitle: "Novo agendamento",
+	fKind: "Tipo de tarefa",
+	fKindPlaceholder: "ex.: agenda.reminders",
+	fModeRecurring: "Recorrente (cron)",
+	fModeOnce: "Pontual (data e hora)",
+	fCronExpr: "Expressão cron (UTC, 5 campos)",
+	fCronExprPlaceholder: "*/15 * * * *",
+	fRunAt: "Executar em",
+	fParams: "Parâmetros (JSON, opcional)",
+	fParamsPlaceholder: '{"chave": "valor"}',
+	fCreate: "Criar agendamento",
+	fCreating: "Criando…",
+	actPause: "Pausar",
+	actResume: "Retomar",
+	actDelete: "Excluir",
+	schedCreated: "Agendamento criado.",
+	schedUpdated: "Agendamento atualizado.",
+	schedDeleted: "Agendamento excluído.",
+	schedFailed: "Operação de agendamento falhou.",
+	schedInvalid: "Agendamento inválido — verifique tipo e horário.",
 };
 
 const es: CronMessages = {
@@ -182,6 +288,42 @@ const es: CronMessages = {
 	emptyRunsTitle: "Ninguna ejecución cron registrada",
 	emptyRunsDescription:
 		"Los disparos programados y ejecuciones manuales aparecerán aquí al registrarse.",
+	schedulesTab: "Dinámicas",
+	schedulesTitle: "Programaciones dinámicas",
+	schedulesDescription:
+		"Filas scheduled_jobs gestionadas en tiempo de ejecución — creadas aquí, disparadas por el heartbeat de un minuto y encoladas vía jobs.",
+	sColKind: "Tipo",
+	sColSchedule: "Programación",
+	sColNextRun: "Próxima ejecución",
+	sColLastRun: "Última ejecución",
+	sColStatus: "Estado",
+	sColAction: "Acción",
+	statusActive: "Activa",
+	statusPaused: "Pausada",
+	statusDone: "Finalizada",
+	emptySchedulesTitle: "Ninguna programación dinámica",
+	emptySchedulesDescription:
+		"Crea una abajo — se dispara en el próximo heartbeat una vez vencida la hora.",
+	newScheduleTitle: "Nueva programación",
+	fKind: "Tipo de tarea",
+	fKindPlaceholder: "p. ej. agenda.reminders",
+	fModeRecurring: "Recurrente (cron)",
+	fModeOnce: "Puntual (fecha y hora)",
+	fCronExpr: "Expresión cron (UTC, 5 campos)",
+	fCronExprPlaceholder: "*/15 * * * *",
+	fRunAt: "Ejecutar el",
+	fParams: "Parámetros (JSON, opcional)",
+	fParamsPlaceholder: '{"clave": "valor"}',
+	fCreate: "Crear programación",
+	fCreating: "Creando…",
+	actPause: "Pausar",
+	actResume: "Reanudar",
+	actDelete: "Eliminar",
+	schedCreated: "Programación creada.",
+	schedUpdated: "Programación actualizada.",
+	schedDeleted: "Programación eliminada.",
+	schedFailed: "La operación de programación falló.",
+	schedInvalid: "Programación inválida — revisa tipo y horario.",
 };
 
 const CATALOGS: Record<CronLocale, CronMessages> = { en, "pt-BR": ptBR, es };

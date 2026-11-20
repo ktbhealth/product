@@ -112,23 +112,42 @@ describe("cron panel page loader", () => {
 			jobs: () => Effect.succeed([JOB]),
 			runs: () => Effect.succeed([RUN]),
 			runNow: () => Effect.succeed({ ok: true as const }),
+			schedules: () => Effect.succeed([]),
+			scheduleKinds: () => Effect.succeed(["agenda.sendReminder"]),
+			createSchedule: () => Effect.succeed({ ok: true as const, job: {} }),
+			updateSchedule: () => Effect.succeed({ ok: true as const, job: {} }),
+			deleteSchedule: () => Effect.succeed({ ok: true as const }),
+			runScheduleNow: () => Effect.succeed({ ok: true as const }),
 			...overrides,
 		}) as unknown as CronAdmin["Service"];
 
-	it("returns both signals", async () => {
+	it("returns all four signals", async () => {
 		const result = await Effect.runPromise(
 			loader().pipe(Effect.provideService(CronAdmin, adminStub())),
 		);
-		expect(result).toEqual({ jobs: [JOB], runs: [RUN] });
+		expect(result).toEqual({
+			jobs: [JOB],
+			runs: [RUN],
+			schedules: [],
+			scheduleKinds: ["agenda.sendReminder"],
+		});
 	});
 
 	it("collapses Forbidden sections to null independently", async () => {
 		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
 		const result = await Effect.runPromise(
 			loader().pipe(
-				Effect.provideService(CronAdmin, adminStub({ jobs: forbidden, runs: forbidden })),
+				Effect.provideService(
+					CronAdmin,
+					adminStub({
+						jobs: forbidden,
+						runs: forbidden,
+						schedules: forbidden,
+						scheduleKinds: forbidden,
+					}),
+				),
 			),
 		);
-		expect(result).toEqual({ jobs: null, runs: null });
+		expect(result).toEqual({ jobs: null, runs: null, schedules: null, scheduleKinds: null });
 	});
 });
