@@ -23,11 +23,19 @@ describe("checkSchema — structure", () => {
 	});
 
 	it("rejects non-object non-boolean schemas", () => {
-		for (const bad of [42, "x", null, [1, 2], undefined]) {
+		const cases: ReadonlyArray<readonly [unknown, string]> = [
+			[42, "number"],
+			["x", "string"],
+			[null, "object"],
+			[[1, 2], "array"],
+			[undefined, "undefined"],
+		];
+		for (const [bad, type] of cases) {
 			const issues = checkSchema(bad);
 			expect(issues).toHaveLength(1);
 			expect(issues[0]?.keyword).toBe("schema");
 			expect(issues[0]?.path).toBe("");
+			expect(issues[0]?.message).toBe(`schema must be an object or boolean, got ${type}`);
 		}
 	});
 
@@ -112,6 +120,27 @@ describe("checkSchema — keywords", () => {
 		const nullProto = Object.create(null) as Record<string, unknown>;
 		nullProto.a = 1;
 		expect(checkSchema({ const: nullProto })).toEqual([]);
+		// Mixed-validity containers: EVERY element must be a JSON value —
+		// a single bad leaf rejects the whole payload.
+		expect(issueAt({ enum: [[1, undefined]] }, "/enum")?.message).toBe(
+			"enum entries must be JSON values",
+		);
+		expect(issueAt({ const: { a: 1, b: undefined } }, "/const")?.message).toBe(
+			"const must be a JSON value",
+		);
+		// Repeated references to the same object are still JSON values —
+		// the cycle-detection set must be cleaned up on the way out.
+		const shared = { x: 1 };
+		expect(checkSchema({ const: [shared, shared] })).toEqual([]);
+		expect(checkSchema({ const: { a: shared, b: shared } })).toEqual([]);
+		// Symbols and bigints are not JSON values.
+		expect(issueAt({ const: Symbol("s") }, "/const")).toBeDefined();
+		expect(issueAt({ enum: [BigInt(10)] }, "/enum")).toBeDefined();
+		// Circular payloads under every keyword that runs isJsonValue.
+		const circularDefault: Record<string, unknown> = {};
+		circularDefault.self = circularDefault;
+		expect(issueAt({ default: circularDefault }, "/default")).toBeDefined();
+		expect(issueAt({ enum: [circularDefault] }, "/enum")).toBeDefined();
 	});
 });
 
@@ -122,12 +151,18 @@ describe("checkSchema — type", () => {
 	});
 
 	it("rejects empty, invalid and duplicate type lists", () => {
-		expect(issueAt({ type: [] }, "/type")?.message).toBe("type array must not be empty");
-		expect(issueAt({ type: "strnig" }, "/type")?.message).toContain("type must be one of");
-		expect(issueAt({ type: ["string", 4] }, "/type")?.message).toContain("type must be one of");
-		expect(issueAt({ type: ["string", "string"] }, "/type")?.message).toBe(
-			'duplicate type "string"',
+		const empty = issueAt({ type: [] }, "/type");
+		expect(empty?.keyword).toBe("type");
+		expect(empty?.message).toBe("type array must not be empty");
+		const invalid = issueAt({ type: "strnig" }, "/type");
+		expect(invalid?.keyword).toBe("type");
+		expect(invalid?.message).toBe(
+			`type must be one of ${JSON_SCHEMA_TYPES.join(", ")} or an array of them`,
 		);
+		expect(issueAt({ type: ["string", 4] }, "/type")?.message).toBe(invalid?.message);
+		const duplicate = issueAt({ type: ["string", "string"] }, "/type");
+		expect(duplicate?.keyword).toBe("type");
+		expect(duplicate?.message).toBe('duplicate type "string"');
 	});
 
 	it("exposes the seven JSON Schema types", () => {
@@ -153,6 +188,18 @@ describe("checkSchema — object/array keywords", () => {
 		expect(
 			issueAt({ properties: { "a/b": { type: "x" } } }, "/properties/a~1b/type"),
 		).toBeDefined();
+		// "~" escapes to "~0" (and must be escaped before "/" becomes "~1").
+		expect(issueAt({ properties: { "~k": { type: "x" } } }, "/properties/~0k/type")).toBeDefined();
+		expect(
+			issueAt({ properties: { "~/x": { type: "x" } } }, "/properties/~0~1x/type"),
+		).toBeDefined();
+	});
+
+	it("rejects non-schema values for single-subschema keywords", () => {
+		for (const key of ["additionalProperties", "items", "not"] as const) {
+			const issue = issueAt({ [key]: 7 }, `/${key}`);
+			expect(issue?.message).toContain("must be an object or boolean");
+		}
 	});
 
 	it("validates required", () => {
@@ -237,6 +284,24 @@ describe("checkSchema — bounds and pattern", () => {
 		expect(issueAt({ pattern: "(" }, "/pattern")?.message).toBe(
 			"pattern is not a valid regular expression",
 		);
+		// Exactly at the length cap is still allowed.
+		expect(checkSchema({ pattern: "a".repeat(MAX_PATTERN_LENGTH) })).toEqual([]);
+	});
+
+	it("screens nested quantifiers without rejecting plain groups", () => {
+		const nested = "pattern has nested quantifiers (ReDoS risk)";
+		// Whitespace between the group and its quantifier still counts.
+		expect(issueAt({ pattern: "(a+) +" }, "/pattern")?.message).toBe(nested);
+		expect(issueAt({ pattern: "(a+)*b" }, "/pattern")?.message).toBe(nested);
+		expect(issueAt({ pattern: "(a|b+)?" }, "/pattern")?.message).toBe(nested);
+		// Quantified groups WITHOUT an inner quantifier are fine.
+		expect(checkSchema({ pattern: "(ab)+c" })).toEqual([]);
+		expect(checkSchema({ pattern: "x(yz)*" })).toEqual([]);
+		// An empty group has no inner quantifier either.
+		expect(checkSchema({ pattern: "()*" })).toEqual([]);
+		// The heuristic is shallow by design: a quantified group nested
+		// inside another group is not seen — accepted, documented limit.
+		expect(checkSchema({ pattern: "(a(b+))+" })).toEqual([]);
 	});
 });
 
@@ -311,15 +376,21 @@ describe("checkSchema — $ref", () => {
 	});
 
 	it("rejects non-string, remote and malformed refs", () => {
-		expect(issueAt({ $ref: 5 }, "/$ref")?.message).toBe("$ref must be a string");
-		expect(issueAt({ $ref: "https://x.com/s.json" }, "/$ref")?.message).toContain(
-			"not an internal JSON pointer",
-		);
-		expect(issueAt({ $ref: "definitions/foo" }, "/$ref")?.message).toContain(
-			"not an internal JSON pointer",
-		);
-		expect(issueAt({ $ref: "#/missing" }, "/$ref")?.message).toContain("does not resolve");
-		expect(issueAt({ $ref: "#/properties/a%20b" }, "/$ref")?.message).toContain("percent-encoding");
+		const nonString = issueAt({ $ref: 5 }, "/$ref");
+		expect(nonString?.keyword).toBe("$ref");
+		expect(nonString?.message).toBe("$ref must be a string");
+		const remote = issueAt({ $ref: "https://x.com/s.json" }, "/$ref");
+		expect(remote?.keyword).toBe("$ref");
+		expect(remote?.message).toContain("not an internal JSON pointer");
+		const plain = issueAt({ $ref: "definitions/foo" }, "/$ref");
+		expect(plain?.keyword).toBe("$ref");
+		expect(plain?.message).toContain("not an internal JSON pointer");
+		const missing = issueAt({ $ref: "#/missing" }, "/$ref");
+		expect(missing?.keyword).toBe("$ref");
+		expect(missing?.message).toContain("does not resolve");
+		const percent = issueAt({ $ref: "#/properties/a%20b" }, "/$ref");
+		expect(percent?.keyword).toBe("$ref");
+		expect(percent?.message).toContain("percent-encoding");
 	});
 
 	it("rejects unresolvable pointer edge cases", () => {
@@ -341,6 +412,38 @@ describe("checkSchema — $ref", () => {
 			properties: { a: undefined, b: { $ref: "#/properties/a" } },
 		};
 		expect(checkSchema(withUndef).some((i) => i.message.includes("does not resolve"))).toBe(true);
+		// Inherited properties are not pointer targets — "constructor"
+		// lives on Object.prototype but is not an own property.
+		const proto = { not: { $ref: "#/constructor" } };
+		expect(issueAt(proto, "/not/$ref")?.message).toContain("does not resolve");
+		const protoMid = { not: { $ref: "#/constructor/x" } };
+		expect(issueAt(protoMid, "/not/$ref")?.message).toContain("does not resolve");
+	});
+
+	it("requires canonical decimal indices into arrays", () => {
+		const allOf = Array.from({ length: 11 }, () => true);
+		// "1e1" coerces to 10 via Number() but is not a canonical array
+		// index — the pointer must not resolve.
+		const sci = { allOf, not: { $ref: "#/allOf/1e1" } };
+		expect(issueAt(sci, "/not/$ref")?.message).toContain("does not resolve");
+		// Multi-digit canonical indices resolve fine.
+		const ok = { allOf, not: { $ref: "#/allOf/10" } };
+		expect(checkSchema(ok)).toEqual([]);
+		// Out-of-range and non-numeric indices still fail to resolve.
+		expect(issueAt({ allOf, not: { $ref: "#/allOf/11" } }, "/not/$ref")).toBeDefined();
+		expect(issueAt({ allOf, not: { $ref: "#/allOf/x" } }, "/not/$ref")).toBeDefined();
+	});
+
+	it("counts $ref hops against the depth budget", () => {
+		// Each $ref target is walked inline at depth+1, so a chain of
+		// refs deeper than MAX_SCHEMA_DEPTH must be rejected.
+		const properties: Record<string, unknown> = {};
+		for (let i = 0; i <= MAX_SCHEMA_DEPTH + 5; i++) {
+			properties[`p${i}`] =
+				i === MAX_SCHEMA_DEPTH + 5 ? { type: "string" } : { $ref: `#/properties/p${i + 1}` };
+		}
+		const issues = checkSchema({ type: "object", properties });
+		expect(issues.some((i) => i.message.includes(`depth ${MAX_SCHEMA_DEPTH}`))).toBe(true);
 	});
 
 	it('resolves "#" to the document root (and catches the recursion)', () => {
@@ -350,7 +453,8 @@ describe("checkSchema — $ref", () => {
 
 	it("rejects recursive $refs", () => {
 		const direct = { properties: { a: { $ref: "#/properties/a" } } };
-		expect(checkSchema(direct).some((i) => i.message.includes("recursive"))).toBe(true);
+		const directIssue = checkSchema(direct).find((i) => i.message.includes("recursive"));
+		expect(directIssue?.keyword).toBe("$ref");
 
 		const indirect = {
 			properties: {
@@ -369,12 +473,47 @@ describe("checkSchema — size limits", () => {
 			node = { properties: { a: node } };
 		}
 		const issues = checkSchema(node);
-		expect(issues.some((i) => i.message.includes(`depth ${MAX_SCHEMA_DEPTH}`))).toBe(true);
+		const depthIssue = issues.find((i) => i.message.includes(`depth ${MAX_SCHEMA_DEPTH}`));
+		expect(depthIssue?.keyword).toBe("schema");
+	});
+
+	it("accepts schemas nested at exactly MAX_SCHEMA_DEPTH", () => {
+		let node: Record<string, unknown> = { type: "string" };
+		for (let i = 0; i < MAX_SCHEMA_DEPTH; i++) {
+			node = { properties: { a: node } };
+		}
+		expect(checkSchema(node)).toEqual([]);
+	});
+
+	it("counts single-subschema and combinator nesting against the depth budget", () => {
+		// `not` (and items/additionalProperties) walk their value at
+		// depth+1 — deep `not` chains must hit the same limit.
+		let notNode: Record<string, unknown> = { type: "string" };
+		for (let i = 0; i < MAX_SCHEMA_DEPTH + 5; i++) notNode = { not: notNode };
+		expect(checkSchema(notNode).some((i) => i.message.includes(`depth ${MAX_SCHEMA_DEPTH}`))).toBe(
+			true,
+		);
+		// Combinator elements count too.
+		let allOfNode: Record<string, unknown> = { type: "string" };
+		for (let i = 0; i < MAX_SCHEMA_DEPTH + 5; i++) allOfNode = { allOf: [allOfNode] };
+		expect(
+			checkSchema(allOfNode).some((i) => i.message.includes(`depth ${MAX_SCHEMA_DEPTH}`)),
+		).toBe(true);
 	});
 
 	it("rejects schemas exceeding MAX_SCHEMA_NODES", () => {
 		const properties: Record<string, unknown> = {};
 		for (let i = 0; i < MAX_SCHEMA_NODES + 10; i++) properties[`p${i}`] = {};
+		const issues = checkSchema({ type: "object", properties });
+		const nodeIssue = issues.find((i) => i.message.includes("nodes"));
+		expect(nodeIssue?.keyword).toBe("schema");
+	});
+
+	it("flags the node budget at exactly MAX_SCHEMA_NODES + 1 nodes", () => {
+		// Root + MAX_SCHEMA_NODES property schemas = MAX_SCHEMA_NODES + 1
+		// visited nodes — one past the budget.
+		const properties: Record<string, unknown> = {};
+		for (let i = 0; i < MAX_SCHEMA_NODES; i++) properties[`p${i}`] = {};
 		const issues = checkSchema({ type: "object", properties });
 		expect(issues.some((i) => i.message.includes(`nodes`))).toBe(true);
 	});
@@ -410,5 +549,15 @@ describe("assertSchema", () => {
 	it("singularizes the issue count in the message", () => {
 		const error = catchError(() => assertSchema(42)) as SchemaDefinitionError;
 		expect(error.message).toContain("(1 issue)");
+		// Root-path issues render as "/" in the message.
+		expect(error.message).toContain("/ schema:");
+	});
+
+	it("pluralizes the issue count and joins issues with separators", () => {
+		const error = catchError(() =>
+			assertSchema({ type: "nope", extra: 1 }),
+		) as SchemaDefinitionError;
+		expect(error.message).toContain("(2 issues)");
+		expect(error.message).toContain("; ");
 	});
 });

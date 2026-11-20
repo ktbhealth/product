@@ -121,6 +121,7 @@ const isJsonValue = (value: unknown, seen: Set<unknown>): boolean => {
 			seen.delete(value);
 			return ok;
 		}
+		// Stryker disable next-line ConditionalExpression: falling through returns undefined — falsy like false — and every caller only tests truthiness (!isJsonValue / .every).
 		default:
 			return false;
 	}
@@ -150,6 +151,7 @@ const pushIssue = (state: WalkState, path: string, keyword: string, message: str
 };
 
 const isNonNegativeInteger = (v: unknown): v is number =>
+	// Stryker disable next-line ConditionalExpression: Number.isInteger is only true for numbers, so the typeof guard is redundant — replacing it with true changes nothing.
 	typeof v === "number" && Number.isInteger(v) && v >= 0;
 
 /** RFC 6901 unescape: `~1` → `/` first, then `~0` → `~` (so `~01`
@@ -172,6 +174,7 @@ const resolvePointer = (root: unknown, ref: string): unknown => {
 		if (Array.isArray(current)) {
 			if (!/^\d+$/.test(segment)) return null;
 			const index = Number(segment);
+			// Stryker disable next-line ConditionalExpression, EqualityOperator: current[index] is undefined for index === length (and for NaN/out-of-range alike), which callers already treat as unresolved — both mutations are unobservable.
 			if (index >= current.length) return null;
 			current = current[index];
 			continue;
@@ -230,6 +233,7 @@ const checkType = (value: unknown, path: string, state: WalkState): void => {
 	}
 	const seen = new Set<string>();
 	for (const entry of entries) {
+		// Stryker disable next-line ConditionalExpression: TYPE_NAMES.has() is false for every non-string, so the typeof guard is redundant.
 		if (typeof entry !== "string" || !TYPE_NAMES.has(entry)) {
 			pushIssue(
 				state,
@@ -283,6 +287,7 @@ const checkNumberBound = (
 	keyword: string,
 	state: WalkState,
 ): void => {
+	// Stryker disable next-line ConditionalExpression: Number.isFinite is false for every non-number, so the typeof guard is redundant.
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		pushIssue(state, path, keyword, `${keyword} must be a finite number`);
 	}
