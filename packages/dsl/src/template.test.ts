@@ -23,6 +23,8 @@ describe("resolveTemplate", () => {
 		expect(resolveTemplate("plain", scope)).toBe("plain");
 		expect(resolveTemplate("$event", scope)).toBe("$event"); // no dot path
 		expect(resolveTemplate("costs $5", scope)).toBe("costs $5");
+		expect(resolveTemplate("costs $record.id", scope)).toBe("costs $record.id");
+		expect(resolveTemplate("$record.id\nextra", scope)).toBe("$record.id\nextra");
 	});
 
 	it("passes unresolved templates through literally", () => {

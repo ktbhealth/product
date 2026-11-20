@@ -13,6 +13,9 @@ import { resolvePath } from "./path.ts";
  * is visible in the record rather than silently dropped or `undefined`).
  */
 export const resolveTemplate = (value: unknown, scope: object): unknown => {
+	// Stryker disable next-line ConditionalExpression: resolvePath returns
+	// undefined for every non-string, so `resolved === undefined` yields
+	// `value` either way — the early return is redundant.
 	if (typeof value !== "string") return value;
 	const resolved = resolvePath(value, scope);
 	return resolved === undefined ? value : resolved;

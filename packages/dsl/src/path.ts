@@ -18,6 +18,9 @@ import { hasForbiddenPathSegment } from "./grammar.ts";
 export const getPath = (data: unknown, path: string): unknown => {
 	let current: unknown = data;
 	for (const segment of path.split(".")) {
+		// Stryker disable next-line ConditionalExpression: dropping the
+		// `undefined` half of this check is harmless — undefined is not an
+		// object, so the typeof guard below returns undefined either way.
 		if (current === null || current === undefined) return undefined;
 		if (Array.isArray(current)) {
 			const index = Number(segment);
