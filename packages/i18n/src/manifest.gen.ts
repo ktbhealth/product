@@ -1405,6 +1405,63 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	"builder-blocks": {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		searchPlaceholder: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		categoryLayout: {
+			params: [],
+		},
+		categoryContent: {
+			params: [],
+		},
+		categoryData: {
+			params: [],
+		},
+		categoryMedia: {
+			params: [],
+		},
+		categoryDomain: {
+			params: [],
+		},
+		categoryOther: {
+			params: [],
+		},
+		propsHeading: {
+			params: [],
+		},
+		noProps: {
+			params: [],
+		},
+		requiredMark: {
+			params: [],
+		},
+		previewLabel: {
+			params: [],
+		},
+		kindCount: {
+			params: [
+				{
+					name: "count",
+					cases: ["one", "other"],
+					plural: true,
+				},
+			],
+			template: "{count, plural, one {# component} other {# components}}",
+		},
+	},
 	clinician: {
 		"home.title": {
 			params: [],
