@@ -3885,6 +3885,85 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	image: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		upload: {
+			params: [],
+		},
+		uploading: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		untitled: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		fieldTitle: {
+			params: [],
+		},
+		fieldAlt: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "title",
+				},
+			],
+			template: 'Delete "{title}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleteUsedBy: {
+			params: [],
+		},
+		deleteActionPrompt: {
+			params: [],
+		},
+		deleteInUse: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		uploadFailed: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+	},
 	invites: {
 		metaTitle: {
 			params: [],

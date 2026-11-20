@@ -1130,6 +1130,30 @@ export type I18nKey =
 	| "i18n.admin.namespaces.summary"
 	| "i18n.admin.namespaces.summaryDrift"
 	| "i18n.admin.namespaces.title"
+	| "image.cancel"
+	| "image.delete"
+	| "image.deleteActionPrompt"
+	| "image.deleteBody"
+	| "image.deleteConfirm"
+	| "image.deleted"
+	| "image.deleteFailed"
+	| "image.deleteInUse"
+	| "image.deleteTitle"
+	| "image.deleteUsedBy"
+	| "image.description"
+	| "image.edit"
+	| "image.emptyDescription"
+	| "image.emptyTitle"
+	| "image.fieldAlt"
+	| "image.fieldTitle"
+	| "image.loadFailed"
+	| "image.save"
+	| "image.saveFailed"
+	| "image.title"
+	| "image.untitled"
+	| "image.upload"
+	| "image.uploadFailed"
+	| "image.uploading"
 	| "invites.confirmPassword"
 	| "invites.createdSignIn"
 	| "invites.createdTitle"
@@ -3818,6 +3842,35 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "i18n.admin.namespaces.title"): Effect.Effect<string>;
+	(key: "image.cancel"): Effect.Effect<string>;
+	(key: "image.delete"): Effect.Effect<string>;
+	(key: "image.deleteActionPrompt"): Effect.Effect<string>;
+	(
+		key: "image.deleteBody",
+		params: {
+			title: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "image.deleteConfirm"): Effect.Effect<string>;
+	(key: "image.deleted"): Effect.Effect<string>;
+	(key: "image.deleteFailed"): Effect.Effect<string>;
+	(key: "image.deleteInUse"): Effect.Effect<string>;
+	(key: "image.deleteTitle"): Effect.Effect<string>;
+	(key: "image.deleteUsedBy"): Effect.Effect<string>;
+	(key: "image.description"): Effect.Effect<string>;
+	(key: "image.edit"): Effect.Effect<string>;
+	(key: "image.emptyDescription"): Effect.Effect<string>;
+	(key: "image.emptyTitle"): Effect.Effect<string>;
+	(key: "image.fieldAlt"): Effect.Effect<string>;
+	(key: "image.fieldTitle"): Effect.Effect<string>;
+	(key: "image.loadFailed"): Effect.Effect<string>;
+	(key: "image.save"): Effect.Effect<string>;
+	(key: "image.saveFailed"): Effect.Effect<string>;
+	(key: "image.title"): Effect.Effect<string>;
+	(key: "image.untitled"): Effect.Effect<string>;
+	(key: "image.upload"): Effect.Effect<string>;
+	(key: "image.uploadFailed"): Effect.Effect<string>;
+	(key: "image.uploading"): Effect.Effect<string>;
 	(key: "invites.confirmPassword"): Effect.Effect<string>;
 	(key: "invites.createdSignIn"): Effect.Effect<string>;
 	(key: "invites.createdTitle"): Effect.Effect<string>;
