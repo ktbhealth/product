@@ -23,12 +23,14 @@ import {
 	isBrandAssetKind,
 	isThemeAssetKind,
 	parseGoogleFontsCss,
+	parseGoogleFontsCssSubsets,
 	planImageVariants,
 	primaryVariantName,
 	setThemeBrandRef,
 	suggestedSeedsFromColor,
 	themeAssetUrl,
 	upsertThemeFontAsset,
+	type GoogleFontFace,
 	type PlannedVariant,
 	type ThemeAssetJobPayload,
 	type ThemeAssetRow,
@@ -55,8 +57,10 @@ import type { ThemeFontAsset, ThemeFontFace, ThemeFontSlot } from "./types.ts";
  *   and point the matching `theme_definitions.brand` field at the
  *   canonical variant's serving URL.
  * - `theme.font`: self-host a font family — either the admin-uploaded
- *   file already in R2, or a Google Fonts download (woff2 per weight +
- *   a TTF metrics probe) — then write `fonts.assets[family]` with
+ *   file already in R2, or a Google Fonts download (every css2
+ *   unicode-range subset woff2 per weight, each face stamped with its
+ *   unicode-range, + a TTF metrics probe) — then write
+ *   `fonts.assets[family]` with
  *   per-weight @font-face sources and a metric-matched local()
  *   fallback (size-adjust/ascent/descent/line-gap overrides).
  *
@@ -428,8 +432,13 @@ export async function processThemeFontJob(
 			...(variation?.unicodeRange === undefined ? {} : { unicodeRange: variation.unicodeRange }),
 		});
 	} else {
-		// Google Fonts: woff2 per configured weight (latin subset) + one
-		// TTF probe for metric-matched fallback computation.
+		// Google Fonts: the modern css2 response carries one @font-face
+		// per unicode-range subset per weight (latin, latin-ext,
+		// cyrillic, …) — self-host EVERY subset file so non-latin
+		// scripts keep coverage, stamping each face's unicode-range so
+		// browsers fetch only the subsets a page uses (same delivery
+		// the css2 <link> path gets). Plus one TTF probe for
+		// metric-matched fallback computation.
 		const css = await fetchText(
 			fetchImpl,
 			googleFontsCssUrl(payload.family, payload.weights),
@@ -439,28 +448,61 @@ export async function processThemeFontJob(
 			await markFailed(deps, payload.assetId, "google fonts css fetch failed");
 			return;
 		}
-		const fontFaces = parseGoogleFontsCss(css);
+		const fontFaces = parseGoogleFontsCssSubsets(css);
 		if (fontFaces.length === 0) {
 			await markFailed(deps, payload.assetId, "no usable font faces in google fonts css");
 			return;
 		}
 		const slug = fontSlug(payload.family);
+		// Group by weight preserving stylesheet order (css2 emits the
+		// subsets of one weight contiguously).
+		const byWeight = new Map<number, GoogleFontFace[]>();
 		for (const face of fontFaces) {
-			const downloaded = await probeFont(fetchImpl, face, MODERN_UA);
-			if (downloaded === null) continue;
-			const ext = extOfKey(face.url) || "woff2";
-			const key = `${THEME_ASSETS_PREFIX}${payload.themeId}/fonts/${slug}-${face.weight}.${ext}`;
-			await deps.bucket.put(key, downloaded.bytes, {
-				httpMetadata: { contentType: contentTypeForKey(key) },
-			});
-			faces.push({
-				url: themeAssetUrl(key),
-				weight: face.weight,
-				format: downloaded.format,
-			});
-			// Keep the first parseable probe; the TTF fallback below
-			// covers fonts whose woff2 metrics could not be extracted.
-			if (metrics === null) metrics = downloaded.metrics;
+			const group = byWeight.get(face.weight);
+			if (group === undefined) byWeight.set(face.weight, [face]);
+			else group.push(face);
+		}
+		const usedKeys = new Set<string>();
+		for (const [weight, group] of byWeight) {
+			// When the stylesheet carries unicode-range descriptors,
+			// ranged faces are disjoint by construction — download them
+			// all and drop any unranged duplicate (it would claim full
+			// coverage and shadow the subsets). Without descriptors
+			// (legacy-UA shape) keep the first face per weight only.
+			const ranged = group.filter((f) => f.unicodeRange !== undefined);
+			const candidates = ranged.length > 0 ? ranged : group.slice(0, 1);
+			const seenUrls = new Set<string>();
+			for (const face of candidates) {
+				if (seenUrls.has(face.url)) continue;
+				seenUrls.add(face.url);
+				const downloaded = await probeFont(fetchImpl, face, MODERN_UA);
+				if (downloaded === null) continue;
+				const ext = extOfKey(face.url) || "woff2";
+				// Latin keeps the historical unsuffixed key
+				// (`inter-400.woff2`); other subsets suffix the css2
+				// label (`inter-400-cyrillic.woff2`). A used-key
+				// collision (two faces mapping to one name) gets a
+				// numeric suffix rather than overwriting.
+				const subsetTag =
+					face.subset === undefined || face.subset === "latin" ? "" : `-${face.subset}`;
+				let key = `${THEME_ASSETS_PREFIX}${payload.themeId}/fonts/${slug}-${weight}${subsetTag}.${ext}`;
+				for (let n = 2; usedKeys.has(key); n++) {
+					key = `${THEME_ASSETS_PREFIX}${payload.themeId}/fonts/${slug}-${weight}${subsetTag}-${n}.${ext}`;
+				}
+				usedKeys.add(key);
+				await deps.bucket.put(key, downloaded.bytes, {
+					httpMetadata: { contentType: contentTypeForKey(key) },
+				});
+				faces.push({
+					url: themeAssetUrl(key),
+					weight: face.weight,
+					format: downloaded.format,
+					...(face.unicodeRange === undefined ? {} : { unicodeRange: face.unicodeRange }),
+				});
+				// Keep the first parseable probe; the TTF fallback below
+				// covers fonts whose woff2 metrics could not be extracted.
+				if (metrics === null) metrics = downloaded.metrics;
+			}
 		}
 		if (faces.length === 0) {
 			await markFailed(deps, payload.assetId, "all google font downloads failed");

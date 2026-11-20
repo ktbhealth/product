@@ -32,6 +32,7 @@ import {
 	listUnownedFontAssets,
 	parseFontWeightList,
 	parseGoogleFontsCss,
+	parseGoogleFontsCssSubsets,
 	planImageVariants,
 	primaryVariantName,
 	setThemeBrandRef,
@@ -976,6 +977,66 @@ describe("edge branches", () => {
 			expect(next!.families?.sans).toBe("Inter");
 			expect(next!.assets?.Inter).toEqual(asset);
 		}
+	});
+});
+
+describe("parseGoogleFontsCssSubsets", () => {
+	it("returns every subset face with its label and unicode-range", () => {
+		const css = `
+/* cyrillic-ext */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/cyr-ext.woff2) format('woff2');
+  unicode-range: U+0460-052F, U+1C80-1C8A;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/lat.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131;
+}
+/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/bold.woff2) format('woff2');
+  unicode-range: U+0000-00FF;
+}
+`;
+		expect(parseGoogleFontsCssSubsets(css)).toEqual([
+			{
+				url: "https://fonts.gstatic.com/cyr-ext.woff2",
+				weight: 400,
+				format: "woff2",
+				subset: "cyrillic-ext",
+				unicodeRange: "U+0460-052F, U+1C80-1C8A",
+			},
+			{
+				url: "https://fonts.gstatic.com/lat.woff2",
+				weight: 400,
+				format: "woff2",
+				subset: "latin",
+				unicodeRange: "U+0000-00FF, U+0131",
+			},
+			{
+				url: "https://fonts.gstatic.com/bold.woff2",
+				weight: 700,
+				format: "woff2",
+				subset: "latin",
+				unicodeRange: "U+0000-00FF",
+			},
+		]);
+	});
+
+	it("omits subset/unicodeRange when the stylesheet lacks them", () => {
+		const css = `
+@font-face { font-weight: 400; src: url(a.woff2) format('woff2'); }
+`;
+		expect(parseGoogleFontsCssSubsets(css)).toEqual([
+			{ url: "a.woff2", weight: 400, format: "woff2" },
+		]);
 	});
 });
 

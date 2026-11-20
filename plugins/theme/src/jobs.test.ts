@@ -723,6 +723,134 @@ describe("processThemeFontJob — google source", () => {
 		expect(fonts.assets.Inter.faces[0]).toMatchObject({ weight: 400, format: "woff2" });
 	});
 
+	it("self-hosts every css2 unicode-range subset per weight", async () => {
+		const { db, themeId, deps } = await makeDeps();
+		const { bucket, store } = makeBucket({});
+		const css = cssDoc(
+			`/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/s/inter/cyr.woff2) format('woff2');
+  unicode-range: U+0400-045F, U+0490-0491;
+}`,
+			`/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/s/inter/lat.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131;
+}`,
+			`/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  src: url(https://fonts.gstatic.com/s/inter/mid.woff2) format('woff2');
+}`,
+			// Mixed weight: an unranged face alongside a ranged one must
+			// NOT be downloaded — it would claim full coverage and
+			// shadow the disjoint subsets.
+			`/* cyrillic */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/s/inter/bold-cyr.woff2) format('woff2');
+  unicode-range: U+0400-045F;
+}`,
+			`@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/s/inter/bold-all.woff2) format('woff2');
+}`,
+			`/* latin */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  src: url(https://fonts.gstatic.com/s/inter/bold-lat.woff2) format('woff2');
+  unicode-range: U+0000-00FF;
+}`,
+			// No subset comment → both faces map to the same key;
+			// the second download gets a numeric suffix.
+			`@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/s/inter/x1.woff2) format('woff2');
+  unicode-range: U+0000-00FF;
+}`,
+			`@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/s/inter/x2.woff2) format('woff2');
+  unicode-range: U+0400-045F;
+}`,
+			// Duplicate url → skipped before download.
+			`@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 800;
+  src: url(https://fonts.gstatic.com/s/inter/x1.woff2) format('woff2');
+  unicode-range: U+0370-03FF;
+}`,
+		);
+		const d = {
+			...deps,
+			bucket,
+			fetchImpl: scriptedFetch((url) => {
+				if (url.includes("googleapis")) return { text: css };
+				return { bytes: WOFF2_BYTES };
+			}),
+		};
+		const asset = await seedAsset(db, themeId, "font");
+		await processThemeFontJob(
+			{
+				assetId: asset.id,
+				themeId,
+				family: "Inter",
+				slot: "sans",
+				source: "google",
+				weights: [400, 500, 700, 800],
+			},
+			d,
+		);
+		expect((await assetRow(db, asset.id))?.status).toBe("ready");
+		// Latin keeps the historical unsuffixed key; other subsets get
+		// the css2 label. The unranged 700 duplicate was skipped.
+		expect([...store.keys()].sort()).toEqual([
+			"theme-assets/1/fonts/inter-400-cyrillic.woff2",
+			"theme-assets/1/fonts/inter-400.woff2",
+			"theme-assets/1/fonts/inter-500.woff2",
+			"theme-assets/1/fonts/inter-700-cyrillic.woff2",
+			"theme-assets/1/fonts/inter-700.woff2",
+			"theme-assets/1/fonts/inter-800-2.woff2",
+			"theme-assets/1/fonts/inter-800.woff2",
+		]);
+		const theme = (await db.select().from(themeDefinitions))[0]!;
+		const fonts = JSON.parse(theme.fonts!) as {
+			assets: Record<string, { faces: { weight?: number; unicodeRange?: string }[] }>;
+		};
+		const faces = fonts.assets.Inter.faces;
+		expect(faces).toHaveLength(7);
+		expect(
+			faces.find((f) => f.weight === 400 && f.unicodeRange === "U+0400-045F, U+0490-0491"),
+		).toBeDefined();
+		expect(
+			faces.find((f) => f.weight === 400 && f.unicodeRange === "U+0000-00FF, U+0131"),
+		).toBeDefined();
+		// The unranged 500 face carries no descriptor; every 700 face is ranged.
+		expect(faces.find((f) => f.weight === 500)?.unicodeRange).toBeUndefined();
+		expect(faces.filter((f) => f.weight === 700).every((f) => f.unicodeRange !== undefined)).toBe(
+			true,
+		);
+	});
+
 	it("fails when the css fetch fails or yields no faces", async () => {
 		const { db, themeId, deps } = await makeDeps();
 		const d = {
