@@ -112,6 +112,16 @@ describe("collectRouteDefinitions", () => {
 		];
 		expect(collectRouteDefinitions(plugins)).toEqual([]);
 	});
+
+	it("dies on a route contribution with no meta", () => {
+		const plugins: readonly Plugin[] = [
+			definePlugin({
+				id: "bad",
+				contributions: [{ kind: "route", id: "bad.missing" }],
+			}),
+		];
+		expect(() => collectRouteDefinitions(plugins)).toThrow(/invalid "route" contribution/);
+	});
 });
 
 describe("makeRoutes", () => {
@@ -146,6 +156,13 @@ describe("makeRoutes", () => {
 	it("match() resolves exact paths", () => {
 		expect(routes.match("/patients")).toEqual({ key: "patients.list", params: {} });
 		expect(routes.match("/")).toEqual({ key: "home", params: {} });
+	});
+
+	it("match() normalizes paths without a leading slash", () => {
+		expect(routes.match("patients/42")).toEqual({
+			key: "patients.detail",
+			params: { id: "42" },
+		});
 	});
 
 	it("match() binds :param segments", () => {
