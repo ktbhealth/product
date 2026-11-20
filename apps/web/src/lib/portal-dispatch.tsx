@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { getRouteApi, notFound, useLocation } from "@tanstack/react-router";
+import { getRouteApi, notFound, redirect, useLocation } from "@tanstack/react-router";
 
 import { authClient } from "@ktb/auth-better/client";
 import { platformHeaderPlugin } from "@ktb/platform-header";
@@ -76,6 +76,7 @@ export const portalLoader = async ({
 		throw notFound();
 	}
 	if (result.status === "notfound") throw notFound();
+	if (result.status === "redirect") throw redirect({ href: result.to });
 	return { path, instanceId, data: result.data, audiences, pluginStates: states, theme };
 };
 

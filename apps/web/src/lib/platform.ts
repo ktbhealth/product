@@ -54,6 +54,7 @@ import { resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { portalInstances } from "./registry.ts";
+import { builtinMiddlewareStages } from "./middleware-stages.ts";
 import { makeTenantDirectory } from "./tenant-directory.ts";
 import { requestTelemetryContext } from "./telemetry.ts";
 import { makeFlushThrottler } from "./telemetry-flush.ts";
@@ -120,6 +121,9 @@ const resolveEmailCatalogT = () =>
 
 const app = createApp(appEnv as unknown as typeof env, {
 	tenantResolver,
+	// PL-015: the page-dispatch middleware chain — the admin view
+	// (MiddlewareStages service) lists these alongside plugin stages.
+	middleware: builtinMiddlewareStages,
 	verificationEmail: async ({ name, url }) =>
 		verificationEmail({ name, url }, await resolveEmailCatalogT()),
 	passwordResetEmail: async ({ name, url }) =>

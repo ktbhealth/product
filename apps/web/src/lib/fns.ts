@@ -25,18 +25,17 @@ import {
 	findPage,
 	findPortalInstance,
 	namespacesForPath,
-	packageLive,
 	portalInstanceIdForPath,
 	portalInstances,
 	type PageShell,
 	type PluginStatesResult,
 } from "#/lib/registry.ts";
 import { PortalAudience } from "@ktb/portal";
-import { portalAdmits } from "@ktb/portal/rules";
 import { TenantResolver, tenantSelectorFromHeaders, tenantScopeId } from "@ktb/tenant";
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import type { Page, PanelPage } from "@ktb/kernel";
+import type { MiddlewareContext, Page, PanelPage } from "@ktb/kernel";
+import { runPageMiddleware } from "./middleware.ts";
 import { Schema } from "effect";
 import { ensureDoctorUser, getDoctorUser, getSessionAccount, getSessionUser } from "#/lib/auth.ts";
 import * as Cause from "effect/Cause";
@@ -305,7 +304,8 @@ export const platformAdminFn = createServerFn({ method: "GET" }).handler(async (
  */
 export type PageDataResult =
 	| { readonly status: "ok"; readonly data: any }
-	| { readonly status: "notfound" };
+	| { readonly status: "notfound" }
+	| { readonly status: "redirect"; readonly to: string };
 
 /** Server-registry page lookup, built lazily on first dispatch — kept
  * out of module scope so the client bundle never evaluates it (the
@@ -343,31 +343,6 @@ const portalEntryForPath = (path: string) =>
 	serverPortalEntries().find((e) => e.instance.id === portalInstanceIdForPath(path));
 
 /**
- * Audience gate for portal pages (P-081): the path's instance
- * (`portalInstanceIdForPath`) must exist in the server registry and
- * the bound principal must satisfy its `audience` rule (absent rule =
- * `member`). Anonymous principals satisfy nothing → notfound. When the
- * portal services plugin is absent the check is skipped — page `guard`s
- * and service authz still apply (test/dev compositions).
- */
-const portalAudienceAllows = async (
-	path: string,
-	runEffect: <A, E>(effect: Effect.Effect<A, E, unknown>) => Promise<A>,
-): Promise<boolean> => {
-	const entry = portalEntryForPath(path);
-	if (entry === undefined) return false;
-	return runEffect(
-		Effect.gen(function* () {
-			const audience = yield* Effect.serviceOption(PortalAudience);
-			if (Option.isNone(audience)) return true;
-			// portalAdmits (not a bare rule check): the `superadmin`
-			// wildcard admits every instance, same as the shell switcher.
-			return portalAdmits(entry.instance, yield* audience.value.audiences());
-		}),
-	).catch(() => false);
-};
-
-/**
  * Shared page dispatch (P-050/P-059/P-081): resolves the descriptor
  * registered for `path` in the given shell's client registry and runs
  * its Effect handlers. Portal pages require a session AND membership
@@ -399,42 +374,48 @@ const pageData = async (
 	// it from the path the same way collectPages does.
 	const context = entry.context ?? defaultPageContext(path);
 	if (context !== shell) return { status: "notfound" };
-	// Portal instances may declare `subject: "doctor"` (P-081): their
-	// pages are owner-scoped clinical surfaces, so loaders/guards run
-	// under the doctor-resolved acting user — `Principal.userId` is the
-	// acting doctor's id and `actorId` the signed-in account, exactly
-	// like the plugins' own server fns. No doctor profile to act as →
-	// notfound, same as anonymous.
-	const user =
-		shell === "portal" && portalEntryForPath(path)?.instance.subject === "doctor"
-			? await getDoctorUser()
-			: await getSessionUser();
-	if (shell === "portal" && user === null) return { status: "notfound" };
+	// Request-middleware pipeline (PL-015/P-110): the former inline
+	// gates — principal/session resolution, plugin enablement, portal
+	// audience — now run as ordered stages (lib/middleware-stages.ts)
+	// plus any plugin-contributed `middleware` stages, linear with
+	// early return. Portal instances may declare `subject: "doctor"`
+	// (P-081): the principal stage then resolves the doctor-acting
+	// user — `Principal.userId` is the acting doctor's id and
+	// `actorId` the signed-in account, exactly like the plugins' own
+	// server fns; no doctor profile to act as → deny → notfound, same
+	// as anonymous. `deny` maps to notfound; `redirect` short-circuits
+	// with a navigation target the route dispatchers turn into a
+	// router redirect.
+	const portalEntry = shell === "portal" ? portalEntryForPath(path) : undefined;
+	const middlewareCtx: MiddlewareContext = {
+		path,
+		context: shell,
+		routeKey: entry.page.path,
+		...(search === undefined ? {} : { search }),
+		owner: {
+			pluginId: entry.pluginId,
+			...(entry.pkg === undefined ? {} : { pkg: entry.pkg }),
+		},
+		subject:
+			shell === "portal" && portalEntry?.instance.subject === "doctor" ? "doctor" : "session",
+		plugins: serverPlugins,
+		...(portalEntry === undefined ? {} : { portalInstance: portalEntry.instance }),
+		state: {},
+	};
+	const verdict = await runPageMiddleware(middlewareCtx);
+	if (verdict.type === "deny") return { status: "notfound" };
+	if (verdict.type === "redirect") return { status: "redirect", to: verdict.to };
+	// The principal stage stored the resolved user (null on public app
+	// pages) — guard/loader run under the same run/runAs split the
+	// stages used.
+	const user = middlewareCtx.state.user;
 	const runEffect = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
-		user === null ? run(effect) : runAs(user, effect);
-	// Enabled-state gate (P-058): checked before guard/loader.
-	// Package-granular — the same contract as the CQRS dispatch gate
-	// and the client-side early gates in the route loaders: a page's
-	// package (`plugins/<pkg>`, stamped on the plugin by
-	// discoverPlugins) stays live while ANY member plugin id is
-	// enabled, so disabling `patients.services` alone does not 404 the
-	// package's pages while `patients.routes` is still on. Entries
-	// without a `pkg` stamp (out-of-glob plugins like @ktb/platform,
-	// test-injected fixtures) keep the per-id check.
-	const pluginOn = await runEffect(
-		Effect.gen(function* () {
-			const states = yield* PluginStates;
-			if (entry.pkg === undefined) return yield* states.isEnabled(entry.pluginId);
-			return packageLive(serverPlugins, yield* states.enabledIds(), entry.pkg);
-		}),
-	);
-	if (!pluginOn) return { status: "notfound" };
-	// Portal audience gate (P-081): the instance's `audience` rule must
-	// be satisfied by the bound principal — the UX gate; hard authz
-	// stays inside the page's services.
-	if (shell === "portal" && !(await portalAudienceAllows(path, runEffect))) {
-		return { status: "notfound" };
-	}
+		user === null || user === undefined
+			? run(effect)
+			: runAs(
+					user as { readonly id: string; readonly email?: string; readonly actorId?: string },
+					effect,
+				);
 	// Page descriptors are split across the two registries: the client
 	// manifest carries id/path/component, while `guard`/`loader` stay
 	// server-side on the @ktb/app-host plugin objects and never reach

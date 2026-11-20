@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { getRouteApi, notFound, useLocation } from "@tanstack/react-router";
+import { getRouteApi, notFound, redirect, useLocation } from "@tanstack/react-router";
 
 import { authClient } from "@ktb/auth-better/client";
 import { platformHeaderPlugin } from "@ktb/platform-header";
@@ -96,6 +96,7 @@ const PLATFORM_SIDEBAR_ORDER: readonly string[] = [
 	"/platform/i18n",
 	"/platform/wizards",
 	"/platform/plugins",
+	"/platform/middleware",
 	"/platform/ops",
 	"/platform/queue",
 	"/platform/cron",
@@ -135,6 +136,8 @@ export const platformLoader = async ({ params }: { params: { _splat?: string } }
 	// same contract as the server-side pageData/CQRS gates.
 	if (!entryEnabled(plugins, enabled, pageEntry)) throw notFound();
 	if (pageResult.status === "notfound") throw notFound();
+	// Middleware `redirect` verdicts (PL-015) surface as router redirects.
+	if (pageResult.status === "redirect") throw redirect({ href: pageResult.to });
 	// Enabled-state gate (P-058): skip feeds whose plugin package is
 	// fully disabled — the CQRS/service calls would fail or return
 	// data for a plugin the admin turned off.

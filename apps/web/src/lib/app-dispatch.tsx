@@ -103,6 +103,7 @@ export const appLoader = async ({ params, deps }: AppLoaderArgs) => {
 	}
 	const result = await appPageDataFn({ data: { path, search } });
 	if (result.status === "notfound") throw notFound();
+	if (result.status === "redirect") throw redirect({ href: result.to });
 	return { data: result.data, pluginStates: states };
 };
 
