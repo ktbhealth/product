@@ -47,8 +47,8 @@ const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback:
 /* Layout primitives                                                   */
 /* ------------------------------------------------------------------ */
 
-export type SectionPadding = "none" | "sm" | "md" | "lg";
-export type SectionTone = "default" | "muted";
+type SectionPadding = "none" | "sm" | "md" | "lg";
+type SectionTone = "default" | "muted";
 
 const SECTION_PADDING: Record<SectionPadding, string> = {
 	none: "",
@@ -75,7 +75,7 @@ export const SectionBlock = ({ value }: { readonly value: unknown }) => {
 	return <section className={`${SECTION_PADDING[padding]} ${SECTION_TONE[tone]}`.trim()} />;
 };
 
-export type ContainerWidth = "sm" | "md" | "lg" | "full";
+type ContainerWidth = "sm" | "md" | "lg" | "full";
 
 const CONTAINER_WIDTH: Record<ContainerWidth, string> = {
 	sm: "max-w-2xl",
@@ -97,7 +97,7 @@ export const ContainerBlock = ({ value }: { readonly value: unknown }) => {
 	);
 };
 
-export type ColumnsGap = "sm" | "md" | "lg";
+type ColumnsGap = "sm" | "md" | "lg";
 
 const COLUMNS_GAP: Record<ColumnsGap, string> = {
 	sm: "gap-2",
@@ -136,7 +136,7 @@ export const ColumnsBlock = ({ value }: { readonly value: unknown }) => {
 	);
 };
 
-export type DividerSpacing = "sm" | "md" | "lg";
+type DividerSpacing = "sm" | "md" | "lg";
 
 const DIVIDER_SPACING: Record<DividerSpacing, string> = {
 	sm: "py-2",
@@ -157,7 +157,7 @@ export const DividerBlock = ({ value }: { readonly value: unknown }) => {
 	);
 };
 
-export type SpacerSize = "sm" | "md" | "lg" | "xl";
+type SpacerSize = "sm" | "md" | "lg" | "xl";
 
 const SPACER_SIZE: Record<SpacerSize, string> = {
 	sm: "h-4",
@@ -179,8 +179,8 @@ export const SpacerBlock = ({ value }: { readonly value: unknown }) => {
 /* Content                                                             */
 /* ------------------------------------------------------------------ */
 
-export type HeadingLevel = "h1" | "h2" | "h3" | "h4";
-export type TextAlign = "left" | "center" | "right";
+type HeadingLevel = "h1" | "h2" | "h3" | "h4";
+type TextAlign = "left" | "center" | "right";
 
 const HEADING_CLASS: Record<HeadingLevel, string> = {
 	h1: "text-4xl",
@@ -213,11 +213,11 @@ export const HeadingBlock = ({ value }: { readonly value: unknown }) => {
 	);
 };
 
-export type CtaVariant = "default" | "outline" | "secondary" | "ghost";
-export type CtaSize = "sm" | "default" | "lg";
+type CtaVariant = "default" | "outline" | "secondary" | "ghost";
+type CtaSize = "sm" | "default" | "lg";
 
-const CTA_VARIANT_VALUES = ["default", "outline", "secondary", "ghost"] as const;
-const CTA_SIZE_VALUES = ["sm", "default", "lg"] as const;
+const CTA_VARIANT_VALUES: readonly CtaVariant[] = ["default", "outline", "secondary", "ghost"];
+const CTA_SIZE_VALUES: readonly CtaSize[] = ["sm", "default", "lg"];
 const CTA_JUSTIFY: Record<TextAlign, string> = {
 	left: "justify-start",
 	center: "justify-center",

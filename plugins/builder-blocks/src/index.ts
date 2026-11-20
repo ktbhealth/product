@@ -83,7 +83,7 @@ export const builderBlocksPanelPlugin = definePlugin({
 							Effect.catchTag("Forbidden", () => Effect.succeed(false)),
 						);
 					}),
-				loader: () => Effect.succeed(null),
+				loader: (_path: string) => Effect.succeed(null),
 			},
 		],
 	},
