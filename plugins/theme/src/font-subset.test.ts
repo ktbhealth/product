@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { findTable } from "./font-metrics.ts";
-import { LATIN_SUBSET_RANGES, latinSubsetCodepoints, subsetCatalogFont } from "./font-subset.ts";
+import { FONT_SUBSET_CHARSETS, LATIN_SUBSET_RANGES, subsetCatalogFont } from "./font-subset.ts";
 import { parseFontVariations, type FontVariationInfo } from "./font-variations.ts";
 
 const fixtureTtf = new Uint8Array(
@@ -132,17 +132,35 @@ const fakeSfnt = (tags: readonly string[], size = 512): Uint8Array => {
 	return out;
 };
 
-describe("latinSubsetCodepoints", () => {
-	it("expands the latin ranges into a sorted flat list", () => {
-		const cps = latinSubsetCodepoints();
-		expect(cps.length).toBeGreaterThan(300);
-		expect(cps[0]).toBe(0x00);
-		expect(cps).toContain(0x41); // 'A'
-		expect(cps).toContain(0x20ac); // €
-		expect([...cps].sort((a, b) => a - b)).toEqual([...cps]);
+describe("FONT_SUBSET_CHARSETS", () => {
+	it("has unique names and sorted, non-overlapping ranges per charset", () => {
+		const names = FONT_SUBSET_CHARSETS.map((c) => c.name);
+		expect(new Set(names).size).toBe(names.length);
+		expect(names[0]).toBe("latin");
+		for (const charset of FONT_SUBSET_CHARSETS) {
+			for (let i = 1; i < charset.ranges.length; i++) {
+				expect(charset.ranges[i]![0]).toBeGreaterThan(charset.ranges[i - 1]![1]);
+			}
+		}
 	});
 
-	it("LATIN_SUBSET_RANGES is sorted and non-overlapping", () => {
+	it("keeps charset ranges inside valid Unicode and bounded in size", () => {
+		for (const charset of FONT_SUBSET_CHARSETS) {
+			let count = 0;
+			for (const [start, stop] of charset.ranges) {
+				expect(start).toBeGreaterThanOrEqual(0);
+				expect(stop).toBeLessThanOrEqual(0x10ffff);
+				expect(stop).toBeGreaterThanOrEqual(start);
+				count += stop - start + 1;
+			}
+			// No charset may approach the whole codespace — that is what
+			// keeps per-charset codepoint expansion cheap.
+			expect(count).toBeLessThan(0x110000);
+		}
+	});
+
+	it("LATIN_SUBSET_RANGES matches the latin charset entry", () => {
+		expect(FONT_SUBSET_CHARSETS[0]!.ranges).toBe(LATIN_SUBSET_RANGES);
 		for (let i = 1; i < LATIN_SUBSET_RANGES.length; i++) {
 			expect(LATIN_SUBSET_RANGES[i]![0]).toBeGreaterThan(LATIN_SUBSET_RANGES[i - 1]![1]);
 		}
@@ -185,19 +203,23 @@ describe("subsetCatalogFont", () => {
 			bytes: fixtureTtf,
 			variation: staticVariation([
 				[0x20, 0x7e],
-				[0x400, 0x4ff],
+				// Armenian — inside no charset group, so it stays in the
+				// full-font complement.
+				[0x530, 0x58f],
 			]),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.ext).toBe("ttf");
-		expect(plan!.format).toBe("truetype");
-		expect(plan!.data.byteLength).toBeLessThan(fixtureTtf.byteLength);
-		// Coverage ∩ latin = U+0020-007E; complement = U+0400-04FF.
-		expect(plan!.unicodeRange).toBe("U+0020-007E");
-		expect(plan!.fullUnicodeRange).toBe("U+0400-04FF");
+		expect(plan!.subsets).toHaveLength(1);
+		expect(plan!.subsets[0]!.charset).toBe("latin");
+		expect(plan!.subsets[0]!.ext).toBe("ttf");
+		expect(plan!.subsets[0]!.format).toBe("truetype");
+		expect(plan!.subsets[0]!.data.byteLength).toBeLessThan(fixtureTtf.byteLength);
+		// Coverage ∩ latin = U+0020-007E; complement = U+0530-058F.
+		expect(plan!.subsets[0]!.unicodeRange).toBe("U+0020-007E");
+		expect(plan!.fullUnicodeRange).toBe("U+0530-058F");
 		// The subset is itself a parseable sfnt.
-		expect(findTable(plan!.data, "head")).not.toBeNull();
-		expect(findTable(plan!.data, "cmap")).not.toBeNull();
+		expect(findTable(plan!.subsets[0]!.data, "head")).not.toBeNull();
+		expect(findTable(plan!.subsets[0]!.data, "cmap")).not.toBeNull();
 	});
 
 	it("omits fullUnicodeRange when coverage is entirely latin", async () => {
@@ -206,14 +228,16 @@ describe("subsetCatalogFont", () => {
 			variation: staticVariation([[0x41, 0x5a]]),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.unicodeRange).toBe("U+0041-005A");
+		expect(plan!.subsets[0]!.unicodeRange).toBe("U+0041-005A");
 		expect(plan!.fullUnicodeRange).toBeUndefined();
 	});
 
-	it("splits partially-overlapping coverage into disjoint ranges", async () => {
-		// 0x131 and 0x152-0x153 are latin singles inside the covered span;
-		// 0x2060-0x2065 sits inside the latin punctuation block and drops
-		// out of the complement entirely.
+	it("emits one disjoint subset per covered charset", async () => {
+		// 0x131 and 0x152-0x153 are latin singles inside the covered
+		// span; 0x2060-0x2065 sits inside the latin punctuation block.
+		// The 0x100-0x250 span lands in latin-ext, 0x400-0x4FF splits
+		// across cyrillic/cyrillic-ext — every charset claims only the
+		// coverage earlier charsets did not take.
 		const plan = await subsetCatalogFont({
 			bytes: fixtureTtf,
 			variation: staticVariation([
@@ -223,8 +247,21 @@ describe("subsetCatalogFont", () => {
 			]),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.unicodeRange).toBe("U+0131, U+0152-0153, U+2060-2065");
-		expect(plan!.fullUnicodeRange).toBe("U+0100-0130, U+0132-0151, U+0154-0250, U+0400-04FF");
+		expect(plan!.subsets.map((s) => s.charset)).toEqual([
+			"latin",
+			"latin-ext",
+			"cyrillic",
+			"cyrillic-ext",
+		]);
+		expect(plan!.subsets.map((s) => s.unicodeRange)).toEqual([
+			"U+0131, U+0152-0153, U+2060-2065",
+			"U+0100-0130, U+0132-0151, U+0154-0250",
+			// Cyrillic's supplementary repertoire singles ride along.
+			"U+0400-045F, U+0490-0491, U+04B0-04B1",
+			"U+0460-048F, U+0492-04AF, U+04B2-04FF",
+		]);
+		// Every codepoint is claimed → no full-font face.
+		expect(plan!.fullUnicodeRange).toBeUndefined();
 	});
 
 	it("drops the complement when coverage sits inside a latin block", async () => {
@@ -233,7 +270,7 @@ describe("subsetCatalogFont", () => {
 			variation: staticVariation([[0x2060, 0x2065]]),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.unicodeRange).toBe("U+2060-2065");
+		expect(plan!.subsets[0]!.unicodeRange).toBe("U+2060-2065");
 		expect(plan!.fullUnicodeRange).toBeUndefined();
 	});
 
@@ -244,8 +281,8 @@ describe("subsetCatalogFont", () => {
 			variation: staticVariation([[0x20, 0x7e]]),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.ext).toBe("ttf");
-		expect(plan!.data.byteLength).toBeLessThan(woffBytes.byteLength);
+		expect(plan!.subsets[0]!.ext).toBe("ttf");
+		expect(plan!.subsets[0]!.data.byteLength).toBeLessThan(woffBytes.byteLength);
 	});
 
 	it("reconstructs WOFF2 uploads and subsets them to sfnt", async () => {
@@ -254,11 +291,11 @@ describe("subsetCatalogFont", () => {
 			variation: staticVariation([[0x20, 0x7e]]),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.ext).toBe("ttf");
-		expect(plan!.format).toBe("truetype");
-		expect(plan!.data.byteLength).toBeLessThan(fixtureWoff2.byteLength);
-		expect(findTable(plan!.data, "head")).not.toBeNull();
-		expect(findTable(plan!.data, "cmap")).not.toBeNull();
+		expect(plan!.subsets[0]!.ext).toBe("ttf");
+		expect(plan!.subsets[0]!.format).toBe("truetype");
+		expect(plan!.subsets[0]!.data.byteLength).toBeLessThan(fixtureWoff2.byteLength);
+		expect(findTable(plan!.subsets[0]!.data, "head")).not.toBeNull();
+		expect(findTable(plan!.subsets[0]!.data, "cmap")).not.toBeNull();
 	});
 
 	it("keeps the full font when WOFF2 reconstruction fails", async () => {
@@ -292,12 +329,13 @@ describe("subsetCatalogFont", () => {
 		).toBeNull();
 	});
 
-	it("returns null for latin-less coverage and unserializable complements", async () => {
-		// Coverage entirely outside latin → empty intersection.
+	it("returns null for charset-less coverage and unserializable complements", async () => {
+		// Coverage entirely outside every charset group (Armenian) →
+		// no subset applies.
 		expect(
 			await subsetCatalogFont({
 				bytes: fixtureTtf,
-				variation: staticVariation([[0x400, 0x4ff]]),
+				variation: staticVariation([[0x530, 0x58f]]),
 			}),
 		).toBeNull();
 		// Huge complement → serialized descriptor exceeds the cap.
@@ -448,13 +486,13 @@ describe("subsetCatalogFont", () => {
 		expect(variation?.variable).toBe(true);
 		const plan = await subsetCatalogFont({ bytes: fixtureVariableTtf, variation });
 		expect(plan).not.toBeNull();
-		expect(plan!.data.byteLength).toBeLessThan(fixtureVariableTtf.byteLength);
-		expect(plan!.ext).toBe("ttf");
+		expect(plan!.subsets[0]!.data.byteLength).toBeLessThan(fixtureVariableTtf.byteLength);
+		expect(plan!.subsets[0]!.ext).toBe("ttf");
 		// The subset provably kept the variation machinery — the
 		// @font-face weightRange/axes descriptors stay honest.
-		expect(findTable(plan!.data, "fvar")).not.toBeNull();
-		expect(findTable(plan!.data, "gvar")).not.toBeNull();
-		const reparsed = await parseFontVariations(plan!.data);
+		expect(findTable(plan!.subsets[0]!.data, "fvar")).not.toBeNull();
+		expect(findTable(plan!.subsets[0]!.data, "gvar")).not.toBeNull();
+		const reparsed = await parseFontVariations(plan!.subsets[0]!.data);
 		expect(reparsed?.variable).toBe(true);
 		expect(reparsed?.weightAxis).toEqual(variation!.weightAxis);
 		expect(reparsed?.axes).toEqual(variation!.axes);
@@ -468,8 +506,8 @@ describe("subsetCatalogFont", () => {
 		const variation = await parseFontVariations(woffBytes, "woff");
 		const plan = await subsetCatalogFont({ bytes: woffBytes, variation });
 		expect(plan).not.toBeNull();
-		expect(findTable(plan!.data, "fvar")).not.toBeNull();
-		expect(findTable(plan!.data, "gvar")).not.toBeNull();
+		expect(findTable(plan!.subsets[0]!.data, "fvar")).not.toBeNull();
+		expect(findTable(plan!.subsets[0]!.data, "gvar")).not.toBeNull();
 	});
 
 	it("keeps the subset when the input carries no gvar/CFF2", async () => {
@@ -482,7 +520,7 @@ describe("subsetCatalogFont", () => {
 			subsetFont: () => fakeSfnt(["head", "cmap", "fvar"], 128),
 		});
 		expect(plan).not.toBeNull();
-		expect(plan!.unicodeRange).toBe("U+0020-007E");
+		expect(plan!.subsets[0]!.unicodeRange).toBe("U+0020-007E");
 	});
 
 	it("rejects variable subsets that drop fvar, gvar or CFF2", async () => {
@@ -519,5 +557,121 @@ describe("subsetCatalogFont", () => {
 			subsetFont: () => fakeSfnt(["head", "cmap", "fvar", "CFF2"], 128),
 		});
 		expect(plan).not.toBeNull();
+	});
+
+	it("builds multi-charset plans with disjoint faces via the subsetter seam", async () => {
+		const input = fakeSfnt(["head", "cmap"], 4096);
+		const calls: number[][] = [];
+		const plan = await subsetCatalogFont({
+			bytes: input,
+			variation: staticVariation([
+				[0x20, 0x7e], // latin
+				[0x3b1, 0x3c9], // greek
+				[0x400, 0x45f], // cyrillic
+				[0x530, 0x58f], // Armenian — no charset → complement
+			]),
+			subsetFont: (_font, unicodes) => {
+				calls.push([...unicodes]);
+				return fakeSfnt(["head", "cmap"], 256);
+			},
+		});
+		expect(plan).not.toBeNull();
+		expect(plan!.subsets.map((s) => s.charset)).toEqual(["latin", "cyrillic", "greek"]);
+		expect(plan!.subsets.map((s) => s.unicodeRange)).toEqual([
+			"U+0020-007E",
+			"U+0400-045F",
+			"U+03B1-03C9",
+		]);
+		expect(plan!.fullUnicodeRange).toBe("U+0530-058F");
+		// Each subsetter call received only its charset's codepoints.
+		expect(calls).toHaveLength(3);
+		expect(calls[0]).toContain(0x41);
+		expect(calls[0]).not.toContain(0x410);
+		expect(calls[1]).toContain(0x410);
+		expect(calls[2]).toContain(0x3b1);
+	});
+
+	it("skips a failing charset but keeps the others", async () => {
+		const input = fakeSfnt(["head", "cmap"], 4096);
+		const plan = await subsetCatalogFont({
+			bytes: input,
+			variation: staticVariation([
+				[0x20, 0x7e],
+				[0x3b1, 0x3c9],
+				[0x400, 0x45f],
+			]),
+			subsetFont: (_font, unicodes) =>
+				unicodes.includes(0x410) ? null : fakeSfnt(["head", "cmap"], 256),
+		});
+		expect(plan).not.toBeNull();
+		// Cyrillic dropped; its coverage falls back into the full face.
+		expect(plan!.subsets.map((s) => s.charset)).toEqual(["latin", "greek"]);
+		expect(plan!.fullUnicodeRange).toBe("U+0400-045F");
+	});
+
+	it("skips charsets fully shadowed by earlier ones", async () => {
+		// U+0102-0103 sits in BOTH latin-ext and vietnamese — latin-ext
+		// wins, so vietnamese produces no file.
+		const input = fakeSfnt(["head", "cmap"], 4096);
+		const plan = await subsetCatalogFont({
+			bytes: input,
+			variation: staticVariation([[0x102, 0x103]]),
+			subsetFont: () => fakeSfnt(["head", "cmap"], 256),
+		});
+		expect(plan).not.toBeNull();
+		expect(plan!.subsets.map((s) => s.charset)).toEqual(["latin-ext"]);
+		expect(plan!.subsets[0]!.unicodeRange).toBe("U+0102-0103");
+		expect(plan!.fullUnicodeRange).toBeUndefined();
+	});
+
+	it("skips a charset whose assigned ranges cannot be serialized", async () => {
+		// Sparse single-codepoint coverage all over latin-ext's high
+		// ranges → hundreds of tiny ranges → unicode-range descriptor
+		// blows the emit cap → charset skipped, plan degrades to null
+		// (no other charset has coverage here).
+		const wide: [number, number][] = [];
+		for (const [lo, hi] of [
+			[0x1d00, 0x1dbf],
+			[0x1e00, 0x1e9f],
+			[0xa720, 0xa7ff],
+		] as const) {
+			for (let cp = lo; cp <= hi; cp++) wide.push([cp, cp]);
+		}
+		expect(
+			await subsetCatalogFont({
+				bytes: fakeSfnt(["head", "cmap"], 4096),
+				variation: staticVariation(wide),
+				subsetFont: () => fakeSfnt(["head", "cmap"], 256),
+			}),
+		).toBeNull();
+	});
+
+	it("caps total subset bytes and skips non-shrinking subsets", async () => {
+		// 6MB fake input so 3MB subsets pass the per-file size guard.
+		const input = fakeSfnt(["head", "cmap"], 6 * 1024 * 1024);
+		const plan = await subsetCatalogFont({
+			bytes: input,
+			variation: staticVariation([
+				[0x20, 0x7e],
+				[0x3b1, 0x3c9],
+				[0x400, 0x45f],
+			]),
+			// Each subset is 3MB — the first fits the 4MB total budget,
+			// every later one would exceed it.
+			subsetFont: () => fakeSfnt(["head", "cmap"], 3 * 1024 * 1024),
+		});
+		expect(plan).not.toBeNull();
+		expect(plan!.subsets.map((s) => s.charset)).toEqual(["latin"]);
+		// A subset not smaller than the upload is skipped per charset.
+		const staticInput = fakeSfnt(["head", "cmap"], 256);
+		const noWin = await subsetCatalogFont({
+			bytes: staticInput,
+			variation: staticVariation([
+				[0x20, 0x7e],
+				[0x400, 0x45f],
+			]),
+			subsetFont: () => fakeSfnt(["head", "cmap"], 256),
+		});
+		expect(noWin).toBeNull();
 	});
 });

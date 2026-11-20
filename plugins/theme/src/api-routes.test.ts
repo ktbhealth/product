@@ -955,13 +955,13 @@ describe("POST /api/theme/catalog-fonts", () => {
 		});
 	});
 
-	it("stores a latin subset sibling and emits disjoint faces for TTF uploads", async () => {
+	it("stores charset subset siblings and emits disjoint faces for TTF uploads", async () => {
 		useSession("admin");
 		await withCatalogRuntime(async () => {
 			fontsState.providers = [fontProvider({ id: 7 })];
 			fontsState.syncFamilies = [fontFamily({ providerId: 7 })];
 			// Real TTF (0x00010000 sfnt) — exercises the full subset
-			// pipeline: cmap coverage → HarfBuzz WASM → sibling R2 object.
+			// pipeline: cmap coverage → HarfBuzz WASM → sibling R2 objects.
 			const ttfBytes = readFileSync(
 				fileURLToPath(new URL("./testdata/katex-size3.ttf", import.meta.url)),
 			);
@@ -973,21 +973,26 @@ describe("POST /api/theme/catalog-fonts", () => {
 			const body = (await res.json()) as { assetId: number };
 			const row = (await db.select().from(themeAssets)).find((r) => r.id === body.assetId);
 			const variants = JSON.parse(row!.variants!);
-			expect(variants.subsetKey).toMatch(/-latin\.ttf$/);
-			// The subset object landed in R2, smaller than the upload.
-			const subsetKey = variants.subsetKey as string;
-			expect(bucketStore.has(subsetKey)).toBe(true);
-			expect(bucketStore.get(subsetKey)!.data.byteLength).toBeLessThan(ttfBytes.byteLength);
-			// Two disjoint faces for the single weight: latin subset +
-			// full font with the complement range.
+			// One sibling per covered charset — latin always leads.
+			expect(Array.isArray(variants.subsetKeys)).toBe(true);
+			const subsetKeys = variants.subsetKeys as string[];
+			expect(subsetKeys.length).toBeGreaterThanOrEqual(1);
+			expect(subsetKeys[0]).toMatch(/-latin\.ttf$/);
+			// Every subset object landed in R2, smaller than the upload.
+			for (const subsetKey of subsetKeys) {
+				expect(bucketStore.has(subsetKey)).toBe(true);
+				expect(bucketStore.get(subsetKey)!.data.byteLength).toBeLessThan(ttfBytes.byteLength);
+			}
+			// Per weight: one face per charset subset + the full font
+			// carrying the complement — all unicode-ranges disjoint.
 			const faces = variants.fontAsset.faces;
-			expect(faces).toHaveLength(2);
-			expect(faces[0].url).toContain(encodeURIComponent(subsetKey));
-			expect(faces[0].unicodeRange).toBeDefined();
+			expect(faces).toHaveLength(subsetKeys.length + 1);
+			const ranges = faces.map((f: { unicodeRange?: string }) => f.unicodeRange);
+			expect(ranges.every((r: string | undefined) => typeof r === "string")).toBe(true);
+			expect(new Set(ranges).size).toBe(ranges.length);
+			expect(faces[0].url).toContain(encodeURIComponent(subsetKeys[0]));
 			expect(faces[0].format).toBe("truetype");
-			expect(faces[1].url).toContain(encodeURIComponent(row!.r2Key!));
-			expect(faces[1].unicodeRange).toBeDefined();
-			expect(faces[1].unicodeRange).not.toBe(faces[0].unicodeRange);
+			expect(faces.at(-1).url).toContain(encodeURIComponent(row!.r2Key!));
 		});
 	});
 
@@ -998,14 +1003,12 @@ describe("POST /api/theme/catalog-fonts", () => {
 			fontsState.syncFamilies = [fontFamily({ providerId: 7 })];
 			// Stale catalog row for the same family + a different family +
 			// an unowned row with no family stamp (orphan).
-			const mkStale = async (family: string | null, key: string | null, subsetKey?: string) => {
-				const variants =
-					family === null
-						? null
-						: JSON.stringify({
-								family,
-								...(subsetKey === undefined ? {} : { subsetKey }),
-							});
+			const mkStale = async (
+				family: string | null,
+				key: string | null,
+				subset?: { subsetKey?: string; subsetKeys?: string[] },
+			) => {
+				const variants = family === null ? null : JSON.stringify({ family, ...(subset ?? {}) });
 				const rows = await db
 					.insert(themeAssets)
 					.values({
@@ -1019,11 +1022,15 @@ describe("POST /api/theme/catalog-fonts", () => {
 					.returning();
 				return rows[0]!;
 			};
-			const staleSame = await mkStale(
-				"Inter",
-				"theme-assets/catalog/font/old.woff2",
-				"theme-assets/catalog/font/old-latin.ttf",
-			);
+			const staleSame = await mkStale("Inter", "theme-assets/catalog/font/old.woff2", {
+				subsetKey: "theme-assets/catalog/font/old-latin.ttf",
+			});
+			const staleMulti = await mkStale("Inter", "theme-assets/catalog/font/old2.woff2", {
+				subsetKeys: [
+					"theme-assets/catalog/font/old2-latin.ttf",
+					"theme-assets/catalog/font/old2-cyrillic.ttf",
+				],
+			});
 			const staleNullKey = await mkStale("Inter", null);
 			const staleOther = await mkStale("Other", "theme-assets/catalog/font/other.woff2");
 			await mkStale(null, null);
@@ -1031,6 +1038,15 @@ describe("POST /api/theme/catalog-fonts", () => {
 				data: new Uint8Array([1]),
 			});
 			bucketStore.set("theme-assets/catalog/font/old-latin.ttf", {
+				data: new Uint8Array([1]),
+			});
+			bucketStore.set("theme-assets/catalog/font/old2.woff2", {
+				data: new Uint8Array([1]),
+			});
+			bucketStore.set("theme-assets/catalog/font/old2-latin.ttf", {
+				data: new Uint8Array([1]),
+			});
+			bucketStore.set("theme-assets/catalog/font/old2-cyrillic.ttf", {
 				data: new Uint8Array([1]),
 			});
 			bucketStore.set("theme-assets/catalog/font/other.woff2", {
@@ -1047,12 +1063,17 @@ describe("POST /api/theme/catalog-fonts", () => {
 			const remaining = await db.select().from(themeAssets);
 			const ids = remaining.map((r) => r.id);
 			expect(ids).not.toContain(staleSame.id);
+			expect(ids).not.toContain(staleMulti.id);
 			expect(ids).not.toContain(staleNullKey.id);
 			expect(ids).toContain(staleOther.id);
 			// R2 objects for superseded rows are dropped — including the
-			// latin-subset sibling recorded on variants.subsetKey.
+			// subset siblings recorded on variants.subsetKey (legacy) and
+			// variants.subsetKeys (multi-charset).
 			expect(bucketStore.has("theme-assets/catalog/font/old.woff2")).toBe(false);
 			expect(bucketStore.has("theme-assets/catalog/font/old-latin.ttf")).toBe(false);
+			expect(bucketStore.has("theme-assets/catalog/font/old2.woff2")).toBe(false);
+			expect(bucketStore.has("theme-assets/catalog/font/old2-latin.ttf")).toBe(false);
+			expect(bucketStore.has("theme-assets/catalog/font/old2-cyrillic.ttf")).toBe(false);
 			expect(bucketStore.has("theme-assets/catalog/font/other.woff2")).toBe(true);
 		});
 	});
