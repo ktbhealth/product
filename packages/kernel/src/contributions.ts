@@ -3,6 +3,7 @@ import type { VirtualRouteNode } from "@tanstack/virtual-file-routes";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type * as Effect from "effect/Effect";
 import type * as Layer from "effect/Layer";
+import type { JsonSchemaObject } from "@ktb/json-schema";
 
 import type { ForbiddenContributions, PluginBase } from "./core.ts";
 
@@ -549,6 +550,17 @@ export interface ElementKindEditorProps {
 	readonly onChange: (value: unknown) => void;
 }
 
+/** Catalog grouping for an element kind (P-108): free-form lanes the
+ * /platform/components catalog clusters by. Open string union — new
+ * lanes are additive, never a breaking change. */
+export type ElementKindCategory =
+	| "layout"
+	| "content"
+	| "data"
+	| "media"
+	| "domain"
+	| (string & {});
+
 /** One managed-content kind contributed via `elementKinds` (P-102):
  * the client-consumed half of the kind contract — identity (`kind` is
  * the stable string consumers store alongside the ref, e.g.
@@ -559,13 +571,25 @@ export interface ElementKindEditorProps {
  * `ElementKinds` service at layer build (see @ktb/platform
  * `element-kinds`), keeping plugins decoupled: consumers depend on the
  * registry, never on another plugin's internals. `renderer`/`editor`
- * are optional — a kind may be render-only or editor-less. */
+ * are optional — a kind may be render-only or editor-less.
+ *
+ * P-108 additions (all optional, editor-agnostic):
+ * - `description` — one-line catalog copy for the components browser.
+ * - `category` — catalog grouping lane (see {@link ElementKindCategory}).
+ * - `fields` — object-typed JSON Schema (@ktb/json-schema subset, same
+ *   profile `form.def` schemas use) describing the props payload the
+ *   kind's `renderer`/`editor` receive as `value`. Builder palettes
+ *   compile it into editor field configs and validate stored props
+ *   against it; kinds without editable props omit it. */
 export interface ElementKind {
 	readonly kind: string;
 	readonly label: string;
+	readonly description?: string;
+	readonly category?: ElementKindCategory;
 	readonly icon?: ComponentType<{ readonly className?: string }>;
 	readonly renderer?: ComponentType<ElementKindRendererProps>;
 	readonly editor?: ComponentType<ElementKindEditorProps>;
+	readonly fields?: JsonSchemaObject;
 }
 
 /** Element-kind contribution (P-102): the managed-content kinds a
