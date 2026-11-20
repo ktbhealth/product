@@ -38,6 +38,7 @@ import {
 	platformPanelPlugin,
 	type PlatformAdminShape,
 } from "@ktb/platform";
+import { routeContribution } from "@ktb/platform/routes";
 import { Forbidden, Principal, requirePrincipalUser } from "@ktb/authz";
 import {
 	deleteRelationTuples,
@@ -711,6 +712,14 @@ export const patientsRoutesPlugin = definePlugin({
 	id: "patients.routes",
 	meta: { keywords: ["patients", "routes"] },
 	routes: [physical("/patients", "../../../../plugins/patients/src/routes")],
+	// Route-registry defs (PL-011) for the file-route subtree above —
+	// page descriptors (e.g. /platform/patients) self-register.
+	contributions: [
+		routeContribution("patients.list", { path: "/patients" }),
+		routeContribution("patients.new", { path: "/patients/new" }),
+		routeContribution("patients.detail", { path: "/patients/:id", params: ["id"] }),
+		routeContribution("patients.edit", { path: "/patients/:id/edit", params: ["id"] }),
+	],
 });
 
 // Chrome contributions (P-060): the console sidebar entry lives in a
@@ -887,5 +896,16 @@ declare module "@ktb/kernel" {
 		"patients.chrome": true;
 		"patients.panel": true;
 		"patients.intake": true;
+	}
+}
+
+// Route-registry keys (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"patients.list": "/patients";
+		"patients.new": "/patients/new";
+		"patients.detail": "/patients/:id";
+		"patients.edit": "/patients/:id/edit";
 	}
 }

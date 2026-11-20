@@ -178,6 +178,12 @@ export interface PageLifecycle {
 export interface PanelPage extends PageLifecycle {
 	readonly id: string;
 	readonly path: string;
+	/** Optional route-registry key (PL-011): when set, the routes
+	 * registry (@ktb/platform `routes`) registers this page under it
+	 * instead of the derived "<pluginId>/<pageId>" — declare the same
+	 * key→path pair in `RouteRegistry` for compile-time `route()`
+	 * typing. */
+	readonly routeKey?: string;
 	readonly component: ComponentType<{ data: unknown; ctx: PanelPageContext }>;
 	readonly loader?: (path: string) => Effect.Effect<unknown, unknown, unknown>;
 	readonly guard?: (path: string) => Effect.Effect<boolean, unknown, unknown>;
@@ -216,6 +222,10 @@ export interface PanelPage extends PageLifecycle {
 export interface Page extends PageLifecycle {
 	readonly id: string;
 	readonly path: string;
+	/** Optional route-registry key (PL-011): same contract as
+	 * `PanelPage.routeKey` — the routes registry registers this page
+	 * under the given key for `Routes.route()`/`Routes.match()`. */
+	readonly routeKey?: string;
 	readonly component: ComponentType<{ data: unknown; ctx: PageContext }>;
 	readonly loader?: (
 		path: string,

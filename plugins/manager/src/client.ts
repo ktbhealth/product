@@ -2,7 +2,7 @@ import { PuzzleIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { ManagerPage } from "./platform-page.tsx";
+import { ManagerPage, RoutesAdminPage } from "./platform-page.tsx";
 import { managerConfig } from "./config.tsx";
 
 /**
@@ -58,6 +58,13 @@ export const managerPanelPlugin = definePlugin({
 				id: "manager.plugins",
 				path: "/platform/plugins",
 				component: ManagerPage,
+			},
+			{
+				id: "manager.routes",
+				path: "/platform/routes",
+				// Mirrors managerPanelPlugin's routeKey (server index.ts).
+				routeKey: "manager.routes",
+				component: RoutesAdminPage,
 			},
 		],
 	},

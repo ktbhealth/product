@@ -7,6 +7,7 @@ import { integrityServicesPlugin } from "@ktb/integrity";
 import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
+import { routeContribution } from "@ktb/platform/routes";
 import { patientAccessServicesPlugin } from "@ktb/patient-access";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import {
@@ -147,6 +148,16 @@ export const consultationsRoutesPlugin = definePlugin({
 		// scans every file in the mounted directory.
 		physical("/api", "../../../../plugins/consultations/src/api-routes"),
 	],
+	// Route-registry defs (PL-011) for the file-route subtree above —
+	// page descriptors (e.g. /platform/consultations) self-register.
+	contributions: [
+		routeContribution("consultations.list", { path: "/consultations" }),
+		routeContribution("consultations.new", { path: "/consultations/new" }),
+		routeContribution("consultations.detail", {
+			path: "/consultations/:id",
+			params: ["id"],
+		}),
+	],
 });
 
 // Chrome contributions (P-060): the console sidebar entry lives in a
@@ -283,5 +294,15 @@ declare module "@ktb/kernel" {
 		"consultations.routes": true;
 		"consultations.chrome": true;
 		"consultations.panel": true;
+	}
+}
+
+// Route-registry keys (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"consultations.list": "/consultations";
+		"consultations.new": "/consultations/new";
+		"consultations.detail": "/consultations/:id";
 	}
 }

@@ -14,6 +14,7 @@ import { invitesServicesPlugin } from "@ktb/invites";
 import { patientsServicesPlugin } from "@ktb/patients";
 import { vaultServicesPlugin } from "@ktb/vault";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import { routeContribution } from "@ktb/platform/routes";
 
 import { PatientAccessPortalPage } from "./views/PatientAccessPortalPage.tsx";
 
@@ -504,6 +505,14 @@ export const patientAccessRoutesPlugin = definePlugin({
 	id: "patient-access.routes",
 	meta: { keywords: ["patient-access", "routes", "patient"] },
 	routes: [physical("/patient-access", "../../../../plugins/patient-access/src/routes")],
+	// Route-registry def (PL-011) for the file-route subtree above —
+	// the per-patient access page self-registers under :patientId.
+	contributions: [
+		routeContribution("patient-access.detail", {
+			path: "/patient-access/:patientId",
+			params: ["patientId"],
+		}),
+	],
 });
 
 /**
@@ -595,5 +604,13 @@ declare module "@ktb/kernel" {
 		"patient-access.services": true;
 		"patient-access.routes": true;
 		"patient-access.pages": true;
+	}
+}
+
+// Route-registry key (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"patient-access.detail": "/patient-access/:patientId";
 	}
 }

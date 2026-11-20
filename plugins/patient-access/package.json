@@ -21,6 +21,7 @@
 		"@ktb/invites": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/patients": "workspace:*",
+		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",
 		"@ktb/vault": "workspace:*",
 		"@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",

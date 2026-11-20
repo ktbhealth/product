@@ -15,6 +15,7 @@ import { Patients, patientsServicesPlugin } from "@ktb/patients";
 import { isEnvelope } from "@ktb/patients/zk";
 import { enrollPortalDevice, entityDekEnvelope, portalDeviceOf, type PortalKey } from "@ktb/vault";
 import { definePlugin, type Page, type Plugin } from "@ktb/kernel";
+import { routeContribution } from "@ktb/platform/routes";
 import { portalShellPlugin } from "@ktb/portal";
 import { getPatientContext } from "@ktb/server-fns";
 
@@ -472,6 +473,17 @@ export const patientPortalRoutesPlugin = definePlugin({
 	id: "patient-portal.routes",
 	meta: { keywords: ["patient-portal", "routes", "patient"] },
 	routes: [physical("/portal", "../../../../plugins/patient-portal/src/routes")],
+	// Route-registry defs (PL-011) for the pre-instance file routes
+	// above (kept as redirects) — the instance pages under
+	// /portal/patient* self-register from their descriptors.
+	contributions: [
+		routeContribution("patient-portal.index", { path: "/portal" }),
+		routeContribution("patient-portal.activity", { path: "/portal/activity" }),
+		routeContribution("patient-portal.consultation", {
+			path: "/portal/consultations/:id",
+			params: ["id"],
+		}),
+	],
 });
 
 /** Single-concern plugins contributed by this module — the host
@@ -493,5 +505,15 @@ declare module "@ktb/kernel" {
 		"patient-portal.pages": true;
 		"patient-portal.chrome": true;
 		"patient-portal.routes": true;
+	}
+}
+
+// Route-registry keys (PL-011): the path literal must match the
+// `routeContribution` meta above — `Routes.route()` types params off it.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"patient-portal.index": "/portal";
+		"patient-portal.activity": "/portal/activity";
+		"patient-portal.consultation": "/portal/consultations/:id";
 	}
 }

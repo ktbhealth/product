@@ -83,6 +83,9 @@ export const pagesRenderPlugin = definePlugin({
 		{
 			id: "pages.db",
 			path: "/*",
+			// Mirrors pagesRenderPlugin's routeKey (server index.ts) —
+			// keeps client-collected route defs keyed identically.
+			routeKey: "pages.custom",
 			context: "app",
 			component: PageView,
 		},
@@ -99,6 +102,7 @@ export const pagesPanelPlugin = definePlugin({
 			{
 				id: "pages.admin",
 				path: "/platform/pages",
+				routeKey: "pages.admin",
 				component: PagesAdminConsolePage,
 			},
 		],

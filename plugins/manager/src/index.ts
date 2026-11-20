@@ -4,8 +4,9 @@ import * as Effect from "effect/Effect";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
+import { Routes } from "@ktb/platform/routes";
 
-import { ManagerPage } from "./platform-page.tsx";
+import { ManagerPage, RoutesAdminPage } from "./platform-page.tsx";
 import { managerConfig, managerConfigSchema } from "./config.tsx";
 
 /**
@@ -79,6 +80,22 @@ export const managerPanelPlugin = definePlugin({
 						return { states: yield* states.entries() };
 					}),
 			},
+			{
+				// Read-only route registry (PL-011 phase 3): every
+				// registered route key — explicit `route` contributions
+				// plus defs derived from page descriptors.
+				id: "manager.routes",
+				path: "/platform/routes",
+				routeKey: "manager.routes",
+				component: RoutesAdminPage,
+				loader: () =>
+					Effect.gen(function* () {
+						const platformAdmin = yield* PlatformAdmin;
+						yield* platformAdmin.requireAdmin();
+						const routes = yield* Routes;
+						return routes.list();
+					}),
+			},
 		],
 	},
 });
@@ -93,5 +110,13 @@ declare module "@ktb/kernel" {
 	interface PluginRegistry {
 		"manager.chrome": true;
 		"manager.panel": true;
+	}
+}
+
+// Route-registry key (PL-011): the path literal must match the page
+// descriptor's `path`/`routeKey` above.
+declare module "@ktb/platform/routes" {
+	interface RouteRegistry {
+		"manager.routes": "/platform/routes";
 	}
 }

@@ -35,6 +35,7 @@ import {
 } from "@ktb/platform";
 import { makePluginStatesLive, PluginDisabled, PluginStates } from "@ktb/platform/plugin-states";
 import { ElementKindsLive } from "@ktb/platform/element-kinds";
+import { collectRouteDefinitions, makeRoutes, Routes } from "@ktb/platform/routes";
 import {
 	DocumentCollections,
 	DocumentRefTargetsLive,
@@ -612,6 +613,13 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// each contributed def's owner against PluginStates.enabledIds()
 	// at startRun, so toggles apply without a layer rebuild.
 	const WizardDefinitionsLive = Layer.succeed(WizardDefinitions, makeWizardDefinitions(plugins));
+	// Route registry (PL-011/P-106): explicit `route` contributions plus
+	// defs derived from every panel.pages/pages descriptor, collected
+	// once from the ordered registry — same composition-time contract
+	// as the definition registries above (enablement is NOT filtered;
+	// dispatch gates own it). `Routes.route(key, params)` /
+	// `Routes.match(path)` serve loaders, server fns and middleware.
+	const RoutesLive = Layer.succeed(Routes, makeRoutes(collectRouteDefinitions(plugins)));
 	// Tenant resolution is opt-in: the app supplies a TenantResolverShape
 	// (usually makeTenantResolver over its TenantDirectory adapter). When
 	// absent the Reference default resolves null — personal scope.
@@ -643,6 +651,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		TriggerDefinitionsLive,
 		FlowDefinitionsLive,
 		WizardDefinitionsLive,
+		RoutesLive,
 		// External document-ref target registry (T-149): entity owners
 		// register existence checkers into this shared instance from
 		// their service layers; DocumentStore resolves entity refs
