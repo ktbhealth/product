@@ -15,6 +15,7 @@ import { Route as DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesResetPasswordRoute
 import { Route as ApiBotsRouteImport } from './../../../plugins/consultations/src/api-routes/bots'
 import { Route as ApiDocumentsRouteImport } from './../../../plugins/api/src/api-routes/documents'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
+import { Route as ApiImagesRouteImport } from './../../../plugins/image/src/api-routes/images'
 import { Route as ApiJobsRouteImport } from './../../../plugins/jobs/src/api-routes/jobs'
 import { Route as ApiMetricsRouteImport } from './routes/api/metrics'
 import { Route as ApiNotificationsRouteImport } from './../../../plugins/notifications/src/api-routes/notifications'
@@ -41,6 +42,7 @@ import { Route as ApiAuthDotsplatRouteImport } from './../../../plugins/auth/src
 import { Route as ApiBotsDotwebhookRouteImport } from './../../../plugins/consultations/src/api-routes/bots.webhook'
 import { Route as ApiCdnSplatRouteImport } from './routes/api/cdn/$'
 import { Route as ApiDocumentsDotsplatRouteImport } from './../../../plugins/api/src/api-routes/documents.$'
+import { Route as ApiImagesDotidRouteImport } from './../../../plugins/image/src/api-routes/images.$id'
 import { Route as ApiThemeDotassetsRouteImport } from './../../../plugins/theme/src/api-routes/theme.assets'
 import { Route as ApiThemeDotcatalogFontsRouteImport } from './../../../plugins/theme/src/api-routes/theme.catalog-fonts'
 import { Route as ApiThemeDotfontsRouteImport } from './../../../plugins/theme/src/api-routes/theme.fonts'
@@ -82,6 +84,11 @@ const ApiDocumentsRoute = ApiDocumentsRouteImport.update({
 const ApiHealthRoute = ApiHealthRouteImport.update({
   id: '/api/health',
   path: '/api/health',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiImagesRoute = ApiImagesRouteImport.update({
+  id: '/api/images',
+  path: '/api/images',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiJobsRoute = ApiJobsRouteImport.update({
@@ -219,6 +226,11 @@ const ApiDocumentsDotsplatRoute = ApiDocumentsDotsplatRouteImport.update({
   path: '/$',
   getParentRoute: () => ApiDocumentsRoute,
 } as any)
+const ApiImagesDotidRoute = ApiImagesDotidRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiImagesRoute,
+} as any)
 const ApiThemeDotassetsRoute = ApiThemeDotassetsRouteImport.update({
   id: '/api/theme/assets',
   path: '/api/theme/assets',
@@ -282,6 +294,7 @@ export interface FileRoutesByFullPath {
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
+  '/api/images': typeof ApiImagesRouteWithChildren
   '/api/jobs': typeof ApiJobsRoute
   '/api/metrics': typeof ApiMetricsRoute
   '/api/notifications': typeof ApiNotificationsRoute
@@ -308,6 +321,7 @@ export interface FileRoutesByFullPath {
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/documents/$': typeof ApiDocumentsDotsplatRoute
+  '/api/images/$id': typeof ApiImagesDotidRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/catalog-fonts': typeof ApiThemeDotcatalogFontsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
@@ -326,6 +340,7 @@ export interface FileRoutesByTo {
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
+  '/api/images': typeof ApiImagesRouteWithChildren
   '/api/jobs': typeof ApiJobsRoute
   '/api/metrics': typeof ApiMetricsRoute
   '/api/notifications': typeof ApiNotificationsRoute
@@ -352,6 +367,7 @@ export interface FileRoutesByTo {
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/documents/$': typeof ApiDocumentsDotsplatRoute
+  '/api/images/$id': typeof ApiImagesDotidRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/catalog-fonts': typeof ApiThemeDotcatalogFontsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
@@ -371,6 +387,7 @@ export interface FileRoutesById {
   '/api/bots': typeof ApiBotsRouteWithChildren
   '/api/documents': typeof ApiDocumentsRouteWithChildren
   '/api/health': typeof ApiHealthRoute
+  '/api/images': typeof ApiImagesRouteWithChildren
   '/api/jobs': typeof ApiJobsRoute
   '/api/metrics': typeof ApiMetricsRoute
   '/api/notifications': typeof ApiNotificationsRoute
@@ -397,6 +414,7 @@ export interface FileRoutesById {
   '/api/bots/webhook': typeof ApiBotsDotwebhookRoute
   '/api/cdn/$': typeof ApiCdnSplatRoute
   '/api/documents/$': typeof ApiDocumentsDotsplatRoute
+  '/api/images/$id': typeof ApiImagesDotidRoute
   '/api/theme/assets': typeof ApiThemeDotassetsRoute
   '/api/theme/catalog-fonts': typeof ApiThemeDotcatalogFontsRoute
   '/api/theme/fonts': typeof ApiThemeDotfontsRoute
@@ -417,6 +435,7 @@ export interface FileRouteTypes {
     | '/api/bots'
     | '/api/documents'
     | '/api/health'
+    | '/api/images'
     | '/api/jobs'
     | '/api/metrics'
     | '/api/notifications'
@@ -443,6 +462,7 @@ export interface FileRouteTypes {
     | '/api/bots/webhook'
     | '/api/cdn/$'
     | '/api/documents/$'
+    | '/api/images/$id'
     | '/api/theme/assets'
     | '/api/theme/catalog-fonts'
     | '/api/theme/fonts'
@@ -461,6 +481,7 @@ export interface FileRouteTypes {
     | '/api/bots'
     | '/api/documents'
     | '/api/health'
+    | '/api/images'
     | '/api/jobs'
     | '/api/metrics'
     | '/api/notifications'
@@ -487,6 +508,7 @@ export interface FileRouteTypes {
     | '/api/bots/webhook'
     | '/api/cdn/$'
     | '/api/documents/$'
+    | '/api/images/$id'
     | '/api/theme/assets'
     | '/api/theme/catalog-fonts'
     | '/api/theme/fonts'
@@ -505,6 +527,7 @@ export interface FileRouteTypes {
     | '/api/bots'
     | '/api/documents'
     | '/api/health'
+    | '/api/images'
     | '/api/jobs'
     | '/api/metrics'
     | '/api/notifications'
@@ -531,6 +554,7 @@ export interface FileRouteTypes {
     | '/api/bots/webhook'
     | '/api/cdn/$'
     | '/api/documents/$'
+    | '/api/images/$id'
     | '/api/theme/assets'
     | '/api/theme/catalog-fonts'
     | '/api/theme/fonts'
@@ -550,6 +574,7 @@ export interface RootRouteChildren {
   ApiBotsRoute: typeof ApiBotsRouteWithChildren
   ApiDocumentsRoute: typeof ApiDocumentsRouteWithChildren
   ApiHealthRoute: typeof ApiHealthRoute
+  ApiImagesRoute: typeof ApiImagesRouteWithChildren
   ApiJobsRoute: typeof ApiJobsRoute
   ApiMetricsRoute: typeof ApiMetricsRoute
   ApiNotificationsRoute: typeof ApiNotificationsRoute
@@ -628,6 +653,13 @@ declare module '@tanstack/react-router' {
       path: '/api/health'
       fullPath: '/api/health'
       preLoaderRoute: typeof ApiHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/images': {
+      id: '/api/images'
+      path: '/api/images'
+      fullPath: '/api/images'
+      preLoaderRoute: typeof ApiImagesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/jobs': {
@@ -812,6 +844,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDocumentsDotsplatRouteImport
       parentRoute: typeof ApiDocumentsRoute
     }
+    '/api/images/$id': {
+      id: '/api/images/$id'
+      path: '/$id'
+      fullPath: '/api/images/$id'
+      preLoaderRoute: typeof ApiImagesDotidRouteImport
+      parentRoute: typeof ApiImagesRoute
+    }
     '/api/theme/assets': {
       id: '/api/theme/assets'
       path: '/api/theme/assets'
@@ -908,6 +947,18 @@ const ApiDocumentsRouteWithChildren = ApiDocumentsRoute._addFileChildren(
   ApiDocumentsRouteChildren,
 )
 
+interface ApiImagesRouteChildren {
+  ApiImagesDotidRoute: typeof ApiImagesDotidRoute
+}
+
+const ApiImagesRouteChildren: ApiImagesRouteChildren = {
+  ApiImagesDotidRoute: ApiImagesDotidRoute,
+}
+
+const ApiImagesRouteWithChildren = ApiImagesRoute._addFileChildren(
+  ApiImagesRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   splatRoute: splatRoute,
   DotDotDotDotDotDotDotDotPluginsAuthSrcRoutesForgotPasswordRoute:
@@ -917,6 +968,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBotsRoute: ApiBotsRouteWithChildren,
   ApiDocumentsRoute: ApiDocumentsRouteWithChildren,
   ApiHealthRoute: ApiHealthRoute,
+  ApiImagesRoute: ApiImagesRouteWithChildren,
   ApiJobsRoute: ApiJobsRoute,
   ApiMetricsRoute: ApiMetricsRoute,
   ApiNotificationsRoute: ApiNotificationsRoute,

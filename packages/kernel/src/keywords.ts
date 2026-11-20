@@ -29,6 +29,7 @@ export const PLUGIN_KEYWORDS = [
 	"integrity",
 	"invites",
 	"i18n",
+	"image",
 	"jobs",
 	"kv",
 	"layouts",

@@ -505,6 +505,10 @@ setServerRuntime({
 	audio: env.AUDIO_BUCKET,
 	audioQueue: env.AUDIO_QUEUE,
 	themeAssets: env.THEME_ASSETS_BUCKET as unknown as AudioStore | undefined,
+	// Media library (P-111): dedicated image bucket — same store shape;
+	// the plugin's /api/images routes resolve rows through Images and
+	// stream objects through this capability.
+	images: env.IMAGES_BUCKET as unknown as AudioStore | undefined,
 	themeJobs,
 	jobs,
 	audioQueueDepth:
@@ -655,6 +659,7 @@ setServerRuntime({
 export const ai = aiBinding;
 export const audioBucket = env.AUDIO_BUCKET;
 export const themeAssetsBucket = env.THEME_ASSETS_BUCKET;
+export const imagesBucket = env.IMAGES_BUCKET;
 
 /** Coalesced flush (see telemetry-flush.ts): at most one real drain per
  * min-interval across ALL callers — the worker entry invokes this after

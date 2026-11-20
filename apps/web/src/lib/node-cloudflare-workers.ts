@@ -163,6 +163,15 @@ env.THEME_ASSETS_QUEUE = makeLocalQueue({
 	},
 });
 
+// Media-library image storage stand-in (P-111): same local-object-store
+// shape as audio/theme, separate directory so site images never mix
+// with recordings or brand assets. IMAGES_BUCKET_DIR overrides, same
+// convention as AUDIO_BUCKET_DIR / THEME_ASSETS_BUCKET_DIR.
+const IMAGES_DIR =
+	process.env.IMAGES_BUCKET_DIR ??
+	resolve(dirname(fileURLToPath(import.meta.url)), "../../data/images");
+env.IMAGES_BUCKET = makeLocalAudioBucket(IMAGES_DIR);
+
 // Redis jobs queue probe (dev:node only): apps/jobs-worker consumes the
 // ktb:jobs list off Redis; LLEN gives the pending backlog for the
 // /platform queue registry. The transport connects lazily on the first

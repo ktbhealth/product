@@ -48,6 +48,10 @@ export default Alchemy.Stack(
 		// dedicated queue (decided over sharing ktb-transcription) so image
 		// derivatives and font downloads never contend with audio jobs.
 		const themeAssetsBucket = yield* Cloudflare.R2.Bucket("theme-assets");
+		// Media library (P-111): dedicated bucket for site images —
+		// served only through the worker's /api/images/:id route, never
+		// a public bucket URL. Derivatives (thumb/avif) are phase 2.
+		const imagesBucket = yield* Cloudflare.R2.Bucket("images");
 		// Logical id must differ from the "theme-assets" R2 bucket above —
 		// alchemy logical ids are unique per stack regardless of type.
 		const themeAssetsQueue = yield* Cloudflare.Queues.Queue("theme-assets-queue");
@@ -95,6 +99,7 @@ export default Alchemy.Stack(
 				AUDIO_QUEUE: transcriptionQueue,
 				THEME_ASSETS_BUCKET: themeAssetsBucket,
 				THEME_ASSETS_QUEUE: themeAssetsQueue,
+				IMAGES_BUCKET: imagesBucket,
 				...(process.env.BETTER_AUTH_SECRET
 					? { BETTER_AUTH_SECRET: Redacted.make(process.env.BETTER_AUTH_SECRET) }
 					: {}),

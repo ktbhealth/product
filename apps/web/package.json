@@ -48,6 +48,7 @@
 		"@ktb/eval-validator": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/i18n-plugin": "workspace:*",
+		"@ktb/image": "workspace:*",
 		"@ktb/infra-cloudflare": "workspace:*",
 		"@ktb/interop": "workspace:*",
 		"@ktb/interop-fhir": "workspace:*",
