@@ -10,6 +10,7 @@ import {
 	platformAdminPlugin,
 } from "@ktb/platform";
 import { richTextServicesPlugin } from "@ktb/rich-text";
+import { templatesServicesPlugin } from "@ktb/templates";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -37,8 +38,12 @@ describe("layouts plugins", () => {
 		expect(layoutsServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
 		// Slots resolve through @ktb/rich-text and the delete-hook
 		// registry lives in its service layer — optional, never a hard
-		// dep.
-		expect(layoutsServicesPlugin.optionalDeps).toEqual([richTextServicesPlugin.id]);
+		// dep. Same contract for the "layout" template kind registered
+		// into TemplateKinds.
+		expect(layoutsServicesPlugin.optionalDeps).toEqual([
+			richTextServicesPlugin.id,
+			templatesServicesPlugin.id,
+		]);
 	});
 
 	it("declares the console sidebar entry and the delete dialog actions", () => {

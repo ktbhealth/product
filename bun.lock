@@ -1527,6 +1527,7 @@
         "@ktb/platform": "workspace:*",
         "@ktb/rich-text": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/templates": "workspace:*",
         "@ktb/views": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",
@@ -2039,6 +2040,33 @@
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-core": "workspace:*",
         "@ktb/kernel": "workspace:*",
+      },
+    },
+    "plugins/templates": {
+      "name": "@ktb/templates",
+      "dependencies": {
+        "@ktb/authz": "workspace:*",
+        "@ktb/db": "workspace:*",
+        "@ktb/i18n": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/platform": "workspace:*",
+        "@ktb/server-fns": "workspace:*",
+        "@ktb/views": "workspace:*",
+        "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
+        "@tanstack/react-router": "1.170.46",
+        "@tanstack/react-start": "1.169.5",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+        "lucide-react": "0.544.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.0",
+        "@types/react-dom": "^19.2.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+      },
+      "peerDependencies": {
+        "react": "^19.2.0",
       },
     },
     "plugins/tenant": {
@@ -2883,6 +2911,8 @@
     "@ktb/site": ["@ktb/site@workspace:plugins/site"],
 
     "@ktb/storage-dataset": ["@ktb/storage-dataset@workspace:plugins/storage-dataset"],
+
+    "@ktb/templates": ["@ktb/templates@workspace:plugins/templates"],
 
     "@ktb/tenant": ["@ktb/tenant@workspace:packages/tenant"],
 

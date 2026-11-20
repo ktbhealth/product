@@ -25,6 +25,7 @@ const asRows = (data: unknown): readonly LayoutRow[] =>
 export function LayoutsAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const props: LayoutsAdminPageProps = {
 		layouts: asRows(data),
+		plugins: ctx.plugins,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

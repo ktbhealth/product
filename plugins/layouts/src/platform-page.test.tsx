@@ -9,6 +9,13 @@ vi.mock("./fns.ts", () => ({
 	layoutDocFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	listLayoutsFn: vi.fn<() => Promise<unknown>>(),
 }));
+vi.mock("@tanstack/react-router", () => ({
+	useRouter: () => ({ invalidate: async () => {} }),
+	useLocation: () => ({ pathname: "/platform/layouts" }),
+}));
+vi.mock("@ktb/templates/fns", () => ({
+	saveTemplateFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
+}));
 
 import type { PanelPageContext } from "@ktb/kernel";
 

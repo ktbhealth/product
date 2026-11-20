@@ -49,6 +49,7 @@ export const PLUGIN_KEYWORDS = [
 	"secretaries",
 	"site",
 	"tenant",
+	"templates",
 	"theme",
 	"transcription",
 	"triggers",

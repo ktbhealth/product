@@ -239,6 +239,7 @@ describe("KNOWN_CHROME_REGIONS", () => {
 				"portal.dashboard.stats",
 				"portal.dashboard.sections",
 				"rich-text.delete.actions",
+				"templates.save.actions",
 			].sort(),
 		);
 	});

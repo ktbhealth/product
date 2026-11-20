@@ -80,8 +80,10 @@ export interface LayoutConfig {
 	readonly sections: readonly LayoutSection[];
 }
 
-/** effect/Schema gate every stored config passes through on write. */
-const LayoutConfigSchema = Schema.Struct({
+/** effect/Schema gate every stored config passes through on write —
+ * exported for the `"layout"` template kind's payload validation
+ * (./template-kind.ts). */
+export const LayoutConfigSchema = Schema.Struct({
 	sections: Schema.Array(
 		Schema.Struct({
 			id: Schema.NonEmptyString,

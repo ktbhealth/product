@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
-import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { useLocation, useRouter } from "@tanstack/react-router";
+import { BookTemplateIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
-import type { PageI18nSlice } from "@ktb/kernel";
+import type { PageI18nSlice, Plugin } from "@ktb/kernel";
+import { saveTemplateFn } from "@ktb/templates/fns";
+import { I18N_NAMESPACE as TEMPLATES_I18N_NAMESPACE, templatesMessages } from "@ktb/templates/i18n";
+import { SaveAsTemplateDialog, type SaveAsTemplateTarget } from "@ktb/templates/views";
 import { LocalDateTime } from "@ktb/views/views";
 import {
 	ConfirmAction,
@@ -36,6 +39,10 @@ export type LayoutRow = LayoutMetaWire;
 
 export interface LayoutsAdminPageProps {
 	readonly layouts: readonly LayoutRow[];
+	/** Discovered plugin registry — forwarded to the shared
+	 * `SaveAsTemplateDialog` so `templates.save.actions` chrome
+	 * contributions resolve. */
+	readonly plugins: readonly Plugin[];
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -88,11 +95,15 @@ const previewSections = (configText: string): readonly PreviewSection[] => {
  * the whole page for the editor pane (no row-navigation model), and
  * the editor's create flow is bespoke.
  */
-export function LayoutsAdminPage({ layouts, i18n, locale }: LayoutsAdminPageProps) {
+export function LayoutsAdminPage({ layouts, plugins, i18n, locale }: LayoutsAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, layoutsMessages(locale));
+	const tt = sliceMessages(i18n, TEMPLATES_I18N_NAMESPACE, templatesMessages(locale));
 	const router = useRouter();
+	const pathname = useLocation({ select: (l) => l.pathname });
 	const [view, setView] = useState<EditorView | null>(null);
 	const [toast, setToast] = useState<ToastData | null>(null);
+	const [templateTarget, setTemplateTarget] = useState<SaveAsTemplateTarget | null>(null);
+	const [templateBusy, setTemplateBusy] = useState(false);
 
 	const del = useServerMutation<{ id: number }>(deleteLayoutFn);
 
@@ -101,6 +112,57 @@ export function LayoutsAdminPage({ layouts, i18n, locale }: LayoutsAdminPageProp
 	const confirmDelete = async (target: LayoutRow) => {
 		const ok = await del.mutate({ id: target.id });
 		showToast(ok ? t.deleted : t.deleteFailed);
+	};
+
+	/** "Save as template" (P-107): fetch the full doc (the list only
+	 * carries meta), then open the shared dialog — the `"layout"`
+	 * template kind serializes `{name, description, config}` into the
+	 * stored payload. */
+	const openTemplateDialog = async (row: LayoutRow) => {
+		setTemplateBusy(true);
+		try {
+			const doc = await layoutDocFn({ data: { id: row.id } });
+			if (doc === null) {
+				showToast(t.loadFailed);
+				return;
+			}
+			setTemplateTarget({
+				id: row.id,
+				kind: "layout",
+				defaultName: doc.name,
+				defaultDescription: doc.description,
+				source: { name: doc.name, description: doc.description, config: doc.config },
+			});
+		} catch {
+			showToast(t.loadFailed);
+		} finally {
+			setTemplateBusy(false);
+		}
+	};
+
+	const confirmSaveTemplate = async (input: {
+		readonly name: string;
+		readonly description: string;
+	}) => {
+		/* v8 ignore next -- the dialog only confirms while a target is set */
+		if (templateTarget === null) return;
+		setTemplateBusy(true);
+		try {
+			const res = await saveTemplateFn({
+				data: {
+					kind: templateTarget.kind,
+					name: input.name,
+					description: input.description,
+					source: templateTarget.source,
+				},
+			});
+			showToast(res === null ? t.templateSaveFailed : t.templateSaved);
+			if (res !== null) setTemplateTarget(null);
+		} catch {
+			showToast(t.templateSaveFailed);
+		} finally {
+			setTemplateBusy(false);
+		}
 	};
 
 	const columns: readonly Column<LayoutRow>[] = [
@@ -142,6 +204,16 @@ export function LayoutsAdminPage({ layouts, i18n, locale }: LayoutsAdminPageProp
 						aria-label={t.edit}
 					>
 						<PencilIcon className="size-4" />
+					</Button>
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						onClick={() => void openTemplateDialog(row)}
+						disabled={templateBusy}
+						aria-label={t.saveAsTemplate}
+					>
+						<BookTemplateIcon className="size-4" />
 					</Button>
 					<ConfirmAction
 						trigger={(open) => (
@@ -197,6 +269,15 @@ export function LayoutsAdminPage({ layouts, i18n, locale }: LayoutsAdminPageProp
 				rows={layouts}
 				locale={locale}
 				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
+			/>
+			<SaveAsTemplateDialog
+				target={templateTarget}
+				plugins={plugins}
+				pathname={pathname}
+				t={tt}
+				busy={templateBusy}
+				onConfirm={(input) => void confirmSaveTemplate(input)}
+				onCancel={() => setTemplateTarget(null)}
 			/>
 			<Toast toast={toast} onClose={() => setToast(null)} />
 		</TablePage>

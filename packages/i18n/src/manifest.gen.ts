@@ -588,6 +588,9 @@ export const I18N_MANIFEST = {
 		panel_nav_schemas: {
 			params: [],
 		},
+		panel_nav_templates: {
+			params: [],
+		},
 		panel_nav_users: {
 			params: [],
 		},
@@ -4402,6 +4405,15 @@ export const I18N_MANIFEST = {
 		saveFailed: {
 			params: [],
 		},
+		saveAsTemplate: {
+			params: [],
+		},
+		templateSaved: {
+			params: [],
+		},
+		templateSaveFailed: {
+			params: [],
+		},
 	},
 	machines: {
 		title: {
@@ -6540,6 +6552,123 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	templates: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newTemplate: {
+			params: [],
+		},
+		edit: {
+			params: [],
+		},
+		delete: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		create: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		emptyTitle: {
+			params: [],
+		},
+		emptyDescription: {
+			params: [],
+		},
+		noKinds: {
+			params: [],
+		},
+		colName: {
+			params: [],
+		},
+		colDescription: {
+			params: [],
+		},
+		colCreatedBy: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		colActions: {
+			params: [],
+		},
+		fieldKind: {
+			params: [],
+		},
+		fieldName: {
+			params: [],
+		},
+		namePlaceholder: {
+			params: [],
+		},
+		fieldDescription: {
+			params: [],
+		},
+		fieldPayload: {
+			params: [],
+		},
+		payloadHint: {
+			params: [],
+		},
+		invalidJson: {
+			params: [],
+		},
+		deleteTitle: {
+			params: [],
+		},
+		deleteBody: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: 'Delete "{name}"? This cannot be undone.',
+		},
+		deleteConfirm: {
+			params: [],
+		},
+		deleted: {
+			params: [],
+		},
+		deleteFailed: {
+			params: [],
+		},
+		loadFailed: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		saveAsTitle: {
+			params: [],
+		},
+		saveAsBody: {
+			params: [
+				{
+					name: "name",
+				},
+			],
+			template: 'Save "{name}" as a reusable template.',
+		},
+		saveAsPrompt: {
+			params: [],
+		},
+	},
 	tenant: {
 		title: {
 			params: [],
@@ -7873,6 +8002,7 @@ export const I18N_BASE_CATALOG = {
 	panel_nav_queue: "Queue",
 	panel_nav_rich_text: "Rich text",
 	panel_nav_schemas: "Schemas",
+	panel_nav_templates: "Templates",
 	panel_nav_users: "Users",
 	persona_business: "Business",
 	persona_developers: "Developers",

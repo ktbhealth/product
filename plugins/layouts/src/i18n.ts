@@ -50,6 +50,9 @@ export interface LayoutsMessages {
 	readonly deleteFailed: string;
 	readonly loadFailed: string;
 	readonly saveFailed: string;
+	readonly saveAsTemplate: string;
+	readonly templateSaved: string;
+	readonly templateSaveFailed: string;
 }
 
 const en: LayoutsMessages = {
@@ -85,6 +88,9 @@ const en: LayoutsMessages = {
 	deleteFailed: "Could not delete the layout.",
 	loadFailed: "Could not load the layout.",
 	saveFailed: "Could not save the layout. Check the config JSON and try again.",
+	saveAsTemplate: "Save as template",
+	templateSaved: "Template saved",
+	templateSaveFailed: "Could not save the template.",
 };
 
 const ptBR: LayoutsMessages = {
@@ -121,6 +127,9 @@ const ptBR: LayoutsMessages = {
 	loadFailed: "Não foi possível carregar o layout.",
 	saveFailed:
 		"Não foi possível salvar o layout. Verifique o JSON de configuração e tente novamente.",
+	saveAsTemplate: "Salvar como modelo",
+	templateSaved: "Modelo salvo",
+	templateSaveFailed: "Não foi possível salvar o modelo.",
 };
 
 const es: LayoutsMessages = {
@@ -157,6 +166,9 @@ const es: LayoutsMessages = {
 	deleteFailed: "No se pudo eliminar el layout.",
 	loadFailed: "No se pudo cargar el layout.",
 	saveFailed: "No se pudo guardar el layout. Revisa el JSON de configuración e inténtalo de nuevo.",
+	saveAsTemplate: "Guardar como plantilla",
+	templateSaved: "Plantilla guardada",
+	templateSaveFailed: "No se pudo guardar la plantilla.",
 };
 
 const CATALOGS: Record<LayoutsLocale, LayoutsMessages> = { en, "pt-BR": ptBR, es };

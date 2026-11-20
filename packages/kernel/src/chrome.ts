@@ -142,6 +142,9 @@ export const KNOWN_CHROME_REGIONS: ReadonlySet<string> = new Set([
 	// Delete-confirmation dialog actions (rich-text plugin) — collected
 	// by the owning view itself, not by a shell.
 	"rich-text.delete.actions",
+	// Save-as-template dialog actions (templates plugin, P-107) —
+	// collected by the shared SaveAsTemplateDialog, not by a shell.
+	"templates.save.actions",
 ]);
 
 /** Dev-only warning for chrome contributions aimed at undeclared

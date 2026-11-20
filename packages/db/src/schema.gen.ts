@@ -30,6 +30,7 @@ export * from "../../../plugins/rbac/src/schema.ts";
 export * from "../../../plugins/rich-text/src/schema.ts";
 export * from "../../../plugins/schemas/src/schema.ts";
 export * from "../../../plugins/secretaries/src/schema.ts";
+export * from "../../../plugins/templates/src/schema.ts";
 export * from "../../../plugins/theme/src/schema.ts";
 export * from "../../../plugins/vault/src/schema.ts";
 export * from "../../../plugins/wizards/src/schema.ts";
