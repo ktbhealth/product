@@ -3,7 +3,8 @@
  * deploy target and the runtime registry. `alchemy.run.ts` provisions
  * the worker's cron triggers from {@link CRON_SCHEDULES};
  * `lib/platform.ts` attaches the fire routines (lib/agenda-reminders,
- * lib/audit-chain) keyed by `id`. Keep this module dependency-free —
+ * lib/audit-chain, the scheduler-heartbeat sweep) keyed by `id`. Keep
+ * this module dependency-free —
  * the Alchemy stack imports it outside the worker bundle.
  */
 export interface AppCronJob {
@@ -15,6 +16,16 @@ export interface AppCronJob {
 }
 
 export const APP_CRON_JOBS: readonly AppCronJob[] = [
+	{
+		id: "scheduler-heartbeat",
+		// Runtime scheduler (P-094): every-minute heartbeat that claims
+		// due `scheduled_jobs` rows and dispatches them through the jobs
+		// backbone. This is the ONLY trigger dynamic schedules need —
+		// cron_expr/run_at live in the DB, editable at runtime.
+		schedules: ["* * * * *"],
+		description:
+			"Claim due scheduled_jobs rows (lease-conditional) and dispatch each through the jobs queue.",
+	},
 	{
 		id: "agenda-reminders",
 		// The reminder sweep also runs on the daily fire — it is cheap

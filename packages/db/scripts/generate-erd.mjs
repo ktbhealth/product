@@ -157,6 +157,14 @@ const DOMAINS = [
 		tables: ["job_runs"],
 	},
 	{
+		id: "scheduler",
+		title: "Scheduler",
+		owner: "`packages/db/src/scheduled-jobs.ts` + `packages/scheduler-port`",
+		description:
+			"Runtime schedule definitions — recurring (cron_expr) and one-off (run_at) rows claimed by the scheduler-heartbeat sweep and dispatched through the jobs backbone.",
+		tables: ["scheduled_jobs"],
+	},
+	{
 		id: "eval-validator",
 		title: "Eval validator",
 		owner: "`plugins/eval-validator`",

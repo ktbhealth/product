@@ -21,9 +21,16 @@ import {
 import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { makeJobs, registerJobHandler, upsertJobRun, listJobRuns } from "@ktb/jobs-port";
+import {
+	jobHandlers,
+	makeJobs,
+	registerJobHandler,
+	upsertJobRun,
+	listJobRuns,
+} from "@ktb/jobs-port";
 import type { JobRecord, JobStatus } from "@ktb/jobs-port";
 import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
+import { runSchedulerSweep, type ScheduledJobDispatch } from "@ktb/scheduler-port";
 import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
 import {
 	makeInProcessPubSub,
@@ -354,7 +361,61 @@ const projectCronRun =
 		}
 	};
 
+// Scheduler dispatch (P-094): a claimed scheduled_jobs row becomes a
+// job envelope on the shared transport — queue retry, payload
+// validation and the job_runs projection all come from jobs-port.
+// When no queue is bound (exotic dev setups), fall back to inline
+// kind-dispatch through the same handler registry with the same
+// projection writes, minus queue retry.
+const dispatchScheduledJob: ScheduledJobDispatch = async (job) => {
+	const payload = job.params ?? {};
+	if (jobs !== undefined) {
+		await jobs.enqueue(job.kind, payload, { tenantId: job.tenantId });
+		return;
+	}
+	const registration = jobHandlers[job.kind];
+	if (registration === undefined) throw new Error(`unknown job kind: ${job.kind}`);
+	const id = crypto.randomUUID();
+	const mark = (status: "processing" | "done" | "failed", error?: string) =>
+		upsertJobRun(db, {
+			id,
+			kind: job.kind,
+			status,
+			error: error ?? null,
+			tenantId: job.tenantId,
+		}).catch((e: unknown) => {
+			console.error("scheduler projection write failed", {
+				kind: job.kind,
+				status,
+				error: String(e),
+			});
+		});
+	await mark("processing");
+	try {
+		const decoded =
+			registration.decodePayload === undefined ? payload : registration.decodePayload(payload);
+		await registration.handle(decoded, {
+			id,
+			kind: job.kind,
+			payload: decoded,
+			tenantId: job.tenantId,
+		});
+		await mark("done");
+	} catch (error) {
+		await mark("failed", error instanceof Error ? error.message : String(error));
+		throw error;
+	}
+};
+
 const cronRunners: Record<string, () => Promise<CronRunOutcome>> = {
+	"scheduler-heartbeat": async () => {
+		const result = await runSchedulerSweep(db, dispatchScheduledJob);
+		return {
+			ok: result.failed === 0,
+			summary: `${result.fired} scheduled job${result.fired === 1 ? "" : "s"} fired${result.failed > 0 ? `, ${result.failed} failed` : ""}`,
+			...(result.failed > 0 ? { error: `${result.failed} dispatch(es) failed` } : {}),
+		};
+	},
 	"agenda-reminders": async () => {
 		const count = await runScheduledAgendaReminders();
 		return count === null
