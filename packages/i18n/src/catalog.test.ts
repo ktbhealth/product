@@ -42,6 +42,14 @@ describe("flattenCatalog", () => {
 			{ path: "list", value: ["a", "b"] },
 		]);
 	});
+
+	it("keeps null leaves atomic", () => {
+		const flat = flattenCatalog({ nothing: null, nested: { also: null } });
+		expect(flat).toEqual([
+			{ path: "nothing", value: null },
+			{ path: "nested.also", value: null },
+		]);
+	});
 });
 
 describe("sliceMessages", () => {
@@ -75,6 +83,17 @@ describe("sliceMessages", () => {
 	it("keeps code value on catalog miss", () => {
 		const out = sliceMessages({ locale: "en", catalog: {} }, "ns", fallback);
 		expect(out.label).toBe("Code label");
+	});
+
+	it("keeps null and primitive leaves untouched", () => {
+		const out = sliceMessages({ locale: "en", catalog: {} }, "ns", {
+			nothing: null,
+			num: 42,
+			flag: false,
+		});
+		expect(out.nothing).toBeNull();
+		expect(out.num).toBe(42);
+		expect(out.flag).toBe(false);
 	});
 });
 
