@@ -12,6 +12,7 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { layouts } from "./schema.ts";
 import {
+	InvalidBuilderDoc,
 	InvalidLayoutConfig,
 	InvalidLayoutName,
 	LAYOUTS_TEST_DDL,
@@ -169,6 +170,39 @@ describe("LayoutsLive", () => {
 		expect(doc).toMatchObject({ id: created!.id, name: "get-me" });
 		expect(doc!.config).toBe(CONFIG);
 		await expect(admin((p) => p.adminGet(9999))).resolves.toBeNull();
+	});
+
+	it("adminSetBuilderJson writes, clears and rejects malformed docs", async () => {
+		const created = await admin((p) => p.adminCreate({ name: "built", config: CONFIG }));
+		const doc = '{"version":1,"data":{"content":[]}}';
+		const written = await admin((p) => p.adminSetBuilderJson(created!.id, doc));
+		expect(written.builderJson).toBe(doc);
+		// Public read carries the builder document too.
+		const publicDoc = await asUser(
+			null,
+			call((p) => p.getById(created!.id)),
+		);
+		expect(publicDoc?.builderJson).toBe(doc);
+
+		// null clears the document — the layout falls back to config.
+		const cleared = await admin((p) => p.adminSetBuilderJson(created!.id, null));
+		expect(cleared.builderJson).toBeNull();
+
+		for (const bad of ["not json", '"str"', "[1,2]", "42"]) {
+			await expect(admin((p) => p.adminSetBuilderJson(created!.id, bad))).rejects.toBeInstanceOf(
+				InvalidBuilderDoc,
+			);
+		}
+		await expect(admin((p) => p.adminSetBuilderJson(9999, doc))).rejects.toBeInstanceOf(
+			LayoutNotFound,
+		);
+		await expect(
+			asUser(
+				"u1",
+				call((p) => p.adminSetBuilderJson(created!.id, doc)),
+				"doc@x.com",
+			),
+		).rejects.toMatchObject({ _tag: "Forbidden" });
 	});
 
 	it("adminUpdate patches name/description/config and clears blank descriptions", async () => {

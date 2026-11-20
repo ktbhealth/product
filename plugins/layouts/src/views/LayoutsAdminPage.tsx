@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useRouter } from "@tanstack/react-router";
-import { BookTemplateIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { BookTemplateIcon, PencilIcon, PlusIcon, SquarePenIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice, Plugin } from "@ktb/kernel";
@@ -46,6 +46,10 @@ export interface LayoutsAdminPageProps {
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
+	/** True when the site-builder package is installed and enabled —
+	 * rows gain an "Open in builder" action linking to the Puck editor
+	 * (PL-014). */
+	readonly builderEnabled?: boolean;
 }
 
 /** Editor state: `null` shows the layout list; `"new"` opens a
@@ -95,7 +99,13 @@ const previewSections = (configText: string): readonly PreviewSection[] => {
  * the whole page for the editor pane (no row-navigation model), and
  * the editor's create flow is bespoke.
  */
-export function LayoutsAdminPage({ layouts, plugins, i18n, locale }: LayoutsAdminPageProps) {
+export function LayoutsAdminPage({
+	layouts,
+	plugins,
+	i18n,
+	locale,
+	builderEnabled = false,
+}: LayoutsAdminPageProps) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, layoutsMessages(locale));
 	const tt = sliceMessages(i18n, TEMPLATES_I18N_NAMESPACE, templatesMessages(locale));
 	const router = useRouter();
@@ -131,7 +141,12 @@ export function LayoutsAdminPage({ layouts, plugins, i18n, locale }: LayoutsAdmi
 				kind: "layout",
 				defaultName: doc.name,
 				defaultDescription: doc.description,
-				source: { name: doc.name, description: doc.description, config: doc.config },
+				source: {
+					name: doc.name,
+					description: doc.description,
+					config: doc.config,
+					builderJson: doc.builderJson,
+				},
 			});
 		} catch {
 			showToast(t.loadFailed);
@@ -196,6 +211,15 @@ export function LayoutsAdminPage({ layouts, plugins, i18n, locale }: LayoutsAdmi
 			align: "right",
 			render: (row) => (
 				<div className="flex items-center justify-end gap-1">
+					{builderEnabled ? (
+						<Link
+							to={`/platform/layouts/${row.id}/edit` as "/"}
+							className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+							aria-label={t.openInBuilder}
+						>
+							<SquarePenIcon className="size-4" />
+						</Link>
+					) : null}
 					<Button
 						type="button"
 						variant="ghost"

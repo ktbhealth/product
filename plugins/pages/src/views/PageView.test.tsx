@@ -11,13 +11,46 @@ vi.mock("@ktb/rich-text/views", () => ({
 	),
 }));
 
-import type { PageContext } from "@ktb/kernel";
+import { builderDocFromData, serializeBuilderDoc } from "@ktb/builder";
+import type { ElementKind, PageContext, Plugin } from "@ktb/kernel";
 
 import { PageView } from "./PageView.tsx";
 
 const ctx: PageContext = { plugins: [], locale: "en" };
 
 const DOC = [{ type: "p", children: [{ text: "Hello" }] }];
+
+/** Minimal flat element kind for the builder render path — mirrors
+ * the builder-blocks contract (fields schema + renderer). */
+const HeadingKind: ElementKind = {
+	kind: "heading",
+	label: "Heading",
+	fields: {
+		type: "object",
+		properties: { text: { type: "string" } },
+	},
+	renderer: ({ value }) => {
+		const text =
+			typeof value === "object" && value !== null
+				? String((value as { text?: unknown }).text ?? "")
+				: "";
+		return <h2 data-testid="builder-heading">{text}</h2>;
+	},
+};
+
+const builderCtx: PageContext = {
+	plugins: [{ id: "builder-blocks", elementKinds: [HeadingKind] } as unknown as Plugin],
+	locale: "en",
+};
+
+const builderJson = (text: string) =>
+	serializeBuilderDoc(
+		builderDocFromData({
+			root: { props: {} },
+			content: [{ type: "heading", props: { id: "h1", text } }],
+			zones: {},
+		}),
+	);
 
 afterEach(() => {
 	cleanup();
@@ -177,5 +210,83 @@ describe("PageView", () => {
 		// `content ?? null` — the slot renders through RichTextView with
 		// a null body rather than `undefined`.
 		expect(screen.getByTestId("rich-text-view").textContent).toBe("null");
+	});
+
+	it("renders the page's builderJson through the element-kind renderer", () => {
+		render(
+			<PageView
+				data={{
+					path: "/built",
+					title: "Built",
+					content: DOC,
+					builderJson: builderJson("Puck body"),
+				}}
+				ctx={builderCtx}
+			/>,
+		);
+		expect(screen.getByTestId("builder-heading").textContent).toBe("Puck body");
+		// The legacy document is not rendered when a builder doc wins.
+		expect(screen.queryByTestId("rich-text-view")).toBeNull();
+	});
+
+	it("prefers the page builderJson over the layout's", () => {
+		render(
+			<PageView
+				data={{
+					path: "/built",
+					title: "Built",
+					content: DOC,
+					builderJson: builderJson("Page wins"),
+					layoutBuilderJson: builderJson("Layout loses"),
+				}}
+				ctx={builderCtx}
+			/>,
+		);
+		expect(screen.getByTestId("builder-heading").textContent).toBe("Page wins");
+	});
+
+	it("falls back to the layout builderJson when the page has none", () => {
+		render(
+			<PageView
+				data={{
+					path: "/built",
+					title: "Built",
+					content: DOC,
+					layoutBuilderJson: builderJson("Layout body"),
+					layoutSections: [{ title: "Legacy", content: DOC }],
+				}}
+				ctx={builderCtx}
+			/>,
+		);
+		expect(screen.getByTestId("builder-heading").textContent).toBe("Layout body");
+		expect(screen.queryByTestId("rich-text-view")).toBeNull();
+	});
+
+	it("ignores non-string builderJson fields and keeps the legacy path", () => {
+		render(
+			<PageView
+				data={{
+					path: "/x",
+					title: "T",
+					content: DOC,
+					builderJson: 42,
+					layoutBuilderJson: { nope: true },
+				}}
+				ctx={builderCtx}
+			/>,
+		);
+		expect(screen.getByTestId("rich-text-view").textContent).toBe(JSON.stringify(DOC));
+	});
+
+	it("renders an empty builder body for malformed builderJson", () => {
+		const { container } = render(
+			<PageView
+				data={{ path: "/x", title: "T", content: DOC, builderJson: "{oops" }}
+				ctx={builderCtx}
+			/>,
+		);
+		expect(screen.getByText("T")).toBeTruthy();
+		expect(container.querySelector("[data-testid='builder-heading']")).toBeNull();
+		expect(screen.queryByTestId("rich-text-view")).toBeNull();
 	});
 });

@@ -15,6 +15,7 @@ describe("pages schema", () => {
 			"rich_text_id",
 			"search_schema_id",
 			"layout_id",
+			"builder_json",
 			"published",
 			"show_in_nav",
 			"sort_order",

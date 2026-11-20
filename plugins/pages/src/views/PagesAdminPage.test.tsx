@@ -702,4 +702,36 @@ describe("PagesAdminPage", () => {
 		const link = screen.getByText("Manage layouts");
 		expect(link.getAttribute("href")).toBe("/platform/layouts");
 	});
+
+	it("links DB rows to the site builder only when enabled", () => {
+		const { rerender } = render(
+			<PagesAdminPage
+				pages={[row({})]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
+				builderEnabled
+				locale="en"
+			/>,
+		);
+		expect(screen.getByLabelText("Open in builder").getAttribute("href")).toBe(
+			"/platform/pages/1/edit",
+		);
+		rerender(
+			<PagesAdminPage
+				pages={[row({})]}
+				docs={[]}
+				richTextEnabled={false}
+				schemas={[]}
+				searchSchemaEnabled={false}
+				layouts={[]}
+				layoutEnabled={false}
+				locale="en"
+			/>,
+		);
+		expect(screen.queryByLabelText("Open in builder")).toBeNull();
+	});
 });

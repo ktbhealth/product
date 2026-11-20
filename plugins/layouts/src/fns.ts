@@ -30,6 +30,9 @@ export interface LayoutDocWire {
 	readonly config: string;
 	readonly sectionCount: number;
 	readonly updatedAt: string;
+	/** Versioned Puck document (PL-014) — null while the layout uses
+	 * the legacy section-slot `config`. */
+	readonly builderJson: string | null;
 }
 
 /** List row for consumers that only need identity + freshness. */
@@ -48,6 +51,7 @@ const toDocWire = (row: LayoutDoc): LayoutDocWire => ({
 	config: row.config,
 	sectionCount: row.sectionCount,
 	updatedAt: row.updatedAt.toISOString(),
+	builderJson: row.builderJson,
 });
 
 const toMetaWire = (row: LayoutMeta): LayoutMetaWire => ({

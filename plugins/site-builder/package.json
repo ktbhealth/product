@@ -1,0 +1,34 @@
+{
+	"name": "@ktb/site-builder",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./client": "./src/client.ts",
+		"./fns": "./src/fns.ts"
+	},
+	"dependencies": {
+		"@ktb/builder": "workspace:*",
+		"@ktb/i18n": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"@ktb/layouts": "workspace:*",
+		"@ktb/pages": "workspace:*",
+		"@ktb/platform": "workspace:*",
+		"@ktb/server-fns": "workspace:*",
+		"@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
+		"@puckeditor/core": "^0.24.1",
+		"@tanstack/react-start": "1.169.5",
+		"effect": "4.1.2",
+		"react": "^19.2.0"
+	},
+	"devDependencies": {
+		"@ktb/authz": "workspace:*",
+		"@types/react": "^19.2.0",
+		"@types/react-dom": "^19.2.0",
+		"react-dom": "^19.2.0",
+		"vitest": "5.1.0"
+	},
+	"peerDependencies": {
+		"react": "^19.2.0"
+	}
+}

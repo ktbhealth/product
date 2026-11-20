@@ -4398,6 +4398,9 @@ export const I18N_MANIFEST = {
 		edit: {
 			params: [],
 		},
+		openInBuilder: {
+			params: [],
+		},
 		delete: {
 			params: [],
 		},
@@ -4999,6 +5002,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		view: {
+			params: [],
+		},
+		openInBuilder: {
 			params: [],
 		},
 		delete: {
@@ -6719,6 +6725,23 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		doctorLink: {
+			params: [],
+		},
+	},
+	"site-builder": {
+		notFound: {
+			params: [],
+		},
+		unsavedHint: {
+			params: [],
+		},
+		saving: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		saveError: {
 			params: [],
 		},
 	},

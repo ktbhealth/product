@@ -1,3 +1,4 @@
+import { siteBuilderEnabled } from "@ktb/builder";
 import type { PanelPageContext } from "@ktb/kernel";
 
 import type { LayoutRow, LayoutsAdminPageProps } from "./views/LayoutsAdminPage.tsx";
@@ -26,6 +27,9 @@ export function LayoutsAdminConsolePage({ data, ctx }: { data: unknown; ctx: Pan
 	const props: LayoutsAdminPageProps = {
 		layouts: asRows(data),
 		plugins: ctx.plugins,
+		// PL-014: "Open in builder" row action — only while the
+		// site-builder package is installed and enabled.
+		builderEnabled: siteBuilderEnabled(ctx.plugins, ctx.pluginStates?.enabled),
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

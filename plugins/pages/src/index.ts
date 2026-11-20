@@ -191,13 +191,29 @@ export const pagesRenderPlugin = definePlugin({
 					// single-doc path). Absent the Layouts service the
 					// field stays unset and the page renders as before.
 					let layoutSections: readonly unknown[] | null = null;
+					let layoutBuilderJson: string | null = null;
 					if (page.layoutId !== null) {
 						const layoutsService = yield* Effect.serviceOption(Layouts);
 						if (Option.isSome(layoutsService)) {
-							layoutSections = yield* layoutsService.value.resolveForPage(page.layoutId);
+							// PL-014: a layout edited in the site builder stores a
+							// Puck document instead of section slots — the view
+							// prefers it, so skip the legacy slot resolution.
+							const layoutDoc = yield* layoutsService.value.getById(page.layoutId);
+							layoutBuilderJson = layoutDoc?.builderJson ?? null;
+							if (layoutBuilderJson === null) {
+								layoutSections = yield* layoutsService.value.resolveForPage(page.layoutId);
+							}
 						}
+					} else {
+						// Unbound page — layoutSections/layoutBuilderJson stay null.
 					}
-					return { ...page, content, layoutSections, search: validatedSearch };
+					return {
+						...page,
+						content,
+						layoutSections,
+						layoutBuilderJson,
+						search: validatedSearch,
+					};
 				}),
 		},
 	],

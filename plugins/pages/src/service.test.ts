@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { Db, makeDb, type SqlDatabase, type SqlStatement } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
-import { Principal } from "@ktb/authz";
+import { Forbidden, Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { RichTextDeleteHooks, type RichTextDeleteHook } from "@ktb/rich-text/delete-hooks";
 import { Schemas } from "@ktb/schemas/service";
@@ -15,6 +15,7 @@ import {
 	Pages,
 	PagesLive,
 	DuplicatePagePath,
+	InvalidBuilderDoc,
 	InvalidPageInput,
 	InvalidPagePath,
 	PageNotFound,
@@ -437,6 +438,46 @@ describe("PagesLive", () => {
 		// sortOrder 1 rows come before /team (sortOrder 2); ties by title.
 		expect(paths.indexOf("/nav-a")).toBeLessThan(paths.indexOf("/nav-b"));
 		expect(paths.indexOf("/nav-b")).toBeLessThan(paths.indexOf("/team"));
+	});
+
+	it("adminGet returns the full row incl. builderJson; missing ids resolve null", async () => {
+		const created = await admin((p) => p.adminCreate(input({ path: "/built" })));
+		const fetched = await admin((p) => p.adminGet(created!.id));
+		expect(fetched?.path).toBe("/built");
+		expect(fetched?.builderJson).toBeNull();
+		await expect(admin((p) => p.adminGet(9999))).resolves.toBeNull();
+	});
+
+	it("adminSetBuilderJson writes, clears and rejects malformed docs", async () => {
+		const created = await admin((p) => p.adminCreate(input({ path: "/doc" })));
+		const doc = '{"version":1,"data":{"content":[]}}';
+		const written = await admin((p) => p.adminSetBuilderJson(created!.id, doc));
+		expect(written.builderJson).toBe(doc);
+		const reread = await admin((p) => p.adminGet(created!.id));
+		expect(reread?.builderJson).toBe(doc);
+
+		// null clears the document.
+		const cleared = await admin((p) => p.adminSetBuilderJson(created!.id, null));
+		expect(cleared.builderJson).toBeNull();
+
+		// Malformed payloads: non-JSON, non-object JSON and arrays.
+		for (const bad of ["not json", '"str"', "[1,2]", "42"]) {
+			await expect(admin((p) => p.adminSetBuilderJson(created!.id, bad))).rejects.toBeInstanceOf(
+				InvalidBuilderDoc,
+			);
+		}
+		// Missing row → PageNotFound.
+		await expect(admin((p) => p.adminSetBuilderJson(9999, doc))).rejects.toBeInstanceOf(
+			PageNotFound,
+		);
+		// Non-admin principals are denied.
+		await expect(
+			asUser(
+				"u-1",
+				call((p) => p.adminSetBuilderJson(created!.id, doc)),
+				"doc@x.com",
+			),
+		).rejects.toBeInstanceOf(Forbidden);
 	});
 });
 

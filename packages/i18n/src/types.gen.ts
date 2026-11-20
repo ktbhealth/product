@@ -1300,6 +1300,7 @@ export type I18nKey =
 	| "layouts.namePlaceholder"
 	| "layouts.newLayout"
 	| "layouts.noSections"
+	| "layouts.openInBuilder"
 	| "layouts.save"
 	| "layouts.saveAsTemplate"
 	| "layouts.saved"
@@ -1482,6 +1483,7 @@ export type I18nKey =
 	| "pages.navHidden"
 	| "pages.navShown"
 	| "pages.newPage"
+	| "pages.openInBuilder"
 	| "pages.pathHint"
 	| "pages.providedDatabase"
 	| "pages.save"
@@ -1963,6 +1965,11 @@ export type I18nKey =
 	| "sign-in-page.submitUp"
 	| "sign-in-page.tabIn"
 	| "sign-in-page.tabUp"
+	| "site-builder.notFound"
+	| "site-builder.saved"
+	| "site-builder.saveError"
+	| "site-builder.saving"
+	| "site-builder.unsavedHint"
 	| "templates.cancel"
 	| "templates.colActions"
 	| "templates.colCreatedBy"
@@ -4093,6 +4100,7 @@ export interface I18nTypedT {
 	(key: "layouts.namePlaceholder"): Effect.Effect<string>;
 	(key: "layouts.newLayout"): Effect.Effect<string>;
 	(key: "layouts.noSections"): Effect.Effect<string>;
+	(key: "layouts.openInBuilder"): Effect.Effect<string>;
 	(key: "layouts.save"): Effect.Effect<string>;
 	(key: "layouts.saveAsTemplate"): Effect.Effect<string>;
 	(key: "layouts.saved"): Effect.Effect<string>;
@@ -4342,6 +4350,7 @@ export interface I18nTypedT {
 	(key: "pages.navHidden"): Effect.Effect<string>;
 	(key: "pages.navShown"): Effect.Effect<string>;
 	(key: "pages.newPage"): Effect.Effect<string>;
+	(key: "pages.openInBuilder"): Effect.Effect<string>;
 	(key: "pages.pathHint"): Effect.Effect<string>;
 	(key: "pages.providedDatabase"): Effect.Effect<string>;
 	(key: "pages.save"): Effect.Effect<string>;
@@ -4948,6 +4957,11 @@ export interface I18nTypedT {
 	(key: "sign-in-page.submitUp"): Effect.Effect<string>;
 	(key: "sign-in-page.tabIn"): Effect.Effect<string>;
 	(key: "sign-in-page.tabUp"): Effect.Effect<string>;
+	(key: "site-builder.notFound"): Effect.Effect<string>;
+	(key: "site-builder.saved"): Effect.Effect<string>;
+	(key: "site-builder.saveError"): Effect.Effect<string>;
+	(key: "site-builder.saving"): Effect.Effect<string>;
+	(key: "site-builder.unsavedHint"): Effect.Effect<string>;
 	(key: "templates.cancel"): Effect.Effect<string>;
 	(key: "templates.colActions"): Effect.Effect<string>;
 	(key: "templates.colCreatedBy"): Effect.Effect<string>;

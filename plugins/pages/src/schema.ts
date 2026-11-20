@@ -33,6 +33,10 @@ export const page = sqliteTable(
 		richTextId: integer("rich_text_id").references(() => richText.id),
 		searchSchemaId: integer("search_schema_id").references(() => schemas.id),
 		layoutId: integer("layout_id").references(() => layouts.id),
+		// Versioned Puck document (PL-014 / P-109): JSON text
+		// `{version, data}` written by the site-builder editor. Null =
+		// the page renders the legacy richTextId/layoutId path.
+		builderJson: text("builder_json"),
 		published: integer({ mode: "boolean" }).notNull().default(false),
 		showInNav: integer("show_in_nav", { mode: "boolean" }).notNull().default(false),
 		sortOrder: integer("sort_order").notNull().default(0),

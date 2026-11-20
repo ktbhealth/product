@@ -23363,6 +23363,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "layouts",
+		key: "openInBuilder",
+		locale: "en",
+		value: "Open in builder",
+	},
+	{
+		namespace: "layouts",
 		key: "delete",
 		locale: "en",
 		value: "Delete",
@@ -23566,6 +23572,12 @@ export const I18N_BASELINE = [
 		key: "edit",
 		locale: "pt-BR",
 		value: "Editar",
+	},
+	{
+		namespace: "layouts",
+		key: "openInBuilder",
+		locale: "pt-BR",
+		value: "Abrir no construtor",
 	},
 	{
 		namespace: "layouts",
@@ -23773,6 +23785,12 @@ export const I18N_BASELINE = [
 		key: "edit",
 		locale: "es",
 		value: "Editar",
+	},
+	{
+		namespace: "layouts",
+		key: "openInBuilder",
+		locale: "es",
+		value: "Abrir en el editor",
 	},
 	{
 		namespace: "layouts",
@@ -26505,6 +26523,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
+		key: "openInBuilder",
+		locale: "en",
+		value: "Open in builder",
+	},
+	{
+		namespace: "pages",
 		key: "delete",
 		locale: "en",
 		value: "Delete",
@@ -26790,6 +26814,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
+		key: "openInBuilder",
+		locale: "pt-BR",
+		value: "Abrir no construtor",
+	},
+	{
+		namespace: "pages",
 		key: "delete",
 		locale: "pt-BR",
 		value: "Excluir",
@@ -27072,6 +27102,12 @@ export const I18N_BASELINE = [
 		key: "view",
 		locale: "es",
 		value: "Ver",
+	},
+	{
+		namespace: "pages",
+		key: "openInBuilder",
+		locale: "es",
+		value: "Abrir en el editor",
 	},
 	{
 		namespace: "pages",
@@ -35935,6 +35971,96 @@ export const I18N_BASELINE = [
 		key: "doctorLink",
 		locale: "es",
 		value: "Soy médico",
+	},
+	{
+		namespace: "site-builder",
+		key: "notFound",
+		locale: "en",
+		value: "Nothing to edit here.",
+	},
+	{
+		namespace: "site-builder",
+		key: "unsavedHint",
+		locale: "en",
+		value: "Publish to save changes",
+	},
+	{
+		namespace: "site-builder",
+		key: "saving",
+		locale: "en",
+		value: "Saving…",
+	},
+	{
+		namespace: "site-builder",
+		key: "saved",
+		locale: "en",
+		value: "Saved",
+	},
+	{
+		namespace: "site-builder",
+		key: "saveError",
+		locale: "en",
+		value: "Save failed",
+	},
+	{
+		namespace: "site-builder",
+		key: "notFound",
+		locale: "pt-BR",
+		value: "Nada para editar aqui.",
+	},
+	{
+		namespace: "site-builder",
+		key: "unsavedHint",
+		locale: "pt-BR",
+		value: "Publique para salvar as alterações",
+	},
+	{
+		namespace: "site-builder",
+		key: "saving",
+		locale: "pt-BR",
+		value: "Salvando…",
+	},
+	{
+		namespace: "site-builder",
+		key: "saved",
+		locale: "pt-BR",
+		value: "Salvo",
+	},
+	{
+		namespace: "site-builder",
+		key: "saveError",
+		locale: "pt-BR",
+		value: "Falha ao salvar",
+	},
+	{
+		namespace: "site-builder",
+		key: "notFound",
+		locale: "es",
+		value: "Nada que editar aquí.",
+	},
+	{
+		namespace: "site-builder",
+		key: "unsavedHint",
+		locale: "es",
+		value: "Publica para guardar los cambios",
+	},
+	{
+		namespace: "site-builder",
+		key: "saving",
+		locale: "es",
+		value: "Guardando…",
+	},
+	{
+		namespace: "site-builder",
+		key: "saved",
+		locale: "es",
+		value: "Guardado",
+	},
+	{
+		namespace: "site-builder",
+		key: "saveError",
+		locale: "es",
+		value: "Error al guardar",
 	},
 	{
 		namespace: "templates",

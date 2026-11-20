@@ -470,6 +470,13 @@
       "when": 1795144239821,
       "tag": "0067_cold_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1795152342583,
+      "tag": "0068_wet_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }

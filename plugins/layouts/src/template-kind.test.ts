@@ -34,7 +34,32 @@ describe("layoutTemplateKind", () => {
 			name: "landing",
 			description: "Landing snapshot",
 			config: CONFIG,
+			builderJson: null,
 		});
+	});
+
+	it("snapshots and restores the builderJson document (PL-014)", async () => {
+		const builderJson = '{"version":1,"data":{"content":[]}}';
+		const payload = await Effect.runPromise(
+			layoutTemplateKind.serialize({ ...SOURCE, builderJson }),
+		);
+		expect((payload as { builderJson?: unknown }).builderJson).toBe(builderJson);
+		const instance = (await Effect.runPromise(
+			layoutTemplateKind.deserialize(payload),
+		)) as LayoutTemplateSource;
+		expect(instance.builderJson).toBe(builderJson);
+	});
+
+	it("decodes payloads stored before builderJson existed", async () => {
+		const legacy = {
+			name: "old",
+			description: null,
+			config: { sections: [] },
+		};
+		const instance = (await Effect.runPromise(
+			layoutTemplateKind.deserialize(legacy),
+		)) as LayoutTemplateSource;
+		expect(instance.builderJson).toBeNull();
 	});
 
 	it("round-trips: serialize → stored payload → deserialize yields an equivalent source", async () => {
