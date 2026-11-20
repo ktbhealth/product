@@ -172,6 +172,12 @@ export interface ThemeFontSourceOption {
 	readonly providerKind: string;
 	readonly family: string;
 	readonly weights: readonly number[];
+	/** Non-`wght` `fvar` axes from the catalog row's `meta` (stamped by
+	 * the provider sync — the "local" adapter records them from the
+	 * uploaded font). Absent for providers without axis metadata
+	 * (googlefonts) — the editor shows pin inputs only for axes the
+	 * resolved font actually declares. */
+	readonly axes?: readonly ThemeFontAxis[];
 }
 
 /** Font delivery config stored on `theme_definitions.fonts`. */
@@ -201,6 +207,20 @@ export interface ThemeFontConfig {
 	 * storage ref. Until files exist the shell skips `@font-face`
 	 * gracefully. */
 	readonly assets?: Readonly<Record<string, ThemeFontAssetValue>>;
+	/** Per-slot pins for variable-font axes (`axis tag → value`),
+	 * applied through `font-variation-settings` on the slot's element
+	 * selectors. A pinned value REPLACES the fvar default the
+	 * presentation layer would otherwise emit, and clamps to the
+	 * axis's min/max when the font's axis metadata is known. Tags
+	 * `wght`/`wdth` are never emitted — `font-weight`/`font-stretch`
+	 * own those axes — while `opsz`/`ital` pins DO emit (an explicit
+	 * user pin wins over the default skip policy). Stored JSON is
+	 * untrusted: `present.ts` revalidates tags/values at emission. */
+	readonly axisSettings?: {
+		readonly sans?: Readonly<Record<string, number>> | null;
+		readonly heading?: Readonly<Record<string, number>> | null;
+		readonly mono?: Readonly<Record<string, number>> | null;
+	};
 }
 
 /** Brand asset refs stored on `theme_definitions.brand`. Values are

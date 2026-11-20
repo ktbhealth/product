@@ -7066,6 +7066,9 @@ export const I18N_MANIFEST = {
 		fontPreviewText: {
 			params: [],
 		},
+		fontAxesLabel: {
+			params: [],
+		},
 		brandTitle: {
 			params: [],
 		},

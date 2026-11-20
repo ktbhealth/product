@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	fontAxesForFamily,
 	fontFaceCss,
 	fontCssVars,
 	fontVariationCss,
+	fontVariationSettingsForAxes,
 	fontVariationSettingsForSlot,
 	googleFontLinks,
+	pinnableFontAxes,
 	presentTheme,
+	themeFontAxes,
 	themeStyleCss,
 } from "./present.ts";
 import type { ThemeDefinitionRow } from "./present.ts";
@@ -905,5 +909,307 @@ describe("font-variation-settings emission", () => {
 		);
 		expect(managed.styleCss).toContain("font-variation-settings:'XTRA' 400");
 		expect(managed.styleCss).toContain(".font-mono");
+	});
+});
+
+describe("themeFontAxes", () => {
+	it("validates untrusted axis lists", () => {
+		expect(themeFontAxes(undefined)).toEqual([]);
+		expect(themeFontAxes("nope")).toEqual([]);
+		expect(themeFontAxes(null)).toEqual([]);
+		expect(themeFontAxes({})).toEqual([]);
+		expect(
+			themeFontAxes([
+				{ tag: "slnt", min: -9, default: -2, max: 0 },
+				// wght is owned by weightRange — dropped.
+				{ tag: "wght", min: 100, default: 400, max: 900 },
+				// Duplicate tag — first wins.
+				{ tag: "slnt", min: -9, default: 9, max: 9 },
+				// Malformed: bad tag, non-number bounds, non-finite,
+				// inverted range, non-object entries.
+				{ tag: "sl", min: 0, default: 1, max: 2 },
+				{ tag: "toolong", min: 0, default: 1, max: 2 },
+				{ tag: 7, min: 0, default: 1, max: 2 },
+				{ tag: "AAAA", min: "x", default: 1, max: 2 },
+				{ tag: "BBBB", min: 0, default: NaN, max: 2 },
+				{ tag: "CCCC", min: 0, default: 1, max: Infinity },
+				{ tag: "DDDD", min: 5, default: 1, max: 2 },
+				"junk",
+				null,
+				{ tag: "opsz", min: 6, default: 14, max: 72 },
+			]),
+		).toEqual([
+			{ tag: "slnt", min: -9, default: -2, max: 0 },
+			{ tag: "opsz", min: 6, default: 14, max: 72 },
+		]);
+	});
+
+	it("caps the list at 32 entries", () => {
+		const many = Array.from({ length: 40 }, (_, i) => ({
+			tag: `A${String(i).padStart(3, "0")}`,
+			min: 0,
+			default: 1,
+			max: 2,
+		}));
+		expect(themeFontAxes(many)).toHaveLength(32);
+	});
+});
+
+describe("pinnableFontAxes / fontAxesForFamily", () => {
+	it("drops never-emittable and degenerate axes", () => {
+		expect(
+			pinnableFontAxes([
+				{ tag: "wght", min: 100, default: 400, max: 900 },
+				{ tag: "wdth", min: 75, default: 100, max: 125 },
+				{ tag: "opsz", min: 6, default: 14, max: 72 },
+				{ tag: "ital", min: 0, default: 0, max: 1 },
+				{ tag: "slnt", min: 0, default: 0, max: 0 },
+				{ tag: "XOPQ", min: 27, default: 88, max: 175 },
+			]),
+		).toEqual([
+			{ tag: "opsz", min: 6, default: 14, max: 72 },
+			{ tag: "ital", min: 0, default: 0, max: 1 },
+			{ tag: "XOPQ", min: 27, default: 88, max: 175 },
+		]);
+	});
+
+	it("resolves a family's axes across stored faces", () => {
+		const fonts: ThemeFontConfig = {
+			delivery: "self-host",
+			assets: {
+				"Var Sans": {
+					faces: [
+						{
+							url: "/a.woff2",
+							axes: [
+								{ tag: "slnt", min: -9, default: -2, max: 0 },
+								{ tag: "wdth", min: 75, default: 100, max: 125 },
+								{ tag: "opsz", min: 6, default: 14, max: 72 },
+							],
+						},
+						// Subset sibling — same axes, dedupe first-wins.
+						{
+							url: "/b.woff2",
+							axes: [
+								{ tag: "slnt", min: -9, default: 9, max: 9 },
+								{ tag: "GRAD", min: 0, default: 0, max: 1 },
+							],
+						},
+					],
+				},
+				Plain: "/p.woff2",
+			},
+		};
+		expect(fontAxesForFamily(null, "Var Sans")).toEqual([]);
+		expect(fontAxesForFamily(fonts, null)).toEqual([]);
+		expect(fontAxesForFamily(fonts, "  ")).toEqual([]);
+		expect(fontAxesForFamily(fonts, "Missing")).toEqual([]);
+		// Bare-string asset → no faces → no axes.
+		expect(fontAxesForFamily(fonts, "Plain")).toEqual([]);
+		// wdth filtered (font-stretch owns it); slnt deduped first-wins;
+		// opsz/GRAD kept (pinnable).
+		expect(fontAxesForFamily(fonts, "Var Sans")).toEqual([
+			{ tag: "slnt", min: -9, default: -2, max: 0 },
+			{ tag: "opsz", min: 6, default: 14, max: 72 },
+			{ tag: "GRAD", min: 0, default: 0, max: 1 },
+		]);
+	});
+});
+
+describe("font-variation-settings axis pins", () => {
+	const pinnedFonts = (
+		axisSettings: ThemeFontConfig["axisSettings"],
+		axes?: ThemeFontFace["axes"],
+	): ThemeFontConfig => ({
+		delivery: "self-host",
+		families: { sans: "Var Sans", mono: "Var Mono" },
+		axisSettings,
+		assets: {
+			"Var Sans": {
+				faces: [
+					{
+						url: "/s.woff2",
+						axes: axes ?? [
+							{ tag: "slnt", min: -12, default: -4.5, max: 0 },
+							{ tag: "XOPQ", min: 27, default: 88, max: 175 },
+						],
+					},
+				],
+			},
+			"Var Mono": { faces: [{ url: "/m.woff2" }] },
+		},
+	});
+
+	it("emits the pinned value instead of the fvar default", () => {
+		const css = fontVariationCss(pinnedFonts({ sans: { slnt: -9, XOPQ: 120 }, mono: { slnt: 0 } }));
+		const rules = css.split("\n");
+		expect(rules[0]).toContain("'slnt' -9");
+		expect(rules[0]).toContain("'XOPQ' 120");
+		expect(rules[0]).not.toContain("-4.5");
+		// heading falls back to the sans family AND its own (empty)
+		// pins → defaults, not the sans pins.
+		expect(rules[1]).toContain("'slnt' -4.5");
+		expect(rules[1]).toContain("'XOPQ' 88");
+		// mono's own pin applies to its family (no axes → pin-only).
+		expect(rules[2]).toBe(
+			"code,pre,.font-mono,.font-geist-mono{font-variation-settings:'slnt' 0;}",
+		);
+	});
+
+	it("clamps pins to the axis min/max when bounds are known", () => {
+		const css = fontVariationCss(pinnedFonts({ sans: { slnt: -99, XOPQ: 999 } }));
+		expect(css).toContain("'slnt' -12");
+		expect(css).toContain("'XOPQ' 175");
+		// Within range → verbatim.
+		expect(fontVariationCss(pinnedFonts({ sans: { slnt: -7.123456 } }))).toContain(
+			"'slnt' -7.1235",
+		);
+	});
+
+	it("emits opsz/ital pins but never wght/wdth", () => {
+		const css = fontVariationCss(
+			pinnedFonts({ sans: { opsz: 24, ital: 1, wght: 700, wdth: 80 } }, [
+				{ tag: "opsz", min: 6, default: 14, max: 72 },
+				{ tag: "ital", min: 0, default: 0, max: 1 },
+			]),
+		);
+		expect(css).toContain("'opsz' 24");
+		expect(css).toContain("'ital' 1");
+		expect(css).not.toContain("wght");
+		expect(css).not.toContain("wdth");
+	});
+
+	it("emits pins for tags the font does not declare", () => {
+		// Var Mono has no axes metadata — the pin still emits (explicit
+		// user intent; browsers ignore axes a font lacks).
+		const css = fontVariationCss(pinnedFonts({ mono: { GRAD: 88 } }));
+		expect(css).toContain(
+			"code,pre,.font-mono,.font-geist-mono{font-variation-settings:'GRAD' 88;}",
+		);
+	});
+
+	it("skips pins on degenerate axes and out-of-range values", () => {
+		const css = fontVariationCss(
+			pinnedFonts({ sans: { FLAT: 5, HUGE: 2e6 } }, [
+				{ tag: "FLAT", min: 3, default: 3, max: 3 },
+				{ tag: "HUGE", min: 0, default: 1, max: 2 },
+			]),
+		);
+		// FLAT is degenerate (min === max) → skipped; HUGE clamps into
+		// range → 2.
+		expect(css).not.toContain("FLAT");
+		expect(css).toContain("'HUGE' 2");
+		// A pin beyond fvsNumber's bound with NO known axis → dropped
+		// (the sans/heading rules still emit their own defaults).
+		const huge = fontVariationCss(pinnedFonts({ mono: { GRAD: 2e6 } }));
+		expect(huge).not.toContain("GRAD");
+		expect(huge).not.toContain("font-mono");
+		// Malformed axis entry + pin → raw finite value accepted.
+		expect(
+			fontVariationCss(
+				pinnedFonts({ sans: { WIDE: 42 } }, [
+					{ tag: "WIDE", min: "x", default: 1, max: 2 } as never,
+				]),
+			),
+		).toContain("'WIDE' 42");
+		// Only ONE bound known → still no clamp → raw value.
+		expect(
+			fontVariationCss(
+				pinnedFonts({ sans: { WIDE: 42 } }, [
+					{ tag: "WIDE", min: 0, default: 1, max: "x" } as never,
+				]),
+			),
+		).toContain("'WIDE' 42");
+		// Unserializable pin (>1e6) on a declared axis with unusable
+		// bounds → dropped, and the pins-only pass must not re-emit it.
+		expect(
+			fontVariationCss(
+				pinnedFonts({ sans: { WIDE: 2e6 } }, [
+					{ tag: "WIDE", min: "x", default: 1, max: 2 } as never,
+				]),
+			),
+		).toBe("");
+	});
+
+	it("tolerates malformed axisSettings payloads", () => {
+		// No stored assets → only pins can emit, isolating axisSettings.
+		const base: ThemeFontConfig = {
+			delivery: "self-host",
+			families: { sans: "F", mono: "M" },
+		};
+		const variants = [
+			"nope",
+			42,
+			[],
+			{ sans: "nope" },
+			{ sans: null },
+			{ sans: ["slnt"] },
+			{ sans: { "bad tag": 1, slnt: "x", opsz: NaN, ital: Infinity, XOPQ: 10 } },
+			// 40 pins → capped at 32.
+			{
+				sans: Object.fromEntries(
+					Array.from({ length: 40 }, (_, i) => [`A${String(i).padStart(3, "0")}`, i]),
+				),
+			},
+		] as never[];
+		for (const axisSettings of variants) {
+			const css = fontVariationCss({ ...base, axisSettings });
+			// Only the last-but-one variant emits anything.
+			if (axisSettings === variants[6]) {
+				// Only XOPQ survives sanitization → a single sans rule
+				// (heading falls back to the family but has no pins).
+				expect(css).toContain("'XOPQ' 10");
+				expect(css).not.toContain("slnt");
+				expect(css).not.toContain("opsz");
+				expect(css.match(/font-variation-settings:/g)).toHaveLength(1);
+			} else if (axisSettings === variants[7]) {
+				expect(css.match(/'A\d{3}'/g)).toHaveLength(32);
+			} else {
+				expect(css).toBe("");
+			}
+		}
+	});
+
+	it("fontVariationSettingsForSlot resolves pins per slot", () => {
+		const fonts = pinnedFonts({ sans: { slnt: -8 } });
+		expect(fontVariationSettingsForSlot(fonts, "sans")).toBe("'slnt' -8, 'XOPQ' 88");
+		expect(fontVariationSettingsForSlot(fonts, "heading")).toBe("'slnt' -4.5, 'XOPQ' 88");
+		expect(fontVariationSettingsForSlot(fonts, "mono")).toBe("");
+	});
+
+	it("fontVariationSettingsForAxes merges explicit axes and pins", () => {
+		expect(fontVariationSettingsForAxes([], null)).toBe("");
+		expect(fontVariationSettingsForAxes([], { slnt: -3 })).toBe("'slnt' -3");
+		expect(
+			fontVariationSettingsForAxes([{ tag: "slnt", min: -9, default: -2, max: 0 }], {
+				slnt: 5,
+				GHST: 1,
+			}),
+		).toBe("'slnt' 0, 'GHST' 1");
+	});
+
+	it("flows through presentTheme", () => {
+		const theme = presentTheme(
+			row({
+				fonts: JSON.stringify({
+					delivery: "self-host",
+					families: { sans: "Var Sans" },
+					axisSettings: { sans: { slnt: -9 } },
+					assets: {
+						"Var Sans": {
+							faces: [
+								{
+									url: "/s.woff2",
+									axes: [{ tag: "slnt", min: -9, default: -1, max: 0 }],
+								},
+							],
+						},
+					},
+				}),
+			}),
+		);
+		expect(theme.styleCss).toContain("font-variation-settings:'slnt' -9");
+		// Stored config round-trips the pins for the editor.
+		expect(theme.fonts?.axisSettings?.sans?.slnt).toBe(-9);
 	});
 });

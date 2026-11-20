@@ -232,6 +232,92 @@ const FONT_AXIS_TAG = /^[A-Za-z0-9]{4}$/;
 const FVS_OWNED_TAGS: ReadonlySet<string> = new Set(["wght", "wdth", "opsz", "ital"]);
 
 /**
+ * Axes NEVER emitted through `font-variation-settings`, even when the
+ * user pins them explicitly: `wght` is owned by `font-weight` (the
+ * `@font-face` descriptor/range and the `font-weight` property — a
+ * variation-settings value would fight it) and `wdth` by
+ * `font-stretch`. `opsz`/`ital` stay pinnable: their native
+ * mechanisms (`font-optical-sizing`, `font-style`) only apply
+ * defaults, so an explicit pin wins — `font-variation-settings`
+ * overrides `font-optical-sizing: auto` for `opsz` per CSS Fonts 4.
+ */
+const FVS_NEVER_TAGS: ReadonlySet<string> = new Set(["wght", "wdth"]);
+
+/** Bound on stored/pinned axis entries — real fonts carry a handful;
+ * keeps hand-edited JSON from growing the emitted rule unboundedly. */
+const MAX_FONT_AXIS_ENTRIES = 32;
+
+/**
+ * Validate an untrusted axis list (`fvar`-shaped `{tag,min,default,
+ * max}` records — stored `faces[].axes`, catalog `meta.axes`, wire
+ * DTOs) into {@link ThemeFontAxis}s: 4-char alphanumeric tag, `wght`
+ * dropped (weightRange owns it), finite `min ≤ default ≤ max`, first
+ * record per tag wins, capped. Returns [] for non-arrays.
+ */
+export const themeFontAxes = (raw: unknown): ThemeFontAxis[] => {
+	if (!Array.isArray(raw)) return [];
+	const seen = new Set<string>();
+	const out: ThemeFontAxis[] = [];
+	for (const item of raw) {
+		if (out.length >= MAX_FONT_AXIS_ENTRIES) break;
+		if (typeof item !== "object" || item === null) continue;
+		const candidate = item as {
+			tag?: unknown;
+			min?: unknown;
+			default?: unknown;
+			max?: unknown;
+		};
+		const tag = candidate.tag;
+		if (typeof tag !== "string" || !FONT_AXIS_TAG.test(tag) || tag === "wght" || seen.has(tag)) {
+			continue;
+		}
+		const { min, default: def, max } = candidate;
+		if (
+			typeof min !== "number" ||
+			typeof def !== "number" ||
+			typeof max !== "number" ||
+			!Number.isFinite(min) ||
+			!Number.isFinite(def) ||
+			!Number.isFinite(max) ||
+			!(min <= def && def <= max)
+		) {
+			continue;
+		}
+		seen.add(tag);
+		out.push({ tag, min, default: def, max });
+	}
+	return out;
+};
+
+/**
+ * Filter a validated {@link ThemeFontAxis} list down to axes a user
+ * can pin through `font-variation-settings`: drops the never-emittable
+ * `wght`/`wdth` tags (owned by `font-weight`/`font-stretch`) and
+ * degenerate (`min === max`) ranges that cannot vary. `opsz`/`ital`
+ * stay — an explicit pin wins over their native-mechanism defaults.
+ */
+export const pinnableFontAxes = (axes: readonly ThemeFontAxis[]): ThemeFontAxis[] =>
+	axes.filter((axis) => !FVS_NEVER_TAGS.has(axis.tag) && axis.min < axis.max);
+
+/**
+ * Axes a slot can actually pin through `font-variation-settings` for
+ * a stored self-host family: validated across every face of its
+ * `fonts.assets` entry (subset siblings carry identical axes — dup
+ * tags collapse first-wins inside {@link themeFontAxes}), then
+ * filtered by {@link pinnableFontAxes}. Returns [] for
+ * missing/malformed assets.
+ */
+export const fontAxesForFamily = (
+	fonts: ThemeFontConfig | null,
+	family: string | null | undefined,
+): readonly ThemeFontAxis[] => {
+	if (fonts === null || typeof family !== "string" || family.trim() === "") return [];
+	const value = fonts.assets?.[family.trim()];
+	if (value === undefined) return [];
+	return pinnableFontAxes(themeFontAxes(assetFaces(value).flatMap((face) => face.axes ?? [])));
+};
+
+/**
  * Serialize one axis value for `font-variation-settings` — the fvar
  * parser's 4-decimal precision, exponent-free (CSS <number> has no
  * exponent notation). Values beyond ±1e6 are treated as corrupt.
@@ -245,15 +331,50 @@ const fvsNumber = (value: number): string | null => {
 };
 
 /**
- * `font-variation-settings` value (`'slnt' -5, 'XOPQ' 88`) for one
- * font's axis list. Policy: every remaining axis (`slnt` + custom
- * tags) is pinned at its fvar DEFAULT so the font renders at its
- * designed default rather than trusting whatever the browser would
- * pick. Degenerate axes (`min === max` — cannot vary), unowned-tag
- * axes, malformed entries and duplicate tags (first wins) are
- * skipped; an empty result means "emit nothing".
+ * Sanitized `fonts.axisSettings.<slot>` map — tag → pinned value.
+ * Stored JSON is untrusted: non-object payloads, malformed tags
+ * (must match the emission alphabet), the never-emittable `wght`/
+ * `wdth` tags and non-finite values are dropped; capped at
+ * {@link MAX_FONT_AXIS_ENTRIES}.
  */
-const variationSettingsValue = (axes: readonly ThemeFontAxis[]): string => {
+const axisPins = (raw: unknown): ReadonlyMap<string, number> => {
+	const pins = new Map<string, number>();
+	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return pins;
+	for (const [tag, value] of Object.entries(raw)) {
+		if (pins.size >= MAX_FONT_AXIS_ENTRIES) break;
+		if (!FONT_AXIS_TAG.test(tag) || FVS_NEVER_TAGS.has(tag)) continue;
+		if (typeof value !== "number" || !Number.isFinite(value)) continue;
+		pins.set(tag, value);
+	}
+	return pins;
+};
+
+/**
+ * `font-variation-settings` value (`'slnt' -5, 'XOPQ' 88`) for one
+ * font's axis list plus a slot's pinned values. Policy:
+ *
+ * - A PINNED tag emits the pinned value (clamped to the axis's
+ *   min/max when those bounds are known finite numbers; the raw
+ *   finite value otherwise) — explicit user intent wins, including
+ *   for `opsz`/`ital` which defaults never emit. `wght`/`wdth` pins
+ *   are dropped upstream by {@link axisPins} (and again here).
+ * - Unpinned axes keep the default policy: `slnt` + custom tags emit
+ *   their fvar DEFAULT so the font renders as designed;
+ *   `wght`/`wdth`/`opsz`/`ital` stay owned by `font-weight`/
+ *   `font-stretch`/`font-optical-sizing`/`font-style`.
+ * - Pins for tags the font does not declare still emit — a variable
+ *   font whose metadata we lack (or a managed/googlefonts family)
+ *   responds to them anyway, and unknown axes are ignored by
+ *   browsers on static fonts.
+ *
+ * Degenerate axes (`min === max` — cannot vary), unowned-tag axes,
+ * malformed entries and duplicate tags (first wins) are skipped; an
+ * empty result means "emit nothing".
+ */
+const variationSettingsValue = (
+	axes: readonly ThemeFontAxis[],
+	pins: ReadonlyMap<string, number> = new Map(),
+): string => {
 	// Callers pass a flattened, array-checked axis list (untrusted
 	// stored JSON is revalidated entry-by-entry below).
 	const seen = new Set<string>();
@@ -267,15 +388,25 @@ const variationSettingsValue = (axes: readonly ThemeFontAxis[]): string => {
 			max?: unknown;
 		};
 		const tag = candidate.tag;
-		if (
-			typeof tag !== "string" ||
-			!FONT_AXIS_TAG.test(tag) ||
-			FVS_OWNED_TAGS.has(tag) ||
-			seen.has(tag)
-		) {
+		if (typeof tag !== "string" || !FONT_AXIS_TAG.test(tag) || seen.has(tag)) continue;
+		const { min, default: def, max } = candidate;
+		const pin = pins.get(tag);
+		if (pin !== undefined) {
+			// wght/wdth can never reach this map — axisPins drops them.
+			// Mark the tag consumed up-front so the pins-only pass below
+			// cannot re-emit a value this axis deliberately skipped
+			// (degenerate range, unserializable number).
+			seen.add(tag);
+			const lo = typeof min === "number" && Number.isFinite(min) ? min : null;
+			const hi = typeof max === "number" && Number.isFinite(max) ? max : null;
+			// Degenerate axis (min === max) cannot vary — skip even a pin.
+			if (lo !== null && hi !== null && lo === hi) continue;
+			const value = fvsNumber(lo !== null && hi !== null ? Math.min(hi, Math.max(lo, pin)) : pin);
+			if (value === null) continue;
+			parts.push(`'${tag}' ${value}`);
 			continue;
 		}
-		const { min, default: def, max } = candidate;
+		if (FVS_OWNED_TAGS.has(tag)) continue;
 		if (
 			typeof min !== "number" ||
 			typeof def !== "number" ||
@@ -293,19 +424,44 @@ const variationSettingsValue = (axes: readonly ThemeFontAxis[]): string => {
 		seen.add(tag);
 		parts.push(`'${tag}' ${value}`);
 	}
+	// Pinned tags absent from the font's axis metadata still emit
+	// (see policy note above); wght/wdth never reach this map.
+	for (const [tag, pin] of pins) {
+		if (seen.has(tag)) continue;
+		const value = fvsNumber(pin);
+		if (value === null) continue;
+		seen.add(tag);
+		parts.push(`'${tag}' ${value}`);
+	}
 	return parts.join(", ");
 };
+
+/** `font-variation-settings` value for an explicit axis list and a
+ * slot's raw `axisSettings` pins — the shared entry point for callers
+ * that resolved axes outside `fonts.assets` (live editor previews
+ * matching managed catalog `meta.axes`). */
+export const fontVariationSettingsForAxes = (
+	axes: readonly ThemeFontAxis[],
+	pins: Readonly<Record<string, number>> | null | undefined,
+): string => variationSettingsValue(axes, axisPins(pins));
 
 /** `font-variation-settings` value for a family name — merges the
  * axes stamped on every face of its self-host asset (subset pairs
  * carry identical axes; duplicate tags collapse first-wins inside
- * {@link variationSettingsValue}). Bare-string assets and families
- * without stored faces yield "". */
-const familyVariationSettings = (fonts: ThemeFontConfig, family: string): string => {
+ * {@link variationSettingsValue}) with the slot's pinned values.
+ * Bare-string assets contribute no axes but pins still emit;
+ * families without any asset yield the pin-only value (or ""). */
+const familyVariationSettings = (
+	fonts: ThemeFontConfig,
+	family: string,
+	pins: ReadonlyMap<string, number>,
+): string => {
 	const value = fonts.assets?.[family];
-	if (value === undefined) return "";
-	const axes = assetFaces(value).flatMap((face) => (Array.isArray(face.axes) ? face.axes : []));
-	return variationSettingsValue(axes);
+	const axes =
+		value === undefined
+			? []
+			: assetFaces(value).flatMap((face) => (Array.isArray(face.axes) ? face.axes : []));
+	return variationSettingsValue(axes, pins);
 };
 
 /** Selectors each font slot's family stack applies to — the base
@@ -324,11 +480,12 @@ const FONT_SLOT_VS_SELECTORS: Record<ThemeFontSlot, string> = {
 
 /**
  * `font-variation-settings` rules for a font config — one rule per
- * slot whose effective family carries non-degenerate axes. `heading`
- * falls back to the sans family exactly like {@link fontCssVars}.
- * Emitted only for self-host assets: google-fonts delivery has no
- * per-face axis metadata, and `font-variation-settings` on an element
- * using a static font is noise.
+ * slot whose effective family carries non-degenerate axes OR pinned
+ * `axisSettings` values. `heading` falls back to the sans family
+ * exactly like {@link fontCssVars}. Axis defaults come from self-host
+ * asset faces (google-fonts delivery has no per-face metadata), but
+ * explicit pins emit regardless — they are the user's intent and are
+ * ignored by browsers when the resolved font lacks the axis.
  */
 export const fontVariationCss = (fonts: ThemeFontConfig | null): string => {
 	if (fonts === null) return "";
@@ -337,7 +494,11 @@ export const fontVariationCss = (fonts: ThemeFontConfig | null): string => {
 	for (const slot of FONT_SLOTS) {
 		const family = slot === "heading" ? (families.heading ?? families.sans) : families[slot];
 		if (typeof family !== "string" || family.trim() === "") continue;
-		const settings = familyVariationSettings(fonts, family.trim());
+		const settings = familyVariationSettings(
+			fonts,
+			family.trim(),
+			axisPins(fonts.axisSettings?.[slot]),
+		);
 		if (settings === "") continue;
 		rules.push(`${FONT_SLOT_VS_SELECTORS[slot]}{font-variation-settings:${settings};}`);
 	}
@@ -356,7 +517,7 @@ export const fontVariationSettingsForSlot = (
 	const families = fonts.families ?? {};
 	const family = slot === "heading" ? (families.heading ?? families.sans) : families[slot];
 	if (typeof family !== "string" || family.trim() === "") return "";
-	return familyVariationSettings(fonts, family.trim());
+	return familyVariationSettings(fonts, family.trim(), axisPins(fonts.axisSettings?.[slot]));
 };
 
 /** local() src list for a fallback face — family name plus the

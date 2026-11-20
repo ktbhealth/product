@@ -8,7 +8,7 @@ import { FontCatalog, type FontCatalogFamily } from "@ktb/fonts/catalog";
 import { PlatformAdmin } from "@ktb/platform";
 import { run, runAs, ensureSessionUser, getSessionUser } from "@ktb/server-fns";
 
-import { presentTheme } from "./present.ts";
+import { presentTheme, themeFontAxes } from "./present.ts";
 import { Theme } from "./theme.ts";
 import {
 	THEME_PREVIEW_COOKIE,
@@ -192,13 +192,21 @@ export const listThemeFontSourcesFn = createServerFn({ method: "GET" }).handler(
 					);
 				return rows
 					.filter((row) => row.status === "ready")
-					.map((row) => ({
-						providerId: row.providerId,
-						providerName: row.providerName,
-						providerKind: row.kind,
-						family: row.family,
-						weights: [...row.weights],
-					}));
+					.map((row) => {
+						// Catalog `meta.axes` (stamped by provider syncs — the
+						// "local" adapter records the uploaded font's fvar
+						// axes) lets the editor offer per-axis pin inputs.
+						// Revalidated here: meta is stored JSON.
+						const axes = themeFontAxes(row.meta?.["axes"]);
+						return {
+							providerId: row.providerId,
+							providerName: row.providerName,
+							providerKind: row.kind,
+							family: row.family,
+							weights: [...row.weights],
+							...(axes.length === 0 ? {} : { axes }),
+						};
+					});
 			}).pipe(
 				Effect.catchTag("Forbidden", () => Effect.succeed([] as readonly ThemeFontSourceOption[])),
 			),

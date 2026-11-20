@@ -37364,6 +37364,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "theme",
+		key: "fontAxesLabel",
+		locale: "en",
+		value: "Variable axes",
+	},
+	{
+		namespace: "theme",
 		key: "brandTitle",
 		locale: "en",
 		value: "Brand",
@@ -38540,6 +38546,12 @@ export const I18N_BASELINE = [
 		key: "fontPreviewText",
 		locale: "pt-BR",
 		value: "A rápida raposa marrom salta sobre o cão preguiçoso",
+	},
+	{
+		namespace: "theme",
+		key: "fontAxesLabel",
+		locale: "pt-BR",
+		value: "Eixos variáveis",
 	},
 	{
 		namespace: "theme",
@@ -39720,6 +39732,12 @@ export const I18N_BASELINE = [
 		key: "fontPreviewText",
 		locale: "es",
 		value: "El veloz murciélago hindú comía feliz cardillo y kiwi",
+	},
+	{
+		namespace: "theme",
+		key: "fontAxesLabel",
+		locale: "es",
+		value: "Ejes variables",
 	},
 	{
 		namespace: "theme",

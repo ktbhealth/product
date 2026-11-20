@@ -277,8 +277,99 @@ describe("fontVariationSettings", () => {
 			},
 			SOURCES,
 		);
-		// Managed catalog faces resolve server-side — no client axes.
+		// Managed googlefonts families carry no axis metadata.
 		expect(slot(model, "sans").fontVariationSettings).toBe("");
 		expect(slot(model, "mono").fontVariationSettings).toBe("");
+	});
+});
+
+describe("variable font axes", () => {
+	it("exposes stored-asset axes per slot and applies axisSettings pins", () => {
+		const fonts: ThemeFontConfig = {
+			delivery: "self-host",
+			families: { sans: "Var Sans" },
+			axisSettings: { sans: { slnt: -8, opsz: 20 } },
+			assets: {
+				"Var Sans": {
+					faces: [
+						{
+							url: "/v.woff2",
+							axes: [
+								{ tag: "slnt", min: -9, default: -2, max: 0 },
+								// wdth is font-stretch-owned — not pinnable.
+								{ tag: "wdth", min: 75, default: 100, max: 125 },
+								{ tag: "opsz", min: 6, default: 14, max: 72 },
+							],
+						},
+					],
+				},
+			},
+		};
+		const model = fontPreviewModel(fonts, []);
+		const sans = slot(model, "sans");
+		expect(sans.axes.map((a) => a.tag)).toEqual(["slnt", "opsz"]);
+		expect(sans.fontVariationSettings).toBe("'slnt' -8, 'opsz' 20");
+		// Heading inherits the sans family → same axes, but its own
+		// (empty) pins → fvar defaults.
+		const heading = slot(model, "heading");
+		expect(heading.axes.map((a) => a.tag)).toEqual(["slnt", "opsz"]);
+		expect(heading.fontVariationSettings).toBe("'slnt' -2");
+		expect(slot(model, "mono").axes).toEqual([]);
+	});
+
+	it("managed catalog meta.axes drive axes and specimens before publish", () => {
+		const sources: ThemeFontSourceOption[] = [
+			{
+				...SOURCES[1]!,
+				axes: [{ tag: "slnt", min: -9, default: -2, max: 0 }],
+			},
+		];
+		const fonts: ThemeFontConfig = {
+			delivery: "self-host",
+			sources: { sans: { providerId: 9, family: "Brand Sans" } },
+			axisSettings: { sans: { slnt: -5 } },
+		};
+		const model = fontPreviewModel(fonts, sources);
+		const sans = slot(model, "sans");
+		expect(sans.axes.map((a) => a.tag)).toEqual(["slnt"]);
+		expect(sans.fontVariationSettings).toBe("'slnt' -5");
+		// Heading falls back to the managed sans family → inherits its
+		// catalog axes (defaults — no heading pins).
+		const heading = slot(model, "heading");
+		expect(heading.axes.map((a) => a.tag)).toEqual(["slnt"]);
+		expect(heading.fontVariationSettings).toBe("'slnt' -2");
+	});
+
+	it("merges stored asset axes with catalog meta.axes, stored first", () => {
+		const sources: ThemeFontSourceOption[] = [
+			{
+				...SOURCES[1]!,
+				axes: [
+					// Same tag as the stored face — stored default wins.
+					{ tag: "slnt", min: -9, default: -2, max: 0 },
+					{ tag: "GRAD", min: 0, default: 0, max: 1 },
+				],
+			},
+		];
+		const fonts: ThemeFontConfig = {
+			delivery: "self-host",
+			sources: { mono: { providerId: 9, family: "Brand Sans" } },
+			assets: {
+				"Brand Sans": {
+					faces: [
+						{
+							url: "/b.woff2",
+							axes: [{ tag: "slnt", min: -9, default: -7, max: 0 }],
+						},
+					],
+				},
+			},
+		};
+		const mono = slot(fontPreviewModel(fonts, sources), "mono");
+		expect(mono.axes.map((a) => a.tag)).toEqual(["slnt", "GRAD"]);
+		expect(mono.axes[0]!.default).toBe(-7);
+		// Emission order follows the merged list: stored slnt default,
+		// then the catalog-only GRAD default.
+		expect(mono.fontVariationSettings).toBe("'slnt' -7, 'GRAD' 0");
 	});
 });
