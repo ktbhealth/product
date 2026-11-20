@@ -59,7 +59,10 @@ describe("purgeAudio", () => {
 	});
 
 	it("returns all keys when no bucket is bound", async () => {
+		const error = vi.spyOn(console, "error").mockImplementation(() => {});
 		expect(await purgeAudio(undefined, ["a", "b"])).toEqual(["a", "b"]);
+		expect(error).not.toHaveBeenCalled();
+		error.mockRestore();
 	});
 
 	it("deletes in batches of 1000 and reports failed batches", async () => {
@@ -75,6 +78,22 @@ describe("purgeAudio", () => {
 		const failed = await purgeAudio(bucket, keys);
 		expect(calls.map((c) => c.length)).toEqual([1000, 500]);
 		expect(failed).toEqual(keys.slice(1000));
+		expect(error).toHaveBeenCalledWith("audio purge failed", {
+			keys: 500,
+			error: expect.any(Error),
+		});
 		error.mockRestore();
+	});
+
+	it("does not delete an empty trailing batch", async () => {
+		const calls: string[][] = [];
+		const bucket: AudioDeleter = {
+			delete: async (batch) => {
+				calls.push([...batch]);
+			},
+		};
+		const keys = Array.from({ length: 2000 }, (_, i) => `k${i}`);
+		expect(await purgeAudio(bucket, keys)).toEqual([]);
+		expect(calls.map((c) => c.length)).toEqual([1000, 1000]);
 	});
 });

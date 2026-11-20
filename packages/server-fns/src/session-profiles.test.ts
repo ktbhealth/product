@@ -8,6 +8,7 @@ vi.mock("@tanstack/react-start/server", () => ({
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Metric from "effect/Metric";
 
 import {
 	Auth,
@@ -16,6 +17,7 @@ import {
 	type DoctorProfile,
 	type PatientProfile,
 } from "@ktb/auth";
+import { sessionContextLookups, tagged } from "@ktb/observability/metrics";
 
 import {
 	ensureDoctorUser,
@@ -77,6 +79,9 @@ let syncs: string[] = [];
 /** When set, Auth.getSession throws it — proves rejected lookups are
  * evicted and retried. */
 let authError: unknown;
+/** When set, DoctorProfiles.listFor delegates to it — tests use it to
+ * pend or fail a single directory read while later reads succeed. */
+let doctorListHook: ((userId: string) => Effect.Effect<readonly DoctorProfile[]>) | undefined;
 
 const AuthStub = (user: typeof sec | null) =>
 	Layer.succeed(
@@ -95,15 +100,18 @@ const AuthStub = (user: typeof sec | null) =>
 const DirectoriesStub = Layer.mergeAll(
 	Layer.succeed(DoctorProfiles, {
 		listFor: (userId) =>
-			Effect.sync(() => {
-				lookups.push(userId);
-				return userId === "sec"
-					? [delegated]
-					: userId === "sec2"
-						? [delegated, delegated2]
-						: userId === "doc"
-							? [own]
-							: [];
+			Effect.suspend(() => {
+				if (doctorListHook !== undefined) return doctorListHook(userId);
+				return Effect.sync(() => {
+					lookups.push(userId);
+					return userId === "sec"
+						? [delegated]
+						: userId === "sec2"
+							? [delegated, delegated2]
+							: userId === "doc"
+								? [own]
+								: [];
+				});
 			}),
 		claimInvites: (userId) =>
 			Effect.sync(() => {
@@ -131,6 +139,7 @@ const boot = (layer: Layer.Layer<never>) => {
 	claims = [];
 	syncs = [];
 	authError = undefined;
+	doctorListHook = undefined;
 	const run = <A, E>(effect: Effect.Effect<A, E, unknown>): Promise<A> =>
 		Effect.runPromise(Effect.provide(effect as Effect.Effect<A, E, never>, layer));
 	setServerRuntime({
@@ -338,6 +347,47 @@ describe("getDoctorContext", () => {
 		await getDoctorContext(headers);
 		expect(lookups).toEqual(["sec", "sec"]);
 	});
+
+	it("does not let a stale rejection evict a newer cache entry", async () => {
+		signedIn();
+		let doctorListCalls = 0;
+		let rejectFirst: ((error: unknown) => void) | undefined;
+		doctorListHook = () =>
+			Effect.suspend(() => {
+				doctorListCalls += 1;
+				if (doctorListCalls === 1) {
+					return Effect.promise(
+						() =>
+							new Promise<readonly DoctorProfile[]>((_, reject) => {
+								rejectFirst = reject;
+							}),
+					);
+				}
+				return Effect.succeed([delegated]);
+			});
+		const headers = new Headers();
+		try {
+			// The non-claim read pends on its directory call; the claim read
+			// bypasses the cache, succeeds and stores the newer entry.
+			const stale = getDoctorContext(headers);
+			await vi.waitFor(() => {
+				expect(doctorListCalls).toBe(1);
+			});
+			const fresh = getDoctorContext(headers, { claimInvites: true });
+			await fresh;
+			expect(doctorListCalls).toBe(2);
+			// The stale read now rejects — it must not evict the entry the
+			// successful claim read stored under the same Headers key.
+			rejectFirst?.(new Error("stale directory failure"));
+			await expect(stale).rejects.toThrow("stale directory failure");
+			await expect(getDoctorContext(headers)).resolves.toMatchObject({
+				profiles: [delegated],
+			});
+			expect(doctorListCalls).toBe(2);
+		} finally {
+			doctorListHook = undefined;
+		}
+	});
 });
 
 describe("setDoctorSelection", () => {
@@ -448,5 +498,28 @@ describe("getPatientContext", () => {
 			profiles: [delegated],
 		});
 		expect(lookups).toEqual(["sec"]);
+	});
+});
+
+describe("session context telemetry", () => {
+	const lookupCount = (context: string, result: string) =>
+		Effect.runPromise(Metric.value(tagged(sessionContextLookups, { context, result }))).then(
+			(state) => ("count" in state ? state.count : 0),
+		);
+
+	it("counts doctor-context loads under the doctor label", async () => {
+		signedIn();
+		const headers = new Headers();
+		const before = await lookupCount("doctor", "load");
+		await getDoctorContext(headers);
+		expect(await lookupCount("doctor", "load")).toBe(before + 1);
+	});
+
+	it("counts patient-context loads under the patient label", async () => {
+		signedIn();
+		const headers = new Headers();
+		const before = await lookupCount("patient", "load");
+		await getPatientContext(headers);
+		expect(await lookupCount("patient", "load")).toBe(before + 1);
 	});
 });

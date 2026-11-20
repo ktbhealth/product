@@ -440,6 +440,7 @@ export const purgeAudio = async (
 	bucket: AudioDeleter | undefined,
 	keys: readonly string[],
 ): Promise<string[]> => {
+	// Stryker disable next-line ConditionalExpression: with keys empty every path returns an empty array — the loop is skipped and !bucket returns [...keys] = [] (verified equivalent over undefined/bound bucket × empty/non-empty keys)
 	if (keys.length === 0) return [];
 	if (!bucket) return [...keys];
 	const failed: string[] = [];
