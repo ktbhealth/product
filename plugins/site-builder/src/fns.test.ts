@@ -187,6 +187,11 @@ describe("site-builder fns", () => {
 					data: { kind: "page", id: 7, builderJson: '{"version":1,"data":{}}' },
 				}),
 			).resolves.toBe(false);
+			await expect(
+				saveBuilderDocumentFn({
+					data: { kind: "layout", id: 3, builderJson: '{"version":1,"data":{}}' },
+				}),
+			).resolves.toBe(false);
 		} finally {
 			installServerFnRuntime(runtime, auth);
 			await withoutServices.dispose();

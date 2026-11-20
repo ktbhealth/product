@@ -99,6 +99,15 @@ describe("normalizeBuilderData", () => {
 		});
 	});
 
+	it("preserves a valid zones map", () => {
+		const zones = { "c:z": [{ type: "heading", props: { id: "z1" } }] };
+		expect(normalizeBuilderData({ zones })).toEqual({
+			root: {},
+			content: [],
+			zones,
+		});
+	});
+
 	it("returns null for malformed containers and component entries", () => {
 		expect(normalizeBuilderData(null)).toBeNull();
 		expect(normalizeBuilderData({ root: null })).toBeNull();
@@ -107,6 +116,7 @@ describe("normalizeBuilderData", () => {
 		expect(normalizeBuilderData({ content: [{ type: "heading" }] })).toBeNull();
 		expect(normalizeBuilderData({ content: [{ type: "heading", props: null }] })).toBeNull();
 		expect(normalizeBuilderData({ zones: { "c:z": {} } })).toBeNull();
+		expect(normalizeBuilderData({ zones: { "c:z": [{ type: "heading" }] } })).toBeNull();
 		expect(normalizeBuilderData({ zones: [] })).toBeNull();
 	});
 });
