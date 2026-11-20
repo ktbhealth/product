@@ -235,6 +235,14 @@ const DOMAINS = [
 		tables: ["layouts"],
 	},
 	{
+		id: "templates",
+		title: "Templates",
+		owner: "`plugins/templates`",
+		description:
+			"Saved-as-template snapshots — kind-tagged payloads plugins instantiate into new entities.",
+		tables: ["templates"],
+	},
+	{
 		id: "i18n",
 		title: "Internationalization",
 		owner: "`plugins/i18n` + `packages/i18n`",
