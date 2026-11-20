@@ -1,7 +1,9 @@
 import * as Effect from "effect/Effect";
 import { describe, expect, it, vi } from "vitest";
 
+import { makeAcpSessionLlm } from "@ktb/ai-adapter-acp";
 import {
+	fnvHex,
 	LlmPort,
 	outputValidators,
 	type LlmEndpointDescriptor,
@@ -9,7 +11,20 @@ import {
 } from "@ktb/eval-consultation";
 
 import { makeNodeAcpLlm, resolveNodeAcp } from "./llm.ts";
-import type { SpawnedProcess, SpawnImpl } from "./stdio-rpc.ts";
+import { makeStdioRpc, type SpawnedProcess, type SpawnImpl } from "./stdio-rpc.ts";
+
+// Spy on the two delegation boundaries (call-through wrappers) so tests
+// can assert which option keys were forwarded — an explicit
+// `key: undefined` is observable here even though downstream `??` /
+// `!== undefined` guards treat it like an absent key.
+vi.mock("@ktb/ai-adapter-acp", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/ai-adapter-acp")>();
+	return { ...actual, makeAcpSessionLlm: vi.fn(actual.makeAcpSessionLlm) };
+});
+vi.mock("./stdio-rpc.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./stdio-rpc.ts")>();
+	return { ...actual, makeStdioRpc: vi.fn(actual.makeStdioRpc) };
+});
 
 // --- fake ACP agent (in-memory, same helper shape as acp-client.test) -------
 
@@ -17,7 +32,10 @@ interface FakeProc extends SpawnedProcess {
 	readonly frames: Record<string, unknown>[];
 }
 
-const agentProc = (replyText: string): { proc: FakeProc; spawnImpl: () => FakeProc } => {
+const agentProc = (
+	replyText: string,
+	opts?: { readonly promptDelayMs?: number },
+): { proc: FakeProc; spawnImpl: () => FakeProc } => {
 	const frames: Record<string, unknown>[] = [];
 	const outHandlers: ((chunk: string | Uint8Array) => void)[] = [];
 	const evtHandlers = new Map<string, ((...args: unknown[]) => void)[]>();
@@ -41,18 +59,22 @@ const agentProc = (replyText: string): { proc: FakeProc; spawnImpl: () => FakePr
 					} else if (msg.method === "session/new") {
 						send({ jsonrpc: "2.0", id: msg.id, result: { sessionId: "sess-fake" } });
 					} else if (msg.method === "session/prompt") {
-						send({
-							jsonrpc: "2.0",
-							method: "session/update",
-							params: {
-								sessionId: "sess-fake",
-								update: {
-									sessionUpdate: "agent_message_chunk",
-									content: { type: "text", text: replyText },
+						const reply = () => {
+							send({
+								jsonrpc: "2.0",
+								method: "session/update",
+								params: {
+									sessionId: "sess-fake",
+									update: {
+										sessionUpdate: "agent_message_chunk",
+										content: { type: "text", text: replyText },
+									},
 								},
-							},
-						});
-						send({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+							});
+							send({ jsonrpc: "2.0", id: msg.id, result: { stopReason: "end_turn" } });
+						};
+						if (opts?.promptDelayMs === undefined) reply();
+						else setTimeout(reply, opts.promptDelayMs);
 					}
 				}
 			},
@@ -106,7 +128,7 @@ describe("makeNodeAcpLlm", () => {
 	});
 
 	it("threads sessionId/engineVersion/cwd and the seeded input hash", async () => {
-		const { spawnImpl } = agentProc("reply");
+		const { proc, spawnImpl } = agentProc("reply");
 		const out = await generate(
 			{
 				argv: ["agent"],
@@ -122,6 +144,18 @@ describe("makeNodeAcpLlm", () => {
 		expect(out.record.runId).toBe("sess-9");
 		expect(out.record.engineVersion).toBe("ep-1");
 		expect(out.record.seed).toBe(3);
+		expect(proc.frames.find((f) => f.method === "session/new")).toMatchObject({
+			params: { cwd: "/work" },
+		});
+	});
+
+	it("times out a stalled prompt at the configured timeoutMs", async () => {
+		const { spawnImpl } = agentProc("too-late", { promptDelayMs: 200 });
+		const err = await generate({ argv: ["a"], spawnImpl, timeoutMs: 25 }, env()).then(
+			() => null,
+			(e) => e,
+		);
+		expect(err.message).toContain("timeout");
 	});
 
 	it("rejects an unknown outputSchema before validating", async () => {
@@ -233,6 +267,26 @@ describe("makeNodeAcpLlm", () => {
 			false,
 		);
 	});
+
+	it("omits unset options when building the ACP session layer", async () => {
+		const { spawnImpl } = agentProc("ok");
+		await generate({ argv: ["a"], spawnImpl });
+		const layerOpts = vi.mocked(makeAcpSessionLlm).mock.calls.at(-1)![0];
+		for (const key of ["cwd", "sessionId", "timeoutMs", "egress", "engineVersion"]) {
+			expect(key in layerOpts, key).toBe(false);
+		}
+	});
+
+	it("omits spawnImpl when none was configured", async () => {
+		// The bogus argv fails the real spawn path, but makeStdioRpc is
+		// still invoked — inspect the options object it received.
+		await generate({ argv: ["definitely-not-a-real-command-ktb-xyz"] }).then(
+			() => null,
+			() => null,
+		);
+		const rpcOpts = vi.mocked(makeStdioRpc).mock.calls.at(-1)![0];
+		expect("spawnImpl" in rpcOpts).toBe(false);
+	});
 });
 
 describe("resolveNodeAcp", () => {
@@ -241,6 +295,7 @@ describe("resolveNodeAcp", () => {
 
 	it("refuses ws descriptors — they belong to @ktb/ai-adapter-acp", async () => {
 		await expect(resolve({ kind: "acp", baseUrl: "http://x" })).rejects.toMatchObject({
+			port: "llm",
 			message: expect.stringContaining("ai-adapter-acp"),
 		});
 	});
@@ -310,6 +365,7 @@ describe("resolveNodeAcp", () => {
 		);
 		expect(out.text).toBe("child-ok");
 		expect(out.record.runId).toBe("sess-7");
+		expect(out.record.engineVersion).toBe(fnvHex("child:claude-agent-acp"));
 		expect(captured[0]).toEqual(["claude-agent-acp"]);
 	});
 
@@ -336,7 +392,48 @@ describe("resolveNodeAcp", () => {
 		);
 		expect(out.text).toBe("ssh-ok");
 		expect(out.record.runId).toBe("ssh-sess");
+		expect(out.record.engineVersion).toBe(fnvHex("ssh:u@h:gemini --acp"));
 		expect(captured[0]).toEqual(["ssh", "u@h", "gemini --acp"]);
+	});
+
+	it("honors descriptor timeoutMs for child and ssh transports", async () => {
+		// The agent answers the handshake but stalls the prompt turn
+		// past the 25ms budget — a dropped or widened timeout lets the
+		// delayed reply through instead of failing.
+		for (const transport of ["child", "ssh"] as const) {
+			const { spawnImpl } = agentProc("too-late", { promptDelayMs: 200 });
+			const layer = await resolve(
+				{
+					kind: "acp",
+					baseUrl: "x",
+					transport,
+					agentCmd: "agent --acp",
+					...(transport === "ssh" ? { sshHost: "u@h" } : {}),
+					timeoutMs: 25,
+				},
+				spawnImpl,
+			);
+			const err = await Effect.runPromise(
+				Effect.flip(Effect.flatMap(LlmPort, (l) => l.generate(env())).pipe(Effect.provide(layer))),
+			);
+			expect(err.message).toContain("timeout");
+		}
+	});
+
+	it("splits agentCmd on whitespace runs, not single spaces", async () => {
+		const { spawnImpl } = agentProc("ws-ok");
+		const captured: string[][] = [];
+		const layer = await resolve(
+			{ kind: "acp", baseUrl: "x", transport: "child", agentCmd: "claude  agent\t--flag" },
+			(cmd, args) => {
+				captured.push([cmd, ...args]);
+				return spawnImpl();
+			},
+		);
+		await Effect.runPromise(
+			Effect.flatMap(LlmPort, (l) => l.generate(env())).pipe(Effect.provide(layer)),
+		);
+		expect(captured[0]).toEqual(["claude", "agent", "--flag"]);
 	});
 
 	it("resolves a bare ssh descriptor — defaults and no spawn override", async () => {

@@ -114,6 +114,7 @@ export const makeStdioRpc = (
 		const failAll = (err: PortError) => {
 			if (dead === null) dead = err;
 			const resumes = [...pending.values()];
+			// Stryker disable next-line CallExpression: every resume is single-shot (Effect.callback's `resumed` flag) and `dead` blocks new pendings, so retained entries can only produce no-op resumes — the clear is memory hygiene
 			pending.clear();
 			for (const resume of resumes) resume(Effect.fail(err));
 		};
@@ -146,11 +147,15 @@ export const makeStdioRpc = (
 					});
 				} else if (msg.method !== undefined) {
 					opts.onNotification?.(msg.method, msg.params);
-				} else if (msg.id !== undefined) {
+				} else if (
+					// Stryker disable next-line ConditionalExpression: messages reaching this branch have `method === undefined`, and pending keys are `req-N` — `pending.get("undefined")` always misses, so the body is a no-op `continue` identical to skipping
+					msg.id !== undefined
+				) {
 					const resume = pending.get(String(msg.id));
 					// A response for an unknown id is late (post-timeout)
 					// or bogus — either way nothing waits on it.
 					if (resume === undefined) continue;
+					// Stryker disable next-line CallExpression: resume is single-shot (Effect.callback's `resumed` flag), so a retained entry can only be re-resumed into a no-op — the delete is memory hygiene
 					pending.delete(String(msg.id));
 					resume(
 						msg.error !== undefined
@@ -184,9 +189,11 @@ export const makeStdioRpc = (
 							jsonrpc: "2.0",
 							id,
 							method,
+							// Stryker disable next-line ConditionalExpression: `{params: undefined}` is dropped by JSON.stringify — the wire bytes are identical to omitting the key
 							...(params !== undefined ? { params } : {}),
 						});
 					} catch (cause) {
+						// Stryker disable next-line CallExpression: resume is single-shot (Effect.callback's `resumed` flag), so a retained entry can only be re-resumed into a no-op — the delete is memory hygiene
 						pending.delete(id);
 						resume(
 							Effect.fail(fail(`acp transport: stdin write failed: ${causeMessage(cause)}`, cause)),
@@ -195,7 +202,9 @@ export const makeStdioRpc = (
 					}
 					// Interruption (timeout, scope teardown) drops the
 					// pending entry so a late response is ignored.
+					// Stryker disable next-line BlockStatement: resume is single-shot (Effect.callback's `resumed` flag), so a retained entry can only be re-resumed into a no-op — the delete is memory hygiene
 					return Effect.sync(() => {
+						// Stryker disable next-line CallExpression: resume is single-shot (Effect.callback's `resumed` flag), so a retained entry can only be re-resumed into a no-op — the delete is memory hygiene
 						pending.delete(id);
 					});
 				}),
@@ -204,6 +213,7 @@ export const makeStdioRpc = (
 					write({
 						jsonrpc: "2.0",
 						method,
+						// Stryker disable next-line ConditionalExpression: `{params: undefined}` is dropped by JSON.stringify — the wire bytes are identical to omitting the key
 						...(params !== undefined ? { params } : {}),
 					});
 				} catch {

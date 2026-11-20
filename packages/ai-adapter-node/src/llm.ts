@@ -99,6 +99,7 @@ export const resolveNodeAcp = (
 		return Effect.succeed(
 			makeNodeAcpLlm({
 				argv: ["ssh", host, agentCmd],
+				// Stryker disable next-line ConditionalExpression: `{sessionId: undefined}` hits `opts.sessionId ?? opts.engine` downstream — identical to omitting the key
 				...(d.sessionId !== undefined ? { sessionId: d.sessionId } : {}),
 				timeoutMs: d.timeoutMs ?? DEFAULT_TIMEOUT_MS,
 				engineVersion: fnvHex(`ssh:${host}:${agentCmd}`),
@@ -111,6 +112,7 @@ export const resolveNodeAcp = (
 			// Command lines split on whitespace — quote-quoted arguments
 			// need the ssh form or a wrapper script on PATH.
 			argv: agentCmd.split(/\s+/),
+			// Stryker disable next-line ConditionalExpression: `{sessionId: undefined}` hits `opts.sessionId ?? opts.engine` downstream — identical to omitting the key
 			...(d.sessionId !== undefined ? { sessionId: d.sessionId } : {}),
 			timeoutMs: d.timeoutMs ?? DEFAULT_TIMEOUT_MS,
 			engineVersion: fnvHex(`child:${agentCmd}`),
