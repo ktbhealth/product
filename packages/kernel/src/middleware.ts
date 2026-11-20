@@ -224,6 +224,8 @@ const devWarn = (message: string): void => {
 	// isProductionBuild in @ktb/app-host): kernel typechecks without a
 	// vite dependency and non-Vite runtimes get `undefined`.
 	const env = (import.meta as { env?: { DEV?: unknown } }).env;
+	/* v8 ignore else -- import.meta.env is per-module: under vitest DEV is
+	   always true, so the quiet arm only runs in built bundles. */
 	if (env?.DEV === true) {
 		// eslint-disable-next-line no-console -- dev-only diagnostic
 		console.warn(message);

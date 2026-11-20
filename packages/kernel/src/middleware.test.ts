@@ -140,6 +140,17 @@ describe("middlewareStageInfo", () => {
 			entryIndex: 1,
 		});
 	});
+
+	it("omits absent optional fields", () => {
+		const e = entry(stage("bare"), 0, 0);
+		expect(middlewareStageInfo(e)).toEqual({
+			id: "bare",
+			pluginId: "p0",
+			origin: "plugin",
+			pluginIndex: 0,
+			entryIndex: 0,
+		});
+	});
 });
 
 describe("collectMiddlewareStages", () => {

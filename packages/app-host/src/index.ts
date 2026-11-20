@@ -643,6 +643,8 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		...collectPages(plugins).pages.entries(),
 	].map(([path, entry]) => ({
 		path,
+		/* v8 ignore next -- collectPages always stamps context; the
+		   optional field only exists for test-injected entries. */
 		context: entry.context ?? "app",
 		routeKey: entry.page.path,
 	}));
