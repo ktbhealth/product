@@ -14,11 +14,13 @@
  * the scripts the subset cannot render.
  *
  * Scope (v1, deliberate):
- * - Bare sfnt uploads (ttf/otf) subset directly; WOFF uploads are
+ * - sfnt uploads (ttf/otf) subset directly; WOFF uploads are
  *   unpacked to sfnt first (per-table zlib via DecompressionStream —
- *   the same mechanism font-metrics.ts uses). WOFF2 is skipped: its
- *   glyf/loca transforms mean the decoded payload is not a valid sfnt,
- *   and the HarfBuzz build has no Brotli decoder for the container.
+ *   the same mechanism font-metrics.ts uses). WOFF2 uploads are
+ *   reconstructed to sfnt by woff2-sfnt.ts (Brotli decode plus the
+ *   glyf/loca/hmtx transform inversions); any reconstruction failure
+ *   degrades to "keep the full font" exactly like a WOFF unpack
+ *   failure.
  * - Variable fonts (fvar present) subset too: the vendored HarfBuzz
  *   build retains fvar/gvar/HVAR/avar/STAT by default (no axis
  *   pinning), and the emitted @font-face keeps its font-level
@@ -34,6 +36,7 @@
 
 import { subsetFontBytes } from "./hb-subset.ts";
 import { findTable } from "./font-metrics.ts";
+import { woff2ToSfnt } from "./woff2-sfnt.ts";
 import { rangesToUnicodeRange, type FontVariationInfo } from "./font-variations.ts";
 
 /** Same serialized-length cap font-variations.ts applies to the
@@ -287,14 +290,18 @@ export const subsetCatalogFont = async (input: {
 	if (variation === null) return null;
 	const coverage = variation.coverageRanges;
 	if (coverage === undefined || coverage.length === 0) return null;
-	// WOFF2 cannot be unpacked to a valid sfnt (transformed glyf/loca)
-	// and the subsetter has no Brotli decoder — skip by magic bytes.
-	if (head4(bytes) === "wOF2") return null;
-
 	let sfnt: Uint8Array;
 	let flavor: { readonly ext: "ttf" | "otf" } | null;
-	if (head4(bytes) === "wOFF") {
+	const magic = head4(bytes);
+	if (magic === "wOFF") {
 		const unpacked = await woffToSfnt(bytes);
+		if (unpacked === null) return null;
+		sfnt = unpacked;
+		flavor = sfntFlavor(sfnt);
+	} else if (magic === "wOF2") {
+		// WOFF2 needs the full transform inversion (glyf/loca/hmtx) —
+		// woff2-sfnt.ts handles it; null means "keep the full font".
+		const unpacked = await woff2ToSfnt(bytes);
 		if (unpacked === null) return null;
 		sfnt = unpacked;
 		flavor = sfntFlavor(sfnt);

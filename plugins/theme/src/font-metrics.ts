@@ -129,9 +129,10 @@ const WOFF2_TAG = "wOF2";
 /**
  * WOFF2 "Known Tags" table (WOFF2 spec, TableDirectoryEntry): the low
  * six bits of each directory entry's flags byte index into this list;
- * index 0x3F means a literal 4-byte tag follows instead.
+ * index 0x3F means a literal 4-byte tag follows instead. Exported for
+ * the WOFF2→sfnt reconstructor (woff2-sfnt.ts).
  */
-const WOFF2_KNOWN_TAGS = [
+export const WOFF2_KNOWN_TAGS = [
 	"cmap",
 	"head",
 	"hhea",
@@ -205,8 +206,13 @@ const WOFF2_CUSTOM_TAG = 0x3f;
  * UIntBase128 (WOFF2 variable-length int): up to five bytes carrying
  * seven bits each, most-significant group first, high bit = continue.
  * Returns [value, nextOffset] or null on truncation/overflow.
+ * Exported for the WOFF2→sfnt reconstructor (woff2-sfnt.ts).
  */
-const readBase128 = (v: DataView, pos: number, end: number): readonly [number, number] | null => {
+export const readBase128 = (
+	v: DataView,
+	pos: number,
+	end: number,
+): readonly [number, number] | null => {
 	if (pos >= end || v.getUint8(pos) === 0x80) return null; // leading zeros banned
 	let result = 0;
 	for (let i = 0; i < 5; i++) {
