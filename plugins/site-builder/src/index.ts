@@ -9,7 +9,7 @@ import { Pages } from "@ktb/pages/service";
 import { PlatformAdmin, platformPanelPlugin } from "@ktb/platform";
 import { routeContribution } from "@ktb/platform/routes";
 
-import { SiteBuilderEditorPage } from "./editor-page.tsx";
+import { SiteBuilderEditorPage } from "./editor-lazy.tsx";
 import type { BuilderDocumentWire, BuilderTargetKind } from "./fns.ts";
 
 /**

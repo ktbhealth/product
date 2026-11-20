@@ -1,6 +1,6 @@
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { SiteBuilderEditorPage } from "./editor-page.tsx";
+import { SiteBuilderEditorPage } from "./editor-lazy.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
