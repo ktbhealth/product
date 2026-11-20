@@ -26,7 +26,7 @@ import { I18N_NAMESPACE, middlewareMessages, type MiddlewareMessages } from "./i
  * `pageData` executes.
  */
 
-export interface MiddlewarePageData {
+interface MiddlewarePageData {
 	readonly stages: readonly MiddlewareStageRow[] | null;
 	readonly routes: readonly MiddlewareRouteInfo[] | null;
 }

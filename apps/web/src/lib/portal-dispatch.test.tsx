@@ -260,6 +260,26 @@ describe("portalLoader", () => {
 		}
 	});
 
+	it("surfaces a middleware redirect verdict as a router redirect", async () => {
+		const unregister = registerPage();
+		try {
+			portalPageDataFn.mockResolvedValue({
+				status: "redirect",
+				to: "/login/doctor",
+			} as never);
+			const err = await portalLoader({
+				params: { _splat: "portal/doctor/test" },
+				instanceId: "doctor",
+			}).catch((e: unknown) => e);
+			// redirect({ href }) surfaces as a 307 Response in the loader.
+			expect(err).toBeInstanceOf(Response);
+			expect((err as Response).status).toBe(307);
+			expect((err as Response).headers.get("location")).toBe("/login/doctor");
+		} finally {
+			unregister();
+		}
+	});
+
 	it("resolves the bare instance root to the instance path", async () => {
 		const unregister = registerPage();
 		try {

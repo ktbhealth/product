@@ -37,7 +37,7 @@ import { getDoctorUser, getSessionUser } from "./auth.ts";
  * dispatch (`runAs` binds Principal + Tenant per stage invocation).
  * Portal contexts deny anonymous requests; app contexts stay public.
  */
-export const principalStage: MiddlewareStage = {
+const principalStage: MiddlewareStage = {
 	id: "ktb.principal.session",
 	order: 10,
 	handler: (ctx) =>
@@ -58,7 +58,7 @@ export const principalStage: MiddlewareStage = {
  * entries without a `pkg` stamp keep the per-id check). Requests
  * without a resolved page owner pass through.
  */
-export const pluginEnabledStage: MiddlewareStage = {
+const pluginEnabledStage: MiddlewareStage = {
 	id: "ktb.plugin.enabled",
 	order: 20,
 	handler: (ctx) =>
@@ -83,7 +83,7 @@ export const pluginEnabledStage: MiddlewareStage = {
  * (a directory or service hiccup hides the page rather than 500ing
  * the dispatch).
  */
-export const portalAudienceStage: MiddlewareStage = {
+const portalAudienceStage: MiddlewareStage = {
 	id: "ktb.portal.audience",
 	order: 30,
 	scope: { context: "portal" },
