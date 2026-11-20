@@ -15,6 +15,9 @@ const fixtureTtf = new Uint8Array(
 const fixtureVariableTtf = new Uint8Array(
 	readFileSync(fileURLToPath(new URL("./testdata/Roboto-Variable.ABC.ttf", import.meta.url))),
 );
+const fixtureWoff2 = new Uint8Array(
+	readFileSync(fileURLToPath(new URL("./testdata/katex-size3.woff2", import.meta.url))),
+);
 
 const staticVariation = (
 	coverageRanges: readonly (readonly [number, number])[],
@@ -160,7 +163,7 @@ describe("subsetCatalogFont", () => {
 		).toBeNull();
 	});
 
-	it("skips WOFF2 containers and non-sfnt payloads", async () => {
+	it("rejects truncated WOFF2 containers and non-sfnt payloads", async () => {
 		const woff2Magic = new Uint8Array([0x77, 0x4f, 0x46, 0x32, 0, 0, 0, 0]);
 		expect(
 			await subsetCatalogFont({
@@ -243,6 +246,50 @@ describe("subsetCatalogFont", () => {
 		expect(plan).not.toBeNull();
 		expect(plan!.ext).toBe("ttf");
 		expect(plan!.data.byteLength).toBeLessThan(woffBytes.byteLength);
+	});
+
+	it("reconstructs WOFF2 uploads and subsets them to sfnt", async () => {
+		const plan = await subsetCatalogFont({
+			bytes: fixtureWoff2,
+			variation: staticVariation([[0x20, 0x7e]]),
+		});
+		expect(plan).not.toBeNull();
+		expect(plan!.ext).toBe("ttf");
+		expect(plan!.format).toBe("truetype");
+		expect(plan!.data.byteLength).toBeLessThan(fixtureWoff2.byteLength);
+		expect(findTable(plan!.data, "head")).not.toBeNull();
+		expect(findTable(plan!.data, "cmap")).not.toBeNull();
+	});
+
+	it("keeps the full font when WOFF2 reconstruction fails", async () => {
+		// Valid wOF2 magic but a corrupt body → woff2ToSfnt returns null.
+		const corrupt = new Uint8Array(fixtureWoff2);
+		corrupt[48] = 0xff; // smash the first directory byte
+		corrupt[49] = 0xff;
+		expect(
+			await subsetCatalogFont({
+				bytes: corrupt,
+				variation: staticVariation([[0x20, 0x7e]]),
+			}),
+		).toBeNull();
+		// Truncated WOFF2.
+		expect(
+			await subsetCatalogFont({
+				bytes: fixtureWoff2.slice(0, 100),
+				variation: staticVariation([[0x20, 0x7e]]),
+			}),
+		).toBeNull();
+	});
+
+	it("keeps the full font when the WOFF2 subset fails or is not smaller", async () => {
+		// Subsetter seam returns null → degrade to full font.
+		expect(
+			await subsetCatalogFont({
+				bytes: fixtureWoff2,
+				variation: staticVariation([[0x20, 0x7e]]),
+				subsetFont: () => null,
+			}),
+		).toBeNull();
 	});
 
 	it("returns null for latin-less coverage and unserializable complements", async () => {
