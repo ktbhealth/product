@@ -144,6 +144,7 @@ export function LayoutsAdminPage({ layouts, plugins, i18n, locale }: LayoutsAdmi
 		readonly name: string;
 		readonly description: string;
 	}) => {
+		/* v8 ignore next -- the dialog only confirms while a target is set */
 		if (templateTarget === null) return;
 		setTemplateBusy(true);
 		try {

@@ -28,11 +28,11 @@ import { LayoutConfigSchema, type LayoutConfig } from "./service.ts";
 
 /** The kind id consumers store on `templates.kind` — must stay in
  * sync with any client-side references to the layout kind. */
-export const LAYOUT_TEMPLATE_KIND = "layout";
+const LAYOUT_TEMPLATE_KIND = "layout";
 
 /** Stored payload shape — `config` is the decoded `LayoutConfig`
  * object, `description` normalizes to `null` when absent. */
-export interface LayoutTemplatePayload {
+interface LayoutTemplatePayload {
 	readonly name: string;
 	readonly description: string | null;
 	readonly config: LayoutConfig;

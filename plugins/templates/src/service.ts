@@ -319,6 +319,7 @@ export const TemplatesLive = Layer.effect(
 						.returning(),
 				);
 				const row = rows[0];
+				/* v8 ignore next -- insert().returning() always yields the row */
 				return row === undefined ? null : toDoc(row);
 			}),
 			adminUpdate: Effect.fn("Templates.adminUpdate")(function* (

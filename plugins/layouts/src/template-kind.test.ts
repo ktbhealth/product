@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
-import { makeTemplateKinds } from "@ktb/templates/kinds";
+import { makeTemplateKinds, TemplateKinds } from "@ktb/templates/kinds";
 
-import { layoutTemplateKind, type LayoutTemplateSource } from "./template-kind.ts";
+import {
+	layoutTemplateKind,
+	LayoutsTemplateKindLive,
+	type LayoutTemplateSource,
+} from "./template-kind.ts";
 
 const CONFIG = {
 	sections: [
@@ -109,5 +113,23 @@ describe("layoutTemplateKind", () => {
 		const kinds = makeTemplateKinds();
 		await Effect.runPromise(kinds.register(layoutTemplateKind));
 		expect(kinds.get("layout")).toBe(layoutTemplateKind);
+	});
+});
+
+describe("LayoutsTemplateKindLive", () => {
+	it("registers the layout kind into a provided TemplateKinds registry", async () => {
+		const kinds = makeTemplateKinds();
+		// Production wiring: templates.services provides TemplateKinds
+		// into the layer's construction environment.
+		const layer = LayoutsTemplateKindLive.pipe(Layer.provide(Layer.succeed(TemplateKinds, kinds)));
+		await Effect.runPromise(Effect.void.pipe(Effect.provide(layer)));
+		expect(kinds.get("layout")).toBe(layoutTemplateKind);
+	});
+
+	it("no-ops when TemplateKinds is absent (serviceOption degradation)", async () => {
+		// No registry in the environment — the layer must still build.
+		await expect(
+			Effect.runPromise(Effect.void.pipe(Effect.provide(LayoutsTemplateKindLive))),
+		).resolves.toBeUndefined();
 	});
 });

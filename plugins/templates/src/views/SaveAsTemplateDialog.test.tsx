@@ -116,4 +116,43 @@ describe("SaveAsTemplateDialog", () => {
 		await user.clear(name);
 		expect(screen.getByRole("button", { name: "Save" })).toHaveProperty("disabled", true);
 	});
+
+	it("defaults the description to empty when the target has none", async () => {
+		render(
+			<SaveAsTemplateDialog {...baseProps} target={{ ...target, defaultDescription: undefined }} />,
+		);
+		const description = screen.getByLabelText("Description") as HTMLInputElement;
+		expect(description.value).toBe("");
+	});
+
+	it("ignores non-dialogAction chrome entries in the region", async () => {
+		const notePlugin = {
+			id: "x.notes",
+			chrome: [
+				{
+					id: "x.note",
+					region: "templates.save.actions",
+					content: { kind: "note", key: "k", fallback: "f" },
+				},
+			],
+		} as unknown as Plugin;
+		render(<SaveAsTemplateDialog {...baseProps} plugins={[notePlugin]} />);
+		// No contributed actions → no action picker rendered.
+		expect(screen.queryByText("Save options")).toBeNull();
+	});
+
+	it("edits the description field and cancels through onCancel", async () => {
+		const user = userEvent.setup();
+		const onConfirm =
+			vi.fn<(input: { name: string; description: string; actionId: string | null }) => void>();
+		const onCancel = vi.fn<() => void>();
+		render(<SaveAsTemplateDialog {...baseProps} onConfirm={onConfirm} onCancel={onCancel} />);
+		const description = screen.getByLabelText("Description") as HTMLInputElement;
+		await user.clear(description);
+		await user.type(description, "fresh notes");
+		expect(description.value).toBe("fresh notes");
+		await user.click(screen.getByRole("button", { name: "Cancel" }));
+		expect(onCancel).toHaveBeenCalled();
+		expect(onConfirm).not.toHaveBeenCalled();
+	});
 });

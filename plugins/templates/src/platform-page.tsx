@@ -1,11 +1,7 @@
 import type { PanelPageContext } from "@ktb/kernel";
 
-import type {
-	TemplateKindInfo,
-	TemplateRow,
-	TemplatesAdminPageProps,
-} from "./views/TemplatesAdminPage.tsx";
-import { TemplatesAdminPage } from "./views/TemplatesAdminPage.tsx";
+import type { TemplateKindInfo, TemplateRow, TemplatesAdminPageProps } from "./views/index.ts";
+import { TemplatesAdminPage } from "./views/index.ts";
 
 const asRows = (data: unknown): readonly TemplateRow[] => {
 	const rows = typeof data === "object" && data !== null ? (data as { rows?: unknown }).rows : null;

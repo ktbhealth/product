@@ -22,7 +22,11 @@ import {
 	platformPanelPlugin,
 	platformRoutesPlugin,
 } from "@ktb/platform";
-import { makePluginStatesLive } from "@ktb/platform/plugin-states";
+import {
+	makePluginStatesLive,
+	PluginStates,
+	type PluginStatesShape,
+} from "@ktb/platform/plugin-states";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -37,7 +41,7 @@ import {
 } from "./fns.ts";
 import { TemplateKinds, TemplateKindsLive, type TemplateKind } from "./kinds.ts";
 import { plugins } from "./index.ts";
-import { TemplatesLive, TEMPLATES_TEST_DDL } from "./service.ts";
+import { Templates, TemplatesLive, TEMPLATES_TEST_DDL } from "./service.ts";
 
 const PLUGIN_STATE_DDL = `
 CREATE TABLE plugin_state (
@@ -188,5 +192,72 @@ describe("templates fns", () => {
 		await expect(deleteTemplateFn({ data: { id: 1 } })).resolves.toBe(false);
 		await expect(listTemplatesFn()).resolves.toEqual([]);
 		await expect(instantiateTemplateFn({ data: { id: 1 } })).resolves.toBeNull();
+	});
+
+	it("propagates unexpected service errors and honors the disabled gate", async () => {
+		let enabled = true;
+		const stubTemplates = Templates.of({
+			adminList: () => Effect.fail({ _tag: "Other" }),
+			adminGet: () => Effect.fail({ _tag: "Other" }),
+			listByKind: () => Effect.succeed([]),
+			// name "NULL" resolves null (empty insert returning); every
+			// other call fails with an untranslatable tag.
+			save: (input: { name?: string }) =>
+				input.name === "NULL" ? Effect.succeed(null) : Effect.fail({ _tag: "Other" }),
+			adminUpdate: () => Effect.fail({ _tag: "Other" }),
+			adminRemove: () => Effect.fail({ _tag: "Other" }),
+			instantiate: () => Effect.fail({ _tag: "Other" }),
+			getById: (id: number) => (id === 1 ? Effect.succeed(null) : Effect.fail({ _tag: "Other" })),
+		} as unknown as Templates["Service"]);
+		const rt = ManagedRuntime.make(
+			Layer.mergeAll(
+				Layer.succeed(
+					PlatformAdmin,
+					makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+				),
+				Layer.succeed(PluginStates, {
+					isEnabled: () => Effect.succeed(enabled),
+					enabledIds: () => Effect.succeed(new Set<string>()),
+					config: () => Effect.succeed({}),
+					setEnabled: () => Effect.void,
+					setConfig: () => Effect.void,
+					entries: () => Effect.succeed([]),
+				} as unknown as PluginStatesShape),
+				Layer.succeed(Templates, stubTemplates),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		installRuntime(rt);
+		currentEmail = "admin@x.com";
+		try {
+			// The stub fails with an untranslatable tag — the fns' catch
+			// blocks only map the handled domain errors, so it propagates.
+			await expect(
+				saveTemplateFn({ data: { kind: "k", name: "x", payload: {} } }),
+			).rejects.toMatchObject({ _tag: "Other" });
+			await expect(updateTemplateFn({ data: { id: 1, name: "x" } })).rejects.toMatchObject({
+				_tag: "Other",
+			});
+			await expect(deleteTemplateFn({ data: { id: 1 } })).rejects.toMatchObject({
+				_tag: "Other",
+			});
+			await expect(instantiateTemplateFn({ data: { id: 1 } })).rejects.toMatchObject({
+				_tag: "Other",
+			});
+			await expect(listTemplatesFn()).rejects.toMatchObject({ _tag: "Other" });
+			// A null save result passes through as null.
+			await expect(
+				saveTemplateFn({ data: { kind: "k", name: "NULL", payload: {} } }),
+			).resolves.toBeNull();
+			// The public read propagates service errors and resolves null
+			// while the plugin is disabled.
+			await expect(templateDocFn({ data: { id: 2 } })).rejects.toMatchObject({
+				_tag: "Other",
+			});
+			enabled = false;
+			await expect(templateDocFn({ data: { id: 1 } })).resolves.toBeNull();
+		} finally {
+			installRuntime(runtime);
+			await rt.dispose();
+		}
 	});
 });

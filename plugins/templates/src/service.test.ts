@@ -57,7 +57,14 @@ describe("TemplatesLive", () => {
 		db = makeDb(makeD1(TEMPLATES_TEST_DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
-			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+			Layer.succeed(
+				PlatformAdmin,
+				makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"), {
+					// "admin-2" is an RBAC-granted admin with no email on the
+					// principal — exercises the createdBy null fallback.
+					grantFor: (userId) => Effect.succeed(userId === "admin-2"),
+				}),
+			),
 		);
 		// Production wiring: TemplatesLive consumes the shared
 		// TemplateKinds registry which stays visible to callers.
@@ -131,6 +138,35 @@ describe("TemplatesLive", () => {
 			}),
 		);
 		expect(doc!.description).toBeNull();
+	});
+
+	it("save without source or payload serializes null through the kind", async () => {
+		const doc = await admin((p) => p.save({ kind: "test-kind", name: "no-source" }));
+		// testKind.serialize wraps its input — null source lands as
+		// {wrapped: null} in the stored payload.
+		expect(doc!.payload).toEqual({ wrapped: null });
+	});
+
+	it("save rejects payloads that serialize to undefined", async () => {
+		const undefKind: TemplateKind = {
+			kind: "undef-kind",
+			label: "Undef",
+			serialize: () => Effect.succeed(undefined),
+			deserialize: (p) => Effect.succeed(p),
+			validate: () => Effect.succeed([]),
+		};
+		await runtime.runPromise(Effect.flatMap(TemplateKinds, (kinds) => kinds.register(undefKind)));
+		await expect(
+			admin((p) => p.save({ kind: "undef-kind", name: "undef", source: {} })),
+		).rejects.toBeInstanceOf(InvalidTemplatePayload);
+	});
+
+	it("save records a null createdBy when the principal has no email", async () => {
+		const doc = await asUser(
+			"admin-2",
+			call((p) => p.save({ kind: "test-kind", name: "no-email", payload: { wrapped: 1 } })),
+		);
+		expect(doc!.createdBy).toBeNull();
 	});
 
 	it("save rejects blank names, duplicate names per kind and bad payloads", async () => {

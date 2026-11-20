@@ -17,7 +17,11 @@ const templateFns = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate }),
-	useLocation: () => ({ pathname: "/platform/layouts" }),
+	// Honor the `select` projection the component asks for.
+	useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) =>
+		opts?.select === undefined
+			? { pathname: "/platform/layouts" }
+			: opts.select({ pathname: "/platform/layouts" }),
 }));
 vi.mock("../fns.ts", () => fns);
 vi.mock("@ktb/templates/fns", () => templateFns);
@@ -114,8 +118,8 @@ describe("LayoutsAdminPage", () => {
 		const user = userEvent.setup();
 		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
-		await screen.findByText("Could not load the layout.");
-		await screen.findByRole("button", { name: /New layout/ });
+		expect(await screen.findByText("Could not load the layout.")).toBeTruthy();
+		expect(await screen.findByRole("button", { name: /New layout/ })).toBeTruthy();
 	});
 
 	it("toasts and exits when the doc fetch rejects", async () => {
@@ -123,8 +127,8 @@ describe("LayoutsAdminPage", () => {
 		const user = userEvent.setup();
 		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
-		await screen.findByText("Could not load the layout.");
-		await screen.findByRole("button", { name: /New layout/ });
+		expect(await screen.findByText("Could not load the layout.")).toBeTruthy();
+		expect(await screen.findByRole("button", { name: /New layout/ })).toBeTruthy();
 	});
 
 	it("exits the editor via Cancel and re-invalidates", async () => {
@@ -165,11 +169,11 @@ describe("LayoutsAdminPage", () => {
 		await user.click(deletes[0]!);
 		let dialog = await screen.findByRole("alertdialog");
 		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-		await screen.findByText("Could not delete the layout.");
+		expect(await screen.findByText("Could not delete the layout.")).toBeTruthy();
 		await user.click(deletes[1]!);
 		dialog = await screen.findByRole("alertdialog");
 		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
-		await screen.findAllByText("Could not delete the layout.");
+		expect((await screen.findAllByText("Could not delete the layout.")).length).toBeGreaterThan(0);
 	});
 
 	it("dismisses a list-view toast", async () => {
@@ -205,7 +209,7 @@ describe("LayoutsAdminPage", () => {
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByDisplayValue("landing");
 		await user.click(screen.getByRole("button", { name: "Save" }));
-		await screen.findByText(/Could not save the layout/);
+		expect(await screen.findByText(/Could not save the layout/)).toBeTruthy();
 	});
 
 	it("renders a null description and falls back to English without a locale", async () => {
@@ -342,7 +346,7 @@ describe("LayoutsAdminPage", () => {
 		await user.click(screen.getByRole("button", { name: "Save as template" }));
 		const dialog = await screen.findByRole("alertdialog");
 		await user.click(within(dialog).getByRole("button", { name: "Save" }));
-		await screen.findByText("Could not save the template.");
+		expect(await screen.findByText("Could not save the template.")).toBeTruthy();
 	});
 
 	it("toasts loadFailed when the template source doc is missing", async () => {
@@ -352,5 +356,36 @@ describe("LayoutsAdminPage", () => {
 		await user.click(screen.getByRole("button", { name: "Save as template" }));
 		await screen.findByText("Could not load the layout.");
 		expect(screen.queryByRole("alertdialog")).toBeNull();
+	});
+
+	it("toasts loadFailed when the template source fetch rejects", async () => {
+		fns.layoutDocFn.mockRejectedValue(new Error("boom"));
+		const user = userEvent.setup();
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Save as template" }));
+		await screen.findByText("Could not load the layout.");
+		expect(screen.queryByRole("alertdialog")).toBeNull();
+	});
+
+	it("toasts templateSaveFailed when the save fn rejects", async () => {
+		fns.layoutDocFn.mockResolvedValue(docWire());
+		templateFns.saveTemplateFn.mockRejectedValue(new Error("boom"));
+		const user = userEvent.setup();
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Save as template" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Save" }));
+		expect(await screen.findByText("Could not save the template.")).toBeTruthy();
+	});
+
+	it("closes the template dialog on cancel", async () => {
+		fns.layoutDocFn.mockResolvedValue(docWire());
+		const user = userEvent.setup();
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Save as template" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+		await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+		expect(templateFns.saveTemplateFn).not.toHaveBeenCalled();
 	});
 });
