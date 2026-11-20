@@ -16,7 +16,7 @@ import { CronAdmin, CronAdminLive, type CronRunNowResult } from "./admin.ts";
 
 const DDL = `
 CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-CREATE TABLE scheduled_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, params TEXT, cron_expr TEXT, run_at INTEGER, next_run_at INTEGER, claimed_until INTEGER, last_run_at INTEGER, status TEXT NOT NULL DEFAULT 'active', tenant_id TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE scheduled_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, params TEXT, cron_expr TEXT, run_at INTEGER, next_run_at INTEGER, claimed_until INTEGER, last_run_at INTEGER, status TEXT NOT NULL DEFAULT 'active', tenant_id INTEGER, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 `;
 
 const db = makeDb(makeD1(DDL));
