@@ -114,9 +114,7 @@ describe("defineSuite", () => {
 
 	it("rejects malformed dataset pins", () => {
 		expect(() => defineSuite({ ...valid, dataset: {} })).toThrowError(Schema.SchemaError);
-		expect(() => defineSuite({ ...valid, dataset: { id: "d" } })).toThrowError(
-			Schema.SchemaError,
-		);
+		expect(() => defineSuite({ ...valid, dataset: { id: "d" } })).toThrowError(Schema.SchemaError);
 		expect(() => defineSuite({ ...valid, dataset: { id: "d", version: 1 } })).toThrowError(
 			Schema.SchemaError,
 		);

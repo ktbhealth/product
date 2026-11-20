@@ -276,13 +276,20 @@ describe("mergeDomainDefinitions", () => {
 				},
 			}),
 		);
-		expect(m.provides?.gates).toEqual([{ id: "g1" }, { id: "g2" }, { preset: "p1" }, { preset: "p2" }]);
+		expect(m.provides?.gates).toEqual([
+			{ id: "g1" },
+			{ id: "g2" },
+			{ preset: "p1" },
+			{ preset: "p2" },
+		]);
 		// Same keys on the child override in place; distinct keys append.
 		const m2 = mergeDomainDefinitions(
 			defineDomain({
 				id: "p",
 				version: "1",
-				provides: { gates: [{ id: "g1", config: { old: true } }, { preset: "p1" }, { preset: "p2" }] },
+				provides: {
+					gates: [{ id: "g1", config: { old: true } }, { preset: "p1" }, { preset: "p2" }],
+				},
 			}),
 			defineDomain({
 				id: "c",

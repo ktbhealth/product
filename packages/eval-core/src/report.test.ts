@@ -41,7 +41,14 @@ describe("renderRunMarkdown", () => {
 
 	it("renders the exact document shape", () => {
 		const md = renderRunMarkdown("r1", [
-			record({ sampleId: "s1", stage: "asr", engine: "eng", model: "m", latencyMs: 5, estCostUsd: 0.01 }),
+			record({
+				sampleId: "s1",
+				stage: "asr",
+				engine: "eng",
+				model: "m",
+				latencyMs: 5,
+				estCostUsd: 0.01,
+			}),
 			record({ sampleId: "s2", stage: "judge", engine: "jev" }),
 		]);
 		expect(md).toBe(

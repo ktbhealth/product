@@ -131,9 +131,7 @@ describe("EditOp / EditList", () => {
 		for (const kind of ["fix", "punct", "entity", "format"] as const) {
 			expect(d({ at: 0, remove: "a", insert: "b", kind }).kind).toBe(kind);
 		}
-		expect(d({ at: 0, remove: "a", insert: "b", kind: "fix", flagged: true }).flagged).toBe(
-			true,
-		);
+		expect(d({ at: 0, remove: "a", insert: "b", kind: "fix", flagged: true }).flagged).toBe(true);
 		bad(EditOp)({ at: 0, remove: "a", insert: "b", kind: "bogus" });
 		bad(EditOp)({ at: 0, remove: "a", insert: "b" });
 		bad(EditOp)({ remove: "a", insert: "b", kind: "fix" });

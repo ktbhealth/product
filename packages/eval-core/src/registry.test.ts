@@ -38,9 +38,7 @@ describe("contribution schemas", () => {
 		const c = d({ kind: "eval.stage", id: "asr", version: "1", meta: { port: "p" } });
 		expect(c).toEqual({ kind: "eval.stage", id: "asr", version: "1", meta: { port: "p" } });
 		expect(d({ kind: "eval.stage", id: "asr", version: "1" }).meta).toBeUndefined();
-		expect(() => d({ kind: "eval.bogus", id: "x", version: "1" })).toThrowError(
-			Schema.SchemaError,
-		);
+		expect(() => d({ kind: "eval.bogus", id: "x", version: "1" })).toThrowError(Schema.SchemaError);
 		expect(() => d({ kind: "eval.stage", id: "x" })).toThrowError(Schema.SchemaError);
 		expect(() => d({ kind: "eval.stage", version: "1" })).toThrowError(Schema.SchemaError);
 	});
