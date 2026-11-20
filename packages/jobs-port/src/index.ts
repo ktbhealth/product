@@ -289,8 +289,8 @@ export const decodeJobEnvelope = (body: unknown): NormalizedJob | null => {
  *
  * Hardening knobs:
  * - `concurrency`: max in-flight executions of this kind within one
- *   consumer batch (default 1 — kinds still run serially against each
- *   other, but different kinds may overlap).
+ *   consumer batch (default 1 — same-kind messages still run one at
+ *   a time, but different kinds may overlap).
  * - `maxAttempts`: delivery count at which the consumer acks instead
  *   of retrying, marking the run failed with an "attempts exhausted"
  *   error (default `JobConsumerDeps.maxAttempts`, then 5). Only binds
