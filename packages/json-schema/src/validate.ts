@@ -41,6 +41,7 @@ const ajv = new Ajv2020({
 const instancePathToPath = (instancePath: string): string => {
 	if (instancePath === "") return "$";
 	let out = "";
+	// Stryker disable next-line MethodExpression: instancePath always starts with "/", so splitting the un-sliced path only prepends an empty segment that contributes nothing to `out`.
 	for (const raw of instancePath.slice(1).split("/")) {
 		const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
 		if (/^\d+$/.test(segment)) {
@@ -54,8 +55,11 @@ const instancePathToPath = (instancePath: string): string => {
 };
 
 const compareIssues = (a: Issue, b: Issue): number => {
+	// Stryker disable next-line EqualityOperator: guarded by a.path !== b.path, so < and <= coincide here.
 	if (a.path !== b.path) return a.path < b.path ? -1 : 1;
+	// Stryker disable next-line EqualityOperator: guarded by a.keyword !== b.keyword, so < and <= coincide here.
 	if (a.keyword !== b.keyword) return a.keyword < b.keyword ? -1 : 1;
+	// Stryker disable next-line ConditionalExpression, EqualityOperator: equal messages mean identical issues (path and keyword already matched), so returning 1 instead of 0 is unobservable; and < vs <= coincide inside the !== guard.
 	if (a.message !== b.message) return a.message < b.message ? -1 : 1;
 	return 0;
 };
@@ -101,6 +105,7 @@ const wrap = (validateFn: ValidateFunction): JsonSchemaValidator => ({
 		const valid = validateFn(value);
 		// ajv sets `errors` to null on success and the error array on
 		// failure — `?? []` covers the null case for valid input.
+		// Stryker disable next-line ArrayDeclaration: errors is null only when valid, where `valid ?` already returns [] — the fallback is unreachable.
 		const errors = validateFn.errors ?? [];
 		return valid ? [] : errors.map(toIssue).sort(compareIssues);
 	},

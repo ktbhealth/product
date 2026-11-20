@@ -245,6 +245,33 @@ describe("validate", () => {
 			"must have required property 'c'",
 		]);
 	});
+
+	it("unescapes JSON-pointer segments in instance paths", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: {
+				"a/b": { type: "string" },
+				"~k": { type: "string" },
+				a1: { type: "string" },
+				"1a": { type: "string" },
+			},
+		};
+		const issues = validate(schema, { "a/b": 1, "~k": 2, a1: 3, "1a": 4 });
+		expect(issues).toEqual([
+			{ path: "1a", keyword: "type", message: "must be string" },
+			{ path: "a/b", keyword: "type", message: "must be string" },
+			{ path: "a1", keyword: "type", message: "must be string" },
+			{ path: "~k", keyword: "type", message: "must be string" },
+		]);
+	});
+
+	it("formats array indices of two or more digits with brackets", () => {
+		const schema: JsonSchemaObject = { type: "array", items: { type: "string" } };
+		const value = Array.from({ length: 11 }, (_, i) => (i === 10 ? 5 : "x"));
+		expect(validate(schema, value)).toEqual([
+			{ path: "$[10]", keyword: "type", message: "must be string" },
+		]);
+	});
 });
 
 describe("boolean schemas", () => {
@@ -284,6 +311,47 @@ describe("compileSchema", () => {
 		const a: JsonSchemaObject = { type: "object", properties: { n: { type: "string" } } };
 		const b = JSON.parse(JSON.stringify(a)) as JsonSchemaObject;
 		expect(compileSchema(a)).toBe(compileSchema(b));
+	});
+
+	it("does not evict JSON-keyed validators below the cache cap", () => {
+		// Two distinct schemas must both stay cached — inserting `b`
+		// cannot evict `a` while the map is under the limit.
+		const a: JsonSchemaObject = { type: "string", minLength: 0 };
+		const b: JsonSchemaObject = { type: "string", minLength: 1 };
+		compileSchema(a);
+		compileSchema(b);
+		const reparsed = JSON.parse(JSON.stringify(a)) as JsonSchemaObject;
+		expect(compileSchema(reparsed)).toBe(compileSchema(a));
+	});
+
+	it("evicts the oldest JSON-keyed validator exactly at the cache cap", () => {
+		// VALIDATOR_CACHE_LIMIT distinct schemas: the 101st insert evicts
+		// the first — one past the cap must already be gone.
+		const first: JsonSchemaObject = { type: "string", minLength: 0 };
+		compileSchema(first);
+		for (let i = 1; i <= 100; i += 1) {
+			compileSchema({ type: "string", minLength: i });
+		}
+		const reparsed = JSON.parse(JSON.stringify(first)) as JsonSchemaObject;
+		expect(compileSchema(reparsed)).not.toBe(compileSchema(first));
+	});
+
+	it("keeps the identity-cached validator stable across JSON-cache eviction", () => {
+		// The WeakMap pins schema OBJECT → validator even after the
+		// JSON-keyed entry is evicted and a twin object recompiles —
+		// compileSchema(sameObject) must keep returning the original.
+		// (Distinct shape: other cache tests reuse {type:"string",
+		// minLength:i} keys, which would hit instead of evicting.)
+		const s: JsonSchemaObject = { type: "integer", minimum: 0 };
+		const v1 = compileSchema(s);
+		for (let i = 1; i <= 105; i += 1) {
+			compileSchema({ type: "integer", minimum: i });
+		}
+		// A different object with identical JSON recompiles under s's
+		// (evicted-then-reinserted) JSON key.
+		const twin = JSON.parse(JSON.stringify(s)) as JsonSchemaObject;
+		compileSchema(twin);
+		expect(compileSchema(s)).toBe(v1);
 	});
 
 	it("evicts the oldest JSON-keyed validator past the cache cap", () => {
