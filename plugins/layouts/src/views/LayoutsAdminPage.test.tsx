@@ -11,11 +11,16 @@ const fns = vi.hoisted(() => ({
 	layoutDocFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
 	listLayoutsFn: vi.fn<() => Promise<unknown>>(),
 }));
+const templateFns = vi.hoisted(() => ({
+	saveTemplateFn: vi.fn<(arg?: { data?: unknown }) => Promise<unknown>>(),
+}));
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate }),
+	useLocation: () => ({ pathname: "/platform/layouts" }),
 }));
 vi.mock("../fns.ts", () => fns);
+vi.mock("@ktb/templates/fns", () => templateFns);
 
 import { LayoutsAdminPage, type LayoutRow } from "./LayoutsAdminPage.tsx";
 
@@ -47,7 +52,7 @@ afterEach(cleanup);
 
 describe("LayoutsAdminPage", () => {
 	it("renders the empty state", () => {
-		render(<LayoutsAdminPage layouts={[]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[]} plugins={[]} locale="en" />);
 		expect(screen.getByText("Layouts")).toBeTruthy();
 		expect(screen.getByText("No layouts yet")).toBeTruthy();
 	});
@@ -55,7 +60,7 @@ describe("LayoutsAdminPage", () => {
 	it("renders rows and opens the editor on edit", async () => {
 		fns.layoutDocFn.mockResolvedValue(docWire());
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		expect(screen.getByText("landing")).toBeTruthy();
 		expect(screen.getByText("2")).toBeTruthy();
 		await user.click(screen.getByRole("button", { name: "Edit" }));
@@ -71,7 +76,7 @@ describe("LayoutsAdminPage", () => {
 	it("creates a layout through the editor", async () => {
 		const user = userEvent.setup();
 		fns.createLayoutFn.mockResolvedValue(docWire({ id: 9, name: "new-layout" }));
-		render(<LayoutsAdminPage layouts={[]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: /New layout/ }));
 		await user.type(screen.getByLabelText("Name"), "new-layout");
 		await user.click(screen.getByRole("button", { name: "Create" }));
@@ -91,7 +96,7 @@ describe("LayoutsAdminPage", () => {
 		fns.layoutDocFn.mockResolvedValue(docWire());
 		fns.updateLayoutFn.mockResolvedValue(docWire({ name: "renamed" }));
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		const nameInput = await screen.findByDisplayValue("landing");
 		await user.clear(nameInput);
@@ -107,7 +112,7 @@ describe("LayoutsAdminPage", () => {
 	it("toasts when the doc fetch fails and exits the editor", async () => {
 		fns.layoutDocFn.mockResolvedValue(null);
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByText("Could not load the layout.");
 		await screen.findByRole("button", { name: /New layout/ });
@@ -116,7 +121,7 @@ describe("LayoutsAdminPage", () => {
 	it("toasts and exits when the doc fetch rejects", async () => {
 		fns.layoutDocFn.mockRejectedValue(new Error("boom"));
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByText("Could not load the layout.");
 		await screen.findByRole("button", { name: /New layout/ });
@@ -125,7 +130,7 @@ describe("LayoutsAdminPage", () => {
 	it("exits the editor via Cancel and re-invalidates", async () => {
 		fns.layoutDocFn.mockResolvedValue(docWire());
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByDisplayValue("landing");
 		await user.click(screen.getByRole("button", { name: "Cancel" }));
@@ -137,7 +142,7 @@ describe("LayoutsAdminPage", () => {
 	it("deletes a layout through the confirm dialog", async () => {
 		fns.deleteLayoutFn.mockResolvedValue(true);
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Delete" }));
 		const dialog = await screen.findByRole("alertdialog");
 		expect(within(dialog).getByText(/Delete "landing"/)).toBeTruthy();
@@ -149,7 +154,13 @@ describe("LayoutsAdminPage", () => {
 	it("toasts deleteFailed when the delete resolves false or rejects", async () => {
 		fns.deleteLayoutFn.mockResolvedValueOnce(false).mockRejectedValueOnce(new Error("boom"));
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row(), row({ id: 2, name: "other" })]} locale="en" />);
+		render(
+			<LayoutsAdminPage
+				layouts={[row(), row({ id: 2, name: "other" })]}
+				plugins={[]}
+				locale="en"
+			/>,
+		);
 		const deletes = screen.getAllByRole("button", { name: "Delete" });
 		await user.click(deletes[0]!);
 		let dialog = await screen.findByRole("alertdialog");
@@ -164,7 +175,7 @@ describe("LayoutsAdminPage", () => {
 	it("dismisses a list-view toast", async () => {
 		fns.deleteLayoutFn.mockResolvedValue(true);
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Delete" }));
 		const dialog = await screen.findByRole("alertdialog");
 		await user.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -177,7 +188,7 @@ describe("LayoutsAdminPage", () => {
 		fns.layoutDocFn.mockResolvedValue(docWire());
 		fns.updateLayoutFn.mockResolvedValue(null);
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByDisplayValue("landing");
 		await user.click(screen.getByRole("button", { name: "Save" }));
@@ -190,7 +201,7 @@ describe("LayoutsAdminPage", () => {
 		fns.layoutDocFn.mockResolvedValue(docWire());
 		fns.updateLayoutFn.mockRejectedValue(new Error("boom"));
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByDisplayValue("landing");
 		await user.click(screen.getByRole("button", { name: "Save" }));
@@ -198,7 +209,7 @@ describe("LayoutsAdminPage", () => {
 	});
 
 	it("renders a null description and falls back to English without a locale", async () => {
-		render(<LayoutsAdminPage layouts={[row({ description: null })]} />);
+		render(<LayoutsAdminPage layouts={[row({ description: null })]} plugins={[]} />);
 		expect(screen.getByText("landing")).toBeTruthy();
 		// English copy — no locale prop.
 		expect(screen.getByText("Layouts")).toBeTruthy();
@@ -214,7 +225,7 @@ describe("LayoutsAdminPage", () => {
 		fns.layoutDocFn.mockResolvedValue(docWire());
 		fns.updateLayoutFn.mockResolvedValue(docWire());
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await screen.findByDisplayValue("landing");
 		const description = screen.getByLabelText("Description") as HTMLInputElement;
@@ -238,7 +249,7 @@ describe("LayoutsAdminPage", () => {
 
 	it("shows an empty preview for malformed configs and #N for untitled sections", async () => {
 		const user = userEvent.setup();
-		render(<LayoutsAdminPage layouts={[]} locale="en" />);
+		render(<LayoutsAdminPage layouts={[]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: /New layout/ }));
 		const config = screen.getByLabelText("Layout config (JSON)") as HTMLTextAreaElement;
 		// Invalid JSON → parse catch → no sections.
@@ -270,7 +281,7 @@ describe("LayoutsAdminPage", () => {
 			}),
 		);
 		const user = userEvent.setup();
-		const { unmount } = render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		const { unmount } = render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await waitFor(() => expect(fns.layoutDocFn).toHaveBeenCalled());
 		unmount();
@@ -286,11 +297,60 @@ describe("LayoutsAdminPage", () => {
 			}),
 		);
 		const user = userEvent.setup();
-		const { unmount } = render(<LayoutsAdminPage layouts={[row()]} locale="en" />);
+		const { unmount } = render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
 		await user.click(screen.getByRole("button", { name: "Edit" }));
 		await waitFor(() => expect(fns.layoutDocFn).toHaveBeenCalled());
 		unmount();
 		rejectDoc(new Error("boom"));
 		await Promise.resolve();
+	});
+
+	it("saves a layout as a template through the shared dialog", async () => {
+		fns.layoutDocFn.mockResolvedValue(docWire());
+		templateFns.saveTemplateFn.mockResolvedValue({ id: 5 });
+		const user = userEvent.setup();
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Save as template" }));
+		const dialog = await screen.findByRole("alertdialog");
+		// The dialog prefills the template name/description from the
+		// layout doc fetched through layoutDocFn.
+		expect(within(dialog).getByDisplayValue("landing")).toBeTruthy();
+		expect(within(dialog).getByDisplayValue("Landing body")).toBeTruthy();
+		await user.click(within(dialog).getByRole("button", { name: "Save" }));
+		await waitFor(() =>
+			expect(templateFns.saveTemplateFn).toHaveBeenCalledWith({
+				data: {
+					kind: "layout",
+					name: "landing",
+					description: "Landing body",
+					source: {
+						name: "landing",
+						description: "Landing body",
+						config: docWire().config,
+					},
+				},
+			}),
+		);
+		await screen.findByText("Template saved");
+	});
+
+	it("toasts templateSaveFailed when the save fn resolves null", async () => {
+		fns.layoutDocFn.mockResolvedValue(docWire());
+		templateFns.saveTemplateFn.mockResolvedValue(null);
+		const user = userEvent.setup();
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Save as template" }));
+		const dialog = await screen.findByRole("alertdialog");
+		await user.click(within(dialog).getByRole("button", { name: "Save" }));
+		await screen.findByText("Could not save the template.");
+	});
+
+	it("toasts loadFailed when the template source doc is missing", async () => {
+		fns.layoutDocFn.mockResolvedValue(null);
+		const user = userEvent.setup();
+		render(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		await user.click(screen.getByRole("button", { name: "Save as template" }));
+		await screen.findByText("Could not load the layout.");
+		expect(screen.queryByRole("alertdialog")).toBeNull();
 	});
 });

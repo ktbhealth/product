@@ -1,0 +1,192 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+import {
+	installServerFnRuntime,
+	reactStartMock,
+	reactStartServerMock,
+	resetServerFnRuntime,
+	sessionUser,
+	stubAuth,
+} from "@ktb/server-fns/testing";
+
+vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
+vi.mock("@tanstack/react-start", () => reactStartMock());
+
+import { Db, makeDb } from "@ktb/db";
+import { makeD1 } from "@ktb/db/testing";
+import {
+	makePlatformAdminGate,
+	parsePlatformAdminEmails,
+	PlatformAdmin,
+	platformAdminPlugin,
+	platformPanelPlugin,
+	platformRoutesPlugin,
+} from "@ktb/platform";
+import { makePluginStatesLive } from "@ktb/platform/plugin-states";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as ManagedRuntime from "effect/ManagedRuntime";
+
+import {
+	deleteTemplateFn,
+	instantiateTemplateFn,
+	listTemplatesFn,
+	saveTemplateFn,
+	templateDocFn,
+	updateTemplateFn,
+} from "./fns.ts";
+import { TemplateKinds, TemplateKindsLive, type TemplateKind } from "./kinds.ts";
+import { plugins } from "./index.ts";
+import { TemplatesLive, TEMPLATES_TEST_DDL } from "./service.ts";
+
+const PLUGIN_STATE_DDL = `
+CREATE TABLE plugin_state (
+	plugin_id TEXT PRIMARY KEY NOT NULL,
+	enabled INTEGER DEFAULT true NOT NULL,
+	config TEXT,
+	updated_at INTEGER NOT NULL
+);
+`;
+
+const testKind: TemplateKind = {
+	kind: "test-kind",
+	label: "Test kind",
+	serialize: (source) => Effect.succeed({ wrapped: source }),
+	deserialize: (payload) =>
+		Effect.succeed(
+			typeof payload === "object" && payload !== null
+				? (payload as { wrapped: unknown }).wrapped
+				: null,
+		),
+	validate: (payload) =>
+		Effect.succeed(
+			typeof payload === "object" && payload !== null && "wrapped" in payload
+				? []
+				: ["payload must carry a wrapped value"],
+		),
+};
+
+// The templates plugins depend on the platform markers — the test
+// registry includes them so dep edges and PluginStates resolve like the
+// host.
+const registry = [platformAdminPlugin, platformRoutesPlugin, platformPanelPlugin, ...plugins];
+
+describe("templates fns", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let currentEmail: string | null = null;
+	const auth = stubAuth(() => sessionUser(currentEmail));
+	const installRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
+		installServerFnRuntime(rt, auth);
+
+	beforeAll(async () => {
+		const db = makeDb(makeD1(TEMPLATES_TEST_DDL + PLUGIN_STATE_DDL));
+		const env = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		const states = makePluginStatesLive(registry);
+		// Production wiring: Templates + the shared TemplateKinds
+		// registry (with the test kind registered) in one layer.
+		const templatesLive = TemplatesLive.pipe(
+			Layer.provideMerge(TemplateKindsLive),
+			Layer.provide(env),
+		);
+		runtime = ManagedRuntime.make(
+			Layer.mergeAll(states.pipe(Layer.provide(env)), templatesLive, env) as Layer.Layer<
+				unknown,
+				never,
+				never
+			>,
+		);
+		await runtime.runPromise(
+			Effect.gen(function* () {
+				const kinds = yield* TemplateKinds;
+				yield* kinds.register(testKind);
+			}),
+		);
+		installRuntime(runtime);
+	});
+
+	afterAll(() => {
+		resetServerFnRuntime();
+		return runtime.dispose();
+	});
+
+	it("rejects anonymous admin callers but serves the public reads", async () => {
+		currentEmail = null;
+		await expect(
+			saveTemplateFn({ data: { kind: "test-kind", name: "x", payload: { wrapped: 1 } } }),
+		).rejects.toThrow("unauthenticated");
+		await expect(updateTemplateFn({ data: { id: 1, name: "x" } })).rejects.toThrow(
+			"unauthenticated",
+		);
+		await expect(deleteTemplateFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
+		await expect(instantiateTemplateFn({ data: { id: 1 } })).rejects.toThrow("unauthenticated");
+		await expect(listTemplatesFn()).rejects.toThrow("unauthenticated");
+		// Public reads work without a session.
+		await expect(templateDocFn({ data: { id: 1 } })).resolves.toBeNull();
+	});
+
+	it("saves, lists, reads, updates, instantiates and deletes as admin", async () => {
+		currentEmail = "admin@x.com";
+		const saved = await saveTemplateFn({
+			data: { kind: "test-kind", name: "wire-1", source: { v: 1 } },
+		});
+		expect(saved).toMatchObject({
+			kind: "test-kind",
+			name: "wire-1",
+			createdBy: "admin@x.com",
+			payload: { wrapped: { v: 1 } },
+		});
+		const id = saved!.id;
+
+		const listed = await listTemplatesFn();
+		expect(listed.map((r) => r.id)).toContain(id);
+		expect(listed[0]).not.toHaveProperty("payload");
+
+		const doc = await templateDocFn({ data: { id } });
+		expect(doc?.payload).toEqual({ wrapped: { v: 1 } });
+
+		const instance = await instantiateTemplateFn({ data: { id } });
+		expect(instance).toEqual({ kind: "test-kind", source: { v: 1 } });
+
+		const updated = await updateTemplateFn({ data: { id, name: "wire-1b" } });
+		expect(updated?.name).toBe("wire-1b");
+
+		await expect(deleteTemplateFn({ data: { id } })).resolves.toBe(true);
+		await expect(templateDocFn({ data: { id } })).resolves.toBeNull();
+	});
+
+	it("collapses handled domain failures to null/false/[]", async () => {
+		currentEmail = "admin@x.com";
+		// Unknown kind.
+		await expect(
+			saveTemplateFn({ data: { kind: "ghost", name: "x", payload: {} } }),
+		).resolves.toBeNull();
+		// Invalid payload (missing `wrapped`).
+		await expect(
+			saveTemplateFn({ data: { kind: "test-kind", name: "x", payload: { nope: 1 } } }),
+		).resolves.toBeNull();
+		// Duplicate name.
+		await saveTemplateFn({
+			data: { kind: "test-kind", name: "dup", payload: { wrapped: 1 } },
+		});
+		await expect(
+			saveTemplateFn({ data: { kind: "test-kind", name: "dup", payload: { wrapped: 2 } } }),
+		).resolves.toBeNull();
+		// Missing row on update/delete/instantiate.
+		await expect(updateTemplateFn({ data: { id: 999999, name: "x" } })).resolves.toBeNull();
+		await expect(deleteTemplateFn({ data: { id: 999999 } })).resolves.toBe(false);
+		await expect(instantiateTemplateFn({ data: { id: 999999 } })).resolves.toBeNull();
+	});
+
+	it("denies non-admin callers with handled failures", async () => {
+		currentEmail = "doc@x.com";
+		await expect(
+			saveTemplateFn({ data: { kind: "test-kind", name: "x", payload: { wrapped: 1 } } }),
+		).resolves.toBeNull();
+		await expect(deleteTemplateFn({ data: { id: 1 } })).resolves.toBe(false);
+		await expect(listTemplatesFn()).resolves.toEqual([]);
+		await expect(instantiateTemplateFn({ data: { id: 1 } })).resolves.toBeNull();
+	});
+});

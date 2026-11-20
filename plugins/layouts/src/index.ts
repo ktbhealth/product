@@ -5,10 +5,12 @@ import * as Layer from "effect/Layer";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { richTextServicesPlugin } from "@ktb/rich-text";
+import { templatesServicesPlugin } from "@ktb/templates";
 
 import { LayoutsAdminConsolePage } from "./platform-page.tsx";
 import { layouts } from "./schema.ts";
 import { Layouts, LayoutsLive } from "./service.ts";
+import { LayoutsTemplateKindLive } from "./template-kind.ts";
 
 /**
  * Layouts plugin: admin-authored page-body layouts stored in the
@@ -38,9 +40,12 @@ export const layoutsServicesPlugin = definePlugin({
 	// the delete-hook registry lives in its service layer — absent it,
 	// resolveForPage skips every slot and no hook is registered
 	// (Effect.serviceOption), but ordering must put the registry before
-	// this layer when both are installed.
-	optionalDeps: [richTextServicesPlugin.id],
-	services: LayoutsLive,
+	// this layer when both are installed. Same contract for the
+	// "layout" template kind: LayoutsTemplateKindLive registers into
+	// the shared TemplateKinds registry via serviceOption — absent
+	// templates.services it registers nothing.
+	optionalDeps: [richTextServicesPlugin.id, templatesServicesPlugin.id],
+	services: Layer.merge(LayoutsLive, LayoutsTemplateKindLive),
 });
 
 /**

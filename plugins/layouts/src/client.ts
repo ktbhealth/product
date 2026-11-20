@@ -94,7 +94,7 @@ export const plugins: readonly Plugin[] = [
 		id: "layouts.services",
 		meta: { keywords: ["layouts", "services"] },
 		requiredDeps: ["platform.admin"],
-		optionalDeps: ["rich-text.services"],
+		optionalDeps: ["rich-text.services", "templates.services"],
 	}),
 	layoutsChromePlugin,
 	layoutsPanelPlugin,
