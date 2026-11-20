@@ -19,9 +19,14 @@
  *   the same mechanism font-metrics.ts uses). WOFF2 is skipped: its
  *   glyf/loca transforms mean the decoded payload is not a valid sfnt,
  *   and the HarfBuzz build has no Brotli decoder for the container.
- * - Variable fonts (fvar present) are skipped entirely — gvar
- *   subsetting plus axis retention is a correctness risk the
- *   unicode-range hint already covers adequately.
+ * - Variable fonts (fvar present) subset too: the vendored HarfBuzz
+ *   build retains fvar/gvar/HVAR/avar/STAT by default (no axis
+ *   pinning), and the emitted @font-face keeps its font-level
+ *   weightRange/axes descriptors. The subset is only trusted when it
+ *   provably kept the variation tables the input carried (fvar, plus
+ *   gvar for TrueType-outline fonts and CFF2 for CFF2-outline ones) —
+ *   anything less would serve a static font under a variable
+ *   descriptor, so it degrades to "keep the full font".
  * - The subset is only emitted when it is strictly smaller than the
  *   uploaded bytes and both unicode-range descriptors fit the emit
  *   cap; every failure degrades to "keep the full font".
@@ -279,9 +284,7 @@ export const subsetCatalogFont = async (input: {
 	readonly subsetFont?: (fontData: Uint8Array, unicodes: readonly number[]) => Uint8Array | null;
 }): Promise<CatalogFontSubsetPlan | null> => {
 	const { bytes, variation } = input;
-	// Variable fonts keep the unicode-range-only path: gvar subsetting
-	// plus axis retention is out of scope for v1.
-	if (variation === null || variation.variable) return null;
+	if (variation === null) return null;
 	const coverage = variation.coverageRanges;
 	if (coverage === undefined || coverage.length === 0) return null;
 	// WOFF2 cannot be unpacked to a valid sfnt (transformed glyf/loca)
@@ -328,6 +331,19 @@ export const subsetCatalogFont = async (input: {
 	if (subset.byteLength >= bytes.byteLength) return null;
 	const subsetFlavor = sfntFlavor(subset);
 	if (subsetFlavor === null) return null;
+	// Variable fonts: only trust the subset when it provably retained
+	// the variation machinery — fvar (variation.variable implies the
+	// input carried one), plus gvar for TrueType-outline fonts and
+	// CFF2 for CFF2-outline ones (CFF2 holds its deltas inside the
+	// table itself, so there is no separate gvar to check). HarfBuzz
+	// keeps all of these by default; the check guards builds/inputs
+	// where subsetting would silently emit a static font.
+	if (variation.variable) {
+		if (findTable(subset, "fvar") === null) return null;
+		for (const tag of ["gvar", "CFF2"] as const) {
+			if (findTable(sfnt, tag) !== null && findTable(subset, tag) === null) return null;
+		}
+	}
 	return {
 		data: subset,
 		ext: subsetFlavor.ext,

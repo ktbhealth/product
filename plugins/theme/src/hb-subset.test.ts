@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
+import { findTable } from "./font-metrics.ts";
 import {
 	HB_SUBSET_IMPORT_MODULE,
 	resolveHbSubsetModule,
@@ -13,6 +14,10 @@ import {
 const wasmBytes = readFileSync(fileURLToPath(new URL("./hb-subset.wasm", import.meta.url)));
 const fixtureTtf = readFileSync(
 	fileURLToPath(new URL("./testdata/katex-size3.ttf", import.meta.url)),
+);
+// Roboto Variable — upstream hb-subset-wasm test fixture (Apache-2.0).
+const fixtureVariableTtf = readFileSync(
+	fileURLToPath(new URL("./testdata/Roboto-Variable.ABC.ttf", import.meta.url)),
 );
 
 /** Mock exports with a bump allocator over a real Memory — enough for
@@ -106,6 +111,16 @@ describe("subsetFontBytes", () => {
 		// Valid sfnt signature (0x00010000).
 		expect(out![0]).toBe(0x00);
 		expect(out![1]).toBe(0x01);
+	});
+
+	it("retains fvar/gvar when subsetting a variable font", () => {
+		// HarfBuzz subsets variation data by default (no axis pinning):
+		// fvar, gvar and the metric-variation tables survive, which is
+		// what lets font-subset.ts offer variable fonts a real subset.
+		const out = subsetFontBytes(new Uint8Array(fixtureVariableTtf), [0x41, 0x42, 0x43]);
+		expect(out).not.toBeNull();
+		expect(findTable(out!, "fvar")).not.toBeNull();
+		expect(findTable(out!, "gvar")).not.toBeNull();
 	});
 
 	it("returns null for empty inputs and invalid codepoints", () => {
