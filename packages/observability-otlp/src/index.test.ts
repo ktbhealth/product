@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
@@ -39,6 +39,12 @@ describe("otlpTelemetryDriver", () => {
 	it("is eligible with a single per-signal endpoint", () => {
 		expect(
 			otlpTelemetryDriver.when?.({ OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: `${ENDPOINT}/v1/traces` }),
+		).toBe(true);
+	});
+
+	it("is eligible with only a metrics endpoint", () => {
+		expect(
+			otlpTelemetryDriver.when?.({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${ENDPOINT}/v1/metrics` }),
 		).toBe(true);
 	});
 
@@ -106,6 +112,18 @@ const flushAll = Effect.gen(function* () {
 const countOf = <S extends { readonly count: number | bigint }>(metric: Metric.Metric<never, S>) =>
 	Effect.map(Metric.value(metric), (state) => Number(state.count));
 
+const exportErrors = () => countOf(tagged(telemetryErrors, { stage: "export" }));
+
+/** Capture console.log output — the consoleJsonLogger sink used by the
+ * fallback logger set and by warnings like telemetry.flush.timeout. */
+const captureConsole = () => {
+	const lines: string[] = [];
+	const spy = vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {
+		lines.push(args.map(String).join(" "));
+	});
+	return { lines, restore: () => spy.mockRestore() };
+};
+
 /** Poll a metric until it exceeds `baseline` — export attempts are
  * forked by the exporter, so tests wait for the first failure to land
  * instead of sleeping a fixed amount. */
@@ -139,6 +157,9 @@ describe("makeOtlpLayers", () => {
 			const logs = stub.requests.find((r) => r.url.endsWith("/v1/logs"));
 			expect(logs?.body).toContain("resourceLogs");
 			expect(logs?.body).toContain("ktb-test");
+			// Resource identity attributes from signalBase — serviceName,
+			// environment and OTEL_RESOURCE_ATTRIBUTES all land here.
+			expect(logs?.body).toContain("deployment.environment");
 
 			const traces = stub.requests.find((r) => r.url.endsWith("/v1/traces"));
 			expect(traces?.body).toContain("resourceSpans");
@@ -159,6 +180,7 @@ describe("makeOtlpLayers", () => {
 		const stub = makeStubHttp();
 		const runtime = ManagedRuntime.make(makeOtlpLayers(config, stub.layer));
 		try {
+			const errorsBefore = await runtime.runPromise(exportErrors());
 			await runtime.runPromise(
 				Effect.gen(function* () {
 					yield* Effect.logInfo("logs only");
@@ -171,7 +193,52 @@ describe("makeOtlpLayers", () => {
 			expect(urls).toContain(`${ENDPOINT}/v1/logs`);
 			expect(urls.some((u) => u.endsWith("/v1/traces"))).toBe(false);
 			expect(urls.some((u) => u.endsWith("/v1/metrics"))).toBe(false);
+			// No metrics exporter may be composed without a metrics
+			// endpoint — a wrongly-wired one would fail its export
+			// (undefined URL) and count on telemetryErrors.
+			expect(await runtime.runPromise(exportErrors())).toBe(errorsBefore);
 		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("exports only metrics and keeps console health for the other signals", async () => {
+		const config = telemetryConfigFromEnv({
+			OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${ENDPOINT}/v1/metrics`,
+		});
+		const stub = makeStubHttp();
+		const runtime = ManagedRuntime.make(makeOtlpLayers(config, stub.layer));
+		const consoleOut = captureConsole();
+		try {
+			const errorsBefore = await runtime.runPromise(exportErrors());
+			const health = await runtime.runPromise(
+				Effect.gen(function* () {
+					const t = yield* Telemetry;
+					yield* Effect.logInfo("metrics only signal");
+					yield* Metric.update(testMetric, 1);
+					yield* t.flush;
+					return yield* t.health;
+				}),
+			);
+			// Active via metrics only: logs fall back to console, traces
+			// stay off, metrics go OTLP.
+			expect(health).toEqual({ logs: "console", traces: "off", metrics: "otlp" });
+
+			const urls = stub.requests.map((r) => r.url);
+			expect(urls).toContain(`${ENDPOINT}/v1/metrics`);
+			expect(urls.some((u) => u.endsWith("/v1/logs"))).toBe(false);
+			expect(urls.some((u) => u.endsWith("/v1/traces"))).toBe(false);
+
+			// The fallback logger set still emits to console — an empty
+			// logger layer would swallow the record silently.
+			expect(consoleOut.lines.some((line) => line.includes("metrics only signal"))).toBe(true);
+
+			// No OTLP logger may be composed without a logs endpoint —
+			// its export to an undefined URL would count on
+			// telemetryErrors.
+			expect(await runtime.runPromise(exportErrors())).toBe(errorsBefore);
+		} finally {
+			consoleOut.restore();
 			await runtime.dispose();
 		}
 	});
@@ -282,6 +349,7 @@ describe("makeOtlpLayers", () => {
 		const runtime = ManagedRuntime.make(
 			makeOtlpLayers(config, Layer.succeed(HttpClient.HttpClient, hanging)),
 		);
+		const consoleOut = captureConsole();
 		try {
 			const read = () =>
 				runtime.runPromise(countOf(tagged(telemetryErrors, { stage: "flush", reason: "timeout" })));
@@ -295,7 +363,9 @@ describe("makeOtlpLayers", () => {
 				}),
 			);
 			expect(await read()).toBe(before + 1);
+			expect(consoleOut.lines.some((line) => line.includes("telemetry.flush.timeout"))).toBe(true);
 		} finally {
+			consoleOut.restore();
 			await runtime.dispose();
 		}
 	});
@@ -322,6 +392,77 @@ describe("makeOtlpLayers", () => {
 			const before = await read();
 			await runtime.runPromise(Effect.logInfo("export will get a 500"));
 			await waitForIncrease(read, before);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("exports log records emitted inside a log span with span attributes", async () => {
+		const config = telemetryConfigFromEnv({
+			OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `${ENDPOINT}/v1/logs`,
+		});
+		const stub = makeStubHttp();
+		const runtime = ManagedRuntime.make(makeOtlpLayers(config, stub.layer));
+		try {
+			await runtime.runPromise(
+				Effect.gen(function* () {
+					yield* Effect.withLogSpan(Effect.logInfo("inside a log span"), "checkout");
+					yield* flushAll;
+				}),
+			);
+			const logs = stub.requests.find((r) => r.url.endsWith("/v1/logs"));
+			expect(logs?.body).toContain("inside a log span");
+			// excludeLogSpans: false keeps the effect.log_span.* attributes
+			// that mark which log spans surrounded the record.
+			expect(logs?.body).toContain("effect.log_span.checkout");
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("counts failed export attempts (HTTP 400) on telemetryErrors", async () => {
+		const config = telemetryConfigFromEnv({
+			...fullEnv,
+			KTB_TELEMETRY_MAX_BATCH_SIZE: "1",
+			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
+		});
+		const badRequest = HttpClient.make((request) =>
+			Effect.succeed(
+				HttpClientResponse.fromWeb(request, new Response("bad request", { status: 400 })),
+			),
+		);
+		const runtime = ManagedRuntime.make(
+			makeOtlpLayers(config, Layer.succeed(HttpClient.HttpClient, badRequest)),
+		);
+		try {
+			const read = () => runtime.runPromise(exportErrors());
+			const before = await read();
+			await runtime.runPromise(Effect.logInfo("export will get a 400"));
+			await waitForIncrease(read, before);
+		} finally {
+			await runtime.dispose();
+		}
+	});
+
+	it("does not count successful export responses on telemetryErrors", async () => {
+		const config = telemetryConfigFromEnv({
+			...fullEnv,
+			KTB_TELEMETRY_MAX_BATCH_SIZE: "1",
+			KTB_TELEMETRY_SHUTDOWN_TIMEOUT_MS: "200",
+		});
+		const stub = makeStubHttp();
+		const runtime = ManagedRuntime.make(makeOtlpLayers(config, stub.layer));
+		try {
+			const before = await runtime.runPromise(exportErrors());
+			await runtime.runPromise(
+				Effect.gen(function* () {
+					yield* Effect.logInfo("export will succeed");
+					yield* Metric.update(testMetric, 1);
+					yield* flushAll;
+				}),
+			);
+			expect(stub.requests.length).toBeGreaterThan(0);
+			expect(await runtime.runPromise(exportErrors())).toBe(before);
 		} finally {
 			await runtime.dispose();
 		}
@@ -372,6 +513,30 @@ describe("makeOtlpLayers", () => {
 		} finally {
 			await runtime.dispose();
 		}
+	});
+
+	it("composes no OTLP exporters when the SDK is disabled", async () => {
+		// Endpoints still resolve verbatim when disabled — the layer
+		// conditions must gate on `active`, not on endpoint presence.
+		// Scope finalizers are an exporter's last drain chance, so the
+		// request check runs after dispose to catch a wrongly-composed
+		// exporter deterministically.
+		const config = telemetryConfigFromEnv({ ...fullEnv, OTEL_SDK_DISABLED: "true" });
+		const stub = makeStubHttp();
+		const runtime = ManagedRuntime.make(makeOtlpLayers(config, stub.layer));
+		try {
+			await runtime.runPromise(
+				Effect.gen(function* () {
+					yield* Effect.logInfo("disabled sdk exports nothing");
+					yield* Metric.update(testMetric, 1);
+					const t = yield* Telemetry;
+					yield* t.flush;
+				}),
+			);
+		} finally {
+			await runtime.dispose();
+		}
+		expect(stub.requests).toHaveLength(0);
 	});
 });
 
