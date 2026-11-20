@@ -387,7 +387,7 @@ const woffToSfnt = async (bytes: Uint8Array): Promise<Uint8Array | null> => {
 /** One stored subset sibling: file bytes plus the charset name the
  * route uses for the `<stem>-<charset>.<ext>` R2 key and the
  * disjoint unicode-range for its @font-face. */
-export interface CatalogFontSubsetFile {
+interface CatalogFontSubsetFile {
 	readonly charset: string;
 	/** Subset font bytes (bare sfnt — ttf or otf flavor). */
 	readonly data: Uint8Array;
