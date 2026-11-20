@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import type { ElementKind } from "@ktb/kernel";
+import type { JsonSchemaObject } from "@ktb/json-schema";
 
 import {
 	COLUMNS_FIELDS,
@@ -55,7 +56,7 @@ interface BlockSpec {
 	readonly description: string;
 	readonly category: ElementKind["category"];
 	readonly icon: LucideIcon;
-	readonly fields: ElementKind["fields"];
+	readonly fields: JsonSchemaObject;
 	readonly renderer: ElementKind["renderer"];
 }
 
@@ -152,6 +153,6 @@ export const BUILDER_BLOCK_KINDS: readonly ElementKind[] = BLOCK_SPECS.map((spec
 	category: spec.category,
 	icon: spec.icon,
 	renderer: spec.renderer,
-	editor: spec.fields === undefined ? undefined : schemaEditor(spec.fields),
+	editor: schemaEditor(spec.fields),
 	fields: spec.fields,
 }));

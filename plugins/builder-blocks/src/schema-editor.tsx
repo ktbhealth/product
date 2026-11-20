@@ -33,20 +33,22 @@ import { isRecord } from "./renderers.tsx";
 
 type Widget = "select" | "checkbox" | "number" | "json" | "text";
 
-const widgetFor = (schema: JsonSchema): Widget => {
-	if (typeof schema === "boolean") return "text";
-	if (schema.enum !== undefined || schema.const !== undefined) return "select";
-	if (schema.type === "boolean") return "checkbox";
-	if (schema.type === "number" || schema.type === "integer") return "number";
-	if (schema.type === "array" || schema.type === "object") return "json";
-	return "text";
-};
+interface WidgetResolution {
+	readonly widget: Widget;
+	/** Select options — populated only for `widget: "select"`. */
+	readonly options: readonly unknown[];
+}
 
-const optionsFor = (schema: JsonSchema): readonly unknown[] => {
-	if (typeof schema === "boolean") return [];
-	if (schema.enum !== undefined) return schema.enum;
-	if (schema.const !== undefined) return [schema.const];
-	return [];
+const resolveWidget = (schema: JsonSchema): WidgetResolution => {
+	if (typeof schema === "boolean") return { widget: "text", options: [] };
+	if (schema.enum !== undefined || schema.const !== undefined) {
+		return { widget: "select", options: schema.enum ?? [schema.const] };
+	}
+	if (schema.type === "boolean") return { widget: "checkbox", options: [] };
+	if (schema.type === "number" || schema.type === "integer")
+		return { widget: "number", options: [] };
+	if (schema.type === "array" || schema.type === "object") return { widget: "json", options: [] };
+	return { widget: "text", options: [] };
 };
 
 const optionLabel = (value: unknown): string =>
@@ -73,7 +75,7 @@ export const schemaEditor = (fields: JsonSchemaObject): ComponentType<ElementKin
 		return (
 			<div className="flex flex-col gap-3">
 				{Object.entries(properties).map(([key, propSchema]) => {
-					const widget = widgetFor(propSchema);
+					const { widget, options } = resolveWidget(propSchema);
 					const current = props[key];
 					const label =
 						typeof propSchema === "object" && propSchema !== null ? (propSchema.title ?? key) : key;
@@ -90,13 +92,11 @@ export const schemaEditor = (fields: JsonSchemaObject): ComponentType<ElementKin
 									value={displayString(current)}
 									onChange={(event) => {
 										const raw = event.target.value;
-										const match = optionsFor(propSchema).find(
-											(option) => optionLabel(option) === raw,
-										);
+										const match = options.find((option) => optionLabel(option) === raw);
 										set(key, match);
 									}}
 								>
-									{optionsFor(propSchema).map((option, index) => (
+									{options.map((option, index) => (
 										// oxlint-disable-next-line react/no-array-index-key -- options are positional
 										<NativeSelectOption key={index} value={optionLabel(option)}>
 											{optionLabel(option)}
@@ -117,12 +117,8 @@ export const schemaEditor = (fields: JsonSchemaObject): ComponentType<ElementKin
 									value={displayString(current)}
 									onChange={(event) => {
 										const raw = event.target.value;
-										if (raw === "") {
-											set(key, undefined);
-											return;
-										}
-										const parsed = Number(raw);
-										set(key, Number.isNaN(parsed) ? raw : parsed);
+										// type="number" only yields a valid float or ""
+										set(key, raw === "" ? undefined : Number(raw));
 									}}
 								/>
 							)}

@@ -98,10 +98,7 @@ describe("builder block renderers", () => {
 			<TableBlock
 				value={{
 					headers: ["A", "B"],
-					rows: [
-						["1", "2"],
-						["3", "4"],
-					],
+					rows: [["1", "2"], ["3", 4, null], "not-a-row"],
 				}}
 			/>,
 		);

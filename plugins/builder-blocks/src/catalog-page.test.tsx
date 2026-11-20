@@ -63,10 +63,67 @@ describe("ComponentsCatalogPage", () => {
 	it("ignores non-kind payloads and renders kinds from multiple plugins", () => {
 		const other = {
 			id: "other.plugin",
-			elementKinds: [{ kind: "rich-text", label: "Rich text" }],
+			elementKinds: [
+				null,
+				"not-an-object",
+				42,
+				{ kind: 7, label: "bad kind" },
+				{ kind: "no-label" },
+				{ kind: "rich-text", label: "Rich text" },
+			],
 		} as Plugin;
 		render(<ComponentsCatalogPage data={null} ctx={ctxWith([elementsPlugin, other])} />);
 		expect(screen.getByText("Rich text")).toBeTruthy();
 		expect(screen.getByText("10 components")).toBeTruthy();
+		// filtering also exercises the description-less kind path
+		fireEvent.change(screen.getByPlaceholderText("Filter components…"), {
+			target: { value: "rich" },
+		});
+		expect(screen.getByText("Rich text")).toBeTruthy();
+		expect(screen.getByText("1 component")).toBeTruthy();
+	});
+
+	it("groups every category lane and tolerates exotic prop schemas", () => {
+		const extra = {
+			id: "extra.plugin",
+			elementKinds: [
+				{
+					kind: "hero-image",
+					label: "Hero image",
+					description: "A media block",
+					category: "media",
+					fields: {
+						type: "object",
+						properties: {
+							src: { type: "string" },
+							anything: {},
+							flag: true,
+						},
+					},
+					renderer: ({ value }: { value: unknown }) => <div>{String(value)}</div>,
+				},
+				{
+					kind: "patient-card",
+					label: "Patient card",
+					description: "A domain block",
+					category: "domain",
+				},
+				{
+					kind: "misc",
+					label: "Misc",
+					category: "custom-lane",
+				},
+			],
+		} as Plugin;
+		render(<ComponentsCatalogPage data={null} ctx={ctxWith([extra])} />);
+		// group heading + per-card badge share the label → expect multiples
+		expect(screen.getAllByText("Media").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("Domain").length).toBeGreaterThan(0);
+		// unknown category falls back to the "Other" group
+		expect(screen.getAllByText("Other").length).toBeGreaterThan(0);
+		// prop rows cover type-less and boolean schemas (name column +
+		// title column can repeat the same string)
+		expect(screen.getAllByText("anything").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("flag").length).toBeGreaterThan(0);
 	});
 });

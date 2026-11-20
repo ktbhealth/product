@@ -186,9 +186,9 @@ export const ComponentsCatalogPage = ({ ctx }: { data: unknown; ctx: PanelPageCo
 			list.push(kind);
 			byCategory.set(key, list);
 		}
-		const ordered = [...CATEGORY_ORDER.map((c) => [c, byCategory.get(c) ?? []] as const)];
+		const ordered = CATEGORY_ORDER.map((c) => [c, byCategory.get(c) ?? []] as const);
 		for (const [key, list] of byCategory) {
-			if (!(CATEGORY_ORDER as readonly string[]).includes(key)) ordered.push([key, list] as const);
+			if (!CATEGORY_ORDER.includes(key)) ordered.push([key, list] as const);
 		}
 		return ordered.filter(([, list]) => list.length > 0);
 	}, [visible]);
