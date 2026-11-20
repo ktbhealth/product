@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { PencilIcon, PlusIcon, StarIcon, Trash2Icon } from "lucide-react";
 
@@ -67,18 +67,19 @@ export function ThemePage({ data, ctx }: { data: unknown; ctx: PanelPageContext 
 	const [notice, setNotice] = useState<string | null>(null);
 	const [deleting, setDeleting] = useState<ThemeSummary | null>(null);
 	// The editor sets this flag when it deletes an untouched draft —
-	// read once at mount (lazy init keeps this out of an effect).
-	const [toast, setToast] = useState<ToastData | null>(() => {
+	// read post-mount so SSR and the first client render agree (a
+	// lazy useState init would hydrate a toast the server never sent).
+	const [toast, setToast] = useState<ToastData | null>(null);
+	useEffect(() => {
 		try {
 			if (sessionStorage.getItem("ktb-theme-discarded") === "1") {
 				sessionStorage.removeItem("ktb-theme-discarded");
-				return { id: Date.now(), text: t.discardedToast };
+				setToast({ id: Date.now(), text: t.discardedToast });
 			}
 		} catch {
 			/* storage unavailable */
 		}
-		return null;
-	});
+	}, [t.discardedToast]);
 
 	const needle = q.trim().toLowerCase();
 	const filtered =
