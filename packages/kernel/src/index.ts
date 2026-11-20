@@ -63,6 +63,7 @@ export type {
 	BoundaryPageProps,
 	ChromeWhen,
 	ElementKind,
+	ElementKindCategory,
 	ElementKindEditorProps,
 	ElementKindsPlugin,
 	ElementKindRendererProps,

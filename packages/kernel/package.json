@@ -9,6 +9,7 @@
 		"mutate": "stryker run"
 	},
 	"devDependencies": {
+		"@ktb/json-schema": "workspace:*",
 		"@tanstack/virtual-file-routes": "1.162.0",
 		"@types/react": "^19.2.0",
 		"drizzle-orm": "^0.45.4",

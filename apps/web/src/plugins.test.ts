@@ -58,9 +58,12 @@ const clientView = (p: Plugin) => ({
 	elementKinds: (p.elementKinds ?? []).map((kind) => ({
 		kind: kind.kind,
 		label: kind.label,
+		description: kind.description ?? null,
+		category: kind.category ?? null,
 		icon: kind.icon ?? null,
 		renderer: kind.renderer ?? null,
 		editor: kind.editor ?? null,
+		fields: kind.fields ?? null,
 	})),
 });
 
