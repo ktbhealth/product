@@ -774,6 +774,15 @@ export interface GoogleFontFace {
 	readonly url: string;
 	readonly weight: number;
 	readonly format: string;
+	/** css2 subset label from the preceding `/* subset *\/` comment
+	 * ("latin", "latin-ext", "cyrillic", …); absent when the
+	 * stylesheet carries no subset comments (legacy-UA response). */
+	readonly subset?: string;
+	/** `unicode-range` descriptor copied verbatim from the @font-face —
+	 * css2 emits one per subset so a browser only fetches the files
+	 * matching the page's scripts. Stored on the emitted face;
+	 * present.ts revalidates the descriptor alphabet before CSS. */
+	readonly unicodeRange?: string;
 }
 
 /** css2 stylesheet URL for a family+weights — the consumer fetches it
@@ -786,9 +795,19 @@ export const googleFontsCssUrl = (family: string, weights: readonly number[]): s
 	return `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family.trim()).replaceAll("%20", "+")}:wght@${list}&display=swap`;
 };
 
-export const parseGoogleFontsCss = (css: string): readonly GoogleFontFace[] => {
-	// Walk @font-face blocks in order, tracking the preceding
-	// /* subset */ comment so the latin block wins per weight.
+/** One parsed @font-face block from a css2/legacy Google Fonts
+ * stylesheet — internal shape shared by both public parsers. */
+interface GoogleFontBlock {
+	readonly subset: string | null;
+	readonly weight: number;
+	readonly url: string;
+	readonly format: string;
+	readonly unicodeRange: string | undefined;
+}
+
+/** Walk @font-face blocks in order, tracking the preceding
+ * `/* subset *\/` comment; blocks missing weight or src are dropped. */
+const googleFontBlocks = (css: string): readonly GoogleFontBlock[] => {
 	const blocks: { subset: string | null; body: string }[] = [];
 	let lastSubset: string | null = null;
 	const token = /\/\*\s*([a-z-]+)\s*\*\/|@font-face\s*\{([^}]*)\}/g;
@@ -802,26 +821,60 @@ export const parseGoogleFontsCss = (css: string): readonly GoogleFontFace[] => {
 			blocks.push({ subset: lastSubset, body: match[2] ?? "" });
 		}
 	}
-	const byWeight = new Map<number, { face: GoogleFontFace; latin: boolean }>();
+	const out: GoogleFontBlock[] = [];
 	for (const block of blocks) {
 		const weight = /font-weight:\s*(\d+)/.exec(block.body);
 		const src = /src:\s*url\(([^)]+)\)/.exec(block.body);
-		const format = /format\('([^']+)'\)/.exec(block.body);
 		if (weight === null || src === null) continue;
-		const w = Number(weight[1]);
+		const unicodeRange = /unicode-range:\s*([^;]+)/.exec(block.body)?.[1]?.trim();
+		out.push({
+			subset: block.subset,
+			weight: Number(weight[1]),
+			url: src[1]!.trim(),
+			format: /format\('([^']+)'\)/.exec(block.body)?.[1] ?? "woff2",
+			unicodeRange: unicodeRange === undefined || unicodeRange === "" ? undefined : unicodeRange,
+		});
+	}
+	return out;
+};
+
+const faceOf = (block: GoogleFontBlock): GoogleFontFace => ({
+	url: block.url,
+	weight: block.weight,
+	format: block.format,
+	...(block.subset === null ? {} : { subset: block.subset }),
+	...(block.unicodeRange === undefined ? {} : { unicodeRange: block.unicodeRange }),
+});
+
+/**
+ * EVERY @font-face in a modern css2 response, in document order —
+ * css2 emits one block per unicode-range subset per weight (latin,
+ * latin-ext, cyrillic, greek, vietnamese, …). The theme.font consumer
+ * self-hosts each subset file and stamps the descriptor on the face
+ * so the browser downloads only the scripts a page actually uses —
+ * the same delivery the <link> path gets for free.
+ */
+export const parseGoogleFontsCssSubsets = (css: string): readonly GoogleFontFace[] =>
+	googleFontBlocks(css).map(faceOf);
+
+export const parseGoogleFontsCss = (css: string): readonly GoogleFontFace[] => {
+	// Latin-only view for callers that want one file per weight (the
+	// legacy-UA metrics probe): first latin block wins per weight,
+	// otherwise the first block; sorted by weight. Subset/unicode-range
+	// fields are stripped — this is the "one face per weight" shape.
+	const byWeight = new Map<number, { face: GoogleFontFace; latin: boolean }>();
+	for (const block of googleFontBlocks(css)) {
 		const isLatin = block.subset === "latin";
-		const existing = byWeight.get(w);
+		const face: GoogleFontFace = {
+			url: block.url,
+			weight: block.weight,
+			format: block.format,
+		};
+		const existing = byWeight.get(block.weight);
 		// First block wins unless a later latin block replaces a
 		// non-latin pick for the same weight.
 		if (existing === undefined || (isLatin && !existing.latin)) {
-			byWeight.set(w, {
-				face: {
-					url: src[1]!.trim(),
-					weight: w,
-					format: format?.[1] ?? "woff2",
-				},
-				latin: isLatin,
-			});
+			byWeight.set(block.weight, { face, latin: isLatin });
 		}
 	}
 	return [...byWeight.values()].map((entry) => entry.face).sort((a, b) => a.weight - b.weight);
