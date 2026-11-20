@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
 /**
  * Templates: admin-saved snapshots of plugin-owned content, keyed by

@@ -224,6 +224,7 @@ export type I18nKey =
 	| "app.panel_nav_queue"
 	| "app.panel_nav_rich_text"
 	| "app.panel_nav_schemas"
+	| "app.panel_nav_templates"
 	| "app.panel_nav_users"
 	| "app.persona_business"
 	| "app.persona_developers"
@@ -1260,10 +1261,13 @@ export type I18nKey =
 	| "layouts.newLayout"
 	| "layouts.noSections"
 	| "layouts.save"
+	| "layouts.saveAsTemplate"
 	| "layouts.saved"
 	| "layouts.saveFailed"
 	| "layouts.saving"
 	| "layouts.sectionsPreview"
+	| "layouts.templateSaved"
+	| "layouts.templateSaveFailed"
 	| "layouts.title"
 	| "machines.actionFailed"
 	| "machines.add"
@@ -1894,6 +1898,41 @@ export type I18nKey =
 	| "sign-in-page.submitUp"
 	| "sign-in-page.tabIn"
 	| "sign-in-page.tabUp"
+	| "templates.cancel"
+	| "templates.colActions"
+	| "templates.colCreatedBy"
+	| "templates.colDescription"
+	| "templates.colName"
+	| "templates.colUpdated"
+	| "templates.create"
+	| "templates.delete"
+	| "templates.deleteBody"
+	| "templates.deleteConfirm"
+	| "templates.deleted"
+	| "templates.deleteFailed"
+	| "templates.deleteTitle"
+	| "templates.description"
+	| "templates.edit"
+	| "templates.emptyDescription"
+	| "templates.emptyTitle"
+	| "templates.fieldDescription"
+	| "templates.fieldKind"
+	| "templates.fieldName"
+	| "templates.fieldPayload"
+	| "templates.invalidJson"
+	| "templates.loadFailed"
+	| "templates.namePlaceholder"
+	| "templates.newTemplate"
+	| "templates.noKinds"
+	| "templates.payloadHint"
+	| "templates.save"
+	| "templates.saveAsBody"
+	| "templates.saveAsPrompt"
+	| "templates.saveAsTitle"
+	| "templates.saved"
+	| "templates.saveFailed"
+	| "templates.saving"
+	| "templates.title"
 	| "tenant.addMember"
 	| "tenant.cancel"
 	| "tenant.colActions"
@@ -2492,6 +2531,7 @@ export interface I18nTypedT {
 	(key: "app.panel_nav_queue"): Effect.Effect<string>;
 	(key: "app.panel_nav_rich_text"): Effect.Effect<string>;
 	(key: "app.panel_nav_schemas"): Effect.Effect<string>;
+	(key: "app.panel_nav_templates"): Effect.Effect<string>;
 	(key: "app.panel_nav_users"): Effect.Effect<string>;
 	(key: "app.persona_business"): Effect.Effect<string>;
 	(key: "app.persona_developers"): Effect.Effect<string>;
@@ -3938,10 +3978,13 @@ export interface I18nTypedT {
 	(key: "layouts.newLayout"): Effect.Effect<string>;
 	(key: "layouts.noSections"): Effect.Effect<string>;
 	(key: "layouts.save"): Effect.Effect<string>;
+	(key: "layouts.saveAsTemplate"): Effect.Effect<string>;
 	(key: "layouts.saved"): Effect.Effect<string>;
 	(key: "layouts.saveFailed"): Effect.Effect<string>;
 	(key: "layouts.saving"): Effect.Effect<string>;
 	(key: "layouts.sectionsPreview"): Effect.Effect<string>;
+	(key: "layouts.templateSaved"): Effect.Effect<string>;
+	(key: "layouts.templateSaveFailed"): Effect.Effect<string>;
 	(key: "layouts.title"): Effect.Effect<string>;
 	(key: "machines.actionFailed"): Effect.Effect<string>;
 	(key: "machines.add"): Effect.Effect<string>;
@@ -4754,6 +4797,51 @@ export interface I18nTypedT {
 	(key: "sign-in-page.submitUp"): Effect.Effect<string>;
 	(key: "sign-in-page.tabIn"): Effect.Effect<string>;
 	(key: "sign-in-page.tabUp"): Effect.Effect<string>;
+	(key: "templates.cancel"): Effect.Effect<string>;
+	(key: "templates.colActions"): Effect.Effect<string>;
+	(key: "templates.colCreatedBy"): Effect.Effect<string>;
+	(key: "templates.colDescription"): Effect.Effect<string>;
+	(key: "templates.colName"): Effect.Effect<string>;
+	(key: "templates.colUpdated"): Effect.Effect<string>;
+	(key: "templates.create"): Effect.Effect<string>;
+	(key: "templates.delete"): Effect.Effect<string>;
+	(
+		key: "templates.deleteBody",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "templates.deleteConfirm"): Effect.Effect<string>;
+	(key: "templates.deleted"): Effect.Effect<string>;
+	(key: "templates.deleteFailed"): Effect.Effect<string>;
+	(key: "templates.deleteTitle"): Effect.Effect<string>;
+	(key: "templates.description"): Effect.Effect<string>;
+	(key: "templates.edit"): Effect.Effect<string>;
+	(key: "templates.emptyDescription"): Effect.Effect<string>;
+	(key: "templates.emptyTitle"): Effect.Effect<string>;
+	(key: "templates.fieldDescription"): Effect.Effect<string>;
+	(key: "templates.fieldKind"): Effect.Effect<string>;
+	(key: "templates.fieldName"): Effect.Effect<string>;
+	(key: "templates.fieldPayload"): Effect.Effect<string>;
+	(key: "templates.invalidJson"): Effect.Effect<string>;
+	(key: "templates.loadFailed"): Effect.Effect<string>;
+	(key: "templates.namePlaceholder"): Effect.Effect<string>;
+	(key: "templates.newTemplate"): Effect.Effect<string>;
+	(key: "templates.noKinds"): Effect.Effect<string>;
+	(key: "templates.payloadHint"): Effect.Effect<string>;
+	(key: "templates.save"): Effect.Effect<string>;
+	(
+		key: "templates.saveAsBody",
+		params: {
+			name: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "templates.saveAsPrompt"): Effect.Effect<string>;
+	(key: "templates.saveAsTitle"): Effect.Effect<string>;
+	(key: "templates.saved"): Effect.Effect<string>;
+	(key: "templates.saveFailed"): Effect.Effect<string>;
+	(key: "templates.saving"): Effect.Effect<string>;
+	(key: "templates.title"): Effect.Effect<string>;
 	(key: "tenant.addMember"): Effect.Effect<string>;
 	(key: "tenant.cancel"): Effect.Effect<string>;
 	(key: "tenant.colActions"): Effect.Effect<string>;
