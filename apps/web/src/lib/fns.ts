@@ -390,7 +390,7 @@ const pageData = async (
 	search?: Record<string, unknown>,
 ): Promise<PageDataResult> => {
 	// findPage resolves exact paths first, then the longest matching
-	// "/*" wildcard subtree — DB-backed pages (custom-pages plugin)
+	// "/*" wildcard subtree — DB-backed pages (pages plugin)
 	// register one wildcard descriptor that serves every path its
 	// guard/loader resolves.
 	const entry = findPage(shell === "portal" ? portalPages : appPages, path);

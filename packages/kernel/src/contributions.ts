@@ -204,13 +204,13 @@ export interface PanelPage extends PageLifecycle {
  * among wildcard entries the LONGEST matching base wins, ties break by
  * plugin topo order. This is the seam runtime/DB-driven pages use —
  * one wildcard descriptor serves every path its loader resolves (e.g.
- * the custom-pages plugin's "/*" backed by a DB lookup). `guard` and
+ * the pages plugin's "/*" backed by a DB lookup). `guard` and
  * `loader` receive the REQUESTED path so the descriptor can resolve
  * which entity the path names; signatures taking no argument remain
  * valid (the argument is simply ignored). `loader` may also declare an
  * optional second `search` parameter receiving the request's parsed
  * URL search params (undefined when the host route supplies none) —
- * pages that validate URL params (e.g. schema-bound custom pages)
+ * pages that validate URL params (e.g. schema-bound DB pages)
  * clean them inside the loader so SSR and client navigations share
  * the result; `(path) =>` loaders stay valid and simply ignore it. */
 export interface Page extends PageLifecycle {
@@ -586,7 +586,7 @@ export interface ElementKindsPlugin extends PluginBase, ForbiddenContributions<"
  * unique across ALL page contributions (panel.pages and pages
  * together) — first in topo order wins, later duplicates are dropped
  * with a dev warning. This is also the seam runtime/DB-driven pages
- * (e.g. a future custom-pages plugin) plug into. */
+ * (e.g. the pages plugin) plug into. */
 export interface PagesPlugin extends PluginBase, ForbiddenContributions<"pages"> {
 	readonly pages: ReadonlyArray<Page>;
 }

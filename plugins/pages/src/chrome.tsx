@@ -10,14 +10,14 @@ const NAV_LINK =
 
 /**
  * App-header nav contributed to `app.header.nav` (P-060/T-083): renders
- * one link per published `custom_pages` row flagged `showInNav`, fetched
+ * one link per published `pages` row flagged `showInNav`, fetched
  * through the plugin's public server fn — nav membership is data, not
  * code. Renders nothing while loading or when the list is empty (the
  * chrome slot collapses cleanly). The whole contribution is already
  * filtered out when the plugin is disabled; the fn re-checks
  * `pages.render` enabled-state server-side as a backstop.
  */
-export function CustomNavLinks(_props: ChromeProps) {
+export function PageNavLinks(_props: ChromeProps) {
 	const [pages, setPages] = useState<readonly NavPageWire[]>([]);
 	useEffect(() => {
 		let cancelled = false;
@@ -36,7 +36,7 @@ export function CustomNavLinks(_props: ChromeProps) {
 	return (
 		<>
 			{pages.map((page) => (
-				// Custom paths aren't in the typed route tree — the cast keeps
+				// DB-authored paths aren't in the typed route tree — the cast keeps
 				// the link type-safe while the splat dispatcher resolves the
 				// real path at runtime.
 				<Link key={page.path} to={page.path as "/"} className={NAV_LINK}>

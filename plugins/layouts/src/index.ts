@@ -17,7 +17,7 @@ import { Layouts, LayoutsLive } from "./service.ts";
  * documents). The console lives at /platform/layouts (panel
  * contribution); `Layouts.getById`/`resolveForPage` are the public
  * reads other plugins (the pages plugin rendering
- * `custom_pages.layout_id`) use — every admin method re-checks
+ * `pages.layout_id`) use — every admin method re-checks
  * PlatformAdmin inside the service.
  */
 

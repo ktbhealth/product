@@ -235,7 +235,7 @@ describe("root document", () => {
 		state.user = { name: "Dra. Bia", email: "bia@ktb.test", patientOnly: false };
 		const html = render();
 		// Domain navigation lives in the portals — the site header keeps
-		// only brand, custom-page links, locale and the session menu.
+		// only brand, DB page links, locale and the session menu.
 		expect(html).not.toContain('href="/patients"');
 		expect(html).not.toContain('href="/consultations"');
 		expect(html).not.toContain('href="/consultations/new"');

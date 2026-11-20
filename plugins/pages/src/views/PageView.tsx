@@ -2,14 +2,14 @@ import type { PageContext } from "@ktb/kernel";
 import { RichTextView } from "@ktb/rich-text/views";
 
 /** Wire shape the wildcard loader returns — the published
- * `custom_pages` row plus `content`, the resolved rich-text document
+ * `pages` row plus `content`, the resolved rich-text document
  * value (Plate node array) or null, and `layoutSections`, the resolved
  * layout sections (ordered `{id, title, content}` records) or null.
  * Only the rendered fields are required; the rest (id, flags,
  * timestamps) rides along unused. `search` is the loader-cleaned URL
  * search record — present only on schema-bound pages
  * (`searchSchemaId` set), absent otherwise. */
-export interface CustomPageData {
+export interface PageData {
 	readonly path?: unknown;
 	readonly title?: unknown;
 	readonly content?: unknown;
@@ -60,7 +60,7 @@ const asPage = (
 	search: Record<string, unknown> | null;
 } | null => {
 	if (typeof data !== "object" || data === null) return null;
-	const d = data as CustomPageData;
+	const d = data as PageData;
 	if (typeof d.title !== "string") return null;
 	// `content` is the parsed rich-text value — an array of nodes, or
 	// null/absent when the page has no document (or the service is off).
@@ -74,7 +74,7 @@ const asPage = (
 };
 
 /**
- * `pages` component for DB-stored custom pages (T-083): every custom
+ * `pages` component for DB-stored pages (T-083): every DB
  * page renders through this single component — the wildcard descriptor
  * at "/*" supplies per-path `data` from the loader. The body is either
  * the layout's ordered sections (each a title + the rich-text document
@@ -85,13 +85,13 @@ const asPage = (
  * plugin copy to localize.
  *
  * When the row binds a `searchSchemaId`, the loader has already
- * validated the URL search through `CustomPages.validatedSearch` —
+ * validated the URL search through `Pages.validatedSearch` —
  * the cleaned params arrive as `data.search` and are exposed as
  * `data-validated-search` on the article, the consumption seam for
  * schema-driven page params. Pages without a schema carry no `search`
  * field and skip the attribute.
  */
-export function CustomPageView({ data }: { data: unknown; ctx: PageContext }) {
+export function PageView({ data }: { data: unknown; ctx: PageContext }) {
 	const page = asPage(data);
 	if (page === null) return null;
 	return (

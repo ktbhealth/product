@@ -4,8 +4,8 @@ import { richText } from "@ktb/rich-text/schema";
 import { schemas } from "@ktb/schemas/schema";
 
 /**
- * Custom pages (T-083): admin-authored, DB-stored pages rendered by
- * this plugin through the generic `pages` contribution — one "/*"
+ * Pages (T-083): admin-authored, DB-stored pages rendered by this
+ * plugin through the generic `pages` contribution — one "/*"
  * wildcard descriptor whose guard/loader resolve `path` against this
  * table at request time. The page body is not stored here: `richTextId`
  * references a `rich_text` document (@ktb/rich-text) whose parsed value
@@ -24,8 +24,8 @@ import { schemas } from "@ktb/schemas/schema";
  * schema by the generated packages/db/src/schema.gen.ts — consumers
  * keep importing it from `@ktb/db/schema` (or `@ktb/pages/schema`).
  */
-export const customPage = sqliteTable(
-	"custom_pages",
+export const page = sqliteTable(
+	"pages",
 	{
 		id: integer().primaryKey({ autoIncrement: true }),
 		path: text().notNull(),
@@ -40,10 +40,10 @@ export const customPage = sqliteTable(
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 	},
 	(table) => [
-		uniqueIndex("custom_pages_path_idx").on(table.path),
-		index("custom_pages_nav_idx").on(table.published, table.showInNav),
+		uniqueIndex("pages_path_idx").on(table.path),
+		index("pages_nav_idx").on(table.published, table.showInNav),
 	],
 );
 
-export type CustomPage = typeof customPage.$inferSelect;
-export type CustomPageInsert = typeof customPage.$inferInsert;
+export type PageRow = typeof page.$inferSelect;
+export type PageRowInsert = typeof page.$inferInsert;

@@ -2589,7 +2589,7 @@ export const DocumentStoreLive = Layer.effect(
 
 /**
  * Test-only DDL mirroring the document-store migration — same
- * convention as CUSTOM_PAGES_TEST_DDL / I18N_TEST_DDL. Never used by
+ * convention as PAGES_TEST_DDL / I18N_TEST_DDL. Never used by
  * production code. `groups` must exist for the tenant_id FK — tests
  * create a minimal groups stub alongside.
  */

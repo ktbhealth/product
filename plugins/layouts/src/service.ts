@@ -28,7 +28,7 @@ export type { LayoutRow } from "./schema.ts";
  * Admin methods re-check the `PlatformAdmin` gate inside the service
  * (defense in depth — the panel guard and the server fns gate too);
  * `getById` and `resolveForPage` are public reads other plugins (the
- * pages plugin rendering `custom_pages.layout_id`) use — they need no
+ * pages plugin rendering `pages.layout_id`) use — they need no
  * principal.
  */
 

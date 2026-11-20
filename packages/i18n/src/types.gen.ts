@@ -1414,7 +1414,7 @@ export type I18nKey =
 	| "pages.navShown"
 	| "pages.newPage"
 	| "pages.pathHint"
-	| "pages.providedCustom"
+	| "pages.providedDatabase"
 	| "pages.save"
 	| "pages.saveFailed"
 	| "pages.saving"
@@ -4149,7 +4149,7 @@ export interface I18nTypedT {
 	(key: "pages.navShown"): Effect.Effect<string>;
 	(key: "pages.newPage"): Effect.Effect<string>;
 	(key: "pages.pathHint"): Effect.Effect<string>;
-	(key: "pages.providedCustom"): Effect.Effect<string>;
+	(key: "pages.providedDatabase"): Effect.Effect<string>;
 	(key: "pages.save"): Effect.Effect<string>;
 	(key: "pages.saveFailed"): Effect.Effect<string>;
 	(key: "pages.saving"): Effect.Effect<string>;

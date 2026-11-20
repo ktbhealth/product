@@ -2,9 +2,9 @@ import { FileTextIcon } from "lucide-react";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
 
-import { CustomNavLinks } from "./chrome.tsx";
+import { PageNavLinks } from "./chrome.tsx";
 import { PagesAdminConsolePage } from "./platform-page.tsx";
-import { CustomPageView } from "./views/CustomPageView.tsx";
+import { PageView } from "./views/PageView.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -38,7 +38,7 @@ export const pagesChromePlugin = definePlugin({
 		{
 			id: "pages.nav",
 			region: "app.header.nav",
-			content: { kind: "component", component: CustomNavLinks },
+			content: { kind: "component", component: PageNavLinks },
 		},
 		// Mirrors the dialogAction entries in ./index.ts — the delete
 		// dialog collects them from the client registry via
@@ -81,10 +81,10 @@ export const pagesRenderPlugin = definePlugin({
 	optionalDeps: ["rich-text.services", "layouts.services"],
 	pages: [
 		{
-			id: "pages.custom",
+			id: "pages.db",
 			path: "/*",
 			context: "app",
-			component: CustomPageView,
+			component: PageView,
 		},
 	],
 });

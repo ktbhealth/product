@@ -155,7 +155,7 @@ export const collectPages = (registry: readonly Plugin[]): PageRegistry => {
  * chrome `when` paths) whose base prefixes `path` — are considered, and
  * the LONGEST matching base wins. Ties keep the first entry in map
  * (topo) order. This is what lets a single DB-backed descriptor (e.g.
- * the custom-pages plugin's "/*") serve every path it resolves.
+ * the pages plugin's "/*") serve every path it resolves.
  */
 export const findPage = <V>(map: ReadonlyMap<string, V>, path: string): V | undefined => {
 	const exact = map.get(path);

@@ -11,19 +11,19 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
-	CUSTOM_PAGES_TEST_DDL,
-	CustomPages,
-	CustomPagesLive,
+	PAGES_TEST_DDL,
+	Pages,
+	PagesLive,
 	DuplicatePagePath,
 	InvalidPageInput,
 	InvalidPagePath,
 	PageNotFound,
 	normalizePagePath,
 	pagesRichTextDeleteHook,
-	type CustomPageInput,
+	type PageInput,
 } from "./service.ts";
 
-import { customPage } from "./schema.ts";
+import { page } from "./schema.ts";
 
 describe("normalizePagePath", () => {
 	it("accepts and canonicalizes valid paths", () => {
@@ -55,36 +55,35 @@ describe("normalizePagePath", () => {
 	});
 });
 
-describe("CustomPagesLive", () => {
-	let runtime: ManagedRuntime.ManagedRuntime<CustomPages, never>;
+describe("PagesLive", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<Pages, never>;
 
 	beforeAll(() => {
-		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		const db = makeDb(makeD1(PAGES_TEST_DDL));
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
-		runtime = ManagedRuntime.make(CustomPagesLive.pipe(Layer.provide(deps)));
+		runtime = ManagedRuntime.make(PagesLive.pipe(Layer.provide(deps)));
 	});
 
 	afterAll(() => runtime.dispose());
 
 	const asUser = <A, E>(
 		userId: string | null,
-		effect: Effect.Effect<A, E, CustomPages>,
+		effect: Effect.Effect<A, E, Pages>,
 		email?: string,
 	) =>
 		runtime.runPromise(
 			Effect.provideService(effect, Principal, userId === null ? null : { userId, email }),
 		);
 
-	const call = <A, E>(f: (p: CustomPages["Service"]) => Effect.Effect<A, E>) =>
-		Effect.flatMap(CustomPages, f);
+	const call = <A, E>(f: (p: Pages["Service"]) => Effect.Effect<A, E>) => Effect.flatMap(Pages, f);
 
-	const admin = <A, E>(f: (p: CustomPages["Service"]) => Effect.Effect<A, E>) =>
+	const admin = <A, E>(f: (p: Pages["Service"]) => Effect.Effect<A, E>) =>
 		asUser("admin-1", call(f), "admin@x.com");
 
-	const input = (over: Partial<CustomPageInput> = {}): CustomPageInput => ({
+	const input = (over: Partial<PageInput> = {}): PageInput => ({
 		path: "/about",
 		title: "About",
 		...over,
@@ -376,11 +375,11 @@ describe("CustomPagesLive", () => {
 			Layer.succeed(Db, makeDb(emptySql)),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
-		const rt = ManagedRuntime.make(CustomPagesLive.pipe(Layer.provide(deps)));
+		const rt = ManagedRuntime.make(PagesLive.pipe(Layer.provide(deps)));
 		try {
 			const row = await rt.runPromise(
 				Effect.gen(function* () {
-					const pages = yield* CustomPages;
+					const pages = yield* Pages;
 					return yield* pages.adminCreate(input());
 				}).pipe(
 					Effect.provideService(Principal, {
@@ -441,15 +440,15 @@ describe("CustomPagesLive", () => {
 	});
 });
 
-describe("CustomPages.validatedSearch", () => {
+describe("Pages.validatedSearch", () => {
 	const depsFor = (schemasLayer?: Layer.Layer<Schemas>) => {
-		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		const db = makeDb(makeD1(PAGES_TEST_DDL));
 		const base = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
 		const all = schemasLayer === undefined ? base : Layer.mergeAll(base, schemasLayer);
-		return { db, layer: CustomPagesLive.pipe(Layer.provide(all)) };
+		return { db, layer: PagesLive.pipe(Layer.provide(all)) };
 	};
 
 	// `validate` is typed loosely on purpose: stubs exercise failure and
@@ -471,7 +470,7 @@ describe("CustomPages.validatedSearch", () => {
 
 	const seed = async (db: ReturnType<typeof makeDb>) => {
 		const now = new Date();
-		await db.insert(customPage).values([
+		await db.insert(page).values([
 			{
 				path: "/search",
 				title: "Search",
@@ -511,7 +510,7 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/plain", { anything: "goes" })),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/plain", { anything: "goes" })),
 			);
 			expect(out).toEqual({ anything: "goes" });
 		} finally {
@@ -526,10 +525,10 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const missing = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/missing", { a: 1 })),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/missing", { a: 1 })),
 			);
 			const draft = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/draft-search/", { a: 1 })),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/draft-search/", { a: 1 })),
 			);
 			expect(missing).toEqual({ a: 1 });
 			expect(draft).toEqual({ a: 1 });
@@ -545,7 +544,7 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", { q: "x" })),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/search", { q: "x" })),
 			);
 			expect(out).toEqual({ q: "x" });
 		} finally {
@@ -561,7 +560,7 @@ describe("CustomPages.validatedSearch", () => {
 		try {
 			const search = { q: "x", page: "2" };
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", search)),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/search", search)),
 			);
 			expect(out).toEqual(search);
 			expect(validate).toHaveBeenCalledWith(3, search);
@@ -587,7 +586,7 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) =>
+				Effect.flatMap(Pages, (p) =>
 					p.validatedSearch("/search", {
 						filter: { tag: 1 },
 						items: [{ id: "x" }],
@@ -621,9 +620,7 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) =>
-					p.validatedSearch("/search", { plain: "drop", q: "keep" }),
-				),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/search", { plain: "drop", q: "keep" })),
 			);
 			expect(out).toEqual({ q: "keep" });
 		} finally {
@@ -643,7 +640,7 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", { a: 1, b: 2 })),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/search", { a: 1, b: 2 })),
 			);
 			expect(out).toEqual({ a: 1, b: 2 });
 		} finally {
@@ -658,7 +655,7 @@ describe("CustomPages.validatedSearch", () => {
 		const rt = ManagedRuntime.make(layer as Layer.Layer<unknown, never, never>);
 		try {
 			const out = await rt.runPromise(
-				Effect.flatMap(CustomPages, (p) => p.validatedSearch("/search", { q: "x" })),
+				Effect.flatMap(Pages, (p) => p.validatedSearch("/search", { q: "x" })),
 			);
 			expect(out).toEqual({ q: "x" });
 		} finally {
@@ -672,8 +669,8 @@ describe("pagesRichTextDeleteHook", () => {
 	let hook: RichTextDeleteHook;
 	const now = new Date();
 
-	const insertPage = (over: Partial<typeof customPage.$inferInsert> = {}) =>
-		db.insert(customPage).values({
+	const insertPage = (over: Partial<typeof page.$inferInsert> = {}) =>
+		db.insert(page).values({
 			path: "/x",
 			title: "X",
 			published: false,
@@ -684,10 +681,10 @@ describe("pagesRichTextDeleteHook", () => {
 			...over,
 		});
 
-	const allPages = () => db.select().from(customPage);
+	const allPages = () => db.select().from(page);
 
 	beforeAll(() => {
-		db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		db = makeDb(makeD1(PAGES_TEST_DDL));
 		hook = pagesRichTextDeleteHook(db);
 	});
 
@@ -764,7 +761,7 @@ describe("pagesRichTextDeleteHook", () => {
 		expect(row.published).toBe(true);
 	});
 
-	it("CustomPagesLive registers the hook when the registry is provided", async () => {
+	it("PagesLive registers the hook when the registry is provided", async () => {
 		let captured: RichTextDeleteHook | undefined;
 		const hooks = RichTextDeleteHooks.of({
 			register: (h) => {
@@ -779,10 +776,10 @@ describe("pagesRichTextDeleteHook", () => {
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 			Layer.succeed(RichTextDeleteHooks, hooks),
 		);
-		const rt = ManagedRuntime.make(CustomPagesLive.pipe(Layer.provide(deps)));
+		const rt = ManagedRuntime.make(PagesLive.pipe(Layer.provide(deps)));
 		try {
 			// Building the layer runs the registration.
-			await rt.runPromise(Effect.flatMap(CustomPages, (p) => p.navList()));
+			await rt.runPromise(Effect.flatMap(Pages, (p) => p.navList()));
 			expect(captured?.id).toBe("pages");
 			// The registered hook is live against the same db.
 			await insertPage({ path: "/reg", title: "Reg", richTextId: 21 });
@@ -792,14 +789,14 @@ describe("pagesRichTextDeleteHook", () => {
 		}
 	});
 
-	it("CustomPagesLive builds without the registry (serviceOption → None)", async () => {
+	it("PagesLive builds without the registry (serviceOption → None)", async () => {
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
-		const rt = ManagedRuntime.make(CustomPagesLive.pipe(Layer.provide(deps)));
+		const rt = ManagedRuntime.make(PagesLive.pipe(Layer.provide(deps)));
 		try {
-			const rows = await rt.runPromise(Effect.flatMap(CustomPages, (p) => p.navList()));
+			const rows = await rt.runPromise(Effect.flatMap(Pages, (p) => p.navList()));
 			expect(Array.isArray(rows)).toBe(true);
 		} finally {
 			await rt.dispose();

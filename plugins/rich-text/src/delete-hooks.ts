@@ -17,7 +17,7 @@ import * as Ref from "effect/Ref";
  *   action the admin picked; each hook no-ops on action ids it does
  *   not own, so one dialog choice can cascade through several plugins.
  *
- * The DB foreign key on `custom_pages.rich_text_id` stays the
+ * The DB foreign key on `pages.rich_text_id` stays the
  * backstop: a hook that fails or is absent (plugin disabled) leaves
  * the row protected and the delete fails.
  */
