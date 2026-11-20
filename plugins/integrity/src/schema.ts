@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
 /**
  * Append-only, entity-generic record versions (PL-007 F1, T-138): one

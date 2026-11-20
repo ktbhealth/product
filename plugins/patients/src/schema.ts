@@ -1,11 +1,6 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-// Relative import on purpose: drizzle-kit loads the composed schema
-// through a CJS resolver that cannot follow `@ktb/*` package
-// specifiers, and the generated packages/db/src/schema.gen.ts reaches
-// plugin sources by relative path anyway — keep the FK target on the
-// same module resolution.
-import { groups } from "../../groups/src/schema.ts";
+import { groups } from "@ktb/groups/schema";
 
 // FHIR R4 Patient + RNDS/BR Core extensions; codes and labels live in
 // @ktb/patients/record. Everything beyond `name` is nullable so

@@ -13,6 +13,7 @@
 		"@ktb/audit": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/db": "workspace:*",
+		"@ktb/groups": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/platform": "workspace:*",
 		"@ktb/server-fns": "workspace:*",

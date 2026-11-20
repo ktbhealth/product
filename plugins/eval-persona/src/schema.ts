@@ -1,11 +1,8 @@
-import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
-// Relative imports on purpose: drizzle-kit loads the composed schema
-// through a CJS resolver that cannot follow `@ktb/*` package
-// specifiers — same pattern as plugins/eval-validator/src/schema.ts.
-import { aiEndpoint } from "../../ai-provider/src/schema.ts";
-import { doctors } from "../../doctors/src/schema.ts";
-import { patients } from "../../patients/src/schema.ts";
+import { aiEndpoint } from "@ktb/ai-provider/schema";
+import { doctors } from "@ktb/doctors/schema";
+import { patients } from "@ktb/patients/schema";
 
 /**
  * Eval pipeline tables — steps 1 and 2 of the linear eval flow

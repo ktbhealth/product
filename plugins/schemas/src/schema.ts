@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
  * Managed JSON Schemas: admin-authored draft-2020-12 subset schemas

@@ -1,10 +1,6 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-// Relative import on purpose (same convention as plugins/patients):
-// drizzle-kit loads the composed schema through a CJS resolver that
-// cannot follow `@ktb/*` specifiers, and schema.gen.ts reaches plugin
-// sources by relative path anyway.
-import { groups } from "../../groups/src/schema.ts";
+import { groups } from "@ktb/groups/schema";
 
 /**
  * Document store tables (P-089): plugin-contributed data collections

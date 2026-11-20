@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
  * Rich-text documents: admin-authored documents edited with the Plate-based

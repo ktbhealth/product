@@ -1,10 +1,6 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-// Relative import — same rationale as @ktb/vault and @ktb/machines:
-// @ktb/groups depends on @ktb/db transitively and @ktb/db's generated
-// schema re-exports this module, so a package-specifier import would
-// cycle. The FK target is identical either way.
-import { groups } from "../../groups/src/schema.ts";
+import { groups } from "@ktb/groups/schema";
 
 /**
  * AI model catalog (P-098 WS-B) — the registry of models consumers

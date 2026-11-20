@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
 /** What the invitee is being let into — picks the copy and where the
  * accept screen leads. */

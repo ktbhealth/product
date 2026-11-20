@@ -1,11 +1,7 @@
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
-// Relative import — same rationale as @ktb/audit: @ktb/groups depends
-// on @ktb/db transitively and @ktb/db's generated schema re-exports
-// this module, so a package-specifier import would cycle. The FK
-// target is identical either way.
-import { groups } from "../../groups/src/schema.ts";
-import { user } from "../../../packages/db/src/auth.ts";
+import { user } from "@ktb/db/auth";
+import { groups } from "@ktb/groups/schema";
 
 /**
  * Clinic member-device key registrations (PL-007 F2, T-142): one row

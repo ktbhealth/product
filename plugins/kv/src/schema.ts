@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 
-import { index, integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
 /**
  * kv_entries (P-090) — the TTL'd, namespaced key/value store plugins

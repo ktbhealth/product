@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "../../../packages/db/src/table.ts";
+import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
  * `ai_endpoint` — a generative provider any AI-capable plugin can

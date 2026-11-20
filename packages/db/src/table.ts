@@ -8,7 +8,9 @@
  * are what matters, not the specifier they resolve through.
  *
  * Schema files that drizzle-kit loads (plugins/*\/src/schema.ts)
- * reach this module by relative path on purpose — see the import
- * comments in those files.
+ * import this module as `@ktb/db/table` — drizzle-kit's tsx loader
+ * resolves workspace package specifiers fine (T-143); only
+ * undeclared deps fail, so every FK-target plugin is a real
+ * `dependencies` edge in the importer's package.json.
  */
 export * from "drizzle-orm/sqlite-core";

@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text, uniqueIndex } from "../../../packages/db/src/table.ts";
+import { integer, sqliteTable, text, uniqueIndex } from "@ktb/db/table";
 
 /**
  * Generic groups: clinics, orgs, cohorts or any custom grouping. `kind`
