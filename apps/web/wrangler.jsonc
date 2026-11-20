@@ -40,9 +40,15 @@
 	// outbound agent socket. Local emulation only — the production
 	// binding is declared in alchemy.run.ts.
 	"durable_objects": {
-		"bindings": [{ "name": "ACP_BRIDGE", "class_name": "AcpBridge" }],
+		"bindings": [
+			{ "name": "ACP_BRIDGE", "class_name": "AcpBridge" },
+			{ "name": "SCHEDULER", "class_name": "SchedulerDo" },
+		],
 	},
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AcpBridge"] }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["AcpBridge"] },
+		{ "tag": "v2", "new_sqlite_classes": ["SchedulerDo"] },
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",
