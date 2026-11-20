@@ -24,6 +24,7 @@ export interface PagesMessages {
 	readonly newPage: string;
 	readonly edit: string;
 	readonly view: string;
+	readonly openInBuilder: string;
 	readonly delete: string;
 	readonly save: string;
 	readonly cancel: string;
@@ -74,6 +75,7 @@ const en: PagesMessages = {
 	newPage: "New page",
 	edit: "Edit",
 	view: "View",
+	openInBuilder: "Open in builder",
 	delete: "Delete",
 	save: "Save",
 	cancel: "Cancel",
@@ -126,6 +128,7 @@ const ptBR: PagesMessages = {
 	newPage: "Nova página",
 	edit: "Editar",
 	view: "Ver",
+	openInBuilder: "Abrir no construtor",
 	delete: "Excluir",
 	save: "Salvar",
 	cancel: "Cancelar",
@@ -178,6 +181,7 @@ const es: PagesMessages = {
 	newPage: "Nueva página",
 	edit: "Editar",
 	view: "Ver",
+	openInBuilder: "Abrir en el editor",
 	delete: "Eliminar",
 	save: "Guardar",
 	cancel: "Cancelar",

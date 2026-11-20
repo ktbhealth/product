@@ -46,6 +46,12 @@ export class PageNotFound extends Data.TaggedError("PageNotFound")<{
 	readonly id: number;
 }> {}
 
+/** `builderJson` is not valid JSON or not a JSON object — same
+ * handled-failure contract as `InvalidPagePath`. */
+export class InvalidBuilderDoc extends Data.TaggedError("InvalidBuilderDoc")<{
+	readonly id: number;
+}> {}
+
 /** `richTextId` is not a positive integer — same handled-failure
  * contract as `InvalidPagePath` (admin fns map it to `null`). */
 export class InvalidPageInput extends Data.TaggedError("InvalidPageInput")<{
@@ -58,7 +64,8 @@ export type PageError =
 	| InvalidPagePath
 	| DuplicatePagePath
 	| PageNotFound
-	| InvalidPageInput;
+	| InvalidPageInput
+	| InvalidBuilderDoc;
 
 /** Admin-facing write payload; booleans/order default when absent and
  * `richTextId` (the @ktb/rich-text document this page renders) defaults
@@ -158,6 +165,20 @@ export class Pages extends Context.Service<
 	{
 		/** Every page, admin view — path order. */
 		readonly adminList: () => Effect.Effect<readonly PageRow[], Forbidden>;
+		/** One page by id (full row incl. `builderJson`); null when
+		 * missing. Admin-gated — the site-builder editor loads through
+		 * this. */
+		readonly adminGet: (id: number) => Effect.Effect<PageRow | null, PageError>;
+		/** Write the page's `builderJson` (PL-014): `null` clears the
+		 * builder document (page falls back to the legacy render path),
+		 * a string must parse to a JSON object (the versioned
+		 * `{version, data}` wrapper is validated by the writer — this
+		 * service only guarantees JSON-object shape). `PageNotFound`
+		 * when missing, `InvalidBuilderDoc` on malformed input. */
+		readonly adminSetBuilderJson: (
+			id: number,
+			builderJson: string | null,
+		) => Effect.Effect<PageRow, PageError>;
 		/** Insert a page; `DuplicatePagePath` when the path is taken. */
 		readonly adminCreate: (input: PageInput) => Effect.Effect<PageRow | null, PageError>;
 		/** Update a page by id; `PageNotFound` when missing. */
@@ -245,6 +266,34 @@ export const PagesLive = Layer.effect(
 				return yield* Effect.promise(() =>
 					db.select().from(page).orderBy(asc(page.sortOrder), asc(page.path)),
 				);
+			}),
+			adminGet: Effect.fn("Pages.adminGet")(function* (id: number) {
+				yield* requireAdmin;
+				const rows = yield* Effect.promise(() => db.select().from(page).where(byId(id)).limit(1));
+				return rows[0] ?? null;
+			}),
+			adminSetBuilderJson: Effect.fn("Pages.adminSetBuilderJson")(function* (
+				id: number,
+				builderJson: string | null,
+			) {
+				yield* requireAdmin;
+				if (builderJson !== null) {
+					let parsed: unknown;
+					try {
+						parsed = JSON.parse(builderJson);
+					} catch {
+						return yield* new InvalidBuilderDoc({ id });
+					}
+					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+						return yield* new InvalidBuilderDoc({ id });
+					}
+				}
+				const rows = yield* Effect.promise(() =>
+					db.update(page).set({ builderJson, updatedAt: new Date() }).where(byId(id)).returning(),
+				);
+				const row = rows[0];
+				if (row === undefined) return yield* new PageNotFound({ id });
+				return row;
 			}),
 			adminCreate: Effect.fn("Pages.adminCreate")(function* (input: PageInput) {
 				yield* requireAdmin;
@@ -381,6 +430,7 @@ CREATE TABLE pages (
 	rich_text_id INTEGER,
 	search_schema_id INTEGER,
 	layout_id INTEGER,
+	builder_json TEXT,
 	published INTEGER NOT NULL DEFAULT 0,
 	show_in_nav INTEGER NOT NULL DEFAULT 0,
 	sort_order INTEGER NOT NULL DEFAULT 0,

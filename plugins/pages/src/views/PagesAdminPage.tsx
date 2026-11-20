@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useRouter } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { ExternalLinkIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ExternalLinkIcon, PencilIcon, PlusIcon, SquarePenIcon, Trash2Icon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -106,6 +106,10 @@ export interface PagesAdminPageProps {
 	 * field is hidden; stored `layoutId` values are preserved
 	 * untouched. */
 	readonly layoutEnabled: boolean;
+	/** True when the site-builder package is installed and enabled —
+	 * DB rows gain an "Open in builder" action linking to the Puck
+	 * editor (PL-014). */
+	readonly builderEnabled?: boolean;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	i18n?: PageI18nSlice;
 	readonly locale?: string;
@@ -205,6 +209,7 @@ export function PagesAdminPage({
 	searchSchemaEnabled,
 	layouts,
 	layoutEnabled,
+	builderEnabled = false,
 	i18n,
 	locale,
 }: PagesAdminPageProps) {
@@ -355,6 +360,15 @@ export function PagesAdminPage({
 								aria-label={t.view}
 							>
 								<ExternalLinkIcon className="size-4" />
+							</Link>
+						) : null}
+						{builderEnabled ? (
+							<Link
+								to={`/platform/pages/${row.id}/edit` as "/"}
+								className="rounded-md p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+								aria-label={t.openInBuilder}
+							>
+								<SquarePenIcon className="size-4" />
 							</Link>
 						) : null}
 						<Button

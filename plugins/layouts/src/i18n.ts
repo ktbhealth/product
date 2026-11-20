@@ -23,6 +23,7 @@ export interface LayoutsMessages {
 	readonly description: string;
 	readonly newLayout: string;
 	readonly edit: string;
+	readonly openInBuilder: string;
 	readonly delete: string;
 	readonly save: string;
 	readonly cancel: string;
@@ -60,6 +61,7 @@ const en: LayoutsMessages = {
 	description: "Compose page bodies from ordered sections bound to rich-text documents.",
 	newLayout: "New layout",
 	edit: "Edit",
+	openInBuilder: "Open in builder",
 	delete: "Delete",
 	save: "Save",
 	cancel: "Cancel",
@@ -98,6 +100,7 @@ const ptBR: LayoutsMessages = {
 	description: "Componha corpos de página com seções ordenadas ligadas a documentos de texto rico.",
 	newLayout: "Novo layout",
 	edit: "Editar",
+	openInBuilder: "Abrir no construtor",
 	delete: "Excluir",
 	save: "Salvar",
 	cancel: "Cancelar",
@@ -138,6 +141,7 @@ const es: LayoutsMessages = {
 		"Compón cuerpos de página con secciones ordenadas vinculadas a documentos de texto enriquecido.",
 	newLayout: "Nuevo layout",
 	edit: "Editar",
+	openInBuilder: "Abrir en el editor",
 	delete: "Eliminar",
 	save: "Guardar",
 	cancel: "Cancelar",

@@ -5,11 +5,13 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./schema": "./src/schema.ts",
+		"./service": "./src/service.ts",
 		"./fns": "./src/fns.ts",
 		"./views": "./src/views/index.ts"
 	},
 	"dependencies": {
 		"@ktb/authz": "workspace:*",
+		"@ktb/builder": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",

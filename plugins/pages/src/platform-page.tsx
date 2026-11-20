@@ -1,3 +1,4 @@
+import { siteBuilderEnabled } from "@ktb/builder";
 import type { PanelPageContext } from "@ktb/kernel";
 
 import { collectProvidedPages } from "./provided-pages.ts";
@@ -119,6 +120,9 @@ export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: Panel
 		ctx.plugins,
 		ctx.pluginStates === undefined ? undefined : new Set(ctx.pluginStates.enabled),
 	);
+	// PL-014: the "Open in builder" row action appears only while the
+	// site-builder package is installed and enabled.
+	const builderEnabled = siteBuilderEnabled(ctx.plugins, ctx.pluginStates?.enabled);
 	const props: PagesAdminPageProps = {
 		pages,
 		providedPages,
@@ -128,6 +132,7 @@ export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: Panel
 		searchSchemaEnabled,
 		layouts,
 		layoutEnabled,
+		builderEnabled,
 		i18n: ctx.i18n,
 		locale: ctx.locale,
 	};

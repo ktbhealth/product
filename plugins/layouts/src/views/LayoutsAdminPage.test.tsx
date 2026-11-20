@@ -17,6 +17,11 @@ const templateFns = vi.hoisted(() => ({
 
 vi.mock("@tanstack/react-router", () => ({
 	useRouter: () => ({ invalidate }),
+	Link: ({ to, children, ...props }: Record<string, unknown>) => (
+		<a href={String(to)} {...props}>
+			{children as React.ReactNode}
+		</a>
+	),
 	// Honor the `select` projection the component asks for.
 	useLocation: (opts?: { select?: (l: { pathname: string }) => unknown }) =>
 		opts?.select === undefined
@@ -44,6 +49,7 @@ const docWire = (over: Record<string, unknown> = {}) => ({
 	config: '{"sections":[{"id":"s1","title":"Hero","kind":"rich-text","refId":1}]}',
 	sectionCount: 1,
 	updatedAt: "2025-01-01T00:00:00.000Z",
+	builderJson: null,
 	...over,
 });
 
@@ -331,6 +337,7 @@ describe("LayoutsAdminPage", () => {
 						name: "landing",
 						description: "Landing body",
 						config: docWire().config,
+						builderJson: null,
 					},
 				},
 			}),
@@ -387,5 +394,16 @@ describe("LayoutsAdminPage", () => {
 		await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 		await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 		expect(templateFns.saveTemplateFn).not.toHaveBeenCalled();
+	});
+
+	it("links rows to the site builder only when enabled", () => {
+		const { rerender } = render(
+			<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" builderEnabled />,
+		);
+		expect(screen.getByLabelText("Open in builder").getAttribute("href")).toBe(
+			"/platform/layouts/1/edit",
+		);
+		rerender(<LayoutsAdminPage layouts={[row()]} plugins={[]} locale="en" />);
+		expect(screen.queryByLabelText("Open in builder")).toBeNull();
 	});
 });

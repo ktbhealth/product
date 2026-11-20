@@ -54,12 +54,20 @@ export class InvalidLayoutConfig extends Data.TaggedError("InvalidLayoutConfig")
 	readonly config: string;
 }> {}
 
+/** `adminSetBuilderJson` received a `builderJson` payload that is not
+ * valid JSON or not a JSON object — same handled-failure contract as
+ * `InvalidLayoutConfig`. */
+export class InvalidBuilderDoc extends Data.TaggedError("InvalidBuilderDoc")<{
+	readonly builderJson: string;
+}> {}
+
 export type LayoutError =
 	| Forbidden
 	| LayoutNotFound
 	| InvalidLayoutName
 	| LayoutNameTaken
-	| InvalidLayoutConfig;
+	| InvalidLayoutConfig
+	| InvalidBuilderDoc;
 
 /**
  * Frozen config contract (P-102 phase 2):
@@ -106,9 +114,12 @@ export interface LayoutMeta {
 	readonly updatedAt: Date;
 }
 
-/** Full layout: meta plus the stored config JSON text. */
+/** Full layout: meta plus the stored config JSON text and the
+ * builder document (PL-014 — null when the layout still uses the
+ * legacy section-slot `config`). */
 export interface LayoutDoc extends LayoutMeta {
 	readonly config: string;
+	readonly builderJson: string | null;
 }
 
 /** One resolved section for public rendering: the slot's title plus
@@ -150,6 +161,7 @@ const toMeta = (row: LayoutRow): LayoutMeta => ({
 const toDoc = (row: LayoutRow): LayoutDoc => ({
 	...toMeta(row),
 	config: row.config,
+	builderJson: row.builderJson,
 });
 
 /** `description` wire values: absent stays untouched on update, a
@@ -215,6 +227,17 @@ export class Layouts extends Context.Service<
 		) => Effect.Effect<LayoutDoc, LayoutError>;
 		/** Delete a layout by id; `LayoutNotFound` when missing. */
 		readonly adminRemove: (id: number) => Effect.Effect<void, LayoutError>;
+		/** Write the layout's `builderJson` (PL-014): `null` clears the
+		 * builder document (the layout falls back to the legacy
+		 * section-slot `config`), a string must parse to a JSON object
+		 * (the versioned `{version, data}` wrapper is validated by the
+		 * writer — this service only guarantees JSON-object shape).
+		 * `LayoutNotFound` when missing, `InvalidBuilderDoc` on
+		 * malformed input. */
+		readonly adminSetBuilderJson: (
+			id: number,
+			builderJson: string | null,
+		) => Effect.Effect<LayoutDoc, LayoutError>;
 		/** Public read by id — no admin gate; null when missing. */
 		readonly getById: (id: number) => Effect.Effect<LayoutDoc | null>;
 		/** Resolve a layout for public page rendering: the ordered
@@ -409,6 +432,33 @@ export const LayoutsLive = Layer.effect(
 				);
 				if (rows.length === 0) return yield* new LayoutNotFound({ id });
 			}),
+			adminSetBuilderJson: Effect.fn("Layouts.adminSetBuilderJson")(function* (
+				id: number,
+				builderJson: string | null,
+			) {
+				yield* requireAdmin;
+				if (builderJson !== null) {
+					let parsed: unknown;
+					try {
+						parsed = JSON.parse(builderJson);
+					} catch {
+						return yield* new InvalidBuilderDoc({ builderJson });
+					}
+					if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+						return yield* new InvalidBuilderDoc({ builderJson });
+					}
+				}
+				const rows = yield* Effect.promise(() =>
+					db
+						.update(layouts)
+						.set({ builderJson, updatedAt: new Date() })
+						.where(byId(id))
+						.returning(),
+				);
+				const row = rows[0];
+				if (row === undefined) return yield* new LayoutNotFound({ id });
+				return toDoc(row);
+			}),
 			getById: Effect.fn("Layouts.getById")(function* (id: number) {
 				const rows = yield* Effect.promise(() =>
 					db.select().from(layouts).where(byId(id)).limit(1),
@@ -454,6 +504,7 @@ CREATE TABLE layouts (
 	name TEXT NOT NULL UNIQUE,
 	description TEXT,
 	config TEXT NOT NULL,
+	builder_json TEXT,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );

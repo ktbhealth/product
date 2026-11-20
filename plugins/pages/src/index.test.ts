@@ -484,6 +484,7 @@ describe("pages page effects", () => {
 			adminCreate: () => Effect.succeed(null),
 			adminUpdate: () => Effect.die("unused"),
 			adminRemove: () => Effect.die("unused"),
+			adminSetBuilderJson: () => Effect.die("unused"),
 			getById: () => Effect.succeed(null),
 			resolveForPage: () => Effect.succeed([]),
 		});
@@ -521,6 +522,7 @@ describe("pages page effects", () => {
 			adminCreate: () => Effect.succeed(null),
 			adminUpdate: () => Effect.die("unused"),
 			adminRemove: () => Effect.die("unused"),
+			adminSetBuilderJson: () => Effect.die("unused"),
 			getById: () => Effect.succeed(null),
 			resolveForPage: () => Effect.succeed([]),
 		});
@@ -571,6 +573,7 @@ describe("pages page effects", () => {
 				adminCreate: () => Effect.succeed(null),
 				adminUpdate: () => Effect.die("unused"),
 				adminRemove: () => Effect.die("unused"),
+				adminSetBuilderJson: () => Effect.die("unused"),
 				getById: () => Effect.succeed(null),
 				resolveForPage: (layoutId: number) =>
 					Effect.succeed(

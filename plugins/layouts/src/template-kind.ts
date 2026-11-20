@@ -31,32 +31,41 @@ import { LayoutConfigSchema, type LayoutConfig } from "./service.ts";
 const LAYOUT_TEMPLATE_KIND = "layout";
 
 /** Stored payload shape — `config` is the decoded `LayoutConfig`
- * object, `description` normalizes to `null` when absent. */
+ * object, `description`/`builderJson` normalize to `null` when
+ * absent. `builderJson` is optional so payloads stored before PL-014
+ * still decode. */
 interface LayoutTemplatePayload {
 	readonly name: string;
 	readonly description: string | null;
 	readonly config: LayoutConfig;
+	readonly builderJson?: string | null;
 }
 
 /** What `serialize` accepts / `deserialize` returns: the layout doc
  * fields with `config` as raw JSON text (the `adminCreate` input
- * contract). */
+ * contract). `builderJson` (PL-014) snapshots the layout's versioned
+ * Puck document when the layout was built in the site builder —
+ * instantiation feeds it through `Layouts.adminSetBuilderJson` after
+ * `adminCreate` (the create path itself only writes `config`). */
 export interface LayoutTemplateSource {
 	readonly name: string;
 	readonly description?: string | null;
 	readonly config: string;
+	readonly builderJson?: string | null;
 }
 
 const PayloadSchema = Schema.Struct({
 	name: Schema.NonEmptyString,
 	description: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	config: Schema.Unknown,
+	builderJson: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 const SourceSchema = Schema.Struct({
 	name: Schema.String,
 	description: Schema.optionalKey(Schema.NullOr(Schema.String)),
 	config: Schema.String,
+	builderJson: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 
 const decodePayload = Schema.decodeUnknownSync(PayloadSchema);
@@ -83,6 +92,7 @@ const serialize = (source: unknown): Effect.Effect<unknown, unknown> =>
 			name: s.name,
 			description: s.description ?? null,
 			config,
+			builderJson: s.builderJson ?? null,
 		} satisfies LayoutTemplatePayload;
 	});
 
@@ -102,6 +112,7 @@ const deserialize = (payload: unknown): Effect.Effect<unknown, unknown> =>
 			name: parsed.name,
 			description: parsed.description ?? null,
 			config: JSON.stringify(config),
+			builderJson: parsed.builderJson ?? null,
 		} satisfies LayoutTemplateSource;
 	});
 

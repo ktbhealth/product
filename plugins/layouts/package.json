@@ -11,6 +11,7 @@
 	},
 	"dependencies": {
 		"@ktb/authz": "workspace:*",
+		"@ktb/builder": "workspace:*",
 		"@ktb/db": "workspace:*",
 		"@ktb/i18n": "workspace:*",
 		"@ktb/kernel": "workspace:*",

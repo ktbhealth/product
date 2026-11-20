@@ -1,10 +1,13 @@
+import { BuilderDocument, collectElementKinds } from "@ktb/builder";
 import type { PageContext } from "@ktb/kernel";
 import { RichTextView } from "@ktb/rich-text/views";
 
 /** Wire shape the wildcard loader returns — the published
  * `pages` row plus `content`, the resolved rich-text document
- * value (Plate node array) or null, and `layoutSections`, the resolved
- * layout sections (ordered `{id, title, content}` records) or null.
+ * value (Plate node array) or null, `layoutSections`, the resolved
+ * layout sections (ordered `{id, title, content}` records) or null,
+ * `layoutBuilderJson`, the bound layout's Puck document (PL-014) or
+ * null, and `builderJson`, the page's own Puck document or null.
  * Only the rendered fields are required; the rest (id, flags,
  * timestamps) rides along unused. `search` is the loader-cleaned URL
  * search record — present only on schema-bound pages
@@ -14,6 +17,8 @@ export interface PageData {
 	readonly title?: unknown;
 	readonly content?: unknown;
 	readonly layoutSections?: unknown;
+	readonly layoutBuilderJson?: unknown;
+	readonly builderJson?: unknown;
 	readonly search?: unknown;
 }
 
@@ -57,6 +62,8 @@ const asPage = (
 	title: string;
 	content: unknown;
 	layoutSections: readonly LayoutSectionView[] | null;
+	layoutBuilderJson: string | null;
+	builderJson: string | null;
 	search: Record<string, unknown> | null;
 } | null => {
 	if (typeof data !== "object" || data === null) return null;
@@ -69,6 +76,8 @@ const asPage = (
 		title: d.title,
 		content: d.content ?? null,
 		layoutSections: asLayoutSections(d.layoutSections),
+		layoutBuilderJson: typeof d.layoutBuilderJson === "string" ? d.layoutBuilderJson : null,
+		builderJson: typeof d.builderJson === "string" ? d.builderJson : null,
 		search: asSearchRecord(d.search),
 	};
 };
@@ -91,16 +100,27 @@ const asPage = (
  * schema-driven page params. Pages without a schema carry no `search`
  * field and skip the attribute.
  */
-export function PageView({ data }: { data: unknown; ctx: PageContext }) {
+export function PageView({ data, ctx }: { data: unknown; ctx: PageContext }) {
 	const page = asPage(data);
 	if (page === null) return null;
+	// Builder precedence (PL-014): the page's own Puck document wins;
+	// then the bound layout's Puck document; then the legacy
+	// layout-sections / single-document path. `collectElementKinds`
+	// reads the client elementKinds manifest off ctx.plugins — the
+	// same registry the /platform/components catalog compiles.
+	const elementKinds = collectElementKinds(ctx.plugins);
+	const builderJson = page.builderJson ?? page.layoutBuilderJson;
 	return (
 		<article
 			className="mx-auto w-full max-w-3xl"
 			data-validated-search={page.search === null ? undefined : JSON.stringify(page.search)}
 		>
 			<h1 className="text-3xl font-bold tracking-tight">{page.title}</h1>
-			{page.layoutSections !== null ? (
+			{builderJson !== null ? (
+				<div className="mt-6">
+					<BuilderDocument builderJson={builderJson} elementKinds={elementKinds} />
+				</div>
+			) : page.layoutSections !== null ? (
 				<div className="mt-6 flex flex-col gap-8">
 					{page.layoutSections.map((section, index) => (
 						<section key={index}>

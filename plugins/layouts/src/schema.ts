@@ -20,6 +20,10 @@ export const layouts = sqliteTable(
 		name: text().notNull().unique(),
 		description: text(),
 		config: text().notNull(),
+		// Versioned Puck document (PL-014 / P-109): JSON text
+		// `{version, data}` written by the site-builder editor. Null =
+		// the layout renders the legacy `config` section slots.
+		builderJson: text("builder_json"),
 		createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 		updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 	},
