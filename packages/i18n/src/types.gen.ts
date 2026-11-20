@@ -451,6 +451,22 @@ export type I18nKey =
 	| "auth.tabIn"
 	| "auth.tabUp"
 	| "auth.verifyLink"
+	| "builder-blocks.categoryContent"
+	| "builder-blocks.categoryData"
+	| "builder-blocks.categoryDomain"
+	| "builder-blocks.categoryLayout"
+	| "builder-blocks.categoryMedia"
+	| "builder-blocks.categoryOther"
+	| "builder-blocks.description"
+	| "builder-blocks.emptyDescription"
+	| "builder-blocks.emptyTitle"
+	| "builder-blocks.kindCount"
+	| "builder-blocks.noProps"
+	| "builder-blocks.previewLabel"
+	| "builder-blocks.propsHeading"
+	| "builder-blocks.requiredMark"
+	| "builder-blocks.searchPlaceholder"
+	| "builder-blocks.title"
 	| "clinician.home.consultationsDesc"
 	| "clinician.home.consultationsTitle"
 	| "clinician.home.patientsDesc"
@@ -2741,6 +2757,27 @@ export interface I18nTypedT {
 	(key: "auth.tabIn"): Effect.Effect<string>;
 	(key: "auth.tabUp"): Effect.Effect<string>;
 	(key: "auth.verifyLink"): Effect.Effect<string>;
+	(key: "builder-blocks.categoryContent"): Effect.Effect<string>;
+	(key: "builder-blocks.categoryData"): Effect.Effect<string>;
+	(key: "builder-blocks.categoryDomain"): Effect.Effect<string>;
+	(key: "builder-blocks.categoryLayout"): Effect.Effect<string>;
+	(key: "builder-blocks.categoryMedia"): Effect.Effect<string>;
+	(key: "builder-blocks.categoryOther"): Effect.Effect<string>;
+	(key: "builder-blocks.description"): Effect.Effect<string>;
+	(key: "builder-blocks.emptyDescription"): Effect.Effect<string>;
+	(key: "builder-blocks.emptyTitle"): Effect.Effect<string>;
+	(
+		key: "builder-blocks.kindCount",
+		params: {
+			count: number;
+		},
+	): Effect.Effect<string>;
+	(key: "builder-blocks.noProps"): Effect.Effect<string>;
+	(key: "builder-blocks.previewLabel"): Effect.Effect<string>;
+	(key: "builder-blocks.propsHeading"): Effect.Effect<string>;
+	(key: "builder-blocks.requiredMark"): Effect.Effect<string>;
+	(key: "builder-blocks.searchPlaceholder"): Effect.Effect<string>;
+	(key: "builder-blocks.title"): Effect.Effect<string>;
 	(key: "clinician.home.consultationsDesc"): Effect.Effect<string>;
 	(key: "clinician.home.consultationsTitle"): Effect.Effect<string>;
 	(key: "clinician.home.patientsDesc"): Effect.Effect<string>;
