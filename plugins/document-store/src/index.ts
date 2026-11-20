@@ -327,7 +327,7 @@ const adminGuard = () =>
  * documents browser (/platform/documents) plus a wildcard browser for
  * /platform/document-store/<name> — `panel.pages` paths are exact, but
  * the host dispatcher resolves "/*" wildcards by longest base (same
- * mechanism the custom-pages plugin uses on the app shell), so one
+ * mechanism the pages plugin uses on the app shell), so one
  * descriptor serves every collection. The guard 404s unknown names;
  * the loader feeds the first documents page. */
 export const documentStorePanelPlugin = definePlugin({

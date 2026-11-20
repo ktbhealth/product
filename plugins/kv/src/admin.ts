@@ -26,7 +26,7 @@ import {
 
 /**
  * KvAdmin — the platform-admin read/write surface over `kv_entries`
- * (P-090 console, mirrors `CustomPages.admin*`). Every method re-checks
+ * (P-090 console, mirrors `Pages.admin*`). Every method re-checks
  * the `PlatformAdmin` gate inside the service (defense in depth — the
  * /platform layout, page guard and server fns gate too). Unlike `Kv`,
  * there is NO tenant/owner fencing: a platform admin is

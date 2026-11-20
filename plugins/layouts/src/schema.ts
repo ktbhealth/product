@@ -5,7 +5,7 @@ import { index, integer, sqliteTable, text } from "../../../packages/db/src/tabl
  * JSON config in `config`. Each section binds a content slot — today
  * only `kind: "rich-text"` with `refId` pointing at a `rich_text`
  * document (@ktb/rich-text); `kind` is forward-compatible with a
- * future element-kind registry. `custom_pages.layout_id` selects one
+ * future element-kind registry. `pages.layout_id` selects one
  * layout per page (null = the page renders its single bound document);
  * layouts compose the page BODY only, never app chrome.
  *

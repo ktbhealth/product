@@ -4816,7 +4816,7 @@ export const I18N_MANIFEST = {
 		navHidden: {
 			params: [],
 		},
-		providedCustom: {
+		providedDatabase: {
 			params: [],
 		},
 		fieldPath: {

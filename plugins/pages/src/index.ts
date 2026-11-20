@@ -11,15 +11,15 @@ import { Schemas } from "@ktb/schemas/service";
 import { layoutsServicesPlugin } from "@ktb/layouts";
 import { Layouts } from "@ktb/layouts/service";
 
-import { CustomNavLinks } from "./chrome.tsx";
+import { PageNavLinks } from "./chrome.tsx";
 import { PagesAdminConsolePage } from "./platform-page.tsx";
-import { customPage } from "./schema.ts";
-import { CustomPages, CustomPagesLive } from "./service.ts";
-import { CustomPageView } from "./views/CustomPageView.tsx";
+import { page } from "./schema.ts";
+import { Pages, PagesLive } from "./service.ts";
+import { PageView } from "./views/PageView.tsx";
 
 /**
- * Custom pages plugin (T-083): admin-authored pages stored in the
- * `custom_pages` table and rendered through the generic `pages`
+ * Pages plugin (T-083): admin-authored pages stored in the
+ * `pages` table and rendered through the generic `pages`
  * contribution — the P-059 mechanism built for exactly this. One
  * "/*" wildcard descriptor serves every unpublished path: its `guard`
  * 404s paths with no published row and its `loader` returns the row
@@ -32,7 +32,7 @@ import { CustomPageView } from "./views/CustomPageView.tsx";
 export const pagesTablesPlugin = definePlugin({
 	id: "pages.tables",
 	meta: { keywords: ["pages", "tables"] },
-	tables: { customPage },
+	tables: { page },
 });
 
 export const pagesServicesPlugin = definePlugin({
@@ -43,7 +43,7 @@ export const pagesServicesPlugin = definePlugin({
 	// ordered (and discovered) before this plugin's layer.
 	requiredDeps: [platformAdminPlugin.id],
 	// Optional edge: the delete-hook registry lives in rich-text's
-	// service layer — when it is absent CustomPagesLive simply skips
+	// service layer — when it is absent PagesLive simply skips
 	// registration (Effect.serviceOption), but ordering must put the
 	// registry before this layer when both are installed.
 	// Optional edge: the schemas registry feeds validatedSearch the
@@ -52,7 +52,7 @@ export const pagesServicesPlugin = definePlugin({
 	// picker and resolveForPage — absent it, layoutId stays stored but
 	// uneditable and pages render their single bound document.
 	optionalDeps: [richTextServicesPlugin.id, schemasServicesPlugin.id, layoutsServicesPlugin.id],
-	services: CustomPagesLive,
+	services: PagesLive,
 });
 
 /**
@@ -82,7 +82,7 @@ export const pagesChromePlugin = definePlugin({
 		{
 			id: "pages.nav",
 			region: "app.header.nav",
-			content: { kind: "component", component: CustomNavLinks },
+			content: { kind: "component", component: PageNavLinks },
 		},
 		// Rich-text delete dialog actions (region owned by
 		// @ktb/rich-text): offered when the document being deleted is
@@ -127,7 +127,7 @@ export const pagesChromePlugin = definePlugin({
  * params cleaned against the page's bound `searchSchemaId` schema
  * (absent for unbound pages). Both receive the request path — the
  * kernel contract for wildcard pages — and the loader also gets the
- * parsed search. The component is shared by every custom page;
+ * parsed search. The component is shared by every DB page;
  * per-page content arrives via `data`.
  */
 export const pagesRenderPlugin = definePlugin({
@@ -141,18 +141,18 @@ export const pagesRenderPlugin = definePlugin({
 	optionalDeps: [richTextServicesPlugin.id, layoutsServicesPlugin.id],
 	pages: [
 		{
-			id: "pages.custom",
+			id: "pages.db",
 			path: "/*",
 			context: "app",
-			component: CustomPageView,
+			component: PageView,
 			guard: (path) =>
 				Effect.gen(function* () {
-					const pages = yield* CustomPages;
+					const pages = yield* Pages;
 					return (yield* pages.publishedByPath(path)) !== null;
 				}),
 			loader: (path, search?) =>
 				Effect.gen(function* () {
-					const pages = yield* CustomPages;
+					const pages = yield* Pages;
 					const page = yield* pages.publishedByPath(path);
 					if (page === null) return null;
 					// Resolve the referenced rich-text document into `content`
@@ -230,7 +230,7 @@ export const pagesPanelPlugin = definePlugin({
 					}),
 				loader: (_path) =>
 					Effect.gen(function* () {
-						const pages = yield* CustomPages;
+						const pages = yield* Pages;
 						const rows = yield* pages
 							.adminList()
 							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed([])));

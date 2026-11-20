@@ -1,4 +1,4 @@
-export { CustomPageView, type CustomPageData } from "./CustomPageView.tsx";
+export { PageView, type PageData } from "./PageView.tsx";
 export {
 	PagesAdminPage,
 	type AdminPageRow,

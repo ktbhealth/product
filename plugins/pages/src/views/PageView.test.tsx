@@ -13,7 +13,7 @@ vi.mock("@ktb/rich-text/views", () => ({
 
 import type { PageContext } from "@ktb/kernel";
 
-import { CustomPageView } from "./CustomPageView.tsx";
+import { PageView } from "./PageView.tsx";
 
 const ctx: PageContext = { plugins: [], locale: "en" };
 
@@ -24,10 +24,10 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
-describe("CustomPageView", () => {
+describe("PageView", () => {
 	it("renders the title and the resolved rich-text content", () => {
 		render(
-			<CustomPageView
+			<PageView
 				data={{
 					path: "/about",
 					title: "About us",
@@ -41,33 +41,33 @@ describe("CustomPageView", () => {
 	});
 
 	it("renders the title with a null body when the page has no document", () => {
-		render(<CustomPageView data={{ path: "/x", title: "Empty", content: null }} ctx={ctx} />);
+		render(<PageView data={{ path: "/x", title: "Empty", content: null }} ctx={ctx} />);
 		expect(screen.getByText("Empty")).toBeTruthy();
 		expect(screen.getByTestId("rich-text-view").textContent).toBe("null");
 	});
 
 	it("renders nothing for missing or malformed data", () => {
-		const { container, rerender } = render(<CustomPageView data={null} ctx={ctx} />);
+		const { container, rerender } = render(<PageView data={null} ctx={ctx} />);
 		expect(container.innerHTML).toBe("");
-		rerender(<CustomPageView data="nope" ctx={ctx} />);
+		rerender(<PageView data="nope" ctx={ctx} />);
 		expect(container.innerHTML).toBe("");
-		rerender(<CustomPageView data={{ title: 42 }} ctx={ctx} />);
+		rerender(<PageView data={{ title: 42 }} ctx={ctx} />);
 		expect(container.innerHTML).toBe("");
 		// content must be an array or null — a stray string is malformed.
-		rerender(<CustomPageView data={{ title: "T", content: "# md" }} ctx={ctx} />);
+		rerender(<PageView data={{ title: "T", content: "# md" }} ctx={ctx} />);
 		expect(container.innerHTML).toBe("");
 	});
 
 	it("omits data-validated-search when the loader supplies no search", () => {
 		const { container } = render(
-			<CustomPageView data={{ path: "/about", title: "About", content: null }} ctx={ctx} />,
+			<PageView data={{ path: "/about", title: "About", content: null }} ctx={ctx} />,
 		);
 		expect(container.querySelector("article")?.getAttribute("data-validated-search")).toBeNull();
 	});
 
 	it("exposes the loader-cleaned search synchronously", () => {
 		const { container } = render(
-			<CustomPageView
+			<PageView
 				data={{
 					path: "/search",
 					title: "Search",
@@ -86,7 +86,7 @@ describe("CustomPageView", () => {
 
 	it("treats a non-record search field as absent", () => {
 		const { container } = render(
-			<CustomPageView
+			<PageView
 				data={{ path: "/search", title: "Search", content: null, search: "bad" }}
 				ctx={ctx}
 			/>,
@@ -96,7 +96,7 @@ describe("CustomPageView", () => {
 
 	it("renders layout sections instead of the single document when present", () => {
 		const { container } = render(
-			<CustomPageView
+			<PageView
 				data={{
 					path: "/layout",
 					title: "Layout page",
@@ -121,7 +121,7 @@ describe("CustomPageView", () => {
 
 	it("renders an empty body for a layout with no resolved sections", () => {
 		render(
-			<CustomPageView
+			<PageView
 				data={{ path: "/layout", title: "Empty layout", content: DOC, layoutSections: [] }}
 				ctx={ctx}
 			/>,
@@ -133,24 +133,18 @@ describe("CustomPageView", () => {
 
 	it("falls back to the single document when layoutSections is null or malformed", () => {
 		render(
-			<CustomPageView
-				data={{ path: "/x", title: "T", content: DOC, layoutSections: null }}
-				ctx={ctx}
-			/>,
+			<PageView data={{ path: "/x", title: "T", content: DOC, layoutSections: null }} ctx={ctx} />,
 		);
 		expect(screen.getByTestId("rich-text-view").textContent).toBe(JSON.stringify(DOC));
 		cleanup();
 		render(
-			<CustomPageView
-				data={{ path: "/x", title: "T", content: DOC, layoutSections: "bad" }}
-				ctx={ctx}
-			/>,
+			<PageView data={{ path: "/x", title: "T", content: DOC, layoutSections: "bad" }} ctx={ctx} />,
 		);
 		expect(screen.getByTestId("rich-text-view").textContent).toBe(JSON.stringify(DOC));
 		cleanup();
 		// Sections missing a string title are dropped.
 		render(
-			<CustomPageView
+			<PageView
 				data={{
 					path: "/x",
 					title: "T",
@@ -169,7 +163,7 @@ describe("CustomPageView", () => {
 
 	it("maps a section missing content to a null body", () => {
 		render(
-			<CustomPageView
+			<PageView
 				data={{
 					path: "/x",
 					title: "T",

@@ -28,8 +28,8 @@ import { schemasServicesPlugin } from "@ktb/schemas";
 import { Layouts } from "@ktb/layouts/service";
 import { layoutsServicesPlugin } from "@ktb/layouts";
 
-import { customPage } from "./schema.ts";
-import { CUSTOM_PAGES_TEST_DDL, CustomPagesLive } from "./service.ts";
+import { page } from "./schema.ts";
+import { PAGES_TEST_DDL, PagesLive } from "./service.ts";
 
 describe("pages plugins", () => {
 	it("exposes the five single-concern plugins", () => {
@@ -40,7 +40,7 @@ describe("pages plugins", () => {
 			"pages.render",
 			"pages.panel",
 		]);
-		expect(pagesTablesPlugin.tables?.customPage).toBeDefined();
+		expect(pagesTablesPlugin.tables?.page).toBeDefined();
 		expect(pagesServicesPlugin.services).toBeDefined();
 		expect(pagesServicesPlugin.requiredDeps).toEqual([platformAdminPlugin.id]);
 		expect(pagesServicesPlugin.optionalDeps).toEqual([
@@ -49,7 +49,7 @@ describe("pages plugins", () => {
 			layoutsServicesPlugin.id,
 		]);
 		// The render plugin's guard/loader resolve rich-text content and
-		// layout sections, and call CustomPages.validatedSearch — the
+		// layout sections, and call Pages.validatedSearch — the
 		// Schemas edge lives on pages.services (where the serviceOption
 		// is built), so pages.render keeps the rich-text and layouts edges.
 		expect(pagesRenderPlugin.optionalDeps).toEqual([
@@ -140,20 +140,20 @@ describe("pages page effects", () => {
 		);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL));
+		const db = makeDb(makeD1(PAGES_TEST_DDL));
 		sharedDb = db;
 		deps = makeDeps(db);
 		// Merge `deps` into the runtime too: the admin page guard yields
-		// PlatformAdmin directly, not just through CustomPages.
+		// PlatformAdmin directly, not just through Pages.
 		runtime = ManagedRuntime.make(
-			Layer.mergeAll(CustomPagesLive.pipe(Layer.provide(deps)), deps) as Layer.Layer<
+			Layer.mergeAll(PagesLive.pipe(Layer.provide(deps)), deps) as Layer.Layer<
 				unknown,
 				never,
 				never
 			>,
 		);
 		const now = new Date();
-		await db.insert(customPage).values([
+		await db.insert(page).values([
 			{
 				path: "/pub",
 				title: "Pub",
@@ -233,7 +233,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(RichTexts, richTexts),
 			) as Layer.Layer<unknown, never, never>,
@@ -330,7 +330,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(RichTexts, richTexts),
 			) as Layer.Layer<unknown, never, never>,
@@ -375,7 +375,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(Schemas, schemas),
 			) as Layer.Layer<unknown, never, never>,
@@ -401,7 +401,7 @@ describe("pages page effects", () => {
 		// Schema-bound published page; inserted last so the earlier
 		// adminList-order assertions are unaffected.
 		const now = new Date();
-		await sharedDb.insert(customPage).values({
+		await sharedDb.insert(page).values({
 			path: "/pub-search",
 			title: "PubSearch",
 			richTextId: null,
@@ -435,10 +435,10 @@ describe("pages page effects", () => {
 		);
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				// Schemas must be provided INTO CustomPagesLive:
+				// Schemas must be provided INTO PagesLive:
 				// validatedSearch resolves Effect.serviceOption at
 				// layer-build time.
-				CustomPagesLive.pipe(Layer.provide(Layer.mergeAll(deps, schemas))),
+				PagesLive.pipe(Layer.provide(Layer.mergeAll(deps, schemas))),
 				deps,
 			) as Layer.Layer<unknown, never, never>,
 		);
@@ -489,7 +489,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(Layouts, layouts),
 			) as Layer.Layer<unknown, never, never>,
@@ -526,7 +526,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(Layouts, layouts),
 			) as Layer.Layer<unknown, never, never>,
@@ -550,7 +550,7 @@ describe("pages page effects", () => {
 
 	it("wildcard loader resolves layout sections when the Layouts service is present", async () => {
 		const now = new Date();
-		await sharedDb.insert(customPage).values({
+		await sharedDb.insert(page).values({
 			path: "/pub-layout",
 			title: "PubLayout",
 			richTextId: null,
@@ -584,7 +584,7 @@ describe("pages page effects", () => {
 			}),
 		);
 		const rt = ManagedRuntime.make(
-			Layer.mergeAll(CustomPagesLive.pipe(Layer.provide(deps)), deps, layouts) as Layer.Layer<
+			Layer.mergeAll(PagesLive.pipe(Layer.provide(deps)), deps, layouts) as Layer.Layer<
 				unknown,
 				never,
 				never
@@ -633,7 +633,7 @@ describe("pages page effects", () => {
 		// richTextId points at a document the RichTexts service does not
 		// have — `doc?.content ?? null` degrades the body to null.
 		const now = new Date();
-		await sharedDb.insert(customPage).values({
+		await sharedDb.insert(page).values({
 			path: "/pub-missing-doc",
 			title: "MissingDoc",
 			richTextId: 99,
@@ -653,7 +653,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(RichTexts, richTexts),
 			) as Layer.Layer<unknown, never, never>,
@@ -689,7 +689,7 @@ describe("pages page effects", () => {
 		});
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
-				CustomPagesLive.pipe(Layer.provide(deps)),
+				PagesLive.pipe(Layer.provide(deps)),
 				deps,
 				Layer.succeed(RichTexts, richTexts),
 				Layer.succeed(Schemas, schemas),

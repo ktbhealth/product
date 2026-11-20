@@ -1,5 +1,5 @@
 /**
- * Custom pages plugin copy, one typed catalog per locale. Plugins cannot
+ * Pages plugin copy, one typed catalog per locale. Plugins cannot
  * import the host's Paraglide output (arch lint); the host injects the
  * active locale through the page/chrome ctx and the view resolves its
  * strings here. A locale catalog must implement `PagesMessages` in
@@ -42,7 +42,7 @@ export interface PagesMessages {
 	readonly statusDraft: string;
 	readonly navShown: string;
 	readonly navHidden: string;
-	readonly providedCustom: string;
+	readonly providedDatabase: string;
 	readonly fieldPath: string;
 	readonly fieldTitle: string;
 	readonly fieldContentDoc: string;
@@ -70,7 +70,7 @@ export interface PagesMessages {
 
 const en: PagesMessages = {
 	title: "Pages",
-	description: "Create and manage custom pages rendered on this site.",
+	description: "Create and manage pages rendered on this site.",
 	newPage: "New page",
 	edit: "Edit",
 	view: "View",
@@ -79,7 +79,7 @@ const en: PagesMessages = {
 	cancel: "Cancel",
 	create: "Create",
 	saving: "Saving…",
-	emptyTitle: "No custom pages yet",
+	emptyTitle: "No pages yet",
 	emptyDescription: "Create your first page to publish it on the site.",
 	colPath: "Path",
 	colTitle: "Title",
@@ -92,7 +92,7 @@ const en: PagesMessages = {
 	statusDraft: "Draft",
 	navShown: "Shown",
 	navHidden: "Hidden",
-	providedCustom: "Custom",
+	providedDatabase: "Database",
 	fieldPath: "Path",
 	fieldTitle: "Title",
 	fieldContentDoc: "Content document",
@@ -122,7 +122,7 @@ const en: PagesMessages = {
 
 const ptBR: PagesMessages = {
 	title: "Páginas",
-	description: "Crie e gerencie páginas personalizadas exibidas neste site.",
+	description: "Crie e gerencie páginas exibidas neste site.",
 	newPage: "Nova página",
 	edit: "Editar",
 	view: "Ver",
@@ -131,7 +131,7 @@ const ptBR: PagesMessages = {
 	cancel: "Cancelar",
 	create: "Criar",
 	saving: "Salvando…",
-	emptyTitle: "Nenhuma página personalizada ainda",
+	emptyTitle: "Nenhuma página ainda",
 	emptyDescription: "Crie sua primeira página para publicá-la no site.",
 	colPath: "Caminho",
 	colTitle: "Título",
@@ -144,7 +144,7 @@ const ptBR: PagesMessages = {
 	statusDraft: "Rascunho",
 	navShown: "Visível",
 	navHidden: "Oculta",
-	providedCustom: "Personalizada",
+	providedDatabase: "Banco de dados",
 	fieldPath: "Caminho",
 	fieldTitle: "Título",
 	fieldContentDoc: "Documento de conteúdo",
@@ -174,7 +174,7 @@ const ptBR: PagesMessages = {
 
 const es: PagesMessages = {
 	title: "Páginas",
-	description: "Crea y gestiona páginas personalizadas en este sitio.",
+	description: "Crea y gestiona páginas en este sitio.",
 	newPage: "Nueva página",
 	edit: "Editar",
 	view: "Ver",
@@ -183,7 +183,7 @@ const es: PagesMessages = {
 	cancel: "Cancelar",
 	create: "Crear",
 	saving: "Guardando…",
-	emptyTitle: "Aún no hay páginas personalizadas",
+	emptyTitle: "Aún no hay páginas",
 	emptyDescription: "Crea tu primera página para publicarla en el sitio.",
 	colPath: "Ruta",
 	colTitle: "Título",
@@ -196,7 +196,7 @@ const es: PagesMessages = {
 	statusDraft: "Borrador",
 	navShown: "Visible",
 	navHidden: "Oculta",
-	providedCustom: "Personalizada",
+	providedDatabase: "Base de datos",
 	fieldPath: "Ruta",
 	fieldTitle: "Título",
 	fieldContentDoc: "Documento de contenido",

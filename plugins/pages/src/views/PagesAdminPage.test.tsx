@@ -98,8 +98,8 @@ describe("PagesAdminPage", () => {
 		expect(screen.getByText("/platform/audit")).toBeTruthy();
 		expect(screen.getByText("audit.admin")).toBeTruthy();
 		expect(screen.getByText("audit.panel")).toBeTruthy();
-		expect(screen.getByText("Custom")).toBeTruthy();
-		// Plugin rows carry no row actions — only the custom row's edit/delete.
+		expect(screen.getByText("Database")).toBeTruthy();
+		// Plugin rows carry no row actions — only the DB row's edit/delete.
 		expect(screen.getAllByLabelText("Edit")).toHaveLength(1);
 		expect(screen.getAllByLabelText("Delete")).toHaveLength(1);
 	});
@@ -117,7 +117,7 @@ describe("PagesAdminPage", () => {
 				locale="en"
 			/>,
 		);
-		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+		expect(screen.getByText("No pages yet")).toBeTruthy();
 	});
 
 	it("defaults the table chrome locale to en when none is passed", () => {
@@ -132,7 +132,7 @@ describe("PagesAdminPage", () => {
 				layoutEnabled={false}
 			/>,
 		);
-		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+		expect(screen.getByText("No pages yet")).toBeTruthy();
 	});
 
 	it("localizes copy for other locales", () => {
@@ -149,7 +149,7 @@ describe("PagesAdminPage", () => {
 			/>,
 		);
 		expect(screen.getByText("Páginas")).toBeTruthy();
-		expect(screen.getByText("Nenhuma página personalizada ainda")).toBeTruthy();
+		expect(screen.getByText("Nenhuma página ainda")).toBeTruthy();
 	});
 
 	it("creates a page through the dialog", async () => {

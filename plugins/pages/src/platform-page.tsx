@@ -103,16 +103,16 @@ const asData = (
 /**
  * `panel.pages` component for /platform/pages (T-083): the host
  * dispatcher hands the loader Effect's result (`{ pages, docs }` — every
- * `custom_pages` row, drafts included, plus the rich-text document
+ * `pages` row, drafts included, plus the rich-text document
  * picker options) as `data`; this wrapper narrows it into the view's
  * props. The admin gate already ran in the page `guard` and inside
- * every `CustomPages.admin*` method.
+ * every `Pages.admin*` method.
  */
 export function PagesAdminConsolePage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const { pages, docs, richTextEnabled, schemas, searchSchemaEnabled, layouts, layoutEnabled } =
 		asData(data);
 	// Plugin-contributed pages (P-104): the console lists every reachable
-	// descriptor alongside the custom_pages rows, read-only. Enabled
+	// descriptor alongside the pages rows, read-only. Enabled
 	// state comes from ctx.pluginStates (package-granular, same gate the
 	// dispatchers apply); absent it every descriptor is listed.
 	const providedPages = collectProvidedPages(

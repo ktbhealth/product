@@ -2,7 +2,7 @@ import { entryEnabled, type Plugin } from "@ktb/kernel";
 
 /**
  * Inventory of plugin-contributed pages for the /platform/pages console
- * (P-104): the table lists `custom_pages` DB rows AND every page
+ * (P-104): the table lists `pages` DB rows AND every page
  * descriptor plugins ship via `pages`/`panel.pages`, tagged with the
  * owning plugin id. This mirrors `collectPages` in @ktb/app-host —
  * plugins cannot import app-host (the client registry glob would

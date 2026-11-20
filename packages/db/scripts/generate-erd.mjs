@@ -90,10 +90,10 @@ const DOMAINS = [
 	},
 	{
 		id: "pages",
-		title: "Custom pages",
+		title: "Pages",
 		owner: "`plugins/pages`",
-		description: "Plugin-defined custom pages and their navigation placement.",
-		tables: ["custom_pages"],
+		description: "Plugin-defined pages and their navigation placement.",
+		tables: ["pages"],
 	},
 	{
 		id: "doctors",
@@ -215,7 +215,7 @@ const DOMAINS = [
 		title: "Rich text",
 		owner: "`plugins/rich-text`",
 		description:
-			"Reusable rich-text documents — titled content rows referenced by custom pages and other plugins.",
+			"Reusable rich-text documents — titled content rows referenced by pages and other plugins.",
 		tables: ["rich_text"],
 	},
 	{
@@ -231,7 +231,7 @@ const DOMAINS = [
 		title: "Layouts",
 		owner: "`plugins/layouts`",
 		description:
-			"Page-body layouts — named section compositions referenced by custom pages via `custom_pages.layout_id`.",
+			"Page-body layouts — named section compositions referenced by pages via `pages.layout_id`.",
 		tables: ["layouts"],
 	},
 	{

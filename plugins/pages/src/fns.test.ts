@@ -34,8 +34,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Principal } from "@ktb/authz";
 
 import { plugins } from "./index.ts";
-import { customPage } from "./schema.ts";
-import { CUSTOM_PAGES_TEST_DDL, CustomPages, CustomPagesLive } from "./service.ts";
+import { page } from "./schema.ts";
+import { PAGES_TEST_DDL, Pages, PagesLive } from "./service.ts";
 import { createPageFn, deletePageFn, navPagesFn, updatePageFn } from "./fns.ts";
 
 const PLUGIN_STATE_DDL = `
@@ -59,15 +59,15 @@ describe("pages fns", () => {
 		installServerFnRuntime(rt, auth);
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(CUSTOM_PAGES_TEST_DDL + PLUGIN_STATE_DDL));
+		const db = makeDb(makeD1(PAGES_TEST_DDL + PLUGIN_STATE_DDL));
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
 		);
 		const states = makePluginStatesLive(registry);
-		const customPages = CustomPagesLive.pipe(Layer.provide(env));
+		const pagesLive = PagesLive.pipe(Layer.provide(env));
 		runtime = ManagedRuntime.make(
-			Layer.mergeAll(states.pipe(Layer.provide(env)), customPages, env) as Layer.Layer<
+			Layer.mergeAll(states.pipe(Layer.provide(env)), pagesLive, env) as Layer.Layer<
 				unknown,
 				never,
 				never
@@ -229,14 +229,14 @@ describe("pages fns", () => {
 	});
 
 	it("propagates unexpected service errors instead of mapping them", async () => {
-		const stubPages = CustomPages.of({
+		const stubPages = Pages.of({
 			adminList: () => Effect.fail({ _tag: "Other" }),
 			adminCreate: () => Effect.fail({ _tag: "Other" }),
 			adminUpdate: () => Effect.fail({ _tag: "Other" }),
 			adminRemove: () => Effect.fail({ _tag: "Other" }),
 			publishedByPath: () => Effect.succeed(null),
 			navList: () => Effect.fail({ _tag: "Other" }),
-		} as unknown as CustomPages["Service"]);
+		} as unknown as Pages["Service"]);
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
 				Layer.succeed(
@@ -251,7 +251,7 @@ describe("pages fns", () => {
 					setConfig: () => Effect.void,
 					entries: () => Effect.succeed([]),
 				} as unknown as PluginStatesShape),
-				Layer.succeed(CustomPages, stubPages),
+				Layer.succeed(Pages, stubPages),
 			) as Layer.Layer<unknown, never, never>,
 		);
 		installRuntime(rt);
@@ -276,7 +276,7 @@ describe("pages fns", () => {
 	});
 
 	it("maps a null create to null and rethrows non-domain failures", async () => {
-		const stubPages = CustomPages.of({
+		const stubPages = Pages.of({
 			adminList: () => Effect.succeed([]),
 			// adminCreate can legitimately resolve null (empty insert
 			// returning) — the fn must pass that through as null. A
@@ -292,14 +292,14 @@ describe("pages fns", () => {
 			adminRemove: () => Effect.fail("plain delete failure"),
 			publishedByPath: () => Effect.succeed(null),
 			navList: () => Effect.succeed([]),
-		} as unknown as CustomPages["Service"]);
+		} as unknown as Pages["Service"]);
 		const rt = ManagedRuntime.make(
 			Layer.mergeAll(
 				Layer.succeed(
 					PlatformAdmin,
 					makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
 				),
-				Layer.succeed(CustomPages, stubPages),
+				Layer.succeed(Pages, stubPages),
 			) as Layer.Layer<unknown, never, never>,
 		);
 		installRuntime(rt);

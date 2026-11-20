@@ -18,7 +18,7 @@ vi.mock("./fns.ts", () => ({
 
 import type { ChromeProps } from "@ktb/kernel";
 
-import { CustomNavLinks } from "./chrome.tsx";
+import { PageNavLinks } from "./chrome.tsx";
 
 const props = (): ChromeProps => ({
 	user: null,
@@ -36,13 +36,13 @@ afterEach(() => {
 	navPagesFn.mockReset();
 });
 
-describe("CustomNavLinks", () => {
+describe("PageNavLinks", () => {
 	it("renders a link per nav page", async () => {
 		navPagesFn.mockResolvedValue([
 			{ path: "/about", title: "About", sortOrder: 0 },
 			{ path: "/team", title: "Team", sortOrder: 1 },
 		]);
-		const { container } = render(<CustomNavLinks {...props()} />);
+		const { container } = render(<PageNavLinks {...props()} />);
 		await waitFor(() => expect(screen.getByText("About")).toBeTruthy());
 		const links = [...container.querySelectorAll("a")];
 		expect(links.map((a) => a.getAttribute("href"))).toEqual(["/about", "/team"]);
@@ -51,14 +51,14 @@ describe("CustomNavLinks", () => {
 
 	it("renders nothing when the list is empty", async () => {
 		navPagesFn.mockResolvedValue([]);
-		const { container } = render(<CustomNavLinks {...props()} />);
+		const { container } = render(<PageNavLinks {...props()} />);
 		await waitFor(() => expect(navPagesFn).toHaveBeenCalled());
 		expect(container.querySelector("a")).toBeNull();
 	});
 
 	it("renders nothing when the fetch fails", async () => {
 		navPagesFn.mockRejectedValue(new Error("down"));
-		const { container } = render(<CustomNavLinks {...props()} />);
+		const { container } = render(<PageNavLinks {...props()} />);
 		await waitFor(() => expect(navPagesFn).toHaveBeenCalled());
 		await waitFor(() => expect(container.querySelector("a")).toBeNull());
 	});
@@ -70,7 +70,7 @@ describe("CustomNavLinks", () => {
 				resolve = r;
 			}),
 		);
-		const { unmount } = render(<CustomNavLinks {...props()} />);
+		const { unmount } = render(<PageNavLinks {...props()} />);
 		unmount();
 		await act(async () => {
 			resolve([{ path: "/late", title: "Late", sortOrder: 0 }]);
@@ -87,7 +87,7 @@ describe("CustomNavLinks", () => {
 				reject = r;
 			}),
 		);
-		const { unmount } = render(<CustomNavLinks {...props()} />);
+		const { unmount } = render(<PageNavLinks {...props()} />);
 		unmount();
 		await act(async () => {
 			reject(new Error("late"));

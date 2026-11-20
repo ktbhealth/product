@@ -43,7 +43,7 @@ import { createPageFn, deletePageFn, updatePageFn } from "../fns.ts";
 import { pagesMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { ProvidedPageRef } from "../provided-pages.ts";
 
-/** Row shape the panel loader hands down — the `custom_pages` record
+/** Row shape the panel loader hands down — the `pages` record
  * narrowed to the fields the console edits (timestamps unused).
  * `richTextId` references the @ktb/rich-text document rendered as the
  * page body (null = no document); `layoutId` references the
@@ -150,10 +150,10 @@ const formFrom = (row: AdminPageRow | null): FormState =>
 				sortOrder: String(row.sortOrder),
 			};
 
-/** Table row: a `custom_pages` record (editable) or a plugin page
+/** Table row: a `pages` record (editable) or a plugin page
  * descriptor (read-only, P-104). */
 type PagesTableRow =
-	| ({ readonly kind: "custom" } & AdminPageRow)
+	| ({ readonly kind: "db" } & AdminPageRow)
 	| ({ readonly kind: "plugin" } & ProvidedPageRef);
 
 const isPluginRow = (row: PagesTableRow): row is { readonly kind: "plugin" } & ProvidedPageRef =>
@@ -184,7 +184,7 @@ const SCHEMAS_CONSOLE = "/platform/schemas" as string;
 const LAYOUTS_CONSOLE = "/platform/layouts" as string;
 
 /**
- * /platform/pages console view (T-083): CRUD over the `custom_pages`
+ * /platform/pages console view (T-083): CRUD over the `pages`
  * table. Published pages render publicly through the wildcard `pages`
  * descriptor; `showInNav` pages join the app-header nav. Mutations go
  * through the plugin's admin-gated server fns; the loader re-runs via
@@ -281,7 +281,7 @@ export function PagesAdminPage({
 	};
 
 	const rows: readonly PagesTableRow[] = [
-		...pages.map((row) => ({ ...row, kind: "custom" as const })),
+		...pages.map((row) => ({ ...row, kind: "db" as const })),
 		...providedPages.map((ref) => ({ ...ref, kind: "plugin" as const })),
 	];
 
@@ -304,7 +304,7 @@ export function PagesAdminPage({
 				isPluginRow(row) ? (
 					<Badge variant="secondary">{row.pluginId}</Badge>
 				) : (
-					<Badge variant="outline">{t.providedCustom}</Badge>
+					<Badge variant="outline">{t.providedDatabase}</Badge>
 				),
 		},
 		{
@@ -394,7 +394,7 @@ export function PagesAdminPage({
 			<TablePage.Table
 				columns={columns}
 				rows={rows}
-				rowKey={(row) => (row.kind === "plugin" ? `plugin:${row.path}` : `custom:${row.id}`)}
+				rowKey={(row) => (row.kind === "plugin" ? `plugin:${row.path}` : `db:${row.id}`)}
 				empty={{ title: t.emptyTitle, description: t.emptyDescription }}
 				locale={locale}
 			/>

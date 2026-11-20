@@ -190,7 +190,7 @@ export const RichTextsLive = Layer.effect(
 
 /**
  * Test-only DDL mirroring the `rich_text` migration — re-exported for
- * sibling test files (same convention as `CUSTOM_PAGES_TEST_DDL` in
+ * sibling test files (same convention as `PAGES_TEST_DDL` in
  * plugins/pages). Never used by production code.
  */
 export const RICH_TEXT_TEST_DDL = `

@@ -7,9 +7,9 @@ import { ensureSessionUser, requirePluginEnabled, run, runAs } from "@ktb/server
 import { PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
 
-import { CustomPages, type CustomPage, type CustomPageInput } from "./service.ts";
+import { Pages, type PageRow, type PageInput } from "./service.ts";
 
-// Custom pages server functions (T-083): admin CRUD is PlatformAdmin-
+// Pages server functions (T-083): admin CRUD is PlatformAdmin-
 // gated (the /platform layout already 404s non-admins; the service
 // re-checks inside runAs — defense in depth, same pattern as the
 // plugin manager). The public nav listing is session-optional: app
@@ -33,7 +33,7 @@ export interface PageWire {
 	readonly sortOrder: number;
 }
 
-const toWire = (row: CustomPage): PageWire => ({
+const toWire = (row: PageRow): PageWire => ({
 	id: row.id,
 	path: row.path,
 	title: row.title,
@@ -95,8 +95,8 @@ export const createPageFn = createServerFn({ method: "POST" })
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
-				const pages = yield* CustomPages;
-				const row = yield* pages.adminCreate(data as CustomPageInput);
+				const pages = yield* Pages;
+				const row = yield* pages.adminCreate(data as PageInput);
 				return row === null ? null : toWire(row);
 			}),
 		).catch((error: unknown) => {
@@ -121,9 +121,9 @@ export const updatePageFn = createServerFn({ method: "POST" })
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
-				const pages = yield* CustomPages;
+				const pages = yield* Pages;
 				const { id, ...input } = data;
-				return toWire(yield* pages.adminUpdate(id, input as CustomPageInput));
+				return toWire(yield* pages.adminUpdate(id, input as PageInput));
 			}),
 		).catch((error: unknown) => {
 			if (typeof error === "object" && error !== null && "_tag" in error) {
@@ -146,7 +146,7 @@ export const deletePageFn = createServerFn({ method: "POST" })
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
-				const pages = yield* CustomPages;
+				const pages = yield* Pages;
 				yield* pages.adminRemove(data.id);
 				return true;
 			}),
@@ -183,7 +183,7 @@ export const navPagesFn = createServerFn({ method: "GET" }).handler(
 		if (!enabled) return [];
 		return run(
 			Effect.gen(function* () {
-				const pages = yield* CustomPages;
+				const pages = yield* Pages;
 				const rows = yield* pages.navList();
 				return rows.map((row) => ({
 					path: row.path,

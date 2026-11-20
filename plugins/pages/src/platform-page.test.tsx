@@ -44,7 +44,7 @@ describe("PagesAdminConsolePage", () => {
 	it("renders the empty console when loader data is missing", () => {
 		render(<PagesAdminConsolePage data={undefined} ctx={ctx} />);
 		expect(screen.getByText("Pages")).toBeTruthy();
-		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+		expect(screen.getByText("No pages yet")).toBeTruthy();
 	});
 
 	it("narrows loader rows into the admin view", async () => {
@@ -95,14 +95,14 @@ describe("PagesAdminConsolePage", () => {
 		expect(screen.getAllByText("/about")).toHaveLength(1);
 		cleanup();
 		render(<PagesAdminConsolePage data="garbage" ctx={ctx} />);
-		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+		expect(screen.getByText("No pages yet")).toBeTruthy();
 		cleanup();
 		// A bare array (the pre-docs loader shape) narrows to empty.
 		render(<PagesAdminConsolePage data={[row({})]} ctx={ctx} />);
-		expect(screen.getByText("No custom pages yet")).toBeTruthy();
+		expect(screen.getByText("No pages yet")).toBeTruthy();
 	});
 
-	it("lists enabled plugin-contributed pages alongside custom rows", () => {
+	it("lists enabled plugin-contributed pages alongside DB rows", () => {
 		const Page_ = () => null;
 		const contributing = {
 			id: "audit.panel",

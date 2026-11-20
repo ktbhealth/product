@@ -15,12 +15,12 @@ import {
 } from "@ktb/rich-text/delete-hooks";
 import { Schemas } from "@ktb/schemas/service";
 
-import { customPage, type CustomPage } from "./schema.ts";
+import { page, type PageRow } from "./schema.ts";
 
-export type { CustomPage } from "./schema.ts";
+export type { PageRow } from "./schema.ts";
 
 /**
- * Custom pages domain service (T-083): DB-backed pages rendered through
+ * Pages domain service (T-083): DB-backed pages rendered through
  * the generic `pages` contribution — one "/*" wildcard descriptor whose
  * guard/loader call `publishedByPath` with the request path. Admin
  * methods re-check the `PlatformAdmin` gate inside the service (defense
@@ -53,7 +53,7 @@ export class InvalidPageInput extends Data.TaggedError("InvalidPageInput")<{
 	readonly value: unknown;
 }> {}
 
-export type CustomPageError =
+export type PageError =
 	| Forbidden
 	| InvalidPagePath
 	| DuplicatePagePath
@@ -67,7 +67,7 @@ export type CustomPageError =
  * params) and `layoutId` (the @ktb/layouts row whose ordered sections
  * compose the page body instead of the single document) follow the
  * same contract. */
-export interface CustomPageInput {
+export interface PageInput {
 	readonly path: string;
 	readonly title: string;
 	readonly richTextId?: number | null;
@@ -153,28 +153,23 @@ const cleanSearchParams = (
 	return Object.fromEntries(Object.entries(search).filter(([key]) => !blamed.has(key)));
 };
 
-export class CustomPages extends Context.Service<
-	CustomPages,
+export class Pages extends Context.Service<
+	Pages,
 	{
 		/** Every page, admin view — path order. */
-		readonly adminList: () => Effect.Effect<readonly CustomPage[], Forbidden>;
+		readonly adminList: () => Effect.Effect<readonly PageRow[], Forbidden>;
 		/** Insert a page; `DuplicatePagePath` when the path is taken. */
-		readonly adminCreate: (
-			input: CustomPageInput,
-		) => Effect.Effect<CustomPage | null, CustomPageError>;
+		readonly adminCreate: (input: PageInput) => Effect.Effect<PageRow | null, PageError>;
 		/** Update a page by id; `PageNotFound` when missing. */
-		readonly adminUpdate: (
-			id: number,
-			input: CustomPageInput,
-		) => Effect.Effect<CustomPage, CustomPageError>;
+		readonly adminUpdate: (id: number, input: PageInput) => Effect.Effect<PageRow, PageError>;
 		/** Delete a page by id; `PageNotFound` when missing. */
-		readonly adminRemove: (id: number) => Effect.Effect<void, CustomPageError>;
+		readonly adminRemove: (id: number) => Effect.Effect<void, PageError>;
 		/** The published page at `path`, or null — public read used by
 		 * the wildcard page's guard/loader. */
-		readonly publishedByPath: (path: string) => Effect.Effect<CustomPage | null>;
+		readonly publishedByPath: (path: string) => Effect.Effect<PageRow | null>;
 		/** Published pages flagged for nav, ordered for display — public
 		 * read used by the app-header chrome component. */
-		readonly navList: () => Effect.Effect<readonly CustomPage[]>;
+		readonly navList: () => Effect.Effect<readonly PageRow[]>;
 		/** Validate `search` against the published page's bound
 		 * `searchSchemaId` schema and return the cleaned params.
 		 * Infallible passthrough: missing/unpublished page, no bound
@@ -185,11 +180,11 @@ export class CustomPages extends Context.Service<
 			search: Record<string, unknown>,
 		) => Effect.Effect<Record<string, unknown>>;
 	}
->()("@ktb/pages/CustomPages") {}
+>()("@ktb/pages/Pages") {}
 
 /**
  * Rich-text delete-hook participation: this plugin owns
- * `custom_pages.rich_text_id`, so it reports referencing pages to the
+ * `pages.rich_text_id`, so it reports referencing pages to the
  * delete dialog (`usage`) and executes the admin's choice (`cleanup`).
  * "pages.unlink-unpublish" keeps every page as an unpublished draft
  * with no document; "pages.delete-pages" removes the rows outright.
@@ -201,27 +196,27 @@ export const pagesRichTextDeleteHook = (db: DbClient): RichTextDeleteHook => ({
 	usage: (docId) =>
 		Effect.promise(() =>
 			db
-				.select({ id: customPage.id, title: customPage.title, path: customPage.path })
-				.from(customPage)
-				.where(eq(customPage.richTextId, docId)),
+				.select({ id: page.id, title: page.title, path: page.path })
+				.from(page)
+				.where(eq(page.richTextId, docId)),
 		).pipe(Effect.map((rows): readonly RichTextReferencerItem[] => rows)),
 	cleanup: (docId, actionId) =>
 		actionId === "pages.unlink-unpublish"
 			? Effect.promise(() =>
 					db
-						.update(customPage)
+						.update(page)
 						.set({ richTextId: null, published: false, updatedAt: new Date() })
-						.where(eq(customPage.richTextId, docId)),
+						.where(eq(page.richTextId, docId)),
 				).pipe(Effect.asVoid)
 			: actionId === "pages.delete-pages"
-				? Effect.promise(() => db.delete(customPage).where(eq(customPage.richTextId, docId))).pipe(
+				? Effect.promise(() => db.delete(page).where(eq(page.richTextId, docId))).pipe(
 						Effect.asVoid,
 					)
 				: Effect.void,
 });
 
-export const CustomPagesLive = Layer.effect(
-	CustomPages,
+export const PagesLive = Layer.effect(
+	Pages,
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const platformAdmin = yield* PlatformAdmin;
@@ -241,22 +236,22 @@ export const CustomPagesLive = Layer.effect(
 
 		const requireAdmin = platformAdmin.requireAdmin();
 
-		const byId = (id: number) => eq(customPage.id, id);
-		const byPath = (path: string) => eq(customPage.path, path);
+		const byId = (id: number) => eq(page.id, id);
+		const byPath = (path: string) => eq(page.path, path);
 
-		return CustomPages.of({
-			adminList: Effect.fn("CustomPages.adminList")(function* () {
+		return Pages.of({
+			adminList: Effect.fn("Pages.adminList")(function* () {
 				yield* requireAdmin;
 				return yield* Effect.promise(() =>
-					db.select().from(customPage).orderBy(asc(customPage.sortOrder), asc(customPage.path)),
+					db.select().from(page).orderBy(asc(page.sortOrder), asc(page.path)),
 				);
 			}),
-			adminCreate: Effect.fn("CustomPages.adminCreate")(function* (input: CustomPageInput) {
+			adminCreate: Effect.fn("Pages.adminCreate")(function* (input: PageInput) {
 				yield* requireAdmin;
 				const path = normalizePagePath(input.path);
 				if (path === null) return yield* new InvalidPagePath({ path: input.path });
 				const existing = yield* Effect.promise(() =>
-					db.select({ id: customPage.id }).from(customPage).where(byPath(path)).limit(1),
+					db.select({ id: page.id }).from(page).where(byPath(path)).limit(1),
 				);
 				if (existing.length > 0) return yield* new DuplicatePagePath({ path });
 				const richTextId = yield* normalizeRichTextId(input.richTextId);
@@ -264,7 +259,7 @@ export const CustomPagesLive = Layer.effect(
 				const layoutId = yield* normalizeLayoutId(input.layoutId);
 				const rows = yield* Effect.promise(() =>
 					db
-						.insert(customPage)
+						.insert(page)
 						.values({
 							path,
 							title: input.title,
@@ -281,18 +276,15 @@ export const CustomPagesLive = Layer.effect(
 				);
 				return rows[0] ?? null;
 			}),
-			adminUpdate: Effect.fn("CustomPages.adminUpdate")(function* (
-				id: number,
-				input: CustomPageInput,
-			) {
+			adminUpdate: Effect.fn("Pages.adminUpdate")(function* (id: number, input: PageInput) {
 				yield* requireAdmin;
 				const path = normalizePagePath(input.path);
 				if (path === null) return yield* new InvalidPagePath({ path: input.path });
 				const clash = yield* Effect.promise(() =>
 					db
-						.select({ id: customPage.id })
-						.from(customPage)
-						.where(and(byPath(path), ne(customPage.id, id)))
+						.select({ id: page.id })
+						.from(page)
+						.where(and(byPath(path), ne(page.id, id)))
 						.limit(1),
 				);
 				if (clash.length > 0) return yield* new DuplicatePagePath({ path });
@@ -301,7 +293,7 @@ export const CustomPagesLive = Layer.effect(
 				const layoutId = yield* normalizeLayoutId(input.layoutId);
 				const rows = yield* Effect.promise(() =>
 					db
-						.update(customPage)
+						.update(page)
 						.set({
 							path,
 							title: input.title,
@@ -320,45 +312,41 @@ export const CustomPagesLive = Layer.effect(
 				if (row === undefined) return yield* new PageNotFound({ id });
 				return row;
 			}),
-			adminRemove: Effect.fn("CustomPages.adminRemove")(function* (id: number) {
+			adminRemove: Effect.fn("Pages.adminRemove")(function* (id: number) {
 				yield* requireAdmin;
 				const rows = yield* Effect.promise(() =>
-					db.delete(customPage).where(byId(id)).returning({ id: customPage.id }),
+					db.delete(page).where(byId(id)).returning({ id: page.id }),
 				);
 				if (rows.length === 0) return yield* new PageNotFound({ id });
 			}),
-			publishedByPath: Effect.fn("CustomPages.publishedByPath")(function* (path: string) {
+			publishedByPath: Effect.fn("Pages.publishedByPath")(function* (path: string) {
 				const rows = yield* Effect.promise(() =>
 					db
 						.select()
-						.from(customPage)
-						.where(
-							and(eq(customPage.path, normalizeRequestPath(path)), eq(customPage.published, true)),
-						)
+						.from(page)
+						.where(and(eq(page.path, normalizeRequestPath(path)), eq(page.published, true)))
 						.limit(1),
 				);
 				return rows[0] ?? null;
 			}),
-			navList: Effect.fn("CustomPages.navList")(function* () {
+			navList: Effect.fn("Pages.navList")(function* () {
 				return yield* Effect.promise(() =>
 					db
 						.select()
-						.from(customPage)
-						.where(and(eq(customPage.published, true), eq(customPage.showInNav, true)))
-						.orderBy(asc(customPage.sortOrder), asc(customPage.title)),
+						.from(page)
+						.where(and(eq(page.published, true), eq(page.showInNav, true)))
+						.orderBy(asc(page.sortOrder), asc(page.title)),
 				);
 			}),
-			validatedSearch: Effect.fn("CustomPages.validatedSearch")(function* (
+			validatedSearch: Effect.fn("Pages.validatedSearch")(function* (
 				path: string,
 				search: Record<string, unknown>,
 			) {
 				const rows = yield* Effect.promise(() =>
 					db
-						.select({ searchSchemaId: customPage.searchSchemaId })
-						.from(customPage)
-						.where(
-							and(eq(customPage.path, normalizeRequestPath(path)), eq(customPage.published, true)),
-						)
+						.select({ searchSchemaId: page.searchSchemaId })
+						.from(page)
+						.where(and(eq(page.path, normalizeRequestPath(path)), eq(page.published, true)))
 						.limit(1),
 				);
 				const schemaId = rows[0]?.searchSchemaId ?? null;
@@ -368,7 +356,7 @@ export const CustomPagesLive = Layer.effect(
 					.pipe(
 						Effect.catch((error) =>
 							Effect.logWarning(
-								"CustomPages.validatedSearch: schema validation failed; passing search through",
+								"Pages.validatedSearch: schema validation failed; passing search through",
 								{ path, schemaId, error },
 							).pipe(Effect.as(null)),
 						),
@@ -381,12 +369,12 @@ export const CustomPagesLive = Layer.effect(
 );
 
 /**
- * Test-only DDL mirroring the `custom_pages` migration — re-exported for
+ * Test-only DDL mirroring the `pages` migration — re-exported for
  * sibling test files (same convention as `AUDIT_TEST_DDL` in
  * plugins/audit). Never used by production code.
  */
-export const CUSTOM_PAGES_TEST_DDL = `
-CREATE TABLE custom_pages (
+export const PAGES_TEST_DDL = `
+CREATE TABLE pages (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	path TEXT NOT NULL,
 	title TEXT NOT NULL,
@@ -399,6 +387,6 @@ CREATE TABLE custom_pages (
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
-CREATE UNIQUE INDEX custom_pages_path_idx ON custom_pages (path);
-CREATE INDEX custom_pages_nav_idx ON custom_pages (published, show_in_nav);
+CREATE UNIQUE INDEX pages_path_idx ON pages (path);
+CREATE INDEX pages_nav_idx ON pages (published, show_in_nav);
 `;

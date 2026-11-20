@@ -25214,7 +25214,7 @@ export const I18N_BASELINE = [
 		namespace: "pages",
 		key: "description",
 		locale: "en",
-		value: "Create and manage custom pages rendered on this site.",
+		value: "Create and manage pages rendered on this site.",
 	},
 	{
 		namespace: "pages",
@@ -25268,7 +25268,7 @@ export const I18N_BASELINE = [
 		namespace: "pages",
 		key: "emptyTitle",
 		locale: "en",
-		value: "No custom pages yet",
+		value: "No pages yet",
 	},
 	{
 		namespace: "pages",
@@ -25344,9 +25344,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
-		key: "providedCustom",
+		key: "providedDatabase",
 		locale: "en",
-		value: "Custom",
+		value: "Database",
 	},
 	{
 		namespace: "pages",
@@ -25499,7 +25499,7 @@ export const I18N_BASELINE = [
 		namespace: "pages",
 		key: "description",
 		locale: "pt-BR",
-		value: "Crie e gerencie páginas personalizadas exibidas neste site.",
+		value: "Crie e gerencie páginas exibidas neste site.",
 	},
 	{
 		namespace: "pages",
@@ -25553,7 +25553,7 @@ export const I18N_BASELINE = [
 		namespace: "pages",
 		key: "emptyTitle",
 		locale: "pt-BR",
-		value: "Nenhuma página personalizada ainda",
+		value: "Nenhuma página ainda",
 	},
 	{
 		namespace: "pages",
@@ -25629,9 +25629,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
-		key: "providedCustom",
+		key: "providedDatabase",
 		locale: "pt-BR",
-		value: "Personalizada",
+		value: "Banco de dados",
 	},
 	{
 		namespace: "pages",
@@ -25784,7 +25784,7 @@ export const I18N_BASELINE = [
 		namespace: "pages",
 		key: "description",
 		locale: "es",
-		value: "Crea y gestiona páginas personalizadas en este sitio.",
+		value: "Crea y gestiona páginas en este sitio.",
 	},
 	{
 		namespace: "pages",
@@ -25838,7 +25838,7 @@ export const I18N_BASELINE = [
 		namespace: "pages",
 		key: "emptyTitle",
 		locale: "es",
-		value: "Aún no hay páginas personalizadas",
+		value: "Aún no hay páginas",
 	},
 	{
 		namespace: "pages",
@@ -25914,9 +25914,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pages",
-		key: "providedCustom",
+		key: "providedDatabase",
 		locale: "es",
-		value: "Personalizada",
+		value: "Base de datos",
 	},
 	{
 		namespace: "pages",
