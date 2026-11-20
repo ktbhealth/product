@@ -81,9 +81,7 @@ let syncs: string[] = [];
 let authError: unknown;
 /** When set, DoctorProfiles.listFor delegates to it — tests use it to
  * pend or fail a single directory read while later reads succeed. */
-let doctorListHook:
-	| ((userId: string) => Effect.Effect<readonly DoctorProfile[]>)
-	| undefined;
+let doctorListHook: ((userId: string) => Effect.Effect<readonly DoctorProfile[]>) | undefined;
 
 const AuthStub = (user: typeof sec | null) =>
 	Layer.succeed(

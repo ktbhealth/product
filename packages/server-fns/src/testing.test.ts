@@ -218,7 +218,10 @@ describe("installServerFnRuntime", () => {
 			unknown,
 			never
 		>;
-		installServerFnRuntime(runtime, stubAuth(() => null));
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+		);
 		resetServerFnRuntime();
 		expect(() => getServerRuntime()).toThrow("runtime not initialized");
 		await runtime.dispose();

@@ -55,8 +55,10 @@ const authShape: AuthShape = {
 const runtime: ServerRuntime = {
 	run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
 		Effect.runPromise(
-			(testTracer === undefined ? effect : effect.pipe(Effect.provideService(Tracer.Tracer, testTracer)))
-				.pipe(Effect.provideService(Auth, authShape)) as Effect.Effect<A, E, never>,
+			(testTracer === undefined
+				? effect
+				: effect.pipe(Effect.provideService(Tracer.Tracer, testTracer))
+			).pipe(Effect.provideService(Auth, authShape)) as Effect.Effect<A, E, never>,
 		),
 	runAs: <A, E>(_user: { readonly id: string }, effect: Effect.Effect<A, E, unknown>) =>
 		Effect.runPromise(effect as Effect.Effect<A, E, never>),
@@ -169,7 +171,7 @@ describe("session lookup telemetry", () => {
 			clock.mockRestore();
 			onSessionLoad = undefined;
 		}
-		expect(await durationSum() - before).toBe(40);
+		expect((await durationSum()) - before).toBe(40);
 	});
 
 	it("traces the session lookup as Auth.getSession", async () => {
