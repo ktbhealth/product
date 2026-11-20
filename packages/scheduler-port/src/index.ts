@@ -94,7 +94,7 @@ export const nextRunAfter = (cronExpr: string, from: number): number | null => {
 		next = new Cron(cronExpr).nextRun(new Date(from));
 	} catch (error) {
 		throw new InvalidScheduleError(
-			`invalid cron expression ${cronExpr}: ${error instanceof Error ? error.message : String(error)}`,
+			`invalid cron expression ${cronExpr}: ${error instanceof Error ? error.message : /* v8 ignore next -- croner only throws Error */ String(error)}`,
 		);
 	}
 	return next === null ? null : next.getTime();
@@ -319,11 +319,19 @@ export const claimDueScheduledJobs = async (
 		}
 		if (isRecurring && nextRunAt === null) {
 			// Expression exhausted (no future occurrence) — retire the row
-			// rather than firing it forever.
+			// rather than firing it forever. Same claim conditions as the
+			// claim UPDATE so a concurrent pause/claim is never clobbered.
 			await db
 				.update(scheduledJobs)
 				.set({ status: "done", updatedAt: now })
-				.where(eq(scheduledJobs.id, candidate.id));
+				.where(
+					and(
+						eq(scheduledJobs.id, candidate.id),
+						eq(scheduledJobs.status, "active"),
+						lte(scheduledJobs.nextRunAt, now),
+						or(isNull(scheduledJobs.claimedUntil), lt(scheduledJobs.claimedUntil, now)),
+					),
+				);
 			continue;
 		}
 		const rows = await db
@@ -361,12 +369,31 @@ export interface SchedulerSweepResult {
 }
 
 /**
- * One heartbeat pass: claim due rows, dispatch each. A dispatch
- * failure does NOT release the claim — the schedule already advanced
- * (a recurring row fires again at its next occurrence; a one-off is
- * done). The failure surfaces through the dispatch path's own
- * projection (job_runs when enqueued) and the returned count; the
- * sweep itself never throws for expected failures.
+ * Release a claim once its dispatch attempt settles. The lease only
+ * needs to cover the claim→dispatch window — holding it for the full
+ * `leaseMs` would throttle recurring schedules more frequent than the
+ * lease (a `* * * * *` job would fire once per lease window instead of
+ * once per minute). Fenced on the lease value this sweep wrote, so a
+ * stale release cannot clear a newer claim.
+ */
+const releaseScheduledJobClaim = async (
+	db: DbClient,
+	id: string,
+	claimedUntil: number,
+): Promise<void> => {
+	await db
+		.update(scheduledJobs)
+		.set({ claimedUntil: null })
+		.where(and(eq(scheduledJobs.id, id), eq(scheduledJobs.claimedUntil, claimedUntil)));
+};
+
+/**
+ * One heartbeat pass: claim due rows, dispatch each, release each
+ * claim. A dispatch failure does not retry the occurrence — the
+ * schedule already advanced (a recurring row fires again at its next
+ * occurrence; a one-off is done). The failure surfaces through the
+ * dispatch path's own projection (job_runs when enqueued) and the
+ * returned count; the sweep itself never throws for expected failures.
  */
 export const runSchedulerSweep = async (
 	db: DbClient,
@@ -382,6 +409,18 @@ export const runSchedulerSweep = async (
 			fired += 1;
 		} catch {
 			failed += 1;
+		} finally {
+			// Release the lease so the next occurrence isn't throttled to
+			// leaseMs. A release failure only delays the row until lease
+			// expiry — never fails the sweep.
+			await releaseScheduledJobClaim(db, job.id, job.claimedUntil as number).catch(
+				(error: unknown) => {
+					console.warn("scheduled job claim release failed", {
+						id: job.id,
+						error: String(error),
+					});
+				},
+			);
 		}
 	}
 	return { claimed: claimed.length, fired, failed };

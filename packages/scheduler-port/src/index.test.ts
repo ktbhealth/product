@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 
 import { makeDb, type DbClient } from "@ktb/db";
@@ -51,6 +51,16 @@ describe("nextRunAfter", () => {
 		expect(() => nextRunAfter("* * * *", T0)).toThrow(InvalidScheduleError);
 		expect(() => nextRunAfter("not a cron", T0)).toThrow(InvalidScheduleError);
 	});
+
+	it("returns null for expressions with no future occurrence", () => {
+		// February 30th never happens — croner exhausts its search.
+		expect(nextRunAfter("0 0 30 2 *", T0)).toBeNull();
+	});
+
+	it("wraps croner range failures in InvalidScheduleError", () => {
+		// Five well-formed fields that croner itself rejects.
+		expect(() => nextRunAfter("61 * * * *", T0)).toThrow(InvalidScheduleError);
+	});
 });
 
 describe("deriveNextRunAt", () => {
@@ -62,6 +72,11 @@ describe("deriveNextRunAt", () => {
 	it("returns the runAt instant verbatim, past or future", () => {
 		expect(deriveNextRunAt(null, T0 - 1000, T0)).toBe(T0 - 1000);
 		expect(deriveNextRunAt(null, T0 + 1000, T0)).toBe(T0 + 1000);
+	});
+
+	it("rejects schedules that never fire and non-finite runAt", () => {
+		expect(() => deriveNextRunAt("0 0 30 2 *", null, T0)).toThrow(InvalidScheduleError);
+		expect(() => deriveNextRunAt(null, Number.NaN, T0)).toThrow(InvalidScheduleError);
 	});
 });
 
@@ -107,6 +122,28 @@ describe("insert/get/list", () => {
 		]);
 		expect((await listScheduledJobs(db, { kind: "b" })).length).toBe(1);
 	});
+
+	it("filters by tenant scope, including the null scope", async () => {
+		const db = makeTestDb();
+		const global = await insertScheduledJob(db, { kind: "g", runAt: T0 + 1000 }, T0);
+		await insertScheduledJob(db, { kind: "t", runAt: T0 + 1000, tenantId: 7 }, T0);
+		expect((await listScheduledJobs(db, { tenantId: null })).map((j) => j.id)).toEqual([global.id]);
+		expect((await listScheduledJobs(db, { tenantId: 7 })).map((j) => j.kind)).toEqual(["t"]);
+	});
+
+	it("reads corrupt params JSON as null rather than throwing", async () => {
+		const db = makeTestDb();
+		await db.insert(scheduledJobs).values({
+			id: "bad-params",
+			kind: "k",
+			params: "{not json",
+			cronExpr: "0 * * * *",
+			nextRunAt: T0,
+			createdAt: T0,
+			updatedAt: T0,
+		});
+		expect((await getScheduledJob(db, "bad-params"))?.params).toBeNull();
+	});
 });
 
 describe("updateScheduledJob", () => {
@@ -135,6 +172,19 @@ describe("updateScheduledJob", () => {
 		const resumed = await updateScheduledJob(db, job.id, { status: "active" }, T0 + 10_000);
 		expect(resumed?.status).toBe("active");
 		expect(resumed?.nextRunAt).toBe(T0 + 500);
+	});
+
+	it("accepts explicit null schedule fields and params-only patches", async () => {
+		const db = makeTestDb();
+		const oneOff = await insertScheduledJob(db, { kind: "k", runAt: T0 + 500 }, T0);
+		// Clearing cronExpr on a one-off row is a no-op schedule-wise.
+		const cleared = await updateScheduledJob(db, oneOff.id, { cronExpr: null }, T0);
+		expect(cleared?.cronExpr).toBeNull();
+		expect(cleared?.nextRunAt).toBe(T0 + 500);
+		const recurring = await insertScheduledJob(db, { kind: "k2", cronExpr: "0 * * * *" }, T0);
+		const kept = await updateScheduledJob(db, recurring.id, { runAt: null, params: { a: 1 } }, T0);
+		expect(kept?.cronExpr).toBe("0 * * * *");
+		expect(kept?.params).toEqual({ a: 1 });
 	});
 });
 
@@ -203,6 +253,52 @@ describe("claimDueScheduledJobs", () => {
 		const later = await claimDueScheduledJobs(db, { now: T0 + 120_000 });
 		expect(later.map((j) => j.id)).toEqual([recurring.id]);
 	});
+
+	it("retires recurring rows whose cron expression can never fire again", async () => {
+		const db = makeTestDb();
+		// Bypass insert validation to simulate a stored expression that
+		// croner rejects outright.
+		await db.insert(scheduledJobs).values({
+			id: "exhausted",
+			kind: "k",
+			cronExpr: "61 * * * *",
+			nextRunAt: T0 - 1,
+			createdAt: T0,
+			updatedAt: T0,
+		});
+		expect(await claimDueScheduledJobs(db, { now: T0 })).toEqual([]);
+		expect((await getScheduledJob(db, "exhausted"))?.status).toBe("done");
+	});
+
+	it("skips a candidate another writer changed between select and update", async () => {
+		const inner = makeD1(DDL);
+		let tripped = false;
+		const db = makeDb({
+			...inner,
+			prepare: (q: string) => {
+				// The claim UPDATE is the only write setting last_run_at —
+				// pause the row as it is prepared to simulate a concurrent
+				// writer winning the race; the conditional UPDATE then
+				// matches zero rows.
+				if (!tripped && q.includes('update "scheduled_jobs" set') && q.includes('"last_run_at"')) {
+					tripped = true;
+					void inner.prepare("update scheduled_jobs set status = 'paused'").run();
+				}
+				return inner.prepare(q);
+			},
+		});
+		await insertScheduledJob(db, { kind: "k", runAt: T0 - 1 }, T0);
+		expect(await claimDueScheduledJobs(db, { now: T0 })).toEqual([]);
+	});
+
+	it("defaults now/lease/limit when options are omitted", async () => {
+		const db = makeTestDb();
+		await insertScheduledJob(db, { kind: "k", runAt: Date.now() - 1000 }, Date.now());
+		const claimed = await claimDueScheduledJobs(db);
+		expect(claimed).toHaveLength(1);
+		const result = await runSchedulerSweep(db, async () => {});
+		expect(result.claimed).toBe(0);
+	});
 });
 
 describe("runSchedulerSweep", () => {
@@ -221,5 +317,42 @@ describe("runSchedulerSweep", () => {
 		);
 		expect(result).toEqual({ claimed: 2, fired: 1, failed: 1 });
 		expect(seen.map((j) => j.id).sort()).toEqual([a.id, b.id].sort());
+	});
+
+	it("releases claims so sub-lease recurring schedules keep firing", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", cronExpr: "* * * * *" }, T0);
+		// First occurrence at T0+60s; the default 5min lease would still
+		// be live at the next occurrence if the sweep didn't release it.
+		const first = await runSchedulerSweep(db, async () => {}, { now: T0 + 60_000 });
+		expect(first).toEqual({ claimed: 1, fired: 1, failed: 0 });
+		expect((await getScheduledJob(db, job.id))?.claimedUntil).toBeNull();
+		const second = await claimDueScheduledJobs(db, { now: T0 + 120_000 });
+		expect(second.map((j) => j.id)).toEqual([job.id]);
+	});
+
+	it("logs and continues when a claim release fails", async () => {
+		// The release UPDATE is the only scheduled_jobs write whose SET
+		// clause is claimed_until alone — fail just that statement.
+		const inner = makeD1(DDL);
+		const db = makeDb({
+			...inner,
+			prepare: (q: string) => {
+				if (/set "claimed_until" = \? where/.test(q)) throw new Error("release boom");
+				return inner.prepare(q);
+			},
+		});
+		await insertScheduledJob(db, { kind: "k", runAt: T0 - 1 }, T0);
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const result = await runSchedulerSweep(db, async () => {}, { now: T0 });
+			expect(result).toEqual({ claimed: 1, fired: 1, failed: 0 });
+			expect(warn).toHaveBeenCalledWith(
+				"scheduled job claim release failed",
+				expect.objectContaining({ error: expect.stringContaining("release boom") }),
+			);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 });
