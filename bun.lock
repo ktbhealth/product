@@ -686,7 +686,6 @@
       "name": "@ktb/scheduler-port",
       "dependencies": {
         "@ktb/db": "workspace:*",
-        "@ktb/jobs-port": "workspace:*",
         "croner": "^9.0.0",
         "drizzle-orm": "^0.45.1",
       },

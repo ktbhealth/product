@@ -101,6 +101,13 @@ describe("insert/get/list", () => {
 		expect(job.cronExpr).toBeNull();
 	});
 
+	it("treats an empty cronExpr as unset rather than storing it", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 500, cronExpr: "" }, T0);
+		expect(job.cronExpr).toBeNull();
+		expect(job.nextRunAt).toBe(T0 + 500);
+	});
+
 	it("rejects empty kind and invalid schedules", async () => {
 		const db = makeTestDb();
 		await expect(insertScheduledJob(db, { kind: "  " }, T0)).rejects.toThrow(InvalidScheduleError);
@@ -181,6 +188,10 @@ describe("updateScheduledJob", () => {
 		const cleared = await updateScheduledJob(db, oneOff.id, { cronExpr: null }, T0);
 		expect(cleared?.cronExpr).toBeNull();
 		expect(cleared?.nextRunAt).toBe(T0 + 500);
+		// "" normalizes to null too — a stored empty string would read
+		// as recurring at claim time.
+		const clearedEmpty = await updateScheduledJob(db, oneOff.id, { cronExpr: "" }, T0);
+		expect(clearedEmpty?.cronExpr).toBeNull();
 		const recurring = await insertScheduledJob(db, { kind: "k2", cronExpr: "0 * * * *" }, T0);
 		const kept = await updateScheduledJob(db, recurring.id, { runAt: null, params: { a: 1 } }, T0);
 		expect(kept?.cronExpr).toBe("0 * * * *");
@@ -252,6 +263,23 @@ describe("claimDueScheduledJobs", () => {
 		// nextRunAt was already advanced past `now`, so it stays put.
 		const later = await claimDueScheduledJobs(db, { now: T0 + 120_000 });
 		expect(later.map((j) => j.id)).toEqual([recurring.id]);
+	});
+
+	it("treats a stored empty cronExpr as a one-off at claim time", async () => {
+		const db = makeTestDb();
+		// Bypass write validation to simulate a legacy/poisoned row.
+		await db.insert(scheduledJobs).values({
+			id: "empty-cron",
+			kind: "k",
+			cronExpr: "",
+			runAt: T0 - 1,
+			nextRunAt: T0 - 1,
+			createdAt: T0,
+			updatedAt: T0,
+		});
+		const claimed = await claimDueScheduledJobs(db, { now: T0 });
+		expect(claimed.map((j) => j.id)).toEqual(["empty-cron"]);
+		expect((await getScheduledJob(db, "empty-cron"))?.status).toBe("done");
 	});
 
 	it("retires recurring rows whose cron expression can never fire again", async () => {

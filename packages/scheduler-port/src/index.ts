@@ -158,7 +158,9 @@ export const insertScheduledJob = async (
 	now = Date.now(),
 ): Promise<ScheduledJob> => {
 	if (write.kind.trim().length === 0) throw new InvalidScheduleError("kind must be non-empty");
-	const cronExpr = write.cronExpr ?? null;
+	// "" normalizes to null — deriveNextRunAt already treats it as unset,
+	// and a stored "" would read as recurring at claim time.
+	const cronExpr = write.cronExpr || null;
 	const runAt = write.runAt ?? null;
 	const nextRunAt = deriveNextRunAt(cronExpr, runAt, now);
 	const id = write.id ?? crypto.randomUUID();
@@ -240,7 +242,7 @@ export const updateScheduledJob = async (
 ): Promise<ScheduledJob | null> => {
 	const existing = await getScheduledJob(db, id);
 	if (existing === null) return null;
-	const cronExpr = patch.cronExpr !== undefined ? (patch.cronExpr ?? null) : existing.cronExpr;
+	const cronExpr = (patch.cronExpr !== undefined ? patch.cronExpr : existing.cronExpr) || null;
 	const runAt = patch.runAt !== undefined ? (patch.runAt ?? null) : existing.runAt;
 	const scheduleChanged =
 		patch.cronExpr !== undefined || patch.runAt !== undefined || patch.status === "active";
@@ -308,7 +310,7 @@ export const claimDueScheduledJobs = async (
 		.limit(limit);
 	const claimed: ScheduledJob[] = [];
 	for (const candidate of candidates) {
-		const isRecurring = candidate.cronExpr !== null;
+		const isRecurring = candidate.cronExpr !== null && candidate.cronExpr !== "";
 		let nextRunAt: number | null = null;
 		if (isRecurring) {
 			try {
