@@ -109,6 +109,7 @@ export function ImageElementEditor({ value, onChange }: ElementKindEditorProps) 
 	const selected = images?.find((img) => img.id === draft.imageId) ?? null;
 
 	const confirm = () => {
+		/* v8 ignore next -- the confirm button is disabled without a selection */
 		if (draft.imageId === null) return;
 		onChange({
 			imageId: draft.imageId,
@@ -185,7 +186,9 @@ export function ImageElementEditor({ value, onChange }: ElementKindEditorProps) 
 							role="listbox"
 							aria-label="Image library"
 						>
-							{(images ?? []).map((img) => {
+							{/* The grid branch is only reachable with a non-empty
+							 * library — the ternary chain above guarantees it. */}
+							{images!.map((img) => {
 								const active = img.id === draft.imageId;
 								return (
 									<button

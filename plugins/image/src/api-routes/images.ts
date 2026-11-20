@@ -107,11 +107,10 @@ export const Route = createPluginApiRoute("image.routes")("/api/images")({
 				}
 
 				// Declared image/* MIME wins; octet-stream/empty falls back
-				// to the extension map (the extension gate already ran).
+				// to the extension map (the extension gate already ran, and
+				// EXT_MIME covers every allowed extension).
 				const storedMime =
-					mime !== "" && mime !== "application/octet-stream"
-						? mime
-						: (EXT_MIME[ext] ?? "application/octet-stream");
+					mime !== "" && mime !== "application/octet-stream" ? mime : EXT_MIME[ext];
 
 				const dimensions = sniffImageSize(new Uint8Array(bytes));
 				const key = `images/${crypto.randomUUID()}.${ext}`;

@@ -135,6 +135,10 @@ describe("ImagesLive", () => {
 		expect(updated).toMatchObject({ id: created.id, title: "after", alt: "b" });
 		const retitled = await admin((p) => p.adminUpdate(created.id, { title: "again" }));
 		expect(retitled.alt).toBe("b");
+		// Alt-only patch leaves title untouched (covers the undefined
+		// branch of each normText guard).
+		const realted = await admin((p) => p.adminUpdate(created.id, { alt: "c" }));
+		expect(realted).toMatchObject({ title: "again", alt: "c" });
 		await expect(admin((p) => p.adminUpdate(9999, { title: "ghost" }))).rejects.toBeInstanceOf(
 			ImageNotFound,
 		);

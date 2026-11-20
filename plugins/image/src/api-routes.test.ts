@@ -201,6 +201,65 @@ describe("POST /api/images", () => {
 		expect((await postImage({}, big)).status).toBe(413);
 	});
 
+	it("403s when the admin gate itself fails (isAdmin catch path)", async () => {
+		// Runtime without PlatformAdmin → runAs rejects → isAdmin's
+		// catch maps to false → forbidden, not a 500.
+		const rtNoGate = ManagedRuntime.make(
+			Layer.mergeAll(Layer.succeed(Auth, authStub), Layer.succeed(Db, db)) as Layer.Layer<
+				unknown,
+				never,
+				never
+			>,
+		);
+		installServerFnRuntime(rtNoGate, authStub, runtimeOverrides);
+		try {
+			useSession("admin");
+			expect((await postImage({}, png())).status).toBe(403);
+		} finally {
+			publishRuntime();
+			await rtNoGate.dispose();
+		}
+	});
+
+	it("400s when the request carries no content-type at all", async () => {
+		useSession("admin");
+		const res = await handlersOf(UploadRoute).POST!({
+			request: new Request("http://x/api/images", { method: "POST" }),
+		} as never);
+		expect(res.status).toBe(400);
+	});
+
+	it("415s extension-less filenames and stores ext-derived MIME for empty/octet-stream types", async () => {
+		useSession("admin");
+		const noExt = new File([pngBytes()], "noext", { type: "image/png" });
+		expect((await postImage({}, noExt)).status).toBe(415);
+		// Empty declared MIME → extension map.
+		const noMime = new File([pngBytes()], "a.png", { type: "" });
+		const res1 = await postImage({}, noMime);
+		expect(res1.status).toBe(200);
+		expect(((await res1.json()) as { image: { mime: string } }).image.mime).toBe("image/png");
+		// application/octet-stream → extension map too.
+		const octet = new File([pngBytes()], "b.png", { type: "application/octet-stream" });
+		const res2 = await postImage({}, octet);
+		expect(res2.status).toBe(200);
+		expect(((await res2.json()) as { image: { mime: string } }).image.mime).toBe("image/png");
+	});
+
+	it("stores null dimensions when the bytes don't sniff", async () => {
+		useSession("admin");
+		const garbage = new File([new Uint8Array([9, 9, 9, 9])], "g.png", { type: "image/png" });
+		const res = await postImage({}, garbage);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { image: { width: number | null; height: number | null } };
+		expect(body.image.width).toBeNull();
+		expect(body.image.height).toBeNull();
+	});
+
+	it("rejects SVG by MIME even with an allowed extension", async () => {
+		const disguised = new File([new Uint8Array([1])], "x.png", { type: "image/svg+xml" });
+		expect((await postImage({}, disguised)).status).toBe(415);
+	});
+
 	it("503s when the image bucket is unbound", async () => {
 		await withRuntime({ images: undefined }, async () => {
 			expect((await postImage({}, png())).status).toBe(503);
@@ -290,6 +349,28 @@ describe("GET /api/images/$id", () => {
 		expect(served).toEqual(pngBytes());
 	});
 
+	it("404s when the row lookup itself fails (run catch path)", async () => {
+		// Runtime without the Images service → run() rejects → the
+		// handler's catch maps to null → honest 404.
+		const rtNoService = ManagedRuntime.make(
+			Layer.mergeAll(
+				Layer.succeed(Auth, authStub),
+				Layer.succeed(Db, db),
+				Layer.succeed(
+					PlatformAdmin,
+					makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com")),
+				),
+			) as Layer.Layer<unknown, never, never>,
+		);
+		installServerFnRuntime(rtNoService, authStub, runtimeOverrides);
+		try {
+			expect((await getImage(1)).status).toBe(404);
+		} finally {
+			publishRuntime();
+			await rtNoService.dispose();
+		}
+	});
+
 	it("404s when the row exists but the object is gone", async () => {
 		const rows = await db
 			.insert(images)
@@ -303,5 +384,26 @@ describe("GET /api/images/$id", () => {
 			})
 			.returning({ id: images.id });
 		expect((await getImage(rows[0]!.id)).status).toBe(404);
+	});
+
+	it("falls back to the row mime when the stored object has no httpMetadata", async () => {
+		// Objects uploaded before metadata tracking (or written by hand)
+		// carry no contentType — the row's mime wins.
+		bucketStore.set("images/raw.png", { data: pngBytes() });
+		const rows = await db
+			.insert(images)
+			.values({
+				title: "t",
+				alt: "",
+				mime: "image/png",
+				size: 1,
+				storageKey: "images/raw.png",
+				createdAt: new Date(),
+			})
+			.returning({ id: images.id });
+		const res = await getImage(rows[0]!.id);
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("image/png");
+		bucketStore.delete("images/raw.png");
 	});
 });

@@ -67,9 +67,6 @@ describe("image fns", () => {
 	let db: ReturnType<typeof makeDb>;
 	let currentEmail: string | null = null;
 	const auth = stubAuth(() => sessionUser(currentEmail));
-	const installRuntime = (rt: ManagedRuntime.ManagedRuntime<unknown, never>) =>
-		installServerFnRuntime(rt, auth);
-
 	// In-memory bucket double — deleteImageFn's best-effort object
 	// cleanup resolves through ServerRuntime.images.
 	const deletedKeys: string[] = [];
@@ -203,6 +200,43 @@ describe("image fns", () => {
 		);
 		expect(seen).toEqual(["builder.unlink"]);
 		expect(deletedKeys).toEqual(["images/hooked.png"]);
+	});
+
+	it("still returns true when the best-effort object delete fails", async () => {
+		currentEmail = "admin@x.com";
+		const rows = await insertImage(db, { storageKey: "images/stuck.png" }).returning();
+		const created = rows[0]!;
+		const failingBucket = {
+			get: async () => null,
+			put: async () => ({}),
+			delete: async () => {
+				throw new Error("bucket down");
+			},
+		};
+		const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+		installServerFnRuntime(runtime, auth, { images: failingBucket });
+		try {
+			expect(await deleteImageFn({ data: { id: created.id } })).toBe(true);
+			expect(spy).toHaveBeenCalledWith(
+				"image object delete failed",
+				expect.objectContaining({ storageKey: "images/stuck.png" }),
+			);
+		} finally {
+			spy.mockRestore();
+			installServerFnRuntime(runtime, auth, { images: fakeBucket });
+		}
+	});
+
+	it("skips object cleanup entirely when no bucket is bound", async () => {
+		currentEmail = "admin@x.com";
+		const rows = await insertImage(db, { storageKey: "images/nobucket.png" }).returning();
+		const created = rows[0]!;
+		installServerFnRuntime(runtime, auth, { images: undefined });
+		try {
+			expect(await deleteImageFn({ data: { id: created.id } })).toBe(true);
+		} finally {
+			installServerFnRuntime(runtime, auth, { images: fakeBucket });
+		}
 	});
 
 	it("validates wire input before the handler runs", async () => {
