@@ -202,6 +202,17 @@ describe("site-builder fns", () => {
 		expect(parseBuilderDoc(saved.layout ?? null)?.version).toBe(1);
 	});
 
+	it("keeps a future doc version instead of relabeling it as current", async () => {
+		currentEmail = "admin@x.com";
+		saved.page = undefined;
+		await expect(
+			saveBuilderDocumentFn({
+				data: { kind: "page", id: 7, builderJson: '{"version":99,"data":{"content":[]}}' },
+			}),
+		).resolves.toBe(true);
+		expect(parseBuilderDoc(saved.page ?? null)?.version).toBe(99);
+	});
+
 	it("rethrows unhandled service failures instead of collapsing them", async () => {
 		currentEmail = "admin@x.com";
 		const boom = { _tag: "Unexpected", message: "db exploded" };

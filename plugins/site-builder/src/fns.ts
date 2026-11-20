@@ -7,12 +7,7 @@ import { Layouts } from "@ktb/layouts/service";
 import { Pages } from "@ktb/pages/service";
 import { PlatformAdmin } from "@ktb/platform";
 import { ensureSessionUser, requirePluginEnabled, runAs } from "@ktb/server-fns";
-import {
-	builderDocFromData,
-	migrateBuilderDoc,
-	parseBuilderDoc,
-	serializeBuilderDoc,
-} from "@ktb/builder";
+import { migrateBuilderDoc, parseBuilderDoc, serializeBuilderDoc } from "@ktb/builder";
 
 // Site-builder server functions (PL-014 / P-109): admin-gated load +
 // save of the versioned `builderJson` document on `pages`/`layouts`
@@ -123,7 +118,10 @@ export const saveBuilderDocumentFn = createServerFn({ method: "POST" })
 		const user = await ensureSessionUser();
 		const doc = parseBuilderDoc(data.builderJson);
 		if (doc === null) return false;
-		const canonical = serializeBuilderDoc(builderDocFromData(migrateBuilderDoc(doc).data));
+		// Serialize the migrated doc itself — not builderDocFromData —
+		// so a future-version doc keeps its claimed version instead of
+		// being mislabeled as the current one.
+		const canonical = serializeBuilderDoc(migrateBuilderDoc(doc));
 		return asAdmin(
 			user,
 			Effect.gen(function* () {
