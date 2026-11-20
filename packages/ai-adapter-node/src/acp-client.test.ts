@@ -1,8 +1,23 @@
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import { openAcpSession as sharedOpenAcpSession } from "@ktb/ai-adapter-acp";
 
 import { openAcpSession } from "./acp-client.ts";
-import type { SpawnedProcess } from "./stdio-rpc.ts";
+import { makeStdioRpc, type SpawnedProcess } from "./stdio-rpc.ts";
+
+// Spy on the two delegation boundaries (call-through wrappers) so tests
+// can assert which option keys were forwarded — an explicit
+// `key: undefined` is observable here even though downstream `??` /
+// `!== undefined` guards treat it like an absent key.
+vi.mock("@ktb/ai-adapter-acp", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/ai-adapter-acp")>();
+	return { ...actual, openAcpSession: vi.fn(actual.openAcpSession) };
+});
+vi.mock("./stdio-rpc.ts", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("./stdio-rpc.ts")>();
+	return { ...actual, makeStdioRpc: vi.fn(actual.makeStdioRpc) };
+});
 
 interface FakeProc extends SpawnedProcess {
 	readonly written: string[];
@@ -194,6 +209,22 @@ describe("openAcpSession", () => {
 		);
 		expect(err.message).toContain("overloaded");
 		expect(proc.frames.some((f) => f.method === "session/cancel")).toBe(true);
+	});
+
+	it("omits unset options when delegating to the shared session and transport", async () => {
+		// No spawnImpl/cwd/timeoutMs — the empty argv fails inside
+		// makeStdioRpc, but both delegation boundaries are still invoked
+		// and their option objects recorded.
+		await scoped(
+			Effect.gen(function* () {
+				yield* Effect.flip(openAcpSession({ argv: [] }));
+			}),
+		);
+		const sessionOpts = vi.mocked(sharedOpenAcpSession).mock.calls.at(-1)![0];
+		expect("cwd" in sessionOpts).toBe(false);
+		expect("timeoutMs" in sessionOpts).toBe(false);
+		const rpcOpts = vi.mocked(makeStdioRpc).mock.calls.at(-1)![0];
+		expect("spawnImpl" in rpcOpts).toBe(false);
 	});
 
 	it("fails typed on an empty argv without a spawnImpl override", async () => {

@@ -1,7 +1,20 @@
 import * as Effect from "effect/Effect";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { makeStdioRpc, type SpawnedProcess } from "./stdio-rpc.ts";
+
+const spawnCalls = vi.hoisted(() => ({ list: [] as unknown[][] }));
+
+vi.mock("node:child_process", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:child_process")>();
+	return {
+		...actual,
+		spawn: (command: string, args: readonly string[], options?: object) => {
+			spawnCalls.list.push([command, args, options]);
+			return actual.spawn(command, [...args], options as never);
+		},
+	};
+});
 
 /** In-memory SpawnedProcess: stdin writes are parsed as JSON-RPC frames
  * and forwarded to `onLine` (which replies via `send`); tests can also
@@ -121,6 +134,26 @@ describe("makeStdioRpc", () => {
 		expect(out).toBe("pong");
 	});
 
+	it("spawns with piped stdin/stdout and inherited stderr", async () => {
+		spawnCalls.list.length = 0;
+		const script = [
+			'let b="";process.stdin.on("data",(d)=>{b+=d;',
+			"const ls=b.split('\\n');b=ls.pop();",
+			"for(const l of ls){if(!l.trim())continue;const m=JSON.parse(l);",
+			"if(m.id!==undefined)process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:'ok'})+'\\n');}});",
+		].join("");
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({ argv: [process.execPath, "-e", script] });
+				return yield* rpc.request("ping");
+			}),
+		);
+		expect(out).toBe("ok");
+		const call = spawnCalls.list.find((c) => c[0] === process.execPath);
+		expect(call?.[1]).toEqual(["-e", script]);
+		expect(call?.[2]).toEqual({ stdio: ["pipe", "pipe", "inherit"] });
+	});
+
 	it("surfaces JSON-RPC error responses as PortError", async () => {
 		const proc = makeFakeProc((msg, send) =>
 			send({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "busy" } }),
@@ -151,6 +184,22 @@ describe("makeStdioRpc", () => {
 			}),
 		);
 		expect(out).toEqual({ ok: true });
+	});
+
+	it("skips whitespace-only frames instead of corrupting the session", async () => {
+		const proc = makeFakeProc((msg, send) => {
+			// A frame of pure spaces carries no JSON — it must be
+			// ignored like a blank line, not parsed.
+			proc.emitOut("   \n");
+			if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, result: "ok" });
+		});
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({ argv: ["a"], spawnImpl: () => proc });
+				return yield* rpc.request("m");
+			}),
+		);
+		expect(out).toBe("ok");
 	});
 
 	it("accepts Content-Length-framed replies, split mid-body and multibyte-safe", async () => {
@@ -236,6 +285,7 @@ describe("makeStdioRpc", () => {
 			}),
 		);
 		expect(err.message).toBe("acp agent exited (code 2)");
+		expect(err.port).toBe("llm");
 	});
 
 	it("reports signal death as an unknown exit code", async () => {
@@ -249,6 +299,19 @@ describe("makeStdioRpc", () => {
 			}),
 		);
 		expect(err.message).toBe("acp agent exited (code unknown)");
+	});
+
+	it("reports a string exit code verbatim", async () => {
+		const proc = makeFakeProc((msg) => {
+			if (msg.method === "die") proc.fire("exit", "SIGTERM");
+		});
+		const err = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({ argv: ["a"], spawnImpl: () => proc });
+				return yield* Effect.flip(rpc.request("die"));
+			}),
+		);
+		expect(err.message).toBe("acp agent exited (code SIGTERM)");
 	});
 
 	it("rejects pending requests on process error events", async () => {
@@ -294,12 +357,51 @@ describe("makeStdioRpc", () => {
 			}),
 		);
 		expect(out).toBe("done");
-		expect(proc.written.some((w) => w.includes("-32601") && w.includes("agent-7"))).toBe(true);
+		const refusal = proc.written.map((w) => JSON.parse(w)).find((m) => m.id === "agent-7");
+		expect(refusal).toMatchObject({
+			jsonrpc: "2.0",
+			error: { code: -32601, message: "client does not implement fs/read_text_file" },
+		});
+	});
+
+	it("delivers agent notifications to onNotification", async () => {
+		const seen: unknown[][] = [];
+		const proc = makeFakeProc((msg, send) => {
+			send({ jsonrpc: "2.0", method: "session/update", params: { update: "chunk" } });
+			if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, result: "ok" });
+		});
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({
+					argv: ["a"],
+					spawnImpl: () => proc,
+					onNotification: (method, params) => seen.push([method, params]),
+				});
+				return yield* rpc.request("m");
+			}),
+		);
+		expect(out).toBe("ok");
+		expect(seen).toEqual([["session/update", { update: "chunk" }]]);
+	});
+
+	it("ignores agent notifications when no onNotification is registered", async () => {
+		const proc = makeFakeProc((msg, send) => {
+			send({ jsonrpc: "2.0", method: "session/update", params: {} });
+			if (msg.id !== undefined) send({ jsonrpc: "2.0", id: msg.id, result: "ok" });
+		});
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({ argv: ["a"], spawnImpl: () => proc });
+				return yield* rpc.request("m");
+			}),
+		);
+		expect(out).toBe("ok");
 	});
 
 	it("fails fast on an empty argv and wraps spawn throws", async () => {
 		const e1 = await Effect.runPromise(Effect.flip(Effect.scoped(makeStdioRpc({ argv: [] }))));
 		expect(e1.message).toBe("acp transport: empty spawn command");
+		expect(e1.port).toBe("llm");
 		const e1b = await Effect.runPromise(Effect.flip(Effect.scoped(makeStdioRpc({ argv: [""] }))));
 		expect(e1b.message).toBe("acp transport: empty spawn command");
 		const e2 = await Effect.runPromise(
