@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
-import { integer, text } from "drizzle-orm/sqlite-core";
+import { integer, SQLiteSyncDialect, text } from "drizzle-orm/sqlite-core";
 import * as Effect from "effect/Effect";
+import { Tracer } from "effect";
 import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vitest";
 
@@ -106,6 +107,22 @@ describe("tenantScopeCondition", () => {
 			tenantScopeCondition(notes).pipe(Effect.provideService(Tenant, tenantA)),
 		);
 		expect(condition).toBeDefined();
+	});
+
+	it("degrades to a bare IS NULL in personal scope", async () => {
+		const condition = await Effect.runPromise(tenantScopeCondition(notes));
+		const { sql } = new SQLiteSyncDialect().sqlToQuery(condition!);
+		expect(sql).toBe('"test_notes"."tenant_id" is null');
+	});
+
+	it("scopes to the accessible ids OR personal rows", async () => {
+		const condition = await Effect.runPromise(
+			withTenantAccess([1, 2], tenantScopeCondition(notes)),
+		);
+		const { sql, params } = new SQLiteSyncDialect().sqlToQuery(condition!);
+		expect(sql).toContain(" in ");
+		expect(sql).toContain("is null");
+		expect(params).toEqual([1, 2]);
 	});
 });
 
@@ -283,5 +300,70 @@ describe("scopedRepo writes", () => {
 		expect(rows.map((r) => r.id).sort((a, b) => a - b)).toEqual(
 			[f.ids.a1, f.ids.p1].sort((a, b) => a - b),
 		);
+	});
+});
+
+describe("scopedRepo tracing", () => {
+	interface RecordedSpan {
+		readonly name: string;
+		readonly attributes: Map<string, unknown>;
+	}
+
+	const recordTracer = () => {
+		const spans: RecordedSpan[] = [];
+		const tracer = Tracer.make({
+			span: (options) => {
+				const attributes = new Map<string, unknown>();
+				const record: RecordedSpan = { name: options.name, attributes };
+				spans.push(record);
+				return {
+					_tag: "Span",
+					name: options.name,
+					spanId: `span-${spans.length}`,
+					traceId: "trace",
+					parent: options.parent,
+					annotations: options.annotations,
+					status: { _tag: "Started", startTime: options.startTime },
+					attributes,
+					links: options.links,
+					sampled: options.sampled,
+					kind: options.kind,
+					attribute(key: string, value: unknown) {
+						attributes.set(key, value);
+					},
+					event() {},
+					end() {},
+					addLinks() {},
+				} as Tracer.Span;
+			},
+		});
+		return { tracer, spans };
+	};
+
+	it("wraps each repo operation in a db.<op> span tagged with the table", async () => {
+		const f = await makeFixture();
+		const { tracer, spans } = recordTracer();
+		await withTenant(
+			tenantA,
+			scopedRepo(notes).pipe(
+				Effect.flatMap((r) =>
+					Effect.all([
+						r.findMany(),
+						r.findFirst(),
+						r.insert({ body: "traced" }),
+						r.update({ body: "traced-2" }).where(eq(notes.id, f.ids.a1)),
+						r.remove(eq(notes.id, f.ids.a2)),
+					]),
+				),
+				Effect.withTracer(tracer),
+			),
+			f.live,
+		);
+		expect(spans.map((s) => s.name).sort()).toEqual(
+			["db.findFirst", "db.findMany", "db.insert", "db.remove", "db.update"].sort(),
+		);
+		for (const span of spans) {
+			expect(span.attributes.get("db.table")).toBe("test_notes");
+		}
 	});
 });

@@ -59,8 +59,10 @@ export const tenantRlsStatements = (
 	options: TenantRlsOptions = {},
 ): readonly string[] => {
 	const name = typeof table === "string" ? table : table.name;
+	// Stryker disable next-line ConditionalExpression, StringLiteral: a falsified typeof check still yields "tenant_id" — string tables have no tenantIdColumn property, so the ?? fallback is identical
 	const column = typeof table === "string" ? "tenant_id" : (table.tenantIdColumn ?? "tenant_id");
 	const policy =
+		// Stryker disable next-line ConditionalExpression, StringLiteral: a falsified typeof check still yields `<name>_tenant_isolation` — string tables have no policyName property, so the ?? fallback is identical
 		typeof table === "string"
 			? `${name}_tenant_isolation`
 			: (table.policyName ?? `${name}_tenant_isolation`);

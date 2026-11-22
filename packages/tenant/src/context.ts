@@ -71,6 +71,7 @@ export const runAsTenant = <A, E, R>(tenant: Tenant, effect: Effect.Effect<A, E,
  * columns are integers and `accessibleTenantIds` consumers compare
  * numerically either way, but `inArray` fences stay exact. */
 const normalizeTenantId = (id: string | number): string | number =>
+	// Stryker disable next-line ConditionalExpression: for non-string ids the regex coerces via String(id); a match means Number(id) === id anyway, and non-matches return id unchanged
 	typeof id === "string" && /^-?\d+$/.test(id) ? Number(id) : id;
 
 /**
