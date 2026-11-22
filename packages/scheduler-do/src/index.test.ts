@@ -153,7 +153,7 @@ describe("notifySchedulerDo", () => {
 		const calls: { url: string; body: unknown }[] = [];
 		const ns = {
 			idFromName: (name: string) => ({ toString: () => name }),
-			get: (id: { toString(): string }) => ({
+			get: () => ({
 				fetch: async (req: Request) => {
 					calls.push({
 						url: req.url,

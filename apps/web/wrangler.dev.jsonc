@@ -36,12 +36,19 @@
 		],
 		"consumers": [{ "queue": "ktb-transcription" }, { "queue": "ktb-theme-assets" }],
 	},
-	// ACP bridge (F3b): same DO binding as wrangler.jsonc — dev needs it
-	// for `ai-bridge` CLIs to connect against the local worker.
+	// ACP bridge (F3b): same DO bindings as wrangler.jsonc — dev needs
+	// ACP_BRIDGE for `ai-bridge` CLIs and SCHEDULER (P-094) so one-off
+	// scheduled_jobs exercise the alarm-precision path locally.
 	"durable_objects": {
-		"bindings": [{ "name": "ACP_BRIDGE", "class_name": "AcpBridge" }],
+		"bindings": [
+			{ "name": "ACP_BRIDGE", "class_name": "AcpBridge" },
+			{ "name": "SCHEDULER", "class_name": "SchedulerDo" },
+		],
 	},
-	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["AcpBridge"] }],
+	"migrations": [
+		{ "tag": "v1", "new_sqlite_classes": ["AcpBridge"] },
+		{ "tag": "v2", "new_sqlite_classes": ["SchedulerDo"] },
+	],
 	"d1_databases": [
 		{
 			"binding": "DB",
