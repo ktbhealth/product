@@ -2,12 +2,7 @@ import * as Effect from "effect/Effect";
 import { describe, expect, it } from "vitest";
 
 import { Tenant } from "./index.ts";
-import {
-	TENANT_ROLE_RANK,
-	TenantForbidden,
-	requireTenantRole,
-	tenantRoleAtLeast,
-} from "./authz.ts";
+import { TENANT_ROLE_RANK, requireTenantRole, tenantRoleAtLeast } from "./authz.ts";
 import type { TenantRole } from "./index.ts";
 
 const tenant = (role: TenantRole): Tenant => ({
@@ -44,9 +39,17 @@ describe("requireTenantRole", () => {
 	it("fails TenantForbidden below the minimum or without a tenant", async () => {
 		await expect(
 			Effect.runPromise(asTenant(tenant("member"), requireTenantRole("admin", "x"))),
-		).rejects.toMatchObject({ path: "x", role: "member", required: "admin" });
-		await expect(Effect.runPromise(requireTenantRole("member"))).rejects.toBeInstanceOf(
-			TenantForbidden,
-		);
+		).rejects.toMatchObject({
+			_tag: "TenantForbidden",
+			path: "x",
+			role: "member",
+			required: "admin",
+		});
+		await expect(Effect.runPromise(requireTenantRole("member"))).rejects.toMatchObject({
+			_tag: "TenantForbidden",
+			path: "tenant",
+			role: null,
+			required: "member",
+		});
 	});
 });

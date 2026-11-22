@@ -9,9 +9,8 @@ import {
 	runAsTenant,
 	runAsTenantId,
 	Tenant,
+	TenantAccess,
 	TenantDirectory,
-	TenantNotFound,
-	TenantRequired,
 	TenantResolver,
 	TenantResolverLive,
 	tenantScopeId,
@@ -50,6 +49,13 @@ describe("Tenant", () => {
 			Effect.runPromise(Effect.provideService(Effect.service(Tenant), Tenant, tenantA)),
 		).resolves.toEqual(tenantA);
 	});
+
+	it("exposes stable service keys", () => {
+		expect(Tenant.key).toBe("@ktb/tenant/Tenant");
+		expect(TenantAccess.key).toBe("@ktb/tenant/TenantAccess");
+		expect(TenantDirectory.key).toBe("@ktb/tenant/TenantDirectory");
+		expect(TenantResolver.key).toBe("@ktb/tenant/TenantResolver");
+	});
 });
 
 describe("runAsTenant / requireTenant", () => {
@@ -72,7 +78,15 @@ describe("runAsTenant / requireTenant", () => {
 
 	it("requireTenant fails TenantRequired in personal scope", async () => {
 		await expect(Effect.runPromise(requireTenant("notes.list"))).rejects.toMatchObject({
+			_tag: "TenantRequired",
 			reason: "tenant scope required (notes.list)",
+		});
+	});
+
+	it("requireTenant defaults the path to 'tenant'", async () => {
+		await expect(Effect.runPromise(requireTenant())).rejects.toMatchObject({
+			_tag: "TenantRequired",
+			reason: "tenant scope required (tenant)",
 		});
 	});
 });
@@ -109,6 +123,13 @@ describe("runAsTenantId", () => {
 	it("keeps non-numeric string ids as strings", async () => {
 		const ids = await Effect.runPromise(runAsTenantId("clinic-9", accessibleTenantIds));
 		expect(ids).toEqual(["clinic-9"]);
+	});
+
+	it("keeps ids that merely start with digits as strings", async () => {
+		const ids = await Effect.runPromise(runAsTenantId("42abc", accessibleTenantIds));
+		expect(ids).toEqual(["42abc"]);
+		const decimal = await Effect.runPromise(runAsTenantId("4.5", accessibleTenantIds));
+		expect(decimal).toEqual(["4.5"]);
 	});
 });
 
@@ -205,9 +226,10 @@ describe("makeTenantResolver", () => {
 
 	it("deny fallback fails TenantRequired with no selector", async () => {
 		const resolver = makeTenantResolver({ directory: directory(), fallback: "deny" });
-		await expect(Effect.runPromise(resolver.resolve(null, "u1"))).rejects.toBeInstanceOf(
-			TenantRequired,
-		);
+		await expect(Effect.runPromise(resolver.resolve(null, "u1"))).rejects.toMatchObject({
+			_tag: "TenantRequired",
+			reason: "no tenant selected",
+		});
 	});
 
 	it("selectDefault picks from memberships before the fallback", async () => {
@@ -231,6 +253,14 @@ describe("makeTenantResolver", () => {
 		const resolver = makeTenantResolver({
 			directory: directory(),
 			selectDefault: () => null,
+		});
+		await expect(Effect.runPromise(resolver.resolve(null, "u1"))).resolves.toBeNull();
+	});
+
+	it("selectDefault returning undefined falls through to the fallback", async () => {
+		const resolver = makeTenantResolver({
+			directory: directory(),
+			selectDefault: () => undefined,
 		});
 		await expect(Effect.runPromise(resolver.resolve(null, "u1"))).resolves.toBeNull();
 	});
@@ -265,9 +295,11 @@ describe("makeTenantResolver", () => {
 
 	it("fails TenantNotFound for a selector without a user", async () => {
 		const resolver = makeTenantResolver({ directory: directory() });
-		await expect(
-			Effect.runPromise(resolver.resolve({ slug: "clinic-a" }, null)),
-		).rejects.toBeInstanceOf(TenantNotFound);
+		const selector: TenantSelector = { slug: "clinic-a" };
+		await expect(Effect.runPromise(resolver.resolve(selector, null))).rejects.toMatchObject({
+			_tag: "TenantNotFound",
+			selector,
+		});
 	});
 
 	it("propagates directory failures", async () => {

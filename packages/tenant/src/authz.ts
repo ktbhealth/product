@@ -19,6 +19,7 @@ export const TENANT_ROLE_RANK: Record<TenantRole, number> = {
 
 /** True when `role` exists and ranks at or above `min`. */
 export const tenantRoleAtLeast = (role: TenantRole | null, min: TenantRole): boolean =>
+	// Stryker disable next-line ConditionalExpression: for role === null the rank lookup yields undefined and `undefined >= n` is false, identical to the short-circuit
 	role !== null && TENANT_ROLE_RANK[role] >= TENANT_ROLE_RANK[min];
 
 /** Denial error for tenant-role assertions — the tenant counterpart of
