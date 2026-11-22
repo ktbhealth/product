@@ -413,19 +413,21 @@ export const makeJobConsumer = (deps: JobConsumerDeps) => {
 					message.ack();
 					return;
 				}
-				// Idempotent kinds: an already-done run means this is an
-				// ack-loss redelivery — ack without re-running. A
-				// projection read failure degrades to normal dispatch.
-				if (registration.idempotent === true && deps.db !== undefined) {
-					const existing = await getJobRun(deps.db, id).catch(() => null);
-					if (existing?.status === "done") {
-						message.ack();
-						return;
-					}
-				}
 				const limit = Math.max(1, registration.concurrency ?? 1);
 				await acquire(kind, limit);
 				try {
+					// Idempotent kinds: an already-done run means this is
+					// an ack-loss redelivery — ack without re-running. A
+					// projection read failure degrades to normal dispatch.
+					// The check sits inside the slot so the projection
+					// await can't reorder same-kind dispatch.
+					if (registration.idempotent === true && deps.db !== undefined) {
+						const existing = await getJobRun(deps.db, id).catch(() => null);
+						if (existing?.status === "done") {
+							message.ack();
+							return;
+						}
+					}
 					await mark({ id, kind, status: "processing", tenantId });
 					let payload: unknown;
 					try {
