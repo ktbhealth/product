@@ -39,4 +39,9 @@ export const plugins: readonly Plugin[] = [
 			},
 		],
 	}),
+	definePlugin({
+		id: "platform.jobs",
+		meta: { keywords: ["platform", "jobs", "marker"] },
+		system: true,
+	}),
 ];

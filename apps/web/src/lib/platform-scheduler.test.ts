@@ -180,7 +180,7 @@ describe("platform scheduler-heartbeat dispatch", () => {
 
 describe("platform schedules capability", () => {
 	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 30_000 }, async () => {
-		const { runtime, registerJobHandler } = await compose((env) => {
+		const { runtime, platform, registerJobHandler } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
 		const schedules = runtime.schedules!;
@@ -209,7 +209,11 @@ describe("platform schedules capability", () => {
 		// params that JSON.stringify rejects surface as unavailable, not invalid.
 		const circular: Record<string, unknown> = {};
 		circular.self = circular;
-		const brokenCreate = await schedules.create({ kind: "k", runAt: 1, params: circular });
+		const brokenCreate = await schedules.create({
+			kind: "test.sched.cap",
+			runAt: 1,
+			params: circular,
+		});
 		expect(brokenCreate).toMatchObject({ ok: false, reason: "unavailable" });
 
 		const id = created.ok ? created.job.id : "";
@@ -234,15 +238,15 @@ describe("platform schedules capability", () => {
 		const fired = await schedules.runNow(id);
 		expect(fired).toMatchObject({ id, ok: true });
 
-		// Dispatch failure surfaces as ok:false with the error string.
-		const unhandled = await schedules.create({
+		// Dispatch failure surfaces as ok:false with the error string. Create
+		// rejects unknown kinds up front, so seed the row directly to reach
+		// the fire-time failure path.
+		const ghost = await insertScheduledJob(platform.db, {
 			kind: "test.sched.ghost",
 			runAt: Date.now() - 1000,
 		});
-		expect(unhandled.ok).toBe(true);
-		if (!unhandled.ok) throw new Error("create failed");
-		const failed = await schedules.runNow(unhandled.job.id);
-		expect(failed).toMatchObject({ id: unhandled.job.id, ok: false });
+		const failed = await schedules.runNow(ghost.id);
+		expect(failed).toMatchObject({ id: ghost.id, ok: false });
 		expect(failed?.error).toContain("unknown job kind");
 
 		expect(await schedules.remove(id)).toEqual({ ok: true });
