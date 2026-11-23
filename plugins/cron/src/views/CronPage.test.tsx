@@ -248,20 +248,28 @@ describe("CronPage dynamic schedules", () => {
 				runAt: 1700003600000,
 			}),
 			sched({ id: "done-1", status: "done", cronExpr: "30 * * * *", lastRunAt: 1700000001000 }),
+			// One-off rows carry no cronExpr — the runAt timestamp renders instead.
+			sched({
+				id: "once-1",
+				status: "done",
+				cronExpr: null,
+				runAt: 1700003600000,
+				lastRunAt: 1700000001000,
+			}),
 		]);
 		// cronExpr renders as code, runAt as a formatted timestamp.
 		expect(screen.getByText("*/15 * * * *")).toBeTruthy();
 		expect(screen.getByText("0 * * * *")).toBeTruthy();
 		expect(screen.getAllByText("Active")).toHaveLength(1);
 		expect(screen.getByText("Paused")).toBeTruthy();
-		expect(screen.getByText("Done")).toBeTruthy();
+		expect(screen.getAllByText("Done")).toHaveLength(2);
 		expect(screen.getAllByText("Never run")).toHaveLength(2);
 		// Active row: Run now + Pause + Delete; paused row: Resume + Delete;
-		// done row: Delete only.
+		// done rows: Delete only.
 		expect(screen.getAllByRole("button", { name: "Run now" })).toHaveLength(1);
 		expect(screen.getAllByRole("button", { name: "Pause" })).toHaveLength(1);
 		expect(screen.getAllByRole("button", { name: "Resume" })).toHaveLength(1);
-		expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(3);
+		expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(4);
 	});
 
 	it("creates a recurring schedule and reports success", async () => {
@@ -271,9 +279,15 @@ describe("CronPage dynamic schedules", () => {
 		fireEvent.change(screen.getByLabelText(/Cron expression/), {
 			target: { value: "*/15 * * * *" },
 		});
+		fireEvent.change(screen.getByLabelText(/Params/), { target: { value: '{"n":1}' } });
 		fireEvent.click(screen.getByRole("button", { name: "Create schedule" }));
 		expect(scheduleFns.createScheduleFn).toHaveBeenCalledWith({
-			data: { kind: "agenda.reminders", cronExpr: "*/15 * * * *", runAt: null },
+			data: {
+				kind: "agenda.reminders",
+				params: { n: 1 },
+				cronExpr: "*/15 * * * *",
+				runAt: null,
+			},
 		});
 		expect(await screen.findByText("Schedule created.")).toBeTruthy();
 		expect(scheduleFns.invalidate).toHaveBeenCalled();
@@ -340,6 +354,9 @@ describe("CronPage dynamic schedules", () => {
 				runAt: new Date("2026-01-02T03:04").getTime(),
 			},
 		});
+		// Switching back to recurring mode covers the other select arm.
+		await user.click(modeSelect!);
+		await user.click(await screen.findByRole("option", { name: "Recurring (cron)" }));
 	});
 
 	it("pause, resume and delete round-trip through the schedule fns", async () => {
@@ -385,6 +402,7 @@ describe("CronPage dynamic schedules", () => {
 	it("surfaces schedule action failures honestly", async () => {
 		scheduleFns.updateScheduleFn
 			.mockResolvedValueOnce({ ok: false as const, reason: "invalid" as const })
+			.mockResolvedValueOnce({ ok: false as const, reason: "not-found" as const })
 			.mockRejectedValueOnce(new Error("boom"));
 		scheduleFns.deleteScheduleFn.mockResolvedValueOnce({
 			ok: false as const,
@@ -402,6 +420,9 @@ describe("CronPage dynamic schedules", () => {
 
 		fireEvent.click(screen.getAllByRole("button", { name: "Pause" })[0]!);
 		expect(await screen.findByText(/Invalid schedule/)).toBeTruthy();
+		// A non-invalid failure reason maps to the generic failure copy.
+		fireEvent.click(screen.getAllByRole("button", { name: "Pause" })[0]!);
+		expect(await screen.findAllByText("Schedule operation failed.")).not.toHaveLength(0);
 		fireEvent.click(screen.getAllByRole("button", { name: "Pause" })[0]!);
 		expect(await screen.findAllByText("Schedule operation failed.")).not.toHaveLength(0);
 

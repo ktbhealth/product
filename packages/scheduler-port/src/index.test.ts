@@ -345,6 +345,11 @@ describe("runScheduledJobNow", () => {
 		// next */5 boundary after T0+60s is T0+5min, not +6min.
 		expect(after?.nextRunAt).toBe(T0 + 5 * 60_000);
 		expect(after?.lastRunAt).toBe(T0 + 60_000);
+
+		// Omitting options falls back to Date.now() — the row stays
+		// active (recurring), so a second manual fire still dispatches.
+		const fallback = await runScheduledJobNow(db, job.id, async (j) => void fired.push(j.id));
+		expect(fallback?.error).toBeNull();
 	});
 
 	it("marks a one-off done and captures dispatch errors", async () => {
@@ -360,6 +365,27 @@ describe("runScheduledJobNow", () => {
 		);
 		expect(result?.error).toBe("dispatch boom");
 		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
+
+		// Non-Error throws stringify instead of surfacing .message.
+		const other = await insertScheduledJob(db, { kind: "k2", runAt: T0 + 60_000 }, T0);
+		const stringThrew = await runScheduledJobNow(
+			db,
+			other.id,
+			async () => {
+				throw "string boom"; // eslint-disable-line no-throw-literal
+			},
+			{ now: T0 },
+		);
+		expect(stringThrew?.error).toBe("string boom");
+	});
+
+	it("returns null when the claim fence rejects an expired-lease boundary", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		// claimedUntil === now passes the pre-check (not > now) but fails
+		// the update fence (requires claimedUntil < now) — zero rows.
+		await db.update(scheduledJobs).set({ claimedUntil: T0 }).where(eq(scheduledJobs.id, job.id));
+		expect(await runScheduledJobNow(db, job.id, async () => {}, { now: T0 })).toBeNull();
 	});
 
 	it("retires a recurring row whose stored cronExpr no longer parses", async () => {

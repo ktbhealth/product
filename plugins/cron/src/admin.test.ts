@@ -410,6 +410,44 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("maps a failed schedule run-now to run-failed with the error", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [],
+					create: async () => ({ ok: false as const, reason: "invalid" as const }),
+					update: async () => ({ ok: false as const, reason: "not-found" as const }),
+					remove: async () => ({ ok: false as const, reason: "not-found" as const }),
+					runNow: async (id: string) => {
+						if (id === "down") throw new Error("dispatch exploded");
+						return {
+							id,
+							ok: false as const,
+							summary: "fired k",
+							error: "kaput",
+						};
+					},
+				},
+				jobKinds: () => [],
+			},
+		);
+		expect(await asPrincipal(runtime, (a) => a.runScheduleNow("id"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "run-failed",
+			error: "kaput",
+		});
+		// A rejecting runNow collapses to unknown-job via .catch(() => null).
+		expect(await asPrincipal(runtime, (a) => a.runScheduleNow("down"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "unknown-job",
+		});
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("rejects non-admins with Forbidden on every method", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(
