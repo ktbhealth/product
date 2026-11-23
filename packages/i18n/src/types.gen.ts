@@ -679,11 +679,26 @@ export type I18nKey =
 	| "consultations.zk.exportLocked"
 	| "consultations.zk.lockedHint"
 	| "consultations.zk.lockedRecord"
+	| "cron.actDelete"
+	| "cron.actPause"
+	| "cron.actResume"
 	| "cron.description"
 	| "cron.emptyJobsDescription"
 	| "cron.emptyJobsTitle"
 	| "cron.emptyRunsDescription"
 	| "cron.emptyRunsTitle"
+	| "cron.emptySchedulesDescription"
+	| "cron.emptySchedulesTitle"
+	| "cron.fCreate"
+	| "cron.fCreating"
+	| "cron.fCronExpr"
+	| "cron.fCronExprPlaceholder"
+	| "cron.fKind"
+	| "cron.fKindPlaceholder"
+	| "cron.fModeOnce"
+	| "cron.fModeRecurring"
+	| "cron.fParams"
+	| "cron.fRunAt"
 	| "cron.jColAction"
 	| "cron.jColDescription"
 	| "cron.jColJob"
@@ -695,6 +710,7 @@ export type I18nKey =
 	| "cron.lastOk"
 	| "cron.lastRunning"
 	| "cron.neverRan"
+	| "cron.newScheduleTitle"
 	| "cron.rColError"
 	| "cron.rColId"
 	| "cron.rColJob"
@@ -710,6 +726,23 @@ export type I18nKey =
 	| "cron.runsTitle"
 	| "cron.runUnavailable"
 	| "cron.runUnknown"
+	| "cron.schedCreated"
+	| "cron.schedDeleted"
+	| "cron.schedFailed"
+	| "cron.schedInvalid"
+	| "cron.schedulesDescription"
+	| "cron.schedulesTab"
+	| "cron.schedulesTitle"
+	| "cron.schedUpdated"
+	| "cron.sColAction"
+	| "cron.sColKind"
+	| "cron.sColLastRun"
+	| "cron.sColNextRun"
+	| "cron.sColSchedule"
+	| "cron.sColStatus"
+	| "cron.statusActive"
+	| "cron.statusDone"
+	| "cron.statusPaused"
 	| "cron.title"
 	| "cron.unavailableDescription"
 	| "cron.unavailableTitle"
@@ -3213,6 +3246,9 @@ export interface I18nTypedT {
 	(key: "consultations.zk.exportLocked"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedHint"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedRecord"): Effect.Effect<string>;
+	(key: "cron.actDelete"): Effect.Effect<string>;
+	(key: "cron.actPause"): Effect.Effect<string>;
+	(key: "cron.actResume"): Effect.Effect<string>;
 	(
 		key: "cron.description",
 		params: {
@@ -3223,6 +3259,18 @@ export interface I18nTypedT {
 	(key: "cron.emptyJobsTitle"): Effect.Effect<string>;
 	(key: "cron.emptyRunsDescription"): Effect.Effect<string>;
 	(key: "cron.emptyRunsTitle"): Effect.Effect<string>;
+	(key: "cron.emptySchedulesDescription"): Effect.Effect<string>;
+	(key: "cron.emptySchedulesTitle"): Effect.Effect<string>;
+	(key: "cron.fCreate"): Effect.Effect<string>;
+	(key: "cron.fCreating"): Effect.Effect<string>;
+	(key: "cron.fCronExpr"): Effect.Effect<string>;
+	(key: "cron.fCronExprPlaceholder"): Effect.Effect<string>;
+	(key: "cron.fKind"): Effect.Effect<string>;
+	(key: "cron.fKindPlaceholder"): Effect.Effect<string>;
+	(key: "cron.fModeOnce"): Effect.Effect<string>;
+	(key: "cron.fModeRecurring"): Effect.Effect<string>;
+	(key: "cron.fParams"): Effect.Effect<string>;
+	(key: "cron.fRunAt"): Effect.Effect<string>;
 	(key: "cron.jColAction"): Effect.Effect<string>;
 	(key: "cron.jColDescription"): Effect.Effect<string>;
 	(key: "cron.jColJob"): Effect.Effect<string>;
@@ -3234,6 +3282,7 @@ export interface I18nTypedT {
 	(key: "cron.lastOk"): Effect.Effect<string>;
 	(key: "cron.lastRunning"): Effect.Effect<string>;
 	(key: "cron.neverRan"): Effect.Effect<string>;
+	(key: "cron.newScheduleTitle"): Effect.Effect<string>;
 	(key: "cron.rColError"): Effect.Effect<string>;
 	(key: "cron.rColId"): Effect.Effect<string>;
 	(key: "cron.rColJob"): Effect.Effect<string>;
@@ -3254,6 +3303,23 @@ export interface I18nTypedT {
 	(key: "cron.runsTitle"): Effect.Effect<string>;
 	(key: "cron.runUnavailable"): Effect.Effect<string>;
 	(key: "cron.runUnknown"): Effect.Effect<string>;
+	(key: "cron.schedCreated"): Effect.Effect<string>;
+	(key: "cron.schedDeleted"): Effect.Effect<string>;
+	(key: "cron.schedFailed"): Effect.Effect<string>;
+	(key: "cron.schedInvalid"): Effect.Effect<string>;
+	(key: "cron.schedulesDescription"): Effect.Effect<string>;
+	(key: "cron.schedulesTab"): Effect.Effect<string>;
+	(key: "cron.schedulesTitle"): Effect.Effect<string>;
+	(key: "cron.schedUpdated"): Effect.Effect<string>;
+	(key: "cron.sColAction"): Effect.Effect<string>;
+	(key: "cron.sColKind"): Effect.Effect<string>;
+	(key: "cron.sColLastRun"): Effect.Effect<string>;
+	(key: "cron.sColNextRun"): Effect.Effect<string>;
+	(key: "cron.sColSchedule"): Effect.Effect<string>;
+	(key: "cron.sColStatus"): Effect.Effect<string>;
+	(key: "cron.statusActive"): Effect.Effect<string>;
+	(key: "cron.statusDone"): Effect.Effect<string>;
+	(key: "cron.statusPaused"): Effect.Effect<string>;
 	(key: "cron.title"): Effect.Effect<string>;
 	(key: "cron.unavailableDescription"): Effect.Effect<string>;
 	(key: "cron.unavailableTitle"): Effect.Effect<string>;
