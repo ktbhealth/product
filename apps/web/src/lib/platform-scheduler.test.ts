@@ -121,6 +121,26 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		},
 	);
 
+	it("stringifies non-Error handler failures into job_runs", { timeout: 30_000 }, async () => {
+		const { runtime, platform, registerJobHandler } = await compose((env) => {
+			env.AUDIO_QUEUE = undefined;
+		});
+		registerJobHandler("test.sched.stringboom", {
+			handle: async () => {
+				throw "string failure";
+			},
+		});
+		await dueJob(platform, "test.sched.stringboom");
+
+		expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
+			ok: false,
+			error: "1 dispatch(es) failed",
+		});
+		const runs = await listJobRuns(platform.db, { kind: "test.sched.stringboom" });
+		expect(runs).toHaveLength(1);
+		expect(runs[0]).toMatchObject({ status: "failed", error: "string failure" });
+	});
+
 	it("fails dispatches for kinds with no registered handler", { timeout: 30_000 }, async () => {
 		const { runtime, platform } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
