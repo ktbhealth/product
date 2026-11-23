@@ -13,7 +13,10 @@
 //   deliberately kept out of the plugin glob (see the file's comment).
 // - job-runs.ts — generic jobs backbone status projection (PL-007);
 //   written by @ktb/jobs-port, read by the /platform jobs console.
+// - scheduled-jobs.ts — runtime scheduler definitions; claimed and
+//   dispatched by @ktb/scheduler-port's heartbeat sweep.
 export * from "./auth.ts";
 export * from "./job-runs.ts";
 export * from "./plugin-state.ts";
+export * from "./scheduled-jobs.ts";
 export * from "./schema.gen.ts";
