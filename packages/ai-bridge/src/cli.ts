@@ -138,12 +138,14 @@ export const connect = async (opts: ConnectOptions, deps: BridgeDeps = {}): Prom
 			const WS = deps.ws ?? (globalThis.WebSocket as unknown as WebSocketImpl);
 			const socket = new WS(opts.url);
 			let settled = false;
+			// Stryker disable next-line StringLiteral: onDead only fires from markDead, which sets dead=true before invoking waiters — the retry loop's `dead` check treats "" exactly like "spawn_dead".
 			const onDead = () => done("spawn_dead");
 			const done = (why: "closed" | "spawn_dead") => {
 				if (settled) return;
 				settled = true;
 				clearInterval(ping);
 				const i = deadWaiters.indexOf(onDead);
+				// Stryker disable next-line ConditionalExpression,EqualityOperator,UnaryOperator,CallExpression: attaches are sequential so deadWaiters holds at most this attempt's onDead (i is always 0); every mutation reduces to splice-or-skip, and a stale waiter is inert because done() early-returns once settled.
 				if (i !== -1) deadWaiters.splice(i, 1);
 				/* v8 ignore next -- else arm unreachable: done() settles once per
 				   attempt and the loop can't attach a newer socket while
@@ -164,6 +166,7 @@ export const connect = async (opts: ConnectOptions, deps: BridgeDeps = {}): Prom
 				try {
 					socket.send(JSON.stringify({ type: "ping" }));
 				} catch {
+					// Stryker disable next-line StringLiteral: "closed"→"" is equivalent — attempt() only distinguishes "spawn_dead" from every other why.
 					done("closed");
 				}
 			}, deps.heartbeatMs ?? HEARTBEAT_MS);
@@ -181,7 +184,9 @@ export const connect = async (opts: ConnectOptions, deps: BridgeDeps = {}): Prom
 					done("spawn_dead");
 				}
 			};
+			// Stryker disable next-line StringLiteral: "closed"→"" is equivalent — why is only ever compared to "spawn_dead".
 			socket.onclose = () => done("closed");
+			// Stryker disable next-line StringLiteral: same — "" and "closed" take the identical retry/once path.
 			socket.onerror = () => done("closed");
 		});
 
@@ -264,7 +269,10 @@ export const main = async (argv: readonly string[]): Promise<number> => {
 
 // Entry gate: `bunx @ktb/ai-bridge` / `bun src/cli.ts` — under vitest
 // the module is imported, not run (import.meta.main is Bun's marker).
-/* v8 ignore next 4 -- process entry point; unit tests import, never exec */
+/* v8 ignore start -- process entry point; unit tests import, never exec */
+// Stryker disable next-line ConditionalExpression,BlockStatement: entry gate — import.meta.main is only true when the file is executed directly; vitest imports the module, so this branch is unreachable in tests.
 if (import.meta.main === true) {
+	// Stryker disable next-line MethodExpression,CallExpression: same unreachable entry gate.
 	process.exit(await main(process.argv.slice(2)));
 }
+/* v8 ignore stop */

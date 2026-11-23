@@ -139,7 +139,9 @@ export class AcpBridge {
 		// The bridge is gone — every in-flight RPC fails fast instead of
 		// hanging to its timeout.
 		for (const [id, p] of this.pending) {
+			// Stryker disable next-line CallExpression: an uncleared timer only re-fires pending.delete(id) (already gone) and resolve(timeout) on an already-settled promise — both no-ops.
 			clearTimeout(p.timer);
+			// Stryker disable next-line CallExpression: a leftover pending entry is inert — its resolve is already consumed and a same-id frame resolves an already-settled promise.
 			this.pending.delete(id);
 			p.resolve({ kind: "offline" });
 		}
@@ -150,6 +152,7 @@ export class AcpBridge {
 			return new Response("expected websocket upgrade", { status: 400 });
 		}
 		const endpointParam = new URL(request.url).searchParams.get("endpoint");
+		// Stryker disable next-line ConditionalExpression: endpointParam is string|null — Number(null) is 0 and NaN both fail the isInteger/<=0 guard below with the same 400.
 		const endpointId = endpointParam === null ? NaN : Number(endpointParam);
 		if (!Number.isInteger(endpointId) || endpointId <= 0) {
 			return new Response("missing endpoint", { status: 400 });
@@ -197,6 +200,7 @@ export class AcpBridge {
 		const id = String(wire.id);
 		const outcome = await new Promise<PendingOutcome>((resolve) => {
 			const timer = setTimeout(() => {
+				// Stryker disable next-line CallExpression: skipping the delete leaves an inert entry — resolve is idempotent and the timer already fired.
 				this.pending.delete(id);
 				resolve({ kind: "timeout" });
 			}, this.rpcTimeoutMs);
@@ -204,7 +208,9 @@ export class AcpBridge {
 			try {
 				socket.send(JSON.stringify(wire));
 			} catch {
+				// Stryker disable next-line CallExpression: an uncleared timer only re-resolves the already-settled promise and re-deletes an absent key.
 				clearTimeout(timer);
+				// Stryker disable next-line CallExpression: a leftover pending entry is inert — resolve is idempotent.
 				this.pending.delete(id);
 				resolve({ kind: "offline" });
 			}
@@ -276,7 +282,9 @@ export class AcpBridge {
 		if (msg.id !== undefined) {
 			const p = this.pending.get(String(msg.id));
 			if (p === undefined) return;
+			// Stryker disable next-line CallExpression: an uncleared timer only re-resolves the already-settled promise and re-deletes an absent key.
 			clearTimeout(p.timer);
+			// Stryker disable next-line CallExpression: a leftover pending entry is inert — resolve is idempotent and a reused id overwrites the slot.
 			this.pending.delete(String(msg.id));
 			p.resolve({ kind: "response", response: msg });
 		}

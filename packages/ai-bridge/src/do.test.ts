@@ -27,16 +27,20 @@ class FakePair {
 
 const makeState = (restored: readonly FakeSocket[] = []) => {
 	const accepted: FakeSocket[] = [];
+	const tags: (readonly string[] | undefined)[] = [];
 	const waits: Promise<unknown>[] = [];
 	const state: BridgeDoState & {
 		readonly accepted: readonly FakeSocket[];
+		readonly tags: readonly (readonly string[] | undefined)[];
 		readonly waits: readonly Promise<unknown>[];
 	} = {
 		id: {},
 		accepted,
+		tags,
 		waits,
-		acceptWebSocket: (ws) => {
+		acceptWebSocket: (ws, t) => {
 			accepted.push(ws as FakeSocket);
+			tags.push(t);
 		},
 		getWebSockets: () => restored,
 		waitUntil: (p) => {
@@ -118,10 +122,20 @@ describe("AcpBridge", () => {
 
 	it("rejects non-upgrade GETs and missing endpoint", async () => {
 		const b = new AcpBridge(makeState(), {});
-		expect((await b.fetch(new Request("https://x/?endpoint=1"))).status).toBe(400);
-		expect(
-			(await b.fetch(new Request("https://x/", { headers: { Upgrade: "websocket" } }))).status,
-		).toBe(400);
+		const notUpgrade = await b.fetch(new Request("https://x/?endpoint=1"));
+		expect(notUpgrade.status).toBe(400);
+		expect(await notUpgrade.text()).toBe("expected websocket upgrade");
+		const missing = await b.fetch(new Request("https://x/", { headers: { Upgrade: "websocket" } }));
+		expect(missing.status).toBe(400);
+		expect(await missing.text()).toBe("missing endpoint");
+		const zero = await b.fetch(
+			new Request("https://x/?endpoint=0", { headers: { Upgrade: "websocket" } }),
+		);
+		expect(zero.status).toBe(400);
+		const junk = await b.fetch(
+			new Request("https://x/?endpoint=abc", { headers: { Upgrade: "websocket" } }),
+		);
+		expect(junk.status).toBe(400);
 	});
 
 	it("accepts the bridge socket via hibernation and stamps last_seen_at", async () => {
@@ -131,6 +145,7 @@ describe("AcpBridge", () => {
 		const res = await b.fetch(upgradeReq(7));
 		expect(res.status).toBe(101);
 		expect(state.accepted).toHaveLength(1);
+		expect(state.tags[0]).toEqual(["bridge"]);
 		await state.waits[0]!; // the stamp is a waitUntil'd promise
 		expect(db.calls).toHaveLength(1);
 		expect(db.calls[0]!.sql).toContain("last_seen_at");
@@ -143,7 +158,15 @@ describe("AcpBridge", () => {
 		const b = new AcpBridge(makeState(), {});
 		const res = await b.fetch(rpcReq({ jsonrpc: "2.0", id: 1, method: "initialize" }));
 		expect(res.status).toBe(503);
+		expect(res.headers.get("content-type")).toBe("application/json");
 		expect(await res.json()).toEqual({ error: "bridge_offline" });
+	});
+
+	it("still answers 503 offline for a malformed rpc body", async () => {
+		const b = new AcpBridge(makeState(), {});
+		// Offline short-circuits before the body is even parsed.
+		const res = await b.fetch(rpcReq({ jsonrpc: "2.0" }));
+		expect(res.status).toBe(503);
 	});
 
 	it("forwards a request and correlates the response by id", async () => {
@@ -185,6 +208,7 @@ describe("AcpBridge", () => {
 		await b.fetch(upgradeReq());
 		const res = await b.fetch(rpcReq({ jsonrpc: "2.0", method: "session/cancel" }));
 		expect(res.status).toBe(202);
+		expect(await res.json()).toEqual({ ok: true });
 		expect(JSON.parse(state.accepted[0]!.sent[0]!)).toMatchObject({
 			method: "session/cancel",
 		});
@@ -194,10 +218,12 @@ describe("AcpBridge", () => {
 		const state = makeState();
 		const b = new AcpBridge(state, {});
 		await b.fetch(upgradeReq());
-		expect((await b.fetch(rpcReq({ jsonrpc: "2.0" }))).status).toBe(400);
-		expect(
-			(await b.fetch(new Request("https://x/rpc", { method: "POST", body: "{" }))).status,
-		).toBe(400);
+		const bad = await b.fetch(rpcReq({ jsonrpc: "2.0" }));
+		expect(bad.status).toBe(400);
+		expect(await bad.json()).toEqual({ error: "bad frame" });
+		const unparsable = await b.fetch(new Request("https://x/rpc", { method: "POST", body: "{" }));
+		expect(unparsable.status).toBe(400);
+		expect(await unparsable.json()).toEqual({ error: "bad frame" });
 	});
 
 	it("heartbeat updates last_seen_at and answers pong, never counting as rpc", async () => {
@@ -220,10 +246,33 @@ describe("AcpBridge", () => {
 		const server = state.accepted[0]!;
 		server.sent.length = 0;
 		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: 9, method: "fs/read" }));
-		expect(JSON.parse(server.sent[0]!)).toMatchObject({
+		expect(JSON.parse(server.sent[0]!)).toEqual({
+			jsonrpc: "2.0",
 			id: 9,
-			error: { code: -32601 },
+			error: { code: -32601, message: "client does not implement fs/read" },
 		});
+	});
+
+	it("ignores frames arriving on a socket that is not the bridge", async () => {
+		const state = makeState();
+		const b = new AcpBridge(state, {});
+		await b.fetch(upgradeReq());
+		const server = state.accepted[0]!;
+		const stranger = new FakeSocket();
+		// A stray socket answering a pending id must not resolve it.
+		const pending = b.fetch(rpcReq({ jsonrpc: "2.0", id: 7, method: "m" }));
+		await tick();
+		b.webSocketMessage(stranger, JSON.stringify({ jsonrpc: "2.0", id: 7, result: "evil" }));
+		b.webSocketMessage(stranger, JSON.stringify({ jsonrpc: "2.0", method: "evil/note" }));
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: 7, result: "ok" }));
+		const res = await pending;
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			response: { result: string };
+			notifications: unknown[];
+		};
+		expect(body.response.result).toBe("ok");
+		expect(body.notifications).toEqual([]);
 	});
 
 	it("drops stray/invalid frames without touching pending rpcs", async () => {
@@ -250,6 +299,20 @@ describe("AcpBridge", () => {
 		expect(await res.json()).toEqual({ error: "bridge_timeout" });
 	});
 
+	it('id-less frames never correlate, not even against id "undefined"', async () => {
+		const state = makeState();
+		const b = new AcpBridge(state, {}, { rpcTimeoutMs: 20 });
+		await b.fetch(upgradeReq());
+		const server = state.accepted[0]!;
+		const pending = b.fetch(rpcReq({ jsonrpc: "2.0", id: "undefined", method: "m" }));
+		await tick();
+		// String(msg.id) of a missing id is "undefined" — a frame without
+		// an id must not resolve the request that happens to share it.
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", result: "ghost" }));
+		const res = await pending;
+		expect(res.status).toBe(504);
+	});
+
 	it("fails in-flight rpcs fast when the socket closes, then stays offline", async () => {
 		const state = makeState();
 		const b = new AcpBridge(state, {});
@@ -258,8 +321,12 @@ describe("AcpBridge", () => {
 		const pending = b.fetch(rpcReq({ jsonrpc: "2.0", id: 5, method: "m" }));
 		await tick();
 		b.webSocketClose(server, 1001, "gone", false);
-		expect((await pending).status).toBe(503);
-		expect((await b.fetch(rpcReq({ jsonrpc: "2.0", id: 6, method: "m" }))).status).toBe(503);
+		const res = await pending;
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ error: "bridge_offline" });
+		const after = await b.fetch(rpcReq({ jsonrpc: "2.0", id: 6, method: "m" }));
+		expect(after.status).toBe(503);
+		expect(await after.json()).toEqual({ error: "bridge_offline" });
 	});
 
 	it("a second bridge connection replaces the first socket", async () => {
@@ -306,21 +373,41 @@ describe("AcpBridge", () => {
 
 	it("a restored socket heartbeats without an endpoint id and no DB write", async () => {
 		const restored = new FakeSocket();
+		const state = makeState([restored]);
 		const db = makeDb();
-		const b = new AcpBridge(makeState([restored]), { DB: db.database });
+		const b = new AcpBridge(state, { DB: db.database });
 		b.webSocketMessage(restored, JSON.stringify({ type: "ping" }));
 		expect(restored.sent[0]).toBe(JSON.stringify({ type: "pong" }));
 		// endpointId is only set by a fresh upgrade — a restored socket
 		// never knows it, so markSeen is a no-op until then.
 		expect(db.calls).toHaveLength(0);
+		expect(state.waits).toHaveLength(0);
 	});
 
 	it("upgrades fine without a D1 binding — stamping is best-effort", async () => {
 		const state = makeState();
 		const b = new AcpBridge(state, {});
 		expect((await b.fetch(upgradeReq())).status).toBe(101);
+		// No DB → no stamp was even attempted, so nothing is waitUntil'd.
+		expect(state.waits).toHaveLength(0);
 		b.webSocketMessage(state.accepted[0]!, JSON.stringify({ type: "ping" }));
 		expect(state.accepted[0]!.sent[0]).toBe(JSON.stringify({ type: "pong" }));
+	});
+
+	it("upgrades on a bare state — no getWebSockets, no waitUntil", async () => {
+		// workerd always provides both, but the class is structural:
+		// missing optional slices must degrade, not throw.
+		const accepted: FakeSocket[] = [];
+		const state: BridgeDoState = {
+			id: {},
+			acceptWebSocket: (ws) => {
+				accepted.push(ws as FakeSocket);
+			},
+		};
+		const db = makeDb();
+		const b = new AcpBridge(state, { DB: db.database });
+		expect((await b.fetch(upgradeReq())).status).toBe(101);
+		expect(accepted).toHaveLength(1);
 	});
 
 	it("swallows a failed last_seen_at write — never breaks the socket path", async () => {
@@ -366,7 +453,9 @@ describe("AcpBridge", () => {
 	it("answers 500 when workerd's WebSocketPair is absent", async () => {
 		delete (globalThis as Record<string, unknown>).WebSocketPair;
 		const b = new AcpBridge(makeState(), {});
-		expect((await b.fetch(upgradeReq())).status).toBe(500);
+		const res = await b.fetch(upgradeReq());
+		expect(res.status).toBe(500);
+		expect(await res.text()).toBe("durable objects require workerd");
 	});
 
 	it("answers 503 when the notification send throws", async () => {
@@ -377,7 +466,9 @@ describe("AcpBridge", () => {
 		server.send = () => {
 			throw new Error("dead");
 		};
-		expect((await b.fetch(rpcReq({ jsonrpc: "2.0", method: "session/cancel" }))).status).toBe(503);
+		const res = await b.fetch(rpcReq({ jsonrpc: "2.0", method: "session/cancel" }));
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ error: "bridge_offline" });
 	});
 
 	it("answers 503 when the request forward throws", async () => {
@@ -388,13 +479,18 @@ describe("AcpBridge", () => {
 		server.send = () => {
 			throw new Error("dead");
 		};
-		expect((await b.fetch(rpcReq({ jsonrpc: "2.0", id: 9, method: "m" }))).status).toBe(503);
+		const res = await b.fetch(rpcReq({ jsonrpc: "2.0", id: 9, method: "m" }));
+		expect(res.status).toBe(503);
+		expect(await res.json()).toEqual({ error: "bridge_offline" });
 	});
 
 	it("answers 404 outside the upgrade and /rpc routes", async () => {
 		const b = new AcpBridge(makeState(), {});
-		expect((await b.fetch(new Request("https://x/other", { method: "POST" }))).status).toBe(404);
-		expect((await b.fetch(new Request("https://x/rpc", { method: "DELETE" }))).status).toBe(404);
+		const other = await b.fetch(new Request("https://x/other", { method: "POST" }));
+		expect(other.status).toBe(404);
+		expect(await other.text()).toBe("not found");
+		const del = await b.fetch(new Request("https://x/rpc", { method: "DELETE" }));
+		expect(del.status).toBe(404);
 	});
 
 	it("decodes binary (ArrayBuffer) agent frames", async () => {
@@ -418,11 +514,20 @@ describe("AcpBridge", () => {
 		const b = new AcpBridge(state, {});
 		await b.fetch(upgradeReq());
 		const server = state.accepted[0]!;
-		server.send = () => {
-			throw new Error("dead");
+		// Fail ONLY the pong write — a blanket send failure would also
+		// break the follow-up rpc and mask a missing detach.
+		server.send = (data) => {
+			if (String(data).includes('"pong"')) throw new Error("dead");
+			FakeSocket.prototype.send.call(server, data);
 		};
 		b.webSocketMessage(server, JSON.stringify({ type: "ping" }));
-		expect((await b.fetch(rpcReq({ jsonrpc: "2.0", id: 1, method: "m" }))).status).toBe(503);
+		const pending = b.fetch(rpcReq({ jsonrpc: "2.0", id: 1, method: "m" }));
+		await tick();
+		// If the socket survived the failed pong, answer its rpc so the
+		// run terminates — the status assertion is what fails.
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: 1, result: "x" }));
+		const res = await pending;
+		expect(res.status).toBe(503);
 	});
 
 	it("detaches when the -32601 refusal fails to send", async () => {
@@ -430,14 +535,19 @@ describe("AcpBridge", () => {
 		const b = new AcpBridge(state, {});
 		await b.fetch(upgradeReq());
 		const server = state.accepted[0]!;
-		server.send = () => {
-			throw new Error("dead");
+		server.send = (data) => {
+			if (String(data).includes("-32601")) throw new Error("dead");
+			FakeSocket.prototype.send.call(server, data);
 		};
 		b.webSocketMessage(
 			server,
 			JSON.stringify({ jsonrpc: "2.0", id: 7, method: "fs/read_text_file" }),
 		);
-		expect((await b.fetch(rpcReq({ jsonrpc: "2.0", id: 1, method: "m" }))).status).toBe(503);
+		const pending = b.fetch(rpcReq({ jsonrpc: "2.0", id: 1, method: "m" }));
+		await tick();
+		b.webSocketMessage(server, JSON.stringify({ jsonrpc: "2.0", id: 1, result: "x" }));
+		const res = await pending;
+		expect(res.status).toBe(503);
 	});
 
 	it("ignores bare non-RPC JSON frames", async () => {
