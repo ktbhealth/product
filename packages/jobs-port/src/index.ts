@@ -388,6 +388,8 @@ export const makeJobConsumer = (deps: JobConsumerDeps) => {
 		});
 	const release = (kind: string): void => {
 		const slot = slots.get(kind);
+		/* v8 ignore next -- release only runs in the finally after a
+		   successful acquire, which always created the slot */
 		if (slot === undefined) return;
 		slot.active -= 1;
 		const next = slot.queue.shift();
