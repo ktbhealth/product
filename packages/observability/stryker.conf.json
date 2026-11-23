@@ -8,7 +8,7 @@
 	},
 	"mutate": ["src/**/*.ts", "!src/**/*.test.ts"],
 	"coverageAnalysis": "perTest",
-	"concurrency": 8,
+	"concurrency": 4,
 	"timeoutMS": 60000,
 	"tempDirName": ".stryker-tmp",
 	"cleanTempDir": true,
