@@ -362,6 +362,25 @@ describe("runScheduledJobNow", () => {
 		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
 	});
 
+	it("retires a recurring row whose stored cronExpr no longer parses", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", cronExpr: "*/5 * * * *" }, T0);
+		// Corrupt the expression out-of-band — insert/update validate, so
+		// only a direct write can produce this state.
+		await db
+			.update(scheduledJobs)
+			.set({ cronExpr: "not a cron" })
+			.where(eq(scheduledJobs.id, job.id));
+		const dispatched: string[] = [];
+		expect(
+			await runScheduledJobNow(db, job.id, async (j) => void dispatched.push(j.id), {
+				now: T0 + 60_000,
+			}),
+		).toBeNull();
+		expect(dispatched).toEqual([]);
+		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
+	});
+
 	it("returns null for missing, paused or mid-claim rows", async () => {
 		const db = makeTestDb();
 		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);

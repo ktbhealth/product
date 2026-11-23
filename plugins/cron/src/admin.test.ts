@@ -229,6 +229,34 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("maps a throwing schedules capability accessor to unavailable", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get schedules(): never {
+					throw new Error("schedules accessor exploded");
+				},
+			},
+		);
+		for (const call of [
+			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),
+			(a: CronAdmin["Service"]) => a.updateSchedule("id", { status: "paused" }),
+			(a: CronAdmin["Service"]) => a.deleteSchedule("id"),
+			(a: CronAdmin["Service"]) => a.runScheduleNow("id"),
+		] as const) {
+			const result = await asPrincipal(
+				runtime,
+				(a) => call(a) as Effect.Effect<unknown, unknown, never>,
+				"admin@x.com",
+			);
+			expect(result).toEqual({ ok: false, reason: "unavailable" });
+		}
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("round-trips schedule CRUD and run-now through the capability", async () => {
 		const SCHED: ScheduledJobInfo = {
 			id: "sched-1",

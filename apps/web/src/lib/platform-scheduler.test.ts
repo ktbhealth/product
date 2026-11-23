@@ -177,3 +177,74 @@ describe("platform scheduler-heartbeat dispatch", () => {
 		}
 	});
 });
+
+describe("platform schedules capability", () => {
+	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 30_000 }, async () => {
+		const { runtime, registerJobHandler } = await compose((env) => {
+			env.AUDIO_QUEUE = undefined;
+		});
+		const schedules = runtime.schedules!;
+		registerJobHandler("test.sched.cap", { handle: async () => {} });
+
+		expect(await schedules.list()).toEqual([]);
+
+		const created = await schedules.create({
+			kind: "test.sched.cap",
+			cronExpr: "*/10 * * * *",
+			params: { v: 1 },
+		});
+		expect(created.ok).toBe(true);
+		if (!created.ok) throw new Error("create failed");
+		expect(created.job).toMatchObject({
+			kind: "test.sched.cap",
+			cronExpr: "*/10 * * * *",
+			status: "active",
+		});
+		expect(await schedules.list()).toHaveLength(1);
+
+		const badCreate = await schedules.create({ kind: "test.sched.cap", cronExpr: "bad expr" });
+		expect(badCreate).toMatchObject({ ok: false, reason: "invalid" });
+
+		// params that JSON.stringify rejects surface as unavailable, not invalid.
+		const circular: Record<string, unknown> = {};
+		circular.self = circular;
+		const brokenCreate = await schedules.create({ kind: "k", runAt: 1, params: circular });
+		expect(brokenCreate).toMatchObject({ ok: false, reason: "unavailable" });
+
+		const id = created.ok ? created.job.id : "";
+		const updated = await schedules.update(id, { status: "paused" });
+		expect(updated).toMatchObject({ ok: true });
+		if (!updated.ok) throw new Error("update failed");
+		expect(updated.job.status).toBe("paused");
+
+		expect(await schedules.update("missing-id", { status: "paused" })).toEqual({
+			ok: false,
+			reason: "not-found",
+		});
+		const badUpdate = await schedules.update(id, { cronExpr: "bad expr" });
+		expect(badUpdate).toMatchObject({ ok: false, reason: "invalid" });
+		const brokenUpdate = await schedules.update(id, { params: circular });
+		expect(brokenUpdate).toMatchObject({ ok: false, reason: "unavailable" });
+
+		// runNow: missing row → null; paused row → null; active due row fires.
+		expect(await schedules.runNow("missing-id")).toBeNull();
+		expect(await schedules.runNow(id)).toBeNull(); // paused
+		await schedules.update(id, { status: "active", runAt: Date.now() - 1000, cronExpr: null });
+		const fired = await schedules.runNow(id);
+		expect(fired).toMatchObject({ id, ok: true });
+
+		// Dispatch failure surfaces as ok:false with the error string.
+		const unhandled = await schedules.create({
+			kind: "test.sched.ghost",
+			runAt: Date.now() - 1000,
+		});
+		expect(unhandled.ok).toBe(true);
+		if (!unhandled.ok) throw new Error("create failed");
+		const failed = await schedules.runNow(unhandled.job.id);
+		expect(failed).toMatchObject({ id: unhandled.job.id, ok: false });
+		expect(failed?.error).toContain("unknown job kind");
+
+		expect(await schedules.remove(id)).toEqual({ ok: true });
+		expect(await schedules.remove(id)).toEqual({ ok: false, reason: "not-found" });
+	});
+});
