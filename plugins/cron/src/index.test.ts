@@ -114,6 +114,7 @@ describe("cron panel page loader", () => {
 			runNow: () => Effect.succeed({ ok: true as const }),
 			schedules: () => Effect.succeed([]),
 			scheduleKinds: () => Effect.succeed(["agenda.sendReminder"]),
+			schedulableKinds: () => Effect.succeed([]),
 			createSchedule: () => Effect.succeed({ ok: true as const, job: {} }),
 			updateSchedule: () => Effect.succeed({ ok: true as const, job: {} }),
 			deleteSchedule: () => Effect.succeed({ ok: true as const }),
@@ -130,6 +131,7 @@ describe("cron panel page loader", () => {
 			runs: [RUN],
 			schedules: [],
 			scheduleKinds: ["agenda.sendReminder"],
+			schedulableKinds: [],
 		});
 	});
 
@@ -144,10 +146,17 @@ describe("cron panel page loader", () => {
 						runs: forbidden,
 						schedules: forbidden,
 						scheduleKinds: forbidden,
+						schedulableKinds: forbidden,
 					}),
 				),
 			),
 		);
-		expect(result).toEqual({ jobs: null, runs: null, schedules: null, scheduleKinds: null });
+		expect(result).toEqual({
+			jobs: null,
+			runs: null,
+			schedules: null,
+			scheduleKinds: null,
+			schedulableKinds: null,
+		});
 	});
 });

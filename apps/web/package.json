@@ -57,6 +57,7 @@
 		"@ktb/jobs": "workspace:*",
 		"@ktb/jobs-port": "workspace:*",
 		"@ktb/jobs-transport-redis": "workspace:*",
+		"@ktb/json-schema": "workspace:*",
 		"@ktb/kernel": "workspace:*",
 		"@ktb/notifications": "workspace:*",
 		"@ktb/observability": "workspace:*",

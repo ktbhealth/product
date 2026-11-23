@@ -137,6 +137,7 @@ describe("plugins", () => {
 			"platform.routes",
 			"platform.panel",
 			"platform.portal",
+			"platform.jobs",
 		]);
 	});
 });

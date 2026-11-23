@@ -24,6 +24,12 @@ import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import {
+	collectEventTopicDeclarations,
+	collectJobKindDeclarations,
+	collectSchedulableDeclarations,
+} from "@ktb/platform/capabilities";
+import { compileSchema } from "@ktb/json-schema";
+import {
 	jobHandlers,
 	makeJobs,
 	registerJobHandler,
@@ -374,6 +380,28 @@ const projectCronRun =
 		}
 	};
 
+// P-094: plugin capability declarations — `jobs.kind` metadata,
+// `jobs.schedulable` schedule-ability, `events.topic` catalog. Collected
+// once at composition like the other definition registries; invalid
+// entries or duplicate ids fail boot loudly (route-contribution
+// contract). `jobs.schedulable.paramsSchema` documents are compiled
+// here too — a malformed schema fails boot rather than every create.
+const jobKindDecls = collectJobKindDeclarations(serverPlugins);
+const schedulableDecls = collectSchedulableDeclarations(serverPlugins);
+const eventTopicDecls = collectEventTopicDeclarations(serverPlugins);
+const isJsonSchemaDoc = (value: unknown): value is Record<string, unknown> =>
+	typeof value === "object" && value !== null && !Array.isArray(value);
+const schedulableParamsValidators = new Map<string, ReturnType<typeof compileSchema>[]>();
+for (const decl of schedulableDecls) {
+	if (decl.paramsSchema === undefined) continue;
+	if (!isJsonSchemaDoc(decl.paramsSchema)) {
+		throw new Error(`jobs.schedulable "${decl.id}" paramsSchema must be a JSON Schema object`);
+	}
+	const list = schedulableParamsValidators.get(decl.kind) ?? [];
+	list.push(compileSchema(decl.paramsSchema));
+	schedulableParamsValidators.set(decl.kind, list);
+}
+
 // Scheduler dispatch (P-094): a claimed scheduled_jobs row becomes a
 // job envelope on the shared transport — queue retry, payload
 // validation and the job_runs projection all come from jobs-port.
@@ -683,6 +711,31 @@ setServerRuntime({
 		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
 		create: async (input) => {
 			try {
+				// Kind must be dispatchable: a registered jobHandlers
+				// entry or a jobs.schedulable declaration (declared kinds
+				// may ride transports with special normalizers). Anything
+				// else can only ever fail at fire time — reject early.
+				const dispatchable =
+					jobHandlers[input.kind] !== undefined ||
+					schedulableDecls.some((decl) => decl.kind === input.kind);
+				if (!dispatchable) {
+					throw new InvalidScheduleError(`unknown job kind: ${input.kind}`);
+				}
+				// Declared paramsSchemas gate schedule params: the value
+				// must satisfy at least one schema declared for the kind.
+				const validators = schedulableParamsValidators.get(input.kind);
+				if (validators !== undefined) {
+					const params = input.params ?? {};
+					const match = validators.find((validator) => validator.validate(params).length === 0);
+					if (match === undefined) {
+						const issues = validators[0]?.validate(params) ?? [];
+						throw new InvalidScheduleError(
+							`params do not match the declared schema for ${input.kind}: ${issues
+								.map((issue) => issue.message)
+								.join("; ")}`,
+						);
+					}
+				}
 				const job = await insertScheduledJob(db, input);
 				await syncSchedulerDo(job, job.id);
 				return { ok: true as const, job: toScheduleInfo(job) };
@@ -727,6 +780,54 @@ setServerRuntime({
 		},
 	},
 	jobKinds: () => Object.keys(jobHandlers),
+	// P-094: capability-declaration views — handler registration merged
+	// with jobs.kind/jobs.schedulable declarations, plus the
+	// events.topic catalog for the pub/sub console.
+	jobKindInfo: () => {
+		const declByKind = new Map(jobKindDecls.map((decl) => [decl.kind, decl]));
+		const schedulableKinds = new Set(schedulableDecls.map((decl) => decl.kind));
+		const kinds = new Set<string>([
+			...Object.keys(jobHandlers),
+			...jobKindDecls.map((decl) => decl.kind),
+			...schedulableKinds,
+		]);
+		return [...kinds].sort().map((kind) => {
+			const registration = jobHandlers[kind];
+			const decl = declByKind.get(kind);
+			return {
+				kind,
+				registered: registration !== undefined,
+				schedulable: schedulableKinds.has(kind),
+				...(decl?.pluginId === undefined ? {} : { pluginId: decl.pluginId }),
+				...(decl?.description === undefined ? {} : { description: decl.description }),
+				...(registration?.concurrency === undefined
+					? decl?.concurrency === undefined
+						? {}
+						: { concurrency: decl.concurrency }
+					: { concurrency: registration.concurrency }),
+				...(registration?.maxAttempts === undefined
+					? decl?.maxAttempts === undefined
+						? {}
+						: { maxAttempts: decl.maxAttempts }
+					: { maxAttempts: registration.maxAttempts }),
+				idempotent: registration?.idempotent ?? decl?.idempotent ?? false,
+			};
+		});
+	},
+	schedulableKinds: () =>
+		schedulableDecls.map((decl) => ({
+			id: decl.id,
+			kind: decl.kind,
+			pluginId: decl.pluginId,
+			...(decl.description === undefined ? {} : { description: decl.description }),
+			...(decl.paramsSchema === undefined ? {} : { paramsSchema: decl.paramsSchema as JsonValue }),
+			...(decl.suggestedCronExpr === undefined
+				? {}
+				: { suggestedCronExpr: decl.suggestedCronExpr }),
+			...(decl.suggestedParams === undefined
+				? {}
+				: { suggestedParams: decl.suggestedParams as JsonValue | null }),
+		})),
 	// Pub/sub capability: `topics` merges the in-process bus's known
 	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
 	// `publish` routes by the console-facing id prefix — `memory:` to
@@ -754,6 +855,15 @@ setServerRuntime({
 				return { ok: false, reason: "publish-failed" };
 			}
 		},
+		declaredTopics: () =>
+			eventTopicDecls.map((decl) => ({
+				topic: decl.topic,
+				pluginId: decl.pluginId,
+				...(decl.description === undefined ? {} : { description: decl.description }),
+				...(decl.payloadSchema === undefined
+					? {}
+					: { payloadSchema: decl.payloadSchema as JsonValue }),
+			})),
 	},
 	ai: aiBinding,
 	audioTranscribeModel,

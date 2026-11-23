@@ -2,6 +2,11 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { Forbidden, Principal } from "@ktb/authz";
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import {
+	eventTopicContribution,
+	jobKindContribution,
+	schedulableContribution,
+} from "./capabilities.ts";
 
 const normalizeEmail = (email: string | null | undefined): string =>
 	(email ?? "").trim().toLowerCase();
@@ -144,6 +149,45 @@ export const platformPortalPlugin = definePlugin({
 	],
 });
 
+/** Marker plugin anchoring the host-owned work-orchestration kinds
+ * (P-094): `jobs.ping` is registered by the composition root, and
+ * `cron.fires` is published by the cron run projection — both are
+ * host infrastructure, so their capability declarations live here.
+ * `jobs.ping.smoke` is the reference `jobs.schedulable` entry: it
+ * makes the scheduler→queue→consumer path exercisable end-to-end
+ * from /platform/cron without touching a domain plugin. */
+export const platformJobsPlugin = definePlugin({
+	id: "platform.jobs",
+	meta: { keywords: ["platform", "jobs", "marker"] },
+	system: true,
+	contributions: [
+		jobKindContribution("jobs.ping", {
+			description:
+				"Smoke-test job — no-op handler registered by the composition root on every jobs transport.",
+		}),
+		schedulableContribution("jobs.ping.smoke", {
+			kind: "jobs.ping",
+			description: "Ping sweep — verifies heartbeat/DO → queue → consumer → job_runs end to end.",
+			paramsSchema: { type: "object" },
+			suggestedCronExpr: "0 * * * *",
+			suggestedParams: {},
+		}),
+		eventTopicContribution("cron.fires", {
+			description:
+				"Published by the cron run projection on every static-cron and scheduled-job fire.",
+			payloadSchema: {
+				type: "object",
+				properties: {
+					jobId: { type: "string" },
+					ok: { type: "boolean" },
+					summary: { type: ["string", "null"] },
+				},
+				required: ["jobId", "ok"],
+			},
+		}),
+	],
+});
+
 /** Single-concern plugins contributed by this module — the host
  * discovery contract (`discoverPlugins` reads this export). */
 export const plugins: readonly Plugin[] = [
@@ -151,6 +195,7 @@ export const plugins: readonly Plugin[] = [
 	platformRoutesPlugin,
 	platformPanelPlugin,
 	platformPortalPlugin,
+	platformJobsPlugin,
 ];
 
 // Compile-time dep registry: ids declared here are referenceable in
@@ -161,5 +206,6 @@ declare module "@ktb/kernel" {
 		"platform.routes": true;
 		"platform.panel": true;
 		"platform.portal": true;
+		"platform.jobs": true;
 	}
 }

@@ -29,6 +29,7 @@ const publishCalls: [string, unknown][] = [];
 
 const adminStub = PubSubAdmin.of({
 	topics: () => Effect.succeed(null),
+	declaredTopics: () => Effect.succeed(null),
 	publish: (topicId, payload) => {
 		publishCalls.push([topicId, payload]);
 		return publishForbidden

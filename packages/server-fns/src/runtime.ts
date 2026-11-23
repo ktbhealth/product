@@ -214,6 +214,45 @@ export type ScheduleDeleteResult =
 	| { readonly ok: true }
 	| { readonly ok: false; readonly reason: "unavailable" | "not-found" };
 
+/** One job kind as consoles see it: handler registration merged with
+ * plugin `jobs.kind`/`jobs.schedulable` declarations (P-094).
+ * `registered` is the live jobHandlers state — a declared-but-
+ * unregistered kind is catalog data, not dispatchable. */
+export interface JobKindInfo {
+	readonly kind: string;
+	readonly registered: boolean;
+	readonly pluginId?: string;
+	readonly description?: string;
+	readonly concurrency?: number;
+	readonly maxAttempts?: number;
+	readonly idempotent?: boolean;
+	/** True when at least one `jobs.schedulable` declaration targets
+	 * this kind — the create-schedule picker admits it. */
+	readonly schedulable: boolean;
+}
+
+/** One `jobs.schedulable` declaration as the schedule-creation UI sees
+ * it — `kind` is the dispatchable job kind; `paramsSchema` is a JSON
+ * Schema document (JsonValue-shaped) validated server-side on create. */
+export interface SchedulableKindInfo {
+	readonly id: string;
+	readonly kind: string;
+	readonly pluginId?: string;
+	readonly description?: string;
+	readonly paramsSchema?: JsonValue;
+	readonly suggestedCronExpr?: string;
+	readonly suggestedParams?: JsonValue | null;
+}
+
+/** One `events.topic` declaration — catalog metadata for a pub/sub
+ * topic, independent of whether a transport currently enumerates it. */
+export interface EventTopicInfo {
+	readonly topic: string;
+	readonly pluginId?: string;
+	readonly description?: string;
+	readonly payloadSchema?: JsonValue;
+}
+
 /** Transport family a pub/sub topic source belongs to — structural
  * mirror of `PubSubTransport` in @ktb/pubsub-port (declared here so
  * plugin code needs no new dependency). */
@@ -387,6 +426,14 @@ export interface ServerRuntime {
 	 * picker's source of truth (jobHandlers registry keys). Undefined
 	 * outside the composed app. */
 	readonly jobKinds?: () => readonly string[];
+	/** Enriched job-kind view: registered handler state merged with
+	 * `jobs.kind`/`jobs.schedulable` plugin declarations (P-094).
+	 * Undefined outside the composed app. */
+	readonly jobKindInfo?: () => readonly JobKindInfo[];
+	/** `jobs.schedulable` declarations — the kind picker for schedule
+	 * creation, with params schemas and suggested defaults. Undefined
+	 * outside the composed app. */
+	readonly schedulableKinds?: () => readonly SchedulableKindInfo[];
 	/** Pub/sub capability: `topics` merges every bound transport's
 	 * channel enumeration (in-process bus + Redis channels); `publish`
 	 * routes a JSON payload to a topic by its console-facing id —
@@ -395,6 +442,9 @@ export interface ServerRuntime {
 	readonly pubsub?: {
 		readonly topics: () => Promise<PubSubTopicsResult>;
 		readonly publish: (topicId: string, payload: unknown) => Promise<PubSubPublishResult>;
+		/** `events.topic` plugin declarations — the topic catalog,
+		 * distinct from live transport enumeration. */
+		readonly declaredTopics?: () => readonly EventTopicInfo[];
 	};
 	/** Workers AI binding (or host-resolved stand-in) for transcription;
 	 * undefined when unbound. */
