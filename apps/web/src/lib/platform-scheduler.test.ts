@@ -1,0 +1,159 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { listJobRuns } from "@ktb/jobs-port";
+import { insertScheduledJob } from "@ktb/scheduler-port";
+
+// Scheduler dispatch (P-094): the scheduler-heartbeat cron runner claims
+// due scheduled_jobs rows and dispatches each through dispatchScheduledJob.
+// With AUDIO_QUEUE bound the job becomes a queue envelope; without it the
+// inline fallback kind-dispatches through jobHandlers with the same
+// job_runs projection writes. env ships AUDIO_QUEUE bound by default, so
+// the inline path tests unbind it before composing.
+
+const hoisted = vi.hoisted(() => ({
+	upsertFails: false,
+	handled: [] as { kind: string; payload: unknown; tenantId: number | null }[],
+}));
+
+vi.mock("@ktb/jobs-port", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/jobs-port")>();
+	return {
+		...actual,
+		upsertJobRun: async (...args: Parameters<typeof actual.upsertJobRun>) => {
+			if (hoisted.upsertFails) throw new Error("job_runs write down");
+			return actual.upsertJobRun(...args);
+		},
+	};
+});
+
+const compose = async (configure: (env: Record<string, unknown>) => void = () => {}) => {
+	vi.resetModules();
+	const { env } = await import("#/test/cloudflare-workers.ts");
+	configure(env as Record<string, unknown>);
+	const platform = await import("./platform.ts");
+	const { getServerRuntime } = await import("@ktb/server-fns");
+	// registerJobHandler must come from the same post-reset module
+	// instance platform.ts composed against.
+	const { registerJobHandler } = await import("@ktb/jobs-port");
+	return { runtime: getServerRuntime(), platform, registerJobHandler };
+};
+
+const dueJob = (
+	platform: { db: Parameters<typeof insertScheduledJob>[0] },
+	kind: string,
+	params?: unknown,
+) => insertScheduledJob(platform.db, { kind, runAt: Date.now() - 1000, params, tenantId: 7 });
+
+describe("platform scheduler-heartbeat dispatch", () => {
+	it("enqueues due jobs through the bound queue", { timeout: 30_000 }, async () => {
+		const sent: { kind: string; payload: unknown; tenantId?: number | null }[] = [];
+		const { runtime, platform } = await compose((env) => {
+			env.AUDIO_QUEUE = {
+				send: async (body: unknown) => {
+					sent.push(body as (typeof sent)[number]);
+				},
+			};
+		});
+		await dueJob(platform, "test.sched.enqueued");
+
+		expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
+			ok: true,
+			summary: "1 scheduled job fired",
+		});
+		expect(sent).toHaveLength(1);
+		expect(sent[0]).toMatchObject({ kind: "test.sched.enqueued", tenantId: 7 });
+	});
+
+	it(
+		"inline-dispatches due jobs, decodes payloads and marks job_runs done",
+		{ timeout: 30_000 },
+		async () => {
+			hoisted.handled = [];
+			const { runtime, platform, registerJobHandler } = await compose((env) => {
+				env.AUDIO_QUEUE = undefined;
+			});
+			registerJobHandler("test.sched.ok", {
+				decodePayload: (payload) => ({ wrapped: payload }),
+				handle: async (payload, envelope) => {
+					hoisted.handled.push({
+						kind: envelope.kind,
+						payload,
+						tenantId: envelope.tenantId ?? null,
+					});
+				},
+			});
+			await dueJob(platform, "test.sched.ok", { v: 1 });
+
+			expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
+				ok: true,
+				summary: "1 scheduled job fired",
+			});
+			expect(hoisted.handled).toEqual([
+				{ kind: "test.sched.ok", payload: { wrapped: { v: 1 } }, tenantId: 7 },
+			]);
+			const runs = await listJobRuns(platform.db, { kind: "test.sched.ok" });
+			expect(runs).toHaveLength(1);
+			expect(runs[0]).toMatchObject({ status: "done", tenantId: 7 });
+		},
+	);
+
+	it(
+		"marks job_runs failed and counts the dispatch as failed when the handler throws",
+		{ timeout: 30_000 },
+		async () => {
+			const { runtime, platform, registerJobHandler } = await compose((env) => {
+				env.AUDIO_QUEUE = undefined;
+			});
+			registerJobHandler("test.sched.boom", {
+				handle: async () => {
+					throw new Error("handler down");
+				},
+			});
+			await dueJob(platform, "test.sched.boom");
+
+			expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
+				ok: false,
+				error: "1 dispatch(es) failed",
+			});
+			const runs = await listJobRuns(platform.db, { kind: "test.sched.boom" });
+			expect(runs).toHaveLength(1);
+			expect(runs[0]).toMatchObject({ status: "failed", error: "handler down" });
+		},
+	);
+
+	it("fails dispatches for kinds with no registered handler", { timeout: 30_000 }, async () => {
+		const { runtime, platform } = await compose((env) => {
+			env.AUDIO_QUEUE = undefined;
+		});
+		await dueJob(platform, "test.sched.unregistered");
+
+		expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
+			ok: false,
+			error: "1 dispatch(es) failed",
+		});
+	});
+
+	it("still dispatches when the job_runs projection write fails", { timeout: 30_000 }, async () => {
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		hoisted.upsertFails = true;
+		try {
+			const { runtime, platform, registerJobHandler } = await compose((env) => {
+				env.AUDIO_QUEUE = undefined;
+			});
+			registerJobHandler("test.sched.projfail", { handle: async () => {} });
+			await dueJob(platform, "test.sched.projfail");
+
+			expect(await runtime.crons!.runNow("scheduler-heartbeat")).toMatchObject({
+				ok: true,
+				summary: "1 scheduled job fired",
+			});
+			expect(errorSpy).toHaveBeenCalledWith(
+				"scheduler projection write failed",
+				expect.objectContaining({ kind: "test.sched.projfail" }),
+			);
+		} finally {
+			hoisted.upsertFails = false;
+			errorSpy.mockRestore();
+		}
+	});
+});
