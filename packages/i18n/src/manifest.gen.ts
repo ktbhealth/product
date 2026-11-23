@@ -2394,6 +2394,105 @@ export const I18N_MANIFEST = {
 		emptyRunsDescription: {
 			params: [],
 		},
+		schedulesTab: {
+			params: [],
+		},
+		schedulesTitle: {
+			params: [],
+		},
+		schedulesDescription: {
+			params: [],
+		},
+		sColKind: {
+			params: [],
+		},
+		sColSchedule: {
+			params: [],
+		},
+		sColNextRun: {
+			params: [],
+		},
+		sColLastRun: {
+			params: [],
+		},
+		sColStatus: {
+			params: [],
+		},
+		sColAction: {
+			params: [],
+		},
+		statusActive: {
+			params: [],
+		},
+		statusPaused: {
+			params: [],
+		},
+		statusDone: {
+			params: [],
+		},
+		emptySchedulesTitle: {
+			params: [],
+		},
+		emptySchedulesDescription: {
+			params: [],
+		},
+		newScheduleTitle: {
+			params: [],
+		},
+		fKind: {
+			params: [],
+		},
+		fKindPlaceholder: {
+			params: [],
+		},
+		fModeRecurring: {
+			params: [],
+		},
+		fModeOnce: {
+			params: [],
+		},
+		fCronExpr: {
+			params: [],
+		},
+		fCronExprPlaceholder: {
+			params: [],
+		},
+		fRunAt: {
+			params: [],
+		},
+		fParams: {
+			params: [],
+		},
+		fCreate: {
+			params: [],
+		},
+		fCreating: {
+			params: [],
+		},
+		actPause: {
+			params: [],
+		},
+		actResume: {
+			params: [],
+		},
+		actDelete: {
+			params: [],
+		},
+		schedCreated: {
+			params: [],
+		},
+		schedUpdated: {
+			params: [],
+		},
+		schedDeleted: {
+			params: [],
+		},
+		schedFailed: {
+			params: [],
+		},
+		schedInvalid: {
+			params: [],
+		},
 	},
 	dashboard: {
 		title: {

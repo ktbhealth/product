@@ -14,6 +14,7 @@ import {
 	InvalidScheduleError,
 	listScheduledJobs,
 	nextRunAfter,
+	runScheduledJobNow,
 	runSchedulerSweep,
 	updateScheduledJob,
 	type ScheduledJob,
@@ -326,6 +327,102 @@ describe("claimDueScheduledJobs", () => {
 		expect(claimed).toHaveLength(1);
 		const result = await runSchedulerSweep(db, async () => {});
 		expect(result.claimed).toBe(0);
+	});
+});
+
+describe("runScheduledJobNow", () => {
+	it("fires an active row early, advancing the schedule", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", cronExpr: "*/5 * * * *" }, T0);
+		const fired: string[] = [];
+		const result = await runScheduledJobNow(db, job.id, async (j) => void fired.push(j.id), {
+			now: T0 + 60_000,
+		});
+		expect(result?.error).toBeNull();
+		expect(fired).toEqual([job.id]);
+		const after = await getScheduledJob(db, job.id);
+		// Recurring: next occurrence recomputed from the manual fire —
+		// next */5 boundary after T0+60s is T0+5min, not +6min.
+		expect(after?.nextRunAt).toBe(T0 + 5 * 60_000);
+		expect(after?.lastRunAt).toBe(T0 + 60_000);
+
+		// Omitting options falls back to Date.now() — the row stays
+		// active (recurring), so a second manual fire still dispatches.
+		const fallback = await runScheduledJobNow(db, job.id, async (j) => void fired.push(j.id));
+		expect(fallback?.error).toBeNull();
+	});
+
+	it("marks a one-off done and captures dispatch errors", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		const result = await runScheduledJobNow(
+			db,
+			job.id,
+			async () => {
+				throw new Error("dispatch boom");
+			},
+			{ now: T0 },
+		);
+		expect(result?.error).toBe("dispatch boom");
+		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
+
+		// Non-Error throws stringify instead of surfacing .message.
+		const other = await insertScheduledJob(db, { kind: "k2", runAt: T0 + 60_000 }, T0);
+		const stringThrew = await runScheduledJobNow(
+			db,
+			other.id,
+			async () => {
+				throw "string boom"; // eslint-disable-line no-throw-literal
+			},
+			{ now: T0 },
+		);
+		expect(stringThrew?.error).toBe("string boom");
+	});
+
+	it("returns null when the claim fence rejects an expired-lease boundary", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		// claimedUntil === now passes the pre-check (not > now) but fails
+		// the update fence (requires claimedUntil < now) — zero rows.
+		await db.update(scheduledJobs).set({ claimedUntil: T0 }).where(eq(scheduledJobs.id, job.id));
+		expect(await runScheduledJobNow(db, job.id, async () => {}, { now: T0 })).toBeNull();
+	});
+
+	it("retires a recurring row whose stored cronExpr no longer parses", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", cronExpr: "*/5 * * * *" }, T0);
+		// Corrupt the expression out-of-band — insert/update validate, so
+		// only a direct write can produce this state.
+		await db
+			.update(scheduledJobs)
+			.set({ cronExpr: "not a cron" })
+			.where(eq(scheduledJobs.id, job.id));
+		const dispatched: string[] = [];
+		expect(
+			await runScheduledJobNow(db, job.id, async (j) => void dispatched.push(j.id), {
+				now: T0 + 60_000,
+			}),
+		).toBeNull();
+		expect(dispatched).toEqual([]);
+		expect((await getScheduledJob(db, job.id))?.status).toBe("done");
+	});
+
+	it("returns null for missing, paused or mid-claim rows", async () => {
+		const db = makeTestDb();
+		const job = await insertScheduledJob(db, { kind: "k", runAt: T0 + 60_000 }, T0);
+		expect(await runScheduledJobNow(db, "nope", async () => {}, { now: T0 })).toBeNull();
+		await updateScheduledJob(db, job.id, { status: "paused" }, T0);
+		expect(await runScheduledJobNow(db, job.id, async () => {}, { now: T0 })).toBeNull();
+		// Mid-claim on a recurring row (stays active after the claim).
+		const recurring = await insertScheduledJob(db, { kind: "r", cronExpr: "* * * * *" }, T0);
+		await db
+			.update(scheduledJobs)
+			.set({ nextRunAt: T0 - 1 })
+			.where(eq(scheduledJobs.id, recurring.id));
+		await claimDueScheduledJobs(db, { now: T0, leaseMs: 60_000 });
+		expect(
+			await runScheduledJobNow(db, recurring.id, async () => {}, { now: T0 + 30_000 }),
+		).toBeNull();
 	});
 });
 

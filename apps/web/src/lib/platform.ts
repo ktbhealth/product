@@ -9,7 +9,9 @@ import {
 	setServerRuntime,
 	type AudioObjectLister,
 	type AudioStore,
+	type JsonValue,
 	type QueueDepth,
+	type ScheduledJobInfo,
 } from "@ktb/server-fns";
 import type { TenantSelector } from "@ktb/tenant/selector";
 import {
@@ -30,7 +32,17 @@ import {
 } from "@ktb/jobs-port";
 import type { JobRecord, JobStatus } from "@ktb/jobs-port";
 import { makeCronRegistry, type CronDescriptor, type CronRunOutcome } from "@ktb/cron-port";
-import { runSchedulerSweep, type ScheduledJobDispatch } from "@ktb/scheduler-port";
+import {
+	deleteScheduledJob,
+	insertScheduledJob,
+	InvalidScheduleError,
+	listScheduledJobs,
+	runScheduledJobNow,
+	runSchedulerSweep,
+	updateScheduledJob,
+	type ScheduledJob,
+	type ScheduledJobDispatch,
+} from "@ktb/scheduler-port";
 import { makeQueueRegistry, type QueueDescriptor } from "@ktb/queues-port";
 import {
 	makeInProcessPubSub,
@@ -407,6 +419,24 @@ const dispatchScheduledJob: ScheduledJobDispatch = async (job) => {
 	}
 };
 
+// scheduled_jobs row → console shape: drops the lease internals and
+// narrows `params` to the JSON-serializable view the server-fn
+// boundary requires.
+const toScheduleInfo = (job: ScheduledJob): ScheduledJobInfo => ({
+	id: job.id,
+	kind: job.kind,
+	params: (job.params ?? null) as JsonValue | null,
+	cronExpr: job.cronExpr,
+	runAt: job.runAt,
+	nextRunAt: job.nextRunAt,
+	lastRunAt: job.lastRunAt,
+	status: job.status,
+	tenantId: job.tenantId,
+	createdBy: job.createdBy,
+	createdAt: job.createdAt,
+	updatedAt: job.updatedAt,
+});
+
 const cronRunners: Record<string, () => Promise<CronRunOutcome>> = {
 	"scheduler-heartbeat": async () => {
 		const result = await runSchedulerSweep(db, dispatchScheduledJob);
@@ -624,6 +654,51 @@ setServerRuntime({
 				error: r.outcome.error,
 			})),
 	},
+	// Runtime scheduler capability (P-094): the scheduled_jobs table
+	// behind /platform/cron's dynamic-schedules section. Writes go
+	// through @ktb/scheduler-port validation; runNow claims the row
+	// (schedule advances — no double-fire) and dispatches through the
+	// same path the heartbeat sweep uses.
+	schedules: {
+		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
+		create: async (input) => {
+			try {
+				return { ok: true as const, job: toScheduleInfo(await insertScheduledJob(db, input)) };
+			} catch (error) {
+				return error instanceof InvalidScheduleError
+					? { ok: false as const, reason: "invalid" as const, error: error.message }
+					: { ok: false as const, reason: "unavailable" as const, error: String(error) };
+			}
+		},
+		update: async (id, patch) => {
+			try {
+				const job = await updateScheduledJob(db, id, patch);
+				return job === null
+					? { ok: false as const, reason: "not-found" as const }
+					: { ok: true as const, job: toScheduleInfo(job) };
+			} catch (error) {
+				return error instanceof InvalidScheduleError
+					? { ok: false as const, reason: "invalid" as const, error: error.message }
+					: { ok: false as const, reason: "unavailable" as const, error: String(error) };
+			}
+		},
+		remove: async (id) =>
+			(await deleteScheduledJob(db, id))
+				? { ok: true as const }
+				: { ok: false as const, reason: "not-found" as const },
+		runNow: async (id) => {
+			const result = await runScheduledJobNow(db, id, dispatchScheduledJob);
+			return result === null
+				? null
+				: {
+						id: result.job.id,
+						ok: result.error === null,
+						summary: `fired ${result.job.kind}`,
+						error: result.error ?? undefined,
+					};
+		},
+	},
+	jobKinds: () => Object.keys(jobHandlers),
 	// Pub/sub capability: `topics` merges the in-process bus's known
 	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
 	// `publish` routes by the console-facing id prefix — `memory:` to

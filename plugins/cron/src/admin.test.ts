@@ -10,12 +10,13 @@ import { makeD1 } from "@ktb/db/testing";
 import { insertJobRun } from "@ktb/jobs-port";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { installServerFnRuntime, resetServerFnRuntime, stubAuth } from "@ktb/server-fns/testing";
-import type { CronJobInfo, CronRunResult } from "@ktb/server-fns";
+import type { CronJobInfo, CronRunResult, ScheduledJobInfo } from "@ktb/server-fns";
 
 import { CronAdmin, CronAdminLive, type CronRunNowResult } from "./admin.ts";
 
 const DDL = `
 CREATE TABLE job_runs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', payload_ref TEXT, error TEXT, tenant_id INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE TABLE scheduled_jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, params TEXT, cron_expr TEXT, run_at INTEGER, next_run_at INTEGER, claimed_until INTEGER, last_run_at INTEGER, status TEXT NOT NULL DEFAULT 'active', tenant_id TEXT, created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
 `;
 
 const db = makeDb(makeD1(DDL));
@@ -197,6 +198,256 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("collapses a missing schedules capability to null and unavailable results", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{},
+		);
+		const [schedules, kinds] = await asPrincipal(
+			runtime,
+			(a) => Effect.all([a.schedules(), a.scheduleKinds()]),
+			"admin@x.com",
+		);
+		expect(schedules).toBeNull();
+		expect(kinds).toBeNull();
+		for (const call of [
+			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),
+			(a: CronAdmin["Service"]) => a.updateSchedule("id", { status: "paused" }),
+			(a: CronAdmin["Service"]) => a.deleteSchedule("id"),
+			(a: CronAdmin["Service"]) => a.runScheduleNow("id"),
+		] as const) {
+			const result = await asPrincipal(
+				runtime,
+				(a) => call(a) as Effect.Effect<unknown, unknown, never>,
+				"admin@x.com",
+			);
+			expect(result).toEqual({ ok: false, reason: "unavailable" });
+		}
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("maps a throwing schedules capability accessor to unavailable", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get schedules(): never {
+					throw new Error("schedules accessor exploded");
+				},
+			},
+		);
+		for (const call of [
+			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),
+			(a: CronAdmin["Service"]) => a.updateSchedule("id", { status: "paused" }),
+			(a: CronAdmin["Service"]) => a.deleteSchedule("id"),
+			(a: CronAdmin["Service"]) => a.runScheduleNow("id"),
+		] as const) {
+			const result = await asPrincipal(
+				runtime,
+				(a) => call(a) as Effect.Effect<unknown, unknown, never>,
+				"admin@x.com",
+			);
+			expect(result).toEqual({ ok: false, reason: "unavailable" });
+		}
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a throwing jobKinds accessor to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get jobKinds(): never {
+					throw new Error("jobKinds accessor exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.scheduleKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("round-trips schedule CRUD and run-now through the capability", async () => {
+		const SCHED: ScheduledJobInfo = {
+			id: "sched-1",
+			kind: "agenda.sendReminder",
+			params: { n: 1 },
+			cronExpr: "*/5 * * * *",
+			runAt: null,
+			nextRunAt: 1700000300000,
+			lastRunAt: null,
+			status: "active",
+			tenantId: null,
+			createdBy: "admin@x.com",
+			createdAt: 1700000000000,
+			updatedAt: 1700000000000,
+		};
+		const calls: unknown[] = [];
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [SCHED],
+					create: async (input: unknown) => {
+						calls.push(["create", input]);
+						return { ok: true as const, job: SCHED };
+					},
+					update: async (id: string, patch: unknown) => {
+						calls.push(["update", id, patch]);
+						return { ok: true as const, job: { ...SCHED, status: "paused" } };
+					},
+					remove: async (id: string) => {
+						calls.push(["remove", id]);
+						return { ok: true as const };
+					},
+					runNow: async (id: string) => {
+						calls.push(["runNow", id]);
+						return { id, ok: true as const, summary: "fired agenda.sendReminder" };
+					},
+				},
+				jobKinds: () => ["agenda.sendReminder"],
+			},
+		);
+		const [schedules, kinds] = await asPrincipal(
+			runtime,
+			(a) => Effect.all([a.schedules(), a.scheduleKinds()]),
+			"admin@x.com",
+		);
+		expect(schedules).toEqual([SCHED]);
+		expect(kinds).toEqual(["agenda.sendReminder"]);
+
+		const created = await asPrincipal(
+			runtime,
+			(a) =>
+				a.createSchedule({
+					kind: "agenda.sendReminder",
+					cronExpr: "*/5 * * * *",
+					createdBy: "admin@x.com",
+				}),
+			"admin@x.com",
+		);
+		expect(created.ok).toBe(true);
+
+		const updated = await asPrincipal(
+			runtime,
+			(a) => a.updateSchedule("sched-1", { status: "paused" }),
+			"admin@x.com",
+		);
+		expect(updated).toEqual({ ok: true, job: { ...SCHED, status: "paused" } });
+
+		const deleted = await asPrincipal(runtime, (a) => a.deleteSchedule("sched-1"), "admin@x.com");
+		expect(deleted).toEqual({ ok: true });
+
+		const ran = await asPrincipal(runtime, (a) => a.runScheduleNow("sched-1"), "admin@x.com");
+		expect(ran).toEqual({ ok: true, summary: "fired agenda.sendReminder" });
+
+		expect(calls).toEqual([
+			[
+				"create",
+				{ kind: "agenda.sendReminder", cronExpr: "*/5 * * * *", createdBy: "admin@x.com" },
+			],
+			["update", "sched-1", { status: "paused" }],
+			["remove", "sched-1"],
+			["runNow", "sched-1"],
+		]);
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("maps scheduler failures to invalid and not-found results", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => {
+						throw new Error("db gone");
+					},
+					create: async () => ({ ok: false as const, reason: "invalid" as const }),
+					update: async () => ({ ok: false as const, reason: "not-found" as const }),
+					remove: async () => ({ ok: false as const, reason: "not-found" as const }),
+					runNow: async () => null,
+				},
+				jobKinds: () => [],
+			},
+		);
+		const [schedules, kinds] = await asPrincipal(
+			runtime,
+			(a) => Effect.all([a.schedules(), a.scheduleKinds()]),
+			"admin@x.com",
+		);
+		expect(schedules).toBeNull();
+		expect(kinds).toEqual([]);
+		expect(
+			await asPrincipal(runtime, (a) => a.createSchedule({ kind: "k" }), "admin@x.com"),
+		).toEqual({ ok: false, reason: "invalid" });
+		expect(
+			await asPrincipal(
+				runtime,
+				(a) => a.updateSchedule("id", { status: "active" }),
+				"admin@x.com",
+			),
+		).toEqual({ ok: false, reason: "not-found" });
+		expect(await asPrincipal(runtime, (a) => a.deleteSchedule("id"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "not-found",
+		});
+		expect(await asPrincipal(runtime, (a) => a.runScheduleNow("id"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "unknown-job",
+		});
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("maps a failed schedule run-now to run-failed with the error", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedules: {
+					list: async () => [],
+					create: async () => ({ ok: false as const, reason: "invalid" as const }),
+					update: async () => ({ ok: false as const, reason: "not-found" as const }),
+					remove: async () => ({ ok: false as const, reason: "not-found" as const }),
+					runNow: async (id: string) => {
+						if (id === "down") throw new Error("dispatch exploded");
+						return {
+							id,
+							ok: false as const,
+							summary: "fired k",
+							error: "kaput",
+						};
+					},
+				},
+				jobKinds: () => [],
+			},
+		);
+		expect(await asPrincipal(runtime, (a) => a.runScheduleNow("id"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "run-failed",
+			error: "kaput",
+		});
+		// A rejecting runNow collapses to unknown-job via .catch(() => null).
+		expect(await asPrincipal(runtime, (a) => a.runScheduleNow("down"), "admin@x.com")).toEqual({
+			ok: false,
+			reason: "unknown-job",
+		});
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("rejects non-admins with Forbidden on every method", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(
@@ -208,6 +459,12 @@ describe("CronAdminLive", () => {
 			(a: CronAdmin["Service"]) => a.jobs(),
 			(a: CronAdmin["Service"]) => a.runs(),
 			(a: CronAdmin["Service"]) => a.runNow("agenda-reminders"),
+			(a: CronAdmin["Service"]) => a.schedules(),
+			(a: CronAdmin["Service"]) => a.scheduleKinds(),
+			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),
+			(a: CronAdmin["Service"]) => a.updateSchedule("id", { status: "paused" }),
+			(a: CronAdmin["Service"]) => a.deleteSchedule("id"),
+			(a: CronAdmin["Service"]) => a.runScheduleNow("id"),
 		] as const) {
 			const exit = await runtime.runPromiseExit(
 				Effect.flatMap(CronAdmin, (a) => call(a) as Effect.Effect<unknown, unknown, never>).pipe(
