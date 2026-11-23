@@ -269,9 +269,10 @@ export const main = async (argv: readonly string[]): Promise<number> => {
 
 // Entry gate: `bunx @ktb/ai-bridge` / `bun src/cli.ts` — under vitest
 // the module is imported, not run (import.meta.main is Bun's marker).
-/* v8 ignore next 4 -- process entry point; unit tests import, never exec */
+/* v8 ignore start -- process entry point; unit tests import, never exec */
 // Stryker disable next-line ConditionalExpression,BlockStatement: entry gate — import.meta.main is only true when the file is executed directly; vitest imports the module, so this branch is unreachable in tests.
 if (import.meta.main === true) {
 	// Stryker disable next-line MethodExpression,CallExpression: same unreachable entry gate.
 	process.exit(await main(process.argv.slice(2)));
 }
+/* v8 ignore stop */
