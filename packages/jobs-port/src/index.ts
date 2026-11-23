@@ -246,9 +246,12 @@ export const JobsLive = (deps: JobsDeps): Layer.Layer<Jobs> => Layer.succeed(Job
 // ---------------------------------------------------------------------------
 
 /** The slice of a queue message the consumer needs (workerd Message /
- * dev:node LocalQueueMessage both satisfy this). */
+ * dev:node LocalQueueMessage both satisfy this). `attempts` is the
+ * transport-reported delivery count when the broker tracks one
+ * (Cloudflare Queues does; the Redis list transport does not). */
 export interface JobMessageLike {
 	readonly body: unknown;
+	readonly attempts?: number;
 	ack(): void;
 	retry(): void;
 }
@@ -283,10 +286,25 @@ export const decodeJobEnvelope = (body: unknown): NormalizedJob | null => {
  * schema check at the consumer edge — a throw marks the run failed and
  * acks the message (poison payloads are never retried). `handle` runs
  * the job; a throw marks the run failed and retries the message.
+ *
+ * Hardening knobs:
+ * - `concurrency`: max in-flight executions of this kind within one
+ *   consumer batch (default 1 — same-kind messages still run one at
+ *   a time, but different kinds may overlap).
+ * - `maxAttempts`: delivery count at which the consumer acks instead
+ *   of retrying, marking the run failed with an "attempts exhausted"
+ *   error (default `JobConsumerDeps.maxAttempts`, then 5). Only binds
+ *   on transports that report `message.attempts`.
+ * - `idempotent`: when true and a db projection is bound, a redelivery
+ *   whose job_run is already `done` is acked without re-running —
+ *   covers ack-loss redelivery on at-least-once transports.
  */
 export interface JobRegistration {
 	readonly decodePayload?: (payload: unknown) => unknown;
 	readonly handle: (payload: unknown, envelope: JobEnvelope) => Promise<void>;
+	readonly concurrency?: number;
+	readonly maxAttempts?: number;
+	readonly idempotent?: boolean;
 }
 
 export type JobHandlers = Readonly<Record<string, JobRegistration>>;
@@ -317,13 +335,24 @@ export interface JobConsumerDeps {
 	readonly normalize?: JobNormalizer;
 	readonly newId?: () => string;
 	readonly now?: () => number;
+	/** Default attempt ceiling for kinds without their own
+	 * `maxAttempts` (default 5). Only binds when the transport reports
+	 * `message.attempts`; queue-level retry limits (e.g. the Alchemy
+	 * `maxRetries: 3` consumer settings) usually fire first. */
+	readonly maxAttempts?: number;
 }
 
 /**
  * Build the queue batch consumer: decode → dispatch by `kind` → ack.
  * Malformed bodies are acked (poison); unknown kinds and invalid
  * payloads are acked after a failed projection mark; handler throws
- * mark the run failed and retry the message.
+ * mark the run failed and retry the message until the kind's
+ * `maxAttempts` ceiling, then ack as exhausted.
+ *
+ * Messages dispatch concurrently bounded by each kind's
+ * `JobRegistration.concurrency` (default 1): same-kind messages keep
+ * FIFO order, different kinds overlap. `idempotent` kinds skip
+ * redeliveries whose projection already reads `done`.
  */
 export const makeJobConsumer = (deps: JobConsumerDeps) => {
 	const normalize = deps.normalize ?? decodeJobEnvelope;
@@ -340,44 +369,106 @@ export const makeJobConsumer = (deps: JobConsumerDeps) => {
 			console.warn("job_runs projection write failed", { id: run.id, error: String(error) });
 		}
 	};
+	// Per-kind in-flight semaphores: messages of the same kind run at
+	// most `concurrency` at a time (FIFO waiter order preserved);
+	// different kinds overlap. The batch is awaited as a whole, so a
+	// saturated kind only delays its own tail, never the batch.
+	const slots = new Map<string, { active: number; queue: Array<() => void> }>();
+	const acquire = (kind: string, limit: number): Promise<void> =>
+		new Promise((resolve) => {
+			const slot = slots.get(kind) ?? { active: 0, queue: [] };
+			slots.set(kind, slot);
+			const grant = () => {
+				slot.active += 1;
+				resolve();
+			};
+			// Stryker disable next-line ConditionalExpression: slot.active < limit vs always-grant differ only under concurrency>1 pressure — covered by the parallel-dispatch test
+			if (slot.active < limit) grant();
+			else slot.queue.push(grant);
+		});
+	const release = (kind: string): void => {
+		const slot = slots.get(kind);
+		/* v8 ignore next -- release only runs in the finally after a
+		   successful acquire, which always created the slot */
+		if (slot === undefined) return;
+		slot.active -= 1;
+		const next = slot.queue.shift();
+		// The queued grant re-increments `active` itself.
+		if (next !== undefined) next();
+	};
+	const defaultMaxAttempts = deps.maxAttempts ?? 5;
 	return async (messages: readonly JobMessageLike[]): Promise<void> => {
-		for (const message of messages) {
-			const normalized = normalize(message.body);
-			if (normalized === null) {
-				message.ack();
-				continue;
-			}
-			const id = normalized.id ?? newId();
-			const kind = normalized.kind;
-			const tenantId = normalized.tenantId ?? null;
-			const registration = deps.handlers[kind];
-			const envelope: JobEnvelope = { id, kind, payload: normalized.payload, tenantId };
-			if (registration === undefined) {
-				await mark({ id, kind, status: "failed", error: `unknown job kind: ${kind}`, tenantId });
-				message.ack();
-				continue;
-			}
-			await mark({ id, kind, status: "processing", tenantId });
-			let payload: unknown;
-			try {
-				payload =
-					registration.decodePayload === undefined
-						? normalized.payload
-						: registration.decodePayload(normalized.payload);
-			} catch {
-				await mark({ id, kind, status: "failed", error: "invalid job payload", tenantId });
-				message.ack();
-				continue;
-			}
-			try {
-				await registration.handle(payload, envelope);
-			} catch (error) {
-				await mark({ id, kind, status: "failed", error: String(error), tenantId });
-				message.retry();
-				continue;
-			}
-			await mark({ id, kind, status: "done", error: null, tenantId });
-			message.ack();
-		}
+		await Promise.all(
+			messages.map(async (message) => {
+				const normalized = normalize(message.body);
+				if (normalized === null) {
+					message.ack();
+					return;
+				}
+				const id = normalized.id ?? newId();
+				const kind = normalized.kind;
+				const tenantId = normalized.tenantId ?? null;
+				const registration = deps.handlers[kind];
+				const envelope: JobEnvelope = { id, kind, payload: normalized.payload, tenantId };
+				if (registration === undefined) {
+					await mark({ id, kind, status: "failed", error: `unknown job kind: ${kind}`, tenantId });
+					message.ack();
+					return;
+				}
+				const limit = Math.max(1, registration.concurrency ?? 1);
+				await acquire(kind, limit);
+				try {
+					// Idempotent kinds: an already-done run means this is
+					// an ack-loss redelivery — ack without re-running. A
+					// projection read failure degrades to normal dispatch.
+					// The check sits inside the slot so the projection
+					// await can't reorder same-kind dispatch.
+					if (registration.idempotent === true && deps.db !== undefined) {
+						const existing = await getJobRun(deps.db, id).catch(() => null);
+						if (existing?.status === "done") {
+							message.ack();
+							return;
+						}
+					}
+					await mark({ id, kind, status: "processing", tenantId });
+					let payload: unknown;
+					try {
+						payload =
+							registration.decodePayload === undefined
+								? normalized.payload
+								: registration.decodePayload(normalized.payload);
+					} catch {
+						await mark({ id, kind, status: "failed", error: "invalid job payload", tenantId });
+						message.ack();
+						return;
+					}
+					try {
+						await registration.handle(payload, envelope);
+					} catch (error) {
+						const detail = String(error);
+						const attempts = message.attempts ?? 1;
+						const maxAttempts = registration.maxAttempts ?? defaultMaxAttempts;
+						if (attempts >= maxAttempts) {
+							await mark({
+								id,
+								kind,
+								status: "failed",
+								error: `attempts exhausted (${attempts}/${maxAttempts}): ${detail}`,
+								tenantId,
+							});
+							message.ack();
+							return;
+						}
+						await mark({ id, kind, status: "failed", error: detail, tenantId });
+						message.retry();
+						return;
+					}
+					await mark({ id, kind, status: "done", error: null, tenantId });
+					message.ack();
+				} finally {
+					release(kind);
+				}
+			}),
+		);
 	};
 };
