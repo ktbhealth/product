@@ -186,6 +186,7 @@ describe("platform schedules capability", () => {
 		const schedules = runtime.schedules!;
 		registerJobHandler("test.sched.cap", { handle: async () => {} });
 
+		expect(runtime.jobKinds!()).toContain("test.sched.cap");
 		expect(await schedules.list()).toEqual([]);
 
 		const created = await schedules.create({
