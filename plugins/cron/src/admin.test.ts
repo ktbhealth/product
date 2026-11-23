@@ -257,6 +257,23 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("collapses a throwing jobKinds accessor to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get jobKinds(): never {
+					throw new Error("jobKinds accessor exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.scheduleKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("round-trips schedule CRUD and run-now through the capability", async () => {
 		const SCHED: ScheduledJobInfo = {
 			id: "sched-1",
