@@ -89,9 +89,7 @@ export const readRequestBodyLimited = async (
 		}
 	} catch {
 		return null;
-		// Stryker disable next-line BlockStatement: skipping releaseLock leaves the per-request reader locked until GC — no observable behavior for a single-shot body read.
 	} finally {
-		// Stryker disable next-line CallExpression: releaseLock is resource hygiene — the stream is per-request and never re-read, so skipping it changes nothing observable.
 		reader.releaseLock();
 	}
 	const bytes = new Uint8Array(total);
