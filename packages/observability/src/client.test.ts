@@ -118,6 +118,7 @@ beforeEach(() => {
 afterEach(() => {
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 	resetSingletons();
 });
 
@@ -762,11 +763,12 @@ describe("client telemetry edge coverage", () => {
 
 	it("does not re-patch fetch when the patched flag is already set", () => {
 		const browser = installBrowser();
+		const originalFetch = browser.win.fetch;
 		const store = globalThis as Record<symbol, unknown>;
 		store[FETCH_PATCHED_KEY] = true;
 		initClientTelemetry();
 		// Flag set but fetch never wrapped — window.fetch stays original.
-		expect(window.fetch).toBe(browser.win.fetch);
+		expect(window.fetch).toBe(originalFetch);
 	});
 
 	it("merges init headers on Request-like inputs", async () => {
@@ -881,6 +883,457 @@ describe("client telemetry fetch rejection", () => {
 		vi.advanceTimersByTime(5_000);
 		await Promise.resolve();
 		await Promise.resolve();
+		telemetry.dispose();
+	});
+});
+
+describe("client telemetry mutation hardening", () => {
+	it("returns a no-op when only window is defined (no document)", () => {
+		installBrowser();
+		vi.stubGlobal("document", undefined);
+		const telemetry = initClientTelemetry();
+		expect(() => telemetry.report({ type: "event", name: "x" })).not.toThrow();
+		expect(() => telemetry.dispose()).not.toThrow();
+	});
+
+	it("returns a no-op when only document is defined (no window)", () => {
+		installBrowser();
+		vi.stubGlobal("window", undefined);
+		const telemetry = initClientTelemetry();
+		expect(() => telemetry.report({ type: "event", name: "x" })).not.toThrow();
+		expect(() => telemetry.dispose()).not.toThrow();
+	});
+
+	it("initializes when window.location is unavailable", () => {
+		const browser = installBrowser();
+		(browser.win as { location?: unknown }).location = undefined;
+		expect(() => initClientTelemetry()).not.toThrow();
+	});
+
+	it("records fetch calls whose URL fails URL parsing, with the stripped path", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://[");
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		const request = events.find((e) => e.type === "request");
+		expect(request?.path).toBe("http://[");
+	});
+
+	it("does not record a request event when the stripped path is empty", async () => {
+		const browser = installBrowser();
+		(browser.win.location as { origin: string }).origin = "";
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("?");
+		vi.advanceTimersByTime(10_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+	});
+
+	it("treats null and primitive fetch inputs as plain strings", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)(null as never);
+		await (window.fetch as unknown as Mock)("http://localhost/plain");
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		const paths = events.filter((e) => e.type === "request").map((e) => e.path);
+		expect(paths).toContain("/null");
+		expect(paths).toContain("/plain");
+	});
+
+	it("requires a string url before treating fetch input as Request-like", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)({ url: 123 } as never);
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		const request = events.find((e) => e.type === "request");
+		// Not request-like → String(input) is the URL.
+		expect(request?.path).toBe("/[object%20Object]");
+	});
+
+	it("keeps sampling when sampleRate is NaN (non-finite → default 1)", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ sampleRate: Number.NaN });
+		telemetry.report({ type: "event", name: "nan-rate" });
+		vi.advanceTimersByTime(5_000);
+		expect(beaconEvents(browser.win.navigator.sendBeacon)[0]?.name).toBe("nan-rate");
+		telemetry.dispose();
+	});
+
+	it("honours fractional sample rates", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.4);
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ sampleRate: 0.5 });
+		telemetry.report({ type: "event", name: "sampled-in" });
+		vi.advanceTimersByTime(5_000);
+		expect(beaconEvents(browser.win.navigator.sendBeacon)[0]?.name).toBe("sampled-in");
+		telemetry.dispose();
+	});
+
+	it("flushes early at the default batch size of 20", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry();
+		for (let i = 0; i < 19; i++) {
+			telemetry.report({ type: "event", name: `e${i}` });
+		}
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		telemetry.report({ type: "event", name: "e19" });
+		expect(browser.win.navigator.sendBeacon).toHaveBeenCalledTimes(1);
+		telemetry.dispose();
+	});
+
+	it("ignores a zero maxBatchSize", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({
+			maxBatchSize: 0,
+			flushIntervalMs: 60_000,
+		});
+		for (let i = 0; i < 25; i++) {
+			telemetry.report({ type: "event", name: `e${i}` });
+		}
+		vi.advanceTimersByTime(1_000);
+		// maxBatchSize 0 is invalid → default 20 → flushed once at 20 events.
+		expect(browser.win.navigator.sendBeacon).toHaveBeenCalledTimes(1);
+		telemetry.dispose();
+	});
+
+	it("ignores a negative maxBatchSize", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ maxBatchSize: -5 });
+		telemetry.report({ type: "event", name: "one" });
+		vi.advanceTimersByTime(1_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		telemetry.dispose();
+	});
+
+	it("ignores a string maxBatchSize", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({
+			maxBatchSize: "5" as unknown as number,
+			flushIntervalMs: 60_000,
+		});
+		for (let i = 0; i < 10; i++) {
+			telemetry.report({ type: "event", name: `s${i}` });
+		}
+		vi.advanceTimersByTime(1_000);
+		// "5" is not a number → default 20 → nothing flushed yet.
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		telemetry.dispose();
+	});
+
+	it("ignores a NaN maxBatchSize", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({
+			maxBatchSize: Number.NaN,
+			flushIntervalMs: 60_000,
+		});
+		for (let i = 0; i < 20; i++) {
+			telemetry.report({ type: "event", name: `n${i}` });
+		}
+		// NaN fails the > 0 check → default 20 → flush at 20 events.
+		expect(browser.win.navigator.sendBeacon).toHaveBeenCalledTimes(1);
+		telemetry.dispose();
+	});
+
+	it("uses a custom flushIntervalMs", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ flushIntervalMs: 3_000 });
+		telemetry.report({ type: "event", name: "timed" });
+		vi.advanceTimersByTime(2_999);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
+		expect(browser.win.navigator.sendBeacon).toHaveBeenCalledTimes(1);
+		telemetry.dispose();
+	});
+
+	it("uses the default flush interval when flushIntervalMs is not positive", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ flushIntervalMs: 0 });
+		telemetry.report({ type: "event", name: "zero-interval" });
+		vi.advanceTimersByTime(4_999);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(1);
+		expect(browser.win.navigator.sendBeacon).toHaveBeenCalledTimes(1);
+		telemetry.dispose();
+	});
+
+	it("uses the default flush interval when flushIntervalMs is NaN", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ flushIntervalMs: Number.NaN });
+		telemetry.report({ type: "event", name: "nan-interval" });
+		vi.advanceTimersByTime(1_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		vi.advanceTimersByTime(4_000);
+		expect(browser.win.navigator.sendBeacon).toHaveBeenCalledTimes(1);
+		telemetry.dispose();
+	});
+
+	it("uses the default flush interval when flushIntervalMs is a string", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({
+			flushIntervalMs: "100" as unknown as number,
+		});
+		telemetry.report({ type: "event", name: "string-interval" });
+		vi.advanceTimersByTime(1_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		telemetry.dispose();
+	});
+
+	it("does not fall back to fetch when sendBeacon succeeds", () => {
+		installBrowser();
+		const telemetry = initClientTelemetry();
+		telemetry.report({ type: "event", name: "beacon-only" });
+		vi.advanceTimersByTime(5_000);
+		// Beacon delivery → the fetch fallback must not also fire.
+		expect(underlyingFetch()).not.toHaveBeenCalled();
+		telemetry.dispose();
+	});
+
+	it("sends content-type application/json on the fetch fallback", async () => {
+		const browser = installBrowser();
+		browser.win.navigator.sendBeacon.mockReturnValue(false);
+		initClientTelemetry();
+		const telemetry = (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] as {
+			report: (e: ClientTelemetryEvent) => void;
+			dispose: () => void;
+		};
+		telemetry.report({ type: "event", name: "hdrs" });
+		vi.advanceTimersByTime(5_000);
+		const ingestCall = underlyingFetch().mock.calls.find((call) => call[0] === "/api/telemetry");
+		const init = ingestCall?.[1] as RequestInit;
+		expect(init.method).toBe("POST");
+		expect(init.keepalive).toBe(true);
+		expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
+		await Promise.resolve();
+		telemetry.dispose();
+	});
+
+	it("does not self-instrument the ingest endpoint for custom endpoints", () => {
+		const browser = installBrowser();
+		browser.win.navigator.sendBeacon.mockReturnValue(false);
+		initClientTelemetry({ endpoint: "http://localhost:9999/ingest" });
+		const telemetry = (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] as {
+			report: (e: ClientTelemetryEvent) => void;
+			dispose: () => void;
+		};
+		telemetry.report({ type: "event", name: "custom-endpoint" });
+		vi.advanceTimersByTime(20_000);
+		// Only the flush itself may hit fetch — no web.request self-events,
+		// so the queue drains and later intervals send nothing.
+		const ingestCalls = underlyingFetch().mock.calls.filter(
+			(call) => call[0] === "http://localhost:9999/ingest",
+		);
+		expect(ingestCalls).toHaveLength(1);
+		telemetry.dispose();
+	});
+
+	it("produces deterministic ids from crypto.getRandomValues/randomUUID", async () => {
+		vi.stubGlobal("crypto", {
+			getRandomValues: (buf: Uint8Array) => buf.fill(0xab),
+			randomUUID: () => "11111111-2222-3333-4444-555555555555",
+		});
+		installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://localhost/api/x");
+		const call = underlyingFetch().mock.calls.at(-1);
+		const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers);
+		expect(headers.get("x-request-id")).toBe("11111111-2222-3333-4444-555555555555");
+		expect(headers.get("traceparent")).toBe(`00-${"ab".repeat(16)}-${"ab".repeat(8)}-01`);
+	});
+
+	it("falls back to template ids when crypto lacks randomUUID", async () => {
+		vi.stubGlobal("crypto", {
+			getRandomValues: (buf: Uint8Array) => buf.fill(0x01),
+		});
+		installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://localhost/api/y");
+		const call = underlyingFetch().mock.calls.at(-1);
+		const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers);
+		// randomHex(4)-randomHex(2)-randomHex(2)-randomHex(2)-randomHex(6)
+		expect(headers.get("x-request-id")).toBe("01010101-0101-0101-0101-010101010101");
+	});
+
+	it("generates hex ids via Math.random when crypto has no getRandomValues", async () => {
+		vi.stubGlobal("crypto", {});
+		vi.spyOn(Math, "random").mockReturnValue(0.5);
+		installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://localhost/api/z");
+		const call = underlyingFetch().mock.calls.at(-1);
+		const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers);
+		// floor(0.5 * 16) = 8 → every nibble is "8".
+		expect(headers.get("traceparent")).toBe(`00-${"8".repeat(32)}-${"8".repeat(16)}-01`);
+		expect(headers.get("x-request-id")).toBe("88888888-8888-8888-8888-888888888888");
+	});
+
+	it("still generates ids when crypto is entirely absent", async () => {
+		vi.stubGlobal("crypto", undefined);
+		installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://localhost/api/no-crypto");
+		const call = underlyingFetch().mock.calls.at(-1);
+		const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers);
+		expect(headers.get("traceparent")).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+		expect(headers.get("x-request-id")).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+		);
+	});
+
+	it("drops null, primitive and incomplete report() inputs", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry();
+		telemetry.report(null as never);
+		telemetry.report(undefined as never);
+		telemetry.report(42 as never);
+		telemetry.report("event" as never);
+		telemetry.report({ type: "event" } as never);
+		vi.advanceTimersByTime(10_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		telemetry.dispose();
+	});
+
+	it("clamps negative durations to zero and omits absent durations", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry();
+		telemetry.report({ type: "event", name: "neg-dur", durationMs: -50 });
+		telemetry.report({ type: "event", name: "no-dur" });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events.find((e) => e.name === "neg-dur")?.durationMs).toBe(0);
+		expect(events.find((e) => e.name === "no-dur")?.durationMs).toBeUndefined();
+		telemetry.dispose();
+	});
+
+	it("reports unhandledrejection with stack for Error reasons", () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		const err = new Error("with-stack");
+		browser.emitWindow("unhandledrejection", { reason: err });
+		vi.advanceTimersByTime(5_000);
+		const [event] = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(event).toMatchObject({ type: "error", name: "client.error" });
+		expect(event?.stack).toBe(err.stack);
+	});
+
+	it("reports unhandledrejection for Errors without a stack", () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		const err = new Error("no-stack");
+		err.stack = undefined;
+		browser.emitWindow("unhandledrejection", { reason: err });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events).toHaveLength(1);
+		expect(events[0]?.message).toBe("no-stack");
+		expect(events[0]?.stack).toBeUndefined();
+	});
+
+	it("returns 'Unknown error' when both stringify paths fail", () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		const hostile = Object.create(null) as Record<string, unknown>;
+		hostile.self = hostile;
+		browser.emitWindow("unhandledrejection", { reason: hostile });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events[0]?.message).toBe("Unknown error");
+	});
+
+	it("still captures errors when window.location is unavailable", () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		(browser.win as { location?: unknown }).location = undefined;
+		browser.emitWindow("error", { message: "no-location" });
+		browser.emitWindow("unhandledrejection", { reason: "rej-no-location" });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events.filter((e) => e.type === "error")).toHaveLength(2);
+		expect(events.every((e) => e.path === undefined)).toBe(true);
+	});
+
+	it("uses GET as the default method for Request-like fetch inputs", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)({ url: "http://localhost/duck-get" } as never);
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		const request = events.find((e) => e.type === "request");
+		expect(request?.attributes).toEqual({ method: "GET" });
+	});
+
+	it("omits the stack attribute for error events whose Error has no stack", () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		const err = new Error("bare");
+		err.stack = undefined;
+		browser.emitWindow("error", { message: "bare", error: err });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events[0]?.stack).toBeUndefined();
+	});
+
+	it("drops events when Math.random() equals the sample rate", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.5);
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ sampleRate: 0.5 });
+		telemetry.report({ type: "event", name: "boundary" });
+		vi.advanceTimersByTime(10_000);
+		// Sampling is strict `<`: random() === sampleRate is NOT kept.
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		telemetry.dispose();
+	});
+
+	it("keeps attributes absent when neither serviceName nor attributes are set", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry();
+		telemetry.report({ type: "event", name: "no-attrs" });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events[0]?.attributes).toBeUndefined();
+		telemetry.dispose();
+	});
+
+	it("leaves window.fetch untouched when fetch is missing at init", () => {
+		installBrowser();
+		(window as { fetch?: unknown }).fetch = undefined;
+		initClientTelemetry();
+		expect(window.fetch).toBeUndefined();
+	});
+
+	it("injects no trace headers on requests whose URL cannot be parsed", async () => {
+		installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://[");
+		const call = underlyingFetch().mock.calls.at(-1);
+		const headers = new Headers((call?.[1] as RequestInit | undefined)?.headers);
+		expect(headers.get("traceparent")).toBeNull();
+		expect(headers.get("x-request-id")).toBeNull();
+	});
+
+	it("does not instrument fetches that resolve to the ingest endpoint path", async () => {
+		const browser = installBrowser();
+		initClientTelemetry({ endpoint: "http://localhost:9999/ingest" });
+		// Same path as the endpoint but a different URL string — only the
+		// pathname comparison can exclude it from instrumentation.
+		await (window.fetch as unknown as Mock)("http://localhost:9999/ingest?x=1");
+		vi.advanceTimersByTime(5_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+	});
+
+	it("falls back to fetch when window.navigator is unavailable", () => {
+		const browser = installBrowser();
+		(browser.win as { navigator?: unknown }).navigator = undefined;
+		initClientTelemetry();
+		const telemetry = (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] as {
+			report: (e: ClientTelemetryEvent) => void;
+			dispose: () => void;
+		};
+		telemetry.report({ type: "event", name: "no-nav" });
+		vi.advanceTimersByTime(5_000);
+		const ingestCall = underlyingFetch().mock.calls.find((call) => call[0] === "/api/telemetry");
+		expect(ingestCall).toBeDefined();
 		telemetry.dispose();
 	});
 });

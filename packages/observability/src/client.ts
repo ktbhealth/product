@@ -73,6 +73,7 @@ const truncate = (value: string, max: number): string =>
 /** Strip query/hash — the wire schema only accepts path-like `path`s. */
 const cleanPath = (path: string | undefined): string | undefined => {
 	if (path === undefined) return undefined;
+	// Stryker disable next-line OptionalChaining: String.split() always returns a non-empty array, so [0] is never undefined and `?.` is equivalent to `.`.
 	const stripped = path.split("?")[0]?.split("#")[0];
 	if (stripped === undefined || stripped === "") return undefined;
 	return truncate(stripped, MAX_PATH_LENGTH);
@@ -123,6 +124,7 @@ const pathnameOf = (url: string, base?: string): string | undefined => {
 		return new URL(url, base).pathname;
 	} catch {
 		// Relative URL without a usable base — best-effort strip of query.
+		// Stryker disable next-line OptionalChaining: String.split() always returns a non-empty array, so [0] is never undefined and `?.` is equivalent to `.`.
 		const noQuery = url.split("?")[0]?.split("#")[0];
 		return noQuery === "" ? undefined : noQuery;
 	}
@@ -138,10 +140,15 @@ const pathnameOf = (url: string, base?: string): string | undefined => {
  */
 const isSameOriginUrl = (url: string): boolean => {
 	try {
+		// Stryker disable next-line OptionalChaining: when window.location is absent the TypeError lands in the catch below, which returns the same false.
 		const origin = window.location?.origin;
+		// Stryker disable next-line LogicalOperator: `origin === undefined && origin === ""` is always false, and falling through still returns false — new URL() either throws (caught → false) or yields a real origin that cannot equal undefined/"".
+		// Stryker disable next-line StringLiteral: comparing origin against "Stryker was here!" is always false, and an empty origin still fails the URL-origin comparison below.
 		if (origin === undefined || origin === "") return false;
 		return new URL(url, origin).origin === origin;
-	} catch {
+	}
+	// Stryker disable next-line BlockStatement: an empty catch returns undefined, which is falsy — identical to returning false.
+	catch {
 		return false;
 	}
 };
@@ -216,6 +223,7 @@ export const initClientTelemetry = (options: ClientTelemetryOptions = {}): Clien
 	const endpointPath = pathnameOf(endpoint, window.location?.origin) ?? endpoint;
 
 	const queue: ClientTelemetryEvent[] = [];
+	// Stryker disable next-line ArrayDeclaration: a string element makes cleanup() throw inside dispose's try/catch, which is swallowed — observably identical.
 	const cleanups: Array<() => void> = [];
 	let disposed = false;
 
@@ -366,7 +374,9 @@ export const initClientTelemetry = (options: ClientTelemetryOptions = {}): Clien
 		store[FETCH_ORIGINAL_KEY] = originalFetch;
 
 		const patchedFetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+			// Stryker disable next-line StringLiteral: `url` is assigned in both try branches before any read — the initializer is dead.
 			let url = "";
+			// Stryker disable next-line StringLiteral: `method` is assigned in both try branches before any read — the initializer is dead.
 			let method = "GET";
 			let baseHeaders: HeadersInit | undefined;
 			try {
