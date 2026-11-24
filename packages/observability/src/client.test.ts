@@ -185,6 +185,18 @@ describe("report()", () => {
 		telemetry.dispose();
 	});
 
+	it("accepts every reportable event type", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry();
+		for (const type of ["event", "error", "navigation", "request"] as const) {
+			telemetry.report({ type, name: `${type}.x` });
+		}
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events.map((e) => e.type)).toEqual(["event", "error", "navigation", "request"]);
+		telemetry.dispose();
+	});
+
 	it("drops everything when sampleRate is 0", () => {
 		const browser = installBrowser();
 		const telemetry = initClientTelemetry({ sampleRate: 0 });
@@ -607,6 +619,7 @@ describe("instrumentRouter", () => {
 			path: "/new-page",
 		});
 		expect(event.durationMs).toBeGreaterThanOrEqual(120);
+		expect(event.durationMs).toBeLessThan(60_000);
 	});
 
 	it("ignores onResolved without a preceding onBeforeNavigate", () => {
@@ -788,6 +801,188 @@ describe("client telemetry edge coverage", () => {
 		const telemetry = initClientTelemetry();
 		telemetry.dispose();
 		expect(() => telemetry.dispose()).not.toThrow();
+	});
+});
+
+describe("client telemetry mutant kills", () => {
+	it("defaults method to GET and preserves init.method for string inputs", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("http://localhost/api/a");
+		await (window.fetch as unknown as Mock)("http://localhost/api/b", { method: "POST" });
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		const requests = events.filter((e) => e.name === "web.request");
+		expect(requests.map((e) => e.attributes?.method)).toEqual(["GET", "POST"]);
+	});
+
+	it("skips instrumentation for absolute URLs matching the endpoint path", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		// url !== "/api/telemetry" but pathname === endpointPath — the
+		// self-instrumentation guard must still skip it.
+		await (window.fetch as unknown as Mock)("http://localhost/api/telemetry");
+		vi.advanceTimersByTime(5_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+		const [, init] = underlyingFetch().mock.calls[0] as [string, RequestInit | undefined];
+		expect(init?.headers).toBeUndefined();
+	});
+
+	it("skips instrumentation when the request path cannot be resolved", async () => {
+		const browser = installBrowser();
+		(browser.win.location as { origin: string }).origin = "";
+		initClientTelemetry();
+		await (window.fetch as unknown as Mock)("?");
+		vi.advanceTimersByTime(5_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+	});
+
+	it("records a bounded durationMs for slow fetches", async () => {
+		const browser = installBrowser();
+		initClientTelemetry();
+		underlyingFetch().mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					setTimeout(() => resolve({ status: 200, ok: true }), 1_000);
+				}),
+		);
+		const pending = (window.fetch as unknown as Mock)("http://localhost/api/slow");
+		vi.advanceTimersByTime(1_000);
+		await pending;
+		vi.advanceTimersByTime(5_000);
+		const [event] = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(event?.durationMs).toBeGreaterThanOrEqual(1_000);
+		expect(event?.durationMs).toBeLessThan(60_000);
+	});
+
+	it("removes every listener on dispose", () => {
+		const browser = installBrowser();
+		const windowRemove = vi.fn<(...args: any[]) => void>();
+		const documentRemove = vi.fn<(...args: any[]) => void>();
+		const origWindowRemove = browser.win.removeEventListener;
+		const origDocumentRemove = browser.doc.removeEventListener;
+		browser.win.removeEventListener = ((type: string, fn: Listener) => {
+			windowRemove(type, fn);
+			origWindowRemove(type, fn);
+		}) as never;
+		browser.doc.removeEventListener = ((type: string, fn: Listener) => {
+			documentRemove(type, fn);
+			origDocumentRemove(type, fn);
+		}) as never;
+		const telemetry = initClientTelemetry();
+		telemetry.dispose();
+		for (const type of ["error", "unhandledrejection", "pagehide"]) {
+			expect(windowRemove).toHaveBeenCalledWith(type, expect.any(Function));
+		}
+		expect(documentRemove).toHaveBeenCalledWith("visibilitychange", expect.any(Function));
+	});
+
+	it("clears the flush interval on dispose", () => {
+		installBrowser();
+		const before = vi.getTimerCount();
+		const telemetry = initClientTelemetry();
+		expect(vi.getTimerCount()).toBe(before + 1);
+		telemetry.dispose();
+		expect(vi.getTimerCount()).toBe(before);
+	});
+
+	it("stays disposed — report() after dispose never flushes", () => {
+		const browser = installBrowser();
+		const telemetry = initClientTelemetry({ maxBatchSize: 2 });
+		telemetry.dispose();
+		telemetry.report({ type: "event", name: "a" });
+		telemetry.report({ type: "event", name: "b" });
+		vi.advanceTimersByTime(10_000);
+		expect(browser.win.navigator.sendBeacon).not.toHaveBeenCalled();
+	});
+
+	it("ignores dispose() on a stale instance after re-init", async () => {
+		const browser = installBrowser();
+		const first = initClientTelemetry();
+		first.dispose();
+		const second = initClientTelemetry();
+		const wrappedFetch = window.fetch;
+		first.dispose();
+		expect(initClientTelemetry()).toBe(second);
+		expect(window.fetch).toBe(wrappedFetch);
+		await (window.fetch as unknown as Mock)("http://localhost/api/still-live");
+		vi.advanceTimersByTime(5_000);
+		const events = beaconEvents(browser.win.navigator.sendBeacon);
+		expect(events.some((e) => e.name === "web.request")).toBe(true);
+		second.dispose();
+	});
+
+	it("keeps fetch patched when the stored original is missing", () => {
+		installBrowser();
+		initClientTelemetry();
+		const wrapped = window.fetch;
+		const store = globalThis as Record<symbol, unknown>;
+		delete store[FETCH_ORIGINAL_KEY];
+		const telemetry = store[GLOBAL_KEY] as { dispose: () => void };
+		telemetry.dispose();
+		expect(window.fetch).toBe(wrapped);
+	});
+
+	it("does not restore fetch when the patched flag was cleared externally", () => {
+		installBrowser();
+		initClientTelemetry();
+		const wrapped = window.fetch;
+		const original = underlyingFetch();
+		(globalThis as Record<symbol, unknown>)[FETCH_PATCHED_KEY] = false;
+		const telemetry = (globalThis as Record<symbol, unknown>)[GLOBAL_KEY] as {
+			dispose: () => void;
+		};
+		telemetry.dispose();
+		expect(window.fetch).toBe(wrapped);
+		expect(window.fetch).not.toBe(original);
+	});
+});
+
+describe("instrumentRouter edge cases", () => {
+	it("rejects non-object routers, including callables", () => {
+		for (const bad of ["str", 42, true, undefined]) {
+			expect(instrumentRouter(bad as never)).toBeUndefined();
+		}
+		const callable = Object.assign(() => {}, {
+			subscribe: () => () => {},
+		});
+		expect(instrumentRouter(callable as never)).toBeUndefined();
+	});
+
+	it("falls back to window.location when router.state.location is missing", () => {
+		installBrowser();
+		const handlers = new Map<string, (event: { type?: string }) => void>();
+		const router = {
+			subscribe: (_t: string, fn: (event: { type?: string }) => void) => {
+				handlers.set(_t, fn);
+				return () => {};
+			},
+			state: {},
+		};
+		const sink = vi.fn<(event: ClientTelemetryEvent) => void>();
+		instrumentRouter(router, sink);
+		handlers.get("onBeforeNavigate")?.({});
+		handlers.get("onResolved")?.({});
+		expect(sink).toHaveBeenCalledTimes(1);
+		expect((sink.mock.calls[0]?.[0] as ClientTelemetryEvent).path).toBe("/start");
+	});
+
+	it("reports navigation with an undefined path when window.location is unavailable", () => {
+		const browser = installBrowser();
+		(browser.win as { location?: unknown }).location = undefined;
+		const handlers = new Map<string, (event: { type?: string }) => void>();
+		const router = {
+			subscribe: (_t: string, fn: (event: { type?: string }) => void) => {
+				handlers.set(_t, fn);
+				return () => {};
+			},
+		};
+		const sink = vi.fn<(event: ClientTelemetryEvent) => void>();
+		instrumentRouter(router, sink);
+		handlers.get("onBeforeNavigate")?.({});
+		handlers.get("onResolved")?.({});
+		expect(sink).toHaveBeenCalledTimes(1);
+		expect((sink.mock.calls[0]?.[0] as ClientTelemetryEvent).path).toBeUndefined();
 	});
 });
 

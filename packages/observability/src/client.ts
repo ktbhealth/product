@@ -393,6 +393,7 @@ export const initClientTelemetry = (options: ClientTelemetryOptions = {}): Clien
 			// Skip self-instrumentation of the ingest endpoint — otherwise
 			// every flush would enqueue another "web.request" and the queue
 			// could never drain while sendBeacon is unavailable.
+			// Stryker disable next-line ConditionalExpression: the `url === endpoint` disjunct is subsumed — url === endpoint implies pathnameOf(url) === pathnameOf(endpoint), so path === endpointPath (or path === undefined when unparseable), which the earlier disjuncts already cover.
 			if (path === undefined || path === endpointPath || url === endpoint) {
 				return originalFetch.call(window, input, init);
 			}
@@ -403,6 +404,7 @@ export const initClientTelemetry = (options: ClientTelemetryOptions = {}): Clien
 			const traceparent = sameOrigin ? newTraceparent() : undefined;
 			const requestId = sameOrigin ? randomUUID() : undefined;
 			const requestInit =
+				// Stryker disable next-line LogicalOperator,ConditionalExpression: traceparent and requestId are defined iff sameOrigin (assigned via `sameOrigin ? … : undefined` above), so every mutation of this condition still reduces to `sameOrigin` — requestInit is identical.
 				sameOrigin && traceparent !== undefined && requestId !== undefined
 					? {
 							...init,
@@ -514,6 +516,7 @@ export const instrumentRouter = (
 	sink?: (event: ClientTelemetryEvent) => void,
 ): (() => void) | undefined => {
 	try {
+		// Stryker disable next-line ConditionalExpression: dropping the `router === null` disjunct is unobservable — for null the `typeof router.subscribe` operand throws into the outer catch, which returns undefined just like the early return.
 		if (router === null || typeof router !== "object" || typeof router.subscribe !== "function") {
 			return undefined;
 		}
@@ -521,17 +524,21 @@ export const instrumentRouter = (
 			sink ??
 			((event: ClientTelemetryEvent) => {
 				const telemetry = globalStore()[GLOBAL_KEY] as ClientTelemetry | undefined;
+				// Stryker disable next-line OptionalChaining: reportNavigation only runs inside the onResolved try — an undefined telemetry makes the unguarded call throw into the same catch that already swallows listener errors.
 				telemetry?.report(event);
 			});
 		let navStartedAt: number | undefined;
 
+		// Stryker disable next-line ArrayDeclaration: a seeded non-function element only adds an entry the dispose loop already try/catches — real unsubs still run.
 		const unsubscribers: Array<() => void> = [];
 		const subscribe = (
 			eventType: "onBeforeNavigate" | "onResolved",
 			fn: (event: { readonly type?: string }) => void,
 		): void => {
 			try {
+				// Stryker disable next-line OptionalChaining: the guard above verified typeof router.subscribe === "function"; a nullish second access (e.g. via a getter) throws into subscribe's own try either way.
 				const unsub = router.subscribe?.(eventType, fn);
+				// Stryker disable next-line ConditionalExpression: pushing a non-function unsub only adds an entry the dispose loop already try/catches — real unsubs still run.
 				if (typeof unsub === "function") unsubscribers.push(unsub);
 			} catch {
 				// Subscription is best-effort.
@@ -569,7 +576,9 @@ export const instrumentRouter = (
 				}
 			}
 		};
-	} catch {
+	}
+	// Stryker disable next-line BlockStatement: an empty catch falls through to the implicit undefined return — identical to `catch { return undefined }`.
+	catch {
 		return undefined;
 	}
 };

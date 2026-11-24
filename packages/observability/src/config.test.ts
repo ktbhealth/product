@@ -384,6 +384,11 @@ describe("OTLP endpoint transport guard", () => {
 			"http://169.168.1.1:4318",
 			"http://10.0.0.4a:4318", // non-numeric octet — domain-shaped, not local
 			"http://1.2.3:4318", // WHATWG parses as 1.2.0.3 — public, not local
+			// Domain-shaped hosts whose octets parse via Number() to
+			// out-of-range or non-integer values — still not local.
+			"http://10.0.0.-1:4318", // negative octet
+			"http://10.0.0.1e21:4318", // integer but > 255
+			"http://10.0.0.1e-1:4318", // 0.1 — not an integer octet
 		]) {
 			const config = telemetryConfigFromEnv({
 				OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
