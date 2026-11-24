@@ -277,6 +277,16 @@ describe("makeNodeAcpLlm", () => {
 		}
 	});
 
+	it("passes permissionPolicy to the transport only when set", async () => {
+		const { spawnImpl } = agentProc("ok");
+		await generate({ argv: ["a"], spawnImpl, permissionPolicy: "allow" });
+		let rpcOpts = vi.mocked(makeStdioRpc).mock.calls.at(-1)![0];
+		expect(rpcOpts.permissionPolicy).toBe("allow");
+		await generate({ argv: ["a"], spawnImpl });
+		rpcOpts = vi.mocked(makeStdioRpc).mock.calls.at(-1)![0];
+		expect("permissionPolicy" in rpcOpts).toBe(false);
+	});
+
 	it("omits spawnImpl when none was configured", async () => {
 		// The bogus argv fails the real spawn path, but makeStdioRpc is
 		// still invoked — inspect the options object it received.
