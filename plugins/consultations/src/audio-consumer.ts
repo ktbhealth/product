@@ -123,10 +123,37 @@ export function bytesToBase64(bytes: Uint8Array): string {
 	return btoa(binary);
 }
 
+/**
+ * PT-BR clinical glossary biasing Whisper decoding via `initial_prompt`
+ * (Workers AI caps the prompt at ~224 tokens). Generic Whisper mangles
+ * drug names, exam acronyms and CID/TUSS references; listing the
+ * high-frequency vocabulary steers the decoder toward them.
+ */
+export const WHISPER_CLINICAL_PROMPT =
+	"Consulta médica em português brasileiro. Vocabulário clínico frequente: " +
+	"hipertensão arterial, diabetes mellitus, dislipidemia, hipotireoidismo, obesidade, " +
+	"rinite, sinusite, faringite, amigdalite, otite, asma, bronquite, gastrite, úlcera péptica, " +
+	"diarreia, constipação, lombalgia, cervicalgia, osteoartrite, anemia, taquicardia, arritmia, " +
+	"hipotensão, hemograma, glicemia de jejum, hemoglobina glicosilada, creatinina, ureia, TSH, " +
+	"colesterol LDL, HDL, triglicerídeos, MAPA, eletrocardiograma, radiografia, tomografia, " +
+	"ressonância magnética, dipirona, paracetamol, ibuprofeno, amoxicilina, azitromicina, " +
+	"ciprofloxacino, sinvastatina, losartana, hidroclorotiazida, metformina, omeprazol, insulina, " +
+	"prednisona, CID-10, TUSS, SUS, convênio, receita de controle especial, atestado médico, " +
+	"encaminhamento, retorno.";
+
 /** whisper-class models take base64 audio (unlike number[] models)
- * with a fixed language hint — shared with the /api/transcribe route. */
+ * with a fixed language hint — shared with the /api/transcribe route.
+ * `vad_filter` + `condition_on_previous_text: false` are the Workers AI
+ * anti-hallucination knobs; the local OpenAI-compatible adapter maps
+ * `initial_prompt` onto its `prompt` form field and ignores the rest. */
 export function whisperInputs(audioBase64: string) {
-	return { audio: audioBase64, language: "pt" };
+	return {
+		audio: audioBase64,
+		language: "pt",
+		initial_prompt: WHISPER_CLINICAL_PROMPT,
+		vad_filter: true,
+		condition_on_previous_text: false,
+	};
 }
 
 /** Tolerant text extraction across Workers AI response shapes. */

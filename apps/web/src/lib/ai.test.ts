@@ -66,7 +66,11 @@ describe("createLocalAi", () => {
 	it("POSTs audio inputs as multipart to /v1/audio/transcriptions", async () => {
 		const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse({ text: "olá" }));
 		const ai = createLocalAi("http://localhost:8080", fetchImpl);
-		const out = await ai.run("whisper", { audio: "aGk=", language: "pt" });
+		const out = await ai.run("whisper", {
+			audio: "aGk=",
+			language: "pt",
+			initial_prompt: "glossary",
+		});
 		expect(out).toEqual({ text: "olá" });
 		const [url, init] = fetchImpl.mock.calls[0]!;
 		expect(url).toBe("http://localhost:8080/v1/audio/transcriptions");
@@ -74,6 +78,7 @@ describe("createLocalAi", () => {
 		const form = init?.body as FormData;
 		expect(form.get("model")).toBe("whisper");
 		expect(form.get("language")).toBe("pt");
+		expect(form.get("prompt")).toBe("glossary");
 		expect(form.get("file")).toBeInstanceOf(Blob);
 	});
 
