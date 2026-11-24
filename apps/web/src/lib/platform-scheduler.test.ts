@@ -206,6 +206,19 @@ describe("platform schedules capability", () => {
 		const badCreate = await schedules.create({ kind: "test.sched.cap", cronExpr: "bad expr" });
 		expect(badCreate).toMatchObject({ ok: false, reason: "invalid" });
 
+		// Undispatchable kinds are rejected before any row is written.
+		const unknownKind = await schedules.create({ kind: "test.sched.unknown", runAt: 1 });
+		expect(unknownKind).toMatchObject({ ok: false, reason: "invalid" });
+
+		// jobs.ping.smoke declares paramsSchema {type:"object"} — a scalar
+		// payload fails the declared-schema gate.
+		const badParams = await schedules.create({
+			kind: "jobs.ping",
+			runAt: 1,
+			params: "not-an-object",
+		});
+		expect(badParams).toMatchObject({ ok: false, reason: "invalid" });
+
 		// params that JSON.stringify rejects surface as unavailable, not invalid.
 		const circular: Record<string, unknown> = {};
 		circular.self = circular;

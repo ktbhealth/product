@@ -4,6 +4,7 @@ import {
 	collectEventTopicDeclarations,
 	collectJobKindDeclarations,
 	collectSchedulableDeclarations,
+	EVENT_TOPIC_KIND,
 	eventTopicContribution,
 	JOB_KIND,
 	jobKindContribution,
@@ -88,6 +89,17 @@ describe("collectJobKindDeclarations", () => {
 		const plugins = [plugin("a", [{ kind: JOB_KIND, id: "x", meta: { concurrency: "lots" } }])];
 		expect(() => collectJobKindDeclarations(plugins)).toThrow(/invalid/);
 	});
+
+	it("ignores other kinds, tolerates missing meta and contribution-less plugins", () => {
+		const plugins = [
+			plugin("a", undefined),
+			plugin("b", [
+				{ kind: SCHEDULABLE_KIND, id: "s", meta: { kind: "jobs.ping" } },
+				{ kind: JOB_KIND, id: "bare" },
+			]),
+		];
+		expect(collectJobKindDeclarations(plugins)).toEqual([{ kind: "bare", pluginId: "b" }]);
+	});
 });
 
 describe("collectSchedulableDeclarations", () => {
@@ -129,6 +141,27 @@ describe("collectSchedulableDeclarations", () => {
 		const plugins = [plugin("a", [{ kind: SCHEDULABLE_KIND, id: "bad", meta: {} }])];
 		expect(() => collectSchedulableDeclarations(plugins)).toThrow(/invalid/);
 	});
+
+	it("throws on duplicate entry ids", () => {
+		const plugins = [
+			plugin("a", [
+				schedulableContribution("dup", { kind: "jobs.ping" }),
+				schedulableContribution("dup", { kind: "jobs.ping" }),
+			]),
+		];
+		expect(() => collectSchedulableDeclarations(plugins)).toThrow(/duplicate/);
+	});
+
+	it("ignores other kinds, missing meta and contribution-less plugins", () => {
+		const plugins = [
+			plugin("a", undefined),
+			plugin("b", [
+				{ kind: JOB_KIND, id: "jobs.ping" },
+				{ kind: SCHEDULABLE_KIND, id: "nometa" },
+			]),
+		];
+		expect(() => collectSchedulableDeclarations(plugins)).toThrow(/invalid/);
+	});
 });
 
 describe("collectEventTopicDeclarations", () => {
@@ -157,5 +190,16 @@ describe("collectEventTopicDeclarations", () => {
 			plugin("b", [eventTopicContribution("t")]),
 		];
 		expect(() => collectEventTopicDeclarations(plugins)).toThrow(/duplicate/);
+	});
+
+	it("ignores other kinds, tolerates missing meta and contribution-less plugins", () => {
+		const plugins = [
+			plugin("a", undefined),
+			plugin("b", [
+				{ kind: JOB_KIND, id: "jobs.ping" },
+				{ kind: EVENT_TOPIC_KIND, id: "notopic" },
+			]),
+		];
+		expect(collectEventTopicDeclarations(plugins)).toEqual([{ topic: "notopic", pluginId: "b" }]);
 	});
 });

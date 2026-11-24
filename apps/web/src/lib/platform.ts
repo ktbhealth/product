@@ -28,7 +28,14 @@ import {
 	collectJobKindDeclarations,
 	collectSchedulableDeclarations,
 } from "@ktb/platform/capabilities";
-import { compileSchema } from "@ktb/json-schema";
+import {
+	compileSchedulableValidators,
+	eventTopicInfos,
+	jobKindInfos,
+	scheduleKindDispatchable,
+	scheduleParamsError,
+	schedulableKindInfos,
+} from "./platform-capabilities.ts";
 import {
 	jobHandlers,
 	makeJobs,
@@ -389,18 +396,7 @@ const projectCronRun =
 const jobKindDecls = collectJobKindDeclarations(serverPlugins);
 const schedulableDecls = collectSchedulableDeclarations(serverPlugins);
 const eventTopicDecls = collectEventTopicDeclarations(serverPlugins);
-const isJsonSchemaDoc = (value: unknown): value is Record<string, unknown> =>
-	typeof value === "object" && value !== null && !Array.isArray(value);
-const schedulableParamsValidators = new Map<string, ReturnType<typeof compileSchema>[]>();
-for (const decl of schedulableDecls) {
-	if (decl.paramsSchema === undefined) continue;
-	if (!isJsonSchemaDoc(decl.paramsSchema)) {
-		throw new Error(`jobs.schedulable "${decl.id}" paramsSchema must be a JSON Schema object`);
-	}
-	const list = schedulableParamsValidators.get(decl.kind) ?? [];
-	list.push(compileSchema(decl.paramsSchema));
-	schedulableParamsValidators.set(decl.kind, list);
-}
+const schedulableParamsValidators = compileSchedulableValidators(schedulableDecls);
 
 // Scheduler dispatch (P-094): a claimed scheduled_jobs row becomes a
 // job envelope on the shared transport — queue retry, payload
@@ -715,26 +711,18 @@ setServerRuntime({
 				// entry or a jobs.schedulable declaration (declared kinds
 				// may ride transports with special normalizers). Anything
 				// else can only ever fail at fire time — reject early.
-				const dispatchable =
-					jobHandlers[input.kind] !== undefined ||
-					schedulableDecls.some((decl) => decl.kind === input.kind);
-				if (!dispatchable) {
+				if (!scheduleKindDispatchable(input.kind, jobHandlers, schedulableDecls)) {
 					throw new InvalidScheduleError(`unknown job kind: ${input.kind}`);
 				}
 				// Declared paramsSchemas gate schedule params: the value
 				// must satisfy at least one schema declared for the kind.
-				const validators = schedulableParamsValidators.get(input.kind);
-				if (validators !== undefined) {
-					const params = input.params ?? {};
-					const match = validators.find((validator) => validator.validate(params).length === 0);
-					if (match === undefined) {
-						const issues = validators[0]?.validate(params) ?? [];
-						throw new InvalidScheduleError(
-							`params do not match the declared schema for ${input.kind}: ${issues
-								.map((issue) => issue.message)
-								.join("; ")}`,
-						);
-					}
+				const paramsError = scheduleParamsError(
+					input.kind,
+					input.params,
+					schedulableParamsValidators,
+				);
+				if (paramsError !== null) {
+					throw new InvalidScheduleError(paramsError);
 				}
 				const job = await insertScheduledJob(db, input);
 				await syncSchedulerDo(job, job.id);
@@ -783,51 +771,8 @@ setServerRuntime({
 	// P-094: capability-declaration views — handler registration merged
 	// with jobs.kind/jobs.schedulable declarations, plus the
 	// events.topic catalog for the pub/sub console.
-	jobKindInfo: () => {
-		const declByKind = new Map(jobKindDecls.map((decl) => [decl.kind, decl]));
-		const schedulableKinds = new Set(schedulableDecls.map((decl) => decl.kind));
-		const kinds = new Set<string>([
-			...Object.keys(jobHandlers),
-			...jobKindDecls.map((decl) => decl.kind),
-			...schedulableKinds,
-		]);
-		return [...kinds].sort().map((kind) => {
-			const registration = jobHandlers[kind];
-			const decl = declByKind.get(kind);
-			return {
-				kind,
-				registered: registration !== undefined,
-				schedulable: schedulableKinds.has(kind),
-				...(decl?.pluginId === undefined ? {} : { pluginId: decl.pluginId }),
-				...(decl?.description === undefined ? {} : { description: decl.description }),
-				...(registration?.concurrency === undefined
-					? decl?.concurrency === undefined
-						? {}
-						: { concurrency: decl.concurrency }
-					: { concurrency: registration.concurrency }),
-				...(registration?.maxAttempts === undefined
-					? decl?.maxAttempts === undefined
-						? {}
-						: { maxAttempts: decl.maxAttempts }
-					: { maxAttempts: registration.maxAttempts }),
-				idempotent: registration?.idempotent ?? decl?.idempotent ?? false,
-			};
-		});
-	},
-	schedulableKinds: () =>
-		schedulableDecls.map((decl) => ({
-			id: decl.id,
-			kind: decl.kind,
-			pluginId: decl.pluginId,
-			...(decl.description === undefined ? {} : { description: decl.description }),
-			...(decl.paramsSchema === undefined ? {} : { paramsSchema: decl.paramsSchema as JsonValue }),
-			...(decl.suggestedCronExpr === undefined
-				? {}
-				: { suggestedCronExpr: decl.suggestedCronExpr }),
-			...(decl.suggestedParams === undefined
-				? {}
-				: { suggestedParams: decl.suggestedParams as JsonValue | null }),
-		})),
+	jobKindInfo: () => jobKindInfos(jobHandlers, jobKindDecls, schedulableDecls),
+	schedulableKinds: () => schedulableKindInfos(schedulableDecls),
 	// Pub/sub capability: `topics` merges the in-process bus's known
 	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
 	// `publish` routes by the console-facing id prefix — `memory:` to
@@ -855,15 +800,7 @@ setServerRuntime({
 				return { ok: false, reason: "publish-failed" };
 			}
 		},
-		declaredTopics: () =>
-			eventTopicDecls.map((decl) => ({
-				topic: decl.topic,
-				pluginId: decl.pluginId,
-				...(decl.description === undefined ? {} : { description: decl.description }),
-				...(decl.payloadSchema === undefined
-					? {}
-					: { payloadSchema: decl.payloadSchema as JsonValue }),
-			})),
+		declaredTopics: () => eventTopicInfos(eventTopicDecls),
 	},
 	ai: aiBinding,
 	audioTranscribeModel,
