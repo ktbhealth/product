@@ -27,12 +27,12 @@ Rehearse on the T-201 deployment before filming T-204/T-196.
 
 ## Failure playbook
 
-| symptom | move |
-|---|---|
-| mic permission/ASR dead | switch to upload/paste source — same downstream path |
-| transcript slow | poll interval is 1.5s/3s; wait one cycle, narrate "processing" |
-| export 404/gated | ZK-encrypted records gate PDF export — demo on the seeded non-ZK consult or explain the gate |
-| total live failure | cut to T-196 backup video, keep pitch going |
+| symptom                 | move                                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| mic permission/ASR dead | switch to upload/paste source — same downstream path                                         |
+| transcript slow         | poll interval is 1.5s/3s; wait one cycle, narrate "processing"                               |
+| export 404/gated        | ZK-encrypted records gate PDF export — demo on the seeded non-ZK consult or explain the gate |
+| total live failure      | cut to T-196 backup video, keep pitch going                                                  |
 
 ## Rehearsal checklist (T-206 exit criteria)
 
