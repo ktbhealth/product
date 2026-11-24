@@ -85,6 +85,17 @@ describe("ConsultationDetailPage", () => {
 		expect(screen.queryByText("Segunda opinião")).toBeNull();
 	});
 
+	it("lays out the record with design-system slots", () => {
+		const { container } = render(<ConsultationDetailPage c={detail({})} history={null} />);
+		expect(container.querySelector('[data-slot="page-container"]')).not.toBeNull();
+		expect(container.querySelector('[data-slot="page-header"]')).not.toBeNull();
+		// Meta card + anamnesis section cards + transcript card.
+		expect(screen.getByText("Details")).toBeTruthy();
+		expect(container.querySelectorAll('[data-slot="card"]').length).toBeGreaterThan(2);
+		// The transcript body scrolls inside a ScrollArea viewport.
+		expect(container.querySelector('[data-slot="scroll-area-viewport"]')).not.toBeNull();
+	});
+
 	it("links the patient name to the patient record", () => {
 		render(<ConsultationDetailPage c={detail({})} history={null} />);
 		const link = screen.getByTitle("Open patient record");

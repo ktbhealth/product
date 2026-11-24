@@ -1644,7 +1644,22 @@ export const I18N_MANIFEST = {
 		"list.startConsultation": {
 			params: [],
 		},
+		"list.colPatient": {
+			params: [],
+		},
+		"list.colDate": {
+			params: [],
+		},
+		"list.colStatus": {
+			params: [],
+		},
+		"list.colActions": {
+			params: [],
+		},
 		"detail.back": {
+			params: [],
+		},
+		"detail.metaTitle": {
 			params: [],
 		},
 		"detail.openPatientRecord": {

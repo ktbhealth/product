@@ -534,12 +534,17 @@ export type I18nKey =
 	| "consultations.detail.integrity.tampered"
 	| "consultations.detail.integrity.unversioned"
 	| "consultations.detail.integrity.verified"
+	| "consultations.detail.metaTitle"
 	| "consultations.detail.noAnamnesisDescription"
 	| "consultations.detail.noAnamnesisTitle"
 	| "consultations.detail.notReported"
 	| "consultations.detail.openPatientRecord"
 	| "consultations.detail.plan"
 	| "consultations.detail.previousConsultations"
+	| "consultations.list.colActions"
+	| "consultations.list.colDate"
+	| "consultations.list.colPatient"
+	| "consultations.list.colStatus"
 	| "consultations.list.consent"
 	| "consultations.list.count"
 	| "consultations.list.downloadPdfTitle"
@@ -2982,6 +2987,7 @@ export interface I18nTypedT {
 	(key: "consultations.detail.integrity.tampered"): Effect.Effect<string>;
 	(key: "consultations.detail.integrity.unversioned"): Effect.Effect<string>;
 	(key: "consultations.detail.integrity.verified"): Effect.Effect<string>;
+	(key: "consultations.detail.metaTitle"): Effect.Effect<string>;
 	(key: "consultations.detail.noAnamnesisDescription"): Effect.Effect<string>;
 	(key: "consultations.detail.noAnamnesisTitle"): Effect.Effect<string>;
 	(key: "consultations.detail.notReported"): Effect.Effect<string>;
@@ -2998,6 +3004,10 @@ export interface I18nTypedT {
 			n: number;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.list.colActions"): Effect.Effect<string>;
+	(key: "consultations.list.colDate"): Effect.Effect<string>;
+	(key: "consultations.list.colPatient"): Effect.Effect<string>;
+	(key: "consultations.list.colStatus"): Effect.Effect<string>;
 	(key: "consultations.list.consent"): Effect.Effect<string>;
 	(
 		key: "consultations.list.count",

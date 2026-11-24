@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
 
@@ -6,8 +6,11 @@ import { factContent } from "@ktb/anamnesis";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { viewsMessages } from "@ktb/views";
 import { LocalDateTime } from "@ktb/views/views";
+import { SearchInput, TablePage, type Column } from "@ktb/views/table";
 
+import { Avatar, AvatarFallback } from "@ktbhealth/ui/components/avatar";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { buttonVariants } from "@ktbhealth/ui/components/button";
 import {
@@ -18,7 +21,6 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
-import { SearchInput } from "@ktbhealth/ui/components/search-input";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES } from "./-ui.ts";
@@ -87,10 +89,11 @@ export function ConsultationsPage({
 	portalBase?: string;
 	/** ZK context (T-145): present only on ZK tenants — rows arrive as
 	 * `v1.` envelopes and are decrypted in the browser; rows without a
-	 * grant render a locked card. */
+	 * grant render a locked row. */
 	zk?: ConsultationZk;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
+	const navigate = useNavigate();
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const FILTERS = [
 		["all", t.list.filters.all],
@@ -101,7 +104,7 @@ export function ConsultationsPage({
 	const [filter, setFilter] = useState<(typeof FILTERS)[number][0]>("all");
 
 	// Client-side decrypt under ZK (T-145): rows without a grant stay
-	// ciphered and render a locked card; decrypted rows get their
+	// ciphered and render a locked row; decrypted rows get their
 	// chiefComplaint re-derived here because the server could not parse
 	// the envelope to compute it.
 	const [decrypted, setDecrypted] = useState<ReadonlyMap<number, ConsultationListItem>>(new Map());
@@ -151,157 +154,190 @@ export function ConsultationsPage({
 		});
 	}, [display, q, filter]);
 
-	return (
-		<div>
-			<div className="flex flex-wrap items-end justify-between gap-4">
-				<div>
-					<h1 className="text-3xl font-bold tracking-tight">{t.list.title}</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
-						{consultations.length === 0 ? t.list.none : t.list.count(consultations.length)}
-					</p>
-				</div>
-				<Link to={portalPath("/consultations/new")} className={buttonVariants()}>
-					{t.list.newConsultation}
-				</Link>
-			</div>
-
-			{consultations.length > 0 ? (
-				<div className="mt-6 flex flex-wrap items-center gap-3">
-					<SearchInput
-						value={q}
-						onChange={(e) => setQ(e.target.value)}
-						placeholder={t.list.searchPlaceholder}
-						aria-label={t.list.searchLabel}
-						className="w-full max-w-sm"
-					/>
-					<Tabs
-						value={filter}
-						onValueChange={(v) => setFilter(v as (typeof FILTERS)[number][0])}
-						className="w-fit"
-					>
-						<TabsList aria-label={t.list.filterLabel}>
-							{FILTERS.map(([key, label]) => (
-								<TabsTrigger key={key} value={key}>
-									{label}
-								</TabsTrigger>
-							))}
-						</TabsList>
-					</Tabs>
-				</div>
-			) : null}
-
-			<div className="mt-5 space-y-3">
-				{shown.map((c) =>
-					isCipheredConsultation(c) ? (
-						// Locked row (T-145): no DEK grant for this device — the
-						// envelope stays opaque and the card is not navigable.
-						<article
-							key={c.id}
-							className="flex items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm"
-						>
-							<div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-								<LockIcon className="size-4" />
-							</div>
-							<div className="min-w-0 flex-1">
-								<p className="font-semibold">{t.zk.lockedRecord}</p>
-								<p className="mt-0.5 text-sm text-muted-foreground">{t.zk.lockedHint}</p>
-								<p className="mt-0.5 text-xs text-muted-foreground">
-									#{c.id} · <LocalDateTime value={c.createdAt} locale={locale} />
-								</p>
-							</div>
-						</article>
-					) : (
-						<article
-							key={c.id}
-							className="group relative flex items-start gap-4 rounded-2xl border border-border bg-card p-4 shadow-sm transition hover:border-foreground/20 hover:shadow"
-						>
-							<div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary/15 to-primary/5 text-sm font-semibold text-primary">
+	const columns: Column<ConsultationListItem>[] = [
+		{
+			key: "patient",
+			header: t.list.colPatient,
+			render: (c) =>
+				isCipheredConsultation(c) ? (
+					// Locked row (T-145): no DEK grant for this device — the
+					// envelope stays opaque and the row is not navigable.
+					<span className="flex items-center gap-3 text-muted-foreground">
+						<span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+							<LockIcon className="size-4" />
+						</span>
+						<span className="min-w-0">
+							<span className="block font-medium text-foreground">{t.zk.lockedRecord}</span>
+							<span className="block text-xs">{t.zk.lockedHint}</span>
+						</span>
+					</span>
+				) : (
+					<span className="flex items-center gap-3">
+						<Avatar className="size-9">
+							<AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-semibold text-primary">
 								{initials(c.patientName)}
-							</div>
-							<div className="min-w-0 flex-1">
-								<div className="flex flex-wrap items-baseline gap-x-2">
-									<Link
-										to={portalPath(`/consultations/${c.id}`)}
-										className="font-semibold after:absolute after:inset-0 after:content-['']"
-									>
-										{c.patientName ?? t.list.unlinkedPatient}
-									</Link>
-									<span className="text-xs text-muted-foreground">
-										#{c.id} · <LocalDateTime value={c.createdAt} locale={locale} />
-									</span>
-									{c.patientId ? (
-										<Link
-											to={portalPath(`/patients/${c.patientId}`)}
-											className="relative z-10 text-xs text-primary hover:underline"
-										>
-											{t.list.patientRecord}
-										</Link>
-									) : null}
-								</div>
-								<p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-									{c.chiefComplaint && !c.chiefComplaint.startsWith("A preencher")
-										? c.chiefComplaint
-										: c.transcript || t.common.noTranscript}
-								</p>
-								<div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-									{c.status === "live" ? <ToneBadge tone="red">● {t.list.live}</ToneBadge> : null}
-									{c.hasAnamnesis ? (
-										<ToneBadge tone="green">{t.common.anamnesis}</ToneBadge>
-									) : (
-										<ToneBadge tone="amber">{t.list.noAnamnesis}</ToneBadge>
-									)}
-									{c.consentAt ? <ToneBadge tone="green">{t.list.consent}</ToneBadge> : null}
-									<ToneBadge>{sourceLabel(t, c.source)}</ToneBadge>
-								</div>
-							</div>
-							<div className="relative z-10 flex shrink-0 items-center gap-1.5">
+							</AvatarFallback>
+						</Avatar>
+						<span className="min-w-0">
+							<span className="flex flex-wrap items-baseline gap-x-2">
 								<Link
 									to={portalPath(`/consultations/${c.id}`)}
-									className={buttonVariants({ variant: "outline", size: "sm" })}
+									className="font-medium hover:underline"
 								>
-									{t.list.open}
+									{c.patientName ?? t.list.unlinkedPatient}
 								</Link>
-								{/* Server-side PDF reads plaintext columns — impossible
-								 * under ZK; T-146 adds the client-side renderer. */}
-								{c.hasAnamnesis && !zk ? (
-									<a
-										href={`/api/consultations/${c.id}/pdf`}
-										download
-										title={t.list.downloadPdfTitle}
+								{c.patientId ? (
+									<Link
+										to={portalPath(`/patients/${c.patientId}`)}
+										className="text-xs text-primary hover:underline"
+									>
+										{t.list.patientRecord}
+									</Link>
+								) : null}
+							</span>
+							<span className="mt-0.5 line-clamp-2 block text-xs text-muted-foreground">
+								{c.chiefComplaint && !c.chiefComplaint.startsWith("A preencher")
+									? c.chiefComplaint
+									: c.transcript || t.common.noTranscript}
+							</span>
+						</span>
+					</span>
+				),
+		},
+		{
+			key: "createdAt",
+			header: t.list.colDate,
+			render: (c) => (
+				<span className="whitespace-nowrap text-muted-foreground">
+					<span className="text-xs">#{c.id}</span>{" "}
+					<LocalDateTime value={c.createdAt} locale={locale} />
+				</span>
+			),
+		},
+		{
+			key: "status",
+			header: t.list.colStatus,
+			render: (c) =>
+				isCipheredConsultation(c) ? null : (
+					<span className="flex flex-wrap items-center gap-1.5">
+						{c.status === "live" ? <ToneBadge tone="red">● {t.list.live}</ToneBadge> : null}
+						{c.consentAt ? <ToneBadge tone="green">{t.list.consent}</ToneBadge> : null}
+					</span>
+				),
+		},
+		{
+			key: "anamnesis",
+			header: t.common.anamnesis,
+			render: (c) =>
+				isCipheredConsultation(c) ? null : (
+					<span className="flex flex-wrap items-center gap-1.5">
+						{c.hasAnamnesis ? (
+							<ToneBadge tone="green">{t.common.anamnesis}</ToneBadge>
+						) : (
+							<ToneBadge tone="amber">{t.list.noAnamnesis}</ToneBadge>
+						)}
+						<ToneBadge>{sourceLabel(t, c.source)}</ToneBadge>
+					</span>
+				),
+		},
+	];
+
+	return (
+		<TablePage messages={viewsMessages(locale)}>
+			<TablePage.Header
+				title={t.list.title}
+				description={consultations.length === 0 ? t.list.none : t.list.count(consultations.length)}
+				actions={
+					<Link to={portalPath("/consultations/new")} className={buttonVariants()}>
+						{t.list.newConsultation}
+					</Link>
+				}
+			/>
+
+			{consultations.length === 0 ? (
+				<Empty className="border bg-card px-6 py-16">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<ClipboardListIcon />
+						</EmptyMedia>
+						<EmptyTitle>{t.list.emptyTitle}</EmptyTitle>
+						<EmptyDescription>{t.list.emptyDescription}</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Link to={portalPath("/consultations/new")} className={buttonVariants()}>
+							{t.list.startConsultation}
+						</Link>
+					</EmptyContent>
+				</Empty>
+			) : (
+				<>
+					<TablePage.Toolbar
+						search={
+							<SearchInput
+								value={q}
+								onChange={setQ}
+								placeholder={t.list.searchPlaceholder}
+								aria-label={t.list.searchLabel}
+							/>
+						}
+						filters={
+							<Tabs
+								value={filter}
+								onValueChange={(v) => setFilter(v as (typeof FILTERS)[number][0])}
+								className="w-fit"
+							>
+								<TabsList aria-label={t.list.filterLabel}>
+									{FILTERS.map(([key, label]) => (
+										<TabsTrigger key={key} value={key}>
+											{label}
+										</TabsTrigger>
+									))}
+								</TabsList>
+							</Tabs>
+						}
+					/>
+					<TablePage.Table
+						columns={columns}
+						rows={shown}
+						total={consultations.length}
+						noMatch={t.list.noMatch}
+						locale={locale}
+						rowActionsHeader={t.list.colActions}
+						// Whole-row navigation is the table-kit analogue of the
+						// MVP overlay link — clicks on interactive cells (links,
+						// buttons) don't trigger it, and locked rows stay inert.
+						onRowClick={(c) => {
+							if (isCipheredConsultation(c)) return;
+							void navigate({ to: portalPath(`/consultations/${c.id}`) });
+						}}
+						rowActions={(c) =>
+							isCipheredConsultation(c) ? null : (
+								<span className="flex items-center justify-end gap-1.5">
+									<Link
+										to={portalPath(`/consultations/${c.id}`)}
 										className={buttonVariants({ variant: "outline", size: "sm" })}
 									>
-										<DownloadIcon className="mr-1 inline size-3.5 -translate-y-px" />
-										PDF
-									</a>
-								) : null}
-							</div>
-						</article>
-					),
-				)}
-
-				{consultations.length > 0 && shown.length === 0 ? (
-					<Empty className="border">
-						<EmptyDescription>{t.list.noMatch}</EmptyDescription>
-					</Empty>
-				) : null}
-
-				{!consultations.length ? (
-					<Empty className="border bg-card px-6 py-16">
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<ClipboardListIcon />
-							</EmptyMedia>
-							<EmptyTitle>{t.list.emptyTitle}</EmptyTitle>
-							<EmptyDescription>{t.list.emptyDescription}</EmptyDescription>
-						</EmptyHeader>
-						<EmptyContent>
-							<Link to={portalPath("/consultations/new")} className={buttonVariants()}>
-								{t.list.startConsultation}
-							</Link>
-						</EmptyContent>
-					</Empty>
-				) : null}
-			</div>
-		</div>
+										{t.list.open}
+									</Link>
+									{/* Server-side PDF reads plaintext columns — impossible
+									 * under ZK; T-146 adds the client-side renderer. */}
+									{c.hasAnamnesis && !zk ? (
+										<a
+											href={`/api/consultations/${c.id}/pdf`}
+											download
+											title={t.list.downloadPdfTitle}
+											className={buttonVariants({ variant: "outline", size: "sm" })}
+										>
+											<DownloadIcon className="mr-1 inline size-3.5 -translate-y-px" />
+											PDF
+										</a>
+									) : null}
+								</span>
+							)
+						}
+					/>
+				</>
+			)}
+		</TablePage>
 	);
 }

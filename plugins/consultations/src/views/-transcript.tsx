@@ -26,13 +26,14 @@ function Transcript({ text, emptyLabel }: { text: string; emptyLabel: string }) 
 						className="text-sm leading-relaxed"
 					>
 						{speaker ? (
-							<span
-								className={`mr-2 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
+							<Badge
+								variant="secondary"
+								className={`mr-2 align-baseline ring-1 ${
 									SPEAKER_STYLE[speaker] ?? "bg-muted text-muted-foreground ring-border"
 								}`}
 							>
 								{speaker}
-							</span>
+							</Badge>
 						) : null}
 						<span className="text-foreground">{body}</span>
 					</div>

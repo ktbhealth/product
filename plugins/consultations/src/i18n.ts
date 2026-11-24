@@ -65,9 +65,15 @@ export interface ConsultationMessages {
 		readonly emptyTitle: string;
 		readonly emptyDescription: string;
 		readonly startConsultation: string;
+		/** Table column headers (list view). */
+		readonly colPatient: string;
+		readonly colDate: string;
+		readonly colStatus: string;
+		readonly colActions: string;
 	};
 	readonly detail: {
 		readonly back: string;
+		readonly metaTitle: string;
 		readonly openPatientRecord: string;
 		readonly consentLabel: string;
 		readonly consentNotRecorded: string;
@@ -311,9 +317,14 @@ const en: ConsultationMessages = {
 		emptyTitle: "No consultations yet",
 		emptyDescription: "Start a consultation to record the conversation and generate the anamnesis.",
 		startConsultation: "Start consultation",
+		colPatient: "Patient",
+		colDate: "Date",
+		colStatus: "Status",
+		colActions: "Actions",
 	},
 	detail: {
 		back: "Consultations",
+		metaTitle: "Details",
 		openPatientRecord: "Open patient record",
 		consentLabel: "Consent ✓",
 		consentNotRecorded: "Consent not recorded",
@@ -574,9 +585,14 @@ const ptBR: ConsultationMessages = {
 		emptyTitle: "Nenhuma consulta ainda",
 		emptyDescription: "Inicie uma consulta para gravar a conversa e gerar a anamnese.",
 		startConsultation: "Iniciar consulta",
+		colPatient: "Paciente",
+		colDate: "Data",
+		colStatus: "Status",
+		colActions: "Ações",
 	},
 	detail: {
 		back: "Consultas",
+		metaTitle: "Detalhes",
 		openPatientRecord: "Abrir cadastro do paciente",
 		consentLabel: "Consentimento ✓",
 		consentNotRecorded: "Consentimento não registrado",
@@ -841,9 +857,14 @@ const es: ConsultationMessages = {
 		emptyTitle: "Ninguna consulta aún",
 		emptyDescription: "Inicie una consulta para grabar la conversación y generar la anamnesis.",
 		startConsultation: "Iniciar consulta",
+		colPatient: "Paciente",
+		colDate: "Fecha",
+		colStatus: "Estado",
+		colActions: "Acciones",
 	},
 	detail: {
 		back: "Consultas",
+		metaTitle: "Detalles",
 		openPatientRecord: "Abrir registro del paciente",
 		consentLabel: "Consentimiento ✓",
 		consentNotRecorded: "Consentimiento no registrado",

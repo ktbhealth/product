@@ -10,7 +10,14 @@ import type { PageI18nSlice } from "@ktb/kernel";
 
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Badge } from "@ktbhealth/ui/components/badge";
-import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
+import { Button } from "@ktbhealth/ui/components/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "@ktbhealth/ui/components/card";
 import {
 	Empty,
 	EmptyDescription,
@@ -18,6 +25,9 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
+import { PageContainer } from "@ktbhealth/ui/components/page-container";
+import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 
 import type { ConsultationIntegrityReport } from "../index.ts";
 import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
@@ -268,119 +278,140 @@ export function ConsultationDetailPage({
 	// consultation's DEK — nothing clinical is rendered.
 	if (locked) {
 		return (
-			<div>
-				{/* Real link, not Button render=: it navigates, so it
-				    keeps link semantics (and avoids the Base UI
-				    nativeButton warning). */}
-				<Link
-					to={portalPath("/consultations")}
-					className={buttonVariants({ variant: "ghost", size: "sm", className: "-ml-2" })}
-				>
-					<ArrowLeftIcon />
-					{t.detail.back}
-				</Link>
-				<Empty className="mt-6 border bg-card px-6 py-16">
+			<PageContainer>
+				<PageHeader
+					title={t.zk.lockedRecord}
+					actions={
+						<Button
+							variant="ghost"
+							size="sm"
+							nativeButton={false}
+							render={<Link to={portalPath("/consultations")} />}
+						>
+							<ArrowLeftIcon data-icon="inline-start" />
+							{t.detail.back}
+						</Button>
+					}
+				/>
+				<Empty className="border bg-card px-6 py-16">
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
 							<LockIcon />
 						</EmptyMedia>
-						<EmptyTitle>{t.zk.lockedRecord}</EmptyTitle>
 						<EmptyDescription>{t.zk.lockedHint}</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
-			</div>
+			</PageContainer>
 		);
 	}
 
 	return (
-		<div>
-			{/* Real link, not Button render=: it navigates, so it
-			    keeps link semantics (and avoids the Base UI
-			    nativeButton warning). */}
-			<Link
-				to={portalPath("/consultations")}
-				className={buttonVariants({ variant: "ghost", size: "sm", className: "-ml-2" })}
-			>
-				<ArrowLeftIcon />
-				{t.detail.back}
-			</Link>
-
-			{/* ---------- header ---------- */}
-			<header className="mt-3 flex flex-wrap items-start justify-between gap-4">
-				<div>
-					<h1 className="text-3xl font-bold tracking-tight">
-						{v.patientId && v.patientName ? (
-							<Link
-								to={portalPath(`/patients/${v.patientId}`)}
-								className="hover:underline"
-								title={t.detail.openPatientRecord}
-							>
-								{v.patientName}
-							</Link>
-						) : (
-							(v.patientName ?? t.common.consultationId(c.id))
-						)}
-					</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
+		<PageContainer>
+			{/* PageHeader renders any ReactNode, but its `title` prop type
+			    collides with the HTML `title` attribute upstream — cast the
+			    h1 so the page keeps a single heading landmark. */}
+			<PageHeader
+				title={
+					(
+						<h1>
+							{v.patientId && v.patientName ? (
+								<Link
+									to={portalPath(`/patients/${v.patientId}`)}
+									className="hover:underline"
+									title={t.detail.openPatientRecord}
+								>
+									{v.patientName}
+								</Link>
+							) : (
+								(v.patientName ?? t.common.consultationId(c.id))
+							)}
+						</h1>
+					) as never
+				}
+				description={
+					<>
 						{t.common.consultationId(c.id)} ·{" "}
 						<LocalDateTime
 							value={c.createdAt}
 							locale={locale}
 							options={{ dateStyle: "long", timeStyle: "short" }}
 						/>
-					</p>
-					<div className="mt-3 flex flex-wrap gap-1.5">
-						<Chip>{sourceLabel(t, c.source)}</Chip>
-						{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
-						{c.consentAt ? (
-							<Chip tone="green">
-								{t.detail.consentLabel}{" "}
-								<LocalDateTime
-									value={c.consentAt}
-									locale={locale}
-									options={{ year: "numeric", month: "numeric", day: "numeric" }}
-								/>
-							</Chip>
-						) : (
-							<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
-						)}
-						{c.status === "live" ? <Chip tone="amber">{t.detail.inProgress}</Chip> : null}
-						{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
-						{history && history.count > 0 ? (
-							<Chip>{t.detail.previousConsultations(history.count)}</Chip>
-						) : null}
-					</div>
-				</div>
-				{v.anamnesis ? (
-					<div className="flex gap-2">
-						<Button type="button" variant="outline" onClick={copy}>
-							{t.common.copy}
+					</>
+				}
+				actions={
+					<>
+						<Button
+							variant="ghost"
+							size="sm"
+							nativeButton={false}
+							render={<Link to={portalPath("/consultations")} />}
+						>
+							<ArrowLeftIcon data-icon="inline-start" />
+							{t.detail.back}
 						</Button>
-						{/* T-146: the server-side PDF reads plaintext columns —
-						 * impossible under ZK. The export is gated (not hidden):
-						 * a disabled control states why instead of silently
-						 * dropping the affordance. */}
-						{!zk ? (
-							<a href={`/api/consultations/${c.id}/pdf`} download className={buttonVariants()}>
-								<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
-								{t.common.downloadPdf}
-							</a>
-						) : (
-							<Button type="button" variant="outline" disabled title={t.zk.exportLocked}>
-								<LockIcon className="mr-1.5 inline size-4 -translate-y-px" />
-								{t.zk.exportLocked}
-							</Button>
-						)}
-					</div>
-				) : null}
-			</header>
+						{v.anamnesis ? (
+							<>
+								<Button type="button" variant="outline" onClick={copy}>
+									{t.common.copy}
+								</Button>
+								{/* T-146: the server-side PDF reads plaintext columns —
+								 * impossible under ZK. The export is gated (not hidden):
+								 * a disabled control states why instead of silently
+								 * dropping the affordance. */}
+								{!zk ? (
+									<Button
+										nativeButton={false}
+										render={<a href={`/api/consultations/${c.id}/pdf`} download />}
+									>
+										<DownloadIcon data-icon="inline-start" />
+										{t.common.downloadPdf}
+									</Button>
+								) : (
+									<Button type="button" variant="outline" disabled title={t.zk.exportLocked}>
+										<LockIcon data-icon="inline-start" />
+										{t.zk.exportLocked}
+									</Button>
+								)}
+							</>
+						) : null}
+					</>
+				}
+			/>
+
+			{/* ---------- meta ---------- */}
+			<Card>
+				<CardHeader>
+					<CardTitle>{t.detail.metaTitle}</CardTitle>
+				</CardHeader>
+				<CardContent className="flex flex-wrap items-center gap-1.5">
+					<Chip>{sourceLabel(t, c.source)}</Chip>
+					{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
+					{c.consentAt ? (
+						<Chip tone="green">
+							{t.detail.consentLabel}{" "}
+							<LocalDateTime
+								value={c.consentAt}
+								locale={locale}
+								options={{ year: "numeric", month: "numeric", day: "numeric" }}
+							/>
+						</Chip>
+					) : (
+						<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
+					)}
+					{c.status === "live" ? <Chip tone="amber">{t.detail.inProgress}</Chip> : null}
+					{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
+					{history && history.count > 0 ? (
+						<Chip>{t.detail.previousConsultations(history.count)}</Chip>
+					) : null}
+				</CardContent>
+			</Card>
 
 			{history && history.count > 0 ? (
-				<details className="mt-4 rounded-2xl border border-border bg-card shadow-sm">
-					<summary className="cursor-pointer px-5 py-3 text-sm font-semibold">
+				<details className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+					<summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
 						{t.sections.historico} · {t.detail.previousConsultations(history.count)}
 					</summary>
-					<ul className="space-y-2 border-t border-border px-5 py-3 text-sm">
+					<ul className="space-y-2 border-t border-border px-4 py-3 text-sm">
 						{history.visits.map((v) => (
 							<li key={v.id}>
 								<span className="text-muted-foreground">
@@ -392,11 +423,11 @@ export function ConsultationDetailPage({
 							</li>
 						))}
 					</ul>
-					<p className="px-5 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
+					<p className="px-4 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
 				</details>
 			) : null}
 
-			<div className="mt-8 grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
+			<div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
 				{/* ---------- anamnesis ---------- */}
 				<section>
 					<h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
@@ -411,40 +442,46 @@ export function ConsultationDetailPage({
 								if (!sec) return null;
 								const pending = sec.content.startsWith("A preencher pelo médico");
 								return (
-									<div
+									<Card
 										key={key}
-										className={`rounded-2xl border border-l-4 border-border bg-card p-4 shadow-sm ${CONF_BAR[sec.confidence]} ${
+										size="sm"
+										className={`border-l-4 ${CONF_BAR[sec.confidence]} ${
 											WIDE.includes(key) ? "sm:col-span-2" : ""
 										}`}
 									>
-										<div className="flex items-center justify-between gap-2">
-											<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
-											<span
-												className={`rounded-full px-2 py-0.5 text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+										<CardHeader>
+											<CardTitle>{t.sections[key]}</CardTitle>
+											<CardAction>
+												<Badge
+													variant="secondary"
+													className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+												>
+													{t.confidence[sec.confidence]}
+												</Badge>
+											</CardAction>
+										</CardHeader>
+										<CardContent>
+											<p
+												className={`text-sm leading-relaxed whitespace-pre-wrap ${
+													pending ? "text-warning italic" : "text-foreground"
+												}`}
 											>
-												{t.confidence[sec.confidence]}
-											</span>
-										</div>
-										<p
-											className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
-												pending ? "text-warning italic" : "text-foreground"
-											}`}
-										>
-											{sec.content || t.detail.notReported}
-										</p>
-										{sec.evidence.length ? (
-											<details className="mt-2">
-												<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
-													{t.detail.evidence(sec.evidence.length)}
-												</summary>
-												<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
-													{sec.evidence.map((ev) => (
-														<li key={ev.slice(0, 40)}>“{ev}”</li>
-													))}
-												</ul>
-											</details>
-										) : null}
-									</div>
+												{sec.content || t.detail.notReported}
+											</p>
+											{sec.evidence.length ? (
+												<details className="mt-2">
+													<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
+														{t.detail.evidence(sec.evidence.length)}
+													</summary>
+													<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
+														{sec.evidence.map((ev) => (
+															<li key={ev.slice(0, 40)}>“{ev}”</li>
+														))}
+													</ul>
+												</details>
+											) : null}
+										</CardContent>
+									</Card>
 								);
 							})}
 						</div>
@@ -462,26 +499,30 @@ export function ConsultationDetailPage({
 				</section>
 
 				{/* ---------- side: transcript ---------- */}
-				<aside className="rounded-2xl border border-border bg-card shadow-sm lg:sticky lg:top-20">
-					<div className="border-b border-border px-5 py-3">
-						<h2 className="text-sm font-semibold">{t.common.transcript}</h2>
-					</div>
-					<div className="max-h-[70vh] overflow-y-auto p-5">
-						<AudioTranscriptPanel
-							i18n={i18n}
-							locale={locale}
-							consultationId={c.id}
-							audioStatus={v.audioStatus}
-							audioSrc={zkAudioUrl ?? undefined}
-							hasAudio={Boolean(v.audioKey)}
-							browserText={v.transcript}
-							serverText={v.serverTranscript}
-							correctedText={v.correctedTranscript}
-						/>
-					</div>
-				</aside>
+				<Card className="lg:sticky lg:top-20">
+					<CardHeader className="border-b">
+						<CardTitle>{t.common.transcript}</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[70vh]">
+							<div className="pr-3">
+								<AudioTranscriptPanel
+									i18n={i18n}
+									locale={locale}
+									consultationId={c.id}
+									audioStatus={v.audioStatus}
+									audioSrc={zkAudioUrl ?? undefined}
+									hasAudio={Boolean(v.audioKey)}
+									browserText={v.transcript}
+									serverText={v.serverTranscript}
+									correctedText={v.correctedTranscript}
+								/>
+							</div>
+						</ScrollArea>
+					</CardContent>
+				</Card>
 			</div>
 			<Toast toast={toast} onClose={() => setToast(null)} />
-		</div>
+		</PageContainer>
 	);
 }

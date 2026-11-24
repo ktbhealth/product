@@ -11,6 +11,9 @@ vi.mock("../zk.ts", async (importOriginal) => ({
 	decryptConsultations: zkMocks.decryptConsultations,
 }));
 const prefetch = vi.hoisted(() => ({ fn: vi.fn(), prefers: { current: false } }));
+const routerMocks = vi.hoisted(() => ({
+	navigate: vi.fn<(opts: { to: string }) => Promise<void>>(),
+}));
 
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
@@ -21,6 +24,7 @@ vi.mock("@tanstack/react-router", async () => {
 				{ href: typeof props.to === "string" ? props.to : "#", ...props },
 				props.children as never,
 			),
+		useNavigate: () => routerMocks.navigate,
 	};
 });
 vi.mock("../backend.ts", () => ({
@@ -48,7 +52,10 @@ const BASE: ConsultationListItem = {
 
 const item = (over: Partial<ConsultationListItem>): ConsultationListItem => ({ ...BASE, ...over });
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	routerMocks.navigate.mockClear();
+});
 
 describe("ConsultationsPage", () => {
 	it("renders empty state", () => {
@@ -77,6 +84,38 @@ describe("ConsultationsPage", () => {
 		expect(screen.getByText("1 consultation recorded.")).toBeTruthy();
 		expect(screen.getByText("Maria Silva")).toBeTruthy();
 		expect(screen.getByText("Dor de cabeça")).toBeTruthy();
+	});
+
+	it("renders the table column headers", () => {
+		render(<ConsultationsPage consultations={[item({})]} />);
+		expect(screen.getByRole("columnheader", { name: "Patient" })).toBeTruthy();
+		expect(screen.getByRole("columnheader", { name: "Date" })).toBeTruthy();
+		expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
+		expect(screen.getByRole("columnheader", { name: "Anamnesis" })).toBeTruthy();
+		expect(screen.getByRole("columnheader", { name: "Actions" })).toBeTruthy();
+	});
+
+	it("navigates to the consultation detail on row click", async () => {
+		const user = userEvent.setup();
+		render(<ConsultationsPage consultations={[item({})]} />);
+		await user.click(screen.getByText("Dor de cabeça"));
+		expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/consultations/1" });
+	});
+
+	it("prefixes row navigation with portalBase", async () => {
+		const user = userEvent.setup();
+		render(<ConsultationsPage consultations={[item({})]} portalBase="/portal" />);
+		await user.click(screen.getByText("Dor de cabeça"));
+		expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/portal/consultations/1" });
+	});
+
+	it("skips row navigation from interactive cells", async () => {
+		const user = userEvent.setup();
+		render(<ConsultationsPage consultations={[item({ patientId: 5 })]} />);
+		await user.click(screen.getByText("Open"));
+		expect(routerMocks.navigate).not.toHaveBeenCalled();
+		await user.click(screen.getByText("Maria Silva"));
+		expect(routerMocks.navigate).not.toHaveBeenCalled();
 	});
 
 	it("renders badges for live/anamnesis/consent/source", () => {
@@ -282,6 +321,34 @@ describe("ConsultationsPage", () => {
 			/>,
 		);
 		await waitFor(() => expect(screen.getByText("Encrypted record")).toBeTruthy());
+	});
+
+	it("renders locked rows with the lock hint and no actions", async () => {
+		zkMocks.decryptConsultations.mockResolvedValueOnce([]);
+		render(
+			<ConsultationsPage
+				consultations={[item({ id: 9, anamnesis: "v1.x.y", chiefComplaint: null })]}
+				zk={{ keyring: {}, api: {} } as never}
+			/>,
+		);
+		await waitFor(() => expect(screen.getByText("Encrypted record")).toBeTruthy());
+		expect(screen.getByText("Unlock it on an approved clinic device to view it.")).toBeTruthy();
+		expect(screen.getByText("#9")).toBeTruthy();
+		expect(screen.queryByText("Open")).toBeNull();
+		expect(screen.queryByText("PDF")).toBeNull();
+	});
+
+	it("does not navigate locked rows under ZK", async () => {
+		const user = userEvent.setup();
+		zkMocks.decryptConsultations.mockResolvedValueOnce([]);
+		render(
+			<ConsultationsPage
+				consultations={[item({ id: 42, anamnesis: "v1.x.y", chiefComplaint: null })]}
+				zk={{ keyring: {}, api: {} } as never}
+			/>,
+		);
+		await user.click(screen.getByText("Encrypted record"));
+		expect(routerMocks.navigate).not.toHaveBeenCalled();
 	});
 
 	it("hides search when list is empty", () => {

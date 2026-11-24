@@ -8891,9 +8891,39 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.colPatient",
+		locale: "en",
+		value: "Patient",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colDate",
+		locale: "en",
+		value: "Date",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colStatus",
+		locale: "en",
+		value: "Status",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colActions",
+		locale: "en",
+		value: "Actions",
+	},
+	{
+		namespace: "consultations",
 		key: "detail.back",
 		locale: "en",
 		value: "Consultations",
+	},
+	{
+		namespace: "consultations",
+		key: "detail.metaTitle",
+		locale: "en",
+		value: "Details",
 	},
 	{
 		namespace: "consultations",
@@ -10154,9 +10184,39 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.colPatient",
+		locale: "pt-BR",
+		value: "Paciente",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colDate",
+		locale: "pt-BR",
+		value: "Data",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colStatus",
+		locale: "pt-BR",
+		value: "Status",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colActions",
+		locale: "pt-BR",
+		value: "Ações",
+	},
+	{
+		namespace: "consultations",
 		key: "detail.back",
 		locale: "pt-BR",
 		value: "Consultas",
+	},
+	{
+		namespace: "consultations",
+		key: "detail.metaTitle",
+		locale: "pt-BR",
+		value: "Detalhes",
 	},
 	{
 		namespace: "consultations",
@@ -11416,9 +11476,39 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.colPatient",
+		locale: "es",
+		value: "Paciente",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colDate",
+		locale: "es",
+		value: "Fecha",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colStatus",
+		locale: "es",
+		value: "Estado",
+	},
+	{
+		namespace: "consultations",
+		key: "list.colActions",
+		locale: "es",
+		value: "Acciones",
+	},
+	{
+		namespace: "consultations",
 		key: "detail.back",
 		locale: "es",
 		value: "Consultas",
+	},
+	{
+		namespace: "consultations",
+		key: "detail.metaTitle",
+		locale: "es",
+		value: "Detalles",
 	},
 	{
 		namespace: "consultations",
