@@ -1071,9 +1071,7 @@ describe("generate — $ref pointer edge cases", () => {
 			"#/properties/holder/allOf/x",
 			"#/properties/holder/allOf/-1",
 		]) {
-			expect(() => generate(refSchema(ref), { seed: 1, requiredOnly: true }), ref).toThrow(
-				SeedError,
-			);
+			expect(() => generate(refSchema(ref), { seed: 1, requiredOnly: true })).toThrow(SeedError);
 		}
 	});
 
@@ -1131,8 +1129,8 @@ describe("generate — merge edge cases", () => {
 			["array prefix", { allOf: [{ const: [1, 2] }, { const: [1, 2, 3] }] }],
 			["array partial overlap", { allOf: [{ const: [1, 2] }, { const: [1, 3] }] }],
 		];
-		for (const [name, schema] of cases) {
-			expect(() => generate(schema, { seed: 1 }), name).toThrow(SeedError);
+		for (const [, schema] of cases) {
+			expect(() => generate(schema, { seed: 1 })).toThrow(SeedError);
 		}
 	});
 
@@ -1207,18 +1205,16 @@ describe("generate — merge edge cases", () => {
 			["minItems", "maxItems"],
 			["minProperties", "maxProperties"],
 		] as const) {
-			expect(
-				() =>
-					generate(
-						{
-							allOf: [
-								{ type: "boolean", [lo]: 10 },
-								{ type: "boolean", [hi]: 5 },
-							],
-						} as JsonSchema,
-						{ seed: 1 },
-					),
-				`${lo} > ${hi}`,
+			expect(() =>
+				generate(
+					{
+						allOf: [
+							{ type: "boolean", [lo]: 10 },
+							{ type: "boolean", [hi]: 5 },
+						],
+					} as JsonSchema,
+					{ seed: 1 },
+				),
 			).toThrow(SeedError);
 		}
 	});
