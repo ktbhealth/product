@@ -333,10 +333,11 @@ const randomInRanges = (rng: () => number, ranges: readonly Range[], negate: boo
 		if (roll < size) return String.fromCodePoint(lo + roll);
 		roll -= size;
 	}
-	/* v8 ignore next -- unreachable: roll < total by construction */
+	/* v8 ignore start -- unreachable: roll < total by construction */
 	// Stryker disable next-line StringLiteral, CallExpression: unreachable —
 	// rng() is in [0, 1), so roll < total and the loop above always returns.
 	throw new SeedError("character class roll overflow");
+	/* v8 ignore stop */
 };
 
 /** Complement of `ranges` within [PRINTABLE_LO, PRINTABLE_HI]. */
