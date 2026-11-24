@@ -31,6 +31,7 @@ export const sampledTracer = (
 	return Tracer.make({
 		context: tracer.context,
 		span: (options) => {
+			// Stryker disable next-line ConditionalExpression: options.sampled === false reaches tracer.span(options) either way — the coin flip can only re-assert sampled:false on an already-unsampled span.
 			if (!options.sampled) return tracer.span(options);
 			const isRoot = options.root || Option.isNone(options.parent);
 			if (!isRoot) return tracer.span(options);

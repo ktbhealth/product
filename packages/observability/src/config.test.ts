@@ -75,6 +75,14 @@ describe("parseKeyValueList", () => {
 		expect(parseKeyValueList("noequals,=nokey,  =blank,a=b")).toEqual({ a: "b" });
 	});
 
+	it("keeps everything after the first = as the value", () => {
+		expect(parseKeyValueList("a=b=c,d==")).toEqual({ a: "b=c", d: "=" });
+	});
+
+	it("trims whitespace around keys and values", () => {
+		expect(parseKeyValueList(" a = b , c= d ")).toEqual({ a: "b", c: "d" });
+	});
+
 	it("keeps raw value when percent-decoding fails", () => {
 		expect(parseKeyValueList("k=%E0%A4%A")).toEqual({ k: "%E0%A4%A" });
 	});
@@ -98,6 +106,11 @@ describe("parseLogLevel", () => {
 		expect(parseLogLevel("verbose")).toBeUndefined();
 		expect(parseLogLevel(undefined)).toBeUndefined();
 		expect(parseLogLevel("")).toBeUndefined();
+	});
+
+	it("trims surrounding whitespace before matching", () => {
+		expect(parseLogLevel("  debug  ")).toBe("Debug");
+		expect(parseLogLevel(" warn ")).toBe("Warning");
 	});
 });
 
@@ -136,6 +149,15 @@ describe("telemetryConfigFromEnv", () => {
 		expect(config.otlp.endpoints.logs).toBe("https://logs.only/v1/logs");
 		expect(config.otlp.endpoints.traces).toBe("https://jaeger:4318/v1/traces");
 		expect(config.otlp.endpoints.metrics).toBe("https://collector:4318/v1/metrics");
+	});
+
+	it("strips every trailing slash from the base endpoint and trims overrides", () => {
+		const config = telemetryConfigFromEnv({
+			OTEL_EXPORTER_OTLP_ENDPOINT: "https://collector:4318///",
+			OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "  https://jaeger:4318/v1/traces  ",
+		});
+		expect(config.otlp.endpoints.metrics).toBe("https://collector:4318/v1/metrics");
+		expect(config.otlp.endpoints.traces).toBe("https://jaeger:4318/v1/traces");
 	});
 
 	it("treats blank per-signal endpoints as unset", () => {
@@ -240,6 +262,57 @@ describe("telemetryConfigFromEnv", () => {
 		expect(config.tracesSampleRate).toBe(1);
 		expect(config.otlp.exportIntervalMs).toBe(10_000);
 	});
+
+	it("trims dedicated service name and environment vars", () => {
+		const config = telemetryConfigFromEnv({
+			OTEL_SERVICE_NAME: "  ktb-api  ",
+			KTB_ENVIRONMENT: "  prod  ",
+		});
+		expect(config.serviceName).toBe("ktb-api");
+		expect(config.environment).toBe("prod");
+	});
+
+	it("leaves otlp.headers undefined when no headers are configured", () => {
+		expect(telemetryConfigFromEnv({}).otlp.headers).toBeUndefined();
+		expect(telemetryConfigFromEnv({ OTEL_EXPORTER_OTLP_HEADERS: "" }).otlp.headers).toBeUndefined();
+	});
+
+	it("matches truthy/falsy tokens exactly, not as substrings", () => {
+		// Anchored matching: "yesterday" contains "yes" but is not a
+		// truthy token; "nope" contains "no" but is not falsy.
+		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: "yesterday" }).disabled).toBe(false);
+		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: " true " }).disabled).toBe(true);
+		expect(telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "nope" }).clientTelemetry.enabled).toBe(
+			true,
+		);
+		expect(telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: " off " }).clientTelemetry.enabled).toBe(
+			false,
+		);
+	});
+
+	it("does not match tokens at the string boundary only", () => {
+		// The patterns are fully anchored — a value that merely ENDS with
+		// a token ("hold on", "power off") is not a boolean flag.
+		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: "hold on" }).disabled).toBe(false);
+		expect(telemetryConfigFromEnv({ OTEL_SDK_DISABLED: "yes!" }).disabled).toBe(false);
+		expect(
+			telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "power off" }).clientTelemetry.enabled,
+		).toBe(true);
+		expect(telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT: "off!" }).clientTelemetry.enabled).toBe(
+			true,
+		);
+	});
+
+	it("trims and rejects blank OTLP base endpoints", () => {
+		const padded = telemetryConfigFromEnv({
+			OTEL_EXPORTER_OTLP_ENDPOINT: "  https://otel.example.com  ",
+		});
+		expect(padded.otlp.endpoints.logs).toBe("https://otel.example.com/v1/logs");
+		for (const blank of ["", "   "]) {
+			const config = telemetryConfigFromEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: blank });
+			expect(config.otlp.endpoints).toEqual({});
+		}
+	});
 });
 
 describe("OTLP endpoint transport guard", () => {
@@ -275,6 +348,14 @@ describe("OTLP endpoint transport guard", () => {
 			"http://172.18.0.2:4318",
 			"http://192.168.1.10:4318",
 			"http://169.254.1.1:4318",
+			"http://172.16.0.1:4318", // lower edge of 172.16/12
+			"http://172.31.255.255:4318", // upper edge of 172.16/12
+			"http://10.0.0.0:4318", // octet 0 is in range — 10/8 only needs a === 10
+			"http://10.0.0.255:4318", // octet 255 is in range
+			"http://192.168.1.255:4318",
+			"http://[::]:4318",
+			"http://localhost.:4318", // trailing root dot
+			"http://10.0.0.1.:4318",
 		]) {
 			const config = telemetryConfigFromEnv({
 				OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
@@ -292,6 +373,17 @@ describe("OTLP endpoint transport guard", () => {
 			"http://172.32.0.1:4318",
 			"http://collector.internal:4318",
 			"http://example.local.evil.com:4318",
+			"http://192.169.1.1:4318", // 192.168 requires both octets
+			"http://169.1.1.1:4318", // link-local requires 169.254
+			"http://169.253.1.1:4318",
+			"http://192.1.1.1:4318",
+			"http://1.254.1.1:4318", // 169.254 requires both octets
+			"http://8.16.1.1:4318", // 172.16/12 requires a === 172
+			"http://172.8.1.1:4318", // below the 172.16/12 range
+			"http://8.168.1.1:4318", // 192.168 requires a === 192 too
+			"http://169.168.1.1:4318",
+			"http://10.0.0.4a:4318", // non-numeric octet — domain-shaped, not local
+			"http://1.2.3:4318", // WHATWG parses as 1.2.0.3 — public, not local
 		]) {
 			const config = telemetryConfigFromEnv({
 				OTEL_EXPORTER_OTLP_ENDPOINT: endpoint,
@@ -343,5 +435,26 @@ describe("OTLP endpoint transport guard", () => {
 		});
 		expect(config.otlp.endpoints.logs).toBe("not a url/v1/logs");
 		expect(config.warnings).toEqual([]);
+	});
+
+	it("names the base var when a whitespace-only per-signal var is set", () => {
+		const config = telemetryConfigFromEnv({
+			OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel.example.com",
+			OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "   ",
+		});
+		// Whitespace-only override counts as unset → logs derives from the
+		// base endpoint, so the warning must name the base var.
+		expect(config.otlp.endpoints.logs).toBeUndefined();
+		const logsWarning = config.warnings?.find((w) => w.includes('signal "logs"'));
+		expect(logsWarning).toContain("OTEL_EXPORTER_OTLP_ENDPOINT");
+		expect(logsWarning).not.toContain("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT");
+	});
+
+	it("warning text names the remediation (https or local collector)", () => {
+		const config = telemetryConfigFromEnv({
+			OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel.example.com",
+		});
+		expect(config.warnings?.[0]).toContain("https://");
+		expect(config.warnings?.[0]).toContain("local collector");
 	});
 });

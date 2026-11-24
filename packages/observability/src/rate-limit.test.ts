@@ -66,6 +66,20 @@ describe("makeFixedWindowRateLimiter", () => {
 		expect(rl.hit("b", 1).allowed).toBe(false);
 	});
 
+	it("sweeps entries expiring exactly at the current time", () => {
+		let at = 0;
+		const rl = limiter(() => at, 2);
+		rl.hit("a", 1); // 'a' expires at 1_000
+		at = 900;
+		rl.hit("b", 1); // 'b' expires at 1_900 — still live, map now full
+		at = 1_000; // 'a' reaches resetAt exactly while the cap is hit
+		rl.hit("c", 1);
+		// 'a' alone was swept — 'b' kept its live window, so its second
+		// hit is denied. A mutant keeping 'a' (`at > resetAt`) would
+		// still see a full map and clear() everything instead.
+		expect(rl.hit("b", 1).allowed).toBe(false);
+	});
+
 	it("defaults to a 60s window when windowMs is not given", () => {
 		const rl = makeFixedWindowRateLimiter();
 		expect(rl.hit("a", 1)).toEqual({ allowed: true, retryAfterMs: 0 });

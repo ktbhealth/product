@@ -15,6 +15,10 @@ describe("TelemetryContext", () => {
 		const ctx = await Effect.runPromise(telemetryContext);
 		expect(ctx).toEqual({});
 	});
+
+	it("keeps the stable reference identifier", () => {
+		expect(TelemetryContext.key).toBe("@ktb/observability/TelemetryContext");
+	});
 });
 
 describe("withTelemetryContext", () => {
@@ -42,6 +46,15 @@ describe("withTelemetryContext", () => {
 		);
 		expect(ctx.requestId).toBe("r1");
 		expect(ctx.route).toBe("/x");
+	});
+
+	it("does not materialize keys for omitted patch fields", async () => {
+		// `undefined` patch fields must leave the ambient value untouched —
+		// spreading `{ field: undefined }` would still add the key.
+		const ctx = await Effect.runPromise(
+			withTelemetryContext({ requestId: "r1" }, telemetryContext),
+		);
+		expect(Object.keys(ctx)).toEqual(["requestId"]);
 	});
 
 	it("clears tenantId on explicit null", async () => {
@@ -82,6 +95,14 @@ describe("telemetryAnnotations", () => {
 
 	it("omits null tenantId", () => {
 		expect(telemetryAnnotations({ tenantId: null })).toEqual({});
+		expect(Object.keys(telemetryAnnotations({ tenantId: null }))).toEqual([]);
+	});
+
+	it("emits no keys at all for an empty or unprojectable context", () => {
+		expect(Object.keys(telemetryAnnotations({}))).toEqual([]);
+		expect(
+			Object.keys(telemetryAnnotations({ traceparent: "00-abc-def-01", tenantId: null })),
+		).toEqual([]);
 	});
 });
 
@@ -119,6 +140,14 @@ describe("externalSpanFromTraceparent", () => {
 		expect(externalSpanFromTraceparent(undefined)).toBeUndefined();
 		expect(externalSpanFromTraceparent("not-a-traceparent")).toBeUndefined();
 		expect(externalSpanFromTraceparent("00-short-01")).toBeUndefined();
+	});
+
+	it("rejects traceparent values with surrounding junk (anchored match)", async () => {
+		const { externalSpanFromTraceparent } = await import("./context.ts");
+		const tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+		expect(externalSpanFromTraceparent(`x${tp}`)).toBeUndefined();
+		expect(externalSpanFromTraceparent(`${tp}x`)).toBeUndefined();
+		expect(externalSpanFromTraceparent(`${tp} `)).toBeDefined(); // trailing OWS trimmed
 	});
 });
 
@@ -161,6 +190,13 @@ describe("isValidTraceparent", () => {
 		expect(isValidTraceparent("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01 ")).toBe(
 			true, // trailing OWS trimmed before the check
 		);
+	});
+
+	it("rejects values with surrounding junk (anchored match)", () => {
+		const tp = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+		expect(isValidTraceparent(`x${tp}`)).toBe(false);
+		expect(isValidTraceparent(`${tp}x`)).toBe(false);
+		expect(isValidTraceparent(`${tp}-ff`)).toBe(false);
 	});
 });
 
@@ -240,5 +276,49 @@ describe("externalSpanFromLogFields", () => {
 			externalSpanFromLogFields({ traceId: "0af7651916cd43dd8448eb211c80319c", spanId: 42 }),
 		).toBeUndefined();
 		expect(externalSpanFromLogFields({ traceparent: "garbage" })).toBeUndefined();
+	});
+
+	it("rejects non-string spanId even when it coerces to valid hex", async () => {
+		const { externalSpanFromLogFields } = await import("./context.ts");
+		// 1234567890123456 stringifies to a valid 16-char span id — the
+		// typeof guard must run before the regex ever sees the coercion.
+		expect(
+			externalSpanFromLogFields({
+				traceId: "0af7651916cd43dd8448eb211c80319c",
+				spanId: 1234567890123456,
+			}),
+		).toBeUndefined();
+	});
+
+	it("ignores a non-string traceparent field and falls back to the id pair", async () => {
+		const { externalSpanFromLogFields } = await import("./context.ts");
+		const span = externalSpanFromLogFields({
+			traceparent: 42,
+			traceId: "0af7651916cd43dd8448eb211c80319c",
+			spanId: "b7ad6b7169203331",
+		});
+		expect(span?.traceId).toBe("0af7651916cd43dd8448eb211c80319c");
+	});
+
+	it("rejects traceId/spanId values that are not exactly 32/16 hex chars", async () => {
+		const { externalSpanFromLogFields } = await import("./context.ts");
+		const goodTrace = "0af7651916cd43dd8448eb211c80319c";
+		const goodSpan = "b7ad6b7169203331";
+		for (const [traceId, spanId] of [
+			[`${goodTrace}0`, goodSpan], // 33 chars
+			[`x${goodTrace.slice(0, 31)}`, goodSpan], // 32 chars but non-hex lead
+			[goodTrace.slice(0, 31), goodSpan], // 31 chars
+			[goodTrace, `${goodSpan}0`], // 17 chars
+			[goodTrace, goodSpan.slice(0, 15)], // 15 chars
+		] as const) {
+			expect(externalSpanFromLogFields({ traceId, spanId })).toBeUndefined();
+		}
+		// Uppercase hex is accepted (regex is case-insensitive).
+		const upper = externalSpanFromLogFields({
+			traceId: goodTrace.toUpperCase(),
+			spanId: goodSpan.toUpperCase(),
+		});
+		expect(upper?.traceId?.toLowerCase()).toBe(goodTrace);
+		expect(upper?.spanId?.toLowerCase()).toBe(goodSpan);
 	});
 });

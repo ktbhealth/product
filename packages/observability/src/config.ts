@@ -70,6 +70,7 @@ export const OBSERVABILITY_ENV_KEYS = [
 ] as const satisfies readonly (keyof ObservabilityEnv)[];
 
 type _EnvKeysMissing = Exclude<keyof ObservabilityEnv, (typeof OBSERVABILITY_ENV_KEYS)[number]>;
+// Stryker disable next-line BooleanLiteral: compile-time-only exhaustiveness assertion — the runtime value is never read (`void` discard below).
 const _envKeysExhaustive: [_EnvKeysMissing] extends [never] ? true : never = true;
 void _envKeysExhaustive;
 
@@ -142,6 +143,7 @@ export const parseKeyValueList = (raw: string | undefined): Record<string, strin
 	if (raw === undefined) return out;
 	for (const pair of raw.split(",")) {
 		const eq = pair.indexOf("=");
+		// Stryker disable next-line EqualityOperator: eq === 0 yields an empty key that the `key === ""` guard below skips anyway.
 		if (eq <= 0) continue;
 		const key = pair.slice(0, eq).trim();
 		if (key === "") continue;
@@ -163,6 +165,7 @@ const parseFloatClamped = (
 	min: number,
 	max: number,
 ): number => {
+	// Stryker disable next-line ConditionalExpression: parseFloat(undefined) is NaN → !isFinite → same fallback.
 	if (raw === undefined) return fallback;
 	const parsed = Number.parseFloat(raw);
 	if (!Number.isFinite(parsed)) return fallback;
@@ -175,6 +178,7 @@ const parseIntClamped = (
 	min: number,
 	max: number,
 ): number => {
+	// Stryker disable next-line ConditionalExpression: parseInt(undefined) is NaN → isNaN → same fallback.
 	if (raw === undefined) return fallback;
 	const parsed = Number.parseInt(raw, 10);
 	if (!Number.isNaN(parsed)) return Math.min(max, Math.max(min, parsed));
@@ -212,10 +216,9 @@ const SIGNAL_ENDPOINT_VARS = {
  * to ::/::1; unique-local (fc00::/7) is intentionally not matched.
  */
 const isLocalHostname = (hostname: string): boolean => {
-	const host = hostname
-		.toLowerCase()
-		.replace(/\.$/, "")
-		.replace(/^\[|\]$/g, "");
+	const normalized = hostname.toLowerCase().replace(/\.$/, "");
+	// Stryker disable next-line Regex: URL.hostname only carries brackets as the IPv6 literal wrapper (`[::1]`) — no stray `[` or `]` can appear, so anchor/char-class mutations strip identically.
+	const host = normalized.replace(/^\[|\]$/g, "");
 	if (
 		host === "localhost" ||
 		host.endsWith(".localhost") ||
@@ -227,6 +230,7 @@ const isLocalHostname = (hostname: string): boolean => {
 		return true;
 	}
 	const parts = host.split(".");
+	// Stryker disable next-line ConditionalExpression: hosts with ≠4 dot-parts either normalize to 4 (WHATWG IPv4) or contain non-numeric parts → the octet check below fails → same false.
 	if (parts.length !== 4) return false;
 	const octets = parts.map((part) => Number(part));
 	if (!octets.every((n) => Number.isInteger(n) && n >= 0 && n <= 255)) return false;
@@ -274,6 +278,7 @@ const guardOtlpEndpoints = (
 ): OtlpSignalEndpoints => {
 	const guard = (signal: keyof OtlpSignalEndpoints): string | undefined => {
 		const url = endpoints[signal];
+		// Stryker disable next-line ConditionalExpression: url === undefined makes insecureRemoteHost throw inside new URL → catch → undefined host → returns url (undefined) either way.
 		if (url === undefined) return undefined;
 		const host = insecureRemoteHost(url);
 		if (host === undefined) return url;

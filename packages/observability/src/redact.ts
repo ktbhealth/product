@@ -63,6 +63,7 @@ const SENSITIVE_WORDS = new Set([
 /** Split a key into lowercase words: `apiKey` → ["api","key"],
  * `x-api_key` → ["x","api","key"], `requestId` → ["request","id"]. */
 const keyWords = (key: string): string[] =>
+	// Stryker disable next-line MethodExpression: dropping .filter only leaves "" words in the array — "" is never in SENSITIVE_WORDS, so isSensitiveKey is unchanged.
 	key
 		.replace(/([a-z0-9])([A-Z])/g, "$1 $2")
 		.toLowerCase()

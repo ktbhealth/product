@@ -87,6 +87,7 @@ export const ingestClientEvents =
 			}
 			let sampledOut = 0;
 			for (const raw of batch.events) {
+				// Stryker disable next-line ConditionalExpression,EqualityOperator: sampleRate is clamped to [0,1] and random() < 1 always — at rate >= 1 both forms reduce to `random() >= sampleRate`, which is never true, matching the `< 1` short-circuit.
 				if (sampleRate < 1 && random() >= sampleRate) {
 					sampledOut += 1;
 					continue;
@@ -116,6 +117,7 @@ export const ingestClientEvents =
 				}
 				yield* record(tagged(clientEvents, { type: event.type }), 1);
 			}
+			// Stryker disable next-line ConditionalExpression,EqualityOperator: record(_, 0) increments the counter by zero — the metric snapshot is identical to skipping the record.
 			if (sampledOut > 0) {
 				yield* record(tagged(clientEventsDropped, { reason: "sampled" }), sampledOut);
 			}

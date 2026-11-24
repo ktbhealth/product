@@ -111,6 +111,7 @@ const REQUEST_ID = /^[!-~]{1,128}$/;
  */
 export const sanitizeRequestId = (value: string | null | undefined): string | undefined => {
 	const trimmed = value?.trim();
+	// Stryker disable next-line ConditionalExpression: `trimmed === undefined` makes REQUEST_ID.test coerce "undefined" (which matches) but the ternary still yields `trimmed` === undefined — identical result.
 	return trimmed !== undefined && REQUEST_ID.test(trimmed) ? trimmed : undefined;
 };
 
@@ -162,6 +163,7 @@ export const externalSpanFromLogFields = (
 	const traceId = fields["traceId"];
 	const spanId = fields["spanId"];
 	if (
+		// Stryker disable next-line ConditionalExpression: a non-string traceId coerces to a string that can't satisfy the 32-hex TRACE_ID_HEX pattern for any realistic value, so the && chain still fails → undefined.
 		typeof traceId === "string" &&
 		typeof spanId === "string" &&
 		TRACE_ID_HEX.test(traceId) &&
@@ -180,6 +182,7 @@ export const externalSpanFromLogFields = (
 export const newRequestId = (): string => {
 	try {
 		const cryptoObj = globalThis.crypto;
+		// Stryker disable next-line ConditionalExpression,OptionalChaining: a missing cryptoObj/randomUUID either skips to the fallback or throws into the catch — both land on the same `req-…` fallback.
 		if (typeof cryptoObj?.randomUUID === "function") return cryptoObj.randomUUID();
 	} catch {
 		// Fall through to the random fallback.

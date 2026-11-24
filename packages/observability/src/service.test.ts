@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
 import * as Metric from "effect/Metric";
 import * as ManagedRuntime from "effect/ManagedRuntime";
+import * as References from "effect/References";
 
 import { telemetryConfigFromEnv } from "./config.ts";
 import { clientEvents, clientEventsDropped, tagged, telemetryErrors } from "./metrics.ts";
@@ -20,6 +22,34 @@ const batch = (events: unknown[]): ClientTelemetryBatch =>
 
 const countOf = <S extends { readonly count: number | bigint }>(metric: Metric.Metric<never, S>) =>
 	Effect.map(Metric.value(metric), (state) => Number(state.count));
+
+interface CapturedLog {
+	readonly level: string;
+	readonly message: unknown;
+	readonly annotations: Record<string, unknown>;
+}
+
+/** Captures structured log records (level + annotations) emitted inside
+ * the effect — the observable surface ingestClientEvents writes to. */
+const captureLogs = () => {
+	const entries: CapturedLog[] = [];
+	const logger = Logger.map(Logger.formatStructured, (record) => {
+		entries.push(record);
+	});
+	return { entries, logger };
+};
+
+/** Run `effect` with the capturing logger and Debug level enabled so
+ * logDebug records (e.g. client.error.stack) are observable too. */
+const runWithLogs = <A, E>(effect: Effect.Effect<A, E, never>) => {
+	const { entries, logger } = captureLogs();
+	return Effect.runPromise(
+		effect.pipe(
+			Effect.provide(Logger.layer([logger])),
+			Effect.provideService(References.MinimumLogLevel, "Debug"),
+		),
+	).then((value) => ({ value, entries }));
+};
 
 describe("ingestClientEvents", () => {
 	it("logs and counts each event by type", async () => {
@@ -112,6 +142,162 @@ describe("ingestClientEvents", () => {
 			Effect.provideService(program, Metric.MetricRegistry, registry),
 		);
 		expect(count).toBe(1);
+	});
+});
+
+describe("ingestClientEvents log records", () => {
+	it("logs error events at Error level and other types at Info", async () => {
+		const { entries } = await runWithLogs(
+			Effect.gen(function* () {
+				yield* ingestClientEvents(config)(
+					batch([
+						{ type: "navigation", name: "web.navigation", path: "/a" },
+						{ type: "error", name: "client.error", message: "boom" },
+						{ type: "request", name: "web.request", status: 200 },
+					]),
+				);
+			}),
+		);
+		const byMessage = new Map(entries.map((e) => [e.message, e.level]));
+		expect(byMessage.get("client.navigation")).toBe("INFO");
+		expect(byMessage.get("client.error")).toBe("ERROR");
+		expect(byMessage.get("client.request")).toBe("INFO");
+	});
+
+	it("stamps present event fields as annotations and omits absent ones", async () => {
+		const timestamp = Date.now() - 1_000;
+		const { entries } = await runWithLogs(
+			Effect.gen(function* () {
+				yield* ingestClientEvents(config)(
+					batch([
+						{
+							type: "request",
+							name: "web.request",
+							path: "/patients?tab=1",
+							status: 200,
+							durationMs: 12,
+							message: "ok",
+							requestId: "r-1",
+							timestamp,
+							attributes: { route: "/patients" },
+						},
+						{ type: "event", name: "" },
+					]),
+				);
+			}),
+		);
+		const full = entries.find((e) => e.message === "client.request");
+		expect(full?.annotations).toMatchObject({
+			type: "request",
+			name: "web.request",
+			path: "/patients",
+			status: 200,
+			durationMs: 12,
+			route: "/patients",
+			"event.message": "ok",
+			"event.timestamp": timestamp,
+			"telemetry.request_id": "r-1",
+		});
+		const minimal = entries.find((e) => e.message === "client.event");
+		expect(minimal?.annotations).toMatchObject({ type: "event" });
+		// Absent/empty fields must not appear as annotation keys at all.
+		expect(minimal?.annotations).not.toHaveProperty("name");
+		expect(minimal?.annotations).not.toHaveProperty("path");
+		expect(minimal?.annotations).not.toHaveProperty("status");
+		expect(minimal?.annotations).not.toHaveProperty("durationMs");
+		expect(minimal?.annotations).not.toHaveProperty("event.message");
+		expect(minimal?.annotations).not.toHaveProperty("event.timestamp");
+		expect(minimal?.annotations).not.toHaveProperty("telemetry.request_id");
+		// No stack on the event → no client.error.stack record at all.
+		expect(
+			entries.some((e) => Array.isArray(e.message) && e.message[0] === "client.error.stack"),
+		).toBe(false);
+	});
+
+	it("emits a client.error.stack debug record carrying the stack", async () => {
+		const { entries } = await runWithLogs(
+			Effect.gen(function* () {
+				yield* ingestClientEvents(config)(
+					batch([{ type: "error", name: "client.error", stack: "at foo.ts:1" }]),
+				);
+			}),
+		);
+		// logDebug("client.error.stack", { stack }) puts the payload in the
+		// message args, not annotations.
+		const stackEntry = entries.find(
+			(e) => Array.isArray(e.message) && e.message[0] === "client.error.stack",
+		);
+		expect(stackEntry?.level).toBe("DEBUG");
+		expect(stackEntry?.message).toEqual(["client.error.stack", { stack: "at foo.ts:1" }]);
+	});
+
+	it("drops the event when the roll lands exactly on the sample rate", async () => {
+		const sampled = telemetryConfigFromEnv({ KTB_TELEMETRY_CLIENT_SAMPLE_RATE: "0.5" });
+		const registry = new Map();
+		const program = Effect.gen(function* () {
+			yield* ingestClientEvents(sampled, () => 0.5)(batch([{ type: "event", name: "x" }]));
+			return {
+				kept: yield* countOf(tagged(clientEvents, { type: "event" })),
+				dropped: yield* countOf(tagged(clientEventsDropped, { reason: "sampled" })),
+			};
+		});
+		const counts = await Effect.runPromise(
+			Effect.provideService(program, Metric.MetricRegistry, registry),
+		);
+		// random() >= sampleRate drops — 0.5 >= 0.5 must drop.
+		expect(counts).toEqual({ kept: 0, dropped: 1 });
+	});
+
+	it("keeps every event at the default sample rate of 1 regardless of rolls", async () => {
+		const registry = new Map();
+		const program = Effect.gen(function* () {
+			yield* ingestClientEvents(
+				config,
+				() => 0.999999,
+			)(
+				batch([
+					{ type: "event", name: "a" },
+					{ type: "event", name: "b" },
+				]),
+			);
+			return {
+				kept: yield* countOf(tagged(clientEvents, { type: "event" })),
+				dropped: yield* countOf(tagged(clientEventsDropped, { reason: "sampled" })),
+			};
+		});
+		const counts = await Effect.runPromise(
+			Effect.provideService(program, Metric.MetricRegistry, registry),
+		);
+		expect(counts).toEqual({ kept: 2, dropped: 0 });
+	});
+
+	it("logs telemetry.ingest.failed with the cause when ingest defects", async () => {
+		const { entries } = await runWithLogs(
+			Effect.gen(function* () {
+				yield* ingestClientEvents(config)(
+					batch([
+						{
+							type: "event",
+							name: "x",
+							attributes: {
+								get boom(): string {
+									throw new Error("getter exploded");
+								},
+							},
+						},
+					]),
+				);
+			}),
+		);
+		const failure = entries.find((e) => e.message === "telemetry.ingest.failed");
+		expect(failure?.level).toBe("ERROR");
+		expect(failure?.annotations).toHaveProperty("cause");
+	});
+});
+
+describe("Telemetry service key", () => {
+	it("keeps the stable Context.Service identifier", () => {
+		expect(Telemetry.key).toBe("@ktb/observability/Telemetry");
 	});
 });
 
