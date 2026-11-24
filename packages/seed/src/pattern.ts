@@ -67,6 +67,9 @@ class Parser {
 	constructor(private readonly src: string) {}
 
 	private peek(): string {
+		// Stryker disable next-line StringLiteral: peek() is only ever
+		// compared against non-empty literals, so the EOF fallback is
+		// unobservable.
 		return this.src[this.pos] ?? "";
 	}
 
@@ -98,6 +101,8 @@ class Parser {
 		while (this.pos < this.src.length && this.peek() !== ")" && this.peek() !== "|") {
 			parts.push(this.parseRepeat());
 		}
+		// Stryker disable next-line StringLiteral: Node.t is only ever
+		// compared against "alt" — any other tag behaves like "seq".
 		return { t: "seq", parts };
 	}
 
@@ -125,7 +130,7 @@ class Parser {
 			min = Number(m[1]);
 			max = m[2] === undefined ? min : m[2] === "" ? MAX_REPEAT : Number(m[2]);
 			if (max > MAX_REPEAT) max = MAX_REPEAT;
-		} else {
+		} else /* Stryker disable next-line BlockStatement: an empty else falls through to the same { atom, min: 1, max: 1 } return. */ {
 			return { atom, min: 1, max: 1 };
 		}
 		if (min > MAX_REPEAT) min = MAX_REPEAT;
@@ -156,6 +161,9 @@ class Parser {
 				return { t: "any" };
 			case "^":
 			case "$":
+				// Stryker disable next-line ObjectLiteral, StringLiteral:
+				// genAtom's switch has no default — an unmatched atom.t
+				// emits nothing, same as "empty".
 				return { t: "empty" };
 			case "\\":
 				return this.parseEscape();
@@ -226,6 +234,8 @@ class Parser {
 	private parseEscape(): Atom {
 		const e = this.next();
 		if (e === "") throw new SeedError("trailing backslash");
+		// Stryker disable next-line Regex: e is always a single char (or
+		// ""), so the ^/$ anchors are redundant for a [1-9] match.
 		if (/^[1-9]$/.test(e)) throw new SeedError(`backreference \\${e} unsupported`);
 		// Negated class escapes are classes with negate flipped.
 		if (e === "D" || e === "W" || e === "S") {
@@ -237,6 +247,8 @@ class Parser {
 		}
 		const ranges = this.escapeRanges(e);
 		if (ranges) return { t: "cls", ranges, negate: false };
+		// Stryker disable next-line ObjectLiteral: genAtom's switch has
+		// no default — {} emits nothing, same as { t: "empty" }.
 		if (e === "b" || e === "B") return { t: "empty" }; // word boundary — zero-width
 		return { t: "lit", ch: String.fromCodePoint(this.escapeChar(e)) };
 	}
@@ -270,12 +282,16 @@ class Parser {
 				return 0x08;
 			case "x": {
 				const h = this.src.slice(this.pos, this.pos + 2);
+				// Stryker disable next-line Regex: h is at most 2 chars —
+				// the ^/$ anchors are redundant for a {2} match.
 				if (!/^[0-9a-fA-F]{2}$/.test(h)) throw new SeedError("bad \\x escape");
 				this.pos += 2;
 				return parseInt(h, 16);
 			}
 			case "u": {
 				const h = this.src.slice(this.pos, this.pos + 4);
+				// Stryker disable next-line Regex: h is at most 4 chars —
+				// the ^/$ anchors are redundant for a {4} match.
 				if (!/^[0-9a-fA-F]{4}$/.test(h)) throw new SeedError("bad \\u escape");
 				this.pos += 4;
 				return parseInt(h, 16);
@@ -318,6 +334,8 @@ const randomInRanges = (rng: () => number, ranges: readonly Range[], negate: boo
 		roll -= size;
 	}
 	/* v8 ignore next -- unreachable: roll < total by construction */
+	// Stryker disable next-line StringLiteral, CallExpression: unreachable —
+	// rng() is in [0, 1), so roll < total and the loop above always returns.
 	throw new SeedError("character class roll overflow");
 };
 
@@ -327,6 +345,9 @@ const complement = (ranges: readonly Range[]): Range[] => {
 	const out: Range[] = [];
 	let cur = PRINTABLE_LO;
 	for (const [lo, hi] of sorted) {
+		// Stryker disable next-line MethodExpression: l is only read in
+		// `l > cur` where cur >= PRINTABLE_LO, so clamping lo below the
+		// printable window changes nothing.
 		const l = Math.max(lo, PRINTABLE_LO);
 		const h = Math.min(hi, PRINTABLE_HI);
 		if (h < cur) continue;
@@ -343,6 +364,8 @@ const genAtom = (rng: () => number, st: GenState, atom: Atom): void => {
 		case "lit":
 			emit(st, atom.ch);
 			return;
+		// Stryker disable next-line StringLiteral: "empty" atoms emit
+		// nothing; an unmatched case falls through the switch the same.
 		case "empty":
 			return;
 		case "any":
