@@ -11,13 +11,7 @@ import type { PageI18nSlice } from "@ktb/kernel";
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
-import {
-	Card,
-	CardAction,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@ktbhealth/ui/components/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import {
 	Empty,
 	EmptyDescription,
@@ -30,7 +24,7 @@ import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 
 import type { ConsultationIntegrityReport } from "../index.ts";
-import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
+import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
 import { decryptBlob } from "@ktb/crypto/stream";
 import { LocalDateTime } from "@ktb/views/views";
@@ -48,9 +42,6 @@ import {
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
-
-/** Sections that read better side by side. */
-const WIDE: AnamnesisSectionKey[] = ["queixa_principal", "hda", "hipoteses", "conduta"];
 
 function Chip({
 	children,
@@ -442,95 +433,93 @@ export function ConsultationDetailPage({
 
 			<div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
 				{/* ---------- anamnesis ---------- */}
-				<section>
-					<h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-						{t.common.anamnesis}
-					</h2>
-					{v.anamnesis ? (
-						<div className="grid gap-3 sm:grid-cols-2">
-							{(
-								Object.keys(t.sections).filter((k) => k !== "historico") as AnamnesisSectionKey[]
-							).map((key) => {
-								const sec = v.anamnesis?.[key];
-								if (!sec) return null;
-								const pending = sec.content.startsWith("A preencher pelo médico");
-								return (
-									<Card
-										key={key}
-										size="sm"
-										className={`border-l-4 ${CONF_BAR[sec.confidence]} ${
-											WIDE.includes(key) ? "sm:col-span-2" : ""
-										}`}
-									>
-										<CardHeader>
-											<CardTitle>{t.sections[key]}</CardTitle>
-											<CardAction>
-												{sec.evidence.length ? (
-													<Button
-														type="button"
-														variant="ghost"
-														size="sm"
-														aria-pressed={evidence?.section === key}
-														title={t.detail.evidenceTitle}
-														onClick={() =>
-															setEvidence(
-																evidence?.section === key
-																	? null
-																	: { section: key, sentences: sec.evidence },
-															)
-														}
-													>
-														<QuoteIcon data-icon="inline-start" />
-														{evidence?.section === key
-															? t.detail.hideEvidence
-															: t.detail.showEvidence}
-													</Button>
-												) : null}
-												<Badge
-													variant="secondary"
-													className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+				<Card>
+					<CardHeader className="border-b">
+						<CardTitle>{t.common.anamnesis}</CardTitle>
+					</CardHeader>
+					<CardContent>
+						{v.anamnesis ? (
+							<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[70vh]">
+								<div className="divide-y divide-border">
+									{(
+										Object.keys(t.sections).filter(
+											(k) => k !== "historico",
+										) as AnamnesisSectionKey[]
+									).map((key) => {
+										const sec = v.anamnesis?.[key];
+										if (!sec) return null;
+										const pending = sec.content.startsWith("A preencher pelo médico");
+										return (
+											<div key={key} className="py-4 first:pt-1 last:pb-1">
+												<div className="flex items-start justify-between gap-2">
+													<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
+													<div className="flex shrink-0 items-center gap-1.5">
+														{sec.evidence.length ? (
+															<Button
+																type="button"
+																variant="ghost"
+																size="sm"
+																aria-pressed={evidence?.section === key}
+																title={t.detail.evidenceTitle}
+																onClick={() =>
+																	setEvidence(
+																		evidence?.section === key
+																			? null
+																			: { section: key, sentences: sec.evidence },
+																	)
+																}
+															>
+																<QuoteIcon data-icon="inline-start" />
+																{evidence?.section === key
+																	? t.detail.hideEvidence
+																	: t.detail.showEvidence}
+															</Button>
+														) : null}
+														<Badge
+															variant="secondary"
+															className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+														>
+															{t.confidence[sec.confidence]}
+														</Badge>
+													</div>
+												</div>
+												<p
+													className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
+														pending ? "text-muted-foreground italic" : "text-foreground"
+													}`}
 												>
-													{t.confidence[sec.confidence]}
-												</Badge>
-											</CardAction>
-										</CardHeader>
-										<CardContent>
-											<p
-												className={`text-sm leading-relaxed whitespace-pre-wrap ${
-													pending ? "text-warning italic" : "text-foreground"
-												}`}
-											>
-												{sec.content || t.detail.notReported}
-											</p>
-											{sec.evidence.length ? (
-												<details className="mt-2">
-													<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
-														{t.detail.evidence(sec.evidence.length)}
-													</summary>
-													<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
-														{sec.evidence.map((ev) => (
-															<li key={ev.slice(0, 40)}>“{ev}”</li>
-														))}
-													</ul>
-												</details>
-											) : null}
-										</CardContent>
-									</Card>
-								);
-							})}
-						</div>
-					) : (
-						<Empty className="border bg-card px-6 py-14">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									<ClipboardListIcon />
-								</EmptyMedia>
-								<EmptyTitle>{t.detail.noAnamnesisTitle}</EmptyTitle>
-								<EmptyDescription>{t.detail.noAnamnesisDescription}</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					)}
-				</section>
+													{sec.content || t.detail.notReported}
+												</p>
+												{sec.evidence.length ? (
+													<details className="mt-2">
+														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
+															{t.detail.evidence(sec.evidence.length)}
+														</summary>
+														<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
+															{sec.evidence.map((ev) => (
+																<li key={ev.slice(0, 40)}>“{ev}”</li>
+															))}
+														</ul>
+													</details>
+												) : null}
+											</div>
+										);
+									})}
+								</div>
+							</ScrollArea>
+						) : (
+							<Empty className="border bg-card px-6 py-14">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<ClipboardListIcon />
+									</EmptyMedia>
+									<EmptyTitle>{t.detail.noAnamnesisTitle}</EmptyTitle>
+									<EmptyDescription>{t.detail.noAnamnesisDescription}</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						)}
+					</CardContent>
+				</Card>
 
 				{/* ---------- side: transcript ---------- */}
 				<Card className="lg:sticky lg:top-20">

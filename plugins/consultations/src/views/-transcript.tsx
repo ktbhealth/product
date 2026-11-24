@@ -30,7 +30,7 @@ function markedText(text: string, re: RegExp): ReactNode[] {
 	return text.split(re).map((part, i) =>
 		i % 2 === 1 ? (
 			// biome-ignore lint/suspicious/noArrayIndexKey: static split parts
-			<mark key={i} className="rounded bg-warning/30 px-0.5">
+			<mark key={i} className="rounded bg-info/25 px-0.5">
 				{part}
 			</mark>
 		) : (
