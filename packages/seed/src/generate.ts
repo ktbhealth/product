@@ -274,6 +274,7 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 	// the cross product anyOf(ai ∧ bj) so every pair constraint holds.
 	// (oneOf keeps its documented exactly-one caveat.)
 	if (a.allOf || b.allOf) {
+		// Stryker disable next-line ArrayDeclaration: a non-schema element (e.g. "Stryker was here") is absorbed as a no-op — mergeTwo/mergeObjects treat string operands as empty schemas, so generated output is identical (probe-verified).
 		out.allOf = [...(a.allOf ?? []), ...(b.allOf ?? [])];
 	}
 	for (const k of ["anyOf", "oneOf"] as const) {
@@ -303,16 +304,20 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 		}
 	}
 	// not(A) AND not(B) === not(A or B)
+	// Stryker disable next-line all: every operand-level mutant here preserves whether `out.not` ends up defined — and ANY defined `not` throws the same SeedError downstream, so outputs are identical (probe-verified). Mutants that would drop `not` entirely live on the else-if below and are covered by tests.
 	if (a.not !== undefined && b.not !== undefined) {
+		// Stryker disable next-line all: `{}` / `{anyOf: []}` keep `not` defined, so generation still throws the same SeedError (probe-verified).
 		out.not = { anyOf: [a.not, b.not] };
 	} else if (b.not !== undefined) {
 		out.not = b.not;
 	}
 
 	// --- annotations: keep a's, fall back to b's ---
+	// Stryker disable all: annotation keywords ($schema/title/description/default/$comment) are write-only — generation and validation never read them, so every mutant in this loop is unobservable (probe-verified identical output).
 	for (const k of ["$schema", "title", "description", "default", "$comment"] as const) {
 		if (out[k] === undefined && b[k] !== undefined) out[k] = b[k];
 	}
+	// Stryker restore all
 
 	return out as JsonSchemaObject;
 };
@@ -415,7 +420,11 @@ const slug = (s: string): string =>
 		.normalize("NFD")
 		.replace(/[̀-ͯ]/g, "")
 		.toLowerCase()
-		.replace(/[^a-z0-9]/g, "");
+		.replace(
+			/[^a-z0-9]/g,
+			// Stryker disable next-line StringLiteral: pool names are pure [a-z] after NFD + diacritic stripping, so this replace never matches and the replacement value is unobservable (probe-verified).
+			"",
+		);
 
 const randomWords = (ctx: Ctx, count: number): string =>
 	Array.from({ length: count }, () => pick(ctx.rng, ctx.pools.words)).join(" ");
