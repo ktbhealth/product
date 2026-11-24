@@ -203,7 +203,7 @@ describe("makeAcpSessionLlm", () => {
 		}
 	});
 
-	it("correct pins EditList and decodes the reply JSON", async () => {
+	it("correct pins EditList, decodes the reply JSON, and sends the contract", async () => {
 		const edits = { ops: [{ at: 0, remove: "a", insert: "b", kind: "fix" }] };
 		const agent = agentConnect(JSON.stringify(edits));
 		const layer = makeAcpSessionLlm({ connect: agent.connect, engine: "acp" });
@@ -213,6 +213,13 @@ describe("makeAcpSessionLlm", () => {
 		);
 		expect(out.edits.ops).toHaveLength(1);
 		expect(out.record.stage).toBe("cleanup");
+		// ACP sessions have no system role — the corrector contract must
+		// ride in the user turn ahead of the raw transcript (I-003).
+		const prompt = agent.calls.find((c) => c.method === "session/prompt")?.params as {
+			prompt: { text: string }[];
+		};
+		expect(prompt.prompt[0]?.text).toContain("transcript-correction backend");
+		expect(prompt.prompt[0]?.text.endsWith("\n\ni")).toBe(true);
 	});
 
 	it("correct rejects non-EditList envelopes and malformed JSON replies", async () => {
