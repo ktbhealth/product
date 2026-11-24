@@ -144,6 +144,7 @@ const isSameOriginUrl = (url: string): boolean => {
 		const origin = window.location?.origin;
 		// Stryker disable next-line LogicalOperator: `origin === undefined && origin === ""` is always false, and falling through still returns false — new URL() either throws (caught → false) or yields a real origin that cannot equal undefined/"".
 		// Stryker disable next-line StringLiteral: comparing origin against "Stryker was here!" is always false, and an empty origin still fails the URL-origin comparison below.
+		// Stryker disable next-line ConditionalExpression: replacing either `===` check with `false` still returns false — new URL() throws on undefined/"" bases (caught → false) or yields a real origin that cannot equal undefined/"".
 		if (origin === undefined || origin === "") return false;
 		return new URL(url, origin).origin === origin;
 	}
