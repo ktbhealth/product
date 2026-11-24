@@ -35,6 +35,9 @@ import { LlmPort } from "@ktb/eval-consultation/ports";
  * agent over stdio (Devin CLI `devin acp` by default via
  * EVAL_ACP_AGENT_CMD); selected by the `devin`/`local-devin` eval
  * profiles.
+ * "openai-compat" → @ktb/ai-adapter-openai `makeChatLlm` — any
+ * OpenAI-compatible chat endpoint (Ollama, LM Studio) via
+ * EVAL_LLM_BASE_URL/EVAL_LLM_MODEL; selected by `local-chat`.
  */
 
 /**
@@ -55,6 +58,7 @@ export const llmEvalContributions: readonly Contribution[] = [
 				noop: "@ktb/eval-adapter-stub",
 				acp: "@ktb/ai-adapter-acp",
 				"acp-cli": "@ktb/ai-adapter-node",
+				"openai-compat": "@ktb/ai-adapter-openai",
 				"workers-ai": "@ktb/eval-adapter-cloud",
 			},
 		},
