@@ -20,6 +20,7 @@ import {
 	normalizeAudioJobBody,
 	processAudioJob,
 	transcribeAudio,
+	WHISPER_CLINICAL_PROMPT,
 	whisperInputs,
 	type AudioJobDeps,
 	type QueueMessageLike,
@@ -92,8 +93,14 @@ describe("audio-consumer pure helpers", () => {
 		expect(atob(bytesToBase64(bytes))).toBe("hello");
 	});
 
-	it("whisperInputs sends base64 audio with pt language", () => {
-		expect(whisperInputs("QUJD")).toEqual({ audio: "QUJD", language: "pt" });
+	it("whisperInputs sends base64 audio with pt language and clinical prompt", () => {
+		expect(whisperInputs("QUJD")).toEqual({
+			audio: "QUJD",
+			language: "pt",
+			initial_prompt: WHISPER_CLINICAL_PROMPT,
+			vad_filter: true,
+			condition_on_previous_text: false,
+		});
 	});
 
 	it("extractWhisperText tolerates shapes", () => {

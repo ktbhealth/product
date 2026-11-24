@@ -66,6 +66,9 @@ export const createLocalAi = (baseUrl: string, fetchImpl: typeof fetch = fetch):
 			form.set("model", model);
 			form.set("file", new Blob([audioToBytes(i.audio)]), "audio.wav");
 			if (typeof i.language === "string") form.set("language", i.language);
+			// Workers AI calls it initial_prompt; the OpenAI-compatible
+			// field is prompt (whisper.cpp accepts the same).
+			if (typeof i.initial_prompt === "string") form.set("prompt", i.initial_prompt);
 			const res = await fetchImpl(`${base}/audio/transcriptions`, {
 				method: "POST",
 				body: form,
