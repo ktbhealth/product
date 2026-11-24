@@ -201,6 +201,52 @@ describe("capabilityLayer selection", () => {
 		).toThrow(/EVAL_ACP_AGENT_CMD/);
 	});
 
+	test("openai-compat builds a chat layer with env config and overrides", () => {
+		// Construction only — fetch happens per call at run time.
+		expect(() => capabilityLayer(ctx({ profile: "local-chat" }), "llm", "openai-compat")).toThrow(
+			/EVAL_LLM_BASE_URL/,
+		);
+		expect(() =>
+			capabilityLayer(
+				ctx({ profile: "local-chat", env: { EVAL_LLM_BASE_URL: "http://x" } }),
+				"llm",
+				"openai-compat",
+			),
+		).toThrow(/EVAL_LLM_MODEL/);
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "local-chat",
+					env: {
+						EVAL_LLM_BASE_URL: "http://localhost:11434/v1",
+						EVAL_LLM_MODEL: "qwen3:4b",
+						EVAL_LLM_API_KEY: "sk-test",
+						EVAL_LLM_TIMEOUT_MS: "300000",
+					},
+				}),
+				"llm",
+				"openai-compat",
+			),
+		).not.toThrow();
+		// Blank/invalid env values fall back to defaults rather than
+		// failing construction.
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "local-chat",
+					env: {
+						EVAL_LLM_BASE_URL: "http://localhost:11434/v1",
+						EVAL_LLM_MODEL: "qwen3:4b",
+						EVAL_LLM_API_KEY: "",
+						EVAL_LLM_TIMEOUT_MS: "abc",
+					},
+				}),
+				"llm",
+				"openai-compat",
+			),
+		).not.toThrow();
+	});
+
 	test("faster-whisper builds with default and configured endpoints", () => {
 		expect(() => capabilityLayer(ctx({ profile: "local" }), "asr", "faster-whisper")).not.toThrow();
 		expect(() =>

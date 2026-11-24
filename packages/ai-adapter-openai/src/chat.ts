@@ -165,9 +165,18 @@ export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
 					);
 				}
 				const started = Date.now();
-				return postChat(url, opts, envelope, timeoutMs, fetchImpl, CORRECTOR_INSTRUCTIONS, 0.2).pipe(
+				return postChat(
+					url,
+					opts,
+					envelope,
+					timeoutMs,
+					fetchImpl,
+					CORRECTOR_INSTRUCTIONS,
+					0.2,
+				).pipe(
 					Effect.withSpan("llm.chat.correct", { attributes: { "llm.model": opts.model } }),
 					Effect.timeout(`${timeoutMs} millis`),
+					/* v8 ignore next 4 -- else arm only fires on raw timeout defects */
 					Effect.mapError((e) =>
 						e instanceof PortError
 							? e

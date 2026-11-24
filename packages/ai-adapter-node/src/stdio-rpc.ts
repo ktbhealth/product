@@ -149,7 +149,11 @@ export const makeStdioRpc = (
 					return;
 				}
 				if (msg.method !== undefined && msg.id !== undefined) {
-					if (msg.method === "session/request_permission" && opts.permissionPolicy !== undefined && opts.permissionPolicy !== "refuse") {
+					if (
+						msg.method === "session/request_permission" &&
+						opts.permissionPolicy !== undefined &&
+						opts.permissionPolicy !== "refuse"
+					) {
 						// ACP permission request — pick an option by kind
 						// prefix instead of refusing; a refused permission
 						// is NOT approval per spec and tool-gated agents
@@ -159,7 +163,10 @@ export const makeStdioRpc = (
 							| undefined;
 						const want = opts.permissionPolicy === "allow" ? "allow_" : "reject_";
 						const option = params?.options?.find(
-							(o) => typeof o.kind === "string" && o.kind.startsWith(want) && typeof o.optionId === "string",
+							(o) =>
+								typeof o.kind === "string" &&
+								o.kind.startsWith(want) &&
+								typeof o.optionId === "string",
 						);
 						write(
 							option !== undefined

@@ -276,6 +276,22 @@ describe("makeChatLlm", () => {
 			port: "llm",
 			message: expect.stringContaining("EditList validation"),
 		});
+		const emptyLayer = makeChatLlm({
+			baseUrl: "http://x/v1",
+			model: "m",
+			fetchImpl: stubFetch(async () => chatBody("   ")),
+		});
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.correct({ taskId: "t", role: "corrector", input: "raw", outputSchema: "EditList" }),
+				).pipe(Effect.provide(emptyLayer)),
+			),
+		).rejects.toMatchObject({
+			_tag: "PortError",
+			port: "llm",
+			message: "chat response: empty content",
+		});
 	});
 
 	it("sends no Authorization header without an apiKey and declares egress", async () => {

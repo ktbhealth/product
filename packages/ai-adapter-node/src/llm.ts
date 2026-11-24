@@ -57,9 +57,7 @@ export const makeNodeAcpLlm = (opts: NodeAcpLlmOptions): Layer.Layer<LlmPort> =>
 			makeStdioRpc({
 				argv: opts.argv,
 				...(opts.spawnImpl !== undefined ? { spawnImpl: opts.spawnImpl } : {}),
-				...(opts.permissionPolicy !== undefined
-					? { permissionPolicy: opts.permissionPolicy }
-					: {}),
+				...(opts.permissionPolicy !== undefined ? { permissionPolicy: opts.permissionPolicy } : {}),
 				onNotification,
 			}),
 		engine: "acp-node",

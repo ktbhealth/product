@@ -364,6 +364,102 @@ describe("makeStdioRpc", () => {
 		});
 	});
 
+	it("permissionPolicy allow selects the first allow_* option", async () => {
+		const proc = makeFakeProc((msg, send) => {
+			if (msg.method === undefined) return;
+			send({
+				jsonrpc: "2.0",
+				id: "agent-8",
+				method: "session/request_permission",
+				params: {
+					options: [
+						{ optionId: "rej-1", kind: "reject_once" },
+						{ optionId: "alw-1", kind: "allow_once" },
+						{ optionId: "alw-2", kind: "allow_always" },
+					],
+				},
+			});
+			send({ jsonrpc: "2.0", id: msg.id, result: "done" });
+		});
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({
+					argv: ["a"],
+					spawnImpl: () => proc,
+					permissionPolicy: "allow",
+				});
+				return yield* rpc.request("session/prompt", {});
+			}),
+		);
+		expect(out).toBe("done");
+		const reply = proc.written.map((w) => JSON.parse(w)).find((m) => m.id === "agent-8");
+		expect(reply).toMatchObject({
+			result: { outcome: { outcome: "selected", optionId: "alw-1" } },
+		});
+	});
+
+	it("permissionPolicy reject selects the first reject_* option", async () => {
+		const proc = makeFakeProc((msg, send) => {
+			if (msg.method === undefined) return;
+			send({
+				jsonrpc: "2.0",
+				id: "agent-9",
+				method: "session/request_permission",
+				params: {
+					options: [
+						{ optionId: "alw-1", kind: "allow_once" },
+						{ optionId: "rej-1", kind: "reject_once" },
+					],
+				},
+			});
+			send({ jsonrpc: "2.0", id: msg.id, result: "done" });
+		});
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({
+					argv: ["a"],
+					spawnImpl: () => proc,
+					permissionPolicy: "reject",
+				});
+				return yield* rpc.request("session/prompt", {});
+			}),
+		);
+		expect(out).toBe("done");
+		const reply = proc.written.map((w) => JSON.parse(w)).find((m) => m.id === "agent-9");
+		expect(reply).toMatchObject({
+			result: { outcome: { outcome: "selected", optionId: "rej-1" } },
+		});
+	});
+
+	it("permissionPolicy answers -32602 when no option matches the policy", async () => {
+		const proc = makeFakeProc((msg, send) => {
+			if (msg.method === undefined) return;
+			send({
+				jsonrpc: "2.0",
+				id: "agent-10",
+				method: "session/request_permission",
+				params: { options: [{ optionId: "alw-1", kind: "allow_once" }] },
+			});
+			send({ jsonrpc: "2.0", id: msg.id, result: "done" });
+		});
+		const out = await scoped(
+			Effect.gen(function* () {
+				const rpc = yield* makeStdioRpc({
+					argv: ["a"],
+					spawnImpl: () => proc,
+					permissionPolicy: "reject",
+				});
+				return yield* rpc.request("session/prompt", {});
+			}),
+		);
+		expect(out).toBe("done");
+		const reply = proc.written.map((w) => JSON.parse(w)).find((m) => m.id === "agent-10");
+		expect(reply).toMatchObject({
+			jsonrpc: "2.0",
+			error: { code: -32602, message: "no matching permission option" },
+		});
+	});
+
 	it("delivers agent notifications to onNotification", async () => {
 		const seen: unknown[][] = [];
 		const proc = makeFakeProc((msg, send) => {
