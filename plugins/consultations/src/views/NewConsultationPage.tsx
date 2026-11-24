@@ -1117,7 +1117,7 @@ export function NewConsultationPage({
 				</CardContent>
 			</Card>
 
-			<ResizablePanelGroup className="h-[80vh]">
+			<ResizablePanelGroup className="h-[calc(60vh+11rem)]">
 				{/* ================= left column: transcript ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
 					<Card className="flex h-full flex-col">
