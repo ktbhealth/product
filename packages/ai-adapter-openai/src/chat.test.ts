@@ -219,11 +219,51 @@ describe("makeChatLlm", () => {
 		}
 	});
 
-	it("correct is unsupported on chat endpoints", async () => {
+	it("correct sends CORRECTOR_INSTRUCTIONS as system and parses EditList", async () => {
+		let seenBody = "";
 		const layer = makeChatLlm({
 			baseUrl: "http://x/v1",
 			model: "m",
-			fetchImpl: stubFetch(async () => chatBody("")),
+			fetchImpl: stubFetch(async (_url, init) => {
+				seenBody = (init?.body ?? "") as string;
+				return chatBody('{"ops":[{"at":0,"remove":"a","insert":"b","kind":"fix"}]}');
+			}),
+		});
+		const out = await Effect.runPromise(
+			Effect.flatMap(LlmPort, (l) =>
+				l.correct({
+					taskId: "t",
+					role: "corrector",
+					input: "raw transcript",
+					outputSchema: "EditList",
+				}),
+			).pipe(Effect.provide(layer)),
+		);
+		expect(out.edits.ops).toHaveLength(1);
+		expect(out.record.stage).toBe("cleanup");
+		expect(out.record.engine).toBe("openai-compat");
+		const body = JSON.parse(seenBody);
+		expect(body.messages[0].role).toBe("system");
+		expect(body.messages[0].content).toContain("transcript-correction backend");
+		expect(body.messages[1]).toEqual({ role: "user", content: "raw transcript" });
+	});
+
+	it("correct rejects non-EditList envelopes and malformed JSON replies", async () => {
+		const layer = makeChatLlm({
+			baseUrl: "http://x/v1",
+			model: "m",
+			fetchImpl: stubFetch(async () => chatBody("not json")),
+		});
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.correct({ taskId: "t", role: "corrector", input: "raw", outputSchema: "Text" }),
+				).pipe(Effect.provide(layer)),
+			),
+		).rejects.toMatchObject({
+			_tag: "PortError",
+			port: "llm",
+			message: expect.stringContaining("EditList"),
 		});
 		await expect(
 			Effect.runPromise(
@@ -234,7 +274,23 @@ describe("makeChatLlm", () => {
 		).rejects.toMatchObject({
 			_tag: "PortError",
 			port: "llm",
-			message: "chat endpoints implement generate only — correct is an ACP concern",
+			message: expect.stringContaining("EditList validation"),
+		});
+		const emptyLayer = makeChatLlm({
+			baseUrl: "http://x/v1",
+			model: "m",
+			fetchImpl: stubFetch(async () => chatBody("   ")),
+		});
+		await expect(
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.correct({ taskId: "t", role: "corrector", input: "raw", outputSchema: "EditList" }),
+				).pipe(Effect.provide(emptyLayer)),
+			),
+		).rejects.toMatchObject({
+			_tag: "PortError",
+			port: "llm",
+			message: "chat response: empty content",
 		});
 	});
 

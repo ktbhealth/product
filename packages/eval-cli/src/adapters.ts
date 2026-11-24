@@ -27,6 +27,7 @@ import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
 import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
 import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
 import { makeNodeAcpLlm } from "@ktb/ai-adapter-node";
+import { makeChatLlm } from "@ktb/ai-adapter-openai";
 import { makeWorkersAiAsr, makeWorkersAiEval, makeWorkersAiLlm } from "@ktb/eval-adapter-cloud";
 import {
 	makeJevEval,
@@ -281,7 +282,10 @@ const llmLayer = (ctx: WireContext, key: string) => {
 			// directory (default: --workdir). EVAL_ACP_TIMEOUT_MS
 			// bounds each ACP request (default 120s — CLI agents are
 			// slower than the 60s HTTP default because every call
-			// pays process spawn + session setup).
+			// pays process spawn + session setup). EVAL_ACP_PERMISSION
+			// answers session/request_permission headlessly:
+			// allow|reject|refuse (default refuse — tool-gated agents
+			// then end turns with no reply text).
 			const agentCmd = ctx.env.EVAL_ACP_AGENT_CMD ?? "devin acp";
 			if (agentCmd.trim() === "") {
 				throw new Error(`adapter "acp-cli" requires EVAL_ACP_AGENT_CMD (profile "${ctx.profile}")`);
@@ -290,14 +294,42 @@ const llmLayer = (ctx: WireContext, key: string) => {
 			const parsedTimeout =
 				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
 			const cwd = ctx.env.EVAL_ACP_CWD;
+			const permissionRaw = ctx.env.EVAL_ACP_PERMISSION;
+			const permissionPolicy =
+				permissionRaw === "allow" || permissionRaw === "reject" || permissionRaw === "refuse"
+					? permissionRaw
+					: undefined;
 			return makeNodeAcpLlm({
 				argv: agentCmd.trim().split(/\s+/),
 				cwd: cwd !== undefined && cwd !== "" ? cwd : ctx.workdir,
+				...(permissionPolicy !== undefined ? { permissionPolicy } : {}),
 				timeoutMs:
 					parsedTimeout !== undefined && Number.isFinite(parsedTimeout) && parsedTimeout > 0
 						? parsedTimeout
 						: 120_000,
 				engineVersion: fnvHex(`cli:${agentCmd}`),
+			});
+		}
+		case "openai-compat": {
+			// Any OpenAI-compatible chat endpoint — Ollama/LM Studio
+			// local, OpenAI, gateways. generate() sends the envelope
+			// input; correct() sends CORRECTOR_INSTRUCTIONS as the
+			// system message and parses an EditList reply. Fully
+			// independent of agent transports (no spawn, no ACP).
+			const baseUrl = env(ctx, "EVAL_LLM_BASE_URL");
+			const model = env(ctx, "EVAL_LLM_MODEL");
+			const apiKey = ctx.env.EVAL_LLM_API_KEY;
+			const timeoutRaw = ctx.env.EVAL_LLM_TIMEOUT_MS;
+			const timeoutMs =
+				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
+			return makeChatLlm({
+				baseUrl,
+				model,
+				...(apiKey !== undefined && apiKey !== "" ? { apiKey } : {}),
+				...(timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
+					? { timeoutMs }
+					: {}),
+				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
 			});
 		}
 		case "workers-ai": {

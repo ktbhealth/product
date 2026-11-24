@@ -62,6 +62,21 @@ export const outputValidators: Record<string, OutputValidator> = {
 	EditList: (payload) => Schema.decodeUnknownSync(EditList)(payload),
 };
 
+/** Corrector contract for `LlmPort.correct` — the prompt every
+ * corrector backend must honor (I-003: adapters that sent the bare
+ * transcript never produced EditList). ACP sessions have no system
+ * role so acp-llm prepends it to the user turn; chat adapters can
+ * send it as a real system message. */
+export const CORRECTOR_INSTRUCTIONS =
+	"You are a transcript-correction backend for an evaluation pipeline. " +
+	"The user message contains a raw ASR transcript of a medical consultation. " +
+	"Return ONLY a JSON object " +
+	'{"ops":[{"at":<number>,"remove":"<exact substring>","insert":"<replacement>","kind":"fix|punct|entity|format"}]} ' +
+	"describing minimal reversible edits (fix ASR errors, punctuation, entities). " +
+	"`at` is the character offset into the transcript and `remove` must match the " +
+	"input EXACTLY — offsets are validated before applying. " +
+	'Return {"ops":[]} when the transcript needs no edits. No prose, no fences.';
+
 export const encodeTask = (envelope: TaskEnvelope, sessionId?: string): AcpRequest => ({
 	jsonrpc: ACP_VERSION,
 	id: envelope.taskId,

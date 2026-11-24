@@ -91,6 +91,11 @@ export interface SuiteResolution {
  *                     fully-local run
  *   local-devin    — `local` with the LLM swapped to the same
  *                     spawned ACP CLI agent
+ *   local-devin-judge-stub — `local-devin` with a stub judge, for
+ *                     on-box cleanup verification without Jev
+ *   local-chat       — edge-tts + faster-whisper + OpenAI-compatible
+ *                     chat LLM (EVAL_LLM_BASE_URL/MODEL, e.g. Ollama)
+ *                     + stub judge; no agent transport at all
  *   cloud           — managed adapters: Workers AI ASR + LLM/judge,
  *                     R2 store. Partial by design — transcription.tts
  *                     has no Workers AI equivalent, so suites
@@ -169,6 +174,32 @@ const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>
 		asr: "faster-whisper",
 		llm: "acp-cli",
 		eval: "jev",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
+	"local-chat": {
+		// Fully independent local stack: edge-tts + faster-whisper +
+		// any OpenAI-compatible chat endpoint (Ollama/LM Studio via
+		// EVAL_LLM_BASE_URL/EVAL_LLM_MODEL) + stub judge. No agent
+		// spawn, no ACP, no external API — the corrector is a plain
+		// chat call honoring CORRECTOR_INSTRUCTIONS.
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "openai-compat",
+		eval: "stub",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
+	"local-devin-judge-stub": {
+		// `local-devin` without the Jev judge service — real ASR + ACP
+		// cleanup, stub verdicts. For verifying the cleanup stage
+		// end-to-end on-box when no judge backend is running.
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "acp-cli",
+		eval: "stub",
 		store: "sqlite-fs",
 		report: "jsonl",
 		registry: "sqlite-fs",

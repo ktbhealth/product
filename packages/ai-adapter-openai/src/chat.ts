@@ -8,15 +8,17 @@
  * response maps `choices[0].message.content` onto the port's
  * `{ text, record }` contract.
  *
- * `correct()` is intentionally unimplemented — surface correction is
- * an ACP/EditList concern; chat endpoints serve script generation.
+ * `correct()` sends CORRECTOR_INSTRUCTIONS as a system message and
+ * parses the reply as an EditList — the same contract the ACP
+ * adapter honors, minus the agent layer.
  */
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
-import { fnvHex, LlmPort } from "@ktb/eval-consultation";
+import { CORRECTOR_INSTRUCTIONS, fnvHex, LlmPort, outputValidators } from "@ktb/eval-consultation";
+import type { EditList } from "@ktb/eval-consultation";
 
 export interface ChatLlmOptions {
 	readonly baseUrl: string;
@@ -47,6 +49,8 @@ const postChat = (
 	envelope: TaskEnvelope,
 	timeoutMs: number,
 	fetchImpl: typeof fetch,
+	system?: string,
+	temperature = 0.8,
 ) =>
 	Effect.gen(function* () {
 		const res = yield* Effect.tryPromise({
@@ -60,10 +64,13 @@ const postChat = (
 					signal: AbortSignal.timeout(timeoutMs),
 					body: JSON.stringify({
 						model: opts.model,
-						messages: [{ role: "user", content: envelope.input }],
+						messages: [
+							...(system !== undefined ? [{ role: "system", content: system }] : []),
+							{ role: "user", content: envelope.input },
+						],
 						// Generation benefits from variety; `seed` is forwarded
 						// when the backend honors it (Ollama/OpenAI do).
-						temperature: 0.8,
+						temperature,
 						// Stryker disable next-line ConditionalExpression: `seed: undefined` is dropped by JSON.stringify, so spreading it unconditionally serializes identically
 						...(envelope.seed !== undefined ? { seed: envelope.seed } : {}),
 					}),
@@ -148,13 +155,72 @@ export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
 					})),
 				);
 			},
-			correct: () =>
-				Effect.fail(
-					new PortError({
-						port: "llm",
-						message: "chat endpoints implement generate only — correct is an ACP concern",
+			correct: (envelope) => {
+				if (envelope.outputSchema !== "EditList") {
+					return Effect.fail(
+						new PortError({
+							port: "llm",
+							message: `cleanup requires outputSchema=EditList, got ${envelope.outputSchema}`,
+						}),
+					);
+				}
+				const started = Date.now();
+				return postChat(
+					url,
+					opts,
+					envelope,
+					timeoutMs,
+					fetchImpl,
+					CORRECTOR_INSTRUCTIONS,
+					0.2,
+				).pipe(
+					Effect.withSpan("llm.chat.correct", { attributes: { "llm.model": opts.model } }),
+					Effect.timeout(`${timeoutMs} millis`),
+					/* v8 ignore next 4 -- else arm only fires on raw timeout defects */
+					Effect.mapError((e) =>
+						e instanceof PortError
+							? e
+							: new PortError({ port: "llm", message: `timeout after ${timeoutMs}ms`, cause: e }),
+					),
+					Effect.flatMap((body) => {
+						const content = body.choices?.[0]?.message?.content;
+						if (typeof content !== "string" || content.trim().length === 0) {
+							return Effect.fail(
+								new PortError({ port: "llm", message: "chat response: empty content" }),
+							);
+						}
+						return Effect.try({
+							// The reply text is the EditList JSON — parse then
+							// schema-decode; either failure is one typed
+							// PortError (same contract as the ACP adapter).
+							try: () => outputValidators.EditList(JSON.parse(content)) as EditList,
+							catch: (e) =>
+								new PortError({
+									port: "llm",
+									message: `payload failed EditList validation: ${causeMessage(e)}`,
+									cause: e,
+								}),
+						});
 					}),
-				),
+					Effect.map((edits) => ({
+						edits,
+						record: {
+							runId: opts.sessionId ?? "chat",
+							taskId: envelope.taskId,
+							stage: "cleanup",
+							engine: "openai-compat",
+							model: opts.model,
+							engineVersion,
+							inputHash: fnvHex(
+								`${envelope.taskId}:${envelope.outputSchema}:${envelope.input}:${envelope.seed ?? 0}`,
+							),
+							seed: envelope.seed,
+							startedAt: started,
+							latencyMs: Date.now() - started,
+						} satisfies RunRecord,
+					})),
+				);
+			},
 		}),
 	);
 };

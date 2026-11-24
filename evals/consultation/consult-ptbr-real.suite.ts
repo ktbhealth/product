@@ -37,6 +37,37 @@ import { defineSuite } from "@ktb/eval-core";
  *
  * then real ASR adapters produce the actual WER signal this cohort
  * exists to measure (`--profile local-asr` + EVAL_ASR_URL).
+ *
+ * FULL LOCAL REPRO (fresh clone, no external services beyond the
+ * two local servers below):
+ *
+ *   # 1. materialize + render audio (steps above)
+ *   # 2. faster-whisper sidecar — CPU needs >60s/file on 3-min
+ *   #    consults, so raise the client timeout (server defaults to
+ *   #    :8765, which is also the adapter default — EVAL_ASR_URL only
+ *   #    needed to override):
+ *   uv run --with faster-whisper --with "av==13.*" python \
+ *     packages/eval-adapter-local/scripts/asr-server.py &
+ *   # 3. pick a profile:
+ *   #
+ *   #    local-asr               real ASR, stub judge/LLM — WER only
+ *   #    local-chat              + OpenAI-compatible LLM corrector
+ *   #                            (Ollama: EVAL_LLM_BASE_URL=
+ *   #                            http://localhost:11434/v1,
+ *   #                            EVAL_LLM_MODEL=qwen3:4b) — no agent
+ *   #    local-devin-judge-stub  + spawned ACP agent corrector
+ *   #                            (devin CLI; EVAL_ACP_PERMISSION=allow
+ *   #                            required — default agent's tool calls
+ *   #                            otherwise end turns with no reply)
+ *   #
+ *   EVAL_ASR_TIMEOUT_MS=300000 \
+ *   EVAL_LLM_BASE_URL=http://localhost:11434/v1 \
+ *   EVAL_LLM_MODEL=qwen3:4b \
+ *     bun apps/cli/src/main.ts eval run consult-ptbr-real \
+ *       --workdir /tmp/eval-ptbr-real --profile local-chat
+ *
+ * Measured (faster-whisper base, 18 samples): raw WER 0.121;
+ * LLM cleanup ≈0.10 mean offline, in-pipeline verified on subsets.
  */
 export const suite = defineSuite({
 	id: "consult-ptbr-real",

@@ -19,7 +19,13 @@ import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 
 import { PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
-import { fnvHex, LlmPort, outputValidators, type EditList } from "@ktb/eval-consultation";
+import {
+	CORRECTOR_INSTRUCTIONS,
+	fnvHex,
+	LlmPort,
+	outputValidators,
+	type EditList,
+} from "@ktb/eval-consultation";
 
 import { openAcpSession, type AcpClient, type AcpRpc } from "./acp-client.ts";
 
@@ -87,21 +93,6 @@ const promptText = (
 	);
 };
 
-/** Corrector contract prepended to `envelope.input` — ACP sessions
- * have no system role, so the instruction rides in the user turn.
- * Mirrors CORRECT_SYSTEM in @ktb/eval-adapter-cloud (I-003: without
- * this the agent saw a bare transcript and never emitted EditList
- * JSON — correct() failed deterministically on every call). */
-const CORRECT_INSTRUCTIONS =
-	"You are a transcript-correction backend for an evaluation pipeline. " +
-	"The user message contains a raw ASR transcript of a medical consultation. " +
-	"Return ONLY a JSON object " +
-	'{"ops":[{"at":<number>,"remove":"<exact substring>","insert":"<replacement>","kind":"fix|punct|entity|format"}]} ' +
-	"describing minimal reversible edits (fix ASR errors, punctuation, entities). " +
-	"`at` is the character offset into the transcript and `remove` must match the " +
-	"input EXACTLY — offsets are validated before applying. " +
-	'Return {"ops":[]} when the transcript needs no edits. No prose, no fences.';
-
 /** LlmPort over an ACP session transport. `generate` validates the
  * agent's text against the envelope's declared `outputSchema` through
  * the validator registry; `correct` pins `EditList` and parses the
@@ -147,7 +138,7 @@ export const makeAcpSessionLlm = (opts: AcpSessionLlmOptions): Layer.Layer<LlmPo
 				}
 				return promptText(
 					opts,
-					{ ...envelope, input: `${CORRECT_INSTRUCTIONS}\n\n${envelope.input}` },
+					{ ...envelope, input: `${CORRECTOR_INSTRUCTIONS}\n\n${envelope.input}` },
 					"cleanup",
 				).pipe(
 					Effect.flatMap(({ text, record }) =>

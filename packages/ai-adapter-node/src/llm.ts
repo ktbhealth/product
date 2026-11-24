@@ -44,6 +44,9 @@ export interface NodeAcpLlmOptions {
 	readonly egress?: boolean;
 	readonly engineVersion?: string;
 	readonly spawnImpl?: SpawnImpl;
+	/** ACP `session/request_permission` policy for the spawned agent
+	 * (see StdioRpcOptions). Default "refuse". */
+	readonly permissionPolicy?: "allow" | "reject" | "refuse";
 }
 
 /** LlmPort over a spawned ACP agent — the stdio transport plugged
@@ -54,6 +57,7 @@ export const makeNodeAcpLlm = (opts: NodeAcpLlmOptions): Layer.Layer<LlmPort> =>
 			makeStdioRpc({
 				argv: opts.argv,
 				...(opts.spawnImpl !== undefined ? { spawnImpl: opts.spawnImpl } : {}),
+				...(opts.permissionPolicy !== undefined ? { permissionPolicy: opts.permissionPolicy } : {}),
 				onNotification,
 			}),
 		engine: "acp-node",
