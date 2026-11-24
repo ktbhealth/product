@@ -33,6 +33,7 @@ import { validatePatient } from "@ktb/patients/record";
 
 import { consultations as consultationsTable } from "@ktb/db/schema";
 import { ConsultationsLive, createConsultation } from "./index.ts";
+import { whisperInputs } from "./audio-consumer.ts";
 import { Route as AudioRoute } from "./api-routes/consultations.$id.audio.ts";
 import { Route as ExportRoute } from "./api-routes/patients.$id.export.ts";
 import { Route as PdfRoute } from "./api-routes/consultations.$id.pdf.ts";
@@ -199,10 +200,7 @@ describe("/api/transcribe edge cases", () => {
 		expect(await res.json()).toEqual({ text: "" });
 		// Base64 payload to the runtime-configured model — same shape the
 		// queued pipeline uses (a number[] would serialize huge).
-		expect(ai.current.run).toHaveBeenCalledWith("test-model", {
-			audio: "AQID",
-			language: "pt",
-		});
+		expect(ai.current.run).toHaveBeenCalledWith("test-model", whisperInputs("AQID"));
 	});
 
 	it("returns the model's text", async () => {
