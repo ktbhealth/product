@@ -122,7 +122,7 @@ const resolvePointer = (root: unknown, ref: string): unknown => {
 		if (Array.isArray(cur)) {
 			if (!/^\d+$/.test(seg)) return undefined;
 			cur = cur[Number(seg)];
-		// Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,StringLiteral: for non-array cur, isObj(cur) implies typeof cur === "object", so every variant coincides with `typeof cur === "object"` up to null (undefined either way) and primitives (hasOwn fails → undefined, or a string index yields a char that deref rejects with the same unresolvable-$ref SeedError). Probe-verified identical.
+			// Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,StringLiteral: for non-array cur, isObj(cur) implies typeof cur === "object", so every variant coincides with `typeof cur === "object"` up to null (undefined either way) and primitives (hasOwn fails → undefined, or a string index yields a char that deref rejects with the same unresolvable-$ref SeedError). Probe-verified identical.
 		} else if (isObj(cur) || typeof cur === "object") {
 			if (cur === null || !Object.hasOwn(cur, seg)) return undefined;
 			cur = (cur as Record<string, unknown>)[seg];
@@ -252,10 +252,10 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 		// Stryker disable next-line LogicalOperator,ConditionalExpression: whenever either side is false the remaining arms still produce false — mergeTwo(x, false) === false and the true/undefined arms assign the false side — so the explicit check is redundant.
 		if (av === false || bv === false) {
 			out.additionalProperties = false;
-		// Stryker disable next-line ConditionalExpression,BooleanLiteral: reached only when av is not false; for av === true every remaining arm yields bv or true — identical to taking bv.
+			// Stryker disable next-line ConditionalExpression,BooleanLiteral: reached only when av is not false; for av === true every remaining arm yields bv or true — identical to taking bv.
 		} else if (av === undefined || av === true) {
 			out.additionalProperties = bv;
-		// Stryker disable next-line ConditionalExpression,LogicalOperator,BooleanLiteral,BlockStatement: reached only when bv is defined and not false, so `bv === undefined` is always false; for bv === true the fallthrough mergeTwo(av, true) === av — identical to the assignment.
+			// Stryker disable next-line ConditionalExpression,LogicalOperator,BooleanLiteral,BlockStatement: reached only when bv is defined and not false, so `bv === undefined` is always false; for bv === true the fallthrough mergeTwo(av, true) === av — identical to the assignment.
 		} else if (bv === undefined || bv === true) {
 			out.additionalProperties = av;
 		} else {

@@ -1036,12 +1036,12 @@ describe("generate — $ref pointer edge cases", () => {
 				required: ["q"],
 			}) as unknown as JsonSchema;
 		const opts = { seed: 1, requiredOnly: true } as const;
-		expect((generate(refSchema("#/properties/holder/allOf/01"), opts) as Record<string, unknown>).q).toBe(
-			"one",
-		);
-		expect((generate(refSchema("#/properties/holder/allOf/1"), opts) as Record<string, unknown>).q).toBe(
-			"one",
-		);
+		expect(
+			(generate(refSchema("#/properties/holder/allOf/01"), opts) as Record<string, unknown>).q,
+		).toBe("one");
+		expect(
+			(generate(refSchema("#/properties/holder/allOf/1"), opts) as Record<string, unknown>).q,
+		).toBe("one");
 
 		const branches = Array.from({ length: 11 }, (_, i) => ({ const: i }));
 		const wide = {
@@ -1159,7 +1159,12 @@ describe("generate — merge edge cases", () => {
 		).toThrow("conflicting patterns");
 		expect(() =>
 			generate(
-				{ allOf: [{ type: "string", minLength: 10 }, { type: "string", maxLength: 5 }] } as JsonSchema,
+				{
+					allOf: [
+						{ type: "string", minLength: 10 },
+						{ type: "string", maxLength: 5 },
+					],
+				} as JsonSchema,
 				{ seed: 1 },
 			),
 		).toThrow("inverted bounds");
@@ -1173,7 +1178,12 @@ describe("generate — merge edge cases", () => {
 		) as number;
 		expect(lo).toBeGreaterThanOrEqual(10);
 		const hi = generate(
-			{ allOf: [{ type: "number", maximum: 50 }, { type: "number", maximum: 5 }] } as JsonSchema,
+			{
+				allOf: [
+					{ type: "number", maximum: 50 },
+					{ type: "number", maximum: 5 },
+				],
+			} as JsonSchema,
 			{ rng: () => 0.95 },
 		) as number;
 		expect(hi).toBeLessThanOrEqual(5);
@@ -1201,7 +1211,10 @@ describe("generate — merge edge cases", () => {
 				() =>
 					generate(
 						{
-							allOf: [{ type: "boolean", [lo]: 10 }, { type: "boolean", [hi]: 5 }],
+							allOf: [
+								{ type: "boolean", [lo]: 10 },
+								{ type: "boolean", [hi]: 5 },
+							],
 						} as JsonSchema,
 						{ seed: 1 },
 					),
@@ -1212,9 +1225,17 @@ describe("generate — merge edge cases", () => {
 
 	it("allows equal merged bounds", () => {
 		expect(
-			generate({ allOf: [{ type: "integer", minimum: 5 }, { type: "integer", maximum: 5 }] } as JsonSchema, {
-				seed: 1,
-			}),
+			generate(
+				{
+					allOf: [
+						{ type: "integer", minimum: 5 },
+						{ type: "integer", maximum: 5 },
+					],
+				} as JsonSchema,
+				{
+					seed: 1,
+				},
+			),
 		).toBe(5);
 	});
 
