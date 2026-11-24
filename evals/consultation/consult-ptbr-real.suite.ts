@@ -28,10 +28,15 @@ import { defineSuite } from "@ktb/eval-core";
  *   bun apps/cli/src/main.ts eval run consult-ptbr-real \
  *     --workdir /tmp/eval-ptbr-real
  *
- * Follow-up: render real TTS audio per consult (per-speaker voices,
- * clinic noise profile) and rewrite each sample's audio.uri to the
- * produced file:// ref — then real ASR adapters produce the actual
- * WER signal this cohort exists to measure.
+ * Audio (T-164): render real TTS per consult — per-speaker voices,
+ * clinic noise — and rewrite each sample's audio.uri to the
+ * produced file:// ref:
+ *
+ *   bun packages/eval-adapter-local/scripts/render-ptbr-real-audio.ts \
+ *     --workdir /tmp/eval-ptbr-real
+ *
+ * then real ASR adapters produce the actual WER signal this cohort
+ * exists to measure (`--profile local-asr` + EVAL_ASR_URL).
  */
 export const suite = defineSuite({
 	id: "consult-ptbr-real",

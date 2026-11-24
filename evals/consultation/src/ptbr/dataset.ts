@@ -16,9 +16,10 @@ import type { PtbrConsult } from "./types.ts";
  * AudioRef under the `pending://` scheme — a deliberate placeholder
  * that no adapter can resolve (makeReadAudioFile accepts file://
  * only, confined to the workdir; blob reads 404). The stub profile
- * never reads audio, so `eval run` works end-to-end offline; a real
- * ASR/TTS pass is the documented follow-up (render each consult's
- * turns with per-speaker voices and rewrite the uri to file://…).
+ * never reads audio, so `eval run` works end-to-end offline; the TTS
+ * pass is scripts/render-ptbr-real-audio.ts in eval-adapter-local
+ * (render each consult's turns with per-speaker voices and rewrite
+ * the uri to file://…).
  * blob_meta is registered `synthetic` up-front because the audio,
  * once rendered, IS synthetic TTS of authored text — and because
  * unregistered (`null`) provenance would fail closed on egress
