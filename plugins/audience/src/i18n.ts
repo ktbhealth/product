@@ -207,7 +207,7 @@ const en: AudienceMessages = {
 	hero_docs_cta: "Read the docs",
 	hero_doctors_badge: "Clinical documentation by voice",
 	hero_doctors_subtitle:
-		"Talk to the patient, not to the screen. KTB Health listens to the consultation, transcribes it and structures the anamnesis with evidence citations. You review, edit and sign.",
+		"Talk to the patient, not to the screen. KTB Health is the specialty-first, locale-native clinical scribe: it listens to the consultation, transcribes it and structures the anamnesis with evidence citations. You review, edit and sign.",
 	hero_doctors_title_a: "The doctor decides.",
 	hero_doctors_title_b: "KTB Health records.",
 	hero_how_cta: "How it works",
@@ -349,7 +349,7 @@ const ptBR: AudienceMessages = {
 	hero_docs_cta: "Ler a documentação",
 	hero_doctors_badge: "Documentação clínica por voz",
 	hero_doctors_subtitle:
-		"Converse com o paciente, não com a tela. A KTB Health escuta a consulta, transcreve e estrutura a anamnese com citações de evidência. Você revisa, edita e assina.",
+		"Converse com o paciente, não com a tela. A KTB Health é o scribe clínico specialty-first, locale-native: escuta a consulta, transcreve e estrutura a anamnese com citações de evidência. Você revisa, edita e assina.",
 	hero_doctors_title_a: "O médico decide.",
 	hero_doctors_title_b: "A KTB Health registra.",
 	hero_how_cta: "Como funciona",
@@ -491,7 +491,7 @@ const es: AudienceMessages = {
 	hero_docs_cta: "Leer la documentación",
 	hero_doctors_badge: "Documentación clínica por voz",
 	hero_doctors_subtitle:
-		"Hable con el paciente, no con la pantalla. KTB Health escucha la consulta, la transcribe y estructura la anamnesis con citas de evidencia. Usted revisa, edita y firma.",
+		"Hable con el paciente, no con la pantalla. KTB Health es el scribe clínico specialty-first, locale-native: escucha la consulta, la transcribe y estructura la anamnesis con citas de evidencia. Usted revisa, edita y firma.",
 	hero_doctors_title_a: "El médico decide.",
 	hero_doctors_title_b: "KTB Health registra.",
 	hero_how_cta: "Cómo funciona",
