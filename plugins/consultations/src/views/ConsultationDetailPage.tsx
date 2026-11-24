@@ -439,7 +439,7 @@ export function ConsultationDetailPage({
 					</CardHeader>
 					<CardContent>
 						{v.anamnesis ? (
-							<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[70vh]">
+							<ScrollArea className="h-[70vh]">
 								<div className="divide-y divide-border">
 									{(
 										Object.keys(t.sections).filter(
@@ -527,7 +527,7 @@ export function ConsultationDetailPage({
 						<CardTitle>{t.common.transcript}</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[70vh]">
+						<ScrollArea className="h-[70vh]">
 							<div className="pr-3" ref={transcriptRef}>
 								<AudioTranscriptPanel
 									i18n={i18n}

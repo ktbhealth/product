@@ -1239,7 +1239,7 @@ export function NewConsultationPage({
 							</CardContent>
 						) : (
 							<CardContent>
-								<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[68vh]">
+								<ScrollArea className="h-[60vh]">
 									<div className="space-y-3 pr-3">
 										{anamnesis.historico ? (
 											<div className="rounded-xl border border-border bg-muted/40 p-3">
