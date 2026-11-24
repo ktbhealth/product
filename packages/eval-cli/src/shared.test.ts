@@ -99,7 +99,7 @@ describe("selectProfile", () => {
 		const err = await runErr(selectProfile(Option.some("nope"), suite()));
 		expect(err).toBeInstanceOf(UsageError);
 		expect(err.message).toMatch(
-			/stub, local, local-asr, local-jev, local-systemone, devin, local-devin, local-devin-judge-stub, cloud/,
+			/stub, local, local-asr, local-jev, local-systemone, devin, local-devin, local-chat, local-devin-judge-stub, cloud/,
 		);
 	});
 });

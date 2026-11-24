@@ -27,6 +27,7 @@ import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
 import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
 import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
 import { makeNodeAcpLlm } from "@ktb/ai-adapter-node";
+import { makeChatLlm } from "@ktb/ai-adapter-openai";
 import { makeWorkersAiAsr, makeWorkersAiEval, makeWorkersAiLlm } from "@ktb/eval-adapter-cloud";
 import {
 	makeJevEval,
@@ -307,6 +308,28 @@ const llmLayer = (ctx: WireContext, key: string) => {
 						? parsedTimeout
 						: 120_000,
 				engineVersion: fnvHex(`cli:${agentCmd}`),
+			});
+		}
+		case "openai-compat": {
+			// Any OpenAI-compatible chat endpoint — Ollama/LM Studio
+			// local, OpenAI, gateways. generate() sends the envelope
+			// input; correct() sends CORRECTOR_INSTRUCTIONS as the
+			// system message and parses an EditList reply. Fully
+			// independent of agent transports (no spawn, no ACP).
+			const baseUrl = env(ctx, "EVAL_LLM_BASE_URL");
+			const model = env(ctx, "EVAL_LLM_MODEL");
+			const apiKey = ctx.env.EVAL_LLM_API_KEY;
+			const timeoutRaw = ctx.env.EVAL_LLM_TIMEOUT_MS;
+			const timeoutMs =
+				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
+			return makeChatLlm({
+				baseUrl,
+				model,
+				...(apiKey !== undefined && apiKey !== "" ? { apiKey } : {}),
+				...(timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
+					? { timeoutMs }
+					: {}),
+				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
 			});
 		}
 		case "workers-ai": {
