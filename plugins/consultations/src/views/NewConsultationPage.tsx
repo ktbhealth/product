@@ -1117,10 +1117,10 @@ export function NewConsultationPage({
 				</CardContent>
 			</Card>
 
-			<ResizablePanelGroup>
+			<ResizablePanelGroup className="h-[80vh]">
 				{/* ================= left column: transcript ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
-					<Card>
+					<Card className="flex h-full flex-col">
 						<CardHeader className="border-b">
 							<CardTitle>{t.common.transcript}</CardTitle>
 							<CardAction>
@@ -1145,21 +1145,21 @@ export function NewConsultationPage({
 								</div>
 							</CardAction>
 						</CardHeader>
-						<CardContent className="space-y-4">
-							<Field>
+						<CardContent className="flex min-h-0 flex-1 flex-col space-y-4">
+							<Field className="flex min-h-0 flex-1 flex-col">
 								<FieldLabel
 									htmlFor="transcript"
 									className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 								>
 									{nc.consultationText}
 								</FieldLabel>
-								<ScrollArea className="h-[60vh] rounded-lg border border-input">
+								<ScrollArea className="min-h-0 flex-1 rounded-lg border border-input">
 									<Textarea
 										id="transcript"
 										value={transcript}
 										onChange={(e) => setTranscript(e.target.value)}
 										placeholder={nc.transcriptPlaceholder}
-										className="min-h-[60vh] resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
+										className="resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
 									/>
 								</ScrollArea>
 							</Field>
@@ -1224,7 +1224,7 @@ export function NewConsultationPage({
 						</CardHeader>
 
 						{!anamnesis ? (
-							<CardContent>
+							<CardContent className="flex min-h-0 flex-1">
 								<Empty className="py-14">
 									<EmptyHeader>
 										<EmptyMedia variant="icon">
