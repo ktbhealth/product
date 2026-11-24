@@ -219,11 +219,18 @@ const asrLayer = (ctx: WireContext, key: string) => {
 	switch (key) {
 		case "stub":
 			return stubAsrLayer;
-		case "faster-whisper":
+		case "faster-whisper": {
+			// Same knob as the in-app runner driver (runner.ts): CPU
+			// inference on multi-minute consult audio exceeds the 60s
+			// port default — EVAL_ASR_TIMEOUT_MS raises it per run.
+			const parsed = Number(ctx.env.EVAL_ASR_TIMEOUT_MS);
+			const timeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 			return makeLocalAsr({
 				baseUrl: ctx.env.EVAL_ASR_URL ?? "http://127.0.0.1:8765",
+				...(timeoutMs !== undefined ? { timeoutMs } : {}),
 				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
 			});
+		}
 		case "workers-ai": {
 			const accountId = env(ctx, "EVAL_CF_ACCOUNT_ID");
 			const apiToken = env(ctx, "EVAL_CF_API_TOKEN");

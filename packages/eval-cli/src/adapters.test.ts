@@ -210,6 +210,29 @@ describe("capabilityLayer selection", () => {
 				"faster-whisper",
 			),
 		).not.toThrow();
+		// EVAL_ASR_TIMEOUT_MS wires the port timeout; junk values fall
+		// back to the 60s default rather than failing construction.
+		expect(() =>
+			capabilityLayer(
+				ctx({ profile: "local", env: { EVAL_ASR_TIMEOUT_MS: "300000" } }),
+				"asr",
+				"faster-whisper",
+			),
+		).not.toThrow();
+		expect(() =>
+			capabilityLayer(
+				ctx({ profile: "local", env: { EVAL_ASR_TIMEOUT_MS: "abc" } }),
+				"asr",
+				"faster-whisper",
+			),
+		).not.toThrow();
+		expect(() =>
+			capabilityLayer(
+				ctx({ profile: "local", env: { EVAL_ASR_TIMEOUT_MS: "0" } }),
+				"asr",
+				"faster-whisper",
+			),
+		).not.toThrow();
 		// edge-tts constructs the same way (needs no env).
 		expect(() => capabilityLayer(ctx({ profile: "local" }), "tts", "edge-tts")).not.toThrow();
 	});

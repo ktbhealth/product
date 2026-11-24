@@ -50,13 +50,20 @@ export interface LocalTtsOptions {
 	readonly retry?: Schedule.Schedule<unknown, PortError>;
 }
 
+// Verified against `edge-tts --list-voices` + live synthesis
+// (edge-tts 7.3.1, 2026-11): Microsoft retired pt-BR-FabioNeural,
+// pt-BR-HumbertoNeural and pt-BR-GiovannaNeural — they fail
+// deterministically with NoAudioReceived. Only these resolve;
+// the _3 aliases duplicate a live voice until Microsoft ships
+// more pt voices. Duarte is pt-PT (accent caveat) — the only
+// second male voice available.
 const DEFAULT_VOICES: Record<string, string> = {
 	br_male_1: "pt-BR-AntonioNeural",
-	br_male_2: "pt-BR-FabioNeural",
-	br_male_3: "pt-BR-HumbertoNeural",
+	br_male_2: "pt-PT-DuarteNeural",
+	br_male_3: "pt-BR-AntonioNeural",
 	br_female_1: "pt-BR-FranciscaNeural",
-	br_female_2: "pt-BR-ThalitaNeural",
-	br_female_3: "pt-BR-GiovannaNeural",
+	br_female_2: "pt-BR-ThalitaMultilingualNeural",
+	br_female_3: "pt-BR-FranciscaNeural",
 };
 
 /** Per-command exec timeouts — edge-tts is a network hop (120s),
