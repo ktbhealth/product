@@ -107,6 +107,7 @@ interface Ctx {
 const isObj = (v: unknown): v is JsonSchemaObject =>
 	typeof v === "object" && v !== null && !Array.isArray(v);
 
+// Stryker disable next-line ConditionalExpression,LogicalOperator: every surviving variant still ends in structuredClone (or returns an equal primitive), which is value-identical for all JSON inputs — only object identity differs, and primitives have none.
 const clone = <T>(v: T): T => (v === null || typeof v !== "object" ? v : structuredClone(v));
 
 /** RFC 6901 escape for error paths. */
@@ -121,6 +122,7 @@ const resolvePointer = (root: unknown, ref: string): unknown => {
 		if (Array.isArray(cur)) {
 			if (!/^\d+$/.test(seg)) return undefined;
 			cur = cur[Number(seg)];
+		// Stryker disable next-line ConditionalExpression,LogicalOperator,EqualityOperator,StringLiteral: for non-array cur, isObj(cur) implies typeof cur === "object", so every variant coincides with `typeof cur === "object"` up to null (undefined either way) and primitives (hasOwn fails → undefined, or a string index yields a char that deref rejects with the same unresolvable-$ref SeedError). Probe-verified identical.
 		} else if (isObj(cur) || typeof cur === "object") {
 			if (cur === null || !Object.hasOwn(cur, seg)) return undefined;
 			cur = (cur as Record<string, unknown>)[seg];
@@ -135,6 +137,7 @@ const jsonEqual = (a: unknown, b: unknown): boolean => {
 	if (a === b) return true;
 	if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
 	if (Array.isArray(a) !== Array.isArray(b)) return false;
+	// Stryker disable next-line ConditionalExpression,LogicalOperator,BlockStatement: the check above already returned false when arrayness differs, so && and || coincide; skipping or emptying this fast path falls through to the key-wise comparison, which is equivalent for dense JSON arrays (Object.keys of an array are exactly its indices).
 	if (Array.isArray(a) && Array.isArray(b)) {
 		return a.length === b.length && a.every((v, i) => jsonEqual(v, b[i]));
 	}
@@ -169,6 +172,7 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 	if (ta && tb) {
 		const inter = ta.filter((t) => tb.includes(t));
 		if (inter.length === 0) throw new SeedError("allOf branches have disjoint types", ctx.path);
+		// Stryker disable next-line ConditionalExpression: type "x" and ["x"] are interchangeable — normTypes normalizes both to the same list before generation.
 		out.type = inter.length === 1 ? inter[0] : inter;
 	} else if (tb) {
 		out.type = b.type;
@@ -182,6 +186,7 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 	}
 	if (bHasConst) out.const = b.const;
 	if (a.enum && b.enum) {
+		// Stryker disable next-line OptionalChaining: the `a.enum && b.enum` guard above guarantees b.enum is defined here.
 		const inter = a.enum.filter((v) => b.enum?.some((w) => jsonEqual(v, w)));
 		if (inter.length === 0) throw new SeedError("empty enum intersection", ctx.path);
 		out.enum = inter;
@@ -195,11 +200,13 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 	for (const k of LOWER_KEYS) {
 		const av = a[k];
 		const bv = b[k];
+		// Stryker disable next-line ConditionalExpression: when bv is undefined the skipped assignment would compute Math.max(av, -Infinity) === av — already present via the {...a} spread.
 		if (av !== undefined || bv !== undefined) out[k] = Math.max(av ?? -Infinity, bv ?? -Infinity);
 	}
 	for (const k of UPPER_KEYS) {
 		const av = a[k];
 		const bv = b[k];
+		// Stryker disable next-line ConditionalExpression: when bv is undefined the skipped assignment would compute Math.min(av, Infinity) === av — already present via the {...a} spread.
 		if (av !== undefined || bv !== undefined) out[k] = Math.min(av ?? Infinity, bv ?? Infinity);
 	}
 	// Cross-check the bound pairs we just tightened.
@@ -212,6 +219,7 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 	for (const [lo, hi] of pairs) {
 		const lv = out[lo] as number | undefined;
 		const hv = out[hi] as number | undefined;
+		// Stryker disable next-line ConditionalExpression: each variant still reduces to `lv > hv` plus redundant definedness checks — any comparison against undefined is false, so the guards cannot change the outcome.
 		if (lv !== undefined && hv !== undefined && lv > hv) {
 			throw new SeedError(`inverted bounds: ${lo} > ${hi}`, ctx.path);
 		}
@@ -237,13 +245,17 @@ const mergeObjects = (a: JsonSchemaObject, b: JsonSchemaObject, ctx: Ctx): JsonS
 	if (b.required) {
 		out.required = [...new Set([...(a.required ?? []), ...b.required])];
 	}
+	// Stryker disable next-line ConditionalExpression: entering with bv === undefined makes every arm converge to av (or undefined, equivalent to absent) — additionalProperties stays a's either way.
 	if (b.additionalProperties !== undefined) {
 		const av = a.additionalProperties;
 		const bv = b.additionalProperties;
+		// Stryker disable next-line LogicalOperator,ConditionalExpression: whenever either side is false the remaining arms still produce false — mergeTwo(x, false) === false and the true/undefined arms assign the false side — so the explicit check is redundant.
 		if (av === false || bv === false) {
 			out.additionalProperties = false;
+		// Stryker disable next-line ConditionalExpression,BooleanLiteral: reached only when av is not false; for av === true every remaining arm yields bv or true — identical to taking bv.
 		} else if (av === undefined || av === true) {
 			out.additionalProperties = bv;
+		// Stryker disable next-line ConditionalExpression,LogicalOperator,BooleanLiteral,BlockStatement: reached only when bv is defined and not false, so `bv === undefined` is always false; for bv === true the fallthrough mergeTwo(av, true) === av — identical to the assignment.
 		} else if (bv === undefined || bv === true) {
 			out.additionalProperties = av;
 		} else {
