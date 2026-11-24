@@ -199,6 +199,17 @@ describe("capabilityLayer selection", () => {
 				"acp-cli",
 			),
 		).toThrow(/EVAL_ACP_AGENT_CMD/);
+		// EVAL_ACP_PERMISSION accepts the three spec policies; anything
+		// else falls back to the transport default (refuse).
+		for (const permission of ["allow", "reject", "refuse", "bogus"]) {
+			expect(() =>
+				capabilityLayer(
+					ctx({ profile: "devin", env: { EVAL_ACP_PERMISSION: permission } }),
+					"llm",
+					"acp-cli",
+				),
+			).not.toThrow();
+		}
 	});
 
 	test("openai-compat builds a chat layer with env config and overrides", () => {
@@ -213,6 +224,21 @@ describe("capabilityLayer selection", () => {
 				"openai-compat",
 			),
 		).toThrow(/EVAL_LLM_MODEL/);
+		// Minimal env — optional knobs unset.
+		expect(() =>
+			capabilityLayer(
+				ctx({
+					profile: "local-chat",
+					env: {
+						EVAL_LLM_BASE_URL: "http://localhost:11434/v1",
+						EVAL_LLM_MODEL: "qwen3:4b",
+					},
+				}),
+				"llm",
+				"openai-compat",
+			),
+		).not.toThrow();
+		// Full env — api key, timeout and fetch override all wire through.
 		expect(() =>
 			capabilityLayer(
 				ctx({
@@ -223,6 +249,7 @@ describe("capabilityLayer selection", () => {
 						EVAL_LLM_API_KEY: "sk-test",
 						EVAL_LLM_TIMEOUT_MS: "300000",
 					},
+					fetchImpl: fetch,
 				}),
 				"llm",
 				"openai-compat",
@@ -230,21 +257,23 @@ describe("capabilityLayer selection", () => {
 		).not.toThrow();
 		// Blank/invalid env values fall back to defaults rather than
 		// failing construction.
-		expect(() =>
-			capabilityLayer(
-				ctx({
-					profile: "local-chat",
-					env: {
-						EVAL_LLM_BASE_URL: "http://localhost:11434/v1",
-						EVAL_LLM_MODEL: "qwen3:4b",
-						EVAL_LLM_API_KEY: "",
-						EVAL_LLM_TIMEOUT_MS: "abc",
-					},
-				}),
-				"llm",
-				"openai-compat",
-			),
-		).not.toThrow();
+		for (const timeout of ["abc", "", "0"]) {
+			expect(() =>
+				capabilityLayer(
+					ctx({
+						profile: "local-chat",
+						env: {
+							EVAL_LLM_BASE_URL: "http://localhost:11434/v1",
+							EVAL_LLM_MODEL: "qwen3:4b",
+							EVAL_LLM_API_KEY: "",
+							EVAL_LLM_TIMEOUT_MS: timeout,
+						},
+					}),
+					"llm",
+					"openai-compat",
+				),
+			).not.toThrow();
+		}
 	});
 
 	test("faster-whisper builds with default and configured endpoints", () => {
