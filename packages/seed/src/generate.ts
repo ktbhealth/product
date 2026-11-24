@@ -556,7 +556,9 @@ const stringForKey = (key: string, ctx: Ctx): string => {
 	if (k.includes("currency")) return pools.countryCode === "BR" ? "BRL" : "USD";
 	if (
 		k === "id" ||
+		// Stryker disable next-line ConditionalExpression,StringLiteral: k === "uuid" implies k.endsWith("uuid") below, so this disjunct can never change the OR result.
 		k === "uuid" ||
+		// Stryker disable next-line ConditionalExpression,StringLiteral: k === "guid" implies k.endsWith("guid") below, so this disjunct can never change the OR result.
 		k === "guid" ||
 		k === "uid" ||
 		k.endsWith("_id") ||

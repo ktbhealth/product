@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { validate, type JsonSchema } from "@ktb/json-schema";
 
-import { generate, generateMany, generateRecord, MAX_GENERATE_MANY, SeedError } from "./index.ts";
+import {
+	generate,
+	generateMany,
+	generateRecord,
+	MAX_GENERATE_MANY,
+	poolsFor,
+	SeedError,
+} from "./index.ts";
 
 /**
  * Fixture corpus — one schema per subset feature area. Every schema
@@ -574,6 +581,97 @@ describe("generate — string heuristics coverage", () => {
 			{ seed: "fmt", locale: "en" },
 		);
 		expect(rec.format).not.toMatch(/^\d{4}-\d{2}-\d{2}T/);
+	});
+});
+
+describe("generate — string heuristic formats", () => {
+	// One key per disjunct of the field-name heuristics in stringForKey
+	// (district → id). Format assertions — not just typeof — pin each
+	// branch so condition/operator mutants change observable output.
+	const keys = [
+		"district",
+		"bairro",
+		"neighborhood",
+		"suburb",
+		"addressNumber",
+		"num",
+		"numero",
+		"addressLine",
+		"endereco",
+		"logradouro",
+		"street",
+		"avenue",
+		"complement",
+		"complemento",
+		"country",
+		"pais",
+		"nationality",
+		"gender",
+		"sexo",
+		"sex",
+		"preferredLanguage",
+		"idioma",
+		"locale",
+		"currency",
+		"id",
+		"uuid",
+		"guid",
+		"uid",
+		"record_id",
+		"requestUuid",
+		"assetGuid",
+		"note",
+	];
+	const schema: JsonSchema = {
+		type: "object",
+		properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])),
+	};
+	const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/;
+	const THOROUGHFARES = ["Rua", "Avenida", "Travessa", "Alameda"];
+
+	it("each heuristic branch emits its expected format", () => {
+		for (const locale of ["pt-BR", "en"] as const) {
+			const pools = poolsFor(locale);
+			const compRe = locale === "pt-BR" ? /^Apto \d+$/ : /^Apt \d+$/;
+			const genders = locale === "pt-BR" ? ["F", "M"] : ["female", "male", "other"];
+			for (let i = 0; i < 8; i++) {
+				const rec = generateRecord(schema, {
+					seed: `hf-${locale}-${i}`,
+					locale,
+				}) as Record<string, string>;
+				for (const k of ["district", "bairro", "neighborhood", "suburb"]) {
+					expect(pools.neighborhoods).toContain(rec[k]);
+				}
+				for (const k of ["addressNumber", "num", "numero"]) {
+					expect(rec[k]).toMatch(/^\d{1,5}$/);
+				}
+				for (const k of ["addressLine", "endereco", "logradouro", "street", "avenue"]) {
+					const [prefix, ...rest] = rec[k].split(" ");
+					expect(THOROUGHFARES).toContain(prefix);
+					expect(pools.streets).toContain(rest.join(" "));
+				}
+				for (const k of ["complement", "complemento"]) {
+					expect(rec[k]).toMatch(compRe);
+				}
+				for (const k of ["country", "pais", "nationality"]) {
+					expect(rec[k]).toBe(pools.countryCode);
+				}
+				for (const k of ["gender", "sexo", "sex"]) {
+					expect(genders).toContain(rec[k]);
+				}
+				for (const k of ["preferredLanguage", "idioma", "locale"]) {
+					expect(rec[k]).toBe(pools.localeTag);
+				}
+				expect(rec.currency).toBe(pools.countryCode === "BR" ? "BRL" : "USD");
+				for (const k of ["id", "uuid", "guid", "uid", "record_id", "requestUuid", "assetGuid"]) {
+					expect(rec[k]).toMatch(UUID_RE);
+				}
+				// Fallback: pool words only — no heuristic format leaks in.
+				for (const w of rec.note.split(" ")) {
+					expect(pools.words).toContain(w);
+				}
+			}
+		}
 	});
 });
 
