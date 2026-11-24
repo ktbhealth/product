@@ -56,4 +56,23 @@ describe("poolsFor", () => {
 			}
 		}
 	});
+
+	it("returns the pt-BR pools for pt-BR and pt", () => {
+		expect(poolsFor("pt-BR")).toMatchSnapshot();
+		expect(poolsFor("pt")).toBe(poolsFor("pt-BR"));
+	});
+
+	it("returns the en pools for en and en-* variants", () => {
+		expect(poolsFor("en")).toMatchSnapshot();
+		expect(poolsFor("en-US")).toBe(poolsFor("en"));
+		expect(poolsFor("en-GB")).toBe(poolsFor("en"));
+		expect(poolsFor("en-AU")).toBe(poolsFor("en"));
+	});
+
+	it("falls back to en for unknown locales and missing input", () => {
+		expect(poolsFor("fr")).toBe(poolsFor("en"));
+		expect(poolsFor("es-MX")).toBe(poolsFor("en"));
+		expect(poolsFor(undefined)).toBe(poolsFor("en"));
+		expect(poolsFor("")).toBe(poolsFor("en"));
+	});
 });
