@@ -258,6 +258,40 @@ describe("CronAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("collapses a throwing schedulableKinds read to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedulableKinds: () => {
+					throw new Error("declarations exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.schedulableKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a throwing schedulableKinds accessor to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get schedulableKinds(): never {
+					throw new Error("schedulableKinds accessor exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.schedulableKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("collapses a throwing jobKinds accessor to null", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(

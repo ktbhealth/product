@@ -27,7 +27,7 @@ vi.mock("@tanstack/react-router", () => ({
 }));
 
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo, ScheduledJobInfo } from "@ktb/server-fns";
+import type { CronJobInfo, ScheduledJobInfo, SchedulableKindInfo } from "@ktb/server-fns";
 
 import { CronPage } from "./CronPage.tsx";
 
@@ -223,8 +223,18 @@ const sched = (over: Partial<ScheduledJobInfo> = {}): ScheduledJobInfo => ({
 const renderSchedules = (
 	schedules: readonly ScheduledJobInfo[] | null,
 	kinds: readonly string[] | null = null,
+	schedulable: readonly SchedulableKindInfo[] | null = null,
 ) => {
-	render(<CronPage jobs={[]} runs={[]} schedules={schedules} scheduleKinds={kinds} locale="en" />);
+	render(
+		<CronPage
+			jobs={[]}
+			runs={[]}
+			schedules={schedules}
+			scheduleKinds={kinds}
+			schedulableKinds={schedulable}
+			locale="en"
+		/>,
+	);
 	openTab("Dynamic");
 };
 
@@ -434,5 +444,58 @@ describe("CronPage dynamic schedules", () => {
 		expect(await screen.findByText("Run failed. kaput")).toBeTruthy();
 		fireEvent.click(runButtons[1]!);
 		expect(await screen.findAllByText("Schedule operation failed.")).not.toHaveLength(0);
+	});
+
+	it("prefills cron expression and params from jobs.schedulable declarations", () => {
+		const decl = (over: Partial<SchedulableKindInfo> & { kind: string }): SchedulableKindInfo => ({
+			id: over.kind,
+			...over,
+		});
+		renderSchedules(
+			[],
+			["plain.job"],
+			[
+				decl({
+					id: "d1",
+					kind: "full.kind",
+					description: "Full preset",
+					suggestedCronExpr: "*/5 * * * *",
+					suggestedParams: { n: 1 },
+				}),
+				// Duplicate kind — the first declaration wins the suggestions.
+				decl({
+					id: "d2",
+					kind: "full.kind",
+					suggestedCronExpr: "0 0 * * *",
+					suggestedParams: { n: 2 },
+				}),
+				decl({ id: "d3", kind: "cron-only.kind", suggestedCronExpr: "1 * * * *" }),
+				decl({ id: "d4", kind: "params-null.kind", suggestedParams: null }),
+				decl({ id: "d5", kind: "bare.kind" }),
+				decl({ id: "d6", kind: "params.kind", suggestedParams: { n: 9 } }),
+			],
+		);
+		const kind = screen.getByLabelText("Job kind");
+		const cron = screen.getByLabelText(/Cron expression/) as HTMLInputElement;
+		const params = screen.getByLabelText(/Params/) as HTMLTextAreaElement;
+
+		// A kind without a declaration leaves the form untouched.
+		fireEvent.change(kind, { target: { value: "unknown.kind" } });
+		expect(cron.value).toBe("");
+		expect(params.value).toBe("");
+
+		// First declaration wins: cronExpr and paramsRaw prefill while empty.
+		fireEvent.change(kind, { target: { value: "full.kind" } });
+		expect(cron.value).toBe("*/5 * * * *");
+		expect(params.value).toBe('{"n":1}');
+
+		// Populated fields are never overwritten; missing suggestions are
+		// skipped — cron-only, null-params, bare and params-only kinds all
+		// leave the current values alone.
+		for (const value of ["cron-only.kind", "params-null.kind", "bare.kind", "params.kind"]) {
+			fireEvent.change(kind, { target: { value } });
+			expect(cron.value).toBe("*/5 * * * *");
+			expect(params.value).toBe('{"n":1}');
+		}
 	});
 });
