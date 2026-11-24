@@ -2243,7 +2243,7 @@ describe("generate — object property-count edge cases", () => {
 			type: "object",
 			properties: { fixed: { type: "string" } },
 			additionalProperties: { type: "integer" },
-			maxProperties: 10,
+			maxProperties: 3,
 		};
 		const rec = generateRecord(schema, {
 			seed: "room",
@@ -2251,7 +2251,9 @@ describe("generate — object property-count edge cases", () => {
 			locale: "en",
 			assertValid: true,
 		});
-		expect(Object.keys(rec)).toEqual(["fixed", "extra0", "extra1", "extra2"]);
+		// rng() = 0.99 → int(0, MAX_EXTRA_KEYS) = 3, but room is
+		// maxProperties - keys.length = 2, so only two extras fit.
+		expect(Object.keys(rec)).toEqual(["fixed", "extra0", "extra1"]);
 	});
 
 	it("additionalProperties true or absent contributes no bonus keys", () => {
