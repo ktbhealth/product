@@ -129,6 +129,21 @@ describe("generateFromPattern", () => {
 		expect(() => generateFromPattern("^a{100}$", makeRng("x"), 10)).toThrow(SeedError);
 	});
 
+	it("generates whitespace for \\s escapes", () => {
+		expect(gen("^[\\s]+$")).toMatch(/^\s+$/);
+		expect(gen("^[\\S]$")).toMatch(/^\S$/);
+	});
+
+	it("accepts patterns up to the 200-char length cap", () => {
+		expect(generateFromPattern("a".repeat(200), makeRng("len"))).toBe("a".repeat(200));
+	});
+
+	it("allows output well beyond a quarter of the pattern cap", () => {
+		// 4 iterations × (64 a's + 2 b's) = 264 chars — over MAX_PATTERN_OUTPUT / 4.
+		const out = gen("^(?:a{64}bb){4}$");
+		expect(out).toHaveLength(264);
+	});
+
 	it("throws SeedError on unsupported syntax", () => {
 		const bad = [
 			"(?=a)b", // lookahead

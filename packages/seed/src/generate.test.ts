@@ -630,6 +630,21 @@ describe("generate — schema-merge branches (allOf / $ref / combinators)", () =
 		).toThrow(SeedError);
 	});
 
+	it("does not report inverted bounds when only one side of a pair is set", () => {
+		const onlyLower = valid({
+			allOf: [{ type: "integer", minimum: 0 }, { type: "integer" }],
+		});
+		expect(onlyLower).toEqual(expect.any(Number));
+		const onlyUpper = valid({
+			allOf: [{ type: "integer" }, { type: "integer", maximum: 5 }],
+		});
+		expect(onlyUpper).toEqual(expect.any(Number));
+		const onlyMinLength = valid({
+			allOf: [{ type: "string", minLength: 2 }, { type: "string" }],
+		}) as string;
+		expect(onlyMinLength.length).toBeGreaterThanOrEqual(2);
+	});
+
 	it("merges patterns when identical or absent on one side", () => {
 		const a = valid({
 			allOf: [
@@ -690,16 +705,25 @@ describe("generate — schema-merge branches (allOf / $ref / combinators)", () =
 			],
 		});
 		// both schemas → merged (must satisfy BOTH → integer 0..9)
-		const v = valid({
-			allOf: [
-				{ type: "object", additionalProperties: { type: "integer", minimum: 0 } },
-				{ type: "object", additionalProperties: { type: "integer", maximum: 9 }, minProperties: 1 },
-			],
-		}) as Record<string, unknown>;
-		for (const val of Object.values(v)) {
-			expect(Number.isInteger(val)).toBe(true);
-			expect(val as number).toBeGreaterThanOrEqual(0);
-			expect(val as number).toBeLessThanOrEqual(9);
+		for (let i = 0; i < 20; i++) {
+			const v = valid(
+				{
+					allOf: [
+						{ type: "object", additionalProperties: { type: "integer", minimum: 0 } },
+						{
+							type: "object",
+							additionalProperties: { type: "integer", maximum: 9 },
+							minProperties: 1,
+						},
+					],
+				},
+				`apm${i}`,
+			) as Record<string, unknown>;
+			for (const val of Object.values(v)) {
+				expect(Number.isInteger(val)).toBe(true);
+				expect(val as number).toBeGreaterThanOrEqual(0);
+				expect(val as number).toBeLessThanOrEqual(9);
+			}
 		}
 	});
 
@@ -912,5 +936,379 @@ describe("generateMany / generateRecord", () => {
 	it("generateRecord throws for non-object schemas", () => {
 		expect(() => generateRecord({ type: "string" }, { seed: 1 })).toThrow(SeedError);
 		expect(() => generateRecord({ type: "array", items: {} }, { seed: 1 })).toThrow(SeedError);
+	});
+});
+
+describe("generate — const/enum cloning", () => {
+	it("returns copies so callers cannot mutate schema state", () => {
+		const c = { a: [1] };
+		const v1 = generate({ const: c }, { seed: 1 });
+		expect(v1).toEqual(c);
+		expect(v1).not.toBe(c);
+
+		const e = { enum: [{ x: 1 }] };
+		const v2 = generate(e, { seed: 1 });
+		expect(v2).toEqual({ x: 1 });
+		expect(v2).not.toBe((e.enum as unknown[])[0]);
+	});
+});
+
+describe("generate — invalid root schemas", () => {
+	it("rejects non-schema roots from the schema walk, not the $ref probe", () => {
+		// null/undefined aren't JsonSchema — the TypeError must come from
+		// generateValue's Object.hasOwn, not from deref probing .$ref.
+		for (const bad of [null, undefined]) {
+			let err: unknown;
+			try {
+				generate(bad as unknown as JsonSchema);
+			} catch (e) {
+				err = e;
+			}
+			expect(err).toBeInstanceOf(TypeError);
+			expect((err as Error).message).not.toContain("$ref");
+		}
+	});
+});
+
+describe("generate — $ref pointer edge cases", () => {
+	it("resolves refs with RFC 6901 escapes in both directions", () => {
+		const schema = {
+			type: "object",
+			properties: {
+				"a/b": { type: "string", minLength: 3 },
+				"t~u": { type: "string", pattern: "^z+$" },
+				p: { $ref: "#/properties/a~1b" },
+				q: { $ref: "#/properties/t~0u" },
+			},
+			required: ["p", "q"],
+		} as JsonSchema;
+		for (let i = 0; i < 10; i++) {
+			const v = generate(schema, {
+				seed: `esc${i}`,
+				assertValid: true,
+			}) as Record<string, string>;
+			expect(v.p.length).toBeGreaterThanOrEqual(3);
+			expect(v.q).toMatch(/^z+$/);
+		}
+	});
+
+	it("escapes ~ and / inside error paths", () => {
+		const cases: ReadonlyArray<readonly [Record<string, JsonSchema>, string]> = [
+			[{ "a/b": { type: "string", minLength: 100000 } }, "$/a~1b"],
+			[{ "c~d": { type: "string", minLength: 100000 } }, "$/c~0d"],
+		];
+		for (const [props, expectedPath] of cases) {
+			let err: unknown;
+			try {
+				generate({ type: "object", properties: props } as JsonSchema, { seed: 1 });
+			} catch (e) {
+				err = e;
+			}
+			expect(err).toBeInstanceOf(SeedError);
+			expect((err as SeedError).path).toBe(expectedPath);
+		}
+	});
+
+	it("treats '#' as the document root and reports recursion depth", () => {
+		// "#" resolves to the root schema — which contains the ref itself —
+		// so generation recurses until the depth guard fires. The failure
+		// must be the depth/budget error, NOT "unresolvable $ref".
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { p: { $ref: "#" } },
+					required: ["p"],
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow(/depth|budget/);
+	});
+
+	it("resolves array indices, including leading zeros and multi-digit", () => {
+		const refSchema = (ref: string) =>
+			({
+				type: "object",
+				properties: {
+					holder: { allOf: [{ const: "zero" }, { const: "one" }] },
+					q: { $ref: ref },
+				},
+				required: ["q"],
+			}) as unknown as JsonSchema;
+		const opts = { seed: 1, requiredOnly: true } as const;
+		expect(
+			(generate(refSchema("#/properties/holder/allOf/01"), opts) as Record<string, unknown>).q,
+		).toBe("one");
+		expect(
+			(generate(refSchema("#/properties/holder/allOf/1"), opts) as Record<string, unknown>).q,
+		).toBe("one");
+
+		const branches = Array.from({ length: 11 }, (_, i) => ({ const: i }));
+		const wide = {
+			type: "object",
+			properties: {
+				holder: { allOf: branches },
+				q: { $ref: "#/properties/holder/allOf/10" },
+			},
+			required: ["q"],
+		} as unknown as JsonSchema;
+		expect((generate(wide, opts) as Record<string, unknown>).q).toBe(10);
+	});
+
+	it("rejects non-canonical array indices", () => {
+		const refSchema = (ref: string) =>
+			({
+				type: "object",
+				properties: {
+					holder: { allOf: [{ const: "zero" }, { const: "one" }] },
+					q: { $ref: ref },
+				},
+				required: ["q"],
+			}) as unknown as JsonSchema;
+		for (const ref of [
+			"#/properties/holder/allOf/ 1",
+			"#/properties/holder/allOf/1 ",
+			"#/properties/holder/allOf/x",
+			"#/properties/holder/allOf/-1",
+		]) {
+			expect(() => generate(refSchema(ref), { seed: 1, requiredOnly: true })).toThrow(SeedError);
+		}
+	});
+
+	it("rejects refs that traverse through non-object values", () => {
+		// null mid-path → unresolvable (SeedError, not a TypeError).
+		// requiredOnly keeps the null/boolean decoy properties ungenerate.
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { n: null, p: { $ref: "#/properties/n/x" } },
+					required: ["p"],
+				} as unknown as JsonSchema,
+				{ seed: 1, requiredOnly: true },
+			),
+		).toThrow(SeedError);
+		// boolean leaf + extra segment → must not resolve to `true`.
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { b: true, p: { $ref: "#/properties/b/x" } },
+					required: ["p"],
+				} as JsonSchema,
+				{ seed: 1, requiredOnly: true },
+			),
+		).toThrow(SeedError);
+		// "__proto__" must not resolve through the prototype chain.
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { p: { $ref: "#/__proto__" } },
+					required: ["p"],
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow(SeedError);
+	});
+});
+
+describe("generate — merge edge cases", () => {
+	it("rejects genuinely different const values", () => {
+		const cases: ReadonlyArray<readonly [string, JsonSchema]> = [
+			["number vs string", { allOf: [{ const: 1 }, { const: "a" }] }],
+			["object vs number", { allOf: [{ const: {} }, { const: 5 }] }],
+			["number vs object", { allOf: [{ const: 5 }, { const: {} }] }],
+			["null vs object", { allOf: [{ const: null }, { const: {} }] }],
+			["object vs null", { allOf: [{ const: {} }, { const: null }] }],
+			["array vs object", { allOf: [{ const: [1] }, { const: { 0: 1 } }] }],
+			["object value diff", { allOf: [{ const: { a: 1 } }, { const: { a: 2 } }] }],
+			["object missing key", { allOf: [{ const: { a: 1, b: 2 } }, { const: { a: 1, c: 3 } }] }],
+			["object extra key", { allOf: [{ const: { a: 1 } }, { const: { a: 1, b: 2 } }] }],
+			["array order diff", { allOf: [{ const: [1, 2] }, { const: [2, 1] }] }],
+			["array prefix", { allOf: [{ const: [1, 2] }, { const: [1, 2, 3] }] }],
+			["array partial overlap", { allOf: [{ const: [1, 2] }, { const: [1, 3] }] }],
+		];
+		for (const [, schema] of cases) {
+			expect(() => generate(schema, { seed: 1 })).toThrow(SeedError);
+		}
+	});
+
+	it("surfaces merge error messages", () => {
+		expect(() =>
+			generate({ allOf: [{ type: "string" }, { type: "integer" }] } as JsonSchema, { seed: 1 }),
+		).toThrow("disjoint types");
+		expect(() =>
+			generate({ allOf: [{ const: "a" }, { const: "b" }] } as JsonSchema, { seed: 1 }),
+		).toThrow("conflicting const values");
+		expect(() =>
+			generate({ allOf: [{ enum: ["a"] }, { enum: ["b"] }] } as JsonSchema, { seed: 1 }),
+		).toThrow("empty enum intersection");
+		expect(() =>
+			generate(
+				{
+					allOf: [
+						{ type: "string", pattern: "^a$" },
+						{ type: "string", pattern: "^b$" },
+					],
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow("conflicting patterns");
+		expect(() =>
+			generate(
+				{
+					allOf: [
+						{ type: "string", minLength: 10 },
+						{ type: "string", maxLength: 5 },
+					],
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow("inverted bounds");
+	});
+
+	it("keeps the stricter bound when merging allOf", () => {
+		// rng pinned low/high so violations are deterministic, not seed-luck.
+		const lo = generate(
+			{ allOf: [{ type: "number" }, { type: "number", minimum: 10 }] } as JsonSchema,
+			{ rng: () => 0.05 },
+		) as number;
+		expect(lo).toBeGreaterThanOrEqual(10);
+		const hi = generate(
+			{
+				allOf: [
+					{ type: "number", maximum: 50 },
+					{ type: "number", maximum: 5 },
+				],
+			} as JsonSchema,
+			{ rng: () => 0.95 },
+		) as number;
+		expect(hi).toBeLessThanOrEqual(5);
+		const both = generate(
+			{
+				allOf: [
+					{ type: "number", minimum: 0, maximum: 100 },
+					{ type: "number", minimum: 10, maximum: 50 },
+				],
+			} as JsonSchema,
+			{ seed: 1, assertValid: true },
+		) as number;
+		expect(both).toBeGreaterThanOrEqual(10);
+		expect(both).toBeLessThanOrEqual(50);
+	});
+
+	it("rejects inverted merged bounds even on types that ignore them", () => {
+		for (const [lo, hi] of [
+			["minimum", "maximum"],
+			["minLength", "maxLength"],
+			["minItems", "maxItems"],
+			["minProperties", "maxProperties"],
+		] as const) {
+			expect(() =>
+				generate(
+					{
+						allOf: [
+							{ type: "boolean", [lo]: 10 },
+							{ type: "boolean", [hi]: 5 },
+						],
+					} as JsonSchema,
+					{ seed: 1 },
+				),
+			).toThrow(SeedError);
+		}
+	});
+
+	it("allows equal merged bounds", () => {
+		expect(
+			generate(
+				{
+					allOf: [
+						{ type: "integer", minimum: 5 },
+						{ type: "integer", maximum: 5 },
+					],
+				} as JsonSchema,
+				{
+					seed: 1,
+				},
+			),
+		).toBe(5);
+	});
+
+	it("preserves multi-type intersections", () => {
+		const seen = new Set<string>();
+		for (let i = 0; i < 40; i++) {
+			const v = generate(
+				{ allOf: [{ type: ["string", "null"] }, { type: ["null", "string"] }] } as JsonSchema,
+				{ seed: `mt${i}` },
+			);
+			seen.add(v === null ? "null" : typeof v);
+		}
+		expect(seen).toContain("null");
+		expect(seen).toContain("string");
+	});
+
+	it("keeps a-side type when the other branch has none", () => {
+		for (let i = 0; i < 10; i++) {
+			expect(
+				generate({ allOf: [{ type: "null" }, { description: "d" }] } as JsonSchema, {
+					seed: `ty${i}`,
+				}),
+			).toBeNull();
+		}
+	});
+
+	it("keeps enum when only one branch declares it", () => {
+		for (const allOf of [
+			[{ type: "string", minLength: 1 }, { enum: ["a", "bb"] }],
+			[{ enum: ["a", "bb"] }, { type: "string", minLength: 1 }],
+		] as const) {
+			for (let i = 0; i < 10; i++) {
+				const v = generate({ allOf } as JsonSchema, {
+					seed: `en${i}`,
+					assertValid: true,
+				});
+				expect(["a", "bb"]).toContain(v);
+			}
+		}
+	});
+
+	it("merges overlapping property schemas instead of overwriting", () => {
+		const schema = {
+			allOf: [
+				{
+					type: "object",
+					properties: { x: { type: "integer", minimum: 5 } },
+					required: ["x"],
+				},
+				{ type: "object", properties: { x: { type: "integer", maximum: 9 } } },
+			],
+		} as JsonSchema;
+		for (let i = 0; i < 10; i++) {
+			const v = generate(schema, {
+				seed: `pm${i}`,
+				requiredOnly: true,
+				assertValid: true,
+			}) as Record<string, number>;
+			expect(v.x).toBeGreaterThanOrEqual(5);
+			expect(v.x).toBeLessThanOrEqual(9);
+		}
+	});
+
+	it("unions required arrays when merging", () => {
+		const schema = {
+			allOf: [
+				{ type: "object", properties: { x: { type: "string" } }, required: ["x"] },
+				{ type: "object", properties: { y: { type: "string" } }, required: ["y"] },
+			],
+		} as JsonSchema;
+		for (let i = 0; i < 10; i++) {
+			const v = generateRecord(schema, {
+				seed: `rq${i}`,
+				requiredOnly: true,
+				assertValid: true,
+			});
+			expect(Object.keys(v).sort()).toEqual(["x", "y"]);
+		}
 	});
 });
