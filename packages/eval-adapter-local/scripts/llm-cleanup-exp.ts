@@ -49,7 +49,8 @@ const workdir = path.resolve(flag("workdir") ?? "/home/luis/tmp/eval-ptbr-real")
 const asrUrl = flag("asr-url") ?? "http://127.0.0.1:8765";
 const agentCmd = flag("agent") ?? "devin acp";
 const limitRaw = flag("limit");
-const limit = limitRaw === undefined ? undefined : Number.parseInt(limitRaw, 10);
+const limitParsed = limitRaw === undefined ? NaN : Number.parseInt(limitRaw, 10);
+const limit = Number.isFinite(limitParsed) ? limitParsed : undefined;
 
 // ---------- store ----------
 
@@ -60,7 +61,9 @@ const runId = (
 	}
 ).run_id;
 const rows = db
-	.prepare(`SELECT s.doc AS sdoc, r.doc AS rdoc FROM results r JOIN samples s ON s.id = r.sample_id WHERE r.run_id = ? ORDER BY r.sample_id`)
+	.prepare(
+		`SELECT s.doc AS sdoc, r.doc AS rdoc FROM results r JOIN samples s ON s.id = r.sample_id WHERE r.run_id = ? ORDER BY r.sample_id`,
+	)
 	.all(runId) as { sdoc: string; rdoc: string }[];
 const cohort = rows
 	.map((r) => ({
@@ -157,13 +160,15 @@ const program = Effect.forEach(
 			const segs = yield* Effect.tryPromise({
 				try: () => transcribe(c.sample.audio?.uri),
 				catch: (e) => e,
-			}).pipe(Effect.option);
-			if (segs._tag === "Some" && segs.value.length > 0) {
+			}).pipe(Effect.result);
+			if (segs._tag === "Failure") {
+				out.errors.push(`ts-asr: ${String(segs.failure)}`);
+			} else if (segs.success.length > 0) {
 				const genB = yield* llm
 					.generate({
 						taskId: `${taskId}-ts`,
 						role: "corrector",
-						input: `${INSTR}\n\nOs segmentos abaixo têm timestamps [m:ss].\n\n${tsText(segs.value)}`,
+						input: `${INSTR}\n\nOs segmentos abaixo têm timestamps [m:ss].\n\n${tsText(segs.success)}`,
 						outputSchema: "Text",
 					})
 					.pipe(Effect.result);
@@ -185,9 +190,12 @@ const program = Effect.forEach(
 				const corrected = yield* Effect.try({
 					try: () => applyEdits(c.result.asrText!, corr.success.edits.ops),
 					catch: (e) => e,
-				}).pipe(Effect.option);
-				if (corrected._tag === "Some") out.corrector = wer(c.sample.script, corrected.value);
-				else out.errors.push(`corrector applyEdits: ${String(corrected)}`);
+				}).pipe(Effect.result);
+				if (corrected._tag === "Success") {
+					out.corrector = wer(c.sample.script, corrected.success);
+				} else {
+					out.errors.push(`corrector applyEdits: ${String(corrected.failure)}`);
+				}
 			} else {
 				out.errors.push(`corrector: ${String(corr.failure).slice(0, 160)}`);
 			}
