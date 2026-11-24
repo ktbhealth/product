@@ -586,10 +586,12 @@ const stringForKey = (key: string, ctx: Ctx): string => {
 const fitLength = (value: string, s: JsonSchemaObject, ctx: Ctx): string => {
 	const min = s.minLength ?? 0;
 	const max = s.maxLength;
+	// Stryker disable next-line ConditionalExpression: when maxLength is undefined, `min > undefined` is false anyway, so treating the left operand as true is unobservable.
 	if (max !== undefined && min > max) {
 		throw new SeedError(`minLength ${min} > maxLength ${max}`, ctx.path);
 	}
 	let out = value;
+	// Stryker disable next-line ConditionalExpression, EqualityOperator, LogicalOperator: fitLength input never has trailing whitespace and slice(0, max) is the identity for out.length <= max, so trimming unconditionally or at >= max is unobservable; || only adds a no-op slice(0, undefined) when max is undefined.
 	if (max !== undefined && out.length > max) {
 		out = out.slice(0, max).trimEnd();
 	}
@@ -598,6 +600,7 @@ const fitLength = (value: string, s: JsonSchemaObject, ctx: Ctx): string => {
 		out = `${out} ${pick(ctx.rng, ctx.pools.words)}`;
 	}
 	if (out.length < min) throw new SeedError(`could not reach minLength ${min}`, ctx.path);
+	// Stryker disable next-line ConditionalExpression, EqualityOperator, LogicalOperator: slice(0, max) is the identity for out.length <= max and slice(0, undefined) returns the whole string, so widening this final trim condition is unobservable.
 	if (max !== undefined && out.length > max) out = out.slice(0, max);
 	return out;
 };
@@ -634,6 +637,7 @@ const genString = (s: JsonSchemaObject, ctx: Ctx): string => {
 				lastErr = e;
 				continue;
 			}
+			// Stryker disable next-line ConditionalExpression: generateFromPattern's limit is maxLength (capped at 4096), so every returned candidate already satisfies cand.length <= max — the right side of || is always true here.
 			if (cand.length >= min && (max === undefined || cand.length <= max) && re.test(cand)) {
 				return cand;
 			}
@@ -644,6 +648,7 @@ const genString = (s: JsonSchemaObject, ctx: Ctx): string => {
 		);
 	}
 
+	// Stryker disable next-line StringLiteral: any non-empty fallback still matches no stringForKey heuristic and falls through to randomWords identically to "".
 	const raw = stringForKey(ctx.key ?? "", ctx);
 	return fitLength(raw, s, ctx);
 };
@@ -684,10 +689,12 @@ const genObject = (s: JsonSchemaObject, ctx: Ctx): Record<string, unknown> => {
 	const minP = s.minProperties ?? 0;
 	const maxP = s.maxProperties;
 	const ap = s.additionalProperties;
+	// Stryker disable next-line ConditionalExpression: with maxP undefined, `minP > undefined` is false anyway, so treating the left operand as true is unobservable.
 	if (maxP !== undefined && minP > maxP) {
 		throw new SeedError(`minProperties ${minP} > maxProperties ${maxP}`, ctx.path);
 	}
 
+	// Stryker disable next-line ConditionalExpression: when ap is undefined the ternary yields undefined either way, so treating `ap !== undefined` as true is unobservable.
 	const apSchema = ap !== undefined && ap !== false ? ap : undefined;
 	const apAllows = ap !== false; // undefined | true | schema
 
@@ -712,6 +719,7 @@ const genObject = (s: JsonSchemaObject, ctx: Ctx): Record<string, unknown> => {
 	const extraKey = (): string => {
 		// "extra<i>" keys always exist eventually — `seen` is finite.
 		let i = extraN++;
+		// Stryker disable next-line ConditionalExpression: skipping the collision scan can only return an already-seen extra<N> name, which push() dedupes and the caller retries — the resulting keys are identical.
 		while (seen.has(`extra${i}`)) i = extraN++;
 		return `extra${i}`;
 	};
@@ -726,6 +734,7 @@ const genObject = (s: JsonSchemaObject, ctx: Ctx): Record<string, unknown> => {
 	}
 	// A few bonus extras when additionalProperties is an actual schema.
 	if (apSchema !== undefined && apSchema !== true) {
+		// Stryker disable next-line ConditionalExpression, ArithmeticOperator: a larger room only pushes extra keys that the maxProperties trim below discards anyway (keys are required-first, extras last), so both mutations are unobservable.
 		const room = maxP === undefined ? MAX_EXTRA_KEYS : Math.max(0, maxP - keys.length);
 		for (let i = 0; i < Math.min(int(ctx.rng, 0, MAX_EXTRA_KEYS), room); i++) {
 			push(extraKey());
@@ -733,6 +742,7 @@ const genObject = (s: JsonSchemaObject, ctx: Ctx): Record<string, unknown> => {
 	}
 
 	// maxProperties: trim non-required overflow.
+	// Stryker disable next-line ConditionalExpression, EqualityOperator, LogicalOperator: keys are already required-first, so rebuilding `kept` at == maxP or unconditionally produces the identical key set.
 	if (maxP !== undefined && keys.length > maxP) {
 		const requiredSet = new Set(required);
 		const kept = keys.filter((k) => requiredSet.has(k));
