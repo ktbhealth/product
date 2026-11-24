@@ -31,6 +31,22 @@ describe("makeRng", () => {
 			expect(v).toBeLessThan(1);
 		}
 	});
+
+	it("produces a known stream for a string seed", () => {
+		const rng = makeRng("patient-seed");
+		expect(Array.from({ length: 8 }, () => rng())).toEqual([
+			0.7093581827357411, 0.027831221697852015, 0.48868176084943116, 0.26803983375430107,
+			0.6856431833002716, 0.4917779581155628, 0.1306228891480714, 0.33278928068466485,
+		]);
+	});
+
+	it("produces a known stream for a numeric seed", () => {
+		const rng = makeRng(42);
+		expect(Array.from({ length: 8 }, () => rng())).toEqual([
+			0.6011037519201636, 0.44829055899754167, 0.8524657934904099, 0.6697340414393693,
+			0.17481389874592423, 0.5265925421845168, 0.2732279943302274, 0.6247446539346129,
+		]);
+	});
 });
 
 describe("int / pick / chance", () => {
@@ -49,6 +65,13 @@ describe("int / pick / chance", () => {
 		for (let i = 0; i < 10; i++) expect(int(rng, 5, 5)).toBe(5);
 	});
 
+	it("int produces a known sequence for a fixed rng", () => {
+		const rng = makeRng("int-golden");
+		expect(Array.from({ length: 10 }, () => int(rng, 3, 7))).toEqual([
+			4, 7, 6, 5, 7, 5, 4, 7, 6, 5,
+		]);
+	});
+
 	it("pick returns members", () => {
 		const rng = makeRng("pick");
 		for (let i = 0; i < 50; i++) expect(["x", "y", "z"]).toContain(pick(rng, ["x", "y", "z"]));
@@ -60,5 +83,10 @@ describe("int / pick / chance", () => {
 			expect(chance(rng, 0)).toBe(false);
 			expect(chance(rng, 1)).toBe(true);
 		}
+	});
+
+	it("chance is strict: rng() === p is false", () => {
+		expect(chance(() => 0.5, 0.5)).toBe(false);
+		expect(chance(() => 0.5, 0.5000001)).toBe(true);
 	});
 });
