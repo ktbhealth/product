@@ -32179,6 +32179,37 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pubsub",
+		key: "declaredTitle",
+		locale: "en",
+		value: "Declared topics",
+	},
+	{
+		namespace: "pubsub",
+		key: "declaredDescription",
+		locale: "en",
+		value:
+			"events.topic declarations — the topic catalog plugins ship, independent of live transports.",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColTopic",
+		locale: "en",
+		value: "Topic",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColPlugin",
+		locale: "en",
+		value: "Plugin",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColDescription",
+		locale: "en",
+		value: "Description",
+	},
+	{
+		namespace: "pubsub",
 		key: "unavailableTitle",
 		locale: "en",
 		value: "Signal unavailable",
@@ -32376,6 +32407,37 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "pubsub",
+		key: "declaredTitle",
+		locale: "pt-BR",
+		value: "Tópicos declarados",
+	},
+	{
+		namespace: "pubsub",
+		key: "declaredDescription",
+		locale: "pt-BR",
+		value:
+			"Declarações events.topic — o catálogo de tópicos que os plugins oferecem, independente dos transportes ativos.",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColTopic",
+		locale: "pt-BR",
+		value: "Tópico",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColPlugin",
+		locale: "pt-BR",
+		value: "Plugin",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColDescription",
+		locale: "pt-BR",
+		value: "Descrição",
+	},
+	{
+		namespace: "pubsub",
 		key: "unavailableTitle",
 		locale: "pt-BR",
 		value: "Sinal indisponível",
@@ -32570,6 +32632,37 @@ export const I18N_BASELINE = [
 		locale: "es",
 		value:
 			"Los temas aparecen aquí cuando un transporte publica o se suscribe a un canal por primera vez.",
+	},
+	{
+		namespace: "pubsub",
+		key: "declaredTitle",
+		locale: "es",
+		value: "Temas declarados",
+	},
+	{
+		namespace: "pubsub",
+		key: "declaredDescription",
+		locale: "es",
+		value:
+			"Declaraciones events.topic — el catálogo de temas que los plugins ofrecen, independiente de los transportes activos.",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColTopic",
+		locale: "es",
+		value: "Tema",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColPlugin",
+		locale: "es",
+		value: "Plugin",
+	},
+	{
+		namespace: "pubsub",
+		key: "dColDescription",
+		locale: "es",
+		value: "Descripción",
 	},
 	{
 		namespace: "pubsub",

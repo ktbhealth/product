@@ -74,10 +74,16 @@ export const pubsubPanelPlugin = definePlugin({
 						// The section degrades honestly: a Forbidden or a
 						// failed read yields null → the view renders the
 						// unavailable state, never a fabricated empty list.
-						const topics = yield* admin
-							.topics()
-							.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-						return { topics };
+						const [topics, declaredTopics] = yield* Effect.all(
+							[
+								admin.topics().pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
+								admin
+									.declaredTopics()
+									.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null))),
+							],
+							{ concurrency: "unbounded" },
+						);
+						return { topics, declaredTopics };
 					}),
 			},
 		],

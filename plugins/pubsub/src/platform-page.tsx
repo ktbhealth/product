@@ -1,5 +1,5 @@
 import type { PanelPageContext } from "@ktb/kernel";
-import type { PubSubTopicsResult } from "@ktb/server-fns";
+import type { EventTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
 
 import { PubSubPage } from "./views/PubSubPage.tsx";
 
@@ -8,6 +8,7 @@ import { PubSubPage } from "./views/PubSubPage.tsx";
  * `degraded` lists bound sources whose probe failed. */
 export interface PubSubPageData {
 	readonly topics: PubSubTopicsResult | null;
+	readonly declaredTopics?: readonly EventTopicInfo[] | null;
 }
 
 /**
@@ -19,5 +20,12 @@ export interface PubSubPageData {
  */
 export function PubSubPlatformPage({ data, ctx }: { data: unknown; ctx: PanelPageContext }) {
 	const d = (data ?? {}) as Partial<PubSubPageData>;
-	return <PubSubPage listing={d.topics ?? null} i18n={ctx.i18n} locale={ctx.locale} />;
+	return (
+		<PubSubPage
+			listing={d.topics ?? null}
+			declared={d.declaredTopics ?? null}
+			i18n={ctx.i18n}
+			locale={ctx.locale}
+		/>
+	);
 }

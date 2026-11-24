@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import type { PubSubTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
+import type { EventTopicInfo, PubSubTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Input } from "@ktbhealth/ui/components/input";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
@@ -32,6 +32,9 @@ interface PubSubPageProps {
 	/** Merged topic listing; null when the sources cannot be read at
 	 * all. `degraded` names bound sources whose probe failed. */
 	readonly listing: PubSubTopicsResult | null;
+	/** `events.topic` plugin declarations — catalog metadata,
+	 * independent of live transports. Null when undeclared/absent. */
+	readonly declared?: readonly EventTopicInfo[] | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	readonly i18n?: PageI18nSlice;
 	readonly locale: string;
@@ -68,12 +71,52 @@ const publishMessage = (result: PubSubPublishResult, m: PubSubMessages): string 
 	}
 };
 
+function DeclaredSection({
+	declared,
+	m,
+}: {
+	declared: readonly EventTopicInfo[] | null;
+	m: PubSubMessages;
+}) {
+	if (declared === null || declared.length === 0) return null;
+	return (
+		<div className="mt-6">
+			<h3 className="text-sm font-semibold">{m.declaredTitle}</h3>
+			<p className="text-muted-foreground mb-3 text-xs">{m.declaredDescription}</p>
+			<Table>
+				<TableHeader>
+					<TableRow>
+						<TableHead>{m.dColTopic}</TableHead>
+						<TableHead>{m.dColPlugin}</TableHead>
+						<TableHead>{m.dColDescription}</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody>
+					{declared.map((topic) => (
+						<TableRow key={topic.topic}>
+							<TableCell>
+								<code className="text-xs">{topic.topic}</code>
+							</TableCell>
+							<TableCell className="text-xs">{topic.pluginId ?? "—"}</TableCell>
+							<TableCell className="text-muted-foreground text-xs">
+								{topic.description ?? "—"}
+							</TableCell>
+						</TableRow>
+					))}
+				</TableBody>
+			</Table>
+		</div>
+	);
+}
+
 function TopicsSection({
 	listing,
+	declared = null,
 	locale,
 	m,
 }: {
 	listing: PubSubTopicsResult | null;
+	declared?: readonly EventTopicInfo[] | null;
 	locale: string;
 	m: PubSubMessages;
 }) {
@@ -147,6 +190,7 @@ function TopicsSection({
 					</TableBody>
 				</Table>
 			)}
+			<DeclaredSection declared={declared} m={m} />
 		</section>
 	);
 }
@@ -221,7 +265,7 @@ function PublishSection({ m }: { m: PubSubMessages }) {
 	);
 }
 
-export function PubSubPage({ listing, i18n, locale }: PubSubPageProps) {
+export function PubSubPage({ listing, declared = null, i18n, locale }: PubSubPageProps) {
 	const m = sliceMessages(i18n, I18N_NAMESPACE, pubSubMessages(locale));
 	const count = listing?.topics.length ?? null;
 	return (
@@ -238,7 +282,7 @@ export function PubSubPage({ listing, i18n, locale }: PubSubPageProps) {
 					<TabsTrigger value="publish">{m.publishTitle}</TabsTrigger>
 				</TabsList>
 				<TabsContent value="topics">
-					<TopicsSection listing={listing} locale={locale} m={m} />
+					<TopicsSection listing={listing} declared={declared} locale={locale} m={m} />
 				</TabsContent>
 				<TabsContent value="publish">
 					<PublishSection m={m} />

@@ -20,6 +20,7 @@ import {
 import { Jobs } from "@ktb/jobs-port";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformPanelPlugin } from "@ktb/platform";
+import { jobKindContribution } from "@ktb/platform/capabilities";
 import { Permissions } from "@ktb/rbac";
 
 import { parseJson } from "./core-map.ts";
@@ -620,6 +621,15 @@ export const evalValidatorServicesPlugin = definePlugin({
 	meta: { keywords: ["eval", "validator", "services"] },
 	requiredDeps: [evalValidatorTablesPlugin.id],
 	services: EvalValidatorLive,
+	// P-094: capability declaration — eval.run is a real job kind but
+	// NOT schedulable: its payload requires a specific eval_run row id,
+	// so cron-style scheduling cannot produce a valid envelope.
+	contributions: [
+		jobKindContribution(EVAL_RUN_JOB_KIND, {
+			description:
+				"Executes a queued eval run — payload is { runId } for a specific eval_run row; enqueued by startRun, not schedulable.",
+		}),
+	],
 });
 
 export const evalValidatorChromePlugin = definePlugin({

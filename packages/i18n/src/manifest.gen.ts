@@ -6067,6 +6067,21 @@ export const I18N_MANIFEST = {
 		emptyTopicsDescription: {
 			params: [],
 		},
+		declaredTitle: {
+			params: [],
+		},
+		declaredDescription: {
+			params: [],
+		},
+		dColTopic: {
+			params: [],
+		},
+		dColPlugin: {
+			params: [],
+		},
+		dColDescription: {
+			params: [],
+		},
 		unavailableTitle: {
 			params: [],
 		},

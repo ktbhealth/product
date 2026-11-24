@@ -7,7 +7,12 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import { Principal } from "@ktb/authz";
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { installServerFnRuntime, resetServerFnRuntime, stubAuth } from "@ktb/server-fns/testing";
-import type { PubSubPublishResult, PubSubTopicInfo, PubSubTopicsResult } from "@ktb/server-fns";
+import type {
+	EventTopicInfo,
+	PubSubPublishResult,
+	PubSubTopicInfo,
+	PubSubTopicsResult,
+} from "@ktb/server-fns";
 
 import { PubSubAdmin, PubSubAdminLive } from "./admin.ts";
 
@@ -37,6 +42,15 @@ const TOPIC: PubSubTopicInfo = {
 	subscribers: 0,
 	recent: [],
 };
+
+const DECLARED: readonly EventTopicInfo[] = [
+	{
+		topic: "cron.fires",
+		pluginId: "cron.services",
+		description: "Cron job firings",
+	},
+	{ topic: "jobs.ping" },
+];
 
 describe("PubSubAdminLive", () => {
 	it("returns topics and routes publishes for admins", async () => {
@@ -131,6 +145,89 @@ describe("PubSubAdminLive", () => {
 		resetServerFnRuntime();
 	});
 
+	it("serves declaredTopics when the pubsub capability declares them", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				pubsub: {
+					topics: async (): Promise<PubSubTopicsResult> => ({ topics: [], degraded: [] }),
+					publish: async () => ({ ok: true }),
+					declaredTopics: () => DECLARED,
+				},
+			},
+		);
+		const declared = await asPrincipal(runtime, (a) => a.declaredTopics(), "admin@x.com");
+		expect(declared).toEqual(DECLARED);
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses declaredTopics to null without the capability or the declaration", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{},
+		);
+		expect(await asPrincipal(runtime, (a) => a.declaredTopics(), "admin@x.com")).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+
+		// A bound pubsub capability without declaredTopics also reads null.
+		const runtime2 = makeRuntime();
+		installServerFnRuntime(
+			runtime2,
+			stubAuth(() => null),
+			{
+				pubsub: {
+					topics: async (): Promise<PubSubTopicsResult> => ({ topics: [], degraded: [] }),
+					publish: async () => ({ ok: true }),
+				},
+			},
+		);
+		expect(await asPrincipal(runtime2, (a) => a.declaredTopics(), "admin@x.com")).toBeNull();
+		await runtime2.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a throwing declaredTopics read to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				pubsub: {
+					topics: async (): Promise<PubSubTopicsResult> => ({ topics: [], degraded: [] }),
+					publish: async () => ({ ok: true }),
+					declaredTopics: () => {
+						throw new Error("declarations exploded");
+					},
+				},
+			},
+		);
+		expect(await asPrincipal(runtime, (a) => a.declaredTopics(), "admin@x.com")).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("maps a throwing pubsub accessor to null for declaredTopics", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get pubsub(): never {
+					throw new Error("capability accessor exploded");
+				},
+			},
+		);
+		expect(await asPrincipal(runtime, (a) => a.declaredTopics(), "admin@x.com")).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
 	it("maps a throwing pubsub capability accessor to unavailable", async () => {
 		const runtime = makeRuntime();
 		installServerFnRuntime(
@@ -157,6 +254,7 @@ describe("PubSubAdminLive", () => {
 		);
 		for (const call of [
 			(a: PubSubAdmin["Service"]) => a.topics(),
+			(a: PubSubAdmin["Service"]) => a.declaredTopics(),
 			(a: PubSubAdmin["Service"]) => a.publish("memory:x", {}),
 		] as const) {
 			const exit = await runtime.runPromiseExit(

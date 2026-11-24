@@ -1753,6 +1753,11 @@ export type I18nKey =
 	| "portal.signOut"
 	| "portal.switcherLabel"
 	| "portal.userFallback"
+	| "pubsub.dColDescription"
+	| "pubsub.dColPlugin"
+	| "pubsub.dColTopic"
+	| "pubsub.declaredDescription"
+	| "pubsub.declaredTitle"
 	| "pubsub.degradedDescription"
 	| "pubsub.degradedTitle"
 	| "pubsub.description"
@@ -4730,6 +4735,11 @@ export interface I18nTypedT {
 	(key: "portal.signOut"): Effect.Effect<string>;
 	(key: "portal.switcherLabel"): Effect.Effect<string>;
 	(key: "portal.userFallback"): Effect.Effect<string>;
+	(key: "pubsub.dColDescription"): Effect.Effect<string>;
+	(key: "pubsub.dColPlugin"): Effect.Effect<string>;
+	(key: "pubsub.dColTopic"): Effect.Effect<string>;
+	(key: "pubsub.declaredDescription"): Effect.Effect<string>;
+	(key: "pubsub.declaredTitle"): Effect.Effect<string>;
 	(
 		key: "pubsub.degradedDescription",
 		params: {

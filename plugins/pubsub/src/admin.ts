@@ -6,6 +6,7 @@ import type { Forbidden } from "@ktb/authz";
 import { PlatformAdmin } from "@ktb/platform";
 import {
 	getServerRuntime,
+	type EventTopicInfo,
 	type PubSubPublishResult,
 	type PubSubTopicsResult,
 } from "@ktb/server-fns";
@@ -31,6 +32,10 @@ export class PubSubAdmin extends Context.Service<
 	PubSubAdmin,
 	{
 		readonly topics: () => Effect.Effect<PubSubTopicsResult | null, Forbidden>;
+		/** `events.topic` plugin declarations — the topic catalog,
+		 * independent of live transport enumeration. Null when the
+		 * capability is absent. */
+		readonly declaredTopics: () => Effect.Effect<readonly EventTopicInfo[] | null, Forbidden>;
 		readonly publish: (
 			topicId: string,
 			payload: unknown,
@@ -50,6 +55,20 @@ export const PubSubAdminLive = Layer.effect(
 							try {
 								const capability = getServerRuntime().pubsub;
 								return capability === undefined ? null : await capability.topics();
+							} catch {
+								return null;
+							}
+						}),
+					),
+				),
+			declaredTopics: () =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<readonly EventTopicInfo[] | null> => {
+							try {
+								const pubsub = getServerRuntime().pubsub;
+								const read = pubsub?.declaredTopics;
+								return read === undefined ? null : read();
 							} catch {
 								return null;
 							}

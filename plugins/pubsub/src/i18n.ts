@@ -35,6 +35,11 @@ export interface PubSubMessages {
 	readonly neverActive: string;
 	readonly emptyTopicsTitle: string;
 	readonly emptyTopicsDescription: string;
+	readonly declaredTitle: string;
+	readonly declaredDescription: string;
+	readonly dColTopic: string;
+	readonly dColPlugin: string;
+	readonly dColDescription: string;
 	readonly unavailableTitle: string;
 	readonly unavailableDescription: string;
 	readonly degradedTitle: string;
@@ -76,6 +81,12 @@ const en: PubSubMessages = {
 	emptyTopicsTitle: "No topics yet",
 	emptyTopicsDescription:
 		"Topics appear here when a transport first publishes or subscribes to a channel.",
+	declaredTitle: "Declared topics",
+	declaredDescription:
+		"events.topic declarations — the topic catalog plugins ship, independent of live transports.",
+	dColTopic: "Topic",
+	dColPlugin: "Plugin",
+	dColDescription: "Description",
 	unavailableTitle: "Signal unavailable",
 	unavailableDescription: "This signal cannot be read in the current environment.",
 	degradedTitle: "Degraded sources",
@@ -121,6 +132,12 @@ const ptBR: PubSubMessages = {
 	emptyTopicsTitle: "Nenhum tópico ainda",
 	emptyTopicsDescription:
 		"Tópicos aparecem aqui quando um transporte publica ou assina um canal pela primeira vez.",
+	declaredTitle: "Tópicos declarados",
+	declaredDescription:
+		"Declarações events.topic — o catálogo de tópicos que os plugins oferecem, independente dos transportes ativos.",
+	dColTopic: "Tópico",
+	dColPlugin: "Plugin",
+	dColDescription: "Descrição",
 	unavailableTitle: "Sinal indisponível",
 	unavailableDescription: "Este sinal não pode ser lido no ambiente atual.",
 	degradedTitle: "Fontes degradadas",
@@ -166,6 +183,12 @@ const es: PubSubMessages = {
 	emptyTopicsTitle: "Aún no hay temas",
 	emptyTopicsDescription:
 		"Los temas aparecen aquí cuando un transporte publica o se suscribe a un canal por primera vez.",
+	declaredTitle: "Temas declarados",
+	declaredDescription:
+		"Declaraciones events.topic — el catálogo de temas que los plugins ofrecen, independiente de los transportes activos.",
+	dColTopic: "Tema",
+	dColPlugin: "Plugin",
+	dColDescription: "Descripción",
 	unavailableTitle: "Señal no disponible",
 	unavailableDescription: "Esta señal no se puede leer en el entorno actual.",
 	degradedTitle: "Fuentes degradadas",

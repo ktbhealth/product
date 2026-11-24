@@ -4,7 +4,7 @@ import { useRouter } from "@tanstack/react-router";
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 import type { JobRecord } from "@ktb/jobs-port";
-import type { CronJobInfo, ScheduledJobInfo } from "@ktb/server-fns";
+import type { CronJobInfo, ScheduledJobInfo, SchedulableKindInfo } from "@ktb/server-fns";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Field, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
@@ -50,6 +50,7 @@ interface CronPageProps {
 	readonly runs: readonly JobRecord[] | null;
 	readonly schedules?: readonly ScheduledJobInfo[] | null;
 	readonly scheduleKinds?: readonly string[] | null;
+	readonly schedulableKinds?: readonly SchedulableKindInfo[] | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
 	readonly i18n?: PageI18nSlice;
 	readonly locale: string;
@@ -270,11 +271,13 @@ const statusLabel = (status: ScheduledJobInfo["status"], m: CronMessages) =>
 function SchedulesSection({
 	schedules,
 	kinds,
+	schedulable = null,
 	locale,
 	m,
 }: {
 	schedules: readonly ScheduledJobInfo[] | null;
 	kinds: readonly string[] | null;
+	schedulable?: readonly SchedulableKindInfo[] | null;
 	locale: string;
 	m: CronMessages;
 }) {
@@ -290,6 +293,26 @@ function SchedulesSection({
 
 	const say = (text: string, ok: boolean) => setMessage({ text, ok });
 	const refresh = () => void router.invalidate();
+
+	// jobs.schedulable declarations: first entry per kind wins the
+	// picker label/suggestions (multiple presets per kind are legal).
+	const schedulableByKind = new Map<string, SchedulableKindInfo>();
+	for (const decl of schedulable ?? []) {
+		if (!schedulableByKind.has(decl.kind)) schedulableByKind.set(decl.kind, decl);
+	}
+	const kindOptions = [...new Set([...(kinds ?? []), ...schedulableByKind.keys()])].sort();
+
+	const onKindChange = (value: string) => {
+		setKind(value);
+		const decl = schedulableByKind.get(value.trim());
+		if (decl === undefined) return;
+		if (decl.suggestedCronExpr !== undefined && cronExpr === "") {
+			setCronExpr(decl.suggestedCronExpr);
+		}
+		if (decl.suggestedParams !== undefined && decl.suggestedParams !== null && paramsRaw === "") {
+			setParamsRaw(JSON.stringify(decl.suggestedParams));
+		}
+	};
 
 	const submitCreate = async () => {
 		setBusy("create");
@@ -482,13 +505,18 @@ function SchedulesSection({
 									id="sched-kind"
 									list="sched-kinds"
 									value={kind}
-									onChange={(e) => setKind(e.target.value)}
+									onChange={(e) => onKindChange(e.target.value)}
 									placeholder={m.fKindPlaceholder}
 								/>
 								<datalist id="sched-kinds">
-									{(kinds ?? []).map((k) => (
-										<option key={k} value={k} />
-									))}
+									{kindOptions.map((k) => {
+										const decl = schedulableByKind.get(k);
+										return (
+											<option key={k} value={k}>
+												{decl?.description ?? k}
+											</option>
+										);
+									})}
 								</datalist>
 							</Field>
 							<Field>
@@ -561,6 +589,7 @@ export function CronPage({
 	runs,
 	schedules = null,
 	scheduleKinds = null,
+	schedulableKinds = null,
 	i18n,
 	locale,
 }: CronPageProps) {
@@ -583,7 +612,13 @@ export function CronPage({
 					<JobsSection jobs={jobs} locale={locale} m={m} />
 				</TabsContent>
 				<TabsContent value="schedules">
-					<SchedulesSection schedules={schedules} kinds={scheduleKinds} locale={locale} m={m} />
+					<SchedulesSection
+						schedules={schedules}
+						kinds={scheduleKinds}
+						schedulable={schedulableKinds}
+						locale={locale}
+						m={m}
+					/>
 				</TabsContent>
 				<TabsContent value="runs">
 					<RunsSection runs={runs} locale={locale} m={m} />

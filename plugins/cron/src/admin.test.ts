@@ -205,13 +205,14 @@ describe("CronAdminLive", () => {
 			stubAuth(() => null),
 			{},
 		);
-		const [schedules, kinds] = await asPrincipal(
+		const [schedules, kinds, schedulable] = await asPrincipal(
 			runtime,
-			(a) => Effect.all([a.schedules(), a.scheduleKinds()]),
+			(a) => Effect.all([a.schedules(), a.scheduleKinds(), a.schedulableKinds()]),
 			"admin@x.com",
 		);
 		expect(schedules).toBeNull();
 		expect(kinds).toBeNull();
+		expect(schedulable).toBeNull();
 		for (const call of [
 			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),
 			(a: CronAdmin["Service"]) => a.updateSchedule("id", { status: "paused" }),
@@ -253,6 +254,40 @@ describe("CronAdminLive", () => {
 			);
 			expect(result).toEqual({ ok: false, reason: "unavailable" });
 		}
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a throwing schedulableKinds read to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				schedulableKinds: () => {
+					throw new Error("declarations exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.schedulableKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
+		await runtime.dispose();
+		resetServerFnRuntime();
+	});
+
+	it("collapses a throwing schedulableKinds accessor to null", async () => {
+		const runtime = makeRuntime();
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => null),
+			{
+				get schedulableKinds(): never {
+					throw new Error("schedulableKinds accessor exploded");
+				},
+			},
+		);
+		const kinds = await asPrincipal(runtime, (a) => a.schedulableKinds(), "admin@x.com");
+		expect(kinds).toBeNull();
 		await runtime.dispose();
 		resetServerFnRuntime();
 	});
@@ -315,15 +350,33 @@ describe("CronAdminLive", () => {
 					},
 				},
 				jobKinds: () => ["agenda.sendReminder"],
+				schedulableKinds: () => [
+					{
+						id: "agenda.reminders",
+						kind: "agenda.sendReminder",
+						pluginId: "agenda.services",
+						description: "Send due appointment reminders",
+						suggestedCronExpr: "*/5 * * * *",
+					},
+				],
 			},
 		);
-		const [schedules, kinds] = await asPrincipal(
+		const [schedules, kinds, schedulable] = await asPrincipal(
 			runtime,
-			(a) => Effect.all([a.schedules(), a.scheduleKinds()]),
+			(a) => Effect.all([a.schedules(), a.scheduleKinds(), a.schedulableKinds()]),
 			"admin@x.com",
 		);
 		expect(schedules).toEqual([SCHED]);
 		expect(kinds).toEqual(["agenda.sendReminder"]);
+		expect(schedulable).toEqual([
+			{
+				id: "agenda.reminders",
+				kind: "agenda.sendReminder",
+				pluginId: "agenda.services",
+				description: "Send due appointment reminders",
+				suggestedCronExpr: "*/5 * * * *",
+			},
+		]);
 
 		const created = await asPrincipal(
 			runtime,
@@ -461,6 +514,7 @@ describe("CronAdminLive", () => {
 			(a: CronAdmin["Service"]) => a.runNow("agenda-reminders"),
 			(a: CronAdmin["Service"]) => a.schedules(),
 			(a: CronAdmin["Service"]) => a.scheduleKinds(),
+			(a: CronAdmin["Service"]) => a.schedulableKinds(),
 			(a: CronAdmin["Service"]) => a.createSchedule({ kind: "k" }),
 			(a: CronAdmin["Service"]) => a.updateSchedule("id", { status: "paused" }),
 			(a: CronAdmin["Service"]) => a.deleteSchedule("id"),

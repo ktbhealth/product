@@ -24,6 +24,19 @@ import { Db, makeDb, type SqlDatabase } from "@ktb/db";
 import * as Effect from "effect/Effect";
 import { PluginStates } from "@ktb/platform/plugin-states";
 import {
+	collectEventTopicDeclarations,
+	collectJobKindDeclarations,
+	collectSchedulableDeclarations,
+} from "@ktb/platform/capabilities";
+import {
+	compileSchedulableValidators,
+	eventTopicInfos,
+	jobKindInfos,
+	scheduleKindDispatchable,
+	scheduleParamsError,
+	schedulableKindInfos,
+} from "./platform-capabilities.ts";
+import {
 	jobHandlers,
 	makeJobs,
 	registerJobHandler,
@@ -374,6 +387,17 @@ const projectCronRun =
 		}
 	};
 
+// P-094: plugin capability declarations — `jobs.kind` metadata,
+// `jobs.schedulable` schedule-ability, `events.topic` catalog. Collected
+// once at composition like the other definition registries; invalid
+// entries or duplicate ids fail boot loudly (route-contribution
+// contract). `jobs.schedulable.paramsSchema` documents are compiled
+// here too — a malformed schema fails boot rather than every create.
+const jobKindDecls = collectJobKindDeclarations(serverPlugins);
+const schedulableDecls = collectSchedulableDeclarations(serverPlugins);
+const eventTopicDecls = collectEventTopicDeclarations(serverPlugins);
+const schedulableParamsValidators = compileSchedulableValidators(schedulableDecls);
+
 // Scheduler dispatch (P-094): a claimed scheduled_jobs row becomes a
 // job envelope on the shared transport — queue retry, payload
 // validation and the job_runs projection all come from jobs-port.
@@ -683,6 +707,23 @@ setServerRuntime({
 		list: async () => (await listScheduledJobs(db)).map(toScheduleInfo),
 		create: async (input) => {
 			try {
+				// Kind must be dispatchable: a registered jobHandlers
+				// entry or a jobs.schedulable declaration (declared kinds
+				// may ride transports with special normalizers). Anything
+				// else can only ever fail at fire time — reject early.
+				if (!scheduleKindDispatchable(input.kind, jobHandlers, schedulableDecls)) {
+					throw new InvalidScheduleError(`unknown job kind: ${input.kind}`);
+				}
+				// Declared paramsSchemas gate schedule params: the value
+				// must satisfy at least one schema declared for the kind.
+				const paramsError = scheduleParamsError(
+					input.kind,
+					input.params,
+					schedulableParamsValidators,
+				);
+				if (paramsError !== null) {
+					throw new InvalidScheduleError(paramsError);
+				}
 				const job = await insertScheduledJob(db, input);
 				await syncSchedulerDo(job, job.id);
 				return { ok: true as const, job: toScheduleInfo(job) };
@@ -727,6 +768,11 @@ setServerRuntime({
 		},
 	},
 	jobKinds: () => Object.keys(jobHandlers),
+	// P-094: capability-declaration views — handler registration merged
+	// with jobs.kind/jobs.schedulable declarations, plus the
+	// events.topic catalog for the pub/sub console.
+	jobKindInfo: () => jobKindInfos(jobHandlers, jobKindDecls, schedulableDecls),
+	schedulableKinds: () => schedulableKindInfos(schedulableDecls),
 	// Pub/sub capability: `topics` merges the in-process bus's known
 	// topics with Redis PUBSUB CHANNELS (when dev:node bound it);
 	// `publish` routes by the console-facing id prefix — `memory:` to
@@ -754,6 +800,7 @@ setServerRuntime({
 				return { ok: false, reason: "publish-failed" };
 			}
 		},
+		declaredTopics: () => eventTopicInfos(eventTopicDecls),
 	},
 	ai: aiBinding,
 	audioTranscribeModel,

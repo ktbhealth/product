@@ -94,6 +94,7 @@ describe("pubsub panel page loader", () => {
 	const adminStub = (overrides: Partial<PubSubAdmin["Service"]> = {}) =>
 		({
 			topics: () => Effect.succeed(LISTING),
+			declaredTopics: () => Effect.succeed([]),
 			publish: () => Effect.succeed({ ok: true as const }),
 			...overrides,
 		}) as unknown as PubSubAdmin["Service"];
@@ -102,14 +103,19 @@ describe("pubsub panel page loader", () => {
 		const result = await Effect.runPromise(
 			loader().pipe(Effect.provideService(PubSubAdmin, adminStub())),
 		);
-		expect(result).toEqual({ topics: LISTING });
+		expect(result).toEqual({ topics: LISTING, declaredTopics: [] });
 	});
 
 	it("collapses Forbidden to null", async () => {
 		const forbidden = () => Effect.fail(new Forbidden({ path: "platform.admin" }));
 		const result = await Effect.runPromise(
-			loader().pipe(Effect.provideService(PubSubAdmin, adminStub({ topics: forbidden }))),
+			loader().pipe(
+				Effect.provideService(
+					PubSubAdmin,
+					adminStub({ topics: forbidden, declaredTopics: forbidden }),
+				),
+			),
 		);
-		expect(result).toEqual({ topics: null });
+		expect(result).toEqual({ topics: null, declaredTopics: null });
 	});
 });

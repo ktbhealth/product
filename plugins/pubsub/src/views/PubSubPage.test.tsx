@@ -73,6 +73,37 @@ describe("PubSubPage", () => {
 		expect(screen.getByText(/redis could not be read/)).toBeTruthy();
 	});
 
+	it("renders declared topics and hides the section when empty or absent", () => {
+		// Absent (default null) and empty declarations render nothing.
+		const { unmount } = render(<PubSubPage listing={listing([])} locale="en" />);
+		expect(screen.queryByText("Declared topics")).toBeNull();
+		unmount();
+		render(<PubSubPage listing={listing([])} declared={[]} locale="en" />);
+		expect(screen.queryByText("Declared topics")).toBeNull();
+		cleanup();
+
+		render(
+			<PubSubPage
+				listing={listing([])}
+				declared={[
+					{
+						topic: "cron.fires",
+						pluginId: "cron.services",
+						description: "Cron job firings",
+					},
+					{ topic: "jobs.ping" },
+				]}
+				locale="en"
+			/>,
+		);
+		expect(screen.getByText("Declared topics")).toBeTruthy();
+		expect(screen.getByText("cron.fires")).toBeTruthy();
+		expect(screen.getByText("cron.services")).toBeTruthy();
+		expect(screen.getByText("Cron job firings")).toBeTruthy();
+		// Missing pluginId/description degrade to the dash marker.
+		expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+	});
+
 	it("renders unavailable and empty states", () => {
 		const { unmount } = render(<PubSubPage listing={null} locale="en" />);
 		expect(screen.getByText("Signal unavailable")).toBeTruthy();

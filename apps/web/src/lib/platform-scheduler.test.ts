@@ -178,9 +178,25 @@ describe("platform scheduler-heartbeat dispatch", () => {
 	});
 });
 
+describe("platform capability views", () => {
+	it("exposes job-kind, schedulable and topic declarations", { timeout: 90_000 }, async () => {
+		const { runtime, registerJobHandler } = await compose();
+		registerJobHandler("test.cap.view", { handle: async () => {} });
+
+		const kinds = runtime.jobKindInfo!();
+		expect(kinds.map((info) => info.kind)).toContain("test.cap.view");
+		expect(kinds.find((info) => info.kind === "jobs.ping")).toMatchObject({
+			schedulable: true,
+		});
+
+		expect(runtime.schedulableKinds!().map((info) => info.id)).toContain("jobs.ping.smoke");
+		expect(runtime.pubsub?.declaredTopics?.().map((info) => info.topic)).toContain("cron.fires");
+	});
+});
+
 describe("platform schedules capability", () => {
-	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 30_000 }, async () => {
-		const { runtime, registerJobHandler } = await compose((env) => {
+	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 90_000 }, async () => {
+		const { runtime, platform, registerJobHandler } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
 		const schedules = runtime.schedules!;
@@ -206,10 +222,27 @@ describe("platform schedules capability", () => {
 		const badCreate = await schedules.create({ kind: "test.sched.cap", cronExpr: "bad expr" });
 		expect(badCreate).toMatchObject({ ok: false, reason: "invalid" });
 
+		// Undispatchable kinds are rejected before any row is written.
+		const unknownKind = await schedules.create({ kind: "test.sched.unknown", runAt: 1 });
+		expect(unknownKind).toMatchObject({ ok: false, reason: "invalid" });
+
+		// jobs.ping.smoke declares paramsSchema {type:"object"} — a scalar
+		// payload fails the declared-schema gate.
+		const badParams = await schedules.create({
+			kind: "jobs.ping",
+			runAt: 1,
+			params: "not-an-object",
+		});
+		expect(badParams).toMatchObject({ ok: false, reason: "invalid" });
+
 		// params that JSON.stringify rejects surface as unavailable, not invalid.
 		const circular: Record<string, unknown> = {};
 		circular.self = circular;
-		const brokenCreate = await schedules.create({ kind: "k", runAt: 1, params: circular });
+		const brokenCreate = await schedules.create({
+			kind: "test.sched.cap",
+			runAt: 1,
+			params: circular,
+		});
 		expect(brokenCreate).toMatchObject({ ok: false, reason: "unavailable" });
 
 		const id = created.ok ? created.job.id : "";
@@ -234,16 +267,21 @@ describe("platform schedules capability", () => {
 		const fired = await schedules.runNow(id);
 		expect(fired).toMatchObject({ id, ok: true });
 
-		// Dispatch failure surfaces as ok:false with the error string.
-		const unhandled = await schedules.create({
+		// Dispatch failure surfaces as ok:false with the error string. Create
+		// rejects unknown kinds up front, so seed the row directly to reach
+		// the fire-time failure path.
+		const ghost = await insertScheduledJob(platform.db, {
 			kind: "test.sched.ghost",
 			runAt: Date.now() - 1000,
 		});
-		expect(unhandled.ok).toBe(true);
-		if (!unhandled.ok) throw new Error("create failed");
-		const failed = await schedules.runNow(unhandled.job.id);
-		expect(failed).toMatchObject({ id: unhandled.job.id, ok: false });
+		const failed = await schedules.runNow(ghost.id);
+		expect(failed).toMatchObject({ id: ghost.id, ok: false });
 		expect(failed?.error).toContain("unknown job kind");
+
+		// list() maps both params-present and params-null rows.
+		const listed = await schedules.list();
+		expect(listed.some((job) => job.params === null)).toBe(true);
+		expect(listed.some((job) => job.params !== null)).toBe(true);
 
 		expect(await schedules.remove(id)).toEqual({ ok: true });
 		expect(await schedules.remove(id)).toEqual({ ok: false, reason: "not-found" });

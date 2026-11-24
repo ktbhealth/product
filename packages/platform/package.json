@@ -8,6 +8,7 @@
 		"./plugin-states": "./src/plugin-states.ts",
 		"./element-kinds": "./src/element-kinds.ts",
 		"./routes": "./src/routes.ts",
+		"./capabilities": "./src/capabilities.ts",
 		"./middleware": "./src/middleware.ts"
 	},
 	"scripts": {

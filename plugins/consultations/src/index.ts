@@ -8,6 +8,7 @@ import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { routeContribution } from "@ktb/platform/routes";
+import { jobKindContribution } from "@ktb/platform/capabilities";
 import { patientAccessServicesPlugin } from "@ktb/patient-access";
 import { rbacServicesPlugin } from "@ktb/rbac-plugin";
 import {
@@ -25,6 +26,7 @@ import {
 	ConsultationsDashboardStats,
 } from "./views/ConsultationsDashboard.tsx";
 import { Consultations, ConsultationsLive } from "./service.ts";
+import { AUDIO_TRANSCRIPTION_JOB_KIND } from "./audio-jobs.ts";
 import type { AdminConsultationRow } from "./queries.ts";
 import {
 	ConsultationsQueriesLive,
@@ -128,6 +130,18 @@ export const consultationsServicesPlugin = definePlugin({
 		PatientRecordConsultationsLive,
 		PatientDeleteCascadeLive,
 	),
+	// P-094: capability declaration — transcription.audio rides the
+	// dedicated audio consumer normalizer (not the generic
+	// jobHandlers registry), so `registered` stays false in
+	// jobKindInfo while the kind remains dispatchable through the
+	// queue. Not schedulable: payloads carry recording refs that only
+	// the upload flow can mint.
+	contributions: [
+		jobKindContribution(AUDIO_TRANSCRIPTION_JOB_KIND, {
+			description:
+				"Audio transcription — payload carries recording/object refs minted by the upload flow; consumed by the dedicated audio normalizer on AUDIO_QUEUE.",
+		}),
+	],
 });
 
 // Route subtree composed into the host's virtualRouteConfig (P-033):

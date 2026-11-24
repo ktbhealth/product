@@ -47,6 +47,7 @@ const adminStub = CronAdmin.of({
 	},
 	schedules: () => Effect.succeed([]),
 	scheduleKinds: () => Effect.succeed([]),
+	schedulableKinds: () => Effect.succeed([]),
 	createSchedule: (input): Effect.Effect<ScheduleWriteResult, Forbidden> => {
 		scheduleCalls.push(["create", input]);
 		return scheduleForbidden

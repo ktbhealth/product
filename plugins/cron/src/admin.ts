@@ -15,6 +15,7 @@ import {
 	type ScheduledJobCreateInput,
 	type ScheduledJobInfo,
 	type ScheduledJobUpdateInput,
+	type SchedulableKindInfo,
 } from "@ktb/server-fns";
 
 export type { ScheduleDeleteResult, ScheduleWriteResult };
@@ -52,6 +53,12 @@ export class CronAdmin extends Context.Service<
 		 * honest failure reasons. */
 		readonly schedules: () => Effect.Effect<readonly ScheduledJobInfo[] | null, Forbidden>;
 		readonly scheduleKinds: () => Effect.Effect<readonly string[] | null, Forbidden>;
+		/** `jobs.schedulable` declarations — kind picker metadata with
+		 * params schemas and suggested defaults (P-094). */
+		readonly schedulableKinds: () => Effect.Effect<
+			readonly SchedulableKindInfo[] | null,
+			Forbidden
+		>;
 		readonly createSchedule: (
 			input: ScheduledJobCreateInput,
 		) => Effect.Effect<ScheduleWriteResult, Forbidden>;
@@ -142,6 +149,19 @@ export const CronAdminLive = Layer.effect(
 						Effect.promise(async (): Promise<readonly string[] | null> => {
 							try {
 								const read = getServerRuntime().jobKinds;
+								return read === undefined ? null : read();
+							} catch {
+								return null;
+							}
+						}),
+					),
+				),
+			schedulableKinds: () =>
+				platformAdmin.requireAdmin().pipe(
+					Effect.andThen(
+						Effect.promise(async (): Promise<readonly SchedulableKindInfo[] | null> => {
+							try {
+								const read = getServerRuntime().schedulableKinds;
 								return read === undefined ? null : read();
 							} catch {
 								return null;
