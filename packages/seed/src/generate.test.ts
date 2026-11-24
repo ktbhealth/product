@@ -1951,3 +1951,385 @@ describe("generate — stringForKey branch pinning", () => {
 		expect(rec[""]).toMatch(/^[a-zà-ú]+( [a-zà-ú]+)*$/);
 	});
 });
+
+describe("generate — identifier key heuristics", () => {
+	const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/;
+
+	it("id-shaped keys produce UUIDs", () => {
+		const keys = ["id", "uuid", "guid", "uid", "record_id", "orderUuid", "clientGuid", "_id"];
+		const schema: JsonSchema = {
+			type: "object",
+			properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])),
+		};
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(schema, { seed: `id${i}`, locale: "en", assertValid: true });
+			for (const k of keys) expect(rec[k]).toMatch(UUID_RE);
+		}
+	});
+
+	it("non-id keys fall back to pool words, never UUIDs", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { note: { type: "string" }, bio: { type: "string" }, title: { type: "string" } },
+		};
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(schema, { seed: `nw${i}`, locale: "en", assertValid: true });
+			for (const k of ["note", "bio", "title"]) {
+				const v = rec[k] as string;
+				expect(v).not.toMatch(UUID_RE);
+				expect(v.split(" ").length).toBeGreaterThanOrEqual(1);
+				expect(v.split(" ").length).toBeLessThanOrEqual(3);
+			}
+		}
+	});
+
+	it("keyless strings are pool words, never UUIDs", () => {
+		for (let i = 0; i < 10; i++) {
+			const v = generate({ type: "string" }, { seed: `kl${i}`, locale: "en" }) as string;
+			expect(v).not.toMatch(UUID_RE);
+			expect(v.length).toBeGreaterThan(0);
+		}
+	});
+});
+
+describe("generate — string length fitting", () => {
+	it("minLength equal to maxLength produces exactly that length", () => {
+		for (let i = 0; i < 10; i++) {
+			const v = generate(
+				{ type: "string", minLength: 5, maxLength: 5 },
+				{ seed: `eq${i}`, locale: "en", assertValid: true },
+			) as string;
+			expect(v).toHaveLength(5);
+		}
+	});
+
+	it("trimming to maxLength does not leave trailing whitespace", () => {
+		// pt-BR phone "(DD) 9XXXX-XXXX" sliced to 5 chars ends in a space;
+		// fitLength must trimEnd so the result is "(DD)" not "(DD) ".
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(
+				{ type: "object", properties: { phone: { type: "string", maxLength: 5 } } },
+				{ seed: `ph${i}`, locale: "pt-BR", assertValid: true },
+			);
+			expect(rec.phone).toMatch(/^\(\d{2}\)$/);
+		}
+	});
+
+	it("padding stops as soon as minLength is reached", () => {
+		// rng() = 0.5 → two picks of words[9] → "report report" (13 chars).
+		// minLength 13 must NOT trigger another padding round.
+		const w = poolsFor("en").words[9] as string;
+		const rng = () => 0.5;
+		expect(generate({ type: "string", minLength: 13 }, { rng, locale: "en" })).toBe(`${w} ${w}`);
+		// …but minLength 20 does pad once more.
+		expect(generate({ type: "string", minLength: 20 }, { rng, locale: "en" })).toBe(
+			`${w} ${w} ${w}`,
+		);
+	});
+
+	it("padding stays bounded when only minLength is set", () => {
+		for (let i = 0; i < 10; i++) {
+			const v = generate(
+				{ type: "string", minLength: 30 },
+				{ seed: `pb${i}`, locale: "en" },
+			) as string;
+			expect(v.length).toBeGreaterThanOrEqual(30);
+			expect(v.length).toBeLessThan(500);
+		}
+	});
+});
+
+describe("generate — pattern length boundaries", () => {
+	it("accepts candidates whose length equals minLength or maxLength", () => {
+		expect(generate({ type: "string", pattern: "^a{5}$", minLength: 5 }, { seed: 1 })).toBe(
+			"aaaaa",
+		);
+		expect(generate({ type: "string", pattern: "^a{5}$", maxLength: 5 }, { seed: 1 })).toBe(
+			"aaaaa",
+		);
+	});
+
+	it("rejects candidates violating minLength or maxLength", () => {
+		expect(() =>
+			generate({ type: "string", pattern: "^a{5}$", minLength: 6 }, { seed: 1 }),
+		).toThrow(SeedError);
+		// maxLength also caps generateFromPattern's output limit, so
+		// "aaaaa" never survives to the verify step.
+		expect(() =>
+			generate({ type: "string", pattern: "^a{5}$", maxLength: 4 }, { seed: 1 }),
+		).toThrow(SeedError);
+	});
+
+	it("stops after PATTERN_ATTEMPTS failed candidates", () => {
+		// Each attempt consumes 6 rng draws. Attempts 1-25 pick the
+		// a{70} alternation branch — {70} is capped at 64 reps, so the
+		// candidate can never satisfy the real RegExp. Attempt 26 would
+		// pick "be" and succeed; the generator must give up at 25.
+		const vals = [
+			0.5,
+			...Array.from({ length: 25 }, () => Array(6).fill(0.1)).flat(),
+			...Array(6).fill(0.9),
+		];
+		let i = 0;
+		const rng = () => vals[i++] ?? 0.5;
+		expect(() =>
+			generate({ type: "string", pattern: "^(a{70}|b)e$" } as JsonSchema, { rng }),
+		).toThrow(SeedError);
+	});
+});
+
+describe("generate — scalar bound edge cases", () => {
+	it("degenerate number range returns the bound without consuming rng", () => {
+		let calls = 0;
+		const rng = () => {
+			calls++;
+			return 0.5;
+		};
+		expect(generate({ type: "number", minimum: 3, maximum: 3 }, { rng })).toBe(3);
+		// One call is the type pick; the degenerate range must not draw more.
+		expect(calls).toBe(1);
+	});
+
+	it("non-degenerate number ranges actually vary", () => {
+		const vals = generateMany({ type: "number", minimum: 1, maximum: 2 }, 20, { seed: "nr" });
+		expect(new Set(vals).size).toBeGreaterThan(1);
+		expect(vals.some((v) => (v as number) > 1)).toBe(true);
+	});
+
+	it("fractional ranges stay inside [minimum, maximum]", () => {
+		for (let i = 0; i < 30; i++) {
+			const v = generate(
+				{ type: "number", minimum: 0, maximum: 0.5 },
+				{ seed: `fr${i}`, assertValid: true },
+			) as number;
+			expect(v).toBeGreaterThanOrEqual(0);
+			expect(v).toBeLessThanOrEqual(0.5);
+		}
+	});
+});
+
+describe("generate — array edge cases", () => {
+	it("items:false yields an empty array even with length headroom", () => {
+		expect(generate({ type: "array", items: false, maxItems: 5 }, { rng: () => 0.99 })).toEqual([]);
+	});
+
+	it("array items at the exact depth boundary still generate", () => {
+		const v = generate(
+			{ type: "array", items: { type: "string" }, minItems: 1, maxItems: 1 },
+			{ seed: 1, depth: 1 },
+		);
+		expect(v).toHaveLength(1);
+	});
+
+	it("depth errors inside arrays report the item path", () => {
+		const schema: JsonSchema = {
+			type: "array",
+			minItems: 1,
+			maxItems: 1,
+			items: { type: "array", minItems: 1, maxItems: 1, items: { type: "string" } },
+		};
+		expect(() => generate(schema, { seed: 1, depth: 1 })).toThrow(
+			/max depth exceeded \(at \$\/\*\)/,
+		);
+	});
+});
+
+describe("generate — object property-count edge cases", () => {
+	it("minProperties equal to maxProperties is satisfiable", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			minProperties: 2,
+			maxProperties: 2,
+			additionalProperties: { type: "integer" },
+		};
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(schema, { seed: `eq${i}`, locale: "en", assertValid: true });
+			expect(Object.keys(rec)).toHaveLength(2);
+		}
+	});
+
+	it("requiredOnly tops up to minProperties from declared props, not extras", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: {
+				a: { type: "string" },
+				b: { type: "integer" },
+				c: { type: "boolean" },
+				d: { type: "string" },
+			},
+			required: ["a"],
+			minProperties: 3,
+			additionalProperties: { type: "integer" },
+		};
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(schema, {
+				seed: `rt${i}`,
+				requiredOnly: true,
+				locale: "en",
+				assertValid: true,
+			});
+			const keys = Object.keys(rec);
+			expect(keys).toEqual(expect.arrayContaining(["a", "b", "c"]));
+			expect(keys).not.toContain("d");
+		}
+	});
+
+	it("minProperties extras are named extra<N>", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			minProperties: 4,
+			additionalProperties: { type: "integer", minimum: 0, maximum: 9 },
+		};
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(schema, { seed: `ex${i}`, locale: "en", assertValid: true });
+			const keys = Object.keys(rec);
+			expect(keys.length).toBeGreaterThanOrEqual(4);
+			for (const k of keys) expect(k).toMatch(/^extra\d+$/);
+			for (const v of Object.values(rec)) {
+				expect(Number.isInteger(v)).toBe(true);
+				expect(v as number).toBeGreaterThanOrEqual(0);
+				expect(v as number).toBeLessThanOrEqual(9);
+			}
+		}
+	});
+
+	it("extra key numbering skips names already used by properties", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { extra0: { type: "string" } },
+			minProperties: 3,
+			additionalProperties: { type: "integer" },
+		};
+		for (let i = 0; i < 10; i++) {
+			const rec = generateRecord(schema, { seed: `ck${i}`, locale: "en", assertValid: true });
+			const keys = Object.keys(rec);
+			expect(keys).toEqual(expect.arrayContaining(["extra0", "extra1", "extra2"]));
+			for (const k of keys) expect(k).toMatch(/^extra\d+$/);
+		}
+	});
+
+	it("extra keys work alongside an empty-string property name", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { "": { type: "string" } },
+			minProperties: 2,
+			additionalProperties: { type: "integer" },
+		};
+		const rec = generateRecord(schema, { seed: "empty", locale: "en" });
+		expect(Object.keys(rec)).toEqual(expect.arrayContaining(["", "extra0"]));
+	});
+
+	it("additionalProperties schema contributes bonus extra keys", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { fixed: { type: "string" } },
+			additionalProperties: { type: "integer" },
+		};
+		// rng() = 0.99 → int(0, MAX_EXTRA_KEYS) = 3 bonus extras.
+		const rec = generateRecord(schema, {
+			seed: "bonus",
+			rng: () => 0.99,
+			locale: "en",
+			assertValid: true,
+		});
+		expect(Object.keys(rec)).toEqual(["fixed", "extra0", "extra1", "extra2"]);
+		for (const k of ["extra0", "extra1", "extra2"]) {
+			expect(Number.isInteger(rec[k])).toBe(true);
+		}
+	});
+
+	it("bonus extras are capped by remaining maxProperties room", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { fixed: { type: "string" } },
+			additionalProperties: { type: "integer" },
+			maxProperties: 10,
+		};
+		const rec = generateRecord(schema, {
+			seed: "room",
+			rng: () => 0.99,
+			locale: "en",
+			assertValid: true,
+		});
+		expect(Object.keys(rec)).toEqual(["fixed", "extra0", "extra1", "extra2"]);
+	});
+
+	it("additionalProperties true or absent contributes no bonus keys", () => {
+		for (const ap of [true, undefined] as const) {
+			const schema: JsonSchema = {
+				type: "object",
+				properties: { a: { type: "string" } },
+				...(ap === undefined ? {} : { additionalProperties: ap }),
+			};
+			const rec = generateRecord(schema, {
+				seed: "nobonus",
+				rng: () => 0.99,
+				locale: "en",
+				assertValid: true,
+			});
+			expect(Object.keys(rec)).toEqual(["a"]);
+		}
+	});
+});
+
+describe("generate — error messages", () => {
+	it("SeedError messages identify the violated constraint", () => {
+		expect(() =>
+			generate({ type: "string", minLength: 10, maxLength: 5 } as JsonSchema, { seed: 1 }),
+		).toThrow(/minLength 10 > maxLength 5/);
+		expect(() =>
+			generate({ type: "string", minLength: 100000 } as JsonSchema, { seed: 1 }),
+		).toThrow(/could not reach minLength 100000/);
+		expect(() =>
+			generate({ type: "array", minItems: 5, maxItems: 2 } as JsonSchema, { seed: 1 }),
+		).toThrow(/maxItems 2 < minItems 5/);
+		expect(() =>
+			generate({ type: "object", minProperties: 3, maxProperties: 1 } as JsonSchema, { seed: 1 }),
+		).toThrow(/minProperties 3 > maxProperties 1/);
+		expect(() =>
+			generate({ type: "integer", minimum: 0.5, maximum: 0.9 } as JsonSchema, { seed: 1 }),
+		).toThrow(/no integer in \[0\.5, 0\.9\]/);
+		expect(() =>
+			generate({ type: "number", minimum: 10, maximum: 5 } as JsonSchema, { seed: 1 }),
+		).toThrow(/maximum 5 < minimum 10/);
+		expect(() =>
+			generate({ type: "array", items: false, minItems: 1 } as JsonSchema, { seed: 1 }),
+		).toThrow(/items:false with minItems > 0/);
+		expect(() =>
+			generate({ type: "object", minProperties: 3, additionalProperties: false } as JsonSchema, {
+				seed: 1,
+			}),
+		).toThrow(/cannot reach minProperties 3 with additionalProperties:false/);
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { a: { type: "string" }, b: { type: "string" }, c: { type: "string" } },
+					required: ["a", "b", "c"],
+					maxProperties: 2,
+					additionalProperties: false,
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow(/required properties exceed maxProperties 2/);
+	});
+
+	it("pattern failure messages distinguish generator errors from verify misses", () => {
+		// \b is modeled zero-width but "a\bb" can never verify — no
+		// candidate is even produced, so the fallback text appears.
+		expect(() => generate({ type: "string", pattern: "a\\bb" } as JsonSchema, { seed: 1 })).toThrow(
+			/could not generate a string matching \/a\\bb\/ \(no candidate verified\)/,
+		);
+		// The pattern generates fine but exceeds maxLength — the
+		// generator's own error message is surfaced.
+		expect(() =>
+			generate({ type: "string", pattern: "^a{40}$", maxLength: 10 } as JsonSchema, { seed: 1 }),
+		).toThrow(/pattern generates more than 10 chars/);
+		expect(() =>
+			generate({ type: "string", pattern: "(a|aa)+b" } as JsonSchema, { seed: 1 }),
+		).toThrow(/unsafe repetition/);
+		expect(() => generate({ type: "string", pattern: "*" } as JsonSchema, { seed: 1 })).toThrow(
+			/invalid pattern/,
+		);
+	});
+});
