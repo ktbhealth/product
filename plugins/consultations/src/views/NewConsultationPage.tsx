@@ -1117,10 +1117,10 @@ export function NewConsultationPage({
 				</CardContent>
 			</Card>
 
-			<ResizablePanelGroup className="h-[calc(60vh+11rem)]">
+			<ResizablePanelGroup className="items-start">
 				{/* ================= left column: transcript ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
-					<Card className="flex h-full flex-col">
+					<Card>
 						<CardHeader className="border-b">
 							<CardTitle>{t.common.transcript}</CardTitle>
 							<CardAction>
@@ -1145,21 +1145,21 @@ export function NewConsultationPage({
 								</div>
 							</CardAction>
 						</CardHeader>
-						<CardContent className="flex min-h-0 flex-1 flex-col space-y-4">
-							<Field className="flex min-h-0 flex-1 flex-col">
+						<CardContent className="space-y-4">
+							<Field>
 								<FieldLabel
 									htmlFor="transcript"
 									className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
 								>
 									{nc.consultationText}
 								</FieldLabel>
-								<ScrollArea className="min-h-0 flex-1 rounded-lg border border-input">
+								<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[60vh] rounded-lg border border-input">
 									<Textarea
 										id="transcript"
 										value={transcript}
 										onChange={(e) => setTranscript(e.target.value)}
 										placeholder={nc.transcriptPlaceholder}
-										className="resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
+										className="field-sizing-content min-h-[40vh] resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
 									/>
 								</ScrollArea>
 							</Field>
@@ -1208,7 +1208,7 @@ export function NewConsultationPage({
 				<ResizableHandle withHandle className="mx-2" />
 				{/* ================= right column: result ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
-					<Card className="flex h-full flex-col">
+					<Card>
 						<CardHeader className="border-b">
 							<CardTitle>{t.common.anamnesis}</CardTitle>
 							{engine ? (
@@ -1224,7 +1224,7 @@ export function NewConsultationPage({
 						</CardHeader>
 
 						{!anamnesis ? (
-							<CardContent className="flex min-h-0 flex-1">
+							<CardContent>
 								<Empty className="py-14">
 									<EmptyHeader>
 										<EmptyMedia variant="icon">
@@ -1238,8 +1238,8 @@ export function NewConsultationPage({
 								</Empty>
 							</CardContent>
 						) : (
-							<CardContent className="min-h-0 flex-1">
-								<ScrollArea className="h-full">
+							<CardContent>
+								<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[calc(60vh+5rem)]">
 									<div className="space-y-3 pr-3">
 										{anamnesis.historico ? (
 											<div className="rounded-xl border border-border bg-muted/40 p-3">
