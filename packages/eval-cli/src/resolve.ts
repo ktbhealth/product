@@ -91,6 +91,8 @@ export interface SuiteResolution {
  *                     fully-local run
  *   local-devin    — `local` with the LLM swapped to the same
  *                     spawned ACP CLI agent
+ *   local-devin-judge-stub — `local-devin` with a stub judge, for
+ *                     on-box cleanup verification without Jev
  *   cloud           — managed adapters: Workers AI ASR + LLM/judge,
  *                     R2 store. Partial by design — transcription.tts
  *                     has no Workers AI equivalent, so suites
@@ -169,6 +171,18 @@ const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>
 		asr: "faster-whisper",
 		llm: "acp-cli",
 		eval: "jev",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
+	"local-devin-judge-stub": {
+		// `local-devin` without the Jev judge service — real ASR + ACP
+		// cleanup, stub verdicts. For verifying the cleanup stage
+		// end-to-end on-box when no judge backend is running.
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "acp-cli",
+		eval: "stub",
 		store: "sqlite-fs",
 		report: "jsonl",
 		registry: "sqlite-fs",
