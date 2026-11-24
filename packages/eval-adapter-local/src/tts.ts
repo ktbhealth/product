@@ -13,7 +13,10 @@
  * Resilience: edge-tts is transient-flaky (~20% in the benchmark) —
  * synthesis retries on a Schedule (default: exponential ∩ 3 recurs)
  * and runs under a Semaphore cap (default 2) to avoid rate limiting.
- * ffmpeg degradation is a single invocation per profile.
+ * Known-permanent failures (retired voices → NoAudioReceived, auth
+ * rejection → 401/403) skip the schedule entirely — a dead voice
+ * would otherwise burn the full retry budget per sample. ffmpeg
+ * degradation is a single invocation per profile.
  *
  * WARNING: script text is sent to a hosted edge-tts endpoint —
  * synthetic scripts only, never real consult/PHI text (LGPD).
@@ -74,6 +77,23 @@ const RUN_TIMEOUT_MS: Record<string, number> = {
 };
 
 const runTimeoutMs = (cmd: readonly string[]): number => RUN_TIMEOUT_MS[cmd[0]!] ?? 60_000;
+
+/** edge-tts stderr signatures that will NEVER succeed on retry:
+ * - NoAudioReceived — Microsoft retired the voice; the endpoint
+ *   accepts the request then streams zero audio, deterministically.
+ * - 401/403 — auth rejection / forbidden; credentials or WAF block.
+ * - voice-not-found wording — the engine rejected the voice name.
+ * Anything else is treated as transient and retried. */
+const PERMANENT_TTS_PATTERNS: readonly RegExp[] = [
+	/NoAudioReceived/,
+	/\b(?:401|403)\b/,
+	/(?:voice|speaker)[^\n]*(?:not found|does not exist|invalid)/i,
+];
+
+/** True when an edge-tts PortError is a known-permanent failure —
+ * those bypass the retry schedule and fail fast. */
+export const isPermanentTtsError = (error: PortError): boolean =>
+	PERMANENT_TTS_PATTERNS.some((re) => re.test(error.message));
 
 const fsError = (op: string) => (cause: unknown) =>
 	new PortError({
@@ -233,7 +253,12 @@ export const makeLocalTts = (opts: LocalTtsOptions): Layer.Layer<TtsPort, PortEr
 								"--write-media",
 								target,
 							]).pipe(
-								Effect.retry({ schedule: retry as Schedule.Schedule<unknown, PortError> }),
+								Effect.retry({
+									schedule: retry as Schedule.Schedule<unknown, PortError>,
+									// Permanent failures (dead voice, auth) retry
+									// nothing — one attempt, then propagate.
+									while: (error) => !isPermanentTtsError(error),
+								}),
 								Effect.onExit((exit) =>
 									Exit.isSuccess(exit) ? Effect.void : Effect.sync(() => removeFile(target)),
 								),
