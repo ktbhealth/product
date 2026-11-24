@@ -4,6 +4,7 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
+		"./ptbr": "./src/ptbr/index.ts",
 		"./schema": "./src/schema.ts",
 		"./ports": "./src/ports.ts"
 	},

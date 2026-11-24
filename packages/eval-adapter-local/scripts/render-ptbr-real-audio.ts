@@ -12,7 +12,16 @@
  *
  *   # 2. render audio into the same workdir:
  *   bun packages/eval-adapter-local/scripts/render-ptbr-real-audio.ts \
- *     --workdir /tmp/eval-ptbr-real [--limit N] [--concurrency N]
+ *     --workdir /tmp/eval-ptbr-real [--limit N] [--ids id1,id2,...] \
+ *     [--concurrency N]
+ *
+ * Sample selection: the store lists rows ordered by id, but the eval
+ * runner consumes the cohort in AUTHORED dataset order
+ * (PTBR_CONSULTATIONS — general-practice first). Plain `--limit N`
+ * therefore slices `pending` sorted by that authored order so smoke
+ * runs render the same samples the eval would score first. `--ids`
+ * pins an explicit comma-separated id list (still filtered to
+ * `pending://` rows and still `--limit`-capped) for targeted renders.
  *
  * Then run the pipeline with a real ASR profile:
  *
@@ -45,6 +54,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { TtsPort } from "@ktb/eval-consultation";
+import { PTBR_CONSULTATIONS, ptbrRealSampleId } from "@ktb/eval-consultation/ptbr";
 import { Sample } from "@ktb/eval-consultation/schema";
 
 import { makeLocalTts } from "../src/tts.ts";
@@ -68,6 +78,20 @@ const limitRaw = flag("limit");
 const limit = limitRaw === undefined ? undefined : Number.parseInt(limitRaw, 10);
 if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
 	console.error(`--limit must be an integer >= 1, got: ${limitRaw}`);
+	process.exit(2);
+}
+const idsRaw = flag("ids");
+const wantedIds =
+	idsRaw === undefined
+		? undefined
+		: new Set(
+				idsRaw
+					.split(",")
+					.map((s) => s.trim())
+					.filter((s) => s !== ""),
+			);
+if (wantedIds !== undefined && wantedIds.size === 0) {
+	console.error("--ids must list at least one sample id");
 	process.exit(2);
 }
 const concurrencyRaw = flag("concurrency");
@@ -127,7 +151,32 @@ const rows = db
 
 const all = rows.map((r) => decodeSample(JSON.parse(r.doc)));
 const alreadyDone = all.filter((s) => s.audio?.uri.startsWith("file://") === true).length;
-const pending = all.filter((s) => s.audio?.uri.startsWith("pending://") === true).slice(0, limit);
+
+// Authored dataset order — the eval runner consumes the cohort in
+// PTBR_CONSULTATIONS order, so --limit must slice the same way or
+// smoke renders target the wrong samples (the store's ORDER BY id
+// is alphabetical, not authored).
+const authoredOrder = new Map(PTBR_CONSULTATIONS.map((c, i) => [ptbrRealSampleId(c), i] as const));
+const byAuthoredOrder = (a: Sample, b: Sample): number => {
+	const ia = authoredOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+	const ib = authoredOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+	return ia - ib || a.id.localeCompare(b.id);
+};
+
+let cohort = all;
+if (wantedIds !== undefined) {
+	cohort = all.filter((s) => wantedIds.has(s.id));
+	const missing = [...wantedIds].filter((id) => !all.some((s) => s.id === id));
+	if (missing.length > 0) {
+		console.error(`--ids not found in dataset ${datasetVersion}: ${missing.join(", ")}`);
+		db.close();
+		process.exit(2);
+	}
+}
+const pending = cohort
+	.filter((s) => s.audio?.uri.startsWith("pending://") === true)
+	.sort(byAuthoredOrder)
+	.slice(0, limit);
 if (pending.length === 0) {
 	console.log(`nothing to render — ${rows.length} samples already carry file:// audio`);
 	db.close();
