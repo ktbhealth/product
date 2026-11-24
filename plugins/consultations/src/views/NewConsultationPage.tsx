@@ -1117,7 +1117,7 @@ export function NewConsultationPage({
 				</CardContent>
 			</Card>
 
-			<ResizablePanelGroup className="items-start">
+			<ResizablePanelGroup>
 				{/* ================= left column: transcript ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
 					<Card>
@@ -1208,7 +1208,7 @@ export function NewConsultationPage({
 				<ResizableHandle withHandle className="mx-2" />
 				{/* ================= right column: result ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
-					<Card>
+					<Card className="flex h-full flex-col">
 						<CardHeader className="border-b">
 							<CardTitle>{t.common.anamnesis}</CardTitle>
 							{engine ? (
@@ -1238,8 +1238,8 @@ export function NewConsultationPage({
 								</Empty>
 							</CardContent>
 						) : (
-							<CardContent>
-								<ScrollArea className="h-[60vh]">
+							<CardContent className="min-h-0 flex-1">
+								<ScrollArea className="h-full">
 									<div className="space-y-3 pr-3">
 										{anamnesis.historico ? (
 											<div className="rounded-xl border border-border bg-muted/40 p-3">
