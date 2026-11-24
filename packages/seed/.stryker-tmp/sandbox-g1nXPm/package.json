@@ -1,0 +1,14 @@
+{
+	"name": "@ktb/seed",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"mutate": "stryker run"
+	},
+	"dependencies": {
+		"@ktb/json-schema": "workspace:*"
+	}
+}
