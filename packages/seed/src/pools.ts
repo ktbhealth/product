@@ -471,6 +471,7 @@ const LOCALES: Readonly<Record<string, LocalePools>> = {
 export const poolsFor = (locale?: string): LocalePools => {
 	if (!locale) return EN;
 	const exact = LOCALES[locale];
+	// Stryker disable next-line ConditionalExpression: every LOCALES key's base tag resolves to the same pool object (pt-BR→pt, en-*→en, es→es), so skipping the exact lookup is unobservable.
 	if (exact) return exact;
 	const base = LOCALES[locale.split("-")[0]];
 	return base ?? EN;

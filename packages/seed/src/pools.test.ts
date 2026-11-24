@@ -75,6 +75,39 @@ describe("poolsFor", () => {
 		expect(poolsFor(undefined)).toBe(poolsFor("en"));
 		expect(poolsFor("")).toBe(poolsFor("en"));
 	});
+
+	it("every pool entry is a non-empty string", () => {
+		const locales = [
+			undefined,
+			"pt-BR",
+			"pt",
+			"pt-PT",
+			"en",
+			"en-US",
+			"en-GB",
+			"en-AU",
+			"es",
+			"xx-YY",
+		];
+		const bad: string[] = [];
+		for (const locale of locales) {
+			const pools = poolsFor(locale);
+			for (const [field, value] of Object.entries(pools)) {
+				const entries = Array.isArray(value) ? value : [value];
+				for (const v of entries) {
+					if (typeof v !== "string" || v.length === 0) bad.push(`${locale}.${field}`);
+				}
+			}
+		}
+		expect(bad).toEqual([]);
+	});
+
+	it("regional variants resolve to the same pool object as their base language", () => {
+		expect(poolsFor("pt-BR")).toBe(poolsFor("pt"));
+		expect(poolsFor("en-US")).toBe(poolsFor("en"));
+		expect(poolsFor("en-GB")).toBe(poolsFor("en"));
+		expect(poolsFor("en-AU")).toBe(poolsFor("en"));
+	});
 });
 
 /**

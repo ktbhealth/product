@@ -2335,3 +2335,267 @@ describe("generate — error messages", () => {
 		);
 	});
 });
+
+describe("generate — maxProperties trimming", () => {
+	const schema: JsonSchema = {
+		type: "object",
+		properties: {
+			a: { type: "string" },
+			b: { type: "string" },
+			c: { type: "string" },
+		},
+		required: ["a"],
+		maxProperties: 2,
+		additionalProperties: false,
+	};
+
+	it("keeps required keys, then fills in declaration order up to maxProperties", () => {
+		for (let i = 0; i < 8; i++) {
+			const rec = generateRecord(schema, { seed: `trim${i}` });
+			expect(Object.keys(rec)).toEqual(["a", "b"]);
+			expect(validate(schema, rec)).toEqual([]);
+		}
+	});
+
+	it("keeps a late-declared required key ahead of optional ones", () => {
+		const late: JsonSchema = {
+			type: "object",
+			properties: {
+				a: { type: "string" },
+				b: { type: "string" },
+				c: { type: "string" },
+			},
+			required: ["c"],
+			maxProperties: 2,
+			additionalProperties: false,
+		};
+		for (let i = 0; i < 8; i++) {
+			expect(Object.keys(generateRecord(late, { seed: `late${i}` }))).toEqual(["c", "a"]);
+		}
+	});
+
+	it("throws a descriptive SeedError when required keys exceed maxProperties", () => {
+		const over: JsonSchema = {
+			type: "object",
+			properties: {
+				a: { type: "string" },
+				b: { type: "string" },
+				c: { type: "string" },
+			},
+			required: ["a", "b", "c"],
+			maxProperties: 2,
+			additionalProperties: false,
+		};
+		expect(() => generate(over, { seed: 1 })).toThrow(/required properties exceed maxProperties 2/);
+	});
+});
+
+describe("generate — error message detail", () => {
+	it("names the failing constraint in SeedError messages", () => {
+		expect(() => generate({ enum: [] }, { seed: 1 })).toThrow(/empty enum/);
+		expect(() => generate(false, { seed: 1 })).toThrow(/accepts nothing/);
+		expect(() => generate({ not: { const: 1 } }, { seed: 1 })).toThrow(/cannot be generated/);
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { l1: { type: "object", properties: { l2: { type: "string" } } } },
+				},
+				{ seed: 1, depth: 1 },
+			),
+		).toThrow(/max depth exceeded/);
+		expect(() => generate({ type: "integer" }, { seed: 1, maxNodes: 0 })).toThrow(
+			/node budget exceeded/,
+		);
+		expect(() =>
+			generate({ type: "object", required: ["ghost"], additionalProperties: false }, { seed: 1 }),
+		).toThrow(/ghost/);
+	});
+});
+
+describe("generate — edge semantics", () => {
+	it("maxNodes is inclusive — exactly enough budget succeeds", () => {
+		expect(generate({ type: "integer" }, { seed: 1, maxNodes: 1 })).toEqual(expect.any(Number));
+		expect(
+			generate({ type: "object", properties: { a: { type: "string" } } }, { seed: 1, maxNodes: 2 }),
+		).toEqual({ a: expect.any(String) });
+	});
+
+	it("allows object children exactly at the depth boundary", () => {
+		// depth:1 → the property child sits at depth 0, which is allowed.
+		expect(
+			generate({ type: "object", properties: { a: { type: "string" } } }, { seed: 1, depth: 1 }),
+		).toEqual({ a: expect.any(String) });
+	});
+
+	it("empty combinator arrays are skipped, not entered", () => {
+		// allOf/anyOf/oneOf with zero branches must behave as absent —
+		// entering the branch would pick() from an empty array or burn
+		// an extra node of budget.
+		expect(
+			generate({ allOf: [], type: "integer" } as JsonSchema, { seed: 1, maxNodes: 1 }),
+		).toEqual(expect.any(Number));
+		expect(generate({ anyOf: [] } as JsonSchema, { seed: 1 })).toBeDefined();
+		expect(generate({ oneOf: [] } as JsonSchema, { seed: 1 })).toBeDefined();
+	});
+
+	it("anyOf/oneOf generate from a picked branch", () => {
+		const anyOf: JsonSchema = { anyOf: [{ const: 1 }, { const: 2 }] };
+		expect([1, 2]).toContain(generate(anyOf, { seed: "ao" }));
+		const oneOf: JsonSchema = { oneOf: [{ const: "x" }, { const: "y" }] };
+		expect(["x", "y"]).toContain(generate(oneOf, { seed: "oo" }));
+	});
+
+	it("oneOf merges the sibling rest once — the branch list is not re-applied", () => {
+		// If `oneOf` survived the omitKeys merge it would be re-entered on
+		// the recursive pass and could merge-conflict with the sibling type.
+		const schema: JsonSchema = {
+			oneOf: [
+				{ type: "string", minLength: 3 },
+				{ type: "integer", minimum: 0, maximum: 9 },
+			],
+		};
+		for (let i = 0; i < 30; i++) {
+			const v = generate(schema, { seed: `oo${i}` });
+			const ok = typeof v === "string" ? v.length >= 3 : Number.isInteger(v);
+			expect(ok).toBe(true);
+		}
+	});
+
+	it("boolean-true schema yields a scalar pick, not a forced string", () => {
+		// rng pinned at 0.5 selects the chance() branch → boolean false.
+		expect(generate(true, { rng: () => 0.5 })).toBe(false);
+	});
+
+	it("randomScalar word branch produces 1-3 pool words", () => {
+		// Steer the PRNG: pick the words branch (0.1 → index 0), then
+		// int() = 2 → count 3; the word picks all land on index 1.
+		const seq = [0.1, 0.9, 0.1, 0.1, 0.1];
+		let i = 0;
+		const rng = () => seq[i++ % seq.length] as number;
+		const v = generate(true, { rng });
+		expect(typeof v).toBe("string");
+		const words = (v as string).split(" ");
+		expect(words).toHaveLength(3);
+		for (const w of words) expect(poolsFor("en").words).toContain(w);
+	});
+
+	it("escapes JSON-pointer segments in nested error paths", () => {
+		// maxNodes:1 lets the root object through, then the child node
+		// busts the budget — the SeedError carries the child's path.
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: { "a/b~c": { type: "string" } },
+					required: ["a/b~c"],
+				},
+				{ seed: 1, maxNodes: 1 },
+			),
+		).toThrow(/\$\/a~1b~0c/);
+	});
+
+	it("forces assertValid semantics only when requested", () => {
+		// Both oneOf branches are identical → any generated value matches
+		// both → invalid oneOf. Without assertValid the value is returned;
+		// with it, SeedError.
+		const schema: JsonSchema = { oneOf: [{ const: 1 }, { const: 1 }] };
+		expect(generate(schema, { seed: 1 })).toBe(1);
+		expect(() => generate(schema, { seed: 1, assertValid: true })).toThrow(/failed validation/);
+	});
+
+	it("unseeded calls stay nondeterministic", () => {
+		for (let i = 0; i < 5; i++) {
+			const a = JSON.stringify(
+				generate({ type: "object", properties: { s: { type: "string", minLength: 40 } } }),
+			);
+			const b = JSON.stringify(
+				generate({ type: "object", properties: { s: { type: "string", minLength: 40 } } }),
+			);
+			expect(a).not.toBe(b);
+		}
+		const m1 = generateMany({ type: "integer", minimum: 0, maximum: 1e9 }, 10);
+		const m2 = generateMany({ type: "integer", minimum: 0, maximum: 1e9 }, 10);
+		expect(m1).not.toEqual(m2);
+	});
+
+	it("generateMany accepts a zero count and reports bad counts", () => {
+		expect(generateMany({ type: "integer" }, 0)).toEqual([]);
+		expect(() => generateMany({}, -1)).toThrow(/non-negative integer/);
+		expect(() => generateMany({}, MAX_GENERATE_MANY + 1)).toThrow(/exceeds MAX_GENERATE_MANY/);
+	});
+
+	it("generateRecord rejects null and describes the requirement", () => {
+		expect(() => generateRecord({ type: "null" }, { seed: 1 })).toThrow(SeedError);
+		expect(() => generateRecord({ type: "string" }, { seed: 1 })).toThrow(
+			/object-producing schema/,
+		);
+	});
+
+	it("slug-derived heuristics never emit 'undefined'", () => {
+		const rec = generateRecord(
+			{
+				type: "object",
+				properties: {
+					email: { type: "string" },
+					username: { type: "string" },
+				},
+			},
+			{ seed: "slug", locale: "en" },
+		) as Record<string, string>;
+		expect(rec.email).not.toContain("undefined");
+		expect(rec.username).not.toContain("undefined");
+		expect(rec.email).toMatch(/^[a-z0-9.]+@[a-z0-9.]+$/);
+	});
+});
+
+describe("generate — inferred types", () => {
+	it("infers object from each object keyword alone", () => {
+		const cases: JsonSchema[] = [
+			{ properties: { a: { type: "string" } } },
+			{ required: ["a"] },
+			{ additionalProperties: { type: "integer" } },
+			{ minProperties: 1 },
+			{ maxProperties: 2 },
+		];
+		for (const schema of cases) {
+			for (let i = 0; i < 4; i++) {
+				const v = generate(schema, { seed: `io${i}` });
+				expect(typeof v).toBe("object");
+				expect(v === null || Array.isArray(v)).toBe(false);
+			}
+		}
+	});
+
+	it("infers array from each array keyword alone", () => {
+		const cases: JsonSchema[] = [{ items: { type: "string" } }, { minItems: 1 }, { maxItems: 1 }];
+		for (const schema of cases) {
+			for (let i = 0; i < 4; i++) {
+				expect(Array.isArray(generate(schema, { seed: `ia${i}` }))).toBe(true);
+			}
+		}
+	});
+
+	it("infers string from string keywords, number from numeric keywords", () => {
+		// String keywords win over numeric ones (checked first).
+		expect(typeof generate({ minLength: 2, minimum: 0 }, { seed: 1 })).toBe("string");
+		expect(typeof generate({ maxLength: 5, minimum: 0 }, { seed: 1 })).toBe("string");
+		expect(typeof generate({ pattern: "^a+$", minimum: 0 }, { seed: 1 })).toBe("string");
+		// Numeric keywords alone → number; nothing at all → string.
+		expect(typeof generate({ minimum: 5 }, { seed: 1 })).toBe("number");
+		expect(typeof generate({ maximum: 5 }, { seed: 1 })).toBe("number");
+		expect(typeof generate({}, { seed: 1 })).toBe("string");
+	});
+
+	it("empty type array falls back to keyword inference", () => {
+		const v = generate({ type: [], properties: { a: { type: "string" } } } as JsonSchema, {
+			seed: 1,
+		});
+		expect(v).toEqual({ a: expect.any(String) });
+	});
+
+	it("number type yields floats, not forced integers", () => {
+		const v = generate({ type: "number", minimum: 0, maximum: 1 }, { rng: () => 0.5 });
+		expect(v).toBe(0.5);
+	});
+});
