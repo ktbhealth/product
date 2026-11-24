@@ -964,7 +964,8 @@ describe("instrumentRouter edge cases", () => {
 		handlers.get("onBeforeNavigate")?.({});
 		handlers.get("onResolved")?.({});
 		expect(sink).toHaveBeenCalledTimes(1);
-		expect((sink.mock.calls[0]?.[0] as ClientTelemetryEvent).path).toBe("/start");
+		const [event] = sink.mock.calls[0] as [ClientTelemetryEvent];
+		expect(event.path).toBe("/start");
 	});
 
 	it("reports navigation with an undefined path when window.location is unavailable", () => {
@@ -982,7 +983,8 @@ describe("instrumentRouter edge cases", () => {
 		handlers.get("onBeforeNavigate")?.({});
 		handlers.get("onResolved")?.({});
 		expect(sink).toHaveBeenCalledTimes(1);
-		expect((sink.mock.calls[0]?.[0] as ClientTelemetryEvent).path).toBeUndefined();
+		const [event] = sink.mock.calls[0] as [ClientTelemetryEvent];
+		expect(event.path).toBeUndefined();
 	});
 });
 
