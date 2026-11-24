@@ -60,6 +60,7 @@ const SENSITIVE_WORDS = new Set([
 	"pin",
 ]);
 
+// Stryker disable Regex,EqualityOperator,ConditionalExpression: in keyWords, dropping the `+` in the split or keeping "" words only adds empty strings — "" is never in SENSITIVE_WORDS, so isSensitiveKey is unchanged (probe-verified).
 /** Split a key into lowercase words: `apiKey` → ["api","key"],
  * `x-api_key` → ["x","api","key"], `requestId` → ["request","id"]. */
 const keyWords = (key: string): string[] =>
@@ -69,6 +70,7 @@ const keyWords = (key: string): string[] =>
 		.toLowerCase()
 		.split(/[^a-z0-9]+/)
 		.filter((word) => word.length > 0);
+// Stryker restore Regex,EqualityOperator,ConditionalExpression
 
 /** True when any normalized word of `key` is sensitive. Word-level
  * matching keeps `keyboard`, `monkey` and `cardiac` safe while bare
