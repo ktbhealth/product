@@ -1656,6 +1656,55 @@ export const I18N_MANIFEST = {
 		"list.colActions": {
 			params: [],
 		},
+		"list.filterAll": {
+			params: [],
+		},
+		"list.filterLive": {
+			params: [],
+		},
+		"list.filterDone": {
+			params: [],
+		},
+		"list.filterSourceAll": {
+			params: [],
+		},
+		"list.filterAnamnesisAll": {
+			params: [],
+		},
+		"list.filterAnamnesisWith": {
+			params: [],
+		},
+		"list.filterAnamnesisWithout": {
+			params: [],
+		},
+		"list.liveNow": {
+			params: [],
+		},
+		"list.needsReview": {
+			params: [
+				{
+					name: "n",
+					cases: ["=1", "other"],
+					plural: true,
+				},
+			],
+			template: "{n, plural, =1{{n} section to review} other{{n} sections to review}}",
+		},
+		"list.statsToday": {
+			params: [],
+		},
+		"list.statsLiveNow": {
+			params: [],
+		},
+		"list.statsNeedsReview": {
+			params: [],
+		},
+		"list.previewComplaint": {
+			params: [],
+		},
+		"list.previewPlan": {
+			params: [],
+		},
 		"detail.back": {
 			params: [],
 		},
@@ -1716,6 +1765,15 @@ export const I18N_MANIFEST = {
 				},
 			],
 			template: "evidence ({n})",
+		},
+		"detail.showEvidence": {
+			params: [],
+		},
+		"detail.hideEvidence": {
+			params: [],
+		},
+		"detail.evidenceTitle": {
+			params: [],
 		},
 		"detail.noAnamnesisTitle": {
 			params: [],

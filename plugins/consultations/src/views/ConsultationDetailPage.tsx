@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon, QuoteIcon } from "lucide-react";
 
 import { IntegrityBadge } from "@ktb/integrity/badge";
 import { anamnesisToText, factContent } from "@ktb/anamnesis";
@@ -248,6 +248,19 @@ export function ConsultationDetailPage({
 	// `dec` overlays the client-decrypted fields under ZK; `live` the
 	// polled audio-pipeline state — never active under ZK (T-147).
 	const v = { ...c, ...(live ?? {}), ...(dec ?? {}) };
+	// Clickable transcript evidence: at most one section's grounding
+	// sentences are marked up in the transcript at a time; turning a
+	// section on also scrolls the ScrollArea to the first match.
+	const [evidence, setEvidence] = useState<{
+		section: AnamnesisSectionKey;
+		sentences: readonly string[];
+	} | null>(null);
+	const transcriptRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!evidence) return;
+		// jsdom has no scrollIntoView — the optional call keeps tests quiet.
+		transcriptRef.current?.querySelector("mark")?.scrollIntoView?.({ block: "nearest" });
+	}, [evidence, v.transcript, v.serverTranscript, v.correctedTranscript]);
 	// Tamper-evidence badge (T-139): re-verify the anamnesis version
 	// chain once on mount — only meaningful when an anamnesis exists.
 	const [integrity, setIntegrity] = useState<ConsultationIntegrityReport | null>(null);
@@ -452,6 +465,27 @@ export function ConsultationDetailPage({
 										<CardHeader>
 											<CardTitle>{t.sections[key]}</CardTitle>
 											<CardAction>
+												{sec.evidence.length ? (
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														aria-pressed={evidence?.section === key}
+														title={t.detail.evidenceTitle}
+														onClick={() =>
+															setEvidence(
+																evidence?.section === key
+																	? null
+																	: { section: key, sentences: sec.evidence },
+															)
+														}
+													>
+														<QuoteIcon data-icon="inline-start" />
+														{evidence?.section === key
+															? t.detail.hideEvidence
+															: t.detail.showEvidence}
+													</Button>
+												) : null}
 												<Badge
 													variant="secondary"
 													className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
@@ -505,7 +539,7 @@ export function ConsultationDetailPage({
 					</CardHeader>
 					<CardContent>
 						<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[70vh]">
-							<div className="pr-3">
+							<div className="pr-3" ref={transcriptRef}>
 								<AudioTranscriptPanel
 									i18n={i18n}
 									locale={locale}
@@ -516,6 +550,7 @@ export function ConsultationDetailPage({
 									browserText={v.transcript}
 									serverText={v.serverTranscript}
 									correctedText={v.correctedTranscript}
+									highlight={evidence?.sentences}
 								/>
 							</div>
 						</ScrollArea>

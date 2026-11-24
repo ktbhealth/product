@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -9,9 +9,49 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/componen
 import { BADGE_TONES, SPEAKER_STYLE } from "./-ui.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Builds a case-insensitive matcher for verbatim evidence sentences.
+ * Whitespace runs become `\s+` so a stored sentence still matches when
+ * the rendered transcript wraps or collapses spacing differently; the
+ * matched (original) text is what renders inside the <mark>.
+ */
+function evidenceRegex(sentences: readonly string[] | undefined): RegExp | null {
+	const parts = (sentences ?? [])
+		.map((s) => s.trim())
+		.filter((s) => s.length > 0)
+		.map((s) => escapeRegex(s).replace(/\s+/g, "\\s+"));
+	return parts.length ? new RegExp(`(${parts.join("|")})`, "gi") : null;
+}
+
+/** Splits `text` on every evidence match; captures become <mark> nodes. */
+function markedText(text: string, re: RegExp): ReactNode[] {
+	return text.split(re).map((part, i) =>
+		i % 2 === 1 ? (
+			// biome-ignore lint/suspicious/noArrayIndexKey: static split parts
+			<mark key={i} className="rounded bg-warning/30 px-0.5">
+				{part}
+			</mark>
+		) : (
+			part
+		),
+	);
+}
+
 /** "Doctor: text" lines become chat-style bubbles. */
-function Transcript({ text, emptyLabel }: { text: string; emptyLabel: string }) {
+function Transcript({
+	text,
+	emptyLabel,
+	highlight,
+}: {
+	text: string;
+	emptyLabel: string;
+	/** Evidence sentences to mark up in the rendered text. */
+	highlight?: readonly string[];
+}) {
 	const lines = text.split("\n").filter((l) => l.trim());
+	const markRe = evidenceRegex(highlight);
 	if (!lines.length) return <p className="text-sm text-muted-foreground">{emptyLabel}</p>;
 	return (
 		<div className="space-y-2.5">
@@ -35,7 +75,7 @@ function Transcript({ text, emptyLabel }: { text: string; emptyLabel: string }) 
 								{speaker}
 							</Badge>
 						) : null}
-						<span className="text-foreground">{body}</span>
+						<span className="text-foreground">{markRe ? markedText(body, markRe) : body}</span>
 					</div>
 				);
 			})}
@@ -150,13 +190,21 @@ function originalBlocks(
 	return blocks;
 }
 
-function SourceBlock({ view, emptyLabel }: { view: TranscriptView; emptyLabel: string }) {
+function SourceBlock({
+	view,
+	emptyLabel,
+	highlight,
+}: {
+	view: TranscriptView;
+	emptyLabel: string;
+	highlight?: readonly string[];
+}) {
 	return (
 		<div>
 			<p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
 				{view.source}
 			</p>
-			<Transcript text={view.text} emptyLabel={emptyLabel} />
+			<Transcript text={view.text} emptyLabel={emptyLabel} highlight={highlight} />
 		</div>
 	);
 }
@@ -177,6 +225,7 @@ export function AudioTranscriptPanel({
 	onActiveText,
 	i18n,
 	audioSrc,
+	highlight,
 	locale = "en",
 }: {
 	consultationId: number | null;
@@ -196,6 +245,8 @@ export function AudioTranscriptPanel({
 	 * ciphertext, decrypts it in the browser and hands an object URL;
 	 * absent = the default authenticated endpoint. */
 	audioSrc?: string;
+	/** Active evidence sentences — matched substrings render as <mark>. */
+	highlight?: readonly string[];
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const [tab, setTab] = useState<"corrected" | "original">("corrected");
@@ -278,22 +329,40 @@ export function AudioTranscriptPanel({
 						<TabsTrigger value="original">{t.transcriptPanel.tabOriginal}</TabsTrigger>
 					</TabsList>
 					<TabsContent value="corrected" className="pt-2">
-						<SourceBlock view={tabbed.corrected} emptyLabel={t.common.noTranscript} />
+						<SourceBlock
+							view={tabbed.corrected}
+							emptyLabel={t.common.noTranscript}
+							highlight={highlight}
+						/>
 					</TabsContent>
 					<TabsContent value="original" className="space-y-4 pt-2">
 						{originals.map((b) => (
-							<SourceBlock key={b.source} view={b} emptyLabel={t.common.noTranscript} />
+							<SourceBlock
+								key={b.source}
+								view={b}
+								emptyLabel={t.common.noTranscript}
+								highlight={highlight}
+							/>
 						))}
 					</TabsContent>
 				</Tabs>
 			) : originals.length ? (
 				<div className="space-y-4">
 					{originals.map((b) => (
-						<SourceBlock key={b.source} view={b} emptyLabel={t.common.noTranscript} />
+						<SourceBlock
+							key={b.source}
+							view={b}
+							emptyLabel={t.common.noTranscript}
+							highlight={highlight}
+						/>
 					))}
 				</div>
 			) : correctedView ? (
-				<SourceBlock view={correctedView} emptyLabel={t.common.noTranscript} />
+				<SourceBlock
+					view={correctedView}
+					emptyLabel={t.common.noTranscript}
+					highlight={highlight}
+				/>
 			) : (
 				<Transcript text="" emptyLabel={t.common.noTranscript} />
 			)}

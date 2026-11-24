@@ -70,6 +70,25 @@ export interface ConsultationMessages {
 		readonly colDate: string;
 		readonly colStatus: string;
 		readonly colActions: string;
+		/** Faceted-filter Selects in the list toolbar. */
+		readonly filterAll: string;
+		readonly filterLive: string;
+		readonly filterDone: string;
+		readonly filterSourceAll: string;
+		readonly filterAnamnesisAll: string;
+		readonly filterAnamnesisWith: string;
+		readonly filterAnamnesisWithout: string;
+		/** Pulsing badge on in-progress rows. */
+		readonly liveNow: string;
+		/** Needs-review badge — count of `baixa`-confidence sections. */
+		readonly needsReview: (n: number) => string;
+		/** Stats strip labels above the list table. */
+		readonly statsToday: string;
+		readonly statsLiveNow: string;
+		readonly statsNeedsReview: string;
+		/** Row hover-preview field labels. */
+		readonly previewComplaint: string;
+		readonly previewPlan: string;
 	};
 	readonly detail: {
 		readonly back: string;
@@ -85,6 +104,10 @@ export interface ConsultationMessages {
 		readonly historyNote: string;
 		readonly notReported: string;
 		readonly evidence: (n: number) => string;
+		/** Transcript-evidence toggle (highlights grounding sentences). */
+		readonly showEvidence: string;
+		readonly hideEvidence: string;
+		readonly evidenceTitle: string;
 		readonly noAnamnesisTitle: string;
 		readonly noAnamnesisDescription: string;
 		/** Tamper-evidence badge labels (T-139) — mirrors IntegrityBadgeLabels. */
@@ -321,6 +344,24 @@ const en: ConsultationMessages = {
 		colDate: "Date",
 		colStatus: "Status",
 		colActions: "Actions",
+		filterAll: "All statuses",
+		filterLive: "Live",
+		filterDone: "Done",
+		filterSourceAll: "All sources",
+		filterAnamnesisAll: "Any anamnesis",
+		filterAnamnesisWith: "With anamnesis",
+		filterAnamnesisWithout: "Without anamnesis",
+		liveNow: "Live now",
+		needsReview: paramMessage(
+			"en",
+			"{n, plural, =1{{n} section to review} other{{n} sections to review}}",
+			["n"],
+		),
+		statsToday: "Today",
+		statsLiveNow: "Live now",
+		statsNeedsReview: "Needs review",
+		previewComplaint: "Chief complaint",
+		previewPlan: "Plan",
 	},
 	detail: {
 		back: "Consultations",
@@ -340,6 +381,9 @@ const en: ConsultationMessages = {
 		historyNote: "Factual record of prior consultations — context only, not clinical suggestions.",
 		notReported: "Not reported",
 		evidence: paramMessage("en", "evidence ({n})", ["n"]),
+		showEvidence: "Show evidence",
+		hideEvidence: "Hide evidence",
+		evidenceTitle: "Transcript evidence",
 		noAnamnesisTitle: "No anamnesis saved",
 		noAnamnesisDescription: "This consultation does not have a saved anamnesis yet.",
 		integrity: {
@@ -589,6 +633,24 @@ const ptBR: ConsultationMessages = {
 		colDate: "Data",
 		colStatus: "Status",
 		colActions: "Ações",
+		filterAll: "Todos os status",
+		filterLive: "Ao vivo",
+		filterDone: "Concluídas",
+		filterSourceAll: "Todas as fontes",
+		filterAnamnesisAll: "Qualquer anamnese",
+		filterAnamnesisWith: "Com anamnese",
+		filterAnamnesisWithout: "Sem anamnese",
+		liveNow: "Ao vivo agora",
+		needsReview: paramMessage(
+			"pt-BR",
+			"{n, plural, =1{{n} seção para revisar} other{{n} seções para revisar}}",
+			["n"],
+		),
+		statsToday: "Hoje",
+		statsLiveNow: "Ao vivo",
+		statsNeedsReview: "Revisão pendente",
+		previewComplaint: "Queixa principal",
+		previewPlan: "Conduta",
 	},
 	detail: {
 		back: "Consultas",
@@ -609,6 +671,9 @@ const ptBR: ConsultationMessages = {
 			"Registro factual de consultas anteriores — apenas contexto, não sugestões clínicas.",
 		notReported: "Não informado",
 		evidence: paramMessage("pt-BR", "evidências ({n})", ["n"]),
+		showEvidence: "Ver evidência",
+		hideEvidence: "Ocultar evidência",
+		evidenceTitle: "Evidência no transcript",
 		noAnamnesisTitle: "Nenhuma anamnese salva",
 		noAnamnesisDescription: "Esta consulta ainda não tem uma anamnese salva.",
 		integrity: {
@@ -861,6 +926,24 @@ const es: ConsultationMessages = {
 		colDate: "Fecha",
 		colStatus: "Estado",
 		colActions: "Acciones",
+		filterAll: "Todos los estados",
+		filterLive: "En vivo",
+		filterDone: "Finalizadas",
+		filterSourceAll: "Todas las fuentes",
+		filterAnamnesisAll: "Cualquier anamnesis",
+		filterAnamnesisWith: "Con anamnesis",
+		filterAnamnesisWithout: "Sin anamnesis",
+		liveNow: "En vivo ahora",
+		needsReview: paramMessage(
+			"es",
+			"{n, plural, =1{{n} sección por revisar} other{{n} secciones por revisar}}",
+			["n"],
+		),
+		statsToday: "Hoy",
+		statsLiveNow: "En vivo",
+		statsNeedsReview: "Requiere revisión",
+		previewComplaint: "Motivo de consulta",
+		previewPlan: "Plan",
 	},
 	detail: {
 		back: "Consultas",
@@ -881,6 +964,9 @@ const es: ConsultationMessages = {
 			"Registro factual de consultas anteriores — solo contexto, no sugerencias clínicas.",
 		notReported: "No informado",
 		evidence: paramMessage("es", "evidencias ({n})", ["n"]),
+		showEvidence: "Ver evidencia",
+		hideEvidence: "Ocultar evidencia",
+		evidenceTitle: "Evidencia en la transcripción",
 		noAnamnesisTitle: "Ninguna anamnesis guardada",
 		noAnamnesisDescription: "Esta consulta aún no tiene una anamnesis guardada.",
 		integrity: {
