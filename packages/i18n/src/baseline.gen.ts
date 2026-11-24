@@ -4940,7 +4940,7 @@ export const I18N_BASELINE = [
 		key: "hero_doctors_subtitle",
 		locale: "en",
 		value:
-			"Talk to the patient, not to the screen. KTB Health listens to the consultation, transcribes it and structures the anamnesis with evidence citations. You review, edit and sign.",
+			"Talk to the patient, not to the screen. KTB Health is the specialty-first, locale-native clinical scribe: it listens to the consultation, transcribes it and structures the anamnesis with evidence citations. You review, edit and sign.",
 	},
 	{
 		namespace: "audience",
@@ -5661,7 +5661,7 @@ export const I18N_BASELINE = [
 		key: "hero_doctors_subtitle",
 		locale: "pt-BR",
 		value:
-			"Converse com o paciente, não com a tela. A KTB Health escuta a consulta, transcreve e estrutura a anamnese com citações de evidência. Você revisa, edita e assina.",
+			"Converse com o paciente, não com a tela. A KTB Health é o scribe clínico specialty-first, locale-native: escuta a consulta, transcreve e estrutura a anamnese com citações de evidência. Você revisa, edita e assina.",
 	},
 	{
 		namespace: "audience",
@@ -6381,7 +6381,7 @@ export const I18N_BASELINE = [
 		key: "hero_doctors_subtitle",
 		locale: "es",
 		value:
-			"Hable con el paciente, no con la pantalla. KTB Health escucha la consulta, la transcribe y estructura la anamnesis con citas de evidencia. Usted revisa, edita y firma.",
+			"Hable con el paciente, no con la pantalla. KTB Health es el scribe clínico specialty-first, locale-native: escucha la consulta, la transcribe y estructura la anamnesis con citas de evidencia. Usted revisa, edita y firma.",
 	},
 	{
 		namespace: "audience",
