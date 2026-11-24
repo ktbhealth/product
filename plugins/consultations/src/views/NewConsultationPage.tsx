@@ -30,6 +30,11 @@ import { Field, FieldError, FieldLabel } from "@ktbhealth/ui/components/field";
 import { Input } from "@ktbhealth/ui/components/input";
 import { Label } from "@ktbhealth/ui/components/label";
 import { PageContainer } from "@ktbhealth/ui/components/page-container";
+import {
+	ResizableHandle,
+	ResizablePanel,
+	ResizablePanelGroup,
+} from "@ktbhealth/ui/components/resizable";
 import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 import {
@@ -39,7 +44,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@ktbhealth/ui/components/select";
-import { Separator } from "@ktbhealth/ui/components/separator";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbList,
+	BreadcrumbSeparator,
+} from "@ktbhealth/ui/components/breadcrumb";
 import { Spinner } from "@ktbhealth/ui/components/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 import { Textarea } from "@ktbhealth/ui/components/textarea";
@@ -90,7 +100,7 @@ function Step({ n, label, done }: { n: number; label: string; done: boolean }) {
 					done ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
 				}`}
 			>
-				{done ? "✓" : n}
+				{done ? <CheckIcon className="size-3.5" aria-hidden /> : n}
 			</span>
 			<span className={done ? "text-foreground" : "text-muted-foreground"}>{label}</span>
 		</span>
@@ -767,7 +777,7 @@ export function NewConsultationPage({
 	const accessPatientName = dialogPatientName ?? nc.patientFallback;
 
 	return (
-		<PageContainer>
+		<PageContainer className="max-w-screen-2xl">
 			<PageHeader
 				title={nc.title}
 				description={nc.subtitle}
@@ -800,15 +810,21 @@ export function NewConsultationPage({
 							</TabsTrigger>
 						</TabsList>
 					</Tabs>
-					<CardAction>
-						<div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-							<Step n={1} label={nc.steps.prepare} done={step1} />
-							<Separator className="w-6" aria-hidden />
-							<Step n={2} label={nc.steps.transcribe} done={step2} />
-							<Separator className="w-6" aria-hidden />
-							<Step n={3} label={nc.steps.review} done={step3} />
-						</div>
-					</CardAction>
+					<Breadcrumb>
+						<BreadcrumbList>
+							<BreadcrumbItem>
+								<Step n={1} label={nc.steps.prepare} done={step1} />
+							</BreadcrumbItem>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<Step n={2} label={nc.steps.transcribe} done={step2} />
+							</BreadcrumbItem>
+							<BreadcrumbSeparator />
+							<BreadcrumbItem>
+								<Step n={3} label={nc.steps.review} done={step3} />
+							</BreadcrumbItem>
+						</BreadcrumbList>
+					</Breadcrumb>
 				</CardHeader>
 				<CardContent className="space-y-5">
 					{/* 1. prepare: patient + consent */}
@@ -1101,200 +1117,206 @@ export function NewConsultationPage({
 				</CardContent>
 			</Card>
 
-			<div className="grid items-start gap-6 lg:grid-cols-2">
+			<ResizablePanelGroup className="items-start">
 				{/* ================= left column: transcript ================= */}
-				<Card>
-					<CardHeader className="border-b">
-						<CardTitle>{t.common.transcript}</CardTitle>
-						<CardAction>
-							<div className="flex gap-2">
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
-								>
-									{nc.useSample}
-								</Button>
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									onClick={() => setTranscript("")}
-									disabled={!transcript}
-								>
-									{nc.clear}
-								</Button>
-							</div>
-						</CardAction>
-					</CardHeader>
-					<CardContent className="space-y-4">
-						<Field>
-							<FieldLabel
-								htmlFor="transcript"
-								className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
-							>
-								{nc.consultationText}
-							</FieldLabel>
-							<ScrollArea className="h-80 rounded-lg border border-input">
-								<Textarea
-									id="transcript"
-									value={transcript}
-									onChange={(e) => setTranscript(e.target.value)}
-									placeholder={nc.transcriptPlaceholder}
-									className="min-h-80 resize-none border-0 font-mono text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
-								/>
-							</ScrollArea>
-						</Field>
-
-						{audioDetail || audioConsultId !== null ? (
-							<div className="rounded-xl border border-border p-3">
-								<p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-									{nc.serverTranscript}
-								</p>
-								<AudioTranscriptPanel
-									i18n={i18n}
-									locale={locale}
-									consultationId={audioConsultId}
-									audioStatus={audioDetail?.audioStatus ?? "queued"}
-									hasAudio={Boolean(audioDetail?.audioKey)}
-									browserText={transcript}
-									serverText={audioDetail?.serverTranscript}
-									correctedText={audioDetail?.correctedTranscript}
-									onActiveText={setViewedText}
-								/>
-							</div>
-						) : null}
-
-						<Button
-							type="button"
-							onClick={generate}
-							disabled={busy || !extractText.trim()}
-							className="h-auto w-full px-4 py-2.5"
-						>
-							{busy ? <Spinner /> : null}
-							{busy ? nc.generating : nc.generate}
-						</Button>
-						{viewedText ? (
-							<p className="text-[11px] text-muted-foreground">
-								{nc.generatedFrom(viewedText.source)}
-							</p>
-						) : null}
-						{error ? (
-							<Alert variant="destructive" className="px-3 py-2 text-xs">
-								{error}
-							</Alert>
-						) : null}
-					</CardContent>
-				</Card>
-
-				{/* ================= right column: result ================= */}
-				<Card className="lg:sticky lg:top-4">
-					<CardHeader className="border-b">
-						<CardTitle>{t.common.anamnesis}</CardTitle>
-						{engine ? (
+				<ResizablePanel defaultSize="50" minSize="30">
+					<Card>
+						<CardHeader className="border-b">
+							<CardTitle>{t.common.transcript}</CardTitle>
 							<CardAction>
-								<Badge
-									variant="secondary"
-									className="font-normal text-muted-foreground ring-1 ring-border"
-								>
-									{t.common.engine(engine)}
-								</Badge>
-							</CardAction>
-						) : null}
-					</CardHeader>
-
-					{!anamnesis ? (
-						<CardContent>
-							<Empty className="py-14">
-								<EmptyHeader>
-									<EmptyMedia variant="icon">
-										<ClipboardListIcon />
-									</EmptyMedia>
-									<EmptyTitle>{nc.waitingTitle}</EmptyTitle>
-									<EmptyDescription className="max-w-xs">{nc.waitingDescription}</EmptyDescription>
-								</EmptyHeader>
-							</Empty>
-						</CardContent>
-					) : (
-						<CardContent>
-							<ScrollArea className="max-h-[68vh]">
-								<div className="space-y-3 pr-3">
-									{anamnesis.historico ? (
-										<div className="rounded-xl border border-border bg-muted/40 p-3">
-											<p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-												{t.sections.historico}
-											</p>
-											<p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
-												{anamnesis.historico.content}
-											</p>
-										</div>
-									) : null}
-									{(
-										Object.keys(t.sections).filter(
-											(k) => k !== "historico",
-										) as AnamnesisSectionKey[]
-									).map((key) => {
-										const sec = anamnesis[key];
-										return (
-											<Field
-												key={key}
-												className={`gap-1.5 rounded-xl border border-l-4 border-border bg-card p-3 ${CONF_BAR[sec.confidence]}`}
-											>
-												<div className="flex items-center justify-between gap-2">
-													<FieldLabel
-														htmlFor={`sec-${key}`}
-														className="text-xs font-semibold text-foreground"
-													>
-														{t.sections[key]}
-													</FieldLabel>
-													<Badge
-														variant="secondary"
-														className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
-													>
-														{t.confidence[sec.confidence]}
-													</Badge>
-												</div>
-												<Textarea
-													id={`sec-${key}`}
-													value={sec.content}
-													onChange={(e) => updateSection(key, e.target.value)}
-													rows={Math.min(5, Math.max(2, Math.ceil(sec.content.length / 70)))}
-													className="mt-1.5 resize-y text-sm leading-relaxed"
-												/>
-												{sec.evidence.length ? (
-													<details className="mt-1">
-														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-muted-foreground">
-															{t.detail.evidence(sec.evidence.length)}
-														</summary>
-														<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
-															{sec.evidence.map((ev) => (
-																<li key={ev.slice(0, 40)}>“{ev}”</li>
-															))}
-														</ul>
-													</details>
-												) : null}
-											</Field>
-										);
-									})}
+								<div className="flex gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
+									>
+										{nc.useSample}
+									</Button>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => setTranscript("")}
+										disabled={!transcript}
+									>
+										{nc.clear}
+									</Button>
 								</div>
-							</ScrollArea>
-						</CardContent>
-					)}
+							</CardAction>
+						</CardHeader>
+						<CardContent className="space-y-4">
+							<Field>
+								<FieldLabel
+									htmlFor="transcript"
+									className="text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+								>
+									{nc.consultationText}
+								</FieldLabel>
+								<ScrollArea className="h-[60vh] rounded-lg border border-input">
+									<Textarea
+										id="transcript"
+										value={transcript}
+										onChange={(e) => setTranscript(e.target.value)}
+										placeholder={nc.transcriptPlaceholder}
+										className="min-h-[60vh] resize-none border-0 text-sm leading-relaxed focus-visible:border-transparent focus-visible:ring-0"
+									/>
+								</ScrollArea>
+							</Field>
 
-					{anamnesis ? (
-						<CardFooter className="gap-2">
-							<Button type="button" variant="outline" size="sm" onClick={copyAnamnesis}>
-								{t.common.copy}
+							{audioDetail || audioConsultId !== null ? (
+								<div className="rounded-xl border border-border p-3">
+									<p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+										{nc.serverTranscript}
+									</p>
+									<AudioTranscriptPanel
+										i18n={i18n}
+										locale={locale}
+										consultationId={audioConsultId}
+										audioStatus={audioDetail?.audioStatus ?? "queued"}
+										hasAudio={Boolean(audioDetail?.audioKey)}
+										browserText={transcript}
+										serverText={audioDetail?.serverTranscript}
+										correctedText={audioDetail?.correctedTranscript}
+										onActiveText={setViewedText}
+									/>
+								</div>
+							) : null}
+
+							<Button
+								type="button"
+								onClick={generate}
+								disabled={busy || !extractText.trim()}
+								className="h-auto w-full px-4 py-2.5"
+							>
+								{busy ? <Spinner /> : null}
+								{busy ? nc.generating : nc.generate}
 							</Button>
-							<Button type="button" size="sm" onClick={save} disabled={saving}>
-								{saving ? <Spinner /> : null}
-								{saving ? nc.saving : savedId ? nc.updateConsultation : nc.saveConsultation}
-							</Button>
-						</CardFooter>
-					) : null}
-				</Card>
-			</div>
+							{viewedText ? (
+								<p className="text-[11px] text-muted-foreground">
+									{nc.generatedFrom(viewedText.source)}
+								</p>
+							) : null}
+							{error ? (
+								<Alert variant="destructive" className="px-3 py-2 text-xs">
+									{error}
+								</Alert>
+							) : null}
+						</CardContent>
+					</Card>
+				</ResizablePanel>
+				<ResizableHandle withHandle className="mx-2" />
+				{/* ================= right column: result ================= */}
+				<ResizablePanel defaultSize="50" minSize="30">
+					<Card>
+						<CardHeader className="border-b">
+							<CardTitle>{t.common.anamnesis}</CardTitle>
+							{engine ? (
+								<CardAction>
+									<Badge
+										variant="secondary"
+										className="font-normal text-muted-foreground ring-1 ring-border"
+									>
+										{t.common.engine(engine)}
+									</Badge>
+								</CardAction>
+							) : null}
+						</CardHeader>
+
+						{!anamnesis ? (
+							<CardContent>
+								<Empty className="py-14">
+									<EmptyHeader>
+										<EmptyMedia variant="icon">
+											<ClipboardListIcon />
+										</EmptyMedia>
+										<EmptyTitle>{nc.waitingTitle}</EmptyTitle>
+										<EmptyDescription className="max-w-xs">
+											{nc.waitingDescription}
+										</EmptyDescription>
+									</EmptyHeader>
+								</Empty>
+							</CardContent>
+						) : (
+							<CardContent>
+								<ScrollArea className="max-h-[68vh]">
+									<div className="space-y-3 pr-3">
+										{anamnesis.historico ? (
+											<div className="rounded-xl border border-border bg-muted/40 p-3">
+												<p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+													{t.sections.historico}
+												</p>
+												<p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap">
+													{anamnesis.historico.content}
+												</p>
+											</div>
+										) : null}
+										{(
+											Object.keys(t.sections).filter(
+												(k) => k !== "historico",
+											) as AnamnesisSectionKey[]
+										).map((key) => {
+											const sec = anamnesis[key];
+											return (
+												<Field
+													key={key}
+													className={`gap-1.5 rounded-xl border border-l-4 border-border bg-card p-3 ${CONF_BAR[sec.confidence]}`}
+												>
+													<div className="flex items-center justify-between gap-2">
+														<FieldLabel
+															htmlFor={`sec-${key}`}
+															className="text-xs font-semibold text-foreground"
+														>
+															{t.sections[key]}
+														</FieldLabel>
+														<Badge
+															variant="secondary"
+															className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+														>
+															{t.confidence[sec.confidence]}
+														</Badge>
+													</div>
+													<Textarea
+														id={`sec-${key}`}
+														value={sec.content}
+														onChange={(e) => updateSection(key, e.target.value)}
+														rows={Math.min(5, Math.max(2, Math.ceil(sec.content.length / 70)))}
+														className="mt-1.5 resize-y text-sm leading-relaxed"
+													/>
+													{sec.evidence.length ? (
+														<details className="mt-1">
+															<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-muted-foreground">
+																{t.detail.evidence(sec.evidence.length)}
+															</summary>
+															<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
+																{sec.evidence.map((ev) => (
+																	<li key={ev.slice(0, 40)}>“{ev}”</li>
+																))}
+															</ul>
+														</details>
+													) : null}
+												</Field>
+											);
+										})}
+									</div>
+								</ScrollArea>
+							</CardContent>
+						)}
+
+						{anamnesis ? (
+							<CardFooter className="gap-2">
+								<Button type="button" variant="outline" size="sm" onClick={copyAnamnesis}>
+									{t.common.copy}
+								</Button>
+								<Button type="button" size="sm" onClick={save} disabled={saving}>
+									{saving ? <Spinner /> : null}
+									{saving ? nc.saving : savedId ? nc.updateConsultation : nc.saveConsultation}
+								</Button>
+							</CardFooter>
+						) : null}
+					</Card>
+				</ResizablePanel>
+			</ResizablePanelGroup>
 			<Toast toast={toast} onClose={() => setToast(null)} />
 			<Dialog
 				open={saveDialog !== null}

@@ -2,6 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
 
 import type { Anamnesis } from "@ktb/anamnesis";
 import { makeKeyring, memoryStore } from "@ktb/crypto/keyring";
@@ -15,6 +16,16 @@ import type {
 } from "@ktb/transcription";
 import type { NewConsultationApi } from "./NewConsultationPage.tsx";
 import type { ConsultationZk } from "../zk.ts";
+
+// jsdom lacks ResizeObserver + Web Animations — Base UI internals
+// (ScrollArea) call them during mount/effects.
+class ResizeObserverStub {
+	observe() {}
+	unobserve() {}
+	disconnect() {}
+}
+(globalThis as { ResizeObserver?: unknown }).ResizeObserver ??= ResizeObserverStub;
+Element.prototype.getAnimations ??= () => [];
 
 // ---------- controllable transcriber mocks ----------
 let micSupported = true;
@@ -108,6 +119,22 @@ const streamMocks = vi.hoisted(() => ({
 	encryptToBlob: vi.fn(async () => new Uint8Array([9])),
 }));
 vi.mock("@ktb/crypto/stream", () => streamMocks);
+
+// jsdom has no layout — every rect is 0,0 so the lib's document-level
+// pointerdown hit-test thinks every click lands on the separator
+// (preventDefault + steals focus). The split behavior is the lib's
+// contract, not this page's — render children inline instead.
+vi.mock("@ktbhealth/ui/components/resizable", () => ({
+	ResizablePanelGroup: ({ children, className }: { children?: ReactNode; className?: string }) => (
+		<div data-slot="resizable-panel-group" className={className}>
+			{children}
+		</div>
+	),
+	ResizablePanel: ({ children }: { children?: ReactNode }) => (
+		<div data-slot="resizable-panel">{children}</div>
+	),
+	ResizableHandle: () => <div data-slot="resizable-handle" role="separator" />,
+}));
 
 import { NewConsultationPage } from "./NewConsultationPage.tsx";
 
