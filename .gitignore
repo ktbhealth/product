@@ -34,8 +34,9 @@ coverage-report/
 # CI bundle-size payload written by tools/bundle-budget.mjs
 bundle-size/
 
-# stryker mutation-testing reports
+# stryker mutation-testing reports and workdirs
 **/reports/mutation/
+**/.stryker-tmp/
 
 # vitest blob reports (.vitest/blob) and attachments
 .vitest/
