@@ -1410,3 +1410,384 @@ describe("generate — merge edge cases", () => {
 		}
 	});
 });
+
+describe("generate — merge internals", () => {
+	const SEEDS = Array.from({ length: 30 }, (_, i) => `edge${i}`);
+
+	it("merges additionalProperties schemas from both sides", () => {
+		const schema = {
+			allOf: [
+				{
+					type: "object",
+					additionalProperties: { type: "integer", minimum: 5, maximum: 10 },
+					minProperties: 2,
+				},
+				{
+					type: "object",
+					additionalProperties: { type: "integer", minimum: 0, maximum: 8 },
+				},
+			],
+		} as JsonSchema;
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, assertValid: true });
+			expect(Object.keys(rec).length).toBeGreaterThanOrEqual(2);
+			for (const v of Object.values(rec)) {
+				expect(Number.isInteger(v)).toBe(true);
+				expect(v as number).toBeGreaterThanOrEqual(5);
+				expect(v as number).toBeLessThanOrEqual(8);
+			}
+		}
+	});
+
+	it("defers a $ref additionalProperties to generation when b-side is true", () => {
+		// a.additionalProperties is {$ref → false}; b.additionalProperties
+		// is `true`, so the merge must keep the $ref verbatim (deref would
+		// collapse it to `false` early and change the error).
+		const schema = {
+			type: "object",
+			minProperties: 2,
+			allOf: [
+				{
+					type: "object",
+					properties: { z: { type: "array", items: false, maxItems: 0 } },
+					additionalProperties: { $ref: "#/allOf/0/properties/z/items" },
+				},
+				{ type: "object", additionalProperties: true },
+			],
+		} as JsonSchema;
+		expect(() => generate(schema, { seed: 1 })).toThrow(/accepts nothing/);
+	});
+
+	it("merges items bounds from both allOf branches", () => {
+		const schema = {
+			allOf: [
+				{
+					type: "array",
+					items: { type: "integer", minimum: 5, maximum: 20 },
+					minItems: 3,
+					maxItems: 3,
+				},
+				{ type: "array", items: { type: "integer", minimum: 0, maximum: 10 } },
+			],
+		} as JsonSchema;
+		for (const seed of SEEDS) {
+			const arr = generate(schema, { seed, assertValid: true }) as number[];
+			expect(arr).toHaveLength(3);
+			for (const n of arr) {
+				expect(Number.isInteger(n)).toBe(true);
+				expect(n).toBeGreaterThanOrEqual(5);
+				expect(n).toBeLessThanOrEqual(10);
+			}
+		}
+	});
+
+	it("keeps items when only one allOf branch declares it", () => {
+		const schema = {
+			allOf: [
+				{
+					type: "array",
+					items: { type: "integer", minimum: 5, maximum: 10 },
+					minItems: 2,
+					maxItems: 2,
+				},
+				{ type: "array" },
+			],
+		} as JsonSchema;
+		for (const seed of SEEDS) {
+			const arr = generate(schema, { seed, assertValid: true }) as number[];
+			expect(arr).toHaveLength(2);
+			for (const n of arr) {
+				expect(Number.isInteger(n)).toBe(true);
+				expect(n).toBeGreaterThanOrEqual(5);
+				expect(n).toBeLessThanOrEqual(10);
+			}
+		}
+	});
+
+	it("allows a combinator cross product of exactly 64 pairs", () => {
+		const opts = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({ type: "integer", minimum: i, maximum: i }));
+		// 8 × 8 = 64 — at the cap, not over it. Only i == j pairs merge
+		// without inverting bounds, leaving 8 satisfiable combos.
+		const v = generate({ allOf: [{ anyOf: opts(8) }, { anyOf: opts(8) }] } as JsonSchema, {
+			seed: 1,
+			assertValid: true,
+		});
+		expect(Number.isInteger(v)).toBe(true);
+		expect(v as number).toBeGreaterThanOrEqual(0);
+		expect(v as number).toBeLessThanOrEqual(7);
+	});
+
+	it("reports details in combinator merge errors", () => {
+		const big = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({ type: "integer", minimum: i, maximum: i }));
+		expect(() =>
+			generate({ allOf: [{ anyOf: big(9) }, { anyOf: big(8) }] } as JsonSchema, { seed: 1 }),
+		).toThrow(/combinator product too large/);
+		expect(() =>
+			generate(
+				{
+					allOf: [{ anyOf: [{ type: "string" }] }, { anyOf: [{ type: "integer" }] }],
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow(/no satisfiable anyOf combination/);
+	});
+
+	it("merges a combinator declared on only one allOf branch", () => {
+		const combos = [
+			{ anyOf: [{ const: "x" }, { const: "y" }] },
+			{ oneOf: [{ const: "x" }, { const: "y" }] },
+		];
+		for (const combo of combos) {
+			for (const schema of [
+				{ allOf: [combo, { type: "string" }] },
+				{ allOf: [{ type: "string" }, combo] },
+			] as JsonSchema[]) {
+				for (const seed of SEEDS) {
+					const v = generate(schema, { seed, assertValid: true });
+					expect(["x", "y"]).toContain(v);
+				}
+			}
+		}
+	});
+
+	it("throws when not survives on only the second allOf branch", () => {
+		expect(() =>
+			generate({ allOf: [{ type: "string" }, { not: { const: 1 } }] }, { seed: 1 }),
+		).toThrow(SeedError);
+		expect(() =>
+			generate(
+				{ allOf: [{ not: { const: 1 } }, { type: "string" }, { type: "string" }] },
+				{ seed: 1 },
+			),
+		).toThrow(SeedError);
+	});
+
+	it("stays unsatisfiable when a false branch precedes later branches", () => {
+		expect(() =>
+			generate({ allOf: [{ type: "string" }, false, { type: "integer" }] } as JsonSchema, {
+				seed: 1,
+			}),
+		).toThrow(SeedError);
+		expect(() =>
+			generate({ allOf: [false, { type: "string" }] } as JsonSchema, { seed: 1 }),
+		).toThrow(SeedError);
+	});
+
+	it("throws SeedError for $ref targets that are not schemas", () => {
+		const refTo = (marker: string, target: unknown): JsonSchema =>
+			({
+				[marker]: target,
+				type: "object",
+				properties: { p: { $ref: `#/${marker}` } },
+				required: ["p"],
+			}) as JsonSchema;
+		for (const target of [null, 42, "text"]) {
+			expect(() => generate(refTo("marker", target), { seed: 1 })).toThrow(SeedError);
+		}
+		expect(() => generate(refTo("marker", undefined), { seed: 1 })).toThrow(/unresolvable \$ref/);
+	});
+
+	it("reports recursive $ref errors by name", () => {
+		expect(() =>
+			generate(
+				{
+					type: "object",
+					properties: {
+						a: { $ref: "#/properties/b" },
+						b: { $ref: "#/properties/a" },
+					},
+				} as JsonSchema,
+				{ seed: 1 },
+			),
+		).toThrow(/recursive \$ref/);
+	});
+});
+
+describe("generate — heuristic output shapes", () => {
+	const SEEDS = Array.from({ length: 30 }, (_, i) => `shape${i}`);
+	const YEAR_MIN = 1950;
+	const YEAR_MAX = new Date().getUTCFullYear();
+	// Oracle for the generator's slug() — pool names mapped through the
+	// same normalization, so heuristic outputs can be checked for
+	// membership instead of just shape.
+	const slugOracle = (s: string): string =>
+		s
+			.normalize("NFD")
+			.replace(/[̀-ͯ]/g, "")
+			.toLowerCase()
+			.replace(/[^a-z0-9]/g, "");
+	const ptPools = poolsFor("pt-BR");
+	const sluggedFirsts = new Set(ptPools.firstNames.map(slugOracle));
+	const sluggedLasts = new Set(ptPools.lastNames.map(slugOracle));
+
+	it("generates dates within [1950, now] with variety", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: {
+				birthDate: { type: "string" },
+				createdAt: { type: "string" },
+			},
+		};
+		const dates = new Set<string>();
+		const dateTimes = new Set<string>();
+		const maxYear = { birthDate: 0, createdAt: 0 };
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			expect(rec.birthDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+			expect(rec.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+			for (const [set, key] of [
+				[dates, "birthDate"],
+				[dateTimes, "createdAt"],
+			] as const) {
+				const v = rec[key];
+				const year = Number(v.slice(0, 4));
+				expect(year).toBeGreaterThanOrEqual(YEAR_MIN);
+				expect(year).toBeLessThanOrEqual(YEAR_MAX);
+				maxYear[key] = Math.max(maxYear[key], year);
+				set.add(v);
+			}
+		}
+		// Each generator's span reaches ~2046; a mutant compressing the
+		// range (e.g. `Date.now() + EPOCH_1950` → ~1950–1986) can't pass.
+		// Asserted per field: mutating only one of isoDate/isoDateTime
+		// must still fail.
+		expect(maxYear.birthDate).toBeGreaterThan(2000);
+		expect(maxYear.createdAt).toBeGreaterThan(2000);
+		expect(dates.size).toBeGreaterThan(10);
+		expect(dateTimes.size).toBeGreaterThan(10);
+	});
+
+	it("generates varied valid cpf, cnpj and uuid values", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { cpf: {}, cnpj: {}, uuid: {} },
+		};
+		const cpfs = new Set<string>();
+		const cnpjs = new Set<string>();
+		const uuids = new Set<string>();
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			expect(rec.cpf).toMatch(/^\d{11}$/);
+			expect(rec.cnpj).toMatch(/^\d{14}$/);
+			expect(rec.uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
+			cpfs.add(rec.cpf);
+			cnpjs.add(rec.cnpj);
+			uuids.add(rec.uuid);
+		}
+		expect(cpfs.size).toBeGreaterThan(10);
+		expect(cnpjs.size).toBeGreaterThan(5);
+		expect(uuids.size).toBeGreaterThan(10);
+	});
+
+	it("generates lowercase email local parts with varied name components", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: { email: {}, mail: {}, emailAddress: {} },
+		};
+		const firsts = new Set<string>();
+		const lasts = new Set<string>();
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			for (const key of ["email", "mail", "emailAddress"]) {
+				expect(rec[key]).toMatch(/^[a-z]+\.[a-z]+\d+@[a-z0-9.]+$/);
+				const [first, last] = rec[key]!.split("@")[0]!.replace(/\d+$/, "").split(".");
+				expect(sluggedFirsts.has(first!)).toBe(true);
+				expect(sluggedLasts.has(last!)).toBe(true);
+				firsts.add(first!);
+				lasts.add(last!);
+			}
+		}
+		expect(firsts.size).toBeGreaterThan(3);
+		expect(lasts.size).toBeGreaterThan(3);
+	});
+
+	it("generates BR-format phone numbers for phone-ish keys", () => {
+		const keys = ["phone", "tel", "telefone", "celular", "whatsapp", "mobile", "fax"];
+		const schema: JsonSchema = {
+			type: "object",
+			properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])),
+		};
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			for (const k of keys) expect(rec[k]).toMatch(/^\(\d{2}\) 9\d{4}-\d{4}$/);
+		}
+	});
+
+	it("generates locale-correct postal codes for postal-ish keys", () => {
+		const keys = ["cep", "postalCode", "postcode", "zipcode", "zip"];
+		const schema: JsonSchema = {
+			type: "object",
+			properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])),
+		};
+		for (const seed of SEEDS.slice(0, 10)) {
+			const br = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			const us = generateRecord(schema, { seed, locale: "en", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			for (const k of keys) {
+				expect(br[k]).toMatch(/^\d{5}-\d{3}$/);
+				expect(us[k]).toMatch(/^\d{5}$/);
+			}
+		}
+	});
+
+	it("generates username format for username-ish keys", () => {
+		const keys = ["username", "user", "login", "handle", "userHandle"];
+		const schema: JsonSchema = {
+			type: "object",
+			properties: Object.fromEntries(keys.map((k) => [k, { type: "string" }])),
+		};
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			for (const k of keys) {
+				expect(rec[k]).toMatch(/^[a-z]+\.[a-z]+\d+$/);
+				const [first, last] = rec[k]!.replace(/\d+$/, "").split(".");
+				expect(sluggedFirsts.has(first!)).toBe(true);
+				expect(sluggedLasts.has(last!)).toBe(true);
+			}
+		}
+	});
+
+	it("does not leak field heuristics into unrelated keys", () => {
+		const schema: JsonSchema = {
+			type: "object",
+			properties: {
+				note: { type: "string" },
+				city: { type: "string" },
+				format: { type: "string" },
+			},
+		};
+		const words = new Set(poolsFor("pt-BR").words);
+		const cities = new Set(poolsFor("pt-BR").cities);
+		for (const seed of SEEDS) {
+			const rec = generateRecord(schema, { seed, locale: "pt-BR", assertValid: true }) as Record<
+				string,
+				string
+			>;
+			expect(cities.has(rec.city)).toBe(true);
+			expect(rec.note.split(" ").every((w) => words.has(w))).toBe(true);
+			expect(rec.format).not.toMatch(/^\d{4}-\d{2}-\d{2}T/);
+		}
+	});
+});
