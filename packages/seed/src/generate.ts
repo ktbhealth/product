@@ -798,6 +798,7 @@ const generateValue = (schema: JsonSchema, ctx: Ctx): unknown => {
 	if (s === false) throw new SeedError("schema accepts nothing (false)", ctx.path);
 	if (Object.hasOwn(s, "const")) return clone(s.const);
 	if (s.enum && s.enum.length > 0) return clone(pick(ctx.rng, s.enum));
+	// Stryker disable next-line ConditionalExpression: only undefined or empty-array enums reach this line (non-empty returns above), where `s.enum && true` is identical to `s.enum && s.enum.length === 0`.
 	if (s.enum && s.enum.length === 0) throw new SeedError("empty enum", ctx.path);
 	if (s.not !== undefined) {
 		throw new SeedError("`not` schemas cannot be generated", ctx.path);
@@ -842,6 +843,7 @@ const generateValue = (schema: JsonSchema, ctx: Ctx): unknown => {
 			return genArray(s, ctx);
 		case "object":
 			return genObject(s, ctx);
+		// Stryker disable next-line StringLiteral: "" falls through to default, which calls the same genString.
 		case "string":
 		default:
 			return genString(s, ctx);
@@ -861,8 +863,10 @@ const inferType = (s: JsonSchemaObject): string => {
 	}
 	if (s.items !== undefined || s.minItems !== undefined || s.maxItems !== undefined) return "array";
 	if (s.pattern !== undefined || s.minLength !== undefined || s.maxLength !== undefined)
+		// Stryker disable next-line StringLiteral: "" hits the switch default, which calls the same genString.
 		return "string";
 	if (s.minimum !== undefined || s.maximum !== undefined) return "number";
+	// Stryker disable next-line StringLiteral: "" hits the switch default, which calls the same genString.
 	return "string";
 };
 
