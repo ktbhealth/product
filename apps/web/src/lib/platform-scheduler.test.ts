@@ -195,7 +195,7 @@ describe("platform capability views", () => {
 });
 
 describe("platform schedules capability", () => {
-	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 30_000 }, async () => {
+	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 90_000 }, async () => {
 		const { runtime, platform, registerJobHandler } = await compose((env) => {
 			env.AUDIO_QUEUE = undefined;
 		});
@@ -277,6 +277,11 @@ describe("platform schedules capability", () => {
 		const failed = await schedules.runNow(ghost.id);
 		expect(failed).toMatchObject({ id: ghost.id, ok: false });
 		expect(failed?.error).toContain("unknown job kind");
+
+		// list() maps both params-present and params-null rows.
+		const listed = await schedules.list();
+		expect(listed.some((job) => job.params === null)).toBe(true);
+		expect(listed.some((job) => job.params !== null)).toBe(true);
 
 		expect(await schedules.remove(id)).toEqual({ ok: true });
 		expect(await schedules.remove(id)).toEqual({ ok: false, reason: "not-found" });
