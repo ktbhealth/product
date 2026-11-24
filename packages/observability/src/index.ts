@@ -46,6 +46,7 @@ export const logLevelLayer = (config: TelemetryConfig) =>
  */
 export const telemetryWarningsLayer = (config: TelemetryConfig) => {
 	const warnings = config.warnings ?? [];
+	// Stryker disable next-line ConditionalExpression: Effect.forEach over an empty list is a no-op, so effectDiscard([]) builds identically to Layer.empty.
 	return warnings.length === 0
 		? Layer.empty
 		: Layer.effectDiscard(Effect.forEach(warnings, (warning) => Effect.logWarning(warning)));

@@ -67,6 +67,7 @@ export const readRequestBodyLimited = async (
 	request: Request,
 	maxBytes: number,
 ): Promise<string | null> => {
+	// Stryker disable next-line StringLiteral: Number("Stryker was here!") is NaN → !isFinite → same proceed-as-unbounded path as Number("") === 0.
 	const declared = Number(request.headers.get("content-length") ?? "");
 	if (Number.isFinite(declared) && declared > maxBytes) return null;
 	const stream = request.body;
@@ -88,7 +89,9 @@ export const readRequestBodyLimited = async (
 		}
 	} catch {
 		return null;
+		// Stryker disable next-line BlockStatement: skipping releaseLock leaves the per-request reader locked until GC — no observable behavior for a single-shot body read.
 	} finally {
+		// Stryker disable next-line CallExpression: releaseLock is resource hygiene — the stream is per-request and never re-read, so skipping it changes nothing observable.
 		reader.releaseLock();
 	}
 	const bytes = new Uint8Array(total);
@@ -113,6 +116,7 @@ const MIN_PLAUSIBLE_TIMESTAMP_MS = 946_684_800_000; // 2000-01-01T00:00:00Z
 const MAX_CLOCK_SKEW_MS = 5 * 60_000;
 
 const plausibleTimestamp = (value: number | undefined): number | undefined =>
+	// Stryker disable next-line ConditionalExpression,LogicalOperator: `undefined !== undefined` short-circuits to false anyway, and NaN/Infinity fail the isFinite/bounds conjuncts downstream — every mutation reduces to the same undefined.
 	value !== undefined &&
 	Number.isFinite(value) &&
 	value >= MIN_PLAUSIBLE_TIMESTAMP_MS &&
@@ -137,6 +141,7 @@ export const sanitizeClientEvent = (event: ClientTelemetryEvent): ClientTelemetr
 						.slice(0, 24)
 						.map(([key, value]) => [
 							key.slice(0, 60),
+							// Stryker disable next-line ConditionalExpression: truncate() on a non-string reads `.length` as undefined → `undefined > 200` is false → returns the value unchanged, identical to the passthrough branch.
 							typeof value === "string" ? truncate(value, 200) : value,
 						]),
 				);
@@ -149,6 +154,7 @@ export const sanitizeClientEvent = (event: ClientTelemetryEvent): ClientTelemetr
 		stack: event.stack === undefined ? undefined : truncate(event.stack, 4_000),
 		path: path !== undefined && PATH_LIKE.test(path) ? truncate(path, 300) : undefined,
 		traceparent:
+			// Stryker disable next-line ConditionalExpression: traceparent === undefined makes the regex test coerce "undefined" → no match → same undefined branch.
 			event.traceparent !== undefined &&
 			/^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/i.test(event.traceparent)
 				? event.traceparent

@@ -73,6 +73,7 @@ export const makeFixedWindowRateLimiter = (
 			const at = now();
 			let entry = windows.get(key);
 			if (entry === undefined || at >= entry.resetAt) {
+				// Stryker disable next-line ConditionalExpression: sweepExpired only deletes entries hit() already treats as expired — running it below the cap is unobservable.
 				if (windows.size >= maxKeys) {
 					sweepExpired(at);
 					// Still full of live windows — key spray. Resetting all
