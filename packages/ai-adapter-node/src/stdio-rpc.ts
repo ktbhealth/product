@@ -64,6 +64,17 @@ export interface StdioRpcOptions {
 	/** Agent→client notifications (method, params) — `session/update`
 	 * chunks land here. */
 	readonly onNotification?: (method: string, params: unknown) => void;
+	/** How to answer `session/request_permission` agent→client
+	 * requests (ACP spec: the client picks a PermissionOption and
+	 * returns `{outcome:{outcome:"selected",optionId}}`).
+	 *   "refuse" (default) — -32601 like every other unimplemented
+	 *     client method; agents that gate tool calls on permission
+	 *     end their turn without reply text.
+	 *   "allow" — select the first `allow_*` option;
+	 *   "reject" — select the first `reject_*` option.
+	 * Eval/headless clients have no human to ask, so allow/reject are
+	 * explicit opt-ins. */
+	readonly permissionPolicy?: "allow" | "reject" | "refuse";
 }
 
 /** The transport-agnostic JSON-RPC surface (shared `AcpRpc` shape —
@@ -138,13 +149,40 @@ export const makeStdioRpc = (
 					return;
 				}
 				if (msg.method !== undefined && msg.id !== undefined) {
-					// Agent→client REQUEST (fs, permissions, terminals) —
-					// refuse instead of leaving the agent blocked forever.
-					write({
-						jsonrpc: "2.0",
-						id: msg.id,
-						error: { code: -32601, message: `client does not implement ${msg.method}` },
-					});
+					if (msg.method === "session/request_permission" && opts.permissionPolicy !== undefined && opts.permissionPolicy !== "refuse") {
+						// ACP permission request — pick an option by kind
+						// prefix instead of refusing; a refused permission
+						// is NOT approval per spec and tool-gated agents
+						// end the turn with no reply text.
+						const params = msg.params as
+							| { options?: readonly { optionId?: unknown; kind?: unknown }[] }
+							| undefined;
+						const want = opts.permissionPolicy === "allow" ? "allow_" : "reject_";
+						const option = params?.options?.find(
+							(o) => typeof o.kind === "string" && o.kind.startsWith(want) && typeof o.optionId === "string",
+						);
+						write(
+							option !== undefined
+								? {
+										jsonrpc: "2.0",
+										id: msg.id,
+										result: { outcome: { outcome: "selected", optionId: option.optionId } },
+									}
+								: {
+										jsonrpc: "2.0",
+										id: msg.id,
+										error: { code: -32602, message: "no matching permission option" },
+									},
+						);
+					} else {
+						// Agent→client REQUEST (fs, permissions, terminals) —
+						// refuse instead of leaving the agent blocked forever.
+						write({
+							jsonrpc: "2.0",
+							id: msg.id,
+							error: { code: -32601, message: `client does not implement ${msg.method}` },
+						});
+					}
 				} else if (msg.method !== undefined) {
 					opts.onNotification?.(msg.method, msg.params);
 				} else if (

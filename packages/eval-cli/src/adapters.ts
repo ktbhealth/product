@@ -281,7 +281,10 @@ const llmLayer = (ctx: WireContext, key: string) => {
 			// directory (default: --workdir). EVAL_ACP_TIMEOUT_MS
 			// bounds each ACP request (default 120s — CLI agents are
 			// slower than the 60s HTTP default because every call
-			// pays process spawn + session setup).
+			// pays process spawn + session setup). EVAL_ACP_PERMISSION
+			// answers session/request_permission headlessly:
+			// allow|reject|refuse (default refuse — tool-gated agents
+			// then end turns with no reply text).
 			const agentCmd = ctx.env.EVAL_ACP_AGENT_CMD ?? "devin acp";
 			if (agentCmd.trim() === "") {
 				throw new Error(`adapter "acp-cli" requires EVAL_ACP_AGENT_CMD (profile "${ctx.profile}")`);
@@ -290,9 +293,15 @@ const llmLayer = (ctx: WireContext, key: string) => {
 			const parsedTimeout =
 				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
 			const cwd = ctx.env.EVAL_ACP_CWD;
+			const permissionRaw = ctx.env.EVAL_ACP_PERMISSION;
+			const permissionPolicy =
+				permissionRaw === "allow" || permissionRaw === "reject" || permissionRaw === "refuse"
+					? permissionRaw
+					: undefined;
 			return makeNodeAcpLlm({
 				argv: agentCmd.trim().split(/\s+/),
 				cwd: cwd !== undefined && cwd !== "" ? cwd : ctx.workdir,
+				...(permissionPolicy !== undefined ? { permissionPolicy } : {}),
 				timeoutMs:
 					parsedTimeout !== undefined && Number.isFinite(parsedTimeout) && parsedTimeout > 0
 						? parsedTimeout
