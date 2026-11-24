@@ -284,6 +284,26 @@ describe("readRequestBodyLimited", () => {
 		await expect(readRequestBodyLimited(request, 1_024)).resolves.toBe("ok");
 	});
 
+	it("releases the reader lock so the body stream is not left locked", async () => {
+		// `reader.releaseLock()` in the finally is observable: without it
+		// `request.body.locked` stays true and the stream can never be
+		// re-read or cancelled by the caller.
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				controller.enqueue(new TextEncoder().encode("payload"));
+				controller.close();
+			},
+		});
+		const request = new Request("http://localhost/api/telemetry", {
+			method: "POST",
+			body: stream,
+			// @ts-expect-error duplex is required for streamed request bodies in node
+			duplex: "half",
+		});
+		await expect(readRequestBodyLimited(request, 1_024)).resolves.toBe("payload");
+		expect(request.body?.locked).toBe(false);
+	});
+
 	it("still resolves null when cancelling an over-cap stream rejects", async () => {
 		const stream = new ReadableStream<Uint8Array>({
 			start(controller) {
