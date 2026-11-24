@@ -17,7 +17,7 @@
  * Then run the pipeline with a real ASR profile:
  *
  *   bun apps/cli/src/main.ts eval run consult-ptbr-real \
- *     --workdir /tmp/eval-ptbr-real --profile local
+ *     --workdir /tmp/eval-ptbr-real --profile local-asr
  *
  * Requires `edge-tts` + `ffmpeg` on PATH (`uv tool install edge-tts`).
  * edge-tts is a HOSTED endpoint — the cohort is authored synthetic
@@ -215,6 +215,6 @@ const rendered = pending.length - failures.length;
 console.log(
 	`rendered ${rendered}/${pending.length} samples → ${resolved}/audio\n` +
 		(alreadyDone > 0 ? `skipped ${alreadyDone} already-rendered rows\n` : "") +
-		`next: bun apps/cli/src/main.ts eval run consult-ptbr-real --workdir ${resolved} --profile local`,
+		`next: bun apps/cli/src/main.ts eval run consult-ptbr-real --workdir ${resolved} --profile local-asr`,
 );
 if (failures.length > 0) process.exitCode = 1;
