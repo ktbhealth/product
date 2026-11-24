@@ -1791,3 +1791,163 @@ describe("generate — heuristic output shapes", () => {
 		}
 	});
 });
+
+describe("generate — stringForKey branch pinning", () => {
+	const PT = poolsFor("pt-BR");
+	/** Values for a single string property across several seeds. */
+	const valuesFor = (key: string, locale: "pt-BR" | "en" = "pt-BR"): string[] =>
+		Array.from(
+			{ length: 6 },
+			(_, i) =>
+				(
+					generateRecord(
+						{ type: "object", properties: { [key]: { type: "string" } } },
+						{ seed: `fk-${key}-${i}`, locale },
+					) as Record<string, string>
+				)[key] as string,
+		);
+
+	it("url-family keys produce https URLs", () => {
+		for (const key of ["url", "uri", "website", "homepage", "avatar", "link", "permalink"]) {
+			for (const v of valuesFor(key)) {
+				expect(v, `${key}=${v}`).toMatch(/^https:\/\/www\.[^/]+\/\S+$/);
+			}
+		}
+	});
+
+	it("'unlink' contains 'link' but is excluded from the url branch", () => {
+		for (const v of valuesFor("unlink")) expect(v).not.toMatch(/^https?:\/\//);
+	});
+
+	it("birth-family keys produce plain ISO dates", () => {
+		for (const key of ["birth", "birthday", "nascimento", "dob"]) {
+			for (const v of valuesFor(key)) expect(v, `${key}=${v}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		}
+	});
+
+	it("timestamp-family keys produce ISO datetimes", () => {
+		for (const key of ["createdAt", "updatedAt", "created_at", "updated-at", "timestamp"]) {
+			for (const v of valuesFor(key)) {
+				expect(v, `${key}=${v}`).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
+			}
+		}
+	});
+
+	it("at-suffix near misses do not produce datetimes", () => {
+		for (const key of ["createdAtMs", "created_at_utc", "format"]) {
+			for (const v of valuesFor(key)) {
+				expect(v, `${key}=${v}`).not.toMatch(/^\d{4}-\d{2}-\d{2}T/);
+			}
+		}
+	});
+
+	it("date-family keys produce plain ISO dates", () => {
+		for (const key of ["date", "dueDate", "metadata", "startDate"]) {
+			for (const v of valuesFor(key)) expect(v, `${key}=${v}`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+		}
+	});
+
+	it("update/candidate/validate/mandate keys are excluded from the date branch", () => {
+		for (const key of ["updateDate", "candidateDate", "validateData", "mandateDate"]) {
+			for (const v of valuesFor(key)) {
+				expect(v, `${key}=${v}`).not.toMatch(/^\d{4}-/);
+			}
+		}
+	});
+
+	it("file-family keys produce <word>-<digits>", () => {
+		for (const key of ["filename", "file_name", "filepath", "filetype"]) {
+			for (const v of valuesFor(key)) {
+				const m = /^(\S+)-(\d{3,4})$/.exec(v);
+				expect(m, `${key}=${v}`).not.toBeNull();
+				expect(PT.words, `${key}=${v}`).toContain(m?.[1]);
+			}
+		}
+	});
+
+	it("first-name keys produce a single given name", () => {
+		for (const key of ["firstName", "first_name", "givenName", "fname"]) {
+			for (const v of valuesFor(key)) expect(PT.firstNames, `${key}=${v}`).toContain(v);
+		}
+	});
+
+	it("last-name keys produce a single family name", () => {
+		for (const key of ["lastName", "last_name", "surname", "familyName", "lname"]) {
+			for (const v of valuesFor(key)) expect(PT.lastNames, `${key}=${v}`).toContain(v);
+		}
+	});
+
+	it("social-name keys produce a single given name", () => {
+		for (const key of ["socialName", "nickname", "apelido"]) {
+			for (const v of valuesFor(key)) expect(PT.firstNames, `${key}=${v}`).toContain(v);
+		}
+	});
+
+	it("full-name keys produce two or three capitalized words", () => {
+		for (const key of ["name", "nome", "fullName", "fullNameId", "displayName", "secondNome"]) {
+			for (const v of valuesFor(key)) {
+				expect(v, `${key}=${v}`).toMatch(/^[A-ZÀ-Ý][^ ]*( [A-ZÀ-Ý][^ ]*){1,2}$/);
+			}
+		}
+	});
+
+	it("city-family keys produce a city", () => {
+		for (const key of ["city", "cidade", "town", "municipio"]) {
+			for (const v of valuesFor(key)) expect(PT.cities, `${key}=${v}`).toContain(v);
+		}
+	});
+
+	it("state-family keys produce a region code", () => {
+		for (const key of ["uf", "state", "estado", "realEstate"]) {
+			for (const v of valuesFor(key)) expect(PT.states, `${key}=${v}`).toContain(v);
+		}
+	});
+
+	it("'stateOf' starts with but does not end with 'state'", () => {
+		for (const v of valuesFor("stateOf")) expect(PT.states).not.toContain(v);
+	});
+
+	it("district-family keys produce a neighborhood", () => {
+		for (const key of ["district", "bairro", "neighborhood", "suburb"]) {
+			for (const v of valuesFor(key)) {
+				expect(PT.neighborhoods, `${key}=${v}`).toContain(v);
+			}
+		}
+	});
+
+	it("postal-code keys produce NNNNN-NNN", () => {
+		for (const key of ["cep", "postalCode", "zipcode", "zip"]) {
+			for (const v of valuesFor(key)) expect(v, `${key}=${v}`).toMatch(/^\d{5}-\d{3}$/);
+		}
+	});
+
+	it("number-family keys produce digits", () => {
+		for (const key of ["num", "numero", "number", "addressNumber"]) {
+			for (const v of valuesFor(key)) expect(v, `${key}=${v}`).toMatch(/^\d+$/);
+		}
+	});
+
+	it("post-district heuristics still apply", () => {
+		expect(valuesFor("country").every((v) => v === "BR")).toBe(true);
+		expect(valuesFor("gender").every((v) => v === "F" || v === "M")).toBe(true);
+		expect(valuesFor("preferredLanguage").every((v) => v === "pt-BR")).toBe(true);
+		expect(valuesFor("currency").every((v) => v === "BRL")).toBe(true);
+		for (const v of valuesFor("complement")) expect(v).toMatch(/^Apto \d+$/);
+		for (const v of valuesFor("addressLine")) {
+			expect(v).toMatch(/^(Rua|Avenida|Travessa|Alameda) \S/);
+		}
+		for (const v of valuesFor("addressNumber")) expect(v).toMatch(/^\d+$/);
+		for (const v of valuesFor("record_id")) {
+			expect(v).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
+		}
+		for (const v of valuesFor("note")) expect(PT.neighborhoods).not.toContain(v);
+	});
+
+	it("empty property name falls through to lowercase random words", () => {
+		const rec = generateRecord(
+			{ type: "object", properties: { "": { type: "string" } } },
+			{ seed: "empty-key", locale: "pt-BR" },
+		) as Record<string, string>;
+		expect(rec[""]).toMatch(/^[a-zà-ú]+( [a-zà-ú]+)*$/);
+	});
+});

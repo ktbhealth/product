@@ -517,7 +517,9 @@ const stringForKey = (key: string, ctx: Ctx): string => {
 		return pick(rng, pools.firstNames);
 	}
 	if (
+		// Stryker disable next-line ConditionalExpression,LogicalOperator: k === "name" implies k.endsWith("name") in the same disjunction (probe-verified)
 		k === "name" ||
+		// Stryker disable next-line ConditionalExpression: k === "nome" implies k.endsWith("nome") in the same disjunction (probe-verified)
 		k === "nome" ||
 		k.includes("fullname") ||
 		k.endsWith("name") ||
@@ -528,6 +530,7 @@ const stringForKey = (key: string, ctx: Ctx): string => {
 	if (k.includes("city") || k.includes("cidade") || k.includes("town") || k.includes("municipio")) {
 		return pick(rng, pools.cities);
 	}
+	// Stryker disable next-line ConditionalExpression: k === "state" implies k.endsWith("state") in the same disjunction; sibling operands are covered by tests (probe-verified)
 	if (k === "uf" || k === "state" || k.endsWith("state") || k.includes("estado")) {
 		return pick(rng, pools.states);
 	}
