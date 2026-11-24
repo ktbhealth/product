@@ -14,6 +14,7 @@ import { TtsPort } from "@ktb/eval-consultation";
 import {
 	defaultRun,
 	ffmpegDegradeArgs,
+	isPermanentTtsError,
 	makeDefaultRun,
 	makeLocalTts,
 	type CliRunner,
@@ -96,6 +97,22 @@ describe("ffmpegDegradeArgs", () => {
 	it("far_mic attenuates and lowpasses; clinic adds background noise", () => {
 		expect(ffmpegDegradeArgs("i", "o", profile("far_mic")).join(" ")).toContain("volume=0.7");
 		expect(ffmpegDegradeArgs("i", "o", profile("clinic")).join(" ")).toContain("anoisesrc");
+	});
+});
+
+describe("isPermanentTtsError", () => {
+	const err = (message: string) => new PortError({ port: "tts", message });
+
+	it("classifies known-permanent edge-tts signatures", () => {
+		expect(isPermanentTtsError(err("edge-tts failed: NoAudioReceived"))).toBe(true);
+		expect(isPermanentTtsError(err("edge-tts failed: 403, message='Forbidden'"))).toBe(true);
+		expect(isPermanentTtsError(err("edge-tts failed: HTTP 401 Unauthorized"))).toBe(true);
+		expect(isPermanentTtsError(err("voice not found: pt-BR-GoneNeural"))).toBe(true);
+	});
+
+	it("treats transient and unrelated failures as retryable", () => {
+		expect(isPermanentTtsError(err("edge-tts failed: connection reset"))).toBe(false);
+		expect(isPermanentTtsError(err("timeout"))).toBe(false);
 	});
 });
 
@@ -191,6 +208,29 @@ describe("makeLocalTts", () => {
 		const r = await synth({ run: fakeRun(calls, 2) });
 		expect(r.audio.uri).toContain("file://");
 		expect(calls.filter((c) => c.includes("edge-tts"))).toHaveLength(3);
+	});
+
+	it("fails fast on permanent edge-tts errors — no retries", async () => {
+		// A retired voice deterministically returns NoAudioReceived; the
+		// default schedule would otherwise burn 4 attempts per sample.
+		const calls: string[] = [];
+		const run: CliRunner = (cmd) =>
+			Effect.gen(function* () {
+				calls.push(cmd.join(" "));
+				return yield* Effect.fail(
+					new PortError({
+						port: "tts",
+						message: "edge-tts failed: NoAudioReceived",
+					}),
+				);
+			});
+		const err = await synth({ run, retry: Schedule.recurs(5) }).then(
+			() => null,
+			(e) => e,
+		);
+		expect(err).toBeInstanceOf(PortError);
+		expect(err.message).toContain("NoAudioReceived");
+		expect(calls.filter((c) => c.includes("edge-tts"))).toHaveLength(1);
 	});
 
 	it("surfaces PortError after the retry schedule exhausts", async () => {
