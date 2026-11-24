@@ -178,6 +178,22 @@ describe("platform scheduler-heartbeat dispatch", () => {
 	});
 });
 
+describe("platform capability views", () => {
+	it("exposes job-kind, schedulable and topic declarations", { timeout: 90_000 }, async () => {
+		const { runtime, registerJobHandler } = await compose();
+		registerJobHandler("test.cap.view", { handle: async () => {} });
+
+		const kinds = runtime.jobKindInfo!();
+		expect(kinds.map((info) => info.kind)).toContain("test.cap.view");
+		expect(kinds.find((info) => info.kind === "jobs.ping")).toMatchObject({
+			schedulable: true,
+		});
+
+		expect(runtime.schedulableKinds!().map((info) => info.id)).toContain("jobs.ping.smoke");
+		expect(runtime.pubsub?.declaredTopics?.().map((info) => info.topic)).toContain("cron.fires");
+	});
+});
+
 describe("platform schedules capability", () => {
 	it("lists, creates, updates, removes and runs scheduled jobs", { timeout: 30_000 }, async () => {
 		const { runtime, platform, registerJobHandler } = await compose((env) => {
