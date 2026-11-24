@@ -338,10 +338,10 @@ export function ConsultationsPage({
 						{c.hasAnamnesis ? (
 							<ToneBadge tone="green">{t.common.anamnesis}</ToneBadge>
 						) : (
-							<ToneBadge tone="amber">{t.list.noAnamnesis}</ToneBadge>
+							<ToneBadge tone="blue">{t.list.noAnamnesis}</ToneBadge>
 						)}
 						{lowConfidence > 0 ? (
-							<ToneBadge tone="amber">{t.list.needsReview(lowConfidence)}</ToneBadge>
+							<ToneBadge tone="blue">{t.list.needsReview(lowConfidence)}</ToneBadge>
 						) : null}
 						<ToneBadge>{sourceLabel(t, c.source)}</ToneBadge>
 					</span>

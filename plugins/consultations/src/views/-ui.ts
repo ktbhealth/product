@@ -2,13 +2,13 @@ import type { Confidence } from "@ktb/anamnesis";
 
 export const CONF_STYLE: Record<Confidence, string> = {
 	alta: "bg-primary/10 text-primary ring-primary/20",
-	media: "bg-warning/10 text-warning ring-warning/20",
+	media: "bg-info/10 text-info ring-info/20",
 	baixa: "bg-muted text-muted-foreground ring-border",
 };
 
 export const CONF_BAR: Record<Confidence, string> = {
 	alta: "border-l-primary",
-	media: "border-l-warning",
+	media: "border-l-info",
 	baixa: "border-l-border",
 };
 
@@ -24,6 +24,6 @@ export const SPEAKER_STYLE: Record<string, string> = {
 export const BADGE_TONES = {
 	neutral: "bg-muted text-muted-foreground ring-border",
 	green: "bg-success/10 text-success ring-success/20",
-	amber: "bg-warning/10 text-warning ring-warning/20",
+	blue: "bg-info/10 text-info ring-info/20",
 	red: "bg-destructive/10 text-destructive ring-destructive/20",
 } as const;

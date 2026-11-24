@@ -295,8 +295,8 @@ export function AudioTranscriptPanel({
 							{t.transcriptPanel.enhancementFailed}
 						</Badge>
 					) : inFlight ? (
-						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.amber}`}>
-							<span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-warning" />
+						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.blue}`}>
+							<span className="mr-1 inline-block size-1.5 animate-pulse rounded-full bg-info" />
 							{status === "stored" ? t.transcriptPanel.audioStored : t.transcriptPanel.enhancing}
 						</Badge>
 					) : (

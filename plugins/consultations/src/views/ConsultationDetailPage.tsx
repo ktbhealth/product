@@ -48,7 +48,7 @@ function Chip({
 	tone = "neutral",
 }: {
 	children: React.ReactNode;
-	tone?: "neutral" | "green" | "amber";
+	tone?: "neutral" | "green" | "blue";
 }) {
 	return (
 		<Badge variant="secondary" className={`ring-1 ${BADGE_TONES[tone]}`}>
@@ -400,9 +400,9 @@ export function ConsultationDetailPage({
 							/>
 						</Chip>
 					) : (
-						<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
+						<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
 					)}
-					{c.status === "live" ? <Chip tone="amber">{t.detail.inProgress}</Chip> : null}
+					{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
 					{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
 					{history && history.count > 0 ? (
 						<Chip>{t.detail.previousConsultations(history.count)}</Chip>

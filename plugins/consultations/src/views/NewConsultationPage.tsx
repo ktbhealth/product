@@ -921,7 +921,7 @@ export function NewConsultationPage({
 							className={`ml-auto flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-xs ${
 								consented
 									? "bg-primary/10 text-primary ring-1 ring-primary/20"
-									: "bg-warning/10 text-warning ring-1 ring-warning/20"
+									: "bg-info/10 text-info ring-1 ring-info/20"
 							}`}
 						>
 							<Checkbox
@@ -971,11 +971,11 @@ export function NewConsultationPage({
 								</p>
 							) : null}
 							{!consented ? (
-								<Alert className="border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+								<Alert className="border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
 									{nc.consentRequiredDictation}
 								</Alert>
 							) : null}
-							{!supported ? <p className="text-xs text-warning">{nc.unsupportedBrowser}</p> : null}
+							{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
 						</div>
 					) : source === "upload" ? (
 						<label className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground transition hover:border-foreground/20">
@@ -1042,13 +1042,13 @@ export function NewConsultationPage({
 								</Button>
 							</div>
 							{!consented ? (
-								<Alert className="border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+								<Alert className="border-info/30 bg-info/10 px-3 py-2 text-xs text-info">
 									{nc.consentRequiredRecording}
 								</Alert>
 							) : (
 								<p className="text-[11px] text-muted-foreground">{nc.recordingTip}</p>
 							)}
-							{!supported ? <p className="text-xs text-warning">{nc.unsupportedBrowser}</p> : null}
+							{!supported ? <p className="text-xs text-info">{nc.unsupportedBrowser}</p> : null}
 						</>
 					) : (
 						<div>
@@ -1239,7 +1239,7 @@ export function NewConsultationPage({
 							</CardContent>
 						) : (
 							<CardContent>
-								<ScrollArea className="max-h-[68vh]">
+								<ScrollArea className="[&_[data-slot=scroll-area-viewport]]:max-h-[68vh]">
 									<div className="space-y-3 pr-3">
 										{anamnesis.historico ? (
 											<div className="rounded-xl border border-border bg-muted/40 p-3">
