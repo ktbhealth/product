@@ -40,6 +40,10 @@ vi.mock("#/lib/fns.ts", () => ({
 vi.mock("@ktb/theme/fns", () => ({
 	themeScopeFn: vi.fn(async () => null),
 }));
+// The sidebar review-badge feed is a server fn — stub it like theme.
+vi.mock("@ktb/consultations/fns", () => ({
+	countPendingReviewFn: vi.fn(async () => ({ count: 0 })),
+}));
 
 vi.mock("#/lib/registry.ts", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("#/lib/registry.ts")>();
@@ -312,6 +316,7 @@ describe("portalLoader", () => {
 				audiences: ["doctor"],
 				pluginStates: { enabled: ["clinician.portal", "clinician.pages"] },
 				theme: null,
+				pendingReviewCount: 0,
 			});
 			expect(portalPageDataFn).toHaveBeenCalledWith("/portal/doctor/test");
 		} finally {

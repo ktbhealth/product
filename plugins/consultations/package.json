@@ -17,7 +17,8 @@
 		"./backend": "./src/backend.ts",
 		"./api-route-bots": "./src/api-routes/bots.ts",
 		"./api-route-bots-webhook": "./src/api-routes/bots.webhook.ts",
-		"./audio-consumer": "./src/audio-consumer.ts"
+		"./audio-consumer": "./src/audio-consumer.ts",
+		"./review-queue-badge": "./src/views/ReviewQueueBadge.tsx"
 	},
 	"dependencies": {
 		"@effect-server-utils/cqrs": "0.1.0-beta.10",

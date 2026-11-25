@@ -120,6 +120,22 @@ describe("PortalShell", () => {
 		expect(container.querySelector('a[href="/platform/users"]')).not.toBeNull();
 	});
 
+	it("renders an item's badge component next to its label (PL-023)", () => {
+		const QueueBadge = ({ locale }: { readonly locale?: string }) => (
+			<span data-testid="queue-badge">{locale}:3</span>
+		);
+		renderShell({
+			items: [
+				...items,
+				{ to: "/platform/consultations", label: "Consultations", badge: QueueBadge },
+			],
+		});
+		expect(screen.getByText("Consultations")).toBeDefined();
+		expect(screen.getByTestId("queue-badge")).toBeDefined();
+		// The host injects the shell locale into the badge contract.
+		expect(screen.getByTestId("queue-badge").textContent).toContain("en");
+	});
+
 	it("anchors breadcrumbs at the deepest active sidebar item", () => {
 		renderShell({
 			items: [...items, { to: "/platform/users/admins", label: "Admins" }],

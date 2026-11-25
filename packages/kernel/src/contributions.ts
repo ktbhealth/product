@@ -21,6 +21,15 @@ export interface PanelSidebarItem {
 	 * (topo) order; groups order by first appearance. Defaults to a
 	 * single unlabeled group. */
 	readonly group?: string;
+	/** Optional badge rendered right-aligned after the label (pending
+	 * count, status dot…). A plugin-owned component — it never fetches:
+	 * data reaches it through plugin-owned React contexts the host
+	 * provides, the same contract as `headerAction` components.
+	 * `locale`/`i18n` are host-injected for localization. */
+	readonly badge?: ComponentType<{
+		readonly locale?: string;
+		readonly i18n?: PageI18nSlice;
+	}>;
 }
 
 /** One entry in a plugin's console top-bar right side. `component` is a

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	approveAnamnesis: vi.fn(),
 	deferConsultation: vi.fn(),
 	nextPendingReview: vi.fn(),
+	countPendingReview: vi.fn(),
 }));
 
 // Same fake as fns-zk.test.ts: handlers run as plain async fns and the
@@ -34,6 +35,7 @@ import { Consultations } from "./index.ts";
 import { Forbidden } from "@ktb/authz";
 import {
 	approveAnamnesisFn,
+	countPendingReviewFn,
 	deferConsultationFn,
 	nextPendingReviewFn,
 	reviewTranscriptFn,
@@ -51,6 +53,7 @@ const runEffects = () => {
 					approveAnamnesis: mocks.approveAnamnesis,
 					deferConsultation: mocks.deferConsultation,
 					nextPendingReview: mocks.nextPendingReview,
+					countPendingReview: mocks.countPendingReview,
 				} as unknown as Consultations["Service"]),
 			),
 		),
@@ -63,6 +66,7 @@ beforeEach(() => {
 	mocks.approveAnamnesis.mockReturnValue(Effect.succeed(undefined));
 	mocks.deferConsultation.mockReturnValue(Effect.succeed(undefined));
 	mocks.nextPendingReview.mockReturnValue(Effect.succeed(44));
+	mocks.countPendingReview.mockReturnValue(Effect.succeed(3));
 });
 
 describe("review server fns (PL-022)", () => {
@@ -141,6 +145,24 @@ describe("review server fns (PL-022)", () => {
 	it("nextPendingReviewFn is { id: null } without a session user", async () => {
 		mocks.getDoctorUser.mockResolvedValueOnce(null);
 		await expect(nextPendingReviewFn({ data: 9 } as never)).resolves.toEqual({ id: null });
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("countPendingReviewFn returns the queue depth", async () => {
+		runEffects();
+		await expect(countPendingReviewFn({} as never)).resolves.toEqual({ count: 3 });
+		expect(mocks.countPendingReview).toHaveBeenCalledWith("u1");
+	});
+
+	it("countPendingReviewFn collapses Forbidden to { count: 0 }", async () => {
+		mocks.countPendingReview.mockReturnValue(Effect.fail(new Forbidden({ path: "x" })));
+		runEffects();
+		await expect(countPendingReviewFn({} as never)).resolves.toEqual({ count: 0 });
+	});
+
+	it("countPendingReviewFn is { count: 0 } without a session user", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce(null);
+		await expect(countPendingReviewFn({} as never)).resolves.toEqual({ count: 0 });
 		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 });

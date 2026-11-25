@@ -9200,6 +9200,13 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.sidebarPendingReview",
+		locale: "en",
+		kind: "text",
+		value: "{n} pending review",
+	},
+	{
+		namespace: "consultations",
 		key: "list.liveNow",
 		locale: "en",
 		value: "Live now",
@@ -10841,6 +10848,13 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.sidebarPendingReview",
+		locale: "pt-BR",
+		kind: "text",
+		value: "{n} pendentes de revisão",
+	},
+	{
+		namespace: "consultations",
 		key: "list.liveNow",
 		locale: "pt-BR",
 		value: "Ao vivo agora",
@@ -12478,6 +12492,13 @@ export const I18N_BASELINE = [
 		key: "list.transcriptReviewedBadge",
 		locale: "es",
 		value: "Transcripción confirmada",
+	},
+	{
+		namespace: "consultations",
+		key: "list.sidebarPendingReview",
+		locale: "es",
+		kind: "text",
+		value: "{n} pendientes de revisión",
 	},
 	{
 		namespace: "consultations",

@@ -608,6 +608,7 @@ export type I18nKey =
 	| "consultations.list.reviewedBadge"
 	| "consultations.list.searchLabel"
 	| "consultations.list.searchPlaceholder"
+	| "consultations.list.sidebarPendingReview"
 	| "consultations.list.staleBadge"
 	| "consultations.list.startConsultation"
 	| "consultations.list.statsNeedsReview"
@@ -3273,6 +3274,12 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "consultations.list.searchLabel"): Effect.Effect<string>;
 	(key: "consultations.list.searchPlaceholder"): Effect.Effect<string>;
+	(
+		key: "consultations.list.sidebarPendingReview",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(
 		key: "consultations.list.staleBadge",
 		params: {

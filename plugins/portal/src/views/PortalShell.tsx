@@ -196,6 +196,11 @@ export function PortalShell({
 											>
 												{item.icon ? <item.icon /> : null}
 												<span>{item.label}</span>
+												{item.badge ? (
+													<span className="ml-auto">
+														<item.badge locale={locale} i18n={i18n} />
+													</span>
+												) : null}
 											</SidebarMenuButton>
 										</SidebarMenuItem>
 									))}

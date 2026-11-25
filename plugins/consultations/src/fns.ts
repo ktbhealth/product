@@ -638,6 +638,22 @@ export const deferConsultationFn = createServerFn({ method: "POST" })
 		);
 	});
 
+/** Caller's review-queue depth — the sidebar badge count (PL-023 F2). */
+export const countPendingReviewFn = createServerFn({ method: "POST" }).handler(async () => {
+	const user = await getDoctorUser();
+	if (!user) return { count: 0 };
+	return runAs(
+		user,
+		Effect.gen(function* () {
+			const consultations = yield* Consultations;
+			return yield* consultations.countPendingReview(user.id).pipe(
+				Effect.map((count) => ({ count })),
+				Effect.catchTag("Forbidden", () => Effect.succeed({ count: 0 })),
+			);
+		}),
+	);
+});
+
 /** Next unsigned record in the caller's review queue — `{ id }` or `{ id: null }`. */
 export const nextPendingReviewFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))

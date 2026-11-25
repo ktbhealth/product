@@ -8,6 +8,7 @@ import { AuditActivityPage } from "@ktb/audit/activity-page";
 import { Principal } from "@ktb/authz";
 import { Consultations } from "@ktb/consultations";
 import { consultationsServicesPlugin } from "@ktb/consultations";
+import { ReviewQueueBadge } from "@ktb/consultations/review-queue-badge";
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 import { Patients } from "@ktb/patients";
 import { PatientRecordConsultationsQueries } from "@ktb/patients/api";
@@ -291,6 +292,10 @@ const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
 					label: "Consultations",
 					icon: ClipboardListIcon,
 					group: "Care",
+					// Pending-review count pill (PL-023 F2) — reads
+					// PendingReviewCountContext, which the portal layout
+					// provides from countPendingReviewFn; hidden at 0.
+					badge: ReviewQueueBadge,
 				},
 			},
 		},

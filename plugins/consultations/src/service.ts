@@ -65,6 +65,7 @@ import {
 	getLiveConsultation,
 	listAllConsultations,
 	listConsultations,
+	countPendingReview,
 	nextPendingReviewId,
 	transcriptEditsState,
 	type AdminConsultationRow,
@@ -242,6 +243,9 @@ export class Consultations extends Context.Service<
 			id: number,
 			userId: string,
 		) => Effect.Effect<number | null, Forbidden>;
+		/** How many records sit in the caller's review queue — the
+		 * sidebar badge count (PL-023 F2). */
+		readonly countPendingReview: (userId: string) => Effect.Effect<number, Forbidden>;
 		/** Link a stored R2 audio object to the consultation (status "stored"). */
 		readonly attachAudio: (
 			userId: string,
@@ -983,6 +987,11 @@ export const ConsultationsLive = Layer.effect(
 				yield* requirePrincipalUser(userId, "consultation.read");
 				const scope = yield* consultationScope(userId);
 				return yield* Effect.promise(() => nextPendingReviewId(db, scope, id));
+			}),
+			countPendingReview: Effect.fn("Consultations.countPendingReview")(function* (userId: string) {
+				yield* requirePrincipalUser(userId, "consultation.read");
+				const scope = yield* consultationScope(userId);
+				return yield* Effect.promise(() => countPendingReview(db, scope));
 			}),
 			attachAudio: Effect.fn("Consultations.attachAudio")(function* (
 				userId: string,

@@ -1103,6 +1103,76 @@ describe("ConsultationsLive", () => {
 			),
 		).toBeNull();
 	});
+
+	it("countPendingReview counts the unsigned, unparked queue (PL-023)", async () => {
+		// Fresh user — leftovers from other tests belong to other scopes.
+		const uid = "u-count";
+		await testDb.insert(userTable).values({
+			id: uid,
+			name: "Dr Count",
+			email: "count@x.com",
+			emailVerified: false,
+			createdAt: new Date(0),
+			updatedAt: new Date(0),
+		});
+		const create = () =>
+			asUser(
+				uid,
+				call((c) => c.create({ userId: uid, transcript: "t", source: "mic" })),
+			);
+		expect(
+			await asUser(
+				uid,
+				call((c) => c.countPendingReview(uid)),
+			),
+		).toBe(0);
+
+		const pending = await create(); // transcript-only, unconfirmed → counts
+		const done = await create(); // transcript confirmed → excluded
+		await asUser(
+			uid,
+			call((c) => c.reviewTranscript(done!, uid)),
+		);
+		const withAnamnesis = await create(); // unapproved anamnesis → counts
+		await asUser(
+			uid,
+			call((c) =>
+				c.attachAnamnesis(uid, {
+					consultationId: withAnamnesis!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+		const parked = await create(); // parked until tomorrow → excluded
+		await asUser(
+			uid,
+			call((c) => c.deferConsultation(parked!, uid, new Date(Date.now() + 86_400_000))),
+		);
+
+		expect(
+			await asUser(
+				uid,
+				call((c) => c.countPendingReview(uid)),
+			),
+		).toBe(2);
+
+		// Approving/confirming drains the count like it drains the queue.
+		await asUser(
+			uid,
+			call((c) => c.approveAnamnesis(withAnamnesis!, uid)),
+		);
+		await asUser(
+			uid,
+			call((c) => c.reviewTranscript(pending!, uid)),
+		);
+		expect(
+			await asUser(
+				uid,
+				call((c) => c.countPendingReview(uid)),
+			),
+		).toBe(0);
+	});
 });
 
 describe("anamnesis integrity versioning (T-138)", () => {

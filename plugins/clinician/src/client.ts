@@ -3,6 +3,8 @@ import { ActivityIcon, ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-re
 import { AuditActivityPage } from "@ktb/audit/activity-page";
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
 
+import { ReviewQueueBadge } from "./review-queue-badge.tsx";
+
 import { ClinicianConsultationRecordPage } from "./views/ClinicianConsultationRecordPage.tsx";
 import { ClinicianConsultationsPage } from "./views/ClinicianConsultationsPage.tsx";
 import { ClinicianHomePage } from "./views/ClinicianHomePage.tsx";
@@ -97,6 +99,9 @@ const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
 					label: "Consultations",
 					icon: ClipboardListIcon,
 					group: "Care",
+					// Mirrors clinicianPlugin's server manifest — pending
+					// review count pill (PL-023 F2).
+					badge: ReviewQueueBadge,
 				},
 			},
 		},

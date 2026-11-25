@@ -1765,6 +1765,14 @@ export const I18N_MANIFEST = {
 		"list.transcriptReviewedBadge": {
 			params: [],
 		},
+		"list.sidebarPendingReview": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} pending review",
+		},
 		"list.liveNow": {
 			params: [],
 		},

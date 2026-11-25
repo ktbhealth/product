@@ -8,6 +8,8 @@ import { portalAdmits } from "@ktb/portal/rules";
 import { themeScopeFn } from "@ktb/theme/fns";
 import { ThemeBrandMark, ThemePreviewBanner } from "@ktb/theme/views";
 import type { ResolvedTheme } from "@ktb/theme/types";
+import { countPendingReviewFn } from "@ktb/consultations/fns";
+import { PendingReviewCountContext } from "@ktb/consultations/context";
 
 import { pluginStatesFn, portalAudiencesFn, portalPageDataFn } from "#/lib/fns.ts";
 import { requireSession } from "#/lib/guard.ts";
@@ -20,6 +22,7 @@ import {
 	entryEnabled,
 	findPage,
 	findPortalInstance,
+	packageLive,
 	portalInstances,
 	portalPages,
 } from "#/lib/registry.ts";
@@ -61,12 +64,19 @@ export const portalLoader = async ({
 	if (entry === undefined) throw notFound();
 	const pageEntry = findPage(portalPages, path);
 	if (pageEntry === undefined) throw notFound();
-	const [states, audiences, result, theme] = await Promise.all([
-		pluginStatesFn(),
+	const statesP = pluginStatesFn();
+	// Sidebar review badge (PL-023 F2): gated on the consultations
+	// package like every other plugin feed; resolves in parallel.
+	const pendingReviewP = statesP.then((s) =>
+		packageLive(plugins, enabledIdSet(s), "consultations") ? countPendingReviewFn() : { count: 0 },
+	);
+	const [states, audiences, result, theme, pendingReview] = await Promise.all([
+		statesP,
 		portalAudiencesFn(),
 		portalPageDataFn({ data: path }),
 		// Instance → tenant → platform fallback (P-082).
 		themeScopeFn({ data: { scope: "portal-instance", id: instanceId } }),
+		pendingReviewP,
 	]);
 	const enabled = enabledIdSet(states);
 	// Package-granular gates (P-058): both the page's package and the
@@ -77,7 +87,15 @@ export const portalLoader = async ({
 	}
 	if (result.status === "notfound") throw notFound();
 	if (result.status === "redirect") throw redirect({ href: result.to });
-	return { path, instanceId, data: result.data, audiences, pluginStates: states, theme };
+	return {
+		path,
+		instanceId,
+		data: result.data,
+		audiences,
+		pluginStates: states,
+		theme,
+		pendingReviewCount: pendingReview.count,
+	};
 };
 
 export interface PortalLoaderData {
@@ -87,10 +105,11 @@ export interface PortalLoaderData {
 	audiences: readonly string[];
 	pluginStates: { enabled: readonly string[] };
 	theme: ResolvedTheme | null;
+	pendingReviewCount: number;
 }
 
 export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderData }) {
-	const { path, instanceId, data, audiences, pluginStates, theme } = loaderData;
+	const { path, instanceId, data, audiences, pluginStates, theme, pendingReviewCount } = loaderData;
 	const pathname = useLocation({ select: (l) => l.pathname });
 	const { user, i18n } = rootApi.useLoaderData();
 	const locale = i18n?.locale ?? "en";
@@ -184,29 +203,31 @@ export function PortalInstanceShell({ loaderData }: { loaderData: PortalLoaderDa
 	const themeCss =
 		theme !== null && theme !== undefined ? `${theme.styleCss}\n${theme.fontFaceCss}`.trim() : null;
 	return (
-		<PortalShell
-			instance={instance}
-			items={items}
-			pathname={pathname}
-			locale={locale}
-			i18n={i18n}
-			userEmail={user?.email}
-			headerActions={headerActions}
-			brand={brand}
-			banner={
-				theme?.preview === true ? <ThemePreviewBanner locale={locale} i18n={i18n} /> : undefined
-			}
-			themeCss={themeCss}
-			portals={switchablePortals}
-			onSignOut={async () => {
-				await authClient.signOut();
-				window.location.assign("/");
-			}}
-		>
-			{createElement(pageEntry.page.component, {
-				data,
-				ctx: { plugins, locale, user, i18n },
-			})}
-		</PortalShell>
+		<PendingReviewCountContext.Provider value={pendingReviewCount}>
+			<PortalShell
+				instance={instance}
+				items={items}
+				pathname={pathname}
+				locale={locale}
+				i18n={i18n}
+				userEmail={user?.email}
+				headerActions={headerActions}
+				brand={brand}
+				banner={
+					theme?.preview === true ? <ThemePreviewBanner locale={locale} i18n={i18n} /> : undefined
+				}
+				themeCss={themeCss}
+				portals={switchablePortals}
+				onSignOut={async () => {
+					await authClient.signOut();
+					window.location.assign("/");
+				}}
+			>
+				{createElement(pageEntry.page.component, {
+					data,
+					ctx: { plugins, locale, user, i18n },
+				})}
+			</PortalShell>
+		</PendingReviewCountContext.Provider>
 	);
 }

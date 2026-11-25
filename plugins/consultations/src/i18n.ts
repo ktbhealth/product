@@ -95,6 +95,8 @@ export interface ConsultationMessages {
 		readonly reviewedBadge: (version: number) => string;
 		readonly staleBadge: (version: number) => string;
 		readonly transcriptReviewedBadge: string;
+		/** Sidebar badge aria-label/tooltip — pending-review count (PL-023). */
+		readonly sidebarPendingReview: (count: number) => string;
 		/** Pulsing badge on in-progress rows. */
 		readonly liveNow: string;
 		/** Needs-review badge — count of `baixa`-confidence sections. */
@@ -417,6 +419,7 @@ const en: ConsultationMessages = {
 		reviewedBadge: paramMessage("en", "Reviewed v{n}", ["n"]),
 		staleBadge: paramMessage("en", "New version v{n}", ["n"]),
 		transcriptReviewedBadge: "Transcript confirmed",
+		sidebarPendingReview: paramMessage("en", "{n} pending review", ["n"]),
 		liveNow: "Live now",
 		needsReview: paramMessage(
 			"en",
@@ -755,6 +758,7 @@ const ptBR: ConsultationMessages = {
 		reviewedBadge: paramMessage("pt-BR", "Revisada v{n}", ["n"]),
 		staleBadge: paramMessage("pt-BR", "Nova versão v{n}", ["n"]),
 		transcriptReviewedBadge: "Transcrição conferida",
+		sidebarPendingReview: paramMessage("pt-BR", "{n} pendentes de revisão", ["n"]),
 		liveNow: "Ao vivo agora",
 		needsReview: paramMessage(
 			"pt-BR",
@@ -1097,6 +1101,7 @@ const es: ConsultationMessages = {
 		reviewedBadge: paramMessage("es", "Revisada v{n}", ["n"]),
 		staleBadge: paramMessage("es", "Nueva versión v{n}", ["n"]),
 		transcriptReviewedBadge: "Transcripción confirmada",
+		sidebarPendingReview: paramMessage("es", "{n} pendientes de revisión", ["n"]),
 		liveNow: "En vivo ahora",
 		needsReview: paramMessage(
 			"es",
