@@ -9219,9 +9219,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
-		key: "list.statsLiveNow",
+		key: "list.statsReviewed",
 		locale: "en",
-		value: "Live now",
+		value: "Reviewed",
 	},
 	{
 		namespace: "consultations",
@@ -10860,9 +10860,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
-		key: "list.statsLiveNow",
+		key: "list.statsReviewed",
 		locale: "pt-BR",
-		value: "Ao vivo",
+		value: "Revisadas",
 	},
 	{
 		namespace: "consultations",
@@ -12500,9 +12500,9 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
-		key: "list.statsLiveNow",
+		key: "list.statsReviewed",
 		locale: "es",
-		value: "En vivo",
+		value: "Revisadas",
 	},
 	{
 		namespace: "consultations",

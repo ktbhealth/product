@@ -610,8 +610,8 @@ export type I18nKey =
 	| "consultations.list.searchPlaceholder"
 	| "consultations.list.staleBadge"
 	| "consultations.list.startConsultation"
-	| "consultations.list.statsLiveNow"
 	| "consultations.list.statsNeedsReview"
+	| "consultations.list.statsReviewed"
 	| "consultations.list.statsToday"
 	| "consultations.list.title"
 	| "consultations.list.transcriptReviewedBadge"
@@ -3280,8 +3280,8 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "consultations.list.startConsultation"): Effect.Effect<string>;
-	(key: "consultations.list.statsLiveNow"): Effect.Effect<string>;
 	(key: "consultations.list.statsNeedsReview"): Effect.Effect<string>;
+	(key: "consultations.list.statsReviewed"): Effect.Effect<string>;
 	(key: "consultations.list.statsToday"): Effect.Effect<string>;
 	(key: "consultations.list.title"): Effect.Effect<string>;
 	(key: "consultations.list.transcriptReviewedBadge"): Effect.Effect<string>;

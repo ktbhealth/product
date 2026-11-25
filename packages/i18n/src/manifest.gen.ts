@@ -1781,7 +1781,7 @@ export const I18N_MANIFEST = {
 		"list.statsToday": {
 			params: [],
 		},
-		"list.statsLiveNow": {
+		"list.statsReviewed": {
 			params: [],
 		},
 		"list.statsNeedsReview": {

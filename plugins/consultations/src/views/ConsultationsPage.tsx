@@ -1,7 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-	ActivityIcon,
+	BadgeCheckIcon,
 	CalendarDaysIcon,
 	ClipboardCheckIcon,
 	ClipboardListIcon,
@@ -227,7 +227,10 @@ export function ConsultationsPage({
 	const stats = useMemo(
 		() => ({
 			today: display.filter((c) => sameLocalDay(c.createdAt, new Date())).length,
-			live: display.filter((c) => c.status === "live").length,
+			// Physician-signed rows — the progress counter paired with the
+			// pending queue below. "live" was dropped: capture status is
+			// transient, not a workflow stat (the Status facet still filters it).
+			reviewed: display.filter(reviewDone).length,
 			// Real physician review queue (PL-022): unsigned and not parked.
 			review: display.filter((c) => !reviewDone(c) && !isDeferred(c, now)).length,
 		}),
@@ -438,7 +441,7 @@ export function ConsultationsPage({
 						{(
 							[
 								[t.list.statsToday, stats.today, CalendarDaysIcon],
-								[t.list.statsLiveNow, stats.live, ActivityIcon],
+								[t.list.statsReviewed, stats.reviewed, BadgeCheckIcon],
 								[t.list.statsNeedsReview, stats.review, ClipboardCheckIcon],
 							] as const
 						).map(([label, value, Icon]) => (

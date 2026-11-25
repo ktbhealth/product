@@ -101,7 +101,7 @@ export interface ConsultationMessages {
 		readonly needsReview: (n: number) => string;
 		/** Stats strip labels above the list table. */
 		readonly statsToday: string;
-		readonly statsLiveNow: string;
+		readonly statsReviewed: string;
 		readonly statsNeedsReview: string;
 		/** Row hover-preview field labels. */
 		readonly previewComplaint: string;
@@ -424,7 +424,7 @@ const en: ConsultationMessages = {
 			["n"],
 		),
 		statsToday: "Today",
-		statsLiveNow: "Live now",
+		statsReviewed: "Reviewed",
 		statsNeedsReview: "Needs review",
 		previewComplaint: "Chief complaint",
 		previewPlan: "Plan",
@@ -762,7 +762,7 @@ const ptBR: ConsultationMessages = {
 			["n"],
 		),
 		statsToday: "Hoje",
-		statsLiveNow: "Ao vivo",
+		statsReviewed: "Revisadas",
 		statsNeedsReview: "Revisão pendente",
 		previewComplaint: "Queixa principal",
 		previewPlan: "Conduta",
@@ -1104,7 +1104,7 @@ const es: ConsultationMessages = {
 			["n"],
 		),
 		statsToday: "Hoy",
-		statsLiveNow: "En vivo",
+		statsReviewed: "Revisadas",
 		statsNeedsReview: "Requiere revisión",
 		previewComplaint: "Motivo de consulta",
 		previewPlan: "Plan",

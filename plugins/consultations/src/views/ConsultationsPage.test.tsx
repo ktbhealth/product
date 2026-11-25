@@ -676,7 +676,7 @@ describe("ConsultationsPage", () => {
 		expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/consultations/1" });
 	});
 
-	it("shows the stats strip with today/live/review counts", () => {
+	it("shows the stats strip with today/reviewed/review counts", () => {
 		const now = new Date();
 		const yesterday = new Date(now.getTime() - 86_400_000);
 		render(
@@ -704,7 +704,7 @@ describe("ConsultationsPage", () => {
 		expect(cards).toHaveLength(3);
 		expect(cards[0]!.textContent).toContain("Today");
 		expect(cards[0]!.querySelector(".tabular-nums")!.textContent).toBe("1");
-		expect(cards[1]!.textContent).toContain("Live now");
+		expect(cards[1]!.textContent).toContain("Reviewed");
 		expect(cards[1]!.querySelector(".tabular-nums")!.textContent).toBe("1");
 		expect(cards[2]!.textContent).toContain("Needs review");
 		expect(cards[2]!.querySelector(".tabular-nums")!.textContent).toBe("1");
@@ -714,12 +714,11 @@ describe("ConsultationsPage", () => {
 		render(
 			<ConsultationsPage
 				consultations={[
+					// Parked + unsigned: not today, not reviewed, off the queue.
 					item({
 						createdAt: new Date("2020-01-01T10:00:00"),
 						anamnesis: anamnesisJson(),
-						anamnesisVersion: 1,
-						anamnesisReviewedAt: new Date("2020-01-01T12:00:00"),
-						anamnesisReviewedVersion: 1,
+						deferredUntil: new Date(Date.now() + 86_400_000),
 					}),
 				]}
 			/>,
