@@ -181,6 +181,8 @@ export interface ConsultationMessages {
 		readonly staleAnamnesis: string;
 		readonly regenerateAnamnesis: string;
 		readonly deferredTag: string;
+		readonly noAudioTag: string;
+		readonly audioProcessingTag: string;
 		readonly notFound: string;
 	};
 	readonly transcriptPanel: {
@@ -536,6 +538,8 @@ const en: ConsultationMessages = {
 		staleAnamnesis: "Transcript has edits — regenerate if the anamnesis should reflect them.",
 		regenerateAnamnesis: "Regenerate anamnesis",
 		deferredTag: "deferred",
+		noAudioTag: "no audio",
+		audioProcessingTag: "processing",
 		notFound: "Record not found",
 	},
 	transcriptPanel: {
@@ -908,6 +912,8 @@ const ptBR: ConsultationMessages = {
 		staleAnamnesis: "A transcrição tem edições — regenere se a anamnese deve refleti-las.",
 		regenerateAnamnesis: "Regenerar anamnese",
 		deferredTag: "adiada",
+		noAudioTag: "sem áudio",
+		audioProcessingTag: "processando",
 		notFound: "Registro não encontrado",
 	},
 	transcriptPanel: {
@@ -1284,6 +1290,8 @@ const es: ConsultationMessages = {
 		staleAnamnesis: "La transcripción tiene ediciones — regenera si la anamnesis debe reflejarlas.",
 		regenerateAnamnesis: "Regenerar anamnesis",
 		deferredTag: "aplazada",
+		noAudioTag: "sin audio",
+		audioProcessingTag: "procesando",
 		notFound: "Registro no encontrado",
 	},
 	transcriptPanel: {

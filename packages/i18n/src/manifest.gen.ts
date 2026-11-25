@@ -2055,6 +2055,12 @@ export const I18N_MANIFEST = {
 		"review.deferredTag": {
 			params: [],
 		},
+		"review.noAudioTag": {
+			params: [],
+		},
+		"review.audioProcessingTag": {
+			params: [],
+		},
 		"review.notFound": {
 			params: [],
 		},

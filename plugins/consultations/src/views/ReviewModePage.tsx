@@ -257,7 +257,22 @@ export function ReviewModePage({
 
 type Slice = ReturnType<typeof consultationMessages>;
 
-/** One rail/overview row: patient, visit time, parked chip. */
+const AUDIO_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
+
+/** Steps still owed on a queue row — mirrors `reviewDone`: transcript
+ * unstamped, and anamnesis whose approved version is missing or stale. */
+const pendingSteps = (q: ConsultationListItem, t: Slice): string[] => {
+	const steps: string[] = [];
+	if (q.transcriptReviewedAt == null) steps.push(t.review.stepTranscript);
+	if (q.hasAnamnesis && q.anamnesisReviewedVersion !== q.anamnesisVersion) {
+		steps.push(t.review.stepAnamnesis);
+	}
+	return steps;
+};
+
+/** One rail/overview row: patient, chief complaint, recording duration
+ * and the pending steps — the doctor picks what fits the time they
+ * have (a 4-min item vs a 30-min one). */
 function QueueList({
 	items,
 	href,
@@ -273,26 +288,60 @@ function QueueList({
 }) {
 	return (
 		<ul className={`divide-y divide-border ${dimmed ? "opacity-60" : ""}`}>
-			{items.map((q) => (
-				<li key={q.id}>
-					<Link
-						to={href(q.id)}
-						className={`flex items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-muted/60 ${
-							q.id === currentId ? "bg-muted font-medium" : ""
-						}`}
-					>
-						<span className="min-w-0 flex-1 truncate">{q.patientName ?? `#${q.id}`}</span>
-						<span className="shrink-0 text-xs text-muted-foreground">
-							<LocalDateTime value={q.createdAt} />
-						</span>
-						{dimmed ? (
-							<Badge variant="secondary" className={`text-[10px] ring-1 ${BADGE_TONES.neutral}`}>
-								{t.review.deferredTag}
-							</Badge>
-						) : null}
-					</Link>
-				</li>
-			))}
+			{items.map((q) => {
+				const chips: { label: string; tone: string }[] = pendingSteps(q, t).map((s) => ({
+					label: s,
+					tone: BADGE_TONES.blue,
+				}));
+				if (q.audioKey === null)
+					chips.push({ label: t.review.noAudioTag, tone: BADGE_TONES.neutral });
+				else if (AUDIO_IN_FLIGHT.has(q.audioStatus ?? "")) {
+					chips.push({ label: t.review.audioProcessingTag, tone: BADGE_TONES.blue });
+				}
+				if (dimmed) chips.push({ label: t.review.deferredTag, tone: BADGE_TONES.neutral });
+				return (
+					<li key={q.id}>
+						<Link
+							to={href(q.id)}
+							className={`flex items-start gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-muted/60 ${
+								q.id === currentId ? "bg-muted" : ""
+							}`}
+						>
+							<div className="min-w-0 flex-1 space-y-1">
+								<div className="flex items-center gap-2">
+									<span className={`truncate ${q.id === currentId ? "font-medium" : ""}`}>
+										{q.patientName ?? `#${q.id}`}
+									</span>
+									{q.audioDurationSec != null ? (
+										<span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+											{fmtTime(q.audioDurationSec)}
+										</span>
+									) : null}
+								</div>
+								{q.chiefComplaint ? (
+									<p className="truncate text-xs text-muted-foreground">{q.chiefComplaint}</p>
+								) : null}
+								{chips.length > 0 ? (
+									<div className="flex flex-wrap items-center gap-1">
+										{chips.map((chip) => (
+											<Badge
+												key={chip.label}
+												variant="secondary"
+												className={`text-[10px] ring-1 ${chip.tone}`}
+											>
+												{chip.label}
+											</Badge>
+										))}
+									</div>
+								) : null}
+							</div>
+							<span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
+								<LocalDateTime value={q.createdAt} />
+							</span>
+						</Link>
+					</li>
+				);
+			})}
 		</ul>
 	);
 }

@@ -9652,6 +9652,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "review.noAudioTag",
+		locale: "en",
+		value: "no audio",
+	},
+	{
+		namespace: "consultations",
+		key: "review.audioProcessingTag",
+		locale: "en",
+		value: "processing",
+	},
+	{
+		namespace: "consultations",
 		key: "review.notFound",
 		locale: "en",
 		value: "Record not found",
@@ -11484,6 +11496,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "review.noAudioTag",
+		locale: "pt-BR",
+		value: "sem áudio",
+	},
+	{
+		namespace: "consultations",
+		key: "review.audioProcessingTag",
+		locale: "pt-BR",
+		value: "processando",
+	},
+	{
+		namespace: "consultations",
 		key: "review.notFound",
 		locale: "pt-BR",
 		value: "Registro não encontrado",
@@ -13312,6 +13336,18 @@ export const I18N_BASELINE = [
 		key: "review.deferredTag",
 		locale: "es",
 		value: "aplazada",
+	},
+	{
+		namespace: "consultations",
+		key: "review.noAudioTag",
+		locale: "es",
+		value: "sin audio",
+	},
+	{
+		namespace: "consultations",
+		key: "review.audioProcessingTag",
+		locale: "es",
+		value: "procesando",
 	},
 	{
 		namespace: "consultations",

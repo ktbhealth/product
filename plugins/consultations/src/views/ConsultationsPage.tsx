@@ -119,6 +119,12 @@ export interface ConsultationListItem {
 	anamnesisReviewedAt?: Date | null;
 	anamnesisReviewedVersion?: number | null;
 	deferredUntil?: Date | null;
+	/** Audio pipeline state (PL-023) — absent on rows from older callers. */
+	audioKey?: string | null;
+	audioStatus?: string | null;
+	/** Recording duration in seconds from the last ASR segment; null
+	 * when segments are absent or still ciphered (ZK). */
+	audioDurationSec?: number | null;
 }
 
 /** Parked: deferred stamp still in the future. */

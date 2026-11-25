@@ -98,6 +98,15 @@ export async function listConsultations(
 			anamnesisReviewedBy: consultations.anamnesisReviewedBy,
 			anamnesisReviewedVersion: consultations.anamnesisReviewedVersion,
 			deferredUntil: consultations.deferredUntil,
+			audioKey: consultations.audioKey,
+			audioStatus: consultations.audioStatus,
+			// Recording duration = last ASR segment end (`$[#]` is the
+			// append index, not "last" — hence length-1). `json_valid`
+			// keeps ZK ciphertext envelopes from failing the query —
+			// those rows just report null.
+			audioDurationSec: sql<
+				number | null
+			>`CASE WHEN json_valid(${consultations.transcriptSegments}) AND json_array_length(${consultations.transcriptSegments}) > 0 THEN json_extract(${consultations.transcriptSegments}, '$[' || (json_array_length(${consultations.transcriptSegments}) - 1) || '].end') ELSE NULL END`,
 		})
 		.from(consultations)
 		.leftJoin(patients, eq(consultations.patientId, patients.id))

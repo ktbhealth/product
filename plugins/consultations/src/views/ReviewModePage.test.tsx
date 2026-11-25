@@ -155,6 +155,24 @@ describe("ReviewModePage — queue overview", () => {
 		expect(screen.getByText("Review queue clear")).toBeTruthy();
 	});
 
+	it("queue rows show chief complaint, duration and the pending steps", () => {
+		renderPage({}, [item({ chiefComplaint: "dor lombar", audioKey: "k", audioDurationSec: 1452 })]);
+		expect(screen.getByText("dor lombar")).toBeTruthy();
+		expect(screen.getByText("24:12")).toBeTruthy(); // 1452s
+		// Pending-step chips: transcript unstamped + anamnesis unapproved.
+		expect(screen.getAllByText("Transcript").length).toBeGreaterThan(0);
+		expect(screen.getAllByText("Anamnesis").length).toBeGreaterThan(0);
+	});
+
+	it("queue rows flag audio-less and in-flight recordings", () => {
+		renderPage({}, [
+			item({ id: 10, audioKey: null }),
+			item({ id: 11, audioKey: "k", audioStatus: "processing" }),
+		]);
+		expect(screen.getByText("no audio")).toBeTruthy();
+		expect(screen.getByText("processing")).toBeTruthy();
+	});
+
 	it("links each item into its review path", () => {
 		renderPage({ c: null }, [item({ id: 42 })]);
 		expect(screen.getByText("Lívia").closest("a")?.getAttribute("href")).toBe(
