@@ -4,19 +4,19 @@
  * authored dataset (the domain pack itself stays port-pure — nothing
  * under src/ imports it). Same exemption class as app-level scripts. */
 /**
- * materialize-ptbr-real — writes the AUTHORED pt-BR cohort
+ * materialize-ptbr-synthetic — writes the AUTHORED pt-BR cohort
  * (evals/consultation/src/ptbr/) into a suite workdir's dataset
  * store, in the exact row format `eval run`/`eval report` read.
  *
- *   bun evals/consultation/scripts/materialize-ptbr-real.ts \
- *     --workdir /tmp/eval-ptbr-real [--limit N] [--run-id id]
+ *   bun evals/consultation/scripts/materialize-ptbr-synthetic.ts \
+ *     --workdir /tmp/eval-ptbr-synthetic [--limit N] [--run-id id]
  *
  * Why a script and not `eval generate`: generate renders .eta
  * templates through TtsPort — template-synthetic content, not this
  * authored cohort. This script writes the same artifacts generate
  * would (samples + blob provenance + DatasetManifest + Experiment)
  * straight into <workdir>/manifest.sqlite, so the pinned dataset
- * `consult-ptbr-real@v1` materializes byte-identically every run.
+ * `consult-ptbr-synthetic@v1` materializes byte-identically every run.
  *
  * Store format mirrors packages/eval-adapter-local/src/index.ts
  * (makeLocalStoreLayer / makeLocalEvalStoreLayer): doc-JSON rows in
@@ -34,12 +34,12 @@ import * as path from "node:path";
 import Database from "better-sqlite3";
 import { Schema } from "effect";
 
-import { suite } from "../consult-ptbr-real.suite.ts";
+import { suite } from "../consult-ptbr-synthetic.suite.ts";
 import { DatasetManifest, Experiment } from "@ktb/eval-core";
 import {
-	buildPtbrRealSamples,
-	PTBR_REAL_DATASET_ID,
-	PTBR_REAL_DATASET_VERSION,
+	buildPtbrSyntheticSamples,
+	PTBR_SYNTHETIC_DATASET_ID,
+	PTBR_SYNTHETIC_DATASET_VERSION,
 } from "../src/ptbr/index.ts";
 import { Sample } from "../src/schema.ts";
 
@@ -57,7 +57,7 @@ const flag = (name: string): string | undefined => {
 	return i === -1 ? undefined : args[i + 1];
 };
 
-const workdirRaw = flag("workdir") ?? path.join(os.tmpdir(), "eval-ptbr-real");
+const workdirRaw = flag("workdir") ?? path.join(os.tmpdir(), "eval-ptbr-synthetic");
 const limitRaw = flag("limit");
 const limit = limitRaw === undefined ? undefined : Number.parseInt(limitRaw, 10);
 if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
@@ -146,8 +146,8 @@ const upsertManifest = db.prepare(
 // ---------- materialize ----------
 
 const startedAt = Date.now();
-const samples = buildPtbrRealSamples(limit === undefined ? undefined : { limit });
-const datasetVersion = `${PTBR_REAL_DATASET_ID}-${PTBR_REAL_DATASET_VERSION}`;
+const samples = buildPtbrSyntheticSamples(limit === undefined ? undefined : { limit });
+const datasetVersion = `${PTBR_SYNTHETIC_DATASET_ID}-${PTBR_SYNTHETIC_DATASET_VERSION}`;
 
 const registerManifest = db.transaction((m: DatasetManifest) => {
 	const existing = selectManifest.get(m.id, m.version) as { doc: string } | undefined;
@@ -194,14 +194,14 @@ try {
 			.join("\n"),
 	);
 	const datasetDoc: DatasetManifest = decodeManifest({
-		id: PTBR_REAL_DATASET_ID,
-		version: PTBR_REAL_DATASET_VERSION,
+		id: PTBR_SYNTHETIC_DATASET_ID,
+		version: PTBR_SYNTHETIC_DATASET_VERSION,
 		domain: suite.domain,
 		generator: {
 			suiteId: suite.id,
 			source: "authored",
 			pack: "evals/consultation/src/ptbr",
-			materializer: "scripts/materialize-ptbr-real.ts",
+			materializer: "scripts/materialize-ptbr-synthetic.ts",
 			count: samples.length,
 			...(limit !== undefined ? { limit } : {}),
 			locale: "pt-BR",
@@ -209,7 +209,7 @@ try {
 			datasetVersion,
 		},
 		provenance: {
-			generatedBy: "materialize-ptbr-real",
+			generatedBy: "materialize-ptbr-synthetic",
 			runId,
 			task: "T-042",
 		},
@@ -225,14 +225,14 @@ try {
 		suiteId: suite.id,
 		manifestHash: sha256Hex(JSON.stringify(suite)),
 		profile: suite.adapterProfile ?? "stub",
-		dataset: { id: PTBR_REAL_DATASET_ID, version: PTBR_REAL_DATASET_VERSION },
+		dataset: { id: PTBR_SYNTHETIC_DATASET_ID, version: PTBR_SYNTHETIC_DATASET_VERSION },
 		startedAt,
 		finishedAt: Date.now(),
 		summary: {
 			samples: samples.length,
 			source: "authored",
 			datasetVersion,
-			materializer: "scripts/materialize-ptbr-real.ts",
+			materializer: "scripts/materialize-ptbr-synthetic.ts",
 		},
 	});
 	upsertExperiment.run({ id: experiment.id, doc: JSON.stringify(experiment) });

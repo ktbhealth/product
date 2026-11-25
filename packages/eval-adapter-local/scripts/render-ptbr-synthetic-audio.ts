@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
 /**
- * render-ptbr-real-audio — T-164. Synthesizes real TTS audio for the
- * AUTHORED pt-BR cohort (`consult-ptbr-real`) and rewrites each
+ * render-ptbr-synthetic-audio — T-164. Synthesizes real TTS audio for the
+ * AUTHORED pt-BR cohort (`consult-ptbr-synthetic`) and rewrites each
  * sample's `audio.uri` from the `pending://` placeholder to the
  * produced `file://` ref, so real ASR adapters (faster-whisper)
  * produce a true WER signal instead of the stub path.
  *
  *   # 1. materialize the cohort first (writes samples + manifest):
- *   bun evals/consultation/scripts/materialize-ptbr-real.ts \
- *     --workdir /tmp/eval-ptbr-real
+ *   bun evals/consultation/scripts/materialize-ptbr-synthetic.ts \
+ *     --workdir /tmp/eval-ptbr-synthetic
  *
  *   # 2. render audio into the same workdir:
- *   bun packages/eval-adapter-local/scripts/render-ptbr-real-audio.ts \
- *     --workdir /tmp/eval-ptbr-real [--limit N] [--ids id1,id2,...] \
+ *   bun packages/eval-adapter-local/scripts/render-ptbr-synthetic-audio.ts \
+ *     --workdir /tmp/eval-ptbr-synthetic [--limit N] [--ids id1,id2,...] \
  *     [--concurrency N]
  *
  * Sample selection: the store lists rows ordered by id, but the eval
@@ -25,8 +25,8 @@
  *
  * Then run the pipeline with a real ASR profile:
  *
- *   bun apps/cli/src/main.ts eval run consult-ptbr-real \
- *     --workdir /tmp/eval-ptbr-real --profile local-asr
+ *   bun apps/cli/src/main.ts eval run consult-ptbr-synthetic \
+ *     --workdir /tmp/eval-ptbr-synthetic --profile local-asr
  *
  * Requires `edge-tts` + `ffmpeg` on PATH (`uv tool install edge-tts`).
  * edge-tts is a HOSTED endpoint — the cohort is authored synthetic
@@ -40,7 +40,7 @@
  * `acoustic` is stamped with the real ttsModel/voiceId/speakerVoices
  * so reports can attribute the render.
  *
- * Store format mirrors materialize-ptbr-real.ts / the local eval
+ * Store format mirrors materialize-ptbr-synthetic.ts / the local eval
  * store (doc-JSON rows in <workdir>/manifest.sqlite). If that schema
  * changes, this script must follow.
  */
@@ -54,7 +54,7 @@ import * as Effect from "effect/Effect";
 import { Schema } from "effect";
 
 import { TtsPort } from "@ktb/eval-consultation";
-import { PTBR_CONSULTATIONS, ptbrRealSampleId } from "@ktb/eval-consultation/ptbr";
+import { PTBR_CONSULTATIONS, ptbrSyntheticSampleId } from "@ktb/eval-consultation/ptbr";
 import { Sample } from "@ktb/eval-consultation/schema";
 
 import { makeLocalTts } from "../src/tts.ts";
@@ -100,9 +100,9 @@ if (!Number.isInteger(concurrency) || concurrency < 1) {
 	console.error(`--concurrency must be an integer >= 1, got: ${concurrencyRaw}`);
 	process.exit(2);
 }
-const datasetVersion = flag("dataset") ?? "consult-ptbr-real-v1";
+const datasetVersion = flag("dataset") ?? "consult-ptbr-synthetic-v1";
 
-// Same scratch-path guard as materialize-ptbr-real.ts / eval-cli's
+// Same scratch-path guard as materialize-ptbr-synthetic.ts / eval-cli's
 // workdirFlag — a bad argv must not write into a real directory.
 const resolved = path.resolve(workdirRaw);
 const scratchRoots = [
@@ -121,7 +121,7 @@ if (!scratchRoots.some((r) => resolved === r || resolved.startsWith(`${r}${path.
 
 const dbPath = path.join(resolved, "manifest.sqlite");
 if (!fs.existsSync(dbPath)) {
-	console.error(`no manifest.sqlite under ${resolved} — run materialize-ptbr-real.ts first`);
+	console.error(`no manifest.sqlite under ${resolved} — run materialize-ptbr-synthetic.ts first`);
 	process.exit(2);
 }
 
@@ -156,7 +156,9 @@ const alreadyDone = all.filter((s) => s.audio?.uri.startsWith("file://") === tru
 // PTBR_CONSULTATIONS order, so --limit must slice the same way or
 // smoke renders target the wrong samples (the store's ORDER BY id
 // is alphabetical, not authored).
-const authoredOrder = new Map(PTBR_CONSULTATIONS.map((c, i) => [ptbrRealSampleId(c), i] as const));
+const authoredOrder = new Map(
+	PTBR_CONSULTATIONS.map((c, i) => [ptbrSyntheticSampleId(c), i] as const),
+);
 const byAuthoredOrder = (a: Sample, b: Sample): number => {
 	const ia = authoredOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER;
 	const ib = authoredOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER;
@@ -264,6 +266,6 @@ const rendered = pending.length - failures.length;
 console.log(
 	`rendered ${rendered}/${pending.length} samples → ${resolved}/audio\n` +
 		(alreadyDone > 0 ? `skipped ${alreadyDone} already-rendered rows\n` : "") +
-		`next: bun apps/cli/src/main.ts eval run consult-ptbr-real --workdir ${resolved} --profile local-asr`,
+		`next: bun apps/cli/src/main.ts eval run consult-ptbr-synthetic --workdir ${resolved} --profile local-asr`,
 );
 if (failures.length > 0) process.exitCode = 1;

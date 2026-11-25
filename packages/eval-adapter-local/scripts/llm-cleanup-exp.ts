@@ -3,7 +3,7 @@
  * llm-cleanup-exp — T-164 follow-up EXPERIMENT (not pipeline code).
  *
  * Question: does an LLM cleanup pass reduce WER on the real
- * faster-whisper output of consult-ptbr-real — and do ASR segment
+ * faster-whisper output of consult-ptbr-synthetic — and do ASR segment
  * TIMESTAMPS ([m:ss] per whisper segment) help the corrector?
  *
  * Variants per sample (gold = authored script, hyp = candidate):
@@ -19,7 +19,7 @@
  *               gets today (expected: EditList parse failure).
  *
  *   bun packages/eval-adapter-local/scripts/llm-cleanup-exp.ts \
- *     --workdir /home/luis/tmp/eval-ptbr-real [--limit N] \
+ *     --workdir /home/luis/tmp/eval-ptbr-synthetic [--limit N] \
  *     [--agent "devin acp"] [--asr-url http://127.0.0.1:8765]
  *
  * Model-agnostic: --agent takes any ACP-speaking CLI argv
@@ -45,7 +45,7 @@ const flag = (name: string): string | undefined => {
 	return i === -1 ? undefined : args[i + 1];
 };
 
-const workdir = path.resolve(flag("workdir") ?? "/home/luis/tmp/eval-ptbr-real");
+const workdir = path.resolve(flag("workdir") ?? "/home/luis/tmp/eval-ptbr-synthetic");
 const asrUrl = flag("asr-url") ?? "http://127.0.0.1:8765";
 const agentCmd = flag("agent") ?? "devin acp";
 const limitRaw = flag("limit");
