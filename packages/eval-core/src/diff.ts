@@ -157,7 +157,9 @@ export const anchorEdits = (
 			rewrites++;
 			continue;
 		}
-		if (base.slice(op.at, op.at + op.remove.length) === op.remove) {
+		// `at` is only Schema.Number — a negative offset would slice()
+		// from the end and "match" text at a mirrored position.
+		if (op.at >= 0 && base.slice(op.at, op.at + op.remove.length) === op.remove) {
 			exact++;
 			placed.push(op);
 			continue;

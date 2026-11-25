@@ -132,6 +132,15 @@ describe("anchorEdits", () => {
 		expect(out.ops).toHaveLength(2);
 		expect(applyEdits("abcd", out.ops)).toBe("XY");
 	});
+
+	it("never treats a negative `at` as an exact match", () => {
+		// slice(-6, -3) on a 6-char base is "abc" — without the guard
+		// this would anchor at a mirrored position and could overlap.
+		const out = anchorEdits("abcdef", [op(-6, "abc", "X")]);
+		expect(out.ops).toEqual([op(0, "abc", "X")]);
+		expect(out.stats).toEqual({ exact: 0, reanchored: 1, rewrites: 0, dropped: 0 });
+		expect(applyEdits("abcdef", out.ops)).toBe("Xdef");
+	});
 });
 
 describe("isRewrite", () => {

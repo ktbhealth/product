@@ -579,6 +579,10 @@ describe("parseEditListReply", () => {
 		expect(parseEditListReply('Here you go: {"ops":[]} hope it helps')).toEqual({ ops: [] });
 	});
 
+	it("skips brackets in prose before the payload", () => {
+		expect(parseEditListReply('Note [sic]: {"ops":[]}')).toEqual({ ops: [] });
+	});
+
 	it("wraps a bare op array as { ops }", () => {
 		const op = { at: 0, remove: "a", insert: "b", kind: "fix" };
 		expect(parseEditListReply(JSON.stringify([op]))).toEqual({ ops: [op] });

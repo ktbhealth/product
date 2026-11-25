@@ -81,10 +81,21 @@ export const parseEditListReply = (content: string): unknown => {
 	const visible = content.replace(/<think>[\s\S]*?<\/think>/g, "");
 	const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(visible);
 	const body = fenced?.[1] ?? visible;
-	const start = body.search(/[[{]/);
 	const end = Math.max(body.lastIndexOf("}"), body.lastIndexOf("]"));
-	const parsed: unknown = JSON.parse(start === -1 ? body : body.slice(start, end + 1));
-	return Array.isArray(parsed) ? { ops: parsed } : parsed;
+	// Prose may contain brackets before the payload ("[note] {...}") —
+	// try each candidate start until one parses.
+	for (const m of body.matchAll(/[[{]/g)) {
+		// v8 ignore next -- matchAll always reports an index
+		if (m.index === undefined) continue;
+		try {
+			const parsed: unknown = JSON.parse(body.slice(m.index, end + 1));
+			return Array.isArray(parsed) ? { ops: parsed } : parsed;
+		} catch {
+			// not the payload start — try the next bracket
+		}
+	}
+	// No bracketed payload at all — surface a SyntaxError like before.
+	return JSON.parse(body) as unknown;
 };
 
 interface ChatCompletionBody {
