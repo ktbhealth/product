@@ -5,12 +5,12 @@ import { Sample } from "../schema.ts";
 import { Schema } from "effect";
 import { PTBR_CONSULTATIONS } from "./consultations.ts";
 import {
-	buildPtbrRealSamples,
-	ptbrRealAudioUri,
-	ptbrRealDatasetVersion,
-	ptbrRealSampleId,
-	PTBR_REAL_DATASET_ID,
-	PTBR_REAL_DATASET_VERSION,
+	buildPtbrSyntheticSamples,
+	ptbrSyntheticAudioUri,
+	ptbrSyntheticDatasetVersion,
+	ptbrSyntheticSampleId,
+	PTBR_SYNTHETIC_DATASET_ID,
+	PTBR_SYNTHETIC_DATASET_VERSION,
 } from "./dataset.ts";
 import type { PtbrConsult } from "./types.ts";
 
@@ -72,19 +72,19 @@ describe("PTBR_CONSULTATIONS (authored cohort)", () => {
 	});
 });
 
-describe("buildPtbrRealSamples", () => {
+describe("buildPtbrSyntheticSamples", () => {
 	it("projects every consult into a schema-valid Sample", () => {
-		const samples = buildPtbrRealSamples();
+		const samples = buildPtbrSyntheticSamples();
 		expect(samples).toHaveLength(PTBR_CONSULTATIONS.length);
 		const decode = Schema.decodeUnknownSync(Sample);
 		for (const [i, s] of samples.entries()) {
 			const c = PTBR_CONSULTATIONS[i]!;
 			expect(() => decode(s)).not.toThrow();
-			expect(s.datasetVersion).toBe(ptbrRealDatasetVersion());
+			expect(s.datasetVersion).toBe(ptbrSyntheticDatasetVersion());
 			expect(s.origin).toBe("synthetic");
-			expect(s.id).toBe(ptbrRealSampleId(c));
-			expect(s.audio?.uri).toBe(ptbrRealAudioUri(c));
-			expect(s.audio?.uri.startsWith("pending://ptbr-real/")).toBe(true);
+			expect(s.id).toBe(ptbrSyntheticSampleId(c));
+			expect(s.audio?.uri).toBe(ptbrSyntheticAudioUri(c));
+			expect(s.audio?.uri.startsWith("pending://ptbr-synthetic/")).toBe(true);
 			expect(s.turns).toHaveLength(c.turns.length);
 			expect(s.gold.entities).toEqual(c.entities);
 			expect(s.persona.specialty).toBe(c.specialty);
@@ -93,19 +93,19 @@ describe("buildPtbrRealSamples", () => {
 	});
 
 	it("is deterministic — same input, same samples", () => {
-		expect(buildPtbrRealSamples()).toEqual(buildPtbrRealSamples());
+		expect(buildPtbrSyntheticSamples()).toEqual(buildPtbrSyntheticSamples());
 	});
 
 	it("limit slices the stable cohort order", () => {
-		const all = buildPtbrRealSamples();
-		const few = buildPtbrRealSamples({ limit: 4 });
+		const all = buildPtbrSyntheticSamples();
+		const few = buildPtbrSyntheticSamples({ limit: 4 });
 		expect(few).toHaveLength(4);
 		expect(few.map((s) => s.id)).toEqual(all.slice(0, 4).map((s) => s.id));
 	});
 
-	it("pins the consult-ptbr-real@v1 dataset identity", () => {
-		expect(PTBR_REAL_DATASET_ID).toBe("consult-ptbr-real");
-		expect(PTBR_REAL_DATASET_VERSION).toBe("v1");
-		expect(ptbrRealDatasetVersion()).toBe("consult-ptbr-real-v1");
+	it("pins the consult-ptbr-synthetic@v1 dataset identity", () => {
+		expect(PTBR_SYNTHETIC_DATASET_ID).toBe("consult-ptbr-synthetic");
+		expect(PTBR_SYNTHETIC_DATASET_VERSION).toBe("v1");
+		expect(ptbrSyntheticDatasetVersion()).toBe("consult-ptbr-synthetic-v1");
 	});
 });
