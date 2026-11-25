@@ -582,8 +582,10 @@ export const approveAnamnesisFn = createServerFn({ method: "POST" })
 
 const DeferInput = Schema.Struct({
 	id: Schema.Number,
-	/** ISO instant the record re-enters the review queue; null clears the defer. */
-	until: Schema.optionalKey(Schema.NullishOr(Schema.DateFromString)),
+	/** ISO instant the record re-enters the review queue; null clears the
+	 * defer. Clients send `toISOString()`, but the wire serializer may
+	 * round-trip a `Date` instance — both are accepted. */
+	until: Schema.optionalKey(Schema.NullishOr(Schema.Union([Schema.Date, Schema.DateFromString]))),
 });
 const decodeDeferInput = Schema.decodeUnknownSync(DeferInput);
 

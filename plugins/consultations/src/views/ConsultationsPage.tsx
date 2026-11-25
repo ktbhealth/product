@@ -270,13 +270,16 @@ export function ConsultationsPage({
 					);
 				}
 				const cell = (
-					<span className="flex items-center gap-3">
+					<span className="flex max-w-96 items-center gap-3">
 						<Avatar className="size-9">
 							<AvatarFallback className="bg-gradient-to-br from-primary/15 to-primary/5 text-xs font-semibold text-primary">
 								{initials(c.patientName)}
 							</AvatarFallback>
 						</Avatar>
-						<span className="min-w-0">
+						{/* whitespace-normal overrides the td's nowrap so the
+						 * preview wraps inside the width cap instead of stretching
+						 * the column to the full complaint/transcript text. */}
+						<span className="min-w-0 whitespace-normal">
 							<span className="flex flex-wrap items-baseline gap-x-2">
 								<Link
 									to={portalPath(`/consultations/${c.id}`)}
@@ -445,6 +448,7 @@ export function ConsultationsPage({
 							<SearchInput
 								value={q}
 								onChange={setQ}
+								className="w-64 sm:w-96"
 								placeholder={t.list.searchPlaceholder}
 								aria-label={t.list.searchLabel}
 							/>
@@ -469,6 +473,7 @@ export function ConsultationsPage({
 									onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
 								>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterAll}>
+										<span className="text-muted-foreground">{t.list.facetStatus}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -479,6 +484,7 @@ export function ConsultationsPage({
 								</Select>
 								<Select value={sourceFilter} onValueChange={(v) => setSourceFilter(String(v))}>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterSourceAll}>
+										<span className="text-muted-foreground">{t.list.facetSource}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -495,6 +501,7 @@ export function ConsultationsPage({
 									onValueChange={(v) => setAnamnesisFilter(v as typeof anamnesisFilter)}
 								>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterAnamnesisAll}>
+										<span className="text-muted-foreground">{t.list.facetAnamnesis}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>
@@ -508,6 +515,7 @@ export function ConsultationsPage({
 									onValueChange={(v) => setReviewFilter(v as typeof reviewFilter)}
 								>
 									<SelectTrigger className="h-8 text-xs" aria-label={t.list.filterReviewAll}>
+										<span className="text-muted-foreground">{t.list.facetReview}:</span>
 										<SelectValue />
 									</SelectTrigger>
 									<SelectContent>

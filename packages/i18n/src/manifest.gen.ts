@@ -1726,6 +1726,18 @@ export const I18N_MANIFEST = {
 		"list.filterReviewDeferred": {
 			params: [],
 		},
+		"list.facetStatus": {
+			params: [],
+		},
+		"list.facetSource": {
+			params: [],
+		},
+		"list.facetAnamnesis": {
+			params: [],
+		},
+		"list.facetReview": {
+			params: [],
+		},
 		"list.deferredBadge": {
 			params: [
 				{
@@ -1855,6 +1867,9 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"detail.noAnamnesisDescription": {
+			params: [],
+		},
+		"detail.generateAnamnesis": {
 			params: [],
 		},
 		"detail.integrity.verified": {

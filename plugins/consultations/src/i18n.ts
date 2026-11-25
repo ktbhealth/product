@@ -83,6 +83,13 @@ export interface ConsultationMessages {
 		readonly filterReviewPending: string;
 		readonly filterReviewDone: string;
 		readonly filterReviewDeferred: string;
+		/** Visible facet labels on the toolbar selects — the facet name
+		 * sits next to the current value so filters are discoverable
+		 * without opening each dropdown. */
+		readonly facetStatus: string;
+		readonly facetSource: string;
+		readonly facetAnamnesis: string;
+		readonly facetReview: string;
 		/** Review badges on the status column (PL-022). */
 		readonly deferredBadge: (date: string) => string;
 		readonly reviewedBadge: (version: number) => string;
@@ -120,6 +127,8 @@ export interface ConsultationMessages {
 		readonly evidenceTitle: string;
 		readonly noAnamnesisTitle: string;
 		readonly noAnamnesisDescription: string;
+		/** "Generate anamnesis" on the empty anamnesis card (transcript-only records). */
+		readonly generateAnamnesis: string;
 		/** Tamper-evidence badge labels (T-139) — mirrors IntegrityBadgeLabels. */
 		readonly integrity: {
 			readonly verified: string;
@@ -400,6 +409,10 @@ const en: ConsultationMessages = {
 		filterReviewPending: "Pending review",
 		filterReviewDone: "Reviewed",
 		filterReviewDeferred: "Deferred",
+		facetStatus: "Status",
+		facetSource: "Source",
+		facetAnamnesis: "Anamnesis",
+		facetReview: "Review",
 		deferredBadge: paramMessage("en", "Deferred until {date}", ["date"]),
 		reviewedBadge: paramMessage("en", "Reviewed v{n}", ["n"]),
 		staleBadge: paramMessage("en", "New version v{n}", ["n"]),
@@ -439,6 +452,7 @@ const en: ConsultationMessages = {
 		evidenceTitle: "Transcript evidence",
 		noAnamnesisTitle: "No anamnesis saved",
 		noAnamnesisDescription: "This consultation does not have a saved anamnesis yet.",
+		generateAnamnesis: "Generate anamnesis",
 		integrity: {
 			verified: "Integrity verified",
 			tampered: "Integrity check failed",
@@ -733,6 +747,10 @@ const ptBR: ConsultationMessages = {
 		filterReviewPending: "Revisão pendente",
 		filterReviewDone: "Revisadas",
 		filterReviewDeferred: "Adiadas",
+		facetStatus: "Status",
+		facetSource: "Origem",
+		facetAnamnesis: "Anamnese",
+		facetReview: "Revisão",
 		deferredBadge: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
 		reviewedBadge: paramMessage("pt-BR", "Revisada v{n}", ["n"]),
 		staleBadge: paramMessage("pt-BR", "Nova versão v{n}", ["n"]),
@@ -773,6 +791,7 @@ const ptBR: ConsultationMessages = {
 		evidenceTitle: "Evidência no transcript",
 		noAnamnesisTitle: "Nenhuma anamnese salva",
 		noAnamnesisDescription: "Esta consulta ainda não tem uma anamnese salva.",
+		generateAnamnesis: "Gerar anamnese",
 		integrity: {
 			verified: "Integridade verificada",
 			tampered: "Falha na verificação de integridade",
@@ -1070,6 +1089,10 @@ const es: ConsultationMessages = {
 		filterReviewPending: "Revisión pendiente",
 		filterReviewDone: "Revisadas",
 		filterReviewDeferred: "Aplazadas",
+		facetStatus: "Estado",
+		facetSource: "Origen",
+		facetAnamnesis: "Anamnesis",
+		facetReview: "Revisión",
 		deferredBadge: paramMessage("es", "Aplazada hasta {date}", ["date"]),
 		reviewedBadge: paramMessage("es", "Revisada v{n}", ["n"]),
 		staleBadge: paramMessage("es", "Nueva versión v{n}", ["n"]),
@@ -1110,6 +1133,7 @@ const es: ConsultationMessages = {
 		evidenceTitle: "Evidencia en la transcripción",
 		noAnamnesisTitle: "Ninguna anamnesis guardada",
 		noAnamnesisDescription: "Esta consulta aún no tiene una anamnesis guardada.",
+		generateAnamnesis: "Generar anamnesis",
 		integrity: {
 			verified: "Integridad verificada",
 			tampered: "Falló la verificación de integridad",

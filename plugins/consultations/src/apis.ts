@@ -31,6 +31,24 @@ export const consultationDetailApi: ConsultationDetailApi = {
 	approveAnamnesis: (input: { data: number }) => approveAnamnesisFn(input),
 	deferConsultation: (input) => deferConsultationFn({ data: input.data }),
 	nextPendingReview: (input: { data: number }) => nextPendingReviewFn(input),
+	// Detail-page "Generate anamnesis": server-side extract + attach in
+	// one adapter call so the view stays a single button. ZK tenants get
+	// `null` from extract (client-side BYOK is a different path, T-146).
+	generateAnamnesis: async (input: {
+		data: { consultationId: number; transcript: string; patientId?: number };
+	}) => {
+		const draft = await extractAnamnesisFn({
+			data: { transcript: input.data.transcript, patientId: input.data.patientId },
+		});
+		if (draft === null) return { ok: false };
+		return attachAnamnesisFn({
+			data: {
+				consultationId: input.data.consultationId,
+				anamnesis: draft.anamnesis,
+				engine: draft.engine,
+			},
+		} as never);
+	},
 };
 
 export const newConsultationApi: NewConsultationApi = {

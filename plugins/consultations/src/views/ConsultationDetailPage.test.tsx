@@ -18,7 +18,7 @@ const streamMocks = vi.hoisted(() => ({
 }));
 vi.mock("@ktb/crypto/stream", () => streamMocks);
 
-const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn(), invalidate: vi.fn() }));
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -29,6 +29,7 @@ vi.mock("@tanstack/react-router", async () => {
 				props.children as never,
 			),
 		useNavigate: () => routerMocks.navigate,
+		useRouter: () => ({ invalidate: routerMocks.invalidate }),
 	};
 });
 
@@ -998,7 +999,7 @@ describe("review stamps (PL-022)", () => {
 		)!;
 		await user.click(day);
 		expect(deferConsultation).toHaveBeenCalledWith({
-			data: { id: 10, until: expect.any(Date) },
+			data: { id: 10, until: expect.any(String) },
 		});
 	});
 
@@ -1036,5 +1037,26 @@ describe("review stamps (PL-022)", () => {
 		release({ ok: true });
 		await screen.findByText(/Confirmed/);
 		expect(reviewTranscript).toHaveBeenCalledTimes(1);
+	});
+
+	it("offers Generate anamnesis on transcript-only records and reloads", async () => {
+		const user = userEvent.setup();
+		const generateAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesis: null })}
+				history={null}
+				api={{ getConsultation: vi.fn(), generateAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Generate anamnesis"));
+		expect(generateAnamnesis).toHaveBeenCalledWith({
+			data: {
+				consultationId: 10,
+				transcript: "Médico: oi\nPaciente: olá doutor",
+				patientId: 1,
+			},
+		});
+		await waitFor(() => expect(routerMocks.invalidate).toHaveBeenCalled());
 	});
 });

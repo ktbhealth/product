@@ -548,6 +548,7 @@ export type I18nKey =
 	| "consultations.detail.deferResume"
 	| "consultations.detail.evidence"
 	| "consultations.detail.evidenceTitle"
+	| "consultations.detail.generateAnamnesis"
 	| "consultations.detail.hideEvidence"
 	| "consultations.detail.historyNote"
 	| "consultations.detail.inProgress"
@@ -574,6 +575,10 @@ export type I18nKey =
 	| "consultations.list.downloadPdfTitle"
 	| "consultations.list.emptyDescription"
 	| "consultations.list.emptyTitle"
+	| "consultations.list.facetAnamnesis"
+	| "consultations.list.facetReview"
+	| "consultations.list.facetSource"
+	| "consultations.list.facetStatus"
 	| "consultations.list.filterAll"
 	| "consultations.list.filterAnamnesisAll"
 	| "consultations.list.filterAnamnesisWith"
@@ -3173,6 +3178,7 @@ export interface I18nTypedT {
 		},
 	): Effect.Effect<string>;
 	(key: "consultations.detail.evidenceTitle"): Effect.Effect<string>;
+	(key: "consultations.detail.generateAnamnesis"): Effect.Effect<string>;
 	(key: "consultations.detail.hideEvidence"): Effect.Effect<string>;
 	(key: "consultations.detail.historyNote"): Effect.Effect<string>;
 	(key: "consultations.detail.inProgress"): Effect.Effect<string>;
@@ -3224,6 +3230,10 @@ export interface I18nTypedT {
 	(key: "consultations.list.downloadPdfTitle"): Effect.Effect<string>;
 	(key: "consultations.list.emptyDescription"): Effect.Effect<string>;
 	(key: "consultations.list.emptyTitle"): Effect.Effect<string>;
+	(key: "consultations.list.facetAnamnesis"): Effect.Effect<string>;
+	(key: "consultations.list.facetReview"): Effect.Effect<string>;
+	(key: "consultations.list.facetSource"): Effect.Effect<string>;
+	(key: "consultations.list.facetStatus"): Effect.Effect<string>;
 	(key: "consultations.list.filterAll"): Effect.Effect<string>;
 	(key: "consultations.list.filterAnamnesisAll"): Effect.Effect<string>;
 	(key: "consultations.list.filterAnamnesisWith"): Effect.Effect<string>;

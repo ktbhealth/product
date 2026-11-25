@@ -9149,6 +9149,30 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.facetStatus",
+		locale: "en",
+		value: "Status",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetSource",
+		locale: "en",
+		value: "Source",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetAnamnesis",
+		locale: "en",
+		value: "Anamnesis",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetReview",
+		locale: "en",
+		value: "Review",
+	},
+	{
+		namespace: "consultations",
 		key: "list.deferredBadge",
 		locale: "en",
 		kind: "text",
@@ -9328,6 +9352,12 @@ export const I18N_BASELINE = [
 		key: "detail.noAnamnesisDescription",
 		locale: "en",
 		value: "This consultation does not have a saved anamnesis yet.",
+	},
+	{
+		namespace: "consultations",
+		key: "detail.generateAnamnesis",
+		locale: "en",
+		value: "Generate anamnesis",
 	},
 	{
 		namespace: "consultations",
@@ -10760,6 +10790,30 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.facetStatus",
+		locale: "pt-BR",
+		value: "Status",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetSource",
+		locale: "pt-BR",
+		value: "Origem",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetAnamnesis",
+		locale: "pt-BR",
+		value: "Anamnese",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetReview",
+		locale: "pt-BR",
+		value: "Revisão",
+	},
+	{
+		namespace: "consultations",
 		key: "list.deferredBadge",
 		locale: "pt-BR",
 		kind: "text",
@@ -10939,6 +10993,12 @@ export const I18N_BASELINE = [
 		key: "detail.noAnamnesisDescription",
 		locale: "pt-BR",
 		value: "Esta consulta ainda não tem uma anamnese salva.",
+	},
+	{
+		namespace: "consultations",
+		key: "detail.generateAnamnesis",
+		locale: "pt-BR",
+		value: "Gerar anamnese",
 	},
 	{
 		namespace: "consultations",
@@ -12370,6 +12430,30 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "list.facetStatus",
+		locale: "es",
+		value: "Estado",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetSource",
+		locale: "es",
+		value: "Origen",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetAnamnesis",
+		locale: "es",
+		value: "Anamnesis",
+	},
+	{
+		namespace: "consultations",
+		key: "list.facetReview",
+		locale: "es",
+		value: "Revisión",
+	},
+	{
+		namespace: "consultations",
 		key: "list.deferredBadge",
 		locale: "es",
 		kind: "text",
@@ -12549,6 +12633,12 @@ export const I18N_BASELINE = [
 		key: "detail.noAnamnesisDescription",
 		locale: "es",
 		value: "Esta consulta aún no tiene una anamnesis guardada.",
+	},
+	{
+		namespace: "consultations",
+		key: "detail.generateAnamnesis",
+		locale: "es",
+		value: "Generar anamnesis",
 	},
 	{
 		namespace: "consultations",

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
 	ArrowLeftIcon,
@@ -24,6 +24,7 @@ import { Button } from "@ktbhealth/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import {
 	Empty,
+	EmptyContent,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyMedia,
@@ -118,9 +119,15 @@ export interface ConsultationDetailApi {
 	/** Review stamps (PL-022). */
 	reviewTranscript?(input: { data: number }): Promise<{ ok: boolean }>;
 	approveAnamnesis?(input: { data: number }): Promise<{ ok: boolean }>;
-	deferConsultation?(input: { data: { id: number; until: Date | null } }): Promise<{ ok: boolean }>;
+	deferConsultation?(input: {
+		data: { id: number; until: Date | string | null };
+	}): Promise<{ ok: boolean }>;
 	/** "Approve & next" — the next unsigned record in the queue. */
 	nextPendingReview?(input: { data: number }): Promise<{ id: number | null }>;
+	/** Draft + attach an anamnesis for a transcript-only record. */
+	generateAnamnesis?(input: {
+		data: { consultationId: number; transcript: string; patientId?: number };
+	}): Promise<{ ok: boolean }>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
@@ -163,6 +170,7 @@ export function ConsultationDetailPage({
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const navigate = useNavigate();
+	const router = useRouter();
 	const [toast, setToast] = useState<ToastData | null>(null);
 
 	// Review stamps (PL-022) — optimistic local overrides applied after
@@ -225,8 +233,26 @@ export function ConsultationDetailPage({
 
 	const defer = (until: Date | null) =>
 		void run(
-			() => api!.deferConsultation!({ data: { id: c.id, until } }),
+			() =>
+				api!.deferConsultation!({
+					// ISO on the wire — Date instances may not survive the fn
+					// serializer as a `DateFromString`-decodable input.
+					data: { id: c.id, until: until === null ? null : until.toISOString() },
+				}),
 			() => setReview((s) => ({ ...s, deferredUntil: until })),
+		);
+
+	const generateAnamnesis = () =>
+		void run(
+			() =>
+				api!.generateAnamnesis!({
+					data: {
+						consultationId: c.id,
+						transcript: v.transcript ?? "",
+						...(v.patientId === null ? {} : { patientId: v.patientId }),
+					},
+				}),
+			() => void router.invalidate(),
 		);
 
 	// Client-side decrypt under ZK (T-145): the stored envelopes become
@@ -688,6 +714,15 @@ export function ConsultationDetailPage({
 									<EmptyTitle>{t.detail.noAnamnesisTitle}</EmptyTitle>
 									<EmptyDescription>{t.detail.noAnamnesisDescription}</EmptyDescription>
 								</EmptyHeader>
+								{/* ZK extract is the client-side BYOK path (T-146) —
+								 * the server adapter is non-ZK only. */}
+								{!zk && api?.generateAnamnesis && v.transcript?.trim() ? (
+									<EmptyContent>
+										<Button type="button" size="sm" disabled={busy} onClick={generateAnamnesis}>
+											{t.detail.generateAnamnesis}
+										</Button>
+									</EmptyContent>
+								) : null}
 							</Empty>
 						)}
 					</CardContent>
