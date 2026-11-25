@@ -8,4 +8,3 @@ import { whisperCandidate } from "@ktb/transcription-whisper";
 // Web Speech is the last-resort backend when nothing else is eligible.
 const resolvedBackend = resolveTranscriptionBackend([whisperCandidate, webSpeechCandidate]);
 export const transcriptionBackend = resolvedBackend?.backend ?? webSpeechBackend;
-export const prefersWhisper = resolvedBackend?.driverId === "whisper";
