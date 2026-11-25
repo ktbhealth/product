@@ -532,11 +532,20 @@ export type I18nKey =
 	| "consultations.dashboard.live"
 	| "consultations.dashboard.recentConsultations"
 	| "consultations.dashboard.viewAll"
+	| "consultations.detail.anamnesisApproved"
 	| "consultations.detail.anamnesisCopied"
+	| "consultations.detail.anamnesisStale"
+	| "consultations.detail.approveAnamnesis"
+	| "consultations.detail.approveAndNext"
+	| "consultations.detail.approvedToast"
 	| "consultations.detail.back"
 	| "consultations.detail.complaint"
+	| "consultations.detail.confirmTranscript"
 	| "consultations.detail.consentLabel"
 	| "consultations.detail.consentNotRecorded"
+	| "consultations.detail.deferLabel"
+	| "consultations.detail.deferredUntil"
+	| "consultations.detail.deferResume"
 	| "consultations.detail.evidence"
 	| "consultations.detail.evidenceTitle"
 	| "consultations.detail.hideEvidence"
@@ -552,13 +561,16 @@ export type I18nKey =
 	| "consultations.detail.openPatientRecord"
 	| "consultations.detail.plan"
 	| "consultations.detail.previousConsultations"
+	| "consultations.detail.queueDoneToast"
 	| "consultations.detail.showEvidence"
+	| "consultations.detail.transcriptConfirmed"
 	| "consultations.list.colActions"
 	| "consultations.list.colDate"
 	| "consultations.list.colPatient"
 	| "consultations.list.colStatus"
 	| "consultations.list.consent"
 	| "consultations.list.count"
+	| "consultations.list.deferredBadge"
 	| "consultations.list.downloadPdfTitle"
 	| "consultations.list.emptyDescription"
 	| "consultations.list.emptyTitle"
@@ -569,6 +581,10 @@ export type I18nKey =
 	| "consultations.list.filterDone"
 	| "consultations.list.filterLabel"
 	| "consultations.list.filterLive"
+	| "consultations.list.filterReviewAll"
+	| "consultations.list.filterReviewDeferred"
+	| "consultations.list.filterReviewDone"
+	| "consultations.list.filterReviewPending"
 	| "consultations.list.filters.all"
 	| "consultations.list.filters.anamnesis"
 	| "consultations.list.filters.pending"
@@ -584,13 +600,16 @@ export type I18nKey =
 	| "consultations.list.patientRecord"
 	| "consultations.list.previewComplaint"
 	| "consultations.list.previewPlan"
+	| "consultations.list.reviewedBadge"
 	| "consultations.list.searchLabel"
 	| "consultations.list.searchPlaceholder"
+	| "consultations.list.staleBadge"
 	| "consultations.list.startConsultation"
 	| "consultations.list.statsLiveNow"
 	| "consultations.list.statsNeedsReview"
 	| "consultations.list.statsToday"
 	| "consultations.list.title"
+	| "consultations.list.transcriptReviewedBadge"
 	| "consultations.list.unlinkedPatient"
 	| "consultations.newConsultation.accessCardHasAccess"
 	| "consultations.newConsultation.accessCardNone"
@@ -3113,7 +3132,22 @@ export interface I18nTypedT {
 	(key: "consultations.dashboard.live"): Effect.Effect<string>;
 	(key: "consultations.dashboard.recentConsultations"): Effect.Effect<string>;
 	(key: "consultations.dashboard.viewAll"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.anamnesisApproved",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.detail.anamnesisCopied"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.anamnesisStale",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.detail.approveAnamnesis"): Effect.Effect<string>;
+	(key: "consultations.detail.approveAndNext"): Effect.Effect<string>;
+	(key: "consultations.detail.approvedToast"): Effect.Effect<string>;
 	(key: "consultations.detail.back"): Effect.Effect<string>;
 	(
 		key: "consultations.detail.complaint",
@@ -3121,8 +3155,17 @@ export interface I18nTypedT {
 			text: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.detail.confirmTranscript"): Effect.Effect<string>;
 	(key: "consultations.detail.consentLabel"): Effect.Effect<string>;
 	(key: "consultations.detail.consentNotRecorded"): Effect.Effect<string>;
+	(key: "consultations.detail.deferLabel"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.deferredUntil",
+		params: {
+			date: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.detail.deferResume"): Effect.Effect<string>;
 	(
 		key: "consultations.detail.evidence",
 		params: {
@@ -3153,7 +3196,14 @@ export interface I18nTypedT {
 			n: number;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.detail.queueDoneToast"): Effect.Effect<string>;
 	(key: "consultations.detail.showEvidence"): Effect.Effect<string>;
+	(
+		key: "consultations.detail.transcriptConfirmed",
+		params: {
+			date: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.list.colActions"): Effect.Effect<string>;
 	(key: "consultations.list.colDate"): Effect.Effect<string>;
 	(key: "consultations.list.colPatient"): Effect.Effect<string>;
@@ -3163,6 +3213,12 @@ export interface I18nTypedT {
 		key: "consultations.list.count",
 		params: {
 			n: number;
+		},
+	): Effect.Effect<string>;
+	(
+		key: "consultations.list.deferredBadge",
+		params: {
+			date: unknown;
 		},
 	): Effect.Effect<string>;
 	(key: "consultations.list.downloadPdfTitle"): Effect.Effect<string>;
@@ -3175,6 +3231,10 @@ export interface I18nTypedT {
 	(key: "consultations.list.filterDone"): Effect.Effect<string>;
 	(key: "consultations.list.filterLabel"): Effect.Effect<string>;
 	(key: "consultations.list.filterLive"): Effect.Effect<string>;
+	(key: "consultations.list.filterReviewAll"): Effect.Effect<string>;
+	(key: "consultations.list.filterReviewDeferred"): Effect.Effect<string>;
+	(key: "consultations.list.filterReviewDone"): Effect.Effect<string>;
+	(key: "consultations.list.filterReviewPending"): Effect.Effect<string>;
 	(key: "consultations.list.filters.all"): Effect.Effect<string>;
 	(key: "consultations.list.filters.anamnesis"): Effect.Effect<string>;
 	(key: "consultations.list.filters.pending"): Effect.Effect<string>;
@@ -3195,13 +3255,26 @@ export interface I18nTypedT {
 	(key: "consultations.list.patientRecord"): Effect.Effect<string>;
 	(key: "consultations.list.previewComplaint"): Effect.Effect<string>;
 	(key: "consultations.list.previewPlan"): Effect.Effect<string>;
+	(
+		key: "consultations.list.reviewedBadge",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.list.searchLabel"): Effect.Effect<string>;
 	(key: "consultations.list.searchPlaceholder"): Effect.Effect<string>;
+	(
+		key: "consultations.list.staleBadge",
+		params: {
+			n: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.list.startConsultation"): Effect.Effect<string>;
 	(key: "consultations.list.statsLiveNow"): Effect.Effect<string>;
 	(key: "consultations.list.statsNeedsReview"): Effect.Effect<string>;
 	(key: "consultations.list.statsToday"): Effect.Effect<string>;
 	(key: "consultations.list.title"): Effect.Effect<string>;
+	(key: "consultations.list.transcriptReviewedBadge"): Effect.Effect<string>;
 	(key: "consultations.list.unlinkedPatient"): Effect.Effect<string>;
 	(
 		key: "consultations.newConsultation.accessCardHasAccess",

@@ -1714,6 +1714,45 @@ export const I18N_MANIFEST = {
 		"list.filterAnamnesisWithout": {
 			params: [],
 		},
+		"list.filterReviewAll": {
+			params: [],
+		},
+		"list.filterReviewPending": {
+			params: [],
+		},
+		"list.filterReviewDone": {
+			params: [],
+		},
+		"list.filterReviewDeferred": {
+			params: [],
+		},
+		"list.deferredBadge": {
+			params: [
+				{
+					name: "date",
+				},
+			],
+			template: "Deferred until {date}",
+		},
+		"list.reviewedBadge": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "Reviewed v{n}",
+		},
+		"list.staleBadge": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "New version v{n}",
+		},
+		"list.transcriptReviewedBadge": {
+			params: [],
+		},
 		"list.liveNow": {
 			params: [],
 		},
@@ -1825,6 +1864,59 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"detail.integrity.unversioned": {
+			params: [],
+		},
+		"detail.confirmTranscript": {
+			params: [],
+		},
+		"detail.transcriptConfirmed": {
+			params: [
+				{
+					name: "date",
+				},
+			],
+			template: "Confirmed {date}",
+		},
+		"detail.approveAnamnesis": {
+			params: [],
+		},
+		"detail.approveAndNext": {
+			params: [],
+		},
+		"detail.anamnesisApproved": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "Approved v{n}",
+		},
+		"detail.anamnesisStale": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "New version v{n} pending",
+		},
+		"detail.deferLabel": {
+			params: [],
+		},
+		"detail.deferResume": {
+			params: [],
+		},
+		"detail.deferredUntil": {
+			params: [
+				{
+					name: "date",
+				},
+			],
+			template: "Deferred until {date}",
+		},
+		"detail.approvedToast": {
+			params: [],
+		},
+		"detail.queueDoneToast": {
 			params: [],
 		},
 		"transcriptPanel.sourceServer": {
