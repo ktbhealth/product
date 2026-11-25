@@ -90,6 +90,11 @@ export const createLocalAi = (baseUrl: string, fetchImpl: typeof fetch = fetch):
 			// Workers AI calls it initial_prompt; the OpenAI-compatible
 			// field is prompt (whisper.cpp accepts the same).
 			if (typeof i.initial_prompt === "string") form.set("prompt", i.initial_prompt);
+			// Segments power the review-mode karaoke (PL-023): the plain
+			// `json` default strips them, so dev stand-ins must ask for
+			// verbose — whisper.cpp/Speaches honour it, Workers AI already
+			// returns verbose natively.
+			form.set("response_format", "verbose_json");
 			const res = await fetchImpl(`${base}/audio/transcriptions`, {
 				method: "POST",
 				body: form,
