@@ -618,9 +618,6 @@
     },
     "packages/json-schema": {
       "name": "@ktb/json-schema",
-      "dependencies": {
-        "ajv": "^8.20.0",
-      },
     },
     "packages/kernel": {
       "name": "@ktb/kernel",

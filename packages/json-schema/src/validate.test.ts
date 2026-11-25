@@ -400,3 +400,199 @@ describe("schema definition errors", () => {
 		expect(() => compileSchema({ unknownKeyword: true })).toThrow(SchemaDefinitionError);
 	});
 });
+
+describe("interpreter edge cases", () => {
+	it("deep-equals enum and const candidates structurally", () => {
+		const schema: JsonSchemaObject = {
+			enum: [{ a: [1, { b: 2 }] }, [1, 2], "x", null],
+			const: { k: { nested: [true, null] } },
+		};
+		// Both keywords must hold — pick values satisfying each in turn.
+		expect(validate({ enum: [{ a: [1, { b: 2 }] }] }, { a: [1, { b: 2 }] })).toEqual([]);
+		expect(
+			validate({ const: { k: { nested: [true, null] } } }, { k: { nested: [true, null] } }),
+		).toEqual([]);
+		// Key order is insignificant; array order is significant.
+		expect(validate({ const: { a: 1, b: 2 } }, { b: 2, a: 1 })).toEqual([]);
+		expect(validate({ const: [1, 2] }, [2, 1])).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		expect(validate(schema, { a: [1, { b: 2 }] })).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+	});
+
+	it("reports every jsonEqual mismatch shape", () => {
+		// Different key counts.
+		expect(validate({ const: { a: 1 } }, { a: 1, b: 2 })).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		// Missing key on the candidate side.
+		expect(validate({ const: { a: 1, b: 2 } }, { a: 1 })).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		// Array vs object.
+		expect(validate({ const: [1] }, { 0: 1 })).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		// Array length mismatch.
+		expect(validate({ const: [1, 2] }, [1])).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		// Primitive vs object and object vs null.
+		expect(validate({ const: 5 }, { a: 1 })).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		expect(validate({ const: { a: 1 } }, null)).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+		// Nested member mismatch inside an otherwise-equal object.
+		expect(validate({ const: { a: { b: [1] } } }, { a: { b: [2] } })).toEqual([
+			{ path: "$", keyword: "const", message: "must be equal to constant" },
+		]);
+	});
+
+	it("validates additionalProperties subschemas at member paths", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: { a: { type: "string" } },
+			additionalProperties: { type: "number" },
+		};
+		expect(validate(schema, { a: "x", b: 1, c: "no" })).toEqual([
+			{ path: "c", keyword: "type", message: "must be number" },
+		]);
+		// additionalProperties without a properties bag treats every key as extra.
+		expect(
+			validate({ type: "object", additionalProperties: { type: "string" } }, { x: 1 }),
+		).toEqual([{ path: "x", keyword: "type", message: "must be string" }]);
+		// `true` is the explicit allow-all form.
+		expect(validate({ type: "object", additionalProperties: true }, { x: 1 })).toEqual([]);
+	});
+
+	it("enforces object property count bounds", () => {
+		expect(validate({ type: "object", minProperties: 2 }, { a: 1 })).toEqual([
+			{ path: "$", keyword: "minProperties", message: "must NOT have fewer than 2 properties" },
+		]);
+		expect(validate({ type: "object", maxProperties: 1 }, { a: 1, b: 2 })).toEqual([
+			{ path: "$", keyword: "maxProperties", message: "must NOT have more than 1 properties" },
+		]);
+		// Bounds ignore non-object instances.
+		expect(validate({ minProperties: 5, maxProperties: 0 }, "x")).toEqual([]);
+	});
+
+	it("reports oneOf branch errors only when no branch passes", () => {
+		const schema: JsonSchemaObject = {
+			oneOf: [{ type: "string" }, { type: "number" }],
+		};
+		// Zero passing branches: inner errors plus the oneOf error.
+		expect(validate(schema, true)).toEqual([
+			{ path: "$", keyword: "oneOf", message: "must match exactly one schema in oneOf" },
+			{ path: "$", keyword: "type", message: "must be number" },
+			{ path: "$", keyword: "type", message: "must be string" },
+		]);
+		// Two passing branches: only the oneOf error — branch issues are
+		// empty anyway, but a failing third branch's issues are dropped.
+		const threeWay: JsonSchemaObject = {
+			oneOf: [{ type: "number" }, { minimum: 0 }, { type: "string" }],
+		};
+		expect(validate(threeWay, 5)).toEqual([
+			{ path: "$", keyword: "oneOf", message: "must match exactly one schema in oneOf" },
+		]);
+		// Exactly one passing branch is valid — for a non-number the
+		// bare `{ minimum: 0 }` branch imposes nothing and passes.
+		expect(validate(threeWay, true)).toEqual([]);
+	});
+
+	it("drops failing-branch errors when anyOf has a passing branch", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: {
+				x: { anyOf: [{ type: "string", minLength: 3 }, { type: "number" }] },
+			},
+		};
+		expect(validate(schema, { x: "ab" })).toEqual([
+			{ path: "x", keyword: "anyOf", message: "must match a schema in anyOf" },
+			{ path: "x", keyword: "minLength", message: "must NOT have fewer than 3 characters" },
+			{ path: "x", keyword: "type", message: "must be number" },
+		]);
+		expect(validate(schema, { x: 4 })).toEqual([]);
+	});
+
+	it("evaluates boolean subschemas in every position", () => {
+		expect(
+			validate({ type: "object", properties: { x: false, y: true } }, { x: 1, y: "anything" }),
+		).toEqual([{ path: "x", keyword: "false schema", message: "boolean schema is false" }]);
+		expect(validate({ type: "array", items: false }, [1])).toEqual([
+			{ path: "$[0]", keyword: "false schema", message: "boolean schema is false" },
+		]);
+		expect(validate({ allOf: [false] }, 1)).toEqual([
+			{ path: "$", keyword: "false schema", message: "boolean schema is false" },
+		]);
+		// `not: false` can never be valid, so `not` always passes.
+		expect(validate({ not: false }, 1)).toEqual([]);
+	});
+
+	it("skips undefined-valued properties like ajv", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: { b: { type: "string" } },
+			required: ["a"],
+		};
+		// `undefined` counts as absent for `required` and `properties`.
+		expect(validate(schema, { a: 1, b: undefined })).toEqual([]);
+		expect(validate(schema, { b: "x" })).toEqual([
+			{ path: "$", keyword: "required", message: "must have required property 'a'" },
+		]);
+	});
+
+	it("resolves multi-segment $ref pointers and ref-to-ref chains", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: {
+				outer: {
+					type: "object",
+					properties: { inner: { type: "string" } },
+				},
+				a: { type: "integer" },
+				b: { $ref: "#/properties/a" },
+				c: { $ref: "#/properties/b" },
+				d: { $ref: "#/properties/outer/properties/inner" },
+			},
+		};
+		expect(validate(schema, { outer: {}, a: 1, b: 2, c: 3, d: "s" })).toEqual([]);
+		expect(validate(schema, { outer: {}, a: 1, b: "x", c: "y", d: 4 })).toEqual([
+			{ path: "b", keyword: "type", message: "must be integer" },
+			{ path: "c", keyword: "type", message: "must be integer" },
+			{ path: "d", keyword: "type", message: "must be string" },
+		]);
+	});
+
+	it("covers remaining primitive types and ignored keyword positions", () => {
+		expect(validate({ type: "number" }, 1.5)).toEqual([]);
+		expect(validate({ type: "number" }, "x")).toEqual([
+			{ path: "$", keyword: "type", message: "must be number" },
+		]);
+		expect(validate({ type: "null" }, null)).toEqual([]);
+		expect(validate({ type: "null" }, 0)).toEqual([
+			{ path: "$", keyword: "type", message: "must be null" },
+		]);
+		// String/number/array/object keywords do not apply to other types.
+		expect(validate({ minLength: 9, minimum: 9, minItems: 9, minProperties: 9 }, true)).toEqual([]);
+	});
+
+	it("isValid mirrors validate emptiness for both outcomes", () => {
+		const validator = compileSchema({ type: "string" });
+		expect(validator.isValid("x")).toBe(true);
+		expect(validator.isValid(1)).toBe(false);
+		// Boolean schemas expose both isValid outcomes too.
+		expect(compileSchema(true).isValid({ any: "thing" })).toBe(true);
+		expect(compileSchema(false).isValid(1)).toBe(false);
+	});
+
+	it("checks the boolean primitive type", () => {
+		expect(validate({ type: "boolean" }, true)).toEqual([]);
+		expect(validate({ type: "boolean" }, 1)).toEqual([
+			{ path: "$", keyword: "type", message: "must be boolean" },
+		]);
+	});
+});

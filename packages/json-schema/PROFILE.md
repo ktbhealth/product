@@ -8,9 +8,12 @@ and validates **schema definitions** against a documented subset of
 
 It is infra, not a plugin: pure functions, no registry contributions,
 no Effect service (validation is synchronous and pure — same shape as
-`@ktb/crypto` and document-store's `validate.ts`). The engine is
-[ajv](https://ajv.js.org) `Ajv2020` (`ajv/dist/2020`), pure JS and
-workerd-safe.
+`@ktb/crypto` and document-store's `validate.ts`). The engine is a
+small built-in interpreter (`src/validate.ts`) — deliberately NOT
+ajv, whose `new Function` codegen workerd forbids outside worker
+startup (it crashed `@cloudflare/vite-plugin` dev, where every SSR
+module is evaluated lazily, and would equally break request-time
+validation in production).
 
 ## API
 
@@ -36,7 +39,7 @@ import {
 - `validate(schema, value)` is the one-shot convenience (compiles via
   the same cache).
 - All three throw `SchemaDefinitionError` (with `.issues`) when the
-  schema is outside the subset — before ajv compiles anything.
+  schema is outside the subset — before interpretation.
 - Instance errors are `Issue`s sorted by `(path, keyword, message)` in
   code-unit order — deterministic across runs and engines. Data paths
   use dot/bracket notation (`$` root, `a.b[0]` for array items).
@@ -86,8 +89,8 @@ the subset is a contract, so `min`/`max`-style typos fail loudly.
 | `MAX_SCHEMA_NODES`   | 2048                             | bounds ref fan-out / document size    |
 | `MAX_ISSUES`         | 100                              | bounds issue output on hostile defs   |
 
-`pattern` uses JavaScript `RegExp` semantics (ECMA-262), matching
-ajv's `pattern` keyword — not POSIX/ECMA-262-unicode mode.
+`pattern` uses JavaScript `RegExp` semantics (ECMA-262) — not
+POSIX/ECMA-262-unicode mode.
 
 ## Example
 
