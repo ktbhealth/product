@@ -133,6 +133,15 @@ export interface AudioJobDeps {
 	 */
 	readonly regenerateAnamnesis?: (consultationId: number, corrected: string) => Promise<void>;
 	/**
+	 * Post-cleanup hook (PL-023): the save-time anamnesis was extracted
+	 * from the raw transcript, so it goes stale the moment the LLM
+	 * cleanup lands. The host regenerates it from the corrected text —
+	 * skipping rows the physician already approved. Optional: hosts
+	 * without an anamnesis engine omit it; failures are logged, never
+	 * fatal (corrected transcript and audio status are already saved).
+	 */
+	readonly regenerateAnamnesis?: (consultationId: number, corrected: string) => Promise<void>;
+	/**
 	 * Live fan-out for the /platform jobs feed: the consumer is a system
 	 * path (no Principal), so the default wiring dispatches a
 	 * `ConsultationAudioUpdated` EventBus event through the app
