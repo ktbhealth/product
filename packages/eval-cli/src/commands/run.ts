@@ -44,7 +44,7 @@ import {
 	type Sample,
 } from "@ktb/eval-consultation";
 
-import { modelLayer, storeReportLayers, type WireContext } from "../adapters.ts";
+import { cleanupGateLayer, modelLayer, storeReportLayers, type WireContext } from "../adapters.ts";
 import type { CmdContext } from "../context.ts";
 import { domainErrorMessage, domainForManifest, loadDomains } from "../domains.ts";
 import { CommandExit, UsageError } from "../errors.ts";
@@ -272,16 +272,21 @@ export const makeRunCommand = (ctx: CmdContext) =>
 
 				// modelLayer throws on undeclared/unimplemented adapters —
 				// lift it into the error channel (exit 1, message shown).
+				// cleanupGateLayer is the opt-in CleanupGate port
+				// (EVAL_CLEANUP_GATE); absent, cleanup runs ungated.
 				const layer = yield* Effect.try({
-					try: () =>
-						Layer.mergeAll(
+					try: () => {
+						const base = Layer.mergeAll(
 							modelLayer(wire, resolution.adapters, "asr"),
 							modelLayer(wire, resolution.adapters, "llm"),
 							modelLayer(wire, resolution.adapters, "eval"),
 							store,
 							report,
 							evalStore,
-						),
+						);
+						const gate = cleanupGateLayer(wire);
+						return gate === undefined ? base : Layer.merge(base, gate);
+					},
 					catch: userError,
 				});
 

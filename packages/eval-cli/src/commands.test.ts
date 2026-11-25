@@ -613,6 +613,57 @@ describe("run/gate/report round-trip", () => {
 		}
 	});
 
+	test("run under EVAL_CLEANUP_GATE=scores-file gates the corrector input", async () => {
+		const wd = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-gated-"));
+		vi.spyOn(console, "log").mockImplementation(() => {});
+		try {
+			expect(await exec(["generate", "fx", "--n", "1", "--workdir", wd])).toBe(0);
+			// The stub ASR returns CANNED_ASR for every sample — one
+			// scores-file entry flags its second segment, so the
+			// corrector sees only "dor de cabeca forte ha tres dias".
+			const { store } = storeReportLayers(wd);
+			const { DatasetStorePort, fnvHex } = await import("@ktb/eval-consultation");
+			const { CANNED_ASR } = await import("@ktb/eval-adapter-stub");
+			const ids = await Effect.runPromise(
+				Effect.gen(function* () {
+					const s = yield* DatasetStorePort;
+					return (yield* s.listSamples({})).map((x) => x.id);
+				}).pipe(Effect.provide(store)),
+			);
+			expect(ids).toHaveLength(1);
+			fs.writeFileSync(
+				path.join(wd, "gate-scores.json"),
+				JSON.stringify({ [ids[0]!]: { textHash: fnvHex(CANNED_ASR.text), scores: [0.1, 0.9] } }),
+			);
+			const c = {
+				...ctx(),
+				env: {
+					EVAL_CLEANUP_GATE: "scores-file",
+					EVAL_CLEANUP_GATE_SCORES: path.join(wd, "gate-scores.json"),
+				},
+			};
+			expect(await exec(["run", "fx", "--workdir", wd, "--run-id", "run-gated"], c)).toBe(0);
+			const results = await Effect.runPromise(
+				Effect.gen(function* () {
+					const s = yield* DatasetStorePort;
+					return yield* s.listResults({ runId: "run-gated" });
+				}).pipe(Effect.provide(store)),
+			);
+			expect(results).toHaveLength(1);
+			// Gate audit landed on the persisted row; the canned edit
+			// re-anchored inside the gated span.
+			expect(results[0]!.cleanupGate).toMatchObject({
+				gate: "scores-file",
+				segmentsScored: 2,
+				ranges: 1,
+			});
+			expect(results[0]!.correctedText).toContain("cabeça");
+		} finally {
+			vi.restoreAllMocks();
+			fs.rmSync(wd, { recursive: true, force: true });
+		}
+	});
+
 	test("run fails on invalid contribution config before any work (P-078)", async () => {
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eval-cmd-cfg-"));
 		fs.writeFileSync(

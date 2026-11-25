@@ -192,6 +192,25 @@ const ADAPTER_PROFILES: Readonly<Record<string, Readonly<Record<string, string>>
 		report: "jsonl",
 		registry: "sqlite-fs",
 	},
+	"local-chat-gated": {
+		// `local-chat` with the cleanup gate ON — the corrector only
+		// sees the transcript spans a detector flags as suspicious.
+		// Adapter keys are identical: the gate is a separate opt-in
+		// port wired from env (EVAL_CLEANUP_GATE=systemone|scores-file,
+		// EVAL_CLEANUP_GATE_THRESHOLD — see adapters.ts), not a
+		// capability override. On a 12 GB GPU, detection and
+		// correction must run in separate passes: score first with
+		// EVAL_CLEANUP_GATE unset and the corrector unloaded
+		// (scripts/score-cleanup-gate.ts), then run with
+		// EVAL_CLEANUP_GATE=scores-file and the detector down.
+		tts: "edge-tts",
+		asr: "faster-whisper",
+		llm: "openai-compat",
+		eval: "stub",
+		store: "sqlite-fs",
+		report: "jsonl",
+		registry: "sqlite-fs",
+	},
 	"local-devin-judge-stub": {
 		// `local-devin` without the Jev judge service — real ASR + ACP
 		// cleanup, stub verdicts. For verifying the cleanup stage

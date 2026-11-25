@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import type { EvalAnswer, EvalQuestion } from "@ktb/eval-core";
 
-import { detectAsrErrorRanges, mergeFlaggedRanges } from "./asr-ranges.ts";
+import {
+	charRangesFor,
+	detectAsrErrorRanges,
+	mergeFlaggedRanges,
+	segmentCharSpans,
+} from "./asr-ranges.ts";
 import { EvalPort, PortError } from "./ports.ts";
 
 const record = {
@@ -52,6 +57,103 @@ describe("mergeFlaggedRanges", () => {
 	it("returns no ranges when nothing reaches the threshold", () => {
 		expect(mergeFlaggedRanges([0.1, 0.4], 0.5)).toEqual([]);
 		expect(mergeFlaggedRanges([], 0.5)).toEqual([]);
+	});
+});
+
+describe("segmentCharSpans", () => {
+	it("locates each segment's char span in the joined transcript", () => {
+		const text = "dor de cabeça e febre há dias";
+		const spans = segmentCharSpans(text, [{ text: "dor de cabeça" }, { text: "e febre há dias" }]);
+		expect(spans).toEqual([
+			{ start: 0, end: 13 },
+			{ start: 14, end: 29 },
+		]);
+		expect(text.slice(spans[0]!.start, spans[0]!.end)).toBe("dor de cabeça");
+	});
+
+	it("walks forward so repeated text lands on its own occurrence", () => {
+		const text = "não sei, não";
+		expect(segmentCharSpans(text, [{ text: "não" }, { text: "sei," }, { text: "não" }])).toEqual([
+			{ start: 0, end: 3 },
+			{ start: 4, end: 8 },
+			{ start: 9, end: 12 },
+		]);
+	});
+
+	it("marks a segment absent from the text null and keeps going", () => {
+		const spans = segmentCharSpans("alpha gamma", [
+			{ text: "alpha" },
+			{ text: "beta" },
+			{ text: "gamma" },
+		]);
+		expect(spans).toEqual([{ start: 0, end: 5 }, null, { start: 6, end: 11 }]);
+	});
+
+	it("handles empty inputs", () => {
+		expect(segmentCharSpans("", [])).toEqual([]);
+	});
+});
+
+describe("charRangesFor", () => {
+	it("resolves a range to [first located start, last located end]", () => {
+		const spans = [{ start: 0, end: 5 }, null, { start: 10, end: 15 }];
+		expect(charRangesFor([{ start: 0, end: 2 }], spans)).toEqual([{ start: 0, end: 15 }]);
+	});
+
+	it("drops ranges whose segments are all unlocatable", () => {
+		const spans: (ReturnType<typeof segmentCharSpans>[number] | null)[] = [
+			null,
+			{ start: 5, end: 9 },
+		];
+		expect(
+			charRangesFor(
+				[
+					{ start: 0, end: 0 },
+					{ start: 1, end: 1 },
+				],
+				spans,
+			),
+		).toEqual([{ start: 5, end: 9 }]);
+	});
+
+	it("ignores out-of-bounds indices and merges overlapping spans", () => {
+		const spans = [
+			{ start: 0, end: 6 },
+			{ start: 4, end: 10 },
+			{ start: 20, end: 25 },
+		];
+		expect(
+			charRangesFor(
+				[
+					{ start: -3, end: 1 },
+					{ start: 2, end: 9 },
+				],
+				spans,
+			),
+		).toEqual([
+			{ start: 0, end: 10 },
+			{ start: 20, end: 25 },
+		]);
+	});
+
+	it("merges resolved char spans that overlap", () => {
+		// Ranges overlapping on segment indices resolve to overlapping
+		// char spans — the output must stay a disjoint cover for
+		// applyEdits.
+		const spans = [
+			{ start: 0, end: 5 },
+			{ start: 4, end: 8 },
+			{ start: 9, end: 12 },
+		];
+		expect(
+			charRangesFor(
+				[
+					{ start: 0, end: 1 },
+					{ start: 1, end: 2 },
+				],
+				spans,
+			),
+		).toEqual([{ start: 0, end: 12 }]);
 	});
 });
 

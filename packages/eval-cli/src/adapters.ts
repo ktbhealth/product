@@ -24,7 +24,14 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { EvalPort, PortError, type RunRecord } from "@ktb/eval-core";
-import { AsrPort, fnvHex, LlmPort, TtsPort, type TaskEnvelope } from "@ktb/eval-consultation";
+import {
+	AsrPort,
+	type CleanupGate,
+	fnvHex,
+	LlmPort,
+	TtsPort,
+	type TaskEnvelope,
+} from "@ktb/eval-consultation";
 import { makeAcpLlm, makeHttpAcpTransport } from "@ktb/ai-adapter-acp";
 import { makeNodeAcpLlm } from "@ktb/ai-adapter-node";
 import { makeChatLlm } from "@ktb/ai-adapter-openai";
@@ -36,6 +43,8 @@ import {
 	makeLocalReportLayer,
 	makeLocalStoreLayer,
 	makeLocalTts,
+	makeScoresFileCleanupGate,
+	makeSystemOneCleanupGate,
 	makeSystemOneEval,
 } from "@ktb/eval-adapter-local";
 import { CANNED_ASR, CANNED_EDITS, CANNED_SCRIPT, stubAnswerOf } from "@ktb/eval-adapter-stub";
@@ -438,6 +447,67 @@ export const storeReportLayers = (workdir: string) => ({
 	report: makeLocalReportLayer(path.join(workdir, "reports", "eval.jsonl")),
 	evalStore: makeLocalEvalStoreLayer(workdir),
 });
+
+/** EVAL_CLEANUP_GATE opt-in — returns undefined when the gate is off
+ * (unset/empty/"0"/"false"/"off"), so every profile's default cleanup
+ * behavior is unchanged:
+ *
+ *   systemone    — live detection per sample: each ASR segment is
+ *                  scored by the System One server at
+ *                  EVAL_SYSTEMONE_URL through detectAsrErrorRanges.
+ *                  The detector's EvalPort is built inside the gate
+ *                  layer — the run's judge adapter stays untouched.
+ *   scores-file  — replays scores written by
+ *                  scripts/score-cleanup-gate.ts (EVAL_CLEANUP_GATE_SCORES,
+ *                  default <workdir>/cleanup-gate-scores.json). For
+ *                  GPUs where detector + corrector don't fit together:
+ *                  score with the corrector unloaded, then run gated
+ *                  with the detector down.
+ *
+ * EVAL_CLEANUP_GATE_THRESHOLD tunes the flag cutoff (default 0.5 —
+ * OpenJev probabilities compress into ~0.3–0.55, so tuning on the
+ * train split matters). Throws on an unknown mode — never silently
+ * runs ungated when the operator asked for a gate. */
+export const cleanupGateLayer = (ctx: WireContext): Layer.Layer<CleanupGate> | undefined => {
+	const mode = ctx.env.EVAL_CLEANUP_GATE?.trim().toLowerCase();
+	if (mode === undefined || mode === "" || mode === "off" || mode === "0" || mode === "false") {
+		return undefined;
+	}
+	const thresholdRaw = ctx.env.EVAL_CLEANUP_GATE_THRESHOLD;
+	const parsed = thresholdRaw !== undefined && thresholdRaw !== "" ? Number(thresholdRaw) : NaN;
+	const threshold = Number.isFinite(parsed) ? parsed : 0.5;
+	switch (mode) {
+		case "systemone": {
+			// CPU-hosted detectors are slow — same tuning knob the
+			// systemone judge adapter honors.
+			const timeoutRaw = ctx.env.EVAL_SYSTEMONE_TIMEOUT_MS;
+			const timeoutMs =
+				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
+			const model = ctx.env.EVAL_SYSTEMONE_MODEL;
+			return makeSystemOneCleanupGate({
+				baseUrl: env(ctx, "EVAL_SYSTEMONE_URL"),
+				threshold,
+				...(model !== undefined && model !== "" ? { model } : {}),
+				...(timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
+					? { timeoutMs }
+					: {}),
+				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
+			});
+		}
+		case "scores-file": {
+			const raw = ctx.env.EVAL_CLEANUP_GATE_SCORES;
+			const file =
+				raw !== undefined && raw.trim() !== ""
+					? raw.trim()
+					: path.join(ctx.workdir, "cleanup-gate-scores.json");
+			return makeScoresFileCleanupGate({ path: file, threshold });
+		}
+		default:
+			throw new Error(
+				`unknown EVAL_CLEANUP_GATE "${mode}" — expected "systemone" or "scores-file"`,
+			);
+	}
+};
 
 /** One capability's layer from the resolved adapter map. Throws
  * (config error) on undeclared/unimplemented adapters — the caller

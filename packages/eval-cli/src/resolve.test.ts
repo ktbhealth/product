@@ -51,6 +51,26 @@ describe("resolveSuite", () => {
 		expect(res.unresolved).toEqual([]);
 	});
 
+	test("local-chat-gated resolves the same adapters as local-chat", () => {
+		const m = manifest({
+			caps: {
+				tts: "transcription.tts",
+				asr: "transcription.asr",
+				llm: "llm.eval",
+				eval: "llm.eval",
+				store: "storage.dataset",
+				report: "storage.dataset",
+				registry: "storage.dataset",
+			},
+		});
+		const gated = resolveSuite(registry, m, "local-chat-gated");
+		const plain = resolveSuite(registry, m, "local-chat");
+		expect(gated.unresolved).toEqual([]);
+		// The gate is env-wired (EVAL_CLEANUP_GATE), not a capability
+		// override — adapter keys stay identical.
+		expect(gated.adapters).toEqual(plain.adapters);
+	});
+
 	test("unknown refs are unresolved with a reason", () => {
 		const res = resolveSuite(
 			registry,

@@ -3,10 +3,12 @@ import * as Layer from "effect/Layer";
 import { describe, expect, it } from "vitest";
 
 import { ptBR } from "./locales/pt-BR.ts";
+import type { EditOp } from "@ktb/eval-core";
 import {
 	processSample,
 	transcribeSample,
 	cleanupTranscript,
+	cleanupTranscriptGated,
 	entityQuestions,
 	cleanupQuestions,
 	CLEANUP_PROMPT,
@@ -23,6 +25,7 @@ import {
 } from "./pipeline.ts";
 import {
 	AsrPort,
+	CleanupGate,
 	DatasetStorePort,
 	EvalPort,
 	LlmPort,
@@ -177,6 +180,83 @@ describe("cleanupTranscript", () => {
 	});
 });
 
+describe("cleanupTranscriptGated", () => {
+	const gatedLlm = (calls: string[], ops: (env: { input: string }) => readonly EditOp[]) =>
+		Layer.succeed(
+			LlmPort,
+			LlmPort.of({
+				generate: () => Effect.succeed({ text: "x", record }),
+				correct: (env) => {
+					calls.push(env.input);
+					return Effect.succeed({ edits: { ops: [...ops(env)] }, record });
+				},
+			}),
+		);
+
+	it("sends only the flagged span and shifts ops to full-text offsets", async () => {
+		const raw = "o paciente nega febre e toma losartana 50 mg";
+		const start = raw.indexOf("e toma");
+		const calls: string[] = [];
+		const records: RunRecord[] = [];
+		const r = await Effect.runPromise(
+			cleanupTranscriptGated({
+				taskId: "t",
+				raw,
+				ranges: [{ start, end: raw.length }],
+				onRecord: (x) => records.push(x),
+			}).pipe(
+				Effect.provide(
+					gatedLlm(calls, () => [
+						{ at: 999, remove: "losartana", insert: "enalapril", kind: "entity" },
+					]),
+				),
+			),
+		);
+		expect(calls).toEqual(["e toma losartana 50 mg"]);
+		// at:999 is a hallucinated offset — anchorEdits re-anchors
+		// "losartana" inside the slice, then the shift lands it on the
+		// transcript's real position.
+		expect(r.edits.ops).toEqual([
+			{ at: raw.indexOf("losartana"), remove: "losartana", insert: "enalapril", kind: "entity" },
+		]);
+		expect(r.corrected).toBe("o paciente nega febre e toma enalapril 50 mg");
+		expect(records).toHaveLength(1);
+		expect(records[0]!.prompt).toEqual(CLEANUP_PROMPT);
+	});
+
+	it("drops ops it cannot verify inside the span", async () => {
+		const raw = "alpha beta gamma";
+		const calls: string[] = [];
+		const r = await Effect.runPromise(
+			cleanupTranscriptGated({ taskId: "t", raw, ranges: [{ start: 0, end: 10 }] }).pipe(
+				Effect.provide(
+					gatedLlm(calls, () => [
+						// "gamma" is outside the sent span — the model never saw
+						// it, so this op is unverifiable and must be dropped.
+						{ at: 0, remove: "gamma", insert: "delta", kind: "fix" },
+						{ at: 6, remove: "beta", insert: "BETA", kind: "fix" },
+					]),
+				),
+			),
+		);
+		expect(calls).toEqual(["alpha beta"]);
+		expect(r.edits.ops).toEqual([{ at: 6, remove: "beta", insert: "BETA", kind: "fix" }]);
+		expect(r.corrected).toBe("alpha BETA gamma");
+	});
+
+	it("runs no corrector call for an empty gate decision", async () => {
+		const calls: string[] = [];
+		const r = await Effect.runPromise(
+			cleanupTranscriptGated({ taskId: "t", raw: "intact", ranges: [] }).pipe(
+				Effect.provide(gatedLlm(calls, () => [])),
+			),
+		);
+		expect(calls).toEqual([]);
+		expect(r.edits.ops).toEqual([]);
+		expect(r.corrected).toBe("intact");
+	});
+});
+
 describe("transcribeSample", () => {
 	it("returns ASR output", async () => {
 		const r = await run(transcribeSample(sample));
@@ -316,6 +396,99 @@ describe("question builders", () => {
 		});
 		expect(qs[0]?.kind).toBe("choice");
 		expect(qs[0]?.options).toContain("harmful");
+	});
+});
+
+describe("processSample — gated cleanup", () => {
+	/** Gate that flags only the second ASR segment ("e toma losartana
+	 * 50 mg") — the corrector then sees just that span. */
+	const gateLayer = (
+		ranges: readonly { start: number; end: number }[],
+		name = "test-gate",
+		selectCalls: { sampleId: string; segmentCount: number }[] = [],
+		gateRecords: readonly RunRecord[] = [],
+	) =>
+		Layer.succeed(
+			CleanupGate,
+			CleanupGate.of({
+				name,
+				select: (input) => {
+					selectCalls.push({ sampleId: input.sampleId, segmentCount: input.segments.length });
+					return Effect.succeed({
+						ranges,
+						segmentsScored: input.segments.length,
+						records: gateRecords,
+					});
+				},
+			}),
+		);
+
+	it("gates the corrector input and records CleanupGateStats", async () => {
+		const selectCalls: { sampleId: string; segmentCount: number }[] = [];
+		const records: RunRecord[] = [];
+		// A live detector returns its own judge records — they land on
+		// the run's audit trail tagged like every other stage record.
+		const detectorRecord: RunRecord = {
+			runId: "eval",
+			taskId: "judge:q",
+			stage: "judge",
+			engine: "systemone",
+			inputHash: "qh",
+			startedAt: 1,
+		};
+		const r = await Effect.runPromise(
+			Effect.provide(
+				processSample({ sample, entities, recordsOut: records }),
+				Layer.merge(
+					live,
+					gateLayer([{ start: 1, end: 1 }], "test-gate", selectCalls, [detectorRecord]),
+				),
+			),
+		);
+		expect(selectCalls).toEqual([{ sampleId: "s1", segmentCount: 2 }]);
+		// The stub corrector uppercases slice[0] — the gated slice is
+		// "e toma losartana 50 mg", so the edit lands on "e" at the
+		// span's start in the full transcript.
+		expect(r.corrected).toBe("o paciente nega febre E toma losartana 50 mg");
+		expect(r.cleanupGate).toEqual({
+			gate: "test-gate",
+			segmentsScored: 2,
+			ranges: 1,
+			wordsSent: 5,
+			wordsTotal: 9,
+		});
+		// The decision record is on the audit trail — engine names the
+		// gate, inputHash pins the transcript it decided over — as is
+		// the detector's own judge record.
+		const gateRec = records.find((x) => x.stage === "cleanup-gate");
+		expect(gateRec?.engine).toBe("test-gate");
+		expect(records.find((x) => x.taskId === "judge:q")?.engine).toBe("systemone");
+		// The persisted result carries the same gate audit.
+		const result = toSampleResult({ sample, runId: "r", run: r });
+		expect(result.cleanupGate).toEqual(r.cleanupGate);
+	});
+
+	it("an all-clear gate decision leaves the transcript untouched", async () => {
+		const r = await Effect.runPromise(
+			Effect.provide(processSample({ sample, entities }), Layer.merge(live, gateLayer([]))),
+		);
+		expect(r.corrected).toBe(r.asr.text);
+		expect(r.edits?.ops).toEqual([]);
+		expect(r.cleanupGate).toMatchObject({ gate: "test-gate", ranges: 0, wordsSent: 0 });
+	});
+
+	it("propagates gate failures as PortErrors", async () => {
+		const failing = Layer.succeed(
+			CleanupGate,
+			CleanupGate.of({
+				name: "down",
+				select: () => Effect.fail(new PortError({ port: "cleanup-gate", message: "down" })),
+			}),
+		);
+		const exit = await Effect.runPromiseExit(
+			Effect.provide(processSample({ sample, entities }), Layer.merge(live, failing)),
+		);
+		expect(exit._tag).toBe("Failure");
 	});
 });
 

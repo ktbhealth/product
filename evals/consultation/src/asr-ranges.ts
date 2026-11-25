@@ -100,6 +100,65 @@ export const mergeFlaggedRanges = (
 	return ranges;
 };
 
+/** Locate each segment's text inside the joined transcript — the
+ * segment-index ranges a detector returns only become correction
+ * spans once mapped to character offsets. The scan walks forward
+ * (whisper-style joins concatenate segment texts in order), so a
+ * repeated segment text lands on its own occurrence. A segment that
+ * cannot be located — e.g. a PHI-scrubbed segment anonymized
+ * differently from the scrubbed full text — maps to null; ranges
+ * touching it resolve to their locatable anchors (charRangesFor). */
+export const segmentCharSpans = (
+	text: string,
+	segments: readonly { readonly text: string }[],
+): readonly (AsrRange | null)[] => {
+	const spans: (AsrRange | null)[] = [];
+	let cursor = 0;
+	for (const s of segments) {
+		const at = text.indexOf(s.text, cursor);
+		if (at === -1) {
+			spans.push(null);
+			continue;
+		}
+		spans.push({ start: at, end: at + s.text.length });
+		cursor = at + s.text.length;
+	}
+	return spans;
+};
+
+/** Segment-index ranges → sorted, non-overlapping char spans over
+ * the transcript. A range resolves to [first located segment's start,
+ * last located segment's end] — an unlocatable interior segment is
+ * still covered by the span. A range whose segments are ALL
+ * unlocatable (or out of bounds) contributes nothing. Overlapping
+ * char spans merge so downstream edit application sees a disjoint
+ * cover — applyEdits requires non-overlapping ops. */
+export const charRangesFor = (
+	ranges: readonly AsrRange[],
+	spans: readonly (AsrRange | null)[],
+): readonly AsrRange[] => {
+	const resolved: { start: number; end: number }[] = [];
+	for (const r of ranges) {
+		let start = -1;
+		let end = -1;
+		for (let i = r.start; i <= r.end && i < spans.length; i++) {
+			const s = i >= 0 ? spans[i] : undefined;
+			if (s === null || s === undefined) continue;
+			if (start === -1) start = s.start;
+			end = s.end;
+		}
+		if (start !== -1) resolved.push({ start, end });
+	}
+	resolved.sort((a, b) => a.start - b.start);
+	const merged: { start: number; end: number }[] = [];
+	for (const r of resolved) {
+		const last = merged.at(-1);
+		if (last !== undefined && r.start <= last.end) last.end = Math.max(last.end, r.end);
+		else merged.push({ ...r });
+	}
+	return merged;
+};
+
 /** Score every segment and return the ranges worth correcting. */
 export const detectAsrErrorRanges = (
 	segments: readonly { readonly text: string }[],
