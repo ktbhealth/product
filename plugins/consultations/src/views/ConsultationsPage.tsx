@@ -1,6 +1,13 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
+import {
+	ActivityIcon,
+	CalendarDaysIcon,
+	ClipboardCheckIcon,
+	ClipboardListIcon,
+	DownloadIcon,
+	LockIcon,
+} from "lucide-react";
 
 import {
 	factContent,
@@ -430,15 +437,20 @@ export function ConsultationsPage({
 					<div className="grid grid-cols-3 gap-3">
 						{(
 							[
-								[t.list.statsToday, stats.today],
-								[t.list.statsLiveNow, stats.live],
-								[t.list.statsNeedsReview, stats.review],
+								[t.list.statsToday, stats.today, CalendarDaysIcon],
+								[t.list.statsLiveNow, stats.live, ActivityIcon],
+								[t.list.statsNeedsReview, stats.review, ClipboardCheckIcon],
 							] as const
-						).map(([label, value]) => (
+						).map(([label, value, Icon]) => (
 							<Card key={label} size="sm">
-								<CardContent className="flex flex-col gap-0.5">
-									<span className="text-2xl font-semibold tabular-nums">{value}</span>
-									<span className="text-xs text-muted-foreground">{label}</span>
+								<CardContent className="flex items-center gap-3">
+									<span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+										<Icon className="size-5" />
+									</span>
+									<span className="flex flex-col gap-0.5">
+										<span className="text-2xl font-semibold tabular-nums">{value}</span>
+										<span className="text-xs text-muted-foreground">{label}</span>
+									</span>
 								</CardContent>
 							</Card>
 						))}

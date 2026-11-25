@@ -703,11 +703,11 @@ describe("ConsultationsPage", () => {
 		const cards = document.querySelectorAll('[data-slot="card"]');
 		expect(cards).toHaveLength(3);
 		expect(cards[0]!.textContent).toContain("Today");
-		expect(cards[0]!.querySelector("span")!.textContent).toBe("1");
+		expect(cards[0]!.querySelector(".tabular-nums")!.textContent).toBe("1");
 		expect(cards[1]!.textContent).toContain("Live now");
-		expect(cards[1]!.querySelector("span")!.textContent).toBe("1");
+		expect(cards[1]!.querySelector(".tabular-nums")!.textContent).toBe("1");
 		expect(cards[2]!.textContent).toContain("Needs review");
-		expect(cards[2]!.querySelector("span")!.textContent).toBe("1");
+		expect(cards[2]!.querySelector(".tabular-nums")!.textContent).toBe("1");
 	});
 
 	it("shows zeros in the stats strip when nothing matches", () => {
@@ -727,7 +727,7 @@ describe("ConsultationsPage", () => {
 		const cards = document.querySelectorAll('[data-slot="card"]');
 		expect(cards).toHaveLength(3);
 		for (const card of cards) {
-			expect(card.querySelector("span")!.textContent).toBe("0");
+			expect(card.querySelector(".tabular-nums")!.textContent).toBe("0");
 		}
 	});
 });
