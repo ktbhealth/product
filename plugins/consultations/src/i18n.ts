@@ -78,6 +78,16 @@ export interface ConsultationMessages {
 		readonly filterAnamnesisAll: string;
 		readonly filterAnamnesisWith: string;
 		readonly filterAnamnesisWithout: string;
+		/** Physician review-state facet (PL-022). */
+		readonly filterReviewAll: string;
+		readonly filterReviewPending: string;
+		readonly filterReviewDone: string;
+		readonly filterReviewDeferred: string;
+		/** Review badges on the status column (PL-022). */
+		readonly deferredBadge: (date: string) => string;
+		readonly reviewedBadge: (version: number) => string;
+		readonly staleBadge: (version: number) => string;
+		readonly transcriptReviewedBadge: string;
 		/** Pulsing badge on in-progress rows. */
 		readonly liveNow: string;
 		/** Needs-review badge — count of `baixa`-confidence sections. */
@@ -374,6 +384,14 @@ const en: ConsultationMessages = {
 		filterAnamnesisAll: "Any anamnesis",
 		filterAnamnesisWith: "With anamnesis",
 		filterAnamnesisWithout: "Without anamnesis",
+		filterReviewAll: "Any review state",
+		filterReviewPending: "Pending review",
+		filterReviewDone: "Reviewed",
+		filterReviewDeferred: "Deferred",
+		deferredBadge: paramMessage("en", "Deferred until {date}", ["date"]),
+		reviewedBadge: paramMessage("en", "Reviewed v{n}", ["n"]),
+		staleBadge: paramMessage("en", "New version v{n}", ["n"]),
+		transcriptReviewedBadge: "Transcript confirmed",
 		liveNow: "Live now",
 		needsReview: paramMessage(
 			"en",
@@ -688,6 +706,14 @@ const ptBR: ConsultationMessages = {
 		filterAnamnesisAll: "Qualquer anamnese",
 		filterAnamnesisWith: "Com anamnese",
 		filterAnamnesisWithout: "Sem anamnese",
+		filterReviewAll: "Qualquer revisão",
+		filterReviewPending: "Revisão pendente",
+		filterReviewDone: "Revisadas",
+		filterReviewDeferred: "Adiadas",
+		deferredBadge: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
+		reviewedBadge: paramMessage("pt-BR", "Revisada v{n}", ["n"]),
+		staleBadge: paramMessage("pt-BR", "Nova versão v{n}", ["n"]),
+		transcriptReviewedBadge: "Transcrição conferida",
 		liveNow: "Ao vivo agora",
 		needsReview: paramMessage(
 			"pt-BR",
@@ -1006,6 +1032,14 @@ const es: ConsultationMessages = {
 		filterAnamnesisAll: "Cualquier anamnesis",
 		filterAnamnesisWith: "Con anamnesis",
 		filterAnamnesisWithout: "Sin anamnesis",
+		filterReviewAll: "Cualquier revisión",
+		filterReviewPending: "Revisión pendiente",
+		filterReviewDone: "Revisadas",
+		filterReviewDeferred: "Aplazadas",
+		deferredBadge: paramMessage("es", "Aplazada hasta {date}", ["date"]),
+		reviewedBadge: paramMessage("es", "Revisada v{n}", ["n"]),
+		staleBadge: paramMessage("es", "Nueva versión v{n}", ["n"]),
+		transcriptReviewedBadge: "Transcripción confirmada",
 		liveNow: "En vivo ahora",
 		needsReview: paramMessage(
 			"es",
