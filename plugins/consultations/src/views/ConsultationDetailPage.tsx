@@ -638,7 +638,7 @@ export function ConsultationDetailPage({
 					<CardContent>
 						{v.anamnesis ? (
 							<ScrollArea className="h-[70vh]">
-								<div className="divide-y divide-border">
+								<div className="divide-y divide-border pr-4">
 									{(
 										Object.keys(t.sections).filter(
 											(k) => k !== "historico",
@@ -657,6 +657,7 @@ export function ConsultationDetailPage({
 																type="button"
 																variant="ghost"
 																size="sm"
+																className="aria-pressed:bg-info/10 aria-pressed:text-info"
 																aria-pressed={evidence?.section === key}
 																title={t.detail.evidenceTitle}
 																onClick={() =>
