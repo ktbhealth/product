@@ -1997,6 +1997,29 @@ export const I18N_MANIFEST = {
 		"review.nextUncertain": {
 			params: [],
 		},
+		"review.uncertainQueue": {
+			params: [],
+		},
+		"review.uncertainProgress": {
+			params: [
+				{
+					name: "done",
+				},
+				{
+					name: "total",
+				},
+			],
+			template: "{done} of {total} checked",
+		},
+		"review.unverifySegment": {
+			params: [],
+		},
+		"review.highConfTitle": {
+			params: [],
+		},
+		"review.highConfHint": {
+			params: [],
+		},
 		"review.editSegment": {
 			params: [],
 		},

@@ -166,6 +166,11 @@ export interface ConsultationMessages {
 		readonly legacyAudioBadge: string;
 		readonly noAudioBadge: string;
 		readonly nextUncertain: string;
+		readonly uncertainQueue: string;
+		readonly uncertainProgress: (done: number, total: number) => string;
+		readonly unverifySegment: string;
+		readonly highConfTitle: string;
+		readonly highConfHint: string;
 		readonly editSegment: string;
 		readonly editFullText: string;
 		readonly saveEdit: string;
@@ -516,6 +521,11 @@ const en: ConsultationMessages = {
 		legacyAudioBadge: "legacy audio",
 		noAudioBadge: "no audio to check against",
 		nextUncertain: "Next uncertain",
+		uncertainQueue: "Passages to check",
+		uncertainProgress: paramMessage("en", "{done} of {total} checked", ["done", "total"]),
+		unverifySegment: "Mark unchecked",
+		highConfTitle: "High-confidence transcript",
+		highConfHint: "no uncertain passages — spot-check optional",
 		editSegment: "Edit line",
 		editFullText: "Edit transcript",
 		saveEdit: "Save",
@@ -883,6 +893,11 @@ const ptBR: ConsultationMessages = {
 		legacyAudioBadge: "áudio legado",
 		noAudioBadge: "sem áudio para conferência",
 		nextUncertain: "Próxima incerteza",
+		uncertainQueue: "Trechos para conferir",
+		uncertainProgress: paramMessage("pt-BR", "{done} de {total} conferidos", ["done", "total"]),
+		unverifySegment: "Desmarcar",
+		highConfTitle: "Transcrição de alta confiança",
+		highConfHint: "sem trechos duvidosos — conferência opcional",
 		editSegment: "Editar trecho",
 		editFullText: "Editar transcrição",
 		saveEdit: "Salvar",
@@ -1254,6 +1269,11 @@ const es: ConsultationMessages = {
 		legacyAudioBadge: "audio heredado",
 		noAudioBadge: "sin audio para cotejar",
 		nextUncertain: "Siguiente incertidumbre",
+		uncertainQueue: "Pasajes por cotejar",
+		uncertainProgress: paramMessage("es", "{done} de {total} cotejados", ["done", "total"]),
+		unverifySegment: "Desmarcar",
+		highConfTitle: "Transcripción de alta confianza",
+		highConfHint: "sin pasajes dudosos — cotejo opcional",
 		editSegment: "Editar fragmento",
 		editFullText: "Editar transcripción",
 		saveEdit: "Guardar",

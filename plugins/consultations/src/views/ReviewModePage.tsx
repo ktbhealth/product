@@ -8,6 +8,7 @@ import {
 	PencilIcon,
 	QuoteIcon,
 	TriangleAlertIcon,
+	XIcon,
 } from "lucide-react";
 import type { Locale as CalendarLocale } from "react-day-picker";
 import { enUS, es, ptBR } from "react-day-picker/locale";
@@ -485,6 +486,21 @@ function TranscriptStep({
 				.map(({ i }) => i),
 		[segments],
 	);
+	const uncertainSet = useMemo(() => new Set(uncertainIdxs), [uncertainIdxs]);
+	// Triage state (PL-023): a passage counts as checked once the
+	// playhead actually reaches it or the doctor edits it — both mean
+	// it was heard. `unverify` reopens a chip checked by a stray seek.
+	const [checked, setChecked] = useState<ReadonlySet<number>>(new Set());
+	const checkedCount = uncertainIdxs.reduce((n, i) => n + (checked.has(i) ? 1 : 0), 0);
+	const markChecked = (i: number) =>
+		setChecked((prev) => (prev.has(i) ? prev : new Set(prev).add(i)));
+	const unverify = (i: number) =>
+		setChecked((prev) => {
+			if (!prev.has(i)) return prev;
+			const next = new Set(prev);
+			next.delete(i);
+			return next;
+		});
 
 	/** Latest per-segment replacement text from entry metadata. */
 	const segEdits = useMemo(() => {
@@ -549,6 +565,7 @@ function TranscriptStep({
 			});
 			if (res.ok) {
 				onEdit(entry);
+				if (editing !== "full") markChecked(editing);
 				setEditing(null);
 			}
 		} finally {
@@ -564,7 +581,12 @@ function TranscriptStep({
 	};
 
 	const nextUncertain = () => {
-		const next = uncertainIdxs.find((i) => i > activeIdx) ?? uncertainIdxs[0];
+		// Unchecked first — the triage drains; wrap to any uncertain once done.
+		const next =
+			uncertainIdxs.find((i) => i > activeIdx && !checked.has(i)) ??
+			uncertainIdxs.find((i) => !checked.has(i)) ??
+			uncertainIdxs.find((i) => i > activeIdx) ??
+			uncertainIdxs[0];
 		if (next != null) seek(next);
 	};
 
@@ -633,7 +655,10 @@ function TranscriptStep({
 							ariaLabel={t.transcriptPanel.audioLabel}
 							onTimeUpdate={(now) => {
 								const idx = segments.findIndex((s) => now >= s.start && now < s.end);
-								if (idx !== -1) setActiveIdx(idx);
+								if (idx !== -1) {
+									setActiveIdx(idx);
+									if (uncertainSet.has(idx)) markChecked(idx);
+								}
 							}}
 						/>
 					) : null}
@@ -641,13 +666,67 @@ function TranscriptStep({
 					{rich ? (
 						<>
 							{uncertainIdxs.length > 0 ? (
-								<div>
-									<Button type="button" variant="outline" size="sm" onClick={nextUncertain}>
-										<TriangleAlertIcon data-icon="inline-start" />
-										{t.review.nextUncertain}
-									</Button>
+								<div className="space-y-2 rounded-md border border-warning/40 bg-warning/5 p-2.5">
+									<div className="flex items-center justify-between gap-2">
+										<span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-warning uppercase">
+											<TriangleAlertIcon className="size-3" />
+											{t.review.uncertainQueue}
+										</span>
+										<span className="text-[10px] text-muted-foreground tabular-nums">
+											{t.review.uncertainProgress(checkedCount, uncertainIdxs.length)}
+										</span>
+									</div>
+									<div className="flex flex-wrap items-center gap-1">
+										{uncertainIdxs.map((i) => {
+											const verified = checked.has(i);
+											return (
+												<span key={i} className="inline-flex items-center">
+													<button
+														type="button"
+														onClick={() => seek(i)}
+														title={segments[i]?.text}
+														className={`inline-flex items-center gap-1 rounded-md px-2 py-1 font-mono text-[10px] tabular-nums transition-colors ${
+															verified
+																? "bg-success/10 text-success ring-1 ring-inset ring-success/25 hover:bg-success/20"
+																: "bg-warning/15 text-warning ring-1 ring-inset ring-warning/40 hover:bg-warning/25"
+														}`}
+													>
+														{verified ? <CheckIcon className="size-2.5" /> : null}
+														{fmtTime(segments[i]?.start ?? 0)}
+													</button>
+													{verified ? (
+														<button
+															type="button"
+															title={t.review.unverifySegment}
+															onClick={() => unverify(i)}
+															className="ml-0.5 rounded p-0.5 text-muted-foreground hover:text-foreground"
+														>
+															<XIcon className="size-3" />
+														</button>
+													) : null}
+												</span>
+											);
+										})}
+										<Button
+											type="button"
+											variant="outline"
+											size="sm"
+											className="ml-auto h-7"
+											onClick={nextUncertain}
+										>
+											{t.review.nextUncertain}
+										</Button>
+									</div>
 								</div>
-							) : null}
+							) : (
+								<div className="flex items-center gap-2 rounded-md border border-success/40 bg-success/5 px-3 py-2">
+									<CheckIcon className="size-4 shrink-0 text-success" />
+									<span className="text-sm">
+										<span className="font-medium text-success">{t.review.highConfTitle}</span>
+										<span className="text-muted-foreground"> — {t.review.highConfHint}</span>
+									</span>
+								</div>
+							)}
 							<ScrollArea className="h-[52vh]">
 								<div className="space-y-0.5 pr-4">
 									{segments.map((s, i) => {
@@ -660,7 +739,13 @@ function TranscriptStep({
 												ref={i === activeIdx ? activeRowRef : undefined}
 												className={`group flex gap-2 rounded-md px-2 py-1.5 text-sm leading-relaxed ${
 													i === activeIdx ? "bg-primary/10" : ""
-												} ${uncertain ? "ring-1 ring-inset ring-warning/40" : ""}`}
+												} ${
+													uncertain
+														? checked.has(i)
+															? "ring-1 ring-inset ring-warning/20"
+															: "ring-1 ring-inset ring-warning/40"
+														: ""
+												}`}
 											>
 												<button
 													type="button"

@@ -126,6 +126,8 @@ beforeEach(() => {
 	// jsdom media elements can't play — stub the promise-returning methods.
 	window.HTMLMediaElement.prototype.play = vi.fn((): Promise<void> => Promise.resolve());
 	window.HTMLMediaElement.prototype.pause = vi.fn<() => void>();
+	// jsdom has no layout engine — karaoke auto-scroll targets are stubs.
+	window.Element.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
@@ -183,6 +185,38 @@ describe("ReviewModePage — transcript step", () => {
 		const audio = document.querySelector("audio")!;
 		fireEvent.click(screen.getByText("Next uncertain"));
 		expect(audio.currentTime).toBe(2.5);
+	});
+
+	it("triage: the playhead reaching an uncertain segment auto-checks it", () => {
+		renderPage();
+		const audio = document.querySelector("audio")!;
+		expect(screen.getByText("0 of 1 checked")).toBeTruthy();
+		audio.currentTime = 3; // inside seg 1 (2.5–5, the uncertain one)
+		fireEvent.timeUpdate(audio);
+		expect(screen.getByText("1 of 1 checked")).toBeTruthy();
+	});
+
+	it("unverify reopens a checked uncertain chip", () => {
+		renderPage();
+		const audio = document.querySelector("audio")!;
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(screen.getByText("1 of 1 checked")).toBeTruthy();
+		fireEvent.click(screen.getByTitle("Mark unchecked"));
+		expect(screen.getByText("0 of 1 checked")).toBeTruthy();
+	});
+
+	it("high-confidence transcript shows the spot-check banner, no triage", () => {
+		const confident = SEGMENTS.map((s) => ({ ...s, avgLogprob: -0.1 }));
+		renderPage(
+			{},
+			[item({})],
+			detail({
+				transcriptSegments: serializeTranscriptSegments(confident),
+			}),
+		);
+		expect(screen.getByText("High-confidence transcript")).toBeTruthy();
+		expect(screen.queryByText("Passages to check")).toBeNull();
 	});
 
 	it("saves a segment edit into the Loro log — log gains one entry with seg+text", async () => {

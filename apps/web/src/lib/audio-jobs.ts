@@ -59,11 +59,7 @@ const regenerateAnamnesis = async (consultationId: number, corrected: string): P
 			const detail = yield* consultations
 				.get(consultationId, userId)
 				.pipe(Effect.catchTag("Forbidden", () => Effect.succeed(null)));
-			if (
-				detail === null ||
-				detail.anamnesis === null ||
-				detail.anamnesisReviewedVersion != null
-			) {
+			if (detail === null || detail.anamnesis === null || detail.anamnesisReviewedVersion != null) {
 				return;
 			}
 			const engine = yield* AnamnesisEngine;
