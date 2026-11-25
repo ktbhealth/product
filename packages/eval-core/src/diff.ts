@@ -49,12 +49,73 @@ export const applyEdits = (base: string, ops: readonly EditOp[]): string => {
 
 /** Per-call outcome of `anchorEdits` — how many proposed ops already
  * matched at their offset, how many were moved onto the nearest exact
- * occurrence of their `remove` text, and how many were discarded. */
+ * occurrence of their `remove` text, how many were discarded as
+ * paraphrases (`rewrites`), and how many were discarded for any other
+ * reason (`dropped`). */
 export interface AnchorStats {
 	readonly exact: number;
 	readonly reanchored: number;
+	readonly rewrites: number;
 	readonly dropped: number;
 }
+
+export interface AnchorOptions {
+	/** Drop ops that rewrite rather than correct (see `isRewrite`).
+	 * Default true. */
+	readonly rewriteGuard?: boolean;
+}
+
+/** Words compared case-insensitively with punctuation stripped, so a
+ * punctuation/casing fix costs zero word changes. */
+const words = (text: string): string[] =>
+	text
+		.toLowerCase()
+		.split(/\s+/)
+		.map((w) => w.replace(/[^\p{L}\p{N}]/gu, ""))
+		.filter((w) => w !== "");
+
+/** Word-level Levenshtein distance. */
+const wordDistance = (a: readonly string[], b: readonly string[]): number => {
+	let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+	for (let i = 1; i <= a.length; i++) {
+		const cur = [i];
+		for (let j = 1; j <= b.length; j++) {
+			cur[j] = Math.min(
+				prev[j]! + 1,
+				cur[j - 1]! + 1,
+				prev[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1),
+			);
+		}
+		prev = cur;
+	}
+	return prev[b.length]!;
+};
+
+/** Most words an ASR correction may change regardless of span length
+ * — covers a split/merged word ("dorde" → "dor de") plus a neighbour. */
+const MAX_FREE_WORD_CHANGES = 2;
+/** Above the free allowance, an op may change at most this share of
+ * the words in its longer side before it counts as a paraphrase. */
+const MAX_CHANGED_WORD_SHARE = 0.5;
+
+/**
+ * True when an op paraphrases instead of correcting. ASR fixes touch
+ * one or two words ("exajurai" → "exagerei", "dorde" → "dor de");
+ * small chat models also emit whole-sentence rewrites ("Fume não,
+ * nunca fumei, graças a Deus." → "Não fumo, nunca fumei.") that
+ * change what was said and inflate WER. An op is a rewrite when it
+ * changes more than MAX_FREE_WORD_CHANGES words AND more than
+ * MAX_CHANGED_WORD_SHARE of the words on its longer side.
+ */
+export const isRewrite = (op: Pick<EditOp, "remove" | "insert">): boolean => {
+	const before = words(op.remove);
+	const after = words(op.insert);
+	const changed = wordDistance(before, after);
+	return (
+		changed > MAX_FREE_WORD_CHANGES &&
+		changed / Math.max(before.length, after.length) > MAX_CHANGED_WORD_SHARE
+	);
+};
 
 /**
  * Normalize a model-proposed edit list against `base` so that
@@ -69,7 +130,8 @@ export interface AnchorStats {
  * - `remove` absent from `base`, empty (pure insertion — its position
  *   cannot be verified), or equal to `insert` (no-op) → dropped;
  * - ops overlapping an earlier-kept op → dropped (applyEdits requires
- *   non-overlapping ops).
+ *   non-overlapping ops);
+ * - paraphrases (`isRewrite`) → dropped unless `rewriteGuard: false`.
  *
  * The returned ops are sorted by `at` and carry every other field
  * unchanged. Dropping is lossy by design: an unverifiable edit is
@@ -78,14 +140,21 @@ export interface AnchorStats {
 export const anchorEdits = (
 	base: string,
 	ops: readonly EditOp[],
+	options: AnchorOptions = {},
 ): { readonly ops: readonly EditOp[]; readonly stats: AnchorStats } => {
+	const rewriteGuard = options.rewriteGuard ?? true;
 	let exact = 0;
 	let reanchored = 0;
+	let rewrites = 0;
 	let dropped = 0;
 	const placed: EditOp[] = [];
 	for (const op of ops) {
 		if (op.remove === "" || op.remove === op.insert) {
 			dropped++;
+			continue;
+		}
+		if (rewriteGuard && isRewrite(op)) {
+			rewrites++;
 			continue;
 		}
 		if (base.slice(op.at, op.at + op.remove.length) === op.remove) {
@@ -115,5 +184,5 @@ export const anchorEdits = (
 		kept.push(op);
 		end = op.at + op.remove.length;
 	}
-	return { ops: kept, stats: { exact, reanchored, dropped } };
+	return { ops: kept, stats: { exact, reanchored, rewrites, dropped } };
 };
