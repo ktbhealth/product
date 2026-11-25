@@ -424,6 +424,7 @@ function ReviewItem({
 					i18n={i18n}
 					locale={locale}
 					projected={projected}
+					segments={segments}
 					hasEdits={entries.length > 0}
 					onApproved={() => {
 						setLocalAnamnesisOk(true);
@@ -465,6 +466,10 @@ function TranscriptStep({
 }) {
 	const audioRef = useRef<HTMLAudioElement>(null);
 	const [activeIdx, setActiveIdx] = useState(-1);
+	const activeRowRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		activeRowRef.current?.scrollIntoView({ block: "nearest" });
+	}, [activeIdx]);
 	const [editing, setEditing] = useState<number | "full" | null>(null);
 	const [draft, setDraft] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -656,6 +661,7 @@ function TranscriptStep({
 										return (
 											<div
 												key={i}
+												ref={i === activeIdx ? activeRowRef : undefined}
 												className={`group flex gap-2 rounded-md px-2 py-1.5 text-sm leading-relaxed ${
 													i === activeIdx ? "bg-primary/10" : ""
 												} ${uncertain ? "ring-1 ring-inset ring-warning/40" : ""}`}
@@ -800,6 +806,7 @@ function AnamnesisStep({
 	i18n,
 	locale,
 	projected,
+	segments,
 	hasEdits,
 	onApproved,
 }: {
@@ -809,6 +816,7 @@ function AnamnesisStep({
 	i18n?: PageI18nSlice;
 	locale: string;
 	projected: string;
+	segments: readonly TranscriptSegment[];
 	hasEdits: boolean;
 	onApproved: () => void;
 }) {
@@ -895,6 +903,7 @@ function AnamnesisStep({
 						i18n={i18n}
 						locale={locale}
 						highlight={evidence?.sentences}
+						segments={segments}
 					/>
 				</CardContent>
 			</Card>

@@ -55,6 +55,7 @@ import {
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
+import { parseTranscriptSegments } from "../segments.ts";
 
 function Chip({
 	children,
@@ -371,6 +372,7 @@ export function ConsultationDetailPage({
 	// `dec` overlays the client-decrypted fields under ZK; `live` the
 	// polled audio-pipeline state — never active under ZK (T-147).
 	const v = { ...c, ...live, ...dec };
+	const segments = parseTranscriptSegments(v.transcriptSegments);
 	// Clickable transcript evidence: at most one section's grounding
 	// sentences are marked up in the transcript at a time; turning a
 	// section on also scrolls the ScrollArea to the first match.
@@ -776,6 +778,7 @@ export function ConsultationDetailPage({
 									serverText={v.serverTranscript}
 									correctedText={v.correctedTranscript}
 									highlight={evidence?.sentences}
+									segments={segments}
 								/>
 							</div>
 						</ScrollArea>

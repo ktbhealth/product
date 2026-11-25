@@ -124,6 +124,15 @@ export interface AudioJobDeps {
 		readonly segments?: readonly WhisperSegment[];
 	}) => Promise<CorrectedTranscript | null>;
 	/**
+	 * Post-cleanup hook (PL-023): the save-time anamnesis was extracted
+	 * from the raw transcript, so it goes stale the moment the LLM
+	 * cleanup lands. The host regenerates it from the corrected text —
+	 * skipping rows the physician already approved. Optional: hosts
+	 * without an anamnesis engine omit it; failures are logged, never
+	 * fatal (corrected transcript and audio status are already saved).
+	 */
+	readonly regenerateAnamnesis?: (consultationId: number, corrected: string) => Promise<void>;
+	/**
 	 * Live fan-out for the /platform jobs feed: the consumer is a system
 	 * path (no Principal), so the default wiring dispatches a
 	 * `ConsultationAudioUpdated` EventBus event through the app
@@ -408,6 +417,14 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 				corrected.corrected,
 				corrected.engine,
 			);
+			try {
+				await deps.regenerateAnamnesis?.(job.consultationId, corrected.corrected);
+			} catch (error) {
+				console.warn("anamnesis regeneration failed; review can regenerate manually", {
+					consultationId: job.consultationId,
+					error: String(error),
+				});
+			}
 		}
 	} catch (error) {
 		console.warn("transcript cleanup failed; keeping original only", {
