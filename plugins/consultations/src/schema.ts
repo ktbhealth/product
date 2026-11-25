@@ -87,6 +87,22 @@ export const consultations = sqliteTable(
 		 * NULL on every human-created row.
 		 */
 		evalItemId: integer("eval_item_id"),
+		/**
+		 * Physician review stamps (PL-022, P-014) — two separate acts:
+		 * `transcriptReviewed*` marks "I confirmed the transcript matches
+		 * the encounter" (no version — the column is raw evidence, not a
+		 * versioned artifact); `anamnesisReviewed*` marks "I approve this
+		 * anamnesis into the record" and binds the exact
+		 * `anamnesisVersion` reviewed so later edits surface as stale
+		 * rather than silently keeping the stamp.
+		 */
+		transcriptReviewedAt: integer("transcript_reviewed_at", { mode: "timestamp" }),
+		transcriptReviewedBy: text("transcript_reviewed_by"),
+		anamnesisReviewedAt: integer("anamnesis_reviewed_at", { mode: "timestamp" }),
+		anamnesisReviewedBy: text("anamnesis_reviewed_by"),
+		anamnesisReviewedVersion: integer("anamnesis_reviewed_version"),
+		/** Parked from the review queue until this date (derived status). */
+		deferredUntil: integer("deferred_until", { mode: "timestamp" }),
 		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [index("consultations_tenant_id_idx").on(table.tenantId)],
