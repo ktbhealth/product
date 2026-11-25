@@ -10,13 +10,23 @@
  *
  * `correct()` sends CORRECTOR_INSTRUCTIONS as a system message and
  * parses the reply as an EditList — the same contract the ACP
- * adapter honors, minus the agent layer.
+ * adapter honors, minus the agent layer. Local models (Ollama, LM
+ * Studio) need three accommodations to honor it at all, measured on
+ * consult-ptbr-synthetic with 4–14B models:
+ *
+ * - `response_format: json_schema` (on by default) — without it they
+ *   answer in prose or wrap the JSON in a ``` fence;
+ * - a tolerant reply parser — strips `<think>` blocks and fences and
+ *   accepts a bare op array;
+ * - `anchorEdits` — they quote `remove` correctly but almost never
+ *   get `at` right, so ops are re-anchored onto the transcript and
+ *   unverifiable ones dropped instead of failing the whole sample.
  */
 
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
+import { anchorEdits, PortError, type RunRecord, type TaskEnvelope } from "@ktb/eval-core";
 import { CORRECTOR_INSTRUCTIONS, fnvHex, LlmPort, outputValidators } from "@ktb/eval-consultation";
 import type { EditList } from "@ktb/eval-consultation";
 
@@ -32,7 +42,50 @@ export interface ChatLlmOptions {
 	/** Stable engineVersion for run records — fnvHex(url+model) by
 	 * default so the same endpoint maps to the same engine id. */
 	readonly engineVersion?: string;
+	/** Send `response_format: json_schema` (EDITLIST_JSON_SCHEMA) on
+	 * `correct()`. Default true — OpenAI, Ollama, LM Studio and vLLM
+	 * honor it; set false for gateways that reject the field. */
+	readonly structuredOutput?: boolean;
 }
+
+/** JSON Schema of the EditList reply, for structured-output backends.
+ * Mirrors `EditOp` minus the optional `flagged` (strict mode requires
+ * every property to be listed as required). */
+export const EDITLIST_JSON_SCHEMA = {
+	type: "object",
+	additionalProperties: false,
+	required: ["ops"],
+	properties: {
+		ops: {
+			type: "array",
+			items: {
+				type: "object",
+				additionalProperties: false,
+				required: ["at", "remove", "insert", "kind"],
+				properties: {
+					at: { type: "integer" },
+					remove: { type: "string" },
+					insert: { type: "string" },
+					kind: { type: "string", enum: ["fix", "punct", "entity", "format"] },
+				},
+			},
+		},
+	},
+} as const;
+
+/** Extract the JSON payload from a chat reply: drops `<think>…</think>`
+ * reasoning, unwraps a ``` fence, trims surrounding prose to the
+ * outermost object/array, and wraps a bare op array as `{ ops }`.
+ * Throws on anything that still isn't JSON. */
+export const parseEditListReply = (content: string): unknown => {
+	const visible = content.replace(/<think>[\s\S]*?<\/think>/g, "");
+	const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(visible);
+	const body = fenced?.[1] ?? visible;
+	const start = body.search(/[[{]/);
+	const end = Math.max(body.lastIndexOf("}"), body.lastIndexOf("]"));
+	const parsed: unknown = JSON.parse(start === -1 ? body : body.slice(start, end + 1));
+	return Array.isArray(parsed) ? { ops: parsed } : parsed;
+};
 
 interface ChatCompletionBody {
 	readonly choices?: readonly {
@@ -51,6 +104,7 @@ const postChat = (
 	fetchImpl: typeof fetch,
 	system?: string,
 	temperature = 0.8,
+	extra: Readonly<Record<string, unknown>> = {},
 ) =>
 	Effect.gen(function* () {
 		const res = yield* Effect.tryPromise({
@@ -73,6 +127,7 @@ const postChat = (
 						temperature,
 						// Stryker disable next-line ConditionalExpression: `seed: undefined` is dropped by JSON.stringify, so spreading it unconditionally serializes identically
 						...(envelope.seed !== undefined ? { seed: envelope.seed } : {}),
+						...extra,
 					}),
 				}),
 			catch: (cause) =>
@@ -173,6 +228,14 @@ export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
 					fetchImpl,
 					CORRECTOR_INSTRUCTIONS,
 					0.2,
+					opts.structuredOutput === false
+						? {}
+						: {
+								response_format: {
+									type: "json_schema",
+									json_schema: { name: "EditList", schema: EDITLIST_JSON_SCHEMA, strict: true },
+								},
+							},
 				).pipe(
 					Effect.withSpan("llm.chat.correct", { attributes: { "llm.model": opts.model } }),
 					Effect.timeout(`${timeoutMs} millis`),
@@ -193,7 +256,7 @@ export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
 							// The reply text is the EditList JSON — parse then
 							// schema-decode; either failure is one typed
 							// PortError (same contract as the ACP adapter).
-							try: () => outputValidators.EditList(JSON.parse(content)) as EditList,
+							try: () => outputValidators.EditList(parseEditListReply(content)) as EditList,
 							catch: (e) =>
 								new PortError({
 									port: "llm",
@@ -202,8 +265,17 @@ export const makeChatLlm = (opts: ChatLlmOptions): Layer.Layer<LlmPort> => {
 								}),
 						});
 					}),
-					Effect.map((edits) => ({
-						edits,
+					// Offsets from chat models are hints, not facts — re-anchor
+					// onto the transcript so a single miscounted `at` never
+					// fails the whole cleanup stage (see anchorEdits).
+					Effect.map((decoded) => anchorEdits(envelope.input, decoded.ops)),
+					Effect.tap(({ stats }) =>
+						Effect.logDebug("chat correct: edit ops anchored").pipe(
+							Effect.annotateLogs({ ...stats, model: opts.model }),
+						),
+					),
+					Effect.map(({ ops }) => ({
+						edits: { ops } satisfies EditList,
 						record: {
 							runId: opts.sessionId ?? "chat",
 							taskId: envelope.taskId,

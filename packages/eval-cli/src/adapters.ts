@@ -316,12 +316,18 @@ const llmLayer = (ctx: WireContext, key: string) => {
 			// input; correct() sends CORRECTOR_INSTRUCTIONS as the
 			// system message and parses an EditList reply. Fully
 			// independent of agent transports (no spawn, no ACP).
+			// correct() asks for json_schema structured output and
+			// re-anchors offsets — needed for local 4–14B models.
 			const baseUrl = env(ctx, "EVAL_LLM_BASE_URL");
 			const model = env(ctx, "EVAL_LLM_MODEL");
 			const apiKey = ctx.env.EVAL_LLM_API_KEY;
 			const timeoutRaw = ctx.env.EVAL_LLM_TIMEOUT_MS;
 			const timeoutMs =
 				timeoutRaw !== undefined && timeoutRaw !== "" ? Number.parseInt(timeoutRaw, 10) : undefined;
+			// EVAL_LLM_STRUCTURED_OUTPUT=0|false drops `response_format`
+			// from correct() for gateways that reject it (default on).
+			const structuredRaw = ctx.env.EVAL_LLM_STRUCTURED_OUTPUT?.trim().toLowerCase();
+			const structuredOff = structuredRaw === "0" || structuredRaw === "false";
 			return makeChatLlm({
 				baseUrl,
 				model,
@@ -329,6 +335,7 @@ const llmLayer = (ctx: WireContext, key: string) => {
 				...(timeoutMs !== undefined && Number.isFinite(timeoutMs) && timeoutMs > 0
 					? { timeoutMs }
 					: {}),
+				...(structuredOff ? { structuredOutput: false } : {}),
 				...(ctx.fetchImpl !== undefined ? { fetchImpl: ctx.fetchImpl } : {}),
 			});
 		}

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { fnvHex, LlmPort } from "@ktb/eval-consultation";
 
-import { makeChatLlm } from "./chat.ts";
+import { EDITLIST_JSON_SCHEMA, makeChatLlm, parseEditListReply } from "./chat.ts";
 
 const chatBody = (text: string) => ({
 	ok: true,
@@ -246,6 +246,68 @@ describe("makeChatLlm", () => {
 		expect(body.messages[0].role).toBe("system");
 		expect(body.messages[0].content).toContain("transcript-correction backend");
 		expect(body.messages[1]).toEqual({ role: "user", content: "raw transcript" });
+	});
+
+	it("correct requests json_schema structured output by default and can opt out", async () => {
+		const bodies: Record<string, unknown>[] = [];
+		const fetchImpl = stubFetch(async (_url, init) => {
+			bodies.push(JSON.parse((init?.body ?? "") as string));
+			return chatBody('{"ops":[]}');
+		});
+		const run = (structuredOutput?: boolean) =>
+			Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.correct({ taskId: "t", role: "corrector", input: "raw", outputSchema: "EditList" }),
+				).pipe(
+					Effect.provide(
+						makeChatLlm({
+							baseUrl: "http://x/v1",
+							model: "m",
+							fetchImpl,
+							...(structuredOutput !== undefined ? { structuredOutput } : {}),
+						}),
+					),
+				),
+			);
+		await run();
+		await run(true);
+		await run(false);
+		const expected = {
+			type: "json_schema",
+			json_schema: { name: "EditList", schema: EDITLIST_JSON_SCHEMA, strict: true },
+		};
+		expect(bodies[0]?.response_format).toEqual(expected);
+		expect(bodies[1]?.response_format).toEqual(expected);
+		expect(bodies[2]).not.toHaveProperty("response_format");
+		expect(bodies[0]?.temperature).toBe(0.2);
+	});
+
+	it("correct re-anchors mis-offset ops onto the transcript and drops unverifiable ones", async () => {
+		const reply =
+			"<think>hmm</think>```json\n" +
+			JSON.stringify({
+				ops: [
+					{ at: 0, remove: "cabeca", insert: "cabeça", kind: "fix" },
+					{ at: 3, remove: "não existe", insert: "x", kind: "fix" },
+				],
+			}) +
+			"\n```";
+		const layer = makeChatLlm({
+			baseUrl: "http://x/v1",
+			model: "m",
+			fetchImpl: stubFetch(async () => chatBody(reply)),
+		});
+		const out = await Effect.runPromise(
+			Effect.flatMap(LlmPort, (l) =>
+				l.correct({
+					taskId: "t",
+					role: "corrector",
+					input: "dor de cabeca",
+					outputSchema: "EditList",
+				}),
+			).pipe(Effect.provide(layer)),
+		);
+		expect(out.edits.ops).toEqual([{ at: 7, remove: "cabeca", insert: "cabeça", kind: "fix" }]);
 	});
 
 	it("correct rejects non-EditList envelopes and malformed JSON replies", async () => {
@@ -499,5 +561,30 @@ describe("makeChatLlm", () => {
 		} finally {
 			vi.unstubAllGlobals();
 		}
+	});
+});
+
+describe("parseEditListReply", () => {
+	it("parses plain JSON", () => {
+		expect(parseEditListReply('{"ops":[]}')).toEqual({ ops: [] });
+	});
+
+	it("strips think blocks, fences and surrounding prose", () => {
+		expect(
+			parseEditListReply('<think>a {b}</think>Sure:\n```json\n{"ops":[]}\n```\nDone.'),
+		).toEqual({
+			ops: [],
+		});
+		expect(parseEditListReply('```\n{"ops":[]}\n```')).toEqual({ ops: [] });
+		expect(parseEditListReply('Here you go: {"ops":[]} hope it helps')).toEqual({ ops: [] });
+	});
+
+	it("wraps a bare op array as { ops }", () => {
+		const op = { at: 0, remove: "a", insert: "b", kind: "fix" };
+		expect(parseEditListReply(JSON.stringify([op]))).toEqual({ ops: [op] });
+	});
+
+	it("throws when no JSON is present", () => {
+		expect(() => parseEditListReply("no edits needed")).toThrow(SyntaxError);
 	});
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyEdits, EditApplyError, type EditOp } from "./diff.ts";
+import { anchorEdits, applyEdits, EditApplyError, type EditOp } from "./diff.ts";
 
 describe("applyEdits", () => {
 	it("splices a single op", () => {
@@ -81,5 +81,55 @@ describe("integrity guard", () => {
 
 	it("pure insertions (empty remove) always match", () => {
 		expect(applyEdits("ab", [{ at: 1, remove: "", insert: "X", kind: "fix" }])).toBe("aXb");
+	});
+});
+
+describe("anchorEdits", () => {
+	const op = (at: number, remove: string, insert: string): EditOp => ({
+		at,
+		remove,
+		insert,
+		kind: "fix",
+	});
+
+	it("keeps ops whose remove already matches at `at`", () => {
+		const out = anchorEdits("dor de cabeca", [op(7, "cabeca", "cabeça")]);
+		expect(out.ops).toEqual([op(7, "cabeca", "cabeça")]);
+		expect(out.stats).toEqual({ exact: 1, reanchored: 0, dropped: 0 });
+	});
+
+	it("moves a mis-offset op to the nearest occurrence of its remove text", () => {
+		const base = "dipirona 500 mg e dipirona 500 mg";
+		const out = anchorEdits(base, [op(20, "dipirona", "Dipirona")]);
+		expect(out.ops).toEqual([op(18, "dipirona", "Dipirona")]);
+		expect(out.stats).toEqual({ exact: 0, reanchored: 1, dropped: 0 });
+		// Nearest wins over first: a hint near the start picks index 0.
+		expect(anchorEdits(base, [op(3, "dipirona", "x")]).ops[0]?.at).toBe(0);
+		// Ties keep the earlier occurrence.
+		expect(anchorEdits("ab ab", [op(1.5, "ab", "x")]).ops[0]?.at).toBe(0);
+	});
+
+	it("preserves extra fields such as flagged and kind", () => {
+		const flagged: EditOp = { at: 99, remove: "abc", insert: "x", kind: "entity", flagged: true };
+		expect(anchorEdits("abc", [flagged]).ops).toEqual([{ ...flagged, at: 0 }]);
+	});
+
+	it("drops ops that are unverifiable or no-ops", () => {
+		const out = anchorEdits("abc", [op(0, "zzz", "y"), op(1, "", "y"), op(0, "a", "a")]);
+		expect(out.ops).toEqual([]);
+		expect(out.stats).toEqual({ exact: 0, reanchored: 0, dropped: 3 });
+	});
+
+	it("drops ops overlapping an earlier kept op and sorts by offset", () => {
+		const out = anchorEdits("abcdef", [op(4, "ef", "Y"), op(0, "abc", "X"), op(2, "cd", "Z")]);
+		expect(out.ops).toEqual([op(0, "abc", "X"), op(4, "ef", "Y")]);
+		expect(out.stats).toEqual({ exact: 3, reanchored: 0, dropped: 1 });
+		expect(applyEdits("abcdef", out.ops)).toBe("XdY");
+	});
+
+	it("allows adjacent (touching) ops", () => {
+		const out = anchorEdits("abcd", [op(0, "ab", "X"), op(2, "cd", "Y")]);
+		expect(out.ops).toHaveLength(2);
+		expect(applyEdits("abcd", out.ops)).toBe("XY");
 	});
 });

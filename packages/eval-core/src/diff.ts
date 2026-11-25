@@ -46,3 +46,74 @@ export const applyEdits = (base: string, ops: readonly EditOp[]): string => {
 	}
 	return out;
 };
+
+/** Per-call outcome of `anchorEdits` — how many proposed ops already
+ * matched at their offset, how many were moved onto the nearest exact
+ * occurrence of their `remove` text, and how many were discarded. */
+export interface AnchorStats {
+	readonly exact: number;
+	readonly reanchored: number;
+	readonly dropped: number;
+}
+
+/**
+ * Normalize a model-proposed edit list against `base` so that
+ * `applyEdits` can never throw on it. LLMs reliably quote the text
+ * they want to change but almost never count character offsets
+ * correctly (local 4–14B models put ~0% of `at` values on the right
+ * character), so `remove` is treated as the source of truth and `at`
+ * only as a hint:
+ *
+ * - op matches at its `at` → kept as-is;
+ * - otherwise → moved to the occurrence of `remove` nearest to `at`;
+ * - `remove` absent from `base`, empty (pure insertion — its position
+ *   cannot be verified), or equal to `insert` (no-op) → dropped;
+ * - ops overlapping an earlier-kept op → dropped (applyEdits requires
+ *   non-overlapping ops).
+ *
+ * The returned ops are sorted by `at` and carry every other field
+ * unchanged. Dropping is lossy by design: an unverifiable edit is
+ * never applied.
+ */
+export const anchorEdits = (
+	base: string,
+	ops: readonly EditOp[],
+): { readonly ops: readonly EditOp[]; readonly stats: AnchorStats } => {
+	let exact = 0;
+	let reanchored = 0;
+	let dropped = 0;
+	const placed: EditOp[] = [];
+	for (const op of ops) {
+		if (op.remove === "" || op.remove === op.insert) {
+			dropped++;
+			continue;
+		}
+		if (base.slice(op.at, op.at + op.remove.length) === op.remove) {
+			exact++;
+			placed.push(op);
+			continue;
+		}
+		let best = -1;
+		for (let k = base.indexOf(op.remove); k !== -1; k = base.indexOf(op.remove, k + 1)) {
+			if (best === -1 || Math.abs(k - op.at) < Math.abs(best - op.at)) best = k;
+		}
+		if (best === -1) {
+			dropped++;
+			continue;
+		}
+		reanchored++;
+		placed.push({ ...op, at: best });
+	}
+	placed.sort((a, b) => a.at - b.at);
+	const kept: EditOp[] = [];
+	let end = -1;
+	for (const op of placed) {
+		if (op.at < end) {
+			dropped++;
+			continue;
+		}
+		kept.push(op);
+		end = op.at + op.remove.length;
+	}
+	return { ops: kept, stats: { exact, reanchored, dropped } };
+};
