@@ -69,14 +69,14 @@ import { defineSuite } from "@ktb/eval-core";
  *     bun apps/cli/src/main.ts eval run consult-ptbr-synthetic \
  *       --workdir ~/tmp/eval-ptbr-synthetic --profile local-chat
  *
- * Measured (faster-whisper base, v1 18 samples): raw WER 0.121 —
- * v2 baseline pending rerun.
+ * Measured (faster-whisper base, GPU): v1 18 samples raw WER 0.121;
+ * v2 24 samples raw WER 0.114 (train 0.117, heldout 0.099).
  * LLM cleanup ≈0.10 mean offline, in-pipeline verified on subsets.
  */
 export const suite = defineSuite({
 	id: "consult-ptbr-synthetic",
 	domain: "eval.consultation",
-	dataset: { id: "consult-ptbr-synthetic", version: "v1" },
+	dataset: { id: "consult-ptbr-synthetic", version: "v2" },
 	stages: ["script_gen", "synthesize", "transcribe", "cleanup", "judge"],
 	caps: {
 		tts: "transcription.tts",
@@ -96,7 +96,7 @@ export const suite = defineSuite({
 			dataset: {
 				source: "authored",
 				pack: "evals/consultation/src/ptbr",
-				count: 18,
+				count: 24,
 				specialties: [
 					"general_practice",
 					"cardiology",
@@ -104,6 +104,8 @@ export const suite = defineSuite({
 					"orthopedics",
 					"pediatrics",
 					"gynecology",
+					"psychiatry",
+					"geriatrics",
 				],
 				materialize: "bun evals/consultation/scripts/materialize-ptbr-synthetic.ts --workdir <dir>",
 			},

@@ -16,6 +16,7 @@ import {
 	PTBR_SYNTHETIC_DATASET_VERSION,
 } from "./dataset.ts";
 import type { PtbrConsult } from "./types.ts";
+import { suite } from "../../consult-ptbr-synthetic.suite.ts";
 
 const scriptOf = (c: PtbrConsult): string => c.turns.map((t) => t.text).join("\n");
 
@@ -114,6 +115,15 @@ describe("buildPtbrSyntheticSamples", () => {
 		expect(PTBR_SYNTHETIC_DATASET_ID).toBe("consult-ptbr-synthetic");
 		expect(PTBR_SYNTHETIC_DATASET_VERSION).toBe("v2");
 		expect(ptbrSyntheticDatasetVersion()).toBe("consult-ptbr-synthetic-v2");
+	});
+
+	it("keeps the suite manifest's dataset pin in lockstep with the materializer", () => {
+		// `eval run` looks samples up by `${dataset.id}-${dataset.version}`
+		// from the suite manifest — a stale pin finds zero rows.
+		expect(suite.dataset).toEqual({
+			id: PTBR_SYNTHETIC_DATASET_ID,
+			version: PTBR_SYNTHETIC_DATASET_VERSION,
+		});
 	});
 });
 
