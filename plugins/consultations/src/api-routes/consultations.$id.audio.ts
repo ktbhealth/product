@@ -34,6 +34,33 @@ import { MAX_AUDIO_BYTES } from "../audio-consumer.ts";
  */
 const MAX_UPLOAD_BYTES = MAX_AUDIO_BYTES;
 
+/**
+ * Single-range "bytes=" parsing (RFC 9110 §14.1.2). Malformed and
+ * multi-range headers are ignored (full-body 200 — the spec lets
+ * servers ignore them); a syntactically valid range outside the
+ * object reports "unsatisfiable" so the route can answer 416.
+ */
+const parseAudioRange = (
+	header: string | null | undefined,
+	total: number,
+): { offset: number; length: number } | "unsatisfiable" | null => {
+	if (!header) return null;
+	const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+	if (!m) return null;
+	const [, a, b] = m;
+	if (a === "") {
+		if (b === "") return null;
+		const suffix = Number(b);
+		if (suffix <= 0) return null;
+		return { offset: Math.max(0, total - suffix), length: Math.min(suffix, total) };
+	}
+	const offset = Number(a);
+	if (offset >= total) return "unsatisfiable";
+	const end = b === "" ? total - 1 : Math.min(Number(b), total - 1);
+	if (end < offset) return null;
+	return { offset, length: end - offset + 1 };
+};
+
 const EXT_BY_TYPE: Record<string, string> = {
 	"audio/webm": "webm",
 	"audio/ogg": "ogg",
@@ -187,7 +214,7 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 					audioSize: bytes.byteLength,
 				});
 			},
-			GET: async ({ params }) => {
+			GET: async ({ request, params }) => {
 				const user = await getDoctorUser();
 				const id = Number.parseInt(params.id, 10);
 				if (!user) return Response.json({ error: "unauthorized" }, { status: 401 });
@@ -200,6 +227,17 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 				const detail = await fetchOwned(id, user.id);
 				if (!detail?.audioKey) return Response.json({ error: "not found" }, { status: 404 });
 
+				const meta = await audioBucket.head(detail.audioKey);
+				if (!meta) return Response.json({ error: "not found" }, { status: 404 });
+				const total = meta.size;
+				const range = parseAudioRange(request?.headers.get("range"), total);
+				if (range === "unsatisfiable") {
+					return new Response(null, {
+						status: 416,
+						headers: { "content-range": `bytes */${total}` },
+					});
+				}
+
 				// Sensitive-read audit: the audio bytes are the most sensitive
 				// payload a consultation carries — record the download after
 				// authz, before the stream. ids only.
@@ -211,24 +249,47 @@ export const Route = createPluginApiRoute("consultations.routes")("/api/consulta
 							targetType: "consultation",
 							targetId: id,
 							tenantId: detail.tenantId,
-							detail: { patientId: detail.patientId, via: "audio-download" },
+							detail: {
+								patientId: detail.patientId,
+								via: "audio-download",
+								...(range
+									? { range: `${range.offset}-${range.offset + range.length - 1}` }
+									: {}),
+							},
 						});
 					}),
 				);
 
-				const object = await audioBucket.get(detail.audioKey);
+				const object = await audioBucket.get(
+					detail.audioKey,
+					range ? { range } : undefined,
+				);
 				if (!object) return Response.json({ error: "not found" }, { status: 404 });
 
+				// `accept-ranges` on every response is what lets the browser
+				// treat the media as seekable — without it a mid-file seek
+				// clamps to the buffered start and restarts playback.
+				const headers = {
+					"content-type":
+						detail.audioContentType ??
+						object.httpMetadata?.contentType ??
+						"application/octet-stream",
+					"cache-control": "private, no-store",
+					"accept-ranges": "bytes",
+					"content-disposition": `inline; filename="consultation-${id}-audio"`,
+				};
+				if (range) {
+					return new Response(object.body, {
+						status: 206,
+						headers: {
+							...headers,
+							"content-range": `bytes ${range.offset}-${range.offset + range.length - 1}/${total}`,
+							"content-length": String(range.length),
+						},
+					});
+				}
 				return new Response(object.body, {
-					headers: {
-						"content-type":
-							detail.audioContentType ??
-							object.httpMetadata?.contentType ??
-							"application/octet-stream",
-						"content-length": String(object.size),
-						"cache-control": "private, no-store",
-						"content-disposition": `inline; filename="consultation-${id}-audio"`,
-					},
+					headers: { ...headers, "content-length": String(total) },
 				});
 			},
 		},

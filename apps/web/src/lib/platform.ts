@@ -654,7 +654,7 @@ const aiBridgeCli = resolveAiBridgeCli({
 setServerRuntime({
 	run,
 	runAs,
-	audio: env.AUDIO_BUCKET,
+	audio: env.AUDIO_BUCKET as unknown as AudioStore | undefined,
 	audioQueue: env.AUDIO_QUEUE,
 	themeAssets: env.THEME_ASSETS_BUCKET as unknown as AudioStore | undefined,
 	// Media library (P-111): dedicated image bucket — same store shape;

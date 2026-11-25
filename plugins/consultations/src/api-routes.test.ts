@@ -142,10 +142,33 @@ const fakeBucket = {
 		audioBucketStore.set(key, { data, contentType: options?.httpMetadata?.contentType });
 		return {};
 	},
-	get: async (key: string) => {
+	head: async (key: string) => {
 		const object = audioBucketStore.get(key);
 		if (!object) return null;
-		const { data, contentType } = object;
+		return {
+			size: object.data.byteLength,
+			httpMetadata: { contentType: object.contentType },
+		};
+	},
+	get: async (
+		key: string,
+		options?: { range?: { offset?: number; length?: number; suffix?: number } },
+	) => {
+		const object = audioBucketStore.get(key);
+		if (!object) return null;
+		const { contentType } = object;
+		let data = object.data;
+		const range = options?.range;
+		if (range) {
+			const offset =
+				range.suffix != null
+					? Math.max(0, data.byteLength - range.suffix)
+					: (range.offset ?? 0);
+			data = data.subarray(
+				offset,
+				range.length != null ? offset + range.length : data.byteLength,
+			);
+		}
 		const bytes = data.slice();
 		return {
 			key,
@@ -358,8 +381,11 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 			}),
 			params: { id: String(id) },
 		} as never);
-	const get = (id: number | string) =>
-		handlersOf(AudioRoute).GET!({ params: { id: String(id) } } as never);
+	const get = (id: number | string, headers?: Record<string, string>) =>
+		handlersOf(AudioRoute).GET!({
+			request: new Request(`http://x/api/consultations/${id}/audio`, { headers }),
+			params: { id: String(id) },
+		} as never);
 
 	it("rejects unauthenticated upload and download", async () => {
 		useSession("owner");
@@ -521,6 +547,38 @@ describe("POST/GET /api/consultations/:id/audio", () => {
 
 		const noAudio = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
 		expect((await get(noAudio)).status).toBe(404);
+	});
+
+	it("honors Range requests — 206 slices, accept-ranges on every response (seekable media)", async () => {
+		useSession("owner");
+		const id = (await createConsultation(db, { userId: "u-owner", source: "browser" }))!;
+		const bytes = new Uint8Array([10, 20, 30, 40, 50]);
+		await post(id, bytes, "audio/wav");
+
+		const full = await get(id);
+		expect(full.status).toBe(200);
+		expect(full.headers.get("accept-ranges")).toBe("bytes");
+		expect(full.headers.get("content-length")).toBe("5");
+		await full.arrayBuffer();
+
+		const slice = await get(id, { range: "bytes=1-3" });
+		expect(slice.status).toBe(206);
+		expect(slice.headers.get("content-range")).toBe("bytes 1-3/5");
+		expect(slice.headers.get("content-length")).toBe("3");
+		expect(new Uint8Array(await slice.arrayBuffer())).toEqual(new Uint8Array([20, 30, 40]));
+
+		const open = await get(id, { range: "bytes=3-" });
+		expect(open.status).toBe(206);
+		expect(open.headers.get("content-range")).toBe("bytes 3-4/5");
+		expect(new Uint8Array(await open.arrayBuffer())).toEqual(new Uint8Array([40, 50]));
+
+		const suffix = await get(id, { range: "bytes=-2" });
+		expect(suffix.status).toBe(206);
+		expect(suffix.headers.get("content-range")).toBe("bytes 3-4/5");
+
+		const over = await get(id, { range: "bytes=99-" });
+		expect(over.status).toBe(416);
+		expect(over.headers.get("content-range")).toBe("bytes */5");
 	});
 });
 
