@@ -54,6 +54,15 @@ export interface ConsultationSummary {
 	readonly anamnesis: string | null;
 	readonly hasAnamnesis: boolean;
 	readonly chiefComplaint: string | null;
+	readonly anamnesisVersion: number | null;
+	/** Review state (PL-022) — two independent physician stamps. */
+	readonly transcriptReviewedAt: Date | null;
+	readonly transcriptReviewedBy: string | null;
+	readonly anamnesisReviewedAt: Date | null;
+	readonly anamnesisReviewedBy: string | null;
+	readonly anamnesisReviewedVersion: number | null;
+	/** Parked from the review queue until this instant; null = not deferred. */
+	readonly deferredUntil: Date | null;
 }
 
 export type ConsultationDetail = Omit<ConsultationRow, "anamnesis" | "review"> & {

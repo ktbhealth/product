@@ -68,7 +68,7 @@ CREATE TABLE "user" (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NUL
 INSERT INTO "user" (id, name, email, email_verified, image, banned, created_at, updated_at) VALUES ('u1', 'Dra', 'd@x.com', 0, NULL, 0, 0, 0);
 CREATE TABLE patients (synthetic INTEGER NOT NULL DEFAULT 0, id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id TEXT NOT NULL REFERENCES "user"(id), name TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, social_name TEXT, gender TEXT, birth_date TEXT, phone TEXT, email TEXT, preferred_language TEXT, address_line TEXT, address_number TEXT, address_complement TEXT, district TEXT, city TEXT, state TEXT, postal_code TEXT, country TEXT, mother_name TEXT, marital_status TEXT, race_color TEXT, nationality TEXT, emergency_contact_name TEXT, emergency_contact_relationship TEXT, emergency_contact_phone TEXT, created_at INTEGER, updated_at INTEGER, tenant_id INTEGER);
 CREATE TABLE patient_documents (id INTEGER PRIMARY KEY AUTOINCREMENT, patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE, type TEXT NOT NULL, country TEXT, number TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT 0, UNIQUE (patient_id, type));
-CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER);
+CREATE TABLE consultations (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT REFERENCES "user"(id), patient_id INTEGER REFERENCES patients(id), transcript TEXT NOT NULL, anamnesis TEXT, review TEXT, engine TEXT, source TEXT NOT NULL, status TEXT NOT NULL, bot_id TEXT, consent_at INTEGER, audio_key TEXT, audio_status TEXT NOT NULL DEFAULT 'none', audio_content_type TEXT, audio_size INTEGER, audio_error TEXT, server_transcript TEXT, corrected_transcript TEXT, enhancement_engine TEXT, anamnesis_hash TEXT, anamnesis_version INTEGER, blob_hash TEXT, synthetic INTEGER NOT NULL DEFAULT 0, eval_item_id INTEGER, created_at INTEGER NOT NULL, tenant_id INTEGER, transcript_reviewed_at INTEGER, transcript_reviewed_by TEXT, anamnesis_reviewed_at INTEGER, anamnesis_reviewed_by TEXT, anamnesis_reviewed_version INTEGER, deferred_until INTEGER);
 CREATE TABLE permission_epoch (id INTEGER PRIMARY KEY, epoch INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE relation_tuples (id INTEGER PRIMARY KEY AUTOINCREMENT, object_type TEXT NOT NULL, object_id TEXT NOT NULL, relation TEXT NOT NULL, subject_kind TEXT NOT NULL, subject_id TEXT NOT NULL, effect TEXT NOT NULL, tenant_id TEXT, expires_at INTEGER, granted_by TEXT, created_at INTEGER NOT NULL);
 ${AUDIT_TEST_DDL}
@@ -892,6 +892,111 @@ describe("ConsultationsLive", () => {
 			call((c) => c.getLive(personalId!, "u1")),
 		);
 		expect(await testDb.select().from(adminAudit)).toHaveLength(before);
+	});
+
+	it("reviewTranscript/deferConsultation/approveAnamnesis stamp the review columns (PL-022)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: id!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+
+		const reviewCols = async (cid: number) => {
+			const rows = await testDb
+				.select({
+					tAt: consultationsTable.transcriptReviewedAt,
+					tBy: consultationsTable.transcriptReviewedBy,
+					aAt: consultationsTable.anamnesisReviewedAt,
+					aBy: consultationsTable.anamnesisReviewedBy,
+					aVer: consultationsTable.anamnesisReviewedVersion,
+					until: consultationsTable.deferredUntil,
+				})
+				.from(consultationsTable)
+				.where(eq(consultationsTable.id, cid));
+			return rows[0]!;
+		};
+
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(id!, "u1")),
+		);
+		expect(await reviewCols(id!)).toMatchObject({ tBy: "u1" });
+
+		const until = new Date("2030-01-15T00:00:00Z");
+		await asUser(
+			"u1",
+			call((c) => c.deferConsultation(id!, "u1", until)),
+		);
+		expect((await reviewCols(id!)).until?.getTime()).toBe(until.getTime());
+		// until: null clears the defer.
+		await asUser(
+			"u1",
+			call((c) => c.deferConsultation(id!, "u1", null)),
+		);
+		expect((await reviewCols(id!)).until).toBeNull();
+
+		await asUser(
+			"u1",
+			call((c) => c.approveAnamnesis(id!, "u1")),
+		);
+		const cols = await reviewCols(id!);
+		expect(cols.aBy).toBe("u1");
+		// The approval binds the version stored on the row at stamp time.
+		const [{ version }] = await testDb
+			.select({ version: consultationsTable.anamnesisVersion })
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, id!));
+		expect(cols.aVer).toBe(version);
+	});
+
+	it("review stamps no-op on missing rows and deny non-owners (PL-022)", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+
+		for (const mutate of [
+			(c: Consultations["Service"]) => c.reviewTranscript(id!, "u2"),
+			(c: Consultations["Service"]) => c.approveAnamnesis(id!, "u2"),
+			(c: Consultations["Service"]) => c.deferConsultation(id!, "u2", new Date()),
+		]) {
+			await expect(asUser("u2", call(mutate))).rejects.toMatchObject({ _tag: "Forbidden" });
+		}
+
+		// Missing row → owner lookup is null → mutations no-op.
+		for (const mutate of [
+			(c: Consultations["Service"]) => c.reviewTranscript(9999, "u1"),
+			(c: Consultations["Service"]) => c.approveAnamnesis(9999, "u1"),
+			(c: Consultations["Service"]) => c.deferConsultation(9999, "u1", new Date()),
+		]) {
+			await asUser("u1", call(mutate));
+		}
+	});
+
+	it("approveAnamnesis skips rows without an anamnesis version", async () => {
+		const id = await asUser(
+			"u1",
+			call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+		);
+		// No anamnesis attached → null version → nothing to approve.
+		await asUser(
+			"u1",
+			call((c) => c.approveAnamnesis(id!, "u1")),
+		);
+		const rows = await testDb
+			.select({ aAt: consultationsTable.anamnesisReviewedAt })
+			.from(consultationsTable)
+			.where(eq(consultationsTable.id, id!));
+		expect(rows[0]!.aAt).toBeNull();
 	});
 });
 

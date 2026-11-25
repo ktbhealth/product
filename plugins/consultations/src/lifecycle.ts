@@ -184,3 +184,39 @@ export async function recordConsent(db: DbClient, id: number, scope?: SQL) {
 		.set({ consentAt: new Date() })
 		.where(and(eq(consultations.id, id), scope));
 }
+
+/** "I confirmed the transcript matches the encounter" (PL-022) — raw
+ * evidence stamp, no version binding. */
+export async function setTranscriptReview(db: DbClient, id: number, userId: string, scope?: SQL) {
+	await db
+		.update(consultations)
+		.set({ transcriptReviewedAt: new Date(), transcriptReviewedBy: userId })
+		.where(and(eq(consultations.id, id), scope));
+}
+
+/** "I approve this anamnesis into the record" (PL-022) — binds the
+ * exact `anamnesisVersion` reviewed so later edits surface as stale. */
+export async function setAnamnesisReview(
+	db: DbClient,
+	id: number,
+	userId: string,
+	version: number | null,
+	scope?: SQL,
+) {
+	await db
+		.update(consultations)
+		.set({
+			anamnesisReviewedAt: new Date(),
+			anamnesisReviewedBy: userId,
+			anamnesisReviewedVersion: version,
+		})
+		.where(and(eq(consultations.id, id), scope));
+}
+
+/** Park the record from the review queue until `until` (null clears). */
+export async function setDeferred(db: DbClient, id: number, until: Date | null, scope?: SQL) {
+	await db
+		.update(consultations)
+		.set({ deferredUntil: until })
+		.where(and(eq(consultations.id, id), scope));
+}

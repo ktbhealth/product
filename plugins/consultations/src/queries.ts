@@ -78,6 +78,13 @@ export async function listConsultations(
 			anamnesis: consultations.anamnesis,
 			patientId: consultations.patientId,
 			patientName: patients.name,
+			anamnesisVersion: consultations.anamnesisVersion,
+			transcriptReviewedAt: consultations.transcriptReviewedAt,
+			transcriptReviewedBy: consultations.transcriptReviewedBy,
+			anamnesisReviewedAt: consultations.anamnesisReviewedAt,
+			anamnesisReviewedBy: consultations.anamnesisReviewedBy,
+			anamnesisReviewedVersion: consultations.anamnesisReviewedVersion,
+			deferredUntil: consultations.deferredUntil,
 		})
 		.from(consultations)
 		.leftJoin(patients, eq(consultations.patientId, patients.id))
@@ -137,6 +144,7 @@ export async function consultationOwner(db: DbClient, id: number) {
 			id: consultations.id,
 			userId: consultations.userId,
 			tenantId: consultations.tenantId,
+			anamnesisVersion: consultations.anamnesisVersion,
 		})
 		.from(consultations)
 		.where(eq(consultations.id, id))

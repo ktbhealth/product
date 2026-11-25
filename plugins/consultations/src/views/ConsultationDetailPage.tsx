@@ -97,6 +97,10 @@ export interface ConsultationDetailApi {
 	getConsultation(input: { data: number }): Promise<ConsultationAudioInfo | null>;
 	/** Integrity re-verification for the anamnesis badge (T-139). */
 	verifyIntegrity?(input: { data: number }): Promise<ConsultationIntegrityReport | null>;
+	/** Review stamps (PL-022). */
+	reviewTranscript?(input: { data: number }): Promise<{ ok: boolean }>;
+	approveAnamnesis?(input: { data: number }): Promise<{ ok: boolean }>;
+	deferConsultation?(input: { data: { id: number; until: Date | null } }): Promise<{ ok: boolean }>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);
