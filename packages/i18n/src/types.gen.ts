@@ -529,36 +529,58 @@ export type I18nKey =
 	| "consultations.detail.consentLabel"
 	| "consultations.detail.consentNotRecorded"
 	| "consultations.detail.evidence"
+	| "consultations.detail.evidenceTitle"
+	| "consultations.detail.hideEvidence"
 	| "consultations.detail.historyNote"
 	| "consultations.detail.inProgress"
 	| "consultations.detail.integrity.tampered"
 	| "consultations.detail.integrity.unversioned"
 	| "consultations.detail.integrity.verified"
+	| "consultations.detail.metaTitle"
 	| "consultations.detail.noAnamnesisDescription"
 	| "consultations.detail.noAnamnesisTitle"
 	| "consultations.detail.notReported"
 	| "consultations.detail.openPatientRecord"
 	| "consultations.detail.plan"
 	| "consultations.detail.previousConsultations"
+	| "consultations.detail.showEvidence"
+	| "consultations.list.colActions"
+	| "consultations.list.colDate"
+	| "consultations.list.colPatient"
+	| "consultations.list.colStatus"
 	| "consultations.list.consent"
 	| "consultations.list.count"
 	| "consultations.list.downloadPdfTitle"
 	| "consultations.list.emptyDescription"
 	| "consultations.list.emptyTitle"
+	| "consultations.list.filterAll"
+	| "consultations.list.filterAnamnesisAll"
+	| "consultations.list.filterAnamnesisWith"
+	| "consultations.list.filterAnamnesisWithout"
+	| "consultations.list.filterDone"
 	| "consultations.list.filterLabel"
+	| "consultations.list.filterLive"
 	| "consultations.list.filters.all"
 	| "consultations.list.filters.anamnesis"
 	| "consultations.list.filters.pending"
+	| "consultations.list.filterSourceAll"
 	| "consultations.list.live"
+	| "consultations.list.liveNow"
+	| "consultations.list.needsReview"
 	| "consultations.list.newConsultation"
 	| "consultations.list.noAnamnesis"
 	| "consultations.list.noMatch"
 	| "consultations.list.none"
 	| "consultations.list.open"
 	| "consultations.list.patientRecord"
+	| "consultations.list.previewComplaint"
+	| "consultations.list.previewPlan"
 	| "consultations.list.searchLabel"
 	| "consultations.list.searchPlaceholder"
 	| "consultations.list.startConsultation"
+	| "consultations.list.statsLiveNow"
+	| "consultations.list.statsNeedsReview"
+	| "consultations.list.statsToday"
 	| "consultations.list.title"
 	| "consultations.list.unlinkedPatient"
 	| "consultations.newConsultation.accessEmailPlaceholder"
@@ -3015,11 +3037,14 @@ export interface I18nTypedT {
 			n: unknown;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.detail.evidenceTitle"): Effect.Effect<string>;
+	(key: "consultations.detail.hideEvidence"): Effect.Effect<string>;
 	(key: "consultations.detail.historyNote"): Effect.Effect<string>;
 	(key: "consultations.detail.inProgress"): Effect.Effect<string>;
 	(key: "consultations.detail.integrity.tampered"): Effect.Effect<string>;
 	(key: "consultations.detail.integrity.unversioned"): Effect.Effect<string>;
 	(key: "consultations.detail.integrity.verified"): Effect.Effect<string>;
+	(key: "consultations.detail.metaTitle"): Effect.Effect<string>;
 	(key: "consultations.detail.noAnamnesisDescription"): Effect.Effect<string>;
 	(key: "consultations.detail.noAnamnesisTitle"): Effect.Effect<string>;
 	(key: "consultations.detail.notReported"): Effect.Effect<string>;
@@ -3036,6 +3061,11 @@ export interface I18nTypedT {
 			n: number;
 		},
 	): Effect.Effect<string>;
+	(key: "consultations.detail.showEvidence"): Effect.Effect<string>;
+	(key: "consultations.list.colActions"): Effect.Effect<string>;
+	(key: "consultations.list.colDate"): Effect.Effect<string>;
+	(key: "consultations.list.colPatient"): Effect.Effect<string>;
+	(key: "consultations.list.colStatus"): Effect.Effect<string>;
 	(key: "consultations.list.consent"): Effect.Effect<string>;
 	(
 		key: "consultations.list.count",
@@ -3046,20 +3076,39 @@ export interface I18nTypedT {
 	(key: "consultations.list.downloadPdfTitle"): Effect.Effect<string>;
 	(key: "consultations.list.emptyDescription"): Effect.Effect<string>;
 	(key: "consultations.list.emptyTitle"): Effect.Effect<string>;
+	(key: "consultations.list.filterAll"): Effect.Effect<string>;
+	(key: "consultations.list.filterAnamnesisAll"): Effect.Effect<string>;
+	(key: "consultations.list.filterAnamnesisWith"): Effect.Effect<string>;
+	(key: "consultations.list.filterAnamnesisWithout"): Effect.Effect<string>;
+	(key: "consultations.list.filterDone"): Effect.Effect<string>;
 	(key: "consultations.list.filterLabel"): Effect.Effect<string>;
+	(key: "consultations.list.filterLive"): Effect.Effect<string>;
 	(key: "consultations.list.filters.all"): Effect.Effect<string>;
 	(key: "consultations.list.filters.anamnesis"): Effect.Effect<string>;
 	(key: "consultations.list.filters.pending"): Effect.Effect<string>;
+	(key: "consultations.list.filterSourceAll"): Effect.Effect<string>;
 	(key: "consultations.list.live"): Effect.Effect<string>;
+	(key: "consultations.list.liveNow"): Effect.Effect<string>;
+	(
+		key: "consultations.list.needsReview",
+		params: {
+			n: number;
+		},
+	): Effect.Effect<string>;
 	(key: "consultations.list.newConsultation"): Effect.Effect<string>;
 	(key: "consultations.list.noAnamnesis"): Effect.Effect<string>;
 	(key: "consultations.list.noMatch"): Effect.Effect<string>;
 	(key: "consultations.list.none"): Effect.Effect<string>;
 	(key: "consultations.list.open"): Effect.Effect<string>;
 	(key: "consultations.list.patientRecord"): Effect.Effect<string>;
+	(key: "consultations.list.previewComplaint"): Effect.Effect<string>;
+	(key: "consultations.list.previewPlan"): Effect.Effect<string>;
 	(key: "consultations.list.searchLabel"): Effect.Effect<string>;
 	(key: "consultations.list.searchPlaceholder"): Effect.Effect<string>;
 	(key: "consultations.list.startConsultation"): Effect.Effect<string>;
+	(key: "consultations.list.statsLiveNow"): Effect.Effect<string>;
+	(key: "consultations.list.statsNeedsReview"): Effect.Effect<string>;
+	(key: "consultations.list.statsToday"): Effect.Effect<string>;
 	(key: "consultations.list.title"): Effect.Effect<string>;
 	(key: "consultations.list.unlinkedPatient"): Effect.Effect<string>;
 	(key: "consultations.newConsultation.accessEmailPlaceholder"): Effect.Effect<string>;

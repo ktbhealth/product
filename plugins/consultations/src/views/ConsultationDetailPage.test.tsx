@@ -85,6 +85,17 @@ describe("ConsultationDetailPage", () => {
 		expect(screen.queryByText("Segunda opinião")).toBeNull();
 	});
 
+	it("lays out the record with design-system slots", () => {
+		const { container } = render(<ConsultationDetailPage c={detail({})} history={null} />);
+		expect(container.querySelector('[data-slot="page-container"]')).not.toBeNull();
+		expect(container.querySelector('[data-slot="page-header"]')).not.toBeNull();
+		// Meta card + anamnesis section cards + transcript card.
+		expect(screen.getByText("Details")).toBeTruthy();
+		expect(container.querySelectorAll('[data-slot="card"]').length).toBeGreaterThan(2);
+		// The transcript body scrolls inside a ScrollArea viewport.
+		expect(container.querySelector('[data-slot="scroll-area-viewport"]')).not.toBeNull();
+	});
+
 	it("links the patient name to the patient record", () => {
 		render(<ConsultationDetailPage c={detail({})} history={null} />);
 		const link = screen.getByTitle("Open patient record");
@@ -571,6 +582,156 @@ describe("ConsultationDetailPage", () => {
 		expect(screen.getByText("linha solta")).toBeTruthy();
 		expect(screen.getByText("Enfermeiro Chefe")).toBeTruthy();
 		expect(screen.getByText("Médico")).toBeTruthy();
+	});
+
+	describe("clickable transcript evidence", () => {
+		it("toggles marks in the transcript and scrolls to the first match", async () => {
+			const user = userEvent.setup();
+			const scrollSpy = vi.fn<() => void>();
+			Element.prototype.scrollIntoView = scrollSpy;
+			render(
+				<ConsultationDetailPage
+					history={null}
+					c={detail({ transcript: "Médico: oi\nPaciente: sinto DOR RELATADA há dias" })}
+				/>,
+			);
+			expect(document.querySelector("mark")).toBeNull();
+			const toggle = screen.getByRole("button", { name: "Show evidence" });
+			expect(toggle.getAttribute("aria-pressed")).toBe("false");
+			await user.click(toggle);
+			// Case-insensitive match: original casing renders inside <mark>.
+			const marks = document.querySelectorAll("mark");
+			expect(marks.length).toBe(1);
+			expect(marks[0]?.textContent).toBe("DOR RELATADA");
+			expect(toggle.getAttribute("aria-pressed")).toBe("true");
+			expect(toggle.textContent).toContain("Hide evidence");
+			expect(scrollSpy).toHaveBeenCalledWith({ block: "nearest" });
+			delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+		});
+
+		it("switches the highlight when another section's toggle is pressed", async () => {
+			const user = userEvent.setup();
+			const anamnesis = {
+				...ANAMNESIS,
+				queixa_principal: {
+					content: "Dor",
+					confidence: "alta" as const,
+					evidence: ["dor relatada"],
+				},
+				conduta: {
+					content: "Repouso",
+					confidence: "media" as const,
+					evidence: ["receitar repouso"],
+				},
+			};
+			render(
+				<ConsultationDetailPage
+					history={null}
+					c={detail({
+						anamnesis,
+						transcript: "Paciente: sinto dor relatada\nMédico: vou receitar repouso",
+					})}
+				/>,
+			);
+			const [first] = screen.getAllByRole("button", { name: "Show evidence" });
+			await user.click(first);
+			expect(document.querySelector("mark")?.textContent).toBe("dor relatada");
+			// The second toggle still reads "Show evidence"; pressing it
+			// moves the single active highlight to its sentences.
+			await user.click(screen.getByRole("button", { name: "Show evidence" }));
+			const marks = document.querySelectorAll("mark");
+			expect(marks.length).toBe(1);
+			expect(marks[0]?.textContent).toBe("receitar repouso");
+			expect(screen.queryByRole("button", { name: "Hide evidence" })).toBeTruthy();
+		});
+
+		it("restores the plain transcript when the active toggle is pressed again", async () => {
+			const user = userEvent.setup();
+			render(
+				<ConsultationDetailPage
+					history={null}
+					c={detail({ transcript: "Paciente: sinto dor relatada" })}
+				/>,
+			);
+			await user.click(screen.getByRole("button", { name: "Show evidence" }));
+			expect(document.querySelectorAll("mark").length).toBe(1);
+			await user.click(screen.getByRole("button", { name: "Hide evidence" }));
+			expect(document.querySelector("mark")).toBeNull();
+			expect(screen.getByText("sinto dor relatada")).toBeTruthy();
+		});
+
+		it("renders no toggle on sections without evidence", () => {
+			render(<ConsultationDetailPage c={detail({})} history={null} />);
+			// Only queixa_principal carries evidence in the fixture.
+			expect(screen.getAllByRole("button", { name: "Show evidence" }).length).toBe(1);
+		});
+
+		it("toggles state but renders no marks when evidence is absent from the transcript", async () => {
+			const user = userEvent.setup();
+			const scrollSpy = vi.fn<() => void>();
+			Element.prototype.scrollIntoView = scrollSpy;
+			render(<ConsultationDetailPage c={detail({})} history={null} />);
+			await user.click(screen.getByRole("button", { name: "Show evidence" }));
+			expect(
+				screen.getByRole("button", { name: "Hide evidence" }).getAttribute("aria-pressed"),
+			).toBe("true");
+			expect(document.querySelector("mark")).toBeNull();
+			expect(scrollSpy).not.toHaveBeenCalled();
+			delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+		});
+
+		it("keeps the toggle working on an empty transcript", async () => {
+			const user = userEvent.setup();
+			render(<ConsultationDetailPage c={detail({ transcript: "   \n  " })} history={null} />);
+			await user.click(screen.getByRole("button", { name: "Show evidence" }));
+			expect(screen.getByText("No transcript.")).toBeTruthy();
+			expect(document.querySelector("mark")).toBeNull();
+		});
+
+		it("escapes regex metachars and tolerates whitespace differences", async () => {
+			const user = userEvent.setup();
+			const anamnesis = {
+				...ANAMNESIS,
+				queixa_principal: {
+					content: "Dor",
+					confidence: "alta" as const,
+					// "   " is ignored; the metachar-laden sentence still matches.
+					evidence: ["   ", "dor (muito) forte + náusea?"],
+				},
+			};
+			render(
+				<ConsultationDetailPage
+					history={null}
+					c={detail({
+						anamnesis,
+						transcript: "Paciente: dor  (muito)   forte + náusea? desde ontem",
+					})}
+				/>,
+			);
+			await user.click(screen.getByRole("button", { name: "Show evidence" }));
+			expect(document.querySelector("mark")?.textContent).toBe("dor  (muito)   forte + náusea?");
+		});
+
+		it("marks evidence in the decrypted transcript under ZK", async () => {
+			const user = userEvent.setup();
+			zkMocks.decryptConsultation.mockResolvedValueOnce({
+				anamnesis: JSON.stringify(ANAMNESIS),
+				transcript: "Paciente: sinto dor relatada",
+				patientName: "Maria",
+				serverTranscript: null,
+				correctedTranscript: null,
+			});
+			render(
+				<ConsultationDetailPage
+					c={detail({ anamnesisRaw: "v1.aa.bb", transcript: "" })}
+					history={null}
+					zk={{ keyring: {} as never, api: {} as never }}
+				/>,
+			);
+			await screen.findByText("sinto dor relatada");
+			await user.click(screen.getByRole("button", { name: "Show evidence" }));
+			expect(document.querySelector("mark")?.textContent).toBe("dor relatada");
+		});
 	});
 });
 

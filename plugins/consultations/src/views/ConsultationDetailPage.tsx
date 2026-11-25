@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeftIcon, ClipboardListIcon, DownloadIcon, LockIcon, QuoteIcon } from "lucide-react";
 
 import { IntegrityBadge } from "@ktb/integrity/badge";
 import { anamnesisToText, factContent } from "@ktb/anamnesis";
@@ -10,7 +10,8 @@ import type { PageI18nSlice } from "@ktb/kernel";
 
 import { Toast, type ToastData } from "@ktbhealth/ui/components/app-toast";
 import { Badge } from "@ktbhealth/ui/components/badge";
-import { Button, buttonVariants } from "@ktbhealth/ui/components/button";
+import { Button } from "@ktbhealth/ui/components/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@ktbhealth/ui/components/card";
 import {
 	Empty,
 	EmptyDescription,
@@ -18,9 +19,12 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@ktbhealth/ui/components/empty";
+import { PageContainer } from "@ktbhealth/ui/components/page-container";
+import { PageHeader } from "@ktbhealth/ui/components/page-header";
+import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 
 import type { ConsultationIntegrityReport } from "../index.ts";
-import { BADGE_TONES, CONF_BAR, CONF_STYLE } from "./-ui.ts";
+import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, sourceLabel, I18N_NAMESPACE } from "../i18n.ts";
 import { decryptBlob } from "@ktb/crypto/stream";
 import { LocalDateTime } from "@ktb/views/views";
@@ -39,15 +43,12 @@ import {
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
 
-/** Sections that read better side by side. */
-const WIDE: AnamnesisSectionKey[] = ["queixa_principal", "hda", "hipoteses", "conduta"];
-
 function Chip({
 	children,
 	tone = "neutral",
 }: {
 	children: React.ReactNode;
-	tone?: "neutral" | "green" | "amber";
+	tone?: "neutral" | "green" | "blue";
 }) {
 	return (
 		<Badge variant="secondary" className={`ring-1 ${BADGE_TONES[tone]}`}>
@@ -238,6 +239,19 @@ export function ConsultationDetailPage({
 	// `dec` overlays the client-decrypted fields under ZK; `live` the
 	// polled audio-pipeline state — never active under ZK (T-147).
 	const v = { ...c, ...(live ?? {}), ...(dec ?? {}) };
+	// Clickable transcript evidence: at most one section's grounding
+	// sentences are marked up in the transcript at a time; turning a
+	// section on also scrolls the ScrollArea to the first match.
+	const [evidence, setEvidence] = useState<{
+		section: AnamnesisSectionKey;
+		sentences: readonly string[];
+	} | null>(null);
+	const transcriptRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (!evidence) return;
+		// jsdom has no scrollIntoView — the optional call keeps tests quiet.
+		transcriptRef.current?.querySelector("mark")?.scrollIntoView?.({ block: "nearest" });
+	}, [evidence, v.transcript, v.serverTranscript, v.correctedTranscript]);
 	// Tamper-evidence badge (T-139): re-verify the anamnesis version
 	// chain once on mount — only meaningful when an anamnesis exists.
 	const [integrity, setIntegrity] = useState<ConsultationIntegrityReport | null>(null);
@@ -268,119 +282,140 @@ export function ConsultationDetailPage({
 	// consultation's DEK — nothing clinical is rendered.
 	if (locked) {
 		return (
-			<div>
-				{/* Real link, not Button render=: it navigates, so it
-				    keeps link semantics (and avoids the Base UI
-				    nativeButton warning). */}
-				<Link
-					to={portalPath("/consultations")}
-					className={buttonVariants({ variant: "ghost", size: "sm", className: "-ml-2" })}
-				>
-					<ArrowLeftIcon />
-					{t.detail.back}
-				</Link>
-				<Empty className="mt-6 border bg-card px-6 py-16">
+			<PageContainer>
+				<PageHeader
+					title={t.zk.lockedRecord}
+					actions={
+						<Button
+							variant="ghost"
+							size="sm"
+							nativeButton={false}
+							render={<Link to={portalPath("/consultations")} />}
+						>
+							<ArrowLeftIcon data-icon="inline-start" />
+							{t.detail.back}
+						</Button>
+					}
+				/>
+				<Empty className="border bg-card px-6 py-16">
 					<EmptyHeader>
 						<EmptyMedia variant="icon">
 							<LockIcon />
 						</EmptyMedia>
-						<EmptyTitle>{t.zk.lockedRecord}</EmptyTitle>
 						<EmptyDescription>{t.zk.lockedHint}</EmptyDescription>
 					</EmptyHeader>
 				</Empty>
-			</div>
+			</PageContainer>
 		);
 	}
 
 	return (
-		<div>
-			{/* Real link, not Button render=: it navigates, so it
-			    keeps link semantics (and avoids the Base UI
-			    nativeButton warning). */}
-			<Link
-				to={portalPath("/consultations")}
-				className={buttonVariants({ variant: "ghost", size: "sm", className: "-ml-2" })}
-			>
-				<ArrowLeftIcon />
-				{t.detail.back}
-			</Link>
-
-			{/* ---------- header ---------- */}
-			<header className="mt-3 flex flex-wrap items-start justify-between gap-4">
-				<div>
-					<h1 className="text-3xl font-bold tracking-tight">
-						{v.patientId && v.patientName ? (
-							<Link
-								to={portalPath(`/patients/${v.patientId}`)}
-								className="hover:underline"
-								title={t.detail.openPatientRecord}
-							>
-								{v.patientName}
-							</Link>
-						) : (
-							(v.patientName ?? t.common.consultationId(c.id))
-						)}
-					</h1>
-					<p className="mt-1 text-sm text-muted-foreground">
+		<PageContainer>
+			{/* PageHeader renders any ReactNode, but its `title` prop type
+			    collides with the HTML `title` attribute upstream — cast the
+			    h1 so the page keeps a single heading landmark. */}
+			<PageHeader
+				title={
+					(
+						<h1>
+							{v.patientId && v.patientName ? (
+								<Link
+									to={portalPath(`/patients/${v.patientId}`)}
+									className="hover:underline"
+									title={t.detail.openPatientRecord}
+								>
+									{v.patientName}
+								</Link>
+							) : (
+								(v.patientName ?? t.common.consultationId(c.id))
+							)}
+						</h1>
+					) as never
+				}
+				description={
+					<>
 						{t.common.consultationId(c.id)} ·{" "}
 						<LocalDateTime
 							value={c.createdAt}
 							locale={locale}
 							options={{ dateStyle: "long", timeStyle: "short" }}
 						/>
-					</p>
-					<div className="mt-3 flex flex-wrap gap-1.5">
-						<Chip>{sourceLabel(t, c.source)}</Chip>
-						{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
-						{c.consentAt ? (
-							<Chip tone="green">
-								{t.detail.consentLabel}{" "}
-								<LocalDateTime
-									value={c.consentAt}
-									locale={locale}
-									options={{ year: "numeric", month: "numeric", day: "numeric" }}
-								/>
-							</Chip>
-						) : (
-							<Chip tone="amber">{t.detail.consentNotRecorded}</Chip>
-						)}
-						{c.status === "live" ? <Chip tone="amber">{t.detail.inProgress}</Chip> : null}
-						{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
-						{history && history.count > 0 ? (
-							<Chip>{t.detail.previousConsultations(history.count)}</Chip>
-						) : null}
-					</div>
-				</div>
-				{v.anamnesis ? (
-					<div className="flex gap-2">
-						<Button type="button" variant="outline" onClick={copy}>
-							{t.common.copy}
+					</>
+				}
+				actions={
+					<>
+						<Button
+							variant="ghost"
+							size="sm"
+							nativeButton={false}
+							render={<Link to={portalPath("/consultations")} />}
+						>
+							<ArrowLeftIcon data-icon="inline-start" />
+							{t.detail.back}
 						</Button>
-						{/* T-146: the server-side PDF reads plaintext columns —
-						 * impossible under ZK. The export is gated (not hidden):
-						 * a disabled control states why instead of silently
-						 * dropping the affordance. */}
-						{!zk ? (
-							<a href={`/api/consultations/${c.id}/pdf`} download className={buttonVariants()}>
-								<DownloadIcon className="mr-1.5 inline size-4 -translate-y-px" />
-								{t.common.downloadPdf}
-							</a>
-						) : (
-							<Button type="button" variant="outline" disabled title={t.zk.exportLocked}>
-								<LockIcon className="mr-1.5 inline size-4 -translate-y-px" />
-								{t.zk.exportLocked}
-							</Button>
-						)}
-					</div>
-				) : null}
-			</header>
+						{v.anamnesis ? (
+							<>
+								<Button type="button" variant="outline" onClick={copy}>
+									{t.common.copy}
+								</Button>
+								{/* T-146: the server-side PDF reads plaintext columns —
+								 * impossible under ZK. The export is gated (not hidden):
+								 * a disabled control states why instead of silently
+								 * dropping the affordance. */}
+								{!zk ? (
+									<Button
+										nativeButton={false}
+										render={<a href={`/api/consultations/${c.id}/pdf`} download />}
+									>
+										<DownloadIcon data-icon="inline-start" />
+										{t.common.downloadPdf}
+									</Button>
+								) : (
+									<Button type="button" variant="outline" disabled title={t.zk.exportLocked}>
+										<LockIcon data-icon="inline-start" />
+										{t.zk.exportLocked}
+									</Button>
+								)}
+							</>
+						) : null}
+					</>
+				}
+			/>
+
+			{/* ---------- meta ---------- */}
+			<Card>
+				<CardHeader>
+					<CardTitle>{t.detail.metaTitle}</CardTitle>
+				</CardHeader>
+				<CardContent className="flex flex-wrap items-center gap-1.5">
+					<Chip>{sourceLabel(t, c.source)}</Chip>
+					{c.engine ? <Chip>{t.common.engine(c.engine)}</Chip> : null}
+					{c.consentAt ? (
+						<Chip tone="green">
+							{t.detail.consentLabel}{" "}
+							<LocalDateTime
+								value={c.consentAt}
+								locale={locale}
+								options={{ year: "numeric", month: "numeric", day: "numeric" }}
+							/>
+						</Chip>
+					) : (
+						<Chip tone="blue">{t.detail.consentNotRecorded}</Chip>
+					)}
+					{c.status === "live" ? <Chip tone="blue">{t.detail.inProgress}</Chip> : null}
+					{v.anamnesis ? <IntegrityBadge report={integrity} labels={t.detail.integrity} /> : null}
+					{history && history.count > 0 ? (
+						<Chip>{t.detail.previousConsultations(history.count)}</Chip>
+					) : null}
+				</CardContent>
+			</Card>
 
 			{history && history.count > 0 ? (
-				<details className="mt-4 rounded-2xl border border-border bg-card shadow-sm">
-					<summary className="cursor-pointer px-5 py-3 text-sm font-semibold">
+				<details className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/10">
+					<summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
 						{t.sections.historico} · {t.detail.previousConsultations(history.count)}
 					</summary>
-					<ul className="space-y-2 border-t border-border px-5 py-3 text-sm">
+					<ul className="space-y-2 border-t border-border px-4 py-3 text-sm">
 						{history.visits.map((v) => (
 							<li key={v.id}>
 								<span className="text-muted-foreground">
@@ -392,96 +427,126 @@ export function ConsultationDetailPage({
 							</li>
 						))}
 					</ul>
-					<p className="px-5 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
+					<p className="px-4 pb-3 text-[11px] text-muted-foreground">{t.detail.historyNote}</p>
 				</details>
 			) : null}
 
-			<div className="mt-8 grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
+			<div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
 				{/* ---------- anamnesis ---------- */}
-				<section>
-					<h2 className="mb-3 text-sm font-semibold tracking-wide text-muted-foreground uppercase">
-						{t.common.anamnesis}
-					</h2>
-					{v.anamnesis ? (
-						<div className="grid gap-3 sm:grid-cols-2">
-							{(
-								Object.keys(t.sections).filter((k) => k !== "historico") as AnamnesisSectionKey[]
-							).map((key) => {
-								const sec = v.anamnesis?.[key];
-								if (!sec) return null;
-								const pending = sec.content.startsWith("A preencher pelo médico");
-								return (
-									<div
-										key={key}
-										className={`rounded-2xl border border-l-4 border-border bg-card p-4 shadow-sm ${CONF_BAR[sec.confidence]} ${
-											WIDE.includes(key) ? "sm:col-span-2" : ""
-										}`}
-									>
-										<div className="flex items-center justify-between gap-2">
-											<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
-											<span
-												className={`rounded-full px-2 py-0.5 text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
-											>
-												{t.confidence[sec.confidence]}
-											</span>
-										</div>
-										<p
-											className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
-												pending ? "text-warning italic" : "text-foreground"
-											}`}
-										>
-											{sec.content || t.detail.notReported}
-										</p>
-										{sec.evidence.length ? (
-											<details className="mt-2">
-												<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
-													{t.detail.evidence(sec.evidence.length)}
-												</summary>
-												<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
-													{sec.evidence.map((ev) => (
-														<li key={ev.slice(0, 40)}>“{ev}”</li>
-													))}
-												</ul>
-											</details>
-										) : null}
-									</div>
-								);
-							})}
-						</div>
-					) : (
-						<Empty className="border bg-card px-6 py-14">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									<ClipboardListIcon />
-								</EmptyMedia>
-								<EmptyTitle>{t.detail.noAnamnesisTitle}</EmptyTitle>
-								<EmptyDescription>{t.detail.noAnamnesisDescription}</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					)}
-				</section>
+				<Card>
+					<CardHeader className="border-b">
+						<CardTitle>{t.common.anamnesis}</CardTitle>
+					</CardHeader>
+					<CardContent>
+						{v.anamnesis ? (
+							<ScrollArea className="h-[70vh]">
+								<div className="divide-y divide-border">
+									{(
+										Object.keys(t.sections).filter(
+											(k) => k !== "historico",
+										) as AnamnesisSectionKey[]
+									).map((key) => {
+										const sec = v.anamnesis?.[key];
+										if (!sec) return null;
+										const pending = sec.content.startsWith("A preencher pelo médico");
+										return (
+											<div key={key} className="py-4 first:pt-1 last:pb-1">
+												<div className="flex items-start justify-between gap-2">
+													<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
+													<div className="flex shrink-0 items-center gap-1.5">
+														{sec.evidence.length ? (
+															<Button
+																type="button"
+																variant="ghost"
+																size="sm"
+																aria-pressed={evidence?.section === key}
+																title={t.detail.evidenceTitle}
+																onClick={() =>
+																	setEvidence(
+																		evidence?.section === key
+																			? null
+																			: { section: key, sentences: sec.evidence },
+																	)
+																}
+															>
+																<QuoteIcon data-icon="inline-start" />
+																{evidence?.section === key
+																	? t.detail.hideEvidence
+																	: t.detail.showEvidence}
+															</Button>
+														) : null}
+														<Badge
+															variant="secondary"
+															className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+														>
+															{t.confidence[sec.confidence]}
+														</Badge>
+													</div>
+												</div>
+												<p
+													className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
+														pending ? "text-muted-foreground italic" : "text-foreground"
+													}`}
+												>
+													{sec.content || t.detail.notReported}
+												</p>
+												{sec.evidence.length ? (
+													<details className="mt-2">
+														<summary className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground">
+															{t.detail.evidence(sec.evidence.length)}
+														</summary>
+														<ul className="mt-1 list-inside list-disc text-[11px] text-muted-foreground">
+															{sec.evidence.map((ev) => (
+																<li key={ev.slice(0, 40)}>“{ev}”</li>
+															))}
+														</ul>
+													</details>
+												) : null}
+											</div>
+										);
+									})}
+								</div>
+							</ScrollArea>
+						) : (
+							<Empty className="border bg-card px-6 py-14">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<ClipboardListIcon />
+									</EmptyMedia>
+									<EmptyTitle>{t.detail.noAnamnesisTitle}</EmptyTitle>
+									<EmptyDescription>{t.detail.noAnamnesisDescription}</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						)}
+					</CardContent>
+				</Card>
 
 				{/* ---------- side: transcript ---------- */}
-				<aside className="rounded-2xl border border-border bg-card shadow-sm lg:sticky lg:top-20">
-					<div className="border-b border-border px-5 py-3">
-						<h2 className="text-sm font-semibold">{t.common.transcript}</h2>
-					</div>
-					<div className="max-h-[70vh] overflow-y-auto p-5">
-						<AudioTranscriptPanel
-							i18n={i18n}
-							locale={locale}
-							consultationId={c.id}
-							audioStatus={v.audioStatus}
-							audioSrc={zkAudioUrl ?? undefined}
-							hasAudio={Boolean(v.audioKey)}
-							browserText={v.transcript}
-							serverText={v.serverTranscript}
-							correctedText={v.correctedTranscript}
-						/>
-					</div>
-				</aside>
+				<Card className="lg:sticky lg:top-20">
+					<CardHeader className="border-b">
+						<CardTitle>{t.common.transcript}</CardTitle>
+					</CardHeader>
+					<CardContent>
+						<ScrollArea className="h-[70vh]">
+							<div className="pr-3" ref={transcriptRef}>
+								<AudioTranscriptPanel
+									i18n={i18n}
+									locale={locale}
+									consultationId={c.id}
+									audioStatus={v.audioStatus}
+									audioSrc={zkAudioUrl ?? undefined}
+									hasAudio={Boolean(v.audioKey)}
+									browserText={v.transcript}
+									serverText={v.serverTranscript}
+									correctedText={v.correctedTranscript}
+									highlight={evidence?.sentences}
+								/>
+							</div>
+						</ScrollArea>
+					</CardContent>
+				</Card>
 			</div>
 			<Toast toast={toast} onClose={() => setToast(null)} />
-		</div>
+		</PageContainer>
 	);
 }
