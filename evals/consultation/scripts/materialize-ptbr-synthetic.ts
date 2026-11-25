@@ -16,7 +16,7 @@
  * authored cohort. This script writes the same artifacts generate
  * would (samples + blob provenance + DatasetManifest + Experiment)
  * straight into <workdir>/manifest.sqlite, so the pinned dataset
- * `consult-ptbr-synthetic@v1` materializes byte-identically every run.
+ * `consult-ptbr-synthetic@v2` materializes byte-identically every run.
  *
  * Store format mirrors packages/eval-adapter-local/src/index.ts
  * (makeLocalStoreLayer / makeLocalEvalStoreLayer): doc-JSON rows in

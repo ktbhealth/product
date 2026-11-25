@@ -161,6 +161,13 @@ export const Sample = Schema.Struct({
 	audio: Schema.optionalKey(AudioRef),
 	gold: Gold,
 	provenance: Schema.optionalKey(Provenance),
+	/** Eval split — "heldout" samples are excluded from tuning and
+	 * scored once at the end. Absent = "train". */
+	evalSplit: Schema.optionalKey(Schema.Literals(["train", "heldout"])),
+	/** Difficulty/content axis tags (e.g. "negation-dense",
+	 * "polypharmacy") for stratified reporting — free-form labels,
+	 * absent = untagged. */
+	axes: Schema.optionalKey(Schema.Array(Schema.String)),
 }).pipe(
 	Schema.check(
 		Schema.makeFilter(

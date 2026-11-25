@@ -27,7 +27,7 @@ import type { PtbrConsult } from "./types.ts";
  */
 
 export const PTBR_SYNTHETIC_DATASET_ID = "consult-ptbr-synthetic";
-export const PTBR_SYNTHETIC_DATASET_VERSION = "v1";
+export const PTBR_SYNTHETIC_DATASET_VERSION = "v2";
 
 /** The datasetVersion stamped on every sample row — MUST equal
  * `${manifest.dataset.id}-${manifest.dataset.version}` for
@@ -48,9 +48,26 @@ export const ptbrSyntheticAudioUri = (consult: PtbrConsult): string =>
 /** Gold provenance tag — authored content validated by the dataset
  * author (T-042), distinct from "generator" (template path) and
  * "physician:<id>" (phase-2 real consults). */
-const PTBR_SYNTHETIC_VALIDATED_BY = "author:ptbr-synthetic@v1";
+const PTBR_SYNTHETIC_VALIDATED_BY = "author:ptbr-synthetic@v2";
 
-const consultToSample = (consult: PtbrConsult, datasetVersion: string): Sample => {
+/** Slugs force-assigned to the "heldout" split regardless of the
+ * consult's own `split` field — lets existing authored consults join
+ * the heldout set without editing their files. Roughly 20% of the
+ * cohort should be heldout (3 of 18 here); keep the list balanced
+ * across specialties as the cohort grows. */
+export const PTBR_SYNTHETIC_HELDOUT_SLUGS: readonly string[] = [
+	"gp-cefaleia-01",
+	"card-colesterol-03",
+	"ped-febre-01",
+];
+
+/** Effective eval split — the heldout-slug override wins over the
+ * consult's `split` field; absent `split` defaults to "train". */
+export const ptbrSyntheticSplit = (consult: PtbrConsult): "train" | "heldout" =>
+	PTBR_SYNTHETIC_HELDOUT_SLUGS.includes(consult.slug) ? "heldout" : (consult.split ?? "train");
+
+/** Project one authored consult into a schema `Sample` row. */
+export const ptbrConsultToSample = (consult: PtbrConsult, datasetVersion: string): Sample => {
 	const script = consult.turns.map((t) => t.text).join("\n");
 	return {
 		id: ptbrSyntheticSampleId(consult),
@@ -84,6 +101,8 @@ const consultToSample = (consult: PtbrConsult, datasetVersion: string): Sample =
 			validatedBy: PTBR_SYNTHETIC_VALIDATED_BY,
 			entities: consult.entities.map((e) => ({ ...e })),
 		},
+		evalSplit: ptbrSyntheticSplit(consult),
+		...(consult.axes === undefined ? {} : { axes: [...consult.axes] }),
 	};
 };
 
@@ -97,5 +116,5 @@ export const buildPtbrSyntheticSamples = (opts?: {
 	const version = opts?.datasetVersion ?? ptbrSyntheticDatasetVersion();
 	const consults =
 		opts?.limit === undefined ? PTBR_CONSULTATIONS : PTBR_CONSULTATIONS.slice(0, opts.limit);
-	return consults.map((c) => consultToSample(c, version));
+	return consults.map((c) => ptbrConsultToSample(c, version));
 };

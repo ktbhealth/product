@@ -6,9 +6,12 @@ import { Schema } from "effect";
 import { PTBR_CONSULTATIONS } from "./consultations.ts";
 import {
 	buildPtbrSyntheticSamples,
+	PTBR_SYNTHETIC_HELDOUT_SLUGS,
+	ptbrConsultToSample,
 	ptbrSyntheticAudioUri,
 	ptbrSyntheticDatasetVersion,
 	ptbrSyntheticSampleId,
+	ptbrSyntheticSplit,
 	PTBR_SYNTHETIC_DATASET_ID,
 	PTBR_SYNTHETIC_DATASET_VERSION,
 } from "./dataset.ts";
@@ -17,8 +20,8 @@ import type { PtbrConsult } from "./types.ts";
 const scriptOf = (c: PtbrConsult): string => c.turns.map((t) => t.text).join("\n");
 
 describe("PTBR_CONSULTATIONS (authored cohort)", () => {
-	it("has 18 consults across 6 specialties, 3 each", () => {
-		expect(PTBR_CONSULTATIONS).toHaveLength(18);
+	it("has 24 consults across 8 specialties", () => {
+		expect(PTBR_CONSULTATIONS).toHaveLength(24);
 		const bySpecialty = new Map<string, number>();
 		for (const c of PTBR_CONSULTATIONS) {
 			bySpecialty.set(c.specialty, (bySpecialty.get(c.specialty) ?? 0) + 1);
@@ -27,11 +30,15 @@ describe("PTBR_CONSULTATIONS (authored cohort)", () => {
 			"cardiology",
 			"dermatology",
 			"general_practice",
+			"geriatrics",
 			"gynecology",
 			"orthopedics",
 			"pediatrics",
+			"psychiatry",
 		]);
-		for (const n of bySpecialty.values()) expect(n).toBe(3);
+		// Base cohort is 3/specialty; edge cases add uneven coverage —
+		// every specialty still has at least one consult.
+		for (const n of bySpecialty.values()) expect(n).toBeGreaterThanOrEqual(1);
 	});
 
 	it("has unique slugs and well-formed turns", () => {
@@ -103,9 +110,81 @@ describe("buildPtbrSyntheticSamples", () => {
 		expect(few.map((s) => s.id)).toEqual(all.slice(0, 4).map((s) => s.id));
 	});
 
-	it("pins the consult-ptbr-synthetic@v1 dataset identity", () => {
+	it("pins the consult-ptbr-synthetic@v2 dataset identity", () => {
 		expect(PTBR_SYNTHETIC_DATASET_ID).toBe("consult-ptbr-synthetic");
-		expect(PTBR_SYNTHETIC_DATASET_VERSION).toBe("v1");
-		expect(ptbrSyntheticDatasetVersion()).toBe("consult-ptbr-synthetic-v1");
+		expect(PTBR_SYNTHETIC_DATASET_VERSION).toBe("v2");
+		expect(ptbrSyntheticDatasetVersion()).toBe("consult-ptbr-synthetic-v2");
+	});
+});
+
+describe("eval split and axes metadata", () => {
+	const baseConsult: PtbrConsult = {
+		slug: "test-consult",
+		specialty: "general_practice",
+		region: "southeast",
+		ageBand: "adult",
+		register: "colloquial",
+		gender: "f",
+		socialClass: "c",
+		education: "secondary",
+		patientName: "Paciente Teste",
+		doctor: { gender: "m", register: "formal" },
+		turns: [
+			{ speaker: "doctor", text: "Olá, como você está?" },
+			{ speaker: "patient", text: "Tudo bem, doutor." },
+		],
+		entities: [{ category: "medication", value: "dipirona" }],
+	};
+
+	it("assigns every consult a split — slug override or field", () => {
+		for (const c of PTBR_CONSULTATIONS) {
+			const expected =
+				PTBR_SYNTHETIC_HELDOUT_SLUGS.includes(c.slug) || c.split === "heldout"
+					? "heldout"
+					: "train";
+			expect(ptbrSyntheticSplit(c)).toBe(expected);
+		}
+		expect(ptbrSyntheticSplit(baseConsult)).toBe("train");
+	});
+
+	it("stamps evalSplit on every sample — heldout wins", () => {
+		const samples = buildPtbrSyntheticSamples();
+		const bySlug = new Map(PTBR_CONSULTATIONS.map((c) => [c.slug, c]));
+		for (const s of samples) {
+			const slug = s.id.replace(/^ptbr-/, "");
+			expect(s.evalSplit).toBe(ptbrSyntheticSplit(bySlug.get(slug)!));
+		}
+		expect(PTBR_SYNTHETIC_HELDOUT_SLUGS).toHaveLength(3);
+		// ~20% of the cohort is heldout: 3 slug-forced + 2 field-marked.
+		const heldoutCount = PTBR_CONSULTATIONS.filter(
+			(c) => ptbrSyntheticSplit(c) === "heldout",
+		).length;
+		expect(heldoutCount).toBe(5);
+	});
+
+	it("heldout slug override beats an explicit consult.split", () => {
+		const forced = { ...baseConsult, slug: "gp-cefaleia-01", split: "train" as const };
+		expect(ptbrSyntheticSplit(forced)).toBe("heldout");
+		expect(ptbrConsultToSample(forced, "v").evalSplit).toBe("heldout");
+	});
+
+	it("consult.split=heldout marks non-listed slugs heldout", () => {
+		const heldout = { ...baseConsult, split: "heldout" as const };
+		expect(ptbrSyntheticSplit(heldout)).toBe("heldout");
+		expect(ptbrConsultToSample(heldout, "v").evalSplit).toBe("heldout");
+	});
+
+	it("propagates axes to the sample and omits them when absent", () => {
+		const tagged = ptbrConsultToSample(
+			{ ...baseConsult, axes: ["negation-dense", "numeric-dense"] },
+			"v",
+		);
+		expect(tagged.axes).toEqual(["negation-dense", "numeric-dense"]);
+		const untagged = ptbrConsultToSample(baseConsult, "v");
+		expect(untagged.axes).toBeUndefined();
+		// Decoded rows keep the metadata — the schema fields are real.
+		const decode = Schema.decodeUnknownSync(Sample);
+		expect(decode(tagged).axes).toEqual(["negation-dense", "numeric-dense"]);
+		expect(decode(tagged).evalSplit).toBe("train");
 	});
 });
