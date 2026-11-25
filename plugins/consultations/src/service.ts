@@ -54,6 +54,7 @@ import {
 	ownsBot,
 	recordConsent,
 	saveConsultation,
+	saveTranscriptEdits,
 	setAnamnesisReview,
 	setDeferred,
 	setTranscriptReview,
@@ -65,6 +66,7 @@ import {
 	listAllConsultations,
 	listConsultations,
 	nextPendingReviewId,
+	transcriptEditsState,
 	type AdminConsultationRow,
 	portalConsultation,
 	portalConsultationRows,
@@ -85,6 +87,7 @@ import {
 	requireCipheredWhenZk,
 	tenantRowVisible,
 } from "./tenant-visibility.ts";
+import { deriveEditsBase, parseTranscriptEdits } from "./transcript-edits.ts";
 
 /**
  * Consultations domain port — Effect service, swappable in tests.
@@ -207,6 +210,19 @@ export class Consultations extends Context.Service<
 		 * binding. Re-stamping re-stamps.
 		 */
 		readonly reviewTranscript: (id: number, userId: string) => Effect.Effect<void, Forbidden>;
+		/**
+		 * Store the physician's transcript edit log (PL-023): the
+		 * client-computed Loro update list — diff-only, the readable
+		 * transcript is a projection. `edits` is plaintext JSON outside
+		 * ZK and an opaque `v1.` envelope under it (ciphered column —
+		 * `requireCipheredWhenZk` enforces both directions). The
+		 * projection base is pinned server-side on first write.
+		 */
+		readonly saveTranscriptEdits: (
+			id: number,
+			userId: string,
+			edits: string,
+		) => Effect.Effect<void, Forbidden>;
 		/**
 		 * "I approve this anamnesis into the record" (PL-022) — stamps
 		 * `anamnesisReviewedAt/By` bound to the row's current
@@ -854,7 +870,13 @@ export const ConsultationsLive = Layer.effect(
 				const scope = yield* consultationScope(userId);
 				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
 				yield* Effect.logInfo("consultation transcript reviewed", { consultationId: id, userId });
-				yield* Effect.promise(() => setTranscriptReview(db, id, userId, scope));
+				// PL-023: the stamp binds the current edit-log length — under
+				// ZK the log is an opaque envelope (unparseable → count 1,
+				// "edits present" is all the binding can promise).
+				const state = yield* Effect.promise(() => transcriptEditsState(db, id));
+				const editsCount =
+					state?.edits == null ? 0 : Math.max(parseTranscriptEdits(state.edits).length, 1);
+				yield* Effect.promise(() => setTranscriptReview(db, id, userId, editsCount, scope));
 				yield* audit({
 					action: "consultations.transcript.review",
 					targetType: "consultation",
@@ -912,6 +934,46 @@ export const ConsultationsLive = Layer.effect(
 					targetId: id,
 					tenantId: owner?.tenantId ?? null,
 					detail: until === null ? undefined : { until: until.toISOString() },
+				});
+			}),
+			saveTranscriptEdits: Effect.fn("Consultations.saveTranscriptEdits")(function* (
+				id: number,
+				userId: string,
+				edits: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.update");
+				const owner = yield* Effect.promise(() => consultationOwner(db, id));
+				if (owner !== null) {
+					yield* authorizeConsultationRow(platformAdmin, permissions, owner, "consultation.update");
+					// T-145: the edit log is a ciphered column — under ZK it
+					// arrives as an opaque envelope, outside ZK as plain JSON.
+					yield* requireCipheredWhenZk(db, owner.tenantId, [edits], "consultation.update");
+				}
+				const state = yield* Effect.promise(() => transcriptEditsState(db, id));
+				if (state === null) return;
+				// Skip no-op writes: an empty/invalid plaintext log over an
+				// absent column. An empty log over a populated one is a
+				// legit clear (undo-all before confirm); envelope payloads
+				// always go through — opaque by design.
+				const parsed = parseTranscriptEdits(edits);
+				if (!edits.startsWith("v1.") && parsed.length === 0 && !state.edits) return;
+				const base =
+					state.editsBase ??
+					deriveEditsBase({ corrected: state.hasCorrected, server: state.hasServer });
+				const scope = yield* consultationScope(userId);
+				yield* Effect.annotateCurrentSpan({ consultationId: id, userId });
+				yield* Effect.logInfo("consultation transcript edits saved", {
+					consultationId: id,
+					userId,
+					base,
+				});
+				yield* Effect.promise(() => saveTranscriptEdits(db, id, { edits, base }, scope));
+				yield* audit({
+					action: "consultations.transcript.edit",
+					targetType: "consultation",
+					targetId: id,
+					tenantId: owner?.tenantId ?? null,
+					detail: { ops: parsed.length },
 				});
 			}),
 			nextPendingReview: Effect.fn("Consultations.nextPendingReview")(function* (

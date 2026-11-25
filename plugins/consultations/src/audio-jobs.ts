@@ -4,6 +4,7 @@ import type { DbClient } from "@ktb/db";
 import { consultations, patients } from "@ktb/db/schema";
 
 import { rowTenantIsZk } from "./lifecycle.ts";
+import { serializeTranscriptSegments, type TranscriptSegment } from "./segments.ts";
 import { AUDIO_RETRY_STATUSES, type AudioJobRow } from "./api.ts";
 
 // Canonical home is ./api.ts (client-safe cross-plugin surface); the
@@ -100,14 +101,25 @@ export async function beginAudioJob(db: DbClient, consultationId: number) {
 		.where(eq(consultations.id, consultationId));
 }
 
-/** Server transcript persisted — the raw ASR evidence. No-op under
- * ZK: the Whisper pipeline never runs there (T-147), and a plaintext
- * server transcript would defeat the cipher spec. */
-export async function completeAudioJob(db: DbClient, consultationId: number, transcript: string) {
+/** Server transcript persisted — the raw ASR evidence, plus the
+ * verbose_json segments when the provider returns them (PL-023).
+ * No-op under ZK: the Whisper pipeline never runs there (T-147),
+ * and a plaintext server transcript would defeat the cipher spec. */
+export async function completeAudioJob(
+	db: DbClient,
+	consultationId: number,
+	transcript: string,
+	segments?: readonly TranscriptSegment[] | null,
+) {
 	if (await rowTenantIsZk(db, consultationId)) return;
 	await db
 		.update(consultations)
-		.set({ serverTranscript: transcript, audioStatus: "done", audioError: null })
+		.set({
+			serverTranscript: transcript,
+			transcriptSegments: serializeTranscriptSegments(segments),
+			audioStatus: "done",
+			audioError: null,
+		})
 		.where(eq(consultations.id, consultationId));
 }
 

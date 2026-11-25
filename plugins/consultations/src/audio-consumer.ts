@@ -19,6 +19,7 @@ import { runAsTenantId } from "@ktb/tenant";
 import { tenantIsZk } from "@ktb/vault";
 
 import { ConsultationAudioUpdated } from "./api.ts";
+import { extractTranscriptSegments, type TranscriptSegment } from "./segments.ts";
 import {
 	AUDIO_TRANSCRIPTION_JOB_KIND,
 	audioJobRecord,
@@ -98,7 +99,10 @@ export interface WhisperSegment {
  */
 export interface TranscriptionResult {
 	readonly text: string;
-	readonly segments?: readonly WhisperSegment[];
+	/** Timed segments when the provider returns them — `TranscriptSegment`
+	 * carries the whisper `avgLogprob` confidence proxy the review-mode
+	 * uncertainty markers need (PL-023). */
+	readonly segments?: readonly TranscriptSegment[];
 }
 
 export interface AudioJobDeps {
@@ -189,18 +193,6 @@ export function whisperInputs(audioBase64: string) {
 	};
 }
 
-/** Tolerant segment decode — drops malformed entries rather than
- * failing the whole transcription (a partially-timed response is
- * still usable; the gate scores what it gets). */
-const asWhisperSegment = (s: unknown): WhisperSegment | null => {
-	if (typeof s !== "object" || s === null) return null;
-	const r = s as Record<string, unknown>;
-	if (typeof r.text !== "string") return null;
-	if (typeof r.start !== "number" || typeof r.end !== "number") return null;
-	if (!Number.isFinite(r.start) || !Number.isFinite(r.end)) return null;
-	return { start: r.start, end: r.end, text: r.text };
-};
-
 /**
  * Tolerant extraction across Workers AI response shapes — flat text
  * plus optional `segments` (whisper-large-v3-turbo returns them in the
@@ -219,9 +211,11 @@ export function extractWhisperResult(raw: unknown): TranscriptionResult {
 		if (text === undefined) {
 			throw new Error("Workers AI returned an unrecognized transcription shape");
 		}
-		const segments = Array.isArray(r.segments)
-			? r.segments.map(asWhisperSegment).filter((s): s is WhisperSegment => s !== null)
-			: undefined;
+		// `extractTranscriptSegments` (segments.ts) is the tolerant decoder
+		// shared with the persistence path — it also captures the whisper
+		// `avg_logprob` confidence proxy (PL-023) and returns null when the
+		// response carries no usable segments.
+		const segments = extractTranscriptSegments(raw) ?? undefined;
 		return { text, ...(segments !== undefined ? { segments } : {}) };
 	}
 	throw new Error("Workers AI returned an unrecognized transcription shape");
@@ -383,7 +377,10 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 			model: deps.model,
 		});
 	}
-	await completeAudioJob(deps.db, job.consultationId, transcript);
+	// PL-023: persist the timed segments (with avgLogprob) alongside the
+	// raw transcript — review-mode karaoke sync and uncertainty markers
+	// read them back; ZK rows skip persistence inside completeAudioJob.
+	await completeAudioJob(deps.db, job.consultationId, transcript, segments);
 	await notify(deps, job.consultationId, "done", null, tenantId);
 	// P-080: transcription itself is complete — audit before the
 	// best-effort cleanup block below. `segments` records how many

@@ -45,7 +45,15 @@ describe("consultationCipher spec (T-145)", () => {
 	it("classifies every clinical column and keeps operational metadata plaintext", () => {
 		expect(consultationCipher.entity).toBe("consultation");
 		expect([...consultationCipher.fields].sort()).toEqual(
-			["anamnesis", "correctedTranscript", "review", "serverTranscript", "transcript"].sort(),
+			[
+				"anamnesis",
+				"correctedTranscript",
+				"review",
+				"serverTranscript",
+				"transcript",
+				"transcriptEdits",
+				"transcriptSegments",
+			].sort(),
 		);
 		for (const field of ["id", "userId", "patientId", "tenantId", "status", "createdAt"]) {
 			expect(consultationCipher.plaintext).toContain(field);
@@ -335,13 +343,15 @@ describe("signAnamnesis / extractAnamnesisZk", () => {
 });
 
 describe("spec coverage sanity", () => {
-	it("ciphered fields are exactly the five clinical columns", () => {
+	it("ciphered fields are exactly the seven clinical columns", () => {
 		expect(CONSULTATION_CIPHERED_FIELDS).toEqual([
 			"transcript",
 			"anamnesis",
 			"review",
 			"serverTranscript",
 			"correctedTranscript",
+			"transcriptSegments",
+			"transcriptEdits",
 		]);
 	});
 });

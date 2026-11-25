@@ -1,4 +1,17 @@
-import { and, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, or, type SQL } from "drizzle-orm";
+import {
+	and,
+	desc,
+	eq,
+	inArray,
+	isNotNull,
+	isNull,
+	lt,
+	lte,
+	ne,
+	or,
+	sql,
+	type SQL,
+} from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
@@ -145,6 +158,24 @@ export async function consultationOwner(db: DbClient, id: number) {
 			userId: consultations.userId,
 			tenantId: consultations.tenantId,
 			anamnesisVersion: consultations.anamnesisVersion,
+		})
+		.from(consultations)
+		.where(eq(consultations.id, id))
+		.limit(1);
+	return rows[0] ?? null;
+}
+
+/** Edit-log state for `saveTranscriptEdits`/`reviewTranscript` (PL-023):
+ * the stored log, the pinned base tag, and base-layer presence flags
+ * (IS NOT NULL on ciphertext columns works the same under ZK — an
+ * envelope is non-null content either way). */
+export async function transcriptEditsState(db: DbClient, id: number) {
+	const rows = await db
+		.select({
+			edits: consultations.transcriptEdits,
+			editsBase: consultations.transcriptEditsBase,
+			hasCorrected: sql<boolean>`${consultations.correctedTranscript} IS NOT NULL`,
+			hasServer: sql<boolean>`${consultations.serverTranscript} IS NOT NULL`,
 		})
 		.from(consultations)
 		.where(eq(consultations.id, id))

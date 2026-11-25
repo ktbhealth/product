@@ -124,6 +124,8 @@ export interface ConsultationDetailApi {
 	}): Promise<{ ok: boolean }>;
 	/** "Approve & next" — the next unsigned record in the queue. */
 	nextPendingReview?(input: { data: number }): Promise<{ id: number | null }>;
+	/** Persist the Loro transcript-edit log (PL-023). */
+	saveTranscriptEdits?(input: { data: { id: number; edits: string } }): Promise<{ ok: boolean }>;
 	/** Draft + attach an anamnesis for a transcript-only record. */
 	generateAnamnesis?(input: {
 		data: { consultationId: number; transcript: string; patientId?: number };

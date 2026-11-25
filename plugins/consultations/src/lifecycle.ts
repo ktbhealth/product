@@ -186,11 +186,37 @@ export async function recordConsent(db: DbClient, id: number, scope?: SQL) {
 }
 
 /** "I confirmed the transcript matches the encounter" (PL-022) — raw
- * evidence stamp, no version binding. */
-export async function setTranscriptReview(db: DbClient, id: number, userId: string, scope?: SQL) {
+ * evidence stamp; `editsCount` binds the stamp to the edit-log length
+ * at confirm time (PL-023) so later corrections read as new. */
+export async function setTranscriptReview(
+	db: DbClient,
+	id: number,
+	userId: string,
+	editsCount: number,
+	scope?: SQL,
+) {
 	await db
 		.update(consultations)
-		.set({ transcriptReviewedAt: new Date(), transcriptReviewedBy: userId })
+		.set({
+			transcriptReviewedAt: new Date(),
+			transcriptReviewedBy: userId,
+			transcriptReviewedEdits: editsCount,
+		})
+		.where(and(eq(consultations.id, id), scope));
+}
+
+/** Physician transcript edit log (PL-023): store the client-computed
+ * Loro update log and pin the projection base — set once, on first
+ * write (server-derived, never client-supplied). */
+export async function saveTranscriptEdits(
+	db: DbClient,
+	id: number,
+	input: { edits: string; base: string | null },
+	scope?: SQL,
+) {
+	await db
+		.update(consultations)
+		.set({ transcriptEdits: input.edits, transcriptEditsBase: input.base })
 		.where(and(eq(consultations.id, id), scope));
 }
 
