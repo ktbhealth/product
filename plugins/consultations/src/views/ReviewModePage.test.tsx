@@ -224,7 +224,7 @@ describe("ReviewModePage — transcript step", () => {
 		expect(screen.getByText("0 of 1 checked")).toBeTruthy();
 	});
 
-	it("high-confidence transcript shows the spot-check banner, no triage", () => {
+	it("high-confidence transcript keeps the triage frame with the spot-check note", () => {
 		const confident = SEGMENTS.map((s) => ({ ...s, avgLogprob: -0.1 }));
 		renderPage(
 			{},
@@ -233,8 +233,11 @@ describe("ReviewModePage — transcript step", () => {
 				transcriptSegments: serializeTranscriptSegments(confident),
 			}),
 		);
+		// Same card always renders — contents swap chips for the note.
+		expect(screen.getByText("Passages to check")).toBeTruthy();
 		expect(screen.getByText("High-confidence transcript")).toBeTruthy();
-		expect(screen.queryByText("Passages to check")).toBeNull();
+		expect(screen.queryByText("Next uncertain")).toBeNull();
+		expect(screen.queryByText(/of \d+ checked/)).toBeNull();
 	});
 
 	it("saves a segment edit into the Loro log — log gains one entry with seg+text", async () => {

@@ -714,17 +714,33 @@ function TranscriptStep({
 
 					{rich ? (
 						<>
-							{uncertainIdxs.length > 0 ? (
-								<div className="space-y-2 rounded-md border border-warning/40 bg-warning/5 p-2.5">
-									<div className="flex items-center justify-between gap-2">
-										<span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-warning uppercase">
-											<TriangleAlertIcon className="size-3" />
-											{t.review.uncertainQueue}
-										</span>
+							{/* One stable frame across items — the box is always
+							 * here, only its contents vary: chips to drain, or
+							 * the high-confidence note. */}
+							<div className="space-y-2 rounded-md border p-2.5">
+								<div className="flex items-center justify-between gap-2">
+									<span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+										<TriangleAlertIcon className="size-3" />
+										{t.review.uncertainQueue}
+									</span>
+									{uncertainIdxs.length > 0 ? (
 										<span className="text-[10px] text-muted-foreground tabular-nums">
 											{t.review.uncertainProgress(checkedCount, uncertainIdxs.length)}
 										</span>
-									</div>
+									) : null}
+								</div>
+								{uncertainIdxs.length === 0 ? (
+									<p className="flex items-center gap-2 text-sm text-muted-foreground">
+										<CheckIcon className="size-4 shrink-0 text-success" />
+										<span>
+											<span className="font-medium text-foreground">
+												{t.review.highConfTitle}
+											</span>
+											{" — "}
+											{t.review.highConfHint}
+										</span>
+									</p>
+								) : (
 									<div className="flex flex-wrap items-center gap-1">
 										{uncertainIdxs.map((i) => {
 											const verified = checked.has(i);
@@ -766,16 +782,8 @@ function TranscriptStep({
 											{t.review.nextUncertain}
 										</Button>
 									</div>
-								</div>
-							) : (
-								<div className="flex items-center gap-2 rounded-md border border-success/40 bg-success/5 px-3 py-2">
-									<CheckIcon className="size-4 shrink-0 text-success" />
-									<span className="text-sm">
-										<span className="font-medium text-success">{t.review.highConfTitle}</span>
-										<span className="text-muted-foreground"> — {t.review.highConfHint}</span>
-									</span>
-								</div>
-							)}
+								)}
+							</div>
 							<ScrollArea className="h-[52vh]">
 								<div className="space-y-0.5 pr-4">
 									{segments.map((s, i) => {
