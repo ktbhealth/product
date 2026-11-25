@@ -276,6 +276,43 @@ describe("capabilityLayer selection", () => {
 		}
 	});
 
+	test("openai-compat sends structured output unless EVAL_LLM_STRUCTURED_OUTPUT opts out", async () => {
+		const sent = async (flag: string | undefined) => {
+			let body: Record<string, unknown> = {};
+			const fetchImpl = (async (_url: string, init?: RequestInit) => {
+				body = JSON.parse((init?.body ?? "") as string);
+				return {
+					ok: true,
+					json: async () => ({ choices: [{ message: { content: '{"ops":[]}' } }] }),
+					text: async () => "",
+				};
+			}) as unknown as typeof fetch;
+			const layer = capabilityLayer(
+				ctx({
+					profile: "local-chat",
+					env: {
+						EVAL_LLM_BASE_URL: "http://localhost:11434/v1",
+						EVAL_LLM_MODEL: "qwen2.5:7b",
+						...(flag !== undefined ? { EVAL_LLM_STRUCTURED_OUTPUT: flag } : {}),
+					},
+					fetchImpl,
+				}),
+				"llm",
+				"openai-compat",
+			) as Layer.Layer<LlmPort>;
+			await Effect.runPromise(
+				Effect.flatMap(LlmPort, (l) =>
+					l.correct({ taskId: "t", role: "corrector", input: "raw", outputSchema: "EditList" }),
+				).pipe(Effect.provide(layer)),
+			);
+			return "response_format" in body;
+		};
+		expect(await sent(undefined)).toBe(true);
+		expect(await sent("1")).toBe(true);
+		expect(await sent("0")).toBe(false);
+		expect(await sent(" False ")).toBe(false);
+	});
+
 	test("faster-whisper builds with default and configured endpoints", () => {
 		expect(() => capabilityLayer(ctx({ profile: "local" }), "asr", "faster-whisper")).not.toThrow();
 		expect(() =>
