@@ -121,6 +121,8 @@ const PANEL_LABELS: Record<string, string> = {
 	"/portal/secretary/activity": "panel_nav_activity",
 	"/portal/doctor/switch-doctor": "nav_switch_doctor",
 	"/portal/secretary/switch-doctor": "nav_switch_doctor",
+	"/portal/doctor/review": "nav_review",
+	"/portal/secretary/review": "nav_review",
 	"/portal/doctor/secretaries": "nav_secretaries",
 };
 

@@ -99,6 +99,13 @@ export interface ConsultationDetail {
 	anamnesisReviewedAt?: Date | null;
 	anamnesisReviewedVersion?: number | null;
 	deferredUntil?: Date | null;
+	/** Review-mode payloads (PL-023): whisper segments for karaoke, the
+	 * Loro edit log + pinned base, and the op-count the transcript
+	 * confirmation stamped. Envelopes under ZK — decrypted client-side. */
+	transcriptSegments?: string | null;
+	transcriptEdits?: string | null;
+	transcriptEditsBase?: string | null;
+	transcriptReviewedEdits?: number | null;
 }
 
 /** Raw history rows for the client-side ZK history build (T-145). */

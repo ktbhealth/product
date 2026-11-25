@@ -468,6 +468,9 @@ export const I18N_MANIFEST = {
 		nav_platform_console: {
 			params: [],
 		},
+		nav_review: {
+			params: [],
+		},
 		nav_secretaries: {
 			params: [],
 		},
@@ -1940,6 +1943,96 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 		"detail.queueDoneToast": {
+			params: [],
+		},
+		"review.title": {
+			params: [],
+		},
+		"review.queueLabel": {
+			params: [],
+		},
+		"review.pendingCount": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} pending",
+		},
+		"review.sessionDone": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} reviewed this session",
+		},
+		"review.queueEmptyTitle": {
+			params: [],
+		},
+		"review.queueEmptyDescription": {
+			params: [],
+		},
+		"review.missingTitle": {
+			params: [],
+		},
+		"review.missingDescription": {
+			params: [],
+		},
+		"review.backToConsultations": {
+			params: [],
+		},
+		"review.stepTranscript": {
+			params: [],
+		},
+		"review.stepAnamnesis": {
+			params: [],
+		},
+		"review.legacyAudioBadge": {
+			params: [],
+		},
+		"review.noAudioBadge": {
+			params: [],
+		},
+		"review.nextUncertain": {
+			params: [],
+		},
+		"review.editSegment": {
+			params: [],
+		},
+		"review.editFullText": {
+			params: [],
+		},
+		"review.saveEdit": {
+			params: [],
+		},
+		"review.cancelEdit": {
+			params: [],
+		},
+		"review.editedTag": {
+			params: [],
+		},
+		"review.pendingEdits": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "{n} unconfirmed edits",
+		},
+		"review.confirmAndContinue": {
+			params: [],
+		},
+		"review.staleAnamnesis": {
+			params: [],
+		},
+		"review.regenerateAnamnesis": {
+			params: [],
+		},
+		"review.deferredTag": {
+			params: [],
+		},
+		"review.notFound": {
 			params: [],
 		},
 		"transcriptPanel.sourceServer": {
@@ -8711,6 +8804,7 @@ export const I18N_BASE_CATALOG = {
 	nav_patient_login: "I am a patient",
 	nav_patient_portal: "Patient portal",
 	nav_patients: "Patients",
+	nav_review: "Review",
 	nav_platform_console: "Platform console",
 	nav_secretaries: "Secretaries",
 	nav_secretary_login: "I am a secretary",

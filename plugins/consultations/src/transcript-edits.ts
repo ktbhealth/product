@@ -14,6 +14,12 @@ export interface TranscriptEditEntry {
 	readonly by: string;
 	/** base64 Loro update blob. */
 	readonly u: string;
+	/** Karaoke-editor metadata: which ASR segment this batch rewrote.
+	 * Display-only — the projection always reads the blob. */
+	readonly seg?: number;
+	/** Replacement text for `seg`, kept outside the blob so the UI can
+	 * mark edited segments without decoding WASM. */
+	readonly text?: string;
 }
 
 export type TranscriptEditsBase = "corrected" | "server" | "transcript";

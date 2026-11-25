@@ -51,11 +51,19 @@ export function genesisUpdate(base: string): Uint8Array {
  */
 export class TranscriptEditSession {
 	private readonly doc = new LoroDoc();
-	private vv: VersionVector;
+	private vv: VersionVector | null;
 
-	constructor(edits: readonly TranscriptEditEntry[]) {
+	/** Seed from the stored log. When the log is empty, `base` is
+	 * inserted as the genesis content — the first `edit()` then exports
+	 * a *full* update (genesis + delta), which becomes
+	 * `transcript_edits[0]` for every peer. */
+	constructor(edits: readonly TranscriptEditEntry[], base?: string) {
+		if (edits.length === 0 && base != null) {
+			this.doc.getText("t").insert(0, base);
+			this.doc.commit();
+		}
 		for (const e of edits) this.doc.import(b64ToBytes(e.u));
-		this.vv = this.doc.version();
+		this.vv = edits.length === 0 ? null : this.doc.version();
 	}
 
 	/** Current projected text. */
@@ -72,7 +80,13 @@ export class TranscriptEditSession {
 	): Uint8Array {
 		mutate(this.doc.getText("t"));
 		this.doc.commit();
-		const delta = this.doc.export({ mode: "update", from: this.vv });
+		// `vv === null` means the doc was seeded with the base text and
+		// has no imported history: the first delta must carry the genesis
+		// insert too, so it exports the full state, not a range.
+		const delta =
+			this.vv === null
+				? this.doc.export({ mode: "update" })
+				: this.doc.export({ mode: "update", from: this.vv });
 		this.vv = this.doc.version();
 		return delta;
 	}

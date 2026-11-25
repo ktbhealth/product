@@ -1,4 +1,10 @@
-import { ActivityIcon, ClipboardListIcon, HouseIcon, UsersIcon } from "lucide-react";
+import {
+	ActivityIcon,
+	ClipboardCheckIcon,
+	ClipboardListIcon,
+	HouseIcon,
+	UsersIcon,
+} from "lucide-react";
 
 import { AuditActivityPage } from "@ktb/audit/activity-page";
 import { definePlugin, type ChromeContribution, type Page, type Plugin } from "@ktb/kernel";
@@ -10,6 +16,7 @@ import { ClinicianConsultationsPage } from "./views/ClinicianConsultationsPage.t
 import { ClinicianHomePage } from "./views/ClinicianHomePage.tsx";
 import { ClinicianPatientRecordPage } from "./views/ClinicianPatientRecordPage.tsx";
 import { ClinicianPatientsPage } from "./views/ClinicianPatientsPage.tsx";
+import { ClinicianReviewPage } from "./views/ClinicianReviewPage.tsx";
 
 /**
  * Client-safe mirror of ./index.ts — discovered by the browser bundle
@@ -53,6 +60,16 @@ const clinicalPages = (instance: ClinicalInstanceId): Page[] => {
 			id: `clinician.${instance}.consultations.record`,
 			path: `${base}/consultations/*`,
 			component: ClinicianConsultationRecordPage,
+		},
+		{
+			id: `clinician.${instance}.review`,
+			path: `${base}/review`,
+			component: ClinicianReviewPage,
+		},
+		{
+			id: `clinician.${instance}.review.item`,
+			path: `${base}/review/*`,
+			component: ClinicianReviewPage,
 		},
 		{
 			id: `clinician.${instance}.activity`,
@@ -99,8 +116,22 @@ const sidebarChrome = (instance: ClinicalInstanceId): ChromeContribution[] => {
 					label: "Consultations",
 					icon: ClipboardListIcon,
 					group: "Care",
-					// Mirrors clinicianPlugin's server manifest — pending
-					// review count pill (PL-023 F2).
+				},
+			},
+		},
+		{
+			id: `clinician.${instance}.nav.review`,
+			region: "portal.sidebar",
+			portal: instance,
+			content: {
+				kind: "sidebarItem",
+				item: {
+					to: `${base}/review`,
+					label: "Review",
+					icon: ClipboardCheckIcon,
+					group: "Care",
+					// Pending-review count pill (PL-023) — mirrors the
+					// server manifest; hidden at 0.
 					badge: ReviewQueueBadge,
 				},
 			},

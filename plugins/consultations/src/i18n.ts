@@ -150,6 +150,34 @@ export interface ConsultationMessages {
 		readonly approvedToast: string;
 		readonly queueDoneToast: string;
 	};
+	/** Guided review mode (PL-023): queue rail + transcript/anamnesis steps. */
+	readonly review: {
+		readonly title: string;
+		readonly queueLabel: string;
+		readonly pendingCount: (n: number) => string;
+		readonly sessionDone: (n: number) => string;
+		readonly queueEmptyTitle: string;
+		readonly queueEmptyDescription: string;
+		readonly missingTitle: string;
+		readonly missingDescription: string;
+		readonly backToConsultations: string;
+		readonly stepTranscript: string;
+		readonly stepAnamnesis: string;
+		readonly legacyAudioBadge: string;
+		readonly noAudioBadge: string;
+		readonly nextUncertain: string;
+		readonly editSegment: string;
+		readonly editFullText: string;
+		readonly saveEdit: string;
+		readonly cancelEdit: string;
+		readonly editedTag: string;
+		readonly pendingEdits: (n: number) => string;
+		readonly confirmAndContinue: string;
+		readonly staleAnamnesis: string;
+		readonly regenerateAnamnesis: string;
+		readonly deferredTag: string;
+		readonly notFound: string;
+	};
 	readonly transcriptPanel: {
 		readonly sourceServer: string;
 		readonly sourceBrowser: string;
@@ -472,6 +500,33 @@ const en: ConsultationMessages = {
 		deferredUntil: paramMessage("en", "Deferred until {date}", ["date"]),
 		approvedToast: "Anamnesis approved",
 		queueDoneToast: "Review queue complete",
+	},
+	review: {
+		title: "Review mode",
+		queueLabel: "Review queue",
+		pendingCount: paramMessage("en", "{n} pending", ["n"]),
+		sessionDone: paramMessage("en", "{n} reviewed this session", ["n"]),
+		queueEmptyTitle: "Review queue clear",
+		queueEmptyDescription: "Every consultation is reviewed. The end-of-day ritual is done.",
+		missingTitle: "Consultation not found",
+		missingDescription: "It may have been reviewed already or you don't have access to it.",
+		backToConsultations: "Back to consultations",
+		stepTranscript: "Transcript",
+		stepAnamnesis: "Anamnesis",
+		legacyAudioBadge: "legacy audio",
+		noAudioBadge: "no audio to check against",
+		nextUncertain: "Next uncertain",
+		editSegment: "Edit line",
+		editFullText: "Edit transcript",
+		saveEdit: "Save",
+		cancelEdit: "Cancel",
+		editedTag: "edited",
+		pendingEdits: paramMessage("en", "{n} unconfirmed edits", ["n"]),
+		confirmAndContinue: "Confirm transcript & continue",
+		staleAnamnesis: "Transcript has edits — regenerate if the anamnesis should reflect them.",
+		regenerateAnamnesis: "Regenerate anamnesis",
+		deferredTag: "deferred",
+		notFound: "Record not found",
 	},
 	transcriptPanel: {
 		sourceServer: "server · whisper large-v3-turbo",
@@ -812,6 +867,33 @@ const ptBR: ConsultationMessages = {
 		deferredUntil: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
 		approvedToast: "Anamnese aprovada",
 		queueDoneToast: "Fila de revisão concluída",
+	},
+	review: {
+		title: "Modo de revisão",
+		queueLabel: "Fila de revisão",
+		pendingCount: paramMessage("pt-BR", "{n} pendentes", ["n"]),
+		sessionDone: paramMessage("pt-BR", "{n} revisadas nesta sessão", ["n"]),
+		queueEmptyTitle: "Fila de revisão zerada",
+		queueEmptyDescription: "Todas as consultas foram revisadas. O ritual de fim de dia está feito.",
+		missingTitle: "Consulta não encontrada",
+		missingDescription: "Ela pode já ter sido revisada ou você não tem acesso a ela.",
+		backToConsultations: "Voltar para consultas",
+		stepTranscript: "Transcrição",
+		stepAnamnesis: "Anamnese",
+		legacyAudioBadge: "áudio legado",
+		noAudioBadge: "sem áudio para conferência",
+		nextUncertain: "Próxima incerteza",
+		editSegment: "Editar trecho",
+		editFullText: "Editar transcrição",
+		saveEdit: "Salvar",
+		cancelEdit: "Cancelar",
+		editedTag: "editado",
+		pendingEdits: paramMessage("pt-BR", "{n} edições não conferidas", ["n"]),
+		confirmAndContinue: "Confirmar transcrição e continuar",
+		staleAnamnesis: "A transcrição tem edições — regenere se a anamnese deve refleti-las.",
+		regenerateAnamnesis: "Regenerar anamnese",
+		deferredTag: "adiada",
+		notFound: "Registro não encontrado",
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",
@@ -1155,6 +1237,34 @@ const es: ConsultationMessages = {
 		deferredUntil: paramMessage("es", "Aplazada hasta {date}", ["date"]),
 		approvedToast: "Anamnesis aprobada",
 		queueDoneToast: "Cola de revisión completada",
+	},
+	review: {
+		title: "Modo de revisión",
+		queueLabel: "Cola de revisión",
+		pendingCount: paramMessage("es", "{n} pendientes", ["n"]),
+		sessionDone: paramMessage("es", "{n} revisadas en esta sesión", ["n"]),
+		queueEmptyTitle: "Cola de revisión vacía",
+		queueEmptyDescription:
+			"Todas las consultas están revisadas. El ritual de fin de día está listo.",
+		missingTitle: "Consulta no encontrada",
+		missingDescription: "Puede que ya haya sido revisada o que no tengas acceso a ella.",
+		backToConsultations: "Volver a consultas",
+		stepTranscript: "Transcripción",
+		stepAnamnesis: "Anamnesis",
+		legacyAudioBadge: "audio heredado",
+		noAudioBadge: "sin audio para cotejar",
+		nextUncertain: "Siguiente incertidumbre",
+		editSegment: "Editar fragmento",
+		editFullText: "Editar transcripción",
+		saveEdit: "Guardar",
+		cancelEdit: "Cancelar",
+		editedTag: "editado",
+		pendingEdits: paramMessage("es", "{n} ediciones sin confirmar", ["n"]),
+		confirmAndContinue: "Confirmar transcripción y continuar",
+		staleAnamnesis: "La transcripción tiene ediciones — regenera si la anamnesis debe reflejarlas.",
+		regenerateAnamnesis: "Regenerar anamnesis",
+		deferredTag: "aplazada",
+		notFound: "Registro no encontrado",
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",

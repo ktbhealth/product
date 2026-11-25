@@ -122,7 +122,7 @@ export interface ConsultationListItem {
 }
 
 /** Parked: deferred stamp still in the future. */
-const isDeferred = (c: ConsultationListItem, now: number) =>
+export const isDeferred = (c: ConsultationListItem, now: number) =>
 	c.deferredUntil != null && new Date(c.deferredUntil).getTime() > now;
 
 /** Anamnesis approval binds the version it stamped — a later edit bumps
@@ -136,7 +136,7 @@ const anamnesisStale = (c: ConsultationListItem) =>
 /** Nothing left for the physician to sign: the anamnesis is approved on
  * its current version, or — transcript-only rows — the transcript was
  * confirmed. */
-const reviewDone = (c: ConsultationListItem) =>
+export const reviewDone = (c: ConsultationListItem) =>
 	c.hasAnamnesis ? anamnesisApproved(c) : c.transcriptReviewedAt != null;
 
 export function ConsultationsPage({
