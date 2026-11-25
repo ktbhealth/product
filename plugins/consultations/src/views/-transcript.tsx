@@ -1,8 +1,21 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
 
+import {
+	AudioPlayer,
+	AudioPlayerControlBar,
+	AudioPlayerDurationDisplay,
+	AudioPlayerElement,
+	AudioPlayerMuteButton,
+	AudioPlayerPlayButton,
+	AudioPlayerSeekBackwardButton,
+	AudioPlayerSeekForwardButton,
+	AudioPlayerTimeDisplay,
+	AudioPlayerTimeRange,
+	AudioPlayerVolumeRange,
+} from "@ktbhealth/ui/components/ai-elements/audio-player";
 import { Badge } from "@ktbhealth/ui/components/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
@@ -261,6 +274,50 @@ function SegmentsKaraoke({
 }
 
 /**
+ * Consultation playback bar (PL-023): the design-system media-chrome
+ * player — play, ±10s seek, time range, duration, volume. The inner
+ * <audio> is exposed through `audioRef` so karaoke views can read the
+ * playhead and seek programmatically; `onTimeUpdate` feeds the live
+ * segment highlight.
+ */
+export function ConsultationAudioPlayer({
+	src,
+	audioRef,
+	onTimeUpdate,
+	ariaLabel,
+	preload = "metadata",
+}: {
+	src: string;
+	/** Ref to the underlying <audio> element (seek/playhead). */
+	audioRef?: Ref<HTMLAudioElement>;
+	onTimeUpdate?: (currentTime: number) => void;
+	ariaLabel?: string;
+	preload?: "none" | "metadata" | "auto";
+}) {
+	return (
+		<AudioPlayer className="w-full">
+			<AudioPlayerElement
+				src={src}
+				ref={audioRef}
+				preload={preload}
+				aria-label={ariaLabel}
+				onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+			/>
+			<AudioPlayerControlBar className="flex-wrap">
+				<AudioPlayerPlayButton />
+				<AudioPlayerSeekBackwardButton />
+				<AudioPlayerSeekForwardButton />
+				<AudioPlayerTimeDisplay />
+				<AudioPlayerTimeRange className="min-w-0 flex-1" />
+				<AudioPlayerDurationDisplay />
+				<AudioPlayerMuteButton />
+				<AudioPlayerVolumeRange className="w-24" />
+			</AudioPlayerControlBar>
+		</AudioPlayer>
+	);
+}
+
+/**
  * Transcript area for consultations with (or pending) server-side
  * audio processing: status chip, optional audio playback, and
  * Corrected/Original tabs once an LLM-cleaned transcript exists.
@@ -294,9 +351,11 @@ export function AudioTranscriptPanel({
 	 *  generation) use exactly what the doctor is viewing. */
 	onActiveText?: (view: TranscriptView) => void;
 	/** Pre-resolved playback URL — the ZK path (T-147) fetches the
-	 * ciphertext, decrypts it in the browser and hands an object URL;
-	 * absent = the default authenticated endpoint. */
-	audioSrc?: string;
+	 * ciphertext, decrypts it in the browser and hands an object URL.
+	 * `undefined` = fall back to the authenticated endpoint; `null` =
+	 * explicitly unavailable (ZK ciphertext that never unlocks must
+	 * never fall back to the endpoint). */
+	audioSrc?: string | null;
 	/** Active evidence sentences — matched substrings render as <mark>. */
 	highlight?: readonly string[];
 	/** ASR segments (PL-023): when present with audio, the body becomes
@@ -350,10 +409,18 @@ export function AudioTranscriptPanel({
 	}, [active?.text, active?.source, onActiveText]);
 
 	const inFlight = IN_FLIGHT.has(status);
+	// `undefined` audioSrc resolves the default endpoint; `null` means
+	// the caller knows playback is impossible (ZK locked) — no fallback.
+	const playSrc =
+		audioSrc === undefined
+			? consultationId !== null
+				? `/api/consultations/${consultationId}/audio`
+				: undefined
+			: (audioSrc ?? undefined);
 
 	return (
 		<div className="space-y-3">
-			{status === "failed" || inFlight || correctedView || audioSrc || karaoke.length > 0 ? (
+			{status === "failed" || inFlight || correctedView ? (
 				<div className="flex flex-wrap items-center gap-2">
 					{status === "failed" ? (
 						<Badge variant="secondary" className={`ring-1 ${BADGE_TONES.red}`}>
@@ -369,21 +436,18 @@ export function AudioTranscriptPanel({
 							{t.transcriptPanel.enhanced}
 						</Badge>
 					) : null}
-					{hasAudio && (consultationId !== null || audioSrc) ? (
-						<audio
-							ref={audioRef}
-							controls
-							preload="none"
-							src={audioSrc ?? `/api/consultations/${consultationId}/audio`}
-							aria-label={t.transcriptPanel.audioLabel}
-							className="h-8 w-full max-w-xs"
-							onTimeUpdate={(e) => {
-								const now = e.currentTarget.currentTime;
-								setActiveIdx(karaoke.findIndex((s) => now >= s.start && now < s.end));
-							}}
-						/>
-					) : null}
 				</div>
+			) : null}
+			{hasAudio && playSrc ? (
+				<ConsultationAudioPlayer
+					src={playSrc}
+					audioRef={audioRef}
+					ariaLabel={t.transcriptPanel.audioLabel}
+					preload="none"
+					onTimeUpdate={(now) => {
+						setActiveIdx(karaoke.findIndex((s) => now >= s.start && now < s.end));
+					}}
+				/>
 			) : null}
 
 			{karaoke.length > 0 ? (

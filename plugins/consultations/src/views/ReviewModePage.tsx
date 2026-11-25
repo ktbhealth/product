@@ -45,7 +45,7 @@ import { bytesToB64, projectTranscript, TranscriptEditSession } from "../transcr
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { isDeferred, reviewDone, type ConsultationListItem } from "./ConsultationsPage.tsx";
 import type { ConsultationDetail, ConsultationDetailApi } from "./ConsultationDetailPage.tsx";
-import { AudioTranscriptPanel } from "./-transcript.tsx";
+import { AudioTranscriptPanel, ConsultationAudioPlayer } from "./-transcript.tsx";
 import { BADGE_TONES, CONF_STYLE } from "./-ui.ts";
 import { decryptConsultation, isEnvelope, parseAnamnesis, type ConsultationZk } from "../zk.ts";
 
@@ -627,15 +627,11 @@ function TranscriptStep({
 				</CardHeader>
 				<CardContent className="space-y-4">
 					{rich || hasAudio ? (
-						<audio
-							ref={audioRef}
-							controls
-							preload="metadata"
+						<ConsultationAudioPlayer
 							src={`/api/consultations/${c.id}/audio`}
-							className="w-full"
-							aria-label={t.transcriptPanel.audioLabel}
-							onTimeUpdate={(e) => {
-								const now = e.currentTarget.currentTime;
+							audioRef={audioRef}
+							ariaLabel={t.transcriptPanel.audioLabel}
+							onTimeUpdate={(now) => {
 								const idx = segments.findIndex((s) => now >= s.start && now < s.end);
 								if (idx !== -1) setActiveIdx(idx);
 							}}

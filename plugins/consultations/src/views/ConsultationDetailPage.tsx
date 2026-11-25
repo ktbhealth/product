@@ -772,7 +772,7 @@ export function ConsultationDetailPage({
 									locale={locale}
 									consultationId={c.id}
 									audioStatus={v.audioStatus}
-									audioSrc={zkAudioUrl ?? undefined}
+									audioSrc={zk ? zkAudioUrl : undefined}
 									hasAudio={Boolean(v.audioKey)}
 									browserText={v.transcript}
 									serverText={v.serverTranscript}
