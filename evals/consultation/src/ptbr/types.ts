@@ -53,4 +53,14 @@ export interface PtbrConsult {
 	 * (modulo metrics.normalize) inside the joined turn text; the
 	 * dataset test enforces this so entity verdicts stay meaningful. */
 	readonly entities: readonly GoldEntity[];
+	/** Eval split assignment — "heldout" rows are excluded from
+	 * tuning/iteration and scored once at the end. Absent = "train".
+	 * PTBR_SYNTHETIC_HELDOUT_SLUGS (dataset.ts) can force "heldout"
+	 * for a slug without editing the consult. */
+	readonly split?: "train" | "heldout";
+	/** Difficulty/content axis tags for stratified reporting —
+	 * e.g. "negation-dense", "polypharmacy", "numeric-dense",
+	 * "code-switch", "disfluency-heavy", "colloquial",
+	 * "interruptions". Free-form; absent = untagged. */
+	readonly axes?: readonly string[];
 }

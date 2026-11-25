@@ -100,7 +100,7 @@ if (!Number.isInteger(concurrency) || concurrency < 1) {
 	console.error(`--concurrency must be an integer >= 1, got: ${concurrencyRaw}`);
 	process.exit(2);
 }
-const datasetVersion = flag("dataset") ?? "consult-ptbr-synthetic-v1";
+const datasetVersion = flag("dataset") ?? "consult-ptbr-synthetic-v2";
 
 // Same scratch-path guard as materialize-ptbr-synthetic.ts / eval-cli's
 // workdirFlag — a bad argv must not write into a real directory.
