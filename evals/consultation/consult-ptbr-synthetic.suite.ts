@@ -76,7 +76,7 @@ import { defineSuite } from "@ktb/eval-core";
 export const suite = defineSuite({
 	id: "consult-ptbr-synthetic",
 	domain: "eval.consultation",
-	dataset: { id: "consult-ptbr-synthetic", version: "v1" },
+	dataset: { id: "consult-ptbr-synthetic", version: "v2" },
 	stages: ["script_gen", "synthesize", "transcribe", "cleanup", "judge"],
 	caps: {
 		tts: "transcription.tts",
