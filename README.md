@@ -39,22 +39,28 @@ Everything the golden path needs is stubbed by default — AI
 (`AI_STUB=1` returns a canned pt-BR consult transcript that the
 heuristic anamnesis extractor turns into a populated note), email
 (`EMAIL_STUB=1` logs messages), captcha (`CAPTCHA_STUB=1`), and the
-queue/R2/D1 bindings (local workerd or SQLite under `dev:node`). Two
-ways to get a working login + seeded demo data:
+queue/R2/D1 bindings (local workerd or SQLite under `dev:node`). The
+recommended path is plain Node + SQLite — no workerd needed:
+
+```bash
+bun install                  # "Blocked 1 postinstall" for
+                             # onnxruntime-node is expected (evals only)
+bun run db:seed -- --sqlite  # dev accounts into the dev:node SQLite
+                             # file (migrations applied automatically)
+bun run dev:node             # first page takes ~1 min while deps optimize
+```
+
+Workerd alternative (local D1/R2/queues, closer to prod):
 
 ```bash
 bun install
-bun run dev              # workerd path — then, once:
+bun run dev              # then, once:
 bun run db:migrate:local # apply D1 migrations to the local state
 bun run db:seed          # dev accounts into local D1 (idempotent)
 ```
 
-```bash
-bun install
-bun run db:seed -- --sqlite  # dev accounts into the dev:node SQLite
-                             # file (migrations applied automatically)
-bun run dev:node             # plain Node + SQLite — no workerd needed
-```
+If `bun run dev` fails at startup on your machine, stick with
+`dev:node` — same stubs, same seeded accounts.
 
 Sign in as `user@ktb.test` / `dev-password-123` (seeded doctor; see
 `apps/web/scripts/seed-users.ts` for the other accounts). Without the
