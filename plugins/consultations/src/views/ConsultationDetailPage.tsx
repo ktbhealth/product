@@ -432,7 +432,7 @@ export function ConsultationDetailPage({
 	}
 
 	return (
-		<PageContainer>
+		<PageContainer className="max-w-none">
 			{/* PageHeader renders any ReactNode, but its `title` prop type
 			    collides with the HTML `title` attribute upstream — cast the
 			    h1 so the page keeps a single heading landmark. */}

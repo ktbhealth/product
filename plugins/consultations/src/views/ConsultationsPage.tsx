@@ -399,7 +399,7 @@ export function ConsultationsPage({
 	];
 
 	return (
-		<TablePage messages={viewsMessages(locale)}>
+		<TablePage messages={viewsMessages(locale)} className="max-w-none">
 			<TablePage.Header
 				title={t.list.title}
 				description={consultations.length === 0 ? t.list.none : t.list.count(consultations.length)}
