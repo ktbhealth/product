@@ -275,6 +275,26 @@ export type StageMetrics = typeof StageMetrics.Type;
 
 // ---------- persisted eval artifacts ----------
 
+/** Audit of a gated cleanup — how much of the ASR transcript the
+ * CleanupGate exposed to the corrector. Persisted per sample so a
+ * report can weigh corrected WER against corrector exposure. */
+export const CleanupGateStats = Schema.Struct({
+	/** Implementation that decided the ranges ("systemone",
+	 * "scores-file", …). */
+	gate: Schema.String,
+	/** Segments the gate scored before flagging ranges. */
+	segmentsScored: Schema.Number,
+	/** Char ranges over the transcript sent to the corrector (one
+	 * `correct` call each). */
+	ranges: Schema.Number,
+	/** Words inside the gated ranges — the corrector's exposure. */
+	wordsSent: Schema.Number,
+	/** Total transcript words; wordsSent/wordsTotal is the exposure
+	 * share an ungated run would take at 1.0. */
+	wordsTotal: Schema.Number,
+});
+export type CleanupGateStats = typeof CleanupGateStats.Type;
+
 /** Per-sample eval outcome — the row the platform exists to persist.
  * One per (runId, sampleId). */
 export const SampleResult = Schema.Struct({
@@ -284,6 +304,9 @@ export const SampleResult = Schema.Struct({
 	asrText: Schema.String,
 	correctedText: Schema.optionalKey(Schema.String),
 	edits: Schema.optionalKey(EditList),
+	/** Present iff a CleanupGate was bound — records the gate's
+	 * exposure so gated and ungated runs stay comparable. */
+	cleanupGate: Schema.optionalKey(CleanupGateStats),
 	asrMetrics: Schema.optionalKey(StageMetrics),
 	correctedMetrics: Schema.optionalKey(StageMetrics),
 	editVerdicts: Schema.Array(EditVerdict),

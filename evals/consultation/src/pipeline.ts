@@ -1,9 +1,18 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type { JsonObject } from "effect/Schema";
 
-import { applyEdits, EditApplyError, type EditList, type PromptRef } from "@ktb/eval-core";
+import {
+	anchorEdits,
+	applyEdits,
+	EditApplyError,
+	type EditList,
+	type EditOp,
+	type PromptRef,
+} from "@ktb/eval-core";
 
 import { gateTranscript } from "./anonymize.ts";
+import { charRangesFor, segmentCharSpans, type AsrRange } from "./asr-ranges.ts";
 import { fnvHex } from "./generate.ts";
 import type { LocaleProfile } from "./locale.ts";
 import { ptBR } from "./locales/pt-BR.ts";
@@ -16,10 +25,19 @@ import {
 	type ConfSegment,
 	type ExpectedEntity,
 } from "./metrics.ts";
-import { AsrPort, DatasetStorePort, EvalPort, LlmPort, PortError, ReportPort } from "./ports.ts";
+import {
+	AsrPort,
+	CleanupGate,
+	DatasetStorePort,
+	EvalPort,
+	LlmPort,
+	PortError,
+	ReportPort,
+} from "./ports.ts";
 import type {
 	AsrResult,
 	BlobMeta,
+	CleanupGateStats,
 	EditVerdict,
 	EntityVerdict,
 	EvalQuestion,
@@ -152,6 +170,68 @@ export const cleanupTranscript = (input: {
 		});
 		return { edits, corrected, record: stamped };
 	});
+
+/**
+ * Gated variant of `cleanupTranscript` — the corrector sees ONLY the
+ * char spans a CleanupGate flagged, one `correct` call per span, and
+ * the returned edits are shifted back to full-transcript offsets.
+ * Model ops are re-anchored against each span's slice (adapters that
+ * anchor make this idempotent; ones that trust `at` get the same
+ * tolerance), so an edit can never land outside its flagged span —
+ * the "edits outside a range are discarded" rule holds by
+ * construction. `ranges` MUST be sorted and non-overlapping
+ * (charRangesFor guarantees both) so the shifted ops stay disjoint —
+ * applyEdits requires non-overlapping ops. An empty `ranges` runs no
+ * calls and yields the raw text with an empty edit list.
+ */
+export const cleanupTranscriptGated = (input: {
+	readonly taskId: string;
+	readonly raw: string;
+	readonly ranges: readonly AsrRange[];
+	readonly onRecord?: (record: RunRecord) => void;
+}) =>
+	Effect.gen(function* () {
+		const llm = yield* LlmPort;
+		const ops: EditOp[] = [];
+		for (const [i, range] of input.ranges.entries()) {
+			const slice = input.raw.slice(range.start, range.end);
+			const { edits, record } = yield* llm.correct({
+				taskId: `${input.taskId}-r${i}`,
+				role: "corrector",
+				input: slice,
+				outputSchema: "EditList",
+			});
+			input.onRecord?.(withStagePrompt(CLEANUP_PROMPT)(record));
+			// Anchor against the SLICE — the model counted offsets into
+			// the only text it saw. Ops it cannot verify there (pure
+			// insertions, quoted text absent from the span, paraphrases)
+			// drop before the offset shift, never in full-text coords.
+			const { ops: anchored } = anchorEdits(slice, edits.ops);
+			for (const op of anchored) {
+				ops.push({ ...op, at: op.at + range.start });
+			}
+		}
+		// Same corrupt-edit-list contract as cleanupTranscript — kept
+		// as a typed failure even though anchored+disjoint ops cannot
+		// throw by construction.
+		const corrected = yield* Effect.try({
+			try: () => applyEdits(input.raw, ops),
+			catch: /* v8 ignore next -- anchored+disjoint ops never throw */ (cause) =>
+				new PortError({
+					port: "pipeline",
+					message:
+						cause instanceof EditApplyError
+							? `corrupt edit list at ${cause.at}: expected "${cause.expected}", got "${cause.actual}"`
+							: "corrupt edit list",
+					cause,
+				}),
+		});
+		return { edits: { ops }, corrected };
+	});
+
+/** Corrector exposure under a bound CleanupGate — the words inside
+ * the flagged spans vs the whole transcript, for CleanupGateStats. */
+const wordsOf = (text: string): number => text.split(/\s+/).filter((w) => w !== "").length;
 
 // ---------- S7: eval question builders ----------
 
@@ -362,6 +442,9 @@ export interface SampleRun {
 	/** Cleanup outputs — present iff the "cleanup" stage ran. */
 	readonly edits?: EditList;
 	readonly corrected?: string;
+	/** Gate decision audit — present iff a CleanupGate was bound AND
+	 * cleanup ran. Ungated runs leave it absent. */
+	readonly cleanupGate?: CleanupGateStats;
 	readonly asrMetrics: StageMetrics;
 	/** Present iff "cleanup" ran — WER/CER/verdicts for the corrected
 	 * text. Absent means the run stopped before cleanup; consumers
@@ -390,6 +473,7 @@ interface StageRun {
 	asr?: AsrResult;
 	edits?: EditList;
 	corrected?: string;
+	cleanupGate?: CleanupGateStats;
 	readonly answers: {
 		readonly id: string;
 		readonly kind: string;
@@ -414,13 +498,62 @@ const stageCleanup = (ctx: StageRun) =>
 				message: 'stage "cleanup" requires "transcribe" to run first',
 			});
 		}
-		const { edits, corrected } = yield* cleanupTranscript({
+		const asr = ctx.asr;
+		const gateOpt = yield* Effect.serviceOption(CleanupGate);
+		// Ungated path — no CleanupGate bound, the historical behavior:
+		// the whole transcript goes to the corrector.
+		if (Option.isNone(gateOpt)) {
+			const { edits, corrected } = yield* cleanupTranscript({
+				taskId: `${ctx.runId}-cleanup`,
+				raw: asr.text,
+				onRecord: (r) => ctx.records.push(ctx.tag(r)),
+			});
+			ctx.edits = edits;
+			ctx.corrected = corrected;
+			return;
+		}
+		const gate = gateOpt.value;
+		const gateStart = Date.now();
+		const decision = yield* gate.select({
+			sampleId: ctx.sample.id,
+			text: asr.text,
+			segments: asr.segments,
+		});
+		for (const r of decision.records) ctx.records.push(ctx.tag(r));
+		// One decision record regardless of how the gate decided —
+		// a file-backed gate emits no model calls of its own, so this
+		// is the only trace the gate choice leaves on the report.
+		ctx.records.push(
+			ctx.tag({
+				runId: ctx.runId,
+				taskId: `${ctx.runId}-cleanup-gate`,
+				stage: "cleanup-gate",
+				engine: gate.name,
+				inputHash: fnvHex(asr.text),
+				startedAt: gateStart,
+				latencyMs: Date.now() - gateStart,
+			}),
+		);
+		// Segment-index ranges → sorted, disjoint char spans over the
+		// transcript. Segments that cannot be located in the joined
+		// text resolve to their locatable anchors; a range with no
+		// locatable segment contributes nothing.
+		const ranges = charRangesFor(decision.ranges, segmentCharSpans(asr.text, asr.segments));
+		const { edits, corrected } = yield* cleanupTranscriptGated({
 			taskId: `${ctx.runId}-cleanup`,
-			raw: ctx.asr.text,
+			raw: asr.text,
+			ranges,
 			onRecord: (r) => ctx.records.push(ctx.tag(r)),
 		});
 		ctx.edits = edits;
 		ctx.corrected = corrected;
+		ctx.cleanupGate = {
+			gate: gate.name,
+			segmentsScored: decision.segmentsScored,
+			ranges: ranges.length,
+			wordsSent: ranges.reduce((acc, r) => acc + wordsOf(asr.text.slice(r.start, r.end)), 0),
+			wordsTotal: wordsOf(asr.text),
+		};
 	});
 
 const stageJudge = (ctx: StageRun) =>
@@ -742,6 +875,7 @@ export const processSample = (input: {
 			asr,
 			...(ctx.edits !== undefined ? { edits: ctx.edits } : {}),
 			...(ctx.corrected !== undefined ? { corrected: ctx.corrected } : {}),
+			...(ctx.cleanupGate !== undefined ? { cleanupGate: ctx.cleanupGate } : {}),
 			asrMetrics,
 			...(correctedMetrics !== undefined ? { correctedMetrics } : {}),
 			editVerdicts: ctx.edits === undefined ? [] : editVerdictsFromAnswers(ctx.edits, answers),
@@ -781,6 +915,7 @@ export const toSampleResult = (input: {
 	// not a zeroed corrected stage).
 	...(input.run.corrected !== undefined ? { correctedText: input.run.corrected } : {}),
 	...(input.run.edits !== undefined ? { edits: input.run.edits } : {}),
+	...(input.run.cleanupGate !== undefined ? { cleanupGate: input.run.cleanupGate } : {}),
 	asrMetrics: input.run.asrMetrics,
 	...(input.run.correctedMetrics !== undefined
 		? { correctedMetrics: input.run.correctedMetrics }

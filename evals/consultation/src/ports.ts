@@ -116,6 +116,51 @@ export class LlmPort extends Context.Service<
 	}
 >()("@ktb/eval-consultation/LlmPort") {}
 
+/**
+ * Cleanup gate — decides WHICH spans of an ASR transcript the
+ * corrector sees (opt-in). Absent from the environment, cleanup keeps
+ * the historical behavior: the whole transcript goes to
+ * `LlmPort.correct`. When bound, the pipeline sends only the flagged
+ * spans — measured on consult-ptbr-synthetic, whole-transcript
+ * cleanup REGRESSES WER because small local models "fix" text that
+ * was already correct; gating limits their blast radius.
+ *
+ * The decision is expressed as segment-index ranges (inclusive
+ * [start, end] into `segments`, ascending) — adapters own the model
+ * calls, the domain owns the segment→char-offset mapping
+ * (asr-ranges.ts) so adapters never count offsets. Implementations:
+ * a live System One detector (eval-adapter-local's
+ * makeSystemOneCleanupGate — its own EvalPort, separate from the
+ * run's judge) and a scores-file reader for precomputed decisions.
+ */
+export class CleanupGate extends Context.Service<
+	CleanupGate,
+	{
+		/** Implementation name persisted on CleanupGateStats.gate. */
+		readonly name: string;
+		/** Score the transcript and return the segment-index ranges
+		 * worth correcting (inclusive [start, end], ascending).
+		 * `segments` may be empty — a segment-less transcript honestly
+		 * scores zero ranges. `segmentsScored` reports how many
+		 * segments the decision covered. `records` carries any
+		 * model-call audit trail the decision produced — a file-backed
+		 * gate emits none; the pipeline stamps one decision record
+		 * regardless so the gate choice is always on the report. */
+		readonly select: (input: {
+			readonly sampleId: string;
+			readonly text: string;
+			readonly segments: readonly { readonly text: string }[];
+		}) => Effect.Effect<
+			{
+				readonly ranges: readonly { readonly start: number; readonly end: number }[];
+				readonly segmentsScored: number;
+				readonly records: readonly RunRecord[];
+			},
+			PortError
+		>;
+	}
+>()("@ktb/eval-consultation/CleanupGate") {}
+
 /** Manifest rows + audio blobs. */
 export class DatasetStorePort extends Context.Service<
 	DatasetStorePort,

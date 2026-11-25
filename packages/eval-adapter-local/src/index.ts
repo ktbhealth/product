@@ -482,6 +482,7 @@ export * from "./tts.ts";
 export * from "./asr.ts";
 export * from "./factory.ts";
 export * from "./eval.ts";
+export * from "./gate.ts";
 export * from "./systemone.ts";
 export * from "./runner.ts";
 export * from "./artifacts.ts";

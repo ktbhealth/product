@@ -9,6 +9,7 @@ import { describe, expect, test } from "vitest";
 import { EvalPort, ReportPort } from "@ktb/eval-core";
 import {
 	AsrPort,
+	CleanupGate,
 	DatasetStorePort,
 	LlmPort,
 	TtsPort,
@@ -21,6 +22,7 @@ import { CANNED_ASR, CANNED_EDITS, CANNED_SCRIPT } from "@ktb/eval-adapter-stub"
 
 import {
 	capabilityLayer,
+	cleanupGateLayer,
 	makeHttpAcpTransport,
 	makeReadAudioFile,
 	modelLayers,
@@ -553,6 +555,101 @@ describe("modelLayers", () => {
 
 	test("missing adapter in the map is an error", () => {
 		expect(() => modelLayers(ctx(), {}, ["asr"])).toThrow(/no adapter under profile/);
+	});
+});
+
+describe("cleanupGateLayer", () => {
+	test("stays off without EVAL_CLEANUP_GATE (and on explicit off values)", () => {
+		expect(cleanupGateLayer(ctx())).toBeUndefined();
+		for (const off of ["", "off", "0", "false", " OFF "]) {
+			expect(cleanupGateLayer(ctx({ env: { EVAL_CLEANUP_GATE: off } }))).toBeUndefined();
+		}
+	});
+
+	test("systemone requires EVAL_SYSTEMONE_URL and builds a working gate", async () => {
+		expect(() => cleanupGateLayer(ctx({ env: { EVAL_CLEANUP_GATE: "systemone" } }))).toThrow(
+			/EVAL_SYSTEMONE_URL/,
+		);
+		const gate = cleanupGateLayer(
+			ctx({
+				env: {
+					EVAL_CLEANUP_GATE: "systemone",
+					EVAL_SYSTEMONE_URL: "http://127.0.0.1:8009",
+					EVAL_SYSTEMONE_MODEL: "wev-x",
+					EVAL_SYSTEMONE_TIMEOUT_MS: "5000",
+					EVAL_CLEANUP_GATE_THRESHOLD: "0.4",
+				},
+				// One noul batch: s0 p=0.1 (below), s1 p=0.9 (flagged).
+				fetchImpl: (async () =>
+					new Response(
+						JSON.stringify({
+							answers: {
+								s0: { type: "noul", noul: 0.1 },
+								s1: { type: "noul", noul: 0.9 },
+							},
+						}),
+						{ status: 200 },
+					)) as typeof fetch,
+			}),
+		)!;
+		const out = await Effect.runPromise(
+			Effect.gen(function* () {
+				const g = yield* CleanupGate;
+				return yield* g.select({
+					sampleId: "s1",
+					text: "x",
+					segments: [{ text: "a" }, { text: "b" }],
+				});
+			}).pipe(Effect.provide(gate)),
+		);
+		expect(out.ranges).toEqual([{ start: 1, end: 1 }]);
+	});
+
+	test("scores-file defaults to <workdir>/cleanup-gate-scores.json and honors env path", async () => {
+		const c = ctx({ env: { EVAL_CLEANUP_GATE: "scores-file" } });
+		const defaultPath = path.join(c.workdir, "cleanup-gate-scores.json");
+		fs.writeFileSync(defaultPath, JSON.stringify({}));
+		const probe = (layer: NonNullable<ReturnType<typeof cleanupGateLayer>>) =>
+			Effect.runPromise(
+				Effect.exit(
+					Effect.gen(function* () {
+						const g = yield* CleanupGate;
+						return yield* g.select({ sampleId: "s", text: "t", segments: [] });
+					}).pipe(Effect.provide(layer)),
+				),
+			);
+		// Default path exists but holds no entry for the sample —
+		// the lookup itself works, the sample misses.
+		const miss = await probe(cleanupGateLayer(c)!);
+		expect(String(miss)).toContain("no gate scores");
+		// Explicit env path: a missing file surfaces its own name.
+		const custom = ctx({
+			env: {
+				EVAL_CLEANUP_GATE: "scores-file",
+				EVAL_CLEANUP_GATE_SCORES: "/tmp/definitely-missing-scores.json",
+				EVAL_CLEANUP_GATE_THRESHOLD: "not-a-number",
+			},
+		});
+		const gone = await probe(cleanupGateLayer(custom)!);
+		expect(String(gone)).toContain("definitely-missing-scores");
+	});
+
+	test("a missing or unusable EVAL_SYSTEMONE_TIMEOUT_MS is ignored", () => {
+		const env = { EVAL_CLEANUP_GATE: "systemone", EVAL_SYSTEMONE_URL: "http://127.0.0.1:8009" };
+		// Absent, unparseable, and non-positive timeouts all fall back
+		// to the adapter default instead of failing gate construction.
+		expect(cleanupGateLayer(ctx({ env }))).toBeDefined();
+		for (const bad of ["", "abc", "0", "-5"]) {
+			expect(
+				cleanupGateLayer(ctx({ env: { ...env, EVAL_SYSTEMONE_TIMEOUT_MS: bad } })),
+			).toBeDefined();
+		}
+	});
+
+	test("an unknown gate mode throws instead of silently running ungated", () => {
+		expect(() => cleanupGateLayer(ctx({ env: { EVAL_CLEANUP_GATE: "magic" } }))).toThrow(
+			/unknown EVAL_CLEANUP_GATE/,
+		);
 	});
 });
 
