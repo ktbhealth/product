@@ -126,6 +126,18 @@ export interface ConsultationMessages {
 			readonly tampered: string;
 			readonly unversioned: string;
 		};
+		/** Physician review stamps + actions (PL-022). */
+		readonly confirmTranscript: string;
+		readonly transcriptConfirmed: (date: string) => string;
+		readonly approveAnamnesis: string;
+		readonly approveAndNext: string;
+		readonly anamnesisApproved: (version: number) => string;
+		readonly anamnesisStale: (version: number) => string;
+		readonly deferLabel: string;
+		readonly deferResume: string;
+		readonly deferredUntil: (date: string) => string;
+		readonly approvedToast: string;
+		readonly queueDoneToast: string;
 	};
 	readonly transcriptPanel: {
 		readonly sourceServer: string;
@@ -432,6 +444,17 @@ const en: ConsultationMessages = {
 			tampered: "Integrity check failed",
 			unversioned: "Integrity not recorded",
 		},
+		confirmTranscript: "Confirm transcript",
+		transcriptConfirmed: paramMessage("en", "Confirmed {date}", ["date"]),
+		approveAnamnesis: "Approve anamnesis",
+		approveAndNext: "Approve & next",
+		anamnesisApproved: paramMessage("en", "Approved v{n}", ["n"]),
+		anamnesisStale: paramMessage("en", "New version v{n} pending", ["n"]),
+		deferLabel: "Defer review",
+		deferResume: "Back to the queue",
+		deferredUntil: paramMessage("en", "Deferred until {date}", ["date"]),
+		approvedToast: "Anamnesis approved",
+		queueDoneToast: "Review queue complete",
 	},
 	transcriptPanel: {
 		sourceServer: "server · whisper large-v3-turbo",
@@ -755,6 +778,17 @@ const ptBR: ConsultationMessages = {
 			tampered: "Falha na verificação de integridade",
 			unversioned: "Integridade não registrada",
 		},
+		confirmTranscript: "Conferir transcrição",
+		transcriptConfirmed: paramMessage("pt-BR", "Conferida em {date}", ["date"]),
+		approveAnamnesis: "Aprovar anamnese",
+		approveAndNext: "Aprovar e próxima",
+		anamnesisApproved: paramMessage("pt-BR", "Aprovada v{n}", ["n"]),
+		anamnesisStale: paramMessage("pt-BR", "Nova versão v{n} pendente", ["n"]),
+		deferLabel: "Adiar revisão",
+		deferResume: "Voltar para a fila",
+		deferredUntil: paramMessage("pt-BR", "Adiada até {date}", ["date"]),
+		approvedToast: "Anamnese aprovada",
+		queueDoneToast: "Fila de revisão concluída",
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",
@@ -1081,6 +1115,17 @@ const es: ConsultationMessages = {
 			tampered: "Falló la verificación de integridad",
 			unversioned: "Integridad no registrada",
 		},
+		confirmTranscript: "Confirmar transcripción",
+		transcriptConfirmed: paramMessage("es", "Confirmada el {date}", ["date"]),
+		approveAnamnesis: "Aprobar anamnesis",
+		approveAndNext: "Aprobar y siguiente",
+		anamnesisApproved: paramMessage("es", "Aprobada v{n}", ["n"]),
+		anamnesisStale: paramMessage("es", "Nueva versión v{n} pendiente", ["n"]),
+		deferLabel: "Aplazar revisión",
+		deferResume: "Volver a la cola",
+		deferredUntil: paramMessage("es", "Aplazada hasta {date}", ["date"]),
+		approvedToast: "Anamnesis aprobada",
+		queueDoneToast: "Cola de revisión completada",
 	},
 	transcriptPanel: {
 		sourceServer: "servidor · whisper large-v3-turbo",

@@ -10,6 +10,7 @@ import {
 	extractAnamnesisFn,
 	getConsultationFn,
 	getLiveConsultationFn,
+	nextPendingReviewFn,
 	recordConsentFn,
 	reviewTranscriptFn,
 	saveConsultationFn,
@@ -29,6 +30,7 @@ export const consultationDetailApi: ConsultationDetailApi = {
 	reviewTranscript: (input: { data: number }) => reviewTranscriptFn(input),
 	approveAnamnesis: (input: { data: number }) => approveAnamnesisFn(input),
 	deferConsultation: (input) => deferConsultationFn({ data: input.data }),
+	nextPendingReview: (input: { data: number }) => nextPendingReviewFn(input),
 };
 
 export const newConsultationApi: NewConsultationApi = {

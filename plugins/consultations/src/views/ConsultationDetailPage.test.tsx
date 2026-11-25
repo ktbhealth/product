@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +18,7 @@ const streamMocks = vi.hoisted(() => ({
 }));
 vi.mock("@ktb/crypto/stream", () => streamMocks);
 
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }));
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
 	return {
@@ -27,6 +28,7 @@ vi.mock("@tanstack/react-router", async () => {
 				{ href: typeof props.to === "string" ? props.to : "#", ...props },
 				props.children as never,
 			),
+		useNavigate: () => routerMocks.navigate,
 	};
 });
 
@@ -870,5 +872,169 @@ describe("ZK audio playback (T-147)", () => {
 		);
 		await waitFor(() => expect(streamMocks.decryptBlob).toHaveBeenCalledTimes(2));
 		expect(document.querySelector("audio")).toBeNull();
+	});
+});
+
+describe("review stamps (PL-022)", () => {
+	it("confirms the transcript and shows the stamp chip", async () => {
+		const user = userEvent.setup();
+		const reviewTranscript = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), reviewTranscript }}
+			/>,
+		);
+		await user.click(screen.getByText("Confirm transcript"));
+		expect(reviewTranscript).toHaveBeenCalledWith({ data: 10 });
+		expect(await screen.findByText(/Confirmed/)).toBeTruthy();
+	});
+
+	it("renders the transcript stamp instead of the button when already confirmed", () => {
+		render(
+			<ConsultationDetailPage
+				c={detail({ transcriptReviewedAt: new Date("2026-11-06T15:00:00") })}
+				history={null}
+				api={{ getConsultation: vi.fn(), reviewTranscript: vi.fn() }}
+			/>,
+		);
+		expect(screen.getByText(/Confirmed/)).toBeTruthy();
+		expect(screen.queryByText("Confirm transcript")).toBeNull();
+	});
+
+	it("approves the anamnesis bound to the current version", async () => {
+		const user = userEvent.setup();
+		const approveAnamnesis = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ anamnesisVersion: 2 })}
+				history={null}
+				api={{ getConsultation: vi.fn(), approveAnamnesis }}
+			/>,
+		);
+		await user.click(screen.getByText("Approve anamnesis"));
+		expect(approveAnamnesis).toHaveBeenCalledWith({ data: 10 });
+		expect(await screen.findByText("Approved v2")).toBeTruthy();
+	});
+
+	it("approve & next navigates to the next pending record", async () => {
+		const user = userEvent.setup();
+		const api = {
+			getConsultation: vi.fn(),
+			approveAnamnesis: vi.fn(async () => ({ ok: true })),
+			nextPendingReview: vi.fn(async () => ({ id: 44 })),
+		};
+		render(<ConsultationDetailPage c={detail({ anamnesisVersion: 2 })} history={null} api={api} />);
+		await user.click(screen.getByText("Approve & next"));
+		expect(api.approveAnamnesis).toHaveBeenCalledWith({ data: 10 });
+		expect(api.nextPendingReview).toHaveBeenCalledWith({ data: 10 });
+		await waitFor(() =>
+			expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/consultations/44" }),
+		);
+	});
+
+	it("approve & next heads back to the list when the queue is done", async () => {
+		const user = userEvent.setup();
+		const api = {
+			getConsultation: vi.fn(),
+			approveAnamnesis: vi.fn(async () => ({ ok: true })),
+			nextPendingReview: vi.fn(async () => ({ id: null })),
+		};
+		render(<ConsultationDetailPage c={detail({ anamnesisVersion: 2 })} history={null} api={api} />);
+		await user.click(screen.getByText("Approve & next"));
+		await waitFor(() =>
+			expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/consultations" }),
+		);
+	});
+
+	it("shows the stale-version chip when the anamnesis was edited after approval", () => {
+		render(
+			<ConsultationDetailPage
+				c={detail({
+					anamnesisVersion: 3,
+					anamnesisReviewedAt: new Date("2026-11-06T15:00:00"),
+					anamnesisReviewedVersion: 2,
+				})}
+				history={null}
+				api={{ getConsultation: vi.fn(), approveAnamnesis: vi.fn() }}
+			/>,
+		);
+		expect(screen.getByText("New version v3 pending")).toBeTruthy();
+		// Re-approval is still offered — it re-binds the current version.
+		expect(screen.getByText("Approve anamnesis")).toBeTruthy();
+	});
+
+	it("renders the approved chip instead of buttons on an approved record", () => {
+		render(
+			<ConsultationDetailPage
+				c={detail({
+					anamnesisVersion: 2,
+					anamnesisReviewedAt: new Date("2026-11-06T15:00:00"),
+					anamnesisReviewedVersion: 2,
+				})}
+				history={null}
+				api={{ getConsultation: vi.fn(), approveAnamnesis: vi.fn() }}
+			/>,
+		);
+		expect(screen.getByText("Approved v2")).toBeTruthy();
+		expect(screen.queryByText("Approve anamnesis")).toBeNull();
+	});
+
+	it("defers the record through the popover calendar", async () => {
+		const user = userEvent.setup();
+		const deferConsultation = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), deferConsultation }}
+			/>,
+		);
+		await user.click(screen.getByText("Defer review"));
+		// Pick the first enabled day button in the grid.
+		const day = document.querySelector<HTMLButtonElement>(
+			'[data-slot="popover-content"] button[data-day]:not([disabled])',
+		)!;
+		await user.click(day);
+		expect(deferConsultation).toHaveBeenCalledWith({
+			data: { id: 10, until: expect.any(Date) },
+		});
+	});
+
+	it("shows the deferred state and resumes through the popover", async () => {
+		const user = userEvent.setup();
+		const deferConsultation = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({ deferredUntil: new Date(Date.now() + 86_400_000) })}
+				history={null}
+				api={{ getConsultation: vi.fn(), deferConsultation }}
+			/>,
+		);
+		expect(screen.getAllByText(/Deferred until/).length).toBeGreaterThan(0);
+		await user.click(screen.getAllByText(/Deferred until/)[0]!);
+		await user.click(await screen.findByText("Back to the queue"));
+		expect(deferConsultation).toHaveBeenCalledWith({ data: { id: 10, until: null } });
+	});
+
+	it("ignores a second click while a review call is in flight", async () => {
+		const user = userEvent.setup();
+		let release!: (v: { ok: boolean }) => void;
+		const gate = new Promise<{ ok: boolean }>((res) => (release = res));
+		const reviewTranscript = vi.fn(() => gate);
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), reviewTranscript }}
+			/>,
+		);
+		const btn = screen.getByText("Confirm transcript");
+		await user.click(btn);
+		fireEvent.click(btn); // busy guard → no second call (fireEvent ignores disabled)
+		release({ ok: true });
+		await screen.findByText(/Confirmed/);
+		expect(reviewTranscript).toHaveBeenCalledTimes(1);
 	});
 });

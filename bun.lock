@@ -1100,6 +1100,7 @@
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
         "lucide-react": "0.544.0",
+        "react-day-picker": "^10.0.2",
       },
       "devDependencies": {
         "@ktb/interop-fhir": "workspace:*",

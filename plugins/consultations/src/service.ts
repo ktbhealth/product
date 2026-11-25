@@ -64,6 +64,7 @@ import {
 	getLiveConsultation,
 	listAllConsultations,
 	listConsultations,
+	nextPendingReviewId,
 	type AdminConsultationRow,
 	portalConsultation,
 	portalConsultationRows,
@@ -219,6 +220,12 @@ export class Consultations extends Context.Service<
 			userId: string,
 			until: Date | null,
 		) => Effect.Effect<void, Forbidden>;
+		/** Next unsigned, unparked record in the caller's queue — the
+		 * "approve & next" target; null when the queue is done. */
+		readonly nextPendingReview: (
+			id: number,
+			userId: string,
+		) => Effect.Effect<number | null, Forbidden>;
 		/** Link a stored R2 audio object to the consultation (status "stored"). */
 		readonly attachAudio: (
 			userId: string,
@@ -906,6 +913,14 @@ export const ConsultationsLive = Layer.effect(
 					tenantId: owner?.tenantId ?? null,
 					detail: until === null ? undefined : { until: until.toISOString() },
 				});
+			}),
+			nextPendingReview: Effect.fn("Consultations.nextPendingReview")(function* (
+				id: number,
+				userId: string,
+			) {
+				yield* requirePrincipalUser(userId, "consultation.read");
+				const scope = yield* consultationScope(userId);
+				return yield* Effect.promise(() => nextPendingReviewId(db, scope, id));
 			}),
 			attachAudio: Effect.fn("Consultations.attachAudio")(function* (
 				userId: string,

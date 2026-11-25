@@ -607,3 +607,21 @@ export const deferConsultationFn = createServerFn({ method: "POST" })
 			}),
 		);
 	});
+
+/** Next unsigned record in the caller's review queue — `{ id }` or `{ id: null }`. */
+export const nextPendingReviewFn = createServerFn({ method: "POST" })
+	.validator((id: number) => decodeNumber(id))
+	.handler(async ({ data: id }) => {
+		const user = await getDoctorUser();
+		if (!user) return { id: null };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				return yield* consultations.nextPendingReview(id, user.id).pipe(
+					Effect.map((next) => ({ id: next })),
+					Effect.catchTag("Forbidden", () => Effect.succeed({ id: null })),
+				);
+			}),
+		);
+	});

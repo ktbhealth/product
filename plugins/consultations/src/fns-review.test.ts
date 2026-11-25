@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 	reviewTranscript: vi.fn(),
 	approveAnamnesis: vi.fn(),
 	deferConsultation: vi.fn(),
+	nextPendingReview: vi.fn(),
 }));
 
 // Same fake as fns-zk.test.ts: handlers run as plain async fns and the
@@ -31,7 +32,12 @@ vi.mock("@ktb/server-fns", () => ({
 
 import { Consultations } from "./index.ts";
 import { Forbidden } from "@ktb/authz";
-import { approveAnamnesisFn, deferConsultationFn, reviewTranscriptFn } from "./fns.ts";
+import {
+	approveAnamnesisFn,
+	deferConsultationFn,
+	nextPendingReviewFn,
+	reviewTranscriptFn,
+} from "./fns.ts";
 
 /** Make `runAs` execute the effect against a minimal Consultations
  * service — the three review methods the fns delegate to. */
@@ -44,6 +50,7 @@ const runEffects = () => {
 					reviewTranscript: mocks.reviewTranscript,
 					approveAnamnesis: mocks.approveAnamnesis,
 					deferConsultation: mocks.deferConsultation,
+					nextPendingReview: mocks.nextPendingReview,
 				} as unknown as Consultations["Service"]),
 			),
 		),
@@ -55,6 +62,7 @@ beforeEach(() => {
 	mocks.reviewTranscript.mockReturnValue(Effect.succeed(undefined));
 	mocks.approveAnamnesis.mockReturnValue(Effect.succeed(undefined));
 	mocks.deferConsultation.mockReturnValue(Effect.succeed(undefined));
+	mocks.nextPendingReview.mockReturnValue(Effect.succeed(44));
 });
 
 describe("review server fns (PL-022)", () => {
@@ -115,6 +123,24 @@ describe("review server fns (PL-022)", () => {
 		await expect(deferConsultationFn({ data: { id: 1, until: null } } as never)).resolves.toEqual({
 			ok: false,
 		});
+		expect(mocks.runAs).not.toHaveBeenCalled();
+	});
+
+	it("nextPendingReviewFn returns the next queue id", async () => {
+		runEffects();
+		await expect(nextPendingReviewFn({ data: 9 } as never)).resolves.toEqual({ id: 44 });
+		expect(mocks.nextPendingReview).toHaveBeenCalledWith(9, "u1");
+	});
+
+	it("nextPendingReviewFn collapses Forbidden to { id: null }", async () => {
+		mocks.nextPendingReview.mockReturnValue(Effect.fail(new Forbidden({ path: "x" })));
+		runEffects();
+		await expect(nextPendingReviewFn({ data: 9 } as never)).resolves.toEqual({ id: null });
+	});
+
+	it("nextPendingReviewFn is { id: null } without a session user", async () => {
+		mocks.getDoctorUser.mockResolvedValueOnce(null);
+		await expect(nextPendingReviewFn({ data: 9 } as never)).resolves.toEqual({ id: null });
 		expect(mocks.runAs).not.toHaveBeenCalled();
 	});
 });

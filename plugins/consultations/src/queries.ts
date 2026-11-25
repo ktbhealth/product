@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lt, lte, ne, or, type SQL } from "drizzle-orm";
 
 import type { DbClient } from "@ktb/db";
 import { consultations, patients, user as users } from "@ktb/db/schema";
@@ -150,6 +150,42 @@ export async function consultationOwner(db: DbClient, id: number) {
 		.where(eq(consultations.id, id))
 		.limit(1);
 	return rows[0] ?? null;
+}
+
+/** Next record in the physician review queue (PL-022): unsigned — the
+ * anamnesis is unapproved at its current version, or the row is
+ * transcript-only and unconfirmed — and not parked. `afterId` seeks the
+ * next row below the current one in the list's id-DESC order; the queue
+ * wraps to the top so the end-of-day ritual always finds work. */
+export async function nextPendingReviewId(
+	db: DbClient,
+	scope: SQL,
+	afterId: number,
+): Promise<number | null> {
+	const pending = or(
+		and(
+			isNotNull(consultations.anamnesis),
+			or(
+				isNull(consultations.anamnesisReviewedVersion),
+				ne(consultations.anamnesisReviewedVersion, consultations.anamnesisVersion),
+			),
+		),
+		and(isNull(consultations.anamnesis), isNull(consultations.transcriptReviewedAt)),
+	);
+	const notParked = or(
+		isNull(consultations.deferredUntil),
+		lte(consultations.deferredUntil, new Date()),
+	);
+	const pick = async (extra: SQL) => {
+		const rows = await db
+			.select({ id: consultations.id })
+			.from(consultations)
+			.where(and(scope, pending, notParked, extra))
+			.orderBy(desc(consultations.id))
+			.limit(1);
+		return rows[0]?.id ?? null;
+	};
+	return (await pick(lt(consultations.id, afterId))) ?? pick(ne(consultations.id, afterId));
 }
 
 export async function getConsultation(

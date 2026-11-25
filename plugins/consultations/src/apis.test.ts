@@ -33,6 +33,7 @@ vi.mock("./fns.ts", () => ({
 	extractAnamnesisFn: vi.fn(),
 	getConsultationFn: mocks.getConsultationFn,
 	getLiveConsultationFn: vi.fn(),
+	nextPendingReviewFn: vi.fn(),
 	recordConsentFn: vi.fn(),
 	reviewTranscriptFn: vi.fn(),
 	saveConsultationFn: vi.fn(),
@@ -160,6 +161,8 @@ describe("api delegates forward to the server fns", () => {
 		const until = new Date("2030-01-15T00:00:00Z");
 		await consultationDetailApi.deferConsultation!({ data: { id: 9, until } });
 		expect(fns.deferConsultationFn).toHaveBeenCalledWith({ data: { id: 9, until } });
+		await consultationDetailApi.nextPendingReview!({ data: 10 });
+		expect(fns.nextPendingReviewFn).toHaveBeenCalledWith({ data: 10 });
 	});
 });
 

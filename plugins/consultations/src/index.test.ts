@@ -998,6 +998,107 @@ describe("ConsultationsLive", () => {
 			.where(eq(consultationsTable.id, id!));
 		expect(rows[0]!.aAt).toBeNull();
 	});
+
+	it("nextPendingReview walks the unsigned, unparked queue (PL-022)", async () => {
+		const create = () =>
+			asUser(
+				"u1",
+				call((c) => c.create({ userId: "u1", transcript: "t", source: "mic" })),
+			);
+		const pending = await create(); // transcript-only, unconfirmed → pending
+		const done = await create(); // transcript confirmed → done
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(done!, "u1")),
+		);
+		const withAnamnesis = await create(); // anamnesis, unapproved → pending
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: withAnamnesis!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+		const approved = await create(); // approved at current version → done
+		await asUser(
+			"u1",
+			call((c) =>
+				c.attachAnamnesis("u1", {
+					consultationId: approved!,
+					anamnesis: {} as SaveConsultationInput["anamnesis"],
+					engine: "e",
+				}),
+			),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.approveAnamnesis(approved!, "u1")),
+		);
+		const parked = await create(); // parked until tomorrow → invisible
+		await asUser(
+			"u1",
+			call((c) => c.deferConsultation(parked!, "u1", new Date(Date.now() + 86_400_000))),
+		);
+
+		// Below the top pending row the next unsigned record is `pending`.
+		expect(
+			await asUser(
+				"u1",
+				call((c) => c.nextPendingReview(withAnamnesis!, "u1")),
+			),
+		).toBe(pending);
+		// The queue walk never returns the current row or a signed/parked one.
+		const next = await asUser(
+			"u1",
+			call((c) => c.nextPendingReview(pending!, "u1")),
+		);
+		expect(next).not.toBeNull();
+		expect(next).not.toBe(pending);
+		expect(next).not.toBe(done);
+		expect(next).not.toBe(approved);
+		expect(next).not.toBe(parked);
+		// Signing every remaining pending row leaves the queue empty for u1.
+		await asUser(
+			"u1",
+			call((c) => c.approveAnamnesis(withAnamnesis!, "u1")),
+		);
+		await asUser(
+			"u1",
+			call((c) => c.reviewTranscript(pending!, "u1")),
+		);
+		// Earlier tests may leave unsigned leftovers — drain them all.
+		for (let i = 0; i < 20; i++) {
+			const left = await asUser(
+				"u1",
+				call((c) => c.nextPendingReview(approved!, "u1")),
+			);
+			if (left === null) break;
+			await asUser(
+				"u1",
+				call((c) => c.reviewTranscript(left, "u1")),
+			);
+			await asUser(
+				"u1",
+				call((c) => c.approveAnamnesis(left, "u1")),
+			);
+		}
+		expect(
+			await asUser(
+				"u1",
+				call((c) => c.nextPendingReview(approved!, "u1")),
+			),
+		).toBeNull();
+		// A user with no rows at all also gets an empty queue.
+		expect(
+			await asUser(
+				"u9",
+				call((c) => c.nextPendingReview(approved!, "u9")),
+			),
+		).toBeNull();
+	});
 });
 
 describe("anamnesis integrity versioning (T-138)", () => {
