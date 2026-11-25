@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createLocalAi, resolveAi, type AiBinding } from "./ai.ts";
+import { createLocalAi, resolveAi, STUB_TRANSCRIPT, type AiBinding } from "./ai.ts";
 
 const binding = (): AiBinding => ({
 	run: async () => ({ marker: "real" }),
@@ -31,7 +31,7 @@ describe("resolveAi", () => {
 			AI_BASE_URL: "http://localhost:1",
 		});
 		expect(await ai!.run("@cf/x", { audio: "aGk=" })).toEqual({
-			text: "[AI_STUB] stub transcription",
+			text: STUB_TRANSCRIPT,
 		});
 		expect(await ai!.run("m", { messages: [] })).toEqual({ response: "{}" });
 	});

@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { OBSERVABILITY_ENV_KEYS } from "@ktb/observability";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { STUB_TRANSCRIPT } from "./ai.ts";
+
 /**
  * The module is the dev:node stand-in for `cloudflare:workers` — it is
  * only reachable through the vite alias (vitest aliases the specifier
@@ -54,7 +56,7 @@ afterEach(() => {
 });
 
 describe("node-cloudflare-workers env", () => {
-	it("exposes DB, AUDIO_BUCKET and AUDIO_QUEUE; AI stays unset unconfigured", async () => {
+	it("exposes DB, AUDIO_BUCKET and AUDIO_QUEUE; AI defaults to the stub", async () => {
 		process.env.DATABASE_URL = ":memory:";
 		process.env.KTB_DEV_QUEUE_DB = ":memory:";
 		audioDir = mkdtempSync(join(tmpdir(), "ktb-node-env-"));
@@ -68,7 +70,10 @@ describe("node-cloudflare-workers env", () => {
 		expect(typeof env.AUDIO_BUCKET.get).toBe("function");
 		expect(typeof env.AUDIO_BUCKET.delete).toBe("function");
 		expect(typeof env.AUDIO_QUEUE.send).toBe("function");
-		expect(env.AI).toBeUndefined();
+		// dev:node defaults AI_STUB=1 (mirroring wrangler.dev.jsonc) so the
+		// golden path runs with no external services.
+		expect(env.AI_STUB).toBe("1");
+		expect(typeof env.AI.run).toBe("function");
 
 		// The bucket writes under AUDIO_BUCKET_DIR.
 		await env.AUDIO_BUCKET.put("k.bin", new Uint8Array([1, 2]));
@@ -111,8 +116,31 @@ describe("node-cloudflare-workers env", () => {
 		expect(env.BETTER_AUTH_SECRET).toBe("s3cret");
 		expect(typeof env.AI.run).toBe("function");
 		await expect(env.AI.run("m", { audio: "aGk=" })).resolves.toEqual({
-			text: "[AI_STUB] stub transcription",
+			text: STUB_TRANSCRIPT,
 		});
+	});
+
+	it("does not default AI_STUB when AI_BASE_URL is configured", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		delete process.env.AI_STUB;
+		process.env.AI_BASE_URL = "http://localhost:8080/v1";
+
+		const env = await loadEnv();
+		expect(env.AI_STUB).toBeUndefined();
+		expect(env.AI_BASE_URL).toBe("http://localhost:8080/v1");
+		expect(typeof env.AI.run).toBe("function");
+	});
+
+	it("honors an explicit AI_STUB=0 opt-out", async () => {
+		process.env.DATABASE_URL = ":memory:";
+		process.env.KTB_DEV_QUEUE_DB = ":memory:";
+		process.env.AI_STUB = "0";
+		delete process.env.AI_BASE_URL;
+
+		const env = await loadEnv();
+		expect(env.AI_STUB).toBe("0");
+		expect(env.AI).toBeUndefined();
 	});
 
 	it("forwards every observability env key into the worker env", async () => {
