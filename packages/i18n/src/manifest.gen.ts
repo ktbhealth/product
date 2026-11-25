@@ -2046,6 +2046,21 @@ export const I18N_MANIFEST = {
 		"review.confirmAndContinue": {
 			params: [],
 		},
+		"review.shortcutsTitle": {
+			params: [],
+		},
+		"review.shortcutPlayPause": {
+			params: [],
+		},
+		"review.shortcutSeekBack": {
+			params: [],
+		},
+		"review.shortcutKeySpace": {
+			params: [],
+		},
+		"review.shortcutConfirm": {
+			params: [],
+		},
 		"review.staleAnamnesis": {
 			params: [],
 		},

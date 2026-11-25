@@ -187,7 +187,7 @@ describe("ReviewModePage — transcript step", () => {
 		expect(screen.getAllByText("Review queue").length).toBeGreaterThan(0);
 		expect(screen.getByText("Bom dia, como está?")).toBeTruthy();
 		// Only seg #1 is below the logprob threshold.
-		expect(screen.getByText("Next uncertain")).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Next uncertain" })).toBeTruthy();
 	});
 
 	it("seek jumps the audio element to the clicked segment", () => {
@@ -201,7 +201,7 @@ describe("ReviewModePage — transcript step", () => {
 	it("next-uncertain seeks the low-confidence segment", () => {
 		renderPage();
 		const audio = document.querySelector("audio")!;
-		fireEvent.click(screen.getByText("Next uncertain"));
+		fireEvent.click(screen.getByRole("button", { name: "Next uncertain" }));
 		expect(audio.currentTime).toBe(2.5);
 	});
 
@@ -236,7 +236,7 @@ describe("ReviewModePage — transcript step", () => {
 		// Same card always renders — contents swap chips for the note.
 		expect(screen.getByText("Passages to check")).toBeTruthy();
 		expect(screen.getByText("High-confidence transcript")).toBeTruthy();
-		expect(screen.queryByText("Next uncertain")).toBeNull();
+		expect(screen.queryByRole("button", { name: "Next uncertain" })).toBeNull();
 		expect(screen.queryByText(/of \d+ checked/)).toBeNull();
 	});
 

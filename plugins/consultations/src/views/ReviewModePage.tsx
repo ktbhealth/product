@@ -663,6 +663,9 @@ function TranscriptStep({
 				e.preventDefault();
 				const a = audioRef.current;
 				if (a) void (a.paused ? a.play().catch(() => {}) : a.pause());
+			} else if (e.key === "ArrowLeft") {
+				const a = audioRef.current;
+				if (a) a.currentTime = Math.max(0, a.currentTime - 10);
 			} else if (e.key === "ArrowRight") {
 				nextUncertain();
 			} else if (e.key === "c" || e.key === "C") {
@@ -928,8 +931,41 @@ function TranscriptStep({
 							</Button>
 						</div>
 					) : null}
+
+					<ShortcutLegend t={t} />
 				</CardContent>
 			</Card>
+		</div>
+	);
+}
+
+function Kbd({ children }: { children: string }) {
+	return (
+		<kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+			{children}
+		</kbd>
+	);
+}
+
+function ShortcutLegend({ t }: { t: Slice }) {
+	const items: [string, string][] = [
+		[t.review.shortcutKeySpace, t.review.shortcutPlayPause],
+		["←", t.review.shortcutSeekBack],
+		["→", t.review.nextUncertain],
+		["C", t.review.shortcutConfirm],
+	];
+	return (
+		<div
+			className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground"
+			aria-label={t.review.shortcutsTitle}
+		>
+			<span className="font-medium">{t.review.shortcutsTitle}</span>
+			{items.map(([key, label]) => (
+				<span key={key} className="flex items-center gap-1.5">
+					<Kbd>{key}</Kbd>
+					{label}
+				</span>
+			))}
 		</div>
 	);
 }

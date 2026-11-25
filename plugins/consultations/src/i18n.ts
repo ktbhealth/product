@@ -178,6 +178,11 @@ export interface ConsultationMessages {
 		readonly editedTag: string;
 		readonly pendingEdits: (n: number) => string;
 		readonly confirmAndContinue: string;
+		readonly shortcutsTitle: string;
+		readonly shortcutPlayPause: string;
+		readonly shortcutSeekBack: string;
+		readonly shortcutKeySpace: string;
+		readonly shortcutConfirm: string;
 		readonly staleAnamnesis: string;
 		readonly regenerateAnamnesis: string;
 		readonly deferredTag: string;
@@ -535,6 +540,11 @@ const en: ConsultationMessages = {
 		editedTag: "edited",
 		pendingEdits: paramMessage("en", "{n} unconfirmed edits", ["n"]),
 		confirmAndContinue: "Confirm transcript & continue",
+		shortcutsTitle: "Keyboard shortcuts",
+		shortcutPlayPause: "play / pause",
+		shortcutSeekBack: "seek -10s",
+		shortcutKeySpace: "Space",
+		shortcutConfirm: "confirm transcript",
 		staleAnamnesis: "Transcript has edits — regenerate if the anamnesis should reflect them.",
 		regenerateAnamnesis: "Regenerate anamnesis",
 		deferredTag: "deferred",
@@ -909,6 +919,11 @@ const ptBR: ConsultationMessages = {
 		editedTag: "editado",
 		pendingEdits: paramMessage("pt-BR", "{n} edições não conferidas", ["n"]),
 		confirmAndContinue: "Confirmar transcrição e continuar",
+		shortcutsTitle: "Atalhos de teclado",
+		shortcutPlayPause: "reproduzir / pausar",
+		shortcutSeekBack: "voltar 10s",
+		shortcutKeySpace: "Espaço",
+		shortcutConfirm: "confirmar transcrição",
 		staleAnamnesis: "A transcrição tem edições — regenere se a anamnese deve refleti-las.",
 		regenerateAnamnesis: "Regenerar anamnese",
 		deferredTag: "adiada",
@@ -1287,6 +1302,11 @@ const es: ConsultationMessages = {
 		editedTag: "editado",
 		pendingEdits: paramMessage("es", "{n} ediciones sin confirmar", ["n"]),
 		confirmAndContinue: "Confirmar transcripción y continuar",
+		shortcutsTitle: "Atajos de teclado",
+		shortcutPlayPause: "reproducir / pausa",
+		shortcutSeekBack: "retroceder 10s",
+		shortcutKeySpace: "Espacio",
+		shortcutConfirm: "confirmar transcripción",
 		staleAnamnesis: "La transcripción tiene ediciones — regenera si la anamnesis debe reflejarlas.",
 		regenerateAnamnesis: "Regenerar anamnesis",
 		deferredTag: "aplazada",
