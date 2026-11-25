@@ -29,6 +29,7 @@ export * from "./diff.ts";
 export * from "./domain.ts";
 export * from "./acp.ts";
 export * from "./anonymize.ts";
+export * from "./asr-ranges.ts";
 export * from "./generate.ts";
 export * from "./llmscript.ts";
 export * from "./locale.ts";
