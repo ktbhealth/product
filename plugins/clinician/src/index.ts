@@ -196,12 +196,13 @@ const clinicalPages = (instance: ClinicalInstanceId): Page[] => {
 			guard: consultationRecordGuard(consultationsBase),
 			loader: consultationRecordLoader(consultationsBase),
 		},
-		// Staff activity feed (P-085): mounted once per clinical
+		// Staff activity feed: mounted once per clinical
 		// instance so each portal owns its copy — moved here from the
 		// audit plugin. The guard asks the Audit service whether the
-		// bound tenant holds `audit.read` — absent service or grant
-		// both deny; the loader degrades a denial to an empty page,
-		// same contract as the other pages.
+		// bound principal has a visible actor scope (always true for a
+		// signed-in user — self is always visible); the loader
+		// degrades a denial to an empty page, same contract as the
+		// other pages.
 		{
 			id: `clinician.${instance}.activity`,
 			path: `${base}/activity`,

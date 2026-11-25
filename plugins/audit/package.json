@@ -10,6 +10,7 @@
 		"./views/audit-page": "./src/views/AuditPage.tsx"
 	},
 	"dependencies": {
+		"@ktb/auth": "workspace:*",
 		"@ktb/authz": "workspace:*",
 		"@ktb/crypto": "workspace:*",
 		"@ktb/db": "workspace:*",

@@ -922,6 +922,7 @@
     "plugins/audit": {
       "name": "@ktb/audit",
       "dependencies": {
+        "@ktb/auth": "workspace:*",
         "@ktb/authz": "workspace:*",
         "@ktb/crypto": "workspace:*",
         "@ktb/db": "workspace:*",
