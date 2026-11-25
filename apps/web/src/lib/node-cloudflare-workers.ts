@@ -107,6 +107,16 @@ for (const key of ENV_KEYS) {
 	if (value !== undefined) env[key] = value;
 }
 
+// Dev-only stub defaults, mirroring wrangler.dev.jsonc vars so
+// `bun run dev:node` runs the golden path with zero external services
+// (regulamento: judges must be able to run the repo locally). Explicit
+// env always wins: AI_STUB=0 + AI_BASE_URL=… runs a real local model,
+// AI_STUB=0 alone disables the AI stand-in. SMTP_URL still beats
+// EMAIL_STUB via driver precedence.
+env.CAPTCHA_STUB ??= "1";
+env.EMAIL_STUB ??= "1";
+if (env.AI_STUB === undefined && env.AI_BASE_URL === undefined) env.AI_STUB = "1";
+
 // DATABASE_URL selects the SQLite file (default ./data/app.db relative
 // to apps/web — the historical dev location). `sqlite:`/`file:` URLs
 // and `:memory:` are accepted; see @ktb/db-sqlite sqliteFilename.

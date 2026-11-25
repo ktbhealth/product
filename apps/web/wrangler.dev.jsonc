@@ -19,12 +19,16 @@
 	// Unlike wrangler.jsonc it has NO "ai" binding: Workers AI has no local
 	// simulator, so the binding forces a remote (authenticated) dev session.
 	// AI resolution order instead: AI_STUB > AI_BASE_URL > env.AI — see
-	// src/lib/ai.ts. Uncomment one to enable:
-	//   "AI_STUB": "1" — canned responses, no server needed
-	//   "AI_BASE_URL": "http://localhost:8080/v1" — OpenAI-compatible server
+	// src/lib/ai.ts. AI_STUB defaults ON so the golden path (record →
+	// transcribe → anamnesis → export) runs with zero external services —
+	// required for the hackathon regulamento (judges run the repo locally).
+	// To use a real local model instead, set both in .dev.vars (it
+	// overrides these vars):
+	//   AI_STUB=0
+	//   AI_BASE_URL=http://localhost:8080/v1   # OpenAI-compatible server
 	//     (whisper.cpp / llama.cpp) exposing /audio/transcriptions and
 	//     /chat/completions
-	"vars": { "CAPTCHA_STUB": "1", "EMAIL_STUB": "1" },
+	"vars": { "CAPTCHA_STUB": "1", "EMAIL_STUB": "1", "AI_STUB": "1" },
 	"r2_buckets": [
 		{ "binding": "AUDIO_BUCKET", "bucket_name": "ktb-audio" },
 		{ "binding": "THEME_ASSETS_BUCKET", "bucket_name": "ktb-theme-assets" },

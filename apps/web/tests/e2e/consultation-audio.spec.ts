@@ -7,16 +7,16 @@
 //
 // What runs in local dev (wrangler.dev.jsonc): R2 and the queue are bound
 // and the workerd queue consumer DOES dispatch locally — an upload flips
-// audio_status queued → processing/failed inside a couple of seconds.
-// What does NOT run: the AI binding (no local simulator; wrangler.dev.jsonc
-// intentionally omits it). resolveAi() (src/lib/ai.ts) only stands in when
-// AI_STUB=1 or AI_BASE_URL is set, and the playwright webServer sets
-// neither — so the pipeline's terminal state in dev is the honest
-// degradation: audio_status="failed" / audio_error="audio pipeline not
-// configured", and /api/transcribe answers 503. The success path
-// (transcript → server_transcript → correctedTranscript) is only
-// exercisable with AI_STUB=1 (documented in wrangler.dev.jsonc) or a real
-// deployment — not asserted here.
+// audio_status queued → done inside a couple of seconds. The AI binding
+// has no local simulator, so wrangler.dev.jsonc drops it and
+// resolveAi() (src/lib/ai.ts) supplies stand-ins: AI_STUB=1 is the
+// default (a canned pt-BR consult transcript — the full pipeline runs
+// end-to-end with zero external services, which the hackathon
+// regulamento requires judges to be able to do). AI_BASE_URL in
+// .dev.vars (with AI_STUB=0) points at a real local model instead; with
+// neither, the pipeline degrades honestly to audio_status="failed" /
+// audio_error="audio pipeline not configured" and /api/transcribe
+// answers 503 — not asserted here.
 //
 // DB side-effects are read straight from the local D1 sqlite file
 // (.wrangler/state/v3/d1/…) via node:sqlite — the same file the workerd
@@ -29,6 +29,8 @@ import { fileURLToPath } from "node:url";
 import type { DatabaseSync } from "node:sqlite";
 
 import { expect, test, type APIRequestContext } from "@playwright/test";
+
+import { STUB_TRANSCRIPT } from "../../src/lib/ai.ts";
 
 const PASSWORD = "senha-forte-123";
 const ORIGIN = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
@@ -160,7 +162,7 @@ test.describe("consultation audio pipeline", () => {
 		expect(transcribe.status()).toBe(401);
 	});
 
-	test("upload stores audio in R2 and the queue consumer fails honestly without AI", async ({
+	test("upload stores audio in R2 and the queue consumer transcribes via the AI stub", async ({
 		request,
 	}) => {
 		const userId = await signUp(request);
@@ -184,17 +186,18 @@ test.describe("consultation audio pipeline", () => {
 		});
 
 		// Queue dispatch is observable only through its DB side-effect: the
-		// consumer flips stored → queued → failed("audio pipeline not
-		// configured") because wrangler.dev.jsonc binds no AI.
+		// consumer flips stored → queued → done. wrangler.dev.jsonc defaults
+		// AI_STUB=1, so the "transcriber" returns the canned consult
+		// transcript — the full pipeline runs with no external services.
 		await expect
 			.poll(() => audioRow(db, consultationId)?.audioStatus, { timeout: 20_000 })
-			.toBe("failed");
+			.toBe("done");
 		const row = audioRow(db, consultationId);
 		expect(row?.audioKey).toMatch(/^audio\//);
-		expect(row?.audioError).toContain("audio pipeline not configured");
-		expect(row?.serverTranscript).toBeNull();
+		expect(row?.audioError).toBeNull();
+		expect(row?.serverTranscript).toBe(STUB_TRANSCRIPT);
 
-		// The R2 object survives the failed job — owner can still stream it.
+		// The R2 object survives the job — owner can still stream it.
 		const audio = await request.get(`/api/consultations/${consultationId}/audio`);
 		expect(audio.status()).toBe(200);
 		expect(audio.headers()["content-type"]).toBe("audio/wav");
@@ -261,9 +264,7 @@ test.describe("consultation audio pipeline", () => {
 		expect(audioRow(db, foreignId)?.audioKey).toBeNull();
 	});
 
-	test("transcribe endpoint validates input and reports missing AI honestly", async ({
-		request,
-	}) => {
+	test("transcribe endpoint validates input and answers via the AI stub", async ({ request }) => {
 		await signUp(request);
 
 		const noFile = await request.post("/api/transcribe", {
@@ -271,14 +272,14 @@ test.describe("consultation audio pipeline", () => {
 		});
 		expect(noFile.status()).toBe(400);
 
-		// Input validation precedes the AI check; with no AI binding bound
-		// in dev the endpoint must answer 503, not crash or fake a result.
+		// Input validation precedes the AI call; with AI_STUB=1 (the dev
+		// default) the endpoint returns the canned transcript.
 		const res = await request.post("/api/transcribe", {
 			multipart: {
 				audio: { name: "a.wav", mimeType: "audio/wav", buffer: AUDIO_BYTES },
 			},
 		});
-		expect(res.status()).toBe(503);
-		expect(await res.json()).toEqual({ error: "transcription not configured" });
+		expect(res.status()).toBe(200);
+		expect(await res.json()).toEqual({ text: STUB_TRANSCRIPT });
 	});
 });

@@ -33,6 +33,39 @@ bun run deploy      # Cloudflare via alchemy (needs vault access)
 `DATABASE_URL` picks the SQLite file under `dev:node`
 (default `./data/app.db`).
 
+### Run locally end-to-end (no external services)
+
+Everything the golden path needs is stubbed by default — AI
+(`AI_STUB=1` returns a canned pt-BR consult transcript that the
+heuristic anamnesis extractor turns into a populated note), email
+(`EMAIL_STUB=1` logs messages), captcha (`CAPTCHA_STUB=1`), and the
+queue/R2/D1 bindings (local workerd or SQLite under `dev:node`). Two
+ways to get a working login + seeded demo data:
+
+```bash
+bun install
+bun run dev              # workerd path — then, once:
+bun run db:migrate:local # apply D1 migrations to the local state
+bun run db:seed          # dev accounts into local D1 (idempotent)
+```
+
+```bash
+bun install
+bun run db:seed -- --sqlite  # dev accounts into the dev:node SQLite
+                             # file (migrations applied automatically)
+bun run dev:node             # plain Node + SQLite — no workerd needed
+```
+
+Sign in as `user@ktb.test` / `dev-password-123` (seeded doctor; see
+`apps/web/scripts/seed-users.ts` for the other accounts). Without the
+seed, sign up through the UI instead — `EMAIL_STUB` prints the
+verification link to the server log.
+
+To exercise real models instead of the AI stub, set `AI_STUB=0` and
+`AI_BASE_URL=http://localhost:8080/v1` (OpenAI-compatible:
+`/audio/transcriptions` + `/chat/completions`) in `apps/web/.dev.vars`
+for `bun run dev`, or as env vars for `dev:node`.
+
 ## Layout
 
 - `apps/web` — the app (TanStack Start on Cloudflare Workers)

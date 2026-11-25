@@ -13,13 +13,20 @@
 //
 // Idempotent — existing emails are skipped, missing links are filled in.
 //
-//   bun run db:seed                 # uses defaults below
+//   bun run db:seed                 # uses defaults below (workerd local D1)
 //   SEED_PASSWORD=… bun run db:seed # override the shared password
+//   bun run db:seed -- --sqlite     # dev:node target instead: the SQLite
+//                                   # file at DATABASE_URL (default
+//                                   # ./data/app.db), migrations applied
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { getPlatformProxy } from "wrangler";
 
 import { and, eq } from "drizzle-orm";
 
 import { makeDb, type DbClient } from "@ktb/db";
+import { makeSqliteDatabase } from "@ktb/db-sqlite";
 import { patientAccess, patients, user } from "@ktb/db/schema";
 import { makeAuth } from "@ktb/auth-better";
 import { ensureDoctorProfile } from "@ktb/doctors";
@@ -91,15 +98,39 @@ const grantPatientAccess = (
 		})
 		.onConflictDoNothing();
 
-const { env, dispose } = await getPlatformProxy({
-	configPath: "wrangler.jsonc",
-	remoteBindings: false,
-});
+// Two targets: the default is the workerd local D1 (what `bun run dev`
+// reads); --sqlite / SEED_SQLITE=1 seeds the dev:node SQLite file
+// instead, so `bun run dev:node` gets the same accounts.
+const useSqlite = process.env.SEED_SQLITE === "1" || process.argv.includes("--sqlite");
+const MIGRATIONS_DIR = resolve(
+	dirname(fileURLToPath(import.meta.url)),
+	"../../../packages/db/drizzle",
+);
+
+let db: DbClient;
+let dispose: () => Promise<void> = async () => {};
+let authEnv: Record<string, unknown> = {};
+if (useSqlite) {
+	db = makeDb(
+		makeSqliteDatabase({
+			filename: process.env.DATABASE_URL ?? "./data/app.db",
+			migrate: MIGRATIONS_DIR,
+		}),
+	);
+	authEnv = process.env;
+} else {
+	const proxy = await getPlatformProxy({
+		configPath: "wrangler.jsonc",
+		remoteBindings: false,
+	});
+	db = makeDb(proxy.env.DB as D1Database);
+	dispose = proxy.dispose;
+	authEnv = proxy.env as Record<string, unknown>;
+}
 try {
-	const db = makeDb(env.DB as D1Database);
 	const auth = makeAuth(db, {
-		secret: (env as Record<string, unknown>).BETTER_AUTH_SECRET as string | undefined,
-		baseURL: (env as Record<string, unknown>).BETTER_AUTH_URL as string | undefined,
+		secret: authEnv.BETTER_AUTH_SECRET as string | undefined,
+		baseURL: authEnv.BETTER_AUTH_URL as string | undefined,
 	});
 	const ids = {} as Record<SeedEmail, string>;
 	for (const u of USERS) {
