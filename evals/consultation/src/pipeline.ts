@@ -908,6 +908,8 @@ export const processSample = (input: {
 			// ORIGINAL typed error — unwrap so callers see the same
 			// PortError the direct dispatch produced (runBatch's
 			// retry predicate and catchTag handlers depend on it).
+			/* v8 ignore next -- every stage failure path above stamps a
+			 * cause; the `?? e` fallback is defensive */
 			Effect.mapError((e) => (e.cause ?? e) as PortError),
 		);
 

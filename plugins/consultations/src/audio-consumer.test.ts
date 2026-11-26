@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { EventBus, type EventBusShape } from "@effect-server-utils/cqrs";
 
 import * as Effect from "effect/Effect";
 
@@ -135,6 +136,8 @@ describe("audio-consumer pure helpers", () => {
 					{ start: 0, end: 1, text: "ok" },
 					{ start: "x", end: 1, text: "bad" },
 					{ start: 0, end: Number.NaN, text: "nan" },
+					{ start: 0, end: 1 },
+					{ start: 0, end: 1, text: 42 },
 					"junk",
 				],
 			}).segments,
@@ -719,6 +722,46 @@ describe("handleAudioQueueBatch", () => {
 		const log: string[] = [];
 		await handleAudioQueueBatch([msg(job(1), log)], deps);
 		expect(log).toEqual(["retry"]);
+	});
+
+	it("dispatches ConsultationAudioUpdated through a bound EventBus", async () => {
+		const dispatched: { _tag?: string }[] = [];
+		const bus = {
+			dispatch: (events: readonly { _tag?: string }[]) =>
+				Effect.sync(() => {
+					dispatched.push(...events);
+				}),
+		} as unknown as EventBusShape;
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				Effect.runPromise(
+					Effect.provideService(effect as Effect.Effect<A, E, never>, EventBus, bus),
+				),
+			runAs: () => Promise.reject(new Error("unused")),
+			audioTranscribeModel: TEST_MODEL,
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+		try {
+			const { db, deps } = makeDeps();
+			const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+			const log: string[] = [];
+			// deps carry no publishAudioUpdate — withSideEffectDefaults
+			// wires the production default, which dispatches on the bus.
+			await handleAudioQueueBatch([msg(envelope(job(id), "env-bus"), log)], deps);
+			expect(log).toEqual(["ack"]);
+			// processing + done notifications both reached the bus.
+			expect(dispatched.length).toBeGreaterThanOrEqual(2);
+			expect(dispatched.every((e) => e._tag === "consultation.audioUpdated")).toBe(true);
+		} finally {
+			setServerRuntime({
+				run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+					Effect.runPromise(effect as Effect.Effect<A, E, never>),
+				runAs: () => Promise.reject(new Error("unused")),
+				audioTranscribeModel: TEST_MODEL,
+				getLocale: () => "en",
+			} as unknown as ServerRuntime);
+		}
 	});
 
 	it("keeps caller deps untouched when no server runtime is bound", async () => {

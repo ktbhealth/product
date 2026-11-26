@@ -272,6 +272,102 @@ describe("env-cleanup fallback stage", () => {
 	});
 });
 
+describe("platform layer resolution degrades", () => {
+	/** Platform* stubs whose defaultLayer is an arbitrary effect —
+	 * typed failure and defect both must land on the disabled path. */
+	const platformDecisionsFx = (fx: Effect.Effect<unknown, unknown, unknown>) =>
+		Layer.succeed(PlatformDecisions, PlatformDecisions.of({ defaultLayer: () => fx as never }));
+	const platformLlmFx = (fx: Effect.Effect<unknown, unknown, unknown>) =>
+		Layer.succeed(PlatformLlm, PlatformLlm.of({ defaultLayer: () => fx as never }));
+
+	it("disables the gate when defaultLayer fails or defects", async () => {
+		const input = { text: "um dois", segments: [{ text: "um" }, { text: "dois" }] };
+		const rFail = await run(
+			input,
+			platformDecisionsFx(Effect.fail(new PortError({ port: "decisions", message: "down" }))),
+		);
+		expect(gateOf(rFail)?.enabled).toBe(false);
+		const rDie = await run(input, platformDecisionsFx(Effect.die("defect")));
+		expect(gateOf(rDie)?.enabled).toBe(false);
+	});
+
+	it("disables cleanup when defaultLayer fails or defects", async () => {
+		const rFail = await run(
+			{ text: "texto cru" },
+			platformLlmFx(Effect.fail(new PortError({ port: "llm", message: "down" }))),
+		);
+		expect(cleanupOf(rFail)?.enabled).toBe(false);
+		const rDie = await run({ text: "texto cru" }, platformLlmFx(Effect.die("defect")));
+		expect(cleanupOf(rDie)?.enabled).toBe(false);
+	});
+});
+
+describe("asr-gate detection failures", () => {
+	const judgeLayer = (judge: DecisionsPort["Service"]["judge"]): Layer.Layer<DecisionsPort> =>
+		Layer.succeed(DecisionsPort, DecisionsPort.of({ judge }));
+	const input = { text: "um dois", segments: [{ text: "um" }, { text: "dois" }] };
+
+	it("disables with detection-failed when the judge call fails", async () => {
+		const env = platformDecisions(
+			judgeLayer(() => Effect.fail(new PortError({ port: "decisions", message: "judge down" }))),
+		);
+		const r = await run(input, env);
+		expect(gateOf(r)).toMatchObject({ enabled: false, error: "detection-failed" });
+	});
+
+	it("disables with detection-failed when the judge call defects", async () => {
+		const env = platformDecisions(judgeLayer(() => Effect.die("judge defect")));
+		const r = await run(input, env);
+		expect(gateOf(r)).toMatchObject({ enabled: false, error: "detection-failed" });
+	});
+});
+
+describe("llm-cleanup corrector defects", () => {
+	it("disables with cleanup-failed when the correct call defects", async () => {
+		const env = platformLlm(llmLayer(() => Effect.die("corrector defect")));
+		const r = await run({ text: "texto cru" }, env);
+		expect(cleanupOf(r)).toMatchObject({ enabled: false, error: "cleanup-failed" });
+	});
+
+	it("reports engine 'unknown' when the corrector record omits it", async () => {
+		const noEngine = { ...record, engine: undefined } as unknown as RunRecord;
+		const env = platformLlm(
+			llmLayer(() => Effect.succeed({ edits: { ops: [] }, record: noEngine })),
+		);
+		const r = await run({ text: "texto cru" }, env);
+		expect(cleanupOf(r)).toMatchObject({ enabled: true, engine: "unknown" });
+	});
+});
+
+describe("wire input narrowing", () => {
+	it("treats non-object input as disabled across every stage", async () => {
+		const env = Layer.mergeAll(
+			platformDecisions(decisionsLayer(() => false)),
+			platformLlm(llmLayer(() => Effect.succeed({ edits: { ops: [] }, record }))),
+		);
+		const r = await run(null, env, { [ENV_CORRECTOR_KEY]: () => Effect.succeed(null) });
+		expect(gateOf(r)?.enabled).toBe(false);
+		expect(cleanupOf(r)?.enabled).toBe(false);
+	});
+
+	it("env-cleanup ignores invalid input even with a corrector configured", async () => {
+		const corrector: EnvCorrector = () => Effect.succeed({ corrected: "x", engine: "e" });
+		const r = await run({ text: "   " }, Layer.empty, {
+			[ENV_CORRECTOR_KEY]: corrector,
+		});
+		expect(cleanupOf(r)?.enabled).toBe(false);
+	});
+});
+
+describe("env-cleanup corrector defects", () => {
+	it("stays disabled when the injected corrector defects", async () => {
+		const r = await run({ text: "texto cru" }, Layer.empty, {
+			[ENV_CORRECTOR_KEY]: () => Effect.die("corrector defect"),
+		});
+		expect(cleanupOf(r)?.enabled).toBe(false);
+	});
+});
+
 describe("pipeline.transcript manifest", () => {
 	it("contributes the consultation-transcript pack", () => {
 		expect(plugins.map((p) => p.id)).toEqual(["pipeline.transcript"]);

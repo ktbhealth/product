@@ -277,7 +277,11 @@ const recordAudit = (
 			targetType: "consultation",
 			targetId: consultationId,
 			tenantId,
-			detail: extraDetail ?? (reason === null ? null : { reason: coarseReason(reason) }),
+			detail:
+				extraDetail ??
+				(reason === null
+					? /* v8 ignore next -- every caller passes a reason or extraDetail, never neither */ null
+					: { reason: coarseReason(reason) }),
 		})
 		.catch(() => {});
 

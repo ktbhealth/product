@@ -29,6 +29,7 @@ import {
 	auditListFacets,
 	listAuditEntries,
 	sanitizeAuditDetail,
+	listActorAuditEntries,
 	listPatientAuditEntries,
 	listTenantAuditEntries,
 	PatientAuditAccess,
@@ -239,6 +240,46 @@ describe("listTenantAuditEntries", () => {
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listTenantAuditEntries(fakeDb, 1);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
+	});
+});
+
+describe("listActorAuditEntries", () => {
+	it("returns an empty page for an empty actor set without querying", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		const result = await listActorAuditEntries(fresh, []);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
+	});
+
+	it("scopes rows to the actor set — email-less actors match on userId only", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		await insertAuditEntry(fresh, {
+			actorUserId: "sec-1",
+			actorEmail: "sec@x.com",
+			action: "feed.mine",
+		});
+		await insertAuditEntry(fresh, {
+			actorUserId: "doc-2",
+			actorEmail: "other@x.com",
+			action: "feed.other",
+		});
+		const result = await listActorAuditEntries(fresh, [
+			{ userId: "sec-1", email: "sec@x.com" },
+			{ userId: "doc-9", email: null },
+		]);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.mine"]);
+		expect(result.total).toBe(1);
+	});
+
+	it("reports a zero total when the count query yields no row", async () => {
+		// Same thenable stub as the admin/tenant listings.
+		const query = {
+			where: () => query,
+			orderBy: () => ({ limit: () => ({ offset: async () => [] }) }),
+			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+		};
+		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
+		const result = await listActorAuditEntries(fakeDb, [{ userId: "u", email: null }]);
 		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 	});
 });
@@ -696,6 +737,48 @@ describe("Audit activity feed — actor scope", () => {
 		// Actors with entries (doc@x.com, sec@x.com) — the permitted
 		// actor keys union in, and other@x.com never leaks.
 		expect(facets.actors).toEqual(["doc@x.com", "sec@x.com"]);
+	});
+
+	it("dedupes the account's own profile and nulls empty/missing emails", async () => {
+		// Principal without email → actor.email null; the directory
+		// echoes the account id (dedup skip) and a "" email (→ null).
+		const profiles: readonly DoctorProfile[] = [
+			{
+				doctorId: 8,
+				userId: "sec-1",
+				email: "self@x.com",
+				displayName: "Self",
+				role: "secretary",
+			},
+			{
+				doctorId: 9,
+				userId: "doc-9",
+				email: "",
+				displayName: "NoMail",
+				role: "secretary",
+			},
+		];
+		const result = await asStaff(
+			call((p) => p.activityList()),
+			{
+				principal: { userId: "sec-1" },
+				profiles,
+			},
+		);
+		// sec-1's own profile is skipped; doc-9 joins with a null email —
+		// the feed still scopes by userId (no email condition at all).
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.self.two", "feed.self.one"]);
+		expect(result.total).toBe(2);
+
+		const facets = await asStaff(
+			call((p) => p.activityFacets()),
+			{
+				principal: { userId: "sec-1" },
+				profiles,
+			},
+		);
+		// Email-less actors union into the dropdown by userId.
+		expect(facets.actors).toEqual(expect.arrayContaining(["sec-1", "doc-9"]));
 	});
 });
 

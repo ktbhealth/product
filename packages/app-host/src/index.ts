@@ -1034,8 +1034,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 			Effect.gen(function* () {
 				if (input.text.trim() === "") return null;
 				const registryOpt = yield* Effect.serviceOption(PipelineRegistry);
+				/* v8 ignore next -- PipelineRegistryLive is unconditional in the core layer */
 				if (Option.isNone(registryOpt)) return null;
 				const registry = registryOpt.value;
+				/* v8 ignore next -- pipelineRegistryLive always registers the transcript pack */
 				if (!registry.has("consultation-transcript")) return null;
 				const result = yield* registry
 					.run(
@@ -1049,17 +1051,20 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 						},
 					)
 					.pipe(
+						/* v8 ignore next -- every pack stage is onError:"skip" and the id is has()-guarded, so run cannot fail typed */
 						Effect.catch((error) =>
 							Effect.logWarning("transcript pipeline failed", {
 								error: String(error),
 							}).pipe(Effect.as(null)),
 						),
+						/* v8 ignore next -- stage defects degrade inside the pack; last-resort net */
 						Effect.catchDefect((defect) =>
 							Effect.logWarning("transcript pipeline failed", {
 								error: String(defect),
 							}).pipe(Effect.as(null)),
 						),
 					);
+				/* v8 ignore next -- result is null only via the ignored catch arms above */
 				if (result === null) return null;
 				const cleanup = result.state.cleanup as
 					| {

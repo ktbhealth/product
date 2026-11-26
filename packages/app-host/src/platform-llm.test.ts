@@ -107,6 +107,9 @@ describe("platformPreferringEngine", () => {
 		).toBe("env");
 		// Port bound but no default configured.
 		expect((await extract(innerEngine("env"), platformService(null))).engine).toBe("env");
+		// defaultLayer itself fails typed or defects — both degrade.
+		expect((await extract(innerEngine("env"), platformService("fail"))).engine).toBe("env");
+		expect((await extract(innerEngine("env"), platformService("die"))).engine).toBe("env");
 		// Defects on the platform path degrade the same way.
 		expect((await extract(innerEngine("env"), platformService(dyingLlmLayer))).engine).toBe("env");
 	});

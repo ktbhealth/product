@@ -627,7 +627,12 @@ export async function listActorAuditEntries(
 	const offset = pageOffset(options.offset);
 	if (actors.length === 0) return { entries: [], total: 0, limit, offset };
 	const scope = actorAuditScope(actors);
-	const where = scope === undefined ? auditListWhere(options) : and(scope, auditListWhere(options));
+	const where =
+		scope === undefined
+			? /* v8 ignore next -- actorAuditScope always yields a condition for a non-empty actor set */ auditListWhere(
+					options,
+				)
+			: and(scope, auditListWhere(options));
 	const [entries, totals] = await Promise.all([
 		db
 			.select()

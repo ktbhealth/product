@@ -488,5 +488,7 @@ describe("isLoopbackUrl", () => {
 		expect(isLoopbackUrl("http://0.0.0.0:8009")).toBe(true);
 		expect(isLoopbackUrl("https://localhost.evil.com")).toBe(false);
 		expect(isLoopbackUrl("https://judge.remote.example.com")).toBe(false);
+		// No parseable host at all — the regex fallback arm.
+		expect(isLoopbackUrl("")).toBe(false);
 	});
 });

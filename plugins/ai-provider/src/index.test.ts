@@ -1172,6 +1172,12 @@ describe("systemone endpoints", () => {
 		]);
 		await rt.dispose();
 	});
+
+	it("presets degrade to [] when the bound factories declare none", async () => {
+		const { rt, run } = make({ factory: "ok", decisionsFactory: "ok" });
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.presets()))).toEqual([]);
+		await rt.dispose();
+	});
 });
 
 describe("PlatformDecisions", () => {

@@ -307,6 +307,41 @@ describe("run", () => {
 		const error = await Effect.runPromise(Effect.flip(r.run("thrower", null)));
 		expect(error).toMatchObject({ _tag: "PipelineRunError", message: "sync boom" });
 	});
+
+	it("normalizes a non-Error typed failure through toStageError", async () => {
+		const r = makePipelineRegistry();
+		r.register({
+			def: { id: "err-obj", stages: [{ id: "s" }] },
+			stages: {
+				s: {
+					id: "s",
+					// Deliberately violates the typed contract with an
+					// Error instance — the message branch of toStageError.
+					run: () => Effect.fail(new Error("plain error") as never),
+				},
+			},
+		});
+		const error = await Effect.runPromise(Effect.flip(r.run("err-obj", null)));
+		expect(error).toMatchObject({ _tag: "PipelineRunError", stageId: "s", message: "plain error" });
+	});
+
+	it("stringifies a synchronous non-Error throw", async () => {
+		const r = makePipelineRegistry();
+		r.register({
+			def: { id: "throw-raw", stages: [{ id: "s" }] },
+			stages: {
+				s: {
+					id: "s",
+					run: () => {
+						// Deliberately non-Error — exercises the String(cause) arm.
+						throw { code: 7 };
+					},
+				},
+			},
+		});
+		const error = await Effect.runPromise(Effect.flip(r.run("throw-raw", null)));
+		expect(error).toMatchObject({ _tag: "PipelineRunError", message: "[object Object]" });
+	});
 });
 
 describe("PipelineRegistry service + live layer", () => {

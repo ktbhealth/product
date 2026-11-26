@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import type * as Layer from "effect/Layer";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DecisionsPort, PortError } from "@ktb/eval-core";
 import { DecisionsFactory, type LlmEndpointDescriptor } from "@ktb/eval-consultation";
@@ -170,6 +170,31 @@ describe("systemOneDecisionsDriver", () => {
 		}
 	});
 
+	it("resolve forwards the descriptor model onto the wire record", async () => {
+		const original = globalThis.fetch;
+		globalThis.fetch = (async () => new Response(JSON.stringify(wireAnswers))) as typeof fetch;
+		try {
+			const r = await withFactory(
+				Effect.gen(function* () {
+					const f = yield* DecisionsFactory;
+					const layer = yield* f.resolve(descriptor({ model: "custom-model" }));
+					return yield* DecisionsPort.pipe(
+						Effect.flatMap((d) =>
+							d.judge({
+								state: {},
+								questions: [{ id: "alive", kind: "noul", text: "up?" }],
+							}),
+						),
+						Effect.provide(layer),
+					);
+				}),
+			);
+			expect(r.record.model).toBe("custom-model");
+		} finally {
+			globalThis.fetch = original;
+		}
+	});
+
 	it("test() fails typed on HTTP errors", async () => {
 		const original = globalThis.fetch;
 		globalThis.fetch = (async () => new Response("boom", { status: 503 })) as typeof fetch;
@@ -187,6 +212,33 @@ describe("systemOneDecisionsDriver", () => {
 			expect(err.message).toContain("503");
 		} finally {
 			globalThis.fetch = original;
+		}
+	});
+
+	it("test() wraps the liveness timeout as a typed PortError", async () => {
+		// A fetch that never answers: only the 15s liveness budget can
+		// settle the ping — fake timers fire it without the real wait.
+		vi.useFakeTimers();
+		const original = globalThis.fetch;
+		globalThis.fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+		try {
+			const pending = withFactory(
+				Effect.gen(function* () {
+					const f = yield* DecisionsFactory;
+					return yield* f.test(descriptor());
+				}),
+			);
+			const assertion = pending.then(
+				() => null,
+				(e) => e,
+			);
+			await vi.advanceTimersByTimeAsync(20_000);
+			const err = await assertion;
+			expect(err).toBeInstanceOf(PortError);
+			expect(err.message).toContain("timed out");
+		} finally {
+			globalThis.fetch = original;
+			vi.useRealTimers();
 		}
 	});
 });

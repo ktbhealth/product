@@ -566,6 +566,56 @@ describe("createApp", () => {
 			}
 		});
 
+		it("passes segments through to the pipeline", async () => {
+			await expect(
+				app.correctTranscript({ text: "texto cru", segments: [{ text: "texto cru" }] }),
+			).resolves.toMatchObject({ corrected: "Texto corrigido." });
+		});
+
+		it("returns null when the platform correction erases the transcript", async () => {
+			// An EditList that removes every word applies cleanly but
+			// yields "" — the app-level contract treats an empty
+			// correction as no correction.
+			await env.DB.prepare(
+				"INSERT INTO ai_endpoint (name, kind, base_url, model, scope, is_default, created_at) VALUES ('t', 'openai', 'https://llm.test', 'm', 'platform', 1, 0)",
+			).run();
+			vi.stubGlobal(
+				"fetch",
+				async () =>
+					new Response(
+						JSON.stringify({
+							choices: [
+								{
+									message: {
+										content: '{"ops":[{"at":0,"remove":"texto cru","insert":"","kind":"fix"}]}',
+									},
+								},
+							],
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					),
+			);
+			try {
+				await expect(app.correctTranscript({ text: "texto cru" })).resolves.toBeNull();
+			} finally {
+				vi.unstubAllGlobals();
+				await env.DB.prepare("DELETE FROM ai_endpoint").run();
+			}
+		});
+
+		it("returns null when no corrector is configured anywhere", async () => {
+			// No AI binding and no LLM keys: llm-cleanup disables (no
+			// platform endpoint) and env-cleanup's corrector resolves
+			// null, so state.cleanup stays { enabled: false }.
+			const { AI: _ai, ...bareEnv } = env;
+			const bare = createApp(bareEnv);
+			try {
+				await expect(bare.correctTranscript({ text: "texto cru" })).resolves.toBeNull();
+			} finally {
+				await bare.runtime.dispose();
+			}
+		});
+
 		it("falls back to env providers inside the pipeline when the platform corrector fails", async () => {
 			// Platform endpoint exists but its corrector reply is not an
 			// EditList → llm-cleanup disables → env-cleanup answers.
