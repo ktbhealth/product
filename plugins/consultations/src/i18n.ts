@@ -284,6 +284,18 @@ export interface ConsultationMessages {
 		 * ciphertext, no browser-safe renderer ships. */
 		readonly exportLocked: string;
 	};
+	/** Doctor-portal speech-model warm-up card — the one-time ahead-of-
+	 * time download that keeps the first consultation off the ~50 MB
+	 * model fetch (the consult page's lazy `load()` stays the fallback). */
+	readonly warmup: {
+		readonly title: string;
+		readonly description: string;
+		readonly preparing: string;
+		readonly ready: (device: string | null | undefined) => string;
+		readonly failed: (message: string) => string;
+		readonly retry: string;
+		readonly dismiss: string;
+	};
 }
 
 const en: ConsultationMessages = {
@@ -572,6 +584,16 @@ const en: ConsultationMessages = {
 		lockedHint: "Unlock it on an approved clinic device to view it.",
 		decryptFailed: "This record could not be decrypted on this device.",
 		exportLocked: "PDF export unavailable for encrypted records",
+	},
+	warmup: {
+		title: "Prepare speech recognition",
+		description:
+			"Download the speech model once (~50 MB) so your first consultation doesn't wait on it. It runs in the background — you can keep working.",
+		preparing: "Downloading speech model…",
+		ready: (device) => `Speech recognition ready${device ? ` (${device})` : ""}`,
+		failed: paramMessage("en", "Speech model unavailable: {message}", ["message"]),
+		retry: "Retry",
+		dismiss: "Dismiss",
 	},
 };
 
@@ -866,6 +888,16 @@ const ptBR: ConsultationMessages = {
 		decryptFailed: "Não foi possível descriptografar este registro neste dispositivo.",
 		exportLocked: "Exportação em PDF indisponível para registros criptografados",
 	},
+	warmup: {
+		title: "Preparar reconhecimento de voz",
+		description:
+			"Baixe o modelo de fala uma vez (~50 MB) para que a primeira consulta não espere por ele. A execução é em segundo plano — você pode continuar trabalhando.",
+		preparing: "Baixando modelo de fala…",
+		ready: (device) => `Reconhecimento de voz pronto${device ? ` (${device})` : ""}`,
+		failed: paramMessage("pt-BR", "Modelo de fala indisponível: {message}", ["message"]),
+		retry: "Tentar novamente",
+		dismiss: "Dispensar",
+	},
 };
 
 const es: ConsultationMessages = {
@@ -1158,6 +1190,16 @@ const es: ConsultationMessages = {
 		lockedHint: "Desbloquéalo en un dispositivo aprobado de la clínica para verlo.",
 		decryptFailed: "No se pudo descifrar este registro en este dispositivo.",
 		exportLocked: "Exportación a PDF no disponible para registros cifrados",
+	},
+	warmup: {
+		title: "Preparar reconocimiento de voz",
+		description:
+			"Descarga el modelo de voz una vez (~50 MB) para que la primera consulta no tenga que esperarlo. Se ejecuta en segundo plano — puedes seguir trabajando.",
+		preparing: "Descargando modelo de voz…",
+		ready: (device) => `Reconocimiento de voz listo${device ? ` (${device})` : ""}`,
+		failed: paramMessage("es", "Modelo de voz no disponible: {message}", ["message"]),
+		retry: "Reintentar",
+		dismiss: "Descartar",
 	},
 };
 
