@@ -15,8 +15,11 @@
 //   written by @ktb/jobs-port, read by the /platform jobs console.
 // - scheduled-jobs.ts — runtime scheduler definitions; claimed and
 //   dispatched by @ktb/scheduler-port's heartbeat sweep.
+// - orchestration.ts — durable orchestration runs/events/node trace
+//   (@ktb/orchestrator phase 2); written by its durable runner.
 export * from "./auth.ts";
 export * from "./job-runs.ts";
+export * from "./orchestration.ts";
 export * from "./plugin-state.ts";
 export * from "./scheduled-jobs.ts";
 export * from "./schema.gen.ts";
