@@ -27,7 +27,9 @@ import { and, eq } from "drizzle-orm";
 
 import { makeDb, type DbClient } from "@ktb/db";
 import { makeSqliteDatabase } from "@ktb/db-sqlite";
-import { patientAccess, patients, user } from "@ktb/db/schema";
+import { consultations, patientAccess, patients, user } from "@ktb/db/schema";
+import { HeuristicExtractor } from "@ktb/anamnesis";
+import { PTBR_CONSULTATIONS } from "@ktb/eval-consultation/ptbr";
 import { makeAuth } from "@ktb/auth-better";
 import { ensureDoctorProfile } from "@ktb/doctors";
 import { assignSubject, createRole, setRolePermission } from "@ktb/rbac-plugin";
@@ -185,6 +187,56 @@ try {
 		relation: "guardian",
 		grantedBy: doctorId,
 	});
+
+	// T-092: one demo-ready consultation for the judge walkthrough —
+	// authored pt-BR synthetic dialogue lifted verbatim from the T-042
+	// eval cohort (@ktb/eval-consultation/ptbr), never generated prose.
+	// The anamnesis comes from the app's own deterministic fallback
+	// extractor so the stored shape matches a real save, and the row
+	// carries synthetic=true like every other corpus-generated consult.
+	// Idempotent: the transcript is content-stable, so a row already
+	// holding it is left untouched.
+	const DEMO_CONSULT_SLUG = "gp-lombalgia-03";
+	const demoConsult = PTBR_CONSULTATIONS.find((c) => c.slug === DEMO_CONSULT_SLUG)!;
+	const SPEAKER_LABEL = { doctor: "Médico", patient: "Paciente" } as const;
+	const demoTranscript = demoConsult.turns
+		.map((t) => `${SPEAKER_LABEL[t.speaker]}: ${t.text}`)
+		.join("\n");
+	const [existingConsult] = await db
+		.select({ id: consultations.id })
+		.from(consultations)
+		.where(and(eq(consultations.userId, doctorId), eq(consultations.transcript, demoTranscript)));
+	if (existingConsult === undefined) {
+		const extractor = new HeuristicExtractor();
+		const now = new Date();
+		const [row] = await db
+			.insert(consultations)
+			.values({
+				userId: doctorId,
+				patientId: patientRecord,
+				transcript: demoTranscript,
+				anamnesis: JSON.stringify(await extractor.extract(demoTranscript)),
+				engine: extractor.name,
+				source: "browser",
+				status: "done",
+				consentAt: now,
+				synthetic: true,
+				createdAt: now,
+			})
+			.returning({ id: consultations.id });
+		// Same owner-tuple write the service layer performs on create —
+		// record authz reads relation_tuples, not consultations.user_id.
+		await writeRelationTuple(db, {
+			objectType: "consultation",
+			objectId: String(row!.id),
+			relation: "owner",
+			subjectKind: "user",
+			subjectId: doctorId,
+		});
+		console.log(`[seed] consultation #${row!.id} (${DEMO_CONSULT_SLUG}) for user@ktb.test`);
+	} else {
+		console.log(`[seed] demo consultation #${existingConsult.id} already exists — skipped`);
+	}
 
 	// Eval validator (P-081): the validator login is a regular user
 	// carrying the eval-validator role → the eval.validator grant. No

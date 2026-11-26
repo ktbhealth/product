@@ -68,6 +68,7 @@
         "@ktb/doctors": "workspace:*",
         "@ktb/email": "workspace:*",
         "@ktb/email-smtp": "workspace:*",
+        "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-persona": "workspace:*",
         "@ktb/eval-validator": "workspace:*",
         "@ktb/i18n": "workspace:*",
