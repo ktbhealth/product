@@ -122,6 +122,13 @@ describe("connectNodes", () => {
 		expect(connectNodes(d, "a", "a", "x")).toBe(d);
 		expect(connectNodes(d, "a", "b", "  ")).toBe(d);
 	});
+
+	it("leaves unrelated nodes untouched", () => {
+		const middle = node({ id: "mid", emits: ["keep"] });
+		const d = def([node({ id: "a" }), middle, node({ id: "b" })]);
+		const next = connectNodes(d, "a", "b", "x");
+		expect(next.nodes[1]).toBe(middle);
+	});
 });
 
 describe("node edits", () => {
@@ -158,5 +165,13 @@ describe("suggestEventType", () => {
 		const d = def([node({ id: "a", kind: "ai" }), node({ id: "b", kind: "gate" })]);
 		expect(suggestEventType(d, "a", "b")).toBe("flow.ai.gate");
 		expect(suggestEventType(d, "a", "nope")).toBe("");
+	});
+
+	it("degrades a non-string shared type to the empty suggestion", () => {
+		// Runtime data can carry non-strings past the type — the ?? arm
+		// keeps the dialog from pre-filling "undefined".
+		const hole = undefined as unknown as string;
+		const d = def([node({ id: "a", emits: [hole] }), node({ id: "b", on: [hole] })]);
+		expect(suggestEventType(d, "a", "b")).toBe("");
 	});
 });

@@ -65,4 +65,9 @@ describe("OrchestrationEditorPanelPage", () => {
 		);
 		expect(editorSeen.last).toMatchObject({ mode: "edit", def: null });
 	});
+
+	it("degrades absent loader data to edit mode with no kinds", () => {
+		render(<OrchestrationEditorPanelPage data={null} ctx={ctx} />);
+		expect(editorSeen.last).toMatchObject({ mode: "edit", def: null, kinds: [] });
+	});
 });

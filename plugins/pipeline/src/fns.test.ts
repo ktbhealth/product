@@ -12,6 +12,23 @@ import {
 vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
+// getOrchestrationDef is spied so the upsert fn's post-write re-read
+// can be forced to `null` (the `?? false` wire arm); every other export
+// delegates to the real module.
+const orchestratorSpy = vi.hoisted(() => ({
+	getOrchestrationDef: vi.fn(),
+	actual: undefined as unknown,
+}));
+vi.mock("@ktb/orchestrator", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@ktb/orchestrator")>();
+	orchestratorSpy.actual = actual.getOrchestrationDef;
+	return {
+		...actual,
+		getOrchestrationDef: (...args: Parameters<typeof actual.getOrchestrationDef>) =>
+			orchestratorSpy.getOrchestrationDef(...args),
+	};
+});
+
 import { Db, makeDb } from "@ktb/db";
 import { orchestrationNodeRuns, orchestrationRuns } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
@@ -24,13 +41,19 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
-import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
+import {
+	makePlatformAdminGate,
+	parsePlatformAdminEmails,
+	PlatformAdmin,
+	type PlatformAdminShape,
+} from "@ktb/platform";
 
 import {
 	getOrchestrationFn,
 	getOrchestrationRunFn,
 	listOrchestrationKindsFn,
 	listOrchestrationsFn,
+	orchestrationListRow,
 	startOrchestrationFn,
 	upsertOrchestrationFn,
 } from "./fns.ts";
@@ -83,6 +106,9 @@ describe("pipeline admin fns", () => {
 	const auth = stubAuth(() => sessionUser(currentEmail));
 
 	beforeAll(async () => {
+		orchestratorSpy.getOrchestrationDef.mockImplementation(
+			orchestratorSpy.actual as typeof orchestratorSpy.getOrchestrationDef,
+		);
 		const db = makeDb(makeD1(DDL));
 		const env = Layer.mergeAll(
 			Layer.succeed(Db, db),
@@ -346,5 +372,93 @@ describe("startOrchestrationFn without the capability", () => {
 			ok: false,
 			error: "orchestration runner unavailable (jobs transport unbound)",
 		});
+	});
+});
+
+describe("orchestrationListRow", () => {
+	it("omits description when the def declares none", () => {
+		const record = {
+			id: "bare",
+			version: "3",
+			def: { id: "bare", nodes: [] },
+			enabled: false,
+			createdAt: 1,
+			updatedAt: 2,
+		} as Parameters<typeof orchestrationListRow>[0];
+		expect(orchestrationListRow(record)).toEqual({
+			id: "bare",
+			version: "3",
+			nodeCount: 0,
+			enabled: false,
+			createdAt: 1,
+			updatedAt: 2,
+		});
+	});
+});
+
+describe("non-Forbidden failures propagate", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let currentEmail: string | null = null;
+	const auth = stubAuth(() => sessionUser(currentEmail));
+
+	beforeAll(() => {
+		currentEmail = "admin@x.com";
+		const db = makeDb(makeD1(DDL));
+		const brokenGate = {
+			isAdmin: () => Effect.succeed(false),
+			requireAdmin: () => Effect.fail(new Error("gate exploded")),
+		} as unknown as PlatformAdminShape;
+		const env = Layer.mergeAll(Layer.succeed(Db, db), Layer.succeed(PlatformAdmin, brokenGate));
+		runtime = ManagedRuntime.make(env as Layer.Layer<unknown, never, never>);
+		installServerFnRuntime(runtime, auth);
+	});
+
+	afterAll(() => {
+		resetServerFnRuntime();
+		return runtime.dispose();
+	});
+
+	it("rethrows non-Forbidden errors from every gated fn", async () => {
+		await expect(listOrchestrationsFn()).rejects.toThrow("gate exploded");
+		await expect(getOrchestrationFn({ data: "demo" })).rejects.toThrow("gate exploded");
+		await expect(upsertOrchestrationFn({ data: demoDef })).rejects.toThrow("gate exploded");
+		await expect(listOrchestrationKindsFn()).rejects.toThrow("gate exploded");
+		await expect(startOrchestrationFn({ data: { defId: "demo" } })).rejects.toThrow(
+			"gate exploded",
+		);
+		await expect(getOrchestrationRunFn({ data: "orun-demo" })).rejects.toThrow("gate exploded");
+	});
+});
+
+describe("upsert post-write re-read miss", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let currentEmail: string | null = null;
+	const auth = stubAuth(() => sessionUser(currentEmail));
+
+	beforeAll(() => {
+		currentEmail = "admin@x.com";
+		orchestratorSpy.getOrchestrationDef.mockImplementation(
+			orchestratorSpy.actual as typeof orchestratorSpy.getOrchestrationDef,
+		);
+		const db = makeDb(makeD1(DDL));
+		const env = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(env as Layer.Layer<unknown, never, never>);
+		installServerFnRuntime(runtime, auth);
+	});
+
+	afterAll(() => {
+		resetServerFnRuntime();
+		orchestratorSpy.getOrchestrationDef.mockImplementation(
+			orchestratorSpy.actual as typeof orchestratorSpy.getOrchestrationDef,
+		);
+		return runtime.dispose();
+	});
+
+	it("reports false when the stored record cannot be re-read", async () => {
+		orchestratorSpy.getOrchestrationDef.mockResolvedValueOnce(null);
+		expect(await upsertOrchestrationFn({ data: demoDef })).toBe(false);
 	});
 });
