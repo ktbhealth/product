@@ -6,7 +6,7 @@ import { LlmPort, PlatformLlm } from "@ktb/eval-consultation";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { correctTranscriptViaPlatform, platformPreferringEngine } from "./platform-llm.ts";
+import { platformPreferringEngine } from "./platform-llm.ts";
 
 const SECTION = { content: "x", confidence: "alta" as const, evidence: [] };
 const ANAMNESIS: Anamnesis = {
@@ -58,51 +58,6 @@ const dyingLlmLayer = Layer.succeed(
 const run = <A>(eff: Effect.Effect<A>, service?: PlatformLlm["Service"]) =>
 	Effect.runPromise(service === undefined ? eff : Effect.provideService(eff, PlatformLlm, service));
 
-describe("correctTranscriptViaPlatform", () => {
-	it("returns null when the port is unbound (plugin absent)", async () => {
-		expect(await run(correctTranscriptViaPlatform("t"))).toBeNull();
-	});
-
-	it("returns null when no platform default exists", async () => {
-		expect(await run(correctTranscriptViaPlatform("t"), platformService(null))).toBeNull();
-	});
-
-	it("returns null when defaultLayer resolution fails", async () => {
-		expect(await run(correctTranscriptViaPlatform("t"), platformService("fail"))).toBeNull();
-	});
-
-	it("returns null when defaultLayer resolution defects", async () => {
-		expect(await run(correctTranscriptViaPlatform("t"), platformService("die"))).toBeNull();
-	});
-
-	it("corrects through the bound endpoint layer", async () => {
-		const res = await run(
-			correctTranscriptViaPlatform("texto com erro"),
-			platformService(llmLayer(() => ({ text: "  Texto corrigido. " }))),
-		);
-		expect(res).toEqual({ corrected: "Texto corrigido.", engine: "platform:stub-engine" });
-	});
-
-	it("returns null on endpoint failure and on empty output", async () => {
-		expect(
-			await run(
-				correctTranscriptViaPlatform("t"),
-				platformService(llmLayer(() => new Error("down"))),
-			),
-		).toBeNull();
-		expect(
-			await run(
-				correctTranscriptViaPlatform("t"),
-				platformService(llmLayer(() => ({ text: "   " }))),
-			),
-		).toBeNull();
-	});
-
-	it("returns null when the endpoint defects", async () => {
-		expect(await run(correctTranscriptViaPlatform("t"), platformService(dyingLlmLayer))).toBeNull();
-	});
-});
-
 describe("platformPreferringEngine", () => {
 	const innerEngine = (engine = "inner") =>
 		AnamnesisEngine.of({
@@ -152,6 +107,9 @@ describe("platformPreferringEngine", () => {
 		).toBe("env");
 		// Port bound but no default configured.
 		expect((await extract(innerEngine("env"), platformService(null))).engine).toBe("env");
+		// defaultLayer itself fails typed or defects — both degrade.
+		expect((await extract(innerEngine("env"), platformService("fail"))).engine).toBe("env");
+		expect((await extract(innerEngine("env"), platformService("die"))).engine).toBe("env");
 		// Defects on the platform path degrade the same way.
 		expect((await extract(innerEngine("env"), platformService(dyingLlmLayer))).engine).toBe("env");
 	});

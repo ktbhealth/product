@@ -2,7 +2,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import type * as Layer from "effect/Layer";
 
-import type { PortError, TaskEnvelope } from "@ktb/eval-core";
+import type { DecisionsPort, PortError, TaskEnvelope } from "@ktb/eval-core";
 
 import type {
 	AcousticProfile,
@@ -18,7 +18,7 @@ import type {
 
 // Generic ports moved to @ktb/eval-core (P-074) — re-exported so
 // consumers import the tags from `@ktb/eval-consultation` directly.
-export { EvalPort, PortError, ReportPort } from "@ktb/eval-core";
+export { DecisionsPort, EvalPort, PortError, ReportPort } from "@ktb/eval-core";
 export type { TaskEnvelope } from "@ktb/eval-core";
 
 /**
@@ -276,10 +276,13 @@ export class EvalArtifacts extends Context.Service<
  * lab's endpoint CRUD persists. `kind` selects the wire protocol:
  * `acp` = JSON-RPC agent transport (Claude Code, Gemini CLI, custom
  * agents); `openai` = OpenAI-compatible chat completions (Ollama, LM
- * Studio, GPT, Gemini's compat endpoint). `secretRef` is the NAME of
+ * Studio, GPT, Gemini's compat endpoint); `systemone` = a System One
+ * decision-model endpoint (`POST /v1/systemone`) — NOT generative, so
+ * it resolves through DecisionsFactory/DecisionsPort, never LlmFactory.
+ * `secretRef` is the NAME of
  * an env var holding the API key — keys never live in tables. */
 export interface LlmEndpointDescriptor {
-	readonly kind: "acp" | "openai";
+	readonly kind: "acp" | "openai" | "systemone";
 	/** Optional for acp+ws bridge endpoints (F3b): absent/empty means
 	 * "connect through the AcpBridge durable object" — the agent lives
 	 * behind a local ai-bridge CLI, not a URL. */
@@ -355,3 +358,43 @@ export class PlatformLlm extends Context.Service<
 		readonly defaultLayer: () => Effect.Effect<Layer.Layer<LlmPort> | null, never, unknown>;
 	}
 >()("@ktb/eval-consultation/PlatformLlm") {}
+
+/**
+ * Factory port for DECISION endpoints — the `systemone` kind of the
+ * shared `ai_endpoint` table. Mirrors LlmFactory: the composition root
+ * binds one factory (adapter edge) and consumers (the ai-provider
+ * plugin's PlatformDecisions, eval tooling) ask it for concrete
+ * DecisionsPort layers per descriptor, never importing adapters.
+ * `resolve` fails PortError for non-`systemone` kinds — a generative
+ * descriptor is LlmFactory's job, not this port's. `test` is the same
+ * liveness ping contract as LlmFactory.test. `presets` carries the
+ * adapter's provider starter endpoints (e.g. a hosted System One
+ * baseUrl) for the endpoint dialog's preset chips. */
+export class DecisionsFactory extends Context.Service<
+	DecisionsFactory,
+	{
+		readonly resolve: (
+			descriptor: LlmEndpointDescriptor,
+		) => Effect.Effect<Layer.Layer<DecisionsPort>, PortError>;
+		readonly test: (descriptor: LlmEndpointDescriptor) => Effect.Effect<void, PortError>;
+		readonly presets?: readonly LlmEndpointPreset[];
+	}
+>()("@ktb/eval-consultation/DecisionsFactory") {}
+
+/**
+ * Platform-default DECISION endpoint — the `systemone` sibling of
+ * PlatformLlm, bound by the ai-provider plugin's services layer.
+ * `defaultLayer` resolves the enabled `scope='platform'` `is_default`
+ * endpoint of kind `systemone` through DecisionsFactory on every call,
+ * so admin changes apply without a restart; `null` means "no platform
+ * decision default configured" and consumers fall back to their own
+ * env-derived decision config (e.g. EVAL_SYSTEMONE_URL). Absent service
+ * (plugin not registered, or no DecisionsFactory bound) is the same
+ * fallback — read it via `Effect.serviceOption`.
+ */
+export class PlatformDecisions extends Context.Service<
+	PlatformDecisions,
+	{
+		readonly defaultLayer: () => Effect.Effect<Layer.Layer<DecisionsPort> | null, never, unknown>;
+	}
+>()("@ktb/eval-consultation/PlatformDecisions") {}

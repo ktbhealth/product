@@ -1,0 +1,14 @@
+{
+	"name": "@ktb/plugin-pipeline-transcript",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/eval-consultation": "workspace:*",
+		"@ktb/kernel": "workspace:*",
+		"@ktb/pipeline": "workspace:*",
+		"effect": "4.1.2"
+	}
+}

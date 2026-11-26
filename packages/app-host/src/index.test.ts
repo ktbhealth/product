@@ -524,20 +524,24 @@ describe("createApp", () => {
 
 	describe("correctTranscript", () => {
 		it("returns null for an empty transcript without calling the provider", async () => {
-			await expect(app.correctTranscript("   ")).resolves.toBeNull();
+			await expect(app.correctTranscript({ text: "   " })).resolves.toBeNull();
 		});
 
-		it("corrects through the configured Workers AI binding", async () => {
-			await expect(app.correctTranscript("texto cru")).resolves.toMatchObject({
+		it("corrects through env providers when no platform endpoint exists", async () => {
+			// No ai_endpoint rows: the pack's env-cleanup stage resolves
+			// the env LlmConfig (Workers AI binding) — the pipeline's own
+			// configured fallback, not a caller-side chain.
+			await expect(app.correctTranscript({ text: "texto cru" })).resolves.toMatchObject({
 				corrected: "Texto corrigido.",
 				engine: expect.stringContaining("workers-ai"),
 			});
 		});
 
-		it("prefers the platform-default endpoint over env providers (F2)", async () => {
-			// Seed a platform-scope default endpoint — the host binds
-			// LlmFactory via the always-eligible driver, so the row resolves
-			// to a chat layer; stub fetch so the chat completion succeeds.
+		it("prefers the platform-default endpoint (reversible edits) over env providers", async () => {
+			// Seed a platform-scope default endpoint — the pack's
+			// llm-cleanup stage resolves it through PlatformLlm and the
+			// corrector reply is a valid EditList, beating the env
+			// Workers AI fallback entirely.
 			await env.DB.prepare(
 				"INSERT INTO ai_endpoint (name, kind, base_url, model, scope, is_default, created_at) VALUES ('t', 'openai', 'https://llm.test', 'm', 'platform', 1, 0)",
 			).run();
@@ -545,14 +549,93 @@ describe("createApp", () => {
 				"fetch",
 				async () =>
 					new Response(
-						JSON.stringify({ choices: [{ message: { content: "  Texto corrigido.  " } }] }),
+						JSON.stringify({
+							choices: [{ message: { content: '{"ops":[]}' } }],
+						}),
 						{ status: 200, headers: { "content-type": "application/json" } },
 					),
 			);
 			try {
-				await expect(app.correctTranscript("texto cru")).resolves.toMatchObject({
+				await expect(app.correctTranscript({ text: "texto cru" })).resolves.toEqual({
+					corrected: "texto cru",
+					engine: "pipeline:openai-compat",
+				});
+			} finally {
+				vi.unstubAllGlobals();
+				await env.DB.prepare("DELETE FROM ai_endpoint").run();
+			}
+		});
+
+		it("passes segments through to the pipeline", async () => {
+			await expect(
+				app.correctTranscript({ text: "texto cru", segments: [{ text: "texto cru" }] }),
+			).resolves.toMatchObject({ corrected: "Texto corrigido." });
+		});
+
+		it("returns null when the platform correction erases the transcript", async () => {
+			// An EditList that removes every word applies cleanly but
+			// yields "" — the app-level contract treats an empty
+			// correction as no correction.
+			await env.DB.prepare(
+				"INSERT INTO ai_endpoint (name, kind, base_url, model, scope, is_default, created_at) VALUES ('t', 'openai', 'https://llm.test', 'm', 'platform', 1, 0)",
+			).run();
+			vi.stubGlobal(
+				"fetch",
+				async () =>
+					new Response(
+						JSON.stringify({
+							choices: [
+								{
+									message: {
+										content: '{"ops":[{"at":0,"remove":"texto cru","insert":"","kind":"fix"}]}',
+									},
+								},
+							],
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					),
+			);
+			try {
+				await expect(app.correctTranscript({ text: "texto cru" })).resolves.toBeNull();
+			} finally {
+				vi.unstubAllGlobals();
+				await env.DB.prepare("DELETE FROM ai_endpoint").run();
+			}
+		});
+
+		it("returns null when no corrector is configured anywhere", async () => {
+			// No AI binding and no LLM keys: llm-cleanup disables (no
+			// platform endpoint) and env-cleanup's corrector resolves
+			// null, so state.cleanup stays { enabled: false }.
+			const { AI: _ai, ...bareEnv } = env;
+			const bare = createApp(bareEnv);
+			try {
+				await expect(bare.correctTranscript({ text: "texto cru" })).resolves.toBeNull();
+			} finally {
+				await bare.runtime.dispose();
+			}
+		});
+
+		it("falls back to env providers inside the pipeline when the platform corrector fails", async () => {
+			// Platform endpoint exists but its corrector reply is not an
+			// EditList → llm-cleanup disables → env-cleanup answers.
+			await env.DB.prepare(
+				"INSERT INTO ai_endpoint (name, kind, base_url, model, scope, is_default, created_at) VALUES ('t', 'openai', 'https://llm.test', 'm', 'platform', 1, 0)",
+			).run();
+			vi.stubGlobal(
+				"fetch",
+				async () =>
+					new Response(
+						JSON.stringify({
+							choices: [{ message: { content: "not an edit list" } }],
+						}),
+						{ status: 200, headers: { "content-type": "application/json" } },
+					),
+			);
+			try {
+				await expect(app.correctTranscript({ text: "texto cru" })).resolves.toMatchObject({
 					corrected: "Texto corrigido.",
-					engine: expect.stringContaining("platform:"),
+					engine: expect.stringContaining("workers-ai"),
 				});
 			} finally {
 				vi.unstubAllGlobals();

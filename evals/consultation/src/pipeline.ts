@@ -11,6 +11,13 @@ import {
 	type EditOp,
 	type PromptRef,
 } from "@ktb/eval-core";
+import {
+	makePipelineRegistry,
+	PipelineStageError,
+	type PipelinePack,
+	type PipelineStage,
+	type StageResult,
+} from "@ktb/pipeline";
 
 import { gateTranscript } from "./anonymize.ts";
 import { charRangesFor, segmentCharSpans, type AsrRange } from "./asr-ranges.ts";
@@ -52,8 +59,10 @@ import type {
 /**
  * Pipeline stage runners — pure port orchestration. The eval path
  * (S3 ASR → S4 cleanup → S7 judging) is composed by `processSample`,
- * which dispatches the manifest-selected run stages through
- * `RUN_STAGE_FNS` in declared order; the stage helpers it calls
+ * which executes the manifest-selected run stages THROUGH the
+ * `@ktb/pipeline` engine (`evalRunPack` + `makePipelineRegistry` —
+ * the same registry the app runtime uses) in declared order; the
+ * stage helpers it calls
  * (`transcribeSample`, `cleanupTranscript`, `entityQuestions`,
  * `cleanupQuestions`) stay exported for tests and for callers
  * running stages individually. Generation-side stages (S0 script,
@@ -494,7 +503,9 @@ export interface SampleRun {
 
 /** Mutable per-sample state the dispatched stage functions share —
  * each stage reads what earlier stages produced and writes its own
- * outputs back. */
+ * outputs back. `processSample` hands this object to the pipeline
+ * engine as `StageContext.input`, so the stages' writes are visible
+ * to assembly exactly as the direct dispatch left them. */
 interface StageRun {
 	readonly sample: Sample;
 	readonly profile: LocaleProfile;
@@ -657,6 +668,78 @@ export const RUN_STAGE_FNS: Readonly<
 	cleanup: stageCleanup,
 	judge: stageJudge,
 };
+
+// ---------- @ktb/pipeline adapter ----------
+
+/** Pipeline id for the eval run. One pack is built per manifest stage
+ * selection (the def's `stages` mirror the selected subset), so the
+ * id stays constant — each `processSample` call registers it on a
+ * fresh registry. */
+export const EVAL_RUN_PIPELINE_ID = "eval.consultation/run";
+
+/** The stage's products, returned as the PipelineStage `output` — the
+ * registry aliases it at `state[stageId]` for observability. The
+ * authoritative hand-off stays on the shared {@link StageRun} (the
+ * pipeline `input`), which assembly reads — one source of truth, no
+ * dual-write divergence. */
+const stageOutput = (id: RunStage, ctx: StageRun): unknown => {
+	switch (id) {
+		case "transcribe":
+			return ctx.asr;
+		case "cleanup":
+			return {
+				edits: ctx.edits,
+				corrected: ctx.corrected,
+				cleanupGate: ctx.cleanupGate,
+			};
+		case "judge":
+			return { answers: ctx.answers };
+	}
+};
+
+/** Adapt a RUN_STAGE_FNS runner to the {@link PipelineStage} contract.
+ * The shared StageRun arrives as `StageContext.input` — the registry
+ * never mutates `input`, and the stage writes land on the same object
+ * the direct dispatch used, so records/answers/PHI decisions behave
+ * identically. Ambient ports are probed inside the runners exactly as
+ * before (`Effect.serviceOption`/`yield*` against the caller-provided
+ * layer). The typed `PortError` channel is normalized to
+ * `PipelineStageError`; the registry re-wraps it into
+ * `PipelineRunError` whose `cause` is THIS original error, which
+ * `processSample` unwraps back — callers see the same failures. */
+const toPipelineStage = (id: RunStage): PipelineStage => ({
+	id,
+	run: (sctx) => {
+		const ctx = sctx.input as StageRun;
+		return RUN_STAGE_FNS[id](ctx).pipe(
+			Effect.map((): StageResult => ({ output: stageOutput(id, ctx) })),
+			Effect.mapError((e) => new PipelineStageError({ stageId: id, message: e.message, cause: e })),
+		);
+	},
+});
+
+/** The eval run expressed as a `@ktb/pipeline` pack: `stages` is the
+ * manifest-validated run-stage subset (already a canonical-order
+ * subsequence — see runStageError), mirrored as the def's ordered
+ * entries. `onError` stays at the default "halt" — that IS today's
+ * semantics: any stage failure fails the whole sample. All three
+ * stage implementations are always present in the pack; the def
+ * selects the subset. Exported for eval-cli/ops tooling that wants to
+ * inspect or drive the same pipeline through a shared registry. */
+export const evalRunPack = (stages: readonly RunStage[]): PipelinePack => ({
+	def: {
+		id: EVAL_RUN_PIPELINE_ID,
+		version: "1",
+		description:
+			"Consultation eval run — manifest-selected transcribe/cleanup/judge over one sample.",
+		stages: stages.map((id) => ({ id })),
+	},
+	stages: {
+		transcribe: toPipelineStage("transcribe"),
+		cleanup: toPipelineStage("cleanup"),
+		judge: toPipelineStage("judge"),
+	},
+});
 
 /**
  * The manifest-selected run stages over one sample: transcribe,
@@ -839,11 +922,19 @@ export const processSample = (input: {
 			});
 		}
 
-		// Dispatch in the manifest's declared order. Stage records are
-		// collected THROUGH the helpers' onRecord hooks — fired the
+		// Dispatch through the shared pipeline engine (@ktb/pipeline)
+		// rather than calling RUN_STAGE_FNS directly: the validated
+		// selection becomes the def's ordered stage entries (default
+		// "halt" onError = today's fail-the-sample semantics), the
+		// stage impls are thin adapters over the same runners, and the
+		// mutable StageRun rides as the pipeline `input` — records are
+		// collected THROUGH the helpers' onRecord hooks fired the
 		// moment each port call returns, before any subsequent
-		// fallible step (PHI scrub gate, edit application) — so even
-		// those mid-stage refusals leave their audit record.
+		// fallible step (PHI scrub gate, edit application), so even
+		// those mid-stage refusals leave their audit record. A fresh
+		// registry per call: the def id is constant but the stage
+		// subset varies per selection and register() rejects
+		// duplicates — a shared registry would collide across calls.
 		const ctx: StageRun = {
 			sample: input.sample,
 			profile,
@@ -863,9 +954,18 @@ export const processSample = (input: {
 		if (priorAsr !== undefined) {
 			ctx.asr = { text: priorAsr, segments: [] };
 		}
-		for (const stage of stages) {
-			yield* RUN_STAGE_FNS[stage](ctx);
-		}
+		const registry = makePipelineRegistry();
+		registry.register(evalRunPack(stages));
+		yield* registry.run(EVAL_RUN_PIPELINE_ID, ctx).pipe(
+			// PipelineRunError wraps the stage failure twice
+			// (PipelineStageError → run error); its `cause` is the
+			// ORIGINAL typed error — unwrap so callers see the same
+			// PortError the direct dispatch produced (runBatch's
+			// retry predicate and catchTag handlers depend on it).
+			/* v8 ignore next -- every stage failure path above stamps a
+			 * cause; the `?? e` fallback is defensive */
+			Effect.mapError((e) => (e.cause ?? e) as PortError),
+		);
 
 		// "transcribe" ran live OR priorAsrText seeded the slot —
 		// validation above guarantees one of the two.

@@ -78,6 +78,29 @@ interface CorrectedTranscript {
 	readonly engine: string;
 }
 
+/**
+ * One Whisper segment — `start`/`end` in seconds plus its text.
+ * Workers AI whisper models return these natively in the `ai.run`
+ * response (same shape as the REST API); the pipeline.transcript
+ * pack's asr-gate stage scores them for ASR error ranges.
+ */
+export interface WhisperSegment {
+	readonly start: number;
+	readonly end: number;
+	readonly text: string;
+}
+
+/**
+ * Provider transcription result: flat text plus optional timed
+ * segments. `segments` stays undefined when the provider shape carries
+ * none — callers must treat that as "no timing data" and never
+ * synthesize pseudo-segments (the gate degrades explicitly instead).
+ */
+export interface TranscriptionResult {
+	readonly text: string;
+	readonly segments?: readonly WhisperSegment[];
+}
+
 export interface AudioJobDeps {
 	readonly db: DbClient;
 	readonly bucket: AudioBucketLike | undefined;
@@ -85,7 +108,17 @@ export interface AudioJobDeps {
 	/** Transcription model id — host-resolved deploy config
 	 * (AUDIO_TRANSCRIBE_MODEL via the runtime registry). */
 	readonly model: string;
-	readonly correctTranscript: (transcript: string) => Promise<CorrectedTranscript | null>;
+	/**
+	 * LLM cleanup pass (P-017). Receives the transcript text plus the
+	 * provider's timed segments when available — the
+	 * consultation-transcript pipeline's asr-gate stage needs them to
+	 * score ASR error ranges; `segments` is absent (never fabricated)
+	 * when the provider returned none.
+	 */
+	readonly correctTranscript: (input: {
+		readonly text: string;
+		readonly segments?: readonly WhisperSegment[];
+	}) => Promise<CorrectedTranscript | null>;
 	/**
 	 * Live fan-out for the /platform jobs feed: the consumer is a system
 	 * path (no Principal), so the default wiring dispatches a
@@ -156,24 +189,57 @@ export function whisperInputs(audioBase64: string) {
 	};
 }
 
-/** Tolerant text extraction across Workers AI response shapes. */
-export function extractWhisperText(raw: unknown): string {
-	if (typeof raw === "string") return raw;
+/** Tolerant segment decode — drops malformed entries rather than
+ * failing the whole transcription (a partially-timed response is
+ * still usable; the gate scores what it gets). */
+const asWhisperSegment = (s: unknown): WhisperSegment | null => {
+	if (typeof s !== "object" || s === null) return null;
+	const r = s as Record<string, unknown>;
+	if (typeof r.text !== "string") return null;
+	if (typeof r.start !== "number" || typeof r.end !== "number") return null;
+	if (!Number.isFinite(r.start) || !Number.isFinite(r.end)) return null;
+	return { start: r.start, end: r.end, text: r.text };
+};
+
+/**
+ * Tolerant extraction across Workers AI response shapes — flat text
+ * plus optional `segments` (whisper-large-v3-turbo returns them in the
+ * same payload as `text`; older/local stand-ins may return text only).
+ */
+export function extractWhisperResult(raw: unknown): TranscriptionResult {
+	if (typeof raw === "string") return { text: raw };
 	if (raw && typeof raw === "object") {
 		const r = raw as Record<string, unknown>;
-		if (typeof r.text === "string") return r.text;
-		if (typeof r.transcription === "string") return r.transcription;
+		const text =
+			typeof r.text === "string"
+				? r.text
+				: typeof r.transcription === "string"
+					? r.transcription
+					: undefined;
+		if (text === undefined) {
+			throw new Error("Workers AI returned an unrecognized transcription shape");
+		}
+		const segments = Array.isArray(r.segments)
+			? r.segments.map(asWhisperSegment).filter((s): s is WhisperSegment => s !== null)
+			: undefined;
+		return { text, ...(segments !== undefined ? { segments } : {}) };
 	}
 	throw new Error("Workers AI returned an unrecognized transcription shape");
+}
+
+/** Text-only view of {@link extractWhisperResult} — kept for callers
+ * that only need the flat transcript. */
+export function extractWhisperText(raw: unknown): string {
+	return extractWhisperResult(raw).text;
 }
 
 export async function transcribeAudio(
 	transcriber: AudioTranscriber,
 	audio: Uint8Array,
 	model: string,
-): Promise<string> {
+): Promise<TranscriptionResult> {
 	const raw = await transcriber.run(model, whisperInputs(bytesToBase64(audio)));
-	return extractWhisperText(raw);
+	return extractWhisperResult(raw);
 }
 
 /** Best-effort live notification — publishing is a side channel, so a
@@ -203,6 +269,7 @@ const recordAudit = (
 	action: string,
 	reason: string | null,
 	tenantId: number | null,
+	extraDetail?: Readonly<Record<string, unknown>>,
 ) =>
 	deps
 		.recordAudit?.({
@@ -210,7 +277,11 @@ const recordAudit = (
 			targetType: "consultation",
 			targetId: consultationId,
 			tenantId,
-			detail: reason === null ? null : { reason: coarseReason(reason) },
+			detail:
+				extraDetail ??
+				(reason === null
+					? /* v8 ignore next -- every caller passes a reason or extraDetail, never neither */ null
+					: { reason: coarseReason(reason) }),
 		})
 		.catch(() => {});
 
@@ -290,33 +361,49 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 	}
 
 	const bytes = new Uint8Array(await object.arrayBuffer());
-	let transcript: string;
+	let result: TranscriptionResult;
 	try {
-		transcript = await transcribeAudio(deps.ai, bytes, deps.model);
+		result = await transcribeAudio(deps.ai, bytes, deps.model);
 	} catch (error) {
 		await fail(deps, job.consultationId, `transcription failed: ${String(error)}`, tenantId);
 		return;
 	}
+	const transcript = result.text;
 	if (!transcript.trim()) {
 		await fail(deps, job.consultationId, "transcription returned empty text", tenantId);
 		return;
 	}
+	// Segment presence is part of the provider contract for whisper
+	// models — surface its absence honestly (audit detail + warning)
+	// instead of letting downstream stages guess at pseudo-timings.
+	const segments = result.segments;
+	if (segments === undefined) {
+		console.warn("transcription provider returned no segments", {
+			consultationId: job.consultationId,
+			model: deps.model,
+		});
+	}
 	await completeAudioJob(deps.db, job.consultationId, transcript);
 	await notify(deps, job.consultationId, "done", null, tenantId);
 	// P-080: transcription itself is complete — audit before the
-	// best-effort cleanup block below.
+	// best-effort cleanup block below. `segments` records how many
+	// timed segments the provider returned (0 = text-only response).
 	await recordAudit(
 		deps,
 		job.consultationId,
 		"consultations.transcription.completed",
 		null,
 		tenantId,
+		{ segments: segments?.length ?? 0 },
 	);
 
 	// P-017: LLM cleanup chained in the same job. Failure leaves
 	// correctedTranscript null; audioStatus stays "done".
 	try {
-		const corrected = await deps.correctTranscript(transcript);
+		const corrected = await deps.correctTranscript({
+			text: transcript,
+			...(segments !== undefined ? { segments } : {}),
+		});
 		if (corrected) {
 			await saveCorrectedTranscript(
 				deps.db,

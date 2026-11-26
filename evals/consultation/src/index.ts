@@ -53,7 +53,8 @@ export * from "./scriptgen.ts";
  * pointer for humans/ops, not a dispatch key — EXCEPT for stages:
  * suite `stages` refs really dispatch. `eval run` maps the manifest's
  * stage ids through `runStageSelection` (pipeline.ts) and executes
- * them via `RUN_STAGE_FNS` in declared order — a selection may narrow
+ * them via `evalRunPack` on the `@ktb/pipeline` engine in declared
+ * order — a selection may narrow
  * the pipeline (skip judge, transcribe-only) but never reorder it
  * (canonical order transcribe → cleanup → judge). Generation stages
  * (script_gen/synthesize) are owned by `eval generate`

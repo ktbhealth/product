@@ -5,6 +5,7 @@ import * as path from "node:path";
 
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { Driver } from "@ktb/driver-framework";
+import { PipelineRegistry } from "@ktb/pipeline";
 import {
 	AsrPort,
 	cleanupTranscript,
@@ -96,26 +97,90 @@ export const makeEvalRunner = <E>(ports: Layer.Layer<TtsPort | AsrPort, E>) => {
 			records.push(tag(asrRecord));
 			const asrText = asrResult.text;
 
+			// Preferred path when the runtime binds a PipelineRegistry
+			// that knows the shared `consultation-transcript` pack (the
+			// app composition root registers every plugin's packs): the
+			// pipeline stages resolve the platform decision/generative
+			// endpoints themselves, so cleanup works even without an
+			// ambient LlmPort. Unbound registry, unknown pipeline id,
+			// disabled cleanup, or a run failure all yield undefined and
+			// fall through to the direct LlmPort path — behavior with no
+			// registry bound is byte-identical to before.
+			const registryOpt = yield* Effect.serviceOption(PipelineRegistry);
+			const pipelineCleanup:
+				| { edits: number; corrected: string; werAfter: number; cerAfter: number }
+				| undefined = yield* Option.isNone(registryOpt) ||
+			!registryOpt.value.has("consultation-transcript")
+				? Effect.succeed(undefined)
+				: Effect.gen(function* () {
+						const result = yield* registryOpt.value
+							.run("consultation-transcript", {
+								text: asrText,
+								segments: asrResult.segments,
+								taskId: `eval-${item.id}`,
+							})
+							.pipe(
+								Effect.catch((error) =>
+									Effect.logWarning("eval transcript pipeline failed, using direct cleanup", {
+										error: String(error),
+									}).pipe(Effect.as(null)),
+								),
+								Effect.catchDefect((defect) =>
+									Effect.logWarning("eval transcript pipeline failed, using direct cleanup", {
+										error: String(defect),
+									}).pipe(Effect.as(null)),
+								),
+							);
+						if (result === null) return undefined;
+						const cleanup = result.state.cleanup as
+							| {
+									readonly enabled?: unknown;
+									readonly corrected?: unknown;
+									readonly edits?: unknown;
+									readonly records?: unknown;
+							  }
+							| undefined;
+						if (cleanup?.enabled !== true || typeof cleanup.corrected !== "string") {
+							return undefined;
+						}
+						// The stages already emit RunRecords (corrector calls,
+						// gate judge batches) — tag them into this item's
+						// audit trail like every other stage record.
+						if (Array.isArray(cleanup.records)) {
+							for (const r of cleanup.records as readonly RunRecord[]) {
+								records.push(tag(r));
+							}
+						}
+						return {
+							edits: typeof cleanup.edits === "number" ? cleanup.edits : 0,
+							corrected: cleanup.corrected,
+							werAfter: wer(item.script, cleanup.corrected),
+							cerAfter: cer(item.script, cleanup.corrected),
+						};
+					});
+
 			const llm = yield* Effect.serviceOption(LlmPort);
-			const cleanup = Option.isNone(llm)
-				? undefined
-				: yield* cleanupTranscript({
-						taskId: `eval-${item.id}`,
-						raw: asrText,
-						// onRecord fires before edit application — a
-						// corrupt-edit-list failure still keeps the
-						// corrector's audit record.
-						onRecord: (r) => records.push(tag(r)),
-					}).pipe(
-						Effect.provideService(LlmPort, llm.value),
-						Effect.map((r) => ({
-							edits: r.edits.ops.length,
-							corrected: r.corrected,
-							werAfter: wer(item.script, r.corrected),
-							cerAfter: cer(item.script, r.corrected),
-						})),
-						Effect.catch((error: unknown) => Effect.succeed({ error: String(error) })),
-					);
+			const cleanup =
+				pipelineCleanup ??
+				(Option.isNone(llm)
+					? undefined
+					: yield* cleanupTranscript({
+							taskId: `eval-${item.id}`,
+							raw: asrText,
+							// onRecord fires before edit application — a
+							// corrupt-edit-list failure still keeps the
+							// corrector's audit record.
+							onRecord: (r) => records.push(tag(r)),
+						}).pipe(
+							Effect.provideService(LlmPort, llm.value),
+							Effect.map((r) => ({
+								edits: r.edits.ops.length,
+								corrected: r.corrected,
+								werAfter: wer(item.script, r.corrected),
+								cerAfter: cer(item.script, r.corrected),
+							})),
+							Effect.catch((error: unknown) => Effect.succeed({ error: String(error) })),
+						));
 			const corrected =
 				cleanup !== undefined && "corrected" in cleanup ? cleanup.corrected : undefined;
 

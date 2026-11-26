@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { EventBus, type EventBusShape } from "@effect-server-utils/cqrs";
 
 import * as Effect from "effect/Effect";
 
@@ -14,6 +15,7 @@ import { AUDIO_TRANSCRIPTION_JOB_KIND, attachAudioRecord } from "./audio-jobs.ts
 import {
 	bytesToBase64,
 	defaultAudioJobDeps,
+	extractWhisperResult,
 	extractWhisperText,
 	handleAudioQueueBatch,
 	MAX_AUDIO_BYTES,
@@ -24,6 +26,7 @@ import {
 	whisperInputs,
 	type AudioJobDeps,
 	type QueueMessageLike,
+	type WhisperSegment,
 } from "./audio-consumer.ts";
 import { createConsultation } from "./lifecycle.ts";
 
@@ -41,7 +44,10 @@ const TEST_MODEL = "test-whisper";
 
 const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
 	const db = makeDb(makeD1(DDL));
-	const calls = { corrected: [] as string[] };
+	const calls = {
+		corrected: [] as string[],
+		segments: [] as (readonly WhisperSegment[] | undefined)[],
+	};
 	const deps: AudioJobDeps = {
 		db,
 		model: TEST_MODEL,
@@ -57,9 +63,10 @@ const makeDeps = (over: Partial<AudioJobDeps> = {}) => {
 			},
 		},
 		ai: { run: async () => ({ text: "transcrição servidor" }) },
-		correctTranscript: async (t) => {
-			calls.corrected.push(t);
-			return { corrected: `${t} (corrigido)`, engine: "test-llm" };
+		correctTranscript: async (input) => {
+			calls.corrected.push(input.text);
+			calls.segments.push(input.segments);
+			return { corrected: `${input.text} (corrigido)`, engine: "test-llm" };
 		},
 		...over,
 	};
@@ -103,10 +110,51 @@ describe("audio-consumer pure helpers", () => {
 		});
 	});
 
+	it("extractWhisperResult keeps timed segments and tolerates shapes", () => {
+		expect(extractWhisperResult({ text: "oi" })).toEqual({ text: "oi" });
+		expect(extractWhisperResult("raw")).toEqual({ text: "raw" });
+		expect(
+			extractWhisperResult({
+				text: "fala um. fala dois.",
+				segments: [
+					{ start: 0, end: 1.5, text: "fala um." },
+					{ start: 1.5, end: 3, text: "fala dois." },
+				],
+			}),
+		).toEqual({
+			text: "fala um. fala dois.",
+			segments: [
+				{ start: 0, end: 1.5, text: "fala um." },
+				{ start: 1.5, end: 3, text: "fala dois." },
+			],
+		});
+		// Malformed entries drop out; a non-array segments key is ignored.
+		expect(
+			extractWhisperResult({
+				text: "t",
+				segments: [
+					{ start: 0, end: 1, text: "ok" },
+					{ start: "x", end: 1, text: "bad" },
+					{ start: 0, end: Number.NaN, text: "nan" },
+					{ start: 0, end: 1 },
+					{ start: 0, end: 1, text: 42 },
+					"junk",
+				],
+			}).segments,
+		).toEqual([{ start: 0, end: 1, text: "ok" }]);
+		expect(extractWhisperResult({ text: "t", segments: "nope" })).toEqual({ text: "t" });
+		expect(() => extractWhisperResult({ nope: 1 })).toThrow("unrecognized");
+		expect(() => extractWhisperResult(null)).toThrow("unrecognized");
+		expect(() => extractWhisperResult(42)).toThrow("unrecognized");
+	});
+
 	it("extractWhisperText tolerates shapes", () => {
 		expect(extractWhisperText({ text: "oi" })).toBe("oi");
 		expect(extractWhisperText({ transcription: "alt" })).toBe("alt");
 		expect(extractWhisperText("raw")).toBe("raw");
+		expect(extractWhisperText({ text: "t", segments: [{ start: 0, end: 1, text: "s" }] })).toBe(
+			"t",
+		);
 		expect(() => extractWhisperText({ nope: 1 })).toThrow("unrecognized");
 		expect(() => extractWhisperText(null)).toThrow("unrecognized");
 		expect(() => extractWhisperText(42)).toThrow("unrecognized");
@@ -121,10 +169,21 @@ describe("audio-consumer pure helpers", () => {
 				return { text: "fala" };
 			},
 		};
-		const text = await transcribeAudio(ai, new Uint8Array([65, 66]), TEST_MODEL);
-		expect(text).toBe("fala");
+		const result = await transcribeAudio(ai, new Uint8Array([65, 66]), TEST_MODEL);
+		expect(result).toEqual({ text: "fala" });
 		expect(seen.model).toBe(TEST_MODEL);
 		expect((seen.inputs as { audio: string }).audio).toBeTruthy();
+	});
+
+	it("transcribeAudio surfaces provider segments", async () => {
+		const ai = {
+			run: async () => ({
+				text: "um dois",
+				segments: [{ start: 0, end: 0.5, text: "um" }],
+			}),
+		};
+		const result = await transcribeAudio(ai, new Uint8Array([65]), TEST_MODEL);
+		expect(result.segments).toEqual([{ start: 0, end: 0.5, text: "um" }]);
 	});
 });
 
@@ -142,6 +201,45 @@ describe("processAudioJob", () => {
 		expect(r?.correctedTranscript).toBe("transcrição servidor (corrigido)");
 		expect(r?.enhancementEngine).toBe("test-llm");
 		expect(calls.corrected).toEqual(["transcrição servidor"]);
+		expect(calls.segments).toEqual([undefined]); // text-only provider response
+	});
+
+	it("forwards provider segments to the cleanup dep and audits the count", async () => {
+		const entries: Parameters<NonNullable<AudioJobDeps["recordAudit"]>>[0][] = [];
+		const { db, deps, calls } = makeDeps({
+			ai: {
+				run: async () => ({
+					text: "um dois",
+					segments: [
+						{ start: 0, end: 0.5, text: "um" },
+						{ start: 0.5, end: 1, text: "dois" },
+					],
+				}),
+			},
+			recordAudit: async (e) => {
+				entries.push(e);
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+
+		await processAudioJob(job(id), deps);
+
+		expect(calls.segments).toEqual([
+			[
+				{ start: 0, end: 0.5, text: "um" },
+				{ start: 0.5, end: 1, text: "dois" },
+			],
+		]);
+		expect(entries).toEqual([
+			{
+				action: "consultations.transcription.completed",
+				targetType: "consultation",
+				targetId: id,
+				tenantId: null,
+				detail: { segments: 2 },
+			},
+		]);
 	});
 
 	it("refuses to send zero-knowledge audio to Whisper (T-147)", async () => {
@@ -389,7 +487,7 @@ describe("transcription audit trail (P-080)", () => {
 				targetType: "consultation",
 				targetId: id,
 				tenantId: 4,
-				detail: null,
+				detail: { segments: 0 }, // default mock returns text only
 			},
 		]);
 	});
@@ -624,6 +722,46 @@ describe("handleAudioQueueBatch", () => {
 		const log: string[] = [];
 		await handleAudioQueueBatch([msg(job(1), log)], deps);
 		expect(log).toEqual(["retry"]);
+	});
+
+	it("dispatches ConsultationAudioUpdated through a bound EventBus", async () => {
+		const dispatched: { _tag?: string }[] = [];
+		const bus = {
+			dispatch: (events: readonly { _tag?: string }[]) =>
+				Effect.sync(() => {
+					dispatched.push(...events);
+				}),
+		} as unknown as EventBusShape;
+		setServerRuntime({
+			run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+				Effect.runPromise(
+					Effect.provideService(effect as Effect.Effect<A, E, never>, EventBus, bus),
+				),
+			runAs: () => Promise.reject(new Error("unused")),
+			audioTranscribeModel: TEST_MODEL,
+			getLocale: () => "en",
+		} as unknown as ServerRuntime);
+		try {
+			const { db, deps } = makeDeps();
+			const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+			await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+			const log: string[] = [];
+			// deps carry no publishAudioUpdate — withSideEffectDefaults
+			// wires the production default, which dispatches on the bus.
+			await handleAudioQueueBatch([msg(envelope(job(id), "env-bus"), log)], deps);
+			expect(log).toEqual(["ack"]);
+			// processing + done notifications both reached the bus.
+			expect(dispatched.length).toBeGreaterThanOrEqual(2);
+			expect(dispatched.every((e) => e._tag === "consultation.audioUpdated")).toBe(true);
+		} finally {
+			setServerRuntime({
+				run: <A, E>(effect: Effect.Effect<A, E, unknown>) =>
+					Effect.runPromise(effect as Effect.Effect<A, E, never>),
+				runAs: () => Promise.reject(new Error("unused")),
+				audioTranscribeModel: TEST_MODEL,
+				getLocale: () => "en",
+			} as unknown as ServerRuntime);
+		}
 	});
 
 	it("keeps caller deps untouched when no server runtime is bound", async () => {

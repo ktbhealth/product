@@ -3,14 +3,16 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import { and, desc, eq, gt, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, ne } from "drizzle-orm";
 import { BotIcon, PlugZapIcon } from "lucide-react";
 
 import { type Forbidden } from "@ktb/authz";
 import { Credentials } from "@ktb/credentials";
 import { Db, tx } from "@ktb/db";
 import {
+	DecisionsFactory,
 	LlmFactory,
+	PlatformDecisions,
 	PlatformLlm,
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
@@ -191,7 +193,7 @@ const descriptorOf = (row: AiEndpoint): Effect.Effect<LlmEndpointDescriptor, nev
 		const sshHost = row.sshHost ?? machine?.host ?? null;
 		const secretRef = row.secretRef ?? machine?.secretRef ?? null;
 		const base: LlmEndpointDescriptor = {
-			kind: row.kind === "acp" ? "acp" : "openai",
+			kind: row.kind === "acp" ? "acp" : row.kind === "systemone" ? "systemone" : "openai",
 			baseUrl: row.baseUrl ?? "",
 			// DO name for acp+ws bridge endpoints (F3b) — the factory
 			// resolves idFromName(endpointId).
@@ -316,6 +318,7 @@ export const AiEndpointsLive = Layer.effect(
 	Effect.gen(function* () {
 		const db = yield* Db;
 		const factory = yield* Effect.serviceOption(LlmFactory);
+		const decisionsFactory = yield* Effect.serviceOption(DecisionsFactory);
 		const values = (input: EndpointInput) => ({
 			name: input.name,
 			kind: input.kind,
@@ -397,19 +400,36 @@ export const AiEndpointsLive = Layer.effect(
 			}),
 			presets: Effect.fn("AiEndpoints.presets")(function* () {
 				yield* requireGrant();
-				return Option.isNone(factory) ? [] : (factory.value.presets ?? []);
+				// Generative + decision presets merge into one chip list —
+				// each factory only declares its own kind.
+				return [
+					...(Option.isNone(factory) ? [] : (factory.value.presets ?? [])),
+					...(Option.isNone(decisionsFactory) ? [] : (decisionsFactory.value.presets ?? [])),
+				];
 			}),
 			test: Effect.fn("AiEndpoints.test")(function* (id) {
 				yield* requireGrant();
 				const row = yield* fetchRow(id);
 				if (row === undefined) return;
+				const descriptor = yield* descriptorOf(row);
+				// `systemone` endpoints are decision models — they ping
+				// through DecisionsFactory, never LlmFactory (which would
+				// reject the kind anyway).
+				if (descriptor.kind === "systemone") {
+					if (Option.isNone(decisionsFactory)) {
+						return yield* Effect.fail({
+							_tag: "PortError",
+							message: "no DecisionsFactory bound — systemone endpoints cannot be tested",
+						} as const);
+					}
+					return yield* decisionsFactory.value.test(descriptor);
+				}
 				if (Option.isNone(factory)) {
 					return yield* Effect.fail({
 						_tag: "PortError",
 						message: "no LlmFactory bound — endpoints resolve to template mode",
 					} as const);
 				}
-				const descriptor = yield* descriptorOf(row);
 				return yield* factory.value.test(descriptor);
 			}),
 			resolve: Effect.fn("AiEndpoints.resolve")(function* (id) {
@@ -544,6 +564,11 @@ export const PlatformLlmLive = Layer.effect(
 									eq(aiEndpoint.scope, "platform"),
 									eq(aiEndpoint.isDefault, true),
 									eq(aiEndpoint.enabled, true),
+									// Generative kinds only — a `systemone`
+									// platform default belongs to
+									// PlatformDecisions, and LlmFactory would
+									// reject the kind anyway.
+									ne(aiEndpoint.kind, "systemone"),
 								),
 							)
 							.orderBy(desc(aiEndpoint.id)),
@@ -555,6 +580,52 @@ export const PlatformLlmLive = Layer.effect(
 				}).pipe(
 					Effect.catch((error) =>
 						Effect.logWarning("platform default endpoint resolution failed", {
+							error: String(error),
+						}).pipe(Effect.as(null)),
+					),
+				),
+		});
+	}),
+);
+
+// ---------------------------------------------------------------------------
+// PlatformDecisions — the decision-model sibling of PlatformLlm: the
+// enabled `scope='platform'` `is_default` endpoint OF KIND `systemone`,
+// resolved through DecisionsFactory per call. Same degrade-to-null
+// contract: absent factory, missing default, or a resolve failure all
+// answer null and consumers fall back to env-derived decision config.
+// ---------------------------------------------------------------------------
+
+export const PlatformDecisionsLive = Layer.effect(
+	PlatformDecisions,
+	Effect.gen(function* () {
+		const db = yield* Db;
+		const factory = yield* Effect.serviceOption(DecisionsFactory);
+		return PlatformDecisions.of({
+			defaultLayer: () =>
+				Effect.gen(function* () {
+					if (Option.isNone(factory)) return null;
+					const rows = yield* Effect.promise(() =>
+						db
+							.select()
+							.from(aiEndpoint)
+							.where(
+								and(
+									eq(aiEndpoint.scope, "platform"),
+									eq(aiEndpoint.isDefault, true),
+									eq(aiEndpoint.enabled, true),
+									eq(aiEndpoint.kind, "systemone"),
+								),
+							)
+							.orderBy(desc(aiEndpoint.id)),
+					);
+					const row = rows[0];
+					if (row === undefined) return null;
+					const descriptor = yield* descriptorOf(row);
+					return yield* factory.value.resolve(descriptor);
+				}).pipe(
+					Effect.catch((error) =>
+						Effect.logWarning("platform decision endpoint resolution failed", {
 							error: String(error),
 						}).pipe(Effect.as(null)),
 					),
@@ -589,7 +660,7 @@ export const aiEndpointsServicesPlugin = definePlugin({
 	// and vault stores when those plugins are enabled — absence
 	// just skips them.
 	optionalDeps: ["credentials.services", "vault.secrets", "machines.services"],
-	services: Layer.mergeAll(AiEndpointsLive, PlatformLlmLive),
+	services: Layer.mergeAll(AiEndpointsLive, PlatformLlmLive, PlatformDecisionsLive),
 });
 
 export const aiEndpointsChromePlugin = definePlugin({

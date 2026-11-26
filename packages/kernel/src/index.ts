@@ -138,6 +138,9 @@ export const definePlugin = <const P extends Plugin>(plugin: P): P => plugin;
 export type ClientStubPlugin = Omit<MarkerPlugin, "contributions" | "configSchema"> & {
 	readonly contributions?: never;
 	readonly configSchema?: never;
+	/** `pipelines` packs carry stage impls (Effects) — server-manifest
+	 * data that must never ride the client bundle. */
+	readonly pipelines?: never;
 };
 
 export const clientStub = <const P extends ClientStubPlugin>(plugin: P): P => plugin;

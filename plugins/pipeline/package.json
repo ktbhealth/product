@@ -1,0 +1,13 @@
+{
+	"name": "@ktb/plugin-pipeline",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/kernel": "workspace:*",
+		"@ktb/pipeline": "workspace:*",
+		"effect": "4.1.2"
+	}
+}

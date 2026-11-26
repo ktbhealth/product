@@ -228,7 +228,7 @@ export function EndpointsPage({
 			data: {
 				...(epForm.id !== null ? { id: epForm.id } : {}),
 				name: epForm.name,
-				kind: epForm.kind as "acp" | "openai",
+				kind: epForm.kind as "acp" | "openai" | "systemone",
 				baseUrl: epForm.baseUrl,
 				...(epForm.model !== "" ? { model: epForm.model } : {}),
 				...(epForm.sessionId !== "" ? { sessionId: epForm.sessionId } : {}),
@@ -464,6 +464,7 @@ export function EndpointsPage({
 										<SelectContent>
 											<SelectItem value="openai">openai-compat</SelectItem>
 											<SelectItem value="acp">acp</SelectItem>
+											<SelectItem value="systemone">systemone</SelectItem>
 										</SelectContent>
 									</Select>
 								</Field>

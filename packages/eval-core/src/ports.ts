@@ -42,11 +42,18 @@ export interface TaskEnvelope {
 	readonly modelHint?: string;
 }
 
-/** Structured decision port (Jev — System One typed questions).
- * NOT a generative port: answers are bounded typed values with
- * calibrated probabilities. */
-export class EvalPort extends Context.Service<
-	EvalPort,
+/** Structured DECISION port (System One/Jev typed questions) — the
+ * decision-model boundary, NOT a generative port: answers are bounded
+ * typed values with calibrated probabilities. `judge` is the
+ * eval-stage consumer (the suite runner's verdict stage); other
+ * consumers (cleanup gates, platform decisions) share the same
+ * contract. Historically named `EvalPort` — that name remains as an
+ * alias of this class so existing call sites keep working, and the
+ * service KEY deliberately keeps its `@ktb/eval-core/EvalPort` string:
+ * contribution meta (`eval.capability`/`eval.stage` `port` fields) and
+ * any serialized references key on it, so the string must not drift. */
+export class DecisionsPort extends Context.Service<
+	DecisionsPort,
 	{
 		/** Whether `state` may leave the perimeter (remote decision
 		 * service vs in-process). Informational for the domain PHI
@@ -59,6 +66,12 @@ export class EvalPort extends Context.Service<
 		}) => Effect.Effect<{ answers: readonly EvalAnswer[]; record: RunRecord }, PortError>;
 	}
 >()("@ktb/eval-core/EvalPort") {}
+
+/** Back-compat alias — `EvalPort` IS `DecisionsPort` (same class object,
+ * same Context tag identity), so `Layer.succeed(EvalPort, …)`,
+ * `Effect.serviceOption(EvalPort)` and `DecisionsPort`-typed lookups
+ * interoperate freely. New code should say `DecisionsPort`. */
+export { DecisionsPort as EvalPort };
 
 /** Run-record sink + report rendering. */
 export class ReportPort extends Context.Service<

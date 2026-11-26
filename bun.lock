@@ -141,6 +141,7 @@
       "name": "@ktb/eval-consultation",
       "dependencies": {
         "@ktb/eval-core": "workspace:*",
+        "@ktb/pipeline": "workspace:*",
         "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
         "eta": "^4.6.0",
@@ -233,6 +234,18 @@
         "vitest": "5.1.0",
       },
     },
+    "packages/ai-adapter-systemone": {
+      "name": "@ktb/ai-adapter-systemone",
+      "dependencies": {
+        "@ktb/driver-framework": "workspace:*",
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/eval-core": "workspace:*",
+        "effect": "4.1.2",
+      },
+      "devDependencies": {
+        "vitest": "5.1.0",
+      },
+    },
     "packages/ai-bridge": {
       "name": "@ktb/ai-bridge",
       "bin": {
@@ -269,6 +282,7 @@
       "dependencies": {
         "@effect-server-utils/cqrs": "0.1.0-beta.10",
         "@ktb/ai-adapter-acp": "workspace:*",
+        "@ktb/ai-adapter-systemone": "workspace:*",
         "@ktb/anamnesis": "workspace:*",
         "@ktb/anamnesis-llm": "workspace:*",
         "@ktb/api": "workspace:*",
@@ -296,7 +310,10 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/observability": "workspace:*",
         "@ktb/observability-otlp": "workspace:*",
+        "@ktb/pipeline": "workspace:*",
         "@ktb/platform": "workspace:*",
+        "@ktb/plugin-pipeline": "workspace:*",
+        "@ktb/plugin-pipeline-transcript": "workspace:*",
         "@ktb/rbac": "workspace:*",
         "@ktb/tenant": "workspace:*",
         "@ktb/triggers": "workspace:*",
@@ -505,6 +522,7 @@
         "@ktb/driver-framework": "workspace:*",
         "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-core": "workspace:*",
+        "@ktb/pipeline": "workspace:*",
         "better-sqlite3": "^13.0.3",
         "effect": "4.1.2",
       },
@@ -627,6 +645,7 @@
       "name": "@ktb/kernel",
       "devDependencies": {
         "@ktb/json-schema": "workspace:*",
+        "@ktb/pipeline": "workspace:*",
         "@tanstack/virtual-file-routes": "1.162.0",
         "@types/react": "^19.2.0",
         "drizzle-orm": "^0.45.4",
@@ -646,6 +665,12 @@
       "dependencies": {
         "@ktb/driver-framework": "workspace:*",
         "@ktb/observability": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "packages/pipeline": {
+      "name": "@ktb/pipeline",
+      "dependencies": {
         "effect": "4.1.2",
       },
     },
@@ -1892,6 +1917,23 @@
         "react": "^19.2.0",
       },
     },
+    "plugins/pipeline": {
+      "name": "@ktb/plugin-pipeline",
+      "dependencies": {
+        "@ktb/kernel": "workspace:*",
+        "@ktb/pipeline": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
+    "plugins/pipeline-transcript": {
+      "name": "@ktb/plugin-pipeline-transcript",
+      "dependencies": {
+        "@ktb/eval-consultation": "workspace:*",
+        "@ktb/kernel": "workspace:*",
+        "@ktb/pipeline": "workspace:*",
+        "effect": "4.1.2",
+      },
+    },
     "plugins/platform-header": {
       "name": "@ktb/platform-header",
       "dependencies": {
@@ -2840,6 +2882,8 @@
 
     "@ktb/ai-adapter-openai": ["@ktb/ai-adapter-openai@workspace:packages/ai-adapter-openai"],
 
+    "@ktb/ai-adapter-systemone": ["@ktb/ai-adapter-systemone@workspace:packages/ai-adapter-systemone"],
+
     "@ktb/ai-bridge": ["@ktb/ai-bridge@workspace:packages/ai-bridge"],
 
     "@ktb/ai-model": ["@ktb/ai-model@workspace:plugins/ai-model"],
@@ -3018,9 +3062,15 @@
 
     "@ktb/patients": ["@ktb/patients@workspace:plugins/patients"],
 
+    "@ktb/pipeline": ["@ktb/pipeline@workspace:packages/pipeline"],
+
     "@ktb/platform": ["@ktb/platform@workspace:packages/platform"],
 
     "@ktb/platform-header": ["@ktb/platform-header@workspace:plugins/platform-header"],
+
+    "@ktb/plugin-pipeline": ["@ktb/plugin-pipeline@workspace:plugins/pipeline"],
+
+    "@ktb/plugin-pipeline-transcript": ["@ktb/plugin-pipeline-transcript@workspace:plugins/pipeline-transcript"],
 
     "@ktb/portal": ["@ktb/portal@workspace:plugins/portal"],
 

@@ -6,8 +6,11 @@ import { Credentials, CredentialsLive } from "@ktb/credentials";
 import { Db, makeDb } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
 import {
+	DecisionsFactory,
+	DecisionsPort,
 	LlmFactory,
 	LlmPort,
+	PlatformDecisions,
 	PlatformLlm,
 	type LlmEndpointDescriptor,
 	type LlmEndpointPreset,
@@ -27,6 +30,7 @@ import {
 	AiEndpointsLive,
 	aiEndpointsPanelPlugin,
 	isBridgeEndpoint,
+	PlatformDecisionsLive,
 	PlatformLlmLive,
 	type EndpointInput,
 } from "./index.ts";
@@ -83,6 +87,39 @@ const factoryLayer = (
 					: kind === "raw"
 						? (Effect.fail("raw outage") as never)
 						: (Effect.fail({ _tag: "PortError", port: "l", message: "down" }) as never);
+			},
+			...(presets !== undefined ? { presets } : {}),
+		}),
+	);
+
+const decisionsFactoryLayer = (
+	kind: FactoryKind,
+	captured?: LlmEndpointDescriptor[],
+	presets?: readonly LlmEndpointPreset[],
+) =>
+	Layer.succeed(
+		DecisionsFactory,
+		DecisionsFactory.of({
+			resolve: (descriptor: LlmEndpointDescriptor) => {
+				captured?.push(descriptor);
+				return kind === "ok"
+					? Effect.succeed(
+							Layer.succeed(
+								DecisionsPort,
+								DecisionsPort.of({
+									judge: () => Effect.succeed({ answers: [], record: {} as never }),
+								}),
+							),
+						)
+					: Effect.fail({ _tag: "PortError", port: "d", message: "down" } as never);
+			},
+			test: (descriptor: LlmEndpointDescriptor) => {
+				captured?.push(descriptor);
+				return kind === "ok"
+					? Effect.void
+					: kind === "raw"
+						? (Effect.fail("raw outage") as never)
+						: (Effect.fail({ _tag: "PortError", port: "d", message: "down" }) as never);
 			},
 			...(presets !== undefined ? { presets } : {}),
 		}),
@@ -157,6 +194,16 @@ const make = (
 		machines?: MachineCard | null | "fail";
 		captured?: LlmEndpointDescriptor[];
 		presets?: readonly LlmEndpointPreset[];
+		/** Decision-factory stub — `"none"` (default) leaves
+		 * DecisionsFactory unbound like a deployment without the
+		 * systemone adapter driver. */
+		decisionsFactory?: FactoryKind | "none";
+		/** Capture array for the DecisionsFactory stub — defaults to
+		 * `captured` so single-factory tests stay terse. */
+		decisionsCaptured?: LlmEndpointDescriptor[];
+		/** Presets declared by the DecisionsFactory stub (defaults to
+		 * `presets` when unset — most tests bind only one factory). */
+		decisionsPresets?: readonly LlmEndpointPreset[];
 		/** Vault `Secrets` stub — only `resolve` is exercised. */
 		secrets?: (ref: string) => Effect.Effect<string | null, unknown>;
 	} = {},
@@ -168,6 +215,9 @@ const make = (
 		machines,
 		captured,
 		presets,
+		decisionsFactory = "none",
+		decisionsCaptured,
+		decisionsPresets,
 		secrets,
 	} = opts;
 	const d1 = makeD1(AI_ENDPOINTS_TEST_DDL);
@@ -177,6 +227,13 @@ const make = (
 		grantLayer(allow),
 		apiKeysLayer(),
 		factory === "none" ? Layer.empty : factoryLayer(factory, captured, presets),
+		decisionsFactory === "none"
+			? Layer.empty
+			: decisionsFactoryLayer(
+					decisionsFactory,
+					decisionsCaptured ?? captured,
+					decisionsPresets ?? presets,
+				),
 		...(machines !== undefined ? [machinesLayer(machines)] : []),
 		...(secrets !== undefined
 			? [Layer.succeed(Secrets, { resolve: secrets } as never) as Layer.Layer<unknown>]
@@ -187,6 +244,7 @@ const make = (
 			Layer.mergeAll(
 				AiEndpointsLive,
 				PlatformLlmLive,
+				PlatformDecisionsLive,
 				// Soft dep: `credentials: true` binds the credential store so
 				// `credential:<id>` refs resolve to raw keys.
 				...(credentials ? [CredentialsLive] : []),
@@ -1038,6 +1096,193 @@ describe("PlatformLlm", () => {
 		expect(after.filter((r) => r.scope === "platform" && r.isDefault).map((r) => r.id)).toEqual([
 			first,
 		]);
+		await rt.dispose();
+	});
+});
+
+describe("systemone endpoints", () => {
+	const SYS_EP: EndpointInput = {
+		name: "OpenJev",
+		kind: "systemone",
+		baseUrl: "http://127.0.0.1:8009",
+		model: "wev-latest",
+		timeoutMs: 5_000,
+	};
+
+	it("resolves kind=systemone descriptors and tests through DecisionsFactory", async () => {
+		const llmCaptured: LlmEndpointDescriptor[] = [];
+		const decisionsCaptured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({
+			factory: "ok",
+			decisionsFactory: "ok",
+			captured: llmCaptured,
+			decisionsCaptured,
+		});
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(SYS_EP)));
+		const d = await run(Effect.flatMap(AiEndpoints, (s) => s.resolve(id)));
+		expect(d).toMatchObject({
+			kind: "systemone",
+			baseUrl: SYS_EP.baseUrl,
+			model: "wev-latest",
+			timeoutMs: 5_000,
+			endpointId: id,
+		});
+		expect(d?.transport).toBeUndefined();
+		// test() routes systemone rows to DecisionsFactory — the LLM
+		// factory never sees the descriptor.
+		const llmBefore = llmCaptured.length;
+		const decisionsBefore = decisionsCaptured.length;
+		await run(Effect.flatMap(AiEndpoints, (s) => s.test(id)));
+		expect(llmCaptured).toHaveLength(llmBefore);
+		expect(decisionsCaptured).toHaveLength(decisionsBefore + 1);
+		expect(decisionsCaptured.at(-1)).toMatchObject({ kind: "systemone", endpointId: id });
+		await rt.dispose();
+	});
+
+	it("test fails typed without a DecisionsFactory bound", async () => {
+		const { rt, run } = make({ factory: "ok" });
+		const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(SYS_EP)));
+		await expect(run(Effect.flatMap(AiEndpoints, (s) => s.test(id)))).rejects.toMatchObject({
+			_tag: "PortError",
+			message: expect.stringContaining("DecisionsFactory"),
+		});
+		await rt.dispose();
+	});
+
+	it("presets merge generative and decision factory lists", async () => {
+		const llmPreset: LlmEndpointPreset = {
+			label: "OpenAI",
+			kind: "openai",
+			baseUrl: "https://hosted.example/v1",
+		};
+		const decisionsPreset: LlmEndpointPreset = {
+			label: "System One",
+			kind: "systemone",
+			baseUrl: "http://127.0.0.1:8009",
+		};
+		const { rt, run } = make({
+			factory: "ok",
+			presets: [llmPreset],
+			decisionsFactory: "ok",
+			decisionsPresets: [decisionsPreset],
+		});
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.presets()))).toEqual([
+			llmPreset,
+			decisionsPreset,
+		]);
+		await rt.dispose();
+	});
+
+	it("presets degrade to [] when the bound factories declare none", async () => {
+		const { rt, run } = make({ factory: "ok", decisionsFactory: "ok" });
+		expect(await run(Effect.flatMap(AiEndpoints, (s) => s.presets()))).toEqual([]);
+		await rt.dispose();
+	});
+});
+
+describe("PlatformDecisions", () => {
+	const seed = async (
+		run: <A, E>(e: Effect.Effect<A, E, unknown>) => Promise<A>,
+		...inputs: readonly EndpointInput[]
+	) => {
+		const ids: number[] = [];
+		for (const input of inputs) {
+			const { id } = await run(Effect.flatMap(AiEndpoints, (s) => s.create(input)));
+			ids.push(id);
+		}
+		return ids;
+	};
+
+	it("resolves the enabled platform-default systemone endpoint into a DecisionsPort layer", async () => {
+		const captured: LlmEndpointDescriptor[] = [];
+		const { rt, run } = make({ decisionsFactory: "ok", captured });
+		await seed(run, {
+			name: "judge",
+			kind: "systemone",
+			baseUrl: "http://127.0.0.1:8009",
+			scope: "platform",
+			isDefault: true,
+		});
+		const layer = await run(Effect.flatMap(PlatformDecisions, (s) => s.defaultLayer()));
+		expect(layer).not.toBeNull();
+		const out = await run(
+			DecisionsPort.pipe(
+				Effect.flatMap((d) =>
+					d.judge({
+						state: {},
+						questions: [{ id: "q", kind: "noul", text: "?" }],
+					}),
+				),
+				Effect.provide(layer!),
+			),
+		);
+		expect(out.answers).toEqual([]);
+		expect(captured[0]).toMatchObject({ kind: "systemone", baseUrl: "http://127.0.0.1:8009" });
+		await rt.dispose();
+	});
+
+	it("ignores generative platform defaults and non-platform systemone rows", async () => {
+		const { rt, run } = make({ decisionsFactory: "ok" });
+		await seed(
+			run,
+			{ ...EP, name: "gen default", scope: "platform", isDefault: true },
+			{
+				name: "eval-scope judge",
+				kind: "systemone",
+				baseUrl: "http://127.0.0.1:8009",
+				isDefault: true,
+			},
+		);
+		expect(await run(Effect.flatMap(PlatformDecisions, (s) => s.defaultLayer()))).toBeNull();
+		await rt.dispose();
+	});
+
+	it("answers null without a factory, without a default, and on resolve failure", async () => {
+		const bare = make();
+		await seed(bare.run, {
+			name: "judge",
+			kind: "systemone",
+			baseUrl: "http://127.0.0.1:8009",
+			scope: "platform",
+			isDefault: true,
+		});
+		expect(await bare.run(Effect.flatMap(PlatformDecisions, (s) => s.defaultLayer()))).toBeNull();
+		await bare.rt.dispose();
+
+		const none = make({ decisionsFactory: "ok" });
+		expect(await none.run(Effect.flatMap(PlatformDecisions, (s) => s.defaultLayer()))).toBeNull();
+		await none.rt.dispose();
+
+		const failing = make({ decisionsFactory: "fail" });
+		await seed(failing.run, {
+			name: "judge",
+			kind: "systemone",
+			baseUrl: "http://127.0.0.1:8009",
+			scope: "platform",
+			isDefault: true,
+		});
+		expect(
+			await failing.run(Effect.flatMap(PlatformDecisions, (s) => s.defaultLayer())),
+		).toBeNull();
+		await failing.rt.dispose();
+	});
+
+	it("a systemone platform default does not leak into PlatformLlm", async () => {
+		const { rt, run } = make({
+			factory: "ok",
+			decisionsFactory: "ok",
+		});
+		await seed(run, {
+			name: "judge",
+			kind: "systemone",
+			baseUrl: "http://127.0.0.1:8009",
+			scope: "platform",
+			isDefault: true,
+		});
+		// PlatformLlm filters kind != systemone → null (env fallback),
+		// while PlatformDecisions resolves the same row.
+		expect(await run(Effect.flatMap(PlatformLlm, (s) => s.defaultLayer()))).toBeNull();
+		expect(await run(Effect.flatMap(PlatformDecisions, (s) => s.defaultLayer()))).not.toBeNull();
 		await rt.dispose();
 	});
 });

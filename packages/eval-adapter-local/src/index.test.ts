@@ -9,6 +9,12 @@ import { afterAll, describe, expect, it } from "vitest";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import { EvalStorePort, PortError, ReportPort, type RunRecord } from "@ktb/eval-core";
 import {
+	makePipelineRegistry,
+	PipelineRegistry,
+	PipelineStageError,
+	type PipelinePack,
+} from "@ktb/pipeline";
+import {
 	AsrPort,
 	DatasetStorePort,
 	EvalArtifacts,
@@ -796,6 +802,176 @@ describe("evalRunnerLocalDriver", () => {
 		expect(r.stages).toEqual(["asr"]);
 		expect(r.cleanup).toBeUndefined();
 		expect(r.anamnesis).toBeUndefined();
+	});
+
+	it("prefers the consultation-transcript pipeline when a registry is bound", async () => {
+		// A stub pack under the real pipeline id — the runner only cares
+		// about the state.cleanup contract, not which plugin contributed
+		// the stages (the real pack lives in plugins/pipeline-transcript).
+		const pack: PipelinePack = {
+			def: {
+				id: "consultation-transcript",
+				stages: [{ id: "llm-cleanup" }],
+			},
+			stages: {
+				"llm-cleanup": {
+					id: "llm-cleanup",
+					run: () =>
+						Effect.succeed({
+							state: {
+								cleanup: {
+									enabled: true,
+									corrected: "hello world",
+									edits: 1,
+									engine: "stub-pipeline",
+									records: [{ ...record, stage: "correct" }],
+								},
+							},
+						}),
+				},
+			},
+		};
+		const registry = makePipelineRegistry();
+		registry.register(pack);
+		const ambient = Layer.succeed(PipelineRegistry, registry);
+		const outcomes = await Effect.runPromise(runItems([{ id: 7, script: "hello world" }], ambient));
+		const r = outcomes[0]?.result as {
+			stages: string[];
+			cleanup: { edits: number; corrected: string; werAfter: number };
+		};
+		expect(r.stages).toEqual(["asr", "cleanup"]);
+		expect(r.cleanup).toMatchObject({ edits: 1, corrected: "hello world", werAfter: 0 });
+		// The stage's RunRecord rides the outcome, tagged per item —
+		// alongside tts + asr (3 total, no ambient LlmPort needed).
+		expect(outcomes[0]?.records?.map((x) => x.stage)).toEqual(["asr", "asr", "correct"]);
+		expect(outcomes[0]?.records?.every((x) => x.runId === "eval-7")).toBe(true);
+	});
+
+	it("falls back to the direct LlmPort cleanup when the pipeline disables it", async () => {
+		const pack: PipelinePack = {
+			def: { id: "consultation-transcript", stages: [{ id: "llm-cleanup" }] },
+			stages: {
+				"llm-cleanup": {
+					id: "llm-cleanup",
+					run: () => Effect.succeed({ state: { cleanup: { enabled: false } } }),
+				},
+			},
+		};
+		const registry = makePipelineRegistry();
+		registry.register(pack);
+		let directCalls = 0;
+		const ambient = Layer.mergeAll(
+			Layer.succeed(PipelineRegistry, registry),
+			Layer.succeed(
+				LlmPort,
+				LlmPort.of({
+					generate: () => Effect.succeed({ text: "", record }),
+					correct: () =>
+						Effect.sync(() => {
+							directCalls += 1;
+							return {
+								edits: { ops: [{ at: 6, remove: "wrld", insert: "world", kind: "fix" as const }] },
+								record,
+							};
+						}),
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(runItems([{ id: 8, script: "hello world" }], ambient));
+		const r = outcomes[0]?.result as { cleanup: { corrected: string; edits: number } };
+		expect(directCalls).toBe(1);
+		expect(r.cleanup.corrected).toBe("hello world");
+		expect(r.cleanup.edits).toBe(1);
+	});
+
+	it("falls back to direct cleanup when the pipeline run fails", async () => {
+		const pack: PipelinePack = {
+			def: { id: "consultation-transcript", stages: [{ id: "llm-cleanup" }] },
+			stages: {
+				"llm-cleanup": {
+					id: "llm-cleanup",
+					run: () =>
+						Effect.fail(new PipelineStageError({ stageId: "llm-cleanup", message: "boom" })),
+				},
+			},
+		};
+		const registry = makePipelineRegistry();
+		registry.register(pack);
+		let directCalls = 0;
+		const ambient = Layer.mergeAll(
+			Layer.succeed(PipelineRegistry, registry),
+			Layer.succeed(
+				LlmPort,
+				LlmPort.of({
+					generate: () => Effect.succeed({ text: "", record }),
+					correct: () =>
+						Effect.sync(() => {
+							directCalls += 1;
+							return {
+								edits: { ops: [{ at: 6, remove: "wrld", insert: "world", kind: "fix" as const }] },
+								record,
+							};
+						}),
+				}),
+			),
+		);
+		const outcomes = await Effect.runPromise(runItems([{ id: 9, script: "hello world" }], ambient));
+		const r = outcomes[0]?.result as { cleanup: { corrected: string } };
+		expect(directCalls).toBe(1);
+		expect(r.cleanup.corrected).toBe("hello world");
+	});
+
+	it("falls back to direct cleanup when the pipeline run defects", async () => {
+		const pack: PipelinePack = {
+			def: { id: "consultation-transcript", stages: [{ id: "llm-cleanup" }] },
+			stages: {
+				"llm-cleanup": {
+					id: "llm-cleanup",
+					run: () => Effect.die("stage defect"),
+				},
+			},
+		};
+		const registry = makePipelineRegistry();
+		registry.register(pack);
+		const ambient = Layer.succeed(PipelineRegistry, registry);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 10, script: "hello world" }], ambient),
+		);
+		// No ambient LlmPort either — the item still completes on ASR alone.
+		const r = outcomes[0]?.result as { stages: string[] };
+		expect(r.stages).toEqual(["asr"]);
+	});
+
+	it("tolerates a malformed cleanup state from the pipeline", async () => {
+		const pack: PipelinePack = {
+			def: { id: "consultation-transcript", stages: [{ id: "llm-cleanup" }] },
+			stages: {
+				"llm-cleanup": {
+					id: "llm-cleanup",
+					run: () =>
+						Effect.succeed({
+							state: {
+								cleanup: {
+									enabled: true,
+									corrected: "hello world",
+									edits: "many",
+									records: "nope",
+								},
+							},
+						}),
+				},
+			},
+		};
+		const registry = makePipelineRegistry();
+		registry.register(pack);
+		const ambient = Layer.succeed(PipelineRegistry, registry);
+		const outcomes = await Effect.runPromise(
+			runItems([{ id: 11, script: "hello world" }], ambient),
+		);
+		const r = outcomes[0]?.result as { cleanup: { edits: number; corrected: string } };
+		// Non-numeric edits coerce to 0; non-array records contribute none.
+		expect(r.cleanup).toMatchObject({ edits: 0, corrected: "hello world" });
+		expect(outcomes[0]?.records?.map((x) => x.stage)).toEqual(["asr", "asr"]);
 	});
 
 	it("records stage errors without failing the sample", async () => {
