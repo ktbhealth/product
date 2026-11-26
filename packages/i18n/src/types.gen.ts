@@ -14,6 +14,7 @@ export type I18nKey =
 	| "agenda.durationMin"
 	| "agenda.empty"
 	| "agenda.form.cancel"
+	| "agenda.form.conflict"
 	| "agenda.form.date"
 	| "agenda.form.durationMin"
 	| "agenda.form.note"
@@ -2428,6 +2429,7 @@ export interface I18nTypedT {
 	): Effect.Effect<string>;
 	(key: "agenda.empty"): Effect.Effect<string>;
 	(key: "agenda.form.cancel"): Effect.Effect<string>;
+	(key: "agenda.form.conflict"): Effect.Effect<string>;
 	(key: "agenda.form.date"): Effect.Effect<string>;
 	(key: "agenda.form.durationMin"): Effect.Effect<string>;
 	(key: "agenda.form.note"): Effect.Effect<string>;
