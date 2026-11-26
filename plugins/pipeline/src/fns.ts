@@ -4,13 +4,16 @@ import { Db } from "@ktb/db";
 import {
 	builtinKinds,
 	getOrchestrationDef,
+	getOrchestrationRun,
+	listNodeRuns,
 	listOrchestrationDefs,
 	OrchestratorRegistry,
 	upsertOrchestrationDef,
+	type OrchestrationRunRecord,
 } from "@ktb/orchestrator";
 import type { OrchestrationDefRecord } from "@ktb/orchestrator";
 import { PlatformAdmin } from "@ktb/platform";
-import { ensureSessionUser, getSessionUser, runAs } from "@ktb/server-fns";
+import { ensureSessionUser, getSessionUser, peekServerRuntime, runAs } from "@ktb/server-fns";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Schema } from "effect";
@@ -184,3 +187,105 @@ export const listOrchestrationKindsFn = createServerFn({ method: "GET" }).handle
 );
 
 export type { DataOnlyOrchestrationDef };
+
+// ---------------------------------------------------------------------------
+// Durable runs (P-120 phase 2): start + inspect. `orchestration_runs`
+// carries no tenant column — runs are GLOBAL composition data like the
+// defs themselves, so the PlatformAdmin gate is the whole auth boundary
+// (same as every fn in this file). `start` reaches the durable runner
+// through the ServerRuntime `orchestration` capability the composition
+// root wires when the jobs transport is bound; without it the fn
+// reports unavailable instead of enqueuing into the void.
+// ---------------------------------------------------------------------------
+
+const StartOrchestrationInput = Schema.Struct({
+	defId: Schema.NonEmptyString,
+	input: Schema.optionalKey(Schema.Unknown),
+});
+const decodeStartOrchestrationInput = Schema.decodeUnknownSync(StartOrchestrationInput);
+
+export type StartOrchestrationResult =
+	| { readonly ok: true; readonly runId: string }
+	| { readonly ok: false; readonly error: string }
+	| false;
+
+/** Failure text for the `{ok:false}` wire — OrchestratorError tagged
+ * errors carry `message`; anything else degrades to String(). */
+const describeRunError = (error: unknown): string =>
+	error instanceof Error && error.message !== "" ? error.message : String(error);
+
+/**
+ * Start a durable orchestration run: persists the run row + seed event
+ * and enqueues the first `orchestrator.step` job (the queue consumer
+ * drives the rest). `input` is the run's initial-event payload —
+ * JSON-serializable data only; live functions cannot cross the
+ * durable boundary (bind ports via the runner's ambientContext at the
+ * composition root instead). Returns `{ok:true, runId}`; `{ok:false}`
+ * for unknown defs / runner failures; `false` for non-admins.
+ */
+export const startOrchestrationFn = createServerFn({ method: "POST" })
+	.validator((input: unknown) => decodeStartOrchestrationInput(input))
+	.handler(async ({ data }): Promise<StartOrchestrationResult> => {
+		const user = await ensureSessionUser();
+		return asAdmin(
+			user,
+			Effect.gen(function* () {
+				const startRun = peekServerRuntime()?.orchestration?.startRun;
+				if (startRun === undefined) {
+					return {
+						ok: false as const,
+						error: "orchestration runner unavailable (jobs transport unbound)",
+					};
+				}
+				return yield* Effect.tryPromise({
+					try: () => startRun(data.defId, data.input),
+					catch: (error) => error,
+				}).pipe(
+					Effect.map((runId): StartOrchestrationResult => ({ ok: true, runId })),
+					Effect.catch((error): Effect.Effect<StartOrchestrationResult> =>
+						Effect.succeed({ ok: false, error: describeRunError(error) }),
+					),
+				);
+			}),
+		).catch((error: unknown) => {
+			if (isForbidden(error)) return false;
+			throw error;
+		});
+	});
+
+/** Serializable run view — `OrchestrationRunRecord` plus the durable
+ * node-run trace tail (`orchestration_node_runs`). `state` is the
+ * merged node-state JsonObject; both are JSON-safe by construction. */
+export type OrchestrationRunWire = OrchestrationRunRecord & {
+	readonly nodeRuns: readonly {
+		readonly seq: number;
+		readonly nodeId: string;
+		readonly status: string;
+		readonly latencyMs: number;
+		readonly error: string | null;
+		readonly fires: number;
+	}[];
+};
+
+/** One durable run by id — status, merged state, error and the node
+ * trace. `null` for non-admins and unknown ids (same absent-reads-as-
+ * null contract as getOrchestrationFn). */
+export const getOrchestrationRunFn = createServerFn({ method: "GET" })
+	.validator((input: unknown) => decodeId(input))
+	.handler(async ({ data: runId }): Promise<OrchestrationRunWire | null> => {
+		const user = await getSessionUser();
+		if (!user) return null;
+		return asAdmin(
+			user,
+			Effect.gen(function* () {
+				const db = yield* Db;
+				const record = yield* Effect.promise(() => getOrchestrationRun(db, runId));
+				if (record === null) return null;
+				const nodeRuns = yield* Effect.promise(() => listNodeRuns(db, runId));
+				return { ...record, nodeRuns };
+			}),
+		).catch((error: unknown) => {
+			if (isForbidden(error)) return null;
+			throw error;
+		});
+	});

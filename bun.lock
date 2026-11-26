@@ -86,6 +86,7 @@
         "@ktb/kernel": "workspace:*",
         "@ktb/notifications": "workspace:*",
         "@ktb/observability": "workspace:*",
+        "@ktb/orchestrator": "workspace:*",
         "@ktb/patient-access": "workspace:*",
         "@ktb/patient-portal": "workspace:*",
         "@ktb/patients": "workspace:*",

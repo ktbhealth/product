@@ -13,6 +13,7 @@ vi.mock("@tanstack/react-start/server", () => reactStartServerMock());
 vi.mock("@tanstack/react-start", () => reactStartMock());
 
 import { Db, makeDb } from "@ktb/db";
+import { orchestrationNodeRuns, orchestrationRuns } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import {
 	makeOrchestratorRegistry,
@@ -27,8 +28,10 @@ import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "
 
 import {
 	getOrchestrationFn,
+	getOrchestrationRunFn,
 	listOrchestrationKindsFn,
 	listOrchestrationsFn,
+	startOrchestrationFn,
 	upsertOrchestrationFn,
 } from "./fns.ts";
 
@@ -40,6 +43,27 @@ CREATE TABLE orchestration_defs (
 	enabled INTEGER DEFAULT true NOT NULL,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
+);
+CREATE TABLE orchestration_runs (
+	id TEXT PRIMARY KEY NOT NULL,
+	def_id TEXT NOT NULL,
+	def_version TEXT NOT NULL,
+	status TEXT DEFAULT 'running' NOT NULL,
+	state TEXT NOT NULL,
+	runtime TEXT NOT NULL,
+	error TEXT,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+CREATE TABLE orchestration_node_runs (
+	run_id TEXT NOT NULL,
+	seq INTEGER NOT NULL,
+	node_id TEXT NOT NULL,
+	status TEXT NOT NULL,
+	latency_ms INTEGER NOT NULL,
+	error TEXT,
+	fires INTEGER NOT NULL,
+	PRIMARY KEY(run_id, seq)
 );
 `;
 
@@ -182,5 +206,145 @@ describe("listOrchestrationKindsFn with a live registry", () => {
 			resetServerFnRuntime();
 			await rt.dispose();
 		}
+	});
+});
+
+describe("durable-run fns", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let testDb: ReturnType<typeof makeDb>;
+	let currentEmail: string | null = null;
+	const auth = stubAuth(() => sessionUser(currentEmail));
+	const startRun = vi.fn<(defId: string, input?: unknown) => Promise<string>>(
+		async (defId, input) => {
+			void input;
+			return `orun-${defId}`;
+		},
+	);
+
+	beforeAll(async () => {
+		testDb = makeDb(makeD1(DDL));
+		const env = Layer.mergeAll(
+			Layer.succeed(Db, testDb),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(env as Layer.Layer<unknown, never, never>);
+		installServerFnRuntime(runtime, auth, {
+			orchestration: { startRun },
+		});
+		// Fixture run + trace row for getOrchestrationRunFn.
+		await testDb.insert(orchestrationRuns).values({
+			id: "orun-demo",
+			defId: "demo",
+			defVersion: "1",
+			status: "done",
+			state: JSON.stringify({ seen: "pong" }),
+			runtime: "{}",
+			error: null,
+			createdAt: 1,
+			updatedAt: 2,
+		});
+		await testDb.insert(orchestrationNodeRuns).values({
+			runId: "orun-demo",
+			seq: 0,
+			nodeId: "a",
+			status: "ok",
+			latencyMs: 5,
+			error: null,
+			fires: 1,
+		});
+	});
+
+	afterAll(() => {
+		resetServerFnRuntime();
+		return runtime.dispose();
+	});
+
+	it("rejects anonymous callers", async () => {
+		currentEmail = null;
+		await expect(startOrchestrationFn({ data: { defId: "demo" } })).rejects.toThrow(
+			"unauthenticated",
+		);
+		expect(await getOrchestrationRunFn({ data: "orun-demo" })).toBeNull();
+	});
+
+	it("denies non-admin principals", async () => {
+		currentEmail = "user@x.com";
+		expect(await startOrchestrationFn({ data: { defId: "demo" } })).toBe(false);
+		expect(await getOrchestrationRunFn({ data: "orun-demo" })).toBeNull();
+	});
+
+	it("starts a run through the orchestration capability", async () => {
+		currentEmail = "admin@x.com";
+		startRun.mockClear();
+		const result = await startOrchestrationFn({ data: { defId: "demo", input: { x: 1 } } });
+		expect(result).toEqual({ ok: true, runId: "orun-demo" });
+		expect(startRun).toHaveBeenCalledWith("demo", { x: 1 });
+	});
+
+	it("reports runner failures as {ok:false} with the error text", async () => {
+		currentEmail = "admin@x.com";
+		startRun.mockRejectedValueOnce(new Error("unknown orchestration: ghost"));
+		expect(await startOrchestrationFn({ data: { defId: "ghost" } })).toEqual({
+			ok: false,
+			error: "unknown orchestration: ghost",
+		});
+		// Non-Error rejections degrade to String(error).
+		startRun.mockRejectedValueOnce("plain boom");
+		expect(await startOrchestrationFn({ data: { defId: "ghost" } })).toEqual({
+			ok: false,
+			error: "plain boom",
+		});
+		// Error with an empty message falls back to String(error).
+		startRun.mockRejectedValueOnce(new Error(""));
+		expect(await startOrchestrationFn({ data: { defId: "ghost" } })).toEqual({
+			ok: false,
+			error: "Error",
+		});
+	});
+
+	it("reads a run record with its node trace", async () => {
+		currentEmail = "admin@x.com";
+		const run = await getOrchestrationRunFn({ data: "orun-demo" });
+		expect(run).toMatchObject({
+			id: "orun-demo",
+			defId: "demo",
+			status: "done",
+			state: { seen: "pong" },
+		});
+		expect(run?.nodeRuns).toEqual([
+			{ seq: 0, nodeId: "a", status: "ok", latencyMs: 5, error: null, fires: 1 },
+		]);
+		expect(await getOrchestrationRunFn({ data: "orun-missing" })).toBeNull();
+	});
+});
+
+describe("startOrchestrationFn without the capability", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	let currentEmail: string | null = null;
+
+	beforeAll(() => {
+		const db = makeDb(makeD1(DDL));
+		const env = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
+		);
+		runtime = ManagedRuntime.make(env as Layer.Layer<unknown, never, never>);
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => sessionUser(currentEmail)),
+		);
+		currentEmail = "admin@x.com";
+	});
+
+	afterAll(() => {
+		resetServerFnRuntime();
+		return runtime.dispose();
+	});
+
+	it("reports unavailable when the jobs transport is unbound", async () => {
+		expect(await startOrchestrationFn({ data: { defId: "demo" } })).toEqual({
+			ok: false,
+			error: "orchestration runner unavailable (jobs transport unbound)",
+		});
 	});
 });

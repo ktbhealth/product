@@ -58,6 +58,7 @@ export {
 } from "./kinds.ts";
 export {
 	ORCHESTRATOR_STEP_KIND,
+	decodeOrchestrationStepPayload,
 	makeOrchestrationRunner,
 	orchestratorStepRegistration,
 	type OrchestrationRunnerDeps,

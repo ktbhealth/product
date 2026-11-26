@@ -297,6 +297,14 @@ export const makeOrchestrationRunner = (
 
 const StepPayload = Schema.Struct({ runId: Schema.String });
 
+/** Decode an `orchestrator.step` payload (`{runId}`) — the wire
+ * contract, exported so composition-side wrappers that defer runner
+ * construction (lazy `jobHandlers` registrations, server-fn starters)
+ * validate identically without owning a runner instance. Throws a
+ * `ParseError` on any other shape — the consumer's poison path. */
+export const decodeOrchestrationStepPayload = (payload: unknown): { readonly runId: string } =>
+	Schema.decodeUnknownSync(StepPayload)(payload);
+
 /**
  * `JobRegistration` for `orchestrator.step` — wire once at app
  * composition:
@@ -314,7 +322,7 @@ const StepPayload = Schema.Struct({ runId: Schema.String });
 export const orchestratorStepRegistration = (
 	runner: OrchestrationRunnerService,
 ): JobRegistration => ({
-	decodePayload: (payload) => Schema.decodeUnknownSync(StepPayload)(payload),
+	decodePayload: decodeOrchestrationStepPayload,
 	handle: (payload) =>
 		Effect.runPromise(runner.step((payload as { readonly runId: string }).runId)),
 	idempotent: true,
