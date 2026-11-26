@@ -7,6 +7,7 @@ import {
 	approveAnamnesisFn,
 	attachAnamnesisFn,
 	deferConsultationFn,
+	editAnamnesisFn,
 	extractAnamnesisFn,
 	getConsultationFn,
 	getLiveConsultationFn,
@@ -51,6 +52,10 @@ export const consultationDetailApi: ConsultationDetailApi = {
 			},
 		} as never);
 	},
+	// Manual section edit (T-227): the view sends the merged doc — it
+	// lands via attachAnamnesis under engine `manual-edit`, bumping
+	// anamnesisVersion so an approved row goes stale on its own.
+	editAnamnesis: (input: { data: unknown }) => editAnamnesisFn(input as never),
 };
 
 export const newConsultationApi: NewConsultationApi = {

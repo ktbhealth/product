@@ -30,6 +30,7 @@ vi.mock("./fns.ts", () => ({
 	approveAnamnesisFn: vi.fn(),
 	attachAnamnesisFn: vi.fn(),
 	deferConsultationFn: vi.fn(),
+	editAnamnesisFn: vi.fn(),
 	extractAnamnesisFn: vi.fn(),
 	getConsultationFn: mocks.getConsultationFn,
 	getLiveConsultationFn: vi.fn(),
@@ -169,6 +170,12 @@ describe("api delegates forward to the server fns", () => {
 		});
 		expect(fns.saveTranscriptEditsFn).toHaveBeenCalledWith({
 			data: { id: 11, edits: "[]" },
+		});
+		await consultationDetailApi.editAnamnesis!({
+			data: { consultationId: 11, anamnesis: { queixa_principal: {} } },
+		});
+		expect(fns.editAnamnesisFn).toHaveBeenCalledWith({
+			data: { consultationId: 11, anamnesis: { queixa_principal: {} } },
 		});
 	});
 

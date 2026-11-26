@@ -2023,6 +2023,9 @@ export const I18N_MANIFEST = {
 		"review.editSegment": {
 			params: [],
 		},
+		"review.editSection": {
+			params: [],
+		},
 		"review.editFullText": {
 			params: [],
 		},

@@ -138,6 +138,11 @@ export interface ConsultationDetailApi {
 	generateAnamnesis?(input: {
 		data: { consultationId: number; transcript: string; patientId?: number };
 	}): Promise<{ ok: boolean }>;
+	/** Persist a manually-edited anamnesis doc (T-227) — bumps the
+	 * version so an approved row re-enters the queue as stale. */
+	editAnamnesis?(input: {
+		data: { consultationId: number; anamnesis: unknown; ciphered?: true; version?: unknown };
+	}): Promise<{ ok: boolean }>;
 }
 
 const PIPELINE_IN_FLIGHT = new Set(["stored", "queued", "processing"]);

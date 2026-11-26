@@ -9597,6 +9597,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "review.editSection",
+		locale: "en",
+		value: "Edit section",
+	},
+	{
+		namespace: "consultations",
 		key: "review.editFullText",
 		locale: "en",
 		value: "Edit transcript",
@@ -11507,6 +11513,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "review.editSection",
+		locale: "pt-BR",
+		value: "Editar seção",
+	},
+	{
+		namespace: "consultations",
 		key: "review.editFullText",
 		locale: "pt-BR",
 		value: "Editar transcrição",
@@ -13413,6 +13425,12 @@ export const I18N_BASELINE = [
 		key: "review.editSegment",
 		locale: "es",
 		value: "Editar fragmento",
+	},
+	{
+		namespace: "consultations",
+		key: "review.editSection",
+		locale: "es",
+		value: "Editar sección",
 	},
 	{
 		namespace: "consultations",

@@ -372,6 +372,56 @@ describe("ReviewModePage — anamnesis step", () => {
 		expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/portal/doctor/review/9" });
 	});
 
+	it("section edit saves the merged doc with the edited tag", async () => {
+		const edit = vi.fn<NonNullable<ConsultationDetailApi["editAnamnesis"]>>(async () => ({
+			ok: true,
+		}));
+		renderPage(
+			{ api: api({ editAnamnesis: edit }) },
+			[item({})],
+			detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }),
+		);
+		// Sections sort low-confidence first — [0] is `hda` (baixa).
+		fireEvent.click(screen.getAllByRole("button", { name: "Edit section" })[0]);
+		const area = screen.getByDisplayValue("HDA");
+		fireEvent.change(area, { target: { value: "HDA revisada pelo médico" } });
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() => expect(edit).toHaveBeenCalled());
+		expect(edit).toHaveBeenCalledWith({
+			data: {
+				consultationId: 10,
+				anamnesis: {
+					...ANAMNESIS,
+					hda: { ...ANAMNESIS.hda, content: "HDA revisada pelo médico", edited: true },
+				},
+			},
+		});
+	});
+
+	it("cancel discards the section draft", () => {
+		renderPage(
+			{ api: api({ editAnamnesis: vi.fn(async () => ({ ok: true })) }) },
+			[item({})],
+			detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }),
+		);
+		fireEvent.click(screen.getAllByRole("button", { name: "Edit section" })[0]);
+		fireEvent.change(screen.getByDisplayValue("HDA"), {
+			target: { value: "rascunho" },
+		});
+		fireEvent.click(screen.getByText("Cancel"));
+		expect(screen.queryByDisplayValue("rascunho")).toBeNull();
+		expect(screen.getByText("HDA")).toBeTruthy();
+	});
+
+	it("no pencil without the edit api (ZK rows stay read-only)", () => {
+		renderPage(
+			{},
+			[item({})],
+			detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }),
+		);
+		expect(screen.queryAllByRole("button", { name: "Edit section" })).toHaveLength(0);
+	});
+
 	it("no-anamnesis step offers generate, fed with the projected transcript", async () => {
 		const gen = vi.fn<NonNullable<ConsultationDetailApi["generateAnamnesis"]>>(async () => ({
 			ok: true,

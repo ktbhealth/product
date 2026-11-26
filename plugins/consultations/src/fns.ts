@@ -561,6 +561,46 @@ export const reviewTranscriptFn = createServerFn({ method: "POST" })
 		);
 	});
 
+const EditAnamnesisInput = Schema.Struct({
+	consultationId: Schema.Number,
+	anamnesis: AnamnesisPayload,
+	// ZK rows send the encrypted envelope + client signature; plaintext
+	// rows send the parsed doc — same gate as attachAnamnesis.
+	ciphered: Schema.optionalKey(Schema.Literal(true)),
+	version: Schema.optionalKey(SignedVersionInput),
+});
+const decodeEditAnamnesisInput = Schema.decodeUnknownSync(EditAnamnesisInput);
+
+/**
+ * Manual anamnesis edit (T-227) — the client merges the doctor's
+ * section edits into the doc and sends the whole updated anamnesis;
+ * it lands through `attachAnamnesis` with engine `manual-edit`, so the
+ * version bump + integrity chain + audit trail are identical to a
+ * generated attach, and an already-approved row automatically goes
+ * stale (anamnesisVersion > anamnesisReviewedVersion) → back into the
+ * review queue.
+ */
+export const editAnamnesisFn = createServerFn({ method: "POST" })
+	.validator((input) => decodeEditAnamnesisInput(input))
+	.handler(async ({ data: { ciphered, version, ...rest } }) => {
+		const user = await getDoctorUser();
+		if (!user) return { ok: false };
+		if (!cipheredPayloadOk({ ciphered, ...rest, version })) return { ok: false };
+		return runAs(
+			user,
+			Effect.gen(function* () {
+				const consultations = yield* Consultations;
+				const ok = yield* consultations
+					.attachAnamnesis(user.id, { ...rest, engine: "manual-edit", version })
+					.pipe(
+						Effect.as(true),
+						Effect.catchTag("Forbidden", () => Effect.succeed(false)),
+					);
+				return { ok };
+			}),
+		);
+	});
+
 /** Stamp "anamnesis approved" bound to the current version — `null`/`{ ok: false }` on denial. */
 export const approveAnamnesisFn = createServerFn({ method: "POST" })
 	.validator((id: number) => decodeNumber(id))

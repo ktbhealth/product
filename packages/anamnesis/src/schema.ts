@@ -15,6 +15,9 @@ export const AnamnesisSectionSchema = Schema.Struct({
 	content: Schema.String,
 	confidence: ConfidenceSchema,
 	evidence: Schema.Array(Schema.String),
+	// T-227: true when the doctor hand-edited this section post-generation
+	// — provenance for review; old documents simply omit it.
+	edited: Schema.optionalKey(Schema.Boolean),
 });
 
 const section = AnamnesisSectionSchema;

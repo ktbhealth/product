@@ -172,6 +172,7 @@ export interface ConsultationMessages {
 		readonly highConfTitle: string;
 		readonly highConfHint: string;
 		readonly editSegment: string;
+		readonly editSection: string;
 		readonly editFullText: string;
 		readonly saveEdit: string;
 		readonly cancelEdit: string;
@@ -540,6 +541,7 @@ const en: ConsultationMessages = {
 		highConfTitle: "High-confidence transcript",
 		highConfHint: "no uncertain passages — spot-check optional",
 		editSegment: "Edit line",
+		editSection: "Edit section",
 		editFullText: "Edit transcript",
 		saveEdit: "Save",
 		cancelEdit: "Cancel",
@@ -925,6 +927,7 @@ const ptBR: ConsultationMessages = {
 		highConfTitle: "Transcrição de alta confiança",
 		highConfHint: "sem trechos duvidosos — conferência opcional",
 		editSegment: "Editar trecho",
+		editSection: "Editar seção",
 		editFullText: "Editar transcrição",
 		saveEdit: "Salvar",
 		cancelEdit: "Cancelar",
@@ -1314,6 +1317,7 @@ const es: ConsultationMessages = {
 		highConfTitle: "Transcripción de alta confianza",
 		highConfHint: "sin pasajes dudosos — cotejo opcional",
 		editSegment: "Editar fragmento",
+		editSection: "Editar sección",
 		editFullText: "Editar transcripción",
 		saveEdit: "Guardar",
 		cancelEdit: "Cancelar",

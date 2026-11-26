@@ -473,6 +473,7 @@ function ReviewItem({
 					t={t}
 					i18n={i18n}
 					locale={locale}
+					editable={zk === undefined && api?.editAnamnesis !== undefined}
 					projected={projected}
 					segments={segments}
 					hasEdits={entries.length > 0}
@@ -982,6 +983,7 @@ function AnamnesisStep({
 	t,
 	i18n,
 	locale,
+	editable,
 	projected,
 	segments,
 	hasEdits,
@@ -992,6 +994,8 @@ function AnamnesisStep({
 	t: Slice;
 	i18n?: PageI18nSlice;
 	locale: string;
+	/** Non-ZK rows only — ZK re-encryption on edit is the BYOK path. */
+	editable: boolean;
 	projected: string;
 	segments: readonly TranscriptSegment[];
 	hasEdits: boolean;
@@ -1003,6 +1007,8 @@ function AnamnesisStep({
 		section: AnamnesisSectionKey;
 		sentences: readonly string[];
 	} | null>(null);
+	const [editingKey, setEditingKey] = useState<AnamnesisSectionKey | null>(null);
+	const [editDraft, setEditDraft] = useState("");
 	const audioRef = useRef<HTMLAudioElement>(null);
 	const doc: Anamnesis | null = c.anamnesis;
 
@@ -1049,6 +1055,27 @@ function AnamnesisStep({
 			try {
 				const res = await api.approveAnamnesis({ data: c.id });
 				if (res.ok) onApproved();
+			} finally {
+				setBusy(false);
+			}
+		})();
+
+	const saveSection = () =>
+		void (async () => {
+			if (!api?.editAnamnesis || doc === null || editingKey === null) return;
+			setBusy(true);
+			try {
+				const updated: Anamnesis = {
+					...doc,
+					[editingKey]: { ...doc[editingKey], content: editDraft, edited: true },
+				};
+				const res = await api.editAnamnesis({
+					data: { consultationId: c.id, anamnesis: updated },
+				});
+				if (res.ok) {
+					setEditingKey(null);
+					void router.invalidate();
+				}
 			} finally {
 				setBusy(false);
 			}
@@ -1172,21 +1199,71 @@ function AnamnesisStep({
 										}
 									>
 										<div className="flex items-start justify-between gap-2">
-											<h3 className="text-sm font-semibold">{t.sections[key]}</h3>
-											<Badge
-												variant="secondary"
-												className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
-											>
-												{t.confidence[sec.confidence]}
-											</Badge>
+											<h3 className="text-sm font-semibold">
+												{t.sections[key]}
+												{sec.edited ? (
+													<span className="ml-1.5 text-[10px] font-normal text-muted-foreground">
+														({t.review.editedTag})
+													</span>
+												) : null}
+											</h3>
+											<span className="flex items-center gap-1.5">
+												{editable && editingKey !== key ? (
+													<button
+														type="button"
+														aria-label={t.review.editSection}
+														className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+														onClick={(e) => {
+															e.stopPropagation();
+															setEditingKey(key);
+															setEditDraft(sec.content);
+														}}
+													>
+														<PencilIcon className="size-3.5" />
+													</button>
+												) : null}
+												<Badge
+													variant="secondary"
+													className={`text-[10px] ring-1 ${CONF_STYLE[sec.confidence]}`}
+												>
+													{t.confidence[sec.confidence]}
+												</Badge>
+											</span>
 										</div>
-										<p
-											className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
-												pending ? "text-muted-foreground italic" : "text-foreground"
-											}`}
-										>
-											{sec.content || t.detail.notReported}
-										</p>
+										{editingKey === key ? (
+											<div
+												className="mt-2 space-y-2"
+												onClick={(e) => e.stopPropagation()}
+											>
+												<textarea
+													className="w-full rounded-md border bg-background px-2 py-1.5 text-sm leading-relaxed"
+													rows={Math.min(12, Math.max(3, editDraft.split("\n").length + 1))}
+													value={editDraft}
+													onChange={(e) => setEditDraft(e.target.value)}
+												/>
+												<div className="flex gap-2">
+													<Button type="button" size="sm" disabled={busy} onClick={saveSection}>
+														{t.review.saveEdit}
+													</Button>
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														onClick={() => setEditingKey(null)}
+													>
+														{t.review.cancelEdit}
+													</Button>
+												</div>
+											</div>
+										) : (
+											<p
+												className={`mt-2 text-sm leading-relaxed whitespace-pre-wrap ${
+													pending ? "text-muted-foreground italic" : "text-foreground"
+												}`}
+											>
+												{sec.content || t.detail.notReported}
+											</p>
+										)}
 										{sec.evidence.length ? (
 											<p className="mt-1 text-[11px] text-muted-foreground">
 												<QuoteIcon className="mr-1 inline size-3" />
