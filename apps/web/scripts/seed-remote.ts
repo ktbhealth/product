@@ -22,17 +22,11 @@ import { getPlatformProxy } from "wrangler";
 import { HeuristicExtractor } from "@ktb/anamnesis";
 import { makeAuth } from "@ktb/auth-better";
 import { makeDb, type DbClient } from "@ktb/db";
-import {
-	consultations,
-	patientAccess,
-	patients,
-	roles,
-	user,
-} from "@ktb/db/schema";
+import { consultations, patientAccess, patients, roles, user } from "@ktb/db/schema";
 import { doctors } from "@ktb/doctors/schema";
 import { writeRelationTuple } from "@ktb/rbac";
 import { doctorAccess } from "@ktb/secretaries/schema";
-import { PTBR_CONSULTATIONS } from "../../../evals/consultation/src/ptbr/consultations.ts";
+import { PTBR_CONSULTATIONS } from "@ktb/eval-consultation/ptbr";
 
 const PASSWORD = process.env.SEED_PASSWORD ?? "dev-password-123";
 const USERS = [
@@ -135,8 +129,7 @@ const inviteSecretary = async (
 };
 
 const discoverProdDb = (): { readonly name: string; readonly id: string } => {
-	const accountId =
-		process.env.CLOUDFLARE_ACCOUNT_ID ?? "2c03574ae47e534415b762ab3c474815";
+	const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "2c03574ae47e534415b762ab3c474815";
 	// getPlatformProxy's remote session resolves the account from the
 	// process env, not the `wrangler d1 list` child env below.
 	process.env.CLOUDFLARE_ACCOUNT_ID ??= accountId;
@@ -147,8 +140,7 @@ const discoverProdDb = (): { readonly name: string; readonly id: string } => {
 		env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId },
 	});
 	const list = JSON.parse(out) as { name: string; uuid?: string }[];
-	const name =
-		process.env.SEED_D1_NAME ?? list.find((d) => /^ktb-web-db-prod-/.test(d.name))?.name;
+	const name = process.env.SEED_D1_NAME ?? list.find((d) => /^ktb-web-db-prod-/.test(d.name))?.name;
 	const id = process.env.SEED_D1_ID ?? list.find((d) => d.name === name)?.uuid;
 	if (name === undefined || id === undefined) {
 		throw new Error(`prod D1 not found (SEED_D1_NAME/SEED_D1_ID override available): ${out}`);

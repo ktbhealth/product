@@ -20,8 +20,7 @@ import { makeDb } from "@ktb/db";
 const EMAIL = process.env.SEED_EMAIL ?? "user@ktb.test";
 const PASSWORD = process.env.SEED_PASSWORD ?? "dev-password-123";
 
-const accountId =
-	process.env.CLOUDFLARE_ACCOUNT_ID ?? "2c03574ae47e534415b762ab3c474815";
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "2c03574ae47e534415b762ab3c474815";
 process.env.CLOUDFLARE_ACCOUNT_ID ??= accountId;
 
 const discoverProdDb = () => {
@@ -32,8 +31,7 @@ const discoverProdDb = () => {
 		env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId },
 	});
 	const list = JSON.parse(out) as { name: string; uuid?: string }[];
-	const name =
-		process.env.SEED_D1_NAME ?? list.find((d) => /^ktb-web-db-prod-/.test(d.name))?.name;
+	const name = process.env.SEED_D1_NAME ?? list.find((d) => /^ktb-web-db-prod-/.test(d.name))?.name;
 	const id = process.env.SEED_D1_ID ?? list.find((d) => d.name === name)?.uuid;
 	if (name === undefined || id === undefined) throw new Error("prod D1 not found");
 	return { name, id };
