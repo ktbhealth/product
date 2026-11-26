@@ -8,12 +8,16 @@ and validates **schema definitions** against a documented subset of
 
 It is infra, not a plugin: pure functions, no registry contributions,
 no Effect service (validation is synchronous and pure — same shape as
-`@ktb/crypto` and document-store's `validate.ts`). The engine is a
-small built-in interpreter (`src/validate.ts`) — deliberately NOT
-ajv, whose `new Function` codegen workerd forbids outside worker
-startup (it crashed `@cloudflare/vite-plugin` dev, where every SSR
-module is evaluated lazily, and would equally break request-time
-validation in production).
+`@ktb/crypto` and document-store's `validate.ts`). The engine is
+[`@cfworker/json-schema`](https://github.com/cfworker/cfworker)
+(draft 2020-12) — Cloudflare's own spec-tested validator, a pure
+interpreter with no `eval`/`new Function`, so it is safe inside
+workerd: `@cloudflare/vite-plugin` dev evaluates every SSR module
+lazily through the unsafe-eval binding, where ajv's codegen crashed
+`bun run dev`, and request-time validation in production is equally
+restricted. `src/validate.ts` is a thin adapter that keeps the Issue
+contract (paths, keywords, deterministic sorting) on top of the
+engine.
 
 ## API
 
@@ -39,30 +43,37 @@ import {
 - `validate(schema, value)` is the one-shot convenience (compiles via
   the same cache).
 - All three throw `SchemaDefinitionError` (with `.issues`) when the
-  schema is outside the subset — before interpretation.
+  schema is outside the subset — before validation.
 - Instance errors are `Issue`s sorted by `(path, keyword, message)` in
   code-unit order — deterministic across runs and engines. Data paths
   use dot/bracket notation (`$` root, `a.b[0]` for array items).
+- `message` text comes from the engine, except `required` violations,
+  which keep the legacy `must have required property 'x'` phrasing —
+  `plugins/forms` parses that exact template.
+- Instance values are normalized to JSON-safe data before validation:
+  `undefined`/function/symbol/bigint object members count as absent
+  (like `JSON.stringify`), and non-JSON array entries or a non-JSON
+  root become `null`.
 
 ## Supported keywords
 
-| Keyword                                                  | Notes                                                                                                                  |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `type`                                                   | `"string" \| "number" \| "integer" \| "boolean" \| "null" \| "object" \| "array"`, or a non-empty unique array of them |
-| `properties`                                             | object of subschemas                                                                                                   |
-| `required`                                               | array of unique non-empty strings                                                                                      |
-| `additionalProperties`                                   | subschema (or boolean schema)                                                                                          |
-| `items`                                                  | single subschema — **no tuple form** (draft 2020-12 uses `prefixItems` for tuples; not in the subset)                  |
-| `enum`, `const`                                          | JSON values only                                                                                                       |
-| `pattern`                                                | JS regex source — **unanchored** per spec; anchor with `^…$` for full-match semantics                                  |
-| `minLength`, `maxLength`                                 | strings: character count (`.length`, UTF-16 units)                                                                     |
-| `minimum`, `maximum`                                     | finite numbers, inclusive                                                                                              |
-| `minItems`, `maxItems`                                   | arrays                                                                                                                 |
-| `minProperties`, `maxProperties`                         | objects                                                                                                                |
-| `allOf`, `anyOf`, `oneOf`                                | non-empty arrays of subschemas                                                                                         |
-| `not`                                                    | subschema                                                                                                              |
-| `$ref`                                                   | **internal JSON pointers only** — `"#/…"` (or `"#"`); no remote refs, no `$anchor`/`$dynamicRef`, no percent-encoding  |
-| `$schema`, `title`, `description`, `default`, `$comment` | annotations — `$schema` accepted but not enforced (the subset _is_ 2020-12)                                            |
+| Keyword                                                  | Notes                                                                                                                                                                                                    |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`                                                   | `"string" \| "number" \| "integer" \| "boolean" \| "null" \| "object" \| "array"`, or a non-empty unique array of them                                                                                   |
+| `properties`                                             | object of subschemas                                                                                                                                                                                     |
+| `required`                                               | array of unique non-empty strings                                                                                                                                                                        |
+| `additionalProperties`                                   | subschema (or boolean schema)                                                                                                                                                                            |
+| `items`                                                  | single subschema — **no tuple form** (draft 2020-12 uses `prefixItems` for tuples; not in the subset)                                                                                                    |
+| `enum`, `const`                                          | JSON values only                                                                                                                                                                                         |
+| `pattern`                                                | JS regex source — **unanchored** per spec; anchor with `^…$` for full-match semantics. Compiled with the `u` (unicode) flag by the engine, and `assertSchema` rejects sources that only parse without it |
+| `minLength`, `maxLength`                                 | strings: character count in Unicode code points (spec `ucs2length`, astral chars count once)                                                                                                             |
+| `minimum`, `maximum`                                     | finite numbers, inclusive                                                                                                                                                                                |
+| `minItems`, `maxItems`                                   | arrays                                                                                                                                                                                                   |
+| `minProperties`, `maxProperties`                         | objects                                                                                                                                                                                                  |
+| `allOf`, `anyOf`, `oneOf`                                | non-empty arrays of subschemas                                                                                                                                                                           |
+| `not`                                                    | subschema                                                                                                                                                                                                |
+| `$ref`                                                   | **internal JSON pointers only** — `"#/…"` (or `"#"`); no remote refs, no `$anchor`/`$dynamicRef`, no percent-encoding                                                                                    |
+| `$schema`, `title`, `description`, `default`, `$comment` | annotations — `$schema` accepted but not enforced (the subset _is_ 2020-12)                                                                                                                              |
 
 Boolean schemas (`true` = anything, `false` = nothing) are supported
 everywhere a subschema is expected.
@@ -89,8 +100,9 @@ the subset is a contract, so `min`/`max`-style typos fail loudly.
 | `MAX_SCHEMA_NODES`   | 2048                             | bounds ref fan-out / document size    |
 | `MAX_ISSUES`         | 100                              | bounds issue output on hostile defs   |
 
-`pattern` uses JavaScript `RegExp` semantics (ECMA-262) — not
-POSIX/ECMA-262-unicode mode.
+`pattern` uses JavaScript `RegExp` semantics with the `u` flag
+(ECMA-262 unicode mode — the engine's choice and the spec's
+recommendation), not POSIX mode.
 
 ## Example
 
@@ -134,7 +146,7 @@ const patient = {
 validate(patient, { name: "Ana", age: 42 }); // []
 validate(patient, { name: 42, extra: true });
 // → [
-//   { path: "$", keyword: "additionalProperties", message: "must NOT have additional properties" },
-//   { path: "name", keyword: "type", message: "must be string" },
+//   { path: "$", keyword: "additionalProperties", message: "Property \"extra\" does not match additional properties schema." },
+//   { path: "name", keyword: "type", message: "Instance type \"number\" is invalid. Expected \"string\"." },
 // ]  (sorted; order stable)
 ```

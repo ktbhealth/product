@@ -35,7 +35,13 @@ describe("validate", () => {
 
 	it("reports type errors with dot paths", () => {
 		const issues = validate(person, { name: 42, role: "physician" });
-		expect(issues).toEqual([{ path: "name", keyword: "type", message: "must be string" }]);
+		expect(issues).toEqual([
+			{
+				path: "name",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
+		]);
 	});
 
 	it("reports missing required properties at the parent path", () => {
@@ -101,7 +107,13 @@ describe("validate", () => {
 
 	it("reports array item errors with bracket paths", () => {
 		const issues = validate(person, { ...validPerson, tags: ["ok", 7] });
-		expect(issues).toEqual([{ path: "tags[1]", keyword: "type", message: "must be string" }]);
+		expect(issues).toEqual([
+			{
+				path: "tags[1]",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
+		]);
 	});
 
 	it("reports array bounds", () => {
@@ -130,16 +142,24 @@ describe("validate", () => {
 	it("validates root-level non-object schemas", () => {
 		expect(validate({ type: "string" }, "hi")).toEqual([]);
 		expect(validate({ type: "string" }, 1)).toEqual([
-			{ path: "$", keyword: "type", message: "must be string" },
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
 		]);
 		expect(validate({ type: "array", items: { type: "string" } }, ["a", 2])).toEqual([
-			{ path: "$[1]", keyword: "type", message: "must be string" },
+			{
+				path: "$[1]",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
 		]);
 	});
 
 	it("sorts errors deterministically", () => {
 		// Multiple violations across paths — output must be sorted by
-		// (path, keyword, message) regardless of ajv's emission order.
+		// (path, keyword, message) regardless of the engine's emission order.
 		const issues = validate(person, {
 			name: "",
 			role: "admin",
@@ -163,7 +183,11 @@ describe("validate", () => {
 			},
 		};
 		expect(validate(schema, { outer: { inner: 1 } })).toEqual([
-			{ path: "outer.inner", keyword: "type", message: "must be string" },
+			{
+				path: "outer.inner",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
 		]);
 	});
 
@@ -185,13 +209,21 @@ describe("validate", () => {
 		};
 		const issues = validate(schema, 1);
 		expect(issues).toEqual([
-			{ path: "$", keyword: "type", message: "must be string" },
-			{ path: "$", keyword: "type", message: "must be string" },
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
 		]);
 	});
 
 	it("sorts many same-path keywords in both comparator directions", () => {
-		// allOf branches control ajv's emission order: keywords arrive
+		// allOf branches control the engine's emission order: keywords arrive
 		// unsorted (minLength → const → pattern → enum → maxLength) so
 		// the comparator runs in both directions.
 		const schema: JsonSchemaObject = {
@@ -257,11 +289,12 @@ describe("validate", () => {
 			},
 		};
 		const issues = validate(schema, { "a/b": 1, "~k": 2, a1: 3, "1a": 4 });
+		const typeMessage = 'Instance type "number" is invalid. Expected "string".';
 		expect(issues).toEqual([
-			{ path: "1a", keyword: "type", message: "must be string" },
-			{ path: "a/b", keyword: "type", message: "must be string" },
-			{ path: "a1", keyword: "type", message: "must be string" },
-			{ path: "~k", keyword: "type", message: "must be string" },
+			{ path: "1a", keyword: "type", message: typeMessage },
+			{ path: "a/b", keyword: "type", message: typeMessage },
+			{ path: "a1", keyword: "type", message: typeMessage },
+			{ path: "~k", keyword: "type", message: typeMessage },
 		]);
 	});
 
@@ -269,7 +302,11 @@ describe("validate", () => {
 		const schema: JsonSchemaObject = { type: "array", items: { type: "string" } };
 		const value = Array.from({ length: 11 }, (_, i) => (i === 10 ? 5 : "x"));
 		expect(validate(schema, value)).toEqual([
-			{ path: "$[10]", keyword: "type", message: "must be string" },
+			{
+				path: "$[10]",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
 		]);
 	});
 });
@@ -278,7 +315,7 @@ describe("boolean schemas", () => {
 	it("true accepts anything, false accepts nothing", () => {
 		expect(validate(true, { anything: [1, "x"] })).toEqual([]);
 		expect(validate(false, 1)).toEqual([
-			{ path: "$", keyword: "false schema", message: "boolean schema is false" },
+			{ path: "$", keyword: "false schema", message: "False boolean schema." },
 		]);
 		const v = compileSchema(false);
 		expect(v.isValid(1)).toBe(false);
@@ -401,7 +438,7 @@ describe("schema definition errors", () => {
 	});
 });
 
-describe("interpreter edge cases", () => {
+describe("engine edge cases", () => {
 	it("deep-equals enum and const candidates structurally", () => {
 		const schema: JsonSchemaObject = {
 			enum: [{ a: [1, { b: 2 }] }, [1, 2], "x", null],
@@ -415,40 +452,44 @@ describe("interpreter edge cases", () => {
 		// Key order is insignificant; array order is significant.
 		expect(validate({ const: { a: 1, b: 2 } }, { b: 2, a: 1 })).toEqual([]);
 		expect(validate({ const: [1, 2] }, [2, 1])).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: "Instance does not match [1,2]." },
 		]);
 		expect(validate(schema, { a: [1, { b: 2 }] })).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{
+				path: "$",
+				keyword: "const",
+				message: 'Instance does not match {"k":{"nested":[true,null]}}.',
+			},
 		]);
 	});
 
 	it("reports every jsonEqual mismatch shape", () => {
 		// Different key counts.
 		expect(validate({ const: { a: 1 } }, { a: 1, b: 2 })).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: 'Instance does not match {"a":1}.' },
 		]);
 		// Missing key on the candidate side.
 		expect(validate({ const: { a: 1, b: 2 } }, { a: 1 })).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: 'Instance does not match {"a":1,"b":2}.' },
 		]);
 		// Array vs object.
 		expect(validate({ const: [1] }, { 0: 1 })).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: "Instance does not match [1]." },
 		]);
 		// Array length mismatch.
 		expect(validate({ const: [1, 2] }, [1])).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: "Instance does not match [1,2]." },
 		]);
 		// Primitive vs object and object vs null.
 		expect(validate({ const: 5 }, { a: 1 })).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: "Instance does not match 5." },
 		]);
 		expect(validate({ const: { a: 1 } }, null)).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: 'Instance does not match {"a":1}.' },
 		]);
 		// Nested member mismatch inside an otherwise-equal object.
 		expect(validate({ const: { a: { b: [1] } } }, { a: { b: [2] } })).toEqual([
-			{ path: "$", keyword: "const", message: "must be equal to constant" },
+			{ path: "$", keyword: "const", message: 'Instance does not match {"a":{"b":[1]}}.' },
 		]);
 	});
 
@@ -459,22 +500,40 @@ describe("interpreter edge cases", () => {
 			additionalProperties: { type: "number" },
 		};
 		expect(validate(schema, { a: "x", b: 1, c: "no" })).toEqual([
-			{ path: "c", keyword: "type", message: "must be number" },
+			{
+				path: "c",
+				keyword: "type",
+				message: 'Instance type "string" is invalid. Expected "number".',
+			},
 		]);
 		// additionalProperties without a properties bag treats every key as extra.
 		expect(
 			validate({ type: "object", additionalProperties: { type: "string" } }, { x: 1 }),
-		).toEqual([{ path: "x", keyword: "type", message: "must be string" }]);
+		).toEqual([
+			{
+				path: "x",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
+		]);
 		// `true` is the explicit allow-all form.
 		expect(validate({ type: "object", additionalProperties: true }, { x: 1 })).toEqual([]);
 	});
 
 	it("enforces object property count bounds", () => {
 		expect(validate({ type: "object", minProperties: 2 }, { a: 1 })).toEqual([
-			{ path: "$", keyword: "minProperties", message: "must NOT have fewer than 2 properties" },
+			{
+				path: "$",
+				keyword: "minProperties",
+				message: "Instance does not have at least 2 properties.",
+			},
 		]);
 		expect(validate({ type: "object", maxProperties: 1 }, { a: 1, b: 2 })).toEqual([
-			{ path: "$", keyword: "maxProperties", message: "must NOT have more than 1 properties" },
+			{
+				path: "$",
+				keyword: "maxProperties",
+				message: "Instance does not have at least 1 properties.",
+			},
 		]);
 		// Bounds ignore non-object instances.
 		expect(validate({ minProperties: 5, maxProperties: 0 }, "x")).toEqual([]);
@@ -486,9 +545,21 @@ describe("interpreter edge cases", () => {
 		};
 		// Zero passing branches: inner errors plus the oneOf error.
 		expect(validate(schema, true)).toEqual([
-			{ path: "$", keyword: "oneOf", message: "must match exactly one schema in oneOf" },
-			{ path: "$", keyword: "type", message: "must be number" },
-			{ path: "$", keyword: "type", message: "must be string" },
+			{
+				path: "$",
+				keyword: "oneOf",
+				message: "Instance does not match exactly one subschema (0 matches).",
+			},
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "boolean" is invalid. Expected "number".',
+			},
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "boolean" is invalid. Expected "string".',
+			},
 		]);
 		// Two passing branches: only the oneOf error — branch issues are
 		// empty anyway, but a failing third branch's issues are dropped.
@@ -496,7 +567,11 @@ describe("interpreter edge cases", () => {
 			oneOf: [{ type: "number" }, { minimum: 0 }, { type: "string" }],
 		};
 		expect(validate(threeWay, 5)).toEqual([
-			{ path: "$", keyword: "oneOf", message: "must match exactly one schema in oneOf" },
+			{
+				path: "$",
+				keyword: "oneOf",
+				message: "Instance does not match exactly one subschema (2 matches).",
+			},
 		]);
 		// Exactly one passing branch is valid — for a non-number the
 		// bare `{ minimum: 0 }` branch imposes nothing and passes.
@@ -511,9 +586,13 @@ describe("interpreter edge cases", () => {
 			},
 		};
 		expect(validate(schema, { x: "ab" })).toEqual([
-			{ path: "x", keyword: "anyOf", message: "must match a schema in anyOf" },
-			{ path: "x", keyword: "minLength", message: "must NOT have fewer than 3 characters" },
-			{ path: "x", keyword: "type", message: "must be number" },
+			{ path: "x", keyword: "anyOf", message: "Instance does not match any subschemas." },
+			{ path: "x", keyword: "minLength", message: "String is too short (2 < 3)." },
+			{
+				path: "x",
+				keyword: "type",
+				message: 'Instance type "string" is invalid. Expected "number".',
+			},
 		]);
 		expect(validate(schema, { x: 4 })).toEqual([]);
 	});
@@ -521,18 +600,18 @@ describe("interpreter edge cases", () => {
 	it("evaluates boolean subschemas in every position", () => {
 		expect(
 			validate({ type: "object", properties: { x: false, y: true } }, { x: 1, y: "anything" }),
-		).toEqual([{ path: "x", keyword: "false schema", message: "boolean schema is false" }]);
+		).toEqual([{ path: "x", keyword: "false schema", message: "False boolean schema." }]);
 		expect(validate({ type: "array", items: false }, [1])).toEqual([
-			{ path: "$[0]", keyword: "false schema", message: "boolean schema is false" },
+			{ path: "$[0]", keyword: "false schema", message: "False boolean schema." },
 		]);
 		expect(validate({ allOf: [false] }, 1)).toEqual([
-			{ path: "$", keyword: "false schema", message: "boolean schema is false" },
+			{ path: "$", keyword: "false schema", message: "False boolean schema." },
 		]);
 		// `not: false` can never be valid, so `not` always passes.
 		expect(validate({ not: false }, 1)).toEqual([]);
 	});
 
-	it("skips undefined-valued properties like ajv", () => {
+	it("skips undefined-valued properties", () => {
 		const schema: JsonSchemaObject = {
 			type: "object",
 			properties: { b: { type: "string" } },
@@ -561,20 +640,40 @@ describe("interpreter edge cases", () => {
 		};
 		expect(validate(schema, { outer: {}, a: 1, b: 2, c: 3, d: "s" })).toEqual([]);
 		expect(validate(schema, { outer: {}, a: 1, b: "x", c: "y", d: 4 })).toEqual([
-			{ path: "b", keyword: "type", message: "must be integer" },
-			{ path: "c", keyword: "type", message: "must be integer" },
-			{ path: "d", keyword: "type", message: "must be string" },
+			{
+				path: "b",
+				keyword: "type",
+				message: 'Instance type "string" is invalid. Expected "integer".',
+			},
+			{
+				path: "c",
+				keyword: "type",
+				message: 'Instance type "string" is invalid. Expected "integer".',
+			},
+			{
+				path: "d",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
 		]);
 	});
 
 	it("covers remaining primitive types and ignored keyword positions", () => {
 		expect(validate({ type: "number" }, 1.5)).toEqual([]);
 		expect(validate({ type: "number" }, "x")).toEqual([
-			{ path: "$", keyword: "type", message: "must be number" },
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "string" is invalid. Expected "number".',
+			},
 		]);
 		expect(validate({ type: "null" }, null)).toEqual([]);
 		expect(validate({ type: "null" }, 0)).toEqual([
-			{ path: "$", keyword: "type", message: "must be null" },
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "null".',
+			},
 		]);
 		// String/number/array/object keywords do not apply to other types.
 		expect(validate({ minLength: 9, minimum: 9, minItems: 9, minProperties: 9 }, true)).toEqual([]);
@@ -592,7 +691,146 @@ describe("interpreter edge cases", () => {
 	it("checks the boolean primitive type", () => {
 		expect(validate({ type: "boolean" }, true)).toEqual([]);
 		expect(validate({ type: "boolean" }, 1)).toEqual([
-			{ path: "$", keyword: "type", message: "must be boolean" },
+			{
+				path: "$",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "boolean".',
+			},
 		]);
+	});
+
+	it("folds additionalProperties:false member errors into parent issues", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: { a: { type: "string" } },
+			additionalProperties: false,
+		};
+		expect(validate(schema, { a: "x", b: 1, c: 2 })).toEqual([
+			{
+				path: "$",
+				keyword: "additionalProperties",
+				message: 'Property "b" does not match additional properties schema.',
+			},
+			{
+				path: "$",
+				keyword: "additionalProperties",
+				message: 'Property "c" does not match additional properties schema.',
+			},
+		]);
+	});
+
+	it("keeps member errors for additionalProperties subschemas beside sibling issues", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: {
+				o: {
+					type: "object",
+					properties: { a: { type: "string" } },
+					additionalProperties: { type: "number" },
+				},
+			},
+			additionalProperties: false,
+		};
+		// `o.b` fails the inner subschema (member-path type error); `z`
+		// fails the outer `false` (parent-level additionalProperties).
+		expect(validate(schema, { o: { a: "x", b: "no" }, z: 1 })).toEqual([
+			{
+				path: "$",
+				keyword: "additionalProperties",
+				message: 'Property "z" does not match additional properties schema.',
+			},
+			{
+				path: "o.b",
+				keyword: "type",
+				message: 'Instance type "string" is invalid. Expected "number".',
+			},
+		]);
+	});
+
+	it("drops additionalProperties noise inside multi-match oneOf branches", () => {
+		const schema: JsonSchemaObject = {
+			oneOf: [
+				{
+					type: "object",
+					properties: { a: { type: "string" } },
+					additionalProperties: false,
+				},
+				{ type: "object" },
+				{},
+			],
+		};
+		// Two branches match ({type:"object"} and {}) — every error
+		// inside the oneOf, including the additionalProperties pair, is
+		// dropped in favor of the single oneOf issue.
+		expect(validate(schema, { a: 1, b: 2 })).toEqual([
+			{
+				path: "$",
+				keyword: "oneOf",
+				message: "Instance does not match exactly one subschema (2 matches).",
+			},
+		]);
+	});
+
+	it("keeps errors outside a multi-match oneOf", () => {
+		const schema: JsonSchemaObject = {
+			type: "object",
+			properties: { a: { type: "string" } },
+			oneOf: [{ type: "object" }, {}],
+		};
+		// Both oneOf branches match the object; the `a` type error is
+		// outside the oneOf and survives.
+		expect(validate(schema, { a: 1 })).toEqual([
+			{
+				path: "$",
+				keyword: "oneOf",
+				message: "Instance does not match exactly one subschema (2 matches).",
+			},
+			{
+				path: "a",
+				keyword: "type",
+				message: 'Instance type "number" is invalid. Expected "string".',
+			},
+		]);
+	});
+
+	it("normalizes non-JSON instance values the engine cannot represent", () => {
+		// undefined/function/symbol/bigint members count as absent.
+		const closed: JsonSchemaObject = { type: "object", additionalProperties: false };
+		expect(validate(closed, { f: () => 1, s: Symbol("s"), b: 1n, u: undefined })).toEqual([]);
+		// Array entries and a non-JSON root become null.
+		expect(validate({ type: "array", items: { type: "string" } }, ["a", undefined])).toEqual([
+			{
+				path: "$[1]",
+				keyword: "type",
+				message: 'Instance type "null" is invalid. Expected "string".',
+			},
+		]);
+		const nullType = {
+			path: "$",
+			keyword: "type",
+			message: 'Instance type "null" is invalid. Expected "string".',
+		};
+		expect(validate({ type: "string" }, undefined)).toEqual([nullType]);
+		expect(validate({ type: "string" }, 1n)).toEqual([nullType]);
+	});
+
+	it("normalizes nested non-JSON members without rewriting clean values", () => {
+		const objectItem: JsonSchemaObject = {
+			type: "object",
+			additionalProperties: false,
+		};
+		expect(
+			validate({ type: "object", properties: { a: objectItem } }, { a: { b: undefined } }),
+		).toEqual([]);
+		expect(validate({ type: "array", items: objectItem }, [{ a: undefined }])).toEqual([]);
+	});
+
+	it("tolerates cyclic instance values", () => {
+		const cyclic: Record<string, unknown> = {};
+		cyclic.self = cyclic;
+		expect(validate({ type: "object" }, cyclic)).toEqual([]);
+		const cyclicArray: unknown[] = [];
+		cyclicArray.push(cyclicArray);
+		expect(validate({ type: "array" }, cyclicArray)).toEqual([]);
 	});
 });
