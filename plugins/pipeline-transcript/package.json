@@ -3,11 +3,13 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./orchestration": "./src/orchestration.ts"
 	},
 	"dependencies": {
 		"@ktb/eval-consultation": "workspace:*",
 		"@ktb/kernel": "workspace:*",
+		"@ktb/orchestrator": "workspace:*",
 		"@ktb/pipeline": "workspace:*",
 		"effect": "4.1.2"
 	}
