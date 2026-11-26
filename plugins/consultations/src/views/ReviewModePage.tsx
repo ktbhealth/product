@@ -707,6 +707,9 @@ function TranscriptStep({
 							src={`/api/consultations/${c.id}/audio`}
 							audioRef={audioRef}
 							ariaLabel={t.transcriptPanel.audioLabel}
+							segments={segments}
+							rateLabel={t.transcriptPanel.playbackRate}
+							skipSilenceLabel={t.transcriptPanel.skipSilence}
 							onTimeUpdate={(now) => {
 								const idx = segments.findIndex((s) => now >= s.start && now < s.end);
 								if (idx !== -1) {

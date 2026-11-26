@@ -4,16 +4,21 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import {
 	AudioTranscriptPanel,
+	ConsultationAudioPlayer,
 	useConsultationAudio,
 	type AudioPipelineInfo,
 } from "./-transcript.tsx";
+import type { TranscriptSegment } from "../segments.ts";
 
 type Detail = AudioPipelineInfo;
 
 const POLL = 3000;
 const flush = (ms = POLL) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
 
-beforeEach(() => vi.useFakeTimers());
+beforeEach(() => {
+	vi.useFakeTimers();
+	localStorage.clear();
+});
 afterEach(() => {
 	cleanup();
 	vi.useRealTimers();
@@ -292,5 +297,96 @@ describe("AudioTranscriptPanel — karaoke segments", () => {
 		);
 		fireEvent.click(screen.getByText("Segunda frase."));
 		await act(async () => {});
+	});
+});
+
+describe("ConsultationAudioPlayer", () => {
+	const GAPS: TranscriptSegment[] = [
+		{ start: 0, end: 2, text: "bom dia" },
+		{ start: 5, end: 8, text: "como está" }, // 3s silence at 2–5
+		{ start: 8.4, end: 10, text: "vou examinar" },
+	];
+
+	const renderPlayer = (segments?: TranscriptSegment[]) => {
+		const ref = { current: null as HTMLAudioElement | null };
+		render(
+			<ConsultationAudioPlayer
+				src="/audio.wav"
+				audioRef={ref}
+				segments={segments}
+				rateLabel="Playback speed"
+				skipSilenceLabel="Skip silence"
+			/>,
+		);
+		return { ref, audio: document.querySelector("audio")! };
+	};
+
+	const playing = (audio: HTMLAudioElement, paused: boolean) =>
+		Object.defineProperty(audio, "paused", { value: paused, configurable: true });
+
+	it("cycles playback rate and applies it to the audio element", () => {
+		const { audio } = renderPlayer();
+		const btn = screen.getByRole("button", { name: "Playback speed" });
+		expect(btn.textContent).toBe("1×");
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.25);
+		expect(btn.textContent).toBe("1.25×");
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1.5);
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(2);
+		fireEvent.click(btn);
+		expect(audio.playbackRate).toBe(1);
+	});
+
+	it("persists the rate preference across mounts", () => {
+		const { audio } = renderPlayer();
+		fireEvent.click(screen.getByRole("button", { name: "Playback speed" }));
+		expect(localStorage.getItem("ktb.audio.playbackRate")).toBe("1.25");
+		cleanup();
+		const second = renderPlayer();
+		expect(second.audio.playbackRate).toBe(1.25);
+	});
+
+	it("skips silence gaps while playing", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 3; // inside the 2–5 gap
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(5);
+	});
+
+	it("does not skip while paused (manual seek into a gap)", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, true);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("does not skip inside a segment", () => {
+		const { audio } = renderPlayer(GAPS);
+		playing(audio, false);
+		audio.currentTime = 6;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(6);
+	});
+
+	it("skip toggle disables the jump and persists off", () => {
+		const { audio } = renderPlayer(GAPS);
+		fireEvent.click(screen.getByRole("button", { name: "Skip silence" }));
+		expect(localStorage.getItem("ktb.audio.skipSilence")).toBe("0");
+		playing(audio, false);
+		audio.currentTime = 3;
+		fireEvent.timeUpdate(audio);
+		expect(audio.currentTime).toBe(3);
+	});
+
+	it("hides the skip control when there are no gaps", () => {
+		renderPlayer([
+			{ start: 0, end: 2, text: "a" },
+			{ start: 2.5, end: 4, text: "b" },
+		]);
+		expect(screen.queryByRole("button", { name: "Skip silence" })).toBeNull();
 	});
 });

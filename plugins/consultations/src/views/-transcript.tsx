@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
+import { FastForwardIcon } from "lucide-react";
 
 import {
 	AudioPlayer,
@@ -273,12 +274,63 @@ function SegmentsKaraoke({
 	);
 }
 
+const PLAYBACK_RATES: readonly number[] = [1, 1.25, 1.5, 2];
+/** Gaps below this are natural speech pauses — only longer ones are
+ * treated as silence worth skipping. */
+const SILENCE_MIN_GAP = 1.5;
+const RATE_PREF_KEY = "ktb.audio.playbackRate";
+const SKIP_PREF_KEY = "ktb.audio.skipSilence";
+
+const readPref = (key: string): string | null => {
+	try {
+		return globalThis.localStorage?.getItem(key) ?? null;
+	} catch {
+		return null;
+	}
+};
+const writePref = (key: string, value: string) => {
+	try {
+		globalThis.localStorage?.setItem(key, value);
+	} catch {
+		/* storage unavailable (private mode / SSR) — preference just resets */
+	}
+};
+
+interface SilenceGap {
+	/** Gap start (= previous segment end). */
+	readonly from: number;
+	/** Next segment start — the jump target. */
+	readonly to: number;
+}
+
+/**
+ * Consecutive-segment gaps >= SILENCE_MIN_GAP — the silences the
+ * auto-skip feature jumps over. Sorted by construction.
+ */
+function silenceGaps(segments: readonly TranscriptSegment[] | undefined): readonly SilenceGap[] {
+	if (!segments || segments.length < 2) return [];
+	const gaps: SilenceGap[] = [];
+	for (let i = 0; i + 1 < segments.length; i++) {
+		const cur = segments[i]!;
+		const next = segments[i + 1]!;
+		if (next.start - cur.end >= SILENCE_MIN_GAP) {
+			gaps.push({ from: cur.end, to: next.start });
+		}
+	}
+	return gaps;
+}
+
+const refEl = (ref: Ref<HTMLAudioElement> | undefined): HTMLAudioElement | null =>
+	ref && typeof ref !== "function" ? ref.current : null;
+
 /**
  * Consultation playback bar (PL-023): the design-system media-chrome
  * player — play, ±10s seek, time range, duration, volume. The inner
  * <audio> is exposed through `audioRef` so karaoke views can read the
  * playhead and seek programmatically; `onTimeUpdate` feeds the live
- * segment highlight.
+ * segment highlight. With `segments`, a silence-skip toggle jumps
+ * speech gaps during playback (never while paused or scrubbing); the
+ * rate button cycles playback speed. Both prefs persist per browser.
  */
 export function ConsultationAudioPlayer({
 	src,
@@ -286,6 +338,9 @@ export function ConsultationAudioPlayer({
 	onTimeUpdate,
 	ariaLabel,
 	preload = "metadata",
+	segments,
+	rateLabel = "Playback speed",
+	skipSilenceLabel = "Skip silence",
 }: {
 	src: string;
 	/** Ref to the underlying <audio> element (seek/playhead). */
@@ -293,7 +348,41 @@ export function ConsultationAudioPlayer({
 	onTimeUpdate?: (currentTime: number) => void;
 	ariaLabel?: string;
 	preload?: "none" | "metadata" | "auto";
+	/** Segment timestamps — enables the silence-skip control. */
+	segments?: readonly TranscriptSegment[];
+	rateLabel?: string;
+	skipSilenceLabel?: string;
 }) {
+	const gaps = useMemo(() => silenceGaps(segments), [segments]);
+	const [rate, setRate] = useState(1);
+	const [skipSilence, setSkipSilence] = useState(true);
+
+	// Load persisted prefs after mount (server render can't see
+	// localStorage — fixed defaults keep hydration stable).
+	useEffect(() => {
+		const r = Number(readPref(RATE_PREF_KEY));
+		if (PLAYBACK_RATES.includes(r)) setRate(r);
+		const s = readPref(SKIP_PREF_KEY);
+		if (s !== null) setSkipSilence(s === "1");
+	}, []);
+
+	useEffect(() => {
+		const a = refEl(audioRef);
+		if (a) a.playbackRate = rate;
+	}, [audioRef, rate]);
+
+	const cycleRate = () =>
+		setRate((r) => {
+			const next = PLAYBACK_RATES[(PLAYBACK_RATES.indexOf(r) + 1) % PLAYBACK_RATES.length]!;
+			writePref(RATE_PREF_KEY, String(next));
+			return next;
+		});
+	const toggleSkip = () =>
+		setSkipSilence((on) => {
+			writePref(SKIP_PREF_KEY, on ? "0" : "1");
+			return !on;
+		});
+
 	return (
 		<AudioPlayer className="w-full">
 			<AudioPlayerElement
@@ -301,7 +390,20 @@ export function ConsultationAudioPlayer({
 				ref={audioRef}
 				preload={preload}
 				aria-label={ariaLabel}
-				onTimeUpdate={(e) => onTimeUpdate?.(e.currentTarget.currentTime)}
+				onTimeUpdate={(e) => {
+					const a = e.currentTarget;
+					if (skipSilence && !a.paused) {
+						const t = a.currentTime;
+						for (const g of gaps) {
+							if (g.from > t) break;
+							if (t < g.to) {
+								a.currentTime = g.to;
+								break;
+							}
+						}
+					}
+					onTimeUpdate?.(a.currentTime);
+				}}
 			/>
 			<AudioPlayerControlBar className="flex-wrap">
 				<AudioPlayerPlayButton />
@@ -312,6 +414,27 @@ export function ConsultationAudioPlayer({
 				<AudioPlayerDurationDisplay />
 				<AudioPlayerMuteButton />
 				<AudioPlayerVolumeRange className="w-24" />
+				<button
+					type="button"
+					onClick={cycleRate}
+					title={rateLabel}
+					aria-label={rateLabel}
+					className="px-1.5 font-medium text-xs tabular-nums hover:text-foreground"
+				>
+					{rate}×
+				</button>
+				{gaps.length > 0 ? (
+					<button
+						type="button"
+						onClick={toggleSkip}
+						aria-pressed={skipSilence}
+						title={skipSilenceLabel}
+						aria-label={skipSilenceLabel}
+						className={`px-1 ${skipSilence ? "text-foreground" : "text-muted-foreground/60"} hover:text-foreground`}
+					>
+						<FastForwardIcon className="size-3.5" />
+					</button>
+				) : null}
 			</AudioPlayerControlBar>
 		</AudioPlayer>
 	);
@@ -446,6 +569,9 @@ export function AudioTranscriptPanel({
 					audioRef={audioRef}
 					ariaLabel={t.transcriptPanel.audioLabel}
 					preload="none"
+					segments={segments}
+					rateLabel={t.transcriptPanel.playbackRate}
+					skipSilenceLabel={t.transcriptPanel.skipSilence}
 					onTimeUpdate={(now) => {
 						setActiveIdx(karaoke.findIndex((s) => now >= s.start && now < s.end));
 					}}

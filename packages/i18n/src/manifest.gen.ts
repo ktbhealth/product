@@ -2103,6 +2103,12 @@ export const I18N_MANIFEST = {
 		"transcriptPanel.audioLabel": {
 			params: [],
 		},
+		"transcriptPanel.playbackRate": {
+			params: [],
+		},
+		"transcriptPanel.skipSilence": {
+			params: [],
+		},
 		"transcriptPanel.tabCorrected": {
 			params: [],
 		},

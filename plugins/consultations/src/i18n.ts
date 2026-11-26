@@ -199,6 +199,8 @@ export interface ConsultationMessages {
 		readonly enhancing: string;
 		readonly enhanced: string;
 		readonly audioLabel: string;
+		readonly playbackRate: string;
+		readonly skipSilence: string;
 		readonly tabCorrected: string;
 		readonly tabOriginal: string;
 	};
@@ -561,6 +563,8 @@ const en: ConsultationMessages = {
 		enhancing: "enhancing transcript…",
 		enhanced: "enhanced ✓",
 		audioLabel: "Consultation audio",
+		playbackRate: "Playback speed",
+		skipSilence: "Skip silence",
 		tabCorrected: "Corrected",
 		tabOriginal: "Original",
 	},
@@ -940,6 +944,8 @@ const ptBR: ConsultationMessages = {
 		enhancing: "melhorando transcrição…",
 		enhanced: "melhorada ✓",
 		audioLabel: "Áudio da consulta",
+		playbackRate: "Velocidade de reprodução",
+		skipSilence: "Pular silêncios",
 		tabCorrected: "Corrigida",
 		tabOriginal: "Original",
 	},
@@ -1323,6 +1329,8 @@ const es: ConsultationMessages = {
 		enhancing: "mejorando transcripción…",
 		enhanced: "mejorada ✓",
 		audioLabel: "Audio de la consulta",
+		playbackRate: "Velocidad de reproducción",
+		skipSilence: "Saltar silencios",
 		tabCorrected: "Corregida",
 		tabOriginal: "Original",
 	},

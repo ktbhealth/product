@@ -9748,6 +9748,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "transcriptPanel.playbackRate",
+		locale: "en",
+		value: "Playback speed",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.skipSilence",
+		locale: "en",
+		value: "Skip silence",
+	},
+	{
+		namespace: "consultations",
 		key: "transcriptPanel.tabCorrected",
 		locale: "en",
 		value: "Corrected",
@@ -11622,6 +11634,18 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "transcriptPanel.playbackRate",
+		locale: "pt-BR",
+		value: "Velocidade de reprodução",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.skipSilence",
+		locale: "pt-BR",
+		value: "Pular silêncios",
+	},
+	{
+		namespace: "consultations",
 		key: "transcriptPanel.tabCorrected",
 		locale: "pt-BR",
 		value: "Corrigida",
@@ -13492,6 +13516,18 @@ export const I18N_BASELINE = [
 		key: "transcriptPanel.audioLabel",
 		locale: "es",
 		value: "Audio de la consulta",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.playbackRate",
+		locale: "es",
+		value: "Velocidad de reproducción",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.skipSilence",
+		locale: "es",
+		value: "Saltar silencios",
 	},
 	{
 		namespace: "consultations",
