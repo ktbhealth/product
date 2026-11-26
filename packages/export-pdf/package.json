@@ -7,9 +7,6 @@
 	},
 	"dependencies": {
 		"@ktb/anamnesis": "workspace:*",
-		"pdfkit": "^0.17.2"
-	},
-	"devDependencies": {
-		"@types/pdfkit": "^0.17.7"
+		"pdf-lib": "^1.17.1"
 	}
 }

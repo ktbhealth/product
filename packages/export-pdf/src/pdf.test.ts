@@ -106,6 +106,24 @@ describe("renderAnamnesisPdf", () => {
 		expect(pdf.length).toBeGreaterThan(1000);
 	});
 
+	it("wraps blank lines and unbreakable overwide words without dropping text", async () => {
+		const anamnesis = await new HeuristicExtractor().extract(SAMPLE_TRANSCRIPT);
+		const section = {
+			content: `${"x".repeat(400)}\n\nsegunda ${"y".repeat(400)} \n\nfim`,
+			confidence: "alta" as const,
+			evidence: [] as string[],
+		};
+		const pdf = await renderAnamnesisPdf({
+			consultationId: 11,
+			createdAt: new Date("2026-11-06T14:30:00"),
+			patientName: null,
+			doctorName: null,
+			consentAt: null,
+			anamnesis: { ...anamnesis, conduta: section },
+		});
+		expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+	});
+
 	it("adds the patient record line under the patient name", async () => {
 		const anamnesis = await new HeuristicExtractor().extract(SAMPLE_TRANSCRIPT);
 		const base = {
