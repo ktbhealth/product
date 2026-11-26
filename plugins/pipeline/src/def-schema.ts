@@ -99,7 +99,7 @@ export const defIssues = (def: OrchestrationDef): readonly string[] => {
  * after a JSON round-trip and it satisfies TanStack's serializable
  * return check that the raw `OrchestrationKind`-typed field would fail.
  */
-export type DataOnlyOrchestrationNode = Omit<OrchestrationNode, "handler">;
+type DataOnlyOrchestrationNode = Omit<OrchestrationNode, "handler">;
 export type DataOnlyOrchestrationDef = Omit<OrchestrationDef, "nodes"> & {
 	readonly nodes: readonly DataOnlyOrchestrationNode[];
 };

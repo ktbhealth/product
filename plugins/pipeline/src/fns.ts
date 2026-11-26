@@ -186,8 +186,6 @@ export const listOrchestrationKindsFn = createServerFn({ method: "GET" }).handle
 	},
 );
 
-export type { DataOnlyOrchestrationDef };
-
 // ---------------------------------------------------------------------------
 // Durable runs (P-120 phase 2): start + inspect. `orchestration_runs`
 // carries no tenant column — runs are GLOBAL composition data like the

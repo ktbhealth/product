@@ -18,7 +18,7 @@ export const ORCHESTRATOR_NODE_ID = "orchestrator";
  * plus the `workflow.*`/`node.*`/`event.*` lifecycle vocabulary from
  * `OrchestrationEvent`. A node subscribing to any of these gets a
  * derived edge from the pseudo-node. */
-export const ORCHESTRATOR_EVENT_TYPES: readonly string[] = [
+const ORCHESTRATOR_EVENT_TYPES: readonly string[] = [
 	"start",
 	"workflow.done",
 	"workflow.failed",
@@ -42,7 +42,7 @@ export interface DerivedNode {
 /** One derived edge: `source` → `target` carrying every event type in
  * `source.emits ∩ target.on` (the def has no edge objects — this IS
  * the edge). */
-export interface DerivedEdge {
+interface DerivedEdge {
 	readonly id: string;
 	readonly source: string;
 	readonly target: string;
