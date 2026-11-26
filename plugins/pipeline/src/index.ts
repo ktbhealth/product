@@ -6,9 +6,15 @@ import { Db } from "@ktb/db";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import {
 	builtinKinds,
+	DuplicateKindError,
+	DuplicateOrchestrationError,
 	getOrchestrationDef,
 	listOrchestrationDefs,
 	OrchestratorRegistry,
+	OrchestratorRegistryLive,
+	UnknownKindError,
+	type OrchestrationKind,
+	type OrchestrationPack,
 } from "@ktb/orchestrator";
 import {
 	DuplicatePipelineError,
@@ -58,6 +64,39 @@ export const pipelineRegistryLive = (
 	plugins: readonly Plugin[],
 ): Layer.Layer<PipelineRegistry, DuplicatePipelineError | UnknownStageError> =>
 	PipelineRegistryLive(collectPipelinePacks(plugins));
+
+/** Flatten every plugin manifest's `orchestrations` contributions into
+ * the pack list `orchestratorRegistryLive` registers — same topo-order
+ * collection contract as {@link collectPipelinePacks}. Each pack is
+ * `{def, kinds}`: the def validates against ALL collected kinds at
+ * layer build (a node kind no pack provides fails loudly), so kind
+ * order across packs does not matter. */
+export const collectOrchestratorPacks = (
+	plugins: readonly Plugin[],
+): readonly OrchestrationPack[] => plugins.flatMap((p) => p.orchestrations ?? []);
+
+/** `OrchestratorRegistryLive` over the packs the given plugins
+ * contribute — kinds first (deduped across packs is NOT attempted:
+ * a kind id claimed by two packs is a `DuplicateKindError` at layer
+ * build, same loud-failure contract as pipeline registration), then
+ * defs in plugin order. `extraKinds` lets the composition root seed
+ * engine vocabulary (`builtinKinds`) or host kinds before the pack
+ * kinds; pack kinds may not shadow them (same duplicate rule). The
+ * error channel stays typed (`DuplicateKindError | UnknownKindError |
+ * DuplicateOrchestrationError`). */
+export const orchestratorRegistryLive = (
+	plugins: readonly Plugin[],
+	extraKinds: readonly OrchestrationKind[] = [],
+): Layer.Layer<
+	OrchestratorRegistry,
+	DuplicateKindError | UnknownKindError | DuplicateOrchestrationError
+> => {
+	const packs = collectOrchestratorPacks(plugins);
+	return OrchestratorRegistryLive(
+		[...extraKinds, ...packs.flatMap((pack) => pack.kinds)],
+		packs.map((pack) => pack.def),
+	);
+};
 
 export const pipelineCorePlugin = definePlugin({
 	id: "pipeline.core",

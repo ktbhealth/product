@@ -16,6 +16,7 @@ export {
 	type OrchestrationDef,
 	type OrchestrationKind,
 	type OrchestrationNode,
+	type OrchestrationPack,
 	type OrchestrationRunResult,
 	type OrchestratorError,
 	type RunOptions,

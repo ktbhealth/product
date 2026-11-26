@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { definePlugin, type Plugin } from "@ktb/kernel";
+import type { OrchestrationKind, OrchestrationPack } from "@ktb/orchestrator";
 import type { PipelinePack, PipelineStage } from "@ktb/pipeline";
 import * as Effect from "effect/Effect";
 
-import { collectPipelinePacks, pipelineRegistryLive, plugins } from "./index.ts";
+import {
+	collectOrchestratorPacks,
+	collectPipelinePacks,
+	orchestratorRegistryLive,
+	pipelineRegistryLive,
+	plugins,
+} from "./index.ts";
 
 const stage = (id: string): PipelineStage => ({
 	id,
@@ -18,6 +25,24 @@ const pack = (id: string): PipelinePack => ({
 
 const pluginWith = (id: string, pipelines?: readonly PipelinePack[]): Plugin =>
 	definePlugin({ id, ...(pipelines === undefined ? {} : { pipelines }) });
+
+const kind = (id: string): OrchestrationKind => ({
+	id,
+	run: () => Effect.succeed({}),
+});
+
+const orchestrationPack = (id: string, kindId = "k"): OrchestrationPack => ({
+	def: {
+		id,
+		nodes: [{ id: "n", kind: kindId, on: ["input"], emits: [] }],
+	},
+	kinds: [kind(kindId)],
+});
+
+const pluginWithOrchestrations = (
+	id: string,
+	orchestrations?: readonly OrchestrationPack[],
+): Plugin => definePlugin({ id, ...(orchestrations === undefined ? {} : { orchestrations }) });
 
 describe("collectPipelinePacks", () => {
 	it("returns an empty list for no plugins", () => {
@@ -49,6 +74,77 @@ describe("pipelineRegistryLive", () => {
 			).pipe(Effect.provide(layer)),
 		);
 		expect(registry).toEqual({ has: true, ids: ["demo"] });
+	});
+});
+
+describe("collectOrchestratorPacks", () => {
+	it("returns an empty list for no plugins", () => {
+		expect(collectOrchestratorPacks([])).toEqual([]);
+	});
+
+	it("skips plugins that contribute no orchestrations field", () => {
+		const plugins = [
+			pluginWithOrchestrations("a.only"),
+			pluginWithOrchestrations("b.packs", [orchestrationPack("o1")]),
+		];
+		expect(collectOrchestratorPacks(plugins).map((p) => p.def.id)).toEqual(["o1"]);
+	});
+
+	it("flattens packs across plugins in plugin order", () => {
+		const plugins = [
+			pluginWithOrchestrations("a.packs", [orchestrationPack("o1"), orchestrationPack("o2")]),
+			pluginWithOrchestrations("b.none"),
+			pluginWithOrchestrations("c.packs", [orchestrationPack("o3")]),
+		];
+		expect(collectOrchestratorPacks(plugins).map((p) => p.def.id)).toEqual(["o1", "o2", "o3"]);
+	});
+});
+
+describe("orchestratorRegistryLive", () => {
+	it("builds a layer that registers collected kinds and defs", async () => {
+		const { OrchestratorRegistry } = await import("@ktb/orchestrator");
+		const layer = orchestratorRegistryLive([
+			pluginWithOrchestrations("a.packs", [orchestrationPack("demo")]),
+		]);
+		const registry = await Effect.runPromise(
+			Effect.flatMap(OrchestratorRegistry, (r) =>
+				Effect.sync(() => ({
+					has: r.has("demo"),
+					ids: r.listDefs().map((d) => d.id),
+					kinds: r.listKinds().map((k) => k.id),
+				})),
+			).pipe(Effect.provide(layer)),
+		);
+		expect(registry).toEqual({ has: true, ids: ["demo"], kinds: ["k"] });
+	});
+
+	it("seeds extraKinds ahead of pack kinds", async () => {
+		const { OrchestratorRegistry } = await import("@ktb/orchestrator");
+		const layer = orchestratorRegistryLive(
+			[pluginWithOrchestrations("a.packs", [orchestrationPack("demo")])],
+			[kind("builtin.x")],
+		);
+		const kinds = await Effect.runPromise(
+			Effect.flatMap(OrchestratorRegistry, (r) =>
+				Effect.sync(() => r.listKinds().map((k) => k.id)),
+			).pipe(Effect.provide(layer)),
+		);
+		expect(kinds).toEqual(["builtin.x", "k"]);
+	});
+
+	it("fails layer build when a def references an unregistered kind", async () => {
+		const { OrchestratorRegistry } = await import("@ktb/orchestrator");
+		const orphan: OrchestrationPack = {
+			def: { id: "orphan", nodes: [{ id: "n", kind: "missing", on: ["input"], emits: [] }] },
+			kinds: [],
+		};
+		const layer = orchestratorRegistryLive([pluginWithOrchestrations("a.packs", [orphan])]);
+		const exit = await Effect.runPromiseExit(
+			Effect.flatMap(OrchestratorRegistry, (r) => Effect.sync(() => r.has("orphan"))).pipe(
+				Effect.provide(layer),
+			),
+		);
+		expect(exit._tag).toBe("Failure");
 	});
 });
 

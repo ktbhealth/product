@@ -261,6 +261,16 @@ export class UnknownNodeError extends Data.TaggedError("UnknownNodeError")<{
 	readonly orchestrationId?: string;
 }> {}
 
+/** A pack = def (data) + kind handlers (code), contributed by a
+ * plugin — the {@link OrchestrationDef} analog of `@ktb/pipeline`'s
+ * {@link PipelinePack}. `kinds` are the handlers the def's nodes
+ * resolve by `node.kind`; they register into the same
+ * {@link OrchestratorRegistry} as `builtinKinds`. */
+export interface OrchestrationPack {
+	readonly def: OrchestrationDef;
+	readonly kinds: readonly OrchestrationKind[];
+}
+
 /** Per-fire audit entry. Statuses: "ok" — the fire succeeded;
  * "skipped" — the fire was suppressed by an open circuit breaker;
  * "failed" — the fire failed (after retries) under either node-error
