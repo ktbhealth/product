@@ -27,6 +27,7 @@ import {
 	hasRecentAuditRead,
 	insertAuditEntry,
 	auditListFacets,
+	listActorAuditEntries,
 	listAuditEntries,
 	sanitizeAuditDetail,
 	listPatientAuditEntries,
@@ -239,6 +240,72 @@ describe("listTenantAuditEntries", () => {
 		};
 		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
 		const result = await listTenantAuditEntries(fakeDb, 1);
+		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
+	});
+});
+
+describe("listActorAuditEntries", () => {
+	it("returns rows matching any actor's userId or email — system rows excluded", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		const write = (action: string, actorUserId: string | null, actorEmail: string | null) =>
+			insertAuditEntry(fresh, { action, actorUserId, actorEmail });
+		await write("feed.self", "sec-1", "sec@x.com");
+		await write("feed.doctor", "doc-1", "doc@x.com");
+		await write("feed.email-only", "other-id", "doc@x.com");
+		await write("feed.other", "doc-2", "other@x.com");
+		await write("feed.system", null, null);
+		const result = await listActorAuditEntries(fresh, [
+			{ userId: "sec-1", email: "sec@x.com" },
+			{ userId: "doc-1", email: "doc@x.com" },
+		]);
+		expect(result.entries.map((e) => e.action)).toEqual([
+			"feed.email-only",
+			"feed.doctor",
+			"feed.self",
+		]);
+		expect(result.total).toBe(3);
+	});
+
+	it("matches by userId alone when actors carry no email", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		await insertAuditEntry(fresh, {
+			action: "feed.self",
+			actorUserId: "sec-1",
+			actorEmail: "sec@x.com",
+		});
+		await insertAuditEntry(fresh, {
+			action: "feed.other",
+			actorUserId: "doc-2",
+			actorEmail: "other@x.com",
+		});
+		const result = await listActorAuditEntries(fresh, [{ userId: "sec-1", email: null }]);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.self"]);
+		expect(result.total).toBe(1);
+	});
+
+	it("returns an empty page for an empty actor set", async () => {
+		const fresh = makeDb(makeD1(DDL));
+		await insertAuditEntry(fresh, {
+			action: "feed.self",
+			actorUserId: "sec-1",
+			actorEmail: null,
+		});
+		expect(await listActorAuditEntries(fresh, [])).toEqual({
+			entries: [],
+			total: 0,
+			limit: 200,
+			offset: 0,
+		});
+	});
+
+	it("reports a zero total when the count query yields no row", async () => {
+		const query = {
+			where: () => query,
+			orderBy: () => ({ limit: () => ({ offset: async () => [] }) }),
+			then: (resolve: (rows: unknown[]) => unknown) => Promise.resolve([]).then(resolve),
+		};
+		const fakeDb = { select: () => ({ from: () => query }) } as unknown as DbClient;
+		const result = await listActorAuditEntries(fakeDb, [{ userId: "u", email: null }]);
 		expect(result).toEqual({ entries: [], total: 0, limit: 200, offset: 0 });
 	});
 });
@@ -685,6 +752,49 @@ describe("Audit activity feed — actor scope", () => {
 				{ principal: null },
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
+	it("dedupes the account against directory profiles and normalizes empty emails", async () => {
+		// Email-less principal: exercises the `email ?? null` account
+		// fallback. A profile repeating the account's userId is skipped
+		// (the secretary IS the account); a profile with an empty email
+		// normalizes to null so it can't match rows by "".
+		const result = await asStaff(
+			call((p) => p.activityList()),
+			{
+				principal: { userId: "sec-1" },
+				profiles: [
+					{
+						doctorId: 1,
+						userId: "sec-1",
+						email: "sec@x.com",
+						displayName: "Self",
+						role: "secretary",
+					},
+					{
+						doctorId: 2,
+						userId: "doc-9",
+						email: "",
+						displayName: "No Mail",
+						role: "secretary",
+					},
+				],
+			},
+		);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.self.two", "feed.self.one"]);
+		expect(result.total).toBe(2);
+	});
+
+	it("activityFacets unions email-less actors by userId", async () => {
+		const facets = await asStaff(
+			call((p) => p.activityFacets()),
+			{
+				principal: { userId: "sec-1" },
+			},
+		);
+		// Self has no email → the permitted key falls back to userId;
+		// doc@x.com stays out of scope without the directory.
+		expect(facets.actors).toEqual(["sec-1", "sec@x.com"]);
 	});
 
 	it("activityFacets scopes dropdowns to the actor feed and unions permitted actors", async () => {
