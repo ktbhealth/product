@@ -76,6 +76,7 @@ import { CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import {
 	AudioTranscriptPanel,
+	ConsultationAudioPlayer,
 	useConsultationAudio,
 	type ConsultationAudioInfo,
 	type TranscriptView,
@@ -302,6 +303,11 @@ export function NewConsultationPage({
 	patientIdRef.current = patientId;
 	const draftStore = useMemo<RecordingDraftStore>(() => defaultDraftStore(), []);
 	const [draft, setDraft] = useState<RecordingDraft | null>(null);
+	// Object URLs for the draft blob — the banner previews it; after
+	// restore the player moves next to the transcript so the doctor can
+	// re-listen while reviewing (URL survives until save/discard/unmount).
+	const [draftUrl, setDraftUrl] = useState<string | null>(null);
+	const [restoredUrl, setRestoredUrl] = useState<string | null>(null);
 
 	// The ASR engine stays lazy: `backend.load()` only runs when the
 	// doctor actually starts a capture (mic / tab / dictation), so the
@@ -476,23 +482,40 @@ export function NewConsultationPage({
 	useEffect(() => {
 		let cancelled = false;
 		void draftStore.load().then((d: RecordingDraft | null) => {
-			if (!cancelled && d) setDraft(d);
+			if (!cancelled && d) {
+				setDraft(d);
+				if (typeof URL.createObjectURL === "function")
+					setDraftUrl(URL.createObjectURL(d.audio));
+			}
 		});
 		return () => {
 			cancelled = true;
 		};
 	}, [draftStore]);
 
+	// Revoke object URLs on unmount — blobs can be tens of MB.
+	useEffect(
+		() => () => {
+			for (const u of [draftUrl, restoredUrl])
+				if (u && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(u);
+		},
+		[draftUrl, restoredUrl],
+	);
+
 	const restoreDraft = () => {
 		if (!draft) return;
 		pendingUploadBlob.current = draft.audio;
 		setTranscript(draft.transcript);
-		setPatientId(draft.patientId);
+		if (patients.some((p) => p.id === draft.patientId)) setPatientId(draft.patientId);
+		setRestoredUrl(draftUrl);
+		setDraftUrl(null);
 		setDraft(null);
 	};
 
 	const discardDraft = () => {
 		setDraft(null);
+		if (draftUrl && typeof URL.revokeObjectURL === "function") URL.revokeObjectURL(draftUrl);
+		setDraftUrl(null);
 		void draftStore.clear();
 	};
 
@@ -809,6 +832,9 @@ export function NewConsultationPage({
 			setAccess(await accessAfterSave());
 			setSaveDialog({ kind: "ok", id, updated: Boolean(existing) });
 			void draftStore.clear();
+			if (restoredUrl && typeof URL.revokeObjectURL === "function")
+				URL.revokeObjectURL(restoredUrl);
+			setRestoredUrl(null);
 		} catch (e) {
 			setSaveDialog({
 				kind: "error",
@@ -1310,6 +1336,15 @@ export function NewConsultationPage({
 									{nc.discardDraft}
 								</Button>
 							</span>
+							{draftUrl ? (
+								<div className="w-full">
+									<ConsultationAudioPlayer
+										src={draftUrl}
+										ariaLabel={nc.draftAudio}
+										preload="metadata"
+									/>
+								</div>
+							) : null}
 						</div>
 					) : null}
 					<Card>
@@ -1338,6 +1373,18 @@ export function NewConsultationPage({
 							</CardAction>
 						</CardHeader>
 						<CardContent className="space-y-4">
+							{restoredUrl ? (
+								<div className="rounded-lg border bg-muted/30 p-2">
+									<p className="mb-1 text-[11px] font-medium text-muted-foreground">
+										{nc.draftAudio}
+									</p>
+									<ConsultationAudioPlayer
+										src={restoredUrl}
+										ariaLabel={nc.draftAudio}
+										preload="metadata"
+									/>
+								</div>
+							) : null}
 							<Field>
 								<FieldLabel
 									htmlFor="transcript"

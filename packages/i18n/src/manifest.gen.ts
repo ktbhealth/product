@@ -2322,6 +2322,9 @@ export const I18N_MANIFEST = {
 		"newConsultation.discardDraft": {
 			params: [],
 		},
+		"newConsultation.draftAudio": {
+			params: [],
+		},
 		"newConsultation.clear": {
 			params: [],
 		},

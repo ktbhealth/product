@@ -265,6 +265,7 @@ export interface ConsultationMessages {
 		readonly draftRecovered: (time: string) => string;
 		readonly restoreDraft: string;
 		readonly discardDraft: string;
+		readonly draftAudio: string;
 		readonly clear: string;
 		readonly transcriptPlaceholder: string;
 		readonly serverTranscript: string;
@@ -642,6 +643,7 @@ const en: ConsultationMessages = {
 		draftRecovered: paramMessage("en", "Draft recovered — recording finished at {time}", ["time"]),
 		restoreDraft: "Restore draft",
 		discardDraft: "Discard",
+		draftAudio: "Draft audio",
 		clear: "Clear",
 		transcriptPlaceholder: "The transcript appears here (or paste the consultation text)",
 		serverTranscript: "Server transcript",
@@ -1030,6 +1032,7 @@ const ptBR: ConsultationMessages = {
 		draftRecovered: paramMessage("pt-BR", "Rascunho recuperado — gravação finalizada às {time}", ["time"]),
 		restoreDraft: "Restaurar rascunho",
 		discardDraft: "Descartar",
+		draftAudio: "Áudio do rascunho",
 		clear: "Limpar",
 		transcriptPlaceholder: "A transcrição aparece aqui (ou cole o texto da consulta)",
 		serverTranscript: "Transcrição do servidor",
@@ -1425,6 +1428,7 @@ const es: ConsultationMessages = {
 		draftRecovered: paramMessage("es", "Borrador recuperado — grabación terminada a las {time}", ["time"]),
 		restoreDraft: "Restaurar borrador",
 		discardDraft: "Descartar",
+		draftAudio: "Audio del borrador",
 		clear: "Limpiar",
 		transcriptPlaceholder: "La transcripción aparece aquí (o pegue el texto de la consulta)",
 		serverTranscript: "Transcripción del servidor",

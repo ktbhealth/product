@@ -10131,6 +10131,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "newConsultation.draftAudio",
+		locale: "en",
+		value: "Draft audio",
+	},
+	{
+		namespace: "consultations",
 		key: "newConsultation.clear",
 		locale: "en",
 		value: "Clear",
@@ -12062,6 +12068,12 @@ export const I18N_BASELINE = [
 		key: "newConsultation.discardDraft",
 		locale: "pt-BR",
 		value: "Descartar",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.draftAudio",
+		locale: "pt-BR",
+		value: "Áudio do rascunho",
 	},
 	{
 		namespace: "consultations",
@@ -13997,6 +14009,12 @@ export const I18N_BASELINE = [
 		key: "newConsultation.discardDraft",
 		locale: "es",
 		value: "Descartar",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.draftAudio",
+		locale: "es",
+		value: "Audio del borrador",
 	},
 	{
 		namespace: "consultations",

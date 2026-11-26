@@ -1095,11 +1095,20 @@ describe("NewConsultationPage", () => {
 			savedAt: Date.now(),
 		};
 
+		beforeEach(() => {
+			// jsdom lacks blob URLs — the player just needs a src string.
+			URL.createObjectURL = vi.fn(() => "blob:draft-audio");
+			URL.revokeObjectURL = vi.fn();
+		});
+
 		it("recovered draft banner restores transcript + patient and hides", async () => {
 			draftMock.state.draft = DRAFT;
 			const user = userEvent.setup();
 			renderPage();
 			await screen.findByText(/Draft recovered — recording finished at/);
+			// the blob previews right in the banner
+			await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledWith(DRAFT.audio));
+			expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull();
 			await user.click(screen.getByText("Restore draft"));
 			expect(
 				(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
@@ -1107,14 +1116,44 @@ describe("NewConsultationPage", () => {
 			expect(screen.queryByText(/Draft recovered/)).toBeNull();
 		});
 
-		it("discard drops the stored draft", async () => {
+		it("discard drops the stored draft and revokes the preview", async () => {
 			draftMock.state.draft = DRAFT;
 			const user = userEvent.setup();
 			renderPage();
 			await screen.findByText(/Draft recovered/);
+			await waitFor(() =>
+				expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull(),
+			);
 			await user.click(screen.getByText("Discard"));
 			expect(draftMock.store.clear).toHaveBeenCalled();
 			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+			expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:draft-audio");
+		});
+
+		it("restored audio keeps a player by the transcript until save", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			await waitFor(() =>
+				expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull(),
+			);
+			await user.click(screen.getByText("Restore draft"));
+			// banner gone; the "Draft audio" player moved to the transcript card
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+			await screen.findByText("Draft audio");
+			expect(document.querySelector('audio[src="blob:draft-audio"]')).not.toBeNull();
+		});
+
+		it("restored draft without a listed patient keeps the current pick", async () => {
+			draftMock.state.draft = { ...DRAFT, patientId: 999 };
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			await user.click(screen.getByText("Restore draft"));
+			expect(
+				(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
+			).toContain("rascunho recuperado");
 		});
 
 		it("no banner when there is nothing stored", async () => {
