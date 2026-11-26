@@ -1,10 +1,13 @@
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
 	CalendarClockIcon,
+	CalendarDaysIcon,
+	CalendarRangeIcon,
 	CheckIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	ListIcon,
 	LockIcon,
 	PencilIcon,
 	PlayIcon,
@@ -49,6 +52,21 @@ import { Textarea } from "@ktbhealth/ui/components/textarea";
 import { agendaMessages, I18N_NAMESPACE, type AgendaMessages } from "../i18n.ts";
 import type { AppointmentStatus } from "../schema.ts";
 import { agendaApi } from "../apis.ts";
+import { AGENDA_WINDOW } from "../window.ts";
+import { MonthGrid, monthGridDays, WeekGrid } from "./-calendar.tsx";
+import {
+	addDays,
+	addMonths,
+	asDate,
+	dayKey,
+	hhmm,
+	isLive,
+	patientLabel,
+	startOfDay,
+	STATUS_TONES,
+	statusLabel,
+	weekStart,
+} from "./-shared.ts";
 
 // ---------- wire shapes ----------
 
@@ -80,14 +98,16 @@ export interface AppointmentDraft {
 	readonly note?: string | null;
 }
 
-/** The view-facing write surface — bound to the plugin's server fns
- * (./apis.ts) in the mounted page, a stub in tests. */
 /** Write result — `reason: "conflict"` marks a double-booking (P-119-A). */
 export interface AppointmentWriteResult {
 	readonly ok: boolean;
 	readonly reason?: "conflict";
 }
 
+/** The view-facing write surface — bound to the plugin's server fns
+ * (./apis.ts) in the mounted page, a stub in tests. `list` (T-259)
+ * fetches calendar ranges outside the loader window; without it the
+ * view shows what the loader brought. */
 export interface AgendaApi {
 	readonly create: (draft: AppointmentDraft) => Promise<AppointmentWriteResult>;
 	readonly update: (
@@ -98,55 +118,39 @@ export interface AgendaApi {
 	readonly start: (
 		id: number,
 	) => Promise<{ readonly ok: boolean; readonly consultationId?: number }>;
+	readonly list?: (
+		from: Date,
+		to: Date,
+	) => Promise<
+		{ readonly ok: true; readonly appointments: readonly AgendaListItem[] } | { readonly ok: false }
+	>;
 }
 
-// ---------- date helpers (local wall time — clinic-local scheduling) ----------
-
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-/** Monday of d's week — the clinic week convention. */
-const weekStart = (d: Date) => addDays(startOfDay(d), -((d.getDay() + 6) % 7));
-const dayKey = (d: Date) =>
-	`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-const hhmm = (d: Date) =>
-	`${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-const asDate = (v: Date | string) => (v instanceof Date ? v : new Date(v));
-
-// ---------- presentation ----------
-
-const STATUS_TONES: Record<string, string> = {
-	scheduled: "bg-info/10 text-info ring-info/20",
-	confirmed: "bg-success/10 text-success ring-success/20",
-	completed: "bg-muted text-muted-foreground ring-border",
-	no_show: "bg-warning/10 text-warning ring-warning/20",
-	cancelled: "bg-destructive/10 text-destructive ring-destructive/20",
-};
-
-const statusLabel = (t: AgendaMessages, status: string) =>
-	({
-		scheduled: t.status.scheduled,
-		confirmed: t.status.confirmed,
-		completed: t.status.completed,
-		no_show: t.status.noShow,
-		cancelled: t.status.cancelled,
-	})[status] ?? status;
+export type AgendaView = "list" | "week" | "month";
 
 /** "About to start" highlight window — mirrors REMINDER_LEAD_MS. */
 const SOON_MS = 15 * 60 * 1000;
 
-/** Display label for a patient: `v1.` envelopes (ZK tenant, no device
- * grant) render as the locked placeholder — never the raw ciphertext,
- * same locked-row contract as the patients list. */
-const patientLabel = (name: string | null, id: number, t: AgendaMessages) =>
-	name === null ? `#${id}` : isEnvelope(name) ? t.zk.lockedName : name;
+/** Visible days for a view: one clinic week, or the 6-week month grid. */
+const visibleDays = (view: AgendaView, anchor: Date): Date[] =>
+	view === "month"
+		? monthGridDays(anchor)
+		: Array.from({ length: 7 }, (_, i) => addDays(weekStart(anchor), i));
+
+/** True when [from, to) lies inside the loader's window around `now`. */
+const insideLoaderWindow = (from: Date, to: Date, now: number) =>
+	from.getTime() >= startOfDay(new Date(now - AGENDA_WINDOW.pastDays * 86_400_000)).getTime() &&
+	to.getTime() <= now + AGENDA_WINDOW.aheadDays * 86_400_000;
 
 /**
- * Doctor agenda week view (P-008): day-grouped appointment list for
- * one clinic week. Navigation is client-side over the loader's window;
- * mutations go through the injected `api`, refresh via `onChanged` and
- * start-navigation via `onStarted`. A secretary acting as the doctor
- * sees and edits the same agenda — the loaders run under the
- * doctor-resolved Principal either way.
+ * Doctor agenda (P-008, calendar views T-259): a List | Week | Month
+ * switch over one anchor date. List groups a clinic week by day; Week is
+ * a time grid (click an empty slot to book it); Month is a day grid
+ * (click a day to open its week). Ranges outside the loader window are
+ * fetched through `api.list`. Mutations go through the injected `api`,
+ * refresh via `onChanged` and start-navigation via `onStarted`. A
+ * secretary acting as the doctor sees and edits the same agenda — the
+ * loaders run under the doctor-resolved Principal either way.
  */
 export function AgendaPage({
 	appointments,
@@ -155,6 +159,7 @@ export function AgendaPage({
 	i18n,
 	locale = "en",
 	portalBase = "",
+	initialView = "list",
 	onChanged,
 	onStarted,
 }: {
@@ -164,30 +169,55 @@ export function AgendaPage({
 	readonly i18n?: PageI18nSlice;
 	readonly locale?: string;
 	readonly portalBase?: string;
+	readonly initialView?: AgendaView;
 	readonly onChanged?: () => void;
 	readonly onStarted?: (consultationId: number) => void;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, agendaMessages(locale));
-	const refresh = () => onChanged?.();
-	const [weekOffset, setWeekOffset] = useState(0);
-	const [creating, setCreating] = useState(false);
+	const [view, setView] = useState<AgendaView>(initialView);
+	const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
+	const [creatingAt, setCreatingAt] = useState<Date | null>(null);
 	const [editing, setEditing] = useState<AgendaListItem | null>(null);
+	const [selected, setSelected] = useState<AgendaListItem | null>(null);
 	const [busyId, setBusyId] = useState<number | null>(null);
 	const [failed, setFailed] = useState(false);
+	// Ranges fetched outside the loader window, keyed by range; `reload`
+	// re-fetches the visible one after a mutation.
+	const [fetched, setFetched] = useState<Readonly<Record<string, readonly AgendaListItem[]>>>({});
+	const [reload, setReload] = useState(0);
+	const [now] = useState(() => Date.now());
 
-	const week = useMemo(() => {
-		const start = addDays(weekStart(new Date()), weekOffset * 7);
-		return Array.from({ length: 7 }, (_, i) => addDays(start, i));
-	}, [weekOffset]);
+	const days = useMemo(() => visibleDays(view, anchor), [view, anchor]);
+	const [rangeFrom, rangeTo] = useMemo(
+		() => [days[0]!, addDays(days[days.length - 1]!, 1)] as const,
+		[days],
+	);
+	const rangeKey = `${dayKey(rangeFrom)}/${dayKey(rangeTo)}`;
+	const needsFetch = api.list !== undefined && !insideLoaderWindow(rangeFrom, rangeTo, now);
 
-	const byDay = useMemo(() => {
-		const map = new Map<string, AgendaListItem[]>();
-		for (const a of appointments) {
-			const key = dayKey(asDate(a.startsAt));
-			map.set(key, [...(map.get(key) ?? []), a]);
-		}
-		return map;
-	}, [appointments]);
+	useEffect(() => {
+		if (!needsFetch) return;
+		void api.list!(rangeFrom, rangeTo)
+			.catch(() => ({ ok: false }) as const)
+			.then((res) => {
+				if (res.ok) setFetched((f) => ({ ...f, [rangeKey]: res.appointments }));
+			});
+	}, [rangeFrom, rangeTo, rangeKey, needsFetch, reload, api]);
+
+	// Loader rows, overridden by any fetched copy of the same id.
+	const items = useMemo(() => {
+		const byId = new Map(appointments.map((a) => [a.id, a]));
+		for (const a of fetched[rangeKey] ?? []) byId.set(a.id, a);
+		return [...byId.values()].filter((a) => {
+			const at = asDate(a.startsAt).getTime();
+			return at >= rangeFrom.getTime() && at < rangeTo.getTime();
+		});
+	}, [appointments, fetched, rangeFrom, rangeTo, rangeKey]);
+
+	const refresh = () => {
+		onChanged?.();
+		setReload((r) => r + 1);
+	};
 
 	const act = async (id: number, op: () => Promise<{ readonly ok: boolean }>) => {
 		setBusyId(id);
@@ -198,6 +228,7 @@ export function AgendaPage({
 				setFailed(true);
 				return;
 			}
+			setSelected(null);
 			refresh();
 		} finally {
 			setBusyId(null);
@@ -219,216 +250,213 @@ export function AgendaPage({
 		}
 	};
 
-	const todayKey = dayKey(new Date());
-	const now = Date.now();
+	const step = (dir: -1 | 1) =>
+		setAnchor((d) => (view === "month" ? addMonths(d, dir) : addDays(d, dir * 7)));
+
+	const card = (a: AgendaListItem) => (
+		<AppointmentCard
+			key={a.id}
+			a={a}
+			t={t}
+			now={now}
+			busy={busyId === a.id}
+			portalBase={portalBase}
+			onStart={() => void start(a)}
+			onStatus={(status) => void act(a.id, () => api.setStatus(a.id, status))}
+			onEdit={() => {
+				setSelected(null);
+				setEditing(a);
+			}}
+		/>
+	);
+
+	const todayKey = dayKey(new Date(now));
 
 	return (
-		<div className="mx-auto max-w-4xl p-6">
+		<div className={`mx-auto p-6 ${view === "list" ? "max-w-4xl" : "max-w-6xl"}`}>
 			<PageHeader
 				icon={<CalendarClockIcon />}
 				title={t.title}
 				actions={
-					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setWeekOffset((w) => w - 1)}
-							aria-label={t.previousWeek}
-						>
-							<ChevronLeftIcon />
-						</Button>
-						<Button variant="outline" size="sm" onClick={() => setWeekOffset(0)}>
-							{t.today}
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setWeekOffset((w) => w + 1)}
-							aria-label={t.nextWeek}
-						>
-							<ChevronRightIcon />
-						</Button>
-						<Button size="sm" onClick={() => setCreating(true)}>
-							<PlusIcon /> {t.newAppointment}
-						</Button>
-					</div>
+					<Button size="sm" onClick={() => setCreatingAt(new Date())}>
+						<PlusIcon /> {t.newAppointment}
+					</Button>
 				}
 			/>
-			{failed ? <p className="mt-3 text-sm text-destructive">{t.form.required}</p> : null}
-			<div className="mt-6 space-y-6">
-				{week.map((day) => {
-					const items = byDay.get(dayKey(day)) ?? [];
-					return (
-						<section key={dayKey(day)}>
-							<h2
-								className={`text-sm font-semibold tracking-wide uppercase ${
-									dayKey(day) === todayKey ? "text-primary" : "text-muted-foreground"
-								}`}
-							>
-								<LocalDateTime value={day} locale={locale} options={{ weekday: "short" }} /> ·{" "}
+			<div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+				<div role="tablist" aria-label={t.title} className="inline-flex rounded-lg bg-muted p-0.5">
+					{(["list", "week", "month"] as const).map((v) => (
+						<button
+							key={v}
+							type="button"
+							role="tab"
+							aria-selected={view === v}
+							onClick={() => setView(v)}
+							className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-sm ${
+								view === v ? "bg-background font-medium shadow-sm" : "text-muted-foreground"
+							}`}
+						>
+							{v === "list" ? (
+								<ListIcon className="size-4" />
+							) : v === "week" ? (
+								<CalendarRangeIcon className="size-4" />
+							) : (
+								<CalendarDaysIcon className="size-4" />
+							)}
+							{t.views[v]}
+						</button>
+					))}
+				</div>
+				<div className="flex items-center gap-2">
+					<span className="text-sm font-medium capitalize" data-testid="range-label">
+						{view === "month" ? (
+							<LocalDateTime
+								value={anchor}
+								locale={locale}
+								options={{ month: "long", year: "numeric" }}
+							/>
+						) : (
+							<>
 								<LocalDateTime
-									value={day}
+									value={days[0]!}
 									locale={locale}
 									options={{ day: "numeric", month: "short" }}
 								/>
-							</h2>
-							<div className="mt-2 space-y-2">
-								{items.map((a) => {
-									const startsAt = asDate(a.startsAt);
-									const soon =
-										(a.status === "scheduled" || a.status === "confirmed") &&
-										startsAt.getTime() - now <= SOON_MS &&
-										startsAt.getTime() - now > 0;
-									return (
-										<div
-											key={a.id}
-											className={`flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3 ${
-												soon ? "border-primary/40" : "border-border"
-											}`}
-										>
-											<span className="w-14 font-mono text-sm font-semibold">{hhmm(startsAt)}</span>
-											<span className="min-w-0 flex-1">
-												<span className="block truncate font-medium">
-													{isEnvelope(a.patientName) ? (
-														<span className="inline-flex items-center gap-1.5 text-muted-foreground">
-															<LockIcon className="size-3.5" /> {t.zk.lockedName}
-														</span>
-													) : (
-														(a.patientName ?? `#${a.patientId}`)
-													)}
-												</span>
-												<span className="block text-xs text-muted-foreground">
-													{t.durationMin(a.durationMin)}
-													{a.note ? ` · ${a.note}` : ""}
-												</span>
-											</span>
-											{soon ? (
-												<Badge
-													variant="secondary"
-													className="ring-1 ring-primary/20 bg-primary/10 text-primary"
-												>
-													{t.startingSoon(
-														Math.max(1, Math.round((startsAt.getTime() - now) / 60000)),
-													)}
-												</Badge>
-											) : null}
-											<Badge
-												variant="secondary"
-												className={`ring-1 ${STATUS_TONES[a.status] ?? STATUS_TONES.completed}`}
-											>
-												{statusLabel(t, a.status)}
-											</Badge>
-											<span className="flex items-center gap-1">
-												{a.consultationId !== null ? (
-													<Button
-														nativeButton={false}
-														variant="outline"
-														size="sm"
-														render={
-															<Link to={`${portalBase}/consultations/${a.consultationId}/record`} />
-														}
-													>
-														<PlayIcon /> {t.actions.started}
-													</Button>
-												) : a.status === "scheduled" || a.status === "confirmed" ? (
-													<Button
-														variant="outline"
-														size="sm"
-														disabled={busyId === a.id}
-														onClick={() => void start(a)}
-													>
-														<PlayIcon /> {t.actions.start}
-													</Button>
-												) : null}
-												{a.status === "scheduled" ? (
-													<Button
-														variant="ghost"
-														size="sm"
-														disabled={busyId === a.id}
-														onClick={() => void act(a.id, () => api.setStatus(a.id, "confirmed"))}
-													>
-														<CheckIcon /> {t.actions.confirm}
-													</Button>
-												) : null}
-												{a.status === "confirmed" ? (
-													<>
-														<Button
-															variant="ghost"
-															size="sm"
-															disabled={busyId === a.id}
-															onClick={() => void act(a.id, () => api.setStatus(a.id, "completed"))}
-														>
-															<CheckIcon /> {t.actions.complete}
-														</Button>
-														<Button
-															variant="ghost"
-															size="sm"
-															disabled={busyId === a.id}
-															onClick={() => void act(a.id, () => api.setStatus(a.id, "no_show"))}
-														>
-															<UserXIcon /> {t.actions.noShow}
-														</Button>
-													</>
-												) : null}
-												{a.status === "scheduled" || a.status === "confirmed" ? (
-													<>
-														<Button
-															variant="ghost"
-															size="sm"
-															disabled={busyId === a.id}
-															aria-label={t.actions.edit}
-															onClick={() => setEditing(a)}
-														>
-															<PencilIcon />
-														</Button>
-														<Button
-															variant="ghost"
-															size="sm"
-															disabled={busyId === a.id}
-															onClick={() => void act(a.id, () => api.setStatus(a.id, "cancelled"))}
-														>
-															<XIcon /> {t.actions.cancel}
-														</Button>
-													</>
-												) : null}
-											</span>
-										</div>
-									);
-								})}
-							</div>
-						</section>
-					);
-				})}
-				{appointments.length === 0 ? (
-					<Empty>
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<CalendarClockIcon />
-							</EmptyMedia>
-							<EmptyTitle>{t.title}</EmptyTitle>
-							<EmptyDescription>{t.empty}</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				) : null}
+								{" – "}
+								<LocalDateTime
+									value={days[6]!}
+									locale={locale}
+									options={{ day: "numeric", month: "short", year: "numeric" }}
+								/>
+							</>
+						)}
+					</span>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => step(-1)}
+						aria-label={view === "month" ? t.previousMonth : t.previousWeek}
+					>
+						<ChevronLeftIcon />
+					</Button>
+					<Button variant="outline" size="sm" onClick={() => setAnchor(startOfDay(new Date()))}>
+						{t.today}
+					</Button>
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={() => step(1)}
+						aria-label={view === "month" ? t.nextMonth : t.nextWeek}
+					>
+						<ChevronRightIcon />
+					</Button>
+				</div>
 			</div>
-			{creating ? (
+			{failed ? <p className="mt-3 text-sm text-destructive">{t.form.required}</p> : null}
+			<div className="mt-6">
+				{view === "week" ? (
+					<WeekGrid
+						days={days}
+						items={items}
+						t={t}
+						locale={locale}
+						now={now}
+						onSelect={setSelected}
+						onCreateAt={setCreatingAt}
+					/>
+				) : view === "month" ? (
+					<MonthGrid
+						month={anchor}
+						items={items}
+						t={t}
+						locale={locale}
+						now={now}
+						onPickDay={(day) => {
+							setAnchor(day);
+							setView("week");
+						}}
+					/>
+				) : (
+					<div className="space-y-6">
+						{days.map((day) => {
+							const dayItems = items
+								.filter((a) => dayKey(asDate(a.startsAt)) === dayKey(day))
+								.sort((x, y) => asDate(x.startsAt).getTime() - asDate(y.startsAt).getTime());
+							return (
+								<section key={dayKey(day)}>
+									<h2
+										className={`text-sm font-semibold tracking-wide uppercase ${
+											dayKey(day) === todayKey ? "text-primary" : "text-muted-foreground"
+										}`}
+									>
+										<LocalDateTime value={day} locale={locale} options={{ weekday: "short" }} /> ·{" "}
+										<LocalDateTime
+											value={day}
+											locale={locale}
+											options={{ day: "numeric", month: "short" }}
+										/>
+									</h2>
+									<div className="mt-2 space-y-2">{dayItems.map(card)}</div>
+								</section>
+							);
+						})}
+						{items.length === 0 ? (
+							<Empty>
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<CalendarClockIcon />
+									</EmptyMedia>
+									<EmptyTitle>{t.title}</EmptyTitle>
+									<EmptyDescription>{t.empty}</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						) : null}
+					</div>
+				)}
+			</div>
+			{selected !== null ? (
+				<Dialog
+					open
+					onOpenChange={(open) => {
+						/* v8 ignore next -- this dialog only reports closes; the open transition never reaches the handler */
+						if (!open) setSelected(null);
+					}}
+				>
+					<DialogContent className="sm:max-w-2xl">
+						<DialogHeader>
+							<DialogTitle>
+								{t.detailsTitle} ·{" "}
+								<LocalDateTime
+									value={asDate(selected.startsAt)}
+									locale={locale}
+									options={{ weekday: "long", day: "numeric", month: "long" }}
+								/>
+							</DialogTitle>
+						</DialogHeader>
+						{card(selected)}
+					</DialogContent>
+				</Dialog>
+			) : null}
+			{creatingAt !== null ? (
 				<AppointmentFormDialog
 					patients={patients}
+					start={creatingAt}
 					t={t}
 					onSubmit={async (draft) => {
 						const res = await api.create(draft);
 						if (!res.ok) return res.reason ?? "failed";
-						setCreating(false);
+						setCreatingAt(null);
 						refresh();
 						return "ok";
 					}}
-					onClose={() => setCreating(false)}
+					onClose={() => setCreatingAt(null)}
 				/>
 			) : null}
 			{editing !== null ? (
 				<AppointmentFormDialog
 					patients={patients}
 					initial={editing}
+					start={asDate(editing.startsAt)}
 					t={t}
 					onSubmit={async (draft) => {
 						const res = await api.update(editing.id, draft);
@@ -444,21 +472,132 @@ export function AgendaPage({
 	);
 }
 
+/** One appointment with its actions — a list row, and the body of the
+ * calendar's details dialog. */
+function AppointmentCard({
+	a,
+	t,
+	now,
+	busy,
+	portalBase,
+	onStart,
+	onStatus,
+	onEdit,
+}: {
+	readonly a: AgendaListItem;
+	readonly t: AgendaMessages;
+	readonly now: number;
+	readonly busy: boolean;
+	readonly portalBase: string;
+	readonly onStart: () => void;
+	readonly onStatus: (status: AppointmentStatus) => void;
+	readonly onEdit: () => void;
+}) {
+	const startsAt = asDate(a.startsAt);
+	const soon =
+		isLive(a.status) && startsAt.getTime() - now <= SOON_MS && startsAt.getTime() - now > 0;
+	return (
+		<div
+			className={`flex flex-wrap items-center gap-3 rounded-xl border bg-card px-4 py-3 ${
+				soon ? "border-primary/40" : "border-border"
+			}`}
+		>
+			<span className="w-14 font-mono text-sm font-semibold">{hhmm(startsAt)}</span>
+			<span className="min-w-0 flex-1">
+				<span className="block truncate font-medium">
+					{isEnvelope(a.patientName) ? (
+						<span className="inline-flex items-center gap-1.5 text-muted-foreground">
+							<LockIcon className="size-3.5" /> {t.zk.lockedName}
+						</span>
+					) : (
+						(a.patientName ?? `#${a.patientId}`)
+					)}
+				</span>
+				<span className="block text-xs text-muted-foreground">
+					{t.durationMin(a.durationMin)}
+					{a.note ? ` · ${a.note}` : ""}
+				</span>
+			</span>
+			{soon ? (
+				<Badge variant="secondary" className="ring-1 ring-primary/20 bg-primary/10 text-primary">
+					{t.startingSoon(Math.max(1, Math.round((startsAt.getTime() - now) / 60000)))}
+				</Badge>
+			) : null}
+			<Badge
+				variant="secondary"
+				className={`ring-1 ${STATUS_TONES[a.status] ?? STATUS_TONES.completed}`}
+			>
+				{statusLabel(t, a.status)}
+			</Badge>
+			<span className="flex items-center gap-1">
+				{a.consultationId !== null ? (
+					<Button
+						nativeButton={false}
+						variant="outline"
+						size="sm"
+						render={<Link to={`${portalBase}/consultations/${a.consultationId}/record`} />}
+					>
+						<PlayIcon /> {t.actions.started}
+					</Button>
+				) : isLive(a.status) ? (
+					<Button variant="outline" size="sm" disabled={busy} onClick={onStart}>
+						<PlayIcon /> {t.actions.start}
+					</Button>
+				) : null}
+				{a.status === "scheduled" ? (
+					<Button variant="ghost" size="sm" disabled={busy} onClick={() => onStatus("confirmed")}>
+						<CheckIcon /> {t.actions.confirm}
+					</Button>
+				) : null}
+				{a.status === "confirmed" ? (
+					<>
+						<Button variant="ghost" size="sm" disabled={busy} onClick={() => onStatus("completed")}>
+							<CheckIcon /> {t.actions.complete}
+						</Button>
+						<Button variant="ghost" size="sm" disabled={busy} onClick={() => onStatus("no_show")}>
+							<UserXIcon /> {t.actions.noShow}
+						</Button>
+					</>
+				) : null}
+				{isLive(a.status) ? (
+					<>
+						<Button
+							variant="ghost"
+							size="sm"
+							disabled={busy}
+							aria-label={t.actions.edit}
+							onClick={onEdit}
+						>
+							<PencilIcon />
+						</Button>
+						<Button variant="ghost" size="sm" disabled={busy} onClick={() => onStatus("cancelled")}>
+							<XIcon /> {t.actions.cancel}
+						</Button>
+					</>
+				) : null}
+			</span>
+		</div>
+	);
+}
+
 /** Create/edit dialog — patient, day, time, duration, note. */
 function AppointmentFormDialog({
 	patients,
 	initial,
+	start,
 	t,
 	onSubmit,
 	onClose,
 }: {
 	readonly patients: readonly AgendaPatientOption[];
 	readonly initial?: AgendaListItem | null;
+	/** Prefilled date/time — the edited row's, "now", or a clicked week slot. */
+	readonly start: Date;
 	readonly t: AgendaMessages;
 	readonly onSubmit: (draft: AppointmentDraft) => Promise<"ok" | "conflict" | "failed">;
 	readonly onClose: () => void;
 }) {
-	const init = initial ? asDate(initial.startsAt) : new Date();
+	const init = start;
 	const patientItems = [
 		{ value: null, label: `— ${t.form.required}` },
 		...patients.map((p) => ({ value: String(p.id), label: patientLabel(p.name, p.id, t) })),

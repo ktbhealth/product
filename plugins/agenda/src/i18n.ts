@@ -55,6 +55,19 @@ export interface AgendaMessages {
 		 * read on this device (ZK tenant, no grant). */
 		readonly lockedName: string;
 	};
+	/** Calendar views (T-259). */
+	readonly views: {
+		readonly list: string;
+		readonly week: string;
+		readonly month: string;
+	};
+	readonly previousMonth: string;
+	readonly nextMonth: string;
+	/** Month cell overflow — "+2 more". */
+	readonly moreCount: (count: number) => string;
+	/** Empty week-grid slot — "New appointment at 09:30". */
+	readonly newAt: (time: string) => string;
+	readonly detailsTitle: string;
 	readonly startingSoon: (minutes: number) => string;
 	readonly durationMin: (minutes: number) => string;
 }
@@ -98,6 +111,12 @@ const en: AgendaMessages = {
 	zk: {
 		lockedName: "Locked record",
 	},
+	views: { list: "List", week: "Week", month: "Month" },
+	previousMonth: "Previous month",
+	nextMonth: "Next month",
+	moreCount: paramMessage("en", "+{count} more", ["count"]),
+	newAt: paramMessage("en", "New appointment at {time}", ["time"]),
+	detailsTitle: "Appointment",
 	startingSoon: paramMessage("en", "Starts in {minutes} min", ["minutes"]),
 	durationMin: paramMessage("en", "{minutes} min", ["minutes"]),
 };
@@ -141,6 +160,12 @@ const ptBR: AgendaMessages = {
 	zk: {
 		lockedName: "Registro bloqueado",
 	},
+	views: { list: "Lista", week: "Semana", month: "Mês" },
+	previousMonth: "Mês anterior",
+	nextMonth: "Próximo mês",
+	moreCount: paramMessage("pt-BR", "+{count} mais", ["count"]),
+	newAt: paramMessage("pt-BR", "Novo agendamento às {time}", ["time"]),
+	detailsTitle: "Agendamento",
 	startingSoon: paramMessage("pt-BR", "Começa em {minutes} min", ["minutes"]),
 	durationMin: paramMessage("pt-BR", "{minutes} min", ["minutes"]),
 };
@@ -184,6 +209,12 @@ const es: AgendaMessages = {
 	zk: {
 		lockedName: "Registro bloqueado",
 	},
+	views: { list: "Lista", week: "Semana", month: "Mes" },
+	previousMonth: "Mes anterior",
+	nextMonth: "Mes siguiente",
+	moreCount: paramMessage("es", "+{count} más", ["count"]),
+	newAt: paramMessage("es", "Nueva cita a las {time}", ["time"]),
+	detailsTitle: "Cita",
 	startingSoon: paramMessage("es", "Empieza en {minutes} min", ["minutes"]),
 	durationMin: paramMessage("es", "{minutes} min", ["minutes"]),
 };

@@ -35,6 +35,7 @@ vi.mock("@ktb/server-fns", () => ({
 import { AppointmentConflict, Appointments } from "./service.ts";
 import {
 	createAppointmentFn,
+	listAppointmentsFn,
 	setAppointmentStatusFn,
 	startAppointmentFn,
 	updateAppointmentFn,
@@ -187,5 +188,44 @@ describe("startAppointmentFn", () => {
 			start: () => Effect.fail(new Forbidden({ path: "appointment.update" })),
 		});
 		expect(await startAppointmentFn({ data: { id: 5 } })).toEqual({ ok: false });
+	});
+});
+
+describe("listAppointmentsFn", () => {
+	const day = 86_400_000;
+
+	it("lists the range for the acting doctor, decoding wire dates", async () => {
+		let seen: unknown;
+		runEffects({
+			list: (_owner: string, range: unknown) => {
+				seen = range;
+				return Effect.succeed([row] as never);
+			},
+		});
+		expect(
+			await listAppointmentsFn({ data: { from: "2030-01-01T00:00:00Z", to: 1893542400000 } }),
+		).toEqual({ ok: true, appointments: [row] });
+		expect((seen as { from: Date }).from).toBeInstanceOf(Date);
+		expect((seen as { to: Date }).to).toBeInstanceOf(Date);
+	});
+
+	it("refuses inverted and over-wide ranges before touching the service", async () => {
+		mocks.ensureDoctorUser.mockClear();
+		expect(await listAppointmentsFn({ data: { from: new Date(day), to: new Date(0) } })).toEqual({
+			ok: false,
+		});
+		expect(
+			await listAppointmentsFn({ data: { from: new Date(0), to: new Date(63 * day) } }),
+		).toEqual({ ok: false });
+		expect(mocks.ensureDoctorUser).not.toHaveBeenCalled();
+	});
+
+	it("collapses denial to { ok: false } and rejects malformed input", async () => {
+		runEffects({ list: () => Effect.fail(new Forbidden({ path: "appointment.read" })) });
+		expect(await listAppointmentsFn({ data: { from: new Date(0), to: new Date(day) } })).toEqual({
+			ok: false,
+		});
+		await expect(listAppointmentsFn({ data: { from: "nope" } })).rejects.toThrow(/./);
+		await expect(listAppointmentsFn({ data: null })).rejects.toThrow(/./);
 	});
 });
