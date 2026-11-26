@@ -585,7 +585,7 @@ describe("validation & a11y", () => {
 		const alerts = screen.getAllByRole("alert");
 		expect(alerts.length).toBeGreaterThanOrEqual(2);
 		expect(screen.getByText(/needs? attention|problems? need/)).toBeDefined();
-		expect(screen.getByText(/must NOT have additional properties/)).toBeDefined();
+		expect(screen.getByText(/does not match additional properties/)).toBeDefined();
 	});
 
 	it("reports a root-level ($) issue in the summary", () => {
@@ -599,7 +599,7 @@ describe("validation & a11y", () => {
 			/>,
 		);
 		submit();
-		expect(screen.getByText(/form: must NOT have fewer than 2 properties/)).toBeDefined();
+		expect(screen.getByText(/form: Instance does not have at least 2 properties/)).toBeDefined();
 	});
 
 	it("clears nothing prematurely: issues persist until next submit", () => {
