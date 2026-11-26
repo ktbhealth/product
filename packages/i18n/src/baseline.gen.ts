@@ -9778,6 +9778,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "transcriptPanel.tabTranscript",
+		locale: "en",
+		value: "Transcript",
+	},
+	{
+		namespace: "consultations",
 		key: "transcriptPanel.noChanges",
 		locale: "en",
 		value: "No differences between original and corrected.",
@@ -11673,6 +11679,12 @@ export const I18N_BASELINE = [
 		key: "transcriptPanel.tabChanges",
 		locale: "pt-BR",
 		value: "Mudanças",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.tabTranscript",
+		locale: "pt-BR",
+		value: "Transcrição",
 	},
 	{
 		namespace: "consultations",
@@ -13576,6 +13588,12 @@ export const I18N_BASELINE = [
 		key: "transcriptPanel.tabChanges",
 		locale: "es",
 		value: "Cambios",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.tabTranscript",
+		locale: "es",
+		value: "Transcripción",
 	},
 	{
 		namespace: "consultations",

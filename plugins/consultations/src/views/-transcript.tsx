@@ -39,11 +39,41 @@ const fmtTime = (s: number) =>
  * the rendered transcript wraps or collapses spacing differently; the
  * matched (original) text is what renders inside the <mark>.
  */
+const DIACRITIC_CLASSES: Record<string, string> = {
+	a: "aàáâãä",
+	e: "eéèêë",
+	i: "iíìîï",
+	o: "oóòôõö",
+	u: "uúùûü",
+	c: "cç",
+	n: "nñ",
+};
+
+/** One source char → a matching pattern: letters become the
+ * diacritic-insensitive class of their base form ("à" and "a" both
+ * fold to "a" → `[aàáâãä…]`), everything else stays literal. The
+ * LLM's evidence text normalizes accents the ASR dropped — and the
+ * raw segment keeps them — so a literal match misses the mark. */
+const charPattern = (ch: string): string => {
+	const base = ch
+		.normalize("NFD")
+		.replace(/\p{M}/gu, "")
+		.toLowerCase();
+	const cls = DIACRITIC_CLASSES[base];
+	return cls ? `[${cls}${cls.toUpperCase()}]` : escapeRegex(ch);
+};
+
 function evidenceRegex(sentences: readonly string[] | undefined): RegExp | null {
 	const parts = (sentences ?? [])
-		.map((s) => s.trim())
-		.filter((s) => s.length > 0)
-		.map((s) => escapeRegex(s).replace(/\s+/g, "\\s+"));
+		.map((s) =>
+			s
+				.trim()
+				.split(/\s+/)
+				.filter(Boolean)
+				.map((w) => [...w].map(charPattern).join(""))
+				.join("\\s+"),
+		)
+		.filter((s) => s.length > 0);
 	return parts.length ? new RegExp(`(${parts.join("|")})`, "gi") : null;
 }
 
@@ -649,12 +679,36 @@ export function AudioTranscriptPanel({
 			) : null}
 
 			{karaoke.length > 0 ? (
-				<SegmentsKaraoke
-					segments={karaoke}
-					active={activeIdx}
-					highlight={highlight}
-					onSeek={seek}
-				/>
+				changes ? (
+					<Tabs
+						value={tab === "changes" ? "changes" : "transcript"}
+						onValueChange={(v) => setTab(v === "changes" ? "changes" : "corrected")}
+						className="w-full"
+					>
+						<TabsList className="text-xs">
+							<TabsTrigger value="transcript">{t.transcriptPanel.tabTranscript}</TabsTrigger>
+							<TabsTrigger value="changes">{t.transcriptPanel.tabChanges}</TabsTrigger>
+						</TabsList>
+						<TabsContent value="transcript" className="pt-2">
+							<SegmentsKaraoke
+								segments={karaoke}
+								active={activeIdx}
+								highlight={highlight}
+								onSeek={seek}
+							/>
+						</TabsContent>
+						<TabsContent value="changes" className="space-y-3 pt-2">
+							<ChangesView pairs={changes} emptyLabel={t.transcriptPanel.noChanges} />
+						</TabsContent>
+					</Tabs>
+				) : (
+					<SegmentsKaraoke
+						segments={karaoke}
+						active={activeIdx}
+						highlight={highlight}
+						onSeek={seek}
+					/>
+				)
 			) : tabbed ? (
 				<Tabs
 					value={tab}

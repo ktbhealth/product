@@ -255,6 +255,55 @@ describe("AudioTranscriptPanel", () => {
 		expect(document.querySelectorAll("del").length).toBe(0);
 	});
 
+	it("karaoke mode exposes a transcript/changes toggle when a corrected text exists", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="Dor de garganta."
+				correctedText="Dor na garganta."
+				segments={[{ start: 0, end: 2, text: "Dor de garganta." }]}
+			/>,
+		);
+		// karaoke renders by default, with the toggle available
+		expect(screen.getByText("Dor de garganta.")).toBeTruthy();
+		fireEvent.click(screen.getByText("Changes"));
+		expect(document.querySelector("ins")?.textContent).toBe("na");
+		// back to karaoke
+		fireEvent.click(screen.getByText("Transcript"));
+		expect(screen.getByText("Dor de garganta.")).toBeTruthy();
+	});
+
+	it("karaoke without a differing correction keeps the single karaoke view", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="Dor de garganta."
+				segments={[{ start: 0, end: 2, text: "Dor de garganta." }]}
+			/>,
+		);
+		expect(screen.queryByText("Changes")).toBeNull();
+		expect(screen.getByText("Dor de garganta.")).toBeTruthy();
+	});
+
+	it("evidence marks match across diacritic/case drift (LLM cleanup vs ASR text)", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[{ start: 0, end: 2, text: "ele teve febre ontem à tarde, mediu 38" }]}
+				highlight={["ele teve febre ontem a tarde"]}
+			/>,
+		);
+		const mark = document.querySelector("mark");
+		expect(mark?.textContent).toBe("ele teve febre ontem à tarde");
+	});
+
 	it("renders speaker-labelled lines as bubbles", () => {
 		render(<AudioTranscriptPanel consultationId={1} browserText={"Doctor: bom dia\nsem rótulo"} />);
 		expect(screen.getByText("Doctor")).toBeTruthy();

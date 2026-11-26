@@ -2118,6 +2118,9 @@ export const I18N_MANIFEST = {
 		"transcriptPanel.tabChanges": {
 			params: [],
 		},
+		"transcriptPanel.tabTranscript": {
+			params: [],
+		},
 		"transcriptPanel.noChanges": {
 			params: [],
 		},

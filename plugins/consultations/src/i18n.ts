@@ -204,6 +204,7 @@ export interface ConsultationMessages {
 		readonly skipSilence: string;
 		readonly tabCorrected: string;
 		readonly tabChanges: string;
+		readonly tabTranscript: string;
 		readonly noChanges: string;
 		readonly tabOriginal: string;
 	};
@@ -571,6 +572,7 @@ const en: ConsultationMessages = {
 		skipSilence: "Skip silence",
 		tabCorrected: "Corrected",
 		tabChanges: "Changes",
+		tabTranscript: "Transcript",
 		noChanges: "No differences between original and corrected.",
 		tabOriginal: "Original",
 	},
@@ -954,6 +956,7 @@ const ptBR: ConsultationMessages = {
 		playbackRate: "Velocidade de reprodução",
 		skipSilence: "Pular silêncios",
 		tabChanges: "Mudanças",
+		tabTranscript: "Transcrição",
 		noChanges: "Sem diferenças entre original e corrigida.",
 		tabCorrected: "Corrigida",
 		tabOriginal: "Original",
@@ -1342,6 +1345,7 @@ const es: ConsultationMessages = {
 		playbackRate: "Velocidad de reproducción",
 		skipSilence: "Saltar silencios",
 		tabChanges: "Cambios",
+		tabTranscript: "Transcripción",
 		noChanges: "Sin diferencias entre original y corregida.",
 		tabCorrected: "Corregida",
 		tabOriginal: "Original",
