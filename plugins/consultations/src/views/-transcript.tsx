@@ -31,7 +31,7 @@ import { Badge } from "@ktbhealth/ui/components/badge";
 import { Button } from "@ktbhealth/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
-import { BADGE_TONES, SPEAKER_STYLE } from "./-ui.ts";
+import { BADGE_TONES, speakerNumber, speakerTone } from "./-ui.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import type { TranscriptSegment } from "../segments.ts";
 
@@ -126,9 +126,7 @@ function Transcript({
 						{speaker ? (
 							<Badge
 								variant="secondary"
-								className={`mr-2 align-baseline ring-1 ${
-									SPEAKER_STYLE[speaker] ?? "bg-muted text-muted-foreground ring-border"
-								}`}
+								className={`mr-2 align-baseline ring-1 ${speakerTone(speaker)}`}
 							>
 								{speaker}
 							</Badge>
@@ -302,6 +300,7 @@ function SegmentsKaraoke({
 	highlight,
 	onSeek,
 	editing,
+	speakerLabel,
 }: {
 	segments: readonly TranscriptSegment[];
 	/** Index of the segment under the playhead (-1 = none yet). */
@@ -309,6 +308,8 @@ function SegmentsKaraoke({
 	highlight?: readonly string[];
 	onSeek: (index: number) => void;
 	editing?: SegmentEditing;
+	/** Formats `speaker` for the badge (P-118) — omitted = raw label. */
+	speakerLabel?: (speaker: string) => string;
 }) {
 	const markRe = evidenceRegex(highlight);
 	const activeRef = useRef<HTMLButtonElement>(null);
@@ -340,6 +341,14 @@ function SegmentsKaraoke({
 							>
 								{fmtTime(s.start)}
 							</button>
+							{s.speaker ? (
+								<Badge
+									variant="secondary"
+									className={`shrink-0 text-[9px] ring-1 ${speakerTone(s.speaker)}`}
+								>
+									{speakerLabel ? speakerLabel(s.speaker) : s.speaker}
+								</Badge>
+							) : null}
 							{editing.editing === i ? (
 								<div className="flex-1 space-y-2">
 									<textarea
@@ -409,6 +418,14 @@ function SegmentsKaraoke({
 					<span className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
 						{fmtTime(s.start)}
 					</span>
+					{s.speaker ? (
+						<Badge
+							variant="secondary"
+							className={`shrink-0 text-[9px] ring-1 ${speakerTone(s.speaker)}`}
+						>
+							{speakerLabel ? speakerLabel(s.speaker) : s.speaker}
+						</Badge>
+					) : null}
 					<span className="min-w-0">{markRe ? markedText(s.text, markRe) : s.text}</span>
 				</button>
 			))}
@@ -694,6 +711,12 @@ export function AudioTranscriptPanel({
 	segmentEditing?: SegmentEditing;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
+	// Speaker badges (P-118): SPEAKER_NN → localized "Speaker N";
+	// named speakers (Doctor/Médico…) keep their label as-is.
+	const speakerLabel = (speaker: string): string => {
+		const n = speakerNumber(speaker);
+		return n !== null ? t.transcriptPanel.speakerN(n) : speaker;
+	};
 	const [tab, setTab] = useState<"corrected" | "original" | "changes">("corrected");
 	const internalRef = useRef<HTMLAudioElement>(null);
 	const audioRef = audioRefProp ?? internalRef;
@@ -811,6 +834,7 @@ export function AudioTranscriptPanel({
 								highlight={highlight}
 								onSeek={seek}
 								editing={segmentEditing}
+								speakerLabel={speakerLabel}
 							/>
 						</TabsContent>
 						<TabsContent value="changes" className="space-y-3 pt-2">
@@ -824,6 +848,7 @@ export function AudioTranscriptPanel({
 						highlight={highlight}
 						onSeek={seek}
 						editing={segmentEditing}
+						speakerLabel={speakerLabel}
 					/>
 				)
 			) : tabbed ? (

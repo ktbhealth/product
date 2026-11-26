@@ -83,7 +83,7 @@ import {
 	resolveRequestI18n,
 } from "@ktb/i18n-plugin";
 
-import { resolveAi, type AiEnv } from "./ai.ts";
+import { createLocalAi, resolveAi, type AiEnv } from "./ai.ts";
 import { resolveAiBridgeCli } from "./ai-bridge-cli.ts";
 import { emailCatalogT, passwordResetEmail, verificationEmail } from "./emails.ts";
 import { makeOrchestrationHost } from "./orchestration.ts";
@@ -233,11 +233,17 @@ const DEFAULT_AUDIO_MODEL = "@cf/openai/whisper-large-v3-turbo";
 export const audioTranscribeModel =
 	appEnv.AUDIO_TRANSCRIBE_MODEL?.toString() ?? DEFAULT_AUDIO_MODEL;
 
-/** Speaker diarization on the audio pipeline (P-118): opt-in flag —
- * only meaningful when AI_BASE_URL points at a backend exposing
- * `/v1/audio/diarization` (Speaches >= 0.9). Off by default: Workers
- * AI has no such endpoint and a wasted call per job is cost. */
+/** Speaker diarization on the audio pipeline (P-118): opt-in flag.
+ * `AUDIO_DIARIZATION_URL` points at the diarization backend (Speaches
+ * >= 0.9 `/v1/audio/diarization`); unset falls back to `ai` — a single
+ * OpenAI-compatible server can serve both, but a dedicated URL lets the
+ * proven ASR image keep VAD segmentation while a newer backend does
+ * the diarizing. Off by default: Workers AI has no such endpoint and
+ * a wasted call per job is cost. */
 export const audioDiarization = appEnv.AUDIO_DIARIZATION?.toString() === "1";
+const diarizationUrl = appEnv.AUDIO_DIARIZATION_URL?.toString();
+export const audioDiarizationAi =
+	audioDiarization && diarizationUrl ? createLocalAi(diarizationUrl) : undefined;
 
 /** Interop adapters behind the @ktb/interop port, one per supported standard. */
 const recordExporters: Record<ExportFormat, RecordExporter> = {
@@ -834,6 +840,7 @@ setServerRuntime({
 	ai: aiBinding,
 	audioTranscribeModel,
 	audioDiarization,
+	audioDiarizationAi,
 	recordExporters,
 	getLocale: currentLocale,
 	// PL-008: DB-canonical i18n capability — resolves enabled locales +

@@ -490,6 +490,11 @@ export interface ServerRuntime {
 	 * host's ASR backend exposes a diarization endpoint, the consumer
 	 * labels each transcript segment. Absent/false = unspeaker'd. */
 	readonly audioDiarization?: boolean;
+	/** Dedicated runner for the diarization backend (P-118): ASR and
+	 * diarization often live on different endpoints (e.g. a proven
+	 * Whisper image keeps VAD segmentation while a newer Speaches
+	 * serves `/audio/diarization`). Absent = diarize on `ai`. */
+	readonly audioDiarizationAi?: AiRunner;
 	/** Interop record exporters behind the @ktb/interop port — the host
 	 * wires the standard-specific adapters, plugins only see the port. */
 	readonly recordExporters?: Record<ExportFormat, RecordExporter>;

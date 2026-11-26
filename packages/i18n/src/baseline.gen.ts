@@ -9802,6 +9802,13 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "transcriptPanel.speakerN",
+		locale: "en",
+		kind: "text",
+		value: "Speaker {n}",
+	},
+	{
+		namespace: "consultations",
 		key: "newConsultation.title",
 		locale: "en",
 		value: "New consultation",
@@ -11743,6 +11750,13 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "transcriptPanel.speakerN",
+		locale: "pt-BR",
+		kind: "text",
+		value: "Locutor {n}",
+	},
+	{
+		namespace: "consultations",
 		key: "newConsultation.title",
 		locale: "pt-BR",
 		value: "Nova consulta",
@@ -13680,6 +13694,13 @@ export const I18N_BASELINE = [
 		key: "transcriptPanel.tabOriginal",
 		locale: "es",
 		value: "Original",
+	},
+	{
+		namespace: "consultations",
+		key: "transcriptPanel.speakerN",
+		locale: "es",
+		kind: "text",
+		value: "Hablante {n}",
 	},
 	{
 		namespace: "consultations",

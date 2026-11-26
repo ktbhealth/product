@@ -373,6 +373,33 @@ describe("processAudioJob", () => {
 		expect(segs.map((s) => s.speaker)).toEqual(["SPEAKER_00", "SPEAKER_01"]);
 	});
 
+	it("prefers the dedicated diarization runner when bound", async () => {
+		const calls: string[] = [];
+		const { db, deps } = makeDeps({
+			diarization: true,
+			diarizationAi: {
+				run: async (_model: string, inputs: unknown) => {
+					calls.push("diarization-ai");
+					expect((inputs as { diarize?: boolean }).diarize).toBe(true);
+					return { segments: [{ start: 0, end: 5, speaker: "SPEAKER_00" }] };
+				},
+			},
+			ai: {
+				run: async (_model: string, inputs: unknown) => {
+					if ((inputs as { diarize?: boolean }).diarize === true) {
+						calls.push("shared-ai");
+						return { segments: [] };
+					}
+					return { text: "oi", segments: [{ start: 0, end: 2, text: "oi" }] };
+				},
+			},
+		});
+		const id = (await createConsultation(db, { userId: "u1", source: "browser" }))!;
+		await attachAudioRecord(db, id, { audioKey: "audio/u1/1/a.webm", size: 3 });
+		await processAudioJob(job(id), deps);
+		expect(calls).toEqual(["diarization-ai"]);
+	});
+
 	it("skips diarization entirely when the flag is off", async () => {
 		const diarizeCalls: unknown[] = [];
 		const { db, deps } = makeDeps({

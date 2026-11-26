@@ -116,6 +116,11 @@ export interface AudioJobDeps {
 	 * job diarizes the same audio and labels transcript segments —
 	 * best-effort, failures keep them unspeaker'd. */
 	readonly diarization?: boolean;
+	/** Dedicated diarization backend (P-118): when the host splits ASR
+	 * and diarization across endpoints (e.g. proven Whisper keeps VAD
+	 * segmentation while a newer Speaches serves `/audio/diarization`),
+	 * this runner takes the diarize call. Absent = `ai`. */
+	readonly diarizationAi?: AudioTranscriber;
 	/**
 	 * LLM cleanup pass (P-017). Receives the transcript text plus the
 	 * provider's timed segments when available — the
@@ -467,8 +472,9 @@ export async function processAudioJob(job: AudioJobMessage, deps: AudioJobDeps):
 	let segments = result.segments;
 	// Speaker diarization (P-118): same audio, best-effort — nulls and
 	// failures keep the segments unspeaker'd rather than failing the job.
-	if (deps.diarization === true && deps.ai !== undefined && segments != null) {
-		segments = assignSpeakers(segments, await diarizeAudio(deps.ai, bytes)) ?? segments;
+	const diarizer = deps.diarizationAi ?? deps.ai;
+	if (deps.diarization === true && diarizer !== undefined && segments != null) {
+		segments = assignSpeakers(segments, await diarizeAudio(diarizer, bytes)) ?? segments;
 	}
 	if (segments === undefined) {
 		console.warn("transcription provider returned no segments", {
@@ -681,6 +687,7 @@ export const defaultAudioJobDeps = async (
 		ai: runtime.ai as AudioTranscriber | undefined,
 		model: runtime.audioTranscribeModel,
 		diarization: runtime.audioDiarization === true,
+		diarizationAi: runtime.audioDiarizationAi as AudioTranscriber | undefined,
 		correctTranscript,
 	};
 };

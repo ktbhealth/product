@@ -310,6 +310,27 @@ describe("AudioTranscriptPanel", () => {
 		expect(screen.getByText("bom dia")).toBeTruthy();
 		expect(screen.getByText("sem rótulo")).toBeTruthy();
 	});
+
+	it("renders diarized speaker badges on karaoke rows (P-118)", () => {
+		render(
+			<AudioTranscriptPanel
+				consultationId={1}
+				hasAudio
+				audioStatus="done"
+				serverText="x"
+				segments={[
+					{ start: 0, end: 2, text: "Como está a dor?", speaker: "SPEAKER_00" },
+					{ start: 2, end: 4, text: "Melhor hoje.", speaker: "SPEAKER_01" },
+					{ start: 4, end: 5, text: "Ótimo." },
+				]}
+			/>,
+		);
+		// SPEAKER_NN labels become localized "Speaker N"; named/absent
+		// speakers render raw or no badge.
+		expect(screen.getByText("Speaker 1")).toBeTruthy();
+		expect(screen.getByText("Speaker 2")).toBeTruthy();
+		expect(screen.queryByText("SPEAKER_00")).toBeNull();
+	});
 });
 
 describe("AudioTranscriptPanel — karaoke segments", () => {

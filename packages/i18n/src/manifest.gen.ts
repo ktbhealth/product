@@ -2130,6 +2130,14 @@ export const I18N_MANIFEST = {
 		"transcriptPanel.tabOriginal": {
 			params: [],
 		},
+		"transcriptPanel.speakerN": {
+			params: [
+				{
+					name: "n",
+				},
+			],
+			template: "Speaker {n}",
+		},
 		"newConsultation.title": {
 			params: [],
 		},

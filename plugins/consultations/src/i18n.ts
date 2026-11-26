@@ -208,6 +208,7 @@ export interface ConsultationMessages {
 		readonly tabTranscript: string;
 		readonly noChanges: string;
 		readonly tabOriginal: string;
+		readonly speakerN: (n: number) => string;
 	};
 	readonly newConsultation: {
 		readonly title: string;
@@ -581,6 +582,7 @@ const en: ConsultationMessages = {
 		tabTranscript: "Transcript",
 		noChanges: "No differences between original and corrected.",
 		tabOriginal: "Original",
+		speakerN: paramMessage("en", "Speaker {n}", ["n"]),
 	},
 	newConsultation: {
 		title: "New consultation",
@@ -971,6 +973,7 @@ const ptBR: ConsultationMessages = {
 		noChanges: "Sem diferenças entre original e corrigida.",
 		tabCorrected: "Corrigida",
 		tabOriginal: "Original",
+		speakerN: paramMessage("pt-BR", "Locutor {n}", ["n"]),
 	},
 	newConsultation: {
 		title: "Nova consulta",
@@ -1367,6 +1370,7 @@ const es: ConsultationMessages = {
 		noChanges: "Sin diferencias entre original y corregida.",
 		tabCorrected: "Corregida",
 		tabOriginal: "Original",
+		speakerN: paramMessage("es", "Hablante {n}", ["n"]),
 	},
 	newConsultation: {
 		title: "Nueva consulta",
