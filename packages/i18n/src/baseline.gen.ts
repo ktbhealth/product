@@ -10002,6 +10002,44 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "warmup.title",
+		locale: "en",
+		value: "Prepare speech recognition",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.description",
+		locale: "en",
+		value:
+			"Download the speech model once (~50 MB) so your first consultation doesn't wait on it. It runs in the background — you can keep working.",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.preparing",
+		locale: "en",
+		value: "Downloading speech model…",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.failed",
+		locale: "en",
+		kind: "text",
+		value: "Speech model unavailable: {message}",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.retry",
+		locale: "en",
+		value: "Retry",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.dismiss",
+		locale: "en",
+		value: "Dismiss",
+	},
+	{
+		namespace: "consultations",
 		key: "sources.browser",
 		locale: "pt-BR",
 		value: "Voz do navegador",
@@ -11394,6 +11432,44 @@ export const I18N_BASELINE = [
 		key: "zk.exportLocked",
 		locale: "pt-BR",
 		value: "Exportação em PDF indisponível para registros criptografados",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.title",
+		locale: "pt-BR",
+		value: "Preparar reconhecimento de voz",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.description",
+		locale: "pt-BR",
+		value:
+			"Baixe o modelo de fala uma vez (~50 MB) para que a primeira consulta não espere por ele. A execução é em segundo plano — você pode continuar trabalhando.",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.preparing",
+		locale: "pt-BR",
+		value: "Baixando modelo de fala…",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.failed",
+		locale: "pt-BR",
+		kind: "text",
+		value: "Modelo de fala indisponível: {message}",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.retry",
+		locale: "pt-BR",
+		value: "Tentar novamente",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.dismiss",
+		locale: "pt-BR",
+		value: "Dispensar",
 	},
 	{
 		namespace: "consultations",
@@ -12790,6 +12866,44 @@ export const I18N_BASELINE = [
 		key: "zk.exportLocked",
 		locale: "es",
 		value: "Exportación a PDF no disponible para registros cifrados",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.title",
+		locale: "es",
+		value: "Preparar reconocimiento de voz",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.description",
+		locale: "es",
+		value:
+			"Descarga el modelo de voz una vez (~50 MB) para que la primera consulta no tenga que esperarlo. Se ejecuta en segundo plano — puedes seguir trabajando.",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.preparing",
+		locale: "es",
+		value: "Descargando modelo de voz…",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.failed",
+		locale: "es",
+		kind: "text",
+		value: "Modelo de voz no disponible: {message}",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.retry",
+		locale: "es",
+		value: "Reintentar",
+	},
+	{
+		namespace: "consultations",
+		key: "warmup.dismiss",
+		locale: "es",
+		value: "Descartar",
 	},
 	{
 		namespace: "eval.credentials",

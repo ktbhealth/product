@@ -20,7 +20,6 @@ vi.mock("../zk.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof import("../zk.ts")>()),
 	decryptConsultations: zkMocks.decryptConsultations,
 }));
-const prefetch = vi.hoisted(() => ({ fn: vi.fn(), prefers: { current: false } }));
 const routerMocks = vi.hoisted(() => ({
 	navigate: vi.fn<(opts: { to: string }) => Promise<void>>(),
 }));
@@ -37,14 +36,6 @@ vi.mock("@tanstack/react-router", async () => {
 		useNavigate: () => routerMocks.navigate,
 	};
 });
-vi.mock("../backend.ts", () => ({
-	get prefersWhisper() {
-		return prefetch.prefers.current;
-	},
-	transcriptionBackend: {},
-}));
-vi.mock("../whisper-prefetch.ts", () => ({ prefetchWhisperModel: prefetch.fn }));
-
 import { ConsultationsPage, type ConsultationListItem } from "./ConsultationsPage.tsx";
 
 const BASE: ConsultationListItem = {
@@ -632,23 +623,5 @@ describe("ConsultationsPage", () => {
 		for (const card of cards) {
 			expect(card.querySelector("span")!.textContent).toBe("0");
 		}
-	});
-});
-
-describe("whisper prefetch", () => {
-	afterEach(() => {
-		prefetch.prefers.current = false;
-		prefetch.fn.mockClear();
-	});
-
-	it("warms the model when whisper won resolution", () => {
-		prefetch.prefers.current = true;
-		render(<ConsultationsPage consultations={[]} />);
-		expect(prefetch.fn).toHaveBeenCalled();
-	});
-
-	it("skips prefetch on the web speech fallback", () => {
-		render(<ConsultationsPage consultations={[]} />);
-		expect(prefetch.fn).not.toHaveBeenCalled();
 	});
 });

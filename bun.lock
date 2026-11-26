@@ -68,6 +68,7 @@
         "@ktb/doctors": "workspace:*",
         "@ktb/email": "workspace:*",
         "@ktb/email-smtp": "workspace:*",
+        "@ktb/eval-consultation": "workspace:*",
         "@ktb/eval-persona": "workspace:*",
         "@ktb/eval-validator": "workspace:*",
         "@ktb/i18n": "workspace:*",
@@ -637,7 +638,7 @@
     "packages/json-schema": {
       "name": "@ktb/json-schema",
       "dependencies": {
-        "ajv": "^8.20.0",
+        "@cfworker/json-schema": "4.1.6",
       },
     },
     "packages/kernel": {
@@ -2612,6 +2613,8 @@
     "@cf-wasm/internals": ["@cf-wasm/internals@0.2.0", "", {}, "sha512-QwMNETkTCtrx0uCzjJPRCTyok0OZNvOry9alfG8a8TpHo7oPJ17htPMDG4ptudpwe9F0VtJHy9+nOzJmupteiQ=="],
 
     "@cf-wasm/photon": ["@cf-wasm/photon@0.4.0", "", { "dependencies": { "@cf-wasm/internals": "^0.2.0" } }, "sha512-PQcN6sThZAR/V6SH2MQmeFndDDhGfOxvra6UStyaBbkDHrgTPKvB+WapAhh0/TA9LsRAUaX/rEEw6hvY9uphbQ=="],
+
+    "@cfworker/json-schema": ["@cfworker/json-schema@4.1.6", "", {}, "sha512-YzVGTHXf4bzlyAL5KAvHYCdNbbt6zM5cYkAgxqxQPDQM6aZ4ShIIN5yJ+6q7YeonnevxT8k/LmD2tJi/jOiKkg=="],
 
     "@chevrotain/types": ["@chevrotain/types@11.1.2", "", {}, "sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw=="],
 

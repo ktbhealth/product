@@ -6,6 +6,7 @@ export {
 	type ConsultationDetailApi,
 } from "./ConsultationDetailPage.tsx";
 export { NewConsultationPage, type NewConsultationApi } from "./NewConsultationPage.tsx";
+export { WhisperWarmupCard, WHISPER_WARMUP_DISMISSED_KEY } from "./WhisperWarmupCard.tsx";
 export { AdminConsultationsPage } from "./AdminConsultationsPage.tsx";
 export {
 	ConsultationsDashboardSections,

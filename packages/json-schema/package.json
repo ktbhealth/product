@@ -9,6 +9,6 @@
 		"mutate": "stryker run"
 	},
 	"dependencies": {
-		"ajv": "^8.20.0"
+		"@cfworker/json-schema": "4.1.6"
 	}
 }

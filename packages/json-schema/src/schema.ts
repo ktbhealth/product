@@ -386,7 +386,10 @@ const checkKeyword = (
 				return;
 			}
 			try {
-				new RegExp(value);
+				// The validation engine compiles patterns with the "u"
+				// (unicode) flag — a source that only parses without it
+				// would throw at validation time, so reject it here.
+				new RegExp(value, "u");
 			} catch {
 				pushIssue(state, path, key, "pattern is not a valid regular expression");
 			}

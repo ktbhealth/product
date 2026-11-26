@@ -8,4 +8,8 @@ import { whisperCandidate } from "@ktb/transcription-whisper";
 // Web Speech is the last-resort backend when nothing else is eligible.
 const resolvedBackend = resolveTranscriptionBackend([whisperCandidate, webSpeechCandidate]);
 export const transcriptionBackend = resolvedBackend?.backend ?? webSpeechBackend;
-export const prefersWhisper = resolvedBackend?.driverId === "whisper";
+/** Driver that won resolution (`"whisper"`, `"webspeech"`, …) — lets
+ * views gate engine-specific UX (e.g. the model warm-up card) without
+ * probing the backend shape. `null` when no candidate was eligible and
+ * the webSpeech last-resort was injected instead. */
+export const transcriptionDriverId = resolvedBackend?.driverId ?? null;
