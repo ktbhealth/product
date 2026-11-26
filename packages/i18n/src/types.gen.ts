@@ -11,6 +11,7 @@ export type I18nKey =
 	| "agenda.actions.noShow"
 	| "agenda.actions.start"
 	| "agenda.actions.started"
+	| "agenda.detailsTitle"
 	| "agenda.durationMin"
 	| "agenda.empty"
 	| "agenda.form.cancel"
@@ -23,8 +24,12 @@ export type I18nKey =
 	| "agenda.form.required"
 	| "agenda.form.save"
 	| "agenda.form.time"
+	| "agenda.moreCount"
 	| "agenda.newAppointment"
+	| "agenda.newAt"
+	| "agenda.nextMonth"
 	| "agenda.nextWeek"
+	| "agenda.previousMonth"
 	| "agenda.previousWeek"
 	| "agenda.sidebarLabel"
 	| "agenda.startingSoon"
@@ -35,6 +40,9 @@ export type I18nKey =
 	| "agenda.status.scheduled"
 	| "agenda.title"
 	| "agenda.today"
+	| "agenda.views.list"
+	| "agenda.views.month"
+	| "agenda.views.week"
 	| "agenda.zk.lockedName"
 	| "app.capture_desc"
 	| "app.capture_error_no_audio"
@@ -2436,6 +2444,7 @@ export interface I18nTypedT {
 	(key: "agenda.actions.noShow"): Effect.Effect<string>;
 	(key: "agenda.actions.start"): Effect.Effect<string>;
 	(key: "agenda.actions.started"): Effect.Effect<string>;
+	(key: "agenda.detailsTitle"): Effect.Effect<string>;
 	(
 		key: "agenda.durationMin",
 		params: {
@@ -2453,8 +2462,22 @@ export interface I18nTypedT {
 	(key: "agenda.form.required"): Effect.Effect<string>;
 	(key: "agenda.form.save"): Effect.Effect<string>;
 	(key: "agenda.form.time"): Effect.Effect<string>;
+	(
+		key: "agenda.moreCount",
+		params: {
+			count: unknown;
+		},
+	): Effect.Effect<string>;
 	(key: "agenda.newAppointment"): Effect.Effect<string>;
+	(
+		key: "agenda.newAt",
+		params: {
+			time: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "agenda.nextMonth"): Effect.Effect<string>;
 	(key: "agenda.nextWeek"): Effect.Effect<string>;
+	(key: "agenda.previousMonth"): Effect.Effect<string>;
 	(key: "agenda.previousWeek"): Effect.Effect<string>;
 	(key: "agenda.sidebarLabel"): Effect.Effect<string>;
 	(
@@ -2470,6 +2493,9 @@ export interface I18nTypedT {
 	(key: "agenda.status.scheduled"): Effect.Effect<string>;
 	(key: "agenda.title"): Effect.Effect<string>;
 	(key: "agenda.today"): Effect.Effect<string>;
+	(key: "agenda.views.list"): Effect.Effect<string>;
+	(key: "agenda.views.month"): Effect.Effect<string>;
+	(key: "agenda.views.week"): Effect.Effect<string>;
 	(key: "agenda.zk.lockedName"): Effect.Effect<string>;
 	(key: "app.capture_desc"): Effect.Effect<string>;
 	(key: "app.capture_error_no_audio"): Effect.Effect<string>;
