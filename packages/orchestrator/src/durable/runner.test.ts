@@ -8,6 +8,7 @@ import { orchestrationRuns } from "@ktb/db/schema";
 import { makeD1 } from "@ktb/db/testing";
 import { eq } from "drizzle-orm";
 import type { JobEnvelope, JobsEnqueuer } from "@ktb/jobs-port";
+import { TenantAccess } from "@ktb/tenant";
 
 import { makeOrchestratorRegistry } from "../registry.ts";
 import {
@@ -49,6 +50,7 @@ CREATE TABLE orchestration_runs (
 	state TEXT NOT NULL,
 	runtime TEXT NOT NULL,
 	error TEXT,
+	tenant_id INTEGER,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
@@ -76,18 +78,23 @@ CREATE TABLE orchestration_node_runs (
 
 const makeTestDb = (): DbClient => makeDb(makeD1(DDL));
 
-/** Capturing enqueuer — the fake transport. */
+/** Capturing enqueuer — the fake transport. `sent` records the
+ * enqueue options too so tests can assert the tenantId envelope. */
 const fakeJobs = (fail?: { at?: number; value?: unknown }) => {
-	const sent: { kind: string; payload: unknown }[] = [];
+	const sent: {
+		kind: string;
+		payload: unknown;
+		options?: { tenantId?: number | null };
+	}[] = [];
 	let calls = 0;
 	const jobs: JobsEnqueuer = {
-		enqueue: async (kind, payload): Promise<JobEnvelope> => {
+		enqueue: async (kind, payload, options): Promise<JobEnvelope> => {
 			calls += 1;
 			if (fail?.at !== undefined && calls === fail.at) {
 				throw fail.value ?? new Error("queue down");
 			}
-			sent.push({ kind, payload });
-			return { id: `job-${calls}`, kind, payload };
+			sent.push({ kind, payload, options });
+			return { id: `job-${calls}`, kind, payload, tenantId: options?.tenantId ?? null };
 		},
 	};
 	return { jobs, sent };
@@ -131,7 +138,11 @@ interface Harness {
 	readonly db: DbClient;
 	readonly registry: ReturnType<typeof makeOrchestratorRegistry>;
 	readonly runner: OrchestrationRunnerService;
-	readonly sent: { kind: string; payload: unknown }[];
+	readonly sent: {
+		kind: string;
+		payload: unknown;
+		options?: { tenantId?: number | null };
+	}[];
 	readonly registration: ReturnType<typeof orchestratorStepRegistration>;
 }
 
@@ -435,6 +446,71 @@ describe("durable step execution", () => {
 		await Effect.runPromise(runner2.step(runId2));
 		const loaded2 = await loadOrchestrationRun(db2, runId2);
 		expect(loaded2?.runtime?.state["seen"]).toBe("none");
+	});
+
+	it("stamps tenant_id on the run row and the step envelope", async () => {
+		const h = harness({ kinds: [passthroughKind("noop")] });
+		h.registry.registerDef(def("d", [node("a", "noop", ["start"])]));
+		const runId = await Effect.runPromise(h.runner.start("d", {}, undefined, 7));
+		expect((await getOrchestrationRun(h.db, runId))?.tenantId).toBe(7);
+		expect(h.sent[0]?.options?.tenantId).toBe(7);
+		// Absent tenantId → NULL row + null envelope option.
+		const runId2 = await Effect.runPromise(h.runner.start("d"));
+		expect((await getOrchestrationRun(h.db, runId2))?.tenantId).toBeNull();
+		expect(h.sent[1]?.options?.tenantId).toBeNull();
+	});
+
+	it("re-binds TenantAccess from the run's tenant_id during steps", async () => {
+		// A kind probing TenantAccess — the scoped-repo fence — sees the
+		// run's tenant, not ambient scope. Runs both with and without an
+		// ambientContext (the two provide paths).
+		const probe: OrchestrationKind = {
+			id: "tenant-probe",
+			run: () =>
+				Effect.gen(function* () {
+					const access = yield* TenantAccess;
+					return {
+						state: { access: access === null ? "ambient" : access.join(",") },
+						output: {},
+					};
+				}),
+		};
+		for (const ambientContext of [undefined, Context.empty()] as const) {
+			const db = makeTestDb();
+			const registry = makeOrchestratorRegistry([probe]);
+			registry.registerDef(def("tp", [node("a", "tenant-probe", ["input"])]));
+			const { jobs } = fakeJobs();
+			const runner = makeOrchestrationRunner({
+				db,
+				jobs,
+				registry,
+				...(ambientContext === undefined ? {} : { ambientContext }),
+			});
+			const tenantRun = await Effect.runPromise(runner.start("tp", {}, undefined, 7));
+			await Effect.runPromise(runner.step(tenantRun));
+			expect((await loadOrchestrationRun(db, tenantRun))?.runtime?.state["access"]).toBe("7");
+			// NULL-tenant run keeps ambient scope.
+			const globalRun = await Effect.runPromise(runner.start("tp", {}));
+			await Effect.runPromise(runner.step(globalRun));
+			expect((await loadOrchestrationRun(db, globalRun))?.runtime?.state["access"]).toBe("ambient");
+		}
+	});
+
+	it("carries the run's tenantId on continuation step envelopes", async () => {
+		const h = harness({
+			kinds: [counterKind("count", "tick"), passthroughKind("noop")],
+			batchSize: 1,
+		});
+		h.registry.registerDef(
+			def("chain", [node("a", "count", ["input"], { params: {} }), node("b", "noop", ["tick"])]),
+		);
+		const runId = await Effect.runPromise(h.runner.start("chain", {}, undefined, 9));
+		expect(h.sent[0]?.options?.tenantId).toBe(9);
+		// First step leaves the run unfinished → continuation enqueue
+		// reads tenant_id back off the run row.
+		await Effect.runPromise(h.runner.step(runId));
+		expect(h.sent.length).toBeGreaterThan(1);
+		expect(h.sent.at(-1)?.options?.tenantId).toBe(9);
 	});
 
 	it("step on a missing run is a no-op", async () => {

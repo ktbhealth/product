@@ -47,6 +47,7 @@ import {
 	PlatformAdmin,
 	type PlatformAdminShape,
 } from "@ktb/platform";
+import { Tenant } from "@ktb/tenant";
 
 import {
 	getOrchestrationFn,
@@ -75,6 +76,7 @@ CREATE TABLE orchestration_runs (
 	state TEXT NOT NULL,
 	runtime TEXT NOT NULL,
 	error TEXT,
+	tenant_id INTEGER,
 	created_at INTEGER NOT NULL,
 	updated_at INTEGER NOT NULL
 );
@@ -240,12 +242,12 @@ describe("durable-run fns", () => {
 	let testDb: ReturnType<typeof makeDb>;
 	let currentEmail: string | null = null;
 	const auth = stubAuth(() => sessionUser(currentEmail));
-	const startRun = vi.fn<(defId: string, input?: unknown) => Promise<string>>(
-		async (defId, input) => {
-			void input;
-			return `orun-${defId}`;
-		},
-	);
+	const startRun = vi.fn<
+		(defId: string, input?: unknown, tenantId?: number | null) => Promise<string>
+	>(async (defId, input) => {
+		void input;
+		return `orun-${defId}`;
+	});
 
 	beforeAll(async () => {
 		testDb = makeDb(makeD1(DDL));
@@ -304,7 +306,8 @@ describe("durable-run fns", () => {
 		startRun.mockClear();
 		const result = await startOrchestrationFn({ data: { defId: "demo", input: { x: 1 } } });
 		expect(result).toEqual({ ok: true, runId: "orun-demo" });
-		expect(startRun).toHaveBeenCalledWith("demo", { x: 1 });
+		// No tenant selector bound in tests → personal scope (null).
+		expect(startRun).toHaveBeenCalledWith("demo", { x: 1 }, null);
 	});
 
 	it("reports runner failures as {ok:false} with the error text", async () => {
@@ -336,6 +339,7 @@ describe("durable-run fns", () => {
 			defId: "demo",
 			status: "done",
 			state: { seen: "pong" },
+			tenantId: null,
 		});
 		expect(run?.nodeRuns).toEqual([
 			{ seq: 0, nodeId: "a", status: "ok", latencyMs: 5, error: null, fires: 1 },
@@ -460,5 +464,62 @@ describe("upsert post-write re-read miss", () => {
 	it("reports false when the stored record cannot be re-read", async () => {
 		orchestratorSpy.getOrchestrationDef.mockResolvedValueOnce(null);
 		expect(await upsertOrchestrationFn({ data: demoDef })).toBe(false);
+	});
+});
+
+describe("startOrchestrationFn tenant stamping", () => {
+	let runtime: ManagedRuntime.ManagedRuntime<unknown, never>;
+	const startRun = vi.fn<
+		(defId: string, input?: unknown, tenantId?: number | null) => Promise<string>
+	>(async () => "orun-t");
+
+	beforeAll(() => {
+		const db = makeDb(makeD1(DDL));
+		// Stub gate: requireAdmin passes without a Principal so the
+		// custom runAs only has to bind Tenant (the real gate's
+		// Principal path is covered by the describes above).
+		const env = Layer.mergeAll(
+			Layer.succeed(Db, db),
+			Layer.succeed(PlatformAdmin, {
+				isAdmin: () => Effect.succeed(true),
+				requireAdmin: () => Effect.void,
+			}),
+		);
+		runtime = ManagedRuntime.make(env as Layer.Layer<unknown, never, never>);
+		installServerFnRuntime(
+			runtime,
+			stubAuth(() => sessionUser("admin@x.com")),
+			{
+				orchestration: { startRun },
+				// Mirrors the composition root's runAs tenant binding: the
+				// resolved Tenant is provided into the request scope.
+				runAs: <A, E>(
+					_user: { readonly id: string; readonly email?: string },
+					effect: Effect.Effect<A, E, unknown>,
+				) =>
+					runtime.runPromise(
+						effect.pipe(
+							Effect.provideService(Tenant, {
+								id: 7,
+								kind: "clinic",
+								slug: "clinic-7",
+								role: "admin",
+							}),
+						),
+					),
+			},
+		);
+	});
+
+	afterAll(() => {
+		resetServerFnRuntime();
+		return runtime.dispose();
+	});
+
+	it("stamps the bound tenant's id on startRun", async () => {
+		startRun.mockClear();
+		const result = await startOrchestrationFn({ data: { defId: "demo" } });
+		expect(result).toEqual({ ok: true, runId: "orun-t" });
+		expect(startRun).toHaveBeenCalledWith("demo", undefined, 7);
 	});
 });

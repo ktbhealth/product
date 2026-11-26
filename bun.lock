@@ -674,6 +674,7 @@
       "dependencies": {
         "@ktb/db": "workspace:*",
         "@ktb/jobs-port": "workspace:*",
+        "@ktb/tenant": "workspace:*",
         "drizzle-orm": "^0.45.1",
         "effect": "4.1.2",
       },
@@ -1937,6 +1938,7 @@
         "@ktb/pipeline": "workspace:*",
         "@ktb/platform": "workspace:*",
         "@ktb/server-fns": "workspace:*",
+        "@ktb/tenant": "workspace:*",
         "@ktb/views": "workspace:*",
         "@ktbhealth/ui": "github:ktbhealth/ui#v0.4.2@react",
         "@tanstack/react-router": "1.170.46",

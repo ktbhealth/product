@@ -430,11 +430,18 @@ export interface ServerRuntime {
 	 * persists a run for `defId` and enqueues its first
 	 * `orchestrator.step` job through the shared queue transport.
 	 * Undefined when the jobs transport is unbound — orchestration
-	 * cannot be driven without it. Runs are global (the
-	 * `orchestration_runs` schema carries no tenant column), so the
-	 * capability is a system path, not tenant-scoped. */
+	 * cannot be driven without it. `tenantId` stamps
+	 * `orchestration_runs.tenant_id` (and the step envelope's tenant);
+	 * callers resolve it from the bound `Tenant` — omit/null for
+	 * platform/personal scope. Reads stay admin-cross-tenant (the
+	 * PlatformAdmin gate is the boundary), so this remains a system
+	 * path, not a tenant-scoped service. */
 	readonly orchestration?: {
-		readonly startRun: (defId: string, input?: unknown) => Promise<string>;
+		readonly startRun: (
+			defId: string,
+			input?: unknown,
+			tenantId?: number | null,
+		) => Promise<string>;
 	};
 	/** Enriched job-kind view: registered handler state merged with
 	 * `jobs.kind`/`jobs.schedulable` plugin declarations (P-094).
