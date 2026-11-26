@@ -3,6 +3,8 @@ import { ClipboardListIcon, UsersIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageContext } from "@ktb/kernel";
+import { transcriptionBackend, transcriptionDriverId } from "@ktb/consultations/backend";
+import { WhisperWarmupCard } from "@ktb/consultations/views";
 
 import { clinicianMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { usePortalInstanceId } from "./portal-base.ts";
@@ -21,6 +23,20 @@ export function ClinicianHomePage({ ctx }: { data: unknown; ctx: PageContext }) 
 		<div className="mx-auto max-w-3xl p-6">
 			<h1 className="text-2xl font-bold tracking-tight">{t.title}</h1>
 			<p className="mt-1 text-sm text-muted-foreground">{t.subtitle}</p>
+			{/* One-time speech-model warm-up (doctor portal only): downloads
+			 * the Whisper weights in the background so the first
+			 * consultation doesn't pay the ~50 MB fetch. Fire-and-forget —
+			 * never blocks the workspace; dismiss persists per device. */}
+			{instance === "doctor" ? (
+				<div className="mt-6">
+					<WhisperWarmupCard
+						backend={transcriptionBackend}
+						driverId={transcriptionDriverId}
+						i18n={ctx.i18n}
+						locale={ctx.locale}
+					/>
+				</div>
+			) : null}
 			<div className="mt-6 grid gap-4 sm:grid-cols-2">
 				<Link
 					to="/portal/$instance/$"

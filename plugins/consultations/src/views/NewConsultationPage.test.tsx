@@ -43,6 +43,7 @@ let micStatsFn: (() => SessionStats) | null = null;
 let micRecFn: (() => Promise<Blob | null>) | null = null;
 let tabStatsFn: (() => SessionStats) | null = null;
 let tabRecFn: (() => Promise<Blob | null>) | null = null;
+const backendLoad = vi.fn();
 
 const backend: TranscriptionBackend = {
 	mic: (): Transcriber => ({
@@ -70,10 +71,8 @@ const backend: TranscriptionBackend = {
 		engineSubs.add(fn);
 		return () => engineSubs.delete(fn);
 	},
-	load: vi.fn(),
+	load: backendLoad,
 };
-
-const prefetch = vi.hoisted(() => ({ fn: vi.fn(), prefers: { current: false } }));
 
 vi.mock("@tanstack/react-router", async () => {
 	const React = await import("react");
@@ -86,14 +85,6 @@ vi.mock("@tanstack/react-router", async () => {
 			),
 	};
 });
-vi.mock("../backend.ts", () => ({
-	get prefersWhisper() {
-		return prefetch.prefers.current;
-	},
-	transcriptionBackend: {},
-}));
-vi.mock("../whisper-prefetch.ts", () => ({ prefetchWhisperModel: prefetch.fn }));
-
 const zkMocks = vi.hoisted(() => ({
 	newConsultationDek: vi.fn(async () => ({
 		dek: { tag: "dek" } as never,
@@ -216,6 +207,7 @@ describe("NewConsultationPage", () => {
 		tabRecFn = null;
 		statusImpl = () => ({ state: "idle", device: null });
 		engineSubs.clear();
+		backendLoad.mockClear();
 		vi.stubGlobal("fetch", vi.fn());
 		// jsdom lacks dialog.showModal
 		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
@@ -2086,20 +2078,49 @@ describe("NewConsultationPage ZK portal grants", () => {
 	});
 });
 
-describe("whisper prefetch", () => {
-	afterEach(() => {
-		prefetch.prefers.current = false;
-		prefetch.fn.mockClear();
+describe("lazy ASR engine load", () => {
+	// This describe sits outside "NewConsultationPage" — its afterEach
+	// cleanup does not apply here.
+	afterEach(cleanup);
+	beforeEach(() => backendLoad.mockClear());
+	const loadMock = () => backendLoad;
+
+	it("does not load the engine on mount — the paste/sample path stays light", () => {
+		renderPage();
+		expect(loadMock()).not.toHaveBeenCalled();
 	});
 
-	it("warms the model when whisper won resolution", () => {
-		prefetch.prefers.current = true;
+	it("does not load for the sample, upload or bot sources", async () => {
+		const user = userEvent.setup();
 		renderPage();
-		expect(prefetch.fn).toHaveBeenCalled();
+		await user.click(screen.getByText("Use sample"));
+		await user.click(screen.getByText("Upload"));
+		await user.click(screen.getByText("Teleconsult (bot)"));
+		expect(loadMock()).not.toHaveBeenCalled();
 	});
 
-	it("skips prefetch on the web speech fallback", () => {
+	it("loads the engine when mic recording starts", async () => {
+		const user = userEvent.setup();
 		renderPage();
-		expect(prefetch.fn).not.toHaveBeenCalled();
+		await consent(user);
+		await user.click(screen.getByText("Record microphone"));
+		expect(loadMock()).toHaveBeenCalled();
+	});
+
+	it("loads the engine when tab capture starts", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Capture call tab"));
+		expect(loadMock()).toHaveBeenCalled();
+	});
+
+	it("loads the engine when dictation starts", async () => {
+		const user = userEvent.setup();
+		renderPage();
+		await consent(user);
+		await user.click(screen.getByText("Post-consultation dictation"));
+		await user.click(screen.getByText("Start dictation"));
+		expect(loadMock()).toHaveBeenCalled();
 	});
 });

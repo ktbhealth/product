@@ -168,7 +168,7 @@ export default defineConfig({
 				// impl adapters are wired exclusively in the composition root
 				// (lib/platform.ts, lib/plugins.ts — excepted below) and in
 				// documented client-side injection points (new.tsx,
-				// whisper-prefetch.ts, __root.tsx — the auth plugin's login
+				// __root.tsx — the auth plugin's login
 				// view took over login.tsx's role in P-062). Tests may mock
 				// impls freely.
 				files: ["apps/web/src/{lib,components,routes}/**/*.{ts,tsx}"],
@@ -226,10 +226,9 @@ export default defineConfig({
 				//   and wires @ktb/db-sqlite as AppEnv.DB.
 				// - consultations plugin modules inject the transcription
 				//   backend client-side (backend.ts resolves the driver;
-				//   routes/new.tsx + routes/index.tsx consume it) and warm
-				//   the model on consultations pages (whisper-prefetch.ts)
-				//   — the same documented injection points the host route
-				//   files had before the P-033 route migration.
+				//   routes/new.tsx + routes/index.tsx consume it) — the
+				//   same documented injection points the host route files
+				//   had before the P-033 route migration.
 				// - plugins/auth's login view uses the better-auth client
 				//   SDK (moved from the host's login.tsx in P-062), which is
 				//   inherently impl-bound — same exception the host route
@@ -266,8 +265,6 @@ export default defineConfig({
 					"plugins/verify-email/src/views/VerifyEmailPage.tsx",
 					"plugins/consultations/src/routes/new.tsx",
 					"plugins/consultations/src/backend.ts",
-					"plugins/consultations/src/whisper-prefetch.ts",
-					"plugins/consultations/src/whisper-prefetch.test.ts",
 					// api-routes.test.ts wires the real @ktb/interop-* exporters
 					// into the server-fns runtime — same role platform.ts plays
 					// in the host (tests may mock/wire impls freely).

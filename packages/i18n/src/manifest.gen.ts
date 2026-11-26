@@ -2312,6 +2312,29 @@ export const I18N_MANIFEST = {
 		"zk.exportLocked": {
 			params: [],
 		},
+		"warmup.title": {
+			params: [],
+		},
+		"warmup.description": {
+			params: [],
+		},
+		"warmup.preparing": {
+			params: [],
+		},
+		"warmup.failed": {
+			params: [
+				{
+					name: "message",
+				},
+			],
+			template: "Speech model unavailable: {message}",
+		},
+		"warmup.retry": {
+			params: [],
+		},
+		"warmup.dismiss": {
+			params: [],
+		},
 	},
 	"eval.credentials": {
 		title: {

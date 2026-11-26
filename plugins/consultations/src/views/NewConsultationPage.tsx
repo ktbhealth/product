@@ -66,8 +66,6 @@ import {
 
 import { CONF_BAR, CONF_STYLE } from "./-ui.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
-import { prefersWhisper } from "../backend.ts";
-import { prefetchWhisperModel } from "../whisper-prefetch.ts";
 import {
 	AudioTranscriptPanel,
 	useConsultationAudio,
@@ -199,12 +197,6 @@ export function NewConsultationPage({
 	const portalPath = (path: string) => (portalBase ? `${portalBase}${path}` : path);
 	const nc = t.newConsultation;
 
-	// Warm the Whisper model so dictation starts fast — on the Web
-	// Speech fallback there is no model to prefetch.
-	useEffect(() => {
-		if (prefersWhisper) prefetchWhisperModel();
-	}, []);
-
 	const [recording, setRecording] = useState(false);
 	// `supported` probes browser APIs, so it differs between the SSR pass
 	// (no window → unsupported) and hydration — resolve it after mount.
@@ -268,8 +260,11 @@ export function NewConsultationPage({
 	const uploadedAudioFor = useRef(new Set<number>());
 	const pendingUploadBlob = useRef<Blob | null>(null);
 
-	// Preload Whisper once per page: first visit downloads, later ones
-	// come straight from the browser cache.
+	// The ASR engine stays lazy: `backend.load()` only runs when the
+	// doctor actually starts a capture (mic / tab / dictation), so the
+	// paste/sample path and the server-side upload/bot sources never
+	// pay the ~50MB model download. `load` is idempotent — the shared
+	// engine promise makes quick source switches race-free.
 	useEffect(() => {
 		const off = backend.subscribe((m) => {
 			if (m.type === "progress") setModelStatus(m.message ?? null);
@@ -277,7 +272,6 @@ export function NewConsultationPage({
 			if (m.type === "error" && !m.id)
 				setModelStatus(t.newConsultation.modelUnavailable(m.message ?? ""));
 		});
-		backend.load();
 		return off;
 	}, []);
 
@@ -413,6 +407,9 @@ export function NewConsultationPage({
 		}
 		setError(null);
 		sessionSnapshot.current.mic = transcript.length;
+		// Kick the model download now — it overlaps the mic-permission
+		// prompt inside `start` instead of waiting for the stream.
+		backend.load();
 		tr.start((ev) => {
 			if (ev.type === "partial") setPartial(ev.text);
 			if (ev.type === "final") {
@@ -443,6 +440,7 @@ export function NewConsultationPage({
 		}
 		setError(null);
 		sessionSnapshot.current.tab = transcript.length;
+		backend.load();
 		tr.start((ev) => {
 			if (ev.type === "partial") setPartial(ev.text);
 			if (ev.type === "final") {
@@ -480,6 +478,7 @@ export function NewConsultationPage({
 		dictationStartRef.current = Date.now();
 		setElapsedSec(0);
 		sessionSnapshot.current.dict = transcript.length;
+		backend.load();
 		tr.start((ev) => {
 			if (ev.type === "partial") setPartial(ev.text);
 			if (ev.type === "final") {
