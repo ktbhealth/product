@@ -10112,6 +10112,25 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "newConsultation.draftRecovered",
+		locale: "en",
+		kind: "text",
+		value: "Draft recovered — recording finished at {time}",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.restoreDraft",
+		locale: "en",
+		value: "Restore draft",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.discardDraft",
+		locale: "en",
+		value: "Discard",
+	},
+	{
+		namespace: "consultations",
 		key: "newConsultation.clear",
 		locale: "en",
 		value: "Clear",
@@ -12024,6 +12043,25 @@ export const I18N_BASELINE = [
 		key: "newConsultation.useSample",
 		locale: "pt-BR",
 		value: "Usar exemplo",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.draftRecovered",
+		locale: "pt-BR",
+		kind: "text",
+		value: "Rascunho recuperado — gravação finalizada às {time}",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.restoreDraft",
+		locale: "pt-BR",
+		value: "Restaurar rascunho",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.discardDraft",
+		locale: "pt-BR",
+		value: "Descartar",
 	},
 	{
 		namespace: "consultations",
@@ -13940,6 +13978,25 @@ export const I18N_BASELINE = [
 		key: "newConsultation.useSample",
 		locale: "es",
 		value: "Usar ejemplo",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.draftRecovered",
+		locale: "es",
+		kind: "text",
+		value: "Borrador recuperado — grabación terminada a las {time}",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.restoreDraft",
+		locale: "es",
+		value: "Restaurar borrador",
+	},
+	{
+		namespace: "consultations",
+		key: "newConsultation.discardDraft",
+		locale: "es",
+		value: "Descartar",
 	},
 	{
 		namespace: "consultations",

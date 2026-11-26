@@ -262,6 +262,9 @@ export interface ConsultationMessages {
 		readonly recordingSpeak: string;
 		readonly consultationText: string;
 		readonly useSample: string;
+		readonly draftRecovered: (time: string) => string;
+		readonly restoreDraft: string;
+		readonly discardDraft: string;
 		readonly clear: string;
 		readonly transcriptPlaceholder: string;
 		readonly serverTranscript: string;
@@ -636,6 +639,9 @@ const en: ConsultationMessages = {
 		recordingSpeak: "recording… speak normally",
 		consultationText: "Consultation text",
 		useSample: "Use sample",
+		draftRecovered: paramMessage("en", "Draft recovered — recording finished at {time}", ["time"]),
+		restoreDraft: "Restore draft",
+		discardDraft: "Discard",
 		clear: "Clear",
 		transcriptPlaceholder: "The transcript appears here (or paste the consultation text)",
 		serverTranscript: "Server transcript",
@@ -1021,6 +1027,9 @@ const ptBR: ConsultationMessages = {
 		recordingSpeak: "gravando… fale normalmente",
 		consultationText: "Texto da consulta",
 		useSample: "Usar exemplo",
+		draftRecovered: paramMessage("pt-BR", "Rascunho recuperado — gravação finalizada às {time}", ["time"]),
+		restoreDraft: "Restaurar rascunho",
+		discardDraft: "Descartar",
 		clear: "Limpar",
 		transcriptPlaceholder: "A transcrição aparece aqui (ou cole o texto da consulta)",
 		serverTranscript: "Transcrição do servidor",
@@ -1413,6 +1422,9 @@ const es: ConsultationMessages = {
 		recordingSpeak: "grabando… hable con normalidad",
 		consultationText: "Texto de la consulta",
 		useSample: "Usar ejemplo",
+		draftRecovered: paramMessage("es", "Borrador recuperado — grabación terminada a las {time}", ["time"]),
+		restoreDraft: "Restaurar borrador",
+		discardDraft: "Descartar",
 		clear: "Limpiar",
 		transcriptPlaceholder: "La transcripción aparece aquí (o pegue el texto de la consulta)",
 		serverTranscript: "Transcripción del servidor",

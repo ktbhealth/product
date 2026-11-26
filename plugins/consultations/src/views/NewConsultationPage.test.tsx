@@ -111,6 +111,24 @@ const streamMocks = vi.hoisted(() => ({
 }));
 vi.mock("@ktb/crypto/stream", () => streamMocks);
 
+const draftMock = vi.hoisted(() => {
+	const state: { draft: Record<string, unknown> | null } = { draft: null };
+	const store = {
+		load: vi.fn(async () => state.draft),
+		save: vi.fn(async (d: Record<string, unknown>) => {
+			state.draft = d;
+		}),
+		clear: vi.fn(async () => {
+			state.draft = null;
+		}),
+	};
+	return { state, store };
+});
+vi.mock("../recording-draft.ts", async (importOriginal) => {
+	const orig = await importOriginal<typeof import("../recording-draft.ts")>();
+	return { ...orig, defaultDraftStore: () => draftMock.store };
+});
+
 // jsdom has no layout — every rect is 0,0 so the lib's document-level
 // pointerdown hit-test thinks every click lands on the separator
 // (preventDefault + steals focus). The split behavior is the lib's
@@ -208,6 +226,10 @@ describe("NewConsultationPage", () => {
 		statusImpl = () => ({ state: "idle", device: null });
 		engineSubs.clear();
 		backendLoad.mockClear();
+		draftMock.state.draft = null;
+		draftMock.store.load.mockClear();
+		draftMock.store.save.mockClear();
+		draftMock.store.clear.mockClear();
 		vi.stubGlobal("fetch", vi.fn());
 		// jsdom lacks dialog.showModal
 		HTMLDialogElement.prototype.showModal = vi.fn(function (this: HTMLDialogElement) {
@@ -1063,6 +1085,87 @@ describe("NewConsultationPage", () => {
 		await screen.findByText("Anamnesis saved successfully");
 		const dialog = document.querySelector("dialog") as HTMLDialogElement;
 		expect(dialog.textContent).toContain("for Maria");
+	});
+
+	describe("draft persistence (T-222)", () => {
+		const DRAFT = {
+			audio: new Blob(["audio"], { type: "audio/webm" }),
+			transcript: "Doctor: rascunho recuperado",
+			patientId: 2,
+			savedAt: Date.now(),
+		};
+
+		it("recovered draft banner restores transcript + patient and hides", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered — recording finished at/);
+			await user.click(screen.getByText("Restore draft"));
+			expect(
+				(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
+			).toContain("rascunho recuperado");
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("discard drops the stored draft", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			renderPage();
+			await screen.findByText(/Draft recovered/);
+			await user.click(screen.getByText("Discard"));
+			expect(draftMock.store.clear).toHaveBeenCalled();
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("no banner when there is nothing stored", async () => {
+			renderPage();
+			await waitFor(() => expect(draftMock.store.load).toHaveBeenCalled());
+			expect(screen.queryByText(/Draft recovered/)).toBeNull();
+		});
+
+		it("finishing a mic recording persists the blob + transcript", async () => {
+			micRecFn = vi.fn(async (): Promise<Blob | null> => new Blob(["audio"]));
+			const user = userEvent.setup();
+			renderPage();
+			await consent(user);
+			await user.click(screen.getByText("Record microphone"));
+			act(() => micCb!({ type: "final", text: "tem febre" }));
+			await waitFor(() =>
+				expect(
+					(screen.getByLabelText("Consultation text") as HTMLTextAreaElement).value,
+				).toContain("Doctor: tem febre"),
+			);
+			act(() => micCb!({ type: "end" }));
+			await waitFor(() => expect(draftMock.store.save).toHaveBeenCalled());
+			const saved = draftMock.store.save.mock.calls[0]![0] as {
+				audio: Blob;
+				transcript: string;
+			};
+			expect(saved.audio.size).toBeGreaterThan(0);
+			expect(saved.transcript).toContain("tem febre");
+		});
+
+		it("tab-capture end also persists the draft", async () => {
+			tabRecFn = vi.fn(async (): Promise<Blob | null> => new Blob(["tab"]));
+			const user = userEvent.setup();
+			renderPage();
+			await consent(user);
+			await user.click(screen.getByText("Capture call tab"));
+			act(() => tabCb!({ type: "end" }));
+			await waitFor(() => expect(draftMock.store.save).toHaveBeenCalled());
+		});
+
+		it("a successful save clears the draft", async () => {
+			draftMock.state.draft = DRAFT;
+			const user = userEvent.setup();
+			const api = makeApi();
+			renderPage(api);
+			await consent(user);
+			await generateAnamnesis(user);
+			await user.click(screen.getByText("Save consultation"));
+			await screen.findByText("Anamnesis saved successfully");
+			await waitFor(() => expect(draftMock.store.clear).toHaveBeenCalled());
+		});
 	});
 
 	describe("patient portal access, decided up front (T-258)", () => {

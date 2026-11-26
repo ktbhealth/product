@@ -2308,6 +2308,20 @@ export const I18N_MANIFEST = {
 		"newConsultation.useSample": {
 			params: [],
 		},
+		"newConsultation.draftRecovered": {
+			params: [
+				{
+					name: "time",
+				},
+			],
+			template: "Draft recovered — recording finished at {time}",
+		},
+		"newConsultation.restoreDraft": {
+			params: [],
+		},
+		"newConsultation.discardDraft": {
+			params: [],
+		},
 		"newConsultation.clear": {
 			params: [],
 		},

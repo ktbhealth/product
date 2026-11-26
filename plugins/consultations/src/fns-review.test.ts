@@ -168,7 +168,7 @@ describe("review server fns (PL-022)", () => {
 	});
 
 	it("editAnamnesisFn collapses Forbidden to { ok: false }", async () => {
-		mocks.attachAnamnesis.mockReturnValueOnce(Effect.fail(new Forbidden({ action: "x" })));
+		mocks.attachAnamnesis.mockReturnValueOnce(Effect.fail(new Forbidden({ path: "x" })));
 		await expect(
 			editAnamnesisFn({ data: { consultationId: 7, anamnesis: DOC } }),
 		).resolves.toEqual({ ok: false });

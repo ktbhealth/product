@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useMemo, useState, type FormEvent } from "react";
 import { ArrowLeftIcon, BrainIcon, CheckIcon, ClipboardListIcon, DownloadIcon } from "lucide-react";
 
 import { sliceMessages } from "@ktb/i18n";
@@ -91,6 +91,11 @@ import {
 	type ConsultationZk,
 	type GrantInput,
 } from "../zk.ts";
+import {
+	defaultDraftStore,
+	type RecordingDraft,
+	type RecordingDraftStore,
+} from "../recording-draft.ts";
 
 /** Portal-access state for the save dialog — "ask" renders the retry form. */
 type AccessOutcome = {
@@ -288,6 +293,15 @@ export function NewConsultationPage({
 	const [viewedText, setViewedText] = useState<TranscriptView | null>(null);
 	const uploadedAudioFor = useRef(new Set<number>());
 	const pendingUploadBlob = useRef<Blob | null>(null);
+	// T-222 draft persistence: refs mirror the latest values so the
+	// recorder "end" handlers (closures captured at start) persist fresh
+	// state; the store is lazily picked once per mount.
+	const transcriptRef = useRef("");
+	transcriptRef.current = transcript;
+	const patientIdRef = useRef(patientId);
+	patientIdRef.current = patientId;
+	const draftStore = useMemo<RecordingDraftStore>(() => defaultDraftStore(), []);
+	const [draft, setDraft] = useState<RecordingDraft | null>(null);
 
 	// The ASR engine stays lazy: `backend.load()` only runs when the
 	// doctor actually starts a capture (mic / tab / dictation), so the
@@ -444,6 +458,44 @@ export function NewConsultationPage({
 		setLiveStatus("live");
 	}
 
+	/** Persist the just-finished session as a draft: blob + transcript +
+	 * patient context. `recording()` awaits the recorder's stop, so the
+	 * "end" event ordering is safe. */
+	const persistDraft = (tr: Transcriber | null) => {
+		void tr?.recording?.().then((blob) => {
+			if (!blob?.size) return;
+			void draftStore.save({
+				audio: blob,
+				transcript: transcriptRef.current,
+				patientId: patientIdRef.current,
+				savedAt: Date.now(),
+			});
+		});
+	};
+
+	useEffect(() => {
+		let cancelled = false;
+		void draftStore.load().then((d: RecordingDraft | null) => {
+			if (!cancelled && d) setDraft(d);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [draftStore]);
+
+	const restoreDraft = () => {
+		if (!draft) return;
+		pendingUploadBlob.current = draft.audio;
+		setTranscript(draft.transcript);
+		setPatientId(draft.patientId);
+		setDraft(null);
+	};
+
+	const discardDraft = () => {
+		setDraft(null);
+		void draftStore.clear();
+	};
+
 	function toggleRecording() {
 		const tr = transcriberRef.current;
 		/* v8 ignore next -- refs are assigned in useEffect before any click */
@@ -471,6 +523,7 @@ export function NewConsultationPage({
 			if (ev.type === "end") {
 				setRecording(false);
 				setPartial("");
+				persistDraft(tr);
 				void maybeServerFallback("mic");
 			}
 		});
@@ -502,6 +555,7 @@ export function NewConsultationPage({
 			if (ev.type === "end") {
 				setTabRecording(false);
 				setPartial("");
+				persistDraft(tr);
 				void maybeServerFallback("tab");
 			}
 		});
@@ -540,6 +594,7 @@ export function NewConsultationPage({
 			if (ev.type === "end") {
 				setDictating(false);
 				setPartial("");
+				persistDraft(tr);
 				void maybeServerFallback("dict");
 			}
 		});
@@ -753,6 +808,7 @@ export function NewConsultationPage({
 			// The consultation is saved either way: access only adds to it.
 			setAccess(await accessAfterSave());
 			setSaveDialog({ kind: "ok", id, updated: Boolean(existing) });
+			void draftStore.clear();
 		} catch (e) {
 			setSaveDialog({
 				kind: "error",
@@ -1233,6 +1289,29 @@ export function NewConsultationPage({
 			<ResizablePanelGroup className="items-start">
 				{/* ================= left column: transcript ================= */}
 				<ResizablePanel defaultSize="50" minSize="30">
+					{draft ? (
+						<div
+							role="status"
+							className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-info/40 bg-info/10 px-3 py-2 text-sm"
+						>
+							<span>
+								{nc.draftRecovered(
+									new Date(draft.savedAt).toLocaleTimeString(locale, {
+										hour: "2-digit",
+										minute: "2-digit",
+									}),
+								)}
+							</span>
+							<span className="flex gap-2">
+								<Button type="button" size="sm" variant="outline" onClick={restoreDraft}>
+									{nc.restoreDraft}
+								</Button>
+								<Button type="button" size="sm" variant="ghost" onClick={discardDraft}>
+									{nc.discardDraft}
+								</Button>
+							</span>
+						</div>
+					) : null}
 					<Card>
 						<CardHeader className="border-b">
 							<CardTitle>{t.common.transcript}</CardTitle>
