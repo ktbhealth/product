@@ -9,6 +9,7 @@ import {
 	type OrchestrationDef,
 	type OrchestrationEvent,
 	type OrchestrationKind,
+	type OrchestrationPack,
 	type OrchestratorRegistryService,
 	type RunOptions,
 } from "@ktb/orchestrator";
@@ -19,7 +20,7 @@ import {
 	ENV_CORRECTOR_KEY,
 	transcriptPipelinePack,
 	type EnvCorrector,
-} from "./index.ts";
+} from "./pack.ts";
 
 /**
  * orchestration.ts — `consultation-transcript` expressed as an
@@ -99,6 +100,10 @@ const runPackStage = (
 	input: unknown,
 ): Effect.Effect<StageResult | null, never, unknown> =>
 	stage.run(asStageContext(ctx, input)).pipe(
+		/* v8 ignore next -- defensive parity arm: every pack stage
+		 * degrades internally (catch→disabled state), so a typed stage
+		 * failure is unreachable today; kept so a future stage failing
+		 * typed still gets the pipeline's onError:"skip" semantics. */
 		Effect.catch((error) =>
 			Effect.logWarning("transcript orchestration stage failed; continuing", {
 				stage: stage.id,
@@ -113,6 +118,8 @@ const runPackStage = (
  * contributes nothing — `state[node.id]` stays absent, exactly like a
  * pipeline skip. */
 const toKindResult = (result: StageResult | null): KindResult => {
+	/* v8 ignore next -- result is null only via runPackStage's ignored
+	 * defensive catch; the pack stages never fail typed today. */
 	if (result === null) return {};
 	return {
 		state: result.state as JsonObject | undefined,
@@ -123,11 +130,16 @@ const toKindResult = (result: StageResult | null): KindResult => {
 /** Uniform follow-up payload: the wire input forwarded plus whatever
  * state fragment the stage produced (`{gate: …}` / `{cleanup: …}`)
  * spread at top level — the shape `eventSchemas` documents. */
-const stageEventPayload = (input: unknown, result: StageResult | null): JsonObject =>
-	({
+const stageEventPayload = (input: unknown, result: StageResult | null): JsonObject => {
+	/* v8 ignore next -- result?.state is nullish only on the ignored
+	 * defensive skip path; the emitting kinds (asr-gate, llm-cleanup)
+	 * always return a state fragment. */
+	const state = result?.state ?? {};
+	return {
 		input: input as JsonObject,
-		...((result?.state ?? {}) as Record<string, unknown>),
-	}) as JsonObject;
+		...(state as Record<string, unknown>),
+	} as JsonObject;
+};
 
 /** Terminal event payload for env-cleanup: forwards the input and the
  * FINAL `cleanup` fragment — the env stage's own result when it
@@ -138,16 +150,20 @@ const envEventPayload = (
 	ctx: NodeContext,
 ): JsonObject => {
 	const cleanup = result?.state?.["cleanup"] ?? ctx.state["cleanup"];
-	return {
-		input: input as JsonObject,
-		...(cleanup === undefined ? {} : { cleanup: cleanup as JsonObject }),
-	} as JsonObject;
+	const payload: Record<string, unknown> = { input: input as JsonObject };
+	/* v8 ignore next -- the shipped def always runs llm-cleanup
+	 * upstream, which writes state.cleanup on every path; the arm is
+	 * defensive for custom defs reusing this kind without it. */
+	if (cleanup !== undefined) {
+		payload["cleanup"] = cleanup as JsonObject;
+	}
+	return payload as JsonObject;
 };
 
 interface StageKindSpec {
 	readonly kind: string;
 	readonly stage: PipelineStage;
-	readonly emit?: {
+	readonly emit: {
 		readonly type: string;
 		readonly payload: (input: unknown, result: StageResult | null, ctx: NodeContext) => JsonObject;
 	};
@@ -165,7 +181,6 @@ const stageKind = (spec: StageKindSpec): OrchestrationKind => ({
 			const input = wireInputOf(ctx.event);
 			const result = yield* runPackStage(spec.stage, ctx, input);
 			const kindResult = toKindResult(result);
-			if (spec.emit === undefined) return kindResult;
 			return {
 				...kindResult,
 				events: [
@@ -261,13 +276,11 @@ export const transcriptOrchestrationDef: OrchestrationDef = {
 };
 
 /** The orchestration analog of a {@link PipelinePack}: def (data) +
- * kind handlers (code). Kept as a pair so a future `orchestrations`
- * manifest field on PluginBase can carry exactly this shape — see the
- * module doc's manifest follow-up note. */
-export interface TranscriptOrchestrationPack {
-	readonly def: OrchestrationDef;
-	readonly kinds: readonly OrchestrationKind[];
-}
+ * kind handlers (code) — the shared {@link OrchestrationPack} shape
+ * the plugin manifest's `orchestrations` field carries (PluginBase,
+ * @ktb/kernel). The alias keeps the transcript-local name for the
+ * tests/docs that reference it. */
+export type TranscriptOrchestrationPack = OrchestrationPack;
 
 export const transcriptOrchestrationPack: TranscriptOrchestrationPack = {
 	def: transcriptOrchestrationDef,
@@ -287,10 +300,12 @@ export const makeTranscriptOrchestratorRegistry = (
 	return registry;
 };
 
-/** `OrchestratorRegistryLive` over this pack — the composition-root
- * entry point mirroring `pipelineRegistryLive`. Provided unconditionally
- * by app-host at cutover; until then consumers build a registry
- * directly via {@link makeTranscriptOrchestratorRegistry}. */
+/** `OrchestratorRegistryLive` over this pack — the standalone
+ * composition-root entry point mirroring `pipelineRegistryLive`.
+ * app-host's shared registry is built by `orchestratorRegistryLive
+ * (plugins)` (@ktb/plugin-pipeline) from the manifest's
+ * `orchestrations` field; this helper remains for tests and
+ * one-off compositions that want ONLY the transcript kinds. */
 export const transcriptOrchestratorRegistryLive = (
 	extraKinds: readonly OrchestrationKind[] = [],
 	extraDefs: readonly OrchestrationDef[] = [],

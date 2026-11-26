@@ -22,6 +22,7 @@ import {
 	type TranscriptCleanupState,
 	type TranscriptGateState,
 } from "./index.ts";
+import { transcriptOrchestrationPack } from "./orchestration.ts";
 
 const record: RunRecord = {
 	runId: "r1",
@@ -369,9 +370,10 @@ describe("env-cleanup corrector defects", () => {
 });
 
 describe("pipeline.transcript manifest", () => {
-	it("contributes the consultation-transcript pack", () => {
+	it("contributes the consultation-transcript pack on both engines", () => {
 		expect(plugins.map((p) => p.id)).toEqual(["pipeline.transcript"]);
 		expect(plugins[0]?.pipelines).toEqual([transcriptPipelinePack]);
+		expect(plugins[0]?.orchestrations).toEqual([transcriptOrchestrationPack]);
 		expect(transcriptPipelinePlugin.id).toBe("pipeline.transcript");
 		expect(transcriptPipelinePack.def.id).toBe("consultation-transcript");
 		expect(transcriptPipelinePack.def.stages.map((s) => s.id)).toEqual([
