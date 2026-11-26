@@ -5,7 +5,12 @@ import * as Layer from "effect/Layer";
 import type { JsonObject } from "effect/Schema";
 
 import { makePipelineRegistry, type PipelineResult } from "@ktb/pipeline";
-import type { OrchestrationRunResult } from "@ktb/orchestrator";
+import {
+	OrchestratorRegistry,
+	type OrchestrationDef,
+	type OrchestrationKind,
+	type OrchestrationRunResult,
+} from "@ktb/orchestrator";
 import {
 	DecisionsPort,
 	LlmPort,
@@ -29,6 +34,7 @@ import {
 	transcriptOrchestrationDef,
 	transcriptOrchestrationKinds,
 	transcriptOrchestrationPack,
+	transcriptOrchestratorRegistryLive,
 } from "./orchestration.ts";
 
 /**
@@ -349,5 +355,41 @@ describe("orchestration wiring", () => {
 			corrected: "via helper",
 			engine: "env-x",
 		});
+	});
+
+	it("transcriptOrchestrationConfig() yields an empty config without a corrector", () => {
+		expect(transcriptOrchestrationConfig()).toEqual({});
+		expect(transcriptOrchestrationConfig(undefined)).toEqual({});
+	});
+
+	it("transcriptOrchestratorRegistryLive builds a runnable registry layer", async () => {
+		const program = Effect.gen(function* () {
+			const registry = yield* OrchestratorRegistry;
+			return yield* registry.run("consultation-transcript", { text: "texto cru" });
+		});
+		const r = await Effect.runPromise(
+			program.pipe(Effect.provide(transcriptOrchestratorRegistryLive())),
+		);
+		expect(r.status).toBe("done");
+		expect(cleanupOf(r.state)?.enabled).toBe(false);
+	});
+
+	it("transcriptOrchestratorRegistryLive accepts extra kinds and defs", async () => {
+		const extraKind: OrchestrationKind = {
+			id: "t.probe",
+			run: () => Effect.succeed({}),
+		};
+		const extraDef: OrchestrationDef = {
+			id: "probe-orch",
+			nodes: [{ id: "n", kind: "t.probe", on: ["input"], emits: [] }],
+		};
+		const program = Effect.gen(function* () {
+			const registry = yield* OrchestratorRegistry;
+			return yield* registry.run("probe-orch", { text: "x" });
+		});
+		const r = await Effect.runPromise(
+			program.pipe(Effect.provide(transcriptOrchestratorRegistryLive([extraKind], [extraDef]))),
+		);
+		expect(r.status).toBe("done");
 	});
 });
