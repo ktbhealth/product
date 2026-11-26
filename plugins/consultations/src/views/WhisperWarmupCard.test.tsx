@@ -96,6 +96,12 @@ describe("WhisperWarmupCard", () => {
 		expect(screen.getByText("Speech recognition ready (webgpu)")).toBeTruthy();
 	});
 
+	it("shows the ready state without a device suffix when the engine reports none", () => {
+		renderCard();
+		emit({ type: "ready" });
+		expect(screen.getByText("Speech recognition ready")).toBeTruthy();
+	});
+
 	it("reflects an already-ready engine without waiting for a message", () => {
 		statusImpl = () => ({ state: "ready", device: "wasm" });
 		renderCard();

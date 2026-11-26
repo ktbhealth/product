@@ -697,6 +697,12 @@ export type I18nKey =
 	| "consultations.transcriptPanel.sourceServer"
 	| "consultations.transcriptPanel.tabCorrected"
 	| "consultations.transcriptPanel.tabOriginal"
+	| "consultations.warmup.description"
+	| "consultations.warmup.dismiss"
+	| "consultations.warmup.failed"
+	| "consultations.warmup.preparing"
+	| "consultations.warmup.retry"
+	| "consultations.warmup.title"
 	| "consultations.zk.decryptFailed"
 	| "consultations.zk.exportLocked"
 	| "consultations.zk.lockedHint"
@@ -3296,6 +3302,17 @@ export interface I18nTypedT {
 	(key: "consultations.transcriptPanel.sourceServer"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.tabCorrected"): Effect.Effect<string>;
 	(key: "consultations.transcriptPanel.tabOriginal"): Effect.Effect<string>;
+	(key: "consultations.warmup.description"): Effect.Effect<string>;
+	(key: "consultations.warmup.dismiss"): Effect.Effect<string>;
+	(
+		key: "consultations.warmup.failed",
+		params: {
+			message: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "consultations.warmup.preparing"): Effect.Effect<string>;
+	(key: "consultations.warmup.retry"): Effect.Effect<string>;
+	(key: "consultations.warmup.title"): Effect.Effect<string>;
 	(key: "consultations.zk.decryptFailed"): Effect.Effect<string>;
 	(key: "consultations.zk.exportLocked"): Effect.Effect<string>;
 	(key: "consultations.zk.lockedHint"): Effect.Effect<string>;
