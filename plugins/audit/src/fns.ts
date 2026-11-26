@@ -107,10 +107,10 @@ export const auditAdminListFn = createServerFn({ method: "POST" })
 	});
 
 /**
- * Re-query the tenant-scoped staff activity feed — the
+ * Re-query the actor-scoped staff activity feed — the
  * /portal/<instance>/activity table's onQuery callback. The tenant
- * selector is forwarded so `runAs` binds the same Tenant the page
- * loader resolved; absent tenant scope or a denied `audit.read` grant
+ * selector is forwarded so `runAs` binds the same request context the
+ * page loader resolved; an absent principal or empty actor scope
  * fails closed inside `Audit.activityList` → empty page.
  */
 export const auditActivityListFn = createServerFn({ method: "POST" })
@@ -157,8 +157,8 @@ export const auditAdminFacetsFn = createServerFn({ method: "GET" }).handler(
 );
 
 /**
- * Distinct filter values within the bound tenant's activity feed —
- * same tenant-selector forwarding as {@link auditActivityListFn}.
+ * Distinct filter values within the bound actor scope's activity
+ * feed — same tenant-selector forwarding as {@link auditActivityListFn}.
  */
 export const auditActivityFacetsFn = createServerFn({ method: "GET" }).handler(
 	async (): Promise<AuditFacets> => {

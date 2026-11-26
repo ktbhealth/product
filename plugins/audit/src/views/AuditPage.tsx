@@ -147,7 +147,7 @@ interface PageState {
 
 /**
  * Shared audit listing — /platform/audit (platform admin log),
- * /portal/<instance>/activity (tenant-scoped staff feed) and
+ * /portal/<instance>/activity (actor-scoped staff feed) and
  * /portal/patient/activity (patient access log).
  *
  * Two modes. WITH `onQuery` the filters and pagination are

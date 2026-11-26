@@ -21,6 +21,7 @@ import {
 import { ScrollTextIcon } from "lucide-react";
 import * as Option from "effect/Option";
 
+import { DoctorProfiles, type DoctorProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import { contentHash } from "@ktb/crypto/digest";
 import { Db, type DbClient } from "@ktb/db";
@@ -33,8 +34,6 @@ import { consultations } from "@ktb/db/schema";
 import { definePlugin, type Plugin } from "@ktb/kernel";
 import { PlatformAdmin, platformAdminPlugin, platformPanelPlugin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { Permissions } from "@ktb/rbac";
-import { Tenant, tenantScopeId } from "@ktb/tenant";
 
 import { AuditPlatformPage } from "./platform-page.tsx";
 import { auditConfig, auditConfigSchema } from "./config.tsx";
@@ -553,14 +552,13 @@ export async function listAuditEntries(
 }
 
 /**
- * Newest-first audit listing scoped to ONE tenant (P-080) — the staff
- * activity feed the clinician plugin mounts at
- * /portal/<instance>/activity. Same ordering and
- * limit clamp as {@link listAuditEntries} but fenced by
+ * Newest-first audit listing scoped to ONE tenant — fenced by
  * `tenant_id = tenantId`; platform-global rows (`tenant_id` NULL) are
- * excluded — they stay admin-only. Callers MUST have resolved tenant
- * scope and the `audit.read` grant first — the repo function itself is
- * unauthenticated, like the other `*Admin` helpers.
+ * excluded — they stay admin-only. Same ordering and limit clamp as
+ * {@link listAuditEntries}. The staff activity feed is actor-scoped
+ * ({@link listActorAuditEntries}); this tenant-wide variant remains
+ * for callers that resolve a tenant scope themselves. The repo
+ * function itself is unauthenticated, like the other `*Admin` helpers.
  */
 export async function listTenantAuditEntries(
 	db: DbClient,
@@ -570,6 +568,65 @@ export async function listTenantAuditEntries(
 	const limit = pageLimit(options.limit);
 	const offset = pageOffset(options.offset);
 	const where = and(eq(adminAudit.tenantId, tenantId), auditListWhere(options));
+	const [entries, totals] = await Promise.all([
+		db
+			.select()
+			.from(adminAudit)
+			.where(where)
+			.orderBy(desc(adminAudit.createdAt), desc(adminAudit.id))
+			.limit(limit)
+			.offset(offset),
+		db.select({ n: count() }).from(adminAudit).where(where),
+	]);
+	return { entries, total: totals[0]?.n ?? 0, limit, offset };
+}
+
+/** An actor identity the staff activity feed may show: the account
+ * user id plus its session email (either column identifies the actor —
+ * `record` stamps both from the same principal). */
+export interface ActivityActor {
+	readonly userId: string;
+	readonly email: string | null;
+}
+
+/** WHERE fence for the staff feed: rows whose actor is one of the
+ * viewer's visible actors. Both identity columns are matched — a row
+ * stays visible even when only one of them was stamped (older rows,
+ * email-less sessions). System rows (both NULL) never match. */
+const actorAuditScope = (actors: readonly ActivityActor[]): SQL | undefined => {
+	const conditions: SQL[] = [
+		inArray(
+			adminAudit.actorUserId,
+			actors.map((a) => a.userId),
+		),
+	];
+	const emails = [
+		...new Set(actors.map((a) => a.email).filter((e): e is string => e !== null && e !== "")),
+	];
+	if (emails.length > 0) conditions.push(inArray(adminAudit.actorEmail, emails));
+	return or(...conditions);
+};
+
+/**
+ * Newest-first audit listing scoped to a SET of actors — the staff
+ * activity feed the clinician plugin mounts at
+ * /portal/<instance>/activity. NOT tenant-scoped: a clinician's
+ * practice may span clinics, so the fence is the actor identities the
+ * viewer may see (self plus delegated doctor profiles — resolved by
+ * the service, not the caller). Same ordering and limit clamp as
+ * {@link listTenantAuditEntries}. Callers MUST have resolved the actor
+ * set first — the repo function itself is unauthenticated, like the
+ * other `*Admin` helpers.
+ */
+export async function listActorAuditEntries(
+	db: DbClient,
+	actors: readonly ActivityActor[],
+	options: AuditListQuery = {},
+): Promise<AuditListResult> {
+	const limit = pageLimit(options.limit);
+	const offset = pageOffset(options.offset);
+	if (actors.length === 0) return { entries: [], total: 0, limit, offset };
+	const where = and(actorAuditScope(actors), auditListWhere(options));
 	const [entries, totals] = await Promise.all([
 		db
 			.select()
@@ -669,13 +726,16 @@ export class PatientAuditAccess extends Context.Service<
  * mutations must still work (same contract as `PermissionInvalidator`).
  * `adminList`/`adminVerify` re-check the `PlatformAdmin` gate.
  *
- * `activityAccess`/`activityList` are the tenant-scoped staff feed
- * (P-080): they resolve the bound `Tenant` to its `groups.id` scope and
- * ask the OPTIONAL `Permissions` port for `audit.read` on that tenant —
- * resolved via `serviceOption` per call (no dep edge: rbac already
- * depends on audit transitively through groups, so a declared edge
- * would cycle). Absent tenant scope or absent Permissions both fail
- * closed, matching `can`'s null-principal behaviour.
+ * `activityAccess`/`activityList`/`activityFacets` are the staff
+ * activity feed the clinician plugin mounts at
+ * /portal/<instance>/activity: ACTOR-scoped, not tenant-scoped and
+ * not `audit.read`-gated. The visible actor set is the bound
+ * principal's own account (`actorId ?? userId` — the signed-in person,
+ * so a secretary's delegated actions stay attributed to them) plus
+ * every doctor profile the optional `DoctorProfiles` port reports for
+ * that account — a secretary sees each doctor's own activity, a
+ * doctor sees their own. Self is always visible for a signed-in
+ * principal; an absent principal or an empty actor set fails closed.
  *
  * `patientList` is the patient-facing feed (P-086): NOT tenant-scoped
  * — a patient may have records across clinics — so authorization is
@@ -693,13 +753,15 @@ export class Audit extends Context.Service<
 		readonly adminVerify: () => Effect.Effect<AuditVerifyResult, Forbidden>;
 		/** Distinct filter values for the admin console's dropdowns. */
 		readonly adminFacets: () => Effect.Effect<AuditFacets, Forbidden>;
-		/** Whether the bound tenant may read its own activity feed —
-		 * false (fail closed) without tenant scope or Permissions. */
+		/** Whether the bound principal may read the staff activity feed —
+		 * false (fail closed) without a signed-in principal. */
 		readonly activityAccess: () => Effect.Effect<boolean>;
-		/** Tenant-scoped newest-first feed; `Forbidden` when
+		/** Actor-scoped newest-first feed; `Forbidden` when
 		 * {@link activityAccess} would be false. */
 		readonly activityList: (options?: AuditListQuery) => Effect.Effect<AuditListResult, Forbidden>;
-		/** Distinct filter values within the bound tenant's feed. */
+		/** Distinct filter values within the actor-scoped feed — the
+		 * permitted actor keys are unioned in so every visible actor is
+		 * filterable even before it has entries. */
 		readonly activityFacets: () => Effect.Effect<AuditFacets, Forbidden>;
 		/** Patient-scoped newest-first feed (P-086): entries naming the
 		 * patient's own record across every tenant. `Forbidden` when the
@@ -746,29 +808,34 @@ export const AuditLive = Layer.effect(
 				readCoalesceMs: decoded.success.readCoalesceMs ?? DEFAULT_READ_COALESCE_MS,
 			};
 		});
-		/** Shared scope resolution for the staff feed: the bound tenant's
-		 * `groups.id` when `audit.read` is granted on it, else null. Read
-		 * per call — `Tenant` is request-scoped and `Permissions` may be
-		 * absent entirely (rbac plugin disabled).
-		 *
-		 * `tenantPolicy: "strict"` (P-084): audit.read must NOT bleed —
-		 * only grants pinned to THIS tenant satisfy the check, global
-		 * (tenant_id NULL) grants do not. CONSEQUENCE: the seeded
-		 * `superadmin` role's grants are tenant_id NULL, so superadmin
-		 * holders LOSE cross-tenant audit feed access under strict —
-		 * intended tightening (they keep /platform admin audit via
-		 * `adminList`/`adminFacets`, which are PlatformAdmin-gated, not
-		 * tenant-scoped). */
-		const activityScope = Effect.gen(function* () {
-			const scopeId = tenantScopeId(yield* Tenant);
-			if (scopeId === null) return null;
-			const permissions = yield* Effect.serviceOption(Permissions);
-			if (Option.isNone(permissions)) return null;
-			const allowed = yield* permissions.value.can("audit", "read", {
-				tenantId: scopeId,
-				tenantPolicy: "strict",
-			});
-			return allowed ? scopeId : null;
+		/** Actor scope for the staff feed, resolved PER CALL: the
+		 * signed-in account (`actorId ?? userId` — under delegation the
+		 * actor is the secretary, matching what `record` stamps) plus
+		 * every doctor profile the OPTIONAL `DoctorProfiles` port lists
+		 * for it. `serviceOption` keeps AuditLive's requirements
+		 * unchanged: a deployment without the doctors plugin degrades
+		 * to the self-only feed, and a directory failure does the same
+		 * rather than failing the page. */
+		const activityActors = Effect.gen(function* () {
+			const principal = yield* Principal;
+			if (principal === null) return [] as readonly ActivityActor[];
+			const accountId = principal.actorId ?? principal.userId;
+			const actors: ActivityActor[] = [{ userId: accountId, email: principal.email ?? null }];
+			const directory = yield* Effect.serviceOption(DoctorProfiles);
+			if (Option.isNone(directory)) return actors;
+			const profiles = yield* directory.value
+				.listFor(accountId)
+				.pipe(Effect.catchCause(() => Effect.succeed([] as readonly DoctorProfile[])));
+			const seen = new Set(actors.map((a) => a.userId));
+			for (const profile of profiles) {
+				if (seen.has(profile.userId)) continue;
+				seen.add(profile.userId);
+				actors.push({
+					userId: profile.userId,
+					email: profile.email === "" ? null : profile.email,
+				});
+			}
+			return actors;
 		});
 		return Audit.of({
 			/** `*.read` convention (P-087 D2/D3): read events coalesce —
@@ -825,21 +892,31 @@ export const AuditLive = Layer.effect(
 				return yield* Effect.promise(() => auditListFacets(db));
 			}),
 			activityAccess: Effect.fn("Audit.activityAccess")(function* () {
-				return (yield* activityScope) !== null;
+				return (yield* activityActors).length > 0;
 			}),
 			activityList: Effect.fn("Audit.activityList")(function* (options?: AuditListQuery) {
-				const scopeId = yield* activityScope;
-				if (scopeId === null) {
-					return yield* Effect.fail(new Forbidden({ path: "rbac.audit.read" }));
+				const actors = yield* activityActors;
+				if (actors.length === 0) {
+					return yield* Effect.fail(new Forbidden({ path: "audit.activity" }));
 				}
-				return yield* Effect.promise(() => listTenantAuditEntries(db, scopeId, options));
+				return yield* Effect.promise(() => listActorAuditEntries(db, actors, options));
 			}),
 			activityFacets: Effect.fn("Audit.activityFacets")(function* () {
-				const scopeId = yield* activityScope;
-				if (scopeId === null) {
-					return yield* Effect.fail(new Forbidden({ path: "rbac.audit.read" }));
+				const actors = yield* activityActors;
+				if (actors.length === 0) {
+					return yield* Effect.fail(new Forbidden({ path: "audit.activity" }));
 				}
-				return yield* Effect.promise(() => auditListFacets(db, eq(adminAudit.tenantId, scopeId)));
+				const facets = yield* Effect.promise(() => auditListFacets(db, actorAuditScope(actors)));
+				// Union the permitted actor keys into the dropdown: a
+				// delegated doctor with no entries yet is still an
+				// explicit filter choice ("their doctors").
+				const allowed = actors.map((a) => a.email ?? a.userId);
+				return {
+					...facets,
+					actors: [...new Set([...facets.actors, ...allowed])].sort((a, b) =>
+						String(a).localeCompare(String(b)),
+					),
+				};
 			}),
 			patientList: Effect.fn("Audit.patientList")(function* (
 				options: {
