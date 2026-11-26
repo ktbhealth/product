@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	extractTranscriptSegments,
 	parseTranscriptSegments,
+	resolveSegmentStart,
 	serializeTranscriptSegments,
 	type TranscriptSegment,
 } from "./segments.ts";
@@ -74,5 +75,40 @@ describe("serialize/parse transcript segments", () => {
 			{ start: 0, end: 1, text: "ok" },
 			{ start: 1, end: 2, text: "ok2", extra: true },
 		]);
+	});
+});
+
+const SEGS: TranscriptSegment[] = [
+	{ start: 0, end: 2, text: "Bom dia, como está?" },
+	{ start: 2, end: 5, text: "Dor de garganta há três dias" },
+	{ start: 5, end: 9, text: "Vou examinar agora." },
+];
+
+describe("resolveSegmentStart", () => {
+	it("matches a normalized substring — case, diacritics and spacing fold", () => {
+		expect(resolveSegmentStart("Dor De   Garganta", SEGS)).toBe(2);
+		expect(resolveSegmentStart("há tres dias", SEGS)).toBe(2);
+	});
+
+	it("falls back to token overlap when the cleanup paraphrases", () => {
+		expect(resolveSegmentStart("examinar agora vou", SEGS)).toBe(5);
+	});
+
+	it("accepts a segment fully contained in a longer sentence", () => {
+		expect(resolveSegmentStart("vou examinar agora e depois conversamos", SEGS)).toBe(5);
+	});
+
+	it("picks the best overlap across segments", () => {
+		expect(resolveSegmentStart("dor de garganta examinar", SEGS)).toBe(2);
+	});
+
+	it("returns undefined below the overlap threshold", () => {
+		expect(resolveSegmentStart("nada a declarar sobre isso", SEGS)).toBeUndefined();
+	});
+
+	it("returns undefined for an empty sentence or no segments", () => {
+		expect(resolveSegmentStart("", SEGS)).toBeUndefined();
+		expect(resolveSegmentStart("   ", SEGS)).toBeUndefined();
+		expect(resolveSegmentStart("dor", [])).toBeUndefined();
 	});
 });

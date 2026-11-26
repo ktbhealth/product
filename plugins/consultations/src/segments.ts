@@ -66,3 +66,53 @@ export function parseTranscriptSegments(raw: string | null | undefined): Transcr
 		return [];
 	}
 }
+
+/** Fold case + diacritics and collapse whitespace — the normal form
+ * evidence matching runs on, tolerant to the LLM's orthographic
+ * clean-up of the ASR words. */
+const fold = (s: string): string =>
+	s
+		.normalize("NFD")
+		.replace(/\p{M}/gu, "")
+		.toLowerCase()
+		.replace(/\s+/g, " ")
+		.trim();
+
+/** Word-overlap ratio a segment must reach to be accepted as a fuzzy
+ * evidence match — below it we risk pointing at the wrong passage. */
+const EVIDENCE_OVERLAP_MIN = 0.6;
+
+/**
+ * Resolve an anamnesis evidence sentence to the timestamp of the
+ * segment it was (probably) spoken in — the anchor chapter navigation
+ * seeks to. Normalized substring match first (the LLM's evidence is
+ * usually verbatim); falls back to best token overlap when cleanup
+ * paraphrased the ASR words — a short segment fully contained in the
+ * sentence still matches via the min() denominator.
+ *
+ * Returns `undefined` when nothing matches well enough: a missing
+ * chapter is honest, a wrong timestamp is not.
+ */
+export function resolveSegmentStart(
+	sentence: string,
+	segments: readonly TranscriptSegment[],
+): number | undefined {
+	const needle = fold(sentence);
+	if (!needle || segments.length === 0) return undefined;
+	for (const s of segments) {
+		if (fold(s.text).includes(needle)) return s.start;
+	}
+	const words = new Set(needle.split(" "));
+	let best: { score: number; start: number } | null = null;
+	for (const s of segments) {
+		const tokens = new Set(fold(s.text).split(" ").filter(Boolean));
+		if (tokens.size === 0) continue;
+		let hit = 0;
+		for (const w of words) if (tokens.has(w)) hit += 1;
+		const score = hit / Math.min(words.size, tokens.size);
+		if (score >= EVIDENCE_OVERLAP_MIN && (best === null || score > best.score)) {
+			best = { score, start: s.start };
+		}
+	}
+	return best?.start;
+}

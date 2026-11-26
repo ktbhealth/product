@@ -9664,6 +9664,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "review.chapters",
+		locale: "en",
+		value: "Chapters",
+	},
+	{
+		namespace: "consultations",
 		key: "review.staleAnamnesis",
 		locale: "en",
 		value: "Transcript has edits — regenerate if the anamnesis should reflect them.",
@@ -11550,6 +11556,12 @@ export const I18N_BASELINE = [
 	},
 	{
 		namespace: "consultations",
+		key: "review.chapters",
+		locale: "pt-BR",
+		value: "Capítulos",
+	},
+	{
+		namespace: "consultations",
 		key: "review.staleAnamnesis",
 		locale: "pt-BR",
 		value: "A transcrição tem edições — regenere se a anamnese deve refleti-las.",
@@ -13432,6 +13444,12 @@ export const I18N_BASELINE = [
 		key: "review.shortcutConfirm",
 		locale: "es",
 		value: "confirmar transcripción",
+	},
+	{
+		namespace: "consultations",
+		key: "review.chapters",
+		locale: "es",
+		value: "Capítulos",
 	},
 	{
 		namespace: "consultations",

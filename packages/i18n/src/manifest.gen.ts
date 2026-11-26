@@ -2061,6 +2061,9 @@ export const I18N_MANIFEST = {
 		"review.shortcutConfirm": {
 			params: [],
 		},
+		"review.chapters": {
+			params: [],
+		},
 		"review.staleAnamnesis": {
 			params: [],
 		},

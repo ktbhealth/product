@@ -183,6 +183,7 @@ export interface ConsultationMessages {
 		readonly shortcutSeekBack: string;
 		readonly shortcutKeySpace: string;
 		readonly shortcutConfirm: string;
+		readonly chapters: string;
 		readonly staleAnamnesis: string;
 		readonly regenerateAnamnesis: string;
 		readonly deferredTag: string;
@@ -547,6 +548,7 @@ const en: ConsultationMessages = {
 		shortcutSeekBack: "seek -10s",
 		shortcutKeySpace: "Space",
 		shortcutConfirm: "confirm transcript",
+		chapters: "Chapters",
 		staleAnamnesis: "Transcript has edits — regenerate if the anamnesis should reflect them.",
 		regenerateAnamnesis: "Regenerate anamnesis",
 		deferredTag: "deferred",
@@ -928,6 +930,7 @@ const ptBR: ConsultationMessages = {
 		shortcutSeekBack: "voltar 10s",
 		shortcutKeySpace: "Espaço",
 		shortcutConfirm: "confirmar transcrição",
+		chapters: "Capítulos",
 		staleAnamnesis: "A transcrição tem edições — regenere se a anamnese deve refleti-las.",
 		regenerateAnamnesis: "Regenerar anamnese",
 		deferredTag: "adiada",
@@ -1313,6 +1316,7 @@ const es: ConsultationMessages = {
 		shortcutSeekBack: "retroceder 10s",
 		shortcutKeySpace: "Espacio",
 		shortcutConfirm: "confirmar transcripción",
+		chapters: "Capítulos",
 		staleAnamnesis: "La transcripción tiene ediciones — regenera si la anamnesis debe reflejarlas.",
 		regenerateAnamnesis: "Regenerar anamnesis",
 		deferredTag: "aplazada",

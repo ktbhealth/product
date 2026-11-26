@@ -35,7 +35,7 @@ import { PageHeader } from "@ktbhealth/ui/components/page-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@ktbhealth/ui/components/popover";
 import { ScrollArea } from "@ktbhealth/ui/components/scroll-area";
 
-import { parseTranscriptSegments, type TranscriptSegment } from "../segments.ts";
+import { parseTranscriptSegments, resolveSegmentStart, type TranscriptSegment } from "../segments.ts";
 import {
 	parseTranscriptEdits,
 	serializeTranscriptEdits,
@@ -1003,6 +1003,7 @@ function AnamnesisStep({
 		section: AnamnesisSectionKey;
 		sentences: readonly string[];
 	} | null>(null);
+	const audioRef = useRef<HTMLAudioElement>(null);
 	const doc: Anamnesis | null = c.anamnesis;
 
 	const CONF_ORDER: Record<string, number> = { baixa: 0, media: 1, alta: 2 };
@@ -1015,6 +1016,30 @@ function AnamnesisStep({
 	)
 		.filter((k) => doc?.[k])
 		.sort((a, b) => confRank(doc![a].confidence) - confRank(doc![b].confidence));
+
+	// Chapter index — each section anchors to its first evidence
+	// sentence that resolves to a segment timestamp; chronological.
+	const chapters = useMemo(() => {
+		if (!doc) return [];
+		const list: { key: AnamnesisSectionKey; label: string; time: number }[] = [];
+		for (const key of sectionKeys) {
+			for (const sentence of doc[key].evidence) {
+				const at = resolveSegmentStart(sentence, segments);
+				if (at !== undefined) {
+					list.push({ key, label: t.sections[key], time: at });
+					break;
+				}
+			}
+		}
+		return list.sort((a, b) => a.time - b.time);
+	}, [doc, segments, t]);
+
+	const seekChapter = (time: number) => {
+		const el = audioRef.current;
+		if (!el) return;
+		el.currentTime = time;
+		void el.play().catch(() => {});
+	};
 
 	const approve = () =>
 		void (async () => {
@@ -1075,7 +1100,24 @@ function AnamnesisStep({
 				<CardHeader>
 					<CardTitle className="text-base">{t.review.stepTranscript}</CardTitle>
 				</CardHeader>
-				<CardContent>
+				<CardContent className="space-y-3">
+					{chapters.length > 0 ? (
+						<div
+							className="flex flex-wrap gap-1.5"
+							aria-label={t.review.chapters}
+						>
+							{chapters.map((ch) => (
+								<button
+									key={ch.key}
+									type="button"
+									onClick={() => seekChapter(ch.time)}
+									className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+								>
+									{ch.label} · {fmtTime(ch.time)}
+								</button>
+							))}
+						</div>
+					) : null}
 					<AudioTranscriptPanel
 						consultationId={c.id}
 						audioStatus={c.audioStatus}
@@ -1087,6 +1129,7 @@ function AnamnesisStep({
 						locale={locale}
 						highlight={evidence?.sentences}
 						segments={segments}
+						audioRef={audioRef}
 					/>
 				</CardContent>
 			</Card>

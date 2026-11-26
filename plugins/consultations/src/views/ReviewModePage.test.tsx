@@ -335,6 +335,31 @@ describe("ReviewModePage — anamnesis step", () => {
 		expect(document.querySelectorAll("mark").length).toBeGreaterThan(0);
 	});
 
+	it("chapter index seeks + plays the audio at the evidence anchor", () => {
+		renderPage({ c: detail({ transcriptReviewedAt: new Date(), transcriptReviewedEdits: 0 }) });
+		const audio = document.querySelector("audio")!;
+		// Both evidence sentences land in the same segment (2.5s).
+		const chip = screen.getByText("Chief complaint · 0:02");
+		fireEvent.click(chip);
+		expect(audio.currentTime).toBe(2.5);
+		expect(audio.play).toHaveBeenCalled();
+	});
+
+	it("omits chapters whose evidence resolves to no segment", () => {
+		renderPage({
+			c: detail({
+				transcriptReviewedAt: new Date(),
+				transcriptReviewedEdits: 0,
+				anamnesis: {
+					...ANAMNESIS,
+					queixa_principal: { ...ANAMNESIS.queixa_principal, evidence: ["paráfrase sem match algum"] },
+					hda: { ...ANAMNESIS.hda, evidence: ["outra frase sem match"] },
+				},
+			}),
+		});
+		expect(screen.queryByLabelText("Chapters")).toBeNull();
+	});
+
 	it("approve stamps and navigates to the next pending item", async () => {
 		const approve = vi.fn(async (): Promise<{ ok: boolean }> => ({ ok: true }));
 		renderPage(

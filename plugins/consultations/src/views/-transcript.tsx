@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
@@ -459,6 +459,7 @@ export function AudioTranscriptPanel({
 	highlight,
 	locale = "en",
 	segments,
+	audioRef: audioRefProp,
 }: {
 	consultationId: number | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -485,10 +486,15 @@ export function AudioTranscriptPanel({
 	 * a karaoke view — timestamped rows, live playhead highlight,
 	 * click-to-seek — instead of the prose blocks. */
 	segments?: readonly TranscriptSegment[];
+	/** External ref for the inner <audio> — callers that need to seek
+	 * programmatically (chapter index, review shortcuts) pass their own;
+	 * otherwise the panel owns one. */
+	audioRef?: RefObject<HTMLAudioElement | null>;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const [tab, setTab] = useState<"corrected" | "original">("corrected");
-	const audioRef = useRef<HTMLAudioElement>(null);
+	const internalRef = useRef<HTMLAudioElement>(null);
+	const audioRef = audioRefProp ?? internalRef;
 	const [activeIdx, setActiveIdx] = useState(-1);
 	const karaoke = useMemo(() => (hasAudio === true ? (segments ?? []) : []), [hasAudio, segments]);
 	const seek = (i: number) => {
