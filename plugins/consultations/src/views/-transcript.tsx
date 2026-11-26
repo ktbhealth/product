@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref, type Re
 
 import { sliceMessages } from "@ktb/i18n";
 import type { PageI18nSlice } from "@ktb/kernel";
-import { FastForwardIcon } from "lucide-react";
+import { FastForwardIcon, PencilIcon } from "lucide-react";
 
 import { sentenceDiff, type SentencePair } from "@ktb/transcript-diff";
 
@@ -20,6 +20,7 @@ import {
 	AudioPlayerVolumeRange,
 } from "@ktbhealth/ui/components/ai-elements/audio-player";
 import { Badge } from "@ktbhealth/ui/components/badge";
+import { Button } from "@ktbhealth/ui/components/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ktbhealth/ui/components/tabs";
 
 import { BADGE_TONES, SPEAKER_STYLE } from "./-ui.ts";
@@ -261,6 +262,29 @@ function SourceBlock({
 	);
 }
 
+/** Inline segment editing for the karaoke view (detail page): when
+ * `editing` is provided each row gains a pencil on hover and the row
+ * being edited swaps to a textarea.
+ */
+export interface SegmentEditing {
+	/** Per-segment edited text (index → replacement). */
+	readonly segEdits: ReadonlyMap<number, string>;
+	/** Index currently being edited (null = none). */
+	readonly editing: number | null;
+	readonly draft: string;
+	readonly busy?: boolean;
+	readonly onStart: (index: number) => void;
+	readonly onDraft: (text: string) => void;
+	readonly onSave: () => void;
+	readonly onCancel: () => void;
+	readonly labels: {
+		readonly edit: string;
+		readonly save: string;
+		readonly cancel: string;
+		readonly editedTag: string;
+	};
+}
+
 /**
  * Karaoke transcript view (PL-023): one timestamped row per ASR
  * segment, the row under the playhead highlighted live, click-to-seek.
@@ -272,18 +296,107 @@ function SegmentsKaraoke({
 	active,
 	highlight,
 	onSeek,
+	editing,
 }: {
 	segments: readonly TranscriptSegment[];
 	/** Index of the segment under the playhead (-1 = none yet). */
 	active: number;
 	highlight?: readonly string[];
 	onSeek: (index: number) => void;
+	editing?: SegmentEditing;
 }) {
 	const markRe = evidenceRegex(highlight);
 	const activeRef = useRef<HTMLButtonElement>(null);
+	const activeRowRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		activeRef.current?.scrollIntoView({ block: "nearest" });
+		activeRowRef.current?.scrollIntoView({ block: "nearest" });
 	}, [active]);
+	// Editing adds buttons inside each row — the row becomes a div with
+	// clickable spans instead of one button (no nested interactives).
+	if (editing) {
+		return (
+			<div className="space-y-0.5">
+				{segments.map((s, i) => {
+					const edited = editing.segEdits.get(i);
+					const shown = edited ?? s.text;
+					return (
+						<div
+							key={i}
+							ref={i === active ? activeRowRef : undefined}
+							className={`group flex gap-2 rounded-md px-2 py-1.5 text-sm leading-relaxed transition-colors ${
+								i === active ? "bg-primary/10" : ""
+							}`}
+						>
+							<button
+								type="button"
+								onClick={() => onSeek(i)}
+								className="shrink-0 pt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums hover:text-foreground"
+							>
+								{fmtTime(s.start)}
+							</button>
+							{editing.editing === i ? (
+								<div className="flex-1 space-y-2">
+									<textarea
+										className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+										rows={2}
+										value={editing.draft}
+										onChange={(e) => editing.onDraft(e.target.value)}
+									/>
+									<div className="flex gap-2">
+										<Button
+											type="button"
+											size="sm"
+											disabled={editing.busy}
+											onClick={editing.onSave}
+										>
+											{editing.labels.save}
+										</Button>
+										<Button
+											type="button"
+											variant="ghost"
+											size="sm"
+											onClick={editing.onCancel}
+										>
+											{editing.labels.cancel}
+										</Button>
+									</div>
+								</div>
+							) : (
+								<>
+									<span
+										className="min-w-0 flex-1 cursor-pointer"
+										onClick={() => onSeek(i)}
+									>
+										{markRe ? markedText(shown, markRe) : shown}
+										{edited != null ? (
+											<span className="ml-2 align-middle">
+												<Badge
+													variant="secondary"
+													className={`text-[9px] ring-1 ${BADGE_TONES.blue}`}
+													title={s.text}
+												>
+													{editing.labels.editedTag}
+												</Badge>
+											</span>
+										) : null}
+									</span>
+									<button
+										type="button"
+										className="invisible shrink-0 pt-0.5 text-muted-foreground group-hover:visible hover:text-foreground"
+										title={editing.labels.edit}
+										onClick={() => editing.onStart(i)}
+									>
+										<PencilIcon className="size-3.5" />
+									</button>
+								</>
+							)}
+						</div>
+					);
+				})}
+			</div>
+		);
+	}
 	return (
 		<div className="space-y-0.5">
 			{segments.map((s, i) => (
@@ -547,6 +660,7 @@ export function AudioTranscriptPanel({
 	locale = "en",
 	segments,
 	audioRef: audioRefProp,
+	segmentEditing,
 }: {
 	consultationId: number | null;
 	/** DB catalog slice for this route's namespaces (PL-008). */
@@ -577,6 +691,10 @@ export function AudioTranscriptPanel({
 	 * programmatically (chapter index, review shortcuts) pass their own;
 	 * otherwise the panel owns one. */
 	audioRef?: RefObject<HTMLAudioElement | null>;
+	/** Inline segment editing (detail page, PL-023) — pencil per karaoke
+	 * row + textarea; each save lands in the Loro edit log via the
+	 * caller's `onSave`. */
+	segmentEditing?: SegmentEditing;
 }) {
 	const t = sliceMessages(i18n, I18N_NAMESPACE, consultationMessages(locale));
 	const [tab, setTab] = useState<"corrected" | "original" | "changes">("corrected");
@@ -695,6 +813,7 @@ export function AudioTranscriptPanel({
 								active={activeIdx}
 								highlight={highlight}
 								onSeek={seek}
+								editing={segmentEditing}
 							/>
 						</TabsContent>
 						<TabsContent value="changes" className="space-y-3 pt-2">
@@ -707,6 +826,7 @@ export function AudioTranscriptPanel({
 						active={activeIdx}
 						highlight={highlight}
 						onSeek={seek}
+						editing={segmentEditing}
 					/>
 				)
 			) : tabbed ? (

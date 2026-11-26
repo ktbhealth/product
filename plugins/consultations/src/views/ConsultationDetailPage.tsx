@@ -1,5 +1,5 @@
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	ArrowLeftIcon,
 	CalendarIcon,
@@ -7,6 +7,7 @@ import {
 	ClipboardListIcon,
 	DownloadIcon,
 	LockIcon,
+	PencilIcon,
 	QuoteIcon,
 } from "lucide-react";
 import type { Locale as CalendarLocale } from "react-day-picker";
@@ -56,6 +57,19 @@ import {
 	type ConsultationAudioInfo,
 } from "./-transcript.tsx";
 import { parseTranscriptSegments } from "../segments.ts";
+import {
+	parseTranscriptEdits,
+	serializeTranscriptEdits,
+	type TranscriptEditEntry,
+} from "../transcript-edits.ts";
+import {
+	bytesToB64,
+	editsBaseText,
+	projectTranscript,
+	segBaseOffsets,
+	segProjOffset,
+	TranscriptEditSession,
+} from "../transcript-projection.ts";
 
 function Chip({
 	children,
@@ -378,6 +392,83 @@ export function ConsultationDetailPage({
 	// polled audio-pipeline state — never active under ZK (T-147).
 	const v = { ...c, ...live, ...dec };
 	const segments = parseTranscriptSegments(v.transcriptSegments);
+
+	// Transcript editing (PL-023): same Loro edit log the review mode
+	// writes — each save appends a delta and the extra op count makes
+	// the transcript stamp stale, so a post-approval edit re-opens the
+	// record in the review queue automatically. ZK rows stay read-only
+	// (the edits column is ciphered — BYOK re-encryption is T-146
+	// scope), matching the anamnesis editor's gate.
+	const canEditTranscript = !zk && api?.saveTranscriptEdits != null;
+	const storedEdits = useMemo(
+		() => parseTranscriptEdits(v.transcriptEdits),
+		[v.transcriptEdits],
+	);
+	const [newEdits, setNewEdits] = useState<readonly TranscriptEditEntry[]>([]);
+	const entries = useMemo(
+		() => [
+			...storedEdits,
+			...newEdits.filter((e) => !storedEdits.some((s) => s.u === e.u)),
+		],
+		[storedEdits, newEdits],
+	);
+	const editsBase = editsBaseText(v);
+	const projected = useMemo(
+		() => projectTranscript(editsBase, entries),
+		[editsBase, entries],
+	);
+	const segEdits = useMemo(() => {
+		const m = new Map<number, string>();
+		for (const e of entries) if (e.seg != null && e.text != null) m.set(e.seg, e.text);
+		return m;
+	}, [entries]);
+	const editsBaseOffsets = useMemo(
+		() => segBaseOffsets(segments, editsBase),
+		[segments, editsBase],
+	);
+	const sessionRef = useRef<TranscriptEditSession | null>(null);
+	const [segEditing, setSegEditing] = useState<number | "full" | null>(null);
+	const [segDraft, setSegDraft] = useState("");
+	const [editBusy, setEditBusy] = useState(false);
+	const editSession = () =>
+		(sessionRef.current ??= new TranscriptEditSession(entries, editsBase));
+	const saveTranscriptEdit = () =>
+		void (async () => {
+			if (!api?.saveTranscriptEdits || segEditing === null) return;
+			setEditBusy(true);
+			try {
+				const ses = editSession();
+				const delta =
+					segEditing === "full"
+						? ses.edit((tx) => {
+								tx.delete(0, ses.text().length);
+								tx.insert(0, segDraft);
+							})
+						: ses.edit((tx) => {
+								const i = segEditing;
+								const off = segProjOffset(segments, editsBaseOffsets, entries, i);
+								const oldLen = (segEdits.get(i) ?? segments[i]?.text ?? "").length;
+								tx.delete(off, oldLen);
+								tx.insert(off, segDraft);
+							});
+				const entry: TranscriptEditEntry = {
+					at: new Date().toISOString(),
+					by: "local",
+					u: bytesToB64(delta),
+					...(segEditing === "full" ? {} : { seg: segEditing, text: segDraft }),
+				};
+				const res = await api.saveTranscriptEdits({
+					data: { id: c.id, edits: serializeTranscriptEdits([...entries, entry]) },
+				});
+				if (res.ok) {
+					setNewEdits((e) => [...e, entry]);
+					setSegEditing(null);
+					void router.invalidate();
+				}
+			} finally {
+				setEditBusy(false);
+			}
+		})();
 	// Clickable transcript evidence: at most one section's grounding
 	// sentences are marked up in the transcript at a time; turning a
 	// section on also scrolls the ScrollArea to the first match.
@@ -772,19 +863,90 @@ export function ConsultationDetailPage({
 					<CardContent>
 						<ScrollArea className="h-[70vh]">
 							<div className="pr-3" ref={transcriptRef}>
-								<AudioTranscriptPanel
-									i18n={i18n}
-									locale={locale}
-									consultationId={c.id}
-									audioStatus={v.audioStatus}
-									audioSrc={zk ? zkAudioUrl : undefined}
-									hasAudio={Boolean(v.audioKey)}
-									browserText={v.transcript}
-									serverText={v.serverTranscript}
-									correctedText={v.correctedTranscript}
-									highlight={evidence?.sentences}
-									segments={segments}
-								/>
+								{segEditing === "full" ? (
+									<div className="space-y-2">
+										<textarea
+											className="min-h-48 w-full rounded-md border bg-background px-3 py-2 text-sm leading-relaxed"
+											value={segDraft}
+											onChange={(e) => setSegDraft(e.target.value)}
+										/>
+										<div className="flex gap-2">
+											<Button
+												type="button"
+												size="sm"
+												disabled={editBusy}
+												onClick={saveTranscriptEdit}
+											>
+												{t.review.saveEdit}
+											</Button>
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												onClick={() => setSegEditing(null)}
+											>
+												{t.review.cancelEdit}
+											</Button>
+										</div>
+									</div>
+								) : (
+									<>
+										<AudioTranscriptPanel
+											i18n={i18n}
+											locale={locale}
+											consultationId={c.id}
+											audioStatus={v.audioStatus}
+											audioSrc={zk ? zkAudioUrl : undefined}
+											hasAudio={Boolean(v.audioKey)}
+											browserText={v.transcript}
+											serverText={v.serverTranscript}
+											correctedText={v.correctedTranscript}
+											highlight={evidence?.sentences}
+											segments={segments}
+											segmentEditing={
+												canEditTranscript && segments.length > 0
+													? {
+															segEdits,
+															editing:
+																typeof segEditing === "number" ? segEditing : null,
+															draft: segDraft,
+															busy: editBusy,
+															onStart: (i) => {
+																setSegDraft(segEdits.get(i) ?? segments[i]?.text ?? "");
+																setSegEditing(i);
+															},
+															onDraft: setSegDraft,
+															onSave: saveTranscriptEdit,
+															onCancel: () => setSegEditing(null),
+															labels: {
+																edit: t.review.editSegment,
+																save: t.review.saveEdit,
+																cancel: t.review.cancelEdit,
+																editedTag: t.review.editedTag,
+															},
+														}
+													: undefined
+											}
+										/>
+										{/* Legacy/no-segments rows: a whole-doc correction lands
+										 * in the same edit log — identical to review mode. */}
+										{canEditTranscript && segments.length === 0 ? (
+											<Button
+												type="button"
+												variant="ghost"
+												size="sm"
+												className="mt-2"
+												onClick={() => {
+													setSegDraft(projected);
+													setSegEditing("full");
+												}}
+											>
+												<PencilIcon data-icon="inline-start" />
+												{t.review.editFullText}
+											</Button>
+										) : null}
+									</>
+								)}
 							</div>
 						</ScrollArea>
 					</CardContent>

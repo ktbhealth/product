@@ -1129,6 +1129,90 @@ describe("review stamps (PL-022)", () => {
 		await act(async () => {});
 		expect(deferConsultation).not.toHaveBeenCalled();
 	});
+	it("edits a karaoke segment inline and persists the Loro edit log", async () => {
+		const user = userEvent.setup();
+		const saveTranscriptEdits = vi.fn(async () => ({ ok: true }));
+		const segments = [
+			{ start: 0, end: 2, text: "dor no peito" },
+			{ start: 2, end: 5, text: "desde ontem" },
+		];
+		render(
+			<ConsultationDetailPage
+				c={detail({
+					audioKey: "k1",
+					audioStatus: "done",
+					serverTranscript: "dor no peito desde ontem",
+					transcriptSegments: JSON.stringify(segments),
+				})}
+				history={null}
+				api={{ getConsultation: vi.fn(), saveTranscriptEdits }}
+			/>,
+		);
+		// The karaoke rows carry a pencil on hover — same editor as review mode.
+		await user.click(screen.getAllByTitle("Edit line")[0]!);
+		const box = screen.getByRole("textbox");
+		await user.clear(box);
+		await user.type(box, "dor no peito esquerdo");
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(saveTranscriptEdits).toHaveBeenCalledTimes(1));
+		const payload = saveTranscriptEdits.mock.calls[0]![0] as {
+			data: { id: number; edits: string };
+		};
+		expect(payload.data.id).toBe(10);
+		const entries = JSON.parse(payload.data.edits) as {
+			seg?: number;
+			text?: string;
+			u: string;
+		}[];
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.seg).toBe(0);
+		expect(entries[0]!.text).toBe("dor no peito esquerdo");
+		await waitFor(() => expect(routerMocks.invalidate).toHaveBeenCalled());
+		// The saved delta re-projects the row: edited tag marks the segment.
+		expect(await screen.findByText("edited")).toBeTruthy();
+	});
+
+	it("full-text edit on segment-less rows lands in the same edit log", async () => {
+		const user = userEvent.setup();
+		const saveTranscriptEdits = vi.fn(async () => ({ ok: true }));
+		render(
+			<ConsultationDetailPage
+				c={detail({})}
+				history={null}
+				api={{ getConsultation: vi.fn(), saveTranscriptEdits }}
+			/>,
+		);
+		await user.click(screen.getByText("Edit transcript"));
+		const box = screen.getByRole("textbox");
+		await user.clear(box);
+		await user.type(box, "transcript corrigida");
+		await user.click(screen.getByText("Save"));
+		await waitFor(() => expect(saveTranscriptEdits).toHaveBeenCalledTimes(1));
+		const payload = saveTranscriptEdits.mock.calls[0]![0] as {
+			data: { id: number; edits: string };
+		};
+		const entries = JSON.parse(payload.data.edits) as { seg?: number; u: string }[];
+		expect(entries).toHaveLength(1);
+		expect(entries[0]!.seg).toBeUndefined();
+		await waitFor(() => expect(routerMocks.invalidate).toHaveBeenCalled());
+	});
+
+	it("hides transcript editing when the api cannot persist edits", () => {
+		render(
+			<ConsultationDetailPage
+				c={detail({
+					audioKey: "k1",
+					audioStatus: "done",
+					serverTranscript: "dor no peito",
+					transcriptSegments: JSON.stringify([{ start: 0, end: 2, text: "dor no peito" }]),
+				})}
+				history={null}
+				api={{ getConsultation: vi.fn() }}
+			/>,
+		);
+		expect(screen.queryByTitle("Edit line")).toBeNull();
+		expect(screen.queryByText("Edit transcript")).toBeNull();
+	});
 });
 
 describe("ConsultationDetailPage — review edge cases", () => {

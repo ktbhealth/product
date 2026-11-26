@@ -40,9 +40,15 @@ import {
 	parseTranscriptEdits,
 	serializeTranscriptEdits,
 	type TranscriptEditEntry,
-	type TranscriptEditsBase,
 } from "../transcript-edits.ts";
-import { bytesToB64, projectTranscript, TranscriptEditSession } from "../transcript-projection.ts";
+import {
+	bytesToB64,
+	editsBaseText,
+	projectTranscript,
+	segBaseOffsets,
+	segProjOffset,
+	TranscriptEditSession,
+} from "../transcript-projection.ts";
 import { consultationMessages, I18N_NAMESPACE } from "../i18n.ts";
 import { isDeferred, reviewDone, type ConsultationListItem } from "./ConsultationsPage.tsx";
 import type { ConsultationDetail, ConsultationDetailApi } from "./ConsultationDetailPage.tsx";
@@ -61,21 +67,6 @@ const CALENDAR_LOCALES: Record<string, CalendarLocale> = {
 };
 
 type Step = "transcript" | "anamnesis";
-
-/** Which stored column the edit log projects over — the pin written on
- * the first save wins so late pipeline stages never rebase old ops. */
-function baseText(c: ConsultationDetail): string {
-	const pick = (b: TranscriptEditsBase) =>
-		b === "corrected"
-			? (c.correctedTranscript ?? c.serverTranscript ?? c.transcript)
-			: b === "server"
-				? (c.serverTranscript ?? c.transcript)
-				: c.transcript;
-	if (c.transcriptEditsBase === "corrected") return pick("corrected");
-	if (c.transcriptEditsBase === "server") return pick("server");
-	if (c.transcriptEditsBase === "transcript") return pick("transcript");
-	return c.correctedTranscript ?? c.serverTranscript ?? c.transcript;
-}
 
 const fmtTime = (s: number) =>
 	`${Math.floor(s / 60)}:${Math.floor(s % 60)
@@ -407,7 +398,7 @@ function ReviewItem({
 
 	const storedEdits = useMemo(() => parseTranscriptEdits(v.transcriptEdits), [v.transcriptEdits]);
 	const entries = useMemo(() => [...storedEdits, ...newEdits], [storedEdits, newEdits]);
-	const base = baseText(v);
+	const base = editsBaseText(v);
 	const projected = useMemo(() => projectTranscript(base, entries), [base, entries]);
 	const segments = useMemo(
 		() => parseTranscriptSegments(v.transcriptSegments),
@@ -558,32 +549,11 @@ function TranscriptStep({
 		return m;
 	}, [entries]);
 
-	/** Char offset of each segment in the BASE text — sequential
-	 * `indexOf`, tolerant to drift (falls back to the previous end). */
-	const baseOffsets = useMemo(() => {
-		const out: number[] = [];
-		let from = 0;
-		for (const s of segments) {
-			const at = base.indexOf(s.text, from);
-			out.push(at === -1 ? from : at);
-			from = (at === -1 ? from : at) + s.text.length;
-		}
-		return out;
-	}, [segments, base]);
+	const baseOffsets = useMemo(() => segBaseOffsets(segments, base), [segments, base]);
 
 	/** Offset of segment `i` inside the *projected* doc — base offset
 	 * plus the length deltas of earlier segment rewrites. */
-	const projOffset = (i: number): number => {
-		// `i` is always a rendered segment index, so baseOffsets[i] exists.
-		let off = baseOffsets[i];
-		for (const e of entries) {
-			if (e.seg != null && e.text != null && e.seg < i) {
-				const orig = segments[e.seg]?.text;
-				if (orig != null) off += e.text.length - orig.length;
-			}
-		}
-		return off;
-	};
+	const projOffset = (i: number): number => segProjOffset(segments, baseOffsets, entries, i);
 
 	const session = () => (sessionRef.current ??= new TranscriptEditSession(entries, base));
 
