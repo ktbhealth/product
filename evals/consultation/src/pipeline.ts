@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 import type { JsonObject } from "effect/Schema";
 
 import {
@@ -13,6 +14,7 @@ import {
 
 import { gateTranscript } from "./anonymize.ts";
 import { charRangesFor, segmentCharSpans, type AsrRange } from "./asr-ranges.ts";
+import { sanitizeTimestampOps, timestampedCorrectorInput } from "./cleanup-timestamps.ts";
 import { fnvHex } from "./generate.ts";
 import type { LocaleProfile } from "./locale.ts";
 import { ptBR } from "./locales/pt-BR.ts";
@@ -135,40 +137,73 @@ export const transcribeSample = (
 export const cleanupTranscript = (input: {
 	readonly taskId: string;
 	readonly raw: string;
+	/** ASR segments — when non-empty, the corrector sees them rendered
+	 * as `[m:ss] text` lines (temporal context for localizing errors)
+	 * instead of the flat transcript. Returned ops index into the
+	 * TIMESTAMPED text, so they are sanitized (timestamp tokens
+	 * stripped) and re-anchored onto `raw` before application —
+	 * timestamp artifacts can never reach the corrected text, and the
+	 * recorded EditList always spans `raw` (T-207). */
+	readonly timestamps?: readonly { readonly t0: number; readonly text: string }[];
 	/** Invoked with the corrector's RunRecord the moment `correct`
 	 * returns — BEFORE edit application — so a corrupt-edit-list
-	 * failure still leaves the completed call's audit record. */
+	 * failure still leaves the completed call's audit record. Fires
+	 * once per attempt when a corrupt edit list triggers the retry. */
 	readonly onRecord?: (record: RunRecord) => void;
 }) =>
 	Effect.gen(function* () {
 		const llm = yield* LlmPort;
-		const { edits, record } = yield* llm.correct({
-			taskId: input.taskId,
-			role: "corrector",
-			input: input.raw,
-			outputSchema: "EditList",
+		const tsMode = input.timestamps !== undefined && input.timestamps.length > 0;
+		const correctorInput = tsMode ? timestampedCorrectorInput(input.timestamps!) : input.raw;
+		// One retry on a corrupt edit list: ops that parse but do not
+		// apply (wrong text, garbage offsets from an unanchored
+		// adapter) get a second correct() call — the model is
+		// stochastic, a fresh attempt often produces applicable ops.
+		// LlmPort failures (port "llm") are NOT retried here — the
+		// batch-level transient retry owns those. Both attempts leave
+		// their RunRecord via onRecord.
+		const attempt = Effect.gen(function* () {
+			const { edits, record } = yield* llm.correct({
+				taskId: input.taskId,
+				role: "corrector",
+				input: correctorInput,
+				outputSchema: "EditList",
+			});
+			// Stamp the pack's declared corrector-prompt identity at the
+			// source — every caller (processSample AND the EvalRunner
+			// driver path) gets it; an adapter-stamped `prompt` always
+			// wins (withStagePrompt never overwrites).
+			const stamped = withStagePrompt(CLEANUP_PROMPT)(record);
+			input.onRecord?.(stamped);
+			// Timestamps mode: ops were authored against the [m:ss]
+			// rendering — sanitize timestamp tokens out of remove/
+			// insert, then anchor onto the plain transcript. Anchored
+			// ops cannot fail applyEdits; unverifiable spans (ops that
+			// only touched a timestamp, quotes that no longer exist
+			// without the markers) drop by the usual contract.
+			const ops = tsMode ? anchorEdits(input.raw, sanitizeTimestampOps(edits.ops)).ops : edits.ops;
+			// Corrupt edit lists are an expected adapter failure (LLMs emit
+			// garbage offsets) — typed failure, never a silent fiber defect.
+			const corrected = yield* Effect.try({
+				try: () => applyEdits(input.raw, ops),
+				catch: (cause) =>
+					new PortError({
+						port: "pipeline",
+						message:
+							cause instanceof EditApplyError
+								? `corrupt edit list at ${cause.at}: expected "${cause.expected}", got "${cause.actual}"`
+								: /* v8 ignore next -- applyEdits only throws EditApplyError */ "corrupt edit list",
+						cause,
+					}),
+			});
+			return { edits: { ops }, corrected, record: stamped };
 		});
-		// Stamp the pack's declared corrector-prompt identity at the
-		// source — every caller (processSample AND the EvalRunner
-		// driver path) gets it; an adapter-stamped `prompt` always
-		// wins (withStagePrompt never overwrites).
-		const stamped = withStagePrompt(CLEANUP_PROMPT)(record);
-		input.onRecord?.(stamped);
-		// Corrupt edit lists are an expected adapter failure (LLMs emit
-		// garbage offsets) — typed failure, never a silent fiber defect.
-		const corrected = yield* Effect.try({
-			try: () => applyEdits(input.raw, edits.ops),
-			catch: (cause) =>
-				new PortError({
-					port: "pipeline",
-					message:
-						cause instanceof EditApplyError
-							? `corrupt edit list at ${cause.at}: expected "${cause.expected}", got "${cause.actual}"`
-							: /* v8 ignore next -- applyEdits only throws EditApplyError */ "corrupt edit list",
-					cause,
-				}),
-		});
-		return { edits, corrected, record: stamped };
+		return yield* attempt.pipe(
+			Effect.retry({
+				while: (e) => e instanceof PortError && e.port === "pipeline",
+				schedule: Schedule.once,
+			}),
+		);
 	});
 
 /**
@@ -470,6 +505,10 @@ interface StageRun {
 	readonly tag: (r: RunRecord) => RunRecord;
 	readonly records: RunRecord[];
 	readonly provenance: { readonly blobMeta: BlobMeta | null } | undefined;
+	/** domainParams.cleanupTimestamps (T-207) — ungated cleanup sends
+	 * the corrector `[m:ss]`-timestamped segments instead of flat
+	 * text; ops are sanitized + re-anchored onto the plain transcript. */
+	readonly cleanupTimestamps: boolean;
 	asr?: AsrResult;
 	edits?: EditList;
 	corrected?: string;
@@ -506,6 +545,7 @@ const stageCleanup = (ctx: StageRun) =>
 			const { edits, corrected } = yield* cleanupTranscript({
 				taskId: `${ctx.runId}-cleanup`,
 				raw: asr.text,
+				timestamps: ctx.cleanupTimestamps && asr.segments.length > 0 ? asr.segments : undefined,
 				onRecord: (r) => ctx.records.push(ctx.tag(r)),
 			});
 			ctx.edits = edits;
@@ -666,7 +706,10 @@ export const processSample = (input: {
 	 * keys here. Today: `entityCategories` (string[]) restricts the
 	 * gold entities the run scores to that category subset — a
 	 * present-but-malformed value fails the sample honestly rather
-	 * than silently scoring everything. Absent = all entities. */
+	 * than silently scoring everything. `cleanupTimestamps` (boolean)
+	 * opts the ungated cleanup stage into `[m:ss]`-timestamped
+	 * corrector input (T-207). Absent = all entities, flat cleanup
+	 * input. */
 	readonly domainParams?: JsonObject;
 }) =>
 	Effect.gen(function* () {
@@ -685,6 +728,16 @@ export const processSample = (input: {
 				});
 			}
 			categories = categoryParam as readonly string[];
+		}
+		// domainParams.cleanupTimestamps (T-207): opt-in `[m:ss]`
+		// timestamped corrector input for the ungated cleanup path —
+		// same fail-honestly rule as entityCategories.
+		const tsParam = input.domainParams?.cleanupTimestamps;
+		if (tsParam !== undefined && typeof tsParam !== "boolean") {
+			return yield* new PortError({
+				port: "pipeline",
+				message: `sample ${input.sample.id}: invalid domainParams.cleanupTimestamps — expected a boolean`,
+			});
 		}
 		const entities = (input.entities ?? input.sample.gold.entities ?? []).filter(
 			(e) => categories === undefined || categories.includes(e.category),
@@ -800,6 +853,7 @@ export const processSample = (input: {
 			tag,
 			records,
 			provenance,
+			cleanupTimestamps: tsParam === true,
 			answers: [],
 		};
 		// Seed the ASR slot from a prior run's output — downstream

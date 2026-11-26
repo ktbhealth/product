@@ -178,6 +178,158 @@ describe("cleanupTranscript", () => {
 		// so every caller (processSample, EvalRunner) inherits it.
 		expect(c.record.prompt).toEqual(CLEANUP_PROMPT);
 	});
+
+	const scriptedLlm = (
+		calls: string[],
+		opsFor: (env: { input: string }, attempt: number) => readonly EditOp[],
+	) => {
+		let attempt = 0;
+		return Layer.succeed(
+			LlmPort,
+			LlmPort.of({
+				generate: () => Effect.succeed({ text: "x", record }),
+				correct: (env) => {
+					calls.push(env.input);
+					attempt += 1;
+					return Effect.succeed({ edits: { ops: [...opsFor(env, attempt)] }, record });
+				},
+			}),
+		);
+	};
+
+	it("timestamps mode: corrector sees [m:ss] segments, ops sanitize + anchor onto raw", async () => {
+		const raw = "o paciente nega febre e toma losartana 50 mg";
+		const calls: string[] = [];
+		const r = await Effect.runPromise(
+			cleanupTranscript({
+				taskId: "t",
+				raw,
+				timestamps: [
+					{ t0: 0, text: "o paciente nega febre" },
+					{ t0: 61.9, text: "e toma losartana 50 mg" },
+				],
+			}).pipe(
+				Effect.provide(
+					scriptedLlm(calls, () => [
+						// Quote spans a timestamp token — sanitized to the
+						// plain span, then anchored onto raw.
+						{
+							at: 0,
+							remove: "[1:01] e toma losartana",
+							insert: "e toma enalapril",
+							kind: "entity",
+						},
+						// Timestamp-only op — nothing survives sanitizing.
+						{ at: 5, remove: "[0:00]", insert: "", kind: "format" },
+						// Hallucinated timestamp inside insert — stripped.
+						{ at: 0, remove: "o paciente", insert: "[0:02] O paciente", kind: "punct" },
+					]),
+				),
+			),
+		);
+		expect(calls).toHaveLength(1);
+		expect(calls[0]).toContain("[0:00] o paciente nega febre");
+		expect(calls[0]).toContain("[1:01] e toma losartana 50 mg");
+		// Recorded ops span the PLAIN transcript — audit stays
+		// consistent with asr.text; the timestamp-only op dropped.
+		expect(r.edits.ops).toEqual([
+			{ at: 0, remove: "o paciente", insert: "O paciente", kind: "punct" },
+			{
+				at: raw.indexOf("e toma losartana"),
+				remove: "e toma losartana",
+				insert: "e toma enalapril",
+				kind: "entity",
+			},
+		]);
+		expect(r.corrected).toBe("O paciente nega febre e toma enalapril 50 mg");
+	});
+
+	it("timestamps mode: a quote that only exists with markers drops instead of corrupting", async () => {
+		const raw = "alpha beta gamma";
+		const calls: string[] = [];
+		const r = await Effect.runPromise(
+			cleanupTranscript({
+				taskId: "t",
+				raw,
+				timestamps: [{ t0: 0, text: "alpha beta gamma" }],
+			}).pipe(
+				Effect.provide(
+					scriptedLlm(calls, () => [
+						// "[0:00] alpha\n[0:05] beta" spans the newline join —
+						// after sanitizing it is "alpha beta", which DOES
+						// anchor; a marker-joined quote that sanitizes to
+						// nothing meaningful drops below.
+						{ at: 0, remove: "[0:00] alpha [0:05] beta", insert: "alpha BETA", kind: "fix" },
+						{ at: 0, remove: "[9:99] nonexistent", insert: "x", kind: "fix" },
+					]),
+				),
+			),
+		);
+		expect(r.edits.ops).toEqual([
+			{ at: 0, remove: "alpha beta", insert: "alpha BETA", kind: "fix" },
+		]);
+		expect(r.corrected).toBe("alpha BETA gamma");
+	});
+
+	it("retries once when the edit list does not apply, then succeeds", async () => {
+		const calls: string[] = [];
+		const records: RunRecord[] = [];
+		const r = await Effect.runPromise(
+			cleanupTranscript({
+				taskId: "t",
+				raw: "raw text here",
+				onRecord: (x) => records.push(x),
+			}).pipe(
+				Effect.provide(
+					scriptedLlm(calls, (_env, attempt) =>
+						attempt === 1
+							? // Quotes text absent from the transcript — applyEdits throws.
+								[{ at: 0, remove: "NOT-IN-TEXT", insert: "x", kind: "fix" }]
+							: [{ at: 0, remove: "raw", insert: "RAW", kind: "fix" }],
+					),
+				),
+			),
+		);
+		expect(calls).toHaveLength(2);
+		// Both attempts left their audit record.
+		expect(records).toHaveLength(2);
+		expect(r.corrected).toBe("RAW text here");
+	});
+
+	it("fails typed when the retry also produces a corrupt edit list", async () => {
+		const calls: string[] = [];
+		const err = await Effect.runPromise(
+			cleanupTranscript({ taskId: "t", raw: "raw text" }).pipe(
+				Effect.provide(
+					scriptedLlm(calls, () => [{ at: 0, remove: "ABSENT", insert: "x", kind: "fix" }]),
+				),
+				Effect.flip,
+			),
+		);
+		expect(calls).toHaveLength(2);
+		expect(err).toBeInstanceOf(PortError);
+		expect((err as PortError).port).toBe("pipeline");
+		expect((err as PortError).message).toContain("corrupt edit list");
+	});
+
+	it("does not retry LlmPort failures — batch-level retry owns those", async () => {
+		let calls = 0;
+		const llm = Layer.succeed(
+			LlmPort,
+			LlmPort.of({
+				generate: () => Effect.succeed({ text: "x", record }),
+				correct: () => {
+					calls += 1;
+					return Effect.fail(new PortError({ port: "llm", message: "transport down" }));
+				},
+			}),
+		);
+		const err = await Effect.runPromise(
+			cleanupTranscript({ taskId: "t", raw: "raw" }).pipe(Effect.provide(llm), Effect.flip),
+		);
+		expect(calls).toBe(1);
+		expect((err as PortError).port).toBe("llm");
+	});
 });
 
 describe("cleanupTranscriptGated", () => {
@@ -1023,10 +1175,11 @@ describe("failure modes", () => {
 		expect(collected.every((r) => r.sampleId === "s1" && r.datasetVersion === "v1")).toBe(true);
 	});
 
-	it("recordsOut keeps the LLM record when edit application fails", async () => {
+	it("recordsOut keeps the LLM records when edit application fails", async () => {
 		// correct() succeeds (record produced) but the edit list is
-		// corrupt — the sample fails mid-cleanup yet both the ASR and
-		// the corrector's records are already collected.
+		// corrupt — the corrupt-list retry (T-207) fires a second
+		// correct() call, so the sample fails mid-cleanup yet the ASR
+		// record and BOTH corrector attempts are already collected.
 		const badLlm = Layer.succeed(
 			LlmPort,
 			LlmPort.of({
@@ -1049,7 +1202,7 @@ describe("failure modes", () => {
 		);
 		expect(err).toBeInstanceOf(PortError);
 		expect(String((err as PortError).message)).toContain("corrupt edit list");
-		expect(collected).toHaveLength(2);
+		expect(collected).toHaveLength(3);
 	});
 
 	it("missing judge answer → unjudged, never silently benign", async () => {
@@ -1423,5 +1576,38 @@ describe("domainParams (P-079)", () => {
 		);
 		expect(err).toBeInstanceOf(PortError);
 		expect(String((err as PortError).message)).toContain("entityCategories");
+	});
+
+	it("cleanupTimestamps sends the corrector [m:ss] segments (T-207)", async () => {
+		// The stub corrector edits env.input[0] — "[" under timestamps
+		// mode vs "o" flat. "[" never anchors onto the plain transcript,
+		// so the run's corrected text stays the raw ASR text — proof the
+		// corrector saw the timestamped rendering, not asr.text.
+		const r = await run(
+			processSample({
+				sample,
+				entities,
+				domainParams: { cleanupTimestamps: true },
+			}),
+		);
+		expect(r.corrected).toBe(r.asr.text);
+		expect(r.edits?.ops).toEqual([]);
+	});
+
+	it("absent cleanupTimestamps keeps the flat corrector input", async () => {
+		const r = await run(processSample({ sample, entities, domainParams: {} }));
+		expect(r.corrected!.startsWith("O")).toBe(true);
+	});
+
+	it("a malformed cleanupTimestamps fails the sample honestly", async () => {
+		const err = await run(
+			processSample({
+				sample,
+				entities,
+				domainParams: { cleanupTimestamps: "yes" },
+			}).pipe(Effect.catchTag("PortError", (e: PortError) => Effect.succeed(e))),
+		);
+		expect(err).toBeInstanceOf(PortError);
+		expect(String((err as PortError).message)).toContain("cleanupTimestamps");
 	});
 });
