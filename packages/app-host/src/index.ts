@@ -56,9 +56,18 @@ import { WizardDefinitions, makeWizardDefinitions } from "@ktb/wizards";
 import { packageLive } from "./plugin-state.ts";
 import { Bot, stubBotDriver } from "@ktb/bot";
 import { recallDriver } from "@ktb/bot-recall";
-import { EvalArtifacts, EvalRunner, LlmFactory, LlmPort } from "@ktb/eval-consultation";
+import {
+	EvalArtifacts,
+	EvalRunner,
+	LlmFactory,
+	LlmPort,
+	DecisionsFactory,
+} from "@ktb/eval-consultation";
+import { PipelineRegistry } from "@ktb/pipeline";
+import { pipelineRegistryLive } from "@ktb/plugin-pipeline";
 import { Jobs, makeJobs } from "@ktb/jobs-port";
 import { evalLlmAcpDriver } from "@ktb/ai-adapter-acp";
+import { systemOneDecisionsDriver } from "@ktb/ai-adapter-systemone";
 import {
 	evalArtifactsLocalDriver,
 	evalLlmFactoryDriver,
@@ -95,8 +104,9 @@ import { Tenant, TenantResolver, type TenantResolverShape, type TenantSelector }
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
 import type { LlmConfig } from "@ktb/anamnesis-llm/services";
 import { llmDrivers } from "@ktb/anamnesis-llm/drivers";
-import { correctTranscript as correctTranscriptEffect } from "@ktb/anamnesis-llm";
-import { correctTranscriptViaPlatform, platformPreferringEngine } from "./platform-llm.ts";
+import { platformPreferringEngine } from "./platform-llm.ts";
+import { correctTranscript as envCorrectTranscript } from "@ktb/anamnesis-llm";
+import { ENV_CORRECTOR_KEY } from "@ktb/plugin-pipeline-transcript";
 import {
 	Command,
 	CommandBus,
@@ -417,6 +427,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		// resolves descriptor rows into LlmPort layers on demand, so
 		// binding it carries no env requirement of its own.
 		evalLlmFactoryDriver,
+		// Decision-endpoint factory (`systemone` ai_endpoint rows) —
+		// same always-eligible contract as the LLM factory: resolves
+		// descriptors into DecisionsPort layers on demand.
+		systemOneDecisionsDriver,
 	];
 	// Drivers are type-erased (Layer.Any); each port maps to exactly one
 	// service, so the concrete layer type is restored here — same shape
@@ -549,6 +563,10 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 	// Endpoint factory for the eval lab — always bound (the driver is
 	// always eligible); without it plugins fall back to template mode.
 	const LlmFactoryLive = optionalLayerFor<LlmFactory>(LlmFactory.key, env);
+	// Decision-endpoint factory — same always-eligible driver contract;
+	// the ai-provider plugin's PlatformDecisions resolves `systemone`
+	// platform defaults through it.
+	const DecisionsFactoryLive = optionalLayerFor<DecisionsFactory>(DecisionsFactory.key, env);
 	// Platform admin gate (P-026): env allowlist resolved once here; the
 	// gate fails closed (Forbidden) when the list is unset/empty. The
 	// RBAC hook admits role-based superadmins: an allow grant on
@@ -663,6 +681,15 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		options?.tenantResolver === undefined
 			? []
 			: [Layer.succeed(TenantResolver, options.tenantResolver)];
+	// Pipeline registry: every plugin manifest's `pipelines` packs
+	// (pipeline.transcript's consultation-transcript today),
+	// collected in topo order and registered once at composition — the
+	// same collect-from-`plugins` pattern as DocumentCollections et al.
+	// Registration failures are programming errors (duplicate pipeline
+	// id, def entry with no stage impl): `orDie` keeps them loud at
+	// layer build instead of typing an error channel every consumer
+	// would have to erase.
+	const PipelineRegistryLive = pipelineRegistryLive(plugins).pipe(Layer.orDie);
 	const core = Layer.mergeAll(
 		BotLive,
 		CaptchaLive,
@@ -679,6 +706,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		EntityCipherLive,
 		LlmLive,
 		LlmFactoryLive,
+		DecisionsFactoryLive,
 		PlatformAdminLive,
 		PluginStatesLive,
 		DocumentCollectionsLive,
@@ -689,6 +717,7 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		WizardDefinitionsLive,
 		RoutesLive,
 		MiddlewareStagesLive,
+		PipelineRegistryLive,
 		// External document-ref target registry (T-149): entity owners
 		// register existence checkers into this shared instance from
 		// their service layers; DocumentStore resolves entity refs
@@ -986,19 +1015,71 @@ export const createApp = <E extends AppEnv>(env: E, options?: AppOptions) => {
 		);
 
 	/**
-	 * LLM transcript cleanup (P-017) bound to the resolved provider
-	 * config. System path — no principal; returns null when unconfigured
-	 * or on provider failure (correctedTranscript stays null).
+	 * LLM transcript cleanup (P-017) — a thin shell over the
+	 * `consultation-transcript` pipeline pack (pipeline.transcript
+	 * plugin): ASR-error gating through the platform DECISION endpoint,
+	 * reversible-edit correction through the platform GENERATIVE
+	 * endpoint, env providers as the pack's own last stage (injected
+	 * as run config — plugins cannot read env). System path — no
+	 * principal; returns null when unconfigured or on failure
+	 * (correctedTranscript stays null). The pipeline never rejects:
+	 * stages degrade to disabled state inside the pack and run errors
+	 * are caught here.
 	 */
-	const correctTranscript = (transcript: string) =>
+	const correctTranscript = (input: {
+		readonly text: string;
+		readonly segments?: readonly { readonly text: string }[];
+	}) =>
 		runtime.runPromise(
-			// Platform-default endpoint first (F2); env providers on
-			// absence/failure — both paths degrade to null, never reject.
-			correctTranscriptViaPlatform(transcript).pipe(
-				Effect.flatMap((res) =>
-					res !== null ? Effect.succeed(res) : correctTranscriptEffect(llmConfig, transcript),
-				),
-			),
+			Effect.gen(function* () {
+				if (input.text.trim() === "") return null;
+				const registryOpt = yield* Effect.serviceOption(PipelineRegistry);
+				if (Option.isNone(registryOpt)) return null;
+				const registry = registryOpt.value;
+				if (!registry.has("consultation-transcript")) return null;
+				const result = yield* registry
+					.run(
+						"consultation-transcript",
+						{
+							text: input.text,
+							...(input.segments !== undefined ? { segments: input.segments } : {}),
+						},
+						{
+							[ENV_CORRECTOR_KEY]: (text: string) => envCorrectTranscript(llmConfig, text),
+						},
+					)
+					.pipe(
+						Effect.catch((error) =>
+							Effect.logWarning("transcript pipeline failed", {
+								error: String(error),
+							}).pipe(Effect.as(null)),
+						),
+						Effect.catchDefect((defect) =>
+							Effect.logWarning("transcript pipeline failed", {
+								error: String(defect),
+							}).pipe(Effect.as(null)),
+						),
+					);
+				if (result === null) return null;
+				const cleanup = result.state.cleanup as
+					| {
+							readonly enabled?: unknown;
+							readonly corrected?: unknown;
+							readonly engine?: unknown;
+					  }
+					| undefined;
+				if (
+					cleanup?.enabled !== true ||
+					typeof cleanup.corrected !== "string" ||
+					typeof cleanup.engine !== "string"
+				) {
+					return null;
+				}
+				// Same contract as the legacy paths: trimmed text, and an
+				// empty correction is no correction.
+				const corrected = cleanup.corrected.trim();
+				return corrected === "" ? null : { corrected, engine: `pipeline:${cleanup.engine}` };
+			}),
 		);
 
 	/**

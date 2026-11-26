@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type * as JsonSchema from "effect/JsonSchema";
 import type { JsonObject } from "effect/Schema";
 import type * as Schema from "effect/Schema";
+import type { PipelinePack } from "@ktb/pipeline";
 
 import type { PluginKeyword } from "./keywords.ts";
 
@@ -126,6 +127,13 @@ export interface PluginBase {
 	 * contribution field — the generic channel is not bound by the
 	 * one-dedicated-field rule. */
 	readonly contributions?: readonly PluginContribution[];
+	/** Pipeline packs this plugin contributes (domain-blind stage DAGs —
+	 * def + stage implementations, see @ktb/pipeline). Additive like
+	 * `contributions`: may accompany any dedicated contribution field.
+	 * The host collects these into `PipelineRegistryLive` at composition;
+	 * stage impls are Effects, so this is server-manifest data — client
+	 * stubs reject it ({@link ClientStubPlugin}). */
+	readonly pipelines?: readonly PipelinePack[];
 }
 
 type ContributionField =

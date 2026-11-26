@@ -1,9 +1,11 @@
 import { index, integer, sqliteTable, text } from "@ktb/db/table";
 
 /**
- * `ai_endpoint` — a generative provider any AI-capable plugin can
- * pick: `acp` JSON-RPC agents or `openai` chat-completions endpoints
- * (Ollama/LM Studio/GPT/Gemini-compat). `secret_ref` stores either the
+ * `ai_endpoint` — a model provider any AI-capable plugin can
+ * pick: `acp` JSON-RPC agents, `openai` chat-completions endpoints
+ * (Ollama/LM Studio/GPT/Gemini-compat), or `systemone` decision-model
+ * endpoints (`POST /v1/systemone` — not generative; resolves through
+ * DecisionsFactory/PlatformDecisions, never LlmFactory). `secret_ref` stores either the
  * NAME of an env var holding the API key or a `credential:<id>` ref
  * into the credentials store — raw keys never live in tables.
  * Promoted from `eval_llm_endpoint` (F1): `scope` names the consuming
@@ -15,7 +17,8 @@ export const aiEndpoint = sqliteTable(
 	{
 		id: integer().primaryKey({ autoIncrement: true }),
 		name: text().notNull(),
-		/** acp | openai */
+		/** acp | openai | systemone (decision model — resolves through
+		 * DecisionsFactory, never LlmFactory) */
 		kind: text().notNull(),
 		/** Nullable since F3b: acp+ws bridge endpoints connect through the
 		 * AcpBridge durable object instead of dialing a URL — the local

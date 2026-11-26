@@ -23,7 +23,7 @@ import * as Option from "effect/Option";
 import { anamnesisWithHistory, type Anamnesis, type ExtractInput } from "@ktb/anamnesis";
 import { decodeAnamnesis } from "@ktb/anamnesis/schema";
 import { AnamnesisEngine } from "@ktb/anamnesis/services";
-import { buildPrompt, CLEANUP_SYSTEM_PROMPT, type CorrectedTranscript } from "@ktb/anamnesis-llm";
+import { buildPrompt } from "@ktb/anamnesis-llm";
 import { LlmPort, PlatformLlm } from "@ktb/eval-consultation";
 
 /** `Layer<LlmPort>` for the platform-default endpoint — null when the
@@ -43,42 +43,6 @@ const platformLayer: Effect.Effect<Layer.Layer<LlmPort> | null> = Effect.gen(fun
 		Effect.catchDefect(() => Effect.succeed(null)),
 	);
 });
-
-/** Transcript cleanup through the platform-default endpoint —
- * `generate` (not `correct`, which is ACP/EditList-only) so both acp
- * and openai-compat endpoints serve it. The system prompt rides in
- * the envelope input since the contract is a single text field. */
-export const correctTranscriptViaPlatform = (
-	transcript: string,
-): Effect.Effect<CorrectedTranscript | null> =>
-	Effect.gen(function* () {
-		const layer = yield* platformLayer;
-		if (layer === null) return null;
-		const res = yield* LlmPort.pipe(
-			Effect.flatMap((llm) =>
-				llm.generate({
-					taskId: "transcript-cleanup",
-					role: "corrector",
-					input: `${CLEANUP_SYSTEM_PROMPT}\n\n${transcript}`,
-					outputSchema: "Text",
-				}),
-			),
-			Effect.provide(layer),
-			Effect.catch((error) =>
-				Effect.logWarning("platform transcript cleanup failed", {
-					error: String(error),
-				}).pipe(Effect.as(null)),
-			),
-			Effect.catchDefect((defect) =>
-				Effect.logWarning("platform transcript cleanup failed", {
-					error: String(defect),
-				}).pipe(Effect.as(null)),
-			),
-		);
-		if (res === null) return null;
-		const corrected = res.text.trim();
-		return corrected === "" ? null : { corrected, engine: `platform:${res.record.engine}` };
-	});
 
 /** `generate` returns bare JSON per the anamnesis prompt — tolerate a
  * markdown fence anyway, then validate against AnamnesisSchema. */

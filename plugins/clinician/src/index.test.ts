@@ -53,8 +53,8 @@ describe("clinician portal plugins", () => {
 		// Wildcard record pages guard + load by request path.
 		expect("guard" in pages[3]!).toBe(true);
 		expect("guard" in pages[4]!).toBe(true);
-		// The activity feed guards on the audit.read grant and loads the
-		// tenant-scoped feed.
+		// The activity feed guards on the actor scope and loads the
+		// actor-scoped feed.
 		expect("guard" in pages[5]!).toBe(true);
 		expect("loader" in pages[5]!).toBe(true);
 	});

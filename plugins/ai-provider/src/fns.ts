@@ -26,7 +26,7 @@ const IdInput = Schema.Struct({ id: Schema.Number });
 const EndpointSaveInput = Schema.Struct({
 	id: optNum,
 	name: Schema.String,
-	kind: Schema.Literals(["acp", "openai"]),
+	kind: Schema.Literals(["acp", "openai", "systemone"]),
 	baseUrl: Schema.String,
 	model: optStr,
 	sessionId: optStr,

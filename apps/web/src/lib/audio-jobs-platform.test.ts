@@ -11,7 +11,7 @@ const correct = vi.hoisted(() => vi.fn());
 // LLM cleanup is replaced so each outcome can be forced.
 vi.mock("#/lib/platform.ts", async (importOriginal) => ({
 	...(await importOriginal<typeof import("#/lib/platform.ts")>()),
-	correctTranscript: (t: string) => correct(t),
+	correctTranscript: (input: { text: string }) => correct(input.text),
 }));
 
 import { db } from "#/lib/platform.ts";

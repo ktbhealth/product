@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { Db, makeDb, type DbClient } from "@ktb/db";
 import { makeD1 } from "@ktb/db/testing";
+import { DoctorProfiles, type DoctorProfile } from "@ktb/auth";
 import { Forbidden, Principal } from "@ktb/authz";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -9,8 +10,6 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import { makePlatformAdminGate, parsePlatformAdminEmails, PlatformAdmin } from "@ktb/platform";
 import { PluginStates } from "@ktb/platform/plugin-states";
-import { Permissions } from "@ktb/rbac";
-import { Tenant } from "@ktb/tenant";
 
 import { eq } from "drizzle-orm";
 
@@ -515,19 +514,19 @@ describe("AuditLive", () => {
 	});
 });
 
-describe("Audit activity feed (P-080)", () => {
+describe("Audit activity feed — actor scope", () => {
 	let runtime: ManagedRuntime.ManagedRuntime<Audit, never>;
-
-	const tenant: Tenant = { id: 1, kind: "clinic", slug: "clinic-a", role: "admin" };
+	let db: DbClient;
 
 	beforeAll(async () => {
-		const db = makeDb(makeD1(DDL));
-		const write = (action: string, tenantId?: number | null) =>
-			insertAuditEntry(db, { action, actorUserId: null, actorEmail: null, tenantId });
-		await write("feed.t1.first", 1);
-		await write("feed.t1.second", 1);
-		await write("feed.t2", 2);
-		await write("feed.global");
+		db = makeDb(makeD1(DDL));
+		const write = (action: string, actorUserId: string | null, actorEmail: string | null) =>
+			insertAuditEntry(db, { action, actorUserId, actorEmail });
+		await write("feed.self.one", "sec-1", "sec@x.com");
+		await write("feed.self.two", "sec-1", "sec@x.com");
+		await write("feed.doctor", "doc-1", "doc@x.com");
+		await write("feed.other", "doc-2", "other@x.com");
+		await write("feed.system", null, null);
 		const deps = Layer.merge(
 			Layer.succeed(Db, db),
 			Layer.succeed(PlatformAdmin, makePlatformAdminGate(parsePlatformAdminEmails("admin@x.com"))),
@@ -539,110 +538,164 @@ describe("Audit activity feed (P-080)", () => {
 
 	const call = <A, E>(f: (p: Audit["Service"]) => Effect.Effect<A, E>) => Effect.flatMap(Audit, f);
 
-	/** Stub Permissions port: records `can` calls, answers `allowed`. */
-	const permissions = (allowed: boolean, seen?: unknown[]) =>
-		({
-			can: (resource: string, action: string, opts?: unknown) => {
-				seen?.push([resource, action, opts]);
-				return Effect.succeed(allowed);
-			},
-		}) as unknown as Permissions["Service"];
+	/** Stub DoctorProfiles directory: `profiles` is what listFor
+	 * returns for ANY account id; absent means the doctors plugin is
+	 * not deployed (serviceOption → None). */
+	const directory = (profiles?: readonly DoctorProfile[]) =>
+		profiles === undefined
+			? undefined
+			: ({
+					listFor: () => Effect.succeed(profiles),
+					claimInvites: () => Effect.succeed(0),
+				} as unknown as DoctorProfiles["Service"]);
 
-	/** Run under a staff principal + tenant scope; `perms` absent means
-	 * the rbac plugin is disabled (serviceOption → None). */
+	const DELEGATED: readonly DoctorProfile[] = [
+		{
+			doctorId: 7,
+			userId: "doc-1",
+			email: "doc@x.com",
+			displayName: "Dr. One",
+			role: "secretary",
+		},
+	];
+
+	/** Run under a staff principal; `actorId` simulates a secretary
+	 * acting on a doctor's behalf (the account is `actorId`). */
 	const asStaff = <A, E>(
 		effect: Effect.Effect<A, E, Audit>,
-		opts: { tenant?: Tenant | null; perms?: Permissions["Service"] } = {},
+		opts: {
+			principal?: { userId: string; email?: string; actorId?: string } | null;
+			profiles?: readonly DoctorProfile[];
+		} = {},
 	) => {
 		let eff = effect.pipe(
-			Effect.provideService(Principal, { userId: "u1", email: "staff@x.com" }),
-			Effect.provideService(Tenant, opts.tenant === undefined ? tenant : opts.tenant),
+			Effect.provideService(
+				Principal,
+				opts.principal === undefined ? { userId: "sec-1", email: "sec@x.com" } : opts.principal,
+			),
 		);
-		if (opts.perms !== undefined) eff = Effect.provideService(eff, Permissions, opts.perms);
+		const dir = directory(opts.profiles);
+		if (dir !== undefined) eff = Effect.provideService(eff, DoctorProfiles, dir);
 		return runtime.runPromise(eff);
 	};
 
-	it("activityAccess is true and activityList returns only tenant rows", async () => {
-		const seen: unknown[] = [];
-		const access = await asStaff(
-			call((p) => p.activityAccess()),
-			{
-				perms: permissions(true, seen),
-			},
-		);
-		expect(access).toBe(true);
-		expect(seen).toEqual([["audit", "read", { tenantId: 1, tenantPolicy: "strict" }]]);
-		const result = await asStaff(
-			call((p) => p.activityList()),
-			{
-				perms: permissions(true),
-			},
-		);
-		expect(result.entries.map((e) => e.action)).toEqual(["feed.t1.second", "feed.t1.first"]);
-		expect(result.total).toBe(2);
-	});
-
-	it("denies access and fails activityList Forbidden without the grant", async () => {
+	it("activityAccess is true for any signed-in principal", async () => {
+		await expect(asStaff(call((p) => p.activityAccess()))).resolves.toBe(true);
 		await expect(
 			asStaff(
 				call((p) => p.activityAccess()),
-				{ perms: permissions(false) },
+				{
+					principal: { userId: "doc-9", actorId: "sec-1", email: "sec@x.com" },
+				},
+			),
+		).resolves.toBe(true);
+	});
+
+	it("activityList returns self plus delegated-doctor rows only", async () => {
+		const result = await asStaff(
+			call((p) => p.activityList()),
+			{ profiles: DELEGATED },
+		);
+		expect(result.entries.map((e) => e.action)).toEqual([
+			"feed.doctor",
+			"feed.self.two",
+			"feed.self.one",
+		]);
+		expect(result.total).toBe(3);
+	});
+
+	it("scopes to self only without the DoctorProfiles service", async () => {
+		const result = await asStaff(call((p) => p.activityList()));
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.self.two", "feed.self.one"]);
+		expect(result.total).toBe(2);
+	});
+
+	it("scopes to self only when the directory fails or lists nothing", async () => {
+		const failing = {
+			listFor: () => Effect.fail(new Error("directory down")),
+			claimInvites: () => Effect.succeed(0),
+		} as unknown as DoctorProfiles["Service"];
+		const result = await runtime.runPromise(
+			call((p) => p.activityList()).pipe(
+				Effect.provideService(Principal, { userId: "sec-1", email: "sec@x.com" }),
+				Effect.provideService(DoctorProfiles, failing),
+			),
+		);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.self.two", "feed.self.one"]);
+		const empty = await asStaff(
+			call((p) => p.activityList()),
+			{ profiles: [] },
+		);
+		expect(empty.entries.map((e) => e.action)).toEqual(["feed.self.two", "feed.self.one"]);
+	});
+
+	it("attributes delegated actions to the signed-in account, not the acted doctor", async () => {
+		// Secretary acting as doc-1: actorId is the account — the feed
+		// still keys on sec-1, never on the acting profile's userId.
+		const result = await asStaff(
+			call((p) => p.activityList()),
+			{
+				principal: { userId: "doc-1", actorId: "sec-1", email: "sec@x.com" },
+				profiles: DELEGATED,
+			},
+		);
+		expect(result.entries.map((e) => e.action)).toEqual([
+			"feed.doctor",
+			"feed.self.two",
+			"feed.self.one",
+		]);
+	});
+
+	it("the actor filter narrows within the visible scope", async () => {
+		const result = await asStaff(
+			call((p) => p.activityList({ actor: "doc@x.com" })),
+			{
+				profiles: DELEGATED,
+			},
+		);
+		expect(result.entries.map((e) => e.action)).toEqual(["feed.doctor"]);
+		// An actor outside the scope matches nothing — the fence wins
+		// over the filter, it cannot widen it.
+		const denied = await asStaff(
+			call((p) => p.activityList({ actor: "other@x.com" })),
+			{
+				profiles: DELEGATED,
+			},
+		);
+		expect(denied.entries).toEqual([]);
+		expect(denied.total).toBe(0);
+	});
+
+	it("fails closed without a principal", async () => {
+		await expect(
+			asStaff(
+				call((p) => p.activityAccess()),
+				{ principal: null },
 			),
 		).resolves.toBe(false);
 		await expect(
 			asStaff(
 				call((p) => p.activityList()),
-				{ perms: permissions(false) },
+				{ principal: null },
 			),
-		).rejects.toMatchObject({ _tag: "Forbidden", path: "rbac.audit.read" });
-	});
-
-	it("fails closed when the Permissions service is absent", async () => {
-		await expect(asStaff(call((p) => p.activityAccess()))).resolves.toBe(false);
-		await expect(asStaff(call((p) => p.activityList()))).rejects.toMatchObject({
-			_tag: "Forbidden",
-		});
-	});
-
-	it("fails closed without a resolvable tenant scope", async () => {
-		const cases: Array<Tenant | null> = [
-			null,
-			{ id: "clinic-x", kind: "clinic", slug: "x", role: "admin" },
-		];
-		for (const t of cases) {
-			await expect(
-				asStaff(
-					call((p) => p.activityAccess()),
-					{ tenant: t, perms: permissions(true) },
-				),
-			).resolves.toBe(false);
-			await expect(
-				asStaff(
-					call((p) => p.activityList()),
-					{ tenant: t, perms: permissions(true) },
-				),
-			).rejects.toMatchObject({ _tag: "Forbidden" });
-		}
-	});
-
-	it("activityFacets scopes the dropdown values to the tenant feed", async () => {
-		const facets = await asStaff(
-			call((p) => p.activityFacets()),
-			{
-				perms: permissions(true),
-			},
-		);
-		// Only feed.t1.* rows belong to tenant 1 — the other tenants'
-		// and the global row never leak into the options.
-		expect(facets.actionGroups).toEqual(["feed"]);
-		// Every feed row has NULL target_type — the bucket is one entry.
-		expect(facets.targetTypes).toEqual([null]);
+		).rejects.toMatchObject({ _tag: "Forbidden", path: "audit.activity" });
 		await expect(
 			asStaff(
 				call((p) => p.activityFacets()),
-				{ perms: permissions(false) },
+				{ principal: null },
 			),
 		).rejects.toMatchObject({ _tag: "Forbidden" });
+	});
+
+	it("activityFacets scopes dropdowns to the actor feed and unions permitted actors", async () => {
+		const facets = await asStaff(
+			call((p) => p.activityFacets()),
+			{ profiles: DELEGATED },
+		);
+		expect(facets.actionGroups).toEqual(["feed"]);
+		// Actors with entries (doc@x.com, sec@x.com) — the permitted
+		// actor keys union in, and other@x.com never leaks.
+		expect(facets.actors).toEqual(["doc@x.com", "sec@x.com"]);
 	});
 });
 
@@ -1102,8 +1155,7 @@ describe("hasRecentAuditRead (P-087 D3)", () => {
 
 describe("Audit record coalescing + runtime config (P-087 D3/D5)", () => {
 	// PluginStates is resolved per record() call from the CALLER's
-	// context (serviceOption) — provide it on the effect, not the layer,
-	// same as the Permissions stubs in the activity-feed suite.
+	// context (serviceOption) — provide it on the effect, not the layer.
 	const depsFor = (db: DbClient) =>
 		Layer.merge(
 			Layer.succeed(Db, db),

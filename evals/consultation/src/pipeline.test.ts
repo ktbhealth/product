@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { ptBR } from "./locales/pt-BR.ts";
 import type { EditOp } from "@ktb/eval-core";
+import { makePipelineRegistry, PipelineRunError } from "@ktb/pipeline";
 import {
 	processSample,
+	EVAL_RUN_PIPELINE_ID,
+	evalRunPack,
 	transcribeSample,
 	cleanupTranscript,
 	cleanupTranscriptGated,
@@ -1423,5 +1426,35 @@ describe("domainParams (P-079)", () => {
 		);
 		expect(err).toBeInstanceOf(PortError);
 		expect(String((err as PortError).message)).toContain("entityCategories");
+	});
+});
+
+describe("evalRunPack (@ktb/pipeline adapter)", () => {
+	it("mirrors the stage selection into the def and keeps every impl", () => {
+		const pack = evalRunPack(["cleanup", "judge"]);
+		expect(pack.def.id).toBe(EVAL_RUN_PIPELINE_ID);
+		expect(pack.def.stages.map((s) => s.id)).toEqual(["cleanup", "judge"]);
+		// All three implementations ship in the pack — the def selects
+		// the subset (register() only requires def entries ⊆ stages).
+		expect(Object.keys(pack.stages).sort()).toEqual(["cleanup", "judge", "transcribe"]);
+	});
+
+	it("stage failures surface as PipelineRunError carrying the original PortError", async () => {
+		const registry = makePipelineRegistry();
+		registry.register(evalRunPack(["cleanup"]));
+		const ctx = {} as unknown as Parameters<(typeof RUN_STAGE_FNS)["cleanup"]>[0];
+		const outcome = await Effect.runPromise(
+			registry.run(EVAL_RUN_PIPELINE_ID, ctx).pipe(Effect.catch((e) => Effect.succeed(e))),
+		);
+		expect(outcome).toBeInstanceOf(PipelineRunError);
+		if (outcome instanceof PipelineRunError) {
+			// The registry wraps twice (PipelineStageError → run error);
+			// `cause` is the ORIGINAL typed error processSample unwraps.
+			expect(outcome.cause).toBeInstanceOf(PortError);
+			expect(outcome.stageId).toBe("cleanup");
+			expect(outcome.trace).toEqual([
+				expect.objectContaining({ stageId: "cleanup", status: "failed" }),
+			]);
+		}
 	});
 });

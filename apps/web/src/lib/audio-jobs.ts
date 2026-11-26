@@ -23,7 +23,6 @@ export async function handleAudioQueueBatch(
 	deps?: AudioJobDeps,
 ): Promise<void> {
 	const resolved =
-		deps ??
-		(await defaultAudioJobDeps((transcript) => correctTranscript(transcript).catch(() => null)));
+		deps ?? (await defaultAudioJobDeps((input) => correctTranscript(input).catch(() => null)));
 	await consumeAudioQueueBatch(messages, resolved, jobHandlers);
 }
