@@ -32,7 +32,7 @@ vi.mock("@ktb/server-fns", () => ({
 	runAs: mocks.runAs,
 }));
 
-import { Appointments } from "./service.ts";
+import { AppointmentConflict, Appointments } from "./service.ts";
 import {
 	createAppointmentFn,
 	setAppointmentStatusFn,
@@ -74,6 +74,17 @@ describe("createAppointmentFn", () => {
 			data: { patientId: 1, startsAt: new Date(0) },
 		})) as { ok: boolean };
 		expect(out).toEqual({ ok: false });
+	});
+
+	it("reports a double-booking as { ok: false, reason: 'conflict' }", async () => {
+		runEffects({
+			create: () => Effect.fail(new AppointmentConflict({ conflictingId: 3 })),
+		});
+		expect(await createAppointmentFn({ data: { patientId: 1, startsAt: new Date(0) } })).toEqual({
+			ok: false,
+			reason: "conflict",
+			conflictingId: 3,
+		});
 	});
 
 	it("collapses a null service row to { ok: false }", async () => {
@@ -121,6 +132,17 @@ describe("updateAppointmentFn", () => {
 		expect((await updateAppointmentFn({ data: { id: 5, note: null } })) as { ok: boolean }).toEqual(
 			{ ok: false },
 		);
+	});
+
+	it("keeps the conflict reason for a double-booking", async () => {
+		runEffects({
+			update: () => Effect.fail(new AppointmentConflict({ conflictingId: 9 })),
+		});
+		expect(await updateAppointmentFn({ data: { id: 5, startsAt: new Date(0) } })).toEqual({
+			ok: false,
+			reason: "conflict",
+			conflictingId: 9,
+		});
 	});
 });
 

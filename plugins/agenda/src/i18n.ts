@@ -31,6 +31,8 @@ export interface AgendaMessages {
 		readonly save: string;
 		readonly cancel: string;
 		readonly required: string;
+		/** Slot overlaps another live appointment of the same doctor. */
+		readonly conflict: string;
 	};
 	readonly status: {
 		readonly scheduled: string;
@@ -75,6 +77,7 @@ const en: AgendaMessages = {
 		save: "Save",
 		cancel: "Cancel",
 		required: "Required",
+		conflict: "This time overlaps another appointment.",
 	},
 	status: {
 		scheduled: "Scheduled",
@@ -117,6 +120,7 @@ const ptBR: AgendaMessages = {
 		save: "Salvar",
 		cancel: "Cancelar",
 		required: "Obrigatório",
+		conflict: "Este horário conflita com outro agendamento.",
 	},
 	status: {
 		scheduled: "Agendado",
@@ -159,6 +163,7 @@ const es: AgendaMessages = {
 		save: "Guardar",
 		cancel: "Cancelar",
 		required: "Obligatorio",
+		conflict: "Este horario se superpone con otra cita.",
 	},
 	status: {
 		scheduled: "Agendada",

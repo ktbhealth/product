@@ -6,7 +6,9 @@ import { Schema } from "effect";
 import { ensureDoctorUser, runAs } from "@ktb/server-fns";
 
 import { APPOINTMENT_STATUSES, type AppointmentStatus } from "./schema.ts";
-import { Appointments, type AppointmentRow } from "./service.ts";
+import type { Forbidden } from "@ktb/authz";
+
+import { Appointments, type AppointmentConflict, type AppointmentRow } from "./service.ts";
 
 // Agenda plugin server functions: plugin-owned like the route modules —
 // handlers reach the app runtime through @ktb/server-fns (no host
@@ -52,10 +54,22 @@ const IdInput = Schema.Struct({ id: Schema.Number });
 
 export type AppointmentFnResult =
 	| { readonly ok: true; readonly appointment: AppointmentRow }
-	| { readonly ok: false };
+	| { readonly ok: false; readonly reason?: "conflict"; readonly conflictingId?: number };
 
 const asResult = (row: AppointmentRow | null): AppointmentFnResult =>
 	row === null ? { ok: false } : { ok: true, appointment: row };
+
+/** Write denials collapse to `{ ok: false }`; a double-booking keeps its
+ * reason so the form can say why instead of a generic failure. */
+const collapseWriteErrors = <R>(
+	effect: Effect.Effect<AppointmentFnResult, Forbidden | AppointmentConflict, R>,
+) =>
+	effect.pipe(
+		Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const)),
+		Effect.catchTag("AppointmentConflict", (e) =>
+			Effect.succeed({ ok: false, reason: "conflict", conflictingId: e.conflictingId } as const),
+		),
+	);
 
 export const createAppointmentFn = createServerFn({ method: "POST" })
 	.validator((input: unknown) => Schema.decodeUnknownSync(CreateInput)(normalizeStartsAt(input)))
@@ -63,11 +77,13 @@ export const createAppointmentFn = createServerFn({ method: "POST" })
 		const user = await ensureDoctorUser();
 		return runAs(
 			user,
-			Effect.gen(function* () {
-				const appointments = yield* Appointments;
-				const row = yield* appointments.create(user.id, data);
-				return asResult(row);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
+			collapseWriteErrors(
+				Effect.gen(function* () {
+					const appointments = yield* Appointments;
+					const row = yield* appointments.create(user.id, data);
+					return asResult(row);
+				}),
+			),
 		);
 	});
 
@@ -78,11 +94,13 @@ export const updateAppointmentFn = createServerFn({ method: "POST" })
 		const { id, ...patch } = data;
 		return runAs(
 			user,
-			Effect.gen(function* () {
-				const appointments = yield* Appointments;
-				const row = yield* appointments.update(user.id, id, patch);
-				return asResult(row);
-			}).pipe(Effect.catchTag("Forbidden", () => Effect.succeed({ ok: false } as const))),
+			collapseWriteErrors(
+				Effect.gen(function* () {
+					const appointments = yield* Appointments;
+					const row = yield* appointments.update(user.id, id, patch);
+					return asResult(row);
+				}),
+			),
 		);
 	});
 

@@ -75,7 +75,12 @@ vi.mock("@ktbhealth/ui/components/select", async () => {
 	};
 });
 
-import { AgendaPage, AgendaPortalPage, type AgendaListItem } from "./AgendaPage.tsx";
+import {
+	AgendaPage,
+	AgendaPortalPage,
+	type AgendaListItem,
+	type AppointmentWriteResult,
+} from "./AgendaPage.tsx";
 
 const api = () => ({
 	create: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({ ok: true })),
@@ -363,6 +368,24 @@ describe("AgendaPage", () => {
 		fireEvent.click(screen.getByText("Save"));
 		await waitFor(() => expect(a.create).toHaveBeenCalled());
 		await waitFor(() => expect(screen.getByText("Required")).toBeTruthy());
+	});
+
+	it("the create dialog names a double-booking instead of the generic error", async () => {
+		const a = {
+			...api(),
+			create: vi.fn<() => Promise<AppointmentWriteResult>>(async () => ({
+				ok: false,
+				reason: "conflict",
+			})),
+		};
+		render(<AgendaPage appointments={[]} patients={[{ id: 1, name: "Ana" }]} api={a} />);
+		fireEvent.click(screen.getByText("New appointment"));
+		await waitFor(() => expect(screen.getByText("Save")).toBeTruthy());
+		fireEvent.click(screen.getByText("Ana"));
+		fireEvent.click(screen.getByText("Save"));
+		await waitFor(() =>
+			expect(screen.getByRole("alert").textContent).toBe("This time overlaps another appointment."),
+		);
 	});
 
 	it("the edit dialog closes via cancel", async () => {
