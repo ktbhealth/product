@@ -1,0 +1,14 @@
+{
+	"name": "@ktb/orchestrator",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"dependencies": {
+		"@ktb/db": "workspace:*",
+		"@ktb/jobs-port": "workspace:*",
+		"drizzle-orm": "^0.45.1",
+		"effect": "4.1.2"
+	}
+}

@@ -668,6 +668,15 @@
         "effect": "4.1.2",
       },
     },
+    "packages/orchestrator": {
+      "name": "@ktb/orchestrator",
+      "dependencies": {
+        "@ktb/db": "workspace:*",
+        "@ktb/jobs-port": "workspace:*",
+        "drizzle-orm": "^0.45.1",
+        "effect": "4.1.2",
+      },
+    },
     "packages/pipeline": {
       "name": "@ktb/pipeline",
       "dependencies": {
@@ -3053,6 +3062,8 @@
     "@ktb/observability": ["@ktb/observability@workspace:packages/observability"],
 
     "@ktb/observability-otlp": ["@ktb/observability-otlp@workspace:packages/observability-otlp"],
+
+    "@ktb/orchestrator": ["@ktb/orchestrator@workspace:packages/orchestrator"],
 
     "@ktb/pages": ["@ktb/pages@workspace:plugins/pages"],
 
