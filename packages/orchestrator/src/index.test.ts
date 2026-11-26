@@ -775,28 +775,27 @@ describe("builtin kinds", () => {
 		expect(result.state["g"]).toMatchObject({ result: "pass", path: "" });
 	});
 
-	it("ai kind stub tolerates absent params", async () => {
+	it("ai kind degrades to no-port output when no AI port is bound", async () => {
 		const r = registry();
 		r.registerDef(def("ai-bad", [node("a", "ai", ["start"])]));
 		const result = await Effect.runPromise(r.run("ai-bad"));
-		expect(result.state["a"]).toMatchObject({ prompt: "" });
+		expect(result.state["a"]).toMatchObject({ skipped: true, reason: "no-port", kind: "llm" });
 	});
 
-	it("ai kind is a stub returning prompt/model/echoed output", async () => {
+	it("ai kind emits ai.done even on the degrade path", async () => {
 		const r = registry();
 		r.registerDef(
 			def("ai", [
 				node("a", "ai", ["start"], {
-					params: { template: "summarize", model: "stub-1", echo: true },
+					params: { template: "summarize", model: "stub-1" },
 				}),
+				node("sink", "ai", ["ai.done"], { maxFires: 1 }),
 			]),
 		);
 		const result = await Effect.runPromise(r.run("ai"));
-		expect(result.state["a"]).toEqual({
-			prompt: "summarize",
-			model: "stub-1",
-			echoed: {},
-		});
+		expect(eventTypes(result)).toContain("ai.done");
+		expect(traceFor(result, "sink")).toHaveLength(1);
+		expect(result.state["a"]).toMatchObject({ skipped: true, reason: "no-port" });
 	});
 });
 
