@@ -1776,6 +1776,55 @@ export type I18nKey =
 	| "patients.zk.decryptFailed"
 	| "patients.zk.lockedHint"
 	| "patients.zk.lockedRecord"
+	| "pipeline.applyParams"
+	| "pipeline.backToList"
+	| "pipeline.cancel"
+	| "pipeline.colDescription"
+	| "pipeline.colId"
+	| "pipeline.colNodes"
+	| "pipeline.colUpdated"
+	| "pipeline.colVersion"
+	| "pipeline.connectConfirm"
+	| "pipeline.connectEventType"
+	| "pipeline.connectTitle"
+	| "pipeline.defDescription"
+	| "pipeline.defId"
+	| "pipeline.defSection"
+	| "pipeline.defVersion"
+	| "pipeline.deleteNode"
+	| "pipeline.description"
+	| "pipeline.editorEditTitle"
+	| "pipeline.editorMissing"
+	| "pipeline.editorNewTitle"
+	| "pipeline.empty"
+	| "pipeline.kindAiEcho"
+	| "pipeline.kindAiModel"
+	| "pipeline.kindAiTemplate"
+	| "pipeline.kindEmitEvents"
+	| "pipeline.kindGateEquals"
+	| "pipeline.kindGateFailEvent"
+	| "pipeline.kindGatePassEvent"
+	| "pipeline.kindGatePath"
+	| "pipeline.kindsLoading"
+	| "pipeline.newPipeline"
+	| "pipeline.nodeEmits"
+	| "pipeline.nodeId"
+	| "pipeline.nodeKind"
+	| "pipeline.nodeOn"
+	| "pipeline.nodeParams"
+	| "pipeline.nodeParamsInvalid"
+	| "pipeline.nodeParamsJson"
+	| "pipeline.nodeSection"
+	| "pipeline.onNodeError"
+	| "pipeline.onNodeErrorContinue"
+	| "pipeline.onNodeErrorHalt"
+	| "pipeline.paletteHint"
+	| "pipeline.paletteTitle"
+	| "pipeline.save"
+	| "pipeline.saved"
+	| "pipeline.saveFailed"
+	| "pipeline.selectNodeHint"
+	| "pipeline.title"
 	| "portal.backToApp"
 	| "portal.overview"
 	| "portal.signOut"
@@ -4796,6 +4845,60 @@ export interface I18nTypedT {
 	(key: "patients.zk.decryptFailed"): Effect.Effect<string>;
 	(key: "patients.zk.lockedHint"): Effect.Effect<string>;
 	(key: "patients.zk.lockedRecord"): Effect.Effect<string>;
+	(key: "pipeline.applyParams"): Effect.Effect<string>;
+	(key: "pipeline.backToList"): Effect.Effect<string>;
+	(key: "pipeline.cancel"): Effect.Effect<string>;
+	(key: "pipeline.colDescription"): Effect.Effect<string>;
+	(key: "pipeline.colId"): Effect.Effect<string>;
+	(key: "pipeline.colNodes"): Effect.Effect<string>;
+	(key: "pipeline.colUpdated"): Effect.Effect<string>;
+	(key: "pipeline.colVersion"): Effect.Effect<string>;
+	(key: "pipeline.connectConfirm"): Effect.Effect<string>;
+	(key: "pipeline.connectEventType"): Effect.Effect<string>;
+	(key: "pipeline.connectTitle"): Effect.Effect<string>;
+	(key: "pipeline.defDescription"): Effect.Effect<string>;
+	(key: "pipeline.defId"): Effect.Effect<string>;
+	(key: "pipeline.defSection"): Effect.Effect<string>;
+	(key: "pipeline.defVersion"): Effect.Effect<string>;
+	(key: "pipeline.deleteNode"): Effect.Effect<string>;
+	(key: "pipeline.description"): Effect.Effect<string>;
+	(
+		key: "pipeline.editorEditTitle",
+		params: {
+			id: unknown;
+		},
+	): Effect.Effect<string>;
+	(key: "pipeline.editorMissing"): Effect.Effect<string>;
+	(key: "pipeline.editorNewTitle"): Effect.Effect<string>;
+	(key: "pipeline.empty"): Effect.Effect<string>;
+	(key: "pipeline.kindAiEcho"): Effect.Effect<string>;
+	(key: "pipeline.kindAiModel"): Effect.Effect<string>;
+	(key: "pipeline.kindAiTemplate"): Effect.Effect<string>;
+	(key: "pipeline.kindEmitEvents"): Effect.Effect<string>;
+	(key: "pipeline.kindGateEquals"): Effect.Effect<string>;
+	(key: "pipeline.kindGateFailEvent"): Effect.Effect<string>;
+	(key: "pipeline.kindGatePassEvent"): Effect.Effect<string>;
+	(key: "pipeline.kindGatePath"): Effect.Effect<string>;
+	(key: "pipeline.kindsLoading"): Effect.Effect<string>;
+	(key: "pipeline.newPipeline"): Effect.Effect<string>;
+	(key: "pipeline.nodeEmits"): Effect.Effect<string>;
+	(key: "pipeline.nodeId"): Effect.Effect<string>;
+	(key: "pipeline.nodeKind"): Effect.Effect<string>;
+	(key: "pipeline.nodeOn"): Effect.Effect<string>;
+	(key: "pipeline.nodeParams"): Effect.Effect<string>;
+	(key: "pipeline.nodeParamsInvalid"): Effect.Effect<string>;
+	(key: "pipeline.nodeParamsJson"): Effect.Effect<string>;
+	(key: "pipeline.nodeSection"): Effect.Effect<string>;
+	(key: "pipeline.onNodeError"): Effect.Effect<string>;
+	(key: "pipeline.onNodeErrorContinue"): Effect.Effect<string>;
+	(key: "pipeline.onNodeErrorHalt"): Effect.Effect<string>;
+	(key: "pipeline.paletteHint"): Effect.Effect<string>;
+	(key: "pipeline.paletteTitle"): Effect.Effect<string>;
+	(key: "pipeline.save"): Effect.Effect<string>;
+	(key: "pipeline.saved"): Effect.Effect<string>;
+	(key: "pipeline.saveFailed"): Effect.Effect<string>;
+	(key: "pipeline.selectNodeHint"): Effect.Effect<string>;
+	(key: "pipeline.title"): Effect.Effect<string>;
 	(key: "portal.backToApp"): Effect.Effect<string>;
 	(key: "portal.overview"): Effect.Effect<string>;
 	(key: "portal.signOut"): Effect.Effect<string>;

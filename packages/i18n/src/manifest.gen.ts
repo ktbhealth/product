@@ -6095,6 +6095,160 @@ export const I18N_MANIFEST = {
 			params: [],
 		},
 	},
+	pipeline: {
+		title: {
+			params: [],
+		},
+		description: {
+			params: [],
+		},
+		newPipeline: {
+			params: [],
+		},
+		colId: {
+			params: [],
+		},
+		colVersion: {
+			params: [],
+		},
+		colDescription: {
+			params: [],
+		},
+		colNodes: {
+			params: [],
+		},
+		colUpdated: {
+			params: [],
+		},
+		empty: {
+			params: [],
+		},
+		backToList: {
+			params: [],
+		},
+		editorNewTitle: {
+			params: [],
+		},
+		editorEditTitle: {
+			params: [
+				{
+					name: "id",
+				},
+			],
+			template: "Orchestration {id}",
+		},
+		editorMissing: {
+			params: [],
+		},
+		defSection: {
+			params: [],
+		},
+		defId: {
+			params: [],
+		},
+		defVersion: {
+			params: [],
+		},
+		defDescription: {
+			params: [],
+		},
+		onNodeError: {
+			params: [],
+		},
+		onNodeErrorHalt: {
+			params: [],
+		},
+		onNodeErrorContinue: {
+			params: [],
+		},
+		paletteTitle: {
+			params: [],
+		},
+		paletteHint: {
+			params: [],
+		},
+		nodeSection: {
+			params: [],
+		},
+		selectNodeHint: {
+			params: [],
+		},
+		nodeId: {
+			params: [],
+		},
+		nodeKind: {
+			params: [],
+		},
+		nodeOn: {
+			params: [],
+		},
+		nodeEmits: {
+			params: [],
+		},
+		nodeParams: {
+			params: [],
+		},
+		nodeParamsJson: {
+			params: [],
+		},
+		nodeParamsInvalid: {
+			params: [],
+		},
+		applyParams: {
+			params: [],
+		},
+		deleteNode: {
+			params: [],
+		},
+		connectTitle: {
+			params: [],
+		},
+		connectEventType: {
+			params: [],
+		},
+		connectConfirm: {
+			params: [],
+		},
+		cancel: {
+			params: [],
+		},
+		save: {
+			params: [],
+		},
+		saved: {
+			params: [],
+		},
+		saveFailed: {
+			params: [],
+		},
+		kindAiTemplate: {
+			params: [],
+		},
+		kindAiModel: {
+			params: [],
+		},
+		kindAiEcho: {
+			params: [],
+		},
+		kindGatePath: {
+			params: [],
+		},
+		kindGateEquals: {
+			params: [],
+		},
+		kindGatePassEvent: {
+			params: [],
+		},
+		kindGateFailEvent: {
+			params: [],
+		},
+		kindEmitEvents: {
+			params: [],
+		},
+		kindsLoading: {
+			params: [],
+		},
+	},
 	portal: {
 		switcherLabel: {
 			params: [],
