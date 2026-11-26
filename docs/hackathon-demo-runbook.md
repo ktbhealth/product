@@ -10,10 +10,12 @@ Rehearse on the T-201 deployment before filming T-204/T-196.
 
 ## Preconditions
 
-- [ ] Demo URL live and seeded (T-092 patient + synthetic consult exist —
-      **gap found:** `db:seed` creates accounts + 2 patients but **no
-      consultations**; seed or create the demo consult before the event)
-- [ ] Demo doctor account credentials written down (no password manager fumbling live)
+- [x] Demo URL live and seeded — prod D1 seeded 2026-11-26 via
+      `scripts/seed-remote.ts` (PR #329): 6 demo accounts, patients +
+      access links, secretary delegation, and synthetic consult **#6
+      `gp-lombalgia-03`** (status `done`, consent recorded, non-ZK)
+- [x] Demo doctor account credentials written down — `user@ktb.test` /
+      `KTB-Health-Demo-2026` (same password for all seeded accounts)
 - [ ] Backup: T-196 video cued and tested — if live fails, switch immediately
 - [ ] Browser: fresh profile or cleared site data; mic permission pre-granted if recording live
 - [ ] Fallback input ready: sample/paste transcript (T-193 verified path) if mic/ASR is flaky
@@ -110,9 +112,10 @@ anamnesis → PDF/FHIR. `consent_at` and `patient_id` confirmed written.
 - **Cold-compile latency is dev-only**: each route's first hit costs
   ~10-70 s under `vp dev`; subsequent hits are ~1-4 s. Hit every demo
   route once before showtime (does not apply to the deployed build).
-- **Seed gap (T-092)**: `db:seed` creates 6 accounts + 2 patients
-  (`Patient`, `Child of Guardian`) and **zero consultations** — the
-  "synthetic consult" the runbook assumes does not exist yet.
+- **Seed gap (T-092, local only)**: `db:seed` still creates 6 accounts +
+  2 patients and **zero consultations** — fine for dev, but the demo
+  consult lives only in prod (consult #6, seeded remotely). Re-run
+  `scripts/seed-remote.ts` if prod D1 is ever rebuilt.
 - **Locale**: UI defaults to English; pt-BR needs `?locale=pt-BR` or the
   `ktb-locale=pt-BR` cookie (there is a locale switcher in the app).
 - **ZK export gate**: PDF export is disabled with "PDF export unavailable
@@ -139,11 +142,13 @@ anamnesis → PDF/FHIR. `consent_at` and `patient_id` confirmed written.
 - [x] Every fallback exercised once (upload path via wav POST, paste path via "Use sample")
 - [x] Export verified on the exact record type used in demo (non-ZK consult → PDF + FHIR + OpenEHR all 200)
 - [x] Runbook updated with anything that differed from this draft
-- [ ] Full path executed on deployed URL, timed ≤3 min (pending T-201 deployment)
+- [ ] Full path executed on deployed URL in a real browser, timed ≤3 min
+      (API-level verified 2026-11-26: session, portals, PDF, FHIR, OpenEHR
+      all 200; sign-in needs a real browser — Turnstile blocks curl)
 
 ## Freeze checklist (T-205, Nov-29)
 
-- [ ] Demo URL live, seeded (incl. the synthetic consult — T-092 gap), and stable through the freeze window
+- [ ] Demo URL live, seeded (consult #6 `gp-lombalgia-03` present), and stable through the freeze window
 - [ ] Backup video (T-196) cued and tested — switch immediately on live failure
 - [ ] Submission form complete (all fields, links, team info)
 - [ ] Repo public (`github.com/ktbhealth/product`) and readable without auth
